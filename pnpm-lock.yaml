@@ -145,6 +145,11 @@ catalogs:
 overrides:
   '@effect/platform-node-shared': 4.1.1
 
+patchedDependencies:
+  vibelang@0.0.13:
+    hash: e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d
+    path: vibestack/patches/vibelang@0.0.13.patch
+
 importers:
 
   .:
@@ -239,10 +244,10 @@ importers:
         version: 8.72.2(eslint@10.14.0(jiti@2.7.0))(typescript@6.0.3)
       vibelang:
         specifier: 0.0.13
-        version: 0.0.13(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+        version: 0.0.13(patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
       vibelang-vite:
         specifier: 0.0.13
-        version: 0.0.13(vibelang@0.0.13(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 0.0.13(vibelang@0.0.13(patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       vite:
         specifier: 8.3.5
         version: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
@@ -285,10 +290,10 @@ importers:
         version: 6.0.3
       vibelang:
         specifier: 0.0.13
-        version: 0.0.13(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+        version: 0.0.13(patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
       vibelang-vite:
         specifier: 0.0.13
-        version: 0.0.13(vibelang@0.0.13(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 0.0.13(vibelang@0.0.13(patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       vibestack:
         specifier: workspace:*
         version: link:../..
@@ -368,10 +373,10 @@ importers:
         version: 6.0.3
       vibelang:
         specifier: 0.0.13
-        version: 0.0.13(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+        version: 0.0.13(patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
       vibelang-vite:
         specifier: 0.0.13
-        version: 0.0.13(vibelang@0.0.13(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 0.0.13(vibelang@0.0.13(patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       vibestack:
         specifier: workspace:*
         version: link:../..
@@ -427,10 +432,10 @@ importers:
         version: 6.0.3
       vibelang:
         specifier: 0.0.13
-        version: 0.0.13(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+        version: 0.0.13(patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
       vibelang-vite:
         specifier: 0.0.13
-        version: 0.0.13(vibelang@0.0.13(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 0.0.13(vibelang@0.0.13(patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       vibestack:
         specifier: workspace:*
         version: link:../..
@@ -508,10 +513,10 @@ importers:
         version: 6.0.3
       vibelang:
         specifier: 0.0.13
-        version: 0.0.13(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+        version: 0.0.13(patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
       vibelang-vite:
         specifier: 0.0.13
-        version: 0.0.13(vibelang@0.0.13(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
+        version: 0.0.13(vibelang@0.0.13(patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1))
       vibestack:
         specifier: workspace:*
         version: link:../..
@@ -596,7 +601,7 @@ importers:
         version: 6.0.3
       vibelang:
         specifier: 0.0.13
-        version: 0.0.13(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+        version: 0.0.13(patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
       vibestack:
         specifier: workspace:*
         version: link:../..
@@ -10054,14 +10059,14 @@ snapshots:
     optionalDependencies:
       '@effect/platform-node': 4.1.1(effect@4.1.1)(redis@6.3.1(@opentelemetry/api@1.10.0))
 
-  vibelang-vite@0.0.13(vibelang@0.0.13(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)):
+  vibelang-vite@0.0.13(vibelang@0.0.13(patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)):
     dependencies:
       '@jridgewell/remapping': 2.3.5
       magic-string: 1.4.3
-      vibelang: 0.0.13(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
+      vibelang: 0.0.13(patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3)
       vite: 8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(yaml@2.9.1)
 
-  vibelang@0.0.13(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3):
+  vibelang@0.0.13(patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42fb1d)(@babel/core@7.29.13)(effect@4.1.1)(typescript@6.0.3):
     dependencies:
       dprint: 0.64.3
       effect: 4.1.1

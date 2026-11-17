@@ -1,0 +1,281 @@
+diff --git a/knip.mjs b/knip.mjs
+index da4baff517cfdf44aa5acc248f4373e861d1e2ff..9ab6df3839e3d0a3496e0044004aed9ee47bf3cb 100644
+--- a/knip.mjs
++++ b/knip.mjs
+@@ -6,7 +6,8 @@
+ //
+ // Knip reads what a compiler returns as a TypeScript module, for its imports
+ // and exports. This one returns a .vibe module's surface: each import and
+-// re-export as the file writes it, which is TypeScript syntax; a stub for
++// literal-module re-export as the file writes it; selected bindings from a
++// same-file module declaration as private stubs; a stub for
+ // each exported declaration under its name (an `error` is a class, a
+ // `schema` a constant, as in the compiler's ESTree), after the JSDoc written
+ // before it, whose tags Knip reads; each dynamic import of a
+@@ -29,9 +30,44 @@ export function compile(text, path = "file.vibe") {
+   const lines = ['import "vibelang-runtime"']
+   const namespaces = new Set()
+   const imported = new Set()
++  const modules = moduleExports(program.body)
++  const identifiers = new Set()
++  visit(program, node => {
++    if (node.type === "Identifier") identifiers.add(node.name)
++  })
++  let bindingId = 0
++  const privateName = () => {
++    let name
++    do { name = `$vibelang_export${bindingId++}` } while (identifiers.has(name))
++    identifiers.add(name)
++    return name
++  }
+   const imports = (body) => {
+     for (const node of body) {
+       if (node.type === "ImportDeclaration") {
++        if (node.source?.type === "Identifier") {
++          const exports = modules.get(node.source.name)
++          if (!exports) throw new SyntaxError(`vibelang/knip: unknown module ${node.source.name}`)
++          for (const specifier of node.specifiers) {
++            const local = specifier.local.name
++            imported.add(local)
++            if (specifier.type === "ImportNamespaceSpecifier") {
++              namespaces.add(local)
++              const members = [...exports].flatMap(([name, binding]) => bindingStubs(binding, { name, exported: true }))
++              lines.push(`namespace ${local} {\n${members.join("\n")}\n}`)
++            } else {
++              const name = specifier.imported?.name ?? specifier.imported?.value ?? "default"
++              const binding = exports.get(name)
++              if (!binding) throw new SyntaxError(`vibelang/knip: module ${node.source.name} does not export ${name}`)
++              lines.push(...bindingStubs(binding, {
++                name: local,
++                exported: false,
++                typeOnly: node.importKind === "type" || specifier.importKind === "type",
++              }))
++            }
++          }
++          continue
++        }
+         lines.push(source(node))
+         for (const specifier of node.specifiers) {
+           imported.add(specifier.local.name)
+@@ -44,6 +80,11 @@ export function compile(text, path = "file.vibe") {
+     }
+   }
+   imports(program.body)
++  const privateClasses = localTypeExportClasses(program.body)
++  for (const [name, binding] of privateClasses) {
++    if (imported.has(name)) privateClasses.delete(name)
++    else lines.push(...bindingStubs(binding, { name, exported: false }))
++  }
+   // The JSDoc comments written before an export, between it and the statement
+   // before it, as TypeScript attaches them: Knip reads their tags, such as
+   // `/** @public */`, which keeps an export no other module imports. A comment
+@@ -62,7 +103,21 @@ export function compile(text, path = "file.vibe") {
+   }
+   program.body.forEach((node, i) => {
+     const doc = docs(node, i ? program.body[i - 1].range[1] : 0)
+-    if (node.type === "ExportAllDeclaration" || (node.type === "ExportNamedDeclaration" && !node.declaration)) lines.push(doc + source(node))
++    if (node.type === "ExportNamedDeclaration" && node.source?.type === "Identifier") {
++      const exports = modules.get(node.source.name)
++      if (!exports) throw new SyntaxError(`vibelang/knip: unknown module ${node.source.name}`)
++      for (const specifier of node.specifiers) {
++        const name = specifier.local.name ?? specifier.local.value
++        const binding = exports.get(name)
++        if (!binding) throw new SyntaxError(`vibelang/knip: module ${node.source.name} does not export ${name}`)
++        const local = privateName()
++        const typeOnly = node.exportKind === "type" || specifier.exportKind === "type"
++        lines.push(...bindingStubs(binding, { name: local, exported: false, typeOnly }))
++        const exported = specifier.exported.type === "Identifier" ? specifier.exported.name : JSON.stringify(specifier.exported.value)
++        lines.push(doc + `export ${typeOnly ? "type " : ""}{ ${local} as ${exported} }`)
++      }
++    }
++    else if (node.type === "ExportAllDeclaration" || (node.type === "ExportNamedDeclaration" && !node.declaration)) lines.push(doc + source(node))
+     // TypeScript gives a statement's JSDoc to its first declaration only.
+     else if (node.type === "ExportNamedDeclaration") lines.push(...stubs(node.declaration, typeReads(node.declaration)).map((stub, i) => (i ? "" : doc) + stub))
+     else if (node.type === "ExportDefaultDeclaration") {
+@@ -72,7 +127,7 @@ export function compile(text, path = "file.vibe") {
+       lines.push(doc + (value?.type === "Identifier" ? source(node) : "export default 0"))
+     }
+   })
+-  const reads = new Set()
++  const reads = new Set([...rootConstructorReads(program)].filter(name => privateClasses.has(name)))
+   // Knip reads this output as TypeScript, so preserve tag uses as value
+   // expressions instead of making it parse VibeLang function bodies.
+   const tag = (name) => name?.type === "JSXIdentifier" ? name.name
+@@ -104,26 +159,165 @@ export function compile(text, path = "file.vibe") {
+ // The stub export of a declaration: its names, without its body, and the
+ // types its signature reads (reads), which Knip counts as uses of the exports
+ // they name.
+-function stubs(declaration, reads) {
+-  const name = declaration.id?.name
+-  const types = reads.length ? `[${reads.join(", ")}]` : ""
++function stubs(declaration, reads, binding) {
++  const name = binding?.name ?? declaration.id?.name
++  const prefix = binding?.exported === false ? "" : "export "
++  const observed = binding ? reads.map(read => read === binding.sourceName ? name : read === `typeof ${binding.sourceName}` ? `typeof ${name}` : read) : reads
++  const types = observed.length ? `[${observed.join(", ")}]` : ""
+   const value = types ? `0 as unknown as ${types}` : "0"
+   switch (declaration.type) {
+     case "VariableDeclaration": {
+       // Knip applies a variable statement's tags to all its exported names.
+       // Keep its bindings together so the JSDoc keeps that statement scope.
+-      const bindings = declaration.declarations.flatMap((d) => names(d.id))
+-      return bindings.length ? [`export const ${bindings.map((n) => `${n} = ${value}`).join(", ")}`] : []
++      const declared = declaration.declarations.flatMap((d) => names(d.id))
++      const bindings = binding ? declared.filter(n => n === binding.sourceName).map(() => name) : declared
++      const annotation = binding?.exported === false && types ? `: ${types}` : ""
++      return bindings.length ? [`${prefix}const ${bindings.map((n) => `${n}${annotation} = ${value}`).join(", ")}`] : []
+     }
+     case "FunctionDeclaration":
+-    case "TSDeclareFunction": return name ? [`export function ${name}(${types ? `..._: ${types}` : ""}) {}`] : []
+-    case "ClassDeclaration": return name ? [`export class ${name} {${types ? ` _?: ${types} ` : ""}}`] : []
+-    case "TSTypeAliasDeclaration": return [`export type ${name} = ${types || "unknown"}`]
+-    case "TSInterfaceDeclaration": return [`export interface ${name} {${types ? ` _?: ${types} ` : ""}}`]
+-    case "TSEnumDeclaration": return [`export enum ${name} {}`]
+-    case "TSModuleDeclaration": return declaration.id?.type === "Identifier" ? [`export namespace ${name} {}`] : []
+-    default: return name ? [`export const ${name} = ${value}`] : []
++    case "TSDeclareFunction": return name ? [`${prefix}function ${name}(${types ? `..._: ${types}` : ""}) {}`] : []
++    case "ClassDeclaration": return name ? [`${prefix}class ${name} {${types ? ` _?: ${types} ` : ""}}`] : []
++    case "TSTypeAliasDeclaration": return [`${prefix}type ${name} = ${types || "unknown"}`]
++    case "TSInterfaceDeclaration": return [`${prefix}interface ${name} {${types ? ` _?: ${types} ` : ""}}`]
++    case "TSEnumDeclaration": return [`${prefix}enum ${name} {}`]
++    case "TSModuleDeclaration": return declaration.id?.type === "Identifier" ? [`${prefix}namespace ${name} {}`] : []
++    default: return name ? [`${prefix}const ${name} = ${value}`] : []
++  }
++}
++
++function bindingStubs(binding, options) {
++  const selected = binding.declarations.map(declaration => {
++    const signature = declaration.type === "VariableDeclaration"
++      ? { ...declaration, declarations: declaration.declarations.filter(item => names(item.id).includes(binding.name)) }
++      : declaration
++    return { declaration, reads: typeReads(signature) }
++  })
++  if (options.typeOnly) {
++    const reads = [...new Set(selected.flatMap(item => item.reads))].map(read =>
++      read === binding.name ? options.name : read === `typeof ${binding.name}` ? `typeof ${options.name}` : read)
++    return [`type ${options.name} = ${reads.length ? `[${reads.join(", ")}]` : "unknown"}`]
++  }
++  return selected.flatMap(({ declaration, reads }) => stubs(declaration, reads, { ...options, sourceName: binding.name }))
++}
++
++function moduleExports(body) {
++  const modules = new Map()
++  for (const module of body) {
++    if (module.type !== "VibeModuleDeclaration") continue
++    const statements = Array.isArray(module.body) ? module.body : module.body?.body ?? []
++    const declarations = new Map()
++    for (const statement of statements) {
++      const declaration = statement.type === "ExportNamedDeclaration" ? statement.declaration : statement
++      if (!declaration) continue
++      const declared = declaration.type === "VariableDeclaration" ? declaration.declarations.flatMap(d => names(d.id)) : declaration.id?.name ? [declaration.id.name] : []
++      for (const name of declared) {
++        if (!declarations.has(name)) declarations.set(name, [])
++        declarations.get(name).push(declaration)
++      }
++    }
++    const exports = new Map()
++    for (const statement of statements) {
++      if (statement.type !== "ExportNamedDeclaration") continue
++      if (statement.declaration) {
++        const declaration = statement.declaration
++        const declared = declaration.type === "VariableDeclaration" ? declaration.declarations.flatMap(d => names(d.id)) : declaration.id?.name ? [declaration.id.name] : []
++        for (const name of declared) exports.set(name, { name, declarations: declarations.get(name) })
++      } else if (!statement.source) {
++        for (const specifier of statement.specifiers) {
++          const name = specifier.local.name
++          const selected = declarations.get(name)
++          if (selected) exports.set(specifier.exported.name ?? specifier.exported.value, { name, declarations: selected })
++        }
++      }
++    }
++    modules.set(module.id.name, exports)
++  }
++  return modules
++}
++
++function localTypeExportClasses(body) {
++  const selected = new Set()
++  const groups = new Map()
++  for (const node of body) {
++    if (node.type === "ExportNamedDeclaration" && !node.source && !node.declaration) {
++      for (const specifier of node.specifiers) {
++        if ((node.exportKind === "type" || specifier.exportKind === "type") && specifier.local.type === "Identifier") selected.add(specifier.local.name)
++      }
++    }
++    if (["ClassDeclaration", "TSInterfaceDeclaration"].includes(node.type) && node.id?.type === "Identifier") {
++      if (!groups.has(node.id.name)) groups.set(node.id.name, [])
++      groups.get(node.id.name).push(node)
++    }
++  }
++  return new Map([...selected].flatMap(name => {
++    const declarations = groups.get(name)
++    return declarations?.some(node => node.type === "ClassDeclaration") ? [[name, { name, declarations }]] : []
++  }))
++}
++
++function rootConstructorReads(program) {
++  const bindings = new Map()
++  const constructors = new Set()
++  let supported = true
++  const bind = pattern => {
++    if (!pattern) return
++    switch (pattern.type) {
++      case "Identifier": bindings.set(pattern.name, (bindings.get(pattern.name) ?? 0) + 1); break
++      case "ObjectPattern":
++        for (const property of pattern.properties) {
++          if (property.type === "RestElement") bind(property.argument)
++          else if (property.type === "Property") bind(property.value)
++          else supported = false
++        }
++        break
++      case "ArrayPattern": pattern.elements.forEach(bind); break
++      case "RestElement": bind(pattern.argument); break
++      case "AssignmentPattern": bind(pattern.left); break
++      case "TSParameterProperty": bind(pattern.parameter); break
++      default: supported = false
++    }
++  }
++  const walk = (node, native = false) => {
++    if (!node || typeof node !== "object") return
++    if (Array.isArray(node)) {
++      for (const item of node) walk(item, native)
++      return
++    }
++    native ||= node.type === "VibeModuleDeclaration"
++    switch (node.type) {
++      case "VariableDeclarator": bind(node.id); break
++      case "ClassDeclaration":
++      case "ClassExpression":
++      case "TSEnumDeclaration": bind(node.id); break
++      case "TSModuleDeclaration": if (node.id?.type === "Identifier") bind(node.id); break
++      case "FunctionDeclaration":
++      case "FunctionExpression":
++      case "ArrowFunctionExpression":
++      case "TSDeclareFunction":
++      case "TSEmptyBodyFunctionExpression":
++        bind(node.id)
++        for (const parameter of node.params ?? []) bind(parameter)
++        break
++      case "CatchClause": bind(node.param); break
++      case "ImportDeclaration":
++        if (node.importKind !== "type") for (const specifier of node.specifiers) {
++          if (specifier.importKind !== "type") bind(specifier.local)
++        }
++        break
++      case "NewExpression":
++        if (!native && node.callee.type === "Identifier") constructors.add(node.callee.name)
++        break
++      case "TSImportEqualsDeclaration":
++      case "TSNamespaceExportDeclaration":
++      case "WithStatement": supported = false
++    }
++    if (node.type?.startsWith("Vibe") && node.type !== "VibeModuleDeclaration" && (node.id || node.name)) supported = false
++    for (const [key, value] of Object.entries(node)) {
++      if (key !== "range" && key !== "loc" && value !== null && typeof value === "object") walk(value, native)
++    }
+   }
++  walk(program)
++  return supported ? new Set([...constructors].filter(name => bindings.get(name) === 1)) : new Set()
+ }
+ 
+ // The types an exported declaration's signature reads, outside its function
