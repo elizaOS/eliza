@@ -85,6 +85,9 @@ export default {
       "project": [
         "src/**/*.{ts,vibe}",
         "test/**/*.{ts,vibe}"
+      ],
+      "ignoreDependencies": [
+        "@effect/platform-node-shared"
       ]
     },
     "apps/*": {

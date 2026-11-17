@@ -177,7 +177,7 @@ export type ModelCallHandler = (
 export interface DispatchCore {
   readonly runtime: IAgentRuntime
   readonly host: RuntimeModelDispatchHost
-  readonly resolvedProviders: Machine.Shape
+  readonly resolvedProviders: Context.Service.Shape<typeof Machine>
   readonly diagnostics: FiberSet.FiberSet<void, never>
 }
 
@@ -219,7 +219,7 @@ function trajectoryRoomId(core: DispatchCore): UUID {
     ?? core.runtime.agentId
 }
 
-export effect function makeDispatchCore(runtime: IAgentRuntime, host: RuntimeModelDispatchHost, resolvedProviders: Machine.Shape): DispatchCore!! {
+export effect function makeDispatchCore(runtime: IAgentRuntime, host: RuntimeModelDispatchHost, resolvedProviders: Context.Service.Shape<typeof Machine>): DispatchCore!! {
   const diagnostics = try Scope.provide(FiberSet.make<void, never>(), Scope.makeUnsafe())
   return { runtime, host, resolvedProviders, diagnostics }
 }
