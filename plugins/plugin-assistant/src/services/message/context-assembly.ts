@@ -144,8 +144,30 @@ export async function createV5MessageContextObject(args: {
                 args.selectedContexts?.includes(context),
               )),
       );
+    // Without these capabilities no tool can call or text, so the reply must
+    // say so instead of implying that something happened.
+    const phoneCapabilities =
+      authenticatedDeviceTurn.credential.capabilities ?? [];
+    const unavailableTelephony = [
+      ...(phoneCapabilities.some(
+        (capability) =>
+          capability === "phone.call.v1" || capability === "phone.dial.v1",
+      )
+        ? []
+        : ["place or dial calls"]),
+      ...(phoneCapabilities.some(
+        (capability) =>
+          capability === "sms.send.v1" || capability === "sms.compose.v1",
+      )
+        ? []
+        : ["send or draft text messages"]),
+    ];
+    const telephonyGuidance = unavailableTelephony.length
+      ? `This phone cannot ${unavailableTelephony.join(" or ")} for the owner. When asked to, say plainly that this is not available on this phone; never claim or imply that a call or message was started. `
+      : "";
     const compactCapabilityGuidance =
-      `Authenticated phone capabilities: ${JSON.stringify(authenticatedDeviceTurn.credential.capabilities ?? [])}. ` +
+      `Authenticated phone capabilities: ${JSON.stringify(phoneCapabilities)}. ` +
+      telephonyGuidance +
       (authenticatedDeviceTurn.viewProfile
         ? `Enabled phone views: ${JSON.stringify(authenticatedDeviceTurn.viewProfile.views)}. `
         : "") +
@@ -162,6 +184,7 @@ export async function createV5MessageContextObject(args: {
         ? (authenticatedDeviceTurn.viewProfile
             ? `The authenticated installation enabled-view profile allows open_view only for ${JSON.stringify(authenticatedDeviceTurn.viewProfile.views)}. Do not offer or propose another view. This subset is not approval to execute. `
             : "") +
+          telephonyGuidance +
           (getDeviceActionTurn()?.credential.capabilities?.some(
             (capability) =>
               capability === "reminders.local-record.v1" ||

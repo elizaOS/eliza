@@ -106,6 +106,23 @@ describe("selected phone capability guidance", () => {
     expect(text).toContain("VIEWS or VIEWS_SHOW");
     expect(text).not.toContain("Snooze means ten minutes");
   });
+  it("says plainly that calls and texts are unavailable unless the phone negotiated them", async () => {
+    const routing = async () =>
+      (await guidance({ providerPhase: "response" })).text;
+    expect(await routing()).toContain(
+      "This phone cannot place or dial calls or send or draft text messages for the owner.",
+    );
+    capabilities.push("phone.call.v1");
+    try {
+      expect(await routing()).toContain(
+        "This phone cannot send or draft text messages for the owner.",
+      );
+      capabilities.push("sms.compose.v1");
+      expect(await routing()).not.toContain("This phone cannot");
+    } finally {
+      capabilities.splice(capabilities.indexOf("phone.call.v1"));
+    }
+  });
   it("does not expand unrelated native instructions for canonical Notes", async () => {
     const { text } = await guidance({
       includeTools: true,
