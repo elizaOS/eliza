@@ -44,7 +44,7 @@ at minting.
 ```quint
 import types.* from "../shared/types"
 import plans.* from "./plans"
-import rateLimit.* from "../shared/rateLimit"
+import rateLimit as R from "../shared/rateLimit"
 pure val grantCodeLength: int = 16
 pure val crockfordAlphabet: str = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 ```
@@ -197,8 +197,8 @@ Both limits apply to every redeem request, through `requestAll` of
 `spec/cloud/shared/rateLimit.md`, before the code is read.
 
 ```quint
-pure val redeemPerCredential: RateLimit = perWindow("grantRedeemPerCredential", 5, 15 * millisPerMinute)
-pure val redeemPerAddress: RateLimit = perWindow("grantRedeemPerAddress", 60, 15 * millisPerMinute)
+pure val redeemPerCredential: R::RateLimit = R::perWindow("grantRedeemPerCredential", 5, 15 * millisPerMinute)
+pure val redeemPerAddress: R::RateLimit = R::perWindow("grantRedeemPerAddress", 60, 15 * millisPerMinute)
 ```
 
 ## Story: Stop a code or a grant
