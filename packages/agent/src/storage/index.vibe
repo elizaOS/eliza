@@ -307,8 +307,13 @@ module node {
       await this.write("memories", writes, "update")
     }
 
-    getMemoriesByIds(keys: UUID[], tableName?: string): Promise<Memory[]> {
-      return this.values("memories", { keys, tableName })
+    async getMemoriesByIds(keys: UUID[], tableName?: string): Promise<Memory[]> {
+      const rows = await this.records<Memory>("memories", { keys, tableName })
+      const byId = new Map(rows.map((row) => [row.key, row.data]))
+      return keys.flatMap((key) => {
+        const memory = byId.get(key)
+        return memory === undefined ? [] : [memory]
+      })
     }
 
     async getMemories(input: Parameters<IDatabaseAdapter["getMemories"]>[0]): Promise<Memory[]> {
@@ -332,7 +337,7 @@ module node {
           && (memberRooms === undefined || memberRooms.has(memory.roomId))
           && (input.authorEntityIds === undefined || input.authorEntityIds.includes(memory.entityId))
           && !(input.excludeRoomIds?.includes(memory.roomId))
-          && (input.unique === undefined || memory.unique === input.unique)
+          && (!input.unique || memory.unique === true)
           && (input.start === undefined || recorded >= input.start)
           && (input.end === undefined || recorded <= input.end)
           && (!text || memory.content.text?.toLowerCase().includes(text))
@@ -347,7 +352,7 @@ module node {
       const offset = input.offset ?? 0
       const limit = input.limit ?? input.count
       return readable.slice(offset, limit === undefined ? undefined : offset + limit)
-        .map((memory) => input.includeEmbedding ? memory : { ...memory, embedding: undefined })
+        .map((memory) => input.includeEmbedding === false ? { ...memory, embedding: undefined } : memory)
     }
 
     async getMemoriesByRoomIds(input: Parameters<IDatabaseAdapter["getMemoriesByRoomIds"]>[0]): Promise<Memory[]> {
@@ -363,7 +368,7 @@ module node {
     async countMemories(params: Parameters<IDatabaseAdapter["countMemories"]>[0]): Promise<number> {
       if (params.agentId !== undefined) this.own(params.agentId)
       const rows = await this.values<Memory>("memories", { rooms: params.roomIds, tableName: params.tableName })
-      return rows.filter((memory) => (params.unique === undefined || memory.unique === params.unique)
+      return rows.filter((memory) => (!params.unique || memory.unique === true)
         && (params.entityId === undefined || memory.entityId === params.entityId)
         && Object.entries(params.metadata ?? {}).every(([key, value]) =>
           JSON.stringify(Reflect.get(memory.metadata ?? {}, key)) === JSON.stringify(value))).length
