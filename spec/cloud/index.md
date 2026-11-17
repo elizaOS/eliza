@@ -112,7 +112,9 @@ pure def canReadCloudGoogle(ownerSessionActive: bool, connectionPresent: bool, g
 
 The owner may separately grant permission to send email. A browser request
 dispatches one reviewed plain-text draft to one exact address through the
-current Gmail connection. The device inference key cannot dispatch a draft.
+current Gmail connection. A reply is threaded only after Cloud re-reads the
+selected message and matches the reviewed recipient and subject. Cloud builds
+the thread headers from that verified message. The device inference key cannot dispatch a draft.
 Cloud reserves the operation ID before calling Gmail and records provider
 acceptance by message ID. An unknown outcome cannot cause the operation to be
 dispatched again.
@@ -130,7 +132,8 @@ provider revision. Grace exposes no permanent deletion here.
 
 Creating, changing or removing an appointment requires Calendar event
 permission for calendars their account owns. Changes target the primary
-calendar and appointments without guests. Updates and removals name the
+calendar and appointments without guests. A series change must name the
+current parent of the occurrence and the reviewed parent version. Updates and removals name the
 reviewed event version, and Google must accept that version. Grace displays
 success only after provider evidence matches the selected event.
 

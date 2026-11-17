@@ -2,7 +2,7 @@
 import type { Client } from "pg"
 import { Aead, Digest, SecureRandom } from "effect/crypto"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse, HttpServerRequest, HttpIncomingMessage } from "effect/http"
-import { googleCalendarFeed, googleGmailMessage, googleGmailTriage, GoogleReadInput, type GoogleReadApi } from "./google-read.vibe"
+import { googleCalendarFeed, googleCalendarItem, googleGmailMessage, googleGmailTriage, googleReplyTarget, mailAddress, GoogleReadInput, type GoogleReadApi } from "./google-read.vibe"
 
 export type GoogleEnv = {
   PUBLIC_API_ORIGIN: string
@@ -23,8 +23,8 @@ type Authorization = Capabilities & { expected_email: string | null; provider: s
 type User = { provider: string; provider_subject: string; email: string | null }
 
 schema Consent { mail: boolean; calendar: boolean; sendMail?: boolean; trashMail?: boolean; writeCalendar?: boolean; expectedEmail?: string }
-schema SendMail { accountId: string; grantId: string; operationId: string; recipient: string; subject: string; text: string }
-schema GmailAccepted { id: string }
+schema SendMail { accountId: string; grantId: string; operationId: string; recipient: string; subject: string; text: string; replyTo?: string }
+schema GmailAccepted { id: string; threadId?: string }
 schema OAuthResult { access_token: string; refresh_token?: string; scope?: string }
 schema GoogleProfile { sub: string; email: string; email_verified: boolean }
 
@@ -310,7 +310,6 @@ function googleReadApi(access: string): GoogleReadApi<ProviderUnavailable | Goog
   }
 }
 
-const address = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const providerId = /^[a-zA-Z0-9_-]{1,255}$/
 
@@ -386,11 +385,11 @@ effect function changeTrash(request: Request, env: GoogleEnv, db: Client, accoun
   return try finish(db, account, action.operationId, action.messageId, changed.value.historyId)
 }
 
-schema Appointment { title: string; startAt: string; endAt: string; location: string }
-schema CalendarChange { accountId: string; grantId: string; operationId: string; action: "create" | "update" | "delete"; id?: string; version?: string; event?: Appointment }
+schema Appointment { title: string; startAt: string; endAt: string; location: string; allDay?: boolean }
+schema CalendarChange { accountId: string; grantId: string; operationId: string; action: "create" | "update" | "delete"; id?: string; version?: string; seriesFor?: string; event?: Appointment }
 schema CalendarOwner { self?: boolean }
-schema CalendarTime { dateTime?: string }
-schema CalendarEvidence { id: string; etag: string; status?: string; eventType?: string; recurrence?: string[]; attendees?: Schema.Unknown[]; organizer?: CalendarOwner; start?: CalendarTime; end?: CalendarTime; summary?: string; location?: string }
+schema CalendarTime { dateTime?: string; date?: string; timeZone?: string }
+schema CalendarEvidence { id: string; etag: string; status?: string; eventType?: string; recurrence?: string[]; recurringEventId?: string; attendees?: Schema.Unknown[]; organizer?: CalendarOwner; start?: CalendarTime; end?: CalendarTime; summary?: string; location?: string }
 
 effect function changeCalendar(request: Request, env: GoogleEnv, db: Client, account: string) {
   const action = try readAction(request, CalendarChange)
@@ -398,30 +397,45 @@ effect function changeCalendar(request: Request, env: GoogleEnv, db: Client, acc
   const creating = action.action === "create"
   const deleting = action.action === "delete"
   const draft = action.event
-  if (creating ? (action.id || action.version) : (!action.id || !providerId.test(action.id) || !action.version ||
+  if (creating ? (action.id || action.version || action.seriesFor) : (!action.id || !providerId.test(action.id) || !action.version ||
     !/^"[^"\u0000-\u001f\u007f]{1,250}"$/.test(action.version))) throw new BadRequest()
+  const allDay = draft?.allDay === true
+  const timePattern = allDay ? /^\d{4}-\d{2}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
   if (deleting ? Boolean(draft) : (!draft || !draft.title.trim() || draft.title.length > 160 || draft.location.length > 320 ||
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(draft.startAt) ||
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(draft.endAt) ||
+    !timePattern.test(draft.startAt) || !timePattern.test(draft.endAt) ||
     !(Date.parse(draft.startAt) < Date.parse(draft.endAt)))) throw new BadRequest()
   const access = try accessFor(env, db, account, "write_calendar", action.grantId)
   const base = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
   const eventId = creating ? action.operationId.replaceAll("-", "") : action.id
   const item = base + "/" + eventId
+  let seriesZone: string | undefined
+  let seriesRules: string[] | undefined
+  if (action.seriesFor && (!providerId.test(action.seriesFor) || action.seriesFor === eventId)) throw new BadRequest()
   if (!creating) {
     const existing = try http(item, { access })
     if (!ok(existing.status)) throw new ItemChanged()
     const seen = Schema.decodeUnknownOption(CalendarEvidence)(try timeout(existing.json, "10 seconds"))
+    if (action.seriesFor) {
+      const api = googleReadApi(access)
+      const { item } = try googleCalendarItem(api, action.seriesFor)
+      if (!item.editable || item.seriesId !== eventId) throw new ItemChanged()
+    }
     if (Option.isNone(seen) || seen.value.id !== eventId || seen.value.etag !== action.version ||
-      seen.value.recurrence?.length || seen.value.attendees?.length || seen.value.organizer?.self !== true ||
-      seen.value.status === "cancelled" || seen.value.eventType !== "default" ||
-      (!deleting && (!seen.value.start?.dateTime || !seen.value.end?.dateTime))) throw new ItemChanged()
+      Boolean(seen.value.recurrence?.length) !== Boolean(action.seriesFor) || seen.value.attendees?.length || seen.value.organizer?.self !== true ||
+      seen.value.status !== "confirmed" || seen.value.eventType !== "default" ||
+      (!deleting && (allDay ? (!seen.value.start?.date || !seen.value.end?.date) : (!seen.value.start?.dateTime || !seen.value.end?.dateTime)))) throw new ItemChanged()
+    if (action.seriesFor && !deleting) {
+      seriesRules = seen.value.recurrence
+      seriesZone = seen.value.start?.timeZone
+      if (!allDay && !seriesZone) throw new ItemChanged()
+    }
   }
   const hash = hex(try sha256(JSON.stringify(action)))
   if (!(try claim(db, account, action.grantId, action.operationId, action.action, hash))) throw new OperationUncertain()
   const json = draft ? {
     ...(creating ? { id: eventId } : {}), summary: draft.title, location: draft.location,
-    start: { dateTime: draft.startAt }, end: { dateTime: draft.endAt }
+    start: allDay ? { date: draft.startAt } : { dateTime: draft.startAt, ...(seriesZone ? { timeZone: seriesZone } : {}) },
+    end: allDay ? { date: draft.endAt } : { dateTime: draft.endAt, ...(seriesZone ? { timeZone: seriesZone } : {}) }
   } : undefined
   const response = http((creating ? base : item) + "?sendUpdates=none", {
     access, method: creating ? "POST" : deleting ? "DELETE" : "PATCH", version: action.version, json,
@@ -434,18 +448,24 @@ effect function changeCalendar(request: Request, env: GoogleEnv, db: Client, acc
   const saved = Schema.decodeUnknownOption(CalendarEvidence)(try timeout(readback.json, "10 seconds"))
   if (Option.isNone(saved) || saved.value.id !== eventId || (deleting ? saved.value.status !== "cancelled" :
     (!draft || saved.value.summary !== draft.title || (saved.value.location ?? "") !== draft.location ||
-      Date.parse(saved.value.start?.dateTime ?? "") !== Date.parse(draft.startAt) ||
-      Date.parse(saved.value.end?.dateTime ?? "") !== Date.parse(draft.endAt)))) throw new OperationUncertain()
+      (seriesRules && JSON.stringify(seriesRules) !== JSON.stringify(saved.value.recurrence)) ||
+      (allDay ? (saved.value.start?.date !== draft.startAt || saved.value.end?.date !== draft.endAt)
+        : (Date.parse(saved.value.start?.dateTime ?? "") !== Date.parse(draft.startAt) ||
+          Date.parse(saved.value.end?.dateTime ?? "") !== Date.parse(draft.endAt)))))) throw new OperationUncertain()
   return try finish(db, account, action.operationId, saved.value.id, saved.value.etag)
 }
 
 effect function sendMail(request: Request, env: GoogleEnv, db: Client, account: string) {
   const draft = try readAction(request, SendMail)
   if (account !== draft.accountId || !uuid.test(draft.grantId) || !uuid.test(draft.operationId) ||
-    !address.test(draft.recipient) || draft.recipient.length > 254 || draft.subject.length > 120 ||
-    /[\u0000-\u001f\u007f]/.test(draft.subject) || !draft.text.trim() || draft.text.length > 8192) throw new BadRequest()
+    !mailAddress.test(draft.recipient) || draft.recipient.length > 254 || draft.subject.length > 120 ||
+    /[\u0000-\u001f\u007f]/.test(draft.subject) || !draft.text.trim() || draft.text.length > 8192 || (draft.replyTo !== undefined && !providerId.test(draft.replyTo))) throw new BadRequest()
   const access = try accessFor(env, db, account, "send_mail", draft.grantId)
-  const hash = hex(try sha256(JSON.stringify(["send", draft.grantId, draft.recipient, draft.subject, draft.text])))
+  const hash = hex(try sha256(JSON.stringify(["send", draft.grantId, draft.recipient, draft.subject, draft.text, draft.replyTo])))
+  const reply = draft.replyTo
+    ? (try googleReplyTarget(googleReadApi(try accessFor(env, db, account, "mail", draft.grantId)), draft.replyTo))
+    : undefined
+  if (draft.replyTo && (!reply || reply.recipient !== draft.recipient || reply.subject !== draft.subject)) throw new ItemChanged()
   if (!(try claim(db, account, draft.grantId, draft.operationId, "send", hash))) {
     const existing = try query<{ provider_id: string | null }>(db, `
       SELECT provider_id FROM cloud_google_operations WHERE account_id = $1 AND operation_id = $2 AND request_hash = $3
@@ -460,6 +480,7 @@ effect function sendMail(request: Request, env: GoogleEnv, db: Client, account: 
   const mime = [
     "To: " + draft.recipient,
     "Subject: " + subject,
+    ...(reply ? ["In-Reply-To: " + reply.messageId, "References: " + reply.messageId] : []),
     "MIME-Version: 1.0",
     "Content-Type: text/plain; charset=UTF-8",
     "Content-Transfer-Encoding: base64",
@@ -467,11 +488,11 @@ effect function sendMail(request: Request, env: GoogleEnv, db: Client, account: 
     content
   ].join("\r\n")
   const raw = base64(encoder.encode(mime)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "")
-  const response = http("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", { access, json: { raw } }) catch effect () => { throw new OperationUncertain() }
+  const response = http("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", { access, json: { raw, ...(reply ? { threadId: reply.threadId } : {}) } }) catch effect () => { throw new OperationUncertain() }
   if (!ok(response.status)) throw new OperationUncertain()
   const result = timeout(response.json, "10 seconds") catch effect () => { throw new OperationUncertain() }
   const accepted = Schema.decodeUnknownOption(GmailAccepted)(result)
-  if (Option.isNone(accepted) || !providerId.test(accepted.value.id)) throw new OperationUncertain()
+  if (Option.isNone(accepted) || !providerId.test(accepted.value.id) || (reply && accepted.value.threadId !== reply.threadId)) throw new OperationUncertain()
   try query(db, "UPDATE cloud_google_operations SET provider_id = $3 WHERE account_id = $1 AND operation_id = $2", [account, draft.operationId, accepted.value.id])
   return body(200, { accountId: account, operationId: draft.operationId, messageId: accepted.value.id })
 }
@@ -521,6 +542,16 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
       const api = googleReadApi(try accessFor(env, db, account, "mail", selected))
       const result = path === "/gmail/triage" ? try googleGmailTriage(api, url, now) : try googleGmailMessage(api, url)
       return body(200, { accountId: account, ...result })
+    }
+    if (path === "/calendar/series") {
+      const id = url.searchParams.get("occurrenceId") ?? ""
+      if (!selected || !providerId.test(id) || !uuid.test(selected)) throw new BadRequest()
+      const api = googleReadApi(try accessFor(env, db, account, "write_calendar", selected))
+      const occurrence = (try googleCalendarItem(api, id)).item
+      if (!occurrence.editable || !occurrence.seriesId) throw new ItemChanged()
+      const target = try googleCalendarItem(api, occurrence.seriesId)
+      if (!target.item.seriesEditable || !target.item.etag || target.item.seriesId) throw new ItemChanged()
+      return body(200, { accountId: account, occurrenceId: id, event: target.item })
     }
     if (path === "/calendar/feed") {
       const api = googleReadApi(try accessFor(env, db, account, "calendar", selected))
