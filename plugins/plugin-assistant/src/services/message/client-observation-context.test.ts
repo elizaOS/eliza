@@ -122,6 +122,20 @@ describe("current-turn client observation", () => {
     );
     expect(text).toContain("# Current message\nOwner: Add milk to this note");
     expect(text).not.toContain("f-travel");
+    // A list the Notes plugin rejects is dropped too, never shown as JSON.
+    for (const notesFolders of [
+      [{ id: "f-travel", name: "Travel", color: "blue" }],
+      [{ id: 7, name: "Travel" }],
+      "f-travel",
+    ]) {
+      const malformed = renderedText(
+        currentMessageEvents(residentTurn({ notesFolders })),
+      );
+      expect(malformed).toContain(
+        "# Current message\nOwner: Add milk to this note",
+      );
+      expect(malformed).not.toContain("Travel");
+    }
   });
 
   test("records the before and after prompt size of one resident turn", () => {

@@ -260,21 +260,10 @@ function isDialogueMetadataValue(key: string, value: unknown): boolean {
 	if (key === "uiViewCapabilities" || key === "uiViewActionNames")
 		return isStringArray(value);
 	// The device's Notes folder list rides each message for the Notes
-	// providers; it is host context, not dialogue.
-	if (key === "notesFolders")
-		return (
-			Array.isArray(value) &&
-			value.every(
-				(row) =>
-					row &&
-					typeof row === "object" &&
-					!Array.isArray(row) &&
-					Object.entries(row).every(
-						([field, item]) =>
-							(field === "id" || field === "name") && typeof item === "string",
-					),
-			)
-		);
+	// providers; it is host context, not dialogue, whatever its shape. The
+	// Notes plugin validates it and treats a list it rejects as absent, so a
+	// rejected list never reaches the model as raw JSON.
+	if (key === "notesFolders") return true;
 	if (key === "__responseContext" || key === "injectionRisk") {
 		if (!value || typeof value !== "object" || Array.isArray(value))
 			return false;
