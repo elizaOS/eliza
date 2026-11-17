@@ -4,9 +4,8 @@ Bounded reads of the Android Calendar provider, Android's editor as a
 handoff, and guarded changes to one reviewed event: an update, or a deletion
 of the event, one occurrence or the whole series, delayed by the
 [deletion window](./deletionWindow.md). [The bridge](./bridge.md) admits
-every call and reports every write. Provider queries, row digests, dialogs
-and provider batches stay in the shell (`android/calendar/`); the deletion
-journal keeps the durable row.
+every call and reports every write. Queries, digests, dialogs and batches
+stay in the shell; the deletion journal keeps the durable row.
 
 ## Story: Read my calendar and open Android's editor
 
@@ -37,8 +36,9 @@ pure def lawEveryInstantOfAnAllowedRangeIsSafe(rangeStart: int, rangeEnd: int, i
 
 ### Opening Android's editor reports Opened at most and changes nothing
 
-`Opened` is a bridge handoff, a preview receipt and never a write: the row,
-the review, the staged deletion and the write gate stay as they were.
+Opening the editor on an event, or on a new one, is a bridge handoff: `Opened`
+is a preview receipt, never a write, and the row, review, staged deletion and
+write gate stay as they were.
 
 ```quint
 type ProviderChange = UpdateFields | DeleteRow | ExcludeOccurrence | CancelOccurrence | InsertCancelledOccurrence
@@ -249,10 +249,9 @@ Confirming the current ticket stages one deletion with a deadline on a usable
 review clock; Undo works while `W::claimDeletion` lets it win, and the batch
 runs only when the dispatch claim wins, with the grant still held. The batch
 asserts the source and every family, attendee and reminder row with their
-counts, then makes the one planned change. Its readback is the plan's own:
-the parent gone; or the parent live, the instance gone, and the exclusion
-exact or one cancelled exception at the original start. It says nothing about
-remote sync or guests.
+counts, then makes the one planned change. Its readback is the plan's own
+(the parent gone; or the parent live, the instance gone, and the exclusion
+exact or one cancelled exception at the original start), never remote sync.
 
 ```quint
 pure val deletionOwner = "calendar"
@@ -279,11 +278,9 @@ pure def canDispatchDeletion(s: CalendarEdit, later: W::DeletionClock, facts: Ho
 pure def dispatchDeletion(s: CalendarEdit, later: W::DeletionClock, facts: HostFacts, answered: bool, readback: Readback): CalendarEdit =
   applyBatch(stagedChange(s.deletion), { ...s, deletion: NoStagedDeletion }, stagedRevision(s.deletion), answered, readback)
 pure val clockValues = Set({ continuity: "boot1", elapsed: 0, wall: 100 }, { continuity: "", elapsed: 0, wall: 100 })
-pure val laterValues = Set({ continuity: "boot1", elapsed: 5000, wall: 5100 }, { continuity: "boot1", elapsed: 10000, wall: 10100 },
-  { continuity: "boot2", elapsed: 5000, wall: 5100 })
+pure val laterValues = Set({ continuity: "boot1", elapsed: 5000, wall: 5100 }, { continuity: "boot1", elapsed: 10000, wall: 10100 }, { continuity: "boot2", elapsed: 5000, wall: 5100 })
 pure val weight_stageDeletion = 4
 pure val weight_dispatchDeletion = 4
-pure val weight_inspectDeletion = 3
 pure def stagedOnARealWindow(deletion: StagedDeletion): bool = match deletion {
   | Staged(d) => d.pending.deletionPhase == W::Queued and d.pending.owner == deletionOwner and d.pending.deadline.deadlineContinuity != "" and
       d.pending.deadline.createdElapsed >= 0 and d.pending.deadline.createdElapsed <= W::latestClockMs and

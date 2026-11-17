@@ -25,31 +25,31 @@ the upper bound rounds down. The search is at most 128 UTF-16 units with no
 NUL; the shell trims it and matches it as a case-insensitive name
 substring. All, Camera and Screenshots work everywhere, Favorites and Trash
 only on Android 11 and later (`modern`). An image query reads no video
-source, and the reverse; pending rows are never read.
+source, and the reverse; the shell's selection always excludes pending rows.
 
 ```quint
 import rows.* from "./rows"
 import paging as Pg from "../paging"
 type MediaKind = AllKinds | ImageKind | VideoKind
 type CatalogFilter = AllMedia | FavoriteMedia | TrashMedia | CameraMedia | ScreenshotsMedia
-type CatalogQuery = { kind: MediaKind, filter: CatalogFilter, fromMillis: int, toMillis: int, limit: int, search: str, searchUnits: int, hasNul: bool }
+type CatalogQuery = { kind: MediaKind, album: CatalogFilter, fromMillis: int, toMillis: int, limit: int, search: str, searchUnits: int, hasNul: bool }
 pure val maxCatalogPage = 24
 pure val maxSearchUnits = 128
-pure def filterSupported(modern: bool, filter: CatalogFilter): bool = modern or not(filter == FavoriteMedia or filter == TrashMedia)
+pure def filterSupported(modern: bool, album: CatalogFilter): bool = modern or not(album == FavoriteMedia or album == TrashMedia)
 pure def validCatalogQuery(modern: bool, query: CatalogQuery): bool =
   query.limit >= 1 and query.limit <= maxCatalogPage and query.fromMillis >= 0 and query.toMillis >= query.fromMillis and
-    query.searchUnits >= 0 and query.searchUnits <= maxSearchUnits and not(query.hasNul) and filterSupported(modern, query.filter)
+    query.searchUnits >= 0 and query.searchUnits <= maxSearchUnits and not(query.hasNul) and filterSupported(modern, query.album)
 pure def readsSource(kind: MediaKind, video: bool, readable: bool): bool = readable and (if (video) kind != ImageKind else kind != VideoKind)
 pure def dateLowerSeconds(millis: int): int = millis / 1000 + (if (millis % 1000 == 0) 0 else 1)
 pure def dateUpperSeconds(millis: int): int = millis / 1000
-pure val galleryQuery: CatalogQuery = { kind: AllKinds, filter: AllMedia, fromMillis: 0, toMillis: 10000, limit: 1, search: "", searchUnits: 0, hasNul: false }
-pure val queryValues = Set(galleryQuery, { ...galleryQuery, filter: TrashMedia }, { ...galleryQuery, limit: 25 }, { ...galleryQuery, search: "beach", searchUnits: 5, hasNul: true })
+pure val galleryQuery: CatalogQuery = { kind: AllKinds, album: AllMedia, fromMillis: 0, toMillis: 10000, limit: 1, search: "", searchUnits: 0, hasNul: false }
+pure val queryValues = Set(galleryQuery, { ...galleryQuery, album: TrashMedia }, { ...galleryQuery, limit: 25 }, { ...galleryQuery, search: "beach", searchUnits: 5, hasNul: true })
 pure val millisValues = Set(0, 1, 999, 1000, 1001, 7000)
 pure def lawDateBoundsKeepTheMillisWindow(millis: int): bool =
   millis >= 0 implies (dateLowerSeconds(millis) * 1000 >= millis and (dateLowerSeconds(millis) - 1) * 1000 < millis and
     dateUpperSeconds(millis) * 1000 <= millis and millis < (dateUpperSeconds(millis) + 1) * 1000)
 pure def lawOlderAndroidRefusesFavoritesAndTrash(query: CatalogQuery): bool =
-  (query.filter == FavoriteMedia or query.filter == TrashMedia) implies not(validCatalogQuery(false, query))
+  (query.album == FavoriteMedia or query.album == TrashMedia) implies not(validCatalogQuery(false, query))
 ```
 
 ### Rows follow one order: newest capture first, then source, then newest row
@@ -155,12 +155,12 @@ pure def canFinishPage(s: CatalogPaging): bool = s.read.phase == ReadRunning
 pure def finishPage(s: CatalogPaging, providerRows: List[Pg::RowKey], providerOk: bool): CatalogPaging = {
   val r = s.read
   val ended = Pg::pageEnd("", providerRows, r.start, r.query.limit)
-  val more = match ended { | Pg::MoreAfter(_) => true | Pg::EndOfRows => false }
-  val last = match ended { | Pg::MoreAfter(m) => m.following.last | Pg::EndOfRows => Pg::noRow }
+  val more = match ended { | MoreAfter(_) => true | EndOfRows => false }
+  val lastRow = match ended { | MoreAfter(m) => m.following.last | EndOfRows => Pg::noRow }
   val cursorId = s.lastCursorId + 1
   val issuedTokens = issueToken(s.tokens, s.now, cursorCapacity, cursorId, tokenLifetimeMs)
   val issued = { ...s, lastCursorId: cursorId, tokens: issuedTokens,
-    cursors: s.cursors.select(c => issuedTokens.some(t => t.id == c.id)).append({ id: cursorId, snapshot: r.snapshot, query: r.query, last: last }) }
+    cursors: s.cursors.select(c => issuedTokens.some(t => t.id == c.id)).append({ id: cursorId, snapshot: r.snapshot, query: r.query, last: lastRow }) }
   val kept = if (more) issued else s
   if (not(providerOk) or not(Pg::inPageOrder(providerRows))) { ...s, read: { ...r, phase: ReadRefused({ reason: LibraryUnavailable }) } }
   else if (r.snapshot != currentSnapshot(s)) { ...kept, read: { ...r, phase: ReadRefused({ reason: LibraryChanged }) } }
@@ -174,7 +174,7 @@ pure def alwaysOnlyAPostedOrPublishedPageCarriesACursor(s: CatalogPaging): bool 
 pure def stepNewCursorIsFreshAndHeld(before: CatalogPaging, via: str, after: CatalogPaging): bool =
   (via == "finishPage" and after.read.next > 0) implies
     (after.read.next == before.lastCursorId + 1 and after.lastCursorId == after.read.next and after.tokens.some(t => t.id == after.read.next))
-pure def continued(start: Pg::PageStart): bool = match start { | Pg::AfterRow(_) => true | _ => false }
+pure def continued(start: Pg::PageStart): bool = match start { | AfterRow(_) => true | _ => false }
 pure def sometimesPublishedPageOffersAContinuation(s: CatalogPaging): bool = s.read.phase == ReadPublished and s.read.next > 0
 pure def sometimesNextPageContinuesAfterTheLastRow(s: CatalogPaging): bool = s.read.phase == ReadPublished and continued(s.read.start)
 pure def sometimesUnexposedCursorKeptAfterLibraryChange(s: CatalogPaging): bool =
@@ -231,8 +231,9 @@ final check refuses a running read whose snapshot moved; the main thread
 refuses a posted page, with its cursor, unless the owner is usable and the
 ticket is still the epoch, even if the original access has come back.
 
-Discovered by the proof: the ticket is never ahead of the epoch, a held
-cursor id was issued, and the table stays within its capacity.
+The facts the proof needs: the ticket is never ahead of the epoch, an
+admitted read's snapshot carries its ticket, a held cursor id was issued
+and is held once, and the table stays within its capacity.
 
 ```quint
 pure def canPublishPage(s: CatalogPaging): bool = s.read.phase == ReadPosted
@@ -241,7 +242,8 @@ pure def publishPage(s: CatalogPaging): CatalogPaging =
   else { ...s, read: { ...s.read, phase: ReadRefused({ reason: AccessRetired }), next: 0 } }
 pure def alwaysCatalogCountersAreConsistent(s: CatalogPaging): bool =
   s.epoch >= 0 and s.read.ticket >= 0 and s.read.ticket <= s.epoch and s.read.next >= 0 and s.read.next <= s.lastCursorId and
-    s.tokens.length() <= cursorCapacity and s.tokens.every(t => t.id >= 1 and t.id <= s.lastCursorId)
+    s.tokens.length() <= cursorCapacity and distinctTokenIds(s.tokens) and s.tokens.every(t => t.id >= 1 and t.id <= s.lastCursorId) and
+    ((s.read.phase == ReadRunning or s.read.phase == ReadPosted or s.read.phase == ReadPublished) implies s.read.snapshot.epoch == s.read.ticket)
 pure def stepPageIsPostedOnlyOnItsAdmittingSnapshot(before: CatalogPaging, via: str, after: CatalogPaging): bool =
   (via == "finishPage" and after.read.phase == ReadPosted) implies (before.read.snapshot == currentSnapshot(before) and before.read.ticket == before.epoch)
 pure def stepPublishedPageHoldsItsAdmittingEpoch(before: CatalogPaging, via: str, after: CatalogPaging): bool =

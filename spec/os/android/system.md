@@ -135,8 +135,7 @@ pure val dayValues = Set(-1, 0, 1, 7, 8)
 pure def lawClockOpensOnlyAReviewedAdmittedRequest(reviewed: bool, clockRequest: ClockRequest, facts: HostFacts, otherReceiver: bool, zoneHolds: bool, launch: LaunchReply): bool =
   clockHandoff(clockReply(reviewed, clockRequest, facts, otherReceiver, zoneHolds, launch)) == Opened implies
     (reviewed and clockRequestAdmitted(clockRequest) and facts.focused and facts.unlocked and otherReceiver and zoneHolds and launch == LaunchStarted)
-pure def lawRepeatDaysAreDistinctWeekdays(day: int): bool =
-  not(daysAscending(List(day, day))) and (daysAscending(List(day)) iff (day >= 1 and day <= 7))
+pure def lawRepeatDaysAreDistinctWeekdays(day: int): bool = not(daysAscending(List(day, day))) and (daysAscending(List(day)) iff (day >= 1 and day <= 7))
 ```
 
 ### Device setup opens only a listed browser or password manager, or Android's own defaults pages

@@ -30,10 +30,9 @@ store's `{records}`; the event page is core's.
 
 ### Every refusal is one documented code with a fixed status
 
-A coded task failure from the host keeps its `TASK_` code: a code starting
-`TASK_STORAGE` answers 503 (`TaskStorageFailure`), any other unlisted code
-409 (`TaskStateConflict`). Anything that is not a coded task error becomes
-503 `TASK_UNAVAILABLE`; no message, stack or cause crosses.
+A host failure keeps its `TASK_` code: unlisted ones answer 503 when they
+start `TASK_STORAGE`, else 409. Any other error is 503 `TASK_UNAVAILABLE`;
+no message, stack or cause crosses.
 
 ```quint
 import interactiveTask as I from "../../core/interactiveTask"
@@ -46,8 +45,7 @@ pure def refusalOf(f: HostFailure): TaskError = match f { | ListedCode(x) => x.c
 
 ### Each route names one command and the one method it answers
 
-A path no route matches is `TASK_NOT_FOUND`; a known path with another
-method is `TASK_METHOD_NOT_ALLOWED`.
+An unmatched path is `TASK_NOT_FOUND`, another method `TASK_METHOD_NOT_ALLOWED`.
 
 ```quint
 type TaskCommand = StartCommand | CurrentCommand | UnreadableCommand | PauseCurrentCommand | ViewCommand | EventsCommand | PauseCommand | CancelCommand | ResumeCommand | AcknowledgeUnknownCommand | AcknowledgeUnreadableCommand | StorageCommand

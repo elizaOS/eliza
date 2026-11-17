@@ -37,11 +37,11 @@ type OwnedChange = TrashOwned | RestoreOwned
 type FlagReply = FlagUnchanged | FlagTrashed | FlagRestored | FlagStale | FlagUnverified | FlagUnsupported
 pure val trashApiLevel = 30
 pure def flagReply(change: OwnedChange, apiLevel: int, ladder: RowLadder): FlagReply = {
-  val outcome = rowOutcome(ladder)
+  val result = rowOutcome(ladder)
   if (apiLevel < trashApiLevel) FlagUnsupported
-  else if (outcome == RowApplied) (if (change == TrashOwned) FlagTrashed else FlagRestored)
-  else if (outcome == RowUnchanged) FlagUnchanged
-  else if (outcome == RowStale) FlagStale
+  else if (result == RowApplied) (if (change == TrashOwned) FlagTrashed else FlagRestored)
+  else if (result == RowUnchanged) FlagUnchanged
+  else if (result == RowStale) FlagStale
   else FlagUnverified
 }
 pure def flagConfirmed(reply: FlagReply): bool = reply == FlagUnchanged or reply == FlagTrashed or reply == FlagRestored
@@ -65,12 +65,12 @@ reply the bridge surfaces as a rejection.
 type FlagRow = { key: int, ladder: RowLadder }
 type FlagOutcome = { key: int, reply: FlagReply }
 pure val ownedBatchLimit = 20
-pure def distinctKeys(keys: List[int]): bool = keys.every(k => keys.select(other => other == k).length() == 1)
-pure def validOwnedKeys(keys: List[int]): bool =
-  keys.length() >= 1 and keys.length() <= ownedBatchLimit and keys.every(k => k > 0) and distinctKeys(keys)
+pure def distinctKeys(ids: List[int]): bool = ids.every(k => ids.select(other => other == k).length() == 1)
+pure def validOwnedKeys(ids: List[int]): bool =
+  ids.length() >= 1 and ids.length() <= ownedBatchLimit and ids.every(k => k > 0) and distinctKeys(ids)
 pure def batchComplete(outcomes: List[FlagOutcome]): bool = outcomes.every(o => flagConfirmed(o.reply))
 pure def canChangeOwnedFlags(s: OwnedTrash, items: List[FlagRow]): bool =
-  not(s.hostClosed) and s.run != Deleting and validOwnedKeys(items.listMap(r => r.key))
+  not(s.hostClosed) and s.phase != Deleting and validOwnedKeys(items.listMap(r => r.key))
 pure def changeOwnedFlags(s: OwnedTrash, change: OwnedChange, apiLevel: int, items: List[FlagRow]): OwnedTrash =
   { ...s, flagOutcomes: items.listMap(r => { key: r.key, reply: flagReply(change, apiLevel, r.ladder) }) }
 pure val itemsValues = Set(List(), List({ key: 1, ladder: exactRowWrite }),
@@ -103,26 +103,26 @@ deleted in turn.
 ```quint
 type TrashTarget = { key: int, generation: int }
 type ListedTrashRow = { key: int, generation: int, revisionMatches: bool }
-type TrashRequest = EmptyTrash | NamedTrash({ keys: List[int] })
+type TrashRequest = EmptyTrash | NamedTrash({ wanted: List[int] })
 pure val trashLimit = 500
 pure def admitTrashSnapshot(request: TrashRequest, listed: List[ListedTrashRow]): bool = {
-  val keys = listed.listMap(r => r.key)
+  val listedIds = listed.listMap(r => r.key)
   val asked = match request {
     | EmptyTrash => true
-    | NamedTrash(n) => validOwnedKeys(n.keys) and listed.length() == n.keys.length() and
-        n.keys.every(k => keys.includes(k)) and listed.every(r => r.revisionMatches)
+    | NamedTrash(n) => validOwnedKeys(n.wanted) and listed.length() == n.wanted.length() and
+        n.wanted.every(k => listedIds.includes(k)) and listed.every(r => r.revisionMatches)
   }
-  asked and listed.length() <= trashLimit and distinctKeys(keys)
+  asked and listed.length() <= trashLimit and distinctKeys(listedIds)
 }
 pure def canPrepareTrashDelete(s: OwnedTrash, apiLevel: int, request: TrashRequest, listed: List[ListedTrashRow]): bool =
-  not(s.hostClosed) and s.run != Deleting and apiLevel >= trashApiLevel and admitTrashSnapshot(request, listed)
+  not(s.hostClosed) and s.phase != Deleting and apiLevel >= trashApiLevel and admitTrashSnapshot(request, listed)
 pure def prepareTrashDelete(s: OwnedTrash, apiLevel: int, request: TrashRequest, listed: List[ListedTrashRow]): OwnedTrash = {
   val issued = issueToken(s.confirmations, s.clock, confirmationCapacity, s.nextConfirmation, tokenLifetimeMs)
   { ...s, nextConfirmation: s.nextConfirmation + 1, confirmations: issued,
     prepared: s.prepared.select(p => issued.some(t => t.id == p.id))
       .append({ id: s.nextConfirmation, targets: listed.listMap(r => { key: r.key, generation: r.generation }) }) }
 }
-pure val requestValues = Set(EmptyTrash, NamedTrash({ keys: List() }), NamedTrash({ keys: List(1) }), NamedTrash({ keys: List(1, 2) }))
+pure val requestValues = Set(EmptyTrash, NamedTrash({ wanted: List() }), NamedTrash({ wanted: List(1) }), NamedTrash({ wanted: List(1, 2) }))
 pure val listedValues = Set(List(), List({ key: 1, generation: 7, revisionMatches: true }),
   List({ key: 1, generation: 7, revisionMatches: true }, { key: 2, generation: 11, revisionMatches: true }),
   List({ key: 1, generation: 7, revisionMatches: false }))
@@ -142,7 +142,7 @@ type PreparedTrash = { id: int, targets: List[TrashTarget] }
 pure val confirmationCapacity = 4
 pure def canObserveClock(s: OwnedTrash, now: int): bool = now > s.clock
 pure def observeClock(s: OwnedTrash, now: int): OwnedTrash = { ...s, clock: now }
-pure def canCancelTrashDelete(s: OwnedTrash, tokenId: int): bool = s.run != Deleting
+pure def canCancelTrashDelete(s: OwnedTrash, tokenId: int): bool = s.phase != Deleting
 pure def cancelTrashDelete(s: OwnedTrash, tokenId: int): OwnedTrash =
   { ...s, confirmations: dropToken(s.confirmations, tokenId), prepared: s.prepared.select(p => p.id != tokenId) }
 pure val nowValues = Set(1, 120000, 120001, 240002)
@@ -164,28 +164,28 @@ or failed (an empty snapshot included), partial otherwise.
 ```quint
 type RowDelete = RowDeleted | RowSkipped | RowFailed | RowDeletedCleanupFailed
 type DeleteReceipt = { deletedIds: List[int], skippedIds: List[int], failedIds: List[int] }
-type TrashRun = Idle | Deleting | AllDeleted | PartlyDeleted | ConfirmationExpired
+type TrashPhase = Idle | Deleting | AllDeleted | PartlyDeleted | ConfirmationExpired
 type OwnedTrash = { clock: int, hostClosed: bool, nextConfirmation: int, confirmations: List[OneShotToken],
-  prepared: List[PreparedTrash], run: TrashRun, targets: List[TrashTarget], position: int,
+  prepared: List[PreparedTrash], phase: TrashPhase, targets: List[TrashTarget], position: int,
   receipt: DeleteReceipt, flagOutcomes: List[FlagOutcome] }
 pure val noReceipt: DeleteReceipt = { deletedIds: List(), skippedIds: List(), failedIds: List() }
 pure val initial: OwnedTrash = { clock: 0, hostClosed: false, nextConfirmation: 1, confirmations: List(), prepared: List(),
-  run: Idle, targets: List(), position: 0, receipt: noReceipt, flagOutcomes: List() }
+  phase: Idle, targets: List(), position: 0, receipt: noReceipt, flagOutcomes: List() }
 pure def recordRow(receipt: DeleteReceipt, key: int, reply: RowDelete): DeleteReceipt =
   { deletedIds: if (reply == RowDeleted or reply == RowDeletedCleanupFailed) receipt.deletedIds.append(key) else receipt.deletedIds,
     skippedIds: if (reply == RowSkipped) receipt.skippedIds.append(key) else receipt.skippedIds,
     failedIds: if (reply == RowFailed or reply == RowDeletedCleanupFailed) receipt.failedIds.append(key) else receipt.failedIds }
-pure def canBeginTrashDelete(s: OwnedTrash, apiLevel: int): bool = not(s.hostClosed) and s.run != Deleting and apiLevel >= trashApiLevel
+pure def canBeginTrashDelete(s: OwnedTrash, apiLevel: int): bool = not(s.hostClosed) and s.phase != Deleting and apiLevel >= trashApiLevel
 pure def beginTrashDelete(s: OwnedTrash, apiLevel: int, tokenId: int): OwnedTrash = {
   val taken = takeToken(s.confirmations, tokenId, s.clock)
   val snapshot = s.prepared.select(p => p.id == tokenId).nthOr(0, { id: 0, targets: List() })
   { ...s, confirmations: taken.left, prepared: s.prepared.select(p => p.id != tokenId),
-    run: if (taken.live) Deleting else ConfirmationExpired, targets: if (taken.live) snapshot.targets else List(),
+    phase: if (taken.live) Deleting else ConfirmationExpired, targets: if (taken.live) snapshot.targets else List(),
     position: 0, receipt: noReceipt }
 }
-pure def canFinishTrashDelete(s: OwnedTrash): bool = s.run == Deleting and s.position == s.targets.length()
+pure def canFinishTrashDelete(s: OwnedTrash): bool = s.phase == Deleting and s.position == s.targets.length()
 pure def finishTrashDelete(s: OwnedTrash): OwnedTrash =
-  { ...s, run: if (s.receipt.skippedIds.length() == 0 and s.receipt.failedIds.length() == 0) AllDeleted else PartlyDeleted }
+  { ...s, phase: if (s.receipt.skippedIds.length() == 0 and s.receipt.failedIds.length() == 0) AllDeleted else PartlyDeleted }
 pure val weight_beginTrashDelete = 4
 pure val weight_finishTrashDelete = 6
 pure def alwaysDeletionCursorInSnapshot(s: OwnedTrash): bool = s.position >= 0 and s.position <= s.targets.length()
@@ -194,14 +194,14 @@ pure def alwaysReceiptNamesOnlySnapshotTargets(s: OwnedTrash): bool = {
   ids.every(k => s.targets.some(t => t.key == k))
 }
 pure def alwaysDeletedMeansNothingSkippedOrFailed(s: OwnedTrash): bool =
-  s.run == AllDeleted implies (s.receipt.skippedIds.length() == 0 and s.receipt.failedIds.length() == 0)
+  s.phase == AllDeleted implies (s.receipt.skippedIds.length() == 0 and s.receipt.failedIds.length() == 0)
 pure def stepSnapshotFrozenWhileDeleting(before: OwnedTrash, after: OwnedTrash): bool =
-  before.run == Deleting implies after.targets == before.targets
-pure def sometimesEveryConfirmedRowDeleted(s: OwnedTrash): bool = s.run == AllDeleted and s.receipt.deletedIds.length() == 2
-pure def sometimesEmptyTrashDeletedNothing(s: OwnedTrash): bool = s.run == AllDeleted and s.targets.length() == 0
+  before.phase == Deleting implies after.targets == before.targets
+pure def sometimesEveryConfirmedRowDeleted(s: OwnedTrash): bool = s.phase == AllDeleted and s.receipt.deletedIds.length() == 2
+pure def sometimesEmptyTrashDeletedNothing(s: OwnedTrash): bool = s.phase == AllDeleted and s.targets.length() == 0
 pure def sometimesDeletionPartlySkipped(s: OwnedTrash): bool =
-  s.run == PartlyDeleted and s.receipt.deletedIds.length() > 0 and s.receipt.skippedIds.length() > 0
-pure def sometimesConfirmationExpired(s: OwnedTrash): bool = s.run == ConfirmationExpired and s.clock > tokenLifetimeMs
+  s.phase == PartlyDeleted and s.receipt.deletedIds.length() > 0 and s.receipt.skippedIds.length() > 0
+pure def sometimesConfirmationExpired(s: OwnedTrash): bool = s.phase == ConfirmationExpired and s.clock > tokenLifetimeMs
 ```
 
 ### A row is deleted only while still trashed at its snapshot generation, by one counted delete
@@ -248,7 +248,7 @@ failed, without a provider call, and then finishes partial.
 
 ```quint
 pure val weight_deleteTrashRow = 6
-pure def canDeleteTrashRow(s: OwnedTrash): bool = s.run == Deleting and s.position < s.targets.length()
+pure def canDeleteTrashRow(s: OwnedTrash): bool = s.phase == Deleting and s.position < s.targets.length()
 pure def deleteTrashRow(s: OwnedTrash, evidence: RowDeleteEvidence): OwnedTrash = {
   val key = s.targets.nthOr(s.position, { key: 0, generation: 0 }).key
   val reply = if (s.hostClosed) RowFailed else rowDeleteReply(evidence)
@@ -259,5 +259,5 @@ pure def closeHost(s: OwnedTrash): OwnedTrash = { ...s, hostClosed: true, confir
 pure def alwaysClosedHostHoldsNoConfirmation(s: OwnedTrash): bool =
   s.hostClosed implies (s.confirmations.length() == 0 and s.prepared.length() == 0)
 pure def sometimesClosedDuringDeletion(s: OwnedTrash): bool =
-  s.hostClosed and s.run == PartlyDeleted and s.receipt.deletedIds.length() > 0 and s.receipt.failedIds.length() > 0
+  s.hostClosed and s.phase == PartlyDeleted and s.receipt.deletedIds.length() > 0 and s.receipt.failedIds.length() > 0
 ```

@@ -1,17 +1,13 @@
 # Device operations
 
 The closed set of operations the agent may propose to an enrolled device,
-shared by the proposal service and the device executor. Each operation has
-one wire type, belongs to one family, and needs the capabilities its request
-negotiated ([capabilities](./capabilities.md)). The exact keys of each
-operation, its result shape and the wire schemas are the agent's
-(`device-actions/operations.schema.vibe`); the bounds of each field are owned
-where the data is: [calendar availability](../../calendar/availability.md),
+shared by the proposal service and the device executor: which proposals are
+well formed and what a receipt may claim. Exact keys and result shapes are
+the agent's wire schemas (`device-actions/operations.schema.vibe`); field
+bounds are owned where the data is ([calendar availability](../../calendar/availability.md),
 [note reads](../../notes/read.md), the [workflow](../../workflow/index.md)
-device protocol, and the os executor specs for telephony, camera, photos and
-files. The [device request](./index.md) owns offer, claim and settlement;
-this spec decides which proposals are well formed and what a receipt may
-claim.
+protocol, the os executor specs); offer, claim and settlement are the
+[device request](./index.md)'s.
 
 ## Story: Propose only operations the device can check
 
@@ -99,8 +95,7 @@ pure def lawOneWireTypeIsOneOperation(a: OperationType, b: OperationType): bool 
 version two, a named reminder edit that sets alert minutes, and a Clock
 handoff that carries its own repeat days. The base and workflow operations
 need any capability other than the Clock handoff, so a device that
-advertised only the Clock handoff never receives them. Every operation
-names a need, so none is impossible by construction.
+advertised only the Clock handoff never receives them.
 
 ```quint
 pure def needAll(a: Capability, b: Capability): Need = { required: Set(a).union(Set(b)), oneOf: Set() }
@@ -192,8 +187,7 @@ open conversation may skip the separate review, and only when the host bound
 the proposal to the owner's own current message and no workflow bound it.
 Every other operation is reviewed on the device first: nothing that sends,
 calls, writes a contact, shares, deletes or hands off to the Clock ever runs
-directly. Whether the owner allows direct runs at all is the
-[device attempt's](./execution.md) rule.
+directly. Whether the owner allows it is [execution](./execution.md)'s rule.
 
 ```quint
 pure def directEligible(t: OperationType): bool =
@@ -206,7 +200,8 @@ pure def sendsSharesOrDeletes(t: OperationType): bool =
   or family(t) == ClockFamily or t == FilesShare or t == FilesTrash or t == PhotosShare or t == PhotoLibraryReview
   or t == NotesDelete or t == CalendarDelete or t == ReminderCancel
 pure def lawNothingThatSendsSharesOrDeletesRunsDirectly(prop: Proposal, boundToCurrentMessage: bool): bool =
-  mayRunDirectly(prop, boundToCurrentMessage) implies not(sendsSharesOrDeletes(prop.opType))```
+  mayRunDirectly(prop, boundToCurrentMessage) implies not(sendsSharesOrDeletes(prop.opType))
+```
 
 ## Story: Learn exactly what the device did
 
@@ -216,9 +211,8 @@ pure def lawNothingThatSendsSharesOrDeletesRunsDirectly(prop: Proposal, boundToC
 
 ### A receipt is admitted only when its evidence agrees with what it reports
 
-A receipt reports applied, failed or unknown, may name the native operation
-and a failure code, and may carry a typed result. The family's result
-function says what a valid result shows; it must show what the receipt
+A receipt reports applied, failed or unknown, with an optional native
+operation, failure code and typed result, which must show what the receipt
 reports. Phone and Clock results are evidence: one is missing only from an
 unknown receipt. Other reads and edits carry a result exactly when applied;
 files, notes organizing, workflow presentations and the base operations

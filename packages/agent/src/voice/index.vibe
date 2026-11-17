@@ -1,0 +1,7 @@
+// spec/agent/voice/session.md, "Story: Send my words once I finish speaking"; spec/agent/voice/clientAudio.md, "Story: Record and play speech in the screen without losing a segment"; spec/agent/voice/clientAudio.md, "Story: Dictate into my draft without losing my own words"
+export { VoiceSession } from "./session.vibe"
+export { createLiveVoiceSession } from "./live-session.vibe"
+export { buildVoiceTurnSignal, scoreEndOfTurnHeuristic, shouldRespondToVoiceTurn } from "./heuristics.vibe"
+export { audioBlobBase64, captureWorkletUrl, encodeMonoPcm16WavChunks, startCumulativeMicrophoneCapture } from "./capture.vibe"
+export { attachProgressiveSpeech, planCloudSpeechChunks, SegmentedSpeechPlayback } from "./playback.vibe"
+export { DraftTranscriptGuard, RecordedTranscriptionController } from "./recorded-transcription.vibe"
