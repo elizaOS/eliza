@@ -77,7 +77,12 @@
       "opt-in current telephony request policy keeps sms_reply_selected bound to the first reviewed selection and screen revision",
       "opt-in current telephony request policy keeps voicemail_read_selected bound to the first reviewed selection and screen revision",
       "opt-in current telephony request policy keeps voicemail_delete_selected bound to the first reviewed selection and screen revision",
-      "opt-in current telephony request policy keeps contact_read_selected bound to the first reviewed selection and screen revision"
+      "opt-in current telephony request policy keeps contact_read_selected bound to the first reviewed selection and screen revision",
+      "browser control operations refuses a Browser control the phone did not negotiate",
+      "browser control operations runs search, tab, find and history controls directly for the requesting message and shows Browser",
+      "browser control operations always reviews closing a tab",
+      "browser control operations searches without a review only when the whole current message is that search",
+      "browser control operations is not reviewed on a locked phone"
     ]
   },
   "contracts": {
