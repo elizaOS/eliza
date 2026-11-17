@@ -85,13 +85,13 @@ export class EmbeddedAgentWeb
         signal: controller.signal,
       });
     } catch (error) {
-      this.streams.delete(id);
+      this.release(id, controller.signal);
       if (!controller.signal.aborted) throw error;
       this.notifyListeners("streamEnd", { id, aborted: true });
       return { id };
     }
     if (response.status === 403 || response.status === 404) {
-      this.streams.delete(id);
+      this.release(id, controller.signal);
       await answer(response);
     }
     void this.pump(id, response, controller.signal);
@@ -152,7 +152,12 @@ export class EmbeddedAgentWeb
             },
       );
     } finally {
-      this.streams.delete(id);
+      this.release(id, signal);
     }
+  }
+
+  /** Forgets a finished stream, unless its id already names a newer one after an abort. */
+  private release(id: string, signal: AbortSignal) {
+    if (this.streams.get(id)?.signal === signal) this.streams.delete(id);
   }
 }

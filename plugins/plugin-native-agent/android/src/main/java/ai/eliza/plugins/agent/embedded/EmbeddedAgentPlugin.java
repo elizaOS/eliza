@@ -94,16 +94,17 @@ public final class EmbeddedAgentPlugin extends Plugin {
         end.put("status", result.getInt("status"));
         if (result.has("data")) end.put("data", result.get("data"));
       } catch (Exception failure) {
-        if (socket.isClosed() && !streams.containsKey(id)) end.put("aborted", true);
+        // An abort removes this stream's socket; the id may already name a newer stream.
+        if (socket.isClosed() && streams.get(id) != socket) end.put("aborted", true);
         else end.put("error", message(failure));
         if (failure instanceof NativeRuntimeSession.NotReadyException) end.put("code", NativeRuntimeSession.NotReadyException.CODE);
       } finally {
-        streams.remove(id);
+        streams.remove(id, socket);
         try { socket.close(); } catch (IOException ignored) { }
         notifyListeners("streamEnd", end);
       }
     });
-    if (!accepted) { streams.remove(id); return; }
+    if (!accepted) { streams.remove(id, socket); return; }
     JSObject started = new JSObject();
     started.put("id", id);
     call.resolve(started);
