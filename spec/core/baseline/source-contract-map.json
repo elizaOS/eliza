@@ -1978,7 +1978,7 @@
       "intendedCompatibilityChanges": [
         {
           "baseline": "An exception in first changed(state) callback occurs before try/finally and leaves pending true.",
-          "replacement": "Typed TASK_EVENT_OBSERVER_FAILED clears pending, preserves accepted page, and allows explicit refresh/start/stop.",
+          "replacement": "Record internal ObserverFailure, release pending ownership and preserve the accepted page. Rejecting publication boundaries rethrow the original observed value unchanged; explicit refresh/start/stop remains available and failures never automatically retry.",
           "regressionScenario": "start -> first observer throws -> pending false and observer error -> explicit refresh succeeds"
         }
       ]

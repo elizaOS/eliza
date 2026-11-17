@@ -4446,6 +4446,108 @@ console.log(JSON.stringify({
   const NAMES = `const entries = JSON.parse(process.argv[1]); const names = {};
 for (const entry of entries) names[entry] = Object.keys(await import("@elizaos/core" + entry.slice(1), entry.endsWith(".json") ? { with: { type: "json" } } : undefined)).sort();
 console.log(JSON.stringify(names));`
+  // spec/core/taskEventReader.md, "Story: Observe complete task history without stale page replacement"; spec/core/taskEventReader.md, "A generation owns its pending read and every publish boundary rechecks it"
+  const READER_RECOVERY = String.raw`import assert from "node:assert/strict";
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { TaskEventReader } from "@elizaos/core/task-events";
+const directory = process.argv[1];
+const event = (taskId, sequence) => ({ schemaVersion: 1, eventId: taskId + "#" + sequence, taskId, sequence, epoch: 0, at: sequence, kind: sequence === 0 ? "create" : "observe", status: "active" });
+const page = (taskId, sequence) => ({ events: [event(taskId, sequence)], cursor: sequence, hasMore: false, task: { id: taskId, revision: sequence, epoch: 0, status: "completed", hasUnknownOutcome: false } });
+const put = (taskId, sequence) => writeFile(path.join(directory, taskId + ".json"), JSON.stringify(page(taskId, sequence)));
+const source = (calls) => async (taskId, after) => {
+  calls.push([taskId, after]);
+  return JSON.parse(await readFile(path.join(directory, taskId + ".json"), "utf8"));
+};
+async function rejectsOriginal(call, expected) {
+  let rejected = false;
+  try { await call(); } catch (error) { rejected = true; assert.strictEqual(error, expected); }
+  assert.strictEqual(rejected, true);
+}
+for (const marker of [new Error("observer"), Object.freeze({ observer: true }), 0, undefined]) {
+  await put("retry", 0);
+  const calls = [], views = [];
+  let armed = true;
+  const reader = new TaskEventReader({
+    read: source(calls),
+    changed: (view) => {
+      views.push(structuredClone(view));
+      if (armed) { armed = false; throw marker; }
+      if (view.page) view.page.events.length = 0;
+    },
+  });
+  try {
+    await rejectsOriginal(() => reader.start("retry"), marker);
+    assert.deepEqual(calls, []);
+    await reader.refresh();
+    assert.deepEqual(calls, [["retry", -1]]);
+    assert.deepEqual(views.at(-1), { page: page("retry", 0), pending: false, failed: false });
+    armed = true;
+    await rejectsOriginal(() => reader.refresh(), marker);
+    assert.deepEqual(calls, [["retry", -1]]);
+    await put("retry", 1);
+    await reader.refresh();
+    assert.deepEqual(calls, [["retry", -1], ["retry", 0]]);
+    assert.deepEqual(views.at(-1), { page: { ...page("retry", 1), events: [event("retry", 0), event("retry", 1)] }, pending: false, failed: false });
+  } finally { reader.stop(); }
+}
+await put("retry", 0);
+{
+  const marker = Object.freeze({ stopped: true }), calls = [];
+  let first = true;
+  const reader = new TaskEventReader({
+    read: source(calls),
+    changed: () => { if (first) { first = false; reader.stop(); throw marker; } },
+  });
+  try {
+    await rejectsOriginal(() => reader.start("retry"), marker);
+    await reader.refresh();
+    assert.deepEqual(calls, []);
+    await reader.start("retry");
+    assert.deepEqual(calls, [["retry", -1]]);
+  } finally { reader.stop(); }
+}
+await put("replacement", 0);
+{
+  const marker = Object.freeze({ replaced: true }), calls = [], views = [];
+  let first = true, replacement;
+  const reader = new TaskEventReader({
+    read: source(calls),
+    changed: (view) => {
+      views.push(view);
+      if (first) {
+        first = false;
+        replacement = reader.start("replacement").then(() => ({ ok: true }), (error) => ({ ok: false, error }));
+        throw marker;
+      }
+    },
+  });
+  try {
+    await rejectsOriginal(() => reader.start("retry"), marker);
+    assert.deepEqual(await replacement, { ok: true });
+    await reader.refresh();
+    assert.deepEqual(calls, [["replacement", -1], ["replacement", 0]]);
+    assert.deepEqual(views.at(-1), { page: page("replacement", 0), pending: false, failed: false });
+  } finally { reader.stop(); }
+}
+for (const stage of ["page", "finish"]) {
+  const marker = Object.freeze({ stage }), calls = [], views = [];
+  let armed = true;
+  const reader = new TaskEventReader({
+    read: source(calls),
+    changed: (view) => {
+      views.push(view);
+      if (armed && view.page && (stage === "page" ? view.pending : !view.pending)) { armed = false; throw marker; }
+    },
+  });
+  try {
+    if (stage === "finish") await rejectsOriginal(() => reader.start("retry"), marker);
+    else { await reader.start("retry"); assert.equal(views.at(-1).failed, true); }
+    await reader.refresh();
+    assert.deepEqual(calls, [["retry", -1], ["retry", 0]]);
+    assert.deepEqual(views.at(-1), { page: page("retry", 0), pending: false, failed: false });
+  } finally { reader.stop(); }
+}`
   const NATIVE_RECORDS = `import assert from "node:assert/strict";
 import { asObjectRecord, asRecord, hasPlainObjectTag, isObjectRecord, isPlainObject, validateMeetingArtifact } from "@elizaos/core";
 const prototypeFailure = new Error("native-record-prototype");
@@ -4643,6 +4745,10 @@ console.log(JSON.stringify({
   const nativeRecords = try host(() => runNode({ script: NATIVE_RECORDS, cwd: consumer, timeoutMs: 300_000 }))
   const nativeRecordChecks = try record("PackedImports", "native record observations", nativeRecords.status === 0 ? [] : [nativeRecords.stderr || nativeRecords.stdout || `node exit ${nativeRecords.status}`])
 
+  const readerDirectory = try scratch("eliza-core-packed-reader-recovery")
+  const readerRecovery = try host(() => runNode({ script: READER_RECOVERY, args: [readerDirectory], cwd: consumer, timeoutMs: 300_000 }))
+  const readerRecoveryChecks = try record("RuntimeConformance", "task-event observer recovery", readerRecovery.status === 0 && readerRecovery.signal === null && readerRecovery.stdout === "" && readerRecovery.stderr === "" ? [] : [JSON.stringify(readerRecovery)])
+
   const catalogs = baseline.filter((entry) => entry.entry.startsWith("./catalog/")).map((entry) => [entry.entry, manifest.exports[entry.entry]?.default ?? entry.conditions.default])
   const assets = (try node(consumer, ASSETS, [`${consumer}/node_modules/@elizaos/core`, catalogs])) as { restart: unknown; digests: Record<string, string | null>; privateSubpath: string; guard: string }
   const assetChecks = try record("PackedImports", "json assets and private subpath", [
@@ -4725,11 +4831,12 @@ console.log(JSON.stringify({
   ])
 
   const passed = (kind: string, check: string) => ({ kind, check, candidate: selected, ok: true, detail: [] as string[] })
-  try Effect.try(() => assert.deepStrictEqual([exportMap, names, sourceImports, nativeRecordChecks, assetChecks, browserSafe, rootBoundary, consumerTypes, sourceTypes, declarations, fields, copies], [
+  try Effect.try(() => assert.deepStrictEqual([exportMap, names, sourceImports, nativeRecordChecks, readerRecoveryChecks, assetChecks, browserSafe, rootBoundary, consumerTypes, sourceTypes, declarations, fields, copies], [
     passed("PackedImports", "export map"),
     passed("PackedImports", "runtime names"),
     passed("PackedImports", "source-condition imports"),
     passed("PackedImports", "native record observations"),
+    passed("RuntimeConformance", "task-event observer recovery"),
     passed("PackedImports", "json assets and private subpath"),
     passed("PackedImports", "browser-safe leaves"),
     passed("PackedImports", "root boundary"),
