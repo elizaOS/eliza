@@ -145,7 +145,8 @@ generators, write files only when their bytes change and remove outputs whose
 sources have gone: a check that changes no spec leaves `gen/` and the owners'
 `gen/` untouched, so nothing that watches them rebuilds. A check loads each
 generated module from its own `.spec-cache/run-<time>/`, removed when it ends. `.spec-cache/`
-remembers each run of Quint, and of LemmaScript and Dafny on a proof, under the program as installed, its arguments and
+remembers each run of Quint (which parses and typechecks a harness once for all its simulations, each run by Quint's
+evaluator on the result: `vibestack/simulator.ts`), and of LemmaScript and Dafny on a proof, under the program as installed, its arguments and
 the files it reads, without their prose, comments and layout (`vibestack/action.ts`),
 and each simulation and proof result under a fingerprint of a spec and its
 imports, the versions of the programs beneath (Quint and Node for a

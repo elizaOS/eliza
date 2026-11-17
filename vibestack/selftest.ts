@@ -2197,11 +2197,11 @@ function eachCheck() {
     const checked = async () => {
       fs.rmSync(log, { force: true });
       const { stdout } = await runCli(path.join(root, "vibestack/spec.ts"), root, "check", "--json");
-      return { broken: answer(stdout).results.find((r: Result) => r.stage === "always"), ran: fs.existsSync(log) ? read("quint.log", root).trim().split("\n") : [] };
+      return { broken: answer(stdout).results.find((r: Result) => r.stage === "always"), ran: [...(fs.existsSync(log) ? read("quint.log", root).trim().split("\n") : []), ...(fs.existsSync(path.join(root, "gen/traces")) ? ["simulate"] : [])] };
     };
     const first = await checked();
     assert.match(first.broken?.summary ?? "", /"Story \/ Small" \(spec\/index\.md:5\)/, JSON.stringify(first.broken));
-    assert.deepEqual([...new Set(first.ran)].sort(), ["run", "typecheck"]);
+    assert.deepEqual([...new Set(first.ran)].sort(), ["simulate", "typecheck"]);
     assert.deepEqual((await checked()).ran, []);
     fs.appendFileSync(path.join(root, "vibestack/review.ts"), "\nexport {};\n");
     const tooled = await checked();
@@ -3253,6 +3253,28 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
     const own = scratch({ ".claude/settings.json": "{}\n" });
     assert.ok(!init(own).includes(".claude/settings.json"));
     assert.equal(read(".claude/settings.json", own), "{}\n");
+  });
+
+  test("a simulation gives Quint's evaluator the compiled harness and reads the traces `quint run` writes for the same arguments, whether the rule holds or breaks", async () => {
+    const { simulate } = await import("./simulate.ts");
+    const root = oneRule("t", "Counting", `${COUNTER}\npure def sometimesFull(n: int): bool = n == 2`);
+    const spec = readSpecs(root)[0];
+    const model = await gen(root, spec);
+    const harness = { memory: { root, fresh: true, used: new Set<string>() }, model, files: harnessFiles(spec, [spec], model) };
+    const traces = (dir: string, prefix = "") => Object.fromEntries(fs.readdirSync(path.join(root, dir)).filter((f) => f.startsWith(prefix) && f.endsWith(".itf.json"))
+      .map((f) => [f.slice(prefix.length), read(path.join(dir, f), root).replace(/"description":"[^"]*","timestamp":\d+/, "")]));
+    for (const [invariant, step, broken] of [["inv", "probe", false], ["never_sometimesFull", "step", true]] as const) {
+      const run = await simulate(harness, invariant, 30, 300, step);
+      const dir = `gen/traces/t.${invariant}.${step}`;
+      assert.equal(run.broken, broken, run.again);
+      assert.deepEqual(["table.json", "t.run.qnt"].map((f) => fs.existsSync(path.join(root, dir, f))), [true, false], "the evaluator ran on the compiled harness");
+      const args = run.again.split(" gen/t.run.qnt ")[1].split(" ");
+      const cli = await exec(path.join(nodeModules, ".bin", process.platform === "win32" ? "quint.cmd" : "quint"), ["run", "t.run.qnt", ...args, "--n-traces", "30", "--out-itf", `${invariant}-{seq}.itf.json`], path.join(root, "gen"));
+      assert.equal(cli.status, broken ? 1 : 0, cli.stderr);
+      const written = traces(dir);
+      assert.equal(Object.keys(written).length, 30, run.again);
+      assert.deepEqual(written, traces("gen", `${invariant}-`), run.again);
+    }
   });
 }
 
