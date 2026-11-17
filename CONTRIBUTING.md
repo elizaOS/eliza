@@ -91,7 +91,7 @@ against its own files and the tools, and `selftest:tools:a`, `selftest:tools:b` 
 else, which no example but the order one reaches. The first two each run one shard of the kinds of mistake, the
 `describe` named `in shard a` or `in shard b` in `vibestack/selftest.ts`; the third skips what the other four name, so
 a new test runs there unless it is written into a shard. Keep the longest tests spread over the three.
-The two suites of the tools, the command line and each kind of mistake, run side by side under one parent. The order project the
+The two suites of the tools, the command line and each kind of mistake, run side by side under one parent, each at most four tests at a time. The order project the
 edits copy and a few long checks of fixtures are shared projects: each starts with the tool runs (`action-*` entries)
 earlier selftests kept in `.cache/selftest/.spec-cache` and leaves its own there; entries unused for a week are pruned.
 A test that observes a tool really running uses a scratch project of its own, which starts empty.
@@ -312,9 +312,9 @@ run keeps `test/counterexamples/` and `test/__traces__/`, where a broken
 exploration is, as an artifact.
 
 Each run installs Dafny from its pinned release, checked against its SHA-256,
-and restores pnpm's store, the spec cache of the root, each workspace package
-and each example, the selftest's shared tool runs, and Quint's evaluator, under a key of the job and the commit:
-what a job of the same name last saved, or else any job's.
+and restores pnpm's store, Quint's evaluator, and what the job adds to: a `selftest-*` job the selftest's shared
+tool runs, any other the spec cache of the root, each workspace package and each example. The key is of the job and
+the commit: what a job of the same name last saved, or else another job's that holds the same.
 Turborepo shares task results through the private Cloudflare/R2 cache.
 The task entry point disables Turbo telemetry. Each `selftest:tools` task waits for the root and
 Studio test tasks so those integration journeys do not compete with it.

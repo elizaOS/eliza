@@ -2983,6 +2983,9 @@ describe("the documents name what exists", () => {
     const jobs = [...read(".github/workflows/ci.yml").matchAll(/^ +tasks: (.+)$/gm)].flatMap(([, tasks]) => tasks.split(" "));
     assert.deepEqual(jobs.sort(), listed("verify").sort(), "CI's jobs run the tasks of pnpm verify between them, each once");
     assert.match(read(".github/workflows/release.yml"), /^ +- run: pnpm selftest$/m);
+    assert.deepEqual(read(".github/workflows/fuzz.yml").match(/^ +shard: \[(.+)\]$/m)?.[1].split(", "), shards.map((task) => task.split(":")[2]), "the nightly run names every shard");
+    const [first, ...others] = shards.map((task) => JSON.parse(read("turbo.json")).tasks[`//#${task}`]);
+    assert.deepEqual(others, others.map(() => first), "the shards wait for the same tasks and are keyed by the same files");
     assert.deepEqual(fs.readdirSync(path.join(project, ".github/workflows")).filter((flow) => /\bdevelop\b/.test(read(`.github/workflows/${flow}`))), [], "main is the only long-lived branch");
   });
 
@@ -3275,14 +3278,23 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
       assert.equal(Object.keys(written).length, 30, run.again);
       assert.deepEqual(written, traces("gen", `${invariant}-`), run.again);
     }
+    for (const [said, text] of [[/Runtime error[^]*QNT503[^]*t\.run\.qnt:\d+/, model.harness.replace("val inv = ", "val inv = 1 / (0 * 1) == 0 and ")], [/QNT000[^]*t\.run\.qnt:\d+[^]*parsing failed/, `${model.harness}\nnonsense`]] as const) {
+      const unanswered = { ...model, harness: text };
+      await assert.rejects(simulate({ ...harness, model: unanswered, files: harnessFiles(spec, [spec], unanswered) }, "inv", 30, 300, "probe"), said);
+      assert.ok(fs.existsSync(path.join(root, "gen/traces/t.inv.probe/t.run.qnt")), "`quint run` says why the evaluator gave no answer");
+    }
   });
 
-  test("a check that is interrupted, or that exits, ends each tool it started and what the tool started, in its process group or out of it", { skip: process.platform === "win32" }, async () => {
+  test("a check that is interrupted, or that exits, ends each tool it started and what the tool started, in its process group or out of it, as it ends a tool that writes too much", { skip: process.platform === "win32" }, async () => {
     const root = scratch({
-      "tool.mjs": 'import { spawn } from "node:child_process";\nimport fs from "node:fs";\nconst started = [false, true].map((detached) => spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", detached }).pid);\nfs.writeFileSync(process.argv[2], `${process.pid} ${started.join(" ")} `);\nsetInterval(() => {}, 1000);\n',
+      "tool.mjs": 'import { spawn } from "node:child_process";\nimport fs from "node:fs";\nconst started = [false, true].map((detached) => spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", detached }).pid);\nfs.writeFileSync(process.argv[2], `${process.pid} ${started.join(" ")} `);\nsetInterval(() => {}, 1000);\nconst flood = () => { while (process.stdout.write("x".repeat(1 << 20))); process.stdout.once("drain", flood); };\nif (process.argv[3]) flood();\n',
       "check.mjs": `import { exec } from ${JSON.stringify(path.join(project, "vibestack/run.ts"))};\nvoid exec(process.execPath, ["tool.mjs", process.argv[2]], import.meta.dirname);\nprocess.stdin.once("data", () => process.exit(3));\n`,
     });
     const running = (pid: number) => { try { return process.kill(pid, 0); } catch { return false; } };
+    const flooded = await exec(process.execPath, ["tool.mjs", "flood", "stdout"], root);
+    assert.match(flooded.stopped ?? "", /^node wrote more than \d+ MB of output and was stopped$/);
+    const flooding = read("flood", root).trim().split(" ").map(Number);
+    await until(() => !flooding.some(running), () => `a tool stopped for its output left ${flooding.filter(running).join(" and ")} running`);
     for (const how of ["SIGTERM", "SIGINT", "SIGHUP", "exit"] as const) {
       const checking = spawn(process.execPath, ["check.mjs", how], { cwd: root, stdio: ["pipe", "ignore", "inherit"] });
       const ended = new Promise((resolve) => checking.once("close", (code, signal) => resolve(signal ?? code)));
@@ -3298,11 +3310,10 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
   });
 }
 
-// Each check uses run.ts's tool queue; bound the fixture graphs and independent CLI processes alive beside it.
 const LANES = Math.min(4, os.availableParallelism());
 const SHARDS = { "in shard a": eachCheckA, "in shard b": eachCheckB };
 describe("the tools", { concurrency: true }, () => {
-  describe("the command line and what a failed proof leaves to start from", { concurrency: true }, theCommandLine);
+  describe("the command line and what a failed proof leaves to start from", { concurrency: LANES }, theCommandLine);
   describe("each check catches its own kind of mistake", { concurrency: LANES }, eachCheck);
 });
 
