@@ -3067,7 +3067,7 @@
             "register",
             "load"
           ],
-          "specSha256": "c9796256bdbd2ca406f956865b6afa5cda953f710f40857512e2f2b9468a55f7"
+          "specSha256": "af68b54fd4e1d247e1da1c3b58e7ffec15d2bf45172d91b2d1380cb6ee14e581"
         },
         "mappedStateFields": [
           "bundled",
@@ -9855,7 +9855,7 @@
             "publishedFinish",
             "stalePage"
           ],
-          "specSha256": "ffbfdb9ae0168041d6d620e091424cb03424c7f1b5a0f2bc112c0209e866218b"
+          "specSha256": "d0e93c8514008c76a07f343022b57dca8f2e1190f08131eaf569319f050e7fd0"
         },
         "mappedStateFields": [
           "task",
@@ -9929,7 +9929,7 @@
             "publishedFinish",
             "stalePage"
           ],
-          "specSha256": "ffbfdb9ae0168041d6d620e091424cb03424c7f1b5a0f2bc112c0209e866218b"
+          "specSha256": "d0e93c8514008c76a07f343022b57dca8f2e1190f08131eaf569319f050e7fd0"
         },
         "mappedStateFields": [
           "task",
@@ -10031,7 +10031,7 @@
             "publishedFinish",
             "stalePage"
           ],
-          "specSha256": "ffbfdb9ae0168041d6d620e091424cb03424c7f1b5a0f2bc112c0209e866218b"
+          "specSha256": "d0e93c8514008c76a07f343022b57dca8f2e1190f08131eaf569319f050e7fd0"
         },
         "mappedStateFields": [
           "task",
@@ -10112,7 +10112,7 @@
             "publishedFinish",
             "stalePage"
           ],
-          "specSha256": "ffbfdb9ae0168041d6d620e091424cb03424c7f1b5a0f2bc112c0209e866218b"
+          "specSha256": "d0e93c8514008c76a07f343022b57dca8f2e1190f08131eaf569319f050e7fd0"
         },
         "mappedStateFields": [
           "task",
@@ -10497,7 +10497,7 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "One authoritative instance state is composed with plugin epochs, ordered duplicate declaration aliases, captured retirement receipts and shared object stop identities. ServiceRegistry is a pure projection library. Cross-runtime product refinement remains unproved.",
+        "representation": "One authoritative instance state is composed with plugin epochs, ordered duplicate declaration aliases, captured retirement receipts and shared object stop identities. ServiceRegistry is a pure projection library. The class/type identity projection assumes serviceType stays stable per constructor lifetime, including withdrawal; the pinned source and replacement runtime permit the same constructor under multiple mutable type buckets outside this projection. Retirement deduplicates captured constructor/type slots and receives current optional-hook observations at teardown rather than caching availability at registration. Exact host property reads, calls and error identities remain adapter conformance obligations. Cross-runtime product refinement remains unproved.",
         "model": {
           "spec": "spec/core/pluginServices.md",
           "stateType": "PluginServices",
@@ -10537,7 +10537,7 @@
             "settleTypeAggregate",
             "clearTypeAggregate",
             "withdrawNextType",
-            "invokeClassHook",
+            "observeClassHook",
             "finishClassHook",
             "finishRetirementGroup",
             "skipMissingStop",
@@ -10546,10 +10546,11 @@
             "finishClassSlot",
             "finishNextPluginDisposal",
             "finishNextRegistration",
+            "observeNextClassHook",
             "finishNextClassHook",
             "advanceRetirement"
           ],
-          "specSha256": "d6c5f6c19d3b1fb1734d7490b9a73e05724305329e2fdc8a47eb334614414d1a"
+          "specSha256": "0f0bcd8b0e2a6ac6acbd269b9da9e93d9f69b0cb6a95e2c74613b50cae76d5fd"
         },
         "associatedModels": [
           {
@@ -10591,7 +10592,7 @@
               "settleTypeAggregate",
               "clearTypeAggregate",
               "withdrawNextType",
-              "invokeClassHook",
+              "observeClassHook",
               "finishClassHook",
               "finishRetirementGroup",
               "skipMissingStop",
@@ -10600,10 +10601,11 @@
               "finishClassSlot",
               "finishNextPluginDisposal",
               "finishNextRegistration",
+              "observeNextClassHook",
               "finishNextClassHook",
               "advanceRetirement"
             ],
-            "specSha256": "d6c5f6c19d3b1fb1734d7490b9a73e05724305329e2fdc8a47eb334614414d1a"
+            "specSha256": "0f0bcd8b0e2a6ac6acbd269b9da9e93d9f69b0cb6a95e2c74613b50cae76d5fd"
           },
           {
             "spec": "spec/core/serviceInstances.md",
@@ -10645,7 +10647,7 @@
               "finishNextLateStart",
               "resolveNextStart"
             ],
-            "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
+            "specSha256": "06bb11387ec9234692e76289ed250c1aec3c689a08fdd00e189d014cf677e3e1"
           }
         ],
         "mappedStateFields": [
@@ -12702,7 +12704,7 @@
             "returnHandler",
             "rejectHandler"
           ],
-          "specSha256": "c972df85c02a3aa6fd2a9b396a13902b91ad128003e4bd64eec2bdbb735b4e89"
+          "specSha256": "321b7fe8dd26758d73d55240768d754dba2cdb9ee90396fbc6a96d7e293ad6ec"
         },
         "mappedStateFields": [
           "registry",
@@ -13378,7 +13380,7 @@
             "finishNextLateStart",
             "resolveNextStart"
           ],
-          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
+          "specSha256": "06bb11387ec9234692e76289ed250c1aec3c689a08fdd00e189d014cf677e3e1"
         },
         "mappedStateFields": [
           "classes",
@@ -13463,7 +13465,7 @@
             "finishNextLateStart",
             "resolveNextStart"
           ],
-          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
+          "specSha256": "06bb11387ec9234692e76289ed250c1aec3c689a08fdd00e189d014cf677e3e1"
         },
         "mappedStateFields": [
           "classes",
@@ -14298,7 +14300,7 @@
             "finishNextLateStart",
             "resolveNextStart"
           ],
-          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
+          "specSha256": "06bb11387ec9234692e76289ed250c1aec3c689a08fdd00e189d014cf677e3e1"
         },
         "mappedStateFields": [
           "classes",
@@ -14383,7 +14385,7 @@
             "finishNextLateStart",
             "resolveNextStart"
           ],
-          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
+          "specSha256": "06bb11387ec9234692e76289ed250c1aec3c689a08fdd00e189d014cf677e3e1"
         },
         "mappedStateFields": [
           "classes",
@@ -14482,7 +14484,7 @@
             "finishNextLateStart",
             "resolveNextStart"
           ],
-          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
+          "specSha256": "06bb11387ec9234692e76289ed250c1aec3c689a08fdd00e189d014cf677e3e1"
         },
         "mappedStateFields": [
           "classes",
@@ -14560,7 +14562,7 @@
             "finishNextLateStart",
             "resolveNextStart"
           ],
-          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
+          "specSha256": "06bb11387ec9234692e76289ed250c1aec3c689a08fdd00e189d014cf677e3e1"
         },
         "mappedStateFields": [
           "classes",
@@ -14638,7 +14640,7 @@
             "finishNextLateStart",
             "resolveNextStart"
           ],
-          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
+          "specSha256": "06bb11387ec9234692e76289ed250c1aec3c689a08fdd00e189d014cf677e3e1"
         },
         "mappedStateFields": [
           "classes",
@@ -14716,7 +14718,7 @@
             "finishNextLateStart",
             "resolveNextStart"
           ],
-          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
+          "specSha256": "06bb11387ec9234692e76289ed250c1aec3c689a08fdd00e189d014cf677e3e1"
         },
         "mappedStateFields": [
           "classes",
@@ -14801,7 +14803,7 @@
             "finishNextLateStart",
             "resolveNextStart"
           ],
-          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
+          "specSha256": "06bb11387ec9234692e76289ed250c1aec3c689a08fdd00e189d014cf677e3e1"
         },
         "mappedStateFields": [
           "classes",
@@ -15769,66 +15771,55 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "One insertion-ordered trace collection owns active IDs and the derived runTraces/indexedIds per-run views; no separate runs field is stored. The fixed 300000ms TTL, every admitted record counter, every 100th pre-insert purge and same-run overwrite remain explicit. The root-authorized compatibility correction rejects cross-run ID reuse with TraceIdentityConflict before mutation, preserving trace content, derived views and purge counter. Original source alias divergence remains in the baseline; model checks and implementation refinement are separate evidence.",
+        "representation": "The traces field is the logical insertion-ordered captured-key/run and successful-current-owner receipt projection of activeTraces, not equality with the original mutable ExecutionTrace reference map. Re-recording keeps the global slot and cross-run reuse transfers ownership without adding rejection. Original trace, score-card and signal references, volatile accessors and reentrant native traversal remain host conformance obligations. The former now target is a native once-per-sweep clock/comparison port observation, not stored timestamp state or equality with lastPurge. Emitted-instruction replay constrains key projections; it does not prove arbitrary foreign object-history or legacy temporal refinement.",
         "model": {
           "spec": "spec/core/traces.md",
           "stateType": "TraceState",
           "stateFields": [
-            "now",
             "purgeCounter",
             "traces",
+            "runEntries",
             "lastResult",
-            "rejectedId",
-            "registeredRun",
-            "requestedRun",
-            "lastEnrichedRun"
+            "lastEnrichedRun",
+            "lastPurge"
           ],
           "transitions": [
-            "rejectTrace",
+            "beginRecord",
+            "ignoreRecord",
             "recordTrace",
-            "enrichTraces",
+            "enrichObservedTrace",
             "deleteTrace",
             "finalizeRun",
-            "purgeTraces",
-            "setClock"
+            "purgeObservedTrace"
           ],
-          "specSha256": "2c8fcef740d233956fc75bc6fb18ac5e257363c396687e9bb777f5a6274cd722"
+          "specSha256": "4e8f83571691c4b3a3f9db62693ccbccd54ff2ecdd895fe283bd243de790ad62"
         },
         "associatedModels": [
           {
             "spec": "spec/core/traces.md",
             "stateType": "TraceState",
             "stateFields": [
-              "now",
               "purgeCounter",
               "traces",
+              "runEntries",
               "lastResult",
-              "rejectedId",
-              "registeredRun",
-              "requestedRun",
-              "lastEnrichedRun"
+              "lastEnrichedRun",
+              "lastPurge"
             ],
             "transitions": [
-              "rejectTrace",
+              "beginRecord",
+              "ignoreRecord",
               "recordTrace",
-              "enrichTraces",
+              "enrichObservedTrace",
               "deleteTrace",
               "finalizeRun",
-              "purgeTraces",
-              "setClock"
+              "purgeObservedTrace"
             ],
-            "specSha256": "2c8fcef740d233956fc75bc6fb18ac5e257363c396687e9bb777f5a6274cd722"
+            "specSha256": "4e8f83571691c4b3a3f9db62693ccbccd54ff2ecdd895fe283bd243de790ad62"
           }
         ],
         "mappedStateFields": [
-          "now",
-          "purgeCounter",
-          "traces",
-          "lastResult",
-          "rejectedId",
-          "registeredRun",
-          "requestedRun",
-          "lastEnrichedRun"
+          "traces"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
@@ -15878,66 +15869,55 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "One insertion-ordered trace collection owns active IDs and the derived runTraces/indexedIds per-run views; no separate runs field is stored. The fixed 300000ms TTL, every admitted record counter, every 100th pre-insert purge and same-run overwrite remain explicit. The root-authorized compatibility correction rejects cross-run ID reuse with TraceIdentityConflict before mutation, preserving trace content, derived views and purge counter. Original source alias divergence remains in the baseline; model checks and implementation refinement are separate evidence.",
+        "representation": "The runEntries field represents independently ordered per-run admission membership, with indexedIds and runTraces as pure views. Cross-run transfer removes other memberships while preserving an existing destination position; original captured native Set objects and their live/reentrant iteration can survive a dropped run-map entry. These native reference and reflection behaviors remain host conformance obligations. The former now target is a once-per-sweep native time/comparison port observation, not stored state or lastPurge equality. Effect replay constrains the logical key relation without claiming blanket legacy LTL or raw Set-history refinement.",
         "model": {
           "spec": "spec/core/traces.md",
           "stateType": "TraceState",
           "stateFields": [
-            "now",
             "purgeCounter",
             "traces",
+            "runEntries",
             "lastResult",
-            "rejectedId",
-            "registeredRun",
-            "requestedRun",
-            "lastEnrichedRun"
+            "lastEnrichedRun",
+            "lastPurge"
           ],
           "transitions": [
-            "rejectTrace",
+            "beginRecord",
+            "ignoreRecord",
             "recordTrace",
-            "enrichTraces",
+            "enrichObservedTrace",
             "deleteTrace",
             "finalizeRun",
-            "purgeTraces",
-            "setClock"
+            "purgeObservedTrace"
           ],
-          "specSha256": "2c8fcef740d233956fc75bc6fb18ac5e257363c396687e9bb777f5a6274cd722"
+          "specSha256": "4e8f83571691c4b3a3f9db62693ccbccd54ff2ecdd895fe283bd243de790ad62"
         },
         "associatedModels": [
           {
             "spec": "spec/core/traces.md",
             "stateType": "TraceState",
             "stateFields": [
-              "now",
               "purgeCounter",
               "traces",
+              "runEntries",
               "lastResult",
-              "rejectedId",
-              "registeredRun",
-              "requestedRun",
-              "lastEnrichedRun"
+              "lastEnrichedRun",
+              "lastPurge"
             ],
             "transitions": [
-              "rejectTrace",
+              "beginRecord",
+              "ignoreRecord",
               "recordTrace",
-              "enrichTraces",
+              "enrichObservedTrace",
               "deleteTrace",
               "finalizeRun",
-              "purgeTraces",
-              "setClock"
+              "purgeObservedTrace"
             ],
-            "specSha256": "2c8fcef740d233956fc75bc6fb18ac5e257363c396687e9bb777f5a6274cd722"
+            "specSha256": "4e8f83571691c4b3a3f9db62693ccbccd54ff2ecdd895fe283bd243de790ad62"
           }
         ],
         "mappedStateFields": [
-          "now",
-          "purgeCounter",
-          "traces",
-          "lastResult",
-          "rejectedId",
-          "registeredRun",
-          "requestedRun",
-          "lastEnrichedRun"
+          "runEntries"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
@@ -15986,66 +15966,55 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "One insertion-ordered trace collection owns active IDs and the derived runTraces/indexedIds per-run views; no separate runs field is stored. The fixed 300000ms TTL, every admitted record counter, every 100th pre-insert purge and same-run overwrite remain explicit. The root-authorized compatibility correction rejects cross-run ID reuse with TraceIdentityConflict before mutation, preserving trace content, derived views and purge counter. Original source alias divergence remains in the baseline; model checks and implementation refinement are separate evidence.",
+        "representation": "The purgeCounter field represents the actual counter increment before incoming fields on every record attempt, including ignored missing-run attempts; each hundredth call purges before admission. The former now target is a native once-per-sweep clock/comparison port observation over live mutable createdAt values, not a stored generated integer timestamp or equality with lastPurge. Native fractions, infinities, NaN, getter throws and completed-prefix effects remain host conformance obligations. The integer TTL law is reference arithmetic; persistent expiry needs eventually completed native sweeps and does not establish blanket legacy LTL refinement.",
         "model": {
           "spec": "spec/core/traces.md",
           "stateType": "TraceState",
           "stateFields": [
-            "now",
             "purgeCounter",
             "traces",
+            "runEntries",
             "lastResult",
-            "rejectedId",
-            "registeredRun",
-            "requestedRun",
-            "lastEnrichedRun"
+            "lastEnrichedRun",
+            "lastPurge"
           ],
           "transitions": [
-            "rejectTrace",
+            "beginRecord",
+            "ignoreRecord",
             "recordTrace",
-            "enrichTraces",
+            "enrichObservedTrace",
             "deleteTrace",
             "finalizeRun",
-            "purgeTraces",
-            "setClock"
+            "purgeObservedTrace"
           ],
-          "specSha256": "2c8fcef740d233956fc75bc6fb18ac5e257363c396687e9bb777f5a6274cd722"
+          "specSha256": "4e8f83571691c4b3a3f9db62693ccbccd54ff2ecdd895fe283bd243de790ad62"
         },
         "associatedModels": [
           {
             "spec": "spec/core/traces.md",
             "stateType": "TraceState",
             "stateFields": [
-              "now",
               "purgeCounter",
               "traces",
+              "runEntries",
               "lastResult",
-              "rejectedId",
-              "registeredRun",
-              "requestedRun",
-              "lastEnrichedRun"
+              "lastEnrichedRun",
+              "lastPurge"
             ],
             "transitions": [
-              "rejectTrace",
+              "beginRecord",
+              "ignoreRecord",
               "recordTrace",
-              "enrichTraces",
+              "enrichObservedTrace",
               "deleteTrace",
               "finalizeRun",
-              "purgeTraces",
-              "setClock"
+              "purgeObservedTrace"
             ],
-            "specSha256": "2c8fcef740d233956fc75bc6fb18ac5e257363c396687e9bb777f5a6274cd722"
+            "specSha256": "4e8f83571691c4b3a3f9db62693ccbccd54ff2ecdd895fe283bd243de790ad62"
           }
         ],
         "mappedStateFields": [
-          "now",
-          "purgeCounter",
-          "traces",
-          "lastResult",
-          "rejectedId",
-          "registeredRun",
-          "requestedRun",
-          "lastEnrichedRun"
+          "purgeCounter"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
@@ -16144,7 +16113,7 @@
             "returnHandler",
             "rejectHandler"
           ],
-          "specSha256": "c972df85c02a3aa6fd2a9b396a13902b91ad128003e4bd64eec2bdbb735b4e89"
+          "specSha256": "321b7fe8dd26758d73d55240768d754dba2cdb9ee90396fbc6a96d7e293ad6ec"
         },
         "mappedStateFields": [
           "registry",
@@ -22040,7 +22009,7 @@
             "finishNextLateStart",
             "resolveNextStart"
           ],
-          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
+          "specSha256": "06bb11387ec9234692e76289ed250c1aec3c689a08fdd00e189d014cf677e3e1"
         },
         "mappedStateFields": [
           "classes",
@@ -28120,7 +28089,7 @@
             "withStop",
             "build"
           ],
-          "specSha256": "b0d0a0d9a759b4bc1bcf13c2d8c20100694820699456bfa0a71c46e4f76f2bf5"
+          "specSha256": "d6cf9606f3d34bf58a25fa87f2bc26fc7a5003493f96b987dd212d1e60ff9cdd"
         },
         "mappedStateFields": [
           "created",
@@ -28176,7 +28145,7 @@
             "withStop",
             "build"
           ],
-          "specSha256": "b0d0a0d9a759b4bc1bcf13c2d8c20100694820699456bfa0a71c46e4f76f2bf5"
+          "specSha256": "d6cf9606f3d34bf58a25fa87f2bc26fc7a5003493f96b987dd212d1e60ff9cdd"
         },
         "mappedStateFields": [
           "created",
@@ -28239,7 +28208,7 @@
             "withStop",
             "build"
           ],
-          "specSha256": "b0d0a0d9a759b4bc1bcf13c2d8c20100694820699456bfa0a71c46e4f76f2bf5"
+          "specSha256": "d6cf9606f3d34bf58a25fa87f2bc26fc7a5003493f96b987dd212d1e60ff9cdd"
         },
         "mappedStateFields": [
           "created",
@@ -32957,7 +32926,7 @@
             "configure",
             "claim"
           ],
-          "specSha256": "9f7046c324b93cd5503aeb4d1dd1fe04a0e5be48ecb3f9a134d62490ef647ce2"
+          "specSha256": "d09ec92acf59e4288ca3ebf3d6150938791bd735256c9926a757b630cec92973"
         },
         "mappedStateFields": [
           "configured",
@@ -34477,7 +34446,7 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "1e7837b417379bee1bf1243eead1d880b0ad4510391f823228f996d1d9327319"
+          "specSha256": "3a8f468a81fdd87e5a1ff313c0f1853eccfa3fb89b259203aeaaac2096c8a0d9"
         },
         "mappedStateFields": [
           "registry"
@@ -34595,7 +34564,7 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "1e7837b417379bee1bf1243eead1d880b0ad4510391f823228f996d1d9327319"
+          "specSha256": "3a8f468a81fdd87e5a1ff313c0f1853eccfa3fb89b259203aeaaac2096c8a0d9"
         },
         "mappedStateFields": [
           "dirtyAgents"
@@ -34704,7 +34673,7 @@
               "closeAdapters",
               "closeServices"
             ],
-            "specSha256": "77da64a06a1717edf57dcc792c38f2b5cd97a5bc1e89c49afc47613e55960be6"
+            "specSha256": "2ce285c4d25332a8d23ecbe47c2a1f757b02eb89018daff4b4b9053c3e348208"
           }
         ],
         "composedStateFields": [
@@ -34787,7 +34756,7 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "1e7837b417379bee1bf1243eead1d880b0ad4510391f823228f996d1d9327319"
+          "specSha256": "3a8f468a81fdd87e5a1ff313c0f1853eccfa3fb89b259203aeaaac2096c8a0d9"
         },
         "mappedStateFields": [
           "activeAdapter",
@@ -34824,7 +34793,7 @@
               "closeAdapters",
               "closeServices"
             ],
-            "specSha256": "77da64a06a1717edf57dcc792c38f2b5cd97a5bc1e89c49afc47613e55960be6"
+            "specSha256": "2ce285c4d25332a8d23ecbe47c2a1f757b02eb89018daff4b4b9053c3e348208"
           }
         ],
         "composedStateFields": [
@@ -34919,7 +34888,7 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "1e7837b417379bee1bf1243eead1d880b0ad4510391f823228f996d1d9327319"
+          "specSha256": "3a8f468a81fdd87e5a1ff313c0f1853eccfa3fb89b259203aeaaac2096c8a0d9"
         },
         "mappedStateFields": [
           "queries.phase",
@@ -34955,7 +34924,7 @@
               "closeAdapters",
               "closeServices"
             ],
-            "specSha256": "77da64a06a1717edf57dcc792c38f2b5cd97a5bc1e89c49afc47613e55960be6"
+            "specSha256": "2ce285c4d25332a8d23ecbe47c2a1f757b02eb89018daff4b4b9053c3e348208"
           }
         ],
         "composedStateFields": [
@@ -35041,7 +35010,7 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "1e7837b417379bee1bf1243eead1d880b0ad4510391f823228f996d1d9327319"
+          "specSha256": "3a8f468a81fdd87e5a1ff313c0f1853eccfa3fb89b259203aeaaac2096c8a0d9"
         },
         "mappedStateFields": [
           "generation"
@@ -35076,7 +35045,7 @@
               "closeAdapters",
               "closeServices"
             ],
-            "specSha256": "77da64a06a1717edf57dcc792c38f2b5cd97a5bc1e89c49afc47613e55960be6"
+            "specSha256": "2ce285c4d25332a8d23ecbe47c2a1f757b02eb89018daff4b4b9053c3e348208"
           }
         ],
         "composedStateFields": [
@@ -35153,7 +35122,7 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "1e7837b417379bee1bf1243eead1d880b0ad4510391f823228f996d1d9327319"
+          "specSha256": "3a8f468a81fdd87e5a1ff313c0f1853eccfa3fb89b259203aeaaac2096c8a0d9"
         },
         "mappedStateFields": [
           "nextRegistration",
@@ -35236,7 +35205,7 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "1e7837b417379bee1bf1243eead1d880b0ad4510391f823228f996d1d9327319"
+          "specSha256": "3a8f468a81fdd87e5a1ff313c0f1853eccfa3fb89b259203aeaaac2096c8a0d9"
         },
         "mappedStateFields": [
           "busyServices",
@@ -35320,7 +35289,7 @@
             "closeRetiredServices",
             "closeRetiredAdapters"
           ],
-          "specSha256": "1e7837b417379bee1bf1243eead1d880b0ad4510391f823228f996d1d9327319"
+          "specSha256": "3a8f468a81fdd87e5a1ff313c0f1853eccfa3fb89b259203aeaaac2096c8a0d9"
         },
         "mappedStateFields": [
           "queries.key",
@@ -35359,7 +35328,7 @@
               "closeAdapters",
               "closeServices"
             ],
-            "specSha256": "77da64a06a1717edf57dcc792c38f2b5cd97a5bc1e89c49afc47613e55960be6"
+            "specSha256": "2ce285c4d25332a8d23ecbe47c2a1f757b02eb89018daff4b4b9053c3e348208"
           }
         ],
         "composedStateFields": [
@@ -35596,7 +35565,7 @@
             "healCompleted",
             "workerRestored"
           ],
-          "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+          "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
         },
         "associatedModels": [
           {
@@ -35648,7 +35617,7 @@
               "healCompleted",
               "workerRestored"
             ],
-            "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+            "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
           }
         ],
         "mappedStateFields": [
@@ -35746,7 +35715,7 @@
             "healCompleted",
             "workerRestored"
           ],
-          "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+          "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
         },
         "associatedModels": [
           {
@@ -35798,7 +35767,7 @@
               "healCompleted",
               "workerRestored"
             ],
-            "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+            "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
           }
         ],
         "mappedStateFields": [
@@ -35881,7 +35850,7 @@
             "healCompleted",
             "workerRestored"
           ],
-          "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+          "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
         },
         "associatedModels": [
           {
@@ -35933,7 +35902,7 @@
               "healCompleted",
               "workerRestored"
             ],
-            "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+            "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
           }
         ],
         "mappedStateFields": [
@@ -36023,7 +35992,7 @@
             "healCompleted",
             "workerRestored"
           ],
-          "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+          "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
         },
         "associatedModels": [
           {
@@ -36075,7 +36044,7 @@
               "healCompleted",
               "workerRestored"
             ],
-            "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+            "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
           }
         ],
         "mappedStateFields": [
@@ -36158,7 +36127,7 @@
             "healCompleted",
             "workerRestored"
           ],
-          "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+          "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
         },
         "associatedModels": [
           {
@@ -36210,7 +36179,7 @@
               "healCompleted",
               "workerRestored"
             ],
-            "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+            "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
           }
         ],
         "mappedStateFields": [
@@ -36314,7 +36283,7 @@
             "healCompleted",
             "workerRestored"
           ],
-          "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+          "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
         },
         "associatedModels": [
           {
@@ -36366,7 +36335,7 @@
               "healCompleted",
               "workerRestored"
             ],
-            "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+            "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
           }
         ],
         "mappedStateFields": [
@@ -36450,7 +36419,7 @@
             "healCompleted",
             "workerRestored"
           ],
-          "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+          "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
         },
         "associatedModels": [
           {
@@ -36502,7 +36471,7 @@
               "healCompleted",
               "workerRestored"
             ],
-            "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+            "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
           }
         ],
         "mappedStateFields": [
@@ -36636,7 +36605,7 @@
             "healCompleted",
             "workerRestored"
           ],
-          "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+          "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
         },
         "associatedModels": [
           {
@@ -36688,7 +36657,7 @@
               "healCompleted",
               "workerRestored"
             ],
-            "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+            "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
           }
         ],
         "mappedStateFields": [
@@ -36778,7 +36747,7 @@
             "healCompleted",
             "workerRestored"
           ],
-          "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+          "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
         },
         "associatedModels": [
           {
@@ -36830,7 +36799,7 @@
               "healCompleted",
               "workerRestored"
             ],
-            "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+            "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
           }
         ],
         "mappedStateFields": [
@@ -36927,7 +36896,7 @@
             "healCompleted",
             "workerRestored"
           ],
-          "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+          "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
         },
         "associatedModels": [
           {
@@ -36979,7 +36948,7 @@
               "healCompleted",
               "workerRestored"
             ],
-            "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+            "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
           }
         ],
         "mappedStateFields": [
@@ -37091,7 +37060,7 @@
             "healCompleted",
             "workerRestored"
           ],
-          "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+          "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
         },
         "associatedModels": [
           {
@@ -37143,7 +37112,7 @@
               "healCompleted",
               "workerRestored"
             ],
-            "specSha256": "0ff57886f82a3b76c4e9e4b72a721df1261300363b18fe6049fe6893b66ceaf0"
+            "specSha256": "7ef7c5ebfdb8d35b80bce0fa36ab6b9dd97a091326b03fe99329a6d89ef4e49b"
           }
         ],
         "mappedStateFields": [
@@ -48236,7 +48205,7 @@
             "cancelListener",
             "release"
           ],
-          "specSha256": "bf82e12dcd30254d9fa60bf6db3983eb8c70aad00ca721cce7b3126f763018d6"
+          "specSha256": "dbd9e276c7f1f8f564e357ba84829aa73ec4ce2c06635341c5f30254b546bcf2"
         },
         "mappedStateFields": [
           "capacity",
@@ -48313,7 +48282,7 @@
             "cancelListener",
             "release"
           ],
-          "specSha256": "bf82e12dcd30254d9fa60bf6db3983eb8c70aad00ca721cce7b3126f763018d6"
+          "specSha256": "dbd9e276c7f1f8f564e357ba84829aa73ec4ce2c06635341c5f30254b546bcf2"
         },
         "mappedStateFields": [
           "capacity",
