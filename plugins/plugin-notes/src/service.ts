@@ -870,9 +870,10 @@ export class NotesService extends Service {
       }
       // Bind a planner-selected title to a complete phrase in the owner's
       // current wording; substring collisions must not authorize deletion.
+      // A caller that passes the wording, even blank, requires the title in
+      // it; only a caller with no owner wording at all leaves it out.
       if (
         typeof options?.requireTitleInText === "string" &&
-        options.requireTitleInText.trim().length > 0 &&
         !titleAppearsAsNamedPhrase(options.requireTitleInText, existing.title)
       ) {
         throw lookupError("NOTES_DELETE_NAME_MISMATCH", selector, value, [

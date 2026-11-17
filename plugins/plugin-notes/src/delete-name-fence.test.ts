@@ -40,6 +40,17 @@ describe("delete-note owner-text fence", () => {
     expect(service.snapshot().notes).toHaveLength(1);
   });
 
+  it("blocks a delete when the given owner wording is blank", async () => {
+    const service = await seeded();
+    for (const requireTitleInText of ["", "   "])
+      await expect(
+        service.deleteNoteByLookupWithCommit("query", "hunter2", {
+          requireTitleInText,
+        }),
+      ).rejects.toMatchObject({ code: "NOTES_DELETE_NAME_MISMATCH" });
+    expect(service.snapshot().notes).toHaveLength(1);
+  });
+
   it("deletes when the user actually named the note", async () => {
     const service = await seeded();
     const removed = await service.deleteNoteByLookupWithCommit(

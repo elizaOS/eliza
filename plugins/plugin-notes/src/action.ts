@@ -757,10 +757,11 @@ export const notesAction: Action = {
       try {
         // A text lookup can match body text. Deleting needs the note's title
         // in the owner's own words; an exact ID comes from a current record.
+        // A message with no text names no title, so it deletes nothing.
         const removed = noteId
           ? await service.deleteNoteWithCommit(noteId)
           : await service.deleteNoteByLookupWithCommit("query", target, {
-              requireTitleInText: message.content.text,
+              requireTitleInText: message.content.text ?? "",
             });
         return committed({
           op,
