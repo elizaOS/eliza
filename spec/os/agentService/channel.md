@@ -16,10 +16,10 @@ The channel holds no lifecycle state of its own: the shell forwards the
 service's launches (`spec/os/agentService/lifecycle.md`) as `open` when a
 launch is running and `retire` when it stops serving. Sockets, JSON, the
 token header and deadlines stay in the shell; a deadline or a closed
-connection reaches the channel as `lost`. Sources: the
-grace-integration `EmbeddedAgent` contract (`src/embedded.ts`), develop's
-`PendingRequests.java` and `OwnerRoutePolicy.java`, and the stream, voice
-and view feeds of the alphaphone agent plugin.
+connection reaches the channel as `lost`. Sources: an embedding app's
+agent contract, develop's `PendingRequests.java` and
+`OwnerRoutePolicy.java`, and the stream, voice and view feeds of a phone
+image's agent plugin.
 
 ## Story: Ask the agent only on the routes my app allows
 

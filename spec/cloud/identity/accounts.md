@@ -3,8 +3,8 @@
 One account is one user and the one organization that user owns, kept as one
 record. There are no members, invites or roles: the organization exists so
 that `organization_id` stays on the wire and the ledger and invoices have a
-key that outlives the person. Sources are develop
-`packages/cloud/shared/src/lib/steward-sync.ts` (first sign-in),
+key that outlives the person. Sources are develop's first sign-in
+account sync,
 `lib/services/{users,organizations,referrals}.ts` and the routes
 `api/v1/user` and `api/v1/referrals`.
 
