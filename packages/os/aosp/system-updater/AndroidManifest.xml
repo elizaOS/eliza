@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="ai.eliza.systemupdater">
+    <uses-sdk android:minSdkVersion="37" android:targetSdkVersion="37"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.ACCESS_CACHE_FILESYSTEM"/>
+    <uses-permission android:name="android.permission.REBOOT"/>
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+    <application android:label="@string/os_update_name" android:theme="@android:style/Theme.DeviceDefault" android:allowBackup="false" android:usesCleartextTraffic="false">
+        <activity android:name=".UpdateActivity" android:enabled="@bool/os_update_enabled" android:exported="true">
+            <intent-filter><action android:name="android.settings.SYSTEM_UPDATE_SETTINGS"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>
+        </activity>
+        <service android:name=".SystemUpdateJob" android:enabled="@bool/os_update_enabled" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true"/>
+        <receiver android:name=".SystemUpdateJob$Boot" android:enabled="@bool/os_update_enabled" android:exported="false">
+            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED"/><action android:name="android.intent.action.MY_PACKAGE_REPLACED"/></intent-filter>
+        </receiver>
+    </application>
+</manifest>

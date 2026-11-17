@@ -1,0 +1,4 @@
+type citadel_updater, vendor_file_type, exec_type, file_type;
+type dump_gsc, domain;
+# required by the sys.erase_secure_element property trigger
+domain_auto_trans(init, citadel_updater, dump_gsc)

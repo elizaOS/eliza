@@ -1,0 +1,31 @@
+--- a/vendor/google_devices/stallion/sepolicy/system_ext/public/types.te
++++ b/vendor/google_devices/stallion/sepolicy/system_ext/public/types.te
+@@ -12,8 +12,6 @@
+ type native_webview_zygote, domain, mlstrustedsubject, coredomain;
+ type native_webview_zygote_tmpfs, file_type;
+ type native_webview_zygote_userfaultfd;
+-type preloads_copy, domain, coredomain;
+-type preloads_copy_exec, file_type, exec_type, system_file_type;
+ type adbd_watchdog_timeout_prop, property_type, system_property_type, system_internal_property_type;
+ type pmgd_prop, property_type, system_property_type, system_internal_property_type;
+ type usb_userspace_aoa_disable_prop, property_type, system_property_type, system_internal_property_type;
+@@ -26,8 +24,6 @@
+ type multiuser_compliance_logger_service, system_server_service, service_manager_type;
+ type clock_manager_service, system_server_service, system_api_service, service_manager_type;
+ type hid_permission_service, system_server_service, service_manager_type;
+-type system_server_startup, domain, coredomain;
+-type system_server_startup_tmpfs, file_type, tmpfs_type;
+ type ssr_detector_app, domain, appdomain, coredomain;
+ type ssr_detector_app_userfaultfd;
+ type ssr_detector_app_block_io_uring;
+--- a/vendor/google_devices/stallion/sepolicy/system_ext/private/typeattributes.te
++++ b/vendor/google_devices/stallion/sepolicy/system_ext/private/typeattributes.te
+@@ -22,4 +22,6 @@
+ typeattribute heapprofd_tmpfs tmpfs_type;
+ typeattribute mediatranscoding_tmpfs tmpfs_type;
+ typeattribute perfetto_tmpfs tmpfs_type;
+-typeattribute traced_probes_tmpfs tmpfs_type;
+\ No newline at end of file
++typeattribute traced_probes_tmpfs tmpfs_type;
++# AOSP owns this private type; retain its stock tmpfs membership here.
++typeattribute system_server_startup_tmpfs tmpfs_type;
