@@ -203,7 +203,7 @@ importers:
         version: 4.11.0(eslint@10.14.0(jiti@2.7.0))(tailwindcss@4.3.5)(typescript@6.0.3)
       eslint-plugin-boundaries:
         specifier: 'catalog:'
-        version: 7.4.3(eslint@10.14.0(jiti@2.7.0))
+        version: 7.4.3(@typescript-eslint/parser@8.72.2(eslint@10.14.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.14.0(jiti@2.7.0))
       eslint-plugin-react-hooks:
         specifier: 'catalog:'
         version: 7.1.1(eslint@10.14.0(jiti@2.7.0))
