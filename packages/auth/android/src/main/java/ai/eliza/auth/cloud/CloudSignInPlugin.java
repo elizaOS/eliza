@@ -682,6 +682,12 @@ public abstract class CloudSignInPlugin extends Plugin {
   return true;
  }
 
+ protected final void cancelNativePasswordBackup() {
+  final Attempt current;
+  synchronized (lock) { current = attempt; }
+  if (current != null && current.passwordBackup != null) endNativeGoogle(current, "cancelled");
+ }
+
  private boolean backupDeviceReady() {
   android.app.KeyguardManager guard = getContext().getSystemService(android.app.KeyguardManager.class);
   return guard != null && guard.isDeviceSecure() && !guard.isDeviceLocked();
