@@ -67,9 +67,9 @@ pure def sometimesRefreshWaitsForStartup(c: RuntimeClient): bool = c.gen >= 1 an
 
 ### A request waits for its generation's refresh, and a broken refresh fails it
 
-A request submitted while its generation's refresh runs waits for it; when
-the refresh is broken, every request of that generation fails until the next
-refresh.
+A request submitted while its generation's refresh runs waits for it, and
+every waiter resumes when it ends; when the refresh is broken, every request
+of that generation fails until the next refresh.
 
 ```quint
 pure def isWaiting(s: Stage): bool = match s {
@@ -92,9 +92,11 @@ pure def submit(c: RuntimeClient, id: int): RuntimeClient = {
   val first = if (refreshing(c.refresh)) AwaitRefresh else if (c.refresh == RefreshBroken) Failed({ why: RefreshFailed }) else Probing
   { ...c, requests: c.requests.select(r => r.id != id).append({ id: id, gen: c.gen, stage: first }) }
 }
-pure def canResume(c: RuntimeClient, id: int): bool = own(c, id) and stageOf(c, id) == AwaitRefresh and not(refreshing(c.refresh))
-pure def resume(c: RuntimeClient, id: int): RuntimeClient =
-  { ...c, requests: setStage(c, id, if (c.refresh == RefreshBroken) Failed({ why: RefreshFailed }) else Probing) }
+pure def canResume(c: RuntimeClient): bool = not(refreshing(c.refresh)) and c.requests.some(r => r.gen == c.gen and r.stage == AwaitRefresh)
+pure def resume(c: RuntimeClient): RuntimeClient = {
+  val resumed = if (c.refresh == RefreshBroken) Failed({ why: RefreshFailed }) else Probing
+  { ...c, requests: c.requests.listMap(r => if (r.gen == c.gen and r.stage == AwaitRefresh) { ...r, stage: resumed } else r) }
+}
 pure def alwaysOneRequestPerId(c: RuntimeClient): bool =
   c.requests.every(r => c.requests.select(q => q.id == r.id).length() == 1)
 pure def stepProbeOnlyAfterACurrentRefresh(before: RuntimeClient, after: RuntimeClient): bool =
@@ -104,12 +106,15 @@ pure def sometimesBrokenRefreshRefused(c: RuntimeClient): bool = c.requests.some
 
 ### A request dispatches and publishes only in its own generation
 
-A waiting request of an older generation fails as changed instead of being
-sent, and its reply, if one comes, is never published.
+After a refresh, each waiting request of an older generation fails as
+changed at its next check instead of being sent, and its reply, if one comes,
+is never published.
 
 ```quint
-pure def canAbandon(c: RuntimeClient, id: int): bool = c.requests.some(r => r.id == id and r.gen != c.gen and isWaiting(r.stage))
-pure def abandon(c: RuntimeClient, id: int): RuntimeClient = { ...c, requests: setStage(c, id, Failed({ why: AccountChanged })) }
+pure def stale(c: RuntimeClient, r: Request): bool = r.gen != c.gen and isWaiting(r.stage)
+pure def canAbandon(c: RuntimeClient): bool = c.requests.some(r => stale(c, r))
+pure def abandon(c: RuntimeClient): RuntimeClient =
+  { ...c, requests: c.requests.listMap(r => if (stale(c, r)) { ...r, stage: Failed({ why: AccountChanged }) } else r) }
 pure def isAnswered(s: Stage): bool = match s {
   | Replied(x) => true
   | Refused(x) => true
@@ -170,9 +175,9 @@ completes a waiting refresh. A stopped report, or the deadline
 
 ```quint
 pure def settleStartup(ok: bool, c: RuntimeClient): ClientStep = {
-  val outcome = c.requests.listMap(r => if (awaitsStartup(c, r)) { ...r, stage: if (ok) Sent({ route: Bridge }) else Failed({ why: StartupFailed }) } else r)
+  val ended = c.requests.listMap(r => if (awaitsStartup(c, r)) { ...r, stage: if (ok) Sent({ route: Bridge }) else Failed({ why: StartupFailed }) } else r)
   val sends = c.requests.foldl(List(), (acc, r) => if (ok and awaitsStartup(c, r)) acc.append(Send({ request: r.id, over: Bridge })) else acc)
-  emit(sends, { ...c, startup: NoStartup, requests: outcome, refresh: if (c.refresh == AwaitRestart) (if (ok) Current else RefreshBroken) else c.refresh })
+  emit(sends, { ...c, startup: NoStartup, requests: ended, refresh: if (c.refresh == AwaitRestart) (if (ok) Current else RefreshBroken) else c.refresh })
 }
 pure def canStartupSettled(c: RuntimeClient, phase: RuntimePhase): bool = c.startup == StartingUp and phase != Starting
 pure def startupSettled(c: RuntimeClient, phase: RuntimePhase): ClientStep = settleStartup(phase == Running, c)
@@ -186,10 +191,16 @@ pure def sometimesStartupFailed(c: RuntimeClient): bool = c.requests.some(r => r
 HTTP serves a request only when its own status probe found no bridge; a
 request that waited for the bridge's startup goes over the bridge or fails.
 A sent request only settles: no reply, failure or refusal sends it again.
+A call that fails, or the oldest call whose `requestTimeoutMs` passes, fails
+its request.
 
 ```quint
 pure def canTransportFailed(c: RuntimeClient, id: int): bool = own(c, id) and (stageOf(c, id) == Probing or isSent(stageOf(c, id)))
 pure def transportFailed(c: RuntimeClient, id: int): RuntimeClient = { ...c, requests: setStage(c, id, Failed({ why: TransportFailed })) }
+pure def inCall(c: RuntimeClient, r: Request): bool = r.gen == c.gen and (r.stage == Probing or isSent(r.stage))
+pure def canRequestExpired(c: RuntimeClient): bool = c.requests.some(r => inCall(c, r))
+pure def requestExpired(c: RuntimeClient): RuntimeClient =
+  transportFailed(c, c.requests.select(r => inCall(c, r)).nthOr(0, { id: -1, gen: -1, stage: Probing }).id)
 pure def httpAfterProbe(before: RuntimeClient, call: BridgeCall): bool = match call {
   | Send(x) => x.over == Http implies stageOf(before, x.request) == Probing
   | _ => true
@@ -207,11 +218,11 @@ pure def sometimesHttpServed(c: RuntimeClient): bool = c.requests.some(r => r.st
 
 ### Every submitted request settles
 
-Assuming each bridge or HTTP call answers or fails, and each deadline
-passes, a request never waits for ever.
+Assuming each deadline passes and each refresh, startup and stale request
+is followed up, a request never waits for ever.
 
 ```quint
-pure val fair_transportFailed = "weak"
+pure val fair_requestExpired = "weak"
 pure val fair_startupExpired = "weak"
 pure val fair_refreshError = "weak"
 pure val fair_resume = "weak"

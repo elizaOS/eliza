@@ -35,27 +35,26 @@ type Capability =
   | RemindersLocalRecordV1 | RemindersLocalRecordV2 | RemindersCreateV1 | PhotosLibraryV1 | PhotosViewV1 | CameraCapturePhotoV1
   | FilesBrowserV1 | MapsSelectedReadV1 | ClockHandoffV1 | ClockHandoffV2 | SmsSendV1 | MmsSendV1 | SmsComposeV1
   | MessagesReadV1 | PhoneDialV1 | PhoneCallV1 | ContactsWriteV1 | VoicemailReadV1 | VoicemailDeleteV1
-type CapabilityEntry = { capability: Capability, name: str }
-pure val vocabulary: List[CapabilityEntry] = List(
-  { capability: CalendarLocalEventV1, name: "calendar.local-event.v1" }, { capability: CalendarCreateV1, name: "calendar.create.v1" },
-  { capability: CalendarNextReadV1, name: "calendar.next-read.v1" }, { capability: CalendarAgendaReadV1, name: "calendar.agenda-read.v1" },
-  { capability: CalendarAvailabilityReadV1, name: "calendar.availability-read.v1" }, { capability: CalendarNamedReadV1, name: "calendar.named-read.v1" },
-  { capability: NamedTargetV1, name: "device.named-target.v1" }, { capability: NotesLocalRecordV1, name: "notes.local-record.v1" },
-  { capability: NotesQueryV1, name: "notes.query.v1" }, { capability: NotesSearchV1, name: "notes.search.v1" },
-  { capability: NotesListFilterV1, name: "notes.list-filter.v1" }, { capability: NotesOrganizeV1, name: "notes.organize.v1" },
-  { capability: RemindersLocalRecordV1, name: "reminders.local-record.v1" }, { capability: RemindersLocalRecordV2, name: "reminders.local-record.v2" },
-  { capability: RemindersCreateV1, name: "reminders.create.v1" }, { capability: PhotosLibraryV1, name: "photos.library.v1" },
-  { capability: PhotosViewV1, name: "photos.view.v1" }, { capability: CameraCapturePhotoV1, name: "camera.capture-photo.v1" },
-  { capability: FilesBrowserV1, name: "files.browser.v1" }, { capability: MapsSelectedReadV1, name: "maps.selected-read.v1" },
-  { capability: ClockHandoffV1, name: "clock.handoff.v1" }, { capability: ClockHandoffV2, name: "clock.handoff.v2" },
-  { capability: SmsSendV1, name: "sms.send.v1" }, { capability: MmsSendV1, name: "mms.send.v1" },
-  { capability: SmsComposeV1, name: "sms.compose.v1" }, { capability: MessagesReadV1, name: "messages.read.v1" },
-  { capability: PhoneDialV1, name: "phone.dial.v1" }, { capability: PhoneCallV1, name: "phone.call.v1" },
-  { capability: ContactsWriteV1, name: "contacts.write.v1" }, { capability: VoicemailReadV1, name: "voicemail.read.v1" },
-  { capability: VoicemailDeleteV1, name: "voicemail.delete.v1" })
-pure def isCapabilityName(name: str): bool = vocabulary.some(e => e.name == name)
-pure def capabilityName(c: Capability): str = vocabulary.foldl("", (found, e) => if (e.capability == c) e.name else found)
-pure def lawEveryCapabilityHasAWireName(c: Capability): bool = isCapabilityName(capabilityName(c))
+pure def capabilityName(c: Capability): str = match c {
+  | CalendarLocalEventV1 => "calendar.local-event.v1" | CalendarCreateV1 => "calendar.create.v1" | CalendarNextReadV1 => "calendar.next-read.v1"
+  | CalendarAgendaReadV1 => "calendar.agenda-read.v1" | CalendarAvailabilityReadV1 => "calendar.availability-read.v1"
+  | CalendarNamedReadV1 => "calendar.named-read.v1" | NamedTargetV1 => "device.named-target.v1" | NotesLocalRecordV1 => "notes.local-record.v1"
+  | NotesQueryV1 => "notes.query.v1" | NotesSearchV1 => "notes.search.v1" | NotesListFilterV1 => "notes.list-filter.v1"
+  | NotesOrganizeV1 => "notes.organize.v1" | RemindersLocalRecordV1 => "reminders.local-record.v1" | RemindersLocalRecordV2 => "reminders.local-record.v2"
+  | RemindersCreateV1 => "reminders.create.v1" | PhotosLibraryV1 => "photos.library.v1" | PhotosViewV1 => "photos.view.v1"
+  | CameraCapturePhotoV1 => "camera.capture-photo.v1" | FilesBrowserV1 => "files.browser.v1" | MapsSelectedReadV1 => "maps.selected-read.v1"
+  | ClockHandoffV1 => "clock.handoff.v1" | ClockHandoffV2 => "clock.handoff.v2" | SmsSendV1 => "sms.send.v1" | MmsSendV1 => "mms.send.v1"
+  | SmsComposeV1 => "sms.compose.v1" | MessagesReadV1 => "messages.read.v1" | PhoneDialV1 => "phone.dial.v1" | PhoneCallV1 => "phone.call.v1"
+  | ContactsWriteV1 => "contacts.write.v1" | VoicemailReadV1 => "voicemail.read.v1" | VoicemailDeleteV1 => "voicemail.delete.v1"
+}
+pure val allCapabilities: Set[Capability] = Set(
+  CalendarLocalEventV1, CalendarCreateV1, CalendarNextReadV1, CalendarAgendaReadV1, CalendarAvailabilityReadV1, CalendarNamedReadV1,
+  NamedTargetV1, NotesLocalRecordV1, NotesQueryV1, NotesSearchV1, NotesListFilterV1, NotesOrganizeV1, RemindersLocalRecordV1,
+  RemindersLocalRecordV2, RemindersCreateV1, PhotosLibraryV1, PhotosViewV1, CameraCapturePhotoV1, FilesBrowserV1,
+  MapsSelectedReadV1, ClockHandoffV1, ClockHandoffV2, SmsSendV1, MmsSendV1, SmsComposeV1, MessagesReadV1, PhoneDialV1,
+  PhoneCallV1, ContactsWriteV1, VoicemailReadV1, VoicemailDeleteV1)
+pure def isCapabilityName(name: str): bool = allCapabilities.exists(c => capabilityName(c) == name)
+pure def lawTheVocabularyListsEveryCapability(c: Capability): bool = allCapabilities.contains(c)
 pure def lawNoTwoCapabilitiesShareAName(a: Capability, b: Capability): bool = capabilityName(a) == capabilityName(b) implies a == b
 ```
 
@@ -69,8 +68,7 @@ it names a capability twice, or when it names both reminder record versions
 ```quint
 type Negotiation = Refused | Negotiated({ capabilities: Set[Capability] })
 pure def distinctNames(names: List[str]): bool = names.foldl(Set(), (seen, n) => seen.union(Set(n))).size() == names.length()
-pure def namedCapabilities(names: List[str]): Set[Capability] =
-  vocabulary.foldl(Set(), (found, e) => if (names.includes(e.name)) found.union(Set(e.capability)) else found)
+pure def namedCapabilities(names: List[str]): Set[Capability] = allCapabilities.filter(c => names.includes(capabilityName(c)))
 pure def headerAdmitted(names: List[str]): bool = names.every(n => isCapabilityName(n)) and distinctNames(names) and oneReminderVersion(names)
 pure def negotiate(liveEnrollment: bool, names: List[str]): Negotiation =
   if (liveEnrollment and headerAdmitted(names)) Negotiated({ capabilities: namedCapabilities(names) }) else Refused
@@ -106,8 +104,9 @@ against their own header. A need that names nothing is never met.
 
 ```quint
 type Need = { required: Set[Capability], oneOf: Set[Capability] }
+pure def namesSome(s: Set[Capability]): bool = s.exists(c => true)
 pure def meets(n: Negotiation, need: Need): bool = match n {
-  | Negotiated(x) => need.required.union(need.oneOf).size() > 0 and need.required.subseteq(x.capabilities) and (need.oneOf.size() == 0 or need.oneOf.exists(c => x.capabilities.contains(c)))
+  | Negotiated(x) => (namesSome(need.required) or namesSome(need.oneOf)) and need.required.subseteq(x.capabilities) and (not(namesSome(need.oneOf)) or need.oneOf.exists(c => x.capabilities.contains(c)))
   | Refused => false
 }
 pure def needOne(c: Capability): Need = { required: Set(c), oneOf: Set() }
@@ -117,7 +116,7 @@ pure val nValues: Set[Negotiation] = Set(Refused, Negotiated({ capabilities: Set
   Negotiated({ capabilities: Set(NotesQueryV1, NotesLocalRecordV1, CalendarLocalEventV1) }), Negotiated({ capabilities: Set(CalendarNamedReadV1, ClockHandoffV1, RemindersLocalRecordV1) }))
 pure def lawARefusedHeaderMeetsNoNeed(need: Need): bool = not(meets(Refused, need))
 pure def lawEveryRequiredCapabilityWasNegotiated(n: Negotiation, need: Need, c: Capability): bool = (meets(n, need) and need.required.contains(c)) implies negotiatedHas(n, c)
-pure def lawOneOfTheAlternativesWasNegotiated(n: Negotiation, need: Need): bool = (meets(n, need) and need.oneOf.size() > 0) implies need.oneOf.exists(c => negotiatedHas(n, c))
+pure def lawOneOfTheAlternativesWasNegotiated(n: Negotiation, need: Need): bool = (meets(n, need) and namesSome(need.oneOf)) implies need.oneOf.exists(c => negotiatedHas(n, c))
 pure def lawAnEmptyNeedIsNeverMet(n: Negotiation): bool = not(meets(n, { required: Set(), oneOf: Set() }))
 ```
 
