@@ -95,5 +95,20 @@
       "One active turn, recording-end/transcript-ready/send ordering, deferred flush, failure and clear. Full owning8-case suite covers additional real diagnostic field validation, sink failures, stale turn boundaries and clear before a pending timer.",
       "Not all record fields or browser scheduling. No persistence after storage failure, process death, shared-key writers from different instances, native callback delivery or physical latency is established. Diagnostic failure intentionally leaves the voice turn active."
     ]
+  },
+  {
+    "id": "VoiceNonSpeech",
+    "model": "packages/voice/quint/VoiceNonSpeech.qnt",
+    "sources": [
+      "packages/voice/src/respond-gate.ts",
+      "packages/voice/src/respond-gate.test.ts",
+      "packages/host/src/voice/session.ts",
+      "packages/host/src/voice/session-turn-ownership.test.ts"
+    ],
+    "invariants": ["safety"],
+    "status": "partial",
+    "limitations": [
+      "Abstract whole annotation classification. Focused source tests check classifier behavior, active reply ownership and terminal metering. Acoustic accuracy, actual providers and wall-clock progress are outside this model."
+    ]
   }
 ]

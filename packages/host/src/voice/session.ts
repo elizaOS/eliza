@@ -27,6 +27,7 @@
  */
 
 import { logger } from "@elizaos/core";
+import { isNonSpeechVoiceTranscript } from "@elizaos/voice/turn";
 import type { VoiceUiContext } from "../protocol";
 import {
   CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS,
@@ -1561,7 +1562,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   /** Cancel an active response only after Ink has produced caller words. */
   private interruptForConfirmedSpeech(transcript: string): boolean {
-    if (!SPOKEN_TRANSCRIPT_RE.test(transcript)) return false;
+    if (
+      !SPOKEN_TRANSCRIPT_RE.test(transcript) ||
+      isNonSpeechVoiceTranscript(transcript)
+    )
+      return false;
     if (this.continuousHandoffEnabled && this.currentVoiceTurnId) {
       if (
         this.assistantPlaybackActive &&
@@ -1651,6 +1656,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   /** Authoritative user turn: mint the turn trace, run the LLM+TTS legs. */
   private commitTurn(transcript: string): void {
+    if (isNonSpeechVoiceTranscript(transcript)) transcript = "";
     if (
       (this.currentVoiceTurnId || this.pendingOverlapTurn) &&
       !SPOKEN_TRANSCRIPT_RE.test(transcript)

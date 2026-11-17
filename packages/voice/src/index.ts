@@ -119,6 +119,7 @@ export {
   ECHO_OVERLAP_THRESHOLD,
   ECHO_TAIL_MS,
   ECHO_WINDOW_MS,
+  isNonSpeechVoiceTranscript,
   SERVER_EOT_SUPPRESS_THRESHOLD,
   shouldRespondToVoiceTurn,
 } from "./respond-gate.js";

@@ -203,6 +203,7 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/voice": "workspace:*",
     "zod": "^4.6.5",
     "@elizaos/contracts": "workspace:*",
     "tar": "7.5.22",

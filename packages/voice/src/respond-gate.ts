@@ -38,6 +38,18 @@ const DISFLUENCIES = new Set([
   "eh",
 ]);
 
+/** Whole recognizer annotations, without discarding spoken words beside them. */
+export function isNonSpeechVoiceTranscript(transcript: string): boolean {
+  const label =
+    "(?:music|noise|silence|inaudible|unintelligible|applause|laughter|laughing|coughing|sighing|breathing|tonk)";
+  const annotation = new RegExp(
+    `\\[${label}\\]|\\(${label}\\)|\\*${label}\\*`,
+    "gi",
+  );
+  const text = transcript.trim();
+  return text.length > 0 && text.replace(annotation, "").trim().length === 0;
+}
+
 /** How recent the agent's reply must be for the acoustic self-voice check to apply. */
 export const ECHO_WINDOW_MS = 9000;
 /**
@@ -99,6 +111,7 @@ export function shouldRespondToVoiceTurn(
   transcript: string,
   context: ShouldRespondContext = {},
 ): boolean {
+  if (isNonSpeechVoiceTranscript(transcript)) return false;
   const w = words(transcript);
   if (w.length === 0) return false;
 
@@ -229,7 +242,11 @@ export function buildVoiceTurnSignal(
 
   // The wake word is an explicit address: it overrides bystander doubt and a
   // soft echo/disfluency miss, because the user deliberately summoned the agent.
-  if (context.wakeWordActive === true) agentShouldSpeak = true;
+  if (
+    context.wakeWordActive === true &&
+    !isNonSpeechVoiceTranscript(transcript)
+  )
+    agentShouldSpeak = true;
 
   // Acoustic self-voice rejection: if the incoming voice MATCHES the agent's own
   // TTS imprint while it is (or just was) speaking, it is the agent hearing
