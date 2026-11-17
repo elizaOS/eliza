@@ -31,3 +31,15 @@ pure def stepBuiltClassesStayFixed(before: ServiceBuilder, after: ServiceBuilder
 pure def alwaysClassIdsUnique(s: ServiceBuilder): bool = s.built.every(service => service.id > 0 and service.id < s.nextId and s.built.select(other => other.id == service.id).length() == 1)
 pure def sometimesDistinctBuildSnapshots(s: ServiceBuilder): bool = s.built.some(first => s.built.some(second => first.id != second.id and (first.startRef != second.startRef or first.stopRef != second.stopRef or first.description != second.description)))
 ```
+
+### The next built class keeps a positive identity
+
+Discovered by the proof: an empty build history made the old identity bounds
+vacuous, so a zero next identity could produce an invalid class. The
+source build creates a fresh constructor. The model numbers those constructor
+identities from one and advances its allocator with each build, without
+bounding the number of classes a caller can build.
+
+```quint
+pure def alwaysNextClassIdPositive(s: ServiceBuilder): bool = s.nextId > 0
+```
