@@ -71,6 +71,7 @@ effect function dispatch(routes: ReadonlyArray<Route>, requestId: string, now: n
   const deployment = try Deployment
   const url = new URL(request.url, deployment.settings.api)
   const matched = matchRoute(routes, request.method, url.pathname)
+  if (matched.kind === "none" && (request.method === "GET" || request.method === "HEAD")) return try returnPage(url.pathname, now)
   if (matched.kind !== "route") throw refused("NotFound")
   const { route, params } = matched
   if (route.capability !== undefined && !capabilityEnabled(deployment.settings, route.capability)) throw refused("CapabilityUnavailable")
