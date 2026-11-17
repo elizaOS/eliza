@@ -63,6 +63,7 @@ import {
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import {
   isPhoneDial,
+  phoneDialNumber,
   phoneDialResultText,
   validatePhoneDialResult,
 } from "./phone-dial-contract.ts";
@@ -749,19 +750,41 @@ export const FOREGROUND_REVIEW_GUIDANCE = FOREGROUND_PROPOSAL_GUIDANCE.map(
   (fragment) => fragment.text,
 ).join(" ");
 
-const contactNumbersSchema = {
-  type: "array",
-  items: {
-    type: "string",
-    description: "Digits with an optional leading +",
+const phoneNumberSchema = {
+  type: "string",
+  description:
+    "2 to 20 digits with an optional leading +, for example +14155550100 or 5550100. Leave out spaces, dashes, dots and brackets.",
+};
+/** A recipient the phone resolves: an exact number, or a contact named by text. */
+const phoneTargetSchema: ActionParameterSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["kind"],
+  properties: {
+    kind: { type: "string", enum: ["number", "contact"] },
+    number: phoneNumberSchema,
+    query: { type: "string" },
   },
 };
+const contactNumbersSchema = { type: "array", items: phoneNumberSchema };
 const contactEmailsSchema = { type: "array", items: { type: "string" } };
 const contactQuerySchema = {
   type: "string",
   description:
     "The contact's name as search text, exactly as the owner said it. Never an ID or a number.",
 };
+/** A number target written with separators is reviewed in its exact dial form. */
+function withDialNumber(operation: unknown): unknown {
+  const target = (operation as { target?: unknown } | null)?.target as
+    | { kind?: unknown; number?: unknown }
+    | undefined;
+  return target?.kind === "number"
+    ? {
+        ...(operation as object),
+        target: { ...target, number: phoneDialNumber(target.number) },
+      }
+    : operation;
+}
 /** Disjoint by type; service validation enforces the exact closed shapes. */
 const telephonyActionSchemas: ActionParameterSchema[] = [
   {
@@ -770,16 +793,7 @@ const telephonyActionSchemas: ActionParameterSchema[] = [
     required: ["type", "target"],
     properties: {
       type: { type: "string", enum: ["phone_call"] },
-      target: {
-        type: "object",
-        additionalProperties: false,
-        required: ["kind"],
-        properties: {
-          kind: { type: "string", enum: ["number", "contact"] },
-          number: { type: "string" },
-          query: { type: "string" },
-        },
-      },
+      target: phoneTargetSchema,
     },
   },
   {
@@ -1028,16 +1042,7 @@ export const proposeDeviceAction: Action = {
             required: ["type", "target"],
             properties: {
               type: { type: "string", enum: ["phone_dial"] },
-              target: {
-                type: "object",
-                additionalProperties: false,
-                required: ["kind"],
-                properties: {
-                  kind: { type: "string", enum: ["number", "contact"] },
-                  number: { type: "string" },
-                  query: { type: "string" },
-                },
-              },
+              target: phoneTargetSchema,
             },
           },
           ...telephonyActionSchemas,
@@ -1298,7 +1303,10 @@ export const proposeDeviceAction: Action = {
     try {
       outcome = await new DeviceActionService(runtime).proposeWithOutcome(
         context.credential,
-        resolveReminderCreateInput(p.operation, context.startedAt),
+        resolveReminderCreateInput(
+          withDialNumber(p.operation),
+          context.startedAt,
+        ),
         operationKey,
         p.reason as string,
         deviceObservation,

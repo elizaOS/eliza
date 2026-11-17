@@ -6,6 +6,7 @@ import {
   contactLookupMatches,
   PHONE_DIAL_CAPABILITY,
   phoneDialCapabilityAvailable,
+  phoneDialNumber,
   phoneDialReceiptOutcome,
   phoneDialResultText,
   telephonyDeviceCapabilities,
@@ -21,6 +22,29 @@ const byNumber = validatePhoneDial({
 const byContact = validatePhoneDial({
   type: "phone_dial",
   target: { kind: "contact", query: "Ada Lovelace" },
+});
+
+test("a written number becomes the exact dial form or is rejected with the format", () => {
+  for (const [written, exact] of [
+    ["555-0100", "5550100"],
+    ["+1 (415) 555-0100", "+14155550100"],
+    ["415.555.0100", "4155550100"],
+    ["+15555550100", "+15555550100"],
+  ])
+    assert.equal(phoneDialNumber(written), exact);
+  for (const bad of [
+    "1-800-FLOWERS",
+    "*#06#",
+    "5",
+    "",
+    "++1555",
+    5550100,
+    null,
+  ])
+    assert.throws(
+      () => phoneDialNumber(bad),
+      /digits with an optional leading \+/,
+    );
 });
 
 test("a dial operation is exact and closed", () => {

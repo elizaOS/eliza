@@ -24,6 +24,20 @@ export const CONTACT_LOOKUP_CAPABILITY = "contacts.lookup.v1";
 
 /** Digits with an optional leading +, the same shape the native dial handoff accepts. */
 export const PHONE_DIAL_NUMBER = /^\+?[0-9]{2,20}$/;
+/**
+ * A number as a person writes it, such as "(415) 555-0100", in the exact dial
+ * form. Only spaces, dashes, dots and brackets are removed. Anything else is
+ * rejected, so the owner reviews the number that was asked for.
+ */
+export function phoneDialNumber(value: unknown): string {
+  const number =
+    typeof value === "string" ? value.replace(/[\s().-]/g, "") : "";
+  if (!PHONE_DIAL_NUMBER.test(number))
+    throw Error(
+      "Invalid phone number. Use 2 to 20 digits with an optional leading +, for example +14155550100.",
+    );
+  return number;
+}
 export const CONTACT_LOOKUP_MAX_QUERY = 128;
 export const CONTACT_LOOKUP_MAX_RESULTS = 10;
 
