@@ -1,5 +1,5 @@
 // spec/core/responseFields.md, "Story: Extend structured responses without hiding sibling failures"; spec/core/responseFields.md, "Valid registration is first-wins and invalidates full-schema caches only when changed"; spec/core/responseFields.md, "All active fields parse before handlers begin and preemption stops subsequent handlers"
-import { Foreign, foreign } from "../edge.vibe"
+import { Foreign, foreign, foreignSync } from "../edge.vibe"
 import type { ReplyEffectStatus } from "../types/components.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { JSONSchema } from "../types/model.vibe"
@@ -140,13 +140,14 @@ effect function attemptField<A>(work: A!Foreign): FieldAttempt<A>!Foreign {
   }
 }
 
-function shouldRunField(evaluator: ResponseHandlerFieldEvaluator, ctx: ResponseHandlerFieldContext): boolean!Foreign {
-  const shouldRun = evaluator.shouldRun
-  return shouldRun ? foreign(() => shouldRun.call(evaluator, ctx)) : succeed(true)
+effect function shouldRunField(evaluator: ResponseHandlerFieldEvaluator, ctx: ResponseHandlerFieldContext): boolean!Foreign {
+  const runPredicate = try foreignSync(() => !!evaluator.shouldRun)
+  if (!runPredicate) return true
+  return try foreign(() => evaluator.shouldRun!(ctx))
 }
 
 function parseFieldValue(evaluator: ResponseHandlerFieldEvaluator, raw: unknown, ctx: ResponseHandlerFieldContext): unknown!Foreign {
-  return Effect.try({ try: () => evaluator.parse?.(raw, ctx), catch: (cause) => new Foreign({ cause }) })
+  return Effect.try({ try: () => evaluator.parse!(raw, ctx), catch: (cause) => new Foreign({ cause }) })
 }
 
 effect function handleField(

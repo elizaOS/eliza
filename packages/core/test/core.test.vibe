@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest"
-import { type Action, addLogListener, annotateActiveTrajectoryStep, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, type ApprovalRequest, type ApprovalResult, ApprovalService, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type ExecutionTrace, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, logActiveTrajectoryLlmCall, isScrubDone, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, type ScoreSignal, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
+import { type Action, addLogListener, annotateActiveTrajectoryStep, type AgentEventPayload, AgentEventService, type AgentNotification, AgentRuntime, type ApprovalRequest, type ApprovalResult, ApprovalService, BatchProcessor, bindIncomingMessagePersistence, bridgeActionCompletedToStreams, bridgeActionStartedToStreams, bridgeRunEndedToStreams, bridgeRunStartedToStreams, buildPairingReplyMessage, canModifyRole, ChannelTopicsService, ChannelType, checkPairingAllowed, clearSaltCache, collectMessageContentSegmentIds, completionContextSources, type ConnectorAccount, type ConnectorAccountProvider, type Content, type ContextObject, createCharacter, createLogger, createMessageMemory, createModelAttemptAllowance, createPreparedModelRequestGuard, createService, createUniqueUuid, decryptStringValue, effectDeliveryBindingIsValid, effectDeliveryBindingProvesApplication, ElizaError, EmbeddingGenerationService, EncryptedCachePseudonymMapStore, ensureAgentVoice, ensureTaskTrajectory, EventType, executePlannedToolCall, type ExecutionTrace, type FetchMediaOptions, fetchRemoteMedia, fetchWithSsrfGuard, getConnectorAccountManager, getEmbeddingVectorSpace, getTrajectoryContext, getWorldSettings, type HandlerCallback, handoffTaskSchedulerAdapter, HookService, type IAgentRuntime, identifyEmbeddingVector, incomingMessagePersistenceSnapshot, inheritIncomingMessagePersistence, isElizaError, isInAllowlist, logActiveTrajectoryLlmCall, isScrubDone, type LogEntry, MediaFetchError, type Memory, MESSAGE_CONTENT_SEGMENT_MAX_BYTES, MESSAGE_CONTENT_SEGMENT_TABLE, type MessageHandlerResult, MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED, ModelType, NoModelProviderConfiguredError, type NotificationInboxSnapshot, NotificationNativeError, NotificationService, PairingService, persistIncomingMessageMemory, PiiScrubService, type PipelineHookContext, type ResponseHandlerFieldEvaluator, ResponseHandlerFieldRegistry, type Plugin, readJsonFile, recentLogs, registerScheduledProcessTask, removeLogListener, requireConfirmation, resolveCanonicalOwnerId, resolveEntityRole, resolveOwnerEntityIdOrDefault, Role, ROLE_WRITE_AUDIT_LOG_TYPE, type RoleName, RoomHandlerQueueClosedError, runResponseHandlerEvaluators, RunTerminalOwner, runWithStreamingContext, runWithTrajectoryContext, type ScoreSignal, selectCompletionContext, Service, type ServiceClass, ServiceType, setEntityRoleCas, SsrfBlockedError, STANDARD_OPTIONS, startTaskScheduler, stopTaskScheduler, type StreamingContext, stringToUuid, TaskDrain, TaskService, type TaskWorker, type TrajectoryContext, trustedLocalMediaUrl, TurnAbortedError, updateWorldSettings, type UUID, VoiceCancellationRegistry, withEvaluatorStep, withRoomDeliverySettlement, withStandaloneTrajectory, withVisibleComponents, type World, writeJsonAtomic } from "../src/index.vibe"
 import { coreDir, installPacked, packCandidate, runNode, sha256File, spawnNode } from "./support/child.ts"
 import { removeScratch } from "./support/files.ts"
 import { host, kernel, scratch, withEnv } from "./support/kernel.vibe"
@@ -834,6 +834,23 @@ it.live("Answer a message: compose, plan, act, deliver, cancel (spec/core/journe
     [{ scope: "ResponseHandlerEvaluator.evaluate", code: "UNCLASSIFIED", message: "classifier offline", context: { evaluator: "m-broken" } }],
   ]))
 
+  // spec/core/responseFields.md, "All active fields parse before handlers begin and preemption stops subsequent handlers"
+  const volatileFields: unknown[] = []
+  for (const member of ["parse", "shouldRun"] as const) {
+    const registry = try Effect.try(() => new ResponseHandlerFieldRegistry())
+    let handled = 0
+    const field: ResponseHandlerFieldEvaluator = { name: `j02-${member}`, description: "host field", schema: { type: "string" }, handle: async () => { handled += 1; return undefined } }
+    const observed = try changingMethod(field, member, undefined)
+    try Effect.try(() => registry.register(field))
+    const result = try host(() => registry.dispatch({ runtime, message: m1, state: lookupTurn.state, senderRole: "USER", turnSignal: new AbortController().signal, rawParsed: { [field.name]: "input" } }))
+    const trace = result.traces[0]
+    volatileFields.push([trace?.active, trace?.parsed, trace?.parseOutcome, trace?.handled, typeof result.fieldErrors[field.name] === "string", handled, observed])
+  }
+  try Effect.try(() => assert.deepStrictEqual(volatileFields, [
+    [true, false, "hard-fail", false, true, 0, { reads: 2, totalReads: 2, cachedCalls: 0 }],
+    [true, false, "skipped", false, true, 0, { reads: 2, totalReads: 2, cachedCalls: 0 }],
+  ]))
+
   // spec/core/journey.md, "Retirement waits for the admitted turn and its pending reply"; spec/core/postDelivery.md, "Story: Track detached work under runtime and room ownership"; spec/core/postDelivery.md, "Story: Capture and settle a connector delivery boundary"
   delivered.length = 0
   const brokenResult = try host(() => executePlannedToolCall(runtime, { message: m1, activeContexts: ["general"], callback: capture }, { name: "BROKEN" }))
@@ -964,6 +981,28 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
 
   const journey = try Effect.scoped(effect {
     const runtime = try kernel({ store, character: { name: "Eliza", secrets: { OPENAI_API_KEY: KEY } }, plugins: [alpha.plugin, beta.plugin] })
+    // spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
+    class RecognizerPort extends Service {
+      static serviceType = "pii_entity_recognizer"
+      capabilityDescription = "j03 recognizer host port"
+      static async start(owner: IAgentRuntime): Promise<RecognizerPort> { return new RecognizerPort(owner) }
+      async stop(): Promise<void> {}
+    }
+    const recognizerModel = try Effect.try(() => scriptedModels("j03-ner", 0, { [ModelType.TEXT_SMALL]: [{ reply: "recognizer reply" }] }))
+    try host(() => runtime.registerPlugin(recognizerModel.plugin))
+    try host(() => runtime.registerPlugin({ name: "j03-recognizer", description: "j03", services: [RecognizerPort] }))
+    const recognizer = try host(() => runtime.getServiceLoadPromise(RecognizerPort.serviceType))
+    const recognition = { reads: 0, calls: 0, receiver: false }
+    const getRecognizer = function (this: unknown) { recognition.calls += 1; recognition.receiver = this === recognizer; return null }
+    try Effect.try(() => Object.defineProperty(recognizer, "getRecognizer", { get: () => { recognition.reads += 1; return recognition.reads === 1 ? getRecognizer : null } }))
+    runtime.setSetting("ELIZA_PII_SWAP_ENABLED", "true")
+    const recognizedReply = try host(() => runtime.useModel(ModelType.TEXT_SMALL, { prompt: "recognizer boundary" }, "j03-ner"))
+    runtime.setSetting("ELIZA_PII_SWAP_ENABLED", "false")
+    answered.push(`useModel:${ModelType.TEXT_SMALL}`)
+    try host(() => runtime.unloadPlugin("j03-recognizer"))
+    try host(() => runtime.unloadPlugin(recognizerModel.plugin.name))
+    try Effect.try(() => assert.deepStrictEqual([recognizedReply, recognition, recognizerModel.seen.length], ["recognizer reply", { reads: 1, calls: 1, receiver: true }, 1]))
+
     // spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"
     class TrajectoryPort extends Service {
       static serviceType = "trajectories"
@@ -1732,6 +1771,58 @@ it.live("Load, reload and unload plugins, services and hooks (spec/core/plugins.
     ],
   ]))
 
+  // spec/core/plugins.md, "Cleanup removes only owned contributions"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
+  const guardedInitialization: unknown[] = []
+  for (const mode of ["missing", "callable", "config-error"] as const) {
+    const events: string[] = []
+    const captured: { firstCalls: number; receiver: boolean; owner: boolean; config?: Record<string, string>; presentAtDispose: boolean } = { firstCalls: 0, receiver: false, owner: false, presentAtDispose: false }
+    const plugin: Plugin = { name: `j04-init-${mode}`, description: "j04", dispose: async () => { events.push("dispose"); captured.presentAtDispose = runtime.plugins.includes(plugin) } }
+    let initReads = 0
+    const callback = async function (this: unknown, config: Record<string, string>, owner: IAgentRuntime) {
+      events.push("called")
+      captured.receiver = this === plugin
+      captured.owner = owner === runtime
+      captured.config = config
+    }
+    const invalidConfig = try Effect.try(() => { const pair = Proxy.revocable({ VALUE: "unused" }, {}); pair.revoke(); return pair.proxy })
+    try Effect.try(() => {
+      Object.defineProperty(plugin, "init", { get: () => { events.push("init"); initReads += 1; return initReads === 1 ? async () => { captured.firstCalls += 1 } : mode === "missing" ? undefined : callback } })
+      Object.defineProperty(plugin, "config", { get: () => { events.push("config"); return mode === "config-error" ? invalidConfig : { VALUE: { toString() { events.push("value"); return "2" } } } } })
+    })
+    const failure = try host(() => runtime.registerPlugin(plugin).then(() => undefined, (error: unknown) => error))
+    if (mode === "callable") try host(() => runtime.unloadPlugin(plugin.name))
+    guardedInitialization.push([failure instanceof TypeError, events, captured])
+  }
+  const guardedMigrations: unknown[] = []
+  for (const next of [undefined, null]) {
+    const observed = try changingMethod(hostAdapter, "runMigrations", next)
+    const failure = try host(() => runtime.runMigrations(["j04-migrations"]).then(() => undefined, (error: unknown) => error))
+    guardedMigrations.push([failure instanceof TypeError, observed])
+    try Effect.try(() => Reflect.deleteProperty(hostAdapter, "runMigrations"))
+  }
+  const replacementAdapter = try Effect.try(() => new SqliteAdapter(store, "j04-migration-receiver"))
+  let adapterReads = 0
+  let oldReceiverCalls = 0
+  const firstMigration = async () => { oldReceiverCalls += 1 }
+  try Effect.try(() => Object.defineProperty(hostAdapter, "runMigrations", { configurable: true, get: () => { adapterReads += 1; runtime.adapter = replacementAdapter; return firstMigration } }))
+  try host(() => runtime.runMigrations(["j04-receiver"]))
+  const migrationReceiver = [adapterReads, oldReceiverCalls, replacementAdapter.migrations.map((entry) => [entry.member, entry.args])]
+  try Effect.try(() => Reflect.deleteProperty(hostAdapter, "runMigrations"))
+  runtime.adapter = hostAdapter
+  try host(() => replacementAdapter.close())
+  try Effect.try(() => assert.deepStrictEqual([guardedInitialization, guardedMigrations, migrationReceiver], [
+    [
+      [true, ["init", "config", "config", "value", "init", "dispose"], { firstCalls: 0, receiver: false, owner: false, presentAtDispose: false }],
+      [false, ["init", "config", "config", "value", "init", "called", "dispose"], { firstCalls: 0, receiver: true, owner: true, config: { VALUE: "2" }, presentAtDispose: true }],
+      [true, ["init", "config", "config", "dispose"], { firstCalls: 0, receiver: false, owner: false, presentAtDispose: true }],
+    ],
+    [
+      [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
+      [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
+    ],
+    [1, 0, [["runMigrations", [["j04-receiver"]]]]],
+  ]))
+
   for (let waited = 0; runtime.getService("j04-eager") === null && waited < 20_000; waited += 100) try sleep(100)
   const eagerRun = [
     eager.record.starts,
@@ -2497,6 +2588,37 @@ it.live("Story: Execute due work within its owning agent, across scheduler stora
     Effect.try(() => runtime.registerTaskWorker({ name, execute }))
   try acquireRelease(sync(() => undefined), () => orDie(host(() => stopTaskScheduler())))
 
+  // spec/core/batchProcessor.md, "Story: Process every batch item with independent outcomes"; spec/core/batchProcessor.md, "Failure releases capacity before backoff and exhaustion callbacks"; spec/core/batchQueue.md, "A batched call settles successful items before retrying failures"
+  const batchItem = { id: "j07-batch" }
+  const batchError = new Error("j07 batch failure")
+  const exhaustionError = new Error("j07 exhausted observer")
+  const callbackOrder: Array<[string, boolean, boolean, boolean]> = []
+  let batchOwner: BatchProcessor<typeof batchItem> | undefined
+  let retryable = false
+  let callReads = 0
+  const callbacks = {
+    process: async function (this: unknown, item: typeof batchItem) { callbackOrder.push(["process", this === batchOwner, item === batchItem, true]); throw batchError },
+    shouldRetry: function (this: unknown, item: typeof batchItem, error: Error) { callbackOrder.push(["retry", this === batchOwner, item === batchItem, error === batchError]); return retryable },
+    onExhausted: async function (this: unknown, item: typeof batchItem, error: Error) { callbackOrder.push(["exhausted", this === batchOwner, item === batchItem, error === batchError]); throw exhaustionError },
+  }
+  try Effect.try(() => { for (const callback of Object.values(callbacks)) Object.defineProperty(callback, "call", { get: () => { callReads += 1; return undefined } }) })
+  const processor = try Effect.try(() => new BatchProcessor({ ...callbacks, maxParallel: 1, maxRetriesAfterFailure: 2, retryPolicy: { minDelayMs: 0, maxDelayMs: 0, jitter: 0 } }))
+  batchOwner = processor
+  const firstBatch = try host(() => processor.processBatch([batchItem]))
+  const firstCallbacks = [...callbackOrder]
+  callbackOrder.length = 0
+  retryable = true
+  let attemptReads = 0
+  try Effect.try(() => Object.defineProperty(batchItem, "_batchMaxAttempts", { get: () => [2, 2, 2, 1][attemptReads++] }))
+  const secondBatch = try host(() => processor.processBatch([batchItem]))
+  const batchOutcomes = [firstBatch, secondBatch].map((batch) => batch.map((row) => [row.item === batchItem, row.success, row.error === batchError, row.retryCount]))
+  const batchObservation = [firstCallbacks, callbackOrder, batchOutcomes, attemptReads, callReads]
+  const batchExpected = [
+    [["process", true, true, true], ["retry", true, true, true], ["exhausted", true, true, true]],
+    [["process", true, true, true], ["retry", true, true, true], ["process", true, true, true], ["exhausted", true, true, true]],
+    [[[true, false, true, 0]], [[true, false, true, 1]]], 2, 0,
+  ]
+
   const scheduled = try host(async () => new SqliteAdapter(store, "s1"))
   const replacement = try host(async () => new SqliteAdapter(store, "s2"))
   try acquireRelease(sync(() => replacement), (adapter) => orDie(host(() => adapter.close())))
@@ -2507,6 +2629,31 @@ it.live("Story: Execute due work within its owning agent, across scheduler stora
     const runtimeB = try kernel({ store, agentId: agentB, label: "b", character: { name: "J07B" }, plugins })
     const serviceA = (try host(() => runtimeA.getServiceLoadPromise(ServiceType.TASK))) as TaskService
     try host(() => runtimeB.getServiceLoadPromise(ServiceType.TASK))
+
+    // spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
+    const preflights: unknown[] = []
+    for (const [index, next] of [undefined, null].entries()) {
+      const name = `J07_PREFLIGHT_${index}`
+      let executions = 0
+      const taskWorker: TaskWorker = { name, execute: async () => { executions += 1 } }
+      const observed = try changingMethod(taskWorker, "shouldRun", next)
+      try Effect.try(() => runtimeA.registerTaskWorker(taskWorker))
+      const id = try host(() => runtimeA.createTask({ name, description: "preflight boundary", tags: ["manual"], metadata: {} }))
+      const task = try host(async () => {
+        const stored = (await runtimeA.getTasksByIds([id]))[0]
+        if (!stored) throw new Error("The persisted preflight task must be readable")
+        return stored
+      })
+      const failure = try host(() => serviceA.runTick([task]).then(() => undefined, (error: unknown) => error))
+      const outer = failure instanceof ElizaError ? failure : undefined
+      const inner: unknown = outer?.cause instanceof AggregateError ? outer.cause.errors[0] : undefined
+      preflights.push([outer?.code, outer?.severity, inner instanceof ElizaError ? inner.code : undefined, inner instanceof ElizaError && inner.cause instanceof TypeError, observed, executions])
+      try host(() => runtimeA.deleteTask(id))
+    }
+    try Effect.try(() => assert.deepStrictEqual([batchObservation, preflights], [batchExpected, [
+      ["TASK_TICK_FAILED", "ephemeral", "TASK_PREFLIGHT_FAILED", true, { reads: 2, totalReads: 2, cachedCalls: 0 }, 0],
+      ["TASK_TICK_FAILED", "ephemeral", "TASK_PREFLIGHT_FAILED", true, { reads: 2, totalReads: 2, cachedCalls: 0 }, 0],
+    ]]))
 
     const owned: string[] = []
     for (const runtime of [runtimeA, runtimeB]) {

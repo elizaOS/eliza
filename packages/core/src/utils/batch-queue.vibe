@@ -416,40 +416,48 @@ interface ProcessorState<T> {
   readonly semaphore: Semaphore
 }
 
+interface ProcessorItem<T> {
+  readonly processor: BatchProcessor<T>
+  readonly state: ProcessorState<T>
+  readonly item: T
+}
+
 function getPerItemMaxAttempts(item: unknown, fallback: number): number {
   if (
     item
     && typeof item === "object"
     && "_batchMaxAttempts" in item
     && typeof item._batchMaxAttempts === "number"
-    && Number.isFinite(item._batchMaxAttempts)
-    && item._batchMaxAttempts >= 1
   ) {
-    return item._batchMaxAttempts
+    const attempts = item._batchMaxAttempts
+    if (Number.isFinite(attempts) && attempts >= 1) return attempts
   }
   return fallback
 }
 
-effect function attemptItem<T>(state: ProcessorState<T>, item: T, attempt: number, maxAttempts: number) {
-  const failure = map(foreign(() => state.process(item)), (): Error | undefined => undefined) catch (error) => asError(error.cause)
+effect function attemptItem<T>({ processor, state, item, attempt, maxAttempts }: ProcessorItem<T> & { attempt: number; maxAttempts: number }) {
+  const failure = map(foreign(() => Reflect.apply(state.process, processor, [item])), (): Error | undefined => undefined) catch (error) => asError(error.cause)
   if (failure === undefined) return undefined
-  const exhausted = attempt >= maxAttempts || !(try foreignSync(() => state.shouldRetry(item, failure, attempt)))
+  const exhausted = attempt >= maxAttempts || !(try foreignSync(() => Reflect.apply(state.shouldRetry, processor, [item, failure, attempt])))
   return { error: failure, exhausted }
 }
 
-effect function processBatchItem<T>(state: ProcessorState<T>, item: T) {
+effect function processBatchItem<T>(context: ProcessorItem<T>) {
+  const { processor, state, item } = context
   const resolved = getPerItemMaxAttempts(item, state.defaultMaxAttempts)
   const maxAttempts = Math.max(1, state.maxAttemptsCap !== undefined ? Math.min(resolved, state.maxAttemptsCap) : resolved)
   let retryCount = 0
   let lastError = new Error("unknown")
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try acquirePermit(state.semaphore)
-    const failed = try ensuring(attemptItem(state, item, attempt, maxAttempts), sync(() => state.semaphore.release()))
+    const failed = try ensuring(attemptItem({ ...context, attempt, maxAttempts }), sync(() => state.semaphore.release()))
     if (!failed) return { item, success: true, retryCount } satisfies BatchItemOutcome<T>
     const error = failed.error
     lastError = error
     if (failed.exhausted) {
-      foreign(() => state.onExhausted?.(item, error)) catch () => undefined
+      if (state.onExhausted) {
+        foreign(() => Reflect.apply(state.onExhausted!, processor, [item, error])) catch () => undefined
+      }
       return { item, success: false, error, retryCount } satisfies BatchItemOutcome<T>
     }
     retryCount++
@@ -461,7 +469,7 @@ effect function processBatchItem<T>(state: ProcessorState<T>, item: T) {
 
 effect function processBatchItems<T>(processor: BatchProcessor<T>, items: T[]) {
   const outcomes: Array<BatchItemOutcome<T>!Foreign> = []
-  for (const item of items) outcomes.push(Fiber.join(fork.detached processBatchItem(processor.state, item)))
+  for (const item of items) outcomes.push(Fiber.join(fork.detached processBatchItem({ processor, state: processor.state, item })))
   return try.all outcomes
 }
 
