@@ -236,6 +236,10 @@ public class PasswordVaultStore {
     }
   }
 
+  public static byte[] newBackupRecoveryKey() {
+    return PasswordBackupEnvelope.newKey();
+  }
+
   public synchronized byte[] encryptBackup(String accountScope, byte[] recoveryKey) throws Exception {
     if (policy == null) throw new IOException("Secure password storage is required");
     byte[] snapshot = exportEntries().toString().getBytes(StandardCharsets.UTF_8);
