@@ -58,12 +58,12 @@
 +			name: "alpha_native",
 +			src: "foo.conf",
 +			filename: "libalpha.so",
-+			relative_install_path: "AlphaPhone/lib/arm64",
++			relative_install_path: "ElizaHost/lib/arm64",
 +			product_specific: true,
 +		}
 +	`)
 +			p := result.Module("alpha_native", "android_arm64_armv8-a").(*PrebuiltEtc)
-+			android.AssertPathRelativeToTopEquals(t, "install dir", "out/target/product/test_device/product/"+test.directory+"/AlphaPhone/lib/arm64", p.installDirPaths[0])
++			android.AssertPathRelativeToTopEquals(t, "install dir", "out/target/product/test_device/product/"+test.directory+"/ElizaHost/lib/arm64", p.installDirPaths[0])
 +			android.AssertStringEquals(t, "installed filename", "libalpha.so", p.outputFilePaths[0].Base())
 +		})
 +	}
@@ -78,7 +78,7 @@
 +			prebuilt_priv_app {
 +				name: "reserved_native",
 +				src: "foo.conf",
-+				relative_install_path: "AlphaPhone/lib/arm64",
++				relative_install_path: "ElizaHost/lib/arm64",
 +				product_specific: true,
 +			}
 +		`)

@@ -1,11 +1,9 @@
 # Local request exchange
 
 How a local caller reaches the agent: one exchange per connection, over the
-private Unix socket that the os agent service connects to, or over loopback
-HTTP on `127.0.0.1` for a development host. The launch picks one
-(`--socket <path>` or `--http 127.0.0.1:<port>`, `host/launch.md`); both
-feed the one router (`access/router.vibe`). os imports this spec for the
-frames of its agent channel (`spec/os/agentService/channel.md`).
+private Unix socket the os agent service connects to, or loopback HTTP on
+`127.0.0.1` for a development host (`host/launch.md` picks one). Both feed
+one router; os imports the frames (`spec/os/agentService/channel.md`).
 
 The socket carries one newline-terminated JSON frame each way per message,
 byte-compatible with develop's resident. In:

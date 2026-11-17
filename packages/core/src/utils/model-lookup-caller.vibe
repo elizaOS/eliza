@@ -6,7 +6,7 @@ export type ModelLookupCallerTrace = {
 }
 
 const INTERNAL_FRAME_RE =
-  /model-lookup-caller\.(?:ts|js)(?::|$)|(?:^|[/\\])runtime\.(?:ts|js)|(?:^|[/\\])getModel|(?:^|[/\\])useModel|resolveModelRegistration|node:internal|@vitest\/|vitest\/|\/bun:/
+  /model-lookup-caller\.(?:ts|js)(?::|$)|(?:^|[/\\])runtime\.(?:ts|js)|(?:^|[/\\])getModel|(?:^|[/\\])useModel|resolveModelRegistration|node:internal|@vitest\/|vitest\//
 
 const STACK_FRAME_WITH_FN_RE = /^(?:async )?(.+?) \((.+?):(\d+):(\d+)\)$/
 const STACK_FRAME_FILE_ONLY_RE = /^(.+?):(\d+):(\d+)$/

@@ -41,7 +41,7 @@ public final class BrowserTabHostConfig {
   public final String privatePrefix;
   /** Ephemeral prefixes earlier builds used; their leftovers are purged at start like private ones. */
   public final List<String> legacyEphemeralPrefixes;
-  /** Prefix of activity-result keys and camera file names (for example {@code alpha-browser}). */
+  /** Prefix of activity-result keys and camera file names (for example {@code app-browser}). */
   public final String storagePrefix;
   /** Preference file of the download list. */
   public final String downloadPreferences;

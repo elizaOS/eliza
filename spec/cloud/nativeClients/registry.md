@@ -81,12 +81,12 @@ pure val registryValues: Set[List[Registration]] = {
 }
 ```
 
-### Only the operator registers, updates or disables a registration, and doing so never changes another client
+### A registration is accepted only when the registry stays valid and no return lies on the API origin, and it never changes how another client is admitted
 
-Registering or updating replaces the registration with the same client id; it
-is accepted only when the result is a valid registry and no return lies on
-the environment's API origin, which serves no page. Disabling keeps the
-registration so that its client id and returns stay reserved.
+Only the operator's commands register, update or disable. Registering or
+updating replaces the registration with the same client id; the API origin
+serves no page, so no return may lie on it. Disabling keeps the registration
+so that its client id and returns stay reserved.
 
 ```quint
 pure def withRegistration(registry: List[Registration], r: Registration): List[Registration] = registry.select(x => x.clientId != r.clientId).append(r)

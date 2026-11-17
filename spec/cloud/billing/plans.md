@@ -4,37 +4,32 @@ The plans the cloud sells, what each includes and the request rates each
 allows. The catalog (`v1`) is fixed in code: an operator changes it only with
 a release. Sources are develop
 `packages/cloud/shared/src/lib/services/subscription-catalog.ts` (plans,
-prices, allowances, billing terms), `org-rate-limits.ts` (rates per class)
-and `lib/voice-session/config.ts` (the realtime speech day). Downstream
-readers are the products' plan screens, which list the paid plans by price
-and choose an upgrade or a downgrade by order.
-
-This library has no state. Develop's resource ceilings (characters,
-sandboxes, containers, storage, apps) and API key counts are gone: the cloud
-hosts nothing, and the only keys are device keys. The `embeddings` and
-`strict` rate classes are gone (no caller). `spec/cloud/deployment.md` checks
-at start-up that the payment provider sells each paid plan at these terms.
+prices, allowances), `org-rate-limits.ts` (rates per class) and
+`lib/voice-session/config.ts` (the realtime speech day). Downstream readers
+are the products' plan screens, which list the paid plans by price and choose
+an upgrade or a downgrade by order. `spec/cloud/deployment.md` checks at
+start-up that the payment provider sells each paid plan at these terms.
 
 ## Story: Offer the paid plans as the provider sells them
 
 > As a person choosing a plan, I want to see each paid plan with its monthly
 > price and what it includes, so that I know what I pay for before I pay.
 
-### A plan is the free plan, Plus or Pro, and only Plus and Pro are sold, monthly in US dollars, one seat each, without trial
+### A plan is free, Plus or Pro, and only Plus and Pro are paid
 
-Free is what an account has without a subscription or a grant. The shell
-renders the keys as `free`, `plus_monthly` and `pro_monthly`; an unknown key
-on the wire is refused by the schema before any spec sees it.
+Free is what an account has without a subscription or a grant. Paid plans
+are sold monthly in US dollars, one seat, without trial. The shell renders
+the keys as `free`, `plus_monthly` and `pro_monthly`; an unknown key on the
+wire is refused by the schema before any spec sees it.
 
 ```quint
 import types.* from "../shared/types"
 type PlanKey = Free | PlusMonthly | ProMonthly
 type PlanTerms = { name: str, rank: int, priceMicros: Micros, allowanceMicros: Micros, completionsRpm: int, standardRpm: int }
-type PaidBilling = { currency: str, interval: str, intervalCount: int, seats: int, trialDays: int }
+pure val catalogVersion: str = "v1"
 pure val freePlan: PlanTerms = { name: "Free", rank: 0, priceMicros: 0, allowanceMicros: 0, completionsRpm: 60, standardRpm: 30 }
 pure val plusPlan: PlanTerms = { name: "Plus", rank: 1, priceMicros: 30000000, allowanceMicros: 25000000, completionsRpm: 120, standardRpm: 60 }
 pure val proPlan: PlanTerms = { name: "Pro", rank: 2, priceMicros: 100000000, allowanceMicros: 90000000, completionsRpm: 300, standardRpm: 120 }
-pure val paidPlanBilling: PaidBilling = { currency: "usd", interval: "month", intervalCount: 1, seats: 1, trialDays: 0 }
 pure def termsOf(key: PlanKey): PlanTerms = if (key == ProMonthly) proPlan else if (key == PlusMonthly) plusPlan else freePlan
 pure def isPaid(key: PlanKey): bool = key != Free
 ```
@@ -48,7 +43,7 @@ number of cents could not be sold as written.
 pure def priceOf(key: PlanKey): Micros = termsOf(key).priceMicros
 pure def amountCentsOf(key: PlanKey): int = centsOf(priceOf(key))
 pure def lawOnlyTheFreePlanIsFree(key: PlanKey): bool = (priceOf(key) == 0) iff not(isPaid(key))
-pure def lawPriceIsWholeCents(key: PlanKey): bool = microsOfCents(amountCentsOf(key)) == priceOf(key)
+pure def lawPriceIsWholeCents(key: PlanKey): bool = isWholeCents(priceOf(key))
 ```
 
 ### Every paid plan includes a monthly allowance smaller than its price, and the free plan includes none
@@ -66,17 +61,19 @@ pure def lawAllowanceBelowPrice(key: PlanKey): bool = allowanceOf(key) >= 0 and 
 
 ### The plan list shows the paid plans only, cheapest first
 
-The public `GET /api/v1/subscriptions/plans` renders each offer as in section
-5 of the plan, with the allowance as `allowance.amountUsd`.
+The public plan list answers `{plans: [{key, name, amountCents, currency:
+"usd", interval: "month", allowance: {amountUsd}}]}`. `allowance.amountUsd`
+is `allowanceMicros` / 1,000,000 written as a decimal string with exactly six
+fraction digits (25000000 → `"25.000000"`).
 
 ```quint
-type PlanOffer = { key: PlanKey, name: str, amountCents: int, currency: str, interval: str, allowanceMicros: Micros }
+type PlanOffer = { key: PlanKey, name: str, amountCents: int, allowanceMicros: Micros }
 pure val paidPlanKeys: List[PlanKey] = List(PlusMonthly, ProMonthly)
-pure def offerOf(key: PlanKey): PlanOffer = { key: key, name: termsOf(key).name, amountCents: amountCentsOf(key), currency: paidPlanBilling.currency, interval: paidPlanBilling.interval, allowanceMicros: allowanceOf(key) }
+pure def offerOf(key: PlanKey): PlanOffer = { key: key, name: termsOf(key).name, amountCents: amountCentsOf(key), allowanceMicros: allowanceOf(key) }
 pure val planOffers: List[PlanOffer] = paidPlanKeys.listMap(k => offerOf(k))
 pure def lawOnlyPaidPlansAreOffered(key: PlanKey): bool = paidPlanKeys.includes(key) iff isPaid(key)
 pure def lawOffersAreCheapestFirst(offerIndex: int): bool = (offerIndex >= 0 and offerIndex + 1 < planOffers.length()) implies planOffers.nthOr(offerIndex, offerOf(Free)).amountCents < planOffers.nthOr(offerIndex + 1, offerOf(Free)).amountCents
-pure val offerIndexValues = Set(0, 1, 2)
+pure val offerIndexValues = Set(0, 1)
 ```
 
 ## Story: Move between plans in one order
@@ -92,7 +89,7 @@ pure def lawHigherRankIncludesMore(a: PlanKey, b: PlanKey): bool = rankOf(a) < r
 pure def lawRankIdentifiesThePlan(a: PlanKey, b: PlanKey): bool = rankOf(a) == rankOf(b) implies a == b
 ```
 
-### Every change from one paid plan to another is an upgrade or a downgrade, by rank
+### Every change from one paid plan to another is an upgrade or a downgrade, by rank, and the reverse change goes the other way
 
 Moving to the free plan is a cancellation and moving from it is a checkout;
 neither is a plan change (`spec/cloud/billing/subscriptionCommands.md`,
@@ -102,7 +99,8 @@ neither is a plan change (`spec/cloud/billing/subscriptionCommands.md`,
 pure def isPlanChange(source: PlanKey, target: PlanKey): bool = isPaid(source) and isPaid(target) and source != target
 pure def isUpgrade(source: PlanKey, target: PlanKey): bool = isPlanChange(source, target) and rankOf(target) > rankOf(source)
 pure def isDowngrade(source: PlanKey, target: PlanKey): bool = isPlanChange(source, target) and rankOf(target) < rankOf(source)
-pure def lawEveryPlanChangeHasADirection(source: PlanKey, target: PlanKey): bool = isPlanChange(source, target) implies (isUpgrade(source, target) or isDowngrade(source, target))
+pure def lawEveryPlanChangeHasADirection(source: PlanKey, target: PlanKey): bool = isPlanChange(source, target) implies (isUpgrade(source, target) != isDowngrade(source, target))
+pure def lawDowngradeUndoesUpgrade(source: PlanKey, target: PlanKey): bool = isUpgrade(source, target) iff isDowngrade(target, source)
 ```
 
 ## Story: Limit requests by plan
@@ -110,18 +108,17 @@ pure def lawEveryPlanChangeHasADirection(source: PlanKey, target: PlanKey): bool
 > As the operator, I want each plan to allow a fixed number of requests a
 > minute in each class, so that one account cannot crowd out the others.
 
-### Each organization may make a fixed number of requests a minute in each of two classes, set by its plan
+### Each plan allows a positive number of requests a minute in each of two classes, each class under its own limit name
 
 Chat completions are one class; batch speech, maps and every other metered
-route are the standard class. The plan is the account's effective plan
-(`spec/cloud/billing/entitlements.md`). Every applier builds
-`perMinute(planRateLimitName(c), requestsPerMinute(plan, c))` of
-`spec/cloud/shared/rateLimit.md` with the organization id as the subject.
-That limit's row is keyed by its value too, so a plan change counts from an
-empty row.
+route are the standard class. The plan is the organization's effective plan
+(`spec/cloud/billing/entitlements.md`), and the organization id is the
+subject. A plan change applies the new limit in the current window
+(`spec/cloud/shared/rateLimit.md`).
 
 ```quint
 type RateClass = CompletionsRequests | StandardRequests
+pure val planRateWindow: Millis = millisPerMinute
 pure def requestsPerMinute(key: PlanKey, rateClass: RateClass): int = if (rateClass == CompletionsRequests) termsOf(key).completionsRpm else termsOf(key).standardRpm
 pure def planRateLimitName(rateClass: RateClass): str = if (rateClass == CompletionsRequests) "planCompletions" else "planStandard"
 pure def lawEveryPlanAllowsSomeRequests(key: PlanKey, rateClass: RateClass): bool = requestsPerMinute(key, rateClass) > 0
@@ -135,17 +132,18 @@ pure def lawClassesNeverShareALimit(a: RateClass, b: RateClass): bool = planRate
 
 ### Every account may use at most 120 minutes of realtime speech per UTC day, whatever its plan
 
-The day starts at midnight UTC. A request for more speech is admitted only
-when it fits in what is left of the day, counted before it starts; a refused
-request answers `402 allowance_exhausted` with `resetsAt`, the next midnight
-(`spec/cloud/services/speechSession.md`, which counts the minutes used and
-asks for one 60 s window at a time).
+An account has one organization (`spec/cloud/identity/accounts.md`), so all
+its devices share the 120 minutes. The day starts at midnight UTC and resets
+at the next midnight. A request for more speech is admitted only when it
+fits in what is left of the day, counted before it starts. How a refusal is
+answered at mint and at a window is in `spec/cloud/services/speechSession.md`.
 
 ```quint
 pure val realtimeSpeechPerDay: Millis = 120 * millisPerMinute
 pure def utcDayStart(dayNow: Millis): Millis = (dayNow / millisPerDay) * millisPerDay
 pure def realtimeSpeechResetsAt(dayNow: Millis): Millis = utcDayStart(dayNow) + millisPerDay
-pure def realtimeSpeechAdmits(speechUsed: Millis, speechRequested: Millis): bool = speechRequested >= 1 and speechUsed + speechRequested <= realtimeSpeechPerDay
+pure def realtimeSpeechAvailable(speechUsed: Millis): Millis = if (speechUsed >= realtimeSpeechPerDay) 0 else realtimeSpeechPerDay - speechUsed
+pure def realtimeSpeechAdmits(speechUsed: Millis, speechRequested: Millis): bool = speechRequested >= 1 and speechRequested <= realtimeSpeechAvailable(speechUsed)
 pure def lawLessUseNeverRefusesMore(speechUsed: Millis, speechUsedBefore: Millis, speechRequested: Millis): bool =
   (speechUsedBefore <= speechUsed and realtimeSpeechAdmits(speechUsed, speechRequested)) implies realtimeSpeechAdmits(speechUsedBefore, speechRequested)
 pure def lawResetIsTheNextMidnight(dayNow: Millis): bool = dayNow >= 0 implies (dayNow < realtimeSpeechResetsAt(dayNow) and realtimeSpeechResetsAt(dayNow) <= dayNow + millisPerDay and realtimeSpeechResetsAt(dayNow) % millisPerDay == 0)
@@ -153,34 +151,4 @@ pure val dayNowValues = Set(0, 1, 86399999, 86400000, 86400001)
 pure val speechUsedValues = Set(0, 7140000, 7199999, 7200000)
 pure val speechUsedBeforeValues = Set(0, 7140000, 7200000)
 pure val speechRequestedValues = Set(1, 60000)
-```
-
-## Story: Apply the plan that funds a call
-
-> As an account owner, I want a call to use the paid period or grant that
-> belongs to my organization, then any credits I have funded.
-
-### A paid subscription takes precedence over an in-force grant
-
-An active paid subscription supplies its catalog plan. Otherwise, an
-unrevoked grant in its effective interval supplies its plan. Among
-overlapping grants the highest catalog rank wins. An account with neither
-can use its funded credits. The ledger locks the organization and spends
-only the amount available in an open allowance period or a credit balance.
-
-```quint
-type FundingGrant = { planKey: PlanKey, effectiveFrom: int, effectiveUntil: int, revoked: bool }
-pure def grantPlanAt(grants: List[FundingGrant], fundingTime: int): PlanKey =
-  grants.foldl(Free, (best, grant) =>
-    if (not(grant.revoked) and grant.effectiveFrom <= fundingTime and fundingTime < grant.effectiveUntil and rankOf(grant.planKey) > rankOf(best)) grant.planKey else best)
-pure def fundedPlan(active: bool, subscribed: PlanKey, grants: List[FundingGrant], fundingTime: int): PlanKey =
-  if (active and isPaid(subscribed)) subscribed else grantPlanAt(grants, fundingTime)
-pure val grantsValues = Set(List(), List({ planKey: PlusMonthly, effectiveFrom: 1, effectiveUntil: 3, revoked: false }), List({ planKey: ProMonthly, effectiveFrom: 0, effectiveUntil: 3, revoked: true }))
-pure val activeValues = Set(true, false)
-pure val subscribedValues = Set(Free, PlusMonthly, ProMonthly)
-pure val fundingTimeValues = Set(0, 1, 3)
-pure def lawPaidPlanHasPrecedence(subscribed: PlanKey, grants: List[FundingGrant], fundingTime: int): bool =
-  isPaid(subscribed) implies fundedPlan(true, subscribed, grants, fundingTime) == subscribed
-pure def lawUnfundedPlanIsFree(active: bool, subscribed: PlanKey, fundingTime: int): bool =
-  (not(active) or subscribed == Free) implies fundedPlan(active, subscribed, List(), fundingTime) == Free
 ```

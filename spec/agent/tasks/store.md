@@ -150,7 +150,7 @@ build can read it. No record is ever removed.
 ```quint
 pure def canScan(s: TaskStore, taskId: str): bool = holdsLock(s) and hasRecord(s, taskId) and authentic(recordFor(s, taskId), s.account)
 pure def rehold(r: StoredTask, decodes: bool): Hold = if (r.hold == Released) Released else if (decodes) Readable else Held
-pure def scan(s: TaskStore, taskId: str, decodes: bool): TaskStore = { ...s, records: s.records.listMap(r => if (r.taskId == taskId) { ...r, hold: rehold(r, decodes) } else r) }
+pure def scan(s: TaskStore, taskId: str, decodes: bool): TaskStore = { ...s, records: s.records.listMap(r => if (r.taskId == taskId and authentic(r, s.account)) { ...r, hold: rehold(r, decodes) } else r) }
 pure def stepRecordsAreNeverDropped(before: TaskStore, after: TaskStore): bool = before.records.every(r => after.records.some(q => q.taskId == r.taskId))
 pure def stepReleasedStaysAside(before: TaskStore, after: TaskStore): bool = before.records.every(r => r.hold == Released implies after.records.some(q => q.taskId == r.taskId and q.hold == Released))
 pure def sometimesHeldRecordStaysUnfinished(s: TaskStore): bool = s.records.some(r => r.hold == Held and r.unfinished)
@@ -172,13 +172,13 @@ pure def slotAdmission(s: TaskStore, taskId: str): SlotAdmission = if (s.records
 pure def canCreateRecord(s: TaskStore, taskId: str): bool = holdsLock(s) and taskId != "" and slotAdmission(s, taskId) == SlotFree
 pure def createRecord(s: TaskStore, taskId: str): TaskStore = { ...s, records: s.records.append({ taskId: taskId, seal: { account: s.account, purpose: TaskRecord }, unfinished: true, hold: Readable }) }
 pure def canEndRecord(s: TaskStore, taskId: str): bool = holdsLock(s) and readTask(s, taskId) == TaskReadable and recordFor(s, taskId).unfinished
-pure def endRecord(s: TaskStore, taskId: str): TaskStore = { ...s, records: s.records.listMap(r => if (r.taskId == taskId) { ...r, unfinished: false } else r) }
+pure def endRecord(s: TaskStore, taskId: str): TaskStore = { ...s, records: s.records.listMap(r => if (r.taskId == taskId and r.hold == Readable) { ...r, unfinished: false } else r) }
 pure val byValues = Set("account1", "account2")
 pure def canAcknowledgeUnreadable(s: TaskStore, by: str, taskId: str): bool = holdsLock(s) and by == s.account and readTask(s, taskId) == TaskUnreadable and recordFor(s, taskId).hold == Held
 pure val weight_createRecord = 4
 pure val weight_scan = 4
 pure val weight_acknowledgeUnreadable = 4
-pure def acknowledgeUnreadable(s: TaskStore, by: str, taskId: str): TaskStore = { ...s, records: s.records.listMap(r => if (r.taskId == taskId) { ...r, hold: Released, unfinished: false } else r) }
+pure def acknowledgeUnreadable(s: TaskStore, by: str, taskId: str): TaskStore = { ...s, records: s.records.listMap(r => if (r.taskId == taskId and r.hold == Held) { ...r, hold: Released, unfinished: false } else r) }
 pure def alwaysReleasedRecordIsFinished(s: TaskStore): bool = s.records.every(r => r.hold == Released implies not(r.unfinished))
 pure def stepOnlyTheOwnerFinishesAHeldRecord(before: TaskStore, via: str, after: TaskStore): bool = before.records.every(r => (r.hold == Held and r.unfinished) implies (via == "acknowledgeUnreadable" or after.records.some(q => q.taskId == r.taskId and q.unfinished)))
 pure def sometimesSlotRefusedAsUnreadable(s: TaskStore): bool = holdsLock(s) and slotAdmission(s, "task2") == SlotUnreadable

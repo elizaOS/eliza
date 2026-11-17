@@ -6,13 +6,9 @@ one refusal language. Sources are develop `packages/cloud/shared/src/lib/api/`
 old `spec/cloud/nativeClients.md` and `spec/auth/index.md`. Downstream readers
 of the refusal body are the products' cloud gateways and voice clients.
 
-This library has no state. String formats stay in the Effect Schemas
-(`src/**/*.schema.ts`): a client idempotency key matches
-`^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$`, and the shell renders keys, codes and
-reasons to their snake_case wire names. Sealing and opening secrets is code
-only; no spec verifies cryptography. Constructor names carry their type's
-meaning (`EmailSignIn`, not `Email`) so that an importer can declare its own
-`Email`, `Session` or `Window` next to `import types.*`.
+This library has no state. String formats (such as the client idempotency
+key) and the snake_case wire names live in the Effect Schemas
+(`src/**/*.schema.ts`); sealing and opening secrets is code only.
 
 ## Story: Use one vocabulary across the cloud
 
@@ -32,27 +28,26 @@ type Micros = int
 type Millis = int
 type CharCount = int
 pure val microsPerUsd: Micros = 1000000
-pure val microsPerCent: Micros = 10000
+pure val microsPerCent: Micros = microsPerUsd / 100
 pure val millisPerSecond: Millis = 1000
 pure val millisPerMinute: Millis = 60000
 pure val millisPerHour: Millis = 3600000
 pure val millisPerDay: Millis = 86400000
 ```
 
-### An amount of whole cents converts to cents and back without loss
+### A price is converted to cents only when it is whole cents
 
-Plan prices are kept in µUSD and read on the wire as `amountCents`. Only an
-amount of whole cents is converted; amounts due arrive from the payment
-provider already in cents.
+Plan prices are kept in µUSD and read on the wire as `amountCents`; `centsOf`
+is exact only for whole cents, so a caller states `isWholeCents` of each
+amount it converts. Amounts due arrive from the payment provider in cents.
 
 ```quint
 pure def microsOfCents(cents: int): Micros = cents * microsPerCent
 pure def isWholeCents(amount: Micros): bool = amount % microsPerCent == 0
 pure def centsOf(amount: Micros): int = amount / microsPerCent
-pure def lawCentsOfWholeIsExact(amount: Micros): bool = isWholeCents(amount) implies microsOfCents(centsOf(amount)) == amount
 ```
 
-### A hold is keyed by its service, caller, request and part, and a provider call by its kind and id
+### Each metered hold and each provider call has one structural key
 
 Keys are records compared by structure; the shell renders them. The caller
 is the calling credential for maps, so two credentials never share a maps
@@ -69,7 +64,7 @@ type ProviderKind = CheckoutSession | SubscriptionUpdate | SubscriptionSchedule 
 type ProviderKey = { providerKind: ProviderKind, providerId: str }
 ```
 
-### A person signs in by email, phone or Google, and a request carries a device key or a session
+### A person signs in by one of three methods and calls with one of two credentials
 
 A spec that accepts only some methods, such as code sign-in by email or
 phone, guards `SignInMethod` rather than declaring its own.
@@ -119,12 +114,10 @@ type Sealed = { purpose: SealPurpose, keyId: int }
 
 Every refusal is answered with the status of its code and the body
 `{error, errorDescription, retryable, retryAt?, resetsAt?, reason?}`, both
-times in epoch milliseconds; an answer with `retryAt` also sets
-`Retry-After` to the same time in whole seconds from now, rounded up. No spec
-refuses with a code outside this list, and a spec that builds a refusal
-states that it is `wellFormed`.
+times in epoch milliseconds. No spec refuses with a code outside this list,
+and a spec that builds a refusal states that it is `wellFormed`.
 
-### Every refusal code has exactly one HTTP status
+### Each refusal code answers with the HTTP status of its class
 
 ```quint
 type RefusalCode =
@@ -152,14 +145,16 @@ pure def statusOf(code: RefusalCode): int =
   else if (code == FreshSessionRequired) 428
   else if (code == RateLimited) 429
   else if (code == ProviderInvalidResponse) 502
-  else 503
+  else if (Set(ServiceUnavailable, ProviderUnavailable, RateLimitUnavailable).contains(code)) 503
+  else 500
+pure def lawEveryCodeHasAClassStatus(code: RefusalCode): bool = statusOf(code) != 500
 ```
 
 ### A reason refines only the code it belongs to
 
-`account_inactive` answers an action on an account that is not Active (the
-operator adding credits, a redeem); a credential of such an account is
-refused as `401` by `requestAuth`.
+`authentication_required` always carries a credential reason; a missing or
+malformed bearer is `credential_unknown`. `account_inactive` answers an action
+on an account that is not Active (the operator adding credits, a redeem).
 
 ```quint
 type RefusalReason =
@@ -184,38 +179,54 @@ pure def lawCredentialFaultIffAuthenticationRequired(code: RefusalCode, reason: 
   reasonFits(code, reason) implies (code == AuthenticationRequired iff isCredentialReason(reason))
 ```
 
-### Only a rate limit, an outage or a spent allowance carries a time
-
-A rate limit always says when to retry and an outage may; a spent allowance
-always says when it resets.
-
-```quint
-type WaitTime = NoWait | RetryAt({ retryAtMs: Millis }) | ResetsAt({ resetsAtMs: Millis })
-pure def waitFits(code: RefusalCode, wait: WaitTime): bool = match wait {
-  | NoWait => code != RateLimited and code != AllowanceExhausted
-  | RetryAt(x) => code == RateLimited or statusOf(code) == 503
-  | ResetsAt(x) => code == AllowanceExhausted
-}
-```
-
 ### Only a rate limit or a passing outage is retryable
 
 A client retries a retryable refusal unchanged; any other refusal needs the
 person or the request to change first. A spent allowance is not retryable,
 and neither is a missing configuration (`google_not_configured`).
+`isRetryable` tells whether a code can ever be retried; the wire `retryable`
+is `retryableOf` the whole refusal.
 
 ```quint
+type WaitTime = NoWait | RetryAt({ retryAtMs: Millis }) | ResetsAt({ resetsAtMs: Millis })
 type Refusal = { code: RefusalCode, reason: RefusalReason, wait: WaitTime }
 pure def isRetryable(code: RefusalCode): bool = statusOf(code) == 429 or statusOf(code) == 503
 pure def retryableOf(r: Refusal): bool = isRetryable(r.code) and r.reason != GoogleNotConfigured
 ```
 
-### A refusal is well formed when its reason and its time fit its code
+### A refusal carries a time only where waiting helps
+
+A rate limit always says when to retry and a retryable outage may; a spent
+allowance always says when it resets. A refusal that is not retryable never
+carries `retryAt`.
 
 ```quint
-pure def wellFormed(r: Refusal): bool = reasonFits(r.code, r.reason) and waitFits(r.code, r.wait)
+pure def waitFits(r: Refusal): bool = {
+  val w = r.wait
+  match w {
+    | NoWait => r.code != RateLimited and r.code != AllowanceExhausted
+    | RetryAt(x) => retryableOf(r)
+    | ResetsAt(x) => r.code == AllowanceExhausted
+  }
+}
+```
+
+### A refusal is well formed when its reason and its time fit it
+
+```quint
+pure def wellFormed(r: Refusal): bool = reasonFits(r.code, r.reason) and waitFits(r)
 pure def refuse(code: RefusalCode): Refusal = { code: code, reason: NoReason, wait: NoWait }
 pure def refuseFor(code: RefusalCode, reason: RefusalReason): Refusal = { code: code, reason: reason, wait: NoWait }
 pure def refuseUntil(code: RefusalCode, at: Millis): Refusal = { code: code, reason: NoReason, wait: RetryAt({ retryAtMs: at }) }
 pure def refuseAllowance(resetsAt: Millis): Refusal = { code: AllowanceExhausted, reason: NoReason, wait: ResetsAt({ resetsAtMs: resetsAt }) }
+```
+
+### Retry-After never sends a client back before its retry time
+
+An answer with `retryAt` also sets `Retry-After` to the whole seconds from
+now to that time, rounded up, and at least one second.
+
+```quint
+pure def retryAfterSeconds(at: Millis, now: Millis): int = if (at <= now) 1 else (at - now + millisPerSecond - 1) / millisPerSecond
+pure def lawRetryAfterIsNotEarly(at: Millis, now: Millis): bool = now + retryAfterSeconds(at, now) * millisPerSecond >= at
 ```

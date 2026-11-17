@@ -1,17 +1,12 @@
 # Notification mirror
 
-The opt-in mirror of other apps' notifications on an Android host: the
-`android/notifications/` module's `NotificationMirror`,
-`NotificationMirrorPolicy` and `NotificationMirrorListenerService`. The
-consumer declares its listener subclass behind
-`BIND_NOTIFICATION_LISTENER_SERVICE` and keeps its preferences name, Keystore
-alias and history file name stable once installed. The mirror shows rows in
-the owner's app; nothing here leaves the device or reaches the agent's
-context. The app's own notices are the notification projection's
-(`notificationProjection.md`). Device facts for owner requests come from
-[the bridge](./bridge.md). Notification text,
-intents and Android keys stay in the shell; the spec models who may collect,
-which rows exist, and what history keeps.
+The opt-in mirror of other apps' notifications on an Android host
+(`android/notifications/`, `NotificationMirror*`). The consumer declares its
+listener subclass behind `BIND_NOTIFICATION_LISTENER_SERVICE` and keeps its
+preferences name, Keystore alias and history file name stable once
+installed. Rows show in the owner's app only: nothing leaves the device or
+enters the agent's context. Call admission is [the bridge](./bridge.md)'s;
+text, intents and Android keys stay in the shell.
 
 ## Story: Mirror only the notifications I allowed
 
@@ -40,34 +35,29 @@ pure val initial: MirrorState = { revision: 0, ownerEnabled: false, historyConse
 pure def collecting(s: MirrorState): bool = s.granted and s.ownerEnabled and not(s.paused)
 pure def keepsHistory(s: MirrorState): bool = collecting(s) and s.historyConsent
 pure def afterDeletion(file: HistoryFile, deleted: bool): HistoryFile = if (deleted or file == NoFile) NoFile else UndeletedFile
+pure def purged(deleted: bool, s: MirrorState): MirrorState =
+  { ...s, generation: s.generation + 1, handles: List(), historyFile: afterDeletion(s.historyFile, deleted) }
 pure def canObserveAccess(s: MirrorState, granted: bool): bool = granted != s.granted
 pure def observeAccess(s: MirrorState, granted: bool, deleted: bool): MirrorState =
-  if (granted) { ...s, granted: true }
-  else { ...s, granted: false, generation: s.generation + 1, handles: List(), historyFile: afterDeletion(s.historyFile, deleted) }
+  if (granted) { ...s, granted: true } else { ...purged(deleted, s), granted: false }
 pure def canPause(s: MirrorState): bool = not(s.paused)
-pure def pause(s: MirrorState, deleted: bool): MirrorState =
-  { ...s, paused: true, generation: s.generation + 1, handles: List(), historyFile: afterDeletion(s.historyFile, deleted) }
+pure def pause(s: MirrorState, deleted: bool): MirrorState = { ...purged(deleted, s), paused: true }
 pure def canResume(s: MirrorState): bool = s.paused
 pure def resume(s: MirrorState): MirrorState = { ...s, paused: false, generation: s.generation + 1, handles: List() }
 ```
 
 ### A selection holds at most twenty visible apps, and an app whose signer changed must be removed before it is chosen again
 
-The picker offers enabled, exported launcher activities, one per package,
-never the consumer itself. Each chosen app is pinned to its current signing
-digest; a later signer change marks it changed until a saved selection drops
-it. A selection is saved under the reviewed revision, after the purge, as a
-settings change is.
+The picker offers exported launcher apps, never the consumer. A chosen app
+is pinned to its signing digest; a signer change marks it until dropped.
 
 ```quint
 pure val maxSelectedApps = 20
 pure def canChooseApps(s: MirrorState, expectedRevision: int, requested: Set[str], visible: Set[str], facts: HostFacts): bool =
   meetsNeed(WithFocus, facts) and expectedRevision == s.revision and requested.size() <= maxSelectedApps and
   requested.subseteq(visible) and requested.intersect(s.changedSigners).size() == 0
-pure def chooseApps(s: MirrorState, expectedRevision: int, requested: Set[str], visible: Set[str], facts: HostFacts, deleted: bool, committed: bool): MirrorState = {
-  val purged = { ...s, generation: s.generation + 1, handles: List(), historyFile: afterDeletion(s.historyFile, deleted) }
-  if (deleted and committed) { ...purged, selected: requested, changedSigners: Set(), revision: s.revision + 1 } else purged
-}
+pure def chooseApps(s: MirrorState, expectedRevision: int, requested: Set[str], visible: Set[str], facts: HostFacts, deleted: bool, committed: bool): MirrorState =
+  if (deleted and committed) { ...purged(deleted, s), selected: requested, changedSigners: Set(), revision: s.revision + 1 } else purged(deleted, s)
 pure def canObserveSignerChanged(s: MirrorState, app: str): bool = s.selected.contains(app) and not(s.changedSigners.contains(app))
 pure def observeSignerChanged(s: MirrorState, app: str): MirrorState = { ...s, changedSigners: s.changedSigners.union(Set(app)) }
 pure val requestedValues = Set(Set(), Set("a"), Set("a", "b"))
@@ -80,16 +70,13 @@ pure def sometimesChangedSignerAwaitsRemoval(s: MirrorState): bool = s.changedSi
 
 ### A settings change is saved only for the reviewed revision and only after rows and history are purged
 
-Every change cuts the generation, so callbacks queued under the old settings
-cannot act, and deletes history first; a failed deletion or a failed commit
-saves nothing. A saved change gets a fresh revision.
+The purge cuts the generation, so callbacks queued under the old settings
+cannot act; a failed deletion or a failed commit saves nothing.
 
 ```quint
 pure def canSaveSettings(s: MirrorState, expectedRevision: int, facts: HostFacts): bool = meetsNeed(WithFocus, facts) and expectedRevision == s.revision
-pure def saveSettings(s: MirrorState, expectedRevision: int, ownerEnabled: bool, historyConsent: bool, facts: HostFacts, deleted: bool, committed: bool): MirrorState = {
-  val purged = { ...s, generation: s.generation + 1, handles: List(), historyFile: afterDeletion(s.historyFile, deleted) }
-  if (deleted and committed) { ...purged, ownerEnabled: ownerEnabled, historyConsent: historyConsent, revision: s.revision + 1 } else purged
-}
+pure def saveSettings(s: MirrorState, expectedRevision: int, ownerEnabled: bool, historyConsent: bool, facts: HostFacts, deleted: bool, committed: bool): MirrorState =
+  if (deleted and committed) { ...purged(deleted, s), ownerEnabled: ownerEnabled, historyConsent: historyConsent, revision: s.revision + 1 } else purged(deleted, s)
 pure def stepPolicyChangeFollowsAPurge(before: MirrorState, after: MirrorState): bool =
   after.revision != before.revision implies (after.revision == before.revision + 1 and after.historyFile == NoFile and after.handles.length() == 0 and after.generation > before.generation)
 ```
@@ -102,37 +89,39 @@ pure def stepPolicyChangeFollowsAPurge(before: MirrorState, after: MirrorState):
 
 ### A notice is admitted only from another app of my user, posted under its own UID, selected and with its current signer
 
-The shell classifies the notice in that order; a removed or unreadable
-package is `MismatchedUidNotice`. A listed row keeps its handle while its
-posting time is unchanged; the Android key never leaves native code. A list
-read on a locked or non-interactive device, or with collection off, drops
-every row and returns none.
+A removed package counts as `MismatchedUidNotice`. A row keeps its handle
+while its posting time holds; a list read that is locked, unbound or not
+collecting drops every row.
 
 ```quint
 type NoticeSource = ForeignAppNotice | OwnAppNotice | OtherUserNotice | MismatchedUidNotice
 pure val maxActiveRows = 100
 pure def admits(s: MirrorState, source: NoticeSource, app: str): bool =
   source == ForeignAppNotice and s.selected.contains(app) and not(s.changedSigners.contains(app))
+pure def boundTo(s: MirrorState, instance: int): bool = {
+  val slot = s.listener
+  match slot { | Bound(b) => b.instance == instance | Unbound => false }
+}
 pure def isBound(s: MirrorState): bool = {
   val slot = s.listener
   match slot { | Bound(_) => true | Unbound => false }
 }
 pure def withHandle(handles: List[RowHandle], h: RowHandle): List[RowHandle] = {
-  val others = handles.select(x => x.key != h.key).append(h)
-  if (others.length() > maxActiveRows) others.removeAt(0) else others
+  val rows = handles.select(x => x.key != h.key).append(h)
+  if (rows.length() > maxActiveRows) rows.removeAt(0) else rows
 }
 pure def listNotice(s: MirrorState, key: str, app: str, postedAt: int, source: NoticeSource, unlocked: bool): MirrorState =
   if (not(collecting(s) and isBound(s) and unlocked)) { ...s, handles: List() }
-  else if (not(admits(s, source, app))) s
-  else if (s.handles.some(h => h.key == key and h.postedAt == postedAt)) s
+  else if (not(admits(s, source, app)) or s.handles.some(h => h.key == key and h.postedAt == postedAt)) s
   else { ...s, handles: withHandle(s.handles, { key: key, handle: s.nextHandle, postedAt: postedAt }), nextHandle: s.nextHandle + 1 }
 pure val keyValues = Set("k1", "k2")
 pure val postedAtValues = Set(1, 2)
 ```
 
-### A row handle exists only while collecting with a connected listener, and a replaced notice gets a fresh one
+### A row handle exists only while collecting with a connected listener, and a new or replaced notice gets a fresh one
 
-At most the newest hundred rows hold handles.
+At most the newest hundred rows hold handles; the Android key never leaves
+native code.
 
 ```quint
 pure def alwaysRowsNeedLiveCollection(s: MirrorState): bool = s.handles.length() > 0 implies (collecting(s) and isBound(s))
@@ -144,32 +133,25 @@ pure def sometimesLiveRow(s: MirrorState): bool = s.handles.length() > 0
 
 ### A queued callback acts only for its own listener and the generation it was queued in
 
-The listener runs post and removal callbacks one at a time from a queue of
-64. Queuing captures the generation and drops the key's row. A refused
-submission (full queue, or the executor shut down), a new listener, the
-current listener's disconnect, screen off and a host pause each cut the
-generation and drop every row; overflow and disconnect also drop the waiting
-callbacks. An admitted post makes a row only on an unlocked, interactive
-device; history may still record it. A history append that fails records
-nothing and drops every row.
+Callbacks run one at a time from a queue of 64; queuing captures the
+generation and drops the key's row. A refused submission (full queue or
+shut-down executor) also drops the queue; a new listener, a disconnect,
+screen off and a host pause cut the generation. A post makes a row only on
+an unlocked, interactive device; a failed history append drops every row.
 
 ```quint
+pure val maxQueuedCallbacks = 64
 pure val noCallback: Callback = { instance: 0, generation: -1, key: "", app: "", postedAt: 0, removal: false }
-pure def boundTo(s: MirrorState, instance: int): bool = {
-  val slot = s.listener
-  match slot { | Bound(b) => b.instance == instance | Unbound => false }
-}
 pure def connectListener(s: MirrorState): MirrorState =
   { ...s, listener: Bound({ instance: s.nextInstance }), nextInstance: s.nextInstance + 1, generation: s.generation + 1, handles: List() }
 pure def canDisconnectListener(s: MirrorState, instance: int): bool = boundTo(s, instance)
 pure def disconnectListener(s: MirrorState, instance: int): MirrorState =
   { ...s, listener: Unbound, generation: s.generation + 1, handles: List(), queue: s.queue.select(c => c.instance != instance) }
 pure def redactRows(s: MirrorState): MirrorState = { ...s, generation: s.generation + 1, handles: List() }
-pure def canEnqueueCallback(s: MirrorState, instance: int): bool = instance >= 1 and instance < s.nextInstance
+pure def canEnqueueCallback(s: MirrorState, instance: int): bool = instance >= 1 and instance < s.nextInstance and s.queue.length() < maxQueuedCallbacks
 pure def enqueueCallback(s: MirrorState, instance: int, key: str, app: str, postedAt: int, removal: bool): MirrorState =
   { ...s, queue: s.queue.append({ instance: instance, generation: s.generation, key: key, app: app, postedAt: postedAt, removal: removal }), handles: s.handles.select(h => h.key != key) }
-pure def canOverflowQueue(s: MirrorState): bool = s.queue.length() > 0
-pure def overflowQueue(s: MirrorState): MirrorState = { ...s, generation: s.generation + 1, handles: List(), queue: List() }
+pure def refuseCallback(s: MirrorState): MirrorState = { ...s, generation: s.generation + 1, handles: List(), queue: List() }
 pure def staleCallback(s: MirrorState): bool = {
   val c = s.queue.nthOr(0, noCallback)
   c.generation != s.generation or not(boundTo(s, c.instance))
@@ -189,9 +171,10 @@ pure def runCallback(s: MirrorState, source: NoticeSource, unlocked: bool, appen
     historyFile: if (recording) KeptFile({ rows: withRecord(keptRows(s.historyFile), { app: c.app, at: now }) }) else s.historyFile }
 }
 pure val instanceValues = Set(1, 2)
-pure def alwaysQueuedCallbacksAreIssued(s: MirrorState): bool = s.queue.every(c => c.generation <= s.generation and c.instance >= 1 and c.instance < s.nextInstance)
-pure def stepGenerationNeverGoesBack(before: MirrorState, after: MirrorState): bool = after.generation >= before.generation
-pure def stepCutGenerationDropsEveryRow(before: MirrorState, after: MirrorState): bool = after.generation != before.generation implies after.handles.length() == 0
+pure def alwaysQueuedCallbacksAreIssued(s: MirrorState): bool =
+  s.queue.length() <= maxQueuedCallbacks and s.queue.every(c => c.generation <= s.generation and c.instance >= 1 and c.instance < s.nextInstance)
+pure def stepCutGenerationDropsEveryRow(before: MirrorState, after: MirrorState): bool =
+  after.generation >= before.generation and (after.generation != before.generation implies after.handles.length() == 0)
 pure def stepStaleCallbackChangesNothing(before: MirrorState, via: str, after: MirrorState): bool =
   (via == "runCallback" and staleCallback(before)) implies (after.handles == before.handles and after.historyFile == before.historyFile)
 pure def sometimesStaleCallbackWaits(s: MirrorState): bool = s.queue.some(c => c.generation < s.generation)
@@ -199,9 +182,9 @@ pure def sometimesStaleCallbackWaits(s: MirrorState): bool = s.queue.some(c => c
 
 ### A secret notice is never shown or opened, and previews off hide the content
 
-A hidden row shows the app label and fixed hidden-content text and is
-marked redacted; it can still be dismissed if clearable. Open runs only the
-posting app's own content intent.
+A hidden row shows the app label and fixed hidden-content text and is marked
+redacted; it can still be dismissed if clearable. Open runs only an intent
+the posting app created.
 
 ```quint
 type NoticeLook = PublicNotice | SecretNotice
@@ -219,11 +202,9 @@ pure def lawSecretNoticeIsNeitherShownNorOpened(previewAllowed: bool, intent: In
 > posted and removed notices, kept only while I allow it, so that nothing
 > lingers after I turn it off.
 
-History is separate consent. A record holds a random ID, the package, its
-signing digest, the app label, the recorded and posting times and Posted or
-Removed; never a title, text, Android key or intent. It is encrypted with a
-Keystore key in no-backup storage; a deletion checks that no base, backup or
-pending file remains.
+History is separate consent. A record holds an ID, package, signing digest,
+label, times and Posted or Removed, never text, key or intent; it is
+encrypted in no-backup storage, and a deletion checks no file remains.
 
 ### History is kept only with my consent while collecting, for selected apps, at most a hundred records
 
@@ -241,8 +222,8 @@ pure def sometimesHistoryKept(s: MirrorState): bool = keptRows(s.historyFile).le
 ### A failed deletion is never reported as cleared and blocks history until a deletion succeeds
 
 The owner's Clear cuts the generation, so queued callbacks cannot refill
-history. A history file that should be gone but is not is never read or
-appended to; each later status call retries the deletion.
+history. A file that should be gone but is not is never read or appended
+to; each later status call retries the deletion.
 
 ```quint
 type Confirmation = AndroidReturned | NoReturn
@@ -252,8 +233,8 @@ type MirrorReport = ActionRequested({ handle: int, rowAction: RowAction, confirm
 type MirrorStep = { state: MirrorState, out: List[MirrorReport] }
 pure def canClearHistory(s: MirrorState, facts: HostFacts): bool = meetsNeed(WithFocus, facts)
 pure def clearHistory(s: MirrorState, facts: HostFacts, deleted: bool): MirrorStep = {
-  val file = afterDeletion(s.historyFile, deleted)
-  { state: { ...s, generation: s.generation + 1, handles: List(), historyFile: file }, out: List(if (file == NoFile) HistoryCleared else HistoryNotCleared) }
+  val cleared = purged(deleted, s)
+  { state: cleared, out: List(if (cleared.historyFile == NoFile) HistoryCleared else HistoryNotCleared) }
 }
 pure def canRetryHistoryDeletion(s: MirrorState): bool = s.historyFile == UndeletedFile
 pure def retryHistoryDeletion(s: MirrorState, deleted: bool): MirrorState = { ...s, historyFile: afterDeletion(s.historyFile, deleted) }
@@ -296,12 +277,10 @@ pure def stepHistoryOpensUnderCurrentAuthority(before: MirrorState, via: str, af
 
 ### Android accepting an open or dismiss request does not establish the new screen or the removal
 
-Inside the mirror lock the shell rereads the Android row by its key; it is
-`CurrentRow` only if its posting time is unchanged and it still passes
-admission. Open sends the posting app's own intent, then cancels the row if
-it auto-cancels; Dismiss asks the listener to cancel a clearable row.
-`AndroidReturned` means those calls returned. The row disappears only when
-Android's removal callback arrives. The assistant never sends an action.
+The shell rereads the Android row by key under the mirror lock: `CurrentRow`
+only with an unchanged posting time and current admission. `AndroidReturned`
+means the send or cancel call returned; the row goes only on Android's
+removal callback. The assistant never sends an action.
 
 ```quint
 type AndroidRow = RowGone | CurrentRow({ look: NoticeLook, intent: IntentOwner, clearable: bool })

@@ -63,7 +63,7 @@ pure val elapsedValues = Set(1, 30000, 300000, 600001)
 pure def canObserveEpoch(s: SecondFactor, personEpoch: int): bool = personEpoch > s.personEpoch
 pure def observeEpoch(s: SecondFactor, personEpoch: int): SecondFactor = { ...s, personEpoch: personEpoch }
 pure val personEpochValues = Set(0, 1)
-pure def alwaysCallerIsASession(s: SecondFactor): bool = S::alwaysAccessWithinLifetimes(s.caller) and s.caller.epoch <= s.personEpoch
+pure def alwaysCallerIsASession(s: SecondFactor): bool = s.caller.phase == S::Live and S::alwaysFamilyEndsThirtyDaysAfterSignIn(s.caller) and S::alwaysAccessWithinLifetimes(s.caller) and s.caller.epoch <= s.personEpoch
 pure def sometimesBothFactorsConfirmed(s: SecondFactor): bool = isConfirmed(s.factors, Totp) and isConfirmed(s.factors, Sms)
 ```
 
@@ -87,19 +87,23 @@ pure def sometimesFactorRemovedAfterStepUp(s: SecondFactor): bool = s.factors.to
 > get a session, and to give up on a challenge after a few wrong codes, so
 > that a stolen password, email or phone code alone never signs anyone in.
 
-### A first factor for a person with a confirmed factor opens a challenge of 5 minutes instead of a session
+### A first factor for a person with a confirmed factor opens a challenge of at most 5 minutes instead of a session
 
 `codeChallenges` and `federatedSignIn` answer `afterFirstFactor` of the
 person's factors: a session, or this challenge, never both. A new sign-in
-replaces a challenge that is no longer live.
+while one is live replaces it with the same deadline and failures, so a
+replacement never extends a challenge or forgives a wrong code.
 
 ```quint
 type FirstFactorOutcome = SessionStarts | SecondFactorRequired
 pure def afterFirstFactor(f: Factors): FirstFactorOutcome = if (hasFactor(f)) SecondFactorRequired else SessionStarts
 pure val challengeLifetime: Millis = 5 * millisPerMinute
 pure def isLive(c: LoginChallenge, now: Millis): bool = c.phase == Open and now < c.expiresAt
-pure def canOpenChallenge(s: SecondFactor): bool = hasFactor(s.factors) and not(isLive(s.challenge, clock(s)))
-pure def openChallenge(s: SecondFactor): SecondFactor = { ...s, challenge: { phase: Open, failures: 0, expiresAt: clock(s) + challengeLifetime, smsCode: NoCode } }
+pure def canOpenChallenge(s: SecondFactor): bool = hasFactor(s.factors)
+pure def openChallenge(s: SecondFactor): SecondFactor =
+  if (isLive(s.challenge, clock(s))) { ...s, challenge: { ...s.challenge, smsCode: NoCode } }
+  else { ...s, challenge: { phase: Open, failures: 0, expiresAt: clock(s) + challengeLifetime, smsCode: NoCode } }
+pure def stepReplacementNeverExtends(before: SecondFactor, via: str, after: SecondFactor): bool = (via == "openChallenge" and isLive(before.challenge, clock(before))) implies (after.challenge.expiresAt == before.challenge.expiresAt and after.challenge.failures == before.challenge.failures)
 pure def alwaysChallengeEndsWithinFiveMinutes(s: SecondFactor): bool = s.challenge.expiresAt <= clock(s) + challengeLifetime and (s.challenge.phase == Unopened implies (s.challenge.failures == 0 and s.challenge.smsCode == NoCode))
 pure def sometimesChallengeOpen(s: SecondFactor): bool = isLive(s.challenge, clock(s))
 ```
@@ -181,7 +185,7 @@ pure def expireChallenge(s: SecondFactor): SecondFactor = { ...s, challenge: { .
 pure def sometimesExpired(s: SecondFactor): bool = s.challenge.phase == Expired
 ```
 
-### A refused completion says the challenge is locked, expired or unknown, the method is not set up, or the code is wrong
+### A refused completion says the challenge is locked, expired or unknown, the method is not set up, the SMS code is gone, or the code is wrong
 
 The shell answers this of the state after the attempt.
 
@@ -191,6 +195,7 @@ pure def challengeRefusal(s: SecondFactor, method: FactorMethod): Refusal =
   else if (s.challenge.phase == Expired or (s.challenge.phase == Open and clock(s) >= s.challenge.expiresAt)) refuseFor(AuthenticationRequired, CredentialExpired)
   else if (s.challenge.phase != Open) refuseFor(AuthenticationRequired, CredentialUnknown)
   else if (not(isConfirmed(s.factors, method))) refuse(InvalidRequest)
+  else if (method == Sms and not(codeLive(s.challenge.smsCode, clock(s)))) refuseFor(AuthenticationRequired, CredentialExpired)
   else refuse(CredentialProofInvalid)
 ```
 
@@ -203,7 +208,8 @@ pure def challengeRefusal(s: SecondFactor, method: FactorMethod): Refusal =
 ### A step-up with a confirmed factor and its code marks the calling session and keeps its token
 
 The session records `stepUpAt` and `mfaAt` as now and answers
-`{stepUpAt, mfaAt}`; an SMS step-up code is used once.
+`{stepUpAt, mfaAt}`; an SMS step-up code is used once. Wrong step-up
+codes are limited by `shared/rateLimit`, not counted here.
 
 ```quint
 pure def canVerifyStepUp(s: SecondFactor, method: FactorMethod): bool = S::isActive(s.caller, s.personEpoch) and isConfirmed(s.factors, method) and (method == Totp or codeLive(s.stepUpCode, clock(s)))

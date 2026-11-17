@@ -94,9 +94,15 @@ pure def canAnnounceReady(s: ReadingLease, message: ReadyMessage): bool = admits
 pure def announceReady(s: ReadingLease, message: ReadyMessage): ReadingLease = { ...s, world: DocumentReady }
 pure def canIsolatedWorldLost(s: ReadingLease): bool = s.world != NoIsolatedWorld
 pure def isolatedWorldLost(s: ReadingLease): ReadingLease = { ...s, world: NoIsolatedWorld, phase: endedPhase(s.phase) }
-pure def alwaysReadingStaysOnReadyDocument(s: ReadingLease): bool = inProgress(s.phase) implies s.world == DocumentReady
+pure def stepOnlyAnnouncementMakesReady(before: ReadingLease, via: str, after: ReadingLease): bool =
+  (after.world == DocumentReady and before.world != DocumentReady) implies
+    (via == "announceReady" and (before.world == AwaitingPreparedLoad or before.world == AwaitingDocument))
 pure def stepIsolatedWorldNeverReturns(before: ReadingLease, after: ReadingLease): bool =
   before.world == NoIsolatedWorld implies after.world == NoIsolatedWorld
+pure def lawPreparedLoadNeedsItsNonce(message: ReadyMessage): bool =
+  (admitsReadiness(AwaitingPreparedLoad, message) implies message.announcement == PreparedNonce) and
+    (admitsReadiness(AwaitingDocument, message) implies message.announcement == SharedReady)
+pure def alwaysReadingStaysOnReadyDocument(s: ReadingLease): bool = inProgress(s.phase) implies s.world == DocumentReady
 pure def sometimesDocumentReady(s: ReadingLease): bool = s.world == DocumentReady
 ```
 
@@ -217,8 +223,8 @@ pure def sometimesSpeakingThroughRoute(s: ReadingLease): bool = s.phase == Speak
 
 Stop reading, the review lease (two minutes from admission), the playback
 lease (twenty minutes from the spent token), the host pausing or hiding
-the page, and the reading tab closing or crashing each end the reading;
-another tab's events leave it alone.
+the page, and the reading tab closing or crashing each end the reading.
+The shell forwards only the reading tab's events as `endReading`.
 
 ```quint
 pure val reviewLeaseMs = 120000
