@@ -55,6 +55,8 @@ function read(file) {
  * The APK signer authenticates the resulting inventory. This is not release authorization.
  * `.bin` blobs preserve gzip bytes through Android asset packaging; PGlite archives
  * are installed beside bundle/, as required by the embedded runtime's resolver.
+ * `gateway: false` stages an agent-only payload, for a host that runs the agent
+ * alone (EmbeddedAgentService); otherwise the gateway entrypoints are required.
  */
 export function stageAndroidRuntimeInventory({
   assetsDirectory,
@@ -62,7 +64,9 @@ export function stageAndroidRuntimeInventory({
   excludedAgentDirectories = [],
   format = DEFAULT_ANDROID_RUNTIME_INVENTORY_FORMAT,
   targetAbi = "arm64-v8a",
+  gateway = true,
 }) {
+  if (typeof gateway !== "boolean") fail("Invalid runtime gateway choice");
   if (!["arm64-v8a", "x86_64"].includes(targetAbi))
     fail("Unsupported runtime ABI");
   const loaderArch = targetAbi === "arm64-v8a" ? "aarch64" : "x86_64";
@@ -147,8 +151,12 @@ export function stageAndroidRuntimeInventory({
   }
   for (const required of [
     "bundle/agent-bundle.js",
-    "bundle/gateway/bootstrap.mjs",
-    "bundle/gateway/local-agent-gateway.mjs",
+    ...(gateway
+      ? [
+          "bundle/gateway/bootstrap.mjs",
+          "bundle/gateway/local-agent-gateway.mjs",
+        ]
+      : []),
   ])
     if (!destinations.has(required)) fail("Incomplete runtime asset inventory");
   const otherLoader = targetAbi === "arm64-v8a" ? "x86_64" : "aarch64";

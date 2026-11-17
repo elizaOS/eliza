@@ -184,7 +184,10 @@ inventory from an explicit agent asset directory and native library directory.
 Archive blobs preserve gzip bytes through aapt and install beside the immutable
 bundle for PGlite. Hosts supply exact directory exclusions and an optional
 inventory `format` (default `eliza-runtime-v1`), and package the returned
-`assets/agent-runtime.inventory` plus assets. Hosts using ota-trust declare the same
+`assets/agent-runtime.inventory` plus assets. The agent bundle is always
+required; the gateway entrypoints are required unless the host passes
+`gateway: false`, as a host of `EmbeddedAgentService` does, since it runs the
+agent alone. Hosts using ota-trust declare the same
 format and exclusions in their host policy. This does not sign or authorize a release.
 The native host suite consumes a Node-produced inventory with the actual Java
 extractor and checks restart reuse, archive bytes and tamper rejection.

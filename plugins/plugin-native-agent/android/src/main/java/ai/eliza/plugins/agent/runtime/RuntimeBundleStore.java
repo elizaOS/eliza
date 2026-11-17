@@ -219,7 +219,7 @@ public class RuntimeBundleStore {
       total += entry.size; if (total > MAX_TOTAL) throw new IOException("Runtime inventory exceeds limit");
       entries.add(entry);
     }
-    for (String required : new String[]{"bundle/agent-bundle.js", "bundle/gateway/bootstrap.mjs", "bundle/gateway/local-agent-gateway.mjs"}) if (!destinations.contains(required)) throw new IOException("Incomplete runtime inventory");
+    if (!destinations.contains("bundle/agent-bundle.js")) throw new IOException("Incomplete runtime inventory");
     if (!libraries.contains("libeliza_bun.so") ||
         libraries.contains("libeliza_ld_musl_aarch64.so") == libraries.contains("libeliza_ld_musl_x86_64.so"))
       throw new IOException("Native inventory requires Bun and exactly one supported loader");
