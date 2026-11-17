@@ -97,6 +97,30 @@ pure val weight_attach = 3
 pure val weight_registerRuntime = 3
 ```
 
+### Both canonical scheduler owners retain their own invariants
+
+Discovered by the proof: the composed scheduler admitted invalid process or query owner states, including an unissued query identity that an attached tick could not find. The process and query components retain every invariant of their existing canonical owners while the composition adds tick-to-query lineage.
+
+```quint
+pure def alwaysCanonicalOwnersHold(s: SharedScheduler): bool = P::alwaysRegisteredNamesUnique(s.process) and P::alwaysDisposedCallbacksDrained(s.process) and P::alwaysDisposingIsDetached(s.process) and P::alwaysAllocatedIdentitiesFresh(s.process) and P::alwaysActiveTickIsOwned(s.process) and P::alwaysTimerIsRequired(s.process) and Q::alwaysClosedServicesHaveNoQueries(s.drain) and Q::alwaysClosedAdaptersHaveNoQueries(s.drain) and Q::alwaysStopReceiptDrainedItsSnapshot(s.drain) and Q::alwaysActiveAdapterIsOpen(s.drain) and Q::alwaysRunningServiceOwnsBusySlot(s.drain) and Q::alwaysRunningServicesAreUnique(s.drain) and Q::alwaysQueryKeysUnique(s.drain) and Q::alwaysDirtyKeysUnique(s.drain) and Q::alwaysCloseRequiresRetirement(s.drain) and Q::alwaysStopSnapshotUsesIssuedKeys(s.drain) and Q::alwaysReadyHasDispatch(s.drain)
+```
+
+### Every retained lineage link names its actual tick and query
+
+Discovered by the proof: an orphan link could shadow the correct tick when its query settled. Each retained link names a retained query and tick with the same generation, and the tick is completed exactly when that query is done.
+
+```quint
+pure def alwaysLinksNameRetainedOwners(s: SharedScheduler): bool = s.links.every(link => s.drain.queries.some(query => query.key == link.query and s.process.ticks.some(tick => tick.id == link.tick and tick.generation == query.generation and tick.completed == (query.phase == Q::Done))))
+```
+
+### A tick and query retain the same lineage partner
+
+Discovered by the proof: conflicting links let first-match lookup settle another tick while leaving the captured tick unfinished. Links that name the same tick name the same query, and links that name the same query name the same tick. Repeating an identical observer pair does not change its partner.
+
+```quint
+pure def alwaysLineagePartnersAgree(s: SharedScheduler): bool = s.links.every(link => s.links.every(other => (other.tick == link.tick implies other.query == link.query) and (other.query == link.query implies other.tick == link.tick)))
+```
+
 ### Fair timer service captures dirty registrations and releases their owned awaits
 
 Host interval callbacks are assumed to run fairly while the timer is armed. Storage and worker awaits may succeed or fail but eventually settle. These assumptions do not require successful external I/O or successful task consumption.
