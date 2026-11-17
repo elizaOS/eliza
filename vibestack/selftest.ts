@@ -2209,7 +2209,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     }
     const asked = () => read("first.asked", root).length;
     const remembered = JSON.parse(fs.readFileSync(said, "utf8"));
-    const solver = Object.keys(remembered).find((key) => key.endsWith(`${path.sep}first${path.sep}z3`))!;
+    const solver = Object.keys(remembered).find((key) => key.startsWith("sha256 ") && key.endsWith(`${path.sep}first${path.sep}z3`))!;
     fs.writeFileSync(said, JSON.stringify({ ...remembered, [solver]: { ...remembered[solver], value: "f".repeat(64) } }));
     const before = asked();
     const warm = await keyed("first");
