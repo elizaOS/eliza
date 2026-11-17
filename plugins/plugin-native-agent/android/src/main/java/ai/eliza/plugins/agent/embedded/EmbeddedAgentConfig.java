@@ -92,6 +92,7 @@ public final class EmbeddedAgentConfig {
     if (allowedActions.isEmpty()) throw new IOException("The embedded agent policy allows no action");
     Collections.sort(allowedActions);
     JSONObject refused = actions.optJSONObject("refused");
+    if (refused == null && actions.has("refused")) throw new IOException("The embedded agent policy refuses actions by name");
     if (refused != null) for (String action : allowedActions) if (refused.has(action)) throw new IOException("Action " + action + " is both allowed and refused");
     JSONObject plugins = policy.optJSONObject("plugins");
     JSONArray denied = plugins == null || !plugins.has("denied") ? new JSONArray() : plugins.getJSONArray("denied");

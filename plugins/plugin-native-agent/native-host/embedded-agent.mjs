@@ -144,8 +144,12 @@ export function parseEmbeddedAgentData({ host, character, policy }) {
     ? Object.keys(policy.actions.allowed).sort()
     : [];
   if (!allowed.length) fail("The embedded agent policy allows no action");
+  const refused =
+    policy.actions.refused === undefined ? {} : policy.actions.refused;
+  if (!record(refused))
+    fail("The embedded agent policy refuses actions by name");
   for (const action of allowed)
-    if (Object.hasOwn(policy.actions.refused ?? {}, action))
+    if (Object.hasOwn(refused, action))
       fail(`Action ${action} is both allowed and refused`);
   const denied =
     policy.plugins?.denied === undefined ? [] : policy.plugins.denied;
@@ -561,8 +565,11 @@ export function embeddedAgentDevelopment({
           },
         );
       });
-      server.httpServer?.once("close", stop);
       process.once("exit", stop);
+      server.httpServer?.once("close", () => {
+        process.off("exit", stop);
+        stop();
+      });
       void start(0);
     },
   };
