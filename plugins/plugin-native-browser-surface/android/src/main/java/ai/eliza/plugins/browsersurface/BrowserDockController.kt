@@ -1,5 +1,6 @@
 package ai.eliza.plugins.browsersurface
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ComponentName
 import android.content.Intent
@@ -12,6 +13,7 @@ import androidx.window.embedding.ActivityEmbeddingController
 import androidx.window.embedding.RuleController
 import androidx.window.embedding.SplitAttributes
 import androidx.window.embedding.SplitController
+import androidx.window.embedding.SplitInfo
 import androidx.window.embedding.SplitPairFilter
 import androidx.window.embedding.SplitPairRule
 import androidx.window.embedding.SplitRule
@@ -45,8 +47,23 @@ internal object BrowserDockController {
             val metrics = WindowMetricsCalculator.getOrCreate().computeMaximumWindowMetrics(activity)
             SplitAttributes.SplitType.ratio(ratio(metrics.bounds.width() / activity.resources.displayMetrics.density, session.panelWidthDp))
         } else SplitAttributes.SplitType.SPLIT_TYPE_EXPAND
-        controller.updateSplitAttributes(split, SplitAttributes.Builder().setSplitType(type)
-            .setLayoutDirection(SplitAttributes.LayoutDirection.RIGHT_TO_LEFT).build())
+        resizeSplit(controller, split, type)
+    }
+
+    /**
+     * Applies the new split type. The window extension level is checked here, at the call, in the
+     * documented `extensionVersion >= 3` form. RequiresWindowSdk still reports it (androidx.window
+     * 1.4.0 lint does not recognize the guard here or the entry check in [setVisible]), so only that
+     * check is suppressed, on this one call; a lower level throws the typed error, never resizes.
+     */
+    @SuppressLint("RequiresWindowSdk")
+    private fun resizeSplit(controller: SplitController, split: SplitInfo, type: SplitAttributes.SplitType) {
+        if (WindowSdkExtensions.getInstance().extensionVersion >= 3) {
+            controller.updateSplitAttributes(split, SplitAttributes.Builder().setSplitType(type)
+                .setLayoutDirection(SplitAttributes.LayoutDirection.RIGHT_TO_LEFT).build())
+        } else {
+            throw BrowserLaunchException("BROWSER_DOCK_RESIZE_UNAVAILABLE", "This device cannot resize the existing browser split.")
+        }
     }
 
     fun release(activity: Activity) { sessions.remove(activity) }
