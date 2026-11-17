@@ -24,6 +24,11 @@ import { runEvaluator } from '../../../plugin-assistant/src/runtime/evaluator';
 import { workflowAction } from '../../src/actions/workflow';
 import * as schema from '../../src/db/schema';
 import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
+import {
+  PHONE_CATALOG_REVISION,
+  PHONE_COMPILER_REVISION,
+  PHONE_SPEC_KEY,
+} from '../../src/services/phone-workflow-spec';
 import { resolveSmithersWorkflowDir } from '../../src/services/smithers-runtime';
 import { WorkflowService } from '../../src/services/workflow-service';
 
@@ -84,6 +89,9 @@ test('persisted WORKFLOW mutation receipts finish; read observations deliver wit
       UNIQUE (agent_id, name)
     );
 
+ CREATE TABLE workflow.typed_mutations(agent_id text NOT NULL,owner_id text NOT NULL,mutation_id text NOT NULL,request_digest text NOT NULL,workflow_id text NOT NULL,receipt jsonb NOT NULL,PRIMARY KEY(agent_id,owner_id,mutation_id));
+ CREATE TABLE workflow.lifecycle_mutations(agent_id text NOT NULL,workflow_id text NOT NULL,mutation_id text NOT NULL,owner_id text NOT NULL,expected_version_id text NOT NULL,operation text NOT NULL,receipt jsonb NOT NULL,PRIMARY KEY(agent_id,workflow_id,mutation_id));
+ CREATE TABLE workflow.metadata_mutations(agent_id text NOT NULL,workflow_id text NOT NULL,mutation_id text NOT NULL,owner_id text NOT NULL,expected_version_id text NOT NULL,name text NOT NULL,description text NOT NULL,receipt jsonb NOT NULL,PRIMARY KEY(agent_id,workflow_id,mutation_id));
  CREATE TABLE workflow.manual_submissions(agent_id text NOT NULL,workflow_id text NOT NULL,submission_id text NOT NULL,owner_id text NOT NULL,version_id text NOT NULL,input jsonb NOT NULL,run_id text NOT NULL,PRIMARY KEY(agent_id,workflow_id,submission_id));`);
     const owner = '00000000-0000-4000-8000-000000000010';
     let facade: WorkflowService;
@@ -110,13 +118,22 @@ const {Workflow,Task,smithers,outputs}=createSmithers({output:z.object({value:z.
 export default smithers(()=><Workflow name="receipt-proof"><Task id="calculate" output={outputs.output}>{{value:56}}</Task></Workflow>);`,
     };
     // Only generation is deterministic; owner authorization, SQL and settlement are production.
-    facade.generateWorkflowDraft = async () => definition;
+    let generated = 0;
+    let generationTimeZone: string | undefined;
+    facade.generateWorkflowDraft = async (_instruction, options) => {
+      generated++;
+      generationTimeZone = options.timeZone;
+      return definition;
+    };
     const message = {
       id: '00000000-0000-4000-8000-000000000020',
       agentId: runtime.agentId,
       entityId: owner,
       roomId: '00000000-0000-4000-8000-000000000022',
-      content: { text: 'Create inactive synthetic workflow' },
+      content: {
+        text: 'Create inactive synthetic workflow',
+        metadata: { uiTimeZone: 'America/Denver' },
+      },
       createdAt: 0,
     } as Memory;
     const delivered: Content[] = [];
@@ -135,6 +152,11 @@ export default smithers(()=><Workflow name="receipt-proof"><Task id="calculate" 
     };
     const created = await invoke({ action: 'create', seedPrompt: 'Synthetic fixture' });
     expect(created.success).toBe(true);
+    // The owner's device zone reaches generation, and the reply carries no engine name or raw id.
+    expect(generationTimeZone).toBe('America/Denver');
+    expect(created.text).toBe(
+      'Created “Synthetic reviewed definition”. It is off until you turn it on.'
+    );
     expect(created.effectReceipts).toHaveLength(1);
     expect(delivered).toHaveLength(1);
     expect(delivered[0].text).toBe(created.userFacingText);
@@ -283,7 +305,127 @@ export default smithers(()=><Workflow name="receipt-proof"><Task id="calculate" 
         .success
     ).toBe(true);
     expect((await facade.getWorkflow(row.id, owner)).active).toBe(false);
-    // Chat has no removal operation: the declared schema refuses it before the handler.
+    // A name finds the workflow. A miss or an ambiguous name changes nothing and may be retried.
+    const spare = await facade.deployWorkflowDefinition(
+      { ...definition, name: 'Synthetic spare definition' },
+      owner,
+      { activate: false }
+    );
+    expect(
+      (await invoke({ action: 'get', workflowName: 'the reviewed workflow' })).data
+    ).toMatchObject({
+      workflow: { id: row.id },
+    });
+    const ambiguous = await invoke({ action: 'activate', workflowName: 'synthetic' });
+    expect(ambiguous).toMatchObject({
+      success: false,
+      failureProvenance: { code: 'WORKFLOW_AMBIGUOUS', retryable: true },
+    });
+    expect(ambiguous.userFacingText).toContain('“Synthetic spare definition”');
+    expect(await invoke({ action: 'get', workflowId: 'no such workflow' })).toMatchObject({
+      success: false,
+      failureProvenance: { code: 'WORKFLOW_NOT_FOUND', retryable: true },
+    });
+    expect(
+      await invoke({ action: 'remove', workflowId: row.id, workflowName: 'spare' })
+    ).toMatchObject({ success: false, failureProvenance: { code: 'WORKFLOW_REF_MISMATCH' } });
+    expect((await facade.getWorkflow(spare.id, owner)).active).toBe(false);
+    const renamed = await invoke({ action: 'rename', workflowId: spare.id, name: 'Spare' });
+    expect(renamed.text).toBe('Renamed “Synthetic spare definition” to “Spare”.');
+    expect(renamed.effectReceipts![0]).toMatchObject({
+      operation: 'workflow.rename',
+      resource: { id: spare.id, version: (await facade.getWorkflow(spare.id, owner)).versionId },
+    });
+    // Removal names the exact workflow, keeps its record, and can be undone from chat.
+    const removed = await invoke({ action: 'remove', workflowName: 'spare' });
+    expect(removed.text).toBe('Removed “Spare”. It no longer runs. You can restore it later.');
+    expect(removed.effectReceipts![0]).toMatchObject({
+      operation: 'workflow.remove',
+      resource: {
+        kind: 'workflow.definition',
+        id: spare.id,
+        version: (await facade.getWorkflow(spare.id, owner)).versionId,
+      },
+      outcome: 'applied',
+    });
+    expect(await facade.listWorkflows(owner)).toHaveLength(1);
+    expect((await invoke({ action: 'run', workflowId: spare.id })).failureProvenance).toMatchObject(
+      {
+        code: 'WORKFLOW_REMOVED',
+      }
+    );
+    const broughtBack = await invoke({ action: 'restore_removed', workflowName: 'Spare' });
+    expect(broughtBack.effectReceipts![0]).toMatchObject({
+      operation: 'workflow.restore_removed',
+      resource: { id: spare.id, version: (await facade.getWorkflow(spare.id, owner)).versionId },
+    });
+    expect(await facade.getWorkflow(spare.id, owner)).toMatchObject({
+      removed: false,
+      active: false,
+    });
+    expect((await invoke({ action: 'remove', workflowId: spare.id })).success).toBe(true);
+    // An active workflow edited from chat is turned off until the owner reviews the change.
+    expect((await invoke({ action: 'activate', workflowId: row.id })).success).toBe(true);
+    const editedLive = await invoke({ action: 'modify', workflowId: row.id, instruction: 'Edit' });
+    expect(editedLive.text).toContain('it is now off');
+    expect((await facade.getWorkflow(row.id, owner)).active).toBe(false);
+    // A request no workflow can carry out is refused before any model call.
+    generated = 0;
+    expect(
+      await invoke({ action: 'create', seedPrompt: 'Text Sam the summary every morning' })
+    ).toMatchObject({ success: false, failureProvenance: { code: 'WORKFLOW_SCOPE_REFUSED' } });
+    expect(generated).toBe(0);
+    // A workflow built in the Workflows view keeps its reviewed steps and its on-phone confirmation.
+    const typedSpec = {
+      version: 1,
+      name: 'Typed morning note',
+      description: '',
+      trigger: { kind: 'time', localTime: '08:00', timeZone: 'UTC', days: [1] },
+      steps: [{ id: 'input', kind: 'Read', operation: 'supplied_text', text: 'hello' }],
+    };
+    const typed = await facade.savePhoneDraft(
+      owner,
+      randomUUID(),
+      typedSpec,
+      PHONE_CATALOG_REVISION,
+      PHONE_COMPILER_REVISION
+    );
+    let rewrites = 0;
+    const rewrite = facade.modifyWorkflowDraft;
+    facade.modifyWorkflowDraft = async () => {
+      rewrites++;
+      return definition;
+    };
+    expect(
+      await invoke({ action: 'modify', workflowId: typed.workflowId, instruction: 'Run at 7' })
+    ).toMatchObject({ success: false, failureProvenance: { code: 'WORKFLOW_EDIT_IN_VIEW' } });
+    expect(rewrites).toBe(0);
+    facade.modifyWorkflowDraft = rewrite;
+    const unconfirmed = await invoke({
+      action: 'activate',
+      workflowId: typed.workflowId,
+      versionId: typed.versionId,
+    });
+    expect(unconfirmed).toMatchObject({
+      success: false,
+      failureProvenance: { code: 'WORKFLOW_ACTIVATE_IN_VIEW', retryable: false },
+    });
+    expect(unconfirmed.userFacingText).toContain('Open Workflows and turn it on there');
+    expect(await facade.getWorkflow(typed.workflowId, owner)).toMatchObject({
+      active: false,
+      versionId: typed.versionId,
+    });
+    expect(
+      (await invoke({ action: 'rename', workflowId: typed.workflowId, name: 'Typed note' })).success
+    ).toBe(true);
+    const typedRow = await facade.getWorkflow(typed.workflowId, owner);
+    expect(typedRow).toMatchObject({ name: 'Typed note', active: false });
+    expect(JSON.parse(String(typedRow.metadata?.[PHONE_SPEC_KEY]))).toMatchObject({
+      ...typedSpec,
+      name: 'Typed note',
+    });
+    expect((await invoke({ action: 'remove', workflowId: typed.workflowId })).success).toBe(true);
+    // The removal operation is named remove: the declared schema refuses delete before the handler.
     expect(
       validateToolArgs(workflowAction, { action: 'delete', workflowId: row.id })
     ).toMatchObject({ valid: false, invalidParameterNames: ['action'] });
