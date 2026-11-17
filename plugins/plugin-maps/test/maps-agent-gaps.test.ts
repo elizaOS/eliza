@@ -719,20 +719,139 @@ describe("forms ask for names, not ids", () => {
     formattedAddress: `${n} Quai, Monaco`,
     categories: [],
   });
-  function searching(places: PlaceRef[]) {
+  function searching(places: PlaceRef[], searched: unknown[] = []) {
     const service = new MapsService(undefined, store([]));
     service.registerAdapter({
       ...adapter(null),
-      searchPlaces: async () => ({ places, nextCursor: null }),
+      searchPlaces: async (request: unknown) => {
+        searched.push(request);
+        return { places, nextCursor: null };
+      },
     } as MapsProviderAdapter);
     return service;
   }
+  /** The locate card a reply carries, as a chat surface reads it. */
+  const locateCard = (result: ActionResult | undefined) =>
+    JSON.parse(
+      /\[MAPSCARD\]\n(.*)\n\[\/MAPSCARD\]/.exec(
+        result?.userFacingText ?? "",
+      )?.[1] ?? "null",
+    );
+
+  it("names what a locate card is for, so the phone needs no prose parsing", async () => {
+    const searched: unknown[] = [];
+    const near = await run(searching([], searched), {
+      action: "place",
+      query: "coffee shop",
+      useCurrentLocation: true,
+    });
+    expect(locateCard(near)).toEqual({
+      kind: "locate",
+      intent: "place-near",
+      prompt:
+        "I need your precise location to search near you for “coffee shop”.",
+      query: "coffee shop",
+    });
+    expect(searched).toEqual([]);
+    const from = await run(searching([hit(1, "Casino")]), {
+      action: "route",
+      destinationQuery: "Casino",
+      travelMode: "walk",
+      useCurrentLocation: true,
+    });
+    expect(locateCard(from)).toEqual({
+      kind: "locate",
+      intent: "route-origin",
+      prompt: "I need your precise location to start the route to Casino.",
+      destination: {
+        name: "Casino",
+        latitude: hit(1, "Casino").coordinates.latitude,
+        longitude: 7.42,
+        provider: "stub",
+        providerPlaceId: "H1",
+        formattedAddress: "1 Quai, Monaco",
+        categories: [],
+      },
+      travelMode: "walk",
+    });
+  });
+
+  it("leaves the nearest kind of place to the phone instead of searching with no position", async () => {
+    const nearest = {
+      kind: "locate",
+      intent: "route-origin",
+      prompt:
+        "I need your precise location to start the route to nearest pharmacy.",
+      query: "nearest pharmacy",
+    };
+    const searched: unknown[] = [];
+    const service = searching([hit(1, "Pharmacy A")], searched);
+    const started: unknown[] = [];
+    service.registerDeviceNavigation({
+      available: async () => true,
+      select: async () => ({ state: "selected" }),
+      start: async (request) => {
+        started.push(request);
+        return { state: "navigating" };
+      },
+      reroute: async () => ({ state: "navigating" }),
+      stop: async () => ({ state: "stopped" }),
+    });
+    const parameters = {
+      placeQuery: "nearest pharmacy",
+      useCurrentLocation: true,
+    };
+    const start = await mapsNavigationAction.handler?.(
+      runtimeWith(service),
+      message({}),
+      undefined,
+      { parameters: { ...parameters, action: "start" } } as HandlerOptions,
+    );
+    expect(start).toMatchObject({
+      success: false,
+      data: { reason: "missing_location", awaitingUserInput: true },
+    });
+    expect(locateCard(start)).toEqual(nearest);
+    expect(
+      locateCard(
+        await run(service, {
+          ...parameters,
+          action: "navigate",
+          travelMode: "walk",
+        }),
+      ),
+    ).toEqual({ ...nearest, travelMode: "walk" });
+    expect(searched).toEqual([]);
+    expect(started).toEqual([]);
+    // A route from here whose destination matches several places is the same
+    // question: the phone's position picks one.
+    const several = await run(
+      searching([hit(1, "Pharmacy A"), hit(2, "Pharmacy B")]),
+      {
+        action: "route",
+        destinationQuery: "nearest pharmacy",
+        useCurrentLocation: true,
+      },
+    );
+    expect(locateCard(several)).toEqual(nearest);
+  });
 
   it("orders a search around a point nearest first and says how far each place is", async () => {
+    const searched: unknown[] = [];
     const result = await run(
-      searching([hit(3, "Far Cafe"), hit(1, "Near Cafe"), hit(2, "Mid Cafe")]),
+      searching(
+        [hit(3, "Far Cafe"), hit(1, "Near Cafe"), hit(2, "Mid Cafe")],
+        searched,
+      ),
       { action: "place", query: "cafe", latitude: 43.73, longitude: 7.42 },
     );
+    expect(searched).toEqual([
+      {
+        query: "cafe",
+        near: { latitude: 43.73, longitude: 7.42 },
+        rank: "distance",
+      },
+    ]);
     expect(result?.text).toBe(
       [
         "Found 3 places, nearest first:",
