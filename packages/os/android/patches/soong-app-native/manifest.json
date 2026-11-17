@@ -2,7 +2,7 @@
   "schema": 1,
   "project": "build/soong",
   "revision": "6722dd8833db7482df1a2543ca3fcf67ddf0f7b1",
-  "baselineLockSha256": "74d92925c7ae52f4032876de36c8ee76eb7ee449ef5083411796b3d003c8552b",
+  "baselineLockSha256": "b7041cce4faf186f5c6e410694b52d8ee4ef2edab8edbef58119e943089d2ce3",
   "patch": "soong-app-native.patch",
   "patchSha256": "fe0e8ed1e880e3fe49a3e42eb2d45cc89e6e85b3332d0d998a4468cd8402c9c4",
   "purpose": "Install hash-admitted APK native payloads beside Soong-imported applications on products that ignore Android.mk. Does not disable ELF copy checks or modify APK bytes.",

@@ -12,7 +12,17 @@
     "upstreamRepository": "https://github.com/elizaos/eliza",
     "upstreamCommit": "74504c953b84701153319ad7d08e666d2ba4ac91",
     "referenceLockSha256": "9c5c30da5a7e9913b8a9a0e00ef8b5f06f4190c41d0c992c7a0c30a1c9d6816c",
-    "purpose": "Reproduce the inspected October 11 development source baseline; not current app, release signing, or device acceptance."
+    "purpose": "Reproduce the inspected October 11 development source baseline; not current app, release signing, or device acceptance.",
+    "reconstruction": {
+      "originalSourceLockSha256": "2829fe087a13e946e27ecf7782948c454e991614d977b2a91a8a78d1791f40ce",
+      "projectRevisionsUnchanged": true,
+      "sourceOverridesUnchanged": true,
+      "generatedVendorInventoryUnchanged": true,
+      "nodeVersion": "v24.15.0",
+      "yarnVersion": "1.22.22",
+      "scope": "Development reconstruction metadata; no release or device qualification",
+      "receiptSha256": "b99cfd9d74317ed92e91c25667d931704b3eaff9c1e788c88687b50115d3336d"
+    }
   },
   "manifest": {
     "commit": "5bc9a7ce1cd78dd53613bbfd0ebf506e1e4adb0f",
@@ -36383,8 +36393,8 @@
   "ignoredInputs": [
     {
       "project": "vendor/adevtool",
-      "files": 20240,
-      "sha256": "cad523f6693fa7b1cdf8225707cd239fb2486bafdc7b43e1fc0d53e92adb2833"
+      "files": 20078,
+      "sha256": "820ba0bf77411ff5520cd32e1278be6a1ff615f7a2904004cf0893153336fe6a"
     }
   ]
 }

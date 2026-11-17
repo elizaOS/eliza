@@ -410,7 +410,7 @@ test("the shared Pixel 10a source facts do not grant image installation or relea
   const profile = loadProfile("pixel10a");
   assert.equal(
     profile.sourceInventory.sha256,
-    "74d92925c7ae52f4032876de36c8ee76eb7ee449ef5083411796b3d003c8552b",
+    "b7041cce4faf186f5c6e410694b52d8ee4ef2edab8edbef58119e943089d2ce3",
   );
   const source = JSON.parse(
     fs.readFileSync(
