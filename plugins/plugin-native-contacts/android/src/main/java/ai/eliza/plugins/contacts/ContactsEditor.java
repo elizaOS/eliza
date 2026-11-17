@@ -3,6 +3,7 @@ package ai.eliza.plugins.contacts;
 import android.content.ContentProviderOperation;
 import android.content.ContentProviderResult;
 import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.ContentUris;
 import android.content.Context;
 import android.content.OperationApplicationException;
@@ -13,6 +14,7 @@ import android.os.Looper;
 import android.provider.ContactsContract;
 import android.provider.ContactsContract.CommonDataKinds.Email;
 import android.provider.ContactsContract.CommonDataKinds.Phone;
+import android.provider.ContactsContract.CommonDataKinds.Note;
 import android.provider.ContactsContract.CommonDataKinds.StructuredName;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -35,12 +37,14 @@ import org.json.JSONObject;
  * transaction (assert operations in the same batch), so a contact that changed since it was read is
  * answered {@code stale} and nothing is written. A save changes only what differs: rows the draft
  * still names are left untouched (keeping what this class does not model, such as the primary flag),
- * removed rows are deleted, new rows are added to the contact's first raw contact, and the name is
- * rewritten only when the display name changed. A new contact is stored in the device-local account.
+ * removed rows are deleted, new rows are added to the contact's first raw contact, and name or note values change in place only when the owner edits them.
+ * Structured name edits retain middle names, prefixes, suffixes and phonetic/style columns;
+ * a legacy display-name edit lets the provider re-derive the name parts from the new label, keeping phonetic/style columns,
+ * without deleting other raw names. A new contact is stored in the device-local account.
  * Nothing is retried. Call every method off the main thread.
  */
 public final class ContactsEditor {
-  public static final int MAX_FIELDS = 32, MAX_NAME = 256, MAX_NUMBER = 64, MAX_ADDRESS = 320, MAX_LABEL = 64, MAX_RAW_CONTACTS = 64;
+  public static final int MAX_FIELDS = 32, MAX_NAME = 256, MAX_NUMBER = 64, MAX_ADDRESS = 320, MAX_LABEL = 64, MAX_NOTES = 8192, MAX_RAW_CONTACTS = 64;
   /** Marks a type the owner named themselves: {@code custom:<label>}. */
   public static final String CUSTOM = "custom:";
   static final String FIELD_NOT_EDITABLE = "field-not-editable";
@@ -95,22 +99,66 @@ public final class ContactsEditor {
     Field(String value, String type) { this.value = value; this.type = type; }
     boolean same(Field other) { return value.equals(other.value) && type.equals(other.type); }
   }
-  /** A validated save request. */
+  /** A validated save request. Null optional scalars mean preserve; empty means clear. */
   public static final class Draft {
-    final String displayName; final List<Field> phones, emails;
-    Draft(String displayName, List<Field> phones, List<Field> emails) { this.displayName = displayName; this.phones = phones; this.emails = emails; }
+    final String displayName, givenName, familyName, notes;
+    final List<Field> phones, emails;
+    Draft(String displayName, List<Field> phones, List<Field> emails, String givenName, String familyName, String notes) {
+      this.displayName = displayName; this.phones = phones; this.emails = emails;
+      this.givenName = givenName; this.familyName = familyName; this.notes = notes;
+    }
+    boolean structured() { return givenName != null || familyName != null; }
+    boolean newContactHasContent() {
+      return (structured() ? (givenName != null && !givenName.isEmpty()) || (familyName != null && !familyName.isEmpty()) : !displayName.isEmpty())
+        || !phones.isEmpty() || !emails.isEmpty() || (notes != null && !notes.trim().isEmpty());
+    }
   }
-  /**
-   * Validates a save request exactly as given: nothing is trimmed, reordered or dropped. Throws
-   * IllegalArgumentException for a name over {@link #MAX_NAME} characters, more than
-   * {@link #MAX_FIELDS} numbers or addresses, a blank, over-long or control-character field, an
-   * unknown type, an unknown key, or a draft with no name, number or address at all.
-   */
+  /** The source-compatible full-name API used by existing native hosts. */
   public static Draft draft(String displayName, JSONArray phones, JSONArray emails) {
+    return draft(displayName, phones, emails, null, null, null);
+  }
+  /** Validate without trimming, splitting names, reordering or dropping fields. */
+  public static Draft draft(String displayName, JSONArray phones, JSONArray emails, String givenName, String familyName, String notes) {
     if (displayName == null || displayName.length() > MAX_NAME || (!displayName.isEmpty() && !clean(displayName, MAX_NAME))) throw new IllegalArgumentException("Invalid contact name");
+    for (String part : new String[] { givenName, familyName })
+      if (part != null && !part.isEmpty() && !clean(part, MAX_NAME)) throw new IllegalArgumentException("Invalid structured name");
+    if (notes != null && !notesText(notes)) throw new IllegalArgumentException("Invalid contact notes");
     List<Field> numbers = fields(phones, "number", MAX_NUMBER, PHONE_TYPES), addresses = fields(emails, "address", MAX_ADDRESS, EMAIL_TYPES);
-    if (displayName.isEmpty() && numbers.isEmpty() && addresses.isEmpty()) throw new IllegalArgumentException("Empty contact");
-    return new Draft(displayName, numbers, addresses);
+    if (displayName.isEmpty() && (givenName == null || givenName.isEmpty()) && (familyName == null || familyName.isEmpty())
+        && (notes == null || notes.trim().isEmpty()) && numbers.isEmpty() && addresses.isEmpty()) throw new IllegalArgumentException("Empty contact");
+    return new Draft(displayName, numbers, addresses, givenName, familyName, notes);
+  }
+  static boolean notesText(String value) {
+    if (value == null || value.length() > MAX_NOTES) return false;
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
+      if (Character.isISOControl(c) && c != '\n' && c != '\r' && c != '\t') return false;
+    }
+    return true;
+  }
+  private static String optionalText(JSONObject data, String key) {
+    if (!data.has(key)) return null;
+    if (!(data.opt(key) instanceof String)) throw new IllegalArgumentException("Invalid contact field");
+    return (String) data.opt(key);
+  }
+  /** Strict bridge payload admission, including optional edits and selected-record metadata. */
+  public static Draft draft(JSONObject data) {
+    if (data == null) throw new IllegalArgumentException("Missing contact");
+    java.util.Iterator<String> keys = data.keys();
+    while (keys.hasNext()) {
+      String key = keys.next();
+      if (!java.util.Arrays.asList("id", "version", "displayName", "phoneNumbers", "emailAddresses", "givenName", "familyName", "notes").contains(key))
+        throw new IllegalArgumentException("Unknown contact field");
+    }
+    boolean editing = data.has("id");
+    if (data.has("version") != editing || (editing && (!(data.opt("id") instanceof String) || !(data.opt("version") instanceof String)
+        || row((String) data.opt("id")) < 0 || !versionShape((String) data.opt("version"))))) throw new IllegalArgumentException("Selected contact and version required");
+    if (!(data.opt("displayName") instanceof String) || !(data.opt("phoneNumbers") instanceof JSONArray) || !(data.opt("emailAddresses") instanceof JSONArray))
+      throw new IllegalArgumentException("Missing contact fields");
+    Draft draft = draft((String) data.opt("displayName"), (JSONArray) data.opt("phoneNumbers"), (JSONArray) data.opt("emailAddresses"),
+      optionalText(data, "givenName"), optionalText(data, "familyName"), optionalText(data, "notes"));
+    if (!editing && !draft.newContactHasContent()) throw new IllegalArgumentException("Empty contact");
+    return draft;
   }
   private static List<Field> fields(JSONArray raw, String key, int max, String[] types) {
     if (raw == null || raw.length() > MAX_FIELDS) throw new IllegalArgumentException("Invalid contact fields");
@@ -199,17 +247,66 @@ public final class ContactsEditor {
     }
     return out;
   }
+  private static final String[] NAME_COLUMNS = { StructuredName.DISPLAY_NAME, StructuredName.GIVEN_NAME, StructuredName.FAMILY_NAME,
+    StructuredName.PREFIX, StructuredName.MIDDLE_NAME, StructuredName.SUFFIX, StructuredName.PHONETIC_GIVEN_NAME,
+    StructuredName.PHONETIC_MIDDLE_NAME, StructuredName.PHONETIC_FAMILY_NAME, ContactsContract.Data.DATA10, ContactsContract.Data.DATA11 };
+  private static final class ScalarRow {
+    final long id; final ContentValues values;
+    ScalarRow(long id, ContentValues values) { this.id = id; this.values = values; }
+    String text(String key) { String value = values.getAsString(key); return value == null ? "" : value; }
+  }
+  /** A scalar cannot represent several rows. Refuse ambiguity instead of hiding or deleting data. */
+  private ScalarRow scalar(long contact, String mime, String[] columns, long rawContact, CancellationSignal cancel) throws Incomplete {
+    String[] projection = new String[columns.length + 2];
+    projection[0] = ContactsContract.Data._ID; projection[1] = ContactsContract.Data.RAW_CONTACT_ID;
+    System.arraycopy(columns, 0, projection, 2, columns.length);
+    ScalarRow found = null;
+    try (Cursor rows = resolver.query(ContactsContract.Data.CONTENT_URI, projection,
+        ContactsContract.Data.CONTACT_ID + "=? AND " + ContactsContract.Data.MIMETYPE + "=?",
+        new String[] { String.valueOf(contact), mime }, ContactsContract.Data._ID + " ASC", cancel)) {
+      if (rows == null) throw new IllegalStateException("Contact fields unavailable");
+      int count = 0;
+      while (rows.moveToNext()) {
+        if (++count > MAX_RAW_CONTACTS) throw new Incomplete(ContactsCatalog.TOO_MANY_FIELDS);
+        if (rawContact > 0 && rows.getLong(1) != rawContact) continue;
+        if (found != null) throw new Incomplete(FIELD_NOT_EDITABLE);
+        // Keep the provider's types as well as its values for untouched name/style columns.
+        ContentValues values = new ContentValues();
+        for (int i = 2; i < projection.length; i++) {
+          String column = projection[i];
+          switch (rows.getType(i)) {
+            case Cursor.FIELD_TYPE_NULL: values.putNull(column); break;
+            case Cursor.FIELD_TYPE_INTEGER: values.put(column, rows.getLong(i)); break;
+            case Cursor.FIELD_TYPE_FLOAT: values.put(column, rows.getDouble(i)); break;
+            case Cursor.FIELD_TYPE_BLOB: values.put(column, rows.getBlob(i)); break;
+            default: values.put(column, rows.getString(i)); break;
+          }
+        }
+        found = new ScalarRow(rows.getLong(0), values);
+      }
+    }
+    return found;
+  }
+  private static long nameRaw(String[] summary, List<long[]> raws) {
+    long selected = Long.parseLong(summary[3]); return selected > 0 ? selected : raws.get(0)[0];
+  }
+  private static String part(ScalarRow row, String column) throws Incomplete {
+    String value = row == null ? "" : row.text(column);
+    if (value.length() > MAX_NAME) throw new Incomplete(ContactsCatalog.FIELD_TOO_LONG);
+    if (!value.isEmpty() && !clean(value, MAX_NAME)) throw new Incomplete(FIELD_NOT_EDITABLE);
+    return value;
+  }
   /** The contact's display name, or null when the contact is gone. */
   private String[] summary(long contact, CancellationSignal cancel) {
     try (Cursor row = resolver.query(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, contact),
-        new String[] { ContactsContract.Contacts.LOOKUP_KEY, ContactsContract.Contacts.DISPLAY_NAME_PRIMARY, ContactsContract.Contacts.STARRED }, null, null, null, cancel)) {
+        new String[] { ContactsContract.Contacts.LOOKUP_KEY, ContactsContract.Contacts.DISPLAY_NAME_PRIMARY, ContactsContract.Contacts.STARRED, ContactsContract.Contacts.NAME_RAW_CONTACT_ID }, null, null, null, cancel)) {
       if (row == null) throw new IllegalStateException("Contacts provider unavailable");
       if (!row.moveToFirst()) return null;
-      return new String[] { row.getString(0), row.getString(1) == null ? "" : row.getString(1), row.getInt(2) != 0 ? "1" : "0" };
+      return new String[] { row.getString(0), row.getString(1) == null ? "" : row.getString(1), row.getInt(2) != 0 ? "1" : "0", row.isNull(3) ? "0" : String.valueOf(row.getLong(3)) };
     }
   }
 
-  /** {@code {id, lookup, displayName, starred, phoneNumbers: [{number, type}], emailAddresses: [{address, type}], version}}. */
+  /** Editing details include provider given/family names and owner notes, typed phones/emails and an opaque version. */
   public JSObject get(String id, CancellationSignal cancel) throws NotFound, Incomplete {
     offMain();
     long contact = row(id);
@@ -224,6 +321,14 @@ public final class ContactsEditor {
     out.put("lookup", summary[0]);
     out.put("displayName", summary[1]);
     out.put("starred", summary[2].equals("1"));
+    ScalarRow name = scalar(contact, StructuredName.CONTENT_ITEM_TYPE, NAME_COLUMNS, nameRaw(summary, raws), cancel);
+    ScalarRow note = scalar(contact, Note.CONTENT_ITEM_TYPE, new String[] { Note.NOTE }, 0, cancel);
+    String notes = note == null ? "" : note.text(Note.NOTE);
+    if (notes.length() > MAX_NOTES) throw new Incomplete(ContactsCatalog.FIELD_TOO_LONG);
+    if (!notesText(notes)) throw new Incomplete(FIELD_NOT_EDITABLE);
+    out.put("givenName", part(name, StructuredName.GIVEN_NAME));
+    out.put("familyName", part(name, StructuredName.FAMILY_NAME));
+    out.put("notes", notes);
     out.put("phoneNumbers", json(stored(contact, Phone.CONTENT_ITEM_TYPE, PHONE_TYPES, MAX_NUMBER, cancel), "number"));
     out.put("emailAddresses", json(stored(contact, Email.CONTENT_ITEM_TYPE, EMAIL_TYPES, MAX_ADDRESS, cancel), "address"));
     out.put("version", version(raws));
@@ -246,6 +351,30 @@ public final class ContactsEditor {
     op.withValue(ContactsContract.Data.DATA1, field.value).withValue(ContactsContract.Data.DATA2, type);
     if (type == 0) op.withValue(ContactsContract.Data.DATA3, field.type.substring(CUSTOM.length()));
     return op.build();
+  }
+  private static void scalarWrite(ArrayList<ContentProviderOperation> ops, ScalarRow stored, long rawContact, String mime, ContentValues values) {
+    if (stored != null) ops.add(ContentProviderOperation.newUpdate(ContentUris.withAppendedId(ContactsContract.Data.CONTENT_URI, stored.id)).withValues(values).build());
+    else ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+      .withValue(ContactsContract.Data.RAW_CONTACT_ID, rawContact).withValue(ContactsContract.Data.MIMETYPE, mime).withValues(values).build());
+  }
+  private static ContentValues nameValues(Draft draft, ScalarRow current) {
+    ContentValues values = current == null ? new ContentValues() : new ContentValues(current.values);
+    if (draft.structured()) {
+      // Android formats the display label from the complete retained components. Never split a name.
+      values.remove(StructuredName.DISPLAY_NAME);
+      if (draft.givenName != null) values.put(StructuredName.GIVEN_NAME, draft.givenName);
+      if (draft.familyName != null) values.put(StructuredName.FAMILY_NAME, draft.familyName);
+    } else {
+      // A legacy edit names only the display label. The provider splits a label into its components only
+      // when the update carries none (DataRowHandlerForStructuredName.fixStructuredNameComponents), so the
+      // old given, family, prefix, middle and suffix are cleared and re-derived from the new label. Writing
+      // the old components back would keep the old structured name under a new label; an empty label then
+      // clears the name. Phonetic and style columns are kept.
+      values.put(StructuredName.DISPLAY_NAME, draft.displayName);
+      for (String part : new String[] { StructuredName.GIVEN_NAME, StructuredName.FAMILY_NAME, StructuredName.PREFIX,
+        StructuredName.MIDDLE_NAME, StructuredName.SUFFIX }) values.putNull(part);
+    }
+    return values;
   }
   /** Deletes the stored rows the draft no longer names and inserts the draft's rows that are not stored; equal rows stay untouched. */
   private static void replace(ArrayList<ContentProviderOperation> ops, List<Stored> current, List<Field> wanted, long rawContact, String mime, String[] types) {
@@ -317,9 +446,14 @@ public final class ContactsEditor {
     offMain();
     ArrayList<ContentProviderOperation> ops = new ArrayList<>();
     if (id == null) {
+      if (!draft.newContactHasContent()) throw new IllegalArgumentException("Empty contact");
       ops.add(ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
         .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null).withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null).build());
-      if (!draft.displayName.isEmpty()) ops.add(insert(0, 0, StructuredName.CONTENT_ITEM_TYPE, null, new Field(draft.displayName, "")));
+      if (draft.structured() ? (draft.givenName != null && !draft.givenName.isEmpty()) || (draft.familyName != null && !draft.familyName.isEmpty()) : !draft.displayName.isEmpty())
+        ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI).withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+          .withValue(ContactsContract.Data.MIMETYPE, StructuredName.CONTENT_ITEM_TYPE).withValues(nameValues(draft, null)).build());
+      if (draft.notes != null && !draft.notes.isEmpty()) ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
+        .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0).withValue(ContactsContract.Data.MIMETYPE, Note.CONTENT_ITEM_TYPE).withValue(Note.NOTE, draft.notes).build());
       for (Field phone : draft.phones) ops.add(insert(0, 0, Phone.CONTENT_ITEM_TYPE, PHONE_TYPES, phone));
       for (Field email : draft.emails) ops.add(insert(0, 0, Email.CONTENT_ITEM_TYPE, EMAIL_TYPES, email));
       final ContentProviderResult[] results;
@@ -334,7 +468,7 @@ public final class ContactsEditor {
     }
     long contact = row(id);
     if (contact < 0 || !versionShape(version)) throw new IllegalArgumentException("Selected contact and version required");
-    final List<long[]> raws; final String[] summary; final List<Stored> phones, emails;
+    final List<long[]> raws; final String[] summary; final List<Stored> phones, emails; final ScalarRow name, note;
     try {
       raws = rawContacts(contact, null);
       summary = summary(contact, null);
@@ -342,6 +476,9 @@ public final class ContactsEditor {
       if (!version(raws).equals(version)) return status("stale");
       phones = stored(contact, Phone.CONTENT_ITEM_TYPE, PHONE_TYPES, MAX_NUMBER, null);
       emails = stored(contact, Email.CONTENT_ITEM_TYPE, EMAIL_TYPES, MAX_ADDRESS, null);
+      name = draft.structured() || !draft.displayName.equals(summary[1])
+        ? scalar(contact, StructuredName.CONTENT_ITEM_TYPE, NAME_COLUMNS, nameRaw(summary, raws), null) : null;
+      note = draft.notes == null ? null : scalar(contact, Note.CONTENT_ITEM_TYPE, new String[] { Note.NOTE }, 0, null);
     } catch (Incomplete partial) {
       // get() never offered this contact for editing, so no version of it can be current.
       return status("stale");
@@ -350,14 +487,14 @@ public final class ContactsEditor {
     }
     assertUnchanged(ops, contact, raws);
     long target = raws.get(0)[0];
-    if (!draft.displayName.equals(summary[1])) {
-      String[] args = new String[raws.size() + 1];
-      StringBuilder in = new StringBuilder();
-      for (int i = 0; i < raws.size(); i++) { args[i] = String.valueOf(raws.get(i)[0]); in.append(i == 0 ? "?" : ",?"); }
-      args[raws.size()] = StructuredName.CONTENT_ITEM_TYPE;
-      ops.add(ContentProviderOperation.newDelete(ContactsContract.Data.CONTENT_URI)
-        .withSelection(ContactsContract.Data.RAW_CONTACT_ID + " IN (" + in + ") AND " + ContactsContract.Data.MIMETYPE + "=?", args).build());
-      if (!draft.displayName.isEmpty()) ops.add(insert(target, null, StructuredName.CONTENT_ITEM_TYPE, null, new Field(draft.displayName, "")));
+    boolean nameChanged = draft.structured()
+      ? (draft.givenName != null && !draft.givenName.equals(name == null ? "" : name.text(StructuredName.GIVEN_NAME)))
+        || (draft.familyName != null && !draft.familyName.equals(name == null ? "" : name.text(StructuredName.FAMILY_NAME)))
+      : !draft.displayName.equals(summary[1]);
+    if (nameChanged) scalarWrite(ops, name, nameRaw(summary, raws), StructuredName.CONTENT_ITEM_TYPE, nameValues(draft, name));
+    if (draft.notes != null && !draft.notes.equals(note == null ? "" : note.text(Note.NOTE))) {
+      ContentValues values = new ContentValues(); values.put(Note.NOTE, draft.notes);
+      scalarWrite(ops, note, target, Note.CONTENT_ITEM_TYPE, values);
     }
     replace(ops, phones, draft.phones, target, Phone.CONTENT_ITEM_TYPE, PHONE_TYPES);
     replace(ops, emails, draft.emails, target, Email.CONTENT_ITEM_TYPE, EMAIL_TYPES);

@@ -20,7 +20,8 @@
       "revokedContactsPermissionFencesAnAlreadyRunningNameLookup",
       "removedCallFencesAnAlreadyRunningNameLookup",
       "destroyedServiceFencesAnAlreadyRunningNameLookup",
-      "cachedContactNameIsNotReusedAfterPermissionWithdrawal"
+      "cachedContactNameIsNotReusedAfterPermissionWithdrawal",
+      "ringingAlertsAndConnectedCallsUseTheQuietChannel"
     ]
   },
   {

@@ -177,7 +177,15 @@ function expectOneSpokenTurn(f: Fixture, reply: string) {
 }
 
 test("a noise or empty final during a held reply does not take over the turn", async () => {
-  for (const noise of ["", "..."]) {
+  for (const noise of [
+    "",
+    "...",
+    "*music*",
+    "*Tonk*",
+    "*Dramatic Music*",
+    "[ music ]",
+    "[noise]",
+  ]) {
     const f = setup({ acousticBargeInEnabled: true });
     await startTurn(f);
     f.emit({ type: "start-of-turn", transcript: "", raw: {} });
@@ -200,7 +208,15 @@ test("an empty final with continuous handoff queues no overlap turn", async () =
     referenceAwarePlayback: true,
   });
   await startTurn(f);
-  for (const noise of ["", "..."]) {
+  for (const noise of [
+    "",
+    "...",
+    "*music*",
+    "*Tonk*",
+    "*Dramatic Music*",
+    "[ music ]",
+    "[noise]",
+  ]) {
     f.emit({ type: "start-of-turn", transcript: "", raw: {} });
     f.emit({ type: "end-of-turn", transcript: noise, raw: {} });
   }
@@ -254,4 +270,21 @@ test("injected STT that opts in to reopening reconnects after a timeout", async 
   await until(() => f.sttOpened > 1);
   expect(f.closed).toBe(0);
   expect(f.frames("error")[0]).toMatchObject({ code: "stt_reconnecting" });
+});
+
+test("a sound annotation settles metering without dispatch and the next spoken turn still works", async () => {
+  const f = setup();
+  f.session.start();
+  f.emit({ type: "connected", raw: {} });
+  f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+  f.emit({ type: "end-of-turn", transcript: "*Tonk*", raw: {} });
+  await tick();
+  expect(f.signals).toHaveLength(0);
+  expect(f.frames("usage")).toHaveLength(1);
+  expect(f.frames("stt_final")).toMatchObject([{ text: "" }]);
+  await startTurn(f);
+  finish(f, "You are on Notes.");
+  await until(() => f.frames("usage").length === 2);
+  expect(f.signals).toHaveLength(1);
+  expect(f.frames("error")).toHaveLength(0);
 });

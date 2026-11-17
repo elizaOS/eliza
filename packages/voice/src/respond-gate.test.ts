@@ -85,3 +85,37 @@ describe("shouldRespondToVoiceTurn", () => {
       ).toBe(false);
   });
 });
+
+it("rejects whole sound annotations and preserves speech and short answers", () => {
+  for (const text of [
+    "*music*",
+    "*Tonk*",
+    "*Dramatic Music*",
+    "[ background music ]",
+    "(  music  )",
+    "[noise]",
+    "(laughter)",
+    " [music] *breathing* ",
+  ]) {
+    expect(shouldRespondToVoiceTurn(text), text).toBe(false);
+    expect(buildVoiceTurnSignal(text).agentShouldSpeak, text).toBe(false);
+    expect(
+      buildVoiceTurnSignal(text, { wakeWordActive: true }).agentShouldSpeak,
+      text,
+    ).toBe(false);
+  }
+  for (const text of [
+    "yes",
+    "no",
+    "15",
+    "music",
+    "dramatic music",
+    "[background music] turn it down",
+    "*yes*",
+    "play music",
+    "[noise] turn it down",
+    "你好",
+  ]) {
+    expect(shouldRespondToVoiceTurn(text), text).toBe(true);
+  }
+});

@@ -321,6 +321,7 @@ public abstract class TelephonyPlugin extends Plugin {
       if (fenceResult && !current(access, cancel, granted)) call.reject(noun + " access changed. Refresh after unlocking.", "unavailable");
       else call.resolve(value);
      });
+    } catch (MessageDeletion.Refused refusal) { call.reject(refusal.getMessage(), refusal.code);
     } catch (VoicemailStore.Refused refusal) { call.reject(refusal.getMessage(), refusal.code);
     } catch (Exception unreadable) { call.reject(noun + " could not be read. Check access and refresh.", "unavailable"); }
     finally { reads.remove(cancel); }
@@ -547,6 +548,19 @@ public abstract class TelephonyPlugin extends Plugin {
    value.put("updated", holder ? MmsStore.markThreadRead(getContext(), thread, through) : 0);
    return value;
   });
+ }
+
+ /** Deletes exactly one message the owner selected and confirmed in the host UI; no radio or retry. */
+ @PluginMethod public void deleteMessage(PluginCall call) {
+  if (refused(call)) return;
+  final MessageDeletion.Reference target;
+  try { target=MessageDeletion.reference(call.getData()); }
+  catch (IllegalArgumentException invalid) { call.reject("Invalid selected message", "invalid"); return; }
+  if (!MmsStore.isDefaultSmsApp(getContext())) { call.reject("The default messaging app is required", "role-required"); return; }
+  final long selectedGeneration=generation.get();
+  fencedWrite(call,"sms","Messages",cancel -> MessageDeletion.delete(getContext(),target,cancel,() ->
+    selectedGeneration==generation.get() && admitted() && unlockedForeground()
+      && getPermissionState("sms")==PermissionState.GRANTED && MmsStore.isDefaultSmsApp(getContext())));
  }
 
  // ---- Incoming/outgoing change observation ----------------------------------------------------

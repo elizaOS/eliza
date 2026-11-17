@@ -2,6 +2,7 @@
 export {
   type BuildVoiceTurnSignalContext,
   buildVoiceTurnSignal,
+  isNonSpeechVoiceTranscript,
   type ShouldRespondContext,
   shouldRespondToVoiceTurn,
   type VoiceTurnSignal,
