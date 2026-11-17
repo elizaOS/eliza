@@ -287,7 +287,9 @@ Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken
 exploration is, as an artifact.
 
-Each run restores pnpm's store, every `.spec-cache/`, and Quint's evaluator.
+Each run installs Dafny from its pinned release, checked against its SHA-256,
+and restores pnpm's store, the spec cache of the root, each workspace package
+and each example, and Quint's evaluator, under a key of the commit.
 Turborepo shares task results through the private Cloudflare/R2 cache.
 The task entry point disables Turbo telemetry. `selftest:tools` waits for the root and
 Studio test tasks so those integration journeys do not compete with it.
@@ -295,6 +297,8 @@ Pull requests read shared results; only branch pushes receive the publishing
 credential, protected by the `turbo-cache-publish` environment's branch
 policy. A pull request keeps its own Turborepo results in the GitHub cache
 instead, which only that pull request reads, so its next push reuses them. Newer commits replace an older run of the same pull request.
+A pull request from `develop` into `main` waits for the push of the same commit
+to `develop` and replays its published results.
 Every pushed commit can finish. Completed tasks are shared through the cache.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
