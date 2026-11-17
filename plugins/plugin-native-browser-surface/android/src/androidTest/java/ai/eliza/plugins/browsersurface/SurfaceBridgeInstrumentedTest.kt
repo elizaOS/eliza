@@ -228,7 +228,9 @@ class SurfaceBridgeInstrumentedTest {
             put("process", "isolated")
             put("storage", "isolated")
         })
-        if (!BrowserLoginFields.supported()) {
+        val attestationAvailable = BrowserLoginFields.supported()
+        android.util.Log.i("SurfaceBridgeTests", "originAttestationAvailable=$attestationAvailable")
+        if (!attestationAvailable) {
             assertTrue(created.optString("error").contains("UNSUPPORTED"))
             assertFalse(call("getSurfaceState") { put("id", SURFACE) }.getBoolean("exists"))
             return
