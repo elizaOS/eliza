@@ -611,6 +611,12 @@
         "Pages retirement runs after source and production checks before canonical upload",
         "production CLI refuses an uncertified PATCH and leaves verification read-only"
       ]
+    },
+    {
+      "file": "packages/cloud/api/__tests__/native-callback.pglite.test.ts",
+      "required": [
+        "Alpha package migration preserves the legacy login alias but returns both to the canonical app"
+      ]
     }
   ],
   "MobileClientCompatibility.qnt": [
