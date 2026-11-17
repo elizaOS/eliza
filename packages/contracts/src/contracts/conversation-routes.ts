@@ -55,6 +55,11 @@ export const ConversationMetadataSchema = z
     draftId: z.string().optional(),
     pageId: z.string().optional(),
     sourceConversationId: z.string().optional(),
+    forkMessageId: z
+      .string()
+      .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+      .optional(),
+    forkRequestId: z.string().uuid().optional(),
     terminalBridgeConversationId: z.string().optional(),
     waifuChatOwnerWallet: z.string().optional(),
     waifuChatRole: z.enum(["admin", "user", "guest"]).optional(),
@@ -67,6 +72,16 @@ export const PostConversationRequestSchema = z
     includeGreeting: z.boolean().optional(),
     lang: z.string().optional(),
     metadata: ConversationMetadataSchema.optional(),
+  })
+  .strict();
+
+export const PostConversationForkRequestSchema = z
+  .object({
+    messageId: z
+      .string()
+      .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
+    requestId: z.string().uuid(),
+    expectedText: z.string(),
   })
   .strict();
 

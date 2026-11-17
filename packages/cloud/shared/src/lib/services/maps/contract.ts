@@ -139,6 +139,7 @@ export interface MapsTilesDescriptor {
   mapType: "roadmap";
   minZoom: number;
   maxZoom: number;
+  /** Width of one tile on the map grid. An image may hold more pixels than this (high-DPI tiles). */
   tileSize: number;
   attribution: string;
 }
@@ -378,6 +379,12 @@ export interface MapsProviderAdapter {
     signal?: AbortSignal,
     reportPrice?: MapsPriceObserver,
   ): Promise<MapsTile>;
+  /**
+   * Starts whatever a first tile must wait for (a provider tile session), so it
+   * can run beside admission. The promise never rejects; a host keeps the
+   * request alive until it settles.
+   */
+  prepareTiles?(): Promise<void>;
   /** Copyright for a visible area; only providers that serve tiles implement it. */
   viewport?(request: MapsViewportRequest, signal?: AbortSignal): Promise<MapsViewportResponse>;
 }

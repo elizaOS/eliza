@@ -1654,34 +1654,43 @@ public class ElizaAgentService extends Service {
     }
 
     /**
-     * Resolve the current APK payload timestamp. Prefers the on-disk APK mtime
-     * ({@code sourceDir → File.lastModified}) over {@code lastUpdateTime}
-     * because /system/priv-app installs (the AOSP image embed path) do NOT bump
-     * {@code lastUpdateTime} — that field reflects pm-install + Play-update
-     * events, while the APK mtime always reflects the current payload, which is
-     * what invalidates a cached extraction. Returns 0 when unknown, which the
-     * policy reads as "no change" (safe: it boots the existing extraction).
+     * Resolve the stamp of the installed APK payload (see
+     * {@link ElizaAssetExtractionPolicy#payloadStamp}). The APK mtime and
+     * {@code lastUpdateTime} move for a normal install or Play update, but an
+     * AOSP image pins every file mtime to one fixed date and an image-only
+     * update of a /product or /system priv-app leaves {@code lastUpdateTime}
+     * alone, so the stamp also covers the APK size, its version code and a
+     * digest of the agent assets. Returns 0 when unknown, which the policy
+     * reads as "no change" (safe: it boots the existing extraction).
      */
     private long computeApkUpdateTime() {
-        long pkgUpdate = 0L;
-        try {
-            String sourceDir = getApplicationInfo().sourceDir;
-            if (sourceDir != null) {
-                long apkMtime = new File(sourceDir).lastModified();
-                if (apkMtime > 0L) pkgUpdate = apkMtime;
-            }
-            long pmUpdate = getPackageManager()
-                .getPackageInfo(getPackageName(), 0).lastUpdateTime;
-            if (pmUpdate > pkgUpdate) pkgUpdate = pmUpdate;
-        } catch (PackageManager.NameNotFoundException error) {
-            // The package cannot fail to find itself in practice; on the
-            // impossible path, an unknown APK time reads as "no change".
-            Log.w(TAG, "[ElizaAgentService] Could not resolve APK update time: " + error.getMessage());
+        long apkMtime = 0L;
+        long apkSize = 0L;
+        long agentDigest = 0L;
+        String sourceDir = getApplicationInfo().sourceDir;
+        if (sourceDir != null) {
+            File apk = new File(sourceDir);
+            apkMtime = apk.lastModified();
+            apkSize = apk.length();
+            agentDigest = ElizaAssetExtractionPolicy.agentAssetsDigest(apk);
         }
-        return pkgUpdate;
+        long pmUpdate = 0L;
+        long versionCode = 0L;
+        try {
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            pmUpdate = info.lastUpdateTime;
+            versionCode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                ? info.getLongVersionCode()
+                : info.versionCode;
+        } catch (PackageManager.NameNotFoundException error) {
+            // The package cannot fail to find itself in practice; the APK file
+            // facts above still identify the payload.
+            Log.w(TAG, "[ElizaAgentService] Could not resolve package info: " + error.getMessage());
+        }
+        return ElizaAssetExtractionPolicy.payloadStamp(apkMtime, pmUpdate, versionCode, apkSize, agentDigest);
     }
 
-    /** Read the APK-mtime stamp from a completed extraction; 0 if absent/corrupt. */
+    /** Read the payload stamp from a completed extraction; 0 if absent/corrupt. */
     private long readApkStamp(File root) {
         return readStamp(new File(root, AGENT_STAMP_NAME));
     }

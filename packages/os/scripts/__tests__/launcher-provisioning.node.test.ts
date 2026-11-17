@@ -93,16 +93,23 @@ test("the overlay sets default HOME, assistant and Autofill offer additively", (
     PKG,
     provisioningComponents(tree(), PKG),
   );
-  assert.match(
+  const config =
     files[
       "provisioning/overlay/frameworks/base/core/res/res/values/config.xml"
-    ],
+    ];
+  for (const comment of config.matchAll(/<!--([\s\S]*?)-->/g)) {
+    assert.doesNotMatch(
+      comment[1],
+      /--/,
+      "XML comments cannot contain double hyphens",
+    );
+  }
+  assert.match(
+    config,
     new RegExp(`config_defaultAssistant" translatable="false">${PKG}<`),
   );
   assert.match(
-    files[
-      "provisioning/overlay/frameworks/base/core/res/res/values/config.xml"
-    ],
+    config,
     /config_defaultAutofillService" translatable="false">ai\.alphacompute\.alphaphone\/ai\.eliza\.plugins\.passwords\.ElizaPasswordAutofillService</,
   );
   assert.match(

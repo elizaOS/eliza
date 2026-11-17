@@ -27,6 +27,10 @@
  */
 
 import { logger } from "@elizaos/core";
+import {
+  isNonSpeechVoiceTranscript,
+  mayBecomeNonSpeechVoiceTranscript,
+} from "@elizaos/voice/turn";
 import type { VoiceUiContext } from "../protocol";
 import {
   CARTESIA_INK_TURN_END_TIMEOUT_MILLISECONDS,
@@ -1328,7 +1332,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           const transcriptAt = this.now();
           this.sttFirstTranscriptAtMs ??= transcriptAt;
           this.sttLastTranscriptAtMs = transcriptAt;
-          if (this.interruptForConfirmedSpeech(event.transcript)) {
+          if (this.interruptForConfirmedSpeech(event.transcript, false)) {
             this.queueSttPartial(event.transcript);
           }
         }
@@ -1340,7 +1344,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           this.sttFirstTranscriptAtMs ??= this.sttEagerEndAtMs;
           this.sttLastTranscriptAtMs = this.sttEagerEndAtMs;
         }
-        this.interruptForConfirmedSpeech(event.transcript);
+        this.interruptForConfirmedSpeech(event.transcript, false);
         if (this.sttTurnEchoOnly) break;
         this.flushSttPartial();
         this.send({
@@ -1387,7 +1391,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           },
           "[voice-session] end-of-turn latency",
         );
-        this.interruptForConfirmedSpeech(event.transcript);
+        this.interruptForConfirmedSpeech(event.transcript, true);
         if (this.sttTurnEchoOnly) {
           this.activeSttTurn = false;
           this.resetSttPartialDelivery();
@@ -1559,9 +1563,19 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     }, delay);
   }
 
-  /** Cancel an active response only after Ink has produced caller words. */
-  private interruptForConfirmedSpeech(transcript: string): boolean {
-    if (!SPOKEN_TRANSCRIPT_RE.test(transcript)) return false;
+  /** Cancel an active response only after Ink has produced caller words. An
+   * interim annotation such as `*Dramatic Mus` waits for its classified final. */
+  private interruptForConfirmedSpeech(
+    transcript: string,
+    final: boolean,
+  ): boolean {
+    if (
+      !SPOKEN_TRANSCRIPT_RE.test(transcript) ||
+      (final
+        ? isNonSpeechVoiceTranscript(transcript)
+        : mayBecomeNonSpeechVoiceTranscript(transcript))
+    )
+      return false;
     if (this.continuousHandoffEnabled && this.currentVoiceTurnId) {
       if (
         this.assistantPlaybackActive &&
@@ -1651,6 +1665,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   /** Authoritative user turn: mint the turn trace, run the LLM+TTS legs. */
   private commitTurn(transcript: string): void {
+    if (isNonSpeechVoiceTranscript(transcript)) transcript = "";
     if (
       (this.currentVoiceTurnId || this.pendingOverlapTurn) &&
       !SPOKEN_TRANSCRIPT_RE.test(transcript)

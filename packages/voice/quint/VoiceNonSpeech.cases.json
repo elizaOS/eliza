@@ -1,0 +1,21 @@
+{
+  "sources": [
+    "packages/voice/src/respond-gate.ts",
+    "packages/voice/src/respond-gate.test.ts",
+    "packages/host/src/voice/session.ts",
+    "packages/host/src/voice/session-turn-ownership.test.ts"
+  ],
+  "bounds": "One held reply, up to two started turns and three metered finals, with interim and final segments interleaved. Final kinds (speech, whole annotation, empty) and interim kinds (speech, annotation prefix) abstract isNonSpeechVoiceTranscript and mayBecomeNonSpeechVoiceTranscript; their text classification is checked by respond-gate.test.ts and the session wiring by session-turn-ownership.test.ts. The witness runs remove each classifier guard and must break NoAnnotationTakeover. No provider acoustic accuracy or timing claim.",
+  "cases": [
+    {
+      "name": "bounded",
+      "main": "VoiceNonSpeech",
+      "init": "init",
+      "step": "step",
+      "invariants": ["TypeOK", "NoAnnotationTakeover"],
+      "temporal": [],
+      "maxSteps": 12,
+      "samples": 1000
+    }
+  ]
+}

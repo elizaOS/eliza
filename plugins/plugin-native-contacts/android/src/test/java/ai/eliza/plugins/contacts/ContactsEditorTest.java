@@ -51,6 +51,9 @@ public final class ContactsEditorTest {
   static boolean refuseReadback;
   static boolean loseBatchReply;
   static int writes;
+  static final Map<Long, Long> primaryNames = new HashMap<>();
+  /** Choose the shown name as Android's aggregator does for equal sources and writable accounts. */
+  static boolean aggregateNames;
 
   static long addRaw(long contact) {
     long id = ++nextRaw;
@@ -59,20 +62,46 @@ public final class ContactsEditorTest {
   }
   static long addData(long raw, String mime, String value, Integer type, String label) {
     Map<String, Object> row = new HashMap<>();
+    for (int column = 1; column <= 15; column++) row.put("data" + column, null);
     row.put("raw_contact_id", raw); row.put("mimetype", mime); row.put("data1", value); row.put("data2", type); row.put("data3", label);
     data.put(++nextData, row);
     raws.get(raw)[1]++;
     return nextData;
   }
   static final String NAME = ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE, PHONE = ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE,
-    EMAIL = ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE;
+    EMAIL = ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE, NOTE = ContactsContract.CommonDataKinds.Note.CONTENT_ITEM_TYPE;
 
   public static final class Provider extends ContentProvider {
     @Override public boolean onCreate() { return true; }
+    private static boolean named(Map<String, Object> row, long contact) {
+      return NAME.equals(row.get("mimetype")) && raws.containsKey(row.get("raw_contact_id")) && raws.get(row.get("raw_contact_id"))[0] == contact;
+    }
+    /** AbstractContactAggregator.processDisplayNameCandidate: a super-primary name first, then the more complex (longer) one. */
+    private static Long nameRaw(long contact) {
+      if (!aggregateNames) return primaryNames.get(contact);
+      Map<String, Object> best = null;
+      for (Map<String, Object> row : data.values()) {
+        if (!named(row, contact)) continue;
+        String label = (String) row.get("data1");
+        if (best == null || (label != null && !label.isEmpty() && (superPrimary(row)
+            || (!superPrimary(best) && label.length() > ((String) best.get("data1")).length())))) best = row;
+      }
+      return best == null ? null : (Long) best.get("raw_contact_id");
+    }
+    private static boolean superPrimary(Map<String, Object> row) { return Integer.valueOf(1).equals(row.get("is_super_primary")); }
     private static String name(long contact) {
+      Long selected = nameRaw(contact);
       for (Map<String, Object> row : data.values())
-        if (NAME.equals(row.get("mimetype")) && raws.containsKey(row.get("raw_contact_id")) && raws.get(row.get("raw_contact_id"))[0] == contact) return (String) row.get("data1");
+        if (named(row, contact) && (selected == null || selected.equals(row.get("raw_contact_id")))) return (String) row.get("data1");
       return null;
+    }
+    /** DataRowHandler: a super-primary row clears the flag on the aggregate's other rows of its type. */
+    private static void onlySuperPrimary(Map<String, Object> changed) {
+      if (!superPrimary(changed)) return;
+      long contact = raws.get(changed.get("raw_contact_id"))[0];
+      for (Map<String, Object> row : data.values())
+        if (row != changed && row.get("mimetype").equals(changed.get("mimetype")) && raws.containsKey(row.get("raw_contact_id"))
+            && raws.get(row.get("raw_contact_id"))[0] == contact && superPrimary(row)) row.put("is_super_primary", 0);
     }
     @Override public Cursor query(Uri uri, String[] projection, String selection, String[] args, String order) {
       List<String> path = uri.getPathSegments();
@@ -93,7 +122,7 @@ public final class ContactsEditorTest {
         for (long[] raw : raws.values()) exists |= raw[0] == contact;
         if (exists) {
           Map<String, Object> row = new HashMap<>();
-          row.put("lookup", "key" + contact); row.put("display_name", name(contact)); row.put("starred", 0);
+          row.put("lookup", "key" + contact); row.put("display_name", name(contact)); row.put("starred", 0); row.put("name_raw_contact_id", nameRaw(contact));
           rows.add(row);
         }
       } else {
@@ -116,7 +145,11 @@ public final class ContactsEditorTest {
     @Override public Uri insert(Uri uri, ContentValues values) {
       writes++;
       if (uri.getPathSegments().get(0).equals("raw_contacts")) return Uri.withAppendedPath(uri, String.valueOf(addRaw(0)));
-      long id = addData(values.getAsLong("raw_contact_id"), values.getAsString("mimetype"), values.getAsString("data1"), values.getAsInteger("data2"), values.getAsString("data3"));
+      long raw = values.getAsLong("raw_contact_id"), id = ++nextData;
+      Map<String, Object> row = new HashMap<>();
+      for (int column = 1; column <= 15; column++) row.put("data" + column, null);
+      for (Map.Entry<String, Object> value : values.valueSet()) row.put(value.getKey(), value.getValue());
+      data.put(id, row); raws.get(raw)[1]++; onlySuperPrimary(row);
       return Uri.withAppendedPath(uri, String.valueOf(id));
     }
     @Override public int delete(Uri uri, String selection, String[] args) {
@@ -137,7 +170,13 @@ public final class ContactsEditorTest {
       for (long id : gone) { raws.get(data.remove(id).get("raw_contact_id"))[1]++; }
       return gone.size();
     }
-    @Override public int update(Uri uri, ContentValues values, String selection, String[] args) { throw new UnsupportedOperationException(); }
+    @Override public int update(Uri uri, ContentValues values, String selection, String[] args) {
+      long id = Long.parseLong(uri.getLastPathSegment()); Map<String, Object> row = data.get(id);
+      if (row == null) return 0;
+      writes++;
+      for (Map.Entry<String, Object> value : values.valueSet()) row.put(value.getKey(), value.getValue());
+      raws.get(row.get("raw_contact_id"))[1]++; onlySuperPrimary(row); return 1;
+    }
     @Override public ContentProviderResult[] applyBatch(ArrayList<ContentProviderOperation> operations) throws OperationApplicationException {
       Runnable first = beforeBatch;
       beforeBatch = null;
@@ -150,7 +189,7 @@ public final class ContactsEditorTest {
 
   ContactsEditor editor;
   @Before public void provider() {
-    raws.clear(); data.clear(); nextRaw = 0; nextData = 0; beforeBatch = null; refuseReadback = false; loseBatchReply = false; writes = 0;
+    raws.clear(); data.clear(); primaryNames.clear(); aggregateNames = false; nextRaw = 0; nextData = 0; beforeBatch = null; refuseReadback = false; loseBatchReply = false; writes = 0;
     ProviderInfo info = new ProviderInfo();
     info.authority = ContactsContract.AUTHORITY;
     Robolectric.buildContentProvider(Provider.class).create(info);
@@ -218,7 +257,7 @@ public final class ContactsEditorTest {
     JSObject saved = off(() -> editor.save(null, null, draft("Ada Lovelace", list("number", "+15555550100", "mobile", "5550101", "custom:Boat"), list("address", "ada@example.test", "work"))));
     require(saved.getString("status").equals("saved") && saved.getString("id").equals("101"), "saved with the new contact's id");
     JSObject contact = get("101");
-    require(contact.length() == 7, "exactly the contract's fields");
+    require(contact.length() == 10, "exactly the contract's fields");
     require(contact.getString("displayName").equals("Ada Lovelace") && contact.getString("lookup").equals("key101") && !contact.getBoolean("starred"), "summary");
     require(contact.getJSONArray("phoneNumbers").toString().equals("[{\"number\":\"+15555550100\",\"type\":\"mobile\"},{\"number\":\"5550101\",\"type\":\"custom:Boat\"}]"), "typed numbers");
     require(contact.getJSONArray("emailAddresses").toString().equals("[{\"address\":\"ada@example.test\",\"type\":\"work\"}]"), "typed addresses");
@@ -244,7 +283,24 @@ public final class ContactsEditorTest {
 
     writes = 0;
     JSObject renamed = off(() -> editor.save("101", saved.getString("version"), draft("Ada King", list("number", "5550100", "mobile", "5550102", "work"), list("address", "ada@example.test", "work"))));
-    require(renamed.getString("status").equals("saved") && get("101").getString("displayName").equals("Ada King") && writes == 2, "the name alone is rewritten");
+    require(renamed.getString("status").equals("saved") && get("101").getString("displayName").equals("Ada King") && writes == 1 && data.containsKey(name), "the name changes in place");
+  }
+
+  @Test public void aLegacyRenameClearsTheOldNamePartsSoTheProviderReDerivesThem() throws Exception {
+    long raw = addRaw(0);
+    long name = addData(raw, NAME, "Ada Lovelace", null, null);
+    Map<String, Object> row = data.get(name);
+    row.put("data2", "Ada"); row.put("data3", "Lovelace"); row.put("data4", "Dr"); row.put("data5", "B"); row.put("data6", "Jr");
+    row.put("data7", "AY-da"); row.put("data10", 1);
+    String version = get("101").getString("version");
+    writes = 0;
+    JSObject renamed = off(() -> editor.save("101", version, draft("Ada King", new JSONArray(), new JSONArray())));
+    require(renamed.getString("status").equals("saved") && writes == 1, "one in-place name write");
+    require("Ada King".equals(row.get("data1")), "the new label is written");
+    for (String part : new String[] { "data2", "data3", "data4", "data5", "data6" })
+      require(row.get(part) == null, "the old " + part + " is cleared so the provider splits the new label");
+    // The provider's integer column reads back as a long; the value, not the Java box type, is kept.
+    require("AY-da".equals(row.get("data7")) && Long.valueOf(1).equals(row.get("data10")), "phonetic and style columns are kept");
   }
 
   @Test public void committedSavesStillReportSavedWhenReadbackFails() throws Exception {
@@ -350,4 +406,123 @@ public final class ContactsEditorTest {
     writes = 0;
     require(off(() -> editor.save("101", version, draft("Ada", new JSONArray(), new JSONArray()))).getString("status").equals("stale") && writes == 0, "and cannot be overwritten");
   }
+  static ContactsEditor.Draft structured(String display, String given, String family, String notes, JSONArray phones, JSONArray emails) {
+    return ContactsEditor.draft(display, phones, emails, given, family, notes);
+  }
+  static JSONObject request(String name) throws Exception {
+    return new JSONObject().put("displayName", name).put("phoneNumbers", new JSONArray()).put("emailAddresses", new JSONArray());
+  }
+  @Test public void structuredNamesAndPrivateNotesAreCreatedAndReadBack() throws Exception {
+    ContactsEditor.Draft draft = structured("", "Ada", "Lovelace", "  first\nsecond\tline\r\n", list("number", "5550100", "custom:Boat"), list("address", "ada@example.test", "work"));
+    JSObject result = off(() -> editor.save(null, null, draft));
+    require(result.getString("status").equals("saved"), "created");
+    JSObject contact = get(result.getString("id"));
+    require(contact.getString("givenName").equals("Ada") && contact.getString("familyName").equals("Lovelace"), "actual structured columns read back");
+    require(contact.getString("notes").equals("  first\nsecond\tline\r\n"), "note whitespace kept");
+    require(data.get(2L).get("mimetype").equals(NOTE), "note is a distinct provider row");
+    require(data.get(3L).get("data3").equals("Boat"), "custom phone type kept");
+    require(data.get(1L).get("data1") == null, "the editor does not build or split a display label");
+  }
+  @Test public void bridgePayloadBoundsAndExplicitEmptyValuesAreStrict() throws Exception {
+    ContactsEditor.Draft value = ContactsEditor.draft(request("Ada").put("id", "101").put("version", "a".repeat(64)).put("givenName", "").put("notes", ""));
+    require(value.givenName.equals("") && value.familyName == null && value.notes.equals(""), "clear differs from omission");
+    require(ContactsEditor.draft(request("Ada")).notes == null, "omitted notes stay omitted");
+    invalid("null note", () -> ContactsEditor.draft(request("Ada").put("notes", JSONObject.NULL)));
+    invalid("non-text name", () -> ContactsEditor.draft(request("Ada").put("givenName", 4)));
+    invalid("unknown key", () -> ContactsEditor.draft(request("Ada").put("extra", "x")));
+    invalid("note bound", () -> ContactsEditor.draft(request("Ada").put("notes", "x".repeat(ContactsEditor.MAX_NOTES + 1))));
+    invalid("note controls", () -> ContactsEditor.draft(request("Ada").put("notes", "bad\u0000note")));
+    invalid("numeric id", () -> ContactsEditor.draft(request("Ada").put("id", 101).put("version", "a".repeat(64))));
+    invalid("version without id", () -> ContactsEditor.draft(request("Ada").put("version", "a".repeat(64))));
+    invalid("empty actual structured creation", () -> ContactsEditor.draft(request("not a component").put("givenName", "").put("familyName", "")));
+  }
+  @Test public void omissionAndSingleComponentEditsKeepMergedNamesPhotosLabelsAndOtherRows() throws Exception {
+    long first = addRaw(0), second = addRaw(101); primaryNames.put(101L, second);
+    long otherName = addData(first, NAME, "Other account label", null, null);
+    long name = addData(second, NAME, "Dr Ada M Lovelace PhD", null, null);
+    data.get(name).put("data2", "Ada"); data.get(name).put("data3", "Lovelace"); data.get(name).put("data4", "Dr");
+    data.get(name).put("data5", "M"); data.get(name).put("data6", "PhD"); data.get(name).put("data7", "phonetic");
+    data.get(name).put("data10", 1L); data.get(name).put("is_primary", 1L); data.get(name).put("data14", "unmodelled");
+    long note = addData(second, NOTE, "private", null, null), photo = addData(first, "vnd.android.cursor.item/photo", "photo", null, null);
+    long phone = addData(first, PHONE, "5550100", 0, "Boat"), email = addData(second, EMAIL, "ada@example.test", 2, null);
+    Map<String, Object> beforeName = new HashMap<>(data.get(name)), beforeOther = new HashMap<>(data.get(otherName)), beforePhoto = new HashMap<>(data.get(photo));
+    JSObject current = get("101");
+    require(current.getString("givenName").equals("Ada") && current.getString("notes").equals("private"), "chosen provider name, not a split label");
+    ContactsEditor.Draft unchanged = draft(current.getString("displayName"), list("number", "5550100", "custom:Boat"), list("address", "ada@example.test", "work"));
+    writes = 0;
+    JSObject kept = off(() -> editor.save("101", current.getString("version"), unchanged));
+    require(kept.getString("status").equals("saved") && writes == 0 && data.get(note).get("data1").equals("private"), "omission writes no name or note");
+    ContactsEditor.Draft edited = structured(current.getString("displayName"), "Grace", null, null, list("number", "5550100", "custom:Boat"), list("address", "ada@example.test", "work"));
+    JSObject changed = off(() -> editor.save("101", current.getString("version"), edited));
+    require(changed.getString("status").equals("saved") && writes == 1, "one selected row updated");
+    beforeName.put("data2", "Grace"); beforeName.put("is_primary", 1); beforeName.put("is_super_primary", 1);
+    require(data.get(name).equals(beforeName), "middle, prefix, suffix, phonetic, styles and unknown columns kept; the linked edit is the shown name");
+    require(data.get(otherName).equals(beforeOther) && data.get(photo).equals(beforePhoto), "other raw name and photo untouched");
+    require(data.containsKey(phone) && data.containsKey(email) && data.get(phone).get("data3").equals("Boat"), "number and email row identity and label kept");
+    require(get("101").getString("familyName").equals("Lovelace") && get("101").getString("givenName").equals("Grace"), "only requested component changes");
+  }
+  @Test public void explicitClearsChangeOnlyTheirValueAndStaleNotesNeverOverwriteAnotherWriter() throws Exception {
+    long raw = addRaw(0), name = addData(raw, NAME, "Ada Lovelace", null, null), note = addData(raw, NOTE, "private", null, null);
+    data.get(name).put("data2", "Ada"); data.get(name).put("data3", "Lovelace"); data.get(name).put("data5", "M");
+    data.get(note).put("data2", "unrelated note metadata");
+    String version = get("101").getString("version"); writes = 0;
+    ContactsEditor.Draft cleared = structured("Ada Lovelace", "", null, "", new JSONArray(), new JSONArray());
+    JSObject result = off(() -> editor.save("101", version, cleared));
+    require(result.getString("status").equals("saved") && writes == 2, "only selected name and note rows written");
+    require(get("101").getString("givenName").equals("") && get("101").getString("familyName").equals("Lovelace"), "empty given name preserves omitted family");
+    require(data.get(name).get("data5").equals("M") && data.get(note).get("data2").equals("unrelated note metadata") && get("101").getString("notes").equals(""), "clear does not remove unrelated values or row");
+    String current = get("101").getString("version"); writes = 0;
+    beforeBatch = () -> { data.get(note).put("data1", "another writer"); raws.get(raw)[1]++; };
+    JSObject stale = off(() -> editor.save("101", current, structured("Ada Lovelace", null, null, "replace", new JSONArray(), new JSONArray())));
+    require(stale.getString("status").equals("stale") && writes == 0 && get("101").getString("notes").equals("another writer"), "atomic version assertions refuse the whole stale write");
+  }
+  @Test public void ambiguousOrUnwritableNotesAreOmittedWhileTheRestOfTheContactStaysEditable() throws Exception {
+    long google = addRaw(0), local = addRaw(101); addData(google, NAME, "Ada", null, null);
+    long one = addData(google, NOTE, "one", null, null), two = addData(local, NOTE, "", null, null);
+    JSObject linked = get("101");
+    require(!linked.has("notes") && linked.getString("givenName").equals("") && linked.has("version"), "only the notes field is unavailable");
+    writes = 0;
+    JSObject result = off(() -> editor.save("101", linked.getString("version"), draft("Ada", list("number", "5550100", "mobile"), new JSONArray())));
+    require(result.getString("status").equals("saved") && writes == 1 && data.get(one).get("data1").equals("one") && data.get(two).get("data1").equals(""), "a phone edit saves and keeps every note row");
+    String current = result.getString("version"); writes = 0;
+    JSObject flattened = off(() -> editor.save("101", current, structured("Ada", null, null, "merged", list("number", "5550100", "mobile"), new JSONArray())));
+    require(flattened.getString("status").equals("failed") && writes == 0 && data.get(one).get("data1").equals("one"), "a save that supplies notes is refused, nothing written");
+
+    long raw = addRaw(0); long note = addData(raw, NOTE, "form\ffeed", null, null);
+    JSObject imported = get("103");
+    require(!imported.has("notes") && imported.getJSONArray("phoneNumbers").length() == 0, "a note with control characters is omitted, not refused");
+    JSObject overwrite = off(() -> editor.save("103", imported.getString("version"), structured("", null, null, "clean", list("number", "5550101", "home"), new JSONArray())));
+    require(overwrite.getString("status").equals("failed") && data.get(note).get("data1").equals("form\ffeed"), "it is never overwritten from an omitted field");
+
+    long longRaw = addRaw(0); addData(longRaw, PHONE, "5550102", 2, null);
+    String longNote = "x".repeat(ContactsEditor.MAX_NOTES + 1); long kept = addData(longRaw, NOTE, longNote, null, null);
+    JSObject tooLong = get(String.valueOf(longRaw + 100));
+    require(!tooLong.has("notes") && tooLong.getJSONArray("phoneNumbers").length() == 1, "a note over the bound is omitted, not clipped or refused");
+    JSObject clipped = off(() -> editor.save(String.valueOf(longRaw + 100), tooLong.getString("version"), structured("", null, null, "x", list("number", "5550102", "mobile"), new JSONArray())));
+    require(clipped.getString("status").equals("failed") && data.get(kept).get("data1").equals(longNote), "and never overwritten");
+  }
+  @Test public void renamingALinkedContactMakesTheEditedNameTheOneAndroidShows() throws Exception {
+    aggregateNames = true;
+    long local = addRaw(0), google = addRaw(101);
+    long localName = addData(local, NAME, "Robert Smith", null, null), googleName = addData(google, NAME, "Robert Smith", null, null);
+    JSObject before = get("101");
+    require(before.getString("displayName").equals("Robert Smith"), "the first equal name is shown");
+    JSObject renamed = off(() -> editor.save("101", before.getString("version"), draft("Bob Smith", new JSONArray(), new JSONArray())));
+    require(renamed.getString("status").equals("saved") && "Bob Smith".equals(data.get(localName).get("data1")), "the shown raw contact's name row is written");
+    require(get("101").getString("displayName").equals("Bob Smith"), "the shorter new name is not hidden by the other raw contact's old name");
+    require("Robert Smith".equals(data.get(googleName).get("data1")), "the other raw contact's name is kept");
+    JSObject again = get("101");
+    JSObject back = off(() -> editor.save("101", again.getString("version"), draft("Rob", new JSONArray(), new JSONArray())));
+    require(back.getString("status").equals("saved") && get("101").getString("displayName").equals("Rob"), "a later rename also wins");
+  }
+  /** The same drafts as contactDraftProblem's create/update cases in native-address-book.test.ts. */
+  @Test public void newContactNamesFollowStructuredFieldsWhileEditsMayOmitStoredComponents() throws Exception {
+    invalid("a new label with empty structured names", () -> ContactsEditor.draft(request("Ada").put("givenName", "").put("familyName", "")));
+    invalid("a new label with one empty structured name", () -> ContactsEditor.draft(request("Ada").put("givenName", "")));
+    invalid("the native save", () -> off(() -> editor.save(null, null, structured("Ada", "", "", null, new JSONArray(), new JSONArray()))));
+    require(ContactsEditor.draft(request("").put("givenName", "Ada")).named() && ContactsEditor.draft(request("Ada")).named(), "a structured or legacy name");
+    require(ContactsEditor.draft(request("Ada").put("givenName", "").put("phoneNumbers", list("number", "5550100", "mobile"))).phones.size() == 1, "a number is content");
+    require(ContactsEditor.draft(request("Ada").put("id", "101").put("version", "a".repeat(64)).put("givenName", "")).givenName.isEmpty(), "an edit clearing one component keeps the omitted one");
+  }
+
 }

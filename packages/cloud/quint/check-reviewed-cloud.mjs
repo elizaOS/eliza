@@ -12,6 +12,7 @@ import { testOutputPath } from "../../scripts/lib/test-output.ts";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const model = process.argv[2];
+const modelName = path.basename(model);
 const suites = JSON.parse(
   await readFile(
     new URL("./reviewed-cloud-checks.json", import.meta.url),
@@ -23,7 +24,7 @@ assert.equal(
   path.resolve(root, model),
   path.join(root, "packages/cloud/quint", path.basename(model)),
 );
-const checks = suites[path.basename(model)];
+const checks = suites[modelName];
 assert(
   Array.isArray(checks) && checks.length > 0,
   "Unknown reviewed cloud model",
@@ -41,7 +42,8 @@ let childEnv = process.env;
 let cancelled;
 let failure;
 try {
-  if (path.basename(model) === "provisioning_execution.qnt") {
+  const migrationChecks = modelName === "CloudFreshMigrationResume.qnt";
+  if (migrationChecks || modelName === "provisioning_execution.qnt") {
     // biome-ignore lint/suspicious/noUndeclaredEnvVars: the uncached conformance runner requires the same QA database as the other cloud hooks.
     const database = process.env.INFERENCE_POLICY_TEST_POSTGRES_URL;
     assert(
@@ -52,7 +54,7 @@ try {
     assert(
       ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname) &&
         parsed.username.startsWith("qa_"),
-      "Provisioning conformance requires a loopback qa_* PostgreSQL role",
+      "Cloud database conformance requires a loopback qa_* PostgreSQL role",
     );
     postgres = new Client({ connectionString: database });
     await postgres.connect();
@@ -65,6 +67,12 @@ try {
       DATABASE_URL: parsed.toString(),
       TEST_DATABASE_URL: parsed.toString(),
       INFERENCE_POLICY_TEST_POSTGRES_URL: parsed.toString(),
+      ...(migrationChecks
+        ? {
+            RUN_REAL_POSTGRES_MIGRATION_TESTS: "1",
+            MIGRATION_TEST_DATABASE_URL: parsed.toString(),
+          }
+        : {}),
     };
   }
   for (const [index, check] of checks.entries()) {
@@ -79,6 +87,12 @@ try {
         "test",
         "--conditions=eliza-source",
         check.file,
+        ...(check.requiredOnly
+          ? [
+              "--test-name-pattern",
+              `(?:${check.required.map((name) => RegExp.escape(name)).join("|")})$`,
+            ]
+          : []),
         "--max-concurrency=1",
         "--reporter=junit",
         `--reporter-outfile=${report}`,
@@ -115,12 +129,9 @@ try {
     );
     const xml = await readFile(report, "utf8");
     const summary = parseJunitSummary(xml);
-    assert.equal(
-      summary.failures + summary.errors + summary.skipped,
-      0,
-      "Required checks must pass without skips",
-    );
     const names = [];
+    let filtered = 0;
+    let testcase;
     const parser = new SaxesParser({ xmlns: false });
     parser.on("opentag", (tag) => {
       if (tag.name === "testcase") {
@@ -129,16 +140,52 @@ try {
           "string",
           "A testcase needs its name",
         );
-        names.push(tag.attributes.name.split(" > ").at(-1));
+        testcase = {
+          name: tag.attributes.name.split(" > ").at(-1),
+          skipped: false,
+        };
+      } else if (tag.name === "skipped" && testcase) {
+        testcase.skipped = true;
       }
     });
+    parser.on("closetag", ({ name }) => {
+      if (name !== "testcase" || !testcase) return;
+      // Bun reports cases excluded by the name filter as skipped. Only
+      // unrequested cases may be skipped when an explicit filter is active.
+      if (
+        check.requiredOnly &&
+        testcase.skipped &&
+        !check.required.includes(testcase.name)
+      ) {
+        filtered++;
+      } else {
+        names.push(testcase.name);
+      }
+      testcase = undefined;
+    });
     parser.write(xml).close();
+    assert.equal(
+      summary.failures + summary.errors,
+      0,
+      "Required checks must pass",
+    );
+    assert.equal(
+      summary.skipped,
+      filtered,
+      "Required checks must not be skipped",
+    );
     assert.deepEqual(
       names.sort(),
       [...check.required].sort(),
       `Required checks changed for ${check.file}`,
     );
-    results.push({ file: check.file, names, summary, report });
+    results.push({
+      file: check.file,
+      names,
+      summary,
+      report,
+      ...(filtered ? { filtered } : {}),
+    });
   }
 } catch (error) {
   failure = error;

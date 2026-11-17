@@ -42,6 +42,8 @@ export const CONTACT_MAX_NAME = 256;
 export const CONTACT_MAX_NUMBER = 64;
 export const CONTACT_MAX_ADDRESS = 320;
 export const CONTACT_MAX_LABEL = 64;
+/** Notes are kept verbatim, including tabs and line breaks. */
+export const CONTACT_MAX_NOTES = 8192;
 /** The largest page `list` returns. */
 export const ADDRESS_BOOK_MAX_PAGE = 200;
 
@@ -90,6 +92,13 @@ export interface ContactDetail {
   id: string;
   lookup: string;
   displayName: string;
+  /** Structured values from the provider, never split from displayName. Older hosts omit them. */
+  givenName?: string;
+  familyName?: string;
+  /** Omitted by older hosts, and when the stored notes cannot be edited as one value: several
+   * note rows (linked raw contacts can each carry one), a note longer than CONTACT_MAX_NOTES, or
+   * a note with control characters other than CR, LF and tab. Leave `notes` out of the draft then. */
+  notes?: string;
   starred: boolean;
   phoneNumbers: ContactPhone[];
   emailAddresses: ContactEmail[];
@@ -98,14 +107,22 @@ export interface ContactDetail {
 }
 /** What the owner saves. Nothing is trimmed or reordered on the way to the phone. */
 export interface ContactDraft {
+  /** Legacy full-name edit when neither structured name field is supplied. */
   displayName: string;
+  /** Omitted fields are preserved; an explicit empty string clears only that component.
+   * When supplied, Android derives displayName from the stored structured components. */
+  givenName?: string;
+  familyName?: string;
+  /** Owner-entered notes, not automatic agent context. */
+  notes?: string;
   phoneNumbers: ContactPhone[];
   emailAddresses: ContactEmail[];
 }
 /**
  * `saved`: written. `id` and `version` are null only if the saved contact could not be read back;
  * read the list again then. `stale`: the contact changed after it was read; nothing was written.
- * `not-found`: the contact is gone. `failed`: Android refused the write; nothing was written.
+ * `not-found`: the contact is gone. `failed`: Android refused the write, or the draft supplied notes
+ * that `get` omitted; nothing was written.
  * `unknown`: the provider did not confirm the write; refresh before deciding whether to try again.
  */
 export type ContactSaveResult =
@@ -117,6 +134,7 @@ export type ContactRemoveResult = {
 export type ContactDraftProblem =
   | "empty-contact"
   | "invalid-name"
+  | "invalid-notes"
   | "too-many-fields"
   | "invalid-number"
   | "invalid-address"
@@ -191,6 +209,14 @@ const clean = (value: unknown, max: number): value is string =>
   value.length <= max &&
   value.trim() !== "" &&
   !CONTROL.test(value);
+// biome-ignore lint/suspicious/noControlCharactersInRegex: notes allow only the usual text whitespace controls
+const NOTE_CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/;
+const notesText = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length <= CONTACT_MAX_NOTES &&
+  !NOTE_CONTROL.test(value);
+const EDIT_TEXT_FIELDS = ["givenName", "familyName", "notes"] as const;
+
 const knownType = (value: unknown, names: readonly string[]) =>
   typeof value === "string" &&
   (names.includes(value) ||
@@ -310,14 +336,29 @@ export function parseContactDetail(value: unknown, id: string): ContactDetail {
       "phoneNumbers",
       "emailAddresses",
       "version",
+      ...EDIT_TEXT_FIELDS.filter((key) => Object.hasOwn(data, key)),
     ],
     "contact",
   );
   if (data.id !== id || !CONTACT_ID.test(id)) throw invalid("contact id");
   const version = text(data.version, "contact version", 64);
   if (!VERSION.test(version)) throw invalid("contact version");
+  const extra: Pick<ContactDetail, "givenName" | "familyName" | "notes"> = {};
+  for (const key of EDIT_TEXT_FIELDS) {
+    if (!Object.hasOwn(data, key)) continue;
+    const value = data[key];
+    if (
+      key === "notes"
+        ? !notesText(value)
+        : typeof value !== "string" ||
+          (value !== "" && !clean(value, CONTACT_MAX_NAME))
+    )
+      throw invalid(`contact ${key}`);
+    extra[key] = value as string;
+  }
   return {
     id,
+    ...extra,
     lookup: text(data.lookup, "contact lookup key", 1024),
     displayName: text(data.displayName, "contact name", CONTACT_MAX_NAME),
     starred: bool(data.starred, "contact"),
@@ -337,15 +378,30 @@ export function parseContactDetail(value: unknown, id: string): ContactDetail {
   };
 }
 
-/** Why the native editor would refuse this draft, or null. The draft is checked as given. */
+/** Why the native editor would refuse this draft, or null. The draft is checked as given.
+ * A new contact stores only what the draft names: when it supplies a structured name field, the
+ * name comes from givenName/familyName and displayName is not stored. An edit's omitted field
+ * keeps its stored value, so only `create` can judge the name from the draft alone. */
 export function contactDraftProblem(
   draft: ContactDraft,
+  { create = false }: { create?: boolean } = {},
 ): ContactDraftProblem | null {
   if (
     typeof draft.displayName !== "string" ||
     (draft.displayName !== "" && !clean(draft.displayName, CONTACT_MAX_NAME))
   )
     return "invalid-name";
+  for (const key of ["givenName", "familyName"] as const) {
+    const value = draft[key];
+    if (
+      value !== undefined &&
+      (typeof value !== "string" ||
+        (value !== "" && !clean(value, CONTACT_MAX_NAME)))
+    )
+      return "invalid-name";
+  }
+  if (draft.notes !== undefined && !notesText(draft.notes))
+    return "invalid-notes";
   if (
     !Array.isArray(draft.phoneNumbers) ||
     !Array.isArray(draft.emailAddresses) ||
@@ -361,13 +417,39 @@ export function contactDraftProblem(
     if (!clean(email?.address, CONTACT_MAX_ADDRESS)) return "invalid-address";
     if (!knownType(email.type, CONTACT_EMAIL_TYPES)) return "invalid-type";
   }
+  const structured =
+    draft.givenName !== undefined || draft.familyName !== undefined;
+  const named =
+    create && structured
+      ? Boolean(draft.givenName || draft.familyName)
+      : draft.displayName !== "" ||
+        Boolean(draft.givenName || draft.familyName);
   if (
-    draft.displayName === "" &&
+    !named &&
+    !draft.notes?.trim() &&
     !draft.phoneNumbers.length &&
     !draft.emailAddresses.length
   )
     return "empty-contact";
   return null;
+}
+
+/** Serialize only this draft's declared fields; omitted scalar edits stay omitted. */
+function contactPayload(draft: ContactDraft) {
+  return {
+    displayName: draft.displayName,
+    phoneNumbers: draft.phoneNumbers.map(({ number, type }) => ({
+      number,
+      type,
+    })),
+    emailAddresses: draft.emailAddresses.map(({ address, type }) => ({
+      address,
+      type,
+    })),
+    ...(draft.givenName === undefined ? {} : { givenName: draft.givenName }),
+    ...(draft.familyName === undefined ? {} : { familyName: draft.familyName }),
+    ...(draft.notes === undefined ? {} : { notes: draft.notes }),
+  };
 }
 
 /** Parses a save result. `id` is the contact that was updated; leave it out for a new contact,
@@ -496,19 +578,11 @@ export function createAddressBookClient(
     /** Creates a contact in the phone's local account from the owner's draft. */
     async createContact(draft: ContactDraft) {
       const bridge = editor();
-      const problem = contactDraftProblem(draft);
+      const problem = contactDraftProblem(draft, { create: true });
       if (problem) throw new RangeError(`Invalid contact: ${problem}`);
       return parseContactSave(
         await bridge.save({
-          displayName: draft.displayName,
-          phoneNumbers: draft.phoneNumbers.map(({ number, type }) => ({
-            number,
-            type,
-          })),
-          emailAddresses: draft.emailAddresses.map(({ address, type }) => ({
-            address,
-            type,
-          })),
+          ...contactPayload(draft),
         }),
       );
     },
@@ -522,15 +596,7 @@ export function createAddressBookClient(
         await bridge.save({
           id,
           version,
-          displayName: draft.displayName,
-          phoneNumbers: draft.phoneNumbers.map(({ number, type }) => ({
-            number,
-            type,
-          })),
-          emailAddresses: draft.emailAddresses.map(({ address, type }) => ({
-            address,
-            type,
-          })),
+          ...contactPayload(draft),
         }),
         id,
       );
