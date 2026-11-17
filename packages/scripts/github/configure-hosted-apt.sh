@@ -31,4 +31,9 @@ sudo -n sed -i \
   -e 's#http[s]*://azure\.archive\.ubuntu\.com/ubuntu/#https://mirrors.kernel.org/ubuntu/#g' \
   -e 's#http[s]*://archive\.ubuntu\.com/ubuntu/#https://mirrors.kernel.org/ubuntu/#g' \
   "${source_files[@]}"
+# The mirror publishes IPv6 addresses and hosted runners have no IPv6 route,
+# so a plain `apt-get update` in a later step failed with "Network is
+# unreachable". Make every apt call on this runner use IPv4.
+printf 'Acquire::ForceIPv4 "true";\n' \
+  | sudo -n tee /etc/apt/apt.conf.d/99-eliza-ci-force-ipv4 >/dev/null
 echo "GitHub-hosted Ubuntu packages use the Kernel Archives mirror with Ubuntu's signing key"
