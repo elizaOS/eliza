@@ -23,10 +23,11 @@ deletion saga in `identity/deletion`, and the revocation epoch in
 > their account or sign out a lost device from one command line, so that I
 > never need to open a database row, a token or a provider secret to do it.
 
-### Each operator command either only reads or writes the database
+### Only checking prices and listing devices leave the database unchanged
 
 Checking prices compares the provider catalog and the price table with the
-profile; listing devices reads one user's keys. Every other command writes.
+profile; listing devices reads one user's keys. Every other command, `migrate`
+included, writes.
 
 ```quint
 import types.* from "./shared/types"

@@ -1,0 +1,4 @@
+// spec/cloud/services/maps.md, "Story: Answer a maps request once and pay for it once"
+import type { Area } from "../routes.vibe"
+
+export const area: Area = { routes: [], sweeps: [] }

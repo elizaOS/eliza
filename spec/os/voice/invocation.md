@@ -108,10 +108,13 @@ pure def pendingMatchesBinding(p: Pending, b: Binding): bool = match p {
   | NoArrival => true
 }
 pure def alwaysArrivalWaitsForItsOwnSession(s: Invocation): bool = pendingMatchesBinding(s.pending, s.binding)
-pure def alwaysWarmStartWithinWindow(s: Invocation): bool = match s.answer { | VoiceStart(v) => startsVoice(v.origin) and v.age >= 0 and v.age <= (if (v.claim == WarmClaim) warmWindowMs else coldWindowMs) | _ => true }
-pure def sometimesWarmPowerStart(s: Invocation): bool = match s.answer { | VoiceStart(v) => v.origin == Power and v.claim == WarmClaim | _ => false }
-pure def sometimesListenerWakeStarts(s: Invocation): bool = match s.answer { | VoiceStart(v) => v.origin == Listener | _ => false }
-pure def sometimesArrivalOnlyOpens(s: Invocation): bool = match s.answer { | OpenOnly(o) => o.arrival >= 1 | _ => false }
+pure def startWithinWindow(a: Answer): bool = match a { | VoiceStart(v) => startsVoice(v.origin) and v.age >= 0 and v.age <= (if (v.claim == WarmClaim) warmWindowMs else coldWindowMs) | _ => true }
+pure def startedFrom(a: Answer, origin: Origin, claim: Claim): bool = match a { | VoiceStart(v) => v.origin == origin and v.claim == claim | _ => false }
+pure def openedOnly(a: Answer): bool = match a { | OpenOnly(o) => o.arrival >= 1 | _ => false }
+pure def alwaysVoiceStartWithinWindow(s: Invocation): bool = startWithinWindow(s.answer)
+pure def sometimesWarmPowerStart(s: Invocation): bool = startedFrom(s.answer, Power, WarmClaim)
+pure def sometimesListenerWakeStarts(s: Invocation): bool = startedFrom(s.answer, Listener, WarmClaim)
+pure def sometimesArrivalOnlyOpens(s: Invocation): bool = openedOnly(s.answer)
 ```
 
 ### Each arrival is recorded with its origin and replaces any arrival still waiting
@@ -126,14 +129,15 @@ pure def canArrive(s: Invocation, caller: Caller, locked: bool): bool = caller =
 pure def arrive(s: Invocation, caller: Caller, locked: bool): Invocation = {
   val origin = originOf(caller, s.listenerAdmission, locked)
   val n = s.arrivals + 1
-  val waiting = match s.binding {
-    | Bound(b) => Warm({ origin: origin, session: b.session, arrival: n, age: 0 })
-    | Unbound => match s.owner {
-      | AdmittedOwner(o) => if (origin == Listener or origin == System) Cold({ origin: origin, account: o.account, arrival: n, age: 0 }) else NoArrival
-      | NoOwner => NoArrival
-    }
-  }
-  { ...s, arrivals: n, pending: waiting }
+  { ...s, arrivals: n, pending: recorded(s.binding, s.owner, origin, n) }
+}
+pure def recorded(binding: Binding, owner: OwnerAdmission, origin: Origin, n: int): Pending = match binding {
+  | Bound(b) => Warm({ origin: origin, session: b.session, arrival: n, age: 0 })
+  | Unbound => if (origin == Listener or origin == System) coldFor(owner, origin, n) else NoArrival
+}
+pure def coldFor(owner: OwnerAdmission, origin: Origin, n: int): Pending = match owner {
+  | AdmittedOwner(o) => Cold({ origin: origin, account: o.account, arrival: n, age: 0 })
+  | NoOwner => NoArrival
 }
 pure def canObserveListener(s: Invocation, admission: ListenerAdmission): bool = admission != s.listenerAdmission
 pure def observeListener(s: Invocation, admission: ListenerAdmission): Invocation = { ...s, listenerAdmission: admission }
@@ -156,10 +160,12 @@ pure def canWithdrawOwner(s: Invocation): bool = s.owner != NoOwner
 pure def withdrawOwner(s: Invocation): Invocation = { ...s, owner: NoOwner }
 pure def coldOrigin(p: Pending): bool = match p { | Cold(c) => c.origin == Listener or c.origin == System | Adopted(a) => a.origin == Listener or a.origin == System | _ => true }
 pure def alwaysOnlyListenerOrSystemWaitsCold(s: Invocation): bool = coldOrigin(s.pending)
-pure def adoptedOwnerCurrent(s: Invocation): bool = match s.pending { | Adopted(a) => ownerIs(s.owner, a.account) | _ => false }
+pure def adoptedBy(p: Pending, owner: OwnerAdmission): bool = match p { | Adopted(a) => ownerIs(owner, a.account) | _ => false }
+pure def adoptedOwnerCurrent(s: Invocation): bool = adoptedBy(s.pending, s.owner)
 pure def adoptedStart(a: Answer): bool = match a { | VoiceStart(v) => v.claim == AdoptedClaim | _ => false }
 pure def stepAdoptedStartNeedsSameOwner(before: Invocation, via: str, after: Invocation): bool = (via == "take" and adoptedStart(after.answer)) implies adoptedOwnerCurrent(before)
-pure def sometimesColdWaiting(s: Invocation): bool = match s.pending { | Cold(c) => c.age > 0 | _ => false }
+pure def agedCold(p: Pending): bool = match p { | Cold(c) => c.age > 0 | _ => false }
+pure def sometimesColdWaiting(s: Invocation): bool = agedCold(s.pending)
 pure def sometimesAdoptedStart(s: Invocation): bool = adoptedStart(s.answer)
 ```
 
@@ -186,7 +192,7 @@ pure def pendingAge(p: Pending): int = match p { | Warm(w) => w.age | Cold(c) =>
 pure def alwaysWaitingArrivalIsLatestAndUnused(s: Invocation): bool =
   0 <= s.lastVoiceArrival and s.lastVoiceArrival <= s.arrivals
   and (s.pending != NoArrival implies (pendingArrival(s.pending) == s.arrivals and s.lastVoiceArrival < s.arrivals and pendingAge(s.pending) >= 0))
-pure def alwaysVoiceStartIsTheLastUsedArrival(s: Invocation): bool = match s.answer { | VoiceStart(v) => v.arrival == s.lastVoiceArrival and v.arrival >= 1 | _ => true }
+pure def alwaysVoiceStartIsTheLastUsedArrival(s: Invocation): bool = isVoiceStart(s.answer) implies (voiceArrival(s.answer, 0) == s.lastVoiceArrival and s.lastVoiceArrival >= 1)
 pure def stepEachArrivalStartsVoiceOnce(before: Invocation, via: str, after: Invocation): bool =
   after.lastVoiceArrival != before.lastVoiceArrival implies (via == "take" and after.lastVoiceArrival > before.lastVoiceArrival and after.pending == NoArrival)
 ```

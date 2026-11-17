@@ -1,0 +1,53 @@
+// spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
+import type { ProviderKey } from "../../gen/cloud__shared__types.ts"
+import { wireName } from "../http/refusal.vibe"
+import { sha256Hex } from "./sealing.vibe"
+
+export type { ProviderKey }
+
+export type ProviderReply<A> =
+  | { readonly kind: "applied"; readonly value: A }
+  | { readonly kind: "refused"; readonly code: string }
+  | { readonly kind: "unknown"; readonly cause: string }
+
+export function renderProviderKey(key: ProviderKey): string {
+  return `${wireName(key.kind)}_${key.id}`
+}
+
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value).filter(([, item]) => item !== undefined).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+    return `{${entries.map(([name, item]) => `${JSON.stringify(name)}:${canonical(item)}`).join(",")}}`
+  }
+  return JSON.stringify(value) ?? "null"
+}
+
+export function requestDigest(value: unknown): string {
+  return sha256Hex(canonical(value))
+}
+
+export interface DispatchSteps<A, E, R> {
+  readonly claim: void!E!R
+  readonly send: ProviderReply<A>!E!R
+  readonly record: (reply: ProviderReply<A>, now: number) => void!E!R
+}
+
+export effect function dispatchOnce<A, E, R>(steps: DispatchSteps<A, E, R>): ProviderReply<A>!E!R {
+  try steps.claim
+  const reply = try steps.send
+  try steps.record(reply, try Clock.currentTimeMillis)
+  if (reply.kind === "unknown") try annotateLogs(logWarning("a provider change has an unknown outcome until it is looked up"), { cause: reply.cause })
+  return reply
+}
+
+export interface ResolveSteps<A, E, R> {
+  readonly lookup: ProviderReply<A>!E!R
+  readonly record: (reply: ProviderReply<A>, now: number) => void!E!R
+}
+
+export effect function resolveUnknown<A, E, R>(steps: ResolveSteps<A, E, R>): ProviderReply<A>!E!R {
+  const seen = try steps.lookup
+  try steps.record(seen, try Clock.currentTimeMillis)
+  return seen
+}

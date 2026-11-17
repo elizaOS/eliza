@@ -1,0 +1,189 @@
+// spec/agent/plugins/profile.md, "Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last"; spec/agent/plugins/profile.md, "A refused plan loads nothing more"; spec/agent/plugins/profile.md, "The product plugin must be in the bundle"; spec/agent/plugins/profile.md, "A product route never claims a route prefix an agent module owns"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/plugins/profile.md, "The worker is installed only after its executable digest matches the launch"; spec/agent/plugins/profile.md, "The worker never receives the credential, the launch token or the storage key"
+import { AgentRuntime, type Character, type IMessageService, type Plugin, type RuntimeSettings, type UUID } from "@elizaos/core"
+import type { BootFailure, LaunchPolicy } from "../../gen/agent__host__launch.ts"
+import { Machine, cloudLinkPlugin, machine, overlaps, privacyPlugin, storagePlugin, type PlanFailure, type PlanPhase, type ProcessValue, type WorkerLaunch } from "../../gen/agent__plugins__profile.effect.vibe"
+import { type Route } from "../access/routes.vibe"
+import { approvalsModule } from "../approvals/routes.vibe"
+import { deviceActionsModule } from "../device-actions/routes.vibe"
+import { replyDraftModule } from "../device-actions/reply-draft.vibe"
+import { notificationsModule } from "../notifications/routes.vibe"
+import { basicActionsModule } from "../plugins/basic-actions.vibe"
+import { scheduledTasksModule } from "../schedule/scheduled-task-routes.vibe"
+import { triggersModule } from "../schedule/trigger-routes.vibe"
+import { tasksModule } from "../tasks/index.vibe"
+import { surfaceModule } from "../tasks/surface-channel.vibe"
+import { viewsModule } from "../views/routes.vibe"
+import { ModuleRefused, actionNames, routePrefixes, type AgentPlugin } from "./module.vibe"
+
+const builtins = {
+  "@elizaos/agent/basic-actions": basicActionsModule,
+  "@elizaos/agent/approvals": approvalsModule,
+  "@elizaos/agent/notifications": notificationsModule,
+  "@elizaos/agent/views": viewsModule,
+  "@elizaos/agent/device-actions": deviceActionsModule,
+  "@elizaos/agent/reply-draft": replyDraftModule,
+  "@elizaos/agent/triggers": triggersModule,
+  "@elizaos/agent/scheduled-tasks": scheduledTasksModule,
+  "@elizaos/agent/tasks": tasksModule,
+  "@elizaos/agent/surface": surfaceModule,
+}
+
+type BuiltinFactory = (typeof builtins)[keyof typeof builtins]
+
+function builtinFactory(name: string): BuiltinFactory | undefined {
+  return Object.hasOwn(builtins, name) ? builtins[name as keyof typeof builtins] : undefined
+}
+
+export type WorkerPin =
+  | { readonly kind: "none" }
+  | { readonly kind: "pinned"; readonly expected: string; readonly measured: string }
+
+export type Privacy =
+  | { readonly kind: "off" }
+  | { readonly kind: "on"; readonly plugin: Plugin }
+
+export interface ComposeInput {
+  readonly agentId: UUID
+  readonly character: Character
+  readonly settings: RuntimeSettings
+  readonly policy: LaunchPolicy
+  readonly bundled: ReadonlyMap<string, AgentPlugin>
+  readonly storage: AgentPlugin
+  readonly cloudLink: AgentPlugin
+  readonly privacy: Privacy
+  readonly messageService: (runtime: AgentRuntime) => IMessageService
+  readonly worker: WorkerPin
+}
+
+export interface ComposedAgent {
+  readonly runtime: AgentRuntime
+  readonly routes: readonly Route[]
+  readonly allowed: ReadonlySet<string>
+  actionGate(action: { readonly name: string }): string | undefined
+  workerEnvironment(offered: readonly ProcessValue[]): ProcessValue[]!WorkerNotVerified
+}
+
+export error RuntimeFailed { cause: unknown }
+export error PlanNotAdmitted { phase: PlanPhase }
+export error PlanRefused { cause: PlanFailure; plugin: string }
+export error PluginFailed { plugin: string; cause: unknown }
+export error WorkerNotVerified { phase: PlanPhase }
+
+export type ComposeFailure = RuntimeFailed | PlanNotAdmitted | PlanRefused | PluginFailed | ModuleRefused
+
+export function bootFailureOf(failure: ComposeFailure): BootFailure {
+  return match (failure) {
+    when RuntimeFailed: "Agent";
+    when PluginFailed: "Agent";
+    when PlanNotAdmitted: "Config";
+    when PlanRefused: "Config";
+    when ModuleRefused: "Config";
+  }
+}
+
+effect function planMachine() {
+  provide machine() {
+    return try Machine
+  }
+}
+
+effect function settled(plan: Machine.Shape, plugin: string) {
+  const state = try plan.get()
+  if (state.phase.tag === "Refused") throw new PlanRefused({ cause: state.phase.cause, plugin })
+  return state
+}
+
+effect function register(runtime: AgentRuntime, plugin: AgentPlugin) {
+  const before = actionNames(runtime)
+  try tryPromise({ try: () => runtime.registerPlugin(plugin), catch: (cause) => new PluginFailed({ plugin: plugin.name, cause }) })
+  const added = [...actionNames(runtime)].filter((name) => !before.has(name))
+  runtime.logger.info({ src: "agent", agentId: runtime.agentId, plugin: plugin.name, actions: added, routes: plugin.routes?.length ?? 0 }, "Plugin registered")
+  return added
+}
+
+effect function planned(name: string, input: ComposeInput, runtime: AgentRuntime) {
+  if (name === storagePlugin) return input.storage
+  if (name === cloudLinkPlugin) return input.cloudLink
+  if (name === privacyPlugin && input.privacy.kind === "on") return input.privacy.plugin
+  const factory = builtinFactory(name)
+  if (factory !== undefined) {
+    const made = try factory(runtime)
+    if (made.name !== name) return try die(new TypeError(`module ${name} answered as ${made.name}`))
+    return made.plugin
+  }
+  const bundled = input.bundled.get(name)
+  if (bundled === undefined) return try die(new TypeError(`the plan named ${name}, which the bundle does not carry`))
+  return bundled
+}
+
+function workerLaunch(worker: WorkerPin): WorkerLaunch {
+  return worker.kind === "pinned" ? { tag: "WorkerNamed", digest: worker.expected } : { tag: "NoWorkerNamed" }
+}
+
+effect function loadPlan(runtime: AgentRuntime, input: ComposeInput) {
+  const plan = try planMachine()
+  plan.send({
+    type: "choosePlan",
+    bundled: [...input.bundled.keys()],
+    policy: input.policy,
+    privacyOn: input.privacy.kind === "on",
+    workerLaunch: workerLaunch(input.worker),
+  }) catch effect (rejected) => {
+    throw new PlanNotAdmitted({ phase: rejected.state.phase })
+  }
+  const routes: Route[] = []
+  let state = try settled(plan, "")
+  while (state.next < state.order.length) {
+    const name = state.order[state.next]
+    const plugin = try planned(name, input, runtime)
+    const actions = try register(runtime, plugin)
+    routes.push(...(plugin.routes ?? []))
+    try orDie(plan.send({ type: "registerNext", actions, routes: routePrefixes(plugin) }))
+    state = try settled(plan, name)
+  }
+  if (state.product.tag === "ProductPending") {
+    const name = state.product.name
+    const product = try planned(name, input, runtime)
+    const prefixes = routePrefixes(product)
+    const claimed = overlaps(prefixes, state.moduleRoutes)
+    const actions = claimed ? [] : try register(runtime, product)
+    if (!claimed) routes.push(...(product.routes ?? []))
+    try orDie(plan.send({ type: "registerProduct", actions, routes: prefixes }))
+    state = try settled(plan, name)
+  }
+  if (state.worker.tag === "Unverified") {
+    try orDie(plan.send({ type: "verifyWorker", digest: input.worker.kind === "pinned" ? input.worker.measured : "" }))
+    state = try settled(plan, "workflow worker")
+  }
+  try orDie(plan.send({ type: "finishPlan" }))
+  state = try settled(plan, "allowlist")
+  runtime.messageService = input.messageService(runtime)
+  const allowed: ReadonlySet<string> = new Set(state.allowed)
+  return {
+    runtime,
+    routes,
+    allowed,
+    actionGate: (action: { readonly name: string }) =>
+      allowed.has(action.name) ? undefined : `Action ${action.name} is not available in this product`,
+    workerEnvironment: effect (offered: readonly ProcessValue[]) => {
+      const next = plan.send({ type: "spawnWorker", offered: [...offered] }) catch effect (rejected) => {
+        throw new WorkerNotVerified({ phase: rejected.state.phase })
+      }
+      return next.workerEnv
+    },
+  } satisfies ComposedAgent
+}
+
+effect function retire(runtime: AgentRuntime) {
+  tryPromise(() => runtime.stop()) catch (cause) => {
+    runtime.logger.error({ src: "agent", agentId: runtime.agentId, error: String(cause) }, "Runtime stop after a refused plan failed")
+  }
+}
+
+export effect function composeAgent(input: ComposeInput) {
+  const runtime = try Effect.try({
+    try: () => new AgentRuntime({ agentId: input.agentId, character: input.character, settings: input.settings }),
+    catch: (cause) => new RuntimeFailed({ cause }),
+  })
+  return try onError(loadPlan(runtime, input), () => retire(runtime))
+}

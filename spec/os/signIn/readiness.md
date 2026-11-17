@@ -53,10 +53,10 @@ pure def offered(readiness: Readiness, device: DeviceFacts, method: SignInMethod
   }
   | _ => false
 }
-pure val allReady: CloudMethods = { email: true, sms: true, google: true, nativeSignIn: true, serverClientId: true }
-pure val noneReady: CloudMethods = { email: false, sms: false, google: false, nativeSignIn: false, serverClientId: false }
-pure val partReady: CloudMethods = { email: true, sms: false, google: true, nativeSignIn: true, serverClientId: false }
-pure val readinessValues = Set(NotMeasured, ReadinessUnknown, Known(allReady), Known(noneReady), Known(partReady))
+pure val readinessValues = Set(NotMeasured, ReadinessUnknown,
+  Known({ email: true, sms: true, google: true, nativeSignIn: true, serverClientId: true }),
+  Known({ email: false, sms: false, google: false, nativeSignIn: false, serverClientId: false }),
+  Known({ email: true, sms: false, google: true, nativeSignIn: true, serverClientId: false }))
 pure val deviceValues = Set(
   { googleMode: Picker, appLinkVerified: false, externalBrowser: false },
   { googleMode: Browser, appLinkVerified: true, externalBrowser: true },
@@ -93,10 +93,10 @@ pure def onStatus(cached: Answer, googleMode: GoogleMode, now: int, retry: bool)
 pure val nowValues = Set(0, 29999, 30000, 600000, 21600000)
 pure val cachedValues = Set(
   noAnswer,
-  { readiness: Known(partReady), until: 21600000, recheckAt: 30000, passiveAt: 120000, unchanged: 1 },
-  { readiness: Known(allReady), until: 21600000, recheckAt: 21600000, passiveAt: 21600000, unchanged: 0 },
+  { readiness: Known({ email: true, sms: false, google: true, nativeSignIn: true, serverClientId: false }), until: 21600000, recheckAt: 30000, passiveAt: 120000, unchanged: 1 },
+  { readiness: Known({ email: true, sms: true, google: true, nativeSignIn: true, serverClientId: true }), until: 21600000, recheckAt: 21600000, passiveAt: 21600000, unchanged: 0 },
   { readiness: ReadinessUnknown, until: 600000, recheckAt: 30000, passiveAt: 30000, unchanged: 0 },
-  { readiness: Known(noneReady), until: 50000000, recheckAt: 30000, passiveAt: 30000, unchanged: 0 }
+  { readiness: Known({ email: false, sms: false, google: false, nativeSignIn: false, serverClientId: false }), until: 50000000, recheckAt: 30000, passiveAt: 30000, unchanged: 0 }
 )
 pure def lawFreshAnswerServedAtOnce(cached: Answer, googleMode: GoogleMode, now: int): bool =
   answerFresh(cached, now) implies onStatus(cached, googleMode, now, false).serveNow
@@ -172,7 +172,7 @@ pure def answerOf(readiness: Readiness, until: int, recheckAt: int, passiveAt: i
 pure def measureAnswer(cached: Answer, reading: CloudReading, googleMode: GoogleMode, now: int): Answer = {
   val readiness = match reading {
     | MethodsRead(m) => Known({ email: m.email, sms: m.sms, google: m.google, nativeSignIn: m.nativeSignIn, serverClientId: m.serverClientId })
-    | ClientUnregistered => Known(noneReady)
+    | ClientUnregistered => Known({ email: false, sms: false, google: false, nativeSignIn: false, serverClientId: false })
     | NoReading => ReadinessUnknown
   }
   val repeated = not(readinessComplete(readiness, googleMode)) and readiness == cached.readiness
@@ -184,7 +184,10 @@ pure def measureAnswer(cached: Answer, reading: CloudReading, googleMode: Google
   else
     answerOf(readiness, now + (if (anyReady(readiness)) readyTtlMs else notReadyTtlMs), now + recheckMs, now + passiveWait(count), count, googleMode)
 }
-pure val readingValues = Set(NoReading, ClientUnregistered, MethodsRead(allReady), MethodsRead(partReady), MethodsRead(noneReady))
+pure val readingValues = Set(NoReading, ClientUnregistered,
+  MethodsRead({ email: true, sms: true, google: true, nativeSignIn: true, serverClientId: true }),
+  MethodsRead({ email: true, sms: false, google: true, nativeSignIn: true, serverClientId: false }),
+  MethodsRead({ email: false, sms: false, google: false, nativeSignIn: false, serverClientId: false }))
 pure def lawNoReadingKeepsFreshAnswer(cached: Answer, googleMode: GoogleMode, now: int): bool = {
   val after = measureAnswer(cached, NoReading, googleMode, now)
   answerFresh(cached, now) implies (after.readiness == cached.readiness and after.until == cached.until)

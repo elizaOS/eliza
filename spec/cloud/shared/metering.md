@@ -102,7 +102,7 @@ pure def lawAdmittedExactlyWhenReservable(lane: FundingLane, quote: Micros, allo
   (admission(false, lane, quote, allowanceAvailable, creditAvailable) == AdmitHold) iff canReserve(initial, quote, lane, allowanceAvailable, creditAvailable, 0)
 pure def lawEveryAdmissionRefusalIsWellFormed(lane: FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): bool = {
   val a = admission(false, lane, quote, allowanceAvailable, creditAvailable)
-  a != AdmitHold implies (wellFormed(refusalOf(a)) and (statusOf(refusalOf(a).code) == 402 or a == RefuseUnreadable))
+  (a != AdmitHold implies wellFormed(refusalOf(a))) and (a == RefuseShort implies statusOf(refusalOf(a).code) == 402)
 }
 pure val keyValues = Set({ service: MeteredInference, requestId: "r1", part: Whole }, { service: MeteredSpeech, requestId: "s1", part: Window({ direction: Stt, window: 1 }) })
 pure val nowValues = Set(0, 900000, 8100000)

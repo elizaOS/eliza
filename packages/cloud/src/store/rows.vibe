@@ -1,0 +1,74 @@
+// spec/cloud/shared/metering.md, "Story: Never overdraw an account, and settle every call once"; spec/cloud/billing/funds.md, "Story: Spend only money the account has"
+import { StoreFailure, toInt, type Tx } from "./store.vibe"
+
+export error RowCorrupt { table: string; key: string; cause: unknown }
+export error RowConflict { table: string; key: string }
+
+export type Columns = Readonly<Record<string, string | number | boolean | null>>
+
+export interface MachineRows<S, Ev, Out, Rejected, Corrupt> {
+  readonly table: string
+  readonly initial: S
+  readonly decodeState: (input: unknown) => S!Corrupt
+  readonly apply: (state: S, event: Ev) => Out!Rejected
+  readonly next: (out: Out) => S
+}
+
+export interface Loaded<S> {
+  readonly state: S
+  readonly revision: number
+  readonly found: boolean
+}
+
+export interface Stepped<S, Out> {
+  readonly state: S
+  readonly out: Out
+  readonly revision: number
+}
+
+export function machineRows<S, Ev, Rejected, Corrupt>(table: string, generated: {
+  readonly initial: S
+  readonly decodeState: (input: unknown) => S!Corrupt
+  readonly apply: (state: S, event: Ev) => S!Rejected
+}): MachineRows<S, Ev, S, Rejected, Corrupt> {
+  return { table, initial: generated.initial, decodeState: generated.decodeState, apply: generated.apply, next: (state) => state }
+}
+
+export function outputRows<S, Ev, O, Rejected, Corrupt>(table: string, generated: {
+  readonly initial: S
+  readonly decodeState: (input: unknown) => S!Corrupt
+  readonly apply: (state: S, event: Ev) => { state: S; out: O }!Rejected
+}): MachineRows<S, Ev, { state: S; out: O }, Rejected, Corrupt> {
+  return { table, initial: generated.initial, decodeState: generated.decodeState, apply: generated.apply, next: (stepped) => stepped.state }
+}
+
+export effect function loadRow<S, Ev, Out, Rejected, Corrupt>(tx: Tx, rows: MachineRows<S, Ev, Out, Rejected, Corrupt>, key: string, lock = true): Loaded<S>!(StoreFailure | RowCorrupt) {
+  const found = (try tx.query(`SELECT state, revision FROM ${rows.table} WHERE key = $1${lock ? " FOR UPDATE" : ""}`, [key]))[0]
+  if (found === undefined) return { state: rows.initial, revision: 0, found: false }
+  const state = try rows.decodeState(found.state) catch effect (cause) => { throw new RowCorrupt({ table: rows.table, key, cause }) }
+  return { state, revision: toInt(found.revision), found: true }
+}
+
+export effect function stepRow<S, Ev, Out, Rejected, Corrupt>(
+  tx: Tx,
+  rows: MachineRows<S, Ev, Out, Rejected, Corrupt>,
+  key: string,
+  event: Ev,
+  columns: (state: S) => Columns
+): Stepped<S, Out>!(StoreFailure | RowCorrupt | RowConflict | Rejected) {
+  const loaded = try loadRow(tx, rows, key)
+  const out = try rows.apply(loaded.state, event)
+  const state = rows.next(out)
+  const extra = Object.entries(columns(state))
+  const written = loaded.found
+    ? try tx.query(
+        `UPDATE ${rows.table} SET state = $2::jsonb, revision = revision + 1${extra.map(([name], index) => `, ${name} = $${index + 4}`).join("")} WHERE key = $1 AND revision = $3 RETURNING revision`,
+        [key, JSON.stringify(state), loaded.revision, ...extra.map(([, value]) => value)]
+      )
+    : try tx.query(
+        `INSERT INTO ${rows.table} (key, state, revision${extra.map(([name]) => `, ${name}`).join("")}) VALUES ($1, $2::jsonb, 1${extra.map((_, index) => `, $${index + 3}`).join("")}) ON CONFLICT (key) DO NOTHING RETURNING revision`,
+        [key, JSON.stringify(state), ...extra.map(([, value]) => value)]
+      )
+  if (written.length !== 1) throw new RowConflict({ table: rows.table, key })
+  return { state, out, revision: toInt(written[0].revision) }
+}

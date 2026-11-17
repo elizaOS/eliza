@@ -1,0 +1,123 @@
+// spec/cloud/billing/plans.md, "Story: Offer the paid plans as the provider sells them"; spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+import { catalog, planOf, rpmFor, type Plan, type PlanKey, type RateClass } from "../../gen/cloud__billing__plans.effect.vibe"
+import { priceMatches, type ObservedPrice } from "../../gen/cloud__deployment.effect.vibe"
+import { Deployment, SecretMissing } from "../profile/profile.vibe"
+import { wireName } from "../http/refusal.vibe"
+
+export type { Plan, PlanKey, RateClass }
+
+export error CatalogMismatch { plan: string; problem: string }
+
+export type WirePlanKey = "free" | "plus_monthly" | "pro_monthly"
+export type PaidPlanKey = Exclude<WirePlanKey, "free">
+
+export function wirePlanKey(key: PlanKey): WirePlanKey {
+  return wireName(key) as WirePlanKey
+}
+
+export function parsePlanKey(input: unknown): PlanKey | undefined {
+  return catalog.find((plan) => wirePlanKey(plan.key) === input)?.key
+}
+
+export function planRpm(key: PlanKey, rateClass: RateClass): number {
+  return rpmFor(key, rateClass)
+}
+
+export function isPaid(key: PlanKey): boolean {
+  return planOf(key).amountCents > 0
+}
+
+function usd(micros: number): string {
+  return `${Math.floor(micros / 1_000_000)}.${String(micros % 1_000_000).padStart(6, "0")}`
+}
+
+export interface PlansAnswer {
+  readonly plans: ReadonlyArray<{
+    readonly key: WirePlanKey
+    readonly name: string
+    readonly amountCents: number
+    readonly currency: "usd"
+    readonly interval: "month"
+    readonly allowance: { readonly amountUsd: string }
+  }>
+}
+
+export function plansAnswer(): PlansAnswer {
+  return {
+    plans: catalog.filter((plan) => isPaid(plan.key)).map((plan) => ({
+      key: wirePlanKey(plan.key),
+      name: plan.name,
+      amountCents: plan.amountCents,
+      currency: "usd",
+      interval: "month",
+      allowance: { amountUsd: usd(plan.allowanceMicros) }
+    }))
+  }
+}
+
+const ProviderPrice = Schema.Struct({
+  active: Schema.Boolean,
+  currency: Schema.String,
+  currency_options: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+  unit_amount: Schema.NullOr(Schema.Int),
+  type: Schema.String,
+  billing_scheme: Schema.String,
+  transform_quantity: Schema.NullOr(Schema.Unknown),
+  livemode: Schema.Boolean,
+  product: Schema.String,
+  recurring: Schema.NullOr(Schema.Struct({
+    interval: Schema.String,
+    interval_count: Schema.Int,
+    trial_period_days: Schema.NullOr(Schema.Int),
+    usage_type: Schema.String
+  }))
+})
+
+const ProviderProduct = Schema.Struct({ id: Schema.String, active: Schema.Boolean, livemode: Schema.Boolean, deleted: Schema.optionalKey(Schema.Boolean) })
+
+effect function providerRead<A>(path: string, schema: Schema.Codec<A>, plan: string): A!(CatalogMismatch | SecretMissing)!(Deployment | HttpClient.HttpClient) {
+  const deployment = try Deployment
+  const billing = deployment.settings.billing
+  if (billing === undefined) throw new CatalogMismatch({ plan, problem: "billing is not configured" })
+  const key = try deployment.secret(billing.secretKeyEnv)
+  const client = try HttpClient.HttpClient
+  return try effect {
+    const response = try client.get(`${billing.apiUrl}${path}`, { headers: { authorization: `Bearer ${key}` } })
+    if (response.status !== 200) throw new CatalogMismatch({ plan, problem: `${path} answered ${response.status}` })
+    return try Schema.decodeUnknownEffect(schema)(try response.json)
+  } catch effect (failure) => match (failure) {
+    when CatalogMismatch: throw failure;
+    default: throw new CatalogMismatch({ plan, problem: `${path} could not be read` });
+  }
+}
+
+export effect function checkCatalog(): void!(CatalogMismatch | SecretMissing)!(Deployment | HttpClient.HttpClient) {
+  const deployment = try Deployment
+  const billing = deployment.settings.billing
+  if (billing === undefined) return
+  const livemode = deployment.environment === "production"
+  for (const plan of catalog.filter((candidate) => isPaid(candidate.key))) {
+    const wire = wirePlanKey(plan.key) as PaidPlanKey
+    const binding = billing.plans[wire]
+    const price = try providerRead(`/v1/prices/${encodeURIComponent(binding.priceId)}`, ProviderPrice, wire)
+    const product = try providerRead(`/v1/products/${encodeURIComponent(binding.productId)}`, ProviderProduct, wire)
+    const observed: ObservedPrice = {
+      active: price.active,
+      usd: price.currency === "usd",
+      otherCurrencies: Object.keys(price.currency_options ?? {}).some((currency) => currency !== "usd"),
+      unitAmount: price.unit_amount ?? -1,
+      recurring: price.type === "recurring" && price.recurring !== null,
+      perUnit: price.billing_scheme === "per_unit" && price.transform_quantity === null,
+      monthly: price.recurring?.interval === "month" && price.recurring.interval_count === 1,
+      licensed: price.recurring?.usage_type === "licensed",
+      trial: (price.recurring?.trial_period_days ?? null) !== null,
+      sameProduct: price.product === binding.productId && product.id === binding.productId,
+      productActive: product.active && product.deleted !== true,
+      livemode: price.livemode && product.livemode,
+      testmode: !price.livemode && !product.livemode
+    }
+    if (!priceMatches(observed, plan.amountCents, livemode)) {
+      throw new CatalogMismatch({ plan: wire, problem: `price ${binding.priceId} is not the catalog's ${wire} as the provider sells it` })
+    }
+  }
+}

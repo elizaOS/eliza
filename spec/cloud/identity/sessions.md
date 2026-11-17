@@ -147,12 +147,12 @@ pure def stepRevokedStaysRevoked(before: Family, after: Family): bool = isRevoke
 second factor) on the calling family and answers `{stepUpAt, mfaAt}`.
 
 ```quint
-pure def canStepUp(f: Family, assurance: Assurance): bool = isActive(f)
-pure def stepUp(f: Family, assurance: Assurance): Family = { ...f, stepUpAt: At({ ms: f.now }), mfaAt: if (assurance == MultiFactor) At({ ms: f.now }) else f.mfaAt }
-pure def stepStepUpKeepsTheToken(before: Family, via: str, after: Family): bool = via == "stepUp" implies (after.generation == before.generation and after.accessExpiresAt == before.accessExpiresAt and after.stepUpAt == At({ ms: before.now }))
+pure def canRecordStepUp(f: Family, assurance: Assurance): bool = isActive(f)
+pure def recordStepUp(f: Family, assurance: Assurance): Family = { ...f, stepUpAt: At({ ms: f.now }), mfaAt: if (assurance == MultiFactor) At({ ms: f.now }) else f.mfaAt }
+pure def stepStepUpKeepsTheToken(before: Family, via: str, after: Family): bool = via == "recordStepUp" implies (after.generation == before.generation and after.accessExpiresAt == before.accessExpiresAt and after.stepUpAt == At({ ms: before.now }))
 ```
 
-### A fresh session signed in or stepped up within 60 minutes, and a step-up counts for 5
+### A session is fresh for 60 minutes after a sign-in or step-up, and stepped up for 5 minutes after a step-up
 
 `requestAuth` admits the FreshSession class only for `isFresh` and the StepUp
 class only for `isSteppedUp`; enrolling a first factor needs `isNewlySignedIn`.

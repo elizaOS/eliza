@@ -22,7 +22,8 @@ The shell (`src/image/source-lock.vibe`) reads the facts with `git` and
 
 ### A verdict is Match only when the checkout shows no problem against its lock
 
-The shell reports the manifest revision, the revision of each locked project
+The shell reports the manifest revision (a dirty manifest checkout or an
+unlisted local manifest reads as a different one), the revision of each locked project
 in lock order, every changed file and every ignored input of those projects,
 and the generated vendor inventory, each file with its digest, sorted. Every
 project revision must equal its lock entry, every changed file must be a
@@ -62,9 +63,11 @@ pure def problemsOf(lock: SourceLock, facts: SourceFacts, patches: List[PatchEnv
     .concat(problemIf(facts.generated != lock.generated, GeneratedDiffers))
     .concat(stockVendorProblems(lock.device, facts))
     .concat(problemIf(not(patchesAdmitted(lock, facts, patches)), PatchRefused))
-pure def lockWellFormed(lock: SourceLock): bool =
+pure def lockWellFormed(lock: SourceLock): bool = {
+  val device = lock.device
   lock.digest != "" and lock.manifest != "" and lock.projects.length() > 0 and lock.targets.length() > 0 and
-  match lock.device { | PhysicalDevice(d) => d.archive != "" and d.vendorApiLevel >= 100000 and d.vendorApiLevel <= 999999 and lock.generated.length() > 0 | VirtualDevice => true }
+  match device { | PhysicalDevice(d) => d.archive != "" and d.vendorApiLevel >= 100000 and d.vendorApiLevel <= 999999 and lock.generated.length() > 0 | VirtualDevice => true }
+}
 
 pure def canVerify(s: SourceVerdict, lock: SourceLock): bool = lockWellFormed(lock)
 pure def verify(s: SourceVerdict, lock: SourceLock, facts: SourceFacts, patches: List[PatchEnvelope]): SourceVerdict =
@@ -73,18 +76,24 @@ pure def verify(s: SourceVerdict, lock: SourceLock, facts: SourceFacts, patches:
 pure def alwaysMatchExactlyWithoutProblems(s: SourceVerdict): bool =
   s.verdict != Unverified implies (s.verdict == Match iff problemsOf(s.lock, s.read, s.patches) == List())
 
-pure val physicalLock: SourceLock = { name: "pixel10a", digest: "lockA", device: PhysicalDevice({ archive: "z1", vendorApiLevel: 202604 }), developmentOnly: false, manifest: "m1",
-  projects: List({ path: "frameworks/base", revision: "r1" }), overrides: List({ project: "frameworks/base", path: "o.mk", digest: "d1" }), ignored: List(),
-  generated: List({ project: "vendor/google_devices", path: "manifest.xml", digest: "g1" }), targets: List("stallion") }
-pure val developmentLock: SourceLock = { ...physicalLock, digest: "lockD", developmentOnly: true }
-pure val virtualLock: SourceLock = { ...noLock, name: "cuttlefish", digest: "lockV", developmentOnly: false, manifest: "m1", projects: List({ path: "device/google/cuttlefish", revision: "r1" }), targets: List("cf_x86_64_phone") }
-pure val physicalFacts: SourceFacts = { manifest: "m1", projects: physicalLock.projects, changes: physicalLock.overrides, ignored: List(), generated: physicalLock.generated, heads: List(), archive: "z1", boardApi: 202604, vintfApi: 202604 }
-pure val patchedFacts: SourceFacts = { ...physicalFacts, changes: physicalLock.overrides.append({ project: "frameworks/base", path: "Ui.java", digest: "post1" }), heads: List({ project: "frameworks/base", path: "Ui.java", digest: "pre1" }) }
-pure val virtualFacts: SourceFacts = { ...noFacts, manifest: "m1", projects: virtualLock.projects }
-pure val reviewedPatch: PatchEnvelope = { name: "chip", project: "frameworks/base", revision: "r1", baseline: "lockA", files: List({ path: "Ui.java", pre: "pre1", post: "post1" }), manifestSha256: "p1" }
-pure val lockValues = Set(physicalLock, developmentLock, virtualLock)
-pure val factsValues = Set(physicalFacts, patchedFacts, virtualFacts, { ...physicalFacts, projects: List({ path: "frameworks/base", revision: "r9" }) }, { ...physicalFacts, boardApi: 202504 })
-pure val patchesValues = Set(List(), List(reviewedPatch), List({ ...reviewedPatch, baseline: "lockOld" }))
+pure val lockValues = {
+  val physical: SourceLock = { name: "pixel10a", digest: "lockA", device: PhysicalDevice({ archive: "z1", vendorApiLevel: 202604 }), developmentOnly: false, manifest: "m1",
+    projects: List({ path: "frameworks/base", revision: "r1" }), overrides: List({ project: "frameworks/base", path: "o.mk", digest: "d1" }), ignored: List(),
+    generated: List({ project: "vendor/google_devices", path: "manifest.xml", digest: "g1" }), targets: List("stallion") }
+  Set(physical).union(Set({ ...physical, digest: "lockD", developmentOnly: true }))
+    .union(Set({ ...noLock, name: "cuttlefish", digest: "lockV", developmentOnly: false, manifest: "m1", projects: List({ path: "device/google/cuttlefish", revision: "r1" }), targets: List("cf_x86_64_phone") }))
+}
+pure val factsValues = {
+  val physical: SourceFacts = { manifest: "m1", projects: List({ path: "frameworks/base", revision: "r1" }), changes: List({ project: "frameworks/base", path: "o.mk", digest: "d1" }), ignored: List(),
+    generated: List({ project: "vendor/google_devices", path: "manifest.xml", digest: "g1" }), heads: List(), archive: "z1", boardApi: 202604, vintfApi: 202604 }
+  Set(physical).union(Set({ ...physical, projects: List({ path: "frameworks/base", revision: "r9" }) })).union(Set({ ...physical, boardApi: 202504 }))
+    .union(Set({ ...physical, changes: physical.changes.append({ project: "frameworks/base", path: "Ui.java", digest: "post1" }), heads: List({ project: "frameworks/base", path: "Ui.java", digest: "pre1" }) }))
+    .union(Set({ ...noFacts, manifest: "m1", projects: List({ path: "device/google/cuttlefish", revision: "r1" }) }))
+}
+pure val patchesValues = {
+  val reviewed: PatchEnvelope = { name: "chip", project: "frameworks/base", revision: "r1", baseline: "lockA", files: List({ path: "Ui.java", pre: "pre1", post: "post1" }), manifestSha256: "p1" }
+  Set(List()).union(Set(List(reviewed))).union(Set(List({ ...reviewed, baseline: "lockOld" })))
+}
 pure def sometimesPhysicalSourceMatched(s: SourceVerdict): bool = s.verdict == Match and s.lock.generated.length() > 0 and s.patches == List()
 pure def sometimesVirtualSourceMatched(s: SourceVerdict): bool = s.verdict == Match and s.lock.device == VirtualDevice
 pure def sometimesRevisionDriftRefused(s: SourceVerdict): bool = s.verdict == Mismatch and problemsOf(s.lock, s.read, s.patches) == List(RevisionDiffers)

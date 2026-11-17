@@ -1,0 +1,71 @@
+// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/image/apk.md, "Story: Put only a reviewed release APK into an image"; spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/qualification.md, "Story: Qualify a device read-only"; spec/os/update/operator.md, "Story: Update a device by cable and get back if it fails"
+export {
+  NATIVE_INSTALLS,
+  NATIVE_TARGETS,
+  createDevelopmentLauncherDescriptor,
+  finalizeNative,
+  readNativeLibraries,
+  renderOverlay,
+  stageLauncher,
+  validateDescriptor,
+  type LauncherDescriptor,
+} from "./stage-launcher.vibe"
+export { admitPatchEnvelope, assertStockVendorApi, loadProfile, verifyDeviceSource, verifySource } from "./source-lock.vibe"
+export {
+  aaptManifestTree,
+  admitImageApk,
+  apkReleaseBlockers,
+  apkUpdateAdmission,
+  assertAndroidArtifactSnapshotUnchanged,
+  cloudVoiceAdmission,
+  compareDomains,
+  dumpAndroidArtifactBadging,
+  dumpAndroidArtifactManifest,
+  javaMajorVersion,
+  listAndroidArtifactEntries,
+  manifestFacts,
+  parseXmlTree,
+  qaEvidenceAdmission,
+  readAndroidArtifactEntryBuffers,
+  readApkBuildFlags,
+  readApkSignerDigest,
+  readbackInventory,
+  resolveAndroidSdkRoot,
+  resolveJavaHome,
+  snapshotAndroidArtifact,
+} from "./apk.vibe"
+export {
+  IMAGE_FEATURE_VERSION,
+  imageFeatureName,
+  provisioningComponents,
+  writeImageCapability,
+  writeImageProvisioningOverlay,
+  writeListenerActivation,
+  writeProvisioningOverlay,
+  writeRoleOverrides,
+} from "./provisioning.vibe"
+export { listenerPermissions, prepareListenerSystemui, stageListener, verifyListenerQualification, verifyListenerSystemui } from "./listener.vibe"
+export { composeProduct, enrollUpdater } from "./compose-product.vibe"
+export {
+  channelDistributionProblems,
+  compatibilityRecord,
+  decrypt,
+  encodeAvbPublicKey,
+  generate,
+  loadKeyManifest,
+  parseArgs,
+  releaseDescriptorProblems,
+  releaseRecordProblems,
+  signRelease,
+} from "./signing.vibe"
+export { otaMain } from "./ota-operator.vibe"
+export { evaluate, main, qualifyDevice, validateRequirements, verifyImage } from "./verify-device.vibe"
+export {
+  acquireDeviceLease,
+  androidFixtureObserver,
+  rebootAndroidFixture,
+  requireInstrumentationSuccess,
+  runIsolatedAndroidTest,
+  startSingleDeviceAdb,
+  type SingleDeviceAdb,
+} from "./device.vibe"

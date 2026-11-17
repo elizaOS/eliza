@@ -7,7 +7,7 @@ a live capture's start and end. The Java shell (`voice-io`) keeps the
 recorder, the audio source and the threads; it reports each source's
 opening and each release receipt as an event, and it holds the reservation
 token so that only the lease that took the slot can free it. The device
-client of cloud speech ([cloud speech](./cloudSpeech.md)) reserves the slot
+client of cloud speech (`spec/os/voice/cloudSpeech.md`) reserves the slot
 as a live capture through this machine.
 
 ## Story: Share the microphone between live capture and dictation

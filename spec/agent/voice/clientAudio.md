@@ -76,8 +76,11 @@ pure def retainBlock(b: CaptureBuffer, blockSamples: int, blockHasSpeech: bool):
   val kept = if (blockSamples < room) blockSamples else room
   { ...b, received: b.received + blockSamples, stored: b.stored + kept, heardSpeech: b.heardSpeech or (kept > 0 and blockHasSpeech) }
 }
-pure val openBuffer: CaptureBuffer = { capSamples: 4, received: 0, stored: 0, heardSpeech: false, lastOffered: 0, offering: false }
-pure val bValues = Set(openBuffer, { ...openBuffer, received: 3, stored: 3, heardSpeech: true, lastOffered: 1 }, { ...openBuffer, received: 9, stored: 4, heardSpeech: true, lastOffered: 4, offering: true }, { ...openBuffer, received: 2, stored: 2 })
+pure val bValues = Set(
+  { capSamples: 4, received: 0, stored: 0, heardSpeech: false, lastOffered: 0, offering: false },
+  { capSamples: 4, received: 2, stored: 2, heardSpeech: false, lastOffered: 0, offering: false },
+  { capSamples: 4, received: 3, stored: 3, heardSpeech: true, lastOffered: 1, offering: false },
+  { capSamples: 4, received: 9, stored: 4, heardSpeech: true, lastOffered: 4, offering: true })
 pure val blockSamplesValues = Set(1, 2, 3, 5)
 pure def lawTheKeptPrefixOnlyGrowsWithinTheCap(b: CaptureBuffer, blockSamples: int, blockHasSpeech: bool): bool = {
   val after = retainBlock(b, blockSamples, blockHasSpeech)
@@ -203,7 +206,6 @@ detaches the player only while it holds this URL, and always revokes it.
 pure val mediaWaitMs = 30000
 pure def attachmentReady(streaming: bool, appendedFrame: bool, reachedEnd: bool, stillOwned: bool): bool = stillOwned and (reachedEnd or (streaming and appendedFrame))
 pure def cancelsUpstream(disposed: bool, completed: bool): bool = not(disposed or completed)
-pure def detachesPlayer(ownsUrl: bool): bool = ownsUrl
 pure def lawWithoutStreamingReadyNeedsTheEnd(appendedFrame: bool, stillOwned: bool): bool = not(attachmentReady(false, appendedFrame, false, stillOwned))
 pure def lawACompletedStreamIsNeverCancelled(disposed: bool): bool = not(cancelsUpstream(disposed, true))
 ```

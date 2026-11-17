@@ -1,14 +1,17 @@
 # Resources released once
 
 The agent process and each of its listeners hold resources: the store, the
-runtime, the loaded plugins, the socket and the loopback HTTP listener. This
-spec is the one discipline for giving them back. Resources are acquired in
-order while open; closing fixes the release order, newest first, before any
-release starts; each acquisition is released once; a failed release is
-recorded and the rest still run. The process and the transport each hold one
-`Resources` and drive it with `acquire`, `close` and `releaseNext`. The shell
-awaits each release, collects the errors it threw into one aggregate error,
-and throws when something is acquired after close. Sources:
+runtime, the loaded plugins, the socket and the loopback HTTP listener
+(acquired as `store`, `runtime`, `plugins`, `socket`, `loopback`). This spec is
+the one discipline for giving them back. Resources are acquired in order while
+open; closing fixes the release order before any release starts; each
+acquisition is released once; a failed release is recorded and the rest still
+run. The only release order is the reverse of acquisition, so an importer sets
+its release order by the order it acquires in. The process and the transport
+each hold one `Resources` (imported as `RS`, not refined) and drive it with
+`acquire`, `close` and `releaseNext`. The shell awaits each release, collects
+the errors it threw into one aggregate error, and throws when something is
+acquired after close. Sources:
 `packages/agent/src/runtime/process-lifecycle.ts` (`dispose`) and
 `packages/agent/src/api/server-resources.ts`.
 
@@ -27,17 +30,17 @@ is refused.
 type ReleasePhase = Open | Closing | Closed
 type Resources = { phase: ReleasePhase, held: List[str], pending: List[str], released: List[str], failed: List[str] }
 pure val initial: Resources = { phase: Open, held: List(), pending: List(), released: List(), failed: List() }
-pure val resourceValues = Set("store", "runtime", "socket")
+pure val resourceValues = Set("store", "runtime", "plugins", "socket", "loopback")
 pure def canAcquire(s: Resources): bool = s.phase == Open
 pure def acquire(s: Resources, resource: str): Resources = { ...s, held: s.held.append(resource) }
 pure def stepNothingAcquiredAfterClose(before: Resources, after: Resources): bool = before.phase != Open implies after.held == before.held
 pure def sometimesSeveralHeld(s: Resources): bool = s.phase == Open and s.held.length() >= 2
 ```
 
-### Closing fixes the release order, newest first, before any release runs
+### A second close joins the first and changes nothing
 
-Closing with nothing held is closed at once. A second close joins the one
-already under way: it changes nothing and starts no second release.
+Closing takes the held resources, newest first, as the release order; with
+nothing held it is closed at once. A repeated close starts no second release.
 
 ```quint
 pure def newestFirst(xs: List[str]): List[str] = xs.foldl(List(), (acc, x) => List(x).concat(acc))
@@ -73,18 +76,23 @@ pure def sometimesClosedClean(s: Resources): bool = s.phase == Closed and s.rele
 
 ### A failed release is recorded and the remaining releases still run
 
-The close ends clean only when no release failed; the process exits 1
-otherwise.
+A failed release does not stop the next one. The close ends clean only when no
+release failed (`closedCleanly`); the importer decides what an unclean close
+means.
 
 ```quint
 pure def closedCleanly(s: Resources): bool = s.phase == Closed and s.failed.length() == 0
 pure def alwaysFailuresWereReleased(s: Resources): bool = s.failed.every(f => s.released.includes(f))
+pure def sometimesClosingAfterFailure(s: Resources): bool = s.phase == Closing and s.failed.length() > 0
 pure def sometimesFailureThenMoreReleased(s: Resources): bool = s.phase == Closed and s.released.length() >= 2 and s.failed.includes(s.released.nthOr(0, ""))
 ```
 
 ### A close that has begun ends with every resource released
 
+Releases are the agent's own steps, so a close under way always finishes; the
+invariants above make every acquisition released by then.
+
 ```quint
 pure val fair_releaseNext = "weak"
-pure def leadsToClosed(s: Resources, later: Resources): bool = s.phase == Closing implies (later.phase == Closed and later.released.length() == later.held.length())
+pure def leadsToClosed(s: Resources, later: Resources): bool = s.phase == Closing implies later.phase == Closed
 ```

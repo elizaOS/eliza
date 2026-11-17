@@ -1,0 +1,10 @@
+// spec/os/appUpdate/admission.md, "Story: Install an app update only when every authority allows it"; spec/os/appUpdate/admission.md, "Story: Publish an app update only with authorized versions"
+export {
+  advancePublisherPolicy,
+  createPublicationAuthorizer,
+  initializePublisherPolicy,
+  parseDescriptorJson,
+  readPublisherPolicy,
+  verifyPublicationGraph,
+} from "./publication.vibe"
+export { buildAndroidTrust, composeTrustSource } from "./trust-build.vibe"

@@ -1,0 +1,100 @@
+// spec/os/build/sourceIntegrity.md, "Story: Build only from the committed tree I pinned"; spec/os/build/sourceIntegrity.md, "Story: Export pinned files without my local edits"; spec/os/image/sourceLock.md, "Story: Build only from the source I pinned"
+import { ChildProcess } from "effect/process"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+
+export type Bytes = string | Uint8Array
+
+export type Entry =
+  | Bytes
+  | { readonly kind: "executable"; readonly content: Bytes }
+  | { readonly kind: "symlink"; readonly target: string }
+
+export type Tree = Readonly<Record<string, Entry>>
+
+export interface ScratchRepo {
+  readonly root: string
+  readonly commit: string
+}
+
+export error GitFailed { args: readonly string[]; code: number; stderr: string }
+
+const GIT_ENVIRONMENT = {
+  GIT_AUTHOR_NAME: "Scratch",
+  GIT_AUTHOR_EMAIL: "scratch@example.invalid",
+  GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z",
+  GIT_COMMITTER_NAME: "Scratch",
+  GIT_COMMITTER_EMAIL: "scratch@example.invalid",
+  GIT_COMMITTER_DATE: "2026-01-01T00:00:00Z",
+  GIT_CONFIG_NOSYSTEM: "1",
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_TERMINAL_PROMPT: "0",
+}
+
+export effect function scratch(prefix: string) {
+  const files = try FileSystem.FileSystem
+  return try files.realPath(try files.makeTempDirectoryScoped({ prefix: `eliza-os-${prefix}-` }))
+}
+
+export effect function writeTree(root: string, tree: Tree) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  for (const [file, entry] of Object.entries(tree)) {
+    const target = path.join(root, file)
+    try files.makeDirectory(path.dirname(target), { recursive: true })
+    try files.remove(target, { force: true })
+    if (typeof entry === "string") {
+      try files.writeFileString(target, entry)
+    } else if (entry instanceof Uint8Array) {
+      try files.writeFile(target, entry)
+    } else if (entry.kind === "executable") {
+      try (typeof entry.content === "string" ? files.writeFileString(target, entry.content, { mode: 0o755 }) : files.writeFile(target, entry.content, { mode: 0o755 }))
+    } else {
+      try files.symlink(entry.target, target)
+    }
+  }
+}
+
+export effect function readTree(root: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const tree: Record<string, string> = {}
+  for (const entry of (try files.readDirectory(root, { recursive: true })).filter((entry) => entry !== ".git" && !entry.startsWith(".git/")).sort()) {
+    const info = try files.stat(path.join(root, entry))
+    if (info.type === "File") tree[entry] = try files.readFileString(path.join(root, entry))
+  }
+  return tree
+}
+
+export effect function fixture(name: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const source = try path.fromFileUrl(new URL(`../fixtures/${name}`, import.meta.url))
+  const target = path.join(try scratch(path.basename(name)), path.basename(name))
+  try files.copy(source, target)
+  return target
+}
+
+export effect function git(root: string, args: readonly string[]) {
+  const spawner = try ChildProcessSpawner
+  return try scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make("git", [...args], { cwd: root, extendEnv: true, env: GIT_ENVIRONMENT, stdin: "ignore" }))
+    const [stdout, stderr] = try.all [Stream.mkString(Stream.decodeText(child.stdout)), Stream.mkString(Stream.decodeText(child.stderr))]
+    const code: number = try child.exitCode
+    if (code !== 0) throw new GitFailed({ args, code, stderr: stderr.trim() })
+    return stdout.trim()
+  })
+}
+
+export effect function commitTree(root: string, tree: Tree, message: string) {
+  try writeTree(root, tree)
+  try git(root, ["add", "--all"])
+  try git(root, ["-c", "commit.gpgsign=false", "commit", "--quiet", "--allow-empty", "--no-verify", "--message", message])
+  return try git(root, ["rev-parse", "HEAD"])
+}
+
+export effect function scratchRepo(prefix: string, tree: Tree) {
+  const root = try scratch(prefix)
+  try git(root, ["init", "--quiet", "--initial-branch=main"])
+  const repo: ScratchRepo = { root, commit: try commitTree(root, tree, "Pin the scratch tree") }
+  return repo
+}

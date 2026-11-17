@@ -7,6 +7,7 @@ module node {
 
   export interface Connection {
     query(sql: string, params: ReadonlyArray<unknown>): Promise<ReadonlyArray<Row>>
+    script(sql: string): Promise<void>
     release(): Promise<void>
   }
 
@@ -36,6 +37,7 @@ module node {
     await db.waitReady
     const connection: Connection = {
       query: async (sql, params) => (await db.query<Row>(sql, [...params])).rows,
+      script: async (sql) => { await db.exec(sql) },
       release: async () => {}
     }
     return { permits: 1, connect: async () => connection, close: () => db.close() }
@@ -55,6 +57,7 @@ module node {
         const client = await pool.connect()
         return {
           query: async (sql, params) => (await client.query(sql, [...params])).rows as ReadonlyArray<Row>,
+          script: async (sql) => { await client.query(sql) },
           release: async () => client.release()
         }
       },
@@ -67,11 +70,6 @@ module node {
     const directory = new URL("./migrations/", import.meta.url)
     const names = (await readdir(directory)).filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/.test(name)).sort()
     return Promise.all(names.map(async (name) => ({ name, sql: await readFile(new URL(name, directory), "utf8") })))
-  }
-
-  /** @throws {unknown} */
-  export async function runScript(connection: Connection, sql: string): Promise<void> {
-    await connection.query(sql, [])
   }
 }
 import { migrationFiles, openPg, openPglite, type Connection, type Migration, type Pool, type Row } from node
@@ -88,6 +86,7 @@ export error StoreLocationInvalid { input: string }
 
 export interface Tx {
   query(sql: string, params?: ReadonlyArray<unknown>): ReadonlyArray<Row>!StoreFailure
+  script(sql: string): void!StoreFailure
 }
 
 export service Store {
@@ -108,7 +107,10 @@ effect function foreign<A>(operation: string, run: () => Promise<A>): A!StoreFai
 }
 
 function txOver(connection: Connection): Tx {
-  return { query: (sql, params = []) => foreign("query", () => connection.query(sql, params)) }
+  return {
+    query: (sql, params = []) => foreign("query", () => connection.query(sql, params)),
+    script: (sql) => foreign("script", () => connection.script(sql))
+  }
 }
 
 effect function finish(connection: Connection, committed: boolean) {
@@ -181,7 +183,7 @@ export effect function migrate(options: { readonly digest: string; readonly envi
     const applied: string[] = []
     for (const migration of migrations) {
       if (done.has(migration.name)) continue
-      try tx.query(migration.sql)
+      try tx.script(migration.sql)
       try tx.query("INSERT INTO schema_migrations (name, applied_at) VALUES ($1, $2)", [migration.name, options.now])
       applied.push(migration.name)
     }

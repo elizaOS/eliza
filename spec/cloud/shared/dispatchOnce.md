@@ -37,9 +37,9 @@ change afterwards.
 ```quint
 import types.* from "./types"
 import sessions as S from "../../core/sessions"
-type ReceiptOutcome = Unsettled | Succeeded | Refused | NotApplied
-type Receipt = { session: S::Session, digest: str, providerKey: ProviderKey, staleAfter: Millis, claimedAt: Millis, sentAt: Millis, outcome: ReceiptOutcome }
-pure val initial: Receipt = { session: S::initial, digest: "", providerKey: { kind: Checkout, id: "" }, staleAfter: 0, claimedAt: 0, sentAt: 0, outcome: Unsettled }
+type Settlement = Unsettled | Succeeded | Refused | NotApplied
+type Receipt = { session: S::Session, digest: str, providerKey: ProviderKey, staleAfter: Millis, claimedAt: Millis, sentAt: Millis, settlement: Settlement }
+pure val initial: Receipt = { session: S::initial, digest: "", providerKey: { kind: Checkout, id: "" }, staleAfter: 0, claimedAt: 0, sentAt: 0, settlement: Unsettled }
 pure val digestValues = Set("d1", "d2")
 pure val providerKeyValues = Set({ kind: Checkout, id: "key1" }, { kind: GmailOperation, id: "key2" })
 pure val staleAfterValues = Set(2, 5)
@@ -63,7 +63,7 @@ any provider I/O, so a committed receipt is never claimable again; the
 kernel's session rules hold of every receipt's session.
 
 ```quint
-pure def canClaim(r: Receipt, by: S::SessionOwner, leaseDuration: int): bool = r.outcome == Unsettled and r.session.phase == S::Pending and S::canAcquire(r.session, by, r.digest, leaseDuration)
+pure def canClaim(r: Receipt, by: S::SessionOwner, leaseDuration: int): bool = r.settlement == Unsettled and r.session.phase == S::Pending and S::canAcquire(r.session, by, r.digest, leaseDuration)
 pure def claim(r: Receipt, by: S::SessionOwner, leaseDuration: int): Receipt = {
   val acquired = S::acquire(r.session, by, r.digest, leaseDuration)
   { ...r, session: S::commit(acquired, by, acquired.currentClaim, r.digest), claimedAt: r.session.now }
@@ -85,20 +85,20 @@ the same.
 ```quint
 type ProviderReply = ShowsEffect | DefiniteRefusal | Unclear
 pure def staleAt(r: Receipt): Millis = r.claimedAt + r.staleAfter
-pure def canSend(r: Receipt, by: S::SessionOwner): bool = r.outcome == Unsettled and r.session.now < staleAt(r) and S::canInvoke(r.session, by, r.session.currentClaim)
+pure def canSend(r: Receipt, by: S::SessionOwner): bool = r.settlement == Unsettled and r.session.now < staleAt(r) and S::canInvoke(r.session, by, r.session.currentClaim)
 pure def send(r: Receipt, by: S::SessionOwner, reply: ProviderReply): Receipt = {
   val invoked = S::invoke(r.session, by, r.session.currentClaim)
   val sent = { ...r, sentAt: r.session.now }
-  if (reply == ShowsEffect) { ...sent, session: S::complete(S::recordOutcome(invoked)), outcome: Succeeded }
-  else if (reply == DefiniteRefusal) { ...sent, session: S::complete(S::recordOutcome(invoked)), outcome: Refused }
+  if (reply == ShowsEffect) { ...sent, session: S::complete(S::recordOutcome(invoked)), settlement: Succeeded }
+  else if (reply == DefiniteRefusal) { ...sent, session: S::complete(S::recordOutcome(invoked)), settlement: Refused }
   else { ...sent, session: S::loseExecutor(invoked) }
 }
-pure def canLoseExecutor(r: Receipt): bool = r.outcome == Unsettled and S::canLoseExecutor(r.session)
+pure def canLoseExecutor(r: Receipt): bool = r.settlement == Unsettled and S::canLoseExecutor(r.session)
 pure def loseExecutor(r: Receipt): Receipt = { ...r, session: S::loseExecutor(r.session) }
 pure def alwaysSentBeforeStale(r: Receipt): bool = r.session.effects == 1 implies r.sentAt < staleAt(r)
-pure def sometimesSucceededOnReply(r: Receipt): bool = r.outcome == Succeeded and r.session.executorAlive
-pure def sometimesRefusedOnReply(r: Receipt): bool = r.outcome == Refused and r.session.executorAlive
-pure def sometimesUnknownAfterLostReply(r: Receipt): bool = r.outcome == Unsettled and r.session.effects == 1
+pure def sometimesSucceededOnReply(r: Receipt): bool = r.settlement == Succeeded and r.session.executorAlive
+pure def sometimesRefusedOnReply(r: Receipt): bool = r.settlement == Refused and r.session.executorAlive
+pure def sometimesUnknownAfterLostReply(r: Receipt): bool = r.settlement == Unsettled and r.session.effects == 1
 ```
 
 ### An unknown outcome is settled only by a provider lookup under the same provider key
@@ -112,15 +112,15 @@ again later by the owner's sweep.
 ```quint
 type LookupResult = EffectSeen | RefusalSeen | NothingSeen
 pure def canResolve(r: Receipt, lookup: LookupResult): bool =
-  r.outcome == Unsettled and r.session.phase == S::Committed and (if (lookup == NothingSeen) r.session.now >= staleAt(r) else r.session.effects == 1)
+  r.settlement == Unsettled and r.session.phase == S::Committed and (if (lookup == NothingSeen) r.session.now >= staleAt(r) else r.session.effects == 1)
 pure def resolve(r: Receipt, lookup: LookupResult): Receipt = {
-  val outcome = if (lookup == EffectSeen) Succeeded else if (lookup == RefusalSeen) Refused else NotApplied
-  { ...r, outcome: outcome, session: if (r.session.effects == 1) S::complete(S::recordOutcome(r.session)) else r.session }
+  val verdict = if (lookup == EffectSeen) Succeeded else if (lookup == RefusalSeen) Refused else NotApplied
+  { ...r, settlement: verdict, session: if (r.session.effects == 1) S::complete(S::recordOutcome(r.session)) else r.session }
 }
-pure def stepNotAppliedOnlyOnceStale(before: Receipt, after: Receipt): bool = (before.outcome == Unsettled and after.outcome == NotApplied) implies before.session.now >= staleAt(before)
-pure def sometimesLookupFindsTheEffect(r: Receipt): bool = r.outcome == Succeeded and not(r.session.executorAlive)
-pure def sometimesNotAppliedBeforeAnySend(r: Receipt): bool = r.outcome == NotApplied and r.session.effects == 0
-pure def sometimesNotAppliedAfterLostReply(r: Receipt): bool = r.outcome == NotApplied and r.session.effects == 1
+pure def stepNotAppliedOnlyOnceStale(before: Receipt, after: Receipt): bool = (before.settlement == Unsettled and after.settlement == NotApplied) implies before.session.now >= staleAt(before)
+pure def sometimesLookupFindsTheEffect(r: Receipt): bool = r.settlement == Succeeded and not(r.session.executorAlive)
+pure def sometimesNotAppliedBeforeAnySend(r: Receipt): bool = r.settlement == NotApplied and r.session.effects == 0
+pure def sometimesNotAppliedAfterLostReply(r: Receipt): bool = r.settlement == NotApplied and r.session.effects == 1
 ```
 
 ### A settled receipt is final and agrees with its session
@@ -131,11 +131,11 @@ where the kernel keeps it and no send can follow.
 
 ```quint
 pure def alwaysOutcomeFollowsTheSession(r: Receipt): bool =
-  (r.outcome == Unsettled implies r.session.phase != S::Completed)
-  and ((r.outcome == Succeeded or r.outcome == Refused) implies (r.session.phase == S::Completed and r.session.effects == 1))
-  and (r.outcome == NotApplied implies ((r.session.phase == S::Completed and r.session.effects == 1) or (r.session.phase == S::Committed and r.session.effects == 0)))
+  (r.settlement == Unsettled implies r.session.phase != S::Completed)
+  and ((r.settlement == Succeeded or r.settlement == Refused) implies (r.session.phase == S::Completed and r.session.effects == 1))
+  and (r.settlement == NotApplied implies ((r.session.phase == S::Completed and r.session.effects == 1) or (r.session.phase == S::Committed and r.session.effects == 0)))
 pure def stepSettledIsFinal(before: Receipt, after: Receipt): bool =
-  before.outcome != Unsettled implies (after.outcome == before.outcome and after.session.phase == before.session.phase and after.session.effects == before.session.effects)
+  before.settlement != Unsettled implies (after.settlement == before.settlement and after.session.phase == before.session.phase and after.session.effects == before.session.effects)
 ```
 
 ### A prepared receipt answers exactly one status
@@ -147,8 +147,8 @@ reply was lost, its sender was lost or its stale time passed.
 ```quint
 type ReceiptStatus = StatusPrepared | StatusDispatched | StatusUnknown | StatusSucceeded | StatusRejected
 pure def receiptStatus(r: Receipt): ReceiptStatus =
-  if (r.outcome == Succeeded) StatusSucceeded
-  else if (r.outcome != Unsettled) StatusRejected
+  if (r.settlement == Succeeded) StatusSucceeded
+  else if (r.settlement != Unsettled) StatusRejected
   else if (r.session.phase != S::Committed) StatusPrepared
   else if (r.session.effects == 1 or not(r.session.executorAlive) or r.session.now >= staleAt(r)) StatusUnknown
   else StatusDispatched
@@ -161,5 +161,5 @@ tries again prepares a new receipt with a provider key the rejected one did
 not use. Nothing else is ever sent again.
 
 ```quint
-pure def mayFollowWith(old: Receipt, providerKey: ProviderKey): bool = (old.outcome == Refused or old.outcome == NotApplied) and providerKey != old.providerKey
+pure def mayFollowWith(old: Receipt, providerKey: ProviderKey): bool = (old.settlement == Refused or old.settlement == NotApplied) and providerKey != old.providerKey
 ```
