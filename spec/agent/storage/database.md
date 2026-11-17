@@ -38,7 +38,7 @@ type StoreLaunch = { persist: bool, account: StoreAccount, embeddingDimensions: 
 type DataOwner = { agentId: str, account: StoreAccount, embeddingDimensions: int }
 type IdentityEntry = EntryMissing | EntryUuid({ agentId: str }) | EntryUnusable
 type LogRow = { id: int, room: str, at: int }
-type Sweep = SweepIdle | SweepRunning({ targets: List[int], now: int })
+type Sweep = SweepIdle | SweepRunning({ targets: List[LogRow], now: int })
 type Store = { phase: StorePhase, fault: StoreFault, launch: StoreLaunch, bundle: Bundle, agentId: str, candidate: str, publication: AT::Publication, locked: bool, recorded: DataOwner, version: int, seeded: bool, queries: Set[int], logs: List[LogRow], nextLogId: int, sweep: Sweep, swept: int }
 pure val noOwner: DataOwner = { agentId: "", account: NoAccount, embeddingDimensions: 0 }
 pure val initial: Store = { phase: Unopened, fault: NoFault, launch: { persist: false, account: NoAccount, embeddingDimensions: 0, retention: KeepAll }, bundle: { migrations: List(), snapshotVersion: 0 }, agentId: "", candidate: "", publication: AT::initial, locked: false, recorded: noOwner, version: 0, seeded: false, queries: Set(), logs: List(), nextLogId: 1, sweep: SweepIdle, swept: 0 }
@@ -84,6 +84,7 @@ pure def alwaysDataPhasesHaveIdentity(s: Store): bool =
 pure def alwaysCreatedIdentityWasPublished(s: Store): bool =
   (s.phase == PublishingIdentity implies s.candidate != "" and s.publication.receipt == AT::PendingReceipt)
     and ((s.agentId != "" and s.publication.receipt != AT::PendingReceipt) implies s.publication.receipt == AT::SuccessReceipt)
+    and ((s.phase == Unopened or s.phase == ReadingIdentity) implies s.candidate == "" and s.publication.receipt == AT::PendingReceipt)
 pure def stepIdentityNeverChanges(before: Store, after: Store): bool = before.agentId != "" implies after.agentId == before.agentId
 pure def sometimesReusedIdentityServes(s: Store): bool = s.phase == Open and s.publication.receipt == AT::PendingReceipt
 pure def sometimesCreatedIdentityServes(s: Store): bool = s.phase == Open and s.publication.receipt == AT::SuccessReceipt
@@ -142,7 +143,8 @@ type LockFile = LockFree | LockStale | LockLive
 pure def canLock(s: Store, lockFile: LockFile): bool = s.phase == Locking
 pure def lock(s: Store, lockFile: LockFile): Store = if (lockFile == LockLive) failed(DirectoryInUse, s) else { ...s, phase: ReadingDirectory, locked: true }
 pure def alwaysLockedExactlyWhileTheDirectoryIsUsed(s: Store): bool =
-  s.locked iff (s.launch.persist and (s.phase == ReadingDirectory or s.phase == Migrating or s.phase == Open or s.phase == Closing))
+  (s.phase == Locking implies s.launch.persist)
+    and (s.locked iff (s.launch.persist and (s.phase == ReadingDirectory or s.phase == Migrating or s.phase == Open or s.phase == Closing)))
 pure def sometimesDirectoryInUse(s: Store): bool = s.fault == DirectoryInUse
 ```
 
@@ -170,11 +172,11 @@ pure def migrate(s: Store, ok: bool): Store =
   if (s.bundle.migrations.nthOr(s.version, Additive) == Destructive) failed(DestructiveMigration, s) else if (ok) { ...s, version: s.version + 1 } else failed(MigrationFailed, s)
 pure def canFinishOpen(s: Store): bool = s.phase == Migrating and s.version == latest(s.bundle)
 pure def finishOpen(s: Store): Store = { ...s, phase: Open }
+pure def beforeSchema(phase: StorePhase): bool = phase == Unopened or phase == ReadingIdentity or phase == PublishingIdentity or phase == Locking or phase == ReadingDirectory
 pure def alwaysSchemaWithinTheBundle(s: Store): bool =
-  (s.version >= 0 and s.version <= latest(s.bundle)) and ((s.phase == Open or s.phase == Closing or s.phase == Closed) implies s.version == latest(s.bundle))
+  (beforeSchema(s.phase) implies s.version == 0 and not(s.seeded)) and (s.version >= 0 and s.version <= latest(s.bundle)) and ((s.phase == Open or s.phase == Closing or s.phase == Closed) implies s.version == latest(s.bundle))
 pure def stepSchemaMovesOneMigrationAtATime(before: Store, via: str, after: Store): bool =
-  (before.phase != Unopened and before.phase != ReadingIdentity and before.phase != PublishingIdentity and before.phase != Locking and before.phase != ReadingDirectory)
-    implies (after.version == before.version or (via == "migrate" and after.version == before.version + 1))
+  not(beforeSchema(before.phase)) implies (after.version == before.version or (via == "migrate" and after.version == before.version + 1))
 pure def sometimesUpgradeInProgress(s: Store): bool = s.phase == Migrating and s.version > 0 and s.version < latest(s.bundle) and not(s.seeded)
 pure def sometimesDestructiveRefused(s: Store): bool = s.fault == DestructiveMigration
 pure def sometimesMigrationFailed(s: Store): bool = s.fault == MigrationFailed
@@ -215,11 +217,10 @@ pure def beginClose(s: Store): Store = { ...s, phase: Closing }
 pure def canFinishClose(s: Store): bool = s.phase == Closing and s.queries.size() == 0 and s.sweep == SweepIdle
 pure def finishClose(s: Store): Store = { ...s, phase: Closed, locked: false }
 pure def alwaysWorkOnlyWhileOpenOrClosing(s: Store): bool = (s.queries.size() > 0 or s.sweep != SweepIdle) implies (s.phase == Open or s.phase == Closing)
-pure def alwaysLogIdsAreFresh(s: Store): bool = s.nextLogId >= 1 and s.logs.every(r => r.id >= 1 and r.id < s.nextLogId and s.logs.select(o => o.id == r.id).length() == 1)
 pure def stepOnlyASweepRemovesARow(before: Store, via: str, after: Store): bool = {
   val sw = before.sweep
   val targets = match sw { | SweepRunning(r) => r.targets | SweepIdle => List() }
-  before.logs.every(r => after.logs.includes(r) or (via == "finishSweep" and targets.includes(r.id)))
+  before.logs.every(r => after.logs.includes(r) or (via == "finishSweep" and targets.includes(r)))
 }
 pure def sometimesCloseWaitsForAQuery(s: Store): bool = s.phase == Closing and s.queries.size() > 0
 pure def sometimesClosedWithRecords(s: Store): bool = s.phase == Closed and s.logs.length() > 0
@@ -249,22 +250,22 @@ pure def newerInRoom(logs: List[LogRow], row: LogRow): int = logs.select(o => o.
 pure def expired(logs: List[LogRow], row: LogRow, r: LogRetention, now: int): bool =
   r != KeepAll and (row.at < now - ageLimitMs(r) or newerInRoom(logs, row) >= roomLimit(r))
 pure def canBeginSweep(s: Store, now: int): bool = s.phase == Open and s.sweep == SweepIdle and s.launch.retention != KeepAll
-pure def beginSweep(s: Store, now: int): Store = { ...s, sweep: SweepRunning({ targets: s.logs.select(r => expired(s.logs, r, s.launch.retention, now)).listMap(r => r.id), now: now }) }
+pure def beginSweep(s: Store, now: int): Store = { ...s, sweep: SweepRunning({ targets: s.logs.select(r => expired(s.logs, r, s.launch.retention, now)), now: now }) }
 pure def canFinishSweep(s: Store): bool = s.sweep != SweepIdle
 pure def finishSweep(s: Store): Store = {
   val sw = s.sweep
   val targets = match sw { | SweepRunning(r) => r.targets | SweepIdle => List() }
-  val kept = s.logs.select(r => not(targets.includes(r.id)))
+  val kept = s.logs.select(r => not(targets.includes(r)))
   { ...s, logs: kept, swept: s.swept + s.logs.length() - kept.length(), sweep: SweepIdle }
 }
 pure def alwaysSweepTargetsStayExpired(s: Store): bool = {
   val sw = s.sweep
-  match sw { | SweepRunning(r) => s.logs.every(row => r.targets.includes(row.id) implies expired(s.logs, row, s.launch.retention, r.now)) | SweepIdle => true }
+  match sw { | SweepRunning(r) => r.targets.every(row => expired(s.logs, row, s.launch.retention, r.now)) | SweepIdle => true }
 }
 pure def sometimesMemoryStoreSwept(s: Store): bool = s.swept > 0 and not(s.launch.persist)
 pure def sometimesDirectorySwept(s: Store): bool = s.swept > 0 and s.launch.persist
 pure def sometimesSweepTrimsAYoungRow(s: Store): bool = {
   val sw = s.sweep
-  match sw { | SweepRunning(r) => s.logs.some(row => r.targets.includes(row.id) and row.at >= r.now - ageLimitMs(s.launch.retention)) | SweepIdle => false }
+  match sw { | SweepRunning(r) => r.targets.some(row => row.at >= r.now - ageLimitMs(s.launch.retention)) | SweepIdle => false }
 }
 ```

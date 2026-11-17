@@ -61,7 +61,10 @@ pure def execute(h: TaskHost, by: I::Owner, expectedRevision: int, proposal: I::
   { ...h, task: dispatched, actuator: Executing({ revision: dispatched.revision, epoch: dispatched.epoch }) }
 }
 pure def isExecuting(a: Actuator): bool = match a { | Executing(x) => true | _ => false }
-pure def dispatchIsCurrent(h: TaskHost): bool = match h.actuator { | Executing(x) => x.revision == h.task.revision and x.epoch == h.task.epoch and h.task.status == I::Waiting and h.task.authorized and h.started and not(h.poisoned) | _ => false }
+pure def dispatchIsCurrent(h: TaskHost): bool = {
+  val a = h.actuator
+  match a { | Executing(x) => x.revision == h.task.revision and x.epoch == h.task.epoch and h.task.status == I::Waiting and h.task.authorized and h.started and not(h.poisoned) | _ => false }
+}
 pure def alwaysRunningActuatorHoldsTheCurrentDispatch(h: TaskHost): bool = isExecuting(h.actuator) implies dispatchIsCurrent(h)
 pure def alwaysDispatchedOperationHasItsActuator(h: TaskHost): bool = (h.started and not(h.poisoned) and h.task.status == I::Waiting) implies isExecuting(h.actuator)
 ```

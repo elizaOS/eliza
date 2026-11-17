@@ -176,7 +176,7 @@ pure val waitingValues = Set(0, 255, 256, 900)
 pure def lawBacklogEndsAFeedOnlyAtTheLimit(s: EventFeed, feed: int, waiting: int): bool =
   canBacklog(s, feed, waiting) implies (backlog(s, feed, waiting).state.live.contains(feed) iff waiting < maxWaiting)
 pure def stepOverflowCountsOneEndedFeed(before: EventFeed, after: EventFeed): bool =
-  after.overflowCount == before.overflowCount or (after.overflowCount == before.overflowCount + 1 and after.live.size() == before.live.size() - 1)
+  after.overflowCount == before.overflowCount or (after.overflowCount == before.overflowCount + 1 and before.live.exists(id => not(after.live.contains(id))))
 pure def sometimesSlowFeedClosed(s: EventFeed): bool = s.overflowCount > 0
 ```
 

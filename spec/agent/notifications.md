@@ -118,11 +118,10 @@ the whole inbox, whatever the filter. The reply is
 type Row = { notice: N::Notice, category: str, silent: bool }
 pure def matchesList(category: str, unreadOnly: bool, row: Row, now: int): bool =
   N::notificationVisible(row.notice.expiry, now) and not(unreadOnly and row.notice.read) and (category == "" or row.category == category)
-pure def withinPage(pageSize: PageSize, newer: int): bool = match pageSize { | AllRows => true | AtMost(p) => newer < p.rows }
-pure def ownerRows(notices: List[Row], category: str, unreadOnly: bool, pageSize: PageSize, now: int): List[Row] = {
-  val matching = notices.select(row => matchesList(category, unreadOnly, row, now))
-  matching.select(row => withinPage(pageSize, matching.select(other => other.notice.sequence > row.notice.sequence).length()))
-}
+pure def keepNewest(pageSize: PageSize, kept: List[Row], row: Row): List[Row] =
+  match pageSize { | AllRows => kept.append(row) | AtMost(p) => if (kept.length() < p.rows) kept.append(row) else kept.removeAt(0).append(row) }
+pure def ownerRows(notices: List[Row], category: str, unreadOnly: bool, pageSize: PageSize, now: int): List[Row] =
+  notices.select(row => matchesList(category, unreadOnly, row, now)).foldl(List(), (kept, row) => keepNewest(pageSize, kept, row))
 pure def newestFirst(rows: List[Row]): List[Row] = rows.foldl(List(), (acc, row) => List(row).concat(acc))
 pure def badgeCount(notices: List[Row], now: int): int = notices.select(row => N::notificationBadge(row.notice.expiry, now, row.notice.read, row.silent)).length()
 pure val rowA: Row = { notice: { ...N::emptyNotice, id: "n1", sequence: 1 }, category: "reminder", silent: false }

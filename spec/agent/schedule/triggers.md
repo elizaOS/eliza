@@ -167,8 +167,9 @@ pure def sometimesOnceRemovedAfterItsRun(t: Trigger): bool = t.life == Removed a
 The prompt is one turn in the conversation the run started with, which no
 edit can change while it runs. If that conversation is gone when the turn is
 delivered (`roomExists`, a boundary fact), the run fails with
-`RoomUnavailable` and is never delivered elsewhere. A turn that failed, was cancelled or denied is an error even
-when part of a reply was delivered; a missed occurrence is `skipped`.
+`RoomUnavailable` and is never delivered elsewhere. A turn that failed, was
+cancelled or denied is an error even when part of a reply was delivered; a
+missed occurrence is `skipped`.
 
 ```quint
 type RunStatus = RunSuccess | RunError | RunSkipped
