@@ -130,3 +130,28 @@ pure def mayClearPasswordClipboard(deadlineReached: bool, retired: bool, observe
 pure def lawForeignClipboardIsPreserved(deadlineReached: bool, retired: bool): bool =
   not(mayClearPasswordClipboard(deadlineReached, retired, false))
 ```
+
+### A row action acts on the revision the owner selected
+
+Remove, reveal and copy can carry the displayed revision. The native vault
+checks it at delivery, in the same locked operation that reads or removes
+the record. If Android Autofill saved a newer revision or the entry has
+disappeared, the action reports a conflict and leaves the stored vault
+unchanged. ID-only callers still use a current record.
+
+```quint
+type RowSelection = ById | AtRevision({ rev: int })
+type VaultRecordRevision = MissingRecord | CurrentRecord({ rev: int })
+pure def mayUseSelectedVaultRecord(selection: RowSelection, stored: VaultRecordRevision): bool =
+  match stored {
+    | MissingRecord => false
+    | CurrentRecord(row) => match selection {
+        | ById => true
+        | AtRevision(expected) => expected.rev == row.rev
+      }
+  }
+pure def lawChangedRevisionRefusesRowAction(expected: int, presentRevision: int): bool =
+  (expected != presentRevision) implies not(mayUseSelectedVaultRecord(AtRevision({ rev: expected }), CurrentRecord({ rev: presentRevision })))
+pure def lawMissingRecordRefusesRowAction(selection: RowSelection): bool =
+  not(mayUseSelectedVaultRecord(selection, MissingRecord))
+```
