@@ -3,7 +3,7 @@ import {
   assetStatements, clientCheck, defaultCredentialTtl, registryValid,
   type Registration, type ReturnUrl
 } from "../gen/cloud__nativeClients__registry.effect.vibe"
-import { WorkerResponse } from "./worker-platform.ts"
+import { HttpServerResponse } from "effect/http"
 
 export type NativeRegistryEnv = {
   CLOUD_ENVIRONMENT?: "production" | "staging"
@@ -101,10 +101,10 @@ export function mobileRegistration(env: NativeRegistryEnv, clientId: string | nu
 export function nativeAssetLinks(env: NativeRegistryEnv) {
   const current = registry(env)
   const headers = { "cache-control": "no-store" }
-  if (!current) return WorkerResponse.json({ error: "native_clients_unconfigured" }, { status: 404, headers })
+  if (!current) return HttpServerResponse.toWeb(HttpServerResponse.jsonUnsafe({ error: "native_clients_unconfigured" }, { status: 404, headers }))
   const statements = assetStatements(current.entries, current.served)
-  return WorkerResponse.json(statements.map(({ packageName, fingerprints }) => ({
+  return HttpServerResponse.toWeb(HttpServerResponse.jsonUnsafe(statements.map(({ packageName, fingerprints }) => ({
     relation: ["delegate_permission/common.handle_all_urls"],
     target: { namespace: "android_app", package_name: packageName, sha256_cert_fingerprints: fingerprints }
-  })), { headers })
+  })), { headers }))
 }

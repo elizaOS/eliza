@@ -154,7 +154,8 @@ pure def priceCheck(key: PlanKey, observed: ProviderPrice, environment: Environm
   else if (observed.mode != modeOf(environment)) PriceRefused({ mismatch: WrongMode })
   else PriceFits
 pure def planProblem(key: PlanKey, observed: ProviderPrice, environment: Environment): StartProblem =
-  match priceCheck(key, observed, environment) { | PriceRefused(r) => CatalogMismatch({ plan: key, mismatch: r.mismatch }) | PriceFits => NoProblem }
+  val checked = priceCheck(key, observed, environment)
+  match checked { | PriceRefused(r) => CatalogMismatch({ plan: key, mismatch: r.mismatch }) | PriceFits => NoProblem }
 pure def pricesProblem(environment: Environment, plusPrice: ProviderPrice, proPrice: ProviderPrice): StartProblem = {
   val plus = planProblem(PlusMonthly, plusPrice, environment)
   if (plus != NoProblem) plus else planProblem(ProMonthly, proPrice, environment)
