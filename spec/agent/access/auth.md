@@ -1,13 +1,13 @@
 # Local access
 
 Who may call the agent's local API. The only device client is the
-supervising host: the os bridge, which holds the per-launch token from the
-launch frame and attaches it to every request as `Authorization: Bearer`.
-Every other caller is anonymous and reaches only the two public reads.
-There are no owner sessions, pairing codes or logout, and no address,
-interface or header other than the token grants anything. Which routes a
-product lists is the route gate, `access/routes.md`; roles are core's
-[authorization](../../core/authorization.md).
+supervising host: the os bridge, which holds the per-launch token of the
+[launch frame](../host/launch.md) and attaches it to every request as
+`Authorization: Bearer`. Every other caller is anonymous and reaches only
+the two public reads. There are no owner sessions, pairing codes or logout,
+and no address, interface or header other than the token grants anything.
+Which routes a product lists is the route gate, `access/routes.md`; roles
+are core's [authorization](../../core/authorization.md).
 
 ## Story: Admit only the supervising host
 
@@ -15,56 +15,68 @@ product lists is the route gate, `access/routes.md`; roles are core's
 > local API, so that no other app on my device can read my conversations
 > or act as me.
 
-### Only the launch token makes a caller Root
+### Only the token of this launch makes a caller Root
 
-The presented token is compared with the launch token in constant time,
-and only the result of that comparison leaves the secret. A request with no
-token, a wrong token or a token of an earlier launch is `Anonymous`. The
-peer address is never an input: a loopback or socket peer without the token
-is anonymous like any other.
+The shell compares the presented token with the launch token in constant
+time, and only the result of that comparison leaves the secret. A request
+with no token, a wrong token or the token of an earlier launch is
+`Anonymous`. The peer address is never an input: a loopback or socket peer
+without the token is anonymous like any other.
 
 ```quint
 import authorization as Z from "../../core/authorization"
-type SecretToken = str
+import launch as L from "../host/launch"
 type Caller = Root | Anonymous
-pure def declassifyTokenMatches(launch: SecretToken, presented: SecretToken): bool = launch != "" and presented == launch
-pure def callerOf(launch: SecretToken, presented: SecretToken): Caller = if (declassifyTokenMatches(launch, presented)) Root else Anonymous
-pure val launchValues = Set("", "k1")
+pure def declassifyTokenMatches(launchToken: L::SecretLaunchToken, presented: L::SecretLaunchToken): bool =
+  launchToken != "" and presented == launchToken
+pure def callerOf(launchToken: L::SecretLaunchToken, presented: L::SecretLaunchToken): Caller =
+  if (declassifyTokenMatches(launchToken, presented)) Root else Anonymous
+pure val launchTokenValues = Set("", "k1")
 pure val presentedValues = Set("", "k1", "k2")
-pure def lawMissingTokenIsNeverRoot(launch: SecretToken): bool = callerOf(launch, "") == Anonymous
+pure def lawNoTokenIsNeverRoot(launchToken: L::SecretLaunchToken): bool = callerOf(launchToken, "") == Anonymous
+pure def lawRootHoldsExactlyTheLaunchToken(launchToken: L::SecretLaunchToken, presented: L::SecretLaunchToken): bool =
+  callerOf(launchToken, presented) == Root iff (launchToken != "" and presented == launchToken)
 ```
 
-### Only the agent's health and auth status reads are public
+### Only the agent's own health and auth status reads are public
 
-`GET /api/health` and `GET /api/auth/status`, as the agent registers them,
-are `Public`. Every other route, and every route a plugin registers
-whatever it declares, is `RootOnly`.
+`GET /api/health` and `GET /api/auth/status`, as the agent itself
+registers them, are `Public`. Every other route is `RootOnly`, and a route
+a plugin registers is `RootOnly` whatever class it declares: no plugin can
+lower a route below Root.
 
 ```quint
 type AccessClass = Public | RootOnly
-type RouteOrigin = Builtin | Plugin
-pure def accessClass(method: str, path: str, declaredBy: RouteOrigin): AccessClass =
-  if (declaredBy == Builtin and method == "GET" and (path == "/api/health" or path == "/api/auth/status")) Public else RootOnly
-pure val methodValues = Set("GET", "POST")
-pure val pathValues = Set("/api/health", "/api/auth/status", "/api/auth/me", "/api/conversations")
+type RouteOrigin = Builtin | FromPlugin({ declared: AccessClass })
+type Verb = Get | Post | Put | Patch | Delete
+type RouteKey = { verb: Verb, path: str, origin: RouteOrigin }
+pure def publicPath(path: str): bool = path == "/api/health" or path == "/api/auth/status"
+pure def accessClass(r: RouteKey): AccessClass =
+  if (r.origin == Builtin and r.verb == Get and publicPath(r.path)) Public else RootOnly
+pure val rValues = Set(
+  { verb: Get, path: "/api/health", origin: Builtin },
+  { verb: Get, path: "/api/auth/status", origin: FromPlugin({ declared: Public }) },
+  { verb: Post, path: "/api/auth/status", origin: Builtin },
+  { verb: Get, path: "/api/auth/me", origin: Builtin },
+  { verb: Get, path: "/api/plugin/x", origin: FromPlugin({ declared: Public }) },
+  { verb: Post, path: "/api/conversations", origin: FromPlugin({ declared: RootOnly }) })
+pure def lawPluginRouteIsRootOnlyWhateverItDeclares(r: RouteKey): bool = r.origin != Builtin implies accessClass(r) == RootOnly
 ```
 
 ### A Root-only route admits only a caller holding the launch token
 
 An anonymous caller of a Root-only route is answered 401 before dispatch,
-with no body beyond the error code. Refusal grants nothing: no plugin and
-no peer address can open a route to a caller without the token.
+with no body beyond the error code. A refusal never grants access, and the
+supervising host reaches every route.
 
 ```quint
-type Admission = Admitted | Unauthorized
-pure def admission(cls: AccessClass, caller: Caller): Admission = if (cls == Public or caller == Root) Admitted else Unauthorized
-pure def lawOnlyTheLaunchTokenOpensARootRoute(method: str, path: str, declaredBy: RouteOrigin, launch: SecretToken, presented: SecretToken): bool = {
-  val cls = accessClass(method, path, declaredBy)
-  admission(cls, callerOf(launch, presented)) == Admitted implies
-    ((declaredBy == Builtin and method == "GET" and cls == Public) or (launch != "" and presented == launch))
-}
-pure def lawEveryRouteAdmitsTheSupervisingHost(method: str, path: str, declaredBy: RouteOrigin, launch: SecretToken): bool =
-  launch != "" implies admission(accessClass(method, path, declaredBy), callerOf(launch, launch)) == Admitted
+type Entry = Allowed | Unauthorized
+pure def entry(r: RouteKey, caller: Caller): Entry = if (accessClass(r) == Public or caller == Root) Allowed else Unauthorized
+pure def lawAnonymousReachesOnlyTheTwoPublicReads(r: RouteKey, launchToken: L::SecretLaunchToken, presented: L::SecretLaunchToken): bool =
+  entry(r, callerOf(launchToken, presented)) == Allowed implies
+    ((r.origin == Builtin and r.verb == Get and publicPath(r.path)) or (launchToken != "" and presented == launchToken))
+pure def lawSupervisingHostReachesEveryRoute(r: RouteKey, launchToken: L::SecretLaunchToken): bool =
+  launchToken != "" implies entry(r, callerOf(launchToken, launchToken)) == Allowed
 ```
 
 ### Auth status tells any caller only whether it holds the token and which start it reached
@@ -84,22 +96,16 @@ pure def authStatus(caller: Caller, serverInstanceId: str): AuthStatus = { authe
 `GET /api/auth/me` is Root-only and answers
 `{identity: {kind: "owner", id: agentId}, access: {role: "OWNER", mode: "local"}}`,
 where `agentId` is the identity the store keeps. The owner entity of the
-agent holds core `Owner`.
+agent holds core `Owner`. The token proves the host, not the speaker: the
+principal of a chat turn holds the launch's `chatRole`, so a `ChatAsUser`
+launch never speaks as the owner although its requests arrive as Root.
 
 ```quint
-type OwnerIdentity = { agentId: str }
-pure val ownerRole: Z::Role = Z::Owner
-```
-
-### A chat message speaks with the launch's caller role, never above it
-
-The token proves the host, not the speaker. The principal of a chat turn
-holds the launch's `callerRole`, `Owner` or `User`; a `User` launch never
-speaks as the owner, although its requests arrive as Root.
-
-```quint
-type CallerRole = OwnerCaller | UserCaller
-pure def principalRole(callerRole: CallerRole): Z::Role = if (callerRole == OwnerCaller) Z::Owner else Z::User
-pure def lawUserLaunchNeverSpeaksAsOwner(callerRole: CallerRole): bool =
-  callerRole == UserCaller implies Z::rank(principalRole(callerRole)) < Z::rank(ownerRole)
+type AccessMode = LocalMode
+type OwnerIdentity = { kind: str, id: str }
+type OwnerAccess = { role: Z::Role, mode: AccessMode }
+type AuthMe = { identity: OwnerIdentity, access: OwnerAccess }
+pure def authMe(agentId: str): AuthMe = { identity: { kind: "owner", id: agentId }, access: { role: Z::Owner, mode: LocalMode } }
+pure def lawUserLaunchNeverSpeaksAsTheOwner(agentId: str): bool =
+  Z::rank(L::chatRole(L::ChatAsUser)) < Z::rank(authMe(agentId).access.role)
 ```

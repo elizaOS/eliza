@@ -5,7 +5,8 @@ and turns one reviewed draft into at most one provider request. Cached
 reads never grant provider access. Background notices tell the owner
 that mail arrived and open only the mail they were about. Managed
 accounts reach the provider through the Cloud's
-[managed Gmail](../cloud/managedGoogle/gmail.md) route.
+managed Gmail [read](../cloud/services/google/mailRead.md) and
+[operations](../cloud/services/google/mailOperations.md) routes.
 
 | Area | Specifications |
 | --- | --- |

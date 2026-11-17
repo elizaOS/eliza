@@ -1,9 +1,8 @@
 # Website and extraction inference
 
 A host that guides the person through a website sends planner and
-extraction requests to a model. [Resident binding](../agent/resident/cloudAdmission.md)
-owns resident chat inference admission, [host refusals](../agent/nativeHost/refusals.md)
-own the inbound sensitive text gate, and [website goals](./websiteGoal.md)
+extraction requests to a model. The [task wire](../agent/tasks/wire.md) and
+[core security](../core/security.md) own the inbound sensitive text gate, and [website goals](./websiteGoal.md)
 own how replies support later claims. This spec covers the planner and
 extraction calls the host sends.
 

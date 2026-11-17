@@ -7,7 +7,7 @@ without identifying events or calendars. This module specifies the
 projection and input producers. The [reviewed reads](./reviewedReads.md)
 story owns owner review, cancellation and the current readback required
 to publish a result. The wire shapes are the device review contracts of
-[contracts](../contracts/deviceReviews.md).
+[device action operations](../agent/deviceActions/operations.md).
 
 ## Story: Share only the occupied time in my reviewed calendars
 

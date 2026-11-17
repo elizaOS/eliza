@@ -101,6 +101,7 @@ carried. The preference is a preference only: it grants no system or
 provider permission.
 
 ```quint
+import streamUnits.* from "../../core/streamUnits"
 type TextField = NoText | Text({ units: List[int] }) | NotText
 type Delivery = NoDelivery | CompletedAction | OtherDelivery
 type BrowserSurface = NoSurface | NativeSurface | OtherSurface
@@ -111,7 +112,7 @@ pure val shortTextMaxUnits = 128
 pure val slashUnit = 47
 pure def textUnits(text: TextField): List[int] = match text { | Text(t) => t.units | _ => List() }
 pure def textWithin(text: TextField, limit: int): bool = text != NotText and textUnits(text).length() <= limit
-pure def pathRooted(units: List[int]): bool = units.length() == 0 or (units.nthOr(0, 0) == slashUnit and units.nthOr(1, 0) != slashUnit)
+pure def pathRooted(units: List[int]): bool = units.length() == 0 or (unitPrefix(units, List(slashUnit)) and not(unitPrefix(units, List(slashUnit, slashUnit))))
 pure def routingUnit(code: int): bool = (code >= 48 and code <= 57) or (code >= 65 and code <= 90) or (code >= 97 and code <= 122) or code == 46 or code == 95 or code == 45
 pure def routingIdNamed(text: TextField): bool = match text { | Text(t) => t.units.length() >= 1 and t.units.length() <= shortTextMaxUnits and t.units.every(code => routingUnit(code)) | _ => false }
 pure def voiceUiAccepted(u: VoiceUiFacts): bool =
@@ -138,6 +139,9 @@ pure val uValues: Set[VoiceUiFacts] = List(
 ).foldl(Set(), (acc, u) => acc.union(Set(u)))
 pure def lawDirectRequestNeedsTheBoundRenderer(u: VoiceUiFacts): bool =
   (voiceUiAccepted(u) and u.actionMode == DirectRequest) implies (u.delivery == CompletedAction and textUnits(u.routingId).length() >= 1)
+pure val routingUnitsValues = Set(List(99, 49)).union(Set(List(46, 95, 45))).union(Set(List(99, 32))).union(Set(List()))
+pure def lawABoundRendererMayAskForDirectRequests(routingUnits: List[int]): bool =
+  routingIdNamed(Text({ units: routingUnits })) implies voiceUiAccepted({ ...silentRenderer, delivery: CompletedAction, routingId: Text({ units: routingUnits }), actionMode: DirectRequest })
 pure def lawARootedPathIsAccepted(rest: List[int]): bool =
   (rest.length() < viewPathMaxUnits and rest.nthOr(0, 0) != slashUnit) implies voiceUiAccepted({ ...silentRenderer, viewPath: Text({ units: List(slashUnit).concat(rest) }) })
 pure def lawAPathFromAnotherHostIsRefused(rest: List[int]): bool =

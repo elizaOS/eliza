@@ -190,7 +190,7 @@ pure def stop(s: EventFeed): FeedStep =
 pure def alwaysStoppedHasNoFeeds(s: EventFeed): bool = s.stopped implies (s.live.size() == 0 and s.feeds.length() == 0)
 pure def stepStoppedStaysQuiet(before: EventFeed, after: EventFeed): bool =
   before.stopped implies (after.stopped and after.published == before.published and after.nextFeed == before.nextFeed)
-pure def sometimesStoppedWithLiveFeed(s: EventFeed): bool = s.stopped and s.nextFeed > 1 and s.published > 0
+pure def sometimesStoppedAfterFeedHeard(s: EventFeed): bool = s.stopped and s.nextFeed > 1 and s.published > 0
 ```
 
 ## Story: Learn once that something keeps going wrong

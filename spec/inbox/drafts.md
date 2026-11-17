@@ -2,7 +2,7 @@
 
 The inbox package keeps the owner's drafts on the device and turns one
 reviewed draft into at most one provider request. [Mailbox reads](./reads.md) own mailbox reads.
-[Managed Gmail](../cloud/managedGoogle/gmail.md) owns remote send
+[Managed Gmail](../cloud/services/google/mailOperations.md) owns remote send
 admission and its receipt. This model owns the installed client records
 and the transition from a reviewed local draft to one provider request.
 

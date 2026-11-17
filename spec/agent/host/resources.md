@@ -28,7 +28,7 @@ type ReleasePhase = Open | Closing | Closed
 type Resources = { phase: ReleasePhase, held: List[str], pending: List[str], released: List[str], failed: List[str] }
 pure val initial: Resources = { phase: Open, held: List(), pending: List(), released: List(), failed: List() }
 pure val resourceValues = Set("store", "runtime", "socket")
-pure def canAcquire(s: Resources, resource: str): bool = s.phase == Open
+pure def canAcquire(s: Resources): bool = s.phase == Open
 pure def acquire(s: Resources, resource: str): Resources = { ...s, held: s.held.append(resource) }
 pure def stepNothingAcquiredAfterClose(before: Resources, after: Resources): bool = before.phase != Open implies after.held == before.held
 pure def sometimesSeveralHeld(s: Resources): bool = s.phase == Open and s.held.length() >= 2

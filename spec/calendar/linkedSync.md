@@ -1,8 +1,8 @@
 # Linked calendar sync control
 
 The resident calendar can be linked to a calendar at a provider, such as
-a managed account's calendar reached through the Cloud's [managed calendar
-sync](../cloud/managedGoogle/calendarSync.md). This spec owns the sync
+a managed account's calendar reached through the Cloud's [managed Google
+calendar](../cloud/services/google/calendar.md). This spec owns the sync
 control and its receipts, and ends at the provider.
 [Reconciliation](./linkedReconcile.md) owns the per-link decision and
 [sync settlement](./syncSettlement.md) the watch channel.

@@ -6,9 +6,9 @@ generation and embeddings from it, speaks replies through the device's
 audio output, and keeps the privacy of the transcripts it records.
 
 Microphone capture and the live transcription session belong to the
-device's voice path ([voice capture](../os/voice/capture.md)); this package receives what
+device's voice path ([voice capture](../agent/voice/clientAudio.md)); this package receives what
 that path captured. The agent host's model settings
-([agent models](../agent/host/models.md)) read the installed and active
+([agent models](../agent/models/binding.md)) read the installed and active
 models from here.
 
 | Area | Specification |

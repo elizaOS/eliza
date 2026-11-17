@@ -4,7 +4,7 @@ A hosted digest is a scheduled workflow whose result the agent's host
 delivers to the owner's devices. The [daily dossier](../assistant/scheduledDossiers.md)
 owns when the daily digest fires; this spec owns the offer of a missed run
 and delivery into each client's inbox. The server stays authoritative for
-sources and results. [Result notices](../os/android/hostedResultNotices.md)
+sources and results. [Result notices](../os/android/noticeRoutes.md)
 own OS delivery and taps.
 
 ## Story: Review a missed digest only while its source and result are current

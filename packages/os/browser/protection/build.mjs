@@ -1,6 +1,6 @@
 /** Build the product's unpacked MV3 protection module; no installation or signing. */
 
-import { spawnSync } from "node:child_process";
+import { build } from "esbuild";
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
@@ -81,18 +81,14 @@ export async function buildBrowserProtection(
       copy,
     ),
   );
-  const bundled = spawnSync(
-    "bun",
-    [
-      "build",
-      join(root, "advisory.mjs"),
-      "--target=browser",
-      `--outfile=${join(output, "advisory.mjs")}`,
-    ],
-    { encoding: "utf8" },
-  );
-  if (bundled.status !== 0)
-    throw Error(`Advisory build failed: ${bundled.stderr}`);
+  await build({
+    entryPoints: [join(root, "advisory.mjs")],
+    bundle: true,
+    format: "esm",
+    platform: "browser",
+    outfile: join(output, "advisory.mjs"),
+    logLevel: "silent",
+  });
   const engine = await readFile(join(root, "extension.mjs"), "utf8");
   // Attribution fields stay at build time; a local notice path never ships.
   const runtimeFeeds = feeds.map(({ notice, homepage, ...feed }) => feed);
@@ -165,14 +161,7 @@ if (
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 )
   console.log(
-    await buildBrowserProtection(
-      process.argv[2]
-        ? resolve(process.argv[2])
-        : (await import("../../../scripts/lib/test-output.ts")).testOutputPath(
-            "browser-protection",
-            "build",
-          ),
-    ),
+    await buildBrowserProtection(resolve(process.argv[2])),
   );
 
 /** Add the complete optional protection resource set without expanding other capabilities.

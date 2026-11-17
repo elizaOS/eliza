@@ -75,8 +75,8 @@ pure def canFire(t: ScheduledTask, seenRevision: int, manual: bool, now: int, pr
   val result = claimOutcome(t, manual, now, processStart, following, delivery)
   val dueAt = dueInstant(t.due)
   seenRevision == t.revision and fireable(t, manual, now)
-    and comesAfter(following, if (result == FireSkipped) processStart - 1 else if (now > dueAt) now else dueAt)
-    and (result != FireDeferred or retryInstant(delivery) > now)
+    and (if (result == FireDeferred) retryInstant(delivery) > now
+         else comesAfter(following, if (result == FireSkipped) processStart - 1 else if (now > dueAt) now else dueAt))
 }
 pure def fire(t: ScheduledTask, seenRevision: int, manual: bool, now: int, processStart: int, following: Due, delivery: Delivery): ScheduledTask = {
   val result = claimOutcome(t, manual, now, processStart, following, delivery)

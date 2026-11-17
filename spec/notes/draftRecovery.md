@@ -5,8 +5,8 @@ slot on the device, apart from the saved collection, so that a failed save
 loses nothing. It also opens the notes collection an earlier version of
 the client left on the device, the previous notes, without changing it.
 The [Notes client](./client.md) owns canonical saves, [Trash](./trash.md)
-owns removed notes and recordings, and [secure slots](../auth/secureSlots.md)
-own slot storage and compare-and-exchange.
+owns removed notes and recordings, and the [secure store](../os/android/secureStore.md)
+owns slot storage and compare-and-exchange.
 
 ## Story: Keep the unsaved text from my previous notes
 

@@ -153,9 +153,9 @@ pure val nameValues = Set("canvas", "core")
 
 `readBundleManifest` accepts schema 1 for Node 26 whose `bundleSha256`
 equals the digest of the bundle bytes beside it and which lists at least one
-package; a changed bundle needs a new manifest. The workflow worker's digest
-is present when the build produced the worker, and os stages the worker
-only when its bytes match it.
+package; a changed bundle needs a new manifest. The build writes the
+manifest of a built bundle from its package rows and smoke actions, with the
+workflow worker's digest when the workflow plugin's build produced one.
 
 ```quint
 type ProductPluginName = NoProductPlugin | ProductPluginNamed({ name: str })

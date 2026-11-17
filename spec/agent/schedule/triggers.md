@@ -152,7 +152,7 @@ pure def recordRun(history: List[RunRecord], entry: RunRecord): List[RunRecord] 
   val longer = history.append(entry)
   if (longer.length() > maxRunHistory) longer.tail() else longer
 }
-pure def alwaysHistoryIsBounded(t: Trigger): bool = t.history.length() <= maxRunHistory and t.runCount >= 0 and t.missed >= 0
+pure def alwaysHistoryIsBounded(t: Trigger): bool = t.history.length() <= maxRunHistory
 pure def sometimesOnceRemovedAfterItsRun(t: Trigger): bool = t.life == Removed and t.schedule == OnceAt and t.runCount > 0
 ```
 

@@ -15,16 +15,16 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { androidNativeHost } from "./android-host.mjs";
-import { applyAutofillFullOrigin } from "./chromium/autofill-full-origin.mjs";
-import { applyFontScaleOnChange } from "./chromium/font-scale-on-change.mjs";
-import { applyIndexedDBLockOrder } from "./chromium/indexeddb-lock-order.mjs";
-import { applyNoEarlyConnection } from "./chromium/no-early-connection.mjs";
-import { applyStandaloneCredMan } from "./chromium/standalone-credman.mjs";
-import { applyStandaloneCredManTests } from "./chromium/standalone-credman-tests.mjs";
+import { applyAutofillFullOrigin } from "../autofill-full-origin.mjs";
+import { applyFontScaleOnChange } from "../font-scale-on-change.mjs";
+import { applyIndexedDBLockOrder } from "../indexeddb-lock-order.mjs";
+import { applyNoEarlyConnection } from "../no-early-connection.mjs";
+import { applyStandaloneCredMan } from "../standalone-credman.mjs";
+import { applyStandaloneCredManTests } from "../standalone-credman-tests.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const pin = JSON.parse(
-  await readFile(path.join(here, "chromium/upstream.json"), "utf8"),
+  await readFile(path.join(here, "../upstream.json"), "utf8"),
 );
 export const EXTENSION_ID = "pmldpcoefklbdbgmggcejkfoinmjfeio";
 export const assetNames = [
@@ -39,6 +39,7 @@ export const assetNames = [
   "manual-activity.mjs",
   "manifest.json",
   "native-connection.mjs",
+  "native-wire.mjs",
   "task-guidance.mjs",
   "page-guidance.mjs",
   "protocol.mjs",
@@ -77,6 +78,7 @@ const resourceIds = {
   "manual-activity.mjs": "IDR_ELIZA_BROWSER_MANUAL_ACTIVITY",
   "manifest.json": "IDR_ELIZA_BROWSER_MANIFEST",
   "native-connection.mjs": "IDR_ELIZA_BROWSER_CONNECTION",
+  "native-wire.mjs": "IDR_ELIZA_BROWSER_NATIVE_WIRE",
   "task-guidance.mjs": "IDR_ELIZA_BROWSER_TASK_GUIDANCE",
   "page-guidance.mjs": "IDR_ELIZA_BROWSER_PAGE_GUIDANCE",
   "protocol.mjs": "IDR_ELIZA_BROWSER_PROTOCOL",
@@ -97,12 +99,9 @@ function insertInclude(source, include) {
 }
 export function validateAssets(
   assets,
-  platform,
   certificate,
   application = "ai.elizaos.app",
 ) {
-  if (!["linux", "android"].includes(platform))
-    throw new Error("Platform must be linux or android");
   if (
     JSON.stringify(Object.keys(assets).sort()) !==
     JSON.stringify([...componentAssetNames(assets)].sort())
@@ -165,18 +164,12 @@ export function validateAssets(
     throw new Error(
       "Extension identity or reviewed manifest capabilities changed",
     );
-  const expectedHost =
-    platform === "android"
-      ? androidNativeHost(certificate, application)
-      : "ai.elizaos.browser";
-  if (platform === "android" && !/^[0-9a-f]{64}$/i.test(certificate ?? ""))
-    throw new Error("Android app signing certificate SHA-256 is required");
   if (
     assets["runtime-config.mjs"].toString("utf8") !==
-    `export const nativeHost = ${JSON.stringify(expectedHost)};\n`
+    `export const nativeHost = ${JSON.stringify(androidNativeHost(certificate, application))};\n`
   )
     throw new Error(
-      "Native host configuration does not match the pinned platform and app certificate",
+      "Native host configuration does not match the Android application and certificate",
     );
 }
 
@@ -184,7 +177,6 @@ export function validateAssets(
 export async function generateComponentOverlay({
   sources,
   assets,
-  platform,
   certificate,
   application = "ai.elizaos.app",
   embedHost = false,
@@ -197,9 +189,9 @@ export async function generateComponentOverlay({
   for (const [filename, expected] of Object.entries(pin.sha256))
     if (sha256(sources[filename] ?? "") !== expected)
       throw new Error(`Chromium source integrity mismatch: ${filename}`);
-  validateAssets(assets, platform, certificate, application);
-  if (typeof embedHost !== "boolean" || (embedHost && platform !== "android"))
-    throw new Error("Host embedding is an explicit Android-only build option");
+  validateAssets(assets, certificate, application);
+  if (typeof embedHost !== "boolean")
+    throw new Error("Host embedding is an explicit boolean build option");
   const assetNames = componentAssetNames(assets);
   const files = {};
   const edit = (filename, transform) => {
@@ -219,7 +211,7 @@ export async function generateComponentOverlay({
   const verifier = `${prefix}eliza_component_verifier.h`;
   const integrity = `${prefix}eliza_component_integrity.h`;
   files[integrity] = (
-    await readFile(path.join(here, "chromium/integrity.h.in"), "utf8")
+    await readFile(path.join(here, "../integrity.h.in"), "utf8")
   ).replace(
     "@@RESOURCES@@",
     assetNames
@@ -230,7 +222,7 @@ export async function generateComponentOverlay({
       .join("\n"),
   );
   files[verifier] = (
-    await readFile(path.join(here, "chromium/verifier.h.in"), "utf8")
+    await readFile(path.join(here, "../verifier.h.in"), "utf8")
   ).replace(
     "@@BUNDLE_RESOURCES@@",
     assetNames.map((name) => `  {"${name}", ${resourceIds[name]}},`).join("\n"),
@@ -387,51 +379,46 @@ export async function generateComponentOverlay({
     );
   });
   applyIndexedDBLockOrder(edit, replaceOnce);
-  if (platform === "android") {
-    applyAutofillFullOrigin(edit, replaceOnce);
-    applyNoEarlyConnection(edit, replaceOnce);
-    applyFontScaleOnChange(edit, replaceOnce);
-    applyStandaloneCredMan(edit, replaceOnce);
-    applyStandaloneCredManTests(edit, replaceOnce);
-    if (embedHost) {
-      edit("chrome/android/java/AndroidManifest.xml", (source) => {
-        // Only the provisioned native host signer may embed browser activities.
-        // Keep exports, launch modes and unrelated authentication activities intact.
-        for (const [tag, activity] of [
-          [
-            "activity",
-            "org.chromium.chrome.browser.document.ChromeLauncherActivity",
-          ],
-          [
-            "activity",
-            "org.chromium.chrome.browser.customtabs.CustomTabActivity",
-          ],
-          ["activity", "org.chromium.chrome.browser.ChromeTabbedActivity"],
-          // Android 15 does not copy this certificate set from target to alias.
-          ["activity-alias", "com.google.android.apps.chrome.IntentDispatcher"],
-        ]) {
-          const opening = `<${tag} android:name="${activity}"`;
-          source = replaceOnce(
-            source,
-            opening,
-            `${opening}\n            android:knownActivityEmbeddingCerts="${certificate.toUpperCase()}"`,
-            `trusted host embedding for ${activity}`,
-          );
-        }
-        return source;
-      });
-    }
+  applyAutofillFullOrigin(edit, replaceOnce);
+  applyNoEarlyConnection(edit, replaceOnce);
+  applyFontScaleOnChange(edit, replaceOnce);
+  applyStandaloneCredMan(edit, replaceOnce);
+  applyStandaloneCredManTests(edit, replaceOnce);
+  if (embedHost) {
+    edit("chrome/android/java/AndroidManifest.xml", (source) => {
+      // Only the provisioned native host signer may embed browser activities.
+      // Keep exports, launch modes and unrelated authentication activities intact.
+      for (const [tag, activity] of [
+        [
+          "activity",
+          "org.chromium.chrome.browser.document.ChromeLauncherActivity",
+        ],
+        [
+          "activity",
+          "org.chromium.chrome.browser.customtabs.CustomTabActivity",
+        ],
+        ["activity", "org.chromium.chrome.browser.ChromeTabbedActivity"],
+        // Android 15 does not copy this certificate set from target to alias.
+        ["activity-alias", "com.google.android.apps.chrome.IntentDispatcher"],
+      ]) {
+        const opening = `<${tag} android:name="${activity}"`;
+        source = replaceOnce(
+          source,
+          opening,
+          `${opening}\n            android:knownActivityEmbeddingCerts="${certificate.toUpperCase()}"`,
+          `trusted host embedding for ${activity}`,
+        );
+      }
+      return source;
+    });
   }
   return {
     files,
     report: {
       chromiumRevision: pin.revision,
       extensionId: EXTENSION_ID,
-      platform,
-      nativeHost:
-        platform === "android"
-          ? androidNativeHost(certificate, application)
-          : "ai.elizaos.browser",
+      platform: "android",
+      nativeHost: androidNativeHost(certificate, application),
       resources: Object.fromEntries(
         assetNames.map((name) => [
           name,
@@ -544,7 +531,7 @@ export async function readReviewedChromiumSources(sourceRoot) {
 
 async function main(args) {
   const option = (name) => args[args.indexOf(name) + 1];
-  for (const name of ["--source", "--extension", "--out", "--platform"])
+  for (const name of ["--source", "--extension", "--out"])
     if (!args.includes(name)) throw new Error(`Missing ${name}`);
   const sourceRoot = path.resolve(option("--source"));
   const extensionRoot = path.resolve(option("--extension"));
@@ -562,7 +549,6 @@ async function main(args) {
     sources,
     assets,
     revision,
-    platform: option("--platform"),
     application: args.includes("--application")
       ? option("--application")
       : "ai.elizaos.app",

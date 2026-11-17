@@ -5,10 +5,10 @@ exact event, one occurrence, or its whole series. A device calendar
 receives only an admitted, inspected target. The app's own document
 Calendar turns an occurrence into an override or an exclusion under its
 series and keeps a queued deletion in one document transaction. The
-deletion window comes from [contracts](../contracts/deletionWindow.md).
+deletion window comes from [device deletion window](../os/android/deletionWindow.md).
 [Availability](./availability.md) owns recurrence read expansion. Device
 provider snapshots, tickets and the durable dispatch journal are
-separate producers ([device calendar deletion](../os/android/calendarDeletion.md)).
+separate producers ([device calendar](../os/android/calendar.md)).
 
 ## Story: Delete the exact Calendar event or scope I selected
 
