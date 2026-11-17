@@ -150,9 +150,9 @@ pure def nativeAcknowledged(op: Ro::FilesOp, result: WriteResult): bool =
 pure def nativeRowOutcome(op: Ro::FilesOp, row: Ro::FilesRowCheck, result: WriteResult, to: str): Ro::FileOutcome =
   Ro::receiptOutcome(op, nativeRowAdmission(op, row), nativeAcknowledged(op, result), to)
 pure def lawWrittenRowMatchesItsReceipt(op: Ro::FilesOp, row: Ro::FilesRowCheck, result: WriteResult, to: str): bool = {
-  val outcome = nativeRowOutcome(op, row, result, to)
-  (outcome == Ro::Copied implies (result == WriteCopied and nativeRowAdmission(op, row) == Ro::Admitted)) and
-    ((outcome == Ro::Moved or outcome == Ro::Trashed) implies (result == WriteMoved and nativeRowAdmission(op, row) == Ro::Admitted))
+  val answer = nativeRowOutcome(op, row, result, to)
+  (answer == Ro::Copied implies (result == WriteCopied and nativeRowAdmission(op, row) == Ro::Admitted)) and
+    ((answer == Ro::Moved or answer == Ro::Trashed) implies (result == WriteMoved and nativeRowAdmission(op, row) == Ro::Admitted))
 }
 ```
 

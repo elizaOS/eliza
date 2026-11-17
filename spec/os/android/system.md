@@ -239,15 +239,15 @@ type ProblemSource = RendererFailure | NativeUncaught | AndroidExit | InferenceD
 type ProblemField = Timestamp | SourceName | Kind | FailureClass | RootClass | ExitReason | ProcessLabel | Thread
   | InferenceFacts | Message | Stack | Address | UserContent
 pure val problemRetentionMs = 2592000000
-pure def problemFieldAllowed(source: ProblemSource, field: ProblemField): bool =
-  field == Timestamp or field == SourceName or
-    (source == RendererFailure and (field == Kind or field == FailureClass or field == ProcessLabel)) or
-    (source == NativeUncaught and (field == FailureClass or field == RootClass or field == ProcessLabel or field == Thread)) or
-    (source == AndroidExit and (field == ExitReason or field == ProcessLabel)) or (source == InferenceDiagnostic and field == InferenceFacts)
+pure def problemFieldAllowed(source: ProblemSource, entryField: ProblemField): bool =
+  entryField == Timestamp or entryField == SourceName or
+    (source == RendererFailure and (entryField == Kind or entryField == FailureClass or entryField == ProcessLabel)) or
+    (source == NativeUncaught and (entryField == FailureClass or entryField == RootClass or entryField == ProcessLabel or entryField == Thread)) or
+    (source == AndroidExit and (entryField == ExitReason or entryField == ProcessLabel)) or (source == InferenceDiagnostic and entryField == InferenceFacts)
 pure def problemRetained(source: ProblemSource, at: int, now: int): bool =
   at > now - problemRetentionMs and at <= now + (if (source == InferenceDiagnostic) 60000 else problemRetentionMs)
-pure def lawNoPersonalContentInAProblem(source: ProblemSource, field: ProblemField): bool =
-  (field == Message or field == Stack or field == Address or field == UserContent) implies not(problemFieldAllowed(source, field))
+pure def lawNoPersonalContentInAProblem(source: ProblemSource, entryField: ProblemField): bool =
+  (entryField == Message or entryField == Stack or entryField == Address or entryField == UserContent) implies not(problemFieldAllowed(source, entryField))
 pure def lawOldProblemIsDropped(source: ProblemSource, now: int): bool = not(problemRetained(source, now - problemRetentionMs, now))
 ```
 
