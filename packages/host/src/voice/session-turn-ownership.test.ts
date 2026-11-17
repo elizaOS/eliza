@@ -198,6 +198,44 @@ test("a noise or empty final during a held reply does not take over the turn", a
   }
 });
 
+test("an interim sound annotation waits for its final before taking over a held reply", async () => {
+  for (const partials of [
+    ["*Dramatic", "*Dramatic Mus", "*Dramatic Music"],
+    ["[ mus", "[ music ] (laugh"],
+    ["*music* *To"],
+  ]) {
+    const f = setup({ acousticBargeInEnabled: true });
+    await startTurn(f);
+    f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+    for (const transcript of partials)
+      f.emit({ type: "transcript-update", transcript, raw: {} });
+    f.emit({
+      type: "eager-end-of-turn",
+      transcript: partials.at(-1) ?? "",
+      raw: {},
+    });
+    await tick();
+    expect(f.signals[0].aborted, partials.join(" | ")).toBe(false);
+    f.emit({ type: "end-of-turn", transcript: "*Dramatic Music*", raw: {} });
+    await tick();
+    finish(f, "You are on Notes.");
+    await until(() => f.frames("usage").length > 0);
+    expectOneSpokenTurn(f, "You are on Notes.");
+    f.session.bye();
+  }
+  const spoken = setup({ acousticBargeInEnabled: true });
+  await startTurn(spoken);
+  spoken.emit({ type: "start-of-turn", transcript: "", raw: {} });
+  spoken.emit({
+    type: "transcript-update",
+    transcript: "[noise] wait",
+    raw: {},
+  });
+  await tick();
+  expect(spoken.signals[0].aborted).toBe(true);
+  spoken.session.bye();
+});
+
 test("an empty final with continuous handoff queues no overlap turn", async () => {
   const f = setup({ allowContinuousHandoff: true });
   f.session.setAudioCapabilities({

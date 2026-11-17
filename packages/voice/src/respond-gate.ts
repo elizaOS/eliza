@@ -38,16 +38,33 @@ const DISFLUENCIES = new Set([
   "eh",
 ]);
 
+const NON_SPEECH_LABEL =
+  "(?:(?:(?:dramatic|background)\\s+)?music|noise|silence|inaudible|unintelligible|applause|laughter|laughing|coughing|sighing|breathing|tonk)";
+const NON_SPEECH_ANNOTATION = new RegExp(
+  `\\[\\s*${NON_SPEECH_LABEL}\\s*\\]|\\(\\s*${NON_SPEECH_LABEL}\\s*\\)|\\*\\s*${NON_SPEECH_LABEL}\\s*\\*`,
+  "gi",
+);
+/** After whole annotations: one annotation still open, such as `*Dramatic Mus` or `[ noi`. */
+const OPEN_ANNOTATION = /^[[(*][^\])*]*$/;
+
 /** Whole recognizer annotations, without discarding spoken words beside them. */
 export function isNonSpeechVoiceTranscript(transcript: string): boolean {
-  const label =
-    "(?:(?:(?:dramatic|background)\\s+)?music|noise|silence|inaudible|unintelligible|applause|laughter|laughing|coughing|sighing|breathing|tonk)";
-  const annotation = new RegExp(
-    `\\[\\s*${label}\\s*\\]|\\(\\s*${label}\\s*\\)|\\*\\s*${label}\\s*\\*`,
-    "gi",
-  );
   const text = transcript.trim();
-  return text.length > 0 && text.replace(annotation, "").trim().length === 0;
+  return (
+    text.length > 0 &&
+    text.replace(NON_SPEECH_ANNOTATION, "").trim().length === 0
+  );
+}
+
+/**
+ * An interim transcript that is, or can still become, a whole annotation. Only its final can be
+ * classified, so a partial like `*Dramatic Mus` must not interrupt a reply.
+ */
+export function mayBecomeNonSpeechVoiceTranscript(transcript: string): boolean {
+  const rest = transcript.replace(NON_SPEECH_ANNOTATION, "").trim();
+  return rest === ""
+    ? transcript.trim().length > 0
+    : OPEN_ANNOTATION.test(rest);
 }
 
 /** How recent the agent's reply must be for the acoustic self-voice check to apply. */

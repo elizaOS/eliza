@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildVoiceTurnSignal, shouldRespondToVoiceTurn } from "./respond-gate";
+import {
+  buildVoiceTurnSignal,
+  mayBecomeNonSpeechVoiceTranscript,
+  shouldRespondToVoiceTurn,
+} from "./respond-gate";
 
 describe("shouldRespondToVoiceTurn", () => {
   it("answers a turn that is not written in Latin letters", () => {
@@ -118,4 +122,24 @@ it("rejects whole sound annotations and preserves speech and short answers", () 
   ]) {
     expect(shouldRespondToVoiceTurn(text), text).toBe(true);
   }
+});
+
+it("defers only interim transcripts that can still become a whole annotation", () => {
+  for (const text of [
+    "*Dramatic",
+    "*Dramatic Mus",
+    "[ noi",
+    "(laugh",
+    "*music* *To",
+    "*music*",
+  ])
+    expect(mayBecomeNonSpeechVoiceTranscript(text), text).toBe(true);
+  for (const text of [
+    "",
+    "wait",
+    "[noise] wait",
+    "*yes* stop",
+    "(laughs) wait",
+  ])
+    expect(mayBecomeNonSpeechVoiceTranscript(text), text).toBe(false);
 });
