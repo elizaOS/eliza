@@ -72,9 +72,9 @@ pure def lawChosenModelIsPricedAndFits(profile: List[ProfiledModel], prices: Lis
 
 Another row is refused `400 invalid_request`. `prices check` reports the
 number of mismatches: profiled models a text call cannot use, plus rows
-whose id the profile does not offer once. A model is offered once when the
-profile has one entry for its id, naming a provider and an upstream model. The same command also runs the
-payment catalog check that `../deployment.md` owns.
+whose id the profile does not offer once (one entry for the id, naming a
+provider and an upstream model). The same command also runs the payment
+catalog check that `../deployment.md` owns.
 
 ```quint
 pure def usableForText(profile: List[ProfiledModel], prices: List[PriceRow], m: ProfiledModel): bool = isChosen(chooseModel(profile, prices, m.id, false))
