@@ -8,7 +8,11 @@ const groups: Record<string, unknown> = tokens;
 const names = (group: string) => Object.keys(groups[group] ?? {});
 const twMerge = extendTailwindMerge({
   extend: {
-    theme: { text: names("text"), radius: names("rounded"), shadow: names("shadow"), blur: names("blur"), animate: names("animate") },
+    theme: {
+      text: names("text"), radius: names("rounded"), shadow: names("shadow"), blur: names("blur"), animate: names("animate"),
+      "font-weight": names("weight"), leading: names("leading"), tracking: names("tracking"),
+    },
+    classGroups: { z: [{ z: names("z") }] },
   },
 });
 
