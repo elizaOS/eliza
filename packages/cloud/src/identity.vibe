@@ -17,6 +17,8 @@ export type IdentityEnv = NativeRegistryEnv & {
   RESEND_API_KEY?: string
   EMAIL_FROM?: string
   EMAIL_CODE_SECRET?: string
+  BLOOIO_API_KEY?: string
+  BLOOIO_SMS_CHANNEL_ID?: string
   TWILIO_ACCOUNT_SID?: string
   TWILIO_AUTH_TOKEN?: string
   TWILIO_VERIFY_SERVICE_SID?: string
@@ -38,6 +40,7 @@ schema GoogleProfile { sub: string; email?: string; email_verified?: boolean }
 schema DeviceAuthorization { challenge: string; state: string }
 schema DeviceExchange { code: string; verifier: string }
 schema SmsReceipt { status: string; to?: string; channel?: string; service_sid?: string }
+schema BlooioReceipt { id: string; channel_id: string; status: string }
 
 const flowCookie = "__Host-eliza-google"
 const codeSeconds = 10 * 60
@@ -64,10 +67,10 @@ effect function pkceChallenge(verifier: string) {
   return try sync(() => btoa(String.fromCharCode(...challenge)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", ""))
 }
 
-effect function makeCodeHash(secret: string, email: string, code: string) {
+effect function makeCodeHash(secret: string, address: string, code: string) {
   const key = Mac.key(Mac.hmacSha256, encoder.encode(secret)) catch effect () => { throw new ProviderUnavailable() }
   const mac = try Mac.Mac
-  const signature = mac.sign(key, encoder.encode(JSON.stringify([email, code]))) catch effect () => { throw new ProviderUnavailable() }
+  const signature = mac.sign(key, encoder.encode(JSON.stringify([address, code]))) catch effect () => { throw new ProviderUnavailable() }
   return hex(signature)
 }
 
@@ -75,7 +78,7 @@ effect function token() {
   return hex(try (try SecureRandom.SecureRandom).randomBytes(32))
 }
 
-effect function emailCode() {
+effect function signInCode() {
   return (try (try SecureRandom.SecureRandom).intBetween(0, 999_999)).toString().padStart(6, "0")
 }
 
@@ -138,9 +141,10 @@ effect function readJson(request: Request) {
   return limited catch effect () => { throw new InvalidRequest() }
 }
 
-effect function external(url: string, input: { authorization?: string; form?: URLSearchParams; body?: string }) {
+effect function external(url: string, input: { authorization?: string; form?: URLSearchParams; body?: string; idempotencyKey?: string }) {
   let request = HttpClientRequest.make(input.form || input.body ? "POST" : "GET")(url)
   if (input.authorization) request = HttpClientRequest.setHeader(request, "authorization", input.authorization)
+  if (input.idempotencyKey) request = HttpClientRequest.setHeader(request, "Idempotency-Key", input.idempotencyKey)
   if (input.body) request = HttpClientRequest.bodyText(request, input.body, "application/json")
   if (input.form) request = HttpClientRequest.bodyText(request, input.form.toString(), "application/x-www-form-urlencoded")
   const result = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" })
@@ -242,8 +246,15 @@ function emailReady(env: IdentityEnv) {
   return Boolean((env.SIGN_IN_EMAIL || env.RESEND_API_KEY) && env.EMAIL_FROM && env.EMAIL_CODE_SECRET && env.EMAIL_CODE_SECRET.length >= 32)
 }
 
+function smsTransport(env: IdentityEnv) {
+  if (env.BLOOIO_API_KEY || env.BLOOIO_SMS_CHANNEL_ID) {
+    return env.BLOOIO_API_KEY && /^ch_[A-Za-z0-9_-]+$/.test(env.BLOOIO_SMS_CHANNEL_ID ?? "") && (env.EMAIL_CODE_SECRET?.length ?? 0) >= 32 ? "blooio" : null
+  }
+  return env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_VERIFY_SERVICE_SID ? "twilio" : null
+}
+
 function smsReady(env: IdentityEnv) {
-  return Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_VERIFY_SERVICE_SID && smsBudget(env))
+  return Boolean(smsTransport(env) && smsBudget(env))
 }
 
 effect function sendEmail(env: IdentityEnv, address: string, code: string) {
@@ -289,11 +300,24 @@ effect function twilio(env: IdentityEnv, address: string, code: string | null) {
 
 const codeCookie = (provider: Destination) => "__Host-eliza-code-" + provider
 
+effect function sendBlooio(env: IdentityEnv, address: string, code: string, challenge: string) {
+  if (!env.BLOOIO_API_KEY || !env.BLOOIO_SMS_CHANNEL_ID) throw new ProviderUnavailable()
+  const response = try external("https://api.blooio.com/v4/messages", {
+    authorization: "Bearer " + env.BLOOIO_API_KEY, idempotencyKey: challenge,
+    body: JSON.stringify({ from: env.BLOOIO_SMS_CHANNEL_ID, to: address, text: `Your sign-in code is ${code}. It expires in five minutes.` })
+  })
+  if (response.status === 429) throw new RateLimited()
+  if (response.status < 200 || response.status >= 300) throw new ProviderUnavailable()
+  const receipt = Schema.decodeUnknownOption(BlooioReceipt)((response.json catch effect () => { throw new ProviderUnavailable() }))
+  if (Option.isNone(receipt) || !receipt.value.id || receipt.value.channel_id !== env.BLOOIO_SMS_CHANNEL_ID ||
+      !["queued", "sending", "sent", "delivered"].includes(receipt.value.status)) throw new ProviderUnavailable()
+}
+
 effect function requestCode(env: IdentityEnv, db: Client, provider: Destination, address: string) {
-  const code = provider === "email" ? try emailCode() : null
+  const code = provider === "email" || smsTransport(env) === "blooio" ? try signInCode() : null
   const secret = env.EMAIL_CODE_SECRET
   if (code !== null && (!secret || secret.length < 32)) throw new ProviderUnavailable()
-  const hash = code !== null && secret ? try makeCodeHash(secret, address, code) : null
+  const hash = code !== null && secret ? try makeCodeHash(secret, provider === "sms" ? "sms:" + address : address, code) : null
   const verifier = try token()
   const challenge = try pkceChallenge(verifier)
   const age = provider === "email" ? codeSeconds : smsCodeSeconds
@@ -307,8 +331,9 @@ effect function requestCode(env: IdentityEnv, db: Client, provider: Destination,
   const pending = rows[0]
   if (!pending) throw new StorageUnavailable()
   effect {
-    if (code !== null) try sendEmail(env, address, code)
-    else try twilio(env, address, null)
+    if (code === null) try twilio(env, address, null)
+    else if (provider === "email") try sendEmail(env, address, code)
+    else try sendBlooio(env, address, code, challenge)
   } catch effect (failure) => {
     try query(db, "DELETE FROM cloud_code_challenges WHERE provider = $1 AND destination = $2 AND challenge = $3", [provider, address, challenge])
     throw failure
@@ -322,16 +347,16 @@ effect function verifyCode(request: Request, env: IdentityEnv, db: Client, provi
   if (!verifier || !opaqueToken.test(verifier)) throw new Unauthorized()
   const challenge = try pkceChallenge(verifier)
   const secret = env.EMAIL_CODE_SECRET
-  const hash = provider === "email" && secret ? try makeCodeHash(secret, address, code) : null
-  const attempt = try query<{ consumed: boolean }>(db, `
+  const hash = secret ? try makeCodeHash(secret, provider === "sms" ? "sms:" + address : address, code) : null
+  const attempt = try query<{ consumed: boolean; requires_twilio: boolean }>(db, `
     UPDATE cloud_code_challenges
-    SET tries = tries + 1, consumed = CASE WHEN provider = 'email' THEN code_hash = $4 ELSE false END
+    SET tries = tries + 1, consumed = COALESCE(code_hash = $4, false)
     WHERE provider = $1 AND destination = $2 AND challenge = $3 AND expires_at > now() AND tries < 5 AND NOT consumed
-    RETURNING consumed
+    RETURNING consumed, (provider = 'sms' AND code_hash IS NULL) AS requires_twilio
   `, [provider, address, challenge, hash])
   const admitted = attempt.rows[0]
-  if (!admitted || (provider === "email" && !admitted.consumed)) throw new Unauthorized()
-  if (provider === "sms") {
+  if (!admitted || (!admitted.requires_twilio && !admitted.consumed)) throw new Unauthorized()
+  if (admitted.requires_twilio) {
     try twilio(env, address, code)
     const finished = try query(db, `
       UPDATE cloud_code_challenges SET consumed = true
