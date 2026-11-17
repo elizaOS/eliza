@@ -152,6 +152,23 @@ describe("standalone Calendar availability", () => {
     });
   });
 
+  it("rejects an evening end for a morning-only request before reading Calendar", async () => {
+    const { call, handler } = fixture();
+    expect(
+      await call("CALENDAR_CHECK_AVAILABILITY", {
+        windowStart: "2026-11-06T16:00:00.000Z",
+        windowEnd: "2026-11-07T04:00:00.000Z",
+      }),
+    ).toMatchObject({
+      success: false,
+      data: {
+        definitive: false,
+        code: "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD",
+      },
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it("does not substitute the runtime calendar for a selected device source", async () => {
     const { call, handler } = fixture("device");
     expect(
