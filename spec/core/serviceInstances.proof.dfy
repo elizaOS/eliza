@@ -671,8 +671,16 @@ lemma clearTypeAggregate_ensures(s: ServiceInstances, callId: int)
     ServiceClearAggregateOwnership(s, after, callId);
     ServiceStopReferencePreserved(s, after);
     ServiceClearPreservesFailedStatus(s, callId);
+    ServiceCapturedAttemptsFrame(s, after);
   }
 }
+
+// alwaysCapturedAttemptsExist reads only calls, attempts, objects and aggregates.
+lemma ServiceCapturedAttemptsFrame(s: ServiceInstances, after: ServiceInstances)
+  requires alwaysCapturedAttemptsExist(s)
+  requires after.calls == s.calls && after.attempts == s.attempts && after.objects == s.objects && after.aggregates == s.aggregates
+  ensures alwaysCapturedAttemptsExist(after)
+{}
 
 lemma settleTypeAggregate_ensures(s: ServiceInstances, callId: int)
   ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysTypeEntriesUnique(settleTypeAggregate(s, callId)))

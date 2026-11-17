@@ -434,9 +434,9 @@ lemma EmbeddingAdmitQueueReference(s: EmbeddingService,t: EmbeddingService,item:
 }
 
 lemma clearQueue_ensures(s: EmbeddingService)
+  ensures (inv(s) ==> alwaysInitializationOwnsQueueStartup(clearQueue(s)))
   ensures (inv(s) ==> alwaysActivationHasIdentity(clearQueue(s)))
   ensures (inv(s) ==> alwaysQueueOwnerWellFormed(clearQueue(s)))
-  ensures (inv(s) ==> alwaysInitializationOwnsQueueStartup(clearQueue(s)))
   ensures (inv(s) ==> alwaysPendingKeysAreExactAndUnique(clearQueue(s)))
   ensures (inv(s) ==> alwaysQueueHasKnownSnapshots(clearQueue(s)))
   ensures (inv(s) ==> alwaysDisposalDetachesQueuedSnapshots(clearQueue(s)))
@@ -452,9 +452,9 @@ lemma clearQueue_ensures(s: EmbeddingService)
 }
 
 lemma settleRequest_ensures(s: EmbeddingService)
+  ensures (inv(s) ==> canSettleRequest(s) ==> alwaysInitializationOwnsQueueStartup(settleRequest(s)))
   ensures (inv(s) ==> canSettleRequest(s) ==> alwaysActivationHasIdentity(settleRequest(s)))
   ensures (inv(s) ==> canSettleRequest(s) ==> alwaysQueueOwnerWellFormed(settleRequest(s)))
-  ensures (inv(s) ==> canSettleRequest(s) ==> alwaysInitializationOwnsQueueStartup(settleRequest(s)))
   ensures (inv(s) ==> canSettleRequest(s) ==> alwaysPendingKeysAreExactAndUnique(settleRequest(s)))
   ensures (inv(s) ==> canSettleRequest(s) ==> alwaysQueueHasKnownSnapshots(settleRequest(s)))
   ensures (inv(s) ==> canSettleRequest(s) ==> alwaysDisposalDetachesQueuedSnapshots(settleRequest(s)))
@@ -478,9 +478,9 @@ lemma settleRequest_ensures(s: EmbeddingService)
 }
 
 lemma driveQueue_ensures(s: EmbeddingService, queueEvent: QueueEvent, ticket: int, ok: bool, retry: bool)
+  ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok, retry) ==> alwaysInitializationOwnsQueueStartup(driveQueue(s, queueEvent, ticket, ok, retry)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok, retry) ==> alwaysActivationHasIdentity(driveQueue(s, queueEvent, ticket, ok, retry)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok, retry) ==> alwaysQueueOwnerWellFormed(driveQueue(s, queueEvent, ticket, ok, retry)))
-  ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok, retry) ==> alwaysInitializationOwnsQueueStartup(driveQueue(s, queueEvent, ticket, ok, retry)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok, retry) ==> alwaysPendingKeysAreExactAndUnique(driveQueue(s, queueEvent, ticket, ok, retry)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok, retry) ==> alwaysQueueHasKnownSnapshots(driveQueue(s, queueEvent, ticket, ok, retry)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok, retry) ==> alwaysDisposalDetachesQueuedSnapshots(driveQueue(s, queueEvent, ticket, ok, retry)))
@@ -506,9 +506,9 @@ lemma driveQueue_ensures(s: EmbeddingService, queueEvent: QueueEvent, ticket: in
 }
 
 lemma settleBatch_ensures(s: EmbeddingService, successful: seq<int>, retryable: seq<int>, threw: bool)
+  ensures (inv(s) ==> canSettleBatch(s, successful, retryable, threw) ==> alwaysInitializationOwnsQueueStartup(settleBatch(s, successful, retryable, threw)))
   ensures (inv(s) ==> canSettleBatch(s, successful, retryable, threw) ==> alwaysActivationHasIdentity(settleBatch(s, successful, retryable, threw)))
   ensures (inv(s) ==> canSettleBatch(s, successful, retryable, threw) ==> alwaysQueueOwnerWellFormed(settleBatch(s, successful, retryable, threw)))
-  ensures (inv(s) ==> canSettleBatch(s, successful, retryable, threw) ==> alwaysInitializationOwnsQueueStartup(settleBatch(s, successful, retryable, threw)))
   ensures (inv(s) ==> canSettleBatch(s, successful, retryable, threw) ==> alwaysPendingKeysAreExactAndUnique(settleBatch(s, successful, retryable, threw)))
   ensures (inv(s) ==> canSettleBatch(s, successful, retryable, threw) ==> alwaysQueueHasKnownSnapshots(settleBatch(s, successful, retryable, threw)))
   ensures (inv(s) ==> canSettleBatch(s, successful, retryable, threw) ==> alwaysDisposalDetachesQueuedSnapshots(settleBatch(s, successful, retryable, threw)))
@@ -525,9 +525,9 @@ lemma settleBatch_ensures(s: EmbeddingService, successful: seq<int>, retryable: 
 }
 
 lemma finishStop_ensures(s: EmbeddingService)
+  ensures (inv(s) ==> canFinishStop(s) ==> alwaysInitializationOwnsQueueStartup(finishStop(s)))
   ensures (inv(s) ==> canFinishStop(s) ==> alwaysActivationHasIdentity(finishStop(s)))
   ensures (inv(s) ==> canFinishStop(s) ==> alwaysQueueOwnerWellFormed(finishStop(s)))
-  ensures (inv(s) ==> canFinishStop(s) ==> alwaysInitializationOwnsQueueStartup(finishStop(s)))
   ensures (inv(s) ==> canFinishStop(s) ==> alwaysPendingKeysAreExactAndUnique(finishStop(s)))
   ensures (inv(s) ==> canFinishStop(s) ==> alwaysQueueHasKnownSnapshots(finishStop(s)))
   ensures (inv(s) ==> canFinishStop(s) ==> alwaysDisposalDetachesQueuedSnapshots(finishStop(s)))
@@ -540,9 +540,9 @@ lemma finishStop_ensures(s: EmbeddingService)
 }
 
 lemma beginInitialization_ensures(s: EmbeddingService)
+  ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysInitializationOwnsQueueStartup(beginInitialization(s)))
   ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysActivationHasIdentity(beginInitialization(s)))
   ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysQueueOwnerWellFormed(beginInitialization(s)))
-  ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysInitializationOwnsQueueStartup(beginInitialization(s)))
   ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysPendingKeysAreExactAndUnique(beginInitialization(s)))
   ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysQueueHasKnownSnapshots(beginInitialization(s)))
   ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysDisposalDetachesQueuedSnapshots(beginInitialization(s)))
@@ -558,9 +558,9 @@ lemma beginInitialization_ensures(s: EmbeddingService)
 }
 
 lemma finishInitialization_ensures(s: EmbeddingService, ok: bool)
+  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysInitializationOwnsQueueStartup(finishInitialization(s, ok)))
   ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysActivationHasIdentity(finishInitialization(s, ok)))
   ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysQueueOwnerWellFormed(finishInitialization(s, ok)))
-  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysInitializationOwnsQueueStartup(finishInitialization(s, ok)))
   ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysPendingKeysAreExactAndUnique(finishInitialization(s, ok)))
   ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysQueueHasKnownSnapshots(finishInitialization(s, ok)))
   ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysDisposalDetachesQueuedSnapshots(finishInitialization(s, ok)))

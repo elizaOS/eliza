@@ -29,7 +29,7 @@ lemma ManagerResolveManagerView(s: ConnectorManagers, runtime: string, service: 
   var local_6 := (local_3 in s.nativeIdentities);
   var local_7 := (if local_6 then lookup0_core__connectorManagers(s.nativeObjects, local_3, core__connectorBackends_initial) else (if local_2 then serviceBackend(service) else core__connectorBackends_initial));
   var local_8 := (if (suppliedStorage(storage) != 0) then core__connectorBackends_setExplicit(local_7, suppliedStorage(storage)) else local_7);
-  s.(selected := local_3, nextId := (if (local_3 >= s.nextId) then (local_3 + 1) else s.nextId), runtimes := (if local_4 then (s.runtimes + ProofLib.Filter((set_x: string) => !((set_x in s.runtimes)), [runtime])) else s.runtimes), managers := (if local_4 then s.managers[("$" + runtime) := local_3] else s.managers), nativeIdentities := (if local_5 then (s.nativeIdentities + ProofLib.Filter((set_x: int) => !((set_x in s.nativeIdentities)), [local_3])) else s.nativeIdentities), nativeObjects := (if local_5 then s.nativeObjects[local_3 := local_8] else s.nativeObjects)))
+  s.(selected := local_3, nextId := (if (local_3 >= s.nextId) then (local_3 + 1) else s.nextId), runtimes := (if local_4 then (s.runtimes + ProofLib.Filter((set_x: string) => !((set_x in s.runtimes)), [runtime])) else s.runtimes), managers := (if local_4 then s.managers[("$" + runtime) := local_3] else s.managers), nativeIdentities := (if local_5 then (s.nativeIdentities + ProofLib.Filter((set_x: int) => !((set_x in s.nativeIdentities)), [local_3])) else s.nativeIdentities), nativeObjects := (if local_5 then s.nativeObjects[local_3 := local_8] else s.nativeObjects), compatibleIdentities := (if local_5 then s.compatibleIdentities else (s.compatibleIdentities + ProofLib.Filter((set_x: int) => !((set_x in s.compatibleIdentities)), [local_3])))))
 {
 }
 
@@ -38,6 +38,7 @@ lemma registerProvider_ensures(s: ConnectorManagers, manager: int, provider: str
   ensures (inv(s) ==> canRegisterProvider(s, manager, provider, reference) ==> alwaysOneNativeObjectPerIdentity(registerProvider(s, manager, provider, reference)))
   ensures (inv(s) ==> canRegisterProvider(s, manager, provider, reference) ==> alwaysOneProviderPerManager(registerProvider(s, manager, provider, reference)))
   ensures (inv(s) ==> canRegisterProvider(s, manager, provider, reference) ==> alwaysFreshReferencesReserved(registerProvider(s, manager, provider, reference)))
+  ensures (inv(s) ==> canRegisterProvider(s, manager, provider, reference) ==> alwaysServiceKindsDisjoint(registerProvider(s, manager, provider, reference)))
 {
   if inv(s) && canRegisterProvider(s, manager, provider, reference) {
     var after := registerProvider(s, manager, provider, reference);
@@ -76,6 +77,7 @@ lemma unregisterProvider_ensures(s: ConnectorManagers, manager: int, provider: s
   ensures (inv(s) ==> alwaysOneNativeObjectPerIdentity(unregisterProvider(s, manager, provider)))
   ensures (inv(s) ==> alwaysOneProviderPerManager(unregisterProvider(s, manager, provider)))
   ensures (inv(s) ==> alwaysFreshReferencesReserved(unregisterProvider(s, manager, provider)))
+  ensures (inv(s) ==> alwaysServiceKindsDisjoint(unregisterProvider(s, manager, provider)))
 {
   if inv(s) {
     ManagerUnregisterProviderView(s, manager, provider);
@@ -97,6 +99,7 @@ lemma resolveManager_ensures(s: ConnectorManagers, runtime: string, service: Reg
   ensures (inv(s) ==> canResolveManager(s, runtime, service, storage) ==> alwaysOneNativeObjectPerIdentity(resolveManager(s, runtime, service, storage)))
   ensures (inv(s) ==> canResolveManager(s, runtime, service, storage) ==> alwaysOneProviderPerManager(resolveManager(s, runtime, service, storage)))
   ensures (inv(s) ==> canResolveManager(s, runtime, service, storage) ==> alwaysFreshReferencesReserved(resolveManager(s, runtime, service, storage)))
+  ensures (inv(s) ==> canResolveManager(s, runtime, service, storage) ==> alwaysServiceKindsDisjoint(resolveManager(s, runtime, service, storage)))
 {
   if inv(s) && canResolveManager(s, runtime, service, storage) {
     ManagerResolveManagerView(s, runtime, service, storage);
@@ -107,6 +110,7 @@ lemma resolveManager_ensures(s: ConnectorManagers, runtime: string, service: Reg
     var selected := after.selected;
     ManagerUnionMembership(s.runtimes, runtime);
     ManagerUnionMembership(s.nativeIdentities, selected);
+    ManagerUnionMembership(s.compatibleIdentities, selected);
     assert selected > 0;
     assert after.nextId >= s.nextId && selected < after.nextId;
     if nativeSelected {
@@ -129,6 +133,27 @@ lemma resolveManager_ensures(s: ConnectorManagers, runtime: string, service: Reg
     {
       if !nativeSelected || identity != selected {
         assert identity in s.nativeIdentities;
+      }
+    }
+    // One object takes one branch: a native selection is never a known
+    // compatible identity, and a compatible one is never a known native one.
+    if nativeSelected {
+      if hasService {
+        assert nativeService(service);
+      } else if runtime in s.runtimes {
+        assert selected in s.nativeIdentities;
+      } else {
+        assert selected == s.nextId;
+      }
+      assert selected !in s.compatibleIdentities;
+    } else {
+      assert selected !in s.nativeIdentities;
+    }
+    forall identity | identity in after.compatibleIdentities
+      ensures identity > 0 && identity < after.nextId && identity !in after.nativeIdentities
+    {
+      if nativeSelected || identity != selected {
+        assert identity in s.compatibleIdentities;
       }
     }
   }

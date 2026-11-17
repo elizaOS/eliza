@@ -59,6 +59,43 @@ pure val nameValues = P::nameValues
 pure val idValues = P::idValues
 ```
 
+### Each captured query has exactly one link, to a distinct tick that was already allocated
+
+Discovered by the proof. Only a tick that captures a query adds a link, and it
+adds the link together with that query, so the link at position i names the
+query with key i + 1. Each link names the fresh tick of the callback that
+captured it: a tick identity below the next allocation serial that no other
+link names.
+
+```quint
+pure def alwaysLinksFollowQueries(s: SharedScheduler): bool = s.links.length() == s.drain.queries.length() and s.links.every(link => link.tick > 0 and link.tick < s.process.serial and s.links.nthOr(link.query - 1, noLink) == link and s.links.select(other => other.tick == link.tick).length() == 1)
+```
+
+### The composed query drain keeps the rules of its own unit
+
+Discovered by the proof. Every transition of this product moves the drain by a
+transition of [query ownership](./queryDrain.md) that its guard allows, or
+rearms the registry when an adapter attaches to a timer that already exists.
+So the drain keeps the rules of that unit that the rule about retired storage
+does not already state: the active adapter is open, running services own a
+busy slot once, query keys are positional, dirty agents are unique, closing
+requires retirement, the stop snapshot uses issued keys and a ready query has
+work to dispatch.
+
+```quint
+pure def alwaysDrainKeepsItsRules(s: SharedScheduler): bool = Q::alwaysActiveAdapterIsOpen(s.drain) and Q::alwaysRunningServiceOwnsBusySlot(s.drain) and Q::alwaysRunningServicesAreUnique(s.drain) and Q::alwaysQueryKeysUnique(s.drain) and Q::alwaysDirtyKeysUnique(s.drain) and Q::alwaysCloseRequiresRetirement(s.drain) and Q::alwaysStopSnapshotUsesIssuedKeys(s.drain) and Q::alwaysReadyHasDispatch(s.drain)
+```
+
+### The composed process scheduler keeps the rules of its own unit
+
+Discovered by the proof. Every transition of this product moves the process
+scheduler by a transition of [the timer and process callbacks](./processScheduler.md)
+that its guard allows, so the process scheduler keeps every rule of that unit.
+
+```quint
+pure def alwaysProcessKeepsItsRules(s: SharedScheduler): bool = P::alwaysRegisteredNamesUnique(s.process) and P::alwaysDisposedCallbacksDrained(s.process) and P::alwaysDisposingIsDetached(s.process) and P::alwaysAllocatedIdentitiesFresh(s.process) and P::alwaysTimerIsRequired(s.process) and P::alwaysActiveTickIsOwned(s.process)
+```
+
 ### Adapter replacement and stop retain detached query and process ownership
 
 Starting an adapter advances both generation views and preserves the retained timer state. If the timer already exists for process tasks, starting an adapter rearms all registered runtimes even when no adapter was attached. Handoff transfers pending query ownership to both adapter handles before releasing the old adapter. Full stop detaches the active generation and returns only after its captured storage awaits settle. It keeps the timer alive while process work remains. Detached queries can settle under their own lineage and cannot erase a current replacement tick.

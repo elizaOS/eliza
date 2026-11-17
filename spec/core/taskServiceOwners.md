@@ -21,7 +21,6 @@ type TaskServiceOwners = { configured: bool, now: int, startedAt: int, stopped: 
 pure val initial: TaskServiceOwners = { configured: false, now: 0, startedAt: 0, stopped: false, localTimer: false, hasTimer: false, timerAt: 0, maxTick: 60000, activeTick: 0, ticks: List(), wakeWaiters: Set(), operations: List(), executions: List(), quarantined: Set(), drains: List(), stops: List(), rejected: 0, failures: 0, sharedRegistrations: 0 }
 pure def canConfigure(s: TaskServiceOwners): bool = not(s.configured)
 pure def configure(s: TaskServiceOwners, now: int): TaskServiceOwners = { ...s, configured: true, now: now, startedAt: now }
-pure def setClock(s: TaskServiceOwners, now: int): TaskServiceOwners = { ...s, now: now }
 pure def executionCount(s: TaskServiceOwners, task: str): int = s.executions.select(execution => execution.task == task and execution.phase != ExecutionDone).length()
 pure def operationPending(s: TaskServiceOwners, id: int): bool = s.operations.some(operation => operation.id == id and not(operation.completed))
 pure def canAdmitOperation(s: TaskServiceOwners, id: int, tick: int): bool = s.configured and not(s.stopped) and id > 0 and not(s.operations.some(operation => operation.id == id)) and (tick == 0 or s.ticks.some(entry => entry.id == tick and not(entry.completed)))
@@ -40,11 +39,20 @@ pure def alwaysExecutionsHavePendingOwner(s: TaskServiceOwners): bool = s.execut
 pure def sometimesNonblockingOverlap(s: TaskServiceOwners): bool = s.executions.some(execution => executionCount(s, execution.task) > 1)
 ```
 
+### Executions that share an id are the same execution
+
+Discovered by the proof: each `executeTask` invocation is its own execution, so an execution id names one execution only. Execution admission refuses an id that is already in use, and recheck and finish change every execution with that id in the same way. Without this fact, a recheck could move a settled execution with a reused id back to the worker phase after its operation completed.
+
+```quint
+pure def alwaysExecutionIdsAreUnique(s: TaskServiceOwners): bool = s.executions.every(a => s.executions.every(b => a.id != b.id or a == b))
+```
+
 ### Local timer replacement retains the earliest deadline and exact active tick
 
 Serverless start installs no timer. Daemon start registers the service; local start validates the configured maximum sleep, then arms the first 1,000 ms wake. The local timer replaces a later deadline but keeps an earlier one. A timer that fires during an active tick waits for that exact tick and then requests a 1,000 ms wake. Empty query results disarm polling until markDirty; query failures retain the retry wake. One-shot clock adapters are responsible for waking only after their deadline; the system adapter rechecks wall time in pieces at most 1,000 ms.
 
 ```quint
+pure def setClock(s: TaskServiceOwners, now: int): TaskServiceOwners = { ...s, now: now }
 pure def armed(s: TaskServiceOwners, at: int): TaskServiceOwners = if (s.stopped or not(s.localTimer) or (s.hasTimer and s.timerAt <= at)) s else { ...s, hasTimer: true, timerAt: at }
 pure def startTimer(s: TaskServiceOwners, serverless: bool, daemon: bool, maximum: int): TaskServiceOwners =
   if (s.stopped or serverless) s
@@ -111,4 +119,20 @@ pure val fair_awaitTick = "weak"
 pure val fair_snapshotOperations = "weak"
 pure val fair_returnStop = "weak"
 pure def leadsToStopJoins(s: TaskServiceOwners, later: TaskServiceOwners): bool = s.stops.every(call => later.stops.some(done => done.id == call.id and done.phase == StopReturned))
+```
+
+### A started stop keeps the service stopped
+
+Discovered by the proof: `prepareStop` sets `stopped` before any await, and nothing sets it back, so once any stop call exists the service stays stopped. The admission guards then refuse every new operation, execution and tick.
+
+```quint
+pure def alwaysStopCallsKeepServiceStopped(s: TaskServiceOwners): bool = s.stops.length() > 0 implies s.stopped
+```
+
+### A stop snapshot holds every pending operation
+
+Discovered by the proof: admission is closed before a stop takes its snapshot, so after the snapshot every operation that is still pending is one that the snapshot holds. Without this fact, a stop could return while an operation outside its snapshot still owns a running execution.
+
+```quint
+pure def alwaysStopSnapshotHoldsPendingOperations(s: TaskServiceOwners): bool = s.stops.every(call => (call.phase == WaitOperations or call.phase == StopReturned) implies s.operations.every(operation => operation.completed or call.operations.contains(operation.id)))
 ```

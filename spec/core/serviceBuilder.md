@@ -31,3 +31,11 @@ pure def stepBuiltClassesStayFixed(before: ServiceBuilder, after: ServiceBuilder
 pure def alwaysClassIdsUnique(s: ServiceBuilder): bool = s.built.every(service => service.id > 0 and service.id < s.nextId and s.built.select(other => other.id == service.id).length() == 1)
 pure def sometimesDistinctBuildSnapshots(s: ServiceBuilder): bool = s.built.some(first => s.built.some(second => first.id != second.id and (first.startRef != second.startRef or first.stopRef != second.stopRef or first.description != second.description)))
 ```
+
+### The next class identity stays positive
+
+Discovered by the proof: a builder with no built classes and a nonpositive next identity satisfied the uniqueness rule but gave its next built class an invalid identity. The model identity starts at one, and only a build changes it, by adding one.
+
+```quint
+pure def alwaysNextIdIsPositive(s: ServiceBuilder): bool = s.nextId > 0
+```

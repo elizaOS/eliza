@@ -125,7 +125,7 @@ lemma beginWrite_ensures(s: MultiRoomLeases, caller: int, room: int)
   if inv(s) && canBeginWrite(s, caller, room) {
     RoomBatchQueueState(s);
     core__concurrency_beginWrite_ensures(s.queue, caller, room);
-    RoomWriteTransitionsKeepOwnership(s, caller, room);
+    RoomBeginWriteKeepsOwnership(s, caller, room);
     RoomBatchProgress(beginWrite(s, caller, room));
   }
 }
@@ -154,7 +154,7 @@ lemma finishWrite_ensures(s: MultiRoomLeases, caller: int, room: int)
   if inv(s) && canFinishWrite(s, caller, room) {
     RoomBatchQueueState(s);
     core__concurrency_finishWrite_ensures(s.queue, caller, room);
-    RoomWriteTransitionsKeepOwnership(s, caller, room);
+    RoomFinishWriteKeepsOwnership(s, caller, room);
     RoomBatchProgress(finishWrite(s, caller, room));
   }
 }
@@ -183,7 +183,7 @@ lemma closeBatchWrites_ensures(s: MultiRoomLeases, caller: int)
   if inv(s) && canCloseBatchWrites(s, caller) {
     RoomBatchQueueState(s);
     core__concurrency_closeWrites_ensures(s.queue, caller, releaseRoomId(s, caller));
-    RoomWriteTransitionsKeepOwnership(s, caller, releaseRoomId(s, caller));
+    RoomCloseWritesKeepsOwnership(s, caller);
     RoomBatchProgress(closeBatchWrites(s, caller));
   }
 }
@@ -1208,29 +1208,57 @@ lemma RoomWriterRetainsBatchRoomPlans(before: MultiRoomLeases, after: MultiRoomL
   }
 }
 
-lemma RoomWriteTransitionsKeepOwnership(s: MultiRoomLeases, caller: int, room: int)
+lemma RoomWriterTransitionKeepsOwnership(before: MultiRoomLeases, after: MultiRoomLeases)
+  requires inv(before)
+  requires after.calls == before.calls && after.nested == before.nested && after.closeCause == before.closeCause
+  requires after.queue == before.queue.(leases := after.queue.leases)
+  requires |before.queue.leases| == |after.queue.leases|
+  requires forall i | 0 <= i < |before.queue.leases| ::
+    before.queue.leases[i].caller == after.queue.leases[i].caller &&
+    before.queue.leases[i].room == after.queue.leases[i].room
+  ensures alwaysLeasesBelongToBatch(after) && alwaysWaiterHasOwner(after)
+  ensures alwaysHeldPrefixMatchesRequests(after) && alwaysInvocationHoldsAllRooms(after)
+  ensures alwaysWaiterMatchesNextRoom(after) && alwaysWaitsAboveHeldRooms(after)
+  ensures alwaysDoneHasNoLease(after) && alwaysReverseReleaseRank(after)
+  ensures stepReleasedAfterWriteSettlement(before, after)
+{
+  RoomWriterKeepsBatchOwnership(before, after);
+}
+
+lemma RoomBeginWriteKeepsOwnership(s: MultiRoomLeases, caller: int, room: int)
   requires inv(s)
   ensures alwaysLeasesBelongToBatch(beginWrite(s, caller, room)) && alwaysWaiterHasOwner(beginWrite(s, caller, room))
   ensures alwaysHeldPrefixMatchesRequests(beginWrite(s, caller, room)) && alwaysInvocationHoldsAllRooms(beginWrite(s, caller, room))
   ensures alwaysWaiterMatchesNextRoom(beginWrite(s, caller, room)) && alwaysWaitsAboveHeldRooms(beginWrite(s, caller, room))
   ensures alwaysDoneHasNoLease(beginWrite(s, caller, room)) && alwaysReverseReleaseRank(beginWrite(s, caller, room))
   ensures stepReleasedAfterWriteSettlement(s, beginWrite(s, caller, room))
+{
+  var after := beginWrite(s, caller, room);
+  RoomWriterTransitionKeepsOwnership(s, after);
+}
+
+lemma RoomFinishWriteKeepsOwnership(s: MultiRoomLeases, caller: int, room: int)
+  requires inv(s)
   ensures alwaysLeasesBelongToBatch(finishWrite(s, caller, room)) && alwaysWaiterHasOwner(finishWrite(s, caller, room))
   ensures alwaysHeldPrefixMatchesRequests(finishWrite(s, caller, room)) && alwaysInvocationHoldsAllRooms(finishWrite(s, caller, room))
   ensures alwaysWaiterMatchesNextRoom(finishWrite(s, caller, room)) && alwaysWaitsAboveHeldRooms(finishWrite(s, caller, room))
   ensures alwaysDoneHasNoLease(finishWrite(s, caller, room)) && alwaysReverseReleaseRank(finishWrite(s, caller, room))
   ensures stepReleasedAfterWriteSettlement(s, finishWrite(s, caller, room))
+{
+  var after := finishWrite(s, caller, room);
+  RoomWriterTransitionKeepsOwnership(s, after);
+}
+
+lemma RoomCloseWritesKeepsOwnership(s: MultiRoomLeases, caller: int)
+  requires inv(s)
   ensures alwaysLeasesBelongToBatch(closeBatchWrites(s, caller)) && alwaysWaiterHasOwner(closeBatchWrites(s, caller))
   ensures alwaysHeldPrefixMatchesRequests(closeBatchWrites(s, caller)) && alwaysInvocationHoldsAllRooms(closeBatchWrites(s, caller))
   ensures alwaysWaiterMatchesNextRoom(closeBatchWrites(s, caller)) && alwaysWaitsAboveHeldRooms(closeBatchWrites(s, caller))
   ensures alwaysDoneHasNoLease(closeBatchWrites(s, caller)) && alwaysReverseReleaseRank(closeBatchWrites(s, caller))
   ensures stepReleasedAfterWriteSettlement(s, closeBatchWrites(s, caller))
 {
-  reveal beginWrite(), finishWrite(), closeBatchWrites();
-  reveal core__concurrency_beginWrite(), core__concurrency_finishWrite(), core__concurrency_closeWrites();
-  RoomWriterKeepsBatchOwnership(s, beginWrite(s, caller, room));
-  RoomWriterKeepsBatchOwnership(s, finishWrite(s, caller, room));
-  RoomWriterKeepsBatchOwnership(s, closeBatchWrites(s, caller));
+  var after := closeBatchWrites(s, caller);
+  RoomWriterTransitionKeepsOwnership(s, after);
 }
 
 lemma returnBody_ensures(s: MultiRoomLeases, caller: int, cause: int)
@@ -1769,6 +1797,39 @@ lemma RoomPlanRanksHoldForEveryPrefix(plan: seq<int>, position: int)
   }
 }
 
+lemma RoomAdvanceGrantShape(s: MultiRoomLeases, caller: int, i: int)
+  requires inv(s) && canAdvanceAcquisition(s, caller)
+  requires 0 <= i < |s.calls| && s.calls[i].id == caller
+  requires acquisitionFailure(s, batchAt(s, caller)).BatchPending?
+  requires !(exists lease :: lease in s.queue.leases && lease.room == wantedRoom(batchAt(s, caller)))
+  ensures var before := s.calls[i];
+    var after := advanceAcquisition(s, caller);
+    batchAt(s, caller) == before && before.phase.BatchAcquiring? &&
+    0 <= before.position < |before.wanted| && roomRanksAscending(before.wanted) &&
+    heldRooms(s, caller) == before.wanted[..before.position] &&
+    i < |after.calls| && after.calls[i].wanted == before.wanted &&
+    after.calls[i].position == before.position + 1 &&
+    after.calls[i].phase == (if before.position + 1 == |before.wanted| then BatchLeasePhase.BatchInvoking else BatchLeasePhase.BatchAcquiring) &&
+    after.queue.leases == s.queue.leases + [core__concurrency_Lease(caller, wantedRoom(before), true, 0)]
+{
+  RoomAdvanceFrame(s, caller);
+  RoomAdvanceQueueFootprint(s, caller);
+  var before := s.calls[i];
+  RoomBatchIdentityLookup(s, before);
+  reveal canAdvanceAcquisition();
+  RoomHeldRoomsAreTheExactPlanPrefix(s, before);
+}
+
+lemma RoomPlanPrefixGrowsByNextRoom(plan: seq<int>, position: int, held: seq<int>)
+  requires roomRanksAscending(plan) && 0 <= position < |plan|
+  requires held == plan[..position] + [plan[position]]
+  ensures held == plan[..position + 1]
+  ensures roomRanksAscending(held)
+  ensures position + 1 < |plan| ==> 0 < plan[position + 1] && (forall room | room in held :: room < plan[position + 1])
+{
+  RoomPlanRanksHoldForEveryPrefix(plan, position + 1);
+}
+
 lemma RoomAdvanceAfterGrantFollowsPlan(s: MultiRoomLeases, caller: int, i: int)
   requires inv(s) && canAdvanceAcquisition(s, caller)
   requires 0 <= i < |s.calls| && s.calls[i].id == caller
@@ -1785,23 +1846,15 @@ lemma RoomAdvanceAfterGrantFollowsPlan(s: MultiRoomLeases, caller: int, i: int)
     )) &&
     (call.phase.BatchInvoking? ==> call.position == |call.wanted| && held == call.wanted)
 {
-  RoomAdvanceFrame(s, caller);
-  RoomAdvanceQueueFootprint(s, caller);
+  RoomAdvanceGrantShape(s, caller, i);
   var before := s.calls[i];
-  assert before in s.calls;
-  RoomBatchIdentityLookup(s, before);
-  reveal canAdvanceAcquisition();
-  assert before.phase.BatchAcquiring?;
-  RoomHeldRoomsAreTheExactPlanPrefix(s, before);
   var after := advanceAcquisition(s, caller);
-  var next := after.calls[i];
+  var plan := before.wanted;
+  var position := before.position;
   var lease := core__concurrency_Lease(caller, wantedRoom(before), true, 0);
-  reveal wantedRoom();
   RoomBatchHeldAfterLeaseAppend(s, after, lease, caller);
-  assert next.wanted == before.wanted && next.position == before.position + 1;
-  assert before.wanted[..next.position] == before.wanted[..before.position] + [wantedRoom(before)];
-  assert heldRooms(after, caller) == before.wanted[..next.position];
-  RoomPlanRanksHoldForEveryPrefix(next.wanted, next.position);
+  var held := heldRooms(after, caller);
+  RoomPlanPrefixGrowsByNextRoom(plan, position, held);
 }
 
 lemma RoomAdvanceKeepsHeldRoomsWithoutMatchingGrant(s: MultiRoomLeases, caller: int, other: int)

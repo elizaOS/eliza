@@ -47,14 +47,21 @@ pure def canStop(s: EmbeddingService): bool = not(s.stopped)
 pure def stop(s: EmbeddingService): EmbeddingService = { ...s, stopped: true, modelHandler: false, workHandlers: false, stopPending: true }
 ```
 
-### Queue outcomes release exact pending keys and shutdown waits for activation
-
-Clearing a queue clears pending keys even for work already in flight, matching the source. Consequently an old completion may remove the same key re-added by a later request; it must not be modeled as an item-ID-specific deletion. Queue item identities continue to distinguish the work itself. Discovered by the proof: after task removal completes or the queue detaches, no queued work remains. The service retains the complete queue owner's `wellFormed` contract, including constructor, occurrence identity and retirement facts. A clear keeps snapshots for items already captured by a drain or an urgent flush. If disposal has begun, BatchQueue.clear is a no-op: unflushed queued work survives until task removal, though the service still clears its pending keys. Completing urgent observation releases the flush snapshot; a normal drain retains its independent snapshot.
+### Initialization is in flight exactly while the queue schedule is pending, and a present queue is configured
 
 Discovered by the proof: initialization and the queue's pending schedule
 represent the same awaited startup. A present queue has already been
 constructed. Without those relations a fabricated initialization callback
 could settle an unconfigured queue with no pending schedule.
+
+```quint
+pure def alwaysInitializationOwnsQueueStartup(s: EmbeddingService): bool =
+  (s.initializing iff s.queue.schedulePending) and (s.queuePresent implies s.queue.configured)
+```
+
+### Queue outcomes release exact pending keys and shutdown waits for activation
+
+Clearing a queue clears pending keys even for work already in flight, matching the source. Consequently an old completion may remove the same key re-added by a later request; it must not be modeled as an item-ID-specific deletion. Queue item identities continue to distinguish the work itself. Discovered by the proof: after task removal completes or the queue detaches, no queued work remains. The service keeps every rule of the BatchQueue (`BQ::wellFormed`) true for its queue. A clear keeps snapshots for items already captured by a drain or an urgent flush. If disposal has begun, BatchQueue.clear is a no-op: unflushed queued work survives until task removal, though the service still clears its pending keys. Completing urgent observation releases the flush snapshot; a normal drain retains its independent snapshot.
 
 ```quint
 pure def canDriveQueue(s: EmbeddingService, queueEvent: QueueEvent, ticket: int, ok: bool, retry: bool): bool = (s.queuePresent or s.queue.phase != BQ::DrainIdle) and (
@@ -91,8 +98,6 @@ pure def canFinishStop(s: EmbeddingService): bool = s.stopPending and not(s.init
 pure def finishStop(s: EmbeddingService): EmbeddingService = if (s.disabled or not(s.queuePresent)) { ...s, stopPending: false } else { ...s, stopPending: false, queuePresent: false, pendingKeys: List(), items: retainCaptured(s) }
 pure def alwaysActivationHasIdentity(s: EmbeddingService): bool = s.nextPromise > 0 and s.initializationId >= 0 and s.initializationId < s.nextPromise and (s.initializing implies s.initializationId > 0 and s.queuePresent)
 pure def alwaysQueueOwnerWellFormed(s: EmbeddingService): bool = BQ::wellFormed(s.queue)
-pure def alwaysInitializationOwnsQueueStartup(s: EmbeddingService): bool =
-  (s.initializing iff s.queue.schedulePending) and (s.queuePresent implies s.queue.configured)
 pure def alwaysPendingKeysAreExactAndUnique(s: EmbeddingService): bool = s.pendingKeys.every(source => source.memoryId != "" and s.pendingKeys.select(other => sameEmbeddingSource(other, source)).length() == 1 and s.items.some(entry => sameEmbeddingSource(entry.source, source)))
 pure def alwaysQueueHasKnownSnapshots(s: EmbeddingService): bool = Q::queuedItems(s.queue.queue).every(job => s.items.some(entry => entry.id == job.payload)) and s.queue.active.concat(s.queue.flush).every(job => s.items.some(entry => entry.id == job.payload))
 pure def alwaysDisposalDetachesQueuedSnapshots(s: EmbeddingService): bool = (not(s.queuePresent) or s.queue.disposePhase == BQ::QueueDisposed) implies Q::queuedItems(s.queue.queue).length() == 0

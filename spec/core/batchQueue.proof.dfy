@@ -389,6 +389,26 @@ lemma BatchDisposalTicketOwnership(s: BatchQueue,flushHigh: bool)
   }
 }
 
+lemma configureSizedBatchQueue_ensures(s: BatchQueue, batchSize: int, maxParallel: int, attempts: int, maxSize: int, hasMax: bool, hasPressure: bool)
+  ensures (inv(s) ==> canConfigureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure) ==> alwaysActiveSliceBounded(configureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure)))
+  ensures (inv(s) ==> canConfigureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure) ==> alwaysBatchItemIdentityUnique(configureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure)))
+  ensures (inv(s) ==> canConfigureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure) ==> alwaysBatchComponentsWellFormed(configureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure)))
+  ensures (inv(s) ==> canConfigureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure) ==> alwaysBatchConstructionAndPhases(configureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure)))
+  ensures (inv(s) ==> canConfigureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure) ==> alwaysFallbackKeepsSuccessfulItems(configureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure)))
+  ensures (inv(s) ==> canConfigureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure) ==> alwaysFallbackConcurrency(configureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure)))
+  ensures (inv(s) ==> canConfigureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure) ==> alwaysBatchTicketOwnership(configureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure)))
+  ensures (inv(s) ==> canConfigureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure) ==> alwaysFallbackInvocationOwnership(configureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure)))
+  ensures (inv(s) ==> canConfigureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure) ==> alwaysCompletedDisposalClearsQueue(configureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure)))
+  ensures (inv(s) ==> canConfigureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure) ==> alwaysDisposedQueueRejectsEnqueue(configureSizedBatchQueue(s, batchSize, maxParallel, attempts, maxSize, hasMax, hasPressure)))
+{
+  if inv(s) && canConfigureSizedBatchQueue(s,batchSize,maxParallel,attempts,maxSize,hasMax,hasPressure) {
+    BatchComponents(s);
+    assert s == initial;
+    core__priorityQueue_configureQueue_ensures(s.queue,maxSize,hasMax,hasPressure);
+    core__batchProcessor_configureProcessor_ensures(s.processor,maxParallel,attempts,1,false);
+  }
+}
+
 lemma configureBatchQueue_ensures(s: BatchQueue, batchSize: int, maxParallel: int, attempts: int)
   ensures (inv(s) ==> canConfigureBatchQueue(s, batchSize, maxParallel, attempts) ==> alwaysActiveSliceBounded(configureBatchQueue(s, batchSize, maxParallel, attempts)))
   ensures (inv(s) ==> canConfigureBatchQueue(s, batchSize, maxParallel, attempts) ==> alwaysBatchItemIdentityUnique(configureBatchQueue(s, batchSize, maxParallel, attempts)))
@@ -401,12 +421,7 @@ lemma configureBatchQueue_ensures(s: BatchQueue, batchSize: int, maxParallel: in
   ensures (inv(s) ==> canConfigureBatchQueue(s, batchSize, maxParallel, attempts) ==> alwaysCompletedDisposalClearsQueue(configureBatchQueue(s, batchSize, maxParallel, attempts)))
   ensures (inv(s) ==> canConfigureBatchQueue(s, batchSize, maxParallel, attempts) ==> alwaysDisposedQueueRejectsEnqueue(configureBatchQueue(s, batchSize, maxParallel, attempts)))
 {
-  if inv(s) && canConfigureBatchQueue(s,batchSize,maxParallel,attempts) {
-    BatchComponents(s);
-    assert s == initial;
-    core__priorityQueue_configureQueue_ensures(s.queue,0,false,false);
-    core__batchProcessor_configureProcessor_ensures(s.processor,maxParallel,attempts,1,false);
-  }
+  configureSizedBatchQueue_ensures(s,batchSize,maxParallel,attempts,0,false,false);
 }
 
 lemma enqueueBatchItem_ensures(s: BatchQueue, payload: string, priority: core__priorityQueue_QueuePriority)
@@ -810,5 +825,46 @@ lemma flushUrgentItem_ensures(s: BatchQueue, ok: bool)
     BatchComponents(s);
     BatchFlushIdentityMap(s,flushUrgentItem(s,ok));
 
+  }
+}
+
+lemma BatchPressureQueuedItems(q: core__priorityQueue_PriorityState, accepted: bool, dropped: seq<int>)
+  ensures var r := core__priorityQueue_resolvePressure(core__priorityQueue_drainTickets(q, dropped), accepted);
+    r.nextTicket >= q.nextTicket &&
+    forall item :: item in core__priorityQueue_queuedItems(r) ==> item in core__priorityQueue_queuedItems(q) || item.ticket == q.nextTicket
+{
+  var q1 := core__priorityQueue_drainTickets(q, dropped);
+  BatchQDrainTicketsView(q, dropped);
+  forall item | item in core__priorityQueue_queuedItems(q1) ensures item in core__priorityQueue_queuedItems(q) {
+    ProofLib.FilterMember((j: core__priorityQueue_QueueItem) => !((j.ticket in dropped)),q.high,item);
+    ProofLib.FilterMember((j: core__priorityQueue_QueueItem) => !((j.ticket in dropped)),q.normal,item);
+    ProofLib.FilterMember((j: core__priorityQueue_QueueItem) => !((j.ticket in dropped)),q.low,item);
+  }
+}
+
+lemma resolveBatchPressure_ensures(s: BatchQueue, accepted: bool, dropped: seq<int>)
+  ensures (inv(s) ==> canResolveBatchPressure(s, accepted, dropped) ==> alwaysActiveSliceBounded(resolveBatchPressure(s, accepted, dropped)))
+  ensures (inv(s) ==> canResolveBatchPressure(s, accepted, dropped) ==> alwaysBatchItemIdentityUnique(resolveBatchPressure(s, accepted, dropped)))
+  ensures (inv(s) ==> canResolveBatchPressure(s, accepted, dropped) ==> alwaysBatchComponentsWellFormed(resolveBatchPressure(s, accepted, dropped)))
+  ensures (inv(s) ==> canResolveBatchPressure(s, accepted, dropped) ==> alwaysBatchConstructionAndPhases(resolveBatchPressure(s, accepted, dropped)))
+  ensures (inv(s) ==> canResolveBatchPressure(s, accepted, dropped) ==> alwaysFallbackKeepsSuccessfulItems(resolveBatchPressure(s, accepted, dropped)))
+  ensures (inv(s) ==> canResolveBatchPressure(s, accepted, dropped) ==> alwaysFallbackConcurrency(resolveBatchPressure(s, accepted, dropped)))
+  ensures (inv(s) ==> canResolveBatchPressure(s, accepted, dropped) ==> alwaysBatchTicketOwnership(resolveBatchPressure(s, accepted, dropped)))
+  ensures (inv(s) ==> canResolveBatchPressure(s, accepted, dropped) ==> alwaysFallbackInvocationOwnership(resolveBatchPressure(s, accepted, dropped)))
+  ensures (inv(s) ==> canResolveBatchPressure(s, accepted, dropped) ==> alwaysCompletedDisposalClearsQueue(resolveBatchPressure(s, accepted, dropped)))
+  ensures (inv(s) ==> canResolveBatchPressure(s, accepted, dropped) ==> alwaysDisposedQueueRejectsEnqueue(resolveBatchPressure(s, accepted, dropped)))
+{
+  if inv(s) && canResolveBatchPressure(s, accepted, dropped) {
+    BatchComponents(s);
+    var q1 := core__priorityQueue_drainTickets(s.queue, dropped);
+    core__priorityQueue_drainTickets_ensures(s.queue, dropped);
+    core__priorityQueue_resolvePressure_ensures(q1, accepted);
+    var t := resolveBatchPressure(s, accepted, dropped);
+    BatchPressureQueuedItems(s.queue, accepted, dropped);
+    BatchTicketOwnershipView(s); BatchTicketOwnershipView(t);
+    forall item | item in core__priorityQueue_queuedItems(t.queue)
+      ensures !(exists other :: other in t.active + t.flush && other.ticket == item.ticket) &&
+        !(exists proc :: proc in t.processor.items && proc.id == item.ticket)
+    { }
   }
 }

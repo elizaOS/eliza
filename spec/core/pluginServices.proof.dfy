@@ -3813,42 +3813,156 @@ lemma PluginActiveReplacementRetainsStopReceipts(s: PluginServices, placement: P
   ensures alwaysRetiredEpochHasNoResources(putCurrentGroup(next, epochId, placement))
 {
   hide *;
-  reveal inv(), putCurrentGroup(), alwaysStopObservationsFollowSlots(), alwaysRetiredEpochHasNoResources(), retirementSettled();
+  reveal putCurrentGroup();
   var after := putCurrentGroup(next, epochId, placement);
   var framed := s.(services := placement.services);
+  PluginStopReceiptsHoldInFramedState(s, framed);
+  PluginCurrentGroupReplacementProjectsFromInv(s, placement, next, epochId);
+  forall i | 0 <= i < |framed.retirements|
+    ensures forall g | g in after.retirements[i].groups ::
+      g in framed.retirements[i].groups
+        || (0 <= g.instanceCursor <= |g.instances| && g.instanceCursor <= |g.observedStops| <= |g.instances|
+          && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g) && allStopObservationsValid(g, after.services))
+    ensures !core__pluginRegistry_epochOwnsResources(after.plugins, after.retirements[i].epochId) ==>
+      after.retirements[i] == framed.retirements[i]
+        && retirement(after, after.retirements[i].epochId) == retirement(framed, after.retirements[i].epochId)
+  {
+    PluginActiveReplacementRowFacts(s, placement, next, epochId, i);
+  }
+  PluginRowsRetainStopSlots(framed, after);
+  PluginRowsRetainRetiredSettlement(framed, after);
+}
+
+lemma PluginStopReceiptsHoldInFramedState(s: PluginServices, framed: PluginServices)
+  requires inv(s) && framed == s.(services := framed.services)
+  requires |framed.services.objects| == |s.services.objects|
+  requires forall i | 0 <= i < |s.services.objects| ::
+    framed.services.objects[i].id == s.services.objects[i].id
+      && ((s.services.objects[i].stopPhase.StopSucceeded? || s.services.objects[i].stopPhase.StopFailed?)
+        ==> framed.services.objects[i].stopPhase == s.services.objects[i].stopPhase)
+  ensures alwaysStopObservationsFollowSlots(framed) && alwaysRetiredEpochHasNoResources(framed)
+{
+  hide *;
+  reveal inv();
   PluginMappedObjectsRetainStopReceipts(s, framed);
-  PluginActiveRetirementHasResources(s, epochId);
+}
+
+lemma PluginCurrentGroupReplacementProjectsFromInv(s: PluginServices, placement: PluginServices,
+    next: RetirementGroup, epochId: int)
+  requires inv(s) && currentGroup(s, epochId) != noGroup && next.serviceType == currentGroup(s, epochId).serviceType
+  requires |placement.retirements| == |s.retirements|
+  requires forall i | 0 <= i < |s.retirements| ::
+    placement.retirements[i].epochId == s.retirements[i].epochId
+      && placement.retirements[i].groups == s.retirements[i].groups
+  ensures var after := putCurrentGroup(next, epochId, placement);
+    |after.retirements| == |s.retirements| &&
+      (forall i | 0 <= i < |s.retirements| ::
+        var prior := s.retirements[i];
+        var base := placement.retirements[i];
+        var updated := after.retirements[i];
+        updated.(groups := base.groups) == base && |updated.groups| == |prior.groups|
+          && (prior.epochId == epochId ==> 0 <= prior.cursor < |prior.groups|)
+          && (forall j | 0 <= j < |prior.groups| ::
+            updated.groups[j] == (if prior.epochId == epochId && j == prior.cursor then next else prior.groups[j])))
+{
+  hide *;
+  reveal inv();
   PluginCurrentGroupReplacementProjects(s, placement, next, epochId);
-  forall row | row in after.retirements
-    ensures !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId) ==> retirementSettled(after, row.epochId)
-    ensures forall g | g in row.groups ::
-      0 <= g.instanceCursor <= |g.instances| && g.instanceCursor <= |g.observedStops| <= |g.instances|
-        && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g) && allStopObservationsValid(g, after.services)
-    ensures forall g | g in row.groups && !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId) ::
+}
+
+lemma PluginActiveReplacementRowFacts(s: PluginServices, placement: PluginServices,
+    next: RetirementGroup, epochId: int, i: int)
+  requires inv(s) && currentGroup(s, epochId) != noGroup
+  requires var g := currentGroup(s, epochId);
+    g.phase.GroupWaiting? || g.phase.GroupStoppingInstances? || g.phase.GroupStoppingClasses?
+  requires next.serviceType == currentGroup(s, epochId).serviceType && placement.plugins == s.plugins
+  requires |placement.retirements| == |s.retirements|
+  requires forall i | 0 <= i < |s.retirements| ::
+    placement.retirements[i].epochId == s.retirements[i].epochId
+      && placement.retirements[i].groups == s.retirements[i].groups
+      && (s.retirements[i].epochId != epochId ==> placement.retirements[i] == s.retirements[i])
+  requires 0 <= next.instanceCursor <= |next.instances| && next.instanceCursor <= |next.observedStops| <= |next.instances|
+  requires |next.observedStops| <= next.instanceCursor + 1 && classPhaseFollowsInstances(next)
+  requires allStopObservationsValid(next, placement.services)
+  requires alwaysRetirementsFollowTypePlan(putCurrentGroup(next, epochId, placement))
+  requires 0 <= i < |s.retirements|
+  ensures var after := putCurrentGroup(next, epochId, placement);
+    var framed := s.(services := placement.services);
+    (forall g | g in after.retirements[i].groups ::
+      g in framed.retirements[i].groups
+        || (0 <= g.instanceCursor <= |g.instances| && g.instanceCursor <= |g.observedStops| <= |g.instances|
+          && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g) && allStopObservationsValid(g, after.services)))
+    && (!core__pluginRegistry_epochOwnsResources(after.plugins, after.retirements[i].epochId) ==>
+      after.retirements[i] == framed.retirements[i]
+        && retirement(after, after.retirements[i].epochId) == retirement(framed, after.retirements[i].epochId))
+{
+  hide *;
+  reveal putCurrentGroup();
+  var after := putCurrentGroup(next, epochId, placement);
+  var framed := s.(services := placement.services);
+  PluginActiveRetirementHasResources(s, epochId);
+  PluginCurrentGroupReplacementProjectsFromInv(s, placement, next, epochId);
+  var prior := s.retirements[i];
+  var row := after.retirements[i];
+  forall g | g in row.groups
+    ensures g in prior.groups
+      || (0 <= g.instanceCursor <= |g.instances| && g.instanceCursor <= |g.observedStops| <= |g.instances|
+        && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g) && allStopObservationsValid(g, after.services))
+  {
+    var j :| 0 <= j < |row.groups| && row.groups[j] == g;
+    if !(prior.epochId == epochId && j == prior.cursor) {
+      assert g == prior.groups[j];
+    }
+  }
+  if !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId) {
+    reveal inv();
+    PluginRetirementPlanLookup(s, prior);
+    PluginRetirementPlanLookup(after, row);
+    assert retirement(framed, row.epochId) == retirement(s, row.epochId) by { reveal retirement(); }
+  }
+}
+
+lemma PluginRowsRetainStopSlots(framed: PluginServices, after: PluginServices)
+  requires alwaysStopObservationsFollowSlots(framed)
+  requires after.services == framed.services && |after.retirements| == |framed.retirements|
+  requires forall i | 0 <= i < |framed.retirements| ::
+    forall g | g in after.retirements[i].groups ::
+      g in framed.retirements[i].groups
+        || (0 <= g.instanceCursor <= |g.instances| && g.instanceCursor <= |g.observedStops| <= |g.instances|
+          && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g) && allStopObservationsValid(g, after.services))
+  ensures alwaysStopObservationsFollowSlots(after)
+{
+  hide *;
+  reveal alwaysStopObservationsFollowSlots();
+  forall r, g | r in after.retirements && g in r.groups
+    ensures 0 <= g.instanceCursor <= |g.instances| && g.instanceCursor <= |g.observedStops| <= |g.instances|
+      && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g) && allStopObservationsValid(g, after.services)
+  {
+    var i :| 0 <= i < |after.retirements| && after.retirements[i] == r;
+    if g in framed.retirements[i].groups {
+      assert framed.retirements[i] in framed.retirements;
+    }
+  }
+}
+
+lemma PluginRowsRetainRetiredSettlement(framed: PluginServices, after: PluginServices)
+  requires alwaysRetiredEpochHasNoResources(framed)
+  requires after.services == framed.services && after.plugins == framed.plugins
+  requires |after.retirements| == |framed.retirements|
+  requires forall i | 0 <= i < |framed.retirements| ::
+    !core__pluginRegistry_epochOwnsResources(after.plugins, after.retirements[i].epochId) ==>
+      after.retirements[i] == framed.retirements[i]
+        && retirement(after, after.retirements[i].epochId) == retirement(framed, after.retirements[i].epochId)
+  ensures alwaysRetiredEpochHasNoResources(after)
+{
+  hide *;
+  reveal alwaysRetiredEpochHasNoResources(), retirementSettled();
+  forall r | r in after.retirements && !core__pluginRegistry_epochOwnsResources(after.plugins, r.epochId)
+    ensures retirementSettled(after, r.epochId)
+    ensures forall g | g in r.groups ::
       g.instanceCursor == |g.instances| && (forall slot | slot in g.observedStops :: stopSlotSettled(slot, after.services))
   {
-    var i :| 0 <= i < |after.retirements| && after.retirements[i] == row;
-    var previous := s.retirements[i];
-    assert previous in framed.retirements && previous.epochId == row.epochId;
-    if !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId) {
-      assert row.epochId != epochId && row == previous;
-      PluginRetirementPlanLookup(s, previous);
-      PluginRetirementPlanLookup(after, row);
-    }
-    forall group | group in row.groups
-      ensures 0 <= group.instanceCursor <= |group.instances| && group.instanceCursor <= |group.observedStops| <= |group.instances|
-        && |group.observedStops| <= group.instanceCursor + 1 && classPhaseFollowsInstances(group)
-        && allStopObservationsValid(group, after.services)
-      ensures !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId) ==>
-        (group.instanceCursor == |group.instances| && (forall slot | slot in group.observedStops :: stopSlotSettled(slot, after.services)))
-    {
-      var j :| 0 <= j < |row.groups| && row.groups[j] == group;
-      if previous.epochId == epochId && j == previous.cursor {
-        assert group == next;
-      } else {
-        assert group in previous.groups;
-      }
-    }
+    var i :| 0 <= i < |after.retirements| && after.retirements[i] == r;
   }
 }
 
@@ -4367,53 +4481,132 @@ lemma PluginWithdrawalKeepsStopReceipts(s: PluginServices, epochId: int)
   ensures alwaysRetiredEpochHasNoResources(withdrawNextType(s, epochId))
 {
   hide *;
-  reveal inv(), canWithdrawNextType(), withdrawNextType(), alwaysStopObservationsFollowSlots();
-  reveal alwaysRetiredEpochHasNoResources(), retirementSettled(), allStopObservationsValid(), classPhaseFollowsInstances();
-  reveal core__pluginRegistry_epochRetiring(), core__pluginRegistry_epochOwnsResources();
+  var after := withdrawNextType(s, epochId);
+  PluginWithdrawalKeepsObjectsAndPlugins(s, epochId);
+  var frame := s.(services := after.services);
+  PluginWithdrawalFrameHoldsStopReceipts(s, frame);
+  PluginWithdrawalGroupsKeepEarlierEntries(s, epochId);
+  forall i | 0 <= i < |frame.retirements|
+    ensures forall g | g in after.retirements[i].groups ::
+      g in frame.retirements[i].groups
+        || (0 <= g.instanceCursor <= |g.instances| && g.instanceCursor <= |g.observedStops| <= |g.instances|
+          && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g) && allStopObservationsValid(g, after.services))
+    ensures !core__pluginRegistry_epochOwnsResources(after.plugins, after.retirements[i].epochId) ==>
+      after.retirements[i] == frame.retirements[i]
+        && retirement(after, after.retirements[i].epochId) == retirement(frame, after.retirements[i].epochId)
+  {
+    PluginWithdrawalRowFacts(s, epochId, i);
+  }
+  PluginRowsRetainStopSlots(frame, after);
+  PluginRowsRetainRetiredSettlement(frame, after);
+}
+
+lemma PluginWithdrawalKeepsObjectsAndPlugins(s: PluginServices, epochId: int)
+  requires canWithdrawNextType(s, epochId)
+  ensures withdrawNextType(s, epochId).services.objects == s.services.objects
+  ensures withdrawNextType(s, epochId).plugins == s.plugins
+{
+  hide *;
+  reveal canWithdrawNextType(), withdrawNextType();
   reveal withdrawRetiringClasses(), core__serviceInstances_removePublishedInstances(), core__serviceInstances_replacePublication();
-  reveal missingGroupPhase, skippedGroupPhase, uncheckedSequence, Std.Collections.Seq.FoldLeft();
+  reveal Std.Collections.Seq.FoldLeft();
   var prior := retirement(s, epochId);
   var serviceType := prior.plan[prior.cursor];
   var classes := retirementClassesForType(s, epochId, serviceType);
   PluginWithdrawalFoldKeepsClassIdentity(classes, s.services);
-  var after := withdrawNextType(s, epochId);
-  assert after.services.objects == s.services.objects && after.plugins == s.plugins;
-  var frame := s.(services := after.services);
+}
+
+lemma PluginWithdrawalFrameHoldsStopReceipts(s: PluginServices, frame: PluginServices)
+  requires inv(s) && frame == s.(services := frame.services) && frame.services.objects == s.services.objects
+  ensures alwaysStopObservationsFollowSlots(frame) && alwaysRetiredEpochHasNoResources(frame)
+{
+  hide *;
+  reveal inv();
   PluginServiceFrameRetainsStopReceipts(s, frame);
-  PluginWithdrawalGroupsKeepEarlierEntries(s, epochId);
-  forall row | row in after.retirements
-    ensures forall g | g in row.groups ::
-      0 <= g.instanceCursor <= |g.instances| && g.instanceCursor <= |g.observedStops| <= |g.instances|
-        && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g)
-        && allStopObservationsValid(g, after.services)
-    ensures !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId) ==> retirementSettled(after, row.epochId)
-    ensures forall g | g in row.groups && !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId) ::
-      g.instanceCursor == |g.instances| && (forall slot | slot in g.observedStops :: stopSlotSettled(slot, after.services))
+}
+
+lemma PluginEmptyGroupSlotsValid(g: RetirementGroup, services: core__serviceInstances_ServiceInstances)
+  requires g.observedStops == [] && g.instanceCursor == 0
+  requires g.phase.GroupWaiting? || (g.phase.GroupSkipped? && g.instances == [])
+  ensures 0 <= g.instanceCursor <= |g.instances| && g.instanceCursor <= |g.observedStops| <= |g.instances|
+    && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g) && allStopObservationsValid(g, services)
+{
+  hide *;
+  reveal classPhaseFollowsInstances(), allStopObservationsValid(), uncheckedSequence, Std.Collections.Seq.FoldLeft();
+}
+
+lemma PluginWithdrawalRowShape(s: PluginServices, epochId: int, i: int)
+  requires 0 <= i < |s.retirements|
+  ensures var after := withdrawNextType(s, epochId);
+    var prior := s.retirements[i];
+    |after.retirements| == |s.retirements|
+      && (after.retirements[i].epochId == prior.epochId)
+      && (prior.epochId != epochId ==> after.retirements[i] == prior)
+      && (prior.epochId == epochId ==> (|after.retirements[i].groups| == |prior.groups| + 1
+        && after.retirements[i].groups[..|prior.groups|] == prior.groups))
+      && (|prior.groups| < |after.retirements[i].groups| ==>
+        var g := after.retirements[i].groups[|prior.groups|];
+        g.observedStops == [] && g.instanceCursor == 0
+          && (g.phase.GroupWaiting? || (g.phase.GroupSkipped? && g.instances == [])))
+{
+  hide *;
+  reveal withdrawNextType(), skippedGroupPhase, missingGroupPhase;
+}
+
+lemma PluginWithdrawalEpochRowOwnsResources(s: PluginServices, epochId: int, i: int)
+  requires inv(s) && canWithdrawNextType(s, epochId)
+  requires 0 <= i < |s.retirements| && s.retirements[i].epochId == epochId
+  ensures core__pluginRegistry_epochOwnsResources(s.plugins, epochId)
+{
+  hide *;
+  reveal inv(), canWithdrawNextType(), alwaysRetiredEpochHasNoResources(), retirementSettled();
+}
+
+lemma PluginWithdrawalRowFacts(s: PluginServices, epochId: int, i: int)
+  requires inv(s) && canWithdrawNextType(s, epochId)
+  requires alwaysRetirementsFollowTypePlan(withdrawNextType(s, epochId))
+  requires 0 <= i < |s.retirements|
+  ensures var after := withdrawNextType(s, epochId);
+    var frame := s.(services := after.services);
+    (forall g | g in after.retirements[i].groups ::
+      g in frame.retirements[i].groups
+        || (0 <= g.instanceCursor <= |g.instances| && g.instanceCursor <= |g.observedStops| <= |g.instances|
+          && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g) && allStopObservationsValid(g, after.services)))
+    && (!core__pluginRegistry_epochOwnsResources(after.plugins, after.retirements[i].epochId) ==>
+      after.retirements[i] == frame.retirements[i]
+        && retirement(after, after.retirements[i].epochId) == retirement(frame, after.retirements[i].epochId))
+{
+  hide *;
+  var after := withdrawNextType(s, epochId);
+  var frame := s.(services := after.services);
+  assert after.plugins == s.plugins by { reveal withdrawNextType(); }
+  PluginWithdrawalRowShape(s, epochId, i);
+  var prior := s.retirements[i];
+  var row := after.retirements[i];
+  forall g | g in row.groups
+    ensures g in prior.groups
+      || (0 <= g.instanceCursor <= |g.instances| && g.instanceCursor <= |g.observedStops| <= |g.instances|
+        && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g) && allStopObservationsValid(g, after.services))
   {
-    var i :| 0 <= i < |after.retirements| && after.retirements[i] == row;
-    var before := s.retirements[i];
-    assert before in frame.retirements && row.epochId == before.epochId;
-    if !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId) {
-      assert row.epochId != epochId && row == before;
-      PluginRetirementPlanLookup(s, before);
-      PluginRetirementPlanLookup(after, row);
-    }
-    forall g | g in row.groups
-      ensures 0 <= g.instanceCursor <= |g.instances| && g.instanceCursor <= |g.observedStops| <= |g.instances|
-        && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g)
-        && allStopObservationsValid(g, after.services)
-      ensures !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId) ==>
-        (g.instanceCursor == |g.instances| && (forall slot | slot in g.observedStops :: stopSlotSettled(slot, after.services)))
-    {
-      var j :| 0 <= j < |row.groups| && row.groups[j] == g;
-      if j < |before.groups| {
-        assert g in before.groups;
-      } else {
-        assert j == |before.groups| && before.epochId == epochId;
-        assert g.observedStops == [] && g.instanceCursor == 0;
-        assert g.phase.GroupWaiting? || (g.phase.GroupSkipped? && g.instances == []);
+    var j :| 0 <= j < |row.groups| && row.groups[j] == g;
+    if j < |prior.groups| {
+      if prior.epochId == epochId {
+        assert row.groups[..|prior.groups|][j] == g;
       }
+      assert g == prior.groups[j];
+    } else {
+      assert prior.epochId == epochId && j == |prior.groups|;
+      PluginEmptyGroupSlotsValid(g, after.services);
     }
+  }
+  if !core__pluginRegistry_epochOwnsResources(after.plugins, row.epochId) {
+    if prior.epochId == epochId {
+      PluginWithdrawalEpochRowOwnsResources(s, epochId, i);
+    }
+    reveal inv();
+    PluginRetirementPlanLookup(s, prior);
+    PluginRetirementPlanLookup(after, row);
+    assert retirement(frame, row.epochId) == retirement(s, row.epochId) by { reveal retirement(); }
   }
 }
 

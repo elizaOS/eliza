@@ -199,6 +199,8 @@ lemma request_ensures(s: PrivacyService, id: string, key: string, priority: core
       if job.id == id { PrivacyAtEntry(s,job,id); }
     }
     PrivacyJobs(s,t);
+    // The appended job is a fresh request, so its settlement is well formed.
+    assert core__privacy_wellFormed(t.jobs[|s.jobs|].work);
   }
 }
 

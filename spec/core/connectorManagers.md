@@ -8,7 +8,7 @@ As a host, I want account/provider registration scoped to my runtime and an expl
 
 ### A runtime cache preserves its manager while a compatible registered service takes precedence
 
-Runtime keys represent object identities. The empty key represents the standalone singleton, which does not inspect a runtime service. A native registered manager takes precedence and receives supplied storage. A duck-compatible service also takes precedence, but bypasses storage mutation. Neither service branch populates or replaces the runtime cache; when that service disappears, an existing cached manager remains available.
+Runtime keys represent object identities. The empty key represents the standalone singleton, which does not inspect a runtime service. A native registered manager takes precedence and receives supplied storage. A duck-compatible service also takes precedence, but bypasses storage mutation. A duck-compatible service is never an object the model already knows as a native manager, because the source tests `instanceof ConnectorAccountManager` first and so always applies storage to a native object. For the same reason, a native service is never an object the model already knows as duck-compatible. Neither service branch populates or replaces the runtime cache; when that service disappears, an existing cached manager remains available.
 
 Runtime bindings and native objects are maps, so each runtime and each object identity has one binding by construction. Separate key sets permit finite iteration in Quint; they are the authoritative modeled domains, and unused backing-map entries outside those domains are inert. Cache bindings and native object state have different owners: bindings associate a runtime with a manager identity, while each native object embeds exactly one [backend cache](./connectorBackends.md). That cache remains the sole owner of explicit storage, facade identity, adapter memoization, fallback and warning state. Selecting an alias updates that same embedded object with `setExplicit`, without reconstructing its facade or other backend state. A first-seen external native service supplies its observed backend snapshot; absence of a known object never asserts that foreign storage is absent. Duck-compatible services need no native backend state.
 
@@ -20,15 +20,16 @@ import connectorBackends as B from "./connectorBackends"
 type RegisteredManagerService = NoManagerService | NativeManagerService({ id: int, backend: B::BackendCache }) | CompatibleManagerService({ id: int })
 type StorageOverrideInput = NoStorageOverride | SuppliedStorage({ reference: int })
 type ProviderRecord = { manager: int, provider: str, reference: int }
-type ConnectorManagers = { nextId: int, runtimes: Set[str], managers: str -> int, nativeIdentities: Set[int], nativeObjects: int -> B::BackendCache, providers: List[ProviderRecord], selected: int }
-pure val initial: ConnectorManagers = { nextId: 1, runtimes: Set(), managers: Map(), nativeIdentities: Set(), nativeObjects: Map(), providers: List(), selected: 0 }
+type ConnectorManagers = { nextId: int, runtimes: Set[str], managers: str -> int, nativeIdentities: Set[int], nativeObjects: int -> B::BackendCache, providers: List[ProviderRecord], selected: int, compatibleIdentities: Set[int] }
+pure val initial: ConnectorManagers = { nextId: 1, runtimes: Set(), managers: Map(), nativeIdentities: Set(), nativeObjects: Map(), providers: List(), selected: 0, compatibleIdentities: Set() }
 pure def serviceIdentity(service: RegisteredManagerService): int = match service { | NativeManagerService(native) => native.id | CompatibleManagerService(compatible) => compatible.id | _ => 0 }
 pure def compatibleService(service: RegisteredManagerService): bool = match service { | CompatibleManagerService(compatible) => true | _ => false }
+pure def nativeService(service: RegisteredManagerService): bool = match service { | NativeManagerService(native) => true | _ => false }
 pure def serviceBackend(service: RegisteredManagerService): B::BackendCache = match service { | NativeManagerService(native) => native.backend | _ => B::initial }
 pure def suppliedStorage(storage: StorageOverrideInput): int = match storage { | SuppliedStorage(supplied) => supplied.reference | _ => 0 }
 pure def validService(service: RegisteredManagerService): bool = match service { | NoManagerService => true | NativeManagerService(native) => native.id > 0 and B::alwaysAllocatedIdentitiesAreValid(native.backend) | CompatibleManagerService(compatible) => compatible.id > 0 }
 pure def validStorage(storage: StorageOverrideInput): bool = match storage { | NoStorageOverride => true | SuppliedStorage(supplied) => supplied.reference > 0 }
-pure def canResolveManager(s: ConnectorManagers, runtime: str, service: RegisteredManagerService, storage: StorageOverrideInput): bool = validService(service) and validStorage(storage)
+pure def canResolveManager(s: ConnectorManagers, runtime: str, service: RegisteredManagerService, storage: StorageOverrideInput): bool = validService(service) and validStorage(storage) and not(runtime != "" and compatibleService(service) and s.nativeIdentities.contains(serviceIdentity(service))) and not(runtime != "" and nativeService(service) and s.compatibleIdentities.contains(serviceIdentity(service)))
 pure def resolveManager(s: ConnectorManagers, runtime: str, service: RegisteredManagerService, storage: StorageOverrideInput): ConnectorManagers = {
   val hasCached = s.runtimes.contains(runtime)
   val hasService = runtime != "" and serviceIdentity(service) > 0
@@ -38,7 +39,7 @@ pure def resolveManager(s: ConnectorManagers, runtime: str, service: RegisteredM
   val known = s.nativeIdentities.contains(selected)
   val backend = if (known) s.nativeObjects.getOr(selected, B::initial) else if (hasService) serviceBackend(service) else B::initial
   val updated = if (suppliedStorage(storage) != 0) B::setExplicit(backend, suppliedStorage(storage)) else backend
-  { ...s, selected: selected, nextId: if (selected >= s.nextId) selected + 1 else s.nextId, runtimes: if (creates) s.runtimes.union(Set(runtime)) else s.runtimes, managers: if (creates) s.managers.put(runtime, selected) else s.managers, nativeIdentities: if (nativeSelected) s.nativeIdentities.union(Set(selected)) else s.nativeIdentities, nativeObjects: if (nativeSelected) s.nativeObjects.put(selected, updated) else s.nativeObjects }
+  { ...s, selected: selected, nextId: if (selected >= s.nextId) selected + 1 else s.nextId, runtimes: if (creates) s.runtimes.union(Set(runtime)) else s.runtimes, managers: if (creates) s.managers.put(runtime, selected) else s.managers, nativeIdentities: if (nativeSelected) s.nativeIdentities.union(Set(selected)) else s.nativeIdentities, nativeObjects: if (nativeSelected) s.nativeObjects.put(selected, updated) else s.nativeObjects, compatibleIdentities: if (nativeSelected) s.compatibleIdentities else s.compatibleIdentities.union(Set(selected)) }
 }
 pure def hasStorageOverride(s: ConnectorManagers, manager: int, storageReference: int): bool = s.nativeIdentities.contains(manager) and s.nativeObjects.getOr(manager, B::initial).explicit == storageReference
 pure def canRegisterProvider(s: ConnectorManagers, manager: int, provider: str, reference: int): bool = manager > 0 and provider != "" and reference > 0
@@ -51,7 +52,7 @@ pure def alwaysFreshReferencesReserved(s: ConnectorManagers): bool = s.nextId > 
 pure def lawNativeServiceStorage(s: ConnectorManagers, runtime: str, identity: int, backend: B::BackendCache, storageReference: int): bool = runtime != "" and identity > 0 and storageReference > 0 implies hasStorageOverride(resolveManager(s, runtime, NativeManagerService({ id: identity, backend: backend }), SuppliedStorage({ reference: storageReference })), identity, storageReference)
 pure def lawServiceDoesNotReplaceCache(s: ConnectorManagers, runtime: str, service: RegisteredManagerService, storage: StorageOverrideInput): bool = runtime != "" and serviceIdentity(service) > 0 implies resolveManager(s, runtime, service, storage).managers == s.managers
 pure def lawCompatibleServiceBypassesStorage(s: ConnectorManagers, runtime: str, identity: int, storage: StorageOverrideInput): bool = runtime != "" and identity > 0 implies resolveManager(s, runtime, CompatibleManagerService({ id: identity }), storage).nativeObjects == s.nativeObjects
-pure def sameResolution(left: ConnectorManagers, right: ConnectorManagers): bool = left.nextId == right.nextId and left.selected == right.selected and left.managers == right.managers and left.nativeObjects == right.nativeObjects and left.providers == right.providers and left.runtimes.subseteq(right.runtimes) and right.runtimes.subseteq(left.runtimes) and left.nativeIdentities.subseteq(right.nativeIdentities) and right.nativeIdentities.subseteq(left.nativeIdentities)
+pure def sameResolution(left: ConnectorManagers, right: ConnectorManagers): bool = left.nextId == right.nextId and left.selected == right.selected and left.managers == right.managers and left.nativeObjects == right.nativeObjects and left.providers == right.providers and left.runtimes.subseteq(right.runtimes) and right.runtimes.subseteq(left.runtimes) and left.nativeIdentities.subseteq(right.nativeIdentities) and right.nativeIdentities.subseteq(left.nativeIdentities) and left.compatibleIdentities.subseteq(right.compatibleIdentities) and right.compatibleIdentities.subseteq(left.compatibleIdentities)
 pure def lawStandaloneIgnoresService(s: ConnectorManagers, service: RegisteredManagerService, storage: StorageOverrideInput): bool = sameResolution(resolveManager(s, "", service, storage), resolveManager(s, "", NoManagerService, storage))
 pure def lawOtherManagerStoragePreserved(s: ConnectorManagers, runtime: str, service: RegisteredManagerService, storage: StorageOverrideInput, manager: int, priorReference: int): bool = {
   val resolved = resolveManager(s, runtime, service, storage)
@@ -73,9 +74,17 @@ pure def lawProviderReplacementKeepsPosition(s: ConnectorManagers, manager: int,
 pure def sometimesIndependentManagers(s: ConnectorManagers): bool = s.runtimes.size() > 1
 pure def sometimesProviderAvailable(s: ConnectorManagers): bool = s.providers.length() > 0
 pure def sometimesUncachedNativeOverride(s: ConnectorManagers): bool = s.nativeIdentities.exists(identity => s.nativeObjects.getOr(identity, B::initial).explicit > 0 and not(s.runtimes.exists(runtime => s.managers.getOr(runtime, 0) == identity)))
-pure val serviceValues = Set(NoManagerService, NativeManagerService({ id: 0, backend: B::initial }), NativeManagerService({ id: 2, backend: B::initial }), CompatibleManagerService({ id: 3 }))
+pure val serviceValues = Set(NoManagerService, NativeManagerService({ id: 0, backend: B::initial }), NativeManagerService({ id: 2, backend: B::initial }), NativeManagerService({ id: 3, backend: B::initial }), CompatibleManagerService({ id: 3 }))
 pure val storageValues = Set(NoStorageOverride, SuppliedStorage({ reference: 0 }), SuppliedStorage({ reference: 30 }))
 pure val backendValues = Set(B::initial)
+```
+
+### A registered service object is never both a native manager and a duck-compatible service
+
+The source decides the kind of a registered service with `instanceof ConnectorAccountManager` before the duck-type test, and it never changes the prototype of an object, so one object identity always takes the same branch. Managers that the source constructs are native. Each identity observed as duck-compatible is therefore positive, below the next fresh reference, and never a known native identity.
+
+```quint
+pure def alwaysServiceKindsDisjoint(s: ConnectorManagers): bool = s.compatibleIdentities.forall(identity => identity > 0 and identity < s.nextId and not(s.nativeIdentities.contains(identity)))
 ```
 
 ### Stored disable and revoke decisions win over provider readiness

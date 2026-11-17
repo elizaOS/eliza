@@ -8,7 +8,7 @@ As a host, I can replace a service or adapter while old queries drain. Old resul
 
 ### Queries capture every selected registration and their adapter ownership
 
-Each tick visits dirty agents in the order first marked. It preserves busy agents for the next tick and removes every other visited dirty name, including names with no registration. Replacing a map entry keeps its registration order but allocates a distinct registration identity.
+Each tick visits dirty agents in the order first marked. It preserves busy agents for the next tick and removes every other visited dirty name, including names with no registration. Replacing a map entry keeps its registration order but allocates a distinct registration identity. Marking an agent dirty is allowed only when it is not dirty yet: the dirty agents are a set, so marking it again would change nothing.
 
 ```quint
 type QueryPhase = Missing | Querying | Ready | Running | Done
@@ -33,6 +33,8 @@ pure val absentQuery: Query = { key: 0, generation: 0, captured: List(), adapter
 pure def registrationFor(s: Drain, agent: str): Registration = s.registry.select(entry => entry.agent == agent).nthOr(0, absentRegistration)
 pure def queryFor(s: Drain, key: int): Query = s.queries.nthOr(key - 1, absentQuery)
 pure def addDirty(dirty: List[str], agent: str): List[str] = if (dirty.includes(agent)) dirty else dirty.append(agent)
+pure def canMarkDirty(s: Drain, agent: str): bool = not(s.dirtyAgents.includes(agent))
+pure def markDirty(s: Drain, agent: str): Drain = { ...s, dirtyAgents: addDirty(s.dirtyAgents, agent) }
 pure def rearmRegistry(s: Drain): List[str] = s.registry.foldl(s.dirtyAgents, (dirty, entry) => addDirty(dirty, entry.agent))
 pure def canStartAdapter(s: Drain, adapter: str): bool = adapter != "" and not(s.retiredAdapters.contains(adapter)) and not(s.closedAdapters.contains(adapter)) and s.activeAdapter != adapter
 pure def attachAfterTimerState(hadTimer: bool, s: Drain, adapter: str): Drain = { ...s, activeAdapter: adapter, generation: s.generation + 1, dirtyAgents: if (hadTimer) rearmRegistry(s) else s.dirtyAgents }
@@ -47,7 +49,11 @@ pure def eligibleAgent(s: Drain, agent: str): bool = {
   registered.agent == agent and agent != "" and not(s.busyServices.contains(registered.service)) and not(s.retiredServices.contains(registered.service))
 }
 pure def queryRegistrations(s: Drain): List[Registration] = s.dirtyAgents.select(agent => eligibleAgent(s, agent)).listMap(agent => registrationFor(s, agent))
-pure def dirtyToPreserve(s: Drain): List[str] = s.dirtyAgents.select(agent => registrationFor(s, agent).agent != "" and s.busyServices.contains(registrationFor(s, agent).service))
+pure def keepsDirty(s: Drain, agent: str): bool = {
+  val registered = registrationFor(s, agent)
+  registered.agent != "" and s.busyServices.contains(registered.service)
+}
+pure def dirtyToPreserve(s: Drain): List[str] = s.dirtyAgents.select(agent => keepsDirty(s, agent))
 pure def canBeginQuery(s: Drain): bool = s.activeAdapter != "" and not(s.queries.some(query => query.generation == s.generation and query.phase != Done)) and queryRegistrations(s).length() > 0
 pure def beginQuery(s: Drain): Drain = {
   val captured = queryRegistrations(s)
@@ -95,7 +101,6 @@ pure def finishRun(s: Drain, key: int): Drain = {
   { ...s, busyServices: s.busyServices.exclude(Set(own.service)), dirtyAgents: rearmed, queries: s.queries.listMap(queuedQuery => if (queuedQuery.key == key) { ...queuedQuery, phase: if (queuedQuery.remaining.length() > 0) Ready else Done, running: absentTaskGroup } else queuedQuery) }
 }
 pure def unregister(s: Drain, agent: str, service: str): Drain = { ...s, registry: s.registry.select(entry => entry.agent != agent or entry.service != service), retiredServices: s.retiredServices.union(Set(service)), dirtyAgents: if (registrationFor(s, agent).service == service) s.dirtyAgents.select(dirty => dirty != agent) else s.dirtyAgents }
-pure def markDirty(s: Drain, agent: str): Drain = { ...s, dirtyAgents: addDirty(s.dirtyAgents, agent) }
 pure def pendingForService(s: Drain, service: str): bool = s.queries.some(query => query.phase == Querying and query.captured.some(entry => entry.service == service))
 pure def pendingForAdapter(s: Drain, adapter: str): bool = s.queries.some(query => query.phase == Querying and query.adapters.contains(adapter))
 pure def canCloseService(s: Drain, service: str): bool = s.retiredServices.contains(service) and not(pendingForService(s, service)) and not(s.busyServices.contains(service))

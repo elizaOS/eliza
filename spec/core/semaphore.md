@@ -29,6 +29,30 @@ pure def alwaysWaitersUnique(s: SemaphoreState): bool = s.waiters.every(w => w.i
 pure def sometimesCallerWaits(s: SemaphoreState): bool = s.waiters.length() > 0
 ```
 
+### Each caller holds at most one permit
+
+One acquisition gives a caller at most one permit, so no caller is counted twice among the holders.
+
+```quint
+pure def alwaysHoldersDistinct(s: SemaphoreState): bool = s.holders.forall(h => s.holders.filter(x => x == h).size() == 1)
+```
+
+### Every granted ticket is lower than the next ticket
+
+A release grants only a ticket that a queued acquisition already received, so each granted ticket is lower than the next ticket.
+
+```quint
+pure def alwaysGrantedTicketsIssued(s: SemaphoreState): bool = s.granted.every(g => g.ticket < s.nextTicket)
+```
+
+### The next ticket is always positive
+
+Tickets start at one and a queued acquisition only raises the next ticket, so the next ticket stays positive.
+
+```quint
+pure def alwaysNextTicketPositive(s: SemaphoreState): bool = s.nextTicket > 0
+```
+
 ### A release skips cancelled waiters before granting the oldest live ticket
 
 Signal observation and cancellation listener execution remain separate so a release can observe an aborted caller first.
@@ -43,8 +67,9 @@ pure def release(s: SemaphoreState, caller: int): SemaphoreState = {
   val live = s.waiters.select(w => not(s.aborted.contains(w.id)))
   val selected = live.nthOr(0, {id: 0, ticket: s.nextTicket})
   val skipped = s.waiters.select(w => w.ticket < selected.ticket).foldl(Set(), (ids, w) => ids.union(Set(w.id)))
+  val remaining = s.holders.exclude(Set(caller))
   { ...s, available: if (live.length() == 0) s.available + 1 else s.available,
-    holders: if (live.length() == 0) s.holders.exclude(Set(caller)) else s.holders.exclude(Set(caller)).union(Set(selected.id)),
+    holders: if (live.length() == 0) remaining else remaining.union(Set(selected.id)),
     completed: s.completed.union(Set(caller)), granted: if (live.length() == 0) s.granted else s.granted.append(selected), rejected: s.rejected.union(skipped),
     waiters: if (live.length() == 0) List() else s.waiters.select(w => w.ticket > selected.ticket) }
 }
@@ -53,6 +78,14 @@ pure def alwaysTerminalCallersDoNotWait(s: SemaphoreState): bool = s.waiters.eve
 pure def sometimesAbortListenerRaceSettles(s: SemaphoreState): bool = s.queuedAbort.size() > 0 and s.rejected.intersect(s.queuedAbort).size() > 0 and s.waiters.length() == 0
 pure def alwaysFIFOGrants(s: SemaphoreState): bool = s.waiters.every(w => s.granted.every(g => g.ticket < w.ticket))
 pure def sometimesAllPermitsReturned(s: SemaphoreState): bool = s.completed.size() > 0 and s.available == s.capacity
+```
+
+### A caller cancelled while queued is an aborted caller
+
+A queued caller is recorded as cancelled only when its signal aborts, and a signal stays aborted, so every caller cancelled while queued is also an aborted caller.
+
+```quint
+pure def alwaysQueuedAbortWasAborted(s: SemaphoreState): bool = s.queuedAbort.subseteq(s.aborted)
 ```
 
 ### Every queued caller eventually acquires or is rejected under fair release

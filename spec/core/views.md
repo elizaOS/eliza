@@ -136,4 +136,6 @@ pure val candidateValues = Set(emptyCandidate, legacyBrowserCandidate, preparedV
 pure val candidatesValues = Set(List(), List(legacyBrowserCandidate), List({...preparedViewsCandidate, normalizedRequestId: "wrong"}, preparedViewsCandidate), List({...emptyCandidate, faults: Set(SuccessRead)}, preparedViewsCandidate))
 pure val handoffValues = Set({target: {viewId: "files", viewPath: AbsentViewPath, subview: ""}, handoffId: "handoff:1", clientId: "client-1", installationId: "install-1", delivered: false})
 pure val foundValues = Set(NoHandoff, parseCandidate(legacyBrowserCandidate), parseCandidate(preparedViewsCandidate), HandoffFailed({stage: SuccessRead}))
+pure val observationValues = Set(NotAnArray, ArrayCheckFailed, ArrayLengthFailed, ActionResults({candidates: List()}), ActionResults({candidates: List(legacyBrowserCandidate)}), ActionResults({candidates: List({...preparedViewsCandidate, normalizedRequestId: "wrong"}, preparedViewsCandidate)}), ActionResults({candidates: List(preparedViewsCandidate, {...emptyCandidate, faults: Set(SuccessRead)})}))
+pure val resultValues = Set(NoHandoff, HandoffFailed({stage: UriEncode}), parseCandidate(legacyBrowserCandidate), parseCandidate(preparedViewsCandidate))
 ```

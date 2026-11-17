@@ -42,3 +42,19 @@ pure def stepSnapshotsStable(before: PreHandlers, after: PreHandlers): bool = be
 pure def sometimesEmptyTextResultWins(s: PreHandlers): bool = s.drains.some(d => d.phase == DrainSucceeded and d.text == "")
 pure def sometimesCancellationAfterAwait(s: PreHandlers): bool = s.drains.some(d => d.phase == DrainAborted and d.cursor > 0)
 ```
+
+### Each drain ID names exactly one drain
+
+Every call to `drain` is its own run: it has its own snapshot, cursor and cancellation signal. The model gives each run one ID, so no two drains in the state share an ID.
+
+```quint
+pure def alwaysDrainIdsUnique(s: PreHandlers): bool = s.drains.every(d => s.drains.select(other => other.id == d.id).length() == 1)
+```
+
+### A drain that is about to run or is awaiting a handler has a handler at its cursor
+
+The drain loop only checks cancellation and awaits a handler while its snapshot has a handler left. An empty snapshot ends the drain at once, and a handler without a result lets the loop go on only if another handler follows.
+
+```quint
+pure def alwaysActiveDrainHasHandler(s: PreHandlers): bool = s.drains.every(d => (d.phase == BeforeHandler or d.phase == WaitingHandler) implies d.cursor < d.snapshot.length())
+```

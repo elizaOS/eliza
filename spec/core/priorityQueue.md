@@ -43,7 +43,7 @@ pure def sometimesPressureRejected(s: PriorityState): bool = s.hasPressure and s
 
 ### The next queue ticket stays positive
 
-Discovered by the proof: an empty queue with a nonpositive next ticket satisfied the bucket and uniqueness rules but assigned an invalid ticket on its next admission. The model occurrence serial starts at one, advances on each admission, and remains positive through every queue mutation. A well-formed queue satisfies all three queue invariants.
+The next ticket number is always positive. Tickets exist only in the model. They tell apart repeated enqueues of the same payload value. A well-formed queue satisfies the bucket rule, the ticket-uniqueness rule and this rule.
 
 ```quint
 pure def alwaysNextTicketIsPositive(s: PriorityState): bool = s.nextTicket > 0
