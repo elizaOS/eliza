@@ -185,7 +185,7 @@ effect function status(db: Client, env: GoogleEnv, account: string) {
     ? ["google.basic_identity", ...(connection.mail ? ["google.gmail.triage"] : []), ...(connection.calendar ? ["google.calendar.read"] : []), ...(connection.send_mail ? ["google.gmail.send"] : []), ...(connection.trash_mail ? ["google.gmail.trash"] : []), ...(connection.write_calendar ? ["google.calendar.write"] : [])]
     : []
   return body(200, {
-    provider: "google", side: "owner", mode: "cloud_managed", configured, connected: Boolean(connection),
+    accountId: account, provider: "google", side: "owner", mode: "cloud_managed", configured, connected: Boolean(connection),
     reason: connection ? "connected" : "disconnected", identity: connection ? { email: connection.email } : null,
     grantedCapabilities: capabilities, grantedScopes: connection ? selectedScopes(connection) : [], expiresAt: null,
     hasRefreshToken: Boolean(connection), connectionId: connection?.id ?? null,
