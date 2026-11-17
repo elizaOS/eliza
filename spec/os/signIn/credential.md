@@ -202,8 +202,8 @@ duty is dropped once its key has lapsed.
 ```quint
 pure val startAttempts = 1
 pure def canRevokeAnswered(s: DeviceCredential, version: int): bool = s.duties.some(d => d.version == version and d.tries > 0)
-pure def revokeAnswered(s: DeviceCredential, version: int, revocationConfirmed: bool): DeviceCredential =
-  { ...s, duties: if (revocationConfirmed) s.duties.select(d => d.version != version)
+pure def revokeAnswered(s: DeviceCredential, version: int, cloudAnswered: bool): DeviceCredential =
+  { ...s, duties: if (cloudAnswered) s.duties.select(d => d.version != version)
     else s.duties.listMap(d => if (d.version == version and d.tries > 0) { ...d, tries: d.tries - 1 } else d) }
 pure def canElapse(s: DeviceCredential, ms: Millis): bool = ms > 0
 pure def elapse(s: DeviceCredential, ms: Millis): DeviceCredential =
