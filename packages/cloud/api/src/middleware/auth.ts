@@ -232,6 +232,22 @@ function isPublicOutOfBandTokenPath(pathname: string, method = "GET"): boolean {
 }
 
 export function isPublicPath(pathname: string, method = "GET"): boolean {
+  if (
+    method === "GET" &&
+    (pathname === "/api/v1/app-auth/mobile/password-backup/readiness" ||
+      pathname === "/api/v1/app-auth/mobile/password-backup/readiness/")
+  ) {
+    return true;
+  }
+
+  if (
+    (pathname === "/api/v1/app-auth/mobile/password-backup" ||
+      pathname === "/api/v1/app-auth/mobile/password-backup/") &&
+    (method === "GET" || method === "PUT" || method === "DELETE")
+  ) {
+    return true;
+  }
+
   // This leaf proves the exact presented secret against primary storage,
   // including a tombstone after a lost response. Global active-key auth would
   // prevent that retry. No neighboring method or key-management route bypasses it.

@@ -236,6 +236,41 @@ public class PasswordVaultStore {
     }
   }
 
+  public static byte[] newBackupRecoveryKey() {
+    return PasswordBackupEnvelope.newKey();
+  }
+
+  public synchronized byte[] encryptBackup(String accountScope, byte[] recoveryKey) throws Exception {
+    if (policy == null) throw new IOException("Secure password storage is required");
+    byte[] snapshot = exportEntries().toString().getBytes(StandardCharsets.UTF_8);
+    try {
+      byte[] envelope = PasswordBackupEnvelope.seal(accountScope, recoveryKey, snapshot);
+      checkDevice();
+      return envelope;
+    } finally {
+      Arrays.fill(snapshot, (byte) 0);
+    }
+  }
+
+  public synchronized int restoreBackup(String accountScope, byte[] recoveryKey, byte[] envelope) throws Exception {
+    if (policy == null) throw new IOException("Secure password storage is required");
+    if (load().length() != 0) throw new IOException("Restore requires an empty password vault");
+    byte[] snapshot = PasswordBackupEnvelope.open(accountScope, recoveryKey, envelope);
+    try {
+      JSONArray incoming = new JSONArray(new String(snapshot, StandardCharsets.UTF_8));
+      JSONArray restored = new JSONArray();
+      for (int i = 0; i < incoming.length(); i++) {
+        JSONObject entry = incoming.getJSONObject(i);
+        putEntry(restored, null, entry.getString("label"), entry.getString("username"),
+          bindings(entry), entry.getString("password"));
+      }
+      if (restored.length() > 0) persist(restored);
+      return restored.length();
+    } finally {
+      Arrays.fill(snapshot, (byte) 0);
+    }
+  }
+
   public static String origin(String input) throws Exception {
     URI uri = new URI(input.trim());
     if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null || !(uri.getRawPath() == null || uri.getRawPath().isEmpty() || uri.getRawPath().equals("/")) || uri.getPort() < -1 || uri.getPort() > 65535) throw new IOException("Use an HTTPS website address without a path");

@@ -96,6 +96,12 @@ public abstract class CloudSignInPlugin extends Plugin {
   public final String code;
   SignInFailure(String code) { super(code); this.code = code; }
  }
+ protected interface NativePasswordBackupCallback {
+  void approved(CloudPasswordBackup.Approval approval) throws Exception;
+  void refused(String reason);
+ }
+ private record NativePasswordBackup(CloudPasswordBackup.Purpose purpose, NativePasswordBackupCallback callback) {}
+
  /** The one sign-in in progress. One at a time (the renderer's `login-active` rule). */
  private static final class Attempt {
   final String id = UUID.randomUUID().toString();
@@ -106,6 +112,7 @@ public abstract class CloudSignInPlugin extends Plugin {
   final String requestId;
   /** A code attempt holds a credential intent only once its code is sent (startEmail/startPhone). */
   volatile Runnable credentialGuard;
+  NativePasswordBackup passwordBackup;
   /** A parameterless return arrived: only a hint, since any app can send one. */
   volatile boolean cancelled, callbackReceived, browserLaunched, browserPaused, returnHint;
   /** Guarded by lock. The browser page was opened in the host's own task (any host that is not the Home app). */
@@ -662,12 +669,36 @@ public abstract class CloudSignInPlugin extends Plugin {
    attempt = next; next.waiting = call;
   }
   if ("browser".equals(config().googleSignInMode)) { startGoogleBrowser(next); return; }
+  startNativeGoogle(next);
+ }
+
+ protected final boolean startNativePasswordBackup(
+     CloudSignInEnvironment environment, CloudPasswordBackup.Purpose purpose, NativePasswordBackupCallback callback
+ ) {
+  final Attempt next;
+  synchronized (lock) {
+   if (destroyed || attempt != null || !backupDeviceReady() || !config().environments().contains(environment)) return false;
+   next = new Attempt(environment, true, null, () -> {});
+   next.passwordBackup = new NativePasswordBackup(java.util.Objects.requireNonNull(purpose), java.util.Objects.requireNonNull(callback));
+   attempt = next;
+  }
+  startNativeGoogle(next);
+  return true;
+ }
+
+ private boolean backupDeviceReady() {
+  android.app.KeyguardManager guard = getContext().getSystemService(android.app.KeyguardManager.class);
+  return guard != null && guard.isDeviceSecure() && !guard.isDeviceLocked();
+ }
+
+ private void startNativeGoogle(Attempt next) {
+  CloudSignInEnvironment environment = next.environment;
   next.googleVerifier = CloudSignInFlow.newVerifier();
   next.googleCancellation = new android.os.CancellationSignal();
   next.busy = true;
   run(() -> {
    try {
-    store().remove(config().pendingSlot);
+    if (next.passwordBackup == null) store().remove(config().pendingSlot);
     Response challenge = post(next, "/steward/auth/oauth/google/native/challenge", new JSONObject()
       .put("tenantId", environment.tenant).put("clientId", config().googleClientId)
       .put("codeChallenge", CloudSignInFlow.s256(next.googleVerifier)).put("codeChallengeMethod", "S256"), null);
@@ -683,12 +714,13 @@ public abstract class CloudSignInPlugin extends Plugin {
      if (attempt != next || next.cancelled) throw new SignInFailure("cancelled");
      next.googleChallengeId = challengeId; next.expiresAt = expiresAt;
     }
-    final String gmailClientId = gmailClientId(next);
+    final String gmailClientId = next.passwordBackup == null ? gmailClientId(next) : null;
     getActivity().runOnUiThread(() -> {
      synchronized (lock) { if (attempt != next || next.cancelled) return; }
      NativeGoogleCredential.request(getActivity(), clientId, nonce, next.googleCancellation, new NativeGoogleCredential.Callback() {
-      @Override public void failure(String code) { end(next, code, false); }
+      @Override public void failure(String code) { endNativeGoogle(next, code); }
       @Override public void token(String idToken, String account) {
+       if (next.passwordBackup != null) { run(() -> signInForPasswordBackup(next, idToken)); return; }
        if (gmailClientId == null) { run(() -> signInWithGoogle(next, idToken)); return; }
        NativeGoogleCredential.authorize(getActivity(), gmailClientId, account, config().googleScopes, next.googleCancellation, new NativeGoogleCredential.Authorization() {
         @Override public void code(String serverAuthCode) { next.gmailCode = serverAuthCode; run(() -> signInWithGoogle(next, idToken)); }
@@ -697,8 +729,8 @@ public abstract class CloudSignInPlugin extends Plugin {
       }
      });
     });
-   } catch (SignInFailure failure) { end(next, failure.code, false); }
-   catch (Exception unavailable) { end(next, "unavailable", false); }
+   } catch (SignInFailure failure) { endNativeGoogle(next, failure.code); }
+   catch (Exception unavailable) { endNativeGoogle(next, "unavailable"); }
   });
  }
  private String gmailClientId(Attempt next) {
@@ -741,6 +773,35 @@ public abstract class CloudSignInPlugin extends Plugin {
   } catch (SignInFailure failure) { end(next, failure.code, false); }
   catch (Exception unavailable) { end(next, "unavailable", false); }
  }
+ private void signInForPasswordBackup(Attempt next, String idToken) {
+  try {
+   synchronized (lock) { if (attempt != next || next.cancelled) throw new SignInFailure("cancelled"); }
+   if (System.currentTimeMillis() >= next.expiresAt) throw new SignInFailure("expired");
+   URI verify = URI.create(next.environment.api() + "/steward/auth/oauth/google/native/verify");
+   byte[] body = new JSONObject().put("tenantId", next.environment.tenant).put("clientId", config().googleClientId)
+     .put("challengeId", next.googleChallengeId).put("idToken", idToken).put("codeVerifier", next.googleVerifier)
+     .toString().getBytes(StandardCharsets.UTF_8);
+   Response verified;
+   try {
+    verified = response(fetch(verify, body, null, next, CloudSignInReadiness.REQUEST_TIMEOUT_MS, CloudSignInReadiness.REQUEST_TIMEOUT_MS));
+   } finally {
+    java.util.Arrays.fill(body, (byte) 0);
+   }
+   next.googleVerifier = null; next.googleChallengeId = null; next.googleCancellation = null;
+   CloudSignInFlow.GoogleFailure result = observeGoogleResponse(next, CloudSignInFlow.GoogleStage.VERIFY, verified);
+   if (verified.status != 200) throw new SignInFailure(result.code);
+   JSONObject session = verified.data.optJSONObject("data") != null && !verified.data.has("token") ? verified.data.optJSONObject("data") : verified.data;
+   completeNativePasswordBackup(next, session);
+  } catch (SignInFailure failure) { endNativeGoogle(next, failure.code); }
+  catch (Exception unavailable) { endNativeGoogle(next, "unavailable"); }
+ }
+
+ private void endNativeGoogle(Attempt current, String code) {
+  if (current.passwordBackup == null) { end(current, code, false); return; }
+  synchronized (lock) { current.cancel(); if (attempt != current) return; attempt = null; }
+  main.post(() -> current.passwordBackup.callback().refused(code));
+ }
+
  /** Observe only the already received native Google response; never persist provider text. */
  private CloudSignInFlow.GoogleFailure observeGoogleResponse(Attempt current, CloudSignInFlow.GoogleStage stage, Response response) {
   CloudSignInFlow.GoogleFailure outcome = CloudSignInFlow.googleFailure(stage, response.status, response.data.opt("ok"), response.data.opt("error"));
@@ -1221,7 +1282,6 @@ public abstract class CloudSignInPlugin extends Plugin {
   final AlertDialog[] shown = new AlertDialog[1];
   synchronized (lock) {
    if (attempt != current || current.cancelled || destroyed) throw new SignInFailure("cancelled");
-   if (current.authorized && System.currentTimeMillis() < current.expiresAt) return;
    current.authorized = false;
    current.authorizationDecision = decision;
   }
@@ -1232,8 +1292,15 @@ public abstract class CloudSignInPlugin extends Plugin {
     String product = config().productName, service = current.environment.serviceName;
     try {
      shown[0] = new AlertDialog.Builder(getActivity())
-      .setTitle("Authorize " + product)
-      .setMessage("Allow " + product + " to access your account with " + service + " and use its services on this device? You can sign out in Settings.")
+      .setTitle(current.passwordBackup == null ? "Authorize " + product : "Confirm password backup")
+      .setMessage(current.passwordBackup == null
+       ? "Allow " + product + " to access your account with " + service + " and use its services on this device? You can sign out in Settings."
+       : switch (current.passwordBackup.purpose()) {
+        case VERIFY -> "Confirm this is the account you use for this tablet’s saved passwords.";
+        case READ -> "Allow " + product + " to retrieve your encrypted password backup?";
+        case SAVE -> "Allow " + product + " to save an encrypted copy of your passwords? Keep your recovery key in a safe place.";
+        case DELETE -> "Allow " + product + " to remove your cloud backup? Passwords on this device will stay.";
+       })
       .setPositiveButton("Authorize", (dialog, which) -> {
        synchronized (lock) {
         if (attempt == current && !current.cancelled && !destroyed && System.currentTimeMillis() < current.expiresAt) current.authorized = true;
@@ -1245,6 +1312,10 @@ public abstract class CloudSignInPlugin extends Plugin {
       .create();
      shown[0].setCanceledOnTouchOutside(false);
      shown[0].show();
+     if (current.passwordBackup != null && shown[0].getWindow() != null) {
+      shown[0].getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+      shown[0].getButton(AlertDialog.BUTTON_POSITIVE).setFilterTouchesWhenObscured(true);
+     }
     } catch (RuntimeException unavailable) { decision.countDown(); }
    }
   });
@@ -1260,6 +1331,23 @@ public abstract class CloudSignInPlugin extends Plugin {
    main.post(() -> { if (shown[0] != null) shown[0].dismiss(); });
   }
  }
+ private void completeNativePasswordBackup(Attempt current, JSONObject session) throws Exception {
+  if (Boolean.TRUE.equals(session.opt("mfaRequired"))) throw new SignInFailure("backup-mfa-required");
+  String token = session.optString("token", null), refresh = session.optString("refreshToken", null);
+  if (!CloudSignInFlow.validStewardToken(token)) throw new SignInFailure("unavailable");
+  try {
+   requireAuthorization(current);
+   CloudPasswordBackup.Approval approval = CloudPasswordBackup.approve(
+     config(), current.environment, token, current.passwordBackup.purpose(),
+     () -> { synchronized (lock) { return !destroyed && !current.cancelled && attempt == current && backupDeviceReady(); } });
+   current.passwordBackup.callback().approved(approval);
+   synchronized (lock) { if (attempt == current) attempt = null; }
+  } finally {
+   try { JSONObject body = new JSONObject(); if (refresh != null && refresh.length() <= 16384) body.put("refreshToken", refresh); post(null, current.environment, "/steward/auth/logout", body, token); }
+   catch (Exception ignored) { /* Best effort; the session expires on its own. */ }
+  }
+ }
+
  private void completeOrRequireMfa(Attempt current, JSONObject session) throws Exception {
   if (Boolean.TRUE.equals(session.opt("mfaRequired"))) {
    if (current.mfaType != null) throw new SignInFailure("unavailable");
