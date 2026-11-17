@@ -1150,7 +1150,7 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   },
   {
     types: ["calendar_create_local"],
-    text: "For creation from Home use calendar_create_local and calendar.create.v1; the host derives original readable event details through Calendar and code converts the timezone; the phone resolves its default On this phone calendar and requires native confirmation.",
+    text: "For an explicit request to add an event to the phone's own calendar use calendar_create_local and calendar.create.v1; the host derives original readable event details through Calendar and code converts the timezone; the phone resolves its default On this phone calendar and requires native confirmation.",
   },
   {
     types: ["calendar_read_next"],
