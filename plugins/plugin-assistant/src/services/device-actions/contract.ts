@@ -513,8 +513,9 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       } catch {
         throw new DeviceActionError("Invalid browser destination");
       }
-      // A typed http:// address opens over HTTPS, like the address bar.
-      if (url.protocol === "http:") url.protocol = "https:";
+      // A typed http:// address opens over HTTPS, like the address bar. One
+      // that names a port is refused: that port serves plain HTTP.
+      if (url.protocol === "http:" && !url.port) url.protocol = "https:";
       if (url.protocol !== "https:" || url.username || url.password)
         throw new DeviceActionError(
           "Only HTTPS browser destinations are supported",

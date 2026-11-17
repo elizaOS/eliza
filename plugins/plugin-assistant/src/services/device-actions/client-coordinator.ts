@@ -24,6 +24,7 @@
 import { NOTES_LIST_FILTER_CAPABILITY } from "@elizaos/contracts";
 import {
   browserDestinationMatches,
+  browserSearchQueryMatches,
   directBrowserDestination,
   directBrowserSearchQuery,
 } from "@elizaos/contracts/browser-request-grounding";
@@ -1262,10 +1263,10 @@ export class DeviceActionCoordinator<
     // search words mentioned in prose.
     const allowed =
       operation.type === "browser_search"
-        ? directBrowserSearchQuery(
-            proof.text,
-            this.profile.assistantName,
-          )?.toLowerCase() === operation.query.toLowerCase()
+        ? browserSearchQueryMatches(
+            operation.query,
+            directBrowserSearchQuery(proof.text, this.profile.assistantName),
+          )
         : browserDestinationMatches(
             operation,
             directBrowserDestination(proof.text, this.profile.assistantName),

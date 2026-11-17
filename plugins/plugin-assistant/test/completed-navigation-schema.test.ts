@@ -476,4 +476,8 @@ it("offers each Browser control only with its own capability and validates its e
   expect(
     operation({ type: "browser_navigate", url: "http://example.com:80/a" }),
   ).toEqual({ type: "browser_navigate", url: "https://example.com/a" });
+  // A port typed with http:// serves plain HTTP, so it is refused.
+  expect(() =>
+    operation({ type: "browser_navigate", url: "http://example.com:8080/a" }),
+  ).toThrow("Only HTTPS browser destinations are supported");
 });

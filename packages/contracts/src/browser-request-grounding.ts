@@ -10,6 +10,7 @@ import { stripTrailingPunctuation } from "./strip-trailing-punctuation.ts";
 // The owner may say the assistant's name before a request ("Alpha, open
 // example.com"). The host passes that name; it is "Eliza" when none is given.
 // A typed http:// address is read as https://, like a browser address bar.
+// One that names a port is refused: that port serves plain HTTP.
 
 export const DEFAULT_ASSISTANT_NAME = "Eliza";
 
@@ -45,7 +46,7 @@ const EVERYDAY_COMMAND = String.raw`(?:take\s+me\s+to|pull\s+up|bring\s+up|show\
 // "web search <words>", "google <words>" or "look up <words>".
 const SEARCH_COMMAND = String.raw`(?:search(?:\s+(?:the\s+)?(?:web|internet)|\s+online|\s+google)?\s+for|web\s+search(?:\s+for)?|google|look\s+up)`;
 const SEARCH_SUFFIX =
-  /\s+(?:please|for\s+me|thanks|thank\s+you)[.,!?]*$|[.!?]+$/i;
+  /[\s,]+(?:please|for\s+me|thanks|thank\s+you)[.,!?]*$|[.,!?]+$/i;
 /** The longest web search query a device operation carries. */
 export const BROWSER_SEARCH_QUERY_MAX = 512;
 const SUFFIX =
@@ -251,7 +252,8 @@ export function groundBrowserDestination(
   });
   if (parsed.kind !== "url") return;
   const proposed = new URL(parsed.href);
-  if (proposed.protocol === "http:") proposed.protocol = "https:";
+  if (proposed.protocol === "http:" && !proposed.port)
+    proposed.protocol = "https:";
   if (proposed.protocol !== "https:") return;
   const host = proposed.hostname.replace(/^www\./, "");
   const typed = typedAddresses(userText, assistantName).filter(
@@ -319,10 +321,32 @@ export function directBrowserSearchQuery(
   if (unreadable(text)) return;
   const command = patterns(assistantName).search.exec(text.trim());
   if (!command) return;
-  let query = command[1].replace(SEARCH_SUFFIX, "").replace(/\s+/g, " ");
-  const quoted = /^(["'“‘])(.+)(["'”’])$/u.exec(query);
-  if (quoted && QUOTE_PAIRS[quoted[1]] === quoted[3]) query = quoted[2].trim();
+  // Polite words and closing punctuation can stack: "cats for me, please."
+  let query = command[1];
+  for (let rest = ""; rest !== query; query = query.replace(SEARCH_SUFFIX, ""))
+    rest = query;
+  query = unquoted(query.replace(/\s+/g, " "));
   return query && query.length <= BROWSER_SEARCH_QUERY_MAX ? query : undefined;
+}
+
+/** Whether a grounded search query is the strict whole-message search, letter
+ * case and one pair of quotes around it aside. */
+export function browserSearchQueryMatches(
+  query: string,
+  direct: string | undefined,
+): boolean {
+  return (
+    direct !== undefined &&
+    unquoted(query.trim()).toLowerCase() === direct.toLowerCase()
+  );
+}
+
+// The words inside one pair of matching quotes around the whole query.
+function unquoted(query: string): string {
+  const quoted = /^(["'“‘])(.+)(["'”’])$/u.exec(query);
+  return quoted && QUOTE_PAIRS[quoted[1]] === quoted[3]
+    ? quoted[2].trim()
+    : query;
 }
 
 /** The query to search the web for, taken from the words the user typed in
@@ -396,7 +420,7 @@ function webAddress(token: string): URL | undefined {
   const parsed = parseBrowserAddressInput(token, { defaultProtocol: "https:" });
   if (parsed.kind !== "url") return;
   const url = new URL(parsed.href);
-  if (url.protocol === "http:") url.protocol = "https:";
+  if (url.protocol === "http:" && !url.port) url.protocol = "https:";
   const labels = url.hostname.split(".");
   if (
     url.protocol !== "https:" ||

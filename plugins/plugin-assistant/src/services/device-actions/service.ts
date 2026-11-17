@@ -66,6 +66,7 @@ import {
 } from "./browser-contract.ts";
 import {
   browserDestinationMatches,
+  browserSearchQueryMatches,
   DeviceBrowserNotRequestedError,
   directBrowserDestination,
   directBrowserSearchQuery,
@@ -2402,10 +2403,13 @@ export class DeviceActionService {
             ),
           )
         : validated.type === "browser_search" &&
-          directBrowserSearchQuery(
-            requestOrigin?.requestText ?? "",
-            assistantName,
-          )?.toLowerCase() !== validated.query.toLowerCase();
+          !browserSearchQueryMatches(
+            validated.query,
+            directBrowserSearchQuery(
+              requestOrigin?.requestText ?? "",
+              assistantName,
+            ),
+          );
     const originMessageId = requestOrigin?.messageId;
     if (
       agenda &&

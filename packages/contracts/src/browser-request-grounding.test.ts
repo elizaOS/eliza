@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   authoredBrowserDestination,
   browserDestinationMatches,
+  browserSearchQueryMatches,
   containsWebAddress,
   directBrowserDestination,
   directBrowserSearchQuery,
@@ -1063,6 +1064,19 @@ describe("a typed http:// address", () => {
     expect(directBrowserDestination(text)).toBe(expected);
   });
   it.each([
+    "open http://example.com:8080/status",
+    "open http://example.com:0",
+    "http://example.com:8443",
+  ])(
+    "refuses a plain-HTTP port instead of opening it over HTTPS: %s",
+    (text) => {
+      expect(directBrowserDestination(text)).toBeUndefined();
+      expect(
+        groundBrowserDestination(text, text.replace(/^open /, "")),
+      ).toBeUndefined();
+    },
+  );
+  it.each([
     ["open http://example.com", "http://example.com"],
     ["open http://example.com", "https://example.com"],
     ["open youtube.com", "http://youtube.com"],
@@ -1075,12 +1089,28 @@ describe("a typed http:// address", () => {
 
 describe("web search query", () => {
   it.each([
+    ['search for "cats"', '"cats"', true],
+    ["search for pizza, please", "Pizza", true],
+    ["search for cats", '"dogs"', false],
+    ["tell me about cats", "cats", false],
+  ])(
+    "matches the direct search, quotes aside: %s -> %s",
+    (text, query, direct) => {
+      expect(
+        browserSearchQueryMatches(query, directBrowserSearchQuery(text)),
+      ).toBe(direct);
+    },
+  );
+  it.each([
     ["search for best pizza near me", "best pizza near me"],
     ["Search the web for Rust 2.0 release date.", "Rust 2.0 release date"],
     ["please search online for  cheap   flights", "cheap flights"],
     ["Hey Eliza, look up the capital of Peru please", "the capital of Peru"],
     ["google how tall is K2?", "how tall is K2"],
     ['web search "exact phrase"', "exact phrase"],
+    ["search for cats for me please", "cats"],
+    ["search for pizza, please", "pizza"],
+    ["look up K2, thanks!", "K2"],
     ["search for", undefined],
     ["can you search for cats", undefined],
     ["The page says search for cats", undefined],
