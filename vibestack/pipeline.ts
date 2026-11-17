@@ -146,7 +146,7 @@ export async function check(root: string, accept: false | "reviews" | "unproved"
 }
 
 /**
- * The proof stage, run while the typecheck does: what it reports, in order, and the proposed ledger if it passes.
+ * The proof stage, run while the simulations and the typechecks do: what it reports, in order, and the proposed ledger if it passes.
  */
 async function proofStage(root: string, memory: Memory, specs: Spec[], models: Model[], srcFiles: SrcFile[], accepted: Record<string, Accepted | undefined>, accept: false | "reviews" | "unproved"): Promise<{ results: Result[]; ledger?: Record<string, Accepted> }> {
   const results: Result[] = [];
@@ -325,9 +325,23 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
     simulated.catch(() => {}); // a failure is reported in its turn, not as an unhandled rejection
     simulations.push({ spec, model, domain, simulated });
   }
+  /** A result about an owner's code names its package; the root's own reads as it always has. */
+  const within = (dir: string, r: Result): Result => (dir ? { ...r, summary: `${dir.slice(0, -1)}: ${r.summary}`, where: dir.slice(0, -1) } : r);
+  const result = ([ok, stage, summary, detail = "", where]: Reported): Result => ({ ok, stage, summary, detail: ok ? "" : detail, ...(where ? { where } : {}) });
+  const restates = "a stage above failed, and their failures would only restate it";
+  let ledger: Record<string, Accepted> | undefined;
   // None is left writing into gen/ when the check goes on or returns.
+  const running: Promise<unknown>[] = simulations.map((s) => s.simulated);
   try {
     mirrorGen(root, specs);
+    // The typechecks and the proofs read only what generation wrote, so they run while the simulations do; after a
+    // failed simulation they finish unreported. VibeLang's compiler checks `.vibe`, `.ts` and `.tsx` as one program.
+    // Each of the root and the owners is a program of its own, checked against its own gen/.
+    const started = allOk ? {
+      typechecks: dirs.map(async (dir) => fs.existsSync(path.join(root, dir, "tsconfig.json")) ? typecheck(memory, root, dir) : undefined),
+      proving: proofStage(root, memory, specs, models, srcFiles, lock.unproved, accept),
+    } : undefined;
+    if (started) for (const p of [...started.typechecks, started.proving]) running.push(p.catch(() => {}));
     for (const { spec, model, domain, simulated } of simulations) {
       const { said, tested } = await simulated;
       if (tested) machines.set(model.name, { domain, model, found: tested });
@@ -336,45 +350,35 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
       const notRun = (["sometimes", "replay"] as const).filter((s) => !ran.has(s) && (s !== "sometimes" || model.sometimes.length));
       if (notRun.length && said.some((r) => !r.ok)) skip(`${notRun.join(" and ")} of ${spec.file}`, "simulation stopped at the failure above");
     }
-  } finally {
-    await Promise.allSettled(simulations.map((s) => s.simulated));
-  }
-  /** A result about an owner's code names its package; the root's own reads as it always has. */
-  const within = (dir: string, r: Result): Result => (dir ? { ...r, summary: `${dir.slice(0, -1)}: ${r.summary}`, where: dir.slice(0, -1) } : r);
-  const result = ([ok, stage, summary, detail = "", where]: Reported): Result => ({ ok, stage, summary, detail: ok ? "" : detail, ...(where ? { where } : {}) });
-  const restates = "a stage above failed, and their failures would only restate it";
-  let ledger: Record<string, Accepted> | undefined;
 
-  if (!allOk) skip("types, proof, tests, traces and explore", restates);
-  else {
-    // The typecheck runs while the proofs do; it is reported first.
-    // VibeLang's compiler checks `.vibe`, `.ts` and `.tsx` as one program.
-    // Each of the root and the owners is a program of its own, checked against its own gen/.
-    const typechecks = dirs.map(async (dir) => fs.existsSync(path.join(root, dir, "tsconfig.json")) ? typecheck(memory, root, dir) : undefined);
-    const proving = proofStage(root, memory, specs, models, srcFiles, lock.unproved, accept);
-    // A missing or unexecutable compiler must not release the project lock while proofs still write into gen/.
-    const typesResults = await Promise.allSettled(typechecks);
-    for (const [i, dir] of dirs.entries()) {
-      const result = typesResults[i];
-      const types = (ok: boolean, summary: string, detail = "") => report(within(dir, { ok, stage: "types", summary, detail: ok ? "" : detail, where: "src/ and test/" }));
-      if (result.status === "rejected") types(false, "the VibeLang compiler could not run", indent(String(result.reason)));
-      else if (result.value) types(result.value.ok, result.value.ok ? "application typechecks against the generated contract" : "application does not fit the generated contract", indent(result.value.out.trim()));
+    if (!started || !allOk) skip("types, proof, tests, traces and explore", restates);
+    else {
+      // The typechecks are reported first.
+      const typesResults = await Promise.allSettled(started.typechecks);
+      for (const [i, dir] of dirs.entries()) {
+        const result = typesResults[i];
+        const types = (ok: boolean, summary: string, detail = "") => report(within(dir, { ok, stage: "types", summary, detail: ok ? "" : detail, where: "src/ and test/" }));
+        if (result.status === "rejected") types(false, "the VibeLang compiler could not run", indent(String(result.reason)));
+        else if (result.value) types(result.value.ok, result.value.ok ? "application typechecks against the generated contract" : "application does not fit the generated contract", indent(result.value.out.trim()));
+        else {
+          const code = ["src", "test"].filter((d) => fs.existsSync(path.join(root, dir, d)));
+          types(!code.length, code.length ? `${code.join(" and ")} exist but there is no tsconfig.json, so nothing checks them against the generated contract; run \`spec init\` to add one` : "skipped: there is no tsconfig.json and no src/ or test/");
+        }
+      }
+      const proofs = await started.proving;
+      proofs.results.forEach(report);
+      ledger = proofs.ledger;
+      if (!allOk) skip("tests, traces and explore", restates);
       else {
-        const code = ["src", "test"].filter((d) => fs.existsSync(path.join(root, dir, d)));
-        types(!code.length, code.length ? `${code.join(" and ")} exist but there is no tsconfig.json, so nothing checks them against the generated contract; run \`spec init\` to add one` : "skipped: there is no tsconfig.json and no src/ or test/");
+        for (const dir of dirs) for (const r of await tests(root, dir, specs, (key, ran, keep) => remembered(memory, entry(root, "tests", [dir, key]), ran, keep), mode, memory.fresh)) report(within(dir, result(r)));
+        for (const dir of dirs) for (const r of await conformance(path.join(root, dir), machines, scripts.get(dir)!, (key, ran, keep) => remembered(memory, entry(root, "traces", [dir, key]), ran, keep), wrote, mode)) report(within(dir, result(r)));
+        for (const dir of dirs) for (const r of await explore(path.join(root, dir), (key, ran, keep) => remembered(memory, entry(root, "explore", [dir, key]), ran, keep), mode, root)) report(within(dir, result(r)));
+        // Every stage ran, so every entry still in use was read or written.
+        collectGarbage(memory);
       }
     }
-    const proofs = await proving;
-    proofs.results.forEach(report);
-    ledger = proofs.ledger;
-    if (!allOk) skip("tests, traces and explore", restates);
-    else {
-      for (const dir of dirs) for (const r of await tests(root, dir, specs, (key, ran, keep) => remembered(memory, entry(root, "tests", [dir, key]), ran, keep), mode, memory.fresh)) report(within(dir, result(r)));
-      for (const dir of dirs) for (const r of await conformance(path.join(root, dir), machines, scripts.get(dir)!, (key, ran, keep) => remembered(memory, entry(root, "traces", [dir, key]), ran, keep), wrote, mode)) report(within(dir, result(r)));
-      for (const dir of dirs) for (const r of await explore(path.join(root, dir), (key, ran, keep) => remembered(memory, entry(root, "explore", [dir, key]), ran, keep), mode, root)) report(within(dir, result(r)));
-      // Every stage ran, so every entry still in use was read or written.
-      collectGarbage(memory);
-    }
+  } finally {
+    await Promise.allSettled(running);
   }
 
   // A spec that is not a valid model has nothing to reconcile yet. Everything is recorded at once, or nothing is.
