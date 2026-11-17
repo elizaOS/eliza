@@ -186,6 +186,31 @@ it("forks before an edited user message and preserves the original after restart
     );
     expect(foreign.status).toBe(409);
     const initialCount = state.conversations.size;
+    const interruptedRequest = { messageId: ids[2], requestId: randomUUID() };
+    const failure = vi
+      .spyOn(runtime, "createMemories")
+      .mockRejectedValueOnce(new Error("Interrupted branch copy"));
+    const interrupted = await call(
+      state,
+      "POST",
+      `/api/conversations/${source.id}/fork`,
+      interruptedRequest,
+    );
+    expect(interrupted.status).toBe(409);
+    failure.mockRestore();
+    state.conversations.clear();
+    await restoreConversationsFromDb(runtime, state);
+    expect(state.conversations.size).toBe(initialCount);
+    const repaired = await call(
+      state,
+      "POST",
+      `/api/conversations/${source.id}/fork`,
+      interruptedRequest,
+    );
+    expect(repaired.status).toBe(200);
+    const repairedId = (repaired.payload as { conversation: { id: string } })
+      .conversation.id;
+    expect(state.conversations.has(repairedId)).toBe(true);
     const request = { messageId: ids[2], requestId: randomUUID() };
     const response = await call(
       state,
@@ -202,7 +227,7 @@ it("forks before an edited user message and preserves the original after restart
       limit: 20,
     });
     expect(originals).toHaveLength(4);
-    expect(state.conversations.size).toBe(initialCount + 1);
+    expect(state.conversations.size).toBe(initialCount + 2);
     const copied = await runtime.getMemories({
       roomId: fork.roomId,
       tableName: "messages",
