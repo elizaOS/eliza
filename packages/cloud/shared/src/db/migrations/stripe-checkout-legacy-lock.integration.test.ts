@@ -145,9 +145,13 @@ realPostgres("0261 legacy Stripe quarantine tenant lock", () => {
         'cs_stale', 'pi_stale', '${ORG_B}', '${USER_A}', 'cus_b', 500,
         'usd', 'test', '{}'
       )`);
+      const observedStaleInsert = staleInsert.then(
+        () => null,
+        (error: Error) => error,
+      );
       await waitUntilBlocked(observer, contenderPid);
       await holder.query("COMMIT");
-      await expect(staleInsert).rejects.toThrow(/user organization mismatch/i);
+      expect((await observedStaleInsert)?.message).toMatch(/user organization mismatch/i);
       await contender.query("ROLLBACK");
       const staleRows = await observer.query<{ count: string }>(
         "SELECT count(*)::text AS count FROM stripe_checkout_legacy_quarantine " +
