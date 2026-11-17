@@ -1,0 +1,44 @@
+// spec/agent/host/launch.md, "Text goes to the owner's cloud account, the owner's own key, or nowhere"
+import { type Plugin, type GenerateTextParams, ModelType } from "@elizaos/core"
+import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import type { LaunchDocument, LaunchFrame } from "./launch.schema.vibe"
+
+type Model = Extract<LaunchDocument["model"], { backend: "cloud" }>
+type Credential = NonNullable<LaunchFrame["credential"]>["value"]
+error CloudModelUnavailable
+
+schema Choice { message: { content: string } }
+const Completion = Schema.Struct({ choices: Schema.Array(Choice).check(Schema.isMinLength(1)) })
+const decode = Schema.decodeUnknownEffect(Completion)
+
+effect function complete(model: Model, credential: Credential, name: string, params: GenerateTextParams) {
+  const messages = params.messages ?? (params.prompt ? [{ role: "user", content: params.prompt }] : [])
+  const textMessages = messages.flatMap((message) => typeof message.content === "string"
+    ? [{ role: message.role, content: message.content }]
+    : [])
+  const conversation = params.system ? [{ role: "system", content: params.system }, ...textMessages] : textMessages
+  const body = try Effect.try({ try: () => JSON.stringify({ model: name, messages: conversation, stream: false, max_tokens: params.maxTokens ?? 1024 }), catch: () => new CloudModelUnavailable() })
+  const request = HttpClientRequest.bodyText(HttpClientRequest.setHeader(
+    HttpClientRequest.post(model.cloudBaseUrl + "/api/v1/chat/completions"),
+    "authorization", "Bearer " + Redacted.value(credential),
+  ), body, "application/json")
+  const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" })
+  const result = timeout(response, "90 seconds") catch effect () => { throw new CloudModelUnavailable() }
+  if (result.status < 200 || result.status >= 300) throw new CloudModelUnavailable()
+  const raw = timeout(result.json, "20 seconds") catch effect () => { throw new CloudModelUnavailable() }
+  const decoded = decode(raw) catch effect () => { throw new CloudModelUnavailable() }
+  const first = decoded.choices[0]?.message.content
+  if (first === undefined || first.trim() === "") throw new CloudModelUnavailable()
+  return first
+}
+
+export function cloudModel(model: Model, credential: Credential): Plugin {
+  return {
+    name: "@elizaos/agent/cloud",
+    description: "Use only this device account's admitted Cloud model.",
+    models: {
+      [ModelType.TEXT_SMALL]: (_runtime, params) => Effect.runPromise(Effect.provide(complete(model, credential, model.smallModel, params), FetchHttpClient.layer), { signal: params.signal }),
+      [ModelType.TEXT_LARGE]: (_runtime, params) => Effect.runPromise(Effect.provide(complete(model, credential, model.largeModel, params), FetchHttpClient.layer), { signal: params.signal }),
+    },
+  }
+}
