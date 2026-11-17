@@ -1,0 +1,349 @@
+// spec/core/pairing.md, "Each request lookup selects the exact oldest live row for the normalized code"; spec/core/pairing.md, "A retained grant is captured before deletion of that request's ID"; spec/core/pairingAdmission.md, "One read-check-write admission owns the captured row and exact payload"; spec/core/pairingReplies.md, "A live retained claim suppresses a reply and expired claims can rearm it"; spec/core/pairingGrants.md, "Both owner and grant-key indexes identify the same complete row"
+import { randomUuid } from "../utils/uuid.vibe"
+import { compareMemoryIds } from "../database.vibe"
+import { asLegacy, foreign, foreignSync, runDetached } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import {
+  type ApprovePairingParams,
+  type ApprovePairingResult,
+  DEFAULT_PAIRING_CONFIG,
+  normalizePairingPageOptions,
+  PAIRING_CODE_ALPHABET,
+  type PairingAllowlistEntry,
+  type PairingChannel,
+  type PairingConfig,
+  type PairingPage,
+  type PairingPageOptions,
+  type PairingRequest,
+  type UpsertPairingRequestParams,
+  type UpsertPairingRequestResult,
+} from "../types/pairing.vibe"
+import { asUUID } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { Service, ServiceType } from "../types/service.vibe"
+import { stringToUuid } from "../utils/string-to-uuid.vibe"
+
+module node {
+  /** @throws {never} */
+  export function secureRandomByte(): number | undefined {
+    const cryptoObj = (globalThis as { crypto?: Crypto }).crypto
+    if (typeof cryptoObj?.getRandomValues !== "function") return undefined
+    return cryptoObj.getRandomValues(new Uint8Array(1))[0]
+  }
+}
+import { secureRandomByte } from node
+
+const MAX_PAIRING_REPLY_CLAIMS = 4096
+
+export error UniqueCodeExhausted { message: string }
+
+interface Pairing {
+  readonly config: Required<PairingConfig>
+  readonly admission: Semaphore.Semaphore
+}
+
+effect function generateCode(pairing: Pairing) {
+  const alphabetLength = PAIRING_CODE_ALPHABET.length
+  const maxUnbiasedByte = 256 - (256 % alphabetLength)
+  let code = ""
+  while (code.length < pairing.config.codeLength) {
+    const value = secureRandomByte()
+    if (value === undefined) {
+      throw new ElizaError("Pairing code generation requires a cryptographically secure random source", {
+        code: "PAIRING_CSPRNG_UNAVAILABLE",
+      })
+    }
+    if (value >= maxUnbiasedByte) continue
+    code += PAIRING_CODE_ALPHABET[value % alphabetLength]
+  }
+  return code
+}
+
+effect function generateUniqueCode(pairing: Pairing, existingRequests: PairingRequest[]) {
+  const existingCodes = new Set(existingRequests.map((r) => r.code.toUpperCase()))
+  for (let attempt = 0; attempt < 500; attempt++) {
+    const code = try generateCode(pairing)
+    if (!existingCodes.has(code)) return code
+  }
+  throw new UniqueCodeExhausted({ message: "Failed to generate unique pairing code after 500 attempts" })
+}
+
+function isExpiredAt(pairing: Pairing, request: PairingRequest, now: number): boolean {
+  const createdAt = request.createdAt instanceof Date
+    ? request.createdAt.getTime()
+    : new Date(request.createdAt).getTime()
+  return now - createdAt > pairing.config.requestTtlMs
+}
+
+effect function cleanupExpiredRequests(runtime: IAgentRuntime, pairing: Pairing, requests: PairingRequest[]) {
+  const now = Date.now()
+  const validRequests: PairingRequest[] = []
+  const expiredIds: PairingRequest["id"][] = []
+  for (const request of requests) {
+    if (isExpiredAt(pairing, request, now)) expiredIds.push(request.id)
+    else validRequests.push(request)
+  }
+  if (expiredIds.length > 0) {
+    const deletions = try foreignSync(() => expiredIds.map((id) => runtime.deletePairingRequest(id)))
+    const cleanup = effect {
+      forEach(deletions, (deletion) => foreign(() => deletion), { concurrency: "unbounded", discard: true }) catch ({ cause }) => {
+        runtime.reportError("PairingService.expiredCleanup", cause, { requestCount: expiredIds.length })
+        runtime.logger.warn({ src: "service:pairing", error: cause }, "Failed to clean up expired pairing requests")
+      }
+    }
+    try forkDetach(Effect.catchCause(cleanup, (cause) => sync(() => {
+      void Promise.reject(Cause.squash(cause))
+    })), { startImmediately: true })
+  }
+  return validRequests
+}
+
+function newestFirst<T extends { createdAt: Date; id: PairingRequest["id"] }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const timeDifference = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    return timeDifference !== 0 ? timeDifference : compareMemoryIds(b.id, a.id)
+  })
+}
+
+function localPage<T extends { createdAt: Date; id: PairingRequest["id"] }>(
+  items: T[],
+  limit: number,
+  offset: number,
+): PairingPage<T> {
+  const page = newestFirst(items).slice(offset, offset + limit + 1)
+  const hasMore = page.length > limit
+  return { items: page.slice(0, limit), limit, offset, hasMore, nextOffset: hasMore ? offset + limit : null }
+}
+
+effect function listPendingRequests(runtime: IAgentRuntime, pairing: Pairing, channel: PairingChannel) {
+  const [result] = try foreign(() => runtime.getPairingRequests([{ channel, agentId: runtime.agentId }]))
+  const validRequests = try cleanupExpiredRequests(runtime, pairing, result.requests)
+  return validRequests.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+}
+
+effect function listPendingRequestsPage(
+  runtime: IAgentRuntime,
+  pairing: Pairing,
+  channel: PairingChannel,
+  options: PairingPageOptions,
+) {
+  const { limit, offset } = try normalizePairingPageOptions(options)
+  const now = Date.now()
+  const [result] = try foreign(() =>
+    runtime.getPairingRequests([{
+      channel,
+      agentId: runtime.agentId,
+      limit,
+      offset,
+      order: "newest",
+      createdAfter: new Date(now - pairing.config.requestTtlMs),
+    }])
+  )
+  const validRequests = (result?.requests ?? []).filter((request) => !isExpiredAt(pairing, request, now))
+  if (result?.pageInfo) return { items: newestFirst(validRequests), ...result.pageInfo }
+  return localPage(validRequests, limit, offset)
+}
+
+effect function upsertRequestSerial(runtime: IAgentRuntime, pairing: Pairing, params: UpsertPairingRequestParams) {
+  const { channel, senderId, metadata } = params
+  const now = new Date()
+  const existingRequests = try listPendingRequests(runtime, pairing, channel)
+  const existingRequest = existingRequests.find((r) => r.senderId === senderId)
+  if (existingRequest) {
+    const updatedRequest: PairingRequest = {
+      ...existingRequest,
+      lastSeenAt: now,
+      metadata: metadata ?? existingRequest.metadata,
+    }
+    try foreign(() => runtime.updatePairingRequest(updatedRequest))
+    return { code: existingRequest.code, created: false, request: updatedRequest }
+  }
+  if (existingRequests.length >= pairing.config.maxPendingRequests) {
+    runtime.logger.warn(
+      { src: "service:pairing", channel, senderId, maxPendingRequests: pairing.config.maxPendingRequests },
+      "Rejecting pairing request: pending queue is full",
+    )
+    return { code: "", created: false, request: undefined }
+  }
+  const code = try generateUniqueCode(pairing, existingRequests)
+  const newRequest: PairingRequest = {
+    id: try asUUID(randomUuid()),
+    channel,
+    senderId,
+    code,
+    createdAt: now,
+    lastSeenAt: now,
+    metadata,
+    agentId: runtime.agentId,
+  }
+  try foreign(() => runtime.createPairingRequest(newRequest))
+  runtime.logger.info({ src: "service:pairing", channel, senderId, code }, "Created new pairing request")
+  return { code, created: true, request: newRequest }
+}
+
+effect function upsertRequest(runtime: IAgentRuntime, pairing: Pairing, params: UpsertPairingRequestParams) {
+  return try pairing.admission.withPermit(effect {
+    try yieldNow
+    return try upsertRequestSerial(runtime, pairing, params)
+  })
+}
+
+effect function approveCode(runtime: IAgentRuntime, pairing: Pairing, params: ApprovePairingParams) {
+  const { channel, code } = params
+  const normalizedCode = code.trim().toUpperCase()
+  if (!normalizedCode) return null
+  const requests = try listPendingRequests(runtime, pairing, channel)
+  const request = requests.find((r) => r.code.toUpperCase() === normalizedCode)
+  if (!request) return null
+  const allowlistEntry = try addToAllowlist(runtime, channel, request.senderId, request.metadata)
+  try foreign(() => runtime.deletePairingRequest(request.id))
+  runtime.logger.info(
+    { src: "service:pairing", channel, senderId: request.senderId },
+    "Approved pairing request, added to allowlist",
+  )
+  return { senderId: request.senderId, request, allowlistEntry }
+}
+
+effect function getAllowlist(runtime: IAgentRuntime, channel: PairingChannel) {
+  const [result] = try foreign(() => runtime.getPairingAllowlists([{ channel, agentId: runtime.agentId }]))
+  return result.entries
+}
+
+effect function getAllowlistPage(runtime: IAgentRuntime, channel: PairingChannel, options: PairingPageOptions) {
+  const { limit, offset } = try normalizePairingPageOptions(options)
+  const [result] = try foreign(() =>
+    runtime.getPairingAllowlists([{ channel, agentId: runtime.agentId, limit, offset, order: "newest" }])
+  )
+  if (result?.pageInfo) return { items: newestFirst(result.entries), ...result.pageInfo }
+  return localPage(result?.entries ?? [], limit, offset)
+}
+
+effect function isAllowed(runtime: IAgentRuntime, channel: PairingChannel, senderId: string) {
+  const allowlist = try getAllowlist(runtime, channel)
+  return allowlist.some((entry) => entry.senderId === senderId)
+}
+
+effect function addToAllowlist(
+  runtime: IAgentRuntime,
+  channel: PairingChannel,
+  senderId: string,
+  metadata?: Record<string, string>,
+) {
+  const existingEntry = (try getAllowlist(runtime, channel)).find((e) => e.senderId === senderId)
+  if (existingEntry) return existingEntry
+  const entry: PairingAllowlistEntry = {
+    id: try stringToUuid(JSON.stringify(["allowlist", runtime.agentId, channel, senderId])),
+    channel,
+    senderId,
+    createdAt: new Date(),
+    agentId: runtime.agentId,
+    metadata,
+  }
+  try foreign(() => runtime.createPairingAllowlistEntry(entry))
+  const persisted = (try getAllowlist(runtime, channel)).find((candidate) => candidate.senderId === senderId)
+  if (!persisted) {
+    throw new ElizaError("Pairing grant was not retained in storage", {
+      code: "PAIRING_ALLOWLIST_NOT_RETAINED",
+    })
+  }
+  runtime.logger.info({ src: "service:pairing", channel, senderId }, "Added sender to allowlist")
+  return persisted
+}
+
+effect function removeFromAllowlist(runtime: IAgentRuntime, channel: PairingChannel, senderId: string) {
+  const entry = (try getAllowlist(runtime, channel)).find((e) => e.senderId === senderId)
+  if (!entry) return false
+  try foreign(() => runtime.deletePairingAllowlistEntry(entry.id))
+  runtime.logger.info({ src: "service:pairing", channel, senderId }, "Removed sender from allowlist")
+  return true
+}
+
+export class PairingService extends Service {
+  static serviceType = ServiceType.PAIRING
+  capabilityDescription = "Manages secure DM access via pairing codes for messaging channels"
+
+  private readonly pairing: Pairing
+
+  private readonly pairingReplyClaims = new Map<string, number>()
+
+  constructor(runtime: IAgentRuntime, config?: PairingConfig) {
+    super(runtime)
+    this.pairing = { config: { ...DEFAULT_PAIRING_CONFIG, ...config }, admission: Semaphore.makeUnsafe(1) }
+  }
+
+  static async start(runtime: IAgentRuntime): Promise<Service> {
+    runtime.logger.info({ src: "service:pairing", agentId: runtime.agentId }, "Starting pairing service")
+    return new PairingService(runtime)
+  }
+
+  async stop(): Promise<void> {
+    this.runtime.logger.info({ src: "service:pairing", agentId: this.runtime.agentId }, "Stopping pairing service")
+  }
+
+  async listPendingRequests(channel: PairingChannel): Promise<PairingRequest[]> {
+    return runDetached(listPendingRequests(this.runtime, this.pairing, channel))
+  }
+
+  async listPendingRequestsPage(
+    channel: PairingChannel,
+    options: PairingPageOptions = {},
+  ): Promise<PairingPage<PairingRequest>> {
+    return runDetached(asLegacy(RangeError, listPendingRequestsPage(this.runtime, this.pairing, channel, options)))
+  }
+
+  claimPairingReply(channel: PairingChannel, senderId: string): boolean {
+    const now = Date.now()
+    const ttl = this.pairing.config.requestTtlMs
+    const claims = this.pairingReplyClaims
+    const key = JSON.stringify([channel, senderId])
+    const claimedAt = claims.get(key)
+    if (claimedAt !== undefined && now - claimedAt < ttl) return false
+    if (claims.size >= MAX_PAIRING_REPLY_CLAIMS) {
+      for (const [claimKey, claimedAtMs] of claims) {
+        if (now - claimedAtMs >= ttl) claims.delete(claimKey)
+      }
+      while (claims.size >= MAX_PAIRING_REPLY_CLAIMS) {
+        const oldest = claims.keys().next().value
+        if (oldest === undefined) break
+        claims.delete(oldest)
+      }
+    }
+    claims.set(key, now)
+    return true
+  }
+
+  async upsertRequest(params: UpsertPairingRequestParams): Promise<UpsertPairingRequestResult> {
+    return runDetached(asLegacy(Error, upsertRequest(this.runtime, this.pairing, params), ElizaError))
+  }
+
+  async approveCode(params: ApprovePairingParams): Promise<ApprovePairingResult | null> {
+    return runDetached(approveCode(this.runtime, this.pairing, params))
+  }
+
+  async getAllowlist(channel: PairingChannel): Promise<PairingAllowlistEntry[]> {
+    return runDetached(getAllowlist(this.runtime, channel))
+  }
+
+  async getAllowlistPage(
+    channel: PairingChannel,
+    options: PairingPageOptions = {},
+  ): Promise<PairingPage<PairingAllowlistEntry>> {
+    return runDetached(asLegacy(RangeError, getAllowlistPage(this.runtime, channel, options)))
+  }
+
+  async isAllowed(channel: PairingChannel, senderId: string): Promise<boolean> {
+    return runDetached(isAllowed(this.runtime, channel, senderId))
+  }
+
+  async addToAllowlist(
+    channel: PairingChannel,
+    senderId: string,
+    metadata?: Record<string, string>,
+  ): Promise<PairingAllowlistEntry> {
+    return runDetached(addToAllowlist(this.runtime, channel, senderId, metadata))
+  }
+
+  async removeFromAllowlist(channel: PairingChannel, senderId: string): Promise<boolean> {
+    return runDetached(removeFromAllowlist(this.runtime, channel, senderId))
+  }
+}

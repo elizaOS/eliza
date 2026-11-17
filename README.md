@@ -10,7 +10,8 @@ Start with [the package specifications](spec/index.md),
 The source baseline is Eliza commit
 `72fed7e4069ecd35d61d886ab6eec5c02c137517`. The orphan `vibestack` branch
 starts from elizaOS/eliza-vibestack commit
-`71d7b30f404b91d7ec48741ac288d6c8d911f3e2`.
+`71d7b30f404b91d7ec48741ac288d6c8d911f3e2`; its toolchain is merged from
+lalalune/vibestack commit `fd4f726016c0e2b465bc6dc7a02abebc0c2e0fb3`.
 
 The vendored Vibestack toolchain is synchronized with upstream commit
 `fd4f726016c0e2b465bc6dc7a02abebc0c2e0fb3`.

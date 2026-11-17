@@ -1,0 +1,221 @@
+// spec/core/protocols.md, "A public value retains identity and explicitly declared version"
+import { thrown } from "./edge.vibe"
+import type { Transcript, TranscriptSegment } from "./transcripts.vibe"
+
+export type MeetingPlatform = "google_meet" | "teams" | "zoom" | "discord"
+
+export const MEETING_PLATFORMS: readonly MeetingPlatform[] = [
+  "google_meet",
+  "teams",
+  "zoom",
+  "discord",
+]
+
+export type MeetingSessionStatus =
+  | "requested"
+  | "joining"
+  | "awaiting_admission"
+  | "active"
+  | "leaving"
+  | "ended"
+  | "failed"
+
+export type MeetingEndReason =
+  | "normal_completion"
+  | "requested_stop"
+  | "duration_cap_reached"
+  | "ended_due_to_spend_cap"
+  | "removed_by_admin"
+  | "left_alone_timeout"
+  | "startup_alone_timeout"
+  | "admission_timeout"
+  | "admission_rejected"
+  | "join_failed"
+  | "error"
+
+export interface MeetingAutoLeaveConfig {
+  waitingRoomTimeoutMs: number
+
+  noOneJoinedTimeoutMs: number
+
+  everyoneLeftTimeoutMs: number
+}
+
+export const DEFAULT_MEETING_AUTO_LEAVE: MeetingAutoLeaveConfig = {
+  waitingRoomTimeoutMs: 5 * 60 * 1000,
+  noOneJoinedTimeoutMs: 10 * 60 * 1000,
+  everyoneLeftTimeoutMs: 2 * 60 * 1000,
+}
+
+export const DEFAULT_MEETING_MAX_DURATION_MS = 60 * 60 * 1000
+
+export interface MeetingGhostAttendanceContext {
+  ownerUserId: string
+  ownerDisplayName: string
+  requestedBy?: string
+  careAbouts: string[]
+  calendarId?: string
+  approvalTtlMs?: number
+  attendees?: Array<{ name: string; email?: string }>
+}
+
+export interface MeetingJoinRequest {
+  platform: MeetingPlatform
+  meetingUrl: string
+
+  botName?: string
+
+  language?: string
+  autoLeave?: Partial<MeetingAutoLeaveConfig>
+
+  retainAudio?: boolean
+
+  maxDurationMs?: number
+
+  calendarEventId?: string
+
+  ghostAttendance?: MeetingGhostAttendanceContext
+}
+
+export interface MeetingBillingState {
+  status: "unmetered" | "reserved" | "spend_cap_reached" | "reconciled"
+  reservedMs: number
+  consumedMs: number
+  capMs?: number
+  reservationIds?: string[]
+  error?: string
+}
+
+export interface MeetingParticipant {
+  id: string
+  displayName: string
+
+  entityId?: string
+  joinedAtMs?: number
+  leftAtMs?: number
+}
+
+export interface MeetingSession {
+  id: string
+  platform: MeetingPlatform
+  meetingUrl: string
+
+  nativeMeetingId: string
+  botName: string
+  status: MeetingSessionStatus
+  endReason?: MeetingEndReason
+
+  errorMessage?: string
+
+  requestedAt: number
+  activeAt?: number
+  endedAt?: number
+
+  roomId?: string
+
+  transcriptId?: string
+
+  transcriptRedacted?: true
+  participants: MeetingParticipant[]
+  calendarEventId?: string
+
+  maxDurationMs?: number
+  billing?: MeetingBillingState
+  metadata?: Record<string, unknown>
+}
+
+export interface MeetingTranscriptEvent {
+  type: "meeting-transcript"
+  sessionId: string
+  transcriptId: string
+  confirmed: TranscriptSegment[]
+  pending: TranscriptSegment[]
+}
+
+export interface MeetingStatusEvent {
+  type: "meeting-status"
+  session: MeetingSession
+}
+
+export type MeetingWsEvent = MeetingTranscriptEvent | MeetingStatusEvent
+
+export const MEETING_TRANSCRIPT_FINALIZED_EVENT = "meeting.transcript.finalized"
+
+export interface MeetingTranscriptFinalizedPayload {
+  session: MeetingSession
+  transcript: Transcript
+  ghostAttendance?: MeetingGhostAttendanceContext
+}
+
+export interface ParsedMeetingUrl {
+  platform: MeetingPlatform
+
+  meetingUrl: string
+  nativeMeetingId: string
+}
+
+function safeDecodeUriComponent(value: string): string | null {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return null
+  }
+}
+
+const MEET_URL_RE = /^https?:\/\/meet\.google\.com\/([a-z]{3}-?[a-z]{4}-?[a-z]{3})(?:\/)?(?:\?.*)?$/i
+const TEAMS_URL_RE = /^https?:\/\/(?:[\w-]+\.)?teams\.(?:microsoft|live)\.com\/(?:v2\/)?(?:l\/)?meetup-join\/([^?\s]+)/i
+const TEAMS_SHORT_RE = /^https?:\/\/teams\.(?:microsoft|live)\.com\/meet\/(\d+)(?:[/?#]|$)/i
+const ZOOM_URL_RE = /^https?:\/\/(?:[\w-]+\.)?zoom\.us\/(?:j|w|wc)\/(?:join\/)?(\d{9,12})(?:[/?]|$)/i
+const ZOOM_APP_RE = /^https?:\/\/app\.zoom\.us\/wc\/(\d{9,12})\/join/i
+
+export effect function parseMeetingUrl(raw: string): (ParsedMeetingUrl | null)!! {
+  const url = raw.trim()
+  const meet = MEET_URL_RE.exec(url)
+  if (meet) {
+    const id = meet[1].toLowerCase().replace(/-/g, "")
+    const canonical = `${id.slice(0, 3)}-${id.slice(3, 7)}-${id.slice(7)}`
+    return {
+      platform: "google_meet",
+      meetingUrl: `https://meet.google.com/${canonical}`,
+      nativeMeetingId: canonical,
+    }
+  }
+  const zoomApp = ZOOM_APP_RE.exec(url)
+  if (zoomApp) {
+    return { platform: "zoom", meetingUrl: url, nativeMeetingId: zoomApp[1] }
+  }
+  const zoom = ZOOM_URL_RE.exec(url)
+  if (zoom) {
+    const parsed = new URL(url)
+    const pwd = parsed.searchParams.get("pwd")
+    const joinUrl = `https://app.zoom.us/wc/${zoom[1]}/join${pwd ? `?pwd=${encodeURIComponent(pwd)}` : ""}`
+    return { platform: "zoom", meetingUrl: joinUrl, nativeMeetingId: zoom[1] }
+  }
+  const teamsShort = TEAMS_SHORT_RE.exec(url)
+  if (teamsShort) {
+    return {
+      platform: "teams",
+      meetingUrl: url,
+      nativeMeetingId: teamsShort[1],
+    }
+  }
+  const teams = TEAMS_URL_RE.exec(url)
+  if (teams) {
+    const decoded = safeDecodeUriComponent(teams[1])
+    if (decoded === null) return null
+    return {
+      platform: "teams",
+      meetingUrl: url,
+      nativeMeetingId: decoded.slice(0, 128),
+    }
+  }
+  return null
+}
+export const parseMeetingUrlOrThrow = thrown(parseMeetingUrl)
+
+export const MEETING_PLATFORM_LABELS: Record<MeetingPlatform, string> = {
+  google_meet: "Google Meet",
+  teams: "Microsoft Teams",
+  zoom: "Zoom",
+  discord: "Discord",
+}

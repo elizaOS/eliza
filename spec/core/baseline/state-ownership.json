@@ -5262,10 +5262,8 @@
         "spec/core/connectorStorage.md",
         "spec/core/connectorHandoff.md",
         "spec/core/connectorManagers.md",
-        "spec/core/connectorHandoff.md",
         "spec/core/connectorQueues.md",
         "spec/core/oauth/verifiers.md",
-        "spec/core/oauth/index.md",
         "spec/core/oauth/index.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
@@ -5289,10 +5287,8 @@
         "spec/core/connectorStorage.md",
         "spec/core/connectorHandoff.md",
         "spec/core/connectorManagers.md",
-        "spec/core/connectorHandoff.md",
         "spec/core/connectorQueues.md",
         "spec/core/oauth/verifiers.md",
-        "spec/core/oauth/index.md",
         "spec/core/oauth/index.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
@@ -5316,10 +5312,8 @@
         "spec/core/connectorStorage.md",
         "spec/core/connectorHandoff.md",
         "spec/core/connectorManagers.md",
-        "spec/core/connectorHandoff.md",
         "spec/core/connectorQueues.md",
         "spec/core/oauth/verifiers.md",
-        "spec/core/oauth/index.md",
         "spec/core/oauth/index.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
@@ -10286,6 +10280,7 @@
             "plugins",
             "services",
             "ownership",
+            "liveOwners",
             "retirements",
             "requestsClosed"
           ],
@@ -10310,9 +10305,26 @@
             "finishLateStart",
             "cleanPlugin",
             "stopServices",
-            "sealRequests"
+            "sealRequests",
+            "resolveNextStart",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "settleTypeAggregate",
+            "clearTypeAggregate",
+            "withdrawNextType",
+            "invokeClassHook",
+            "finishClassHook",
+            "finishRetirementGroup",
+            "skipMissingStop",
+            "claimInstanceStop",
+            "observeInstanceStop",
+            "finishClassSlot",
+            "finishNextPluginDisposal",
+            "finishNextRegistration",
+            "finishNextClassHook",
+            "advanceRetirement"
           ],
-          "specSha256": "232787b2c0651721d75e2a1264f3774eabb0076a218df24606ebf4b786bbb986"
+          "specSha256": "d6c5f6c19d3b1fb1734d7490b9a73e05724305329e2fdc8a47eb334614414d1a"
         },
         "associatedModels": [
           {
@@ -10322,6 +10334,7 @@
               "plugins",
               "services",
               "ownership",
+              "liveOwners",
               "retirements",
               "requestsClosed"
             ],
@@ -10346,9 +10359,26 @@
               "finishLateStart",
               "cleanPlugin",
               "stopServices",
-              "sealRequests"
+              "sealRequests",
+              "resolveNextStart",
+              "finishNextObserver",
+              "finishNextLateStart",
+              "settleTypeAggregate",
+              "clearTypeAggregate",
+              "withdrawNextType",
+              "invokeClassHook",
+              "finishClassHook",
+              "finishRetirementGroup",
+              "skipMissingStop",
+              "claimInstanceStop",
+              "observeInstanceStop",
+              "finishClassSlot",
+              "finishNextPluginDisposal",
+              "finishNextRegistration",
+              "finishNextClassHook",
+              "advanceRetirement"
             ],
-            "specSha256": "232787b2c0651721d75e2a1264f3774eabb0076a218df24606ebf4b786bbb986"
+            "specSha256": "d6c5f6c19d3b1fb1734d7490b9a73e05724305329e2fdc8a47eb334614414d1a"
           },
           {
             "spec": "spec/core/serviceInstances.md",
@@ -10358,11 +10388,16 @@
               "classes",
               "attempts",
               "objects",
+              "published",
               "calls",
               "nextAttempt",
               "initialization",
               "stopped",
-              "observerErrors"
+              "observerErrors",
+              "typeEntries",
+              "loadPromises",
+              "aggregates",
+              "nextLoad"
             ],
             "transitions": [
               "registerClass",
@@ -10378,15 +10413,21 @@
               "settleObjectStop",
               "finishLateStart",
               "unregisterClass",
-              "stopRuntime"
+              "stopRuntime",
+              "clearTypeAggregate",
+              "settleTypeAggregate",
+              "finishNextObserver",
+              "finishNextLateStart",
+              "resolveNextStart"
             ],
-            "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+            "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
           }
         ],
         "mappedStateFields": [
           "plugins",
           "services",
           "ownership",
+          "liveOwners",
           "retirements",
           "requestsClosed"
         ],
@@ -10411,127 +10452,96 @@
       ],
       "ownerSpecs": [
         "spec/core/pluginServices.md",
-        "spec/core/serviceInstances.md"
+        "spec/core/plugins.md"
       ],
-      "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
+      "verification": "Exact-owner publication decisions are specified in the model; model verification, pinned host conformance and implementation refinement are separate evidence.",
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "One authoritative instance state is composed with plugin epochs, ordered duplicate declaration aliases, captured retirement receipts and shared object stop identities. ServiceRegistry is a pure projection library. Cross-runtime product refinement remains unproved.",
+        "representation": "Each retained plugin epoch owns a sticky connectorsWithdrawn bit. Send-handler, message-connector and post-connector publication use the callback's captured epoch, and unowned calls delegate. PluginServices.liveOwners separately maps service classes to their current epochs.",
         "model": {
           "spec": "spec/core/pluginServices.md",
-          "stateType": "PluginServices",
+          "stateType": "PluginEpochs",
           "stateFields": [
-            "plugins",
-            "services",
-            "ownership",
-            "retirements",
-            "requestsClosed"
+            "epochs",
+            "nextEpoch"
           ],
           "transitions": [
             "beginPlugin",
             "joinPlugin",
             "commitPlugin",
-            "registerOwnedClass",
-            "finishInitialization",
-            "ensureServices",
-            "resumeEnsure",
-            "finishClassStart",
-            "failClassStart",
-            "finishClassObserver",
-            "settleEnsure",
             "failPlugin",
             "unloadPlugin",
             "disposePlugin",
-            "requestOwnedStops",
-            "invokeClassStop",
-            "finishClassStop",
-            "finishLateStart",
-            "cleanPlugin",
-            "stopServices",
-            "sealRequests"
+            "cleanPlugin"
           ],
-          "specSha256": "232787b2c0651721d75e2a1264f3774eabb0076a218df24606ebf4b786bbb986"
+          "specSha256": "dea4c7289aba5a766f5d834e416570166ca7698d4bb753a8215221a846e416fa"
         },
         "associatedModels": [
           {
             "spec": "spec/core/pluginServices.md",
-            "stateType": "PluginServices",
+            "stateType": "PluginEpochs",
             "stateFields": [
-              "plugins",
-              "services",
-              "ownership",
-              "retirements",
-              "requestsClosed"
+              "epochs",
+              "nextEpoch"
             ],
             "transitions": [
               "beginPlugin",
               "joinPlugin",
               "commitPlugin",
-              "registerOwnedClass",
-              "finishInitialization",
-              "ensureServices",
-              "resumeEnsure",
-              "finishClassStart",
-              "failClassStart",
-              "finishClassObserver",
-              "settleEnsure",
               "failPlugin",
               "unloadPlugin",
               "disposePlugin",
-              "requestOwnedStops",
-              "invokeClassStop",
-              "finishClassStop",
-              "finishLateStart",
-              "cleanPlugin",
-              "stopServices",
-              "sealRequests"
+              "cleanPlugin"
             ],
-            "specSha256": "232787b2c0651721d75e2a1264f3774eabb0076a218df24606ebf4b786bbb986"
+            "specSha256": "dea4c7289aba5a766f5d834e416570166ca7698d4bb753a8215221a846e416fa"
           },
           {
-            "spec": "spec/core/serviceInstances.md",
-            "stateType": "ServiceInstances",
+            "spec": "spec/core/plugins.md",
+            "stateType": "PluginState",
             "stateFields": [
-              "declarations",
-              "classes",
-              "attempts",
-              "objects",
-              "calls",
-              "nextAttempt",
-              "initialization",
-              "stopped",
-              "observerErrors"
+              "phase",
+              "callers",
+              "outcomeKnown",
+              "outcomeSuccess",
+              "contributions",
+              "hasAdapter",
+              "disposeCalls",
+              "disposePending",
+              "connectorsWithdrawn",
+              "cleanupFailed",
+              "connectorOwner",
+              "servicePending",
+              "serviceLive",
+              "serviceStopCalls",
+              "serviceStopPending"
             ],
             "transitions": [
-              "registerClass",
-              "acquireServices",
-              "finishInitialization",
-              "resumeAcquire",
-              "returnInstance",
-              "failStart",
-              "finishObserver",
-              "settleAcquire",
-              "requestObjectStop",
-              "invokeObjectStop",
-              "settleObjectStop",
-              "finishLateStart",
-              "unregisterClass",
-              "stopRuntime"
+              "beginRegistration",
+              "joinRegistration",
+              "contribute",
+              "commitRegistration",
+              "failRegistration",
+              "ownConnector",
+              "replaceConnector",
+              "beginUnload",
+              "finishDispose",
+              "finishCleanup",
+              "startOwnedService",
+              "finishOwnedService",
+              "stopOwnedService",
+              "finishOwnedServiceStop"
             ],
-            "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+            "specSha256": "f7cdb36a46c6ccb6eb30750936fb967f47c9caa0d121dc28c8849bbffdc84410"
           }
         ],
         "mappedStateFields": [
-          "plugins",
-          "services",
-          "ownership",
-          "retirements",
-          "requestsClosed"
+          "epochs"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled-with-explicit-refinement-boundary",
-        "verification": "Model checks and implementation refinement are separate evidence."
+        "verification": "Model checks and implementation refinement are separate evidence.",
+        "remainingBoundary": "The adapter maps actual captured PluginOwnership references to known retained epochs and preserves ambient capture and exact runtime identity. Absent or cross-runtime capture becomes UnownedCall. An absent dispose hook or synchronous throw reaches the fence before external interleaving, while awaited disposal is fenced by its owning continuation. Unassigned numeric-reference results are model-boundary validation. Registry traversal can fail and retain an old entry after its owner is blocked from publication. The finite pinned host comparisons cover gate decisions and observed schedules. Full source-to-model refinement remains unproved."
       }
     },
     {
@@ -12452,7 +12462,7 @@
       "declaration": "readonly turnControllers = new TurnControllerRegistry();",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/turnEventStack.md"
+        "spec/core/turnControllers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "constructor-configuration-or-container",
@@ -12460,7 +12470,7 @@
         "classification": "state-projection",
         "representation": "Runtime delegates controller registry and nested synchronous notice stack to TurnEventStack.",
         "model": {
-          "spec": "spec/core/turnEventStack.md",
+          "spec": "spec/core/turnControllers.md",
           "stateType": "TurnEventStack",
           "stateFields": [
             "controllers",
@@ -12598,7 +12608,7 @@
             "disposePlugin",
             "cleanPlugin"
           ],
-          "specSha256": "12435c7fe70310841be0545ea9b68a2f98dcdef6131973bcf1b10da94d3c18b7"
+          "specSha256": "dea4c7289aba5a766f5d834e416570166ca7698d4bb753a8215221a846e416fa"
         },
         "mappedStateFields": [
           "epochs"
@@ -13018,11 +13028,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -13038,9 +13053,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -13093,11 +13113,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -13113,9 +13138,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -13918,11 +13948,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -13938,9 +13973,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -13993,11 +14033,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14013,9 +14058,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14082,11 +14132,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14102,9 +14157,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14150,11 +14210,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14170,9 +14235,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14218,11 +14288,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14238,9 +14313,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14286,11 +14366,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14306,9 +14391,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -14361,11 +14451,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -14381,9 +14476,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -18638,9 +18738,10 @@
             "openTurnLease",
             "closeTurnLease",
             "closeAllowance",
-            "advanceAllowanceClock"
+            "dispatchUnchanged",
+            "setAllowanceClock"
           ],
-          "specSha256": "210e9c8667d07587be79425bbf3c364fed1ff11937a3d40670410ae832f39e70"
+          "specSha256": "74c7ce24eda4357fc77356cf72dbbbad788c3956fe3299b9ef7200ad0a8b6c68"
         },
         "mappedStateFields": [
           "guards",
@@ -21596,11 +21697,16 @@
             "classes",
             "attempts",
             "objects",
+            "published",
             "calls",
             "nextAttempt",
             "initialization",
             "stopped",
-            "observerErrors"
+            "observerErrors",
+            "typeEntries",
+            "loadPromises",
+            "aggregates",
+            "nextLoad"
           ],
           "transitions": [
             "registerClass",
@@ -21616,9 +21722,14 @@
             "settleObjectStop",
             "finishLateStart",
             "unregisterClass",
-            "stopRuntime"
+            "stopRuntime",
+            "clearTypeAggregate",
+            "settleTypeAggregate",
+            "finishNextObserver",
+            "finishNextLateStart",
+            "resolveNextStart"
           ],
-          "specSha256": "11216c52cf1cd89282e96b864287463d1c68ecbebc6d1de7dd0392e5a5be6353"
+          "specSha256": "8efe11e17e44b681c7e732f0d58831f5e643434260568187f6d870653eb60608"
         },
         "mappedStateFields": [
           "classes",
@@ -22133,7 +22244,7 @@
       "declaration": "private readonly currentTurnStorage = new AsyncLocalStorage<ActiveTurn>();",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/turnEventStack.md"
+        "spec/core/turnControllers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "constructor-configuration-or-container",
@@ -22141,7 +22252,7 @@
         "classification": "state-projection",
         "representation": "Nested synchronous emission uses an explicit event/callback stack over TurnControllers; room group identity handles detach/recreate during cancel iteration.",
         "model": {
-          "spec": "spec/core/turnEventStack.md",
+          "spec": "spec/core/turnControllers.md",
           "stateType": "TurnEventStack",
           "stateFields": [
             "controllers",
@@ -22199,7 +22310,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/turnEventStack.md"
+        "spec/core/turnControllers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -22207,7 +22318,7 @@
         "classification": "state-projection",
         "representation": "Nested synchronous emission uses an explicit event/callback stack over TurnControllers; room group identity handles detach/recreate during cancel iteration.",
         "model": {
-          "spec": "spec/core/turnEventStack.md",
+          "spec": "spec/core/turnControllers.md",
           "stateType": "TurnEventStack",
           "stateFields": [
             "controllers",
@@ -22265,7 +22376,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/turnEventStack.md"
+        "spec/core/turnControllers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -22273,7 +22384,7 @@
         "classification": "state-projection",
         "representation": "Nested synchronous emission uses an explicit event/callback stack over TurnControllers; room group identity handles detach/recreate during cancel iteration.",
         "model": {
-          "spec": "spec/core/turnEventStack.md",
+          "spec": "spec/core/turnControllers.md",
           "stateType": "TurnEventStack",
           "stateFields": [
             "controllers",
@@ -22324,7 +22435,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/turnEventStack.md"
+        "spec/core/turnControllers.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -22332,7 +22443,7 @@
         "classification": "state-projection",
         "representation": "Nested synchronous emission uses an explicit event/callback stack over TurnControllers; room group identity handles detach/recreate during cancel iteration.",
         "model": {
-          "spec": "spec/core/turnEventStack.md",
+          "spec": "spec/core/turnControllers.md",
           "stateType": "TurnEventStack",
           "stateFields": [
             "controllers",
@@ -24114,7 +24225,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/outboundEnvelope.md"
+        "spec/core/security.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -24122,7 +24233,7 @@
         "classification": "state-projection",
         "representation": "Once tripped, guard suppresses subsequent bytes and owns exactly once diagnostics.",
         "model": {
-          "spec": "spec/core/outboundEnvelope.md",
+          "spec": "spec/core/security.md",
           "stateType": "Envelope",
           "stateFields": [
             "tripped",
@@ -26761,33 +26872,37 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "AudienceRegistry owns all issued object bindings, message aliases, per-binding lease state and the process-global monotone attestation sequence.",
+        "representation": "AudienceRegistry owns binding aliases, the process-global sequence, exact shared signal abort facts and independent lazy suppression carriers. AudienceLease retains addressed record/lease/call objects, captured invocation time and detached old-record completion; callbacks do not retarget the current WeakMap record.",
         "model": {
           "spec": "spec/core/audienceRegistry.md",
           "stateType": "AudienceRegistry",
           "stateFields": [
             "records",
             "messages",
+            "carriers",
+            "abortedSignals",
             "nextBinding",
+            "nextCarrier",
             "attestationSequence",
             "now"
           ],
           "transitions": [
             "createMessage",
-            "spreadMessage",
             "serializeMessage",
-            "attest",
-            "beginTurn",
-            "endTurn",
             "cancel",
             "setTime",
-            "beginRenewal",
+            "spreadMessage",
+            "endTurn",
+            "beginTurn",
+            "attest",
             "finishRenewal",
+            "observeRenewalAuthority",
+            "beginRenewal",
             "checkDisclosure",
             "markSensitiveUsed",
             "recordSuppression"
           ],
-          "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+          "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
         },
         "associatedModels": [
           {
@@ -26796,73 +26911,72 @@
             "stateFields": [
               "records",
               "messages",
+              "carriers",
+              "abortedSignals",
               "nextBinding",
+              "nextCarrier",
               "attestationSequence",
               "now"
             ],
             "transitions": [
               "createMessage",
-              "spreadMessage",
               "serializeMessage",
-              "attest",
-              "beginTurn",
-              "endTurn",
               "cancel",
               "setTime",
-              "beginRenewal",
+              "spreadMessage",
+              "endTurn",
+              "beginTurn",
+              "attest",
               "finishRenewal",
+              "observeRenewalAuthority",
+              "beginRenewal",
               "checkDisclosure",
               "markSensitiveUsed",
               "recordSuppression"
             ],
-            "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+            "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
           },
           {
             "spec": "spec/core/trustedAudience.md",
             "stateType": "AudienceLease",
             "stateFields": [
-              "attached",
-              "audience",
-              "issuedAt",
-              "expiresAt",
-              "now",
-              "sequence",
-              "currentLease",
+              "records",
+              "leases",
+              "renewals",
+              "boundRecord",
+              "nextRecord",
               "nextLease",
-              "leaseActive",
-              "cancelled",
-              "renewing",
-              "capturedLease",
-              "capturedSequence",
-              "sensitiveUsed",
-              "allowed",
-              "suppressions"
+              "nextRenewal",
+              "now",
+              "allowed"
             ],
             "transitions": [
-              "attest",
               "beginTurn",
-              "endTurn",
-              "cancel",
               "setTime",
+              "endTurn",
+              "attest",
+              "observeRenewalAuthority",
+              "checkDisclosure",
               "beginRenewal",
               "finishRenewal",
-              "checkDisclosure",
-              "markSensitiveUsed",
-              "recordSuppression"
+              "markSensitiveUsed"
             ],
-            "specSha256": "a5b6d6deebaef2e207bf40f454c5bcff1d5384a273e3a2e018c42ddcda697a05"
+            "specSha256": "a150351bd46bcbf1b2fe32babcd522492cb6439ec487d8782d296a489ff95b83"
           }
         ],
         "mappedStateFields": [
           "records",
           "messages",
+          "carriers",
+          "abortedSignals",
           "nextBinding",
+          "nextCarrier",
           "attestationSequence",
           "now"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
-        "verification": "Model checks and implementation refinement are separate evidence."
+        "verification": "Model checks and implementation refinement are separate evidence. Actual host object/signal identity, principal revalidation and canonical participant observations remain adapter contracts; finite pinned-source comparisons do not establish a refinement theorem."
       }
     },
     {
@@ -26929,33 +27043,37 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "AudienceRegistry owns all issued object bindings, message aliases, per-binding lease state and the process-global monotone attestation sequence.",
+        "representation": "AudienceRegistry owns binding aliases, the process-global sequence, exact shared signal abort facts and independent lazy suppression carriers. AudienceLease retains addressed record/lease/call objects, captured invocation time and detached old-record completion; callbacks do not retarget the current WeakMap record.",
         "model": {
           "spec": "spec/core/audienceRegistry.md",
           "stateType": "AudienceRegistry",
           "stateFields": [
             "records",
             "messages",
+            "carriers",
+            "abortedSignals",
             "nextBinding",
+            "nextCarrier",
             "attestationSequence",
             "now"
           ],
           "transitions": [
             "createMessage",
-            "spreadMessage",
             "serializeMessage",
-            "attest",
-            "beginTurn",
-            "endTurn",
             "cancel",
             "setTime",
-            "beginRenewal",
+            "spreadMessage",
+            "endTurn",
+            "beginTurn",
+            "attest",
             "finishRenewal",
+            "observeRenewalAuthority",
+            "beginRenewal",
             "checkDisclosure",
             "markSensitiveUsed",
             "recordSuppression"
           ],
-          "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+          "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
         },
         "associatedModels": [
           {
@@ -26964,73 +27082,72 @@
             "stateFields": [
               "records",
               "messages",
+              "carriers",
+              "abortedSignals",
               "nextBinding",
+              "nextCarrier",
               "attestationSequence",
               "now"
             ],
             "transitions": [
               "createMessage",
-              "spreadMessage",
               "serializeMessage",
-              "attest",
-              "beginTurn",
-              "endTurn",
               "cancel",
               "setTime",
-              "beginRenewal",
+              "spreadMessage",
+              "endTurn",
+              "beginTurn",
+              "attest",
               "finishRenewal",
+              "observeRenewalAuthority",
+              "beginRenewal",
               "checkDisclosure",
               "markSensitiveUsed",
               "recordSuppression"
             ],
-            "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+            "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
           },
           {
             "spec": "spec/core/trustedAudience.md",
             "stateType": "AudienceLease",
             "stateFields": [
-              "attached",
-              "audience",
-              "issuedAt",
-              "expiresAt",
-              "now",
-              "sequence",
-              "currentLease",
+              "records",
+              "leases",
+              "renewals",
+              "boundRecord",
+              "nextRecord",
               "nextLease",
-              "leaseActive",
-              "cancelled",
-              "renewing",
-              "capturedLease",
-              "capturedSequence",
-              "sensitiveUsed",
-              "allowed",
-              "suppressions"
+              "nextRenewal",
+              "now",
+              "allowed"
             ],
             "transitions": [
-              "attest",
               "beginTurn",
-              "endTurn",
-              "cancel",
               "setTime",
+              "endTurn",
+              "attest",
+              "observeRenewalAuthority",
+              "checkDisclosure",
               "beginRenewal",
               "finishRenewal",
-              "checkDisclosure",
-              "markSensitiveUsed",
-              "recordSuppression"
+              "markSensitiveUsed"
             ],
-            "specSha256": "a5b6d6deebaef2e207bf40f454c5bcff1d5384a273e3a2e018c42ddcda697a05"
+            "specSha256": "a150351bd46bcbf1b2fe32babcd522492cb6439ec487d8782d296a489ff95b83"
           }
         ],
         "mappedStateFields": [
           "records",
           "messages",
+          "carriers",
+          "abortedSignals",
           "nextBinding",
+          "nextCarrier",
           "attestationSequence",
           "now"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
-        "verification": "Model checks and implementation refinement are separate evidence."
+        "verification": "Model checks and implementation refinement are separate evidence. Actual host object/signal identity, principal revalidation and canonical participant observations remain adapter contracts; finite pinned-source comparisons do not establish a refinement theorem."
       }
     },
     {
@@ -27175,33 +27292,37 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "AudienceRegistry owns all issued object bindings, message aliases, per-binding lease state and the process-global monotone attestation sequence.",
+        "representation": "AudienceRegistry owns binding aliases, the process-global sequence, exact shared signal abort facts and independent lazy suppression carriers. AudienceLease retains addressed record/lease/call objects, captured invocation time and detached old-record completion; callbacks do not retarget the current WeakMap record.",
         "model": {
           "spec": "spec/core/audienceRegistry.md",
           "stateType": "AudienceRegistry",
           "stateFields": [
             "records",
             "messages",
+            "carriers",
+            "abortedSignals",
             "nextBinding",
+            "nextCarrier",
             "attestationSequence",
             "now"
           ],
           "transitions": [
             "createMessage",
-            "spreadMessage",
             "serializeMessage",
-            "attest",
-            "beginTurn",
-            "endTurn",
             "cancel",
             "setTime",
-            "beginRenewal",
+            "spreadMessage",
+            "endTurn",
+            "beginTurn",
+            "attest",
             "finishRenewal",
+            "observeRenewalAuthority",
+            "beginRenewal",
             "checkDisclosure",
             "markSensitiveUsed",
             "recordSuppression"
           ],
-          "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+          "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
         },
         "associatedModels": [
           {
@@ -27210,73 +27331,72 @@
             "stateFields": [
               "records",
               "messages",
+              "carriers",
+              "abortedSignals",
               "nextBinding",
+              "nextCarrier",
               "attestationSequence",
               "now"
             ],
             "transitions": [
               "createMessage",
-              "spreadMessage",
               "serializeMessage",
-              "attest",
-              "beginTurn",
-              "endTurn",
               "cancel",
               "setTime",
-              "beginRenewal",
+              "spreadMessage",
+              "endTurn",
+              "beginTurn",
+              "attest",
               "finishRenewal",
+              "observeRenewalAuthority",
+              "beginRenewal",
               "checkDisclosure",
               "markSensitiveUsed",
               "recordSuppression"
             ],
-            "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+            "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
           },
           {
             "spec": "spec/core/trustedAudience.md",
             "stateType": "AudienceLease",
             "stateFields": [
-              "attached",
-              "audience",
-              "issuedAt",
-              "expiresAt",
-              "now",
-              "sequence",
-              "currentLease",
+              "records",
+              "leases",
+              "renewals",
+              "boundRecord",
+              "nextRecord",
               "nextLease",
-              "leaseActive",
-              "cancelled",
-              "renewing",
-              "capturedLease",
-              "capturedSequence",
-              "sensitiveUsed",
-              "allowed",
-              "suppressions"
+              "nextRenewal",
+              "now",
+              "allowed"
             ],
             "transitions": [
-              "attest",
               "beginTurn",
-              "endTurn",
-              "cancel",
               "setTime",
+              "endTurn",
+              "attest",
+              "observeRenewalAuthority",
+              "checkDisclosure",
               "beginRenewal",
               "finishRenewal",
-              "checkDisclosure",
-              "markSensitiveUsed",
-              "recordSuppression"
+              "markSensitiveUsed"
             ],
-            "specSha256": "a5b6d6deebaef2e207bf40f454c5bcff1d5384a273e3a2e018c42ddcda697a05"
+            "specSha256": "a150351bd46bcbf1b2fe32babcd522492cb6439ec487d8782d296a489ff95b83"
           }
         ],
         "mappedStateFields": [
           "records",
           "messages",
+          "carriers",
+          "abortedSignals",
           "nextBinding",
+          "nextCarrier",
           "attestationSequence",
           "now"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
-        "verification": "Model checks and implementation refinement are separate evidence."
+        "verification": "Model checks and implementation refinement are separate evidence. Actual host object/signal identity, principal revalidation and canonical participant observations remain adapter contracts; finite pinned-source comparisons do not establish a refinement theorem."
       }
     },
     {
@@ -27301,33 +27421,37 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "AudienceRegistry owns all issued object bindings, message aliases, per-binding lease state and the process-global monotone attestation sequence.",
+        "representation": "AudienceRegistry owns binding aliases, the process-global sequence, exact shared signal abort facts and independent lazy suppression carriers. AudienceLease retains addressed record/lease/call objects, captured invocation time and detached old-record completion; callbacks do not retarget the current WeakMap record.",
         "model": {
           "spec": "spec/core/audienceRegistry.md",
           "stateType": "AudienceRegistry",
           "stateFields": [
             "records",
             "messages",
+            "carriers",
+            "abortedSignals",
             "nextBinding",
+            "nextCarrier",
             "attestationSequence",
             "now"
           ],
           "transitions": [
             "createMessage",
-            "spreadMessage",
             "serializeMessage",
-            "attest",
-            "beginTurn",
-            "endTurn",
             "cancel",
             "setTime",
-            "beginRenewal",
+            "spreadMessage",
+            "endTurn",
+            "beginTurn",
+            "attest",
             "finishRenewal",
+            "observeRenewalAuthority",
+            "beginRenewal",
             "checkDisclosure",
             "markSensitiveUsed",
             "recordSuppression"
           ],
-          "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+          "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
         },
         "associatedModels": [
           {
@@ -27336,73 +27460,72 @@
             "stateFields": [
               "records",
               "messages",
+              "carriers",
+              "abortedSignals",
               "nextBinding",
+              "nextCarrier",
               "attestationSequence",
               "now"
             ],
             "transitions": [
               "createMessage",
-              "spreadMessage",
               "serializeMessage",
-              "attest",
-              "beginTurn",
-              "endTurn",
               "cancel",
               "setTime",
-              "beginRenewal",
+              "spreadMessage",
+              "endTurn",
+              "beginTurn",
+              "attest",
               "finishRenewal",
+              "observeRenewalAuthority",
+              "beginRenewal",
               "checkDisclosure",
               "markSensitiveUsed",
               "recordSuppression"
             ],
-            "specSha256": "f3145058a71c5ebec7c13843e4bc4f12237740ad2eddcb60ba76d5122afc90d4"
+            "specSha256": "4aa96437e8faa40d620519a4d09ef892fa3b37a4c98131978cb7d4d5101b8f79"
           },
           {
             "spec": "spec/core/trustedAudience.md",
             "stateType": "AudienceLease",
             "stateFields": [
-              "attached",
-              "audience",
-              "issuedAt",
-              "expiresAt",
-              "now",
-              "sequence",
-              "currentLease",
+              "records",
+              "leases",
+              "renewals",
+              "boundRecord",
+              "nextRecord",
               "nextLease",
-              "leaseActive",
-              "cancelled",
-              "renewing",
-              "capturedLease",
-              "capturedSequence",
-              "sensitiveUsed",
-              "allowed",
-              "suppressions"
+              "nextRenewal",
+              "now",
+              "allowed"
             ],
             "transitions": [
-              "attest",
               "beginTurn",
-              "endTurn",
-              "cancel",
               "setTime",
+              "endTurn",
+              "attest",
+              "observeRenewalAuthority",
+              "checkDisclosure",
               "beginRenewal",
               "finishRenewal",
-              "checkDisclosure",
-              "markSensitiveUsed",
-              "recordSuppression"
+              "markSensitiveUsed"
             ],
-            "specSha256": "a5b6d6deebaef2e207bf40f454c5bcff1d5384a273e3a2e018c42ddcda697a05"
+            "specSha256": "a150351bd46bcbf1b2fe32babcd522492cb6439ec487d8782d296a489ff95b83"
           }
         ],
         "mappedStateFields": [
           "records",
           "messages",
+          "carriers",
+          "abortedSignals",
           "nextBinding",
+          "nextCarrier",
           "attestationSequence",
           "now"
         ],
         "unmodeledState": null,
         "closureStatus": "state-modeled",
-        "verification": "Model checks and implementation refinement are separate evidence."
+        "verification": "Model checks and implementation refinement are separate evidence. Actual host object/signal identity, principal revalidation and canonical participant observations remain adapter contracts; finite pinned-source comparisons do not establish a refinement theorem."
       }
     },
     {
@@ -28365,7 +28488,6 @@
       ],
       "ownerSpecs": [
         "spec/core/approvalService.md",
-        "spec/core/approvalService.md",
         "spec/core/approvals.md",
         "spec/core/approvalRetirement.md"
       ],
@@ -28601,7 +28723,6 @@
       ],
       "ownerSpecs": [
         "spec/core/approvalService.md",
-        "spec/core/approvalService.md",
         "spec/core/approvals.md",
         "spec/core/approvalRetirement.md"
       ],
@@ -28763,7 +28884,7 @@
       "mutations": [],
       "ownerSpecs": [
         "spec/core/channelTopics.md",
-        "spec/core/topicRooms.md"
+        "spec/core/topicService.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "owned-field-or-construction-state",
@@ -28784,7 +28905,7 @@
       "mutations": [],
       "ownerSpecs": [
         "spec/core/channelTopics.md",
-        "spec/core/topicRooms.md"
+        "spec/core/topicService.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "owned-field-or-construction-state",
@@ -29252,7 +29373,7 @@
       "declaration": "static serviceType = \"embedding-generation\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/embeddingBatch.md"
+        "spec/core/services.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "owned-field-or-construction-state",
@@ -29272,7 +29393,7 @@
       "declaration": "capabilityDescription = \"Handles asynchronous embedding generation for memories\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/embeddingBatch.md"
+        "spec/core/services.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "owned-field-or-construction-state",
@@ -30210,7 +30331,7 @@
       "declaration": "private readonly embeddingRequestHandler = ( payload: EmbeddingGenerationPayload, ) => this.handleEmbeddingRequest(payload);",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/embeddingBatch.md"
+        "spec/core/services.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -30230,7 +30351,7 @@
       "declaration": "private readonly messageSentHandler = async ( payload: MessagePayload, ): Promise<void> => { if (this.stopped || payload.runtime !== this.runtime) return; const memory = payload.message; if ( !memory.id || memory.entityId !== this.runtime.agentId || (memory.agentId !== undefined && memory.agentId !== this.runtime.agentId) || !memory.content.text?.trim() || shouldSkipResponseMemoryPersistence(memory) ) return; const snapshot = { ...memory, content: { ...memory.content }, metadata: memory.metadata ? { ...memory.metadata } : undefined, }; const runId = this.runtime.getCurrentRunId(); // Delivery must not wait for the durable lookup or embedding inference. void this.queueDeliveredReply(snapshot, runId).catch((error) => { // error-policy:J7 Background embedding reports failures without blocking delivered replies. this.runtime.reportError( \"EmbeddingGenerationService.deliveredReply\", error, { memoryId: snapshot.id }, ); }); };",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/embeddingBatch.md"
+        "spec/core/services.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -30250,7 +30371,7 @@
       "declaration": "private readonly modelRegistrationHandler = async ( payload: ModelRegisteredEventPayload, ): Promise<void> => { if ( this.stopped || !this.isDisabled || (payload.modelType !== ModelType.TEXT_EMBEDDING && payload.modelType !== ModelType.TEXT_EMBEDDING_BATCH) ) return; if ( !this.runtime.getModel(ModelType.TEXT_EMBEDDING) && !this.runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH) ) return; this.isDisabled = false; try { await this.initialize(); } catch (error) { // error-policy:J2 return to the waiting state so the next registration // retries activation; the registerModel dispatch boundary reports the // preserved failure. this.isDisabled = true; throw error; } };",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/embeddingBatch.md"
+        "spec/core/services.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -30270,7 +30391,7 @@
       "declaration": "private static readonly EMBEDDING_DRAIN_TASK = \"EMBEDDING_DRAIN\";",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/embeddingBatch.md"
+        "spec/core/services.md"
       ],
       "verification": "Source ownership classification; model checks and implementation refinement are separate evidence.",
       "sourceClassification": "constructor-configuration-or-container",
@@ -30352,7 +30473,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/hookService.md"
+        "spec/core/services.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -30360,7 +30481,7 @@
         "classification": "state-projection",
         "representation": "Retained registration object rows distinguish live registry membership from captured references. Metadata operations preserve object identity; a dispatch reads the current handler when its captured row reaches the cursor.",
         "model": {
-          "spec": "spec/core/hookService.md",
+          "spec": "spec/core/services.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
@@ -30444,7 +30565,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/hookService.md"
+        "spec/core/services.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -30452,7 +30573,7 @@
         "classification": "state-projection",
         "representation": "Ordered live event lookup projects indexedEvents from registration insertion order, separate from current event-array aliases. Unregister removes current array memberships and causes stale memberships to miss the detached registry row.",
         "model": {
-          "spec": "spec/core/hookService.md",
+          "spec": "spec/core/services.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
@@ -30513,7 +30634,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/hookService.md"
+        "spec/core/services.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -30521,7 +30642,7 @@
         "classification": "state-projection",
         "representation": "The next registration counter survives stop and increments once per register. The adapter binds its generated public string to the immutable internal identity.",
         "model": {
-          "spec": "spec/core/hookService.md",
+          "spec": "spec/core/services.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
@@ -30602,7 +30723,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/hookService.md"
+        "spec/core/services.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -30610,7 +30731,7 @@
         "classification": "state-projection",
         "representation": "Register increments the version; existing-key unregister/enable/priority operations increment it even when the requested metadata already matches. Direct alias changes and stop leave the version unchanged.",
         "model": {
-          "spec": "spec/core/hookService.md",
+          "spec": "spec/core/services.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
@@ -30670,7 +30791,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/hookService.md"
+        "spec/core/services.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -30678,7 +30799,7 @@
         "classification": "state-projection",
         "representation": "The service retains a config object reference. Only a matching reference observation updates current properties, used by ordered eligibility checks.",
         "model": {
-          "spec": "spec/core/hookService.md",
+          "spec": "spec/core/services.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
@@ -30753,7 +30874,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/hookService.md"
+        "spec/core/services.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -30761,7 +30882,7 @@
         "classification": "state-projection",
         "representation": "Only positive PATH probe results remain cached. All required names are considered, alternatives stop at the first hit, and stop clears hits.",
         "model": {
-          "spec": "spec/core/hookService.md",
+          "spec": "spec/core/services.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
@@ -30821,7 +30942,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/hookService.md"
+        "spec/core/services.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -30829,7 +30950,7 @@
         "classification": "state-projection",
         "representation": "The source receiver compares the observed raw PATH on the next binary check, distinguishes unset from empty, and preserves that observation on stop.",
         "model": {
-          "spec": "spec/core/hookService.md",
+          "spec": "spec/core/services.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
@@ -30897,7 +31018,7 @@
         }
       ],
       "ownerSpecs": [
-        "spec/core/hookService.md"
+        "spec/core/services.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "modeled-owned-state",
@@ -30905,7 +31026,7 @@
         "classification": "state-projection",
         "representation": "The service installs one callback per source HOOK event. Stop removes its own handles while already retained callback objects can still be invoked; selection uses the current registry at that invocation.",
         "model": {
-          "spec": "spec/core/hookService.md",
+          "spec": "spec/core/services.md",
           "stateType": "HookService",
           "stateFields": [
             "registrations",
@@ -37887,7 +38008,7 @@
       "declaration": "getAmbientSingleton( TRAJECTORY_SOURCE_REGISTRY_KEY, () => new Map<string, TrajectorySourceMeta>(), )",
       "mutations": [],
       "ownerSpecs": [
-        "spec/core/trajectorySources.md"
+        "spec/core/traces.md"
       ],
       "verification": "source-to-model projection audited; generated model verification and implementation refinement are separate evidence",
       "sourceClassification": "owned-global-registry",
@@ -37895,7 +38016,7 @@
         "classification": "state-projection",
         "representation": "Global source-name policy registry retains exact full/sample/none recording policy and existing metadata replacement semantics.",
         "model": {
-          "spec": "spec/core/trajectorySources.md",
+          "spec": "spec/core/traces.md",
           "stateType": "TrajectorySources",
           "stateFields": [
             "policies",
@@ -50707,12 +50828,10 @@
       "modelSpecs": [
         "spec/core/connectorHandoff.md",
         "spec/core/connectorManagers.md",
-        "spec/core/connectorHandoff.md",
         "spec/core/connectorQueues.md",
         "spec/core/connectorStorage.md",
         "spec/core/oauth/index.md",
-        "spec/core/oauth/verifiers.md",
-        "spec/core/oauth/index.md"
+        "spec/core/oauth/verifiers.md"
       ],
       "missingState": [],
       "partialState": []
@@ -50734,14 +50853,11 @@
       ],
       "modelSpecs": [
         "spec/core/connectorHandoff.md",
-        "spec/core/connectorHandoff.md",
         "spec/core/connectorManagers.md",
-        "spec/core/connectorHandoff.md",
         "spec/core/connectorQueues.md",
         "spec/core/connectorStorage.md",
         "spec/core/oauth/index.md",
-        "spec/core/oauth/verifiers.md",
-        "spec/core/oauth/index.md"
+        "spec/core/oauth/verifiers.md"
       ],
       "missingState": [],
       "partialState": []
@@ -51935,7 +52051,7 @@
       ],
       "modelSpecs": [
         "spec/core/pluginServices.md",
-        "spec/core/serviceInstances.md"
+        "spec/core/plugins.md"
       ],
       "missingState": [],
       "partialState": []
@@ -52143,12 +52259,11 @@
         "spec/core/responseEvaluation.md",
         "spec/core/responseFields.md",
         "spec/core/runtime.md",
-        "spec/core/registries.md",
         "spec/core/runtimeRunContext.md",
         "spec/core/secretProfile.md",
         "spec/core/serviceInstances.md",
         "spec/core/settings.md",
-        "spec/core/turnEventStack.md"
+        "spec/core/turnControllers.md"
       ],
       "missingState": [],
       "partialState": []
@@ -52953,7 +53068,7 @@
       ],
       "modelSpecs": [
         "spec/core/concurrentHooks.md",
-        "spec/core/hookService.md"
+        "spec/core/services.md"
       ],
       "missingState": [],
       "partialState": []
@@ -53503,7 +53618,7 @@
         "packages/core/src/runtime/turn-controller.ts#TurnControllerRegistry.closedReason@50"
       ],
       "modelSpecs": [
-        "spec/core/turnEventStack.md"
+        "spec/core/turnControllers.md"
       ],
       "missingState": [],
       "partialState": []
@@ -54136,7 +54251,7 @@
         "packages/core/src/security/outbound-envelope-guard.ts#tripped@130"
       ],
       "modelSpecs": [
-        "spec/core/outboundEnvelope.md"
+        "spec/core/security.md"
       ],
       "missingState": [],
       "partialState": []
@@ -54910,7 +55025,6 @@
       ],
       "modelSpecs": [
         "spec/core/approvalService.md",
-        "spec/core/approvalService.md",
         "spec/core/approvals.md"
       ],
       "missingState": [],
@@ -54928,7 +55042,6 @@
       ],
       "modelSpecs": [
         "spec/core/channelTopics.md",
-        "spec/core/topicRooms.md",
         "spec/core/topicService.md"
       ],
       "missingState": [],
@@ -54951,7 +55064,7 @@
       ],
       "modelSpecs": [
         "spec/core/batchQueue.md",
-        "spec/core/embeddingBatch.md",
+        "spec/core/services.md",
         "spec/core/embeddingService.md"
       ],
       "missingState": [],
@@ -54972,7 +55085,7 @@
         "packages/core/src/services/hook.ts#HookService.interceptors@117"
       ],
       "modelSpecs": [
-        "spec/core/hookService.md",
+        "spec/core/services.md",
         "spec/core/hooks.md"
       ],
       "missingState": [],
@@ -55672,7 +55785,7 @@
         "packages/core/src/trajectory-utils.ts#ambient:getRegistry@1772"
       ],
       "modelSpecs": [
-        "spec/core/trajectorySources.md"
+        "spec/core/traces.md"
       ],
       "missingState": [],
       "partialState": []
@@ -57105,7 +57218,6 @@
         "spec/core/streamMarkable.md",
         "spec/core/streamRevisions.md",
         "spec/core/skeletonStreamState.md",
-        "spec/core/structuredStreamState.md",
         "spec/core/structuredStreamState.md"
       ],
       "missingState": [],
@@ -57155,7 +57267,6 @@
         "spec/core/skeletonStreamState.md",
         "spec/core/streamMarkable.md",
         "spec/core/streamRevisions.md",
-        "spec/core/skeletonStreamState.md",
         "spec/core/structuredStreamState.md"
       ],
       "missingState": [],

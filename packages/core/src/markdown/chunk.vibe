@@ -1,0 +1,466 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { thrown } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import {
+  advanceFenceScan,
+  type FenceScan,
+  type FenceSpan,
+  findFenceSpanAt,
+  isSafeFenceBreak,
+  parseFenceSpans,
+  startFenceScan,
+} from "./code.vibe"
+
+export const MARKDOWN_CHUNK_LIMIT_INVALID = "MARKDOWN_CHUNK_LIMIT_INVALID"
+
+export effect function assertValidMarkdownChunkLimit(limit: number) {
+  if (Number.isSafeInteger(limit) && limit > 0) {
+    return
+  }
+
+  throw new ElizaError("Markdown chunk limit must be a positive safe integer", {
+    code: MARKDOWN_CHUNK_LIMIT_INVALID,
+    context: { limit: describeInvalidLimit(limit) },
+  })
+}
+
+export const assertValidMarkdownChunkLimitOrThrow = thrown(assertValidMarkdownChunkLimit)
+
+export effect function chunkText(text: string, limit: number) {
+  try assertValidMarkdownChunkLimit(limit)
+  if (!text) {
+    return []
+  }
+  if (text.length <= limit) {
+    return [text]
+  }
+
+  const chunks: string[] = []
+  let remaining = text
+
+  while (remaining.length > limit) {
+    const window = remaining.slice(0, limit)
+
+    const { lastNewline, lastWhitespace } = scanParenAwareBreakpoints(window)
+
+    let breakIdx = lastNewline > 0 ? lastNewline : lastWhitespace
+
+    if (breakIdx <= 0) {
+      breakIdx = limit
+    }
+
+    breakIdx = avoidGraphemeSplit(remaining, breakIdx)
+
+    const rawChunk = remaining.slice(0, breakIdx)
+    const chunk = rawChunk.trimEnd()
+    if (chunk.length > 0) {
+      chunks.push(chunk)
+    }
+
+    const brokeOnSeparator = breakIdx < remaining.length && /\s/.test(remaining[breakIdx])
+    const nextStart = Math.min(
+      remaining.length,
+      breakIdx + (brokeOnSeparator ? 1 : 0),
+    )
+    remaining = remaining.slice(nextStart).trimStart()
+  }
+
+  if (remaining.length) {
+    chunks.push(remaining)
+  }
+
+  return chunks
+}
+
+export const chunkTextOrThrow = thrown(chunkText)
+
+export effect function chunkByParagraph(
+  text: string,
+  limit: number,
+  opts?: { splitLongParagraphs?: boolean },
+) {
+  try assertValidMarkdownChunkLimit(limit)
+  if (!text) {
+    return []
+  }
+  const splitLongParagraphs = opts?.splitLongParagraphs !== false
+
+  const normalized = text.replace(/\r\n?/g, "\n")
+
+  const paragraphRe = /\n[\t ]*\n+/
+  if (!paragraphRe.test(normalized)) {
+    if (normalized.length <= limit) {
+      return [normalized]
+    }
+    if (!splitLongParagraphs) {
+      return [normalized]
+    }
+    return try chunkText(normalized, limit)
+  }
+
+  const spans = parseFenceSpans(normalized)
+
+  const parts: string[] = []
+  const re = /\n[\t ]*\n+/g
+  let lastIndex = 0
+  for (const match of normalized.matchAll(re)) {
+    const idx = match.index
+
+    if (!isSafeFenceBreak(spans, idx)) {
+      continue
+    }
+
+    parts.push(normalized.slice(lastIndex, idx))
+    lastIndex = idx + match[0].length
+  }
+  parts.push(normalized.slice(lastIndex))
+
+  const chunks: string[] = []
+  for (const part of parts) {
+    const paragraph = part.replace(/\s+$/g, "")
+    if (!paragraph.trim()) {
+      continue
+    }
+    if (paragraph.length <= limit) {
+      chunks.push(paragraph)
+    } else if (!splitLongParagraphs) {
+      chunks.push(paragraph)
+    } else {
+      chunks.push(...try chunkText(paragraph, limit))
+    }
+  }
+
+  return chunks
+}
+
+export const chunkByParagraphOrThrow = thrown(chunkByParagraph)
+
+export effect function chunkMarkdownText(text: string, limit: number) {
+  try assertValidMarkdownChunkLimit(limit)
+  if (!text) {
+    return []
+  }
+  if (text.length <= limit) {
+    return [text]
+  }
+
+  const chunks: string[] = []
+  let remaining = text
+
+  while (remaining.length > limit) {
+    const scan = startFenceScan()
+    advanceFenceScan(remaining, scan, limit)
+    const pendingFence: FenceSpan | undefined = scan.open && {
+      start: scan.open.start,
+      end: Number.POSITIVE_INFINITY,
+      openLine: scan.open.openLine,
+      marker: scan.open.marker,
+      indent: scan.open.indent,
+    }
+    const spans = pendingFence ? [...scan.spans, pendingFence] : scan.spans
+    const window = remaining.slice(0, limit)
+
+    const softBreak = pickSafeBreakIndex(window, spans)
+    let breakIdx = softBreak > 0 ? softBreak : limit
+
+    const initialFence = isSafeFenceBreak(spans, breakIdx)
+      ? undefined
+      : findFenceSpanAt(spans, breakIdx)
+
+    let fenceToSplit = initialFence
+    let minimumFenceProgress = 0
+    if (initialFence) {
+      const closeLine = `${initialFence.indent}${initialFence.marker}`
+      const maxIdxIfNeedNewline = limit - (closeLine.length + 1)
+
+      let bailed = false
+
+      if (maxIdxIfNeedNewline <= 0) {
+        bailed = true
+        breakIdx = limit
+      } else {
+        const minProgressIdx = Math.min(
+          remaining.length,
+          initialFence.start + initialFence.openLine.length + 2,
+        )
+        minimumFenceProgress = minProgressIdx
+        const maxIdxIfAlreadyNewline = limit - closeLine.length
+
+        let pickedNewline = false
+        let lastNewline = remaining.lastIndexOf(
+          "\n",
+          Math.max(0, maxIdxIfAlreadyNewline - 1),
+        )
+        while (lastNewline !== -1) {
+          const candidateBreak = lastNewline + 1
+          if (candidateBreak < minProgressIdx) {
+            break
+          }
+          const candidateFence = findFenceSpanAt(spans, candidateBreak)
+          if (candidateFence && candidateFence.start === initialFence.start) {
+            breakIdx = Math.max(1, candidateBreak)
+            pickedNewline = true
+            break
+          }
+          lastNewline = remaining.lastIndexOf("\n", lastNewline - 1)
+        }
+
+        if (!pickedNewline) {
+          const breaksAfterNewline = remaining[minProgressIdx - 1] === "\n"
+          const maxProgressIdx = breaksAfterNewline
+            ? maxIdxIfAlreadyNewline
+            : maxIdxIfNeedNewline
+          if (minProgressIdx > maxProgressIdx) {
+            bailed = true
+            breakIdx = limit
+          } else {
+            breakIdx = Math.max(minProgressIdx, maxIdxIfNeedNewline)
+          }
+        }
+      }
+
+      const fenceAtBreak = findFenceSpanAt(spans, breakIdx)
+      fenceToSplit = !bailed && fenceAtBreak && fenceAtBreak.start === initialFence.start
+        ? fenceAtBreak
+        : undefined
+    }
+
+    breakIdx = avoidGraphemeSplit(remaining, breakIdx)
+    if (fenceToSplit && breakIdx < minimumFenceProgress) {
+      fenceToSplit = undefined
+      breakIdx = avoidGraphemeSplit(remaining, limit)
+    }
+
+    const closer = fenceToSplit
+        && resolveFenceEnd(remaining, scan, fenceToSplit, pendingFence, breakIdx)
+      ? findClosingFenceLine(remaining, fenceToSplit)
+      : undefined
+    if (
+      fenceToSplit
+      && closer
+      && /^\s*$/.test(remaining.slice(breakIdx, closer.start))
+    ) {
+      const body = remaining.slice(0, Math.min(breakIdx, closer.start))
+      const closeLine = `${fenceToSplit.indent}${fenceToSplit.marker}`
+      const closed = body.endsWith("\n")
+        ? `${body}${closeLine}`
+        : `${body}\n${closeLine}`
+      if (closed.length <= limit) {
+        chunks.push(closed)
+        remaining = stripLeadingNewlines(remaining.slice(closer.end))
+        continue
+      }
+    }
+
+    let rawChunk = remaining.slice(0, breakIdx)
+    if (!rawChunk) {
+      break
+    }
+
+    const brokeOnSeparator = breakIdx < remaining.length && /\s/.test(remaining[breakIdx])
+    const nextStart = Math.min(
+      remaining.length,
+      breakIdx + (brokeOnSeparator ? 1 : 0),
+    )
+    let next = remaining.slice(nextStart)
+
+    if (fenceToSplit) {
+      const closeLine = `${fenceToSplit.indent}${fenceToSplit.marker}`
+      rawChunk = rawChunk.endsWith("\n")
+        ? `${rawChunk}${closeLine}`
+        : `${rawChunk}\n${closeLine}`
+      next = `${fenceToSplit.openLine}\n${next}`
+    } else {
+      next = stripLeadingNewlines(next)
+    }
+
+    chunks.push(rawChunk)
+    remaining = next
+  }
+
+  if (remaining.length) {
+    chunks.push(remaining)
+  }
+  return chunks
+}
+
+export const chunkMarkdownTextOrThrow = thrown(chunkMarkdownText)
+
+const GraphemeSegmenter = (
+  Intl as unknown as {
+    Segmenter: new(
+      locale: string,
+      options: { granularity: "grapheme" },
+    ) => { segment(text: string): Iterable<{ segment: string }> }
+  }
+).Segmenter
+
+const graphemeSegmenter = new GraphemeSegmenter("en", {
+  granularity: "grapheme",
+})
+
+function avoidGraphemeSplit(text: string, index: number): number {
+  if (index <= 0 || index >= text.length) {
+    return index
+  }
+  let boundary = 0
+  for (const { segment } of graphemeSegmenter.segment(text)) {
+    if (boundary + segment.length > index) {
+      break
+    }
+    boundary += segment.length
+  }
+  if (boundary === index) {
+    return index
+  }
+  if (boundary > 0) {
+    return boundary
+  }
+  return avoidSurrogateSplit(text, index)
+}
+
+function avoidSurrogateSplit(text: string, index: number): number {
+  if (index <= 0 || index >= text.length) {
+    return index
+  }
+  const high = text.charCodeAt(index - 1)
+  const low = text.charCodeAt(index)
+  if (high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff) {
+    return index > 1 ? index - 1 : index + 1
+  }
+  return index
+}
+
+function resolveFenceEnd(
+  text: string,
+  scan: FenceScan,
+  span: FenceSpan,
+  pendingFence: FenceSpan | undefined,
+  breakIdx: number,
+): boolean {
+  if (span !== pendingFence) {
+    return true
+  }
+  let firstContent = breakIdx
+  while (firstContent < text.length && /\s/.test(text[firstContent])) {
+    firstContent++
+  }
+  advanceFenceScan(text, scan, firstContent)
+  const closed = scan.spans.find((candidate) => candidate.start === span.start)
+  if (!closed) {
+    return false
+  }
+  span.end = closed.end
+  return true
+}
+
+function findClosingFenceLine(
+  text: string,
+  span: FenceSpan,
+): { start: number; end: number } | undefined {
+  const start = text.lastIndexOf("\n", span.end - 1) + 1
+  if (start <= span.start) {
+    return undefined
+  }
+  const line = text.slice(start, span.end).replace(/\r$/, "")
+  const match = line.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/)
+  if (
+    !match
+    || match[1][0] !== span.marker[0]
+    || match[1].length < span.marker.length
+  ) {
+    return undefined
+  }
+  return { start, end: span.end }
+}
+
+function stripLeadingNewlines(value: string): string {
+  let i = 0
+  while (i < value.length && value[i] === "\n") {
+    i++
+  }
+  return i > 0 ? value.slice(i) : value
+}
+
+function pickSafeBreakIndex(
+  window: string,
+  spans: readonly FenceSpan[],
+): number {
+  const { lastNewline, lastWhitespace } = scanParenAwareBreakpoints(
+    window,
+    (index) => isSafeFenceBreak(spans, index),
+  )
+
+  if (lastNewline > 0) {
+    return lastNewline
+  }
+  if (lastWhitespace > 0) {
+    return lastWhitespace
+  }
+  return -1
+}
+
+function scanParenAwareBreakpoints(
+  window: string,
+  isAllowed: (index: number) => boolean = () => true,
+): { lastNewline: number; lastWhitespace: number } {
+  const closes = new Map<number, number>()
+  const open: number[] = []
+  for (let i = 0; i < window.length; i++) {
+    if (!isAllowed(i)) {
+      continue
+    }
+    if (window[i] === "(") {
+      open.push(i)
+    } else if (window[i] === ")" && open.length > 0) {
+      closes.set(open.pop() as number, i)
+    }
+  }
+
+  const outside = { lastNewline: -1, lastWhitespace: -1 }
+  const outsideClosed = { lastNewline: -1, lastWhitespace: -1 }
+  let depth = 0
+  let closedUntil = -1
+  for (let i = 0; i < window.length; i++) {
+    if (!isAllowed(i)) {
+      continue
+    }
+    const char = window[i]
+    if (char === "(") {
+      depth += 1
+      closedUntil = Math.max(closedUntil, closes.get(i) ?? -1)
+      continue
+    }
+    if (char === ")" && depth > 0) {
+      depth -= 1
+      continue
+    }
+    const key = char === "\n" ? "lastNewline" : /\s/.test(char) ? "lastWhitespace" : null
+    if (!key) {
+      continue
+    }
+    if (depth === 0) {
+      outside[key] = i
+    }
+    if (i > closedUntil) {
+      outsideClosed[key] = i
+    }
+  }
+
+  return outside.lastNewline > 0 || outside.lastWhitespace > 0
+    ? outside
+    : outsideClosed
+}
+
+function describeInvalidLimit(limit: number): string {
+  if (Number.isNaN(limit)) {
+    return "NaN"
+  }
+  if (limit === Number.POSITIVE_INFINITY) {
+    return "+Infinity"
+  }
+  if (limit === Number.NEGATIVE_INFINITY) {
+    return "-Infinity"
+  }
+  return String(limit).slice(0, 32)
+}

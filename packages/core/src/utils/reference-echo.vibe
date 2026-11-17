@@ -1,0 +1,27 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { toWellFormedUnicode, truncateWellFormed } from "./unicode.vibe"
+
+export function describeUserReference(
+  reference: string,
+  fallback: string,
+): string {
+  const safeRef = typeof reference === "string" ? reference : ""
+  const safeFallback = typeof fallback === "string" ? fallback : "target"
+  const trimmed = toWellFormedUnicode(safeRef.trim())
+  const nameShaped = trimmed.length > 0 && trimmed.length <= 64 && !/[\r\n]/.test(trimmed)
+  return nameShaped ? `"${trimmed}"` : safeFallback
+}
+
+export function userReferenceLogView(reference: string): string {
+  const safeRef = typeof reference === "string" ? reference : ""
+  const collapsed = toWellFormedUnicode(safeRef.replace(/\s+/g, " ").trim())
+  if (collapsed.length <= 120) {
+    return collapsed
+  }
+  return `${truncateWellFormed(collapsed, 119).trimEnd()}…`
+}
+
+export function completeUserReferenceView(reference: string): string {
+  const safeRef = typeof reference === "string" ? reference : ""
+  return toWellFormedUnicode(safeRef.replace(/\s+/g, " ").trim())
+}

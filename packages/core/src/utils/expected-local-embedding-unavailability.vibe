@@ -1,0 +1,39 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { ModelType } from "../types/model.vibe"
+
+const EXPECTED_UNAVAILABLE_REASONS = new Set([
+  "backend_unavailable",
+  "capability_unavailable",
+])
+
+export interface ModelProviderFailureDetails {
+  code?: string
+  modelType?: string
+  provider?: string
+  reason?: string
+}
+
+export function modelProviderFailureDetails(
+  error: unknown,
+): ModelProviderFailureDetails {
+  if (typeof error !== "object" || error === null) return {}
+  const candidate = error as Record<string, unknown>
+  return {
+    code: typeof candidate.code === "string" ? candidate.code : undefined,
+    modelType: typeof candidate.modelType === "string" ? candidate.modelType : undefined,
+    provider: typeof candidate.provider === "string" ? candidate.provider : undefined,
+    reason: typeof candidate.reason === "string" ? candidate.reason : undefined,
+  }
+}
+
+export function isExpectedLocalEmbeddingUnavailability(
+  error: unknown,
+): boolean {
+  const details = modelProviderFailureDetails(error)
+  return (
+    details.code === "LOCAL_INFERENCE_UNAVAILABLE"
+    && details.modelType === ModelType.TEXT_EMBEDDING
+    && details.reason !== undefined
+    && EXPECTED_UNAVAILABLE_REASONS.has(details.reason)
+  )
+}

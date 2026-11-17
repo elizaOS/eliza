@@ -1,0 +1,40 @@
+// spec/core/reminderPresentation.md, "Issuance requires a nonblank body and title and a chat text beginning with the body"
+import { getAmbientSingleton } from "../ambient-context.vibe"
+import { thrown } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+
+export type ReminderPresentation = {
+  readonly kind: "saved-one-shot-reminder"
+  readonly body: string
+  readonly chatText: string
+  readonly title: string
+}
+const registryKey = Symbol.for("eliza.saved-reminder-presentation.authority")
+const issued = () => getAmbientSingleton(registryKey, () => new WeakSet<object>())
+export effect function createReminderPresentation(
+  body: string,
+  chatText: string,
+  title: string,
+): ReminderPresentation!ElizaError {
+  if (!body.trim() || !title.trim() || !chatText.startsWith(body)) {
+    throw new ElizaError("Invalid saved reminder presentation", {
+      code: "REMINDER_PRESENTATION_INVALID",
+    })
+  }
+  const value = Object.freeze({
+    kind: "saved-one-shot-reminder" as const,
+    body,
+    chatText,
+    title,
+  })
+  issued().add(value)
+  return value
+}
+export const createReminderPresentationOrThrow = thrown(createReminderPresentation)
+export function readReminderPresentation(
+  value: unknown,
+): ReminderPresentation | null {
+  return typeof value === "object" && value !== null && issued().has(value)
+    ? (value as ReminderPresentation)
+    : null
+}

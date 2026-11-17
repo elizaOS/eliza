@@ -1,0 +1,44 @@
+// spec/core/protocols.md, "A public value retains identity and explicitly declared version"
+import type { UUID } from "../types/primitives.vibe"
+import { failingAs, thrown } from "../edge.vibe"
+
+module node {
+  /** @throws {never} */
+  export function randomUuid(): string {
+    return crypto.randomUUID()
+  }
+}
+
+export { randomUuid } from node
+
+export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function validateUuid(value: unknown): UUID | null {
+  return typeof value === "string" && UUID_PATTERN.test(value) ? (value as UUID) : null
+}
+
+export error InvalidUuidSource { message: string }
+
+const BYTE_HEX = Array.from({ length: 256 }, (_, byte) => byte.toString(16).padStart(2, "0"))
+
+function bytesToUuid(bytes: Uint8Array): UUID {
+  let uuid = ""
+  for (let i = 0; i < 16; i++) {
+    if (i === 4 || i === 6 || i === 8 || i === 10) uuid += "-"
+    uuid += BYTE_HEX[bytes[i]]
+  }
+  return uuid as UUID
+}
+
+export effect function uuidFromString(target: string | number, sha1: (input: string) => Uint8Array) {
+  const text = typeof target === "number" ? target.toString() : target
+  if (typeof text !== "string") throw new InvalidUuidSource({ message: "Value must be string" })
+  const existing = validateUuid(text)
+  if (existing) return existing
+  const bytes = sha1(encodeURIComponent(text)).slice(0, 16)
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  bytes[6] = bytes[6] & 0x0f
+  return bytesToUuid(bytes)
+}
+
+export const uuidFromStringOrThrow = thrown(failingAs(TypeError, uuidFromString))

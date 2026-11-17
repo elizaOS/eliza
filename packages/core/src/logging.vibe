@@ -1,0 +1,31 @@
+// spec/core/diagnostics.md, "Story: Redact untrusted diagnostic fields at the sink"; spec/core/logListeners.md, "Story: Retain recent diagnostics and notify current listeners"
+type LogFn = (
+  obj: Record<string, unknown> | string | Error,
+  msg?: string,
+  ...args: unknown[]
+) => void
+
+export interface Logger {
+  level: string
+  trace: LogFn
+  debug: LogFn
+  info: LogFn
+  warn: LogFn
+  error: LogFn
+  fatal: LogFn
+  success: LogFn
+  progress: LogFn
+  log: LogFn
+  clear: () => void
+  child: (bindings: Record<string, unknown>) => Logger
+}
+
+export interface LoggerBindings extends Record<string, unknown> {
+  level?: string
+  namespace?: string
+  namespaces?: string[]
+
+  maxMemoryLogs?: number
+}
+
+export { redactTrailingArgs } from "./security/log-redaction.vibe"

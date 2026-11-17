@@ -1,0 +1,171 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+export type FenceSpan = {
+  start: number
+  end: number
+  openLine: string
+  marker: string
+  indent: string
+}
+
+type OpenFence = {
+  start: number
+  markerChar: string
+  markerLen: number
+  openLine: string
+  marker: string
+  indent: string
+}
+
+export type FenceScan = {
+  spans: FenceSpan[]
+  open: OpenFence | undefined
+  offset: number
+  done: boolean
+}
+
+const FENCE_LINE_RE = /^( {0,3})(`{3,}|~{3,})(.*)$/
+
+function closedSpan(open: OpenFence, end: number): FenceSpan {
+  return { start: open.start, end, openLine: open.openLine, marker: open.marker, indent: open.indent }
+}
+
+export function startFenceScan(): FenceScan {
+  return { spans: [], open: undefined, offset: 0, done: false }
+}
+
+export function advanceFenceScan(
+  buffer: string,
+  scan: FenceScan,
+  lastLineStart: number,
+): void {
+  while (!scan.done && scan.offset <= lastLineStart) {
+    const offset = scan.offset
+    const nextNewline = buffer.indexOf("\n", offset)
+    const lineEnd = nextNewline === -1 ? buffer.length : nextNewline
+    const rawLine = buffer.slice(offset, lineEnd)
+
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine
+
+    const match = FENCE_LINE_RE.exec(line)
+    const open = scan.open
+    if (match && (open || match[2][0] !== "`" || !match[3].includes("`"))) {
+      const indent = match[1]
+      const marker = match[2]
+      const markerChar = marker[0]
+      const markerLen = marker.length
+      if (!open) {
+        scan.open = {
+          start: offset,
+          markerChar,
+          markerLen,
+          openLine: line,
+          marker,
+          indent,
+        }
+      } else if (
+        open.markerChar === markerChar
+        && markerLen >= open.markerLen
+        && /^[ \t]*$/.test(match[3])
+      ) {
+        scan.spans.push(closedSpan(open, lineEnd))
+        scan.open = undefined
+      }
+    }
+
+    if (nextNewline === -1) {
+      scan.done = true
+      const unclosed = scan.open
+      if (unclosed) {
+        scan.spans.push(closedSpan(unclosed, buffer.length))
+        scan.open = undefined
+      }
+      return
+    }
+    scan.offset = nextNewline + 1
+  }
+}
+
+export function parseFenceSpans(buffer: string): FenceSpan[] {
+  const scan = startFenceScan()
+  advanceFenceScan(buffer, scan, buffer.length)
+  return scan.spans
+}
+
+export function findFenceSpanAt(
+  spans: readonly FenceSpan[],
+  index: number,
+): FenceSpan | undefined {
+  const span = spans[lastSpanStartingBefore(spans, index)]
+  return span && index < span.end ? span : undefined
+}
+
+function lastSpanStartingBefore(
+  spans: readonly FenceSpan[],
+  index: number,
+): number {
+  let lo = 0
+  let hi = spans.length - 1
+  let found = -1
+  while (lo <= hi) {
+    const mid = (lo + hi) >>> 1
+    if (spans[mid].start < index) {
+      found = mid
+      lo = mid + 1
+    } else {
+      hi = mid - 1
+    }
+  }
+  return found
+}
+
+export function isSafeFenceBreak(
+  spans: readonly FenceSpan[],
+  index: number,
+): boolean {
+  return !findFenceSpanAt(spans, index)
+}
+
+export function unwrapWholeCodeFence(
+  value: string,
+  languages: readonly string[],
+): string | null {
+  let fenceLength = 0
+  while (value[fenceLength] === "`") fenceLength += 1
+  if (fenceLength < 3 || value.length < fenceLength * 2) {
+    return null
+  }
+
+  let longestLanguage = 0
+  for (const language of languages) {
+    longestLanguage = Math.max(longestLanguage, language.length)
+  }
+  const lowerLabel = value
+    .slice(fenceLength, fenceLength + longestLanguage)
+    .toLowerCase()
+  const acceptedLanguage = [...languages]
+    .sort((left, right) => right.length - left.length)
+    .find((language) => lowerLabel.startsWith(language.toLowerCase()))
+  let cursor = acceptedLanguage
+    ? fenceLength + acceptedLanguage.length
+    : fenceLength
+  if (!acceptedLanguage) {
+    while (
+      cursor < value.length - fenceLength
+      && /[A-Za-z0-9]/.test(value[cursor])
+    ) {
+      cursor += 1
+    }
+    const language = value.slice(fenceLength, cursor)
+
+    if (language && /\s/u.test(value[cursor] ?? "")) return null
+    cursor = fenceLength
+  }
+  while (cursor < value.length - fenceLength && /\s/u.test(value[cursor])) {
+    cursor += 1
+  }
+  let end = value.length
+  while (end > cursor && value[end - 1] === "`") end -= 1
+  if (value.length - end < fenceLength) return null
+  while (end > cursor && /\s/u.test(value[end - 1])) end -= 1
+  return value.slice(cursor, end)
+}

@@ -1,0 +1,64 @@
+// spec/core/views.md, "Completion requires matching request renderer installation and view identities"
+import { asObjectRecordOrUndefined } from "../utils/type-guards.vibe"
+
+export interface ViewInteractRequest {
+  viewId: string
+  capability: string
+  params?: Record<string, unknown>
+
+  requestId: string
+  timeoutMs?: number
+}
+
+export interface ViewInteractResult {
+  requestId: string
+  success: boolean
+  result?: unknown
+  error?: string
+}
+
+export function readViewInteractionClientId(message: {
+  content: unknown
+}): string | undefined {
+  return parseViewInteractionClientId(asObjectRecordOrUndefined(asObjectRecordOrUndefined(message.content)?.metadata)?.viewClientId)
+}
+
+export function parseViewInteractionClientId(
+  value: unknown,
+): string | undefined {
+  return typeof value === "string" && /^[A-Za-z0-9._-]{1,128}$/.test(value)
+    ? value
+    : undefined
+}
+
+export const STANDARD_CAPABILITIES = {
+  GET_STATE: "get-state",
+  REFRESH: "refresh",
+  FOCUS_ELEMENT: "focus-element",
+  GET_TEXT: "get-text",
+  CLICK_ELEMENT: "click-element",
+  FILL_INPUT: "fill-input",
+} as const
+
+export type StandardCapability = (typeof STANDARD_CAPABILITIES)[keyof typeof STANDARD_CAPABILITIES]
+
+export const READ_ONLY_VIEW_CAPABILITY_IDS: ReadonlySet<string> = new Set([
+  STANDARD_CAPABILITIES.GET_STATE,
+  STANDARD_CAPABILITIES.GET_TEXT,
+  "list-elements",
+  "describe-element",
+  "get-focus",
+  "get-agent-state",
+])
+
+export const AGENT_SURFACE_CAPABILITY_IDS: ReadonlySet<string> = new Set([
+  "list-elements",
+  "describe-element",
+  "get-focus",
+  "get-agent-state",
+  "agent-click",
+  "agent-fill",
+  "agent-focus",
+  "agent-scroll-to",
+  "set-highlight",
+])

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type * as TS from "typescript";
 import ts from "typescript";
@@ -7,16 +8,28 @@ import { writeConformance } from "./conform.ts";
 import { simulated } from "./gen/harness.ts";
 import { fail } from "./gen/types.ts";
 import type { Unit } from "./prove.ts";
-import { run } from "./run.ts";
-import { importedMeanings, originalColumn, type Spec } from "./parse.ts";
+import { modules, originalColumn, type Spec } from "./parse.ts";
 import { defines } from "./review.ts";
-import { entry, recall, store, type Memory } from "./cache.ts";
+import { act } from "./action.ts";
+import type { Memory } from "./cache.ts";
 import { plainText } from "./scan.ts";
-import { codeDirOf, codeDirs, filesUnder, manifest, owner, readSrc, type SrcFile } from "./util.ts";
+import { codeDirOf, codeDirs, filesUnder, manifest, owner, readSrc, SIMULATIONS, type SrcFile } from "./util.ts";
 import { effectAdapter } from "./gen/vibe.ts";
 import { reactHook } from "./gen/react.ts";
 
 const ANNOTATIONS = ["backend", "pure", "requires", "ensures", "invariant", "decreases", "type", "ghost", "assert"];
+
+/**
+ * The files each project's generation wrote, by its root. A file is written only when its text changed, so that what
+ * watches gen/ hears of what changed alone; what the generation did not write is swept away (`mirrorGen`).
+ */
+const generations = new Map<string, Set<string>>();
+function put(root: string, file: string, text: string) {
+  generations.get(root)?.add(file);
+  let was: string | undefined;
+  try { was = fs.readFileSync(file, "utf8"); } catch { was = undefined; }
+  if (was !== text) fs.writeFileSync(file, text);
+}
 
 /**
  * gen/ holds TypeScript that Node loads as ES modules, whatever the project's package.json says: a project whose
@@ -25,8 +38,7 @@ const ANNOTATIONS = ["backend", "pure", "requires", "ensures", "invariant", "dec
 function genDir(root: string): string {
   const dir = path.join(root, "gen");
   fs.mkdirSync(dir, { recursive: true });
-  const manifest = path.join(dir, "package.json");
-  if (!fs.existsSync(manifest)) fs.writeFileSync(manifest, `${JSON.stringify({ type: "module" })}\n`);
+  put(root, path.join(dir, "package.json"), `${JSON.stringify({ type: "module" })}\n`);
   return dir;
 }
 
@@ -55,11 +67,12 @@ export function generated(root: string, spec: Spec, ir: any, models: Map<string,
   const origins = new Map<string, Origin>();
   for (const r of spec.rules) for (const d of r.defs) origins.set(d, { rule: r.key, line: r.line });
   const model = generate(ir, spec.name, spec.file, (d) => origins.get(d), models);
-  fs.writeFileSync(path.join(dir, `${spec.name}.ts`), model.ts);
-  fs.writeFileSync(path.join(dir, `${spec.name}.run.qnt`), model.harness);
-  writeFaces(root, dir, spec, model.ts);
-  if (model.opaques.length) fs.writeFileSync(path.join(dir, `${spec.name}.sim.qnt`), simulated(spec.qnt, model.opaques));
-  writeConformance(root, model);
+  const write = (name: string, text: string) => put(root, path.join(dir, name), text);
+  write(`${spec.name}.ts`, model.ts);
+  write(`${spec.name}.run.qnt`, model.harness);
+  writeFaces(root, root, dir, spec, model.ts);
+  if (model.opaques.length) write(`${spec.name}.sim.qnt`, simulated(spec.qnt, model.opaques));
+  writeConformance(model, write);
   models.set(spec.name, model);
   return model;
 }
@@ -68,11 +81,11 @@ export function generated(root: string, spec: Spec, ir: any, models: Map<string,
  * Into `to`, the gen/ of the package in `dir`, what gen/<name>.ts (`text`) is for its shell: the Effect adapter, whose
  * `Machine` key carries the package's name, and the React hook where the package depends on react.
  */
-function writeFaces(dir: string, to: string, spec: Spec, text: string) {
+function writeFaces(root: string, dir: string, to: string, spec: Spec, text: string) {
   const pkg = manifest(dir);
-  fs.writeFileSync(path.join(to, `${spec.name}.effect.vibe`), effectAdapter(spec.name, spec.file, text, namespace(dir, pkg.name)));
+  put(root, path.join(to, `${spec.name}.effect.vibe`), effectAdapter(spec.name, spec.file, text, namespace(dir, pkg.name)));
   const hook = ["dependencies", "devDependencies", "peerDependencies"].some((kind) => pkg[kind]?.react) && reactHook(spec.name, spec.file, text);
-  if (hook) fs.writeFileSync(path.join(to, `${spec.name}.react.ts`), hook);
+  if (hook) put(root, path.join(to, `${spec.name}.react.ts`), hook);
 }
 
 /**
@@ -90,54 +103,69 @@ function namespace(dir: string, name: unknown): string {
 }
 
 /**
- * Each owner's gen/, written anew from the root's: the modules of its specs and of every spec they import, under the
- * root's module names, with the types their drivers are written to, so that a package imports only from its own gen/.
- * The Effect adapter and the React hook are written for the owner (`writeFaces`): that is the package the service runs
- * in.
- * A module not generated, because its spec is not valid, is not there.
+ * Each owner's gen/, from the root's: the modules of its specs and of every spec they import, under the root's module
+ * names, with the types their drivers are written to, so that a package imports only from its own gen/. The Effect
+ * adapter and the React hook are written for the owner (`writeFaces`): that is the package the service runs in.
+ * A module not generated, because its spec is not valid, is not there. This ends a generation: what it did not write,
+ * in the root's gen/ or an owner's, is removed, so that nothing stale survives a rename; but for gen/traces, where this
+ * check's simulations write what they run (simulate.ts), still running as this does, and which the next generation
+ * begins by removing.
  */
 export function mirrorGen(root: string, specs: Spec[]) {
+  const written = generations.get(root) ?? new Set<string>();
+  generations.set(root, written);
+  written.add(path.join(root, SIMULATIONS));
+  const sweep = (dir: string) => {
+    if (!fs.existsSync(dir)) return;
+    for (const f of fs.readdirSync(dir)) if (!written.has(path.join(dir, f))) fs.rmSync(path.join(dir, f), { recursive: true, force: true });
+    if (!fs.readdirSync(dir).length) fs.rmSync(dir, { recursive: true });
+  };
   const from = path.join(root, "gen");
+  sweep(from);
   for (const dir of codeDirs(root).filter(Boolean)) {
     const needed = new Set<string>();
     const need = (name: string) => { if (!needed.has(name)) { needed.add(name); specs.find((s) => s.name === name)?.imports.forEach(need); } };
     for (const spec of specs) if (`${owner(root, spec.file)}/` === dir) need(spec.name);
     const to = path.join(root, dir, "gen");
-    fs.rmSync(to, { recursive: true, force: true });
-    const files = fs.readdirSync(from).filter((f) => needed.has(f.match(/^(\w+)\.(?:ts|conformance\.ts)$/)?.[1] ?? ""));
-    if (!files.length) continue;
-    fs.mkdirSync(to, { recursive: true });
-    for (const f of [...files, "package.json", ...files.some((f) => f.endsWith(".conformance.ts")) ? ["_conformance.ts"] : []]) fs.copyFileSync(path.join(from, f), path.join(to, f));
-    for (const spec of specs) if (files.includes(`${spec.name}.ts`)) writeFaces(path.join(root, dir), to, spec, fs.readFileSync(path.join(from, `${spec.name}.ts`), "utf8"));
+    const files = fs.existsSync(from) ? fs.readdirSync(from).filter((f) => needed.has(f.match(/^(\w+)\.(?:ts|conformance\.ts)$/)?.[1] ?? "")) : [];
+    if (files.length) {
+      fs.mkdirSync(to, { recursive: true });
+      for (const f of [...files, "package.json", ...files.some((f) => f.endsWith(".conformance.ts")) ? ["_conformance.ts"] : []]) put(root, path.join(to, f), fs.readFileSync(path.join(from, f), "utf8"));
+    }
+    for (const spec of specs) if (files.includes(`${spec.name}.ts`)) writeFaces(root, path.join(root, dir), to, spec, fs.readFileSync(path.join(from, `${spec.name}.ts`), "utf8"));
+    sweep(to);
   }
+  generations.delete(root);
 }
 
 /**
  * Quint's typed IR of every spec, typechecked all at once and without blocking, or remembered: it depends only on the
- * Quint of the spec and of what it imports. Each promise rejects with the errors of its spec. gen/<name>.qnt is written
- * for every spec, since the simulation harness imports it.
+ * Quint of the spec and of what it imports (action.ts). Each promise rejects with the errors of its spec. This begins a
+ * generation of gen/ (`mirrorGen` ends it); gen/<name>.qnt is written for every spec, since the simulation harness
+ * imports it.
  */
 export function typecheckAll(memory: Memory, specs: Spec[]): Map<string, Promise<any>> {
+  generations.set(memory.root, new Set());
+  fs.rmSync(path.join(memory.root, SIMULATIONS), { recursive: true, force: true });
   const dir = genDir(memory.root);
-  for (const spec of specs) fs.writeFileSync(path.join(dir, `${spec.name}.qnt`), spec.qnt);
+  for (const spec of specs) put(memory.root, path.join(dir, `${spec.name}.qnt`), spec.qnt);
   return new Map(specs.map((spec) => {
     const ir = (async () => {
-      const at = await entry(memory.root, "model", [importedMeanings(spec, specs), spec.meaning]);
-      const known = recall<any>(memory, at);
-      if (known !== undefined) return known;
-      const out = path.join(dir, `${spec.name}.ir.json`);
-      const typed = await run("quint", ["typecheck", "--out", out, `gen/${spec.name}.qnt`], memory.root);
+      const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-typecheck-"));
+      const typed = await act(memory, "quint", ["typecheck", "--out", "ir.json", `${spec.name}.qnt`], scratch, modules(spec, specs))
+        .finally(() => fs.rmSync(scratch, { recursive: true, force: true }));
       let ir: any;
-      try { ir = JSON.parse(fs.readFileSync(out, "utf8")); } catch { ir = undefined; }
-      fs.rmSync(out, { force: true });
+      try { ir = JSON.parse(typed.files["ir.json"]); } catch { ir = undefined; }
       if (!typed.ok || !ir || ir.errors?.length) throw typeErrors(spec, ir, typed.out, specs);
-      store(memory, at, ir);
       return ir;
     })();
     ir.catch(() => {}); // a spec that is not valid is reported in its turn, not as an unhandled rejection
     return [spec.name, ir] as const;
   }));
 }
+
+const proofFileOf = (m: Model) => m.source.replace(/\.md$/, ".proof.dfy");
+const definesAnything = (m: Model) => m.exports.types.length > 0 || m.exports.values.length > 0;
 
 /**
  * LemmaScript verifies one file at a time and does not carry definitions across
@@ -151,6 +179,9 @@ export function typecheckAll(memory: Memory, specs: Spec[]): Map<string, Promise
  *
  * A unit may have a proof file: spec/<name>.proof.dfy for a spec,
  * src/<path>.proof.dfy for src/<path>.ts.
+ *
+ * A spec that defines no type or value of its own, prose only or imports
+ * only, has no unit: it gives LemmaScript and Dafny nothing to check.
  */
 export function proofUnits(root: string, models: Model[], srcFiles: SrcFile[] = readSrc(root)): Unit[] {
   const byName = new Map(models.map((m) => [m.name, m]));
@@ -180,12 +211,12 @@ export function proofUnits(root: string, models: Model[], srcFiles: SrcFile[] = 
   const prefixed = (names: string[]) => names.map((n): [string, string] => [n, `${n}_`]);
   /** What a unit takes on trust from its module's opaque functions: their types, and the laws stated with them. */
   const assumptions = (m: Model | undefined) => ({ externs: m?.opaques.map((o) => o.name) ?? [], assumed: m?.opaques.flatMap((o) => o.laws.map((l) => l.name)) ?? [] });
-  const units: Unit[] = models.map((m) => ({
+  const units: Unit[] = models.filter(definesAnything).map((m) => ({
     unit: `${m.name}.ts`,
     text: bundle(m, true).join("\n"),
     meaning: bundle(m, false).join("\n"),
     src: false,
-    proofFile: m.source.replace(/\.md$/, ".proof.dfy"),
+    proofFile: proofFileOf(m),
     imports: imported(prefixed(needs(m))),
     // Proved against the definitions of what it imports, never against their obligations; but the abstract rules
     // carry over to a refining spec only as far as the machine it refines proved them (SPEC.md, "Refinement").
@@ -279,5 +310,9 @@ export function checkVerifiedSource(file: string, code: string) {
 /** Every proof file of the project. */
 export const proofFiles = (root: string) => ["spec", ...codeDirs(root).map((dir) => `${dir}src`)].flatMap((dir) => filesUnder(root, dir)).filter((f) => f.endsWith(".proof.dfy"));
 
-/** Proof files that belong to no unit: a typo, or a source file that is no longer proved. */
-export const strayProofFiles = (root: string, units: Unit[]) => proofFiles(root).filter((f) => !units.some((u) => u.proofFile === f));
+/**
+ * Proof files that belong to no unit: a typo, a source file that is no longer proved, or the proof file of a spec that
+ * defines nothing, which is `emptySpec`.
+ */
+export const strayProofFiles = (root: string, units: Unit[], models: Model[]) => proofFiles(root).filter((f) => !units.some((u) => u.proofFile === f))
+  .map((file) => ({ file, emptySpec: models.find((m) => proofFileOf(m) === file)?.source }));

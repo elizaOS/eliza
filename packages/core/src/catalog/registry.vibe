@@ -1,0 +1,130 @@
+// spec/core/catalog.md, "Story: Discover and register first-party capabilities"; spec/core/catalog.md, "A valid runtime registration overrides its id and invalidates cached indexes"
+import { getAmbientSingleton } from "../ambient-context.vibe"
+import { failingAs, Foreign, thrown } from "../edge.vibe"
+import { Machine, machine } from "../../gen/core__catalog.effect.vibe"
+import { logger } from "../logger.vibe"
+import { own } from "../owned.vibe"
+import {
+  indexEntries,
+  type LoadedRegistry,
+  loadRegistryFromRawEntries,
+  normalizeConnectorAuth,
+  RegistryValidationError,
+} from "./loader.vibe"
+import { type RegistryEntry, registryEntrySchema } from "./schema.vibe"
+
+export error InvalidRegistryEntry { message: string }
+
+module node {
+  import { existsSync, readFileSync } from "node:fs"
+  import { dirname, join } from "node:path"
+  import { fileURLToPath } from "node:url"
+  import { Effect } from "effect"
+  import { Foreign } from "../edge.vibe"
+
+  function entrypointDirectory(): string {
+    return dirname(process.argv[1] ?? process.cwd())
+  }
+
+  function moduleDirectory(url: unknown): string {
+    if (typeof url !== "string" || !url) return entrypointDirectory()
+    try {
+      return dirname(fileURLToPath(url))
+    } catch {
+      return entrypointDirectory()
+    }
+  }
+
+  /** @throws {never} */
+  export function generatedPath(moduleUrl: unknown): string {
+    return join(moduleDirectory(moduleUrl), "generated.json")
+  }
+
+  /** @throws {never} */
+  export function isPresent(path: string): boolean {
+    return existsSync(path)
+  }
+
+  /** @throws {never} */
+  export function readJson(path: string): Effect.Effect<unknown, Foreign> {
+    return Effect.try({ try: (): unknown => JSON.parse(readFileSync(path, "utf-8")), catch: (cause) => new Foreign({ cause }) })
+  }
+}
+import { generatedPath, isPresent, readJson } from node
+
+const RUNTIME_ENTRIES_KEY = Symbol.for(
+  "elizaos.first-party-registry.runtime-entries",
+)
+
+function runtimeEntries(): RegistryEntry[] {
+  return getAmbientSingleton(RUNTIME_ENTRIES_KEY, () => ({ entries: [] as RegistryEntry[] })).entries
+}
+
+effect function catalogMachine() {
+  provide machine() {
+    return try own(try Machine, null as LoadedRegistry | null)
+  }
+}
+
+type CatalogOwned = Effect.Success<ReturnType<typeof catalogMachine>>
+
+function catalog(): CatalogOwned {
+  catalog.slot ??= Effect.runSync(catalogMachine())
+  return catalog.slot
+}
+catalog.slot = undefined as CatalogOwned | undefined
+
+export effect function registerRegistryEntry(entry: RegistryEntry) {
+  const parsed = try Effect.try({ try: () => registryEntrySchema.safeParse(entry), catch: (cause) => new Foreign({ cause }) })
+  if (!parsed.success) {
+    throw new InvalidRegistryEntry({
+      message: `registerRegistryEntry: entry failed validation: ${String(parsed.error)}`,
+    })
+  }
+  const normalized = parsed.data.kind === "connector"
+    ? normalizeConnectorAuth(parsed.data)
+    : parsed.data
+  const entries = runtimeEntries()
+  const idx = entries.findIndex((e) => e.id === normalized.id)
+  const position = idx >= 0 ? idx : entries.length
+  entries[position] = normalized
+  try catalog().step({ type: "register", id: normalized.id, version: position, valid: true }, () => [undefined, null] as const)
+}
+
+export const registerRegistryEntryOrThrow = thrown(failingAs(Error, registerRegistryEntry))
+
+effect function readEntriesFromDisk() {
+  const path = generatedPath(import.meta.url)
+  if (!isPresent(path)) {
+    logger.warn(`[registry] generated.json missing: ${path}`)
+    return []
+  }
+  const parsed = try readJson(path)
+  if (
+    parsed === null
+    || typeof parsed !== "object"
+    || !("entries" in parsed)
+    || !Array.isArray(parsed.entries)
+  ) {
+    throw new RegistryValidationError(
+      path,
+      "expected an object with an entries array",
+    )
+  }
+  const raws = parsed.entries.map((data: unknown, i: number) => ({
+    file: `${path}#${i}`,
+    data,
+  }))
+  return (try loadRegistryFromRawEntries(raws)).all
+}
+
+export effect function loadRegistry() {
+  const cached = try catalog().read((state, registry) => state.cached ? registry : null)
+  if (cached) return cached
+  const fileEntries = try readEntriesFromDisk()
+  const merged = new Map([...fileEntries, ...runtimeEntries()].map((e) => [e.id, e]))
+  const registry = indexEntries([...merged.values()])
+  return try catalog().step({ type: "load" }, () => [registry, registry] as const)
+}
+
+export const loadRegistryOrThrow = thrown(loadRegistry)

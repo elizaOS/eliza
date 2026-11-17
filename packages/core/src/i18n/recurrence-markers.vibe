@@ -1,0 +1,148 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+const ENGLISH_COUNT_WORD = "(?:two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty)"
+
+const RECURRENCE_PATTERNS: readonly RegExp[] = [
+  new RegExp(
+    String
+      .raw`\b(?:every|each)\s+(?:(?:other|\d+|${ENGLISH_COUNT_WORD})\s+)?(?:second|minute|hour|day|week|month|year|morning|afternoon|evening|night|weekday|weekend|mon(?:day)?|tues?(?:day)?|wed(?:nesday)?|thur?s?(?:day)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)s?\b`,
+    "gi",
+  ),
+  /\bdaily\b/gi,
+  /\b(?:weekly|monthly|nightly|hourly|yearly|annually|quarterly|biweekly|fortnightly)\b/gi,
+  /\brepeat(?:s|ing)\b|\brecurring\b|\brecurs?\b/gi,
+  new RegExp(
+    String
+      .raw`\b(?:once|twice|thrice|(?:\d+\s*|${ENGLISH_COUNT_WORD}\s+)times)\s+(?:a|per|each|every)\s+(?:day|week|month|year)\b`,
+    "gi",
+  ),
+  /\bper\s+(?:day|week|month|year)\b/gi,
+  /\b(?:on\s+)?(?:mondays|tuesdays|wednesdays|thursdays|fridays|saturdays|sundays)\b/gi,
+  /\b(?:weekdays|weekends)\b/gi,
+
+  /\b(?:cada|todos\s+los|todas\s+las)\s+(?:d[ií]as?|semanas?|mes(?:es)?|años?|mañanas?|noches?|tardes?|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados?|domingos?)\b/gi,
+  /\bdiario\b/gi,
+  /\b(?:diaria(?:mente)?|semanal(?:mente)?|mensual(?:mente)?|anual(?:mente)?)\b/gi,
+  /\blos\s+(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bados|domingos)\b/gi,
+  /\buna\s+vez\s+(?:a\s+la|por)\s+semana\b/gi,
+
+  /\b(?:cada|todos\s+os|todas\s+as)\s+(?:dias?|semanas?|m[eê]s(?:es)?|anos?|manh[aã]s?|noites?|tardes?|segundas?|ter[cç]as?|quartas?|quintas?|sextas?|s[aá]bados?|domingos?)(?![\p{L}\p{N}_])/giu,
+  /\b(?:diariamente|semanal(?:mente)?|mensal(?:mente)?|anual(?:mente)?)\b/gi,
+  /\b(?:toda|todo)\s+(?:semana|m[eê]s|ano|segunda|ter[cç]a|quarta|quinta|sexta|s[aá]bado|domingo)\b/gi,
+  /\buma\s+vez\s+por\s+(?:semana|m[eê]s)\b/gi,
+
+  /(?:mỗi|hàng|hằng)\s*(?:ngày|tuần|tháng|năm|sáng|tối|chiều)/gi,
+
+  /\b(?:araw-araw|linggo-linggo|buwan-buwan|taon-taon|gabi-gabi|tuwing|bawat\s+(?:araw|linggo|buwan|taon))\b/gi,
+
+  /毎日(?!新聞|放送)/g,
+  /毎(?:週|月|年|朝|晩|夜|回|曜日)/g,
+  /(?:隔週|隔月|隔年)/g,
+  /(?:日|週|月|年)に(?:一|1|二|2|三|3)(?:度|回)/g,
+  /(?:一|1|二|2|三|3)(?:日|週|か月|ヶ月|年)ごと/g,
+
+  /每天/g,
+  /每日/g,
+  /每周/g,
+  /每星期/g,
+  /每个星期/g,
+  /每月/g,
+  /每个月/g,
+  /每年/g,
+  /天天/g,
+  /周一到周五/g,
+  /一周一次/g,
+  /每逢/g,
+  /마다/g,
+  /매일/g,
+  /매주/g,
+  /매월/g,
+  /매달/g,
+  /매년/g,
+  /격주/g,
+]
+
+const NAME_LIKE_RECURRENCE_PATTERNS: readonly RegExp[] = [
+  /\bDaily\s+Planet\b/g,
+  /\b(?:el|un|este)\s+Diario\b/g,
+]
+
+const NEGATION_WORD = String.raw`\b(?:not|no|never|isn't|isn’t|aren't|aren’t|won't|won’t|doesn't|doesn’t|don't|don’t)\b`
+const CADENCE_ADJECTIVE = String
+  .raw`\b(?:daily|weekly|monthly|nightly|hourly|yearly|annually|quarterly|biweekly|fortnightly)\b`
+const PLURAL_WEEKDAY = String
+  .raw`\bmondays\b|\btuesdays\b|\bwednesdays\b|\bthursdays\b|\bfridays\b|\bsaturdays\b|\bsundays\b|\bweekdays\b|\bweekends\b`
+const ONE_SHOT_DIRECTIVE_PATTERNS: readonly RegExp[] = [
+  new RegExp(
+    `${NEGATION_WORD}\\s+(?:a\\s+)?(?:recurr(?:ing|ence)|repeat(?:ed|ing)?|every|each)\\b(?:(?![,.;!?]|\\b(?:but|rather|instead|actually|make\\s+it)\\b)[\\s\\S])*`,
+    "gi",
+  ),
+  new RegExp(
+    `${NEGATION_WORD}\\s+(?:on\\s+|a\\s+|an\\s+)?(?:${CADENCE_ADJECTIVE}|${PLURAL_WEEKDAY})(?:\\s+(?:or|and)\\s+(?:${CADENCE_ADJECTIVE}|${PLURAL_WEEKDAY}))*(?:(?![,.;!?]|\\b(?:but|rather|instead|actually|make\\s+it)\\b)[\\s\\S])*`,
+    "gi",
+  ),
+  /\b(?:do\s+not|don't)\s+repeat\b(?:(?![,.;!?]|\b(?:but|rather|instead|actually|make\s+it)\b)[\s\S])*/gi,
+  /\b(?:just|only)\s+(?:once|one\s+time)\b(?!\s+(?:a|per|each|every)\s+(?:day|week|month|year))/gi,
+  /\b(?:once|one\s+time)\s+only\b/gi,
+  /(?:一度だけ|1回だけ)/g,
+  /(?:繰り返さない|毎日ではない)(?:(?![、。！？]|(?:代わり|むしろ|実際には))[\s\S])*/g,
+]
+
+type IntentMarker = {
+  end: number
+  kind: "one-shot" | "recurrence"
+  start: number
+}
+
+const ROLE_LABELS = new Set(["user", "owner", "assistant", "agent", "system"])
+
+function patternMarkers(text: string, patterns: readonly RegExp[], kind: IntentMarker["kind"]): IntentMarker[] {
+  return patterns.flatMap((pattern) =>
+    Array.from(text.matchAll(pattern), (match) => ({ end: match.index + match[0].length, kind, start: match.index }))
+  )
+}
+
+function orderedIntentMarkers(text: string): IntentMarker[] {
+  const sanitized = NAME_LIKE_RECURRENCE_PATTERNS.reduce(
+    (value, pattern) => value.replace(pattern, (match) => " ".repeat(match.length)),
+    text,
+  )
+  const oneShot = patternMarkers(sanitized, ONE_SHOT_DIRECTIVE_PATTERNS, "one-shot")
+  const recurrence = patternMarkers(sanitized, RECURRENCE_PATTERNS, "recurrence").filter(
+    (positive) => !oneShot.some((negative) => positive.start >= negative.start && positive.start < negative.end),
+  )
+  return [...oneShot, ...recurrence].sort((left, right) => left.start - right.start || left.end - right.end)
+}
+
+function authoritativeSegments(text: string): string[] {
+  return text
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .flatMap((line) => {
+      const colonIndex = line.indexOf(":")
+      if (colonIndex < 0) return [line]
+      const role = line.slice(0, colonIndex).trim().toLowerCase()
+      if (!ROLE_LABELS.has(role)) {
+        return [line]
+      }
+      return role === "user" || role === "owner"
+        ? [line.slice(colonIndex + 1).trimStart()]
+        : []
+    })
+}
+
+export function textStatesExplicitRecurrence(
+  ...texts: ReadonlyArray<string | null | undefined>
+): boolean {
+  const segments = texts.flatMap((text) => typeof text === "string" ? authoritativeSegments(text) : [])
+  const markers = segments.flatMap(orderedIntentMarkers)
+  return markers.at(-1)?.kind === "recurrence"
+}
+
+export function selectUserAuthorizedRecurrence<T>(
+  authoritativeTexts: ReadonlyArray<string | null | undefined>,
+  sources: ReadonlyArray<T | null | undefined>,
+): T | undefined {
+  if (!textStatesExplicitRecurrence(...authoritativeTexts)) return undefined
+  return sources.find((source): source is T => source != null)
+}

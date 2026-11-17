@@ -1,0 +1,500 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { NotesRequestInterpretation } from "../actions/task-extraction-context.vibe"
+
+import type { ActionFailureProvenance } from "./action-failure.vibe"
+import type { ActionReplyFailure } from "./action-reply.vibe"
+import type { ConnectorAccountPolicy } from "./connector-account-policy.vibe"
+import type { AgentContext, CacheScope, ContextGate, RoleGate } from "./contexts.vibe"
+import type { EffectReceipt } from "./effects.vibe"
+import type { DisclosureSubject, Memory } from "./memory.vibe"
+import type { Content, JsonPrimitive, JsonValue, UUID } from "./primitives.vibe"
+import type { IAgentRuntime } from "./runtime.vibe"
+import type { ActionParameterSchema } from "./schema.vibe"
+import type { ActionPlan, State } from "./state.vibe"
+
+export type { AgentContext, CacheScope, ContextGate, RoleGate } from "./contexts.vibe"
+
+export type { ActionParameterSchema } from "./schema.vibe"
+
+export interface ActionParameter {
+  name: string
+
+  description: string
+
+  descriptionCompressed?: string
+
+  compressedDescription?: string
+
+  required?: boolean
+
+  subactions?: readonly string[]
+
+  requiredForSubactions?: readonly string[]
+
+  legacyRequiredAlternatives?: readonly string[]
+
+  aliases?: readonly string[]
+
+  modelOmissionSentinels?: readonly string[]
+
+  schema: ActionParameterSchema
+
+  examples?: ActionParameterExampleValue[]
+}
+
+export type ActionParameterValue = string | number | boolean | null
+
+export type ActionParameterExampleValue =
+  | ActionParameterValue
+  | ActionParameters
+  | JsonValue
+  | ActionParameterValue[]
+  | ActionParameters[]
+
+export interface ActionParameters {
+  [key: string]:
+    | ActionParameterValue
+    | ActionParameters
+    | ActionParameterValue[]
+    | ActionParameters[]
+    | JsonValue
+}
+
+export interface ActionExample {
+  name: string
+  content: Content
+}
+
+export type MessageHandlerAction = "RESPOND" | "IGNORE" | "STOP"
+
+export type ReplyEffectStatus = "none" | "applied" | "non_applied" | "pending"
+
+export interface MessageHandlerDeterministicToolCall {
+  name: string
+  params?: Record<string, JsonValue>
+}
+
+export type CompletionContextSelection = {
+  mode: "full" | "selected"
+  sourceSetId: string
+
+  complete: boolean
+  relevantSourceIds: string[]
+  constraintSourceIds: string[]
+  referentSourceIds: string[]
+  pendingIntentSourceIds: string[]
+}
+
+export interface MessageHandlerPlan {
+  notesRequestEffect?: "read_only" | "mutation_requested" | "unresolved"
+
+  notesRequestInterpretation?: {
+    readonly status: NotesRequestInterpretation["status"]
+    readonly operations: Array<
+      NotesRequestInterpretation["operations"][number]
+    >
+  }
+
+  notesRequestHostRestriction?: {
+    classification: "unresolved"
+    reason: "registered-current-mutation-route" | "registered-route-ambiguous"
+    routeIds: string[]
+    operations: string[]
+  }
+  contexts: AgentContext[]
+  reply?: string
+  replyEffectStatus?: ReplyEffectStatus
+
+  requiresTool?: boolean
+  contextSlices?: string[]
+  completionContext?: CompletionContextSelection
+  candidateActions?: string[]
+
+  intents?: string[]
+  parentActionHints?: string[]
+
+  requiredToolMissBudget?: number
+
+  requiredToolEvidence?: "inferred"
+  deterministicToolCall?: MessageHandlerDeterministicToolCall
+  [key: string]: JsonValue | MessageHandlerDeterministicToolCall | undefined
+}
+
+export interface MessageHandlerExtractedRelationship {
+  subject: string
+  predicate: string
+  object: string
+}
+
+export interface MessageHandlerExtract {
+  facts?: string[]
+  relationships?: MessageHandlerExtractedRelationship[]
+
+  addressedTo?: string[]
+
+  topics?: string[]
+}
+
+export interface MessageHandlerResult {
+  processMessage: MessageHandlerAction
+  plan: MessageHandlerPlan
+  thought: string
+  extract?: MessageHandlerExtract
+}
+
+export type EvaluationDecision = "FINISH" | "NEXT_RECOMMENDED" | "CONTINUE"
+
+export interface EvaluationResult {
+  success: boolean
+  decision: EvaluationDecision
+  thought: string
+  messageToUser?: string
+  copyToClipboard?: {
+    title: string
+    content: string
+    tags?: string[]
+  }
+  recommendedToolCallId?: string
+}
+
+export type HandlerCallback = (
+  response: Content,
+  actionName?: string,
+) => Promise<Memory[]>
+
+export type Handler = (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+  options?: HandlerOptions | Record<string, JsonValue | undefined>,
+  callback?: HandlerCallback,
+  responses?: Memory[],
+) => Promise<ActionResult>
+
+export type Validator = (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+  options?: HandlerOptions | Record<string, JsonValue | undefined>,
+) => Promise<boolean>
+
+export const ActionMode = {
+  PLANNER: "PLANNER",
+  ALWAYS_BEFORE: "ALWAYS_BEFORE",
+  ALWAYS_DURING: "ALWAYS_DURING",
+  ALWAYS_AFTER: "ALWAYS_AFTER",
+  CONTEXT_BEFORE: "CONTEXT_BEFORE",
+  CONTEXT_DURING: "CONTEXT_DURING",
+  CONTEXT_AFTER: "CONTEXT_AFTER",
+  RESPONSE_HANDLER_BEFORE: "RESPONSE_HANDLER_BEFORE",
+  RESPONSE_HANDLER_DURING: "RESPONSE_HANDLER_DURING",
+  RESPONSE_HANDLER_AFTER: "RESPONSE_HANDLER_AFTER",
+} as const
+export type ActionMode = (typeof ActionMode)[keyof typeof ActionMode]
+
+export const HOOK_MODES: readonly ActionMode[] = [
+  ActionMode.ALWAYS_BEFORE,
+  ActionMode.RESPONSE_HANDLER_BEFORE,
+  ActionMode.RESPONSE_HANDLER_DURING,
+  ActionMode.RESPONSE_HANDLER_AFTER,
+  ActionMode.CONTEXT_BEFORE,
+  ActionMode.CONTEXT_DURING,
+  ActionMode.CONTEXT_AFTER,
+  ActionMode.ALWAYS_DURING,
+  ActionMode.ALWAYS_AFTER,
+]
+
+export const FOLLOW_UP_CAPABLE_ACTION_TAG = "follow-up-capable" as const
+
+export type DisclosureGate =
+  | { require: "owner_exclusive" }
+  | { require: "audience_admission"; subject: DisclosureSubject }
+
+export interface Action {
+  selectionIdentity?: (selection: unknown) => string | undefined
+
+  historicalObservationOperations?: readonly string[]
+
+  name: string
+
+  description: string
+
+  descriptionCompressed?: string
+
+  compressedDescription?: string
+
+  handler: Handler
+
+  restrictRequestOperation?: (args: {
+    runtime: IAgentRuntime
+    message: Memory
+    state?: State
+    action: Action
+    params: unknown
+  }) => ActionResult | undefined
+
+  validate: Validator
+
+  similes?: string[]
+
+  examples?: ActionExample[][]
+
+  exampleCalls?: readonly {
+    user: string
+    actions: readonly string[]
+    params?: Record<string, Record<string, JsonValue>>
+  }[]
+
+  priority?: number
+
+  override?: boolean
+
+  tags?: string[]
+
+  private?: boolean
+
+  routingHint?: string
+
+  suppressPostActionContinuation?: boolean
+
+  suppressEarlyReply?: boolean
+
+  asyncHandoff?: boolean
+
+  suppressActionResultClipboard?: boolean
+
+  summarize?: (
+    result: ActionResult | undefined,
+    params: Record<string, unknown>,
+  ) => string | undefined
+
+  parameters?: ActionParameter[]
+
+  allowAdditionalParameters?: boolean
+
+  toolSchemaStrict?: boolean
+
+  contexts?: AgentContext[]
+
+  contextGate?: ContextGate
+
+  cacheStable?: boolean
+
+  cacheScope?: CacheScope
+
+  roleGate?: RoleGate
+
+  disclosureGate?: DisclosureGate
+
+  egress?: readonly string[]
+
+  connectorAccountPolicy?:
+    | ConnectorAccountPolicy
+    | readonly ConnectorAccountPolicy[]
+
+  accountPolicy?: ConnectorAccountPolicy | readonly ConnectorAccountPolicy[]
+
+  subActions?: Array<string | Action>
+
+  inferSubaction?: (
+    params: Readonly<Record<string, unknown>>,
+  ) => string | undefined
+
+  subPlanner?: boolean | { name?: string; description?: string }
+
+  mode?: ActionMode
+
+  modePriority?: number
+
+  modelClass?: ActionModelClass
+}
+
+export type ActionModelClass = "TEXT_LARGE" | "TEXT_SMALL" | "LOCAL"
+
+export type ProviderValue =
+  | JsonPrimitive
+  | JsonValue
+  | Uint8Array
+  | bigint
+  | object
+  | ProviderValue[]
+  | { [key: string]: ProviderValue | undefined }
+  | undefined
+
+export type ProviderDataRecord = {
+  [key: string]: ProviderValue
+}
+
+export interface ProviderResult {
+  reviewableSources?: {
+    notice: string
+    sources: Array<{
+      id: string
+      text: string
+
+      originalText?: string
+      metadata: Record<string, JsonValue>
+    }>
+  }
+
+  text?: string
+
+  discoveryText?: string
+
+  referenceBodyDeferred?: true
+
+  overflowText?: string
+
+  values?: Record<string, ProviderValue>
+
+  data?: ProviderDataRecord
+}
+
+export interface ProviderExecutionContext {
+  signal: AbortSignal
+
+  selectedProviderNames?: readonly string[]
+
+  referenceBodyDeferred?: boolean
+}
+
+export interface Provider {
+  name: string
+
+  description?: string
+
+  descriptionCompressed?: string
+
+  compressedDescription?: string
+
+  dynamic?: boolean
+
+  position?: number
+
+  override?: boolean
+
+  private?: boolean
+
+  relevanceKeywords?: string[]
+
+  contexts?: AgentContext[]
+
+  contextGate?: ContextGate
+
+  cacheStable?: boolean
+
+  cacheScope?: CacheScope
+
+  registerByDefault?: boolean
+
+  alwaysInResponseState?: boolean
+
+  roleGate?: RoleGate
+
+  disclosureGate?: Extract<DisclosureGate, { require: "owner_exclusive" }>
+
+  subActions?: string[]
+
+  get: (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+    context?: ProviderExecutionContext,
+  ) => Promise<ProviderResult>
+}
+
+export type EmptyTrackedStateObservation =
+  | {
+    resource: "notes"
+    scope: "entire_current_inventory"
+    count: 0
+    revision: number
+    observedAt: string
+  }
+  | {
+    resource: "todos"
+    scope: "active_current_inventory" | "entire_current_inventory"
+    count: 0
+    agentId: UUID
+    entityId: UUID
+    messageId: UUID
+    observedAt: string
+  }
+
+export interface ActionResult {
+  emptyTrackedState?: EmptyTrackedStateObservation
+
+  success: boolean
+
+  verification?: {
+    kind: string
+    status: "passed" | "failed" | "no_tests"
+    family?: string
+    exitCode: number
+  }
+
+  text?: string
+
+  transcriptVisibility?: "internal"
+
+  userFacingText?: string
+
+  verifiedUserFacing?: boolean
+
+  effectReceipts?: readonly EffectReceipt[]
+
+  userFacingEffectReceiptIds?: readonly string[]
+
+  failureProvenance?: ActionFailureProvenance
+
+  replyFailure?: ActionReplyFailure
+
+  values?: Record<string, ProviderValue>
+
+  data?: ProviderDataRecord
+
+  promptData?: ProviderDataRecord
+
+  promptDataMode?: "replace-data"
+
+  error?: string | Error
+
+  turnComplete?: boolean
+
+  modelReplyRequired?: boolean
+
+  modelReplyFallback?: string
+
+  continueChain?: boolean
+
+  cleanup?: () => void | Promise<void>
+}
+
+export interface ActionContext {
+  previousResults: ActionResult[]
+
+  getPreviousResult?: (actionName: string) => ActionResult | undefined
+}
+
+export type StreamChunkCallback = (
+  chunk: string,
+  messageId?: string,
+  accumulated?: string,
+  streamRevision?: number,
+) => void | Promise<void>
+
+export interface HandlerOptions {
+  abortSignal?: AbortSignal
+
+  actionContext?: ActionContext
+
+  actionPlan?: ActionPlan
+
+  onStreamChunk?: StreamChunkCallback
+
+  parameters?: ActionParameters
+
+  parameterErrors?: string[]
+
+  [key: string]: JsonValue | object | undefined
+}

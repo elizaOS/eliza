@@ -18,7 +18,7 @@ allowlist is the [chat gateway](../conversation/chatGateway.md)'s.
 
 ```quint
 type HostProfile = MobileAndroid | MobileIos | LeanHost | FullHost
-type CapabilityClass = MessageCore | BootstrapSql | SchedulingCore | BrowserCore | FilesystemCore | ProfileView | WorkflowPlugin | FullAssistant | SelectiveReminder | CalendarOwner | GoalOwner | MobileProvider | UnbundledPlugin
+type CapabilityClass = MessageCore | BootstrapSql | SchedulingCore | BrowserCore | FilesystemCore | ProfileView | WorkflowPlugin | FullAssistant | SelectiveReminder | CalendarOwner | GoalOwner | MobileProvider | LocalInferencePlugin | AndroidPhonePlugin | ImageSurface | ImageTerminal | UnbundledPlugin
 pure def hostProfile(android: bool, ios: bool, leanRequested: bool): HostProfile =
   if (android) MobileAndroid else if (ios) MobileIos else if (leanRequested) LeanHost else FullHost
 pure def mobileProfile(profile: HostProfile): bool = profile == MobileAndroid or profile == MobileIos
@@ -28,13 +28,60 @@ pure def lawMobileProfileWins(android: bool, ios: bool, leanRequested: bool): bo
 
 ### A mobile profile admits only the plugins bundled with it, and a lean host drops the browser and the full assistant
 
+A mobile profile keeps only its statically available named classes; it
+never collects the local inference package through its static
+model-provider list. A lean host drops the browser, the full assistant and
+the device image's terminal contributions.
+
 ```quint
 pure def bundleAllows(profile: HostProfile, capability: CapabilityClass): bool =
-  if (mobileProfile(profile)) capability != UnbundledPlugin
-  else if (profile == LeanHost) capability != BrowserCore and capability != FullAssistant
+  if (mobileProfile(profile)) capability != LocalInferencePlugin and capability != UnbundledPlugin
+  else if (profile == LeanHost) capability != BrowserCore and capability != FullAssistant and capability != ImageTerminal
   else true
-pure def lawMobileHasNoUnbundledPlugins(profile: HostProfile): bool =
-  mobileProfile(profile) implies not(bundleAllows(profile, UnbundledPlugin))
+```
+
+### Device-image plugins need their gates, and a lean host collects local inference only by its embedding opt-in
+
+The Wi-Fi, Contacts and remote-target plugins, and the device image's
+terminal contributions, need the device-image runtime gate: Android with
+`ELIZA_LOCAL_LLAMA=1`. The Phone plugin can also enter through the Android
+SMS draft flag, which the launcher sets only for a verified image. A store
+build (`ELIZA_BUILD_VARIANT=store`) collects no image terminal
+contribution on any profile. On a lean host the local inference package is
+dropped by default; its final gate adds it back, after configured
+disables, exactly when local embeddings are opted in and Cloud embeddings
+are not explicitly switched on. The separate local inference handler and
+actual embedding readiness belong to [model providers](./modelProviders.md);
+the launcher's distribution profile is a separate policy. The shell
+resolves actual package names, availability and denial aliases to these
+classes before startup.
+
+```quint
+type ProfileGates = { deviceImage: bool, smsDraft: bool, store: bool, leanLocalEmbeddings: bool, cloudEmbeddingsPinned: bool }
+pure def mobileBundleAllows(profile: HostProfile, capability: CapabilityClass, gates: ProfileGates): bool =
+  if (capability == AndroidPhonePlugin) profile == MobileAndroid and (gates.deviceImage or gates.smsDraft)
+  else if (capability == ImageSurface or capability == ImageTerminal) profile == MobileAndroid and gates.deviceImage
+  else bundleAllows(profile, capability)
+pure def collectedCandidate(profile: HostProfile, capability: CapabilityClass, gates: ProfileGates, selected: bool): bool =
+  if (profile == LeanHost and capability == LocalInferencePlugin) gates.leanLocalEmbeddings and not(gates.cloudEmbeddingsPinned)
+  else if (capability == ImageTerminal and gates.store) false
+  else selected and (if (mobileProfile(profile)) mobileBundleAllows(profile, capability, gates) else bundleAllows(profile, capability))
+pure val defaultGates: ProfileGates = { deviceImage: false, smsDraft: false, store: false, leanLocalEmbeddings: false, cloudEmbeddingsPinned: false }
+pure val gatesValues = Set(defaultGates, { ...defaultGates, deviceImage: true }, { ...defaultGates, smsDraft: true },
+  { ...defaultGates, deviceImage: true, store: true }, { ...defaultGates, leanLocalEmbeddings: true },
+  { ...defaultGates, leanLocalEmbeddings: true, cloudEmbeddingsPinned: true })
+pure def lawMobileHasNoUnbundledPlugins(profile: HostProfile, gates: ProfileGates, selected: bool): bool =
+  mobileProfile(profile) implies not(collectedCandidate(profile, UnbundledPlugin, gates, selected))
+pure def lawOrdinaryMobileCannotCollectImageSurfaces(profile: HostProfile, gates: ProfileGates, selected: bool): bool =
+  (mobileProfile(profile) and not(profile == MobileAndroid and gates.deviceImage)) implies
+    not(collectedCandidate(profile, ImageSurface, gates, selected) or collectedCandidate(profile, ImageTerminal, gates, selected))
+pure def lawMobilePhoneNeedsImageOrSms(profile: HostProfile, gates: ProfileGates, selected: bool): bool =
+  (mobileProfile(profile) and collectedCandidate(profile, AndroidPhonePlugin, gates, selected)) implies
+    profile == MobileAndroid and (gates.deviceImage or gates.smsDraft)
+pure def lawStoreRejectsImageTerminal(profile: HostProfile, gates: ProfileGates, selected: bool): bool =
+  gates.store implies not(collectedCandidate(profile, ImageTerminal, gates, selected))
+pure def lawLeanLocalEmbeddingGateWins(gates: ProfileGates, selected: bool): bool =
+  collectedCandidate(LeanHost, LocalInferencePlugin, gates, selected) == (gates.leanLocalEmbeddings and not(gates.cloudEmbeddingsPinned))
 ```
 
 ### The workflow plugin's off switch wins on every profile
@@ -70,17 +117,19 @@ pure def lawCalendarRequiresScheduler(candidate: bool, reminderPresent: bool, sc
 
 ### Only a plugin the profile admits and nobody denied is registered
 
-Nothing registers before the boot profile is chosen.
+The boot chooses the profile with its gates; a plugin is admitted when
+that profile and those gates collect it. Nothing registers before the boot
+profile is chosen.
 
 ```quint
 type PluginPhase = Absent | Migrating | Registering | Ready | Unloading
-type Registration = { chosen: bool, profile: HostProfile, plugin: CapabilityClass, denied: bool, bootFailed: bool, phase: PluginPhase, inGeneration: bool, roles: bool, schema: bool, published: bool, closed: bool }
-pure val initial: Registration = { chosen: false, profile: FullHost, plugin: MessageCore, denied: false, bootFailed: false, phase: Absent, inGeneration: true, roles: false, schema: false, published: false, closed: false }
-pure def admitted(profile: HostProfile, plugin: CapabilityClass, denied: bool): bool = bundleAllows(profile, plugin) and not(denied)
-pure val pluginValues = Set(MessageCore, BrowserCore, FullAssistant, WorkflowPlugin, UnbundledPlugin)
-pure def canChooseBoot(r: Registration, profile: HostProfile, plugin: CapabilityClass, denied: bool): bool = not(r.chosen)
-pure def chooseBoot(r: Registration, profile: HostProfile, plugin: CapabilityClass, denied: bool): Registration = { ...r, chosen: true, profile: profile, plugin: plugin, denied: denied }
-pure def alwaysPublishedPluginIsAdmitted(r: Registration): bool = r.phase != Absent implies admitted(r.profile, r.plugin, r.denied)
+type Registration = { chosen: bool, profile: HostProfile, gates: ProfileGates, plugin: CapabilityClass, denied: bool, bootFailed: bool, phase: PluginPhase, inGeneration: bool, roles: bool, schema: bool, published: bool, closed: bool }
+pure val initial: Registration = { chosen: false, profile: FullHost, gates: defaultGates, plugin: MessageCore, denied: false, bootFailed: false, phase: Absent, inGeneration: true, roles: false, schema: false, published: false, closed: false }
+pure def admitted(profile: HostProfile, gates: ProfileGates, plugin: CapabilityClass, denied: bool): bool = collectedCandidate(profile, plugin, gates, true) and not(denied)
+pure val pluginValues = Set(MessageCore, BrowserCore, FullAssistant, WorkflowPlugin, LocalInferencePlugin, ImageTerminal, UnbundledPlugin)
+pure def canChooseBoot(r: Registration, profile: HostProfile, gates: ProfileGates, plugin: CapabilityClass, denied: bool): bool = not(r.chosen)
+pure def chooseBoot(r: Registration, profile: HostProfile, gates: ProfileGates, plugin: CapabilityClass, denied: bool): Registration = { ...r, chosen: true, profile: profile, gates: gates, plugin: plugin, denied: denied }
+pure def alwaysPublishedPluginIsAdmitted(r: Registration): bool = r.phase != Absent implies admitted(r.profile, r.gates, r.plugin, r.denied)
 pure def alwaysNothingRegistersBeforeBootIsChosen(r: Registration): bool = not(r.chosen) implies r.phase == Absent
 pure def sometimesUnbundledPluginStaysAbsent(r: Registration): bool = r.chosen and mobileProfile(r.profile) and r.plugin == UnbundledPlugin and r.phase == Absent
 ```
@@ -105,7 +154,7 @@ A registration in progress keeps the roles it began with, and once
 migrated keeps its schema, until it is rolled back or unloaded.
 
 ```quint
-pure def canBeginRegister(r: Registration): bool = r.chosen and r.phase == Absent and not(r.closed) and not(r.bootFailed) and admitted(r.profile, r.plugin, r.denied)
+pure def canBeginRegister(r: Registration): bool = r.chosen and r.phase == Absent and not(r.closed) and not(r.bootFailed) and admitted(r.profile, r.gates, r.plugin, r.denied)
 pure def beginRegister(r: Registration): Registration = { ...r, phase: Migrating, inGeneration: true, roles: true }
 pure def canFinishMigration(r: Registration): bool = r.phase == Migrating and r.inGeneration
 pure def finishMigration(r: Registration): Registration = { ...r, phase: Registering, schema: true }

@@ -15,6 +15,7 @@ actuator still checks authority itself before every external effect.
 - [Legacy task migration and key replacement](./storageMigration.md)
 - [Task journal records across builds](./recordRecovery.md)
 - [Interaction sessions on the agent host](./interactionSessions.md)
+- [Task support evidence](./taskSupportEvidence.md)
 
 ## Story: Run one task operation without losing or repeating its effect
 

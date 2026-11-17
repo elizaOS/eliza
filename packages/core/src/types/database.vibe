@@ -1,0 +1,1223 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { AccessContext } from "./access-context.vibe"
+import type { Agent } from "./agent.vibe"
+import type { ReadRangeUnit } from "./content.vibe"
+import type { Component, Entity, Participant, Relationship, Room, World } from "./environment.vibe"
+import type { Memory, MemoryMetadata, MemoryScope } from "./memory.vibe"
+import type {
+  PairingAllowlistEntry,
+  PairingAllowlistQuery,
+  PairingChannel,
+  PairingPageInfo,
+  PairingRequest,
+  PairingRequestQuery,
+} from "./pairing.vibe"
+import type { Content, JsonObject, JsonValue, Metadata, UUID } from "./primitives.vibe"
+import type { Task, TaskMetadataPatch } from "./task.vibe"
+
+export interface MemoryEmbeddingUpdate {
+  id: UUID
+  embedding: number[]
+  expected: { agentId: UUID; entityId: UUID; roomId: UUID; text: string }
+}
+
+export interface MessageSearchHit {
+  memory: Memory
+  ftsRank: number
+  trigramSimilarity: number
+}
+
+export interface MessageContentSourceSelector {
+  kind: "message-text" | "attachment-text"
+  attachmentIdHash?: string
+}
+
+export interface MessageContentRangeReadParams {
+  agentId: UUID
+  messageId: UUID
+  authorizedRoomId: UUID
+  accessContext: AccessContext
+  source: MessageContentSourceSelector
+  offset: number
+  limit: number
+  expectedRevision?: string
+}
+
+export interface MessageContentRangePage {
+  text: string
+  start: number
+  end: number
+  total: number
+  revision: string
+  sourceSha256: string
+  sliceSha256: string
+  returnedSegments: number
+  returnedBytes: number
+  sourceQueryCount: number
+}
+
+export type MessageContentRangeReadResult =
+  | { status: "ok"; parent: Memory; page: MessageContentRangePage }
+  | { status: "inline"; parent: Memory; text: string }
+  | { status: "not_found" }
+  | { status: "forbidden" }
+
+export type MessageContentPublicationParams =
+  | {
+    mode: "create"
+    parent: Memory & { id: UUID }
+    segments: Memory[]
+  }
+  | {
+    mode: "replace"
+    agentId: UUID
+    messageId: UUID
+    expectedContent: Content
+    replacementContent: Content
+    segments: Memory[]
+    removeSegmentIds: UUID[]
+  }
+
+export type MessageContentPublicationResult =
+  | {
+    status: "created" | "updated"
+    parent: Memory
+    removedSegmentIds: UUID[]
+  }
+  | { status: "not_found" | "conflict" }
+
+export interface AtomicMemoryDependency {
+  memory: Memory
+  tableName: string
+}
+
+export interface AtomicMemoryPublicationParams {
+  head: AtomicMemoryDependency
+  dependencies: AtomicMemoryDependency[]
+  expectedRevision: string | null
+}
+
+export type AtomicMemoryPublicationResult =
+  | { status: "published"; head: Memory }
+  | { status: "conflict" }
+
+export interface DocumentListCursor {
+  createdAt: number
+  id: UUID
+  snapshotCreatedAt?: number
+  snapshotId?: UUID
+}
+
+export type DocumentListScope = Extract<
+  MemoryScope,
+  "global" | "owner-private" | "user-private" | "agent-private"
+>
+
+export type DocumentListRequesterRole =
+  | "OWNER"
+  | "ADMIN"
+  | "USER"
+  | "GUEST"
+  | "AGENT"
+  | "RUNTIME"
+  | "UNRESOLVED"
+
+export interface DocumentRequesterContext {
+  agentId: UUID
+  requesterEntityId: UUID
+  requesterRoomIds: UUID[]
+  requesterRole: DocumentListRequesterRole
+}
+
+export interface DocumentListQueryParams extends DocumentRequesterContext {
+  limit: number
+  offset: number
+  cursor?: DocumentListCursor
+  query?: string
+  scope?: DocumentListScope
+  scopedToEntityId?: UUID
+  addedBy?: UUID
+  timeRangeStart?: number
+  timeRangeEnd?: number
+  tags?: string[]
+
+  pinnedOnly?: boolean
+}
+
+export interface DocumentGetQueryParams extends DocumentRequesterContext {
+  documentId: UUID
+}
+
+export interface DocumentRangeReadParams extends DocumentRequesterContext {
+  documentId: UUID
+  unit: ReadRangeUnit
+  offset: number
+  limit: number
+}
+
+export interface DocumentRangeReadResult {
+  unit: ReadRangeUnit
+  text: string
+  start: number
+  end: number
+  total: number
+  documentRevision: number
+  revisionAttemptId?: string
+  sourceFingerprint: string
+  examinedSourceSegments: number
+  sourceQueryCount: number
+  returnedSourceSegments: number
+  returnedSourceBytes: number
+}
+
+export interface DocumentFragmentQueryParams extends DocumentRequesterContext {
+  limit: number
+  offset?: number
+  documentId?: UUID
+  roomId?: UUID
+  worldId?: UUID
+  entityId?: UUID
+  embedding?: number[]
+  matchThreshold?: number
+}
+
+export interface DocumentMutationSnapshot {
+  pinState?: string
+  scope: DocumentListScope
+  roomId: UUID
+  entityId: UUID
+  directGrantEntityIds?: UUID[]
+  scopedToEntityId?: UUID
+  addedBy?: UUID
+  revision: number
+  ingestionAttemptId?: UUID
+  ingestionState?: "pending" | "ready" | "failed"
+
+  runtimeInternal?: true
+}
+
+export interface DocumentCompareAndSwapParams extends DocumentRequesterContext {
+  documentId: UUID
+  expected: DocumentMutationSnapshot
+  replacement: Memory
+}
+
+export interface DocumentDirectGrantUpdateParams extends DocumentRequesterContext {
+  documentId: UUID
+  expected: DocumentMutationSnapshot
+  directGrantEntityIds: UUID[]
+}
+
+export interface DocumentRevisionReplaceParams extends DocumentCompareAndSwapParams {
+  fragments: Memory[]
+}
+
+export interface DocumentDeleteParams extends DocumentRequesterContext {
+  documentId: UUID
+  expected: DocumentMutationSnapshot
+}
+
+export interface RoleWriteAuditRecord {
+  actorEntityId: UUID
+
+  targetEntityId: UUID
+
+  previousRole: string
+
+  newRole: string
+
+  source: string
+
+  roomId: UUID
+}
+
+export interface WorldMetadataCompareAndSwapParams {
+  worldId: UUID
+
+  expectedMetadata: Metadata
+
+  replacementMetadata: Metadata
+
+  audit?: RoleWriteAuditRecord
+}
+
+export type WorldMetadataMutationResult =
+  | { status: "updated" }
+  | { status: "not_found" | "conflict" }
+
+export const ROLE_WRITE_AUDIT_LOG_TYPE = "role_audit"
+
+export type DocumentMutationResult =
+  | { status: "updated"; document: Memory }
+  | { status: "deleted"; document: Memory }
+  | { status: "not_found" | "forbidden" | "conflict" }
+
+export interface DocumentListQueryResult {
+  documents: Memory[]
+  availableDocuments: Memory[]
+  totalVisible: number
+  totalAvailable: number
+  totalMatched: number
+  hasMore: boolean
+  availableHasMore: boolean
+  nextCursor?: DocumentListCursor
+  availableNextCursor?: DocumentListCursor
+}
+
+export const DbRunStatus = {
+  UNSPECIFIED: "UNSPECIFIED",
+  STARTED: "STARTED",
+  COMPLETED: "COMPLETED",
+  TIMEOUT: "TIMEOUT",
+  ERROR: "ERROR",
+} as const
+export type DbRunStatus = (typeof DbRunStatus)[keyof typeof DbRunStatus]
+
+export type LogBodyValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | UUID
+  | Error
+  | LogBodyValue[]
+  | { [key: string]: LogBodyValue }
+
+export interface BaseLogBody {
+  runId?: string | UUID
+  parentRunId?: string | UUID
+  status?: string
+  messageId?: UUID
+  roomId?: UUID
+  entityId?: UUID
+  source?: string
+  startTime?: number | bigint
+  endTime?: number | bigint
+  duration?: number | bigint
+  metadata?: Record<string, LogBodyValue>
+}
+
+export interface ActionLogContent {
+  actions?: string[]
+  text?: string
+  thought?: string
+}
+
+export interface ActionLogResult {
+  success?: boolean
+  text?: string
+  data?: Record<string, LogBodyValue>
+  error?: string | Error
+}
+
+export interface ActionLogPrompt {
+  modelType: string
+  prompt: string
+  timestamp: number | bigint
+}
+
+export interface ActionLogBody extends BaseLogBody {
+  base?: BaseLogBody
+  action?: string
+  actionName?: string
+  actionId?: UUID | string
+  message?: string
+  messageId?: UUID
+  state?: Record<string, LogBodyValue>
+  responses?: Array<Record<string, LogBodyValue>>
+  content?: ActionLogContent
+  result?: ActionLogResult
+  isVoidReturn?: boolean
+  prompts?: ActionLogPrompt[]
+  promptCount?: number
+  planStep?: string
+  planThought?: string
+}
+
+export interface EvaluatorLogBody extends BaseLogBody {
+  base?: BaseLogBody
+  evaluator?: string
+  message?: string
+  state?: Record<string, LogBodyValue>
+}
+
+export interface ModelActionContext {
+  actionName: string
+  actionId: string
+}
+
+export interface ModelLogBody extends BaseLogBody {
+  base?: BaseLogBody
+  modelType?: string
+  modelKey?: string
+  prompt?: string
+  systemPrompt?: string
+  provider?: string
+  params?: Record<string, LogBodyValue>
+  actionContext?: ModelActionContext
+  timestamp?: number | bigint
+  executionTime?: number | bigint
+  response?: JsonValue
+}
+
+export interface EmbeddingLogBody extends BaseLogBody {
+  base?: BaseLogBody
+  memoryId?: UUID
+  duration?: number | bigint
+  error?: string | Error
+}
+
+export type LogBody =
+  | BaseLogBody
+  | ActionLogBody
+  | EvaluatorLogBody
+  | ModelLogBody
+  | EmbeddingLogBody
+
+export interface Log {
+  id?: UUID
+  type: string
+  entityId: UUID
+  roomId?: UUID
+  body: LogBody
+  createdAt: Date
+}
+
+export type LogInventoryRow = Pick<Log, "id" | "roomId" | "createdAt">
+
+export type RunStatus = "started" | "completed" | "timeout" | "error"
+
+export interface PatchOp {
+  op: "set" | "push" | "remove" | "increment"
+
+  path: string
+
+  value?: unknown
+}
+
+export type ParticipantUserState = "FOLLOWED" | "MUTED" | null
+
+export type ParticipantUpdateFields = Partial<Participant> & {
+  roomState?: ParticipantUserState
+  metadata?: Record<string, unknown>
+}
+
+export type EntitiesForRoomsResult = Array<{
+  roomId: UUID
+  entities: Entity[]
+}>
+
+export type ParticipantsForRoomsResult = Array<{
+  roomId: UUID
+  entityIds: UUID[]
+}>
+
+export type PairingRequestsResult = Array<{
+  channel: PairingChannel
+  agentId: UUID
+  requests: PairingRequest[]
+
+  pageInfo?: PairingPageInfo
+}>
+
+export type PairingAllowlistsResult = Array<{
+  channel: PairingChannel
+  agentId: UUID
+  entries: PairingAllowlistEntry[]
+
+  pageInfo?: PairingPageInfo
+}>
+
+export type ConnectorAccountJsonObject = JsonObject
+
+export type ConnectorAccountStorageStatus = string
+
+export type ConnectorAccountAuditOutcome = "success" | "failure"
+
+export interface ConnectorAccountRecord {
+  id: UUID
+  agentId: UUID
+  provider: string
+  accountKey: string
+  externalId?: string | null
+  displayName?: string | null
+  username?: string | null
+  email?: string | null
+  ownerBindingId?: string | null
+  ownerIdentityId?: string | null
+  role: string
+  purpose: string[]
+  accessGate: string
+  status: ConnectorAccountStorageStatus
+  scopes: string[]
+  capabilities: string[]
+  profile: ConnectorAccountJsonObject
+  metadata: ConnectorAccountJsonObject
+  connectedAt: number
+  lastSyncAt?: number | null
+  deletedAt?: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ListConnectorAccountsParams {
+  agentId?: UUID
+  provider?: string
+  status?: ConnectorAccountStorageStatus
+  limit?: number
+  offset?: number
+}
+
+export interface GetConnectorAccountParams {
+  id?: UUID
+  agentId?: UUID
+  provider?: string
+  accountKey?: string
+}
+
+export interface UpsertConnectorAccountParams {
+  id?: UUID
+  agentId?: UUID
+  provider: string
+  accountKey: string
+  externalId?: string | null
+  displayName?: string | null
+  username?: string | null
+  email?: string | null
+  ownerBindingId?: string | null
+  ownerIdentityId?: string | null
+  role?: string
+  purpose?: string[]
+  accessGate?: string
+  status?: ConnectorAccountStorageStatus
+  scopes?: string[]
+  capabilities?: string[]
+  profile?: ConnectorAccountJsonObject
+  metadata?: ConnectorAccountJsonObject
+  connectedAt?: number | Date
+  lastSyncAt?: number | Date | null
+  deletedAt?: number | Date | null
+}
+
+export interface DeleteConnectorAccountParams {
+  id?: UUID
+  agentId?: UUID
+  provider?: string
+  accountKey?: string
+}
+
+export interface ConnectorAccountCredentialRefRecord {
+  id: UUID
+  accountId: UUID
+  agentId: UUID
+  provider: string
+  credentialType: string
+  vaultRef: string
+  metadata: ConnectorAccountJsonObject
+  expiresAt?: number | null
+  lastVerifiedAt?: number | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface SetConnectorAccountCredentialRefParams {
+  accountId: UUID
+  credentialType: string
+  vaultRef: string
+  metadata?: ConnectorAccountJsonObject
+  expiresAt?: number | Date | null
+  lastVerifiedAt?: number | Date | null
+}
+
+export interface GetConnectorAccountCredentialRefParams {
+  accountId: UUID
+  credentialType: string
+}
+
+export interface ListConnectorAccountCredentialRefsParams {
+  accountId: UUID
+}
+
+export interface DeleteConnectorAccountCredentialRefsParams {
+  accountId: UUID
+}
+
+export interface ConnectorAccountAuditEventRecord {
+  id: UUID
+  accountId?: UUID | null
+  agentId: UUID
+  provider: string
+  actorId?: string | null
+  action: string
+  outcome: ConnectorAccountAuditOutcome
+  metadata: ConnectorAccountJsonObject
+  createdAt: number
+}
+
+export interface AppendConnectorAccountAuditEventParams {
+  accountId?: UUID | null
+  agentId?: UUID
+  provider?: string
+  actorId?: string | null
+  action: string
+  outcome?: ConnectorAccountAuditOutcome
+  metadata?: Record<string, unknown>
+  createdAt?: number | Date
+}
+
+export interface OAuthFlowRecord {
+  stateHash: string
+  agentId: UUID
+  provider: string
+  accountId?: UUID | null
+  redirectUri?: string | null
+  codeVerifierRef?: string | null
+  scopes: string[]
+  metadata: ConnectorAccountJsonObject
+  createdAt: number
+  expiresAt: number
+  consumedAt?: number | null
+  consumedBy?: string | null
+}
+
+export interface CreateOAuthFlowStateParams {
+  state: string
+  agentId?: UUID
+  provider: string
+  accountId?: UUID | null
+  redirectUri?: string | null
+  codeVerifierRef?: string | null
+  scopes?: string[]
+  metadata?: ConnectorAccountJsonObject
+  ttlMs?: number
+  expiresAt?: number | Date
+}
+
+export interface ConsumeOAuthFlowStateParams {
+  state: string
+  agentId?: UUID
+  provider?: string
+  consumedBy?: string
+  now?: number | Date
+}
+
+export interface GetOAuthFlowStateParams {
+  state?: string
+  stateHash?: string
+  flowId?: string
+  agentId?: UUID
+  provider?: string
+  includeConsumed?: boolean
+  includeExpired?: boolean
+  now?: number | Date
+}
+
+export interface UpdateOAuthFlowStateParams {
+  state?: string
+  stateHash?: string
+  flowId?: string
+  agentId?: UUID
+  provider?: string
+  accountId?: UUID | null
+  redirectUri?: string | null
+  codeVerifierRef?: string | null
+  scopes?: string[]
+  metadata?: ConnectorAccountJsonObject
+  expiresAt?: number | Date
+  consumedAt?: number | Date | null
+  consumedBy?: string | null
+}
+
+export interface DeleteOAuthFlowStateParams {
+  state?: string
+  stateHash?: string
+  flowId?: string
+  agentId?: UUID
+  provider?: string
+}
+
+export interface AgentRunCounts {
+  actions: number
+  modelCalls: number
+  errors: number
+  evaluators: number
+}
+
+export interface AgentRunSummary {
+  runId: string
+  status: RunStatus | DbRunStatus
+  startedAt: number | bigint | null
+  endedAt: number | bigint | null
+  durationMs: number | bigint | null
+  messageId?: string
+  roomId?: string
+  entityId?: string
+  metadata?: Record<string, JsonValue>
+  counts?: AgentRunCounts
+}
+
+export interface AgentRunSummaryResult {
+  runs: AgentRunSummary[]
+  total: number
+  hasMore: boolean
+}
+
+export interface DurableRecordStore {
+  readonly version: 1
+  readonly agentId: UUID
+  transaction<T>(operation: () => Promise<T>): Promise<T>
+  get<T>(namespace: string, key: string): Promise<T | null>
+  getAll<T>(namespace: string): Promise<T[]>
+  set<T>(namespace: string, key: string, value: T): Promise<void>
+  delete(namespace: string, key: string): Promise<boolean>
+}
+
+export interface IDatabaseAdapter<DB extends object = object> {
+  readonly recordStore?: DurableRecordStore
+
+  db: DB
+
+  initialize(
+    config?: Record<string, string | number | boolean | null>,
+  ): Promise<void>
+
+  runPluginMigrations?(
+    plugins: Array<{
+      name: string
+      schema?: Record<string, JsonValue | object>
+    }>,
+    options?: {
+      verbose?: boolean
+      force?: boolean
+      dryRun?: boolean
+    },
+  ): Promise<void>
+
+  runMigrations?(migrationsPaths?: string[]): Promise<void>
+
+  isReady(): Promise<boolean>
+
+  close(): Promise<void>
+
+  getConnection(): Promise<DB>
+
+  withIsolationContext?<T>(
+    entityId: UUID | null,
+    callback: (ctx: unknown) => Promise<T>,
+  ): Promise<T>
+
+  getAgents(): Promise<Partial<Agent>[]>
+
+  getAgentsByIds(agentIds: UUID[]): Promise<Agent[]>
+  createAgents(agents: Partial<Agent>[]): Promise<UUID[]>
+  updateAgents(
+    updates: Array<{ agentId: UUID; agent: Partial<Agent> }>,
+  ): Promise<boolean>
+  deleteAgents(agentIds: UUID[]): Promise<boolean>
+
+  upsertAgents(agents: Partial<Agent>[]): Promise<void>
+
+  countAgents(): Promise<number>
+
+  cleanupAgents(): Promise<void>
+
+  ensureEmbeddingDimension(dimension: number): Promise<void>
+
+  ensureEmbeddingSpace?(spaceId: string): Promise<UUID[]>
+
+  clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]>
+
+  transaction<T>(
+    callback: (tx: IDatabaseAdapter<DB>) => Promise<T>,
+    options?: { entityContext?: UUID },
+  ): Promise<T>
+
+  withAgentScope?<T>(
+    agentId: UUID,
+    callback: (scoped: IDatabaseAdapter<DB>) => Promise<T>,
+  ): Promise<T>
+
+  getEntitiesForRooms(
+    roomIds: UUID[],
+    includeComponents?: boolean,
+  ): Promise<EntitiesForRoomsResult>
+
+  createEntities(entities: Entity[]): Promise<UUID[]>
+
+  upsertEntities(entities: Entity[]): Promise<void>
+
+  searchEntitiesByName(params: {
+    query: string
+    agentId: UUID
+    limit?: number
+  }): Promise<Entity[]>
+
+  getEntitiesByNames(params: {
+    names: string[]
+    agentId: UUID
+  }): Promise<Entity[]>
+
+  queryEntities(params: {
+    componentType?: string
+    componentDataFilter?: Record<string, unknown>
+    agentId?: UUID
+    entityIds?: UUID[]
+    worldId?: UUID
+    limit?: number
+    offset?: number
+    includeAllComponents?: boolean
+
+    entityContext?: UUID
+  }): Promise<Entity[]>
+
+  getComponentsByNaturalKeys(
+    keys: Array<{
+      entityId: UUID
+      type: string
+      worldId?: UUID
+      sourceEntityId?: UUID
+    }>,
+  ): Promise<(Component | null)[]>
+
+  getComponentsForEntities(
+    entityIds: UUID[],
+    worldId?: UUID,
+    sourceEntityId?: UUID,
+  ): Promise<Component[]>
+
+  getEntitiesByIds(entityIds: UUID[]): Promise<Entity[]>
+  updateEntities(entities: Entity[]): Promise<void>
+  deleteEntities(entityIds: UUID[]): Promise<void>
+
+  createComponents(components: Component[]): Promise<UUID[]>
+  getComponentsByIds(componentIds: UUID[]): Promise<Component[]>
+  updateComponents(components: Component[]): Promise<void>
+  deleteComponents(componentIds: UUID[]): Promise<void>
+
+  upsertComponents(
+    components: Component[],
+    options?: { entityContext?: UUID },
+  ): Promise<void>
+
+  patchComponents(
+    updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
+    options?: { entityContext?: UUID },
+  ): Promise<void>
+
+  listMemoryTypes?(): Promise<string[]>
+
+  getMemories(params: {
+    entityId?: UUID
+
+    authorEntityIds?: UUID[]
+    agentId?: UUID
+    limit?: number
+    count?: number
+    offset?: number
+    cursor?: { createdAt: number; id: UUID }
+    unique?: boolean
+    tableName: string
+    start?: number
+    end?: number
+    roomId?: UUID
+
+    excludeRoomIds?: UUID[]
+    worldId?: UUID
+    metadata?: Record<string, unknown>
+
+    textContains?: string
+
+    orderBy?: "createdAt"
+
+    orderDirection?: "asc" | "desc"
+
+    includeEmbedding?: boolean
+
+    accessContext?: AccessContext
+  }): Promise<Memory[]>
+
+  readonly documentListQueryCapability: 4
+
+  readonly documentRangeReadCapability?: 1 | 2
+  queryDocuments(
+    params: DocumentListQueryParams,
+  ): Promise<DocumentListQueryResult>
+  getDocument(params: DocumentGetQueryParams): Promise<Memory | null>
+  readDocumentRange?(
+    params: DocumentRangeReadParams,
+  ): Promise<DocumentRangeReadResult | null>
+  queryDocumentFragments(
+    params: DocumentFragmentQueryParams,
+  ): Promise<Memory[]>
+  compareAndSwapDocument(
+    params: DocumentCompareAndSwapParams,
+  ): Promise<DocumentMutationResult>
+  updateDocumentDirectGrants(
+    params: DocumentDirectGrantUpdateParams,
+  ): Promise<DocumentMutationResult>
+  replaceDocumentRevision(
+    params: DocumentRevisionReplaceParams,
+  ): Promise<DocumentMutationResult>
+  deleteDocumentWithSnapshot(
+    params: DocumentDeleteParams,
+  ): Promise<DocumentMutationResult>
+
+  compareAndSwapWorldMetadata?(
+    params: WorldMetadataCompareAndSwapParams,
+  ): Promise<WorldMetadataMutationResult>
+
+  getMemoriesByIds(ids: UUID[], tableName?: string): Promise<Memory[]>
+
+  readonly messageContentSegmentCapability?: 1
+  publishMessageContentSegments?(
+    params: MessageContentPublicationParams,
+  ): Promise<MessageContentPublicationResult>
+  readMessageContentRange?(
+    params: MessageContentRangeReadParams,
+  ): Promise<MessageContentRangeReadResult>
+
+  searchMessages(params: {
+    roomIds: UUID[]
+    query: string
+    tableName?: string
+    limit?: number
+    offset?: number
+
+    since?: number
+
+    until?: number
+    accessContext?: AccessContext
+  }): Promise<MessageSearchHit[]>
+
+  getMemoriesByRoomIds(params: {
+    tableName: string
+    roomIds: UUID[]
+    limit?: number
+
+    offset?: number
+
+    textContains?: string
+    includeEmbedding?: boolean
+
+    accessContext?: AccessContext
+  }): Promise<Memory[]>
+
+  getCachedEmbeddings(params: {
+    query_table_name: string
+    query_threshold: number
+    query_input: string
+    query_field_name: string
+    query_field_sub_name: string
+    query_match_count: number
+  }): Promise<{ embedding: number[]; levenshtein_score: number }[]>
+
+  getLogs(params: {
+    entityId?: UUID
+    roomId?: UUID
+    type?: string
+    limit?: number
+    offset?: number
+  }): Promise<Log[]>
+
+  getLogInventory(params: {
+    excludeTypes?: readonly string[]
+  }): Promise<LogInventoryRow[]>
+
+  createLogs(
+    params: Array<{
+      body: LogBody
+      entityId: UUID
+      roomId: UUID
+      type: string
+      createdAt?: Date
+    }>,
+  ): Promise<void>
+
+  getLogsByIds(logIds: UUID[]): Promise<Log[]>
+
+  updateLogs(logs: Array<{ id: UUID; updates: Partial<Log> }>): Promise<void>
+
+  deleteLogs(logIds: UUID[]): Promise<void>
+
+  getAgentRunSummaries?(params: {
+    limit?: number
+    roomId?: UUID
+    status?: RunStatus | "all"
+    from?: number
+    to?: number
+    entityId?: UUID
+  }): Promise<AgentRunSummaryResult>
+
+  searchMemories(params: {
+    embedding: number[]
+
+    includeEmbedding?: boolean
+    match_threshold?: number
+    count?: number
+    limit?: number
+    offset?: number
+    unique?: boolean
+    tableName: string
+    query?: string
+    roomId?: UUID
+
+    excludeRoomIds?: UUID[]
+    worldId?: UUID
+    entityId?: UUID
+
+    accessContext?: AccessContext
+  }): Promise<Memory[]>
+
+  createMemories(
+    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
+  ): Promise<UUID[]>
+
+  compareAndSwapMemoryPublication?(
+    params: AtomicMemoryPublicationParams,
+  ): Promise<AtomicMemoryPublicationResult>
+
+  updateMemories(
+    memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
+  ): Promise<void>
+
+  updateMemoryEmbedding(update: MemoryEmbeddingUpdate): Promise<boolean>
+  deleteMemories(memoryIds: UUID[]): Promise<void>
+
+  upsertMemories(
+    memories: Array<{ memory: Memory; tableName: string }>,
+    options?: { entityContext?: UUID },
+  ): Promise<void>
+
+  deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void>
+
+  countMemories(params: {
+    roomIds?: UUID[]
+    unique?: boolean
+    tableName?: string
+    entityId?: UUID
+    agentId?: UUID
+    metadata?: Record<string, unknown>
+  }): Promise<number>
+
+  getAllWorlds(): Promise<World[]>
+
+  getWorldsByIds(worldIds: UUID[]): Promise<World[]>
+  createWorlds(worlds: World[]): Promise<UUID[]>
+  deleteWorlds(worldIds: UUID[]): Promise<void>
+  updateWorlds(worlds: World[]): Promise<void>
+
+  upsertWorlds(worlds: World[]): Promise<void>
+
+  getRoomsByIds(roomIds: UUID[]): Promise<Room[]>
+
+  createRooms(rooms: Room[]): Promise<UUID[]>
+
+  deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void>
+
+  getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]>
+
+  getRoomsByWorlds(
+    worldIds: UUID[],
+    limit?: number,
+    offset?: number,
+  ): Promise<Room[]>
+
+  updateRooms(rooms: Room[]): Promise<void>
+  deleteRooms(roomIds: UUID[]): Promise<void>
+
+  upsertRooms(rooms: Room[]): Promise<void>
+
+  getParticipantsForEntities(entityIds: UUID[]): Promise<Participant[]>
+
+  getParticipantsForRooms(roomIds: UUID[]): Promise<ParticipantsForRoomsResult>
+
+  areRoomParticipants(
+    pairs: Array<{ roomId: UUID; entityId: UUID }>,
+  ): Promise<boolean[]>
+
+  createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]>
+
+  deleteParticipants(
+    participants: Array<{ entityId: UUID; roomId: UUID }>,
+  ): Promise<boolean>
+
+  updateParticipants(
+    participants: Array<{
+      entityId: UUID
+      roomId: UUID
+      updates: ParticipantUpdateFields
+    }>,
+  ): Promise<void>
+
+  getParticipantUserStates(
+    pairs: Array<{ roomId: UUID; entityId: UUID }>,
+  ): Promise<ParticipantUserState[]>
+
+  updateParticipantUserStates(
+    updates: Array<{
+      roomId: UUID
+      entityId: UUID
+      state: ParticipantUserState
+    }>,
+  ): Promise<void>
+
+  getRelationshipsByPairs(
+    pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>,
+  ): Promise<(Relationship | null)[]>
+
+  getRelationships(params: {
+    entityIds?: UUID[]
+    tags?: string[]
+    limit?: number
+    offset?: number
+  }): Promise<Relationship[]>
+
+  createRelationships(
+    relationships: Array<{
+      sourceEntityId: UUID
+      targetEntityId: UUID
+      tags?: string[]
+      metadata?: Metadata
+    }>,
+  ): Promise<UUID[]>
+  getRelationshipsByIds(relationshipIds: UUID[]): Promise<Relationship[]>
+  updateRelationships(relationships: Relationship[]): Promise<void>
+  deleteRelationships(relationshipIds: UUID[]): Promise<void>
+
+  getCaches<T>(keys: string[]): Promise<Map<string, T>>
+  setCaches<T>(entries: Array<{ key: string; value: T }>): Promise<boolean>
+  deleteCaches(keys: string[]): Promise<boolean>
+
+  compareAndSetCache<T>(
+    key: string,
+    expected: unknown,
+    replacement: T,
+  ): Promise<boolean>
+
+  getTasks(params: {
+    roomId?: UUID
+    worldId?: UUID
+    tags?: string[]
+    entityId?: UUID
+
+    agentIds: UUID[]
+    limit?: number
+    offset?: number
+  }): Promise<Task[]>
+  getTasksByName(name: string): Promise<Task[]>
+
+  createTasks(tasks: Task[]): Promise<UUID[]>
+  getTasksByIds(taskIds: UUID[]): Promise<Task[]>
+
+  updatePendingTask?(id: UUID, task: Partial<Task>): Promise<boolean>
+
+  supportsAtomicTaskWake?: boolean
+
+  patchTaskMetadata?(id: UUID, patch: TaskMetadataPatch): Promise<boolean>
+  updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void>
+  deleteTasks(taskIds: UUID[]): Promise<void>
+
+  getMemoriesByWorldId(params: {
+    worldIds?: UUID[]
+    limit?: number
+    tableName?: string
+  }): Promise<Memory[]>
+
+  getPairingRequests(
+    queries: PairingRequestQuery[],
+  ): Promise<PairingRequestsResult>
+
+  createPairingRequests(requests: PairingRequest[]): Promise<UUID[]>
+  updatePairingRequests(requests: PairingRequest[]): Promise<void>
+  deletePairingRequests(ids: UUID[]): Promise<void>
+
+  getPairingAllowlists(
+    queries: PairingAllowlistQuery[],
+  ): Promise<PairingAllowlistsResult>
+
+  createPairingAllowlistEntries(
+    entries: PairingAllowlistEntry[],
+  ): Promise<UUID[]>
+
+  updatePairingAllowlistEntries(
+    entries: PairingAllowlistEntry[],
+  ): Promise<void>
+
+  deletePairingAllowlistEntries(ids: UUID[]): Promise<void>
+
+  listConnectorAccounts(
+    params?: ListConnectorAccountsParams,
+  ): Promise<ConnectorAccountRecord[]>
+  getConnectorAccount(
+    params: GetConnectorAccountParams,
+  ): Promise<ConnectorAccountRecord | null>
+  upsertConnectorAccount(
+    params: UpsertConnectorAccountParams,
+  ): Promise<ConnectorAccountRecord>
+  deleteConnectorAccount(
+    params: DeleteConnectorAccountParams,
+  ): Promise<boolean>
+  findConnectorOwnerBinding?(params: {
+    connector: string
+    externalId: string
+    instanceId?: string
+  }): Promise<
+    {
+      id: string
+      identityId: string
+      connector: string
+      externalId: string
+      displayHandle: string
+      instanceId: string
+      verifiedAt: number
+    } | null
+  >
+  setConnectorAccountCredentialRef(
+    params: SetConnectorAccountCredentialRefParams,
+  ): Promise<ConnectorAccountCredentialRefRecord>
+  getConnectorAccountCredentialRef(
+    params: GetConnectorAccountCredentialRefParams,
+  ): Promise<ConnectorAccountCredentialRefRecord | null>
+  listConnectorAccountCredentialRefs(
+    params: ListConnectorAccountCredentialRefsParams,
+  ): Promise<ConnectorAccountCredentialRefRecord[]>
+  deleteConnectorAccountCredentialRefs(
+    params: DeleteConnectorAccountCredentialRefsParams,
+  ): Promise<number>
+
+  appendConnectorAccountAuditEvent(
+    params: AppendConnectorAccountAuditEventParams,
+  ): Promise<ConnectorAccountAuditEventRecord>
+  createOAuthFlowState(
+    params: CreateOAuthFlowStateParams,
+  ): Promise<OAuthFlowRecord>
+  consumeOAuthFlowState(
+    params: ConsumeOAuthFlowStateParams,
+  ): Promise<OAuthFlowRecord | null>
+  getOAuthFlowState(
+    params: GetOAuthFlowStateParams,
+  ): Promise<OAuthFlowRecord | null>
+  updateOAuthFlowState(
+    params: UpdateOAuthFlowStateParams,
+  ): Promise<OAuthFlowRecord | null>
+  deleteOAuthFlowState(params: DeleteOAuthFlowStateParams): Promise<boolean>
+
+  registerPluginSchema?(
+    schema: import("./plugin-store.vibe").PluginSchema,
+  ): Promise<void>
+
+  getPluginStore?(
+    pluginName: string,
+  ): import("./plugin-store.vibe").IPluginStore | null
+}
+
+export const VECTOR_DIMS = {
+  SMALL: 384,
+  MEDIUM: 512,
+  LARGE: 768,
+  XL: 1024,
+  XXL: 1536,
+  XXL2: 2048,
+  XXXL: 3072,
+} as const

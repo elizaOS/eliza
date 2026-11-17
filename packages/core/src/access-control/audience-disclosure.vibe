@@ -1,0 +1,152 @@
+// spec/core/authorization.md, "Story: Read only the authorized records"; spec/core/authorization.md, "Memory and artifact scopes preserve their distinct compatibility decisions"
+import type { TrustedDeliveryAudience } from "../security/trusted-delivery-audience.vibe"
+import type { AccessContext } from "../types/access-context.vibe"
+import type { DisclosureSubject } from "../types/memory.vibe"
+import type { UUID } from "../types/primitives.vibe"
+import {
+  type ArtifactDisclosure,
+  type ArtifactDisclosureRecord,
+  resolveArtifactDisclosure,
+} from "./artifact-disclosure.vibe"
+import { isMemoryScope } from "./memory-scope.vibe"
+
+export type DisclosureLevel = ArtifactDisclosure
+
+export interface AudienceAdmission {
+  level: DisclosureLevel
+
+  perEntity: ReadonlyMap<UUID, DisclosureLevel>
+
+  blockingEntityIds: readonly UUID[]
+
+  resolverFailureEntityIds: readonly UUID[]
+}
+
+const LEVEL_RANK: Readonly<Record<DisclosureLevel, number>> = Object.freeze({
+  none: 0,
+  redacted: 1,
+  full: 2,
+})
+
+const EMPTY_UUIDS: readonly UUID[] = Object.freeze([])
+
+function isDisclosureLevel(value: unknown): value is DisclosureLevel {
+  return value === "full" || value === "redacted" || value === "none"
+}
+
+export function minDisclosureLevel(
+  a: DisclosureLevel,
+  b: DisclosureLevel,
+): DisclosureLevel {
+  return LEVEL_RANK[a] <= LEVEL_RANK[b] ? a : b
+}
+
+export function disclosureSubjectRecord(
+  subject: DisclosureSubject,
+): ArtifactDisclosureRecord {
+  return {
+    scope: subject.scope,
+    ...(subject.scopedEntityId
+      ? { scopedEntityId: subject.scopedEntityId }
+      : {}),
+    ...(subject.grants ? { grants: subject.grants } : {}),
+  }
+}
+
+function audienceMembers(
+  audience: TrustedDeliveryAudience,
+): readonly UUID[] | null {
+  if (!audience || typeof audience !== "object") return null
+  const { participantEntityIds, agentEntityId } = audience
+  if (!Array.isArray(participantEntityIds)) return null
+  if (typeof agentEntityId !== "string" || agentEntityId.length === 0) {
+    return null
+  }
+  const members = new Set<UUID>()
+  for (const id of participantEntityIds) {
+    if (typeof id !== "string" || id.length === 0) return null
+    if (id === agentEntityId) continue
+    members.add(id)
+  }
+  return [...members]
+}
+
+export function resolveAudienceAdmission(
+  subject: DisclosureSubject,
+  audience: TrustedDeliveryAudience,
+  resolveViewer: (entityId: UUID) => DisclosureLevel,
+): AudienceAdmission {
+  const required: DisclosureLevel = "full"
+  const subjectUsable = !!subject && typeof subject === "object" && isMemoryScope(subject.scope)
+  const members = audienceMembers(audience)
+  const perEntity = new Map<UUID, DisclosureLevel>()
+  if (members === null || members.length === 0) {
+    return Object.freeze({
+      level: "none" as const,
+      perEntity,
+      blockingEntityIds: EMPTY_UUIDS,
+      resolverFailureEntityIds: EMPTY_UUIDS,
+    })
+  }
+  const blocking: UUID[] = []
+  const resolverFailures: UUID[] = []
+  let level: DisclosureLevel = "full"
+  for (const entityId of members) {
+    let memberLevel: DisclosureLevel = "none"
+    if (subjectUsable) {
+      try {
+        const resolved = resolveViewer(entityId)
+        memberLevel = isDisclosureLevel(resolved) ? resolved : "none"
+      } catch {
+        memberLevel = "none"
+        resolverFailures.push(entityId)
+      }
+    }
+    perEntity.set(entityId, memberLevel)
+    level = minDisclosureLevel(level, memberLevel)
+    if (LEVEL_RANK[memberLevel] < LEVEL_RANK[required]) {
+      blocking.push(entityId)
+    }
+  }
+  return Object.freeze({
+    level,
+    perEntity,
+    blockingEntityIds: Object.freeze(blocking),
+    resolverFailureEntityIds: Object.freeze(resolverFailures),
+  })
+}
+
+export function attestedAudienceViewerResolver(
+  subject: DisclosureSubject,
+  audience: TrustedDeliveryAudience,
+): (entityId: UUID) => DisclosureLevel {
+  const record = disclosureSubjectRecord(subject)
+  const agentId = audience.agentEntityId
+  const ownerId = audience.canonicalOwnerEntityId
+  return (entityId) => {
+    const ctx: AccessContext = ownerId !== null && entityId === ownerId
+      ? { requesterEntityId: entityId, role: "OWNER", isOwner: true }
+      : { requesterEntityId: entityId }
+    return resolveArtifactDisclosure(record, ctx, agentId)
+  }
+}
+
+export function audienceAdmissionGateFailure(
+  subject: DisclosureSubject,
+  audience: TrustedDeliveryAudience | undefined,
+): string | undefined {
+  if (!audience) {
+    return "Audience-admission disclosure denied: missing_attestation"
+  }
+  const admission = resolveAudienceAdmission(
+    subject,
+    audience,
+    attestedAudienceViewerResolver(subject, audience),
+  )
+  if (admission.level === "full") return undefined
+
+  if (admission.resolverFailureEntityIds.length > 0) {
+    return `Audience-admission disclosure denied: viewer resolution failed for ${admission.resolverFailureEntityIds.length} member(s) (capped at ${admission.level})`
+  }
+  return `Audience-admission disclosure denied: capped at ${admission.level} by ${admission.blockingEntityIds.length} member(s)`
+}

@@ -1,0 +1,473 @@
+// spec/core/services.md, "Story: Acquire a declared service"
+import { failingAs, thrown } from "../edge.vibe"
+import { processEnv } from "../utils/environment.vibe"
+import type { TriggerConfig } from "../types/trigger.vibe"
+
+export const MIN_TRIGGER_INTERVAL_MS = 60_000
+export const MAX_TRIGGER_INTERVAL_MS = 31 * 24 * 60 * 60 * 1000
+export const DISABLED_TRIGGER_INTERVAL_MS = 365 * 24 * 60 * 60 * 1000
+
+const CRON_FIELDS = 5
+
+const CRON_SCAN_WINDOW_MS = 8 * 366 * 24 * 60 * 60 * 1000
+const CRON_DAY_MS = 24 * 60 * 60 * 1000
+const CRON_MINUTE_MS = 60_000
+const CRON_HOUR_MS = 60 * CRON_MINUTE_MS
+
+const CRON_SPRING_FORWARD_LOOKBACK_MS = 3 * CRON_HOUR_MS
+const CRON_FALLBACK_LOOKBACKS_MS = [
+  30 * CRON_MINUTE_MS,
+  CRON_HOUR_MS,
+  2 * CRON_HOUR_MS,
+  3 * CRON_HOUR_MS,
+] as const
+
+const ZONED_DAY_OFFSETS = [-1, 0, 1] as const
+const UTC_DAY_OFFSETS = [0] as const
+
+const MAX_REPRESENTABLE_MS = 8_640_000_000_000_000
+
+interface CronRange {
+  min: number
+  max: number
+  sundayIsSeven?: boolean
+  names?: Readonly<Record<string, number>>
+}
+
+interface CronSchedule {
+  minute: Set<number>
+  hour: Set<number>
+  dayOfMonth: Set<number>
+  month: Set<number>
+  dayOfWeek: Set<number>
+
+  dayOfMonthRestricted: boolean
+  dayOfWeekRestricted: boolean
+}
+
+const MONTH_NAMES: Readonly<Record<string, number>> = {
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  may: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
+}
+const DAY_NAMES: Readonly<Record<string, number>> = {
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
+}
+
+const CRON_RANGES: readonly CronRange[] = [
+  { min: 0, max: 59 },
+  { min: 0, max: 23 },
+  { min: 1, max: 31 },
+  { min: 1, max: 12, names: MONTH_NAMES },
+  { min: 0, max: 6, sundayIsSeven: true, names: DAY_NAMES },
+]
+
+function parseInteger(raw: string): number | null {
+  if (!/^-?\d+$/.test(raw)) return null
+  const value = Number(raw)
+  if (!Number.isFinite(value)) return null
+  return value
+}
+
+function resolveCronToken(raw: string, range: CronRange): number | null {
+  const token = raw.trim()
+  if (/^[A-Za-z]{3}$/.test(token)) {
+    const value = range.names?.[token.toLowerCase()]
+    return value === undefined ? null : value
+  }
+  return parseInteger(token)
+}
+
+function clamp(value: number, min: number, max: number): number {
+  if (value < min) return min
+  if (value > max) return max
+  return value
+}
+
+function parseCronPart(part: string, range: CronRange): Set<number> | null {
+  const output = new Set<number>()
+  const chunks = part.split(",")
+
+  const upperBound = range.sundayIsSeven ? range.max + 1 : range.max
+  const foldValue = (value: number): number => range.sundayIsSeven && value === range.max + 1 ? range.min : value
+
+  for (const chunkRaw of chunks) {
+    const chunk = chunkRaw.trim()
+    if (!chunk) return null
+
+    const stepParts = chunk.split("/")
+    if (stepParts.length > 2) return null
+
+    const step = stepParts.length === 2 ? parseInteger(stepParts[1].trim()) : 1
+    if (step === null || step <= 0) return null
+
+    const base = stepParts[0].trim()
+    if (base === "*") {
+      for (let value = range.min; value <= range.max; value += step) {
+        output.add(value)
+      }
+      continue
+    }
+
+    const rangeParts = base.split("-")
+    if (rangeParts.length === 1) {
+      const single = resolveCronToken(rangeParts[0], range)
+      if (single === null) return null
+      if (single < range.min || single > upperBound) return null
+
+      const upper = stepParts.length === 2 ? upperBound : single
+      for (let value = single; value <= upper; value += step) {
+        output.add(foldValue(value))
+      }
+      continue
+    }
+
+    if (rangeParts.length !== 2) return null
+    const start = resolveCronToken(rangeParts[0], range)
+    const end = resolveCronToken(rangeParts[1], range)
+    if (start === null || end === null) return null
+    if (start > end) return null
+    if (start < range.min || end > upperBound) return null
+    for (let value = start; value <= end; value += step) {
+      output.add(foldValue(value))
+    }
+  }
+
+  return output.size > 0 ? output : null
+}
+
+export function normalizeTriggerIntervalMs(intervalMs: number): number {
+  if (!Number.isFinite(intervalMs)) return MIN_TRIGGER_INTERVAL_MS
+  const rounded = Math.floor(intervalMs)
+  return clamp(rounded, MIN_TRIGGER_INTERVAL_MS, MAX_TRIGGER_INTERVAL_MS)
+}
+
+export function parseCronExpression(expression: string): CronSchedule | null {
+  const trimmed = expression.trim()
+  if (!trimmed) return null
+  const parts = trimmed.split(/\s+/)
+  if (parts.length !== CRON_FIELDS) return null
+
+  const minute = parseCronPart(parts[0], CRON_RANGES[0])
+  const hour = parseCronPart(parts[1], CRON_RANGES[1])
+  const dayOfMonth = parseCronPart(parts[2], CRON_RANGES[2])
+  const month = parseCronPart(parts[3], CRON_RANGES[3])
+  const dayOfWeek = parseCronPart(parts[4], CRON_RANGES[4])
+
+  if (!minute || !hour || !dayOfMonth || !month || !dayOfWeek) {
+    return null
+  }
+
+  return {
+    minute,
+    hour,
+    dayOfMonth,
+    month,
+    dayOfWeek,
+    dayOfMonthRestricted: !parts[2].trim().startsWith("*"),
+    dayOfWeekRestricted: !parts[4].trim().startsWith("*"),
+  }
+}
+
+function cronDateMatchesUTC(schedule: CronSchedule, candidate: Date): boolean {
+  const dayOfMonthMatches = schedule.dayOfMonth.has(candidate.getUTCDate())
+  const dayOfWeekMatches = schedule.dayOfWeek.has(candidate.getUTCDay())
+
+  const dayMatches = schedule.dayOfMonthRestricted && schedule.dayOfWeekRestricted
+    ? dayOfMonthMatches || dayOfWeekMatches
+    : dayOfMonthMatches && dayOfWeekMatches
+  return dayMatches && schedule.month.has(candidate.getUTCMonth() + 1)
+}
+
+function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
+  const candidate = new Date(candidateMs)
+  return (
+    schedule.minute.has(candidate.getUTCMinutes())
+    && schedule.hour.has(candidate.getUTCHours())
+    && cronDateMatchesUTC(schedule, candidate)
+  )
+}
+
+function buildTzFormatter(timezone: string): Intl.DateTimeFormat | null {
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    })
+  } catch {
+    return null
+  }
+}
+
+export function utcDateMs(
+  year: number,
+  monthIndex: number,
+  day: number,
+  hour = 0,
+  minute = 0,
+  second = 0,
+  ms = 0,
+): number {
+  const d = new Date(0)
+  d.setUTCFullYear(year, monthIndex, day)
+  d.setUTCHours(hour, minute, second, ms)
+  return d.getTime()
+}
+
+function offsetMsFromFormatter(
+  formatter: Intl.DateTimeFormat,
+  atMs: number,
+): number {
+  let year = 0
+  let month = 0
+  let day = 0
+  let hour = 0
+  let minute = 0
+  let second = 0
+  for (const part of formatter.formatToParts(new Date(atMs))) {
+    switch (part.type) {
+      case "year":
+        year = Number(part.value)
+        break
+      case "month":
+        month = Number(part.value)
+        break
+      case "day":
+        day = Number(part.value)
+        break
+      case "hour":
+        hour = Number(part.value)
+        break
+      case "minute":
+        minute = Number(part.value)
+        break
+      case "second":
+        second = Number(part.value)
+        break
+    }
+  }
+  return utcDateMs(year, month - 1, day, hour, minute, second) - atMs
+}
+
+function cronMatches(
+  schedule: CronSchedule,
+  candidateMs: number,
+  timezone: string | undefined,
+  formatter: Intl.DateTimeFormat | null,
+): boolean {
+  if (!timezone || timezone === "UTC" || !formatter) {
+    return cronMatchesUTC(schedule, candidateMs)
+  }
+  const candidateOffset = offsetMsFromFormatter(formatter, candidateMs)
+  const wallMs = candidateMs + candidateOffset
+  if (!cronMatchesUTC(schedule, wallMs)) {
+    const priorOffset = offsetMsFromFormatter(
+      formatter,
+      candidateMs - CRON_SPRING_FORWARD_LOOKBACK_MS,
+    )
+    if (priorOffset >= candidateOffset) return false
+    const gapMs = candidateOffset - priorOffset
+    return (
+      offsetMsFromFormatter(formatter, candidateMs - gapMs) === priorOffset
+      && cronMatchesUTC(schedule, candidateMs + priorOffset)
+    )
+  }
+
+  for (const lookbackMs of CRON_FALLBACK_LOOKBACKS_MS) {
+    const priorOffset = offsetMsFromFormatter(
+      formatter,
+      candidateMs - lookbackMs,
+    )
+    if (priorOffset <= candidateOffset) continue
+    const offsetDelta = priorOffset - candidateOffset
+    const priorSameWallMs = candidateMs - offsetDelta
+    const priorWallMs = priorSameWallMs + offsetMsFromFormatter(formatter, priorSameWallMs)
+    if (wallMs === priorWallMs) return false
+  }
+  return true
+}
+
+export function computeNextCronRunAtMs(
+  expression: string,
+  fromMs: number,
+  timezone?: string,
+): number | null {
+  const schedule = parseCronExpression(expression)
+  if (!schedule) return null
+
+  if (!Number.isFinite(fromMs) || fromMs >= MAX_REPRESENTABLE_MS) return null
+
+  const start = Math.floor(fromMs / CRON_MINUTE_MS) * CRON_MINUTE_MS
+
+  const cutoff = Math.min(start + CRON_SCAN_WINDOW_MS, MAX_REPRESENTABLE_MS)
+
+  const formatter = timezone && timezone !== "UTC" ? buildTzFormatter(timezone) : null
+  let checkedDay = Number.NaN
+  let dayCanMatch = false
+
+  for (
+    let candidate = start + CRON_MINUTE_MS;
+    candidate <= cutoff;
+    candidate += CRON_MINUTE_MS
+  ) {
+    const day = Math.floor(candidate / CRON_DAY_MS) * CRON_DAY_MS
+    if (day !== checkedDay) {
+      checkedDay = day
+
+      dayCanMatch = (formatter ? ZONED_DAY_OFFSETS : UTC_DAY_OFFSETS).some(
+        (offset) => cronDateMatchesUTC(schedule, new Date(day + offset * CRON_DAY_MS)),
+      )
+    }
+    if (!dayCanMatch) {
+      candidate = day + CRON_DAY_MS - CRON_MINUTE_MS
+      continue
+    }
+    if (cronMatches(schedule, candidate, timezone, formatter)) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
+const OFFSETLESS_ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/
+
+export error InvalidTimeZone { message: string }
+
+export effect function resolveScheduledAtIsoInTimeZone(
+  scheduledAtIso: string,
+  timezone: string,
+): string!InvalidTimeZone {
+  const trimmed = scheduledAtIso.trim()
+  if (!OFFSETLESS_ISO_DATE_TIME.test(trimmed)) return scheduledAtIso
+  const wallMs = Date.parse(`${trimmed}Z`)
+  if (!Number.isFinite(wallMs)) return scheduledAtIso
+  const formatter = buildTzFormatter(timezone)
+  if (!formatter) throw new InvalidTimeZone({ message: `Invalid time zone: ${timezone}` })
+
+  const fractionMs = wallMs % 1000
+  const wallSecondMs = wallMs - fractionMs
+  const offsetAt = (atMs: number) => offsetMsFromFormatter(formatter, atMs)
+  const offsetBefore = offsetAt(wallSecondMs - CRON_DAY_MS)
+  const offsetAfter = offsetAt(wallSecondMs + CRON_DAY_MS)
+  const early = wallSecondMs - offsetBefore
+  const late = wallSecondMs - offsetAfter
+  const instantMs = offsetAt(early) !== offsetBefore && offsetAt(late) === offsetAfter
+    ? late
+    : early
+  return new Date(instantMs + fractionMs).toISOString()
+}
+export const resolveScheduledAtIsoInTimeZoneOrThrow = thrown(failingAs(RangeError, resolveScheduledAtIsoInTimeZone))
+
+export function parseScheduledAtIso(scheduledAtIso: string): number | null {
+  const timestamp = Date.parse(scheduledAtIso)
+  if (!Number.isFinite(timestamp)) return null
+  return timestamp
+}
+
+export interface TriggerTiming {
+  updatedAt: number
+  updateIntervalMs: number
+  nextRunAtMs: number
+}
+
+function timingUntil(nowMs: number, nextRunAtMs: number | null): TriggerTiming | null {
+  if (nextRunAtMs === null) return null
+  return { updatedAt: nowMs, updateIntervalMs: Math.max(0, nextRunAtMs - nowMs), nextRunAtMs }
+}
+
+function timingEvery(nowMs: number, interval: number): TriggerTiming {
+  return { updatedAt: nowMs, updateIntervalMs: interval, nextRunAtMs: nowMs + interval }
+}
+
+export error UnsupportedTriggerType { message: string }
+
+export effect function resolveTriggerTiming(
+  trigger: TriggerConfig,
+  nowMs: number,
+): (TriggerTiming | null)!UnsupportedTriggerType {
+  if (!trigger.enabled) return null
+  switch (trigger.triggerType) {
+    case "interval":
+      return timingEvery(nowMs, normalizeTriggerIntervalMs(trigger.intervalMs ?? 0))
+    case "once": {
+      const scheduledAt = trigger.scheduledAtIso ? parseScheduledAtIso(trigger.scheduledAtIso) : null
+      return timingUntil(nowMs, scheduledAt === null ? null : Math.max(scheduledAt, nowMs))
+    }
+    case "cron":
+      return trigger.cronExpression
+        ? timingUntil(nowMs, computeNextCronRunAtMs(trigger.cronExpression, nowMs, trigger.timezone))
+        : null
+    case "event":
+      return timingEvery(nowMs, DISABLED_TRIGGER_INTERVAL_MS)
+    default: {
+      const exhaustiveCheck: never = trigger.triggerType
+      throw new UnsupportedTriggerType({ message: `Unsupported trigger type: ${exhaustiveCheck as string}` })
+    }
+  }
+}
+export const resolveTriggerTimingOrThrow = thrown((trigger: TriggerConfig, nowMs: number) =>
+  Effect.mapError(resolveTriggerTiming(trigger, nowMs), (failure) => new Error(failure.message)),
+)
+
+export const MISSED_SCHEDULED_OCCURRENCES_SETTING = "ELIZA_MISSED_SCHEDULED_OCCURRENCES"
+
+export const SCHEDULED_OCCURRENCE_WINDOW_MS = 30 * 60_000
+export const MISSED_SCHEDULED_OCCURRENCE_TEXT =
+  "The scheduled time passed while the agent was not running. This occurrence did not run, and no backlog is executed."
+
+export function recordsMissedScheduledOccurrences(
+  runtime?: { getSetting?(key: string): unknown } | null,
+): boolean {
+  const configured = typeof runtime?.getSetting === "function"
+    ? runtime.getSetting(MISSED_SCHEDULED_OCCURRENCES_SETTING)
+    : undefined
+  const value = typeof configured === "string"
+    ? configured
+    : (processEnv() as NodeJS.ProcessEnv | undefined)?.[MISSED_SCHEDULED_OCCURRENCES_SETTING]
+  return value === "record"
+}
+
+module node {
+  /** @throws {never} */
+  export function processUptimeSeconds(): number {
+    return typeof process !== "undefined" && typeof process.uptime === "function" ? process.uptime() : 0
+  }
+}
+import { processUptimeSeconds } from node
+
+export function agentProcessStartedAtMs(nowMs: number = Date.now()): number {
+  return nowMs - Math.round(processUptimeSeconds() * 1000)
+}
+
+export function isMissedScheduledOccurrence(
+  scheduledAtMs: number,
+  nowMs: number,
+  agentStartedAtMs: number = agentProcessStartedAtMs(nowMs),
+): boolean {
+  return (
+    nowMs - scheduledAtMs > SCHEDULED_OCCURRENCE_WINDOW_MS
+    && scheduledAtMs < agentStartedAtMs
+  )
+}

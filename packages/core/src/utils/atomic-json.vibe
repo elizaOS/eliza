@@ -1,0 +1,204 @@
+// spec/core/atomicWriters.md, "The latest successful rename owns the whole final snapshot"; spec/core/temporaryNames.md, "Every allocated name carries a never-repeated process ordinal"; spec/core/serialisation.md, "Only the head callback executes and every settlement releases its successor"
+import { errorText } from "./errors.vibe"
+import * as EffectSemaphore from "effect/Semaphore"
+import { failingAs, foreign, Foreign, promised, thrown } from "../edge.vibe"
+import { logger } from "../logger.vibe"
+import { UnserializableJson } from "./filesystem.vibe"
+
+module node {
+  import fs from "node:fs"
+  import fsp from "node:fs/promises"
+  import path from "node:path"
+
+  /** @throws {never} */
+  export function processId(): number {
+    return process.pid
+  }
+
+  /** @throws {never} */
+  export function resolvePath(target: string): string {
+    return path.resolve(target)
+  }
+
+  /** @throws {unknown} */
+  export function makeParentSync(file: string, dirMode: number): void {
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: dirMode })
+  }
+
+  /** @throws {unknown} */
+  export function publishSync(tmp: string, file: string, body: string, mode: number): void {
+    fs.writeFileSync(tmp, body, { encoding: "utf-8", mode, flag: "wx" })
+    fs.renameSync(tmp, file)
+  }
+
+  /** @throws {unknown} */
+  export function removeSync(target: string): void {
+    fs.rmSync(target, { force: true })
+  }
+
+  /** @throws {never} */
+  export function makeParent(file: string, dirMode: number): Promise<string | undefined> {
+    return fsp.mkdir(path.dirname(file), { recursive: true, mode: dirMode })
+  }
+
+  /** @throws {never} */
+  export function writeTemporary(tmp: string, body: string, mode: number): Promise<void> {
+    return fsp.writeFile(tmp, body, { encoding: "utf-8", mode, flag: "wx" })
+  }
+
+  /** @throws {never} */
+  export function rename(from: string, to: string): Promise<void> {
+    return fsp.rename(from, to)
+  }
+
+  /** @throws {never} */
+  export function remove(target: string): Promise<void> {
+    return fsp.rm(target, { force: true })
+  }
+
+  /** @throws {never} */
+  export function readUtf8(file: string): Promise<string> {
+    return fsp.readFile(file, "utf-8")
+  }
+}
+import { makeParent, makeParentSync, processId, publishSync, readUtf8, remove, removeSync, rename, resolvePath, writeTemporary } from node
+
+export interface WriteJsonAtomicOptions {
+  mode?: number
+
+  dirMode?: number
+
+  trailingNewline?: boolean
+
+  indent?: number | string
+
+  skipMkdir?: boolean
+}
+
+interface NormalizedWriteOptions {
+  mode: number
+  dirMode: number
+  trailingNewline: boolean
+  indent: number | string
+  skipMkdir: boolean
+}
+
+export error InvalidFilePath { message: string }
+
+function normalizeOptions(opts: WriteJsonAtomicOptions | undefined): NormalizedWriteOptions {
+  return {
+    mode: opts?.mode ?? 0o600,
+    dirMode: opts?.dirMode ?? 0o700,
+    trailingNewline: opts?.trailingNewline ?? false,
+    indent: opts?.indent ?? 2,
+    skipMkdir: opts?.skipMkdir ?? false,
+  }
+}
+
+let tmpSequenceCounter = 0n
+
+interface WriteTail {
+  readonly lock: EffectSemaphore.Semaphore
+  writers: number
+}
+
+const asyncWriteTails = new Map<string, WriteTail>()
+
+function tmpPathFor(filePath: string): string {
+  tmpSequenceCounter += 1n
+  return `${filePath}.tmp-${processId()}-${Date.now()}-${tmpSequenceCounter}`
+}
+
+effect function serialize(value: unknown, opts: NormalizedWriteOptions) {
+  const body = try Effect.try({
+    try: () => JSON.stringify(value, null, opts.indent) as string | undefined,
+    catch: (cause) => new Foreign({ cause }),
+  })
+  if (body === undefined) throw new UnserializableJson({ message: `Cannot serialize ${typeof value} to JSON` })
+  return opts.trailingNewline ? `${body}\n` : body
+}
+
+effect function assertFilePath(filePath: string) {
+  if (typeof filePath !== "string" || filePath.trim().length === 0) {
+    throw new InvalidFilePath({ message: "filePath must be a non-empty string" })
+  }
+}
+
+function warnTemporaryLeft(file: string, error: unknown): void {
+  logger.warn({ file, error: errorText(error) }, "[AtomicJson] Failed to remove temporary file")
+}
+
+effect function serializeAsyncWrite<A, E, R>(filePath: string, write: A!E!R): A!E!R {
+  const target = resolvePath(filePath)
+  const tail = asyncWriteTails.get(target) ?? { lock: EffectSemaphore.makeUnsafe(1), writers: 0 }
+  tail.writers += 1
+  asyncWriteTails.set(target, tail)
+  return try ensuring(
+    tail.lock.withPermit(write),
+    sync(() => {
+      tail.writers -= 1
+      if (tail.writers === 0 && asyncWriteTails.get(target) === tail) asyncWriteTails.delete(target)
+    }),
+  )
+}
+
+effect function publishAsync(filePath: string, body: string, o: NormalizedWriteOptions) {
+  if (!o.skipMkdir) try foreign(() => makeParent(filePath, o.dirMode))
+  const tmp = tmpPathFor(filePath)
+  try ensuring(
+    effect {
+      try foreign(() => writeTemporary(tmp, body, o.mode))
+      try foreign(() => rename(tmp, filePath))
+    },
+    effect {
+      foreign(() => remove(tmp)) catch (error) => warnTemporaryLeft(tmp, error.cause)
+    },
+  )
+}
+
+export effect function writeJsonAtomic(filePath: string, value: unknown, opts?: WriteJsonAtomicOptions) {
+  try assertFilePath(filePath)
+  const o = normalizeOptions(opts)
+  const body = try serialize(value, o)
+  try serializeAsyncWrite(filePath, publishAsync(filePath, body, o))
+}
+
+export const writeJsonAtomicPromise = promised(failingAs(TypeError, writeJsonAtomic))
+
+export effect function writeJsonAtomicSync(filePath: string, value: unknown, opts?: WriteJsonAtomicOptions) {
+  try assertFilePath(filePath)
+  const o = normalizeOptions(opts)
+  const body = try serialize(value, o)
+  if (!o.skipMkdir) try Effect.try({ try: () => makeParentSync(filePath, o.dirMode), catch: (cause) => new Foreign({ cause }) })
+  const tmp = tmpPathFor(filePath)
+  try ensuring(
+    Effect.try({ try: () => publishSync(tmp, filePath, body, o.mode), catch: (cause) => new Foreign({ cause }) }),
+    effect {
+      Effect.try({ try: () => removeSync(tmp), catch: (cause) => new Foreign({ cause }) }) catch (error) => warnTemporaryLeft(tmp, error.cause)
+    },
+  )
+}
+
+export const writeJsonAtomicSyncOrThrow = thrown(failingAs(TypeError, writeJsonAtomicSync))
+
+export effect function readJsonFile<T>(filePath: string) {
+  try assertFilePath(filePath)
+  const raw = foreign(() => readUtf8(filePath)) catch effect (error) => {
+    if ((error.cause as { code?: unknown } | null | undefined)?.code === "ENOENT") return null
+    throw error
+  }
+  if (raw === null) return null
+  return try Effect.try({ try: () => JSON.parse(raw.replace(/^\uFEFF/, "")) as T, catch: (cause) => new Foreign({ cause }) })
+}
+
+module edge {
+  import { asLegacy, runDetached } from "../edge.vibe"
+  import { readJsonFile } from "./atomic-json.vibe"
+
+  /** @throws {never} */
+  export function readJsonFilePromise<T>(filePath: string): Promise<T | null> {
+    return runDetached(asLegacy(TypeError, readJsonFile<T>(filePath)))
+  }
+}
+import { readJsonFilePromise } from edge
+export { readJsonFilePromise }

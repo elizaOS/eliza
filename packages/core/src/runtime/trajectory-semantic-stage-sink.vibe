@@ -1,0 +1,89 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { foreignSync, runDetached, type Foreign } from "../edge.vibe"
+import { getTrajectoryContext } from "../trajectory-context.vibe"
+import type { RecordedStage, TrajectoryRecorder } from "./trajectory-recorder.vibe"
+
+interface SemanticStageDatabaseLogger {
+  logSemanticStage(params: { stepId: string; stage: RecordedStage }): void
+}
+
+interface SemanticStageFanOutRuntime {
+  getService(serviceType: string): unknown
+  reportError(
+    scope: string,
+    error: unknown,
+    context?: Record<string, unknown>,
+  ): void
+  logger: {
+    warn?: (context: Record<string, unknown>, message?: string) => void
+  }
+}
+
+function resolveDatabaseStageLogger(
+  service: unknown,
+): SemanticStageDatabaseLogger | null {
+  if (!service || typeof service !== "object") return null
+  const candidate = service as Partial<SemanticStageDatabaseLogger>
+  return typeof candidate.logSemanticStage === "function"
+    ? (candidate as SemanticStageDatabaseLogger)
+    : null
+}
+
+effect function reportStageFailure(
+  runtime: SemanticStageFanOutRuntime,
+  scope: string,
+  text: string,
+  error: unknown,
+  trajectoryId: string,
+  stage: RecordedStage,
+): void!Foreign {
+  try foreignSync(() => runtime.logger.warn?.({ error, trajectoryId, stageKind: stage.kind }, text))
+  try foreignSync(() => runtime.reportError(scope, error, { trajectoryId, stageKind: stage.kind, diagnosticOnly: true }))
+}
+
+effect function recordSemanticStage(
+  inner: TrajectoryRecorder,
+  runtime: SemanticStageFanOutRuntime,
+  trajectoryId: string,
+  stage: RecordedStage,
+): void!Foreign {
+  try foreignSync(() => {
+    void inner.recordStage(trajectoryId, stage).catch((error: unknown) => runDetached(reportStageFailure(
+      runtime,
+      "TrajectorySemanticStageSink.persistStage",
+      "[TrajectoryRecorder] failed to persist stage file",
+      error,
+      trajectoryId,
+      stage,
+    )))
+  })
+  foreignSync(() => {
+    const stepId = getTrajectoryContext()?.trajectoryStepId
+    if (!stepId) return
+    const dbLogger = resolveDatabaseStageLogger(runtime.getService("trajectories"))
+    if (!dbLogger) return
+    dbLogger.logSemanticStage({ stepId, stage })
+  }) catch effect ({ cause }) => {
+    try reportStageFailure(
+      runtime,
+      "TrajectorySemanticStageSink.recordStage",
+      "[TrajectoryRecorder] failed to mirror stage into database trajectory",
+      cause,
+      trajectoryId,
+      stage,
+    )
+  }
+}
+
+export function withSemanticStageFanOut(
+  inner: TrajectoryRecorder,
+  runtime: SemanticStageFanOutRuntime,
+): TrajectoryRecorder {
+  return {
+    startTrajectory: (input) => inner.startTrajectory(input),
+    endTrajectory: (trajectoryId, status) => inner.endTrajectory(trajectoryId, status),
+    load: (trajectoryId) => inner.load(trajectoryId),
+    list: (opts) => inner.list(opts),
+    recordStage: (trajectoryId, stage) => runDetached(recordSemanticStage(inner, runtime, trajectoryId, stage)),
+  }
+}

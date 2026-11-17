@@ -1,0 +1,437 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { Foreign, foreign, runDetached } from "../edge.vibe"
+
+export type NormalizedChatType = "direct" | "group" | "channel"
+
+export function normalizeChatType(raw?: string): NormalizedChatType {
+  const lower = raw?.toLowerCase().trim()
+  if (!lower) {
+    return "direct"
+  }
+  if (lower === "direct" || lower === "dm" || lower === "private") {
+    return "direct"
+  }
+  if (lower === "group" || lower === "supergroup" || lower === "room") {
+    return "group"
+  }
+  if (lower === "channel" || lower === "feed" || lower === "broadcast") {
+    return "channel"
+  }
+  return "direct"
+}
+
+export type MentionGateParams = {
+  requireMention: boolean
+
+  canDetectMention: boolean
+
+  wasMentioned: boolean
+
+  implicitMention?: boolean
+
+  shouldBypassMention?: boolean
+}
+
+export type MentionGateResult = {
+  effectiveWasMentioned: boolean
+
+  shouldSkip: boolean
+}
+
+export type MentionGateWithBypassParams = {
+  isGroup: boolean
+  requireMention: boolean
+  canDetectMention: boolean
+  wasMentioned: boolean
+  implicitMention?: boolean
+  hasAnyMention?: boolean
+  allowTextCommands: boolean
+  hasControlCommand: boolean
+  commandAuthorized: boolean
+}
+
+export type MentionGateWithBypassResult = MentionGateResult & {
+  shouldBypassMention: boolean
+}
+
+export function resolveMentionGating(
+  params: MentionGateParams,
+): MentionGateResult {
+  const implicit = params.implicitMention === true
+  const bypass = params.shouldBypassMention === true
+  const effectiveWasMentioned = params.wasMentioned || implicit || bypass
+  const shouldSkip = params.requireMention && params.canDetectMention && !effectiveWasMentioned
+  return { effectiveWasMentioned, shouldSkip }
+}
+
+export function resolveMentionGatingWithBypass(
+  params: MentionGateWithBypassParams,
+): MentionGateWithBypassResult {
+  const shouldBypassMention = params.isGroup
+    && params.requireMention
+    && !params.wasMentioned
+    && !(params.hasAnyMention ?? false)
+    && params.allowTextCommands
+    && params.commandAuthorized
+    && params.hasControlCommand
+  return {
+    ...resolveMentionGating({
+      requireMention: params.requireMention,
+      canDetectMention: params.canDetectMention,
+      wasMentioned: params.wasMentioned,
+      implicitMention: params.implicitMention,
+      shouldBypassMention,
+    }),
+    shouldBypassMention,
+  }
+}
+
+export type TypingCallbacks = {
+  onReplyStart: () => Promise<void>
+
+  onIdle?: () => void
+}
+
+export type TypingCallbackParams = {
+  start: () => Promise<void>
+
+  stop?: () => Promise<void>
+
+  onStartError: (err: unknown) => void
+
+  onStopError?: (err: unknown) => void
+}
+
+effect function reportFailure(work: void!Foreign, onError: (err: unknown) => void) {
+  work catch (err) => onError(err.cause)
+}
+
+export function createTypingCallbacks(
+  params: TypingCallbackParams,
+): TypingCallbacks {
+  const stop = params.stop
+  const onReplyStart = () => runDetached(reportFailure(foreign(() => params.start()), params.onStartError))
+  const onIdle = stop
+    ? () => {
+      const pending = stop()
+      void runDetached(reportFailure(foreign(() => pending), params.onStopError ?? params.onStartError))
+    }
+    : undefined
+  return { onReplyStart, onIdle }
+}
+
+export type AckReactionScope =
+  | "all"
+  | "direct"
+  | "group-all"
+  | "group-mentions"
+  | "off"
+  | "none"
+
+export type WhatsAppAckReactionMode = "always" | "mentions" | "never"
+
+export type AckReactionGateParams = {
+  scope: AckReactionScope | undefined
+  isDirect: boolean
+  isGroup: boolean
+  isMentionableGroup: boolean
+  requireMention: boolean
+  canDetectMention: boolean
+  effectiveWasMentioned: boolean
+  shouldBypassMention?: boolean
+}
+
+export function shouldAckReaction(params: AckReactionGateParams): boolean {
+  const scope = params.scope ?? "group-mentions"
+  if (scope === "off" || scope === "none") {
+    return false
+  }
+  if (scope === "all") {
+    return true
+  }
+  if (scope === "direct") {
+    return params.isDirect
+  }
+  if (scope === "group-all") {
+    return params.isGroup
+  }
+  if (scope === "group-mentions") {
+    if (!params.isMentionableGroup) {
+      return false
+    }
+    if (!params.canDetectMention) {
+      return false
+    }
+    return params.effectiveWasMentioned || params.shouldBypassMention === true
+  }
+  return false
+}
+
+export function shouldAckReactionForWhatsApp(params: {
+  emoji: string
+  isDirect: boolean
+  isGroup: boolean
+  directEnabled: boolean
+  groupMode: WhatsAppAckReactionMode
+  wasMentioned: boolean
+  groupActivated: boolean
+}): boolean {
+  if (!params.emoji) {
+    return false
+  }
+  if (params.isDirect) {
+    return params.directEnabled
+  }
+  if (!params.isGroup) {
+    return false
+  }
+  if (params.groupMode === "never") {
+    return false
+  }
+  if (params.groupMode === "always") {
+    return true
+  }
+  return shouldAckReaction({
+    scope: "group-mentions",
+    isDirect: false,
+    isGroup: true,
+    isMentionableGroup: true,
+    requireMention: true,
+    canDetectMention: true,
+    effectiveWasMentioned: params.wasMentioned,
+    shouldBypassMention: params.groupActivated,
+  })
+}
+
+export type RemoveAckReactionParams = {
+  removeAfterReply: boolean
+  ackReactionPromise: Promise<boolean> | null
+  ackReactionValue: string | null
+  remove: () => Promise<void>
+  onError?: (err: unknown) => void
+}
+
+effect function removeAfterAck(ack: Promise<boolean>, remove: () => Promise<void>) {
+  if (try foreign(() => ack)) try foreign(() => remove())
+}
+
+export function removeAckReactionAfterReply(
+  params: RemoveAckReactionParams,
+): void {
+  const ack = params.ackReactionPromise
+  if (!params.removeAfterReply || !ack || !params.ackReactionValue) return
+  runFork(reportFailure(removeAfterAck(ack, params.remove), (err) => params.onError?.(err)))
+}
+
+export type SenderLabelParams = {
+  name?: string
+  username?: string
+  tag?: string
+  e164?: string
+  id?: string
+}
+
+function normalizeLabel(value?: string): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : undefined
+}
+
+type NormalizedSenderParts = {
+  name?: string
+  username?: string
+  tag?: string
+  e164?: string
+  id?: string
+  display: string
+  idPart: string
+}
+
+function getNormalizedSenderParts(
+  params: SenderLabelParams,
+): NormalizedSenderParts {
+  const name = normalizeLabel(params.name)
+  const username = normalizeLabel(params.username)
+  const tag = normalizeLabel(params.tag)
+  const e164 = normalizeLabel(params.e164)
+  const id = normalizeLabel(params.id)
+  const display = name ?? username ?? tag ?? ""
+  const idPart = e164 ?? id ?? ""
+
+  return {
+    name,
+    username,
+    tag,
+    e164,
+    id,
+    display,
+    idPart,
+  }
+}
+
+export function resolveSenderLabel(params: SenderLabelParams): string | null {
+  const { display, idPart } = getNormalizedSenderParts(params)
+  if (display && idPart && display !== idPart) {
+    return `${display} (${idPart})`
+  }
+  return display || idPart || null
+}
+
+export function listSenderLabelCandidates(params: SenderLabelParams): string[] {
+  const candidates = new Set<string>()
+  const { name, username, tag, e164, id } = getNormalizedSenderParts(params)
+
+  if (name) {
+    candidates.add(name)
+  }
+  if (username) {
+    candidates.add(username)
+  }
+  if (tag) {
+    candidates.add(tag)
+  }
+  if (e164) {
+    candidates.add(e164)
+  }
+  if (id) {
+    candidates.add(id)
+  }
+  const resolved = resolveSenderLabel(params)
+  if (resolved) {
+    candidates.add(resolved)
+  }
+  return Array.from(candidates)
+}
+
+export type LocationSource = "pin" | "place" | "live"
+
+export type NormalizedLocation = {
+  latitude: number
+  longitude: number
+  accuracy?: number
+  name?: string
+  address?: string
+  isLive?: boolean
+  source?: LocationSource
+  caption?: string
+}
+
+type ResolvedLocation = NormalizedLocation & {
+  source: LocationSource
+  isLive: boolean
+}
+
+function resolveLocation(location: NormalizedLocation): ResolvedLocation {
+  const source = location.source
+    ?? (location.isLive
+      ? "live"
+      : location.name || location.address
+      ? "place"
+      : "pin")
+  const isLive = Boolean(location.isLive ?? source === "live")
+  return { ...location, source, isLive }
+}
+
+function formatAccuracy(accuracy?: number): string {
+  if (
+    typeof accuracy !== "number"
+    || !Number.isFinite(accuracy)
+    || accuracy < 0
+  ) {
+    return ""
+  }
+  return ` ±${Math.round(accuracy)}m`
+}
+
+function formatCoords(latitude: number, longitude: number): string {
+  return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+}
+
+export function formatLocationText(location: NormalizedLocation): string {
+  const resolved = resolveLocation(location)
+  const coords = formatCoords(resolved.latitude, resolved.longitude)
+  const accuracy = formatAccuracy(resolved.accuracy)
+  const caption = resolved.caption?.trim()
+  let header = ""
+
+  if (resolved.source === "live" || resolved.isLive) {
+    header = `🛰 Live location: ${coords}${accuracy}`
+  } else if (resolved.name || resolved.address) {
+    const label = [resolved.name, resolved.address].filter(Boolean).join(" — ")
+    header = `📍 ${label} (${coords}${accuracy})`
+  } else {
+    header = `📍 ${coords}${accuracy}`
+  }
+
+  return caption ? `${header}\n${caption}` : header
+}
+
+export type LocationContext = {
+  LocationLat: number
+  LocationLon: number
+  LocationAccuracy?: number
+  LocationName?: string
+  LocationAddress?: string
+  LocationSource: LocationSource
+  LocationIsLive: boolean
+}
+
+export function toLocationContext(
+  location: NormalizedLocation,
+): LocationContext {
+  const resolved = resolveLocation(location)
+  const accuracy = typeof resolved.accuracy === "number"
+      && Number.isFinite(resolved.accuracy)
+      && resolved.accuracy >= 0
+    ? resolved.accuracy
+    : undefined
+  return {
+    LocationLat: resolved.latitude,
+    LocationLon: resolved.longitude,
+    LocationAccuracy: accuracy,
+    LocationName: resolved.name,
+    LocationAddress: resolved.address,
+    LocationSource: resolved.source,
+    LocationIsLive: resolved.isLive,
+  }
+}
+
+export type LogFn = (message: string) => void
+
+function formatTargetSuffix(target?: string): string {
+  return target ? ` target=${target}` : ""
+}
+
+export function logInboundDrop(params: {
+  log: LogFn
+  channel: string
+  reason: string
+  target?: string
+}): void {
+  params.log(
+    `${params.channel}: drop ${params.reason}${formatTargetSuffix(params.target)}`,
+  )
+}
+
+export function logTypingFailure(params: {
+  log: LogFn
+  channel: string
+  target?: string
+  action?: "start" | "stop"
+  error: unknown
+}): void {
+  const action = params.action ? ` action=${params.action}` : ""
+  params.log(
+    `${params.channel} typing${action} failed${formatTargetSuffix(params.target)}: ${String(params.error)}`,
+  )
+}
+
+export function logAckFailure(params: {
+  log: LogFn
+  channel: string
+  target?: string
+  error: unknown
+}): void {
+  params.log(
+    `${params.channel} ack cleanup failed${formatTargetSuffix(params.target)}: ${String(params.error)}`,
+  )
+}

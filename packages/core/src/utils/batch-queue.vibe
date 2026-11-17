@@ -1,0 +1,490 @@
+// spec/core/batchQueue.md, "A failed capability probe leaves queued items untouched"; spec/core/batchQueue.md, "A batched call settles successful items before retrying failures"; spec/core/batchQueue.md, "Disposal keeps an in-flight drain independent from its serial urgent flush"; spec/core/priorityQueue.md, "High priority precedes normal priority which precedes low priority"; spec/core/priorityQueue.md, "Dequeue returns a bounded prefix and selective drain preserves all other items"; spec/core/batchProcessor.md, "Configured parallelism limits running attempts across all batches"; spec/core/batchProcessor.md, "Failure releases capacity before backoff and exhaustion callbacks"
+import { asLegacy, foreign, Foreign, foreignSync, runDetached } from "../edge.vibe"
+import { logger } from "../logger.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { type BackoffPolicy, computeBackoff, type RetryConfig, resolveRetryConfig, sleepWithAbort } from "./retry.vibe"
+import { acquirePermit, disposeTaskDrain, Semaphore, startTaskDrain, TaskDrain, updateTaskDrainInterval } from "./task-scheduling.vibe"
+import { asError } from "./errors.vibe"
+
+export interface DrainStats {
+  batchSize: number
+  remaining: number
+  durationMs: number
+}
+
+export interface BatchQueueOptions<T> {
+  name: string
+  batchSize: number
+  drainIntervalMs: number
+
+  idleDrainIntervalMs?: number
+  getPriority: (item: T) => QueuePriority
+  process: (item: T) => Promise<void>
+
+  processBatch?: (items: T[]) => Promise<BatchItemOutcome<T>[]>
+
+  canProcessBatch?: () => boolean
+  maxParallel?: number
+  maxRetriesAfterFailure?: number
+  retryPolicy?: RetryConfig
+  maxSize?: number
+  onPressure?: (queue: PriorityQueue<T>, item: T) => boolean
+  onOverflowWarning?: (sizeAfter: number, maxSize: number) => void
+  onExhausted?: (item: T, error: Error) => void | Promise<void>
+
+  onDrainBatchOutcomes?: (outcomes: BatchItemOutcome<T>[]) => void
+  onDrainComplete?: (stats: DrainStats) => void
+  shouldRetry?: (item: T, error: Error, attempt: number) => boolean
+
+  skipRegisterWorker?: boolean
+
+  taskMetadata?: Record<string, unknown>
+
+  taskDescription?: string
+  drainHighPriorityOnStop?: boolean
+}
+
+interface QueueState<T> {
+  readonly options: BatchQueueOptions<T>
+  readonly batchSize: number
+  readonly priorityQueue: PriorityQueue<T>
+  readonly batchProcessor: BatchProcessor<T>
+  taskDrain: TaskDrain | null
+  runtime?: IAgentRuntime
+  isDraining: boolean
+  disposed: boolean
+}
+
+interface BatchFailure<T> {
+  index: number
+  item: T
+  error: Error
+}
+
+interface BatchSplit<T> {
+  settled: Array<BatchItemOutcome<T> | undefined>
+  failures: BatchFailure<T>[]
+}
+
+export error BatchQueueDisposed { message: string }
+
+function splitBatchOutcomes<T>(name: string, batchOutcomes: BatchItemOutcome<T>[]): BatchSplit<T> {
+  const failures: BatchFailure<T>[] = []
+  const settled = batchOutcomes.map((outcome) => outcome.success ? outcome : undefined)
+  batchOutcomes.forEach((outcome, index) => {
+    if (outcome.success) return
+    failures.push({
+      index,
+      item: outcome.item,
+      error: outcome.error ?? new Error(`BatchQueue "${name}" processBatch reported a failed item without an error`),
+    })
+  })
+  return { settled, failures }
+}
+
+effect function callProcessBatch<T>(state: QueueState<T>, processBatch: NonNullable<BatchQueueOptions<T>["processBatch"]>, batch: T[]) {
+  const batchOutcomes = try foreign(() => processBatch(batch))
+  return try Effect.try({ try: () => splitBatchOutcomes(state.options.name, batchOutcomes), catch: (cause) => new Foreign({ cause }) })
+}
+
+effect function retryBatchFailures<T>(state: QueueState<T>, split: BatchSplit<T>) {
+  const { settled } = split
+  const retryable: BatchFailure<T>[] = []
+  for (const failure of split.failures) {
+    if ((try foreignSync(() => state.options.shouldRetry?.(failure.item, failure.error, 1))) !== false) {
+      retryable.push(failure)
+      continue
+    }
+    settled[failure.index] = { item: failure.item, success: false, error: failure.error, retryCount: 0 }
+    foreign(() => state.options.onExhausted?.(failure.item, failure.error)) catch (error) =>
+      state.runtime?.reportError("BatchQueue.onExhausted", error.cause, { queue: state.options.name })
+  }
+  const retried = try processBatchItems(state.batchProcessor, retryable.map(({ item }) => item))
+  retryable.forEach(({ index }, position) => {
+    settled[index] = retried[position]
+  })
+  return settled.filter((outcome): outcome is BatchItemOutcome<T> => outcome !== undefined)
+}
+
+effect function drainSlice<T>(state: QueueState<T>) {
+  const { options } = state
+  const started = Date.now()
+  if (state.priorityQueue.size === 0) return 0
+  const processBatch = options.processBatch && (try foreignSync(() => options.canProcessBatch?.())) !== false
+    ? options.processBatch
+    : undefined
+  const batch = state.priorityQueue.dequeueBatch(state.batchSize)
+  if (batch.length === 0) return 0
+  let outcomes: BatchItemOutcome<T>[]
+  if (processBatch) {
+    const split = callProcessBatch(state, processBatch, batch) catch (error) => {
+      state.runtime?.reportError("BatchQueue.processBatch", error.cause, { queue: options.name, batchSize: batch.length })
+      const failure = asError(error.cause)
+      return { settled: batch.map(() => undefined), failures: batch.map((item, index) => ({ index, item, error: failure })) }
+    }
+    outcomes = try retryBatchFailures(state, split)
+  } else {
+    outcomes = try processBatchItems(state.batchProcessor, batch)
+  }
+  foreignSync(() => options.onDrainBatchOutcomes?.(outcomes)) catch (error) =>
+    state.runtime?.reportError("BatchQueue.outcomeHook", error.cause, { queue: options.name })
+  const durationMs = Date.now() - started
+  foreignSync(() => options.onDrainComplete?.({ batchSize: batch.length, remaining: state.priorityQueue.size, durationMs })) catch (error) =>
+    state.runtime?.reportError("BatchQueue.completionHook", error.cause, { queue: options.name })
+  return batch.length
+}
+
+effect function drainBatchQueue<T>(queue: BatchQueue<T>) {
+  const state = queue.state
+  if (state.disposed || state.isDraining) return 0
+  state.isDraining = true
+  return try ensuring(drainSlice(state), sync(() => {
+    state.isDraining = false
+  }))
+}
+
+export effect function startBatchQueue<T>(queue: BatchQueue<T>, runtime: IAgentRuntime) {
+  const state = queue.state
+  const { options } = state
+  if (state.disposed) throw new BatchQueueDisposed({ message: `BatchQueue "${options.name}" has already been disposed` })
+  if (state.taskDrain) return
+  state.runtime = runtime
+  const skip = options.skipRegisterWorker ?? false
+  const drain = new TaskDrain(
+    {
+      taskName: options.name,
+      description: options.taskDescription,
+      intervalMs: options.drainIntervalMs,
+      taskMetadata: options.taskMetadata,
+      skipRegisterWorker: skip,
+      idleIntervalMs: options.idleDrainIntervalMs ?? Math.max(5_000, options.drainIntervalMs * 5),
+      onDrain: skip ? undefined : () => runDetached(drainBatchQueue(queue)),
+    },
+    options.drainIntervalMs,
+  )
+  state.taskDrain = drain
+  startTaskDrain(drain, runtime) catch effect (error) => {
+    try disposeTaskDrain(drain, runtime)
+    if (state.taskDrain === drain) state.taskDrain = null
+    throw error
+  }
+}
+
+effect function updateBatchQueueDrainInterval<T>(queue: BatchQueue<T>, runtime: IAgentRuntime, ms: number) {
+  const drain = queue.state.taskDrain
+  if (drain) try updateTaskDrainInterval(drain, runtime, ms)
+}
+
+export effect function disposeBatchQueue<T>(queue: BatchQueue<T>, runtime: IAgentRuntime, opts?: { flushHighPriority?: boolean }) {
+  const state = queue.state
+  const { options } = state
+  state.disposed = true
+  const flush = opts?.flushHighPriority ?? options.drainHighPriorityOnStop !== false
+  if (flush) {
+    const high = state.priorityQueue.drain((item) => options.getPriority(item) === "high")
+    if (high.length > 0) {
+      const flushProcessor = new BatchProcessor<T>({
+        maxParallel: 1,
+        maxRetriesAfterFailure: 0,
+        maxAttemptsCap: 1,
+        process: options.process,
+        onExhausted: options.onExhausted,
+        shouldRetry: options.shouldRetry,
+        retryPolicy: options.retryPolicy,
+      })
+      const flushOutcomes = try processBatchItems(flushProcessor, high)
+      try foreignSync(() => options.onDrainBatchOutcomes?.(flushOutcomes))
+    }
+  }
+  const drain = state.taskDrain
+  if (drain) try disposeTaskDrain(drain, runtime)
+  state.taskDrain = null
+  state.priorityQueue.clear()
+}
+
+export class BatchQueue<T> {
+  readonly state: QueueState<T>
+
+  constructor(options: BatchQueueOptions<T>) {
+    this.state = {
+      options,
+      batchSize: Math.max(1, options.batchSize),
+      priorityQueue: new PriorityQueue<T>({
+        getPriority: options.getPriority,
+        maxSize: options.maxSize,
+        onPressure: options.onPressure,
+        onOverflowWarning: options.onOverflowWarning,
+      }),
+      batchProcessor: new BatchProcessor<T>({
+        maxParallel: options.maxParallel ?? 10,
+        maxRetriesAfterFailure: options.maxRetriesAfterFailure,
+        retryPolicy: options.retryPolicy,
+        process: options.process,
+        onExhausted: options.onExhausted,
+        shouldRetry: options.shouldRetry,
+      }),
+      taskDrain: null,
+      isDraining: false,
+      disposed: false,
+    }
+  }
+
+  enqueue(item: T): boolean {
+    if (this.state.disposed) {
+      return false
+    }
+    return this.state.priorityQueue.enqueue(item)
+  }
+
+  async drain(): Promise<number> {
+    return runDetached(drainBatchQueue(this))
+  }
+
+  async start(runtime: IAgentRuntime): Promise<void> {
+    return runDetached(asLegacy(Error, startBatchQueue(this, runtime)))
+  }
+
+  async updateDrainInterval(runtime: IAgentRuntime, ms: number): Promise<void> {
+    return runDetached(updateBatchQueueDrainInterval(this, runtime, ms))
+  }
+
+  async dispose(runtime: IAgentRuntime, opts?: { flushHighPriority?: boolean }): Promise<void> {
+    return runDetached(disposeBatchQueue(this, runtime, opts))
+  }
+
+  get size(): number {
+    return this.state.priorityQueue.size
+  }
+
+  stats(): PriorityQueueStats {
+    return this.state.priorityQueue.stats()
+  }
+
+  clear(): void {
+    if (this.state.disposed) {
+      return
+    }
+    this.state.priorityQueue.clear()
+  }
+}
+
+export type QueuePriority = "high" | "normal" | "low"
+
+export type PriorityQueueStats = {
+  high: number
+  normal: number
+  low: number
+  total: number
+}
+
+export interface PriorityQueueOptions<T> {
+  getPriority: (item: T) => QueuePriority
+
+  maxSize?: number
+
+  onPressure?: (queue: PriorityQueue<T>, item: T) => boolean
+
+  onOverflowWarning?: (sizeAfter: number, maxSize: number) => void
+}
+
+export class PriorityQueue<T> {
+  private invalidPriorityWarned = false
+  private readonly highItems: T[] = []
+  private readonly normalItems: T[] = []
+  private readonly lowItems: T[] = []
+  private readonly getPriority: (item: T) => QueuePriority
+  private readonly maxSize?: number
+  private readonly onPressure?: (queue: PriorityQueue<T>, item: T) => boolean
+  private readonly onOverflowWarning?: (sizeAfter: number, maxSize: number) => void
+
+  constructor(options: PriorityQueueOptions<T>) {
+    this.getPriority = options.getPriority
+    this.maxSize = options.maxSize
+    this.onPressure = options.onPressure
+    this.onOverflowWarning = options.onOverflowWarning
+  }
+
+  enqueue(item: T): boolean {
+    const max = this.maxSize
+    if (max !== undefined && this.size >= max) {
+      if (this.onPressure) {
+        if (!this.onPressure(this, item)) {
+          return false
+        }
+      } else {
+        this.onOverflowWarning?.(this.size + 1, max)
+      }
+    }
+    this.insertByPriority(item)
+    return true
+  }
+
+  private insertByPriority(item: T): void {
+    const p = this.getPriority(item)
+    if (p === "high") {
+      this.highItems.push(item)
+    } else if (p === "low") {
+      this.lowItems.push(item)
+    } else {
+      if (p !== "normal" && !this.invalidPriorityWarned) {
+        this.invalidPriorityWarned = true
+        logger.warn(
+          { src: "utils:priority-queue", priority: String(p) },
+          "Invalid queue priority; expected \"high\" | \"normal\" | \"low\". Treating as normal.",
+        )
+      }
+      this.normalItems.push(item)
+    }
+  }
+
+  dequeueBatch(n: number): T[] {
+    if (n <= 0 || this.size === 0) {
+      return []
+    }
+    const result: T[] = []
+    let remaining = n
+    for (const bucket of [this.highItems, this.normalItems, this.lowItems]) {
+      if (!(remaining > 0)) break
+      const take = Math.min(remaining, bucket.length)
+      result.push(...bucket.splice(0, take))
+      remaining -= take
+    }
+    return result
+  }
+
+  drain(filter?: (item: T) => boolean): T[] {
+    const buckets = [this.highItems, this.normalItems, this.lowItems]
+    const out: T[] = []
+    for (const bucket of buckets) {
+      const kept: T[] = []
+      for (const item of bucket) {
+        if (!filter || filter(item)) out.push(item)
+        else kept.push(item)
+      }
+      bucket.length = 0
+      for (const item of kept) bucket.push(item)
+    }
+    return out
+  }
+
+  get size(): number {
+    return this.highItems.length + this.normalItems.length + this.lowItems.length
+  }
+
+  clear(): void {
+    this.highItems.length = 0
+    this.normalItems.length = 0
+    this.lowItems.length = 0
+  }
+
+  stats(): PriorityQueueStats {
+    return {
+      high: this.highItems.length,
+      normal: this.normalItems.length,
+      low: this.lowItems.length,
+      total: this.size,
+    }
+  }
+}
+
+export interface BatchItemOutcome<T> {
+  item: T
+  success: boolean
+  error?: Error
+  retryCount: number
+}
+
+export interface BatchProcessorOptions<T> {
+  maxParallel: number
+
+  maxRetriesAfterFailure?: number
+  retryPolicy?: RetryConfig
+
+  maxAttemptsCap?: number
+  process: (item: T) => Promise<void>
+  onExhausted?: (item: T, error: Error) => void | Promise<void>
+  shouldRetry?: (item: T, error: Error, attempt: number) => boolean
+}
+
+interface ProcessorState<T> {
+  readonly defaultMaxAttempts: number
+  readonly maxAttemptsCap?: number
+  readonly policy: BackoffPolicy
+  readonly process: (item: T) => Promise<void>
+  readonly onExhausted?: (item: T, error: Error) => void | Promise<void>
+  readonly shouldRetry: (item: T, error: Error, attempt: number) => boolean
+  readonly semaphore: Semaphore
+}
+
+function getPerItemMaxAttempts(item: unknown, fallback: number): number {
+  if (
+    item
+    && typeof item === "object"
+    && "_batchMaxAttempts" in item
+    && typeof item._batchMaxAttempts === "number"
+    && Number.isFinite(item._batchMaxAttempts)
+    && item._batchMaxAttempts >= 1
+  ) {
+    return item._batchMaxAttempts
+  }
+  return fallback
+}
+
+effect function attemptItem<T>(state: ProcessorState<T>, item: T, attempt: number, maxAttempts: number) {
+  const failure = map(foreign(() => state.process(item)), (): Error | undefined => undefined) catch (error) => asError(error.cause)
+  if (failure === undefined) return undefined
+  const exhausted = attempt >= maxAttempts || !(try foreignSync(() => state.shouldRetry(item, failure, attempt)))
+  return { error: failure, exhausted }
+}
+
+effect function processBatchItem<T>(state: ProcessorState<T>, item: T) {
+  const resolved = getPerItemMaxAttempts(item, state.defaultMaxAttempts)
+  const maxAttempts = Math.max(1, state.maxAttemptsCap !== undefined ? Math.min(resolved, state.maxAttemptsCap) : resolved)
+  let retryCount = 0
+  let lastError = new Error("unknown")
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try acquirePermit(state.semaphore)
+    const failed = try ensuring(attemptItem(state, item, attempt, maxAttempts), sync(() => state.semaphore.release()))
+    if (!failed) return { item, success: true, retryCount } satisfies BatchItemOutcome<T>
+    const error = failed.error
+    lastError = error
+    if (failed.exhausted) {
+      foreign(() => state.onExhausted?.(item, error)) catch () => undefined
+      return { item, success: false, error, retryCount } satisfies BatchItemOutcome<T>
+    }
+    retryCount++
+    const delayMs = computeBackoff(state.policy, attempt)
+    if (delayMs > 0) try sleepWithAbort(delayMs)
+  }
+  return { item, success: false, error: lastError, retryCount } satisfies BatchItemOutcome<T>
+}
+
+effect function processBatchItems<T>(processor: BatchProcessor<T>, items: T[]) {
+  const outcomes: Array<BatchItemOutcome<T>!Foreign> = []
+  for (const item of items) outcomes.push(Fiber.join(fork.detached processBatchItem(processor.state, item)))
+  return try.all outcomes
+}
+
+export class BatchProcessor<T> {
+  readonly state: ProcessorState<T>
+
+  constructor(options: BatchProcessorOptions<T>) {
+    const resolved = resolveRetryConfig(
+      { attempts: (options.maxRetriesAfterFailure ?? 3) + 1, minDelayMs: 300, maxDelayMs: 30_000, jitter: 0 },
+      options.retryPolicy,
+    )
+    this.state = {
+      defaultMaxAttempts: resolved.attempts,
+      maxAttemptsCap: options.maxAttemptsCap,
+      policy: { initialMs: resolved.minDelayMs, maxMs: resolved.maxDelayMs, factor: 2, jitter: resolved.jitter },
+      process: options.process,
+      onExhausted: options.onExhausted,
+      shouldRetry: options.shouldRetry ?? (() => true),
+      semaphore: new Semaphore(options.maxParallel),
+    }
+  }
+
+  async processBatch(items: T[]): Promise<BatchItemOutcome<T>[]> {
+    return runDetached(processBatchItems(this, items))
+  }
+}

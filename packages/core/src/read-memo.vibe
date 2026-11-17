@@ -1,0 +1,2 @@
+// spec/core/memo.md, "Story: Reuse concurrent reads and evict only the matching rejected promise"
+export { SingleFlightMemo } from "./runtime/single-flight-memo.vibe"

@@ -1,0 +1,49 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { unwrapWholeCodeFence } from "../markdown/code.vibe"
+import { findNextCloseTag, findNextOpenTag, REASONING_TAG_ALTERNATION } from "../utils/reasoning-tags.vibe"
+
+function stripReasoningPreamble(candidate: string): string {
+  const open = findNextOpenTag(candidate, 0, REASONING_TAG_ALTERNATION)
+  if (open?.start !== 0) return candidate
+  const close = findNextCloseTag(
+    candidate,
+    open.end,
+    REASONING_TAG_ALTERNATION,
+  )
+  return close ? candidate.slice(close.end).trim() : candidate
+}
+
+function stripModelWrappers(raw: string): string {
+  let candidate = stripReasoningPreamble(raw.trim())
+  candidate = (
+    unwrapWholeCodeFence(candidate, ["json", "json5"]) ?? candidate
+  ).trim()
+  return candidate
+}
+
+export function parseJsonModelOutput(raw: string): unknown | null {
+  const candidate = stripModelWrappers(raw)
+  if (candidate.length === 0) {
+    return null
+  }
+  try {
+    return JSON.parse(candidate) as unknown
+  } catch {
+    return null
+  }
+}
+
+export function parseJsonModelRecord<
+  T extends Record<string, unknown> = Record<string, unknown>,
+>(raw: string): T | null {
+  const parsed = parseJsonModelOutput(raw)
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null
+  }
+  return parsed as T
+}
+
+export function parseJsonModelArray<T = unknown>(raw: string): T[] | null {
+  const parsed = parseJsonModelOutput(raw)
+  return Array.isArray(parsed) ? (parsed as T[]) : null
+}

@@ -1,0 +1,602 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { ElizaErrorSeverity } from "../errors.vibe"
+
+import type { HandlerCallback } from "./components.vibe"
+import type { Entity, Room, World } from "./environment.vibe"
+import type { MembershipMutationReceipt, MembershipScope } from "./membership.vibe"
+import type { Memory } from "./memory.vibe"
+import type { TurnOutcome } from "./message-service.vibe"
+import type { ControlMessage } from "./messaging.vibe"
+import type {
+  LocalInferencePriority,
+  ModelRegistrationMetadata,
+  ModelTypeName,
+  PiiPseudonymAssignment,
+} from "./model.vibe"
+import type { PipelineHookPhase } from "./pipeline-hooks.vibe"
+import type { Content, JsonValue, UUID } from "./primitives.vibe"
+import type { IAgentRuntime } from "./runtime.vibe"
+
+export enum EventType {
+  WORLD_JOINED = "WORLD_JOINED",
+  WORLD_CONNECTED = "WORLD_CONNECTED",
+  WORLD_LEFT = "WORLD_LEFT",
+
+  ENTITY_JOINED = "ENTITY_JOINED",
+  ENTITY_LEFT = "ENTITY_LEFT",
+  ENTITY_UPDATED = "ENTITY_UPDATED",
+  MEMBERSHIP_AUTHORITY_CHANGED = "MEMBERSHIP_AUTHORITY_CHANGED",
+
+  ROOM_JOINED = "ROOM_JOINED",
+  ROOM_LEFT = "ROOM_LEFT",
+
+  MESSAGE_RECEIVED = "MESSAGE_RECEIVED",
+  MESSAGE_SENT = "MESSAGE_SENT",
+  MESSAGE_DELETED = "MESSAGE_DELETED",
+  MESSAGE_MUTATED = "MESSAGE_MUTATED",
+
+  CHANNEL_CLEARED = "CHANNEL_CLEARED",
+
+  VOICE_MESSAGE_RECEIVED = "VOICE_MESSAGE_RECEIVED",
+  VOICE_MESSAGE_SENT = "VOICE_MESSAGE_SENT",
+
+  VOICE_TURN_OBSERVED = "VOICE_TURN_OBSERVED",
+
+  VOICE_ENTITY_BOUND = "VOICE_ENTITY_BOUND",
+
+  REACTION_RECEIVED = "REACTION_RECEIVED",
+  POST_GENERATED = "POST_GENERATED",
+  INTERACTION_RECEIVED = "INTERACTION_RECEIVED",
+
+  RUN_STARTED = "RUN_STARTED",
+  RUN_ENDED = "RUN_ENDED",
+  RUN_TIMEOUT = "RUN_TIMEOUT",
+
+  ACTION_STARTED = "ACTION_STARTED",
+  ACTION_COMPLETED = "ACTION_COMPLETED",
+
+  EVALUATOR_STARTED = "EVALUATOR_STARTED",
+  EVALUATOR_COMPLETED = "EVALUATOR_COMPLETED",
+
+  MODEL_USED = "MODEL_USED",
+  MODEL_REGISTERED = "MODEL_REGISTERED",
+
+  SERVICE_STARTED = "SERVICE_STARTED",
+
+  EMBEDDING_GENERATION_REQUESTED = "EMBEDDING_GENERATION_REQUESTED",
+  EMBEDDING_GENERATION_COMPLETED = "EMBEDDING_GENERATION_COMPLETED",
+  EMBEDDING_GENERATION_FAILED = "EMBEDDING_GENERATION_FAILED",
+
+  PII_SCRUB_REQUESTED = "PII_SCRUB_REQUESTED",
+  PII_SCRUB_COMPLETED = "PII_SCRUB_COMPLETED",
+  PII_SCRUB_FAILED = "PII_SCRUB_FAILED",
+
+  ERROR_REPORTED = "ERROR_REPORTED",
+
+  CONTROL_MESSAGE = "CONTROL_MESSAGE",
+
+  FORM_FIELD_CONFIRMED = "FORM_FIELD_CONFIRMED",
+  FORM_FIELD_CANCELLED = "FORM_FIELD_CANCELLED",
+
+  VIEW_SWITCHED = "VIEW_SWITCHED",
+  SHORTCUT_FIRED = "SHORTCUT_FIRED",
+  USER_TYPING_STARTED = "USER_TYPING_STARTED",
+  USER_TYPING_PAUSED = "USER_TYPING_PAUSED",
+  USER_DRAFT_ABANDONED = "USER_DRAFT_ABANDONED",
+
+  HOOK_COMMAND_NEW = "HOOK_COMMAND_NEW",
+  HOOK_COMMAND_RESET = "HOOK_COMMAND_RESET",
+  HOOK_COMMAND_STOP = "HOOK_COMMAND_STOP",
+
+  HOOK_SESSION_START = "HOOK_SESSION_START",
+  HOOK_SESSION_END = "HOOK_SESSION_END",
+
+  HOOK_AGENT_BASIC_CAPABILITIES = "HOOK_AGENT_BASIC_CAPABILITIES",
+  HOOK_AGENT_START = "HOOK_AGENT_START",
+  HOOK_AGENT_END = "HOOK_AGENT_END",
+
+  HOOK_GATEWAY_START = "HOOK_GATEWAY_START",
+  HOOK_GATEWAY_STOP = "HOOK_GATEWAY_STOP",
+
+  HOOK_COMPACTION_BEFORE = "HOOK_COMPACTION_BEFORE",
+  HOOK_COMPACTION_AFTER = "HOOK_COMPACTION_AFTER",
+
+  HOOK_TOOL_BEFORE = "HOOK_TOOL_BEFORE",
+  HOOK_TOOL_AFTER = "HOOK_TOOL_AFTER",
+  HOOK_TOOL_PERSIST = "HOOK_TOOL_PERSIST",
+
+  HOOK_MESSAGE_SENDING = "HOOK_MESSAGE_SENDING",
+
+  PIPELINE_HOOK_METRIC = "PIPELINE_HOOK_METRIC",
+}
+
+export interface EventPayload {
+  runtime: IAgentRuntime
+  source?: string
+  onComplete?: () => void
+}
+
+export interface WorldPayload extends EventPayload {
+  world: World
+  rooms: Room[]
+  entities: Entity[]
+}
+
+export interface EntityPayload extends EventPayload {
+  entityId: UUID
+  worldId?: UUID
+  roomId?: UUID
+  metadata?: {
+    originalId: string
+    username: string
+    displayName?: string
+    type?: string
+  }
+}
+
+export interface MembershipAuthorityChangedPayload extends EventPayload {
+  scope: MembershipScope
+  receipt: MembershipMutationReceipt
+}
+
+export interface MessagePayload extends EventPayload {
+  message: Memory
+  callback?: HandlerCallback
+
+  trajectoryTerminalOwner?: "run"
+}
+
+export interface MessageMutationPayload extends EventPayload {
+  messageSource: string
+  messageId: string
+  operation: "mark_read" | "replied"
+  domainEventId: string
+  committedAt: string
+}
+
+export interface ChannelClearedPayload extends EventPayload {
+  roomId: UUID
+}
+
+export interface InvokePayload extends EventPayload {
+  worldId: UUID
+  roomId: UUID
+  userId?: UUID
+  source?: string
+  callback?: HandlerCallback
+}
+
+export type RunEventStatus = "started" | "timeout" | TurnOutcome["status"]
+
+export interface RunEventPayload extends EventPayload {
+  outcome?: TurnOutcome
+  runId: UUID
+  messageId: UUID
+  roomId: UUID
+  entityId: UUID
+  startTime: number | bigint
+  status: RunEventStatus
+  endTime?: number | bigint
+  duration?: number | bigint
+  error?: string | Error
+}
+
+export interface ActionEventPayload extends EventPayload {
+  roomId: UUID
+  world: UUID
+  content: Content
+  messageId?: UUID
+}
+
+export interface EvaluatorEventPayload extends EventPayload {
+  evaluatorId: UUID
+  evaluatorName: string
+  startTime?: number | bigint
+  completed?: boolean
+  error?: Error
+}
+
+export interface ModelEventPayload extends EventPayload {
+  type: ModelTypeName
+
+  provider?: string
+
+  model?: string
+
+  modelName?: string
+
+  modelLabel?: string
+
+  costUsd?: number
+
+  usageEstimated?: boolean
+  tokens?: {
+    prompt: number
+    completion: number
+    total: number
+    cacheReadInputTokens?: number
+    cacheCreationInputTokens?: number
+    reasoningTokens?: number
+    cachedInputTokens?: number
+
+    cached?: number
+    estimated?: boolean
+  }
+}
+
+export interface ModelRegisteredEventPayload extends EventPayload {
+  modelType: string
+
+  provider: string
+
+  priority: number
+
+  metadata?: ModelRegistrationMetadata
+}
+
+export interface EmbeddingGenerationPayload extends EventPayload {
+  memory: Memory
+  priority?: "high" | "normal" | "low"
+  embedding?: number[]
+  error?: Error | string
+  runId?: UUID
+  retryCount?: number
+  maxRetries?: number
+}
+
+export interface PiiScrubRequestPayload extends EventPayload {
+  content: string
+
+  rulesetVersion: string
+
+  candidateSpans?: readonly string[]
+
+  contextPack?: string
+
+  pseudonymAssignments?: readonly PiiPseudonymAssignment[]
+
+  priority?: "high" | "normal" | "low"
+
+  inferencePriority?: LocalInferencePriority
+
+  jobId?: UUID
+
+  itemRef?: string
+}
+
+export interface PiiScrubResultPayload extends EventPayload {
+  content: string
+  rulesetVersion: string
+  jobId?: UUID
+  itemRef?: string
+  tier0Only?: boolean
+  modelId?: string
+  error?: Error | string
+}
+
+export interface ControlMessagePayload extends EventPayload {
+  message: ControlMessage
+}
+
+export interface ErrorReportedPayload extends EventPayload {
+  scope: string
+  code: string
+  message: string
+  severity?: ElizaErrorSeverity
+  context?: Record<string, unknown>
+  runId?: UUID
+  roomId?: UUID
+}
+
+export type VoiceSpeakerNameEvidenceSource =
+  | "platform_roster"
+  | "calendar_attendee"
+  | "self_introduction"
+  | "user_correction"
+  | "voice_profile"
+  | "speaker_memory"
+
+export interface VoiceSpeakerNameProvenancePayload {
+  source: VoiceSpeakerNameEvidenceSource
+  confidence: number
+  evidenceId?: string
+  entityId?: string
+  profileId?: string
+  observedAt?: string
+}
+
+export interface VoiceSpeakerNameCandidatePayload {
+  name: string
+  normalizedName: string
+  confidence: number
+  sources: VoiceSpeakerNameEvidenceSource[]
+  provenance: VoiceSpeakerNameProvenancePayload[]
+}
+
+export interface VoiceSpeakerNameInferencePayload {
+  resolution: "confirmed" | "needs_confirmation" | "withheld" | "unknown"
+  displayName?: string
+  confidence: number
+  candidateNames: VoiceSpeakerNameCandidatePayload[]
+  provenance: VoiceSpeakerNameProvenancePayload[]
+  reasonCodes: string[]
+  requiresReview: boolean
+}
+
+export interface VoiceTurnObservedPayload extends EventPayload {
+  turnId: string
+
+  text: string
+
+  imprintClusterId: string
+
+  matchConfidence: number
+
+  matchedEntityId: string | null
+
+  isOwner?: boolean
+
+  observedAt?: string
+
+  speakerNameInference?: VoiceSpeakerNameInferencePayload
+}
+
+export interface VoiceEntityBoundPayload extends EventPayload {
+  imprintClusterId: string
+
+  entityId: string
+
+  displayName?: string
+
+  wasCreated?: boolean
+
+  speakerNameInference?: VoiceSpeakerNameInferencePayload
+}
+
+export interface FormFieldEventPayload extends EventPayload {
+  sessionId: string
+  entityId: UUID
+  field: string
+  value?: JsonValue
+  externalData?: JsonValue
+  reason?: string
+}
+
+export type InteractionInitiator = "agent" | "user"
+
+export interface ViewSwitchedPayload extends EventPayload {
+  viewId: string
+  viewLabel?: string
+  viewPath?: string | null
+  viewType?: string
+
+  previousViewId?: string | null
+  initiatedBy: InteractionInitiator
+
+  roomId?: UUID
+
+  anticipatoryIntent?: string
+
+  viewPurpose?: string
+}
+
+export interface ShortcutFiredPayload extends EventPayload {
+  shortcutId: string
+
+  context?: string
+  initiatedBy: InteractionInitiator
+  roomId?: UUID
+}
+
+export type ComposerActivityKind =
+  | "typing_started"
+  | "typing_paused"
+  | "draft_abandoned"
+
+export interface ComposerActivityPayload extends EventPayload {
+  activity: ComposerActivityKind
+  initiatedBy: "user"
+
+  surface: string
+
+  conversationId?: string
+
+  draftLength: number
+
+  idleForMs?: number
+
+  reason?: "cleared" | "blurred" | "conversation_switched" | "unknown"
+  occurredAt: string
+  roomId?: UUID
+}
+
+export interface HookEventPayload extends EventPayload {
+  sessionKey: string
+
+  messages: string[]
+
+  timestamp: Date
+
+  context: Record<string, unknown>
+}
+
+export interface HookCommandPayload extends HookEventPayload {
+  command: "new" | "reset" | "stop"
+
+  senderId?: string
+
+  commandSource?: string
+
+  sessionEntry?: Record<string, unknown>
+
+  previousSessionEntry?: Record<string, unknown>
+
+  config?: Record<string, unknown>
+}
+
+export interface BasicCapabilitiesFile {
+  path: string
+
+  content: string
+
+  type?: string
+
+  required?: boolean
+}
+
+export interface HookAgentBasicCapabilitiesPayload extends HookEventPayload {
+  workspaceDir: string
+
+  "basic-capabilitiesFiles": BasicCapabilitiesFile[]
+
+  agentId?: string
+
+  sessionId?: string
+}
+
+export interface HookAgentLifecyclePayload extends HookEventPayload {
+  prompt?: string
+
+  conversationMessages?: unknown[]
+
+  success?: boolean
+
+  error?: string
+
+  durationMs?: number
+
+  systemPrompt?: string
+
+  prependContext?: string
+}
+
+export interface HookSessionPayload extends HookEventPayload {
+  channelId?: string
+
+  accountId?: string
+
+  conversationId?: string
+}
+
+export interface HookGatewayPayload extends HookEventPayload {
+  port?: number
+
+  host?: string
+
+  channels?: string[]
+}
+
+export interface HookCompactionPayload extends HookEventPayload {
+  messageCount: number
+
+  tokenCount?: number
+
+  compactedCount?: number
+}
+
+export interface HookToolPayload extends HookEventPayload {
+  toolName: string
+
+  toolArgs?: Record<string, unknown>
+
+  result?: unknown
+
+  skip?: boolean
+
+  modifiedArgs?: Record<string, unknown>
+
+  modifiedResult?: unknown
+}
+
+export interface HookMessageSendingPayload extends HookEventPayload {
+  to: string
+
+  content: string
+
+  metadata?: Record<string, unknown>
+
+  cancel?: boolean
+
+  modifiedContent?: string
+}
+
+export interface PipelineHookMetricPayload extends EventPayload {
+  phase: PipelineHookPhase
+  hookId: string
+  durationMs: number
+  roomId: UUID
+
+  slow: boolean
+
+  error?: string
+}
+
+export interface EventPayloadMap {
+  [EventType.WORLD_JOINED]: WorldPayload
+  [EventType.WORLD_CONNECTED]: WorldPayload
+  [EventType.WORLD_LEFT]: WorldPayload
+  [EventType.ENTITY_JOINED]: EntityPayload
+  [EventType.ENTITY_LEFT]: EntityPayload
+  [EventType.ENTITY_UPDATED]: EntityPayload
+  [EventType.MEMBERSHIP_AUTHORITY_CHANGED]: MembershipAuthorityChangedPayload
+  [EventType.MESSAGE_RECEIVED]: MessagePayload
+  [EventType.MESSAGE_SENT]: MessagePayload
+  [EventType.MESSAGE_DELETED]: MessagePayload
+  [EventType.MESSAGE_MUTATED]: MessageMutationPayload
+  [EventType.VOICE_MESSAGE_RECEIVED]: MessagePayload
+  [EventType.VOICE_MESSAGE_SENT]: MessagePayload
+  [EventType.VOICE_TURN_OBSERVED]: VoiceTurnObservedPayload
+  [EventType.VOICE_ENTITY_BOUND]: VoiceEntityBoundPayload
+  [EventType.CHANNEL_CLEARED]: ChannelClearedPayload
+  [EventType.REACTION_RECEIVED]: MessagePayload
+  [EventType.POST_GENERATED]: InvokePayload
+  [EventType.INTERACTION_RECEIVED]: MessagePayload
+  [EventType.RUN_STARTED]: RunEventPayload
+  [EventType.RUN_ENDED]: RunEventPayload
+  [EventType.RUN_TIMEOUT]: RunEventPayload
+  [EventType.ACTION_STARTED]: ActionEventPayload
+  [EventType.ACTION_COMPLETED]: ActionEventPayload
+  [EventType.EVALUATOR_STARTED]: EvaluatorEventPayload
+  [EventType.EVALUATOR_COMPLETED]: EvaluatorEventPayload
+  [EventType.MODEL_USED]: ModelEventPayload
+  [EventType.MODEL_REGISTERED]: ModelRegisteredEventPayload
+  [EventType.SERVICE_STARTED]: EventPayload & { serviceType: string }
+  [EventType.EMBEDDING_GENERATION_REQUESTED]: EmbeddingGenerationPayload
+  [EventType.EMBEDDING_GENERATION_COMPLETED]: EmbeddingGenerationPayload
+  [EventType.EMBEDDING_GENERATION_FAILED]: EmbeddingGenerationPayload
+  [EventType.PII_SCRUB_REQUESTED]: PiiScrubRequestPayload
+  [EventType.PII_SCRUB_COMPLETED]: PiiScrubResultPayload
+  [EventType.PII_SCRUB_FAILED]: PiiScrubResultPayload
+  [EventType.ERROR_REPORTED]: ErrorReportedPayload
+  [EventType.CONTROL_MESSAGE]: ControlMessagePayload
+  [EventType.FORM_FIELD_CONFIRMED]: FormFieldEventPayload
+  [EventType.FORM_FIELD_CANCELLED]: FormFieldEventPayload
+
+  [EventType.VIEW_SWITCHED]: ViewSwitchedPayload
+  [EventType.SHORTCUT_FIRED]: ShortcutFiredPayload
+  [EventType.USER_TYPING_STARTED]: ComposerActivityPayload
+  [EventType.USER_TYPING_PAUSED]: ComposerActivityPayload
+  [EventType.USER_DRAFT_ABANDONED]: ComposerActivityPayload
+
+  [EventType.HOOK_COMMAND_NEW]: HookCommandPayload
+  [EventType.HOOK_COMMAND_RESET]: HookCommandPayload
+  [EventType.HOOK_COMMAND_STOP]: HookCommandPayload
+  [EventType.HOOK_SESSION_START]: HookSessionPayload
+  [EventType.HOOK_SESSION_END]: HookSessionPayload
+  [EventType.HOOK_AGENT_BASIC_CAPABILITIES]: HookAgentBasicCapabilitiesPayload
+  [EventType.HOOK_AGENT_START]: HookAgentLifecyclePayload
+  [EventType.HOOK_AGENT_END]: HookAgentLifecyclePayload
+  [EventType.HOOK_GATEWAY_START]: HookGatewayPayload
+  [EventType.HOOK_GATEWAY_STOP]: HookGatewayPayload
+  [EventType.HOOK_COMPACTION_BEFORE]: HookCompactionPayload
+  [EventType.HOOK_COMPACTION_AFTER]: HookCompactionPayload
+  [EventType.HOOK_TOOL_BEFORE]: HookToolPayload
+  [EventType.HOOK_TOOL_AFTER]: HookToolPayload
+  [EventType.HOOK_TOOL_PERSIST]: HookToolPayload
+  [EventType.HOOK_MESSAGE_SENDING]: HookMessageSendingPayload
+  [EventType.PIPELINE_HOOK_METRIC]: PipelineHookMetricPayload
+}
+
+export type EventHandler<T extends keyof EventPayloadMap> = (
+  payload: EventPayloadMap[T],
+) => Promise<void>

@@ -1,0 +1,29 @@
+// spec/core/protocols.md, "A public value retains identity and explicitly declared version"
+import { failingAs, thrown } from "./edge.vibe"
+
+export const MAX_RESTORABLE_AGENT_BACKUP_BYTES = 128 * 1024 * 1024
+
+export error InvalidSnapshotRetainBudget { message: string }
+
+export effect function resolveRetainableAgentBackupBytes(rawOverride: string | undefined): number!InvalidSnapshotRetainBudget {
+  if (rawOverride === undefined) return MAX_RESTORABLE_AGENT_BACKUP_BYTES
+  const trimmed = rawOverride.trim()
+  const parsed = Number(trimmed)
+  if (!/^\d+$/.test(trimmed) || !Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new InvalidSnapshotRetainBudget({
+      message: `Invalid snapshot retain budget ${JSON.stringify(rawOverride)}: expected a positive integer count of bytes`,
+    })
+  }
+  return Math.min(parsed, MAX_RESTORABLE_AGENT_BACKUP_BYTES)
+}
+export const resolveRetainableAgentBackupBytesOrThrow = thrown(failingAs(Error, resolveRetainableAgentBackupBytes))
+
+export class SnapshotPayloadTooLargeError extends Data.TaggedError("SnapshotPayloadTooLargeError")<{
+  readonly payloadBytes: number
+  readonly limitBytes: number
+}> {
+  constructor(payloadBytes: number, limitBytes: number) {
+    super({ payloadBytes, limitBytes })
+    this.message = `State restore refused: reconstructed payload of ${payloadBytes} bytes exceeds the v1 restorable limit of ${limitBytes} bytes`
+  }
+}

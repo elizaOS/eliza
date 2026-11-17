@@ -1,0 +1,147 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { EventPayload, EventType } from "./events.vibe"
+import type { Service } from "./service.vibe"
+
+export type HookSource =
+  | "bundled"
+  | "managed"
+  | "workspace"
+  | "plugin"
+  | "runtime"
+
+export type HookPriority = number
+
+export const DEFAULT_HOOK_PRIORITY: HookPriority = 0
+
+export interface HookRequirements {
+  os?: string[]
+
+  bins?: string[]
+
+  anyBins?: string[]
+
+  env?: string[]
+
+  config?: string[]
+}
+
+export interface HookEligibilityResult {
+  eligible: boolean
+
+  reasons?: string[]
+}
+
+export interface HookMetadata {
+  name: string
+
+  description?: string
+
+  source: HookSource
+
+  pluginId?: string
+
+  events: EventType[]
+
+  priority: HookPriority
+
+  enabled: boolean
+
+  always?: boolean
+
+  requires?: HookRequirements
+}
+
+export type HookHandler<T extends EventPayload = EventPayload> = (
+  payload: T,
+) => Promise<void> | void
+
+export interface HookRegistration {
+  id: string
+
+  metadata: HookMetadata
+
+  handler: HookHandler
+
+  registeredAt: number
+}
+
+export interface HookRegistrationOptions {
+  name: string
+
+  description?: string
+
+  source?: HookSource
+
+  pluginId?: string
+
+  priority?: HookPriority
+
+  always?: boolean
+
+  requires?: HookRequirements
+}
+
+export interface HookSummary {
+  name: string
+
+  events: EventType[]
+
+  source: HookSource
+
+  enabled: boolean
+
+  pluginId?: string
+
+  priority: HookPriority
+}
+
+export interface HookSnapshot {
+  hooks: HookSummary[]
+
+  version: number
+
+  timestamp: number
+}
+
+export interface HookLoadResult {
+  loaded: string[]
+
+  skipped: Array<{ name: string; reason: string }>
+
+  errors: Array<{ name: string; error: string }>
+}
+
+export interface IHookService extends Service {
+  register(
+    events: EventType | EventType[],
+    handler: HookHandler,
+    options: HookRegistrationOptions,
+  ): string
+
+  unregister(hookId: string): boolean
+
+  registerFromDirectory(
+    dir: string,
+    source: HookSource,
+    options?: { pluginId?: string },
+  ): Promise<HookLoadResult>
+
+  getSnapshot(): HookSnapshot
+
+  getHooksByEvent(event: EventType): HookRegistration[]
+
+  getHook(hookId: string): HookRegistration | undefined
+
+  getAllHooks(): HookRegistration[]
+
+  setEnabled(hookId: string, enabled: boolean): void
+
+  setPriority(hookId: string, priority: HookPriority): void
+
+  checkEligibility(hookId: string): HookEligibilityResult
+
+  checkRequirements(
+    requirements: HookRequirements,
+    config?: Record<string, unknown>,
+  ): HookEligibilityResult
+}

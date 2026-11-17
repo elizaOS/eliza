@@ -1,0 +1,80 @@
+// spec/core/runtime.md, "Story: Initialize an explicit host composition"; spec/core/runtime.md, "Story: Retire every owned operation"
+import { createCharacter } from "../../src/character.vibe"
+import { Foreign, foreign, foreignSync } from "../../src/edge.vibe"
+import { AgentRuntime } from "../../src/runtime.vibe"
+import { type Character } from "../../src/types/agent.vibe"
+import { type Plugin } from "../../src/types/plugin.vibe"
+import { type UUID } from "../../src/types/primitives.vibe"
+import { type RuntimeSettings } from "../../src/types/settings.vibe"
+import { makeScratch, removeScratch } from "./files.ts"
+import { SqliteAdapter, SqliteStore } from "./sqlite-adapter.ts"
+
+module node {
+  /** @throws {never} */
+  export function swapEnv(values: Record<string, string | undefined>): Record<string, string | undefined> {
+    const previous = Object.fromEntries(Object.keys(values).map((key) => [key, process.env[key]]))
+    for (const [key, value] of Object.entries(values)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+    return previous
+  }
+}
+import { swapEnv } from node
+
+export interface KernelOptions {
+  character?: Partial<Character>
+  plugins?: Plugin[]
+  settings?: RuntimeSettings
+  store?: SqliteStore
+  label?: string
+  agentId?: UUID
+  initialize?: boolean
+}
+
+export effect function host<A>(f: () => Promise<A>) {
+  return try Effect.mapError(foreign(() => f()), (failure) => failure.cause)
+}
+
+effect function built<A>(f: () => A) {
+  return try Effect.mapError(foreignSync(f), (failure) => failure.cause)
+}
+
+export effect function scratch(prefix: string) {
+  return try acquireRelease(host(() => makeScratch(prefix)), (path) => orDie(host(() => removeScratch(path))))
+}
+
+export effect function withEnv(values: Record<string, string | undefined>) {
+  try acquireRelease(sync(() => swapEnv(values)), (previous) => sync(() => swapEnv(previous)))
+}
+
+effect function retire(runtime: AgentRuntime) {
+  const outcomes = [try exit(host(() => runtime.stop())), try exit(host(() => runtime.close()))]
+  for (const outcome of outcomes) {
+    if (Exit.isFailure(outcome)) try die(Cause.squash(outcome.cause))
+  }
+}
+
+effect function fresh() {
+  const path = `${try scratch("eliza-core-kernel")}/core.sqlite`
+  return try built(() => new SqliteStore(path))
+}
+
+export effect function kernel(options: KernelOptions = {}) {
+  const store = options.store ?? (try fresh())
+  const runtime = try acquireRelease(
+    Effect.mapError(Effect.try({ try: () => {
+      const runtime = new AgentRuntime({
+        character: { ...createCharacter({ name: "Eliza" }), ...options.character },
+        plugins: options.plugins,
+        settings: options.settings,
+        agentId: options.agentId,
+      })
+      runtime.registerDatabaseAdapter(new SqliteAdapter(store, options.label ?? "a"))
+      return runtime
+    }, catch: (cause) => new Foreign({ cause }) }), (failure) => failure.cause),
+    retire,
+  )
+  if (options.initialize !== false) try host(() => runtime.initialize({ skipMigrations: true }))
+  return runtime
+}

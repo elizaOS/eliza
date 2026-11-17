@@ -1,0 +1,615 @@
+// spec/core/runtime.md, "Initialization releases waiters on success and failure"; spec/core/runtime.md, "Stop closes admissions and prepares services once"; spec/core/runtime.md, "Strict retirement succeeds only when original work is drained"; spec/core/anonymousIdentity.md, "Only anonymous construction advances the shared name counter"; spec/core/runtimeRunContext.md, "Run context setters preserve the same runtime lifecycle state"
+import { errorText } from "../utils/errors.vibe"
+import { Machine as NamingMachine, machine as namingMachine } from "../../gen/core__anonymousIdentity.effect.vibe"
+import { Machine, machine, type Event as RuntimeEvent, type Rejected as RuntimeRejected, type Runtime as RuntimeState } from "../../gen/core__runtime.effect.vibe"
+import { type Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import { own, type Owned } from "../owned.vibe"
+import { runPluginMigrations as migratePlugins } from "../provisioning.vibe"
+import { createCoreSecurityHooksPlugin } from "../security/core-hooks.vibe"
+import { bindProcessingPolicy } from "../security/processing-policy.vibe"
+import { drainPostDeliveryTasks, pendingPostDeliveryTaskCount } from "../services/post-delivery-task-tracker.vibe"
+import { stopTaskSchedulerForAdapter } from "../services/task-scheduler.vibe"
+import type { Character } from "../types/agent.vibe"
+import type { IDatabaseAdapter } from "../types/database.vibe"
+import type { Plugin, RemotePluginInstallOptions, RemotePluginInstanceHandle } from "../types/plugin.vibe"
+import type { UUID } from "../types/primitives.vibe"
+import type { RuntimeStopOptions } from "../types/runtime.vibe"
+import { processEnv, rawEnv } from "../utils/environment.vibe"
+import { timerDelay } from "../utils/retry.vibe"
+import { stringToUuid } from "../utils/string-to-uuid.vibe"
+import { validateUuid, type InvalidUuidSource, randomUuid } from "../utils/uuid.vibe"
+import { getActionRolePolicyWarnings } from "./action-role-policy.vibe"
+import * as agentSettings from "./agent-settings.vibe"
+import * as components from "./components.vibe"
+import * as dispatch from "./dispatch.vibe"
+import type { DispatchFailure } from "./dispatch.vibe"
+import { Host, type AgentRuntimeOptions } from "./host.vibe"
+import type { RuntimeKernel } from "./kernel.vibe"
+import { RuntimeRetirement } from "./retirement.vibe"
+import * as services from "./service-lifecycle.vibe"
+import * as store from "./store.vibe"
+import type { StoreFailure } from "./store.vibe"
+
+export error AdapterNotInitialized { message: string }
+export error AdapterNotRegistered { message: string }
+export error AgentProvisioningFailed { message: string }
+export error RemotePluginBridgeMissing { message: string }
+
+export type LifecycleFailure =
+  | AdapterNotInitialized
+  | AdapterNotRegistered
+  | AgentProvisioningFailed
+  | ElizaError
+  | Foreign
+  | StoreFailure
+  | DispatchFailure
+
+export type LifecycleState = "initializing" | "running" | "failed" | "stopping" | "stopped"
+
+export interface LifecyclePayload {
+  readonly released: Deferred.Deferred<void>
+  readonly stopController: AbortController
+  readonly retirement: RuntimeRetirement
+}
+
+export interface LifecycleCells {
+  readonly stopAttempt: Deferred.Deferred<void, LifecycleFailure> | undefined
+  readonly retriedInitializationFailed: boolean | undefined
+  readonly runId: UUID | undefined
+  readonly roomId: UUID | undefined
+}
+
+type LifecycleOwned = Owned<RuntimeState, RuntimeEvent, RuntimeState, RuntimeRejected, LifecyclePayload>
+
+export service Lifecycle {
+  static readonly key = "@elizaos/core/runtime/Lifecycle"
+  readonly owned: LifecycleOwned
+  readonly cells: SynchronizedRef.SynchronizedRef<LifecycleCells>
+}
+
+export const LifecycleLive: Layer.Layer<Lifecycle, never, Host> = Layer.effect(Lifecycle, effect {
+  provide machine() {
+    const owned = try own(try Machine, {
+      released: Deferred.makeUnsafe<void>(),
+      stopController: new AbortController(),
+      retirement: new RuntimeRetirement(),
+    } satisfies LifecyclePayload)
+    const cells = try SynchronizedRef.make<LifecycleCells>({
+      stopAttempt: undefined,
+      retriedInitializationFailed: undefined,
+      runId: undefined,
+      roomId: undefined,
+    })
+    return { owned, cells }
+  }
+})
+
+module node {
+  /** @throws {never} */
+  export function stopRequestReason(): DOMException {
+    return new DOMException("Runtime stop requested", "AbortError")
+  }
+}
+import { stopRequestReason } from node
+
+effect function namingAuthority() {
+  provide namingMachine() {
+    return try NamingMachine
+  }
+}
+
+const anonymousNames = Effect.runSync(namingAuthority())
+
+const DEFAULT_FAST_ROOM_DRAIN_TIMEOUT_MS = 500
+
+export interface RuntimeIdentity {
+  readonly character: Character
+  readonly agentId: UUID
+  readonly runtimeInstanceId: UUID
+  readonly enableAutonomy: boolean
+}
+
+export type IdentityFailure = InvalidUuidSource | ElizaError
+
+export effect function adoptProcessingPolicy(runtime: object, options: AgentRuntimeOptions): void!ElizaError {
+  if (options.processingPolicy) try bindProcessingPolicy(runtime, options.processingPolicy)
+}
+
+effect function anonymousCharacter(): Character!! {
+  const { anonymousCount } = try orDie(anonymousNames.send({ type: "constructAnonymous" }))
+  return {
+    name: `Agent-${anonymousCount}`,
+    bio: ["An anonymous agent"],
+    templates: {},
+    messageExamples: [],
+    postExamples: [],
+    topics: [],
+    adjectives: [],
+    documents: [],
+    plugins: [],
+    secrets: {},
+  } as Character
+}
+
+export effect function resolveIdentity(options: AgentRuntimeOptions): RuntimeIdentity!IdentityFailure {
+  const character = options.character ? options.character : try anonymousCharacter()
+  let agentId = character.id ?? options.agentId
+  if (agentId === undefined || agentId === null) agentId = try stringToUuid(character.name ?? randomUuid())
+  const autonomySetting = character.settings?.ENABLE_AUTONOMY
+  return {
+    character,
+    agentId,
+    runtimeInstanceId: options.runtimeInstanceId ?? randomUuid() as UUID,
+    enableAutonomy: options.enableAutonomy ?? (autonomySetting === true || autonomySetting === "true"),
+  }
+}
+
+effect function accepted(event: RuntimeEvent): boolean!!Lifecycle {
+  const { owned } = try Lifecycle
+  return owned.step(event, (payload) => [true, payload] as const) catch () => false
+}
+
+effect function runtimeState(): RuntimeState!!Lifecycle {
+  const { owned } = try Lifecycle
+  return try owned.read((state) => state)
+}
+
+effect function lifecyclePayload(): LifecyclePayload!!Lifecycle {
+  const { owned } = try Lifecycle
+  return try owned.read((_state, payload) => payload)
+}
+
+effect function cells(): LifecycleCells!!Lifecycle {
+  const { cells } = try Lifecycle
+  return try SynchronizedRef.get(cells)
+}
+
+export effect function recordRetirementFailure(scope: string, cause: unknown, beforeClose: boolean): void!!Lifecycle {
+  const { retirement } = try lifecyclePayload()
+  retirement.recordFailure(scope, cause, { beforeClose })
+  try accepted({ type: "recordRetirementFailure" })
+}
+
+export effect function attach(): void!LifecycleFailure!RuntimeKernel {
+  const { runtime, options } = try Host
+  const adapter = options.adapter
+  if (adapter) try foreignSync(() => runtime.registerDatabaseAdapter(adapter))
+  runtime.logger.debug(
+    { src: "agent", agentId: runtime.agentId, agentName: runtime.character.name },
+    "Initialized",
+  )
+}
+
+effect function registerCorePlugins(): void!Foreign!RuntimeKernel {
+  const { runtime, options } = try Host
+  const plugins = [createCoreSecurityHooksPlugin(), ...(options.plugins ?? []).filter(Boolean)]
+  try forEach(plugins, (plugin) => foreign(() => runtime.registerPlugin(plugin)), { concurrency: "unbounded", discard: true })
+}
+
+effect function warnOnActionRolePolicy(): void!ElizaError!RuntimeKernel {
+  const { runtime } = try Host
+  for (const warning of try getActionRolePolicyWarnings(runtime.actions)) {
+    if (warning.type === "unmatched") {
+      runtime.logger.warn(
+        { src: "agent", agentId: runtime.agentId, action: warning.actionName, policyRole: warning.policyRole },
+        "[AgentRuntime] ACTION_ROLE_POLICY entry does not match a registered action name",
+      )
+      continue
+    }
+    runtime.logger.warn(
+      {
+        src: "agent",
+        agentId: runtime.agentId,
+        action: warning.actionName,
+        policyRole: warning.policyRole,
+        declaredRole: warning.declaredRole,
+      },
+      "[AgentRuntime] ACTION_ROLE_POLICY entry lowers the action's declared role gate",
+    )
+  }
+}
+
+effect function prepareAdapter(options?: { skipMigrations?: boolean }): void!LifecycleFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const adapter = runtime.adapter
+  if (!adapter) {
+    throw new AdapterNotInitialized({
+      message: "Database adapter not initialized. Register a persistence plugin or supply an adapter.",
+    })
+  }
+  if (!(try foreign(() => adapter.isReady()))) try foreign(() => adapter.initialize())
+  if (options?.skipMigrations ?? false) {
+    runtime.logger.debug({ src: "agent", agentId: runtime.agentId }, "Skipping plugin migrations")
+    return
+  }
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId }, "Running plugin migrations")
+  try foreign(() => runtime.runPluginMigrations())
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId }, "Plugin migrations completed")
+}
+
+effect function initializeCore(options?: { skipMigrations?: boolean }): void!LifecycleFailure!RuntimeKernel {
+  const { runtime } = try Host
+  try registerCorePlugins()
+  try warnOnActionRolePolicy()
+  try prepareAdapter(options)
+  const existingAgent = try foreign(() => runtime.ensureAgentExists({ ...runtime.character, id: runtime.agentId }))
+  if (!existingAgent) {
+    throw new AgentProvisioningFailed({
+      message: `Agent ${runtime.agentId} does not exist in database after ensureAgentExists call`,
+    })
+  }
+  try agentSettings.mergePersistedSettings(existingAgent)
+  try store.ensureAgentInfrastructure(existingAgent)
+  try dispatch.probeEmbeddingDimension()
+  foreign(() => runtime.assertResolvableWorldOwners()) catch effect (guard) => {
+    runtime.reportError("AgentRuntime.assertResolvableWorldOwners", guard.cause)
+  }
+}
+
+export effect function initialize(options?: { skipMigrations?: boolean }): void!LifecycleFailure!RuntimeKernel {
+  const { cells } = try Lifecycle
+  const modeled = try accepted({ type: "beginInitialization" })
+  if (!modeled) try SynchronizedRef.update(cells, (current) => ({ ...current, retriedInitializationFailed: false }))
+  const outcome = try exit(initializeCore(options))
+  const ok = Exit.isSuccess(outcome)
+  if (modeled) try accepted({ type: "completeInitialization", ok })
+  else try SynchronizedRef.update(cells, (current) => ({ ...current, retriedInitializationFailed: !ok }))
+  const { released } = try lifecyclePayload()
+  try Deferred.succeed(released, undefined)
+  return try outcome
+}
+
+export effect function isInitializationPending(): boolean!!RuntimeKernel {
+  const { released } = try lifecyclePayload()
+  return !(try Deferred.isDone(released))
+}
+
+export effect function initialized(): void!!RuntimeKernel {
+  const { released } = try lifecyclePayload()
+  try Deferred.await(released)
+}
+
+function stopRequested(state: RuntimeState): boolean {
+  return state.stopPhase !== "Open"
+}
+
+function servicesStopped(state: RuntimeState): boolean {
+  return state.stopPhase === "Stopped" || state.stopPhase === "Closed"
+}
+
+type StopTurn =
+  | { readonly kind: "join"; readonly attempt: Deferred.Deferred<void, LifecycleFailure> }
+  | { readonly kind: "stopped" }
+  | { readonly kind: "lead"; readonly attempt: Deferred.Deferred<void, LifecycleFailure>; readonly firstRequest: boolean }
+
+effect function claimStop(fast: boolean): StopTurn!!Lifecycle {
+  const { cells } = try Lifecycle
+  return try SynchronizedRef.modifyEffect(cells, effect (current: LifecycleCells): readonly [StopTurn, LifecycleCells]!!Lifecycle => {
+    if (current.stopAttempt) return [{ kind: "join", attempt: current.stopAttempt }, current] as const
+    if (servicesStopped(try runtimeState())) return [{ kind: "stopped" }, current] as const
+    const attempt = Deferred.makeUnsafe<void, LifecycleFailure>()
+    const firstRequest = try accepted({ type: "requestStop", fast })
+    return [{ kind: "lead", attempt, firstRequest }, { ...current, stopAttempt: attempt }] as const
+  })
+}
+
+effect function prepareServicesForStop(): void!!RuntimeKernel {
+  const { runtime } = try Host
+  for (const [serviceType, instances] of runtime.services) {
+    for (const service of instances) {
+      foreignSync(() => service?.prepareStop?.("runtime-stop")) catch effect ({ cause }) => {
+        try recordRetirementFailure(`prepareStop:${serviceType}`, cause, false)
+        runtime.logger.warn(
+          {
+            src: "agent",
+            agentId: runtime.agentId,
+            serviceType,
+            error: errorText(cause),
+          },
+          "Service prepareStop() threw; continuing",
+        )
+      }
+    }
+  }
+}
+
+effect function drainRooms(fast: boolean): void!(ElizaError | Foreign)!RuntimeKernel {
+  const { runtime } = try Host
+  const queue = runtime.roomHandlerQueue
+  const roomDrain = foreign(() => queue.quiesceAll())
+  if (!fast || queue.pendingTotal() === 0) {
+    try roomDrain
+    return
+  }
+  const timeoutMs = try shutdownTimeoutMs("ELIZA_FAST_ROOM_DRAIN_TIMEOUT_MS", DEFAULT_FAST_ROOM_DRAIN_TIMEOUT_MS)
+  if (try settleBeforeTimeout(roomDrain, timeoutMs)) return
+  const error = new ElizaError(
+    "Fast runtime shutdown timed out while a room owner was still active",
+    {
+      code: "RUNTIME_FAST_STOP_ROOM_DRAIN_TIMEOUT",
+      context: { agentId: runtime.agentId, pendingRooms: queue.pendingTotal(), timeoutMs },
+      severity: "ephemeral",
+    },
+  )
+  runtime.reportError("AgentRuntime.stop.roomDrain", error, { pendingRooms: queue.pendingTotal(), timeoutMs })
+  throw error
+}
+
+effect function stopServicesAndRetire(fast: boolean, serviceStopTimeoutMs: number | undefined): void!!RuntimeKernel {
+  try accepted({ type: "finishStop" })
+  try services.stopServices(fast, serviceStopTimeoutMs)
+  try components.retire()
+  try dispatch.retire()
+  try store.retire()
+}
+
+effect function stopAfterAdmissionCordon(options?: RuntimeStopOptions): void!(ElizaError | Foreign)!RuntimeKernel {
+  const { runtime } = try Host
+  runtime.roomHandlerQueue.closeAdmissions("runtime-stop")
+  runtime.turnControllers.closeTurns("runtime-stop")
+  const fast = options?.fast === true
+  try drainRooms(fast)
+  if (!fast) {
+    const pending = pendingPostDeliveryTaskCount(runtime)
+    if (pending > 0) {
+      runtime.logger.info(
+        { src: "agent", agentId: runtime.agentId, pending },
+        "Draining post-delivery work before runtime shutdown",
+      )
+      try drainPostDeliveryTasks(runtime)
+    }
+  }
+  try dispatch.drainDiagnostics()
+  const env = processEnv()
+  const previousFastShutdown = env.ELIZA_FAST_SHUTDOWN
+  if (fast) env.ELIZA_FAST_SHUTDOWN = "1"
+  try ensuring(stopServicesAndRetire(fast, options?.serviceStopTimeoutMs), sync(() => {
+    if (!fast) return
+    if (previousFastShutdown === undefined) delete env.ELIZA_FAST_SHUTDOWN
+    else env.ELIZA_FAST_SHUTDOWN = previousFastShutdown
+  }))
+}
+
+effect function stopBestEffort(options?: RuntimeStopOptions): void!LifecycleFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const turn = try claimStop(options?.fast === true)
+  if (turn.kind === "join") {
+    runtime.logger.debug({ src: "agent", agentId: runtime.agentId }, "Runtime stop already in progress")
+    return try Deferred.await(turn.attempt)
+  }
+  if (turn.kind === "stopped") {
+    runtime.logger.debug({ src: "agent", agentId: runtime.agentId }, "Runtime already stopped")
+    return
+  }
+  if (turn.firstRequest) {
+    const { stopController } = try lifecyclePayload()
+    stopController.abort(stopRequestReason())
+    try prepareServicesForStop()
+  }
+  const outcome = try exit(stopAfterAdmissionCordon(options))
+  if (Exit.isFailure(outcome)) try recordRetirementFailure("runtime-stop", thrownValue(Cause.squash(outcome.cause)), false)
+  try Deferred.done(turn.attempt, outcome)
+  const { cells } = try Lifecycle
+  try SynchronizedRef.update(cells, (current) =>
+    current.stopAttempt === turn.attempt ? { ...current, stopAttempt: undefined } : current)
+  return try outcome
+}
+
+effect function stopAndDrain(options: RuntimeStopOptions): void!LifecycleFailure!RuntimeKernel {
+  try stopBestEffort(options)
+  const { runtime } = try Host
+  const { retirement } = try lifecyclePayload()
+  const queue = runtime.roomHandlerQueue
+  let generation: number
+  do {
+    generation = retirement.generation
+    try foreign(() => queue.quiesceAll())
+    try drainPostDeliveryTasks(runtime)
+    try foreign(() => retirement.drain())
+  } while (
+    generation !== retirement.generation
+    || queue.pendingTotal() > 0
+    || pendingPostDeliveryTaskCount(runtime) > 0
+  )
+  try accepted({ type: "confirmQuiescence" })
+}
+
+export effect function stop(options?: RuntimeStopOptions): void!LifecycleFailure!RuntimeKernel {
+  if (!options?.requireQuiescence) return try stopBestEffort(options)
+  try stopAndDrain(options)
+}
+
+effect function closeResources(): void!Foreign!RuntimeKernel {
+  const { runtime } = try Host
+  try dispatch.drainDiagnostics()
+  if (runtime.adapter) try foreign(() => runtime.adapter.close())
+}
+
+export effect function close(): void!LifecycleFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const { retirement } = try lifecyclePayload()
+  const adapter = runtime.adapter
+  if (adapter) try foreign(() => stopTaskSchedulerForAdapter(adapter))
+  const retirementFailure = map(foreign(() => retirement.drain({ beforeCloseOnly: true })), () => undefined) catch effect (failure) => failure
+  const closed = try exit(closeResources())
+  if (Exit.isFailure(closed)) {
+    if (retirementFailure) {
+      throw new ElizaError("Shared adapter retirement and closure failed", {
+        code: "RUNTIME_ADAPTER_RETIREMENT_CLOSE_FAILED",
+        cause: new AggregateError([retirementFailure.cause, thrownValue(Cause.squash(closed.cause))]),
+      })
+    }
+    return try closed
+  }
+  try accepted({ type: "closeAdapter" })
+  if (retirementFailure) throw retirementFailure
+}
+
+export effect function init(): void!Foreign!RuntimeKernel {
+  const { runtime } = try Host
+  try foreign(() => runtime.adapter.initialize())
+}
+
+export effect function retainSharedAdapterRetirement(operation: () => Promise<void>): void!Foreign!RuntimeKernel {
+  const retained = effect {
+    foreign(() => operation()) catch effect (failure) => {
+      try recordRetirementFailure("shared-adapter-retirement", failure.cause, true)
+      throw failure
+    }
+  }
+  try tracked(retained, { beforeClose: true })
+}
+
+export effect function assertResolvableWorldOwners(): void!Foreign!RuntimeKernel {
+  const { runtime } = try Host
+  if (typeof runtime.adapter?.getAllWorlds !== "function") return
+  const worlds = try foreign(() => runtime.getAllWorlds())
+  const offenders: Array<{ worldId: string; field: string; value: string }> = []
+  for (const world of worlds) {
+    const metadata = (world?.metadata ?? {}) as {
+      ownership?: { ownerId?: unknown }
+      roles?: Record<string, unknown>
+    }
+    const ownerId = metadata.ownership?.ownerId
+    if (typeof ownerId === "string" && ownerId.length > 0 && validateUuid(ownerId) === null) {
+      offenders.push({ worldId: String(world?.id ?? "unknown"), field: "ownership.ownerId", value: ownerId })
+    }
+    const roles = metadata.roles
+    if (roles && typeof roles === "object") {
+      for (const [entityId, role] of Object.entries(roles)) {
+        if (role === "OWNER" && validateUuid(entityId) === null) {
+          offenders.push({ worldId: String(world?.id ?? "unknown"), field: "roles[OWNER]", value: entityId })
+        }
+      }
+    }
+  }
+  if (offenders.length === 0) return
+  for (const offender of offenders) {
+    runtime.logger.error(
+      { src: "agent", agentId: runtime.agentId, worldId: offender.worldId, field: offender.field },
+      "OWNER-PRIVATE DISCLOSURE GUARD: world owner is a non-resolvable, non-UUID value (bare platform id/snowflake). resolveCanonicalOwnerId will return null and owner-private providers will be denied with owner_mismatch. Fix the connector so it records a canonical entity UUID.",
+    )
+  }
+  runtime.reportError(
+    "AgentRuntime.assertResolvableWorldOwners",
+    new Error(`${offenders.length} world(s) record a non-resolvable owner (bare snowflake / non-UUID). Owner-private recall is degraded until fixed.`),
+    { offenderCount: offenders.length },
+  )
+}
+
+export effect function runPluginMigrations(): void!Foreign!RuntimeKernel {
+  const { runtime } = try Host
+  try migratePlugins(runtime)
+}
+
+export effect function getConnection(): object!(AdapterNotRegistered | Foreign)!RuntimeKernel {
+  const { runtime } = try Host
+  if (!runtime.adapter) throw new AdapterNotRegistered({ message: "Database adapter not registered" })
+  return try foreign(() => runtime.adapter.getConnection())
+}
+
+export effect function runMigrations(migrationsPaths?: string[]): void!Foreign!RuntimeKernel {
+  const { runtime } = try Host
+  const adapter = runtime.adapter
+  if (adapter.runMigrations) {
+    try foreign(() => adapter.runMigrations?.(migrationsPaths))
+    return
+  }
+  runtime.logger.warn({ src: "agent", agentId: runtime.agentId }, "Database adapter does not support migrations")
+}
+
+export effect function isReady(): boolean!(AdapterNotRegistered | Foreign)!RuntimeKernel {
+  const { runtime } = try Host
+  if (!runtime.adapter) throw new AdapterNotRegistered({ message: "Database adapter not registered" })
+  return try foreign(() => runtime.adapter.isReady())
+}
+
+export effect function installRemotePlugin(plugin: Plugin, options?: RemotePluginInstallOptions): RemotePluginInstanceHandle!RemotePluginBridgeMissing {
+  throw new RemotePluginBridgeMissing({
+    message: "installRemotePlugin requires a host with RemotePluginBridge wiring (see @elizaos/agent).",
+  })
+}
+
+export effect function registerDatabaseAdapter(adapter: IDatabaseAdapter): void!!RuntimeKernel {
+  const { runtime } = try Host
+  if (runtime.adapter) {
+    runtime.logger.warn({ src: "agent", agentId: runtime.agentId }, "Database adapter already registered, ignoring")
+    return
+  }
+  runtime.adapter = adapter
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId }, "Database adapter registered")
+}
+
+export effect function getLifecycleState(): LifecycleState!!RuntimeKernel {
+  const state = try runtimeState()
+  const { stopAttempt, retriedInitializationFailed } = try cells()
+  if (stopRequested(state)) return servicesStopped(state) && stopAttempt === undefined ? "stopped" : "stopping"
+  if (retriedInitializationFailed ?? state.initPhase === "InitFailed") return "failed"
+  return (try isInitializationPending()) ? "initializing" : "running"
+}
+
+export effect function getStopSignal(): AbortSignal!!RuntimeKernel {
+  const { stopController } = try lifecyclePayload()
+  return stopController.signal
+}
+
+export effect function isStopRequested(): boolean!!RuntimeKernel {
+  return stopRequested(try runtimeState())
+}
+
+export effect function createRunId(): UUID!! {
+  return randomUuid() as UUID
+}
+
+effect function instanceRunId(): UUID!Foreign!RuntimeKernel {
+  const { runtime } = try Host
+  return try foreignSync(() => runtime.createRunId())
+}
+
+export effect function startRun(roomId?: UUID): UUID!Foreign!RuntimeKernel {
+  const { cells } = try Lifecycle
+  const runId = try instanceRunId()
+  try SynchronizedRef.update(cells, (current) => ({ ...current, runId, roomId }))
+  return runId
+}
+
+export effect function endRun(): void!!RuntimeKernel {
+  const { cells } = try Lifecycle
+  try SynchronizedRef.update(cells, (current) => ({ ...current, runId: undefined, roomId: undefined }))
+}
+
+export effect function getCurrentRunId(): UUID!Foreign!RuntimeKernel {
+  const { cells } = try Lifecycle
+  const existing = (try SynchronizedRef.get(cells)).runId
+  if (existing) return existing
+  const runId = try instanceRunId()
+  try SynchronizedRef.update(cells, (current) => ({ ...current, runId }))
+  return runId
+}
+
+export effect function getCurrentRoomId(): (UUID | undefined)!!RuntimeKernel {
+  return (try cells()).roomId
+}
+
+export effect function shutdownTimeoutMs(envName: string, fallbackMs: number): number!! {
+  const raw = rawEnv(envName)
+  const parsed = Number(raw)
+  if (raw?.trim() === "0") return 0
+  if (Number.isFinite(parsed) && parsed > 0) return parsed
+  return fallbackMs
+}
+
+export effect function settleBeforeTimeout<E, R>(work: void!E!R, timeoutMs: number): boolean!E!R {
+  if (timeoutMs <= 0) return false
+  return Option.isSome(try timeoutOption(work, timerDelay(timeoutMs)))
+}
+
+export effect function tracked<A, E, R>(work: A!E!R, options?: { beforeClose?: boolean }): A!E!(R | RuntimeKernel) {
+  const { retirement } = try lifecyclePayload()
+  const services = try Effect.context<R>()
+  const counted = options?.beforeClose === true && try accepted({ type: "beginBeforeClose" })
+  const outcome = try orDie(foreign(() => retirement.run(() => runDetached(exit(Effect.provideContext(work, services))), options)))
+  if (counted) try accepted({ type: "finishBeforeClose" })
+  return try outcome
+}

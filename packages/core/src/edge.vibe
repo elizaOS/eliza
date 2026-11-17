@@ -1,0 +1,99 @@
+// spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/index.md, "Each boundary operation has one owning layer"
+
+export error Foreign { cause: unknown }
+
+export effect function foreign<A>(call: (signal: AbortSignal) => A | PromiseLike<A>): A!Foreign {
+  return try tryPromise({ try: async (signal) => await call(signal), catch: (cause) => new Foreign({ cause }) })
+}
+
+export function thrownValue(failure: unknown): unknown {
+  return failure instanceof Foreign ? failure.cause : failure
+}
+
+export effect function foreignSync<A>(call: () => A): A!Foreign {
+  return try Effect.try({ try: () => call(), catch: (cause) => new Foreign({ cause }) })
+}
+
+module edge {
+  import { Cause, Effect, Exit, ManagedRuntime, type Layer } from "effect"
+  import { publicOutcome, type Outcome } from "../gen/core.ts"
+  import { TurnAbortedError } from "./runtime/turn-aborted-error.vibe"
+  import { Foreign, thrownValue } from "./edge.vibe"
+
+  function outcomeOf<A, E>(exit: Exit.Exit<A, E>): Outcome {
+    if (Exit.isSuccess(exit)) return "Succeeded"
+    return Cause.hasInterruptsOnly(exit.cause) ? "Interrupted" : "Failed"
+  }
+
+  /** @throws {unknown} */
+  export function settle<A, E>(exit: Exit.Exit<A, E>, signal?: AbortSignal): A {
+    if (Exit.isSuccess(exit)) return exit.value
+    if (publicOutcome(outcomeOf(exit)) === "Aborted") throw signal?.aborted ? signal.reason : new TurnAbortedError("interrupted")
+    throw thrownValue(Cause.squash(exit.cause))
+  }
+
+  export class Kernel<R> {
+    readonly #managed: ManagedRuntime.ManagedRuntime<R, never>
+    /** @throws {never} */
+    constructor(layer: Layer.Layer<R>) {
+      this.#managed = ManagedRuntime.make(layer)
+    }
+    /** @throws {never} */
+    async run<A, E>(effect: Effect.Effect<A, E, R>, signal?: AbortSignal): Promise<A> {
+      return settle(await this.#managed.runPromiseExit(effect, { signal }), signal)
+    }
+    /** @throws {unknown} */
+    runSync<A, E>(effect: Effect.Effect<A, E, R>): A {
+      return settle(this.#managed.runSyncExit(effect))
+    }
+    /** @throws {never} */
+    async dispose(): Promise<void> {
+      await this.#managed.dispose()
+    }
+  }
+
+  /** @throws {never} */
+  export async function runDetached<A, E>(effect: Effect.Effect<A, E>, signal?: AbortSignal): Promise<A> {
+    return settle(await Effect.runPromiseExit(effect, { signal }), signal)
+  }
+
+  /** @throws {unknown} */
+  export function runDetachedSync<A, E>(effect: Effect.Effect<A, E>): A {
+    return settle(Effect.runSyncExit(effect))
+  }
+
+  /** @throws {never} */
+  export function asLegacy<A, E extends Error, R>(
+    Legacy: new (message: string, options?: ErrorOptions) => Error,
+    effect: Effect.Effect<A, E, R>,
+    ...kept: ReadonlyArray<abstract new (...args: never[]) => Error>
+  ): Effect.Effect<A, Error, R> {
+    const unchanged: ReadonlyArray<abstract new (...args: never[]) => Error> = [Foreign, ...kept]
+    return Effect.mapError(effect, (error): Error => {
+      const passes = error.constructor === Legacy || unchanged.some((Kind) => error instanceof Kind)
+      if (passes) return error
+      return error.cause === undefined ? new Legacy(error.message) : new Legacy(error.message, { cause: error.cause })
+    })
+  }
+
+  /** @throws {never} */
+  export function failingAs<Args extends readonly unknown[], A, E extends Error>(
+    Legacy: new (message: string, options?: ErrorOptions) => Error,
+    run: (...args: Args) => Effect.Effect<A, E>,
+    ...kept: ReadonlyArray<abstract new (...args: never[]) => Error>
+  ): (...args: Args) => Effect.Effect<A, Error> {
+    return (...args) => asLegacy(Legacy, run(...args), ...kept)
+  }
+
+  /** @throws {never} */
+  export function promised<Args extends readonly unknown[], A, E>(run: (...args: Args) => Effect.Effect<A, E>): (...args: Args) => Promise<A> {
+    return (...args) => runDetached(run(...args))
+  }
+
+  /** @throws {never} */
+  export function thrown<Args extends readonly unknown[], A, E>(run: (...args: Args) => Effect.Effect<A, E>): (...args: Args) => A {
+    return (...args) => runDetachedSync(run(...args))
+  }
+}
+import { Kernel, asLegacy, failingAs, promised, runDetached, runDetachedSync, settle, thrown } from edge
+export { Kernel, asLegacy, failingAs, promised, runDetached, runDetachedSync, settle, thrown }

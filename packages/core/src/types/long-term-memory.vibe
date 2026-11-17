@@ -1,0 +1,43 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { JsonValue, UUID } from "./primitives.vibe"
+
+export enum LongTermMemoryCategory {
+  EPISODIC = "episodic",
+  SEMANTIC = "semantic",
+  PROCEDURAL = "procedural",
+}
+
+export interface LongTermMemory {
+  id: UUID
+  agentId: UUID
+  entityId: UUID
+  category: LongTermMemoryCategory
+  content: string
+  metadata?: Record<string, JsonValue>
+  embedding?: number[]
+  confidence?: number
+  source?: string
+  createdAt: Date
+  updatedAt: Date
+  lastAccessedAt?: Date
+  accessCount?: number
+  similarity?: number
+}
+
+export interface MemoryConfig {
+  longTermExtractionEnabled: boolean
+  longTermVectorSearchEnabled: boolean
+  longTermConfidenceThreshold: number
+  longTermExtractionThreshold: number
+  longTermExtractionInterval: number
+}
+
+export interface MemoryExtraction {
+  category: LongTermMemoryCategory
+  content: string
+  confidence: number
+  sourceMessageIds?: UUID[]
+  metadata?: Record<string, JsonValue>
+}
+
+export type MemoryServiceTypeName = "memory"

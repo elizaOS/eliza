@@ -4,7 +4,8 @@ The agent owns the owner's durable Notes; the client reads and edits them. The e
 token, authored fields and revision. It uses the mutation reply's target
 rather than inferring a creation from a collection diff.
 [Search and selected reads](./read.md) and [Trash](./trash.md) have
-their own specifications.
+their own specifications; [draft retention](./draftRecovery.md) owns the
+separate device-local encrypted draft.
 
 ## Story: Read and save a note under the current connection
 

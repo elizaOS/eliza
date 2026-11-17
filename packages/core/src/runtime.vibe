@@ -1,0 +1,961 @@
+// spec/core/runtime.md, "Story: Initialize an explicit host composition"; spec/core/runtime.md, "Story: Retire every owned operation"; spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+export {
+  EMBEDDING_STORE_ACCEPT_MODEL_SETTING,
+  EMBEDDING_STORE_IDENTITY_CACHE_KEY,
+  EmbeddingDimensionProbeError,
+  type EmbeddingProbeAttempt,
+  type EmbeddingStoreIdentity,
+} from "./runtime/embeddings.vibe"
+export { NoModelProviderConfiguredError } from "./runtime/model-policy.vibe"
+
+module edge {
+  import type { ReportedError } from "./errors.vibe"
+  import type { FetchLike } from "./media/fetch.vibe"
+  import type { ExecutionTrace, PromptOptimizationRuntimeHooks } from "./prompt-optimization.vibe"
+  import type { ActivePromptTraces } from "./runtime/active-prompt-traces.vibe"
+  import type { RuntimeConnectorRegistry } from "./runtime/connector-registry.vibe"
+  import type { RuntimeDataMutations } from "./runtime/data-mutations.vibe"
+  import type { RuntimeEmbeddings } from "./runtime/embeddings.vibe"
+  import type { RuntimeModelDispatch } from "./runtime/model-dispatch.vibe"
+  import type { RuntimePipelineHooks } from "./runtime/pipeline-hooks.vibe"
+  import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators.vibe"
+  import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-fields.vibe"
+  import type { ServicePromiseHandler } from "./runtime/service-lifecycle.vibe"
+  import type { SecretFragment, SecretFragmentTaintProfile } from "./security/fragment-redaction.vibe"
+  import type { Agent, Character } from "./types/agent.vibe"
+  import type { ChatPreHandler, ChatPreHandlerContext, ChatPreHandlerResult } from "./types/chat-pre-handler.vibe"
+  import type { Action, ActionMode, ActionResult, HandlerCallback, Provider } from "./types/components.vibe"
+  import type { AgentContext } from "./types/contexts.vibe"
+  import type { ConnectorAccountRecord, DeleteConnectorAccountParams, GetConnectorAccountParams, IDatabaseAdapter, ListConnectorAccountsParams, LogBody } from "./types/database.vibe"
+  import type { Component, Entity, Participant, Relationship, Room, World } from "./types/environment.vibe"
+  import type { RegisteredEvaluator } from "./types/evaluator.vibe"
+  import type { EventHandler, EventPayload, EventPayloadMap } from "./types/events.vibe"
+  import type { Memory } from "./types/memory.vibe"
+  import type { IMessageService } from "./types/message-service.vibe"
+  import type { IMessagingAdapter } from "./types/messaging.vibe"
+  import type { GenerateTextOptions, GenerateTextResult, ModelHandler, ModelParamsMap, ModelResultMap } from "./types/model.vibe"
+  import type { PairingAllowlistEntry, PairingChannel, PairingRequest } from "./types/pairing.vibe"
+  import type { Plugin, PluginOwnership, RemotePluginInstallOptions, RemotePluginInstanceHandle, RuntimeEventStorage, ServiceClass } from "./types/plugin.vibe"
+  import type { ChannelType, JsonValue, UUID } from "./types/primitives.vibe"
+  import type { IAgentRuntime, RuntimeStopOptions } from "./types/runtime.vibe"
+  import type { SearchCategoryEnumerationOptions, SearchCategoryLookupOptions, SearchCategoryRegistration } from "./types/search.vibe"
+  import type { Service, ServiceTypeName } from "./types/service.vibe"
+  import type { RuntimeSettings } from "./types/settings.vibe"
+  import type { State } from "./types/state.vibe"
+  import type { Task, TaskMetadataPatch, TaskMetadataPatchOutcome, TaskWorker } from "./types/task.vibe"
+  import { createLogger } from "./logger.vibe"
+  import { installRuntimePluginLifecycle } from "./plugin-lifecycle.vibe"
+  import { ChatPreHandlerRegistry } from "./runtime/chat-pre-handler-registry.vibe"
+  import { ContextRegistry } from "./runtime/context-registry.vibe"
+  import { resolveProviderModelString } from "./runtime/model-policy.vibe"
+  import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-fields.vibe"
+  import { RoomHandlerQueue } from "./runtime/room-handler-queue.vibe"
+  import { TurnControllerRegistry } from "./runtime/turn-controller.vibe"
+  import { Kernel, runDetachedSync } from "./edge.vibe"
+  import { forward, forwardAsync, helpers, kernelLayer, legacy, type RuntimeHelpers, type RuntimeKernel } from "./runtime/kernel.vibe"
+  import type { AgentRuntimeOptions } from "./runtime/host.vibe"
+  import { AGENT_SCOPED, DELEGATED, MUTATIONS, type GetMemoriesParams } from "./runtime/store.vibe"
+  import { CONNECTOR_FORWARDS, PIPELINE_FORWARDS } from "./runtime/components.vibe"
+  import { EMBEDDING_FORWARDS, MODEL_FORWARDS, TRACE_FORWARDS } from "./runtime/dispatch.vibe"
+  import * as lifecycle from "./runtime/lifecycle.vibe"
+  import * as agentSettings from "./runtime/agent-settings.vibe"
+  import * as store from "./runtime/store.vibe"
+  import * as services from "./runtime/service-lifecycle.vibe"
+  import * as components from "./runtime/components.vibe"
+  import * as dispatch from "./runtime/dispatch.vibe"
+
+  type Logger = ReturnType<typeof createLogger>
+
+  export interface AgentRuntime
+    extends Pick<IDatabaseAdapter<object>, (typeof DELEGATED)[number] | (typeof AGENT_SCOPED)[number]>,
+      Pick<RuntimeDataMutations, (typeof MUTATIONS)[number]>,
+      Pick<RuntimeConnectorRegistry, (typeof CONNECTOR_FORWARDS)[number]>,
+      Pick<RuntimePipelineHooks, (typeof PIPELINE_FORWARDS)[number]>,
+      Pick<ActivePromptTraces, (typeof TRACE_FORWARDS)[number]>,
+      Pick<RuntimeEmbeddings, (typeof EMBEDDING_FORWARDS)[number]>,
+      Pick<RuntimeModelDispatch, (typeof MODEL_FORWARDS)[number]> {}
+
+  export class AgentRuntime implements IAgentRuntime {
+    static readonly ownerToolExecutionObserverVersion = 1 as const
+    readonly ownerToolExecutionObserverVersion = 1 as const
+    ownerToolExecutionObserver?: IAgentRuntime["ownerToolExecutionObserver"]
+    structuredPromptExecutor?: IAgentRuntime["dynamicPromptExecFromState"]
+    readonly supportsModelAttemptPreparation = true
+    readonly agentId: UUID
+    readonly runtimeInstanceId: UUID
+    readonly character: Character
+    adapter!: IDatabaseAdapter
+    readonly actions: Action[] = []
+    readonly providers: Provider[] = []
+    readonly evaluators: RegisteredEvaluator[] = []
+    readonly responseHandlerEvaluators: ResponseHandlerEvaluator[] = []
+    readonly responseHandlerFieldEvaluators: ResponseHandlerFieldEvaluator[] = []
+    readonly chatPreHandlerRegistry = new ChatPreHandlerRegistry()
+    readonly responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry()
+    readonly turnControllers = new TurnControllerRegistry()
+    readonly roomHandlerQueue = new RoomHandlerQueue({
+      onListenerError: (error, event) => this.reportError("AgentRuntime.roomHandlerQueue.listener", error, { event, diagnosticOnly: true }),
+    })
+    readonly plugins: Plugin[] = []
+    readonly contexts: ContextRegistry = new ContextRegistry([])
+    unloadPlugin!: (pluginName: string) => Promise<PluginOwnership | null>
+    reloadPlugin!: (plugin: Plugin) => Promise<void>
+    applyPluginConfig!: (pluginName: string, config: Record<string, string>) => Promise<boolean>
+    getPluginOwnership!: (pluginName: string) => PluginOwnership | null
+    getAllPluginOwnership!: () => PluginOwnership[]
+    events: RuntimeEventStorage = {}
+    stateCache = new Map<string, State>()
+    readonly fetch: FetchLike
+    services = new Map<ServiceTypeName, Service[]>()
+    serviceTypes = new Map<ServiceTypeName, ServiceClass[]>()
+    models = new Map<string, ModelHandler[]>()
+    servicePromiseHandlers = new Map<string, ServicePromiseHandler>()
+    servicePromises = new Map<string, Promise<Service>>()
+    startingServices = new Map<string, Promise<Service | null>>()
+    startingServiceClasses = new Map<ServiceClass, Promise<Service>>()
+    serviceInstancesByClass = new Map<ServiceClass, Service>()
+    failedServiceClasses = new Set<ServiceClass>()
+    serviceRegistrationStatus = new Map<ServiceTypeName, "pending" | "registering" | "registered" | "failed">()
+    logger: Logger
+    enableAutonomy: boolean
+    initPromise: Promise<void>
+    messageService: IMessageService | null = null
+    readonly #kernel: Kernel<RuntimeKernel>
+    readonly #helpers: RuntimeHelpers
+    #strictStop: Promise<void> | undefined
+
+    static {
+      forwardAsync(this.prototype, DELEGATED, (self: AgentRuntime) => self.adapter)
+      forwardAsync(this.prototype, AGENT_SCOPED, (self: AgentRuntime) => self.adapter, (self, [params]) => [{ ...(params as object), agentId: (params as { agentId?: UUID }).agentId ?? self.agentId }])
+      forward(this.prototype, MUTATIONS, (self: AgentRuntime) => self.#helpers.mutations)
+      forward(this.prototype, CONNECTOR_FORWARDS, (self: AgentRuntime) => self.#helpers.connectors)
+      forward(this.prototype, PIPELINE_FORWARDS, (self: AgentRuntime) => self.#helpers.pipelineHooks)
+      forward(this.prototype, TRACE_FORWARDS, (self: AgentRuntime) => self.#helpers.promptTraces)
+      forward(this.prototype, EMBEDDING_FORWARDS, (self: AgentRuntime) => self.#helpers.embeddings)
+      forward(this.prototype, MODEL_FORWARDS, (self: AgentRuntime) => self.#helpers.models)
+    }
+
+    /** @throws {unknown} */
+    constructor(opts: AgentRuntimeOptions) {
+      runDetachedSync(lifecycle.adoptProcessingPolicy(this, opts))
+      const identity = runDetachedSync(legacy(lifecycle.resolveIdentity(opts), TypeError))
+      this.agentId = identity.agentId
+      this.runtimeInstanceId = identity.runtimeInstanceId
+      this.character = identity.character
+      this.enableAutonomy = identity.enableAutonomy
+      this.logger = createLogger({ namespace: `agent:${identity.character.name ?? "unknown"}`, level: opts.logLevel ?? "error" })
+      this.fetch = opts.fetch ?? fetch
+      this.#kernel = new Kernel(kernelLayer(this, opts, () => this.#kernel))
+      this.#helpers = this.#kernel.runSync(helpers())
+      this.initPromise = this.#kernel.run(lifecycle.initialized())
+      this.#kernel.runSync(legacy(lifecycle.attach()))
+      installRuntimePluginLifecycle(this)
+    }
+
+    /** @throws {never} */
+    createRunId(): UUID {
+      return this.#kernel.runSync(lifecycle.createRunId())
+    }
+
+    /** @throws {unknown} */
+    startRun(roomId?: UUID): UUID {
+      return this.#kernel.runSync(lifecycle.startRun(roomId))
+    }
+
+    /** @throws {never} */
+    endRun(): void {
+      return this.#kernel.runSync(lifecycle.endRun())
+    }
+
+    /** @throws {unknown} */
+    getCurrentRunId(): UUID {
+      return this.#kernel.runSync(lifecycle.getCurrentRunId())
+    }
+
+    /** @throws {never} */
+    registerPlugin<T extends Plugin>(plugin: T): Promise<void> {
+      return this.#kernel.run(legacy(components.registerPlugin<T>(plugin)))
+    }
+
+    /** @throws {never} */
+    getAllServices(): Map<ServiceTypeName, Service[]> {
+      return this.services
+    }
+
+    /** @throws {never} */
+    stop(options?: RuntimeStopOptions): Promise<void> {
+      if (!options?.requireQuiescence) return this.#kernel.run(legacy(lifecycle.stop(options)))
+      if (this.#strictStop) return this.#strictStop
+      const strict = Promise.withResolvers<void>()
+      this.#strictStop = strict.promise
+      void this.#kernel.run(legacy(lifecycle.stop(options))).then(strict.resolve, strict.reject)
+      return strict.promise
+    }
+
+    /** @throws {never} */
+    initialize(options?: { skipMigrations?: boolean }): Promise<void> {
+      return this.#kernel.run(legacy(lifecycle.initialize(options)))
+    }
+
+    /** @throws {never} */
+    assertResolvableWorldOwners(): Promise<void> {
+      return this.#kernel.run(lifecycle.assertResolvableWorldOwners())
+    }
+
+    /** @throws {never} */
+    registerDatabaseAdapter(adapter: IDatabaseAdapter) {
+      return this.#kernel.runSync(lifecycle.registerDatabaseAdapter(adapter))
+    }
+
+    /** @throws {never} */
+    runPluginMigrations(): Promise<void> {
+      return this.#kernel.run(lifecycle.runPluginMigrations())
+    }
+
+    /** @throws {never} */
+    getConnection(): Promise<object> {
+      return this.#kernel.run(legacy(lifecycle.getConnection()))
+    }
+
+    /** @throws {never} */
+    setSetting(key: string, value: string | boolean | null, secret = false) {
+      return this.#kernel.runSync(agentSettings.setSetting(key, value, secret))
+    }
+
+    /** @throws {unknown} */
+    getSetting(key: string): string | boolean | number | null {
+      return this.#kernel.runSync(legacy(agentSettings.getSetting(key)))
+    }
+
+    /** @throws {never} */
+    get settings(): RuntimeSettings {
+      return this.#kernel.runSync(agentSettings.runtimeSettings())
+    }
+
+    /** @throws {never} */
+    set settings(value: RuntimeSettings) {
+      this.#kernel.runSync(agentSettings.replaceRuntimeSettings(value))
+    }
+
+    /** @throws {never} */
+    getConversationLength() {
+      return this.#kernel.runSync(agentSettings.getConversationLength())
+    }
+
+    /** @throws {unknown} */
+    isActionPlanningEnabled(): boolean {
+      return this.#kernel.runSync(legacy(agentSettings.isActionPlanningEnabled()))
+    }
+
+    /** @throws {unknown} */
+    getLLMMode(): import("./types/model.vibe").LLMModeType {
+      return this.#kernel.runSync(legacy(agentSettings.getLLMMode()))
+    }
+
+    /** @throws {unknown} */
+    isCheckShouldRespondEnabled(): boolean {
+      return this.#kernel.runSync(legacy(agentSettings.isCheckShouldRespondEnabled()))
+    }
+
+    /** @throws {unknown} */
+    getOptimizationDir(): string {
+      return this.#kernel.runSync(legacy(agentSettings.getOptimizationDir()))
+    }
+
+    /** @throws {never} */
+    registerPromptOptimizationHooks(hooks: PromptOptimizationRuntimeHooks | null): void {
+      return this.#kernel.runSync(components.registerPromptOptimizationHooks(hooks))
+    }
+
+    /** @throws {never} */
+    getPromptOptimizationHooks(): PromptOptimizationRuntimeHooks | null {
+      return this.#kernel.runSync(components.getPromptOptimizationHooks())
+    }
+
+    /** @throws {never} */
+    resolveProviderModelString(resolvedModelType: string, optionsModel?: string, effectiveModelId?: string): string {
+      return resolveProviderModelString(this, resolvedModelType, optionsModel, effectiveModelId)
+    }
+
+    /** @throws {never} */
+    recordPromptTrace(trace: ExecutionTrace): void {
+      return this.#helpers.promptTraces.record(trace)
+    }
+
+    /** @throws {never} */
+    purgePromptTraces(): void {
+      return this.#helpers.promptTraces.purgeStaleActiveTraces()
+    }
+
+    /** @throws {never} */
+    getMessagingAdapter(): IMessagingAdapter | null {
+      return this.#kernel.runSync(store.getMessagingAdapter())
+    }
+
+    /** @throws {never} */
+    registerProvider(provider: Provider) {
+      return this.#kernel.runSync(components.registerProvider(provider))
+    }
+
+    /** @throws {never} */
+    registerAction(action: Action) {
+      return this.#kernel.runSync(components.registerAction(action))
+    }
+
+    /** @throws {never} */
+    registerChatPreHandler(handler: ChatPreHandler) {
+      return this.#kernel.runSync(components.registerChatPreHandler(handler))
+    }
+
+    /** @throws {never} */
+    registerChatPreHandlers(handlers: readonly ChatPreHandler[]) {
+      return this.#kernel.runSync(components.registerChatPreHandlers(handlers))
+    }
+
+    /** @throws {never} */
+    unregisterChatPreHandler(id: string) {
+      return this.#kernel.runSync(components.unregisterChatPreHandler(id))
+    }
+
+    /** @throws {never} */
+    drainChatPreHandlers(ctx: ChatPreHandlerContext): Promise<ChatPreHandlerResult | null> {
+      return this.chatPreHandlerRegistry.drain(ctx)
+    }
+
+    /** @throws {never} */
+    registerEvaluator(evaluator: RegisteredEvaluator) {
+      return this.#kernel.runSync(components.registerEvaluator(evaluator))
+    }
+
+    /** @throws {never} */
+    unregisterEvaluator(name: string): boolean {
+      return this.#kernel.runSync(components.unregisterEvaluator(name))
+    }
+
+    /** @throws {never} */
+    registerResponseHandlerEvaluator(evaluator: ResponseHandlerEvaluator) {
+      return this.#kernel.runSync(components.registerResponseHandlerEvaluator(evaluator))
+    }
+
+    /** @throws {never} */
+    unregisterResponseHandlerEvaluator(name: string): boolean {
+      return this.#kernel.runSync(components.unregisterResponseHandlerEvaluator(name))
+    }
+
+    /** @throws {unknown} */
+    registerResponseHandlerFieldEvaluator(evaluator: ResponseHandlerFieldEvaluator) {
+      return this.#kernel.runSync(components.registerResponseHandlerFieldEvaluator(evaluator))
+    }
+
+    /** @throws {never} */
+    unregisterResponseHandlerFieldEvaluator(name: string): boolean {
+      return this.#kernel.runSync(components.unregisterResponseHandlerFieldEvaluator(name))
+    }
+
+    /** @throws {never} */
+    abortTurn(roomId: string, reason: string): boolean {
+      return this.turnControllers.abortTurn(roomId, reason)
+    }
+
+    /** @throws {never} */
+    unregisterAction(name: string): boolean {
+      return this.#kernel.runSync(components.unregisterAction(name))
+    }
+
+    /** @throws {never} */
+    getAllActions(): Action[] {
+      return this.#kernel.runSync(components.getAllActions())
+    }
+
+    /** @throws {never} */
+    getActionResults(messageId: UUID): ActionResult[] {
+      return this.#kernel.runSync(dispatch.getActionResults(messageId))
+    }
+
+    /** @throws {never} */
+    runActionsByMode(mode: ActionMode, message: Memory, state?: State, options?: { didRespond?: boolean; callback?: HandlerCallback; responses?: Memory[]; selectedContexts?: readonly AgentContext[]; }): Promise<Action[]> {
+      return this.#kernel.run(legacy(dispatch.runActionsByMode(mode, message, state, options)))
+    }
+
+    /** @throws {never} */
+    ensureConnections(entities: Entity[], rooms: Room[], source: string, world: World): Promise<void> {
+      return this.#kernel.run(legacy(store.ensureConnections(entities, rooms, source, world)))
+    }
+
+    /** @throws {never} */
+    ensureConnection(params: { entityId: UUID; roomId: UUID; roomName?: string; worldId?: UUID; worldName?: string; userName?: string; name?: string; source?: string; type?: ChannelType | string; channelId?: string; serverId?: string; messageServerId?: UUID; userId?: UUID; metadata?: Record<string, JsonValue>; }) {
+      return this.#kernel.run(legacy(store.ensureConnection(params)))
+    }
+
+    /** @throws {never} */
+    ensureParticipantInRoom(entityId: UUID, roomId: UUID) {
+      return this.#kernel.run(legacy(store.ensureParticipantInRoom(entityId, roomId)))
+    }
+
+    /** @throws {never} */
+    getParticipantsForEntity(entityId: UUID): Promise<Participant[]> {
+      return this.#kernel.run(legacy(store.getParticipantsForEntity(entityId)))
+    }
+
+    /** @throws {never} */
+    getParticipantsForRoom(roomId: UUID): Promise<UUID[]> {
+      return this.#kernel.run(legacy(store.getParticipantsForRoom(roomId)))
+    }
+
+    /** @throws {never} */
+    isRoomParticipant(roomId: UUID, entityId: UUID): Promise<boolean> {
+      return this.#kernel.run(legacy(store.isRoomParticipant(roomId, entityId)))
+    }
+
+    /** @throws {never} */
+    addParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
+      return this.#kernel.run(legacy(store.addParticipant(entityId, roomId)))
+    }
+
+    /** @throws {never} */
+    createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]> {
+      return this.#kernel.run(legacy(store.createRoomParticipants(entityIds, roomId)))
+    }
+
+    /** @throws {never} */
+    ensureWorldExists(world: World) {
+      return this.#kernel.run(legacy(store.ensureWorldExists(world)))
+    }
+
+    /** @throws {never} */
+    ensureRoomExists(room: Room) {
+      return this.#kernel.run(legacy(store.ensureRoomExists(room)))
+    }
+
+    /** @throws {never} */
+    composeState(...args: Parameters<IAgentRuntime["composeState"]>): ReturnType<IAgentRuntime["composeState"]> {
+      return this.#helpers.providerState.composeState(...args)
+    }
+
+    /** @throws {never} */
+    _runServiceStart(key: ServiceTypeName, serviceType: string, serviceDef: ServiceClass): Promise<Service | null> {
+      return this.#kernel.run(legacy(services.runServiceStart(key, serviceType, serviceDef)))
+    }
+
+    /** @throws {never} */
+    _stopServiceOnce(serviceType: string, service: Service): Promise<void> {
+      return this.#kernel.runSync(services.stopServiceOnce(serviceType, service))
+    }
+
+    /** @throws {never} */
+    getService<T extends Service = Service>(serviceName: ServiceTypeName | string): T | null {
+      return this.#kernel.runSync(services.getService<T>(serviceName))
+    }
+
+    /** @throws {never} */
+    getTypedService<T extends Service = Service>(serviceName: ServiceTypeName | string): T | null {
+      return this.#kernel.runSync(services.getTypedService<T>(serviceName))
+    }
+
+    /** @throws {never} */
+    getServicesByType<T extends Service = Service>(serviceName: ServiceTypeName | string): T[] {
+      return this.#kernel.runSync(services.getServicesByType<T>(serviceName))
+    }
+
+    /** @throws {never} */
+    getRegisteredServiceTypes(): ServiceTypeName[] {
+      return this.#kernel.runSync(services.getRegisteredServiceTypes())
+    }
+
+    /** @throws {never} */
+    hasService(serviceType: ServiceTypeName | string): boolean {
+      return this.#kernel.runSync(services.hasService(serviceType))
+    }
+
+    /** @throws {never} */
+    getServiceRegistrationStatus(serviceType: ServiceTypeName | string): "pending" | "registering" | "registered" | "failed" | "unknown" {
+      return this.#kernel.runSync(services.getServiceRegistrationStatus(serviceType))
+    }
+
+    /** @throws {never} */
+    getLifecycleState(): | "initializing" | "running" | "failed" | "stopping" | "stopped" {
+      return this.#kernel.runSync(lifecycle.getLifecycleState())
+    }
+
+    /** @throws {never} */
+    getStopSignal(): AbortSignal {
+      return this.#kernel.runSync(lifecycle.getStopSignal())
+    }
+
+    /** @throws {never} */
+    getServiceHealth(): Record< string, { status: "pending" | "registering" | "registered" | "failed" | "unknown"; instances: number; hasPromise: boolean; } > {
+      return this.#kernel.runSync(services.getServiceHealth())
+    }
+
+    /** @throws {never} */
+    registerService(serviceDef: ServiceClass): Promise<void> {
+      return this.#kernel.run(legacy(services.registerService(serviceDef)))
+    }
+
+    /** @throws {never} */
+    getServiceLoadPromise(serviceType: ServiceTypeName | string): Promise<Service> {
+      return this.#kernel.run(legacy(services.getServiceLoadPromise(serviceType)))
+    }
+
+    /** @throws {never} */
+    useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(modelType: T, params: ModelParamsMap[T], provider?: string): Promise<R> {
+      return this.#helpers.models.useModel<T, R>(modelType, params, provider)
+    }
+
+    /** @throws {never} */
+    generateText(input: string, options?: GenerateTextOptions): Promise<GenerateTextResult> {
+      return this.#kernel.run(legacy(dispatch.generateText(input, options)))
+    }
+
+    /** @throws {never} */
+    dynamicPromptExecFromState(args: Parameters<IAgentRuntime["dynamicPromptExecFromState"]>[0]): Promise<Record<string, unknown> | null> {
+      return this.#kernel.run(legacy(dispatch.dynamicPromptExecFromState(args)))
+    }
+
+    registerEvent<T extends keyof EventPayloadMap>(event: T, handler: EventHandler<T>): void
+    registerEvent<P extends EventPayload = EventPayload>(event: string, handler: (params: P) => Promise<void>): void
+    /** @throws {never} */
+    registerEvent(event: string, handler: (params: EventPayload) => Promise<void>): void {
+      return this.#kernel.runSync(components.registerEvent(event, handler))
+    }
+
+    unregisterEvent<T extends keyof EventPayloadMap>(event: T, handler: EventHandler<T>): void
+    unregisterEvent<P extends EventPayload = EventPayload>(event: string, handler: (params: P) => Promise<void>): void
+    /** @throws {never} */
+    unregisterEvent(event: string, handler: (params: EventPayload) => Promise<void>): void {
+      return this.#kernel.runSync(components.unregisterEvent(event, handler))
+    }
+
+    /** @throws {never} */
+    getEvent(event: string): | (( params: EventPayloadMap[keyof EventPayloadMap] | EventPayload, ) => Promise<void>)[] | undefined {
+      return this.#kernel.runSync(components.getEvent(event))
+    }
+
+    /** @throws {never} */
+    emitEvent(event: string | string[], params: JsonValue | object) {
+      return this.#kernel.run(legacy(dispatch.emitEvent(event, params)))
+    }
+
+    /** @throws {never} */
+    reportError(scope: string, error: unknown, context?: Record<string, unknown>): void {
+      return this.#kernel.runSync(dispatch.reportError(scope, error, context))
+    }
+
+    /** @throws {never} */
+    getRecentReportedErrors(): ReportedError[] {
+      return this.#kernel.runSync(dispatch.getRecentReportedErrors())
+    }
+
+    /** @throws {unknown} */
+    registerTaskWorker(taskHandler: TaskWorker): void {
+      return this.#kernel.runSync(components.registerTaskWorker(taskHandler))
+    }
+
+    /** @throws {never} */
+    getTaskWorker(name: string): TaskWorker | undefined {
+      return this.#kernel.runSync(components.getTaskWorker(name))
+    }
+
+    /** @throws {never} */
+    unregisterTaskWorker(name: string): boolean {
+      return this.#kernel.runSync(components.unregisterTaskWorker(name))
+    }
+
+    /** @throws {unknown} */
+    get db(): object {
+      return this.adapter.db
+    }
+
+    /** @throws {never} */
+    init(): Promise<void> {
+      return this.#kernel.run(lifecycle.init())
+    }
+
+    /** @throws {never} */
+    close(): Promise<void> {
+      return this.#kernel.run(legacy(lifecycle.close()))
+    }
+
+    /** @throws {never} */
+    retainSharedAdapterRetirement(operation: () => Promise<void>): Promise<void> {
+      return this.#kernel.run(lifecycle.retainSharedAdapterRetirement(operation))
+    }
+
+    /** @throws {never} */
+    getAgent(agentId: UUID): Promise<Agent | null> {
+      return this.#kernel.run(legacy(store.getAgent(agentId)))
+    }
+
+    /** @throws {never} */
+    createAgent(agent: Partial<Agent>): Promise<boolean> {
+      return this.#kernel.run(legacy(store.createAgent(agent)))
+    }
+
+    /** @throws {never} */
+    updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean> {
+      return this.#kernel.run(legacy(store.updateAgent(agentId, agent)))
+    }
+
+    /** @throws {never} */
+    deleteAgent(agentId: UUID): Promise<boolean> {
+      return this.#kernel.run(legacy(store.deleteAgent(agentId)))
+    }
+
+    /** @throws {never} */
+    ensureAgentExists(agent: Partial<Agent>): Promise<Agent> {
+      return this.#kernel.run(legacy(store.ensureAgentExists(agent)))
+    }
+
+    /** @throws {never} */
+    getEntityById(entityId: UUID): Promise<Entity | null> {
+      return this.#kernel.run(legacy(store.getEntityById(entityId)))
+    }
+
+    /** @throws {never} */
+    getEntitiesForRoom(roomId: UUID, includeComponents?: boolean): Promise<Entity[]> {
+      return this.#kernel.run(legacy(store.getEntitiesForRoom(roomId, includeComponents)))
+    }
+
+    /** @throws {never} */
+    createEntity(entity: Entity): Promise<boolean> {
+      return this.#kernel.run(legacy(store.createEntity(entity)))
+    }
+
+    /** @throws {never} */
+    createEntities(entities: Entity[]): Promise<UUID[]> {
+      return this.#kernel.run(legacy(store.createEntities(entities)))
+    }
+
+    /** @throws {never} */
+    upsertEntities(entities: Entity[]): Promise<void> {
+      return this.#kernel.run(legacy(store.upsertEntities(entities)))
+    }
+
+    /** @throws {never} */
+    getComponents(entityId: UUID, worldId?: UUID, sourceEntityId?: UUID): Promise<Component[]> {
+      return this.#kernel.run(legacy(store.getComponents(entityId, worldId, sourceEntityId)))
+    }
+
+    /** @throws {never} */
+    getMemories(params: GetMemoriesParams): Promise<Memory[]> {
+      return this.#kernel.run(legacy(store.getMemories(params)))
+    }
+
+    /** @throws {never} */
+    getAllMemories(): Promise<Memory[]> {
+      return this.#kernel.run(legacy(store.getAllMemories()))
+    }
+
+    /** @throws {never} */
+    redactSecrets(text: string): string {
+      return this.#kernel.runSync(agentSettings.redactSecrets(text))
+    }
+
+    /** @throws {never} */
+    locateConfiguredSecretFragmentTaint(fragments: readonly SecretFragment[]): SecretFragmentTaintProfile {
+      return this.#kernel.runSync(agentSettings.locateConfiguredSecretFragmentTaint(fragments))
+    }
+
+    /** @throws {never} */
+    clearAllAgentMemories(): Promise<void> {
+      return this.#kernel.run(legacy(store.clearAllAgentMemories()))
+    }
+
+    /** @throws {never} */
+    deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void> {
+      return this.#kernel.run(legacy(store.deleteAllMemories(roomIds, tableName)))
+    }
+
+    /** @throws {never} */
+    countMemories(roomIdOrParams: | UUID | { roomId?: UUID; roomIds?: UUID[]; unique?: boolean; tableName?: string; entityId?: UUID; agentId?: UUID; metadata?: Record<string, unknown>; }, unique?: boolean, tableName?: string): Promise<number> {
+      return this.#kernel.run(legacy(store.countMemories(roomIdOrParams, unique, tableName)))
+    }
+
+    /** @throws {never} */
+    createWorld(world: World): Promise<UUID> {
+      return this.#kernel.run(legacy(store.createWorld(world)))
+    }
+
+    /** @throws {never} */
+    getWorld(id: UUID): Promise<World | null> {
+      return this.#kernel.run(legacy(store.getWorld(id)))
+    }
+
+    /** @throws {never} */
+    deleteWorld(worldId: UUID): Promise<void> {
+      return this.#kernel.run(legacy(store.deleteWorld(worldId)))
+    }
+
+    /** @throws {never} */
+    updateWorld(world: World): Promise<void> {
+      return this.#kernel.run(legacy(store.updateWorld(world)))
+    }
+
+    /** @throws {never} */
+    getRoom(roomId: UUID): Promise<Room | null> {
+      return this.#kernel.run(legacy(store.getRoom(roomId)))
+    }
+
+    /** @throws {never} */
+    createRoom(room: Room): Promise<UUID> {
+      return this.#kernel.run(legacy(store.createRoom(room)))
+    }
+
+    /** @throws {never} */
+    createRooms(rooms: Room[]): Promise<UUID[]> {
+      return this.#kernel.run(legacy(store.createRooms(rooms)))
+    }
+
+    /** @throws {never} */
+    upsertRooms(rooms: Room[]): Promise<void> {
+      return this.#kernel.run(legacy(store.upsertRooms(rooms)))
+    }
+
+    /** @throws {never} */
+    deleteRoomsByWorldId(worldId: UUID): Promise<void> {
+      return this.#kernel.run(legacy(store.deleteRoomsByWorldId(worldId)))
+    }
+
+    /** @throws {never} */
+    getRoomsForParticipant(entityId: UUID): Promise<UUID[]> {
+      return this.#kernel.run(legacy(store.getRoomsForParticipant(entityId)))
+    }
+
+    /** @throws {never} */
+    getRooms(worldId: UUID): Promise<Room[]> {
+      return this.#kernel.run(legacy(store.getRooms(worldId)))
+    }
+
+    /** @throws {never} */
+    getRoomsByWorld(worldId: UUID): Promise<Room[]> {
+      return this.#kernel.run(legacy(store.getRoomsByWorld(worldId)))
+    }
+
+    /** @throws {never} */
+    getParticipantUserState(roomId: UUID, entityId: UUID): Promise<"FOLLOWED" | "MUTED" | null> {
+      return this.#kernel.run(legacy(store.getParticipantUserState(roomId, entityId)))
+    }
+
+    /** @throws {never} */
+    updateParticipantUserState(roomId: UUID, entityId: UUID, state: "FOLLOWED" | "MUTED" | null): Promise<void> {
+      return this.#kernel.run(legacy(store.updateParticipantUserState(roomId, entityId, state)))
+    }
+
+    /** @throws {never} */
+    getRelationships(params: { entityIds?: UUID[]; entityId?: UUID; tags?: string[]; limit?: number; offset?: number; }): Promise<Relationship[]> {
+      return this.#kernel.run(legacy(store.getRelationships(params)))
+    }
+
+    /** @throws {never} */
+    getTasks(params: { roomId?: UUID; worldId?: UUID; tags?: string[]; entityId?: UUID; limit?: number; offset?: number; }): Promise<Task[]> {
+      return this.#kernel.run(legacy(store.getTasks(params), RangeError))
+    }
+
+    /** @throws {never} */
+    createTask(task: Task): Promise<UUID> {
+      return this.#kernel.run(legacy(store.createTask(task)))
+    }
+
+    /** @throws {never} */
+    getTask(id: UUID): Promise<Task | null> {
+      return this.#kernel.run(legacy(store.getTask(id)))
+    }
+
+    /** @throws {never} */
+    updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean> {
+      return this.#kernel.run(legacy(store.updatePendingTask(id, task)))
+    }
+
+    /** @throws {never} */
+    patchTaskMetadata(id: UUID, patch: TaskMetadataPatch): Promise<TaskMetadataPatchOutcome> {
+      return this.#kernel.run(legacy(store.patchTaskMetadata(id, patch)))
+    }
+
+    /** @throws {never} */
+    updateTask(id: UUID, task: Partial<Task>): Promise<void> {
+      return this.#kernel.run(legacy(store.updateTask(id, task)))
+    }
+
+    /** @throws {never} */
+    deleteTask(id: UUID): Promise<void> {
+      return this.#kernel.run(legacy(store.deleteTask(id)))
+    }
+
+    /** @throws {never} */
+    log(params: { body: LogBody; entityId: UUID; roomId: UUID; type: string; }): Promise<void> {
+      return this.#kernel.run(legacy(store.log(params)))
+    }
+
+    /** @throws {never} */
+    deleteLog(logId: UUID): Promise<void> {
+      return this.#kernel.run(legacy(store.deleteLog(logId)))
+    }
+
+    /** @throws {never} */
+    getCache<T>(key: string): Promise<T | undefined> {
+      return this.#kernel.run(legacy(store.getCache<T>(key)))
+    }
+
+    /** @throws {never} */
+    setCache<T>(key: string, value: T): Promise<boolean> {
+      return this.#kernel.run(legacy(store.setCache<T>(key, value)))
+    }
+
+    /** @throws {never} */
+    deleteCache(key: string): Promise<boolean> {
+      return this.#kernel.run(legacy(store.deleteCache(key)))
+    }
+
+    /** @throws {never} */
+    createTasks(tasks: Task[]): Promise<UUID[]> {
+      return this.#kernel.run(legacy(store.createTasks(tasks)))
+    }
+
+    /** @throws {never} */
+    updateTasks(updates: Array<{ id: UUID; task: Partial<Task> }>): Promise<void> {
+      return this.#kernel.run(legacy(store.updateTasks(updates)))
+    }
+
+    /** @throws {never} */
+    deleteTasks(taskIds: UUID[]): Promise<void> {
+      return this.#kernel.run(legacy(store.deleteTasks(taskIds)))
+    }
+
+    /** @throws {never} */
+    queryEntities(params: { componentType?: string; componentDataFilter?: Record<string, unknown>; agentId?: UUID; entityIds?: UUID[]; worldId?: UUID; limit?: number; offset?: number; includeAllComponents?: boolean; entityContext?: UUID; }): Promise<Entity[]> {
+      return this.#kernel.run(legacy(store.queryEntities(params), RangeError))
+    }
+
+    /** @throws {never} */
+    searchEntitiesByName(params: { query: string; agentId?: UUID; limit?: number; }): Promise<Entity[]> {
+      return this.#kernel.run(legacy(store.searchEntitiesByName(params)))
+    }
+
+    /** @throws {never} */
+    getEntitiesByNames(params: { names: string[]; agentId?: UUID; }): Promise<Entity[]> {
+      return this.#kernel.run(legacy(store.getEntitiesByNames(params)))
+    }
+
+    /** @throws {never} */
+    getComponent(entityId: UUID, type: string, worldId?: UUID, sourceEntityId?: UUID): Promise<Component | null> {
+      return this.#kernel.run(legacy(store.getComponent(entityId, type, worldId, sourceEntityId)))
+    }
+
+    /** @throws {never} */
+    getComponentsByType(type: string, agentId?: UUID, options?: { entityContext?: UUID }): Promise<Component[]> {
+      return this.#kernel.run(legacy(store.getComponentsByType(type, agentId, options)))
+    }
+
+    /** @throws {never} */
+    getRelationship(params: { sourceEntityId: UUID; targetEntityId: UUID; }): Promise<Relationship | null> {
+      return this.#kernel.run(legacy(store.getRelationship(params)))
+    }
+
+    /** @throws {never} */
+    getMemoryById(id: UUID): Promise<Memory | null> {
+      return this.#kernel.run(legacy(store.getMemoryById(id)))
+    }
+
+    /** @throws {never} */
+    on(event: string, callback: (data: EventPayload) => void): void {
+      return this.#kernel.runSync(dispatch.on(event, callback))
+    }
+
+    /** @throws {never} */
+    off(event: string, callback: (data: EventPayload) => void): void {
+      return this.#kernel.runSync(dispatch.off(event, callback))
+    }
+
+    /** @throws {unknown} */
+    emit(event: string, data: EventPayload): void {
+      return this.#kernel.runSync(legacy(dispatch.emit(event, data)))
+    }
+
+    /** @throws {never} */
+    sendControlMessage(params: { roomId: UUID; action: "enable_input" | "disable_input"; target?: string; }): Promise<void> {
+      return this.#kernel.run(legacy(dispatch.sendControlMessage(params)))
+    }
+
+    /** @throws {unknown} */
+    registerSearchCategory(registration: SearchCategoryRegistration): void {
+      return this.#kernel.runSync(legacy(components.registerSearchCategory(registration)))
+    }
+
+    /** @throws {never} */
+    getSearchCategories(options: SearchCategoryEnumerationOptions = {}): SearchCategoryRegistration[] {
+      return this.#kernel.runSync(components.getSearchCategories(options))
+    }
+
+    /** @throws {unknown} */
+    getSearchCategory(category: string, options: SearchCategoryLookupOptions = {}): SearchCategoryRegistration {
+      return this.#kernel.runSync(legacy(components.getSearchCategory(category, options)))
+    }
+
+    /** @throws {never} */
+    runMigrations(migrationsPaths?: string[]): Promise<void> {
+      return this.#kernel.run(lifecycle.runMigrations(migrationsPaths))
+    }
+
+    /** @throws {never} */
+    isReady(): Promise<boolean> {
+      return this.#kernel.run(legacy(lifecycle.isReady()))
+    }
+
+    /** @throws {never} */
+    getPairingRequestsForChannel(channel: PairingChannel, agentId: UUID): Promise<PairingRequest[]> {
+      return this.#kernel.run(legacy(store.getPairingRequestsForChannel(channel, agentId)))
+    }
+
+    /** @throws {never} */
+    getPairingAllowlistForChannel(channel: PairingChannel, agentId: UUID): Promise<PairingAllowlistEntry[]> {
+      return this.#kernel.run(legacy(store.getPairingAllowlistForChannel(channel, agentId)))
+    }
+
+    /** @throws {never} */
+    createPairingRequest(request: PairingRequest): Promise<UUID> {
+      return this.#kernel.run(legacy(store.createPairingRequest(request)))
+    }
+
+    /** @throws {never} */
+    updatePairingRequest(request: PairingRequest): Promise<void> {
+      return this.#kernel.run(legacy(store.updatePairingRequest(request)))
+    }
+
+    /** @throws {never} */
+    deletePairingRequest(id: UUID): Promise<void> {
+      return this.#kernel.run(legacy(store.deletePairingRequest(id)))
+    }
+
+    /** @throws {never} */
+    createPairingAllowlistEntry(entry: PairingAllowlistEntry): Promise<UUID> {
+      return this.#kernel.run(legacy(store.createPairingAllowlistEntry(entry)))
+    }
+
+    /** @throws {never} */
+    deletePairingAllowlistEntry(id: UUID): Promise<void> {
+      return this.#kernel.run(legacy(store.deletePairingAllowlistEntry(id)))
+    }
+
+    /** @throws {never} */
+    listConnectorAccounts(params: ListConnectorAccountsParams = {}): Promise<ConnectorAccountRecord[]> {
+      return this.#kernel.run(legacy(store.listConnectorAccounts(params)))
+    }
+
+    /** @throws {never} */
+    getConnectorAccount(params: GetConnectorAccountParams): Promise<ConnectorAccountRecord | null> {
+      return this.#kernel.run(legacy(store.getConnectorAccount(params)))
+    }
+
+    /** @throws {never} */
+    deleteConnectorAccount(params: DeleteConnectorAccountParams): Promise<boolean> {
+      return this.#kernel.run(legacy(store.deleteConnectorAccount(params)))
+    }
+
+    /** @throws {never} */
+    installRemotePlugin(_plugin: Plugin, _options?: RemotePluginInstallOptions): Promise<RemotePluginInstanceHandle> {
+      return this.#kernel.run(legacy(lifecycle.installRemotePlugin(_plugin, _options)))
+    }
+  }
+}
+import { AgentRuntime } from edge
+export { AgentRuntime }

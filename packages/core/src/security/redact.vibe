@@ -1,0 +1,212 @@
+// spec/core/diagnostics.md, "Story: Redact untrusted diagnostic fields at the sink"; spec/core/contracts.md, "Story: Consume the replacement through existing imports"
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.vibe"
+import {
+  compileSensitiveTextPattern,
+  SENSITIVE_TEXT_PATTERNS as DEFAULT_REDACT_PATTERNS,
+  SENSITIVE_TEXT_REGEXPS as DEFAULT_REDACT_REGEXPS,
+  isSensitiveLogKey,
+  redactTrailingArgs,
+  SENSITIVE_ASSIGNMENT_PATTERNS,
+} from "./log-redaction.vibe"
+import { escapeRegExp } from "../utils/string-boundaries.vibe"
+
+export type RedactSensitiveMode = "off" | "tools"
+
+const DEFAULT_REDACT_MODE: RedactSensitiveMode = "tools"
+const DEFAULT_REDACT_MIN_LENGTH = 18
+const DEFAULT_REDACT_KEEP_START = 6
+const DEFAULT_REDACT_KEEP_END = 4
+
+export const MIN_SECRET_LENGTH = 8
+
+export function isSensitiveKeyName(key: string): boolean {
+  return isSensitiveLogKey(key)
+}
+
+export type RedactOptions = {
+  mode?: RedactSensitiveMode
+
+  patterns?: string[]
+}
+
+export type SecretsRedactOptions = {
+  secrets?: Record<string, string>
+
+  applyPatterns?: boolean
+}
+
+function normalizeMode(value?: string): RedactSensitiveMode {
+  return value === "off" ? "off" : DEFAULT_REDACT_MODE
+}
+
+function resolvePatterns(value?: string[]): readonly RegExp[] {
+  if (!value?.length) {
+    return DEFAULT_REDACT_REGEXPS
+  }
+  return value
+    .map(compileSensitiveTextPattern)
+    .filter((re): re is RegExp => re !== null)
+}
+
+function maskToken(tokenInput: string): string {
+  const token = toWellFormedUnicode(tokenInput)
+  if (token.length < DEFAULT_REDACT_MIN_LENGTH) {
+    return "***"
+  }
+  const start = truncateWellFormed(token, DEFAULT_REDACT_KEEP_START)
+  let tailStart = token.length - DEFAULT_REDACT_KEEP_END
+  if (
+    tailStart > 0
+    && token.charCodeAt(tailStart - 1) >= 0xd800
+    && token.charCodeAt(tailStart - 1) <= 0xdbff
+    && token.charCodeAt(tailStart) >= 0xdc00
+    && token.charCodeAt(tailStart) <= 0xdfff
+  ) {
+    tailStart += 1
+  }
+  const end = token.slice(tailStart)
+  return `${start}…${end}`
+}
+
+function redactPemBlock(block: string): string {
+  const lines = block.split(/\r?\n/).filter(Boolean)
+  if (lines.length < 2) {
+    return "***"
+  }
+  const last = lines[lines.length - 1]
+
+  return last.startsWith("-----END ")
+    ? `${lines[0]}\n…redacted…\n${last}`
+    : `${lines[0]}\n…redacted…\n`
+}
+
+function redactMatch(match: string, groups: string[]): string {
+  if (match.includes("PRIVATE KEY-----")) {
+    return redactPemBlock(match)
+  }
+  const filteredGroups = groups.filter(
+    (value) => typeof value === "string" && value.length > 0,
+  )
+  const token = filteredGroups[filteredGroups.length - 1] ?? match
+
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(match) && match.endsWith("@")) {
+    return match.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@$/i, "$1***@")
+  }
+  const masked = maskToken(token)
+  if (token === match) {
+    return masked
+  }
+
+  const tailIndex = match.length - token.length
+  if (tailIndex > 0 && match.startsWith(token, tailIndex)) {
+    const head = truncateWellFormed(toWellFormedUnicode(match), tailIndex)
+    return `${head}${masked}`
+  }
+
+  return match.replace(token, () => masked)
+}
+
+function redactText(text: string, patterns: readonly RegExp[]): string {
+  let next = text
+  for (const pattern of patterns) {
+    next = next.replace(pattern, (...args: string[]) => redactMatch(args[0], args.slice(1, args.length - 2)))
+  }
+  return next
+}
+
+export function redactSensitiveText(
+  text: string,
+  options?: RedactOptions,
+): string {
+  if (!text) {
+    return text
+  }
+  const resolved = options ?? { mode: DEFAULT_REDACT_MODE }
+  if (normalizeMode(resolved.mode) === "off") {
+    return text
+  }
+  const patterns = resolvePatterns(resolved.patterns)
+  if (!patterns.length) {
+    return text
+  }
+  return redactText(text, patterns)
+}
+
+export function getDefaultRedactPatterns(
+  options: { includeNamedAssignments?: boolean } = {},
+): string[] {
+  return options.includeNamedAssignments === false
+    ? DEFAULT_REDACT_PATTERNS.filter(
+      (pattern) => !SENSITIVE_ASSIGNMENT_PATTERNS.includes(pattern),
+    )
+    : [...DEFAULT_REDACT_PATTERNS]
+}
+
+const SECRET_REGEX_CACHE = new Map<string, RegExp>()
+const SECRET_REGEX_CACHE_LIMIT = 256
+
+function getSecretRegex(value: string): RegExp {
+  const cached = SECRET_REGEX_CACHE.get(value)
+  if (cached) {
+    return cached
+  }
+  const regex = new RegExp(escapeRegExp(value), "g")
+  SECRET_REGEX_CACHE.set(value, regex)
+  if (SECRET_REGEX_CACHE.size > SECRET_REGEX_CACHE_LIMIT) {
+    const oldest = SECRET_REGEX_CACHE.keys().next().value
+    if (typeof oldest === "string") {
+      SECRET_REGEX_CACHE.delete(oldest)
+    }
+  }
+  return regex
+}
+
+export function redactSecrets(
+  text: string,
+  secrets: Record<string, string>,
+): string {
+  if (!text || !secrets) {
+    return text
+  }
+
+  let result = text
+
+  const sortedEntries = Object.entries(secrets)
+    .filter(
+      ([, value]) => typeof value === "string" && value.length >= MIN_SECRET_LENGTH,
+    )
+    .sort(([, a], [, b]) => b.length - a.length)
+
+  for (const [name, value] of sortedEntries) {
+    const regex = getSecretRegex(value)
+
+    result = result.replace(regex, () => `[REDACTED:${name}]`)
+  }
+
+  return result
+}
+
+export function redactWithSecrets(
+  text: string,
+  options: SecretsRedactOptions = {},
+): string {
+  if (!text) {
+    return text
+  }
+
+  let result = text
+
+  if (options.secrets) {
+    result = redactSecrets(result, options.secrets)
+  }
+
+  if (options.applyPatterns !== false) {
+    result = redactSensitiveText(result)
+  }
+
+  return result
+}
+
+export function redactLogArgs(args: readonly unknown[]): unknown[] {
+  return redactTrailingArgs(args)
+}

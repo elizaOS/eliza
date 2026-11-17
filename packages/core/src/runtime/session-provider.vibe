@@ -1,0 +1,191 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { runDetached } from "../edge.vibe"
+import type { Provider, ProviderResult } from "../types/components.vibe"
+import type { AgentContext } from "../types/contexts.vibe"
+import type { Memory, MemoryMetadata } from "../types/memory.vibe"
+import type { SessionEntry } from "../types/session.vibe"
+
+interface SessionContext {
+  sessionId?: string
+  sessionKey?: string
+  entry?: SessionEntry
+}
+
+interface SessionProviderOptions {
+  storePath?: string
+  name?: string
+}
+
+export function extractSessionContext(memory: Memory): SessionContext | null {
+  const directSessionId = memory.sessionId || undefined
+  const directSessionKey = memory.sessionKey || undefined
+
+  const metadata = memory.metadata as
+    | (MemoryMetadata & Record<string, unknown>)
+    | undefined
+  const metaSessionId = metadata?.sessionId as string | undefined
+  const metaSessionKey = metadata?.sessionKey as string | undefined
+  const metaSession = metadata?.session as SessionEntry | undefined
+
+  const sessionId = directSessionId ?? metaSessionId ?? metaSession?.sessionId
+  const sessionKey = directSessionKey ?? metaSessionKey
+
+  if (!sessionId && !sessionKey) {
+    return null
+  }
+
+  return {
+    sessionId,
+    sessionKey,
+    entry: metaSession,
+  }
+}
+
+function turnSessionProvider(
+  identity: Pick<Provider, "name" | "description" | "position">,
+  contexts: AgentContext[],
+  respond: (context: SessionContext | null) => ProviderResult,
+): Provider {
+  return {
+    ...identity,
+    dynamic: true,
+    contexts,
+    contextGate: { anyOf: [...contexts] },
+    cacheStable: false,
+    cacheScope: "turn",
+    roleGate: { minRole: "USER" },
+    get: (_runtime, message) => runDetached(sync(() => respond(extractSessionContext(message)))),
+  }
+}
+
+function describeSession(context: SessionContext): ProviderResult {
+  const entry = context.entry
+  const lines = [`Session ID: ${context.sessionId ?? "unknown"}`]
+
+  if (context.sessionKey) {
+    lines.push(`Session Key: ${context.sessionKey}`)
+  }
+
+  if (entry) {
+    if (entry.label) {
+      lines.push(`Label: ${entry.label}`)
+    }
+    if (entry.chatType) {
+      lines.push(`Chat Type: ${entry.chatType}`)
+    }
+    if (entry.channel) {
+      lines.push(`Channel: ${entry.channel}`)
+    }
+    if (entry.modelOverride) {
+      lines.push(`Model Override: ${entry.modelOverride}`)
+    }
+    if (entry.thinkingLevel) {
+      lines.push(`Thinking Level: ${entry.thinkingLevel}`)
+    }
+    if (entry.sendPolicy === "deny") {
+      lines.push(
+        "",
+        "⚠️ SEND POLICY: DENY - Do not send messages externally.",
+      )
+    }
+    if (entry.totalTokens) {
+      lines.push(`Total Tokens Used: ${entry.totalTokens}`)
+    }
+  }
+
+  return {
+    text: lines.join("\n"),
+    values: {
+      sessionId: context.sessionId,
+      sessionKey: context.sessionKey,
+      hasSession: true,
+    },
+    data: {
+      hasSession: true,
+      sessionId: context.sessionId,
+      sessionKey: context.sessionKey,
+      entry: entry as SessionEntry & Record<string, unknown>,
+    },
+  }
+}
+
+export function createSessionProvider(options?: SessionProviderOptions): Provider {
+  return turnSessionProvider(
+    { name: options?.name ?? "session", description: "Current session context and state" },
+    ["general", "messaging"],
+    (context) => context ? describeSession(context) : { text: "", data: { hasSession: false } },
+  )
+}
+
+function describeSessionSkills(context: SessionContext): ProviderResult {
+  const snapshot = context.entry?.skillsSnapshot
+  if (!snapshot?.skills.length) {
+    return {
+      text: "",
+      data: { hasSkills: false, skills: [] },
+    }
+  }
+
+  const skillNames = snapshot.skills.map((s) => s.name)
+  return {
+    text: [`Active Skills: ${skillNames.join(", ")}`, "", snapshot.prompt].join("\n"),
+    values: {
+      skillCount: skillNames.length,
+      skillNames,
+    },
+    data: {
+      hasSkills: true,
+      skills: snapshot.skills,
+      prompt: snapshot.prompt,
+    },
+  }
+}
+
+export function createSessionSkillsProvider(options?: SessionProviderOptions): Provider {
+  return turnSessionProvider(
+    { name: options?.name ?? "sessionSkills", description: "Skills active in the current session" },
+    ["general", "agent_internal"],
+    (context) => context ? describeSessionSkills(context) : { text: "", data: { hasSkills: false } },
+  )
+}
+
+function describeSendPolicy(context: SessionContext | null): ProviderResult {
+  if (context?.entry?.sendPolicy === "deny") {
+    return {
+      text: [
+        "🚫 SEND POLICY: DENY",
+        "",
+        "This session has sending DISABLED.",
+        "Do NOT send messages to external channels.",
+        "Do NOT use send/reply actions.",
+        "You may still process and respond internally.",
+      ].join("\n"),
+      values: { sendPolicy: "deny", canSend: false },
+      data: { sendPolicy: "deny", canSend: false },
+    }
+  }
+  if (!context) {
+    return { text: "", data: { sendPolicy: "allow" } }
+  }
+  return {
+    text: "",
+    values: { sendPolicy: "allow", canSend: true },
+    data: { sendPolicy: "allow", canSend: true },
+  }
+}
+
+export function createSendPolicyProvider(options?: SessionProviderOptions): Provider {
+  return turnSessionProvider(
+    { name: options?.name ?? "sendPolicy", description: "Session send policy enforcement", position: 100 },
+    ["general", "messaging"],
+    describeSendPolicy,
+  )
+}
+
+export function getSessionProviders(options?: Pick<SessionProviderOptions, "storePath">): Provider[] {
+  return [
+    createSessionProvider(options),
+    createSessionSkillsProvider(options),
+    createSendPolicyProvider(options),
+  ]
+}

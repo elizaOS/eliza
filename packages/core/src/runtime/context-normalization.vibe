@@ -1,0 +1,75 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import type { AgentContext, FirstPartyAgentContext } from "../types/contexts.vibe"
+
+export const FIRST_PARTY_CONTEXT_IDS = [
+  "simple",
+  "general",
+  "memory",
+  "documents",
+  "knowledge",
+  "research",
+  "web",
+  "browser",
+  "code",
+  "files",
+  "terminal",
+  "email",
+  "calendar",
+  "contacts",
+  "tasks",
+  "goals",
+  "todos",
+  "productivity",
+  "health",
+  "screen_time",
+  "subscriptions",
+  "finance",
+  "payments",
+  "wallet",
+  "crypto",
+  "messaging",
+  "phone",
+  "social",
+  "social_posting",
+  "media",
+  "automation",
+  "connectors",
+  "settings",
+  "character",
+  "secrets",
+  "admin",
+  "system",
+  "state",
+  "world",
+  "game",
+  "agent_internal",
+] as const satisfies readonly FirstPartyAgentContext[]
+
+export const CONTEXT_ALIASES: Readonly<
+  Record<string, readonly AgentContext[]>
+> = Object.freeze({
+  money: ["finance", "wallet", "crypto"],
+  balance: ["finance", "wallet", "crypto"],
+  balances: ["finance", "wallet", "crypto"],
+  portfolio: ["finance", "wallet", "crypto"],
+  web3: ["crypto", "wallet", "finance"],
+  defi: ["crypto", "wallet", "finance"],
+})
+
+export function normalizeContextId(context: string): AgentContext {
+  return context
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_") as AgentContext
+}
+
+export function expandContextAliases(context: AgentContext): AgentContext[] {
+  const normalized = normalizeContextId(context)
+  return Object.hasOwn(CONTEXT_ALIASES, normalized) ? [...CONTEXT_ALIASES[normalized]] : [normalized]
+}
+
+export function normalizeContextList(
+  contexts: readonly AgentContext[] | undefined,
+): AgentContext[] {
+  return [...new Set(contexts?.flatMap(expandContextAliases))]
+}

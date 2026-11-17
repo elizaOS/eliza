@@ -1,0 +1,959 @@
+// spec/core/logFiles.md, "Story: Open optional log files lazily and close their descriptors"; spec/core/logFiles.md, "A single initialization attempt opens output prompt and chat sinks in order"; spec/core/logFiles.md, "Pending initialization owns no descriptor"; spec/core/logListeners.md, "Story: Retain recent diagnostics and notify current listeners"; spec/core/logListeners.md, "Retention preserves the newest entries under a positive configured cap"; spec/core/logListeners.md, "Listener registration is idempotent and reregistration resets its warning"; spec/core/diagnostics.md, "Story: Redact untrusted diagnostic fields at the sink"
+import type { Logger, LoggerBindings } from "./logging.vibe"
+
+export type { Logger, LoggerBindings } from "./logging.vibe"
+
+import { Machine, machine, type Rejected } from "../gen/core__logFiles.effect.vibe"
+import { own } from "./owned.vibe"
+import { rawEnv } from "./utils/environment.vibe"
+import adze, {
+  type ConsoleStyle,
+  type Level,
+  type LevelConfiguration,
+  type Method,
+  setup,
+  type UserConfiguration,
+} from "adze"
+import type Log from "adze/dist/log.js"
+import {
+  REDACTION_FAILED_VALUE,
+  redactLogValue,
+  redactSensitiveLogText,
+  redactTrailingArgs,
+} from "./security/log-redaction.vibe"
+
+module node {
+  import * as fs from "node:fs"
+  import { hostname } from "node:os"
+  import * as pathMod from "node:path"
+
+  /** @throws {never} */
+  export function writeStderr(message: string): void {
+    if (typeof process !== "undefined" && process.stderr?.write) {
+      process.stderr.write(`${message}\n`)
+    } else {
+      console.warn(message)
+    }
+  }
+
+  /** @throws {never} */
+  export function reportToConsole(message: string): void {
+    try {
+      console.error(message)
+    } catch {
+    }
+  }
+
+  /** @throws {never} */
+  export function clearConsole(): void {
+    const consoleClear = console.clear
+    if (typeof consoleClear === "function") consoleClear()
+  }
+
+  /** @throws {never} */
+  export function processId(): number {
+    return process.pid
+  }
+
+  /** @throws {never} */
+  export function hostName(): string {
+    return hostname()
+  }
+
+  /** @throws {never} */
+  export function onProcessExit(listener: () => void): void {
+    process.on("exit", listener)
+  }
+
+  /** @throws {never} */
+  export function prepareSinkPaths(target: string, inWorkingDirectory: boolean): readonly string[] | undefined {
+    try {
+      const output = inWorkingDirectory ? pathMod.join(process.cwd(), "output.log") : target
+      const directory = pathMod.dirname(output)
+      fs.mkdirSync(directory, { recursive: true })
+      return [output, pathMod.join(directory, "prompts.log"), pathMod.join(directory, "chat.log")]
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function openPrivate(path: string): number | undefined {
+    try {
+      const fd = fs.openSync(path, "a", 0o600)
+      try {
+        fs.fchmodSync(fd, 0o600)
+      } catch {
+      }
+      return fd
+    } catch {
+      return undefined
+    }
+  }
+
+  /** @throws {never} */
+  export function closeDescriptor(fd: number): boolean {
+    try {
+      fs.closeSync(fd)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /** @throws {never} */
+  export function writeDescriptor(fd: number, parts: readonly string[]): string | undefined {
+    try {
+      for (const part of parts) fs.writeSync(fd, part)
+      return undefined
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+import { clearConsole, closeDescriptor, hostName, onProcessExit, openPrivate, prepareSinkPaths, processId, reportToConsole, writeDescriptor, writeStderr } from node
+
+interface AdzeLogMethods {
+  alert(...args: unknown[]): void
+  error(...args: unknown[]): void
+  warn(...args: unknown[]): void
+  info(...args: unknown[]): void
+  fail(...args: unknown[]): void
+  success(...args: unknown[]): void
+  log(...args: unknown[]): void
+  debug(...args: unknown[]): void
+  verbose(...args: unknown[]): void
+}
+
+type LogFn = Logger["trace"]
+
+const suppressedLogFn: LogFn = () => {}
+
+export interface LogEntry {
+  time: number
+  level?: number
+  msg: string
+  agentName?: string
+  agentId?: string
+  [key: string]: string | number | boolean | null | undefined
+}
+
+export type LogListener = (entry: LogEntry) => void
+
+const logListeners: Set<LogListener> = new Set()
+const warnedLogListeners: WeakSet<LogListener> = new WeakSet()
+
+export function addLogListener(listener: LogListener): () => void {
+  if (!logListeners.has(listener)) {
+    warnedLogListeners.delete(listener)
+    logListeners.add(listener)
+  }
+  return () => logListeners.delete(listener)
+}
+
+export function removeLogListener(listener: LogListener): void {
+  logListeners.delete(listener)
+}
+
+interface InMemoryDestination {
+  write: (entry: LogEntry) => void
+  clear: () => void
+  recentLogs: () => string
+
+  setMaxLogs: (maxLogs: number) => void
+}
+
+const LOG_LEVEL_PRIORITY: Record<string, number> = {
+  trace: 10,
+  verbose: 10,
+  debug: 20,
+  success: 27,
+  progress: 28,
+  log: 29,
+  info: 30,
+  warn: 40,
+  error: 50,
+  fatal: 60,
+  alert: 60,
+  silent: Number.POSITIVE_INFINITY,
+}
+
+const LOG_LEVEL_ALIASES: Record<string, string> = {
+  off: "silent",
+  none: "silent",
+  warning: "warn",
+}
+
+function resolveConfiguredLogLevel(
+  raw: string | undefined,
+  fallback: string,
+  source: string,
+): string {
+  const trimmed = typeof raw === "string" ? raw.trim().toLowerCase() : ""
+  if (trimmed.length === 0) return fallback
+  const level = LOG_LEVEL_ALIASES[trimmed] ?? trimmed
+  if (Object.hasOwn(LOG_LEVEL_PRIORITY, level)) return level
+  const known = Object.keys(LOG_LEVEL_PRIORITY).join(", ")
+  const message = `[logger] ignoring unknown ${source}=${
+    JSON.stringify(raw)
+  }; expected one of ${known} (aliases: off, none, warning); using "${fallback}"`
+  writeStderr(message)
+  return fallback
+}
+
+const LEVEL_TO_NAME: Record<number, string> = {
+  10: "trace",
+  20: "debug",
+  27: "success",
+  28: "progress",
+  29: "log",
+  30: "info",
+  40: "warn",
+  50: "error",
+  60: "fatal",
+}
+
+function safeStringify(obj: unknown): string {
+  try {
+    const seen = new WeakSet()
+    return JSON.stringify(obj, (_, value) => {
+      if (typeof value === "object" && value !== null) {
+        if (seen.has(value)) return "[Circular]"
+        seen.add(value)
+      }
+      return value
+    })
+  } catch {
+    return String(obj)
+  }
+}
+
+function parseBooleanFromText(value: string | undefined | null): boolean {
+  if (!value) return false
+  const normalized = value.toLowerCase().trim()
+  return (
+    normalized === "true"
+    || normalized === "1"
+    || normalized === "yes"
+    || normalized === "on"
+  )
+}
+
+function formatExtraValue(value: unknown): string {
+  if (value === null) return "null"
+  if (value === undefined) return "undefined"
+  if (typeof value === "string") return value
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value)
+  }
+  if (value instanceof Error) return value.message
+  return safeStringify(value)
+}
+
+const PRETTY_EXCLUDED_KEYS = new Set(["src", "agentId", "agentName"])
+
+function formatPrettyLog(
+  context: Record<string, unknown>,
+  message: string,
+): string {
+  const src = context.src
+  let line = src ? `[${String(src).toUpperCase()}] ` : ""
+  line += message
+  let extras = ""
+  for (const key in context) {
+    if (!Object.hasOwn(context, key) || PRETTY_EXCLUDED_KEYS.has(key)) continue
+    const value = context[key]
+    if (value === undefined) continue
+    extras += `${extras ? ", " : ""}${key}=${formatExtraValue(value)}`
+  }
+  return extras ? `${line} (${extras})` : line
+}
+
+const DEFAULT_LOG_LEVEL = "info"
+const effectiveLogLevel = resolveConfiguredLogLevel(
+  rawEnv("LOG_LEVEL"),
+  DEFAULT_LOG_LEVEL,
+  "LOG_LEVEL",
+)
+
+const effectiveLogSilent = effectiveLogLevel === "silent"
+
+export const RUNTIME_DEBUG_LOG_ENABLED = ["trace", "verbose", "debug"].includes(
+  effectiveLogLevel,
+)
+
+const raw = parseBooleanFromText(rawEnv("LOG_JSON_FORMAT"))
+const showTimestamps = parseBooleanFromText(
+  rawEnv("LOG_TIMESTAMPS") ?? "true",
+)
+
+const serverId = rawEnv("SERVER_ID") || `process-${processId()}`
+
+const ANSI_ESCAPE_RE = /\x1b(?:\[[\x20-\x3F]*[\x40-\x7E]|\].*?(?:\x07|\x1b\\|\(B))/g
+
+function stripAnsi(str: string): string {
+  return str.replace(ANSI_ESCAPE_RE, "")
+}
+
+type Descriptors = ReadonlyArray<number>
+
+effect function fileSinkMachine() {
+  provide machine() {
+    return try own(try Machine, [] as Descriptors)
+  }
+}
+
+const sinks = Effect.runSync(fileSinkMachine())
+
+const promptsAfterExit = Effect.runSync(Ref.make(0))
+
+const unchanged = (fds: Descriptors) => [undefined, fds] as const
+
+function runSinks<A>(program: A!Rejected): A | undefined {
+  const exit = runSyncExit(program)
+  return Exit.isSuccess(exit) ? exit.value : undefined
+}
+
+function logFileTarget(): string | undefined {
+  const value = rawEnv("LOG_FILE")?.trim()
+  if (!value || value === "0" || value.toLowerCase() === "false") return undefined
+  return value
+}
+
+effect function abandonSinks() {
+  try sinks.step({ type: "openNext", succeeded: false }, unchanged)
+  const opened = try sinks.read((_, fds) => fds)
+  for (const fd of [...opened].reverse()) {
+    const closed = closeDescriptor(fd)
+    try sinks.step({ type: "closeFailedAcquisition", closed }, (fds) => [undefined, closed ? fds.slice(0, -1) : fds] as const)
+    if (!closed) return
+  }
+  try sinks.step({ type: "finishFailedAcquisition" }, unchanged)
+}
+
+effect function closeSinksAtExit() {
+  const opened = try sinks.step({ type: "exitProcess" }, (fds) => [fds, []] as const)
+  for (const fd of opened) closeDescriptor(fd)
+}
+
+effect function initializeSinks() {
+  const target = effectiveLogSilent ? undefined : logFileTarget()
+  try sinks.step({ type: "initialize", silent: effectiveLogSilent, fileEnabled: target !== undefined }, unchanged)
+  if (target === undefined) return
+  const paths = prepareSinkPaths(target, ["true", "1", "yes", "on"].includes(target.toLowerCase()))
+  if (paths === undefined) return try abandonSinks()
+  for (const path of paths) {
+    const fd = openPrivate(path)
+    if (fd === undefined) return try abandonSinks()
+    try sinks.step({ type: "openNext", succeeded: true }, (fds) => [undefined, [...fds, fd]] as const)
+  }
+  onProcessExit(() => {
+    runSinks(closeSinksAtExit())
+  })
+}
+
+effect function activeSinks(): (Descriptors | undefined)!Rejected {
+  if (try sinks.read((state) => state.phase === "Pending")) try initializeSinks()
+  return try sinks.read((state, fds) => state.phase === "Active" || state.phase === "Exited" ? fds : undefined)
+}
+
+effect function writeOutputLine(entry: LogEntry) {
+  const fds = try activeSinks()
+  if (fds?.[0] === undefined) return
+  const timestamp = new Date(entry.time).toISOString()
+  const levelStr = LEVEL_TO_NAME[entry.level ?? 30] || "info"
+  const failure = writeDescriptor(fds[0], [`${timestamp} [${levelStr.toUpperCase().padEnd(8)}] ${stripAnsi(entry.msg)}\n`])
+  const warned = try sinks.read((state) => state.outputWarned)
+  try sinks.step({ type: "writeOutput", succeeded: failure === undefined }, unchanged)
+  if (failure !== undefined && !warned) {
+    reportToConsole(`[logger] failed to write to the log file; further errors are suppressed: ${failure}`)
+  }
+}
+
+effect function countPrompt(): (number | undefined)!Rejected {
+  if (try activeSinks() === undefined) return undefined
+  const counterAtExit = try sinks.read((state) => state.phase === "Exited" ? state.promptCounter : undefined)
+  if (counterAtExit !== undefined) return counterAtExit + (try Ref.updateAndGet(promptsAfterExit, (count) => count + 1))
+  return try sinks.step({ type: "writePrompt" }, (fds, state) => [state.promptCounter, fds] as const)
+}
+
+function sinkDescriptor(index: number): number | undefined {
+  return runSinks(activeSinks())?.[index]
+}
+
+export interface PromptLogMetadata {
+  agentName?: string
+  agentId?: string
+  runId?: string
+  provider?: string
+  caller?: string
+  [key: string]: unknown
+}
+
+export interface ResponseLogMetadata {
+  agentName?: string
+  agentId?: string
+  runId?: string
+  provider?: string
+  duration?: number
+  promptSlug?: string
+  [key: string]: unknown
+}
+
+function promptSlug(
+  counter: number,
+  agentName: string,
+  modelType: string,
+): string {
+  return `#${String(counter).padStart(4, "0")}/${agentName}/${modelType}`
+}
+
+function writeToPromptLog(
+  slug: string,
+  kind: "PROMPT" | "RESPONSE",
+  modelType: string,
+  body: string,
+  metadata?: Record<string, unknown>,
+): void {
+  const fd = sinkDescriptor(1)
+  if (fd === undefined) return
+  try {
+    const sep = "=".repeat(80)
+    let header = `${sep}\n ${slug}  ${kind}: ${modelType} (${body.length} chars)\n`
+    header += ` ${new Date().toISOString()}\n`
+    if (metadata) {
+      header += ` ${JSON.stringify(metadata, null, 2)}\n`
+    }
+    header += `${sep}\n`
+    writeDescriptor(fd, [header, body, `\n${sep}\n\n`])
+  } catch {
+  }
+}
+
+export function logPrompt(
+  modelType: string,
+  prompt: string,
+  metadata?: PromptLogMetadata,
+): string {
+  const counter = runSinks(countPrompt())
+  if (counter === undefined) return ""
+  const agentName = metadata?.agentName ?? "unknown"
+  const slug = promptSlug(counter, agentName, modelType)
+  writeToPromptLog(slug, "PROMPT", modelType, prompt, {
+    ...metadata,
+    promptSlug: slug,
+  })
+  return slug
+}
+
+export function logResponse(
+  modelType: string,
+  response: string,
+  metadata?: ResponseLogMetadata,
+): string {
+  if (runSinks(activeSinks()) === undefined) return ""
+  const slug = metadata?.promptSlug
+  if (!slug) {
+    logger.warn(
+      { src: "logger" },
+      "logResponse missing promptSlug - responses can't be correlated",
+    )
+    return ""
+  }
+  writeToPromptLog(slug, "RESPONSE", modelType, response, metadata)
+  return slug
+}
+
+export interface ChatInLogParams {
+  agentName: string
+  agentId: string
+  roomId: string
+  messageId: string
+  text: string
+  source?: string
+}
+
+export interface ChatOutLogParams {
+  agentName: string
+  agentId: string
+  roomId: string
+  action: string
+  text?: string
+  emoji?: string
+  providers?: string[]
+  reasoning?: string
+  actions?: string[]
+}
+
+const CHAT_PREVIEW_IN_MAX = 200
+const CHAT_PREVIEW_OUT_MAX = 120
+
+function escapeChatPreview(text: string): string {
+  const safe = text.length > 10_000 ? text.slice(0, 10_000) : text
+  const oneLine = safe.replace(/\s+/g, " ").trim()
+  return oneLine.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")
+}
+
+function writeChatLine(line: string): void {
+  const fd = sinkDescriptor(2)
+  if (fd === undefined) return
+  writeDescriptor(fd, [`${new Date().toISOString()} ${line}\n`])
+}
+
+export function logChatIn(params: ChatInLogParams): string {
+  const preview = escapeChatPreview(
+    params.text.length > CHAT_PREVIEW_IN_MAX
+      ? `${params.text.slice(0, CHAT_PREVIEW_IN_MAX)}...`
+      : params.text,
+  )
+  const roomShort = params.roomId.slice(0, 8)
+  const msgShort = params.messageId.slice(0, 8)
+  const source = params.source ?? "unknown"
+  const line = `[CHAT:IN]  #agent:${params.agentName} room=${roomShort} msg=${msgShort} source=${source} "${preview}"`
+  writeChatLine(line)
+  return line
+}
+
+export function logChatOut(params: ChatOutLogParams): string {
+  const roomShort = params.roomId.slice(0, 8)
+  let part = `[CHAT:OUT] #agent:${params.agentName} room=${roomShort} action=${params.action}`
+  if (params.actions && params.actions.length > 0) {
+    part += ` actions=${params.actions.join(",")}`
+  }
+  if (params.emoji) {
+    part += ` emoji=${params.emoji}`
+  }
+  if (params.text !== undefined && params.text !== "") {
+    const preview = escapeChatPreview(
+      params.text.length > CHAT_PREVIEW_OUT_MAX
+        ? `${params.text.slice(0, CHAT_PREVIEW_OUT_MAX)}...`
+        : params.text,
+    )
+    part += ` len=${params.text.length} "${preview}"`
+  } else if (params.emoji) {
+    part += " len=0"
+  }
+  if (params.providers && params.providers.length > 0) {
+    part += ` providers=${params.providers.join(",")}`
+  }
+  if (params.reasoning !== undefined && params.reasoning !== "") {
+    const safe = escapeChatPreview(
+      params.reasoning.length > 80
+        ? `${params.reasoning.slice(0, 80)}...`
+        : params.reasoning,
+    )
+    part += ` reasoning="${safe}"`
+  }
+  writeChatLine(part)
+  return part
+}
+
+function createInMemoryDestination(initialMaxLogs = 100): InMemoryDestination {
+  const logs: LogEntry[] = []
+  let maxLogs = initialMaxLogs
+
+  return {
+    write(entry: LogEntry): void {
+      logs.push(entry)
+      while (logs.length > maxLogs) {
+        logs.shift()
+      }
+      if (logListeners.size === 0) return
+
+      for (const listener of [...logListeners]) {
+        if (!logListeners.has(listener)) continue
+        try {
+          listener(entry)
+        } catch {
+          if (!warnedLogListeners.has(listener)) {
+            warnedLogListeners.add(listener)
+            reportToConsole(
+              "[logger] log listener failed; continuing fan-out and suppressing further errors from this listener",
+            )
+          }
+        }
+      }
+    },
+    clear(): void {
+      logs.length = 0
+    },
+    setMaxLogs(nextMaxLogs: number): void {
+      if (!Number.isSafeInteger(nextMaxLogs) || nextMaxLogs < 1) return
+      maxLogs = nextMaxLogs
+      while (logs.length > maxLogs) {
+        logs.shift()
+      }
+    },
+    recentLogs(): string {
+      return logs
+        .map((entry) => {
+          const timestamp = showTimestamps
+            ? new Date(entry.time).toISOString()
+            : ""
+
+          const levelStr = LEVEL_TO_NAME[entry.level ?? 30] || "info"
+          return `${timestamp} ${levelStr} ${entry.msg}`.trim()
+        })
+        .join("\n")
+    },
+  }
+}
+
+const globalInMemoryDestination = createInMemoryDestination()
+
+const ADZE_ACTIVE_LEVEL_BY_NAME: Record<string, Level> = {
+  trace: "verbose",
+  verbose: "verbose",
+  debug: "debug",
+  success: "success",
+  progress: "log",
+  log: "log",
+  info: "info",
+  warn: "warn",
+  error: "error",
+  fatal: "alert",
+  alert: "alert",
+  silent: "alert",
+}
+
+const customLevelConfig: Record<string, LevelConfiguration> = {
+  alert: {
+    levelName: "alert",
+    level: 0,
+    style: "font-size: 12px; color: #ff0000;",
+    terminalStyle: ["bgRed", "white", "bold"] satisfies ConsoleStyle[],
+    method: "error" satisfies Method,
+    emoji: "",
+  },
+  error: {
+    levelName: "error",
+    level: 1,
+    style: "font-size: 12px; color: #ff0000;",
+    terminalStyle: ["bgRed", "whiteBright", "bold"] satisfies ConsoleStyle[],
+    method: "error" satisfies Method,
+    emoji: "",
+  },
+  warn: {
+    levelName: "warn",
+    level: 2,
+    style: "font-size: 12px; color: #ffaa00;",
+    terminalStyle: ["bgYellow", "black", "bold"] satisfies ConsoleStyle[],
+    method: "warn" satisfies Method,
+    emoji: "",
+  },
+  info: {
+    levelName: "info",
+    level: 3,
+    style: "font-size: 12px; color: #0099ff;",
+    terminalStyle: ["cyan"] satisfies ConsoleStyle[],
+    method: "info" satisfies Method,
+    emoji: "",
+  },
+  fail: {
+    levelName: "fail",
+    level: 4,
+    style: "font-size: 12px; color: #ff6600;",
+    terminalStyle: ["red", "underline"] satisfies ConsoleStyle[],
+    method: "error" satisfies Method,
+    emoji: "",
+  },
+  success: {
+    levelName: "success",
+    level: 5,
+    style: "font-size: 12px; color: #00cc00;",
+    terminalStyle: ["green"] satisfies ConsoleStyle[],
+    method: "log" satisfies Method,
+    emoji: "",
+  },
+  log: {
+    levelName: "log",
+    level: 6,
+    style: "font-size: 12px; color: #888888;",
+    terminalStyle: ["white"] satisfies ConsoleStyle[],
+    method: "log" satisfies Method,
+    emoji: "",
+  },
+  debug: {
+    levelName: "debug",
+    level: 7,
+    style: "font-size: 12px; color: #9b59b6;",
+    terminalStyle: ["gray", "dim"] satisfies ConsoleStyle[],
+    method: "debug" satisfies Method,
+    emoji: "",
+  },
+  verbose: {
+    levelName: "verbose",
+    level: 8,
+    style: "font-size: 12px; color: #666666;",
+    terminalStyle: ["gray", "dim", "italic"] satisfies ConsoleStyle[],
+    method: "debug" satisfies Method,
+    emoji: "",
+  },
+}
+
+const adzeSealConfig: UserConfiguration = {
+  activeLevel: ADZE_ACTIVE_LEVEL_BY_NAME[effectiveLogLevel] ?? "info",
+  silent: effectiveLogSilent,
+  format: raw ? "json" : "pretty",
+  withEmoji: false,
+  levels: customLevelConfig,
+}
+
+setup({
+  ...adzeSealConfig,
+  timestampFormatter: showTimestamps ? undefined : () => "",
+})
+
+function sealAdze(base: Record<string, unknown>): ReturnType<typeof adze.seal> {
+  let chain: ReturnType<typeof adze.ns> | typeof adze = adze as
+    | ReturnType<typeof adze.ns>
+    | typeof adze
+
+  const namespaces: string[] = []
+  if (typeof base.namespace === "string") namespaces.push(base.namespace)
+  if (Array.isArray(base.namespaces)) {
+    namespaces.push(...(base.namespaces as string[]))
+  }
+  if (namespaces.length > 0) {
+    chain = chain.ns(...namespaces)
+  }
+
+  const metaBase: Record<string, unknown> = { ...base }
+  delete metaBase.namespace
+  delete metaBase.namespaces
+
+  if (!metaBase.name) {
+    metaBase.name = "elizaos"
+  }
+
+  if (!metaBase.pid && processId()) {
+    metaBase.pid = processId()
+  }
+
+  if (!metaBase.environment) {
+    metaBase.environment = rawEnv("NODE_ENV") || "development"
+  }
+
+  if (!metaBase.serverId) {
+    metaBase.serverId = serverId
+  }
+
+  if (raw && !metaBase.hostname) {
+    metaBase.hostname = hostName()
+  }
+
+  let safeMeta: Record<string, unknown>
+  try {
+    safeMeta = redactLogValue(metaBase, new WeakSet<object>(), 0) as Record<
+      string,
+      unknown
+    >
+  } catch {
+    safeMeta = { redactionError: REDACTION_FAILED_VALUE }
+  }
+
+  return chain.meta(safeMeta).seal(adzeSealConfig)
+}
+
+function extractBindingsConfig(bindings: LoggerBindings | boolean): {
+  level: string
+  base: Record<string, unknown>
+  maxMemoryLogs?: number
+} {
+  let level = effectiveLogLevel
+  let base: Record<string, unknown> = {}
+  let maxMemoryLogs: number | undefined
+
+  if (typeof bindings === "object" && bindings !== null) {
+    if ("level" in bindings) {
+      level = resolveConfiguredLogLevel(
+        String(bindings.level),
+        effectiveLogLevel,
+        "bindings.level",
+      )
+    }
+    if (
+      "maxMemoryLogs" in bindings
+      && typeof bindings.maxMemoryLogs === "number"
+    ) {
+      maxMemoryLogs = bindings.maxMemoryLogs
+    }
+
+    const { level: _, maxMemoryLogs: __, ...rest } = bindings
+    base = rest
+  }
+
+  if (typeof base.namespace === "string") {
+    base.namespace = redactSensitiveLogText(base.namespace)
+  }
+  if (Array.isArray(base.namespaces)) {
+    base.namespaces = base.namespaces.map((ns) => typeof ns === "string" ? redactSensitiveLogText(ns) : ns)
+  }
+
+  return { level, base, maxMemoryLogs }
+}
+
+function createLogger(bindings: LoggerBindings | boolean = false): Logger {
+  const {
+    level: currentLevel,
+    base,
+    maxMemoryLogs,
+  } = extractBindingsConfig(bindings)
+
+  if (typeof maxMemoryLogs === "number") {
+    globalInMemoryDestination.setMaxLogs(maxMemoryLogs)
+  }
+
+  const sealed = sealAdze(base) as Log & AdzeLogMethods
+
+  const currentPriority = LOG_LEVEL_PRIORITY[currentLevel]
+  const namespacePrefix = base.namespace ? `#${base.namespace}  ` : ""
+  let warnedSinkFailure = false
+
+  const invoke = (
+    priority: number,
+    adzeMethod: keyof AdzeLogMethods,
+    adzeTag: string | undefined,
+    args: unknown[],
+  ): void => {
+    let msg = namespacePrefix
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i]
+      if (i > 0) msg += " "
+      msg += typeof arg === "string"
+        ? arg
+        : arg instanceof Error
+        ? arg.message
+        : safeStringify(arg)
+    }
+
+    const entry: LogEntry = { time: Date.now(), level: priority, msg }
+    globalInMemoryDestination.write(entry)
+    runSinks(writeOutputLine(entry))
+
+    try {
+      if (adzeTag === undefined) {
+        sealed[adzeMethod](...args)
+      } else {
+        sealed[adzeMethod](adzeTag, ...args)
+      }
+    } catch {
+      if (!warnedSinkFailure) {
+        warnedSinkFailure = true
+        reportToConsole("[logger] formatted output sink failed; buffered logs remain available")
+      }
+    }
+  }
+
+  const safeRedact = (
+    obj: Record<string, unknown>,
+  ): Record<string, unknown> => {
+    try {
+      return redactLogValue(obj, new WeakSet<object>(), 0) as Record<
+        string,
+        unknown
+      >
+    } catch {
+      return { redactionError: REDACTION_FAILED_VALUE }
+    }
+  }
+
+  const adaptArgs = (
+    obj: Record<string, unknown> | string | Error,
+    msg?: string,
+    ...args: unknown[]
+  ): unknown[] => {
+    const cleanMsg = typeof msg === "string" ? redactSensitiveLogText(msg) : msg
+    if (typeof obj === "string") {
+      const rest = cleanMsg !== undefined ? [cleanMsg, ...args] : args
+      return [redactSensitiveLogText(obj), ...redactTrailingArgs(rest)]
+    }
+
+    if (typeof obj === "function") {
+      const rest = cleanMsg !== undefined ? [cleanMsg, ...args] : args
+      return redactTrailingArgs(rest)
+    }
+
+    if (obj instanceof Error) {
+      const errorWrapper = safeRedact({ error: obj })
+      const rest = cleanMsg !== undefined ? [cleanMsg, ...args] : args
+      return [
+        redactSensitiveLogText(obj.message),
+        errorWrapper,
+        ...redactTrailingArgs(rest),
+      ]
+    }
+
+    const redactedObj = safeRedact(obj)
+
+    if (cleanMsg !== undefined) {
+      if (!raw) {
+        const formatted = formatPrettyLog(redactedObj, cleanMsg)
+        return [formatted, ...redactTrailingArgs(args)]
+      }
+
+      return [cleanMsg, redactedObj, ...redactTrailingArgs(args)]
+    }
+
+    if (!raw) {
+      const formatted = formatPrettyLog(redactedObj, "")
+      return formatted
+        ? [formatted, ...redactTrailingArgs(args)]
+        : [...redactTrailingArgs(args)]
+    }
+    return [redactedObj, ...redactTrailingArgs(args)]
+  }
+
+  const method = (
+    priority: number,
+    adzeMethod: keyof AdzeLogMethods,
+    adzeTag?: string,
+  ): LogFn => {
+    if (priority < currentPriority) return suppressedLogFn
+    return (obj, msg, ...args) => invoke(priority, adzeMethod, adzeTag, adaptArgs(obj, msg, ...args))
+  }
+
+  const p = LOG_LEVEL_PRIORITY
+  const trace = method(p.verbose, "verbose")
+  const debug = method(p.debug, "debug")
+  const info = method(p.info, "info")
+  const warn = method(p.warn, "warn")
+  const error = method(p.error, "error")
+  const fatal = method(p.fatal, "alert")
+  const success = method(p.success, "info", "[SUCCESS]")
+  const progress = method(p.progress, "info", "[PROGRESS]")
+  const logFn = method(p.log, "log")
+
+  const clear = (): void => {
+    clearConsole()
+    globalInMemoryDestination.clear()
+  }
+
+  const child = (childBindings: Record<string, unknown>): Logger => {
+    return createLogger({ level: currentLevel, ...base, ...childBindings })
+  }
+
+  return {
+    level: currentLevel,
+    trace,
+    debug,
+    info,
+    warn,
+    error,
+    fatal,
+    success,
+    progress,
+    log: logFn,
+    clear,
+    child,
+  }
+}
+
+const logger = createLogger()
+
+export const elizaLogger = logger
+
+export const recentLogs = (): string => globalInMemoryDestination.recentLogs()
+
+export { createLogger, logger }
+export default logger

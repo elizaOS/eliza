@@ -1,0 +1,23 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+export type BuiltInPaymentConfig =
+  | "base_usdc"
+  | "solana_usdc"
+  | "polygon_usdc"
+  | "bsc_usdc"
+  | "base_elizaos"
+  | "solana_elizaos"
+  | "solana_degenai"
+
+export interface X402Config {
+  priceInCents: number
+  paymentConfigs?: (BuiltInPaymentConfig | string)[]
+}
+
+export interface X402ValidationResult {
+  valid: boolean
+  error?: {
+    status: number
+    message: string
+    details?: unknown
+  }
+}

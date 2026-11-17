@@ -1,0 +1,1618 @@
+// spec/core/requestIssuer.md, "Only a matching live original can create or use its issuer"; spec/core/requestIssuer.md, "A contradictory repeated commit permanently taints the issuer"; spec/core/requestCompletions.md, "Resolving a second different mutation invalidates an attempt"; spec/core/requestCompletions.md, "Result fingerprints and invalidation persist across projection"; spec/core/requestCompletions.md, "Denial projection needs the exact attempt and an unexecuted zero-effect failure"; spec/core/requestAuthorityRegistry.md, "Object identity and current request fields determine the active issuer"; spec/core/requestAuthorityRegistry.md, "State.data aliases share one exact view while serialized copies carry no view"; spec/core/requestAuthorityRegistry.md, "Attempts and result objects belong to one issuer across every map"; spec/core/context.md, "A historical evidence projection requires exact validated source binding"
+import {
+  type Interpretation,
+  Machine,
+  machine,
+  normalizedInterpretation,
+  type NoteOperation,
+  type RequestClassification,
+  type RequestIssuer,
+  restriction,
+  validIssuer as issuerHolds,
+} from "../../gen/core__requestIssuer.effect.vibe"
+import { getAmbientSingleton } from "../ambient-context.vibe"
+import { failingAs, foreignSync, thrown } from "../edge.vibe"
+import { completionContextSources, selectHistoricalNavigation } from "../runtime/completion-context.vibe"
+import { hashStableJson } from "../runtime/context-hash.vibe"
+import type { ContextObject } from "../runtime/context-object.vibe"
+import { renderContextObject, segmentBlock } from "../runtime/context-renderer.vibe"
+import { compactHistoricalReceiptSegments } from "../runtime/historical-receipt-wire.vibe"
+import { projectDeferredProviders } from "../runtime/provider-context.vibe"
+import type { Action } from "../types/components.vibe"
+import type { Memory } from "../types/memory.vibe"
+import type { State } from "../types/state.vibe"
+import { pinnedDiscriminatorForPromotedChild, promotedSubactionDescription } from "./promote-subactions.vibe"
+
+export type RequestOperationClassification =
+  | "read_only"
+  | "mutation_requested"
+  | "unresolved"
+export type RequestOperationRuntime = {
+  readonly agentId: string
+  readonly actions?: readonly Action[]
+}
+type Binding = {
+  original: ContextObject
+  projected: ContextObject
+  sourceHash: string
+  projectionHash: string
+  requestHash: string
+  stateHash: string
+  extractionProjectionAuthorized: boolean
+  issuer?: RequestOperationIssuer
+}
+function orUndefined<A>(run: A!unknown): A | undefined {
+  try {
+    return match (runSyncExit(run)) {
+      when Exit.Success(let value): value;
+      default: undefined;
+    }
+  } catch {
+    return undefined
+  }
+}
+
+const key = Symbol.for("eliza.task-extraction-context")
+const bindings = () => getAmbientSingleton(key, () => new WeakMap<object, Binding>())
+const stateFingerprint = (state: State) =>
+  hashStableJson({
+    text: state.text,
+    recentMessages: state.values.recentMessages,
+    selectedActionConversation: state.values.selectedActionConversation,
+    data: state.data,
+  })
+
+export function bindTaskExtractionContext(
+  state: State,
+  message: Memory,
+  original: ContextObject,
+  projected: ContextObject,
+  runtime?: RequestOperationRuntime,
+  issuer?: RequestOperationIssuer,
+): void {
+  const data = state.data
+  if (data) bindings().delete(data)
+  if (
+    !data
+    || !message.id
+    || !message.roomId
+    || !message.entityId
+    || original.metadata?.messageId !== message.id
+    || original.metadata?.roomId !== message.roomId
+  ) {
+    return
+  }
+  const binding = orUndefined(viewBinding(state, message, original, projected, runtime, issuer))
+  if (binding) bindings().set(data, binding)
+}
+
+effect function viewBinding(
+  state: State,
+  message: Memory,
+  original: ContextObject,
+  projected: ContextObject,
+  runtime?: RequestOperationRuntime,
+  issuer?: RequestOperationIssuer,
+) {
+  const sources = (try completionContextSources(original)).sources
+  const sourceIds = new Set(sources.map(({ event }) => event.id))
+  const included = new Set(
+    projected.events
+      .filter((event) => sourceIds.has(event.id))
+      .map((event) => event.id),
+  )
+
+  const extractionProjectionAuthorized = sources.length > 0 && included.size !== sources.length
+
+  const expected = extractionProjectionAuthorized
+    ? {
+      ...original,
+      events: selectHistoricalNavigation(original, included).events.filter(
+        (event) => !sourceIds.has(event.id) || included.has(event.id),
+      ),
+    }
+    : original
+
+  const exact = (try hashStableJson(expected)) === (try hashStableJson(projected))
+  const view = exact ? projected : original
+  return {
+    original,
+    projected: view,
+    sourceHash: try hashStableJson(original),
+    projectionHash: try hashStableJson(view),
+    requestHash: try hashStableJson(message),
+    stateHash: try stateFingerprint(state),
+    extractionProjectionAuthorized: exact && extractionProjectionAuthorized,
+    ...(runtime && issuer && validIssuer(issuer, runtime, message)
+      ? { issuer }
+      : {}),
+  }
+}
+
+function readBinding(
+  state: State | undefined,
+  message: Memory | undefined,
+): Binding | undefined {
+  if (!state?.data || !message) return undefined
+  const binding = bindings().get(state.data)
+  if (!binding) return undefined
+  return orUndefined(effect {
+    if (
+      binding.requestHash !== (try hashStableJson(message))
+      || binding.stateHash !== (try stateFingerprint(state))
+      || binding.sourceHash !== (try hashStableJson(binding.original))
+      || binding.projectionHash !== (try hashStableJson(binding.projected))
+    ) {
+      return undefined
+    }
+    return binding
+  })
+}
+
+export function readTaskExtractionRequestIntents(
+  state: State | undefined,
+  message: Memory | undefined,
+): readonly string[] | undefined {
+  const binding = readBinding(state, message)
+  if (!binding) return undefined
+  const events = binding.original.events.filter(
+    (event) => event.type === "message_handler" && event.source === "message-service",
+  )
+  if (events.length !== 1 || events[0].metadata?.processMessage !== "RESPOND") {
+    return undefined
+  }
+  const plan = events[0].metadata?.plan
+  if (!plan || typeof plan !== "object" || Array.isArray(plan)) {
+    return undefined
+  }
+  const intents = plan.intents
+  if (
+    !Array.isArray(intents)
+    || !intents.length
+    || !intents.every(
+      (intent) => typeof intent === "string" && intent.trim().length > 0,
+    )
+  ) {
+    return undefined
+  }
+  return [...intents] as string[]
+}
+
+export function readTaskExtractionContext(
+  state: State | undefined,
+  message: Memory | undefined,
+  expectedSystem?: string,
+): { text: string; originalText: string; system?: string } | undefined {
+  const binding = readBinding(state, message)
+  if (!binding?.extractionProjectionAuthorized) return undefined
+  return orUndefined(effect {
+    const system = binding.original.staticPrefix?.systemPrompt?.content
+
+    const separateSystem = typeof system === "string"
+      && system.trim().length > 0
+      && system === expectedSystem
+    const render = (context: ContextObject) =>
+      renderContextObject(
+        separateSystem
+          ? {
+            ...context,
+            staticPrefix: {
+              ...context.staticPrefix,
+              systemPrompt: undefined,
+            },
+          }
+          : context,
+      )
+
+    const rendered = render(
+      (try projectDeferredProviders(binding.projected)).context,
+    )
+    return {
+      text: (try compactHistoricalReceiptSegments(rendered.promptSegments))
+        .map(segmentBlock)
+        .join("\n\n"),
+      originalText: render(binding.original)
+        .promptSegments.map(segmentBlock)
+        .join("\n\n"),
+      ...(separateSystem ? { system } : {}),
+    }
+  })
+}
+
+export effect function readTaskExtractionUserSources(
+  state: State | undefined,
+  message: Memory | undefined,
+) {
+  const binding = readBinding(state, message)
+  if (!binding || !message) return undefined
+  return (try completionContextSources(binding.projected)).sources.flatMap<{ readonly id: string; readonly text: string }>(
+    ({ event }) => {
+      if (event.type !== "segment" || event.source !== "prior-dialogue") {
+        return []
+      }
+      const segment = event.segment
+      if (
+        segment.label !== "prior_message:user"
+        || segment.id !== event.id
+        || segment.metadata?.roomId !== message.roomId
+        || segment.metadata?.entityId !== message.entityId
+      ) {
+        return []
+      }
+      const speaker = segment.metadata.speakerName
+      const prefix = typeof speaker === "string" ? `${speaker}: ` : ""
+      return [
+        {
+          id: event.id,
+          text: prefix && segment.content.startsWith(prefix)
+            ? segment.content.slice(prefix.length)
+            : segment.content,
+        },
+      ]
+    },
+  )
+}
+
+export const readTaskExtractionUserSourcesOrThrow = thrown(failingAs(TypeError, readTaskExtractionUserSources))
+
+declare const issuerBrand: unique symbol
+declare const attemptBrand: unique symbol
+export interface RequestOperationIssuer {
+  readonly [issuerBrand]: true
+}
+export interface BoundRequestOperationAttempt {
+  readonly [attemptBrand]: true
+}
+export const NOTES_REQUEST_OPERATIONS = Object.freeze(
+  [
+    "create",
+    "list",
+    "get",
+    "update",
+    "patch",
+    "delete",
+  ] as const,
+)
+export type NotesRequestOperation = (typeof NOTES_REQUEST_OPERATIONS)[number]
+export type NotesRequestInterpretation = {
+  readonly status: "explicit" | "unavailable" | "contradictory"
+  readonly operations: readonly NotesRequestOperation[]
+}
+type Receiver = {
+  runtime: RequestOperationRuntime
+  message: Memory
+  current: () => boolean
+  agentId: string
+  messageId: Memory["id"]
+  roomId: Memory["roomId"]
+  entityId: Memory["entityId"]
+  requestHash: string
+  classification: RequestOperationClassification
+  committed: boolean
+  tainted: boolean
+  revision: number
+  interpretation?: NotesRequestInterpretation
+  interpretationHash?: string
+  source?: unknown
+  sourceHash?: string
+  currentSource?: () => unknown
+}
+type Issuer = {
+  receiver: Receiver
+  lifecycle: Machine.Shape
+}
+type IssuerView = Receiver & Issuer & { state: RequestIssuer }
+type Attempt = {
+  issuer: RequestOperationIssuer
+  revision: number
+  state: State
+  message: Memory
+  resolved?: NotesRequestOperation
+  registeredOperation?: NotesRequestOperation
+  conflicted: boolean
+  registration?: RegisteredOperation
+  completionInvalidated?: "changed" | "stale"
+}
+type Definition = {
+  name: string
+  handler: Action["handler"]
+  restriction: Action["restrictRequestOperation"]
+  validate: Action["validate"]
+  parameters: Action["parameters"]
+  contextGate: Action["contextGate"]
+  roleGate: Action["roleGate"]
+  hash: string
+}
+type RegisteredOperation = {
+  action: Action
+  family: Action
+  actionDefinition: Definition
+  familyDefinition: Definition
+}
+type CanonicalDispatch = {
+  child: string
+  discriminator: string
+  value: string
+}
+type CompletionFact = {
+  issuer: RequestOperationIssuer
+  revision: number
+  registration: RegisteredOperation
+  operation: NotesRequestOperation
+  permissionOperation: NotesRequestOperation
+  dispatch: CanonicalDispatch
+  canonicalChild: Action
+  childDefinition: Definition
+  rejected: boolean
+  requested?: boolean
+  outsideRequestRejection: boolean
+  ambiguousRejection: boolean
+}
+type ResultAssociation = {
+  attempt: BoundRequestOperationAttempt
+  fingerprint: string
+  shape: CompletionShape
+  completion?: CompletionFact
+  changed?: boolean
+  projectionOwner?: RequestOperationIssuer
+}
+type Denial = {
+  attempt: BoundRequestOperationAttempt
+  operation: NotesRequestOperation
+  classification: RequestOperationClassification
+  kind: "decision" | "error" | "result"
+}
+const issuerKey = Symbol.for("eliza.request-operation-issuers")
+const activeIssuerKey = Symbol.for("eliza.request-operation-active-issuers")
+const attemptKey = Symbol.for("eliza.request-operation-attempts")
+const denialKey = Symbol.for("eliza.request-operation-denials")
+const resultAttemptKey = Symbol.for("eliza.request-operation-result-attempts")
+const issuers = () => getAmbientSingleton(issuerKey, () => new WeakMap<object, Issuer>())
+const activeIssuers = () =>
+  getAmbientSingleton(
+    activeIssuerKey,
+    () => new WeakMap<object, WeakMap<object, RequestOperationIssuer>>(),
+  )
+const attempts = () => getAmbientSingleton(attemptKey, () => new WeakMap<object, Attempt>())
+const denials = () => getAmbientSingleton(denialKey, () => new WeakMap<object, Denial>())
+const resultAttempts = () =>
+  getAmbientSingleton(
+    resultAttemptKey,
+    () => new WeakMap<object, ResultAssociation>(),
+  )
+
+export function normalizeNotesRequestInterpretation(
+  value: unknown,
+): NotesRequestInterpretation | undefined {
+  return orUndefined(effect {
+    if (
+      !value
+      || typeof value !== "object"
+      || Array.isArray(value)
+      || (Object.getPrototypeOf(value) !== Object.prototype
+        && Object.getPrototypeOf(value) !== null)
+    ) {
+      return undefined
+    }
+    const keys = Reflect.ownKeys(value)
+    if (
+      keys.length !== 2
+      || !keys.includes("status")
+      || !keys.includes("operations")
+    ) {
+      return undefined
+    }
+    const status = try ownData(value, "status")
+    if (
+      status !== "explicit"
+      && status !== "unavailable"
+      && status !== "contradictory"
+    ) {
+      return undefined
+    }
+    const operations = try plainSnapshot(try ownData(value, "operations"))
+    if (
+      !Array.isArray(operations)
+      || operations.length > NOTES_REQUEST_OPERATIONS.length
+      || !operations.every(
+        (operation): operation is NotesRequestOperation =>
+          typeof operation === "string"
+          && NOTES_REQUEST_OPERATIONS.some((candidate) => candidate === operation),
+      )
+      || new Set(operations).size !== operations.length
+      || (status !== "explicit" && operations.length !== 0)
+    ) {
+      return undefined
+    }
+    return Object.freeze({
+      status,
+      operations: Object.freeze(
+        NOTES_REQUEST_OPERATIONS.filter((operation) => operations.includes(operation)),
+      ),
+    })
+  })
+}
+effect function definition(action: Action) {
+  return Object.freeze({
+    name: action.name,
+    handler: action.handler,
+    restriction: action.restrictRequestOperation,
+    validate: action.validate,
+    parameters: action.parameters,
+    contextGate: action.contextGate,
+    roleGate: action.roleGate,
+    hash: try hashStableJson({
+      parameters: action.parameters,
+      contexts: action.contexts,
+      contextGate: action.contextGate,
+      roleGate: action.roleGate,
+      disclosureGate: action.disclosureGate,
+      egress: action.egress,
+      accountPolicy: action.accountPolicy,
+      connectorAccountPolicy: action.connectorAccountPolicy,
+      tags: action.tags,
+      subActions: action.subActions,
+      promotion: promotedSubactionDescription(action),
+    }),
+  })
+}
+effect function sameDefinition(action: Action, saved: Definition) {
+  const current = try definition(action)
+  return (
+    current.name === saved.name
+    && current.handler === saved.handler
+    && current.restriction === saved.restriction
+    && current.validate === saved.validate
+    && current.parameters === saved.parameters
+    && current.contextGate === saved.contextGate
+    && current.roleGate === saved.roleGate
+    && current.hash === saved.hash
+  )
+}
+function registeredOperation(
+  runtime: RequestOperationRuntime,
+  action: Action | undefined,
+): RegisteredOperation | undefined {
+  return orUndefined(effect {
+    if (!action || !runtime.actions?.includes(action)) return undefined
+    const promoted = promotedSubactionDescription(action)
+    const family = promoted
+      ? runtime.actions.find(
+        (candidate) =>
+          candidate.name === promoted.parent
+          && !promotedSubactionDescription(candidate),
+      )
+      : action
+    if (!family) return undefined
+    return Object.freeze({
+      action,
+      family,
+      actionDefinition: try definition(action),
+      familyDefinition: try definition(family),
+    })
+  })
+}
+
+function currentRegistration(
+  runtime: RequestOperationRuntime,
+  registration: RegisteredOperation,
+): boolean {
+  return orUndefined(effect {
+    return (
+      runtime.actions?.includes(registration.action) === true
+      && runtime.actions.includes(registration.family)
+      && (try sameDefinition(registration.action, registration.actionDefinition))
+      && (try sameDefinition(registration.family, registration.familyDefinition))
+    )
+  }) ?? false
+}
+function canonicalDispatch(
+  runtime: RequestOperationRuntime,
+  registration: RegisteredOperation,
+  operation: NotesRequestOperation,
+): CanonicalDispatch | undefined {
+  const actual = promotedSubactionDescription(registration.action)
+  if (actual && actual.subaction !== operation) return
+  const child = runtime.actions?.find((action) => {
+    const promoted = promotedSubactionDescription(action)
+    return (
+      promoted?.parent === registration.family.name
+      && promoted.subaction === operation
+    )
+  })
+  return child
+    ? pinnedDiscriminatorForPromotedChild(
+      registration.family,
+      child.name,
+      (name) => runtime.actions?.find((action) => action.name === name),
+    )
+    : undefined
+}
+
+const completionFields = [
+  "actionName",
+  "op",
+  "noteId",
+  "requestedNoteId",
+  "notesRevision",
+  "expectedRevision",
+  "revision",
+  "target",
+  "code",
+  "error",
+  "acceptance",
+  "executionStatus",
+  "executed",
+  "retryable",
+  "readOnlyOperation",
+  "coachingFailure",
+  "outcomeUnknown",
+  "reconciliationRequired",
+  "requiresInput",
+  "missingField",
+  "awaitingUserInput",
+  "requiresConfirmation",
+  "approvalRequired",
+  "awaitingDeviceExecution",
+  "parameterErrors",
+  "invalidParameterNames",
+  "effects",
+  "effectReceipts",
+  "receipt",
+]
+export error InvalidCompletionEvidence { message: string }
+
+effect function ownData(object: object, key: string): unknown!InvalidCompletionEvidence {
+  const descriptor = Object.getOwnPropertyDescriptor(object, key)
+  if (!descriptor) return undefined
+  if (!("value" in descriptor)) {
+    throw new InvalidCompletionEvidence({ message: "Accessor is not completion evidence" })
+  }
+  return descriptor.value
+}
+effect function plainSnapshot(
+  value: unknown,
+  depth = 0,
+  budget = { nodes: 0 },
+): unknown!InvalidCompletionEvidence {
+  if (++budget.nodes > 2048 || depth > 12) {
+    throw new InvalidCompletionEvidence({ message: "Completion evidence limit" })
+  }
+  if (
+    value === undefined
+    || value === null
+    || typeof value === "string"
+    || typeof value === "boolean"
+  ) {
+    return value
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return value
+  if (!value || typeof value !== "object") {
+    throw new InvalidCompletionEvidence({ message: "Invalid completion evidence" })
+  }
+  if (Array.isArray(value)) {
+    const length = try ownData(value, "length")
+    if (
+      typeof length !== "number"
+      || !Number.isInteger(length)
+      || length < 0
+      || length > 256
+    ) {
+      throw new InvalidCompletionEvidence({ message: "Completion evidence limit" })
+    }
+    const items: unknown[] = []
+    for (let index = 0; index < length; index++) {
+      items.push(try plainSnapshot(try ownData(value, String(index)), depth + 1, budget))
+    }
+    return items
+  }
+  if (
+    Object.getPrototypeOf(value) !== Object.prototype
+    && Object.getPrototypeOf(value) !== null
+  ) {
+    throw new InvalidCompletionEvidence({ message: "Nonplain completion evidence" })
+  }
+  const result: Record<string, unknown> = Object.create(null)
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string") {
+      throw new InvalidCompletionEvidence({ message: "Symbol is not completion evidence" })
+    }
+    result[key] = try plainSnapshot(try ownData(value, key), depth + 1, budget)
+  }
+  return result
+}
+function plainRecord(value: unknown): value is object {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
+}
+function nonplain(original: unknown, record: object): boolean {
+  return (
+    original != null
+    && (record !== original
+      || (Object.getPrototypeOf(record) !== Object.prototype
+        && Object.getPrototypeOf(record) !== null))
+  )
+}
+type CompletionRow = Record<string, unknown>
+type CompletionShape = {
+  success: unknown
+  errorPresent: boolean
+  failureProvenance: unknown
+  effectReceipts: unknown
+  top: CompletionRow
+  data: CompletionRow
+  values: CompletionRow
+  nestedValues: CompletionRow
+}
+effect function completionField(row: object, key: string): unknown!InvalidCompletionEvidence {
+  const value = try ownData(row, key)
+  if (key === "receipt") return value === undefined ? undefined : true
+  if (key === "effects" || key === "effectReceipts") {
+    if (value === undefined) return undefined
+    return Array.isArray(value) && (try ownData(value, "length")) === 0 ? [] : true
+  }
+  return try plainSnapshot(value)
+}
+effect function completionRow(row: object, keys: readonly string[]): CompletionRow!InvalidCompletionEvidence {
+  const entries: [string, unknown][] = []
+  for (const key of keys) entries.push([key, try completionField(row, key)])
+  return {
+    ...Object.fromEntries(entries),
+    lifeDraftPresent: (try ownData(row, "lifeDraft")) !== undefined,
+  }
+}
+effect function completionShape(result: object): CompletionShape!InvalidCompletionEvidence {
+  const dataValue = try ownData(result, "data")
+  const data = plainRecord(dataValue) ? dataValue : {}
+  if (nonplain(dataValue, data)) {
+    throw new InvalidCompletionEvidence({ message: "Nonplain result data" })
+  }
+  const valuesValue = try ownData(result, "values")
+  const nestedValue = try ownData(data, "values")
+  const values = plainRecord(valuesValue) ? valuesValue : {}
+  const nestedValues = plainRecord(nestedValue) ? nestedValue : {}
+  if (nonplain(valuesValue, values)) {
+    throw new InvalidCompletionEvidence({ message: "Nonplain result values" })
+  }
+  if (nonplain(nestedValue, nestedValues)) {
+    throw new InvalidCompletionEvidence({ message: "Nonplain nested result values" })
+  }
+  return {
+    success: try ownData(result, "success"),
+    errorPresent: (try ownData(result, "error")) != null,
+    failureProvenance: try plainSnapshot(try ownData(result, "failureProvenance")),
+    effectReceipts: try plainSnapshot(try ownData(result, "effectReceipts")),
+    top: try completionRow(
+      result,
+      completionFields.filter((key) => key !== "error" && key !== "effectReceipts"),
+    ),
+    data: try completionRow(data, completionFields),
+    values: try completionRow(values, completionFields),
+    nestedValues: try completionRow(nestedValues, completionFields),
+  }
+}
+effect function projectionFingerprint(shape: CompletionShape) {
+  const merged: Record<string, unknown> = Object.create(null)
+  const conflicts: string[] = []
+  for (
+    const key of new Set([
+      ...Object.keys(shape.values),
+      ...Object.keys(shape.nestedValues),
+    ])
+  ) {
+    const top = shape.values[key],
+      nested = shape.nestedValues[key]
+    if (top === undefined) merged[key] = nested
+    else if (
+      nested === undefined
+      || (try hashStableJson(top)) === (try hashStableJson(nested))
+    ) {
+      merged[key] = top
+    } else {
+      merged[key] = [top, nested]
+      conflicts.push(key)
+    }
+  }
+  const { values: _top, nestedValues: _nested, ...common } = shape
+  return try hashStableJson({
+    ...common,
+    values: merged,
+    valueConflicts: conflicts,
+  })
+}
+function fingerprintResult(result: object): string | undefined {
+  return orUndefined(effect {
+    return try hashStableJson(try completionShape(result))
+  })
+}
+function unclassifiedEffects(shape: CompletionShape): boolean {
+  return (
+    [shape.top, shape.data, shape.values, shape.nestedValues].some(
+      (row) =>
+        row.receipt !== undefined
+        || (row.effects !== undefined
+          && (!Array.isArray(row.effects) || row.effects.length > 0)),
+    )
+    || [shape.data, shape.values, shape.nestedValues].some(
+      (row) =>
+        row.effectReceipts !== undefined
+        && (!Array.isArray(row.effectReceipts) || row.effectReceipts.length > 0),
+    )
+  )
+}
+function awaitsPrerequisite(row: CompletionRow): boolean {
+  return (
+    row.requiresInput === true
+    || row.awaitingUserInput === true
+    || row.requiresConfirmation === true
+    || row.approvalRequired === true
+    || row.awaitingDeviceExecution === true
+    || row.lifeDraftPresent === true
+    || (typeof row.missingField === "string" && row.missingField.trim().length > 0)
+  )
+}
+function hasUnknownOutcome(shape: CompletionShape): boolean {
+  return [shape.top, shape.data, shape.values, shape.nestedValues].some(
+    (row) =>
+      (row.outcomeUnknown !== undefined && row.outcomeUnknown !== false)
+      || (row.reconciliationRequired !== undefined
+        && row.reconciliationRequired !== false),
+  )
+}
+function rejectedBeforeExecution(shape: CompletionShape): boolean {
+  const provenance = shape.failureProvenance as
+    | { retryable?: unknown }
+    | undefined
+  const unknown = hasUnknownOutcome(shape)
+  const evidence = [shape.top, shape.data, shape.values, shape.nestedValues]
+  const contradiction = evidence.some(
+    (row) =>
+      (row.executed !== undefined && row.executed !== false)
+      || (row.executionStatus !== undefined
+        && row.executionStatus !== "not_started")
+      || (row.acceptance !== undefined && row.acceptance !== "rejected"),
+  )
+  const prerequisite = evidence.some(awaitsPrerequisite)
+  return (
+    shape.success === false
+    && provenance?.retryable === true
+    && !unknown
+    && !prerequisite
+    && !contradiction
+    && !unclassifiedEffects(shape)
+    && shape.data.acceptance === "rejected"
+    && shape.data.executionStatus === "not_started"
+    && (shape.data.executed === undefined || shape.data.executed === false)
+    && shape.top.readOnlyOperation !== true
+    && shape.top.coachingFailure !== true
+    && shape.data.readOnlyOperation !== true
+    && shape.data.coachingFailure !== true
+    && shape.values.readOnlyOperation !== true
+    && shape.values.coachingFailure !== true
+    && shape.nestedValues.readOnlyOperation !== true
+    && shape.nestedValues.coachingFailure !== true
+    && (!Array.isArray(shape.effectReceipts) || shape.effectReceipts.length === 0)
+  )
+}
+
+function validIssuer(
+  token: unknown,
+  runtime?: RequestOperationRuntime,
+  message?: Memory,
+): IssuerView | undefined {
+  if (!token || typeof token !== "object") return
+  const value = issuers().get(token)
+  if (!value) return
+  const receiver = value.receiver
+  if ((runtime && receiver.runtime !== runtime) || (message && receiver.message !== message)) return
+  return orUndefined(effect {
+    if (
+      activeIssuers().get(receiver.runtime)?.get(receiver.message) !== token
+      || !(try foreignSync(() => receiver.current()))
+      || receiver.runtime.agentId !== receiver.agentId
+      || receiver.message.id !== receiver.messageId
+      || receiver.message.roomId !== receiver.roomId
+      || receiver.message.entityId !== receiver.entityId
+      || receiver.message.agentId !== receiver.agentId
+    ) {
+      return undefined
+    }
+    const held = try value.lifecycle.get()
+    const currentRequestHash = observedHash(try hashStableJson(receiver.message), receiver.requestHash, held.requestHash)
+    const currentSourceHash = currentRequestHash === held.requestHash && held.committed && receiver.currentSource
+      ? try observedSourceHash(receiver, held)
+      : held.currentSourceHash
+    const state = try value.lifecycle.send(
+      { type: "observeCurrent", live: true, currentRequestHash, currentSourceHash },
+    )
+    return issuerHolds(state) ? issuerView(value, state) : undefined
+  })
+}
+
+function observedHash(actual: string, recorded: unknown, held: string): string {
+  return actual === recorded || actual !== held ? actual : ""
+}
+
+effect function observedSourceHash(receiver: Receiver, held: RequestIssuer) {
+  const current = observedHash(
+    try hashStableJson(try foreignSync(() => receiver.currentSource?.call(receiver))),
+    receiver.sourceHash,
+    held.sourceHash,
+  )
+  return current !== held.sourceHash
+    ? current
+    : observedHash(try hashStableJson(receiver.source), receiver.sourceHash, held.sourceHash)
+}
+
+function issuerView(value: Issuer, state: RequestIssuer): IssuerView {
+  return {
+    ...value.receiver,
+    ...value,
+    state,
+    committed: state.committed,
+    revision: state.revision,
+    classification: CLASSIFICATIONS[state.classification],
+    interpretation: state.committed ? publicInterpretation(state.interpretation) : undefined,
+  }
+}
+
+function publicInterpretation(interpretation: Interpretation): NotesRequestInterpretation {
+  return Object.freeze({
+    status: STATUSES[interpretation.status],
+    operations: Object.freeze(interpretation.operations.map((operation) => OPERATIONS[operation])),
+  })
+}
+
+effect function issuerLifecycle(requestHash: string) {
+  provide machine() {
+    const lifecycle = try Machine
+    try lifecycle.send({ type: "beginIssuer", identityValid: true, live: true, requestHash })
+    return lifecycle
+  }
+}
+
+export function beginRequestOperationIssuer(input: {
+  runtime: RequestOperationRuntime
+  message: Memory
+  current: () => boolean
+}): RequestOperationIssuer | undefined {
+  const { runtime, message, current } = input
+  if (
+    !runtime
+    || typeof runtime !== "object"
+    || typeof current !== "function"
+    || !message.id
+    || !message.roomId
+    || !message.entityId
+    || runtime.agentId !== message.agentId
+  ) {
+    return
+  }
+  return orUndefined(effect {
+    if (!(try foreignSync(() => current()))) return undefined
+    let rooms = activeIssuers().get(runtime)
+    if (!rooms) {
+      rooms = new WeakMap()
+      activeIssuers().set(runtime, rooms)
+    }
+    const previous = rooms.get(message)
+    const old = previous && issuers().get(previous)
+    if (old) {
+      return validIssuer(previous, runtime, message) ? previous : undefined
+    }
+    const token = Object.freeze(Object.create(null)) as RequestOperationIssuer
+    const requestHash = try hashStableJson(message)
+    issuers().set(token, {
+      receiver: {
+        runtime,
+        message,
+        current,
+        agentId: runtime.agentId,
+        messageId: message.id,
+        roomId: message.roomId,
+        entityId: message.entityId,
+        requestHash,
+        classification: "unresolved",
+        committed: false,
+        tainted: false,
+        revision: 0,
+      },
+      lifecycle: try issuerLifecycle(requestHash),
+    })
+    rooms.set(message, token)
+    return token
+  })
+}
+
+export function getRequestOperationIssuer(
+  runtime: RequestOperationRuntime,
+  message: Memory,
+): RequestOperationIssuer | undefined {
+  const token = activeIssuers().get(runtime)?.get(message)
+  return token && validIssuer(token, runtime, message) ? token : undefined
+}
+
+export function commitNotesRequestRestriction(
+  token: RequestOperationIssuer,
+  input: {
+    classification: unknown
+    source: unknown
+    currentSource: () => unknown
+    interpretation?: NotesRequestInterpretation
+  },
+): boolean {
+  const value = validIssuer(token)
+  if (!value || typeof input.currentSource !== "function") return false
+  return orUndefined(effect {
+    const classification = input.classification === "read_only"
+        || input.classification === "mutation_requested"
+      ? input.classification
+      : "unresolved"
+    const interpretation = input.interpretation === undefined
+      ? normalizeNotesRequestInterpretation({
+        status: "unavailable",
+        operations: [],
+      })
+      : normalizeNotesRequestInterpretation(input.interpretation)
+    const requested: Interpretation = interpretation
+      ? modelInterpretation(interpretation)
+      : { status: "ContradictoryInterpretation", operations: [] }
+    const interpretationHash = try hashStableJson(
+      publicInterpretation(normalizedInterpretation(MODEL_CLASSIFICATIONS[classification], requested)),
+    )
+    const sourceHash = try hashStableJson(input.source)
+    if ((try hashStableJson(try foreignSync(() => input.currentSource()))) !== sourceHash) return false
+    const before = try value.lifecycle.get()
+    try value.lifecycle.send({
+      type: "observeCurrent",
+      live: value.state.live,
+      currentRequestHash: value.state.currentRequestHash,
+      currentSourceHash: before.sourceHash,
+    })
+    const next = try value.lifecycle.send({
+      type: "commitRestriction",
+      classification: MODEL_CLASSIFICATIONS[classification],
+      interpretation: requested,
+      sourceHash,
+      observedSourceHash: sourceHash,
+    })
+    if (!before.committed) {
+      Object.assign(value.receiver, {
+        classification: CLASSIFICATIONS[next.classification],
+        interpretation: publicInterpretation(next.interpretation),
+        interpretationHash,
+        source: input.source,
+        sourceHash,
+        currentSource: input.currentSource,
+        committed: true,
+        revision: next.revision,
+      })
+    } else if (next.revision !== before.revision) {
+      Object.assign(value.receiver, {
+        tainted: true,
+        classification: CLASSIFICATIONS[next.classification],
+        interpretation: publicInterpretation(next.interpretation),
+        revision: next.revision,
+      })
+    }
+    return !next.tainted
+  }) ?? false
+}
+
+const MODEL_CLASSIFICATIONS = {
+  read_only: "ReadOnlyRequest",
+  mutation_requested: "MutationRequest",
+  unresolved: "UnresolvedRequest",
+} as const satisfies Record<RequestOperationClassification, RequestClassification>
+
+const MODEL_STATUSES = {
+  explicit: "ExplicitInterpretation",
+  unavailable: "UnavailableInterpretation",
+  contradictory: "ContradictoryInterpretation",
+} as const satisfies Record<NotesRequestInterpretation["status"], Interpretation["status"]>
+
+const MODEL_OPERATIONS = {
+  get: "GetNote",
+  list: "ListNotes",
+  create: "CreateNote",
+  update: "UpdateNote",
+  patch: "PatchNote",
+  delete: "DeleteNote",
+} as const satisfies Record<NotesRequestOperation, NoteOperation>
+
+function inverse<K extends string, V extends string>(table: Readonly<Record<K, V>>): Readonly<Record<V, K>> {
+  return Object.fromEntries(Object.entries(table).map(([key, value]) => [value, key])) as Record<V, K>
+}
+
+const CLASSIFICATIONS = inverse(MODEL_CLASSIFICATIONS)
+const STATUSES = inverse(MODEL_STATUSES)
+const OPERATIONS = inverse(MODEL_OPERATIONS)
+
+function modelInterpretation(interpretation: NotesRequestInterpretation): Interpretation {
+  return {
+    status: MODEL_STATUSES[interpretation.status],
+    operations: interpretation.operations.map((operation) => MODEL_OPERATIONS[operation]),
+  }
+}
+export function readTaskExtractionNotesRestriction(
+  state: State | undefined,
+  message: Memory | undefined,
+  runtime?: RequestOperationRuntime,
+): RequestOperationClassification {
+  const binding = readBinding(state, message)
+  const value = binding?.issuer && validIssuer(binding.issuer, runtime, message)
+  return value ? CLASSIFICATIONS[restriction(value.state)] : "unresolved"
+}
+
+export function beginRequestOperationAttempt(input: {
+  runtime: RequestOperationRuntime
+  state: State
+  message: Memory
+  action?: Action
+}): BoundRequestOperationAttempt | undefined {
+  const binding = readBinding(input.state, input.message)
+  const value = binding?.issuer
+    && validIssuer(binding.issuer, input.runtime, input.message)
+  if (!value?.committed || !binding?.issuer) return
+  const token = Object.freeze(
+    Object.create(null),
+  ) as BoundRequestOperationAttempt
+  attempts().set(token, {
+    issuer: binding.issuer,
+    revision: value.revision,
+    state: input.state,
+    message: input.message,
+    conflicted: false,
+    registration: value.classification === "mutation_requested"
+      ? registeredOperation(input.runtime, input.action)
+      : undefined,
+  })
+  return token
+}
+function currentAttempt(token: unknown): Attempt | undefined {
+  if (!token || typeof token !== "object") return
+  const attempt = attempts().get(token)
+  const value = attempt && validIssuer(attempt.issuer)
+  return attempt
+      && value
+      && !attempt.conflicted
+      && value.revision === attempt.revision
+    ? attempt
+    : undefined
+}
+export type BoundOperationDecision =
+  | { readonly allowed: true; readonly addsAuthority: false }
+  | {
+    readonly allowed: false
+    readonly addsAuthority: false
+    readonly code:
+      | "REQUEST_OPERATION_RESTRICTED"
+      | "REQUEST_OPERATION_UNRESOLVED"
+    readonly executionStatus: "not_started"
+  }
+export function checkBoundNotesOperation(
+  state: State | undefined,
+  message: Memory | undefined,
+  operation: NotesRequestOperation,
+  token?: BoundRequestOperationAttempt,
+  registeredOperation?: NotesRequestOperation,
+): BoundOperationDecision {
+  const recognized = operation === "get"
+    || operation === "list"
+    || operation === "create"
+    || operation === "update"
+    || operation === "patch"
+    || operation === "delete"
+
+  if (operation === "get" || operation === "list") {
+    return { allowed: true, addsAuthority: false }
+  }
+  const attempt = currentAttempt(token),
+    binding = readBinding(state, message)
+  const same = attempt
+    && attempt.message === message
+    && binding?.issuer === attempt.issuer
+  if (attempt && same && recognized) {
+    if (attempt.resolved && attempt.resolved !== operation) {
+      attempt.conflicted = true
+    } else attempt.resolved = operation
+    if (!attempt.registeredOperation && registeredOperation) {
+      attempt.registeredOperation = registeredOperation
+    }
+  }
+  const classification = attempt && same && !attempt.conflicted && recognized
+    ? readTaskExtractionNotesRestriction(state, message)
+    : "unresolved"
+  if (classification === "mutation_requested") {
+    return { allowed: true, addsAuthority: false }
+  }
+  const decision: BoundOperationDecision = Object.freeze({
+    allowed: false,
+    addsAuthority: false,
+    code: classification === "read_only"
+      ? "REQUEST_OPERATION_RESTRICTED"
+      : "REQUEST_OPERATION_UNRESOLVED",
+    executionStatus: "not_started",
+  })
+  if (attempt && same && !attempt.conflicted && recognized && token) {
+    denials().set(decision, {
+      attempt: token,
+      operation,
+      classification,
+      kind: "decision",
+    })
+  }
+  return decision
+}
+function unknownOutcomeMarker(source: object): boolean {
+  const row = source as {
+    outcomeUnknown?: unknown
+    reconciliationRequired?: unknown
+    data?: Record<string, unknown>
+  }
+  return [
+    row.outcomeUnknown,
+    row.reconciliationRequired,
+    row.data?.outcomeUnknown,
+    row.data?.reconciliationRequired,
+  ].some((value) => value !== undefined && value !== false)
+}
+function currentDenial(source: object): Denial | undefined {
+  if (unknownOutcomeMarker(source)) return undefined
+  const proof = denials().get(source),
+    attempt = proof && currentAttempt(proof.attempt)
+  if (
+    !proof
+    || !attempt
+    || attempt.resolved !== proof.operation
+    || proof.operation === "get"
+    || proof.operation === "list"
+  ) {
+    return
+  }
+  const value = validIssuer(attempt.issuer)
+  return value?.classification === proof.classification && value.committed
+    ? proof
+    : undefined
+}
+function notStartedFailure(result: object, proof: Denial): boolean {
+  if (unknownOutcomeMarker(result)) return false
+  const row = result as {
+    success?: unknown
+    data?: Record<string, unknown>
+    effectReceipts?: unknown
+    receipt?: unknown
+    effects?: unknown
+  }
+  const code = proof.classification === "read_only"
+    ? "REQUEST_OPERATION_RESTRICTED"
+    : "REQUEST_OPERATION_UNRESOLVED"
+  if (
+    row.success !== false
+    || row.data?.code !== code
+    || row.data.executionStatus !== "not_started"
+    || row.data.executed !== false
+  ) {
+    return false
+  }
+  return (
+    [
+      row.effectReceipts,
+      row.effects,
+      row.data.effectReceipts,
+      row.data.effects,
+    ].every(
+      (value) => value === undefined || (Array.isArray(value) && value.length === 0),
+    )
+    && row.receipt === undefined
+    && row.data.receipt === undefined
+  )
+}
+export class BoundRequestOperationError extends Data.TaggedError("BoundRequestOperationError")<{
+  readonly code:
+    | "REQUEST_OPERATION_RESTRICTED"
+    | "REQUEST_OPERATION_UNRESOLVED"
+  readonly executionStatus: "not_started"
+}> {
+  constructor(decision: Extract<BoundOperationDecision, { allowed: false }>) {
+    const proof = currentDenial(decision)
+    const readOnly = proof?.classification === "read_only"
+    super({
+      code: readOnly ? "REQUEST_OPERATION_RESTRICTED" : "REQUEST_OPERATION_UNRESOLVED",
+      executionStatus: "not_started",
+    })
+    this.message = readOnly
+      ? "Operation denied by the current read-only request constraint."
+      : "The current request operation is unresolved."
+    this.name = "BoundRequestOperationError"
+    if (proof) denials().set(this, { ...proof, kind: "error" })
+  }
+}
+
+export effect function bindRequestOperationResult(
+  result: object,
+  token: BoundRequestOperationAttempt,
+) {
+  const attempt = currentAttempt(token),
+    value = attempt && validIssuer(attempt.issuer)
+  if (!attempt || !value || !attempt.resolved) return false
+  const resolved = attempt.resolved
+  const shape = orUndefined(completionShape(result))
+  if (!shape) return false
+  const fingerprint = try hashStableJson(shape)
+  const previous = resultAttempts().get(result)
+  if (previous) {
+    if (previous.fingerprint !== fingerprint) previous.changed = true
+    return (
+      !previous.changed
+      && previous.attempt === token
+      && previous.fingerprint === fingerprint
+    )
+  }
+  const completion: CompletionFact | undefined = orUndefined(effect {
+    if (
+      value.classification === "mutation_requested"
+      && attempt.registeredOperation
+      && attempt.resolved !== "get"
+      && attempt.resolved !== "list"
+      && attempt.registration
+      && currentRegistration(value.runtime, attempt.registration)
+    ) {
+      const dispatch = canonicalDispatch(
+        value.runtime,
+        attempt.registration,
+        attempt.registeredOperation,
+      )
+      const canonicalChild = dispatch
+        && value.runtime.actions?.find((action) => action.name === dispatch.child)
+      const noEffectRejection = rejectedBeforeExecution(shape)
+        && [shape.top, shape.data, shape.values, shape.nestedValues].every(
+          (row) =>
+            row.op === undefined
+            || row.op === attempt.registeredOperation
+            || row.op === resolved,
+        )
+
+      const requested = value.interpretation?.status === "explicit"
+        ? value.interpretation.operations.includes(
+          attempt.registeredOperation,
+        )
+          || (attempt.registeredOperation === "patch"
+            && resolved === "update"
+            && value.interpretation.operations.includes("update"))
+        : undefined
+      if (dispatch && canonicalChild) {
+        return Object.freeze({
+          issuer: attempt.issuer,
+          revision: attempt.revision,
+          registration: attempt.registration,
+          operation: attempt.registeredOperation,
+          permissionOperation: resolved,
+          dispatch: Object.freeze(dispatch),
+          canonicalChild,
+          childDefinition: try definition(canonicalChild),
+          requested,
+          rejected: requested === true && noEffectRejection,
+          outsideRequestRejection: requested === false && noEffectRejection,
+          ambiguousRejection: value.interpretation?.status !== "explicit" && noEffectRejection,
+        })
+      }
+    }
+    return undefined
+  })
+  resultAttempts().set(result, {
+    attempt: token,
+    fingerprint,
+    shape,
+    completion,
+  })
+  return true
+}
+
+export const bindRequestOperationResultOrThrow = thrown(failingAs(TypeError, bindRequestOperationResult))
+
+export effect function bindRequestOperationProjection(
+  source: object,
+  target: object,
+  consumer: RequestOperationIssuer | undefined,
+) {
+  const association = resultAttempts().get(source),
+    fact = association?.completion
+  if (
+    !association
+    || !fact
+    || !consumer
+    || fact.issuer !== consumer
+    || resultAttempts().has(target)
+  ) {
+    return false
+  }
+  const shape = orUndefined(completionShape(target))
+  if (!shape) return false
+  const fingerprint = try hashStableJson(shape)
+  if (fingerprintResult(source) !== association.fingerprint) {
+    association.changed = true
+  }
+  const changed = association.changed === true
+    || (try projectionFingerprint(shape)) !== (try projectionFingerprint(association.shape))
+
+  resultAttempts().set(target, {
+    attempt: association.attempt,
+    fingerprint,
+    shape,
+    projectionOwner: consumer,
+    ...(changed ? { completion: fact, changed: true } : {}),
+  })
+  return !changed
+}
+
+export const bindRequestOperationProjectionOrThrow = thrown(failingAs(TypeError, bindRequestOperationProjection))
+
+export effect function copyRequestOperationResult(
+  source: object,
+  target: object,
+) {
+  const association = resultAttempts().get(source),
+    owned = resultAttempts().get(target)
+  const fact = association?.completion
+  if (
+    !association
+    || !fact
+    || !owned
+    || owned.attempt !== association.attempt
+    || owned.projectionOwner !== fact.issuer
+  ) {
+    return false
+  }
+  if (fingerprintResult(source) !== association.fingerprint) {
+    association.changed = true
+  }
+  if (
+    association.changed
+    || owned.changed
+    || fingerprintResult(target) !== owned.fingerprint
+    || (try projectionFingerprint(owned.shape))
+      !== (try projectionFingerprint(association.shape))
+  ) {
+    return false
+  }
+  resultAttempts().set(target, {
+    ...association,
+    fingerprint: owned.fingerprint,
+    shape: owned.shape,
+    projectionOwner: owned.projectionOwner,
+  })
+  return true
+}
+
+export const copyRequestOperationResultOrThrow = thrown(failingAs(TypeError, copyRequestOperationResult))
+export type NotesMutationCompletion = {
+  rejected: boolean
+  requested?: boolean
+  outsideRequestRejection: boolean
+  ambiguousRejection: boolean
+  status: "current" | "stale" | "changed"
+  dispatch?: CanonicalDispatch
+}
+
+export function readNotesMutationCompletion(
+  result: object,
+  consumer: RequestOperationIssuer | undefined,
+): NotesMutationCompletion | undefined {
+  const association = resultAttempts().get(result),
+    fact = association?.completion
+  if (!association || !fact || !consumer || fact.issuer !== consumer) return
+  const originalAttempt = attempts().get(association.attempt)
+  if (fingerprintResult(result) !== association.fingerprint) {
+    association.changed = true
+  }
+  if (association.changed && originalAttempt) {
+    originalAttempt.completionInvalidated = "changed"
+  }
+  const outcome = (status: NotesMutationCompletion["status"]) => ({
+    rejected: fact.rejected,
+    requested: fact.requested,
+    outsideRequestRejection: fact.outsideRequestRejection,
+    ambiguousRejection: fact.ambiguousRejection,
+    status,
+  })
+  if (
+    association.changed
+    || originalAttempt?.completionInvalidated === "changed"
+  ) {
+    return outcome("changed")
+  }
+  if (originalAttempt?.completionInvalidated === "stale") {
+    return outcome("stale")
+  }
+  const attempt = currentAttempt(association.attempt),
+    value = validIssuer(consumer)
+  const current = orUndefined(effect {
+    return !!(
+      attempt
+      && value
+      && value.revision === fact.revision
+      && attempt.issuer === consumer
+      && attempt.resolved === fact.permissionOperation
+      && attempt.registeredOperation === fact.operation
+      && !attempt.conflicted
+      && currentRegistration(value.runtime, fact.registration)
+      && value.runtime.actions?.includes(fact.canonicalChild) === true
+      && (try sameDefinition(fact.canonicalChild, fact.childDefinition))
+    )
+  }) ?? false
+  if (!current && originalAttempt) {
+    originalAttempt.completionInvalidated = "stale"
+  }
+  return current
+    ? { ...outcome("current"), dispatch: fact.dispatch }
+    : outcome("stale")
+}
+export function isMatchingNotesMutationCompletion(
+  rejected: object,
+  success: object,
+  consumer: RequestOperationIssuer | undefined,
+): boolean {
+  const first = resultAttempts().get(rejected),
+    second = resultAttempts().get(success)
+  const a = first?.completion,
+    b = second?.completion
+  if (
+    !first
+    || !second
+    || !a?.rejected
+    || !b
+    || !consumer
+    || a.issuer !== consumer
+    || b.issuer !== consumer
+    || a.revision !== b.revision
+    || a.registration.family !== b.registration.family
+    || a.canonicalChild !== b.canonicalChild
+    || a.operation !== b.operation
+    || readNotesMutationCompletion(rejected, consumer)?.status !== "current"
+    || readNotesMutationCompletion(success, consumer)?.status !== "current"
+  ) {
+    return false
+  }
+  const shape = second.shape
+  const operation = shape.data.op
+  const evidence = [shape.top, shape.data, shape.values, shape.nestedValues]
+  const prerequisite = evidence.some(awaitsPrerequisite)
+  if (
+    shape.success !== true
+    || shape.errorPresent
+    || operation !== a.permissionOperation
+    || prerequisite
+    || unclassifiedEffects(shape)
+    || evidence.some(
+      (row) =>
+        (row.op !== undefined && row.op !== a.permissionOperation)
+        || row.readOnlyOperation === true
+        || row.coachingFailure === true,
+    )
+    || evidence.some(
+      (row) => row.executionStatus === "not_started" || row.acceptance === "rejected",
+    )
+    || shape.data.readOnlyOperation === true
+    || shape.data.coachingFailure === true
+    || typeof shape.data.noteId !== "string"
+    || !Array.isArray(shape.effectReceipts)
+    || hasUnknownOutcome(shape)
+  ) {
+    return false
+  }
+
+  if (
+    shape.effectReceipts.some(
+      (value) =>
+        !value
+        || typeof value !== "object"
+        || Array.isArray(value)
+        || !["applied", "noop"].includes(
+          String((value as Record<string, unknown>).outcome),
+        ),
+    )
+  ) {
+    return false
+  }
+  return shape.effectReceipts.some((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return false
+    }
+    const receipt = value as Record<string, unknown>
+    const resource = receipt.resource as
+      | { kind?: unknown; id?: unknown }
+      | undefined
+    const idempotency = receipt.idempotency as
+      | { replayed?: unknown }
+      | undefined
+    return (
+      receipt.operation === `notes.note.${shape.data.op}`
+      && resource?.kind === "notes.note"
+      && resource.id === shape.data.noteId
+      && (receipt.outcome === "applied"
+        ? evidence.every(
+          (row) => row.executed === undefined || row.executed === true,
+        )
+        : receipt.outcome === "noop"
+          && idempotency?.replayed === true
+          && evidence.every(
+            (row) => row.executed === undefined || row.executed === false,
+          ))
+    )
+  })
+}
+
+export function transferBoundOperationDenial(
+  source: object,
+  target: object,
+  expectedAttempt: BoundRequestOperationAttempt,
+): boolean {
+  const proof = currentDenial(source)
+  if (
+    !proof
+    || proof.attempt !== expectedAttempt
+    || resultAttempts().get(target)?.attempt !== expectedAttempt
+    || !notStartedFailure(target, proof)
+    || (proof.kind === "result" && !notStartedFailure(source, proof))
+  ) {
+    return false
+  }
+  denials().set(target, { ...proof, kind: "result" })
+  return true
+}
+
+export function getBoundOperationDenialAttempt(
+  result: object,
+): BoundRequestOperationAttempt | undefined {
+  const proof = currentDenial(result)
+  if (!proof) return undefined
+  if (
+    proof.kind === "result"
+    && (resultAttempts().get(result)?.attempt !== proof.attempt
+      || !notStartedFailure(result, proof))
+  ) {
+    return undefined
+  }
+  return proof.attempt
+}
+
+export function isVerifiedOutsideRequestDenial(
+  result: object,
+  current: {
+    messageId: string
+    roomId: string
+    entityId?: string
+    agentId?: string
+    attempt: BoundRequestOperationAttempt
+    operation: NotesRequestOperation
+  },
+): boolean {
+  const proof = currentDenial(result),
+    attempt = proof && currentAttempt(proof.attempt)
+  const value = attempt && validIssuer(attempt.issuer)
+  return (
+    !!proof
+    && !!value
+    && proof.kind === "result"
+    && proof.classification === "read_only"
+    && proof.attempt === current.attempt
+    && resultAttempts().get(result)?.attempt === current.attempt
+    && proof.operation === current.operation
+    && notStartedFailure(result, proof)
+    && current.messageId === value.messageId
+    && current.roomId === value.roomId
+    && (current.entityId === undefined || current.entityId === value.entityId)
+    && (current.agentId === undefined || current.agentId === value.agentId)
+  )
+}
+
+export function getBoundOperationDenialOperation(
+  result: object,
+): NotesRequestOperation | undefined {
+  const proof = currentDenial(result)
+  return proof?.kind === "result"
+      && resultAttempts().get(result)?.attempt === proof.attempt
+      && notStartedFailure(result, proof)
+    ? proof.operation
+    : undefined
+}

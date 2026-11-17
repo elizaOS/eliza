@@ -6,6 +6,15 @@ uploaded afterwards, and how its stored time is shown. The server's side of the 
 [device actions](./index.md) spec; who may authorize an effect, and the SMS
 bounds, are [telephony review](./telephonyReview.md).
 
+The reminder journal is one such journal, shared by reminder creation and
+revision-bound reminder actions. It validates its JSON and changes only by
+an atomic compare-and-edit over a store owned by the current connection:
+that connection's secure slot, by compare-and-exchange, on a device, and a
+named browser document in a browser. Creation keeps at most 32 entries and
+evicts confirmed entries first; the action store keeps at most 100; each
+is bounded at 128 KiB serialized. A native outcome that is valid for a
+different journal entry leaves the current entry pending.
+
 ## Story: Approve a device operation on the screen that reviewed it
 
 > As a user, a device operation runs only after I approve it on the screen
@@ -131,7 +140,10 @@ pure def sometimesLostReplyAfterEffectIsUnknown(s: DeviceAttempt): bool = s.resu
 
 An unknown result becomes applied only when a fresh read finds the exact
 saved row, and confirmed with no effect only when the device definitively
-refused and the fresh read shows the row absent. The owner may discard an
+refused and the fresh read shows the row absent. The live handler owns the
+dispatch boundary: across an uncertain call the persisted entry stays
+pending, and reconciliation asks the device for the row or receipt before
+it changes the journal. The owner may discard an
 unknown entry after a warning; the effect stays possible, and a discarded
 entry is never resolved or applied to a successor's request.
 

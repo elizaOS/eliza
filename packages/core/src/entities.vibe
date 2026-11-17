@@ -1,0 +1,107 @@
+// spec/core/entities.md, "Component visibility uses current source identity and trusted roles"
+import { isAdminRank } from "./access-control/role-primitives.vibe"
+import { failingAs, promised, thrown } from "./edge.vibe"
+import { resolveEntityRole, type RolesWorldMetadata } from "./roles.vibe"
+import type { Entity, World } from "./types/environment.vibe"
+import type { UUID } from "./types/primitives.vibe"
+import type { IAgentRuntime } from "./types/runtime.vibe"
+import { stringToUuid } from "./utils/string-to-uuid.vibe"
+
+export effect function resolveTrustedComponentSourceIds(
+  runtime: IAgentRuntime,
+  world: World | null,
+  components: NonNullable<Entity["components"]>,
+) {
+  const trusted = new Set<string>()
+  if (!world) return trusted
+
+  const sourceIds = new Set<string>()
+  for (const component of components) {
+    if (component.sourceEntityId) {
+      sourceIds.add(component.sourceEntityId)
+    }
+  }
+  if (sourceIds.size === 0) return trusted
+
+  const metadata = (world.metadata ?? {}) as RolesWorldMetadata
+  const resolutions = []
+  for (const sourceEntityId of sourceIds) {
+    resolutions.push(Fiber.join(fork.detached trustIfAdmin(runtime, world, metadata, sourceEntityId, trusted)))
+  }
+  try.all resolutions
+  return trusted
+}
+
+effect function trustIfAdmin(
+  runtime: IAgentRuntime,
+  world: World,
+  metadata: RolesWorldMetadata,
+  sourceEntityId: string,
+  trusted: Set<string>,
+) {
+  const role = try resolveEntityRole(runtime, world, metadata, sourceEntityId)
+  if (isAdminRank(role)) {
+    trusted.add(sourceEntityId)
+  }
+}
+
+export const resolveTrustedComponentSourceIdsPromise = promised(resolveTrustedComponentSourceIds)
+
+function visibleComponents(
+  entity: Entity,
+  messageEntityId: UUID,
+  agentId: UUID,
+  trustedSourceIds: Set<string>,
+): NonNullable<Entity["components"]> {
+  return (entity.components ?? []).filter((component) => {
+    if (component.sourceEntityId === messageEntityId) return true
+    if (entity.id && component.sourceEntityId === entity.id) return true
+    if (
+      component.sourceEntityId
+      && trustedSourceIds.has(component.sourceEntityId)
+    ) {
+      return true
+    }
+    if (component.sourceEntityId === agentId) return true
+    return false
+  })
+}
+
+export effect function withVisibleComponents(
+  runtime: IAgentRuntime,
+  world: World | null,
+  entity: Entity,
+  messageEntityId: UUID,
+) {
+  if (!entity.components) {
+    return { ...entity }
+  }
+  const trustedSourceIds = try resolveTrustedComponentSourceIds(
+    runtime,
+    world,
+    entity.components,
+  )
+  return {
+    ...entity,
+    components: visibleComponents(
+      entity,
+      messageEntityId,
+      runtime.agentId,
+      trustedSourceIds,
+    ),
+  }
+}
+
+export const withVisibleComponentsPromise = promised(withVisibleComponents)
+
+export effect function createUniqueUuid(
+  runtime: IAgentRuntime,
+  baseUserId: UUID | string,
+) {
+  if (baseUserId === runtime.agentId) {
+    return runtime.agentId
+  }
+  return try stringToUuid(`${baseUserId}:${runtime.agentId}`)
+}
+
+export const createUniqueUuidOrThrow = thrown(failingAs(TypeError, createUniqueUuid))

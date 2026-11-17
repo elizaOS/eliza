@@ -1,0 +1,538 @@
+// spec/core/taskEventReader.md, "Replay is idempotent and histories reject conflicting duplicates or gaps"; spec/core/taskEventReader.md, "A generation owns its pending read and every publish boundary rechecks it"
+import { foreign, foreignSync, thrown, type Foreign } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import {
+  Machine,
+  machine,
+  noPage,
+  validPollingInterval,
+  type Event as ReaderEvent,
+  type EventKind as ModelEventKind,
+  type OperationStatus as ModelOperationStatus,
+  type Rejected,
+  type TaskEvent as ModelEvent,
+  type TaskPage as ModelPage,
+  type TaskReader,
+  type TaskStatus as ModelStatus,
+} from "../../gen/core__taskEventReader.effect.vibe"
+import { own, type Owned } from "../owned.vibe"
+
+export const TASK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,255}$/
+
+const OPAQUE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/
+
+const TASK_STATUSES = [
+  "active",
+  "paused",
+  "blocked",
+  "waiting",
+  "completed",
+  "cancelled",
+] as const
+export type TaskStatus = (typeof TASK_STATUSES)[number]
+const TASK_OPERATION_STATUSES = [
+  "prepared",
+  "dispatched",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "unknown",
+] as const
+export type TaskOperationStatus = (typeof TASK_OPERATION_STATUSES)[number]
+
+interface TaskEventShape {
+  operation: readonly TaskOperationStatus[] | null
+  origin: "none" | "optional" | "required"
+}
+
+export const TASK_EVENT_KINDS = {
+  create: { operation: null, origin: "none" },
+  checkpoint: { operation: null, origin: "none" },
+  observe: { operation: null, origin: "optional" },
+  resume: { operation: null, origin: "optional" },
+  rebind: { operation: null, origin: "none" },
+  pause: { operation: null, origin: "none" },
+  cancel: { operation: null, origin: "none" },
+  recover: { operation: null, origin: "none" },
+  revoke: { operation: null, origin: "none" },
+  complete: { operation: null, origin: "none" },
+  prepare: { operation: ["prepared"], origin: "none" },
+  dispatch: { operation: ["dispatched"], origin: "none" },
+  result: { operation: ["succeeded", "failed", "unknown"], origin: "none" },
+  reconcile: { operation: ["succeeded", "failed", "unknown"], origin: "none" },
+  "extend-origin": { operation: null, origin: "required" },
+  "retract-origin": { operation: null, origin: "required" },
+} as const satisfies Record<string, TaskEventShape>
+export type TaskEventKind = keyof typeof TASK_EVENT_KINDS
+
+interface TaskEventBase {
+  schemaVersion: 1
+  eventId: string
+  taskId: string
+  sequence: number
+  epoch: number
+  at: number
+  status: TaskStatus
+}
+type OperationFields<S extends TaskEventShape> = S["operation"] extends readonly TaskOperationStatus[]
+  ? { operationId: string; operationStatus: S["operation"][number] }
+  : { operationId?: never; operationStatus?: never }
+
+type OriginFields<S extends TaskEventShape> = S["origin"] extends "required" ? { origin: string }
+  : S["origin"] extends "optional" ? { origin?: string }
+  : { origin?: never }
+export type TaskEvent = {
+  [K in TaskEventKind]:
+    & TaskEventBase
+    & { kind: K }
+    & OperationFields<
+      (typeof TASK_EVENT_KINDS)[K]
+    >
+    & OriginFields<(typeof TASK_EVENT_KINDS)[K]>
+}[TaskEventKind]
+
+function invalidEvent(message: string): ElizaError {
+  return new ElizaError(message, { code: "TASK_EVENT_INVALID" })
+}
+const fields = [
+  "schemaVersion",
+  "eventId",
+  "taskId",
+  "sequence",
+  "epoch",
+  "kind",
+  "at",
+  "status",
+]
+const optional = ["operationId", "operationStatus", "origin"]
+const eventKeys = [...fields, ...optional] as (keyof TaskEvent)[]
+function includes<T extends string>(
+  list: readonly T[],
+  value: unknown,
+): value is T {
+  return (list as readonly unknown[]).includes(value)
+}
+function parseUrl(value: unknown): URL | undefined {
+  try {
+    return new URL(String(value))
+  } catch {
+    return undefined
+  }
+}
+
+export effect function validateTaskEvent(value: unknown): void!ElizaError {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw invalidEvent("Expected a task event")
+  }
+  const event = value as Record<string, unknown>
+  if (
+    fields.some((key) => !(key in value))
+    || Object.keys(value).some(
+      (key) => !fields.includes(key) && !optional.includes(key),
+    )
+  ) {
+    throw invalidEvent("Unexpected task event fields")
+  }
+  if (
+    event.schemaVersion !== 1
+    || typeof event.taskId !== "string"
+    || !OPAQUE_REF_PATTERN.test(event.taskId)
+    || [event.sequence, event.epoch, event.at].some(
+      (n) => !Number.isSafeInteger(n) || Number(n) < 0,
+    )
+    || event.eventId !== `${event.taskId}#${event.sequence}`
+  ) {
+    throw invalidEvent("Invalid task event identity")
+  }
+  if (
+    typeof event.kind !== "string"
+    || !Object.hasOwn(TASK_EVENT_KINDS, event.kind)
+    || !includes(TASK_STATUSES, event.status)
+  ) {
+    throw invalidEvent("Invalid task event state")
+  }
+  const shape: TaskEventShape = TASK_EVENT_KINDS[event.kind as TaskEventKind]
+  if (shape.operation === null) {
+    if (event.operationId !== undefined || event.operationStatus !== undefined) {
+      throw invalidEvent("Task event names an operation its kind does not have")
+    }
+  } else {
+    if (
+      typeof event.operationId !== "string"
+      || !OPAQUE_REF_PATTERN.test(event.operationId)
+    ) {
+      throw invalidEvent("Invalid event operation")
+    }
+    if (!includes(shape.operation, event.operationStatus)) {
+      throw invalidEvent("Invalid event operation status")
+    }
+  }
+  if (event.origin !== undefined) {
+    const parsed = parseUrl(event.origin)
+    if (
+      shape.origin === "none"
+      || parsed?.protocol !== "https:"
+      || parsed.origin !== event.origin
+    ) {
+      throw invalidEvent("Invalid event origin")
+    }
+  } else if (shape.origin === "required") {
+    throw invalidEvent("Origin scope event is missing its origin")
+  }
+  if (
+    event.kind === "create"
+    && (event.sequence !== 0 || event.epoch !== 0 || event.status !== "active")
+  ) {
+    throw invalidEvent("Invalid task creation event")
+  }
+}
+
+export effect function mergeTaskEvents(
+  taskId: string,
+  previous: readonly TaskEvent[],
+  incoming: readonly unknown[],
+): TaskEvent[]!ElizaError {
+  const merged: TaskEvent[] = []
+  const known = new Map<number, TaskEvent>()
+  for (const values of [previous, incoming]) {
+    for (const value of values) {
+      try validateTaskEvent(value)
+      const valid = value as TaskEvent
+      if (valid.taskId !== taskId) {
+        throw invalidEvent("Task event belongs to a different task")
+      }
+      const duplicate = known.get(valid.sequence)
+      if (duplicate) {
+        if (eventKeys.some((key) => duplicate[key] !== valid[key])) {
+          throw invalidEvent("Conflicting task event replay")
+        }
+        continue
+      }
+      const last = merged.at(-1)
+      if (
+        (!last
+          && valid.kind !== "checkpoint"
+          && (valid.kind !== "create" || valid.sequence !== 0))
+        || (last
+          && (valid.sequence !== last.sequence + 1 || valid.epoch < last.epoch))
+      ) {
+        throw invalidEvent("Task event history has a gap or moved backwards")
+      }
+      const event = structuredClone(valid)
+      known.set(event.sequence, event)
+      merged.push(event)
+    }
+  }
+  return merged
+}
+
+export const mergeTaskEventsOrThrow = thrown(mergeTaskEvents)
+
+export interface TaskEventPage {
+  events: TaskEvent[]
+  cursor: number
+  hasMore: boolean
+  task: {
+    id: string
+    revision: number
+    epoch: number
+    status: TaskStatus
+    hasUnknownOutcome: boolean
+  }
+}
+
+export effect function mergeTaskEventPage(
+  taskId: string,
+  previous: TaskEventPage | null,
+  value: unknown,
+): TaskEventPage!ElizaError {
+  const page = value as TaskEventPage
+  if (
+    !page
+    || !Array.isArray(page.events)
+    || page.events.length > 128
+    || !Number.isSafeInteger(page.cursor)
+    || page.cursor < -1
+    || typeof page.hasMore !== "boolean"
+    || page.task?.id !== taskId
+    || !Number.isSafeInteger(page.task.revision)
+    || page.task.revision < 0
+    || !Number.isSafeInteger(page.task.epoch)
+    || page.task.epoch < 0
+    || !includes(TASK_STATUSES, page.task.status)
+    || typeof page.task.hasUnknownOutcome !== "boolean"
+  ) {
+    throw invalidEvent("Invalid task event page")
+  }
+  if (
+    previous
+    && (page.task.revision < previous.task.revision
+      || page.task.epoch < previous.task.epoch)
+  ) {
+    throw invalidEvent("Task event page moved backwards")
+  }
+  const events = try mergeTaskEvents(taskId, previous?.events ?? [], page.events)
+  const cursor = events.at(-1)?.sequence ?? -1
+  if (
+    page.cursor !== cursor
+    || cursor > page.task.revision
+    || (page.hasMore && cursor <= (previous?.cursor ?? -1))
+    || (!page.hasMore && cursor !== page.task.revision)
+  ) {
+    throw invalidEvent("Incomplete task event page")
+  }
+  return {
+    events,
+    cursor,
+    hasMore: page.hasMore,
+    task: {
+      id: taskId,
+      revision: page.task.revision,
+      epoch: page.task.epoch,
+      status: page.task.status,
+      hasUnknownOutcome: page.task.hasUnknownOutcome,
+    },
+  }
+}
+
+export const mergeTaskEventPageOrThrow = thrown(mergeTaskEventPage)
+
+export interface TaskEventReaderState {
+  page: TaskEventPage | null
+  pending: boolean
+  failed: boolean
+}
+export interface TaskEventReaderOptions {
+  read: (taskId: string, after: number) => Promise<unknown>
+  changed: (state: TaskEventReaderState) => void
+  pollIntervalMs?: number
+}
+
+const MODEL_STATUS = {
+  active: "ActiveTask",
+  paused: "PausedTask",
+  blocked: "BlockedTask",
+  waiting: "WaitingTask",
+  completed: "CompletedTask",
+  cancelled: "CancelledTask",
+} as const satisfies Record<TaskStatus, ModelStatus>
+
+const MODEL_KIND = {
+  create: "CreateEvent",
+  checkpoint: "CheckpointEvent",
+  observe: "ObserveEvent",
+  resume: "ResumeEvent",
+  rebind: "RebindEvent",
+  pause: "PauseEvent",
+  cancel: "CancelEvent",
+  recover: "RecoverEvent",
+  revoke: "RevokeEvent",
+  complete: "CompleteEvent",
+  prepare: "PrepareEvent",
+  dispatch: "DispatchEvent",
+  result: "ResultEvent",
+  reconcile: "ReconcileEvent",
+  "extend-origin": "ExtendOriginEvent",
+  "retract-origin": "RetractOriginEvent",
+} as const satisfies Record<TaskEventKind, ModelEventKind>
+
+const MODEL_OPERATION = {
+  prepared: "PreparedOperation",
+  dispatched: "DispatchedOperation",
+  succeeded: "SucceededOperation",
+  failed: "FailedOperation",
+  cancelled: "CancelledOperation",
+  unknown: "UnknownOperation",
+} as const satisfies Record<TaskOperationStatus, ModelOperationStatus>
+
+function modelEvent(event: TaskEvent): ModelEvent {
+  return {
+    task: event.taskId,
+    sequence: event.sequence,
+    epoch: event.epoch,
+    at: event.at,
+    status: MODEL_STATUS[event.status],
+    kind: MODEL_KIND[event.kind],
+    operationId: event.operationId ?? "",
+    operationStatus: event.operationStatus === undefined ? "NoOperation" : MODEL_OPERATION[event.operationStatus],
+    origin: event.origin ?? "",
+  }
+}
+
+function modelPage(page: TaskEventPage, retained: number): ModelPage {
+  return {
+    events: page.events.slice(retained).map(modelEvent),
+    cursor: page.cursor,
+    hasMore: page.hasMore,
+    task: page.task.id,
+    revision: page.task.revision,
+    epoch: page.task.epoch,
+    status: MODEL_STATUS[page.task.status],
+    unknownOutcome: page.task.hasUnknownOutcome,
+  }
+}
+
+export error InvalidPollingInterval { message: string }
+export error InvalidTaskId { message: string }
+
+interface ReaderPayload {
+  taskId: string
+  page: TaskEventPage | null
+  timer: Fiber.Fiber<void> | undefined
+}
+
+export interface ReaderRuntime {
+  options: TaskEventReaderOptions
+  interval: number
+  poll: () => void
+  owned: Owned<TaskReader, ReaderEvent, TaskReader, Rejected, ReaderPayload>
+}
+
+export effect function createReader(options: TaskEventReaderOptions, poll: () => void): ReaderRuntime!InvalidPollingInterval {
+  const interval = options.pollIntervalMs ?? 2000
+  if (!Number.isSafeInteger(interval) || !validPollingInterval(interval)) {
+    throw new InvalidPollingInterval({ message: "Invalid task event polling interval" })
+  }
+  const copied = { ...options }
+  provide machine() {
+    const owned = try own(try Machine, { taskId: "", page: null, timer: undefined } satisfies ReaderPayload)
+    return { options: copied, interval, poll, owned }
+  }
+}
+
+effect function cancel(timer: Fiber.Fiber<void> | undefined) {
+  if (timer) try sync(() => timer.interruptUnsafe())
+}
+
+effect function cancelTimer(reader: ReaderRuntime) {
+  try cancel(try reader.owned.read((_, payload) => payload.timer))
+}
+
+export effect function stopReader(reader: ReaderRuntime) {
+  try cancelTimer(reader)
+  try orDie(reader.owned.step({ type: "stop" }, (payload) => [undefined, { ...payload, timer: undefined }]))
+}
+
+export effect function startReader(reader: ReaderRuntime, taskId: string): (number | undefined)!InvalidTaskId {
+  if (!OPAQUE_REF_PATTERN.test(taskId)) throw new InvalidTaskId({ message: "Invalid task ID" })
+  if (!taskId) {
+    try stopReader(reader)
+    return undefined
+  }
+  try cancelTimer(reader)
+  return try orDie(reader.owned.step({ type: "start", task: String(taskId) }, (_, state) => [state.ticket, { taskId, page: null, timer: undefined }]))
+}
+
+export effect function refreshReader(reader: ReaderRuntime) {
+  const idle = try reader.owned.read((state) => state.task === "" || state.pending)
+  if (idle) return
+  try cancelTimer(reader)
+  const ticket = try orDie(reader.owned.step({ type: "refresh" }, (payload, state) => [state.ticket, { ...payload, timer: undefined }]))
+  try pollReader(reader, ticket)
+}
+
+effect function notify(reader: ReaderRuntime) {
+  const view = try reader.owned.read((state, payload): TaskEventReaderState => ({
+    page: payload.page,
+    pending: state.pending,
+    failed: state.failed,
+  }))
+  return try Effect.match(foreignSync(() => { reader.options.changed(structuredClone(view)) }), {
+    onFailure: (failure): Foreign | undefined => failure,
+    onSuccess: () => undefined,
+  })
+}
+
+effect function owns<A>(step: A!Rejected) {
+  return step catch () => undefined
+}
+
+effect function rearm(reader: ReaderRuntime) {
+  try sleep(reader.interval)
+  try sync(reader.poll)
+}
+
+export effect function pollReader(reader: ReaderRuntime, ticket: number): void!Foreign {
+  const startFailure = try notify(reader)
+  if (startFailure) throw startFailure
+  const afterStart = try owns(reader.owned.step({ type: "publishedStart", ticket, success: true }, (payload, state) => [state, payload]))
+  if (!afterStart) return
+  let reading = true
+  while (reading) {
+    const [taskId, previous] = try reader.owned.read((_, payload) => [payload.taskId, payload.page] as const)
+    const value = try Effect.exit(foreign(() => reader.options.read(taskId, previous?.cursor ?? -1)))
+    const merged = Exit.isSuccess(value) ? try Effect.exit(mergeTaskEventPage(taskId, previous, value.value)) : undefined
+    const page = merged !== undefined && Exit.isSuccess(merged) ? merged.value : undefined
+    const received = try owns(reader.owned.step(
+      {
+        type: "receivePage",
+        ticket,
+        incoming: page ? modelPage(page, previous?.events.length ?? 0) : noPage,
+        readSucceeded: page !== undefined,
+      },
+      (payload, state) => [state, page ? { ...payload, page } : payload],
+    ))
+    if (!received) return
+    if (received.phase === "PublishPage") {
+      const pageFailure = try notify(reader)
+      const afterPage = try owns(reader.owned.step({ type: "publishedPage", ticket, success: !pageFailure }, (payload, state) => [state, payload]))
+      if (!afterPage) return
+      reading = afterPage.phase === "ReadingPage"
+    } else {
+      reading = false
+    }
+  }
+  const finishFailure = try notify(reader)
+  const again = try reader.owned.read((state) => state.again)
+  const timer = !finishFailure && again ? try forkDetach(rearm(reader)) : undefined
+  const afterFinish = try owns(reader.owned.step({ type: "publishedFinish", ticket, success: !finishFailure }, (payload, state) => [state, { ...payload, timer: state.timer ? timer : undefined }]))
+  if (!afterFinish?.timer) try cancel(timer)
+  if (finishFailure) throw finishFailure
+}
+
+module edge {
+  import { asLegacy, runDetached, runDetachedSync } from "../edge.vibe"
+  import {
+    createReader,
+    refreshReader,
+    pollReader,
+    startReader,
+    stopReader,
+    validateTaskEvent,
+    type ReaderRuntime,
+    type TaskEvent,
+    type TaskEventReaderOptions,
+  } from "./task-events.vibe"
+
+  /** @throws {ElizaError} */
+  export function validateTaskEventOrThrow(value: unknown): asserts value is TaskEvent {
+    runDetachedSync(validateTaskEvent(value))
+  }
+
+  export class TaskEventReader {
+    readonly #reader: ReaderRuntime
+
+    /** @throws {Error} */
+    constructor(options: TaskEventReaderOptions) {
+      this.#reader = runDetachedSync(asLegacy(Error, createReader(options, () => void this.refresh())))
+    }
+
+    /** @throws {Error} */
+    start(taskId: string): Promise<void> {
+      const ticket = runDetachedSync(asLegacy(Error, startReader(this.#reader, taskId)))
+      return ticket === undefined ? Promise.resolve() : runDetached(pollReader(this.#reader, ticket))
+    }
+
+    /** @throws {never} */
+    stop(): void {
+      runDetachedSync(stopReader(this.#reader))
+    }
+
+    /** @throws {never} */
+    refresh(): Promise<void> {
+      return runDetached(refreshReader(this.#reader))
+    }
+  }
+}
+import { TaskEventReader, validateTaskEventOrThrow } from edge
+export { TaskEventReader, validateTaskEventOrThrow }

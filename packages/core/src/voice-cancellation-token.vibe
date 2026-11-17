@@ -1,0 +1,154 @@
+// spec/core/voice.md, "Reason ownership precedes unlinking and signal abortion follows callbacks"; spec/core/voiceRegistry.md, "Captured calls retain token identity through callbacks and publication"
+export type VoiceCancellationReason =
+  | "barge-in"
+  | "eot-revoked"
+  | "user-cancel"
+  | "timeout"
+  | "external"
+
+export type VoiceCancellationListener = (
+  reason: VoiceCancellationReason,
+) => void
+
+export interface VoiceCancellationToken {
+  readonly runId: string
+
+  readonly slot?: number
+
+  readonly aborted: boolean
+
+  readonly reason: VoiceCancellationReason | null
+
+  readonly signal: AbortSignal
+
+  abort(reason: VoiceCancellationReason): void
+
+  onAbort(listener: VoiceCancellationListener): () => void
+}
+
+export interface CreateVoiceCancellationTokenOptions {
+  runId: string
+  slot?: number
+
+  linkSignal?: AbortSignal
+}
+
+function notify(listener: VoiceCancellationListener, reason: VoiceCancellationReason): void {
+  try {
+    listener(reason)
+  } catch {
+    return
+  }
+}
+
+export function createVoiceCancellationToken(
+  opts: CreateVoiceCancellationTokenOptions,
+): VoiceCancellationToken {
+  const controller = new AbortController()
+  const listeners = new Set<VoiceCancellationListener>()
+
+  let abortReason: VoiceCancellationReason | null = null
+  let unlinkSignal: (() => void) | null = null
+
+  const trip = (reason: VoiceCancellationReason): void => {
+    if (abortReason !== null) return
+    abortReason = reason
+    unlinkSignal?.()
+    unlinkSignal = null
+
+    for (const listener of Array.from(listeners)) notify(listener, reason)
+
+    listeners.clear()
+    controller.abort()
+  }
+
+  const linkSignal = opts.linkSignal
+  if (linkSignal) {
+    if (linkSignal.aborted) {
+      trip("external")
+    } else {
+      const onLinkAbort = () => trip("external")
+      linkSignal.addEventListener("abort", onLinkAbort, { once: true })
+      unlinkSignal = () => linkSignal.removeEventListener("abort", onLinkAbort)
+    }
+  }
+
+  return {
+    runId: opts.runId,
+    ...(opts.slot !== undefined ? { slot: opts.slot } : {}),
+    get aborted() {
+      return abortReason !== null
+    },
+    get reason() {
+      return abortReason
+    },
+    signal: controller.signal,
+    abort: trip,
+    onAbort(listener: VoiceCancellationListener) {
+      if (abortReason !== null) {
+        notify(listener, abortReason)
+        return () => undefined
+      }
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+  }
+}
+
+export class VoiceCancellationRegistry {
+  private readonly byRoom = new Map<string, VoiceCancellationToken>()
+
+  arm(
+    roomId: string,
+    opts: CreateVoiceCancellationTokenOptions,
+  ): VoiceCancellationToken {
+    const previous = this.byRoom.get(roomId)
+    if (previous && !previous.aborted) {
+      previous.abort("external")
+    }
+    const token = createVoiceCancellationToken(opts)
+    this.byRoom.set(roomId, token)
+
+    token.onAbort(() => {
+      if (this.byRoom.get(roomId) === token) {
+        this.byRoom.delete(roomId)
+      }
+    })
+    return token
+  }
+
+  current(roomId: string): VoiceCancellationToken | null {
+    return this.byRoom.get(roomId) ?? null
+  }
+
+  abort(roomId: string, reason: VoiceCancellationReason): boolean {
+    const token = this.byRoom.get(roomId)
+    if (!token || token.aborted) return false
+    token.abort(reason)
+    return true
+  }
+
+  abortAll(reason: VoiceCancellationReason): string[] {
+    const aborted: string[] = []
+    for (const [roomId, token] of Array.from(this.byRoom.entries())) {
+      if (!token.aborted) {
+        token.abort(reason)
+        aborted.push(roomId)
+      }
+    }
+    return aborted
+  }
+
+  activeRoomIds(): string[] {
+    return Array.from(this.byRoom.keys()).filter((roomId) => {
+      const token = this.byRoom.get(roomId)
+      return token !== undefined && !token.aborted
+    })
+  }
+
+  clear(): void {
+    this.byRoom.clear()
+  }
+}

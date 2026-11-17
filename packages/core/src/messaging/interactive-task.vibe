@@ -1,0 +1,892 @@
+// spec/core/interactiveTask.md, "An empty task takes an explicit owner and authorized scope"; spec/core/interactiveTask.md, "Observations and proposals bind to the same revision and epoch"; spec/core/interactiveTask.md, "Interruption preserves uncertainty and final operation evidence"; spec/core/interactiveTask.md, "Scope extension and rebinding require fresh observations"
+import { thrown } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import type { MessageInteractionAuthorizationDecision, MessageInteractionBindings } from "./interaction-sessions.vibe"
+import { type TaskEvent, type TaskOperationStatus, type TaskStatus, validateTaskEvent } from "./task-events.vibe"
+
+export type TaskOwner = Pick<
+  MessageInteractionBindings,
+  "actorId" | "agentId" | "connector"
+>
+
+export type { TaskEvent, TaskOperationStatus, TaskStatus } from "./task-events.vibe"
+export { validateTaskEvent } from "./task-events.vibe"
+export interface TaskObservation {
+  id: string
+  pageId: string
+  origin: string
+  version: number
+  inputRevision: number
+  observedAt: number
+}
+
+export const TASK_ACTION_NOT_DISPATCHED = "TASK_ACTION_NOT_DISPATCHED"
+export const TASK_ACTION_NOT_DISPATCHED_REF = "not-dispatched"
+export interface TaskActionProposal {
+  id: string
+  taskId: string
+  epoch: number
+  observationId: string
+  observationVersion: number
+  inputRevision: number
+  targetRef: string
+
+  expectedSelector?: string
+  valueRef?: string
+
+  capability: string
+  authorizationId: string
+  expiresAt: number
+}
+
+export interface TaskOriginGrant {
+  origin: string
+
+  checkRef: string
+
+  epoch: number
+  grantedAt: number
+
+  retractedAt: number | null
+}
+
+export interface TaskOriginStep {
+  origin: string
+  epoch: number
+  at: number
+}
+
+export const MAX_TASK_ORIGIN_GRANTS = 16
+
+export const MAX_TASK_ORIGIN_CHAIN = 64
+
+export type TaskOutcome =
+  | { status: "succeeded" | "failed"; evidenceRef: string }
+  | { status: "unknown"; evidenceRef?: string }
+
+export type TaskOperation =
+  | {
+    proposal: TaskActionProposal
+    status: "prepared" | "dispatched"
+    evidenceRef?: never
+  }
+  | { proposal: TaskActionProposal; status: "cancelled"; evidenceRef?: never }
+  | ({ proposal: TaskActionProposal } & TaskOutcome)
+export interface InteractiveTask {
+  schemaVersion: 1
+  id: string
+  owner: TaskOwner
+  goalRef: string
+  revision: number
+  epoch: number
+  status: TaskStatus
+  authorization: MessageInteractionAuthorizationDecision
+  allowedCapabilities: string[]
+  allowedOrigins: string[]
+  observation: TaskObservation | null
+  operations: TaskOperation[]
+  updatedAt: number
+
+  originGrants?: TaskOriginGrant[]
+
+  originChain?: TaskOriginStep[]
+}
+export interface TaskContext {
+  owner: TaskOwner
+  expectedRevision: number
+  now: number
+}
+export type TaskTransition =
+  | { type: "observe"; observation: TaskObservation }
+  | { type: "resume"; observation: TaskObservation }
+  | { type: "pause" | "cancel" | "recover" | "revoke" | "complete" }
+  | { type: "rebind" }
+  | { type: "prepare"; proposal: TaskActionProposal }
+  | { type: "extend-origin"; origin: string; checkRef: string }
+  | { type: "retract-origin"; origin: string }
+  | { type: "dispatch"; operationId: string }
+  | ({ type: "result" | "reconcile"; operationId: string } & TaskOutcome)
+
+const TASK_STATUSES: readonly unknown[] = Object.keys(
+  {
+    active: true,
+    paused: true,
+    blocked: true,
+    waiting: true,
+    completed: true,
+    cancelled: true,
+  } satisfies Record<TaskStatus, true>,
+)
+const TASK_OPERATION_STATUSES: readonly unknown[] = Object.keys(
+  {
+    prepared: true,
+    dispatched: true,
+    succeeded: true,
+    failed: true,
+    cancelled: true,
+    unknown: true,
+  } satisfies Record<TaskOperationStatus, true>,
+)
+type UnresolvedOperation = Extract<
+  TaskOperation,
+  { status: "prepared" | "dispatched" | "unknown" }
+>
+function isUnresolved(
+  operation: TaskOperation,
+): operation is UnresolvedOperation {
+  const { status } = operation
+  return (
+    status === "prepared" || status === "dispatched" || status === "unknown"
+  )
+}
+
+const AFTER_END: readonly TaskTransition["type"][] = [
+  "reconcile",
+  "recover",
+  "revoke",
+  "retract-origin",
+]
+
+function taskError(message: string, code = "TASK_INVALID"): ElizaError {
+  return new ElizaError(message, { code })
+}
+effect function shape(
+  value: unknown,
+  required: string[],
+  optional: string[] = [],
+): void!ElizaError {
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw taskError("Expected a plain task record")
+  }
+  const keys = Object.keys(value)
+  if (
+    required.some((key) => !keys.includes(key))
+    || keys.some((key) => !required.includes(key) && !optional.includes(key))
+  ) {
+    throw taskError("Unexpected task record fields")
+  }
+}
+const OPAQUE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/
+effect function id(value: unknown): void!ElizaError {
+  if (typeof value !== "string" || !OPAQUE_REF_PATTERN.test(value)) {
+    throw taskError("Expected an opaque task reference")
+  }
+}
+effect function counter(value: unknown): void!ElizaError {
+  if (!Number.isSafeInteger(value) || Number(value) < 0) {
+    throw taskError("Invalid task counter")
+  }
+}
+effect function origin(value: string): void!ElizaError {
+  const parsed = try Effect.try({ try: () => new URL(value), catch: () => taskError("Invalid task origin") })
+  if (
+    parsed.protocol !== "https:"
+    || parsed.origin !== value
+    || parsed.username
+    || parsed.password
+  ) {
+    throw taskError("Task origin must be an exact HTTPS origin")
+  }
+}
+export function sameTaskOwner(a: TaskOwner, b: TaskOwner): boolean {
+  return (
+    a.actorId === b.actorId
+    && a.agentId === b.agentId
+    && a.connector.source === b.connector.source
+    && a.connector.accountId === b.connector.accountId
+  )
+}
+effect function validateOwner(owner: TaskOwner): void!ElizaError {
+  try shape(owner, ["actorId", "agentId", "connector"])
+  try shape(owner.connector, ["source", "accountId"])
+  try id(owner.actorId)
+  try id(owner.agentId)
+  try id(owner.connector.source)
+  try id(owner.connector.accountId)
+}
+effect function validateOriginScope(value: InteractiveTask): void!ElizaError {
+  const { originGrants: grants, originChain: chain } = value
+  if ((grants === undefined) !== (chain === undefined)) {
+    throw taskError("Task origin grants and chain disagree")
+  }
+  if (grants === undefined || chain === undefined) return
+  if (
+    !Array.isArray(grants)
+    || !Array.isArray(chain)
+    || grants.length > MAX_TASK_ORIGIN_GRANTS
+    || chain.length > MAX_TASK_ORIGIN_CHAIN
+  ) {
+    throw taskError("Invalid task origin history")
+  }
+  const active = new Set<string>()
+  for (const grant of grants) {
+    try shape(grant, ["origin", "checkRef", "epoch", "grantedAt", "retractedAt"])
+    try origin(grant.origin)
+    try id(grant.checkRef)
+    try counter(grant.epoch)
+    try counter(grant.grantedAt)
+    if (
+      grant.epoch > value.epoch
+      || grant.grantedAt > value.updatedAt
+      || (grant.retractedAt !== null
+        && (!Number.isSafeInteger(grant.retractedAt)
+          || grant.retractedAt < grant.grantedAt
+          || grant.retractedAt > value.updatedAt))
+    ) {
+      throw taskError("Invalid task origin grant")
+    }
+    if (grant.retractedAt !== null) continue
+    if (
+      active.has(grant.origin)
+      || !value.allowedOrigins.includes(grant.origin)
+    ) {
+      throw taskError("Active origin grant is outside task scope")
+    }
+    active.add(grant.origin)
+  }
+  if (
+    grants.some(
+      (grant) =>
+        grant.retractedAt !== null
+        && value.allowedOrigins.includes(grant.origin)
+        && !active.has(grant.origin),
+    )
+  ) {
+    throw taskError("Retracted origin is still in task scope")
+  }
+  let previous: TaskOriginStep | undefined
+  for (const step of chain) {
+    try shape(step, ["origin", "epoch", "at"])
+    try origin(step.origin)
+    try counter(step.epoch)
+    try counter(step.at)
+    if (
+      step.epoch > value.epoch
+      || step.at > value.updatedAt
+      || (previous
+        && (step.origin === previous.origin
+          || step.epoch < previous.epoch
+          || step.at < previous.at))
+    ) {
+      throw taskError("Invalid task origin chain")
+    }
+    previous = step
+  }
+}
+effect function validateObservation(value: TaskObservation): void!ElizaError {
+  try shape(value, [
+    "id",
+    "pageId",
+    "origin",
+    "version",
+    "inputRevision",
+    "observedAt",
+  ])
+  try id(value.id)
+  try id(value.pageId)
+  try origin(value.origin)
+  try counter(value.version)
+  try counter(value.inputRevision)
+  try counter(value.observedAt)
+}
+effect function validateProposal(value: TaskActionProposal): void!ElizaError {
+  try shape(
+    value,
+    [
+      "id",
+      "taskId",
+      "epoch",
+      "observationId",
+      "observationVersion",
+      "inputRevision",
+      "targetRef",
+      "capability",
+      "authorizationId",
+      "expiresAt",
+    ],
+    ["valueRef", "expectedSelector"],
+  )
+  try id(value.id)
+  try id(value.taskId)
+  try id(value.observationId)
+  try id(value.targetRef)
+  try id(value.capability)
+  try id(value.authorizationId)
+  if (value.valueRef !== undefined) try id(value.valueRef)
+  if (
+    value.expectedSelector !== undefined
+    && (typeof value.expectedSelector !== "string"
+      || !value.expectedSelector
+      || value.expectedSelector.length > 256
+      || /[\x00-\x1f\x7f]/.test(value.expectedSelector))
+  ) {
+    throw taskError("Invalid expected target")
+  }
+  try counter(value.epoch)
+  try counter(value.observationVersion)
+  try counter(value.inputRevision)
+  try counter(value.expiresAt)
+}
+
+export effect function validateInteractiveTask(value: InteractiveTask): void!ElizaError {
+  try shape(
+    value,
+    [
+      "schemaVersion",
+      "id",
+      "owner",
+      "goalRef",
+      "revision",
+      "epoch",
+      "status",
+      "authorization",
+      "allowedCapabilities",
+      "allowedOrigins",
+      "observation",
+      "operations",
+      "updatedAt",
+    ],
+    ["originGrants", "originChain"],
+  )
+  if (value.schemaVersion !== 1) throw taskError("Unsupported task schema")
+  try id(value.id)
+  try id(value.goalRef)
+  try validateOwner(value.owner)
+  try counter(value.revision)
+  try counter(value.epoch)
+  try counter(value.updatedAt)
+  if (!TASK_STATUSES.includes(value.status)) throw taskError("Invalid task status")
+  const auth = value.authorization
+  try shape(auth, [
+    "decisionId",
+    "policyRevision",
+    "decidedAt",
+    "state",
+    "revokedAt",
+  ])
+  if (!auth || !["active", "revoked"].includes(auth.state)) {
+    throw taskError("Invalid task authorization")
+  }
+  try id(auth.decisionId)
+  try id(auth.policyRevision)
+  if (
+    !Number.isFinite(Date.parse(auth.decidedAt))
+    || (auth.revokedAt !== null && !Number.isFinite(Date.parse(auth.revokedAt)))
+  ) {
+    throw taskError("Invalid authorization time")
+  }
+  if (
+    !Array.isArray(value.allowedOrigins)
+    || !Array.isArray(value.allowedCapabilities)
+    || !Array.isArray(value.operations)
+  ) {
+    throw taskError("Invalid task policy or operations")
+  }
+  for (const allowed of value.allowedOrigins.filter(() => true)) try origin(allowed)
+  for (const capability of value.allowedCapabilities.filter(() => true)) try id(capability)
+  try validateOriginScope(value)
+  if ((auth.state === "active") !== (auth.revokedAt === null)) {
+    throw taskError("Authorization revocation is inconsistent")
+  }
+  if (value.observation !== null) {
+    try validateObservation(value.observation)
+    if (
+      !value.allowedOrigins.includes(value.observation.origin)
+      || value.observation.observedAt > value.updatedAt
+    ) {
+      throw taskError("Persisted observation is outside task scope")
+    }
+  }
+  const seen = new Set<string>()
+  for (const operation of value.operations) {
+    try shape(operation, ["proposal", "status"], ["evidenceRef"])
+    try validateProposal(operation.proposal)
+    if (
+      operation.proposal.taskId !== value.id
+      || seen.has(operation.proposal.id)
+    ) {
+      throw taskError("Invalid operation identity")
+    }
+    seen.add(operation.proposal.id)
+    if (!TASK_OPERATION_STATUSES.includes(operation.status)) {
+      throw taskError("Invalid operation status")
+    }
+    if (operation.evidenceRef !== undefined) {
+      try id(operation.evidenceRef)
+      if (!["succeeded", "failed", "unknown"].includes(operation.status)) {
+        throw taskError("Operation has evidence before it ran")
+      }
+    } else if (["succeeded", "failed"].includes(operation.status)) {
+      throw taskError("Resolved operation is missing evidence")
+    }
+    if (operation.proposal.epoch > value.epoch) {
+      throw taskError("Operation epoch is ahead of the task")
+    }
+  }
+  if (value.operations.filter(isUnresolved).length > 1) {
+    throw taskError("Multiple unresolved task operations")
+  }
+  const unresolved = value.operations.find(isUnresolved)
+  if ((value.status === "waiting") !== (unresolved?.status === "dispatched")) {
+    throw taskError("Waiting task and dispatched operation disagree")
+  }
+  if (unresolved?.status === "prepared" && value.status !== "active") {
+    throw taskError("Inactive task has a prepared operation")
+  }
+  if (
+    unresolved?.status === "unknown"
+    && !["blocked", "paused", "cancelled"].includes(value.status)
+  ) {
+    throw taskError("Unknown outcome requires reconciliation")
+  }
+  if (value.status === "blocked" && unresolved?.status !== "unknown") {
+    throw taskError("Blocked task is missing its unknown operation")
+  }
+  if (auth.state === "revoked" && ["active", "waiting"].includes(value.status)) {
+    throw taskError("Revoked task cannot be active")
+  }
+
+  if (
+    unresolved?.status === "prepared"
+    && !matchesTask(value, unresolved.proposal)
+  ) {
+    throw taskError("Pending operation no longer matches its task")
+  }
+}
+
+export const validateInteractiveTaskOrThrow = thrown(validateInteractiveTask)
+
+export effect function createInteractiveTask(input: {
+  id: string
+  owner: TaskOwner
+  goalRef: string
+  now: number
+  authorization: MessageInteractionAuthorizationDecision
+  allowedCapabilities: string[]
+  allowedOrigins: string[]
+}): InteractiveTask!ElizaError {
+  const task: InteractiveTask = {
+    schemaVersion: 1,
+    id: input.id,
+    owner: structuredClone(input.owner),
+    goalRef: input.goalRef,
+    revision: 0,
+    epoch: 0,
+    status: "active",
+    authorization: structuredClone(input.authorization),
+    allowedCapabilities: [...input.allowedCapabilities],
+    allowedOrigins: [...input.allowedOrigins],
+    observation: null,
+    operations: [],
+    updatedAt: input.now,
+  }
+  try validateInteractiveTask(task)
+  if (task.authorization.state !== "active") {
+    throw taskError("Task authorization is revoked", "TASK_REVOKED")
+  }
+  return task
+}
+
+export const createInteractiveTaskOrThrow = thrown(createInteractiveTask)
+
+effect function checkObservation(
+  task: InteractiveTask,
+  observation: TaskObservation,
+  now: number,
+): void!ElizaError {
+  try validateObservation(observation)
+  if (!task.allowedOrigins.includes(observation.origin)) {
+    throw taskError("Observation is outside task scope", "TASK_SCOPE_CHANGED")
+  }
+  if (observation.observedAt > now) throw taskError("Observation is from the future")
+  const previous = task.observation
+  if (previous && observation.version <= previous.version) {
+    throw taskError("Observation must advance monotonically", "TASK_STALE_OBSERVATION")
+  }
+}
+
+function recordOriginStep(
+  task: InteractiveTask,
+  observation: TaskObservation,
+): void {
+  const chain = task.originChain
+  const last = chain?.at(-1)
+  if (!chain || last?.origin === observation.origin) return
+  chain.push({
+    origin: observation.origin,
+    epoch: task.epoch,
+
+    at: Math.max(observation.observedAt, last?.at ?? 0),
+  })
+  if (chain.length > MAX_TASK_ORIGIN_CHAIN) {
+    chain.splice(0, chain.length - MAX_TASK_ORIGIN_CHAIN)
+  }
+}
+function isCurrentPlan(
+  task: InteractiveTask,
+  proposal: TaskActionProposal,
+): boolean {
+  const observed = task.observation
+  return (
+    observed !== null
+    && proposal.taskId === task.id
+    && proposal.epoch === task.epoch
+    && proposal.observationId === observed.id
+    && proposal.observationVersion === observed.version
+    && proposal.inputRevision === observed.inputRevision
+  )
+}
+function isAuthorizedPlan(
+  task: InteractiveTask,
+  proposal: TaskActionProposal,
+): boolean {
+  return (
+    task.authorization.state === "active"
+    && proposal.authorizationId === task.authorization.decisionId
+    && task.allowedCapabilities.includes(proposal.capability)
+  )
+}
+function matchesTask(task: InteractiveTask, proposal: TaskActionProposal) {
+  return isCurrentPlan(task, proposal) && isAuthorizedPlan(task, proposal)
+}
+effect function checkDispatch(
+  task: InteractiveTask,
+  proposal: TaskActionProposal,
+  now: number,
+  wallNow: number,
+): void!ElizaError {
+  if (task.status !== "active" || task.authorization.state !== "active") {
+    throw taskError("Task is not authorized to act", "TASK_NOT_ACTIVE")
+  }
+  if (!isCurrentPlan(task, proposal)) {
+    throw taskError("Action no longer matches the observed task", "TASK_STALE_ACTION")
+  }
+  if (!isAuthorizedPlan(task, proposal)) {
+    throw taskError("Action is outside task authorization", "TASK_ACTION_DENIED")
+  }
+
+  if (proposal.expiresAt > now) return
+
+  if (proposal.expiresAt > wallNow) {
+    throw taskError(
+      "Action expired against the task's stored time, which is ahead of this clock; it can act once the clock catches up, or cancel and start a new task",
+      "TASK_STALE_ACTION",
+    )
+  }
+  throw taskError("Action expired", "TASK_STALE_ACTION")
+}
+
+function replaceOperation(
+  task: InteractiveTask,
+  operation: TaskOperation,
+  next: TaskOperation,
+): void {
+  task.operations[task.operations.indexOf(operation)] = next
+}
+function setStatus(
+  task: InteractiveTask,
+  operation: UnresolvedOperation,
+  status: "cancelled" | "dispatched" | "unknown",
+): void {
+  replaceOperation(task, operation, { proposal: operation.proposal, status })
+}
+
+function unknownTransition(_transition: never): ElizaError {
+  return taskError("Unknown task transition")
+}
+
+effect function transitionEvent(
+  task: InteractiveTask,
+  transition: TaskTransition,
+  now: number,
+): TaskEvent!ElizaError {
+  const operationId = transition.type === "prepare"
+    ? transition.proposal.id
+    : "operationId" in transition
+    ? transition.operationId
+    : undefined
+
+  const eventOrigin = transition.type === "extend-origin" || transition.type === "retract-origin"
+    ? transition.origin
+    : task.originGrants
+        && (transition.type === "observe" || transition.type === "resume")
+    ? transition.observation.origin
+    : undefined
+  const event: unknown = {
+    eventId: `${task.id}#${task.revision}`,
+    schemaVersion: 1,
+    taskId: task.id,
+    sequence: task.revision,
+    epoch: task.epoch,
+    kind: transition.type,
+    at: now,
+    status: task.status,
+    ...(operationId !== undefined && {
+      operationId,
+      operationStatus: task.operations.find(
+        (operation) => operation.proposal.id === operationId,
+      )?.status,
+    }),
+    ...(eventOrigin !== undefined && { origin: eventOrigin }),
+  }
+  try validateTaskEvent(event)
+  return event as TaskEvent
+}
+
+
+export effect function transitionInteractiveTask(
+  previous: InteractiveTask,
+  context: TaskContext,
+  transition: TaskTransition,
+): { task: InteractiveTask; event: TaskEvent }!ElizaError {
+  try validateInteractiveTask(previous)
+  try validateOwner(context.owner)
+  try counter(context.now)
+  try counter(context.expectedRevision)
+  if (!sameTaskOwner(previous.owner, context.owner)) {
+    throw taskError("Task belongs to another owner", "TASK_WRONG_OWNER")
+  }
+  if (context.expectedRevision !== previous.revision) {
+    throw taskError("Task revision changed", "TASK_CONFLICT")
+  }
+
+  const now = Math.max(context.now, previous.updatedAt)
+  const task = structuredClone(previous)
+  const unresolved = task.operations.find(isUnresolved)
+  const terminal = ["completed", "cancelled"].includes(task.status)
+
+  if (terminal && !AFTER_END.includes(transition.type)) {
+    throw taskError("Task has ended", "TASK_ENDED")
+  }
+  switch (transition.type) {
+    case "observe":
+    case "resume": {
+      if (task.authorization.state !== "active") {
+        throw taskError("Task authorization is revoked", "TASK_REVOKED")
+      }
+      if (transition.type === "resume" && task.status !== "paused") {
+        throw taskError("Only a paused task can resume")
+      }
+      if (unresolved && ["dispatched", "unknown"].includes(unresolved.status)) {
+        throw taskError(
+          "Resolve the previous operation before acting",
+          "TASK_UNKNOWN_OUTCOME",
+        )
+      }
+      try checkObservation(task, transition.observation, now)
+      if (unresolved?.status === "prepared") {
+        setStatus(task, unresolved, "cancelled")
+      }
+      task.observation = structuredClone(transition.observation)
+      if (transition.type === "resume") task.status = "active"
+      recordOriginStep(task, transition.observation)
+      break
+    }
+    case "extend-origin": {
+      if (task.authorization.state !== "active") {
+        throw taskError("Task authorization is revoked", "TASK_REVOKED")
+      }
+      if (unresolved && ["dispatched", "unknown"].includes(unresolved.status)) {
+        throw taskError(
+          "Resolve the previous operation before changing scope",
+          "TASK_UNKNOWN_OUTCOME",
+        )
+      }
+      if (typeof transition.origin !== "string") throw taskError("Invalid task origin")
+      try origin(transition.origin)
+      try id(transition.checkRef)
+      if (task.allowedOrigins.includes(transition.origin)) {
+        throw taskError("Origin is already in task scope")
+      }
+      if ((task.originGrants?.length ?? 0) >= MAX_TASK_ORIGIN_GRANTS) {
+        throw taskError("Too many origin grants for one task", "TASK_ORIGIN_LIMIT")
+      }
+      if (unresolved?.status === "prepared") {
+        setStatus(task, unresolved, "cancelled")
+      }
+      if (!task.originGrants || !task.originChain) {
+        task.originChain = task.observation
+          ? [
+            {
+              origin: task.observation.origin,
+              epoch: task.epoch,
+              at: task.observation.observedAt,
+            },
+          ]
+          : []
+        task.originGrants = []
+      }
+
+      task.epoch++
+      task.observation = null
+      task.originGrants.push({
+        origin: transition.origin,
+        checkRef: transition.checkRef,
+        epoch: task.epoch,
+        grantedAt: now,
+        retractedAt: null,
+      })
+      task.allowedOrigins.push(transition.origin)
+      break
+    }
+    case "retract-origin": {
+      const grant = task.originGrants?.find(
+        (item) => item.origin === transition.origin && item.retractedAt === null,
+      )
+      if (!grant) throw taskError("Origin was not granted to this task")
+      task.epoch++
+      if (unresolved?.status === "prepared") {
+        setStatus(task, unresolved, "cancelled")
+      } else if (unresolved?.status === "dispatched") {
+        setStatus(task, unresolved, "unknown")
+        task.status = "paused"
+      }
+      grant.retractedAt = now
+      task.allowedOrigins = task.allowedOrigins.filter(
+        (item) => item !== transition.origin,
+      )
+      task.observation = null
+      break
+    }
+    case "rebind": {
+      if (task.status !== "active" || task.authorization.state !== "active") {
+        throw taskError("Only an active task can take a new binding", "TASK_NOT_ACTIVE")
+      }
+      if (unresolved && ["dispatched", "unknown"].includes(unresolved.status)) {
+        throw taskError(
+          "Resolve the previous operation before a new binding",
+          "TASK_UNKNOWN_OUTCOME",
+        )
+      }
+      if (unresolved?.status === "prepared") {
+        setStatus(task, unresolved, "cancelled")
+      }
+      task.epoch++
+      task.observation = null
+      break
+    }
+    case "pause":
+    case "cancel":
+    case "recover":
+    case "revoke": {
+      task.epoch++
+      if (unresolved?.status === "prepared") {
+        setStatus(task, unresolved, "cancelled")
+      } else if (unresolved?.status === "dispatched") {
+        setStatus(task, unresolved, "unknown")
+      }
+      if (transition.type === "revoke") {
+        task.authorization.state = "revoked"
+        task.authorization.revokedAt = new Date(now).toISOString()
+      }
+      if (!terminal) {
+        task.status = transition.type === "cancel" ? "cancelled" : "paused"
+      }
+      break
+    }
+    case "prepare": {
+      try validateProposal(transition.proposal)
+      try checkDispatch(task, transition.proposal, now, context.now)
+      if (unresolved) throw taskError("An operation is already unresolved", "TASK_BUSY")
+      if (
+        task.operations.some((op) => op.proposal.id === transition.proposal.id)
+      ) {
+        throw taskError("Operation cannot be replayed", "TASK_REPLAY")
+      }
+      task.operations.push({
+        proposal: structuredClone(transition.proposal),
+        status: "prepared",
+      })
+      break
+    }
+    case "dispatch": {
+      if (
+        !unresolved
+        || unresolved.proposal.id !== transition.operationId
+        || unresolved.status !== "prepared"
+      ) {
+        throw taskError("No matching prepared operation", "TASK_REPLAY")
+      }
+      try checkDispatch(task, unresolved.proposal, now, context.now)
+      setStatus(task, unresolved, "dispatched")
+      task.status = "waiting"
+      break
+    }
+    case "result":
+    case "reconcile": {
+      const operation = task.operations.find(
+        (op) => op.proposal.id === transition.operationId,
+      )
+      if (
+        !operation
+        || (transition.type === "result"
+          ? operation.status !== "dispatched"
+          : operation.status !== "unknown")
+      ) {
+        throw taskError("Result cannot replace this operation", "TASK_REPLAY")
+      }
+      if (!["succeeded", "failed", "unknown"].includes(transition.status)) {
+        throw taskError("Invalid result")
+      }
+      if (transition.status !== "unknown" && !transition.evidenceRef) {
+        throw taskError("A resolved outcome requires evidence")
+      }
+      if (transition.evidenceRef !== undefined) try id(transition.evidenceRef)
+      replaceOperation(
+        task,
+        operation,
+        transition.status === "unknown"
+          ? {
+            proposal: operation.proposal,
+            status: "unknown",
+            ...(transition.evidenceRef !== undefined && {
+              evidenceRef: transition.evidenceRef,
+            }),
+          }
+          : {
+            proposal: operation.proposal,
+            status: transition.status,
+            evidenceRef: transition.evidenceRef,
+          },
+      )
+      if (transition.type === "reconcile" && transition.status !== "unknown") {
+        task.epoch++
+        task.observation = null
+      }
+      if (task.status === "waiting") {
+        task.status = transition.status === "unknown" ? "blocked" : "active"
+      }
+      if (
+        task.status === "blocked"
+        && transition.type === "reconcile"
+        && transition.status !== "unknown"
+      ) {
+        task.status = "paused"
+      }
+      break
+    }
+    case "complete":
+      if (unresolved) {
+        throw taskError(
+          "Cannot finish with an unresolved operation",
+          "TASK_UNKNOWN_OUTCOME",
+        )
+      }
+      task.status = "completed"
+      task.epoch++
+      break
+    default:
+      throw unknownTransition(transition)
+  }
+  task.revision++
+  task.updatedAt = now
+  try validateInteractiveTask(task)
+  return { task, event: try transitionEvent(task, transition, now) }
+}
+
+export const transitionInteractiveTaskOrThrow = thrown(transitionInteractiveTask)

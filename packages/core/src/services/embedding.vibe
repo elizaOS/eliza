@@ -1,0 +1,457 @@
+// spec/core/embeddingService.md, "Initialization has one shared promise and a failed activation can retry"; spec/core/embeddingService.md, "Queue outcomes release exact pending keys and shutdown waits for activation"; spec/core/embeddingBatch.md, "A batch owns a finite supplied member set without a fixed size limit"
+import { asLegacy, Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
+import { shouldSkipResponseMemoryPersistence } from "../memory.vibe"
+import { isProcessingPolicyDenial } from "../security/processing-policy.vibe"
+import type { EmbeddingGenerationPayload, MessagePayload, ModelRegisteredEventPayload } from "../types/events.vibe"
+import { EventType } from "../types/events.vibe"
+import type { Memory } from "../types/memory.vibe"
+import { ModelType } from "../types/model.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { Service } from "../types/service.vibe"
+import { type BatchItemOutcome, BatchQueue, disposeBatchQueue, startBatchQueue } from "../utils/batch-queue.vibe"
+import { rawEnv } from "../utils/environment.vibe"
+import { isExpectedLocalEmbeddingUnavailability } from "../utils/expected-local-embedding-unavailability.vibe"
+import { isModelFundingAuthorityError } from "../utils/model-errors.vibe"
+import { errorText, asError } from "../utils/errors.vibe"
+
+const SRC = "plugin:basic-capabilities:service:embedding"
+const EMBEDDING_DRAIN_TASK = "EMBEDDING_DRAIN"
+
+interface EmbeddingQueueItem {
+  memory: Memory
+  priority: "high" | "normal" | "low"
+  runId?: string
+  pendingKey?: string
+}
+
+export error EmptyEmbedding { message: string }
+export error BatchSizeMismatch { message: string }
+
+type ActivationFailure = Foreign | Effect.Error<ReturnType<typeof startBatchQueue<EmbeddingQueueItem>>>
+
+interface Embedding {
+  readonly runtime: IAgentRuntime
+  readonly pending: Set<string>
+  batchQueue: BatchQueue<EmbeddingQueueItem> | null
+  isDisabled: boolean
+  stopped: boolean
+  initialization: Deferred.Deferred<void, ActivationFailure> | null
+  readonly onEmbeddingRequest: (payload: EmbeddingGenerationPayload) => Promise<void>
+  readonly onMessageSent: (payload: MessagePayload) => Promise<void>
+  readonly onModelRegistered: (payload: ModelRegisteredEventPayload) => Promise<void>
+}
+
+function thrownBy(failure: unknown): unknown {
+  if (failure instanceof EmptyEmbedding) return new Error(failure.message)
+  return thrownValue(failure)
+}
+
+function embeddingState(runtime: () => IAgentRuntime): Embedding {
+  const embedding: Embedding = {
+    get runtime() {
+      return runtime()
+    },
+    pending: new Set(),
+    batchQueue: null,
+    isDisabled: false,
+    stopped: false,
+    initialization: null,
+    onEmbeddingRequest: (payload) => runDetached(handleEmbeddingRequest(embedding, payload)),
+    onMessageSent: (payload) => runDetached(messageSent(embedding, payload)),
+    onModelRegistered: (payload) => runDetached(modelRegistered(embedding, payload)),
+  }
+  return embedding
+}
+
+function hasEmbeddingModel(runtime: IAgentRuntime): boolean {
+  return Boolean(runtime.getModel(ModelType.TEXT_EMBEDDING) || runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH))
+}
+
+function unregisterWork(embedding: Embedding): void {
+  embedding.runtime.unregisterEvent(EventType.EMBEDDING_GENERATION_REQUESTED, embedding.onEmbeddingRequest)
+  embedding.runtime.unregisterEvent(EventType.MESSAGE_SENT, embedding.onMessageSent)
+}
+
+effect function messageSent(embedding: Embedding, payload: MessagePayload) {
+  const { runtime } = embedding
+  if (embedding.stopped || payload.runtime !== runtime) return
+  const memory = payload.message
+  if (
+    !memory.id
+    || memory.entityId !== runtime.agentId
+    || (memory.agentId !== undefined && memory.agentId !== runtime.agentId)
+    || !memory.content.text?.trim()
+    || shouldSkipResponseMemoryPersistence(memory)
+  ) {
+    return
+  }
+  const snapshot = {
+    ...memory,
+    content: { ...memory.content },
+    metadata: memory.metadata ? { ...memory.metadata } : undefined,
+  }
+  const runId = runtime.getCurrentRunId()
+  fork.detached effect {
+    queueDeliveredReply(embedding, snapshot, runId) catch (failure) => {
+      runtime.reportError("EmbeddingGenerationService.deliveredReply", thrownBy(failure), { memoryId: snapshot.id })
+    }
+  }
+}
+
+effect function queueDeliveredReply(embedding: Embedding, delivered: Memory, runId?: string) {
+  const { runtime } = embedding
+  const id = delivered.id
+  if (!id) return
+  const stored = try foreign(() => runtime.getMemoryById(id))
+  if (
+    embedding.stopped
+    || !stored
+    || stored.agentId !== runtime.agentId
+    || stored.entityId !== runtime.agentId
+    || stored.roomId !== delivered.roomId
+    || stored.content.text !== delivered.content.text
+    || shouldSkipResponseMemoryPersistence(stored)
+  ) {
+    return
+  }
+  try handleEmbeddingRequest(embedding, { runtime, memory: stored, priority: "low", runId })
+}
+
+effect function modelRegistered(embedding: Embedding, payload: ModelRegisteredEventPayload) {
+  if (
+    embedding.stopped
+    || !embedding.isDisabled
+    || (payload.modelType !== ModelType.TEXT_EMBEDDING && payload.modelType !== ModelType.TEXT_EMBEDDING_BATCH)
+  ) {
+    return
+  }
+  if (!hasEmbeddingModel(embedding.runtime)) return
+  embedding.isDisabled = false
+  activate(embedding) catch effect (failure) => {
+    embedding.isDisabled = true
+    throw failure
+  }
+}
+
+effect function startEmbedding(embedding: Embedding) {
+  const { runtime } = embedding
+  runtime.logger.info({ src: SRC, agentId: runtime.agentId }, "Starting embedding generation service")
+  runtime.registerEvent(EventType.MODEL_REGISTERED, embedding.onModelRegistered)
+  if (!hasEmbeddingModel(runtime)) {
+    runtime.logger.warn(
+      { src: SRC, agentId: runtime.agentId },
+      "No embedding model registered yet; waiting for model registration",
+    )
+    embedding.isDisabled = true
+    return
+  }
+  try activate(embedding)
+}
+
+effect function activate(embedding: Embedding) {
+  if (embedding.stopped || embedding.isDisabled) return
+  const existing = embedding.initialization
+  if (existing) return try Deferred.await(existing)
+  const initialization = try Deferred.make<void, ActivationFailure>()
+  embedding.initialization = initialization
+  Effect.catchDefect(initializeQueue(embedding), (cause) => Effect.fail(new Foreign({ cause }))) catch effect (failure) => {
+    try yieldNow
+    embedding.initialization = null
+    unregisterWork(embedding)
+    try Deferred.fail(initialization, failure)
+    throw failure
+  }
+  try Deferred.succeed(initialization, undefined)
+}
+
+effect function initializeQueue(embedding: Embedding) {
+  const { runtime } = embedding
+  runtime.logger.info({ src: SRC, agentId: runtime.agentId }, "Initializing embedding generation service")
+  try foreignSync(() => runtime.registerEvent(EventType.EMBEDDING_GENERATION_REQUESTED, embedding.onEmbeddingRequest))
+  try foreignSync(() => runtime.registerEvent(EventType.MESSAGE_SENT, embedding.onMessageSent))
+  const queue = new BatchQueue<EmbeddingQueueItem>({
+    name: EMBEDDING_DRAIN_TASK,
+    taskDescription: "Embedding generation drain",
+    batchSize: 10,
+    drainIntervalMs: 100,
+    getPriority: (item) => item.priority,
+    maxParallel: 10,
+    maxRetriesAfterFailure: 3,
+    shouldRetry: (_item, error) => !isModelFundingAuthorityError(error) && !isProcessingPolicyDenial(error),
+    process: (item) => runDetached(asLegacy(Error, generateEmbedding(embedding, item))),
+    onDrainBatchOutcomes: (outcomes) => {
+      for (const { item } of outcomes) {
+        if (item.pendingKey) embedding.pending.delete(item.pendingKey)
+      }
+    },
+    canProcessBatch: () => Boolean(runtime.getModel(ModelType.TEXT_EMBEDDING_BATCH)),
+    processBatch: (items) => runDetached(asLegacy(Error, generateEmbeddingsBatch(embedding, items))),
+    onExhausted: (item, error) => runDetached(reportExhausted(embedding, item, error)),
+  })
+  embedding.batchQueue = queue
+  try startBatchQueue(queue, runtime)
+  runtime.logger.info({ src: SRC, agentId: runtime.agentId }, "Started embedding drain task")
+}
+
+effect function reportExhausted(embedding: Embedding, item: EmbeddingQueueItem, error: Error) {
+  const { runtime } = embedding
+  try foreign(() =>
+    runtime.log({
+      entityId: runtime.agentId,
+      roomId: item.memory.roomId || runtime.agentId,
+      type: "embedding_event",
+      body: {
+        runId: item.runId,
+        memoryId: item.memory.id,
+        status: "failed",
+        error: error.message,
+        source: "embeddingService",
+      },
+    })
+  )
+  try foreign(() =>
+    runtime.emitEvent(EventType.EMBEDDING_GENERATION_FAILED, {
+      runtime,
+      memory: item.memory,
+      error: error.message,
+      source: "embeddingService",
+    })
+  )
+}
+
+effect function handleEmbeddingRequest(embedding: Embedding, payload: EmbeddingGenerationPayload) {
+  const { runtime } = embedding
+  if (embedding.stopped) return
+  if (embedding.initialization) try Deferred.await(embedding.initialization)
+  if (embedding.stopped) return
+  const queue = embedding.batchQueue
+  if (embedding.isDisabled || !queue) {
+    runtime.logger.debug(
+      { src: SRC, agentId: runtime.agentId },
+      "Service is disabled or queue missing, skipping embedding request",
+    )
+    return
+  }
+  const { memory, priority = "normal", runId } = payload
+  if (Array.isArray(memory.embedding) && memory.embedding.length > 0) {
+    runtime.logger.debug(
+      { src: SRC, agentId: runtime.agentId, memoryId: memory.id },
+      "Memory already has embeddings, skipping",
+    )
+    return
+  }
+  const pendingKey = memory.id
+    ? JSON.stringify([memory.id, memory.agentId, memory.roomId, memory.entityId, memory.content.text, priority])
+    : undefined
+  if (pendingKey && embedding.pending.has(pendingKey)) return
+  const queueItem: EmbeddingQueueItem = {
+    memory: { ...memory, content: { ...memory.content } },
+    priority,
+    runId,
+    pendingKey,
+  }
+  if (pendingKey) embedding.pending.add(pendingKey)
+  if (!queue.enqueue(queueItem) && pendingKey) embedding.pending.delete(pendingKey)
+  runtime.logger.debug(
+    { src: SRC, agentId: runtime.agentId, queueSize: queue.size },
+    "Added memory to queue",
+  )
+}
+
+effect function generateEmbedding(embedding: Embedding, item: EmbeddingQueueItem) {
+  const { runtime } = embedding
+  const { memory } = item
+  if (!memory.content.text?.trim()) {
+    runtime.logger.warn({ src: SRC, agentId: runtime.agentId, memoryId: memory.id }, "Memory has no text content")
+    return
+  }
+  if (Array.isArray(memory.embedding) && memory.embedding.length > 0) return
+  effect {
+    const startTime = Date.now()
+    const vector = try foreign(() => runtime.useModel(ModelType.TEXT_EMBEDDING, { text: memory.content.text ?? "" }))
+    const duration = Date.now() - startTime
+    runtime.logger.debug(
+      { src: SRC, agentId: runtime.agentId, memoryId: memory.id, durationMs: duration },
+      "Generated embedding",
+    )
+    try persistEmbedding(embedding, item, vector, duration)
+  } catch effect (failure) => {
+    const error = thrownBy(failure)
+    if (!isExpectedLocalEmbeddingUnavailability(error)) {
+      runtime.reportError("EmbeddingService.generate", error, { memoryId: memory.id })
+    }
+    runtime.logger.error(
+      { src: SRC, agentId: runtime.agentId, memoryId: memory.id, error: errorText(error) },
+      "Failed to generate embedding",
+    )
+    throw failure
+  }
+}
+
+effect function persistEmbedding(embedding: Embedding, item: EmbeddingQueueItem, vector: number[], durationMs: number) {
+  const { runtime } = embedding
+  const { memory } = item
+  const id = memory.id
+  if (!id) return
+  if (!Array.isArray(vector) || vector.length === 0) {
+    throw new EmptyEmbedding({
+      message: `[EmbeddingGenerationService] refusing to persist an empty embedding for memory ${id}; the embedding model returned no vector`,
+    })
+  }
+  const written = try foreign(() =>
+    runtime.updateMemoryEmbedding({
+      id,
+      embedding: vector,
+      expected: {
+        agentId: memory.agentId ?? runtime.agentId,
+        entityId: memory.entityId,
+        roomId: memory.roomId,
+        text: memory.content.text ?? "",
+      },
+    })
+  )
+  foreign(() =>
+    runtime.log({
+      entityId: runtime.agentId,
+      roomId: written ? memory.roomId || runtime.agentId : memory.roomId,
+      type: "embedding_event",
+      body: {
+        runId: item.runId,
+        memoryId: id,
+        status: written ? "completed" : "discarded_stale_source",
+        duration: durationMs,
+        source: "embeddingService",
+      },
+    })
+  ) catch ({ cause }) => runtime.reportError("EmbeddingService.logOutcome", cause, { memoryId: id })
+  if (!written) return
+  foreign(() =>
+    runtime.emitEvent(EventType.EMBEDDING_GENERATION_COMPLETED, {
+      runtime,
+      memory: { ...memory, embedding: vector },
+      source: "embeddingService",
+    })
+  ) catch ({ cause }) => runtime.reportError("EmbeddingService.notifyCompletion", cause, { memoryId: id })
+}
+
+effect function generateEmbeddingsBatch(embedding: Embedding, items: EmbeddingQueueItem[]) {
+  const { runtime } = embedding
+  const toEmbed: { item: EmbeddingQueueItem; text: string }[] = []
+  const skipped: EmbeddingQueueItem[] = []
+  for (const item of items) {
+    const text = item.memory.content.text
+    if (!text?.trim() || (Array.isArray(item.memory.embedding) && item.memory.embedding.length > 0)) {
+      skipped.push(item)
+    } else {
+      toEmbed.push({ item, text })
+    }
+  }
+  if (toEmbed.length === 0) {
+    return items.map((item): BatchItemOutcome<EmbeddingQueueItem> => ({ item, success: true, retryCount: 0 }))
+  }
+  const startTime = Date.now()
+  const vectors = try foreign(() =>
+    runtime.useModel(ModelType.TEXT_EMBEDDING_BATCH, { texts: toEmbed.map((entry) => entry.text) })
+  )
+  const duration = Date.now() - startTime
+  if (!Array.isArray(vectors) || vectors.length !== toEmbed.length) {
+    throw new BatchSizeMismatch({
+      message: `TEXT_EMBEDDING_BATCH returned ${
+        Array.isArray(vectors) ? vectors.length : "non-array"
+      } vectors for ${toEmbed.length} texts`,
+    })
+  }
+  runtime.logger.debug(
+    { src: SRC, agentId: runtime.agentId, count: toEmbed.length, durationMs: duration },
+    "Generated embeddings (batch)",
+  )
+  const outcomes: BatchItemOutcome<EmbeddingQueueItem>[] = skipped.map((item) => ({ item, success: true, retryCount: 0 }))
+  for (let i = 0; i < toEmbed.length; i++) {
+    const { item } = toEmbed[i]
+    const persisted: BatchItemOutcome<EmbeddingQueueItem> = { item, success: true, retryCount: 0 }
+    const outcome = Effect.as(persistEmbedding(embedding, item, vectors[i], duration), persisted) catch (failure) => {
+      const thrown = thrownBy(failure)
+      const err = asError(thrown)
+      runtime.reportError("EmbeddingService.persistBatchItem", err, { memoryId: item.memory.id })
+      runtime.logger.error(
+        { src: SRC, agentId: runtime.agentId, memoryId: item.memory.id, error: err.message },
+        "Failed to persist batched embedding",
+      )
+      return { item, success: false, error: err, retryCount: 0 } satisfies BatchItemOutcome<EmbeddingQueueItem>
+    }
+    outcomes.push(outcome)
+  }
+  return outcomes
+}
+
+effect function stopEmbedding(embedding: Embedding) {
+  const { runtime } = embedding
+  embedding.stopped = true
+  runtime.unregisterEvent(EventType.MODEL_REGISTERED, embedding.onModelRegistered)
+  unregisterWork(embedding)
+  const initialization = embedding.initialization
+  if (initialization) {
+    Deferred.await(initialization) catch (failure) => {
+      runtime.logger.debug(
+        { src: SRC, agentId: runtime.agentId, error: errorText(thrownBy(failure)) },
+        "Activation failed while stopping; nothing to dispose",
+      )
+    }
+  }
+  runtime.logger.info({ src: SRC, agentId: runtime.agentId }, "Stopping embedding generation service")
+  const queue = embedding.batchQueue
+  if (embedding.isDisabled || !queue) {
+    runtime.logger.debug({ src: SRC, agentId: runtime.agentId }, "Service is disabled, nothing to stop")
+    return
+  }
+  const remaining = queue.size
+  const fastShutdown = rawEnv("ELIZA_FAST_SHUTDOWN") === "1"
+  if (fastShutdown) queue.clear()
+  try disposeBatchQueue(queue, runtime, { flushHighPriority: !fastShutdown })
+  embedding.pending.clear()
+  runtime.logger.info({ src: SRC, agentId: runtime.agentId, remainingItems: remaining }, "Stopped")
+  embedding.batchQueue = null
+}
+
+export class EmbeddingGenerationService extends Service {
+  static serviceType = "embedding-generation"
+  capabilityDescription = "Handles asynchronous embedding generation for memories"
+
+  private readonly embedding: Embedding = embeddingState(() => this.runtime)
+
+  static start(runtime: IAgentRuntime): Promise<Service> {
+    const service = new EmbeddingGenerationService(runtime)
+    return runDetached(Effect.as(startEmbedding(service.embedding), service))
+  }
+
+  initialize(): Promise<void> {
+    return runDetached(activate(this.embedding))
+  }
+
+  stop(): Promise<void> {
+    return runDetached(stopEmbedding(this.embedding))
+  }
+
+  getQueueSize(): number {
+    return this.embedding.batchQueue?.size ?? 0
+  }
+
+  getQueueStats(): {
+    high: number
+    normal: number
+    low: number
+    total: number
+  } {
+    return this.embedding.batchQueue?.stats() ?? { high: 0, normal: 0, low: 0, total: 0 }
+  }
+
+  clearQueue(): void {
+    const { runtime, batchQueue } = this.embedding
+    const size = batchQueue?.size ?? 0
+    batchQueue?.clear()
+    this.embedding.pending.clear()
+    runtime.logger.info({ src: SRC, agentId: runtime.agentId, clearedCount: size }, "Cleared queue")
+  }
+}
+
+export default EmbeddingGenerationService

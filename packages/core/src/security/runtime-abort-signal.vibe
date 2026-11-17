@@ -1,0 +1,40 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
+module node {
+  import { types } from "node:util"
+
+  const inspect = (() => {
+    const candidate = types?.isProxy
+    if (typeof candidate !== "function") return undefined
+    try {
+      return candidate({}) === false && candidate(new Proxy({}, {})) === true ? candidate : undefined
+    } catch {
+      return undefined
+    }
+  })()
+
+  /** @throws {never} */
+  export function mayBeProxy(value: object): boolean {
+    return !inspect || inspect(value)
+  }
+}
+import { mayBeProxy } from node
+
+const signalPrototype = typeof AbortSignal === "undefined" ? undefined : AbortSignal.prototype
+const abortedGetter = signalPrototype
+  && Object.getOwnPropertyDescriptor(signalPrototype, "aborted")?.get
+
+export function isRuntimeAbortSignal(value: object): boolean {
+  if (!signalPrototype || !abortedGetter || mayBeProxy(value)) return false
+  if (Object.getPrototypeOf(value) !== signalPrototype) return false
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    if (!descriptor || typeof key === "string" || !("value" in descriptor)) {
+      return false
+    }
+  }
+  try {
+    return typeof abortedGetter.call(value) === "boolean"
+  } catch {
+    return false
+  }
+}

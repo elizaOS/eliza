@@ -1,0 +1,43 @@
+// spec/core/unicode.md, "Prefix and suffix boundaries cannot introduce a split surrogate pair"
+import { highSurrogate, lowSurrogate } from "../../gen/core__unicode.effect.vibe"
+
+export function trimStartCharacters(value: string, characters: string): string {
+  const accepted = new Set(characters)
+  let start = 0
+  while (start < value.length) {
+    const codePoint = value.codePointAt(start)
+    if (codePoint === undefined) break
+    const character = String.fromCodePoint(codePoint)
+    if (!accepted.has(character)) break
+    start += character.length
+  }
+  return start === 0 ? value : value.slice(start)
+}
+
+export function trimBoundaryCharacters(
+  value: string,
+  characters: string,
+): string {
+  return trimEndCharacters(trimStartCharacters(value, characters), characters)
+}
+
+export function trimEndCharacters(value: string, characters: string): string {
+  const accepted = new Set(characters)
+  let end = value.length
+  while (end > 0) {
+    const start = end > 1 && lowSurrogate(value.charCodeAt(end - 1)) && highSurrogate(value.charCodeAt(end - 2)) ? end - 2 : end - 1
+    if (!accepted.has(value.slice(start, end))) break
+    end = start
+  }
+  return end === value.length ? value : value.slice(0, end)
+}
+
+export function trimEndWhitespace(value: string): string {
+  let end = value.length
+  while (end > 0 && /\s/u.test(value[end - 1])) end -= 1
+  return end === value.length ? value : value.slice(0, end)
+}
+
+export function escapeRegExp(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}

@@ -12,6 +12,13 @@ Shared request authority of `actions/task-extraction-context.ts`. Runtime/messag
 
 Each issuer owns its original liveness callback. A trusted observation can close one request without changing another issuer or the runtime. Source observations retain the exact frozen classification input and its live counterpart.
 
+The host supplies one restriction observation from the same classification
+call. Its classification, interpreted operations, frozen source hash and
+observed source hash remain independent fields. The model samples exact
+mutation and read-only observations, unavailable and contradictory
+interpretations, and a changed source. The issuer still checks the source
+hashes and normalizes the supplied interpretation.
+
 ```quint
 import requestIssuer as I from "./requestIssuer"
 import requestCompletions as C from "./requestCompletions"
@@ -42,11 +49,19 @@ pure val entityIdValues = Set("actor1", "actor2")
 pure val requestHashValues = Set("request1", "request2")
 pure val stateHashValues = Set("state1", "state2")
 pure val sourceHashValues = Set("source1", "source2")
-pure val observedSourceHashValues = sourceHashValues
 pure val projectionHashValues = Set("projection1", "projection2")
 pure val currentSourceHashValues = sourceHashValues
 pure val currentOriginalHashValues = sourceHashValues
-pure val classificationValues = Set(C::ReadOnlyClass, C::MutationClass)
+type RestrictionObservation = { classification: C::RequestClass, interpretation: I::Interpretation, sourceHash: str, observedSourceHash: str }
+pure val restrictionValues = Set(
+  { classification: C::MutationClass, interpretation: { status: I::ExplicitInterpretation, operations: Set(C::UpdateOperation) }, sourceHash: "source1", observedSourceHash: "source1" },
+  { classification: C::MutationClass, interpretation: { status: I::ExplicitInterpretation, operations: Set(C::UpdateOperation) }, sourceHash: "source2", observedSourceHash: "source2" },
+  { classification: C::MutationClass, interpretation: { status: I::ExplicitInterpretation, operations: Set(C::CreateOperation, C::DeleteOperation) }, sourceHash: "source1", observedSourceHash: "source1" },
+  { classification: C::MutationClass, interpretation: { status: I::ExplicitInterpretation, operations: Set(C::CreateOperation, C::DeleteOperation) }, sourceHash: "source2", observedSourceHash: "source2" },
+  { classification: C::ReadOnlyClass, interpretation: { status: I::ExplicitInterpretation, operations: Set(C::GetOperation, C::ListOperation) }, sourceHash: "source1", observedSourceHash: "source1" },
+  { classification: C::ReadOnlyClass, interpretation: { status: I::UnavailableInterpretation, operations: Set() }, sourceHash: "source2", observedSourceHash: "source2" },
+  { classification: C::ReadOnlyClass, interpretation: { status: I::ExplicitInterpretation, operations: Set(C::UpdateOperation) }, sourceHash: "source1", observedSourceHash: "source1" },
+  { classification: C::MutationClass, interpretation: { status: I::ExplicitInterpretation, operations: Set(C::UpdateOperation) }, sourceHash: "source2", observedSourceHash: "source1" })
 pure def runtimeAt(s: RequestRegistry, runtimeId: int): RuntimeObject = s.runtimes.select(runtime => runtime.id == runtimeId).nthOr(0, emptyRuntime)
 pure def messageAt(s: RequestRegistry, messageObject: int): RequestMessage = s.messages.select(message => message.objectId == messageObject).nthOr(0, emptyMessage)
 pure def stateAt(s: RequestRegistry, stateObject: int): RequestState = s.states.select(frame => frame.objectId == stateObject).nthOr(0, emptyState)
@@ -78,10 +93,10 @@ pure def canObserveRequest(s: RequestRegistry, by: RegistryCaller, messageObject
 pure def observeRequest(s: RequestRegistry, by: RegistryCaller, messageObject: int, requestHash: str): RequestRegistry = { ...s, messages: s.messages.listMap(message => if (message.objectId == messageObject) { ...message, requestHash: requestHash } else message) }
 pure def canObserveRuntime(s: RequestRegistry, by: RegistryCaller, runtimeId: int, agentId: str, live: bool): bool = by == HostBoundary and runtimeAt(s, runtimeId).id != 0
 pure def observeRuntime(s: RequestRegistry, by: RegistryCaller, runtimeId: int, agentId: str, live: bool): RequestRegistry = { ...s, runtimes: s.runtimes.listMap(runtime => if (runtime.id == runtimeId) { ...runtime, agentId: agentId, live: live } else runtime) }
-pure def canCommitRestriction(s: RequestRegistry, by: RegistryCaller, issuerId: int, sourceHash: str, observedSourceHash: str): bool = by == HostBoundary and ownerCurrent(ownerAt(s, issuerId), s) and I::canCommitRestriction(ownerAt(s, issuerId).issuer, sourceHash, observedSourceHash)
-pure def commitRestriction(s: RequestRegistry, by: RegistryCaller, issuerId: int, classification: C::RequestClass, interpretation: I::Interpretation, sourceHash: str, observedSourceHash: str): RequestRegistry = {
+pure def canCommitRestriction(s: RequestRegistry, by: RegistryCaller, issuerId: int, restriction: RestrictionObservation): bool = by == HostBoundary and ownerCurrent(ownerAt(s, issuerId), s) and I::canCommitRestriction(ownerAt(s, issuerId).issuer, restriction.sourceHash, restriction.observedSourceHash)
+pure def commitRestriction(s: RequestRegistry, by: RegistryCaller, issuerId: int, restriction: RestrictionObservation): RequestRegistry = {
   val owner = ownerAt(s, issuerId)
-  replaceOwner({ ...owner, originalSourceHash: if (owner.issuer.committed) owner.originalSourceHash else sourceHash, issuer: I::commitRestriction(owner.issuer, classification, interpretation, sourceHash, observedSourceHash) }, s)
+  replaceOwner({ ...owner, originalSourceHash: if (owner.issuer.committed) owner.originalSourceHash else restriction.sourceHash, issuer: I::commitRestriction(owner.issuer, restriction.classification, restriction.interpretation, restriction.sourceHash, restriction.observedSourceHash) }, s)
 }
 pure def canObserveSources(s: RequestRegistry, by: RegistryCaller, issuerId: int, issuerLive: bool, currentSourceHash: str, currentOriginalHash: str): bool = by == HostBoundary and ownerAt(s, issuerId).id != 0
 pure def observeSources(s: RequestRegistry, by: RegistryCaller, issuerId: int, issuerLive: bool, currentSourceHash: str, currentOriginalHash: str): RequestRegistry = {
@@ -92,9 +107,14 @@ pure def observeSources(s: RequestRegistry, by: RegistryCaller, issuerId: int, i
 
 ### State.data aliases share one exact view while serialized copies carry no view
 
-The source and projection values of a binding come from one host
-observation, and each field is checked with its own identity or hash. Only
-a message's object identity selects its issuer.
+Discovered by simulation: the source and projection values of a binding
+come from one host observation. Sample them together so the simulation
+exercises an exact view, a mismatched projection and a stale source tuple.
+Each field is still checked with its own identity or hash. Every pairing of
+issuer and runtime has an exact observation, so the first issuer can be
+bound whichever runtime minted it; the rows naming another message or room
+exercise a source that does not match. Messages share one message and room
+ID, since only their object identity selects the issuer.
 
 ```quint
 pure def viewAt(s: RequestRegistry, stateObject: int): ExtractionView = s.views.select(view => view.dataId == stateAt(s, stateObject).dataId).nthOr(0, emptyView)
@@ -130,7 +150,7 @@ pure def mutateView(s: RequestRegistry, stateObject: int, sourceHash: str, proje
 
 Discovered by the proof: each owner retains the identity uniqueness of its own completion records as well as the cross-owner fence. A reordered or copied view cannot supply a duplicate identity to a component. An issued view names an actual issuer, so a view with a fabricated issuer ID cannot pick up authority when that ID is allocated later.
 
-Discovered by simulation: attempt, result and denial IDs are each owned once across every issuer, so an operation check names no denial (`""`) when there is none; otherwise two denials would disable every later check. A bound result and its observed source share one fingerprint, so a changed association comes from a differing projection hash; the sticky source mismatch is the [completion model's](./requestCompletions.md) own rule.
+Discovered by simulation: completing an attempt requires a live issuer, a committed restriction and a current bound view before the operation and result can be observed, and a later restriction observation can retire a resolved attempt before its result binds. Attempt, result and denial IDs are each owned once across every issuer, so a run that spends them early can never complete: a third attempt ID is sampled, either bound result can be a projection source, projection targets only fresh result objects that no attempt binds, and an operation check names no denial (`""`) when there is none; otherwise two denials would disable every later check. Registration and classification samples stay on the values that can mint a completion: the captured registration is known, and a request is restricted as read-only or mutation (an unresolved restriction still arises from contradiction). A bound result and its observed source share one fingerprint, so a changed association comes from a differing projection hash, and a differing target fingerprint leaves a copy without a fact; the sticky source mismatch is the [completion model's](./requestCompletions.md) own rule. A later restriction commit or view rebinding usually taints the issuer or unbinds the view, so those run rarely while bind, projection and copy run often.
 
 ```quint
 pure val attemptIdValues = Set("attempt1", "attempt2", "attempt3")
@@ -209,20 +229,20 @@ pure def alwaysResultOwnershipIsUnique(s: RequestRegistry): bool = s.owners.ever
 pure def alwaysOwnersRetainProtocolSafety(s: RequestRegistry): bool = s.owners.every(owner => I::alwaysIssuerRevision(owner.issuer) and I::alwaysTaintedIssuerUnresolved(owner.issuer) and C::alwaysCompletionOwnsAttempt(owner.completions) and C::alwaysAttemptAndResultIdentityUnique(owner.completions))
 pure def lawExternalCannotMint(s: RequestRegistry, runtimeId: int, messageObject: int): bool = not(canBeginIssuer(s, ExternalPayload, runtimeId, messageObject))
 pure def lawCrossIssuerProjectionRejected(s: RequestRegistry, by: RegistryCaller, issuerId: int, sourceId: str, targetId: str): bool = resultOwner(s, sourceId).id != issuerId implies not(canProjectResult(s, by, issuerId, sourceId, targetId))
-pure val weight_registerRuntime = 12
-pure val weight_createMessage = 12
-pure val weight_createState = 12
-pure val weight_beginIssuer = 12
+pure val weight_registerRuntime = 3
+pure val weight_createMessage = 3
+pure val weight_createState = 3
+pure val weight_beginIssuer = 4
 pure val weight_commitRestriction = 3
 pure val weight_bindView = 4
-pure val weight_beginAttempt = 40
-pure val weight_checkOperation = 40
-pure val weight_bindResult = 40
-pure val weight_projectResult = 50
-pure val weight_copyCompletion = 50
-pure val weight_inspectCompletion = 8
-pure val weight_wrapDenialError = 8
-pure val weight_transferDenial = 8
+pure val weight_beginAttempt = 16
+pure val weight_checkOperation = 2
+pure val weight_bindResult = 48
+pure val weight_projectResult = 48
+pure val weight_copyCompletion = 48
+pure val weight_inspectCompletion = 1
+pure val weight_wrapDenialError = 1
+pure val weight_transferDenial = 12
 pure def sometimesIndependentRequestIssuers(s: RequestRegistry): bool = s.owners.length() > 1
 pure def sometimesStateCopiesShareData(s: RequestRegistry): bool = s.states.some(frame => s.states.some(other => other.objectId != frame.objectId and other.dataId == frame.dataId))
 pure def sometimesRegistryTransfersDenial(s: RequestRegistry): bool =

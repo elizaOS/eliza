@@ -1,0 +1,455 @@
+// spec/core/modelAttemptLeases.md, "Only host-issued leases bind an existing allowance to a turn"; spec/core/modelAttemptLeases.md, "Each qualified attempt consumes the tariff reservation atomically"; spec/core/streamDepth.md, "Entering and leaving a chunk scope preserve inherited depth exactly"; spec/core/ambientManagers.md, "A symbol slot is the single source of manager identity"
+import { Foreign, foreign, foreignSync, thrown } from "./edge.vibe"
+import { getAmbientSingleton, setAmbientSingleton } from "./ambient-context.vibe"
+import { ElizaError } from "./errors.vibe"
+import { reservationCharge } from "../gen/core__modelAttemptLeases.effect.vibe"
+import type { StreamChunkCallback } from "./types/components.vibe"
+import type {
+  StreamingContextEventPayload,
+  StreamingEvaluationPayload,
+  StreamingEventHooks,
+  StreamingToolCallPayload,
+  StreamingToolResultPayload,
+} from "./types/streaming.vibe"
+import { AsyncContextManager } from "./utils/async-context-manager.vibe"
+
+export interface TurnActionConstraint {
+  messageId: string
+  roomId: string
+  actorId: string
+  action: string
+  operations: readonly string[]
+  disposition: "allow" | "deny"
+  reason: string
+}
+
+export interface ModelAttemptTariff {
+  provider: string
+  model: string
+  route: string
+  inputNanoUsdPerToken: number
+  outputNanoUsdPerToken: number
+
+  inputTokenUpperBound: number
+}
+
+export interface ModelAttemptLease {
+  readonly messageId: string
+  readonly maxOutputTokens: number
+  reserve(
+    provider: string,
+    model: string,
+    route: string | undefined,
+    serialized: string,
+    outputTokens: number | undefined,
+  ): void
+  close(): void
+}
+
+export interface ModelAttemptAllowance {
+  openTurn(
+    messageId: string,
+    signal: AbortSignal,
+    assertCurrent?: () => void,
+  ): ModelAttemptLease
+  close(): void
+  readonly remainingMicroUsd: number
+}
+const modelAttemptLeases = getAmbientSingleton(
+  Symbol.for("elizaos.modelAttemptLeases"),
+  () => new WeakSet<ModelAttemptLease>(),
+)
+
+const positive = (n: number) => Number.isSafeInteger(n) && n > 0
+
+const allowanceEnded = () => new ElizaError("Model allowance ended", { code: "MODEL_ATTEMPT_POLICY_CLOSED" })
+
+export effect function createModelAttemptAllowance(options: {
+  signal: AbortSignal
+  budgetMicroUsd: number
+  maxAttempts: number
+  maxOutputTokens: number
+  expiresAt: number
+  tariffs: readonly ModelAttemptTariff[]
+}): ModelAttemptAllowance!ElizaError {
+  if (
+    !positive(options.budgetMicroUsd)
+    || !positive(options.maxAttempts)
+    || !positive(options.maxOutputTokens)
+    || !positive(options.expiresAt)
+    || !options.tariffs.length
+    || options.tariffs.some(
+      (t) =>
+        !t.provider
+        || !t.model
+        || !t.route
+        || !positive(t.inputNanoUsdPerToken)
+        || !positive(t.outputNanoUsdPerToken)
+        || !positive(t.inputTokenUpperBound),
+    )
+  ) {
+    throw new ElizaError("Invalid host model allowance", {
+      code: "MODEL_ATTEMPT_POLICY_INVALID",
+    })
+  }
+  const tariffs = options.tariffs.map((t) => Object.freeze({ ...t }))
+  const { maxOutputTokens, expiresAt } = options
+  let remaining = options.budgetMicroUsd,
+    attempts = options.maxAttempts,
+    closed = false
+  const close = () => {
+    closed = true
+    options.signal.removeEventListener("abort", close)
+  }
+  options.signal.addEventListener("abort", close, { once: true })
+  if (options.signal.aborted) closed = true
+
+  const openTurn = effect (messageId: string, signal: AbortSignal, assertCurrent?: () => void) => {
+    if (!messageId || closed || Date.now() >= expiresAt || signal.aborted) throw allowanceEnded()
+    let ended = false
+    const closeTurn = () => {
+      ended = true
+      signal.removeEventListener("abort", closeTurn)
+    }
+    signal.addEventListener("abort", closeTurn, { once: true })
+    const reserve = effect (
+      provider: string,
+      model: string,
+      route: string | undefined,
+      serialized: string,
+      outputTokens: number | undefined,
+    ) => {
+      if (ended || closed || signal.aborted || Date.now() >= expiresAt) throw allowanceEnded()
+      try foreignSync(() => assertCurrent?.())
+      const tariff = tariffs.find(
+        (t) => t.provider === provider && t.model === model && t.route === route,
+      )
+      if (
+        !tariff
+        || !outputTokens
+        || !positive(outputTokens)
+        || outputTokens > maxOutputTokens
+        || (try Effect.try({ try: () => utf8Bytes(serialized), catch: (cause) => new Foreign({ cause }) })) > tariff.inputTokenUpperBound
+      ) {
+        throw new ElizaError("Unqualified bounded model request", {
+          code: "MODEL_ATTEMPT_POLICY_ROUTE",
+        })
+      }
+      const charge = reservationCharge(
+        {
+          provider: tariff.provider,
+          model: tariff.model,
+          route: tariff.route,
+          inputRate: tariff.inputNanoUsdPerToken,
+          outputRate: tariff.outputNanoUsdPerToken,
+          inputBound: tariff.inputTokenUpperBound,
+        },
+        outputTokens,
+        remaining,
+      )
+      if (attempts < 1 || !charge.within) {
+        throw new ElizaError("Model allowance exhausted", {
+          code: "MODEL_ATTEMPT_POLICY_EXHAUSTED",
+        })
+      }
+      remaining -= charge.whole
+      attempts--
+    }
+    const lease: ModelAttemptLease = Object.freeze({
+      messageId,
+      maxOutputTokens,
+      close: closeTurn,
+      reserve: thrown(reserve),
+    })
+    modelAttemptLeases.add(lease)
+    return lease
+  }
+
+  return Object.freeze({
+    get remainingMicroUsd() {
+      return remaining
+    },
+    close,
+    openTurn: thrown(openTurn),
+  })
+}
+
+export const createModelAttemptAllowanceOrThrow = thrown(createModelAttemptAllowance)
+
+export effect function getModelAttemptLease(): (ModelAttemptLease | undefined)!ElizaError {
+  const context = getStreamingContext()
+  const lease = context?.modelAttemptLease
+  if (!lease) return undefined
+  if (
+    !modelAttemptLeases.has(lease)
+    || context.modelAttemptTurnId !== lease.messageId
+  ) {
+    throw new ElizaError("Invalid model turn lease", {
+      code: "MODEL_ATTEMPT_POLICY_INVALID",
+    })
+  }
+  return lease
+}
+
+export const getModelAttemptLeaseOrThrow = thrown(getModelAttemptLease)
+
+export interface StreamingContext extends StreamingEventHooks {
+  onStreamChunk?: StreamChunkCallback
+
+  onStreamEnd?: () => void
+  reportError?: (
+    scope: string,
+    error: unknown,
+    context?: Record<string, unknown>,
+  ) => void
+  messageId?: string
+
+  abortSignal?: AbortSignal
+
+  actionConstraints?: Map<string, TurnActionConstraint>
+
+  modelAttemptLease?: ModelAttemptLease
+
+  modelAttemptTurnId?: string
+}
+
+export interface StreamingHookPayloads {
+  onToolCall: StreamingToolCallPayload
+  onToolResult: StreamingToolResultPayload
+  onEvaluation: StreamingEvaluationPayload
+  onContextEvent: StreamingContextEventPayload
+}
+
+export effect function emitStreamingHook<K extends keyof StreamingHookPayloads>(
+  context: StreamingContext | undefined,
+  hook: K,
+  payload: StreamingHookPayloads[K],
+): void!Foreign {
+  const callback = context?.[hook] as ((value: StreamingHookPayloads[K]) => void | Promise<void>) | undefined
+  if (!callback) {
+    return
+  }
+  foreign(() => callback(payload)) catch effect (error) => {
+    try foreignSync(() => context?.reportError?.("StreamingContext.emitHook", error.cause, { hook }))
+  }
+}
+
+export interface IStreamingContextManager {
+  run<T>(context: StreamingContext | undefined, fn: () => T): T
+
+  active(): StreamingContext | undefined
+}
+
+const STREAMING_CONTEXT_MANAGER_KEY = Symbol.for(
+  "elizaos.streamingContextManager",
+)
+
+function createStreamingContextManager(): IStreamingContextManager {
+  return new AsyncContextManager<StreamingContext | undefined>()
+}
+
+export function setStreamingContextManager(
+  manager: IStreamingContextManager,
+): void {
+  setAmbientSingleton(STREAMING_CONTEXT_MANAGER_KEY, manager)
+}
+
+export function getStreamingContextManager(): IStreamingContextManager {
+  return getAmbientSingleton(
+    STREAMING_CONTEXT_MANAGER_KEY,
+    createStreamingContextManager,
+  )
+}
+
+export effect function runWithStreamingContext<T>(
+  context: StreamingContext | undefined,
+  fn: () => T,
+): T!(ElizaError | Foreign) {
+  const manager = getStreamingContextManager()
+  const parent = manager.active()
+  const sameTurn = !context?.messageId || context.messageId === parent?.messageId
+  if (parent?.modelAttemptLease) {
+    const originalTurn = parent.modelAttemptTurnId
+    if (
+      originalTurn !== parent.modelAttemptLease.messageId
+      || (context?.modelAttemptTurnId !== undefined
+        && context.modelAttemptTurnId !== originalTurn)
+      || (!sameTurn && context?.modelAttemptTurnId !== originalTurn)
+    ) {
+      throw new ElizaError("Bounded model turn cannot change identity", {
+        code: "MODEL_ATTEMPT_POLICY_INVALID",
+      })
+    }
+    context = {
+      ...context,
+      messageId: context?.messageId || parent.messageId,
+      modelAttemptLease: parent.modelAttemptLease,
+      modelAttemptTurnId: originalTurn,
+      abortSignal: inheritedAbortSignal(context, parent.abortSignal),
+    }
+  }
+  if (parent?.actionConstraints && sameTurn) {
+    const base = context ?? { messageId: parent.messageId }
+    context = {
+      ...base,
+      actionConstraints: parent.actionConstraints,
+
+      abortSignal: parent.modelAttemptLease
+        ? base.abortSignal
+        : inheritedAbortSignal(base, parent.abortSignal),
+    }
+  } else if (
+    parent?.actionConstraints
+    && context?.actionConstraints === parent.actionConstraints
+  ) {
+    context = { ...context, actionConstraints: new Map() }
+  } else if (
+    sameTurn
+    && parent?.abortSignal
+    && context?.abortSignal !== parent.abortSignal
+  ) {
+    const base = context ?? { messageId: parent.messageId }
+    context = {
+      ...base,
+      abortSignal: inheritedAbortSignal(base, parent.abortSignal),
+    }
+  }
+  const scoped = context
+  return try foreignSync(() => manager.run(scoped, fn))
+}
+
+function inheritedAbortSignal(
+  context: StreamingContext | undefined,
+  parentSignal: AbortSignal | undefined,
+): AbortSignal | undefined {
+  const own = context?.abortSignal
+  if (!parentSignal || own === parentSignal) return own
+  return own ? AbortSignal.any([parentSignal, own]) : parentSignal
+}
+
+export effect function setTurnActionConstraint(
+  constraint: TurnActionConstraint,
+): void!(ElizaError | Foreign) {
+  const context = getStreamingContext()
+  if (
+    !context
+    || !constraint.messageId
+    || !constraint.roomId
+    || !constraint.actorId
+    || !constraint.action
+    || constraint.operations.length === 0
+    || constraint.operations.some((operation) => !operation.trim())
+  ) {
+    throw new ElizaError(
+      "Turn action constraint requires an active context and complete identity",
+      { code: "TURN_ACTION_CONSTRAINT_INVALID" },
+    )
+  }
+  try foreignSync(() => context.abortSignal?.throwIfAborted())
+  context.actionConstraints ??= new Map()
+  context.actionConstraints.set(
+    JSON.stringify([
+      constraint.messageId,
+      constraint.roomId,
+      constraint.actorId,
+      constraint.action,
+    ]),
+    Object.freeze({
+      ...constraint,
+      operations: Object.freeze([...constraint.operations]),
+    }),
+  )
+}
+
+export const setTurnActionConstraintOrThrow = thrown(setTurnActionConstraint)
+
+export function getTurnActionConstraint(
+  identity: Pick<
+    TurnActionConstraint,
+    "messageId" | "roomId" | "actorId" | "action"
+  >,
+  operation: string,
+): TurnActionConstraint | undefined {
+  const constraint = getStreamingContext()?.actionConstraints?.get(
+    JSON.stringify([
+      identity.messageId,
+      identity.roomId,
+      identity.actorId,
+      identity.action,
+    ]),
+  )
+  return constraint?.operations.includes(operation) ? constraint : undefined
+}
+
+const discardStreamChunk: StreamChunkCallback = () => Promise.resolve()
+
+export effect function runWithSuppressedModelStream<T>(fn: () => T): T!(ElizaError | Foreign) {
+  const active = getStreamingContext()
+  if (!active?.onStreamChunk) {
+    return try foreignSync(fn)
+  }
+  return try runWithStreamingContext({ ...active, onStreamChunk: discardStreamChunk }, fn)
+}
+
+export function getStreamingContext(): StreamingContext | undefined {
+  return getStreamingContextManager().active()
+}
+
+module node {
+  import { AsyncLocalStorage } from "node:async_hooks"
+  import { getAmbientSingleton } from "./ambient-context.vibe"
+
+  const modelStreamChunkDeliveryDepth = getAmbientSingleton(
+    Symbol.for("elizaos.modelStreamChunkDeliveryDepth"),
+    () => new AsyncLocalStorage<number>(),
+  )
+
+  /** @throws {never} */
+  export function getModelStreamChunkDeliveryDepth(): number {
+    return modelStreamChunkDeliveryDepth.getStore() ?? 0
+  }
+
+  /** @throws {never} */
+  export function runInsideModelStreamChunkDelivery<T>(fn: () => T | Promise<T>): T | Promise<T> {
+    return modelStreamChunkDeliveryDepth.run(getModelStreamChunkDeliveryDepth() + 1, fn)
+  }
+
+  /** @throws {TypeError} */
+  export function utf8Bytes(text: string): number {
+    return Buffer.byteLength(text, "utf8")
+  }
+}
+import { getModelStreamChunkDeliveryDepth, runInsideModelStreamChunkDelivery, utf8Bytes } from node
+export { getModelStreamChunkDeliveryDepth, runInsideModelStreamChunkDelivery }
+
+module edge {
+  import { runDetached, runDetachedSync } from "./edge.vibe"
+  import {
+    emitStreamingHook,
+    runWithStreamingContext,
+    runWithSuppressedModelStream,
+    type StreamingContext,
+    type StreamingHookPayloads,
+  } from "./streaming-context.vibe"
+
+  /** @throws {never} */
+  export function emitStreamingHookPromise<K extends keyof StreamingHookPayloads>(
+    context: StreamingContext | undefined,
+    hook: K,
+    payload: StreamingHookPayloads[K],
+  ): Promise<void> {
+    return runDetached(emitStreamingHook(context, hook, payload))
+  }
+
+  /** @throws {unknown} */
+  export function runWithStreamingContextOrThrow<T>(context: StreamingContext | undefined, fn: () => T): T {
+    return runDetachedSync(runWithStreamingContext(context, fn))
+  }
+
+  /** @throws {unknown} */
+  export function runWithSuppressedModelStreamOrThrow<T>(fn: () => T): T {
+    return runDetachedSync(runWithSuppressedModelStream(fn))
+  }
+}
+import { emitStreamingHookPromise, runWithStreamingContextOrThrow, runWithSuppressedModelStreamOrThrow } from edge
+export { emitStreamingHookPromise, runWithStreamingContextOrThrow, runWithSuppressedModelStreamOrThrow }

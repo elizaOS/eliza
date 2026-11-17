@@ -1,0 +1,50 @@
+// spec/core/ambientManagers.md, "A symbol slot is the single source of manager identity"; spec/core/ambientManagers.md, "An active operation retains the manager captured at entry"
+import type { BoundRequestOperationAttempt } from "../actions/task-extraction-context.vibe"
+import { getAmbientSingleton } from "../ambient-context.vibe"
+import type { ActionModelClass } from "../types/components.vibe"
+import type { Memory } from "../types/memory.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import type { State } from "../types/state.vibe"
+import { AsyncContextManager } from "../utils/async-context-manager.vibe"
+
+export interface ActionRoutingContext {
+  readonly actionName: string
+
+  readonly modelClass: ActionModelClass | undefined
+
+  readonly replyOwner?: "planner"
+  readonly messageId?: string
+
+  readonly requestMessage?: Memory
+  readonly requestState?: State
+  readonly requestRuntime?: IAgentRuntime
+  readonly hostAttemptId?: string
+
+  readonly requestOperationAttempt?: BoundRequestOperationAttempt
+}
+
+const MANAGER_KEY = Symbol.for("elizaos.actionRoutingContextManager")
+
+function getOrCreate(): AsyncContextManager<ActionRoutingContext | undefined> {
+  return getAmbientSingleton(
+    MANAGER_KEY,
+    () => new AsyncContextManager<ActionRoutingContext | undefined>(),
+  )
+}
+
+export function runWithActionRoutingContext<T>(
+  ctx: ActionRoutingContext | undefined,
+  fn: () => T | Promise<T>,
+): T | Promise<T> {
+  return getOrCreate().run(ctx, fn)
+}
+
+export function getActionRoutingContext(): ActionRoutingContext | undefined {
+  return getOrCreate().active()
+}
+
+export function runWithoutActionRoutingContext<T>(
+  fn: () => T | Promise<T>,
+): T | Promise<T> {
+  return getOrCreate().run(undefined, fn)
+}

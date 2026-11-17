@@ -1,0 +1,40 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { JsonValue } from "./primitives.vibe"
+
+export interface RuntimeSettings {
+  values?: Record<string, string>
+  [key: string]: JsonValue | undefined
+}
+
+export interface SettingDefinition {
+  name: string
+  description: string
+  usageDescription: string
+  required: boolean
+  public?: boolean
+  secret?: boolean
+  dependsOn: string[]
+}
+
+export interface Setting {
+  name: string
+  description: string
+  usageDescription: string
+  required: boolean
+  value: string | boolean | null
+  public?: boolean
+  secret?: boolean
+  validation?: (value: string | boolean | null) => boolean
+  dependsOn: string[]
+  onSetAction?: (value: string | boolean | null) => string
+  visibleIf?: (settings: Record<string, Setting>) => boolean
+}
+
+export interface WorldSettings {
+  settings?: Record<string, Setting>
+  [key: string]: Setting | Record<string, Setting> | undefined
+}
+
+export interface SetupConfig {
+  settings: Record<string, SettingDefinition>
+}

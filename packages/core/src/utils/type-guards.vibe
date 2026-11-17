@@ -1,0 +1,93 @@
+// spec/core/valueGuards.md, "Plain records require the intrinsic object prototype or a null prototype"
+import { objectRecord, plainObjectTag, plainRecord, type ObjectKind } from "../../gen/core__valueGuards.effect.vibe"
+
+export type UnknownRecord = Record<string, unknown>
+
+function objectKind(value: unknown): ObjectKind {
+  if (value === null) return "NullValue"
+  if (typeof value !== "object") return "PrimitiveValue"
+  if (Array.isArray(value)) return "ArrayValue"
+  const proto = Object.getPrototypeOf(value)
+  if (proto === null) return "NullPrototypeObject"
+  return proto === Object.prototype ? "PlainObject" : "ClassObject"
+}
+
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return plainRecord(objectKind(value))
+}
+
+export function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return objectRecord(objectKind(value))
+}
+
+export function asRecord(value: unknown): Record<string, unknown> | null {
+  return isPlainObject(value) ? value : null
+}
+
+export function asRecordOrUndefined(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  return asRecord(value) ?? undefined
+}
+
+export function asObjectRecord(value: unknown): UnknownRecord | null {
+  return isObjectRecord(value) ? value : null
+}
+
+export function asObjectRecordOrUndefined(
+  value: unknown,
+): UnknownRecord | undefined {
+  return asObjectRecord(value) ?? undefined
+}
+
+export function hasPlainObjectTag(value: unknown): value is UnknownRecord {
+  return plainObjectTag(objectKind(value), Object.prototype.toString.call(value) === "[object Object]")
+}
+
+export function asObjectArray(value: unknown): UnknownRecord[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is UnknownRecord => isObjectRecord(item))
+}
+
+export function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+export function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0
+}
+
+export function readNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined
+}
+
+export function readFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined
+}
+
+export function readBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined
+}
+
+export function asTrimmedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : ""
+}
+
+export function nonnegativeSafeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null
+}
+
+export function defineOwnValue(target: object, key: PropertyKey, value: unknown): void {
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  })
+}

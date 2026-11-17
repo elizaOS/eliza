@@ -1,0 +1,301 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { ContextEvent } from "../runtime/context-object.vibe"
+import type { TrajectoryProviderAttribution } from "../runtime/trajectory-provider-attribution.vibe"
+import type { TrajectorySemanticStageRecord } from "../services/trajectory-semantic-stage.vibe"
+import type { JsonObject, JsonValue, UUID } from "./primitives.vibe"
+
+export type { JsonValue }
+
+export const CONTEXT_OBJECT_TRAJECTORY_VERSION = 5 as const
+export type ContextObjectTrajectoryVersion = typeof CONTEXT_OBJECT_TRAJECTORY_VERSION
+
+export interface ContextObjectTrajectoryExport {
+  contextObjectVersion: ContextObjectTrajectoryVersion
+  trajectoryId?: string
+  agentId?: string
+  contextObjectId?: string
+  createdAt?: number
+  source?: string
+  events: ContextEvent[]
+  metrics?: JsonObject
+  metadata?: JsonObject
+  contextObject?: JsonObject & {
+    id: string
+  }
+}
+
+export interface LLMCall {
+  callId: string
+  timestamp: number
+  model: string
+  modelVersion?: string
+  modelType?: string
+  provider?: string
+  systemPrompt: string
+  userPrompt: string
+  prompt?: string
+  messages?: unknown[]
+  tools?: unknown
+  toolChoice?: unknown
+  responseSchema?: unknown
+  providerOptions?: unknown
+  response: string
+  toolCalls?: unknown[]
+  finishReason?: string
+  providerMetadata?: unknown
+  reasoning?: string
+  temperature?: number
+  maxTokens?: number
+  maxTokensOmitted?: boolean
+  topP?: number
+  promptTokens?: number
+  completionTokens?: number
+  latencyMs?: number
+  cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
+  reasoningTokens?: number
+  purpose: string
+  actionType?: string
+  stepType?: string
+  tags?: string[]
+  modelSlot?: string
+  runId?: string
+  roomId?: string
+  messageId?: string
+  executionTraceId?: string
+  providerOrder?: string[]
+  providerAttributions?: TrajectoryProviderAttribution[]
+}
+
+export interface ProviderAccess {
+  providerId: string
+  providerName: string
+  timestamp: number
+  startedAt: number | null
+  endedAt: number | null
+  durationMs: number | null
+  overlapsWith: Array<{ providerName: string; overlapMs: number }>
+  query?: Record<string, JsonValue>
+  data: Record<string, JsonValue>
+  sha256?: string
+  tokenCount?: number
+  position?: number
+  spanStart?: number
+  spanEnd?: number
+  purpose: string
+  runId?: string
+  roomId?: string
+  messageId?: string
+  executionTraceId?: string
+}
+
+export interface ActionAttempt {
+  attemptId: string
+  timestamp: number
+  actionType: string
+  actionName: string
+  parameters: Record<string, JsonValue>
+  reasoning?: string
+  llmCallId?: string
+  success: boolean
+  result?: Record<string, JsonValue>
+  error?: string
+  immediateReward?: number
+}
+
+export interface EnvironmentState {
+  timestamp: number
+  agentBalance?: number
+  agentPoints?: number
+  agentPnL?: number
+  openPositions?: number
+  activeMarkets?: number
+  portfolioValue?: number
+  unreadMessages?: number
+  recentEngagement?: number
+  custom?: Record<string, JsonValue>
+}
+
+export interface TrajectoryStep {
+  stepId: UUID
+  stepNumber: number
+  timestamp: number
+  environmentState: EnvironmentState
+  observation: Record<string, JsonValue>
+  llmCalls: LLMCall[]
+  providerAccesses: ProviderAccess[]
+  reasoning?: string
+  action?: ActionAttempt
+  semanticStages?: TrajectorySemanticStageRecord[]
+  reward: number
+  done: boolean
+  metadata?: Record<string, JsonValue>
+}
+
+export interface RewardComponents {
+  environmentReward: number
+  aiJudgeReward?: number
+  components?: {
+    profitLoss?: number
+    predictionAccuracy?: number
+    socialEngagement?: number
+    riskAdjusted?: number
+    [key: string]: number | undefined
+  }
+  judgeModel?: string
+  judgeReasoning?: string
+  judgeTimestamp?: number
+}
+
+export interface Trajectory {
+  trajectoryId: UUID
+  agentId: UUID
+  startTime: number
+  endTime?: number
+  durationMs?: number
+  episodeId?: string
+  scenarioId?: string
+  batchId?: string
+  groupIndex?: number
+  steps: TrajectoryStep[]
+  totalReward: number
+  rewardComponents: RewardComponents
+  metrics: {
+    episodeLength: number
+    finalStatus: "active" | "completed" | "terminated" | "error" | "timeout"
+    finalBalance?: number
+    finalPnL?: number
+    tradesExecuted?: number
+    postsCreated?: number
+    messagesHandled?: number
+    successRate?: number
+    errorCount?: number
+    [key: string]: JsonValue | undefined
+  }
+  metadata: {
+    agentName?: string
+    agentModel?: string
+    agentVersion?: string
+    environmentVersion?: string
+    randomSeed?: number
+    isTrainingData?: boolean
+    isEvaluation?: boolean
+    comparisonGroup?: string
+    initialState?: Record<string, JsonValue>
+    goalDescription?: string
+    constraints?: string[]
+    trueProbabilities?: Record<string, number>
+    futureOutcomes?: Record<string, JsonValue>
+    hiddenVariables?: Record<string, JsonValue>
+    [key: string]: JsonValue | undefined
+  }
+}
+
+export interface ChatMessage {
+  role: "system" | "user" | "assistant"
+  content: string
+  name?: string
+}
+
+export interface ARTTrajectory {
+  messages: ChatMessage[]
+  reward: number
+  metadata: {
+    trajectoryId: string
+    agentId: string
+    scenarioId?: string
+    groupIndex?: number
+    environmentContext?: {
+      initialBalance?: number
+      finalBalance?: number
+      initialPnL?: number
+      finalPnL?: number
+      actionsTaken: string[]
+      errors: string[]
+    }
+    gameKnowledge?: {
+      trueProbabilities?: Record<string, number>
+      actualOutcomes?: Record<string, JsonValue>
+      hiddenVariables?: Record<string, JsonValue>
+    }
+    metrics?: Record<string, JsonValue>
+    [key: string]: JsonValue | undefined
+  }
+  metrics?: Record<string, number>
+}
+
+export interface TrajectoryRecord {
+  id: string
+  trajectoryId: string
+  agentId: string
+  startTime: Date
+  endTime: Date
+  durationMs: number
+  episodeId: string | null
+  scenarioId: string | null
+  batchId: string | null
+  stepsJson: string
+  rewardComponentsJson: string
+  metricsJson: string
+  metadataJson: string
+  totalReward: number
+  episodeLength: number
+  finalStatus: string
+  finalBalance: number | null
+  finalPnL: number | null
+  aiJudgeReward: number | null
+  aiJudgeReasoning: string | null
+  judgedAt: Date | null
+  isTrainingData: boolean
+  isEvaluation: boolean
+  usedInTraining: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface RewardRequest {
+  trajectoryId: string
+  trajectory: Trajectory
+  groupTrajectories?: Trajectory[]
+  criteria: {
+    profitability?: boolean
+    riskManagement?: boolean
+    socialQuality?: boolean
+    strategyCoherence?: boolean
+  }
+}
+
+export interface RewardResponse {
+  trajectoryId: string
+  overallScore: number
+  componentScores?: Record<string, number>
+  rank?: number
+  normalizedScore?: number
+  reasoning: string
+  strengths?: string[]
+  weaknesses?: string[]
+  judgeModel: string
+  judgeVersion: string
+  judgedAt: number
+}
+
+export interface TrajectoryGroup {
+  groupId: string
+  scenarioId: string
+  trajectories: Trajectory[]
+  sharedPrefix?: ChatMessage[]
+  rankings?: number[]
+  normalizedRewards?: number[]
+  rulerScores?: number[]
+  createdAt: number
+  modelVersion?: string
+}
+
+export interface TrainingBatch {
+  batchId: string
+  scenarioId?: string
+  groups: TrajectoryGroup[]
+  createdAt: number
+  modelVersion: string
+  trainingConfig?: Record<string, JsonValue>
+}

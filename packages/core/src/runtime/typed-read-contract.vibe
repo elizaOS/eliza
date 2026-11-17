@@ -1,0 +1,133 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import type { PlannerTrajectory } from "./planner-types.vibe"
+
+export type TypedReadReplyResolver = (context: {
+  trajectory: PlannerTrajectory
+  nowMs: number
+  admittedToolNames: readonly string[]
+}) => Omit<TypedReadReplyBinding, "admitCorrection"> | undefined
+
+export interface TypedReadReplyBinding {
+  phase: "planning" | "final-answer"
+
+  remainingReadActionNames?: readonly string[]
+
+  pendingReadCallIds?: readonly string[]
+  policy: TypedReadReplyPolicy
+  facts: readonly TypedReadFact[]
+
+  admitCorrection?: () => boolean
+}
+
+export type TypedReadFact =
+  & {
+    id: string
+    ownerScope: string
+    sourceUrl: string
+  }
+  & (
+    | (
+      & { kind: "quantity"; value: number; unit: string }
+      & (
+        | { observedAtMs?: number; modelEstimate?: never }
+        | {
+          observedAtMs?: never
+          modelEstimate: {
+            validAtMs: number
+            modelUpdatedAtMs: number
+            creditConnectorId: string
+          }
+        }
+      )
+    )
+    | {
+      kind: "quantity-report"
+      value: number
+      unit: string
+      reportedDay?: string
+
+      providerLocality?: string
+
+      qualification?: "named-place-alternative"
+      observedAtMs?: number
+    }
+    | { kind: "publication-report"; title: string; publicationDay: string }
+    | { kind: "publication"; title: string; publicationDay?: string }
+  )
+
+export type TypedReadRequirement =
+  & {
+    id: string
+
+    label: string
+
+    admittedFactIds: readonly string[]
+
+    qualifiedFactIds?: readonly string[]
+
+    unverifiedText: string
+  }
+  & (
+    | {
+      kind: "quantity"
+      unit: string
+      freshnessMs: number
+      current: boolean
+      modelEstimate?: {
+        maxSourceAgeMs: number
+        maxValidDistanceMs: number
+        futureSkewMs: number
+      }
+    }
+    | { kind: "publication"; requestedDay?: string }
+  )
+
+export interface TypedReadReplyPolicy {
+  turnId: string
+  ownerScope: string
+  nowMs: number
+  includeSources: boolean
+  requirements: readonly TypedReadRequirement[]
+
+  connectors: Readonly<Record<string, string>>
+}
+
+export type TypedReadReplyPart =
+  | {
+    kind: "fact" | "qualified"
+    requirementId: string
+    factId: string
+    value: number | string
+  }
+  | { kind: "unverified"; requirementId: string }
+  | { kind: "connector"; connectorId: string }
+
+export type TypedReadReplyVerdict =
+  | { verdict: "not-applicable"; text: string }
+  | {
+    verdict: "allow"
+    text: string
+    factIds: readonly string[]
+    partial?: true
+  }
+  | {
+    verdict: "reject"
+    reason:
+      | "invalid-contract"
+      | "missing-claim-declaration"
+      | "unknown-reference"
+      | "owner-mismatch"
+      | "unsupported-value"
+      | "unverified-time"
+      | "draft-not-bound"
+      | "nonfinal-answer"
+  }
+
+export interface TypedReadEgressReceipt {
+  readonly version: 1
+  readonly ownerScope: string
+  readonly turnId: string
+  readonly requirementIds: readonly string[]
+  readonly factIds: readonly string[]
+  readonly partial: boolean
+}

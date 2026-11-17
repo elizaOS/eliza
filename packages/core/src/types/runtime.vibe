@@ -1,0 +1,1133 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { ReportedError } from "../errors.vibe"
+import type { Logger } from "../logger.vibe"
+import type { FetchLike } from "../media/fetch.vibe"
+import type { ConnectorInteractionCapabilityProfile } from "../messaging/interaction-profiles.vibe"
+import type { ExecutionTrace, PromptOptimizationRuntimeHooks, ScoreSignal } from "../prompt-optimization.vibe"
+import type { ContextRegistry } from "../runtime/context-registry.vibe"
+import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators.vibe"
+import type {
+  ResponseHandlerFieldEvaluator,
+  ResponseHandlerFieldRegistry,
+} from "../runtime/response-handler-fields.vibe"
+import type { RoomHandlerQueue } from "../runtime/room-handler-queue.vibe"
+import type { TurnControllerRegistry } from "../runtime/turn-controller.vibe"
+import type { SecretFragment, SecretFragmentTaintProfile } from "../security/fragment-redaction.vibe"
+import type { Agent, Character } from "./agent.vibe"
+import type { ChatPreHandler, ChatPreHandlerContext, ChatPreHandlerResult } from "./chat-pre-handler.vibe"
+import type {
+  Action,
+  ActionMode,
+  ActionResult,
+  AgentContext,
+  HandlerCallback,
+  Provider,
+  StreamChunkCallback,
+} from "./components.vibe"
+import type { IDatabaseAdapter, LogBody, MemoryEmbeddingUpdate, PatchOp } from "./database.vibe"
+import type { Component, Entity, Metadata, Relationship, Room, World } from "./environment.vibe"
+import type { RegisteredEvaluator } from "./evaluator.vibe"
+import type { EventHandler, EventPayload, EventPayloadMap } from "./events.vibe"
+import type { IdentityClaim } from "./identity.vibe"
+import type { Memory, MemoryMetadata } from "./memory.vibe"
+import type { IMessageService } from "./message-service.vibe"
+import type {
+  IMessagingAdapter,
+  PostHandlerResult,
+  SendHandlerFunction,
+  SendHandlerResult,
+  TargetInfo,
+} from "./messaging.vibe"
+import type {
+  GenerateTextOptions,
+  GenerateTextParams,
+  GenerateTextResult,
+  LLMModeType,
+  ModelParamsMap,
+  ModelRegistrationInfo,
+  ModelRegistrationMetadata,
+  ModelResultMap,
+  ModelTypeName,
+  TextGenerationModelType,
+} from "./model.vibe"
+import type { PairingAllowlistEntry, PairingRequest } from "./pairing.vibe"
+import type { PipelineHookContext, PipelineHookPhase, PipelineHookSpec } from "./pipeline-hooks.vibe"
+import type {
+  Plugin,
+  PluginOwnership,
+  RemotePluginInstallOptions,
+  RemotePluginInstanceHandle,
+  RuntimeEventStorage,
+  ServiceClass,
+} from "./plugin.vibe"
+import type { ChannelType, Content, JsonValue, UUID } from "./primitives.vibe"
+import type {
+  SearchCategoryEnumerationOptions,
+  SearchCategoryLookupOptions,
+  SearchCategoryRegistration,
+} from "./search.vibe"
+import type { Service, ServiceTypeName } from "./service.vibe"
+import type { RetryBackoffConfig, SchemaRow, State, StreamEvent } from "./state.vibe"
+import type { Task, TaskMetadataPatch, TaskMetadataPatchOutcome, TaskWorker } from "./task.vibe"
+
+export type MessageTargetKind =
+  | "room"
+  | "channel"
+  | "thread"
+  | "user"
+  | "contact"
+  | "group"
+  | "server"
+  | "email"
+  | "phone"
+  | (string & {})
+
+export const CANONICAL_MESSAGE_TARGET_KINDS = [
+  "room",
+  "channel",
+  "thread",
+  "user",
+  "contact",
+  "group",
+  "server",
+  "email",
+  "phone",
+] as const
+
+export type MessageConnectorCapability =
+  | "send_message"
+  | "read_messages"
+  | "search_messages"
+  | "list_channels"
+  | "list_servers"
+  | "react_message"
+  | "edit_message"
+  | "delete_message"
+  | "pin_message"
+  | "join_channel"
+  | "leave_channel"
+  | "get_user"
+  | "create_thread"
+  | "post_to_thread"
+  | "typing_indicator"
+  | "webhook_identity"
+  | "rich_components"
+  | "rich_embed"
+  | "manage_server"
+  | (string & {})
+
+export type PostConnectorCapability =
+  | "post"
+  | "read_feed"
+  | "search_posts"
+  | (string & {})
+
+export interface RuntimeStopOptions {
+  requireQuiescence?: boolean
+
+  fast?: boolean
+
+  serviceStopTimeoutMs?: number
+}
+
+export const ConnectorAccountPurpose = {
+  MESSAGING: "messaging",
+  POSTING: "posting",
+  READING: "reading",
+  ADMIN: "admin",
+  AUTOMATION: "automation",
+} as const
+export type ConnectorAccountPurpose =
+  | (typeof ConnectorAccountPurpose)[keyof typeof ConnectorAccountPurpose]
+  | (string & {})
+
+export const ConnectorAccountRole = {
+  OWNER: "OWNER",
+  AGENT: "AGENT",
+  TEAM: "TEAM",
+} as const
+export type ConnectorAccountRole = (typeof ConnectorAccountRole)[keyof typeof ConnectorAccountRole]
+
+export const ConnectorAuthMethod = {
+  OAUTH: "OAUTH",
+  API_KEY: "API_KEY",
+  BOT_TOKEN: "BOT_TOKEN",
+  WEBHOOK: "WEBHOOK",
+  SESSION: "SESSION",
+  NONE: "NONE",
+} as const
+export type ConnectorAuthMethod =
+  | (typeof ConnectorAuthMethod)[keyof typeof ConnectorAuthMethod]
+  | (string & {})
+
+export const ConnectorAccountHealth = {
+  UNKNOWN: "UNKNOWN",
+  HEALTHY: "HEALTHY",
+  DEGRADED: "DEGRADED",
+  REAUTH_REQUIRED: "REAUTH_REQUIRED",
+  DISABLED: "DISABLED",
+  ERROR: "ERROR",
+} as const
+export type ConnectorAccountHealth =
+  | (typeof ConnectorAccountHealth)[keyof typeof ConnectorAccountHealth]
+  | (string & {})
+
+export interface ConnectorAccountCapability {
+  name: MessageConnectorCapability | PostConnectorCapability | (string & {})
+  enabled?: boolean
+  targetKinds?: MessageTargetKind[]
+  scopes?: string[]
+  metadata?: Metadata
+}
+
+export interface ConnectorAccountRef {
+  source: string
+  accountId?: string
+  purpose?: ConnectorAccountPurpose | ConnectorAccountPurpose[]
+  role?: ConnectorAccountRole
+
+  name?: string
+  label?: string
+  authMethod?: ConnectorAuthMethod
+  health?: ConnectorAccountHealth
+  capabilities?: ConnectorAccountCapability[]
+  ownerEntityId?: UUID | string
+  teamId?: UUID | string
+  metadata?: Metadata
+}
+
+export interface ConnectorContentShaping {
+  systemPromptFragment?: string
+  template?: string
+  postProcess?: (text: string) => string
+  constraints?: {
+    maxLength?: number
+    supportsMarkdown?: boolean
+    supportsThreads?: boolean
+    supportsAttachments?: boolean
+    [key: string]: JsonValue | undefined
+  }
+}
+
+export interface MessageConnectorQueryContext {
+  runtime: IAgentRuntime
+  roomId?: UUID
+  entityId?: UUID
+  source?: string
+  accountId?: string
+  account?: ConnectorAccountRef
+  target?: TargetInfo
+  contexts?: AgentContext[]
+  metadata?: Metadata
+}
+
+export interface MessageConnectorTarget {
+  target: TargetInfo
+
+  identityDeliveryKey?: string
+  label?: string
+  kind?: MessageTargetKind
+  description?: string
+  score?: number
+  contexts?: AgentContext[]
+  metadata?: Metadata
+}
+
+export interface MessageConnectorChatMessageContext {
+  entityId?: UUID
+  name?: string
+  text: string
+  timestamp?: number
+  metadata?: Metadata
+}
+
+export interface MessageConnectorChatContext {
+  target: TargetInfo
+  label?: string
+  summary?: string
+  recentMessages?: MessageConnectorChatMessageContext[]
+  metadata?: Metadata
+}
+
+export interface MessageConnectorUserContext {
+  entityId: UUID | string
+  label?: string
+  aliases?: string[]
+  handles?: Record<string, string>
+  metadata?: Metadata
+}
+
+export interface MessageConnectorFetchMessagesParams {
+  target: TargetInfo
+  limit?: number
+  cursor?: string
+  before?: string
+  after?: string
+}
+
+export interface MessageConnectorSearchMessagesParams {
+  query: string
+  target?: TargetInfo
+  limit?: number
+  cursor?: string
+  before?: string
+  after?: string
+}
+
+export interface MessageConnectorMessageOpParams {
+  target: TargetInfo
+  messageId: string
+}
+
+export interface MessageConnectorReactionParams extends MessageConnectorMessageOpParams {
+  emoji: string
+}
+
+export interface MessageConnectorEditParams extends MessageConnectorMessageOpParams {
+  content: Content
+}
+
+export interface MessageConnectorPinParams extends MessageConnectorMessageOpParams {
+  pin?: boolean
+}
+
+export interface MessageConnectorChannelOpParams {
+  roomId?: UUID
+  channelId?: string
+  serverId?: string
+  alias?: string
+  invite?: string
+  target?: TargetInfo
+}
+
+export interface MessageConnectorGetUserParams {
+  userId?: UUID | string
+  username?: string
+  handle?: string
+  target?: TargetInfo
+}
+
+export interface MessageConnectorTypingParams {
+  target: TargetInfo
+}
+
+export interface ThreadHandle {
+  threadId: string
+  parentChannelId?: string
+}
+
+export interface MessageConnectorCreateThreadParams {
+  target: TargetInfo
+  parentMessageId?: string
+  name?: string
+}
+
+export interface ConnectorPostIdentity {
+  name?: string
+  avatarUrl?: string
+}
+
+export interface MessageConnectorPostToThreadParams {
+  target: TargetInfo
+  thread: ThreadHandle
+  content: Content
+  identity?: ConnectorPostIdentity
+}
+
+export interface MessageConnectorManageServerParams {
+  target?: TargetInfo
+
+  operation: string
+
+  serverId?: string
+
+  authorization: MessageConnectorManageServerAuthorization
+
+  params?: Record<string, unknown>
+}
+
+export interface MessageConnectorManageServerDestination {
+  source: string
+  accountId: string
+  serverId: string
+  messageServerId: UUID
+  destinationWorldId: UUID
+  target: TargetInfo
+}
+
+export interface MessageConnectorManageServerAuthorization extends MessageConnectorManageServerDestination {
+  requesterEntityId: UUID
+  authorizedEntityId: UUID
+  role: "ADMIN" | "OWNER"
+  bindingRoomIds: UUID[]
+}
+
+export interface MessageConnectorManageServerResult {
+  summary: string
+
+  data?: Record<string, unknown>
+}
+
+export interface MessageConnector {
+  source: string
+  accountId?: string
+  account?: ConnectorAccountRef
+
+  accountRouting?: "connector"
+  label: string
+  capabilities: MessageConnectorCapability[]
+  supportedTargetKinds: MessageTargetKind[]
+  description?: string
+  contexts: AgentContext[]
+  metadata?: Metadata
+
+  resolveInteractionProfile?: (
+    target: TargetInfo,
+    context: MessageConnectorQueryContext,
+  ) =>
+    | Promise<ConnectorInteractionCapabilityProfile>
+    | ConnectorInteractionCapabilityProfile
+  resolveTargets?: (
+    query: string,
+    context: MessageConnectorQueryContext,
+  ) => Promise<MessageConnectorTarget[]> | MessageConnectorTarget[]
+
+  resolveIdentityClaimTarget?: (
+    claim: IdentityClaim,
+    context: MessageConnectorQueryContext,
+    canonicalPrincipalId: UUID,
+  ) => Promise<MessageConnectorTarget | null> | MessageConnectorTarget | null
+  listRecentTargets?: (
+    context: MessageConnectorQueryContext,
+  ) => Promise<MessageConnectorTarget[]> | MessageConnectorTarget[]
+  listRooms?: (
+    context: MessageConnectorQueryContext,
+  ) => Promise<MessageConnectorTarget[]> | MessageConnectorTarget[]
+  getChatContext?: (
+    target: TargetInfo,
+    context: MessageConnectorQueryContext,
+  ) =>
+    | Promise<MessageConnectorChatContext | null>
+    | MessageConnectorChatContext
+    | null
+  getUserContext?: (
+    entityId: UUID | string,
+    context: MessageConnectorQueryContext,
+  ) =>
+    | Promise<MessageConnectorUserContext | null>
+    | MessageConnectorUserContext
+    | null
+  listServers?: (
+    context: MessageConnectorQueryContext,
+  ) => Promise<World[]> | World[]
+  fetchMessages?: (
+    context: MessageConnectorQueryContext,
+    params: MessageConnectorFetchMessagesParams,
+  ) => Promise<Memory[]> | Memory[]
+  searchMessages?: (
+    context: MessageConnectorQueryContext,
+    params: MessageConnectorSearchMessagesParams,
+  ) => Promise<Memory[]> | Memory[]
+  reactHandler?: (
+    runtime: IAgentRuntime,
+    params: MessageConnectorReactionParams,
+  ) => Promise<void>
+  editHandler?: (
+    runtime: IAgentRuntime,
+    params: MessageConnectorEditParams,
+  ) => Promise<Memory> | Promise<void>
+  deleteHandler?: (
+    runtime: IAgentRuntime,
+    params: MessageConnectorMessageOpParams,
+  ) => Promise<void>
+  pinHandler?: (
+    runtime: IAgentRuntime,
+    params: MessageConnectorPinParams,
+  ) => Promise<void>
+  joinHandler?: (
+    runtime: IAgentRuntime,
+    params: MessageConnectorChannelOpParams,
+  ) => Promise<Room> | Promise<void>
+  leaveHandler?: (
+    runtime: IAgentRuntime,
+    params: MessageConnectorChannelOpParams,
+  ) => Promise<void>
+  getUser?: (
+    runtime: IAgentRuntime,
+    params: MessageConnectorGetUserParams,
+  ) => Promise<unknown>
+  typingHandler?: (
+    runtime: IAgentRuntime,
+    params: MessageConnectorTypingParams,
+  ) => Promise<void>
+  stopTypingHandler?: (
+    runtime: IAgentRuntime,
+    params: MessageConnectorTypingParams,
+  ) => Promise<void>
+  createThreadHandler?: (
+    runtime: IAgentRuntime,
+    params: MessageConnectorCreateThreadParams,
+  ) => Promise<ThreadHandle>
+  postToThreadHandler?: (
+    runtime: IAgentRuntime,
+    params: MessageConnectorPostToThreadParams,
+  ) => Promise<Memory | undefined>
+  resolveManageServerDestination?: (
+    runtime: IAgentRuntime,
+    params: { target?: TargetInfo; serverId: string },
+  ) =>
+    | Promise<MessageConnectorManageServerDestination>
+    | MessageConnectorManageServerDestination
+  manageServerHandler?: (
+    runtime: IAgentRuntime,
+    params: MessageConnectorManageServerParams,
+  ) => Promise<MessageConnectorManageServerResult>
+  contentShaping?: ConnectorContentShaping
+}
+
+export type MessageConnectorMetadata =
+  & Partial<
+    Omit<MessageConnector, "source" | "label">
+  >
+  & {
+    label?: string
+  }
+
+export type MessageConnectorRegistration = MessageConnectorMetadata & {
+  source: string
+  sendHandler?: SendHandlerFunction
+}
+
+export interface PostConnectorQueryContext {
+  runtime: IAgentRuntime
+  roomId?: UUID
+  entityId?: UUID
+  source?: string
+  accountId?: string
+  account?: ConnectorAccountRef
+  contexts?: AgentContext[]
+  metadata?: Metadata
+}
+
+export interface PostConnectorFeedParams {
+  feed?: string
+  target?: TargetInfo
+  limit?: number
+  cursor?: string
+  before?: string
+  after?: string
+}
+
+export interface PostConnectorSearchParams {
+  query: string
+  limit?: number
+  cursor?: string
+  before?: string
+  after?: string
+}
+
+export interface PostConnector {
+  source: string
+  accountId?: string
+  account?: ConnectorAccountRef
+
+  accountRouting?: "connector"
+  label: string
+  capabilities: PostConnectorCapability[]
+  description?: string
+  contexts: AgentContext[]
+  metadata?: Metadata
+  postHandler?: (
+    runtime: IAgentRuntime,
+    content: Content,
+    context?: PostConnectorQueryContext,
+  ) => PostHandlerResult
+  fetchFeed?: (
+    context: PostConnectorQueryContext,
+    params: PostConnectorFeedParams,
+  ) => Promise<Memory[]> | Memory[]
+  searchPosts?: (
+    context: PostConnectorQueryContext,
+    params: PostConnectorSearchParams,
+  ) => Promise<Memory[]> | Memory[]
+  contentShaping?: ConnectorContentShaping
+}
+
+export type PostConnectorMetadata =
+  & Partial<
+    Omit<PostConnector, "source" | "label">
+  >
+  & {
+    label?: string
+  }
+
+export type PostConnectorRegistration = PostConnectorMetadata & {
+  source: string
+}
+
+export interface ConnectorUnregisterOptions {
+  exactAccount?: boolean
+}
+
+type RuntimeDatabaseAdapterSurface = Omit<
+  IDatabaseAdapter<object>,
+  | "documentListQueryCapability"
+  | "queryDocuments"
+  | "getDocument"
+  | "queryDocumentFragments"
+  | "compareAndSwapDocument"
+  | "updateDocumentDirectGrants"
+  | "replaceDocumentRevision"
+  | "deleteDocumentWithSnapshot"
+  | "compareAndSwapWorldMetadata"
+  | "patchTaskMetadata"
+>
+
+export interface OwnerToolExecutionObservation {
+  phase: "gate" | "started" | "settled" | "omitted"
+  gate:
+    | "lookup"
+    | "role-context"
+    | "disclosure"
+    | "schema"
+    | "action-validation"
+    | "connector-account"
+    | "execution"
+  gateOutcome: "passed" | "denied" | "failed" | "executed" | "unknown"
+  actionName: string
+  executionId?: string
+  toolCallId?: string
+  args?: unknown
+  result?: unknown
+  redactedFields: number
+  redactedStrings: number
+  omittedFields: number
+}
+
+export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
+  readonly ownerToolExecutionObserverVersion?: 1
+
+  ownerToolExecutionObserver?: (
+    observation: Readonly<OwnerToolExecutionObservation>,
+  ) => void
+
+  adapter: IDatabaseAdapter
+  agentId: UUID
+
+  runtimeInstanceId: UUID
+  character: Character
+  enableAutonomy: boolean
+
+  serverless?: boolean
+  initPromise: Promise<void>
+
+  getLifecycleState?():
+    | "initializing"
+    | "running"
+    | "failed"
+    | "stopping"
+    | "stopped"
+
+  getStopSignal?(): AbortSignal
+  messageService: IMessageService | null
+  providers: Provider[]
+  actions: Action[]
+  evaluators: RegisteredEvaluator[]
+  responseHandlerEvaluators: ResponseHandlerEvaluator[]
+
+  responseHandlerFieldEvaluators: ResponseHandlerFieldEvaluator[]
+
+  responseHandlerFieldRegistry: ResponseHandlerFieldRegistry
+
+  turnControllers: TurnControllerRegistry
+
+  roomHandlerQueue: RoomHandlerQueue
+  plugins: Plugin[]
+  services: Map<ServiceTypeName, Service[]>
+  events: RuntimeEventStorage
+  fetch?: FetchLike | null
+  logger: Logger
+  stateCache: Map<string, State>
+
+  contexts: ContextRegistry
+
+  registerPlugin<T extends Plugin>(plugin: T): Promise<void>
+  unloadPlugin(pluginName: string): Promise<PluginOwnership | null>
+  reloadPlugin(plugin: Plugin): Promise<void>
+
+  installRemotePlugin(
+    plugin: Plugin,
+    options?: RemotePluginInstallOptions,
+  ): Promise<RemotePluginInstanceHandle>
+  applyPluginConfig(
+    pluginName: string,
+    config: Record<string, string>,
+  ): Promise<boolean>
+  getPluginOwnership(pluginName: string): PluginOwnership | null
+  getAllPluginOwnership(): PluginOwnership[]
+
+  initialize(options?: { skipMigrations?: boolean }): Promise<void>
+
+  getConnection(): Promise<object>
+
+  getService<T extends Service>(service: ServiceTypeName | string): T | null
+
+  getServicesByType<T extends Service>(service: ServiceTypeName | string): T[]
+
+  getAllServices(): Map<ServiceTypeName, Service[]>
+
+  registerService(service: ServiceClass): Promise<void>
+
+  getServiceLoadPromise(
+    serviceType: ServiceTypeName | string,
+  ): Promise<Service>
+
+  getRegisteredServiceTypes(): ServiceTypeName[]
+
+  hasService(serviceType: ServiceTypeName | string): boolean
+
+  getServiceRegistrationStatus(
+    serviceType: ServiceTypeName | string,
+  ): "pending" | "registering" | "registered" | "failed" | "unknown"
+
+  getMessagingAdapter(): IMessagingAdapter | null
+
+  setSetting(
+    key: string,
+    value: string | boolean | null,
+    secret?: boolean,
+  ): void
+
+  getSetting(key: string): string | boolean | number | null
+
+  getConversationLength(): number
+
+  isActionPlanningEnabled(): boolean
+
+  getLLMMode(): LLMModeType
+
+  isCheckShouldRespondEnabled(): boolean
+
+  getActionResults(messageId: UUID): ActionResult[]
+
+  runActionsByMode(
+    mode: ActionMode,
+    message: Memory,
+    state?: State,
+    options?: {
+      didRespond?: boolean
+      callback?: HandlerCallback
+      responses?: Memory[]
+      selectedContexts?: readonly AgentContext[]
+    },
+  ): Promise<Action[]>
+
+  registerProvider(provider: Provider): void
+
+  registerAction(action: Action): void
+  unregisterAction(name: string): boolean
+  registerChatPreHandler(handler: ChatPreHandler): void
+  registerChatPreHandlers(handlers: readonly ChatPreHandler[]): void
+  unregisterChatPreHandler(id: string): void
+  drainChatPreHandlers(
+    ctx: ChatPreHandlerContext,
+  ): Promise<ChatPreHandlerResult | null>
+  registerEvaluator(evaluator: RegisteredEvaluator): void
+  unregisterEvaluator(name: string): boolean
+  registerResponseHandlerEvaluator(evaluator: ResponseHandlerEvaluator): void
+  unregisterResponseHandlerEvaluator(name: string): boolean
+  registerResponseHandlerFieldEvaluator(
+    evaluator: ResponseHandlerFieldEvaluator,
+  ): void
+  unregisterResponseHandlerFieldEvaluator(name: string): boolean
+
+  abortTurn(roomId: string, reason: string): boolean
+
+  getAllActions(): Action[]
+
+  ensureConnections(
+    entities: Entity[],
+    rooms: Room[],
+    source: string,
+    world: World,
+  ): Promise<void>
+  ensureConnection(params: {
+    entityId: UUID
+    roomId: UUID
+    roomName?: string
+    userName?: string
+    name?: string
+    worldName?: string
+    source?: string
+    channelId?: string
+    serverId?: string
+    messageServerId?: UUID
+    type?: ChannelType | string
+    worldId?: UUID
+    userId?: UUID
+    metadata?: Record<string, JsonValue>
+  }): Promise<void>
+
+  ensureParticipantInRoom(entityId: UUID, roomId: UUID): Promise<void>
+
+  ensureWorldExists(world: World): Promise<void>
+
+  ensureRoomExists(room: Room): Promise<void>
+
+  composeState(
+    message: Memory,
+    includeList?: string[],
+    onlyInclude?: boolean,
+    skipCache?: boolean,
+    refreshProviders?: string[] | null,
+    options?: { deferredReferenceProviders?: readonly string[] },
+  ): Promise<State>
+
+  useModel(
+    modelType: TextGenerationModelType,
+    params: GenerateTextParams,
+    provider?: string,
+  ): Promise<string>
+
+  useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
+    modelType: T,
+    params: ModelParamsMap[T],
+    provider?: string,
+  ): Promise<R>
+
+  getLastResolvedModelProvider?(
+    modelType: TextGenerationModelType | string,
+  ): string | undefined
+
+  generateText(
+    input: string,
+    options?: GenerateTextOptions,
+  ): Promise<GenerateTextResult>
+
+  registerModel(
+    modelType: ModelTypeName | string,
+    handler: (
+      runtime: IAgentRuntime,
+      params: Record<string, JsonValue | object>,
+    ) => Promise<JsonValue | object>,
+    provider: string,
+    priority?: number,
+    metadata?: ModelRegistrationMetadata,
+  ): void
+
+  getModel(
+    modelType: ModelTypeName | string,
+  ):
+    | ((
+      runtime: IAgentRuntime,
+      params: Record<string, JsonValue | object>,
+    ) => Promise<JsonValue | object>)
+    | undefined
+
+  getModelRegistrations(): ModelRegistrationInfo[]
+
+  registerEvent<T extends keyof EventPayloadMap>(
+    event: T,
+    handler: EventHandler<T>,
+  ): void
+  registerEvent<P extends EventPayload = EventPayload>(
+    event: string,
+    handler: (params: P) => Promise<void>,
+  ): void
+
+  unregisterEvent<T extends keyof EventPayloadMap>(
+    event: T,
+    handler: EventHandler<T>,
+  ): void
+  unregisterEvent<P extends EventPayload = EventPayload>(
+    event: string,
+    handler: (params: P) => Promise<void>,
+  ): void
+
+  getEvent<T extends keyof EventPayloadMap>(
+    event: T,
+  ): EventHandler<T>[] | undefined
+  getEvent(
+    event: string,
+  ): ((params: EventPayload) => Promise<void>)[] | undefined
+
+  emitEvent<T extends keyof EventPayloadMap>(
+    event: T | T[],
+    params: EventPayloadMap[T],
+  ): Promise<void>
+  emitEvent(event: string | string[], params: EventPayload): Promise<void>
+
+  reportError(
+    scope: string,
+    error: unknown,
+    context?: Record<string, unknown>,
+  ): void
+
+  getRecentReportedErrors(): ReportedError[]
+
+  registerTaskWorker(taskHandler: TaskWorker): void
+  getTaskWorker(name: string): TaskWorker | undefined
+
+  unregisterTaskWorker(name: string): boolean
+
+  structuredPromptExecutor?: IAgentRuntime["dynamicPromptExecFromState"]
+
+  recordPromptTrace(trace: ExecutionTrace): void
+  purgePromptTraces(): void
+
+  dynamicPromptExecFromState(args: {
+    state?: State
+    params: Omit<GenerateTextParams, "prompt"> & {
+      prompt: string | ((ctx: { state: State }) => string)
+    }
+    schema: SchemaRow[]
+    options?: {
+      key?: string
+
+      promptName?: string
+      modelSize?: "nano" | "small" | "medium" | "large" | "mega"
+      modelType?: TextGenerationModelType
+      model?: string
+      requiredFields?: string[]
+      contextCheckLevel?: 0 | 1 | 2 | 3
+      checkpointCodes?: boolean
+      maxRetries?: number
+      retryBackoff?: number | RetryBackoffConfig
+      disableCache?: boolean
+      cacheTTL?: number
+      onStreamChunk?: StreamChunkCallback
+      onStreamEvent?: (
+        event: StreamEvent,
+        messageId?: string,
+      ) => void | Promise<void>
+      abortSignal?: AbortSignal
+    }
+  }): Promise<Record<string, unknown> | null>
+
+  enrichTrace(runId: string, signal: ScoreSignal): void
+
+  getActiveTrace(runId: string): ExecutionTrace | undefined
+
+  getActiveTracesForRun?(runId: string): ExecutionTrace[]
+
+  deleteActiveTrace(runId: string): void
+
+  deleteActiveTraceById?(traceId: string): void
+
+  registerPromptOptimizationHooks(
+    hooks: PromptOptimizationRuntimeHooks | null,
+  ): void
+
+  getPromptOptimizationHooks(): PromptOptimizationRuntimeHooks | null
+
+  getOptimizationDir(): string
+
+  stop(options?: RuntimeStopOptions): Promise<void>
+
+  addEmbeddingToMemory(memory: Memory): Promise<Memory>
+
+  queueEmbeddingGeneration(
+    memory: Memory,
+    priority?: "high" | "normal" | "low",
+  ): Promise<void>
+
+  getAllMemories(): Promise<Memory[]>
+
+  clearAllAgentMemories(): Promise<void>
+
+  createRunId(): UUID
+  startRun(roomId?: UUID): UUID
+  endRun(): void
+  getCurrentRunId(): UUID
+
+  registerSearchCategory(registration: SearchCategoryRegistration): void
+  getSearchCategories(
+    options?: SearchCategoryEnumerationOptions,
+  ): SearchCategoryRegistration[]
+  getSearchCategory(
+    category: string,
+    options?: SearchCategoryLookupOptions,
+  ): SearchCategoryRegistration
+
+  registerSendHandler(source: string, handler: SendHandlerFunction): void
+
+  registerInternalSendHandler(
+    source: string,
+    handler: SendHandlerFunction,
+  ): void
+  registerMessageConnector(registration: MessageConnectorRegistration): void
+  unregisterMessageConnector(
+    source: string,
+    accountId?: string,
+    options?: ConnectorUnregisterOptions,
+  ): boolean
+  getMessageConnectors(): MessageConnector[]
+  registerPostConnector(registration: PostConnectorRegistration): void
+  unregisterPostConnector(
+    source: string,
+    accountId?: string,
+    options?: ConnectorUnregisterOptions,
+  ): boolean
+  getPostConnectors(): PostConnector[]
+  sendMessageToTarget(target: TargetInfo, content: Content): SendHandlerResult
+  editMessageOnTarget(
+    target: TargetInfo,
+    messageId: string,
+    content: Content,
+  ): Promise<Memory | undefined>
+  sendTypingOnTarget(target: TargetInfo): Promise<void>
+  stopTypingOnTarget(target: TargetInfo): Promise<void>
+  createThreadOnTarget(
+    target: TargetInfo,
+    params?: Omit<MessageConnectorCreateThreadParams, "target">,
+  ): Promise<ThreadHandle>
+  postToThreadOnTarget(
+    target: TargetInfo,
+    thread: ThreadHandle,
+    content: Content,
+    identity?: ConnectorPostIdentity,
+  ): Promise<Memory | undefined>
+  addReactionOnTarget(
+    target: TargetInfo,
+    messageId: string,
+    emoji: string,
+  ): Promise<void>
+
+  registerPipelineHook(spec: PipelineHookSpec): void
+  unregisterPipelineHook(id: string): void
+  applyPipelineHooks(
+    phase: PipelineHookPhase,
+    ctx: PipelineHookContext,
+    pipelineHookTelemetry?: boolean,
+  ): Promise<void>
+
+  redactSecrets(text: string): string
+
+  locateConfiguredSecretFragmentTaint(
+    fragments: readonly SecretFragment[],
+  ): SecretFragmentTaintProfile
+
+  getEntityById(entityId: UUID): Promise<Entity | null>
+  getEntitiesForRoom(
+    roomId: UUID,
+    includeComponents?: boolean,
+  ): Promise<Entity[]>
+  getRoom(roomId: UUID): Promise<Room | null>
+  createEntity(entity: Entity): Promise<boolean>
+  createRoom(room: Room): Promise<UUID>
+  addParticipant(entityId: UUID, roomId: UUID): Promise<boolean>
+  getParticipantsForRoom(roomId: UUID): Promise<UUID[]>
+  getParticipantUserState(
+    roomId: UUID,
+    entityId: UUID,
+  ): Promise<"FOLLOWED" | "MUTED" | null>
+  updateParticipantUserState(
+    roomId: UUID,
+    entityId: UUID,
+    state: "FOLLOWED" | "MUTED" | null,
+  ): Promise<void>
+  getRoomsForParticipant(entityId: UUID): Promise<UUID[]>
+  getRooms(worldId: UUID): Promise<Room[]>
+  updateWorld(world: World): Promise<void>
+
+  getAgent(agentId: UUID): Promise<Agent | null>
+  createAgent(agent: Partial<Agent>): Promise<boolean>
+  updateAgent(agentId: UUID, agent: Partial<Agent>): Promise<boolean>
+  deleteAgent(agentId: UUID): Promise<boolean>
+
+  getWorld(id: UUID): Promise<World | null>
+  createWorld(world: World): Promise<UUID>
+  deleteWorld(id: UUID): Promise<void>
+
+  createTask(task: Task): Promise<UUID>
+  getTask(id: UUID): Promise<Task | null>
+  updatePendingTask(id: UUID, task: Partial<Task>): Promise<boolean>
+
+  patchTaskMetadata(
+    id: UUID,
+    patch: TaskMetadataPatch,
+  ): Promise<TaskMetadataPatchOutcome>
+  updateTask(id: UUID, task: Partial<Task>): Promise<void>
+  deleteTask(id: UUID): Promise<void>
+
+  log(params: {
+    body: LogBody
+    entityId: UUID
+    roomId: UUID
+    type: string
+  }): Promise<void>
+  deleteLog(logId: UUID): Promise<void>
+
+  getCache<T>(key: string): Promise<T | undefined>
+  setCache<T>(key: string, value: T): Promise<boolean>
+  deleteCache(key: string): Promise<boolean>
+
+  compareAndSetCache<T>(
+    key: string,
+    expected: unknown,
+    replacement: T,
+  ): Promise<boolean>
+
+  updateEntity(entity: Entity): Promise<void>
+
+  getComponents(
+    entityId: UUID,
+    worldId?: UUID,
+    sourceEntityId?: UUID,
+  ): Promise<Component[]>
+  getComponent(
+    entityId: UUID,
+    type: string,
+    worldId?: UUID,
+    sourceEntityId?: UUID,
+  ): Promise<Component | null>
+  createComponent(component: Component): Promise<boolean>
+  patchComponent(
+    componentId: UUID,
+    ops: PatchOp[],
+    options?: { entityContext?: UUID },
+  ): Promise<void>
+  updateComponent(component: Component): Promise<void>
+  deleteComponent(componentId: UUID): Promise<void>
+
+  upsertComponent(component: Component): Promise<void>
+
+  patchComponentField(componentId: UUID, op: PatchOp): Promise<void>
+
+  getComponentsByType(type: string, agentId?: UUID): Promise<Component[]>
+
+  upsertMemory(memory: Memory, tableName: string): Promise<void>
+
+  createRelationship(params: {
+    sourceEntityId: UUID
+    targetEntityId: UUID
+    tags?: string[]
+    metadata?: Metadata
+  }): Promise<boolean>
+  updateRelationship(relationship: Relationship): Promise<void>
+
+  getMemoryById(id: UUID): Promise<Memory | null>
+  createMemory(
+    memory: Memory,
+    tableName: string,
+    unique?: boolean,
+  ): Promise<UUID>
+
+  createMessageMemory?(memory: Memory, unique?: boolean): Promise<UUID>
+  replaceMessageMemoryContent?(id: UUID, content: Content): Promise<void>
+  updateMemory(
+    memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
+  ): Promise<boolean>
+  updateMemoryEmbedding(update: MemoryEmbeddingUpdate): Promise<boolean>
+  deleteMemory(memoryId: UUID): Promise<void>
+
+  removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean>
+  updateRoom(room: Room): Promise<void>
+  deleteRoom(roomId: UUID): Promise<void>
+
+  createPairingRequest(request: PairingRequest): Promise<UUID>
+  updatePairingRequest(request: PairingRequest): Promise<void>
+  deletePairingRequest(id: UUID): Promise<void>
+  createPairingAllowlistEntry(entry: PairingAllowlistEntry): Promise<UUID>
+  deletePairingAllowlistEntry(id: UUID): Promise<void>
+}

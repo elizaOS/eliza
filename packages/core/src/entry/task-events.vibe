@@ -1,0 +1,16 @@
+// spec/core/contracts.md, "Story: Consume the replacement through existing imports"
+export {
+  mergeTaskEventPageOrThrow as mergeTaskEventPage,
+  mergeTaskEventsOrThrow as mergeTaskEvents,
+  TASK_EVENT_KINDS,
+  TASK_ID_PATTERN,
+  type TaskEvent,
+  type TaskEventKind,
+  type TaskEventPage,
+  TaskEventReader,
+  type TaskEventReaderOptions,
+  type TaskEventReaderState,
+  type TaskOperationStatus,
+  type TaskStatus,
+  validateTaskEventOrThrow as validateTaskEvent,
+} from "../messaging/task-events.vibe"

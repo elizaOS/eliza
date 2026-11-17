@@ -1,0 +1,276 @@
+// spec/core/postDelivery.md, "Room-state work captures a live lease and belongs to both indexes"; spec/core/postDelivery.md, "A canceled drain quarantines the runtime and retains unsettled entries"; spec/core/postDelivery.md, "Each runtime room has one live delivery boundary"; spec/core/postDelivery.md, "Each drain waits for its captured batch and observes newly spawned work"; spec/core/postDelivery.md, "Delivery permission is captured before room-state effects run"; spec/core/postDelivery.md, "Quarantine preserves pending ownership and successful drains return empty"
+import { Foreign, foreign, promised, runDetached, thrown } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import type { RoomHandlerLease } from "../runtime/room-handler-queue.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { whenAborted } from "../utils/retry.vibe"
+
+type TrackableRuntime =
+  & Pick<IAgentRuntime, "agentId" | "reportError">
+  & Partial<Pick<IAgentRuntime, "roomHandlerQueue">>
+
+interface TrackedPostDeliveryTask {
+  readonly label: string
+  readonly controller: AbortController
+  readonly settled: Deferred.Deferred<void>
+}
+
+export type PostDeliveryTaskKind = "room-state" | "diagnostic"
+
+export type PostDeliveryTaskOptions =
+  | {
+    kind: "diagnostic"
+  }
+  | {
+    kind: "room-state"
+    roomId?: string
+    roomHandlerLease?: RoomHandlerLease
+  }
+
+interface RoomDeliverySettlement {
+  readonly lease: RoomHandlerLease
+  readonly delivered: Deferred.Deferred<boolean>
+}
+
+const pendingByRuntime = new WeakMap<object, Set<TrackedPostDeliveryTask>>()
+const pendingByRuntimeRoom = new WeakMap<object, Map<string, Set<TrackedPostDeliveryTask>>>()
+const quarantineByRuntime = new WeakMap<object, { reason: string }>()
+const deliveryByRuntimeRoom = new WeakMap<object, Map<string, RoomDeliverySettlement>>()
+const POST_DELIVERY_QUARANTINE_REASON = "post-delivery drain was cancelled"
+
+function leaseMismatch(): ElizaError {
+  return new ElizaError("Delivery settlement requires the live room owner", {
+    code: "POST_DELIVERY_SETTLEMENT_LEASE_MISMATCH",
+  })
+}
+
+function indexed<V>(index: WeakMap<object, V>, runtime: object, create: () => V): V {
+  const existing = index.get(runtime)
+  if (existing) return existing
+  const created = create()
+  index.set(runtime, created)
+  return created
+}
+
+export effect function roomDeliverySettlement(
+  runtime: TrackableRuntime,
+  roomId: string,
+  lease?: RoomHandlerLease,
+) {
+  const boundary = deliveryByRuntimeRoom.get(runtime)?.get(roomId)
+  if (!boundary) return succeed(true)
+  const owner = lease ?? runtime.roomHandlerQueue?.currentLease(roomId)
+  if (boundary.lease !== owner || !runtime.roomHandlerQueue?.ownsLease(roomId, owner)) throw leaseMismatch()
+  return Deferred.await(boundary.delivered)
+}
+
+export const roomDeliverySettlementOrThrow = thrown(
+  (runtime: TrackableRuntime, roomId: string, lease?: RoomHandlerLease) =>
+    map(roomDeliverySettlement(runtime, roomId, lease), (delivered) => runDetached(delivered)),
+)
+
+export effect function withRoomDeliverySettlement<T>(
+  runtime: TrackableRuntime,
+  roomId: string,
+  lease: RoomHandlerLease,
+  deliver: () => Promise<T>,
+) {
+  if (!runtime.roomHandlerQueue?.ownsLease(roomId, lease)) throw leaseMismatch()
+  const rooms = indexed(deliveryByRuntimeRoom, runtime, () => new Map())
+  if (rooms.has(roomId)) {
+    throw new ElizaError("A delivery boundary already owns this room", {
+      code: "POST_DELIVERY_SETTLEMENT_ALREADY_ACTIVE",
+    })
+  }
+  const boundary: RoomDeliverySettlement = { lease, delivered: try Deferred.make<boolean>() }
+  rooms.set(roomId, boundary)
+  const outcome = try exit(foreign(() => deliver()))
+  try Deferred.succeed(boundary.delivered, Exit.isSuccess(outcome))
+  try ensuring(drainRoomPostDeliveryTasks(runtime, roomId), sync(() => {
+    rooms.delete(roomId)
+    if (rooms.size === 0) deliveryByRuntimeRoom.delete(runtime)
+  }))
+  return try outcome
+}
+
+export const withRoomDeliverySettlementPromise = promised(withRoomDeliverySettlement)
+
+function release(
+  runtime: TrackableRuntime,
+  tracked: TrackedPostDeliveryTask,
+  pending: Set<TrackedPostDeliveryTask>,
+  roomId: string | undefined,
+  roomPending: Set<TrackedPostDeliveryTask> | undefined,
+): void {
+  pending.delete(tracked)
+  roomPending?.delete(tracked)
+  if (roomId && roomPending?.size === 0) {
+    const rooms = pendingByRuntimeRoom.get(runtime)
+    rooms?.delete(roomId)
+    if (rooms?.size === 0) pendingByRuntimeRoom.delete(runtime)
+  }
+  if (pending.size === 0) pendingByRuntime.delete(runtime)
+}
+
+effect function runTracked(
+  runtime: TrackableRuntime,
+  tracked: TrackedPostDeliveryTask,
+  task: (signal: AbortSignal) => Promise<unknown>,
+) {
+  const signal = tracked.controller.signal
+  const attempt = effect {
+    try yieldNow
+    if (signal.aborted) throw new Foreign({ cause: signal.reason })
+    try foreign(() => task(signal))
+  }
+  attempt catch ({ cause }) =>
+    runtime.reportError("PostDeliveryTask", cause, {
+      agentId: runtime.agentId,
+      label: tracked.label,
+    })
+}
+
+export effect function trackPostDeliveryTask(
+  runtime: TrackableRuntime,
+  label: string,
+  task: (signal: AbortSignal) => Promise<unknown>,
+  options: PostDeliveryTaskOptions = { kind: "room-state" },
+) {
+  const quarantine = quarantineByRuntime.get(runtime)
+  if (quarantine) {
+    throw new ElizaError("Post-delivery work cannot start on a quarantined runtime", {
+      code: "POST_DELIVERY_RUNTIME_QUARANTINED",
+      context: { label, quarantineReason: quarantine.reason },
+    })
+  }
+  const pending = indexed(pendingByRuntime, runtime, () => new Set<TrackedPostDeliveryTask>())
+  const explicitRoomId = options.kind === "room-state" ? options.roomId : undefined
+  const explicitLease = options.kind === "room-state" ? options.roomHandlerLease : undefined
+  if ((explicitRoomId === undefined) !== (explicitLease === undefined)) {
+    throw new ElizaError("Room-state post-delivery ownership requires both room and lease", {
+      code: "POST_DELIVERY_ROOM_OWNERSHIP_INVALID",
+      context: { label, explicitRoomId },
+    })
+  }
+  if (explicitRoomId && explicitLease && !runtime.roomHandlerQueue?.ownsLease(explicitRoomId, explicitLease)) {
+    throw new ElizaError("Room-state post-delivery ownership capability is not live", {
+      code: "POST_DELIVERY_ROOM_LEASE_MISMATCH",
+      context: { label, roomId: explicitRoomId },
+    })
+  }
+  const roomId = options.kind === "room-state"
+    ? (explicitRoomId ?? runtime.roomHandlerQueue?.currentOwnership()?.roomId)
+    : undefined
+  if (options.kind === "room-state" && !roomId && runtime.roomHandlerQueue?.requiresExplicitOwnership()) {
+    throw new ElizaError("Room-state post-delivery work requires explicit ownership in this runtime", {
+      code: "POST_DELIVERY_ROOM_OWNERSHIP_REQUIRED",
+      context: { label },
+    })
+  }
+  let roomPending: Set<TrackedPostDeliveryTask> | undefined
+  if (roomId) {
+    const rooms = indexed(pendingByRuntimeRoom, runtime, () => new Map())
+    roomPending = rooms.get(roomId) ?? new Set()
+    rooms.set(roomId, roomPending)
+  }
+  const tracked: TrackedPostDeliveryTask = {
+    label,
+    controller: new AbortController(),
+    settled: try Deferred.make<void>(),
+  }
+  pending.add(tracked)
+  roomPending?.add(tracked)
+  fork.detached onExit(runTracked(runtime, tracked, task), (outcome) =>
+    sync(() => {
+      release(runtime, tracked, pending, roomId, roomPending)
+      Deferred.doneUnsafe(tracked.settled, outcome)
+    }))
+  return Deferred.await(tracked.settled)
+}
+
+export const trackPostDeliveryTaskOrThrow = thrown(
+  (
+    runtime: TrackableRuntime,
+    label: string,
+    task: (signal: AbortSignal) => Promise<unknown>,
+    options?: PostDeliveryTaskOptions,
+  ) => map(trackPostDeliveryTask(runtime, label, task, options), (settled) => runDetached(settled)),
+)
+
+export function pendingPostDeliveryTaskCount(runtime: TrackableRuntime): number {
+  return pendingByRuntime.get(runtime)?.size ?? 0
+}
+
+export function pendingRoomPostDeliveryTaskCount(runtime: TrackableRuntime, roomId: string): number {
+  return pendingByRuntimeRoom.get(runtime)?.get(roomId)?.size ?? 0
+}
+
+function settleBatch(batch: ReadonlyArray<TrackedPostDeliveryTask>) {
+  return forEach(batch, (entry) => exit(Deferred.await(entry.settled)), { concurrency: "unbounded", discard: true })
+}
+
+effect function failOnAbort(runtime: TrackableRuntime, signal: AbortSignal) {
+  try whenAborted(signal)
+  throw quarantinePostDeliveryTasks(runtime, signal.reason)
+}
+
+export effect function drainPostDeliveryTasks(
+  runtime: TrackableRuntime,
+  options: { signal?: AbortSignal } = {},
+) {
+  const quarantine = quarantineByRuntime.get(runtime)
+  if (quarantine) throw quarantinedDrainError(runtime, quarantine.reason)
+  const signal = options.signal
+  let drained = 0
+  for (;;) {
+    const pending = pendingByRuntime.get(runtime)
+    if (!pending || pending.size === 0) return drained
+    if (signal?.aborted) throw quarantinePostDeliveryTasks(runtime, signal.reason)
+    const batch = [...pending]
+    drained += batch.length
+    try (signal ? raceFirst(settleBatch(batch), failOnAbort(runtime, signal)) : settleBatch(batch))
+  }
+}
+
+export const drainPostDeliveryTasksPromise = promised(drainPostDeliveryTasks)
+
+export function quarantinePostDeliveryTasks(
+  runtime: TrackableRuntime,
+  _reason: unknown,
+): ElizaError {
+  const quarantine = quarantineByRuntime.get(runtime) ?? { reason: POST_DELIVERY_QUARANTINE_REASON }
+  quarantineByRuntime.set(runtime, quarantine)
+  for (const entry of pendingByRuntime.get(runtime) ?? []) {
+    if (!entry.controller.signal.aborted) entry.controller.abort(new Error(quarantine.reason))
+  }
+  return quarantinedDrainError(runtime, quarantine.reason)
+}
+
+function quarantinedDrainError(runtime: TrackableRuntime, reason: string): ElizaError {
+  return new ElizaError("Post-delivery tasks did not reach quiescence; runtime quarantined", {
+    code: "POST_DELIVERY_DRAIN_CANCELLED",
+    context: {
+      reason,
+      pendingLabels: [...(pendingByRuntime.get(runtime) ?? [])].map((entry) => entry.label),
+    },
+  })
+}
+
+export function postDeliveryTaskQuarantineReason(runtime: TrackableRuntime): string | undefined {
+  return quarantineByRuntime.get(runtime)?.reason
+}
+
+export effect function drainRoomPostDeliveryTasks(runtime: TrackableRuntime, roomId: string) {
+  const quarantine = quarantineByRuntime.get(runtime)
+  if (quarantine) throw quarantinedDrainError(runtime, quarantine.reason)
+  let drained = 0
+  for (;;) {
+    const pending = pendingByRuntimeRoom.get(runtime)?.get(roomId)
+    if (!pending || pending.size === 0) return drained
+    const batch = [...pending]
+    drained += batch.length
+    try settleBatch(batch)
+  }
+}
+
+export const drainRoomPostDeliveryTasksPromise = promised(drainRoomPostDeliveryTasks)

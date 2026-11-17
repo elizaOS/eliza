@@ -1,0 +1,132 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+export const REASONING_TAG_NAMES = [
+  "think",
+  "thinking",
+  "analysis",
+  "reasoning",
+  "reflection",
+  "thought",
+  "antthinking",
+] as const
+
+export const REASONING_TAG_ALTERNATION = REASONING_TAG_NAMES.join("|")
+
+const WHITESPACE_RE = /\s/
+
+function skipWhitespace(text: string, from: number): number {
+  let i = from
+  while (i < text.length && WHITESPACE_RE.test(text[i] as string)) i++
+  return i
+}
+
+const tagRegexCache = new Map<string, { open: RegExp; close: RegExp }>()
+
+function tagRegexes(tagAlternation: string): { open: RegExp; close: RegExp } {
+  let cached = tagRegexCache.get(tagAlternation)
+  if (!cached) {
+    cached = {
+      open: new RegExp(`<\\s*(?:${tagAlternation})(?=[\\s/>])`, "gi"),
+      close: new RegExp(`<\\s*\\/\\s*(?:${tagAlternation})(?=[\\s>])`, "gi"),
+    }
+    tagRegexCache.set(tagAlternation, cached)
+  }
+  return cached
+}
+
+export interface TagMatch {
+  start: number
+
+  end: number
+  closing: boolean
+}
+
+export function findNextOpenTag(
+  text: string,
+  from: number,
+  tagAlternation: string,
+): TagMatch | null {
+  const openRe = tagRegexes(tagAlternation).open
+  openRe.lastIndex = from
+  const match = openRe.exec(text)
+  if (!match) return null
+  const headEnd = match.index + match[0].length
+  const terminator = text.indexOf(">", headEnd)
+  if (terminator === -1) return null
+  return { start: match.index, end: terminator + 1, closing: false }
+}
+
+export function findNextCloseTag(
+  text: string,
+  from: number,
+  tagAlternation: string,
+): TagMatch | null {
+  const closeRe = tagRegexes(tagAlternation).close
+  let pos = from
+  while (pos <= text.length) {
+    closeRe.lastIndex = pos
+    const match = closeRe.exec(text)
+    if (!match) return null
+    const headEnd = match.index + match[0].length
+    const afterWs = skipWhitespace(text, headEnd)
+    if (text[afterWs] === ">") {
+      return { start: match.index, end: afterWs + 1, closing: true }
+    }
+
+    pos = afterWs
+  }
+  return null
+}
+
+function lastCloseTagEnd(text: string, tagAlternation: string): number {
+  let lastCloseEnd = -1
+  for (
+    let close = findNextCloseTag(text, 0, tagAlternation);
+    close;
+    close = findNextCloseTag(text, close.end, tagAlternation)
+  ) {
+    lastCloseEnd = close.end
+  }
+  return lastCloseEnd
+}
+
+export function stripPairedTagBlocks(
+  text: string,
+  tagAlternation: string,
+): string {
+  const lastCloseEnd = lastCloseTagEnd(text, tagAlternation)
+  if (lastCloseEnd < 0) return text
+
+  let out = ""
+  let cursor = 0
+  let pos = 0
+  while (pos < lastCloseEnd) {
+    const open = findNextOpenTag(text, pos, tagAlternation)
+    if (!open || open.start >= lastCloseEnd) break
+    const close = findNextCloseTag(text, open.end, tagAlternation)
+    if (!close || close.end > lastCloseEnd) break
+    out += text.slice(cursor, open.start)
+    cursor = close.end
+    pos = close.end
+  }
+  return out + text.slice(cursor)
+}
+
+export function stripUnclosedTagSuffix(
+  text: string,
+  tagAlternation: string,
+): string {
+  const open = findNextOpenTag(text, 0, tagAlternation)
+  return open ? text.slice(0, open.start) : text
+}
+
+const reasoningTags = tagRegexes(REASONING_TAG_ALTERNATION)
+const REASONING_TAG_PREFIX_TEST_RE = new RegExp(`${reasoningTags.open.source}|${reasoningTags.close.source}`, "i")
+
+export function stripReasoningPrefixes(text: string): string {
+  const lastCloseEnd = lastCloseTagEnd(text, REASONING_TAG_ALTERNATION)
+  return lastCloseEnd >= 0 ? text.slice(lastCloseEnd) : text
+}
+
+export function hasReasoningResidue(text: string): boolean {
+  return REASONING_TAG_PREFIX_TEST_RE.test(text)
+}

@@ -17,8 +17,8 @@ Discovered by the proof: rollback already carries the failed shared registration
 ```quint
 type PluginPhase = Absent | Registering | Loaded | RollingBack | Unloading | Unloaded | RegistrationFailed
 type ConnectorOwner = NoOwner | ThisPlugin | Successor
-type PluginState = { phase: PluginPhase, callers: int, outcomeKnown: bool, outcomeSuccess: bool, contributions: int, hasAdapter: bool, disposeCalls: int, disposePending: bool, cleanupFailed: bool, connectorOwner: ConnectorOwner, servicePending: bool, serviceLive: bool, serviceStopCalls: int, serviceStopPending: bool }
-pure val initial: PluginState = { phase: Absent, callers: 0, outcomeKnown: false, outcomeSuccess: false, contributions: 0, hasAdapter: false, disposeCalls: 0, disposePending: false, cleanupFailed: false, connectorOwner: NoOwner, servicePending: false, serviceLive: false, serviceStopCalls: 0, serviceStopPending: false }
+type PluginState = { phase: PluginPhase, callers: int, outcomeKnown: bool, outcomeSuccess: bool, contributions: int, hasAdapter: bool, disposeCalls: int, disposePending: bool, connectorsWithdrawn: bool, cleanupFailed: bool, connectorOwner: ConnectorOwner, servicePending: bool, serviceLive: bool, serviceStopCalls: int, serviceStopPending: bool }
+pure val initial: PluginState = { phase: Absent, callers: 0, outcomeKnown: false, outcomeSuccess: false, contributions: 0, hasAdapter: false, disposeCalls: 0, disposePending: false, connectorsWithdrawn: false, cleanupFailed: false, connectorOwner: NoOwner, servicePending: false, serviceLive: false, serviceStopCalls: 0, serviceStopPending: false }
 pure def canBeginRegistration(s: PluginState, adapter: bool): bool = s.phase == Absent
 pure def beginRegistration(s: PluginState, adapter: bool): PluginState = { ...s, phase: Registering, callers: 1, hasAdapter: adapter }
 pure def canJoinRegistration(s: PluginState): bool = s.phase == Registering
@@ -36,23 +36,57 @@ pure def sometimesCallersShareFailure(s: PluginState): bool = s.phase == Registr
 
 ### Cleanup removes only owned contributions
 
-A successor registration survives predecessor cleanup, and adapter ownership prevents hot unload.
+A successor registration survives predecessor cleanup while it remains the
+current owner. An old callback may reclaim the key before connector withdrawal.
+Adapter ownership prevents hot unload.
 
 ```quint
-pure def canOwnConnector(s: PluginState): bool = s.phase == Registering or s.phase == Loaded
+pure def canOwnConnector(s: PluginState): bool = s.phase != Absent and not(s.connectorsWithdrawn)
 pure def ownConnector(s: PluginState): PluginState = { ...s, connectorOwner: ThisPlugin }
 pure def canReplaceConnector(s: PluginState): bool = s.connectorOwner == ThisPlugin
 pure def replaceConnector(s: PluginState): PluginState = { ...s, connectorOwner: Successor }
 pure def canBeginUnload(s: PluginState): bool = s.phase == Loaded and not(s.hasAdapter)
 pure def beginUnload(s: PluginState): PluginState = { ...s, phase: Unloading, disposeCalls: 1, disposePending: true }
 pure def canFinishDispose(s: PluginState, ok: bool): bool = s.disposePending
-pure def finishDispose(s: PluginState, ok: bool): PluginState = { ...s, disposePending: false, cleanupFailed: not(ok) }
-pure def canFinishCleanup(s: PluginState): bool = (s.phase == RollingBack or s.phase == Unloading) and not(s.disposePending) and not(s.servicePending) and not(s.serviceLive) and not(s.serviceStopPending)
+pure def finishDispose(s: PluginState, ok: bool): PluginState = { ...s, disposePending: false, connectorsWithdrawn: true, cleanupFailed: not(ok) }
+pure def canFinishCleanup(s: PluginState): bool = (s.phase == RollingBack or s.phase == Unloading) and s.connectorsWithdrawn and not(s.disposePending) and not(s.servicePending) and not(s.serviceLive) and not(s.serviceStopPending)
 pure def finishCleanup(s: PluginState): PluginState = { ...s, phase: if (s.phase == RollingBack) RegistrationFailed else Unloaded, contributions: 0, connectorOwner: if (s.connectorOwner == ThisPlugin) NoOwner else s.connectorOwner }
 pure def alwaysCleanedHasNoContributions(s: PluginState): bool = (s.phase == Unloaded or s.phase == RegistrationFailed) implies (s.contributions == 0 and s.connectorOwner != ThisPlugin and not(s.serviceLive))
 pure def stepSuccessorKeepsOwnership(before: PluginState, via: str, after: PluginState): bool = before.connectorOwner == Successor and via == "finishCleanup" implies after.connectorOwner == Successor
 pure def sometimesAdapterHotUnloadRejected(s: PluginState): bool = s.phase == Loaded and s.hasAdapter and not(canBeginUnload(s))
 pure def sometimesSuccessorSurvivesUnload(s: PluginState): bool = s.phase == Unloaded and s.connectorOwner == Successor
+```
+
+### Connector withdrawal permanently fences the captured owner after disposal
+
+An owner can publish connectors while its disposal is pending, including
+during rollback or unload. `finishDispose` is the owning continuation that
+reaches `withdrawnConnectorOwners.add(ownership)` after an awaited disposal
+fulfills or rejects. This event includes resuming the owning await and
+installing the fence before connector removal and before waiting for service stops.
+A missing dispose hook or a synchronous throw reaches this continuation
+without an intervening external event. The host preserves that ordering.
+Once withdrawn, this exact owner stays fenced through later cleanup failures.
+Connector removal can fail afterward and retain an old registry entry while
+that owner's captured callbacks remain fenced. Successful cleanup completion
+has its own transition and conditions.
+
+Discovered by the proof: a retiring owner whose disposal continuation has
+completed already has its connector fence installed. This keeps later service
+stop settlement eligible to finish cleanup.
+
+```quint
+pure def alwaysConnectorWithdrawalFollowsDisposal(s: PluginState): bool =
+  (s.disposePending implies (s.phase == RollingBack or s.phase == Unloading)) and
+  (((s.phase == RollingBack or s.phase == Unloading) and not(s.disposePending)) implies s.connectorsWithdrawn) and
+  (s.connectorsWithdrawn implies (not(s.disposePending) and (s.phase == RollingBack or s.phase == Unloading or s.phase == Unloaded or s.phase == RegistrationFailed))) and
+  ((s.phase == Unloaded or s.phase == RegistrationFailed) implies s.connectorsWithdrawn)
+pure def stepConnectorWithdrawalStaysSet(before: PluginState, after: PluginState): bool =
+  before.connectorsWithdrawn implies after.connectorsWithdrawn
+pure def sometimesDisposingOwnerCanPublish(s: PluginState): bool =
+  (s.phase == RollingBack or s.phase == Unloading) and s.disposePending and canOwnConnector(s)
+pure def sometimesWithdrawnOwnerCannotPublish(s: PluginState): bool =
+  s.connectorsWithdrawn and not(canOwnConnector(s))
 ```
 
 ### Service start remains owned across rollback and unload

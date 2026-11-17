@@ -1,46 +1,132 @@
 {
   "version": 1,
   "specs": {
+    "spec/app/echo.md": {
+      "@document": [
+        "64ac44a1b618"
+      ],
+      "## Story: Hear back": [
+        "a77064fef968"
+      ],
+      "Story: Hear back / The page keeps the name typed and what it heard, and has sent one hello or none, of which the network holds copies": [
+        "a4bf48e57e2d",
+        "82fa4b6c8fcf"
+      ],
+      "Story: Hear back / A name can be typed until the hello is sent": [
+        "e3b0c44298fc",
+        "22ca33a5b2f0",
+        "bd6076015418"
+      ],
+      "Story: Hear back / The page says hello once a name is typed, and again while nothing is in flight and nothing was heard": [
+        "d8d6232cbd7e",
+        "a3a638136fde",
+        "c386ec1556d0"
+      ],
+      "Story: Hear back / The server says something to each hello, but what it says is its own": [
+        "e3b0c44298fc",
+        "768cc874ae9c"
+      ],
+      "Story: Hear back / The network loses or repeats a copy, or delivers it and the page hears the server's answer": [
+        "ea97086b0c2e",
+        "f49683c671fe",
+        "f3622f19d146"
+      ],
+      "Story: Hear back / Only the hello sent is in flight": [
+        "e3b0c44298fc",
+        "a2ed8a5c2343",
+        "98b1bda79dcf"
+      ],
+      "Story: Hear back / A hello sent is answered": [
+        "b00948ef5363",
+        "1430aafe6860",
+        "bd6076015418"
+      ],
+      "Story: Hear back / The page can hear back": [
+        "e3b0c44298fc",
+        "986cba5216ee",
+        "bd6076015418"
+      ]
+    },
+    "spec/app/tally.md": {
+      "@document": [
+        "662d7dc5ba55"
+      ],
+      "## Story: Count greetings": [
+        "918b59096aac"
+      ],
+      "Story: Count greetings / A tally starts at zero and counts one greeting at a time": [
+        "e3b0c44298fc",
+        "f94a9683dc1b"
+      ],
+      "Story: Count greetings / A tally is never below zero": [
+        "e3b0c44298fc",
+        "03add4b83c43",
+        "345d217f6217"
+      ]
+    },
+    "spec/app/words.md": {
+      "@document": [
+        "3e8bc189fe00"
+      ],
+      "## Story: Say something": [
+        "3d1ba0054d4f"
+      ],
+      "Story: Say something / A page says hello to a name": [
+        "e3b0c44298fc",
+        "d62783d3f412"
+      ]
+    },
     "spec/app/index.md": {
       "@document": [
-        "9684951eb5b7"
+        "608108f58342"
       ],
       "## Story: Say hello": [
-        "90301aa54c53"
+        "d8f0f549d499"
       ],
       "Story: Say hello / A greeter holds the last name it greeted and how many greetings it gave": [
-        "05c5e3d6a29c",
-        "44d1dd973307"
+        "01b6e1433a7b",
+        "78e25a77522e",
+        "c9d907985fcf"
       ],
-      "Story: Say hello / Only a name that is not empty can be greeted": [
-        "ee7390717a93",
-        "8cbf4774066e",
-        "372a4a3c5755"
+      "Story: Say hello / Only a name that is not empty can be greeted, and a link greets only a name not greeted last": [
+        "bdd884c9eca3",
+        "a5bf154ca475",
+        "4c8d5c0e7326"
       ],
       "Story: Say hello / Once someone has been greeted, the greeter holds a name": [
         "e3b0c44298fc",
         "0e0cdba29162",
-        "372a4a3c5755"
+        "4c8d5c0e7326"
       ],
       "Story: Say hello / The number of greetings is never negative": [
         "2bf06e979a4d",
         "80d9b39629e3",
-        "372a4a3c5755"
+        "4c8d5c0e7326"
       ],
       "Story: Say hello / Every step adds exactly one greeting": [
         "e3b0c44298fc",
         "6b7e0617d1c4",
-        "372a4a3c5755"
+        "4c8d5c0e7326"
+      ],
+      "Story: Say hello / Every step says hello to the name it greeted, once": [
+        "e3b0c44298fc",
+        "cca3a047e14c",
+        "4c8d5c0e7326"
       ],
       "Story: Say hello / A greeting is for the name it was given": [
-        "732ea5de733a",
-        "da5bf23d7775",
-        "8a92a0ec85f3"
+        "5e236f69ba5f",
+        "d4353377d89c",
+        "0f8a2df8da07"
       ],
       "Story: Say hello / The greeter can give a second greeting": [
-        "661f110ac8d8",
+        "f7b62219fd51",
         "c0b6b2a60a60",
-        "372a4a3c5755"
+        "4c8d5c0e7326"
+      ],
+      "Story: Say hello / As a tally, a greeter is its count": [
+        "e3b0c44298fc",
+        "43b6420577ac",
+        "c4404bb2e91c"
       ]
     },
     "spec/index.md": {

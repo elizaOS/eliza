@@ -1,0 +1,26 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { Memory } from "./memory.vibe"
+import type { IAgentRuntime } from "./runtime.vibe"
+
+export interface ChatPreHandlerContext {
+  runtime: IAgentRuntime
+  message: Memory
+
+  abortSignal?: AbortSignal
+
+  appendText: (text: string) => void
+
+  replaceText: (text: string) => void
+}
+
+export interface ChatPreHandlerResult {
+  responseText: string
+}
+
+export interface ChatPreHandler {
+  id: string
+
+  priority?: number
+
+  tryHandle(ctx: ChatPreHandlerContext): Promise<ChatPreHandlerResult | null>
+}

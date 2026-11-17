@@ -1,0 +1,901 @@
+// spec/core/providers.md, "Story: Share provider work without sharing cancellation"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
+import { errorText } from "../utils/errors.vibe"
+import { foreign, runDetached } from "../edge.vibe"
+import type { JsonObject, JsonValue } from "../types/primitives.vibe"
+import { normalizeWorkspaceDeltaReceipt, type WorkspaceDeltaReceipt } from "../types/workspace-delta.vibe"
+import {
+  decodeError,
+  endpointSelection,
+  isRemotePluginAppBridgeHook,
+  isRemotePluginLifecycleHook,
+  nullableNumber,
+  optionalBoolean,
+  optionalJsonObject,
+  optionalNumber,
+  optionalString,
+  optionalStringRecord,
+  requireBoolean,
+  requireFileStatArray,
+  requireGitOperation,
+  requireNonEmptyString,
+  requireNumber,
+  requireObject,
+  requireObjectArray,
+  requirePluginActionResult,
+  requirePluginProviderResult,
+  requireRemotePluginModuleArray,
+  requireResponseHandlerFieldEffect,
+  requireString,
+  validateBase64String,
+  validateHeaderRecord,
+  validateHeaderSafeString,
+  validateHttpStatusCode,
+  validateRemotePluginAssetPath,
+  validateRemotePluginCallTarget,
+  validateRemotePluginPath,
+  validateRemotePluginRouteMethod,
+  validateRemotePluginServiceMethods,
+  validateRouteQueryRecord,
+} from "./decoder.vibe"
+import {
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  type CapabilityAvailability,
+  type CapabilityEndpointSelection,
+  type CapabilityEnvironment,
+  CapabilityError,
+  type CapabilityName,
+  type ElizaCapabilityRouter,
+  type FileCapability,
+  type FileListParams,
+  type FileListResult,
+  type FileReadTextParams,
+  type FileReadTextResult,
+  type FileWriteTextParams,
+  type FileWriteTextResult,
+  type GitCapability,
+  type GitCommandRunParams,
+  type GitCommandRunResult,
+  type GitDiffParams,
+  type GitDiffResult,
+  type GitStatusParams,
+  type GitStatusResult,
+  type LocalModelCapability,
+  type LocalModelStatusParams,
+  type LocalModelStatusResult,
+  type PluginCallAppBridgeParams,
+  type PluginCallAppBridgeResult,
+  type PluginCallRouteParams,
+  type PluginCallRouteResult,
+  type PluginCallServiceParams,
+  type PluginCallServiceResult,
+  type PluginEvaluatorPrepareParams,
+  type PluginEvaluatorPrepareResult,
+  type PluginEvaluatorProcessParams,
+  type PluginEvaluatorProcessResult,
+  type PluginEvaluatorPromptParams,
+  type PluginEvaluatorPromptResult,
+  type PluginEvaluatorShouldRunParams,
+  type PluginEvaluatorShouldRunResult,
+  type PluginGetAssetParams,
+  type PluginGetAssetResult,
+  type PluginGetProviderParams,
+  type PluginGetProviderResult,
+  type PluginHandleEventParams,
+  type PluginHandleEventResult,
+  type PluginInvokeActionParams,
+  type PluginInvokeActionResult,
+  type PluginInvokeModelParams,
+  type PluginInvokeModelResult,
+  type PluginLifecycleCallParams,
+  type PluginLifecycleCallResult,
+  type PluginListModulesParams,
+  type PluginListModulesResult,
+  type PluginResponseHandlerEvaluatorEvaluateParams,
+  type PluginResponseHandlerEvaluatorEvaluateResult,
+  type PluginResponseHandlerEvaluatorShouldRunParams,
+  type PluginResponseHandlerEvaluatorShouldRunResult,
+  type PluginResponseHandlerFieldEvaluatorHandleParams,
+  type PluginResponseHandlerFieldEvaluatorHandleResult,
+  type PluginResponseHandlerFieldEvaluatorParseParams,
+  type PluginResponseHandlerFieldEvaluatorParseResult,
+  type PluginResponseHandlerFieldEvaluatorShouldRunParams,
+  type PluginResponseHandlerFieldEvaluatorShouldRunResult,
+  type RemotePluginCapability,
+  type RuntimeBrokerCapabilityMethod,
+  type RuntimeBrokerCapabilityRouterOptions,
+  type RuntimeBrokerInvoke,
+  type TerminalCapability,
+  type TerminalRunParams,
+  type TerminalRunResult,
+} from "./protocol.vibe"
+
+function definedFields<T extends object>(
+  params: T,
+  keys: readonly (keyof T & string)[],
+): JsonObject {
+  const fields: JsonObject = {}
+  for (const key of keys) {
+    const value = params[key]
+    if (value !== undefined) fields[key] = value as JsonValue
+  }
+  return fields
+}
+
+const FILE_LIST_DETAIL_KEYS = [
+  "path",
+  "rootId",
+  "limit",
+  "includeHidden",
+  "ignore",
+] as const satisfies readonly (keyof FileListParams)[]
+
+export class UnavailableCapabilityRouter implements ElizaCapabilityRouter {
+  readonly fs: FileCapability
+  readonly pty: TerminalCapability
+  readonly git: GitCapability
+  readonly model: LocalModelCapability
+  readonly plugin: RemotePluginCapability
+
+  constructor(
+    readonly environment: CapabilityEnvironment = "unknown",
+    private readonly reason = "Capability router is not available.",
+  ) {
+    this.fs = {
+      list: (params) =>
+        this.unavailable(
+          "fs",
+          "fs.list",
+          definedFields<FileListParams>(params ?? {}, FILE_LIST_DETAIL_KEYS),
+        ),
+      readText: (params) => this.unavailable("fs", "fs.readText", { path: params.path }),
+      writeText: (params) => this.unavailable("fs", "fs.writeText", { path: params.path }),
+    }
+    this.pty = {
+      runCommand: (params) =>
+        this.unavailable("pty", "pty.command.run", {
+          command: params.command,
+        }),
+    }
+    this.git = {
+      status: (params) => this.unavailable("git", "git.status", { root: params.root }),
+      diff: (params) => this.unavailable("git", "git.diff", { root: params.root }),
+      commandRun: (params) =>
+        this.unavailable("git", "git.command.run", {
+          root: params.root,
+          args: params.args,
+        }),
+    }
+    this.model = {
+      status: () => this.unavailable("model", "model.status"),
+    }
+    this.plugin = {
+      listModules: (params) =>
+        this.unavailable(
+          "plugin",
+          "plugin.modules.list",
+          definedFields<FileListParams>(params ?? {}, FILE_LIST_DETAIL_KEYS),
+        ),
+      invokeAction: (params) =>
+        this.unavailable("plugin", "plugin.action.invoke", {
+          moduleId: params.moduleId,
+          action: params.action,
+        }),
+      getProvider: (params) =>
+        this.unavailable("plugin", "plugin.provider.get", {
+          moduleId: params.moduleId,
+          provider: params.provider,
+        }),
+      callRoute: (params) =>
+        this.unavailable("plugin", "plugin.route.call", {
+          moduleId: params.moduleId,
+          method: params.method,
+          path: params.path,
+        }),
+      getAsset: (params) =>
+        this.unavailable("plugin", "plugin.asset.get", {
+          moduleId: params.moduleId,
+          path: params.path,
+        }),
+      shouldRunEvaluator: (params) =>
+        this.unavailable("plugin", "plugin.evaluator.shouldRun", {
+          moduleId: params.moduleId,
+          evaluator: params.evaluator,
+        }),
+      prepareEvaluator: (params) =>
+        this.unavailable("plugin", "plugin.evaluator.prepare", {
+          moduleId: params.moduleId,
+          evaluator: params.evaluator,
+        }),
+      promptEvaluator: (params) =>
+        this.unavailable("plugin", "plugin.evaluator.prompt", {
+          moduleId: params.moduleId,
+          evaluator: params.evaluator,
+        }),
+      processEvaluator: (params) =>
+        this.unavailable("plugin", "plugin.evaluator.process", {
+          moduleId: params.moduleId,
+          evaluator: params.evaluator,
+        }),
+      shouldRunResponseHandlerEvaluator: (params) =>
+        this.unavailable(
+          "plugin",
+          "plugin.responseHandlerEvaluator.shouldRun",
+          {
+            moduleId: params.moduleId,
+            evaluator: params.evaluator,
+          },
+        ),
+      evaluateResponseHandlerEvaluator: (params) =>
+        this.unavailable("plugin", "plugin.responseHandlerEvaluator.evaluate", {
+          moduleId: params.moduleId,
+          evaluator: params.evaluator,
+        }),
+      shouldRunResponseHandlerFieldEvaluator: (params) =>
+        this.unavailable(
+          "plugin",
+          "plugin.responseHandlerFieldEvaluator.shouldRun",
+          {
+            moduleId: params.moduleId,
+            field: params.field,
+          },
+        ),
+      parseResponseHandlerFieldEvaluator: (params) =>
+        this.unavailable(
+          "plugin",
+          "plugin.responseHandlerFieldEvaluator.parse",
+          {
+            moduleId: params.moduleId,
+            field: params.field,
+          },
+        ),
+      handleResponseHandlerFieldEvaluator: (params) =>
+        this.unavailable(
+          "plugin",
+          "plugin.responseHandlerFieldEvaluator.handle",
+          {
+            moduleId: params.moduleId,
+            field: params.field,
+          },
+        ),
+      callLifecycle: (params) =>
+        this.unavailable("plugin", "plugin.lifecycle.call", {
+          moduleId: params.moduleId,
+          hook: params.hook,
+        }),
+      handleEvent: (params) =>
+        this.unavailable("plugin", "plugin.event.handle", {
+          moduleId: params.moduleId,
+          eventName: params.eventName,
+        }),
+      invokeModel: (params) =>
+        this.unavailable("plugin", "plugin.model.invoke", {
+          moduleId: params.moduleId,
+          modelType: params.modelType,
+        }),
+      callService: (params) =>
+        this.unavailable("plugin", "plugin.service.call", {
+          moduleId: params.moduleId,
+          serviceType: params.serviceType,
+          method: params.method,
+        }),
+      callAppBridge: (params) =>
+        this.unavailable("plugin", "plugin.appBridge.call", {
+          moduleId: params.moduleId,
+          hook: params.hook,
+        }),
+    }
+  }
+
+  async availability(): Promise<CapabilityAvailability> {
+    return {
+      environment: this.environment,
+      available: false,
+      capabilities: {
+        fs: false,
+        pty: false,
+        git: false,
+        model: false,
+        plugin: false,
+      },
+      reason: this.reason,
+    }
+  }
+
+  private unavailable<T>(
+    capability: CapabilityName,
+    method: string,
+    details?: JsonObject,
+  ): Promise<T> {
+    return Promise.reject(
+      new CapabilityError({
+        code: "CAPABILITY_UNAVAILABLE",
+        message: this.reason,
+        capability,
+        method,
+        ...(details === undefined ? {} : { details }),
+      }),
+    )
+  }
+}
+
+export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
+  readonly environment: CapabilityEnvironment
+  readonly fs: FileCapability
+  readonly pty: TerminalCapability
+  readonly git: GitCapability
+  readonly model: LocalModelCapability
+  readonly plugin: RemotePluginCapability
+  private readonly invokeRuntime: RuntimeBrokerInvoke
+
+  constructor(options: RuntimeBrokerCapabilityRouterOptions) {
+    this.environment = options.environment ?? "desktop"
+    this.invokeRuntime = options.invokeRuntime
+    const invoke: RuntimeBrokerInvoke = (method, params) => this.invokeRuntime(method, params)
+    this.fs = {
+      list: (params) => runDetached(list(invoke, params)),
+      readText: (params) => runDetached(readText(invoke, params)),
+      writeText: (params) => runDetached(writeText(invoke, params)),
+    }
+    this.pty = {
+      runCommand: (params) => runDetached(runCommand(invoke, params)),
+    }
+    this.git = {
+      status: (params) => runDetached(gitStatus(invoke, params)),
+      diff: (params) => runDetached(gitDiff(invoke, params)),
+      commandRun: (params) => runDetached(gitCommandRun(invoke, params)),
+    }
+    this.model = {
+      status: (params) => runDetached(modelStatus(invoke, params)),
+    }
+    this.plugin = {
+      listModules: (params) => runDetached(listPluginModules(invoke, params)),
+      invokeAction: (params) => runDetached(invokePluginAction(invoke, params)),
+      getProvider: (params) => runDetached(getPluginProvider(invoke, params)),
+      callRoute: (params) => runDetached(callPluginRoute(invoke, params)),
+      getAsset: (params) => runDetached(getPluginAsset(invoke, params)),
+      shouldRunEvaluator: (params) => runDetached(shouldRunPluginEvaluator(invoke, params)),
+      prepareEvaluator: (params) => runDetached(preparePluginEvaluator(invoke, params)),
+      promptEvaluator: (params) => runDetached(promptPluginEvaluator(invoke, params)),
+      processEvaluator: (params) => runDetached(processPluginEvaluator(invoke, params)),
+      shouldRunResponseHandlerEvaluator: (params) => runDetached(shouldRunResponseHandlerEvaluator(invoke, params)),
+      evaluateResponseHandlerEvaluator: (params) => runDetached(evaluateResponseHandlerEvaluator(invoke, params)),
+      shouldRunResponseHandlerFieldEvaluator: (params) => runDetached(shouldRunResponseHandlerFieldEvaluator(invoke, params)),
+      parseResponseHandlerFieldEvaluator: (params) => runDetached(parseResponseHandlerFieldEvaluator(invoke, params)),
+      handleResponseHandlerFieldEvaluator: (params) => runDetached(handleResponseHandlerFieldEvaluator(invoke, params)),
+      callLifecycle: (params) => runDetached(callPluginLifecycle(invoke, params)),
+      handleEvent: (params) => runDetached(handlePluginEvent(invoke, params)),
+      invokeModel: (params) => runDetached(invokePluginModel(invoke, params)),
+      callService: (params) => runDetached(callPluginService(invoke, params)),
+      callAppBridge: (params) => runDetached(callPluginAppBridge(invoke, params)),
+    }
+  }
+
+  async availability(): Promise<CapabilityAvailability> {
+    return {
+      environment: this.environment,
+      available: true,
+      capabilities: {
+        fs: true,
+        pty: true,
+        git: true,
+        model: true,
+        plugin: true,
+      },
+    }
+  }
+}
+
+effect function request(
+  invoke: RuntimeBrokerInvoke,
+  capability: CapabilityName,
+  method: RuntimeBrokerCapabilityMethod,
+  params?: JsonObject,
+): (JsonValue | undefined)!CapabilityError {
+  return foreign(() => invoke(method, params)) catch effect (failure) => {
+    const error = failure.cause
+    if (error instanceof CapabilityError) throw error
+    throw new CapabilityError({
+      code: "CAPABILITY_REQUEST_FAILED",
+      message: errorText(error),
+      capability,
+      method,
+    })
+  }
+}
+
+effect function requestObject(
+  invoke: RuntimeBrokerInvoke,
+  capability: CapabilityName,
+  method: RuntimeBrokerCapabilityMethod,
+  params?: JsonObject,
+): JsonObject!CapabilityError {
+  return try requireObject(try request(invoke, capability, method, params), method)
+}
+
+effect function validateCallTargets(method: RuntimeBrokerCapabilityMethod, targets: Record<string, string>): void!CapabilityError {
+  for (const [field, value] of Object.entries(targets)) {
+    try validateRemotePluginCallTarget(value, field, method)
+  }
+}
+
+effect function requestPlugin<P extends CapabilityEndpointSelection>(
+  invoke: RuntimeBrokerInvoke,
+  method: RuntimeBrokerCapabilityMethod,
+  params: P,
+  fields: JsonObject,
+  keys: readonly (keyof P & string)[],
+): (JsonValue | undefined)!CapabilityError {
+  return try request(invoke, "plugin", method, {
+    ...(try endpointSelection(params)),
+    ...fields,
+    ...definedFields(params, keys),
+  })
+}
+
+effect function list(invoke: RuntimeBrokerInvoke, params: FileListParams = {}): FileListResult!CapabilityError {
+  const object = try requestObject(
+    invoke,
+    "fs",
+    "fs.list",
+    definedFields(params, [...FILE_LIST_DETAIL_KEYS, "traceSessionId", "endpointId"]),
+  )
+  return {
+    root: try requireObject(object.root, "fs.list.root"),
+    path: try requireString(object, "path", "fs.list"),
+    entries: try requireFileStatArray(object, "entries", "fs.list"),
+    truncated: try requireBoolean(object, "truncated", "fs.list"),
+    totalAfterIgnore: try requireNumber(object, "totalAfterIgnore", "fs.list"),
+  }
+}
+
+effect function readText(invoke: RuntimeBrokerInvoke, params: FileReadTextParams): FileReadTextResult!CapabilityError {
+  const object = try requestObject(invoke, "fs", "fs.readText", {
+    path: params.path,
+    ...definedFields(params, ["maxBytes", "traceSessionId", "endpointId"]),
+  })
+  if (try requireBoolean(object, "truncated", "fs.readText")) {
+    throw new CapabilityError({
+      code: "CAPABILITY_REQUEST_FAILED",
+      capability: "fs",
+      method: "fs.readText",
+      message: "fs.readText endpoint returned partial content.",
+    })
+  }
+  return {
+    path: try requireString(object, "path", "fs.readText"),
+    text: try requireString(object, "text", "fs.readText"),
+    size: try requireNumber(object, "size", "fs.readText"),
+    truncated: false,
+  }
+}
+
+effect function writeText(invoke: RuntimeBrokerInvoke, params: FileWriteTextParams): FileWriteTextResult!CapabilityError {
+  const object = try requestObject(invoke, "fs", "fs.writeText", {
+    path: params.path,
+    text: params.text,
+    ...definedFields(params, ["createDirectories", "overwrite", "traceSessionId", "endpointId"]),
+  })
+  const requestedPath = try optionalString(object, "requestedPath", "fs.writeText")
+  return {
+    path: try requireString(object, "path", "fs.writeText"),
+    bytesWritten: try requireNumber(object, "bytesWritten", "fs.writeText"),
+    ...(requestedPath === undefined ? {} : { requestedPath }),
+  }
+}
+
+effect function workspaceExecutionOf(object: JsonObject): TerminalRunResult["workspaceExecution"]!CapabilityError {
+  const workspaceExecution = try optionalJsonObject(object, "workspaceExecution", "pty.command.run")
+  if (!workspaceExecution) return undefined
+  const unexpectedWorkspaceKeys = Object.keys(workspaceExecution).filter(
+    (key) => !["root", "rootId", "executionDomainId"].includes(key),
+  )
+  if (unexpectedWorkspaceKeys.length > 0) {
+    throw decodeError(
+      "pty.command.run",
+      `workspaceExecution has unexpected fields: ${unexpectedWorkspaceKeys.join(", ")}.`,
+    )
+  }
+  const root = try requireNonEmptyString(workspaceExecution, "root", "pty.command.run.workspaceExecution")
+  const rootId = try requireString(workspaceExecution, "rootId", "pty.command.run.workspaceExecution")
+  const executionDomainId = try requireString(workspaceExecution, "executionDomainId", "pty.command.run.workspaceExecution")
+  if (
+    root.trim() !== root
+    || /[\0\r\n]/.test(root)
+    || !/^[a-f0-9]{64}$/.test(rootId)
+    || !/^[a-f0-9]{64}$/.test(executionDomainId)
+  ) {
+    throw decodeError(
+      "pty.command.run",
+      "workspaceExecution must contain a safe root and canonical opaque identities.",
+    )
+  }
+  return { root, rootId, executionDomainId }
+}
+
+effect function workspaceDeltaReceiptOf(
+  object: JsonObject,
+  workspaceExecution: TerminalRunResult["workspaceExecution"],
+): (WorkspaceDeltaReceipt | undefined)!CapabilityError {
+  if (object.workspaceDeltaReceipt === undefined) return undefined
+  const receipt = try Effect.catchCause(normalizeWorkspaceDeltaReceipt(object.workspaceDeltaReceipt), (cause) => {
+    const error = Cause.squash(cause)
+    return Effect.fail(decodeError(
+      "pty.command.run",
+      `workspaceDeltaReceipt is invalid: ${errorText(error)}`,
+    ))
+  })
+  if (
+    !workspaceExecution
+    || receipt.scope.root !== workspaceExecution.root
+    || receipt.scope.rootId !== workspaceExecution.rootId
+    || receipt.scope.executionDomainId !== workspaceExecution.executionDomainId
+  ) {
+    throw decodeError(
+      "pty.command.run",
+      "workspaceDeltaReceipt must bind exactly to the attested workspaceExecution scope.",
+    )
+  }
+  return receipt
+}
+
+effect function runCommand(invoke: RuntimeBrokerInvoke, params: TerminalRunParams): TerminalRunResult!CapabilityError {
+  const object = try requestObject(invoke, "pty", "pty.command.run", {
+    command: params.command,
+    ...definedFields(params, ["args", "cwd", "env", "timeoutMs", "traceSessionId", "endpointId"]),
+  })
+  const workspaceExecution = try workspaceExecutionOf(object)
+  const workspaceDeltaReceipt = try workspaceDeltaReceiptOf(object, workspaceExecution)
+  return {
+    output: try requireString(object, "output", "pty.command.run"),
+    exitCode: try nullableNumber(object, "exitCode", "pty.command.run"),
+    timedOut: try requireBoolean(object, "timedOut", "pty.command.run"),
+    ...(workspaceExecution ? { workspaceExecution } : {}),
+    ...(workspaceDeltaReceipt ? { workspaceDeltaReceipt } : {}),
+  }
+}
+
+effect function gitStatus(invoke: RuntimeBrokerInvoke, params: GitStatusParams): GitStatusResult!CapabilityError {
+  const object = try requestObject(invoke, "git", "git.status", {
+    cwd: params.root,
+    ...definedFields(params, ["traceSessionId", "endpointId"]),
+  })
+  const branch = try optionalString(object, "branch", "git.status")
+  const ahead = try optionalNumber(object, "ahead", "git.status")
+  const behind = try optionalNumber(object, "behind", "git.status")
+  return {
+    repo: try requireObject(object.repo, "git.status.repo"),
+    ...(branch === undefined ? {} : { branch }),
+    ...(ahead === undefined ? {} : { ahead }),
+    ...(behind === undefined ? {} : { behind }),
+    files: try requireObjectArray(object, "files", "git.status"),
+    raw: try requireString(object, "raw", "git.status"),
+  }
+}
+
+effect function gitDiff(invoke: RuntimeBrokerInvoke, params: GitDiffParams): GitDiffResult!CapabilityError {
+  const object = try requestObject(invoke, "git", "git.diff", {
+    cwd: params.root,
+    ...definedFields(params, ["path", "staged", "traceSessionId", "endpointId"]),
+  })
+  return { raw: try requireString(object, "raw", "git.diff") }
+}
+
+effect function gitCommandRun(invoke: RuntimeBrokerInvoke, params: GitCommandRunParams): GitCommandRunResult!CapabilityError {
+  const object = try requestObject(invoke, "git", "git.command.run", {
+    cwd: params.root,
+    args: params.args,
+    ...definedFields(params, ["traceSessionId", "endpointId"]),
+  })
+  return { operation: try requireGitOperation(object.operation, "git.command.run.operation") }
+}
+
+effect function modelStatus(invoke: RuntimeBrokerInvoke, params: LocalModelStatusParams = {}): LocalModelStatusResult!CapabilityError {
+  const object = try requestObject(invoke, "model", "model.status", definedFields(params, ["traceSessionId", "endpointId"]))
+  const provider = try optionalString(object, "provider", "model.status")
+  return {
+    ok: try requireBoolean(object, "ok", "model.status"),
+    ...(provider === undefined ? {} : { provider }),
+    raw: object,
+  }
+}
+
+effect function listPluginModules(invoke: RuntimeBrokerInvoke, params: PluginListModulesParams = {}): PluginListModulesResult!CapabilityError {
+  const object = try requestObject(invoke, "plugin", "plugin.modules.list", definedFields(params, ["endpointId", "traceSessionId"]))
+  return { modules: try requireRemotePluginModuleArray(object, "modules", "plugin.modules.list") }
+}
+
+effect function invokePluginAction(invoke: RuntimeBrokerInvoke, params: PluginInvokeActionParams): PluginInvokeActionResult!CapabilityError {
+  const targets = { moduleId: params.moduleId, action: params.action }
+  try validateCallTargets("plugin.action.invoke", targets)
+  const result = try requestPlugin(invoke, "plugin.action.invoke", params, targets, ["content", "options", "traceSessionId"])
+  return try requirePluginActionResult(result, "plugin.action.invoke")
+}
+
+effect function getPluginProvider(invoke: RuntimeBrokerInvoke, params: PluginGetProviderParams): PluginGetProviderResult!CapabilityError {
+  const targets = { moduleId: params.moduleId, provider: params.provider }
+  try validateCallTargets("plugin.provider.get", targets)
+  const result = try requestPlugin(invoke, "plugin.provider.get", params, targets, ["state", "traceSessionId"])
+  return try requirePluginProviderResult(result, "plugin.provider.get")
+}
+
+effect function callPluginRoute(invoke: RuntimeBrokerInvoke, params: PluginCallRouteParams): PluginCallRouteResult!CapabilityError {
+  try validateCallTargets("plugin.route.call", { moduleId: params.moduleId })
+  try validateRemotePluginRouteMethod(params.method, "method", "plugin.route.call", false)
+  try validateRemotePluginPath(params.path, "path", "plugin.route.call")
+  if (params.headers !== undefined) try validateHeaderRecord(params.headers, "headers", "plugin.route.call")
+  if (params.query !== undefined) try validateRouteQueryRecord(params.query, "query", "plugin.route.call")
+  const object = try requireObject(
+    try requestPlugin(
+      invoke,
+      "plugin.route.call",
+      params,
+      { moduleId: params.moduleId, method: params.method, path: params.path },
+      ["body", "query", "headers", "traceSessionId"],
+    ),
+    "plugin.route.call",
+  )
+  const headers = try optionalStringRecord(object, "headers", "plugin.route.call")
+  if (headers !== undefined) try validateHeaderRecord(headers, "headers", "plugin.route.call")
+  const status = try requireNumber(object, "status", "plugin.route.call")
+  try validateHttpStatusCode(status, "status", "plugin.route.call")
+  return {
+    status,
+    ...(headers === undefined ? {} : { headers }),
+    ...(object.body === undefined ? {} : { body: object.body }),
+  }
+}
+
+effect function getPluginAsset(invoke: RuntimeBrokerInvoke, params: PluginGetAssetParams): PluginGetAssetResult!CapabilityError {
+  try validateCallTargets("plugin.asset.get", { moduleId: params.moduleId })
+  try validateRemotePluginAssetPath(params.path, "path", "plugin.asset.get")
+  const object = try requireObject(
+    try requestPlugin(invoke, "plugin.asset.get", params, { moduleId: params.moduleId, path: params.path }, ["traceSessionId"]),
+    "plugin.asset.get",
+  )
+  const integrity = try optionalString(object, "integrity", "plugin.asset.get")
+  const path = try requireNonEmptyString(object, "path", "plugin.asset.get")
+  try validateRemotePluginAssetPath(path, "path", "plugin.asset.get")
+  const contentType = try requireNonEmptyString(object, "contentType", "plugin.asset.get")
+  try validateHeaderSafeString(contentType, "contentType", "plugin.asset.get")
+  const bodyBase64 = try requireString(object, "bodyBase64", "plugin.asset.get")
+  try validateBase64String(bodyBase64, "bodyBase64", "plugin.asset.get")
+  if (integrity !== undefined) try validateHeaderSafeString(integrity, "integrity", "plugin.asset.get")
+  return {
+    path,
+    contentType,
+    bodyBase64,
+    ...(integrity === undefined ? {} : { integrity }),
+  }
+}
+
+effect function callPlugin<P extends CapabilityEndpointSelection>(
+  invoke: RuntimeBrokerInvoke,
+  method: RuntimeBrokerCapabilityMethod,
+  params: P,
+  targets: Record<string, string>,
+  keys: readonly (keyof P & string)[],
+): JsonObject!CapabilityError {
+  try validateCallTargets(method, targets)
+  return try requireObject(try requestPlugin(invoke, method, params, targets, keys), method)
+}
+
+effect function shouldRunPluginEvaluator(invoke: RuntimeBrokerInvoke, params: PluginEvaluatorShouldRunParams): PluginEvaluatorShouldRunResult!CapabilityError {
+  const method = "plugin.evaluator.shouldRun"
+  const object = try callPlugin(invoke, method, params, { moduleId: params.moduleId, evaluator: params.evaluator }, ["message", "state", "options", "traceSessionId"])
+  return { shouldRun: try requireBoolean(object, "shouldRun", method) }
+}
+
+effect function preparePluginEvaluator(invoke: RuntimeBrokerInvoke, params: PluginEvaluatorPrepareParams): PluginEvaluatorPrepareResult!CapabilityError {
+  const object = try callPlugin(invoke, "plugin.evaluator.prepare", params, { moduleId: params.moduleId, evaluator: params.evaluator }, ["message", "state", "options", "traceSessionId"])
+  return object.prepared === undefined ? {} : { prepared: object.prepared }
+}
+
+effect function promptPluginEvaluator(invoke: RuntimeBrokerInvoke, params: PluginEvaluatorPromptParams): PluginEvaluatorPromptResult!CapabilityError {
+  const method = "plugin.evaluator.prompt"
+  const object = try callPlugin(invoke, method, params, { moduleId: params.moduleId, evaluator: params.evaluator }, ["message", "state", "options", "prepared", "traceSessionId"])
+  return { prompt: try requireString(object, "prompt", method) }
+}
+
+effect function processPluginEvaluator(invoke: RuntimeBrokerInvoke, params: PluginEvaluatorProcessParams): PluginEvaluatorProcessResult!CapabilityError {
+  const method = "plugin.evaluator.process"
+  const object = try callPlugin(invoke, method, params, { moduleId: params.moduleId, evaluator: params.evaluator }, ["message", "state", "options", "prepared", "output", "traceSessionId"])
+  const processorResult = try optionalJsonObject(object, "result", method)
+  return processorResult === undefined ? {} : { result: processorResult }
+}
+
+effect function shouldRunResponseHandlerEvaluator(
+  invoke: RuntimeBrokerInvoke,
+  params: PluginResponseHandlerEvaluatorShouldRunParams,
+): PluginResponseHandlerEvaluatorShouldRunResult!CapabilityError {
+  const method = "plugin.responseHandlerEvaluator.shouldRun"
+  const object = try callPlugin(invoke, method, params, { moduleId: params.moduleId, evaluator: params.evaluator }, ["context", "traceSessionId"])
+  return { shouldRun: try requireBoolean(object, "shouldRun", method) }
+}
+
+effect function evaluateResponseHandlerEvaluator(
+  invoke: RuntimeBrokerInvoke,
+  params: PluginResponseHandlerEvaluatorEvaluateParams,
+): PluginResponseHandlerEvaluatorEvaluateResult!CapabilityError {
+  const method = "plugin.responseHandlerEvaluator.evaluate"
+  const object = try callPlugin(invoke, method, params, { moduleId: params.moduleId, evaluator: params.evaluator }, ["context", "traceSessionId"])
+  const patch = try optionalJsonObject(object, "patch", method)
+  return patch === undefined ? {} : { patch }
+}
+
+effect function shouldRunResponseHandlerFieldEvaluator(
+  invoke: RuntimeBrokerInvoke,
+  params: PluginResponseHandlerFieldEvaluatorShouldRunParams,
+): PluginResponseHandlerFieldEvaluatorShouldRunResult!CapabilityError {
+  const method = "plugin.responseHandlerFieldEvaluator.shouldRun"
+  const object = try callPlugin(invoke, method, params, { moduleId: params.moduleId, field: params.field }, ["context", "traceSessionId"])
+  return { shouldRun: try requireBoolean(object, "shouldRun", method) }
+}
+
+effect function parseResponseHandlerFieldEvaluator(
+  invoke: RuntimeBrokerInvoke,
+  params: PluginResponseHandlerFieldEvaluatorParseParams,
+): PluginResponseHandlerFieldEvaluatorParseResult!CapabilityError {
+  const method = "plugin.responseHandlerFieldEvaluator.parse"
+  const object = try callPlugin(invoke, method, params, { moduleId: params.moduleId, field: params.field }, ["context", "value", "traceSessionId"])
+  const softFail = try optionalBoolean(object, "softFail", method)
+  return {
+    ...(object.value === undefined ? {} : { value: object.value }),
+    ...(softFail === undefined ? {} : { softFail }),
+  }
+}
+
+effect function handleResponseHandlerFieldEvaluator(
+  invoke: RuntimeBrokerInvoke,
+  params: PluginResponseHandlerFieldEvaluatorHandleParams,
+): PluginResponseHandlerFieldEvaluatorHandleResult!CapabilityError {
+  const method = "plugin.responseHandlerFieldEvaluator.handle"
+  const object = try callPlugin(invoke, method, params, { moduleId: params.moduleId, field: params.field }, ["context", "value", "parsed", "traceSessionId"])
+  if (object.effect === undefined) return {}
+  return { effect: try requireResponseHandlerFieldEffect(object.effect, `${method}.effect`) }
+}
+
+effect function callPluginLifecycle(invoke: RuntimeBrokerInvoke, params: PluginLifecycleCallParams): PluginLifecycleCallResult!CapabilityError {
+  const method = "plugin.lifecycle.call"
+  try validateCallTargets(method, { moduleId: params.moduleId })
+  if (!isRemotePluginLifecycleHook(params.hook)) {
+    throw decodeError(method, "hook must be a valid plugin lifecycle hook.")
+  }
+  const object = try requireObject(
+    try requestPlugin(invoke, method, params, { moduleId: params.moduleId, hook: params.hook }, ["config", "context", "traceSessionId"]),
+    method,
+  )
+  return { ok: try requireBoolean(object, "ok", method) }
+}
+
+effect function handlePluginEvent(invoke: RuntimeBrokerInvoke, params: PluginHandleEventParams): PluginHandleEventResult!CapabilityError {
+  const method = "plugin.event.handle"
+  const object = try callPlugin(invoke, method, params, { moduleId: params.moduleId, eventName: params.eventName }, ["payload", "traceSessionId"])
+  return { handled: try requireBoolean(object, "handled", method) }
+}
+
+effect function invokePluginModel(invoke: RuntimeBrokerInvoke, params: PluginInvokeModelParams): PluginInvokeModelResult!CapabilityError {
+  const method = "plugin.model.invoke"
+  const object = try callPlugin(invoke, method, params, { moduleId: params.moduleId, modelType: params.modelType }, ["params", "traceSessionId"])
+  if (!Object.hasOwn(object, "result")) throw decodeError(method, "result is required.")
+  return { result: object.result }
+}
+
+effect function callPluginService(invoke: RuntimeBrokerInvoke, params: PluginCallServiceParams): PluginCallServiceResult!CapabilityError {
+  const method = "plugin.service.call"
+  try validateCallTargets(method, { moduleId: params.moduleId, serviceType: params.serviceType })
+  try validateRemotePluginServiceMethods([params.method], method)
+  const object = try requireObject(
+    try requestPlugin(
+      invoke,
+      method,
+      params,
+      { moduleId: params.moduleId, serviceType: params.serviceType, method: params.method },
+      ["args", "traceSessionId"],
+    ),
+    method,
+  )
+  return Object.hasOwn(object, "result") ? { result: object.result } : {}
+}
+
+effect function callPluginAppBridge(invoke: RuntimeBrokerInvoke, params: PluginCallAppBridgeParams): PluginCallAppBridgeResult!CapabilityError {
+  const method = "plugin.appBridge.call"
+  try validateCallTargets(method, { moduleId: params.moduleId })
+  if (!isRemotePluginAppBridgeHook(params.hook)) {
+    throw decodeError(method, "hook must be a valid plugin app bridge hook.")
+  }
+  const object = try requireObject(
+    try requestPlugin(invoke, method, params, { moduleId: params.moduleId, hook: params.hook }, ["context", "traceSessionId"]),
+    method,
+  )
+  return Object.hasOwn(object, "result") ? { result: object.result } : {}
+}
+
+export type CapabilityRuntimeLike = {
+  getService(service: string): unknown
+}
+
+export function getCapabilityRouter(
+  runtime: CapabilityRuntimeLike,
+): ElizaCapabilityRouter | null {
+  const service = runtime.getService(CAPABILITY_ROUTER_SERVICE_TYPE)
+  return isElizaCapabilityRouter(service) ? service : null
+}
+
+function isElizaCapabilityRouter(
+  service: unknown,
+): service is ElizaCapabilityRouter {
+  if (typeof service !== "object" || service === null) return false
+  const candidate = service as Partial<ElizaCapabilityRouter>
+  return (
+    typeof candidate.availability === "function"
+    && isFileCapability(candidate.fs)
+    && isTerminalCapability(candidate.pty)
+    && isGitCapability(candidate.git)
+    && isLocalModelCapability(candidate.model)
+    && isRemotePluginCapability(candidate.plugin)
+  )
+}
+
+function isFileCapability(value: unknown): value is FileCapability {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as Partial<FileCapability>
+  return (
+    typeof candidate.list === "function"
+    && typeof candidate.readText === "function"
+    && typeof candidate.writeText === "function"
+  )
+}
+
+function isTerminalCapability(value: unknown): value is TerminalCapability {
+  return (
+    typeof value === "object"
+    && value !== null
+    && typeof (value as Partial<TerminalCapability>).runCommand === "function"
+  )
+}
+
+function isGitCapability(value: unknown): value is GitCapability {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as Partial<GitCapability>
+  return (
+    typeof candidate.status === "function"
+    && typeof candidate.diff === "function"
+    && typeof candidate.commandRun === "function"
+  )
+}
+
+function isLocalModelCapability(value: unknown): value is LocalModelCapability {
+  return (
+    typeof value === "object"
+    && value !== null
+    && typeof (value as Partial<LocalModelCapability>).status === "function"
+  )
+}
+
+function isRemotePluginCapability(
+  value: unknown,
+): value is RemotePluginCapability {
+  if (typeof value !== "object" || value === null) return false
+  const candidate = value as Partial<RemotePluginCapability>
+  return (
+    typeof candidate.listModules === "function"
+    && typeof candidate.invokeAction === "function"
+    && typeof candidate.getProvider === "function"
+    && typeof candidate.callRoute === "function"
+    && typeof candidate.getAsset === "function"
+    && typeof candidate.shouldRunEvaluator === "function"
+    && typeof candidate.prepareEvaluator === "function"
+    && typeof candidate.promptEvaluator === "function"
+    && typeof candidate.processEvaluator === "function"
+    && typeof candidate.shouldRunResponseHandlerEvaluator === "function"
+    && typeof candidate.evaluateResponseHandlerEvaluator === "function"
+    && typeof candidate.shouldRunResponseHandlerFieldEvaluator === "function"
+    && typeof candidate.parseResponseHandlerFieldEvaluator === "function"
+    && typeof candidate.handleResponseHandlerFieldEvaluator === "function"
+    && typeof candidate.callLifecycle === "function"
+    && typeof candidate.handleEvent === "function"
+    && typeof candidate.invokeModel === "function"
+    && typeof candidate.callService === "function"
+    && typeof candidate.callAppBridge === "function"
+  )
+}

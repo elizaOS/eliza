@@ -1,0 +1,130 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { ActionResult, ProviderValue } from "./components.vibe"
+import type { Entity, Room, World } from "./environment.vibe"
+
+export type StateValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ProviderValue
+  | object
+  | StateValue[]
+  | { [key: string]: StateValue }
+
+export interface StructuredOutputFailure {
+  source: "dynamicPromptExecFromState"
+  kind: "model_error" | "parse_error" | "parse_problem" | "validation_error"
+  model: string
+  format: "JSON" | "TOON"
+  schemaFields: string[]
+  attempts: number
+  maxRetries: number
+  timestamp: number
+  key?: string
+  parseError?: string
+  issues?: string[]
+  responsePreview?: string
+}
+
+export interface ActionPlanStep {
+  action: string
+  status: "pending" | "completed" | "failed"
+  error?: string
+  result?: ActionResult
+}
+
+export interface ActionPlan {
+  thought: string
+  totalSteps: number
+  currentStep: number
+  steps: ActionPlanStep[]
+  metadata?: Record<string, StateValue>
+}
+
+export interface ProviderCacheEntry {
+  referenceBodyDeferred?: true
+  text?: string
+  discoveryText?: string
+  overflowText?: string
+  values?: Record<string, StateValue>
+  data?: Record<string, StateValue>
+}
+
+export interface WorkingMemoryEntry {
+  actionName: string
+  result: ActionResult
+  timestamp: number
+}
+
+export type WorkingMemory = Record<string, WorkingMemoryEntry>
+
+export interface StateData {
+  room?: Room
+  world?: World
+  entity?: Entity
+  providers?: Record<string, ProviderCacheEntry>
+  actionPlan?: ActionPlan
+  actionResults?: ActionResult[]
+  workingMemory?: WorkingMemory
+  structuredOutputFailure?: StructuredOutputFailure
+  [key: string]: StateValue | undefined
+}
+
+export interface StateValues {
+  agentName?: string
+  actionNames?: string
+  providers?: string
+  structuredOutputFailureSummary?: string
+  [key: string]: StateValue | undefined
+}
+
+export interface State {
+  values: StateValues
+  data: StateData
+  text: string
+  [key: string]: StateValue | StateValues | StateData | undefined
+}
+
+export type SchemaValueType =
+  | "string"
+  | "number"
+  | "boolean"
+  | "object"
+  | "array"
+
+export type SchemaValueSpec = {
+  description: string
+  type?: SchemaValueType
+  required?: boolean
+  properties?: SchemaRow[]
+  items?: SchemaValueSpec
+}
+
+export type SchemaRow = SchemaValueSpec & {
+  field: string
+  validateField?: boolean
+  streamField?: boolean
+}
+
+export interface RetryBackoffConfig {
+  initialMs: number
+  multiplier: number
+  maxMs: number
+}
+
+export type StreamEventType =
+  | "chunk"
+  | "field_validated"
+  | "retry_start"
+  | "error"
+  | "complete"
+
+export interface StreamEvent {
+  eventType: StreamEventType
+  field?: string
+  chunk?: string
+  retryCount?: number
+  error?: string
+  timestamp: number
+}

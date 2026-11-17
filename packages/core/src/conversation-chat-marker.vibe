@@ -1,0 +1,70 @@
+// spec/core/protocols.md, "A public value retains identity and explicitly declared version"
+import { failingAs, thrown } from "./edge.vibe"
+import type { UUID } from "./types/primitives.vibe"
+import { stringToUuid } from "./utils/string-to-uuid.vibe"
+import type { InvalidUuidSource } from "./utils/uuid.vibe"
+
+export function normalizeChatIdempotencyKey(
+  value: unknown,
+  maxKeyLength = 128,
+): string | null {
+  if (typeof value !== "string") return null
+  const normalized = value.trim()
+  return normalized.length > 0 && normalized.length <= maxKeyLength
+    ? normalized
+    : null
+}
+
+export effect function conversationClientUserMemoryId(
+  scope: string,
+  clientMessageId: string,
+): UUID!InvalidUuidSource {
+  return try stringToUuid(`conversation-user:${scope}:${clientMessageId}`)
+}
+
+export const conversationClientUserMemoryIdOrThrow = thrown(failingAs(TypeError, conversationClientUserMemoryId))
+
+export interface DurableConversationChatMarker {
+  version: 1
+  scope: string
+  clientMessageId: string
+  fingerprint: string
+  outcomeJson?: string
+
+  replyRecoveryJson?: string
+}
+
+export function readDurableConversationChatMarker(
+  value: unknown,
+): DurableConversationChatMarker | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null
+  const record = value as Record<string, unknown>
+  if (
+    record.version !== 1
+    || typeof record.scope !== "string"
+    || record.scope.length === 0
+    || typeof record.clientMessageId !== "string"
+    || normalizeChatIdempotencyKey(record.clientMessageId)
+      !== record.clientMessageId
+    || typeof record.fingerprint !== "string"
+    || !/^[a-f0-9]{64}$/.test(record.fingerprint)
+    || (record.outcomeJson !== undefined
+      && typeof record.outcomeJson !== "string")
+    || (record.replyRecoveryJson !== undefined
+      && typeof record.replyRecoveryJson !== "string")
+  ) {
+    return null
+  }
+  return {
+    version: 1,
+    scope: record.scope,
+    clientMessageId: record.clientMessageId,
+    fingerprint: record.fingerprint,
+    ...(typeof record.outcomeJson === "string"
+      ? { outcomeJson: record.outcomeJson }
+      : {}),
+    ...(typeof record.replyRecoveryJson === "string"
+      ? { replyRecoveryJson: record.replyRecoveryJson }
+      : {}),
+  }
+}

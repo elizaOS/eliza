@@ -1,0 +1,810 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { ContextObject } from "../runtime/context-object.vibe"
+import type { StreamChunkCallback } from "./components.vibe"
+import type { AgentContext } from "./contexts.vibe"
+import type { ContentValue, JsonValue } from "./primitives.vibe"
+import type { IAgentRuntime } from "./runtime.vibe"
+import type { JSONSchema } from "./schema.vibe"
+
+export const MODEL_CANONICAL_CONTEXT: unique symbol = Symbol.for(
+  "elizaos.modelCanonicalContext",
+)
+
+export type LocalInferencePriority = "interactive" | "background"
+
+export type ModelTypeName = (typeof ModelType)[keyof typeof ModelType] | string
+
+export const LLMMode = {
+  DEFAULT: "DEFAULT",
+
+  SMALL: "SMALL",
+
+  LARGE: "LARGE",
+} as const
+
+export type LLMModeType = (typeof LLMMode)[keyof typeof LLMMode]
+
+export const ModelType = {
+  NANO: "TEXT_NANO",
+  SMALL: "TEXT_SMALL",
+  MEDIUM: "TEXT_MEDIUM",
+  LARGE: "TEXT_LARGE",
+  MEGA: "TEXT_MEGA",
+  TEXT_NANO: "TEXT_NANO",
+  TEXT_SMALL: "TEXT_SMALL",
+  TEXT_MEDIUM: "TEXT_MEDIUM",
+  TEXT_LARGE: "TEXT_LARGE",
+  TEXT_MEGA: "TEXT_MEGA",
+  RESPONSE_HANDLER: "RESPONSE_HANDLER",
+  ACTION_PLANNER: "ACTION_PLANNER",
+  TEXT_EMBEDDING: "TEXT_EMBEDDING",
+
+  TEXT_EMBEDDING_BATCH: "TEXT_EMBEDDING_BATCH",
+
+  PII_SCRUB: "PII_SCRUB",
+  TEXT_TOKENIZER_ENCODE: "TEXT_TOKENIZER_ENCODE",
+  TEXT_TOKENIZER_DECODE: "TEXT_TOKENIZER_DECODE",
+  TEXT_REASONING_SMALL: "REASONING_SMALL",
+  TEXT_REASONING_LARGE: "REASONING_LARGE",
+  TEXT_COMPLETION: "TEXT_COMPLETION",
+  IMAGE: "IMAGE",
+  IMAGE_DESCRIPTION: "IMAGE_DESCRIPTION",
+  TRANSCRIPTION: "TRANSCRIPTION",
+  TEXT_TO_SPEECH: "TEXT_TO_SPEECH",
+  AUDIO: "AUDIO",
+  VIDEO: "VIDEO",
+  RESEARCH: "RESEARCH",
+} as const
+
+export type TextGenerationModelType =
+  | typeof ModelType.TEXT_NANO
+  | typeof ModelType.TEXT_SMALL
+  | typeof ModelType.TEXT_MEDIUM
+  | typeof ModelType.TEXT_LARGE
+  | typeof ModelType.TEXT_MEGA
+  | typeof ModelType.RESPONSE_HANDLER
+  | typeof ModelType.ACTION_PLANNER
+  | typeof ModelType.TEXT_REASONING_SMALL
+  | typeof ModelType.TEXT_REASONING_LARGE
+  | typeof ModelType.TEXT_COMPLETION
+
+export const TEXT_GENERATION_MODEL_TYPES = [
+  ModelType.TEXT_NANO,
+  ModelType.TEXT_SMALL,
+  ModelType.TEXT_MEDIUM,
+  ModelType.TEXT_LARGE,
+  ModelType.TEXT_MEGA,
+  ModelType.RESPONSE_HANDLER,
+  ModelType.ACTION_PLANNER,
+  ModelType.TEXT_REASONING_SMALL,
+  ModelType.TEXT_REASONING_LARGE,
+  ModelType.TEXT_COMPLETION,
+] as const satisfies readonly TextGenerationModelType[]
+
+const TEXT_GENERATION_MODEL_TYPE_SET: ReadonlySet<string> = new Set(
+  TEXT_GENERATION_MODEL_TYPES,
+)
+
+export function isTextGenerationModelType(
+  modelType: unknown,
+): modelType is TextGenerationModelType {
+  const normalized = String(modelType ?? "")
+    .trim()
+    .toUpperCase()
+  return TEXT_GENERATION_MODEL_TYPE_SET.has(normalized)
+}
+
+export interface PromptSegment {
+  content: string
+
+  stable: boolean
+
+  ttl?: "short" | "long"
+}
+
+export interface GenerateTextAttachment {
+  mediaType: string
+  data: string | Uint8Array | URL
+  filename?: string
+}
+
+export interface ToolDefinition {
+  name: string
+  description?: string
+  parameters?: JSONSchema
+
+  type?: "function" | "tool" | (string & {})
+  contexts?: AgentContext[]
+  metadata?: Record<string, JsonValue | object | undefined>
+  strict?: boolean
+
+  strictWithOptionalProperties?: boolean
+}
+
+export type ToolChoice =
+  | "auto"
+  | "none"
+  | "required"
+  | { type: "tool"; name: string }
+  | { type: "function"; function: { name: string } }
+  | { name: string }
+
+export interface ToolCall {
+  id: string
+  name: string
+  arguments: Record<string, JsonValue> | string
+  result?: ContentValue
+  status?: "pending" | "completed" | "failed" | (string & {})
+}
+
+export type ChatMessageRole =
+  | "system"
+  | "developer"
+  | "user"
+  | "assistant"
+  | "tool"
+
+export type ChatMessageContentPart =
+  | { type: "text"; text: string }
+  | { type: "image"; image: string | URL | Uint8Array; mediaType?: string }
+  | {
+    type: "file"
+    data: string | URL | Uint8Array
+    mediaType: string
+    filename?: string
+  }
+  | { type: string; [key: string]: JsonValue | object | undefined }
+
+export interface ChatMessage {
+  role: ChatMessageRole
+  content?: string | ChatMessageContentPart[] | null
+  name?: string
+  toolCallId?: string
+  toolCalls?: ToolCall[]
+  metadata?: Record<string, JsonValue | object | undefined>
+}
+
+export type ResponseSkeletonSpanKind =
+  | "literal"
+  | "enum"
+  | "number"
+  | "boolean"
+  | "free-string"
+  | "free-json"
+
+export interface ResponseSkeletonSpan {
+  kind: ResponseSkeletonSpanKind
+
+  key?: string
+
+  value?: string
+
+  enumValues?: string[]
+
+  rule?: string
+}
+
+export interface ResponseSkeleton {
+  spans: ResponseSkeletonSpan[]
+
+  id?: string
+}
+
+export interface SpanSamplerOverride {
+  spanIndex: number
+
+  temperature: number
+
+  topK?: number
+
+  topP?: number
+}
+
+export interface SpanSamplerPlan {
+  overrides: SpanSamplerOverride[]
+
+  strict?: boolean
+}
+
+export interface GenerateTextParams {
+  [MODEL_CANONICAL_CONTEXT]?: ContextObject
+
+  [MODEL_PROVIDER_ATTEMPTS]?: ModelProviderAttempt[]
+
+  prepareModelAttempt?: (
+    attempt: ModelAttemptContext,
+    params: GenerateTextParams,
+  ) => Promise<void> | void
+
+  prompt?: string
+  maxTokens?: number
+
+  omitMaxTokens?: boolean
+  minTokens?: number
+  temperature?: number
+  topP?: number
+  topK?: number
+  minP?: number
+  seed?: number
+  repetitionPenalty?: number
+  frequencyPenalty?: number
+  presencePenalty?: number
+  stream?: boolean
+  responseFormat?: { type: "json_object" | "text" } | string
+  stopSequences?: string[]
+  onStreamChunk?: StreamChunkCallback
+
+  voiceOutput?: "user-visible" | "internal"
+
+  priority?: LocalInferencePriority
+  user?: string
+
+  system?: string
+
+  attachments?: GenerateTextAttachment[]
+
+  messages?: ChatMessage[]
+
+  tools?: ToolDefinition[]
+
+  toolChoice?: ToolChoice
+
+  responseSchema?: JSONSchema
+
+  promptSegments?: PromptSegment[]
+
+  providerOptions?: Record<string, JsonValue | object | undefined>
+
+  model?: string
+
+  signal?: AbortSignal
+
+  prefill?: string
+
+  responseSkeleton?: ResponseSkeleton
+
+  grammar?: string
+
+  streamStructured?: boolean
+
+  streamFields?: readonly StructuredStreamField[]
+
+  streamFieldGate?: StructuredStreamGate
+
+  spanSamplerPlan?: SpanSamplerPlan
+}
+
+export interface StructuredStreamField {
+  field: string
+
+  partKinds?: readonly string[]
+}
+
+export type StructuredStreamGate = (
+  preceding: Readonly<Record<string, unknown>> | null,
+) => boolean
+
+export const MODEL_PROVIDER_ATTEMPTS: unique symbol = Symbol.for(
+  "eliza.modelProviderAttempts",
+)
+
+export interface ModelProviderAttempt {
+  modelType: string
+  provider: string
+  handler: object
+  error?: unknown
+}
+
+export interface ModelAttemptContext {
+  modelType: string
+  provider: string
+  metadata?: ModelRegistrationMetadata
+}
+
+export interface TokenUsage {
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
+  reasoningTokens?: number
+}
+
+export interface TextStreamResult {
+  textStream: AsyncIterable<string>
+
+  text: Promise<string>
+
+  usage: Promise<TokenUsage | undefined>
+
+  finishReason: Promise<string | undefined>
+
+  toolCalls?: unknown
+
+  providerMetadata?: Record<string, unknown>
+}
+
+export interface AudioStreamResult {
+  audioStream: AsyncIterable<Uint8Array>
+
+  bytes: Promise<Uint8Array>
+
+  mimeType: string
+}
+
+export interface GenerateTextOptions {
+  includeCharacter?: boolean
+  modelType?: TextGenerationModelType
+  maxTokens?: number
+  minTokens?: number
+  temperature?: number
+  frequencyPenalty?: number
+  presencePenalty?: number
+  stopSequences?: string[]
+  topP?: number
+  topK?: number
+  minP?: number
+  seed?: number
+  repetitionPenalty?: number
+  user?: string
+  responseFormat?: { type: "json_object" | "text" } | string
+}
+
+export interface GenerateTextResult {
+  text: string
+
+  content?: string | GenerateTextContentPart[]
+
+  response?: string
+  usage?: TokenUsage
+  finishReason?: string
+  toolCalls?: ToolCall[]
+  providerMetadata?: Record<string, JsonValue | object | undefined>
+}
+
+export interface GenerateTextContentPart {
+  providerOptions?: Record<string, JsonValue | object | undefined>
+  type?: string
+  text?: string
+  content?: string
+}
+
+export interface TokenizeTextParams {
+  prompt: string
+  modelType: ModelTypeName
+}
+
+export interface DetokenizeTextParams {
+  tokens: number[]
+  modelType: ModelTypeName
+}
+
+export interface TextEmbeddingParams {
+  text: string
+
+  signal?: AbortSignal
+}
+
+export interface BatchTextEmbeddingParams {
+  texts: string[]
+}
+
+export interface PiiPseudonymAssignment {
+  readonly entityClusterId: string
+
+  readonly surrogate: string
+
+  readonly kind: string
+}
+
+export interface PiiScrubParams {
+  text: string
+
+  candidateSpans: readonly string[]
+
+  contextPack?: string
+
+  pseudonymAssignments?: readonly PiiPseudonymAssignment[]
+
+  rulesetVersion: string
+
+  priority?: LocalInferencePriority
+
+  signal?: AbortSignal
+}
+
+export type PiiScrubVerdictKind = "pii" | "safe"
+
+export interface PiiScrubVerdict {
+  readonly span: string
+
+  readonly kind: PiiScrubVerdictKind
+
+  readonly entityClusterId?: string
+
+  readonly replacement?: string
+}
+
+export interface PiiScrubResult {
+  readonly verdicts: readonly PiiScrubVerdict[]
+
+  readonly modelId: string
+
+  readonly rulesetVersion: string
+}
+
+export interface ImageGenerationParams {
+  prompt: string
+  size?: string
+  count?: number
+}
+
+export interface ImageDescriptionParams {
+  imageUrl: string
+  prompt?: string
+  signal?: AbortSignal
+
+  stream?: boolean
+  onStreamChunk?: StreamChunkCallback
+}
+export interface ImageDescriptionResult {
+  title: string
+  description: string
+}
+export interface ImageGenerationResult {
+  url: string
+}
+
+export interface TranscriptionParams {
+  audioUrl: string
+
+  audio?: Uint8Array | ArrayBuffer
+  mimeType?: string
+  prompt?: string
+  signal?: AbortSignal
+
+  transcriptionPurpose?: "interim" | "final"
+  billing?: {
+    billable: boolean
+    reason?: string
+  }
+
+  stream?: boolean
+  onStreamChunk?: StreamChunkCallback
+}
+
+export interface TextToSpeechParams {
+  text: string
+  voice?: string
+  speed?: number
+  signal?: AbortSignal
+
+  audioStream?: boolean
+}
+
+export interface AudioProcessingParams {
+  audioUrl?: string
+  processingType?: string
+  prompt?: string
+  audioKind?: "music" | "sfx" | "tts" | string
+  text?: string
+  duration?: number
+  durationSeconds?: number
+  instrumental?: boolean
+  genre?: string
+  voice?: string
+  model?: string
+  provider?: string
+  outputFormat?: string
+  referenceUrl?: string
+  seed?: number
+  signal?: AbortSignal
+}
+
+export interface VideoProcessingParams {
+  videoUrl?: string
+  processingType?: string
+  prompt?: string
+  duration?: number
+  durationSeconds?: number
+  aspectRatio?: string
+  imageUrl?: string
+  referenceUrl?: string
+  model?: string
+  resolution?: string
+  audio?: boolean
+  voiceControl?: boolean
+  signal?: AbortSignal
+}
+
+export interface ResearchWebSearchTool {
+  type: "web_search_preview"
+}
+
+export interface ResearchFileSearchTool {
+  type: "file_search"
+
+  vectorStoreIds: string[]
+}
+
+export interface ResearchCodeInterpreterTool {
+  type: "code_interpreter"
+
+  container?: { type: "auto" }
+}
+
+export interface ResearchMcpTool {
+  type: "mcp"
+
+  serverLabel: string
+
+  serverUrl: string
+
+  requireApproval?: "never"
+}
+
+export type ResearchTool =
+  | ResearchWebSearchTool
+  | ResearchFileSearchTool
+  | ResearchCodeInterpreterTool
+  | ResearchMcpTool
+
+export interface ResearchParams {
+  input: string
+
+  instructions?: string
+
+  background?: boolean
+
+  signal?: AbortSignal
+
+  tools?: ResearchTool[]
+
+  maxToolCalls?: number
+
+  reasoningSummary?: "auto" | "none"
+
+  model?: "o3-deep-research" | "o4-mini-deep-research"
+}
+
+export interface ResearchAnnotation {
+  url: string
+
+  title: string
+
+  startIndex: number
+
+  endIndex: number
+}
+
+export interface ResearchWebSearchCall {
+  id: string
+  type: "web_search_call"
+  status: "completed" | "failed"
+  action: {
+    type: "search" | "open_page" | "find_in_page"
+    query?: string
+    url?: string
+  }
+}
+
+export interface ResearchFileSearchCall {
+  id: string
+  type: "file_search_call"
+  status: "completed" | "failed"
+  query: string
+  results?: Array<{
+    fileId: string
+    fileName: string
+    score: number
+  }>
+}
+
+export interface ResearchCodeInterpreterCall {
+  id: string
+  type: "code_interpreter_call"
+  status: "completed" | "failed"
+  code: string
+  output?: string
+}
+
+export interface ResearchMcpToolCall {
+  id: string
+  type: "mcp_tool_call"
+  status: "completed" | "failed"
+  serverLabel: string
+  toolName: string
+  arguments: Record<string, JsonValue>
+  result?: JsonValue
+}
+
+export interface ResearchMessageOutput {
+  type: "message"
+  content: Array<{
+    type: "output_text"
+    text: string
+    annotations: ResearchAnnotation[]
+  }>
+}
+
+export type ResearchOutputItem =
+  | ResearchWebSearchCall
+  | ResearchFileSearchCall
+  | ResearchCodeInterpreterCall
+  | ResearchMcpToolCall
+  | ResearchMessageOutput
+
+export interface ResearchResult {
+  id: string
+
+  text: string
+
+  annotations: ResearchAnnotation[]
+
+  outputItems: ResearchOutputItem[]
+
+  status?: "queued" | "in_progress" | "completed" | "failed"
+}
+
+export type { JSONSchema } from "./schema.vibe"
+
+export interface ModelParamsMap {
+  [ModelType.TEXT_NANO]: GenerateTextParams
+  [ModelType.TEXT_SMALL]: GenerateTextParams
+  [ModelType.TEXT_MEDIUM]: GenerateTextParams
+  [ModelType.TEXT_LARGE]: GenerateTextParams
+  [ModelType.TEXT_MEGA]: GenerateTextParams
+  [ModelType.RESPONSE_HANDLER]: GenerateTextParams
+  [ModelType.ACTION_PLANNER]: GenerateTextParams
+  [ModelType.TEXT_REASONING_SMALL]: GenerateTextParams
+  [ModelType.TEXT_REASONING_LARGE]: GenerateTextParams
+  [ModelType.TEXT_EMBEDDING]: TextEmbeddingParams | string | null
+  [ModelType.TEXT_EMBEDDING_BATCH]: BatchTextEmbeddingParams
+  [ModelType.PII_SCRUB]: PiiScrubParams
+  [ModelType.TEXT_TOKENIZER_ENCODE]: TokenizeTextParams
+  [ModelType.TEXT_TOKENIZER_DECODE]: DetokenizeTextParams
+  [ModelType.IMAGE]: ImageGenerationParams
+  [ModelType.IMAGE_DESCRIPTION]: ImageDescriptionParams | string
+  [ModelType.TRANSCRIPTION]: TranscriptionParams | Buffer | string
+  [ModelType.TEXT_TO_SPEECH]: TextToSpeechParams | string
+  [ModelType.AUDIO]: AudioProcessingParams
+  [ModelType.VIDEO]: VideoProcessingParams
+  [ModelType.TEXT_COMPLETION]: GenerateTextParams
+  [ModelType.RESEARCH]: ResearchParams
+}
+
+export interface ModelResultMap {
+  [ModelType.TEXT_NANO]: string
+  [ModelType.TEXT_SMALL]: string
+  [ModelType.TEXT_MEDIUM]: string
+  [ModelType.TEXT_LARGE]: string
+  [ModelType.TEXT_MEGA]: string
+  [ModelType.RESPONSE_HANDLER]: string
+  [ModelType.ACTION_PLANNER]: string
+  [ModelType.TEXT_REASONING_SMALL]: string
+  [ModelType.TEXT_REASONING_LARGE]: string
+  [ModelType.TEXT_EMBEDDING]: number[]
+  [ModelType.TEXT_EMBEDDING_BATCH]: number[][]
+  [ModelType.PII_SCRUB]: PiiScrubResult
+  [ModelType.TEXT_TOKENIZER_ENCODE]: number[]
+  [ModelType.TEXT_TOKENIZER_DECODE]: string
+  [ModelType.IMAGE]: ImageGenerationResult[]
+  [ModelType.IMAGE_DESCRIPTION]: ImageDescriptionResult
+  [ModelType.TRANSCRIPTION]: string
+  [ModelType.TEXT_TO_SPEECH]: Buffer | ArrayBuffer | Uint8Array
+  [ModelType.AUDIO]:
+    | Buffer
+    | ArrayBuffer
+    | Uint8Array
+    | Record<string, JsonValue>
+  [ModelType.VIDEO]:
+    | Buffer
+    | ArrayBuffer
+    | Uint8Array
+    | Record<string, JsonValue>
+  [ModelType.TEXT_COMPLETION]: string
+  [ModelType.RESEARCH]: ResearchResult
+}
+
+export type StreamableModelType = TextGenerationModelType
+
+export type StreamableAudioModelType = typeof ModelType.TEXT_TO_SPEECH
+
+export type PluginModelResult<K extends keyof ModelResultMap> = K extends StreamableModelType
+  ? ModelResultMap[K] | TextStreamResult
+  : K extends StreamableAudioModelType ? ModelResultMap[K] | AudioStreamResult
+  : ModelResultMap[K]
+
+const MODEL_FALLBACK_CHAINS: Readonly<Record<string, readonly string[]>> = {
+  [ModelType.TEXT_NANO]: [
+    ModelType.TEXT_NANO,
+    ModelType.TEXT_SMALL,
+    ModelType.TEXT_MEDIUM,
+    ModelType.TEXT_LARGE,
+  ],
+  [ModelType.TEXT_SMALL]: [
+    ModelType.TEXT_SMALL,
+    ModelType.TEXT_MEDIUM,
+    ModelType.TEXT_LARGE,
+  ],
+  [ModelType.TEXT_MEDIUM]: [
+    ModelType.TEXT_MEDIUM,
+    ModelType.TEXT_SMALL,
+    ModelType.TEXT_LARGE,
+  ],
+  [ModelType.TEXT_LARGE]: [
+    ModelType.TEXT_LARGE,
+    ModelType.TEXT_MEDIUM,
+    ModelType.TEXT_SMALL,
+  ],
+  [ModelType.TEXT_MEGA]: [
+    ModelType.TEXT_MEGA,
+    ModelType.TEXT_LARGE,
+    ModelType.TEXT_MEDIUM,
+  ],
+  [ModelType.RESPONSE_HANDLER]: [
+    ModelType.RESPONSE_HANDLER,
+    ModelType.TEXT_NANO,
+    ModelType.TEXT_SMALL,
+    ModelType.TEXT_MEDIUM,
+    ModelType.TEXT_LARGE,
+  ],
+  [ModelType.ACTION_PLANNER]: [
+    ModelType.ACTION_PLANNER,
+    ModelType.TEXT_MEDIUM,
+    ModelType.TEXT_SMALL,
+    ModelType.TEXT_LARGE,
+  ],
+}
+
+export function getModelFallbackChain(
+  modelType: ModelTypeName,
+): readonly string[] {
+  const modelKey = String(modelType)
+  return MODEL_FALLBACK_CHAINS[modelKey] ?? [modelKey]
+}
+
+export interface ModelHandler<
+  TParams = Record<string, JsonValue | object>,
+  TResult = JsonValue | object,
+> {
+  handler: (runtime: IAgentRuntime, params: TParams) => Promise<TResult>
+
+  provider: string
+
+  priority?: number
+
+  registrationOrder?: number
+
+  metadata?: ModelRegistrationMetadata
+}
+
+export interface ModelRegistrationMetadata {
+  contextWindowTokens?: number
+
+  maxOutputTokens?: number
+
+  displayModel?: string
+
+  displayModelSetting?: string
+
+  displayModelSettings?: string[]
+
+  displayModelDefault?: string
+
+  local?: boolean
+
+  streamable?: boolean
+}
+
+export interface ModelRegistrationInfo {
+  modelType: string
+
+  provider: string
+
+  priority: number
+
+  registrationOrder: number
+
+  metadata?: ModelRegistrationMetadata
+}

@@ -1,0 +1,82 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { failingAs, Foreign, foreign, promised } from "../edge.vibe"
+
+export type SymlinkType = "dir" | "file" | "junction"
+
+export error UnserializableJson { message: string }
+
+export effect function pathExists(target: string) {
+  return as((try FileSystem.FileSystem).access(target), true) catch () => false
+}
+
+export effect function readJson<T = unknown>(file: string) {
+  const contents = try (try FileSystem.FileSystem).readFileString(file, "utf8")
+  return try Effect.try({ try: () => JSON.parse(contents.replace(/^\uFEFF/, "")) as T, catch: (cause) => new Foreign({ cause }) })
+}
+
+export effect function writeJson(file: string, value: unknown, options?: { spaces?: number }) {
+  const serialized = JSON.stringify(value, null, options?.spaces) as string | undefined
+  if (serialized === undefined) throw new UnserializableJson({ message: `Converting ${typeof value} value to JSON is not supported` })
+  try (try FileSystem.FileSystem).writeFileString(file, `${serialized}\n`)
+}
+
+export effect function ensureDir(dir: string) {
+  try (try FileSystem.FileSystem).makeDirectory(dir, { recursive: true })
+}
+
+export effect function remove(target: string) {
+  try (try FileSystem.FileSystem).remove(target, { recursive: true, force: true })
+}
+
+export effect function copy(src: string, dest: string) {
+  try (try FileSystem.FileSystem).copy(src, dest, { overwrite: true })
+}
+
+export effect function ensureSymlink(target: string, linkPath: string, type?: SymlinkType) {
+  const fs = try FileSystem.FileSystem
+  const path = try Path.Path
+  try fs.makeDirectory(path.dirname(linkPath), { recursive: true })
+  try foreign(() => symlink(target, linkPath, type))
+}
+
+module edge {
+  import { Effect, PlatformError } from "effect"
+  import * as NodeServices from "@effect/platform-node/NodeServices"
+  import { Foreign, runDetached } from "../edge.vibe"
+  import { readJson } from "./filesystem.vibe"
+
+  /** @throws {never} */
+  export function onNode<A, E>(effect: Effect.Effect<A, E, NodeServices.NodeServices>): Effect.Effect<A, Exclude<E, PlatformError.PlatformError> | Foreign> {
+    return Effect.provide(
+      Effect.mapError(effect, (error) => error instanceof PlatformError.PlatformError ? new Foreign({ cause: error.cause ?? error }) : error as Exclude<E, PlatformError.PlatformError>),
+      NodeServices.layer,
+    )
+  }
+
+  /** @throws {never} */
+  export function readJsonPromise<T = any>(file: string): Promise<T> {
+    return runDetached(onNode(readJson<T>(file)))
+  }
+}
+import { onNode, readJsonPromise } from edge
+export { onNode, readJsonPromise }
+
+export const pathExistsPromise = promised((target: string) => onNode(pathExists(target)))
+export const writeJsonPromise = promised(failingAs(TypeError, (file: string, value: unknown, options?: { spaces?: number }) => onNode(writeJson(file, value, options))))
+export const ensureDirPromise = promised((dir: string) => onNode(ensureDir(dir)))
+export const removePromise = promised((target: string) => onNode(remove(target)))
+export const copyPromise = promised((src: string, dest: string) => onNode(copy(src, dest)))
+export const ensureSymlinkPromise = promised((target: string, linkPath: string, type?: SymlinkType) => onNode(ensureSymlink(target, linkPath, type)))
+
+module node {
+  import { promises as fsp } from "node:fs"
+
+  export const readFile = fsp.readFile.bind(fsp)
+  export const readdir = fsp.readdir.bind(fsp)
+  export const stat = fsp.stat.bind(fsp)
+  export const unlink = fsp.unlink.bind(fsp)
+  export const rmdir = fsp.rmdir.bind(fsp)
+  export const symlink = fsp.symlink.bind(fsp)
+}
+import { readdir, readFile, rmdir, stat, symlink, unlink } from node
+export { readdir, readFile, rmdir, stat, unlink }

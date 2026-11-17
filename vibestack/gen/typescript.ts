@@ -104,7 +104,6 @@ export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, loc
   const admits = (t: Transition) => call(t.guard!, t.guardParams);
   const applies = (t: Transition) => call(t.name, t.params.map((p) => p.name));
   const when = (t: Transition) => `event.type === ${JSON.stringify(t.name)}`;
-  const result = (t: Transition) => (t.emits ? applies(t) : outputs(applies(t)));
   // A copy through JSON drops what JSON cannot hold; a value it cannot copy at all is not one the program accepts.
   const cloned = [`  let raw: any;`, `  try {`, `    raw = JSON.parse(JSON.stringify(x));`, `  } catch {`, `    return undefined;`, `  }`];
   const parsed = (t: Transition) => `{ ${[`type: ${JSON.stringify(t.name)}`, ...carried(t).map((p) => `${p.name}: ${copy(`raw.${p.name}`, p.type)}`)].join(", ")} }`;
@@ -130,10 +129,13 @@ export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, loc
     `export function ${L("step")}(current: ${state}, event: ${L("Event")}${by}): ${output ? tsType(output.type) : state} {`,
     `  //@ requires ${L("inv")}(current)`,
     `  //@ ensures ${L("inv")}(\\result${output ? ".state" : ""})`,
-    // One case per event, so that the prover checks each on its own rather than past the guards of all before it.
-    `  switch (event.type) {`,
-    ...transitions.map((t) => `    case ${JSON.stringify(t.name)}: return ${t.guard ? `${admits(t)} ? ${result(t)} : ${outputs("current")}` : result(t)};`),
-    `  }`,
+    ...transitions.map((t) => {
+      const condition = when(t);
+      const guard = t.guard ? admits(t) : undefined;
+      const result = t.emits ? applies(t) : outputs(applies(t));
+      return `  if (${condition}) return ${guard ? `${guard} ? ${result} : ${outputs("current")}` : result};`;
+    }),
+    `  return ${outputs("current")};`,
     `}`,
     ``,
     `/**`,

@@ -1,0 +1,62 @@
+// spec/core/routingRegistries.md, "Each registry follows its source identity and ordering policy"
+import type { AgentContext } from "../types/contexts.vibe"
+import type { Memory } from "../types/memory.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+
+export interface DirectActionRoutingRule {
+  readonly id: string
+
+  readonly actionNames: readonly string[]
+
+  readonly replacesActionNames?: readonly string[]
+
+  readonly requiredActionTags: readonly string[]
+
+  readonly contexts: readonly AgentContext[]
+
+  readonly wholeRequest?: {
+    matches(messageText: string, message?: Memory): boolean
+    readonly invalidateFields: readonly string[]
+
+    readonly inputScope?: "domain-only"
+  }
+
+  readonly unavailable?: {
+    readonly code: string
+
+    readonly reply: string
+  }
+
+  matches(messageText: string, message?: Memory): boolean
+}
+
+const rules = new WeakMap<IAgentRuntime, DirectActionRoutingRule[]>()
+
+export function registerDirectActionRoutingRule(
+  runtime: IAgentRuntime,
+  rule: DirectActionRoutingRule,
+): void {
+  const existing = rules.get(runtime)
+  if (existing) {
+    const index = existing.findIndex((candidate) => candidate.id === rule.id)
+    if (index >= 0) {
+      existing[index] = rule
+    } else {
+      existing.push(rule)
+    }
+  } else {
+    rules.set(runtime, [rule])
+  }
+}
+
+export function getDirectActionRoutingRules(
+  runtime: IAgentRuntime,
+): readonly DirectActionRoutingRule[] {
+  return rules.get(runtime) ?? []
+}
+
+export function __resetDirectActionRoutingRulesForTests(
+  runtime: IAgentRuntime,
+): void {
+  rules.delete(runtime)
+}

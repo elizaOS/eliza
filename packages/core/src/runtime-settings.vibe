@@ -1,0 +1,32 @@
+// spec/core/runtime.md, "Story: Initialize an explicit host composition"
+import type { Character } from "./types/agent.vibe"
+import { processEnv } from "./utils/environment.vibe"
+
+export function flattenRuntimeSettings(
+  character: Character,
+  env: NodeJS.ProcessEnv = processEnv(),
+): Record<string, string> {
+  const out: Record<string, string> = {}
+
+  for (const [key, value] of Object.entries(env)) {
+    if (value !== undefined && key) out[key] = value
+  }
+
+  const settings = character.settings && typeof character.settings === "object"
+    ? character.settings
+    : {}
+  for (const [key, value] of Object.entries(settings)) {
+    if (value === undefined || value === null) continue
+    if (key === "secrets" && typeof value === "object") continue
+    out[key] = String(value)
+  }
+
+  for (const secrets of [settings.secrets, character.secrets]) {
+    if (!secrets || typeof secrets !== "object") continue
+    for (const [key, value] of Object.entries(secrets)) {
+      if (value !== undefined && value !== null) out[key] = String(value)
+    }
+  }
+
+  return out
+}

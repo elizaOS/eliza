@@ -1,0 +1,272 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
+import { runDetached, thrown } from "../edge.vibe"
+import type { Memory } from "../types/memory.vibe"
+import type { PipelineHookSpec } from "../types/pipeline-hooks.vibe"
+import type { ContentValue } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import {
+  containsExternalEnvelopeMaterial,
+  detectSuspiciousPatterns,
+  type ExternalContentSource,
+  extractWrappedExternalContent,
+  wrapExternalContent,
+} from "./external-content.vibe"
+import { SecretSwapSession, substituteSecretText } from "./secret-swap.vibe"
+
+const PUBLIC_CHANNEL_SOURCES = new Set([
+  "discord",
+  "telegram",
+  "twitter",
+  "slack",
+  "whatsapp",
+  "bluebubbles",
+  "imessage",
+  "sms",
+  "webhook",
+  "api",
+])
+
+const FINANCIAL_COMMAND_PATTERNS = [
+  /\bsend\s+\d+(?:\.\d+)?\s+(?:sol|eth|usdc|usdt|btc)\b/i,
+  /\btransfer\s+\d+(?:\.\d+)?\s+(?:sol|eth|usdc|usdt)\b/i,
+  /\btransfer\s+(?:all|everything|max)\b/i,
+  /\bswap\s+all\b/i,
+]
+
+export type IncomingMessageSecurityMetadata = {
+  promptInjectionSuspected?: boolean
+  promptInjectionPatterns?: string[]
+  externalContentWrapped?: boolean
+
+  userPayloadText?: string
+}
+
+const AUTONOMY_INTERNAL_SOURCE = "autonomy-service"
+
+function stripUntrustedAutonomyMarker(message: Memory): void {
+  const metadata = message.content.metadata
+  if (typeof metadata !== "object" || metadata === null) {
+    return
+  }
+  const source = typeof message.content.source === "string" ? message.content.source : ""
+  if (source === AUTONOMY_INTERNAL_SOURCE) {
+    return
+  }
+  if ("isAutonomous" in metadata) {
+    delete (metadata as Record<string, unknown>).isAutonomous
+  }
+}
+
+function resolveExternalSource(
+  source: string | undefined,
+): ExternalContentSource {
+  const normalized = (source ?? "").trim().toLowerCase()
+  if (normalized.includes("discord")) return "api"
+  if (normalized.includes("telegram")) return "api"
+  if (normalized.includes("webhook")) return "webhook"
+  if (PUBLIC_CHANNEL_SOURCES.has(normalized)) {
+    return normalized === "webhook" ? "webhook" : "api"
+  }
+  return "unknown"
+}
+
+function shouldTreatSourceAsUntrusted(source: string | undefined): boolean {
+  if (!source) return true
+  const normalized = source.trim().toLowerCase()
+  if (normalized === "autonomy" || normalized === "internal") return false
+  if (normalized === "messageservice" || normalized === "test") return false
+  return (
+    PUBLIC_CHANNEL_SOURCES.has(normalized)
+    || normalized.includes("discord")
+    || normalized.includes("telegram")
+    || normalized.includes("twitter")
+  )
+}
+
+function hasFinancialCommandLanguage(text: string): boolean {
+  return FINANCIAL_COMMAND_PATTERNS.some((pattern) => pattern.test(text))
+}
+
+function readMessageMetadata(message: Memory): IncomingMessageSecurityMetadata {
+  const existing = message.content?.metadata
+  if (typeof existing === "object" && existing !== null) {
+    return existing as IncomingMessageSecurityMetadata
+  }
+  return {}
+}
+
+function isBoundConnectorPayload(
+  renderedText: string,
+  payloadText: string,
+  source: string | undefined,
+): boolean {
+  const rendered = renderedText.trim()
+  const payload = payloadText.trim()
+  if (!payload) return false
+  if (rendered === payload) return true
+  if ((source ?? "").trim().toLowerCase() !== "discord") return false
+
+  const header =
+    /^\[Discord [^\r\n]+?\] @[^\r\n]+? \((?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{2}\/\d{2}\/\d{4} \d{2}:\d{2} [^)\r\n]+\):\s*/u
+      .exec(
+        rendered,
+      )?.[0]
+  if (!header || !rendered.startsWith(payload, header.length)) return false
+  const suffix = rendered.slice(header.length + payload.length)
+  return (
+    suffix.length === 0
+    || /^\r?\n\[platform_reply_reference\]\r?\n[\s\S]*\r?\n\[\/platform_reply_reference\]\r?\n\(in reply to @[^\r\n]*\)$/u
+      .test(
+        suffix,
+      )
+  )
+}
+
+function stripForgedSecurityStamps(message: Memory): void {
+  const metadata = message.content.metadata
+  if (typeof metadata !== "object" || metadata === null) {
+    return
+  }
+  const record = metadata as Record<string, unknown>
+  if ("userPayloadText" in record) {
+    delete record.userPayloadText
+  }
+  if ("externalContentWrapped" in record) {
+    delete record.externalContentWrapped
+  }
+  if ("injectionRiskAdjudication" in record) {
+    delete record.injectionRiskAdjudication
+  }
+}
+
+export function hardenIncomingUserMessage(message: Memory): void {
+  stripUntrustedAutonomyMarker(message)
+  stripForgedSecurityStamps(message)
+
+  const text = typeof message.content.text === "string" ? message.content.text : ""
+  if (!text.trim()) {
+    return
+  }
+
+  const source = typeof message.content.source === "string"
+    ? message.content.source
+    : undefined
+  const metadata = readMessageMetadata(message)
+  const matches = detectSuspiciousPatterns(text)
+  const financialLanguage = hasFinancialCommandLanguage(text)
+
+  if (matches.length > 0 || financialLanguage) {
+    metadata.promptInjectionSuspected = true
+    metadata.promptInjectionPatterns = matches
+  }
+
+  if (shouldTreatSourceAsUntrusted(source)) {
+    const connectorText = message.content.currentMessageText
+    const trimmedConnectorText = typeof connectorText === "string" ? connectorText.trim() : ""
+
+    metadata.userPayloadText = trimmedConnectorText
+        && isBoundConnectorPayload(text, trimmedConnectorText, source)
+      ? trimmedConnectorText
+      : text
+    message.content.text = wrapExternalContent(text, {
+      source: resolveExternalSource(source),
+      includeWarning: true,
+      purpose: "incoming_message",
+    })
+    metadata.externalContentWrapped = true
+  }
+
+  message.content.metadata = metadata as { [key: string]: ContentValue }
+}
+
+export effect function scrubIncomingMessageTextForStorage(text: string) {
+  const session = new SecretSwapSession()
+  return session
+    .restoreUserReplyText(try substituteSecretText(session, text))
+    .replaceAll("[redacted credential]", "***")
+}
+export const scrubIncomingMessageTextForStorageOrThrow = thrown(scrubIncomingMessageTextForStorage)
+
+function resolveRetainedCandidate(message: Memory): string {
+  const text = typeof message.content?.text === "string" ? message.content.text : ""
+  const metadata = readMessageMetadata(message)
+  const retained = metadata.userPayloadText
+  if (typeof retained === "string" && retained.trim().length > 0) {
+    return retained.trim()
+  }
+
+  const connectorText = message.content?.currentMessageText
+  const source = typeof message.content?.source === "string"
+    ? message.content.source
+    : undefined
+  if (
+    typeof connectorText === "string"
+    && connectorText.trim().length > 0
+    && isBoundConnectorPayload(text, connectorText, source)
+  ) {
+    return connectorText.trim()
+  }
+  if (metadata.externalContentWrapped === true) {
+    return (extractWrappedExternalContent(text) ?? text).trim()
+  }
+  return text.trim()
+}
+
+export function unwrapUserMessageText(message: Memory): string {
+  const trimmed = resolveRetainedCandidate(message)
+  return containsExternalEnvelopeMaterial(trimmed) ? "" : trimmed
+}
+
+export function unwrapUserMessageTextForDetection(message: Memory): string {
+  return resolveRetainedCandidate(message)
+}
+
+export function messageHasPromptInjectionFlag(message: Memory): boolean {
+  const metadata = readMessageMetadata(message)
+  return metadata.promptInjectionSuspected === true
+}
+
+effect function secureIncomingMessage(message: Memory) {
+  hardenIncomingUserMessage(message)
+  const text = typeof message.content.text === "string"
+    ? message.content.text
+    : ""
+  if (text) {
+    message.content.text = try scrubIncomingMessageTextForStorage(text)
+  }
+
+  const connectorText = message.content.currentMessageText
+  if (typeof connectorText === "string" && connectorText) {
+    message.content.currentMessageText = try scrubIncomingMessageTextForStorage(connectorText)
+  }
+  const metadata = message.content.metadata
+  if (typeof metadata === "object" && metadata !== null) {
+    const record = metadata as Record<string, unknown>
+    if (
+      typeof record.userPayloadText === "string"
+      && record.userPayloadText
+    ) {
+      record.userPayloadText = try scrubIncomingMessageTextForStorage(
+        record.userPayloadText,
+      )
+    }
+  }
+}
+
+export function registerCoreIncomingMessageSecurityHook(
+  runtime: IAgentRuntime,
+): void {
+  const spec: PipelineHookSpec = {
+    id: "core:incoming-message-security",
+    phase: "incoming_before_compose",
+    position: 5,
+    mutatesPrimary: true,
+    handler: (_runtime, ctx) => {
+      if (ctx.phase !== "incoming_before_compose") {
+        return
+      }
+      return runDetached(secureIncomingMessage(ctx.message))
+    },
+  }
+  runtime.registerPipelineHook(spec)
+}

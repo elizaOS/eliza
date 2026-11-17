@@ -1,0 +1,185 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { JsonValue, UUID } from "./primitives.vibe"
+
+export type NotificationPriority = "low" | "normal" | "high" | "urgent"
+
+export type NotificationTier = "interrupt" | "digest" | "silent"
+
+export type NotificationCategory =
+  | "reminder"
+  | "task"
+  | "workflow"
+  | "agent"
+  | "approval"
+  | "message"
+  | "health"
+  | "system"
+  | "general"
+
+export interface AgentNotification {
+  id: UUID
+
+  nativeEpoch?: string
+  nativeSequence?: number
+
+  title: string
+
+  body?: string
+
+  category: NotificationCategory
+
+  priority: NotificationPriority
+
+  source: string
+
+  deepLink?: string
+
+  icon?: string
+
+  groupKey?: string
+
+  data?: Record<string, JsonValue>
+
+  createdAt: number
+
+  readAt?: number | null
+
+  expiresAt?: number | null
+
+  agentId?: UUID
+}
+
+export interface NotificationInput {
+  title: string
+  body?: string
+  category?: NotificationCategory
+  priority?: NotificationPriority
+  source?: string
+  deepLink?: string
+  icon?: string
+  groupKey?: string
+  data?: Record<string, JsonValue>
+
+  expiresAt?: number | null
+  agentId?: UUID
+}
+
+export interface NotificationQuery {
+  unreadOnly?: boolean
+
+  category?: NotificationCategory
+
+  limit?: number
+}
+
+export interface NativeNotification extends
+  Pick<
+    AgentNotification,
+    | "id"
+    | "title"
+    | "category"
+    | "priority"
+    | "createdAt"
+    | "deepLink"
+    | "groupKey"
+  >
+{
+  body: string
+  readAt: number | null
+  expiresAt: number | null
+  nativeEpoch: string
+  nativeSequence: number
+
+  data?: { ownerType?: string; conversationId?: string; messageId?: string }
+}
+
+export interface NotificationInboxSnapshot {
+  version: 2
+  notifications: AgentNotification[]
+  nativeEpoch: string
+  nativeSequence: number
+  nativeSequences: Record<string, number>
+}
+
+export interface NativeNotificationQuery {
+  nativeEpoch?: string
+  afterSequence?: number
+  throughSequence?: number
+  limit?: number
+}
+
+export interface NativeNotificationPage {
+  notifications: NativeNotification[]
+  nativeEpoch: string
+  throughSequence: number
+
+  nextSequence: number
+  complete: boolean
+  unreadCount: number
+  serviceStatus: "ready"
+}
+
+export const NATIVE_NOTIFICATION_PAGE_LIMIT = 128
+export const NATIVE_NOTIFICATION_RECORD_BYTES = 16 * 1024
+export const NATIVE_NOTIFICATION_PAGE_BYTES = 256 * 1024
+
+export interface NotificationEventData {
+  type: "notification" | "notification_update"
+
+  removed?: boolean
+  notification: AgentNotification
+
+  nativeNotification?: NativeNotification
+  nativeProjectionError?: {
+    code: string
+    notificationId: string
+    nativeEpoch: string
+    nativeSequence: number
+  }
+
+  unreadCount: number
+
+  [key: string]: unknown
+}
+
+export const DEFAULT_NOTIFICATION_CATEGORY: NotificationCategory = "general"
+
+export const DEFAULT_NOTIFICATION_PRIORITY: NotificationPriority = "normal"
+
+export const DEFAULT_NOTIFICATION_SOURCE = "agent"
+
+export const NOTIFICATION_STREAM = "notification" as const
+
+export const NOTIFICATION_COUNT_KEY = "count" as const
+
+export const SILENT_TIER_DEFAULT_EXPIRY_MS = 24 * 60 * 60 * 1000
+
+export function tierForPriority(
+  priority: NotificationPriority,
+): NotificationTier {
+  switch (priority) {
+    case "urgent":
+    case "high":
+      return "interrupt"
+    case "normal":
+      return "digest"
+    case "low":
+      return "silent"
+  }
+}
+
+export function defaultPriorityForCategory(
+  category: NotificationCategory,
+): NotificationPriority {
+  switch (category) {
+    case "approval":
+      return "high"
+    case "task":
+    case "workflow":
+      return "normal"
+    case "system":
+      return "low"
+    default:
+      return DEFAULT_NOTIFICATION_PRIORITY
+  }
+}

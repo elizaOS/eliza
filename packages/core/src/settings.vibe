@@ -1,0 +1,433 @@
+// spec/core/settingsKeys.md, "Production rejects unset and public salts on refresh"; spec/core/settingsKeys.md, "A configured private salt always has a positive key identity"; spec/core/settingsKeys.md, "Recognized ciphertext fails explicitly when authentication or decryption fails"; spec/core/settingsKeys.md, "The ephemeral-key warning is emitted once until explicit cache clearing"
+import { Machine, cacheValid, encryptionRequired, machine, type EnvelopeKind, type KeyCache, type SaltKind } from "../gen/core__settingsKeys.effect.vibe"
+import { failingAs, foreign, Foreign, promised, thrown, thrownValue } from "./edge.vibe"
+import { createUniqueUuid } from "./entities.vibe"
+import { ElizaError } from "./errors.vibe"
+import { logger } from "./logger.vibe"
+import { sha256Hex } from "./runtime/trajectory-provider-attribution.vibe"
+import { own } from "./owned.vibe"
+import type { Character } from "./types/agent.vibe"
+import type { World } from "./types/environment.vibe"
+import type { IAgentRuntime } from "./types/runtime.vibe"
+import type { Setting, SetupConfig, WorldSettings } from "./types/settings.vibe"
+import { BufferUtils } from "./utils/buffer.vibe"
+import { createDecipheriv, decryptAes256Gcm, encryptAes256Gcm } from "./utils/crypto-compat.vibe"
+import { getEnv, getEnvironment } from "./utils/environment.vibe"
+
+export function createSettingFromConfig(
+  configSetting: Omit<Setting, "value">,
+): Setting {
+  return {
+    name: configSetting.name,
+    description: configSetting.description,
+    usageDescription: configSetting.usageDescription || "",
+    value: null,
+    required: configSetting.required,
+    validation: configSetting.validation || undefined,
+    public: configSetting.public || false,
+    secret: configSetting.secret || false,
+    dependsOn: configSetting.dependsOn || [],
+    onSetAction: configSetting.onSetAction || undefined,
+    visibleIf: configSetting.visibleIf || undefined,
+  }
+}
+
+export error UnsafeProductionSalt { message: string }
+
+const PUBLICLY_KNOWN_SECRET_SALT = "secretsalt"
+const SALT_CACHE_TTL_MS = 300000
+const PRIVATE_KEY = 1
+const EPHEMERAL_KEY = 2
+
+interface SaltKeys {
+  privateSalt: string
+  ephemeralSalt: string | undefined
+  refreshedAt: number
+}
+
+effect function saltKeyMachine() {
+  provide machine() {
+    return try own(try Machine, { privateSalt: "", ephemeralSalt: undefined, refreshedAt: 0 } as SaltKeys)
+  }
+}
+
+const saltKeys = Effect.runSync(saltKeyMachine())
+
+function selectedSalt(keys: SaltKeys, state: KeyCache): string {
+  if (state.cachedId === PRIVATE_KEY) return keys.privateSalt
+  return keys.ephemeralSalt ?? BufferUtils.toHex(BufferUtils.randomBytes(32))
+}
+
+function saltKind(envSalt: string): SaltKind {
+  if (envSalt === "") return "UnsetSalt"
+  return envSalt === PUBLICLY_KNOWN_SECRET_SALT ? "PublicSalt" : "PrivateSalt"
+}
+
+function elapsedTicks(elapsed: number): number {
+  if (!(elapsed < SALT_CACHE_TTL_MS)) return SALT_CACHE_TTL_MS
+  return elapsed > 0 ? Math.floor(elapsed) : 0
+}
+
+effect function cachedSalt(now: number) {
+  const tick = try saltKeys.read((state, keys) => state.cachedAt + elapsedTicks(now - keys.refreshedAt))
+  return try orDie(saltKeys.step({ type: "setClock", now: tick }, (keys, state) =>
+    [cacheValid(state) ? selectedSalt(keys, state) : undefined, keys] as const))
+}
+
+export effect function getSalt() {
+  const now = Date.now()
+  const cached = try cachedSalt(now)
+  if (cached !== undefined) return cached
+
+  getEnvironment().clearCache()
+  const envSalt = getEnv("SECRET_SALT", "") || ""
+  const production = (getEnv("NODE_ENV", "") || "").toLowerCase() === "production"
+  const kind = saltKind(envSalt)
+  const configured = try orDie(saltKeys.step(
+    { type: "configure", production, kind, keyId: kind === "PrivateSalt" ? PRIVATE_KEY : 0 },
+    (keys, state) => [state, kind === "PrivateSalt" ? { ...keys, privateSalt: envSalt } : keys] as const,
+  ))
+  const [state, value] = try orDie(saltKeys.step({ type: "readKey", freshId: EPHEMERAL_KEY }, (keys, state): readonly [readonly [KeyCache, string | undefined], SaltKeys] => {
+    if (state.result !== "KeyReady") return [[state, undefined], keys] as const
+    const salt = selectedSalt(keys, state)
+    const refreshed = { ...keys, refreshedAt: now }
+    return [[state, salt], state.cachedId === EPHEMERAL_KEY ? { ...refreshed, ephemeralSalt: salt } : refreshed] as const
+  }))
+
+  if (value === undefined) {
+    throw new UnsafeProductionSalt({ message: "SECRET_SALT must be set to a non-default value in production." })
+  }
+  if (state.warningCount > configured.warningCount) {
+    logger.warn(
+      { src: "core:settings", event: "core.settings.ephemeral_secret_salt" },
+      "SECRET_SALT is not set — generated an EPHEMERAL random salt for this process. "
+        + "Settings encrypted now will NOT be decryptable after restart. "
+        + "Set SECRET_SALT to a stable random value to persist encrypted settings.",
+    )
+  }
+  return value
+}
+
+export const getSaltOrThrow = thrown(failingAs(Error, getSalt))
+
+export function clearSaltCache(): void {
+  Effect.runSync(orDie(saltKeys.step({ type: "clearCache" }, (keys) => [undefined, keys] as const)))
+}
+
+const SETTINGS_V2_AAD = new TextEncoder().encode("elizaos:settings:v2")
+
+function isEncryptedV1(value: string): boolean {
+  if (value.charCodeAt(32) !== 58) return false
+  const parts = value.split(":")
+  if (parts.length !== 2) return false
+
+  const [ivHex, ciphertextHex] = parts
+  return (
+    /^[0-9a-fA-F]{32}$/.test(ivHex)
+    && /^[0-9a-fA-F]{32,}$/.test(ciphertextHex)
+    && ciphertextHex.length % 32 === 0
+  )
+}
+
+function isEncryptedV2(value: string): boolean {
+  if (!value.startsWith("v2:")) return false
+  const parts = value.split(":")
+  if (parts.length !== 4) return false
+  return BufferUtils.fromHex(parts[1]).length === 12 && BufferUtils.fromHex(parts[3]).length === 16
+}
+
+function envelopeKind(value: string, legacyFirst = false): EnvelopeKind {
+  if (legacyFirst && isEncryptedV1(value)) return "LegacyCbc"
+  if (isEncryptedV2(value)) return "AuthenticatedGcm"
+  return !legacyFirst && isEncryptedV1(value) ? "LegacyCbc" : "Plaintext"
+}
+
+function settingsKey(salt: string) {
+  return BufferUtils.fromHex(sha256Hex(salt))
+}
+
+export effect function encryptStringValue(value: string, salt: string) {
+  if (!encryptionRequired(envelopeKind(value, true))) {
+    return value
+  }
+
+  const key = settingsKey(salt)
+  const iv = BufferUtils.randomBytes(12)
+  const plaintextBytes = BufferUtils.fromString(value, "utf8")
+  const { ciphertext, tag } = try encryptAes256Gcm(key, iv, plaintextBytes, SETTINGS_V2_AAD)
+
+  return `v2:${BufferUtils.toHex(iv)}:${BufferUtils.toHex(ciphertext)}:${BufferUtils.toHex(tag)}`
+}
+
+export const encryptStringValueOrThrow = thrown(failingAs(Error, encryptStringValue))
+
+effect function decryptEnvelope(value: string, salt: string) {
+  const kind = envelopeKind(value)
+  if (kind === "Plaintext") {
+    return value
+  }
+  const parts = value.split(":")
+  const key = settingsKey(salt)
+
+  if (kind === "AuthenticatedGcm") {
+    const iv = BufferUtils.fromHex(parts[1])
+    const ciphertext = BufferUtils.fromHex(parts[2])
+    const tag = BufferUtils.fromHex(parts[3])
+    const plaintextBytes = try decryptAes256Gcm(key, iv, ciphertext, tag, SETTINGS_V2_AAD)
+    return BufferUtils.bufferToString(plaintextBytes, "utf8")
+  }
+
+  const decipher = try createDecipheriv("aes-256-cbc", key, BufferUtils.fromHex(parts[0]))
+  return try Effect.try({
+    try: () => decipher.update(parts[1], "hex", "utf8") + decipher.final("utf8"),
+    catch: (cause) => new Foreign({ cause }),
+  })
+}
+
+export effect function decryptStringValue(value: string, salt: string) {
+  return Effect.catchDefect(decryptEnvelope(value, salt), (cause) => fail(new Foreign({ cause }))) catch effect (error) => {
+    throw new ElizaError("Failed to decrypt secret setting", {
+      code: "SETTING_DECRYPTION_FAILED",
+      cause: thrownValue(error),
+      severity: "fatal",
+    })
+  }
+}
+
+export const decryptStringValueOrThrow = thrown(decryptStringValue)
+
+effect function withSecretValue<E>(
+  setting: Setting,
+  salt: string,
+  transform: (value: string, salt: string) => string!E,
+) {
+  const settingCopy = { ...setting }
+
+  if (
+    setting.secret === true
+    && typeof setting.value === "string"
+    && setting.value
+  ) {
+    settingCopy.value = try transform(setting.value, salt)
+  }
+
+  return settingCopy
+}
+
+export effect function saltSettingValue(setting: Setting, salt: string) {
+  return try withSecretValue(setting, salt, encryptStringValue)
+}
+
+export const saltSettingValueOrThrow = thrown(failingAs(Error, saltSettingValue))
+
+export effect function unsaltSettingValue(setting: Setting, salt: string) {
+  return try withSecretValue(setting, salt, decryptStringValue)
+}
+
+export const unsaltSettingValueOrThrow = thrown(unsaltSettingValue)
+
+function extractSettingsRecord(
+  worldSettings: WorldSettings,
+): Record<string, Setting> {
+  if (worldSettings.settings && typeof worldSettings.settings === "object") {
+    return worldSettings.settings
+  }
+  const { settings: _settings, ...rest } = worldSettings as
+    & WorldSettings
+    & Record<string, Setting>
+  return rest
+}
+
+effect function mapWorldSettings<E>(
+  worldSettings: WorldSettings,
+  salt: string,
+  transform: (setting: Setting, salt: string) => Setting!E,
+) {
+  const settings: Record<string, Setting> = {}
+
+  for (const [key, setting] of Object.entries(extractSettingsRecord(worldSettings))) {
+    settings[key] = try transform(setting, salt)
+  }
+
+  if (worldSettings.settings !== undefined) {
+    return { ...worldSettings, settings }
+  }
+  return settings as WorldSettings
+}
+
+export effect function saltWorldSettings(worldSettings: WorldSettings, salt: string) {
+  return try mapWorldSettings(worldSettings, salt, saltSettingValue)
+}
+
+export const saltWorldSettingsOrThrow = thrown(failingAs(Error, saltWorldSettings))
+
+export effect function unsaltWorldSettings(worldSettings: WorldSettings, salt: string) {
+  return try mapWorldSettings(worldSettings, salt, unsaltSettingValue)
+}
+
+export const unsaltWorldSettingsOrThrow = thrown(unsaltWorldSettings)
+
+export effect function updateWorldSettings(
+  runtime: IAgentRuntime,
+  serverId: string,
+  worldSettings: WorldSettings,
+) {
+  const worldId = try createUniqueUuid(runtime, serverId)
+  const world = try foreign(() => runtime.getWorld(worldId))
+
+  if (!world) {
+    logger.error({ src: "core:settings", serverId }, "World not found")
+    return false
+  }
+
+  if (!world.metadata) {
+    world.metadata = {}
+  }
+
+  const salt = try getSalt()
+  world.metadata.settings = try saltWorldSettings(worldSettings, salt)
+
+  try foreign(() => runtime.updateWorld(world))
+
+  return true
+}
+
+export const updateWorldSettingsPromise = promised(failingAs(Error, updateWorldSettings))
+
+export effect function getWorldSettings(runtime: IAgentRuntime, serverId: string) {
+  const worldId = try createUniqueUuid(runtime, serverId)
+  const world = try foreign(() => runtime.getWorld(worldId))
+
+  const settings = world?.metadata?.settings
+  if (!settings) {
+    return null
+  }
+
+  const salt = try getSalt()
+  return try unsaltWorldSettings(settings as WorldSettings, salt)
+}
+
+export const getWorldSettingsPromise = promised(failingAs(Error, getWorldSettings, ElizaError))
+
+export effect function initializeSetup(
+  runtime: IAgentRuntime,
+  world: World,
+  config: SetupConfig,
+) {
+  const existingSettings = world.metadata?.settings
+  if (existingSettings) {
+    logger.debug(
+      { src: "core:settings", serverId: world.messageServerId },
+      "Setup state already exists",
+    )
+
+    const salt = try getSalt()
+    return try unsaltWorldSettings(existingSettings as WorldSettings, salt)
+  }
+
+  const worldSettings: Record<string, Setting> = {}
+
+  if (config.settings) {
+    for (const [key, configSetting] of Object.entries(config.settings)) {
+      worldSettings[key] = createSettingFromConfig(configSetting)
+    }
+  }
+
+  if (!world.metadata) {
+    world.metadata = {}
+  }
+
+  world.metadata.settings = worldSettings as WorldSettings
+
+  try foreign(() => runtime.updateWorld(world))
+
+  logger.info(
+    { src: "core:settings", serverId: world.messageServerId },
+    "Settings config initialized",
+  )
+  return worldSettings as WorldSettings
+}
+
+export const initializeSetupPromise = promised(failingAs(Error, initializeSetup, ElizaError))
+
+effect function mapCharacterSecrets<E>(
+  character: Character,
+  transform: (obj: Record<string, string | number | boolean>, salt: string) => Record<string, string | number | boolean>!E,
+) {
+  const mapped: Character = {
+    ...character,
+    secrets: character.secrets ? { ...character.secrets } : undefined,
+    settings: character.settings
+      ? {
+        ...character.settings,
+        secrets: character.settings.secrets
+          ? { ...character.settings.secrets }
+          : undefined,
+      }
+      : undefined,
+  }
+  const salt = try getSalt()
+
+  if (mapped.secrets) {
+    mapped.secrets = try transform(mapped.secrets, salt)
+  }
+
+  if (mapped.settings?.secrets) {
+    mapped.settings.secrets = try transform(mapped.settings.secrets, salt)
+  }
+
+  return mapped
+}
+
+export effect function encryptedCharacter(character: Character) {
+  return try mapCharacterSecrets(character, encryptObjectValues)
+}
+
+export const encryptedCharacterOrThrow = thrown(failingAs(Error, encryptedCharacter))
+
+export effect function decryptedCharacter(
+  character: Character,
+  _runtime?: IAgentRuntime,
+) {
+  return try mapCharacterSecrets(character, decryptObjectValues)
+}
+
+export const decryptedCharacterOrThrow = thrown(failingAs(Error, decryptedCharacter, ElizaError))
+
+effect function mapStringValues<E>(
+  obj: Record<string, string | number | boolean>,
+  salt: string,
+  transform: (value: string, salt: string) => string!E,
+) {
+  const result: Record<string, string | number | boolean> = {}
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (typeof value === "string" && value) {
+      result[key] = try transform(value, salt)
+    } else {
+      result[key] = value
+    }
+  }
+
+  return result
+}
+
+export effect function encryptObjectValues(
+  obj: Record<string, string | number | boolean>,
+  salt: string,
+) {
+  return try mapStringValues(obj, salt, encryptStringValue)
+}
+
+export const encryptObjectValuesOrThrow = thrown(failingAs(Error, encryptObjectValues))
+
+export effect function decryptObjectValues(
+  obj: Record<string, string | number | boolean>,
+  salt: string,
+) {
+  return try mapStringValues(obj, salt, decryptStringValue)
+}
+
+export const decryptObjectValuesOrThrow = thrown(decryptObjectValues)
+
+export { decryptStringValue as decryptSecret, decryptStringValueOrThrow as decryptSecretOrThrow }

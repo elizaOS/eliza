@@ -1,0 +1,9 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
+export class TurnAbortedError extends Data.TaggedError("TurnAbortedError")<{ readonly reason: string }> {
+  override readonly name = "Error"
+  readonly code = "TURN_ABORTED"
+  constructor(reason: string) {
+    super({ reason })
+    this.message = `Turn aborted: ${reason}`
+  }
+}

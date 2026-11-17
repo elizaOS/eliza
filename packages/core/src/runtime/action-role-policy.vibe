@@ -1,0 +1,158 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/authorization.md, "Role gates combine exclusions, minimum rank and all required memberships"
+import { thrown } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import { logger } from "../logger.vibe"
+import type { RoleGateRole } from "../types/contexts.vibe"
+import { rawEnv } from "../utils/environment.vibe"
+import { normalizeGateRole, roleRank } from "./context-gates.vibe"
+
+let cachedActionRolePolicy: ReadonlyMap<string, RoleGateRole> | undefined
+
+const ACTION_ROLE_POLICY_ROLES = new Set<RoleGateRole>([
+  "NONE",
+  "GUEST",
+  "MEMBER",
+  "ADMIN",
+  "OWNER",
+])
+
+function parseActionRolePolicyRole(value: unknown): RoleGateRole | undefined {
+  if (typeof value !== "string") {
+    return undefined
+  }
+  const normalized = normalizeGateRole(value as RoleGateRole)
+  return ACTION_ROLE_POLICY_ROLES.has(normalized) ? normalized : undefined
+}
+
+effect function readActionRolePolicy(): ReadonlyMap<string, RoleGateRole>!ElizaError {
+  if (cachedActionRolePolicy !== undefined) {
+    return cachedActionRolePolicy
+  }
+  const raw = rawEnv("ACTION_ROLE_POLICY")
+  if (!raw) {
+    cachedActionRolePolicy = new Map()
+    return cachedActionRolePolicy
+  }
+  const parsed: unknown = try Effect.try({
+    try: (): unknown => JSON.parse(raw),
+    catch: (cause) =>
+      new ElizaError("Failed to parse ACTION_ROLE_POLICY", {
+        code: "INVALID_ACTION_ROLE_POLICY",
+        cause,
+      }),
+  })
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new ElizaError("ACTION_ROLE_POLICY must be a JSON object", {
+      code: "INVALID_ACTION_ROLE_POLICY",
+    })
+  }
+  const policy = new Map<string, RoleGateRole>()
+  for (const [actionName, value] of Object.entries(parsed)) {
+    const role = parseActionRolePolicyRole(value)
+    if (!role) {
+      throw new ElizaError("ACTION_ROLE_POLICY contains an invalid role", {
+        code: "INVALID_ACTION_ROLE_POLICY",
+        context: { actionName },
+      })
+    }
+    policy.set(actionName, role)
+  }
+  cachedActionRolePolicy = policy
+  return policy
+}
+
+type PolicyAddressableAction = {
+  name: string
+  contextGate?: {
+    roleGate?: {
+      minRole?: RoleGateRole
+    }
+  }
+  roleGate?: {
+    minRole?: RoleGateRole
+  }
+}
+
+export type ActionRolePolicyWarning =
+  | {
+    type: "unmatched"
+    actionName: string
+    policyRole: RoleGateRole
+  }
+  | {
+    type: "loosens"
+    actionName: string
+    policyRole: RoleGateRole
+    declaredRole: RoleGateRole
+  }
+
+export effect function resolveActionRolePolicyRole(
+  action: string | PolicyAddressableAction,
+): (RoleGateRole | undefined)!ElizaError {
+  return (try readActionRolePolicy()).get(
+    typeof action === "string" ? action : action.name,
+  )
+}
+export const resolveActionRolePolicyRoleOrThrow = thrown(resolveActionRolePolicyRole)
+
+function declaredMinimumRole(
+  action: PolicyAddressableAction,
+): RoleGateRole | undefined {
+  const contextRole = action.contextGate?.roleGate?.minRole
+  const topLevelRole = action.roleGate?.minRole
+  if (!contextRole) return topLevelRole
+  if (!topLevelRole) return contextRole
+  return roleRank(topLevelRole) > roleRank(contextRole)
+    ? topLevelRole
+    : contextRole
+}
+
+export effect function getActionRolePolicyWarnings(
+  actions: readonly PolicyAddressableAction[],
+): ActionRolePolicyWarning[]!ElizaError {
+  const policy = try readActionRolePolicy()
+  const byName = new Map(actions.map((action) => [action.name, action]))
+  const warnings: ActionRolePolicyWarning[] = []
+
+  for (const [actionName, policyRole] of policy) {
+    const action = byName.get(actionName)
+    if (!action) {
+      warnings.push({ type: "unmatched", actionName, policyRole })
+      continue
+    }
+    const declaredRole = declaredMinimumRole(action)
+    if (declaredRole && roleRank(policyRole) < roleRank(declaredRole)) {
+      warnings.push({
+        type: "loosens",
+        actionName,
+        policyRole,
+        declaredRole,
+      })
+    }
+  }
+
+  return warnings
+}
+export const getActionRolePolicyWarningsOrThrow = thrown(getActionRolePolicyWarnings)
+
+export effect function warnOnUnmatchedActionRolePolicyKeys(
+  actions: readonly PolicyAddressableAction[],
+): string[]!ElizaError {
+  const warnings = try getActionRolePolicyWarnings(actions)
+  const unmatched = warnings
+    .filter((warning) => warning.type === "unmatched")
+    .map((warning) => warning.actionName)
+  if (unmatched.length > 0) {
+    logger.warn(
+      `[action-role-policy] ACTION_ROLE_POLICY key(s) match no registered action name and are inert: ${
+        unmatched.join(", ")
+      }`,
+    )
+  }
+  return unmatched
+}
+export const warnOnUnmatchedActionRolePolicyKeysOrThrow = thrown(warnOnUnmatchedActionRolePolicyKeys)
+
+export function _resetActionRolePolicyCacheForTests(): void {
+  cachedActionRolePolicy = undefined
+}

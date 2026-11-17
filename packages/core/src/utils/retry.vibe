@@ -1,0 +1,115 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { Foreign, promised, runDetached } from "../edge.vibe"
+
+module node {
+  import { Effect } from "effect"
+
+  /** @throws {never} */
+  export function unrefSleep(ms: number): Effect.Effect<void> {
+    return Effect.callback<void>((resume) => {
+      const timer = setTimeout(() => resume(Effect.void), ms)
+      timer.unref?.()
+      return Effect.sync(() => clearTimeout(timer))
+    })
+  }
+}
+import { unrefSleep } from node
+export { unrefSleep }
+
+export function timerDelay(ms: unknown): number {
+  const delay = Number(ms)
+  return delay >= 1 && delay <= 2147483647 ? delay : 1
+}
+
+export function sleep(ms: number): Promise<void> {
+  return runDetached(Effect.sleep(timerDelay(ms)))
+}
+
+export function whenAborted(signal: AbortSignal) {
+  return callback<unknown>((resume) => {
+    if (signal.aborted) {
+      resume(succeed(signal.reason))
+      return
+    }
+    const onAbort = () => resume(succeed(signal.reason))
+    signal.addEventListener("abort", onAbort, { once: true })
+    return sync(() => signal.removeEventListener("abort", onAbort))
+  })
+}
+
+export effect function failWhenAborted(signal: AbortSignal) {
+  throw new Foreign({ cause: try whenAborted(signal) })
+}
+
+export effect function sleepWithAbort(ms: number, abortSignal?: AbortSignal) {
+  if (abortSignal?.aborted) throw new Foreign({ cause: abortSignal.reason })
+  if (ms <= 0) return
+  const delay = Effect.sleep(timerDelay(ms))
+  try (abortSignal ? raceFirst(delay, failWhenAborted(abortSignal)) : delay)
+}
+
+export const sleepWithAbortPromise = promised(sleepWithAbort)
+
+export type BackoffPolicy = {
+  initialMs: number
+
+  maxMs: number
+
+  factor: number
+
+  jitter: number
+}
+
+export function computeBackoff(policy: BackoffPolicy, attempt: number): number {
+  const base = policy.initialMs * policy.factor ** Math.max(attempt - 1, 0)
+  const jitter = base * policy.jitter * Math.random()
+  return Math.min(policy.maxMs, Math.round(base + jitter))
+}
+
+export type RetryConfig = {
+  attempts?: number
+
+  minDelayMs?: number
+
+  maxDelayMs?: number
+
+  jitter?: number
+}
+
+const asFiniteNumber = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined
+
+const clampNumber = (
+  value: unknown,
+  fallback: number,
+  min?: number,
+  max?: number,
+): number => {
+  const next = asFiniteNumber(value)
+  if (next === undefined) {
+    return fallback
+  }
+  const floor = typeof min === "number" ? min : Number.NEGATIVE_INFINITY
+  const ceiling = typeof max === "number" ? max : Number.POSITIVE_INFINITY
+  return Math.min(Math.max(next, floor), ceiling)
+}
+
+export function resolveRetryConfig(
+  defaults: Required<RetryConfig>,
+  overrides?: RetryConfig,
+): Required<RetryConfig> {
+  const attempts = Math.max(
+    1,
+    Math.round(clampNumber(overrides?.attempts, defaults.attempts, 1)),
+  )
+  const minDelayMs = Math.max(
+    0,
+    Math.round(clampNumber(overrides?.minDelayMs, defaults.minDelayMs, 0)),
+  )
+  const maxDelayMs = Math.max(
+    minDelayMs,
+    Math.round(clampNumber(overrides?.maxDelayMs, defaults.maxDelayMs, 0)),
+  )
+  const jitter = clampNumber(overrides?.jitter, defaults.jitter, 0, 1)
+  return { attempts, minDelayMs, maxDelayMs, jitter }
+}

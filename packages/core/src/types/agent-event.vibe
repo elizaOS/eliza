@@ -1,0 +1,188 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { UUID } from "./primitives.vibe"
+
+export type AgentEventStream =
+  | "lifecycle"
+  | "tool"
+  | "assistant"
+  | "error"
+  | "heartbeat"
+  | "message"
+  | "action"
+  | "evaluator"
+  | "provider"
+  | "memory"
+  | (string & {})
+
+export type AgentVerboseLevel = "quiet" | "normal" | "verbose" | "debug"
+
+export interface AgentEventPayload {
+  runId: string
+
+  seq: number
+
+  stream: AgentEventStream
+
+  ts: number
+
+  data: Record<string, unknown>
+
+  sessionKey?: string
+
+  agentId?: string
+
+  roomId?: UUID
+}
+
+export interface AgentRunContext {
+  sessionKey?: string
+
+  verboseLevel?: AgentVerboseLevel
+
+  isHeartbeat?: boolean
+
+  agentId?: string
+
+  roomId?: string
+}
+
+export type HeartbeatStatus =
+  | "sent"
+  | "ok-empty"
+  | "ok-token"
+  | "skipped"
+  | "failed"
+
+export type HeartbeatIndicatorType = "ok" | "alert" | "error"
+
+export interface HeartbeatEventPayload {
+  ts: number
+
+  status: HeartbeatStatus
+
+  to?: string
+
+  preview?: string
+
+  durationMs?: number
+
+  hasMedia?: boolean
+
+  reason?: string
+
+  channel?: string
+
+  silent?: boolean
+
+  indicatorType?: HeartbeatIndicatorType
+}
+
+export type AgentEventListener = (event: AgentEventPayload) => void
+
+export type HeartbeatEventListener = (event: HeartbeatEventPayload) => void
+
+export type AgentEventInput = Omit<AgentEventPayload, "seq" | "ts">
+
+export type HeartbeatEventInput = Omit<HeartbeatEventPayload, "ts">
+
+export interface MessageEventData {
+  type: "received" | "sent" | "queued" | "failed"
+
+  messageId?: UUID
+
+  channel?: string
+
+  userId?: UUID
+
+  roomId?: UUID
+
+  content?: string
+
+  hasAttachments?: boolean
+
+  deliveredAt?: number
+
+  error?: string
+
+  [key: string]: unknown
+}
+
+export interface ActionEventData {
+  type: "start" | "complete" | "error" | "skipped"
+
+  actionName: string
+
+  handler?: string
+
+  input?: Record<string, unknown>
+
+  output?: Record<string, unknown>
+
+  duration?: number
+
+  success?: boolean
+
+  error?: string
+
+  memoryId?: UUID
+
+  [key: string]: unknown
+}
+
+export interface EvaluatorEventData {
+  type: "start" | "complete" | "error" | "skipped"
+
+  evaluatorName: string
+
+  validated?: boolean
+
+  result?: unknown
+
+  duration?: number
+
+  error?: string
+
+  messageId?: UUID
+
+  [key: string]: unknown
+}
+
+export interface ProviderEventData {
+  type: "start" | "complete" | "error" | "cached"
+
+  providerName: string
+
+  data?: unknown
+
+  duration?: number
+
+  fromCache?: boolean
+
+  error?: string
+
+  tokens?: number
+
+  [key: string]: unknown
+}
+
+export interface MemoryEventData {
+  type: "create" | "update" | "delete" | "search" | "retrieved"
+
+  memoryId?: UUID
+
+  tableName?: string
+
+  roomId?: UUID
+
+  count?: number
+
+  success?: boolean
+
+  duration?: number
+
+  error?: string
+
+  preview?: string
+
+  [key: string]: unknown
+}

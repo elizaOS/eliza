@@ -1,0 +1,167 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { foreign, type Foreign } from "../edge.vibe"
+import logger from "../logger.vibe"
+import { toWellFormedUnicode } from "./unicode.vibe"
+
+export interface RecursiveCharacterTextSplitterParams {
+  chunkSize?: number
+  chunkOverlap?: number
+  separators?: string[]
+  keepSeparator?: boolean
+  lengthFunction?: (text: string) => number | Promise<number>
+}
+
+export type SplitterSettings = Required<RecursiveCharacterTextSplitterParams>
+
+export error OverlapNotBelowChunkSize { message: string }
+
+export effect function splitterSettings(fields?: RecursiveCharacterTextSplitterParams): SplitterSettings!OverlapNotBelowChunkSize {
+  const chunkSize = fields?.chunkSize ?? 1000
+  const chunkOverlap = fields?.chunkOverlap ?? 200
+  if (chunkOverlap >= chunkSize) {
+    throw new OverlapNotBelowChunkSize({ message: "Cannot have chunkOverlap >= chunkSize" })
+  }
+  return {
+    chunkSize,
+    chunkOverlap,
+    separators: fields?.separators ?? ["\n\n", "\n", " ", ""],
+    keepSeparator: fields?.keepSeparator ?? true,
+    lengthFunction: fields?.lengthFunction ?? ((t: string) => t.length),
+  }
+}
+
+function splitOnSeparator(text: string, separator: string, keepSeparator: boolean): string[] {
+  let splits: string[]
+  if (separator) {
+    if (keepSeparator) {
+      const regexEscapedSeparator = separator.replace(/[/\-\\^$*+?.()|[\]{}]/g, "\\$&")
+      splits = text.split(new RegExp(`(?=${regexEscapedSeparator})`))
+    } else {
+      splits = text.split(separator)
+    }
+  } else {
+    splits = Array.from(text)
+  }
+  return splits.filter((s) => s !== "")
+}
+
+function joinDocs(docs: string[], separator: string): string | null {
+  const joined = docs.join(separator).trim()
+  return joined === "" ? null : joined
+}
+
+function warnOversized(size: number, settings: SplitterSettings): void {
+  logger.warn(
+    `[RecursiveCharacterTextSplitter] Created a chunk of size ${size}, which is longer than the specified ${settings.chunkSize}`,
+  )
+}
+
+effect function measure(settings: SplitterSettings, text: string) {
+  return try foreign(() => settings.lengthFunction(text))
+}
+
+effect function mergeSplits(settings: SplitterSettings, splits: string[], separator: string) {
+  const docs: string[] = []
+  const currentDoc: string[] = []
+  const separatorLength = try measure(settings, separator)
+  let total = 0
+  for (const d of splits) {
+    const len = try measure(settings, d)
+    if (total + len + (currentDoc.length > 0 ? separatorLength : 0) > settings.chunkSize) {
+      if (total > settings.chunkSize) warnOversized(total, settings)
+      if (currentDoc.length > 0) {
+        const doc = joinDocs(currentDoc, separator)
+        if (doc !== null) docs.push(doc)
+        while (
+          total > settings.chunkOverlap
+          || (total + len + (currentDoc.length > 0 ? separatorLength : 0) > settings.chunkSize && total > 0)
+        ) {
+          const first = currentDoc[0]
+          if (first === undefined) break
+          total -= (try measure(settings, first)) + (currentDoc.length > 1 ? separatorLength : 0)
+          currentDoc.shift()
+        }
+      }
+    }
+    currentDoc.push(d)
+    total += len + (currentDoc.length > 1 ? separatorLength : 0)
+  }
+  const doc = joinDocs(currentDoc, separator)
+  if (doc !== null) docs.push(doc)
+  return docs
+}
+
+effect function splitRecursively(settings: SplitterSettings, text: string, separators: string[]): string[]!Foreign {
+  const finalChunks: string[] = []
+  let separator = separators[separators.length - 1] ?? ""
+  let newSeparators: string[] | undefined
+  for (let i = 0; i < separators.length; i += 1) {
+    const s = separators[i]
+    if (s === undefined) continue
+    if (s === "") {
+      separator = s
+      break
+    }
+    if (text.includes(s)) {
+      separator = s
+      newSeparators = separators.slice(i + 1)
+      break
+    }
+  }
+  const goodSplits: string[] = []
+  const sepForMerge = settings.keepSeparator ? "" : separator
+  for (const s of splitOnSeparator(text, separator, settings.keepSeparator)) {
+    const splitLength = try measure(settings, s)
+    if (splitLength <= settings.chunkSize) {
+      goodSplits.push(s)
+      continue
+    }
+    if (goodSplits.length) {
+      const merged = try mergeSplits(settings, goodSplits, sepForMerge)
+      for (const chunk of merged) finalChunks.push(chunk)
+      goodSplits.length = 0
+    }
+    if (newSeparators) {
+      const nested = try splitRecursively(settings, s, newSeparators)
+      for (const chunk of nested) finalChunks.push(chunk)
+    } else {
+      if (splitLength > settings.chunkSize) warnOversized(splitLength, settings)
+      finalChunks.push(s)
+    }
+  }
+  if (goodSplits.length) {
+    const merged = try mergeSplits(settings, goodSplits, sepForMerge)
+    for (const chunk of merged) finalChunks.push(chunk)
+  }
+  return finalChunks
+}
+
+export effect function splitWithSettings(settings: SplitterSettings, text: string) {
+  return try splitRecursively(settings, toWellFormedUnicode(text), settings.separators)
+}
+
+module edge {
+  import { asLegacy, runDetached, runDetachedSync } from "../edge.vibe"
+  import {
+    splitterSettings,
+    splitWithSettings,
+    type RecursiveCharacterTextSplitterParams,
+    type SplitterSettings,
+  } from "./recursive-character-text-splitter.vibe"
+
+  export class RecursiveCharacterTextSplitter {
+    private readonly settings: SplitterSettings
+
+    /** @throws {Error} */
+    constructor(fields?: RecursiveCharacterTextSplitterParams) {
+      this.settings = runDetachedSync(asLegacy(Error, splitterSettings(fields)))
+    }
+
+    /** @throws {never} */
+    async splitText(text: string): Promise<string[]> {
+      return runDetached(splitWithSettings(this.settings, text))
+    }
+  }
+}
+import { RecursiveCharacterTextSplitter } from edge
+export { RecursiveCharacterTextSplitter }

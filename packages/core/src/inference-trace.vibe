@@ -1,0 +1,12 @@
+// spec/core/traces.md, "Story: Retain enrich and retire active trace records"; spec/core/protocols.md, "A public value retains identity and explicitly declared version"
+import { randomUuid } from "./utils/uuid.vibe"
+
+export const INFERENCE_TRACE_ID_PATTERN = /^[0-9a-f]{32}$/
+
+export function isInferenceTraceId(value: unknown): value is string {
+  return typeof value === "string" && INFERENCE_TRACE_ID_PATTERN.test(value)
+}
+
+export function mintInferenceTraceId(): string {
+  return randomUuid().replace(/-/g, "")
+}

@@ -1,0 +1,1577 @@
+// spec/core/streamMarkable.md, "Bare push echoes its input and the context gates completed delivery"; spec/core/streamRevisions.md, "Allocation increments and wraps the maximum safe integer to one"; spec/core/structuredStreamState.md, "Newline extraction preserves every unit and separates CRLF correctly"; spec/core/structuredStreamState.md, "Field pointers, emitted prefixes and first done values remain independent"; spec/core/streamStructured.md, "Observations derive field lengths and validation from the authoritative records"; spec/core/skeletonStreamState.md, "Buffer and gate ownership survive chunk boundaries"; spec/core/skeletonStreamState.md, "Reasoning filter carries and visible prefixes retain exact units"; spec/core/skeletonStreamState.md, "Active JSON strings retain escape prefixes until sufficient input arrives"; spec/core/skeletonStreamState.md, "Unordered key search preserves the exact possible key suffix"; spec/core/skeletonStreamState.md, "Parts arrays require kind before an allowed string value"; spec/core/skeletonStreamState.md, "Ordered spans retain partial literal and value positions"; spec/core/streamSkeleton.md, "Visible lengths and gate decisions derive from the authoritative stream"
+import { foreign, foreignSync, runDetached } from "../edge.vibe"
+import type { StreamingContext } from "../streaming-context.vibe"
+import type { StreamChunkCallback } from "../types/components.vibe"
+import type { StructuredStreamGate } from "../types/model.vibe"
+import type { SchemaRow, StreamEvent } from "../types/state.vibe"
+import type { IStreamExtractor, IStreamingRetryState, StructuredFieldEventCallbacks } from "../types/streaming.vibe"
+
+export type StreamErrorCode =
+  | "CHUNK_TOO_LARGE"
+  | "BUFFER_OVERFLOW"
+  | "PARSE_ERROR"
+  | "TIMEOUT"
+  | "ABORTED"
+
+export class StreamError extends Data.TaggedError("StreamError")<{
+  readonly code: StreamErrorCode
+  readonly details?: Record<string, unknown>
+}> {
+  override readonly name = "StreamError"
+
+  constructor(code: StreamErrorCode, message: string, details?: Record<string, unknown>) {
+    super({ code, details })
+    this.message = message
+  }
+
+  static isStreamError(error: unknown): error is StreamError {
+    return error instanceof StreamError
+  }
+}
+
+const MAX_CHUNK_SIZE = 1024 * 1024
+
+export error ChunkNotString { message: string }
+
+export effect function validateChunkSize(chunk: string): void!(ChunkNotString | StreamError) {
+  if (typeof chunk !== "string") {
+    throw new ChunkNotString({ message: "Stream chunk must be a string" })
+  }
+  if (chunk.length > MAX_CHUNK_SIZE) {
+    throw new StreamError(
+      "CHUNK_TOO_LARGE",
+      `Chunk size ${chunk.length} exceeds maximum allowed ${MAX_CHUNK_SIZE}`,
+      {
+        chunkSize: chunk.length,
+        maxAllowed: MAX_CHUNK_SIZE,
+      },
+    )
+  }
+}
+
+export error GateWithoutUnordered { message: string }
+
+export effect function requireUnorderedGate(config: { gate?: StructuredStreamGate; unordered?: boolean }): void!GateWithoutUnordered {
+  if (config.gate && !config.unordered) {
+    throw new GateWithoutUnordered({ message: "ResponseSkeletonStreamExtractor gate requires unordered extraction" })
+  }
+}
+
+export type ExtractorState =
+  | "streaming"
+  | "validating"
+  | "retrying"
+  | "complete"
+  | "failed"
+
+export type FieldState =
+  | "pending"
+  | "partial"
+  | "complete"
+  | "invalid"
+
+export interface StructuredFieldStreamExtractorConfig extends StructuredFieldEventCallbacks {
+  level: 0 | 1 | 2 | 3
+
+  schema: SchemaRow[]
+
+  streamFields: string[]
+
+  onChunk: (
+    chunk: string,
+    field?: string,
+    accumulated?: string,
+    streamRevision?: number,
+  ) => void
+
+  onEvent?: (event: StreamEvent) => void
+
+  abortSignal?: AbortSignal
+}
+
+export interface ValidationDiagnosis {
+  missingFields: string[]
+
+  invalidFields: string[]
+
+  incompleteFields: string[]
+}
+
+export function createStreamingRetryState(
+  extractor: IStreamExtractor,
+): IStreamingRetryState & { appendText: (text: string) => void } {
+  let streamedText = ""
+
+  return {
+    getStreamedText: () => {
+      const buffered = extractor.flush?.() ?? ""
+      if (buffered) {
+        streamedText += buffered
+      }
+      return streamedText
+    },
+    isComplete: () => extractor.done,
+    reset: () => {
+      extractor.reset?.()
+      streamedText = ""
+    },
+
+    appendText: (text: string) => {
+      streamedText += text
+    },
+  }
+}
+
+effect function deliverChunk(
+  extractor: IStreamExtractor,
+  retryState: ReturnType<typeof createStreamingRetryState>,
+  onStreamChunk: StreamChunkCallback,
+  chunk: string,
+  msgId?: string,
+  accumulated?: string,
+  streamRevision?: number,
+) {
+  if (extractor.done) return
+  const textToStream = try foreignSync(() => extractor.push(chunk))
+  if (textToStream) {
+    retryState.appendText(textToStream)
+    try foreign(() => onStreamChunk(textToStream, msgId, accumulated, streamRevision))
+  }
+}
+
+export function createStreamingContext(
+  extractor: IStreamExtractor,
+  onStreamChunk: StreamChunkCallback,
+  messageId?: string,
+): StreamingContext & IStreamingRetryState {
+  const retryState = createStreamingRetryState(extractor)
+
+  return {
+    onStreamChunk: (chunk: string, msgId?: string, accumulated?: string, streamRevision?: number) =>
+      runDetached(deliverChunk(extractor, retryState, onStreamChunk, chunk, msgId, accumulated, streamRevision)),
+    messageId,
+    reset: retryState.reset,
+    getStreamedText: retryState.getStreamedText,
+    isComplete: retryState.isComplete,
+  }
+}
+
+module edge {
+  import { allocate, initial, type StreamRevision } from "../../gen/core__streamRevisions.ts"
+  import { asLegacy, runDetachedSync } from "../edge.vibe"
+  import type { ResponseSkeleton, StructuredStreamGate } from "../types/model.vibe"
+  import type { StreamEvent } from "../types/state.vibe"
+  import type { IStreamExtractor } from "../types/streaming.vibe"
+  import { REASONING_TAG_NAMES } from "./reasoning-tags.vibe"
+  import {
+    requireUnorderedGate,
+    StreamError,
+    validateChunkSize,
+    type ExtractorState,
+    type FieldState,
+    type StructuredFieldStreamExtractorConfig,
+    type ValidationDiagnosis,
+  } from "./streaming.vibe"
+  import { toWellFormedUnicode } from "./unicode.vibe"
+
+  /** @throws {TypeError | StreamError} */
+  function checkChunk(chunk: string): void {
+    runDetachedSync(asLegacy(TypeError, validateChunkSize(chunk), StreamError))
+  }
+
+  let streamRevisionSequence: StreamRevision = initial
+
+  function allocateStreamRevision(): number {
+    streamRevisionSequence = allocate(streamRevisionSequence)
+    return streamRevisionSequence.revision
+  }
+
+  function isHighSurrogate(code: number): boolean {
+    return code >= 0xd800 && code <= 0xdbff
+  }
+
+  const STRUCTURED_TOP_LEVEL_FIELD_RE = /^([A-Za-z_][A-Za-z0-9_.-]*(?:\[[^\]\n]*\])?(?:\{[^\n]*\})?):(?:\s?(.*))?$/
+
+  function decodeJsonEscape(raw: string): string {
+    try {
+      return JSON.parse(`"${raw}"`) as string
+    } catch {
+      return raw
+    }
+  }
+
+  function matchReasoningOpenTagAt(
+    source: string,
+    index: number,
+  ): { kind: "full"; name: string } | { kind: "partial" } | { kind: "none" } {
+    let partial = false
+    for (const name of REASONING_TAG_NAMES) {
+      const match = matchTagAt(source, index, `<${name}>`)
+      if (match === "full") {
+        return { kind: "full", name }
+      }
+      if (match === "partial") {
+        partial = true
+      }
+    }
+    return partial ? { kind: "partial" } : { kind: "none" }
+  }
+
+  function matchTagAt(
+    source: string,
+    index: number,
+    tag: string,
+  ): "full" | "partial" | "none" {
+    const remainingLen = source.length - index
+    if (remainingLen <= 0) {
+      return "none"
+    }
+    const compareLen = remainingLen < tag.length ? remainingLen : tag.length
+    for (let offset = 0; offset < compareLen; offset++) {
+      const code = source.charCodeAt(index + offset)
+      const folded = code >= 0x41 && code <= 0x5a ? code + 0x20 : code
+      if (
+        folded !== tag.charCodeAt(offset)
+        && (code < 0x80 || source[index + offset].toLowerCase() !== tag[offset])
+      ) {
+        return "none"
+      }
+    }
+    if (remainingLen >= tag.length) {
+      return "full"
+    }
+    return "partial"
+  }
+
+  const MAX_STREAM_GATE_HEAD = 64 * 1024
+
+  function decodeEnvelopePrefix(head: string): Record<string, unknown> | null {
+    const trimmed = head.trim().replace(/,\s*$/, "")
+    if (!trimmed.startsWith("{")) return null
+    try {
+      const decoded: unknown = JSON.parse(`${trimmed}}`)
+      return decoded !== null
+          && typeof decoded === "object"
+          && !Array.isArray(decoded)
+        ? (decoded as Record<string, unknown>)
+        : null
+    } catch {
+      return null
+    }
+  }
+
+  function findJsonStringEnd(value: string): number | null {
+    if (!value.startsWith("\"")) {
+      return null
+    }
+    for (let index = 1; index < value.length; index++) {
+      const char = value[index]
+      if (char === "\\") {
+        const next = value[index + 1]
+        if (next === undefined) {
+          return null
+        }
+        if (next === "u") {
+          if (index + 5 >= value.length) {
+            return null
+          }
+          index += 5
+        } else {
+          index += 1
+        }
+        continue
+      }
+      if (char === "\"") {
+        return index + 1
+      }
+    }
+    return null
+  }
+
+  function findJsonValueEnd(raw: string): number | null {
+    const leadingWhitespace = raw.match(/^\s*/)?.[0].length ?? 0
+    const value = raw.slice(leadingWhitespace)
+    if (value.length === 0) {
+      return null
+    }
+    const first = value[0]
+    if (first === "\"") {
+      const end = findJsonStringEnd(value)
+      return end === null ? null : leadingWhitespace + end
+    }
+    if (first === "{" || first === "[") {
+      const end = findBalancedJsonEnd(value)
+      return end === null ? null : leadingWhitespace + end
+    }
+    for (const literal of ["true", "false", "null"]) {
+      if (value === literal.slice(0, value.length)) {
+        return value.length === literal.length
+          ? leadingWhitespace + literal.length
+          : null
+      }
+    }
+    const numberMatch = value.match(
+      /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/,
+    )
+    if (numberMatch) {
+      return leadingWhitespace + numberMatch[0].length
+    }
+    return null
+  }
+
+  function findBalancedJsonEnd(value: string): number | null {
+    const stack: string[] = []
+    let inString = false
+    for (let index = 0; index < value.length; index++) {
+      const char = value[index]
+      if (inString) {
+        if (char === "\\") {
+          const next = value[index + 1]
+          if (next === undefined) {
+            return null
+          }
+          if (next === "u") {
+            if (index + 5 >= value.length) {
+              return null
+            }
+            index += 5
+          } else {
+            index += 1
+          }
+          continue
+        }
+        if (char === "\"") {
+          inString = false
+        }
+        continue
+      }
+
+      if (char === "\"") {
+        inString = true
+        continue
+      }
+      if (char === "{" || char === "[") {
+        stack.push(char === "{" ? "}" : "]")
+        continue
+      }
+      if (char === "}" || char === "]") {
+        const expected = stack.pop()
+        if (expected !== char) {
+          return null
+        }
+        if (stack.length === 0) {
+          return index + 1
+        }
+      }
+    }
+    return null
+  }
+
+  export class PassthroughExtractor implements IStreamExtractor {
+    get done(): boolean {
+      return false
+    }
+
+    push(chunk: string): string {
+      checkChunk(chunk)
+      return chunk
+    }
+
+    flush(): string {
+      return ""
+    }
+
+    reset(): void {
+    }
+  }
+
+  export class MarkableExtractor implements IStreamExtractor {
+    private _done = false
+
+    get done(): boolean {
+      return this._done
+    }
+
+    push(chunk: string): string {
+      checkChunk(chunk)
+      return chunk
+    }
+
+    flush(): string {
+      return ""
+    }
+
+    reset(): void {
+      this._done = false
+    }
+
+    markComplete(): void {
+      this._done = true
+    }
+  }
+
+  export class StructuredFieldStreamExtractor implements IStreamExtractor {
+    private lineBuffer = ""
+    private currentField: string | null = null
+    private fieldContents: Map<string, string> = new Map()
+    private emittedContent: Map<string, string> = new Map()
+    private validatedFields: Set<string> = new Set()
+    private fieldStates: Map<string, FieldState> = new Map()
+    private state: ExtractorState = "streaming"
+    private streamRevision = allocateStreamRevision()
+    private readonly streamFieldSet: Set<string>
+
+    private currentTrackedField: string | null = null
+
+    private startedFields: Set<string> = new Set()
+
+    private doneFields: Set<string> = new Set()
+
+    constructor(private readonly config: StructuredFieldStreamExtractorConfig) {
+      this.streamFieldSet = new Set(config.streamFields)
+      for (const row of config.schema) {
+        this.fieldStates.set(row.field, "pending")
+      }
+    }
+
+    get done(): boolean {
+      return this.state === "complete" || this.state === "failed"
+    }
+
+    push(chunk: string): string {
+      if (this.config.abortSignal?.aborted) {
+        if (this.state !== "complete" && this.state !== "failed") {
+          this.state = "failed"
+          this.emitEvent({
+            eventType: "error",
+            error: "Cancelled by user",
+            timestamp: Date.now(),
+          })
+        }
+        return ""
+      }
+
+      if (this.state !== "streaming") return ""
+
+      checkChunk(chunk)
+      this.lineBuffer += chunk
+      this.processAvailableLines(false)
+      return ""
+    }
+
+    flush(): string {
+      if (this.state === "failed") {
+        return ""
+      }
+      if (this.config.abortSignal?.aborted) {
+        return this.push("")
+      }
+
+      this.processAvailableLines(true)
+      this.completeCurrentField()
+
+      if (this.config.level >= 2) {
+        for (const field of this.config.streamFields) {
+          const content = this.fieldContents.get(field) || ""
+          if (content) {
+            this.emitFieldContent(field, content)
+          }
+        }
+      }
+
+      this.closeCurrentTrackedField()
+      this.state = "complete"
+      this.emitEvent({ eventType: "complete", timestamp: Date.now() })
+      return ""
+    }
+
+    reset(): void {
+      this.streamRevision = allocateStreamRevision()
+      this.lineBuffer = ""
+      this.currentField = null
+      this.currentTrackedField = null
+      this.startedFields.clear()
+      this.doneFields.clear()
+      this.fieldContents.clear()
+      this.emittedContent.clear()
+      this.validatedFields.clear()
+      for (const row of this.config.schema) {
+        this.fieldStates.set(row.field, "pending")
+      }
+      this.state = "streaming"
+    }
+
+    signalRetry(retryCount: number): { validatedFields: string[] } {
+      this.state = "retrying"
+      this.emitEvent({
+        eventType: "retry_start",
+        retryCount,
+        timestamp: Date.now(),
+      })
+      return { validatedFields: Array.from(this.validatedFields) }
+    }
+
+    signalError(message: string): void {
+      this.state = "failed"
+      this.emitEvent({
+        eventType: "error",
+        error: message,
+        timestamp: Date.now(),
+      })
+    }
+
+    getValidatedFields(): Map<string, string> {
+      const result = new Map<string, string>()
+      for (const field of this.validatedFields) {
+        const content = this.fieldContents.get(field)
+        if (content) {
+          result.set(field, content)
+        }
+      }
+      return result
+    }
+
+    diagnose(): ValidationDiagnosis {
+      const missingFields: string[] = []
+      const invalidFields: string[] = []
+      const incompleteFields: string[] = []
+
+      for (const row of this.config.schema) {
+        const state = this.fieldStates.get(row.field)
+        switch (state) {
+          case "pending":
+            missingFields.push(row.field)
+            break
+          case "invalid":
+            invalidFields.push(row.field)
+            break
+          case "partial":
+            incompleteFields.push(row.field)
+            break
+        }
+      }
+
+      return { missingFields, invalidFields, incompleteFields }
+    }
+
+    getState(): ExtractorState {
+      return this.state
+    }
+
+    private processAvailableLines(final: boolean): void {
+      let newlineIndex = this.lineBuffer.search(/\r?\n/)
+      while (newlineIndex !== -1) {
+        const newlineLength = this.lineBuffer[newlineIndex] === "\r"
+            && this.lineBuffer[newlineIndex + 1] === "\n"
+          ? 2
+          : 1
+        const line = this.lineBuffer.slice(0, newlineIndex)
+        this.lineBuffer = this.lineBuffer.slice(newlineIndex + newlineLength)
+        this.processLine(line)
+        newlineIndex = this.lineBuffer.search(/\r?\n/)
+      }
+
+      if (final && this.lineBuffer.length > 0) {
+        this.processLine(this.lineBuffer)
+        this.lineBuffer = ""
+      }
+    }
+
+    private processLine(line: string): void {
+      const isTopLevel = !/^[\t ]/.test(line)
+      const fieldMatch = isTopLevel
+        ? line.match(STRUCTURED_TOP_LEVEL_FIELD_RE)
+        : null
+
+      if (fieldMatch) {
+        this.completeCurrentField()
+        this.closeCurrentTrackedField()
+        const rawKey = fieldMatch[1] ?? ""
+        const field = this.baseStructuredFieldName(rawKey)
+        const rawValue = fieldMatch[2] ?? ""
+        this.fieldStates.set(field, "partial")
+        this.emitFieldStart(field)
+        this.currentTrackedField = field
+
+        if (!this.streamFieldSet.has(field)) {
+          this.currentField = null
+          if (rawValue.trim().length > 0) {
+            this.appendFieldContent(field, this.parseInlineValue(rawValue))
+            this.fieldStates.set(field, "complete")
+            this.closeCurrentTrackedField()
+          }
+          return
+        }
+
+        this.currentField = field
+        if (rawValue.trim().length > 0) {
+          this.appendFieldContent(field, this.parseInlineValue(rawValue))
+          this.completeCurrentField()
+          this.closeCurrentTrackedField()
+        }
+        return
+      }
+
+      if (this.currentTrackedField) {
+        this.appendFieldContent(
+          this.currentTrackedField,
+          this.normalizeContinuationLine(line),
+        )
+      }
+    }
+
+    private completeCurrentField(): void {
+      if (!this.currentField) {
+        return
+      }
+
+      const field = this.currentField
+      this.fieldStates.set(field, "complete")
+      this.validatedFields.add(field)
+      if (this.config.level <= 1) {
+        const content = this.fieldContents.get(field) || ""
+        if (content) {
+          this.emitFieldContent(field, content)
+        }
+      }
+      this.currentField = null
+    }
+
+    private emitFieldStart(field: string): void {
+      if (this.startedFields.has(field)) {
+        return
+      }
+      this.startedFields.add(field)
+      this.config.onFieldStart?.(field)
+    }
+
+    private closeCurrentTrackedField(): void {
+      const field = this.currentTrackedField
+      this.currentTrackedField = null
+      if (!field || this.doneFields.has(field)) {
+        return
+      }
+      this.doneFields.add(field)
+      this.config.onFieldDone?.(field, this.fieldContents.get(field) ?? "")
+    }
+
+    private appendFieldContent(field: string, value: string): void {
+      const previous = this.fieldContents.get(field)
+      if (previous === undefined || previous.length === 0) {
+        this.fieldContents.set(field, value)
+        return
+      }
+      this.fieldContents.set(field, `${previous}\n${value}`)
+    }
+
+    private parseInlineValue(rawValue: string): string {
+      const value = rawValue.trim()
+      if (value.length === 0) {
+        return ""
+      }
+
+      if (value.startsWith("\"") && value.endsWith("\"")) {
+        try {
+          return JSON.parse(value) as string
+        } catch {
+          return value.slice(1, -1)
+        }
+      }
+
+      if (value.startsWith("'") && value.endsWith("'")) {
+        return value.slice(1, -1)
+      }
+
+      return value
+    }
+
+    private normalizeContinuationLine(line: string): string {
+      if (line.startsWith("  ")) {
+        return line.slice(2)
+      }
+      if (line.startsWith("\t")) {
+        return line.slice(1)
+      }
+      return line
+    }
+
+    private baseStructuredFieldName(rawKey: string): string {
+      return rawKey.split(/[[{]/, 1)[0] ?? rawKey
+    }
+
+    private emitFieldContent(field: string, content: string): void {
+      const previouslyEmitted = this.emittedContent.get(field) || ""
+
+      if (content.length < previouslyEmitted.length) {
+        this.emittedContent.set(field, content)
+        if (content) {
+          this.config.onChunk(content, field, content, this.streamRevision)
+          this.emitEvent({
+            eventType: "chunk",
+            field,
+            chunk: content,
+            timestamp: Date.now(),
+          })
+        }
+        return
+      }
+
+      const newContent = content.substring(previouslyEmitted.length)
+      if (newContent) {
+        this.config.onChunk(newContent, field, content, this.streamRevision)
+        this.emitEvent({
+          eventType: "chunk",
+          field,
+          chunk: newContent,
+          timestamp: Date.now(),
+        })
+        this.emittedContent.set(field, content)
+      }
+    }
+
+    private emitEvent(event: StreamEvent): void {
+      this.config.onEvent?.(event)
+    }
+  }
+
+  export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
+    private buffer = ""
+    private spanIndex = 0
+    private activeStringField: string | null = null
+    private pendingEscape = ""
+    private fieldContents: Map<string, string> = new Map()
+    private emittedContent: Map<string, string> = new Map()
+    private reasoningFilters: Map<
+      string,
+      { mode: "outside" | "inside"; pending: string; closeTag: string }
+    > = new Map()
+    private state: ExtractorState = "streaming"
+    private formatDecided = false
+    private passthrough = false
+    private passthroughEmitted = ""
+    private streamRevision = allocateStreamRevision()
+    private readonly streamFieldSet: Set<string>
+
+    private readonly streamFieldKeys: ReadonlyArray<readonly [string, string]>
+    private readonly maxKeyPatternLength: number
+
+    private gateHead = ""
+    private gateDecided = false
+
+    private held = false
+
+    private partsField: string | null = null
+    private partsState: "element" | "key" = "element"
+    private partKind: string | undefined
+
+    constructor(
+      private readonly config: {
+        skeleton: ResponseSkeleton
+        streamFields: string[]
+        onChunk: (
+          chunk: string,
+          field?: string,
+          accumulated?: string,
+          streamRevision?: number,
+        ) => void
+        onEvent?: (event: StreamEvent) => void
+        abortSignal?: AbortSignal
+        unordered?: boolean
+
+        streamParts?: Readonly<Record<string, readonly string[]>>
+
+        gate?: StructuredStreamGate
+      },
+    ) {
+      runDetachedSync(asLegacy(TypeError, requireUnorderedGate(config)))
+      this.streamFieldSet = new Set(config.streamFields)
+      this.streamFieldKeys = Array.from(
+        this.streamFieldSet,
+        (field) => [field, JSON.stringify(field)] as const,
+      )
+      this.maxKeyPatternLength = Math.max(
+        0,
+        ...this.streamFieldKeys.map(([, key]) => key.length),
+      )
+    }
+
+    get done(): boolean {
+      return this.state === "complete" || this.state === "failed"
+    }
+
+    push(chunk: string): string {
+      if (this.config.abortSignal?.aborted) {
+        this.signalError("Cancelled by user")
+        return ""
+      }
+      if (this.state !== "streaming") {
+        return ""
+      }
+      checkChunk(chunk)
+      if (this.held) {
+        return ""
+      }
+      this.buffer += chunk
+      if (this.config.gate && !this.gateDecided) {
+        this.gateHead += chunk
+        if (this.gateHead.length > MAX_STREAM_GATE_HEAD) {
+          this.hold()
+          return ""
+        }
+      }
+      if (!this.formatDecided) {
+        this.decideFormat()
+      }
+      if (this.passthrough) {
+        this.drainPassthrough(false)
+        return ""
+      }
+      this.config.unordered ? this.drainUnordered(false) : this.drain(false)
+      return ""
+    }
+
+    flush(): string {
+      if (this.state === "failed") {
+        return ""
+      }
+      if (this.config.abortSignal?.aborted) {
+        return this.push("")
+      }
+      if (!this.formatDecided) {
+        this.decideFormat()
+      }
+      if (this.passthrough) {
+        if (!this.held) this.drainPassthrough(true)
+        this.buffer = ""
+        this.state = "complete"
+        this.emitEvent({ eventType: "complete", timestamp: Date.now() })
+        return ""
+      }
+      if (!this.held) {
+        this.config.unordered ? this.drainUnordered(true) : this.drain(true)
+      }
+      for (const field of this.held ? [] : this.streamFieldSet) {
+        const flushed = this.flushReasoningFilter(field)
+        if (flushed) {
+          this.appendVisibleAndEmit(field, flushed)
+        }
+        this.flushPendingSurrogate(field)
+      }
+      this.activeStringField = null
+      this.pendingEscape = ""
+      this.buffer = ""
+      this.state = "complete"
+      this.emitEvent({ eventType: "complete", timestamp: Date.now() })
+      return ""
+    }
+
+    reset(): void {
+      this.streamRevision = allocateStreamRevision()
+      this.buffer = ""
+      this.spanIndex = 0
+      this.activeStringField = null
+      this.pendingEscape = ""
+      this.fieldContents.clear()
+      this.emittedContent.clear()
+      this.reasoningFilters.clear()
+      this.formatDecided = false
+      this.passthrough = false
+      this.passthroughEmitted = ""
+      this.gateHead = ""
+      this.gateDecided = false
+      this.held = false
+      this.partsField = null
+      this.partsState = "element"
+      this.partKind = undefined
+      this.state = "streaming"
+    }
+
+    private hold(): void {
+      this.held = true
+      this.buffer = ""
+      this.gateHead = ""
+      this.activeStringField = null
+      this.partsField = null
+    }
+
+    private passesGate(head: string | null): boolean {
+      const gate = this.config.gate
+      if (!gate || this.gateDecided) return !this.held
+      this.gateDecided = true
+      this.gateHead = ""
+      let preceding: Record<string, unknown> | null = null
+      if (head !== null) {
+        preceding = decodeEnvelopePrefix(head)
+        if (!preceding) {
+          this.hold()
+          return false
+        }
+      }
+      let allowed = false
+      try {
+        allowed = gate(preceding) === true
+      } catch {
+        allowed = false
+      }
+      if (!allowed) this.hold()
+      return allowed
+    }
+
+    private decideFormat(): void {
+      const trimmed = this.buffer.replace(/^\s+/, "")
+      if (trimmed.length === 0) {
+        return
+      }
+      const first = trimmed[0]
+      const looksStructured = first === "{" || first === "[" || first === "<"
+      this.formatDecided = true
+      this.passthrough = !looksStructured
+      if (this.passthrough) this.passesGate(null)
+    }
+
+    private drainPassthrough(final: boolean): void {
+      let end = this.buffer.length
+      if (!final && isHighSurrogate(this.buffer.charCodeAt(end - 1))) {
+        end -= 1
+      }
+      if (end === 0) {
+        return
+      }
+      const chunk = toWellFormedUnicode(this.buffer.slice(0, end))
+      this.buffer = this.buffer.slice(end)
+      this.passthroughEmitted += chunk
+      this.config.onChunk(
+        chunk,
+        undefined,
+        this.passthroughEmitted,
+        this.streamRevision,
+      )
+    }
+
+    signalRetry(retryCount: number): { validatedFields: string[] } {
+      this.emitEvent({
+        eventType: "retry_start",
+        retryCount,
+        timestamp: Date.now(),
+      })
+      this.reset()
+      return { validatedFields: [] }
+    }
+
+    signalError(message: string): void {
+      if (this.state === "failed") {
+        return
+      }
+      this.state = "failed"
+      this.emitEvent({
+        eventType: "error",
+        error: message,
+        timestamp: Date.now(),
+      })
+    }
+
+    getValidatedFields(): Map<string, string> {
+      return new Map(this.fieldContents)
+    }
+
+    diagnose(): ValidationDiagnosis {
+      return { missingFields: [], invalidFields: [], incompleteFields: [] }
+    }
+
+    private drain(final: boolean): void {
+      while (this.state === "streaming") {
+        if (this.activeStringField) {
+          if (!this.processActiveString(final)) {
+            return
+          }
+          continue
+        }
+
+        const span = this.config.skeleton.spans[this.spanIndex]
+        if (!span) {
+          if (final || this.buffer.length === 0) {
+            this.state = "complete"
+            this.emitEvent({ eventType: "complete", timestamp: Date.now() })
+          }
+          return
+        }
+
+        if (span.kind === "literal") {
+          if (!this.consumeLiteral(span.value ?? "", final)) {
+            return
+          }
+          this.spanIndex++
+          continue
+        }
+
+        if (span.kind === "free-string" || span.kind === "enum") {
+          const field = span.key ?? ""
+          if (span.kind === "free-string" && this.streamFieldSet.has(field)) {
+            if (!this.consumeOpeningQuote(final)) {
+              return
+            }
+            this.activeStringField = field
+            continue
+          }
+          const end = findJsonStringEnd(this.buffer)
+          if (end === null) {
+            if (final) {
+              this.buffer = ""
+              this.spanIndex++
+              continue
+            }
+            return
+          }
+          this.buffer = this.buffer.slice(end)
+          this.spanIndex++
+          continue
+        }
+
+        const valueEnd = findJsonValueEnd(this.buffer)
+        if (valueEnd === null) {
+          if (final) {
+            this.buffer = ""
+            this.spanIndex++
+            continue
+          }
+          return
+        }
+        this.buffer = this.buffer.slice(valueEnd)
+        this.spanIndex++
+      }
+    }
+
+    private drainUnordered(final: boolean): void {
+      while (this.state === "streaming" && !this.held) {
+        if (this.activeStringField) {
+          if (!this.processActiveString(final, false)) {
+            return
+          }
+          continue
+        }
+        if (this.partsField) {
+          if (!this.drainParts(final)) {
+            return
+          }
+          continue
+        }
+
+        if (this.config.gate && this.gateDecided) {
+          this.hold()
+          return
+        }
+
+        const match = this.findNextStreamFieldStart(final)
+        if (!match) {
+          return
+        }
+        if (
+          this.config.gate
+          && !this.gateDecided
+          && !this.passesGate(
+            this.gateHead.slice(
+              0,
+              this.gateHead.length - this.buffer.length + match.keyStart,
+            ),
+          )
+        ) {
+          return
+        }
+
+        this.buffer = this.buffer.slice(match.valueStart)
+        if (match.parts) {
+          this.partsField = match.field
+          this.partsState = "element"
+        } else {
+          this.activeStringField = match.field
+        }
+      }
+    }
+
+    private drainParts(final: boolean): boolean {
+      const field = this.partsField
+      if (!field) return true
+      const kinds = this.config.streamParts?.[field] ?? []
+      this.buffer = this.buffer.replace(/^\s+/, "")
+      if (this.buffer.length === 0) {
+        if (final) this.partsField = null
+        return final
+      }
+      const char = this.buffer[0]
+      if (this.partsState === "element") {
+        if (char === "]") {
+          this.buffer = this.buffer.slice(1)
+          this.partsField = null
+          return true
+        }
+        if (char === ",") {
+          this.buffer = this.buffer.slice(1)
+          return true
+        }
+        if (char === "{") {
+          this.buffer = this.buffer.slice(1)
+          this.partsState = "key"
+          this.partKind = undefined
+          return true
+        }
+        this.hold()
+        return false
+      }
+      if (char === "}") {
+        this.buffer = this.buffer.slice(1)
+        this.partsState = "element"
+        return true
+      }
+      if (char === ",") {
+        this.buffer = this.buffer.slice(1)
+        return true
+      }
+      if (char !== "\"") {
+        this.hold()
+        return false
+      }
+      const keyEnd = findJsonStringEnd(this.buffer)
+      let cursor = keyEnd ?? this.buffer.length
+      while (
+        cursor < this.buffer.length
+        && /\s/.test(this.buffer[cursor] ?? "")
+      ) {
+        cursor++
+      }
+      if (cursor < this.buffer.length && this.buffer[cursor] !== ":") {
+        this.hold()
+        return false
+      }
+      cursor++
+      while (
+        cursor < this.buffer.length
+        && /\s/.test(this.buffer[cursor] ?? "")
+      ) {
+        cursor++
+      }
+      if (keyEnd === null || cursor >= this.buffer.length) {
+        if (final) this.partsField = null
+        return final
+      }
+      let key: unknown
+      try {
+        key = JSON.parse(this.buffer.slice(0, keyEnd))
+      } catch {
+        key = undefined
+      }
+      if (this.buffer[cursor] === "\"" && key === "kind") {
+        const end = findJsonStringEnd(this.buffer.slice(cursor))
+        if (end === null) {
+          if (final) this.partsField = null
+          return final
+        }
+        let kind: unknown
+        try {
+          kind = JSON.parse(this.buffer.slice(cursor, cursor + end))
+        } catch {
+          kind = undefined
+        }
+        this.partKind = typeof kind === "string" ? kind : undefined
+        this.buffer = this.buffer.slice(cursor + end)
+        return true
+      }
+      if (
+        this.buffer[cursor] === "\""
+        && key === "value"
+        && this.partKind !== undefined
+        && kinds.includes(this.partKind)
+      ) {
+        this.buffer = this.buffer.slice(cursor + 1)
+        this.activeStringField = field
+        return true
+      }
+      this.hold()
+      return false
+    }
+
+    private findNextStreamFieldStart(final: boolean): {
+      field: string
+      keyStart: number
+      valueStart: number
+      parts: boolean
+    } | null {
+      while (this.buffer.length > 0) {
+        let earliest:
+          | { field: string; keyStart: number; keyEnd: number }
+          | undefined
+
+        for (const [field, key] of this.streamFieldKeys) {
+          const keyStart = this.buffer.indexOf(key)
+          if (keyStart >= 0 && (!earliest || keyStart < earliest.keyStart)) {
+            earliest = { field, keyStart, keyEnd: keyStart + key.length }
+          }
+        }
+
+        if (!earliest) {
+          if (final) {
+            this.buffer = ""
+            this.state = "complete"
+            this.emitEvent({ eventType: "complete", timestamp: Date.now() })
+            return null
+          }
+          const keep = Math.min(
+            this.buffer.length,
+            Math.max(this.maxKeyPatternLength - 1, 0),
+          )
+          this.buffer = this.buffer.slice(this.buffer.length - keep)
+          return null
+        }
+
+        let cursor = earliest.keyEnd
+        while (
+          cursor < this.buffer.length
+          && /\s/.test(this.buffer[cursor] ?? "")
+        ) {
+          cursor++
+        }
+        if (cursor >= this.buffer.length) {
+          if (final) {
+            this.buffer = ""
+          } else {
+            this.buffer = this.buffer.slice(earliest.keyStart)
+          }
+          return null
+        }
+        if (this.buffer[cursor] !== ":") {
+          this.buffer = this.buffer.slice(earliest.keyEnd)
+          continue
+        }
+        cursor++
+        while (
+          cursor < this.buffer.length
+          && /\s/.test(this.buffer[cursor] ?? "")
+        ) {
+          cursor++
+        }
+        if (cursor >= this.buffer.length) {
+          if (final) {
+            this.buffer = ""
+          } else {
+            this.buffer = this.buffer.slice(earliest.keyStart)
+          }
+          return null
+        }
+
+        const partsField = this.config.streamParts?.[earliest.field] !== undefined
+        if (this.buffer[cursor] === "[" && partsField) {
+          return {
+            field: earliest.field,
+            keyStart: earliest.keyStart,
+            valueStart: cursor + 1,
+            parts: true,
+          }
+        }
+        if (this.buffer[cursor] !== "\"" || partsField) {
+          this.buffer = this.buffer.slice(cursor)
+          continue
+        }
+
+        return {
+          field: earliest.field,
+          keyStart: earliest.keyStart,
+          valueStart: cursor + 1,
+          parts: false,
+        }
+      }
+
+      if (final) {
+        this.state = "complete"
+        this.emitEvent({ eventType: "complete", timestamp: Date.now() })
+      }
+      return null
+    }
+
+    private consumeLiteral(literal: string, final: boolean): boolean {
+      if (literal.length === 0) {
+        return true
+      }
+      if (this.buffer.startsWith(literal)) {
+        this.buffer = this.buffer.slice(literal.length)
+        return true
+      }
+      if (literal.startsWith(this.buffer) && !final) {
+        return false
+      }
+      const index = this.buffer.indexOf(literal)
+      if (index >= 0) {
+        this.buffer = this.buffer.slice(index + literal.length)
+        return true
+      }
+      if (final) {
+        this.buffer = ""
+        return true
+      }
+      const keep = Math.min(this.buffer.length, Math.max(literal.length - 1, 0))
+      this.buffer = this.buffer.slice(this.buffer.length - keep)
+      return false
+    }
+
+    private consumeOpeningQuote(final: boolean): boolean {
+      if (this.buffer.startsWith("\"")) {
+        this.buffer = this.buffer.slice(1)
+        return true
+      }
+      if (!final && "\"".startsWith(this.buffer)) {
+        return false
+      }
+      const quoteIndex = this.buffer.indexOf("\"")
+      if (quoteIndex >= 0) {
+        this.buffer = this.buffer.slice(quoteIndex + 1)
+        return true
+      }
+      if (final) {
+        this.buffer = ""
+        return true
+      }
+      return false
+    }
+
+    private processActiveString(final: boolean, advanceSpan = true): boolean {
+      const field = this.activeStringField
+      if (!field) {
+        return true
+      }
+
+      let plain = ""
+      const flushPlain = () => {
+        if (plain.length > 0) {
+          this.appendAndEmit(field, plain)
+          plain = ""
+        }
+      }
+      const closeTruncated = () => {
+        this.activeStringField = null
+        if (advanceSpan) {
+          this.spanIndex++
+        }
+      }
+
+      while (this.buffer.length > 0) {
+        if (this.pendingEscape) {
+          if (this.pendingEscape === "\\" && this.buffer[0] === "u") {
+            this.pendingEscape = "\\u"
+            this.buffer = this.buffer.slice(1)
+            continue
+          }
+          const needed = this.pendingEscape === "\\u" ? 4 : 1
+          if (this.buffer.length < needed) {
+            flushPlain()
+            if (final) {
+              closeTruncated()
+            }
+            return final
+          }
+          const raw = this.pendingEscape + this.buffer.slice(0, needed)
+          this.buffer = this.buffer.slice(needed)
+          this.pendingEscape = ""
+          flushPlain()
+          this.appendAndEmit(field, decodeJsonEscape(raw))
+          continue
+        }
+
+        let runEnd = 0
+        while (runEnd < this.buffer.length) {
+          const code = this.buffer.charCodeAt(runEnd)
+          if (code === 0x22 || code === 0x5c) break
+          runEnd += 1
+        }
+        if (runEnd > 0) {
+          plain += this.buffer.slice(0, runEnd)
+          this.buffer = this.buffer.slice(runEnd)
+          continue
+        }
+
+        const char = this.buffer[0]
+        this.buffer = this.buffer.slice(1)
+        if (char === "\"") {
+          flushPlain()
+          const flushed = this.flushReasoningFilter(field)
+          if (flushed) {
+            this.appendVisibleAndEmit(field, flushed)
+          }
+          this.activeStringField = null
+          if (advanceSpan) {
+            this.spanIndex++
+          }
+          return true
+        }
+        if (char === "\\") {
+          if (this.buffer.length === 0) {
+            this.pendingEscape = "\\"
+            flushPlain()
+            if (final) {
+              closeTruncated()
+            }
+            return final
+          }
+          const next = this.buffer[0]
+          this.buffer = this.buffer.slice(1)
+          if (next === "u") {
+            this.pendingEscape = "\\u"
+            flushPlain()
+            continue
+          }
+          flushPlain()
+          this.appendAndEmit(field, decodeJsonEscape(`\\${next}`))
+        }
+      }
+
+      flushPlain()
+      if (final) {
+        closeTruncated()
+      }
+      return final
+    }
+
+    private appendAndEmit(field: string, value: string): void {
+      if (!value) {
+        return
+      }
+      const visible = this.filterReasoningTags(field, value, false)
+      if (!visible) {
+        return
+      }
+      this.appendVisibleAndEmit(field, visible)
+    }
+
+    private appendVisibleAndEmit(field: string, value: string): void {
+      const previous = this.emittedContent.get(field) ?? ""
+
+      const raw = `${this.fieldContents.get(field) ?? ""}${value}`
+      let chunk = raw.slice(previous.length)
+      if (!chunk) {
+        this.fieldContents.set(field, raw)
+        return
+      }
+
+      let pending = ""
+      if (isHighSurrogate(chunk.charCodeAt(chunk.length - 1))) {
+        pending = chunk.slice(-1)
+        chunk = chunk.slice(0, -1)
+      }
+
+      chunk = toWellFormedUnicode(chunk)
+      if (!chunk) {
+        this.fieldContents.set(field, previous + pending)
+        return
+      }
+      const emitted = previous + chunk
+      this.emittedContent.set(field, emitted)
+      this.fieldContents.set(field, emitted + pending)
+      this.config.onChunk(chunk, field, emitted, this.streamRevision)
+      this.emitEvent({
+        eventType: "chunk",
+        field,
+        chunk,
+        timestamp: Date.now(),
+      })
+    }
+
+    private flushPendingSurrogate(field: string): void {
+      const content = this.fieldContents.get(field)
+      if (content === undefined) {
+        return
+      }
+      const emitted = this.emittedContent.get(field) ?? ""
+      if (content.length <= emitted.length) {
+        return
+      }
+      const remainder = toWellFormedUnicode(content.slice(emitted.length))
+      if (!remainder) {
+        return
+      }
+      const finalContent = emitted + remainder
+      this.fieldContents.set(field, finalContent)
+      this.emittedContent.set(field, finalContent)
+      this.config.onChunk(remainder, field, finalContent, this.streamRevision)
+      this.emitEvent({
+        eventType: "chunk",
+        field,
+        chunk: remainder,
+        timestamp: Date.now(),
+      })
+    }
+
+    private filterReasoningTags(
+      field: string,
+      value: string,
+      final: boolean,
+    ): string {
+      const filter = this.reasoningFilters.get(field) ?? {
+        mode: "outside" as "outside" | "inside",
+        pending: "",
+        closeTag: "",
+      }
+      const source = `${filter.pending}${value}`
+      filter.pending = ""
+      const parts: string[] = []
+      let index = 0
+
+      while (index < source.length) {
+        if (filter.mode === "outside") {
+          const candidate = source.indexOf("<", index)
+          if (candidate === -1) {
+            parts.push(source.slice(index))
+            break
+          }
+          if (candidate > index) {
+            parts.push(source.slice(index, candidate))
+          }
+          const open = matchReasoningOpenTagAt(source, candidate)
+          if (open.kind === "full") {
+            filter.mode = "inside"
+            filter.closeTag = `</${open.name}>`
+            index = candidate + open.name.length + 2
+            continue
+          }
+          if (open.kind === "partial") {
+            filter.pending = source.slice(candidate)
+            break
+          }
+          parts.push("<")
+          index = candidate + 1
+          continue
+        }
+
+        const candidate = source.indexOf("<", index)
+        if (candidate === -1) {
+          break
+        }
+        const close = matchTagAt(source, candidate, filter.closeTag)
+        if (close === "full") {
+          filter.mode = "outside"
+          index = candidate + filter.closeTag.length
+          filter.closeTag = ""
+          continue
+        }
+        if (close === "partial") {
+          filter.pending = source.slice(candidate)
+          break
+        }
+        index = candidate + 1
+      }
+
+      if (final && filter.mode === "outside" && filter.pending) {
+        parts.push(filter.pending)
+        filter.pending = ""
+      }
+      this.reasoningFilters.set(field, filter)
+      return parts.join("")
+    }
+
+    private flushReasoningFilter(field: string): string {
+      return this.filterReasoningTags(field, "", true)
+    }
+
+    private emitEvent(event: StreamEvent): void {
+      this.config.onEvent?.(event)
+    }
+  }
+}
+import { MarkableExtractor, PassthroughExtractor, ResponseSkeletonStreamExtractor, StructuredFieldStreamExtractor } from edge
+export { MarkableExtractor, PassthroughExtractor, ResponseSkeletonStreamExtractor, StructuredFieldStreamExtractor }

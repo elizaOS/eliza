@@ -1,0 +1,29 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+export const UI_LANGUAGES = [
+  "en",
+  "zh-CN",
+  "ko",
+  "es",
+  "pt",
+  "vi",
+  "tl",
+  "ja",
+] as const
+
+export type UiLanguage = (typeof UI_LANGUAGES)[number]
+
+export const DEFAULT_UI_LANGUAGE: UiLanguage = "en"
+
+const UI_LANGUAGE_BY_TAG = new Map<string, UiLanguage>([
+  ...UI_LANGUAGES.map((language) => [language, language] as const),
+  ["zh", "zh-CN"],
+  ["fil", "tl"],
+])
+
+export function normalizeLanguage(input: unknown): UiLanguage {
+  if (typeof input !== "string") return DEFAULT_UI_LANGUAGE
+  const trimmed = input.trim()
+  return UI_LANGUAGE_BY_TAG.get(trimmed)
+    ?? UI_LANGUAGE_BY_TAG.get(trimmed.toLowerCase().split("-", 1)[0])
+    ?? DEFAULT_UI_LANGUAGE
+}

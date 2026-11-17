@@ -1,0 +1,26 @@
+// spec/core/settingsKeys.md, "Story: Keep persisted settings decryptable under the selected key"
+import { Arbitrary, Effect, Exit, Schema } from "effect";
+import { contract } from "vibestack/testing";
+import { decryptStringValue, encryptStringValue } from "./settings.vibe";
+
+const text = Arbitrary.schema(Schema.String).pipe(Arbitrary.map((s) => s.toWellFormed()));
+const setting = Arbitrary.all({ value: text.pipe(Arbitrary.map((s) => `p${s}`)), salt: text });
+
+const succeeded = <A, E>(effect: Effect.Effect<A, E>): A | null => {
+  const exit = Effect.runSyncExit(effect);
+  return Exit.isSuccess(exit) ? exit.value : null;
+};
+
+const seal = ({ value, salt }: { value: string; salt: string }) => {
+  const sealed = succeeded(encryptStringValue(value, salt));
+  return sealed === null
+    ? { sealed, opened: null, resealed: null }
+    : { sealed, opened: succeeded(decryptStringValue(sealed, salt)), resealed: succeeded(encryptStringValue(sealed, salt)) };
+};
+
+export const aSealedSettingOpensUnderItsSaltAndIsNotSealedTwice = contract({
+  input: setting,
+  run: seal,
+  invariant: ({ value }, { sealed, opened, resealed }) =>
+    sealed !== null && sealed.startsWith("v2:") && opened === value && resealed === sealed,
+});

@@ -1,0 +1,704 @@
+// spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"; spec/core/storage.md, "Revisions and pagination reject invalid numeric inputs"
+import { failingAs, thrown } from "./edge.vibe"
+import type { Task } from "./types/task.vibe"
+
+type PaginationParams = { limit?: number; offset?: number }
+
+export error InvalidPagination { message: string }
+
+effect function validateNonNegativePagination(
+  operation: string,
+  params: PaginationParams,
+): void!InvalidPagination {
+  for (const field of ["limit", "offset"] as const) {
+    const value = params[field]
+    if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+      throw new InvalidPagination({
+        message: `${operation} ${field} must be a non-negative safe integer`,
+      })
+    }
+  }
+}
+
+export effect function validateQueryEntitiesPagination(
+  params: PaginationParams,
+): void!InvalidPagination {
+  try validateNonNegativePagination("queryEntities", params)
+}
+
+export const validateQueryEntitiesPaginationOrThrow = thrown(failingAs(RangeError, validateQueryEntitiesPagination))
+
+export effect function validateTaskQueryPagination(params: PaginationParams): void!InvalidPagination {
+  try validateNonNegativePagination("getTasks", params)
+}
+
+export const validateTaskQueryPaginationOrThrow = thrown(failingAs(RangeError, validateTaskQueryPagination))
+
+export function compareMemoryIds(left: string, right: string): number {
+  const normalizedLeft = left.toLowerCase()
+  const normalizedRight = right.toLowerCase()
+  if (normalizedLeft < normalizedRight) return -1
+  if (normalizedLeft > normalizedRight) return 1
+  return 0
+}
+
+export function compareTasksForQuery(left: Task, right: Task): number {
+  const leftCreatedAt = left.createdAt
+  const rightCreatedAt = right.createdAt
+  if (leftCreatedAt === undefined && rightCreatedAt !== undefined) return 1
+  if (leftCreatedAt !== undefined && rightCreatedAt === undefined) return -1
+  if (leftCreatedAt !== undefined && rightCreatedAt !== undefined) {
+    if (leftCreatedAt < rightCreatedAt) return -1
+    if (leftCreatedAt > rightCreatedAt) return 1
+  }
+  return compareMemoryIds(left.id ?? "", right.id ?? "")
+}
+
+module edge {
+  import { ElizaError } from "./errors.vibe"
+  import type { AccessContext } from "./types/access-context.vibe"
+  import type { Agent } from "./types/agent.vibe"
+  import type {
+    AppendConnectorAccountAuditEventParams,
+    AtomicMemoryPublicationParams,
+    AtomicMemoryPublicationResult,
+    ConnectorAccountAuditEventRecord,
+    ConnectorAccountCredentialRefRecord,
+    ConnectorAccountRecord,
+    ConsumeOAuthFlowStateParams,
+    CreateOAuthFlowStateParams,
+    DeleteConnectorAccountCredentialRefsParams,
+    DeleteConnectorAccountParams,
+    DeleteOAuthFlowStateParams,
+    DocumentCompareAndSwapParams,
+    DocumentDeleteParams,
+    DocumentDirectGrantUpdateParams,
+    DocumentFragmentQueryParams,
+    DocumentGetQueryParams,
+    DocumentListQueryParams,
+    DocumentListQueryResult,
+    DocumentMutationResult,
+    DocumentRevisionReplaceParams,
+    GetConnectorAccountCredentialRefParams,
+    GetConnectorAccountParams,
+    GetOAuthFlowStateParams,
+    IDatabaseAdapter,
+    ListConnectorAccountCredentialRefsParams,
+    ListConnectorAccountsParams,
+    Log,
+    LogBody,
+    LogInventoryRow,
+    MessageContentPublicationParams,
+    MessageContentPublicationResult,
+    MessageContentRangeReadParams,
+    MessageContentRangeReadResult,
+    MessageSearchHit,
+    OAuthFlowRecord,
+    ParticipantUpdateFields,
+    ParticipantUserState,
+    PatchOp,
+    SetConnectorAccountCredentialRefParams,
+    UpdateOAuthFlowStateParams,
+    UpsertConnectorAccountParams,
+    WorldMetadataCompareAndSwapParams,
+    WorldMetadataMutationResult,
+  } from "./types/database.vibe"
+  import type { Component, Entity, Participant, Relationship, Room, World } from "./types/environment.vibe"
+  import type { Memory, MemoryMetadata } from "./types/memory.vibe"
+  import type {
+    PairingAllowlistEntry,
+    PairingAllowlistQuery,
+    PairingRequest,
+    PairingRequestQuery,
+  } from "./types/pairing.vibe"
+  import type { JsonValue, Metadata, UUID } from "./types/primitives.vibe"
+  import type { Task } from "./types/task.vibe"
+
+  export abstract class DatabaseAdapter<DB extends object = object> implements IDatabaseAdapter<DB> {
+    abstract readonly messageContentSegmentCapability: 1
+
+    abstract publishMessageContentSegments(
+      params: MessageContentPublicationParams,
+    ): Promise<MessageContentPublicationResult>
+
+    abstract readMessageContentRange(
+      params: MessageContentRangeReadParams,
+    ): Promise<MessageContentRangeReadResult>
+
+    /** @throws {never} */
+    async compareAndSwapMemoryPublication(
+      _params: AtomicMemoryPublicationParams,
+    ): Promise<AtomicMemoryPublicationResult> {
+      throw new ElizaError(
+        "Atomic memory publication is unsupported by this adapter",
+        {
+          code: "CONTENT_CONTINUITY_ATOMIC_PUBLICATION_UNSUPPORTED",
+        },
+      )
+    }
+
+    abstract readonly documentListQueryCapability: 4
+
+    abstract queryDocuments(
+      params: DocumentListQueryParams,
+    ): Promise<DocumentListQueryResult>
+
+    abstract getDocument(params: DocumentGetQueryParams): Promise<Memory | null>
+
+    abstract queryDocumentFragments(
+      params: DocumentFragmentQueryParams,
+    ): Promise<Memory[]>
+
+    abstract compareAndSwapDocument(
+      params: DocumentCompareAndSwapParams,
+    ): Promise<DocumentMutationResult>
+
+    abstract updateDocumentDirectGrants(
+      params: DocumentDirectGrantUpdateParams,
+    ): Promise<DocumentMutationResult>
+
+    /** @throws {ElizaError} */
+    compareAndSwapWorldMetadata(
+      params: WorldMetadataCompareAndSwapParams,
+    ): Promise<WorldMetadataMutationResult> {
+      throw new ElizaError(
+        "Database adapter does not support atomic world-metadata role writes",
+        {
+          code: "WORLD_METADATA_CAS_CAPABILITY_REQUIRED",
+          context: {
+            adapter: this.constructor.name,
+            worldId: params.worldId,
+          },
+        },
+      )
+    }
+
+    abstract replaceDocumentRevision(
+      params: DocumentRevisionReplaceParams,
+    ): Promise<DocumentMutationResult>
+
+    abstract deleteDocumentWithSnapshot(
+      params: DocumentDeleteParams,
+    ): Promise<DocumentMutationResult>
+
+    db!: DB
+
+    abstract initialize(
+      config?: Record<string, string | number | boolean | null>,
+    ): Promise<void>
+
+    abstract runPluginMigrations(
+      plugins: Array<{
+        name: string
+        schema?: Record<string, JsonValue>
+      }>,
+      options?: {
+        verbose?: boolean
+        force?: boolean
+        dryRun?: boolean
+      },
+    ): Promise<void>
+
+    abstract isReady(): Promise<boolean>
+
+    abstract close(): Promise<void>
+
+    abstract getConnection(): Promise<DB>
+
+    abstract transaction<T>(
+      callback: (tx: IDatabaseAdapter<DB>) => Promise<T>,
+      options?: { entityContext?: UUID },
+    ): Promise<T>
+
+    abstract getEntitiesForRooms(
+      roomIds: UUID[],
+      includeComponents?: boolean,
+    ): Promise<import("./types/database.vibe").EntitiesForRoomsResult>
+
+    abstract createEntities(entities: Entity[]): Promise<UUID[]>
+
+    abstract upsertEntities(entities: Entity[]): Promise<void>
+
+    abstract searchEntitiesByName(params: {
+      query: string
+      agentId: UUID
+      limit?: number
+    }): Promise<Entity[]>
+
+    abstract getEntitiesByNames(params: {
+      names: string[]
+      agentId: UUID
+    }): Promise<Entity[]>
+
+    abstract queryEntities(params: {
+      componentType?: string
+      componentDataFilter?: Record<string, unknown>
+      agentId?: UUID
+      entityIds?: UUID[]
+      worldId?: UUID
+      limit?: number
+      offset?: number
+      includeAllComponents?: boolean
+      entityContext?: UUID
+    }): Promise<Entity[]>
+
+    abstract getComponentsByNaturalKeys(
+      keys: Array<{
+        entityId: UUID
+        type: string
+        worldId?: UUID
+        sourceEntityId?: UUID
+      }>,
+    ): Promise<(Component | null)[]>
+
+    abstract getComponentsForEntities(
+      entityIds: UUID[],
+      worldId?: UUID,
+      sourceEntityId?: UUID,
+    ): Promise<Component[]>
+
+    abstract getEntitiesByIds(entityIds: UUID[]): Promise<Entity[]>
+    abstract updateEntities(entities: Entity[]): Promise<void>
+    abstract deleteEntities(entityIds: UUID[]): Promise<void>
+
+    abstract createComponents(components: Component[]): Promise<UUID[]>
+    abstract getComponentsByIds(componentIds: UUID[]): Promise<Component[]>
+    abstract updateComponents(components: Component[]): Promise<void>
+    abstract deleteComponents(componentIds: UUID[]): Promise<void>
+
+    abstract upsertComponents(
+      components: Component[],
+      options?: { entityContext?: UUID },
+    ): Promise<void>
+
+    abstract patchComponents(
+      updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
+      options?: { entityContext?: UUID },
+    ): Promise<void>
+
+    abstract getMemories(params: {
+      entityId?: UUID
+      authorEntityIds?: UUID[]
+      agentId?: UUID
+      limit?: number
+      count?: number
+      offset?: number
+      cursor?: { createdAt: number; id: UUID }
+      unique?: boolean
+      tableName: string
+      start?: number
+      end?: number
+      roomId?: UUID
+      excludeRoomIds?: UUID[]
+      worldId?: UUID
+      metadata?: Record<string, unknown>
+      textContains?: string
+      orderBy?: "createdAt"
+      orderDirection?: "asc" | "desc"
+      includeEmbedding?: boolean
+      accessContext?: AccessContext
+    }): Promise<Memory[]>
+
+    abstract getMemoriesByRoomIds(params: {
+      roomIds: UUID[]
+      tableName: string
+      limit?: number
+      offset?: number
+      textContains?: string
+      includeEmbedding?: boolean
+      accessContext?: AccessContext
+    }): Promise<Memory[]>
+
+    abstract searchMessages(params: {
+      roomIds: UUID[]
+      query: string
+      tableName?: string
+      limit?: number
+      offset?: number
+      since?: number
+      until?: number
+      accessContext?: AccessContext
+    }): Promise<MessageSearchHit[]>
+
+    abstract getMemoriesByIds(
+      memoryIds: UUID[],
+      tableName?: string,
+    ): Promise<Memory[]>
+
+    abstract getCachedEmbeddings({
+      query_table_name,
+      query_threshold,
+      query_input,
+      query_field_name,
+      query_field_sub_name,
+      query_match_count,
+    }: {
+      query_table_name: string
+      query_threshold: number
+      query_input: string
+      query_field_name: string
+      query_field_sub_name: string
+      query_match_count: number
+    }): Promise<
+      {
+        embedding: number[]
+        levenshtein_score: number
+      }[]
+    >
+
+    abstract getLogs(params: {
+      entityId?: UUID
+      roomId?: UUID
+      type?: string
+      limit?: number
+      offset?: number
+    }): Promise<Log[]>
+
+    abstract getLogInventory(params: {
+      excludeTypes?: readonly string[]
+    }): Promise<LogInventoryRow[]>
+
+    abstract createLogs(
+      params: Array<{
+        body: LogBody
+        entityId: UUID
+        roomId: UUID
+        type: string
+        createdAt?: Date
+      }>,
+    ): Promise<void>
+    abstract getLogsByIds(logIds: UUID[]): Promise<Log[]>
+    abstract updateLogs(
+      logs: Array<{ id: UUID; updates: Partial<Log> }>,
+    ): Promise<void>
+    abstract deleteLogs(logIds: UUID[]): Promise<void>
+
+    abstract searchMemories(params: {
+      tableName: string
+      embedding: number[]
+
+      includeEmbedding?: boolean
+
+      excludeRoomIds?: UUID[]
+      match_threshold?: number
+      count?: number
+      limit?: number
+      offset?: number
+      unique?: boolean
+      query?: string
+      roomId?: UUID
+      worldId?: UUID
+      entityId?: UUID
+      accessContext?: AccessContext
+    }): Promise<Memory[]>
+
+    abstract createMemories(
+      memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
+    ): Promise<UUID[]>
+    abstract updateMemories(
+      memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
+    ): Promise<void>
+
+    abstract upsertMemories(
+      memories: Array<{ memory: Memory; tableName: string }>,
+      options?: { entityContext?: UUID },
+    ): Promise<void>
+    abstract updateMemoryEmbedding(
+      update: import("./types/database.vibe").MemoryEmbeddingUpdate,
+    ): Promise<boolean>
+    abstract deleteMemories(memoryIds: UUID[]): Promise<void>
+
+    abstract deleteAllMemories(roomIds: UUID[], tableName: string): Promise<void>
+
+    abstract countMemories(params: {
+      roomIds?: UUID[]
+      unique?: boolean
+      tableName?: string
+      entityId?: UUID
+      agentId?: UUID
+      metadata?: Record<string, unknown>
+    }): Promise<number>
+
+    abstract getAllWorlds(): Promise<World[]>
+
+    abstract getWorldsByIds(worldIds: UUID[]): Promise<World[]>
+    abstract createWorlds(worlds: World[]): Promise<UUID[]>
+    abstract deleteWorlds(worldIds: UUID[]): Promise<void>
+    abstract updateWorlds(worlds: World[]): Promise<void>
+
+    abstract upsertWorlds(worlds: World[]): Promise<void>
+
+    abstract getRoomsByIds(roomIds: UUID[]): Promise<Room[]>
+
+    abstract deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void>
+
+    abstract getRoomsForParticipants(entityIds: UUID[]): Promise<UUID[]>
+
+    abstract getRoomsByWorlds(
+      worldIds: UUID[],
+      limit?: number,
+      offset?: number,
+    ): Promise<Room[]>
+
+    abstract createRooms(rooms: Room[]): Promise<UUID[]>
+
+    abstract upsertRooms(rooms: Room[]): Promise<void>
+
+    abstract createRoomParticipants(
+      entityIds: UUID[],
+      roomId: UUID,
+    ): Promise<UUID[]>
+
+    abstract deleteParticipants(
+      participants: Array<{ entityId: UUID; roomId: UUID }>,
+    ): Promise<boolean>
+    abstract updateParticipants(
+      participants: Array<{
+        entityId: UUID
+        roomId: UUID
+        updates: ParticipantUpdateFields
+      }>,
+    ): Promise<void>
+
+    abstract updateRooms(rooms: Room[]): Promise<void>
+    abstract deleteRooms(roomIds: UUID[]): Promise<void>
+
+    abstract getParticipantsForEntities(
+      entityIds: UUID[],
+    ): Promise<Participant[]>
+
+    abstract getParticipantsForRooms(
+      roomIds: UUID[],
+    ): Promise<import("./types/database.vibe").ParticipantsForRoomsResult>
+
+    abstract areRoomParticipants(
+      pairs: Array<{ roomId: UUID; entityId: UUID }>,
+    ): Promise<boolean[]>
+
+    abstract getParticipantUserStates(
+      pairs: Array<{ roomId: UUID; entityId: UUID }>,
+    ): Promise<ParticipantUserState[]>
+
+    abstract updateParticipantUserStates(
+      updates: Array<{
+        roomId: UUID
+        entityId: UUID
+        state: ParticipantUserState
+      }>,
+    ): Promise<void>
+
+    abstract getRelationshipsByPairs(
+      pairs: Array<{ sourceEntityId: UUID; targetEntityId: UUID }>,
+    ): Promise<(Relationship | null)[]>
+
+    abstract getRelationships(params: {
+      entityIds?: UUID[]
+      tags?: string[]
+      limit?: number
+      offset?: number
+    }): Promise<Relationship[]>
+
+    abstract createRelationships(
+      relationships: Array<{
+        sourceEntityId: UUID
+        targetEntityId: UUID
+        tags?: string[]
+        metadata?: Metadata
+      }>,
+    ): Promise<UUID[]>
+    abstract getRelationshipsByIds(
+      relationshipIds: UUID[],
+    ): Promise<Relationship[]>
+    abstract updateRelationships(relationships: Relationship[]): Promise<void>
+    abstract deleteRelationships(relationshipIds: UUID[]): Promise<void>
+
+    abstract getAgents(): Promise<Partial<Agent>[]>
+
+    abstract getAgentsByIds(agentIds: UUID[]): Promise<Agent[]>
+    abstract createAgents(agents: Partial<Agent>[]): Promise<UUID[]>
+
+    abstract updateAgents(
+      updates: Array<{ agentId: UUID; agent: Partial<Agent> }>,
+    ): Promise<boolean>
+    abstract upsertAgents(agents: Partial<Agent>[]): Promise<void>
+
+    abstract deleteAgents(agentIds: UUID[]): Promise<boolean>
+    abstract countAgents(): Promise<number>
+    abstract cleanupAgents(): Promise<void>
+
+    abstract ensureEmbeddingDimension(dimension: number): Promise<void>
+
+    abstract clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]>
+
+    abstract getCaches<T>(keys: string[]): Promise<Map<string, T>>
+    abstract setCaches<T>(
+      entries: Array<{ key: string; value: T }>,
+    ): Promise<boolean>
+    abstract deleteCaches(keys: string[]): Promise<boolean>
+    /** @throws {ElizaError} */
+    compareAndSetCache<T>(
+      _key: string,
+      _expected: unknown,
+      _replacement: T,
+    ): Promise<boolean> {
+      throw new ElizaError(
+        "Database adapter does not support atomic cache updates",
+        { code: "CACHE_CAS_CAPABILITY_REQUIRED" },
+      )
+    }
+
+    abstract getTasks(params: {
+      roomId?: UUID
+      worldId?: UUID
+      tags?: string[]
+      entityId?: UUID
+      agentIds: UUID[]
+      limit?: number
+      offset?: number
+    }): Promise<Task[]>
+
+    abstract getTasksByName(name: string): Promise<Task[]>
+
+    abstract createTasks(tasks: Task[]): Promise<UUID[]>
+    abstract getTasksByIds(taskIds: UUID[]): Promise<Task[]>
+
+    /** @throws {never} */
+    async updatePendingTask(_id: UUID, _task: Partial<Task>): Promise<boolean> {
+      return false
+    }
+    abstract updateTasks(
+      updates: Array<{ id: UUID; task: Partial<Task> }>,
+    ): Promise<void>
+    abstract deleteTasks(taskIds: UUID[]): Promise<void>
+
+    abstract getMemoriesByWorldId(params: {
+      worldIds?: UUID[]
+      limit?: number
+      tableName?: string
+    }): Promise<Memory[]>
+
+    abstract getPairingRequests(
+      queries: PairingRequestQuery[],
+    ): Promise<import("./types/database.vibe").PairingRequestsResult>
+
+    abstract getPairingAllowlists(
+      queries: PairingAllowlistQuery[],
+    ): Promise<import("./types/database.vibe").PairingAllowlistsResult>
+
+    abstract createPairingRequests(requests: PairingRequest[]): Promise<UUID[]>
+    abstract updatePairingRequests(requests: PairingRequest[]): Promise<void>
+    abstract deletePairingRequests(ids: UUID[]): Promise<void>
+    abstract createPairingAllowlistEntries(
+      entries: PairingAllowlistEntry[],
+    ): Promise<UUID[]>
+    abstract updatePairingAllowlistEntries(
+      entries: PairingAllowlistEntry[],
+    ): Promise<void>
+    abstract deletePairingAllowlistEntries(ids: UUID[]): Promise<void>
+
+    /** @throws {Error} */
+    protected unsupportedConnectorAccountStorage(): never {
+      throw new Error(
+        "Database adapter does not support connector account storage",
+      )
+    }
+
+    /** @throws {Error} */
+    listConnectorAccounts(
+      _params?: ListConnectorAccountsParams,
+    ): Promise<ConnectorAccountRecord[]> {
+      this.unsupportedConnectorAccountStorage()
+    }
+
+    /** @throws {Error} */
+    getConnectorAccount(
+      _params: GetConnectorAccountParams,
+    ): Promise<ConnectorAccountRecord | null> {
+      this.unsupportedConnectorAccountStorage()
+    }
+
+    /** @throws {Error} */
+    upsertConnectorAccount(
+      _params: UpsertConnectorAccountParams,
+    ): Promise<ConnectorAccountRecord> {
+      this.unsupportedConnectorAccountStorage()
+    }
+
+    /** @throws {Error} */
+    deleteConnectorAccount(
+      _params: DeleteConnectorAccountParams,
+    ): Promise<boolean> {
+      this.unsupportedConnectorAccountStorage()
+    }
+
+    /** @throws {Error} */
+    setConnectorAccountCredentialRef(
+      _params: SetConnectorAccountCredentialRefParams,
+    ): Promise<ConnectorAccountCredentialRefRecord> {
+      this.unsupportedConnectorAccountStorage()
+    }
+
+    /** @throws {Error} */
+    getConnectorAccountCredentialRef(
+      _params: GetConnectorAccountCredentialRefParams,
+    ): Promise<ConnectorAccountCredentialRefRecord | null> {
+      this.unsupportedConnectorAccountStorage()
+    }
+
+    /** @throws {Error} */
+    listConnectorAccountCredentialRefs(
+      _params: ListConnectorAccountCredentialRefsParams,
+    ): Promise<ConnectorAccountCredentialRefRecord[]> {
+      this.unsupportedConnectorAccountStorage()
+    }
+
+    /** @throws {Error} */
+    deleteConnectorAccountCredentialRefs(
+      _params: DeleteConnectorAccountCredentialRefsParams,
+    ): Promise<number> {
+      this.unsupportedConnectorAccountStorage()
+    }
+
+    /** @throws {Error} */
+    appendConnectorAccountAuditEvent(
+      _params: AppendConnectorAccountAuditEventParams,
+    ): Promise<ConnectorAccountAuditEventRecord> {
+      this.unsupportedConnectorAccountStorage()
+    }
+
+    /** @throws {Error} */
+    createOAuthFlowState(
+      _params: CreateOAuthFlowStateParams,
+    ): Promise<OAuthFlowRecord> {
+      this.unsupportedConnectorAccountStorage()
+    }
+
+    /** @throws {Error} */
+    consumeOAuthFlowState(
+      _params: ConsumeOAuthFlowStateParams,
+    ): Promise<OAuthFlowRecord | null> {
+      this.unsupportedConnectorAccountStorage()
+    }
+
+    /** @throws {Error} */
+    getOAuthFlowState(
+      _params: GetOAuthFlowStateParams,
+    ): Promise<OAuthFlowRecord | null> {
+      this.unsupportedConnectorAccountStorage()
+    }
+
+    /** @throws {Error} */
+    updateOAuthFlowState(
+      _params: UpdateOAuthFlowStateParams,
+    ): Promise<OAuthFlowRecord | null> {
+      this.unsupportedConnectorAccountStorage()
+    }
+
+    /** @throws {Error} */
+    deleteOAuthFlowState(_params: DeleteOAuthFlowStateParams): Promise<boolean> {
+      this.unsupportedConnectorAccountStorage()
+    }
+  }
+}
+import { DatabaseAdapter } from edge
+export { DatabaseAdapter }

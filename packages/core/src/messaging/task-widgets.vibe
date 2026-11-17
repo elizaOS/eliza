@@ -1,0 +1,164 @@
+// spec/core/messaging.md, "Story: Dispatch through a selected connector account"
+import { thrown } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import type { ChoiceInteraction } from "../types/interactions.vibe"
+
+export interface TaskChoiceWidget {
+  schemaVersion: 1
+  taskId: string
+  epoch: number
+  contextKey: string
+  callbackData: string
+  expiresAt: string
+  state: "pending" | "claimed" | "committed" | "completed"
+  block: ChoiceInteraction
+}
+const WIDGET_FIELDS = [
+  "schemaVersion",
+  "taskId",
+  "epoch",
+  "contextKey",
+  "callbackData",
+  "expiresAt",
+  "state",
+  "block",
+]
+const WIDGET_STATES: readonly unknown[] = [
+  "pending",
+  "claimed",
+  "committed",
+  "completed",
+]
+const BLOCK_FIELDS = [
+  "kind",
+  "id",
+  "scope",
+  "prompt",
+  "options",
+  "allowCustom",
+]
+const OPTION_FIELDS = ["value", "label", "description"]
+const utf8 = new TextEncoder()
+
+function invalidWidget(): ElizaError {
+  return new ElizaError("Invalid task choice widget", {
+    code: "TASK_CHOICE_INVALID",
+  })
+}
+
+function invalidResponse(): ElizaError {
+  return new ElizaError("Invalid task choice response", {
+    code: "TASK_CHOICES_INVALID",
+  })
+}
+
+export effect function validateTaskChoiceWidget(value: unknown): void!ElizaError {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw invalidWidget()
+  const widget = value as TaskChoiceWidget
+  if (
+    Object.keys(value).length !== WIDGET_FIELDS.length
+    || WIDGET_FIELDS.some((key) => !Object.hasOwn(value, key))
+  ) {
+    throw invalidWidget()
+  }
+  if (
+    widget.schemaVersion !== 1
+    || typeof widget.taskId !== "string"
+    || !/^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/.test(widget.taskId)
+    || !Number.isSafeInteger(widget.epoch)
+    || widget.epoch < 0
+    || typeof widget.contextKey !== "string"
+    || !/^[a-f0-9]{64}$/.test(widget.contextKey)
+    || typeof widget.callbackData !== "string"
+    || !/^is1:[a-f0-9]{32}$/.test(widget.callbackData)
+    || !WIDGET_STATES.includes(widget.state)
+  ) {
+    throw invalidWidget()
+  }
+  if (
+    typeof widget.expiresAt !== "string"
+    || !Number.isFinite(Date.parse(widget.expiresAt))
+    || new Date(widget.expiresAt).toISOString() !== widget.expiresAt
+  ) {
+    throw invalidWidget()
+  }
+  const block = widget.block
+  if (
+    block?.kind !== "choice"
+    || typeof block.id !== "string"
+    || !/^[A-Za-z0-9_.:-]{1,64}$/.test(block.id)
+    || typeof block.scope !== "string"
+    || !/^[A-Za-z0-9_.:-]{1,64}$/.test(block.scope)
+    || (block.allowCustom !== undefined && block.allowCustom !== false)
+    || (block.prompt !== undefined
+      && (typeof block.prompt !== "string" || block.prompt.length > 1000))
+    || !Array.isArray(block.options)
+    || block.options.length < 1
+    || block.options.length > 25
+  ) {
+    throw invalidWidget()
+  }
+  if (Object.keys(block).some((key) => !BLOCK_FIELDS.includes(key))) throw invalidWidget()
+  const seen = new Set<string>()
+  for (const option of block.options) {
+    if (
+      !option
+      || typeof option.value !== "string"
+      || !/^[A-Za-z0-9_.:-]{1,128}$/.test(option.value)
+      || seen.has(option.value)
+      || typeof option.label !== "string"
+      || !option.label.trim()
+      || utf8.encode(option.label).length > 80
+      || (option.description !== undefined
+        && (typeof option.description !== "string"
+          || option.description.length > 1000))
+      || Object.keys(option).some((key) => !OPTION_FIELDS.includes(key))
+    ) {
+      throw invalidWidget()
+    }
+    seen.add(option.value)
+  }
+}
+
+export effect function admitTaskChoiceResponse(
+  value: unknown,
+  task: { taskId: string; epoch: number } | undefined,
+  maxWidgets: number,
+): TaskChoiceWidget[]!ElizaError {
+  const values = value ?? []
+  if (
+    !Number.isSafeInteger(maxWidgets)
+    || maxWidgets < 0
+    || !Array.isArray(values)
+    || values.length > maxWidgets
+  ) {
+    throw invalidResponse()
+  }
+  const detached = try Effect.try({ try: (): unknown[] => structuredClone(values), catch: invalidResponse })
+  const admitted: TaskChoiceWidget[] = []
+  for (const widget of detached) {
+    try validateTaskChoiceWidget(widget)
+    const valid = widget as TaskChoiceWidget
+    if (!task || valid.taskId !== task.taskId || valid.epoch !== task.epoch) {
+      throw new ElizaError("Task choice response does not match its request", {
+        code: "TASK_CHOICES_MISMATCH",
+      })
+    }
+    admitted.push(valid)
+  }
+  return admitted
+}
+
+export const admitTaskChoiceResponseOrThrow = thrown(admitTaskChoiceResponse)
+
+module edge {
+  import { runDetachedSync } from "../edge.vibe"
+  import { validateTaskChoiceWidget, type TaskChoiceWidget } from "./task-widgets.vibe"
+
+  /** @throws {ElizaError} */
+  export function validateTaskChoiceWidgetOrThrow(value: unknown): asserts value is TaskChoiceWidget {
+    runDetachedSync(validateTaskChoiceWidget(value))
+  }
+}
+import { validateTaskChoiceWidgetOrThrow } from edge
+export { validateTaskChoiceWidgetOrThrow }

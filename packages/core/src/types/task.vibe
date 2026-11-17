@@ -1,0 +1,105 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { Memory } from "./memory.vibe"
+import type { JsonValue, UUID } from "./primitives.vibe"
+import type { IAgentRuntime } from "./runtime.vibe"
+import type { State } from "./state.vibe"
+import type { TriggerConfig, TriggerRunRecord } from "./trigger.vibe"
+
+export const TaskStatus = {
+  UNSPECIFIED: "UNSPECIFIED",
+  PENDING: "PENDING",
+  IN_PROGRESS: "IN_PROGRESS",
+  COMPLETED: "COMPLETED",
+  FAILED: "FAILED",
+  CANCELLED: "CANCELLED",
+} as const
+
+export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus]
+
+export interface TaskMetadataPatch {
+  wake?: { requestAt?: number; consumeRevision?: number }
+  set?: Partial<TaskMetadata>
+  unset?: readonly (keyof TaskMetadata)[]
+}
+
+export type TaskMetadataPatchOutcome = "patched" | "missing" | "unsupported"
+
+export interface TaskWorker {
+  name: string
+  execute: (
+    runtime: IAgentRuntime,
+    options: Record<string, JsonValue | object>,
+    task: Task,
+  ) => Promise<
+    | undefined
+    | { nextInterval?: number; nextWakeAt?: number; preserveTask?: boolean }
+  >
+  shouldRun?: (runtime: IAgentRuntime, task: Task) => Promise<boolean>
+  canExecute?: (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State,
+  ) => Promise<boolean>
+}
+
+export interface TaskMetadata {
+  targetEntityId?: string
+  reason?: string
+  priority?: "low" | "medium" | "high"
+  message?: string
+  status?: string
+  scheduledAt?: string
+  snoozedAt?: string
+  originalScheduledAt?: JsonValue
+  createdAt?: string
+  completedAt?: string
+  completionNotes?: string
+  lastExecuted?: string
+  updatedAt?: number
+  updateInterval?: number
+  wakeAt?: number
+  wakeRevision?: number
+  baseInterval?: number
+  notBefore?: number
+  notAfter?: number
+  paused?: boolean
+  orphanedNoWorker?: boolean
+  failureCount?: number
+  maxFailures?: number
+  lastError?: string
+  blocking?: boolean
+  options?: {
+    name: string
+    description: string
+    isCancel?: boolean
+  }[]
+  values?: Record<string, JsonValue | object>
+  trigger?: TriggerConfig
+  triggerRuns?: TriggerRunRecord[]
+  [key: string]: JsonValue | object | undefined
+}
+
+export interface Task {
+  id?: UUID
+  name: string
+  description?: string
+  tags?: string[]
+  roomId?: UUID
+  worldId?: UUID
+  entityId?: UUID
+  agentId?: UUID
+  metadata?: TaskMetadata
+  createdAt?: number | bigint
+  updatedAt?: number | bigint
+  dueAt?: number | bigint | null
+  scheduleError?: string
+  status?: TaskStatus
+}
+
+export interface TaskRunStatus {
+  task: Task | null
+  paused: boolean
+  executing: boolean
+  nextRunAt?: number
+  lastError?: string
+}

@@ -1,0 +1,110 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { errorText } from "../utils/errors.vibe"
+import { type Foreign, foreign, foreignSync, thrownValue } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import { runWithTrajectoryPurpose } from "../trajectory-context.vibe"
+import { type GenerateTextParams, ModelType } from "../types/model.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+
+type ModelTypeValue = (typeof ModelType)[keyof typeof ModelType]
+
+export interface ExtractorPipelineResult<TParsed> {
+  parsed: TParsed | null
+
+  raw: string
+
+  repaired: boolean
+}
+
+export interface RunExtractorPipelineArgs<TParsed> {
+  runtime: IAgentRuntime
+  prompt: string
+
+  system?: string
+
+  responseFormat?: GenerateTextParams["responseFormat"]
+
+  parser: (raw: string) => TParsed | null
+
+  buildRepairPrompt?: (rawFirstPass: string) => string
+
+  modelType?: ModelTypeValue
+}
+
+effect function asString(value: unknown) {
+  if (typeof value === "string") return value
+  throw new ElizaError("Extractor model returned a non-text response", {
+    code: "EXTRACTOR_NON_TEXT_RESPONSE",
+    context: { responseType: typeof value },
+  })
+}
+
+effect function generate(
+  runtime: IAgentRuntime,
+  modelType: ModelTypeValue,
+  purpose: string,
+  params: () => GenerateTextParams,
+) {
+  return try asString(try foreign(() => runWithTrajectoryPurpose(purpose, () => runtime.useModel(modelType, params()))))
+}
+
+effect function extract<TParsed>(args: RunExtractorPipelineArgs<TParsed>, modelType: ModelTypeValue) {
+  const { runtime, prompt, parser, buildRepairPrompt } = args
+  const callOptions = {
+    ...(args.system !== undefined ? { system: args.system } : {}),
+    ...(args.responseFormat !== undefined
+      ? { responseFormat: args.responseFormat }
+      : {}),
+  }
+
+  const firstRaw = try generate(runtime, modelType, "lifeops-extractor-first-pass", () => ({ prompt, ...callOptions }))
+  const firstParsed = try foreignSync(() => parser(firstRaw))
+  if (firstParsed !== null) {
+    return { parsed: firstParsed, raw: firstRaw, repaired: false } satisfies ExtractorPipelineResult<TParsed>
+  }
+
+  if (!buildRepairPrompt) {
+    return { parsed: null, raw: firstRaw, repaired: false } satisfies ExtractorPipelineResult<TParsed>
+  }
+
+  const repairRaw = try generate(runtime, modelType, "lifeops-extractor-repair-pass", () => ({
+    prompt: buildRepairPrompt(firstRaw),
+    ...callOptions,
+  }))
+  const repairParsed = try foreignSync(() => parser(repairRaw))
+  return { parsed: repairParsed, raw: repairRaw, repaired: true } satisfies ExtractorPipelineResult<TParsed>
+}
+
+export effect function runExtractorPipeline<TParsed>(
+  args: RunExtractorPipelineArgs<TParsed>,
+): ExtractorPipelineResult<TParsed>!(ElizaError | Foreign) {
+  const modelType = args.modelType ?? ModelType.TEXT_LARGE
+  return extract(args, modelType) catch effect (error) => {
+    const thrown = thrownValue(error)
+    try foreignSync(() => args.runtime.reportError("ExtractorPipeline.model", thrown, { modelType }))
+    try foreignSync(() =>
+      args.runtime.logger.warn(
+        {
+          src: "lifeops:extractor-pipeline",
+          error: errorText(thrown),
+        },
+        "Extractor pipeline model call failed",
+      )
+    )
+    throw error
+  }
+}
+
+module edge {
+  import { runDetached } from "../edge.vibe"
+  import { type ExtractorPipelineResult, runExtractorPipeline, type RunExtractorPipelineArgs } from "./extractor-pipeline.vibe"
+
+  /** @throws {never} */
+  export function runExtractorPipelinePromise<TParsed>(
+    args: RunExtractorPipelineArgs<TParsed>,
+  ): Promise<ExtractorPipelineResult<TParsed>> {
+    return runDetached(runExtractorPipeline(args))
+  }
+}
+import { runExtractorPipelinePromise } from edge
+export { runExtractorPipelinePromise }

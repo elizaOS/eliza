@@ -1,0 +1,295 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/authorization.md, "Role gates combine exclusions, minimum rank and all required memberships"
+import { audienceAdmissionGateFailure } from "../access-control/audience-disclosure.vibe"
+import { type Foreign, foreignSync, promised, thrown, thrownValue } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import { checkSenderRole } from "../roles.vibe"
+import { disclosureGateFailure, getTrustedDeliveryAudience } from "../security/trusted-delivery-audience.vibe"
+import type { Action } from "../types/components.vibe"
+import type { AgentContext, RoleGateRole } from "../types/contexts.vibe"
+import type { Memory } from "../types/memory.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { processEnv } from "../utils/environment.vibe"
+import { resolveActionRolePolicyRole } from "./action-role-policy.vibe"
+import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates.vibe"
+
+export type GateableAction = Pick<
+  Action,
+  | "name"
+  | "tags"
+  | "private"
+  | "contextGate"
+  | "contexts"
+  | "roleGate"
+  | "disclosureGate"
+>
+
+export interface ActionGateContext {
+  message?: Memory
+  userRoles?: readonly RoleGateRole[]
+  activeContexts?: readonly AgentContext[]
+
+  skipPrivateGate?: boolean
+}
+
+export type ActionGateRejectionKind =
+  | "private"
+  | "disclosure"
+  | "role"
+  | "context"
+
+export interface ActionGateRejection {
+  kind: ActionGateRejectionKind
+  reason: string
+}
+
+module node {
+  import { AsyncLocalStorage } from "node:async_hooks"
+  import type { ActionGateContext, GateableAction } from "./action-gate.vibe"
+
+  type ActionGatePolicy = (action: GateableAction, context: ActionGateContext) => string | undefined
+
+  const requestPolicy = new AsyncLocalStorage<ActionGatePolicy>()
+
+  /** @throws {never} */
+  export function currentRequestPolicy(): ActionGatePolicy | undefined {
+    return requestPolicy.getStore()
+  }
+
+  /** @throws {never} */
+  export function withActionGatePolicy<T>(policy: ActionGatePolicy, run: () => Promise<T>): Promise<T> {
+    const inherited = requestPolicy.getStore()
+    return requestPolicy.run(
+      (action, context) => inherited?.(action, context) ?? policy(action, context),
+      run,
+    )
+  }
+}
+import { currentRequestPolicy, withActionGatePolicy } from node
+export { withActionGatePolicy }
+
+let cachedActionAllowlist:
+  | { raw: string; names: ReadonlySet<string> }
+  | undefined
+
+export effect function readActionAllowlist(
+  env: NodeJS.ProcessEnv = processEnv(),
+): (ReadonlySet<string> | null)!ElizaError {
+  const raw = env.ELIZA_ACTION_ALLOWLIST
+  if (raw === undefined) return null
+
+  if (raw.trim() === "") {
+    throw new ElizaError("ELIZA_ACTION_ALLOWLIST is set but empty", {
+      code: "INVALID_ACTION_ALLOWLIST",
+    })
+  }
+  if (cachedActionAllowlist?.raw === raw) return cachedActionAllowlist.names
+  const parsed: unknown = try Effect.try({
+    try: () => JSON.parse(raw) as unknown,
+    catch: (error) =>
+      new ElizaError("Failed to parse ELIZA_ACTION_ALLOWLIST", {
+        code: "INVALID_ACTION_ALLOWLIST",
+        cause: error,
+      }),
+  })
+  if (
+    !Array.isArray(parsed)
+    || !parsed.every((name) => typeof name === "string" && name.length > 0)
+  ) {
+    throw new ElizaError(
+      "ELIZA_ACTION_ALLOWLIST must be a JSON array of action names",
+      { code: "INVALID_ACTION_ALLOWLIST" },
+    )
+  }
+  cachedActionAllowlist = { raw, names: new Set(parsed as string[]) }
+  return cachedActionAllowlist.names
+}
+
+export const readActionAllowlistOrThrow = thrown(readActionAllowlist)
+
+export effect function assertActionAllowlistMatchesActions(
+  actions: readonly Pick<Action, "name">[],
+): void!ElizaError {
+  const allowlist = try readActionAllowlist()
+  if (!allowlist) return
+  const registered = new Set(actions.map((action) => action.name))
+  const unmatched = [...allowlist].filter((name) => !registered.has(name))
+  if (unmatched.length > 0) {
+    throw new ElizaError(
+      `ELIZA_ACTION_ALLOWLIST names no registered action: ${unmatched.join(", ")}`,
+      { code: "INVALID_ACTION_ALLOWLIST", context: { unmatched } },
+    )
+  }
+}
+
+export const assertActionAllowlistMatchesActionsOrThrow = thrown(assertActionAllowlistMatchesActions)
+
+function roleRejection(action: GateableAction): ActionGateRejection {
+  return {
+    kind: "role",
+    reason: `Action ${action.name} is not allowed for the current role`,
+  }
+}
+
+export effect function actionGateRejection(
+  action: GateableAction,
+  ctx: ActionGateContext,
+): (ActionGateRejection | undefined)!(ElizaError | Foreign) {
+  if (
+    !ctx.skipPrivateGate
+    && !privateActionAllowedOnTurn(action, ctx.message)
+  ) {
+    return {
+      kind: "private",
+      reason: `Action ${action.name} is private and can only run in the agent's autonomous loop`,
+    }
+  }
+
+  const gate = action.disclosureGate
+  const disclosureFailure = gate?.require === "audience_admission"
+    ? audienceAdmissionGateFailure(
+      gate.subject,
+      getTrustedDeliveryAudience(ctx.message),
+    )
+    : disclosureGateFailure(gate, ctx.message)
+  if (disclosureFailure) {
+    return {
+      kind: "disclosure",
+      reason: `Action ${action.name} is not allowed: ${disclosureFailure}`,
+    }
+  }
+
+  const allowlist = try readActionAllowlist()
+  if (allowlist && !allowlist.has(action.name)) {
+    return {
+      kind: "context",
+      reason: `Action ${action.name} is not available in this product`,
+    }
+  }
+
+  const requestFailure = try foreignSync(() => currentRequestPolicy()?.(action, ctx))
+  if (requestFailure) return { kind: "context", reason: requestFailure }
+
+  const policyRole = try resolveActionRolePolicyRole(action)
+  if (policyRole) {
+    return satisfiesRoleGate(ctx.userRoles, { minRole: policyRole })
+      ? undefined
+      : roleRejection(action)
+  }
+
+  const contextGateRole = action.contextGate?.roleGate
+  if (!satisfiesRoleGate(ctx.userRoles, contextGateRole ?? action.roleGate)) {
+    return roleRejection(action)
+  }
+
+  const contextGate = action.contextGate ?? { contexts: action.contexts }
+  if (!satisfiesContextGate(ctx.activeContexts, contextGate, ctx.userRoles)) {
+    return {
+      kind: "context",
+      reason: `Action ${action.name} is not allowed in the current context`,
+    }
+  }
+
+  if (contextGateRole && !satisfiesRoleGate(ctx.userRoles, action.roleGate)) {
+    return roleRejection(action)
+  }
+
+  return undefined
+}
+
+export const actionGateRejectionOrThrow = thrown(actionGateRejection)
+
+export effect function actionGateFailure(
+  action: GateableAction,
+  ctx: ActionGateContext,
+): (string | undefined)!(ElizaError | Foreign) {
+  return (try actionGateRejection(action, ctx))?.reason
+}
+
+export const actionGateFailureOrThrow = thrown(actionGateFailure)
+
+export effect function canActionRun(
+  action: GateableAction,
+  ctx: ActionGateContext,
+): boolean!(ElizaError | Foreign) {
+  return (try actionGateRejection(action, ctx)) === undefined
+}
+
+export const canActionRunOrThrow = thrown(canActionRun)
+
+export effect function resolveActionCallerRoles(
+  runtime: IAgentRuntime,
+  message: Memory,
+): RoleGateRole[]!ElizaError {
+  if (message.entityId === runtime.agentId) {
+    return ["OWNER"]
+  }
+
+  const result = checkSenderRole(runtime, message) catch effect (failure) => {
+    throw new ElizaError("Failed to resolve the tool caller's role", {
+      code: "ACTION_CALLER_ROLE_LOOKUP_FAILED",
+      cause: thrownValue(failure),
+      context: {
+        messageId: message.id,
+        roomId: message.roomId,
+        entityId: message.entityId,
+      },
+    })
+  }
+  return result?.role ? [result.role] : ["GUEST"]
+}
+
+export const resolveActionCallerRolesPromise = promised(resolveActionCallerRoles)
+
+export effect function actionGateNeedsCallerRoles(action: GateableAction): boolean!ElizaError {
+  return Boolean(
+    action.roleGate
+      || action.contextGate?.roleGate
+      || (try resolveActionRolePolicyRole(action)),
+  )
+}
+
+export const actionGateNeedsCallerRolesOrThrow = thrown(actionGateNeedsCallerRoles)
+
+export effect function resolveActionGateFailure(
+  runtime: IAgentRuntime,
+  action: GateableAction,
+  ctx: Omit<ActionGateContext, "message" | "skipPrivateGate"> & {
+    message: Memory
+
+    evaluateContexts?: boolean
+  },
+): (string | undefined)!(ElizaError | Foreign) {
+  const gated: GateableAction = ctx.evaluateContexts === false
+    ? {
+      name: action.name,
+      tags: action.tags,
+      private: action.private,
+      roleGate: action.roleGate,
+      disclosureGate: action.disclosureGate,
+      contextGate: action.contextGate?.roleGate
+        ? { roleGate: action.contextGate.roleGate }
+        : undefined,
+    }
+    : action
+  const userRoles = ctx.userRoles?.length || !(try actionGateNeedsCallerRoles(action))
+    ? ctx.userRoles
+    : try resolveActionCallerRoles(runtime, ctx.message)
+  return try actionGateFailure(gated, { ...ctx, userRoles })
+}
+
+export const resolveActionGateFailurePromise = promised(resolveActionGateFailure)
+
+function privateActionAllowedOnTurn(
+  action: Pick<Action, "private">,
+  message: Memory | undefined,
+): boolean {
+  if (!action.private) {
+    return true
+  }
+  const metadata = message?.content?.metadata
+  return (
+    typeof metadata === "object"
+    && metadata !== null
+    && (metadata as { isAutonomous?: unknown }).isAutonomous === true
+  )
+}

@@ -10,3 +10,4 @@ exports this client; each consumer supplies its own presentation.
 - [Reply streaming](./replyStreaming.md)
 - [Task lifecycle requests](./taskLifecycle.md)
 - [Observation support](./observationSupport.md)
+- [Access walkthrough](./accessWalkthrough.md)

@@ -1,0 +1,778 @@
+// spec/core/embeddingSpace.md, "Story: Keep stored vectors in their verified representation"; spec/core/embeddingSpace.md, "A probe prepares dimensions and representation before pinning"; spec/core/embeddingSpace.md, "The vector write rechecks captured representation after every await"; spec/core/embeddingSpace.md, "Failed initialization fences generation until a confirmed recovery"
+import { errorText } from "../utils/errors.vibe"
+import { asLegacy, foreign, foreignSync, Foreign, runDetached, thrownValue } from "../edge.vibe"
+import {
+  copyEmbeddingVectorSpace,
+  getEmbeddingVectorSpace,
+  getEmbeddingVectorSpaceIdentity,
+  identifyEmbeddingVector,
+} from "../embedding-vector-space.vibe"
+import { ElizaError } from "../errors.vibe"
+import type { IDatabaseAdapter } from "../types/database.vibe"
+import { EventType } from "../types/events.vibe"
+import type { Memory } from "../types/memory.vibe"
+import { ModelType, type ModelTypeName } from "../types/model.vibe"
+import type { UUID } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { failWhenAborted } from "../utils/retry.vibe"
+import { NoModelProviderConfiguredError, type ResolvedModelRegistration } from "./model-policy.vibe"
+
+export interface EmbeddingProbeAttempt {
+  provider: string
+  modelKey: string
+  error: string
+}
+
+export const LOCAL_EMBEDDING_PROVIDERS = new Set([
+  "eliza-router",
+  "eliza-local-inference",
+  "eliza-device-bridge",
+  "capacitor-llama",
+  "eliza-aosp-llama",
+])
+
+export const EMBEDDING_STORE_IDENTITY_CACHE_KEY = "embedding:store-identity"
+export const EMBEDDING_STORE_ACCEPT_MODEL_SETTING = "ELIZA_EMBEDDING_STORE_ACCEPT_MODEL"
+export interface EmbeddingStoreIdentity {
+  provider: string
+  modelLabel: string | null
+  dimension: number
+  recordedAt: string
+}
+
+export class EmbeddingDimensionProbeError extends Data.TaggedError("EmbeddingDimensionProbeError")<{
+  readonly attempts: readonly EmbeddingProbeAttempt[]
+}> {
+  constructor(attempts: readonly EmbeddingProbeAttempt[]) {
+    super({ attempts })
+    const detail = attempts
+      .map((attempt) => `${attempt.provider}: ${attempt.error}`)
+      .join("; ")
+    this.message =
+      `All ${attempts.length} registered TEXT_EMBEDDING provider(s) failed the embedding dimension probe — ${detail}`
+    this.name = "EmbeddingDimensionProbeError"
+  }
+}
+
+export error MissingDatabaseAdapter { message: string }
+export error NoEmbeddingModel { message: string }
+export error EmptyMemoryContent { message: string }
+
+type InitializationFailure =
+  | MissingDatabaseAdapter
+  | NoEmbeddingModel
+  | EmbeddingDimensionProbeError
+  | ElizaError
+  | Foreign
+
+interface EmbeddingHost {
+  resolveModelRegistrations(
+    modelType: ModelTypeName | string,
+    provider?: string,
+  ): ResolvedModelRegistration[]
+}
+
+interface EmbeddingState {
+  readonly runtime: IAgentRuntime
+  readonly host: EmbeddingHost
+  pinnedSpace: string | undefined
+  pinnedDimension: number | undefined
+  pinnedProvider: string | undefined
+  disabledReason: string | null
+  storeTransition: boolean
+  skipWarned: boolean
+  initialization: Deferred.Deferred<void, InitializationFailure> | undefined
+}
+
+function isGenerationDisabled(state: EmbeddingState): boolean {
+  return state.storeTransition || state.disabledReason !== null
+}
+
+function disableGeneration(state: EmbeddingState, reason: string): void {
+  state.disabledReason = reason
+  state.skipWarned = false
+}
+
+function enableGeneration(state: EmbeddingState): void {
+  if (state.disabledReason !== null) {
+    state.runtime.logger.info(
+      { src: "agent", agentId: state.runtime.agentId },
+      "TEXT_EMBEDDING provider recovered; embedding generation re-enabled",
+    )
+  }
+  state.disabledReason = null
+  state.skipWarned = false
+}
+
+function warnGenerationSkipped(state: EmbeddingState): void {
+  if (state.skipWarned) {
+    return
+  }
+  state.skipWarned = true
+  state.runtime.logger.warn(
+    {
+      src: "agent",
+      agentId: state.runtime.agentId,
+      reason: state.disabledReason
+        ?? "Embedding store transition is not yet confirmed",
+    },
+    "Embedding generation is disabled; memory writes are persisted WITHOUT vectors — recall over new memories is degraded until embedding initialization succeeds",
+  )
+}
+
+function embeddingModelLabelForRegistration(
+  runtime: IAgentRuntime,
+  registration: ResolvedModelRegistration,
+): string | null {
+  const read = (key: string): string | null => {
+    const value = runtime.getSetting(key)
+    return typeof value === "string" && value.trim().length > 0
+      ? value.trim()
+      : null
+  }
+  const metadata = registration.metadata
+  if (metadata?.displayModel?.trim()) return metadata.displayModel.trim()
+  for (
+    const key of [
+      ...(metadata?.displayModelSettings ?? []),
+      metadata?.displayModelSetting,
+    ]
+  ) {
+    const value = key ? read(key) : null
+    if (value) return value
+  }
+  if (metadata?.displayModelDefault?.trim()) {
+    return metadata.displayModelDefault.trim()
+  }
+  return LOCAL_EMBEDDING_PROVIDERS.has(registration.provider)
+    ? (read("LOCAL_EMBEDDING_MODEL") ?? read("EMBEDDING_MODEL"))
+    : null
+}
+
+function describeIdentity(identity: EmbeddingStoreIdentity): string {
+  return `${identity.provider}/${identity.modelLabel ?? "unknown-model"}@${identity.dimension}`
+}
+
+effect function prepareEmbeddingStoreIdentity(
+  state: EmbeddingState,
+  registration: ResolvedModelRegistration,
+  dimension: number,
+): { modelLabel: string | null; next?: EmbeddingStoreIdentity }!(ElizaError | Foreign) {
+  const { runtime } = state
+  const { provider } = registration
+  const modelLabel = embeddingModelLabelForRegistration(runtime, registration)
+  const next: EmbeddingStoreIdentity = {
+    provider,
+    modelLabel,
+    dimension,
+    recordedAt: new Date().toISOString(),
+  }
+  const stored = try foreign(() => runtime.getCache<EmbeddingStoreIdentity>(EMBEDDING_STORE_IDENTITY_CACHE_KEY))
+  if (!stored) {
+    runtime.logger.warn(
+      { src: "agent", agentId: runtime.agentId, identity: next },
+      "No embedding store identity recorded for this agent; the active embedder must be recorded. If the existing vectors came from a different model, back up and rebuild a fresh index.",
+    )
+    return { modelLabel, next }
+  }
+  if (stored.dimension !== dimension) {
+    runtime.logger.info(
+      { src: "agent", agentId: runtime.agentId, from: stored, to: next },
+      "Embedding width is changing; the stale-dimension reconcile owns the old vectors",
+    )
+    return { modelLabel, next }
+  }
+  const sameModel = stored.modelLabel !== null && modelLabel !== null
+    ? stored.modelLabel === modelLabel
+    : stored.provider === provider
+  if (sameModel) {
+    return stored.provider !== provider || stored.modelLabel !== modelLabel
+      ? { modelLabel, next }
+      : { modelLabel }
+  }
+  const acknowledged = runtime.getSetting(EMBEDDING_STORE_ACCEPT_MODEL_SETTING)
+  const acceptedLabel = modelLabel ?? provider
+  if (
+    typeof acknowledged === "string"
+    && acknowledged.trim() === acceptedLabel
+  ) {
+    runtime.logger.warn(
+      { src: "agent", agentId: runtime.agentId, from: stored, to: next },
+      "Embedding store identity change acknowledged by operator",
+    )
+    return { modelLabel, next }
+  }
+  const reason =
+    `Embedding model changed from ${describeIdentity(stored)} to ${
+      describeIdentity(next)
+    } at the same ${dimension}-dim width; refusing to mix vector spaces. `
+    + `Back up the store, rebuild a fresh index for this agent, then set ${EMBEDDING_STORE_ACCEPT_MODEL_SETTING}=${acceptedLabel}.`
+  disableGeneration(state, reason)
+  throw new ElizaError(reason, {
+    code: "EMBEDDING_STORE_MODEL_MISMATCH",
+    context: { agentId: runtime.agentId, stored, next },
+  })
+}
+
+effect function validateProviderOutput(
+  state: EmbeddingState,
+  modelType: string,
+  params: unknown,
+  embeddingProviderOutput: unknown,
+  result: unknown,
+  provider: string,
+  signal?: AbortSignal,
+): void!InitializationFailure {
+  const batch = modelType === ModelType.TEXT_EMBEDDING_BATCH
+  if (state.storeTransition && (params !== null || batch)) {
+    throw new ElizaError("Embedding store transition is not yet confirmed", {
+      code: "EMBEDDING_STORE_TRANSITION_UNCONFIRMED",
+    })
+  }
+  const sources = batch && Array.isArray(embeddingProviderOutput)
+    ? embeddingProviderOutput
+    : [embeddingProviderOutput]
+  const targets = batch && Array.isArray(result) ? result : [result]
+  let namedSpace: string | undefined
+  for (const source of sources) {
+    namedSpace = getEmbeddingVectorSpace(source)
+    if (namedSpace !== undefined) break
+  }
+
+  if (
+    namedSpace !== undefined
+    && state.pinnedSpace === undefined
+    && (params !== null || batch)
+  ) {
+    if (signal?.aborted) throw new Foreign({ cause: signal.reason })
+    if (!signal) try ensureEmbeddingDimension(state)
+    else {
+      try.race [ensureEmbeddingDimension(state), failWhenAborted(signal)]
+      if (signal.aborted) throw new Foreign({ cause: signal.reason })
+    }
+  }
+  const expected = state.pinnedSpace ?? namedSpace
+  if (expected !== undefined) {
+    if (
+      state.pinnedSpace === undefined
+      && (params !== null || batch)
+    ) {
+      throw new ElizaError(
+        "Initialize the embedding representation before generating vectors",
+        {
+          code: "EMBEDDING_SPACE_NOT_INITIALIZED",
+        },
+      )
+    }
+    if (
+      sources.length !== targets.length
+      || sources.some(
+        (vector) =>
+          getEmbeddingVectorSpace(vector) !== expected
+          || (state.pinnedDimension !== undefined
+            && (!Array.isArray(vector)
+              || vector.length !== state.pinnedDimension)),
+      )
+    ) {
+      throw new ElizaError(
+        "Embedding provider returned a different or unidentified representation",
+        {
+          code: "EMBEDDING_SPACE_MISMATCH",
+          context: { expected, provider },
+        },
+      )
+    }
+    for (let index = 0; index < sources.length; index++) {
+      try copyEmbeddingVectorSpace(sources[index], targets[index])
+    }
+  } else {
+    for (const target of targets) {
+      if (
+        Array.isArray(target)
+        && getEmbeddingVectorSpaceIdentity(target) === undefined
+      ) {
+        try identifyEmbeddingVector(target, null)
+      }
+    }
+  }
+}
+
+effect function ensureEmbeddingDimension(state: EmbeddingState): void!InitializationFailure {
+  const pending = state.initialization ?? try beginInitialization(state)
+  return try Deferred.await(pending)
+}
+
+effect function beginInitialization(state: EmbeddingState): Deferred.Deferred<void, InitializationFailure>!! {
+  const pending = Deferred.makeUnsafe<void, InitializationFailure>()
+  state.initialization = pending
+  try forkDetach(effect {
+    const outcome = try exit(initializeEmbeddingDimension(state))
+    if (state.initialization === pending) state.initialization = undefined
+    try Deferred.done(pending, outcome)
+  })
+  return pending
+}
+
+effect function probeRegistrations(state: EmbeddingState): {
+  registrations: ResolvedModelRegistration[]
+  localOnly: boolean
+}!(MissingDatabaseAdapter | NoEmbeddingModel | EmbeddingDimensionProbeError) {
+  const { runtime } = state
+  if (!runtime.adapter) {
+    throw new MissingDatabaseAdapter({
+      message: "Database adapter not initialized before ensureEmbeddingDimension",
+    })
+  }
+  const canonicalProviderSetting = runtime.getSetting("ELIZA_EMBEDDING_PROVIDER")
+  const embeddingProvider = typeof canonicalProviderSetting === "string"
+      && canonicalProviderSetting.trim()
+    ? canonicalProviderSetting.trim()
+    : undefined
+  const allRegistrations = state.host.resolveModelRegistrations(
+    ModelType.TEXT_EMBEDDING,
+    embeddingProvider,
+  )
+  if (allRegistrations.length === 0) {
+    if (embeddingProvider) {
+      disableGeneration(
+        state,
+        `Configured TEXT_EMBEDDING provider "${embeddingProvider}" has no registered handler yet`,
+      )
+      throw new EmbeddingDimensionProbeError([
+        {
+          provider: embeddingProvider,
+          modelKey: ModelType.TEXT_EMBEDDING,
+          error: "no registered handler yet",
+        },
+      ])
+    }
+    throw new NoEmbeddingModel({ message: "No TEXT_EMBEDDING model registered" })
+  }
+
+  const configuredOwnershipProvider = String(runtime.getSetting("EMBEDDING_PROVIDER") ?? "")
+    .trim()
+    .toLowerCase()
+  const localOnly = configuredOwnershipProvider === "local"
+  const localRegistrations = localOnly
+    ? allRegistrations.filter((registration) => LOCAL_EMBEDDING_PROVIDERS.has(registration.provider))
+    : []
+  const routerRegistrations = localRegistrations.filter(
+    (registration) => registration.provider === "eliza-router",
+  )
+  const registrations = localOnly
+    ? routerRegistrations.length > 0
+      ? routerRegistrations
+      : localRegistrations
+    : allRegistrations
+  if (localOnly && registrations.length === 0) {
+    const probeError = new EmbeddingDimensionProbeError([
+      {
+        provider: "local",
+        modelKey: ModelType.TEXT_EMBEDDING,
+        error: "EMBEDDING_PROVIDER=local but no on-device embedding handler is registered",
+      },
+    ])
+    disableGeneration(state, probeError.message)
+    throw probeError
+  }
+  return { registrations, localOnly }
+}
+
+effect function pinEmbeddingProvider(
+  state: EmbeddingState,
+  registration: ResolvedModelRegistration,
+  embedding: unknown[],
+  attempts: readonly EmbeddingProbeAttempt[],
+): void!(ElizaError | Foreign) {
+  const { runtime } = state
+  const spaceId = getEmbeddingVectorSpace(embedding)
+  if (
+    spaceId !== undefined
+    && state.pinnedProvider !== undefined
+    && state.pinnedSpace !== spaceId
+  ) {
+    throw new ElizaError(
+      "Restart the runtime before changing its embedding representation",
+      {
+        code: "EMBEDDING_SPACE_CHANGED",
+      },
+    )
+  }
+  const ensureSpace = runtime.adapter.ensureEmbeddingSpace
+  if (spaceId !== undefined && !ensureSpace) {
+    throw new ElizaError(
+      "This database adapter cannot separate embedding representations; upgrade the adapter before using this model",
+      {
+        code: "EMBEDDING_SPACE_UNSUPPORTED",
+      },
+    )
+  }
+  const identity = spaceId === undefined
+    ? try prepareEmbeddingStoreIdentity(state, registration, embedding.length)
+    : undefined
+  if (
+    identity
+    && (identity.next || state.pinnedDimension !== embedding.length)
+    && !state.storeTransition
+  ) {
+    state.storeTransition = true
+    state.skipWarned = false
+  }
+
+  try foreign(() => runtime.adapter.ensureEmbeddingDimension(embedding.length))
+  const representationMemoryIds = spaceId !== undefined && ensureSpace
+    ? try foreign(() => ensureSpace.call(runtime.adapter, spaceId))
+    : []
+  const next = identity?.next
+  if (next) {
+    const confirmed = try foreign(() => runtime.setCache(EMBEDDING_STORE_IDENTITY_CACHE_KEY, next))
+    if (!confirmed) {
+      throw new ElizaError(
+        "Embedding store identity write is not confirmed",
+        {
+          code: "EMBEDDING_STORE_IDENTITY_WRITE_UNCONFIRMED",
+        },
+      )
+    }
+  }
+  const modelLabel = identity?.modelLabel ?? spaceId ?? null
+  state.pinnedSpace = spaceId
+  state.pinnedDimension = embedding.length
+  state.pinnedProvider = registration.provider
+  state.storeTransition = false
+  enableGeneration(state)
+  if (representationMemoryIds.length > 0) {
+    try forkDetach(reembedMemoriesByIds(state, representationMemoryIds), { startImmediately: true })
+  }
+  runtime.logger.info(
+    {
+      src: "agent",
+      agentId: runtime.agentId,
+      provider: registration.provider,
+      modelLabel,
+      dimension: embedding.length,
+    },
+    "TEXT_EMBEDDING provider pinned",
+  )
+
+  const staleMemoryIds = foreign(() => runtime.adapter.clearEmbeddingsOutsideActiveDimension()) catch (failure) => {
+    runtime.reportError(
+      "AgentRuntime.embeddingDimensionReconcile",
+      failure.cause,
+      {
+        agentId: runtime.agentId,
+      },
+    )
+    return [] as UUID[]
+  }
+  if (staleMemoryIds.length > 0) {
+    runtime.logger.info(
+      {
+        src: "agent",
+        agentId: runtime.agentId,
+        count: staleMemoryIds.length,
+        dimension: embedding.length,
+      },
+      "Reclaimed stale-dimension embeddings; re-embedding at active width",
+    )
+    try forkDetach(reembedMemoriesByIds(state, staleMemoryIds), { startImmediately: true })
+  }
+  runtime.logger.debug(
+    {
+      src: "agent",
+      agentId: runtime.agentId,
+      dimension: embedding.length,
+      provider: registration.provider,
+      failedProviders: attempts.map((attempt) => attempt.provider),
+    },
+    "Embedding dimension set",
+  )
+}
+
+effect function initializeEmbeddingDimension(state: EmbeddingState): void!InitializationFailure {
+  const { runtime } = state
+  const { registrations, localOnly } = try probeRegistrations(state)
+  const attempts: EmbeddingProbeAttempt[] = []
+  const probedProviders = new Set<string>()
+  let allFailuresBenign = true
+  for (const registration of registrations) {
+    if (probedProviders.has(registration.provider)) {
+      continue
+    }
+    probedProviders.add(registration.provider)
+
+    const probe = map(
+      foreign(() => runtime.useModel(ModelType.TEXT_EMBEDDING, null, registration.provider)),
+      (embedding): { embedding: unknown } | undefined => ({ embedding }),
+    ) catch (failure) => {
+      const error = failure.cause
+      if (!(error instanceof NoModelProviderConfiguredError)) {
+        allFailuresBenign = false
+      }
+      const message = errorText(error)
+      attempts.push({
+        provider: registration.provider,
+        modelKey: registration.modelKey,
+        error: message,
+      })
+      runtime.logger.warn(
+        {
+          src: "agent",
+          agentId: runtime.agentId,
+          provider: registration.provider,
+          error: message,
+        },
+        localOnly
+          ? "Local TEXT_EMBEDDING provider failed the dimension probe; remote fallback is disabled"
+          : "TEXT_EMBEDDING provider failed the dimension probe; trying next registered provider",
+      )
+      return undefined
+    }
+    if (!probe) continue
+    const { embedding } = probe
+    if (!Array.isArray(embedding) || embedding.length === 0) {
+      allFailuresBenign = false
+      attempts.push({
+        provider: registration.provider,
+        modelKey: registration.modelKey,
+        error: `Invalid embedding received (${Array.isArray(embedding) ? "empty array" : typeof embedding})`,
+      })
+      runtime.logger.warn(
+        {
+          src: "agent",
+          agentId: runtime.agentId,
+          provider: registration.provider,
+        },
+        localOnly
+          ? "Local TEXT_EMBEDDING provider returned an invalid probe embedding; remote fallback is disabled"
+          : "TEXT_EMBEDDING provider returned an invalid probe embedding; trying next registered provider",
+      )
+      continue
+    }
+    try pinEmbeddingProvider(state, registration, embedding, attempts)
+    return
+  }
+
+  if (allFailuresBenign) {
+    runtime.logger.warn(
+      { src: "agent", agentId: runtime.agentId },
+      "No backing TEXT_EMBEDDING provider registered, skipping embedding setup",
+    )
+    return
+  }
+
+  const probeError = new EmbeddingDimensionProbeError(attempts)
+  disableGeneration(state, probeError.message)
+  throw probeError
+}
+
+effect function addEmbeddingToMemory(
+  state: EmbeddingState,
+  memory: Memory,
+): Memory!(EmptyMemoryContent | ElizaError | Foreign) {
+  if (Array.isArray(memory.embedding) && memory.embedding.length > 0) {
+    return memory
+  }
+  const memoryText = memory.content.text
+  if (!memoryText) {
+    throw new EmptyMemoryContent({ message: "Cannot generate embedding: Memory content is empty" })
+  }
+  if (isGenerationDisabled(state)) {
+    warnGenerationSkipped(state)
+    return memory
+  }
+  const embedding = try foreign(() => state.runtime.useModel(ModelType.TEXT_EMBEDDING, { text: memoryText }))
+  if (!Array.isArray(embedding) || embedding.length === 0) {
+    throw new ElizaError(
+      "TEXT_EMBEDDING provider returned no usable vector",
+      {
+        code: "EMBEDDING_MODEL_OUTPUT_INVALID",
+        context: {
+          memoryId: memory.id,
+          outputKind: Array.isArray(embedding)
+            ? "empty-array"
+            : typeof embedding,
+        },
+        severity: "fatal",
+      },
+    )
+  }
+  memory.embedding = embedding
+  return memory
+}
+
+const REEMBED_CHUNK = 200
+
+effect function reembedChunk(state: EmbeddingState, memoryIds: UUID[]): void!Foreign {
+  const memories = try foreign(() => state.runtime.adapter.getMemoriesByIds(memoryIds))
+  for (const memory of memories) {
+    try queueEmbeddingGeneration(state, memory, "low")
+  }
+}
+
+effect function reembedMemoriesByIds(state: EmbeddingState, memoryIds: UUID[]): void!! {
+  const { runtime } = state
+  const ready = as(foreign(() => runtime.getServiceLoadPromise("embedding-generation")), true) catch (failure) => {
+    runtime.reportError("AgentRuntime.reembedMemoriesByIds", failure.cause, {
+      agentId: runtime.agentId,
+      count: memoryIds.length,
+    })
+    return false
+  }
+  if (!ready) return
+  for (let i = 0; i < memoryIds.length; i += REEMBED_CHUNK) {
+    try Effect.catchCause(reembedChunk(state, memoryIds.slice(i, i + REEMBED_CHUNK)), (cause) => sync(() => {
+      const error = Cause.squash(cause)
+      runtime.reportError("AgentRuntime.reembedMemoriesByIds", thrownValue(error), {
+        agentId: runtime.agentId,
+      })
+    }))
+  }
+}
+
+effect function reportGenerationRequestFailure(
+  state: EmbeddingState,
+  request: Promise<void>,
+  memory: Memory,
+  priority: "high" | "normal" | "low",
+): void!! {
+  const { runtime } = state
+  foreign(() => request) catch (failure) => {
+    const error = failure.cause
+    runtime.logger.warn(
+      {
+        src: "runtime",
+        error: errorText(error),
+        memoryId: memory.id,
+        priority,
+      },
+      "Embedding generation request failed",
+    )
+    runtime.reportError(
+      "AgentRuntime.embeddingGenerationRequest",
+      error,
+      {
+        memoryId: memory.id,
+        priority,
+      },
+    )
+  }
+}
+
+effect function queueEmbeddingGeneration(
+  state: EmbeddingState,
+  memory: Memory,
+  priority: "high" | "normal" | "low" = "normal",
+): void!Foreign {
+  if (
+    !memory
+    || (Array.isArray(memory.embedding) && memory.embedding.length > 0)
+    || !memory.content.text
+  ) {
+    return
+  }
+  if (isGenerationDisabled(state)) {
+    warnGenerationSkipped(state)
+    return
+  }
+  const { runtime } = state
+  const request = try foreignSync(() =>
+    runtime.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
+      runtime,
+      memory,
+      priority,
+      source: "runtime",
+      retryCount: 0,
+      maxRetries: 3,
+      runId: runtime.getCurrentRunId(),
+    })
+  )
+  try forkDetach(reportGenerationRequestFailure(state, request, memory, priority), { startImmediately: true })
+}
+
+function legacy<A, E extends Error>(run: A!E): A!Error {
+  return asLegacy(Error, run, ElizaError, EmbeddingDimensionProbeError)
+}
+
+export class RuntimeEmbeddings {
+  readonly #state: EmbeddingState
+
+  constructor(
+    runtime: IAgentRuntime,
+    host: EmbeddingHost,
+  ) {
+    this.#state = {
+      runtime,
+      host,
+      pinnedSpace: undefined,
+      pinnedDimension: undefined,
+      pinnedProvider: undefined,
+      disabledReason: null,
+      storeTransition: false,
+      skipWarned: false,
+      initialization: undefined,
+    }
+  }
+
+  validateProviderOutput(
+    modelType: string,
+    params: unknown,
+    embeddingProviderOutput: unknown,
+    result: unknown,
+    provider: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    return runDetached(
+      legacy(validateProviderOutput(this.#state, modelType, params, embeddingProviderOutput, result, provider, signal)),
+    )
+  }
+
+  getPinnedProvider(): string | undefined {
+    return this.#state.pinnedProvider
+  }
+
+  isEmbeddingGenerationDisabled(): boolean {
+    return isGenerationDisabled(this.#state)
+  }
+
+  disableEmbeddingGeneration(reason: string): void {
+    disableGeneration(this.#state, reason)
+  }
+
+  enableEmbeddingGeneration(): void {
+    enableGeneration(this.#state)
+  }
+
+  warnEmbeddingGenerationSkipped(): void {
+    warnGenerationSkipped(this.#state)
+  }
+
+  ensureEmbeddingDimension(): Promise<void> {
+    return runDetached(legacy(ensureEmbeddingDimension(this.#state)))
+  }
+
+  addEmbeddingToMemory(memory: Memory): Promise<Memory> {
+    return runDetached(legacy(addEmbeddingToMemory(this.#state, memory)))
+  }
+
+  reembedMemoriesByIds(memoryIds: UUID[]): Promise<void> {
+    return runDetached(reembedMemoriesByIds(this.#state, memoryIds))
+  }
+
+  queueEmbeddingGeneration(
+    memory: Memory,
+    priority: "high" | "normal" | "low" = "normal",
+  ): Promise<void> {
+    return runDetached(queueEmbeddingGeneration(this.#state, memory, priority))
+  }
+
+  clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {
+    return this.#state.runtime.adapter.clearEmbeddingsOutsideActiveDimension()
+  }
+
+  getCachedEmbeddings(
+    params: Parameters<IDatabaseAdapter["getCachedEmbeddings"]>[0],
+  ): ReturnType<IDatabaseAdapter["getCachedEmbeddings"]> {
+    return this.#state.runtime.adapter.getCachedEmbeddings(params)
+  }
+}

@@ -9,7 +9,22 @@
       "targetBehavior": "Close earlier descriptors before disabling file sinks. If a close fails, retain explicit ownership and a retryable cleanup-failure state.",
       "specification": "spec/core/logging/files.md",
       "publicResult": "An unsuccessful initialization continues to produce no file-log success.",
-      "approval": "Proposed specification change for user review; implementation has not been written."
+      "approval": "Proposed specification change for user review; implementation has not been written.",
+      "verification": {
+        "pinnedSourceSha256": "b5a4d415cd227b3c85d41bdd4ab17350b0e32af26a1301cabbe8b1115ffebd87",
+        "modelRevision": "afdb27e31373a1a66374a9eb1cf9145f08dbb473",
+        "modelInputs": [
+          {
+            "path": "spec/core/logFiles.md",
+            "sha256": "e011f9f7a793f45485747c27a743893482c85c083876f16c9e5a04f481ee548a"
+          }
+        ],
+        "proofObligations": {
+          "logFiles": 66
+        },
+        "pinnedObservation": "A real third open failure left both earlier file descriptors owned and wrote no prompt bytes.",
+        "modelReplay": "Failure at any of the three opens reaches Disabled after cleanup. An unsuccessful close preserves ownership, keeps writes disabled and permits explicit cleanup retry."
+      }
     },
     {
       "id": "task-event-observer-failure-cleanup",
@@ -19,7 +34,26 @@
       "targetBehavior": "Release pending ownership, preserve the accepted page and report TASK_EVENT_OBSERVER_FAILED. Permit an explicit refresh or stop/start; do not automatically retry.",
       "specification": "spec/core/taskEventReader.md",
       "publicResult": "Successful polling retains its existing pages and notifications. An observer failure becomes an explicit recoverable failure rather than permanently suppressing refresh.",
-      "approval": "Proposed specification change for user review; implementation has not been written."
+      "approval": "Proposed specification change for user review; implementation has not been written.",
+      "verification": {
+        "pinnedSourceSha256": "2f3dea209d7b518a1fe34c66a77b80e8585ec8b64562ebeba76aafa1f7bb18b1",
+        "modelRevision": "afdb27e31373a1a66374a9eb1cf9145f08dbb473",
+        "modelInputs": [
+          {
+            "path": "spec/core/taskEventReader.md",
+            "sha256": "ffbfdb9ae0168041d6d620e091424cb03424c7f1b5a0f2bc112c0209e866218b"
+          },
+          {
+            "path": "spec/core/taskEventReader.proof.dfy",
+            "sha256": "e4b6f8161d836447a827b7b6b620b23022f8f5bc20c80949395936d722a4ef76"
+          }
+        ],
+        "proofObligations": {
+          "taskEventReader": 44
+        },
+        "pinnedObservation": "A first publication throw rejected start before any read. An explicit refresh performed no read because pending ownership remained.",
+        "modelReplay": "A current observer failure releases pending ownership and permits explicit refresh. Each publication stage refuses both successful and failed completion from an older generation."
+      }
     },
     {
       "id": "trace-owner-conflict",
@@ -29,7 +63,31 @@
       "targetBehavior": "Reject cross-run trace ID reuse with TraceIdentityConflict carrying the trace ID and both run identities. Preserve trace rows, run indexes and purge count on rejection. Permit same-run overwrite.",
       "specification": "spec/core/traces.md",
       "publicResult": "A trace identity conflict is an explicit failure instead of silently transferring ownership across runs.",
-      "approval": "Proposed specification change for user review; implementation has not been written."
+      "approval": "Proposed specification change for user review; implementation has not been written.",
+      "verification": {
+        "pinnedSourceSha256": "cba59c217657a8a8107772461fc07063532e3f51103a07d2505646a5a766dced",
+        "modelRevision": "afdb27e31373a1a66374a9eb1cf9145f08dbb473",
+        "modelInputs": [
+          {
+            "path": "spec/core/traces.md",
+            "sha256": "2c8fcef740d233956fc75bc6fb18ac5e257363c396687e9bb777f5a6274cd722"
+          },
+          {
+            "path": "spec/core/traces.proof.dfy",
+            "sha256": "a2344bcf545661ed2e35cd51e3c69871cd40500a0944e5174a2abe758fef22b0"
+          },
+          {
+            "path": "spec/core/scoreCard.md",
+            "sha256": "18bd580967803e0bd38976773e10192944eb6b50e13439f8de7ed8ed5d6ca89c"
+          }
+        ],
+        "proofObligations": {
+          "traces": 45,
+          "scoreCard": 6
+        },
+        "pinnedObservation": "Cross-run reuse made the original run resolve the replacement. Deleting the original run then erased the newer run's trace.",
+        "modelReplay": "Cross-run reuse produces TraceIdentityConflict, retains the existing run's trace and purge counter, and preserves same-run replacement."
+      }
     }
   ],
   "consumerResolutionNotes": [
@@ -50,7 +108,8 @@
       "kind": "private-test-import",
       "consumer": "plugins/plugin-elizacloud/__tests__/native-application-slot-authority.test.ts",
       "symbol": "createPreparedModelRequestGuard",
-      "targetContract": "Classify this as an internal fixture dependency. Its import path is not a published export. Preserve its guard behavior and adapt the fixture through an explicitly selected test entry point during implementation."
+      "targetImportPath": "@elizaos/core",
+      "targetContract": "Change the fixture to the existing public root export used by the Cloud text handler. Preserve the blank-model rejection before dispatch and the admitted default-model case. Retain the existing package export map."
     },
     {
       "id": "cloud-implicit-type-imports",

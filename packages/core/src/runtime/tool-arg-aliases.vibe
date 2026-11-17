@@ -1,0 +1,128 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { failingAs, promised } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import { resolveCanonicalOwnerIdForMessage } from "../roles.vibe"
+import type { RoleGateRole } from "../types/contexts.vibe"
+import type { Memory } from "../types/memory.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import type { State } from "../types/state.vibe"
+import { validateUuid } from "../utils/uuid.vibe"
+
+export type EntityAliasCapabilityMap = Readonly<Record<string, string>>
+
+const CANONICAL_OWNER_ENTITY_ALIAS = "ELIZA_ADMIN_ENTITY_ID"
+
+const REDACTED_ENTITY_ALIAS_REF = /^\[REDACTED:([A-Z0-9_]*_ENTITY_ID)\]$/
+
+const MAX_ALIAS_SCAN_DEPTH = 8
+const MAX_ALIAS_SCAN_NODES = 2_048
+
+const EMPTY_ALIASES: EntityAliasCapabilityMap = Object.freeze({})
+
+function statePresentsEntityAlias(
+  state: State | undefined,
+  name: string,
+): boolean {
+  if (!state) return false
+  const token = `[REDACTED:${name}]`
+  if (typeof state.text === "string" && state.text.includes(token)) {
+    return true
+  }
+  const budget = { nodes: MAX_ALIAS_SCAN_NODES }
+  return (
+    containsToken(state.values, token, 0, budget)
+    || containsToken(state.data, token, 0, budget)
+  )
+}
+
+function containsToken(
+  value: unknown,
+  token: string,
+  depth: number,
+  budget: { nodes: number },
+): boolean {
+  if (budget.nodes <= 0 || depth > MAX_ALIAS_SCAN_DEPTH) return false
+  budget.nodes -= 1
+  if (typeof value === "string") return value.includes(token)
+  if (Array.isArray(value)) {
+    return value.some((entry) => containsToken(entry, token, depth + 1, budget))
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).some((entry) =>
+      containsToken(entry, token, depth + 1, budget)
+    )
+  }
+  return false
+}
+
+export effect function buildTurnEntityAliases(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  userRoles: readonly RoleGateRole[] | undefined,
+) {
+  if (!statePresentsEntityAlias(state, CANONICAL_OWNER_ENTITY_ALIAS)) {
+    return EMPTY_ALIASES
+  }
+  if (!userRoles?.includes("OWNER")) {
+    return EMPTY_ALIASES
+  }
+  const ownerId = validateUuid(try resolveCanonicalOwnerIdForMessage(runtime, message))
+  if (!ownerId) {
+    return EMPTY_ALIASES
+  }
+  return Object.freeze({ [CANONICAL_OWNER_ENTITY_ALIAS]: ownerId })
+}
+export const buildTurnEntityAliasesPromise = promised(failingAs(TypeError, buildTurnEntityAliases, ElizaError))
+
+export function resolveEntityAliasRefs(
+  aliases: EntityAliasCapabilityMap,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  if (Object.keys(aliases).length === 0) return args
+  return resolveNode(aliases, args, 0, {
+    nodes: MAX_ALIAS_SCAN_NODES,
+  }) as Record<string, unknown>
+}
+
+function resolveNode(
+  aliases: EntityAliasCapabilityMap,
+  value: unknown,
+  depth: number,
+  budget: { nodes: number },
+): unknown {
+  if (budget.nodes <= 0 || depth > MAX_ALIAS_SCAN_DEPTH) return value
+  budget.nodes -= 1
+  if (typeof value === "string") {
+    const match = REDACTED_ENTITY_ALIAS_REF.exec(value)
+    if (!match?.[1]) return value
+    return validateUuid(aliases[match[1]]) ?? value
+  }
+  if (Array.isArray(value)) {
+    let changed = false
+    const next = value.map((entry) => {
+      const resolved = resolveNode(aliases, entry, depth + 1, budget)
+      if (resolved !== entry) changed = true
+      return resolved
+    })
+    return changed ? next : value
+  }
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>
+    let changed = false
+    const next: Record<string, unknown> = {}
+    for (const [key, entry] of Object.entries(record)) {
+      const resolved = resolveNode(aliases, entry, depth + 1, budget)
+      if (resolved !== entry) changed = true
+
+      Object.defineProperty(next, key, {
+        value: resolved,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      })
+    }
+    return changed ? next : value
+  }
+  return value
+}

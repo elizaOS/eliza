@@ -1,0 +1,1326 @@
+// spec/core/plugins.md, "Story: Load and roll back a plugin"; spec/core/plugins.md, "Duplicate callers share the registration outcome"; spec/core/plugins.md, "Cleanup removes only owned contributions"; spec/core/plugins.md, "Service start remains owned across rollback and unload"; spec/core/pluginServices.md, "Story: Withdraw plugin declarations without losing asynchronous instances"
+import { unregisterConnectorSourceMetadataOwner } from "./connectors.vibe"
+import { Foreign, asLegacy, foreign, foreignSync, runDetached } from "./edge.vibe"
+import { normalizeConnectorAccountId } from "./runtime/connector-registration.vibe"
+import { roleRank } from "./runtime/context-gates.vibe"
+import type { ContextRegistry } from "./runtime/context-registry.vibe"
+import type { AgentContext, RoleGate, RoleGateRole } from "./types/contexts.vibe"
+import type { RegisteredEvaluator } from "./types/evaluator.vibe"
+import type { ModelRegistrationMetadata } from "./types/model.vibe"
+import type {
+  Plugin,
+  PluginEventRegistration,
+  PluginModelRegistration,
+  PluginOwnership,
+  PluginServiceRegistration,
+} from "./types/plugin.vibe"
+import type { IAgentRuntime, MessageConnectorRegistration, PostConnectorRegistration } from "./types/runtime.vibe"
+import type { Service, ServiceTypeName } from "./types/service.vibe"
+import { AsyncContextManager } from "./utils/async-context-manager.vibe"
+import {
+  lookupProviderCatalogContexts,
+  resolveActionContexts,
+  resolveProviderContexts,
+} from "./utils/context-catalog.vibe"
+import { asError } from "./utils/errors.vibe"
+
+type RuntimeAction = NonNullable<Plugin["actions"]>[number]
+type RuntimeProvider = NonNullable<Plugin["providers"]>[number]
+type RuntimeServiceClass = NonNullable<Plugin["services"]>[number]
+type RuntimeEventHandler = PluginEventRegistration["handler"]
+type RuntimeChatPreHandler = NonNullable<Plugin["chatPreHandlers"]>[number]
+type RuntimeResponseHandlerEvaluator = NonNullable<
+  Plugin["responseHandlerEvaluators"]
+>[number]
+type RuntimeResponseHandlerFieldEvaluator = NonNullable<
+  Plugin["responseHandlerFieldEvaluators"]
+>[number]
+
+type RuntimeSendHandler = (
+  runtime: unknown,
+  target: unknown,
+  content: unknown,
+) => Promise<unknown>
+
+type PluginDisposeHook = (runtime: IAgentRuntime) => Promise<void> | void
+
+type PluginApplyConfigHook = (
+  config: Record<string, string>,
+  runtime: IAgentRuntime,
+) => Promise<void> | void
+
+type RuntimePluginWithLifecycleHooks = Plugin & {
+  dispose?: PluginDisposeHook
+  applyConfig?: PluginApplyConfigHook
+}
+
+type PluginServiceRegistrationStatus =
+  | "pending"
+  | "registering"
+  | "registered"
+  | "failed"
+
+type RuntimeServicePromiseHandler = {
+  resolve: (service: Service) => void
+  reject: (error: Error) => void
+}
+
+type RuntimeModelHandlerRecord = {
+  handler: (
+    runtime: unknown,
+    params: Record<string, unknown>,
+  ) => Promise<unknown>
+  metadata?: ModelRegistrationMetadata
+  provider: string
+  priority?: number
+  registrationOrder?: number
+}
+
+type RuntimePluginRegistrationCapture = {
+  runtime: RuntimeWithPluginLifecycle
+  ownership: PluginOwnership
+  adapterBefore: IAgentRuntime["adapter"] | null | undefined
+}
+
+type RuntimeConnectorOwnershipCapture = {
+  runtime: RuntimeWithPluginLifecycle
+  ownership: PluginOwnership | null
+}
+
+type RuntimeWithPluginLifecycle =
+  & IAgentRuntime
+  & RuntimePrivateState
+  & {
+    __elizaPluginLifecycleInstalled?: boolean
+    __elizaPluginOwnership?: Map<string, PluginOwnership>
+    __elizaPendingPluginOwnership?: Set<PluginOwnership>
+
+    chatPreHandlerRegistry?: { has(id: string): boolean }
+    registerDatabaseAdapter: (adapter: IAgentRuntime["adapter"]) => void
+    unloadPlugin?: (pluginName: string) => Promise<PluginOwnership | null>
+    reloadPlugin?: (plugin: Plugin) => Promise<void>
+    applyPluginConfig?: (
+      pluginName: string,
+      config: Record<string, string>,
+    ) => Promise<boolean>
+    getPluginOwnership?: (pluginName: string) => PluginOwnership | null
+    getAllPluginOwnership?: () => PluginOwnership[]
+  }
+
+type RuntimePrivateState = {
+  serviceTypes: Map<ServiceTypeName, RuntimeServiceClass[]>
+  servicePromises: Map<ServiceTypeName, Promise<Service>>
+  servicePromiseHandlers: Map<ServiceTypeName, RuntimeServicePromiseHandler>
+  startingServices: Map<ServiceTypeName, Promise<Service | null>>
+  startingServiceClasses: Map<RuntimeServiceClass, Promise<Service>>
+  serviceInstancesByClass: Map<RuntimeServiceClass, Service>
+  failedServiceClasses: Set<RuntimeServiceClass>
+  serviceRegistrationStatus: Map<
+    ServiceTypeName,
+    PluginServiceRegistrationStatus
+  >
+  models: Map<string, RuntimeModelHandlerRecord[]>
+  _runServiceStart?: (
+    key: ServiceTypeName,
+    serviceType: string,
+    serviceDef: RuntimeServiceClass,
+  ) => Promise<Service | null>
+  _stopServiceOnce: (serviceType: string, service: Service) => Promise<void>
+  registerSendHandler?: (source: string, handler: RuntimeSendHandler) => void
+}
+
+const pluginRegistrationContext = new AsyncContextManager<RuntimePluginRegistrationCapture>()
+const connectorOwnershipContext = new AsyncContextManager<RuntimeConnectorOwnershipCapture>()
+const serviceClassOwners = new WeakMap<
+  RuntimeWithPluginLifecycle,
+  WeakMap<RuntimeServiceClass, PluginOwnership>
+>()
+const withdrawnConnectorOwners = new WeakSet<PluginOwnership>()
+
+function getServiceClassOwners(runtime: RuntimeWithPluginLifecycle) {
+  let owners = serviceClassOwners.get(runtime)
+  if (!owners) {
+    owners = new WeakMap()
+    serviceClassOwners.set(runtime, owners)
+  }
+  return owners
+}
+
+function getRegistrationCapture(runtime: RuntimeWithPluginLifecycle) {
+  const capture = pluginRegistrationContext.active()
+  return capture?.runtime === runtime ? capture : undefined
+}
+
+function getServiceClassLabel(serviceClass: RuntimeServiceClass): string {
+  return (serviceClass as { name?: string }).name
+    || (serviceClass as { constructor: { name: string } }).constructor.name
+    || "anonymous service class"
+}
+
+export function warnOnDuplicateServiceTypeRegistration(
+  runtime: Pick<IAgentRuntime, "logger" | "agentId">,
+  serviceType: ServiceTypeName | string,
+  serviceClass: RuntimeServiceClass,
+  existingServiceClasses: RuntimeServiceClass[],
+  pluginName: string | undefined,
+  describe: (existing: RuntimeServiceClass) => unknown = getServiceClassLabel,
+): void {
+  if (
+    existingServiceClasses.length === 0
+    || serviceClass.allowsMultiple === true
+    || existingServiceClasses.some((existing) => existing.allowsMultiple === true)
+  ) {
+    return
+  }
+
+  runtime.logger.warn(
+    {
+      src: "agent",
+      agentId: runtime.agentId,
+      plugin: pluginName,
+      serviceType,
+      serviceClass: getServiceClassLabel(serviceClass),
+      existingServiceClasses: existingServiceClasses.map(describe),
+    },
+    "Duplicate serviceType registration can make getService() ambiguous; use a distinct serviceType or getServicesByType()",
+  )
+}
+
+function getPluginOwnershipStore(
+  runtime: RuntimeWithPluginLifecycle,
+): Map<string, PluginOwnership> {
+  if (!runtime.__elizaPluginOwnership) {
+    runtime.__elizaPluginOwnership = new Map()
+  }
+  return runtime.__elizaPluginOwnership
+}
+
+function getPendingPluginOwnership(
+  runtime: RuntimeWithPluginLifecycle,
+): Set<PluginOwnership> {
+  if (!runtime.__elizaPendingPluginOwnership) {
+    runtime.__elizaPendingPluginOwnership = new Set()
+  }
+  return runtime.__elizaPendingPluginOwnership
+}
+
+function getCapturingOwnership(
+  runtime: RuntimeWithPluginLifecycle,
+): PluginOwnership | null {
+  const capture = connectorOwnershipContext.active()
+  return capture?.runtime === runtime ? capture.ownership : null
+}
+
+function releaseConnectorKey(
+  runtime: RuntimeWithPluginLifecycle,
+  owner: PluginOwnership | null,
+  kind: "messageConnectors" | "postConnectors",
+  source: string,
+  accountId: string | undefined,
+): void {
+  const sameKey = (connector: { source: string; accountId?: string }) =>
+    connector.source === source && connector.accountId === accountId
+  const defaultMessageKey = kind === "messageConnectors" && !accountId
+  const owners = [
+    ...getPluginOwnershipStore(runtime).values(),
+    ...getPendingPluginOwnership(runtime),
+  ]
+  for (const other of owners) {
+    if (other === owner) continue
+    const index = other[kind].findIndex(sameKey)
+    if (index >= 0) other[kind].splice(index, 1)
+    const sourceIndex = defaultMessageKey
+      ? other.sendHandlerSources.indexOf(source)
+      : -1
+    if (sourceIndex >= 0) other.sendHandlerSources.splice(sourceIndex, 1)
+  }
+}
+
+function claimConnector(
+  runtime: RuntimeWithPluginLifecycle,
+  kind: "messageConnectors" | "postConnectors",
+  registration: MessageConnectorRegistration | PostConnectorRegistration,
+  ownership: PluginOwnership | null,
+): void {
+  const source = registration.source.trim()
+  const accountId = normalizeConnectorAccountId(registration.accountId)
+    ?? normalizeConnectorAccountId(registration.account?.accountId)
+  const sameKey = (connector: { source: string; accountId?: string }) =>
+    connector.source === source && connector.accountId === accountId
+  releaseConnectorKey(runtime, ownership, kind, source, accountId)
+  if (!ownership || ownership[kind].some(sameKey)) return
+  ownership[kind].push(accountId ? { source, accountId } : { source })
+}
+
+function claimSendHandlerSource(
+  runtime: RuntimeWithPluginLifecycle,
+  source: string,
+  ownership: PluginOwnership | null,
+): void {
+  releaseConnectorKey(
+    runtime,
+    ownership,
+    "messageConnectors",
+    source,
+    undefined,
+  )
+  if (ownership) pushUniqueString(ownership.sendHandlerSources, source)
+}
+
+function pushUniqueRef<T extends object>(items: T[], item: T): void {
+  if (!items.includes(item)) {
+    items.push(item)
+  }
+}
+
+function withoutPluginOverride<T extends { override?: boolean }>(
+  component: T,
+): T {
+  return component.override === true
+    ? { ...component, override: false }
+    : component
+}
+
+function pushUniqueString(items: string[], value: string): void {
+  if (!items.includes(value)) {
+    items.push(value)
+  }
+}
+
+function inheritPluginContexts<
+  T extends {
+    contexts?: Plugin["contexts"]
+  },
+>(component: T, pluginContexts: Plugin["contexts"] | undefined): T {
+  if (!pluginContexts?.length || (component.contexts?.length ?? 0) > 0) {
+    return component
+  }
+
+  return {
+    ...component,
+    contexts: [...pluginContexts],
+  }
+}
+
+function applyEffectiveActionContexts(
+  action: RuntimeAction,
+  pluginContexts: Plugin["contexts"] | undefined,
+): RuntimeAction {
+  const inherited = inheritPluginContexts(action, pluginContexts)
+  if ((inherited.contexts?.length ?? 0) > 0) {
+    return inherited
+  }
+
+  if (inherited === action) {
+    action.contexts = [...resolveActionContexts(inherited)]
+    return action
+  }
+
+  return {
+    ...inherited,
+    contexts: [...resolveActionContexts(inherited)],
+  }
+}
+
+function roleGateForActionContexts(
+  contexts: readonly AgentContext[] | undefined,
+  contextRegistry: ContextRegistry,
+): RoleGate {
+  let minRole: RoleGateRole = "USER"
+  for (const context of contexts ?? []) {
+    const contextRole = contextRegistry.get(context)?.roleGate?.minRole
+    if (contextRole && roleRank(contextRole) > roleRank(minRole)) {
+      minRole = contextRole
+    }
+  }
+  return { minRole }
+}
+
+function applyEffectiveActionAccess(
+  action: RuntimeAction,
+  pluginContexts: Plugin["contexts"] | undefined,
+  contextRegistry: ContextRegistry,
+): RuntimeAction {
+  const withContexts = applyEffectiveActionContexts(action, pluginContexts)
+  const roleGate = withContexts.roleGate
+    ?? roleGateForActionContexts(withContexts.contexts, contextRegistry)
+  const subActions = withContexts.subActions?.map((subAction) =>
+    typeof subAction === "string"
+      ? subAction
+      : applyEffectiveActionAccess(
+        subAction as RuntimeAction,
+        undefined,
+        contextRegistry,
+      )
+  )
+
+  if (withContexts === action) {
+    action.roleGate = roleGate
+    if (subActions) {
+      action.subActions = subActions as RuntimeAction["subActions"]
+    }
+    return action
+  }
+
+  return {
+    ...withContexts,
+    roleGate,
+    ...(subActions
+      ? { subActions: subActions as RuntimeAction["subActions"] }
+      : {}),
+  }
+}
+
+const generalFallbackWarnedProviders = new Set<string>()
+
+function materializeProviderContexts(
+  provider: RuntimeProvider,
+  runtime: RuntimeWithPluginLifecycle,
+): AgentContext[] {
+  const gate = provider.contextGate
+  const gateAnyOfSurface = [
+    ...new Set([...(gate?.contexts ?? []), ...(gate?.anyOf ?? [])]),
+  ]
+  if (gateAnyOfSurface.length > 0) {
+    return gateAnyOfSurface
+  }
+  if ((gate?.allOf?.length ?? 0) > 0) {
+    return [...new Set(gate?.allOf)]
+  }
+
+  const resolved = resolveProviderContexts(provider)
+  if (
+    lookupProviderCatalogContexts(provider.name) === undefined
+    && !provider.contextGate
+    && !provider.dynamic
+    && !provider.alwaysInResponseState
+    && !generalFallbackWarnedProviders.has(provider.name)
+  ) {
+    generalFallbackWarnedProviders.add(provider.name)
+    runtime.logger.warn(
+      {
+        src: "agent",
+        agentId: runtime.agentId,
+        provider: provider.name,
+      },
+      `[PluginLifecycle] Provider "${provider.name}" declares no contexts/contextGate and has no catalog entry; defaulting to ["general"]. Declare contexts or a contextGate to route it, or set alwaysInResponseState for an always-on signal.`,
+    )
+  }
+  return [...resolved]
+}
+
+function applyEffectiveProviderContexts(
+  provider: RuntimeProvider,
+  pluginContexts: Plugin["contexts"] | undefined,
+  runtime: RuntimeWithPluginLifecycle,
+): RuntimeProvider {
+  const inherited = inheritPluginContexts(provider, pluginContexts)
+  if ((inherited.contexts?.length ?? 0) > 0) {
+    return inherited
+  }
+
+  if (inherited === provider) {
+    provider.contexts = materializeProviderContexts(inherited, runtime)
+    return provider
+  }
+
+  return {
+    ...inherited,
+    contexts: materializeProviderContexts(inherited, runtime),
+  }
+}
+
+function pushUniqueEvent(
+  items: PluginEventRegistration[],
+  next: PluginEventRegistration,
+): void {
+  if (
+    items.some(
+      (existing) =>
+        existing.eventName === next.eventName
+        && existing.handler === next.handler,
+    )
+  ) {
+    return
+  }
+  items.push(next)
+}
+
+function pushUniqueModel(
+  items: PluginModelRegistration[],
+  next: PluginModelRegistration,
+): void {
+  if (
+    items.some(
+      (existing) =>
+        existing.modelType === next.modelType
+        && existing.handler === next.handler
+        && existing.provider === next.provider,
+    )
+  ) {
+    return
+  }
+  items.push(next)
+}
+
+function pushUniqueService(
+  items: PluginServiceRegistration[],
+  next: PluginServiceRegistration,
+): void {
+  if (
+    items.some(
+      (existing) =>
+        existing.serviceType === next.serviceType
+        && existing.serviceClass === next.serviceClass,
+    )
+  ) {
+    return
+  }
+  items.push(next)
+}
+
+function createEmptyOwnership(plugin: Plugin): PluginOwnership {
+  return {
+    pluginName: plugin.name,
+    plugin,
+    registeredPlugin: null,
+    actions: [],
+    providers: [],
+    evaluators: [],
+    events: [],
+    models: [],
+    services: [],
+    sendHandlerSources: [],
+    messageConnectors: [],
+    postConnectors: [],
+    hasAdapter: false,
+    chatPreHandlerIds: [],
+    responseHandlerEvaluatorNames: [],
+    responseHandlerFieldEvaluatorNames: [],
+    registeredAt: Date.now(),
+  }
+}
+
+function removeArrayItemsByReference<T extends object>(
+  items: T[],
+  owned: T[],
+): void {
+  if (owned.length === 0 || items.length === 0) return
+  const ownedSet = new Set(owned)
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const current = items[index]
+    if (ownedSet.has(current)) {
+      items.splice(index, 1)
+    }
+  }
+}
+
+export error OwnedServicesStopFailed { cause: unknown }
+
+function inFlightServiceStarts(
+  runtime: RuntimeWithPluginLifecycle,
+  key: ServiceTypeName,
+  ownedClasses: RuntimeServiceClass[],
+): Promise<Service | null>[] {
+  return [
+    runtime.startingServices.get(key),
+    ...ownedClasses.map((ownedClass) => runtime.startingServiceClasses.get(ownedClass)),
+  ].filter((start) => start !== undefined)
+}
+
+effect function stopOwnedServices(
+  runtime: RuntimeWithPluginLifecycle,
+  ownership: PluginOwnership,
+): void!(OwnedServicesStopFailed | Foreign) {
+  if (ownership.services.length === 0) return
+
+  const serviceGroups = new Map<string, RuntimeServiceClass[]>()
+  for (const ownedService of ownership.services) {
+    const nextGroup = serviceGroups.get(ownedService.serviceType) ?? []
+    nextGroup.push(ownedService.serviceClass)
+    serviceGroups.set(ownedService.serviceType, nextGroup)
+  }
+
+  const stopErrors: unknown[] = []
+  const classOwners = getServiceClassOwners(runtime)
+  for (const [serviceType, ownedClasses] of serviceGroups) {
+    const key = serviceType as ServiceTypeName
+    const currentClasses = runtime.serviceTypes.get(key) ?? []
+    if (currentClasses.length === 0) {
+      continue
+    }
+
+    const ownedClassSet = new Set(ownedClasses)
+    const remainingClasses = currentClasses.filter(
+      (serviceClass) => !ownedClassSet.has(serviceClass),
+    )
+    if (remainingClasses.length > 0) {
+      runtime.serviceTypes.set(key, remainingClasses)
+    } else {
+      runtime.serviceTypes.delete(key)
+    }
+
+    const ownedInstances = ownedClasses.flatMap((ownedClass) => {
+      const instance = runtime.serviceInstancesByClass.get(ownedClass)
+      runtime.serviceInstancesByClass.delete(ownedClass)
+      return instance ? [instance] : []
+    })
+    const instances = (runtime.services.get(key) ?? []).filter(
+      (instance) => !ownedInstances.includes(instance),
+    )
+    if (instances.length > 0) {
+      runtime.services.set(key, instances)
+    } else {
+      runtime.services.delete(key)
+    }
+
+    const startFailures = try forEach(
+      inFlightServiceStarts(runtime, key, ownedClasses),
+      (start) => option(flip(foreign(() => start))),
+    )
+    for (const failure of startFailures) {
+      if (Option.isSome(failure)) {
+        runtime.logger.debug(
+          { src: "plugin-lifecycle", serviceType, error: failure.value.cause },
+          "Service startup failed before plugin teardown",
+        )
+      }
+    }
+
+    if ((runtime.services.get(key)?.length ?? 0) > 0) {
+      runtime.serviceRegistrationStatus.set(key, "registered")
+    } else if ((runtime.serviceTypes.get(key)?.length ?? 0) > 0) {
+      runtime.serviceRegistrationStatus.set(key, "pending")
+    } else {
+      runtime.serviceRegistrationStatus.delete(key)
+      runtime.servicePromises.delete(key)
+      runtime.servicePromiseHandlers.delete(key)
+    }
+
+    for (const instance of ownedInstances) {
+      if (typeof instance.stop === "function") {
+        foreign(() => runtime._stopServiceOnce(key, instance)) catch (error) => {
+          stopErrors.push(error.cause)
+        }
+      }
+    }
+
+    for (const ownedClass of ownedClasses) {
+      runtime.failedServiceClasses.delete(ownedClass)
+      if (typeof ownedClass.stopRuntime === "function") {
+        try foreign(() => ownedClass.stopRuntime?.(runtime))
+      }
+      if (classOwners.get(ownedClass) === ownership) {
+        classOwners.delete(ownedClass)
+      }
+    }
+  }
+
+  if (stopErrors.length > 0) {
+    throw new OwnedServicesStopFailed({
+      cause: stopErrors.length === 1
+        ? stopErrors[0]
+        : new AggregateError(stopErrors, `Failed to stop services of plugin "${ownership.pluginName}"`),
+    })
+  }
+}
+
+function removeOwnedModels(
+  privateState: RuntimePrivateState,
+  ownership: PluginOwnership,
+): void {
+  if (ownership.models.length === 0) return
+
+  const modelGroups = new Map<string, PluginModelRegistration[]>()
+  for (const model of ownership.models) {
+    const nextGroup = modelGroups.get(model.modelType) ?? []
+    nextGroup.push(model)
+    modelGroups.set(model.modelType, nextGroup)
+  }
+
+  for (const [modelType, ownedModels] of modelGroups) {
+    const currentModels = privateState.models.get(modelType)
+    if (!currentModels || currentModels.length === 0) continue
+    const remainingModels = currentModels.filter(
+      (candidate) =>
+        !ownedModels.some(
+          (owned) =>
+            owned.handler === candidate.handler
+            && owned.provider === candidate.provider,
+        ),
+    )
+    if (remainingModels.length > 0) {
+      privateState.models.set(modelType, remainingModels)
+    } else {
+      privateState.models.delete(modelType)
+    }
+  }
+}
+
+function removeOwnedEvents(
+  runtime: RuntimeWithPluginLifecycle,
+  ownership: PluginOwnership,
+): void {
+  if (ownership.events.length === 0) return
+
+  const eventGroups = new Map<string, RuntimeEventHandler[]>()
+  for (const ownedEvent of ownership.events) {
+    const nextGroup = eventGroups.get(ownedEvent.eventName) ?? []
+    nextGroup.push(ownedEvent.handler)
+    eventGroups.set(ownedEvent.eventName, nextGroup)
+  }
+
+  for (const [eventName, ownedHandlers] of eventGroups) {
+    const currentHandlers = runtime.events[eventName]
+    if (!currentHandlers || currentHandlers.length === 0) continue
+    const ownedSet = new Set(ownedHandlers)
+    const remainingHandlers = currentHandlers.filter(
+      (handler) => !ownedSet.has(handler),
+    )
+    if (remainingHandlers.length > 0) {
+      runtime.events[eventName] = remainingHandlers
+    } else {
+      delete runtime.events[eventName]
+    }
+  }
+}
+
+function removeOwnedPlugins(
+  runtime: RuntimeWithPluginLifecycle,
+  ownership: PluginOwnership,
+): void {
+  if (runtime.plugins.length === 0) return
+
+  const pluginRefs = ownership.registeredPlugin
+    ? [ownership.registeredPlugin]
+    : []
+
+  if (pluginRefs.length > 0) {
+    removeArrayItemsByReference(runtime.plugins, pluginRefs)
+  }
+
+  for (let index = runtime.plugins.length - 1; index >= 0; index -= 1) {
+    if (runtime.plugins[index]?.name === ownership.pluginName) {
+      runtime.plugins.splice(index, 1)
+    }
+  }
+}
+
+function removeOwnedConnectors(
+  runtime: RuntimeWithPluginLifecycle,
+  ownership: PluginOwnership,
+): void {
+  const exact = { exactAccount: true }
+  for (const source of ownership.sendHandlerSources) {
+    runtime.unregisterMessageConnector(source, undefined, exact)
+  }
+  for (const { source, accountId } of ownership.messageConnectors) {
+    runtime.unregisterMessageConnector(source, accountId, exact)
+  }
+  for (const { source, accountId } of ownership.postConnectors) {
+    runtime.unregisterPostConnector(source, accountId, exact)
+  }
+}
+
+function removeOwnedComponents(
+  runtime: RuntimeWithPluginLifecycle,
+  ownership: PluginOwnership,
+): void {
+  removeArrayItemsByReference(runtime.actions, ownership.actions)
+  removeArrayItemsByReference(runtime.providers, ownership.providers)
+  removeArrayItemsByReference(runtime.evaluators, ownership.evaluators)
+  for (const id of ownership.chatPreHandlerIds) {
+    runtime.unregisterChatPreHandler(id)
+  }
+  for (const name of ownership.responseHandlerEvaluatorNames) {
+    runtime.unregisterResponseHandlerEvaluator(name)
+  }
+  for (const name of ownership.responseHandlerFieldEvaluatorNames) {
+    runtime.unregisterResponseHandlerFieldEvaluator(name)
+  }
+}
+
+effect function restoreAdapterIfNeeded(
+  runtime: RuntimeWithPluginLifecycle,
+  ownership: PluginOwnership,
+  adapterBefore: IAgentRuntime["adapter"] | null | undefined,
+): void!Foreign {
+  if (!ownership.hasAdapter) return
+  if (runtime.adapter && runtime.adapter !== adapterBefore) {
+    const currentAdapter = runtime.adapter as {
+      close?: () => Promise<void>
+      stop?: () => Promise<void>
+    }
+    if (typeof currentAdapter.close === "function") {
+      try foreign(() => currentAdapter.close?.())
+    } else if (typeof currentAdapter.stop === "function") {
+      try foreign(() => currentAdapter.stop?.())
+    }
+  }
+
+  runtime.adapter = (adapterBefore ?? null) as IAgentRuntime["adapter"]
+}
+
+effect function teardownPluginOwnership(
+  runtime: RuntimeWithPluginLifecycle,
+  ownership: PluginOwnership,
+  adapterBefore?: IAgentRuntime["adapter"] | null,
+): void!Foreign {
+  const errors: Error[] = []
+  const collect = (error: { readonly cause: unknown }) => {
+    errors.push(asError(error.cause))
+  }
+  const lifecyclePlugin = ownership.registeredPlugin ?? ownership.plugin
+  const disposeHook = (lifecyclePlugin as RuntimePluginWithLifecycleHooks).dispose
+
+  if (typeof disposeHook === "function") {
+    foreign(() => disposeHook(runtime)) catch (error) => collect(error)
+  }
+
+  withdrawnConnectorOwners.add(ownership)
+  foreignSync(() => removeOwnedConnectors(runtime, ownership)) catch (error) => collect(error)
+  stopOwnedServices(runtime, ownership) catch (error) => collect(error)
+  foreignSync(() => {
+    removeOwnedEvents(runtime, ownership)
+    removeOwnedModels(runtime, ownership)
+    unregisterConnectorSourceMetadataOwner(ownership.pluginName)
+    removeOwnedComponents(runtime, ownership)
+    removeOwnedPlugins(runtime, ownership)
+  }) catch (error) => collect(error)
+  restoreAdapterIfNeeded(runtime, ownership, adapterBefore) catch (error) => collect(error)
+
+  getPluginOwnershipStore(runtime).delete(ownership.pluginName)
+
+  if (errors.length > 0) {
+    throw new Foreign({
+      cause: new AggregateError(errors, `Failed to fully tear down plugin "${ownership.pluginName}"`),
+    })
+  }
+}
+
+export error PluginAdapterRequiresReload { message: string }
+
+effect function unloadOwnedPlugin(
+  runtime: RuntimeWithPluginLifecycle,
+  ownership: PluginOwnership,
+): PluginOwnership!(PluginAdapterRequiresReload | Foreign) {
+  if (ownership.hasAdapter) {
+    throw new PluginAdapterRequiresReload({
+      message: `Plugin "${ownership.pluginName}" provides a database adapter and requires a runtime reload`,
+    })
+  }
+  try teardownPluginOwnership(runtime, ownership)
+  return ownership
+}
+
+function trackPluginRef(
+  runtime: RuntimeWithPluginLifecycle,
+  ownership: PluginOwnership,
+  pluginsBefore: Set<Plugin>,
+): void {
+  for (const plugin of runtime.plugins) {
+    if (!pluginsBefore.has(plugin) && plugin.name === ownership.pluginName) {
+      ownership.registeredPlugin = plugin
+      break
+    }
+  }
+}
+
+effect function registerOwnedService(
+  runtime: RuntimeWithPluginLifecycle,
+  originalRegisterService: (serviceClass: RuntimeServiceClass) => Promise<void>,
+  serviceClass: RuntimeServiceClass,
+): void!Foreign {
+  const capture = getRegistrationCapture(runtime)
+  const serviceType = serviceClass.serviceType as ServiceTypeName
+  const existingServiceClasses = runtime.serviceTypes.get(serviceType) ?? []
+  warnOnDuplicateServiceTypeRegistration(
+    runtime,
+    serviceType,
+    serviceClass,
+    existingServiceClasses,
+    capture?.ownership.pluginName,
+    (existing) => ({
+      serviceClass: getServiceClassLabel(existing),
+      plugin: getServiceClassOwners(runtime).get(existing)?.pluginName,
+    }),
+  )
+  const serviceTypesBefore = existingServiceClasses.length
+  try foreign(() => originalRegisterService(serviceClass))
+  if (!capture) return
+  const classOwners = getServiceClassOwners(runtime)
+  for (const registeredClass of (runtime.serviceTypes.get(serviceType) ?? []).slice(serviceTypesBefore)) {
+    classOwners.set(registeredClass, capture.ownership)
+    pushUniqueService(capture.ownership.services, { serviceType, serviceClass: registeredClass })
+  }
+}
+
+effect function startOwnedService(
+  runtime: RuntimeWithPluginLifecycle,
+  originalRunServiceStart: NonNullable<RuntimePrivateState["_runServiceStart"]>,
+  key: ServiceTypeName,
+  serviceType: string,
+  serviceClass: RuntimeServiceClass,
+): (Service | null)!Foreign {
+  const registration = getRegistrationCapture(runtime)
+  const pendingOwner = registration?.ownership.plugin.services?.includes(serviceClass)
+    ? registration.ownership
+    : null
+  const ownership = getServiceClassOwners(runtime).get(serviceClass) ?? pendingOwner
+  return try foreign(() =>
+    connectorOwnershipContext.run({ runtime, ownership }, () => originalRunServiceStart(key, serviceType, serviceClass))
+  )
+}
+
+function hasOwnedContribution(ownership: PluginOwnership): boolean {
+  return Boolean(
+    ownership.registeredPlugin
+      || ownership.actions.length > 0
+      || ownership.providers.length > 0
+      || ownership.evaluators.length > 0
+      || ownership.events.length > 0
+      || ownership.models.length > 0
+      || ownership.services.length > 0
+      || ownership.sendHandlerSources.length > 0
+      || ownership.messageConnectors.length > 0
+      || ownership.postConnectors.length > 0
+      || ownership.chatPreHandlerIds.length > 0
+      || ownership.responseHandlerEvaluatorNames.length > 0
+      || ownership.responseHandlerFieldEvaluatorNames.length > 0
+      || ownership.hasAdapter,
+  )
+}
+
+function captureDeclaredServices(
+  runtime: RuntimeWithPluginLifecycle,
+  ownership: PluginOwnership,
+  serviceClassCountsBefore: ReadonlyMap<RuntimeServiceClass, number>,
+): void {
+  const classOwners = getServiceClassOwners(runtime)
+  for (const serviceClass of ownership.plugin.services ?? []) {
+    const serviceType = serviceClass.serviceType as ServiceTypeName
+    const registeredCount = (runtime.serviceTypes.get(serviceType) ?? [])
+      .filter((candidate) => candidate === serviceClass).length
+    if (registeredCount <= (serviceClassCountsBefore.get(serviceClass) ?? 0)) {
+      continue
+    }
+    classOwners.set(serviceClass, ownership)
+    pushUniqueService(ownership.services, { serviceType, serviceClass })
+  }
+}
+
+effect function registerWithOwnership(
+  runtime: RuntimeWithPluginLifecycle,
+  originalRegisterPlugin: (plugin: Plugin) => Promise<void>,
+  plugin: Plugin,
+): void!Foreign {
+  const pluginsBefore = new Set(runtime.plugins)
+  const serviceClassCountsBefore = new Map<RuntimeServiceClass, number>()
+  for (const classes of runtime.serviceTypes.values()) {
+    for (const serviceClass of classes) {
+      serviceClassCountsBefore.set(serviceClass, (serviceClassCountsBefore.get(serviceClass) ?? 0) + 1)
+    }
+  }
+  const capture: RuntimePluginRegistrationCapture = {
+    runtime,
+    ownership: createEmptyOwnership(plugin),
+    adapterBefore: runtime.adapter,
+  }
+  const { ownership } = capture
+  const pendingOwnership = getPendingPluginOwnership(runtime)
+  pendingOwnership.add(ownership)
+  try ensuring(
+    effect {
+      foreign(() =>
+        pluginRegistrationContext.run(capture, () =>
+          connectorOwnershipContext.run({ runtime, ownership }, () => originalRegisterPlugin(plugin))
+        )
+      ) catch effect (error) => {
+        trackPluginRef(runtime, ownership, pluginsBefore)
+        captureDeclaredServices(runtime, ownership, serviceClassCountsBefore)
+        teardownPluginOwnership(runtime, ownership, capture.adapterBefore) catch effect (rollbackError) => {
+          try foreignSync(() =>
+            runtime.reportError("PluginLifecycle.registrationRollback", rollbackError.cause, { plugin: plugin.name })
+          )
+        }
+        throw error
+      }
+      trackPluginRef(runtime, ownership, pluginsBefore)
+      captureDeclaredServices(runtime, ownership, serviceClassCountsBefore)
+      if (hasOwnedContribution(ownership)) {
+        getPluginOwnershipStore(runtime).set(ownership.pluginName, ownership)
+      }
+    },
+    sync(() => pendingOwnership.delete(ownership)),
+  )
+}
+
+function shareUntilSettled<A, E>(inFlight: Map<string, Promise<A>>, key: string, run: A!E): Promise<A> {
+  const existing = inFlight.get(key)
+  if (existing) return existing
+  const entry: { pending?: Promise<A> } = {}
+  const pending = runDetached(ensuring(
+    run,
+    sync(() => {
+      if (entry.pending !== undefined && inFlight.get(key) === entry.pending) inFlight.delete(key)
+    }),
+  ))
+  entry.pending = pending
+  inFlight.set(key, pending)
+  void runDetached(clearWhenSettled(inFlight, key, pending))
+  return pending
+}
+
+effect function clearWhenSettled<A>(inFlight: Map<string, Promise<A>>, key: string, pending: Promise<A>) {
+  try exit(foreign(() => pending))
+  try sync(() => {
+    if (inFlight.get(key) === pending) inFlight.delete(key)
+  })
+}
+
+effect function reloadOwnedPlugin(
+  runtime: RuntimeWithPluginLifecycle,
+  unload: (pluginName: string) => Promise<PluginOwnership | null>,
+  plugin: Plugin,
+): void!Foreign {
+  try foreign(() => unload(plugin.name))
+  try foreign(() => runtime.registerPlugin(plugin))
+}
+
+effect function applyOwnedPluginConfig(
+  runtime: RuntimeWithPluginLifecycle,
+  pluginName: string,
+  config: Record<string, string>,
+): boolean!Foreign {
+  const ownership = getPluginOwnershipStore(runtime).get(pluginName)
+  if (!ownership) {
+    return false
+  }
+  const pluginWithHooks = (ownership.registeredPlugin ?? ownership.plugin) as RuntimePluginWithLifecycleHooks
+  if (typeof pluginWithHooks.applyConfig !== "function") {
+    return false
+  }
+  try foreign(() => pluginWithHooks.applyConfig?.(config, runtime))
+  return true
+}
+
+function wrapComponentRegistration(runtime: RuntimeWithPluginLifecycle): void {
+  const originalRegisterAction = runtime.registerAction.bind(runtime)
+  const originalRegisterProvider = runtime.registerProvider.bind(runtime)
+  const originalRegisterEvaluator = runtime.registerEvaluator.bind(runtime)
+  const originalRegisterModel = runtime.registerModel.bind(runtime)
+  const originalRegisterEvent = runtime.registerEvent.bind(runtime)
+
+  runtime.registerAction = ((action: RuntimeAction) => {
+    const capture = getRegistrationCapture(runtime)
+    const actionsBefore = runtime.actions.length
+
+    originalRegisterAction(
+      applyEffectiveActionAccess(
+        capture ? withoutPluginOverride(action) : action,
+        capture?.ownership.plugin.contexts,
+        runtime.contexts,
+      ),
+    )
+    if (!capture || runtime.actions.length <= actionsBefore) {
+      return
+    }
+    for (
+      const registeredAction of runtime.actions.slice(
+        actionsBefore,
+      )
+    ) {
+      pushUniqueRef(capture.ownership.actions, registeredAction)
+    }
+  }) as typeof runtime.registerAction
+
+  runtime.registerProvider = ((provider: RuntimeProvider) => {
+    const capture = getRegistrationCapture(runtime)
+    const providersBefore = runtime.providers.length
+    originalRegisterProvider(
+      applyEffectiveProviderContexts(
+        capture ? withoutPluginOverride(provider) : provider,
+        capture?.ownership.plugin.contexts,
+        runtime,
+      ),
+    )
+    if (!capture || runtime.providers.length <= providersBefore) {
+      return
+    }
+    for (
+      const registeredProvider of runtime.providers.slice(
+        providersBefore,
+      )
+    ) {
+      pushUniqueRef(capture.ownership.providers, registeredProvider)
+    }
+  }) as typeof runtime.registerProvider
+
+  runtime.registerEvaluator = ((
+    evaluator: RegisteredEvaluator,
+  ) => {
+    const capture = getRegistrationCapture(runtime)
+    const evaluatorsBefore = runtime.evaluators.length
+    originalRegisterEvaluator(
+      capture ? withoutPluginOverride(evaluator) : evaluator,
+    )
+    if (!capture || runtime.evaluators.length <= evaluatorsBefore) {
+      return
+    }
+    for (
+      const registeredEvaluator of runtime.evaluators.slice(
+        evaluatorsBefore,
+      )
+    ) {
+      pushUniqueRef(capture.ownership.evaluators, registeredEvaluator)
+    }
+  }) as typeof runtime.registerEvaluator
+
+  runtime.registerModel = ((
+    modelType,
+    handler,
+    provider,
+    priority,
+    metadata,
+  ) => {
+    const capture = getRegistrationCapture(runtime)
+    const modelKey = String(modelType)
+    const modelsBefore = new Set(runtime.models.get(modelKey) ?? [])
+    originalRegisterModel(modelType, handler, provider, priority, metadata)
+    if (!capture) return
+    const nextModels = runtime.models.get(modelKey) ?? []
+    for (const registeredModel of nextModels) {
+      if (modelsBefore.has(registeredModel)) continue
+      pushUniqueModel(capture.ownership.models, {
+        modelType: modelKey,
+        handler: registeredModel.handler as PluginModelRegistration["handler"],
+        metadata: registeredModel.metadata,
+        provider: registeredModel.provider,
+      })
+    }
+  }) as typeof runtime.registerModel
+
+  runtime.registerEvent = ((
+    event: string,
+    handler: RuntimeEventHandler,
+  ) => {
+    const capture = getRegistrationCapture(runtime)
+    const handlersBefore = runtime.events[event]?.length ?? 0
+    originalRegisterEvent(event as never, handler as never)
+    if (!capture) return
+    const nextHandlers = runtime.events[event] ?? []
+    for (const registeredHandler of nextHandlers.slice(handlersBefore)) {
+      pushUniqueEvent(capture.ownership.events, {
+        eventName: event,
+        handler: registeredHandler,
+      })
+    }
+  }) as typeof runtime.registerEvent
+}
+
+function wrapHandlerRegistration(runtime: RuntimeWithPluginLifecycle): void {
+  const originalRegisterService = runtime.registerService.bind(runtime)
+  const originalRegisterDatabaseAdapter = runtime.registerDatabaseAdapter.bind(runtime)
+  const originalRegisterChatPreHandler = runtime.registerChatPreHandler.bind(runtime)
+  const originalRegisterResponseHandlerEvaluator = runtime.registerResponseHandlerEvaluator.bind(
+    runtime,
+  )
+  const originalRegisterResponseHandlerFieldEvaluator = runtime.registerResponseHandlerFieldEvaluator.bind(
+    runtime,
+  )
+
+  runtime.registerService = ((serviceClass: RuntimeServiceClass) =>
+    runDetached(registerOwnedService(runtime, originalRegisterService, serviceClass))) as typeof runtime.registerService
+
+  runtime.registerDatabaseAdapter = ((
+    adapter: IAgentRuntime["adapter"],
+  ) => {
+    const capture = getRegistrationCapture(runtime)
+    const adapterBefore = runtime.adapter
+    originalRegisterDatabaseAdapter(adapter)
+    if (
+      capture
+      && runtime.adapter
+      && runtime.adapter !== adapterBefore
+    ) {
+      capture.ownership.hasAdapter = true
+    }
+  }) as typeof runtime.registerDatabaseAdapter
+
+  runtime.registerChatPreHandler = ((
+    handler: RuntimeChatPreHandler,
+  ) => {
+    const capture = getRegistrationCapture(runtime)
+    if (!capture) {
+      originalRegisterChatPreHandler(handler)
+      return
+    }
+
+    if (
+      runtime.chatPreHandlerRegistry?.has(handler.id)
+      && !capture.ownership.chatPreHandlerIds.includes(handler.id)
+    ) {
+      runtime.logger.warn(
+        {
+          src: "agent",
+          agentId: runtime.agentId,
+          plugin: capture.ownership.pluginName,
+          preHandler: handler.id,
+        },
+        "Chat pre-handler id already registered; keeping the existing handler",
+      )
+      return
+    }
+    originalRegisterChatPreHandler(handler)
+    pushUniqueString(capture.ownership.chatPreHandlerIds, handler.id)
+  }) as typeof runtime.registerChatPreHandler
+
+  runtime.registerResponseHandlerEvaluator = ((
+    evaluator: RuntimeResponseHandlerEvaluator,
+  ) => {
+    const capture = getRegistrationCapture(runtime)
+    const countBefore = runtime.responseHandlerEvaluators.length
+    originalRegisterResponseHandlerEvaluator(evaluator)
+    if (
+      !capture
+      || runtime.responseHandlerEvaluators.length <= countBefore
+    ) {
+      return
+    }
+    for (
+      const registered of runtime.responseHandlerEvaluators.slice(
+        countBefore,
+      )
+    ) {
+      pushUniqueString(
+        capture.ownership.responseHandlerEvaluatorNames,
+        registered.name,
+      )
+    }
+  }) as typeof runtime.registerResponseHandlerEvaluator
+
+  runtime.registerResponseHandlerFieldEvaluator = ((
+    evaluator: RuntimeResponseHandlerFieldEvaluator,
+  ) => {
+    const capture = getRegistrationCapture(runtime)
+    const countBefore = runtime.responseHandlerFieldEvaluators.length
+    originalRegisterResponseHandlerFieldEvaluator(evaluator)
+    if (
+      !capture
+      || runtime.responseHandlerFieldEvaluators.length <= countBefore
+    ) {
+      return
+    }
+    for (
+      const registered of runtime.responseHandlerFieldEvaluators.slice(
+        countBefore,
+      )
+    ) {
+      pushUniqueString(
+        capture.ownership.responseHandlerFieldEvaluatorNames,
+        registered.name,
+      )
+    }
+  }) as typeof runtime.registerResponseHandlerFieldEvaluator
+}
+
+function wrapConnectorRegistration(runtime: RuntimeWithPluginLifecycle): void {
+  const originalRegisterMessageConnector = runtime.registerMessageConnector.bind(runtime)
+  const originalRegisterPostConnector = runtime.registerPostConnector.bind(runtime)
+  const privateState: RuntimePrivateState = runtime
+  const originalRegisterSendHandler = typeof privateState.registerSendHandler === "function"
+    ? privateState.registerSendHandler.bind(runtime)
+    : null
+  const originalRunServiceStart = typeof runtime._runServiceStart === "function"
+    ? runtime._runServiceStart.bind(runtime)
+    : null
+
+  if (originalRegisterSendHandler) {
+    privateState.registerSendHandler = ((source, handler) => {
+      const ownership = getCapturingOwnership(runtime)
+      if (ownership && withdrawnConnectorOwners.has(ownership)) return
+      originalRegisterSendHandler(source, handler)
+      claimSendHandlerSource(runtime, source.trim(), ownership)
+    }) as typeof privateState.registerSendHandler
+  }
+
+  runtime.registerMessageConnector = ((registration) => {
+    const ownership = getCapturingOwnership(runtime)
+    if (ownership && withdrawnConnectorOwners.has(ownership)) return
+    originalRegisterMessageConnector(registration)
+    claimConnector(
+      runtime,
+      "messageConnectors",
+      registration,
+      ownership,
+    )
+  }) as typeof runtime.registerMessageConnector
+
+  runtime.registerPostConnector = ((registration) => {
+    const ownership = getCapturingOwnership(runtime)
+    if (ownership && withdrawnConnectorOwners.has(ownership)) return
+    originalRegisterPostConnector(registration)
+    claimConnector(
+      runtime,
+      "postConnectors",
+      registration,
+      ownership,
+    )
+  }) as typeof runtime.registerPostConnector
+
+  if (originalRunServiceStart) {
+    runtime._runServiceStart = ((key, serviceType, serviceClass) =>
+      runDetached(
+        startOwnedService(runtime, originalRunServiceStart, key, serviceType, serviceClass),
+      )) as typeof runtime._runServiceStart
+  }
+}
+
+function installPluginOwnership(runtime: RuntimeWithPluginLifecycle): void {
+  const originalRegisterPlugin = runtime.registerPlugin.bind(runtime)
+
+  const registrations = new Map<string, Promise<void>>()
+  runtime.registerPlugin = ((plugin: Plugin) =>
+    shareUntilSettled(
+      registrations,
+      plugin.name,
+      registerWithOwnership(runtime, originalRegisterPlugin, plugin),
+    )) as typeof runtime.registerPlugin
+
+  const teardowns = new Map<string, Promise<PluginOwnership | null>>()
+  const unloadOnce = (pluginName: string): Promise<PluginOwnership | null> => {
+    const inFlight = teardowns.get(pluginName)
+    if (inFlight) return inFlight
+    const ownership = getPluginOwnershipStore(runtime).get(pluginName)
+    if (!ownership) return Promise.resolve(null)
+    return shareUntilSettled(
+      teardowns,
+      pluginName,
+      asLegacy(Error, unloadOwnedPlugin(runtime, ownership)),
+    )
+  }
+
+  runtime.unloadPlugin = (pluginName: string) => unloadOnce(pluginName)
+
+  runtime.reloadPlugin = (plugin: Plugin) => runDetached(reloadOwnedPlugin(runtime, unloadOnce, plugin))
+
+  runtime.applyPluginConfig = (pluginName: string, config: Record<string, string>) =>
+    runDetached(applyOwnedPluginConfig(runtime, pluginName, config))
+
+  runtime.getPluginOwnership = (pluginName: string) =>
+    getPluginOwnershipStore(runtime).get(pluginName) ?? null
+
+  runtime.getAllPluginOwnership = () => Array.from(getPluginOwnershipStore(runtime).values())
+}
+
+export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
+  const runtimeWithLifecycle = runtime as RuntimeWithPluginLifecycle
+  if (runtimeWithLifecycle.__elizaPluginLifecycleInstalled) {
+    return
+  }
+  wrapComponentRegistration(runtimeWithLifecycle)
+  wrapHandlerRegistration(runtimeWithLifecycle)
+  wrapConnectorRegistration(runtimeWithLifecycle)
+  installPluginOwnership(runtimeWithLifecycle)
+  runtimeWithLifecycle.__elizaPluginLifecycleInstalled = true
+}

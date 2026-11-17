@@ -6,6 +6,8 @@ recovery, with installer session and health receipts bound to that plan.
 [App update admission](./appAdmission.md) decides whether authenticated
 artifacts remain admissible; [WebView health](./uiHealth.md) and
 [runtime health](./runtimeHealth.md) supply the health evidence.
+An operator's [installed data readback](./installedDataReadback.md)
+qualifies installed package identity and app-data preservation.
 
 ## Story: Resolve a candidate installation from platform readback
 

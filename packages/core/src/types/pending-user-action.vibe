@@ -1,0 +1,86 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { JsonValue, UUID } from "./primitives.vibe"
+
+export type PendingUserActionKind =
+  | "approval"
+  | "task_approval"
+  | "prompt"
+  | "pending_prompt"
+  | "credential"
+  | "credential_request"
+  | "clarifying_question"
+  | "blocked_task"
+  | "choice"
+
+export interface PendingUserActionOption {
+  id: string
+
+  label: string
+
+  isDefault?: boolean
+
+  isCancel?: boolean
+}
+
+export type PendingUserActionResolutionTarget =
+  | "resolve_request"
+  | "approval_service"
+  | "pending_prompt"
+  | "credential_bridge"
+  | "sensitive_request"
+  | "open_route"
+  | "chat_reply"
+
+export interface PendingUserActionResolution {
+  target: PendingUserActionResolutionTarget
+
+  requestId?: string
+
+  href?: string
+
+  action?: string
+}
+
+export interface PendingUserAction {
+  id: string
+
+  kind: PendingUserActionKind
+
+  source: string
+
+  title: string
+
+  description?: string
+
+  roomId?: UUID
+
+  options?: PendingUserActionOption[]
+
+  expectedReplyKind?: string
+
+  weight?: number
+
+  resolution?: PendingUserActionResolution
+
+  data?: Record<string, JsonValue>
+
+  createdAt: number
+
+  expiresAt?: number | null
+}
+
+export const PENDING_USER_ACTION_WEIGHT: Readonly<
+  Record<PendingUserActionKind, number>
+> = {
+  approval: 9,
+  task_approval: 9,
+  choice: 9,
+  credential: 8,
+  credential_request: 8,
+  clarifying_question: 7,
+  blocked_task: 10,
+  prompt: 6,
+  pending_prompt: 6,
+}
+
+export type RequiresUserResponse = PendingUserAction

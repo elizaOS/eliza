@@ -1,0 +1,1442 @@
+// spec/core/retrievalIndex.md, "Story: Update a searchable corpus without stale frequencies"; spec/core/retrievalIndex.md, "Appending records adds one document and registers each distinct term once"; spec/core/retrievalIndex.md, "IDF inputs and score ordering retain the source numerical formulas"
+// Implementation of BM25 and Porter2 stemming
+// https://github.com/eilvelia/porter2.js
+// https://www.npmjs.com/package/fast-bm25
+
+// The MIT License
+
+// Copyright (c) 2024 eilvelia <hi@eilvelia.cat>
+
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+// MIT License
+
+// Copyright (c) 2024 Vivek Patel <me@patelvivek.dev>.
+
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+
+import { compareMemoryIds } from "./database.vibe"
+
+const isV = (char: number): boolean => {
+  switch (char) {
+    case 97:
+    case 101:
+    case 105:
+    case 111:
+    case 117:
+    case 121:
+      return true
+    default:
+      return false
+  }
+}
+
+const isWxy = (char: number): boolean => {
+  switch (char) {
+    case 97:
+    case 101:
+    case 105:
+    case 111:
+    case 117:
+    case 121:
+    case 119:
+    case 120:
+    case 89:
+      return true
+    default:
+      return false
+  }
+}
+
+const isValidLi = (char: number): boolean => {
+  switch (char) {
+    case 99:
+    case 100:
+    case 101:
+    case 103:
+    case 104:
+    case 107:
+    case 109:
+    case 110:
+    case 114:
+    case 116:
+      return true
+    default:
+      return false
+  }
+}
+
+const isDouble = (char: number): boolean => {
+  switch (char) {
+    case 98:
+    case 100:
+    case 102:
+    case 103:
+    case 109:
+    case 110:
+    case 112:
+    case 114:
+    case 116:
+      return true
+    default:
+      return false
+  }
+}
+
+const isShortV = (w: number[], len: number): boolean => {
+  return (
+    len >= 2
+    && isV(w[len - 2])
+    && ((len === 2 && !isV(w[len - 1]))
+      || (len >= 3 && !isV(w[len - 3]) && !isWxy(w[len - 1])))
+  )
+}
+
+interface StemWord {
+  w: number[]
+  l: number
+  rv: number
+  r1: number
+  r2: number
+}
+
+const stemException = (word: string): string | undefined => {
+  if (word.length > 6) return undefined
+  switch (word) {
+    case "ski":
+      return "ski"
+    case "skies":
+      return "sky"
+    case "dying":
+      return "die"
+    case "lying":
+      return "lie"
+    case "tying":
+      return "tie"
+
+    case "idly":
+      return "idl"
+    case "gently":
+      return "gentl"
+    case "ugly":
+      return "ugli"
+    case "early":
+      return "earli"
+    case "only":
+      return "onli"
+    case "singly":
+      return "singl"
+
+    case "sky":
+    case "news":
+    case "howe":
+    case "atlas":
+    case "cosmos":
+    case "bias":
+    case "andes":
+      return word
+  }
+  return undefined
+}
+
+const prepareStem = (word: string): StemWord & { yFound: boolean } => {
+  const initialOffset = word.charCodeAt(0) === 39 ? 1 : 0
+  let l = word.length - initialOffset
+  const w = new Array<number>(l)
+  let yFound = false
+  for (let i = 0; i < l; ++i) {
+    const ch = word.charCodeAt(i + initialOffset)
+    if (ch === 121 && (i === 0 || isV(w[i - 1]))) {
+      yFound = true
+      w[i] = 89
+      continue
+    }
+    w[i] = ch
+  }
+  if (w[l - 1] === 39) --l
+  if (l >= 2 && w[l - 2] === 39 && w[l - 1] === 115) l -= 2
+
+  let rv = 0
+
+  while (rv < l && !isV(w[rv])) ++rv
+  if (rv < l) ++rv
+  let r1 = rv
+  if (
+    l >= 5
+    && ((w[0] === 103
+      && w[1] === 101
+      && w[2] === 110
+      && w[3] === 101
+      && w[4] === 114)
+      || (w[0] === 97
+        && w[1] === 114
+        && w[2] === 115
+        && w[3] === 101
+        && w[4] === 110))
+  ) {
+    r1 = 5
+  } else if (
+    l >= 6
+    && w[0] === 99
+    && w[1] === 111
+    && w[2] === 109
+    && w[3] === 109
+    && w[4] === 117
+    && w[5] === 110
+  ) {
+    r1 = 6
+  } else {
+    while (r1 < l && isV(w[r1])) ++r1
+    if (r1 < l) ++r1
+  }
+
+  let r2 = r1
+  while (r2 < l && !isV(w[r2])) ++r2
+  while (r2 < l && isV(w[r2])) ++r2
+  if (r2 < l) ++r2
+  return { w, l, rv, r1, r2, yFound }
+}
+
+const isUnchangedAfterStep1a = ({ w, l }: StemWord): boolean => {
+  return (
+    (l === 6
+      && ((w[0] === 105
+        && w[1] === 110
+        && w[2] === 110
+        && w[3] === 105
+        && w[4] === 110
+        && w[5] === 103)
+        || (w[0] === 111
+          && w[1] === 117
+          && w[2] === 116
+          && w[3] === 105
+          && w[4] === 110
+          && w[5] === 103)
+        || (w[0] === 101
+          && w[1] === 120
+          && w[2] === 99
+          && w[3] === 101
+          && w[4] === 101
+          && w[5] === 100)))
+    || (l === 7
+      && ((w[0] === 99
+        && w[1] === 97
+        && w[2] === 110
+        && w[3] === 110
+        && w[4] === 105
+        && w[5] === 110
+        && w[6] === 103)
+        || (w[0] === 104
+          && w[1] === 101
+          && w[2] === 114
+          && w[3] === 114
+          && w[4] === 105
+          && w[5] === 110
+          && w[6] === 103)
+        || (w[0] === 101
+          && w[1] === 97
+          && w[2] === 114
+          && w[3] === 114
+          && w[4] === 105
+          && w[5] === 110
+          && w[6] === 103)
+        || (w[0] === 112
+          && w[1] === 114
+          && w[2] === 111
+          && w[3] === 99
+          && w[4] === 101
+          && w[5] === 101
+          && w[6] === 100)
+        || (w[0] === 115
+          && w[1] === 117
+          && w[2] === 99
+          && w[3] === 99
+          && w[4] === 101
+          && w[5] === 101
+          && w[6] === 100)))
+  )
+}
+
+const step1a = (s: StemWord): void => {
+  const { w, rv } = s
+  let l = s.l
+  if (l >= 3) {
+    if (w[l - 1] === 115) {
+      if (l >= 4 && w[l - 2] === 101 && w[l - 3] === 115 && w[l - 4] === 115) {
+        l -= 2
+      } else if (w[l - 2] === 101 && w[l - 3] === 105) {
+        l -= l >= 5 ? 2 : 1
+      } else if (w[l - 2] !== 117 && w[l - 2] !== 115 && rv < l - 1) {
+        l -= 1
+      }
+    } else if (w[l - 1] === 100 && w[l - 2] === 101 && w[l - 3] === 105) {
+      l -= l >= 5 ? 2 : 1
+    }
+  }
+  s.l = l
+}
+
+const step1bc = (s: StemWord): void => {
+  const { w, r1, rv } = s
+  let l = s.l
+  let ll = l >= 2 && w[l - 1] === 121 && w[l - 2] === 108 ? l - 2 : l
+  if (ll >= 3) {
+    if (w[ll - 3] === 101 && w[ll - 2] === 101 && w[ll - 1] === 100) {
+      if (ll >= r1 + 3) l = ll - 1
+    } else {
+      if (w[ll - 2] === 101 && w[ll - 1] === 100) {
+        ll -= 2
+      } else if (w[ll - 3] === 105 && w[ll - 2] === 110 && w[ll - 1] === 103) {
+        ll -= 3
+      } else ll = -1
+      if (ll >= 0 && rv <= ll) {
+        l = ll
+        if (l >= 2) {
+          if (
+            (w[l - 1] === 116 && w[l - 2] === 97)
+            || (w[l - 1] === 108 && w[l - 2] === 98)
+            || (w[l - 1] === 122 && w[l - 2] === 105)
+          ) {
+            w[l] = 101
+            ++l
+          } else if (w[l - 2] === w[l - 1] && isDouble(w[l - 1])) {
+            --l
+          } else if (r1 >= l && isShortV(w, l)) {
+            w[l] = 101
+            ++l
+          }
+        }
+      }
+    }
+  }
+
+  if (l >= 3 && (w[l - 1] === 89 || w[l - 1] === 121) && !isV(w[l - 2])) {
+    w[l - 1] = 105
+  }
+  s.l = l
+}
+
+const step2 = (s: StemWord): void => {
+  const { w, r1 } = s
+  let l = s.l
+  if (l >= r1 + 2) {
+    switch (w[l - 1]) {
+      case 108:
+        if (
+          l >= r1 + 6
+          && w[l - 2] === 97
+          && w[l - 3] === 110
+          && w[l - 4] === 111
+          && w[l - 5] === 105
+          && w[l - 6] === 116
+        ) {
+          if (l >= 7 && w[l - 7] === 97) {
+            if (l >= r1 + 7) {
+              l -= 4
+              w[l - 1] = 101
+            }
+          } else {
+            l -= 2
+          }
+        }
+        break
+      case 110:
+        if (
+          l >= r1 + 5
+          && w[l - 2] === 111
+          && w[l - 3] === 105
+          && w[l - 4] === 116
+          && w[l - 5] === 97
+        ) {
+          if (l >= 7 && w[l - 6] === 122 && w[l - 7] === 105) {
+            if (l >= r1 + 7) {
+              l -= 4
+              w[l - 1] = 101
+            }
+          } else {
+            l -= 2
+            w[l - 1] = 101
+          }
+        }
+        break
+      case 114:
+        if (l >= r1 + 4) {
+          if (w[l - 2] === 101) {
+            if (w[l - 3] === 122 && w[l - 4] === 105) --l
+          } else if (w[l - 2] === 111) {
+            if (w[l - 3] === 116 && w[l - 4] === 97) {
+              --l
+              w[l - 1] = 101
+            }
+          }
+        }
+        break
+      case 115:
+        if (
+          l >= r1 + 7
+          && w[l - 2] === 115
+          && w[l - 3] === 101
+          && w[l - 4] === 110
+          && ((w[l - 5] === 108 && w[l - 6] === 117 && w[l - 7] === 102)
+            || (w[l - 5] === 115 && w[l - 6] === 117 && w[l - 7] === 111)
+            || (w[l - 5] === 101 && w[l - 6] === 118 && w[l - 7] === 105))
+        ) {
+          l -= 4
+        }
+        break
+      case 109:
+        if (
+          l >= r1 + 5
+          && w[l - 2] === 115
+          && w[l - 3] === 105
+          && w[l - 4] === 108
+          && w[l - 5] === 97
+        ) {
+          l -= 3
+        }
+        break
+      case 105:
+        if (w[l - 2] === 99) {
+          if (
+            l >= r1 + 4
+            && (w[l - 4] === 101 || w[l - 4] === 97)
+            && w[l - 3] === 110
+          ) {
+            w[l - 1] = 101
+          }
+        } else if (w[l - 2] === 103) {
+          if (
+            l >= r1 + 3
+            && l >= 4
+            && w[l - 2] === 103
+            && w[l - 3] === 111
+            && w[l - 4] === 108
+          ) {
+            --l
+          }
+        } else if (w[l - 2] === 116) {
+          if (l >= r1 + 5 && w[l - 3] === 105) {
+            if (w[l - 4] === 108) {
+              if (l >= 6 && w[l - 5] === 105 && w[l - 6] === 98) {
+                if (l >= r1 + 6) {
+                  l -= 3
+                  w[l - 2] = 108
+                  w[l - 1] = 101
+                }
+              } else if (w[l - 4] === 108 && w[l - 5] === 97) {
+                l -= 3
+              }
+            } else if (w[l - 4] === 118 && w[l - 5] === 105) {
+              l -= 2
+              w[l - 1] = 101
+            }
+          }
+        } else if (w[l - 2] === 108 && l >= 3) {
+          if (w[l - 3] === 98) {
+            if (l >= 4 && w[l - 4] === 97) {
+              if (l >= r1 + 4) w[l - 1] = 101
+            } else if (l >= r1 + 3) {
+              w[l - 1] = 101
+            }
+          } else {
+            if (w[l - 3] === 108) {
+              if (l >= 5 && w[l - 4] === 117 && w[l - 5] === 102) {
+                if (l >= r1 + 5) l -= 2
+              } else if (l >= r1 + 4 && w[l - 4] === 97) {
+                l -= 2
+              }
+            } else if (w[l - 3] === 115) {
+              if (
+                l >= 6
+                && w[l - 4] === 115
+                && w[l - 5] === 101
+                && w[l - 6] === 108
+              ) {
+                if (l >= r1 + 6) l -= 2
+              } else if (l >= r1 + 5 && w[l - 4] === 117 && w[l - 5] === 111) {
+                l -= 2
+              }
+            } else if (
+              l >= 5
+              && w[l - 3] === 116
+              && w[l - 4] === 110
+              && w[l - 5] === 101
+            ) {
+              if (l >= r1 + 5) l -= 2
+            } else if (isValidLi(w[l - 3])) {
+              l -= 2
+            }
+          }
+        }
+    }
+  }
+  s.l = l
+}
+
+const step3 = (s: StemWord): void => {
+  const { w, r1, r2 } = s
+  let l = s.l
+  if (l >= r1 + 3) {
+    switch (w[l - 1]) {
+      case 108:
+        if (w[l - 3] === 99) {
+          if (l >= r1 + 4 && w[l - 4] === 105 && w[l - 2] === 97) l -= 2
+        } else if (w[l - 3] === 102) {
+          if (w[l - 2] === 117) l -= 3
+        } else if (w[l - 3] === 110) {
+          if (
+            l >= r1 + 6
+            && w[l - 2] === 97
+            && w[l - 4] === 111
+            && w[l - 5] === 105
+            && w[l - 6] === 116
+          ) {
+            if (l >= 7 && w[l - 7] === 97) {
+              if (l >= r1 + 7) {
+                l -= 4
+                w[l - 1] = 101
+              }
+            } else {
+              l -= 2
+            }
+          }
+        }
+        break
+      case 101:
+        if (w[l - 2] === 122) {
+          if (
+            l >= r1 + 5
+            && w[l - 3] === 105
+            && w[l - 4] === 108
+            && w[l - 5] === 97
+          ) {
+            l -= 3
+          }
+        } else if (w[l - 2] === 116) {
+          if (
+            l >= r1 + 5
+            && w[l - 3] === 97
+            && w[l - 4] === 99
+            && w[l - 5] === 105
+          ) {
+            l -= 3
+          }
+        } else if (w[l - 2] === 118) {
+          if (
+            l >= r2 + 5
+            && w[l - 3] === 105
+            && w[l - 4] === 116
+            && w[l - 5] === 97
+          ) {
+            l -= 5
+          }
+        }
+        break
+      case 105:
+        if (
+          l >= r1 + 5
+          && w[l - 2] === 116
+          && w[l - 3] === 105
+          && w[l - 4] === 99
+          && w[l - 5] === 105
+        ) {
+          l -= 3
+        }
+        break
+      case 115:
+        if (
+          l >= r1 + 4
+          && w[l - 2] === 115
+          && w[l - 3] === 101
+          && w[l - 4] === 110
+        ) {
+          l -= 4
+        }
+    }
+  }
+  s.l = l
+}
+
+const step4 = (s: StemWord): void => {
+  const { w, r2 } = s
+  let l = s.l
+  if (l >= r2 + 2) {
+    switch (w[l - 1]) {
+      case 110:
+        if (
+          l >= r2 + 3
+          && w[l - 2] === 111
+          && w[l - 3] === 105
+          && (w[l - 4] === 115 || w[l - 4] === 116)
+        ) {
+          l -= 3
+        }
+        break
+      case 108:
+        if (w[l - 2] === 97) l -= 2
+        break
+      case 114:
+        if (w[l - 2] === 101) l -= 2
+        break
+      case 99:
+        if (w[l - 2] === 105) l -= 2
+        break
+      case 109:
+        if (l >= r2 + 3 && w[l - 2] === 115 && w[l - 3] === 105) l -= 3
+        break
+      case 105:
+        if (l >= r2 + 3 && w[l - 2] === 116 && w[l - 3] === 105) l -= 3
+        break
+      case 115:
+        if (l >= r2 + 3 && w[l - 2] === 117 && w[l - 3] === 111) l -= 3
+        break
+      case 116:
+        if (l >= r2 + 3 && w[l - 2] === 110) {
+          if (w[l - 3] === 97) {
+            l -= 3
+          } else if (w[l - 3] === 101) {
+            if (l >= 4 && w[l - 4] === 109) {
+              if (l >= 5 && w[l - 5] === 101) {
+                if (l >= r2 + 5) l -= 5
+              } else if (l >= r2 + 4) {
+                l -= 4
+              }
+            } else {
+              l -= 3
+            }
+          }
+        }
+        break
+      case 101:
+        if (w[l - 2] === 99) {
+          if (
+            l >= r2 + 4
+            && w[l - 3] === 110
+            && (w[l - 4] === 97 || w[l - 4] === 101)
+          ) {
+            l -= 4
+          }
+        } else if (w[l - 2] === 108) {
+          if (
+            l >= r2 + 4
+            && w[l - 3] === 98
+            && (w[l - 4] === 97 || w[l - 4] === 105)
+          ) {
+            l -= 4
+          }
+        } else if (w[l - 2] === 116) {
+          if (l >= r2 + 3 && w[l - 3] === 97) l -= 3
+        } else if (
+          l >= r2 + 3
+          && (w[l - 2] === 118 || w[l - 2] === 122)
+          && w[l - 3] === 105
+        ) {
+          l -= 3
+        }
+    }
+  }
+  s.l = l
+}
+
+const step5 = (s: StemWord): void => {
+  const { w, r1, r2 } = s
+  let l = s.l
+  if (
+    l >= r1 + 1
+    && ((l >= r2 + 1 && w[l - 1] === 108 && w[l - 2] === 108)
+      || (w[l - 1] === 101 && (l >= r2 + 1 || !isShortV(w, l - 1))))
+  ) {
+    --l
+  }
+  s.l = l
+}
+
+const spell = ({ w, l }: StemWord, restoreY: boolean): string => {
+  let out = ""
+  for (let i = 0; i < l; ++i) {
+    out += String.fromCharCode(restoreY && w[i] === 89 ? 121 : w[i])
+  }
+  return out
+}
+
+const stem = (word: string): string => {
+  if (word.length < 3) return word
+  const exception = stemException(word)
+  if (exception !== undefined) return exception
+  const s = prepareStem(word)
+  step1a(s)
+  if (isUnchangedAfterStep1a(s)) return spell(s, false)
+  step1bc(s)
+  step2(s)
+  step3(s)
+  step4(s)
+  step5(s)
+  return spell(s, s.yFound)
+}
+
+interface TokenizationStats {
+  originalWordCount: number
+  stopWordsRemoved: number
+  stemmedWords: number
+  processingTimeMs: number
+}
+
+interface TokenizationResult {
+  tokens: string[]
+  stats?: TokenizationStats
+}
+
+interface StemmingRule {
+  pattern: RegExp | string
+  replacement: string | ((substring: string, ...args: unknown[]) => string)
+  minMeasure?: number
+}
+
+export interface TokenizerOptions {
+  stopWords?: Set<string>
+  minLength?: number
+  stemming?: boolean
+  stemmingRules?: StemmingRule[]
+}
+
+export class Tokenizer {
+  readonly stopWords: Set<string>
+  readonly minLength: number
+  readonly stemming: boolean
+  readonly stemmingRules: {
+    pattern: RegExp
+    replacement: string | ((substring: string, ...args: unknown[]) => string)
+    minMeasure?: number
+  }[]
+
+  static readonly DEFAULT_OPTIONS: Required<TokenizerOptions> = {
+    stopWords: new Set<string>(),
+    minLength: 2,
+    stemming: false,
+    stemmingRules: [],
+  }
+
+  constructor(options: TokenizerOptions = {}) {
+    const mergedOptions = { ...Tokenizer.DEFAULT_OPTIONS, ...options }
+    this.stopWords = mergedOptions.stopWords
+    this.minLength = mergedOptions.minLength
+    this.stemming = mergedOptions.stemming
+
+    this.stemmingRules = mergedOptions.stemmingRules.map((rule) => ({
+      ...rule,
+      pattern: typeof rule.pattern === "string"
+        ? new RegExp(rule.pattern)
+        : rule.pattern,
+    }))
+  }
+
+  tokenize(text: string, includeStats = false): TokenizationResult {
+    if (!text.trim()) {
+      return includeStats
+        ? {
+          tokens: [],
+          stats: {
+            originalWordCount: 0,
+            stopWordsRemoved: 0,
+            stemmedWords: 0,
+            processingTimeMs: 0,
+          },
+        }
+        : { tokens: [] }
+    }
+    const startTime = includeStats ? Date.now() : 0
+    const tokens: string[] = []
+    for (const token of this.cleanText(text).split(/\s+/)) {
+      if (!this.isValidToken(token)) continue
+      tokens.push(this.stemming ? this.stemWord(token) : token)
+    }
+    let stats: TokenizationStats | undefined
+    if (includeStats) {
+      const originalWords = text.split(/\s+/).filter((word) => word.length > 0)
+      stats = {
+        originalWordCount: originalWords.length,
+        stopWordsRemoved: originalWords.length - tokens.length,
+        stemmedWords: this.stemming ? tokens.length : 0,
+        processingTimeMs: Date.now() - startTime,
+      }
+    }
+    return { tokens, stats }
+  }
+
+  cleanText(text: string): string {
+    return (
+      text
+        .toLowerCase()
+        .normalize("NFKD")
+        .replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200D\uFEFF]/g, "")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, "")
+        .replace(/[™®©℠‼]/g, "")
+        .replace(/[\p{P}]/gu, " ")
+        .replace(
+          /[^a-z0-9\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF\s]/gu,
+          " ",
+        )
+        .replace(/\s+/g, " ")
+        .trim()
+    )
+  }
+
+  isValidToken(token: string): boolean {
+    return (
+      (token.length >= this.minLength || /^\d+$/.test(token))
+      && !this.stopWords.has(token)
+    )
+  }
+
+  stemWord(word: string): string {
+    if (word.length < 3) return word
+    let customRuleApplied = false
+    let stemmed = word
+    for (const rule of this.stemmingRules) {
+      const match = stemmed.match(rule.pattern)
+      if (match) {
+        if (
+          !rule.minMeasure
+          || this.measure(stemmed.substring(0, match.index)) >= rule.minMeasure
+        ) {
+          stemmed = typeof rule.replacement === "string"
+            ? stemmed.replace(rule.pattern, rule.replacement)
+            : stemmed.replace(rule.pattern, rule.replacement)
+          customRuleApplied = true
+        }
+      }
+    }
+
+    if (customRuleApplied && stemmed !== word) return stemmed
+    return stem(stemmed)
+  }
+
+  isConsonant(word: string, i: number): boolean {
+    const char = word[i]
+    if ("aeiou".includes(char)) return false
+    return char !== "y" || (i === 0 ? true : !this.isConsonant(word, i - 1))
+  }
+
+  measure(word: string): number {
+    let m = 0
+    let vowelSeen = false
+    for (let i = 0; i < word.length; i++) {
+      if (this.isConsonant(word, i)) {
+        if (vowelSeen) {
+          m++
+          vowelSeen = false
+        }
+      } else {
+        vowelSeen = true
+      }
+    }
+    return m
+  }
+}
+
+export error DocumentIndexOutOfBounds { message: string }
+
+export effect function documentAt(documents: Array<Record<string, unknown>>, index: number) {
+  if (index < 0 || index >= documents.length) {
+    throw new DocumentIndexOutOfBounds({ message: `Document index ${index} out of bounds (0-${documents.length - 1})` })
+  }
+  return documents[index]
+}
+
+module edge {
+  import { asLegacy, runDetachedSync } from "./edge.vibe"
+  import { documentAt, Tokenizer, type TokenizerOptions } from "./retrieval.vibe"
+
+  const DEFAULT_OPTIONS = {
+    k1: 1.2,
+    b: 0.75,
+    minLength: 2,
+    stopWords: new Set<string>([
+      "a",
+      "an",
+      "and",
+      "are",
+      "as",
+      "at",
+      "be",
+      "by",
+      "for",
+      "from",
+      "has",
+      "he",
+      "in",
+      "is",
+      "it",
+      "its",
+      "of",
+      "on",
+      "that",
+      "the",
+      "to",
+      "was",
+      "were",
+      "will",
+      "with",
+    ]),
+    stemming: false,
+  }
+
+  interface BM25Options extends TokenizerOptions {
+    k1?: number
+    b?: number
+    fieldBoosts?: { [key: string]: number }
+  }
+
+  interface SearchResult {
+    index: number
+    score: number
+    doc?: Record<string, unknown>
+  }
+
+  export class BM25 {
+    readonly termFrequencySaturation: number
+    readonly lengthNormalizationFactor: number
+    readonly tokenizer: Tokenizer
+    documentLengths: Uint32Array
+    averageDocLength: number
+    termToIndex: Map<string, number>
+    documentFrequency: Uint32Array
+    termFrequencies: Map<number, Map<number, number>>
+    readonly fieldBoosts: { [key: string]: number }
+    documents: Array<Record<string, unknown>>
+
+    /** @throws {never} */
+    constructor(docs?: Array<Record<string, unknown>>, options: BM25Options = {}) {
+      const opts = { ...DEFAULT_OPTIONS, ...options }
+      this.termFrequencySaturation = opts.k1
+      this.lengthNormalizationFactor = opts.b
+      this.tokenizer = new Tokenizer(opts)
+      this.fieldBoosts = opts.fieldBoosts || {}
+      this.documents = []
+      this.documentLengths = new Uint32Array(0)
+      this.termToIndex = new Map<string, number>()
+      this.documentFrequency = new Uint32Array(0)
+      this.averageDocLength = 0
+      this.termFrequencies = new Map<number, Map<number, number>>()
+      if (docs && docs.length > 0) {
+        this.documents = [...docs]
+        this.indexDocuments(docs)
+      }
+    }
+
+    /** @throws {never} */
+    private indexDocuments(docs: Array<Record<string, unknown>>): void {
+      const documentLengths = new Uint32Array(docs.length)
+      let totalDocLength = 0
+      docs.forEach((doc, docIndex) => {
+        const { length, frequencies } = this.weighDocument(doc, (term) => {
+          const known = this.termToIndex.get(term)
+          if (known !== undefined) return known
+          const added = this.termToIndex.size
+          this.termToIndex.set(term, added)
+          return added
+        })
+        documentLengths[docIndex] = length
+        totalDocLength += length
+        frequencies.forEach((freq, termIndexVal) => {
+          let docsForTerm = this.termFrequencies.get(termIndexVal)
+          if (!docsForTerm) {
+            docsForTerm = new Map<number, number>()
+            this.termFrequencies.set(termIndexVal, docsForTerm)
+          }
+          docsForTerm.set(docIndex, freq)
+        })
+      })
+      this.documentLengths = documentLengths
+      this.documentFrequency = new Uint32Array(this.termToIndex.size)
+      this.termFrequencies.forEach((docsForTerm, termIndexVal) => {
+        this.documentFrequency[termIndexVal] = docsForTerm.size
+      })
+      this.averageDocLength = totalDocLength / docs.length
+    }
+
+    /** @throws {never} */
+    private weighDocument(
+      doc: Record<string, unknown>,
+      termIndexOf: (term: string) => number,
+    ): { length: number; frequencies: Map<number, number> } {
+      let length = 0
+      const frequencies = new Map<number, number>()
+      for (const field in doc) {
+        const content = doc[field]
+        if (typeof content !== "string" || !content) continue
+        const fieldBoost = this.fieldBoosts[field] || 1
+        const { tokens } = this.tokenizer.tokenize(content)
+        length += tokens.length * fieldBoost
+        for (const term of tokens) {
+          const termIndexVal = termIndexOf(term)
+          frequencies.set(termIndexVal, (frequencies.get(termIndexVal) || 0) + fieldBoost)
+        }
+      }
+      return { length, frequencies }
+    }
+
+    /** @throws {never} */
+    private recalculateAverageLength(): void {
+      if (this.documentLengths.length === 0) {
+        this.averageDocLength = 0
+        return
+      }
+      const totalLength = this.documentLengths.reduce((sum, len) => sum + len, 0)
+      this.averageDocLength = totalLength / this.documentLengths.length
+    }
+
+    /** @throws {never} */
+    private termWeight(tf: number, docLength: number): number {
+      const numerator = tf * (this.termFrequencySaturation + 1)
+      const denominator = tf
+        + this.termFrequencySaturation
+          * (1 - this.lengthNormalizationFactor + (this.lengthNormalizationFactor * docLength) / this.averageDocLength)
+      return numerator / denominator
+    }
+
+    /** @throws {never} */
+    search(query: string, topK = 10): SearchResult[] {
+      if (topK <= 0) return []
+      const { tokens: queryTokens } = this.tokenizer.tokenize(query)
+      const scores = new Float32Array(this.documentLengths.length)
+      queryTokens.forEach((term) => {
+        const termIndex = this.termToIndex.get(term)
+        if (termIndex === undefined) return
+        const idf = this.calculateIdf(termIndex)
+        if (idf <= 0) return
+        const termFreqsInDocs = this.termFrequencies.get(termIndex)
+        if (!termFreqsInDocs) return
+        termFreqsInDocs.forEach((tf, docIndex) => {
+          scores[docIndex] += idf * this.termWeight(tf, this.documentLengths[docIndex])
+        })
+      })
+      const results: SearchResult[] = []
+      for (let i = 0; i < scores.length; i++) {
+        const score = scores[i]
+        if (score <= 0) continue
+        const result = { index: i, score }
+        if (results.length < topK) {
+          results.push(result)
+          if (results.length === topK) results.sort((a, b) => b.score - a.score)
+          continue
+        }
+        if (score <= results[results.length - 1].score) continue
+        let insertAt = results.length - 1
+        while (insertAt > 0 && results[insertAt - 1].score < score) insertAt--
+        results.splice(insertAt, 0, result)
+        results.pop()
+      }
+      if (results.length < topK) results.sort((a, b) => b.score - a.score)
+      return results
+    }
+
+    /** @throws {Error} */
+    searchPhrase(phrase: string, topK = 10): SearchResult[] {
+      const { tokens: phraseTokens } = this.tokenizer.tokenize(phrase)
+      if (phraseTokens.length === 0) return []
+      let candidateDocs: Set<number> | null = null
+      for (const term of phraseTokens) {
+        const termIndex = this.termToIndex.get(term)
+        if (termIndex === undefined) return []
+        const docsContainingTermIter = this.termFrequencies.get(termIndex)?.keys()
+        if (!docsContainingTermIter) return []
+        const currentTermDocs = new Set(docsContainingTermIter)
+        candidateDocs = candidateDocs === null
+          ? currentTermDocs
+          : new Set([...candidateDocs].filter((docIdx: number) => currentTermDocs.has(docIdx)))
+        if (candidateDocs.size === 0) return []
+      }
+      if (candidateDocs === null || candidateDocs.size === 0) return []
+      const scores = new Map<number, number>()
+      candidateDocs.forEach((docIndex) => {
+        const doc = this.getDocument(docIndex)
+        let phraseFoundInDoc = false
+        for (const field in doc) {
+          const content = doc[field]
+          if (typeof content !== "string" || phraseFoundInDoc) continue
+          const fieldBoost = this.fieldBoosts[field] || 1
+          const { tokens: docTokens } = this.tokenizer.tokenize(content)
+          for (let i = 0; i <= docTokens.length - phraseTokens.length; i++) {
+            if (phraseTokens.every((token, j) => docTokens[i + j] === token)) {
+              const phraseScoreVal = this.calculatePhraseScore(phraseTokens, docIndex) * fieldBoost
+              scores.set(docIndex, (scores.get(docIndex) || 0) + phraseScoreVal)
+              phraseFoundInDoc = true
+              break
+            }
+          }
+        }
+      })
+      return Array.from(scores.entries())
+        .map(([index, score]) => ({ index, score }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, topK)
+    }
+
+    /** @throws {never} */
+    private calculatePhraseScore(phraseTokens: string[], docIndex: number): number {
+      return phraseTokens.reduce((currentScore, term) => {
+        const termIndex = this.termToIndex.get(term)
+        if (termIndex === undefined) return currentScore
+        const idf = this.calculateIdf(termIndex)
+        const tf = this.getTermFrequency(termIndex, docIndex)
+        return currentScore + idf * this.termWeight(tf, this.documentLengths[docIndex])
+      }, 0)
+    }
+
+    /** @throws {Error} */
+    async addDocument(doc: Record<string, unknown>): Promise<void> {
+      if (!doc) throw new Error("Document cannot be null")
+      const docIndex = this.documentLengths.length
+      this.documents.push(doc)
+      const newDocLengths = new Uint32Array(docIndex + 1)
+      newDocLengths.set(this.documentLengths, 0)
+      this.documentLengths = newDocLengths
+      const { length, frequencies } = this.weighDocument(doc, (term) => {
+        const known = this.termToIndex.get(term)
+        if (known !== undefined) return known
+        const added = this.termToIndex.size
+        this.termToIndex.set(term, added)
+        if (this.documentFrequency.length <= added) {
+          const oldDf = this.documentFrequency
+          this.documentFrequency = new Uint32Array(Math.max(added + 1, oldDf.length * 2 || 1))
+          this.documentFrequency.set(oldDf, 0)
+        }
+        this.documentFrequency[added] = 0
+        return added
+      })
+      this.documentLengths[docIndex] = length
+      frequencies.forEach((freq, termIndexVal) => {
+        let docsForTerm = this.termFrequencies.get(termIndexVal)
+        if (!docsForTerm) {
+          docsForTerm = new Map<number, number>()
+          this.termFrequencies.set(termIndexVal, docsForTerm)
+        }
+        docsForTerm.set(docIndex, freq)
+        if (termIndexVal < this.documentFrequency.length) this.documentFrequency[termIndexVal]++
+      })
+      this.recalculateAverageLength()
+    }
+
+    /** @throws {never} */
+    calculateIdf(termIndex: number): number {
+      if (termIndex < 0 || termIndex >= this.documentFrequency.length) return 0
+      const docFreq = this.documentFrequency[termIndex]
+      if (docFreq <= 0 || docFreq > this.documentLengths.length) return 0
+      const N = this.documentLengths.length
+      return Math.log(1 + (N - docFreq + 0.5) / (docFreq + 0.5))
+    }
+
+    /** @throws {never} */
+    getTermFrequency(termIndex: number, docIndex: number): number {
+      return this.termFrequencies.get(termIndex)?.get(docIndex) || 0
+    }
+
+    /** @throws {Error} */
+    getDocument(index: number): Record<string, unknown> {
+      return runDetachedSync(asLegacy(Error, documentAt(this.documents, index)))
+    }
+
+    /** @throws {never} */
+    clearDocuments(): void {
+      this.documents = []
+      this.documentLengths = new Uint32Array(0)
+      this.termToIndex.clear()
+      this.documentFrequency = new Uint32Array(0)
+      this.averageDocLength = 0
+      this.termFrequencies.clear()
+    }
+
+    /** @throws {never} */
+    getDocumentCount(): number {
+      return this.documents.length
+    }
+
+    /** @throws {Error} */
+    async addDocuments(docs: Array<Record<string, unknown>>): Promise<void> {
+      for (const doc of docs) await this.addDocument(doc)
+    }
+  }
+}
+import { BM25 } from edge
+export { BM25 }
+
+export function foldForSearch(text: string): string {
+  return text
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/['\u2019`]/g, "")
+    .normalize("NFC")
+    .toLowerCase()
+}
+
+export function messageSearchDocument(content: {
+  text?: unknown
+  attachments?: unknown
+}): string {
+  const parts: string[] = []
+  if (typeof content.text === "string") parts.push(content.text)
+  if (Array.isArray(content.attachments)) {
+    for (const attachment of content.attachments) {
+      if (attachment && typeof attachment === "object") {
+        const a = attachment as { title?: unknown; url?: unknown }
+        if (typeof a.title === "string") parts.push(a.title)
+        if (typeof a.url === "string") parts.push(a.url)
+      }
+    }
+  }
+  return parts.join(" ")
+}
+
+function occurrences(haystack: string, needle: string): number {
+  if (needle.length === 0) return 0
+  let count = 0
+  let index = haystack.indexOf(needle)
+  while (index !== -1) {
+    count++
+    index = haystack.indexOf(needle, index + needle.length)
+  }
+  return count
+}
+
+function toTrigramSet(text: string): Set<string> {
+  const padded = `  ${text} `
+  const grams = new Set<string>()
+  for (let i = 0; i + 3 <= padded.length; i++) {
+    grams.add(padded.slice(i, i + 3))
+  }
+  return grams
+}
+
+function trigramSetSimilarity(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0
+  let shared = 0
+  for (const gram of a) if (b.has(gram)) shared++
+  return shared / (a.size + b.size - shared)
+}
+
+const MESSAGE_SEARCH_TRIGRAM_THRESHOLD = 0.45
+
+function messageSearchTokens(text: string): string[] {
+  return text.split(/[^\p{L}\p{N}_:/.-]+/u).filter((t) => t.length > 0)
+}
+
+function termTrigramSimilarity(
+  queryTerms: readonly string[],
+  queryTermGrams: readonly Set<string>[],
+  document: string,
+): number {
+  if (queryTerms.length === 0) return 0
+  const documentTokens = messageSearchTokens(document)
+  if (documentTokens.length === 0) return 0
+
+  let documentTokenGrams: Set<string>[] | undefined
+  let total = 0
+  for (let i = 0; i < queryTerms.length; i++) {
+    let bestForTerm = 0
+    if (document.includes(queryTerms[i])) {
+      bestForTerm = 1
+    } else {
+      documentTokenGrams ??= documentTokens.map((token) => toTrigramSet(token))
+      for (const tokenGrams of documentTokenGrams) {
+        const similarity = trigramSetSimilarity(queryTermGrams[i], tokenGrams)
+        if (similarity > bestForTerm) bestForTerm = similarity
+      }
+    }
+    if (bestForTerm < MESSAGE_SEARCH_TRIGRAM_THRESHOLD) return 0
+    total += bestForTerm
+  }
+  return total / queryTerms.length
+}
+
+function usesWebsearchSyntax(value: string): boolean {
+  return (
+    value.includes("\"")
+    || /(^|\s)-(?=\S)/.test(value)
+    || /(^|\s)or(?=\s|$)/i.test(value)
+  )
+}
+
+type WebsearchClause = { terms: string[]; negated: boolean }
+
+function websearchWords(text: string): string[] {
+  return messageSearchTokens(text)
+    .map((token) => token.replace(/^[_:/.-]+|[_:/.-]+$/g, ""))
+    .filter((word) => word.length > 0)
+}
+
+function parseWebsearchQuery(foldedQuery: string): WebsearchClause[][] {
+  const groups: WebsearchClause[][] = [[]]
+  for (const match of foldedQuery.matchAll(/(-?)(?:"([^"]*)"?|([^\s"]+))/g)) {
+    const [, minus, quoted, bare] = match
+    if (quoted === undefined && minus === "" && bare === "or") {
+      groups.push([])
+      continue
+    }
+    const terms = websearchWords(quoted ?? bare ?? "")
+    if (terms.length > 0) {
+      groups[groups.length - 1].push({ terms, negated: minus === "-" })
+    }
+  }
+  return groups.filter((group) => group.length > 0)
+}
+
+function websearchRank(
+  groups: WebsearchClause[][],
+  document: string,
+): number | null {
+  const words = websearchWords(document)
+  const length = Math.max(document.length, 1)
+  let best: number | null = null
+  for (const group of groups) {
+    let rank = 0
+    let matched = true
+    for (const clause of group) {
+      let count = 0
+      for (
+        let index = 0;
+        index <= words.length - clause.terms.length;
+        index++
+      ) {
+        if (
+          clause.terms.every((term, offset) => words[index + offset] === term)
+        ) {
+          count++
+        }
+      }
+      if (clause.negated ? count > 0 : count === 0) {
+        matched = false
+        break
+      }
+      if (!clause.negated) rank += count / length
+    }
+    if (matched && (best === null || rank > best)) best = rank
+  }
+  return best
+}
+
+export function withinCreatedAtWindow(
+  createdAt: number | undefined,
+  since?: number,
+  until?: number,
+): boolean {
+  if (since === undefined && until === undefined) return true
+  if (typeof createdAt !== "number") return false
+  if (since !== undefined && createdAt < since) return false
+  if (until !== undefined && createdAt > until) return false
+  return true
+}
+
+export interface SearchableMessage {
+  content: { text?: unknown; attachments?: unknown }
+  createdAt?: number
+  id?: string
+}
+
+export function rankMessageSearch<T extends SearchableMessage>(
+  items: T[],
+  query: string,
+): Array<{ item: T; ftsRank: number; trigramSimilarity: number }> {
+  const foldedQuery = foldForSearch(query).trim()
+  if (foldedQuery.length === 0) return []
+  const queryTerms = foldedQuery.split(/\s+/).filter((t) => t.length > 0)
+  const queryTrigrams = toTrigramSet(foldedQuery)
+  const queryTermGrams = queryTerms.map((term) => toTrigramSet(term))
+  const websearchGroups = usesWebsearchSyntax(query)
+    ? parseWebsearchQuery(foldedQuery)
+    : null
+  if (websearchGroups?.length === 0) return []
+
+  const hits: Array<{
+    item: T
+    ftsRank: number
+    trigramSimilarity: number
+  }> = []
+  for (const item of items) {
+    const doc = foldForSearch(messageSearchDocument(item.content))
+    const trigramSimilarity = Math.max(
+      trigramSetSimilarity(queryTrigrams, toTrigramSet(doc)),
+      termTrigramSimilarity(queryTerms, queryTermGrams, doc),
+    )
+    if (websearchGroups) {
+      const ftsRank = websearchRank(websearchGroups, doc)
+      if (ftsRank !== null) hits.push({ item, ftsRank, trigramSimilarity })
+      continue
+    }
+    const allTermsPresent = queryTerms.every((t) => doc.includes(t))
+    const phraseSubstring = doc.includes(foldedQuery)
+    const docLen = Math.max(doc.length, 1)
+    const ftsRank = allTermsPresent
+      ? queryTerms.reduce((acc, t) => acc + occurrences(doc, t) / docLen, 0)
+      : 0
+    if (
+      !allTermsPresent
+      && !phraseSubstring
+      && trigramSimilarity < MESSAGE_SEARCH_TRIGRAM_THRESHOLD
+    ) {
+      continue
+    }
+    hits.push({ item, ftsRank, trigramSimilarity })
+  }
+
+  hits.sort((a, b) => {
+    if (b.ftsRank !== a.ftsRank) return b.ftsRank - a.ftsRank
+    if (b.trigramSimilarity !== a.trigramSimilarity) {
+      return b.trigramSimilarity - a.trigramSimilarity
+    }
+    const ta = typeof a.item.createdAt === "number" ? a.item.createdAt : 0
+    const tb = typeof b.item.createdAt === "number" ? b.item.createdAt : 0
+    if (tb !== ta) return tb - ta
+    return compareMemoryIds(a.item.id ?? "", b.item.id ?? "")
+  })
+  return hits
+}
+
+export function rerankMemories<
+  T extends { id?: string; content: { text?: string } },
+>(query: string | undefined, memories: T[]): T[] {
+  if (!query) return memories
+  const ranked = new BM25(
+    memories.map((memory) => ({
+      title: memory.id,
+      content: memory.content.text,
+    })),
+  ).search(query, memories.length)
+  const indexes = new Set(ranked.map((result) => result.index))
+  return [
+    ...ranked.map((result) => memories[result.index]),
+    ...memories.filter((_, index) => !indexes.has(index)),
+  ]
+}

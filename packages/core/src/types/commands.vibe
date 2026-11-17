@@ -1,0 +1,119 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { Service } from "./service.vibe"
+
+export interface SerializedCommandArg {
+  name: string
+  description: string
+  required?: boolean
+  choices?: string[]
+  dynamicChoices?: CommandArgSource
+  captureRemaining?: boolean
+}
+
+export type SerializedCommandSource = "builtin" | "custom-action" | "saved"
+
+export interface SerializedCommand {
+  key: string
+  nativeName: string
+  description: string
+  textAliases: string[]
+  scope: CommandScope
+  category?: CommandCategory
+  acceptsArgs: boolean
+  args: SerializedCommandArg[]
+  requiresAuth: boolean
+  requiresElevated: boolean
+  surfaces?: CommandSurface[]
+  target: CommandTarget
+  icon?: string
+  source: SerializedCommandSource
+  views?: string[]
+}
+
+export interface CommandsCatalogResponse {
+  commands: SerializedCommand[]
+  surface: string | null
+  activeViewId?: string | null
+  agentId: string | null
+  generatedAt: string
+}
+
+export type CommandScope = "text" | "native" | "both"
+
+export type CommandCategory =
+  | "session"
+  | "options"
+  | "status"
+  | "management"
+  | "media"
+  | "tools"
+  | "docks"
+  | "skills"
+
+export type CommandSurface = "gui" | "tui" | "discord" | "telegram"
+
+export type CommandArgSource =
+  | "models"
+  | "views"
+  | "settings-sections"
+  | "skills"
+  | "providers"
+
+export type ClientCommandAction =
+  | "clear-chat"
+  | "new-conversation"
+  | "toggle-fullscreen"
+  | "open-command-palette"
+  | "show-commands"
+  | "toggle-transcription"
+
+export type CommandTarget =
+  | { kind: "agent"; action?: string }
+  | {
+    kind: "navigate"
+    path: string
+    tab?: string
+    viewId?: string
+    section?: string
+  }
+  | { kind: "client"; clientAction: ClientCommandAction }
+
+export interface CommandArgChoiceContext {
+  provider?: string
+  model?: string
+  config?: Record<string, unknown>
+}
+
+export interface CommandArgDefinition {
+  name: string
+  description: string
+  required?: boolean
+  choices?: string[] | ((ctx: CommandArgChoiceContext) => string[])
+  dynamicChoices?: CommandArgSource
+  captureRemaining?: boolean
+}
+
+export interface CommandDefinition {
+  key: string
+  nativeName?: string
+  description: string
+  textAliases: string[]
+  scope: CommandScope
+  category?: CommandCategory
+  acceptsArgs?: boolean
+  args?: CommandArgDefinition[]
+  argsParsing?: "none" | "positional"
+  requiresAuth?: boolean
+  requiresElevated?: boolean
+  enabled?: boolean
+  target?: CommandTarget
+  surfaces?: CommandSurface[]
+  icon?: string
+  views?: string[]
+}
+
+export abstract class CommandRegistryService extends Service {
+  static override readonly serviceType = "commands"
+  abstract register(command: CommandDefinition): void
+  abstract list(): CommandDefinition[]
+}

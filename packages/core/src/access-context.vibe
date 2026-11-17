@@ -1,0 +1,60 @@
+// spec/core/authorization.md, "Verified cross-world membership is intersected with the agent membership"; spec/core/authorization.md, "Trusted ownership and deliberate grants determine resolved roles"
+import { authorizedRooms } from "../gen/core__authorization.effect.vibe"
+import { failingAs, type Foreign, foreign, promised } from "./edge.vibe"
+import { ElizaError } from "./errors.vibe"
+import { getVerifiedRelatedEntityIds } from "./identity-clusters.vibe"
+import { getLiveEntityMetadataFromMessage, resolveEntityRole, resolveWorldForMessage } from "./roles.vibe"
+import type { AccessContext } from "./types/access-context.vibe"
+import type { Memory } from "./types/memory.vibe"
+import type { IAgentRuntime } from "./types/runtime.vibe"
+import type { InvalidUuidSource } from "./utils/uuid.vibe"
+
+export effect function buildAccessContext(
+  runtime: IAgentRuntime,
+  message: Memory,
+): AccessContext!(Foreign | InvalidUuidSource | ElizaError) {
+  const requesterEntityId = message.entityId
+  const source = message.content?.source
+  const sourceField = typeof source === "string" ? source : undefined
+
+  const resolved = try resolveWorldForMessage(runtime, message)
+  if (!resolved) {
+    return { requesterEntityId, source: sourceField }
+  }
+
+  const { world, metadata } = resolved
+  const role = try resolveEntityRole(runtime, world, metadata, requesterEntityId, {
+    liveEntityMetadata: getLiveEntityMetadataFromMessage(message),
+    liveEntityId: requesterEntityId,
+  })
+
+  return {
+    requesterEntityId,
+    worldId: world?.id,
+    role,
+    isOwner: role === "OWNER",
+    source: sourceField,
+  }
+}
+
+export const buildAccessContextPromise = promised(failingAs(TypeError, buildAccessContext, ElizaError))
+
+export effect function buildCrossWorldConversationAccessContext(
+  runtime: IAgentRuntime,
+  message: Memory,
+): AccessContext!(Foreign | InvalidUuidSource | ElizaError) {
+  const base = try buildAccessContext(runtime, message)
+  const relatedEntityIds = try getVerifiedRelatedEntityIds(runtime, message.entityId)
+  const [requesterRoomIds, agentRoomIds] = try.all [
+    foreign(() => runtime.getRoomsForParticipants(relatedEntityIds)),
+    foreign(() => runtime.getRoomsForParticipant(runtime.agentId)),
+  ]
+  const agentRooms = Array.from(new Set(agentRoomIds))
+  const authorizedRoomIds = authorizedRooms(Array.from(new Set(requesterRoomIds)), agentRooms)
+
+  return { ...base, worldId: undefined, authorizedRoomIds }
+}
+
+export const buildCrossWorldConversationAccessContextPromise = promised(
+  failingAs(TypeError, buildCrossWorldConversationAccessContext, ElizaError),
+)

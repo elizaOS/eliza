@@ -1,0 +1,746 @@
+// spec/core/diagnostics.md, "Reporting records one entry and an asynchronous subscriber cannot reemit"; spec/core/asyncContext.md, "A continuation owns its current context and restoration stack"
+import { Machine, machine, type Diagnostics, type Event as DiagnosticsEvent, type Rejected as DiagnosticsRejected, type Severity } from "../../gen/core__diagnostics.effect.vibe"
+import { type Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
+import { ElizaError, toElizaError, type ElizaErrorSeverity, type ReportedError } from "../errors.vibe"
+import { own, type Owned } from "../owned.vibe"
+import type { AgentRuntime } from "../runtime.vibe"
+import { processingPolicyFor } from "../security/processing-policy.vibe"
+import { authorizeOwnerExclusiveDisclosure, PRIVACY_DENIED_TEXT, revalidateOwnerExclusiveDisclosure } from "../security/trusted-delivery-audience.vibe"
+import { setTrajectoryPurpose } from "../trajectory-context.vibe"
+import type { Action, ActionMode, ActionResult, HandlerCallback } from "../types/components.vibe"
+import type { AgentContext } from "../types/contexts.vibe"
+import { EventType, type EventPayload } from "../types/events.vibe"
+import type { Memory } from "../types/memory.vibe"
+import type { ControlMessage } from "../types/messaging.vibe"
+import { ModelType, type GenerateTextOptions, type GenerateTextParams, type GenerateTextResult } from "../types/model.vibe"
+import type { JsonValue, UUID } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { ServiceType } from "../types/service.vibe"
+import type { State } from "../types/state.vibe"
+import { AsyncContextManager } from "../utils/async-context-manager.vibe"
+import { resolveActionEventWorldId } from "./action-event-world.vibe"
+import { resolveActionGateFailure } from "./action-gate.vibe"
+import { settleActionHandler } from "./action-handler-settlement.vibe"
+import { runWithActionRoutingContext } from "./action-routing-context.vibe"
+import { ActivePromptTraces } from "./active-prompt-traces.vibe"
+import type { Settings } from "./agent-settings.vibe"
+import { Components } from "./components.vibe"
+import { EmbeddingDimensionProbeError, RuntimeEmbeddings } from "./embeddings.vibe"
+import { Host } from "./host.vibe"
+import type { RuntimeKernel } from "./kernel.vibe"
+import type { Lifecycle } from "./lifecycle.vibe"
+import { drainDiagnostics as drainModelDiagnostics, makeDispatchCore, RuntimeModelDispatch, type DispatchCore, type RuntimeModelDispatchHost } from "./model-dispatch.vibe"
+import type { Services } from "./service-lifecycle.vibe"
+import { ProviderStateComposer } from "./state-composition.vibe"
+import type { Store } from "./store.vibe"
+import type { TurnAbortedError } from "./turn-aborted-error.vibe"
+import type { UnstableJson } from "./context-hash.vibe"
+import { errorText } from "../utils/errors.vibe"
+
+export error EmptyGenerateTextInput { message: string }
+export error StructuredPromptExecutorMissing { message: string }
+
+export type DispatchFailure = EmptyGenerateTextInput | StructuredPromptExecutorMissing | ElizaError | TurnAbortedError | Foreign
+
+interface ReportExtra {
+  readonly context: Record<string, unknown> | undefined
+  readonly at: number
+  readonly unmodeledSeverity: ElizaErrorSeverity | undefined
+}
+
+interface DispatchPayload {
+  readonly extras: ReadonlyArray<ReportExtra>
+}
+
+type Listener = (data: EventPayload) => void
+
+export service Dispatch {
+  static readonly key = "@elizaos/core/runtime/Dispatch"
+  readonly diagnostics: Owned<Diagnostics, DiagnosticsEvent, Diagnostics, DiagnosticsRejected, DispatchPayload>
+  readonly reporting: Ref.Ref<boolean>
+  readonly listeners: Map<string, Listener[]>
+  readonly core: DispatchCore
+  readonly models: RuntimeModelDispatch
+  readonly embeddings: RuntimeEmbeddings
+  readonly providerState: ProviderStateComposer
+  readonly promptTraces: ActivePromptTraces
+}
+
+type DiagnosticsOwner = Dispatch["diagnostics"]
+
+const errorReportScopes = new AsyncContextManager<ReadonlySet<object>>()
+
+module edge {
+  import { foreign, runDetached, type Kernel } from "../edge.vibe"
+  import type { PseudonymSession } from "../security/pii-pseudonymizer.vibe"
+  import type { SecretSwapSession } from "../security/secret-swap.vibe"
+  import type { UUID } from "../types/primitives.vibe"
+  import type { Service } from "../types/service.vibe"
+  import { createPiiSwapSession, createSecretSwapSession, isPiiSwapEnabled, isSecretSwapEnabled } from "./agent-settings.vibe"
+  import type { RuntimeKernel } from "./kernel.vibe"
+  import { getCurrentRoomId, isInitializationPending, isStopRequested } from "./lifecycle.vibe"
+  import { ensureServiceStarted } from "./service-lifecycle.vibe"
+
+  /** @throws {never} */
+  export function surfaceRejection(pending: Promise<unknown>): void {
+    void runDetached(foreign(() => pending))
+  }
+
+  export interface KernelCallbacks {
+    currentRoomId: () => UUID | undefined
+    isSecretSwapEnabled: () => boolean
+    isPiiSwapEnabled: () => boolean
+    createSecretSwapSession: () => SecretSwapSession
+    createPiiSwapSession: () => PseudonymSession
+    initializationPending: () => boolean
+    ensureServiceStarted: (serviceType: string) => Promise<Service | null>
+    isStopping: () => boolean
+  }
+
+  /** @throws {never} */
+  export function kernelCallbacks(kernel: () => Kernel<RuntimeKernel>): KernelCallbacks {
+    return {
+      currentRoomId: () => kernel().runSync(getCurrentRoomId()),
+      isSecretSwapEnabled: () => kernel().runSync(isSecretSwapEnabled()),
+      isPiiSwapEnabled: () => kernel().runSync(isPiiSwapEnabled()),
+      createSecretSwapSession: () => kernel().runSync(createSecretSwapSession()),
+      createPiiSwapSession: () => kernel().runSync(createPiiSwapSession()),
+      initializationPending: () => kernel().runSync(isInitializationPending()),
+      ensureServiceStarted: (serviceType: string) => kernel().run(ensureServiceStarted(serviceType)),
+      isStopping: () => kernel().runSync(isStopRequested()),
+    }
+  }
+}
+import { kernelCallbacks, surfaceRejection } from edge
+
+effect function ownedDiagnostics() {
+  provide machine() {
+    return try own(try Machine, { extras: [] } as DispatchPayload)
+  }
+}
+
+export const DispatchLive: Layer.Layer<Dispatch, never, Host | Lifecycle | Settings | Store | Services | Components> = Layer.effect(Dispatch, effect {
+  const { runtime, options, kernel } = try Host
+  const { pipelineHooks, extensionsMachine } = try Components
+  const callbacks = kernelCallbacks(kernel)
+  const embeddings: RuntimeEmbeddings = new RuntimeEmbeddings(runtime, {
+    resolveModelRegistrations: (modelType, provider) => models.resolveModelRegistrations(modelType, provider),
+  })
+  const host: RuntimeModelDispatchHost = {
+    confidentialInference: () => options.confidentialInference,
+    processingPolicy: () => processingPolicyFor(runtime),
+    models: () => runtime.models,
+    pinnedEmbeddingProvider: () => embeddings.getPinnedProvider(),
+    validateEmbeddingOutput: (...args) => embeddings.validateProviderOutput(...args),
+    currentRoomId: callbacks.currentRoomId,
+    isSecretSwapEnabled: callbacks.isSecretSwapEnabled,
+    isPiiSwapEnabled: callbacks.isPiiSwapEnabled,
+    hooksForPhase: (...args) => pipelineHooks.hooksForPhase(...args),
+    invokePipelineHooks: (...args) => pipelineHooks.invokePipelineHooks(...args),
+    createSecretSwapSession: callbacks.createSecretSwapSession,
+    createPiiSwapSession: callbacks.createPiiSwapSession,
+    initializationPending: callbacks.initializationPending,
+    _ensureServiceStarted: callbacks.ensureServiceStarted,
+  }
+  const core = try makeDispatchCore(runtime, host, extensionsMachine)
+  const models = new RuntimeModelDispatch(runtime, host, core)
+  const providerState = new ProviderStateComposer(runtime, {
+    hasProviderSelectionHooks: () => pipelineHooks.hooksForPhase("compose_state_providers").length > 0,
+    ensureServiceStarted: callbacks.ensureServiceStarted,
+    isStopping: callbacks.isStopping,
+  })
+  return {
+    diagnostics: try ownedDiagnostics(),
+    reporting: try Ref.make(false),
+    listeners: new Map<string, Listener[]>(),
+    core,
+    models,
+    embeddings,
+    providerState,
+    promptTraces: new ActivePromptTraces(),
+  }
+})
+
+export const TRACE_FORWARDS = [
+  "enrichTrace",
+  "getActiveTrace",
+  "getActiveTracesForRun",
+  "deleteActiveTrace",
+  "deleteActiveTraceById",
+] as const satisfies readonly (keyof ActivePromptTraces)[]
+
+export const EMBEDDING_FORWARDS = [
+  "isEmbeddingGenerationDisabled",
+  "ensureEmbeddingDimension",
+  "addEmbeddingToMemory",
+  "queueEmbeddingGeneration",
+  "clearEmbeddingsOutsideActiveDimension",
+  "getCachedEmbeddings",
+] as const satisfies readonly (keyof RuntimeEmbeddings)[]
+
+export const MODEL_FORWARDS = [
+  "registerModel",
+  "getModelRegistrations",
+  "getLastResolvedModelProvider",
+  "getModel",
+] as const satisfies readonly (keyof RuntimeModelDispatch)[]
+
+export effect function probeEmbeddingDimension(): void!DispatchFailure!RuntimeKernel {
+  const { runtime } = try Host
+  if (!runtime.getModel(ModelType.TEXT_EMBEDDING)) {
+    runtime.logger.warn({ src: "agent", agentId: runtime.agentId }, "No TEXT_EMBEDDING model registered, skipping embedding setup")
+    return
+  }
+  foreign(() => runtime.ensureEmbeddingDimension()) catch effect (failure) => {
+    const error = failure.cause
+    if (!(error instanceof EmbeddingDimensionProbeError)) throw failure
+    const [first] = error.attempts
+    const single = error.attempts.length === 1
+    const context = { src: "agent", agentId: runtime.agentId, attempts: error.attempts }
+    if (single && first?.error === "no registered handler yet") {
+      runtime.logger.info(context, "Configured TEXT_EMBEDDING provider has not registered yet; keeping embedding generation disabled until the deferred re-probe pins it")
+    } else if (single && first?.provider === "local" && first.error.includes("no on-device embedding handler is registered")) {
+      runtime.logger.info(context, "Local TEXT_EMBEDDING handler will register during deferred plugin boot; keeping embedding generation disabled until the deferred probe")
+    } else {
+      runtime.logger.error(
+        context,
+        "All registered TEXT_EMBEDDING providers failed the dimension probe; continuing boot with embedding generation disabled — memory recall over new memories is degraded until a provider recovers",
+      )
+      runtime.reportError("AgentRuntime.embeddingDimensionProbe", error, { attempts: error.attempts })
+    }
+  }
+}
+
+export effect function drainDiagnostics(): void!!RuntimeKernel {
+  const { core } = try Dispatch
+  try drainModelDiagnostics(core)
+}
+
+export effect function retire(): void!!RuntimeKernel {
+  const { runtime } = try Host
+  const { listeners, providerState } = try Dispatch
+  listeners.clear()
+  runtime.stateCache.clear()
+  providerState.stop()
+}
+
+export effect function getActionResults(messageId: UUID): ActionResult[]!!RuntimeKernel {
+  const { runtime } = try Host
+  const cachedState = runtime.stateCache.get(`${messageId}_action_results`)
+  return (cachedState?.data && (cachedState.data.actionResults as ActionResult[])) || []
+}
+
+interface ModeOptions {
+  didRespond?: boolean
+  callback?: HandlerCallback
+  responses?: Memory[]
+  selectedContexts?: readonly AgentContext[]
+}
+
+interface ModeRun {
+  readonly runtime: AgentRuntime
+  readonly mode: ActionMode
+  readonly message: Memory
+  readonly state: State | undefined
+  readonly options: ModeOptions | undefined
+  readonly isContextMode: boolean
+}
+
+interface ModeOutcome {
+  readonly success: boolean
+  readonly errorMsg: string | undefined
+}
+
+function compareModeActions(a: Action, b: Action): number {
+  return (a.modePriority ?? 100) - (b.modePriority ?? 100) || a.name.localeCompare(b.name)
+}
+
+function modeGate(run: ModeRun, action: Action) {
+  return resolveActionGateFailure(run.runtime, action, {
+    message: run.message,
+    activeContexts: run.options?.selectedContexts,
+    evaluateContexts: run.isContextMode,
+  })
+}
+
+effect function admitModeAction(run: ModeRun, action: Action): boolean!(ElizaError | Foreign) {
+  const { runtime, mode, message } = run
+  const gate = try result(modeGate(run, action))
+  if (Result.isFailure(gate)) {
+    runtime.reportError("AgentRuntime.modeActionGate", thrownValue(gate.failure), { action: action.name, mode })
+    return false
+  }
+  if (gate.success) {
+    runtime.logger.info(
+      { src: "agent", agentId: runtime.agentId, action: action.name, mode, reason: gate.success },
+      "Mode action denied by action gate",
+    )
+    return false
+  }
+  if (action.disclosureGate?.require === "owner_exclusive") {
+    const disclosure = try authorizeOwnerExclusiveDisclosure(runtime, message)
+    if (!disclosure.allowed) {
+      runtime.logger.info(
+        { src: "agent", agentId: runtime.agentId, action: action.name, mode, reason: disclosure.reason },
+        "Owner-private mode action denied for untrusted delivery audience",
+      )
+      return false
+    }
+  }
+  const validation = try result(foreign(() => action.validate(runtime, message, run.state)))
+  if (Result.isFailure(validation)) {
+    const err = validation.failure.cause
+    runtime.logger.warn(
+      { src: "agent", agentId: runtime.agentId, action: action.name, mode, err: errorText(err) },
+      "runActionsByMode validate failed",
+    )
+    runtime.reportError("AgentRuntime.modeActionValidate", err, { action: action.name, mode })
+    return false
+  }
+  return Boolean(validation.success)
+}
+
+effect function deliverProtected(run: ModeRun, options: ModeOptions, callbackArgs: Parameters<HandlerCallback>): Memory[]!Foreign {
+  const disclosure = try revalidateOwnerExclusiveDisclosure(run.runtime, run.message)
+  if (disclosure.allowed) {
+    return try foreign(() => options.callback?.(...callbackArgs) ?? [])
+  }
+  return try foreign(() => options.callback?.(
+    {
+      text: PRIVACY_DENIED_TEXT,
+      actions: ["PRIVACY_DENIED"],
+      data: { privacyDenied: true, privacyReason: disclosure.reason },
+    },
+    "PRIVACY_DENIED",
+  ) ?? [])
+}
+
+effect function invokeModeAction(run: ModeRun, action: Action, composedState: State, actionCallback: HandlerCallback | undefined): unknown!(ElizaError | Foreign) {
+  const { runtime, mode, message } = run
+  const currentGateFailure = try modeGate(run, action)
+  if (currentGateFailure) {
+    throw new ElizaError(currentGateFailure, {
+      code: "ACTION_AUTHORITY_CHANGED",
+      context: { action: action.name, mode },
+    })
+  }
+  return try foreign(() => runWithActionRoutingContext(
+    { actionName: action.name, modelClass: action.modelClass },
+    () => action.handler(runtime, message, composedState, { mode }, actionCallback, run.options?.responses),
+  ))
+}
+
+effect function executeModeAction(run: ModeRun, action: Action, composedState: State): ModeOutcome!(ElizaError | UnstableJson | Foreign) {
+  const { runtime, message, options } = run
+  const ownerExclusive = action.disclosureGate?.require === "owner_exclusive"
+  if (ownerExclusive && !(try authorizeOwnerExclusiveDisclosure(runtime, message)).allowed) {
+    return { success: false, errorMsg: PRIVACY_DENIED_TEXT }
+  }
+  const callback: HandlerCallback | undefined = ownerExclusive && options?.callback
+    ? (...callbackArgs) => runDetached(deliverProtected(run, options, callbackArgs))
+    : options?.callback
+  const settled = try settleActionHandler({
+    runtime,
+    action,
+    callback,
+    handlerError: "rethrow",
+    invoke: (actionCallback) => runDetached(invokeModeAction(run, action, composedState, actionCallback)),
+  })
+  let success = true
+  let errorMsg: string | undefined
+  if (settled.success === false) {
+    success = false
+    errorMsg = settled.error instanceof Error ? settled.error.message : (settled.error ?? settled.text ?? errorMsg)
+  }
+  if (ownerExclusive && !(try revalidateOwnerExclusiveDisclosure(runtime, message)).allowed) {
+    success = false
+    errorMsg = PRIVACY_DENIED_TEXT
+  }
+  return { success, errorMsg }
+}
+
+effect function announceModeAction(run: ModeRun, worldId: UUID, event: EventType, content: Record<string, unknown>): void!Foreign {
+  const { runtime, message } = run
+  const pending = try foreignSync(() => runtime.emitEvent(event, {
+    runtime,
+    messageId: message.id,
+    roomId: message.roomId,
+    world: worldId,
+    content,
+  }).catch((err: unknown) => runtime.reportError("AgentRuntime.emitEvent", err, { event, messageId: message.id })))
+  try foreign(() => pending)
+}
+
+effect function runModeAction(run: ModeRun, action: Action, composedState: State, worldId: UUID): void!Foreign {
+  const { runtime, mode } = run
+  const source = run.message.content.source
+  try announceModeAction(run, worldId, EventType.ACTION_STARTED, {
+    text: `Executing ${mode} action: ${action.name}`,
+    actions: [action.name],
+    actionStatus: "executing",
+    source,
+  })
+  const executed = try result(executeModeAction(run, action, composedState))
+  let outcome: ModeOutcome
+  if (Result.isFailure(executed)) {
+    const err = thrownValue(executed.failure)
+    outcome = { success: false, errorMsg: errorText(err) }
+    runtime.logger.warn(
+      { src: "agent", agentId: runtime.agentId, action: action.name, mode, err: outcome.errorMsg },
+      "runActionsByMode handler failed",
+    )
+    runtime.reportError("AgentRuntime.modeActionHandler", err, { action: action.name, mode })
+  } else {
+    outcome = executed.success
+  }
+  try announceModeAction(run, worldId, EventType.ACTION_COMPLETED, {
+    text: outcome.success
+      ? `${mode} action ${action.name} completed`
+      : `${mode} action ${action.name} failed: ${outcome.errorMsg ?? "unknown"}`,
+    actions: [action.name],
+    actionStatus: outcome.success ? "completed" : "failed",
+    source,
+    error: outcome.errorMsg,
+  })
+}
+
+effect function admitInto(run: ModeRun, action: Action, validated: Action[]): void!(ElizaError | Foreign) {
+  if (try admitModeAction(run, action)) validated.push(action)
+}
+
+effect function joinEach<E>(fibers: readonly Fiber.Fiber<void, E>[]): void!E {
+  for concurrent (const fiber of fibers) {
+    try join fiber
+  }
+}
+
+export effect function runActionsByMode(mode: ActionMode, message: Memory, state?: State, options?: { didRespond?: boolean; callback?: HandlerCallback; responses?: Memory[]; selectedContexts?: readonly AgentContext[]; }): Action[]!DispatchFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const isContextMode = mode === "CONTEXT_BEFORE" || mode === "CONTEXT_DURING" || mode === "CONTEXT_AFTER"
+  const selected = isContextMode ? new Set(options?.selectedContexts ?? []) : undefined
+  const candidates = runtime.actions
+    .filter((action) => action.mode === mode && (!selected || (action.contexts ?? []).some((tag) => selected.has(tag))))
+    .sort(compareModeActions)
+  if (candidates.length === 0) return []
+
+  setTrajectoryPurpose(mode === "ALWAYS_AFTER" ? "evaluation" : "hook")
+
+  const run: ModeRun = { runtime, mode, message, state, options, isContextMode }
+  const validated: Action[] = []
+  const admissions: Fiber.Fiber<void, ElizaError | Foreign>[] = []
+  for (const action of candidates) admissions.push(fork.detached admitInto(run, action, validated))
+  try joinEach(admissions)
+  if (validated.length === 0) return []
+  validated.sort(compareModeActions)
+
+  const composedState = state ?? (try foreign(() => runtime.composeState(message, ["RECENT_MESSAGES"])))
+  const worldId = try resolveActionEventWorldId(runtime, message, "AgentRuntime.resolveActionEventWorldId")
+
+  if (mode === "ALWAYS_DURING" || mode === "CONTEXT_DURING" || mode === "RESPONSE_HANDLER_DURING") {
+    const runs: Fiber.Fiber<void, Foreign>[] = []
+    for (const action of validated) runs.push(fork.detached runModeAction(run, action, composedState, worldId))
+    try joinEach(runs)
+  } else {
+    for (const action of validated) {
+      try runModeAction(run, action, composedState, worldId)
+    }
+  }
+  return validated
+}
+
+export effect function generateText(input: string, options?: GenerateTextOptions): GenerateTextResult!DispatchFailure!RuntimeKernel {
+  if (!input.trim()) {
+    throw new EmptyGenerateTextInput({ message: "Input cannot be empty" })
+  }
+  const { runtime } = try Host
+  const { models } = try Dispatch
+  const includeCharacter = options?.includeCharacter ?? true
+  const modelType = options?.modelType ?? ModelType.TEXT_LARGE
+  let prompt = input
+  let system: string | undefined
+  if (includeCharacter && runtime.character) {
+    const c = runtime.character
+    const parts: string[] = []
+    system = models.buildRuntimeSystemPrompt()
+    const styles = [...(c.style?.all || []), ...(c.style?.chat || [])]
+    if (styles.length > 0) {
+      parts.push(`Style:\n${styles.map((s) => `- ${s}`).join("\n")}`)
+    }
+    if (parts.length > 0) {
+      prompt = `${parts.join("\n\n")}\n\n${input}`
+    }
+  }
+  const params: GenerateTextParams = {
+    prompt,
+    maxTokens: options?.maxTokens,
+    minTokens: options?.minTokens,
+    temperature: options?.temperature,
+    topP: options?.topP,
+    topK: options?.topK,
+    minP: options?.minP,
+    seed: options?.seed,
+    repetitionPenalty: options?.repetitionPenalty,
+    frequencyPenalty: options?.frequencyPenalty,
+    presencePenalty: options?.presencePenalty,
+    system,
+    stopSequences: options?.stopSequences,
+    user: options && options.user !== undefined ? options.user : runtime.character.name,
+    responseFormat: options?.responseFormat,
+  }
+  const response = try foreign(() => runtime.useModel<typeof modelType, string>(modelType, params))
+  return { text: response }
+}
+
+export effect function dynamicPromptExecFromState(args: Parameters<IAgentRuntime["dynamicPromptExecFromState"]>[0]): (Record<string, unknown> | null)!DispatchFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const executor = runtime.structuredPromptExecutor
+  if (!executor) {
+    throw new StructuredPromptExecutorMissing({ message: "Structured prompt execution requires an explicitly registered executor" })
+  }
+  return try foreign(() => executor.call(runtime, args))
+}
+
+type Started = Result.Result<unknown, Foreign>
+
+effect function awaitStarted(started: Started): unknown!Foreign {
+  if (Result.isFailure(started)) throw started.failure
+  return try foreign(() => started.success)
+}
+
+effect function awaitEach(started: readonly Started[]): void!Foreign {
+  for concurrent (const one of started) {
+    try awaitStarted(one)
+  }
+}
+
+effect function awaitAllHandlers(started: readonly Started[]): void!Foreign {
+  awaitEach(started) catch effect (failure) => {
+    for concurrent (const one of started) {
+      try exit(awaitStarted(one))
+    }
+    throw failure
+  }
+}
+
+export effect function emitEvent(event: string | string[], params: JsonValue | object): void!DispatchFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const events = Array.isArray(event) ? event : [event]
+  const paramsObj = typeof params === "object" && params !== null ? params as Record<string, JsonValue | object> : undefined
+  for (const eventName of events) {
+    const eventHandlers = runtime.events[eventName]
+    if (!eventHandlers) continue
+    const payload = {
+      ...paramsObj,
+      runtime,
+      source: typeof paramsObj?.source === "string" ? paramsObj.source : "runtime",
+    } as EventPayload
+    const started: Started[] = []
+    const count = eventHandlers.length
+    for (let index = 0; index < count; index++) {
+      if (!(index in eventHandlers)) continue
+      const handler = eventHandlers[index]
+      started.push(try result(foreignSync(() => handler(payload))))
+    }
+    try awaitAllHandlers(started)
+  }
+}
+
+function reportSeverity(severity: ElizaErrorSeverity | undefined): Severity {
+  if (severity === "fatal") return "Fatal"
+  if (severity === "ephemeral") return "Ephemeral"
+  return "Unspecified"
+}
+
+function modeledSeverity(severity: Severity): ElizaErrorSeverity | undefined {
+  if (severity === "Fatal") return "fatal"
+  if (severity === "Ephemeral") return "ephemeral"
+  return undefined
+}
+
+interface AgentEventStream {
+  emit?: (event: { runId: string; stream: string; data: Record<string, unknown> }) => void
+}
+
+function forwardToAgentEventStream(runtime: AgentRuntime, entry: ReportedError, runId: UUID | undefined): void {
+  const service = runtime.getService(ServiceType.AGENT_EVENT) as AgentEventStream | null
+  if (!service || typeof service.emit !== "function") return
+  try {
+    service.emit({
+      runId: runId ?? "runtime",
+      stream: "error",
+      data: {
+        type: "error",
+        scope: entry.scope,
+        code: entry.code,
+        message: entry.message,
+        ...(entry.severity ? { severity: entry.severity } : {}),
+        context: entry.context,
+        recoverable: true,
+      },
+    })
+  } catch (streamErr) {
+    runtime.logger.warn({ src: "agent", scope: entry.scope, err: streamErr }, `[${entry.scope}] agent-event error stream forward failed`)
+  }
+}
+
+function keepPayload(payload: DispatchPayload): readonly [void, DispatchPayload] {
+  return [undefined, payload]
+}
+
+effect function settleDelivery(diagnostics: DiagnosticsOwner, ok: boolean): void!! {
+  try orDie(diagnostics.step({ type: "completeDelivery", ok }, keepPayload))
+}
+
+const EMIT_FAILED = Symbol("emitFailed")
+
+effect function deliverReport(diagnostics: DiagnosticsOwner, pending: Promise<unknown>): void!! {
+  const delivered = try exit(foreign(() => pending))
+  try settleDelivery(diagnostics, Exit.isSuccess(delivered) && delivered.value !== EMIT_FAILED)
+  if (Exit.isFailure(delivered)) surfaceRejection(pending)
+}
+
+interface Report {
+  readonly runtime: AgentRuntime
+  readonly diagnostics: DiagnosticsOwner
+  readonly scope: string
+  readonly normalized: ElizaError
+  readonly entry: ReportedError
+  readonly runId: UUID | undefined
+  readonly roomId: UUID | undefined
+  readonly scopes: ReadonlySet<object> | undefined
+}
+
+interface PreparedReport {
+  readonly normalized: ElizaError
+  readonly entry: ReportedError
+  readonly runId: UUID | undefined
+  readonly roomId: UUID | undefined
+}
+
+function prepareReport(scope: string, error: unknown, context: Record<string, unknown> | undefined): PreparedReport {
+  const normalized = toElizaError(error)
+  const merged: Record<string, unknown> | undefined = context || normalized.context ? { ...normalized.context, ...context } : undefined
+  const runId = typeof merged?.runId === "string" ? merged.runId as UUID : undefined
+  const roomId = typeof merged?.roomId === "string" ? merged.roomId as UUID : undefined
+  const entry: ReportedError = {
+    scope,
+    code: normalized.code,
+    message: normalized.message,
+    ...(normalized.severity ? { severity: normalized.severity } : {}),
+    context: merged,
+    at: Date.now(),
+  }
+  return { normalized, entry, runId, roomId }
+}
+
+effect function publishReport(report: Report): void!Foreign {
+  const { runtime, scope, normalized, entry } = report
+  try foreignSync(() => forwardToAgentEventStream(runtime, entry, report.runId))
+  if (report.scopes?.has(runtime)) return
+  const pending = try foreignSync(() => errorReportScopes.run(new Set([...(report.scopes ?? []), runtime]), () =>
+    runtime.emitEvent(EventType.ERROR_REPORTED, {
+      runtime,
+      source: scope,
+      scope,
+      code: normalized.code,
+      message: normalized.message,
+      ...(normalized.severity ? { severity: normalized.severity } : {}),
+      context: entry.context,
+      runId: report.runId,
+      roomId: report.roomId,
+    })).catch((emitErr: unknown) => {
+      runtime.logger.warn({ src: "agent", scope, err: emitErr }, `[${scope}] ERROR_REPORTED emit failed`)
+      return EMIT_FAILED
+    }))
+  fork.detached deliverReport(report.diagnostics, pending)
+}
+
+effect function recordReport(runtime: AgentRuntime, diagnostics: DiagnosticsOwner, scope: string, error: unknown, context?: Record<string, unknown>): void!(DiagnosticsRejected | Foreign) {
+  const { normalized, entry, runId, roomId } = try foreignSync(() => prepareReport(scope, error, context))
+  try foreignSync(() => runtime.logger.error(
+    { src: "agent", scope, code: normalized.code, severity: normalized.severity, context: entry.context, err: normalized },
+    `[${scope}] ${normalized.message}`,
+  ))
+  const scopes = errorReportScopes.active()
+  const subscriber = scopes?.has(runtime) === true
+  const severity = reportSeverity(entry.severity)
+  const extra: ReportExtra = {
+    context: entry.context,
+    at: entry.at,
+    unmodeledSeverity: severity === "Unspecified" ? entry.severity : undefined,
+  }
+  try diagnostics.step(
+    {
+      type: "reportFailure",
+      entry: { scope, code: entry.code, message: entry.message, causeId: "", severity },
+      subscriber,
+    },
+    (payload, state) => [undefined, { extras: [...payload.extras, extra].slice(-state.entries.length) }] as const,
+  )
+  const published = try result(publishReport({ runtime, diagnostics, scope, normalized, entry, runId, roomId, scopes }))
+  try orDie(diagnostics.step({ type: "finishReporting" }, keepPayload))
+  if (Result.isFailure(published)) {
+    if (!subscriber) try settleDelivery(diagnostics, false)
+    throw published.failure
+  }
+}
+
+export effect function reportError(scope: string, error: unknown, context?: Record<string, unknown>): void!!RuntimeKernel {
+  const { runtime } = try Host
+  const { diagnostics, reporting } = try Dispatch
+  if (try Ref.get(reporting)) {
+    if (try diagnostics.read((state) => state.inProgress)) try orDie(diagnostics.step({ type: "reenterReporting" }, keepPayload))
+    runtime.logger.warn({ src: "agent", scope }, `[${scope}] reportError re-entered while already reporting; dropping nested error`)
+    return
+  }
+  try Ref.set(reporting, true)
+  const recorded = try exit(ensuring(recordReport(runtime, diagnostics, scope, error, context), Ref.set(reporting, false)))
+  if (Exit.isFailure(recorded)) {
+    runtime.logger.warn({ src: "agent", scope, err: thrownValue(Cause.squash(recorded.cause)) }, `[${scope}] reportError itself failed`)
+  }
+}
+
+export effect function getRecentReportedErrors(): ReportedError[]!!RuntimeKernel {
+  const { diagnostics } = try Dispatch
+  return try diagnostics.read((state, payload) => state.entries.map((entry, index): ReportedError => {
+    const { context, at, unmodeledSeverity } = payload.extras[index]
+    const severity = modeledSeverity(entry.severity) ?? unmodeledSeverity
+    return { scope: entry.scope, code: entry.code, message: entry.message, ...(severity ? { severity } : {}), context, at }
+  }))
+}
+
+export effect function on(event: string, callback: (data: EventPayload) => void): void!!RuntimeKernel {
+  const { listeners } = try Dispatch
+  const handlers = listeners.get(event)
+  if (handlers) handlers.push(callback)
+  else listeners.set(event, [callback])
+}
+
+export effect function off(event: string, callback: (data: EventPayload) => void): void!!RuntimeKernel {
+  const { listeners } = try Dispatch
+  const handlers = listeners.get(event)
+  if (!handlers) return
+  const index = handlers.indexOf(callback)
+  if (index !== -1) handlers.splice(index, 1)
+}
+
+export effect function emit(event: string, data: EventPayload): void!DispatchFailure!RuntimeKernel {
+  const { listeners } = try Dispatch
+  const handlers = listeners.get(event)
+  if (!handlers) return
+  for (const handler of handlers) {
+    try foreignSync(() => handler(data))
+  }
+}
+
+export effect function sendControlMessage(params: { roomId: UUID; action: "enable_input" | "disable_input"; target?: string; }): void!DispatchFailure!RuntimeKernel {
+  const { runtime } = try Host
+  const { roomId, action, target } = params
+  const controlMessage: ControlMessage = {
+    type: "control",
+    payload: { action, target },
+    roomId,
+  }
+  try foreign(() => runtime.emitEvent("CONTROL_MESSAGE", { runtime, message: controlMessage, source: "agent" }))
+  runtime.logger.debug({ src: "agent", agentId: runtime.agentId, action, channelId: roomId }, "Control message sent")
+}

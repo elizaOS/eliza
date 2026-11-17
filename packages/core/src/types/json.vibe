@@ -1,0 +1,9 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+export type JsonPrimitive = string | number | boolean | null
+
+export type JsonValue =
+  | JsonPrimitive
+  | JsonValue[]
+  | { [key: string]: JsonValue }
+
+export type JsonObject = { [key: string]: JsonValue }

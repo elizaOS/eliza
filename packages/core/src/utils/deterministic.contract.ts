@@ -1,0 +1,21 @@
+// spec/core/canonicalJson.md, "Story: Hash the same snapshot safely and deterministically"
+import { Schema } from "effect";
+import { contract } from "vibestack/testing";
+import { stableStringify } from "./deterministic.vibe";
+
+export const reversedKeys = (value: Schema.Json): Schema.Json =>
+  Array.isArray(value)
+    ? value.map(reversedKeys)
+    : value !== null && typeof value === "object"
+      ? Object.fromEntries(Object.entries(value).reverse().map(([key, entry]) => [key, reversedKeys(entry)]))
+      : value;
+
+export const keyOrderNeverChangesTheText = contract({
+  input: Schema.Json,
+  run: stableStringify,
+  deterministic: true,
+  invariant: (value, text) => {
+    const parsed: unknown = JSON.parse(text);
+    return stableStringify(reversedKeys(value)) === text && stableStringify(parsed) === text;
+  },
+});

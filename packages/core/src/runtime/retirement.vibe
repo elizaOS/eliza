@@ -1,0 +1,78 @@
+// spec/core/retirementTracker.md, "Story: Drain every owned retirement operation and report retained failures"
+import { foreign, runDetached } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+
+interface RetirementLedger {
+  readonly pending: Map<Deferred.Deferred<void>, { beforeClose: boolean }>
+  readonly failures: { error: Error; beforeClose: boolean }[]
+}
+
+effect function drainRetirement(ledger: RetirementLedger, beforeCloseOnly: boolean): void!ElizaError {
+  for (;;) {
+    const pending = [...ledger.pending]
+      .filter(([, owner]) => !beforeCloseOnly || owner.beforeClose)
+      .map(([operation]) => operation)
+    if (pending.length === 0) break
+    for (const operation of pending) try Deferred.await(operation)
+  }
+  const failures = ledger.failures
+    .filter((failure) => !beforeCloseOnly || failure.beforeClose)
+    .map((failure) => failure.error)
+  if (failures.length > 0) {
+    throw new ElizaError(
+      "Runtime teardown failed; quiescence is not established",
+      {
+        code: "RUNTIME_QUIESCENCE_FAILED",
+        cause: new AggregateError(failures, "Runtime teardown failures"),
+        context: { failureCount: failures.length },
+      },
+    )
+  }
+}
+
+export class RuntimeRetirement {
+  private readonly ledger: RetirementLedger = { pending: new Map(), failures: [] }
+  private revision = 0
+
+  get generation(): number {
+    return this.revision
+  }
+
+  run<T>(
+    operation: () => T | PromiseLike<T>,
+    { beforeClose = false }: { beforeClose?: boolean } = {},
+  ): Promise<T> {
+    const settled = Deferred.makeUnsafe<void>()
+    this.ledger.pending.set(settled, { beforeClose })
+    this.revision += 1
+    const result = runDetached(onExit(foreign(() => operation()), () => sync(() => {
+      this.ledger.pending.delete(settled)
+      Deferred.doneUnsafe(settled, Effect.void)
+    })))
+    result.catch(() => {})
+    return result
+  }
+
+  recordFailure(
+    scope: string,
+    cause: unknown,
+    { beforeClose = false }: { beforeClose?: boolean } = {},
+  ): void {
+    this.ledger.failures.push({
+      beforeClose,
+      error: new ElizaError(`Runtime retirement failed during ${scope}`, {
+        code: "RUNTIME_RETIREMENT_FAILED",
+        cause,
+        context: { scope },
+      }),
+    })
+  }
+
+  async drain({
+    beforeCloseOnly = false,
+  }: {
+    beforeCloseOnly?: boolean
+  } = {}): Promise<void> {
+    return runDetached(drainRetirement(this.ledger, beforeCloseOnly))
+  }
+}

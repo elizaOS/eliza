@@ -1,0 +1,37 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import JSON5 from "json5"
+import { thrown } from "../edge.vibe"
+
+const jsonBlockPattern = /```(?:(?:json5|json)(?![A-Za-z0-9_-]))?\s*\r?\n?([\s\S]*?)\r?\n?```/i
+
+export error InvalidModelText { message: string }
+export error UnparsableModelJson { message: string; cause: unknown }
+
+function unparsable(cause: unknown): UnparsableModelJson {
+  return new UnparsableModelJson({ message: "Failed to parse invalid JSON", cause })
+}
+
+function parseJson5(source: string) {
+  return Effect.try({ try: (): unknown => JSON5.parse(source.trim()), catch: unparsable })
+}
+
+export effect function extractAndParseJSONObjectFromText(text: string) {
+  if (!text || typeof text !== "string") throw new InvalidModelText({ message: "Invalid input: text must be a non-empty string" })
+  const parsed = parseJson5(text) catch effect (error) => {
+    const match = text.match(jsonBlockPattern)
+    if (!match) throw error
+    return try parseJson5(match[1])
+  }
+  if (parsed === null || typeof parsed !== "object") throw unparsable(new Error("Parsed JSON must be an object or array"))
+  return parsed as Record<string, unknown> | unknown[]
+}
+
+export const extractAndParseJSONObjectFromTextOrThrow = thrown((text: string) => mapError(extractAndParseJSONObjectFromText(text), (error) =>
+  error._tag === "UnparsableModelJson" ? new Error(error.message, { cause: error.cause }) : new Error(error.message)))
+
+export function parseJSONObjectFromText(text: string): Record<string, unknown> | null {
+  return match (runSyncExit(extractAndParseJSONObjectFromText(text))) {
+    when Exit.Success(let value): Array.isArray(value) ? null : value;
+    default: null;
+  }
+}

@@ -1,0 +1,40 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { processEnv } from "../utils/environment.vibe"
+
+export interface TraceCorrelation {
+  traceId: string
+
+  runId?: string
+
+  roomId?: string
+
+  taskId?: string
+
+  sessionId?: string
+
+  parentStepId?: string
+
+  childTrajectoryId?: string
+}
+
+export const TRACE_ENV = {
+  TRACE_ID: "ELIZA_TRACE_ID",
+  TASK_ID: "ELIZA_TASK_ID",
+  SESSION_ID: "ORCHESTRATOR_SESSION_ID",
+  PARENT_STEP_ID: "ELIZA_PARENT_TRAJECTORY_STEP_ID",
+} as const
+
+export function resolveTraceCorrelationFromEnv(
+  env: NodeJS.ProcessEnv = processEnv(),
+): Partial<TraceCorrelation> {
+  const traceId = env[TRACE_ENV.TRACE_ID]?.trim()
+  const taskId = env[TRACE_ENV.TASK_ID]?.trim()
+  const sessionId = env[TRACE_ENV.SESSION_ID]?.trim()
+  const parentStepId = env[TRACE_ENV.PARENT_STEP_ID]?.trim()
+  return {
+    ...(traceId && { traceId }),
+    ...(taskId && { taskId }),
+    ...(sessionId && { sessionId }),
+    ...(parentStepId && { parentStepId }),
+  }
+}

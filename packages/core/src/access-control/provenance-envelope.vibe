@@ -1,0 +1,675 @@
+// spec/core/authorization.md, "Story: Read only the authorized records"; spec/core/authorization.md, "Verified cross-world membership is intersected with the agent membership"
+import { buildAccessContext, buildCrossWorldConversationAccessContext } from "../access-context.vibe"
+import { normalizeConnectorSource } from "../connectors.vibe"
+import { asLegacy, failingAs, foreign, promised, thrownValue } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import {
+  evaluateOwnerExclusiveDisclosure,
+  INTERNAL_AGENT_TURN_DISCLOSURE_BASIS,
+  markOwnerExclusiveDisclosureUsed,
+  OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  type OwnerExclusiveDisclosureDecision,
+  type OwnerExclusiveDisclosureDenial,
+  revalidateOwnerExclusiveDisclosure,
+  trustedDeliveryAudienceIsBoundToRuntime,
+} from "../security/trusted-delivery-audience.vibe"
+import type { AccessContext } from "../types/access-context.vibe"
+import type { Memory, MemoryScope, MessageChatType } from "../types/memory.vibe"
+import type { UUID } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { asObjectRecordOrUndefined } from "../utils/type-guards.vibe"
+import { actorFromAccessContext, canReadScope } from "./filter.vibe"
+import { isMemoryScope, scopedEntityIdFromMetadata } from "./memory-scope.vibe"
+
+export type CanonicalTrust = "self" | "sender-stamped" | "unverified"
+
+export interface CanonicalProvenance {
+  source: string
+
+  rawSource?: string
+
+  accountId: string
+
+  roomId: UUID
+
+  worldId?: UUID
+
+  senderId: UUID
+
+  senderDisplayName?: string
+
+  senderPlatformId?: string
+
+  timestampMs: number
+
+  trust: CanonicalTrust
+
+  chatType?: MessageChatType
+
+  platformMessageId: string
+
+  scope: MemoryScope
+}
+
+export type RecallDenyCode =
+  | "invalid_provenance"
+  | "scope_denied"
+  | "cross_room_denied"
+
+function readString(
+  record: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = record?.[key]
+  if (typeof value === "string") {
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : undefined
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value)
+  }
+  return undefined
+}
+
+function readScope(value: unknown): MemoryScope | undefined {
+  return isMemoryScope(value) ? value : undefined
+}
+
+function isValidSourceKey(source: string): boolean {
+  return /^[a-z0-9][a-z0-9_-]*$/.test(source)
+}
+
+export type CanonicalProvenanceResult =
+  | { valid: true; provenance: CanonicalProvenance }
+  | {
+    valid: false
+    code: "invalid_provenance"
+    source?: string
+    reason: string
+  }
+
+export function deriveCanonicalProvenance(
+  memory: Memory,
+  agentId: UUID,
+): CanonicalProvenanceResult {
+  const metadata = asObjectRecordOrUndefined(memory.metadata)
+  const content = asObjectRecordOrUndefined(memory.content)
+
+  const providerSource = readString(metadata, "provider")
+  const contentSource = readString(content, "source")
+  const baseSource = readString(
+    asObjectRecordOrUndefined(metadata?.base),
+    "source",
+  )
+  const sourceCandidates = [providerSource, contentSource, baseSource].filter(
+    (value): value is string => value !== undefined,
+  )
+  const distinctRawSources = new Set(
+    sourceCandidates.map((value) => normalizeConnectorSource(value) ?? value),
+  )
+  if (distinctRawSources.size > 1) {
+    return {
+      valid: false,
+      code: "invalid_provenance",
+      reason: "stored memory records conflicting source fields; cannot determine a single canonical surface",
+    }
+  }
+  const rawSource = providerSource ?? contentSource ?? baseSource
+  const source = rawSource ? normalizeConnectorSource(rawSource) : undefined
+  if (!source || !isValidSourceKey(source)) {
+    return {
+      valid: false,
+      code: "invalid_provenance",
+      reason: "stored memory is missing a valid source",
+    }
+  }
+
+  const nested = asObjectRecordOrUndefined(rawSource ? metadata?.[rawSource] : undefined)
+    ?? asObjectRecordOrUndefined(source ? metadata?.[source] : undefined)
+
+  const senderPlatformId = readString(nested, "userId") ?? readString(nested, "id")
+
+  const sender = asObjectRecordOrUndefined(metadata?.sender)
+  const senderDisplayName = readString(sender, "name")
+    ?? readString(sender, "username")
+    ?? readString(nested, "name")
+    ?? readString(nested, "username")
+    ?? readString(metadata, "entityName")
+
+  const trust: CanonicalTrust = memory.entityId === agentId
+    ? "self"
+    : senderPlatformId
+    ? "sender-stamped"
+    : "unverified"
+
+  const metadataAccountId = readString(metadata, "accountId")
+  const nestedAccountId = readString(nested, "accountId")
+  if (
+    metadataAccountId !== undefined
+    && nestedAccountId !== undefined
+    && metadataAccountId !== nestedAccountId
+  ) {
+    return {
+      valid: false,
+      code: "invalid_provenance",
+      source,
+      reason:
+        "stored memory records conflicting connector account id fields; cannot determine a single canonical account",
+    }
+  }
+  const accountId = metadataAccountId ?? nestedAccountId
+  if (!accountId) {
+    return {
+      valid: false,
+      code: "invalid_provenance",
+      source,
+      reason: "stored memory is missing a connector account id",
+    }
+  }
+
+  const pmiCandidates = [
+    readString(metadata, "platformMessageId"),
+    readString(metadata, "messageIdFull"),
+    readString(nested, "messageId"),
+  ].filter((value): value is string => value !== undefined)
+  const distinctPmi = new Set(pmiCandidates)
+  if (distinctPmi.size > 1) {
+    return {
+      valid: false,
+      code: "invalid_provenance",
+      source,
+      reason:
+        "stored memory records conflicting platform message id fields; cannot determine a single canonical record id",
+    }
+  }
+  const platformMessageId = (distinctPmi.size === 1 ? [...distinctPmi][0] : undefined)
+    ?? readString(metadata, "sourceId")
+  if (!platformMessageId) {
+    return {
+      valid: false,
+      code: "invalid_provenance",
+      source,
+      reason: "stored memory is missing a platform record id",
+    }
+  }
+
+  const timestampMs = memory.createdAt
+  if (
+    typeof timestampMs !== "number"
+    || !Number.isFinite(timestampMs)
+    || timestampMs <= 0
+  ) {
+    return {
+      valid: false,
+      code: "invalid_provenance",
+      source,
+      reason: "stored memory is missing a valid timestamp",
+    }
+  }
+
+  const baseScope = readScope(asObjectRecordOrUndefined(metadata?.base)?.scope)
+  const metadataScope = readScope(metadata?.scope)
+  if (baseScope && metadataScope && baseScope !== metadataScope) {
+    return {
+      valid: false,
+      code: "invalid_provenance",
+      source,
+      reason: "stored memory records conflicting scope fields; cannot determine a single canonical scope",
+    }
+  }
+  const scope = baseScope ?? metadataScope
+  if (!scope) {
+    return {
+      valid: false,
+      code: "invalid_provenance",
+      source,
+      reason: "stored memory is missing a valid scope",
+    }
+  }
+
+  return {
+    valid: true,
+    provenance: {
+      source,
+      rawSource,
+      accountId,
+      roomId: memory.roomId,
+      worldId: memory.worldId,
+      senderId: memory.entityId,
+      senderDisplayName,
+      senderPlatformId,
+      timestampMs,
+      trust,
+      chatType: readString(metadata, "chatType") as MessageChatType | undefined,
+      platformMessageId,
+      scope,
+    },
+  }
+}
+
+export function canonicalDedupeKey(provenance: CanonicalProvenance): string {
+  if (
+    provenance.accountId.includes(":")
+    || provenance.platformMessageId.includes(":")
+  ) {
+    return `v2|${
+      JSON.stringify([
+        provenance.source,
+        provenance.accountId,
+        provenance.roomId,
+        provenance.platformMessageId,
+      ])
+    }`
+  }
+  return `${provenance.source}:${provenance.accountId}:${provenance.roomId}:${provenance.platformMessageId}`
+}
+
+export interface RecalledItem {
+  memory: Memory
+  provenance: CanonicalProvenance
+  dedupeKey: string
+
+  rank: number
+}
+
+export function selectBestRankedRecallItems(
+  items: readonly RecalledItem[],
+  count: number,
+): RecalledItem[] {
+  return [...items]
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, count)
+    .sort((a, b) => a.provenance.timestampMs - b.provenance.timestampMs)
+}
+
+export interface WithheldItem {
+  code: RecallDenyCode
+  reason: string
+}
+
+export type RecallAvailability = "complete" | "partial" | "unavailable"
+
+export interface CanonicalRecallResult {
+  items: RecalledItem[]
+  withheld: WithheldItem[]
+  availability: RecallAvailability
+
+  candidateWindowComplete: boolean
+}
+
+export interface CanonicalRecallInput {
+  candidates: Memory[]
+
+  agentId: UUID
+
+  requester: AccessContext
+
+  destinationRoomId: UUID
+}
+
+interface CanonicalRecallEvaluationInput extends CanonicalRecallInput {
+  crossRoomGate: CrossRoomRecallGate
+}
+
+type CrossRoomRecallGate =
+  | { allowed: true }
+  | { allowed: false; reason: string }
+
+export error UnhandledDisclosureBasis { message: string }
+
+effect function deniedCrossRoomGateReason(
+  decision: OwnerExclusiveDisclosureDecision,
+) {
+  if (!decision.allowed) {
+    return `cross-room recall denied by trusted delivery audience: ${decision.reason}`
+  }
+  switch (decision.basis) {
+    case OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS:
+      return "cross-room recall is allowed"
+    case INTERNAL_AGENT_TURN_DISCLOSURE_BASIS:
+      return "cross-room recall requires a verified owner-private destination, not an internal agent turn"
+    default: {
+      const basis: never = decision.basis
+      throw new UnhandledDisclosureBasis({ message: `Unhandled owner-exclusive disclosure basis: ${String(basis)}` })
+    }
+  }
+}
+
+effect function crossRoomRecallGate(
+  decision: OwnerExclusiveDisclosureDecision,
+): CrossRoomRecallGate!UnhandledDisclosureBasis {
+  return decision.allowed
+      && decision.basis === OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+    ? { allowed: true }
+    : { allowed: false, reason: try deniedCrossRoomGateReason(decision) }
+}
+
+function evaluateCanonicalRecall(
+  input: CanonicalRecallEvaluationInput,
+): Omit<CanonicalRecallResult, "availability" | "candidateWindowComplete"> {
+  const actor = actorFromAccessContext(input.requester, input.agentId)
+
+  const byKey = new Map<string, RecalledItem>()
+  const withheld: WithheldItem[] = []
+
+  const seenDenyCodes = new Set<RecallDenyCode>()
+  const recordDenial = (code: RecallDenyCode, reason: string): void => {
+    if (!seenDenyCodes.has(code)) {
+      seenDenyCodes.add(code)
+      withheld.push({ code, reason })
+    }
+  }
+
+  for (const [rank, memory] of input.candidates.entries()) {
+    const provenanceResult = deriveCanonicalProvenance(memory, input.agentId)
+    if (!provenanceResult.valid) {
+      recordDenial(provenanceResult.code, provenanceResult.reason)
+      continue
+    }
+    const provenance = provenanceResult.provenance
+    const dedupeKey = canonicalDedupeKey(provenance)
+
+    if (
+      !canReadScope(
+        provenance.scope,
+        scopedEntityIdFromMetadata(
+          asObjectRecordOrUndefined(memory.metadata),
+          memory.entityId,
+        ),
+        actor,
+      )
+    ) {
+      recordDenial(
+        "scope_denied",
+        "one or more candidates were withheld because the requester is not authorized to read their scope",
+      )
+      continue
+    }
+
+    if (
+      !input.crossRoomGate.allowed
+      && provenance.roomId !== input.destinationRoomId
+    ) {
+      recordDenial("cross_room_denied", input.crossRoomGate.reason)
+      continue
+    }
+
+    const existing = byKey.get(dedupeKey)
+    if (!existing || provenance.timestampMs < existing.provenance.timestampMs) {
+      byKey.set(dedupeKey, {
+        memory,
+        provenance,
+        dedupeKey,
+        rank: existing?.rank ?? rank,
+      })
+    }
+  }
+
+  const items = [...byKey.values()].sort(
+    (a, b) => a.provenance.timestampMs - b.provenance.timestampMs,
+  )
+
+  return { items, withheld }
+}
+
+export function buildCanonicalRecall(
+  input: CanonicalRecallInput,
+): Omit<CanonicalRecallResult, "availability" | "candidateWindowComplete"> {
+  return evaluateCanonicalRecall({
+    ...input,
+    crossRoomGate: {
+      allowed: false,
+      reason: "cross-room recall is disabled for direct canonical evaluation",
+    },
+  })
+}
+
+interface CanonicalMemorySearchBaseInput {
+  runtime: IAgentRuntime
+  embedding: number[]
+
+  includeEmbedding?: boolean
+
+  excludeRoomIds?: UUID[]
+  query?: string
+
+  agentId?: UUID
+
+  count?: number
+  matchThreshold?: number
+  entityId?: UUID
+
+  source?: string
+}
+
+export type CanonicalMemorySearchInput =
+  & CanonicalMemorySearchBaseInput
+  & CanonicalMemorySearchDeliveryInput
+
+export interface CanonicalMemorySearchDeliveryInput {
+  deliveryMessage: Memory
+}
+
+function trustedDeliveryTurnDenial(
+  runtime: IAgentRuntime,
+  deliveryMessage: Memory,
+): OwnerExclusiveDisclosureDenial | undefined {
+  if (!trustedDeliveryAudienceIsBoundToRuntime(deliveryMessage, runtime)) {
+    return "runtime_mismatch"
+  }
+  const decision = evaluateOwnerExclusiveDisclosure(deliveryMessage)
+  if (decision.allowed) return undefined
+
+  switch (decision.reason) {
+    case "owner_mismatch":
+    case "participant_mismatch":
+    case "destination_not_private":
+      return undefined
+    default:
+      return decision.reason
+  }
+}
+
+function unavailableRecall(): CanonicalRecallResult {
+  return {
+    items: [],
+    withheld: [],
+    availability: "unavailable",
+    candidateWindowComplete: false,
+  }
+}
+
+effect function resolveRequesterAccessContext(
+  runtime: IAgentRuntime,
+  deliveryMessage: Memory,
+  crossWorld: boolean,
+) {
+  const built = crossWorld
+    ? buildCrossWorldConversationAccessContext(runtime, deliveryMessage)
+    : buildAccessContext(runtime, deliveryMessage)
+  return Effect.catchDefect(
+    Effect.map(asLegacy(TypeError, built, ElizaError), (context) => ({ ok: true as const, context })),
+    (defect) => Effect.succeed({ ok: false as const, cause: defect }),
+  ) catch (failure) => ({ ok: false as const, cause: thrownValue(failure) })
+}
+
+export effect function searchCanonicalConversationMemories(
+  input: CanonicalMemorySearchInput,
+) {
+  const { deliveryMessage } = input
+  const destinationRoomId = deliveryMessage.roomId
+  const deliveryTurnDenial = trustedDeliveryTurnDenial(
+    input.runtime,
+    deliveryMessage,
+  )
+  if (deliveryTurnDenial) {
+    return unavailableRecall()
+  }
+
+  const revalidated = try revalidateOwnerExclusiveDisclosure(
+    input.runtime,
+    deliveryMessage,
+  )
+  if (
+    !revalidated.allowed
+    && (revalidated.reason === "audience_changed"
+      || revalidated.reason === "audience_lookup_failed")
+  ) {
+    return unavailableRecall()
+  }
+
+  const crossRoomGate = try crossRoomRecallGate(revalidated)
+  const requesterResult = try resolveRequesterAccessContext(
+    input.runtime,
+    deliveryMessage,
+    crossRoomGate.allowed,
+  )
+  if (!requesterResult.ok) {
+    input.runtime.reportError(
+      "CanonicalRecall.accessContext",
+      new ElizaError(
+        "Could not resolve the requester access context for canonical conversation recall.",
+        {
+          code: "CANONICAL_RECALL_ACCESS_CONTEXT_FAILED",
+          cause: requesterResult.cause,
+          context: { roomId: destinationRoomId },
+        },
+      ),
+    )
+    return unavailableRecall()
+  }
+  const requester = requesterResult.context
+
+  const roomConstrained = !crossRoomGate.allowed
+
+  const explicitCount = input.count
+  if (
+    explicitCount !== undefined
+    && (!Number.isSafeInteger(explicitCount) || explicitCount <= 0)
+  ) {
+    throw new ElizaError(
+      "Canonical conversation recall count must be a positive safe integer.",
+      {
+        code: "CANONICAL_RECALL_COUNT_INVALID",
+        context: { count: explicitCount },
+      },
+    )
+  }
+  const initialCount = explicitCount ?? 200
+  const normalizedSource = input.source
+    ? normalizeConnectorSource(input.source)
+    : undefined
+  const fromSource = (items: RecalledItem[]): RecalledItem[] =>
+    normalizedSource
+      ? items.filter((item) => item.provenance.source === normalizedSource)
+      : items
+  const evaluate = (candidates: Memory[]) =>
+    evaluateCanonicalRecall({
+      candidates,
+      agentId: input.runtime.agentId,
+      requester,
+      destinationRoomId,
+      crossRoomGate,
+    })
+  let allCandidates: Memory[] = []
+  const excludedRooms = new Set(input.excludeRoomIds)
+  let candidateWindowComplete: boolean
+  let roundCount = initialCount
+
+  for (;;) {
+    const searched = Effect.map(foreign(() =>
+      input.runtime.searchMemories({
+        embedding: input.embedding,
+        ...(input.includeEmbedding === false
+          ? { includeEmbedding: false }
+          : {}),
+        ...(input.excludeRoomIds?.length
+          ? { excludeRoomIds: input.excludeRoomIds }
+          : {}),
+        tableName: "messages",
+        match_threshold: input.matchThreshold,
+        count: roundCount,
+        ...(input.query ? { query: input.query } : {}),
+        ...(input.entityId ? { entityId: input.entityId } : {}),
+        ...(roomConstrained ? { roomId: destinationRoomId } : {}),
+        accessContext: requester,
+      })
+    ), (memories) => ({ ok: true as const, memories })) catch (failure) => ({ ok: false as const, cause: failure.cause })
+    if (!searched.ok) {
+      input.runtime.reportError(
+        "CanonicalRecall.adapter",
+        new ElizaError("Canonical conversation recall adapter query failed.", {
+          code: "CANONICAL_RECALL_ADAPTER_FAILED",
+          cause: searched.cause,
+          context: { roomId: destinationRoomId },
+        }),
+      )
+      return unavailableRecall()
+    }
+    const roundCandidates = searched.memories
+
+    const roundIds = new Set<string>()
+    const ranked: Memory[] = []
+    for (const mem of roundCandidates) {
+      if (excludedRooms.has(mem.roomId)) continue
+      const memId = mem.id?.toString()
+      if (memId && roundIds.has(memId)) continue
+      if (memId) roundIds.add(memId)
+      ranked.push(mem)
+    }
+    for (const mem of allCandidates) {
+      const memId = mem.id?.toString()
+      if (!memId || !roundIds.has(memId)) ranked.push(mem)
+    }
+    allCandidates = ranked
+
+    const hasEnoughEligible = explicitCount !== undefined
+      && fromSource(evaluate(allCandidates).items).length >= explicitCount
+
+    const exhausted = roundCandidates.length < roundCount
+    if (hasEnoughEligible || exhausted) {
+      candidateWindowComplete = exhausted
+      break
+    }
+    if (roundCount === Number.MAX_SAFE_INTEGER) {
+      throw new ElizaError(
+        "Canonical conversation recall exceeds the representable result count.",
+        {
+          code: "CANONICAL_RECALL_RESULT_TOO_LARGE",
+          context: { roomId: destinationRoomId, roundCount },
+          severity: "fatal",
+        },
+      )
+    }
+    roundCount = Math.min(Number.MAX_SAFE_INTEGER, roundCount * 2)
+  }
+
+  const evaluated = evaluate(allCandidates)
+  const eligibleItems = fromSource(evaluated.items)
+  const items = explicitCount === undefined
+    ? eligibleItems
+    : selectBestRankedRecallItems(eligibleItems, explicitCount)
+
+  if (items.some((item) => item.provenance.roomId !== destinationRoomId)) {
+    markOwnerExclusiveDisclosureUsed(deliveryMessage)
+  }
+
+  const withheld = evaluated.withheld
+
+  const availability: RecallAvailability = withheld.length === 0 && candidateWindowComplete
+    ? "complete"
+    : items.length > 0
+    ? "partial"
+    : "unavailable"
+
+  return {
+    items,
+    withheld,
+    availability,
+    candidateWindowComplete,
+  } satisfies CanonicalRecallResult
+}
+export const searchCanonicalConversationMemoriesPromise = promised(
+  failingAs(Error, searchCanonicalConversationMemories, ElizaError),
+)

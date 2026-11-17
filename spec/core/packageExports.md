@@ -13,6 +13,16 @@ discriminant; Effect environment requirements stay internal, and a public
 Promise entry point keeps the typed outcome (see the
 [core introduction](./index.md)).
 
+The [consumer resolution notes](./baseline/compatibility-decisions.json)
+distinguish a JSON default import from TypeScript export declarations, and
+record the one private test import and cloud imports used only as types.
+The restart asset retains its exported JSON shape and exit code. During
+implementation the cloud native application slot fixture switches to
+`createPreparedModelRequestGuard` from `@elizaos/core`, the public entry
+already used by the cloud text handler. The fixture must retain its
+blank-model rejection before dispatch and its admitted default-model case.
+The private source subpath stays outside the package exports.
+
 ## Story: Preserve the imported core surface in the consumer build and the npm package
 
 > As a consumer of the core package, I want each import I make to resolve to

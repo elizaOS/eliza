@@ -1,0 +1,109 @@
+// spec/core/environment.md, "Story: Cache environment reads with explicit invalidation"; spec/core/environment.md, "An absent cached value uses each call's own default"
+import { parseBooleanValue } from "./boolean.vibe"
+import { normalizeEnvValue } from "./env.vibe"
+
+module node {
+  /** @throws {never} */
+  export function processEnv(): NodeJS.ProcessEnv {
+    return typeof process === "undefined" ? {} : (process.env ?? {})
+  }
+}
+import { processEnv } from node
+export { processEnv }
+
+export function rawEnv(key: string): string | undefined {
+  return processEnv()[key]
+}
+
+export interface ReadEnvOptions {
+  env?: NodeJS.ProcessEnv
+  defaultValue?: string
+}
+
+export function readEnv(
+  canonicalKey: string,
+  options: ReadEnvOptions = {},
+): string | undefined {
+  const env = options.env ?? processEnv()
+  return normalizeEnvValue(env[canonicalKey]) ?? options.defaultValue
+}
+
+export function readEnvBool(
+  canonicalKey: string,
+  options: Omit<ReadEnvOptions, "defaultValue"> & {
+    defaultValue?: boolean
+  } = {},
+): boolean {
+  const raw = readEnv(canonicalKey, { env: options.env })
+  return parseBooleanValue(raw) ?? options.defaultValue ?? false
+}
+
+export interface SettingReader {
+  getSetting(key: string): string | boolean | number | null
+}
+
+export type ResolveSettingOptions = ReadEnvOptions
+
+export function resolveSetting(
+  runtime: SettingReader | null | undefined,
+  key: string,
+  options: ResolveSettingOptions = {},
+): string | undefined {
+  const fromRuntime = runtime?.getSetting(key)
+  if (fromRuntime !== undefined && fromRuntime !== null) {
+    return String(fromRuntime)
+  }
+  return readEnv(key, options)
+}
+
+export class Environment {
+  private readonly cache = new Map<string, string | undefined>()
+  get(key: string, defaultValue?: string): string | undefined {
+    if (!this.cache.has(key)) this.cache.set(key, rawEnv(key))
+    return this.cache.get(key) ?? defaultValue
+  }
+  set(key: string, value: string | boolean | number): void {
+    this.cache.delete(key)
+    processEnv()[key] = String(value)
+  }
+  has(key: string): boolean {
+    return this.get(key) !== undefined
+  }
+  getAll(): Record<string, string | undefined> {
+    return { ...processEnv() }
+  }
+  getBoolean(key: string, defaultValue = false): boolean {
+    return parseBooleanValue(this.get(key)) ?? defaultValue
+  }
+  getNumber(key: string, defaultValue?: number): number | undefined {
+    const value = this.get(key)?.trim()
+    if (!value) return defaultValue
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : defaultValue
+  }
+  clearCache(): void {
+    this.cache.clear()
+  }
+}
+const environment = new Environment()
+export function getEnvironment(): Environment {
+  return environment
+}
+export function getEnv(key: string, defaultValue?: string): string | undefined {
+  return environment.get(key, defaultValue)
+}
+export function setEnv(key: string, value: string | boolean | number): void {
+  environment.set(key, value)
+}
+export function hasEnv(key: string): boolean {
+  return environment.has(key)
+}
+export function getBooleanEnv(key: string, defaultValue = false): boolean {
+  return environment.getBoolean(key, defaultValue)
+}
+export function getNumberEnv(
+  key: string,
+  defaultValue?: number,
+): number | undefined {
+  return environment.getNumber(key, defaultValue)
+}

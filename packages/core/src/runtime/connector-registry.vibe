@@ -1,0 +1,486 @@
+// spec/core/concurrentConnectors.md, "Story: Retain captured transports during registry replacement"; spec/core/concurrentConnectors.md, "Shared descriptors expose distinct capabilities to independent calls"
+import { foreign } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import { guardOutboundEnvelopeText } from "../security/outbound-envelope-guard.vibe"
+import { sanitizeOutboundText } from "../security/outbound-sanitize.vibe"
+import { ensureAgentVoice } from "../security/voice-gate.vibe"
+import { getTrajectoryContext } from "../trajectory-context.vibe"
+import {
+  SEND_HANDLER_NOT_FOUND,
+  type SendHandlerFunction,
+  type TargetInfo,
+} from "../types/messaging.vibe"
+import type { Memory } from "../types/memory.vibe"
+import type { Content } from "../types/primitives.vibe"
+import type {
+  ConnectorPostIdentity,
+  ConnectorUnregisterOptions,
+  IAgentRuntime,
+  MessageConnector,
+  MessageConnectorCreateThreadParams,
+  MessageConnectorRegistration,
+  PostConnector,
+  PostConnectorRegistration,
+  ThreadHandle,
+} from "../types/runtime.vibe"
+import {
+  cloneMessageConnector,
+  clonePostConnector,
+  connectorKeySource,
+  connectorRouteKey,
+  normalizeConnectorAccountId,
+  normalizeMessageConnector,
+  normalizePostConnector,
+} from "./connector-registration.vibe"
+import { asTrimmedString } from "../utils/type-guards.vibe"
+
+export interface ConnectorTables {
+  readonly runtime: IAgentRuntime
+  readonly sendHandlers: Map<string, SendHandlerFunction>
+  readonly messageConnectors: Map<string, MessageConnector>
+  readonly postConnectors: Map<string, PostConnector>
+}
+
+type SendHandlerKind = "Send handler" | "Internal send handler"
+
+type ConnectorWithHook<K extends keyof MessageConnector> =
+  & MessageConnector
+  & Required<Pick<MessageConnector, K>>
+
+export error MissingConnectorSource { message: string }
+export error ConnectorNotRegistered { message: string }
+export error ConnectorCapabilityUnsupported { message: string }
+
+function compareConnectors(
+  a: { source: string; accountId?: string },
+  b: { source: string; accountId?: string },
+): number {
+  return (
+    a.source.localeCompare(b.source)
+    || (a.accountId ?? "").localeCompare(b.accountId ?? "")
+  )
+}
+
+function routeDetail(source: string, accountId: string | undefined): string {
+  return accountId ? `source: ${source} accountId: ${accountId}` : `source: ${source}`
+}
+
+function logConnector(
+  tables: ConnectorTables,
+  level: "warn" | "debug",
+  handlerSource: string,
+  accountId: string | undefined,
+  message: string,
+): void {
+  tables.runtime.logger[level](
+    {
+      src: "agent",
+      agentId: tables.runtime.agentId,
+      handlerSource,
+      accountId,
+    },
+    message,
+  )
+}
+
+effect function registrationRoute(
+  registration: MessageConnectorRegistration | PostConnectorRegistration,
+  kind: string,
+) {
+  const source = asTrimmedString(registration.source)
+  if (!source) {
+    throw new MissingConnectorSource({ message: `${kind} registration requires a source` })
+  }
+  const accountId = normalizeConnectorAccountId(registration.accountId)
+    ?? normalizeConnectorAccountId(registration.account?.accountId)
+  return { source, accountId, routeKey: connectorRouteKey(source, accountId) }
+}
+
+export effect function setSendHandler(
+  tables: ConnectorTables,
+  source: string,
+  handler: SendHandlerFunction,
+  kind: SendHandlerKind,
+) {
+  const normalized = asTrimmedString(source)
+  if (!normalized) {
+    throw new MissingConnectorSource({ message: `${kind} registration requires a source` })
+  }
+  const routeKey = connectorRouteKey(normalized)
+  if (tables.sendHandlers.has(routeKey)) {
+    tables.runtime.logger.warn(
+      {
+        src: "agent",
+        agentId: tables.runtime.agentId,
+        handlerSource: normalized,
+      },
+      `${kind} already registered, overwriting`,
+    )
+  }
+  tables.sendHandlers.set(routeKey, handler)
+  if (kind === "Send handler") {
+    tables.messageConnectors.set(routeKey, normalizeMessageConnector(normalized))
+  }
+  tables.runtime.logger.debug(
+    {
+      src: "agent",
+      agentId: tables.runtime.agentId,
+      handlerSource: normalized,
+    },
+    `${kind} registered`,
+  )
+}
+
+export effect function registerMessageConnector(
+  tables: ConnectorTables,
+  registration: MessageConnectorRegistration,
+) {
+  const { source, accountId, routeKey } = try registrationRoute(registration, "Message connector")
+  if (tables.messageConnectors.has(routeKey) || tables.sendHandlers.has(routeKey)) {
+    logConnector(tables, "warn", source, accountId, "Message connector already registered, overwriting")
+  }
+  if (registration.sendHandler) {
+    tables.sendHandlers.set(routeKey, registration.sendHandler)
+    logConnector(tables, "debug", source, accountId, "Send handler registered")
+  }
+  tables.messageConnectors.set(routeKey, normalizeMessageConnector(source, { ...registration, accountId }))
+}
+
+function removeRoutes<V>(
+  table: Map<string, V>,
+  exactRoute: string | undefined,
+  matches: (routeKey: string, value: V) => boolean,
+): boolean {
+  if (exactRoute !== undefined) return table.delete(exactRoute)
+  let removed = false
+  for (const [routeKey, value] of Array.from(table)) {
+    if (matches(routeKey, value)) removed = table.delete(routeKey) || removed
+  }
+  return removed
+}
+
+function unregistrationRoute(
+  source: string,
+  accountId: string | undefined,
+  options: ConnectorUnregisterOptions | undefined,
+) {
+  const normalized = asTrimmedString(source)
+  if (!normalized) return undefined
+  const normalizedAccountId = normalizeConnectorAccountId(accountId)
+  const exactRoute = normalizedAccountId || options?.exactAccount
+    ? connectorRouteKey(normalized, normalizedAccountId)
+    : undefined
+  return { normalized, normalizedAccountId, exactRoute }
+}
+
+export function unregisterMessageConnector(
+  tables: ConnectorTables,
+  source: string,
+  accountId?: string,
+  options?: ConnectorUnregisterOptions,
+): boolean {
+  const route = unregistrationRoute(source, accountId, options)
+  if (!route) return false
+  const { normalized, normalizedAccountId, exactRoute } = route
+  const removedConnector = removeRoutes(tables.messageConnectors, exactRoute, (_, connector) => connector.source === normalized)
+  const removedHandler = removeRoutes(tables.sendHandlers, exactRoute, (routeKey) => connectorKeySource(routeKey) === normalized)
+  const removed = removedConnector || removedHandler
+  if (removed) logConnector(tables, "debug", normalized, normalizedAccountId, "Message connector unregistered")
+  return removed
+}
+
+export function getMessageConnectors(tables: ConnectorTables): MessageConnector[] {
+  return Array.from(tables.messageConnectors.values())
+    .map(cloneMessageConnector)
+    .sort(compareConnectors)
+}
+
+export effect function registerPostConnector(
+  tables: ConnectorTables,
+  registration: PostConnectorRegistration,
+) {
+  const { source, accountId, routeKey } = try registrationRoute(registration, "Post connector")
+  if (tables.postConnectors.has(routeKey)) {
+    logConnector(tables, "warn", source, accountId, "Post connector already registered, overwriting")
+  }
+  tables.postConnectors.set(routeKey, normalizePostConnector(source, { ...registration, accountId }))
+  logConnector(tables, "debug", source, accountId, "Post connector registered")
+}
+
+export function unregisterPostConnector(
+  tables: ConnectorTables,
+  source: string,
+  accountId?: string,
+  options?: ConnectorUnregisterOptions,
+): boolean {
+  const route = unregistrationRoute(source, accountId, options)
+  if (!route) return false
+  const { normalized, normalizedAccountId, exactRoute } = route
+  const removed = removeRoutes(tables.postConnectors, exactRoute, (_, connector) => connector.source === normalized)
+  if (removed) logConnector(tables, "debug", normalized, normalizedAccountId, "Post connector unregistered")
+  return removed
+}
+
+export function getPostConnectors(tables: ConnectorTables): PostConnector[] {
+  return Array.from(tables.postConnectors.values())
+    .map(clonePostConnector)
+    .sort(compareConnectors)
+}
+
+export effect function sendMessageToTarget(
+  tables: ConnectorTables,
+  target: TargetInfo,
+  content: Content,
+) {
+  const source = asTrimmedString(target.source)
+  const accountId = normalizeConnectorAccountId(target.accountId)
+  const handler = tables.sendHandlers.get(connectorRouteKey(source, accountId))
+    ?? tables.sendHandlers.get(connectorRouteKey(source))
+  if (!handler) {
+    tables.runtime.logger.error(
+      {
+        src: "agent",
+        agentId: tables.runtime.agentId,
+        handlerSource: source,
+        accountId,
+      },
+      "Send handler not found",
+    )
+    throw new ElizaError(`No send handler registered for ${routeDetail(source, accountId)}`, {
+      code: SEND_HANDLER_NOT_FOUND,
+      context: { source, ...(accountId ? { accountId } : {}) },
+    })
+  }
+
+  const voicedContent = try ensureAgentVoice(tables.runtime, content, { source })
+  try foreign(() => Promise.resolve())
+  const secretSession = getTrajectoryContext()?.secretSwapSession
+  const outboundContent = typeof voicedContent.text === "string"
+    ? {
+      ...voicedContent,
+      text: guardOutboundEnvelopeText(
+        tables.runtime,
+        try sanitizeOutboundText(
+          secretSession
+            ? secretSession.redactRestoredSecretValues(voicedContent.text)
+            : voicedContent.text,
+        ),
+        "sendMessageToTarget",
+      ),
+    }
+    : voicedContent
+  return try foreign(() => handler(tables.runtime, target, outboundContent))
+}
+
+export effect function requireConnectorHook<K extends keyof MessageConnector>(
+  tables: ConnectorTables,
+  target: TargetInfo,
+  hook: K,
+  capability: string,
+) {
+  const source = asTrimmedString(target.source)
+  const accountId = normalizeConnectorAccountId(target.accountId)
+  const connector = tables.messageConnectors.get(connectorRouteKey(source, accountId))
+    ?? tables.messageConnectors.get(connectorRouteKey(source))
+  if (!connector) {
+    throw new ConnectorNotRegistered({ message: `No message connector registered for ${routeDetail(source, accountId)}` })
+  }
+  if (!connector[hook]) {
+    throw new ConnectorCapabilityUnsupported({
+      message: `Connector does not support ${capability} (${routeDetail(source, accountId)})`,
+    })
+  }
+  return connector as ConnectorWithHook<K>
+}
+
+export effect function editMessageOnTarget(
+  tables: ConnectorTables,
+  target: TargetInfo,
+  messageId: string,
+  content: Content,
+) {
+  const handler = (try requireConnectorHook(tables, target, "editHandler", "edit_message")).editHandler
+  return (try foreign<Memory | void>(() => handler(tables.runtime, { target, messageId, content }))) ?? undefined
+}
+
+export effect function sendTypingOnTarget(tables: ConnectorTables, target: TargetInfo) {
+  const connector = try requireConnectorHook(tables, target, "typingHandler", "typing_indicator")
+  try foreign(() => connector.typingHandler(tables.runtime, { target }))
+}
+
+export effect function stopTypingOnTarget(tables: ConnectorTables, target: TargetInfo) {
+  const connector = try requireConnectorHook(tables, target, "stopTypingHandler", "typing_indicator")
+  try foreign(() => connector.stopTypingHandler(tables.runtime, { target }))
+}
+
+export effect function createThreadOnTarget(
+  tables: ConnectorTables,
+  target: TargetInfo,
+  params: Omit<MessageConnectorCreateThreadParams, "target">,
+) {
+  const handler = (try requireConnectorHook(tables, target, "createThreadHandler", "create_thread")).createThreadHandler
+  return try foreign(() => handler(tables.runtime, { target, ...params }))
+}
+
+export effect function postToThreadOnTarget(
+  tables: ConnectorTables,
+  target: TargetInfo,
+  thread: ThreadHandle,
+  content: Content,
+  identity: ConnectorPostIdentity | undefined,
+) {
+  const connector = try requireConnectorHook(tables, target, "postToThreadHandler", "post_to_thread")
+  return try foreign(() => connector.postToThreadHandler(tables.runtime, { target, thread, content, identity }))
+}
+
+export effect function addReactionOnTarget(
+  tables: ConnectorTables,
+  target: TargetInfo,
+  messageId: string,
+  emoji: string,
+) {
+  const connector = try requireConnectorHook(tables, target, "reactHandler", "react_message")
+  try foreign(() => connector.reactHandler(tables.runtime, { target, messageId, emoji }))
+}
+
+module edge {
+  import { type Effect } from "effect"
+  import { asLegacy, runDetached, runDetachedSync } from "../edge.vibe"
+  import { ElizaError } from "../errors.vibe"
+  import type { Memory } from "../types/memory.vibe"
+  import type { SendHandlerFunction, SendHandlerResult, TargetInfo } from "../types/messaging.vibe"
+  import type { Content } from "../types/primitives.vibe"
+  import type {
+    ConnectorPostIdentity,
+    ConnectorUnregisterOptions,
+    IAgentRuntime,
+    MessageConnector,
+    MessageConnectorCreateThreadParams,
+    MessageConnectorRegistration,
+    PostConnector,
+    PostConnectorRegistration,
+    ThreadHandle,
+  } from "../types/runtime.vibe"
+  import {
+    addReactionOnTarget,
+    type ConnectorTables,
+    createThreadOnTarget,
+    editMessageOnTarget,
+    getMessageConnectors,
+    getPostConnectors,
+    postToThreadOnTarget,
+    registerMessageConnector,
+    registerPostConnector,
+    sendMessageToTarget,
+    sendTypingOnTarget,
+    setSendHandler,
+    stopTypingOnTarget,
+    unregisterMessageConnector,
+    unregisterPostConnector,
+  } from "./connector-registry.vibe"
+
+  /** @throws {Error} */
+  function now<A, E extends Error>(effect: Effect.Effect<A, E>): A {
+    return runDetachedSync(asLegacy(Error, effect, ElizaError))
+  }
+
+  /** @throws {never} */
+  function later<A, E extends Error>(effect: Effect.Effect<A, E>): Promise<A> {
+    return runDetached(asLegacy(Error, effect, ElizaError))
+  }
+
+  export class RuntimeConnectorRegistry {
+    readonly #tables: ConnectorTables
+
+    /** @throws {never} */
+    constructor(runtime: IAgentRuntime, sendHandlers: Map<string, SendHandlerFunction>) {
+      this.#tables = { runtime, sendHandlers, messageConnectors: new Map(), postConnectors: new Map() }
+    }
+
+    /** @throws {Error} */
+    registerSendHandler(source: string, handler: SendHandlerFunction): void {
+      now(setSendHandler(this.#tables, source, handler, "Send handler"))
+    }
+
+    /** @throws {Error} */
+    registerInternalSendHandler(source: string, handler: SendHandlerFunction): void {
+      now(setSendHandler(this.#tables, source, handler, "Internal send handler"))
+    }
+
+    /** @throws {Error} */
+    registerMessageConnector(registration: MessageConnectorRegistration): void {
+      now(registerMessageConnector(this.#tables, registration))
+    }
+
+    /** @throws {never} */
+    unregisterMessageConnector(source: string, accountId?: string, options?: ConnectorUnregisterOptions): boolean {
+      return unregisterMessageConnector(this.#tables, source, accountId, options)
+    }
+
+    /** @throws {never} */
+    getMessageConnectors(): MessageConnector[] {
+      return getMessageConnectors(this.#tables)
+    }
+
+    /** @throws {Error} */
+    registerPostConnector(registration: PostConnectorRegistration): void {
+      now(registerPostConnector(this.#tables, registration))
+    }
+
+    /** @throws {never} */
+    unregisterPostConnector(source: string, accountId?: string, options?: ConnectorUnregisterOptions): boolean {
+      return unregisterPostConnector(this.#tables, source, accountId, options)
+    }
+
+    /** @throws {never} */
+    getPostConnectors(): PostConnector[] {
+      return getPostConnectors(this.#tables)
+    }
+
+    /** @throws {never} */
+    sendMessageToTarget(target: TargetInfo, content: Content): SendHandlerResult {
+      return later(sendMessageToTarget(this.#tables, target, content))
+    }
+
+    /** @throws {never} */
+    editMessageOnTarget(target: TargetInfo, messageId: string, content: Content): Promise<Memory | undefined> {
+      return later(editMessageOnTarget(this.#tables, target, messageId, content))
+    }
+
+    /** @throws {never} */
+    sendTypingOnTarget(target: TargetInfo): Promise<void> {
+      return later(sendTypingOnTarget(this.#tables, target))
+    }
+
+    /** @throws {never} */
+    stopTypingOnTarget(target: TargetInfo): Promise<void> {
+      return later(stopTypingOnTarget(this.#tables, target))
+    }
+
+    /** @throws {never} */
+    createThreadOnTarget(
+      target: TargetInfo,
+      params: Omit<MessageConnectorCreateThreadParams, "target"> = {},
+    ): Promise<ThreadHandle> {
+      return later(createThreadOnTarget(this.#tables, target, params))
+    }
+
+    /** @throws {never} */
+    postToThreadOnTarget(
+      target: TargetInfo,
+      thread: ThreadHandle,
+      content: Content,
+      identity?: ConnectorPostIdentity,
+    ): Promise<Memory | undefined> {
+      return later(postToThreadOnTarget(this.#tables, target, thread, content, identity))
+    }
+
+    /** @throws {never} */
+    addReactionOnTarget(target: TargetInfo, messageId: string, emoji: string): Promise<void> {
+      return later(addReactionOnTarget(this.#tables, target, messageId, emoji))
+    }
+  }
+}
+import { RuntimeConnectorRegistry } from edge
+export { RuntimeConnectorRegistry }
+

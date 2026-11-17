@@ -1,0 +1,375 @@
+// spec/core/connectionLocks.md, "Story: Reconcile overlapping records without lost in-process updates"; spec/core/connectionLocks.md, "A batch acquires deduplicated recordKeys in one strict lexical order"
+import { worldMetadataValueEquals } from "./database/world-metadata-cas.vibe"
+import { Foreign, failingAs, foreign, promised } from "./edge.vibe"
+import { ElizaError } from "./errors.vibe"
+import { logger } from "./logger.vibe"
+import type { IDatabaseAdapter } from "./types/database.vibe"
+import type { Entity, Room, World } from "./types/environment.vibe"
+import type { JsonValue, Metadata, UUID } from "./types/primitives.vibe"
+import { ChannelType } from "./types/primitives.vibe"
+import { unrefSleep } from "./utils/retry.vibe"
+import { stringToUuid } from "./utils/string-to-uuid.vibe"
+import type { InvalidUuidSource } from "./utils/uuid.vibe"
+
+const WORLD_UPSERT_STALE_ATTEMPTS = 3
+
+function worldUnchangedByMerge(
+  existing: World,
+  merged: { name?: string; messageServerId?: UUID; metadata?: unknown },
+): boolean {
+  return (
+    (merged.name ?? existing.name) === existing.name
+    && (merged.messageServerId ?? existing.messageServerId)
+      === existing.messageServerId
+    && worldMetadataValueEquals(existing.metadata ?? {}, merged.metadata ?? {})
+  )
+}
+
+export interface EnsureConnectionParams {
+  agentId: UUID
+  entityId: UUID
+  roomId: UUID
+  roomName?: string
+
+  worldId?: UUID
+  worldName?: string
+  userName?: string
+  name?: string
+  source: string
+  type?: ChannelType | string
+  channelId?: string
+
+  serverId?: string
+  messageServerId?: UUID
+  userId?: UUID
+  metadata?: Record<string, JsonValue>
+}
+
+export interface EnsureConnectionsParams {
+  agentId: UUID
+  connections: EnsureConnectionParams[]
+}
+
+export interface EnsureConnectionsResult {
+  createdRoomParticipants: number
+}
+
+function mergeEntitySourceMetadata(
+  existing: Metadata,
+  incoming: Record<string, unknown>,
+): Metadata {
+  const merged: Record<string, unknown> = { ...existing }
+  for (const [key, value] of Object.entries(incoming)) {
+    const prior = merged[key]
+    if (
+      prior !== null
+      && typeof prior === "object"
+      && !Array.isArray(prior)
+      && value !== null
+      && typeof value === "object"
+      && !Array.isArray(value)
+    ) {
+      merged[key] = { ...prior, ...value }
+    } else {
+      merged[key] = value
+    }
+  }
+  return merged as Metadata
+}
+
+const RECORD_RECONCILIATION_WARN_MS = 30_000
+
+interface RecordLock {
+  readonly lock: Semaphore.Semaphore
+  waiting: number
+}
+
+const recordLocksByAdapter = new WeakMap<IDatabaseAdapter, Map<string, RecordLock>>()
+
+export function __getConnectionReconciliationRegistrySizeForTests(
+  adapter: IDatabaseAdapter,
+): number {
+  return recordLocksByAdapter.get(adapter)?.size ?? 0
+}
+
+effect function warnLockStillHeld(key: string) {
+  try unrefSleep(RECORD_RECONCILIATION_WARN_MS)
+  logger.warn(
+    { key, src: "core:connection", thresholdMs: RECORD_RECONCILIATION_WARN_MS },
+    "Connection reconciliation lock is still held",
+  )
+}
+
+effect function holdRecordLock<A, E>(key: string, run: A!E): A!E {
+  const warning = fork warnLockStillHeld(key)
+  return try ensuring(run, Fiber.interrupt(warning))
+}
+
+effect function withRecordLock<A, E>(adapter: IDatabaseAdapter, key: string, run: A!E): A!(E | Foreign) {
+  const locks = recordLocksByAdapter.get(adapter) ?? new Map<string, RecordLock>()
+  recordLocksByAdapter.set(adapter, locks)
+  const record = locks.get(key) ?? { lock: Semaphore.makeUnsafe(1), waiting: 0 }
+  record.waiting += 1
+  locks.set(key, record)
+  return try ensuring(
+    effect {
+      try foreign(() => undefined)
+      return try ensuring(record.lock.withPermits(1)(holdRecordLock(key, run)), yieldNow)
+    },
+    sync(() => {
+      record.waiting -= 1
+      if (record.waiting > 0) return
+      locks.delete(key)
+      if (locks.size === 0) recordLocksByAdapter.delete(adapter)
+    }),
+  )
+}
+
+function withRecordLocks<A, E>(adapter: IDatabaseAdapter, keys: string[], run: A!E): A!(E | Foreign) {
+  return [...new Set(keys)].sort().reduceRight<A!(E | Foreign)>((inner, key) => withRecordLock(adapter, key, inner), run)
+}
+
+const CHANNEL_TYPES: ReadonlySet<string> = new Set(Object.values(ChannelType))
+
+function isChannelType(value: unknown): value is ChannelType {
+  return typeof value === "string" && CHANNEL_TYPES.has(value)
+}
+
+export error WorldIdRequired { message: string }
+export error ConnectionSourceRequired { message: string }
+
+effect function resolveWorldId(
+  worldId: UUID | undefined,
+  messageServerId: UUID | undefined,
+  agentId: UUID,
+): UUID!(WorldIdRequired | InvalidUuidSource) {
+  if (worldId) return worldId
+  if (messageServerId) return try stringToUuid(`${messageServerId}:${agentId}`)
+  throw new WorldIdRequired({ message: "worldId or messageServerId is required" })
+}
+
+function isStaleWorldWrite(error: unknown): boolean {
+  return error instanceof ElizaError && error.code === "WORLD_METADATA_STALE_WRITE"
+}
+
+export effect function ensureConnections(
+  adapter: IDatabaseAdapter,
+  params: EnsureConnectionsParams,
+): EnsureConnectionsResult!(WorldIdRequired | InvalidUuidSource | Foreign) {
+  const { agentId, connections } = params
+  if (!connections.length) return { createdRoomParticipants: 0 }
+
+  const entityMap = new Map<
+    UUID,
+    {
+      entityId: UUID
+      names: string[]
+      metadata: Record<string, unknown>
+      agentId: UUID
+    }
+  >()
+  const worldMap = new Map<UUID, World>()
+  const worldFallbackNames = new Map<UUID, string>()
+  const roomMap = new Map<UUID, Room>()
+  const roomExplicitTypes = new Map<UUID, ChannelType>()
+  const roomFallbackNames = new Map<UUID, string>()
+  const roomParticipants = new Map<UUID, Set<UUID>>()
+
+  for (const c of connections) {
+    const worldId = try resolveWorldId(c.worldId, c.messageServerId, agentId)
+    const names = [c.name, c.userName].filter(Boolean) as string[]
+    const source = c.source || "default"
+    let ent = entityMap.get(c.entityId)
+    if (!ent) {
+      ent = { entityId: c.entityId, names: [], metadata: {}, agentId }
+      entityMap.set(c.entityId, ent)
+    }
+    for (const name of names) {
+      if (!ent.names.includes(name)) ent.names.push(name)
+    }
+
+    const sourceRecord: Record<string, JsonValue> = {}
+    if (c.userId !== undefined) sourceRecord.id = c.userId
+    if (c.name !== undefined) sourceRecord.name = c.name
+    if (c.userName !== undefined) sourceRecord.userName = c.userName
+    if (Object.keys(sourceRecord).length > 0) {
+      ent.metadata[source] = {
+        ...(ent.metadata[source] as Record<string, JsonValue> | undefined),
+        ...sourceRecord,
+      }
+    }
+
+    const batchedWorld = worldMap.get(worldId)
+    const world: World = {
+      id: worldId,
+      name: c.worldName || batchedWorld?.name || undefined,
+      agentId,
+      messageServerId: c.messageServerId,
+      metadata: {
+        ...batchedWorld?.metadata,
+        ...c.metadata,
+      },
+    }
+    worldMap.set(worldId, world)
+    if (!worldFallbackNames.has(worldId)) {
+      worldFallbackNames.set(
+        worldId,
+        c.messageServerId
+          ? `World for server ${c.messageServerId}`
+          : `World for room ${c.roomId}`,
+      )
+    }
+
+    const roomType = isChannelType(c.type) ? c.type : ChannelType.DM
+
+    if (roomType !== ChannelType.DM || c.type === ChannelType.DM) {
+      roomExplicitTypes.set(c.roomId, roomType)
+    }
+
+    const room: Room = {
+      id: c.roomId,
+      name: c.roomName || undefined,
+      source,
+      type: roomType,
+      channelId: c.channelId,
+      serverId: c.serverId,
+      messageServerId: c.messageServerId,
+      worldId,
+    }
+    roomMap.set(c.roomId, room)
+    if (c.name) roomFallbackNames.set(c.roomId, c.name)
+
+    let participants = roomParticipants.get(c.roomId)
+    if (!participants) {
+      participants = new Set()
+      roomParticipants.set(c.roomId, participants)
+    }
+    participants.add(c.entityId)
+    participants.add(agentId)
+  }
+
+  const entityIds = [...entityMap.keys()]
+
+  try withRecordLocks(
+    adapter,
+    entityIds.map((id) => `entity:${id}`),
+    effect {
+      const existingEntities = entityIds.length > 0 ? try foreign(() => adapter.getEntitiesByIds(entityIds)) : []
+      const existingByKey = new Map(existingEntities.map((e) => [e.id, e]))
+      const entities: Entity[] = []
+      for (const [, v] of entityMap) {
+        const existing = existingByKey.get(v.entityId) ?? null
+        const names = existing
+          ? [...new Set([...(existing.names || []), ...v.names])].filter(
+            Boolean,
+          )
+          : v.names
+        const metadata = existing
+          ? mergeEntitySourceMetadata(
+            (existing.metadata ?? {}) as Metadata,
+            v.metadata,
+          )
+          : (v.metadata as Metadata)
+        entities.push({
+          id: v.entityId,
+          names,
+          metadata,
+          agentId: v.agentId,
+        })
+      }
+      if (entities.length) try foreign(() => adapter.upsertEntities(entities))
+    },
+  )
+
+  const worldIds = [...worldMap.keys()]
+  try withRecordLocks(
+    adapter,
+    worldIds.map((id) => `world:${id}`),
+    effect {
+      for (let attempt = 0;; attempt += 1) {
+        const existingWorlds = worldIds.length > 0 ? try foreign(() => adapter.getWorldsByIds(worldIds)) : []
+        const existingWorldsById = new Map(
+          existingWorlds.map((world) => [world.id, world]),
+        )
+        const worlds = [...worldMap.values()]
+          .map((world) => {
+            const existing = existingWorldsById.get(world.id)
+            return {
+              existing,
+              merged: {
+                ...existing,
+                ...world,
+                name: world.name
+                  || existing?.name
+                  || worldFallbackNames.get(world.id),
+                messageServerId: world.messageServerId ?? existing?.messageServerId,
+                agentId,
+                metadata: {
+                  ...(existing?.metadata ?? {}),
+                  ...(world.metadata ?? {}),
+                },
+              },
+            }
+          })
+          .filter(
+            ({ existing, merged }) => !existing || !worldUnchangedByMerge(existing, merged),
+          )
+          .map(({ merged }) => merged)
+        if (worlds.length === 0) break
+        const stale = map(foreign(() => adapter.upsertWorlds(worlds)), () => false) catch effect (error) => {
+          if (!isStaleWorldWrite(error.cause) || attempt + 1 >= WORLD_UPSERT_STALE_ATTEMPTS) throw error
+          return true
+        }
+        if (!stale) break
+      }
+    },
+  )
+
+  const storedRooms = roomMap.size > 0 ? try foreign(() => adapter.getRoomsByIds([...roomMap.keys()])) : []
+  const storedRoomById = new Map(storedRooms.map((r) => [r.id, r]))
+  const rooms = [...roomMap.values()].map((r) => {
+    const stored = storedRoomById.get(r.id)
+    return {
+      ...r,
+      name: r.name || stored?.name || roomFallbackNames.get(r.id) || "default",
+      channelId: r.channelId ?? stored?.channelId ?? r.id,
+
+      type: roomExplicitTypes.get(r.id) ?? stored?.type ?? r.type,
+      serverId: r.serverId ?? stored?.serverId,
+      messageServerId: r.messageServerId ?? stored?.messageServerId,
+      agentId,
+    }
+  })
+  if (rooms.length) try foreign(() => adapter.upsertRooms(rooms))
+
+  const currentParticipants = try foreign(() => adapter.getParticipantsForRooms([...roomParticipants.keys()]))
+  let createdRoomParticipants = 0
+  let index = 0
+  for (const [roomId, entityIdsSet] of roomParticipants) {
+    const current = currentParticipants[index++]?.entityIds ?? []
+    const missing = [...entityIdsSet].filter((id) => !current.includes(id))
+    if (missing.length) {
+      try foreign(() => adapter.createRoomParticipants(missing, roomId))
+      createdRoomParticipants += missing.length
+    }
+  }
+
+  return { createdRoomParticipants }
+}
+
+export const ensureConnectionsPromise = promised(failingAs(Error, ensureConnections))
+
+export effect function ensureConnection(
+  adapter: IDatabaseAdapter,
+  params: EnsureConnectionParams,
+): EnsureConnectionsResult!(ConnectionSourceRequired | WorldIdRequired | InvalidUuidSource | Foreign) {
+  if (!params.source) {
+    throw new ConnectionSourceRequired({ message: "Source is required for ensureConnection" })
+  }
+  const worldId = try resolveWorldId(params.worldId, params.messageServerId, params.agentId)
+  return try ensureConnections(adapter, {
+    agentId: params.agentId,
+    connections: [{ ...params, worldId }],
+  })
+}
+export const ensureConnectionPromise = promised(failingAs(Error, ensureConnection))

@@ -108,7 +108,9 @@ A record is first written as its own fragment, only under a name known
 to be absent and never over an unread fragment; an existing copy accepts
 only a retry of the same identity and payload. A write is acknowledged
 only after sealing, file sync, publication and directory sync; without
-directory durability it is unconfirmed and its fragment is kept. The
+directory durability it is unconfirmed and its fragment is kept; a
+directory sync error that the file publication tolerates still leaves
+the journal's receipt unconfirmed, even when the file write returned. The
 record is then written into the main file, and only once that copy is
 durable is the exact fragment removed. A failed removal leaves a harmless
 exact duplicate, and a conflicting or unread recovery retires neither
@@ -119,13 +121,15 @@ lost key, or a crash before a receipt, can still lose a record.
 type DurableJournalCopies = { mainPayload: int, fragmentPayload: int }
 pure def holdsAcknowledged(copies: DurableJournalCopies, acknowledged: int): bool =
   acknowledged > 0 and (copies.mainPayload == acknowledged or copies.fragmentPayload == acknowledged)
-pure def keepDurableFragment(copies: DurableJournalCopies, payload: int, readCurrent: bool, directoryDurable: bool): DurableJournalCopies =
-  if (payload > 0 and readCurrent and directoryDurable and copies.fragmentPayload == 0 and
+pure def durableJournalPublication(writeFacts: FilePublish): bool =
+  renameAllowed(writeFacts) and writeFacts.renamed and writeFacts.directorySync == "ok" and writeFacts.directoryClosed
+pure def keepDurableFragment(copies: DurableJournalCopies, payload: int, readCurrent: bool, writeFacts: FilePublish): DurableJournalCopies =
+  if (payload > 0 and readCurrent and durableJournalPublication(writeFacts) and copies.fragmentPayload == 0 and
       (copies.mainPayload == 0 or copies.mainPayload == payload))
     { ...copies, fragmentPayload: payload }
   else copies
-pure def consolidateDurableFragment(copies: DurableJournalCopies, payload: int, bothReadable: bool, directoryDurable: bool): DurableJournalCopies =
-  if (payload > 0 and bothReadable and directoryDurable and copies.fragmentPayload == payload and
+pure def consolidateDurableFragment(copies: DurableJournalCopies, payload: int, bothReadable: bool, writeFacts: FilePublish): DurableJournalCopies =
+  if (payload > 0 and bothReadable and durableJournalPublication(writeFacts) and copies.fragmentPayload == payload and
       (copies.mainPayload == 0 or copies.mainPayload == payload))
     { ...copies, mainPayload: payload }
   else copies
@@ -133,19 +137,23 @@ pure def retireDurableFragment(copies: DurableJournalCopies, payload: int, bothR
   if (payload > 0 and bothReadable and removalDurable and copies.fragmentPayload == payload and copies.mainPayload == payload)
     { ...copies, fragmentPayload: 0 }
   else copies
-pure def lawWriteKeepsPreviouslyAcknowledged(copies: DurableJournalCopies, acknowledged: int, payload: int, readCurrent: bool, directoryDurable: bool): bool =
-  holdsAcknowledged(copies, acknowledged) implies holdsAcknowledged(keepDurableFragment(copies, payload, readCurrent, directoryDurable), acknowledged)
-pure def lawConsolidationKeepsPreviouslyAcknowledged(copies: DurableJournalCopies, acknowledged: int, payload: int, bothReadable: bool, directoryDurable: bool): bool =
-  holdsAcknowledged(copies, acknowledged) implies holdsAcknowledged(consolidateDurableFragment(copies, payload, bothReadable, directoryDurable), acknowledged)
+pure def lawWriteKeepsPreviouslyAcknowledged(copies: DurableJournalCopies, acknowledged: int, payload: int, readCurrent: bool, writeFacts: FilePublish): bool =
+  holdsAcknowledged(copies, acknowledged) implies holdsAcknowledged(keepDurableFragment(copies, payload, readCurrent, writeFacts), acknowledged)
+pure def lawConsolidationKeepsPreviouslyAcknowledged(copies: DurableJournalCopies, acknowledged: int, payload: int, bothReadable: bool, writeFacts: FilePublish): bool =
+  holdsAcknowledged(copies, acknowledged) implies holdsAcknowledged(consolidateDurableFragment(copies, payload, bothReadable, writeFacts), acknowledged)
 pure def lawRetirementKeepsPreviouslyAcknowledged(copies: DurableJournalCopies, acknowledged: int, payload: int, bothReadable: bool, removalDurable: bool): bool =
   holdsAcknowledged(copies, acknowledged) implies holdsAcknowledged(retireDurableFragment(copies, payload, bothReadable, removalDurable), acknowledged)
-pure def lawUnreadFragmentCannotBeOverwritten(copies: DurableJournalCopies, payload: int, directoryDurable: bool): bool =
-  keepDurableFragment(copies, payload, false, directoryDurable) == copies
-pure def lawFailedSyncCannotRetire(copies: DurableJournalCopies, payload: int, bothReadable: bool, removalDurable: bool): bool =
-  copies.mainPayload == 0 implies retireDurableFragment(
-    consolidateDurableFragment(copies, payload, bothReadable, false), payload, bothReadable, removalDurable) == copies
+pure def lawUnreadFragmentCannotBeOverwritten(copies: DurableJournalCopies, payload: int, writeFacts: FilePublish): bool =
+  keepDurableFragment(copies, payload, false, writeFacts) == copies
+pure def lawUnconfirmedWriteDoesNotCreateDurableCopies(copies: DurableJournalCopies, payload: int, writeFacts: FilePublish): bool =
+  not(durableJournalPublication(writeFacts)) implies
+    keepDurableFragment(copies, payload, true, writeFacts) == copies and
+    consolidateDurableFragment(copies, payload, true, writeFacts) == copies
+pure def lawFailedSyncCannotRetire(copies: DurableJournalCopies, payload: int, bothReadable: bool, removalDurable: bool, writeFacts: FilePublish): bool =
+  (copies.mainPayload == 0 and not(durableJournalPublication(writeFacts))) implies retireDurableFragment(
+    consolidateDurableFragment(copies, payload, bothReadable, writeFacts), payload, bothReadable, removalDurable) == copies
 pure def lawRestartAfterFailedRemovalHasOneExactRecord(copies: DurableJournalCopies, payload: int): bool = {
-  val afterMain = consolidateDurableFragment(copies, payload, true, true)
+  val afterMain = consolidateDurableFragment(copies, payload, true, readyPublish)
   val afterFailedRemoval = retireDurableFragment(afterMain, payload, true, false)
   payload > 0 and copies.fragmentPayload == payload and copies.mainPayload == 0 implies
     recoveryRecord({ mainReadable: true, fragmentReadable: true, mainPayload: afterFailedRemoval.mainPayload, fragmentPayload: afterFailedRemoval.fragmentPayload }) ==

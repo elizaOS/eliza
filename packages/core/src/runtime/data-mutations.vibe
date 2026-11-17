@@ -1,0 +1,671 @@
+// spec/core/entities.md, "Story: Observe committed mutations through fresh runtime reads"; spec/core/entities.md, "Each mutation invalidates exactly the affected cache families"; spec/core/entities.md, "Adapter failure cannot become a successful mutation result"; spec/core/factWrites.md, "Story: Merge every contribution once into its canonical fact"; spec/core/factWrites.md, "One writer owns the read and commit interval"
+import { randomUuid } from "../utils/uuid.vibe"
+import { cachePlan, type MutationKind } from "../../gen/core__entities.effect.vibe"
+import { Machine, machine, type Rejected } from "../../gen/core__factWrites.effect.vibe"
+import { foreign, runDetached, type Foreign } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import { redactWithSecrets } from "../security/redact.vibe"
+import type { IDatabaseAdapter, MemoryEmbeddingUpdate, PatchOp } from "../types/database.vibe"
+import type { Component, Entity, Participant, Relationship, Room } from "../types/environment.vibe"
+import type { Memory, MemoryMetadata } from "../types/memory.vibe"
+import { afterMemoryPersistedPipelineHookContext } from "../types/pipeline-hooks.vibe"
+import type { Content, Metadata, UUID } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import type { Service } from "../types/service.vibe"
+import { findEquivalentFact, mergeStrongerFactMetadata } from "./fact-write-dedupe.vibe"
+import {
+  buildMessageContentProjection,
+  collectMessageContentSegmentIds,
+  messageContentRequiresSegments,
+} from "./message-content-segments.vibe"
+import { deepEqual } from "./message-content-storage.vibe"
+import type { SingleFlightMemo } from "./single-flight-memo.vibe"
+
+type EvidenceMutationService = Service & {
+  mutateSourceEvidence<T>(
+    ids: UUID[],
+    updates: Array<Partial<Memory> & { id: UUID }> | undefined,
+    write: () => Promise<T>,
+  ): Promise<T>
+}
+
+export interface RuntimeDataMutationsHost {
+  invalidateTurnEntityDetails(): void
+  invalidateTurnIdentityClusters(): void
+  getSecretsForRedaction(): Record<string, string>
+  roomMessagesMemo(): SingleFlightMemo<Memory[], number>
+  roomReadMemo(): SingleFlightMemo<Room | null>
+}
+
+interface FactLane {
+  readonly lock: Semaphore.Semaphore
+  readonly writes: Machine.Shape
+  pending: number
+}
+
+interface MutationOwner {
+  readonly runtime: IAgentRuntime
+  readonly host: RuntimeDataMutationsHost
+  readonly factLanes: Map<UUID, FactLane>
+}
+
+type MemoryPatch = Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }
+
+function invalidate(host: RuntimeDataMutationsHost, kind: MutationKind, roomIds: readonly UUID[]): void {
+  const plan = cachePlan(kind)
+  if (plan.entities) host.invalidateTurnEntityDetails()
+  if (plan.clusters) host.invalidateTurnIdentityClusters()
+  if (plan.allRooms) host.roomReadMemo().invalidate()
+  if (plan.allMessages) host.roomMessagesMemo().invalidate()
+  for (const roomId of roomIds) {
+    if (plan.rooms && !plan.allRooms) host.roomReadMemo().invalidate(roomId)
+    if (plan.messages && !plan.allMessages) host.roomMessagesMemo().invalidate(roomId)
+  }
+}
+
+effect function mutate<A>(
+  owner: MutationOwner,
+  kind: MutationKind,
+  write: (adapter: IDatabaseAdapter) => Promise<A>,
+  roomIds: () => readonly UUID[] = () => [],
+): A!Foreign {
+  const result = try foreign(() => write(owner.runtime.adapter))
+  invalidate(owner.host, kind, roomIds())
+  return result
+}
+
+effect function mutateSourceEvidence<A, E>(
+  owner: MutationOwner,
+  ids: UUID[],
+  updates: Array<Partial<Memory> & { id: UUID }> | undefined,
+  write: A!E,
+): A!(E | Foreign) {
+  const evaluator = owner.runtime.getService<EvidenceMutationService>("evaluator")
+  if (!evaluator) return try write
+  return try foreign((signal) => evaluator.mutateSourceEvidence(ids, updates, () => runDetached(write, signal)))
+}
+
+function redactMemoryText(host: RuntimeDataMutationsHost, memory: Memory): Memory {
+  if (!memory.content.text) return memory
+  return {
+    ...memory,
+    content: {
+      ...memory.content,
+      text: redactWithSecrets(memory.content.text, {
+        secrets: host.getSecretsForRedaction(),
+        applyPatterns: true,
+      }),
+    },
+  }
+}
+
+function redactMessageContentForStorage(host: RuntimeDataMutationsHost, content: Content): Content {
+  const secrets = host.getSecretsForRedaction()
+  const redact = (value: string): string => redactWithSecrets(value, { secrets, applyPatterns: true })
+  return {
+    ...content,
+    ...(typeof content.text === "string"
+      ? { text: redact(content.text) }
+      : {}),
+    ...(content.attachments
+      ? {
+        attachments: content.attachments.map((attachment) => ({
+          ...attachment,
+          ...(typeof attachment.text === "string"
+            ? { text: redact(attachment.text) }
+            : {}),
+          ...(typeof attachment.description === "string"
+            ? { description: redact(attachment.description) }
+            : {}),
+        })),
+      }
+      : {}),
+  }
+}
+
+effect function upsertMemories(
+  owner: MutationOwner,
+  memories: Array<{ memory: Memory; tableName: string }>,
+  options?: { entityContext?: UUID },
+): void!Foreign {
+  const messages: Array<Memory & { id: UUID }> = []
+  const messageIds: UUID[] = []
+  const messageRoomIds = new Set<UUID>()
+  for (const { memory, tableName } of memories) {
+    if (tableName !== "messages") continue
+    messageRoomIds.add(memory.roomId)
+    if (memory.id) {
+      messages.push(memory as Memory & { id: UUID })
+      messageIds.push(memory.id)
+    }
+  }
+  return try mutateSourceEvidence(
+    owner,
+    messageIds,
+    messages,
+    asVoid(mutate(owner, "MessageCreate", (adapter) => adapter.upsertMemories(memories, options), () => [...messageRoomIds])),
+  )
+}
+
+effect function createMemories(
+  owner: MutationOwner,
+  memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
+): UUID[]!Foreign {
+  return try mutate(
+    owner,
+    "MessageCreate",
+    (adapter) =>
+      adapter.createMemories(
+        memories.map((entry) => ({
+          ...entry,
+          memory: {
+            ...entry.memory,
+            agentId: entry.memory.agentId ?? owner.runtime.agentId,
+          },
+        })),
+      ),
+    () => memories.filter((entry) => entry.tableName === "messages" && entry.memory.roomId).map((entry) => entry.memory.roomId),
+  )
+}
+
+effect function updateMemories(owner: MutationOwner, memories: MemoryPatch[]): void!Foreign {
+  try mutateSourceEvidence(
+    owner,
+    memories.map((row) => row.id),
+    memories,
+    asVoid(mutate(owner, "MessagePartialWrite", (adapter) => adapter.updateMemories(memories))),
+  )
+  invalidate(owner.host, "MessagePartialWrite", [])
+}
+
+effect function updateMemoryEmbedding(owner: MutationOwner, update: MemoryEmbeddingUpdate): boolean!Foreign {
+  if (update.expected.agentId !== owner.runtime.agentId) return false
+  const written = try foreign(() => owner.runtime.adapter.updateMemoryEmbedding(update))
+  if (written) invalidate(owner.host, "EmbeddingWrite", [update.expected.roomId])
+  return written
+}
+
+effect function deleteMemories(owner: MutationOwner, memoryIds: UUID[]): void!Foreign {
+  try mutateSourceEvidence(
+    owner,
+    memoryIds,
+    undefined,
+    asVoid(mutate(owner, "MessagePartialWrite", (adapter) => adapter.deleteMemories(memoryIds))),
+  )
+}
+
+function metadataForComparison(value: Memory["metadata"], isSegment: boolean): Record<string, unknown> {
+  const metadata = (value ?? {}) as Record<string, unknown>
+  if (!isSegment) return metadata
+  const { timestamp: _publishedAt, ...rest } = metadata
+  return rest
+}
+
+function sameEvidence(stored: Memory | undefined, expected: Memory, isSegment = false): boolean {
+  return stored !== undefined
+    && stored.id === expected.id
+    && stored.agentId === expected.agentId
+    && stored.roomId === expected.roomId
+    && stored.entityId === expected.entityId
+    && (expected.createdAt === undefined
+      || stored.createdAt === expected.createdAt)
+    && deepEqual(
+      metadataForComparison(stored.metadata, isSegment),
+      metadataForComparison(expected.metadata, isSegment),
+    )
+    && deepEqual(stored.content, expected.content)
+}
+
+effect function createMessageMemory(
+  owner: MutationOwner,
+  memory: Memory,
+  unique?: boolean,
+): UUID!(ElizaError | Foreign | Rejected) {
+  const { runtime } = owner
+  const id = memory.id ?? (randomUuid() as UUID)
+  const parent: Memory & { id: UUID } = {
+    ...memory,
+    agentId: memory.agentId ?? runtime.agentId,
+    id,
+    ...(unique !== undefined ? { unique } : {}),
+    content: redactMessageContentForStorage(owner.host, memory.content),
+  }
+  const projection = try buildMessageContentProjection(parent)
+  const projectedParent = { ...parent, content: projection.content }
+  const publish = runtime.adapter.publishMessageContentSegments
+  if (
+    !publish
+    || runtime.adapter.messageContentSegmentCapability !== 1
+  ) {
+    if (projection.segments.length > 0) {
+      throw new ElizaError(
+        "Database adapter cannot publish bounded message content",
+        {
+          code: "MESSAGE_CONTENT_SEGMENT_STORAGE_UNAVAILABLE",
+          context: { messageId: id },
+        },
+      )
+    }
+    return try createMemory(owner, projectedParent, "messages", unique)
+  }
+  const result = try foreign(() =>
+    publish.call(runtime.adapter, {
+      mode: "create",
+      parent: projectedParent,
+      segments: projection.segments,
+    })
+  )
+  if (result.status !== "created") {
+    const existing = try foreign(() => runtime.adapter.getMemoriesByIds([id], "messages"))
+    if (sameEvidence(existing[0], projectedParent)) {
+      const segments = projection.segments.length
+        ? try foreign(() =>
+          runtime.adapter.getMemoriesByIds(
+            projection.segments.map((segment) => segment.id as UUID),
+            "message_content_segments",
+          )
+        )
+        : []
+      const storedById = new Map(
+        segments.map((entry) => [entry.id, entry] as const),
+      )
+      if (
+        projection.segments.every((segment) => sameEvidence(storedById.get(segment.id), segment, true))
+      ) {
+        return id
+      }
+    }
+
+    throw new ElizaError("Message content publication conflicted", {
+      code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
+      context: { messageId: id },
+    })
+  }
+  invalidate(owner.host, "MessageCreate", [parent.roomId])
+  try foreign(() =>
+    runtime.applyPipelineHooks(
+      "after_memory_persisted",
+      afterMemoryPersistedPipelineHookContext(projectedParent, "messages", id),
+    )
+  )
+  return id
+}
+
+function messageMemoryNotFound(id: UUID): ElizaError {
+  return new ElizaError("Message memory was not found", {
+    code: "MESSAGE_CONTENT_PARENT_NOT_FOUND",
+    context: { messageId: id },
+  })
+}
+
+effect function replaceMessageMemoryContent(
+  owner: MutationOwner,
+  id: UUID,
+  content: Content,
+): void!(ElizaError | Foreign) {
+  const { runtime } = owner
+  const existing = try foreign(() => runtime.getMemoryById(id))
+  if (!existing) throw messageMemoryNotFound(id)
+  const replacement: Memory & { id: UUID } = {
+    ...existing,
+    id,
+    content: redactMessageContentForStorage(owner.host, content),
+  }
+  const projection = try buildMessageContentProjection(replacement)
+  const oldSegmentIds = collectMessageContentSegmentIds(id, existing.content)
+  const retainedIds = new Set(
+    collectMessageContentSegmentIds(id, projection.content).map(String),
+  )
+  const oldIds = new Set(oldSegmentIds.map(String))
+  const removeSegmentIds = oldSegmentIds.filter(
+    (segmentId) => !retainedIds.has(String(segmentId)),
+  )
+  const newSegments = projection.segments.filter(
+    (segment) => !oldIds.has(String(segment.id)),
+  )
+  const publish = runtime.adapter.publishMessageContentSegments
+  if (
+    !publish
+    || runtime.adapter.messageContentSegmentCapability !== 1
+  ) {
+    if (
+      newSegments.length > 0
+      || messageContentRequiresSegments(existing.content)
+    ) {
+      throw new ElizaError(
+        "Database adapter cannot replace bounded message content",
+        {
+          code: "MESSAGE_CONTENT_SEGMENT_STORAGE_UNAVAILABLE",
+          context: { messageId: id },
+        },
+      )
+    }
+    try updateMemories(owner, [{ id, content: projection.content }])
+    return
+  }
+  const result = try mutateSourceEvidence(
+    owner,
+    [id],
+    [{ id, content: projection.content }],
+    foreign(() =>
+      publish.call(runtime.adapter, {
+        mode: "replace",
+        agentId: runtime.agentId,
+        messageId: id,
+        expectedContent: existing.content,
+        replacementContent: projection.content,
+        segments: newSegments,
+        removeSegmentIds,
+      })
+    ),
+  )
+  if (result.status === "not_found") throw messageMemoryNotFound(id)
+  if (result.status !== "updated") {
+    throw new ElizaError("Message content replacement conflicted", {
+      code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
+      context: { messageId: id },
+    })
+  }
+  invalidate(owner.host, "MessageCreate", [existing.roomId])
+}
+
+effect function mergeFact(
+  owner: MutationOwner,
+  writes: Machine.Shape,
+  memory: Memory,
+  insert: UUID[]!Foreign,
+): (UUID[] | UUID)!(Foreign | Rejected) {
+  const equivalent = try findEquivalentFact(owner.runtime, memory)
+  try writes.send({ type: "readExisting" })
+  let outcome: UUID[] | UUID
+  if (!equivalent?.id) outcome = try insert
+  else {
+    const upgraded = mergeStrongerFactMetadata(equivalent, memory)
+    if (upgraded) try updateMemories(owner, [{ id: equivalent.id, metadata: upgraded }])
+    outcome = equivalent.id
+  }
+  try writes.send({ type: "commit" })
+  return outcome
+}
+
+effect function factMachine(): Machine.Shape!! {
+  provide machine() {
+    return try Machine
+  }
+}
+
+effect function writeFact(
+  owner: MutationOwner,
+  memory: Memory,
+  insert: UUID[]!Foreign,
+): (UUID[] | UUID)!(Foreign | Rejected) {
+  const roomId = memory.roomId
+  const writes = try factMachine()
+  const lane = owner.factLanes.get(roomId) ?? { lock: Semaphore.makeUnsafe(1), writes, pending: 0 }
+  lane.pending += 1
+  owner.factLanes.set(roomId, lane)
+  const write = effect {
+    try foreign(() => Promise.resolve())
+    try lane.writes.send({ type: "begin", writer: randomUuid() })
+    return try onExit(
+      mergeFact(owner, lane.writes, memory, insert),
+      (exit) => Exit.isSuccess(exit) ? Effect.void : ignore(lane.writes.send({ type: "writeFailed" })),
+    )
+  }
+  return try ensuring(
+    lane.lock.withPermit(write),
+    sync(() => {
+      lane.pending -= 1
+      if (lane.pending === 0 && owner.factLanes.get(roomId) === lane) owner.factLanes.delete(roomId)
+    }),
+  )
+}
+
+effect function createMemory(
+  owner: MutationOwner,
+  memory: Memory,
+  tableName: string,
+  unique?: boolean,
+): UUID!(Foreign | Rejected) {
+  if (unique !== undefined) memory.unique = unique
+  const stored = redactMemoryText(owner.host, { ...memory, agentId: memory.agentId ?? owner.runtime.agentId })
+  const insert = foreign(() => owner.runtime.adapter.createMemories([{ memory: stored, tableName, unique }]))
+  let ids: UUID[]
+  if (tableName === "facts") {
+    const outcome = try writeFact(owner, stored, insert)
+    if (!Array.isArray(outcome)) return outcome
+    ids = outcome
+  } else ids = try insert
+
+  if (tableName === "messages" && stored.roomId) {
+    invalidate(owner.host, "MessageCreate", [stored.roomId])
+  }
+  const memoryId = ids[0]
+  try foreign(() =>
+    owner.runtime.applyPipelineHooks(
+      "after_memory_persisted",
+      afterMemoryPersistedPipelineHookContext(stored, tableName, memoryId),
+    )
+  )
+  return memoryId
+}
+
+export class RuntimeDataMutations {
+  readonly #owner: MutationOwner
+
+  constructor(runtime: IAgentRuntime, host: RuntimeDataMutationsHost) {
+    this.#owner = { runtime, host, factLanes: new Map() }
+  }
+
+  updateEntities(entities: Entity[]): Promise<void> {
+    return runDetached(asVoid(mutate(this.#owner, "EntityWrite", (adapter) => adapter.updateEntities(entities))))
+  }
+
+  deleteEntities(entityIds: UUID[]): Promise<void> {
+    return runDetached(asVoid(mutate(this.#owner, "EntityDelete", (adapter) => adapter.deleteEntities(entityIds))))
+  }
+
+  updateEntity(entity: Entity): Promise<void> {
+    return this.updateEntities([entity])
+  }
+
+  createComponents(components: Component[]): Promise<UUID[]> {
+    return runDetached(mutate(this.#owner, "ComponentWrite", (adapter) => adapter.createComponents(components)))
+  }
+
+  updateComponents(components: Component[]): Promise<void> {
+    return runDetached(asVoid(mutate(this.#owner, "ComponentWrite", (adapter) => adapter.updateComponents(components))))
+  }
+
+  deleteComponents(componentIds: UUID[]): Promise<void> {
+    return runDetached(asVoid(mutate(this.#owner, "ComponentWrite", (adapter) => adapter.deleteComponents(componentIds))))
+  }
+
+  createComponent(component: Component): Promise<boolean> {
+    return runDetached(
+      map(mutate(this.#owner, "ComponentWrite", (adapter) => adapter.createComponents([component])), (ids) => ids.length > 0),
+    )
+  }
+
+  updateComponent(component: Component): Promise<void> {
+    return this.updateComponents([component])
+  }
+
+  deleteComponent(componentId: UUID): Promise<void> {
+    return this.deleteComponents([componentId])
+  }
+
+  upsertComponent(component: Component): Promise<void> {
+    return runDetached(asVoid(mutate(this.#owner, "ComponentWrite", (adapter) => adapter.upsertComponents([component]))))
+  }
+
+  upsertComponents(
+    components: Component[],
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return runDetached(asVoid(mutate(this.#owner, "ComponentWrite", (adapter) => adapter.upsertComponents(components, options))))
+  }
+
+  patchComponent(
+    componentId: UUID,
+    ops: PatchOp[],
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return this.patchComponents([{ componentId, ops }], options)
+  }
+
+  patchComponents(
+    updates: Array<{ componentId: UUID; ops: PatchOp[] }>,
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return runDetached(asVoid(mutate(this.#owner, "ComponentWrite", (adapter) => adapter.patchComponents(updates, options))))
+  }
+
+  patchComponentField(
+    componentId: UUID,
+    op: PatchOp,
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return this.patchComponents([{ componentId, ops: [op] }], options)
+  }
+
+  upsertMemory(
+    memory: Memory,
+    tableName: string,
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return runDetached(suspend(() => upsertMemories(this.#owner, [{ memory: redactMemoryText(this.#owner.host, memory), tableName }], options)))
+  }
+
+  upsertMemories(
+    memories: Array<{ memory: Memory; tableName: string }>,
+    options?: { entityContext?: UUID },
+  ): Promise<void> {
+    return runDetached(upsertMemories(this.#owner, memories, options))
+  }
+
+  createRelationships(
+    relationships: Array<{
+      sourceEntityId: UUID
+      targetEntityId: UUID
+      tags?: string[]
+      metadata?: Metadata
+    }>,
+  ): Promise<UUID[]> {
+    return runDetached(mutate(this.#owner, "RelationshipWrite", (adapter) => adapter.createRelationships(relationships)))
+  }
+
+  updateRelationships(relationships: Relationship[]): Promise<void> {
+    return runDetached(asVoid(mutate(this.#owner, "RelationshipWrite", (adapter) => adapter.updateRelationships(relationships))))
+  }
+
+  deleteRelationships(relationshipIds: UUID[]): Promise<void> {
+    return runDetached(asVoid(mutate(this.#owner, "RelationshipWrite", (adapter) => adapter.deleteRelationships(relationshipIds))))
+  }
+
+  createRelationship(params: {
+    sourceEntityId: UUID
+    targetEntityId: UUID
+    tags?: string[]
+    metadata?: Metadata
+  }): Promise<boolean> {
+    return runDetached(
+      map(mutate(this.#owner, "RelationshipWrite", (adapter) => adapter.createRelationships([params])), (ids) => ids.length > 0),
+    )
+  }
+
+  updateRelationship(relationship: Relationship): Promise<void> {
+    return this.updateRelationships([relationship])
+  }
+
+  createMemories(
+    memories: Array<{ memory: Memory; tableName: string; unique?: boolean }>,
+  ): Promise<UUID[]> {
+    return runDetached(createMemories(this.#owner, memories))
+  }
+
+  updateMemories(
+    memories: Array<Partial<Memory> & { id: UUID; metadata?: MemoryMetadata }>,
+  ): Promise<void> {
+    return runDetached(updateMemories(this.#owner, memories))
+  }
+
+  updateMemoryEmbedding(update: MemoryEmbeddingUpdate): Promise<boolean> {
+    return runDetached(updateMemoryEmbedding(this.#owner, update))
+  }
+
+  deleteMemories(memoryIds: UUID[]): Promise<void> {
+    return runDetached(deleteMemories(this.#owner, memoryIds))
+  }
+
+  createMessageMemory(memory: Memory, unique?: boolean): Promise<UUID> {
+    return runDetached(createMessageMemory(this.#owner, memory, unique))
+  }
+
+  replaceMessageMemoryContent(id: UUID, content: Content): Promise<void> {
+    return runDetached(replaceMessageMemoryContent(this.#owner, id, content))
+  }
+
+  createMemory(
+    memory: Memory,
+    tableName: string,
+    unique?: boolean,
+  ): Promise<UUID> {
+    return runDetached(createMemory(this.#owner, memory, tableName, unique))
+  }
+
+  updateMemory(
+    memory: Partial<Memory> & { id: UUID; metadata?: MemoryMetadata },
+  ): Promise<boolean> {
+    return runDetached(as(updateMemories(this.#owner, [memory]), true))
+  }
+
+  deleteMemory(memoryId: UUID): Promise<void> {
+    return this.deleteMemories([memoryId])
+  }
+
+  deleteParticipants(
+    participants: Array<{ entityId: UUID; roomId: UUID }>,
+  ): Promise<boolean> {
+    return runDetached(mutate(this.#owner, "ParticipantWrite", (adapter) => adapter.deleteParticipants(participants)))
+  }
+
+  updateParticipants(
+    participants: Array<{
+      entityId: UUID
+      roomId: UUID
+      updates: Partial<Participant>
+    }>,
+  ): Promise<void> {
+    return runDetached(asVoid(mutate(this.#owner, "ParticipantWrite", (adapter) => adapter.updateParticipants(participants))))
+  }
+
+  removeParticipant(entityId: UUID, roomId: UUID): Promise<boolean> {
+    return this.deleteParticipants([{ entityId, roomId }])
+  }
+
+  updateRooms(rooms: Room[]): Promise<void> {
+    const roomIds = (): UUID[] => {
+      const ids: UUID[] = []
+      for (const room of rooms) if (room.id) ids.push(room.id)
+      return ids
+    }
+    return runDetached(asVoid(mutate(this.#owner, "RoomWrite", (adapter) => adapter.updateRooms(rooms), roomIds)))
+  }
+
+  deleteRooms(roomIds: UUID[]): Promise<void> {
+    return runDetached(asVoid(mutate(this.#owner, "RoomDelete", (adapter) => adapter.deleteRooms(roomIds), () => roomIds)))
+  }
+
+  updateRoom(room: Room): Promise<void> {
+    return this.updateRooms([room])
+  }
+
+  deleteRoom(roomId: UUID): Promise<void> {
+    return this.deleteRooms([roomId])
+  }
+
+  deleteRoomsByWorldIds(worldIds: UUID[]): Promise<void> {
+    return runDetached(asVoid(mutate(this.#owner, "WorldRoomsDelete", (adapter) => adapter.deleteRoomsByWorldIds(worldIds))))
+  }
+}

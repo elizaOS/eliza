@@ -1,0 +1,106 @@
+// spec/core/messaging.md, "Story: Dispatch through a selected connector account"; spec/core/authorization.md, "Trusted ownership and deliberate grants determine resolved roles"
+import { foreign, promised, type Foreign } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import { getVerifiedRelatedEntityIds, invalidateRelatedEntityIds } from "../identity-clusters.vibe"
+import { hasAtLeastRole, type RolesWorldMetadata, resolveEntityRole } from "../roles.vibe"
+import type { UUID } from "../types/primitives.vibe"
+import type {
+  IAgentRuntime,
+  MessageConnectorManageServerAuthorization,
+  MessageConnectorManageServerDestination,
+} from "../types/runtime.vibe"
+
+function denial(
+  code: string,
+  message: string,
+  destination: MessageConnectorManageServerDestination,
+): ElizaError {
+  return new ElizaError(message, {
+    code,
+    context: {
+      source: destination.source,
+      accountId: destination.accountId,
+      serverId: destination.serverId,
+      destinationWorldId: destination.destinationWorldId,
+    },
+  })
+}
+
+export effect function authorizeManageServerDestination(
+  runtime: IAgentRuntime,
+  requesterEntityId: UUID,
+  destination: MessageConnectorManageServerDestination,
+): MessageConnectorManageServerAuthorization!(ElizaError | Foreign) {
+  const world = try foreign(() => runtime.getWorld(destination.destinationWorldId))
+  if (
+    !world
+    || world.agentId !== runtime.agentId
+    || world.messageServerId !== destination.messageServerId
+  ) {
+    throw denial(
+      "MANAGE_SERVER_DESTINATION_UNBOUND",
+      "The requested server is not bound to a durable world for this agent.",
+      destination,
+    )
+  }
+  const serverRooms = (try foreign(() => runtime.getRooms(world.id))).filter(
+    (room) =>
+      room.worldId === world.id
+      && room.source === destination.source
+      && room.serverId === destination.serverId
+      && room.messageServerId === destination.messageServerId,
+  )
+  if (serverRooms.length === 0) {
+    throw denial(
+      "MANAGE_SERVER_DESTINATION_UNBOUND",
+      "The requested server has no exact persisted room binding.",
+      destination,
+    )
+  }
+
+  invalidateRelatedEntityIds(runtime, requesterEntityId)
+  const requesterEntityIds = try getVerifiedRelatedEntityIds(runtime, requesterEntityId)
+  const [requesterRoomLists, agentRoomIds] = try.all [
+    forEach(
+      requesterEntityIds,
+      (entityId) => foreign(() => runtime.getRoomsForParticipant(entityId)),
+      { concurrency: "unbounded" },
+    ),
+    foreign(() => runtime.getRoomsForParticipant(runtime.agentId)),
+  ]
+  const agentRooms = new Set(agentRoomIds)
+  const destinationRoomIds = new Set(serverRooms.map((room) => room.id))
+
+  for (let index = 0; index < requesterEntityIds.length; index += 1) {
+    const entityId = requesterEntityIds[index]
+    if (!entityId) continue
+    const sharedDestinationRoomIds = Array.from(
+      new Set(requesterRoomLists[index] ?? []),
+    ).filter(
+      (roomId) => agentRooms.has(roomId) && destinationRoomIds.has(roomId),
+    )
+    if (sharedDestinationRoomIds.length === 0) continue
+    const role = try resolveEntityRole(
+      runtime,
+      world,
+      world.metadata as RolesWorldMetadata | undefined,
+      entityId,
+    )
+    if (!hasAtLeastRole(role, "ADMIN")) continue
+    return {
+      ...destination,
+      requesterEntityId,
+      authorizedEntityId: entityId,
+      role: role === "OWNER" ? "OWNER" : "ADMIN",
+      bindingRoomIds: sharedDestinationRoomIds,
+    }
+  }
+
+  throw denial(
+    "MANAGE_SERVER_DESTINATION_NOT_AUTHORIZED",
+    "The verified requester is not an ADMIN or OWNER member of the requested server world.",
+    destination,
+  )
+}
+
+export const authorizeManageServerDestinationPromise = promised(authorizeManageServerDestination)

@@ -1,0 +1,273 @@
+// spec/core/processingPolicy.md, "Story: Bind a host processing policy once"; spec/core/processingPolicy.md, "Each runtime has at most one immutable policy binding"; spec/core/processingPolicy.md, "A processing request is admitted only by a valid host decision"
+import { foreign, promised, thrown } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import { logger } from "../logger.vibe"
+import type { ProcessingModality } from "../runtime/model-modality.vibe"
+import { getTrajectoryContext } from "../trajectory-context.vibe"
+
+export const PROCESSING_POLICY_DENIED = "PROCESSING_POLICY_DENIED"
+
+export interface ProcessingScope {
+  readonly agentId: string
+  readonly roomId?: string
+  readonly messageId?: string
+
+  readonly stage?: string
+}
+
+export interface ProcessingModelAttempt {
+  readonly modelType: string
+
+  readonly requestedModelType: string
+  readonly modality: ProcessingModality
+  readonly provider: string
+
+  readonly handler: (...args: never[]) => unknown
+
+  readonly attempt: number
+
+  readonly reason: "primary" | "failover"
+}
+
+export interface ProcessingActionEffect {
+  readonly name: string
+
+  readonly egress: readonly string[]
+}
+
+export type ProcessingRequest =
+  & ProcessingScope
+  & (
+    | { readonly kind: "model_attempt"; readonly model: ProcessingModelAttempt }
+    | {
+      readonly kind: "action_effect"
+      readonly action: ProcessingActionEffect
+    }
+  )
+
+export type ProcessingDecision =
+  | {
+    readonly allow: true
+
+    readonly receiptId: string
+    readonly policyRevision: string
+  }
+  | {
+    readonly allow: false
+    readonly code: string
+    readonly policyRevision: string | null
+  }
+
+export interface ProcessingPolicy {
+  decide(
+    request: ProcessingRequest,
+  ): ProcessingDecision | Promise<ProcessingDecision>
+}
+
+export type ProcessingDenialReason =
+  | "policy_denied"
+  | "policy_unavailable"
+  | "decision_malformed"
+  | "modality_unknown"
+  | "destination_undeclared"
+
+export class ProcessingPolicyDeniedError extends ElizaError {
+  override readonly _tag = "ProcessingPolicyDeniedError" as const
+  override readonly name: string = "ProcessingPolicyDeniedError"
+  readonly reason: ProcessingDenialReason
+  readonly policyCode: string | undefined
+
+  constructor(args: {
+    reason: ProcessingDenialReason
+    kind: ProcessingRequest["kind"]
+    subject: string
+    policyCode?: string
+    policyRevision?: string | null
+    cause?: unknown
+  }) {
+    super(
+      `Processing policy denied ${
+        args.kind === "model_attempt" ? "model call" : "action"
+      } ${args.subject} (${args.reason})`,
+      {
+        code: PROCESSING_POLICY_DENIED,
+        cause: args.cause,
+        context: {
+          reason: args.reason,
+          kind: args.kind,
+          subject: args.subject,
+          policyCode: args.policyCode,
+          policyRevision: args.policyRevision ?? null,
+        },
+        severity: "fatal",
+      },
+    )
+    this.reason = args.reason
+    this.policyCode = args.policyCode
+  }
+}
+
+export function isProcessingPolicyDenial(error: unknown): boolean {
+  const pending: unknown[] = [error]
+  const seen = new Set<object>()
+  while (pending.length) {
+    const value = pending.pop()
+    if (typeof value !== "object" || value === null || seen.has(value)) {
+      continue
+    }
+    seen.add(value)
+    if ("code" in value && value.code === PROCESSING_POLICY_DENIED) return true
+    if ("cause" in value) pending.push(value.cause)
+    if ("lastError" in value) pending.push(value.lastError)
+    if ("errors" in value && Array.isArray(value.errors)) {
+      pending.push(...value.errors)
+    }
+  }
+  return false
+}
+
+const processingPolicyKey: unique symbol = Symbol("eliza.processing-policy")
+
+export effect function bindProcessingPolicy(
+  runtime: object,
+  policy: ProcessingPolicy,
+) {
+  if (Object.hasOwn(runtime, processingPolicyKey)) {
+    throw new ElizaError("A processing policy is already bound", {
+      code: "PROCESSING_POLICY_ALREADY_BOUND",
+      severity: "fatal",
+    })
+  }
+  if (typeof policy?.decide !== "function") {
+    throw new ElizaError("A processing policy must implement decide()", {
+      code: "PROCESSING_POLICY_INVALID",
+      severity: "fatal",
+    })
+  }
+  Object.defineProperty(runtime, processingPolicyKey, {
+    value: policy,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  })
+}
+
+export const bindProcessingPolicyOrThrow = thrown(bindProcessingPolicy)
+
+export function processingPolicyFor(
+  runtime: object,
+): ProcessingPolicy | undefined {
+  const policy = (runtime as { [processingPolicyKey]?: unknown })[
+    processingPolicyKey
+  ]
+  return policy === undefined ? undefined : (policy as ProcessingPolicy)
+}
+
+function isDecision(value: unknown): value is ProcessingDecision {
+  if (typeof value !== "object" || value === null) return false
+  const decision = value as Record<string, unknown>
+  if (decision.allow === true) {
+    return (
+      typeof decision.receiptId === "string"
+      && decision.receiptId.length > 0
+      && typeof decision.policyRevision === "string"
+      && decision.policyRevision.length > 0
+    )
+  }
+  return (
+    decision.allow === false
+    && typeof decision.code === "string"
+    && (decision.policyRevision === null
+      || typeof decision.policyRevision === "string")
+  )
+}
+
+type AdmissionInput =
+  | {
+    kind: "model_attempt"
+    model: Omit<ProcessingModelAttempt, "modality"> & {
+      modality: ProcessingModality | undefined
+    }
+  }
+  | {
+    kind: "action_effect"
+    action: { name: string; egress: readonly string[] | undefined }
+  }
+
+export effect function admitProcessing(
+  policy: ProcessingPolicy | undefined,
+  agentId: string,
+  input: AdmissionInput,
+  cause?: unknown,
+) {
+  if (!policy) return undefined
+  const subject = input.kind === "model_attempt"
+    ? `${input.model.modelType}@${input.model.provider}`
+    : input.action.name
+  const deny = (
+    reason: ProcessingDenialReason,
+    extra: {
+      policyCode?: string
+      policyRevision?: string | null
+      cause?: unknown
+    } = {},
+  ): ProcessingPolicyDeniedError => {
+    const error = new ProcessingPolicyDeniedError({
+      reason,
+      kind: input.kind,
+      subject,
+      ...extra,
+      cause: extra.cause ?? cause,
+    })
+    logger.warn(
+      {
+        src: "processing-policy",
+        agentId,
+        kind: input.kind,
+        subject,
+        reason,
+        policyCode: extra.policyCode,
+      },
+      "Processing denied before payload dispatch",
+    )
+    return error
+  }
+  const trajectory = getTrajectoryContext()
+  const scope: ProcessingScope = {
+    agentId,
+    ...(trajectory?.roomId ? { roomId: trajectory.roomId } : {}),
+    ...(trajectory?.messageId ? { messageId: trajectory.messageId } : {}),
+    ...(trajectory?.purpose ? { stage: trajectory.purpose } : {}),
+  }
+  let request: ProcessingRequest
+  if (input.kind === "model_attempt") {
+    const { modality } = input.model
+    if (modality === undefined) throw deny("modality_unknown")
+    request = {
+      ...scope,
+      kind: input.kind,
+      model: { ...input.model, modality },
+    }
+  } else {
+    const { egress } = input.action
+    if (!Array.isArray(egress)) throw deny("destination_undeclared")
+    request = {
+      ...scope,
+      kind: input.kind,
+      action: { name: input.action.name, egress: [...egress] },
+    }
+  }
+  const decision: unknown = foreign(() => policy.decide(Object.freeze(request))) catch effect (failure) => {
+    throw deny("policy_unavailable", { cause: failure.cause })
+  }
+  if (!isDecision(decision)) throw deny("decision_malformed")
+  if (!decision.allow) {
+    throw deny("policy_denied", {
+      policyCode: decision.code,
+      policyRevision: decision.policyRevision,
+    })
+  }
+  return decision
+}
+
+export const admitProcessingPromise = promised(admitProcessing)

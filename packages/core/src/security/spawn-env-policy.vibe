@@ -1,0 +1,106 @@
+// spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"
+export const BLOCKED_SPAWN_ENV_KEYS: ReadonlySet<string> = new Set([
+  "LD_PRELOAD",
+  "LD_LIBRARY_PATH",
+  "LD_AUDIT",
+  "DYLD_INSERT_LIBRARIES",
+  "DYLD_LIBRARY_PATH",
+  "DYLD_FRAMEWORK_PATH",
+  "GCONV_PATH",
+  "NLSPATH",
+  "HOSTALIASES",
+  "RES_OPTIONS",
+  "LOCALDOMAIN",
+  "PYTHONPATH",
+  "PYTHONSTARTUP",
+  "PYTHONHOME",
+  "PYTHONUSERBASE",
+  "PYTHONINSPECT",
+  "PYTHONWARNINGS",
+  "PYTHONBREAKPOINT",
+  "PERL5OPT",
+  "PERL5LIB",
+  "PERLIO_DEBUG",
+  "RUBYOPT",
+  "RUBYLIB",
+  "GEM_HOME",
+  "GEM_PATH",
+  "RUBYSHELL",
+  "BASH_ENV",
+  "SHELLOPTS",
+  "PS4",
+  "GLOBIGNORE",
+  "IFS",
+  "ZDOTDIR",
+  "JAVA_TOOL_OPTIONS",
+  "_JAVA_OPTIONS",
+  "JDK_JAVA_OPTIONS",
+  "CLASSPATH",
+  "TERMINFO",
+  "TERMINFO_DIRS",
+  "TERMCAP",
+  "GIT_SSH_COMMAND",
+  "GIT_EXTERNAL_DIFF",
+  "GIT_SSH",
+  "GIT_ASKPASS",
+  "GIT_CONFIG_COUNT",
+  "GIT_CONFIG_PARAMETERS",
+  "GIT_CONFIG_GLOBAL",
+  "GIT_CONFIG_SYSTEM",
+  "GIT_EDITOR",
+  "GIT_SEQUENCE_EDITOR",
+  "GIT_PAGER",
+  "GIT_TEMPLATE_DIR",
+  "NODE_OPTIONS",
+  "NODE_EXTRA_CA_CERTS",
+  "NODE_TLS_REJECT_UNAUTHORIZED",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "NO_PROXY",
+  "NODE_PATH",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "CURL_CA_BUNDLE",
+  "PATH",
+  "HOME",
+  "SHELL",
+])
+
+export const BLOCKED_SPAWN_ENV_PREFIXES = [
+  "NPM_CONFIG_",
+  "PNPM_",
+  "YARN_",
+  "BUN_CONFIG_",
+  "UV_",
+  "PIP_",
+  "PIPX_",
+  "PYX_",
+  "DENO_",
+  "DOCKER_",
+  "PODMAN_",
+  "BASH_FUNC_",
+  "GIT_CONFIG_KEY_",
+  "GIT_CONFIG_VALUE_",
+] as const
+
+export function isBlockedSpawnEnvKey(key: string): boolean {
+  const upper = key.toUpperCase()
+  if (BLOCKED_SPAWN_ENV_KEYS.has(upper)) {
+    return true
+  }
+  return BLOCKED_SPAWN_ENV_PREFIXES.some((prefix) => upper.startsWith(prefix))
+}
+
+export function sanitizeSpawnEnv(
+  env: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {}
+  for (const [key, value] of Object.entries(env)) {
+    if (isBlockedSpawnEnvKey(key)) {
+      continue
+    }
+    out[key] = value
+  }
+  return out
+}

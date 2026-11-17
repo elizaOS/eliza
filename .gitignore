@@ -7,13 +7,16 @@ dist/
 .lemmascript/
 _apalache-out/
 !/vibestack/gen/
-.claude/worktrees/
+/.claude/
+/CLAUDE.md
 /.codex/skills
 /.cursor/skills
 /.droid/skills
 /.factory/skills
 /.gemini/skills
 /.grok/skills
+/.grokbot/skills
+/.muse/skills
 /.t3/skills
 .turbo/
 .cache/
@@ -23,3 +26,7 @@ storybook-static/
 build/
 !spec/**/build/
 test-results/
+# A failed exploration's trace, replayed by the next check (SPEC.md, "Exploring the page").
+**/test/__traces__/bombadil/
+test/__traces__/
+.DS_Store

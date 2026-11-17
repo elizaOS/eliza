@@ -1,0 +1,118 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/authorization.md, "Role gates combine exclusions, minimum rank and all required memberships"
+import { satisfiesRoleGate } from "../access-control/role-primitives.vibe"
+import type { AgentContext, ContextGate, RoleGate, RoleGateRole } from "../types/contexts.vibe"
+import { lookupProviderCatalogContexts } from "../utils/context-catalog.vibe"
+import { normalizeContextList } from "./context-normalization.vibe"
+
+export { normalizeGateRole, roleRank, satisfiesRoleGate } from "../access-control/role-primitives.vibe"
+
+export function satisfiesContextGate(
+  activeContexts: readonly AgentContext[] | undefined,
+  gate: ContextGate | undefined,
+  userRoles?: readonly RoleGateRole[],
+): boolean {
+  if (!gate) {
+    return satisfiesRoleGate(userRoles, undefined)
+  }
+  if (!satisfiesRoleGate(userRoles, gate.roleGate)) {
+    return false
+  }
+
+  const active = new Set(normalizeContextList(activeContexts))
+
+  const denied = normalizeContextList(gate.noneOf)
+  if (denied.some((context) => active.has(context))) {
+    return false
+  }
+
+  const required = normalizeContextList(gate.allOf)
+  if (
+    required.length > 0
+    && !required.every((context) => active.has(context))
+  ) {
+    return false
+  }
+
+  const anyOf = normalizeContextList([
+    ...(gate.contexts ?? []),
+    ...(gate.anyOf ?? []),
+  ])
+  if (anyOf.length === 0) {
+    return true
+  }
+
+  return anyOf.some((context) => active.has(context))
+}
+
+export interface ContextGateCandidate {
+  contexts?: AgentContext[]
+  contextGate?: ContextGate
+  roleGate?: RoleGate
+}
+
+export function filterByContextGate<T extends ContextGateCandidate>(
+  items: readonly T[],
+  activeContexts: readonly AgentContext[] | undefined,
+  userRoles?: readonly RoleGateRole[],
+): T[] {
+  return items.filter((item) => {
+    const explicit = item.contextGate
+    const gate: ContextGate = explicit
+      ? {
+        ...explicit,
+        contexts: explicit.contexts ?? item.contexts,
+        roleGate: explicit.roleGate ?? item.roleGate,
+      }
+      : { contexts: item.contexts, roleGate: item.roleGate }
+    return satisfiesContextGate(activeContexts, gate, userRoles)
+  })
+}
+
+export interface ProviderContextGateCandidate extends ContextGateCandidate {
+  name: string
+}
+
+export function resolveProviderContextGate(
+  provider: ProviderContextGateCandidate,
+): ContextGate {
+  const explicit = provider.contextGate
+  const roleGate = explicit?.roleGate ?? provider.roleGate
+  const declaresContextTerms = (explicit?.contexts?.length ?? 0) > 0
+    || (explicit?.anyOf?.length ?? 0) > 0
+    || (explicit?.allOf?.length ?? 0) > 0
+    || (explicit?.noneOf?.length ?? 0) > 0
+
+  if (explicit && declaresContextTerms) {
+    return {
+      contexts: explicit.contexts,
+      anyOf: explicit.anyOf,
+      allOf: explicit.allOf,
+      noneOf: explicit.noneOf,
+      roleGate,
+    }
+  }
+
+  const declared = (provider.contexts ?? []).filter((context) => Boolean(context))
+  return {
+    contexts: declared.length > 0
+      ? declared
+      : lookupProviderCatalogContexts(provider.name),
+    roleGate,
+  }
+}
+
+export function filterProvidersByContextGate<
+  T extends ProviderContextGateCandidate,
+>(
+  providers: readonly T[],
+  activeContexts: readonly AgentContext[] | undefined,
+  userRoles?: readonly RoleGateRole[],
+): T[] {
+  return providers.filter((provider) =>
+    satisfiesContextGate(
+      activeContexts,
+      resolveProviderContextGate(provider),
+      userRoles,
+    )
+  )
+}

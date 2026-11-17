@@ -92,7 +92,7 @@ pure def sometimesUnconfirmed(s: GmailSend): bool = s.phase == Unknown
 > and grant I selected when the task began, or the task fails; it never
 > silently switches to another one.
 
-### Agent reads stay on the captured grant and refuse an oversize body
+### Agent reads stay on the captured grant and apply their search bounds
 
 A Google read is bound to the host epoch, actor, Google generation and
 grant captured when the task began, and never falls back to a different
@@ -103,18 +103,14 @@ more exist, and its composed query fits 2,048 code units. A later page is
 read only under the history ID of the first: a missing first history ID or a
 changed one refuses the read, unlike [the mailbox
 reads](../../inbox/reads.md), which mark such a page shifted. Later pages add
-only unseen message IDs. A message
-body over 32,000 UTF-16 code units is refused at that limit rather than
-handed to the model in part; a body within it is delivered whole. Calendar
-reads are [managed calendar reads](./calendarRead.md).
+only unseen message IDs. Calendar reads are [managed calendar
+reads](./calendarRead.md).
 
 ```quint
 type HostAuthority = { hostEpoch: int, googleEpoch: int, actor: str, grant: str }
-type GmailBodyDelivery = FullBody | HardLimitRefusal
 pure def sameGoogleGrant(captured: HostAuthority, observed: HostAuthority): bool =
   captured.hostEpoch == observed.hostEpoch and captured.actor != "" and captured.actor == observed.actor and
   captured.googleEpoch == observed.googleEpoch and captured.grant != "" and captured.grant == observed.grant
-pure def replacementBodyDelivery(units: int): GmailBodyDelivery = if (units > 32000) HardLimitRefusal else FullBody
 pure val capturedValues = Set({ hostEpoch: 1, googleEpoch: 1, actor: "owner", grant: "grant" })
 pure val observedValues = Set({ hostEpoch: 1, googleEpoch: 1, actor: "owner", grant: "grant" }, { hostEpoch: 1, googleEpoch: 2, actor: "owner", grant: "replacement" }, { hostEpoch: 2, googleEpoch: 1, actor: "another", grant: "grant" })
 pure def lawGoogleReadCannotFollowGrantChange(captured: HostAuthority, observed: HostAuthority): bool = captured.grant != observed.grant implies not(sameGoogleGrant(captured, observed))
@@ -128,8 +124,53 @@ pure val laterHistoryIdValues = Set("", "7", "8")
 pure def lawAgentCanProbeForMore(queryLength: int): bool = (queryLength >= 0 and queryLength <= 2048) implies validGmailRead(agentPageLimit + 1, queryLength)
 pure def lawOversizeSearchIsRefused(limit: int, queryLength: int): bool = (limit > agentPageLimit + 1 or queryLength > 2048) implies not(validGmailRead(limit, queryLength))
 pure def lawLaterPageCannotCrossHistory(historyId: str, laterHistoryId: str): bool = (historyId == "" or historyId != laterHistoryId) implies not(validLaterPage(historyId, laterHistoryId))
-pure def lawReadBodyOverLimitIsExplicit(units: int): bool = units > 32000 implies replacementBodyDelivery(units) == HardLimitRefusal
-pure def lawWithinBudgetBodyRemainsComplete(units: int): bool = units >= 0 and units <= 32000 implies replacementBodyDelivery(units) == FullBody
+```
+
+## Story: Read the complete body of my selected email
+
+> As the owner, I want the agent to receive the selected email's complete
+> body or an explicit size refusal.
+
+### The message body and the complete reply have independent limits
+
+A message read is scoped to the selected account and message, and the host
+finishes the current owner and grant recheck before it publishes the
+result. The body may hold at most 32,000 UTF-16 code units, and the whole
+serialized reply, metadata included, at most 262,144 UTF-8 bytes. A body
+within its own limit may still make the reply too large. The message is
+delivered whole only when both limits hold; past either one the read is
+refused at that limit rather than handed on as a prefix. The
+[Gmail wire](./gmail.md) keeps its own plain-body and HTML presentation
+rules.
+
+```quint
+type GmailBodyDelivery = FullBody | HardLimitRefusal
+pure def bodyUnitsFit(units: int): bool = units >= 0 and units <= 32000
+pure def replyBytesFit(replyBytes: int): bool = replyBytes >= 0 and replyBytes <= 262144
+pure def bodyDelivery(units: int, replyBytes: int): GmailBodyDelivery =
+  if (bodyUnitsFit(units) and replyBytesFit(replyBytes)) FullBody else HardLimitRefusal
+pure val unitsValues = Set(0, 1, 31999, 32000, 32001, 262144)
+pure val replyBytesValues = Set(0, 262143, 262144, 262145)
+pure def lawReadBodyOverLimitIsExplicit(units: int, replyBytes: int): bool = units > 32000 implies bodyDelivery(units, replyBytes) == HardLimitRefusal
+pure def lawWithinBudgetBodyRemainsComplete(units: int, replyBytes: int): bool =
+  bodyUnitsFit(units) and replyBytesFit(replyBytes) implies bodyDelivery(units, replyBytes) == FullBody
+pure def lawOversizeReplyIsRefused(units: int, replyBytes: int): bool = replyBytes > 262144 implies bodyDelivery(units, replyBytes) == HardLimitRefusal
+```
+
+### The agent receives an explicit size refusal when complete content cannot be returned
+
+A refusal at either limit reaches the agent as an explicit size refusal
+carrying no body, never as the generic host-unavailable error and never
+as part of a body. [Complete model context](../../core/context.md) owns
+keeping complete source evidence once it is admitted.
+
+```quint
+type GmailAgentMessage = CompleteMessage | HostUnavailable | ExplicitSizeRefusal
+pure def agentMessage(units: int, replyBytes: int): GmailAgentMessage =
+  if (bodyDelivery(units, replyBytes) == FullBody) CompleteMessage else ExplicitSizeRefusal
+pure def lawAgentRefusesAnyMessageThatExceedsABound(units: int, replyBytes: int): bool =
+  units > 32000 or replyBytes > 262144 implies agentMessage(units, replyBytes) == ExplicitSizeRefusal
+pure def lawSizeRefusalIsNeverHostUnavailable(units: int, replyBytes: int): bool = agentMessage(units, replyBytes) != HostUnavailable
 ```
 
 ## Story: Revoke a Google connection without waiting on calendar cleanup

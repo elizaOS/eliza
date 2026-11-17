@@ -8,6 +8,6 @@ note's operations say otherwise.
 
 | Area | Specifications |
 | --- | --- |
-| Editing and reading | [Canonical Notes client](./client.md), [search and selected reads](./read.md), [list filter](./listFilter.md) |
+| Editing and reading | [Canonical Notes client](./client.md), [draft retention](./draftRecovery.md), [search and selected reads](./read.md), [list filter](./listFilter.md) |
 | Deletion | [Trash and recording custody](./trash.md) |
 | Recordings | [Device audio and transcription windows](./audioCustody.md) |

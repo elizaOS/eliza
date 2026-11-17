@@ -1,0 +1,354 @@
+// spec/core/privacy.md, "Admission checks shutdown again after the asynchronous marker lookup"; spec/core/privacy.md, "A marker follows successful scrub and persisted pseudonym assignments"; spec/core/privacy.md, "Stop waits for lazy startup and active work before disposing the queue"; spec/core/privacyService.md, "Each marker lookup captures its own result before queue admission"; spec/core/privacyService.md, "Each processor attempt preserves its own marker and retry ownership"; spec/core/privacyService.md, "Stop captures lazy startup, flushes eligible work and finalizes its own promise"
+import { errorText } from "../utils/errors.vibe"
+import { asLegacy, Foreign, foreign, runDetached, thrownValue } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import {
+  assembleContextPack,
+  entityResolverFromStore,
+  type PiiContextSources,
+  type PiiEntityResolverStore,
+  sourcesFromRuntime,
+} from "../security/pii-context-pack.vibe"
+import { CorpusPseudonymMap, PseudonymMapIntegrityError } from "../security/pii-pseudonym-map.vibe"
+import {
+  loadPseudonymMap,
+  PseudonymMapStoreError,
+  pseudonymMapKey,
+  savePseudonymMap,
+} from "../security/pii-pseudonym-map-store.vibe"
+import { isScrubDone, markScrubDone } from "../security/pii-scrub-markers.vibe"
+import { PiiScrubFabricationError, scrubWithEscalation } from "../security/pii-scrub-seam.vibe"
+import type { PiiScrubRequestPayload } from "../types/events.vibe"
+import { EventType } from "../types/events.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { Service } from "../types/service.vibe"
+import { BatchQueue, disposeBatchQueue, startBatchQueue } from "../utils/batch-queue.vibe"
+import { rawEnv } from "../utils/environment.vibe"
+
+interface PiiScrubQueueItem {
+  content: string
+  rulesetVersion: string
+  candidateSpans: readonly string[]
+  contextPack?: string
+  pseudonymAssignments?: PiiScrubRequestPayload["pseudonymAssignments"]
+  priority: "high" | "normal" | "low"
+  inferencePriority: "interactive" | "background"
+  jobId?: string
+  itemRef?: string
+}
+
+const SRC = "plugin:basic-capabilities:service:pii-scrub"
+const SCRUB_DRAIN_TASK = "PII_SCRUB_DRAIN"
+
+type DrainStartFailure = Effect.Error<ReturnType<typeof startBatchQueue<PiiScrubQueueItem>>>
+type StopFailure = Effect.Error<ReturnType<typeof disposeBatchQueue<PiiScrubQueueItem>>>
+
+interface Scrub {
+  readonly runtime: IAgentRuntime
+  batchQueue: BatchQueue<PiiScrubQueueItem> | null
+  drainStart: Deferred.Deferred<void, DrainStartFailure> | null
+  stopping: boolean
+  stopInFlight: Deferred.Deferred<void, StopFailure> | null
+  readonly onScrubRequest: (payload: PiiScrubRequestPayload) => Promise<void>
+}
+
+function scrubState(runtime: () => IAgentRuntime): Scrub {
+  const scrub: Scrub = {
+    get runtime() {
+      return runtime()
+    },
+    batchQueue: null,
+    drainStart: null,
+    stopping: false,
+    stopInFlight: null,
+    onScrubRequest: (payload) => runDetached(asLegacy(Error, handleScrubRequest(scrub, payload))),
+  }
+  return scrub
+}
+
+function messageOf(failure: unknown): string {
+  return errorText(thrownValue(failure))
+}
+
+function initializeScrub(scrub: Scrub): void {
+  const { runtime } = scrub
+  runtime.logger.info({ src: SRC, agentId: runtime.agentId }, "Initializing PII scrub service")
+  scrub.batchQueue = new BatchQueue<PiiScrubQueueItem>({
+    name: SCRUB_DRAIN_TASK,
+    taskDescription: "PII scrub drain",
+    batchSize: 10,
+    drainIntervalMs: 100,
+    getPriority: (item) => item.priority,
+    maxParallel: 2,
+    maxRetriesAfterFailure: 3,
+    process: (item) =>
+      runDetached(asLegacy(Error, scrubItem(scrub, item), ElizaError, PiiScrubFabricationError, PseudonymMapIntegrityError, PseudonymMapStoreError)),
+    onExhausted: (item, error) => runDetached(emitFailure(scrub, item, error)),
+  })
+  runtime.registerEvent(EventType.PII_SCRUB_REQUESTED, scrub.onScrubRequest)
+}
+
+effect function startDrain(scrub: Scrub, queue: BatchQueue<PiiScrubQueueItem>) {
+  const existing = scrub.drainStart
+  if (existing) return try Deferred.await(existing)
+  const { runtime } = scrub
+  const started = try Deferred.make<void, DrainStartFailure>()
+  scrub.drainStart = started
+  const outcome = try exit(startBatchQueue(queue, runtime))
+  if (Exit.isSuccess(outcome)) {
+    runtime.logger.info({ src: SRC, agentId: runtime.agentId }, "Started PII scrub drain task")
+  } else {
+    scrub.drainStart = null
+  }
+  try Deferred.done(started, outcome)
+  return try outcome
+}
+
+effect function handleScrubRequest(scrub: Scrub, payload: PiiScrubRequestPayload) {
+  const { runtime } = scrub
+  if (scrub.stopping || !scrub.batchQueue) return
+  const content = payload.content
+  if (typeof content !== "string" || content.length === 0) {
+    runtime.logger.debug({ src: SRC, agentId: runtime.agentId }, "Empty scrub content, skipping")
+    return
+  }
+  if (typeof payload.rulesetVersion !== "string" || payload.rulesetVersion.length === 0) {
+    runtime.logger.warn(
+      { src: SRC, agentId: runtime.agentId },
+      "Scrub request missing rulesetVersion, skipping (cannot key done-marker)",
+    )
+    return
+  }
+  if (try isScrubDone(runtime, content, payload.rulesetVersion)) {
+    runtime.logger.debug(
+      { src: SRC, agentId: runtime.agentId, itemRef: payload.itemRef },
+      "Content already scrubbed under this ruleset, skipping enqueue",
+    )
+    return
+  }
+  const { candidateSpans = [] } = payload
+  const item: PiiScrubQueueItem = {
+    content,
+    rulesetVersion: payload.rulesetVersion,
+    candidateSpans,
+    contextPack: payload.contextPack,
+    pseudonymAssignments: payload.pseudonymAssignments,
+    priority: payload.priority ?? "low",
+    inferencePriority: payload.inferencePriority ?? "background",
+    jobId: payload.jobId,
+    itemRef: payload.itemRef,
+  }
+  const queue = scrub.batchQueue
+  if (scrub.stopping || !queue?.enqueue(item)) return
+  runtime.logger.debug(
+    { src: SRC, agentId: runtime.agentId, queueSize: queue.size, itemRef: payload.itemRef },
+    "Enqueued scrub item",
+  )
+  try startDrain(scrub, queue)
+}
+
+effect function scrubItem(scrub: Scrub, item: PiiScrubQueueItem) {
+  const { runtime } = scrub
+  if (try isScrubDone(runtime, item.content, item.rulesetVersion)) {
+    runtime.logger.debug(
+      { src: SRC, agentId: runtime.agentId, itemRef: item.itemRef },
+      "Item already scrubbed (drain-time idempotency hit), skipping",
+    )
+    return
+  }
+  const scrubbed = Effect.catchDefect(scrubWithContext(runtime, item), (cause) => Effect.fail(new Foreign({ cause })))
+    catch effect (failure) => {
+      runtime.logger.error(
+        {
+          src: SRC,
+          agentId: runtime.agentId,
+          itemRef: item.itemRef,
+          failClosed: thrownValue(failure) instanceof PiiScrubFabricationError,
+          error: messageOf(failure),
+        },
+        "Scrub item failed (fail-closed, not marking done)",
+      )
+      throw failure
+    }
+  const { escalated, modelId, stage } = scrubbed
+  if (stage && stage.map.size > 0) try savePseudonymMap(runtime, stage.key, stage.map.toSnapshot())
+  const confirmed = try markScrubDone(runtime, item.content, {
+    rulesetVersion: item.rulesetVersion,
+    modelId,
+    tier0Only: !escalated,
+  })
+  if (!confirmed) {
+    throw new ElizaError("Scrub completion marker write was refused", {
+      code: "PII_SCRUB_MARKER_WRITE_REFUSED",
+    })
+  }
+  foreign(() =>
+    runtime.emitEvent(EventType.PII_SCRUB_COMPLETED, {
+      runtime,
+      content: item.content,
+      rulesetVersion: item.rulesetVersion,
+      jobId: item.jobId,
+      itemRef: item.itemRef,
+      tier0Only: !escalated,
+      modelId,
+      source: "piiScrubService",
+    })
+  ) catch () =>
+    runtime.reportError(
+      "PiiScrubService.notifyCompletion",
+      new ElizaError("A scrub completion observer failed", {
+        code: "PII_SCRUB_COMPLETION_OBSERVER_FAILED",
+      }),
+    )
+}
+
+effect function scrubWithContext(runtime: IAgentRuntime, item: PiiScrubQueueItem) {
+  let contextPack = item.contextPack
+  let pseudonymAssignments = item.pseudonymAssignments
+  let candidateSpans = item.candidateSpans
+  let stage: { key: Uint8Array; map: CorpusPseudonymMap } | null = null
+  if (contextPack === undefined && pseudonymAssignments === undefined && candidateSpans.length > 0) {
+    const assembled = try assembleContextStage(runtime, item)
+    stage = assembled
+    contextPack = assembled.pack.contextPack
+    pseudonymAssignments = assembled.pack.assignments
+    if (assembled.pack.candidateSpans.length > 0) candidateSpans = assembled.pack.candidateSpans
+  }
+  const result = try scrubWithEscalation(runtime, {
+    text: item.content,
+    candidateSpans,
+    rulesetVersion: item.rulesetVersion,
+    contextPack,
+    pseudonymAssignments,
+    priority: item.inferencePriority,
+  })
+  return { escalated: result.escalated, modelId: result.escalation?.modelId ?? "tier0", stage }
+}
+
+effect function assembleContextStage(runtime: IAgentRuntime, item: PiiScrubQueueItem) {
+  const key = try pseudonymMapKey({})
+  const snapshot = try loadPseudonymMap(runtime, key)
+  const map = snapshot
+    ? try Effect.try({ try: () => CorpusPseudonymMap.fromSnapshot(snapshot), catch: (cause) => new Foreign({ cause }) })
+    : new CorpusPseudonymMap()
+  const resolveEntity = entityResolverFromRuntime(runtime)
+  const sources: PiiContextSources = typeof (runtime as { getService?: unknown }).getService === "function"
+    ? sourcesFromRuntime(runtime, resolveEntity ? { resolveEntity } : {})
+    : {}
+  const pack = try assembleContextPack(sources, {
+    chunk: item.content,
+    candidates: item.candidateSpans.map((surfaceForm) => ({ surfaceForm, kind: "unknown" })),
+    map,
+    rulesetVersion: item.rulesetVersion,
+  })
+  return { key, map, pack }
+}
+
+function entityResolverFromRuntime(runtime: IAgentRuntime): PiiContextSources["resolveEntity"] {
+  const withServices = runtime as { getService?: (name: string) => unknown }
+  if (typeof withServices.getService !== "function") return undefined
+  const kg = withServices.getService("eliza_knowledge_graph") as
+    | (Service & { getEntityStore?: () => PiiEntityResolverStore })
+    | null
+  const getStore = kg?.getEntityStore
+  if (!kg || typeof getStore !== "function") return undefined
+  return entityResolverFromStore(getStore.call(kg))
+}
+
+effect function emitFailure(scrub: Scrub, item: PiiScrubQueueItem, error: Error) {
+  const { runtime } = scrub
+  runtime.reportError("pii-scrub", error, {
+    jobId: item.jobId,
+    itemRef: item.itemRef,
+    rulesetVersion: item.rulesetVersion,
+  })
+  try foreign(() =>
+    runtime.emitEvent(EventType.PII_SCRUB_FAILED, {
+      runtime,
+      content: item.content,
+      rulesetVersion: item.rulesetVersion,
+      jobId: item.jobId,
+      itemRef: item.itemRef,
+      error: error.message,
+      source: "piiScrubService",
+    })
+  )
+}
+
+effect function stopScrub(scrub: Scrub) {
+  const existing = scrub.stopInFlight
+  if (existing) return try Deferred.await(existing)
+  scrub.stopping = true
+  const stopped = try Deferred.make<void, StopFailure>()
+  scrub.stopInFlight = stopped
+  const outcome = try exit(finishStop(scrub))
+  try Deferred.done(stopped, outcome)
+  scrub.stopInFlight = null
+  return try outcome
+}
+
+effect function finishStop(scrub: Scrub) {
+  const { runtime } = scrub
+  runtime.logger.info({ src: SRC, agentId: runtime.agentId }, "Stopping PII scrub service")
+  runtime.unregisterEvent(EventType.PII_SCRUB_REQUESTED, scrub.onScrubRequest)
+  const queue = scrub.batchQueue
+  if (!queue) return
+  const drainStart = scrub.drainStart
+  if (drainStart) {
+    Deferred.await(drainStart) catch (failure) => {
+      runtime.logger.debug(
+        { src: SRC, agentId: runtime.agentId, error: messageOf(failure) },
+        "Drain start failed while stopping",
+      )
+    }
+  }
+  const remaining = queue.size
+  const fastShutdown = rawEnv("ELIZA_FAST_SHUTDOWN") === "1"
+  if (fastShutdown) queue.clear()
+  try disposeBatchQueue(queue, runtime, { flushHighPriority: !fastShutdown })
+  runtime.logger.info({ src: SRC, agentId: runtime.agentId, remainingItems: remaining }, "Stopped")
+  scrub.batchQueue = null
+  scrub.drainStart = null
+}
+
+export class PiiScrubService extends Service {
+  static serviceType = "pii-scrub"
+  capabilityDescription =
+    "Runs the corpus PII scrub asynchronously on the core task queue (content-hash idempotent, non-blocking)"
+
+  private readonly scrub: Scrub = scrubState(() => this.runtime)
+
+  static async start(runtime: IAgentRuntime): Promise<Service> {
+    runtime.logger.info({ src: SRC, agentId: runtime.agentId }, "Starting PII scrub service")
+    const service = new PiiScrubService(runtime)
+    await service.initialize()
+    return service
+  }
+
+  async initialize(): Promise<void> {
+    initializeScrub(this.scrub)
+  }
+
+  stop(): Promise<void> {
+    return runDetached(stopScrub(this.scrub))
+  }
+
+  getQueueSize(): number {
+    return this.scrub.batchQueue?.size ?? 0
+  }
+
+  getQueueStats(): {
+    high: number
+    normal: number
+    low: number
+    total: number
+  } {
+    return this.scrub.batchQueue?.stats() ?? { high: 0, normal: 0, low: 0, total: 0 }
+  }
+
+  clearQueue(): void {
+    this.scrub.batchQueue?.clear()
+  }
+}
+
+export default PiiScrubService

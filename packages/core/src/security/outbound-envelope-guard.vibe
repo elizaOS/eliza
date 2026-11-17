@@ -1,0 +1,83 @@
+// spec/core/outboundEnvelope.md, "Story: Stop forwarding after external envelope material is detected"; spec/core/outboundEnvelope.md, "The first positive detection trips the stream and reports once"
+import { Machine, machine } from "../../gen/core__outboundEnvelope.effect.vibe"
+import type { Media } from "../types/primitives.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.vibe"
+import { containsExternalEnvelopeMaterial } from "./external-content.vibe"
+
+export const ENVELOPE_LEAK_NOTICE = "i caught an internal formatting leak and stopped it — try again."
+
+const REPORT_PREVIEW_CHARS = 400
+
+export function reportOutboundEnvelopeBlock(
+  runtime: Pick<IAgentRuntime, "reportError">,
+  blockedText: string,
+  seam: string,
+): void {
+  runtime.reportError(
+    "outbound-envelope-guard",
+    new Error(
+      "blocked outbound message carrying external-content envelope material",
+    ),
+    {
+      seam,
+      blockedPreview: truncateWellFormed(
+        toWellFormedUnicode(blockedText),
+        REPORT_PREVIEW_CHARS,
+      ),
+    },
+  )
+}
+
+export function guardOutboundEnvelopeText(
+  runtime: Pick<IAgentRuntime, "reportError">,
+  text: string,
+  seam: string,
+): string {
+  if (!text || !containsExternalEnvelopeMaterial(text)) {
+    return text
+  }
+  reportOutboundEnvelopeBlock(runtime, text, seam)
+  return ENVELOPE_LEAK_NOTICE
+}
+
+export function guardOutboundEnvelopeAttachments(
+  runtime: Pick<IAgentRuntime, "reportError">,
+  attachments: Media[],
+  seam: string,
+): Media[] {
+  const safe = attachments.filter((attachment) => {
+    const text = typeof attachment?.text === "string" ? attachment.text : ""
+    if (!text || !containsExternalEnvelopeMaterial(text)) {
+      return true
+    }
+    reportOutboundEnvelopeBlock(runtime, text, seam)
+    return false
+  })
+  return safe.length === attachments.length ? attachments : safe
+}
+
+effect function envelopeLatch() {
+  provide machine() {
+    return try Machine
+  }
+}
+
+export function createOutboundEnvelopeStreamLatch(
+  runtime: Pick<IAgentRuntime, "reportError">,
+  seam: string,
+): (accumulated: string) => boolean {
+  const latch = Effect.runSync(envelopeLatch())
+  return (accumulated: string): boolean =>
+    Effect.runSync(orDie(effect {
+      if ((try latch.get()).tripped) {
+        return true
+      }
+      const found = Boolean(accumulated) && containsExternalEnvelopeMaterial(accumulated)
+      const { tripped } = try latch.send({ type: "observe", accumulatedContainsEnvelope: found })
+      if (found) {
+        reportOutboundEnvelopeBlock(runtime, accumulated, seam)
+      }
+      return tripped
+    }))
+}

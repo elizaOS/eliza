@@ -16,10 +16,17 @@ attempt is observable; the fourth failure terminates the eager operation.
 
 ### Backoff starts only after rejection and uses the declared delay sequence
 
-A ready job has made fewer than four acquisition
-attempts. A job awaiting the result has at least one more acquired attempt
-than previously observed failures. Initial admission starts with zero attempts and only a backoff
-continuation may make a previous attempt ready to retry. Unique eager job IDs keep wakeup on the one observed job and its captured deadline.
+Discovered by the proof: a job awaiting its result has at least one more
+acquired attempt than observed failures. Unique eager job IDs keep wakeup
+on the observed job and its captured deadline.
+
+A ready job has not yet made its initial acquisition attempt. Initial
+admission starts with zero attempts, and its first call still happens if
+shutdown has already begun; the acquisition owner then returns absence.
+An expired backoff continuation checks shutdown and captures the next
+acquisition in one synchronous step. A stopped continuation leaves the
+acquisition state and call counter unchanged. A live continuation captures
+one call and moves directly to waiting, without an intermediate ready state.
 
 The host observes elapsed time on a monotonic clock. Every backoff has
 its own deadline and can expire after any earlier clock observation.
@@ -31,17 +38,18 @@ type EagerRequest = {id: int, serviceType: str, phase: EagerPhase, attempts: int
 type EagerServices = {services: I::ServiceInstances, jobs: List[EagerRequest], now: int, nextCall: int}
 pure val initial: EagerServices = {services: I::initial, jobs: List(), now: 0, nextCall: 1}
 pure val jobIdValues = Set(1, 2)
-pure val elapsedMsValues = Set(0, 1, 1999, 2000, 5000, 10000)
+pure val elapsedMsValues = Set(-1, 0, 1, 1999, 2000, 5000, 10000)
 pure val missingEagerJob: EagerRequest = {id: 0, serviceType: "", phase: EagerDone, attempts: 0, callId: 0, wakeAt: 0, failures: 0}
 pure def eagerJob(s: EagerServices, jobId: int): EagerRequest = s.jobs.select(j => j.id == jobId).nthOr(0, missingEagerJob)
 pure def retryDelay(attempts: int): int = if (attempts == 1) 2000 else if (attempts == 2) 5000 else if (attempts == 3) 10000 else 0
 pure def canStartEager(s: EagerServices, jobId: int, serviceType: str): bool = jobId > 0 and not(s.jobs.some(j => j.id == jobId))
 pure def startEager(s: EagerServices, jobId: int, serviceType: str): EagerServices = { ...s, jobs: s.jobs.append({id: jobId, serviceType: serviceType, phase: EagerReady, attempts: 0, callId: 0, wakeAt: 0, failures: 0}) }
 pure def canAcquireEager(s: EagerServices, jobId: int): bool = eagerJob(s, jobId).phase == EagerReady and I::canAcquireServices(s.services, s.nextCall, eagerJob(s, jobId).serviceType)
-pure def acquireEager(s: EagerServices, jobId: int): EagerServices = {
+pure def recordEagerAttempt(jobId: int, s: EagerServices): EagerServices = {
   val j = eagerJob(s, jobId)
   { ...s, services: I::acquireServices(s.services, s.nextCall, j.serviceType), jobs: s.jobs.listMap(x => if (x.id == jobId) { ...x, phase: EagerWaiting, attempts: x.attempts + 1, callId: s.nextCall } else x), nextCall: s.nextCall + 1 }
 }
+pure def acquireEager(s: EagerServices, jobId: int): EagerServices = recordEagerAttempt(jobId, s)
 pure def canSettleAcquire(s: EagerServices, jobId: int): bool = eagerJob(s, jobId).phase == EagerWaiting and I::canSettleAcquire(s.services, eagerJob(s, jobId).callId)
 pure def settleAcquire(s: EagerServices, jobId: int): EagerServices = { ...s, services: I::settleAcquire(s.services, eagerJob(s, jobId).callId) }
 pure def canObserveAcquire(s: EagerServices, jobId: int): bool = eagerJob(s, jobId).phase == EagerWaiting and I::acquireCall(s.services, eagerJob(s, jobId).callId).status != I::AcquireWaiting and I::acquireCall(s.services, eagerJob(s, jobId).callId).status != I::AcquireWaitingInit
@@ -51,18 +59,24 @@ pure def observeAcquire(s: EagerServices, jobId: int): EagerServices = {
   val retry = failed and j.attempts < 4 and not(s.services.stopped)
   { ...s, jobs: s.jobs.listMap(x => if (x.id == jobId) { ...x, phase: if (retry) EagerBackoff else EagerDone, wakeAt: if (retry) s.now + retryDelay(x.attempts) else 0, failures: x.failures + (if (failed) 1 else 0) } else x) }
 }
-pure def canWakeEager(s: EagerServices, jobId: int): bool = eagerJob(s, jobId).phase == EagerBackoff and s.now >= eagerJob(s, jobId).wakeAt
-pure def wakeEager(s: EagerServices, jobId: int): EagerServices = { ...s, jobs: s.jobs.listMap(j => if (j.id == jobId) { ...j, phase: if (s.services.stopped) EagerDone else EagerReady } else j) }
+pure def canWakeEager(s: EagerServices, jobId: int): bool = eagerJob(s, jobId).phase == EagerBackoff and s.now >= eagerJob(s, jobId).wakeAt and (s.services.stopped or I::canAcquireServices(s.services, s.nextCall, eagerJob(s, jobId).serviceType))
+pure def wakeEager(s: EagerServices, jobId: int): EagerServices =
+  if (s.services.stopped) { ...s, jobs: s.jobs.listMap(j => if (j.id == jobId) { ...j, phase: EagerDone } else j) }
+  else recordEagerAttempt(jobId, s)
 pure def canAdvanceClock(s: EagerServices, elapsedMs: int): bool = elapsedMs >= 0
 pure def advanceClock(s: EagerServices, elapsedMs: int): EagerServices = { ...s, now: s.now + elapsedMs }
-pure def alwaysEagerAttemptLimit(s: EagerServices): bool = s.jobs.every(j => j.attempts >= 0 and j.attempts <= 4 and j.failures >= 0 and j.failures <= j.attempts and (j.phase == EagerBackoff implies j.attempts > 0 and j.attempts < 4) and (j.phase == EagerReady implies j.attempts < 4) and (j.phase == EagerWaiting implies j.failures < j.attempts))
+pure def alwaysEagerAttemptLimit(s: EagerServices): bool = s.jobs.every(j => j.attempts >= 0 and j.attempts <= 4 and j.failures >= 0 and j.failures <= j.attempts and (j.phase == EagerBackoff implies j.attempts > 0 and j.attempts < 4) and (j.phase == EagerReady implies j.attempts == 0 and j.callId == 0 and j.failures == 0) and (j.phase == EagerWaiting implies j.failures < j.attempts))
 pure def alwaysEagerJobsUnique(s: EagerServices): bool = s.jobs.every(j => j.id > 0 and s.jobs.select(other => other.id == j.id).length() == 1)
 pure def stepNoEarlyWake(before: EagerServices, via: str, after: EagerServices): bool = via == "wakeEager" implies before.jobs.every(j => j.phase == EagerBackoff and before.now < j.wakeAt implies after.jobs.includes(j))
+pure def lawStoppedWakeCapturesNoAcquisition(s: EagerServices, jobId: int): bool =
+  s.services.stopped implies wakeEager(s, jobId).services == s.services and wakeEager(s, jobId).nextCall == s.nextCall
+pure def lawLiveWakeCapturesOneAcquisition(s: EagerServices, jobId: int): bool =
+  not(s.services.stopped) implies wakeEager(s, jobId) == recordEagerAttempt(jobId, s)
 pure val weight_acquireEager = 16
 pure val weight_settleAcquire = 24
 pure val weight_observeAcquire = 24
 pure val weight_wakeEager = 24
-pure val weight_advanceClock = 4
+pure val weight_advanceClock = 16
 pure val weight_startEager = 8
 pure def sometimesSecondAttemptAfterDelay(s: EagerServices): bool = s.jobs.some(j => j.attempts == 2 and s.now >= 2000)
 pure def sometimesStoppedDuringBackoff(s: EagerServices): bool = s.services.stopped and s.jobs.some(j => j.phase == EagerBackoff)
@@ -112,7 +126,7 @@ pure def alwaysSharedServiceStateValid(s: EagerServices): bool = I::alwaysTypeEn
 pure val weight_failStart = 24
 pure val weight_registerClass = 8
 pure val weight_finishInitialization = 8
-pure val weight_returnInstance = 6
+pure val weight_returnInstance = 8
 pure val weight_invokeObjectStop = 8
 pure val weight_settleObjectStop = 8
 pure val weight_finishLateStart = 8

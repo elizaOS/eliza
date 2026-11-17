@@ -1,0 +1,274 @@
+// spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"
+import { failingAs, foreign, promised, type Foreign } from "./edge.vibe"
+import { createLogger } from "./logger.vibe"
+import type { Agent, Character } from "./types/agent.vibe"
+import type { IDatabaseAdapter } from "./types/database.vibe"
+import { ModelType } from "./types/model.vibe"
+import type { JsonValue, UUID } from "./types/primitives.vibe"
+import { ChannelType } from "./types/primitives.vibe"
+import type { IAgentRuntime } from "./types/runtime.vibe"
+import { isExactTrueEnvFlag } from "./utils/env.vibe"
+import { rawEnv } from "./utils/environment.vibe"
+
+const logger = createLogger({ namespace: "provisioning", level: "info" })
+
+export error ProvisioningUnsupported { message: string }
+export error AgentMissing { message: string }
+export error AgentEntityMissing { message: string }
+
+export interface ProvisionAgentOptions {
+  runMigrations?: boolean
+}
+
+type AgentProvisioningRuntime = IAgentRuntime & {
+  ensureAgentExists(agent: Partial<Agent>): Promise<Agent | null>
+}
+
+function hasAgentProvisioningRuntime(
+  runtime: IAgentRuntime,
+): runtime is AgentProvisioningRuntime {
+  return (
+    "ensureAgentExists" in runtime
+    && typeof runtime.ensureAgentExists === "function"
+  )
+}
+
+export effect function runPluginMigrations(runtime: IAgentRuntime) {
+  const logger = runtime.logger
+  const adapter = runtime.adapter
+  if (!adapter) {
+    logger.warn(
+      { src: "provisioning", agentId: runtime.agentId },
+      "Database adapter not found, skipping plugin migrations",
+    )
+    return
+  }
+  if (typeof adapter.runPluginMigrations !== "function") {
+    logger.warn(
+      { src: "provisioning", agentId: runtime.agentId },
+      "Database adapter does not support plugin migrations",
+    )
+    return
+  }
+
+  const pluginsWithSchemas = runtime.plugins.flatMap((p) => {
+    if (!p.schema) return []
+    const normalizedSchema: Record<string, JsonValue> = {}
+    for (const [key, value] of Object.entries(p.schema)) {
+      if (
+        typeof value === "string"
+        || typeof value === "number"
+        || typeof value === "boolean"
+        || typeof value === "object"
+      ) {
+        normalizedSchema[key] = value as JsonValue
+      }
+    }
+    return [{ name: p.name, schema: normalizedSchema }]
+  })
+
+  if (pluginsWithSchemas.length === 0) {
+    logger.debug(
+      { src: "provisioning", agentId: runtime.agentId },
+      "No plugins with schemas, skipping migrations",
+    )
+    return
+  }
+
+  const isProduction = rawEnv("NODE_ENV") === "production"
+  const forceDestructive = isExactTrueEnvFlag(rawEnv("ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS"))
+
+  try foreign(() =>
+    adapter.runPluginMigrations!(pluginsWithSchemas, {
+      verbose: !isProduction,
+      force: forceDestructive,
+      dryRun: false,
+    })
+  )
+  logger.debug(
+    { src: "provisioning", agentId: runtime.agentId },
+    "Plugin migrations completed",
+  )
+}
+
+export const runPluginMigrationsPromise = promised(runPluginMigrations)
+
+export effect function ensureAgentInfrastructure(runtime: IAgentRuntime) {
+  const adapter = runtime.adapter
+  const agentId = runtime.agentId
+  const character = runtime.character
+
+  if (!hasAgentProvisioningRuntime(runtime)) {
+    throw new ProvisioningUnsupported({ message: "Runtime does not support agent provisioning" })
+  }
+
+  const existingAgent = try foreign(() => runtime.ensureAgentExists({ ...character, id: agentId } as Partial<Agent>))
+  if (!existingAgent) {
+    throw new AgentMissing({ message: `Agent ${agentId} does not exist in database after ensureAgentExists call` })
+  }
+
+  const entities = try foreign(() => adapter.getEntitiesByIds([agentId]))
+  if (!entities[0]) {
+    try foreign(() => adapter.createEntities([
+      {
+        id: agentId,
+        names: [character.name ?? "Agent"],
+        metadata: {},
+        agentId: existingAgent.id ?? agentId,
+      },
+    ]))
+    const refetched = try foreign(() => adapter.getEntitiesByIds([agentId]))
+    if (!refetched[0]) {
+      throw new AgentEntityMissing({ message: `Agent entity not found for ${agentId}` })
+    }
+  }
+
+  const rooms = try foreign(() => adapter.getRoomsByIds([agentId]))
+  if (rooms.length === 0) {
+    try foreign(() => adapter.createRooms([
+      {
+        id: agentId,
+        name: character.name ?? "Agent",
+        source: "elizaos",
+        type: ChannelType.SELF,
+        channelId: agentId,
+        messageServerId: agentId,
+        worldId: agentId,
+      },
+    ]))
+  }
+
+  const participantResults = try foreign(() => adapter.getParticipantsForRooms([agentId]))
+  const participants = participantResults[0]?.entityIds ?? []
+  if (!participants.includes(agentId)) {
+    try foreign(() => adapter.createRoomParticipants([agentId], agentId))
+  }
+}
+
+export const ensureAgentInfrastructurePromise = promised(failingAs(Error, ensureAgentInfrastructure))
+
+export effect function ensureEmbeddingDimension(runtime: IAgentRuntime) {
+  const adapter = runtime.adapter
+  const model = runtime.getModel(ModelType.TEXT_EMBEDDING)
+  if (!model) {
+    logger.debug(
+      { src: "provisioning", agentId: runtime.agentId },
+      "No TEXT_EMBEDDING model registered, skipping embedding dimension",
+    )
+    return
+  }
+
+  const parseDim = (value: unknown): number =>
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+      ? /^\+?\d+$/.test(value.trim())
+        ? Number(value.trim())
+        : NaN
+      : NaN
+  const singular = parseDim(runtime.getSetting("EMBEDDING_DIMENSION"))
+  const plural = parseDim(runtime.getSetting("EMBEDDING_DIMENSIONS"))
+  const singularValid = Number.isFinite(singular) && singular > 0
+  const pluralValid = Number.isFinite(plural) && plural > 0
+  if (singularValid && pluralValid && singular !== plural) {
+    logger.warn(
+      { src: "provisioning", agentId: runtime.agentId, singular, plural },
+      `EMBEDDING_DIMENSION (${singular}) and EMBEDDING_DIMENSIONS (${plural}) conflict — `
+        + `the DB vector column and the runtime embedder must agree, or memory storage/search will break. `
+        + `Using EMBEDDING_DIMENSIONS=${plural} (the runtime embedder reads the plural key); `
+        + `set both to the same value (e.g. 1536 for OpenAI text-embedding-3-small, 384 for gte-small).`,
+    )
+  }
+
+  const dimension = pluralValid ? plural : singular
+  if (!Number.isFinite(dimension) || dimension <= 0) {
+    logger.debug(
+      { src: "provisioning", agentId: runtime.agentId },
+      "EMBEDDING_DIMENSION / EMBEDDING_DIMENSIONS not set or invalid, skipping (set it in character settings to avoid LLM detection)",
+    )
+    return
+  }
+
+  try foreign(() => adapter.ensureEmbeddingDimension(dimension))
+  logger.debug(
+    { src: "provisioning", agentId: runtime.agentId, dimension },
+    "Embedding dimension set",
+  )
+}
+
+export const ensureEmbeddingDimensionPromise = promised(ensureEmbeddingDimension)
+
+export effect function provisionAgent(
+  runtime: IAgentRuntime,
+  options: ProvisionAgentOptions = {},
+) {
+  const { runMigrations = true } = options
+
+  if (runMigrations) {
+    try runPluginMigrations(runtime)
+  }
+  try ensureAgentInfrastructure(runtime)
+  try ensureEmbeddingDimension(runtime)
+}
+
+export const provisionAgentPromise = promised(failingAs(Error, provisionAgent))
+
+export effect function mergeDbSettings(
+  character: Character,
+  adapter: IDatabaseAdapter,
+  agentId: UUID,
+): Character!Foreign {
+  const agents = try foreign(() => adapter.getAgentsByIds([agentId]))
+  const existingAgent = agents[0] ?? null
+  if (!existingAgent?.settings) {
+    return character
+  }
+
+  const mergedSettings = {
+    ...existingAgent.settings,
+    ...character.settings,
+  }
+
+  const dbSecrets = existingAgent.secrets && typeof existingAgent.secrets === "object"
+    ? existingAgent.secrets
+    : {}
+  const dbSettingsSecrets = existingAgent.settings.secrets
+      && typeof existingAgent.settings.secrets === "object"
+    ? existingAgent.settings.secrets
+    : {}
+  const characterSecrets = character.secrets && typeof character.secrets === "object"
+    ? character.secrets
+    : {}
+  const characterSettingsSecrets = character.settings?.secrets
+      && typeof character.settings.secrets === "object"
+    ? character.settings.secrets
+    : {}
+  const mergedSecrets = {
+    ...dbSecrets,
+    ...dbSettingsSecrets,
+    ...characterSecrets,
+    ...characterSettingsSecrets,
+  }
+
+  if (Object.keys(mergedSecrets).length > 0) {
+    const filtered: Record<string, string> = {}
+    for (const [key, value] of Object.entries(mergedSecrets)) {
+      if (value !== null && value !== undefined) {
+        filtered[key] = String(value)
+      }
+    }
+    if (Object.keys(filtered).length > 0) {
+      mergedSettings.secrets = filtered
+    }
+  }
+
+  return {
+    ...character,
+    settings: mergedSettings,
+    secrets: Object.keys(mergedSecrets).length > 0
+      ? (mergedSettings.secrets as Record<string, string>)
+      : character.secrets,
+  }
+}
+
+export const mergeDbSettingsPromise = promised(mergeDbSettings)

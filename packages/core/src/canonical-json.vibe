@@ -1,0 +1,277 @@
+// spec/core/canonicalJson.md, "Every traversal reserves its work before inspecting a new container"; spec/core/canonicalJson.md, "Object invisibles are omitted while array invisibles become null"
+
+module walk {
+  import { MAX_RESTORABLE_AGENT_BACKUP_BYTES } from "./agent-backup-limits.vibe"
+  import { ElizaError } from "./errors.vibe"
+
+  export const CANONICAL_JSON_UNBOUNDED = "CANONICAL_JSON_UNBOUNDED"
+
+  export type CanonicalJsonUnbounded = {
+    /** @throws {unknown} */
+    (context: Record<string, unknown>, cause?: unknown): never
+  }
+
+  /** @throws {ElizaError} */
+  export function failCanonicalJsonUnbounded(context: Record<string, unknown>, cause?: unknown): never {
+    throw new ElizaError("Payload exceeds the canonical JSON walk budget", {
+      code: CANONICAL_JSON_UNBOUNDED,
+      cause,
+      context,
+      severity: "fatal",
+    })
+  }
+
+  export type CanonicalJsonOptions = {
+    maxDepth: number
+
+    maxNodes: number
+
+    maxOutputChars?: number
+
+    sparseArrayHoles: "omit" | "null"
+
+    onUnbounded: CanonicalJsonUnbounded
+  }
+
+  export const AGENT_BACKUP_CANONICAL_JSON: CanonicalJsonOptions = {
+    maxDepth: 64,
+    maxNodes: MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+    maxOutputChars: MAX_RESTORABLE_AGENT_BACKUP_BYTES,
+    sparseArrayHoles: "null",
+    onUnbounded: failCanonicalJsonUnbounded,
+  }
+
+  type CanonicalWalkContext = {
+    visits: number
+    emitted: number
+    visiting: WeakSet<object>
+    options: CanonicalJsonOptions
+  }
+
+  function newWalkContext(options: CanonicalJsonOptions): CanonicalWalkContext {
+    return { visits: 0, emitted: 0, visiting: new WeakSet<object>(), options }
+  }
+
+  function reserveVisits(ctx: CanonicalWalkContext, count: number): void {
+    if (count > ctx.options.maxNodes - ctx.visits) {
+      ctx.options.onUnbounded({
+        visits: ctx.visits + count,
+        maxNodes: ctx.options.maxNodes,
+      })
+    }
+    ctx.visits += count
+  }
+
+  function reserveOutput(ctx: CanonicalWalkContext, count: number): void {
+    const max = ctx.options.maxOutputChars
+    if (max === undefined) return
+    if (count > max - ctx.emitted) {
+      ctx.options.onUnbounded({
+        emitted: ctx.emitted + count,
+        maxOutputChars: max,
+      })
+    }
+    ctx.emitted += count
+  }
+
+  function emit(ctx: CanonicalWalkContext, text: string): string {
+    reserveOutput(ctx, text.length)
+    return text
+  }
+
+  function enterContainer(value: object, ctx: CanonicalWalkContext): void {
+    if (ctx.visiting.has(value)) ctx.options.onUnbounded({ cycle: true })
+    ctx.visiting.add(value)
+  }
+
+  function inspect<T>(
+    ctx: CanonicalWalkContext,
+    operation: string,
+    read: () => T,
+  ): T {
+    try {
+      return read()
+    } catch (cause) {
+      ctx.options.onUnbounded({ inspection: operation }, cause)
+    }
+  }
+
+  function isCanonicalArray(value: object, ctx: CanonicalWalkContext): boolean {
+    return inspect(ctx, "isArray", () => Array.isArray(value))
+  }
+
+  function ownArrayLengthWith(value: object, ctx: CanonicalWalkContext): number {
+    const descriptor = inspect(ctx, "getOwnPropertyDescriptor", () => Object.getOwnPropertyDescriptor(value, "length"))
+    if (descriptor && !("value" in descriptor)) {
+      ctx.options.onUnbounded({ accessor: true, property: "length" })
+    }
+    if (
+      !descriptor
+      || typeof descriptor.value !== "number"
+      || !Number.isSafeInteger(descriptor.value)
+      || descriptor.value < 0
+    ) {
+      ctx.options.onUnbounded({ invalidArrayLength: true })
+    }
+    return descriptor.value as number
+  }
+
+  /** @throws {unknown} */
+  export function readCanonicalArrayLength(
+    value: object,
+    options: CanonicalJsonOptions,
+  ): number {
+    return ownArrayLengthWith(value, newWalkContext(options))
+  }
+
+  /** @throws {unknown} */
+  export function isCanonicalJsonArray(
+    value: object,
+    options: CanonicalJsonOptions,
+  ): boolean {
+    return isCanonicalArray(value, newWalkContext(options))
+  }
+
+  function isJsonInvisible(value: unknown): boolean {
+    return (
+      value === undefined
+      || typeof value === "function"
+      || typeof value === "symbol"
+    )
+  }
+
+  type DataSnapshot = { key: string; value: unknown }
+
+  function ownEnumerableDataSnapshot(
+    value: object,
+    ctx: CanonicalWalkContext,
+  ): DataSnapshot[] {
+    const keys = inspect(ctx, "ownKeys", () => Reflect.ownKeys(value))
+    reserveVisits(ctx, keys.length)
+    const snapshot: DataSnapshot[] = []
+    for (const key of keys) {
+      if (typeof key !== "string") continue
+      const descriptor = inspect(ctx, "getOwnPropertyDescriptor", () => Object.getOwnPropertyDescriptor(value, key))
+      if (!descriptor?.enumerable) continue
+      if (!("value" in descriptor)) {
+        ctx.options.onUnbounded({ accessor: true, container: "object" })
+      }
+      if (isJsonInvisible(descriptor.value)) continue
+      snapshot.push({ key, value: descriptor.value })
+    }
+    snapshot.sort((left, right) => left.key < right.key ? -1 : left.key > right.key ? 1 : 0)
+    return snapshot
+  }
+
+  function canonicalWalk(
+    value: unknown,
+    depth: number,
+    ctx: CanonicalWalkContext,
+    visitAlreadyReserved = false,
+    knownArrayLength?: number,
+  ): string {
+    if (depth > ctx.options.maxDepth) {
+      ctx.options.onUnbounded({ depth, max: ctx.options.maxDepth })
+    }
+    if (!visitAlreadyReserved) reserveVisits(ctx, 1)
+    if (value === null || typeof value !== "object") {
+      if (isJsonInvisible(value)) return emit(ctx, "null")
+
+      if (typeof value === "bigint") {
+        ctx.options.onUnbounded({ bigint: true })
+      }
+      return emit(ctx, JSON.stringify(value))
+    }
+
+    enterContainer(value, ctx)
+    try {
+      if (isCanonicalArray(value, ctx)) {
+        const length = knownArrayLength ?? ownArrayLengthWith(value, ctx)
+        reserveVisits(ctx, length)
+
+        let body = ""
+        for (let index = 0; index < length; index += 1) {
+          if (index > 0) body += emit(ctx, ",")
+          const descriptor = inspect(
+            ctx,
+            "getOwnPropertyDescriptor",
+            () => Object.getOwnPropertyDescriptor(value, String(index)),
+          )
+          if (!descriptor) {
+            if (ctx.options.sparseArrayHoles === "null") {
+              body += emit(ctx, "null")
+            }
+            continue
+          }
+          if (!("value" in descriptor)) {
+            ctx.options.onUnbounded({
+              accessor: true,
+              container: "array",
+              index,
+            })
+          }
+          body += canonicalWalk(descriptor.value, depth + 1, ctx, true)
+        }
+        return `${emit(ctx, "[")}${body}${emit(ctx, "]")}`
+      }
+
+      const snapshot = ownEnumerableDataSnapshot(value, ctx)
+      let body = ""
+      for (let index = 0; index < snapshot.length; index += 1) {
+        if (index > 0) body += emit(ctx, ",")
+        const entry = snapshot[index] as DataSnapshot
+        body += emit(ctx, `${JSON.stringify(entry.key)}:`)
+        body += canonicalWalk(entry.value, depth + 1, ctx, true)
+      }
+      return `${emit(ctx, "{")}${body}${emit(ctx, "}")}`
+    } finally {
+      ctx.visiting.delete(value)
+    }
+  }
+
+  /** @throws {unknown} */
+  export function canonicalJsonString(
+    value: unknown,
+    options: CanonicalJsonOptions,
+    knownArrayLength?: number,
+  ): string {
+    return canonicalWalk(
+      value,
+      0,
+      newWalkContext(options),
+      false,
+      knownArrayLength,
+    )
+  }
+
+  /** @throws {unknown} */
+  export function stableJsonString(
+    value: unknown,
+    options: CanonicalJsonOptions,
+  ): string | undefined {
+    if (isJsonInvisible(value)) return undefined
+    return canonicalJsonString(value, options)
+  }
+}
+import {
+  AGENT_BACKUP_CANONICAL_JSON,
+  CANONICAL_JSON_UNBOUNDED,
+  canonicalJsonString,
+  failCanonicalJsonUnbounded,
+  isCanonicalJsonArray,
+  readCanonicalArrayLength,
+  stableJsonString,
+  type CanonicalJsonOptions,
+  type CanonicalJsonUnbounded,
+} from walk
+export {
+  AGENT_BACKUP_CANONICAL_JSON,
+  CANONICAL_JSON_UNBOUNDED,
+  canonicalJsonString,
+  failCanonicalJsonUnbounded,
+  isCanonicalJsonArray,
+  readCanonicalArrayLength,
+  stableJsonString,
+  type CanonicalJsonOptions,
+  type CanonicalJsonUnbounded,
+}

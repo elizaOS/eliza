@@ -1,0 +1,24 @@
+// spec/core/valueGuards.md, "Truthy vocabulary wins an overlapping normalized boolean match"
+import { defaultFalsy, defaultTruthy, parseNormalizedBoolean } from "../../gen/core__valueGuards.effect.vibe"
+
+export type BooleanParseOptions = {
+  truthy?: string[]
+
+  falsy?: string[]
+}
+
+const normalize = (text: string): string => text.trim().toLowerCase()
+
+export function parseBooleanValue(
+  value: unknown,
+  options: BooleanParseOptions = {},
+): boolean | undefined {
+  if (typeof value === "boolean") return value
+  if (typeof value !== "string") return undefined
+  const result = parseNormalizedBoolean(
+    normalize(value),
+    options.truthy?.map(normalize) ?? defaultTruthy,
+    options.falsy?.map(normalize) ?? defaultFalsy,
+  )
+  return result === "BooleanAbsent" ? undefined : result === "BooleanTrue"
+}

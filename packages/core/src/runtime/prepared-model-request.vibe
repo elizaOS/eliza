@@ -1,0 +1,360 @@
+// spec/core/preparedRequests.md, "A request guard captures its exact admitted serialization"; spec/core/preparedRequests.md, "Only the admitted body can supply its input token count"; spec/core/preparedRequests.md, "Rejection authority uses explicit limits and reservation uses the original output argument"; spec/core/preparedRequests.md, "Every dispatched attempt rechecks bytes counts and lease authority"
+import { foreignSync, Foreign, thrown } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import { getModelAttemptLease, type ModelAttemptLease } from "../streaming-context.vibe"
+import { isPlainObject } from "../utils/type-guards.vibe"
+import { DEFAULT_CONTEXT_WINDOW_TOKENS, DEFAULT_INPUT_RESERVE_TOKENS, utf8ByteLength } from "./model-input-budget.vibe"
+
+export interface PreparedModelRequestBudget {
+  provider: string
+  model: string
+  inputTokens: number
+  contextWindowTokens: number
+  outputReserveTokens: number
+  dispatchThresholdTokens: number
+  countSource: "provider-tokenizer" | "tokenizer-estimate" | "utf8-upper-bound"
+  rejectionAuthority:
+    | "exact-provider-tokenizer-with-explicit-limits"
+    | "diagnostic-only"
+  resolvedModelKey: string | null
+}
+
+export interface PreparedModelRequestGuard {
+  readonly budget: Readonly<PreparedModelRequestBudget>
+  readonly attempts: number
+
+  assertUnchanged(): void
+
+  assertBeforeAttempt(): void
+}
+
+export interface CreatePreparedModelRequestGuardArgs {
+  provider: string
+  model: string
+
+  route?: string
+
+  attemptLease?: ModelAttemptLease | null
+
+  projectRequest?: () => unknown
+
+  serializeRequest?: () => string
+
+  contextWindowTokens?: number
+
+  outputReserveTokens?: number
+
+  countInputTokens?: (serializedRequest: string) => number
+
+  countInputTokensIsExact?: true
+}
+
+effect function assertFinitePositiveInteger(
+  value: number | undefined,
+  field: string,
+): (number | undefined)!ElizaError {
+  if (value === undefined) return undefined
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new ElizaError(`Prepared model request ${field} must be positive`, {
+      code: "MODEL_PREPARED_REQUEST_INVALID_BUDGET",
+      context: { field },
+    })
+  }
+  return Math.floor(value)
+}
+
+function preparedJsonGraphViolation(value: unknown): ElizaError | undefined {
+  const active = new WeakSet<object>()
+  const visit = (candidate: unknown, location: string): ElizaError | undefined => {
+    if (
+      candidate === null
+      || typeof candidate === "string"
+      || typeof candidate === "boolean"
+    ) {
+      return undefined
+    }
+    if (typeof candidate === "number") {
+      if (Number.isFinite(candidate)) return undefined
+      return new ElizaError(
+        "Prepared model request contains a non-finite number",
+        {
+          code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+          context: { location },
+        },
+      )
+    }
+    if (candidate === undefined) return undefined
+    if (typeof candidate !== "object") {
+      return new ElizaError("Prepared model request contains a non-JSON value", {
+        code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+        context: { location, valueType: typeof candidate },
+      })
+    }
+    if (active.has(candidate)) {
+      return new ElizaError("Prepared model request contains a cycle", {
+        code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+        context: { location },
+      })
+    }
+    if (!Array.isArray(candidate) && !isPlainObject(candidate)) {
+      return new ElizaError("Prepared model request contains an opaque object", {
+        code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+        context: {
+          location,
+          constructor: candidate.constructor?.name ?? "unknown",
+        },
+      })
+    }
+    active.add(candidate)
+    if (Array.isArray(candidate)) {
+      for (let index = 0; index < candidate.length; index += 1) {
+        const violation = visit(candidate[index], `${location}[${index}]`)
+        if (violation) return violation
+      }
+    } else {
+      for (const key of Object.keys(candidate)) {
+        const descriptor = Object.getOwnPropertyDescriptor(candidate, key)
+        if (!descriptor || descriptor.get || descriptor.set) {
+          return new ElizaError(
+            "Prepared model request contains an accessor property",
+            {
+              code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+              context: { location: `${location}.${key}` },
+            },
+          )
+        }
+        const violation = visit(descriptor.value, `${location}.${key}`)
+        if (violation) return violation
+      }
+    }
+    active.delete(candidate)
+    return undefined
+  }
+  return visit(value, "$request")
+}
+
+function freezePreparedJsonGraph(value: unknown): void {
+  const visited = new WeakSet<object>()
+  const visit = (candidate: unknown): void => {
+    if (
+      candidate === null
+      || typeof candidate !== "object"
+      || visited.has(candidate)
+    ) {
+      return
+    }
+    if (!Array.isArray(candidate) && !isPlainObject(candidate)) return
+    visited.add(candidate)
+    for (const nested of Object.values(candidate)) visit(nested)
+    Object.freeze(candidate)
+  }
+  visit(value)
+}
+
+effect function serializePreparedRequest(value: unknown): string!ElizaError {
+  const violation = preparedJsonGraphViolation(value)
+  if (violation) throw violation
+  const serialized = try Effect.try({
+    try: () => JSON.stringify(value),
+    catch: (cause) =>
+      cause instanceof ElizaError
+        ? cause
+        : new ElizaError("Prepared model request cannot be serialized", {
+          code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+          cause,
+        }),
+  })
+  if (serialized === undefined) {
+    throw new ElizaError("Prepared model request cannot be serialized", {
+      code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED",
+      cause: new Error("root value has no JSON representation"),
+    })
+  }
+  return serialized
+}
+
+effect function countPreparedInputTokens(
+  serialized: string,
+  counter: ((serializedRequest: string) => number) | undefined,
+  isExact: boolean,
+): { count: number; source: PreparedModelRequestBudget["countSource"] }!ElizaError {
+  if (!counter) {
+    return {
+      count: utf8ByteLength(serialized),
+      source: "utf8-upper-bound",
+    }
+  }
+  const count = try Effect.try({
+    try: () => counter(serialized),
+    catch: (cause) =>
+      new ElizaError("Provider tokenizer failed before model dispatch", {
+        code: "MODEL_PREPARED_REQUEST_TOKENIZATION_FAILED",
+        cause,
+      }),
+  })
+  if (!Number.isFinite(count) || count < 0) {
+    throw new ElizaError("Provider tokenizer returned an invalid token count", {
+      code: "MODEL_PREPARED_REQUEST_TOKENIZATION_FAILED",
+    })
+  }
+  return {
+    count: Math.ceil(count),
+    source: isExact ? "provider-tokenizer" : "tokenizer-estimate",
+  }
+}
+
+export effect function createPreparedModelRequestGuard(
+  args: CreatePreparedModelRequestGuardArgs,
+): PreparedModelRequestGuard!(ElizaError | Foreign) {
+  const provider = args.provider.trim()
+  const model = args.model.trim()
+  if (!provider || !model) {
+    throw new ElizaError(
+      "Prepared model request needs provider and model ids",
+      {
+        code: "MODEL_PREPARED_REQUEST_INVALID_BUDGET",
+      },
+    )
+  }
+  if (Boolean(args.projectRequest) === Boolean(args.serializeRequest)) {
+    throw new ElizaError(
+      "Prepared model request needs exactly one request serializer",
+      { code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED" },
+    )
+  }
+  if (args.countInputTokensIsExact && !args.countInputTokens) {
+    throw new ElizaError(
+      "Exact prepared-request token counting requires a tokenizer",
+      { code: "MODEL_PREPARED_REQUEST_INVALID_BUDGET" },
+    )
+  }
+
+  const projectRequest = effect () => try foreignSync(() => args.projectRequest?.())
+  const readSerializedRequest = effect (): string!(ElizaError | Foreign) => {
+    if (args.serializeRequest) {
+      const body: unknown = try foreignSync(() => args.serializeRequest!())
+      if (typeof body !== "string") {
+        throw new ElizaError(
+          "Prepared model request serializer did not return a string",
+          { code: "MODEL_PREPARED_REQUEST_SERIALIZATION_FAILED" },
+        )
+      }
+      return body
+    }
+    return try serializePreparedRequest(try projectRequest())
+  }
+  const initialRequest = try projectRequest()
+  const serialized = args.projectRequest
+    ? try serializePreparedRequest(initialRequest)
+    : try readSerializedRequest()
+  if (args.projectRequest) freezePreparedJsonGraph(initialRequest)
+  const counted = try countPreparedInputTokens(
+    serialized,
+    args.countInputTokens,
+    args.countInputTokensIsExact === true,
+  )
+  const contextWindowTokens = (try assertFinitePositiveInteger(
+    args.contextWindowTokens,
+    "contextWindowTokens",
+  )) ?? DEFAULT_CONTEXT_WINDOW_TOKENS
+  const explicitOutputReserve = try assertFinitePositiveInteger(
+    args.outputReserveTokens,
+    "outputReserveTokens",
+  )
+  const outputReserveTokens = explicitOutputReserve
+    ?? Math.min(
+      DEFAULT_INPUT_RESERVE_TOKENS,
+      Math.max(1, contextWindowTokens - 1),
+    )
+  const dispatchThresholdTokens = Math.max(
+    1,
+    contextWindowTokens - outputReserveTokens,
+  )
+  const rejectionAuthority = args.countInputTokensIsExact === true
+      && args.countInputTokens !== undefined
+      && args.contextWindowTokens !== undefined
+      && args.outputReserveTokens !== undefined
+    ? "exact-provider-tokenizer-with-explicit-limits"
+    : "diagnostic-only"
+  const budget = Object.freeze({
+    provider,
+    model,
+    inputTokens: counted.count,
+    contextWindowTokens,
+    outputReserveTokens,
+    dispatchThresholdTokens,
+    countSource: counted.source,
+    rejectionAuthority,
+    resolvedModelKey: null,
+  }) satisfies Readonly<PreparedModelRequestBudget>
+
+  if (
+    rejectionAuthority === "exact-provider-tokenizer-with-explicit-limits"
+    && counted.count >= dispatchThresholdTokens
+  ) {
+    throw new ElizaError(
+      "Complete provider-prepared model request exceeds its context budget",
+      {
+        code: "MODEL_INPUT_OVER_BUDGET",
+        context: { ...budget },
+      },
+    )
+  }
+
+  const lease = args.attemptLease === undefined
+    ? try getModelAttemptLease()
+    : args.attemptLease
+  let attempts = 0
+  const assertUnchanged = effect (): string!(ElizaError | Foreign) => {
+    const attemptSerialized = try readSerializedRequest()
+    if (attemptSerialized !== serialized) {
+      throw new ElizaError(
+        "Provider-prepared model request changed after admission",
+        {
+          code: "MODEL_PREPARED_REQUEST_MUTATED",
+          context: { provider, model, attempt: attempts + 1 },
+        },
+      )
+    }
+    const attemptCount = try countPreparedInputTokens(
+      attemptSerialized,
+      args.countInputTokens,
+      args.countInputTokensIsExact === true,
+    )
+    if (
+      attemptCount.count !== counted.count
+      || attemptCount.source !== counted.source
+    ) {
+      throw new ElizaError(
+        "Provider token count changed for an identical admitted request",
+        {
+          code: "MODEL_PREPARED_REQUEST_TOKEN_COUNT_DRIFT",
+          context: { provider, model, attempt: attempts + 1 },
+        },
+      )
+    }
+    return attemptSerialized
+  }
+  const assertBeforeAttempt = effect () => {
+    const attemptSerialized = try assertUnchanged()
+    try foreignSync(() =>
+      lease?.reserve(
+        provider,
+        model,
+        args.route,
+        attemptSerialized,
+        args.outputReserveTokens,
+      )
+    )
+    attempts += 1
+  }
+  return {
+    budget,
+    assertUnchanged: thrown(assertUnchanged),
+    get attempts() {
+      return attempts
+    },
+    assertBeforeAttempt: thrown(assertBeforeAttempt),
+  }
+}
+export const createPreparedModelRequestGuardOrThrow = thrown(createPreparedModelRequestGuard)

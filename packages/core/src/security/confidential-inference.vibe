@@ -1,0 +1,525 @@
+// spec/core/confidentialInference.md, "Story: Use only an approved route with durable dispatch evidence"; spec/core/confidentialInference.md, "An attempt captures approved route and handler identity"; spec/core/confidentialInference.md, "A transport callback can authorize its attempt only once"; spec/core/confidentialInference.md, "A response escapes only after its outcome audit and redirects fail closed"; spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"
+import { randomUuid } from "../utils/uuid.vibe"
+import { failingAs, Foreign, foreign, foreignSync, promised, runDetached, thrownValue } from "../edge.vibe"
+import { ElizaError } from "../errors.vibe"
+import { logger } from "../logger.vibe"
+import { AsyncContextManager } from "../utils/async-context-manager.vibe"
+
+module node {
+  /** @throws {TypeError} */
+  export function copyHeaders(init: HeadersInit | undefined): Headers {
+    return new Headers(init)
+  }
+}
+import { copyHeaders } from node
+
+export type ConfidentialInferenceHandler = (...args: never[]) => unknown
+
+export interface ConfidentialInferenceRoute {
+  readonly id: string
+  readonly endpoint: string
+  readonly model: string
+  readonly modelTypes: readonly string[]
+}
+
+export interface ConfidentialInferenceProfile {
+  readonly revision: string
+  readonly expiresAt: number
+  readonly routes: readonly ConfidentialInferenceRoute[]
+}
+
+export interface ConfidentialInferenceAuditRecord {
+  readonly attemptId: string
+  readonly agentId: string
+  readonly modelType: string
+  readonly policyRevision: string | null
+  readonly routeId: string | null
+  readonly timestamp: number
+  readonly phase:
+    | "dispatch_intent"
+    | "response_headers"
+    | "transport_error"
+    | "denied"
+  readonly denialCode?: string
+  readonly status?: number
+  readonly evidenceDigest?: string
+  readonly connectionBindingDigest?: string
+}
+
+export interface ConfidentialInferenceTransportEvidence {
+  readonly evidenceDigest: string
+  readonly connectionBindingDigest: string
+}
+
+export type ConfidentialInferenceTransport = (
+  input: string,
+  init: RequestInit,
+  context: {
+    readonly route: ConfidentialInferenceRoute
+    readonly policyRevision: string
+    beforeDispatch(
+      evidence: ConfidentialInferenceTransportEvidence,
+    ): Promise<void>
+  },
+) => Promise<Response>
+
+export class ConfidentialInferenceOperation {
+  #authorized = false
+  authorizeOnce(): boolean {
+    if (this.#authorized) return false
+    this.#authorized = true
+    return true
+  }
+}
+
+export interface ConfidentialInferenceAuditSink {
+  append(record: ConfidentialInferenceAuditRecord): Promise<void>
+}
+
+export interface ConfidentialInferenceAuthorityOptions {
+  readonly handlers: readonly ConfidentialInferenceHandler[]
+
+  readonly currentProfile: () => ConfidentialInferenceProfile
+  readonly audit: ConfidentialInferenceAuditSink
+  readonly transport?: ConfidentialInferenceTransport
+  readonly redispatchPolicy?: "deny-after-authorization"
+}
+
+export error RedirectRefused { message: string }
+
+function rejection(code: string): ElizaError {
+  return new ElizaError(
+    "Confidential inference requires an approved route and durable audit",
+    {
+      code,
+    },
+  )
+}
+
+function isUsableProfile(profile: ConfidentialInferenceProfile): boolean {
+  return (
+    typeof profile.revision === "string"
+    && profile.revision.trim().length > 0
+    && Array.isArray(profile.routes)
+    && profile.routes.every(
+      (route) =>
+        typeof route.id === "string"
+        && route.id.trim().length > 0
+        && typeof route.endpoint === "string"
+        && typeof route.model === "string"
+        && route.model.length > 0
+        && Array.isArray(route.modelTypes)
+        && route.modelTypes.length > 0
+        && route.modelTypes.every(
+          (modelType: unknown) => typeof modelType === "string" && modelType.length > 0,
+        ),
+    )
+    && Number.isFinite(profile.expiresAt)
+    && profile.expiresAt > Date.now()
+  )
+}
+
+export effect function checkedProfile(authority: ConfidentialInferenceAuthority) {
+  const { currentProfile } = partsOf(authority)
+  const profile = try foreignSync(() => currentProfile.call(authority))
+  if (!try foreignSync(() => isUsableProfile(profile))) {
+    throw rejection("CONFIDENTIAL_INFERENCE_POLICY_UNAVAILABLE")
+  }
+  return try foreignSync(() => structuredClone(profile))
+}
+
+export effect function recordAudit(
+  authority: ConfidentialInferenceAuthority,
+  record: ConfidentialInferenceAuditRecord,
+  dispatched: boolean,
+) {
+  const { audit } = partsOf(authority)
+  return foreign(() => audit.append(Object.freeze({ ...record }))) catch effect () => {
+    throw rejection(
+      dispatched
+        ? "CONFIDENTIAL_INFERENCE_OUTCOME_UNRECORDED"
+        : "CONFIDENTIAL_INFERENCE_AUDIT_UNAVAILABLE",
+    )
+  }
+}
+
+interface AttemptScope {
+  readonly authority: ConfidentialInferenceAuthority
+  readonly agentId: string
+  readonly modelType: string
+  readonly operation: ConfidentialInferenceOperation
+}
+
+const attemptScope = new AsyncContextManager<AttemptScope>()
+
+effect function deny(
+  scope: AttemptScope,
+  code: string,
+  profile: ConfidentialInferenceProfile | null = null,
+  attemptId: string = randomUuid(),
+  routeId: string | null = null,
+) {
+  try recordAudit(
+    scope.authority,
+    {
+      attemptId,
+      agentId: scope.agentId,
+      modelType: scope.modelType,
+      policyRevision: profile?.revision ?? null,
+      routeId,
+      timestamp: Date.now(),
+      phase: "denied",
+      denialCode: code,
+    },
+    false,
+  )
+  throw rejection(code)
+}
+
+effect function currentProfile(
+  scope: AttemptScope,
+  prior?: ConfidentialInferenceAuditRecord,
+) {
+  const profile = checkedProfile(scope.authority) catch effect () => {
+    return try deny(
+      scope,
+      "CONFIDENTIAL_INFERENCE_POLICY_UNAVAILABLE",
+      null,
+      prior?.attemptId,
+      prior?.routeId,
+    )
+  }
+  try foreign(() => undefined)
+  return profile
+}
+
+export effect function runWithConfidentialInference<T>(
+  authority: ConfidentialInferenceAuthority | undefined,
+  context: {
+    agentId: string
+    modelType: string
+    handler: ConfidentialInferenceHandler
+    operation?: ConfidentialInferenceOperation
+  },
+  run: () => T,
+) {
+  const invoke = (): Awaited<T> | PromiseLike<Awaited<T>> => run() as Awaited<T> | PromiseLike<Awaited<T>>
+  if (!authority) return try foreign(invoke)
+  const scope = {
+    authority,
+    agentId: context.agentId,
+    modelType: context.modelType,
+    operation: context.operation ?? new ConfidentialInferenceOperation(),
+  }
+  const profile = try currentProfile(scope)
+  if (!authority.acceptsHandler(context.handler)) {
+    return try deny(scope, "CONFIDENTIAL_INFERENCE_HANDLER_DENIED", profile)
+  }
+  return try foreign(() => attemptScope.run(scope, invoke))
+}
+
+function requestTarget(
+  input: string | URL,
+  body: string,
+): { endpoint: URL; model: string } | undefined {
+  try {
+    const endpoint = new URL(input)
+    const parsed = JSON.parse(body) as { model?: unknown }
+    return typeof parsed.model === "string" && parsed.model.length > 0
+      ? { endpoint, model: parsed.model }
+      : undefined
+  } catch {
+    return undefined
+  }
+}
+
+interface Attempt {
+  readonly scope: AttemptScope
+  readonly profile: ConfidentialInferenceProfile
+  readonly route: ConfidentialInferenceRoute
+  record: ConfidentialInferenceAuditRecord
+  authorized: boolean
+  callbackEntered: boolean
+}
+
+effect function denyAttempt(attempt: Attempt, code: string) {
+  return try deny(
+    attempt.scope,
+    code,
+    attempt.profile,
+    attempt.record.attemptId,
+    attempt.route.id,
+  )
+}
+
+effect function requireCurrentPolicy(attempt: Attempt) {
+  const current = try currentProfile(attempt.scope, attempt.record)
+  if (try foreignSync(() => JSON.stringify(current) !== JSON.stringify(attempt.profile))) {
+    try denyAttempt(attempt, "CONFIDENTIAL_INFERENCE_POLICY_CHANGED")
+  }
+}
+
+effect function authorizeDispatch(
+  attempt: Attempt,
+  evidence?: ConfidentialInferenceTransportEvidence,
+) {
+  if (attempt.callbackEntered) {
+    throw rejection("CONFIDENTIAL_INFERENCE_TRANSPORT_CONTRACT")
+  }
+  attempt.callbackEntered = true
+  const evidenceDigest = evidence?.evidenceDigest
+  const connectionBindingDigest = evidence?.connectionBindingDigest
+  const { authority, operation } = attempt.scope
+  if (
+    authority.transport
+    && (typeof evidenceDigest !== "string"
+      || typeof connectionBindingDigest !== "string"
+      || !/^[0-9a-f]{64}$/.test(evidenceDigest)
+      || !/^[0-9a-f]{64}$/.test(connectionBindingDigest))
+  ) {
+    return try denyAttempt(attempt, "CONFIDENTIAL_INFERENCE_TRANSPORT_CONTRACT")
+  }
+  if (authority.deniesRedispatch && !operation.authorizeOnce()) {
+    return try denyAttempt(
+      attempt,
+      "CONFIDENTIAL_INFERENCE_REDISPATCH_REQUIRES_RECONCILIATION",
+    )
+  }
+  try requireCurrentPolicy(attempt)
+  attempt.record = {
+    ...attempt.record,
+    timestamp: Date.now(),
+    ...(evidenceDigest && connectionBindingDigest
+      ? { evidenceDigest, connectionBindingDigest }
+      : {}),
+  }
+  try recordAudit(authority, attempt.record, false)
+  try requireCurrentPolicy(attempt)
+  attempt.authorized = true
+}
+
+effect function transmit(
+  attempt: Attempt,
+  endpoint: URL,
+  request: RequestInit,
+  transport: typeof fetch,
+) {
+  const { authority } = attempt.scope
+  const custom = authority.transport
+  let response: Response
+  if (custom) {
+    response = try foreign(() =>
+      custom.call(authority, endpoint.href, request, {
+        route: attempt.route,
+        policyRevision: attempt.profile.revision,
+        beforeDispatch: (evidence) => runDetached(authorizeDispatch(attempt, evidence)),
+      })
+    )
+  } else {
+    try authorizeDispatch(attempt)
+    response = try foreign(() => transport(endpoint.href, request))
+  }
+  if (
+    response.type === "opaqueredirect"
+    || (response.status >= 300 && response.status < 400)
+  ) {
+    foreign(() => response.body?.cancel()) catch () => undefined
+    throw new RedirectRefused({
+      message: `Confidential inference refused a redirect (HTTP ${response.status})`,
+    })
+  }
+  if (!attempt.authorized) {
+    const body = response.body
+    if (body) try foreign(() => body.cancel())
+    return try denyAttempt(attempt, "CONFIDENTIAL_INFERENCE_TRANSPORT_CONTRACT")
+  }
+  return response
+}
+
+export effect function fetchWithConfidentialInference(
+  input: Parameters<typeof fetch>[0],
+  init: Parameters<typeof fetch>[1],
+  transport: typeof fetch,
+) {
+  const scope = attemptScope.active()
+  if (!scope) return try foreign(() => transport(input, init))
+  if (typeof input !== "string" && !(input instanceof URL)) {
+    return try deny(scope, "CONFIDENTIAL_INFERENCE_REQUEST_UNSUPPORTED")
+  }
+  if (init?.method !== "POST" || typeof init.body !== "string") {
+    return try deny(scope, "CONFIDENTIAL_INFERENCE_REQUEST_UNSUPPORTED")
+  }
+  const target = requestTarget(input, init.body)
+  if (!target) {
+    return try deny(scope, "CONFIDENTIAL_INFERENCE_REQUEST_UNSUPPORTED")
+  }
+  const { endpoint, model } = target
+  if (
+    endpoint.username
+    || endpoint.password
+    || endpoint.search
+    || endpoint.hash
+  ) {
+    return try deny(scope, "CONFIDENTIAL_INFERENCE_ROUTE_DENIED")
+  }
+  const localHttp = endpoint.protocol === "http:"
+    && ["127.0.0.1", "[::1]"].includes(endpoint.hostname)
+  if (endpoint.protocol !== "https:" && !localHttp) {
+    return try deny(scope, "CONFIDENTIAL_INFERENCE_ROUTE_DENIED")
+  }
+  const headers = init.headers
+  const request = {
+    ...init,
+    headers: try Effect.try({ try: () => copyHeaders(headers), catch: (cause) => new Foreign({ cause }) }),
+    body: init.body,
+    redirect: "manual" as const,
+  }
+  const profile = try currentProfile(scope)
+  const route = profile.routes.find(
+    (candidate) =>
+      candidate.endpoint === endpoint.href
+      && candidate.model === model
+      && candidate.modelTypes.includes(scope.modelType),
+  )
+  if (!route) {
+    return try deny(scope, "CONFIDENTIAL_INFERENCE_ROUTE_DENIED", profile)
+  }
+  const attempt: Attempt = {
+    scope,
+    profile,
+    route,
+    record: {
+      attemptId: randomUuid(),
+      agentId: scope.agentId,
+      modelType: scope.modelType,
+      policyRevision: profile.revision,
+      routeId: route.id,
+      timestamp: Date.now(),
+      phase: "dispatch_intent",
+    },
+    authorized: false,
+    callbackEntered: false,
+  }
+  const response = transmit(attempt, endpoint, request, transport) catch effect (failure) => {
+    if (!attempt.authorized) {
+      const thrown = thrownValue(failure)
+      if (
+        thrown instanceof ElizaError
+        && thrown.code.startsWith("CONFIDENTIAL_INFERENCE_")
+      ) {
+        throw thrown
+      }
+      return try denyAttempt(attempt, "CONFIDENTIAL_INFERENCE_TRANSPORT_REJECTED")
+    }
+    try recordAudit(
+      scope.authority,
+      { ...attempt.record, timestamp: Date.now(), phase: "transport_error" },
+      true,
+    )
+    throw failure
+  }
+  recordAudit(
+    scope.authority,
+    {
+      ...attempt.record,
+      timestamp: Date.now(),
+      phase: "response_headers",
+      status: response.status,
+    },
+    true,
+  ) catch effect (failure) => {
+    const body = response.body
+    if (body) {
+      foreign(() => body.cancel()) catch () => {
+        logger.warn(
+          "[ConfidentialInference] Failed to cancel an unaudited response body",
+        )
+      }
+    }
+    throw failure
+  }
+  return response
+}
+
+export const fetchWithConfidentialInferencePromise = promised(
+  failingAs(TypeError, fetchWithConfidentialInference, ElizaError),
+)
+
+module edge {
+  import { runDetached, runDetachedSync } from "../edge.vibe"
+  import {
+    checkedProfile,
+    type ConfidentialInferenceAuditRecord,
+    type ConfidentialInferenceAuditSink,
+    type ConfidentialInferenceAuthorityOptions,
+    type ConfidentialInferenceHandler,
+    type ConfidentialInferenceOperation,
+    type ConfidentialInferenceProfile,
+    type ConfidentialInferenceTransport,
+    recordAudit,
+    runWithConfidentialInference,
+  } from "./confidential-inference.vibe"
+
+  interface AuthorityParts {
+    readonly currentProfile: () => ConfidentialInferenceProfile
+    readonly audit: ConfidentialInferenceAuditSink
+  }
+
+  const authorityParts = new WeakMap<ConfidentialInferenceAuthority, AuthorityParts>()
+
+  /** @throws {never} */
+  export function partsOf(authority: ConfidentialInferenceAuthority): AuthorityParts {
+    return authorityParts.get(authority) as AuthorityParts
+  }
+
+  export class ConfidentialInferenceAuthority {
+    readonly #handlers: ReadonlySet<ConfidentialInferenceHandler>
+    readonly transport: ConfidentialInferenceTransport | undefined
+    readonly deniesRedispatch: boolean
+
+    /** @throws {never} */
+    constructor(options: ConfidentialInferenceAuthorityOptions) {
+      this.#handlers = new Set(options.handlers)
+      authorityParts.set(this, {
+        currentProfile: options.currentProfile,
+        audit: options.audit,
+      })
+      this.transport = options.transport
+      this.deniesRedispatch = options.redispatchPolicy === "deny-after-authorization"
+    }
+
+    /** @throws {unknown} */
+    profile(): ConfidentialInferenceProfile {
+      return runDetachedSync(checkedProfile(this))
+    }
+
+    /** @throws {never} */
+    acceptsHandler(handler: ConfidentialInferenceHandler): boolean {
+      return this.#handlers.has(handler)
+    }
+
+    /** @throws {never} */
+    record(
+      record: ConfidentialInferenceAuditRecord,
+      dispatched: boolean,
+    ): Promise<void> {
+      return runDetached(recordAudit(this, record, dispatched))
+    }
+  }
+
+  /** @throws {never} */
+  export function runWithConfidentialInferencePromise<T>(
+    authority: ConfidentialInferenceAuthority | undefined,
+    context: {
+      agentId: string
+      modelType: string
+      handler: ConfidentialInferenceHandler
+      operation?: ConfidentialInferenceOperation
+    },
+    run: () => T,
+  ): Promise<Awaited<T>> {
+    return runDetached(runWithConfidentialInference(authority, context, run))
+  }
+}
+import { ConfidentialInferenceAuthority, partsOf, runWithConfidentialInferencePromise } from edge
+export { ConfidentialInferenceAuthority, runWithConfidentialInferencePromise }

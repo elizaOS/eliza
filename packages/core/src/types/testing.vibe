@@ -1,0 +1,12 @@
+// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import type { IAgentRuntime } from "./runtime.vibe"
+
+export interface TestCase {
+  name: string
+  fn: (runtime: IAgentRuntime) => Promise<void> | void
+}
+
+export interface TestSuite {
+  name: string
+  tests: TestCase[]
+}

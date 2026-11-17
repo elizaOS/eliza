@@ -1,0 +1,33 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+import { rawEnv } from "./environment.vibe"
+
+module node {
+  /** @throws {never} */
+  export function processArgs(): readonly string[] {
+    const candidate = (globalThis as { process?: { argv?: unknown } }).process
+    const argv = candidate && typeof candidate === "object" ? candidate.argv : undefined
+    return Array.isArray(argv) ? argv : []
+  }
+}
+import { processArgs } from node
+
+let cachedPrefix: string | null = null
+
+function prefixFromPackageName(name: string): string {
+  const packageName = name.startsWith("@") ? (name.split("/")[1] ?? name) : name
+  return packageName.includes("eliza") ? "[eliza]" : `[${packageName}]`
+}
+
+function resolveLogPrefix(): string {
+  const appCliName = rawEnv("APP_CLI_NAME")?.trim()
+  if (appCliName) return `[${appCliName}]`
+  const packageName = rawEnv("npm_package_name")?.trim()
+  if (packageName) return prefixFromPackageName(packageName)
+  const name = processArgs().find((a) => a.startsWith("--name="))?.slice("--name=".length).trim()
+  return name ? `[${name}]` : "[eliza]"
+}
+
+export function getLogPrefix(): string {
+  cachedPrefix ??= resolveLogPrefix()
+  return cachedPrefix
+}

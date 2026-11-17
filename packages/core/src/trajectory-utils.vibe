@@ -1,0 +1,1608 @@
+// spec/core/ambientManagers.md, "Story: Share injected managers across bundled core copies"; spec/core/ambientManagers.md, "A symbol slot is the single source of manager identity"; spec/core/trajectorySources.md, "Story: Apply the current registered training-exclusion policy"; spec/core/trajectorySources.md, "The latest copied metadata record determines exclusion"
+import { errorText } from "./utils/errors.vibe"
+import { getAmbientSingleton } from "./ambient-context.vibe"
+import { asLegacy, type Foreign, foreign, foreignSync, failingAs, promised, runDetached, thrown, thrownValue } from "./edge.vibe"
+import { ElizaError } from "./errors.vibe"
+import type { ContextEvent, ContextObject } from "./runtime/context-object.vibe"
+import { stringifyForDiagnostics } from "./runtime/json-output.vibe"
+import { sha256Hex, type TrajectoryProviderAttribution } from "./runtime/trajectory-provider-attribution.vibe"
+import { composeToolDiagnosticRedactor, projectToolDiagnosticValue } from "./security/tool-diagnostics.vibe"
+import { trackPostDeliveryTask } from "./services/post-delivery-task-tracker.vibe"
+import { sanitizeTrajectoryJsonObject } from "./services/trajectory-json.vibe"
+import type { TrajectorySkillInvocationRecord } from "./services/trajectory-types.vibe"
+import { getTrajectoryContext, runWithTrajectoryContext, type TrajectoryContext } from "./trajectory-context.vibe"
+import type { ActionResult } from "./types/components.vibe"
+import { isTextGenerationModelType } from "./types/model.vibe"
+import type { IAgentRuntime } from "./types/runtime.vibe"
+import {
+  CONTEXT_OBJECT_TRAJECTORY_VERSION,
+  type ContextObjectTrajectoryExport,
+  type JsonValue,
+  type Trajectory,
+} from "./types/trajectory-export.vibe"
+import { AsyncContextManager } from "./utils/async-context-manager.vibe"
+import { isTruthyEnvValue } from "./utils/env.vibe"
+import { rawEnv } from "./utils/environment.vibe"
+import { isObjectRecord } from "./utils/type-guards.vibe"
+
+export type TrajectoryFinalStatus =
+  | "completed"
+  | "error"
+  | "timeout"
+  | "terminated"
+
+export const TRAJECTORY_LLM_PURPOSES = [
+  "planner",
+  "action",
+  "provider",
+  "evaluator",
+  "background",
+  "external_llm",
+  "optimizer",
+] as const
+
+export type TrajectoryLlmPurpose = (typeof TRAJECTORY_LLM_PURPOSES)[number]
+
+export type TrajectoryLlmCallDetails = {
+  runId?: string
+  roomId?: string
+  messageId?: string
+  executionTraceId?: string
+  model: string
+  modelVersion?: string
+  modelType?: string
+  provider?: string
+  systemPrompt: string
+  userPrompt: string
+  prompt?: string
+  messages?: unknown[]
+  tools?: unknown
+  toolChoice?: unknown
+  output?: unknown
+  responseSchema?: unknown
+  providerOptions?: unknown
+  response: string
+  toolCalls?: unknown[]
+  finishReason?: string
+  providerMetadata?: unknown
+  reasoning?: string
+  temperature?: number
+  maxTokens?: number
+  maxTokensOmitted?: boolean
+
+  purpose: string
+
+  actionType?: string
+  latencyMs?: number
+  promptTokens?: number
+  completionTokens?: number
+  cacheReadInputTokens?: number
+  cacheCreationInputTokens?: number
+  reasoningTokens?: number
+  providerOrder?: string[]
+  providerAttributions?: TrajectoryProviderAttribution[]
+}
+
+export type TrajectoryProviderAccessParams = {
+  stepId: string
+  providerName: string
+  startedAt?: number
+  endedAt?: number
+  durationMs?: number
+  overlapsWith?: Array<{ providerName: string; overlapMs: number }>
+  data: Record<string, string | number | boolean | null>
+  sha256?: string
+  tokenCount?: number
+  position?: number
+  spanStart?: number
+  spanEnd?: number
+  purpose: string
+  query?: Record<string, string | number | boolean | null>
+  runId?: string
+  roomId?: string
+  messageId?: string
+  executionTraceId?: string
+}
+
+export type TrajectoryProviderAccessLogger = {
+  logProviderAccess: (params: TrajectoryProviderAccessParams) => void
+}
+
+export type TrajectoryRuntimeLlmCallParams = {
+  stepId: string
+  modelSlot?: string
+  runId?: string
+  roomId?: string
+  messageId?: string
+  executionTraceId?: string
+  providerOrder?: string[]
+  providerAttributions?: TrajectoryProviderAttribution[]
+} & TrajectoryLlmCallDetails
+
+export type TrajectoryRuntimeLlmCallLogger = {
+  logLlmCall: (params: TrajectoryRuntimeLlmCallParams) => void
+}
+
+export type RecordLlmCallDetails =
+  & Omit<
+    TrajectoryLlmCallDetails,
+    "latencyMs" | "response"
+  >
+  & {
+    response?: string
+  }
+
+export interface LlmInputSubstringAttestation {
+  schemaVersion: 1
+  expectedSha256: string
+  modelCallCount: number
+  matchingCallCount: number
+  totalOccurrences: number
+  exactOncePerModelCall: boolean
+  modelTypeCallCounts: Record<string, number>
+}
+
+interface LlmInputSubstringAttestationStore {
+  expectedText: string
+  expectedSha256: string
+  modelCallCount: number
+  matchingCallCount: number
+  totalOccurrences: number
+  modelTypeCallCounts: Map<string, number>
+  seenLogicalCalls: WeakSet<RecordLlmCallDetails>
+}
+
+interface LlmInputSubstringAttestationContextManager {
+  run<T>(
+    store: LlmInputSubstringAttestationStore | undefined,
+    fn: () => T | Promise<T>,
+  ): T | Promise<T>
+  active(): LlmInputSubstringAttestationStore | undefined
+}
+
+export type ContextObjectTrajectoryExportTrajectoryInput =
+  | Partial<
+    Pick<Trajectory, "trajectoryId" | "agentId" | "metadata" | "metrics">
+  >
+  | {
+    trajectoryId?: string
+    agentId?: string
+    source?: string
+    status?: string
+    startTime?: number
+    endTime?: number
+    durationMs?: number
+    metadata?: Record<string, unknown>
+    metrics?: Record<string, unknown>
+  }
+
+export type ContextObjectTrajectoryExportInput = {
+  trajectory?: ContextObjectTrajectoryExportTrajectoryInput | null
+  contextObject?: ContextObject | null
+  events?: readonly ContextEvent[]
+  trajectoryId?: string
+  agentId?: string
+  contextObjectId?: string
+  createdAt?: number
+  source?: string
+  metadata?: Record<string, unknown>
+  metrics?: Record<string, unknown>
+}
+
+type JsonSanitizeResult = JsonValue | undefined
+
+function sanitizeJsonValue(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet<object>(),
+): JsonSanitizeResult {
+  if (value === null) return null
+  if (
+    typeof value === "string"
+    || typeof value === "number"
+    || typeof value === "boolean"
+  ) {
+    return Number.isNaN(value) ? null : value
+  }
+  if (typeof value === "bigint") {
+    return value.toString()
+  }
+  if (value instanceof Date) {
+    return value.toISOString()
+  }
+  if (Array.isArray(value)) {
+    if (seen.has(value)) return undefined
+    seen.add(value)
+    const out: JsonValue[] = []
+    for (const item of value) {
+      const sanitized = sanitizeJsonValue(item, seen)
+      out.push(sanitized === undefined ? null : sanitized)
+    }
+    seen.delete(value)
+    return out
+  }
+  if (isObjectRecord(value)) {
+    if (seen.has(value)) return undefined
+    seen.add(value)
+    const out: Record<string, JsonValue> = {}
+    for (const [key, entry] of Object.entries(value)) {
+      const sanitized = sanitizeJsonValue(entry, seen)
+      if (sanitized !== undefined) {
+        out[key] = sanitized
+      }
+    }
+    seen.delete(value)
+    return out
+  }
+  return undefined
+}
+
+function sanitizeJsonObject(
+  value: unknown,
+): Record<string, JsonValue> | undefined {
+  const sanitized = sanitizeJsonValue(value)
+  return isObjectRecord(sanitized)
+    ? (sanitized as Record<string, JsonValue>)
+    : undefined
+}
+
+function hasContextEvents(
+  value: unknown,
+): value is Record<string, unknown> & { events: readonly unknown[] } {
+  return isObjectRecord(value) && Array.isArray(value.events)
+}
+
+function readContextObjectFromUnknown(value: unknown): ContextObject | null {
+  if (!hasContextEvents(value)) {
+    return null
+  }
+  const { id, version } = value
+  return {
+    ...(value as Partial<ContextObject>),
+    id: typeof id === "string" && id.trim() ? id : "context-object",
+    version: typeof version === "string" ? version : "v5",
+    events: [...(value.events as ContextEvent[])],
+  }
+}
+
+export function extractContextObjectFromTrajectory(
+  trajectory: unknown,
+): ContextObject | null {
+  if (!isObjectRecord(trajectory)) {
+    return null
+  }
+
+  const direct = readContextObjectFromUnknown(trajectory.contextObject)
+  if (direct) return direct
+
+  const metadata = isObjectRecord(trajectory.metadata)
+    ? trajectory.metadata
+    : undefined
+  if (metadata) {
+    const fromMetadata = readContextObjectFromUnknown(metadata.contextObject)
+    if (fromMetadata) return fromMetadata
+  }
+
+  return null
+}
+
+export function extractContextEventsFromTrajectory(
+  trajectory: unknown,
+): ContextEvent[] | null {
+  const contextObject = extractContextObjectFromTrajectory(trajectory)
+  if (contextObject) {
+    return [...contextObject.events]
+  }
+
+  if (!isObjectRecord(trajectory)) {
+    return null
+  }
+
+  if (Array.isArray(trajectory.events)) {
+    return [...(trajectory.events as ContextEvent[])]
+  }
+
+  const metadata = isObjectRecord(trajectory.metadata)
+    ? trajectory.metadata
+    : undefined
+  if (metadata && Array.isArray(metadata.contextEvents)) {
+    return [...(metadata.contextEvents as ContextEvent[])]
+  }
+
+  return null
+}
+
+export function buildContextObjectTrajectoryExport(
+  input: ContextObjectTrajectoryExportInput,
+): ContextObjectTrajectoryExport {
+  const trajectory = input.trajectory
+  const contextObject = input.contextObject ?? extractContextObjectFromTrajectory(trajectory)
+  const events = input.events
+    ?? contextObject?.events
+    ?? extractContextEventsFromTrajectory(trajectory)
+    ?? []
+  const metadata = sanitizeJsonObject({
+    ...(isObjectRecord(trajectory?.metadata) ? trajectory.metadata : {}),
+    ...(input.metadata ?? {}),
+  })
+  const metrics = sanitizeJsonObject(input.metrics ?? trajectory?.metrics)
+  const source = input.source
+    ?? (typeof metadata?.source === "string" ? metadata.source : undefined)
+  const contextObjectId = input.contextObjectId
+    ?? contextObject?.id
+    ?? (typeof metadata?.contextObjectId === "string"
+      ? metadata.contextObjectId
+      : undefined)
+  const createdAt = input.createdAt
+    ?? contextObject?.createdAt
+    ?? (typeof metadata?.createdAt === "number" ? metadata.createdAt : undefined)
+
+  const sanitizedContextObject = contextObject
+    ? sanitizeJsonObject({ ...contextObject, events })
+    : undefined
+
+  const exportRecord: ContextObjectTrajectoryExport = {
+    contextObjectVersion: CONTEXT_OBJECT_TRAJECTORY_VERSION,
+    events: sanitizeJsonValue(events) as ContextEvent[],
+  }
+
+  const trajectoryId = input.trajectoryId ?? trajectory?.trajectoryId
+  const agentId = input.agentId ?? trajectory?.agentId
+  if (trajectoryId) exportRecord.trajectoryId = String(trajectoryId)
+  if (agentId) exportRecord.agentId = String(agentId)
+  if (contextObjectId) exportRecord.contextObjectId = contextObjectId
+  if (typeof createdAt === "number") exportRecord.createdAt = createdAt
+  if (source) exportRecord.source = source
+  if (metadata) exportRecord.metadata = metadata
+  if (metrics) exportRecord.metrics = metrics
+  if (sanitizedContextObject) {
+    const existingId = sanitizedContextObject.id
+    const resolvedId = typeof existingId === "string" && existingId.trim()
+      ? existingId.trim()
+      : (contextObject?.id ?? "context-object")
+    exportRecord.contextObject = {
+      ...sanitizedContextObject,
+      id: resolvedId,
+    }
+  }
+
+  return exportRecord
+}
+
+export function serializeContextObjectTrajectoryExport(
+  input: ContextObjectTrajectoryExportInput,
+  space?: number,
+): string {
+  return JSON.stringify(buildContextObjectTrajectoryExport(input), null, space)
+}
+
+type TrajectoryStartOptions = {
+  source?: string
+  metadata?: Record<string, unknown>
+}
+
+type TrajectoryStepState = {
+  timestamp: number
+  agentBalance?: number
+  agentPoints?: number
+  agentPnL?: number
+  openPositions?: number
+  kind?: "llm" | "action" | "evaluator"
+  parentStepId?: string
+  evaluatorName?: string
+}
+
+type TrajectoryStepKindLike = "llm" | "action"
+
+export type TrajectoryAnnotateParams = {
+  stepId: string
+  kind?: TrajectoryStepKindLike
+  script?: string
+  childSteps?: string[]
+  appendChildSteps?: string[]
+  usedSkills?: string[]
+
+  appendSkillInvocations?: TrajectorySkillInvocationRecord[]
+}
+
+type TrajectoryLoggerLike = {
+  isEnabled?: () => boolean
+  startTrajectory?: (
+    agentId: string,
+    options?: TrajectoryStartOptions,
+  ) => Promise<string> | string
+  startStep?: (trajectoryId: string, state: TrajectoryStepState) => string
+  completeStep?: (
+    trajectoryId: string,
+    stepId: string,
+    action: {
+      actionType: string
+      actionName: string
+      parameters: Record<string, JsonValue>
+      success: boolean
+      result?: Record<string, JsonValue>
+      error?: string
+    },
+  ) => void
+  endTrajectory?: (
+    stepIdOrTrajectoryId: string,
+    status?: TrajectoryFinalStatus,
+    finalMetrics?: Record<string, unknown>,
+  ) => Promise<void> | void
+  releaseTrajectoryOwnership?: (stepIdOrTrajectoryId: string) => void
+  flushWriteQueue?: (trajectoryId: string) => Promise<void> | void
+  applyReward?: (params: {
+    trajectoryId: string
+    idempotencyKey: string
+    reward: number
+    component: string
+  }) => Promise<boolean>
+  logLlmCall?: (params: { stepId: string } & TrajectoryLlmCallDetails) => void
+
+  annotateStep?: (params: TrajectoryAnnotateParams) => Promise<void> | void
+}
+
+type StandaloneTrajectoryOptions = {
+  deferUntilModelCall?: boolean
+  source: string
+  metadata?: Record<string, unknown>
+  successStatus?: TrajectoryFinalStatus
+  errorStatus?: Exclude<TrajectoryFinalStatus, "completed">
+}
+
+type TrajectoryLlmGuardContext = {
+  model?: string
+  modelType?: string
+  purpose?: string
+  actionType?: string
+}
+
+const RECORD_LLM_CALL_DEPTH_KEY = Symbol.for("elizaos.recordLlmCallDepth")
+
+const MODEL_CALL_PROVIDER_RECORDED_KEY = Symbol.for(
+  "elizaos.modelCallProviderRecorded",
+)
+const LLM_INPUT_SUBSTRING_ATTESTATION_CONTEXT_MANAGER_KEY = Symbol.for(
+  "elizaos.llmInputSubstringAttestationContextManager",
+)
+
+type TrajectoryContextWithLlmGuard = {
+  [RECORD_LLM_CALL_DEPTH_KEY]?: number
+}
+
+export error LlmCallOutsideTrajectory { message: string }
+export error UnrecordedLlmCall { message: string }
+
+module node {
+  /** @throws {never} */
+  export function monotonicNow(): number {
+    return typeof performance !== "undefined" && typeof performance.now === "function"
+      ? performance.now()
+      : Date.now()
+  }
+}
+import { monotonicNow } from node
+
+function getLlmInputSubstringAttestationContextManager(): LlmInputSubstringAttestationContextManager {
+  return getAmbientSingleton(
+    LLM_INPUT_SUBSTRING_ATTESTATION_CONTEXT_MANAGER_KEY,
+    () => new AsyncContextManager<LlmInputSubstringAttestationStore | undefined>(),
+  )
+}
+
+function countExactSubstring(haystack: string, needle: string): number {
+  let count = 0
+  let cursor = 0
+  while (cursor <= haystack.length - needle.length) {
+    const index = haystack.indexOf(needle, cursor)
+    if (index < 0) break
+    count += 1
+    cursor = index + 1
+  }
+  return count
+}
+
+function collectMessageContentStrings(
+  value: unknown,
+  output: string[],
+  seen = new WeakSet<object>(),
+): void {
+  if (typeof value === "string") {
+    output.push(value)
+    return
+  }
+  if (!value || typeof value !== "object") return
+  if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer) return
+  if (seen.has(value)) return
+  seen.add(value)
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectMessageContentStrings(item, output, seen)
+    }
+    seen.delete(value)
+    return
+  }
+  for (const nested of Object.values(value as Record<string, unknown>)) {
+    collectMessageContentStrings(nested, output, seen)
+  }
+  seen.delete(value)
+}
+
+function modelInputSurfaces(details: RecordLlmCallDetails): string[] {
+  const surfaces: string[] = []
+  if (typeof details.systemPrompt === "string") {
+    surfaces.push(details.systemPrompt)
+  }
+  if (Array.isArray(details.messages) && details.messages.length > 0) {
+    for (const message of details.messages) {
+      if (typeof message === "string") {
+        surfaces.push(message)
+        continue
+      }
+      if (!message || typeof message !== "object" || Array.isArray(message)) {
+        continue
+      }
+      collectMessageContentStrings(
+        (message as Record<string, unknown>).content,
+        surfaces,
+      )
+    }
+    return surfaces
+  }
+
+  if (typeof details.prompt === "string") {
+    surfaces.push(details.prompt)
+  } else if (typeof details.userPrompt === "string") {
+    surfaces.push(details.userPrompt)
+  }
+  return surfaces
+}
+
+export effect function attestLlmInputSubstring(details: RecordLlmCallDetails) {
+  const store = getLlmInputSubstringAttestationContextManager().active()
+  if (!store) return
+
+  const occurrences = modelInputSurfaces(details).reduce(
+    (total, surface) => total + countExactSubstring(surface, store.expectedText),
+    0,
+  )
+  const modelType = typeof details.modelType === "string" && details.modelType.trim()
+    ? details.modelType.trim()
+    : "unknown"
+  const isFirstAttempt = !store.seenLogicalCalls.has(details)
+  if (isFirstAttempt) {
+    store.seenLogicalCalls.add(details)
+    store.modelCallCount += 1
+    store.totalOccurrences += occurrences
+    store.modelTypeCallCounts.set(
+      modelType,
+      (store.modelTypeCallCounts.get(modelType) ?? 0) + 1,
+    )
+    if (occurrences === 1) {
+      store.matchingCallCount += 1
+    }
+  }
+  if (occurrences === 1) return
+
+  throw new ElizaError(
+    "Final LLM input failed request-scoped instruction attestation",
+    {
+      code: "LLM_INPUT_SUBSTRING_ATTESTATION_MISMATCH",
+      context: {
+        expectedSha256: store.expectedSha256,
+        modelCallNumber: store.modelCallCount,
+        modelType,
+        occurrences,
+        retryAttempt: !isFirstAttempt,
+      },
+      severity: "fatal",
+    },
+  )
+}
+
+export const attestLlmInputSubstringOrThrow = thrown(attestLlmInputSubstring)
+
+export effect function runWithLlmInputSubstringAttestation<T>(
+  expectedText: string,
+  fn: () => Promise<T> | T,
+): { result: T; attestation: LlmInputSubstringAttestation }!(ElizaError | Foreign) {
+  if (!expectedText) {
+    throw new ElizaError(
+      "LLM input attestation requires a non-empty expected instruction",
+      {
+        code: "LLM_INPUT_SUBSTRING_ATTESTATION_INVALID",
+        severity: "fatal",
+      },
+    )
+  }
+  const store: LlmInputSubstringAttestationStore = {
+    expectedText,
+    expectedSha256: sha256Hex(expectedText),
+    modelCallCount: 0,
+    matchingCallCount: 0,
+    totalOccurrences: 0,
+    modelTypeCallCounts: new Map<string, number>(),
+    seenLogicalCalls: new WeakSet<RecordLlmCallDetails>(),
+  }
+  const manager = getLlmInputSubstringAttestationContextManager()
+  const result: T = try foreign(() => manager.run(store, fn))
+  if (store.modelCallCount === 0) {
+    throw new ElizaError(
+      "Request completed without reaching an attested LLM input boundary",
+      {
+        code: "LLM_INPUT_SUBSTRING_ATTESTATION_MISSING",
+        context: { expectedSha256: store.expectedSha256 },
+        severity: "fatal",
+      },
+    )
+  }
+  return {
+    result,
+    attestation: {
+      schemaVersion: 1,
+      expectedSha256: store.expectedSha256,
+      modelCallCount: store.modelCallCount,
+      matchingCallCount: store.matchingCallCount,
+      totalOccurrences: store.totalOccurrences,
+      exactOncePerModelCall: store.matchingCallCount === store.modelCallCount
+        && store.totalOccurrences === store.modelCallCount,
+      modelTypeCallCounts: Object.fromEntries(
+        [...store.modelTypeCallCounts.entries()].sort(([left], [right]) => left.localeCompare(right)),
+      ),
+    },
+  }
+}
+
+export function isTrajectoryStrictModeEnabled(): boolean {
+  return isTruthyEnvValue(rawEnv("ELIZA_TRAJECTORY_STRICT"))
+}
+
+export function normalizeTrajectoryLlmPurpose(
+  value: string | null | undefined,
+  fallback: TrajectoryLlmPurpose = "external_llm",
+): TrajectoryLlmPurpose {
+  const normalized = value?.trim().toLowerCase()
+  if (
+    normalized
+    && TRAJECTORY_LLM_PURPOSES.includes(normalized as TrajectoryLlmPurpose)
+  ) {
+    return normalized as TrajectoryLlmPurpose
+  }
+  return fallback
+}
+
+export function isLlmGenerationModelType(modelType: unknown): boolean {
+  const normalized = String(modelType ?? "")
+    .trim()
+    .toUpperCase()
+  if (!normalized) return false
+
+  if (
+    normalized === "TEXT_EMBEDDING"
+    || normalized === "TEXT_TO_SPEECH"
+    || normalized.startsWith("TEXT_TOKENIZER")
+  ) {
+    return false
+  }
+
+  return (
+    isTextGenerationModelType(normalized)
+    || normalized.startsWith("OBJECT_")
+    || normalized === "RESEARCH"
+  )
+}
+
+function getActiveTrajectoryStepId(): string | null {
+  const stepId = getTrajectoryContext()?.trajectoryStepId
+  return typeof stepId === "string" && stepId.trim() !== ""
+    ? stepId.trim()
+    : null
+}
+
+function formatLlmGuardContext(context?: TrajectoryLlmGuardContext): string {
+  const parts = [
+    context?.actionType ? `actionType=${context.actionType}` : "",
+    context?.model ? `model=${context.model}` : "",
+    context?.modelType ? `modelType=${context.modelType}` : "",
+    context?.purpose ? `purpose=${context.purpose}` : "",
+  ].filter(Boolean)
+  return parts.length > 0 ? ` (${parts.join(", ")})` : ""
+}
+
+export effect function assertActiveTrajectoryForLlmCall(context?: TrajectoryLlmGuardContext) {
+  const stepId = getActiveTrajectoryStepId()
+  if (stepId || !isTrajectoryStrictModeEnabled()) {
+    return stepId
+  }
+
+  throw new LlmCallOutsideTrajectory({
+    message: `[trajectory-strict] LLM-like call outside trajectory${
+      formatLlmGuardContext(context)
+    }. Wrap raw SDK/fetch generation in recordLlmCall(runtime, details, fn), or start a trajectory with withStandaloneTrajectory(...). Embeddings and tokenizers are exempt.`,
+  })
+}
+
+export const assertActiveTrajectoryForLlmCallOrThrow = thrown(failingAs(Error, assertActiveTrajectoryForLlmCall))
+
+function guardedTrajectoryContext(): (TrajectoryContextWithLlmGuard & object) | undefined {
+  return getTrajectoryContext() as (TrajectoryContextWithLlmGuard & object) | undefined
+}
+
+function recordedLlmCallDepth(ctx: TrajectoryContextWithLlmGuard | undefined): number {
+  const depth = ctx?.[RECORD_LLM_CALL_DEPTH_KEY]
+  return typeof depth === "number" && Number.isFinite(depth)
+    ? Math.max(0, depth)
+    : 0
+}
+
+effect function runInsideRecordedLlmCall<T>(fn: () => Promise<T> | T): T!Foreign {
+  const ctx = guardedTrajectoryContext()
+  if (!ctx) {
+    return try foreign(() => fn())
+  }
+
+  ctx[RECORD_LLM_CALL_DEPTH_KEY] = recordedLlmCallDepth(ctx) + 1
+  return try ensuring(
+    foreign(() => fn()),
+    sync(() => {
+      const nextDepth = recordedLlmCallDepth(ctx) - 1
+      if (nextDepth > 0) {
+        ctx[RECORD_LLM_CALL_DEPTH_KEY] = nextDepth
+      } else {
+        delete ctx[RECORD_LLM_CALL_DEPTH_KEY]
+      }
+    }),
+  )
+}
+
+export effect function assertRecordedLlmCall(context?: TrajectoryLlmGuardContext) {
+  try assertActiveTrajectoryForLlmCall(context)
+  if (!isTrajectoryStrictModeEnabled() || recordedLlmCallDepth(guardedTrajectoryContext()) > 0) {
+    return
+  }
+
+  throw new UnrecordedLlmCall({
+    message: `[trajectory-strict] Raw LLM call is not wrapped by recordLlmCall${formatLlmGuardContext(context)}.`,
+  })
+}
+
+export const assertRecordedLlmCallOrThrow = thrown(failingAs(Error, assertRecordedLlmCall))
+
+export type ModelCallRecordingState = { recorded: boolean }
+
+export effect function runWithModelCallRecordingScope<T>(
+  fn: () => Promise<T> | T,
+): { result: T; recordingState: ModelCallRecordingState }!Foreign {
+  const storage = getModelCallRecordingStorage()
+  const store: ModelCallRecordingState = { recorded: false }
+  const result: T = try foreign(() => storage.run(store, fn))
+  return { result, recordingState: store }
+}
+
+export function runInModelCallRecordingScope<T>(
+  recordingState: ModelCallRecordingState,
+  fn: () => T | Promise<T>,
+): T | Promise<T> {
+  return getModelCallRecordingStorage().run(recordingState, fn)
+}
+
+export function markProviderRecordedCall(): void {
+  const store = getModelCallRecordingStorage().getStore()
+  if (store) {
+    store.recorded = true
+  }
+}
+
+export function isProviderRecordedCall(): boolean {
+  return getModelCallRecordingStorage().getStore()?.recorded === true
+}
+
+type ModelCallRecordingStorage = {
+  getStore(): ModelCallRecordingState | undefined
+  run<R>(
+    store: ModelCallRecordingState,
+    fn: () => R | Promise<R>,
+  ): R | Promise<R>
+}
+
+function getModelCallRecordingStorage(): ModelCallRecordingStorage {
+  return getAmbientSingleton(
+    MODEL_CALL_PROVIDER_RECORDED_KEY,
+    createModelCallRecordingStorage,
+  )
+}
+
+function createModelCallRecordingStorage(): ModelCallRecordingStorage {
+  const manager = new AsyncContextManager<ModelCallRecordingState>()
+  return {
+    getStore: () => manager.active(),
+    run: (store, fn) => manager.run(store, fn),
+  }
+}
+
+function scoreTrajectoryLogger(candidate: TrajectoryLoggerLike): number {
+  let score = 0
+  if (typeof candidate.startTrajectory === "function") score += 100
+  if (typeof candidate.startStep === "function") score += 10
+  if (typeof candidate.endTrajectory === "function") score += 10
+  if (typeof candidate.logLlmCall === "function") score += 10
+  if (typeof candidate.flushWriteQueue === "function") score += 2
+  if (typeof candidate.applyReward === "function") score += 20
+  return score
+}
+
+export function resolveTrajectoryLogger(
+  runtime: IAgentRuntime,
+): TrajectoryLoggerLike | null {
+  let best: TrajectoryLoggerLike | null = null
+  let bestScore = 0
+  const consider = (candidate: unknown): void => {
+    if (!candidate || typeof candidate !== "object") return
+    const score = scoreTrajectoryLogger(candidate)
+    if (score > bestScore) {
+      best = candidate
+      bestScore = score
+    }
+  }
+  consider(runtime.getService("trajectories"))
+  for (const candidate of runtime.getServicesByType("trajectories")) {
+    consider(candidate)
+  }
+  return best
+}
+
+effect function isUsableTrajectoryLogger(
+  trajectoryLogger: TrajectoryLoggerLike,
+  required: ReadonlyArray<keyof TrajectoryLoggerLike>,
+) {
+  if (required.some((member) => typeof trajectoryLogger[member] !== "function")) return false
+  return typeof trajectoryLogger.isEnabled !== "function"
+    || Boolean(try foreignSync(() => trajectoryLogger.isEnabled?.()))
+}
+
+export function activateDeferredChildStep(): void {
+  const context = getTrajectoryContext()
+  const owner = context?.activateChildStep?.()
+  if (context && owner) Object.assign(context, owner)
+}
+
+export effect function ensureTaskTrajectory() {
+  activateDeferredChildStep()
+  const context = getTrajectoryContext()
+  if (
+    !context
+    || context.trajectoryStepId?.trim()
+    || !context.activateTaskCapture
+  ) {
+    return
+  }
+  const owner = try foreign(() => context.activateTaskCapture?.())
+  if (owner) Object.assign(context, owner)
+}
+
+export const ensureTaskTrajectoryPromise = promised(ensureTaskTrajectory)
+
+type TrajectoryOwner = { trajectoryId: string; trajectoryStepId: string }
+
+function closingAfter<A, E, F>(body: A!E!, close: (completed: boolean) => void!F!): A!(E | F)! {
+  return uninterruptibleMask((restore) => effect {
+    const exit = try Effect.exit(restore(body))
+    try close(Exit.isSuccess(exit))
+    return try exit
+  })
+}
+
+export effect function withStandaloneTrajectory<T>(
+  runtime: IAgentRuntime | null | undefined,
+  options: StandaloneTrajectoryOptions,
+  callback: () => Promise<T> | T,
+): T!Foreign {
+  const activeStepId = getTrajectoryContext()?.trajectoryStepId
+  if (
+    !runtime
+    || (typeof activeStepId === "string" && activeStepId.trim() !== "")
+  ) {
+    return try foreign(() => callback())
+  }
+
+  const context: TrajectoryContext = { ...getTrajectoryContext() }
+  let capturedLogger: TrajectoryLoggerLike | null = null
+  let trajectoryId: string | undefined
+  let activation: Promise<TrajectoryOwner | undefined> | undefined
+  let closed = false
+  const initialize = effect {
+    const trajectoryLogger = foreignSync(() => resolveTrajectoryLogger(runtime)) catch (error) => {
+      runtime.reportError?.("StandaloneTrajectory.resolve", error.cause, {
+        source: options.source,
+        diagnosticOnly: true,
+      })
+      return null
+    }
+    if (
+      !trajectoryLogger
+      || !(try isUsableTrajectoryLogger(trajectoryLogger, ["startTrajectory", "endTrajectory"]))
+    ) {
+      return undefined
+    }
+
+    const startedId = effect {
+      const started = try foreign(() =>
+        trajectoryLogger.startTrajectory?.(runtime.agentId, {
+          source: options.source,
+          metadata: options.metadata,
+        })
+      )
+      return String(started).trim()
+    } catch (error) => {
+      runtime.reportError("StandaloneTrajectory.start", error.cause, {
+        source: options.source,
+        diagnosticOnly: true,
+      })
+      return undefined
+    }
+    trajectoryId = startedId
+    if (!startedId) {
+      return undefined
+    }
+
+    let stepId = startedId
+    if (typeof trajectoryLogger.startStep === "function") {
+      stepId = foreignSync(() =>
+        String(trajectoryLogger.startStep?.(startedId, { timestamp: Date.now() })).trim() || startedId
+      ) catch (error) => {
+        runtime.reportError("StandaloneTrajectory.startStep", error.cause, {
+          trajectoryId: startedId,
+          diagnosticOnly: true,
+        })
+        return startedId
+      }
+    }
+    capturedLogger = trajectoryLogger
+    const owner: TrajectoryOwner = { trajectoryId: startedId, trajectoryStepId: stepId }
+    Object.assign(context, owner)
+    return owner
+  }
+  const activateTaskCapture = () => {
+    if (closed) return Promise.resolve(undefined)
+    activation ??= runDetached(initialize)
+    return activation
+  }
+  context.activateTaskCapture = activateTaskCapture
+  if (!options.deferUntilModelCall) try foreign(() => activateTaskCapture())
+
+  const close = effect function (completed: boolean) {
+    closed = true
+    const pending = activation
+    if (pending) try foreign(() => pending)
+    const trajectoryLogger = capturedLogger
+    const id = trajectoryId
+    if (!id || !trajectoryLogger) return
+    if (typeof trajectoryLogger.flushWriteQueue === "function") {
+      foreign(() => trajectoryLogger.flushWriteQueue?.(id)) catch (error) => {
+        runtime.reportError("StandaloneTrajectory.flush", error.cause, {
+          trajectoryId: id,
+          diagnosticOnly: true,
+        })
+      }
+    }
+    foreign(() =>
+      trajectoryLogger.endTrajectory?.(
+        id,
+        completed ? (options.successStatus ?? "completed") : (options.errorStatus ?? "error"),
+      )
+    ) catch (error) => {
+      runtime.reportError("StandaloneTrajectory.end", error.cause, {
+        trajectoryId: id,
+        diagnosticOnly: true,
+      })
+      trajectoryLogger.releaseTrajectoryOwnership?.(id)
+    }
+  }
+
+  return try closingAfter(foreign(() => runWithTrajectoryContext(context, () => callback())), close)
+}
+
+export effect function annotateActiveTrajectoryStep(
+  runtime: IAgentRuntime | null | undefined,
+  params: TrajectoryAnnotateParams,
+) {
+  if (!runtime) return false
+  const trajectoryLogger = try foreignSync(() => resolveTrajectoryLogger(runtime))
+  if (
+    !trajectoryLogger
+    || !(try isUsableTrajectoryLogger(trajectoryLogger, ["annotateStep"]))
+  ) {
+    return false
+  }
+  try foreign(() => trajectoryLogger.annotateStep?.(params))
+  return true
+}
+
+export const annotateActiveTrajectoryStepPromise = promised(annotateActiveTrajectoryStep)
+
+export effect function logActiveTrajectoryLlmCall(
+  runtime: IAgentRuntime | null | undefined,
+  details: TrajectoryLlmCallDetails,
+) {
+  if (!runtime) {
+    return false
+  }
+
+  activateDeferredChildStep()
+  const stepId = try assertActiveTrajectoryForLlmCall({
+    actionType: details.actionType,
+    model: details.model,
+    purpose: details.purpose,
+  })
+  if (!stepId) {
+    return false
+  }
+
+  const trajectoryLogger = try foreignSync(() => resolveTrajectoryLogger(runtime))
+  if (
+    !trajectoryLogger
+    || !(try isUsableTrajectoryLogger(trajectoryLogger, ["logLlmCall"]))
+  ) {
+    return false
+  }
+
+  const context = getTrajectoryContext()
+  try foreignSync(() =>
+    trajectoryLogger.logLlmCall?.({
+      stepId,
+      ...details,
+      runId: details.runId ?? context?.runId,
+      roomId: details.roomId ?? context?.roomId,
+      messageId: details.messageId ?? context?.messageId,
+      executionTraceId: details.executionTraceId ?? context?.traceId,
+      purpose: context?.purpose ?? details.purpose,
+    })
+  )
+
+  markProviderRecordedCall()
+
+  return true
+}
+
+export const logActiveTrajectoryLlmCallOrThrow = thrown(failingAs(Error, logActiveTrajectoryLlmCall))
+
+export effect function recordLlmCall<T>(
+  runtime: IAgentRuntime | null | undefined,
+  details: RecordLlmCallDetails,
+  fn: () => Promise<T> | T,
+): T!(ElizaError | Foreign | LlmCallOutsideTrajectory) {
+  try ensureTaskTrajectory()
+  try assertActiveTrajectoryForLlmCall({
+    actionType: details.actionType,
+    model: details.model,
+    purpose: details.purpose,
+  })
+
+  try attestLlmInputSubstring(details)
+
+  const startedAt = monotonicNow()
+  const result = runInsideRecordedLlmCall(fn) catch effect (failure) => {
+    const logFailedCall = effect {
+      const failedCall: TrajectoryLlmCallDetails = try foreignSync(() => {
+        const message = errorText(failure.cause)
+        return {
+          ...details,
+          response: details.response
+            || `[model call failed] ${composeToolDiagnosticRedactor(runtime ?? undefined)(message)}`,
+          finishReason: "error",
+          latencyMs: Math.max(0, Math.round(monotonicNow() - startedAt)),
+        }
+      })
+      return try logActiveTrajectoryLlmCall(runtime, failedCall)
+    }
+    asLegacy(Error, logFailedCall, ElizaError) catch (recordingError) => {
+      runtime?.reportError?.(
+        "TrajectoryFailedProviderCall",
+        thrownValue(recordingError),
+      )
+      return false
+    }
+    throw failure
+  }
+  const elapsed = monotonicNow() - startedAt
+
+  const responseText = typeof details.response === "string"
+    ? details.response
+    : typeof result === "string"
+    ? result
+    : result === undefined || result === null
+    ? ""
+    : stringifyForDiagnostics({ response: result })
+
+  const tokenFields = normalizeTokenFieldsFromResult(result, details)
+
+  try logActiveTrajectoryLlmCall(runtime, {
+    ...details,
+    ...tokenFields,
+    response: responseText,
+    latencyMs: Math.max(0, Math.round(elapsed)),
+  })
+
+  return result
+}
+
+type TokenFields = Partial<
+  Pick<
+    TrajectoryLlmCallDetails,
+    | "promptTokens"
+    | "completionTokens"
+    | "cacheReadInputTokens"
+    | "cacheCreationInputTokens"
+  >
+>
+
+function normalizeTokenFieldsFromResult(
+  result: unknown,
+  details: RecordLlmCallDetails,
+): TokenFields {
+  if (!result || typeof result !== "object") return {}
+  const usage = (result as { usage?: unknown }).usage
+  if (!usage || typeof usage !== "object") return {}
+  const asNumber = (value: unknown): number | undefined =>
+    typeof value === "number" && Number.isFinite(value) ? value : undefined
+  const u = usage as Record<string, unknown>
+  const out: TokenFields = {}
+  if (details.promptTokens === undefined) {
+    const prompt = asNumber(u.promptTokens) ?? asNumber(u.inputTokens) ?? asNumber(u.input)
+    if (prompt !== undefined) out.promptTokens = prompt
+  }
+  if (details.completionTokens === undefined) {
+    const completion = asNumber(u.completionTokens)
+      ?? asNumber(u.outputTokens)
+      ?? asNumber(u.output)
+    if (completion !== undefined) out.completionTokens = completion
+  }
+  if (details.cacheReadInputTokens === undefined) {
+    const cacheRead = asNumber(u.cacheReadInputTokens) ?? asNumber(u.cachedInputTokens)
+    if (cacheRead !== undefined) out.cacheReadInputTokens = cacheRead
+  }
+  if (details.cacheCreationInputTokens === undefined) {
+    const cacheCreation = asNumber(u.cacheCreationInputTokens) ?? asNumber(u.cacheCreationTokens)
+    if (cacheCreation !== undefined) {
+      out.cacheCreationInputTokens = cacheCreation
+    }
+  }
+  return out
+}
+
+effect function withChildTrajectoryStep<T>(
+  runtime: IAgentRuntime | null | undefined,
+  options: { purpose: string; actionName?: string; evaluatorName?: string },
+  fn: () => Promise<T> | T,
+  settleChildStep?: (runtime: IAgentRuntime, result: T) => void,
+): T!(ElizaError | Foreign) {
+  if (!runtime) {
+    return try foreign(() => fn())
+  }
+
+  const parentCtx = getTrajectoryContext()
+  const parentStepId = parentCtx?.trajectoryStepId
+  if (!(typeof parentStepId === "string" && parentStepId.trim() !== "")) {
+    return try foreign(() => fn())
+  }
+  const normalizedParentStepId = parentStepId.trim()
+  const trajectoryId = typeof parentCtx?.trajectoryId === "string"
+      && parentCtx.trajectoryId.trim() !== ""
+    ? parentCtx.trajectoryId.trim()
+    : undefined
+
+  const trajectoryLogger = try foreignSync(() => resolveTrajectoryLogger(runtime))
+  if (!trajectoryLogger || !(try isUsableTrajectoryLogger(trajectoryLogger, []))) {
+    return try foreign(() => fn())
+  }
+
+  let childStepId = normalizedParentStepId
+  let hasChildStep = false
+
+  const startChildStep = (): void => {
+    if (!trajectoryId || typeof trajectoryLogger.startStep !== "function") {
+      return
+    }
+    try {
+      const startedStepId = trajectoryLogger.startStep(trajectoryId, {
+        timestamp: Date.now(),
+        parentStepId: normalizedParentStepId,
+        kind: options.purpose === "action"
+          ? "action"
+          : options.purpose === "evaluation"
+          ? "evaluator"
+          : "llm",
+        evaluatorName: options.evaluatorName,
+      })
+      const normalizedStartedStepId = typeof startedStepId === "string" ? startedStepId.trim() : ""
+      if (
+        normalizedStartedStepId !== ""
+        && normalizedStartedStepId !== trajectoryId
+        && normalizedStartedStepId !== normalizedParentStepId
+      ) {
+        childStepId = normalizedStartedStepId
+        hasChildStep = true
+      }
+    } catch (error) {
+      runtime.reportError("TrajectoryChildStep.start", error, {
+        purpose: options.purpose,
+        ...(options.evaluatorName
+          ? { evaluatorName: options.evaluatorName }
+          : {}),
+        actionName: options.actionName,
+        diagnosticOnly: true,
+      })
+    }
+  }
+
+  let childContext: TrajectoryContext
+  let closed = false
+  if (options.purpose === "provider" && trajectoryId) {
+    let started = false
+    childContext = {
+      ...parentCtx,
+      purpose: options.purpose,
+      activateChildStep: () => {
+        if (closed) return undefined
+        if (!started) {
+          started = true
+          startChildStep()
+        }
+        return hasChildStep
+          ? {
+            trajectoryId,
+            trajectoryStepId: childStepId,
+            parentStepId: normalizedParentStepId,
+          }
+          : undefined
+      },
+    }
+  } else {
+    startChildStep()
+    childContext = hasChildStep
+      ? {
+        ...parentCtx,
+        activateChildStep: undefined,
+        trajectoryId,
+        trajectoryStepId: childStepId,
+        parentStepId: normalizedParentStepId,
+        purpose: options.purpose,
+      }
+      : { ...parentCtx, purpose: options.purpose }
+  }
+
+  const finalizeChild = effect {
+    if (trajectoryId && typeof trajectoryLogger.flushWriteQueue === "function") {
+      foreign(() => trajectoryLogger.flushWriteQueue?.(trajectoryId)) catch (error) => {
+        runtime.reportError("TrajectoryChildStep.finalize", error.cause, {
+          trajectoryId,
+          parentStepId: normalizedParentStepId,
+          ...(hasChildStep ? { childStepId } : {}),
+          purpose: options.purpose,
+          diagnosticOnly: true,
+        })
+      }
+    }
+  }
+
+  const close = effect {
+    closed = true
+    if (!trajectoryId && !hasChildStep) return
+    if (options.purpose === "evaluation") {
+      try finalizeChild
+    } else {
+      void (try trackPostDeliveryTask(
+        runtime,
+        `trajectory-child:${options.purpose}:${childStepId}`,
+        () => runDetached(finalizeChild),
+        { kind: "diagnostic" },
+      ))
+    }
+  }
+
+  const startedWithChildStep = hasChildStep
+  const run = effect {
+    const result = try foreign(() => runWithTrajectoryContext(childContext, () => fn()))
+    if (settleChildStep && startedWithChildStep) {
+      try foreignSync(() => runWithTrajectoryContext(childContext, () => settleChildStep(runtime, result)))
+    }
+    return result
+  }
+  return try closingAfter(run, () => close)
+}
+
+function completeActionTrajectoryStep<T extends ActionResult>(
+  runtime: IAgentRuntime,
+  actionName: string,
+  parameters: Record<string, unknown> | undefined,
+  result: T,
+  projectResult?: (result: T) => ActionResult,
+): void {
+  const context = getTrajectoryContext()
+  const trajectoryId = context?.trajectoryId?.trim()
+  const stepId = context?.trajectoryStepId?.trim()
+  if (!trajectoryId || !stepId) return
+
+  const trajectoryLogger = resolveTrajectoryLogger(runtime)
+  if (
+    !trajectoryLogger
+    || typeof trajectoryLogger.completeStep !== "function"
+  ) {
+    return
+  }
+
+  const report = (failedPhase: string, error: unknown) =>
+    runtime.reportError(`TrajectoryActionStep.${failedPhase}`, error, {
+      actionName,
+      trajectoryId,
+      stepId,
+      diagnosticOnly: true,
+    })
+  let phase: "project" | "normalize" | "complete" = "project"
+  try {
+    const projectedResult = projectResult?.(result) ?? result
+
+    const redactDiagnosticText = composeToolDiagnosticRedactor(runtime)
+    const diagnosticParameters = projectToolDiagnosticValue(
+      parameters ?? {},
+      redactDiagnosticText,
+    )
+    const diagnosticResult = projectToolDiagnosticValue(
+      projectedResult,
+      redactDiagnosticText,
+    ) as ActionResult
+    phase = "normalize"
+    const normalizedParameters = sanitizeTrajectoryJsonObject(diagnosticParameters)
+    const normalizedResult = sanitizeTrajectoryJsonObject(diagnosticResult)
+    if (!normalizedParameters || !normalizedResult) {
+      report(
+        phase,
+        new ElizaError("Action settlement is not JSON serializable", {
+          code: "TRAJECTORY_ACTION_SETTLEMENT_INVALID",
+          context: { actionName, trajectoryId, stepId },
+        }),
+      )
+      return
+    }
+
+    phase = "complete"
+    trajectoryLogger.completeStep(trajectoryId, stepId, {
+      actionType: actionName,
+      actionName,
+      parameters: normalizedParameters,
+      success: projectedResult.success,
+      result: normalizedResult,
+      ...(typeof diagnosticResult.error === "string"
+        ? { error: diagnosticResult.error }
+        : {}),
+    })
+  } catch (error) {
+    report(phase, error)
+  }
+}
+
+export effect function withActionStep<T extends ActionResult>(
+  runtime: IAgentRuntime | null | undefined,
+  actionName: string,
+  fn: () => Promise<T> | T,
+  options: {
+    parameters?: Record<string, unknown>
+    projectResult?: (result: T) => ActionResult
+  } = {},
+) {
+  return try withChildTrajectoryStep(
+    runtime,
+    { purpose: "action", actionName },
+    fn,
+    (owner, result) => completeActionTrajectoryStep(owner, actionName, options.parameters, result, options.projectResult),
+  )
+}
+
+export effect function withProviderStep<T>(
+  runtime: IAgentRuntime | null | undefined,
+  providerName: string,
+  fn: () => Promise<T> | T,
+) {
+  return try withChildTrajectoryStep(runtime, { purpose: "provider", actionName: providerName }, fn)
+}
+
+export effect function withEvaluatorStep<T>(
+  runtime: IAgentRuntime | null | undefined,
+  evaluatorName: string,
+  fn: () => Promise<T> | T,
+) {
+  return try withChildTrajectoryStep(
+    runtime,
+    { purpose: "evaluation", actionName: evaluatorName, evaluatorName },
+    fn,
+  )
+}
+
+export type SpawnTrajectoryHandle = {
+  parentStepId: string | undefined
+
+  linkChild: (childStepId: string) => Promise<boolean>
+}
+
+effect function linkChildStep(
+  runtime: IAgentRuntime | null | undefined,
+  handle: SpawnTrajectoryHandle,
+  childStepId: string,
+) {
+  const parentStepId = handle.parentStepId
+  if (!parentStepId) return false
+  if (!runtime) return false
+  if (typeof childStepId !== "string" || childStepId.trim() === "") {
+    return false
+  }
+  return annotateActiveTrajectoryStep(runtime, {
+    stepId: parentStepId,
+    appendChildSteps: [childStepId.trim()],
+  }) catch (error) => {
+    runtime.reportError("Trajectory.linkChild", error.cause, {
+      parentStepId: handle.parentStepId,
+      childStepId,
+      diagnosticOnly: true,
+    })
+    return false
+  }
+}
+
+export effect function spawnWithTrajectoryLink<T>(
+  runtime: IAgentRuntime | null | undefined,
+  _options: { source?: string; metadata?: Record<string, unknown> } | undefined,
+  fn: (handle: SpawnTrajectoryHandle) => Promise<T> | T,
+): T!Foreign {
+  const parentStepId = getTrajectoryContext()?.trajectoryStepId
+  const handle: SpawnTrajectoryHandle = {
+    parentStepId: typeof parentStepId === "string" && parentStepId.trim() !== ""
+      ? parentStepId
+      : undefined,
+    linkChild: (childStepId: string) => runDetached(linkChildStep(runtime, handle, childStepId)),
+  }
+  return try foreign(() => fn(handle))
+}
+
+module edge {
+  import { asLegacy, runDetached } from "./edge.vibe"
+  import { ElizaError } from "./errors.vibe"
+  import type { ActionResult } from "./types/components.vibe"
+  import type { IAgentRuntime } from "./types/runtime.vibe"
+  import {
+    recordLlmCall,
+    runWithLlmInputSubstringAttestation,
+    runWithModelCallRecordingScope,
+    spawnWithTrajectoryLink,
+    withActionStep,
+    withEvaluatorStep,
+    withProviderStep,
+    withStandaloneTrajectory,
+    type LlmInputSubstringAttestation,
+    type ModelCallRecordingState,
+    type RecordLlmCallDetails,
+    type SpawnTrajectoryHandle,
+  } from "./trajectory-utils.vibe"
+
+  /** @throws {never} */
+  export function runWithLlmInputSubstringAttestationPromise<T>(
+    expectedText: string,
+    fn: () => Promise<T> | T,
+  ): Promise<{ result: T; attestation: LlmInputSubstringAttestation }> {
+    return runDetached(runWithLlmInputSubstringAttestation<T>(expectedText, fn))
+  }
+
+  /** @throws {never} */
+  export function runWithModelCallRecordingScopePromise<T>(
+    fn: () => Promise<T> | T,
+  ): Promise<{ result: T; recordingState: ModelCallRecordingState }> {
+    return runDetached(runWithModelCallRecordingScope<T>(fn))
+  }
+
+  /** @throws {never} */
+  export function withStandaloneTrajectoryPromise<T>(
+    runtime: IAgentRuntime | null | undefined,
+    options: Parameters<typeof withStandaloneTrajectory>[1],
+    callback: () => Promise<T> | T,
+  ): Promise<T> {
+    return runDetached(withStandaloneTrajectory<T>(runtime, options, callback))
+  }
+
+  /** @throws {never} */
+  export function recordLlmCallPromise<T>(
+    runtime: IAgentRuntime | null | undefined,
+    details: RecordLlmCallDetails,
+    fn: () => Promise<T> | T,
+  ): Promise<T> {
+    return runDetached(asLegacy(Error, recordLlmCall<T>(runtime, details, fn), ElizaError))
+  }
+
+  /** @throws {never} */
+  export function withActionStepPromise<T extends ActionResult>(
+    runtime: IAgentRuntime | null | undefined,
+    actionName: string,
+    fn: () => Promise<T> | T,
+    options: {
+      parameters?: Record<string, unknown>
+      projectResult?: (result: T) => ActionResult
+    } = {},
+  ): Promise<T> {
+    return runDetached(withActionStep<T>(runtime, actionName, fn, options))
+  }
+
+  /** @throws {never} */
+  export function withProviderStepPromise<T>(
+    runtime: IAgentRuntime | null | undefined,
+    providerName: string,
+    fn: () => Promise<T> | T,
+  ): Promise<T> {
+    return runDetached(withProviderStep<T>(runtime, providerName, fn))
+  }
+
+  /** @throws {never} */
+  export function withEvaluatorStepPromise<T>(
+    runtime: IAgentRuntime | null | undefined,
+    evaluatorName: string,
+    fn: () => Promise<T> | T,
+  ): Promise<T> {
+    return runDetached(withEvaluatorStep<T>(runtime, evaluatorName, fn))
+  }
+
+  /** @throws {never} */
+  export function spawnWithTrajectoryLinkPromise<T>(
+    runtime: IAgentRuntime | null | undefined,
+    options: { source?: string; metadata?: Record<string, unknown> } | undefined,
+    fn: (handle: SpawnTrajectoryHandle) => Promise<T> | T,
+  ): Promise<T> {
+    return runDetached(spawnWithTrajectoryLink<T>(runtime, options, fn))
+  }
+}
+import {
+  recordLlmCallPromise,
+  runWithLlmInputSubstringAttestationPromise,
+  runWithModelCallRecordingScopePromise,
+  spawnWithTrajectoryLinkPromise,
+  withActionStepPromise,
+  withEvaluatorStepPromise,
+  withProviderStepPromise,
+  withStandaloneTrajectoryPromise,
+} from edge
+export {
+  recordLlmCallPromise,
+  runWithLlmInputSubstringAttestationPromise,
+  runWithModelCallRecordingScopePromise,
+  spawnWithTrajectoryLinkPromise,
+  withActionStepPromise,
+  withEvaluatorStepPromise,
+  withProviderStepPromise,
+  withStandaloneTrajectoryPromise,
+}
+
+type TrajectorySourceMeta = {
+  excludeFromTraining: boolean
+}
+
+const TRAJECTORY_SOURCE_REGISTRY_KEY = Symbol.for(
+  "elizaos.trajectorySourceRegistry",
+)
+
+function getRegistry(): Map<string, TrajectorySourceMeta> {
+  return getAmbientSingleton(
+    TRAJECTORY_SOURCE_REGISTRY_KEY,
+    () => new Map<string, TrajectorySourceMeta>(),
+  )
+}
+
+export function registerTrajectorySource(
+  name: string,
+  opts: TrajectorySourceMeta,
+): void {
+  if (typeof name !== "string" || name.trim() === "") return
+  getRegistry().set(name.trim(), { ...opts })
+}
+
+export function isExcludedFromTraining(
+  sourceName: string | null | undefined,
+): boolean {
+  if (typeof sourceName !== "string" || sourceName.trim() === "") return false
+  const meta = getRegistry().get(sourceName.trim())
+  return Boolean(meta?.excludeFromTraining)
+}

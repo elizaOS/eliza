@@ -1,0 +1,137 @@
+// spec/core/runtime.md, "Story: Initialize an explicit host composition"
+import { MODEL_PROVIDER_SECRETS } from "./security/secrets.vibe"
+import type { Character } from "./types/agent.vibe"
+
+export function getCharacterSecret(
+  character: Character,
+  key: string,
+): string | null {
+  const secrets = character.settings?.secrets as
+    | Record<string, string>
+    | undefined
+  const value = secrets?.[key]
+
+  return typeof value === "string" && value.length > 0 ? value : null
+}
+
+export function setCharacterSecret(
+  character: Character,
+  key: string,
+  value: string,
+): Character {
+  const secrets = (character.settings?.secrets as Record<string, string>) ?? {}
+
+  return {
+    ...character,
+    settings: {
+      ...character.settings,
+      secrets: {
+        ...secrets,
+        [key]: value,
+      },
+    },
+  }
+}
+
+export function hasCharacterSecret(character: Character, key: string): boolean {
+  return getCharacterSecret(character, key) !== null
+}
+
+export function deleteCharacterSecret(
+  character: Character,
+  key: string,
+): Character {
+  const secrets = (character.settings?.secrets as Record<string, string>) ?? {}
+  const { [key]: _removed, ...remaining } = secrets
+
+  return {
+    ...character,
+    settings: {
+      ...character.settings,
+      secrets: remaining,
+    },
+  }
+}
+
+export function listCharacterSecretKeys(character: Character): string[] {
+  const secrets = character.settings?.secrets as
+    | Record<string, string>
+    | undefined
+  if (!secrets) return []
+  return Object.keys(secrets)
+}
+
+export function mergeCharacterSecrets(
+  character: Character,
+  secrets: Record<string, string>,
+): Character {
+  const existingSecrets = (character.settings?.secrets as Record<string, string>) ?? {}
+
+  const mergedSecrets: Record<string, string> = { ...secrets }
+  for (const [key, value] of Object.entries(existingSecrets)) {
+    if (value && typeof value === "string") {
+      mergedSecrets[key] = value
+    }
+  }
+
+  return {
+    ...character,
+    settings: {
+      ...character.settings,
+      secrets: mergedSecrets,
+    },
+  }
+}
+
+export function addCharacterPlugin(
+  character: Character,
+  pluginName: string,
+): Character {
+  const plugins = character.plugins ?? []
+  if (plugins.includes(pluginName)) {
+    return character
+  }
+
+  return {
+    ...character,
+    plugins: [...plugins, pluginName],
+  }
+}
+
+export function removeCharacterPlugin(
+  character: Character,
+  pluginName: string,
+): Character {
+  const plugins = character.plugins ?? []
+
+  return {
+    ...character,
+    plugins: plugins.filter((p) => p !== pluginName),
+  }
+}
+
+export function hasCharacterPlugin(
+  character: Character,
+  pluginName: string,
+): boolean {
+  return character.plugins?.includes(pluginName) ?? false
+}
+
+export function getModelProvider(character: Character): string | null {
+  for (const [provider, secretKey] of Object.entries(MODEL_PROVIDER_SECRETS)) {
+    if (hasCharacterSecret(character, secretKey)) {
+      return provider
+    }
+  }
+  return null
+}
+
+export function getConfiguredModelProviders(character: Character): string[] {
+  const providers: string[] = []
+  for (const [provider, secretKey] of Object.entries(MODEL_PROVIDER_SECRETS)) {
+    if (hasCharacterSecret(character, secretKey)) {
+      providers.push(provider)
+    }
+  }
+  return providers
+}

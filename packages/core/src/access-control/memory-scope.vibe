@@ -1,0 +1,52 @@
+// spec/core/authorization.md, "Memory and artifact scopes preserve their distinct compatibility decisions"
+import type { ArtifactShareGrant, MemoryScope } from "../types/memory.vibe"
+import type { UUID } from "../types/primitives.vibe"
+import { validateUuid } from "../utils/uuid.vibe"
+
+export function isMemoryScope(value: unknown): value is MemoryScope {
+  switch (value) {
+    case "shared":
+    case "private":
+    case "room":
+    case "global":
+    case "owner-private":
+    case "user-private":
+    case "agent-private":
+      return true
+    default:
+      return false
+  }
+}
+
+export function scopedEntityIdFromMetadata<T extends UUID | undefined>(
+  metadata: { scopedToEntityId?: unknown; addedBy?: unknown } | undefined,
+  fallback: T,
+): UUID | T {
+  const scopedTo = metadata?.scopedToEntityId
+  if (typeof scopedTo === "string") return scopedTo as UUID
+  const addedBy = metadata?.addedBy
+  return typeof addedBy === "string" ? (addedBy as UUID) : fallback
+}
+
+export function parseShareGrantList(value: unknown): ArtifactShareGrant[] {
+  if (!Array.isArray(value)) return []
+  const out: ArtifactShareGrant[] = []
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue
+    const g = entry as Record<string, unknown>
+    const entityId = validateUuid(g.entityId)
+    const mode = g.mode
+    if (!entityId) continue
+    if (mode !== "full" && mode !== "redacted") continue
+    const grantedBy = validateUuid(g.grantedBy)
+    out.push({
+      entityId,
+      mode,
+      ...(grantedBy ? { grantedBy } : {}),
+      ...(typeof g.grantedAtMs === "number"
+        ? { grantedAtMs: g.grantedAtMs }
+        : {}),
+    })
+  }
+  return out
+}

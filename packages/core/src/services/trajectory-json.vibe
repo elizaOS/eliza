@@ -1,0 +1,147 @@
+// spec/core/services.md, "Story: Acquire a declared service"
+import type { JsonValue } from "../types/primitives.vibe"
+import { defineOwnValue } from "../utils/type-guards.vibe"
+import { toWellFormedUnicode } from "../utils/unicode.vibe"
+
+export type SanitizationState = {
+  seen: WeakSet<object>
+}
+
+
+function sanitizeTrajectoryJsonValueInternal(
+  value: unknown,
+  state: SanitizationState,
+): JsonValue | undefined {
+  if (value === null) return null
+  if (typeof value === "string") return toWellFormedUnicode(value)
+  if (typeof value === "number") return Number.isFinite(value) ? value : null
+  if (typeof value === "boolean") return value
+  if (typeof value === "bigint") return value.toString()
+  if (value === undefined) return undefined
+  if (typeof value === "function") {
+    const fnName = (value as { name?: string }).name
+    return toWellFormedUnicode(
+      `[Function ${typeof fnName === "string" && fnName ? fnName : "anonymous"}]`,
+    )
+  }
+  if (typeof value === "symbol") {
+    return toWellFormedUnicode(value.toString())
+  }
+
+  if (value instanceof Date) return value.toJSON()
+  if (value instanceof Error) {
+    return sanitizeTrajectoryJsonValueInternal(
+      { name: value.name, message: value.message, stack: value.stack },
+      state,
+    )
+  }
+  if (value instanceof RegExp) {
+    return toWellFormedUnicode(value.toString())
+  }
+  if (value instanceof ArrayBuffer) {
+    return sanitizeTrajectoryJsonValueInternal(
+      { type: "ArrayBuffer", byteLength: value.byteLength },
+      state,
+    )
+  }
+  if (ArrayBuffer.isView(value)) {
+    return sanitizeTrajectoryJsonValueInternal(
+      {
+        type: value.constructor.name || "ArrayBufferView",
+        byteLength: value.byteLength,
+      },
+      state,
+    )
+  }
+  if (value instanceof Map) {
+    if (state.seen.has(value)) return "[Circular]"
+    state.seen.add(value)
+    const output: Record<string, JsonValue> = {}
+    for (const [keyValue, entry] of value.entries()) {
+      const key = String(keyValue)
+      const sanitized = sanitizeTrajectoryJsonValueInternal(entry, state)
+      if (sanitized !== undefined) defineOwnValue(output, key, sanitized)
+    }
+    state.seen.delete(value)
+    return output
+  }
+  if (value instanceof Set) {
+    if (state.seen.has(value)) return "[Circular]"
+    state.seen.add(value)
+    const output: JsonValue[] = []
+    for (const entry of value.values()) {
+      const sanitized = sanitizeTrajectoryJsonValueInternal(entry, state)
+      output.push(sanitized ?? null)
+    }
+    state.seen.delete(value)
+    return output
+  }
+  if (Array.isArray(value)) {
+    if (state.seen.has(value)) return "[Circular]"
+    state.seen.add(value)
+    const output: JsonValue[] = []
+    const length = value.length
+    for (let i = 0; i < length; i += 1) {
+      const sanitized = sanitizeTrajectoryJsonValueInternal(value[i], state)
+      output.push(sanitized ?? null)
+    }
+    state.seen.delete(value)
+    return output
+  }
+  if (typeof value === "object") {
+    if (state.seen.has(value)) return "[Circular]"
+    state.seen.add(value)
+    const entries = Object.entries(value as Record<string, unknown>)
+    if (entries.length === 0) {
+      state.seen.delete(value)
+      const proto = Object.getPrototypeOf(value)
+      return proto === Object.prototype || proto === null
+        ? {}
+        : toWellFormedUnicode(String(value))
+    }
+    const output: Record<string, JsonValue> = {}
+    for (const [key, entry] of entries) {
+      const sanitized = sanitizeTrajectoryJsonValueInternal(entry, state)
+      if (sanitized !== undefined) defineOwnValue(output, key, sanitized)
+    }
+    state.seen.delete(value)
+    return output
+  }
+  return toWellFormedUnicode(String(value))
+}
+
+export function sanitizeTrajectoryJsonValue(
+  value: unknown,
+): JsonValue | undefined {
+  return sanitizeTrajectoryJsonValueInternal(value, {
+    seen: new WeakSet<object>(),
+  })
+}
+
+export interface TrajectoryJsonBudget {
+  state: SanitizationState
+}
+
+export function createTrajectoryJsonBudget(): TrajectoryJsonBudget {
+  return {
+    state: { seen: new WeakSet<object>() },
+  }
+}
+
+export function sanitizeTrajectoryJsonValueInBudget(
+  value: unknown,
+  budget: TrajectoryJsonBudget,
+): JsonValue | undefined {
+  return sanitizeTrajectoryJsonValueInternal(value, budget.state)
+}
+
+export function sanitizeTrajectoryJsonObject(
+  value: unknown,
+): Record<string, JsonValue> | undefined {
+  const sanitized = sanitizeTrajectoryJsonValue(value)
+  return sanitized !== null
+      && typeof sanitized === "object"
+      && !Array.isArray(sanitized)
+    ? sanitized
+    : undefined
+}

@@ -1,0 +1,187 @@
+// spec/core/accountBridges.md, "Story: Install and clear shared account-selection contracts"; spec/core/accountBridges.md, "Each bridge slot preserves the last installed object identity"
+import { ambientSlots } from "./ambient-context.vibe"
+
+function installedBridge<B>(key: symbol): B | null {
+  return (ambientSlots()[key] as B | undefined) ?? null
+}
+
+function installBridge<B extends object>(key: symbol, bridge: B | null): void {
+  if (bridge) ambientSlots()[key] = bridge
+  else delete ambientSlots()[key]
+}
+
+export const ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL: unique symbol = Symbol.for(
+  "eliza.account-pool.anthropic.v1",
+)
+
+export interface AnthropicAccountPoolBridge {
+  selectAnthropicSubscription(opts?: {
+    sessionKey?: string
+    exclude?: string[]
+  }): Promise<{ id: string; expiresAt: number } | null>
+
+  getAccessToken(
+    providerId: "anthropic-subscription",
+    accountId: string,
+  ): Promise<string | null>
+
+  markInvalid(accountId: string, detail?: string): Promise<void>
+
+  markRateLimited(
+    accountId: string,
+    untilMs: number,
+    detail?: string,
+  ): Promise<void>
+}
+
+export function getAnthropicAccountPoolBridge(): AnthropicAccountPoolBridge | null {
+  return installedBridge(ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL)
+}
+
+export function setAnthropicAccountPoolBridge(bridge: AnthropicAccountPoolBridge | null): void {
+  installBridge(ANTHROPIC_ACCOUNT_POOL_BRIDGE_SYMBOL, bridge)
+}
+
+export const CODING_AGENT_SELECTOR_BRIDGE_SYMBOL: unique symbol = Symbol.for(
+  "eliza.account-pool.coding-agent.v1",
+)
+
+export type CodingAccountStrategy =
+  | "priority"
+  | "round-robin"
+  | "least-used"
+  | "quota-aware"
+  | "reset-soonest"
+  | "drain-soonest-reset"
+
+export interface CodingAccountUsage {
+  sessionPct?: number
+  weeklyPct?: number
+  weeklyModelBuckets?: Record<string, { pct: number; resetsAt?: number }>
+  resetsAt?: number
+  refreshedAt: number
+}
+
+export interface CodingAgentSelection {
+  providerId: string
+  accountId: string
+  label: string
+  source: "oauth" | "api-key" | "coding-plan-key"
+  strategy: string
+  usage?: CodingAccountUsage
+
+  envPatch: Record<string, string>
+}
+
+export interface CodingProviderAvailability {
+  providerId: string
+  total: number
+  enabled: number
+  healthy: number
+}
+
+export interface CodingAgentSelectorBridge {
+  describe(): Record<string, CodingProviderAvailability[]>
+
+  select(
+    agentType: string,
+    opts?: {
+      sessionKey?: string
+      strategy?: CodingAccountStrategy
+
+      model?: string
+      exclude?: string[]
+
+      providerId?: string
+
+      excludeAccounts?: Array<{ providerId: string; accountId: string }>
+
+      accountIds?: string[]
+    },
+  ): Promise<CodingAgentSelection | null>
+  markRateLimited(
+    providerId: string,
+    accountId: string,
+    untilMs: number,
+    detail?: string,
+  ): Promise<void>
+  markNeedsReauth(
+    providerId: string,
+    accountId: string,
+    detail?: string,
+  ): Promise<void>
+  recordUsage(
+    providerId: string,
+    accountId: string,
+    result: {
+      tokens?: number
+      ok: boolean
+      model?: string
+      latencyMs?: number
+    },
+  ): Promise<void>
+}
+
+export function getCodingAgentSelectorBridge(): CodingAgentSelectorBridge | null {
+  return installedBridge(CODING_AGENT_SELECTOR_BRIDGE_SYMBOL)
+}
+
+export function setCodingAgentSelectorBridge(bridge: CodingAgentSelectorBridge | null): void {
+  installBridge(CODING_AGENT_SELECTOR_BRIDGE_SYMBOL, bridge)
+}
+
+export interface AccountPoolBrokerLastLease {
+  leaseId: string
+  atMs: number
+  sessionKeyHash: string
+  model?: string
+}
+
+export interface AccountPoolBrokerLastReportedStatus {
+  atMs: number
+  ok: boolean
+  category: "ok" | "auth" | "rate_limit" | "transient" | "other"
+  reason: string
+  httpStatus?: number
+  model?: string
+}
+
+export interface AccountPoolBrokerAccountSnapshot {
+  activeLeaseCount: number
+  lastLease: AccountPoolBrokerLastLease | null
+  lastLeaseAt: number | null
+  lastReportedStatus: AccountPoolBrokerLastReportedStatus | null
+}
+
+export interface AccountPoolBrokerProviderLastSelection {
+  accountId: string
+  atMs: number
+  reason: string
+}
+
+export interface AccountPoolBrokerFailoverSnapshot {
+  atMs: number
+  providerId: string
+  sessionKeyHash: string
+  fromAccountId: string
+  toAccountId: string
+  cause: {
+    category: "auth" | "rate_limit" | "transient"
+    reason: string
+  }
+  model?: string
+}
+
+export interface AccountPoolBrokerProviderSnapshot {
+  lastSelection: AccountPoolBrokerProviderLastSelection | null
+  recentFailovers: AccountPoolBrokerFailoverSnapshot[]
+}
+
+export interface AccountPoolBrokerSnapshot {
+  accounts: Record<string, AccountPoolBrokerAccountSnapshot>
+  providers: Record<string, AccountPoolBrokerProviderSnapshot>
+}
+
+export function emptyAccountPoolBrokerSnapshot(): AccountPoolBrokerSnapshot {
+  return { accounts: {}, providers: {} }
+}

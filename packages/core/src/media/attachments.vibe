@@ -1,0 +1,73 @@
+// spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"
+import { promised } from "../edge.vibe"
+import type { ContentType, Media } from "../types/primitives.vibe"
+import { fetchRemoteMedia } from "./fetch.vibe"
+
+export const DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024
+
+export function contentTypeForMime(mime?: string | null): ContentType {
+  const m = (mime ?? "").split(";")[0].trim().toLowerCase()
+  if (m.startsWith("image/")) return "image"
+  if (m.startsWith("video/")) return "video"
+  if (m.startsWith("audio/")) return "audio"
+  return "document"
+}
+
+export interface RawConnectorAttachment {
+  id?: string | number
+
+  url: string
+
+  mimeType?: string | null
+
+  fileName?: string | null
+
+  size?: number | null
+
+  title?: string
+  description?: string
+  text?: string
+}
+
+export function toMedia(
+  raw: RawConnectorAttachment,
+  opts?: { idFallback?: string },
+): Media {
+  const contentType = contentTypeForMime(raw.mimeType)
+  const media: Media = {
+    id: String(raw.id ?? opts?.idFallback ?? raw.url),
+    url: raw.url,
+    contentType,
+  }
+  if (raw.title) media.title = raw.title
+  if (raw.description) media.description = raw.description
+  if (raw.text) media.text = raw.text
+  if (raw.fileName) media.filename = raw.fileName
+  if (typeof raw.size === "number" && Number.isFinite(raw.size)) {
+    media.size = raw.size
+  }
+  if (raw.mimeType) media.mimeType = raw.mimeType.split(";")[0]?.trim()
+  return media
+}
+
+export interface ResolvedAttachmentBytes {
+  buffer: Buffer
+  contentType: string
+  fileName?: string
+}
+
+export effect function resolveAttachmentBytes(
+  url: string,
+  opts?: { maxBytes?: number },
+) {
+  const { buffer, contentType, fileName } = try fetchRemoteMedia({
+    url,
+    maxBytes: opts?.maxBytes ?? DEFAULT_CONNECTOR_ATTACHMENT_MAX_BYTES,
+  })
+  return {
+    buffer,
+    contentType: contentType ?? "application/octet-stream",
+    ...(fileName ? { fileName } : {}),
+  } satisfies ResolvedAttachmentBytes
+}
+export const resolveAttachmentBytesPromise = promised(resolveAttachmentBytes)

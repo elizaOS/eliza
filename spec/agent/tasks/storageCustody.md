@@ -163,6 +163,42 @@ pure def lawReplacedLockRejectsOperation(store: TaskStore, leaseId: int, lockIno
 pure def sometimesRetiredConnectionRefused(s: TaskStore): bool = s.phase == WriterConnected and s.handleEpoch < s.ownerEpoch
 ```
 
+### Open normalizes an owner refusal, and a live operation passes on a thrown owner-check value
+
+The owner check is a callback the consumer supplies. Opening checks the
+owner before acquiring the lease, before requesting the key, after the key
+returns and after the native open; a return other than undefined, or a
+throw, at any of these checks fails the open with
+`TASK_STORAGE_UNAVAILABLE` once cleanup completes. After the open,
+preparing, executing and verifying on a live connection pass on the exact
+value the callback threw, whether the check runs before or after the native
+call, and a return other than undefined gives `TASK_STORAGE_UNAVAILABLE`
+at either point. A closed connection or a wrong connection binding fails
+before the callback is consulted, and the open validates the path shape
+before its first owner check. Closing runs whatever the callback says. A
+native cleanup call that itself fails remains a native error.
+
+```quint
+type OwnerCheckBoundary = OpeningConnection | UsingConnection
+type OwnerCheckObservation = CallbackAllowed | CallbackReturnedValue | CallbackThrew
+type OwnerGuardResult = OwnerCheckPassed | StorageUnavailable | PropagateCallbackValue
+type OwnerGuardDecision = { checkedOwner: bool, outcome: OwnerGuardResult }
+pure def ownerGuardResult(guardBoundary: OwnerCheckBoundary, boundaryAdmitted: bool, guardObservation: OwnerCheckObservation): OwnerGuardDecision =
+  if (not(boundaryAdmitted)) { checkedOwner: false, outcome: StorageUnavailable }
+  else { checkedOwner: true, outcome:
+    if (guardObservation == CallbackAllowed) OwnerCheckPassed
+    else if (guardBoundary == UsingConnection and guardObservation == CallbackThrew) PropagateCallbackValue
+    else StorageUnavailable }
+pure def lawThrownOwnerErrorSurvivesOperationSentinel(boundaryAdmitted: bool): bool =
+  boundaryAdmitted implies ownerGuardResult(UsingConnection, boundaryAdmitted, CallbackThrew).outcome == PropagateCallbackValue
+pure def lawOpenNormalizesOwnerRefusal(guardObservation: OwnerCheckObservation): bool =
+  guardObservation != CallbackAllowed implies ownerGuardResult(OpeningConnection, true, guardObservation).outcome == StorageUnavailable
+pure def lawIneligibleBoundaryRefusesBeforeOwnerCallback(guardBoundary: OwnerCheckBoundary, guardObservation: OwnerCheckObservation): bool = {
+  val decision = ownerGuardResult(guardBoundary, false, guardObservation)
+  not(decision.checkedOwner) and decision.outcome == StorageUnavailable
+}
+```
+
 ## Story: Reopen sealed evidence without exposing it across stores
 
 > As a user, sealed task evidence opens only under its own account key,

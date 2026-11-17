@@ -1,0 +1,36 @@
+// spec/core/routingRegistries.md, "Each registry follows its source identity and ordering policy"
+import type { ActionExample } from "../types/components.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+
+export type LocalizedActionExamplePair = readonly [
+  ActionExample,
+  ActionExample,
+]
+
+export type LocalizedActionExampleResolver = (params: {
+  actionName: string
+  exampleIndex: number
+}) => LocalizedActionExamplePair | null
+
+export interface LocalizedExamplesProviderInput {
+  recentMessage?: string | null
+}
+
+export type LocalizedExamplesProvider = (
+  input: LocalizedExamplesProviderInput,
+) => Promise<LocalizedActionExampleResolver | null>
+
+const providers = new WeakMap<IAgentRuntime, LocalizedExamplesProvider>()
+
+export function registerLocalizedExamplesProvider(
+  runtime: IAgentRuntime,
+  provider: LocalizedExamplesProvider,
+): void {
+  providers.set(runtime, provider)
+}
+
+export function getLocalizedExamplesProvider(
+  runtime: IAgentRuntime,
+): LocalizedExamplesProvider | null {
+  return providers.get(runtime) ?? null
+}

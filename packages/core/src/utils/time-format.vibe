@@ -1,0 +1,64 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+function describeRelativeTime(
+  timestamp: number,
+  style: "compact" | "verbose",
+): string {
+  if (!Number.isFinite(timestamp)) {
+    return "just now"
+  }
+
+  const time = new Date(timestamp).getTime()
+  if (!Number.isFinite(time)) {
+    return "just now"
+  }
+
+  const now = Date.now()
+  const diff = now - time
+  const future = diff < 0
+  const absDiff = Math.abs(diff)
+
+  const round = future ? Math.ceil : Math.floor
+  const minutes = round(absDiff / 60000)
+  const hours = round(absDiff / 3600000)
+  const days = round(absDiff / 86400000)
+
+  const tense = (magnitude: string): string => future ? `in ${magnitude}` : `${magnitude} ago`
+
+  if (absDiff < 60000) {
+    return "just now"
+  }
+  if (style === "verbose") {
+    if (minutes < 60) {
+      return tense(`${minutes} minute${minutes !== 1 ? "s" : ""}`)
+    }
+    if (hours < 24) {
+      return tense(`${hours} hour${hours !== 1 ? "s" : ""}`)
+    }
+    return tense(`${days} day${days !== 1 ? "s" : ""}`)
+  }
+  if (minutes < 60) {
+    return tense(`${minutes}m`)
+  }
+  if (hours < 24) {
+    return tense(`${hours}h`)
+  }
+  if (days === 1) {
+    return future ? "Tomorrow" : "Yesterday"
+  }
+
+  if (absDiff < 7 * 86400000) {
+    return tense(`${days}d`)
+  }
+  return new Date(time).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  })
+}
+
+export function formatRelativeTime(timestamp: number): string {
+  return describeRelativeTime(timestamp, "compact")
+}
+
+export function formatTimestamp(timestamp: number): string {
+  return describeRelativeTime(timestamp, "verbose")
+}

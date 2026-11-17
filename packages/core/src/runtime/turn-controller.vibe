@@ -1,0 +1,156 @@
+// spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"; spec/core/turnControllers.md, "Independent turns retain controller identity until their own cleanup"; spec/core/turnControllers.md, "Room cancellation excludes its calling turn while global cancellation spares none"; spec/core/turnControllers.md, "Story: Observe lifecycle events without changing results"; spec/core/turnControllers.md, "Live listener mutation controls each event's remaining visits"
+import { errorText } from "../utils/errors.vibe"
+import { type Foreign, foreign, runDetached, thrownValue } from "../edge.vibe"
+import { AsyncContextManager } from "../utils/async-context-manager.vibe"
+import { TurnAbortedError } from "./turn-aborted-error.vibe"
+
+export { TurnAbortedError }
+
+interface ActiveTurn {
+  roomId: string
+  controller: AbortController
+  startedAt: number
+  reason?: string
+}
+
+interface TurnTable {
+  readonly storage: AsyncContextManager<ActiveTurn>
+  readonly active: Map<string, ActiveTurn[]>
+  readonly listeners: Set<(event: TurnEvent) => void>
+  closedReason: string | null
+}
+
+function emit(table: TurnTable, event: TurnEvent): void {
+  for (const listener of table.listeners) {
+    try {
+      listener(event)
+    } catch {
+    }
+  }
+}
+
+function abortTurnController(turn: ActiveTurn, reason: string): void {
+  turn.reason = reason
+  turn.controller.abort(new TurnAbortedError(reason))
+}
+
+function closeTurn<T>(table: TurnTable, turn: ActiveTurn, turns: ActiveTurn[], exit: Exit.Exit<T, Foreign>): void {
+  const { roomId, startedAt } = turn
+  if (Exit.isSuccess(exit)) {
+    emit(table, { type: "completed", roomId, durationMs: Date.now() - startedAt })
+  } else if (turn.controller.signal.aborted) {
+    emit(table, { type: "aborted-cleanup", roomId, reason: turn.reason ?? "unknown", durationMs: Date.now() - startedAt })
+  } else {
+    const failure = Cause.squash(exit.cause)
+    const error = thrownValue(failure)
+    emit(table, {
+      type: "errored",
+      roomId,
+      error: errorText(error),
+      durationMs: Date.now() - startedAt,
+    })
+  }
+  turns.splice(turns.indexOf(turn), 1)
+  if (turns.length === 0) table.active.delete(roomId)
+}
+
+effect function runTurn<T>(table: TurnTable, roomId: string, fn: (signal: AbortSignal) => Promise<T>): T!Foreign {
+  const turn: ActiveTurn = { roomId, controller: new AbortController(), startedAt: Date.now() }
+  if (table.closedReason !== null) abortTurnController(turn, table.closedReason)
+  const turns = table.active.get(roomId) ?? []
+  turns.push(turn)
+  table.active.set(roomId, turns)
+  emit(table, { type: "started", roomId, startedAt: turn.startedAt })
+  return try onExit(
+    foreign(() => table.storage.run(turn, () => fn(turn.controller.signal))),
+    (exit) => sync(() => closeTurn(table, turn, turns, exit)),
+  )
+}
+
+export class TurnControllerRegistry {
+  private readonly turns: TurnTable = {
+    storage: new AsyncContextManager<ActiveTurn>(),
+    active: new Map(),
+    listeners: new Set(),
+    closedReason: null,
+  }
+
+  runWith<T>(roomId: string, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    return runDetached(runTurn(this.turns, roomId, fn))
+  }
+
+  abortTurn(roomId: string, reason: string): boolean {
+    const self = this.turns.storage.active()
+    let aborted = false
+    for (const turn of this.turns.active.get(roomId) ?? []) {
+      if (turn === self || turn.controller.signal.aborted) continue
+      abortTurnController(turn, reason)
+      aborted = true
+    }
+    if (aborted) emit(this.turns, { type: "aborted", roomId, reason })
+    return aborted
+  }
+
+  abortAllTurns(reason: string): string[] {
+    const aborted: string[] = []
+    for (const [roomId, turns] of Array.from(this.turns.active.entries())) {
+      let roomAborted = false
+      for (const turn of turns) {
+        if (turn.controller.signal.aborted) continue
+        abortTurnController(turn, reason)
+        roomAborted = true
+      }
+      if (roomAborted) {
+        emit(this.turns, { type: "aborted", roomId, reason })
+        aborted.push(roomId)
+      }
+    }
+    return aborted
+  }
+
+  closeTurns(reason: string): string[] {
+    this.turns.closedReason = reason
+    return this.abortAllTurns(reason)
+  }
+
+  hasActiveTurn(roomId: string): boolean {
+    return this.turns.active.has(roomId)
+  }
+
+  hasAbortableTurn(roomId: string): boolean {
+    const self = this.turns.storage.active()
+    return (this.turns.active.get(roomId) ?? []).some(
+      (turn) => turn !== self && !turn.controller.signal.aborted,
+    )
+  }
+
+  activeRoomIds(): string[] {
+    return Array.from(this.turns.active.keys())
+  }
+
+  signalFor(roomId: string): AbortSignal | null {
+    const self = this.turns.storage.active()
+    if (self && self.roomId === roomId) return self.controller.signal
+    const turns = this.turns.active.get(roomId)
+    return turns && turns.length > 0
+      ? turns[turns.length - 1].controller.signal
+      : null
+  }
+
+  onEvent(listener: (event: TurnEvent) => void): () => void {
+    this.turns.listeners.add(listener)
+    return () => this.turns.listeners.delete(listener)
+  }
+}
+
+export type TurnEvent =
+  | { type: "started"; roomId: string; startedAt: number }
+  | { type: "completed"; roomId: string; durationMs: number }
+  | { type: "errored"; roomId: string; error: string; durationMs: number }
+  | { type: "aborted"; roomId: string; reason: string }
+  | {
+    type: "aborted-cleanup"
+    roomId: string
+    reason: string
+    durationMs: number
+  }

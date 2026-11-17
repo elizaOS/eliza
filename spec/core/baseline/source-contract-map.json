@@ -6,8 +6,7 @@
       "source": "packages/core/src/access-context.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "80d525b1b897f5c66e9b40d98115ff47051af823d50d62e0888189f08f48c714",
@@ -50,9 +49,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/access-control/audience-disclosure.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/authorization.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/access-control/audience-egress.ts",
@@ -130,29 +127,20 @@
       "source": "packages/core/src/access-control/role-primitives.ts",
       "spec": "spec/core/authorization.md",
       "rules": [
-        "Memory and artifact scopes preserve their distinct compatibility decisions",
-        "Verified cross-world membership is intersected with the agent membership",
-        "A role write captures the target and authority revision",
-        "A concurrent revocation makes the captured role write stale",
-        "A committed role change has fresh authorization and one matching audit row",
-        "Role gates combine exclusions, minimum rank and all required memberships",
-        "Trusted ownership and deliberate grants determine resolved roles"
+        "Role gates combine exclusions, minimum rank and all required memberships"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "2b183e4fdb02c94afa03895500d4a5b3d08d201403eda890407eef2d1c99a330",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/access-control/role-primitives.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/authorization.md"
-      ]
+      "implementationProofBoundary": "Declarative gate policy preserves custom and blank name membership and USER-to-MEMBER aliasing over host-coerced, trimmed, uppercased observations. It models exclusions, the roles/anyOf union, allOf membership, and the zero-initialized rank floor. String coercion, ECMAScript trim and Unicode uppercase conversion require adapter conformance. World normalizeRole and hasAtLeastRole retain their separate source normalization contracts; the gate policy is not a replacement for them. Model proofs do not establish source-to-model refinement.",
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/account-pool-bridge.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "767cde3601b2abf6f64f48e2fcb1bc9b76ea2af79da244f257cb03ccbcc4add0",
@@ -355,7 +343,6 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/actions/task-extraction-context.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/requestIssuer.md",
         "spec/core/requestCompletions.md",
         "spec/core/requestAuthorityRegistry.md"
       ]
@@ -421,8 +408,7 @@
       "source": "packages/core/src/activity-plaintext.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "04bd7066f6be41c8389f51add9c175998e1dcd3e500bf77f2531187d8f891ad4",
@@ -434,24 +420,20 @@
       "source": "packages/core/src/agent-backup-limits.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "05315f8f683e7718ec942b3828dc2a502de805a1799451b942279647f297ace1",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/agent-backup-limits.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/ambient-context.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "62467b09ce48d15c41962c0d1068a8ca0ac0041b5a161b0d375091ae94d23393",
@@ -463,8 +445,7 @@
       "source": "packages/core/src/audio-redaction-verify.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "b788cbec970870a5ae4a31cc9f3e3e4834f696b6f448100bd4296ca5f2554fda",
@@ -476,8 +457,7 @@
       "source": "packages/core/src/audio-redaction.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "041b8e751c2f6d7bec0846b0ab1edce56741a34d2ebcec9fe82a0f43d651baa0",
@@ -489,8 +469,7 @@
       "source": "packages/core/src/awareness.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "4ee3644096c471e85d739770f8c1b2d8542bd0390a185c8747054b6f6deddb2c",
@@ -513,9 +492,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/canonical-json.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/canonicalJson.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/capabilities/account-selection.ts",
@@ -979,9 +956,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/generate.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/catalog.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/catalog/generated.json",
@@ -1008,9 +983,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/loader.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/catalog.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/catalog/provider-plugin-map.json",
@@ -1037,9 +1010,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/registry.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/catalog.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/catalog/runtime-kernel.ts",
@@ -1053,9 +1024,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/runtime-kernel.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/catalog.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/catalog/schema.ts",
@@ -1069,9 +1038,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/schema.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/catalog.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/catalog/short-id-plugin-map.json",
@@ -1101,9 +1068,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/character-language.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/runtime.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/character-schema.ts",
@@ -1120,9 +1085,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/character-schema.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/runtime.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/character-utils.ts",
@@ -1160,24 +1123,20 @@
       "source": "packages/core/src/chat-upload-limits.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "1cd7e533b7d9a7690415d2b8c8f7b18feee2487fb4db89fa459fc0a4adbad0ac",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/chat-upload-limits.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/client-chat-rooms.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "20a497166f6a787e980307397f87a2452bff18c1ceea57d86f9aa38c23fdbaa9",
@@ -1196,9 +1155,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/connection.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/connectionLocks.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/connector-account-catalog.ts",
@@ -1237,9 +1194,6 @@
       "source": "packages/core/src/connectors/account-manager.ts",
       "spec": "spec/core/connectorStorage.md",
       "rules": [
-        "Account upsert replaces its exact provider and id while owner bindings remain separately scoped",
-        "Only a pending unexpired unconsumed flow can be consumed",
-        "The selected backend cannot be used until the captured fallback state transfers",
         "A runtime cache preserves its manager while a compatible registered service takes precedence",
         "Provider refresh preserves stored identity and protected policy fields",
         "Backend replacement preserves facade identity and memoizes each current adapter",
@@ -1247,7 +1201,10 @@
         "Storing a verifier sweeps expired entries and replacement preserves the flow key",
         "Persistence precedes provider initiation and failed cleanup retains both errors",
         "A callback consumes a pending unexpired flow before provider work",
-        "Terminal persistence and verifier cleanup preserve separate writeResults"
+        "Terminal persistence and verifier cleanup preserve separate outcomes",
+        "Account replacement preserves identity ordering and complete values",
+        "Pending flow consumption retains both aliases until terminal update",
+        "The snapshot contains exact accounts and pending unexpired flows"
       ],
       "classification": "source-reviewed-domain-model-with-explicit-boundaries",
       "sourceSha256": "39c4197560016725636b748ecc04f4b6d2d650335365940004b5716c8b079b26",
@@ -1255,14 +1212,12 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/connectors/account-manager.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/connectorStorage.md",
         "spec/core/connectorHandoff.md",
         "spec/core/connectorManagers.md",
-        "spec/core/connectorHandoff.md",
         "spec/core/connectorQueues.md",
         "spec/core/oauth/verifiers.md",
         "spec/core/oauth/index.md",
-        "spec/core/oauth/index.md"
+        "spec/core/accountValues.md"
       ]
     },
     {
@@ -1294,9 +1249,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/connectors/privacy.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/plugins.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/connectors/target-sources.ts",
@@ -1309,16 +1262,13 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/connectors/target-sources.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/connectorRegistries.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/conversation-chat-marker.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "74f2814384f18af0de4cd805da551eaea6780aa840e34ff6f0b9c2843dc6276d",
@@ -1333,7 +1283,7 @@
         "A transaction stages dependencies while the visible head stays unchanged",
         "Publication commits the complete dependency set and head atomically",
         "Every page read checks current authorization and expected revision",
-        "Revisions and pagination reject invalid numeric inputs",
+        "A stale or malformed revision, or invalid pagination, exposes no page",
         "Composite component identity keeps worlds and source entities distinct"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -1341,9 +1291,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/database.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/storage.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/database/cache-cas.ts",
@@ -1352,7 +1300,7 @@
         "A transaction stages dependencies while the visible head stays unchanged",
         "Publication commits the complete dependency set and head atomically",
         "Every page read checks current authorization and expected revision",
-        "Revisions and pagination reject invalid numeric inputs",
+        "A stale or malformed revision, or invalid pagination, exposes no page",
         "Composite component identity keeps worlds and source entities distinct"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -1368,7 +1316,7 @@
         "A transaction stages dependencies while the visible head stays unchanged",
         "Publication commits the complete dependency set and head atomically",
         "Every page read checks current authorization and expected revision",
-        "Revisions and pagination reject invalid numeric inputs",
+        "A stale or malformed revision, or invalid pagination, exposes no page",
         "Composite component identity keeps worlds and source entities distinct"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -1376,9 +1324,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/database/connector-json.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/storage.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/database/document-list-query.ts",
@@ -1387,7 +1333,7 @@
         "A transaction stages dependencies while the visible head stays unchanged",
         "Publication commits the complete dependency set and head atomically",
         "Every page read checks current authorization and expected revision",
-        "Revisions and pagination reject invalid numeric inputs",
+        "A stale or malformed revision, or invalid pagination, exposes no page",
         "Composite component identity keeps worlds and source entities distinct"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -1395,9 +1341,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/database/document-list-query.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/storage.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/database/document-source-segments.ts",
@@ -1406,7 +1350,7 @@
         "A transaction stages dependencies while the visible head stays unchanged",
         "Publication commits the complete dependency set and head atomically",
         "Every page read checks current authorization and expected revision",
-        "Revisions and pagination reject invalid numeric inputs",
+        "A stale or malformed revision, or invalid pagination, exposes no page",
         "Composite component identity keeps worlds and source entities distinct"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -1414,9 +1358,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/database/document-source-segments.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/storage.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/database/world-metadata-cas.ts",
@@ -1425,7 +1367,7 @@
         "A transaction stages dependencies while the visible head stays unchanged",
         "Publication commits the complete dependency set and head atomically",
         "Every page read checks current authorization and expected revision",
-        "Revisions and pagination reject invalid numeric inputs",
+        "A stale or malformed revision, or invalid pagination, exposes no page",
         "Composite component identity keeps worlds and source entities distinct"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -1438,8 +1380,7 @@
       "source": "packages/core/src/discord-dm-policy.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "de2c964b0a1daf69221c346376b95e9a62b157bafaffca88cc4475a6d8e49834",
@@ -1461,9 +1402,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/embedding-vector-space.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/models.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/entities.ts",
@@ -1472,7 +1411,7 @@
         "A transaction stages dependencies while the visible head stays unchanged",
         "Publication commits the complete dependency set and head atomically",
         "Every page read checks current authorization and expected revision",
-        "Revisions and pagination reject invalid numeric inputs",
+        "A stale or malformed revision, or invalid pagination, exposes no page",
         "Composite component identity keeps worlds and source entities distinct"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -1512,9 +1451,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/errors.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/runtime.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/events.ts",
@@ -1534,24 +1471,22 @@
       "source": "packages/core/src/i18n/keyword-matching.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "Literal keyword spans use both ASCII boundaries only for eligible terms",
+        "Preparation deduplicates raw spellings while documents deduplicate normalized spellings",
+        "Collected matches keep text-first order and longest selection keeps the first length tie"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "c249c36a3af01e7b73526779b5772c15d7921da57a66387da2454b09befab90c",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/i18n/keyword-matching.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "implementationProofBoundary": "Built-in keyword compilation, UTF-16 literal and ASCII-boundary matching, raw preparation deduplication, normalized document deduplication, ordered collection, and longest raw-length selection are modeled in protocols.md. ECMAScript normalization, lowercase conversion, whitespace collapse, trimming, splitting, UTF-16 conversion, catalog and locale lookup, and arbitrary caller-authored PreparedKeywordTerm.matches callbacks require host conformance. Model proofs do not establish source-to-model refinement.",
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/i18n/keywords.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "0da73ba2f85eafc7c7387ee614814f4a452d8644de5d780ce7201070ccb606ff",
@@ -1563,40 +1498,33 @@
       "source": "packages/core/src/i18n/language.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "e6749c707abb2c4b4a35abc63b1606a3708fb0ce04b24368f3225a56365173b4",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/i18n/language.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/i18n/recurrence-markers.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "53f8ee880c58f482131eb40d314d6a7aa659bc5b74448c76c2b87ef0ba0ba4f2",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/i18n/recurrence-markers.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/identity-clusters.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "6f9bffc625583002e2d6064f11238267ec62233d40628f4f328ec7ce5f2422b2",
@@ -1608,8 +1536,7 @@
       "source": "packages/core/src/index.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "20a93577af4d2f01cced2094a647129608fb1bea6b2ce1867e446e26f4340140",
@@ -1639,10 +1566,8 @@
       "source": "packages/core/src/inference-trace.ts",
       "spec": "spec/core/traces.md",
       "rules": [
-        "Trace identity and insertion order are unique",
-        "Expiration removes traces only after the TTL boundary",
-        "Stale traces eventually retire under fair purge",
-        "One enrichment request affects only one run"
+        "Recording preserves the insertion position of a replacement in its run",
+        "Expired trace progress follows the observed wall clock"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "5f3326087b4a95e4737c7cb15edbd36ca8d0de060c53c2987e65ec5ea6d072fd",
@@ -1654,8 +1579,7 @@
       "source": "packages/core/src/integration-observability.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "062dfa5ec5a8a5afc77af89468851bdfe7b2c68980ce9040e7ae00c33d64cfcd",
@@ -1705,24 +1629,20 @@
       "source": "packages/core/src/markdown/chunk.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "eeefd589b31c5d39ee14dd09302a1aca9519b9758a98da7a3bb4af337292e295",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/markdown/chunk.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/markdown/code.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "d1b27537e11717f30c4ccb5875d30a8dd56d387fd59ff99458ce5f85af2569b8",
@@ -1734,8 +1654,7 @@
       "source": "packages/core/src/markdown/frontmatter.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "99a816e479576479f3dc0d8ace2890638fec40c66edee8949d8d4953830512f3",
@@ -1770,9 +1689,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/media/fetch.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/media.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/media/image-description-cache.ts",
@@ -1815,9 +1732,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/media/mime.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/media.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/media/outbound.ts",
@@ -1837,8 +1752,7 @@
       "source": "packages/core/src/meeting-artifacts.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "2b1f29eaaba69b33e9a50adae99775a461a4fe472136e14eb8a8bd6e30b85aff",
@@ -1850,17 +1764,14 @@
       "source": "packages/core/src/meetings.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "ea1f5db5e35b3333bb9b86b26b286924d524f3572af7bfee3af008a1c9914ef1",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/meetings.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/memory.ts",
@@ -1869,7 +1780,7 @@
         "A transaction stages dependencies while the visible head stays unchanged",
         "Publication commits the complete dependency set and head atomically",
         "Every page read checks current authorization and expected revision",
-        "Revisions and pagination reject invalid numeric inputs",
+        "A stale or malformed revision, or invalid pagination, exposes no page",
         "Composite component identity keeps worlds and source entities distinct"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -1891,9 +1802,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/messaging/automated-turns.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/messaging.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/messaging/interaction-dashboard-markers.ts",
@@ -1908,9 +1817,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/messaging/interaction-dashboard-markers.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/messaging.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/messaging/interaction-host.ts",
@@ -1939,9 +1846,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/messaging/interaction-layout.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/messaging.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/messaging/interaction-parse.ts",
@@ -1956,9 +1861,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/messaging/interaction-parse.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/messaging.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/messaging/interaction-profile-catalog.ts",
@@ -1973,9 +1876,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/messaging/interaction-profile-catalog.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/messaging.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/messaging/interaction-profiles.ts",
@@ -1992,7 +1893,6 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/messaging/interaction-profiles.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/connectorRegistries.md",
         "spec/core/messaging.md"
       ]
     },
@@ -2040,9 +1940,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/messaging/interactive-task.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/messaging.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/messaging/manage-server-authorization.ts",
@@ -2064,11 +1962,10 @@
       "rules": [
         "Replay is idempotent and histories reject conflicting duplicates or gaps",
         "A generation owns its pending read and every publish boundary rechecks it",
-        "Original delivery precedes its failure diagnostics",
-        "Each callback has one current generation per channel",
-        "Heartbeat status determines its indicator and stop clears subscriptions",
-        "An admitted event eventually finishes its listeners and diagnostics",
-        "Stopping clears run and subscription indexes together"
+        "Original fanout precedes its diagnostic reports",
+        "Fanout visits the live listener map in insertion order",
+        "Heartbeat snapshots use an explicit indicator before the default",
+        "Finite synchronous callback work lets the emission finish"
       ],
       "classification": "source-reviewed-domain-model-with-explicit-boundaries",
       "sourceSha256": "2f3dea209d7b518a1fe34c66a77b80e8585ec8b64562ebeba76aafa1f7bb18b1",
@@ -2076,7 +1973,6 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/messaging/task-events.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/taskEventReader.md",
         "spec/core/events.md"
       ],
       "intendedCompatibilityChanges": [
@@ -2100,9 +1996,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/messaging/task-widgets.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/messaging.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/mobile-device-bridge-service.ts",
@@ -2125,8 +2019,7 @@
       "source": "packages/core/src/name-tokens.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "d5949f6dac99fed3c51528b9746252418d6b51a92b486869e51e35384228b430",
@@ -2147,9 +2040,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/network/fetch-guard.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/media.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/network/node-pinned-fetch.ts",
@@ -2178,9 +2069,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/network/public-endpoint.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/media.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/network/ssrf.ts",
@@ -2226,7 +2115,13 @@
         "Duplicate callers share the registration outcome",
         "Cleanup removes only owned contributions",
         "Service start remains owned across rollback and unload",
-        "Cleanup eventually finishes under fair service and disposal completion"
+        "Cleanup eventually finishes under fair service and disposal completion",
+        "Plugin epochs own declaration receipts while classes share instance identity",
+        "Teardown processes each service type after disposal",
+        "Captured instance stops and class hooks settle in source order",
+        "A sealed request set eventually settles under fair external completion",
+        "Connector withdrawal permanently fences the captured owner after disposal",
+        "Connector publication follows the captured owner's withdrawal fence"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "80c0394b7f625052e1d55112cee6d295ec76c0f7465dd81dbe38843fa946f9a8",
@@ -2234,7 +2129,8 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/plugin-lifecycle.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/plugins.md"
+        "spec/core/pluginServices.md",
+        "spec/core/serviceInstances.md"
       ]
     },
     {
@@ -2256,8 +2152,7 @@
       "source": "packages/core/src/protocol.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "7fea54e5baa4ecb599bd24a54306ba5675ab3e855139dfdc74d21bbc1c5000d8",
@@ -2272,7 +2167,7 @@
         "A transaction stages dependencies while the visible head stays unchanged",
         "Publication commits the complete dependency set and head atomically",
         "Every page read checks current authorization and expected revision",
-        "Revisions and pagination reject invalid numeric inputs",
+        "A stale or malformed revision, or invalid pagination, exposes no page",
         "Composite component identity keeps worlds and source entities distinct"
       ],
       "classification": "documented-function-contracts-and-source-branches",
@@ -2280,29 +2175,26 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/provisioning.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/storage.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/read-memo.ts",
       "spec": "spec/core/memo.md",
       "rules": [
-        "A late rejection evicts only its own resident promise",
-        "A selected in-flight caller eventually receives a settled promise"
+        "A rejection affects only its captured key and promise identity",
+        "Entries retain insertion order and each put installs its own rejection observer"
       ],
-      "classification": "exact-declaration-or-data-contract",
+      "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "23ae192fbb5b2823cf45576f0580b54406cb0665896a52724102f844c9f215d0",
-      "sourceContractKind": "type-and-import-contract",
+      "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/read-memo.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries."
+      "implementationProofBoundary": "The adapter must return the resident promise and metadata by identity. The promise producer owns eventual settlement. Rejection observation, invalidation and expiry cannot settle a promise."
     },
     {
       "source": "packages/core/src/recent-messages-state.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "1bd68595d2efb4f9921701cd9b1eea696cfebe09b9d065e2f25e938bc1b275d0",
@@ -2314,8 +2206,7 @@
       "source": "packages/core/src/restart-exit-code.json",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "81ab84ef2bc2057537ec999136c2d30c07abbe427baf2ca492cabfe7ed3e8dd2",
@@ -2336,9 +2227,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/retrieval.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/retrieval.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/roles.ts",
@@ -2357,9 +2246,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/roles.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/authorization.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime-settings.ts",
@@ -2385,7 +2272,9 @@
         "Only open ingress admits new turns",
         "Stop closes admissions and prepares services once",
         "Strict retirement succeeds only when original work is drained",
-        "Owned runtime work eventually drains under fair settlement"
+        "Owned runtime work eventually drains under fair settlement",
+        "Every issued identity stays unique and owned",
+        "Instance stop promises retain identity across every caller"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "f3ade6aaabd9d42a20b7497a87c0e1d1eb9d4ba2f8ef0f3ac4d566a4a4a78455",
@@ -2393,7 +2282,7 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/runtime.md"
+        "spec/core/serviceInstances.md"
       ]
     },
     {
@@ -2460,9 +2349,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/action-model-routing.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/execution.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/action-role-policy.ts",
@@ -2498,9 +2385,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/action-routing-context.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/execution.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/action-wildcard-glob.ts",
@@ -2531,9 +2416,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/active-prompt-traces.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/traces.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/candidate-action-backstop.ts",
@@ -2717,9 +2600,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/context-registry.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/contextRegistry.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/context-renderer.ts",
@@ -2791,9 +2672,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/effect-delivery.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/execution.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/embeddings.ts",
@@ -2863,9 +2742,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/historical-receipt-wire.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/execution.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/json-output.ts",
@@ -2881,9 +2758,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/json-output.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/execution.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/limits.ts",
@@ -2899,27 +2774,21 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/limits.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/execution.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/locale-detection.ts",
-      "spec": "spec/core/execution.md",
+      "spec": "spec/core/protocols.md",
       "rules": [
-        "Callbacks wait for a valid admitted result",
-        "Mutation delivery requires bound receipts and matching canonical text",
-        "An invoked handler eventually settles under fair completion",
-        "Every callback from a finished source reaches delivery settlement"
+        "Script priority and counted word hints determine the detected locale",
+        "The owner locale wins before detection and configured defaults"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "3c46e8b5ceabac593c3de35dca1aff7e4dc1c023abaa27ac7d427d246e46a358",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/locale-detection.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/execution.md"
-      ]
+      "implementationProofBoundary": "Locale policy is proved over host lexical observations. ECMAScript trimming, lowercase conversion, Unicode word tokenization, and the script and diacritic facts require adapter conformance to the exact source. Model checks establish the stated policy and do not prove a source-to-model refinement theorem.",
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/localized-examples-provider.ts",
@@ -2953,15 +2822,13 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/message-content-segments.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/execution.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/message-content-storage.ts",
       "spec": "spec/core/ingressSnapshots.md",
       "rules": [
-        "Binding requires matching message agent room and entity identity",
+        "Binding requires matching message, agent, room and entity identity",
         "Reuse requires exact redacted content and every projected stored segment"
       ],
       "classification": "source-reviewed-domain-model-with-explicit-boundaries",
@@ -2969,9 +2836,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/message-content-storage.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/ingressSnapshots.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/model-dispatch.ts",
@@ -3020,9 +2885,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/model-modality.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/execution.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/model-policy.ts",
@@ -3038,9 +2901,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/model-policy.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/execution.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/operation-restriction-projection.ts",
@@ -3117,6 +2978,8 @@
       "spec": "spec/core/preparedRequests.md",
       "rules": [
         "A request guard captures its exact admitted serialization",
+        "Preparation checks serializer and tokenizer configuration before calling either serializer",
+        "Only the admitted body can supply its input token count",
         "Rejection authority uses explicit limits and reservation uses the original output argument",
         "Every dispatched attempt rechecks bytes counts and lease authority",
         "Prepared requests use the same issued allowance and turn lease",
@@ -3132,7 +2995,6 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/prepared-model-request.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/preparedRequests.md",
         "spec/core/modelAttemptLeases.md",
         "spec/core/unicode.md",
         "spec/core/preparedRequestSerialization.md"
@@ -3160,7 +3022,7 @@
         "The invocation microtask checks the execution signal before starting",
         "The first delivered race reaction fixes the shared outcome",
         "Every admitted caller observes the shared promise before checking its signal",
-        "A queued shared callback releases the caller only if it still owns the wait"
+        "A queued shared callback carries the outcome its execution published"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "3c67f9d8896ef9e68c00744386973604ee57e3bfd2837855a95e21e50b2010d5",
@@ -3170,7 +3032,6 @@
       "relatedSpecs": [
         "spec/core/providers/work.md",
         "spec/core/providers/index.md",
-        "spec/core/providers/race.md",
         "spec/core/providers/waiter.md"
       ]
     },
@@ -3206,9 +3067,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/response-field-transcript.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/execution.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/response-grammar.ts",
@@ -3221,9 +3080,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/response-grammar.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/grammar.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/response-handler-evaluators.ts",
@@ -3239,7 +3096,6 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/response-handler-evaluators.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/responseEvaluation.md",
         "spec/core/responseFields.md"
       ]
     },
@@ -3254,9 +3110,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/response-handler-fields.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/responseFields.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/retirement.ts",
@@ -3316,10 +3170,10 @@
       "source": "packages/core/src/runtime/service-lifecycle.ts",
       "spec": "spec/core/serviceInstances.md",
       "rules": [
-        "Acquisition snapshots keep each class and attempt generation",
+        "Every issued identity stays unique and owned",
         "Instance stop promises retain identity across every caller",
         "Backoff starts only after rejection and uses the declared delay sequence",
-        "Registry observations are pure projections of detailed instance state",
+        "Type load promises and aggregates settle once per registration",
         "An invalid stop target records a failure without publishing work",
         "A callable stop joins the shared promise and reports its original rejection",
         "Captured results and the live publication supply distinct observations",
@@ -3331,9 +3185,7 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/service-lifecycle.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/serviceInstances.md",
         "spec/core/eagerServices.md",
-        "spec/core/serviceInstances.md",
         "spec/core/serviceStopObservation.md",
         "spec/core/serviceAcquisitionResult.md"
       ]
@@ -3366,8 +3218,7 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/single-flight-memo.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/memo.md",
-        "spec/core/memoConcurrency.md"
+        "spec/core/memo.md"
       ]
     },
     {
@@ -3548,9 +3399,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/turn-aborted-error.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/execution.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/turn-controller.ts",
@@ -3558,23 +3407,15 @@
       "rules": [
         "Independent turns retain controller identity until their own cleanup",
         "Room cancellation excludes its calling turn while global cancellation spares none",
-        "Live listener mutation controls each event's remaining visits",
-        "A live listener frame owns each synchronous callback invocation",
-        "A room notice follows the last native signal callback",
-        "Listener iteration resumes after nested events and uses the live Set",
-        "Each scan advances through the live captured array",
-        "The top delivery returns before its parent scan can resume"
+        "Each event visits the live listeners in order and finishes nested events before resuming",
+        "A room notice follows the last native signal callback"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "a69049036ad8848609ac9113090dd16dd45517a5ab03d62d506e1c17156f8111",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/turn-controller.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/turnControllers.md",
-        "spec/core/turnEventStack.md",
-        "spec/core/turnEventStack.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/typed-read-contract.ts",
@@ -3605,9 +3446,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/user-visible-model-output.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/execution.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/runtime/validated-model-call.ts",
@@ -3623,16 +3462,13 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/validated-model-call.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/execution.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/schema-types.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "4168d4e24091fa620d5314b1a5618f9c917609c9ef9c4c84f268b9af31cfe2df",
@@ -3685,9 +3521,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/bip39-wordlist.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/privacy.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/security/confidential-inference.ts",
@@ -3703,9 +3537,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/confidential-inference.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/privacy.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/security/core-hooks.ts",
@@ -3736,9 +3568,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/entity-recognizer.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/privacy.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/security/external-content.ts",
@@ -3789,9 +3619,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/guarded-stream.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/privacy.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/security/incoming-message-security.ts",
@@ -3807,9 +3635,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/incoming-message-security.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/privacy.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/security/injection-primitives.ts",
@@ -3901,9 +3727,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/model-failure.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/privacy.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/security/outbound-envelope-guard.ts",
@@ -3972,9 +3796,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/pii-detectors.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/privacy.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/security/pii-pseudonym-map-store.ts",
@@ -3990,9 +3812,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/pii-pseudonym-map-store.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/privacy.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/security/pii-pseudonym-map.ts",
@@ -4008,9 +3828,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/pii-pseudonym-map.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/privacy.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/security/pii-pseudonymizer.ts",
@@ -4026,9 +3844,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/pii-pseudonymizer.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/privacy.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/security/pii-scrub-markers.ts",
@@ -4093,9 +3909,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/processing-policy.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/privacy.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/security/redact.ts",
@@ -4146,9 +3960,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/runtime-abort-signal.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/privacy.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/security/secret-swap.bench.ts",
@@ -4240,26 +4052,28 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/tool-diagnostics.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/privacy.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/security/trusted-delivery-audience.ts",
-      "spec": "spec/core/privacy.md",
+      "spec": "spec/core/trustedAudience.md",
       "rules": [
-        "Admission checks shutdown again after the asynchronous marker lookup",
-        "A marker follows successful scrub and persisted pseudonym assignments",
-        "Stop waits for lazy startup and active work before disposing the queue",
-        "Fairly settling startup and active work lets shutdown finish"
+        "Attestation binds an exact runtime and audience",
+        "Renewal rechecks lease identity and audience after the authority await",
+        "Sensitive-use and suppression evidence stays attached to the exact turn",
+        "External event payloads cannot mint an attestation",
+        "Binding objects share one global sequence and retain their own lease",
+        "Renewal validates the captured record after the asynchronous authority lookup",
+        "Suppression aliases follow the separately attached message carrier"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "3dce8068a5f744eac08e292b3d5bcdbbc8425ce0518044de210bfa8ad2f29b04",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/trusted-delivery-audience.ts",
-      "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
+      "implementationProofBoundary": "Retained audience/lease/call state and composed binding/sequence/signal/carrier state follow the stated pure rules. Actual runtime/binding/record/lease/signal identity, principal revalidation, participant normalization and database observations remain adapter contracts. Finite pinned-source comparisons and generated model proofs are distinct evidence; no universal TypeScript-to-model or source-product refinement theorem is claimed.",
       "relatedSpecs": [
-        "spec/core/privacy.md"
+        "spec/core/audienceRegistry.md",
+        "spec/core/internalActors.md"
       ]
     },
     {
@@ -4267,16 +4081,14 @@
       "spec": "spec/core/outboundStyle.md",
       "rules": [
         "Cache hits move to most recent and capacity evicts only the oldest key",
-        "Typed notices and existing voice provenance bypass cosmetic inference"
+        "Typed notices and already-styled content bypass the rewrite model"
       ],
       "classification": "source-reviewed-domain-model-with-explicit-boundaries",
       "sourceSha256": "1ff0c0750905b3267432ed9a9e9c0dfb1218d7cab38ad2d0b48034967c09a994",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/security/voice-gate.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/outboundStyle.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/sensitive-request-dispatch.ts",
@@ -4295,9 +4107,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/sensitive-request-dispatch.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/authorization.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/sensitive-request-policy.ts",
@@ -4332,9 +4142,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/services.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/services/agent-event-bridge.ts",
@@ -4351,9 +4159,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/agent-event-bridge.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/services.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/services/agent-event.ts",
@@ -4390,9 +4196,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/approval.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/services.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/services/channel-topics.ts",
@@ -4400,8 +4204,7 @@
       "rules": [
         "Stop blocks every new room admission and joins the complete room snapshot",
         "Retirement rejects new work and joins admitted operations before clearing local state",
-        "A stopping owner eventually joins its admitted room operations",
-        "Every room observation reads the one authoritative room record"
+        "A stopping owner eventually joins its admitted room operations"
       ],
       "classification": "source-reviewed-domain-model-with-explicit-boundaries",
       "sourceSha256": "fb881a55fc5597d9e95276cdd608eef18c4f8ac24fceee370c729805ea6764f1",
@@ -4409,9 +4212,7 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/channel-topics.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/topicService.md",
-        "spec/core/channelTopics.md",
-        "spec/core/topicRooms.md"
+        "spec/core/channelTopics.md"
       ]
     },
     {
@@ -4429,9 +4230,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/embedding.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/services.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/services/hook.ts",
@@ -4448,9 +4247,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/hook.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/services.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/services/notification.ts",
@@ -4505,7 +4302,6 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/pairing.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/pairing/index.md",
         "spec/core/pairing/admission.md",
         "spec/core/pairing/replies.md",
         "spec/core/pairing/grants.md"
@@ -4526,9 +4322,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/pii-scrub.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/services.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/services/post-delivery-task-tracker.ts",
@@ -4588,7 +4382,6 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/task-scheduler.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/sharedScheduler.md",
         "spec/core/queryDrain.md",
         "spec/core/processScheduler.md"
       ]
@@ -4608,9 +4401,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/task.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/services.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/services/trajectory-json.ts",
@@ -4684,9 +4475,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/services/trigger-scheduling.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/services.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/settings.ts",
@@ -4711,23 +4500,20 @@
       "source": "packages/core/src/speaker-name-inference.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "39a66b9e8730e378f102027ff3a552793485c4cfa532c62b650870c2cc1b5fae",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/speaker-name-inference.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/speech.ts",
       "spec": "spec/core/voice.md",
       "rules": [
-        "The first abort reason remains authoritative and listeners settle once"
+        "Reason ownership precedes unlinking and signal abortion follows callbacks"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "fbff14fd592e7c33d7b0615833e0eb8a632503b0dd259b5600e23c7bdebad6cb",
@@ -4739,17 +4525,14 @@
       "source": "packages/core/src/spoken-text.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "2279fadfbba98ac668eeafe3b8cd35321cdcd7e4604d8518ac5aed63ecb35e63",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/spoken-text.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/streaming-context.ts",
@@ -4770,7 +4553,6 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/streaming-context.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/context.md",
         "spec/core/modelAttemptLeases.md",
         "spec/core/unicode.md"
       ]
@@ -4779,76 +4561,61 @@
       "source": "packages/core/src/todo-cutover.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "174ab9decbcbdeaeeb272378dd7b1b7d60c3bfff986e6b82fa1d2445adc76203",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/todo-cutover.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/trajectory-context.ts",
       "spec": "spec/core/traces.md",
       "rules": [
-        "Trace identity and insertion order are unique",
-        "Expiration removes traces only after the TTL boundary",
-        "Stale traces eventually retire under fair purge",
-        "One enrichment request affects only one run"
+        "Recording preserves the insertion position of a replacement in its run",
+        "Expired trace progress follows the observed wall clock"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "d71106b730c6d434b62691c56f52a19767652d1ae36e7d0a2b9c9e1abddaa829",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/trajectory-context.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/traces.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/trajectory-utils.ts",
       "spec": "spec/core/traces.md",
       "rules": [
-        "Trace identity and insertion order are unique",
-        "Expiration removes traces only after the TTL boundary",
-        "Stale traces eventually retire under fair purge",
-        "One enrichment request affects only one run"
+        "Recording preserves the insertion position of a replacement in its run",
+        "Expired trace progress follows the observed wall clock"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "60e94a14a70ac41fb2104a47f52de7ec0e244755e3702bf8e6fbcc6f972503e8",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/trajectory-utils.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/traces.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/transcripts.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "f4c8debd23163f0939779a8e73a8c309677e7df1085a7a4ec022481c1a7de33d",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/transcripts.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/tunnel-service.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "a9f49b19866b7b3a1fcb19828598eb9fa92fbb27d924a0399916f3f519527969",
@@ -4963,9 +4730,7 @@
       "sourceContractKind": "declarative-value-or-schema",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/coding.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/commands.ts",
@@ -4978,9 +4743,7 @@
       "sourceContractKind": "declarative-value-or-schema",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/commands.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/components.ts",
@@ -4993,9 +4756,7 @@
       "sourceContractKind": "declarative-value-or-schema",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/components.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/connector-account-policy.ts",
@@ -5034,9 +4795,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/content-manifest.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/content.ts",
@@ -5049,9 +4808,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/content.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/contexts.ts",
@@ -5100,9 +4857,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/effects.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/environment.ts",
@@ -5163,9 +4918,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/identity.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/interactions.ts",
@@ -5214,9 +4967,7 @@
       "sourceContractKind": "declarative-value-or-schema",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/membership.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/memory-storage.ts",
@@ -5301,9 +5052,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/model.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/notification.ts",
@@ -5332,7 +5081,6 @@
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
         "spec/core/packageExports.md",
-        "spec/core/pairing/admission.md",
         "spec/core/pairing/grants.md",
         "spec/core/pairing/index.md"
       ]
@@ -5360,9 +5108,7 @@
       "sourceContractKind": "declarative-value-or-schema",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/pending-user-action.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/permissions.ts",
@@ -5387,9 +5133,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/pipeline-hooks.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/plugin-manifest.ts",
@@ -5426,9 +5170,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/plugin.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/primitives.ts",
@@ -5472,9 +5214,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/reminder-presentation.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/assistant/reminderPresentation.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/runtime.ts",
@@ -5528,9 +5268,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/service-interfaces.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/service.ts",
@@ -5543,9 +5281,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/service.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/types/session.ts",
@@ -5702,64 +5438,52 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/types/workspace-delta.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/packageExports.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "fc5c90f210111f146a6211fc90aba28b0a8f1cf39019d230678d1db2506b9f3a",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/action-results.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "4347f3d077343af9b0883466a48358c2da482208334e3b6d45d7815d050f2d9a",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/action-results.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/assistant-text.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "c3a25f42cd3f7d6bfa87da7d34d40701d7be9bcff9770d5d6da41845483ef60a",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/assistant-text.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/async-context-manager.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "364d0021253846f019d7a8deb9d67b77ea877e9617e8645283bb0174dd4fc97a",
@@ -5786,7 +5510,6 @@
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
         "spec/core/atomicPublication.md",
-        "spec/core/atomicWriters.md",
         "spec/core/serialisation.md",
         "spec/core/temporaryNames.md"
       ]
@@ -5795,8 +5518,7 @@
       "source": "packages/core/src/utils/batch-queue.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "d383a03c6c082097fb425662ae8eec831784b630f93c1306610d7baf4c82ceb7",
@@ -5821,32 +5543,26 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/boolean.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/valueGuards.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/buffer.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "d8a7a30ca8e74a79f4504e990288b899c0a40a55a9c86dd723a7f2c2fa661ec2",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/buffer.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/channel-utils.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "2b46d74505ccb36104e3eea0c70a17a537873100d234de583bea6433c30434ab",
@@ -5858,8 +5574,7 @@
       "source": "packages/core/src/utils/character-message-examples.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "650357731b0c9e1dc234af6647976878a80dd9521914c44a98777050bbab4955",
@@ -5878,64 +5593,52 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/confirmation.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/confirmation.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/context-catalog.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "e54f888e3797bfed87878baa619a7232a38a885f544069b325378e7a876cd569",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/context-catalog.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/context-routing.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "7e8293c64b24b968dcb030b93539ceb3e6b9f7ece2622555721a80c946c9dbbb",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/context-routing.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/crypto-compat.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "64ba9bf2cb5339cf79a5bb5fa2d9eb7861ed253a8cbce87e72c50af44ee95e01",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/crypto-compat.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/deadline.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "0412798426c52ff0f65261af1782acd96e351790611b1ef66d0378a8d9318835",
@@ -5947,24 +5650,20 @@
       "source": "packages/core/src/utils/deterministic.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "203d8bab558883499164e519135ede6e17c4c21424733cb7ac354f456eea561e",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/deterministic.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/duration.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "6131aa141850afef6a6e0ea02c85e1e8c45e553cf150b7f8e844bc5e1713f866",
@@ -5976,24 +5675,20 @@
       "source": "packages/core/src/utils/env.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "1eae832a958ff85e2fe501811a26a70f9d9a8cb30ee5bb7cee5a61a6a7e7da25",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/env.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/environment.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "2d9e84fc0fdf88f5c0b19c4c8ed999c09bd5cea0ffbf1487ec6ec53444ff8be9",
@@ -6008,8 +5703,7 @@
       "source": "packages/core/src/utils/errors.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "7d31ab2c77559fec7ffdfc9305f8038de97b0788f6ace8a441ec9e743669b68e",
@@ -6021,8 +5715,7 @@
       "source": "packages/core/src/utils/example-names.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "exact-declaration-or-data-contract",
       "sourceSha256": "820ee4ebf630cff91a47d9857768da652f7b94c0c8521d6920e1409d4b86de4b",
@@ -6050,24 +5743,20 @@
       "source": "packages/core/src/utils/expected-local-embedding-unavailability.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "1f1a2a8718e5dc782e4fb2557d3fd6108c99a36da7b466e7b93ca4aed958114d",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/expected-local-embedding-unavailability.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/extraction-evidence.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "433cb160af94a74153088bc5a0401463095c9f9ea279b73768463b9c4fe360e0",
@@ -6079,24 +5768,20 @@
       "source": "packages/core/src/utils/filesystem.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "d371b310a575ba6e3e4869a590ef02d939e5a32ecee6dbfaef5f478e35d47424",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/filesystem.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/format-bytes.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "915e8c72af8b2c1269e9b5c799a5eaa29adaeb07c9526d6a0875f941fbd7989a",
@@ -6108,8 +5793,7 @@
       "source": "packages/core/src/utils/html-raw-text.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "288c29e968b8f2d6eaa0bee5a862368c92e01bc2afa952879986241703ac5257",
@@ -6121,8 +5805,7 @@
       "source": "packages/core/src/utils/inference-priority-gate.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "118bf1ef263a022a93aa210830e3d40d98fe89b08fd3586d115ccd1b36b97a90",
@@ -6137,8 +5820,7 @@
       "source": "packages/core/src/utils/inflection-term-keys.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "72bcbb783151b6e2e87f05c186fd630c61677ee44c8d929a3aa4d73a3bb48d59",
@@ -6150,8 +5832,7 @@
       "source": "packages/core/src/utils/json5-model-output.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "0cca8427365d06233b973beb97b3721e949355092c450d4c094cc61eaca74f53",
@@ -6163,24 +5844,20 @@
       "source": "packages/core/src/utils/log-prefix.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "9fbdaf25b9517df89ee96831c1abb25fdee81749a9c1969d3179d10b8f3208d8",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/log-prefix.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/message-text.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "f4f7156beaf45d022e8fea1cdb025b2845e7de2e01f68296e4e79dfb64f233ae",
@@ -6192,24 +5869,20 @@
       "source": "packages/core/src/utils/model-errors.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "6b069006c0a8159831f34c9ed93c1e63b473a8154e2cca6338622f8230bda9dd",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/model-errors.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/model-lookup-caller.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "c4449fd1547949923a5cf66338d6839dbd1d4b85d13c5987c16f4f11b2e5c675",
@@ -6221,23 +5894,20 @@
       "source": "packages/core/src/utils/model-retry.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "60ce47737b8e39af383e57b8a8ff9c6e44f131721ede4cfec11a8b7aac423f9e",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/model-retry.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/number-parsing.ts",
       "spec": "spec/core/numbers.md",
       "rules": [
-        "Canonical integers reject signs leading zeroes padding fractions and unsafe values"
+        "Canonical integers reject signs, leading zeroes, padding, fractions and unsafe values"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "4808e88c6481e3f5076d159b1395a21e83b0f61ada1b8446d696f50eec6ef63d",
@@ -6249,8 +5919,7 @@
       "source": "packages/core/src/utils/path-component.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "72ea9eef9a1cfb8dc083b47da057303534c36937c129349cf8f0bbd7c79afc52",
@@ -6262,24 +5931,20 @@
       "source": "packages/core/src/utils/permission-deep-links.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "6ab8cefa8abbfa79dd2224574653c22b38443593b482eba9fd0a4b1b0813cb0d",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/permission-deep-links.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/project-memory-scope.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "35673f5a43d53e21b08d6a70bd74b442bcaf2c1d497f205a97ef77dde918e978",
@@ -6291,40 +5956,33 @@
       "source": "packages/core/src/utils/reasoning-tags.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "eb5c7b245d5c5bf97718fda3700d3756ea6593a1e6bc87d4ecd658f770d155cf",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/reasoning-tags.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/recursive-character-text-splitter.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "53984713ebc7448e093ba13d8776821e5d670598efdbb67836adf393ca10c83d",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/recursive-character-text-splitter.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/reference-echo.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "ed04a1912d26238464cc3cc2e7b79c21cee5a491d2b03085c308cf1081e668a6",
@@ -6336,8 +5994,7 @@
       "source": "packages/core/src/utils/resource-address.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "19ec12a52b193bcbd3baeca11e43f049c8aaeda5047fbbd6ca01ec09d7d8ebec",
@@ -6349,8 +6006,7 @@
       "source": "packages/core/src/utils/retry.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "ae509a9d3c8b4f2164e4112678700ced637a8d4890ba11709054316aeb9f1261",
@@ -6362,8 +6018,7 @@
       "source": "packages/core/src/utils/session-key.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "8065e8c3a7539120838885394e04849c3d17e48d658a63eb585de074ae86e2ba",
@@ -6375,24 +6030,20 @@
       "source": "packages/core/src/utils/stage-directions.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "be2e435d81dc82dd5c01229d7677cb51dfd2617cb25e8e8b1e23fb61908b59be",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/stage-directions.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/state-dir.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "a30eeb8149d323e1d42a6338d1b7d1fd9a846a51d8b4a1ec8d85b752a0376186",
@@ -6405,8 +6056,8 @@
       "spec": "spec/core/streamMarkable.md",
       "rules": [
         "Bare push echoes its input and the context gates completed delivery",
-        "Field completion and stream flush control callback delivery",
-        "A gate decides once and a held attempt emits no later text",
+        "Field pointers, emitted prefixes and first done values remain independent",
+        "Buffer and gate ownership survive chunk boundaries",
         "Allocation increments and wraps the maximum safe integer to one"
       ],
       "classification": "source-reviewed-domain-model-with-explicit-boundaries",
@@ -6415,7 +6066,6 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/streaming.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/streamMarkable.md",
         "spec/core/structuredStreamState.md",
         "spec/core/skeletonStreamState.md",
         "spec/core/streamRevisions.md"
@@ -6438,8 +6088,7 @@
       "source": "packages/core/src/utils/string-to-uuid.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "cf89f8bc25dc2fdce4b898d382868831d25ee659921aac8345c53237e5c7517e",
@@ -6451,8 +6100,7 @@
       "source": "packages/core/src/utils/synthetic-conversation-artifact.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "0210b4e7d65915ba2d65ce8ff746db90f04efaa51d34fe735e91fcbc42f3c05f",
@@ -6474,16 +6122,14 @@
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
         "spec/core/scheduling.md",
-        "spec/core/semaphore.md",
-        "spec/core/serialisation.md"
+        "spec/core/semaphore.md"
       ]
     },
     {
       "source": "packages/core/src/utils/text-normalize.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "f4395f4da71a141f2f3d102aaa831d8c61d90c472520d0acfc355054db0ce5ae",
@@ -6495,8 +6141,7 @@
       "source": "packages/core/src/utils/time-format.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "bd3b8644c7fcbbabc8909afefab33c196c09df812cd13fbf524b472c79f71e15",
@@ -6508,8 +6153,7 @@
       "source": "packages/core/src/utils/tts-debug.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "cc6425a8c3e0aff191f8ddb7c2174d1a63a54bfc18da7d72b7694f12cbae88d9",
@@ -6542,16 +6186,13 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/unicode.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/unicode.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/utils/union-find.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "2d4114f7dc247bdfb906a94ce539fb1da36e28c42016d4225491b77eba6ed480",
@@ -6566,17 +6207,14 @@
       "source": "packages/core/src/utils/uuid.ts",
       "spec": "spec/core/protocols.md",
       "rules": [
-        "A public value retains identity and explicitly declared version",
-        "Binary helpers preserve byte contents and the input slice ownership contract"
+        "A store holds only values of the version it declares"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "274003a98fedb06d0add81c4965b7c35a279cc58e5adf0d8b0b80f52b35ff080",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/utils/uuid.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/protocols.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/view-interaction.ts",
@@ -6601,9 +6239,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/views/completed-action-navigation.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/viewNavigation.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/views/declarations.ts",
@@ -6616,9 +6252,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/views/declarations.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/views.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/views/host-external-contract.ts",
@@ -6643,9 +6277,7 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/views/surface-manifest.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/views.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/views/view-action-handoff.ts",
@@ -6670,15 +6302,13 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/views/view-interact-protocol.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": [
-        "spec/core/views.md"
-      ]
+      "relatedSpecs": []
     },
     {
       "source": "packages/core/src/voice-cancellation-token.ts",
       "spec": "spec/core/voice.md",
       "rules": [
-        "The first abort reason remains authoritative and listeners settle once"
+        "Reason ownership precedes unlinking and signal abortion follows callbacks"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "a0509f7ae23e663e8150f8ec11d0dc00a95526ba146ec9c05ba61fc3d7c87750",
@@ -6686,7 +6316,6 @@
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/voice-cancellation-token.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
       "relatedSpecs": [
-        "spec/core/voice.md",
         "spec/core/voiceRegistry.md"
       ]
     }
@@ -6709,7 +6338,7 @@
     },
     {
       "legacyModel": "packages/core/quint/ChannelTopicRetirement.qnt",
-      "spec": "spec/core/topicRooms.md",
+      "spec": "spec/core/topicService.md",
       "legacyProperties": [
         "RoomOrder",
         "NoLateOriginalAdmission",

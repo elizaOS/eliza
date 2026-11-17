@@ -1,0 +1,88 @@
+// spec/core/protocols.md, "Binary helpers preserve byte contents and the input slice ownership contract"
+import type { Buffer as NodeBuffer } from "node:buffer"
+
+export type BufferLike = NodeBuffer | Uint8Array
+
+module node {
+  import { Buffer } from "node:buffer"
+  import { randomBytes as nodeRandomBytes } from "node:crypto"
+  import type { BufferLike } from "./buffer.vibe"
+
+  /** @throws {never} */
+  export function fromHex(hex: string): BufferLike {
+    return Buffer.from(hex.replace(/[^0-9a-fA-F]/g, ""), "hex")
+  }
+
+  /** @throws {never} */
+  export function fromString(str: string, encoding: "utf8" | "utf-8" | "base64" = "utf8"): BufferLike {
+    return Buffer.from(str, encoding)
+  }
+
+  /** @throws {never} */
+  export function toHex(buffer: BufferLike): string {
+    return Buffer.from(buffer).toString("hex")
+  }
+
+  /** @throws {never} */
+  export function bufferToString(buffer: BufferLike, encoding: "utf8" | "utf-8" | "base64" | "hex" = "utf8"): string {
+    return Buffer.from(buffer).toString(encoding)
+  }
+
+  /** @throws {never} */
+  export function isBuffer(obj: unknown): obj is BufferLike {
+    return Buffer.isBuffer(obj) || obj instanceof Uint8Array
+  }
+
+  /** @throws {never} */
+  export function alloc(size: number): BufferLike {
+    return Buffer.alloc(size)
+  }
+
+  /** @throws {never} */
+  export function fromBytes(bytes: number[] | Uint8Array): BufferLike {
+    return Buffer.from(bytes)
+  }
+
+  /** @throws {never} */
+  export function concat(buffers: BufferLike[]): BufferLike {
+    return Buffer.concat(buffers)
+  }
+
+  /** @throws {never} */
+  export function equals(a: BufferLike, b: BufferLike): boolean {
+    return Buffer.compare(a, b) === 0
+  }
+
+  /** @throws {never} */
+  export function randomBytes(size: number): BufferLike {
+    return nodeRandomBytes(size)
+  }
+}
+import { alloc, bufferToString, concat, equals, fromBytes, fromHex, fromString, isBuffer, randomBytes, toHex } from node
+export { alloc, bufferToString, concat, equals, fromBytes, fromHex, fromString, isBuffer, randomBytes, toHex }
+
+export function slice(buffer: BufferLike, start: number, end?: number): BufferLike {
+  return buffer.slice(start, end)
+}
+
+export function byteLength(buffer: BufferLike): number {
+  return buffer.length
+}
+
+export const BufferUtils = {
+  fromHex,
+  fromString,
+  fromBytes,
+  toHex,
+  bufferToString,
+  toString: bufferToString,
+  isBuffer,
+  alloc,
+  concat,
+  slice,
+  equals,
+  byteLength,
+  randomBytes,
+}
+
+export type { BufferLike as Buffer }

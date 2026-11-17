@@ -1,0 +1,164 @@
+// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { thrown } from "../edge.vibe"
+import type { ActionFailureProvenance } from "../types/action-failure.vibe"
+import { toWellFormedUnicode } from "../utils/unicode.vibe"
+
+export interface ChainingLoopConfig {
+  maxToolCalls: number
+
+  maxRepeatedFailures: number
+
+  maxRequiredToolMisses: number
+
+  maxUnavailableToolCallRetries: number
+
+  maxTerminalOnlyContinuations: number
+
+  maxRepeatedToolCalls: number
+
+  maxMemorySearchRounds: number
+
+  contextWindowTokens: number
+
+  contextWindowModelName?: string
+
+  compactionReserveTokens: number
+
+  compactionReserveTokensExplicit?: boolean
+
+  maxTrajectoryPromptTokens: number
+}
+
+const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
+  maxToolCalls: Number.POSITIVE_INFINITY,
+  maxRepeatedFailures: 2,
+  maxRequiredToolMisses: 3,
+  maxUnavailableToolCallRetries: 3,
+  maxTerminalOnlyContinuations: 2,
+  maxRepeatedToolCalls: 2,
+  maxMemorySearchRounds: Number.POSITIVE_INFINITY,
+  contextWindowTokens: 1_000_000,
+  compactionReserveTokens: 10_000,
+  maxTrajectoryPromptTokens: 1_500_000,
+}
+
+export type TrajectoryLimitKind =
+  | "tool_calls"
+  | "repeated_observations"
+  | "memory_search_rounds"
+  | "repeated_failures"
+  | "required_tool_misses"
+  | "unavailable_tool_calls"
+  | "terminal_only_continuations"
+  | "trajectory_token_budget"
+
+export class TrajectoryLimitExceeded extends Data.TaggedError("TrajectoryLimitExceeded")<{
+  readonly kind: TrajectoryLimitKind
+  readonly max: number
+  readonly observed: number
+  readonly failureProvenance?: ActionFailureProvenance
+}> {
+  override readonly name = "TrajectoryLimitExceeded"
+
+  constructor(params: {
+    kind: TrajectoryLimitKind
+    max: number
+    observed: number
+    message?: string
+    failureProvenance?: ActionFailureProvenance
+  }) {
+    super({
+      kind: params.kind,
+      max: params.max,
+      observed: params.observed,
+      failureProvenance: params.failureProvenance,
+    })
+    this.message = params.message
+      ?? `Trajectory limit exceeded: ${params.kind} (${params.observed}/${params.max})`
+  }
+}
+
+export function mergeChainingLoopConfig(
+  config?: Partial<ChainingLoopConfig>,
+): ChainingLoopConfig {
+  return {
+    ...DEFAULT_CHAINING_LOOP_CONFIG,
+    ...config,
+    compactionReserveTokensExplicit: config?.compactionReserveTokens !== undefined
+      || config?.compactionReserveTokensExplicit === true,
+  }
+}
+
+export effect function assertTrajectoryLimit(params: {
+  kind: TrajectoryLimitKind
+  max: number
+  observed: number
+}): void!TrajectoryLimitExceeded {
+  if (params.observed > params.max) {
+    throw new TrajectoryLimitExceeded(params)
+  }
+}
+export const assertTrajectoryLimitOrThrow = thrown(assertTrajectoryLimit)
+
+export interface FailureLike {
+  toolName?: string
+  error?: unknown
+  success?: boolean
+  repeatKey?: string
+
+  failureProvenance?: ActionFailureProvenance
+}
+
+function getFailureSignature(failure: FailureLike): string | null {
+  if (failure.success !== false && failure.error == null) {
+    return null
+  }
+
+  const toolName = failure.toolName?.trim() || "unknown_tool"
+  const rawError = failure.error instanceof Error
+    ? failure.error.message
+    : typeof failure.error === "string"
+    ? failure.error
+    : failure.error == null
+    ? "failed"
+    : JSON.stringify(failure.error)
+  const normalizedError = toWellFormedUnicode(
+    rawError.trim().replace(/\s+/g, " "),
+  )
+  return `${toolName}:${normalizedError}`
+}
+
+function getFailureComparisonKey(failure: FailureLike): string | null {
+  const signature = getFailureSignature(failure)
+  if (!signature) return null
+  const repeatKey = failure.repeatKey?.trim()
+  return repeatKey ? `${signature}:${repeatKey}` : signature
+}
+
+export effect function assertRepeatedFailureLimit(params: {
+  failures: readonly FailureLike[]
+  latestFailure: FailureLike
+  maxRepeatedFailures: number
+}): void!TrajectoryLimitExceeded {
+  const latestKey = getFailureComparisonKey(params.latestFailure)
+  let observed = 0
+  if (latestKey) {
+    for (const failure of params.failures) {
+      if (getFailureComparisonKey(failure) === latestKey) observed += 1
+    }
+  }
+  if (observed > params.maxRepeatedFailures) {
+    throw new TrajectoryLimitExceeded({
+      kind: "repeated_failures",
+      max: params.maxRepeatedFailures,
+      observed,
+      message: `Repeated tool failure limit exceeded for ${
+        getFailureSignature(
+          params.latestFailure,
+        )
+      }`,
+      failureProvenance: params.latestFailure.failureProvenance,
+    })
+  }
+}
+export const assertRepeatedFailureLimitOrThrow = thrown(assertRepeatedFailureLimit)

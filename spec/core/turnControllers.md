@@ -24,7 +24,7 @@ type EventFrame = {noticeId: int, invoking: bool, listenerGeneration: int}
 type GlobalFrame = {groups: List[int], cursor: int, reason: str, abortedRooms: List[str]}
 type ScanFrame = {scanId: int, cursor: int, excluded: int, reason: str, notifying: int, changed: bool}
 type RoomScan = {group: int, room: str, global: bool, scan: ScanFrame}
-type RoomAbortReturn = {abortRoom: str, fromGlobal: bool, changedSignal: bool}
+type RoomAbortReturn = {group: int, abortRoom: str, fromGlobal: bool, changedSignal: bool}
 type CleanupFrame = {turnId: int}
 type TurnFrame = EventFrameKind(EventFrame) | GlobalFrameKind(GlobalFrame) | CleanupFrameKind(CleanupFrame) | RoomScanKind(RoomScan) | RoomAbortReturnKind(RoomAbortReturn)
 type RoomGroup = {id: int, room: str, active: bool}
@@ -198,7 +198,7 @@ pure def canFinishRoomSignal(s: Turns): bool = {
 }
 pure def finishRoomSignal(s: Turns): Turns = {
   val r = currentRoomScan(s)
-  val frames = replaceTop(s.frames, RoomAbortReturnKind({abortRoom: r.room, fromGlobal: r.global, changedSignal: r.scan.changed}))
+  val frames = replaceTop(s.frames, RoomAbortReturnKind({group: r.group, abortRoom: r.room, fromGlobal: r.global, changedSignal: r.scan.changed}))
   val controls = { ...s.controllers,
     notices: if (r.scan.changed) s.controllers.notices.append(freshNotice(s.controllers.nextNotice, TurnAborted, r.room, r.scan.reason, "", 0)) else s.controllers.notices,
     nextNotice: s.controllers.nextNotice + (if (r.scan.changed) 1 else 0) }
@@ -207,8 +207,8 @@ pure def finishRoomSignal(s: Turns): Turns = {
 pure def currentAbortReturn(s: Turns): RoomAbortReturn = {
   val top = topFrame(s)
   match top {
-    | RoomAbortReturnKind(r) => {abortRoom: r.abortRoom, fromGlobal: r.fromGlobal, changedSignal: r.changedSignal}
-    | _ => {abortRoom: "", fromGlobal: false, changedSignal: false}
+    | RoomAbortReturnKind(r) => {group: r.group, abortRoom: r.abortRoom, fromGlobal: r.fromGlobal, changedSignal: r.changedSignal}
+    | _ => {group: 0, abortRoom: "", fromGlobal: false, changedSignal: false}
   }
 }
 pure def canReturnRoomAbort(s: Turns): bool = {
@@ -303,6 +303,12 @@ Without these facts the first notice published into an empty history
 could take identity zero, which means no notice, and a callback could
 resume under another frame's owner.
 
+Discovered by the proof: every room array a global abort captured remains
+in the registry while the callback visits or returns from it. An abort
+scan and its return retain the same room identity as the captured array,
+even when a callback starts another scan, and an abort without a captured
+room array cannot change a signal.
+
 ```quint
 pure def alwaysTurnIdentity(s: Turns): bool = s.controllers.turns.every(t => t.id > 0 and s.controllers.turns.select(other => other.id == t.id).length() == 1)
 pure def alwaysNoticesUnique(s: Turns): bool = s.controllers.nextNotice > 0 and s.controllers.notices.every(n => n.id > 0 and n.id < s.controllers.nextNotice and s.controllers.notices.select(other => other.id == n.id).length() == 1 and n.delivered.every(generation => generation <= n.cursor))
@@ -311,18 +317,21 @@ pure def alwaysTurnsRetainGroups(s: Turns): bool = s.turnGroups.every(g => s.tur
 pure def alwaysLiveGroupOwnsTurns(s: Turns): bool = s.groups.every(g => g.active iff s.controllers.turns.some(t => t.phase != TurnDetached and groupOf(s, t.id) == g.id))
 pure def noticeFrameMatches(f: TurnFrame, noticeId: int): bool = match f { | EventFrameKind(frame) => frame.noticeId == noticeId | _ => false }
 pure def cleanupFrameMatches(f: TurnFrame, turnId: int): bool = match f { | CleanupFrameKind(frame) => frame.turnId == turnId | _ => false }
+pure def validRoomCapture(s: Turns, group: int, room: str, global: bool, changed: bool): bool =
+  if (group == 0) not(global or changed) else s.groups.some(g => g.id == group and g.room == room)
 pure def validRoomScan(s: Turns, r: RoomScan): bool = {
   val members = roomGroupMembers(s, r.group)
   r.scan.scanId > 0 and r.scan.excluded >= 0 and (r.global implies r.scan.excluded == 0) and
+    validRoomCapture(s, r.group, r.room, r.global, r.scan.changed) and
     r.scan.cursor >= 0 and r.scan.cursor <= members.length() and
     (r.scan.notifying != 0 implies r.scan.changed and members.some(t => t.id == r.scan.notifying and t.aborted and t.reason == r.scan.reason))
 }
 pure def validStackFrame(s: Turns, f: TurnFrame): bool = match f {
   | EventFrameKind(frame) => frame.noticeId > 0 and s.frames.select(other => noticeFrameMatches(other, frame.noticeId)).length() == 1 and s.controllers.notices.some(n => n.id == frame.noticeId and not(n.finished)) and (frame.invoking implies s.controllers.notices.some(n => n.id == frame.noticeId and n.cursor == frame.listenerGeneration))
-  | GlobalFrameKind(frame) => frame.cursor >= 0 and frame.cursor <= frame.groups.length()
+  | GlobalFrameKind(frame) => frame.cursor >= 0 and frame.cursor <= frame.groups.length() and frame.groups.every(id => s.groups.some(g => g.id == id))
   | CleanupFrameKind(frame) => frame.turnId > 0 and s.frames.select(other => cleanupFrameMatches(other, frame.turnId)).length() == 1 and s.controllers.turns.some(t => t.id == frame.turnId and t.phase == TurnReturned)
   | RoomScanKind(r) => validRoomScan(s, {group: r.group, room: r.room, global: r.global, scan: r.scan})
-  | RoomAbortReturnKind(_) => true
+  | RoomAbortReturnKind(r) => validRoomCapture(s, r.group, r.abortRoom, r.fromGlobal, r.changedSignal)
 }
 pure def alwaysFramesRetainNotices(s: Turns): bool = s.frames.every(f => validStackFrame(s, f))
 ```
@@ -330,11 +339,15 @@ pure def alwaysFramesRetainNotices(s: Turns): bool = s.frames.every(f => validSt
 ### The stack holds at most one cleanup frame, at its bottom
 
 A turn returns only on an empty stack, so the stack holds at most one
-cleanup frame, and that frame is the bottom one.
+cleanup frame, and that frame is the bottom one: its cleanup waits below
+the completion notice and any callbacks that notice starts.
+
+Discovered by the proof: cleanup above a room scan could detach a scanned
+turn and move the scan cursor beyond the end of the room array.
 
 ```quint
 pure def isCleanupFrame(f: TurnFrame): bool = match f { | CleanupFrameKind(frame) => true | _ => false }
 pure def alwaysCleanupAtBottom(s: Turns): bool =
   s.frames.select(f => isCleanupFrame(f)).length() == 0 or
-    (s.frames.select(f => isCleanupFrame(f)).length() == 1 and isCleanupFrame(s.frames.nthOr(0, RoomAbortReturnKind({abortRoom: "", fromGlobal: false, changedSignal: false}))))
+    (s.frames.select(f => isCleanupFrame(f)).length() == 1 and isCleanupFrame(s.frames.nthOr(0, RoomAbortReturnKind({group: 0, abortRoom: "", fromGlobal: false, changedSignal: false}))))
 ```

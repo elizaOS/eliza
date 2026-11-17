@@ -1,0 +1,12 @@
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+export type PathComponentDecodeResult =
+  | { ok: true; value: string }
+  | { ok: false; reason: "malformed-encoding" }
+
+export function decodeUrlPathComponent(raw: string): PathComponentDecodeResult {
+  try {
+    return { ok: true, value: decodeURIComponent(raw) }
+  } catch {
+    return { ok: false, reason: "malformed-encoding" }
+  }
+}

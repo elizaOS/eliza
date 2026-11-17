@@ -1,0 +1,166 @@
+// spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"
+import { type Foreign, foreign, foreignSync, promised, thrownValue } from "../edge.vibe"
+import { ModelType } from "../types/model.vibe"
+import type { IAgentRuntime } from "../types/runtime.vibe"
+import { resolveSetting } from "../utils/environment.vibe"
+import { parseJSONObjectFromText } from "../utils/json5-model-output.vibe"
+import { sha256Hex } from "../runtime/trajectory-provider-attribution.vibe"
+import { trustedLocalMediaUrl } from "./local-store.vibe"
+
+export interface CachedImageDescription {
+  title: string
+  description: string
+  text: string
+}
+
+const CACHE_VERSION = "v4"
+effect function imageDescriptionCacheKey(
+  runtime: IAgentRuntime,
+  imageUrl: string,
+  prompt: string,
+) {
+  const serialized = try foreignSync(() =>
+    JSON.stringify([
+      imageUrl,
+      prompt,
+      runtime
+        .getModelRegistrations()
+        .filter(
+          (registration) => registration.modelType === ModelType.IMAGE_DESCRIPTION,
+        )
+        .map(({ provider, priority, metadata }) => ({
+          provider,
+          priority,
+          metadata,
+          settings: [
+            ...(metadata?.displayModelSettings ?? []),
+            metadata?.displayModelSetting,
+          ]
+            .filter((key): key is string => typeof key === "string")
+            .map((key) => [key, resolveSetting(runtime, key)]),
+        })),
+    ])
+  )
+  return `img-desc:${CACHE_VERSION}:${sha256Hex(serialized)}`
+}
+
+export function normalizeImageDescription(
+  response: unknown,
+): CachedImageDescription | null {
+  if (typeof response === "string") {
+    const parsed = parseJSONObjectFromText(response) as {
+      title?: unknown
+      description?: unknown
+      text?: unknown
+    } | null
+    if (
+      parsed
+      && (typeof parsed.description === "string"
+        || typeof parsed.text === "string")
+    ) {
+      const description = typeof parsed.description === "string" ? parsed.description : ""
+      const text = typeof parsed.text === "string" ? parsed.text : ""
+      return {
+        title: typeof parsed.title === "string" ? parsed.title : "Image",
+        description: description || text,
+        text: text || description,
+      }
+    }
+    const trimmed = response.trim()
+    return trimmed
+      ? { title: "Image", description: trimmed, text: trimmed }
+      : null
+  }
+  if (response && typeof response === "object") {
+    const obj = response as {
+      title?: unknown
+      description?: unknown
+      text?: unknown
+    }
+    const description = typeof obj.description === "string" ? obj.description : ""
+    const text = typeof obj.text === "string" ? obj.text : ""
+    if (description || text || typeof obj.title === "string") {
+      return {
+        title: typeof obj.title === "string" ? obj.title : "Image",
+        description: description || text,
+        text: text || description,
+      }
+    }
+  }
+  return null
+}
+
+effect function getCachedImageDescription(
+  runtime: IAgentRuntime,
+  imageUrl: string,
+  cacheKey: string,
+) {
+  const cached = try foreign(() =>
+    runtime
+      .getCache<CachedImageDescription>(cacheKey)
+      .catch((err) => {
+        runtime.reportError("ImageDescriptionCache.get", err, { imageUrl })
+        return undefined
+      })
+  )
+  return cached ? (normalizeImageDescription(cached) ?? undefined) : undefined
+}
+
+effect function setCachedImageDescription(
+  runtime: IAgentRuntime,
+  imageUrl: string,
+  value: CachedImageDescription,
+  cacheKey: string,
+) {
+  if (!value.description && !value.text) return
+  try foreign(() =>
+    runtime
+      .setCache(cacheKey, value)
+      .catch((err) => runtime.reportError("ImageDescriptionCache.set", err, { imageUrl }))
+  )
+}
+
+effect function describeUncached(
+  runtime: IAgentRuntime,
+  url: string,
+  prompt: string,
+) {
+  const cacheable = url.startsWith("data:") || (try trustedLocalMediaUrl(url)) !== null
+  const cacheKey = cacheable ? try imageDescriptionCacheKey(runtime, url, prompt) : undefined
+  if (cacheKey) {
+    const cached = try getCachedImageDescription(runtime, url, cacheKey)
+    if (cached) return { cached }
+  }
+  const response: unknown = try foreign(() =>
+    runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
+      prompt,
+      imageUrl: url,
+      stream: false,
+    })
+  )
+  return { response, cacheKey }
+}
+
+export effect function describeImageCached(
+  runtime: IAgentRuntime,
+  imageUrl: string,
+  prompt: string,
+): (CachedImageDescription | null)!Foreign {
+  const url = imageUrl.trim()
+  if (!url) return null
+  const described = describeUncached(runtime, url, prompt) catch (failure) => {
+    runtime.reportError("ImageDescriptionCache.describe", thrownValue(failure), {
+      imageUrl: url,
+    })
+    return null
+  }
+  if (described === null) return null
+  if (described.cached) return described.cached
+  const normalized = normalizeImageDescription(described.response)
+  if (!normalized) return null
+  if (described.cacheKey) {
+    try setCachedImageDescription(runtime, url, normalized, described.cacheKey)
+  }
+  return normalized
+}
+export const describeImageCachedPromise = promised(describeImageCached)

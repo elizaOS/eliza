@@ -15,16 +15,20 @@ actual serialization before the first transport attempt.
 The caller chooses either the projection or the raw-wire serializer.
 A raw-wire return must be a string, including the empty string. A graph root
 of undefined has no JSON representation. A serializer failure leaves no
-admitted body. A successful observation retains the complete serialized
-UTF-16 sequence for the retry guard. JavaScript
-stringification, provider callback invocation and reflection remain at the
-adapter boundary.
+admitted body. The pinned guard propagates the original thrown value from a
+provider callback, validation reflection, or the first projection freeze.
+The adapter retains that value and reports the stage to the model. A throw
+from JSON stringification is a typed serialization error with the original
+cause, unless the thrown value is already an ElizaError, in which case the
+source passes it through. A successful observation retains the complete
+serialized UTF-16 sequence for the retry guard.
 
 ```quint
 import unicode as U from "./unicode"
 type SerializerChoice = ProjectionSerializer | RawWireSerializer | MissingSerializer | ConflictingSerializers
-type SerializedObservation = SerializedText({codeUnits: List[int]}) | NonStringWireReturn | JsonRootMissing | SerializationThrew
-type BodyAdmission = AdmittedBody({codeUnits: List[int]}) | InvalidBody
+type SerializationHostStage = WireCallback | ProjectionCallback | ValidationReflection | InitialProjectionFreeze | JsonStringifyElizaError
+type SerializedObservation = SerializedText({codeUnits: List[int]}) | NonStringWireReturn | JsonRootMissing | SerializationThrew | SerializerHostThrew({stage: SerializationHostStage})
+type BodyAdmission = AdmittedBody({codeUnits: List[int]}) | InvalidBody | HostSerializationFailure({stage: SerializationHostStage})
 pure def serializerChoice(hasProjection: bool, hasWire: bool): SerializerChoice =
   if (hasProjection and hasWire) ConflictingSerializers
   else if (hasProjection) ProjectionSerializer
@@ -32,21 +36,40 @@ pure def serializerChoice(hasProjection: bool, hasWire: bool): SerializerChoice 
   else MissingSerializer
 pure val serializerValues = Set(ProjectionSerializer, RawWireSerializer, MissingSerializer, ConflictingSerializers)
 pure val sampleBody: SerializedObservation = SerializedText({codeUnits: List(123, 125)})
-pure val observedValues = Set(sampleBody, NonStringWireReturn, JsonRootMissing, SerializationThrew)
+pure val observedValues = Set(sampleBody, NonStringWireReturn, JsonRootMissing, SerializationThrew,
+  SerializerHostThrew({stage: WireCallback}), SerializerHostThrew({stage: ProjectionCallback}),
+  SerializerHostThrew({stage: ValidationReflection}), SerializerHostThrew({stage: InitialProjectionFreeze}),
+  SerializerHostThrew({stage: JsonStringifyElizaError}))
+pure def hasExactlyOneSerializer(serializer: SerializerChoice): bool =
+  serializer == ProjectionSerializer or serializer == RawWireSerializer
 pure def admittedSerialization(serializer: SerializerChoice, observed: SerializedObservation): BodyAdmission =
-  if (serializer == MissingSerializer or serializer == ConflictingSerializers) InvalidBody
+  if (not(hasExactlyOneSerializer(serializer))) InvalidBody
   else match observed {
     | SerializedText(text) => if (U::validCodeUnits(text.codeUnits)) AdmittedBody({codeUnits: text.codeUnits}) else InvalidBody
+    | SerializerHostThrew(failure) =>
+      if ((serializer == RawWireSerializer) == (failure.stage == WireCallback))
+        HostSerializationFailure({stage: failure.stage})
+      else InvalidBody
     | _ => InvalidBody
   }
+pure def hasAdmittedBody(admission: BodyAdmission): bool =
+  match admission {
+    | AdmittedBody(_) => true
+    | _ => false
+  }
+pure def admittedBodyEquals(admission: BodyAdmission, codeUnits: List[int]): bool =
+  match admission {
+    | AdmittedBody(body) => body.codeUnits == codeUnits
+    | _ => false
+  }
 pure def lawMissingSerializerHasNoBody(observed: SerializedObservation): bool =
-  admittedSerialization(serializerChoice(false, false), observed) == InvalidBody
+  not(hasAdmittedBody(admittedSerialization(serializerChoice(false, false), observed)))
 pure def lawConflictingSerializersHaveNoBody(observed: SerializedObservation): bool =
-  admittedSerialization(serializerChoice(true, true), observed) == InvalidBody
+  not(hasAdmittedBody(admittedSerialization(serializerChoice(true, true), observed)))
 pure def lawNonStringWireHasNoBody(serializer: SerializerChoice): bool =
-  admittedSerialization(serializer, NonStringWireReturn) == InvalidBody
+  not(hasAdmittedBody(admittedSerialization(serializer, NonStringWireReturn)))
 pure def lawUndefinedRootHasNoBody(serializer: SerializerChoice): bool =
-  admittedSerialization(serializer, JsonRootMissing) == InvalidBody
+  not(hasAdmittedBody(admittedSerialization(serializer, JsonRootMissing)))
 ```
 
 ### The validation walk refuses cycles and unsupported visited values
@@ -54,14 +77,24 @@ pure def lawUndefinedRootHasNoBody(serializer: SerializerChoice): bool =
 An active ancestor reference is a cycle. A shared reference may be visited
 again after its first frame leaves the stack. Validation rejects nonfinite
 numbers, non-JSON primitive types and nonplain objects other than arrays.
-Enumerable own object keys require data descriptors. Array slots follow
-JavaScript indexed reads. Undefined and sparse array slots pass validation
-and use JavaScript's JSON rendering rules. The walk abstracts the traversal
-observations supplied by the adapter. It preserves exact ancestor identity.
+For each enumerable own string key, the adapter rejects a missing descriptor
+or one with a getter or setter callback. Otherwise it visits the descriptor's
+value. An accessor with both callbacks absent visits undefined, as does an
+undefined data value. Array slots follow JavaScript indexed reads. Undefined
+and sparse array slots pass validation and use JavaScript's JSON rendering
+rules. The walk abstracts the traversal observations supplied by the adapter.
+It preserves exact ancestor identity.
+
+The pinned walk and stringifier read array indices separately. The
+stringifier can call a non-enumerable `toJSON` hook after the walk has
+visited the enumerable string keys. The adapter reports the resulting complete string, including
+where a later indexed read or a hook changes the encoded value. The
+validation facts establish eligibility to stringify the projected graph.
+The actual string establishes what was serialized.
 
 ```quint
 type GraphValue = PrimitiveValue | UndefinedValue | NonFiniteNumber | NonJsonPrimitive | OpaqueObject | ContainerValue({identity: int})
-type GraphObservation = VisitValue({visited: GraphValue}) | LeaveContainer({identity: int}) | ObjectPropertyWithoutData
+type GraphObservation = VisitValue({visited: GraphValue}) | LeaveContainer({identity: int}) | RejectedOwnPropertyDescriptor
 type Validation = {ancestors: List[int], valid: bool}
 pure val initial: Validation = {ancestors: List(), valid: true}
 pure val recordOne: GraphValue = ContainerValue({identity: 1})
@@ -70,7 +103,7 @@ pure val observeOne: GraphObservation = VisitValue({visited: recordOne})
 pure val observeTwo: GraphObservation = VisitValue({visited: recordTwo})
 pure val leaveOne: GraphObservation = LeaveContainer({identity: 1})
 pure val leaveTwo: GraphObservation = LeaveContainer({identity: 2})
-pure val observationValues = Set(observeOne, observeTwo, leaveOne, leaveTwo, ObjectPropertyWithoutData, VisitValue({visited: NonFiniteNumber}), VisitValue({visited: UndefinedValue}), VisitValue({visited: PrimitiveValue}), VisitValue({visited: NonJsonPrimitive}), VisitValue({visited: OpaqueObject}))
+pure val observationValues = Set(observeOne, observeTwo, leaveOne, leaveTwo, RejectedOwnPropertyDescriptor, VisitValue({visited: NonFiniteNumber}), VisitValue({visited: UndefinedValue}), VisitValue({visited: PrimitiveValue}), VisitValue({visited: NonJsonPrimitive}), VisitValue({visited: OpaqueObject}))
 pure def visitGraph(value: GraphValue, walk: Validation): Validation =
   match value {
     | ContainerValue(data) =>
@@ -88,7 +121,7 @@ pure def observeGraph(walk: Validation, observation: GraphObservation): Validati
       if (walk.ancestors.nthOr(walk.ancestors.length() - 1, 0) == data.identity and data.identity > 0)
         { ...walk, ancestors: walk.ancestors.removeAt(walk.ancestors.length() - 1) }
       else { ...walk, valid: false }
-    | ObjectPropertyWithoutData => { ...walk, valid: false }
+    | RejectedOwnPropertyDescriptor => { ...walk, valid: false }
   }
 pure def stepFailedValidationIsTerminal(before: Validation, after: Validation): bool =
   not(before.valid) implies not(after.valid)
@@ -102,13 +135,17 @@ pure def lawActiveAncestorRefuses(walk: Validation, identity: int): bool =
 
 The graph serializer can hand its complete body to the retry guard only
 after the last validated container leaves the walk. Invalid or unfinished
-walks have no admitted body. A raw-wire observation takes the separate
-string-return path and does not traverse a JSON graph.
+walks have no admitted body. A host throw during reflection still retains
+its failure stage if the walk could not leave an open container. A raw-wire
+observation takes the separate string-return path and does not traverse a
+JSON graph.
 
 ```quint
-pure def finishSerialization(walk: Validation, serializer: SerializerChoice, observed: SerializedObservation): BodyAdmission =
-  if (serializer == ProjectionSerializer and (not(walk.valid) or walk.ancestors.length() != 0)) InvalidBody
-  else admittedSerialization(serializer, observed)
+pure def finishSerialization(walk: Validation, serializer: SerializerChoice, observed: SerializedObservation): BodyAdmission = {
+  val admission = admittedSerialization(serializer, observed)
+  if (hasAdmittedBody(admission) and serializer == ProjectionSerializer and (not(walk.valid) or walk.ancestors.length() != 0)) InvalidBody
+  else admission
+}
 pure def lawUnfinishedProjectionHasNoBody(walk: Validation, observed: SerializedObservation): bool =
-  (not(walk.valid) or walk.ancestors.length() != 0) implies finishSerialization(walk, ProjectionSerializer, observed) == InvalidBody
+  (not(walk.valid) or walk.ancestors.length() != 0) implies not(hasAdmittedBody(finishSerialization(walk, ProjectionSerializer, observed)))
 ```
