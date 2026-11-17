@@ -127,11 +127,11 @@ pure def canReconcile(s: Subscription, subscriptionId: str, planKey: PlanKey, pe
 pure def reconcile(s: Subscription, subscriptionId: str, providerStatus: ProviderStatus, latestInvoice: LatestInvoice, invoiceId: str, planKey: PlanKey, periodStart: Millis, periodEnd: Millis, cancelAtPeriodEnd: bool, now: Millis): SubscriptionStep = {
   val status = observedStatus(s, providerStatus, latestInvoice, now)
   val renewal = status == Active and latestInvoice == InvoicePaid and invoiceId != "" and invoiceId != s.lastRenewalInvoice and periodStart >= s.periodEnd
-  val next = { ...s, status: status, planKey: planKey, periodStart: periodStart, periodEnd: periodEnd, cancelAtPeriodEnd: cancelAtPeriodEnd,
+  val observedState = { ...s, status: status, planKey: planKey, periodStart: periodStart, periodEnd: periodEnd, cancelAtPeriodEnd: cancelAtPeriodEnd,
     planned: keepPlanned(s.planned, status, planKey), dunning: if (inDunning(status)) windowFrom(s, now) else NotDunning,
     lastRenewalInvoice: if (renewal) invoiceId else s.lastRenewalInvoice }
-  val changed = next != s
-  { state: if (changed) { ...next, revision: s.revision + 1 } else s,
+  val changed = observedState != s
+  { state: if (changed) { ...observedState, revision: s.revision + 1 } else s,
     out: (if (renewal) List(OpenRenewalPeriod({ invoiceId: invoiceId, planKey: planKey, startsAt: periodStart, endsAt: periodEnd })) else List())
       .concat(if (isEnded(status)) List(CloseRenewalPeriods) else List())
       .concat(if (changed) List(PolicyChanged) else List()) }
@@ -156,8 +156,11 @@ has ended.
 ```quint
 pure def canExpireDunning(s: Subscription, now: Millis): bool = s.status == Dunning and now >= dunningEndsAt(s.dunning)
 pure def expireDunning(s: Subscription, now: Millis): SubscriptionStep = { state: { ...s, status: PastDue, revision: s.revision + 1 }, out: List(PolicyChanged) }
-pure def alwaysDunningWindowOnlyWhileDunning(s: Subscription): bool = { val w = s.dunning
-  ((w != NotDunning) iff inDunning(s.status)) and (match w { | DunningSince(x) => x.startedAt >= 0 and x.endsAt == x.startedAt + dunningGrace | NotDunning => true }) }
+pure def alwaysDunningWindowOnlyWhileDunning(s: Subscription): bool = {
+  val window = s.dunning
+  val matchesStatus = (window != NotDunning) iff inDunning(s.status)
+  matchesStatus and match window { | DunningSince(x) => x.startedAt >= 0 and x.endsAt == x.startedAt + dunningGrace | NotDunning => true }
+}
 pure def stepDunningWindowSetOnce(before: Subscription, after: Subscription): bool = (before.dunning != NotDunning and after.dunning != NotDunning) implies after.dunning == before.dunning
 pure def stepPastDueNeverReturnsToDunning(before: Subscription, after: Subscription): bool = before.status == PastDue implies after.status != Dunning
 pure def sometimesDunning(s: Subscription): bool = s.status == Dunning
@@ -263,12 +266,12 @@ The snapshot's `control` (section 5.4 of the plan) is this value; its
 
 ```quint
 type ControlAction = CancelAction | UndoAction | NoAction
-type CancelControl = { action: ControlAction, eligible: bool, expectedRevision: int }
+type CancelControl = { offeredAction: ControlAction, eligible: bool, expectedRevision: int }
 pure def controlOf(s: Subscription): CancelControl = {
-  val action = if (s.status != Active or s.planned != NoPlannedChange) NoAction else if (s.cancelAtPeriodEnd) UndoAction else CancelAction
-  { action: action, eligible: action != NoAction and s.liveCommand == NoLiveCommand and commandEligible(s, if (action == UndoAction) UndoCommand else CancelCommand, s.revision), expectedRevision: s.revision }
+  val offeredAction = if (s.status != Active or s.planned != NoPlannedChange) NoAction else if (s.cancelAtPeriodEnd) UndoAction else CancelAction
+  { offeredAction: offeredAction, eligible: offeredAction != NoAction and s.liveCommand == NoLiveCommand and commandEligible(s, if (offeredAction == UndoAction) UndoCommand else CancelCommand, s.revision), expectedRevision: s.revision }
 }
-pure def sometimesUndoOffered(s: Subscription): bool = controlOf(s).action == UndoAction and controlOf(s).eligible
+pure def sometimesUndoOffered(s: Subscription): bool = controlOf(s).offeredAction == UndoAction and controlOf(s).eligible
 ```
 
 ## Story: Read my invoices and open the billing portal
