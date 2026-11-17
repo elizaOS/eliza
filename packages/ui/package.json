@@ -14,7 +14,7 @@
     "storybook:build": "storybook build",
     "test": "vitest run",
     "test:browser": "vitest run --project browser",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "vibelang --noEmit -p ."
   },
   "peerDependencies": {
     "react": "^19",
@@ -46,6 +46,7 @@
     "storybook": "catalog:",
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
+    "vibelang": "0.0.13",
     "vibestack": "workspace:*",
     "vite": "catalog:",
     "vitest": "catalog:"

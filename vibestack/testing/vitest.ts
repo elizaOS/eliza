@@ -68,6 +68,7 @@ export const project = ({ root, tests = TESTS, plugins = [] }: Project) =>
         reporters: ["default", record],
         allowOnly: false,
         passWithNoTests: true,
+        attachmentsDir: ".cache/vitest/attachments",
         // `vitest run` leaves Chromium to `test:browser`, whose `--project browser` takes the place of this filter.
         project: ["!browser"],
         // A failure repeats: fixed order, no retry that could hide a flaky test. Properties use profile.ts.

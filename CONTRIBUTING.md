@@ -38,7 +38,11 @@ what a change reaches. `check` is never skipped whole: `spec` keeps its own fine
 application again each time.
 
 A package joins by having a script named `gen`, `build`, `typecheck`, `test`, `test:browser` or `check`. Its other
-tasks wait for its `gen` and the root's, and its `check` for all of them, since `check` rewrites `gen/`. The root's
+tasks wait for its `gen` and the root's, and its `check` for all of them, since `check` rewrites `gen/`. A package that
+can never own a root spec waits for no root `gen`, so a spec edit leaves its tasks cached: Studio, which has a `spec/`
+of its own, and `@repo/design-system` and `@repo/ui`, which have no `spec/<name>/`; `@repo/ui`'s tests still wait for
+its stories, whose `@model` tags read the root's `gen/`. Studio's tests wait for its page build and are keyed by its
+files and the `vibestack/fixtures/` they read, besides the tools every task is keyed by. The root's
 `check` rewrites its owners' `gen/` too, so it waits for their tasks: name each owner's in `//#check` of `turbo.json`,
 as `@repo/app`'s are. `pnpm lint:js` on its own needs what `gen` and `typecheck` write (`gen/`, `.vibe/declarations`);
 `pnpm lint` runs them first.
@@ -189,8 +193,8 @@ that result only while its source, generated core, transitive workspace
 inputs, lockfile and fixed profile match. The fingerprint covers the package's
 files, with the packages nested under its `test/` as fixtures but not other
 nested packages, and of each `workspace:` dependency what a dependent can
-load: not its `spec/`, Markdown, tests, drivers, traces, counterexamples or
-nested packages, nor its `gen/` unless its code or manifest reaches into it; a
+load: not its `spec/`, Markdown outside `fixtures/`, tests, drivers, traces,
+counterexamples or nested packages, nor its `gen/` unless its code or manifest reaches into it; a
 file a test reads from elsewhere comes through a declared dependency, as the
 root's `@repo/design-system` does. A typecheck is keyed by the scripts and
 JSON alone, and then by the content of every file the compile read. Turbo's

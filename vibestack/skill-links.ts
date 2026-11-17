@@ -141,7 +141,7 @@ export function setupProjectAgents(project: string, warn: (message: string) => v
 
   const ignore = path.join(project, ".gitignore");
   const ignored = fs.existsSync(ignore) ? fs.readFileSync(ignore, "utf8") : "";
-  const missing = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", "test/__traces__/", ...generatedAgentIgnores].filter((pattern) => !ignored.split(/\r?\n/).includes(pattern));
+  const missing = ["gen/", ".spec-cache/", ".studio/", "dist/", ".vibe/", ".cache/", ".turbo/", "test/__traces__/", ...generatedAgentIgnores].filter((pattern) => !ignored.split(/\r?\n/).includes(pattern));
   if (missing.length) {
     fs.writeFileSync(ignore, ignored + (ignored && !ignored.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n");
     added.push(".gitignore");

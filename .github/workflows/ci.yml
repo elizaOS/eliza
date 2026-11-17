@@ -66,8 +66,11 @@ jobs:
             apps/*/test/__traces__/
             packages/*/test/counterexamples/
             packages/*/test/__traces__/
+            apps/*/.cache/vitest/attachments/
+            packages/*/.cache/vitest/attachments/
             vibestack/studio/test/counterexamples/
             vibestack/studio/test/__traces__/
             vibestack/examples/*/test/counterexamples/
             vibestack/examples/*/test/__traces__/
           if-no-files-found: ignore
+          include-hidden-files: true

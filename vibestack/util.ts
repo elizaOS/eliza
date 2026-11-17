@@ -227,9 +227,9 @@ const SPECIFIER = /(?:\bfrom\s+|\bimport\s*\(\s*|^\s*import\s+)["'](\.\.?\/[^"']
 /**
  * A fingerprint of what a package's tests or its typecheck read: its files and the top of its gen/ (an owner's is
  * mirrored from the root's), the fixtures nested under its test/, the workspace packages it depends on, the lock file
- * and the fuzzing budget. Of a workspace package depended on, only what a dependent can load: not its spec/, Markdown,
- * tests, drivers, traces or counterexamples, nor the packages nested in it, nor its gen/ unless its scripts or its
- * manifest reach into it.
+ * and the fuzzing budget. Of a workspace package depended on, only what a dependent can load: not its spec/, Markdown
+ * outside fixtures/, tests, drivers, traces or counterexamples, nor the packages nested in it, nor its gen/ unless its
+ * scripts or its manifest reach into it.
  */
 export function testInputs(root: string, mode: TestProfile = "normal", read: Inputs = "tests"): string {
   const hash = createHash("sha256").update(JSON.stringify(["tests-v5", read, process.versions.node, process.platform, process.arch, profile(mode)]));
@@ -246,7 +246,7 @@ export function testInputs(root: string, mode: TestProfile = "normal", read: Inp
   for (const { directory: from, name } of workspacePackages(root)) {
     hash.update(JSON.stringify(name));
     const own = name === ".";
-    const keep = (file: string) => reads[read](file) && (own || (served(file) && !/^(?:spec|gen)\//.test(file) && !file.endsWith(".md")));
+    const keep = (file: string) => reads[read](file) && (own || (served(file) && !/^(?:spec|gen)\//.test(file) && (!file.endsWith(".md") || /(?:^|\/)fixtures\//.test(file))));
     const pkg = manifest(from);
     let gen = own || /(?:^|["/.])gen\//.test(JSON.stringify([pkg.exports, pkg.main, pkg.module, pkg.types]));
     for (const file of packageFiles(from, keep, "", own)) {
