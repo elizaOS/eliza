@@ -120,7 +120,7 @@ own browser. A host whose renderer runs only some commands sets
 `ELIZA_NATIVE_BROWSER_COMMANDS` to a comma list, for example
 `back,forward,reload`. The model is then offered only those commands and their
 parameters, and the service refuses any other command. Without the variable,
-every command is offered.
+or with a blank one, every command is offered.
 
 ## Development
 

@@ -147,6 +147,11 @@ describe("observedNativeHistorySelection", () => {
 describe("host-declared native browser commands", () => {
   it("offers every command when the host declares none", () => {
     expect(nativeBrowserCommands(undefined)).toContain("snapshot");
+    // A variable cleared to blank is unset, never an empty command list.
+    for (const blank of ["", "  ", " , "])
+      expect(nativeBrowserCommands(blank)).toEqual(
+        nativeBrowserCommands(undefined),
+      );
     expect(
       browserAction.parameters?.map((parameter) => parameter.name),
     ).toEqual(["id", "action", "url", "selector", "text", "direction"]);

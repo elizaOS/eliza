@@ -68,15 +68,18 @@ type NativeBrowserCommand = (typeof allCommands)[number];
  * runs only some of them names those in ELIZA_NATIVE_BROWSER_COMMANDS, a comma
  * list such as "back,forward,reload". The model is then offered, and the
  * service accepts, only those commands, so it is never told about one that
- * the renderer answers with UNSUPPORTED. Unset means every command.
+ * the renderer answers with UNSUPPORTED. Unset or blank means every command.
  */
 export function nativeBrowserCommands(
   declared: string | undefined = process.env.ELIZA_NATIVE_BROWSER_COMMANDS,
 ): readonly NativeBrowserCommand[] {
-  if (declared === undefined) return allCommands;
-  const names = declared.split(",").map((name) => name.trim().toLowerCase());
+  const names = (declared ?? "")
+    .split(",")
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean);
+  if (!names.length) return allCommands;
   const unknown = names.filter(
-    (name) => name && !allCommands.some((command) => command === name),
+    (name) => !allCommands.some((command) => command === name),
   );
   if (unknown.length)
     throw new Error(
