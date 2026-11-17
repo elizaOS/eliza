@@ -171,11 +171,11 @@ function formatValidationErrors(
     : [error?.message || "Unknown validation error"]
 }
 
-export error CharacterNotLoaded { message: string }
-export error CharacterInvalid { message: string }
-export error CharacterInputUnsupported { message: string }
+error CharacterNotLoaded { message: string }
+error CharacterInvalid { message: string }
+error CharacterInputUnsupported { message: string }
 
-export effect function parseCharacter(
+effect function parseCharacter(
   input: string | object | Character | CharacterInput,
 ): Character!(CharacterNotLoaded | CharacterInvalid | CharacterInputUnsupported) {
   if (typeof input === "string") {

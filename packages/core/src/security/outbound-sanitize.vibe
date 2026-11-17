@@ -105,11 +105,14 @@ export interface OutboundLiteralSpan {
   end: number
 }
 
+/** @public */
 export error InvalidLiteralRange { message: string }
+/** @public */
 export error LiteralSplitsControlSyntax { message: string }
+/** @public */
 export error LiteralLostInCleanup { message: string }
 
-export effect function sanitizeOutboundTextWithLiterals(
+effect function sanitizeOutboundTextWithLiterals(
   text: string,
   literalSpans: readonly OutboundLiteralSpan[],
 ): { text: string; literalSpans: OutboundLiteralSpan[] }!(InvalidLiteralRange | LiteralSplitsControlSyntax | LiteralLostInCleanup) {

@@ -76,7 +76,7 @@ export interface PiiSpanMatchResult {
   unmatched: PiiTextSpan[]
 }
 
-export effect function matchPiiSpansToWords(
+effect function matchPiiSpansToWords(
   words: readonly TranscriptWord[],
   piiSpans: readonly PiiTextSpan[],
 ): PiiSpanMatchResult!RedactionSpanError {
@@ -119,7 +119,7 @@ export interface MergeRedactionSpanOptions {
   mergeGapMs?: number
 }
 
-export effect function mergeRedactionSpans(
+effect function mergeRedactionSpans(
   spans: readonly AudioRedactionSpan[],
   options: MergeRedactionSpanOptions,
 ): AudioRedactionSpan[]!RedactionSpanError {
@@ -206,7 +206,7 @@ export interface AudioRedactionSpanPlan {
   unmatched: PiiTextSpan[]
 }
 
-export effect function buildAudioRedactionSpans(
+effect function buildAudioRedactionSpans(
   words: readonly TranscriptWord[],
   piiSpans: readonly PiiTextSpan[],
   options: MergeRedactionSpanOptions,
@@ -218,7 +218,7 @@ export effect function buildAudioRedactionSpans(
 
 export const buildAudioRedactionSpansOrThrow = thrown(buildAudioRedactionSpans)
 
-export effect function assertCompleteAudioRedactionPlan(
+effect function assertCompleteAudioRedactionPlan(
   plan: AudioRedactionSpanPlan,
 ): void!RedactionSpanError {
   if (plan.unmatched.length > 0) {

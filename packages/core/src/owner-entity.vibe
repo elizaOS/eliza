@@ -10,13 +10,13 @@ type WorldMetadataShape = {
   ownership?: { ownerId?: string }
 }
 
-export effect function resolveFallbackOwnerEntityId(runtime: Pick<IAgentRuntime, "agentId">) {
+effect function resolveFallbackOwnerEntityId(runtime: Pick<IAgentRuntime, "agentId">) {
   return try deterministicOwnerEntityId(runtime.agentId)
 }
 
 export const resolveFallbackOwnerEntityIdOrThrow = thrown(failingAs(TypeError, resolveFallbackOwnerEntityId))
 
-export effect function resolveOwnerEntityId(runtime: IAgentRuntime) {
+effect function resolveOwnerEntityId(runtime: IAgentRuntime) {
   if (try hasConfiguredCanonicalOwner(runtime)) {
     return try resolveOwnerEntityIdOrDefault(runtime)
   }

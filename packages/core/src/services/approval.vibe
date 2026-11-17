@@ -532,7 +532,7 @@ export class ApprovalService extends Service {
   }
 }
 
-export effect function requestConfirmation(
+effect function requestConfirmation(
   runtime: IAgentRuntime,
   params: {
     description: string
@@ -569,5 +569,3 @@ export effect function requestConfirmation(
   return result.success && result.selectedOption === "confirm"
 }
 export const requestConfirmationPromise = promised(requestConfirmation)
-
-export default ApprovalService

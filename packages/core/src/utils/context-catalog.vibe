@@ -2,7 +2,7 @@
 import { FIRST_PARTY_CONTEXT_IDS } from "../runtime/context-normalization.vibe"
 import type { Action, AgentContext, Provider } from "../types/components.vibe"
 
-export const LEGACY_ACTION_CONTEXT_FALLBACK: Record<string, AgentContext[]> = {
+const LEGACY_ACTION_CONTEXT_FALLBACK: Record<string, AgentContext[]> = {
   NONE: ["general"],
   IGNORE: ["general"],
   CONTINUE: ["general"],
@@ -153,7 +153,7 @@ export const LEGACY_ACTION_CONTEXT_FALLBACK: Record<string, AgentContext[]> = {
   FINISH: ["general"],
 }
 
-export const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
+const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
   ACTION_STATE: [...FIRST_PARTY_CONTEXT_IDS],
   time: ["general"],
   boredom: ["general"],

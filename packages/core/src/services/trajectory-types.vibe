@@ -3,11 +3,6 @@ import type { TrajectoryProviderAttribution } from "../runtime/trajectory-provid
 import type { JsonValue } from "../types/primitives.vibe"
 import type { TrajectorySemanticStageRecord } from "./trajectory-semantic-stage.vibe"
 
-export type {
-  RecordedRetrievalPerStageScores,
-  RecordedRetrievalStageEntry,
-  RecordedToolSearchStage,
-} from "../runtime/trajectory-recorder.vibe"
 
 export const ELIZA_NATIVE_TRAJECTORY_FORMAT = "eliza_native_v1" as const
 

@@ -1,5 +1,5 @@
 // spec/core/processingPolicy.md, "Story: Bind a host processing policy once"; spec/core/processingPolicy.md, "Each runtime has at most one immutable policy binding"; spec/core/processingPolicy.md, "A processing request is admitted only by a valid host decision"
-import { foreign, promised, thrown } from "../edge.vibe"
+import { foreign } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { logger } from "../logger.vibe"
 import type { ProcessingModality } from "../runtime/model-modality.vibe"
@@ -152,8 +152,6 @@ export effect function bindProcessingPolicy(
   })
 }
 
-export const bindProcessingPolicyOrThrow = thrown(bindProcessingPolicy)
-
 export function processingPolicyFor(
   runtime: object,
 ): ProcessingPolicy | undefined {
@@ -269,5 +267,3 @@ export effect function admitProcessing(
   }
   return decision
 }
-
-export const admitProcessingPromise = promised(admitProcessing)

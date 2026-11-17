@@ -279,7 +279,7 @@ function compareEligible(
   return a.account.accountId < b.account.accountId ? -1 : 1
 }
 
-export effect function selectConnectedAccount(
+effect function selectConnectedAccount(
   intent: AccountSelectionIntent,
   accounts: readonly ConnectedAccount[],
   policy: AccountSelectionPolicy,

@@ -55,10 +55,6 @@ function describeRelativeTime(
   })
 }
 
-export function formatRelativeTime(timestamp: number): string {
-  return describeRelativeTime(timestamp, "compact")
-}
-
 export function formatTimestamp(timestamp: number): string {
   return describeRelativeTime(timestamp, "verbose")
 }

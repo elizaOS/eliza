@@ -6,7 +6,7 @@ import {
 } from "../actions/task-extraction-context.vibe"
 import { copyBoundOperationDenial } from "./operation-restriction-projection.vibe"
 
-import { Foreign, failingAs, foreign, foreignSync, asLegacy, promised, runDetached, thrown, thrownValue } from "../edge.vibe"
+import { Foreign, failingAs, foreign, foreignSync, asLegacy, promised, runDetached, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
   admitProcessing,
@@ -133,8 +133,6 @@ export effect function normalizeActionResult(
   copyBoundOperationDenial(normalized, finalResult, operationAttempt)
   return finalResult
 }
-
-export const normalizeActionResultOrThrow = thrown(failingAs(TypeError, normalizeActionResult, ElizaError))
 
 export function actionFailureResult(
   actionName: string,

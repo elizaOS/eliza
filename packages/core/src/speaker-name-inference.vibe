@@ -156,7 +156,7 @@ const STRONG_SOURCES = new Set<SpeakerNameEvidenceSource>([
   "self_introduction",
 ])
 
-export error RatioOutOfRange { message: string }
+error RatioOutOfRange { message: string }
 
 effect function assertRatio(field: string, value: number): void!RatioOutOfRange {
   if (!Number.isFinite(value) || value < 0 || value > 1) {
@@ -365,7 +365,7 @@ function buildBindingPlan(
   }
 }
 
-export effect function inferSpeakerName(
+effect function inferSpeakerName(
   input: InferSpeakerNameInput,
 ): SpeakerNameInference!RatioOutOfRange {
   const minConfirmedConfidence = input.minConfirmedConfidence ?? DEFAULT_MIN_CONFIRMED_CONFIDENCE

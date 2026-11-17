@@ -69,7 +69,7 @@ export const roomDeliverySettlementOrThrow = thrown(
     map(roomDeliverySettlement(runtime, roomId, lease), (delivered) => runDetached(delivered)),
 )
 
-export effect function withRoomDeliverySettlement<T>(
+effect function withRoomDeliverySettlement<T>(
   runtime: TrackableRuntime,
   roomId: string,
   lease: RoomHandlerLease,
@@ -260,7 +260,7 @@ export function postDeliveryTaskQuarantineReason(runtime: TrackableRuntime): str
   return quarantineByRuntime.get(runtime)?.reason
 }
 
-export effect function drainRoomPostDeliveryTasks(runtime: TrackableRuntime, roomId: string) {
+effect function drainRoomPostDeliveryTasks(runtime: TrackableRuntime, roomId: string) {
   const quarantine = quarantineByRuntime.get(runtime)
   if (quarantine) throw quarantinedDrainError(runtime, quarantine.reason)
   let drained = 0

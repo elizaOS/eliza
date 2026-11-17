@@ -88,7 +88,7 @@ export function extensionForMime(mime?: string | null): string | undefined {
   return EXT_BY_MIME[mime.toLowerCase()]
 }
 
-export effect function sniffMime(buffer?: Uint8Array) {
+effect function sniffMime(buffer?: Uint8Array) {
   if (!buffer) return undefined
   const { fileTypeFromBuffer } = try foreign(() => import("file-type"))
   return (try foreign(() => fileTypeFromBuffer(buffer)))?.mime

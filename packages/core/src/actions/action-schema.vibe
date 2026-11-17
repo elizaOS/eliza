@@ -51,8 +51,8 @@ export interface ActionParametersJsonSchema extends JsonSchema {
   additionalProperties?: boolean
 }
 
-export error UntypedSchema { message: string }
-export error UnsupportedSchemaType { message: string }
+error UntypedSchema { message: string }
+error UnsupportedSchemaType { message: string }
 type SchemaFailure = UntypedSchema | UnsupportedSchemaType | ElizaError
 
 const SUPPORTED_SCHEMA_TYPES = new Set<string>([
@@ -158,7 +158,7 @@ function isSupportedSchemaType(type: string): type is JsonSchemaPrimitiveType {
   return SUPPORTED_SCHEMA_TYPES.has(type)
 }
 
-export effect function actionParameterSchemaToJsonSchema(
+effect function actionParameterSchemaToJsonSchema(
   schema: ActionParameterSchema,
   options: { path?: string; description?: string; enumValues?: unknown[] } = {},
 ): JsonSchema!SchemaFailure {
@@ -284,8 +284,6 @@ export effect function actionParameterSchemaToJsonSchema(
   return jsonSchema
 }
 
-export const actionParameterSchemaToJsonSchemaOrThrow = thrown(failingAs(Error, actionParameterSchemaToJsonSchema, ElizaError))
-
 function appendParameterExamples(
   description: string | undefined,
   examples: ActionParameter["examples"],
@@ -309,7 +307,7 @@ function appendParameterExamples(
   return description ? `${description} (${examplesPart})` : examplesPart
 }
 
-export effect function actionParametersToJsonSchema(
+effect function actionParametersToJsonSchema(
   parameters: ActionParameter[] = [],
   options: { allowAdditionalProperties?: boolean } = {},
 ): ActionParametersJsonSchema!SchemaFailure {
@@ -340,8 +338,6 @@ export effect function actionParametersToJsonSchema(
     additionalProperties: options.allowAdditionalProperties === true,
   }
 }
-
-export const actionParametersToJsonSchemaOrThrow = thrown(failingAs(Error, actionParametersToJsonSchema, ElizaError))
 
 export effect function actionToJsonSchema(
   action: Pick<Action, "parameters" | "allowAdditionalParameters">,

@@ -33,7 +33,7 @@ export function getPairingService(
   return runtime.getService<PairingService>(ServiceType.PAIRING)
 }
 
-export effect function checkPairingAllowed(
+effect function checkPairingAllowed(
   runtime: IAgentRuntime,
   params: PairingCheckParams,
 ): PairingCheckResult!Foreign {
@@ -118,7 +118,7 @@ export function buildPairingReplyMessage(params: {
   return lines.join("\n")
 }
 
-export effect function addToAllowlist(
+effect function addToAllowlist(
   runtime: IAgentRuntime,
   channel: PairingChannel,
   senderId: string,
@@ -137,7 +137,7 @@ export effect function addToAllowlist(
   return true
 }
 
-export effect function removeFromAllowlist(
+effect function removeFromAllowlist(
   runtime: IAgentRuntime,
   channel: PairingChannel,
   senderId: string,
@@ -150,7 +150,7 @@ export effect function removeFromAllowlist(
   return try foreign(() => pairingService.removeFromAllowlist(channel, senderId))
 }
 
-export effect function isInAllowlist(
+effect function isInAllowlist(
   runtime: IAgentRuntime,
   channel: PairingChannel,
   senderId: string,
@@ -163,7 +163,7 @@ export effect function isInAllowlist(
   return try foreign(() => pairingService.isAllowed(channel, senderId))
 }
 
-export effect function approvePairingCode(
+effect function approvePairingCode(
   runtime: IAgentRuntime,
   channel: PairingChannel,
   code: string,

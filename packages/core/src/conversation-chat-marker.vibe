@@ -15,7 +15,7 @@ export function normalizeChatIdempotencyKey(
     : null
 }
 
-export effect function conversationClientUserMemoryId(
+effect function conversationClientUserMemoryId(
   scope: string,
   clientMessageId: string,
 ): UUID!InvalidUuidSource {

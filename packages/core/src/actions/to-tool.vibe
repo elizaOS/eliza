@@ -12,7 +12,7 @@ import {
 } from "./action-schema.vibe"
 import { promotedSubactionDescription } from "./promote-subactions.vibe"
 
-export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/
+const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/
 
 export const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE" as const
 
@@ -129,7 +129,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
   ],
 }
 
-export interface PlannerToolDefinition {
+interface PlannerToolDefinition {
   type: "function"
   function: {
     name: string
@@ -140,17 +140,15 @@ export interface PlannerToolDefinition {
   }
 }
 
-export error InvalidToolName { message: string }
+error InvalidToolName { message: string }
 
-export effect function assertNativeToolName(name: string): void!InvalidToolName {
+effect function assertNativeToolName(name: string): void!InvalidToolName {
   if (!NATIVE_TOOL_NAME_PATTERN.test(name)) {
     throw new InvalidToolName({
       message: `Invalid tool name '${name}'. Native tool names must match ${NATIVE_TOOL_NAME_PATTERN}.`,
     })
   }
 }
-
-export const assertNativeToolNameOrThrow = thrown(failingAs(Error, assertNativeToolName))
 
 const HANDLE_RESPONSE_DESCRIPTION =
   "Stage 1: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, contextRequests, intents, completionContext, replyText, replyEffectStatus, candidateActionNames, facts, relationships, topics, addressedTo, emotion. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack."
@@ -177,7 +175,7 @@ export function createHandleResponseTool(options?: {
 
 export const HANDLE_RESPONSE_TOOL: ToolDefinition = createHandleResponseTool()
 
-export type PlannerToolActionShape =
+type PlannerToolActionShape =
   & Pick<
     Action,
     | "name"
@@ -242,7 +240,7 @@ effect function actionToPlannerTool(action: PlannerToolActionShape) {
   } satisfies ToolDefinition
 }
 
-export effect function buildPlannerToolsFromActions(
+effect function buildPlannerToolsFromActions(
   actions: ReadonlyArray<PlannerToolActionShape>,
 ) {
   const tools: ToolDefinition[] = []
@@ -284,7 +282,7 @@ function statePromotedFamilyDescriptionsOnce(
   })
 }
 
-export interface BuildPlannerToolsFromTieredActionsOptions {
+interface BuildPlannerToolsFromTieredActionsOptions {
   actionLookup?:
     | ReadonlyMap<string, PlannerToolActionShape>
     | Readonly<Record<string, PlannerToolActionShape>>
@@ -358,7 +356,7 @@ function resolveActionLookup(
   return resolved
 }
 
-export effect function buildPlannerToolsFromTieredActions(
+effect function buildPlannerToolsFromTieredActions(
   actions: ReadonlyArray<PlannerToolActionShape>,
   options: BuildPlannerToolsFromTieredActionsOptions = {},
 ) {
@@ -423,7 +421,7 @@ export const CORE_PLANNER_TERMINALS: ReadonlyArray<ToolDefinition> = Effect.runS
   STOP_TERMINAL_ACTION,
 ]))
 
-export effect function actionToTool(action: Action) {
+effect function actionToTool(action: Action) {
   try assertNativeToolName(action.name)
 
   return {

@@ -1,7 +1,7 @@
 # Contributing
 
 Every contributor, person or agent, reads [AGENTS.md](AGENTS.md) in full before any work, and the skill or file its ["Where the rest is"](AGENTS.md#where-the-rest-is) names for the work at hand.
-Starting a project from the template is [the toolchain guide, "Set up a new project"](vibestack/README.md#set-up-a-new-project).
+Starting a project from the template is [the toolchain setup guide](vibestack/README.md#set-up-a-new-project).
 Everything is built on [the stack](AGENTS.md#the-stack): Node 26, pnpm, VibeLang on Effect for the shell, React for every interface.
 
 ## The monorepo
@@ -38,7 +38,11 @@ what a change reaches. `check` is never skipped whole: `spec` keeps its own fine
 application again each time.
 
 A package joins by having a script named `gen`, `build`, `typecheck`, `test`, `test:browser` or `check`. Its other
-tasks wait for its `gen` and the root's, and its `check` for all of them, since `check` rewrites `gen/`. The root's
+tasks wait for its `gen` and the root's, and its `check` for all of them, since `check` rewrites `gen/`. A package that
+can never own a root spec waits for no root `gen`, so a spec edit leaves its tasks cached: Studio, which has a `spec/`
+of its own, and `@repo/design-system` and `@repo/ui`, which have no `spec/<name>/`; `@repo/ui`'s tests still wait for
+its stories, whose `@model` tags read the root's `gen/`. Studio's tests wait for its page build and are keyed by its
+files and the `vibestack/fixtures/` they read, besides the tools every task is keyed by. The root's
 `check` rewrites its owners' `gen/` too, so it waits for their tasks: name each owner's in `//#check` of `turbo.json`,
 as `@repo/app`'s are. `pnpm lint:js` on its own needs what `gen` and `typecheck` write (`gen/`, `.vibe/declarations`);
 `pnpm lint` runs them first.
@@ -49,7 +53,7 @@ Pull requests for this rebuild go to `vibestack`. See [CI](#ci) for its checks.
 
 | File | Role |
 |---|---|
-| `vibestack/spec.ts` | the pipeline and the `spec` command |
+| `vibestack/spec.ts`, `vibestack/pipeline.ts` | the `spec` command, and the pipeline it runs |
 | `vibestack/parse.ts`, `vibestack/review.ts` | literate specs and the review ledger |
 | `vibestack/cache.ts`, `vibestack/run.ts` | stage caches and bounded tool execution |
 | `vibestack/units.ts`, `vibestack/simulate.ts` | generation, proof units, simulation and replay |
@@ -80,15 +84,17 @@ Node runs all of it directly; `pnpm build` compiles it for the packaged `spec` c
 it is reported, then that object as its last line. Each result has `ok`, `stage` (a stage, or `skipped`), `summary`,
 `detail` and, when it concerns them, `where` and `rules` (each rule as `{ file, key }`); `next` is the line the command
 line ends with. `pnpm selftest` builds scratch projects from this project's spec or from `vibestack/fixtures/`, breaks
-one thing at a time and asserts which stage catches each; it is a cached task of `pnpm verify`. What a change to the
+one thing at a time and asserts which stage catches each. It runs as three cached tasks, each keyed by what its tests
+read: `selftest:docs` the documents against every file they can name, `selftest:examples` each standalone example
+against its own files and the tools, and `selftest:tools` everything else, which no example but the order one reaches.
+`pnpm selftest` runs all three through Turborepo; `pnpm verify` checks the application packages. What a change to the
 tools owes it, and the sync skill, is in [AGENTS.md, "Definition of done"](AGENTS.md#definition-of-done).
 
 ## Releasing
 
 Set `version` in the root `package.json`, merge to `vibestack`, and push the tag `vibestack-v<version>` from it.
-`.github/workflows/release.yml` builds, packs with `pnpm pack`, runs `pnpm selftest` and attaches the tarball to a GitHub release of that tag.
+`.github/workflows/release.yml` builds, packs with `pnpm pack`, runs `pnpm selftest`, which the shared cache answers for a commit CI has verified, and attaches the tarball to a GitHub release of that tag.
 A project installs it as [the toolchain guide, "Using it from another package"](vibestack/README.md#using-it-from-another-package) says.
-
 ## Architecture
 
 The spec owns the rules and state; generated code is its runtime contract.
@@ -125,24 +131,83 @@ imports `gen/` only as types, so it does not compare the model with itself.
 
 ### Caching
 
-Core generation produces deterministic code and rebuilds `gen/` to remove
-stale modules. Story and property-test generators write files only when their
-bytes change and remove outputs whose sources have gone. `.spec-cache/`
-fingerprints a spec and its imports together with Quint, Dafny, Z3,
-LemmaScript, Node and tool versions. It also remembers a package's passing
-test run under a hash of what its tests read.
+Core generation produces deterministic code. It, and the story and property-test
+generators, write files only when their bytes change and remove outputs whose
+sources have gone: a check that changes no spec leaves `gen/` and the owners'
+`gen/` untouched, so nothing that watches them rebuilds. A check loads each
+generated module from its own `.spec-cache/run-<time>/`, removed when it ends. `.spec-cache/`
+remembers each run of Quint, and of LemmaScript and Dafny on a proof, under the program as installed, its arguments and
+the files it reads, without their prose, comments and layout (`vibestack/action.ts`),
+and each simulation and proof result under a fingerprint of a spec and its
+imports, the versions of the programs beneath (Quint and Node for a
+simulation; Node, LemmaScript, Dafny and Z3 for a proof, whose key holds the
+whole unit) and the code of only the tools that stage runs: `simulate.ts`,
+`units.ts` and what they import, or `prove.ts` and what it imports, each read
+as its tokens and line breaks, so that rewording a comment in a tool runs
+nothing again. A
+simulation cites each rule at the line it is on now, so prose that only moves
+the rules simulates nothing again. The programs and their versions are read
+for each key, so a process that outlives a reinstall, as `watch` does, runs and
+remembers under the programs installed now. A run
+of a tool is remembered when it reached its answer, a refusal of its input
+included, never when it was stopped, timed out or failed for want of a file or
+program: an unchanged unit whose proof failed runs neither again, and an edit
+to a proof file only checks and verifies the Dafny it changes. A unit offered
+what the units it imports proved is proved once when their results are
+remembered, and meanwhile, to be proved again if they fail, only while one of
+them is still being proved. A test run
+may run any tool, as Studio's do, so it is keyed by all of them, and with a
+typecheck, a driver's run and an exploration by VibeLang's version and bytes.
+An exploration is keyed by the code that explores and what its page reads
+(`pageInputs` in `vibestack/explore.ts`), which holds every tool when the
+page runs one, as Studio's does.
+It also remembers a package's passing test run under a hash of what its tests
+read; a driver's passing run under the same hash and the events the simulator
+found; and a passing typecheck under the package's files without its Markdown,
+Quint and Dafny, its `tsconfig.json` chain and included files, and each file outside
+`node_modules` that the compiler listed as read. `watch` checks again when any
+file of the root or an owner changes, is added or is removed, outside `gen/`
+and the directories no stage reads (`node_modules`, build output, saved
+explorations, hidden directories), since a missed change would leave a stale
+pass on screen; it does not check again for a file the last check wrote
+itself, such as a driver to fill in or a saved counterexample, while the file
+still holds what it wrote. `spec.ts` turns on Node's compile cache before it
+loads the pipeline, and hands its directory to every process a check starts,
+so each `spec` process, Studio's checks, Turborepo's tasks and the tests and
+drivers they run included, compiles only the code that changed.
 
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3
-and their runtime files before Turbo hashes its inputs. Generated stories,
+and their runtime files before Turbo hashes its inputs. What it reads of an
+installed file, and Dafny's version, is remembered across processes in
+`$XDG_CACHE_HOME/vibestack` (`~/.cache/vibestack` by default) while the file's
+device, inode, size and modification and change times stay the same, so an
+unchanged toolchain is not read again, nor Z3 asked its version. A check
+reads those times of Dafny's installation once, and reads them again after each
+run of Dafny, so a result is not remembered when the verifier was installed
+again during the run. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts
-are restored with their owning task. `check` is never skipped whole: it runs
-the real application in `traces`. Standalone examples install and check
+are restored with their owning task. `check` is never skipped whole: its
+`driver:` programs run the real application in `traces` every time. Standalone examples install and check
 separately, outside the workspace cache.
 
 A complete passing Vitest run records its input fingerprint. `check` reuses
 that result only while its source, generated core, transitive workspace
-inputs, lockfile and fixed profile match. Filtered, exclusive, interrupted
+inputs, lockfile and fixed profile match. The fingerprint covers the package's
+files, with the packages nested under its `test/` as fixtures but not other
+nested packages, and of each `workspace:` dependency what a dependent can
+load: not its `spec/`, Markdown outside `fixtures/`, tests, drivers, traces,
+counterexamples or nested packages, nor its `gen/` unless its code or manifest reaches into it; a
+file a test reads from elsewhere comes through a declared dependency, as the
+root's `@repo/design-system` does. A typecheck is keyed by the scripts and
+JSON alone, and then by the content of every file the compile read. Neither
+covers the simulations' traces in `gen/traces/`, which no test reads and a
+check rewrites, nor the prose `spec init` and the tools keep at a package's
+top (`README.md`, `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `SPEC.md`). Turbo's
+`//#test` inputs cover the same files but the root's Markdown, so a restored
+receipt matches unless another root document changed, and then `check` runs the
+root's tests itself. Generated code names each rule by its heading, not its line, so
+prose that only moves a rule changes none of these keys. Filtered, exclusive, interrupted
 and failed runs record no complete result. Acceptance and nightly checks
 bypass these receipts and the inner verification cache.
 
@@ -150,7 +215,11 @@ The spec cache retains recent branch and profile results for 30 days within
 256 MiB, evicting the oldest unused results first. A check's own entries are
 preserved. Proof identity covers the verifier and solver contents, so moving
 an identical installation does not invalidate it and replacing an executable
-with the same version does.
+with the same version does; tests, drivers and explorations are keyed by the
+verifier too, since they may run proofs, as Studio's do. A process that
+outlives a reinstall, as `spec watch` does, reads Quint, LemmaScript and Dafny
+again once their installed files change. In CI, a Turborepo cache entry is
+kept for seven days after its last hit, which the run summary names.
 
 ### Seeds and budgets
 
@@ -220,21 +289,25 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 
 | When | Runs |
 |---|---|
-| Pull request or push to `vibestack` | `pnpm verify --continue`: build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and selftest |
+| Pull request or push to `vibestack` | `pnpm verify --continue`: build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge and jscpd |
 | Nightly, once `fuzz.yml` is on the default branch | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `vibestack` |
-| A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, `pnpm selftest`, and the tarball attached to a GitHub release |
+| A `vibestack-v*` tag (`release.yml`) | Build, `pnpm pack`, `pnpm selftest` read from the shared cache, and the tarball attached to a GitHub release |
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken
 exploration is, as an artifact.
 
-Each run restores pnpm's store, every `.spec-cache/`, and Quint's evaluator.
-The hosted rebuild workflow uses the runner-local Turborepo cache.
-The task entry point disables Turbo telemetry. The root check waits for
-Studio's test task because its journeys run checks in scratch projects.
-Selftest waits for the root and Studio test tasks so those integration journeys
-do not compete with it.
-Newer commits replace an older run of the same pull request.
+Each run installs Dafny from its pinned release, checked against its SHA-256,
+and restores pnpm's store, the spec cache of the root, each workspace package
+and each example, and Quint's evaluator, under a key of the commit.
+Turborepo shares task results through the private Cloudflare/R2 cache.
+The task entry point disables Turbo telemetry. `selftest:tools` waits for the root and
+Studio test tasks so those integration journeys do not compete with it.
+Pull requests read shared results; only branch pushes receive the publishing
+credential, protected by the `turbo-cache-publish` environment's branch
+policy. A pull request keeps its own Turborepo results in the GitHub cache
+instead, which only that pull request reads, so its next push reuses them. Newer commits replace an older run of the same pull request.
+Every pushed commit can finish. Completed tasks are shared through the cache.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials
 are never part of a task fingerprint.

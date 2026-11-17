@@ -1,12 +1,15 @@
 // The explore stage (SPEC.md, "Exploring the page"): Bombadil drives the package's page in Chromium, as its app script
 // serves it, and checks the properties of test/bombadil.ts, or Bombadil's defaults, on every state it reaches.
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import { installedPackages } from "./action.ts";
+import { toolScripts, toolsCode } from "./cache.ts";
 import { bin, exec, startGroup } from "./run.ts";
 import { profile, type TestProfile } from "./testing/profile.ts";
-import { appScript, COLOUR, filesUnder, indent, packageManager, servedAt, testInputs, type Remember, type Reported } from "./util.ts";
+import { appScript, COLOUR, COUNTEREXAMPLES, DRIVERS, filesUnder, indent, isTestFile, manifest, packageFiles, packageManager, servedAt, TRACES, type Remember, type Reported } from "./util.ts";
 
 const SPECIFICATION = "test/bombadil.ts";
 const SAVED = "test/__traces__/bombadil";
@@ -23,6 +26,119 @@ export type Explored =
 
 /** The package's page: an index.html at its top or under src/. */
 const pageOf = (root: string) => ["index.html", ...filesUnder(root, "src")].find((f) => /(?:^|\/)index\.html$/.test(f) && fs.existsSync(path.join(root, f)));
+
+/** A package's files that only its checks read: its tests and their configuration, drivers, traces, counterexamples, contracts, proofs and spec/. */
+const checkedOnly = (file: string) => isTestFile(file) || /^vitest\.(?:config|workspace)\.[^/]+$|\.contract\.[^/.]+$|\.proof\.dfy$/.test(file)
+  || [DRIVERS, TRACES, COUNTEREXAMPLES, "spec"].some((dir) => file.startsWith(`${dir}/`));
+/** A file that may name what else a page loads: a script, a style sheet, a page or a configuration. */
+const CODE = /\.(?:[cm]?[jt]sx?|vibex?|css|html?|json)$/;
+/** A quoted path or package name, without its query or fragment. */
+const QUOTED = /(["'`])([^"'`\s$?#]+)(?:[?#][^"'`\s]*)?\1/g;
+/** The package a bare module specifier names. */
+const BARE = /^((?:@[\w.-]+\/)?[\w.-]+)(?:\/|$)/;
+/** How a module path may leave out its extension, or name a directory by its index. */
+const SUFFIXES = ["", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".vibe", ".vibex", ".css", ".json", "/index.ts", "/index.tsx", "/index.js"];
+
+const isFile = (file: string) => { try { return fs.statSync(file).isFile(); } catch { return false; } };
+const isDirectory = (dir: string) => { try { return fs.statSync(dir).isDirectory(); } catch { return false; } };
+
+/** The workspace package `name` as seen from `from`: its directory, or nothing for a package installed from a registry or not installed. */
+function workspacePackage(from: string, name: string): string | undefined {
+  for (let dir = path.dirname(from); ; dir = path.dirname(dir)) {
+    const at = path.join(dir, "node_modules", name);
+    if (fs.existsSync(path.join(at, "package.json"))) {
+      const real = fs.realpathSync(at);
+      return real.split(path.sep).includes("node_modules") ? undefined : real;
+    }
+    if (dir === path.dirname(dir)) return undefined;
+  }
+}
+
+/** The files a workspace package offers: what it exports, its entry points and its executables, or all it ships where it declares none. */
+function offered(dir: string): string[] {
+  const pkg = manifest(dir);
+  const leaves = (value: unknown): string[] => typeof value === "string" ? [value] : value && typeof value === "object" ? Object.values(value).flatMap(leaves) : [];
+  const entries = leaves([pkg.exports, pkg.main, pkg.module, pkg.browser, pkg.bin]);
+  if (!entries.length) return packageFiles(dir, (file) => !file.startsWith("spec/")).map((file) => path.join(dir, file));
+  return entries.flatMap((entry) => {
+    if (!entry.includes("*")) return [path.resolve(dir, entry)];
+    const prefix = path.resolve(dir, entry.split("*")[0]);
+    const under = isDirectory(prefix) ? prefix : path.dirname(prefix);
+    return packageFiles(under, () => true).map((file) => path.join(under, file));
+  }).filter(isFile);
+}
+
+/**
+ * What the page of the package at `root` reads, which its exploration is remembered under: the package's files but
+ * those only its checks read; each file its code or its scripts name by a path, and each directory, which Tailwind
+ * scans as text; what each workspace package its code imports, or its scripts run, offers; and, in turn, what those
+ * name, the generated modules it imports among them, or all of them where its code names none, as through an alias.
+ * A page that runs one of these tools may run any of them, as Studio's does, and reads the code of them all, as the
+ * stages do (cache.ts).
+ */
+export function pageInputs(root: string, mode: TestProfile = "normal"): string {
+  const base = fs.realpathSync(root);
+  /** Each file the page reads, and whether it runs, so that what it names is read too, or is only scanned as text. */
+  const reads = new Map<string, boolean>();
+  const queue: string[] = [];
+  const read = (file: string, runs: boolean) => {
+    if (reads.has(file) && (reads.get(file) || !runs)) return;
+    reads.set(file, runs);
+    if (runs) queue.push(file);
+  };
+  const packages = new Set([base]);
+  const found = new Map<string, string | undefined>();
+  const offer = (dir: string) => { if (!packages.has(dir)) { packages.add(dir); for (const file of offered(dir)) read(file, true); } };
+  const follow = (from: string, name: string) => {
+    if (name.startsWith("./") || name.startsWith("../")) {
+      const at = path.resolve(path.dirname(from), name);
+      const file = SUFFIXES.map((suffix) => at + suffix).find(isFile);
+      if (isDirectory(at)) for (const f of packageFiles(at, () => true)) {
+        const scanned = fs.realpathSync(path.join(at, f));
+        const own = path.relative(base, scanned).split(path.sep).join("/");
+        if (own.startsWith("../") || !checkedOnly(own)) read(scanned, false);
+      }
+      if (file) read(fs.realpathSync(file), true);
+      return;
+    }
+    const pkg = name.match(BARE)?.[1];
+    if (!pkg) return;
+    const looked = `${path.dirname(from)}\0${pkg}`;
+    if (!found.has(looked)) found.set(looked, workspacePackage(from, pkg));
+    const dir = found.get(looked);
+    if (dir) offer(dir);
+  };
+  for (const file of packageFiles(base, (file) => !checkedOnly(file) && !file.startsWith("gen/"), "", true)) read(path.join(base, file), true);
+  const own = manifest(base);
+  const words = new Set(Object.values(own.scripts ?? {}).flatMap((script) => String(script).split(/\s+/)));
+  for (const word of words) if (word.startsWith("./") || word.startsWith("../")) follow(path.join(base, "package.json"), word);
+  for (const name of Object.keys({ ...own.dependencies, ...own.devDependencies })) {
+    const dir = workspacePackage(path.join(base, "package.json"), name);
+    const { bin } = dir ? manifest(dir) : {};
+    if (dir && (typeof bin === "string" ? [name.split("/").pop()!] : Object.keys(bin ?? {})).some((command) => words.has(command))) offer(dir);
+  }
+  const tools = new Set(toolScripts().map((tool) => fs.realpathSync(tool)));
+  let next = 0;
+  const walk = () => {
+    for (; next < queue.length; next++) if (!tools.has(queue[next]) && CODE.test(queue[next]) && path.basename(queue[next]) !== "package.json")
+      for (const [, , name] of fs.readFileSync(queue[next], "utf8").matchAll(QUOTED)) follow(queue[next], name);
+  };
+  walk();
+  const gen = path.join(base, "gen");
+  if (isDirectory(gen) && ![...reads.keys()].some((file) => path.dirname(file) === gen)) {
+    for (const e of fs.readdirSync(gen, { withFileTypes: true })) if (e.isFile() && !e.name.endsWith(".qnt")) read(path.join(gen, e.name), true);
+    walk();
+  }
+  const runsTools = [...tools].some((tool) => reads.has(tool));
+  const hash = createHash("sha256").update(JSON.stringify(["page-v1", process.versions.node, process.platform, process.arch, profile(mode), runsTools && toolsCode()]));
+  for (const [name, file] of [...reads.keys()].filter((file) => !tools.has(file)).map((file) => [path.relative(base, file).split(path.sep).join("/"), file]).sort(([a], [b]) => a.localeCompare(b))) {
+    const bytes = fs.readFileSync(file);
+    hash.update(`${name}\0${bytes.length}\0`).update(bytes);
+  }
+  const { lock } = packageManager(root);
+  if (lock) hash.update(fs.readFileSync(lock));
+  return hash.digest("hex");
+}
 
 /**
  * What a run of Bombadil found, from its exit status and what it printed: an exploration that took no action held
@@ -96,7 +212,7 @@ async function served(root: string, script: string, checking: string, explore: (
 /**
  * The explore stage of the package `directory`, checked from `checking`: nothing if it has no page. A trace saved by
  * an earlier failure is replayed first; then the page is explored for the profile's time. A pass is remembered until
- * the package's test inputs change.
+ * what the page reads (`pageInputs`), the installed Bombadil and the packages it loads, or the script change.
  */
 export async function explore(directory: string, remember: Remember, mode: TestProfile = "normal", checking = directory): Promise<Reported<"explore" | "skipped">[]> {
   const root = path.resolve(directory);
@@ -129,8 +245,8 @@ export async function explore(directory: string, remember: Remember, mode: TestP
       results.push([true, "explore", `${page}: the replay of ${SAVED} ${again.kind === "held" ? "breaks nothing now" : "no longer applies to the page"}, so it was removed`, "", page]);
     }
     const { explore: seconds } = profile(mode);
-    const version = (await exec(bin("bombadil", root), ["--version"], root)).stdout.trim();
-    results.push(await remember(JSON.stringify([testInputs(root, mode), version, script]), async (): Promise<Reported<"explore">> => {
+    const explorer = installedPackages(bin("bombadil", root), "@antithesishq/bombadil");
+    results.push(await remember(JSON.stringify([pageInputs(root, mode), explorer, script]), async (): Promise<Reported<"explore">> => {
       fs.mkdirSync(path.dirname(saved), { recursive: true });
       const fresh = await served(root, script, resolved, (origin) => bombadil(root, origin, { seconds }, saved));
       if (fresh.kind !== "broke") drop();

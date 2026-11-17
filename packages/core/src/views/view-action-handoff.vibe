@@ -25,9 +25,9 @@ function readOwnValue(value: unknown, key: string): unknown {
   }
   return Object.getOwnPropertyDescriptor(value, key)?.value
 }
-export error MalformedViewUrl { message: string }
+error MalformedViewUrl { message: string }
 
-export effect function findViewActionHandoff(
+effect function findViewActionHandoff(
   actionResults: readonly unknown[] | undefined,
 ): (ViewActionHandoff | null)!MalformedViewUrl {
   if (!Array.isArray(actionResults)) return null

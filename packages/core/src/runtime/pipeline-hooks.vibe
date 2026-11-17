@@ -50,8 +50,8 @@ function skipFlagMetadata(ctx: PipelineHookContext): unknown {
   return "message" in ctx ? ctx.message?.content.metadata : undefined
 }
 
-export error PipelinePhaseMismatch { message: string }
-export error UnknownPipelinePhase { message: string }
+error PipelinePhaseMismatch { message: string }
+error UnknownPipelinePhase { message: string }
 
 function elapsedMs(startedAt: bigint, endedAt: bigint): number {
   return Math.round(Number(endedAt - startedAt) / 1_000_000)

@@ -107,6 +107,7 @@ interface DrainState {
   disposed: boolean
 }
 
+/** @public */
 export error TaskDrainMisconfigured { message: string }
 
 function matchesTask(state: DrainState, t: Task, agentId: string): boolean {

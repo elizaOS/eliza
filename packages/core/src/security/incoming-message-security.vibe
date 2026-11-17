@@ -179,7 +179,7 @@ export function hardenIncomingUserMessage(message: Memory): void {
   message.content.metadata = metadata as { [key: string]: ContentValue }
 }
 
-export effect function scrubIncomingMessageTextForStorage(text: string) {
+effect function scrubIncomingMessageTextForStorage(text: string) {
   const session = new SecretSwapSession()
   return session
     .restoreUserReplyText(try substituteSecretText(session, text))

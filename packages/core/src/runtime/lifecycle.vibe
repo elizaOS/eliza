@@ -20,7 +20,7 @@ import { timerDelay } from "../utils/retry.vibe"
 import { stringToUuid } from "../utils/string-to-uuid.vibe"
 import { validateUuid, type InvalidUuidSource, randomUuid } from "../utils/uuid.vibe"
 import { getActionRolePolicyWarnings } from "./action-role-policy.vibe"
-import * as agentSettings from "./agent-settings.vibe"
+import { mergePersistedSettings } from "./agent-settings.vibe"
 import * as components from "./components.vibe"
 import * as dispatch from "./dispatch.vibe"
 import type { DispatchFailure } from "./dispatch.vibe"
@@ -239,7 +239,7 @@ effect function initializeCore(options?: { skipMigrations?: boolean }): void!Lif
       message: `Agent ${runtime.agentId} does not exist in database after ensureAgentExists call`,
     })
   }
-  try agentSettings.mergePersistedSettings(existingAgent)
+  try mergePersistedSettings(existingAgent)
   try store.ensureAgentInfrastructure(existingAgent)
   try dispatch.probeEmbeddingDimension()
   foreign(() => runtime.assertResolvableWorldOwners()) catch effect (guard) => {

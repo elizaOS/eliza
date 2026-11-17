@@ -214,13 +214,13 @@ effect function withSecretValue<E>(
   return settingCopy
 }
 
-export effect function saltSettingValue(setting: Setting, salt: string) {
+effect function saltSettingValue(setting: Setting, salt: string) {
   return try withSecretValue(setting, salt, encryptStringValue)
 }
 
 export const saltSettingValueOrThrow = thrown(failingAs(Error, saltSettingValue))
 
-export effect function unsaltSettingValue(setting: Setting, salt: string) {
+effect function unsaltSettingValue(setting: Setting, salt: string) {
   return try withSecretValue(setting, salt, decryptStringValue)
 }
 
@@ -255,19 +255,19 @@ effect function mapWorldSettings<E>(
   return settings as WorldSettings
 }
 
-export effect function saltWorldSettings(worldSettings: WorldSettings, salt: string) {
+effect function saltWorldSettings(worldSettings: WorldSettings, salt: string) {
   return try mapWorldSettings(worldSettings, salt, saltSettingValue)
 }
 
 export const saltWorldSettingsOrThrow = thrown(failingAs(Error, saltWorldSettings))
 
-export effect function unsaltWorldSettings(worldSettings: WorldSettings, salt: string) {
+effect function unsaltWorldSettings(worldSettings: WorldSettings, salt: string) {
   return try mapWorldSettings(worldSettings, salt, unsaltSettingValue)
 }
 
 export const unsaltWorldSettingsOrThrow = thrown(unsaltWorldSettings)
 
-export effect function updateWorldSettings(
+effect function updateWorldSettings(
   runtime: IAgentRuntime,
   serverId: string,
   worldSettings: WorldSettings,
@@ -294,7 +294,7 @@ export effect function updateWorldSettings(
 
 export const updateWorldSettingsPromise = promised(failingAs(Error, updateWorldSettings))
 
-export effect function getWorldSettings(runtime: IAgentRuntime, serverId: string) {
+effect function getWorldSettings(runtime: IAgentRuntime, serverId: string) {
   const worldId = try createUniqueUuid(runtime, serverId)
   const world = try foreign(() => runtime.getWorld(worldId))
 
@@ -309,7 +309,7 @@ export effect function getWorldSettings(runtime: IAgentRuntime, serverId: string
 
 export const getWorldSettingsPromise = promised(failingAs(Error, getWorldSettings, ElizaError))
 
-export effect function initializeSetup(
+effect function initializeSetup(
   runtime: IAgentRuntime,
   world: World,
   config: SetupConfig,
@@ -379,13 +379,13 @@ effect function mapCharacterSecrets<E>(
   return mapped
 }
 
-export effect function encryptedCharacter(character: Character) {
+effect function encryptedCharacter(character: Character) {
   return try mapCharacterSecrets(character, encryptObjectValues)
 }
 
 export const encryptedCharacterOrThrow = thrown(failingAs(Error, encryptedCharacter))
 
-export effect function decryptedCharacter(
+effect function decryptedCharacter(
   character: Character,
   _runtime?: IAgentRuntime,
 ) {
@@ -412,7 +412,7 @@ effect function mapStringValues<E>(
   return result
 }
 
-export effect function encryptObjectValues(
+effect function encryptObjectValues(
   obj: Record<string, string | number | boolean>,
   salt: string,
 ) {
@@ -421,7 +421,7 @@ export effect function encryptObjectValues(
 
 export const encryptObjectValuesOrThrow = thrown(failingAs(Error, encryptObjectValues))
 
-export effect function decryptObjectValues(
+effect function decryptObjectValues(
   obj: Record<string, string | number | boolean>,
   salt: string,
 ) {
@@ -430,4 +430,4 @@ export effect function decryptObjectValues(
 
 export const decryptObjectValuesOrThrow = thrown(decryptObjectValues)
 
-export { decryptStringValue as decryptSecret, decryptStringValueOrThrow as decryptSecretOrThrow }
+export { decryptStringValue as decryptSecret }

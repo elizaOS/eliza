@@ -3,7 +3,7 @@ import { foreign, promised } from "./edge.vibe"
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "./types/message-source.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
 
-export effect function getClientChatRooms(runtime: IAgentRuntime) {
+effect function getClientChatRooms(runtime: IAgentRuntime) {
   const rooms = try foreign(async () => runtime.getRoomsByIds(await runtime.getRoomsForParticipant(runtime.agentId)))
   return rooms.filter((room) => room.source === MESSAGE_SOURCE_CLIENT_CHAT)
 }

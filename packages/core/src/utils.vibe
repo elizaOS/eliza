@@ -223,7 +223,6 @@ export const formatMessages = (params: {
   entities: Entity[]
 }): string => formatMessageSegments(params).join("\n")
 
-export { formatTimestamp }
 
 function parseStructuredResponseFence(text: string): string {
   const trimmed = text.trim()
@@ -540,7 +539,7 @@ export function truncateToCompleteSentence(
   return `${hardTruncated}...`
 }
 
-export effect function splitChunks(content: string, chunkSize = 512, bleed = 20) {
+effect function splitChunks(content: string, chunkSize = 512, bleed = 20) {
   const charactersPerToken = 3.5
   const settings = try splitterSettings({
     chunkSize: Math.floor(chunkSize * charactersPerToken),
@@ -685,7 +684,7 @@ export interface ProviderModelRegistration {
   metadata?: ModelRegistrationMetadata
 }
 
-export effect function registerProviderModels(
+effect function registerProviderModels(
   runtime: Pick<IAgentRuntime, "registerModel">,
   provider: string,
   registrations: readonly ProviderModelRegistration[],

@@ -11,7 +11,7 @@ export type ReminderPresentation = {
 }
 const registryKey = Symbol.for("eliza.saved-reminder-presentation.authority")
 const issued = () => getAmbientSingleton(registryKey, () => new WeakSet<object>())
-export effect function createReminderPresentation(
+effect function createReminderPresentation(
   body: string,
   chatText: string,
   title: string,

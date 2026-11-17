@@ -42,7 +42,7 @@ export interface WorkspaceDeltaReceipt {
 
 type WorkspaceDeltaOperation = NonNullable<WorkspaceDeltaReceipt["operation"]>
 
-export error InvalidWorkspaceDeltaReceipt { message: string }
+error InvalidWorkspaceDeltaReceipt { message: string }
 
 const RECEIPT_KEYS: ReadonlySet<string> = new Set([
   "version",
@@ -213,7 +213,7 @@ export effect function normalizeWorkspaceDeltaReceipt(value: unknown) {
 
 export const normalizeWorkspaceDeltaReceiptOrThrow = thrown(failingAs(TypeError, normalizeWorkspaceDeltaReceipt))
 
-export effect function readWorkspaceDeltaReceipt(data: Record<string, unknown> | undefined) {
+effect function readWorkspaceDeltaReceipt(data: Record<string, unknown> | undefined) {
   const value = data?.[WORKSPACE_DELTA_RECEIPT_DATA_KEY]
   return value === undefined ? undefined : try normalizeWorkspaceDeltaReceipt(value)
 }

@@ -82,5 +82,3 @@ export const PENDING_USER_ACTION_WEIGHT: Readonly<
   prompt: 6,
   pending_prompt: 6,
 }
-
-export type RequiresUserResponse = PendingUserAction

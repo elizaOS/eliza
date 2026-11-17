@@ -289,7 +289,7 @@ export function shouldSuppressActionResultClipboard(
   )
 }
 
-export effect function projectActionResultForClipboard(
+effect function projectActionResultForClipboard(
   action: Pick<Action, "name" | "suppressActionResultClipboard"> | undefined,
   result: ActionResult,
   actionName = action?.name,
@@ -1140,7 +1140,7 @@ effect function emitEarlyResult(run: PlannedRun, outcome: EarlyResult) {
   })
 }
 
-export effect function executePlannedToolCall(
+effect function executePlannedToolCall(
   runtime: IAgentRuntime,
   ctx: ExecutePlannedToolCallContext,
   toolCall: PlannerToolCall,

@@ -515,7 +515,7 @@ function removeArrayItemsByReference<T extends object>(
   }
 }
 
-export error OwnedServicesStopFailed { cause: unknown }
+error OwnedServicesStopFailed { cause: unknown }
 
 function inFlightServiceStarts(
   runtime: RuntimeWithPluginLifecycle,
@@ -798,7 +798,7 @@ effect function teardownPluginOwnership(
   }
 }
 
-export error PluginAdapterRequiresReload { message: string }
+error PluginAdapterRequiresReload { message: string }
 
 effect function unloadOwnedPlugin(
   runtime: RuntimeWithPluginLifecycle,

@@ -9,8 +9,6 @@ export type TaskOwner = Pick<
   "actorId" | "agentId" | "connector"
 >
 
-export type { TaskEvent, TaskOperationStatus, TaskStatus } from "./task-events.vibe"
-export { validateTaskEvent } from "./task-events.vibe"
 export interface TaskObservation {
   id: string
   pageId: string
@@ -333,7 +331,7 @@ effect function validateProposal(value: TaskActionProposal): void!ElizaError {
   try counter(value.expiresAt)
 }
 
-export effect function validateInteractiveTask(value: InteractiveTask): void!ElizaError {
+effect function validateInteractiveTask(value: InteractiveTask): void!ElizaError {
   try shape(
     value,
     [
@@ -461,7 +459,7 @@ export effect function validateInteractiveTask(value: InteractiveTask): void!Eli
 
 export const validateInteractiveTaskOrThrow = thrown(validateInteractiveTask)
 
-export effect function createInteractiveTask(input: {
+effect function createInteractiveTask(input: {
   id: string
   owner: TaskOwner
   goalRef: string
@@ -639,7 +637,7 @@ effect function transitionEvent(
 }
 
 
-export effect function transitionInteractiveTask(
+effect function transitionInteractiveTask(
   previous: InteractiveTask,
   context: TaskContext,
   transition: TaskTransition,
