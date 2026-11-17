@@ -5,10 +5,12 @@ lemma SettledBlocked(failed: bool, m: Memory)
 
 lemma finishPage_ensures(m: Memory, failed: bool)
   ensures (inv(m) ==> canFinishPage(m, failed) ==> alwaysBlockedPageFailed(finishPage(m, failed)))
+  ensures (inv(m) ==> canFinishPage(m, failed) ==> alwaysBackoffHasNoCallInFlight(finishPage(m, failed)))
   ensures (inv(m) ==> canFinishPage(m, failed) ==> alwaysPendingPageKeepsTask(finishPage(m, failed)))
   ensures (inv(m) ==> canFinishPage(m, failed) ==> alwaysPageSettlesOnce(finishPage(m, failed)))
   ensures (inv(m) ==> canFinishPage(m, failed) ==> alwaysRunningPageIsCurrentAndPending(finishPage(m, failed)))
   ensures (inv(m) ==> canFinishPage(m, failed) ==> alwaysPendingPageUnsettled(finishPage(m, failed)))
+  ensures (inv(m) ==> canFinishPage(m, failed) ==> stepPageStartsOnlyWhenAdmitted(m, finishPage(m, failed)))
   ensures (inv(m) ==> canFinishPage(m, failed) ==> stepStaleResultWritesNothing(m, "finishPage", finishPage(m, failed)))
   ensures (inv(m) ==> canFinishPage(m, failed) ==> stepShutdownKeepsPages(m, "finishPage", finishPage(m, failed)))
 {

@@ -12,6 +12,7 @@ lemma setSecret_ensures(s: Secrets, actor: int, name: string, value: string)
   ensures (inv(s) ==> canSetSecret(s, actor, name, value) ==> alwaysStoppedReleasesEverything(setSecret(s, actor, name, value)))
   ensures (inv(s) ==> canSetSecret(s, actor, name, value) ==> stepNamesChangeOnlyBySecretActions(s, "setSecret", setSecret(s, actor, name, value)))
   ensures (inv(s) ==> canSetSecret(s, actor, name, value) ==> stepListingIsExactlyTheHeldNames(s, "setSecret", setSecret(s, actor, name, value)))
+  ensures (inv(s) ==> canSetSecret(s, actor, name, value) ==> stepPollActivatesOnlyWhileOpenInItsGeneration(s, setSecret(s, actor, name, value)))
 {
   if inv(s) && canSetSecret(s, actor, name, value) && !(name in s.names) {
     var after := setSecret(s, actor, name, value);
@@ -35,6 +36,7 @@ lemma deleteSecret_ensures(s: Secrets, actor: int, name: string)
   ensures (inv(s) ==> canDeleteSecret(s, actor, name) ==> alwaysStoppedReleasesEverything(deleteSecret(s, actor, name)))
   ensures (inv(s) ==> canDeleteSecret(s, actor, name) ==> stepNamesChangeOnlyBySecretActions(s, "deleteSecret", deleteSecret(s, actor, name)))
   ensures (inv(s) ==> canDeleteSecret(s, actor, name) ==> stepListingIsExactlyTheHeldNames(s, "deleteSecret", deleteSecret(s, actor, name)))
+  ensures (inv(s) ==> canDeleteSecret(s, actor, name) ==> stepPollActivatesOnlyWhileOpenInItsGeneration(s, deleteSecret(s, actor, name)))
 {
   if inv(s) && canDeleteSecret(s, actor, name) {
     var after := deleteSecret(s, actor, name);
@@ -59,6 +61,7 @@ lemma listSecrets_ensures(s: Secrets)
   ensures (inv(s) ==> alwaysStoppedReleasesEverything(listSecrets(s)))
   ensures (inv(s) ==> stepNamesChangeOnlyBySecretActions(s, "listSecrets", listSecrets(s)))
   ensures (inv(s) ==> stepListingIsExactlyTheHeldNames(s, "listSecrets", listSecrets(s)))
+  ensures (inv(s) ==> stepPollActivatesOnlyWhileOpenInItsGeneration(s, listSecrets(s)))
 {
   if inv(s) {
     var after := listSecrets(s);
@@ -79,6 +82,7 @@ lemma pollAnswered_ensures(s: Secrets)
   ensures (inv(s) ==> canPollAnswered(s) ==> alwaysStoppedReleasesEverything(pollAnswered(s)))
   ensures (inv(s) ==> canPollAnswered(s) ==> stepNamesChangeOnlyBySecretActions(s, "pollAnswered", pollAnswered(s)))
   ensures (inv(s) ==> canPollAnswered(s) ==> stepListingIsExactlyTheHeldNames(s, "pollAnswered", pollAnswered(s)))
+  ensures (inv(s) ==> canPollAnswered(s) ==> stepPollActivatesOnlyWhileOpenInItsGeneration(s, pollAnswered(s)))
 {
   if inv(s) && canPollAnswered(s) {
     assert !s.registration.NotRegistered? && !s.registration.Checking?;

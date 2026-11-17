@@ -132,8 +132,15 @@ pure def sometimesPublished(t: TrajectoryCapture): bool = t.store.initialized
 
 ### A failed initialization fails its waiting callers, and the next caller retries without redoing the migration
 
+No waiting caller is dropped: each stays waiting, is failed, or finds the
+store initialized. A completed migration never runs again.
+
 ```quint
 pure def canInitFailed(t: TrajectoryCapture): bool = t.store.initStage != NoInit
 pure def initFailed(t: TrajectoryCapture): TrajectoryCapture = { ...t, store: { ...t.store, initStage: NoInit, failedCallers: t.store.failedCallers.union(t.store.waiting), waiting: Set(), initFailures: t.store.initFailures + 1 } }
+pure def stepWaitingCallerIsAnswered(before: TrajectoryCapture, after: TrajectoryCapture): bool =
+  before.store.waiting.forall(c => after.store.waiting.contains(c) or after.store.failedCallers.contains(c) or after.store.initialized) and
+  (after.store.migrations > before.store.migrations implies not(before.store.schemaMigrated))
+pure def sometimesFailedCallerWaitsAgain(t: TrajectoryCapture): bool = t.store.failedCallers.size() == 1 and t.store.waiting.size() == 1 and t.store.initFailures == 1
 pure def sometimesRetrySucceededAfterPartialMigration(t: TrajectoryCapture): bool = t.store.initialized and t.store.initFailures == 1 and t.store.migrations == 1
 ```

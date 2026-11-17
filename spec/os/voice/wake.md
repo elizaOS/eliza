@@ -71,18 +71,21 @@ pure def lawNetworkedListenerNeverTrusted(grant: ListenerGrant): bool =
 
 Listening begins only when the listener is privileged exactly as above,
 confined to its own domain and consented without exemption. Starting to listen opens no
-microphone window of its own: that needs a wake.
+microphone window of its own: that needs a wake. A listener that stops listening
+stops capturing.
 
 ```quint
 type WakePhase = WakeIdle | WakeOpen | AwaitingReply
 type Wake = { listening: bool, stopConfirmed: bool, phase: WakePhase, openedAt: int, awaitingSince: int,
-  generation: int, consumed: bool, starts: int, sentUtterances: int, crashExits: int, tripped: bool }
+  generation: int, consumed: bool, starts: int, sentUtterances: int, crashExits: int, tripped: bool,
+  capturing: bool, indicator: LeaseVerdict }
 pure val initial: Wake = { listening: false, stopConfirmed: false, phase: WakeIdle, openedAt: 0, awaitingSince: 0,
-  generation: 0, consumed: true, starts: 0, sentUtterances: 0, crashExits: 0, tripped: false }
+  generation: 0, consumed: true, starts: 0, sentUtterances: 0, crashExits: 0, tripped: false,
+  capturing: false, indicator: LeaseLoss }
 pure def listenerAdmitted(grant: ListenerGrant): bool =
   privilegedExactly(grant) and confinedDomain(grant) and consentedWithoutExemption(grant)
 pure def windowClosed(listening: bool, w: Wake): Wake =
-  { ...w, listening: listening, phase: WakeIdle, openedAt: 0, awaitingSince: 0 }
+  { ...w, listening: listening, capturing: w.capturing and listening, phase: WakeIdle, openedAt: 0, awaitingSince: 0 }
 pure def canStartListening(w: Wake, grant: ListenerGrant): bool = not(w.listening) and not(w.tripped) and listenerAdmitted(grant)
 pure def startListening(w: Wake, grant: ListenerGrant): Wake = { ...w, listening: true, stopConfirmed: false }
 pure val admittedGrant: ListenerGrant = { identityMatches: true, settingsOwned: true, hotwordCapture: true, backgroundStart: true, otherPrivilege: false,
@@ -193,7 +196,9 @@ pause; any other hidden surface, an unknown display state while the
 screen is interactive, or a recording the indicator has not attributed to
 the listener 2.5 seconds after capture opened, is a loss. Both release
 the microphone. The lease carries visibility facts only: it can withhold
-capture and never starts listening.
+capture and never starts listening. A listening listener opens capture
+only under the last lease verdict that allows it, and holds capture only
+while that verdict still does.
 
 ```quint
 type LeaseVerdict = LeaseAllowsCapture | LeasePause | LeaseLoss
@@ -218,6 +223,16 @@ pure def lawUnattributedCaptureStops(lease: IndicatorLease): bool =
   lease.captureMs >= attributionWindowMs and not(lease.recordingSeen and lease.chipShown) implies leaseVerdict(lease) != LeaseAllowsCapture
 pure def lawFreshCaptureHasItsWindow(lease: IndicatorLease): bool =
   leaseVerdict({ ...lease, captureMs: 0 }) == LeaseAllowsCapture or leaseVerdict(lease) != LeaseAllowsCapture
+pure def observeLease(w: Wake, lease: IndicatorLease): Wake = {
+  val verdict = leaseVerdict(lease)
+  { ...w, indicator: verdict, capturing: w.capturing and verdict == LeaseAllowsCapture }
+}
+pure def canOpenListenerCapture(w: Wake): bool = w.listening and not(w.capturing) and w.indicator == LeaseAllowsCapture
+pure def openListenerCapture(w: Wake): Wake = { ...w, capturing: true }
+pure def alwaysCaptureHeldUnderLease(w: Wake): bool = w.capturing implies w.listening and w.indicator == LeaseAllowsCapture
+pure def stepLeaseNeverStartsListening(before: Wake, via: str, after: Wake): bool =
+  via == "observeLease" implies after.listening == before.listening and (after.capturing implies before.capturing)
+pure def sometimesLeasePausedCapture(w: Wake): bool = w.listening and not(w.capturing) and w.indicator == LeasePause and w.generation > 0
 ```
 
 ## Story: Hold the microphone open for one wake window
@@ -228,14 +243,14 @@ pure def lawFreshCaptureHasItsWindow(lease: IndicatorLease): bool =
 
 ### Only a person's wake phrase opens a fresh window
 
-A wake detected while listening opens a new window at the time of the
-detection, with a new generation that has not yet started voice. The
+A wake detected while listening, from audio the listener captures under
+its indicator lease, opens a new window at the time of the detection, with a new generation that has not yet started voice. The
 assistant's own playback and other media never count as a wake.
 
 ```quint
 type WakeSource = HumanWake | OwnPlayback | OtherPlayback
 pure def wakeSourceAccepted(source: WakeSource): bool = source == HumanWake
-pure def canDetectWake(w: Wake, now: int, source: WakeSource): bool = w.listening and wakeSourceAccepted(source)
+pure def canDetectWake(w: Wake, now: int, source: WakeSource): bool = w.listening and w.capturing and wakeSourceAccepted(source)
 pure def detectWake(w: Wake, now: int, source: WakeSource): Wake =
   { ...w, phase: WakeOpen, openedAt: now, awaitingSince: 0, generation: w.generation + 1, consumed: false }
 pure val nowValues = Set(0, 7999, 8000, 29999, 30000, 38000)

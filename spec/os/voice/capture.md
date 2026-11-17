@@ -57,7 +57,7 @@ pure def canUnmuteCapture(s: CaptureState): bool = s.owner == LiveOwner and s.mu
 pure def unmuteCapture(s: CaptureState): CaptureState = { ...s, muted: false }
 pure def canCloseReceipt(s: CaptureState): bool = s.closePending
 pure def closeReceipt(s: CaptureState, closeSucceeded: bool): CaptureState = {
-  val released = closeSucceeded and not(s.cancelPending)
+  val released = closeSucceeded and not(s.cancelPending) and not(s.releaseUnconfirmed)
   val failedLive = not(closeSucceeded) and s.owner == LiveOwner
   { ...s, closePending: false,
     capture: if (released) CaptureAbsent else s.capture,
@@ -75,6 +75,9 @@ pure def drainReply(s: CaptureState): CaptureState = { ...s, turn: TurnFinished 
 pure def alwaysDispatchNeedsClosedCapture(s: CaptureState): bool = s.sent implies s.closeConfirmed
 pure def alwaysCaptureNeedsLiveUnmutedOwner(s: CaptureState): bool =
   s.capture == CaptureOwned implies s.owner == LiveOwner and not(s.muted) and not(turnHoldsCapture(s))
+pure def alwaysErrorRetiresOwner(s: CaptureState): bool = s.error implies s.owner != LiveOwner
+pure def stepUnmuteOpensNothing(before: CaptureState, via: str, after: CaptureState): bool =
+  via == "unmuteCapture" implies after.capture == before.capture and after.turn == before.turn
 pure def sometimesTurnDispatched(s: CaptureState): bool = s.sent
 pure def sometimesCloseFailure(s: CaptureState): bool = s.error and s.owner == StoppingOwner and s.capture == CaptureRetained
 ```
@@ -131,6 +134,16 @@ pure def stepRetiredCannotAdopt(before: CaptureState, after: CaptureState): bool
   before.owner != LiveOwner and after.generation == before.generation implies
     after.owner != LiveOwner and after.sent == before.sent and after.reopened == before.reopened and
     after.capture != CaptureOwned
+pure def stepReopenOncePerGeneration(before: CaptureState, via: str, after: CaptureState): bool =
+  after.capture == CaptureOpening and before.capture != CaptureOpening implies
+    via == "requestReopen" and not(before.reopened) and before.owner == LiveOwner and after.generation == before.generation
+pure def stepStopAssumesNoRelease(before: CaptureState, via: str, after: CaptureState): bool =
+  via == "stopCapture" implies
+    after.owner == StoppingOwner and after.generation == before.generation and
+    (before.capture != CaptureAbsent implies after.capture != CaptureAbsent)
+pure def stepMutedAcquisitionStartsClosing(before: CaptureState, via: str, after: CaptureState): bool =
+  via == "reopenReceipt" and before.muted and after.owner == LiveOwner and after.capture != CaptureAbsent implies
+    after.capture == CaptureRetained and after.closePending
 pure def sometimesReopenedAfterPlayback(s: CaptureState): bool =
   s.turn == TurnFinished and s.capture == CaptureOwned and s.reopened
 pure def sometimesStopDrainsLateCapture(s: CaptureState): bool =
@@ -142,8 +155,9 @@ pure def sometimesStopDrainsLateCapture(s: CaptureState): bool =
 A retired owner holding a capture asks for it to be cancelled. Close and
 cancellation are independent receipts. A failed cancellation leaves the
 handle retained and the release unconfirmed, and the owner may ask
-again; only a successful cancellation releases it. A close that succeeds
-while a cancellation is pending leaves the handle to that cancellation.
+again; only a successful cancellation releases it, even when a close
+receipt reports success afterwards. A close that succeeds while a
+cancellation is pending leaves the handle to that cancellation.
 
 ```quint
 pure def canRequestCancel(s: CaptureState): bool =
@@ -160,6 +174,8 @@ pure def alwaysFailedReleaseRetainsHandle(s: CaptureState): bool =
   (s.releaseUnconfirmed implies s.capture == CaptureRetained) and
   (s.cancelPending implies s.capture == CaptureRetained and s.owner == StoppingOwner) and
   (s.closePending implies s.capture == CaptureRetained or s.capture == CaptureAbsent)
+pure def stepOnlyCancellationConfirmsRelease(before: CaptureState, via: str, after: CaptureState): bool =
+  before.releaseUnconfirmed and not(after.releaseUnconfirmed) implies via == "confirmCancel"
 pure def sometimesFailedCancelRetainsHandle(s: CaptureState): bool =
   s.releaseUnconfirmed and s.owner == StoppingOwner and not(s.cancelPending)
 ```

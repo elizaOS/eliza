@@ -287,25 +287,27 @@ pure def alwaysInactiveWhileFenced(receiver: SurfaceReceiver): bool =
 
 ### A validate-only command spends nothing, and an effect is known only after reading the page back
 
-`controlPage` is the host's command, with a task policy only from the
-trusted task authorizer, never from the page or a model. A snapshot or an
-effect spends the page's current snapshot; a validate-only command
-checks its target without spending the snapshot or dispatching input. A
-dispatched effect's receipt says only that input was sent: the guide
-reads the page back before it treats the effect as done.
+`controlPage` is a host-only command: the plugin acts on the task policy
+it is given and cannot tell where it came from, so taking it only from a
+trusted task authorizer is the consumer's part. A snapshot or an effect
+spends the page's current snapshot; a validate-only command checks its
+target without spending the snapshot or dispatching input. A dispatched
+effect's receipt says only that input was sent, and the receiver keeps
+no observation after it: the guide reads the page back before it treats
+the effect as done or sends another.
 
 ```quint
-type ControlEffect = { spendsSnapshot: bool, dispatchesInput: bool, needsReadback: bool }
+type ControlEffect = { spendsSnapshot: bool, dispatchesInput: bool }
 pure def isInput(subaction: SurfaceAction): bool =
   subaction == ClickAction or subaction == FillAction or subaction == SelectAction or subaction == ScrollAction or subaction == FollowAction
 pure def controlEffect(subaction: SurfaceAction, validateOnly: bool): ControlEffect = {
   val dispatches = isInput(subaction) and not(validateOnly)
-  { spendsSnapshot: subaction == SnapshotAction or dispatches, dispatchesInput: dispatches, needsReadback: dispatches }
+  { spendsSnapshot: subaction == SnapshotAction or dispatches, dispatchesInput: dispatches }
 }
 pure def lawValidateOnlySpendsNothing(subaction: SurfaceAction): bool =
   not(controlEffect(subaction, true).dispatchesInput) and (subaction != SnapshotAction implies not(controlEffect(subaction, true).spendsSnapshot))
-pure def lawDispatchNeedsReadback(subaction: SurfaceAction, validateOnly: bool): bool =
-  controlEffect(subaction, validateOnly).dispatchesInput implies controlEffect(subaction, validateOnly).needsReadback and controlEffect(subaction, validateOnly).spendsSnapshot
+pure def alwaysAnEffectNeedsAReadback(receiver: SurfaceReceiver): bool =
+  receiver.receipt == ReceiptEffect implies receiver.observedSnapshot == 0
 pure val subactionValues = Set(SnapshotAction, ClickAction, FillAction, ScrollAction, OtherAction)
 pure val validateOnlyValues = Set(true, false)
 ```

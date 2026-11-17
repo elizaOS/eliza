@@ -78,33 +78,39 @@ sequence before running the command, so a lost reply never replays an
 effect. It runs only the fixed page commands; an input needs a policy
 issued by the host, and a history step only the one the host observed,
 against an unchanged history. The native end keeps one command waiting
-at a time and refuses another as busy. Hiding, pausing or navigating the
+at a time and refuses another as busy before sending it, so the refusal
+spends no sequence and the same command can be sent again once the first
+has settled. Hiding, pausing or navigating the
 page, or five seconds without a reply, interrupts the waiting command:
 an effect is then reported uncertain and anything else stale, and a
 navigation retires the document, so its later replies are ignored.
 
 ```quint
 type PageChannelCommand = PageSnapshot | PageInput | PageGuide | PageHistoryStep | PageOther
-type PageChannelRequest = { active: bool, sameDocument: bool, sequence: int, lastSequence: int, command: PageChannelCommand, hostPolicy: bool, historyUnchanged: bool }
-type PageChannelReply = PageAccepted | PageStaleRef | PageUnsupported | PagePolicyBlocked
+type PageChannelRequest = { active: bool, sameDocument: bool, nativeWaiting: bool, sequence: int, lastSequence: int, command: PageChannelCommand, hostPolicy: bool, historyUnchanged: bool }
+type PageChannelReply = PageAccepted | PageStaleRef | PageBusy | PageUnsupported | PagePolicyBlocked
 pure def pageChannelReply(req: PageChannelRequest): PageChannelReply =
-  if (not(req.active and req.sameDocument and req.sequence > req.lastSequence)) PageStaleRef
+  if (not(req.active and req.sameDocument)) PageStaleRef
+  else if (req.nativeWaiting) PageBusy
+  else if (not(req.sequence > req.lastSequence)) PageStaleRef
   else if (req.command == PageOther) PageUnsupported
   else if (req.command == PageInput and not(req.hostPolicy)) PagePolicyBlocked
   else if (req.command == PageHistoryStep and not(req.historyUnchanged)) PageStaleRef
   else PageAccepted
 pure def sequenceAfter(req: PageChannelRequest): int =
-  if (req.active and req.sameDocument and req.sequence > req.lastSequence) req.sequence else req.lastSequence
+  if (req.active and req.sameDocument and not(req.nativeWaiting) and req.sequence > req.lastSequence) req.sequence else req.lastSequence
 type InterruptReply = InterruptUncertain | InterruptStale
 pure def interruptReply(effect: bool): InterruptReply = if (effect) InterruptUncertain else InterruptStale
 pure def lawSpentSequenceIsNeverAcceptedAgain(req: PageChannelRequest): bool =
   pageChannelReply(req) == PageAccepted implies req.sequence > req.lastSequence and sequenceAfter(req) == req.sequence and pageChannelReply({ ...req, lastSequence: sequenceAfter(req) }) == PageStaleRef
 pure def lawInputNeedsHostPolicy(req: PageChannelRequest): bool =
   pageChannelReply(req) == PageAccepted and req.command == PageInput implies req.hostPolicy
+pure def lawABusyRefusalSpendsNothing(req: PageChannelRequest): bool =
+  req.active and req.sameDocument and req.nativeWaiting implies pageChannelReply(req) == PageBusy and sequenceAfter(req) == req.lastSequence
 pure def lawInterruptedEffectIsUncertain(effect: bool): bool = (interruptReply(effect) == InterruptUncertain) iff effect
-pure val currentRequest: PageChannelRequest = { active: true, sameDocument: true, sequence: 2, lastSequence: 1, command: PageInput, hostPolicy: true, historyUnchanged: true }
+pure val currentRequest: PageChannelRequest = { active: true, sameDocument: true, nativeWaiting: false, sequence: 2, lastSequence: 1, command: PageInput, hostPolicy: true, historyUnchanged: true }
 pure val reqValues = Set(currentRequest, { ...currentRequest, sequence: 1 }, { ...currentRequest, sameDocument: false }, { ...currentRequest, active: false },
   { ...currentRequest, hostPolicy: false }, { ...currentRequest, command: PageOther }, { ...currentRequest, command: PageHistoryStep, historyUnchanged: false },
-  { ...currentRequest, command: PageSnapshot, hostPolicy: false })
+  { ...currentRequest, command: PageSnapshot, hostPolicy: false }, { ...currentRequest, nativeWaiting: true }, { ...currentRequest, nativeWaiting: true, sequence: 1 })
 pure val effectValues = Set(true, false)
 ```

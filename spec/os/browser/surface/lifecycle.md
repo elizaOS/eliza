@@ -35,7 +35,7 @@ storage policy and a free id.
 ```quint
 type SurfaceLayer = AboveHost | BelowHost
 type NativeSurface = { id: int, session: int, gen: int, layer: SurfaceLayer, profileKey: str, presented: bool, paused: bool,
-  occlusionSet: bool, width: int, height: int }
+  occlusionSet: bool, occlusion: int, width: int, height: int }
 type HelperView = HelperNone | HelperPending | HelperVisible
 type BackPhase = BackIdle | BackOfferedToUi | BackToPage | BackToActivity | BackHandledByUi
 type HelperEntry = { permission: bool, watcher: bool, entry: HelperView, full: HelperView, overlayParent: bool,
@@ -62,7 +62,7 @@ pure def canCreateSurface(s: SurfaceHost, session: int, epoch: int, id: int, exp
   admitsCommand(s, session, epoch) and id > 0 and explicitPolicy and not(hasSurface(s, id))
 pure def createSurface(s: SurfaceHost, session: int, epoch: int, id: int, explicitPolicy: bool, layer: SurfaceLayer, profileKey: str): SurfaceHost =
   { ...s, issued: s.issued + 1, surfaces: s.surfaces.append({ id: id, session: session, gen: s.issued + 1, layer: layer, profileKey: profileKey,
-    presented: false, paused: false, occlusionSet: false, width: 0, height: 0 }) }
+    presented: false, paused: false, occlusionSet: false, occlusion: 0, width: 0, height: 0 }) }
 pure def canDestroySurface(s: SurfaceHost, session: int, epoch: int, id: int): bool = admitsCommand(s, session, epoch) and hasSurface(s, id)
 pure def destroySurface(s: SurfaceHost, session: int, epoch: int, id: int): SurfaceHost = { ...s, surfaces: s.surfaces.select(x => x.id != id) }
 pure def alwaysSurfacesBelongToCurrentSession(s: SurfaceHost): bool = s.surfaces.every(x => x.session == s.session)
@@ -98,7 +98,8 @@ pure val profileKeyValues = Set("", "account1")
 surface, or none to show the host. `setBounds` places one surface at a
 positive size in host pixels with its outer clip, and touches no other
 surface. The page takes no input until the first `setOcclusionRects` after
-creation, and the rects stay host-owned. `pauseSurface` treats the page as
+creation, and the rects stay host-owned; it resolves only once the named
+surface yields to exactly the rects it was sent. `pauseSurface` treats the page as
 hidden, takes focus and the keyboard from it and stops its touches until
 `resumeSurface`; presenting does not resume it. A paused page still reads
 and navigates.
@@ -112,15 +113,20 @@ pure def canSetBounds(s: SurfaceHost, session: int, epoch: int, id: int, width: 
   admitsCommand(s, session, epoch) and hasSurface(s, id) and width > 0 and height > 0
 pure def setBounds(s: SurfaceHost, session: int, epoch: int, id: int, width: int, height: int): SurfaceHost =
   { ...s, surfaces: s.surfaces.listMap(x => if (x.id == id) { ...x, width: width, height: height } else x) }
-pure def canSetOcclusion(s: SurfaceHost, session: int, epoch: int, id: int): bool = admitsCommand(s, session, epoch) and hasSurface(s, id)
-pure def setOcclusion(s: SurfaceHost, session: int, epoch: int, id: int): SurfaceHost =
-  { ...s, surfaces: s.surfaces.listMap(x => if (x.id == id) { ...x, occlusionSet: true } else x) }
+type OcclusionAck = { id: int, rects: int }
+type SurfaceNotice = OcclusionResolved(OcclusionAck) | SurfaceCrashed(SurfaceEvent)
+type SurfaceChange = { state: SurfaceHost, out: List[SurfaceNotice] }
+pure def canSetOcclusion(s: SurfaceHost, session: int, epoch: int, id: int, rects: int): bool = admitsCommand(s, session, epoch) and hasSurface(s, id)
+pure def setOcclusion(s: SurfaceHost, session: int, epoch: int, id: int, rects: int): SurfaceChange =
+  { state: { ...s, surfaces: s.surfaces.listMap(x => if (x.id == id) { ...x, occlusionSet: true, occlusion: rects } else x) },
+    out: List(OcclusionResolved({ id: id, rects: rects })) }
 pure def canPauseSurface(s: SurfaceHost, session: int, epoch: int, id: int): bool = admitsCommand(s, session, epoch) and s.surfaces.some(x => x.id == id and not(x.paused))
 pure def pauseSurface(s: SurfaceHost, session: int, epoch: int, id: int): SurfaceHost =
   { ...s, surfaces: s.surfaces.listMap(x => if (x.id == id) { ...x, paused: true } else x) }
 pure def canResumeSurface(s: SurfaceHost, session: int, epoch: int, id: int): bool = admitsCommand(s, session, epoch) and s.surfaces.some(x => x.id == id and x.paused)
 pure def resumeSurface(s: SurfaceHost, session: int, epoch: int, id: int): SurfaceHost =
   { ...s, surfaces: s.surfaces.listMap(x => if (x.id == id) { ...x, paused: false } else x) }
+pure val rectsValues = Set(1, 2)
 pure val widthValues = Set(0, 360)
 pure val heightValues = Set(0, 280, 640)
 pure def alwaysAtMostOnePresented(s: SurfaceHost): bool = s.surfaces.select(x => x.presented).length() <= 1
@@ -128,6 +134,12 @@ pure def stepBoundsTouchOneSurface(before: SurfaceHost, via: str, after: Surface
   via == "setBounds" implies after.surfaces.select(x => not(before.surfaces.includes(x))).length() <= 1
 pure def stepPresentingNeverResumes(before: SurfaceHost, via: str, after: SurfaceHost): bool =
   via == "presentSurface" implies after.surfaces.every(x => before.surfaces.some(y => y.id == x.id and y.paused == x.paused))
+pure def ackInEffect(n: SurfaceNotice, after: SurfaceHost): bool = match n {
+  | OcclusionResolved(ack) => after.surfaces.some(x => x.id == ack.id and x.occlusionSet and x.occlusion == ack.rects)
+  | SurfaceCrashed(ev) => true
+}
+pure def stepOcclusionResolvesOnlyInEffect(before: SurfaceHost, via: str, after: SurfaceHost, out: List[SurfaceNotice]): bool =
+  out.every(n => ackInEffect(n, after))
 pure def sometimesPageTakesInput(s: SurfaceHost): bool = s.surfaces.some(x => pageTakesInput(x))
 pure def sometimesPresentedButPaused(s: SurfaceHost): bool = s.surfaces.some(x => x.presented and x.paused)
 ```
@@ -149,10 +161,11 @@ reason `profile-purged`.
 
 ```quint
 pure def canCrashSurface(s: SurfaceHost, id: int): bool = hasSurface(s, id)
-pure def crashSurface(s: SurfaceHost, id: int): SurfaceHost = {
+pure def crashSurface(s: SurfaceHost, id: int): SurfaceChange = {
   val gone = s.surfaces.select(x => x.id == id)
-  { ...s, surfaces: s.surfaces.select(x => x.id != id),
-    crashReports: s.crashReports.concat(gone.listMap(x => x.gen).select(g => not(s.crashReports.includes(g)))) }
+  { state: { ...s, surfaces: s.surfaces.select(x => x.id != id),
+    crashReports: s.crashReports.concat(gone.listMap(x => x.gen).select(g => not(s.crashReports.includes(g)))) },
+    out: gone.listMap(x => SurfaceCrashed({ id: x.id, session: x.session, epoch: s.epoch })) }
 }
 pure def canPurgeProfileSurfaces(s: SurfaceHost, profileKey: str): bool = not(s.destroyed) and profileKey != ""
 pure def purgeProfileSurfaces(s: SurfaceHost, profileKey: str): SurfaceHost =
@@ -286,26 +299,33 @@ pure def sometimesKeyboardReported(s: SurfaceHost): bool = s.keyboardVisible and
 > command each event and result belongs to, so I never act on another
 > renderer's page or on a command that did not take effect.
 
-### The plugin registers as ElizaSurfaceManager, and a renderer uses an event only when it names the renderer's own owner, session and epoch
+### The plugin registers as ElizaSurfaceManager, and every listener hears every surface's events but only the owning realm uses one
 
 The plugin is registered under the one name `ElizaSurfaceManager`. Every
-surface event carries the surface id with the owner, session and epoch of
-the realm that owns it, and every listener hears every surface's events.
-A renderer therefore uses an event only when it reports a surface that
-exists and names the renderer's own owner, session and epoch; anything
-else is another realm's and is ignored.
+surface event, such as `surfaceCrashed`, carries the surface id with the
+owner, session and epoch of the realm that owns it, and every listener
+hears every surface's events. A renderer uses an event only when it names
+the renderer's own owner, session and epoch, and a reported state only
+when it says the surface exists; anything else is another realm's and is
+ignored. Session tokens are unique per realm, so the model follows the
+session and epoch: the event of a closed surface names the live realm,
+never a retired one, and no two realms use the same event.
 
 ```quint
-pure val surfacePluginName: str = "ElizaSurfaceManager"
-type RendererIdentity = { owner: str, session: int, epoch: int }
-type SurfaceEvent = { id: int, owner: str, session: int, epoch: int, exists: bool }
-pure def eventIsMine(ev: SurfaceEvent, me: RendererIdentity): bool =
-  ev.exists and ev.id > 0 and ev.owner == me.owner and ev.session == me.session and ev.epoch == me.epoch
-pure def lawAnotherRealmsEventIsIgnored(ev: SurfaceEvent, me: RendererIdentity): bool =
-  eventIsMine(ev, me) implies ev.owner == me.owner and ev.session == me.session and ev.epoch == me.epoch and ev.exists
-pure val meValues = Set({ owner: "browser", session: 1, epoch: 1 }, { owner: "browser", session: 2, epoch: 2 })
-pure val evValues = Set({ id: 1, owner: "browser", session: 1, epoch: 1, exists: true }, { id: 1, owner: "browser", session: 1, epoch: 1, exists: false },
-  { id: 1, owner: "other", session: 1, epoch: 1, exists: true }, { id: 2, owner: "browser", session: 2, epoch: 1, exists: true })
+type RendererIdentity = { session: int, epoch: int }
+type SurfaceEvent = { id: int, session: int, epoch: int }
+pure def eventIsMine(ev: SurfaceEvent, me: RendererIdentity): bool = ev.session == me.session and ev.epoch == me.epoch
+pure def eventServesTheLiveRealm(n: SurfaceNotice, before: SurfaceHost): bool = match n {
+  | SurfaceCrashed(ev) => eventIsMine({ id: ev.id, session: ev.session, epoch: ev.epoch }, { session: before.session, epoch: before.epoch }) and (before.rendererLive implies not(before.retired.contains(ev.session)))
+  | OcclusionResolved(ack) => true
+}
+pure def stepEveryClosedSurfaceIsHeardByItsRealmOnly(before: SurfaceHost, via: str, after: SurfaceHost, out: List[SurfaceNotice]): bool =
+  via == "crashSurface" implies out.length() == before.surfaces.length() - after.surfaces.length() and out.every(n => eventServesTheLiveRealm(n, before))
+pure def lawAnEventServesOneRealm(ev: SurfaceEvent, a: RendererIdentity, b: RendererIdentity): bool =
+  eventIsMine(ev, a) and eventIsMine(ev, b) implies a == b
+pure val aValues = Set({ session: 1, epoch: 1 }, { session: 2, epoch: 2 }, { session: 1, epoch: 2 })
+pure val bValues = Set({ session: 1, epoch: 1 }, { session: 2, epoch: 2 })
+pure val evValues = Set({ id: 1, session: 1, epoch: 1 }, { id: 2, session: 2, epoch: 1 }, { id: 2, session: 2, epoch: 2 })
 ```
 
 ### A command resolves only once it has taken effect, and a refused command is a failure that changes nothing
@@ -428,17 +448,17 @@ return an unmasked image; when the page changed, was hidden or paused
 while capturing it is stale; after five seconds it times out. The image is
 at most `maxEdge` pixels on its long edge (256 to 2048) and never scaled
 up, with JPEG quality from 30 to 90. A read is discarded in the same way
-when the page changed while reading. Neither result is stored in a
-thread or a task journal.
+when the page changed while reading. Either result goes back only as the
+command's reply; where it goes next is the consumer's to decide.
 
 ```quint
 type CaptureOutcome = CaptureImage | CaptureMaskFailed | CaptureStale | CaptureUnavailable | CaptureTimedOut | CaptureInvalid
-type CaptureRun = { admitted: bool, runs: bool, inTime: bool, secretFieldsCovered: bool, maskFrames: bool, framesCovered: bool, pageUnchanged: bool }
+type CaptureRun = { runs: bool, inTime: bool, secretFieldsCovered: bool, maskFrames: bool, framesCovered: bool, pageUnchanged: bool }
 type CaptureRequest = { maxEdge: int, quality: int, extraSelectors: int }
 pure def captureRequestAdmitted(request: CaptureRequest): bool =
   request.maxEdge >= 256 and request.maxEdge <= 2048 and request.quality >= 30 and request.quality <= 90 and request.extraSelectors >= 0 and request.extraSelectors <= 32
-pure def captureOutcome(capture: CaptureRun): CaptureOutcome =
-  if (not(capture.admitted)) CaptureInvalid
+pure def captureOutcome(request: CaptureRequest, capture: CaptureRun): CaptureOutcome =
+  if (not(captureRequestAdmitted(request))) CaptureInvalid
   else if (not(capture.runs)) CaptureUnavailable
   else if (not(capture.inTime)) CaptureTimedOut
   else if (not(capture.secretFieldsCovered and (capture.framesCovered or not(capture.maskFrames)))) CaptureMaskFailed
@@ -448,17 +468,18 @@ pure def capturedEdge(maxEdge: int, pageEdge: int): int = if (pageEdge < maxEdge
 type ReadOutcome = ReadText | ReadDiscarded | ReadUnavailable
 pure def readOutcome(runs: bool, inTime: bool, pageUnchanged: bool): ReadOutcome =
   if (not(runs)) ReadUnavailable else if (inTime and pageUnchanged) ReadText else ReadDiscarded
-pure def lawImageOnlyWhenMaskedAndCurrent(capture: CaptureRun): bool =
-  captureOutcome(capture) == CaptureImage implies capture.admitted and capture.runs and capture.secretFieldsCovered and (capture.framesCovered or not(capture.maskFrames)) and capture.pageUnchanged
+pure def lawImageOnlyWhenMaskedAndCurrent(request: CaptureRequest, capture: CaptureRun): bool =
+  captureOutcome(request, capture) == CaptureImage implies captureRequestAdmitted(request) and capture.runs and capture.secretFieldsCovered and (capture.framesCovered or not(capture.maskFrames)) and capture.pageUnchanged
 pure def lawCaptureIsNeverScaledUp(maxEdge: int, pageEdge: int): bool =
   capturedEdge(maxEdge, pageEdge) <= maxEdge and capturedEdge(maxEdge, pageEdge) <= pageEdge
 pure def lawReadTextOnlyFromTheSamePage(runs: bool, inTime: bool, pageUnchanged: bool): bool =
   readOutcome(runs, inTime, pageUnchanged) == ReadText implies runs and inTime and pageUnchanged
-pure def lawCaptureBoundsAreFixed(request: CaptureRequest): bool =
-  captureRequestAdmitted(request) implies request.maxEdge <= 2048 and request.quality >= 30 and request.extraSelectors <= 32
-pure val goodRun: CaptureRun = { admitted: true, runs: true, inTime: true, secretFieldsCovered: true, maskFrames: true, framesCovered: true, pageUnchanged: true }
+pure def lawAnImageKeepsTheRequestBounds(request: CaptureRequest, capture: CaptureRun, pageEdge: int): bool =
+  captureOutcome(request, capture) == CaptureImage implies capturedEdge(request.maxEdge, pageEdge) <= 2048 and
+    request.quality >= 30 and request.quality <= 90 and request.extraSelectors <= 32
+pure val goodRun: CaptureRun = { runs: true, inTime: true, secretFieldsCovered: true, maskFrames: true, framesCovered: true, pageUnchanged: true }
 pure val captureValues = Set(goodRun, { ...goodRun, secretFieldsCovered: false }, { ...goodRun, framesCovered: false }, { ...goodRun, framesCovered: false, maskFrames: false },
-  { ...goodRun, pageUnchanged: false }, { ...goodRun, inTime: false }, { ...goodRun, runs: false }, { ...goodRun, admitted: false })
+  { ...goodRun, pageUnchanged: false }, { ...goodRun, inTime: false }, { ...goodRun, runs: false })
 pure val requestValues = Set({ maxEdge: 1024, quality: 70, extraSelectors: 0 }, { maxEdge: 4096, quality: 70, extraSelectors: 0 }, { maxEdge: 1024, quality: 10, extraSelectors: 33 })
 pure val maxEdgeValues = Set(256, 1024, 2048)
 pure val pageEdgeValues = Set(200, 1024, 3000)
@@ -467,18 +488,36 @@ pure val pageEdgeValues = Set(200, 1024, 3000)
 ### Text zoom stays within 50 to 300 percent, and a task widens navigation only to at most 16 exact HTTPS origins
 
 `setTextZoom` takes a percentage from 50 to 300, where 100 is the page's
-own size. `setTaskOrigins` gives an intercepting surface the exact HTTPS
-origins of the renderer's running task, at most 16: a page on one of them
-may move to another without a held navigation, any other origin is still
-held, and an empty list ends the extension. Nothing is added without
-this call, and it does not outlive the surface.
+own size; any other is refused and the zoom stays as it was, so the zoom
+in effect never leaves that range. `setTaskOrigins` gives an intercepting
+surface the exact HTTPS origins of the renderer's running task, at most
+16: a page on one of them may move to another without a held navigation,
+any other origin is still held, and an empty list ends the extension. A
+refused list leaves the origins in effect as they were. Nothing is added
+without this call, and it does not outlive the surface.
 
 ```quint
 pure def textZoomAdmitted(percent: int): bool = percent >= 50 and percent <= 300
 pure def taskOriginsAdmitted(count: int, exactHttps: bool): bool = count >= 0 and count <= 16 and exactHttps
-pure def lawTextZoomBounded(percent: int): bool = textZoomAdmitted(percent) implies percent >= 50 and percent <= 300 and textZoomAdmitted(100)
-pure def lawTaskOriginsBounded(count: int, exactHttps: bool): bool =
-  taskOriginsAdmitted(count, exactHttps) implies exactHttps and count <= 16 and taskOriginsAdmitted(0, true)
+pure val pageTextZoom: int = 100
+pure def textZoomAfter(zoom: int, percent: int): int = if (textZoomAdmitted(percent)) percent else zoom
+pure def lawTextZoomStaysInRange(zoom: int, percent: int): bool =
+  textZoomAdmitted(pageTextZoom) and (textZoomAdmitted(zoom) implies textZoomAdmitted(textZoomAfter(zoom, percent)))
+pure def taskOriginsAfter(held: List[str], requested: List[str], exactHttps: bool): List[str] =
+  if (taskOriginsAdmitted(requested.length(), exactHttps)) requested else held
+pure def navigationHeld(origins: List[str], fromOrigin: str, toOrigin: str): bool = not(origins.includes(fromOrigin) and origins.includes(toOrigin))
+pure def lawTaskOriginsWidenOnlyAsListed(held: List[str], requested: List[str], exactHttps: bool, fromOrigin: str, toOrigin: str): bool =
+  (held.length() <= 16 implies taskOriginsAfter(held, requested, exactHttps).length() <= 16) and
+  (not(navigationHeld(taskOriginsAfter(held, requested, exactHttps), fromOrigin, toOrigin)) implies
+    (exactHttps and requested.includes(fromOrigin) and requested.includes(toOrigin)) or (held.includes(fromOrigin) and held.includes(toOrigin))) and
+  navigationHeld(taskOriginsAfter(held, List(), true), fromOrigin, toOrigin)
 pure val percentValues = Set(40, 50, 100, 300, 301)
-pure val countValues = Set(0, 16, 17)
+pure val zoomValues = Set(50, 100, 300)
+pure val seventeenOrigins: List[str] = List("https://a.example", "https://b.example", "https://o3.example", "https://o4.example", "https://o5.example",
+  "https://o6.example", "https://o7.example", "https://o8.example", "https://o9.example", "https://o10.example", "https://o11.example",
+  "https://o12.example", "https://o13.example", "https://o14.example", "https://o15.example", "https://o16.example", "https://o17.example")
+pure val heldValues = Set(List(), List("https://a.example"))
+pure val requestedValues = Set(List(), List("https://a.example", "https://b.example"), seventeenOrigins)
+pure val fromOriginValues = Set("https://a.example", "https://b.example")
+pure val toOriginValues = Set("https://a.example", "https://b.example")
 ```

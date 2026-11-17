@@ -24,11 +24,11 @@ session.
 
 ```quint
 type LiveSession = { queued: int, finished: bool, discarded: bool, overflowed: bool, timedOut: bool,
-  expected: int, closed: int, finals: int, nulls: int, dropped: int, partials: int, turnsSent: int }
+  expected: int, closed: int, finals: int, nulls: int, dropped: int, partials: int, turnsSent: int, warmed: bool, sends: int }
 pure val initial: LiveSession = { queued: 0, finished: false, discarded: false, overflowed: false, timedOut: false,
-  expected: 0, closed: 0, finals: 0, nulls: 0, dropped: 0, partials: 0, turnsSent: 0 }
+  expected: 0, closed: 0, finals: 0, nulls: 0, dropped: 0, partials: 0, turnsSent: 0, warmed: false, sends: 0 }
 pure val frameBacklogLimit = 960
-pure def canAcceptFrames(l: LiveSession, frames: int): bool = not(l.finished) and frames > 0
+pure def canAcceptFrames(l: LiveSession, frames: int): bool = l.warmed and not(l.finished) and frames > 0
 pure def acceptFrames(l: LiveSession, frames: int): LiveSession =
   if (l.queued + frames > frameBacklogLimit)
     { ...l, finished: true, overflowed: true, expected: 0, nulls: l.nulls + l.expected }
@@ -54,16 +54,26 @@ unanswered at its deadline ends the session with one transport failure,
 as an overflow does: every closed segment still owed a final gets an
 empty one, queued audio is dropped and the request in flight is
 cancelled. A session is warmed with an empty exchange before the
-microphone opens. Frames and edges captured after an explicit stop are
+microphone opens, so no frame is accepted and no segment closed before
+it. Once a session has finished, by a stop, a cancel, an overflow or a
+timeout, frames and edges captured afterwards and audio still queued are
 never sent.
 
 ```quint
-pure def canTimeOutExchange(l: LiveSession, waitedMs: int): bool = not(l.finished) and l.queued > 0 and waitedMs >= 8000
+pure def canWarmSession(l: LiveSession): bool = not(l.warmed) and not(l.finished)
+pure def warmSession(l: LiveSession): LiveSession = { ...l, warmed: true }
+pure def canSendExchange(l: LiveSession): bool = not(l.finished) and l.queued > 0
+pure def sendExchange(l: LiveSession): LiveSession = { ...l, sends: l.sends + 1 }
+pure def canTimeOutExchange(l: LiveSession, waitedMs: int): bool = not(l.finished) and l.queued > 0 and l.sends > 0 and waitedMs >= 8000
 pure def timeOutExchange(l: LiveSession, waitedMs: int): LiveSession =
   { ...l, finished: true, timedOut: true, expected: 0, nulls: l.nulls + l.expected }
 pure val waitedMsValues = Set(0, 7999, 8000)
 pure def stepExchangeTimeoutNeedsDeadline(before: LiveSession, via: str, after: LiveSession): bool =
   (not(before.timedOut) and after.timedOut) implies via == "timeOutExchange" and before.queued > 0
+pure def alwaysMicrophoneOpensWarm(l: LiveSession): bool =
+  l.sends >= 0 and ((l.queued > 0 or l.closed > 0 or l.sends > 0) implies l.warmed)
+pure def stepFinishedSessionSendsNothing(before: LiveSession, after: LiveSession): bool =
+  before.finished implies after.sends == before.sends
 pure def sometimesExchangeTimedOut(l: LiveSession): bool = l.timedOut and l.nulls > 0
 ```
 
@@ -76,7 +86,7 @@ nothing more. Every closed segment is accounted
 for once: final, empty after an overflow, dropped on cancel, or still owed.
 
 ```quint
-pure def canCloseSegment(l: LiveSession): bool = not(l.finished)
+pure def canCloseSegment(l: LiveSession): bool = l.warmed and not(l.finished)
 pure def closeSegment(l: LiveSession): LiveSession = { ...l, expected: l.expected + 1, closed: l.closed + 1 }
 pure def canDeliverFinal(l: LiveSession): bool = not(l.finished) and l.expected > 0
 pure def deliverFinal(l: LiveSession): LiveSession =
@@ -90,6 +100,8 @@ pure def alwaysOneFinalPerSegment(l: LiveSession): bool =
 pure def alwaysCancelFencesResults(l: LiveSession): bool =
   l.discarded implies l.finished and l.expected == 0 and not(l.overflowed) and not(l.timedOut)
 pure def sometimesFinalDelivered(l: LiveSession): bool = l.finals > 1 and l.expected > 0
+pure def stepFinishedSessionPublishesNothing(before: LiveSession, after: LiveSession): bool =
+  before.finished implies after.finals == before.finals and after.partials == before.partials and after.turnsSent == before.turnsSent
 pure def sometimesLateBatchAfterCancel(l: LiveSession): bool = l.discarded and l.queued > 0
 ```
 
@@ -132,29 +144,40 @@ a run of consecutive windows below 0.35 as long as its hangover: by
 default 16 windows (about 512 ms); a conversation that submits at a
 shorter pause passes its own hangover. Any window at or above 0.35 inside
 a segment restarts the hangover. While no segment is open the last 10
-windows are kept, so the first syllable reaches the recognizer.
+windows are kept, and a segment that opens starts with them, so the first
+syllable reaches the recognizer.
 
 ```quint
-type VadGate = { speaking: bool, above: int, below: int }
+type VadGate = { speaking: bool, above: int, below: int, kept: int, preroll: int }
 pure val vadPrerollWindows = 10
+pure val vadDefaultEndWindows = 16
+pure val quietGate: VadGate = { speaking: false, above: 0, below: 0, kept: 0, preroll: 0 }
+pure def vadKept(kept: int): int = if (kept + 1 > vadPrerollWindows) vadPrerollWindows else kept + 1
 pure def vadAccept(gate: VadGate, endWindows: int, probabilityPct: int): VadGate =
   if (not(gate.speaking))
-    (if (probabilityPct >= 50 and gate.above + 1 >= 2) { speaking: true, above: 0, below: 0 }
-     else { ...gate, above: if (probabilityPct >= 50) gate.above + 1 else 0 })
-  else if (probabilityPct < 35 and gate.below + 1 >= endWindows) { speaking: false, above: 0, below: 0 }
+    (if (probabilityPct >= 50 and gate.above + 1 >= 2) { speaking: true, above: 0, below: 0, kept: 0, preroll: vadKept(gate.kept) }
+     else { ...gate, above: if (probabilityPct >= 50) gate.above + 1 else 0, kept: vadKept(gate.kept) })
+  else if (probabilityPct < 35 and gate.below + 1 >= endWindows) quietGate
   else { ...gate, below: if (probabilityPct < 35) gate.below + 1 else 0 }
-pure val gateValues = Set({ speaking: false, above: 0, below: 0 }, { speaking: false, above: 1, below: 0 },
-  { speaking: true, above: 0, below: 0 }, { speaking: true, above: 0, below: 7 }, { speaking: true, above: 0, below: 15 })
-pure val endWindowsValues = Set(8, 16)
+pure val gateValues = Set(quietGate, { ...quietGate, above: 1, kept: 1 }, { ...quietGate, above: 1, kept: 10 },
+  { ...quietGate, speaking: true, preroll: 2 }, { ...quietGate, speaking: true, below: 7, preroll: 10 }, { ...quietGate, speaking: true, below: 15, preroll: 2 })
+pure val endWindowsValues = Set(8, vadDefaultEndWindows)
 pure val probabilityPctValues = Set(0, 34, 35, 49, 50, 100)
 pure def lawOneLoudWindowOpensNothing(endWindows: int, probabilityPct: int): bool =
-  not(vadAccept({ speaking: false, above: 0, below: 0 }, endWindows, probabilityPct).speaking)
+  not(vadAccept(quietGate, endWindows, probabilityPct).speaking)
 pure def lawSegmentOpensOnSpeech(gate: VadGate, endWindows: int, probabilityPct: int): bool =
   not(gate.speaking) and vadAccept(gate, endWindows, probabilityPct).speaking implies probabilityPct >= 50 and gate.above >= 1
 pure def lawHangoverKeepsSegmentOpen(gate: VadGate, endWindows: int, probabilityPct: int): bool =
   gate.speaking and gate.below + 1 < endWindows implies vadAccept(gate, endWindows, probabilityPct).speaking
 pure def lawSpeechRestartsHangover(gate: VadGate, endWindows: int, probabilityPct: int): bool =
   gate.speaking and probabilityPct >= 35 implies vadAccept(gate, endWindows, probabilityPct) == { ...gate, below: 0 }
+pure def lawPrerollKeepsTheLastWindows(gate: VadGate, endWindows: int, probabilityPct: int): bool =
+  not(gate.speaking) and gate.kept >= 0 and gate.kept <= vadPrerollWindows and gate.preroll <= vadPrerollWindows implies
+    vadAccept(gate, endWindows, probabilityPct).kept <= vadPrerollWindows and
+    vadAccept(gate, endWindows, probabilityPct).preroll <= vadPrerollWindows
+pure def lawSegmentStartsWithItsPreroll(gate: VadGate, endWindows: int, probabilityPct: int): bool =
+  not(gate.speaking) and gate.kept >= gate.above and vadAccept(gate, endWindows, probabilityPct).speaking implies
+    vadAccept(gate, endWindows, probabilityPct).preroll == vadKept(gate.kept) and vadAccept(gate, endWindows, probabilityPct).preroll >= 2
 ```
 
 ### The device's recognizer is used only while its model is known to be installed
@@ -166,7 +189,8 @@ installed later is seen; a probe the service did not answer reads as
 unavailable and is asked again after 30 seconds. A late answer from an
 older probe never overwrites the answer of a newer one, a non-answer never
 replaces an answer still in force, and nothing but its own expiry ends a
-demotion.
+demotion. Demoting a language withdraws the recognizer at once, for a
+period or for good, and a second demotion never shortens one in force.
 
 ```quint
 type RecognizerKnown = KnownUnknown | KnownInstalled | KnownAbsent | KnownUnanswered | KnownDemoted
@@ -182,6 +206,10 @@ pure def recordProbe(entry: RecognizerEntry, answer: ProbeAnswer, ticket: int, n
   else if (answer == AnswerAbsent) { known: KnownAbsent, until: now + 60000, ticket: ticket }
   else { known: KnownUnanswered, until: now + 30000, ticket: ticket }
 pure def recognizerAvailable(entry: RecognizerEntry, now: int): bool = recognizerInForce(entry, now) and entry.known == KnownInstalled
+pure def demoteRecognizer(entry: RecognizerEntry, now: int, forMs: int): RecognizerEntry =
+  if (entry.known == KnownDemoted and entry.until >= now + forMs) entry else { known: KnownDemoted, until: now + forMs, ticket: 0 }
+pure val forMsValues = Set(30000, recognizerForeverMs)
+pure val laterMsValues = Set(0, 60000, 3600000)
 pure val entryValues = Set({ known: KnownUnknown, until: 0, ticket: 0 }, { known: KnownInstalled, until: recognizerForeverMs, ticket: 2 },
   { known: KnownAbsent, until: 60000, ticket: 2 }, { known: KnownUnanswered, until: 30000, ticket: 1 }, { known: KnownDemoted, until: 90000, ticket: 0 })
 pure val ticketValues = Set(1, 2, 3)
@@ -194,4 +222,15 @@ pure def lawDemotionHolds(entry: RecognizerEntry, answer: ProbeAnswer, ticket: i
   entry.known == KnownDemoted and recognizerInForce(entry, now) implies not(recognizerAvailable(recordProbe(entry, answer, ticket, now), now))
 pure def lawAbsentIsAskedAgain(entry: RecognizerEntry, ticket: int, now: int): bool =
   recordProbe(entry, AnswerAbsent, ticket, now) != entry implies recordProbe(entry, AnswerAbsent, ticket, now) == { known: KnownAbsent, until: now + 60000, ticket: ticket }
+pure def lawUnansweredIsAskedAgain(entry: RecognizerEntry, ticket: int, now: int): bool =
+  recordProbe(entry, AnswerUnanswered, ticket, now) != entry implies
+    recordProbe(entry, AnswerUnanswered, ticket, now) == { known: KnownUnanswered, until: now + 30000, ticket: ticket } and
+    not(recognizerAvailable(recordProbe(entry, AnswerUnanswered, ticket, now), now))
+pure def lawInstalledKeptUntilDemoted(entry: RecognizerEntry, ticket: int, now: int, laterMs: int): bool =
+  recordProbe(entry, AnswerInstalled, ticket, now) != entry and laterMs >= now and laterMs < recognizerForeverMs implies
+    recognizerAvailable(recordProbe(entry, AnswerInstalled, ticket, now), laterMs)
+pure def lawDemotionWithdrawsRecognizer(entry: RecognizerEntry, answer: ProbeAnswer, ticket: int, now: int, forMs: int): bool =
+  forMs > 0 implies not(recognizerAvailable(recordProbe(demoteRecognizer(entry, now, forMs), answer, ticket, now), now))
+pure def lawDemotionNeverShortened(entry: RecognizerEntry, now: int, forMs: int): bool =
+  entry.known == KnownDemoted implies demoteRecognizer(entry, now, forMs).until >= entry.until
 ```

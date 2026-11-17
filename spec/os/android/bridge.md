@@ -133,7 +133,7 @@ pure def sometimesRestoreFailurePreservesPrior(s: StageTransaction): bool = s.ph
 
 A consumer's main Activity extends the shared host Activity and registers
 its plugins before calling the base `onCreate`; a plugin registered later
-is not part of that bridge. The host WebView never loads mixed content.
+is not part of that bridge, so it is never ready to invoke. The host WebView never loads mixed content.
 When Android ends the host renderer, the Activity removes and destroys the
 dead WebView instead of letting the whole process die, and recreates
 itself when it is next started, at once if it is on screen. After that it
@@ -143,7 +143,7 @@ Activity pauses the host page, so a screen turned off never leaves it
 running as visible, and starting it resumes the page; a permission dialog
 over a visible app does not. A surface below the host shows only when the
 host WebView and every view up to the content are transparent, which the
-consumer sets.
+consumer sets: one opaque view on the way hides it.
 
 ```quint
 type ActivityHook = HookCreate | HookStart | HookStop | HookRendererGone
@@ -157,7 +157,7 @@ pure def onHook(view: HostWebView, hook: ActivityHook): HookAction =
   else if (hook == HookStart) { ...noAction, resumePage: true, usesView: true }
   else { ...noAction, pausePage: true, usesView: true }
 pure def pluginInBridge(registeredBeforeBaseCreate: bool): bool = registeredBeforeBaseCreate
-pure def belowHostShows(hostTransparent: bool, ancestorsTransparent: bool): bool = hostTransparent and ancestorsTransparent
+pure def belowHostShows(hostTransparent: bool, ancestors: List[bool]): bool = hostTransparent and ancestors.every(t => t)
 pure def lawDeadViewIsNeverUsed(view: HostWebView, hook: ActivityHook): bool =
   view.rendererGone or hook == HookRendererGone implies not(onHook(view, hook).usesView)
 pure def lawRendererDeathRecreatesTheActivity(view: HostWebView): bool =
@@ -165,9 +165,13 @@ pure def lawRendererDeathRecreatesTheActivity(view: HostWebView): bool =
   (view.rendererGone implies onHook(view, HookStart).recreate)
 pure def lawStoppedPageIsPaused(view: HostWebView): bool =
   not(view.rendererGone) implies onHook(view, HookStop).pausePage and onHook(view, HookStart).resumePage and onHook(view, HookCreate).blocksMixedContent
-pure def lawLateRegistrationIsNotInTheBridge(registeredBeforeBaseCreate: bool): bool = pluginInBridge(registeredBeforeBaseCreate) iff registeredBeforeBaseCreate
-pure def lawBelowHostNeedsTransparentHost(hostTransparent: bool, ancestorsTransparent: bool): bool =
-  belowHostShows(hostTransparent, ancestorsTransparent) implies hostTransparent and ancestorsTransparent
+pure def lawLateRegistrationIsNeverReady(binding: Installation, registeredBeforeBaseCreate: bool, ownerLive: bool, needsPermission: bool, permissionGranted: bool): bool =
+  bridgeAdmission({ ...binding, activityRegistered: pluginInBridge(registeredBeforeBaseCreate) }, ownerLive, needsPermission, permissionGranted) == BridgeReady implies
+    registeredBeforeBaseCreate
+pure def lawOneOpaqueViewHidesTheSurfaceBelow(hostTransparent: bool, ancestors: List[bool]): bool =
+  not(belowHostShows(hostTransparent, ancestors.append(false))) and not(belowHostShows(false, ancestors)) and
+  belowHostShows(hostTransparent, ancestors.append(true)) == belowHostShows(hostTransparent, ancestors)
+pure val ancestorsValues = Set(List(), List(true), List(true, false), List(false, true))
 pure val viewValues = Set({ rendererGone: false, started: true }, { rendererGone: false, started: false }, { rendererGone: true, started: true }, { rendererGone: true, started: false })
 ```
 

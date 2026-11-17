@@ -67,7 +67,8 @@ a destroyed bridge, a queue already holding at least 64 entries, or a
 speech bundle that has not been verified. The worker checks current
 ownership, cancellation, memory pressure and consumer policy before
 running. An active request may register a native cancellation callback.
-Cancellation while queued prevents it from running. Active cancellation
+Cancellation while queued, including by a destroyed bridge, prevents it
+from running. Active cancellation
 interrupts its callback and fences success. The owner releases the
 pending entry on worker completion. The model records one request while
 the queue-count observation comes from the other admission owner.
@@ -110,7 +111,7 @@ pure def alwaysPendingRequestOwnsIdentity(v: LocalVoice): bool = v.phase != Init
 pure def alwaysModelsComeFromVerifiedBundle(v: LocalVoice): bool =
   (v.phase != InitialRequest or v.modelsHeld) implies v.bundleVerified
 pure def stepCanceledCannotPublish(before: LocalVoice, via: str, after: LocalVoice): bool =
-  via == "finishLocalWork" and before.cancelled implies after.phase == NativeCanceled
+  (via == "finishLocalWork" or via == "startLocalWork") and before.cancelled implies after.phase == NativeCanceled
 pure def sometimesNativeSpeechAnswered(v: LocalVoice): bool = v.phase == Answered
 pure def sometimesNativeSpeechCanceled(v: LocalVoice): bool = v.phase == NativeCanceled
 ```
@@ -122,12 +123,13 @@ pure def sometimesNativeSpeechCanceled(v: LocalVoice): bool = v.phase == NativeC
 
 ### Quiet release requires the current hidden round and no active custody
 
-The host keeps models while shown. A hidden check is current only for
+The host keeps models while shown: only a quiet hidden release or the
+end of memory pressure lets them go. A hidden check is current only for
 its captured visibility round. An intervening show advances that
 round. Quiet release waits at least 60 seconds since last activity and
 requires empty queues, both lanes idle and no host audio-focus hold.
-Memory pressure is distinct. It requests active cancellation and queues
-release on the speech worker. New operations that start while pressure
+Memory pressure is distinct. It requests cancellation of the active
+request and queues release on the speech worker. New operations that start while pressure
 is set return failure instead of taking a model. A release notification
 is a host observation after that job.
 
@@ -151,6 +153,12 @@ pure def alwaysVisibilityRoundValid(v: LocalVoice): bool = v.visibleRound >= 0
 pure def stepQuietReleaseKeepsRequests(before: LocalVoice, via: str, after: LocalVoice): bool =
   via == "releaseHidden" implies not(before.shown) and not(after.modelsHeld) and after.phase == before.phase and
     after.cancelled == before.cancelled
+pure def stepModelsReleasedOnlyHiddenOrUnderPressure(before: LocalVoice, via: str, after: LocalVoice): bool =
+  before.modelsHeld and not(after.modelsHeld) implies
+    (via == "releaseHidden" and not(before.shown)) or (via == "finishPressure" and before.pressure)
+pure def stepPressureFencesWork(before: LocalVoice, via: str, after: LocalVoice): bool =
+  (via == "beginPressure" and before.phase == NativeWorking implies after.cancelled) and
+  (via == "startLocalWork" and before.pressure implies after.phase != NativeWorking and after.modelsHeld == before.modelsHeld)
 pure def sometimesHiddenModelReleased(v: LocalVoice): bool = not(v.shown) and v.phase == Answered and not(v.modelsHeld)
 ```
 
