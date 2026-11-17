@@ -702,6 +702,7 @@ export function generateAndroidConsumerHost({
       `${EMBEDDED_AGENT_MODULE}/src/main/AndroidManifest.xml`,
       `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
  <uses-permission android:name="android.permission.INTERNET" />
+ <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
  <application>
