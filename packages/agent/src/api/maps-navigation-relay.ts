@@ -57,23 +57,28 @@ function relayFor(runtime: IAgentRuntime): Relay {
     offer.pending?.finish(unavailable());
   const relay: Relay = { maps, offers: new Map() };
   relays.set(runtime, relay);
-  const dispatch = async (operation: Operation) => {
+  /** This turn's phone offer while the phone is polling and has no request in hand. */
+  const liveOffer = async () => {
     const turn = getDeviceActionTurn();
     if (!turn || turn.runtime !== runtime || !turn.replyConversation)
-      throw unavailable();
+      return null;
     const context = await new DeviceActionService(runtime).context(
       turn.credential,
     );
     const offer = relay.offers.get(context.scope);
-    if (
-      !turn.active ||
-      relays.get(runtime) !== relay ||
-      !offer ||
-      offer.conversationId !== turn.replyConversation.id ||
-      Date.now() - offer.seenAt > 2_000 ||
-      offer.pending
-    )
-      throw unavailable();
+    return turn.active &&
+      relays.get(runtime) === relay &&
+      offer &&
+      offer.conversationId === turn.replyConversation.id &&
+      Date.now() - offer.seenAt <= 2_000 &&
+      !offer.pending
+      ? { offer, turn }
+      : null;
+  };
+  const dispatch = async (operation: Operation) => {
+    const live = await liveOffer();
+    if (!live) throw unavailable();
+    const { offer, turn } = live;
     return new Promise<MapsDeviceNavigationStatus>((resolve, reject) => {
       const timeout = setTimeout(() => pending.finish(unavailable()), 30_000);
       const pending: Pending = {
@@ -95,6 +100,9 @@ function relayFor(runtime: IAgentRuntime): Relay {
     });
   };
   maps.registerDeviceNavigation({
+    // MAPS_NAVIGATE starts navigation on the phone only while it reports it
+    // can take a request; without this answer it always returned a link.
+    available: async () => (await liveOffer()) !== null,
     select: (place) => dispatch({ kind: "select", place }),
     start: (request) => dispatch({ kind: "start", request }),
     reroute: () => dispatch({ kind: "reroute" }),

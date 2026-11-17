@@ -438,6 +438,20 @@ async function requestedPlace(
     : null;
 }
 
+/** Great-circle distance in metres between two points on the Earth. */
+function metersBetween(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+): number {
+  const rad = Math.PI / 180;
+  const h =
+    Math.sin(((b.latitude - a.latitude) * rad) / 2) ** 2 +
+    Math.cos(a.latitude * rad) *
+      Math.cos(b.latitude * rad) *
+      Math.sin(((b.longitude - a.longitude) * rad) / 2) ** 2;
+  return 2 * 6_371_000 * Math.asin(Math.sqrt(h));
+}
+
 /** Distances read as km with one decimal from 1 km, metres to the nearest 10 below. */
 function distanceText(meters: number): string {
   const rounded = Math.round(meters / 10) * 10;
@@ -757,22 +771,40 @@ async function execute(
             },
             text(params.provider),
           );
-        const empty = page.places.length === 0;
+        // With a search point the answer is "nearest": order by distance from
+        // it and say how far each place is, so the reply can name the closest.
+        const away = (place: PlaceRef) =>
+          near ? metersBetween(near, place.coordinates) : 0;
+        const places = near
+          ? [...page.places].sort((a, b) => away(a) - away(b))
+          : page.places;
+        const empty = places.length === 0;
         return result(
           action,
           {
             success: true,
             text: empty
               ? "No matching places were found."
-              : `Found ${page.places.length} place${page.places.length === 1 ? "" : "s"}.`,
+              : [
+                  `Found ${places.length} place${places.length === 1 ? "" : "s"}${near ? ", nearest first" : ""}:`,
+                  ...places.map(
+                    (place) =>
+                      `${place.name}${place.formattedAddress ? `, ${place.formattedAddress}` : ""}${near ? ` (${distanceText(away(place))} away)` : ""}`,
+                  ),
+                ].join("\n"),
             userFacingText: empty
               ? "No matching places were found."
               : appendMapsCard(
-                  page.places.map((place) => place.name).join("\n"),
+                  places
+                    .map(
+                      (place) =>
+                        `${place.name}${near ? `, ${distanceText(away(place))} away` : ""}`,
+                    )
+                    .join("\n"),
                   {
                     kind: "places",
                     query,
-                    places: page.places
+                    places: places
                       .slice(0, MAPS_CARD_MAX_PLACES)
                       .map(toCardPlace),
                     nextCursor: page.nextCursor,
@@ -784,7 +816,7 @@ async function execute(
               actionName: "MAPS",
               action,
               status: empty ? "empty" : "found",
-              page,
+              page: { ...page, places },
             },
           },
           callback,
@@ -1254,7 +1286,7 @@ export const mapsAction: Action = {
     "Place search, routes, saved places, sharing, navigation, and coverage.",
   contexts: ["location", "travel", "productivity"],
   routingHint:
-    "Use MAPS_PLACE for place/address lookup, MAPS_SELECT to show a place on the phone map, MAPS_ROUTE for directions, MAPS_SAVE to persist a place, MAPS_SAVED to list places saved with the assistant, MAPS_SHARE for a geo share link after the user confirms, MAPS_NAVIGATE to start phone navigation when the phone is connected and otherwise return a directions link, and MAPS_COVERAGE for the regions, travel modes and location recipients of the connected provider. Use MAPS_NAVIGATION_START, MAPS_NAVIGATION_REROUTE and MAPS_NAVIGATION_STOP for in-app phone navigation.",
+    "Use MAPS_PLACE for place/address lookup and for what is nearby or nearest (set useCurrentLocation when the user says near me or nearest and gave no place), MAPS_SELECT to show a place on the phone map, MAPS_ROUTE for distance, travel time and directions between two named places, MAPS_NAVIGATION_START for directions from where the user is now (the phone plans from its own location), MAPS_SAVE to persist a place, MAPS_SAVED to list places saved with the assistant, MAPS_SHARE for a geo share link after the user confirms, MAPS_NAVIGATE to start phone navigation when the phone is connected and otherwise return a directions link, and MAPS_COVERAGE for the regions, travel modes and location recipients of the connected provider. Use MAPS_NAVIGATION_START, MAPS_NAVIGATION_REROUTE and MAPS_NAVIGATION_STOP for in-app phone navigation.",
   // Direct umbrella execution is read-only. The promoted MAPS_SAVE virtual
   // owns the write and receipt contract in plugin.ts.
   tags: ["domain:maps"],
@@ -1423,7 +1455,7 @@ export const mapsAction: Action = {
     {
       name: "travelMode",
       description:
-        "drive | walk | bicycle | transit. Transit only where MAPS coverage lists it.",
+        "How the user travels: walk (walking, on foot), bicycle (bike, cycling), transit (train, subway, bus, public transport) or drive (car; the default when the user names no way to travel). Transit only where MAPS coverage lists it.",
       required: false,
       schema: { type: "string", enum: ["drive", "walk", "bicycle", "transit"] },
       subactions: ["route", "navigate"],
@@ -1439,7 +1471,7 @@ export const mapsAction: Action = {
     {
       name: "useCurrentLocation",
       description:
-        "True when the request references the user's current position and no coordinates were supplied; the chat surface then collects a precise device location.",
+        "True when the request means the user's current position (near me, nearest, nearby, from here) and no coordinates were supplied. The assistant never receives the position: the chat surface asks the user's device to use it.",
       required: false,
       schema: { type: "boolean" },
       subactions: ["place", "route"],
@@ -1581,7 +1613,7 @@ export const mapsNavigationAction: Action = {
   name: "MAPS_NAVIGATION",
   similes: ["TURN_BY_TURN", "START_NAVIGATION", "STOP_NAVIGATION", "REROUTE"],
   description:
-    "Start, reroute or stop in-app navigation on the phone. The phone uses its own location and asks the user before guidance starts.",
+    "Directions from where the user is now: start, reroute or stop in-app navigation on the phone. The phone plans the route from its own location, shows it on the map and asks the user before guidance starts.",
   descriptionCompressed: "Phone navigation start, reroute and stop.",
   contexts: ["location", "travel"],
   tags: ["domain:maps", "capability:device"],
@@ -1644,7 +1676,8 @@ export const mapsNavigationAction: Action = {
     },
     {
       name: "travelMode",
-      description: "drive | walk | bicycle | transit.",
+      description:
+        "How the user travels: walk (walking, on foot), bicycle (bike, cycling), transit (train, subway, bus, public transport) or drive (car; the default when the user names no way to travel).",
       required: false,
       schema: { type: "string", enum: ["drive", "walk", "bicycle", "transit"] },
       subactions: ["start"],
