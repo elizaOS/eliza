@@ -90,10 +90,10 @@ public final class PasswordVaultAccess {
     new Handler(Looper.getMainLooper()).post(() -> { PasswordEditor.dismiss(); SecretSurfaces.dismiss(); });
   }
 
-  synchronized void deliverSecret(Context context, long ticket, Runnable delivery) throws Locked, NotAdmitted {
+  synchronized <T> T deliverSecret(Context context, long ticket, Operation<T> delivery) throws Exception {
     if (!grant.authenticated(ticket)) throw new Locked();
     if (!admitted(context)) throw new NotAdmitted();
-    delivery.run();
+    return use(ticket, delivery);
   }
 
   public synchronized <T> T use(Operation<T> operation) throws Exception {

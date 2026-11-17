@@ -23,7 +23,7 @@ public final class PasswordRetirementInstrumentedTest {
       assertTrue(access.complete(original, true));
       ownerAdmitted.set(false);
       try {
-        access.deliverSecret(context, original, deliveries::incrementAndGet);
+        access.deliverSecret(context, original, ignored -> deliveries.incrementAndGet());
         fail("Retired owner delivered a queued secret");
       } catch (PasswordVaultAccess.NotAdmitted expected) { }
       access.lockAndClose();
@@ -31,10 +31,10 @@ public final class PasswordRetirementInstrumentedTest {
       long replacement = access.begin();
       assertTrue(access.complete(replacement, true));
       try {
-        access.deliverSecret(context, original, deliveries::incrementAndGet);
+        access.deliverSecret(context, original, ignored -> deliveries.incrementAndGet());
         fail("New unlock admitted the old request");
       } catch (PasswordVaultAccess.Locked expected) { }
-      access.deliverSecret(context, replacement, deliveries::incrementAndGet);
+      access.deliverSecret(context, replacement, ignored -> deliveries.incrementAndGet());
       assertEquals(1, deliveries.get());
     } finally {
       access.lockAndClose();

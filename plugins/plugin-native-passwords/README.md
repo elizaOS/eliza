@@ -125,6 +125,10 @@ Android exposes separate read and clear calls, so cleanup is best effort.
 allowlisted fields and rejects any response containing a secret-like key, and errors never echo
 inputs. Hosts must keep agent-facing context free of vault data; at most labels and origins.
 Queued work is bound to the grant that admitted it; a later unlock cannot revive it.
+A row-based caller supplies the row's revision to remove, reveal or copy. The native vault checks
+that revision at delivery, under the same lock as the record read or removal, and returns
+`conflict` if the row changed or disappeared. Callers that omit the revision still act on the
+current entry by ID.
 Destroyed Activities cancel their pending prompts, and old owners cannot revoke a newer grant.
 Opening the fill picker preserves the original request deadline. Framework cancellation or a
 replacement request revokes the picker before it can publish a result.
