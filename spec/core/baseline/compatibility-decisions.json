@@ -6,10 +6,10 @@
       "kind": "internal-resource-cleanup",
       "source": "packages/core/src/logger.ts",
       "sourceBehavior": "A failed later file open leaves earlier descriptors owned until process termination.",
-      "targetBehavior": "Close earlier descriptors before disabling file sinks. If a close fails, retain explicit ownership and a retryable cleanup-failure state.",
+      "targetBehavior": "Attempt one close per acquired handle in reverse order before disabling file sinks. Every attempt consumes that logger-owned numeric handle, including after an unsuccessful close. Continue unwinding the remaining handles, record uncertain native release in terminal CleanupFailed, and never retry or write using a retired descriptor number.",
       "specification": "spec/core/logFiles.md",
       "publicResult": "An unsuccessful initialization continues to produce no file-log success.",
-      "approval": "Proposed specification change for user review; implementation has not been written.",
+      "approval": "Proposed specification change for user review; a candidate implementation and focused qualification are recorded below.",
       "verification": {
         "pinnedSourceSha256": "b5a4d415cd227b3c85d41bdd4ab17350b0e32af26a1301cabbe8b1115ffebd87",
         "modelRevision": "afdb27e31373a1a66374a9eb1cf9145f08dbb473",
@@ -24,6 +24,31 @@
         },
         "pinnedObservation": "A real third open failure left both earlier file descriptors owned and wrote no prompt bytes.",
         "modelReplay": "Failure at any of the three opens reaches Disabled after cleanup. An unsuccessful close preserves ownership, keeps writes disabled and permits explicit cleanup retry."
+      },
+      "verificationScope": "The verification object above is the retained historical receipt for the earlier retryable-ownership model. It does not qualify the corrected one-attempt ownership contract.",
+      "implementationQualification": {
+        "modelInputs": [
+          {
+            "path": "spec/core/logFiles.md",
+            "sha256": "e8a18e0afd7ab3e3ebe0e851bfc8a1822ce26d3d536aa77572042ecf20bbf753"
+          }
+        ],
+        "shellInput": {
+          "path": "packages/core/src/logger.vibe",
+          "sha256": "2bd250204bf61897ebbb69f83bb239dac7b12a5c108fbff1dfbcc1e9a39efdf4"
+        },
+        "proofObligations": {
+          "logFiles": 65
+        },
+        "modelProof": "All 65 obligations proved at the unchanged standard budget; no hand-written proof sidecar. Dafny verified 10 entities with zero errors and audit found zero findings.",
+        "modelReplay": "No rule broken in 12000 simulated traces. Generated TypeScript agreed with Quint on 405 traces; all four sometimes goals were reached and every guard was observed both allowing and refusing its event.",
+        "focusedQualification": "Fresh generation, strict generated TypeScript, core typecheck and affected logger/journey lint passed. The existing J12 real filesystem journey passed after extending its failed second/third open cases: partial handles are closed, sink files stay empty, repairing the path does not reactivate sinks, and memory logging remains usable.",
+        "nativeCloseFaultQualification": "Not run: no actual native close failure or descriptor-reuse fault was induced. The model proof and ordinary filesystem rollback journey do not establish native-close fault conformance.",
+        "ownershipBasis": "An unsuccessful native close does not establish a retryable descriptor lease. Numeric close capabilities are consumed once; uncertain release is retained as a receipt rather than a retryable handle.",
+        "primarySources": [
+          "https://github.com/nodejs/node/blob/v26.13.1/deps/uv/src/unix/fs.c",
+          "https://man7.org/linux/man-pages/man2/close.2.html"
+        ]
       }
     },
     {

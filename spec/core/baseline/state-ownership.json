@@ -8461,15 +8461,15 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Lazy file startup owns three descriptors and preserves partial-open failure, output warning and prompt sequence.",
+        "representation": "Lazy file startup projects acquired sink handles as logger-owned close capabilities. Failed initialization consumes each handle in reverse order; an unsuccessful close records uncertain release without a retryable numeric descriptor. Output warnings and prompt sequence remain modeled.",
         "model": {
           "spec": "spec/core/logFiles.md",
           "stateType": "LogFiles",
           "stateFields": [
             "phase",
-            "outputOpen",
-            "promptOpen",
-            "chatOpen",
+            "outputOwned",
+            "promptOwned",
+            "chatOwned",
             "exitHandler",
             "initializationFailed",
             "outputWarnings",
@@ -8483,17 +8483,16 @@
             "writeOutput",
             "writePrompt",
             "closeFailedAcquisition",
-            "retryFailedCleanup",
             "finishFailedAcquisition",
             "exitProcess"
           ],
-          "specSha256": "e011f9f7a793f45485747c27a743893482c85c083876f16c9e5a04f481ee548a"
+          "specSha256": "e8a18e0afd7ab3e3ebe0e851bfc8a1822ce26d3d536aa77572042ecf20bbf753"
         },
         "mappedStateFields": [
           "phase",
-          "outputOpen",
-          "promptOpen",
-          "chatOpen",
+          "outputOwned",
+          "promptOwned",
+          "chatOwned",
           "exitHandler",
           "outputWarnings",
           "outputWarned",
@@ -8530,15 +8529,15 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Lazy file startup owns three descriptors and preserves partial-open failure, output warning and prompt sequence.",
+        "representation": "Lazy file startup projects acquired sink handles as logger-owned close capabilities. Failed initialization consumes each handle in reverse order; an unsuccessful close records uncertain release without a retryable numeric descriptor. Output warnings and prompt sequence remain modeled.",
         "model": {
           "spec": "spec/core/logFiles.md",
           "stateType": "LogFiles",
           "stateFields": [
             "phase",
-            "outputOpen",
-            "promptOpen",
-            "chatOpen",
+            "outputOwned",
+            "promptOwned",
+            "chatOwned",
             "exitHandler",
             "initializationFailed",
             "outputWarnings",
@@ -8552,17 +8551,16 @@
             "writeOutput",
             "writePrompt",
             "closeFailedAcquisition",
-            "retryFailedCleanup",
             "finishFailedAcquisition",
             "exitProcess"
           ],
-          "specSha256": "e011f9f7a793f45485747c27a743893482c85c083876f16c9e5a04f481ee548a"
+          "specSha256": "e8a18e0afd7ab3e3ebe0e851bfc8a1822ce26d3d536aa77572042ecf20bbf753"
         },
         "mappedStateFields": [
           "phase",
-          "outputOpen",
-          "promptOpen",
-          "chatOpen",
+          "outputOwned",
+          "promptOwned",
+          "chatOwned",
           "exitHandler",
           "outputWarnings",
           "outputWarned",
@@ -8593,15 +8591,15 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Lazy file startup owns three descriptors and preserves partial-open failure, output warning and prompt sequence.",
+        "representation": "Lazy file startup projects acquired sink handles as logger-owned close capabilities. Failed initialization consumes each handle in reverse order; an unsuccessful close records uncertain release without a retryable numeric descriptor. Output warnings and prompt sequence remain modeled.",
         "model": {
           "spec": "spec/core/logFiles.md",
           "stateType": "LogFiles",
           "stateFields": [
             "phase",
-            "outputOpen",
-            "promptOpen",
-            "chatOpen",
+            "outputOwned",
+            "promptOwned",
+            "chatOwned",
             "exitHandler",
             "initializationFailed",
             "outputWarnings",
@@ -8615,17 +8613,16 @@
             "writeOutput",
             "writePrompt",
             "closeFailedAcquisition",
-            "retryFailedCleanup",
             "finishFailedAcquisition",
             "exitProcess"
           ],
-          "specSha256": "e011f9f7a793f45485747c27a743893482c85c083876f16c9e5a04f481ee548a"
+          "specSha256": "e8a18e0afd7ab3e3ebe0e851bfc8a1822ce26d3d536aa77572042ecf20bbf753"
         },
         "mappedStateFields": [
           "phase",
-          "outputOpen",
-          "promptOpen",
-          "chatOpen",
+          "outputOwned",
+          "promptOwned",
+          "chatOwned",
           "exitHandler",
           "outputWarnings",
           "outputWarned",
@@ -8662,15 +8659,15 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Lazy file startup owns three descriptors and preserves partial-open failure, output warning and prompt sequence.",
+        "representation": "Lazy file startup projects acquired sink handles as logger-owned close capabilities. Failed initialization consumes each handle in reverse order; an unsuccessful close records uncertain release without a retryable numeric descriptor. Output warnings and prompt sequence remain modeled.",
         "model": {
           "spec": "spec/core/logFiles.md",
           "stateType": "LogFiles",
           "stateFields": [
             "phase",
-            "outputOpen",
-            "promptOpen",
-            "chatOpen",
+            "outputOwned",
+            "promptOwned",
+            "chatOwned",
             "exitHandler",
             "initializationFailed",
             "outputWarnings",
@@ -8684,17 +8681,16 @@
             "writeOutput",
             "writePrompt",
             "closeFailedAcquisition",
-            "retryFailedCleanup",
             "finishFailedAcquisition",
             "exitProcess"
           ],
-          "specSha256": "e011f9f7a793f45485747c27a743893482c85c083876f16c9e5a04f481ee548a"
+          "specSha256": "e8a18e0afd7ab3e3ebe0e851bfc8a1822ce26d3d536aa77572042ecf20bbf753"
         },
         "mappedStateFields": [
           "phase",
-          "outputOpen",
-          "promptOpen",
-          "chatOpen",
+          "outputOwned",
+          "promptOwned",
+          "chatOwned",
           "exitHandler",
           "outputWarnings",
           "outputWarned",
@@ -8731,15 +8727,15 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Lazy file startup owns three descriptors and preserves partial-open failure, output warning and prompt sequence.",
+        "representation": "Lazy file startup projects acquired sink handles as logger-owned close capabilities. Failed initialization consumes each handle in reverse order; an unsuccessful close records uncertain release without a retryable numeric descriptor. Output warnings and prompt sequence remain modeled.",
         "model": {
           "spec": "spec/core/logFiles.md",
           "stateType": "LogFiles",
           "stateFields": [
             "phase",
-            "outputOpen",
-            "promptOpen",
-            "chatOpen",
+            "outputOwned",
+            "promptOwned",
+            "chatOwned",
             "exitHandler",
             "initializationFailed",
             "outputWarnings",
@@ -8753,17 +8749,16 @@
             "writeOutput",
             "writePrompt",
             "closeFailedAcquisition",
-            "retryFailedCleanup",
             "finishFailedAcquisition",
             "exitProcess"
           ],
-          "specSha256": "e011f9f7a793f45485747c27a743893482c85c083876f16c9e5a04f481ee548a"
+          "specSha256": "e8a18e0afd7ab3e3ebe0e851bfc8a1822ce26d3d536aa77572042ecf20bbf753"
         },
         "mappedStateFields": [
           "phase",
-          "outputOpen",
-          "promptOpen",
-          "chatOpen",
+          "outputOwned",
+          "promptOwned",
+          "chatOwned",
           "exitHandler",
           "outputWarnings",
           "outputWarned",
@@ -8794,15 +8789,15 @@
       "sourceClassification": "modeled-owned-state",
       "coverage": {
         "classification": "state-projection",
-        "representation": "Lazy file startup owns three descriptors and preserves partial-open failure, output warning and prompt sequence.",
+        "representation": "Lazy file startup projects acquired sink handles as logger-owned close capabilities. Failed initialization consumes each handle in reverse order; an unsuccessful close records uncertain release without a retryable numeric descriptor. Output warnings and prompt sequence remain modeled.",
         "model": {
           "spec": "spec/core/logFiles.md",
           "stateType": "LogFiles",
           "stateFields": [
             "phase",
-            "outputOpen",
-            "promptOpen",
-            "chatOpen",
+            "outputOwned",
+            "promptOwned",
+            "chatOwned",
             "exitHandler",
             "initializationFailed",
             "outputWarnings",
@@ -8816,17 +8811,16 @@
             "writeOutput",
             "writePrompt",
             "closeFailedAcquisition",
-            "retryFailedCleanup",
             "finishFailedAcquisition",
             "exitProcess"
           ],
-          "specSha256": "e011f9f7a793f45485747c27a743893482c85c083876f16c9e5a04f481ee548a"
+          "specSha256": "e8a18e0afd7ab3e3ebe0e851bfc8a1822ce26d3d536aa77572042ecf20bbf753"
         },
         "mappedStateFields": [
           "phase",
-          "outputOpen",
-          "promptOpen",
-          "chatOpen",
+          "outputOwned",
+          "promptOwned",
+          "chatOwned",
           "exitHandler",
           "outputWarnings",
           "outputWarned",

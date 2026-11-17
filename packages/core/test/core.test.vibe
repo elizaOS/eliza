@@ -3633,10 +3633,10 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
     return try Effect.try(() => JSON.parse(out.stdout) as string[])
   }
   const remove = (target: string) => host(() => removeScratch(target))
-  const loggingChild = (dir: string, env: Record<string, string | undefined>) => effect {
+  const loggingChild = (dir: string, env: Record<string, string | undefined>, blockedSink: "" | "prompts.log" | "chat.log") => effect {
     const script = `
       import fs from "node:fs"
-      const [dir] = process.argv.slice(1)
+      const [dir, blockedSink] = process.argv.slice(1)
       const { logger, logPrompt, logChatIn, logChatOut, recentLogs } = await import(${JSON.stringify(core)})
       const afterImport = fs.readdirSync(dir).sort()
       const before = fs.readdirSync("/dev/fd").length
@@ -3647,9 +3647,17 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
       const chatIn = logChatIn({ agentName: "Nova", agentId: "agent-j12", roomId: "room-j12-0001", messageId: "message-j12", text: "hello there", source: "test" })
       const chatOut = logChatOut({ agentName: "Nova", agentId: "agent-j12", roomId: "room-j12-0001", action: "REPLY", text: "hi back" })
       const kept = recentLogs().includes("j12 output")
-      console.log(JSON.stringify({ afterImport, afterFirst, opened, slug, chatIn, chatOut, kept }))
+      let afterRepair
+      if (blockedSink) {
+        fs.rmSync(dir + "/" + blockedSink, { recursive: true })
+        const beforeRepair = fs.readdirSync("/dev/fd").length
+        logger.info("j12 after failed acquisition")
+        const slug = logPrompt("TEXT_SMALL", "j12 prompt after repair", { agentName: "Nova" })
+        afterRepair = { opened: fs.readdirSync("/dev/fd").length - beforeRepair, slug, kept: recentLogs().includes("j12 after failed acquisition") }
+      }
+      console.log(JSON.stringify({ afterImport, afterFirst, opened, slug, chatIn, chatOut, kept, afterRepair }))
     `
-    const out = try host(() => runNode({ script, args: [dir], vibe: true, env: { LOG_JSON_FORMAT: undefined, LOG_TIMESTAMPS: undefined, NO_COLOR: "1", FORCE_COLOR: "0", ...env } }))
+    const out = try host(() => runNode({ script, args: [dir, blockedSink], vibe: true, env: { LOG_JSON_FORMAT: undefined, LOG_TIMESTAMPS: undefined, NO_COLOR: "1", FORCE_COLOR: "0", ...env } }))
     const lines = out.stdout.trim().split("\n")
     return { status: out.status, report: try Effect.try(() => JSON.parse(lines[lines.length - 1] ?? "") as unknown) }
   }
@@ -3750,21 +3758,23 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
   try host(() => writeJsonAtomic(`${unwritable}/plain`, {}))
   const silentDir = try scratch("eliza-core-j12-silent")
   const children = try forEach([
-    [logs, { LOG_FILE: `${logs}/output.log`, LOG_LEVEL: "info" }],
-    [promptBlocked, { LOG_FILE: `${promptBlocked}/output.log`, LOG_LEVEL: "info" }],
-    [chatBlocked, { LOG_FILE: `${chatBlocked}/output.log`, LOG_LEVEL: "info" }],
-    [unwritable, { LOG_FILE: `${unwritable}/plain/logs/output.log`, LOG_LEVEL: "info" }],
-    [silentDir, { LOG_FILE: `${silentDir}/output.log`, LOG_LEVEL: "silent" }],
-  ] as const, ([childDir, env]) => loggingChild(childDir, env), { concurrency: "unbounded" })
+    [logs, { LOG_FILE: `${logs}/output.log`, LOG_LEVEL: "info" }, ""],
+    [promptBlocked, { LOG_FILE: `${promptBlocked}/output.log`, LOG_LEVEL: "info" }, "prompts.log"],
+    [chatBlocked, { LOG_FILE: `${chatBlocked}/output.log`, LOG_LEVEL: "info" }, "chat.log"],
+    [unwritable, { LOG_FILE: `${unwritable}/plain/logs/output.log`, LOG_LEVEL: "info" }, ""],
+    [silentDir, { LOG_FILE: `${silentDir}/output.log`, LOG_LEVEL: "silent" }, ""],
+  ] as const, ([childDir, env, blockedSink]) => loggingChild(childDir, env, blockedSink), { concurrency: "unbounded" })
   const [opened, promptChild, chatChild, failed, silent] = children
   const files = Object.fromEntries(Object.entries(try inspect(logs)).map(([name, entry]) => [name, entry === "directory" ? entry : { mode: entry.mode, text: entry.text.replace(time, "<time>") }]))
   const order = [
     promptChild.status,
     (promptChild.report as { opened?: number }).opened,
-    Object.keys(try inspect(promptBlocked)),
+    try inspect(promptBlocked),
+    (promptChild.report as { afterRepair?: unknown }).afterRepair,
     chatChild.status,
     (chatChild.report as { opened?: number }).opened,
-    Object.keys(try inspect(chatBlocked)),
+    try inspect(chatBlocked),
+    (chatChild.report as { afterRepair?: unknown }).afterRepair,
   ]
   const quiet = [failed, Object.keys(try inspect(unwritable)), silent, Object.keys(try inspect(silentDir))]
 
@@ -3778,7 +3788,10 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
       "output.log": { mode: "600", text: "seed\n<time> [INFO    ] j12 output (apiKey=[REDACTED])\n" },
       "prompts.log": { mode: "600", text: `${promptHeader}j12 prompt body\n${"=".repeat(80)}\n\n` },
     },
-    order: [0, 0, ["output.log", "prompts.log"], 0, 0, ["chat.log", "output.log", "prompts.log"]],
+    order: [
+      0, 0, { "output.log": { mode: "600", text: "" } }, { opened: 0, slug: "", kept: true },
+      0, 0, { "output.log": { mode: "600", text: "" }, "prompts.log": { mode: "600", text: "" } }, { opened: 0, slug: "", kept: true },
+    ],
     quiet: [
       { status: 0, report: { afterImport: ["plain"], afterFirst: ["plain"], opened: 0, slug: "", chatIn, chatOut, kept: true } },
       ["plain"],

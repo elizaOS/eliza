@@ -324,9 +324,8 @@ effect function abandonSinks() {
   try sinks.step({ type: "openNext", succeeded: false }, unchanged)
   const opened = try sinks.read((_, fds) => fds)
   for (const fd of [...opened].reverse()) {
-    const closed = closeDescriptor(fd)
-    try sinks.step({ type: "closeFailedAcquisition", closed }, (fds) => [undefined, closed ? fds.slice(0, -1) : fds] as const)
-    if (!closed) return
+    const acknowledged = closeDescriptor(fd)
+    try sinks.step({ type: "closeFailedAcquisition", acknowledged }, (fds) => [undefined, fds.slice(0, -1)] as const)
   }
   try sinks.step({ type: "finishFailedAcquisition" }, unchanged)
 }
