@@ -1,0 +1,26 @@
+// spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"
+export const migrations = [
+  `CREATE TABLE device_owner (
+    singleton boolean PRIMARY KEY CHECK (singleton),
+    agent_id uuid NOT NULL,
+    user_id text CHECK (length(user_id) > 0),
+    organization_id text CHECK (length(organization_id) > 0),
+    embedding_dimensions integer NOT NULL CHECK (embedding_dimensions >= 0),
+    version integer NOT NULL CHECK (version > 0),
+    CHECK ((user_id IS NULL) = (organization_id IS NULL))
+  );
+  CREATE TABLE device_records (
+    collection text NOT NULL CHECK (collection IN ('agents', 'entities', 'worlds', 'rooms', 'participants', 'memories', 'logs', 'cache', 'components', 'relationships', 'tasks')),
+    key text NOT NULL,
+    data jsonb NOT NULL,
+    room_id text GENERATED ALWAYS AS (data->>'roomId') STORED,
+    world_id text GENERATED ALWAYS AS (data->>'worldId') STORED,
+    table_name text,
+    created_at bigint NOT NULL,
+    PRIMARY KEY (collection, key),
+    CHECK ((collection = 'memories') = (table_name IS NOT NULL))
+  );
+  CREATE INDEX device_records_room ON device_records (collection, room_id, created_at, key);
+  CREATE INDEX device_records_world ON device_records (collection, world_id, created_at, key);
+  CREATE INDEX device_records_scope ON device_records (collection, table_name, created_at, key);`,
+] as const
