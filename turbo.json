@@ -347,6 +347,14 @@
       "cache": false,
       "persistent": true
     },
+    "vibestack-studio#dev": {
+      "dependsOn": [
+        "gen",
+        "^build"
+      ],
+      "cache": false,
+      "persistent": true
+    },
     "vibestack-studio#build": {
       "dependsOn": [
         "gen",
