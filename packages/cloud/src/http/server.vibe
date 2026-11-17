@@ -1,0 +1,127 @@
+// spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"; spec/cloud/identity/requestAuth.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/shared/types.md, "Story: Speak one refusal language"
+import { allowedHeaders, corsAnswer, exposedHeaders } from "../../gen/cloud__deployment.effect.vibe"
+import { planRpm } from "../billing/plans.vibe"
+import { readPolicy } from "../billing/policy.vibe"
+import { capabilityEnabled, Deployment, type EnvironmentProfile } from "../profile/profile.vibe"
+import { admit, minute } from "../shared/rate-limit.vibe"
+import { newId } from "../shared/sealing.vibe"
+import { Store } from "../store/store.vibe"
+import { refusalResponse, refused, Refused } from "./refusal.vibe"
+import { authenticate, type Caller } from "./request-auth.vibe"
+import { defaultMaxBodyBytes, matchRoute, type Area, type CloudContext, type Route, type Sweep } from "./routes.vibe"
+import { area as foundation } from "./routes/foundation.vibe"
+import { area as identity } from "./routes/identity.vibe"
+import { area as nativeClients } from "./routes/native-clients.vibe"
+import { area as checkout } from "./routes/checkout.vibe"
+import { area as billing } from "./routes/billing.vibe"
+import { area as inference } from "./routes/inference.vibe"
+import { area as speech } from "./routes/speech.vibe"
+import { area as maps } from "./routes/maps.vibe"
+import { area as google } from "./routes/google.vibe"
+import { area as operator } from "./routes/operator.vibe"
+
+module node {
+  import { createServer } from "node:http"
+  import { NodeHttpServer } from "@effect/platform-node"
+  export function listening(port: number, host: string) {
+    return NodeHttpServer.layer(() => createServer(), { port, host, gracefulShutdownTimeout: 5_000 })
+  }
+}
+import { listening } from node
+
+export { listening }
+
+export const areas: ReadonlyArray<Area> = [foundation, identity, nativeClients, checkout, billing, inference, speech, maps, google, operator]
+
+const requestIdPattern = /^[A-Za-z0-9._:-]{8,128}$/
+const methods = "GET, POST, PATCH, DELETE, OPTIONS"
+
+function corsHeaders(origin: string | undefined, settings: EnvironmentProfile): Readonly<Record<string, string>> {
+  if (origin === undefined) return {}
+  const answer = corsAnswer({ firstParty: settings.firstPartyOrigins.includes(origin) })
+  if (answer.allowed !== "ReflectedOrigin") return { vary: "Origin" }
+  return {
+    vary: "Origin",
+    "access-control-allow-origin": origin,
+    ...(answer.credentials ? { "access-control-allow-credentials": "true" } : {}),
+    "access-control-expose-headers": exposedHeaders.join(", ")
+  }
+}
+
+function preflightHeaders(origin: string | undefined, settings: EnvironmentProfile): Readonly<Record<string, string>> {
+  const cors = corsHeaders(origin, settings)
+  if (cors["access-control-allow-origin"] === undefined) return cors
+  return { ...cors, "access-control-allow-methods": methods, "access-control-allow-headers": allowedHeaders.join(", "), "access-control-max-age": "600" }
+}
+
+function isRefused(failure: { readonly _tag: string }): failure is Refused {
+  return failure instanceof Refused
+}
+
+effect function admitPlanRate(route: Route, caller: Caller, now: number): void!Refused!Store {
+  if (route.rateClass === undefined || caller.kind === "anonymous") return
+  const store = try Store
+  const policy = try store.transaction((tx) => readPolicy(tx, caller.organizationId, now)) catch () => undefined
+  if (policy === undefined) throw refused("ServiceUnavailable", "NoReason", now + 5000)
+  try admit({ subject: caller.organizationId, scope: `plan-${route.rateClass}`, limit: planRpm(policy.planKey, route.rateClass), widthMs: minute })
+}
+
+effect function dispatch(routes: ReadonlyArray<Route>, requestId: string, now: number): HttpServerResponse.HttpServerResponse!Refused!(HttpServerRequest.HttpServerRequest | CloudContext) {
+  const request = try HttpServerRequest.HttpServerRequest
+  const deployment = try Deployment
+  const url = new URL(request.url, deployment.settings.api)
+  const matched = matchRoute(routes, request.method, url.pathname)
+  if (matched.kind !== "route") throw refused("NotFound")
+  const { route, params } = matched
+  if (route.capability !== undefined && !capabilityEnabled(deployment.settings, route.capability)) throw refused("CapabilityUnavailable")
+  const limit = route.maxBodyBytes ?? defaultMaxBodyBytes
+  const declared = Number(request.headers["content-length"] ?? "0")
+  if (!Number.isSafeInteger(declared) || declared > limit) throw refused("ContentTooLarge")
+  const caller = try authenticate(request.headers.authorization, route.auth) catch effect (failure) => match (failure) {
+    when Refused: throw failure;
+    default: throw refused("ServiceUnavailable", "NoReason", now + 5000);
+  }
+  try admitPlanRate(route, caller, now)
+  const response = try provideService(
+    route.handler({ request, params, query: url.searchParams, caller, requestId, now }),
+    HttpServerRequest.MaxBodySize,
+    ByteSize.bytes(limit)
+  ) catch effect (failure) => {
+    if (isRefused(failure)) throw failure
+    try annotateLogs(logError("a route failed"), { requestId, path: route.path, failure: failure._tag })
+    throw refused("ServiceUnavailable", "NoReason", now + 5000)
+  }
+  return response
+}
+
+export effect function respond(routes: ReadonlyArray<Route>): HttpServerResponse.HttpServerResponse!!(HttpServerRequest.HttpServerRequest | CloudContext) {
+  const request = try HttpServerRequest.HttpServerRequest
+  const deployment = try Deployment
+  const now = try Clock.currentTimeMillis
+  const given = request.headers["x-request-id"]
+  const requestId = given !== undefined && requestIdPattern.test(given) ? given : newId()
+  const origin = request.headers.origin
+  const response = request.method === "OPTIONS" && request.headers["access-control-request-method"] !== undefined
+    ? HttpServerResponse.empty({ status: 204, headers: preflightHeaders(origin, deployment.settings) })
+    : HttpServerResponse.setHeaders(
+        try dispatch(routes, requestId, now) catch (failure) => refusalResponse(failure.refusal, now),
+        corsHeaders(origin, deployment.settings)
+      )
+  return HttpServerResponse.setHeader(response, "x-request-id", requestId)
+}
+
+export function cloudServer(served: ReadonlyArray<Area> = areas) {
+  return HttpServer.serve(respond(served.flatMap((each) => each.routes)))
+}
+
+effect function runSweep(sweep: Sweep): void!!CloudContext {
+  try repeat(sweep.run, Schedule.spaced(Duration.millis(sweep.everyMs)))
+}
+
+export function sweepsLayer(served: ReadonlyArray<Area> = areas): Layer.Layer<never, never, CloudContext> {
+  return Layer.effectDiscard(effect {
+    for (const sweep of served.flatMap((each) => each.sweeps)) {
+      fork.scoped runSweep(sweep)
+    }
+  })
+}

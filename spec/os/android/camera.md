@@ -143,6 +143,7 @@ pure def reserveWork(s: CameraView, work: Work): CameraView =
 pure def canFinishWork(s: CameraView): bool = s.work == CameraControl or s.work == CameraCapture
 pure def finishWork(s: CameraView): CameraView = { ...s, work: CameraIdle }
 pure val workValues = Set(CameraControl, CameraCapture, RecordingStarting)
+pure val weight_reserveWork = 2
 pure def alwaysWorkDoesNotComeFromTheFuture(s: CameraView): bool = s.workEpoch >= 0 and s.workEpoch <= s.epoch
 pure def alwaysPreviewWorkHasTheCurrentReadyPreview(s: CameraView): bool =
   (s.work == CameraControl or s.work == RecordingActive) implies (s.phase == PreviewReady and s.foreground and s.workEpoch == s.epoch)

@@ -63,13 +63,16 @@ export service Deployment {
 }
 
 export function deploymentLayer(profile: CloudProfile, environment: CloudEnvironment): Layer.Layer<Deployment> {
-  return Layer.succeed(Deployment, {
-    profile,
-    environment,
-    settings: profile.environments[environment],
-    secret: effect (name: string) => {
-      const value = try Config.Redacted(name) catch effect () => { throw new SecretMissing({ name }) }
-      return Redacted.value(value)
+  return Layer.effect(Deployment, effect {
+    const provider = try ConfigProvider.ConfigProvider
+    return {
+      profile,
+      environment,
+      settings: profile.environments[environment],
+      secret: effect (name: string) => {
+        const value = try provideService(Config.Redacted(name), ConfigProvider.ConfigProvider, provider) catch effect () => { throw new SecretMissing({ name }) }
+        return Redacted.value(value)
+      }
     }
   })
 }

@@ -1,16 +1,26 @@
 # Agent bundle
 
-What a product ships to run the agent on a device: one ESM bundle for Node 26
-(pure JavaScript and WASM), the PGlite assets beside it, a PGlite snapshot
-already migrated to the bundle's schema, and a manifest. `buildAgentBundle`
-of `@elizaos/agent/bundle` makes them from the product's plugins and its
-product plugin; `readBundleManifest` reads the manifest back. The build
-(bundler, digests, the snapshot child process) is the shell; this spec states
-which builds may succeed and which manifests may be read. Staging the Node
-runtime per processor type, the staged-file inventory and admitting the
-bundle at start belong to os, which reads this manifest. Develop's sources
+What a product ships to run the agent on a device: `agent.mjs`, one ESM
+bundle for Node 26 (pure JavaScript and WASM), the PGlite assets beside it, a
+PGlite snapshot already migrated to the bundle's schema, and a manifest.
+`buildAgentBundle({plugins, productPlugin, outDir, sourceCommit})` of
+`@elizaos/agent/bundle` makes them; `readBundleManifest(dir)` reads the
+manifest back. The build (bundler, digests, the snapshot child process, the
+load smoke) is the shell; this spec states which builds may succeed and which
+manifests may be read. Staging the Node runtime per processor type, the
+staged-file inventory and admitting the bundle at start belong to os, which
+reads this manifest and imports this library's file rules. Develop's sources
 are `packages/agent/scripts/build-mobile-bundle.ts` and
 `mobile-bundle-dependencies.ts`, and the Quint model `tooling-mobile-build`.
+
+The manifest is JSON written and read by `manifest.schema.vibe` with these
+keys: `schema`, `bundleSha256`, `sourceCommit`, `node`, `schemaVersion`,
+`packages: [{name, version, sha256}]`, `plugins`, `productPlugin?`,
+`localInference`, `workflowWorkerSha256?` and `actions: [{name, umbrella?}]`.
+The variants below model the optional keys: `NoProductPlugin` and `NoWorker`
+are an absent key, `NamedProductPlugin(p)` is `productPlugin: p.name`,
+`WorkerSha256(w)` is `workflowWorkerSha256: w.sha256`, `TopLevel` is
+`{name}` and `PromotedFrom(u)` is `{name, umbrella: u.umbrella}`.
 
 ## Story: Ship one agent bundle whose contents and actions are known
 
@@ -18,21 +28,35 @@ are `packages/agent/scripts/build-mobile-bundle.ts` and
 > manifest that names exactly the packages, plugins and actions it carries,
 > so that the device runs what I built and nothing I did not ask for.
 
-### An input ships a package only when it emitted bytes from a named package inside the source tree
+### A build is refused unless every input that emitted bytes comes from a named package inside the source root, and at least one did
 
-Each bundler input that emitted bytes belongs to one package, whose resolved
-path must lie inside the tree being built and whose `package.json` must name
-it with a version; the package's row carries that manifest's SHA-256. An
-input that emitted nothing contributes nothing. Any other input refuses the
-build, and so does a build in which no package contributed.
+The source root is the consumer's checkout, which holds both the vendored
+agent tree and the product plugin's package. Each bundler input that emitted
+bytes belongs to one package whose resolved path lies inside that root and
+whose `package.json` names it with a version; the package's row carries that
+`package.json`'s SHA-256. An input that emitted nothing contributes nothing.
 
 ```quint
+import launch.* from "../host/launch"
+type Build = { plugins: List[str], productPlugin: ProductPlugin, inputs: List[BundleInput], excluded: List[str], files: List[PayloadFile], smoke: LoadSmoke, workflowWorker: WorkerDigest, schemaVersion: int, snapshotSchemaVersion: int }
+type BuildVerdict = Built | InputRefused | NoPackage | ExcludedPackage | ForbiddenFile | AssetMissing | SmokeFailed | PluginMissing | ActionsMalformed | SnapshotBehind
+pure def buildVerdict(b: Build): BuildVerdict =
+  if (b.inputs.some(i => inputDisposition(i) == RefusesBuild)) InputRefused
+  else if (packageRows(b).length() == 0) NoPackage
+  else if (contributesExcluded(b)) ExcludedPackage
+  else if (not(b.files.every(f => fileAdmitted(carriesLocalInference(b), f)))) ForbiddenFile
+  else if (not(requiredFilesPresent(b))) AssetMissing
+  else if (b.smoke == DidNotBoot) SmokeFailed
+  else if (not(pluginsShipped(b))) PluginMissing
+  else if (not(actionsWellFormed(registeredActions(b)))) ActionsMalformed
+  else if (not(snapshotCurrent(b))) SnapshotBehind
+  else Built
 type PackageIdentity = Unreadable | Identified({ name: str, version: str, manifestSha256: str })
 type BundleInput = { emittedBytes: int, insideSource: bool, identity: PackageIdentity }
 type PackageRow = { name: str, version: str, sha256: str }
 type InputDisposition = Ignored | Contributes | RefusesBuild
 pure def namedIdentity(identity: PackageIdentity): bool =
-  match identity { | Identified(p) => p.name != "" and p.version != "" | Unreadable => false }
+  match identity { | Identified(p) => p.name != "" and p.version != "" and p.manifestSha256 != "" | Unreadable => false }
 pure def inputDisposition(i: BundleInput): InputDisposition =
   if (i.emittedBytes <= 0) Ignored
   else if (not(i.insideSource) or not(namedIdentity(i.identity))) RefusesBuild
@@ -41,10 +65,40 @@ pure def rowOf(i: BundleInput): PackageRow = { val identity = i.identity
   match identity { | Identified(p) => { name: p.name, version: p.version, sha256: p.manifestSha256 } | Unreadable => { name: "", version: "", sha256: "" } } }
 pure def packageRows(b: Build): List[PackageRow] =
   b.inputs.foldl(List(), (rows, i) => if (inputDisposition(i) == Contributes and not(rows.includes(rowOf(i)))) rows.append(rowOf(i)) else rows)
-pure def lawEscapingOrUnnamedInputRefusesTheBuild(b: Build): bool =
-  b.inputs.some(i => i.emittedBytes > 0 and (not(i.insideSource) or not(namedIdentity(i.identity)))) implies buildVerdict(b) != Built
-pure def lawBuiltBundleHasAPackage(b: Build): bool =
-  buildVerdict(b) == Built implies packageRows(b).length() > 0
+pure val bValues = {
+  val core = { emittedBytes: 8, insideSource: true, identity: Identified({ name: "core", version: "1", manifestSha256: "h1" }) }
+  val product = { emittedBytes: 4, insideSource: true, identity: Identified({ name: "product", version: "1", manifestSha256: "h2" }) }
+  val assets = List({ name: "agent.mjs", extension: "mjs", directories: List() }, { name: "pglite.wasm", extension: "wasm", directories: List() }, { name: "pglite.data", extension: "data", directories: List() }, { name: "pglite-migrated.bin", extension: "bin", directories: List() })
+  val manage = { name: "MANAGE", origin: TopLevel }
+  val ok: Build = { plugins: List(), productPlugin: NamedProductPlugin({ name: "product" }), inputs: List(core, product), excluded: List("canvas"), files: assets, smoke: Booted({ loaded: List("product"), registered: List(manage, { name: "MANAGE_CREATE", origin: PromotedFrom({ umbrella: "MANAGE" }) }) }), workflowWorker: NoWorker, schemaVersion: 2, snapshotSchemaVersion: 2 }
+  val local = { emittedBytes: 6, insideSource: true, identity: Identified({ name: "@elizaos/plugin-local-inference", version: "1", manifestSha256: "h4" }) }
+  val workflow = { emittedBytes: 6, insideSource: true, identity: Identified({ name: "@elizaos/plugin-workflow", version: "1", manifestSha256: "h5" }) }
+  Set(ok,
+    { ...ok, inputs: List(core, product, { emittedBytes: 0, insideSource: false, identity: Unreadable }) },
+    { ...ok, inputs: List(core, product, { ...core, insideSource: false }) },
+    { ...ok, inputs: List(core, product, { ...core, identity: Unreadable }) },
+    { ...ok, inputs: List(core, product, { ...core, identity: Identified({ name: "", version: "1", manifestSha256: "h3" }) }) },
+    { ...ok, inputs: List(core, product, { ...core, identity: Identified({ name: "x", version: "1", manifestSha256: "" }) }) },
+    { ...ok, inputs: List(core, product, { ...core, identity: Identified({ name: "canvas", version: "2", manifestSha256: "h6" }) }) },
+    { ...ok, inputs: List() },
+    { ...ok, inputs: List(core) },
+    { ...ok, files: assets.append({ name: "embed.gguf", extension: "gguf", directories: List("models") }) },
+    { ...ok, files: assets.append({ name: "addon.node", extension: "node", directories: List("lib") }) },
+    { ...ok, files: assets.append({ name: "libggml.so.1", extension: "so", directories: List("lib") }) },
+    { ...ok, files: assets.append({ name: "llama-server", extension: "", directories: List("bin") }) },
+    { ...ok, files: assets.append({ name: "voice.json", extension: "json", directories: List("tts") }) },
+    { ...ok, plugins: List("@elizaos/plugin-local-inference"), inputs: List(core, product, local), smoke: Booted({ loaded: List("@elizaos/plugin-local-inference", "product"), registered: List(manage) }), files: assets.append({ name: "libggml.so", extension: "so", directories: List("lib") }) },
+    { ...ok, plugins: List("@elizaos/plugin-workflow"), inputs: List(core, product, workflow), smoke: Booted({ loaded: List("@elizaos/plugin-workflow", "product"), registered: List(manage) }), workflowWorker: WorkerSha256({ sha256: "w1" }) },
+    { ...ok, plugins: List("@elizaos/plugin-workflow"), inputs: List(core, product, workflow) },
+    { ...ok, files: assets.select(f => f.name != "pglite.data") },
+    { ...ok, smoke: DidNotBoot },
+    { ...ok, smoke: Booted({ loaded: List(), registered: List(manage) }) },
+    { ...ok, smoke: Booted({ loaded: List("product"), registered: List({ name: "MANAGE_CREATE", origin: PromotedFrom({ umbrella: "MANAGE" }) }) }) },
+    { ...ok, smoke: Booted({ loaded: List("product"), registered: List(manage, manage) }) },
+    { ...ok, smoke: Booted({ loaded: List("product"), registered: List({ name: "", origin: TopLevel }) }) },
+    { ...ok, snapshotSchemaVersion: 1 })
+}
+pure val nameValues = Set("canvas", "core")
 ```
 
 ### An excluded package never ships
@@ -54,119 +108,117 @@ or a desktop host. When one of them still emitted bytes, the build fails.
 
 ```quint
 pure def contributesExcluded(b: Build): bool =
-  b.inputs.some(i => inputDisposition(i) == Contributes and b.excluded.contains(rowOf(i).name))
+  b.inputs.some(i => inputDisposition(i) == Contributes and b.excluded.includes(rowOf(i).name))
 pure def lawExcludedPackageNeverShips(b: Build, name: str): bool =
-  (buildVerdict(b) == Built and b.excluded.contains(name)) implies not(packageRows(b).some(r => r.name == name))
+  (buildVerdict(b) == Built and b.excluded.includes(name)) implies not(packageRows(b).some(r => r.name == name))
 ```
 
 ### No bundle carries a model weight file or a Node addon
 
+A file with extension `gguf`, `onnx`, `ort`, `tflite`, `safetensors`, `pte`,
+`task` or `node` refuses the build. A file's extension is its lower-cased
+last suffix, except that a shared library's version suffixes are skipped:
+`libggml.so.1.2` has extension `so`. This list is the one definition; os
+imports it for its cloud-only payload check.
+
 ```quint
-type PayloadFile = { name: str, extension: str, directories: Set[str] }
+type PayloadFile = { name: str, extension: str, directories: List[str] }
 pure val modelWeightExtensions = Set("gguf", "onnx", "ort", "tflite", "safetensors", "pte", "task")
-pure def lawNoBuiltBundleCarriesWeightsOrAddons(b: Build): bool =
-  buildVerdict(b) == Built implies b.files.every(f => not(modelWeightExtensions.contains(f.extension)) and f.extension != "node")
 ```
 
-### A bundle without local inference carries no native library, local inference program or speech or model directory
+### A bundle without the local inference plugin carries no shared library, local inference program or speech or model directory
 
-The `localInference` plugin is the only way local inference reaches a
-bundle; without it the bundle is cloud-only: no `.so` library, no local
-inference server program, and nothing under a `tts`, `asr`, `model` or
-`models` directory.
+Local inference reaches a bundle only through `@elizaos/plugin-local-inference`
+in `plugins`; without it the bundle is cloud-only: no `.so` library, no
+`llama-server` or `llama-omnivoice-server`, and nothing under a `tts`, `asr`,
+`model` or `models` directory. The manifest's `localInference` says which.
 
 ```quint
+pure val localInferencePlugin = "@elizaos/plugin-local-inference"
 pure val localInferenceDirectories = Set("tts", "asr", "model", "models")
 pure val localInferencePrograms = Set("llama-server", "llama-omnivoice-server")
+pure def carriesLocalInference(b: Build): bool = b.plugins.includes(localInferencePlugin)
 pure def fileAdmitted(localInference: bool, f: PayloadFile): bool =
   not(modelWeightExtensions.contains(f.extension)) and f.extension != "node" and
-  (localInference or (f.extension != "so" and not(localInferencePrograms.contains(f.name)) and f.directories.intersect(localInferenceDirectories).size() == 0))
-pure def lawCloudOnlyBundleCarriesNoLocalInference(b: Build): bool =
-  (buildVerdict(b) == Built and not(b.localInference)) implies
-    b.files.every(f => f.extension != "so" and not(localInferencePrograms.contains(f.name)) and f.directories.intersect(localInferenceDirectories).size() == 0)
+  (localInference or (f.extension != "so" and not(localInferencePrograms.contains(f.name)) and not(f.directories.some(d => localInferenceDirectories.contains(d)))))
 ```
 
-### A bundle is built only when the load smoke booted it and every promoted action it registered names a listed umbrella
+### A built bundle carries its entry file, the PGlite assets and the migrated snapshot
 
-The load smoke boots the finished bundle in memory with model backend
-`none`. The actions it registered are the manifest's `actions`, each
-promoted subaction with its umbrella. A smoke that did not boot, a name
-registered twice, or a promoted action whose umbrella is not a listed
-top-level action fails the build.
+```quint
+pure val requiredFiles = Set("agent.mjs", "pglite.wasm", "pglite.data", "pglite-migrated.bin")
+pure def requiredFilesPresent(b: Build): bool =
+  requiredFiles.forall(n => b.files.some(f => f.name == n and f.directories == List()))
+```
+
+### A bundle is built only when every listed plugin and the product plugin ship as packages and the load smoke loaded them
+
+The load smoke boots the finished bundle in memory with model backend `none`
+and loads every listed plugin, the agent's built-in modules and the product
+plugin, so its registered actions are every action a launch can register.
+
+```quint
+pure def bundledPlugins(b: Build): List[str] = { val product = b.productPlugin
+  match product { | NamedProductPlugin(p) => b.plugins.append(p.name) | NoProductPlugin => b.plugins } }
+pure def loadedPlugins(b: Build): List[str] = { val smoke = b.smoke
+  match smoke { | Booted(x) => x.loaded | DidNotBoot => List() } }
+pure def pluginsShipped(b: Build): bool =
+  bundledPlugins(b).every(n => packageRows(b).some(r => r.name == n) and loadedPlugins(b).includes(n))
+```
+
+### A bundle is built only when its load smoke booted and registered each action once under a non-empty name, each promoted action under a listed top-level umbrella
+
+The registered actions are the manifest's `actions`.
 
 ```quint
 type ActionOrigin = TopLevel | PromotedFrom({ umbrella: str })
 type ListedAction = { name: str, origin: ActionOrigin }
-type LoadSmoke = DidNotBoot | Booted({ registered: List[ListedAction] })
+type LoadSmoke = DidNotBoot | Booted({ loaded: List[str], registered: List[ListedAction] })
 pure def registeredActions(b: Build): List[ListedAction] = { val smoke = b.smoke
   match smoke { | Booted(x) => x.registered | DidNotBoot => List() } }
 pure def umbrellaListed(actions: List[ListedAction], a: ListedAction): bool = { val origin = a.origin
   match origin { | PromotedFrom(p) => actions.some(u => u.name == p.umbrella and u.origin == TopLevel) | TopLevel => true } }
 pure def actionsWellFormed(actions: List[ListedAction]): bool =
   actions.every(a => a.name != "" and actions.select(o => o.name == a.name).length() == 1 and umbrellaListed(actions, a))
-pure def lawBuiltOnlyAfterTheSmokeBooted(b: Build): bool =
-  buildVerdict(b) == Built implies (b.smoke != DidNotBoot and actionsWellFormed(registeredActions(b)))
 ```
 
-### The bundled snapshot is migrated to the bundle's schema version
+### A bundle is built only when its snapshot is migrated to the bundle's schema version
 
 `storage/database.md` seeds an empty data directory from the snapshot only
-at the same schema version, so a build whose snapshot stopped at another
-version fails.
+at the same schema version.
 
 ```quint
-type Build = { inputs: List[BundleInput], excluded: Set[str], files: List[PayloadFile], localInference: bool, smoke: LoadSmoke, schemaVersion: int, snapshotSchemaVersion: int }
-type BuildVerdict = Built | InputRefused | NoPackage | ExcludedPackage | ForbiddenFile | SmokeFailed | ActionsMalformed | SnapshotBehind
-pure def buildVerdict(b: Build): BuildVerdict =
-  if (b.inputs.some(i => inputDisposition(i) == RefusesBuild)) InputRefused
-  else if (packageRows(b).length() == 0) NoPackage
-  else if (contributesExcluded(b)) ExcludedPackage
-  else if (not(b.files.every(f => fileAdmitted(b.localInference, f)))) ForbiddenFile
-  else if (b.smoke == DidNotBoot) SmokeFailed
-  else if (not(actionsWellFormed(registeredActions(b)))) ActionsMalformed
-  else if (b.snapshotSchemaVersion != b.schemaVersion) SnapshotBehind
-  else Built
-pure def lawBuiltSnapshotMatchesTheSchema(b: Build): bool =
-  buildVerdict(b) == Built implies b.snapshotSchemaVersion == b.schemaVersion
-pure val goodInput: BundleInput = { emittedBytes: 8, insideSource: true, identity: Identified({ name: "core", version: "1", manifestSha256: "h1" }) }
-pure val goodBuild: Build = { inputs: List(goodInput), excluded: Set("canvas"), files: List({ name: "agent.mjs", extension: "mjs", directories: Set() }), localInference: false, smoke: Booted({ registered: List({ name: "MANAGE", origin: TopLevel }, { name: "MANAGE_CREATE", origin: PromotedFrom({ umbrella: "MANAGE" }) }) }), schemaVersion: 2, snapshotSchemaVersion: 2 }
-pure val bValues = Set(
-  goodBuild,
-  { ...goodBuild, inputs: List(goodInput, { emittedBytes: 0, insideSource: false, identity: Unreadable }) },
-  { ...goodBuild, inputs: List(goodInput, { ...goodInput, insideSource: false }) },
-  { ...goodBuild, inputs: List(goodInput, { ...goodInput, identity: Identified({ name: "", version: "1", manifestSha256: "h3" }) }) },
-  { ...goodBuild, files: List({ name: "llama-server", extension: "", directories: Set("bin") }) },
-  { ...goodBuild, inputs: List({ ...goodInput, identity: Identified({ name: "canvas", version: "2", manifestSha256: "h2" }) }) },
-  { ...goodBuild, inputs: List() },
-  { ...goodBuild, files: List({ name: "embed.gguf", extension: "gguf", directories: Set("models") }) },
-  { ...goodBuild, files: List({ name: "libggml.so", extension: "so", directories: Set("lib") }) },
-  { ...goodBuild, localInference: true, files: List({ name: "libggml.so", extension: "so", directories: Set("lib") }) },
-  { ...goodBuild, smoke: DidNotBoot },
-  { ...goodBuild, smoke: Booted({ registered: List({ name: "MANAGE_CREATE", origin: PromotedFrom({ umbrella: "MANAGE" }) }) }) },
-  { ...goodBuild, snapshotSchemaVersion: 1 })
-pure val productPluginValues = Set(NoProductPlugin, ProductPluginNamed({ name: "product" }))
-pure val workflowWorkerValues = Set(NoWorker, WorkerSha256({ sha256: "w1" }))
-pure val nameValues = Set("canvas", "core")
+pure def snapshotCurrent(b: Build): bool = b.snapshotSchemaVersion == b.schemaVersion
 ```
 
-### A manifest is read only for the bundle bytes it was made for
+### A built bundle's manifest is readable for its own bytes
 
-`readBundleManifest` accepts schema 1 for Node 26 whose `bundleSha256`
-equals the digest of the bundle bytes beside it and which lists at least one
-package; a changed bundle needs a new manifest. The build writes the
-manifest of a built bundle from its package rows and smoke actions, with the
-workflow worker's digest when the workflow plugin's build produced one.
+The build writes the manifest from the build: its package rows, plugins,
+product plugin and smoke actions. When `@elizaos/plugin-workflow` is listed,
+the build reads the worker's SHA-256 from that plugin's build output and
+writes it as `workflowWorkerSha256`.
 
 ```quint
-type ProductPluginName = NoProductPlugin | ProductPluginNamed({ name: str })
 type WorkerDigest = NoWorker | WorkerSha256({ sha256: str })
-type BundleManifest = { schema: int, bundleSha256: str, sourceCommit: str, node: str, schemaVersion: int, packages: List[PackageRow], plugins: List[str], productPlugin: ProductPluginName, localInference: bool, workflowWorker: WorkerDigest, actions: List[ListedAction] }
-pure def manifestOf(b: Build, bundleSha256: str, sourceCommit: str, plugins: List[str], productPlugin: ProductPluginName, workflowWorker: WorkerDigest): BundleManifest =
-  { schema: 1, bundleSha256: bundleSha256, sourceCommit: sourceCommit, node: "26", schemaVersion: b.schemaVersion, packages: packageRows(b), plugins: plugins, productPlugin: productPlugin, localInference: b.localInference, workflowWorker: workflowWorker, actions: registeredActions(b) }
+type BundleManifest = { schema: int, bundleSha256: str, sourceCommit: str, node: str, schemaVersion: int, packages: List[PackageRow], plugins: List[str], productPlugin: ProductPlugin, localInference: bool, workflowWorker: WorkerDigest, actions: List[ListedAction] }
+pure val workflowPlugin = "@elizaos/plugin-workflow"
+pure def manifestOf(b: Build, bundleSha256: str, sourceCommit: str): BundleManifest = {
+  val worker = if (b.plugins.includes(workflowPlugin)) b.workflowWorker else NoWorker
+  { schema: 1, bundleSha256: bundleSha256, sourceCommit: sourceCommit, node: "26", schemaVersion: b.schemaVersion, packages: packageRows(b), plugins: b.plugins, productPlugin: b.productPlugin, localInference: carriesLocalInference(b), workflowWorker: worker, actions: registeredActions(b) }
+}
+pure def lawBuiltBundleManifestIsReadable(b: Build, bundleSha256: str, sourceCommit: str): bool =
+  (buildVerdict(b) == Built and bundleSha256 != "") implies manifestReadable(manifestOf(b, bundleSha256, sourceCommit), bundleSha256)
+```
+
+### A manifest is never read for other bundle bytes
+
+`readBundleManifest` accepts schema 1 for Node 26 whose `bundleSha256`
+equals the digest of the bundle bytes beside it, which lists at least one
+package and no package row twice, and whose actions are well formed; a
+changed bundle needs a new manifest.
+
+```quint
 pure def manifestReadable(m: BundleManifest, bundleBytesSha256: str): bool =
-  m.schema == 1 and m.node == "26" and m.bundleSha256 != "" and m.bundleSha256 == bundleBytesSha256 and m.packages.length() > 0
-pure def lawManifestForOtherBytesIsNeverRead(b: Build, bundleSha256: str, bundleBytesSha256: str, sourceCommit: str, plugins: List[str], productPlugin: ProductPluginName, workflowWorker: WorkerDigest): bool =
-  bundleSha256 != bundleBytesSha256 implies not(manifestReadable(manifestOf(b, bundleSha256, sourceCommit, plugins, productPlugin, workflowWorker), bundleBytesSha256))
-pure def lawBuiltBundleManifestIsReadable(b: Build, bundleSha256: str, sourceCommit: str, plugins: List[str], productPlugin: ProductPluginName, workflowWorker: WorkerDigest): bool =
-  (buildVerdict(b) == Built and bundleSha256 != "") implies manifestReadable(manifestOf(b, bundleSha256, sourceCommit, plugins, productPlugin, workflowWorker), bundleSha256)
+  m.schema == 1 and m.node == "26" and m.bundleSha256 != "" and m.bundleSha256 == bundleBytesSha256 and
+  m.packages.length() > 0 and m.packages.every(r => m.packages.select(o => o == r).length() == 1) and actionsWellFormed(m.actions)
 ```

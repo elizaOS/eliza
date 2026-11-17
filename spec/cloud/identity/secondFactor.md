@@ -201,12 +201,12 @@ The session records `stepUpAt` and `mfaAt` as now and answers
 `{stepUpAt, mfaAt}`; an SMS step-up code is used once.
 
 ```quint
-pure def canStepUp(s: SecondFactor, method: FactorMethod): bool = S::isActive(s.caller) and isConfirmed(s.factors, method) and (method == Totp or codeLive(s.stepUpCode, clock(s)))
-pure def stepUp(s: SecondFactor, method: FactorMethod, codeMatches: bool, matchedStep: int): SecondFactor =
+pure def canVerifyStepUp(s: SecondFactor, method: FactorMethod): bool = S::isActive(s.caller) and isConfirmed(s.factors, method) and (method == Totp or codeLive(s.stepUpCode, clock(s)))
+pure def verifyStepUp(s: SecondFactor, method: FactorMethod, codeMatches: bool, matchedStep: int): SecondFactor =
   if (factorCodeAccepted(s.factors, method, clock(s), codeMatches, matchedStep))
     { ...s, factors: advanceTotpStep(s.factors, method, matchedStep), stepUpCode: if (method == Sms) NoCode else s.stepUpCode, caller: S::recordStepUp(s.caller, S::MultiFactor) }
   else s
-pure def stepOnlyAFactorMarksTheSession(before: SecondFactor, via: str, after: SecondFactor): bool = after.caller.stepUpAt != before.caller.stepUpAt implies (via == "stepUp" and hasFactor(before.factors) and after.caller.generation == before.caller.generation and after.caller.mfaAt == S::At({ ms: clock(before) }))
+pure def stepOnlyAFactorMarksTheSession(before: SecondFactor, via: str, after: SecondFactor): bool = after.caller.stepUpAt != before.caller.stepUpAt implies (via == "verifyStepUp" and hasFactor(before.factors) and after.caller.generation == before.caller.generation and after.caller.mfaAt == S::At({ ms: clock(before) }))
 pure def sometimesSteppedUpBySms(s: SecondFactor): bool = S::isSteppedUp(s.caller) and s.factors.lastTotpStep == noTotpStep
 pure def sometimesSteppedUpByTotp(s: SecondFactor): bool = S::isSteppedUp(s.caller) and s.factors.lastTotpStep > noTotpStep and isConfirmed(s.factors, Totp)
 ```

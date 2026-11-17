@@ -12,7 +12,10 @@ same transaction. Sources are develop `packages/cloud/shared/src/lib/services/cr
 
 One hold is one row keyed by its `HoldKey`. The shell loads the row, steps it
 with the generated adapter and writes it back by compare-and-set; the 5 minute
-sweep claims stale rows with `SKIP LOCKED`.
+sweep claims stale rows with `SKIP LOCKED`. Importers use `FundingLane`,
+`Hold`, `initial`, `admission`, `reserve`, `markDispatched`, `settleKnown`,
+`settleUnknown`, `release`, `sweep`, `fundable`, `splitHold(lane, reserved,
+allowanceAvailable)`, `allowanceCharge` and `creditCharge`.
 
 ## Story: Never overdraw an account
 
@@ -21,11 +24,11 @@ sweep claims stale rows with `SKIP LOCKED`.
 
 ### A hold reserves half again the quote, capped at what the funding lane offers
 
-The quote is the service's estimate in µUSD. The hold is 150 % of it, at
-least 1 µUSD, but never more than the lane offers, so a call the account can
-pay at its quote still runs. A paid plan with an allowance funds through
-`AllowanceThenCredits`; any other readable plan through `CreditsOnly`; an
-unreadable plan is `Refused`.
+The quote is the service's estimate in µUSD, 0 or more. The hold is 150 % of
+it, at least 1 µUSD, but never more than the lane offers, so a call the
+account can pay at its quote still runs. `billing/entitlements` chooses the
+lane and passes it in; `Refused` means the plan could not be read and funds
+nothing.
 
 ```quint
 import types.* from "./types"
@@ -42,13 +45,15 @@ pure def laneOffers(lane: FundingLane, allowanceAvailable: Micros, creditAvailab
   if (lane == AllowanceThenCredits) allowanceAvailable + creditAvailable
   else if (lane == CreditsOnly) creditAvailable
   else 0
+pure def validAmounts(quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): bool =
+  quote >= 0 and allowanceAvailable >= 0 and creditAvailable >= 0
 pure def fundable(lane: FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): bool =
-  lane != Refused and quote >= 1 and allowanceAvailable >= 0 and creditAvailable >= 0 and laneOffers(lane, allowanceAvailable, creditAvailable) >= quote
+  validAmounts(quote, allowanceAvailable, creditAvailable) and lane != Refused and laneOffers(lane, allowanceAvailable, creditAvailable) >= quote
 pure def holdAmount(lane: FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): Micros =
   minOf(reservedFor(quote), laneOffers(lane, allowanceAvailable, creditAvailable))
 pure def lawHoldCoversQuoteWithinOffer(lane: FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): bool =
   fundable(lane, quote, allowanceAvailable, creditAvailable) implies (holdAmount(lane, quote, allowanceAvailable, creditAvailable) >= quote and holdAmount(lane, quote, allowanceAvailable, creditAvailable) <= laneOffers(lane, allowanceAvailable, creditAvailable))
-pure val quoteValues = Set(1, 2, 3, 4)
+pure val quoteValues = Set(0, 1, 2, 3, 4)
 pure val allowanceAvailableValues = Set(0, 2, 5)
 pure val creditAvailableValues = Set(0, 1, 3, 6)
 ```
@@ -75,22 +80,25 @@ pure def allowanceCharge(h: Hold): Micros = minOf(h.charged, h.fromAllowance)
 pure def creditCharge(h: Hold): Micros = h.charged - allowanceCharge(h)
 ```
 
-### A fresh key is admitted exactly when its hold can be reserved, and a known key answers its existing hold
+### A known key answers its hold unchanged, and a fresh key is admitted only when the lane can fund its quote
 
-This is the one replay policy. The shell looks the key up in the same
-transaction: a known key answers the existing hold unchanged, whatever its
-funding now. An unfunded fresh key is refused `402 insufficient_credits`; an
-unreadable plan `503 service_unavailable`. No row is written for a refusal.
+This is the one replay policy. The shell loads the key's row in the same
+transaction and passes `initial` for an unknown key. A known key answers its
+hold whatever its funding now when `sameRequest` (the stored request digest
+matches; inference always passes true, D16), else `409 idempotency_conflict`.
+A fresh key is refused `402 insufficient_credits` when the lane offers less
+than the quote, and `503 service_unavailable` when the plan is unreadable or
+an amount is negative (a cloud fault, not a lack of money). No row is written
+for a refusal.
 
 ```quint
-type Admission = AdmitHold | ReplayHold | RefuseUnreadable | RefuseShort
-pure def admission(known: bool, lane: FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): Admission =
-  if (known) ReplayHold
-  else if (lane == Refused) RefuseUnreadable
+type Admission = AdmitHold | ReplayHold | RefuseHold({ code: RefusalCode })
+pure def admission(h: Hold, sameRequest: bool, lane: FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): Admission =
+  if (h.phase != Unfunded) (if (sameRequest) ReplayHold else RefuseHold({ code: IdempotencyConflict }))
+  else if (lane == Refused or not(validAmounts(quote, allowanceAvailable, creditAvailable))) RefuseHold({ code: ServiceUnavailable })
   else if (fundable(lane, quote, allowanceAvailable, creditAvailable)) AdmitHold
-  else RefuseShort
-pure def refusalOf(a: Admission): Refusal = if (a == RefuseUnreadable) refuse(ServiceUnavailable) else refuse(InsufficientCredits)
-pure val initial: Hold = { phase: Unfunded, key: { service: MeteredInference, requestId: "", part: Whole }, quote: 0, reserved: 0, fromAllowance: 0, fromCredits: 0, charged: 0, uncollected: 0, basis: NotCharged, since: 0 }
+  else RefuseHold({ code: InsufficientCredits })
+pure val initial: Hold = { phase: Unfunded, key: { service: MeteredInference, caller: "", requestId: "", part: WholeRequest }, quote: 0, reserved: 0, fromAllowance: 0, fromCredits: 0, charged: 0, uncollected: 0, basis: NotCharged, since: 0 }
 pure def canReserve(h: Hold, quote: Micros, lane: FundingLane, allowanceAvailable: Micros, creditAvailable: Micros, now: Millis): bool =
   h.phase == Unfunded and now >= 0 and fundable(lane, quote, allowanceAvailable, creditAvailable)
 pure def reserve(h: Hold, key: HoldKey, quote: Micros, lane: FundingLane, allowanceAvailable: Micros, creditAvailable: Micros, now: Millis): Hold = {
@@ -98,25 +106,17 @@ pure def reserve(h: Hold, key: HoldKey, quote: Micros, lane: FundingLane, allowa
   val parts = splitHold(lane, reserved, allowanceAvailable)
   { ...h, phase: Reserved, key: key, quote: quote, reserved: reserved, fromAllowance: parts.allowancePart, fromCredits: parts.creditPart, since: now }
 }
-pure def lawAdmittedExactlyWhenReservable(lane: FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): bool =
-  (admission(false, lane, quote, allowanceAvailable, creditAvailable) == AdmitHold) iff canReserve(initial, quote, lane, allowanceAvailable, creditAvailable, 0)
-pure def lawEveryAdmissionRefusalIsWellFormed(lane: FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros): bool = {
-  val a = admission(false, lane, quote, allowanceAvailable, creditAvailable)
-  (a != AdmitHold implies wellFormed(refusalOf(a))) and (a == RefuseShort implies statusOf(refusalOf(a).code) == 402)
-}
-pure val keyValues = Set({ service: MeteredInference, requestId: "r1", part: Whole }, { service: MeteredSpeech, requestId: "s1", part: Window({ direction: Stt, window: 1 }) })
+pure val keyValues = Set({ service: MeteredInference, caller: "c1", requestId: "r1", part: WholeRequest }, { service: MeteredSpeech, caller: "c1", requestId: "s1", part: SpeechWindow({ direction: Transcribe, window: 1 }) })
 pure val nowValues = Set(0, 900000, 8100000)
+pure def stepTermsFixedOnceReserved(before: Hold, after: Hold): bool =
+  before.phase != Unfunded implies (after.key == before.key and after.quote == before.quote and after.reserved == before.reserved and after.fromAllowance == before.fromAllowance and after.fromCredits == before.fromCredits)
 ```
 
 ### A reserved hold is split exactly into its allowance and credit parts and covers its quote
 
 ```quint
-pure def alwaysUnfundedHoldsNothing(h: Hold): bool =
-  h.phase == Unfunded implies (h.quote == 0 and h.reserved == 0 and h.fromAllowance == 0 and h.fromCredits == 0 and h.since == 0)
 pure def alwaysHoldSplitsExactly(h: Hold): bool =
-  h.phase != Unfunded implies (h.quote >= 1 and h.reserved >= h.quote and h.fromAllowance >= 0 and h.fromCredits >= 0 and h.fromAllowance + h.fromCredits == h.reserved and h.since >= 0)
-pure def stepTermsFixedOnceReserved(before: Hold, after: Hold): bool =
-  before.phase != Unfunded implies (after.key == before.key and after.quote == before.quote and after.reserved == before.reserved and after.fromAllowance == before.fromAllowance and after.fromCredits == before.fromCredits)
+  h.phase != Unfunded implies (h.quote >= 0 and h.reserved >= h.quote and h.fromAllowance >= 0 and h.fromCredits >= 0 and h.fromAllowance + h.fromCredits == h.reserved and h.since >= 0)
 pure def sometimesAllowanceAndCreditsShareAHold(h: Hold): bool = h.fromAllowance > 0 and h.fromCredits > 0
 ```
 
@@ -129,7 +129,9 @@ pure def sometimesAllowanceAndCreditsShareAHold(h: Hold): bool = h.fromAllowance
 ### A call reaches its provider only after its hold is durably marked dispatched
 
 The shell commits `markDispatched` before the first provider byte; a crash
-before that commit leaves a hold that was never dispatched.
+before that commit leaves a hold that was never dispatched. Each service
+checks standing (credential live, account active, lane unchanged) just before
+it calls `markDispatched` and releases the hold when standing is lost.
 
 ```quint
 pure def canMarkDispatched(h: Hold, now: Millis): bool = h.phase == Reserved and now >= h.since
@@ -141,7 +143,8 @@ pure def sometimesDispatched(h: Hold): bool = h.phase == Dispatched
 ### A known outcome charges the actual cost, beyond the hold only from free credits, and leaves the rest uncollected
 
 `creditFree` is the credit balance not held by any hold at settlement. A
-provider refusal with no output is a known outcome of 0.
+dispatched call is never released: a refusal or terminal error after dispatch
+settles as a known outcome at its observed price, 0 when nothing was served.
 
 ```quint
 pure def canSettleKnown(h: Hold, actual: Micros, creditFree: Micros): bool = h.phase == Dispatched and actual >= 0 and creditFree >= 0
@@ -155,13 +158,14 @@ pure def alwaysUncollectedOnlyBeyondTheHold(h: Hold): bool = h.uncollected > 0 i
 pure def sometimesRefundedPart(h: Hold): bool = h.basis == Measured and h.charged > 0 and h.charged < h.reserved
 pure def sometimesOverageCollected(h: Hold): bool = h.basis == Measured and h.charged > h.reserved and h.uncollected == 0
 pure def sometimesOverageUncollected(h: Hold): bool = h.uncollected > 0
+pure def sometimesSettledAtZero(h: Hold): bool = h.basis == Measured and h.charged == 0
 ```
 
 ### A dispatched call whose outcome is unknown is charged its quote, and one never dispatched is charged nothing
 
-`settleUnknown` is the lost-reply policy (timeout, network failure, client
-gone after dispatch without a reported usage); `release` ends a hold that
-never reached a provider (validation failure, client gone before dispatch).
+`settleUnknown` is for a dispatched call whose service cannot compute an
+actual cost; `release` is for a call that never reached a provider. Each
+service spec says which of its outcomes is which.
 
 ```quint
 pure def canSettleUnknown(h: Hold): bool = h.phase == Dispatched
@@ -184,7 +188,12 @@ and moves no money.
 pure def stepTerminalIsFinal(before: Hold, after: Hold): bool = (before.phase == Settled or before.phase == Released) implies after == before
 ```
 
-### The sweep releases a hold reserved 15 minutes ago and charges the quote of one dispatched 2 hours ago
+### The sweep releases a hold reserved for 15 minutes or more and charges the quote of one dispatched for 2 hours or more
+
+One run orders stale rows by `(since, key)` and moves its cursor past every
+row it visits, a failed one included, so a row that fails to settle is retried
+only in the next run and never blocks later rows; the shell's sweep test
+covers this.
 
 ```quint
 type SweepAction = SweepNothing | SweepRelease | SweepSettleUnknown

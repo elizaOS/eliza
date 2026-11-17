@@ -22,8 +22,8 @@ hosts nothing.
 ## Story: Spend my plan's allowance before my credits, and never carry it over
 
 > As a subscriber, I want each period's allowance spent before my credits and
-> forfeited when the period ends, so that I know what my plan pays for and
-> never lose credits to it.
+> forfeited when the period ends, so that my credits pay only for what my
+> plan does not.
 
 ### A period opens once, from a paid invoice with its plan's allowance or from a grant month with its share of it
 
@@ -34,14 +34,15 @@ rounds to nothing opens no period. A free plan opens nothing.
 ```quint
 import types.* from "../shared/types"
 import plans.* from "./plans"
-import metering.* from "../shared/metering"
 type PeriodPhase = PeriodUnopened | PeriodOpen | PeriodExpired | PeriodClosed | PeriodClawedBack
 type PeriodSource = NoSource | RenewalInvoice({ invoiceId: str }) | GrantMonth({ grantId: str, month: int })
 type ClawbackCause = NoClawback | RefundClawback | DisputeClawback
 type Period = { phase: PeriodPhase, source: PeriodSource, planKey: PlanKey, startsAt: Millis, endsAt: Millis, granted: Micros, adjustment: Micros, available: Micros, reserved: Micros, settled: Micros, expired: Micros, clawedBack: Micros, clawbackCause: ClawbackCause }
 pure val initial: Period = { phase: PeriodUnopened, source: NoSource, planKey: Free, startsAt: 0, endsAt: 0, granted: 0, adjustment: 0, available: 0, reserved: 0, settled: 0, expired: 0, clawedBack: 0, clawbackCause: NoClawback }
-pure def isRenewal(p: Period): bool = match p.source { | RenewalInvoice(x) => true | _ => false }
-pure def isGrantMonth(p: Period): bool = match p.source { | GrantMonth(x) => true | _ => false }
+pure def isRenewal(p: Period): bool = { val src = p.source
+  match src { | RenewalInvoice(x) => true | _ => false } }
+pure def isGrantMonth(p: Period): bool = { val src = p.source
+  match src { | GrantMonth(x) => true | _ => false } }
 pure def validWindow(startsAt: Millis, endsAt: Millis): bool = startsAt >= 0 and endsAt - startsAt >= millisPerMinute
 pure def periodOf(source: PeriodSource, planKey: PlanKey, startsAt: Millis, endsAt: Millis, granted: Micros): Period =
   { ...initial, phase: PeriodOpen, source: source, planKey: planKey, startsAt: startsAt, endsAt: endsAt, granted: granted, available: granted }
@@ -88,12 +89,12 @@ pure def alwaysOnlyAnOpenPeriodHasAvailable(p: Period): bool = p.phase != Period
 
 ### A hold takes allowance only from an open period whose window holds the call, and never more than is available
 
-The shell offers the hold the period's spendable amount when the lane is
-`AllowanceThenCredits`, and reserves the hold's allowance part here.
+The shell offers a hold `spendableAt` as metering's `allowanceAvailable` when
+the lane is `AllowanceThenCredits`, and reserves the hold's allowance part
+here.
 
 ```quint
 pure def spendableAt(p: Period, now: Millis): Micros = if (p.phase == PeriodOpen and now >= p.startsAt and now < p.endsAt) p.available else 0
-pure def allowanceOffered(lane: FundingLane, p: Period, now: Millis): Micros = if (lane == AllowanceThenCredits) spendableAt(p, now) else 0
 pure def canReserveHold(p: Period, amount: Micros, now: Millis): bool = amount >= 1 and amount <= spendableAt(p, now)
 pure def reserveHold(p: Period, amount: Micros, now: Millis): Period = { ...p, available: p.available - amount, reserved: p.reserved + amount }
 pure val nowValues = Set(0, 300000, 600000, 1200000)

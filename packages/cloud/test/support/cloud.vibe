@@ -1,0 +1,49 @@
+// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+import { cloudLayer, prepare } from "../../src/index.vibe"
+import { Store } from "../../src/store/store.vibe"
+import { startFakeServer, stripeCatalog, type CatalogPrice, type FakeServer } from "./fakes.ts"
+import { callCloud, type Answer, type CallInit } from "./http.ts"
+import { catalogPrices, secrets, testProfile } from "./profile.ts"
+
+export type { Answer, FakeServer }
+
+export interface TestCloud {
+  readonly url: string
+  readonly fakes: FakeServer
+  readonly store: Store.Shape
+  call(path: string, init?: CallInit): Answer!!
+}
+
+export type ProfileEdit = (profile: ReturnType<typeof testProfile>) => unknown
+
+export interface TestCloudOptions {
+  readonly edit?: ProfileEdit
+  readonly prices?: ReadonlyArray<CatalogPrice>
+  readonly mount?: (fakes: FakeServer) => void
+}
+
+export effect function fakeServer() {
+  return try acquireRelease(promise(() => startFakeServer()), (fakes) => promise(() => fakes.close()))
+}
+
+export effect function testCloud(options: TestCloudOptions = {}) {
+  const fakes = try fakeServer()
+  fakes.mount("/stripe/", stripeCatalog(options.prices ?? catalogPrices))
+  options.mount?.(fakes)
+  const base = testProfile(fakes.url)
+  const prepared = try prepare({ profile: options.edit === undefined ? base : options.edit(base), environment: "staging", store: "pglite", port: 0, host: "127.0.0.1" })
+  const built = try Layer.build(cloudLayer(prepared).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))))
+  const { address } = Context.get(built, HttpServer.HttpServer)
+  const url = "port" in address ? `http://127.0.0.1:${address.port}` : ""
+  return {
+    url,
+    fakes,
+    store: Context.get(built, Store),
+    call: (path: string, init?: CallInit) => promise(() => callCloud(url, path, init))
+  } satisfies TestCloud
+}
+
+export effect function organization(cloud: TestCloud, id: string) {
+  const now = try Clock.currentTimeMillis
+  try cloud.store.transaction((tx) => tx.query("INSERT INTO organizations (id, name, created_at) VALUES ($1, $2, $3)", [id, id, now]))
+}

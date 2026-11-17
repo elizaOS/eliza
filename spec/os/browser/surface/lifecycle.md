@@ -1,18 +1,11 @@
 # Browser surface lifecycle
 
 The surface manager (`ElizaSurfaceManager`) puts one native web page per
-browser tab beside the app's own WebView, in the app's Activity. The app's
-renderer owns the tabs; this spec owns which surfaces exist, which renderer
-realm may command them, where a page is drawn and takes input, when a page
-that closed by itself is reported, the page's load state as the app hears
-it, and the keyboard. Commands (`commands.md`) drive a page, page
-requests (`pageRequests.md`) answer what it asks, profiles
-(`profiles.md`) share and purge website storage, and the dock
-(`dock.md`) opens the owned browser beside the app.
-
-The shell parses every call (owner, session token and a positive whole
-epoch; finite, non-negative geometry), runs it on the main thread, turns
-host CSS pixels into device pixels, and keeps the WebViews. Sources:
+browser tab beside the app's WebView. This spec owns which surfaces exist,
+which renderer realm may command them, where a page draws and takes input,
+closures, load state and the keyboard; `commands.md`, `pageRequests.md`,
+`profiles.md` and `dock.md` build on it. The shell parses every call,
+runs it on the main thread and converts host CSS pixels. Sources:
 `GI:plugins/plugin-native-browser-surface` (`BrowserSurfacePlugin.kt`,
 `BelowHostLayer.kt`, `definitions.ts`).
 
@@ -80,9 +73,8 @@ pure def sometimesTwoOwnersShowPages(s: SurfaceHost): bool = s.surfaces.some(a =
 The device's support is read once when the plugin loads. An isolated
 process needs a renderer outside the app's process, and any storage of its
 own needs WebView profiles: the surface is refused, never quietly shared.
-A keyed profile is shared only by the same owner and key
-(`profiles.md`); a fresh profile by no one. The layer and the
-request and navigation flags are fixed for the surface's life.
+A keyed profile is shared only by the same owner and key (`profiles.md`),
+a fresh one by no one. The layer and flags are fixed for the surface's life.
 
 ```quint
 pure def canLearnSupport(s: SurfaceHost): bool = s.support == SupportUnknown
@@ -118,7 +110,7 @@ pure def sometimesHostStorageWithoutProfiles(s: SurfaceHost): bool =
 > As the person, I want taps to reach a website only when its page is
 > shown, running and not under the app's own controls.
 
-### Presenting one surface hides its owner's other surfaces, and pausing or presenting never changes the other
+### Presenting one surface hides its owner's other surfaces and never resumes a paused page
 
 `presentSurface` hides every surface of the owner and shows the named one,
 or none to show the app. `pauseSurface` treats the page as hidden, takes
@@ -247,8 +239,6 @@ at another address ends the block; the error page of the blocked address,
 which starts at that address, keeps it.
 
 ```quint
-pure def report(x: NativeSurface): NavigationReport =
-  { id: x.id, realm: x.realm, href: x.page.href, result: x.page.result, presented: x.presented, paused: x.paused }
 pure def reported(s: SurfaceHost, id: str): List[SurfaceNotice] = s.surfaces.select(x => x.id == id).listMap(x =>
   NavigationChanged({ id: x.id, realm: x.realm, href: x.page.href, result: x.page.result, presented: x.presented, paused: x.paused }))
 pure def canPageStarted(s: SurfaceHost, id: str, href: str): bool = hasSurface(s, id)
@@ -269,7 +259,8 @@ pure def pageFinished(s: SurfaceHost, id: str): SurfaceChange = {
   { state: changed, out: reported(changed, id) }
 }
 pure def sentAsIs(n: SurfaceNotice, after: SurfaceHost): bool = match n {
-  | NavigationChanged(r) => after.surfaces.some(x => admits(after, x.realm) and report(x) == { id: r.id, realm: r.realm, href: r.href, result: r.result, presented: r.presented, paused: r.paused })
+  | NavigationChanged(r) => after.surfaces.some(x => admits(after, x.realm) and x.id == r.id and x.realm == r.realm and
+    x.page == { href: r.href, result: r.result } and x.presented == r.presented and x.paused == r.paused)
   | _ => true
 }
 pure def stepNavigationReportsTheStateAsSent(before: SurfaceHost, via: str, after: SurfaceHost, out: List[SurfaceNotice]): bool = out.every(n => sentAsIs(n, after))

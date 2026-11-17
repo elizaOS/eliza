@@ -1,21 +1,16 @@
 # Rate limiter
 
-One fixed-window counter for every limited route. The store holds one row per
-subject, limit and window; a request is admitted while its row counts fewer
-than the limit, and a refusal tells the client when the window ends. Sources
-are develop `packages/cloud/shared/src/lib/services/plan-request-limiter.ts`
-and `packages/cloud/quint/plan_request_buckets.qnt`, and the limiter rules of
-the old `spec/cloud/authService.md` and `spec/cloud/entitlements.md`. The
-burst and sustained token buckets and the sliding window are replaced by this
-one window, counted in the store so that every process sees the same count.
-
-Limit values live in the spec that applies them (`requestAuth`,
-`codeChallenges`, `deviceKeys`, `grantCodes`, `inference`, `speech`, `maps`;
-plan request rates by class in `billing/plans`). A subject is what the
-applying spec names: a client address, a credential id, or a keyed digest of
-an email address or phone number, never a secret itself. The shell admits in
-one statement (`INSERT … ON CONFLICT … DO UPDATE … WHERE count < limit`),
-answers a refusal with `Retry-After`, and deletes ended windows on a schedule.
+One fixed-window counter for every limited route, counted in the store so
+that every process sees the same count. The spec that applies a limit gives
+its name and values (plan request rates by class in `billing/plans`) and the
+subject: a client address, an organization id, a credential id, a keyed
+digest of a presented credential, email address or phone number, or a fixed
+deployment-wide subject for a global budget; never a secret itself. The shell
+keeps one `Window` per subject and limit name, and a limit name always has
+the same window length. It runs every check of one request in one store
+transaction, takes `now` from the store's clock in that transaction, and
+writes each window with one conditional upsert, so two concurrent requests
+never both take the last place.
 
 ## Story: Refuse excess requests with a usable retry time
 
@@ -24,9 +19,6 @@ answers a refusal with `Retry-After`, and deletes ended windows on a schedule.
 > and then succeed.
 
 ### A limit is a positive count of requests in a positive window, named by the spec that applies it
-
-`perMinute` builds the common case; `name` keeps two limits with the same
-numbers in separate rows.
 
 ```quint
 import types.* from "./types"
@@ -38,109 +30,95 @@ pure def perWindow(name: str, limit: int, windowMs: Millis): RateLimit = { name:
 
 ### A request falls in the window from the last multiple of its length up to the next
 
-The window of `now` is `[floor(now / w) × w, floor(now / w) × w + w)`. Times
-are epoch milliseconds, so never negative.
-
 ```quint
-pure def windowStartOf(now: Millis, windowMs: Millis): Millis = if (windowMs >= 1) (now / windowMs) * windowMs else now
+pure def windowStartOf(now: Millis, windowMs: Millis): Millis = if (windowMs >= 1) now - now % windowMs else now
 pure def windowEndOf(now: Millis, windowMs: Millis): Millis = windowStartOf(now, windowMs) + windowMs
 pure def lawRequestLiesInItsWindow(now: Millis, windowMs: Millis): bool =
   (now >= 0 and windowMs >= 1) implies (windowStartOf(now, windowMs) <= now and now < windowEndOf(now, windowMs))
 pure val windowMsValues = Set(1, 3, 5, 60000)
-pure val nowValues = Set(0, 1, 2, 3, 4, 7)
-```
-
-### The end of a window is the start of the next one, so a retry at that time meets an empty window
-
-This is what makes `retryAt` usable: the retried request counts in a row that
-does not exist yet.
-
-```quint
-pure def lawWindowEndOpensTheNextWindow(now: Millis, windowMs: Millis): bool =
-  (now >= 0 and windowMs >= 1) implies windowStartOf(windowEndOf(now, windowMs), windowMs) == windowEndOf(now, windowMs)
 ```
 
 ### A request is admitted exactly when its window holds fewer requests than the limit, and a refusal records nothing
 
-Admission and counting are one step: the admitted request adds one to its
-row, creating the row at one; a refused request leaves every row as it was
-and answers the end of its window as `retryAt`.
+A request outside the stored window opens a new one at count zero. The
+limit is passed in at each request, so a plan change takes effect in the
+current window; `ceiling` is the limit of the last admission.
 
 ```quint
-type WindowRow = { subject: str, rule: RateLimit, start: Millis, count: int }
-type RateDecision = NoDecision | Admitted | Refused({ retryAt: Millis }) | Unavailable
-type RateWindows = { rows: List[WindowRow], clock: Millis, last: RateDecision }
-pure val initial: RateWindows = { rows: List(), clock: 0, last: NoDecision }
-pure def sameKey(r: WindowRow, subject: str, rule: RateLimit, start: Millis): bool = r.subject == subject and r.rule == rule and r.start == start
-pure def countIn(rows: List[WindowRow], subject: str, rule: RateLimit, start: Millis): int = rows.foldl(0, (total, r) => if (sameKey(r, subject, rule, start)) total + r.count else total)
+type RateDecision = NoDecision | Admitted | Refused({ limit: int, retryAt: Millis })
+type Window = { start: Millis, end: Millis, count: int, ceiling: int, clock: Millis, last: RateDecision }
+pure val initial: Window = { start: 0, end: 0, count: 0, ceiling: 0, clock: 0, last: NoDecision }
 pure def admits(count: int, rule: RateLimit): bool = count < rule.limit
-pure def canRequest(s: RateWindows, subject: str, rule: RateLimit, now: Millis): bool = subject != "" and validLimit(rule) and now >= 0
-pure def request(s: RateWindows, subject: str, rule: RateLimit, now: Millis): RateWindows = {
-  val start = windowStartOf(now, rule.windowMs)
-  val held = s.rows.some(r => sameKey(r, subject, rule, start))
-  if (admits(countIn(s.rows, subject, rule, start), rule))
-    { ...s, clock: now, last: Admitted,
-      rows: if (held) s.rows.listMap(r => if (sameKey(r, subject, rule, start)) { ...r, count: r.count + 1 } else r)
-            else s.rows.append({ subject: subject, rule: rule, start: start, count: 1 }) }
-  else { ...s, clock: now, last: Refused({ retryAt: start + rule.windowMs }) }
+pure def canRequest(w: Window, rule: RateLimit, now: Millis): bool = validLimit(rule) and now >= w.clock
+pure def request(w: Window, rule: RateLimit, now: Millis): Window = {
+  val inWindow = w.start <= now and now < w.end
+  val held = if (inWindow) w.count else 0
+  if (admits(held, rule))
+    { start: if (inWindow) w.start else windowStartOf(now, rule.windowMs), end: if (inWindow) w.end else windowEndOf(now, rule.windowMs),
+      count: held + 1, ceiling: rule.limit, clock: now, last: Admitted }
+  else { ...w, clock: now, last: Refused({ limit: rule.limit, retryAt: w.end }) }
 }
-pure val subjectValues = Set("203.0.113.7", "credential-1")
-pure val ruleValues = Set({ name: "perMinute", limit: 2, windowMs: 3 }, { name: "perHour", limit: 1, windowMs: 5 })
-pure def stepRefusalRecordsNothing(before: RateWindows, via: str, after: RateWindows): bool =
-  (via == "request" and after.last != Admitted) implies after.rows == before.rows
-pure def sometimesAdmitted(s: RateWindows): bool = s.last == Admitted
+pure val ruleValues = Set(perWindow("perMinute", 2, 3), perWindow("perMinute", 1, 3), perWindow("perHour", 1, 5))
+pure val nowValues = Set(0, 1, 2, 3, 5, 7)
+pure def stepRefusalRecordsNothing(before: Window, via: str, after: Window): bool =
+  (via == "request" and after.last != Admitted) implies { ...after, clock: before.clock, last: before.last } == before
+pure def sometimesAdmitted(w: Window): bool = w.last == Admitted
 ```
 
-### A window never counts more requests than its limit, and a subject has one row per limit and window
-
-The row is the one place a window's count lives, so two concurrent requests
-can never both take the last place.
+### A window never counts more requests than the limit it last admitted under
 
 ```quint
-pure def rowWellFormed(r: WindowRow): bool = r.subject != "" and validLimit(r.rule) and r.start >= 0 and r.count >= 1 and r.count <= r.rule.limit
-pure def alwaysWindowsStayWithinTheirLimit(s: RateWindows): bool = s.rows.every(r => rowWellFormed(r))
-pure def alwaysOneRowPerSubjectLimitAndWindow(s: RateWindows): bool =
-  s.rows.every(r => s.rows.select(x => sameKey(x, r.subject, r.rule, r.start)).length() == 1)
+pure def alwaysWindowsStayWithinTheirLimit(w: Window): bool = {
+  val d = w.last
+  w.count >= 0 and w.count <= w.ceiling and w.start <= w.clock
+  and match d { | Refused(x) => x.retryAt == w.end and w.clock < w.end | _ => true }
+}
 ```
 
-### A refusal happens only at a full window and names a retry time after the request
+### A refusal happens only at a full window, retries at its end, and a retry at that time is admitted
 
 ```quint
-pure def stepRefusalOnlyAtAFullWindow(before: RateWindows, via: str, after: RateWindows): bool = {
+pure def stepRefusalOnlyAtAFullWindow(before: Window, via: str, after: Window): bool = {
   val d = after.last
   via == "request" implies match d {
-    | Refused(x) => x.retryAt > after.clock and before.rows.some(r => r.count == r.rule.limit and r.start <= after.clock and r.start + r.rule.windowMs == x.retryAt)
+    | Refused(x) => before.count >= x.limit and before.start <= after.clock and after.clock < x.retryAt and x.retryAt == before.end
     | _ => true
   }
 }
-pure def sometimesRefusedUntilTheWindowEnds(s: RateWindows): bool = {
-  val d = s.last
-  match d { | Refused(x) => x.retryAt > s.clock | _ => false }
+pure def stepRetryAtTheWindowEndIsAdmitted(before: Window, via: str, after: Window): bool = {
+  val d = before.last
+  via == "request" implies match d { | Refused(x) => after.clock == x.retryAt implies after.last == Admitted | _ => true }
 }
-pure def sometimesAdmittedAgainInALaterWindow(s: RateWindows): bool =
-  s.rows.some(a => a.count == a.rule.limit and s.rows.some(b => b.subject == a.subject and b.rule == a.rule and b.start > a.start))
-```
-
-### A refused request answers 429 rate_limited with retryAt at the end of its window
-
-```quint
-pure def rateLimitedRefusal(retryAt: Millis): Refusal = refuseUntil(RateLimited, retryAt)
-pure def lawRateLimitedIsRetryableWithATime(retryAt: Millis): bool = {
-  val r = rateLimitedRefusal(retryAt)
-  wellFormed(r) and statusOf(r.code) == 429 and isRetryable(r.code)
+pure def sometimesRefusedUntilTheWindowEnds(w: Window): bool = {
+  val d = w.last
+  match d { | Refused(x) => x.retryAt > w.clock | _ => false }
 }
 ```
 
-### Only windows that have ended are swept
-
-Sweeping keeps every row whose window is still open at the sweep time, so it
-never gives a subject back requests it already spent.
+### A window that has ended counts as no window, so the shell may delete it
 
 ```quint
-pure def canSweep(s: RateWindows, now: Millis): bool = now >= 0
-pure def sweep(s: RateWindows, now: Millis): RateWindows = { ...s, clock: now, rows: s.rows.select(r => r.start + r.rule.windowMs > now) }
-pure def stepSweepRemovesOnlyEndedWindows(before: RateWindows, via: str, after: RateWindows): bool =
-  via == "sweep" implies (after.rows.every(r => before.rows.includes(r)) and before.rows.every(r => r.start + r.rule.windowMs <= after.clock or after.rows.includes(r)))
+pure def lawAnEndedWindowCountsAsEmpty(w: Window, rule: RateLimit, now: Millis): bool =
+  (validLimit(rule) and now >= w.clock and now >= w.end) implies request(w, rule, now) == request({ ...initial, clock: w.clock }, rule, now)
+pure val wValues = Set(initial, { start: 0, end: 3, count: 2, ceiling: 2, clock: 2, last: Refused({ limit: 2, retryAt: 3 }) })
+```
+
+### A request checked against several limits is counted in all of them or in none, and retries after its latest full window
+
+```quint
+type Check = { window: Window, rule: RateLimit }
+pure def admitsAll(checks: List[Check], now: Millis): bool = checks.every(c => request(c.window, c.rule, now).last == Admitted)
+pure def requestAll(checks: List[Check], now: Millis): List[Window] =
+  if (admitsAll(checks, now)) checks.listMap(c => request(c.window, c.rule, now)) else checks.listMap(c => c.window)
+pure def laterRetryAt(d: RateDecision, t: Millis): Millis = match d { | Refused(x) => if (x.retryAt > t) x.retryAt else t | _ => t }
+pure def retryAtOfAll(checks: List[Check], now: Millis): Millis = checks.foldl(now, (t, c) => laterRetryAt(request(c.window, c.rule, now).last, t))
+pure def lawAGroupRetriesAfterEveryFullWindow(checks: List[Check], now: Millis): bool = {
+  val group = retryAtOfAll(checks, now)
+  checks.every(c => laterRetryAt(request(c.window, c.rule, now).last, group) == group)
+}
+pure val checksValues = Set(List(), List({ window: initial, rule: perWindow("perIp", 2, 3) }),
+  List({ window: { start: 0, end: 3, count: 1, ceiling: 1, clock: 1, last: Admitted }, rule: perWindow("perAddress", 1, 3) },
+       { window: { start: 0, end: 5, count: 1, ceiling: 1, clock: 1, last: Admitted }, rule: perWindow("perIp", 1, 5) }))
 ```
 
 ## Story: Refuse rather than guess when the limiter cannot count
@@ -148,31 +126,22 @@ pure def stepSweepRemovesOnlyEndedWindows(before: RateWindows, via: str, after: 
 > As an operator, I want a request refused when the limiter's store cannot be
 > read or written, so that an outage never lifts every limit at once.
 
-### A store failure refuses the request with 503 rate_limit_unavailable and counts nothing
+### A limiter refusal is retryable: 429 at the end of a full window, or 503 a second later when the store failed
 
-The develop limiter admitted from memory when it could not decide; this one
-fails closed. The refusal is retryable and carries no time.
-
-```quint
-pure def canStoreUnavailable(s: RateWindows, now: Millis): bool = now >= 0
-pure def storeUnavailable(s: RateWindows, now: Millis): RateWindows = { ...s, clock: now, last: Unavailable }
-pure val unavailableRefusal: Refusal = refuse(RateLimitUnavailable)
-pure def stepStoreFailureCountsNothing(before: RateWindows, via: str, after: RateWindows): bool =
-  via == "storeUnavailable" implies (after.rows == before.rows and after.last == Unavailable)
-pure def sometimesStoreUnavailable(s: RateWindows): bool = s.last == Unavailable
-```
-
-### A limiter refusal is always retryable, 429 with a time when the window is full and 503 when the store failed
-
-`refusalOf` is the answer the shell renders for a decision that is not
-`Admitted`.
+The shell fails closed and counts nothing when the store fails. It sets
+`Retry-After` from the refusal's time as `types` states, rounded up.
 
 ```quint
-pure def refusalOf(d: RateDecision): Refusal = match d { | Refused(x) => rateLimitedRefusal(x.retryAt) | _ => unavailableRefusal }
-pure def isRefusal(d: RateDecision): bool = match d { | Refused(x) => true | Unavailable => true | _ => false }
-pure def lawEveryLimiterRefusalIsRetryable(d: RateDecision): bool = {
-  val r = refusalOf(d)
-  isRefusal(d) implies (wellFormed(r) and isRetryable(r.code) and (d == Unavailable iff statusOf(r.code) == 503))
+type LimiterRefusal = WindowFull({ retryAt: Millis }) | StoreDown({ now: Millis })
+pure val unavailableRetryMs: Millis = millisPerSecond
+pure def unavailableRefusal(now: Millis): Refusal = refuseUntil(RateLimitUnavailable, now + unavailableRetryMs)
+pure def refusalOf(r: LimiterRefusal): Refusal = match r {
+  | WindowFull(x) => refuseUntil(RateLimited, x.retryAt)
+  | StoreDown(x) => unavailableRefusal(x.now)
 }
-pure val dValues = Set(NoDecision, Admitted, Unavailable, Refused({ retryAt: 3 }))
+pure def lawEveryLimiterRefusalIsRetryable(r: LimiterRefusal): bool = {
+  val answer = refusalOf(r)
+  wellFormed(answer) and isRetryable(answer.code) and (statusOf(answer.code) == 503 iff match r { | StoreDown(x) => true | _ => false })
+}
+pure val rValues = Set(WindowFull({ retryAt: 3 }), StoreDown({ now: 1 }))
 ```

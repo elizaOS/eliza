@@ -132,7 +132,7 @@ effect function loadPlan(runtime: AgentRuntime, input: ComposeInput) {
     throw new PlanNotAdmitted({ phase: rejected.state.phase })
   }
   const routes: Route[] = []
-  let state = try settled(plan, "")
+  let state = try settled(plan, "load list")
   while (state.next < state.order.length) {
     const name = state.order[state.next]
     const plugin = try planned(name, input, runtime)
