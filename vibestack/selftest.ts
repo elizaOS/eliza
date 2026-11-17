@@ -359,13 +359,32 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.notEqual(canonical({ tag: "B", values: [1, 2] }, model.shape!), canonical({ tag: "B", values: [2, 1] }, model.shape!));
   });
 
-  test("a fresh spec with enum and bool parameters and an unguarded transition passes everything but review", async () => {
-    const root = fixtures(["door"]);
+  test("a fresh spec with enum and bool parameters and mixed guarded and unguarded transitions passes everything but review", async () => {
+    const guarded = [
+      true, true, true, true, true,
+      false,
+      true, true, true, true, true,
+      false, false,
+      true, true, true, true, true,
+      false, false, false,
+    ];
+    const root = fixtures(["door"], (files) => {
+      const transitions = guarded.map((hasGuard, i) => {
+        const guard = hasGuard ? `pure def canSetAlarm${i + 1}(d: Door, on: bool): bool = d.alarm != on\n` : "";
+        return `${guard}pure def setAlarm${i + 1}(d: Door, on: bool): Door = { ...d, alarm: on }`;
+      }).join("\n");
+      files["spec/door.md"] += `\n### Alarm variants retain their own admission\n\n${F}quint\n${transitions}\n${F}\n`;
+    });
     const { failed, text } = await run(root);
     assert.deepEqual(failed, ["review"], text);
     const log = fs.readFileSync(path.join(root, "gen/proof/door.log"), "utf8");
     assert.match(log, /Dafny auditor completed/);
     assert.doesNotMatch(log, /every assertion isolated/, "a unit that proves whole is not verified again");
+    const door = await import(path.join(root, "gen/door.ts"));
+    assert.equal(door.step(door.initial, { type: "move", target: "Closed" }), door.initial);
+    assert.deepEqual(door.step(door.initial, { type: "setAlarm21", on: true }), { ...door.initial, alarm: true });
+    assert.equal(door.parseEvent({ type: "unknown" }), undefined);
+    assert.equal(door.step(door.initial, { type: "unknown" }), door.initial);
   });
 
   test("a missing guard is found by simulation, as a trace that the same seed gives again and that is remembered, and the later stages say they were skipped", async () => {
@@ -534,6 +553,8 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     const gen = await import(path.join(root, "gen/vault.ts"));
     assert.deepEqual(gen.parseEvent({ type: "open", by: "Owner" }), { type: "open" });
     assert.equal(gen.enabled(gen.initial, { type: "open" }, "Guest"), false);
+    assert.equal(gen.step(gen.initial, { type: "open" }, "Guest"), gen.initial);
+    assert.equal(gen.step(gen.initial, { type: "open" }, "Owner").open, true);
     assert.equal(gen.parseSender("Owner"), "Owner");
     assert.equal(gen.parseSender("Mallory"), undefined);
     // The traces stage knows the spec's events come from someone.
