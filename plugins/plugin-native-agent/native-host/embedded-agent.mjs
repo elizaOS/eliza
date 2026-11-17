@@ -32,6 +32,11 @@ const LAUNCH_SETTINGS = new Set([
   "ELIZA_ANDROID_APP_DATA_DIR",
   "ELIZA_BROWSER_ANDROID_APPLICATION",
   "ELIZA_MOBILE_DNS_SERVERS",
+  "ELIZA_DEPLOYMENT_RUNTIME",
+  "ELIZA_RUNTIME_MODE",
+  "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
+  "EMBEDDING_PROVIDER",
+  "EMBEDDING_BASE_URL",
 ]);
 const CLOUD_ORIGIN =
   /^https:\/\/[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*(:[0-9]{1,5})?(\/[A-Za-z0-9._~-]+)*\/?$/;
@@ -48,12 +53,22 @@ const flag = (object, key) => {
     fail(`Embedded agent ${key} must be true or false`);
   return value;
 };
+const trim = (value) => value.replace(/^[\0- ]+|[\0- ]+$/g, "");
 const text = (words, key) => {
-  const value = string(words, key).trim();
+  const value = trim(string(words, key));
   if (!value || value.length > 200)
     fail(`Invalid embedded agent notification ${key}`);
   return value;
 };
+
+export const EMBEDDED_AGENT_MAX_FILE_BYTES = 256 * 1024;
+
+export function readEmbeddedAgentFile(file) {
+  const bytes = fs.readFileSync(file);
+  if (bytes.length > EMBEDDED_AGENT_MAX_FILE_BYTES)
+    fail(`${path.basename(file)} is larger than 256 KB`);
+  return JSON.parse(bytes.toString("utf8"));
+}
 
 /**
  * The three data files of an embedded agent, read with the rules of the Android
@@ -122,8 +137,8 @@ export function parseEmbeddedAgentData({ host, character, policy }) {
       fail(`The embedded agent environment may not set ${key}`);
     environment[key] = value;
   }
-  const name = string(character, "name").trim();
-  if (!name || name.length > 50 || !string(character, "system").trim())
+  const name = trim(string(character, "name"));
+  if (!name || name.length > 50 || !trim(string(character, "system")))
     fail("Invalid embedded agent character");
   const allowed = record(policy.actions?.allowed)
     ? Object.keys(policy.actions.allowed).sort()
@@ -132,7 +147,8 @@ export function parseEmbeddedAgentData({ host, character, policy }) {
   for (const action of allowed)
     if (Object.hasOwn(policy.actions.refused ?? {}, action))
       fail(`Action ${action} is both allowed and refused`);
-  const denied = policy.plugins?.denied ?? [];
+  const denied =
+    policy.plugins?.denied === undefined ? [] : policy.plugins.denied;
   if (!Array.isArray(denied) || denied.some((name) => typeof name !== "string"))
     fail("The embedded agent policy denies plugins by name");
   return {
@@ -149,17 +165,20 @@ export function parseEmbeddedAgentData({ host, character, policy }) {
       );
     },
     agentConfig() {
-      const llmText = {
+      const cloudRoute = {
         backend: "elizacloud",
         transport: "cloud-proxy",
         accountId: "elizacloud",
+      };
+      const llmText = {
+        ...cloudRoute,
         ...(smallModel ? { smallModel } : {}),
         ...(largeModel ? { largeModel } : {}),
       };
       return {
         deploymentTarget: { runtime: "local" },
         cloud: { enabled: true },
-        serviceRouting: { llmText },
+        serviceRouting: { llmText, embeddings: cloudRoute },
         plugins: { deny: denied },
         hooks: { internal: { enabled: false } },
         agents: { list: [{ ...character, default: true }] },
@@ -189,6 +208,8 @@ export function parseEmbeddedAgentData({ host, character, policy }) {
         ELIZA_ACTION_ALLOWLIST: JSON.stringify(allowed),
         ELIZA_DISABLE_LOCAL_CHARACTER: "1",
         ELIZA_PAIRING_DISABLED: "1",
+        ELIZA_DEPLOYMENT_RUNTIME: "cloud",
+        ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
       };
     },
   };
@@ -302,7 +323,6 @@ export function embeddedAgentDevelopment({
   restartDelayMs = 3000,
   maxRestarts = 2,
 }) {
-  const read = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
   const launcherPath = path.join(
     source,
     "packages/agent/native-host/private-runtime-launch.mjs",
@@ -334,9 +354,9 @@ export function embeddedAgentDevelopment({
     publish({ state: "starting" });
     try {
       admission = parseEmbeddedAgentData({
-        host: read(data.host),
-        character: read(data.character),
-        policy: read(data.policy),
+        host: readEmbeddedAgentFile(data.host),
+        character: readEmbeddedAgentFile(data.character),
+        policy: readEmbeddedAgentFile(data.policy),
       });
     } catch (error) {
       admission = null;
@@ -533,6 +553,9 @@ export function embeddedAgentDevelopment({
             if (!res.headersSent)
               json(res, error instanceof EmbeddedAgentDataError ? 400 : 502, {
                 error: "The agent request failed",
+                ...(error instanceof EmbeddedAgentDataError
+                  ? { code: "INVALID_REQUEST" }
+                  : {}),
               });
             else res.destroy();
           },

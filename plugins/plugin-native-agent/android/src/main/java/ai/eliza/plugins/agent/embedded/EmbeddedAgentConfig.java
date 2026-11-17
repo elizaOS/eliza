@@ -9,7 +9,8 @@ import org.json.JSONObject;
 
 /** What a consumer supplies as data for the embedded cloud agent: the service class, the words of
  * its notification, the routes its page may reach, extra agent settings, the character, and the
- * action and plugin policy. Inference always goes to Eliza Cloud; nothing here selects a local model. */
+ * action and plugin policy. Text and embeddings always go to Eliza Cloud, and the agent registers no
+ * local model handler. */
 public final class EmbeddedAgentConfig {
   public static final String HOST_ASSET = "eliza-agent.json", CHARACTER_ASSET = "eliza-agent-character.json", POLICY_ASSET = "eliza-agent-policy.json";
   public static final int MAX_ASSET_BYTES = 256 * 1024;
@@ -21,7 +22,8 @@ public final class EmbeddedAgentConfig {
   private static final Set<String> LAUNCH_SETTINGS = Set.of("PATH", "HOME", "TMPDIR", "ELIZA_PROVIDER", "ELIZA_STATE_DIR",
     "ELIZA_CONFIG_PATH", "ELIZA_PLATFORM", "ELIZA_REQUIRE_LOCAL_AUTH", "ELIZA_ACTION_ALLOWLIST", "ELIZA_PAIRING_DISABLED",
     "ELIZA_DISABLE_LOCAL_CHARACTER", "ELIZA_CONFIG_EXTERNAL_SECRET_ENV_VARS", "ELIZA_ANDROID_APP_DATA_DIR",
-    "ELIZA_BROWSER_ANDROID_APPLICATION", "ELIZA_MOBILE_DNS_SERVERS");
+    "ELIZA_BROWSER_ANDROID_APPLICATION", "ELIZA_MOBILE_DNS_SERVERS", "ELIZA_DEPLOYMENT_RUNTIME", "ELIZA_RUNTIME_MODE",
+    "ELIZA_DISABLE_LOCAL_EMBEDDINGS", "EMBEDDING_PROVIDER", "EMBEDDING_BASE_URL");
 
   public static final class Notification {
     public final String channel, title, text;
@@ -132,14 +134,18 @@ public final class EmbeddedAgentConfig {
     return null;
   }
 
-  /** The agent's launch configuration: cloud inference, the character, and the policy's plugin denials. */
+  private static JSONObject cloudRoute() throws JSONException {
+    return new JSONObject().put("backend", "elizacloud").put("transport", "cloud-proxy").put("accountId", "elizacloud");
+  }
+
+  /** The agent's launch configuration: cloud text and embeddings, the character, and the policy's plugin denials. */
   public JSONObject agentConfig() throws JSONException {
-    JSONObject text = new JSONObject().put("backend", "elizacloud").put("transport", "cloud-proxy").put("accountId", "elizacloud");
+    JSONObject text = cloudRoute();
     if (!smallModel.isEmpty()) text.put("smallModel", smallModel);
     if (!largeModel.isEmpty()) text.put("largeModel", largeModel);
     JSONObject config = new JSONObject().put("deploymentTarget", new JSONObject().put("runtime", "local"))
       .put("cloud", new JSONObject().put("enabled", true))
-      .put("serviceRouting", new JSONObject().put("llmText", text))
+      .put("serviceRouting", new JSONObject().put("llmText", text).put("embeddings", cloudRoute()))
       .put("plugins", new JSONObject().put("deny", new JSONArray(deniedPlugins.toString())))
       .put("hooks", new JSONObject().put("internal", new JSONObject().put("enabled", false)))
       .put("agents", new JSONObject().put("list", new JSONArray().put(new JSONObject(character.toString()))))
@@ -163,6 +169,8 @@ public final class EmbeddedAgentConfig {
     env.put("ELIZA_ACTION_ALLOWLIST", new JSONArray(allowedActions).toString());
     env.put("ELIZA_DISABLE_LOCAL_CHARACTER", "1");
     env.put("ELIZA_PAIRING_DISABLED", "1");
+    env.put("ELIZA_DEPLOYMENT_RUNTIME", "cloud");
+    env.put("ELIZA_DISABLE_LOCAL_EMBEDDINGS", "1");
     return env;
   }
 }
