@@ -85,9 +85,20 @@ lemma SurfacePartition(xs: seq<NativeSurface>, profileKey: string)
   }
 }
 
+lemma SurfaceIdPartition(xs: seq<NativeSurface>, id: int)
+  ensures |ProofLib.Filter((x: NativeSurface) => (x.id != id), xs)| + |ProofLib.Filter((x: NativeSurface) => (x.id == id), xs)| == |xs|
+{
+  if |xs| > 0 {
+    ProofLib.FilterCons((x: NativeSurface) => (x.id != id), xs);
+    ProofLib.FilterCons((x: NativeSurface) => (x.id == id), xs);
+    SurfaceIdPartition(xs[1..], id);
+  }
+}
+
 lemma SurfaceCrashParts(s: SurfaceHost, id: int)
-  ensures crashSurface(s, id).surfaces == ProofLib.Filter((x: NativeSurface) => (x.id != id), s.surfaces)
-  ensures var gone := ProofLib.Filter((x: NativeSurface) => (x.id == id), s.surfaces); crashSurface(s, id).crashReports == s.crashReports + ProofLib.Filter((g: int) => !((g in s.crashReports)), seq(|gone|, i_map requires 0 <= i_map < |gone| => var x := gone[i_map]; x.gen))
+  ensures var gone := ProofLib.Filter((x: NativeSurface) => (x.id == id), s.surfaces); crashSurface(s, id).out == seq(|gone|, i_map requires 0 <= i_map < |gone| => var x := gone[i_map]; SurfaceCrashed(x.id, x.session, s.epoch))
+  ensures crashSurface(s, id).state.surfaces == ProofLib.Filter((x: NativeSurface) => (x.id != id), s.surfaces)
+  ensures var gone := ProofLib.Filter((x: NativeSurface) => (x.id == id), s.surfaces); crashSurface(s, id).state.crashReports == s.crashReports + ProofLib.Filter((g: int) => !((g in s.crashReports)), seq(|gone|, i_map requires 0 <= i_map < |gone| => var x := gone[i_map]; x.gen))
 {}
 
 lemma SurfacePurgeParts(s: SurfaceHost, profileKey: string)
@@ -117,14 +128,16 @@ lemma createSurface_ensures(s: SurfaceHost, session: int, epoch: int, id: int, e
   ensures (inv(s) ==> canCreateSurface(s, session, epoch, id, explicitPolicy, layer, profileKey) ==> stepRetiredSessionNeverReturns(s, createSurface(s, session, epoch, id, explicitPolicy, layer, profileKey)))
   ensures (inv(s) ==> canCreateSurface(s, session, epoch, id, explicitPolicy, layer, profileKey) ==> stepBoundsTouchOneSurface(s, "createSurface", createSurface(s, session, epoch, id, explicitPolicy, layer, profileKey)))
   ensures (inv(s) ==> canCreateSurface(s, session, epoch, id, explicitPolicy, layer, profileKey) ==> stepPresentingNeverResumes(s, "createSurface", createSurface(s, session, epoch, id, explicitPolicy, layer, profileKey)))
+  ensures (inv(s) ==> canCreateSurface(s, session, epoch, id, explicitPolicy, layer, profileKey) ==> stepOcclusionResolvesOnlyInEffect(s, "createSurface", createSurface(s, session, epoch, id, explicitPolicy, layer, profileKey), []))
   ensures (inv(s) ==> canCreateSurface(s, session, epoch, id, explicitPolicy, layer, profileKey) ==> stepPurgeReportsEveryClosedSurface(s, "createSurface", createSurface(s, session, epoch, id, explicitPolicy, layer, profileKey)))
   ensures (inv(s) ==> canCreateSurface(s, session, epoch, id, explicitPolicy, layer, profileKey) ==> stepActivityBackOnlyAfterUiAndPageDecline(s, "createSurface", createSurface(s, session, epoch, id, explicitPolicy, layer, profileKey)))
   ensures (inv(s) ==> canCreateSurface(s, session, epoch, id, explicitPolicy, layer, profileKey) ==> stepUiOfferedBeforePage(s, "createSurface", createSurface(s, session, epoch, id, explicitPolicy, layer, profileKey)))
   ensures (inv(s) ==> canCreateSurface(s, session, epoch, id, explicitPolicy, layer, profileKey) ==> stepReportOnlyOnChange(s, createSurface(s, session, epoch, id, explicitPolicy, layer, profileKey)))
+  ensures (inv(s) ==> canCreateSurface(s, session, epoch, id, explicitPolicy, layer, profileKey) ==> stepEveryClosedSurfaceIsHeardByItsRealmOnly(s, "createSurface", createSurface(s, session, epoch, id, explicitPolicy, layer, profileKey), []))
 {
   if inv(s) && canCreateSurface(s, session, epoch, id, explicitPolicy, layer, profileKey) {
     var after := createSurface(s, session, epoch, id, explicitPolicy, layer, profileKey);
-    var added := NativeSurface(id, session, (s.issued + 1), layer, profileKey, false, false, false, 0, 0);
+    var added := NativeSurface(id, session, (s.issued + 1), layer, profileKey, false, false, false, 0, 0, 0);
     assert after.surfaces == s.surfaces + [added];
     SurfaceIds(s); SurfaceIds(after);
     ProofLib.DistinctByConcat(s.surfaces, [added], (x: NativeSurface) => x.id);
@@ -151,10 +164,12 @@ lemma destroySurface_ensures(s: SurfaceHost, session: int, epoch: int, id: int)
   ensures (inv(s) ==> canDestroySurface(s, session, epoch, id) ==> stepRetiredSessionNeverReturns(s, destroySurface(s, session, epoch, id)))
   ensures (inv(s) ==> canDestroySurface(s, session, epoch, id) ==> stepBoundsTouchOneSurface(s, "destroySurface", destroySurface(s, session, epoch, id)))
   ensures (inv(s) ==> canDestroySurface(s, session, epoch, id) ==> stepPresentingNeverResumes(s, "destroySurface", destroySurface(s, session, epoch, id)))
+  ensures (inv(s) ==> canDestroySurface(s, session, epoch, id) ==> stepOcclusionResolvesOnlyInEffect(s, "destroySurface", destroySurface(s, session, epoch, id), []))
   ensures (inv(s) ==> canDestroySurface(s, session, epoch, id) ==> stepPurgeReportsEveryClosedSurface(s, "destroySurface", destroySurface(s, session, epoch, id)))
   ensures (inv(s) ==> canDestroySurface(s, session, epoch, id) ==> stepActivityBackOnlyAfterUiAndPageDecline(s, "destroySurface", destroySurface(s, session, epoch, id)))
   ensures (inv(s) ==> canDestroySurface(s, session, epoch, id) ==> stepUiOfferedBeforePage(s, "destroySurface", destroySurface(s, session, epoch, id)))
   ensures (inv(s) ==> canDestroySurface(s, session, epoch, id) ==> stepReportOnlyOnChange(s, destroySurface(s, session, epoch, id)))
+  ensures (inv(s) ==> canDestroySurface(s, session, epoch, id) ==> stepEveryClosedSurfaceIsHeardByItsRealmOnly(s, "destroySurface", destroySurface(s, session, epoch, id), []))
 {
   if inv(s) && canDestroySurface(s, session, epoch, id) {
     var after := destroySurface(s, session, epoch, id);
@@ -181,10 +196,12 @@ lemma reconcileOwner_ensures(s: SurfaceHost, session: int, epoch: int, desiredId
   ensures (inv(s) ==> canReconcileOwner(s, session, epoch, desiredIds) ==> stepRetiredSessionNeverReturns(s, reconcileOwner(s, session, epoch, desiredIds)))
   ensures (inv(s) ==> canReconcileOwner(s, session, epoch, desiredIds) ==> stepBoundsTouchOneSurface(s, "reconcileOwner", reconcileOwner(s, session, epoch, desiredIds)))
   ensures (inv(s) ==> canReconcileOwner(s, session, epoch, desiredIds) ==> stepPresentingNeverResumes(s, "reconcileOwner", reconcileOwner(s, session, epoch, desiredIds)))
+  ensures (inv(s) ==> canReconcileOwner(s, session, epoch, desiredIds) ==> stepOcclusionResolvesOnlyInEffect(s, "reconcileOwner", reconcileOwner(s, session, epoch, desiredIds), []))
   ensures (inv(s) ==> canReconcileOwner(s, session, epoch, desiredIds) ==> stepPurgeReportsEveryClosedSurface(s, "reconcileOwner", reconcileOwner(s, session, epoch, desiredIds)))
   ensures (inv(s) ==> canReconcileOwner(s, session, epoch, desiredIds) ==> stepActivityBackOnlyAfterUiAndPageDecline(s, "reconcileOwner", reconcileOwner(s, session, epoch, desiredIds)))
   ensures (inv(s) ==> canReconcileOwner(s, session, epoch, desiredIds) ==> stepUiOfferedBeforePage(s, "reconcileOwner", reconcileOwner(s, session, epoch, desiredIds)))
   ensures (inv(s) ==> canReconcileOwner(s, session, epoch, desiredIds) ==> stepReportOnlyOnChange(s, reconcileOwner(s, session, epoch, desiredIds)))
+  ensures (inv(s) ==> canReconcileOwner(s, session, epoch, desiredIds) ==> stepEveryClosedSurfaceIsHeardByItsRealmOnly(s, "reconcileOwner", reconcileOwner(s, session, epoch, desiredIds), []))
 {
   if inv(s) && canReconcileOwner(s, session, epoch, desiredIds) {
     var after := reconcileOwner(s, session, epoch, desiredIds);
@@ -215,10 +232,12 @@ lemma pauseSurface_ensures(s: SurfaceHost, session: int, epoch: int, id: int)
   ensures (inv(s) ==> canPauseSurface(s, session, epoch, id) ==> stepRetiredSessionNeverReturns(s, pauseSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canPauseSurface(s, session, epoch, id) ==> stepBoundsTouchOneSurface(s, "pauseSurface", pauseSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canPauseSurface(s, session, epoch, id) ==> stepPresentingNeverResumes(s, "pauseSurface", pauseSurface(s, session, epoch, id)))
+  ensures (inv(s) ==> canPauseSurface(s, session, epoch, id) ==> stepOcclusionResolvesOnlyInEffect(s, "pauseSurface", pauseSurface(s, session, epoch, id), []))
   ensures (inv(s) ==> canPauseSurface(s, session, epoch, id) ==> stepPurgeReportsEveryClosedSurface(s, "pauseSurface", pauseSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canPauseSurface(s, session, epoch, id) ==> stepActivityBackOnlyAfterUiAndPageDecline(s, "pauseSurface", pauseSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canPauseSurface(s, session, epoch, id) ==> stepUiOfferedBeforePage(s, "pauseSurface", pauseSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canPauseSurface(s, session, epoch, id) ==> stepReportOnlyOnChange(s, pauseSurface(s, session, epoch, id)))
+  ensures (inv(s) ==> canPauseSurface(s, session, epoch, id) ==> stepEveryClosedSurfaceIsHeardByItsRealmOnly(s, "pauseSurface", pauseSurface(s, session, epoch, id), []))
 {
   if inv(s) && canPauseSurface(s, session, epoch, id) {
     SurfacesMapped(s, pauseSurface(s, session, epoch, id));
@@ -243,10 +262,12 @@ lemma resumeSurface_ensures(s: SurfaceHost, session: int, epoch: int, id: int)
   ensures (inv(s) ==> canResumeSurface(s, session, epoch, id) ==> stepRetiredSessionNeverReturns(s, resumeSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canResumeSurface(s, session, epoch, id) ==> stepBoundsTouchOneSurface(s, "resumeSurface", resumeSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canResumeSurface(s, session, epoch, id) ==> stepPresentingNeverResumes(s, "resumeSurface", resumeSurface(s, session, epoch, id)))
+  ensures (inv(s) ==> canResumeSurface(s, session, epoch, id) ==> stepOcclusionResolvesOnlyInEffect(s, "resumeSurface", resumeSurface(s, session, epoch, id), []))
   ensures (inv(s) ==> canResumeSurface(s, session, epoch, id) ==> stepPurgeReportsEveryClosedSurface(s, "resumeSurface", resumeSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canResumeSurface(s, session, epoch, id) ==> stepActivityBackOnlyAfterUiAndPageDecline(s, "resumeSurface", resumeSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canResumeSurface(s, session, epoch, id) ==> stepUiOfferedBeforePage(s, "resumeSurface", resumeSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canResumeSurface(s, session, epoch, id) ==> stepReportOnlyOnChange(s, resumeSurface(s, session, epoch, id)))
+  ensures (inv(s) ==> canResumeSurface(s, session, epoch, id) ==> stepEveryClosedSurfaceIsHeardByItsRealmOnly(s, "resumeSurface", resumeSurface(s, session, epoch, id), []))
 {
   if inv(s) && canResumeSurface(s, session, epoch, id) {
     SurfacesMapped(s, resumeSurface(s, session, epoch, id));
@@ -271,10 +292,12 @@ lemma presentSurface_ensures(s: SurfaceHost, session: int, epoch: int, id: int)
   ensures (inv(s) ==> canPresentSurface(s, session, epoch, id) ==> stepRetiredSessionNeverReturns(s, presentSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canPresentSurface(s, session, epoch, id) ==> stepBoundsTouchOneSurface(s, "presentSurface", presentSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canPresentSurface(s, session, epoch, id) ==> stepPresentingNeverResumes(s, "presentSurface", presentSurface(s, session, epoch, id)))
+  ensures (inv(s) ==> canPresentSurface(s, session, epoch, id) ==> stepOcclusionResolvesOnlyInEffect(s, "presentSurface", presentSurface(s, session, epoch, id), []))
   ensures (inv(s) ==> canPresentSurface(s, session, epoch, id) ==> stepPurgeReportsEveryClosedSurface(s, "presentSurface", presentSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canPresentSurface(s, session, epoch, id) ==> stepActivityBackOnlyAfterUiAndPageDecline(s, "presentSurface", presentSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canPresentSurface(s, session, epoch, id) ==> stepUiOfferedBeforePage(s, "presentSurface", presentSurface(s, session, epoch, id)))
   ensures (inv(s) ==> canPresentSurface(s, session, epoch, id) ==> stepReportOnlyOnChange(s, presentSurface(s, session, epoch, id)))
+  ensures (inv(s) ==> canPresentSurface(s, session, epoch, id) ==> stepEveryClosedSurfaceIsHeardByItsRealmOnly(s, "presentSurface", presentSurface(s, session, epoch, id), []))
 {
   if inv(s) && canPresentSurface(s, session, epoch, id) {
     var after := presentSurface(s, session, epoch, id);
@@ -303,10 +326,12 @@ lemma setBounds_ensures(s: SurfaceHost, session: int, epoch: int, id: int, width
   ensures (inv(s) ==> canSetBounds(s, session, epoch, id, width, height) ==> stepRetiredSessionNeverReturns(s, setBounds(s, session, epoch, id, width, height)))
   ensures (inv(s) ==> canSetBounds(s, session, epoch, id, width, height) ==> stepBoundsTouchOneSurface(s, "setBounds", setBounds(s, session, epoch, id, width, height)))
   ensures (inv(s) ==> canSetBounds(s, session, epoch, id, width, height) ==> stepPresentingNeverResumes(s, "setBounds", setBounds(s, session, epoch, id, width, height)))
+  ensures (inv(s) ==> canSetBounds(s, session, epoch, id, width, height) ==> stepOcclusionResolvesOnlyInEffect(s, "setBounds", setBounds(s, session, epoch, id, width, height), []))
   ensures (inv(s) ==> canSetBounds(s, session, epoch, id, width, height) ==> stepPurgeReportsEveryClosedSurface(s, "setBounds", setBounds(s, session, epoch, id, width, height)))
   ensures (inv(s) ==> canSetBounds(s, session, epoch, id, width, height) ==> stepActivityBackOnlyAfterUiAndPageDecline(s, "setBounds", setBounds(s, session, epoch, id, width, height)))
   ensures (inv(s) ==> canSetBounds(s, session, epoch, id, width, height) ==> stepUiOfferedBeforePage(s, "setBounds", setBounds(s, session, epoch, id, width, height)))
   ensures (inv(s) ==> canSetBounds(s, session, epoch, id, width, height) ==> stepReportOnlyOnChange(s, setBounds(s, session, epoch, id, width, height)))
+  ensures (inv(s) ==> canSetBounds(s, session, epoch, id, width, height) ==> stepEveryClosedSurfaceIsHeardByItsRealmOnly(s, "setBounds", setBounds(s, session, epoch, id, width, height), []))
 {
   if inv(s) && canSetBounds(s, session, epoch, id, width, height) {
     var after := setBounds(s, session, epoch, id, width, height);
@@ -321,59 +346,63 @@ lemma setBounds_ensures(s: SurfaceHost, session: int, epoch: int, id: int, width
   }
 }
 
-lemma setOcclusion_ensures(s: SurfaceHost, session: int, epoch: int, id: int)
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> alwaysSurfacesBelongToCurrentSession(setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> alwaysSurfaceIdsUnique(setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> alwaysDestroyedPluginHoldsNothing(setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> alwaysLiveSessionIsNotRetired(setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> alwaysAtMostOnePresented(setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> alwaysCrashReportedOnce(setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> alwaysGenerationNamesOneSurface(setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> alwaysReportedCrashIsClosed(setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> alwaysHelperViewCustody(setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> alwaysDestroyedHelperReleased(setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> alwaysInputRestoredSafely(setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> alwaysHiddenKeyboardHasNoHeight(setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> stepEpochNeverGoesBack(s, setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> stepNoCommandWhileRendererGone(s, "setOcclusion", setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> stepRetiredSessionNeverReturns(s, setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> stepBoundsTouchOneSurface(s, "setOcclusion", setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> stepPresentingNeverResumes(s, "setOcclusion", setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> stepPurgeReportsEveryClosedSurface(s, "setOcclusion", setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> stepActivityBackOnlyAfterUiAndPageDecline(s, "setOcclusion", setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> stepUiOfferedBeforePage(s, "setOcclusion", setOcclusion(s, session, epoch, id)))
-  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id) ==> stepReportOnlyOnChange(s, setOcclusion(s, session, epoch, id)))
+lemma setOcclusion_ensures(s: SurfaceHost, session: int, epoch: int, id: int, rects: int)
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> alwaysSurfacesBelongToCurrentSession(setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> alwaysSurfaceIdsUnique(setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> alwaysDestroyedPluginHoldsNothing(setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> alwaysLiveSessionIsNotRetired(setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> alwaysAtMostOnePresented(setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> alwaysCrashReportedOnce(setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> alwaysGenerationNamesOneSurface(setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> alwaysReportedCrashIsClosed(setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> alwaysHelperViewCustody(setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> alwaysDestroyedHelperReleased(setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> alwaysInputRestoredSafely(setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> alwaysHiddenKeyboardHasNoHeight(setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> stepEpochNeverGoesBack(s, setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> stepNoCommandWhileRendererGone(s, "setOcclusion", setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> stepRetiredSessionNeverReturns(s, setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> stepBoundsTouchOneSurface(s, "setOcclusion", setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> stepPresentingNeverResumes(s, "setOcclusion", setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> stepOcclusionResolvesOnlyInEffect(s, "setOcclusion", setOcclusion(s, session, epoch, id, rects).state, setOcclusion(s, session, epoch, id, rects).out))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> stepPurgeReportsEveryClosedSurface(s, "setOcclusion", setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> stepActivityBackOnlyAfterUiAndPageDecline(s, "setOcclusion", setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> stepUiOfferedBeforePage(s, "setOcclusion", setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> stepReportOnlyOnChange(s, setOcclusion(s, session, epoch, id, rects).state))
+  ensures (inv(s) ==> canSetOcclusion(s, session, epoch, id, rects) ==> stepEveryClosedSurfaceIsHeardByItsRealmOnly(s, "setOcclusion", setOcclusion(s, session, epoch, id, rects).state, setOcclusion(s, session, epoch, id, rects).out))
 {
-  if inv(s) && canSetOcclusion(s, session, epoch, id) {
-    SurfacesMapped(s, setOcclusion(s, session, epoch, id));
+  if inv(s) && canSetOcclusion(s, session, epoch, id, rects) {
+    SurfacesMapped(s, setOcclusion(s, session, epoch, id, rects).state);
   }
 }
 
 lemma crashSurface_ensures(s: SurfaceHost, id: int)
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysSurfacesBelongToCurrentSession(crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysSurfaceIdsUnique(crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysDestroyedPluginHoldsNothing(crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysLiveSessionIsNotRetired(crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysAtMostOnePresented(crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysCrashReportedOnce(crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysGenerationNamesOneSurface(crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysReportedCrashIsClosed(crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysHelperViewCustody(crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysDestroyedHelperReleased(crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysInputRestoredSafely(crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysHiddenKeyboardHasNoHeight(crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepEpochNeverGoesBack(s, crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepNoCommandWhileRendererGone(s, "crashSurface", crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepRetiredSessionNeverReturns(s, crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepBoundsTouchOneSurface(s, "crashSurface", crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepPresentingNeverResumes(s, "crashSurface", crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepPurgeReportsEveryClosedSurface(s, "crashSurface", crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepActivityBackOnlyAfterUiAndPageDecline(s, "crashSurface", crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepUiOfferedBeforePage(s, "crashSurface", crashSurface(s, id)))
-  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepReportOnlyOnChange(s, crashSurface(s, id)))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysSurfacesBelongToCurrentSession(crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysSurfaceIdsUnique(crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysDestroyedPluginHoldsNothing(crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysLiveSessionIsNotRetired(crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysAtMostOnePresented(crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysCrashReportedOnce(crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysGenerationNamesOneSurface(crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysReportedCrashIsClosed(crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysHelperViewCustody(crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysDestroyedHelperReleased(crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysInputRestoredSafely(crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> alwaysHiddenKeyboardHasNoHeight(crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepEpochNeverGoesBack(s, crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepNoCommandWhileRendererGone(s, "crashSurface", crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepRetiredSessionNeverReturns(s, crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepBoundsTouchOneSurface(s, "crashSurface", crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepPresentingNeverResumes(s, "crashSurface", crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepOcclusionResolvesOnlyInEffect(s, "crashSurface", crashSurface(s, id).state, crashSurface(s, id).out))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepPurgeReportsEveryClosedSurface(s, "crashSurface", crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepActivityBackOnlyAfterUiAndPageDecline(s, "crashSurface", crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepUiOfferedBeforePage(s, "crashSurface", crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepReportOnlyOnChange(s, crashSurface(s, id).state))
+  ensures (inv(s) ==> canCrashSurface(s, id) ==> stepEveryClosedSurfaceIsHeardByItsRealmOnly(s, "crashSurface", crashSurface(s, id).state, crashSurface(s, id).out))
 {
   if inv(s) && canCrashSurface(s, id) {
-    var after := crashSurface(s, id);
+    var after := crashSurface(s, id).state;
     SurfaceCrashParts(s, id);
     SurfacesFiltered(s, after, (x: NativeSurface) => (x.id != id));
     var gone := ProofLib.Filter((x: NativeSurface) => (x.id == id), s.surfaces);
@@ -390,6 +419,11 @@ lemma crashSurface_ensures(s: SurfaceHost, id: int)
     ProofLib.FilterNil((g: int) => !((g in s.crashReports)), gens[1..]);
     assert after.crashReports == s.crashReports + (if g in s.crashReports then [] else [g]);
     SurfaceUniqueDistinct(s.crashReports); SurfaceUniqueDistinct(after.crashReports);
+    SurfaceIdPartition(s.surfaces, id);
+    var out := crashSurface(s, id).out;
+    assert out == [SurfaceCrashed(gone[0].id, gone[0].session, s.epoch)];
+    assert gone[0].session == s.session;
+    assert eventServesTheLiveRealm(out[0], s);
   }
 }
 
@@ -411,10 +445,12 @@ lemma purgeProfileSurfaces_ensures(s: SurfaceHost, profileKey: string)
   ensures (inv(s) ==> canPurgeProfileSurfaces(s, profileKey) ==> stepRetiredSessionNeverReturns(s, purgeProfileSurfaces(s, profileKey)))
   ensures (inv(s) ==> canPurgeProfileSurfaces(s, profileKey) ==> stepBoundsTouchOneSurface(s, "purgeProfileSurfaces", purgeProfileSurfaces(s, profileKey)))
   ensures (inv(s) ==> canPurgeProfileSurfaces(s, profileKey) ==> stepPresentingNeverResumes(s, "purgeProfileSurfaces", purgeProfileSurfaces(s, profileKey)))
+  ensures (inv(s) ==> canPurgeProfileSurfaces(s, profileKey) ==> stepOcclusionResolvesOnlyInEffect(s, "purgeProfileSurfaces", purgeProfileSurfaces(s, profileKey), []))
   ensures (inv(s) ==> canPurgeProfileSurfaces(s, profileKey) ==> stepPurgeReportsEveryClosedSurface(s, "purgeProfileSurfaces", purgeProfileSurfaces(s, profileKey)))
   ensures (inv(s) ==> canPurgeProfileSurfaces(s, profileKey) ==> stepActivityBackOnlyAfterUiAndPageDecline(s, "purgeProfileSurfaces", purgeProfileSurfaces(s, profileKey)))
   ensures (inv(s) ==> canPurgeProfileSurfaces(s, profileKey) ==> stepUiOfferedBeforePage(s, "purgeProfileSurfaces", purgeProfileSurfaces(s, profileKey)))
   ensures (inv(s) ==> canPurgeProfileSurfaces(s, profileKey) ==> stepReportOnlyOnChange(s, purgeProfileSurfaces(s, profileKey)))
+  ensures (inv(s) ==> canPurgeProfileSurfaces(s, profileKey) ==> stepEveryClosedSurfaceIsHeardByItsRealmOnly(s, "purgeProfileSurfaces", purgeProfileSurfaces(s, profileKey), []))
 {
   if inv(s) && canPurgeProfileSurfaces(s, profileKey) {
     var after := purgeProfileSurfaces(s, profileKey);

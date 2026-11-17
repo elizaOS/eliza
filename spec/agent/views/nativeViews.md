@@ -59,3 +59,25 @@ pure def alwaysTimingIsLatestOwnerTurn(n: NativeViews): bool =
 pure def sometimesTimingPublished(n: NativeViews): bool = n.timingTurn > 1
 pure def sometimesOwnerChangeHidesTiming(n: NativeViews): bool = n.completed.contains(n.latestTurn) and n.latestTurn > 0 and n.timingTurn == 0
 ```
+
+## Story: Let the native renderer reach only the view routes it needs
+
+> As a device owner, the renderer on my device can claim and answer an
+> interaction and follow a navigation the agent prepared, and nothing else
+> of the view routes passes my device's native gate.
+
+### The native gate admits only claim, result and a prepared navigation
+
+Through the device's native gate, a renderer may send an interaction claim,
+an interaction result, and a navigation only when it names a navigation the
+agent prepared. Installing views, interacting directly with a view and any
+other view route are refused there.
+
+```quint
+type NativeViewRoute = InteractClaimRoute | InteractResultRoute | NavigateRoute | InteractRoute | InstallRoute | OtherViewRoute
+pure def nativeGateAdmits(route: NativeViewRoute, prepared: bool): bool =
+  route == InteractClaimRoute or route == InteractResultRoute or (route == NavigateRoute and prepared)
+pure def lawUnpreparedNavigationIsRefused(route: NativeViewRoute): bool = route == NavigateRoute implies not(nativeGateAdmits(route, false))
+pure def lawOtherViewRoutesAreRefused(route: NativeViewRoute, prepared: bool): bool =
+  (route == InteractRoute or route == InstallRoute or route == OtherViewRoute) implies not(nativeGateAdmits(route, prepared))
+```

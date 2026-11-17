@@ -120,12 +120,12 @@ Each browser-safe leaf names the core spec whose rules own its behavior:
 
 | Leaf | Owner |
 | --- | --- |
-| logging | [log listeners](./logging/index.md) |
+| logging | [log listeners](./logging/index.md); the logger contract and trailing-argument redaction are [diagnostics](./diagnostics.md), "A renderer's log line redacts its trailing arguments as the host sink does" |
 | read memo | [read memo](./memo.md) |
 | single-flight memo | [concurrent memo readers](./memoConcurrency.md) |
 | view interaction | [views](./views.md) |
 | `views/*` | [view navigation](./viewNavigation.md) |
-| speech, spoken text | [speech](./voice.md) |
+| speech, spoken text | the speech leaf's text below; turn cancellation is [speech](./voice.md) |
 | protocol, schema types, task widgets | [protocol values](./protocols.md) |
 | events | [event streams](./events.md) |
 | log redaction | [content and outbound security](./security.md) |
@@ -156,4 +156,37 @@ pure val packedValues = Set(List(), List({ leaf: LoggingLeaf, closure: List(Brow
   List({ leaf: LoggingLeaf, closure: List(BrowserModule) }, { leaf: EventsLeaf, closure: List() }))
 pure def lawAdmittedPackServesExactlyTheDeclaredSafeLeaves(declared: Set[CoreLeaf], packed: List[PackedLeaf], leaf: CoreLeaf): bool =
   packAdmitted(declared, packed) implies (declared.contains(leaf) iff packed.some(p => p.leaf == leaf and browserSafeClosure(p.closure)))
+```
+
+## Story: Speak only the prose of a reply
+
+> As a person listening to the agent, I hear what it says, never its
+> reasoning, code, links or stage directions, and the client that speaks it
+> uses the same rules as the host.
+
+The speech leaf exports the error type, the reduction of a reply to
+speakable text and the trimming of trailing characters, and nothing that
+starts the host; the error type and the trimming are in the
+[public surface baseline](./baseline/core-public-surface.json). A reply is modeled as the segments the reduction tells
+apart.
+
+### Spoken text keeps the prose of a reply and drops reasoning, tool calls, code, addresses, markup and stage directions
+
+Reasoning and tool-call blocks, including one left open at the end of a
+reply, code fences, including an unterminated one, web addresses, markup
+and stage directions are not spoken. Prose is spoken in order, and inline
+code, the text of a link and emphasized words are spoken as their words.
+
+```quint
+type ReplySegment = ProseSegment | ReasoningSegment | ToolCallSegment | CodeFenceSegment | InlineCodeSegment | LinkTextSegment | AddressSegment | MarkupSegment | StageDirectionSegment | EmphasisSegment
+pure def spoken(segment: ReplySegment): bool =
+  segment == ProseSegment or segment == InlineCodeSegment or segment == LinkTextSegment or segment == EmphasisSegment
+pure def speakable(reply: List[ReplySegment]): List[ReplySegment] = reply.select(segment => spoken(segment))
+pure val replyValues = Set(List(), List(ProseSegment, ReasoningSegment, ProseSegment), List(CodeFenceSegment, LinkTextSegment, AddressSegment),
+  List(StageDirectionSegment, EmphasisSegment, ToolCallSegment, MarkupSegment, InlineCodeSegment))
+pure def lawSpokenTextHasNoReasoningCodeOrAddresses(reply: List[ReplySegment]): bool =
+  speakable(reply).every(segment => segment != ReasoningSegment and segment != ToolCallSegment and segment != CodeFenceSegment and
+    segment != AddressSegment and segment != MarkupSegment and segment != StageDirectionSegment)
+pure def lawEveryProseSegmentIsSpoken(reply: List[ReplySegment]): bool =
+  speakable(reply).select(segment => segment == ProseSegment).length() == reply.select(segment => segment == ProseSegment).length()
 ```

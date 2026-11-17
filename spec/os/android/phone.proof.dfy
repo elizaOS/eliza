@@ -131,3 +131,24 @@ lemma drainCallback_ensures(s: CallService, callId: int)
     PhoneDrain(s, callId);
   }
 }
+
+lemma PhoneDrainRetired(s: CallService, callId: int)
+  ensures forall x :: x in drainRetiredCallback(s, callId).queued ==> x in s.queued
+{
+  var after := drainRetiredCallback(s, callId);
+    forall x | x in after.queued ensures x in s.queued && x != callId {
+      ProofLib.FilterMember((set_x: int) => !((set_x in [callId])), s.queued, x);
+    }
+}
+
+lemma drainRetiredCallback_ensures(s: CallService, callId: int)
+  ensures (inv(s) ==> canDrainRetiredCallback(s, callId) ==> alwaysCallbacksMatchRegistry(drainRetiredCallback(s, callId)))
+  ensures (inv(s) ==> canDrainRetiredCallback(s, callId) ==> alwaysNoticeHasCurrentCall(drainRetiredCallback(s, callId)))
+  ensures (inv(s) ==> canDrainRetiredCallback(s, callId) ==> alwaysDestroyedServiceHasNoCalls(drainRetiredCallback(s, callId)))
+  ensures (inv(s) ==> canDrainRetiredCallback(s, callId) ==> alwaysRegistryWithinIssued(drainRetiredCallback(s, callId)))
+  ensures (inv(s) ==> canDrainRetiredCallback(s, callId) ==> stepRemovedCallStaysRemoved(s, drainRetiredCallback(s, callId)))
+{
+  if inv(s) && canDrainRetiredCallback(s, callId) {
+    PhoneDrainRetired(s, callId);
+  }
+}

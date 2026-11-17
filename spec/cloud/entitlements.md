@@ -6,7 +6,10 @@ explicit source, and binds every billing read to the credential that made
 it. Promotional grants carry a stamp that is honored only while the primary
 grant policy still authorizes it, and each plan bounds request rate with
 paired token buckets. The entitlement audience is the deployment's
-configuration ([deployment profile](./deployment.md)). A billing answer
+configuration ([deployment profile](./deployment.md)). A device may keep
+its plan admission through an outage on a record of its own sign-in, and
+the cloud still decides every metered request, telling an unfunded account
+apart from every other refusal. A billing answer
 belongs to the account that asked, as
 [account authority](../auth/accountAuthority.md) checks for billing: it
 refuses a session for a different user or organization.
@@ -188,4 +191,113 @@ pure def lawRetryTimeIsUsable(rates: BucketLimits, b: Bucket, clock: int): bool 
   (reply.refused and rates.burstRate > 0 and rates.sustainedRate > 0 and rates.burstCapacity >= 4 and rates.sustainedCapacity >= 4) implies
     (reply.retryAt >= reply.bucket.at and reply.bucket.burst + (reply.retryAt - reply.bucket.at) * rates.burstRate >= 4 and reply.bucket.sustained + (reply.retryAt - reply.bucket.at) * rates.sustainedRate >= 4)
 }
+```
+
+## Story: Keep a device's plan admission through an outage without trusting it past its end
+
+> As a person whose device runs an agent on my cloud plan, I want the agent
+> to keep working through a short cloud or billing outage on the plan the
+> cloud last verified for my own sign-in, never on another sign-in's record
+> or a plan that has already ended, while the cloud still decides every
+> request it receives.
+
+### An unverified admission rests only on a recent record of the same sign-in whose plan end has not passed
+
+The device keeps one admission record: the sign-in it was verified for,
+whether it was verified within the offline window, and the plan's end
+(none for a credits account or an open-ended plan). When the cloud cannot
+be reached, or answers for the account but not for billing, the device
+admits only on a record of the current sign-in, verified within the window,
+whose plan end has not passed; anything else leaves the agent unbound.
+Signing out, the cloud refusing the sign-in, or the cloud verifying that
+there is no plan removes the record.
+
+```quint
+type PlanEnd = NoPlanEnd | FuturePlanEnd | PastPlanEnd
+type AdmissionRecord = { present: bool, signIn: int, recent: bool, planEnd: PlanEnd }
+pure def graceAdmits(record: AdmissionRecord, signIn: int): bool =
+  record.present and signIn != 0 and record.signIn == signIn and record.recent and record.planEnd != PastPlanEnd
+pure val recordValues = Set(
+  { present: true, signIn: 1, recent: true, planEnd: FuturePlanEnd },
+  { present: true, signIn: 1, recent: true, planEnd: NoPlanEnd },
+  { present: true, signIn: 1, recent: false, planEnd: FuturePlanEnd },
+  { present: true, signIn: 2, recent: true, planEnd: NoPlanEnd },
+  { present: true, signIn: 1, recent: true, planEnd: PastPlanEnd },
+  { present: false, signIn: 0, recent: true, planEnd: NoPlanEnd })
+pure val signInValues = Set(0, 1, 2)
+pure def lawGraceBelongsToTheSameSignIn(record: AdmissionRecord, signIn: int): bool = graceAdmits(record, signIn) implies (record.present and signIn != 0 and record.signIn == signIn)
+pure def lawAnOldRecordGivesNoGrace(record: AdmissionRecord, signIn: int): bool = not(record.recent) implies not(graceAdmits(record, signIn))
+pure def lawAnEndedPlanGivesNoGrace(record: AdmissionRecord, signIn: int): bool = record.planEnd == PastPlanEnd implies not(graceAdmits(record, signIn))
+type RecordRemoval = SignedOut | SignInRefused | NoPlanVerified
+pure val removedRecord: AdmissionRecord = { present: false, signIn: 0, recent: false, planEnd: NoPlanEnd }
+pure def recordAfter(removal: RecordRemoval): AdmissionRecord = removedRecord
+pure def lawARemovedRecordGivesNoGrace(removal: RecordRemoval, signIn: int): bool = not(graceAdmits(recordAfter(removal), signIn))
+```
+
+### A verified plan is recorded with an end still ahead, or none, and a past end is never carried forward
+
+When the cloud verifies an admitting plan, the record is rewritten for the
+current sign-in. A credits account records no end. An active plan records
+the end the cloud reported when it reported one still ahead; otherwise it
+keeps the last known end, but an end already past is dropped, never
+written.
+
+```quint
+type VerifiedPlan = VerifiedActive | VerifiedCredits
+pure def recordedPlanEnd(verifiedPlan: VerifiedPlan, reported: PlanEnd, lastKnown: PlanEnd): PlanEnd =
+  if (verifiedPlan == VerifiedCredits) NoPlanEnd
+  else if (reported == FuturePlanEnd) FuturePlanEnd
+  else if (lastKnown == PastPlanEnd) NoPlanEnd
+  else lastKnown
+pure def verifiedRecord(verifiedPlan: VerifiedPlan, reported: PlanEnd, lastKnown: PlanEnd, signIn: int): AdmissionRecord =
+  { present: true, signIn: signIn, recent: true, planEnd: recordedPlanEnd(verifiedPlan, reported, lastKnown) }
+pure def lawAPastEndIsNeverWritten(verifiedPlan: VerifiedPlan, reported: PlanEnd, lastKnown: PlanEnd): bool =
+  recordedPlanEnd(verifiedPlan, reported, lastKnown) != PastPlanEnd
+pure def lawCreditsRecordNoEnd(reported: PlanEnd, lastKnown: PlanEnd): bool = recordedPlanEnd(VerifiedCredits, reported, lastKnown) == NoPlanEnd
+pure def lawAFreshVerificationGrantsGrace(verifiedPlan: VerifiedPlan, lastKnown: PlanEnd, signIn: int): bool =
+  signIn != 0 implies graceAdmits(verifiedRecord(verifiedPlan, NoPlanEnd, lastKnown, signIn), signIn)
+```
+
+## Story: Tell an unfunded account from every other refusal
+
+> As a person whose account has run out of credit, I want the cloud to say
+> so plainly, distinct from a bad sign-in, a busy service or an outage, so
+> that my device can show that my account needs attention instead of
+> retrying or signing me out.
+
+### A metered request is refused as unfunded only for the caller's own balance, and the cloud decides it whatever the device admitted
+
+The cloud answers a metered request from its own state, in order: a
+caller it cannot authenticate is 401; an admission it cannot reach is 503;
+a plan or identity over its rate is 429; a balance and allowance that do
+not cover the request is unfunded, 402 with `insufficient_credits` or
+`allowance_exhausted`; otherwise the request is admitted. A provider's
+refusal of the deployment's own provider account is never the caller's:
+it is 503, not 402. Whether the device admitted the request on its grace
+record changes nothing in this answer.
+
+```quint
+type MeteredAnswer = MeteredAdmitted | MeteredUnauthenticated | MeteredUnavailable | MeteredRateLimited | MeteredUnfunded
+type MeteredFacts = { authenticated: bool, admissionReachable: bool, withinRate: bool, covered: bool, providerAccountFunded: bool }
+pure def meteredAnswer(facts: MeteredFacts, deviceGrace: bool): MeteredAnswer =
+  if (not(facts.authenticated)) MeteredUnauthenticated
+  else if (not(facts.admissionReachable)) MeteredUnavailable
+  else if (not(facts.withinRate)) MeteredRateLimited
+  else if (not(facts.covered)) MeteredUnfunded
+  else if (not(facts.providerAccountFunded)) MeteredUnavailable
+  else MeteredAdmitted
+pure def meteredStatus(answer: MeteredAnswer): int =
+  if (answer == MeteredAdmitted) 200 else if (answer == MeteredUnauthenticated) 401 else if (answer == MeteredRateLimited) 429 else if (answer == MeteredUnfunded) 402 else 503
+pure val factsValues = Set(
+  { authenticated: true, admissionReachable: true, withinRate: true, covered: true, providerAccountFunded: true },
+  { authenticated: true, admissionReachable: true, withinRate: true, covered: false, providerAccountFunded: true },
+  { authenticated: true, admissionReachable: true, withinRate: true, covered: true, providerAccountFunded: false },
+  { authenticated: true, admissionReachable: true, withinRate: false, covered: false, providerAccountFunded: true },
+  { authenticated: true, admissionReachable: false, withinRate: true, covered: false, providerAccountFunded: true },
+  { authenticated: false, admissionReachable: true, withinRate: true, covered: false, providerAccountFunded: true })
+pure def lawUnfundedIsOnlyTheCallersBalance(facts: MeteredFacts, deviceGrace: bool): bool =
+  (meteredStatus(meteredAnswer(facts, deviceGrace)) == 402) iff (facts.authenticated and facts.admissionReachable and facts.withinRate and not(facts.covered))
+pure def lawProviderFundingIsNeverTheCallers(facts: MeteredFacts, deviceGrace: bool): bool =
+  (facts.covered and not(facts.providerAccountFunded)) implies meteredStatus(meteredAnswer(facts, deviceGrace)) != 402
+pure def lawTheCloudDecidesWhateverTheDeviceAdmitted(facts: MeteredFacts): bool = meteredAnswer(facts, true) == meteredAnswer(facts, false)
 ```

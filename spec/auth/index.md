@@ -65,7 +65,9 @@ Times are in seconds throughout.
 ### Every code, verifier and session stays in the trusted host, and a renderer receives only non-secret receipts
 
 Codes, verifiers and session tokens are secret types, so `model` refuses any
-path by which one reaches a receipt.
+path by which one reaches a receipt. A receipt is the request, attempt and
+credential ids and nothing else, so two results that differ only in their
+secrets give the renderer the same receipt.
 
 ```quint
 type SecretSessionToken = int
@@ -74,6 +76,14 @@ type SecretCode = int
 type HostSignInResult = { requestId: int, attemptId: int, credentialId: int, sessionToken: SecretSessionToken, verifier: SecretVerifier, code: SecretCode }
 type RendererReceipt = { requestId: int, attemptId: int, credentialId: int }
 pure def receiptFor(r: HostSignInResult): RendererReceipt = { requestId: r.requestId, attemptId: r.attemptId, credentialId: r.credentialId }
+pure def lawReceiptIgnoresSecrets(r: HostSignInResult, token: SecretSessionToken, verifier: SecretVerifier, code: SecretCode): bool =
+  receiptFor({ ...r, sessionToken: token, verifier: verifier, code: code }) == receiptFor(r)
+pure def lawReceiptCarriesOnlyIds(r: HostSignInResult): bool =
+  receiptFor(r) == { requestId: r.requestId, attemptId: r.attemptId, credentialId: r.credentialId }
+pure val rValues = Set({ requestId: 1, attemptId: 2, credentialId: 3, sessionToken: 4, verifier: 5, code: 6 }, { requestId: 1, attemptId: 1, credentialId: 1, sessionToken: 9, verifier: 9, code: 9 })
+pure val tokenValues = Set(4, 7)
+pure val verifierValues = Set(5, 8)
+pure val codeValues = Set(6, 9)
 ```
 
 ### A registered application binding is checked before any network sign-in work

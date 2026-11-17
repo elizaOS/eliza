@@ -110,13 +110,17 @@ pure def sometimesStorageFailureBeforeEffect(r: TaskRun): bool = r.poisoned and 
 
 Only a paused, unpoisoned task reconciles an unknown operation, and only with
 evidence of what happened. The task resumes only after cleanup is acknowledged,
-with its authority intact and no operation left unknown.
+with its authority intact and no operation left unknown. While an operation
+is unknown the task stays paused, and only reconciliation resolves it.
 
 ```quint
 pure def canReconcile(r: TaskRun, succeeded: bool): bool = r.op == T::Unknown and r.status == RunPaused and not(r.poisoned)
 pure def reconcile(r: TaskRun, succeeded: bool): TaskRun = { ...r, op: if (succeeded) T::Succeeded else T::Failed, evidence: true, revision: r.revision + 1, eventSequence: r.eventSequence + 1 }
 pure def canResume(r: TaskRun): bool = r.status == RunPaused and r.authority and not(r.cleanup) and not(r.poisoned) and r.op != T::Unknown
 pure def resume(r: TaskRun): TaskRun = { ...r, status: RunActive, aborted: false, revision: r.revision + 1, eventSequence: r.eventSequence + 1 }
+pure def alwaysUnknownOperationKeepsTaskPaused(r: TaskRun): bool = r.op == T::Unknown implies r.status == RunPaused
+pure def stepUnknownLeavesOnlyByReconcile(before: TaskRun, via: str, after: TaskRun): bool =
+  (before.op == T::Unknown and after.op != T::Unknown) implies (via == "reconcile" and after.evidence and after.status == RunPaused)
 pure def sometimesUnknownReconciled(r: TaskRun): bool = r.status == RunPaused and resolved(r) and r.epoch > 0 and not(r.cleanup)
 pure def sometimesSecondOperationAfterResume(r: TaskRun): bool = r.op == T::Prepared and r.epoch > 0 and r.revision > 4
 ```

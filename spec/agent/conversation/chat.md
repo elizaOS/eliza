@@ -161,3 +161,116 @@ pure def alwaysRunStatusFollowsOutcome(c: Chat): bool =
 pure def sometimesFailedAfterDelivery(c: Chat): bool = c.prompt.delivered and c.prompt.verdict == Failed
 pure def sometimesCompletedWithoutReply(c: Chat): bool = not(c.prompt.delivered) and c.prompt.runCompleted
 ```
+
+## Story: Retry a message without it being refused after it was taken
+
+> As a user whose connection dropped while the agent was answering, I can
+> send the same message again and wait for that answer; I am told the
+> conversation is busy only when my message was certainly not taken.
+
+### A busy answer is given only when no reservation holds the message
+
+A keyed request whose key has an active reservation with the same
+fingerprint joins that in-flight turn and waits for it, however busy the
+room is; a settled key with the same fingerprint replays its receipt; a
+different fingerprint under a held key is a conflict. Only a request whose
+key holds no reservation can be told the room is busy, so a busy answer
+means the message was not taken and may be sent again.
+
+```quint
+type ChatAdmission = AdmitNew | JoinInFlight | ReplaySettled | KeyConflict | RoomBusy
+pure def chatAdmission(reservation: Reservation, fingerprint: int, roomFull: bool): ChatAdmission =
+  if (reservation.phase == KeyActive) (if (reservation.fingerprint == fingerprint) JoinInFlight else KeyConflict)
+  else if (reservation.phase == KeySettled) (if (reservation.fingerprint == fingerprint) ReplaySettled else KeyConflict)
+  else if (roomFull) RoomBusy
+  else AdmitNew
+pure val reservationValues = Set(vacantKey, { ...vacantKey, phase: KeyActive, owner: 1, fingerprint: 1, generation: 1 }, { ...vacantKey, phase: KeySettled, owner: 1, fingerprint: 1, generation: 1, receipt: true, receiptGeneration: 1 })
+pure val roomFullValues = Set(true, false)
+pure def lawBusyOnlyWhenNothingWasTaken(reservation: Reservation, fingerprint: int, roomFull: bool): bool =
+  chatAdmission(reservation, fingerprint, roomFull) == RoomBusy implies reservation.phase == KeyVacant
+pure def lawRepeatJoinsTheTurnInFlight(reservation: Reservation, fingerprint: int, roomFull: bool): bool =
+  (reservation.phase == KeyActive and reservation.fingerprint == fingerprint) implies chatAdmission(reservation, fingerprint, roomFull) == JoinInFlight
+```
+
+## Story: Edit an earlier message and page back through history
+
+> As a user, I can replace a message I sent, which removes it and every
+> message after it, and I can scroll back through older messages page by
+> page until there are none left.
+
+### Truncation removes the named message and everything after it, and nothing before
+
+History is ordered by creation time and then by message ID. Truncating at a
+message removes every later message, and the message itself when the
+request is inclusive. A message that is not in the conversation is not
+found and nothing is removed. Truncation waits for the room's turn slot, so
+it never runs beside a turn; a room whose queue is full answers busy and
+removes nothing. The reply says how many messages were removed.
+
+```quint
+type HistoryRow = { at: int, id: int }
+pure def precedesRow(a: HistoryRow, b: HistoryRow): bool = a.at < b.at or (a.at == b.at and a.id < b.id)
+pure def truncatedHistory(rows: List[HistoryRow], target: HistoryRow, inclusive: bool): List[HistoryRow] =
+  if (rows.includes(target)) rows.select(r => precedesRow(r, target) or (not(inclusive) and r == target)) else rows
+pure def truncationAdmitted(roomFull: bool, conversationLive: bool): bool = conversationLive and not(roomFull)
+pure val historyValues = Set(List(), List({ at: 1, id: 1 }, { at: 2, id: 2 }, { at: 2, id: 3 }), List({ at: 1, id: 1 }, { at: 3, id: 4 }))
+pure val targetValues = Set({ at: 2, id: 2 }, { at: 1, id: 1 }, { at: 5, id: 9 })
+pure val inclusiveValues = Set(true, false)
+pure def lawTruncationKeepsOnlyEarlierMessages(history: List[HistoryRow], target: HistoryRow, inclusive: bool): bool =
+  history.includes(target) implies truncatedHistory(history, target, inclusive).every(r => precedesRow(r, target) or (not(inclusive) and r == target))
+pure def lawInclusiveTruncationRemovesTheMessage(history: List[HistoryRow], target: HistoryRow): bool =
+  not(truncatedHistory(history, target, true).includes(target))
+pure def lawUnknownMessageRemovesNothing(history: List[HistoryRow], target: HistoryRow, inclusive: bool): bool =
+  not(history.includes(target)) implies truncatedHistory(history, target, inclusive) == history
+pure def lawBusyRoomTruncatesNothing(conversationLive: bool): bool = not(truncationAdmitted(true, conversationLive))
+```
+
+### An older page holds only messages before its cursor, and says whether more remain
+
+A read with no cursor returns the recent window. A read with a cursor
+returns the newest messages strictly older than it, at most the page
+limit of them: older by time, or, when the cursor also names its message,
+at the same time with a smaller ID. A message ID without a time is refused.
+Only an older-page read says whether more remain, and it does exactly when
+more older messages exist than the page holds.
+
+```quint
+type PageCursor = { at: int, id: int, keyed: bool }
+type HistoryRead = RecentWindow | OlderPage | AroundMessage
+pure def olderThanCursor(r: HistoryRow, cursor: PageCursor): bool = r.at < cursor.at or (cursor.keyed and r.at == cursor.at and r.id < cursor.id)
+pure def olderRows(rows: List[HistoryRow], cursor: PageCursor): List[HistoryRow] = rows.select(r => olderThanCursor(r, cursor))
+pure def pageRows(rows: List[HistoryRow], cursor: PageCursor, limit: int): List[HistoryRow] =
+  olderRows(rows, cursor).select(r => olderRows(rows, cursor).select(x => precedesRow(r, x)).length() < limit)
+pure def pageHasMore(rows: List[HistoryRow], cursor: PageCursor, limit: int): bool = olderRows(rows, cursor).length() > limit
+pure def cursorAccepted(hasTime: bool, hasMessageId: bool): bool = hasTime or not(hasMessageId)
+pure def reportsHasMore(read: HistoryRead): bool = read == OlderPage
+pure val cursorValues = Set({ at: 2, id: 3, keyed: true }, { at: 2, id: 3, keyed: false }, { at: 9, id: 0, keyed: false })
+pure val limitValues = Set(1, 2, 200)
+pure def lawPageHoldsOnlyOlderMessages(history: List[HistoryRow], cursor: PageCursor, limit: int): bool =
+  pageRows(history, cursor, limit).every(r => olderThanCursor(r, cursor))
+pure def lawMessageIdNeedsATime(hasMessageId: bool): bool = hasMessageId implies not(cursorAccepted(false, hasMessageId))
+pure def lawOnlyOlderPagesReportMore(read: HistoryRead): bool = reportsHasMore(read) implies read == OlderPage
+```
+
+### Heard text can only shorten a reply
+
+After the user interrupts a spoken reply, the client reports what was
+heard: a nonblank prefix of the stored reply, or that nothing was heard.
+A heard prefix cuts the stored reply to it; nothing heard leaves an empty
+reply marked as interrupted. Text that is not a prefix of the reply is a
+conflict and changes nothing, so a report can never extend a reply.
+
+```quint
+type HeardReport = HeardPrefix | NothingHeard | HeardOther
+type HeardResult = { conflict: bool, keptUnits: int, interrupted: bool }
+pure def heardResult(storedUnits: int, report: HeardReport, heardUnits: int): HeardResult =
+  if (report == NothingHeard) { conflict: false, keptUnits: 0, interrupted: true }
+  else if (report == HeardPrefix and heardUnits > 0 and heardUnits <= storedUnits) { conflict: false, keptUnits: heardUnits, interrupted: true }
+  else { conflict: true, keptUnits: storedUnits, interrupted: false }
+pure val storedUnitsValues = Set(0, 3, 6)
+pure val heardUnitsValues = Set(0, 2, 6, 7)
+pure def lawHeardNeverExtendsTheReply(storedUnits: int, report: HeardReport, heardUnits: int): bool =
+  storedUnits >= 0 implies heardResult(storedUnits, report, heardUnits).keptUnits <= storedUnits
+pure def lawConflictKeepsTheReply(storedUnits: int, report: HeardReport, heardUnits: int): bool =
+  heardResult(storedUnits, report, heardUnits).conflict implies heardResult(storedUnits, report, heardUnits).keptUnits == storedUnits
+```

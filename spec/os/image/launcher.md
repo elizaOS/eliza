@@ -3,9 +3,78 @@
 The consumer's home app, the launcher package its
 [product descriptor](./product.md) names, is staged into the image as an
 additive product overlay from a reviewed launcher descriptor, or from an
-explicit development descriptor for a development image. Staging claims no
-default home policy, image boot or release qualification;
-[release signing](./signing.md) and the product composition own those.
+explicit development descriptor for a development image. A production
+image also gets a provisioning overlay derived from the admitted
+launcher's manifest: the default home, the assistant role holder when the
+product takes that role, and the default Autofill offer. Staging and
+provisioning are staging output, not an image boot or release
+qualification; [release signing](./signing.md) and the product
+composition own those, and only a boot of the built image shows that
+Android applied the defaults.
+
+## Story: Make the launcher the device's home and assistant on first boot without preassigning other roles
+
+> As a consumer, I want a fresh device to open my launcher as home and,
+> when my product takes it, as the assistant, so that the person starts in
+> my product without the image deciding anything else for them.
+
+### First-boot defaults come from the admitted launcher's manifest and never preassign the dialer or SMS app
+
+The admitted APK must declare exactly one exported activity for the
+home intent; it becomes the default home through a preferred-activity
+entry read on first boot. A product that takes the assistant role names
+exactly one exported assist activity, and the launcher's package becomes
+the default assistant role holder. A product that does not take it gets
+no assistant default, and its APK may declare only disabled assist
+activities. A declared Autofill service must be exported and protected
+by the Autofill binding permission, at most one, and it becomes the
+default Autofill offer. The stock launcher stays installed as a recovery
+path. The product's own overlays never set the default dialer, SMS app,
+home or assistant resources: those roles are the person's, assigned on
+the device through Android's role holders, and the defaults above come
+only from the provisioning overlay. The overlay files are written once
+into a new destination.
+
+```quint
+type LauncherManifest = {
+  homeActivities: int, homeExported: bool, assistActivities: int, enabledAssistActivities: int, assistExported: bool,
+  autofillServices: int, autofillProtected: bool, autofillExported: bool
+}
+type FirstBootDefaults = { defaultHome: bool, assistantRole: bool, autofillOffer: bool, dialerPreassigned: bool, smsPreassigned: bool, stockLauncherKept: bool }
+type RoleResource = DefaultDialerResource | DefaultSmsResource | DefaultHomeResource | DefaultAssistantResource | OtherResource
+pure def provisioningAdmitted(m: LauncherManifest, takesAssistant: bool): bool =
+  m.homeActivities == 1 and m.homeExported and
+  (if (takesAssistant) m.assistActivities == 1 and m.assistExported else m.enabledAssistActivities == 0) and
+  m.autofillServices >= 0 and m.autofillServices <= 1 and (m.autofillServices == 0 or (m.autofillProtected and m.autofillExported))
+pure def firstBootDefaults(m: LauncherManifest, takesAssistant: bool): FirstBootDefaults =
+  { defaultHome: provisioningAdmitted(m, takesAssistant), assistantRole: takesAssistant and provisioningAdmitted(m, takesAssistant),
+    autofillOffer: m.autofillServices == 1 and provisioningAdmitted(m, takesAssistant),
+    dialerPreassigned: false, smsPreassigned: false, stockLauncherKept: true }
+pure def productOverlayAdmitted(resources: Set[RoleResource]): bool = resources.forall(r => r == OtherResource)
+pure val plainManifest: LauncherManifest = {
+  homeActivities: 1, homeExported: true, assistActivities: 1, enabledAssistActivities: 1, assistExported: true,
+  autofillServices: 1, autofillProtected: true, autofillExported: true
+}
+pure val mValues = Set(plainManifest, { ...plainManifest, homeActivities: 2 }, { ...plainManifest, homeActivities: 0 },
+  { ...plainManifest, homeExported: false }, { ...plainManifest, enabledAssistActivities: 0 },
+  { ...plainManifest, autofillProtected: false }, { ...plainManifest, autofillServices: 0 })
+pure val resourcesValues = Set(Set(), Set(OtherResource), Set(OtherResource, DefaultDialerResource), Set(DefaultSmsResource), Set(DefaultHomeResource), Set(DefaultAssistantResource))
+pure def lawFirstBootNeverPreassignsDialerOrSms(m: LauncherManifest, takesAssistant: bool): bool =
+  not(firstBootDefaults(m, takesAssistant).dialerPreassigned) and not(firstBootDefaults(m, takesAssistant).smsPreassigned) and
+  firstBootDefaults(m, takesAssistant).stockLauncherKept
+pure def lawAssistantRoleOnlyWhenTaken(m: LauncherManifest): bool =
+  not(firstBootDefaults(m, false).assistantRole)
+pure def lawProductWithoutAssistantRefusesEnabledAssist(m: LauncherManifest): bool =
+  m.enabledAssistActivities > 0 implies not(provisioningAdmitted(m, false))
+pure def lawDefaultsOnlyFromAnAdmittedManifest(m: LauncherManifest, takesAssistant: bool): bool =
+  (firstBootDefaults(m, takesAssistant).defaultHome or firstBootDefaults(m, takesAssistant).assistantRole or
+    firstBootDefaults(m, takesAssistant).autofillOffer) implies provisioningAdmitted(m, takesAssistant)
+pure def lawOneHomeActivity(m: LauncherManifest, takesAssistant: bool): bool =
+  provisioningAdmitted(m, takesAssistant) implies m.homeActivities == 1
+pure def lawProductOverlayNeverSetsRoles(resources: Set[RoleResource]): bool =
+  productOverlayAdmitted(resources) implies not(resources.contains(DefaultDialerResource) or resources.contains(DefaultSmsResource) or
+    resources.contains(DefaultHomeResource) or resources.contains(DefaultAssistantResource))
+```
 
 ## Story: Stage the consumer launcher as the home app without privileges it was not reviewed for
 
@@ -42,6 +111,26 @@ pure val lValues = Set(plainLauncher, { ...plainLauncher, apkDigestMatches: fals
   { ...plainLauncher, privilegedPermissions: Set("android.permission.CALL_PHONE") },
   { ...plainLauncher, privilegedPermissions: Set("android.permission.CAMERA") },
   { ...plainLauncher, defaultPermissions: Set("android.permission.RECORD_AUDIO") })
+```
+
+### A development descriptor is derived from the APK only in explicit development mode
+
+Without a reviewed descriptor, staging can derive one from the APK only
+when development mode is explicit: the digest and signer are read from a
+private copy of the APK, and staging rechecks the bytes it stages against
+that pin. A debuggable APK is staged only in development mode. A
+production image never takes a derived descriptor, and the staging
+evidence records whether it was a development staging.
+
+```quint
+type DescriptorSource = ReviewedDescriptor | DerivedDescriptor
+pure def descriptorAdmitted(source: DescriptorSource, developmentMode: bool, debuggable: bool, productionImage: bool): bool =
+  not(developmentMode and productionImage) and
+  (source == ReviewedDescriptor or developmentMode) and (not(debuggable) or developmentMode)
+pure def lawProductionNeverTakesDerivedDescriptor(developmentMode: bool, debuggable: bool): bool =
+  not(descriptorAdmitted(DerivedDescriptor, developmentMode, debuggable, true))
+pure def lawDebuggableLauncherNeedsDevelopment(source: DescriptorSource, productionImage: bool): bool =
+  not(descriptorAdmitted(source, false, true, productionImage))
 ```
 
 ### The launcher is nonprivileged unless reviewed privileged permissions are named, and its grants stay revocable
@@ -127,6 +216,10 @@ pure def sometimesExistingDestinationRefused(s: LauncherInstall): bool = s.phase
 ```
 
 ### A refused or discarded call leaves the destination as it found it
+
+A call refused before admission, or discarded after admission and before
+publication, has written nothing: an existing destination is untouched,
+and a destination that did not exist still does not.
 
 ```quint
 pure def alwaysRefusalWritesNothing(s: LauncherInstall): bool =

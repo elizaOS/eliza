@@ -83,7 +83,10 @@ pure def sometimesLateRegistrationRetired(s: Secrets): bool = s.registration == 
 
 ### A poll activates the plugin only while the activator is open and in the generation that began the poll
 
-A failed poll is retried once by the next timer tick.
+Activation begins only from the answer to a poll in flight, while the
+activator is open, in the generation that began the poll, with the plugin
+still pending and its secret held; it schedules the activation. A failed poll
+is retried once by the next timer tick.
 
 ```quint
 pure val weight_pollRequirements = 4
@@ -101,6 +104,9 @@ pure def canActivationSettled(s: Secrets): bool = s.poll == Activating and (s.ac
 pure def activationSettled(s: Secrets): Secrets = { ...s, poll: PollIdle, timer: s.phase == Open and s.pending }
 pure def canUnregister(s: Secrets): bool = s.phase == Open and s.pending and s.activation != Running
 pure def unregister(s: Secrets): Secrets = { ...s, pending: false }
+pure def stepPollActivatesOnlyWhileOpenInItsGeneration(before: Secrets, after: Secrets): bool =
+  (before.poll != Activating and after.poll == Activating) implies
+    (before.poll == Polling and before.phase == Open and before.pollGeneration == before.generation and before.pending and holds(before, before.required) and after.activation == Scheduled)
 pure def sometimesActivatedAfterSecretArrived(s: Secrets): bool = s.poll == Activating and s.activation != Idle
 ```
 

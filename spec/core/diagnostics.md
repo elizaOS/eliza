@@ -2,7 +2,9 @@
 
 Runtime error reporting keeps a bounded ring of recent reports and emits an
 error event for each report not raised by a subscriber. The logging sink
-redacts fields as [content and outbound security](./security.md) says.
+redacts fields as [content and outbound security](./security.md) says, and
+the browser-safe logging leaf gives a renderer's own sink the same logger
+contract and the same redaction.
 [Integration telemetry](./integrationTelemetry.md) keeps its own once-only
 latch.
 
@@ -55,4 +57,26 @@ pure def alwaysDeliveryAccounted(d: Diagnostics): bool = d.pendingEvents >= 0 an
 pure def stepReentryKeepsOriginalRecord(before: Diagnostics, via: str, after: Diagnostics): bool = via == "reenterReporting" implies after.entries == before.entries and after.emittedEvents == before.emittedEvents
 pure def sometimesSubscriberFailureRecorded(d: Diagnostics): bool = d.entries.length() > d.emittedEvents
 pure def sometimesDeliveryFailureWarned(d: Diagnostics): bool = d.completedEvents > 0 and d.warnings > 0
+```
+
+## Story: Log from a renderer with the core logger contract
+
+> As the maker of a client that runs in a browser or a device web view, I log
+> through the same logger contract as the host and never write a secret the
+> host's own sink would have hidden.
+
+### A renderer's log line redacts its trailing arguments as the host sink does
+
+The logging leaf exports the logger contract and the redaction of trailing
+arguments, and nothing that starts the host's logger. A renderer sink built
+on it writes each field of a line exactly as the host sink writes it: a
+secret field is masked, an unreadable one gets the failure marker, and an
+ordinary one is written unchanged.
+
+```quint
+import security as Sec from "./security"
+pure def rendererLine(logFields: List[Sec::LogField]): List[Sec::LogField] = Sec::redactLine(logFields)
+pure def lawRendererLineHidesWhatTheHostHides(logFields: List[Sec::LogField]): bool =
+  rendererLine(logFields).every(f => not(Sec::mustRedact(f)) or f.value == Sec::redactionMarker or f.value == Sec::unreadableMarker) and
+    rendererLine(logFields).length() == logFields.length()
 ```

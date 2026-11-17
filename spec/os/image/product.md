@@ -139,3 +139,52 @@ pure def lawMixedOrUnboundArtifactsAreRefused(digest: str, artifacts: List[Stage
   (digest == "" or artifacts.some(a => a.descriptorDigest != digest or a.descriptorDigest == "")) implies
     not(stagedForDescriptor(digest, artifacts))
 ```
+
+### An APK's native libraries enter the image only from an admitted APK built at a reviewed commit
+
+Native payloads are admitted only for an APK whose digest and signer were
+already admitted. The admission contract is generated from a full 40-hex
+reviewed source commit, and the runtime pins it names are read from that
+exact commit, never from the bytes of a working checkout. Every native
+library must be stored uncompressed, be a little-endian 64-bit ELF for the
+target's ABI, and at least one must be present; the libraries keep the
+launcher's privileged or ordinary placement, and on a Soong-only product
+the native installation patch must match its reviewed digest and the
+source lock it was reviewed against.
+
+```quint
+pure def nativePayloadAdmitted(apkAdmitted: bool, reviewedCommit: bool, pinsFromCommit: bool, librariesPresent: bool, librariesUncompressed: bool,
+  librariesMatchAbi: bool, placementMatchesLauncher: bool, soongOnly: bool, soongPatchReviewed: bool): bool =
+  apkAdmitted and reviewedCommit and pinsFromCommit and librariesPresent and librariesUncompressed and librariesMatchAbi and
+  placementMatchesLauncher and (soongPatchReviewed or not(soongOnly))
+pure def lawNativePayloadNeedsAdmittedApk(reviewedCommit: bool, pinsFromCommit: bool, librariesPresent: bool, librariesUncompressed: bool,
+  librariesMatchAbi: bool, placementMatchesLauncher: bool, soongOnly: bool, soongPatchReviewed: bool): bool =
+  not(nativePayloadAdmitted(false, reviewedCommit, pinsFromCommit, librariesPresent, librariesUncompressed, librariesMatchAbi, placementMatchesLauncher, soongOnly, soongPatchReviewed))
+pure def lawCheckoutBytesNeverPinNatives(apkAdmitted: bool, reviewedCommit: bool, librariesPresent: bool, librariesUncompressed: bool,
+  librariesMatchAbi: bool, placementMatchesLauncher: bool, soongOnly: bool, soongPatchReviewed: bool): bool =
+  not(nativePayloadAdmitted(apkAdmitted, reviewedCommit, false, librariesPresent, librariesUncompressed, librariesMatchAbi, placementMatchesLauncher, soongOnly, soongPatchReviewed))
+pure def lawSoongOnlyProductNeedsReviewedPatch(apkAdmitted: bool, reviewedCommit: bool, pinsFromCommit: bool, librariesPresent: bool,
+  librariesUncompressed: bool, librariesMatchAbi: bool, placementMatchesLauncher: bool): bool =
+  not(nativePayloadAdmitted(apkAdmitted, reviewedCommit, pinsFromCommit, librariesPresent, librariesUncompressed, librariesMatchAbi, placementMatchesLauncher, true, false))
+pure def lawEmptyNativePayloadIsRefused(apkAdmitted: bool, reviewedCommit: bool, pinsFromCommit: bool, librariesUncompressed: bool,
+  librariesMatchAbi: bool, placementMatchesLauncher: bool, soongOnly: bool, soongPatchReviewed: bool): bool =
+  not(nativePayloadAdmitted(apkAdmitted, reviewedCommit, pinsFromCommit, false, librariesUncompressed, librariesMatchAbi, placementMatchesLauncher, soongOnly, soongPatchReviewed))
+```
+
+### A physical device's platform declares the vendor partition's board API level
+
+A product kept on the stock factory vendor partition builds with a
+release configuration that declares exactly one board API level, equal to
+the vendor interface level the factory vendor manifest declares. A
+mismatch is corrected in the release configuration, never by rewriting
+the vendor manifest, and refuses composition until it is.
+
+```quint
+pure def boardApiAdmitted(declarations: int, releaseLevel: int, vendorLevel: int): bool =
+  declarations == 1 and releaseLevel > 0 and releaseLevel == vendorLevel
+pure val declarationsValues = Set(0, 1, 2)
+pure val releaseLevelValues = Set(0, 1, 2)
+pure val vendorLevelValues = Set(1, 2)
+pure def lawBoardApiMismatchIsRefused(declarations: int, releaseLevel: int, vendorLevel: int): bool =
+  releaseLevel != vendorLevel implies not(boardApiAdmitted(declarations, releaseLevel, vendorLevel))
+```

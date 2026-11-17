@@ -34,6 +34,10 @@ pure def alwaysBlockedPageFailed(m: Memory): bool =
 
 ### Evaluating a page starts only for a live task, outside backoff and shutdown
 
+A call starts only for a page still pending and not blocked, in the task's
+current revision, while the task is live and neither backing off nor shut
+down. While the task backs off no call is in flight.
+
 ```quint
 pure def canStartPage(m: Memory): bool = m.running == 0 and not(m.shutdown) and not(m.backoff) and nextPage(m) != 0
 pure def startPage(m: Memory): Memory = { ...m, running: nextPage(m), attemptRevision: m.revision }
@@ -41,6 +45,10 @@ pure def canRetryPage(m: Memory): bool = m.running != 0 and not(m.shutdown)
 pure def retryPage(m: Memory): Memory = { ...m, running: 0, retryUsed: true, backoff: true }
 pure def canWakeFromBackoff(m: Memory): bool = m.backoff
 pure def wakeFromBackoff(m: Memory): Memory = { ...m, backoff: false }
+pure def stepPageStartsOnlyWhenAdmitted(before: Memory, after: Memory): bool =
+  (before.running == 0 and after.running != 0) implies
+    (before.task == Live and not(before.backoff) and not(before.shutdown) and pageStatus(before, after.running) == Pending and not(before.blocked.contains(after.running)) and after.attemptRevision == before.revision)
+pure def alwaysBackoffHasNoCallInFlight(m: Memory): bool = m.backoff implies m.running == 0
 pure def sometimesRetriedThenSettled(m: Memory): bool = m.retryUsed and pageStatus(m, 1) != Pending
 ```
 

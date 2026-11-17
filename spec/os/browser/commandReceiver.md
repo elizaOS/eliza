@@ -278,3 +278,64 @@ command could act after its binding was fenced.
 pure def alwaysInactiveWhileFenced(receiver: SurfaceReceiver): bool =
   receiver.closed or receiver.replacing implies not(receiver.live)
 ```
+
+## Story: Control and step the selected page only from a fresh observation
+
+> As the person, I want a check of a target to change nothing, and a
+> history step to happen only on the history the guide just saw, so a
+> command never acts on a page I did not see.
+
+### A validate-only command spends nothing, and an effect is known only after reading the page back
+
+`controlPage` is a host-only command: the plugin acts on the task policy
+it is given and cannot tell where it came from, so taking it only from a
+trusted task authorizer is the consumer's part. A snapshot or an effect
+spends the page's current snapshot; a validate-only command checks its
+target without spending the snapshot or dispatching input. A dispatched
+effect's receipt says only that input was sent, and the receiver keeps
+no observation after it: the guide reads the page back before it treats
+the effect as done or sends another.
+
+```quint
+type ControlEffect = { spendsSnapshot: bool, dispatchesInput: bool }
+pure def isInput(subaction: SurfaceAction): bool =
+  subaction == ClickAction or subaction == FillAction or subaction == SelectAction or subaction == ScrollAction or subaction == FollowAction
+pure def controlEffect(subaction: SurfaceAction, validateOnly: bool): ControlEffect = {
+  val dispatches = isInput(subaction) and not(validateOnly)
+  { spendsSnapshot: subaction == SnapshotAction or dispatches, dispatchesInput: dispatches }
+}
+pure def lawValidateOnlySpendsNothing(subaction: SurfaceAction): bool =
+  not(controlEffect(subaction, true).dispatchesInput) and (subaction != SnapshotAction implies not(controlEffect(subaction, true).spendsSnapshot))
+pure def alwaysAnEffectNeedsAReadback(receiver: SurfaceReceiver): bool =
+  receiver.receipt == ReceiptEffect implies receiver.observedSnapshot == 0
+pure val subactionValues = Set(SnapshotAction, ClickAction, FillAction, ScrollAction, OtherAction)
+pure val validateOnlyValues = Set(true, false)
+```
+
+### A history step goes only to an entry the host just observed, and waits for an open dialog without spending its reference
+
+`observeHistory` lists the adjacent same-origin entries of the shown,
+running page, each under a fresh reference. `navigateHistory` steps to
+one only while that observation is current and the page is shown and not
+paused; a changed history refuses before anything is sent. While the
+page holds a dialog it refuses at once and keeps the reference, since the
+frozen page could take the step only after the answer. A page that does
+not reply within five seconds leaves the step uncertain, and a sent step
+is known only after reading the page back.
+
+```quint
+type HistoryStepFacts = { referenceFresh: bool, shownRunning: bool, dialogOpen: bool, replied: bool }
+type HistoryStepReply = HistoryStepSent | HistoryStepStale | HistoryStepDialogOpen | HistoryStepUncertain
+pure def historyStepReply(hop: HistoryStepFacts): HistoryStepReply =
+  if (not(hop.referenceFresh and hop.shownRunning)) HistoryStepStale
+  else if (hop.dialogOpen) HistoryStepDialogOpen
+  else if (hop.replied) HistoryStepSent
+  else HistoryStepUncertain
+pure def keepsReference(hop: HistoryStepFacts): bool = historyStepReply(hop) == HistoryStepDialogOpen
+pure def lawStepOnlyOnTheObservedHistory(hop: HistoryStepFacts): bool =
+  (historyStepReply(hop) == HistoryStepSent or historyStepReply(hop) == HistoryStepUncertain) implies hop.referenceFresh and hop.shownRunning and not(hop.dialogOpen)
+pure def lawOpenDialogKeepsTheReference(hop: HistoryStepFacts): bool =
+  hop.referenceFresh and hop.shownRunning and hop.dialogOpen implies keepsReference(hop) and historyStepReply(hop) != HistoryStepSent
+pure val freshStep: HistoryStepFacts = { referenceFresh: true, shownRunning: true, dialogOpen: false, replied: true }
+pure val hopValues = Set(freshStep, { ...freshStep, referenceFresh: false }, { ...freshStep, shownRunning: false }, { ...freshStep, dialogOpen: true }, { ...freshStep, replied: false })
+```

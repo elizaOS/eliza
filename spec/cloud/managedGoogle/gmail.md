@@ -4,8 +4,12 @@ A consumer's mail client reads Gmail through the cloud: it searches with a
 cursor, reads one message, and opens its formatting and attachment
 metadata. The cloud owns route authorization and Google normalization; the
 client decodes what the cloud returns and refuses anything it cannot
-account for. A reviewed star change is sent once, for the owner, scope and
-message revision that were reviewed. Paging across replies, saved reads and
+account for. It triages the inbox, pages a thread, fetches one attachment's
+bytes at the message revision it was read at, and lists provider drafts. A
+reviewed star change is sent once, for the owner, scope and message
+revision that were reviewed, and every other reviewed mailbox change, draft
+change and send goes through the cloud's prepare-then-dispatch receipt
+ledger, which performs each prepared request at most once. Paging across replies, saved reads and
 cache custody are [the mailbox reads](../../inbox/reads.md); the agent
 broker and reviewed sends are [the managed Google connection](./connection.md).
 
@@ -300,4 +304,262 @@ pure def stepStarSentOnlyAsReviewed(before: StarMutation, after: StarMutation): 
 pure def sometimesStarReplyLost(m: StarMutation): bool = m.starPhase == StarUnknown
 pure def sometimesStarObserved(m: StarMutation): bool = m.starPhase == StarDone and m.starred
 pure def sometimesChangedRevisionBlocksStar(m: StarMutation): bool = m.starPhase == StarReview and m.revision != m.reviewed
+```
+
+## Story: Triage my inbox and open everything a message carries
+
+> As an owner, I want my inbox triaged without what I trashed, and a
+> message's thread, attachments and my provider drafts opened exactly as
+> they are at the revision I read, or not at all.
+
+### Triage leaves out trashed mail, and an unknown message is not found
+
+The triage list carries every message of the connected account except those
+labelled trash; a read of a message the account does not hold answers 404
+`not_found`.
+
+```quint
+type MessageReadOutcome = MessageServed | MessageNotFound
+pure def triageListed(inTrash: bool): bool = not(inTrash)
+pure def messageReadOutcome(messageKnown: bool): MessageReadOutcome = if (messageKnown) MessageServed else MessageNotFound
+pure def readStatusCode(readOutcome: MessageReadOutcome): int = if (readOutcome == MessageServed) 200 else 404
+pure def lawTriageLeavesOutTrash(inTrash: bool): bool = triageListed(inTrash) iff not(inTrash)
+pure def lawUnknownMessageIsNotFound(messageKnown: bool): bool =
+  not(messageKnown) implies readStatusCode(messageReadOutcome(messageKnown)) == 404
+```
+
+### A thread page and an attachment are served only at the revision they were read at
+
+A thread page names the requested thread, holds at most 25 messages, all of
+that thread, starts at the offset asked for, and reports the thread's total
+of at most 2,000 messages, which covers the page; its next offset is the end
+of the page while messages remain and null at the end. A page after the
+first is asked for with the thread's history ID from the first page, and is
+refused as `stale_revision` when the thread changed since. An attachment is
+fetched by message, part and the message's history ID, and refused as
+`stale_revision` when the message changed since that read, and as
+`not_found` when no single part has that ID. The reply must echo the
+message, part and history ID, and its bytes must hash and count to the
+SHA-256 and size it declares; the client refuses any other reply.
+
+```quint
+type ThreadPageWire = { versionOne: bool, sameThread: bool, messageCount: int, allInThread: bool, offset: int, askedOffset: int, total: int, nextOffset: int, historyMatchesFirst: bool }
+type AttachmentFetch = { messageCurrent: bool, matchingParts: int }
+type AttachmentFetchOutcome = AttachmentServed | AttachmentStale | AttachmentMissing
+type AttachmentReplyWire = { attachmentVersionOne: bool, echoesMessage: bool, echoesPart: bool, echoesHistory: bool, hashMatches: bool, sizeMatches: bool }
+pure def expectedNextOffset(offset: int, messageCount: int, total: int): int = if (offset + messageCount < total) offset + messageCount else -1
+pure def threadPageAdmitted(t: ThreadPageWire): bool =
+  t.versionOne and t.sameThread and t.allInThread and t.messageCount >= 0 and t.messageCount <= 25 and
+  t.offset == t.askedOffset and t.offset >= 0 and t.total >= t.offset + t.messageCount and t.total <= 2000 and
+  t.nextOffset == expectedNextOffset(t.offset, t.messageCount, t.total) and (t.offset > 0 implies t.historyMatchesFirst)
+pure def attachmentFetchOutcome(f: AttachmentFetch): AttachmentFetchOutcome =
+  if (not(f.messageCurrent)) AttachmentStale else if (f.matchingParts != 1) AttachmentMissing else AttachmentServed
+pure def attachmentReplyAdmitted(w: AttachmentReplyWire): bool =
+  w.attachmentVersionOne and w.echoesMessage and w.echoesPart and w.echoesHistory and w.hashMatches and w.sizeMatches
+pure val tValues = Set(
+  { versionOne: true, sameThread: true, messageCount: 25, allInThread: true, offset: 0, askedOffset: 0, total: 30, nextOffset: 25, historyMatchesFirst: false },
+  { versionOne: true, sameThread: true, messageCount: 5, allInThread: true, offset: 25, askedOffset: 25, total: 30, nextOffset: -1, historyMatchesFirst: true },
+  { versionOne: true, sameThread: true, messageCount: 5, allInThread: true, offset: 25, askedOffset: 25, total: 30, nextOffset: -1, historyMatchesFirst: false },
+  { versionOne: true, sameThread: true, messageCount: 26, allInThread: true, offset: 0, askedOffset: 0, total: 30, nextOffset: 26, historyMatchesFirst: true })
+pure val fValues = Set({ messageCurrent: true, matchingParts: 1 }, { messageCurrent: false, matchingParts: 1 }, { messageCurrent: true, matchingParts: 0 }, { messageCurrent: true, matchingParts: 2 })
+pure val wValues = Set(
+  { attachmentVersionOne: true, echoesMessage: true, echoesPart: true, echoesHistory: true, hashMatches: true, sizeMatches: true },
+  { attachmentVersionOne: true, echoesMessage: true, echoesPart: true, echoesHistory: false, hashMatches: true, sizeMatches: true },
+  { attachmentVersionOne: true, echoesMessage: true, echoesPart: true, echoesHistory: true, hashMatches: false, sizeMatches: true })
+pure def lawLaterThreadPageNeedsTheFirstHistory(t: ThreadPageWire): bool =
+  (t.offset > 0 and not(t.historyMatchesFirst)) implies not(threadPageAdmitted(t))
+pure def lawThreadPageIsBounded(t: ThreadPageWire): bool =
+  threadPageAdmitted(t) implies (t.messageCount <= 25 and t.total <= 2000 and (t.nextOffset == -1 or t.nextOffset == t.offset + t.messageCount))
+pure def lawChangedMessageServesNoAttachment(f: AttachmentFetch): bool =
+  not(f.messageCurrent) implies attachmentFetchOutcome(f) == AttachmentStale
+pure def lawAttachmentBytesMatchTheirDeclaration(w: AttachmentReplyWire): bool =
+  attachmentReplyAdmitted(w) implies (w.hashMatches and w.sizeMatches and w.echoesHistory)
+```
+
+### Provider drafts and the mailbox capabilities are read within fixed bounds
+
+A drafts page holds at most 50 drafts and its next cursor obeys the same
+bounds as a search cursor. Opening one draft returns its content and the
+digest of its raw message from one snapshot, with at most 50 recipients in
+each of To, Cc and Bcc. The capabilities reply is version 1, says the
+provider does not apply anything exactly once and does not replace a draft
+atomically, and its attachment policy, when present, allows 1 to 20
+outgoing attachments (1 by default), each of 1 byte to 25 MiB (5 MiB by
+default), and a total of 1 byte to 25 MiB (the per-attachment limit by
+default); any value outside those bounds refuses the reply.
+
+```quint
+type DraftsPageWire = { draftsVersionOne: bool, draftCount: int }
+type PolicyValue = { given: bool, amount: int }
+type MailboxCapabilitiesWire = { capabilitiesVersionOne: bool, exactlyOnceClaimed: bool, atomicReplacementClaimed: bool, outgoing: PolicyValue, perAttachment: PolicyValue, total: PolicyValue }
+pure val mebibyte = 1048576
+pure def policyLimit(v: PolicyValue, fallback: int, most: int): int =
+  if (not(v.given)) fallback else if (v.amount >= 1 and v.amount <= most) v.amount else -1
+pure def draftsPageAdmitted(page: DraftsPageWire, cursor: CursorFacts): bool =
+  page.draftsVersionOne and page.draftCount >= 0 and page.draftCount <= 50 and responseCursorAdmitted(cursor)
+pure def draftRecipientsAdmitted(toCount: int, ccCount: int, bccCount: int): bool = toCount >= 0 and toCount <= 50 and ccCount >= 0 and ccCount <= 50 and bccCount >= 0 and bccCount <= 50
+pure def capabilitiesAdmitted(c: MailboxCapabilitiesWire): bool = {
+  val per = policyLimit(c.perAttachment, 5 * mebibyte, 25 * mebibyte)
+  c.capabilitiesVersionOne and not(c.exactlyOnceClaimed) and not(c.atomicReplacementClaimed) and
+  policyLimit(c.outgoing, 1, 20) > 0 and per > 0 and policyLimit(c.total, per, 25 * mebibyte) > 0
+}
+pure val pageValues = Set({ draftsVersionOne: true, draftCount: 50 }, { draftsVersionOne: true, draftCount: 51 }, { draftsVersionOne: false, draftCount: 1 })
+pure val absentPolicy: PolicyValue = { given: false, amount: 0 }
+pure val cValues = Set(
+  { capabilitiesVersionOne: true, exactlyOnceClaimed: false, atomicReplacementClaimed: false, outgoing: absentPolicy, perAttachment: absentPolicy, total: absentPolicy },
+  { capabilitiesVersionOne: true, exactlyOnceClaimed: true, atomicReplacementClaimed: false, outgoing: absentPolicy, perAttachment: absentPolicy, total: absentPolicy },
+  { capabilitiesVersionOne: true, exactlyOnceClaimed: false, atomicReplacementClaimed: false, outgoing: { given: true, amount: 21 }, perAttachment: absentPolicy, total: absentPolicy },
+  { capabilitiesVersionOne: true, exactlyOnceClaimed: false, atomicReplacementClaimed: false, outgoing: { given: true, amount: 20 }, perAttachment: { given: true, amount: 26214400 }, total: absentPolicy })
+pure val vValues = Set(absentPolicy, { given: true, amount: 0 }, { given: true, amount: 1 }, { given: true, amount: 20 }, { given: true, amount: 21 })
+pure def lawDraftsPageHoldsAtMostFifty(page: DraftsPageWire, cursor: CursorFacts): bool =
+  draftsPageAdmitted(page, cursor) implies page.draftCount <= 50
+pure def lawNoReplyClaimsExactlyOnce(c: MailboxCapabilitiesWire): bool =
+  capabilitiesAdmitted(c) implies not(c.exactlyOnceClaimed or c.atomicReplacementClaimed)
+pure def lawPolicyLimitStaysInBounds(v: PolicyValue): bool =
+  (policyLimit(v, 1, 20) == -1 or (policyLimit(v, 1, 20) >= 1 and policyLimit(v, 1, 20) <= 20)) and
+  (not(v.given) implies policyLimit(v, 1, 20) == 1)
+```
+
+## Story: Change my mailbox once, as I reviewed it
+
+> As an owner, I want a trash, untrash, read-state, archive, draft or send
+> change my agent proposed applied at most once, only to the message
+> revision I reviewed, and its outcome readable afterwards even if the
+> connection dropped.
+
+### Preparing a change is idempotent by request ID and binds the reviewed message revision
+
+Preparing a change names the grant, a request ID and the proposal. The
+cloud reviews the proposal against the message as it is now: a grant the
+owner does not hold, or a message the account does not hold, is
+`not_found`; a message whose history ID is not the one the proposal was
+reviewed at is `stale_revision`. Otherwise the cloud records a prepared
+receipt for the request ID with the proposal's kind and review digest, and
+answers it with the review and the statement that the provider does not
+apply anything exactly once. Preparing the same request ID again with the
+same kind and digest answers the receipt it already holds, in whatever state
+it has reached; with another kind or digest it is a conflict, and the
+receipt is unchanged. Receipts are scoped to the organization, user, grant
+and request ID.
+
+```quint
+type MailOpKind = SendOp | DraftCreateOp | DraftReplaceOp | DraftDeleteOp | ArchiveOp | UnarchiveOp | TrashOp | UntrashOp | MarkReadOp | MarkUnreadOp | StarOp | UnstarOp
+type OpState = OpAbsent | OpPrepared | OpDispatched | OpSucceeded | OpRejected | OpOutcomeUnknown
+type OpReceipt = { opState: OpState, opKind: MailOpKind, opDigest: int, providerResult: bool }
+type ProposalReview = { grantHeld: bool, messageHeld: bool, historyCurrent: bool }
+type PrepareAnswer = PrepareAnswered | PrepareConflict | PrepareStale | PrepareNotFound
+pure val noReceipt: OpReceipt = { opState: OpAbsent, opKind: SendOp, opDigest: 0, providerResult: false }
+pure def prepareAnswer(ledger: OpReceipt, kind: MailOpKind, digest: int, review: ProposalReview): PrepareAnswer =
+  if (not(review.grantHeld and review.messageHeld)) PrepareNotFound
+  else if (not(review.historyCurrent)) PrepareStale
+  else if (ledger.opState == OpAbsent or (ledger.opKind == kind and ledger.opDigest == digest)) PrepareAnswered
+  else PrepareConflict
+pure def preparedLedger(ledger: OpReceipt, kind: MailOpKind, digest: int, review: ProposalReview): OpReceipt =
+  if (prepareAnswer(ledger, kind, digest, review) == PrepareAnswered and ledger.opState == OpAbsent)
+    { opState: OpPrepared, opKind: kind, opDigest: digest, providerResult: false }
+  else ledger
+pure val ledgerValues = Set(noReceipt,
+  { opState: OpPrepared, opKind: TrashOp, opDigest: 1, providerResult: false },
+  { opState: OpDispatched, opKind: TrashOp, opDigest: 1, providerResult: false },
+  { opState: OpSucceeded, opKind: TrashOp, opDigest: 1, providerResult: true },
+  { opState: OpOutcomeUnknown, opKind: MarkReadOp, opDigest: 2, providerResult: false })
+pure val digestValues = Set(1, 2)
+pure val kindValues = Set(TrashOp, MarkReadOp, SendOp)
+pure val reviewValues = Set({ grantHeld: true, messageHeld: true, historyCurrent: true }, { grantHeld: true, messageHeld: true, historyCurrent: false }, { grantHeld: false, messageHeld: true, historyCurrent: true }, { grantHeld: true, messageHeld: false, historyCurrent: true })
+pure def lawRepeatedPrepareKeepsTheReceipt(ledger: OpReceipt, kind: MailOpKind, digest: int, review: ProposalReview): bool =
+  ledger.opState != OpAbsent implies preparedLedger(ledger, kind, digest, review) == ledger
+pure def lawPrepareNeedsTheReviewedRevision(ledger: OpReceipt, kind: MailOpKind, digest: int, review: ProposalReview): bool =
+  prepareAnswer(ledger, kind, digest, review) == PrepareAnswered implies (review.grantHeld and review.messageHeld and review.historyCurrent)
+pure def lawPreparedReceiptBindsKindAndDigest(kind: MailOpKind, digest: int, review: ProposalReview): bool =
+  preparedLedger(noReceipt, kind, digest, review).opState == OpPrepared implies
+    (preparedLedger(noReceipt, kind, digest, review).opKind == kind and preparedLedger(noReceipt, kind, digest, review).opDigest == digest)
+```
+
+### A prepared change is dispatched at most once, and a repeat answers its receipt
+
+Dispatching names the grant, the request ID, the review digest and the
+proposal. A request ID with no receipt under that grant is `not_found`; a
+digest other than the receipt's is `stale_revision`. A receipt that is no
+longer prepared is answered as it stands, without asking Google again or
+fetching new credentials. A prepared receipt is reviewed once more against
+the message as it is now, and a changed message is `stale_revision`;
+otherwise the cloud claims the receipt (only one claim can win) and asks
+Google once. The receipt then records success only when Google's reply shows
+the requested state (trash present after trash, absent after untrash,
+unread absent after mark-read, present after mark-unread, inbox absent
+after archive, present after unarchive, starred present after star, absent
+after unstar); a definite refusal by Google is rejected, and anything else,
+including a reply that does not show the requested state, is an unknown
+outcome. A receipt reports a provider result exactly when it succeeded. A
+lookup only reads the receipt, marking a dispatch older than 90 seconds as
+an unknown outcome, and never dispatches; no step returns a receipt to
+prepared.
+
+```quint
+type DispatchAnswer = DispatchPerformed | DispatchAnsweredReceipt | DispatchStale | DispatchNotFound
+type ProviderReply = ProviderShowsRequested | ProviderShowsOther | ProviderRefused | ProviderLost
+type MailLabels = { trash: bool, unread: bool, inbox: bool, starred: bool }
+pure def showsRequested(kind: MailOpKind, labels: MailLabels): bool =
+  if (kind == TrashOp) labels.trash else if (kind == UntrashOp) not(labels.trash)
+  else if (kind == MarkReadOp) not(labels.unread) else if (kind == MarkUnreadOp) labels.unread
+  else if (kind == ArchiveOp) not(labels.inbox) else if (kind == UnarchiveOp) labels.inbox
+  else if (kind == StarOp) labels.starred else if (kind == UnstarOp) not(labels.starred) else true
+pure def providerReplyOf(kind: MailOpKind, labels: MailLabels, refused: bool, lost: bool): ProviderReply =
+  if (refused) ProviderRefused else if (lost) ProviderLost else if (showsRequested(kind, labels)) ProviderShowsRequested else ProviderShowsOther
+pure def dispatchAnswer(ledger: OpReceipt, digest: int, grantHeld: bool, messageCurrent: bool): DispatchAnswer =
+  if (not(grantHeld) or ledger.opState == OpAbsent) DispatchNotFound
+  else if (ledger.opDigest != digest) DispatchStale
+  else if (ledger.opState != OpPrepared) DispatchAnsweredReceipt
+  else if (not(messageCurrent)) DispatchStale
+  else DispatchPerformed
+pure def dispatchedLedger(ledger: OpReceipt, digest: int, grantHeld: bool, messageCurrent: bool, reply: ProviderReply): OpReceipt =
+  if (dispatchAnswer(ledger, digest, grantHeld, messageCurrent) != DispatchPerformed) ledger
+  else { ...ledger,
+    opState: if (reply == ProviderShowsRequested) OpSucceeded else if (reply == ProviderRefused) OpRejected else OpOutcomeUnknown,
+    providerResult: reply == ProviderShowsRequested }
+pure def observedLedger(ledger: OpReceipt, dispatchedSeconds: int): OpReceipt =
+  if (ledger.opState == OpDispatched and dispatchedSeconds > 90) { ...ledger, opState: OpOutcomeUnknown } else ledger
+pure val replyValues = Set(ProviderShowsRequested, ProviderShowsOther, ProviderRefused, ProviderLost)
+pure val dispatchedSecondsValues = Set(0, 90, 91)
+pure val labelsValues = Set({ trash: true, unread: false, inbox: false, starred: false }, { trash: false, unread: true, inbox: true, starred: true })
+pure def lawOnlyAPreparedReceiptIsDispatched(ledger: OpReceipt, digest: int, grantHeld: bool, messageCurrent: bool): bool =
+  dispatchAnswer(ledger, digest, grantHeld, messageCurrent) == DispatchPerformed implies
+    (ledger.opState == OpPrepared and ledger.opDigest == digest and grantHeld and messageCurrent)
+pure def lawDispatchLeavesPrepared(ledger: OpReceipt, digest: int, grantHeld: bool, messageCurrent: bool, reply: ProviderReply): bool =
+  dispatchAnswer(ledger, digest, grantHeld, messageCurrent) == DispatchPerformed implies
+    dispatchedLedger(ledger, digest, grantHeld, messageCurrent, reply).opState != OpPrepared
+pure def lawRepeatedDispatchAnswersTheReceipt(ledger: OpReceipt, digest: int, grantHeld: bool, messageCurrent: bool, reply: ProviderReply): bool =
+  (ledger.opState != OpPrepared) implies dispatchedLedger(ledger, digest, grantHeld, messageCurrent, reply) == ledger
+pure def lawSucceededIffProviderResult(ledger: OpReceipt, digest: int, grantHeld: bool, messageCurrent: bool, reply: ProviderReply): bool = {
+  val finished = dispatchedLedger(ledger, digest, grantHeld, messageCurrent, reply)
+  ((ledger.opState == OpSucceeded) iff ledger.providerResult) implies ((finished.opState == OpSucceeded) iff finished.providerResult)
+}
+pure def lawSuccessShowsTheRequestedState(kind: MailOpKind, labels: MailLabels, refused: bool, lost: bool): bool =
+  providerReplyOf(kind, labels, refused, lost) == ProviderShowsRequested implies showsRequested(kind, labels)
+pure def lawLookupNeverPrepares(ledger: OpReceipt, dispatchedSeconds: int): bool =
+  (observedLedger(ledger, dispatchedSeconds).opState == OpPrepared) iff (ledger.opState == OpPrepared)
+```
+
+### The client accepts a receipt only for its own request, in a known state, with a result exactly when it succeeded
+
+Every prepare, dispatch and lookup reply is version 1 and says the provider
+does not apply anything exactly once. Its receipt must echo the request ID
+sent, name a known kind and state, and carry a 64-character lowercase hex
+review digest, and it carries a provider result exactly when its state is
+succeeded; the client refuses anything else. A dispatch is given 45 seconds
+before the client stops waiting, and a lost reply is settled only by a
+lookup, never by dispatching again.
+
+```quint
+type ReceiptWire = { replyVersionOne: bool, exactlyOnceDenied: bool, echoesRequest: bool, knownKind: bool, knownState: bool, digestHexUnits: int, stateSucceeded: bool, resultPresent: bool }
+pure val dispatchWaitSeconds = 45
+pure def receiptAdmitted(r: ReceiptWire): bool =
+  r.replyVersionOne and r.exactlyOnceDenied and r.echoesRequest and r.knownKind and r.knownState and r.digestHexUnits == 64 and (r.stateSucceeded iff r.resultPresent)
+pure val rValues = Set(
+  { replyVersionOne: true, exactlyOnceDenied: true, echoesRequest: true, knownKind: true, knownState: true, digestHexUnits: 64, stateSucceeded: true, resultPresent: true },
+  { replyVersionOne: true, exactlyOnceDenied: true, echoesRequest: true, knownKind: true, knownState: true, digestHexUnits: 64, stateSucceeded: false, resultPresent: true },
+  { replyVersionOne: true, exactlyOnceDenied: true, echoesRequest: false, knownKind: true, knownState: true, digestHexUnits: 64, stateSucceeded: false, resultPresent: false },
+  { replyVersionOne: true, exactlyOnceDenied: false, echoesRequest: true, knownKind: true, knownState: true, digestHexUnits: 63, stateSucceeded: false, resultPresent: false })
+pure def lawForeignReceiptRefused(r: ReceiptWire): bool = not(r.echoesRequest) implies not(receiptAdmitted(r))
+pure def lawResultOnlyWithSuccess(r: ReceiptWire): bool = receiptAdmitted(r) implies (r.resultPresent iff r.stateSucceeded)
 ```

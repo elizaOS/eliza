@@ -86,3 +86,117 @@ pure def alwaysCachedScopeIsCurrent(c: Config): bool =
 pure def sometimesScopeDroppedAfterFailedReload(c: Config): bool = c.reloadFailed and not(c.scopeCached)
 pure def sometimesScopeCachedAfterModeChange(c: Config): bool = c.scopeCached and c.mode != 0 and c.active != 0
 ```
+
+## Story: Boot with the launch policy my host supplies
+
+> As the maker of a host that renders some screens natively, I hand the agent
+> the native views, browser commands and time zone of my device at launch;
+> the agent takes them as I gave them, refuses a malformed policy, and never
+> lets one of mine replace a view the agent ships.
+
+### A host's native view policy is admitted whole or refused, and never renames or replaces a released view
+
+The policy is trusted host configuration read once before the runtime
+starts, never renderer input. It is a list of at most 32 navigation-only
+views of at most 16,384 characters, each with a unique id and path, a label
+and at most four aliases that shadow no id, label or alias of another view.
+Any entry that breaks this refuses the whole policy and the boot. A host
+view may stand in for a preview view the agent ships with the same id and
+path, never for a released or system one. Each admitted view is owner-only,
+has no capabilities and stays unavailable as a hosted view. A plugin view
+that is installed stays authoritative; a later plugin replaces a host view
+only when the host view names that plugin as the one it stands in for.
+
+```quint
+type ShippedKind = NotShipped | ShippedPreview | ShippedRelease
+type HostView = { idUnique: bool, pathUnique: bool, wellFormed: bool, aliasesFree: bool, sameAsShipped: bool, shipped: ShippedKind }
+type ViewPolicy = { present: bool, characters: int, views: List[HostView] }
+pure val nativeViewLimit = 32
+pure val nativeViewPolicyCharacters = 16384
+pure def hostViewAdmitted(v: HostView): bool =
+  v.idUnique and v.pathUnique and v.wellFormed and v.aliasesFree and
+    (v.shipped == NotShipped or (v.shipped == ShippedPreview and v.sameAsShipped))
+pure def viewPolicyAdmitted(p: ViewPolicy): bool =
+  not(p.present) or (p.characters <= nativeViewPolicyCharacters and p.views.length() <= nativeViewLimit and p.views.every(v => hostViewAdmitted(v)))
+pure def pluginReplacesHostView(namedFallback: bool, sameRouteAndModality: bool): bool = namedFallback and sameRouteAndModality
+pure val goodView: HostView = { idUnique: true, pathUnique: true, wellFormed: true, aliasesFree: true, sameAsShipped: false, shipped: NotShipped }
+pure val pValues = Set({ present: false, characters: 0, views: List() }, { present: true, characters: 120, views: List(goodView) },
+  { present: true, characters: 120, views: List(goodView, { ...goodView, shipped: ShippedRelease, sameAsShipped: true }) },
+  { present: true, characters: 120, views: List({ ...goodView, shipped: ShippedPreview, sameAsShipped: true }) },
+  { present: true, characters: 20000, views: List(goodView) })
+pure def lawPolicyNeverReplacesAReleasedView(p: ViewPolicy): bool =
+  (p.present and viewPolicyAdmitted(p)) implies p.views.every(v => v.shipped != ShippedRelease and (v.shipped == ShippedPreview implies v.sameAsShipped))
+pure def lawOneBadEntryRefusesThePolicy(p: ViewPolicy): bool =
+  (p.present and p.views.some(v => not(hostViewAdmitted(v)))) implies not(viewPolicyAdmitted(p))
+pure def lawOnlyANamedPluginReplacesAHostView(sameRouteAndModality: bool): bool = not(pluginReplacesHostView(false, sameRouteAndModality))
+```
+
+### The agent sends a native browser only the commands its host allows
+
+A host names the browser commands its native browser handles and whether
+it serves a browser automation target. A command the host did not name is
+refused before it reaches the native browser, and with the target off no
+automation session is opened on the device.
+
+```quint
+type BrowserCommand = BackCommand | ForwardCommand | ReloadCommand | NavigateCommand | ScreenshotCommand
+pure def nativeCommandSent(allowed: Set[BrowserCommand], command: BrowserCommand): bool = allowed.contains(command)
+pure def automationOpened(targetOn: bool, requested: bool): bool = targetOn and requested
+pure val allowedValues = Set(Set(), Set(BackCommand, ForwardCommand, ReloadCommand))
+pure def lawUnnamedBrowserCommandIsRefused(allowed: Set[BrowserCommand], command: BrowserCommand): bool =
+  not(allowed.contains(command)) implies not(nativeCommandSent(allowed, command))
+pure def lawTargetOffOpensNoAutomation(requested: bool): bool = not(automationOpened(false, requested))
+```
+
+### A relative date outside a workflow is read in the host's time zone
+
+The host supplies its device time zone at launch. A relative date that a
+workflow schedules is read in the workflow's own zone; any other relative
+date the agent reads, such as "tomorrow" in a reminder or a reply, is read
+in the host's time zone, never the server's or the runtime's default.
+
+```quint
+type ZoneSource = HostZone | WorkflowZone | RuntimeDefaultZone
+pure def relativeDateZone(inWorkflow: bool): ZoneSource = if (inWorkflow) WorkflowZone else HostZone
+pure def lawRuntimeDefaultZoneIsNeverUsed(inWorkflow: bool): bool =
+  relativeDateZone(inWorkflow) != RuntimeDefaultZone and (not(inWorkflow) implies relativeDateZone(inWorkflow) == HostZone)
+```
+
+### A private runtime launches with literal settings from a private file, and the launch's own values win
+
+A desktop host that launches a private runtime for its account reads the
+runtime's settings, token and configuration from files only it can read: a
+file that is not a regular file with a single link is refused. Settings are
+read literally, one assignment a line, never expanded or run; one line that
+is neither blank, a comment nor an assignment refuses the launch. The
+runtime's environment takes the inherited values the host allows, then the
+host's settings, then the values the launch itself owns, and a key the
+launch removes is unset whatever set it.
+
+```quint
+type SettingsLine = BlankLine | CommentLine | AssignmentLine | MalformedLine
+type PrivateFile = { regular: bool, singleLink: bool }
+type EnvSource = FromInherited | FromSettings | FromLaunch | EnvUnset
+type EnvKey = { inherited: bool, allowed: bool, inSettings: bool, launchOwned: bool, removed: bool }
+pure def settingsAdmitted(lines: List[SettingsLine]): bool = lines.every(line => line != MalformedLine)
+pure def privateFileReadable(privateFile: PrivateFile): bool = privateFile.regular and privateFile.singleLink
+pure def envSource(envKey: EnvKey): EnvSource =
+  if (envKey.removed) EnvUnset
+  else if (envKey.launchOwned) FromLaunch
+  else if (envKey.inSettings) FromSettings
+  else if (envKey.inherited and envKey.allowed) FromInherited
+  else EnvUnset
+pure val privateFileValues = Set({ regular: true, singleLink: true }, { regular: true, singleLink: false }, { regular: false, singleLink: true })
+pure val envKeyValues = Set({ inherited: true, allowed: false, inSettings: false, launchOwned: false, removed: false },
+  { inherited: true, allowed: true, inSettings: true, launchOwned: true, removed: false },
+  { inherited: true, allowed: true, inSettings: false, launchOwned: false, removed: false },
+  { inherited: false, allowed: false, inSettings: true, launchOwned: true, removed: true })
+pure def lawOneMalformedLineRefusesTheSettings(lines: List[SettingsLine]): bool =
+  lines.includes(MalformedLine) implies not(settingsAdmitted(lines))
+pure def lawOnlyAPrivateRegularFileIsRead(privateFile: PrivateFile): bool =
+  privateFileReadable(privateFile) implies (privateFile.regular and privateFile.singleLink)
+pure def lawTheLaunchDecidesLast(envKey: EnvKey): bool =
+  (envKey.removed implies envSource(envKey) == EnvUnset) and
+    ((envKey.launchOwned and not(envKey.removed)) implies envSource(envKey) == FromLaunch) and
+    (not(envKey.allowed) implies envSource(envKey) != FromInherited)
+```

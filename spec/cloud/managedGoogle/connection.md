@@ -7,8 +7,10 @@ scoped provider account by the owner's binding and Google grants, and every
 read, preparation and send is bound to the exact environment, user,
 organization, session and credential that admitted it. Native credential
 ownership is [native enrollment](../../auth/native/enrollment.md), mailbox
-paging is [the mailbox reads](../../inbox/reads.md), and the mail wire
-is [Gmail](./gmail.md).
+paging is [the mailbox reads](../../inbox/reads.md), the mail wire
+is [Gmail](./gmail.md), and calendar writes are [managed calendar
+writes](./calendarWrite.md). A device host that runs the agent launches the
+managed host's brokers only for the account and sign-in session it admitted.
 
 ## Story: Send a reviewed email once and recover its receipt
 
@@ -193,4 +195,52 @@ pure def reportsRevoked(revoke: RevokeEvidence): bool = revoke.cloudCurrent and 
 pure def confirmsCalendarPause(revoke: RevokeEvidence): bool = revoke.cloudCurrent and revoke.cleanupCurrent and revoke.exactDestination and revoke.exactRevision and revoke.exactSelection and revoke.pauseAck
 pure def lawStaleCalendarDoesNotVetoRevocation(revoke: RevokeEvidence): bool = revoke.cloudCurrent and revoke.revokeAck implies reportsRevoked(revoke)
 pure def lawStaleAuthorityReportsNothing(revoke: RevokeEvidence): bool = not(revoke.cloudCurrent) implies not(reportsRevoked(revoke) or confirmsCalendarPause(revoke))
+```
+
+## Story: Launch my resident agent's Google access only for the account I am signed in with
+
+> As an owner, I want the agent on my device to reach my Google account only
+> through the account and sign-in session I have now, and to keep running
+> without Google rather than with a stale one.
+
+### The brokers are launched only bound to the current account and session generation, and otherwise the agent launches unbound
+
+Every launch of the resident agent starts from an environment with no
+Google host module, binding or broker in it, so nothing from an earlier
+launch carries over. The managed host module comes only from the agent's
+verified packaged resources. When the stored provider is the cloud, a
+launch without that module fails. A binding is derived from the stored
+provider and cloud credential and is used only when its account reference
+and session generation equal those of the provider admission at launch
+and the cloud credential is still the same one; the brokers and their
+switches are then launched with it. A stored provider or credential that
+cannot be read, and a binding that cannot be derived or no longer matches,
+never stop the agent: it launches unbound, with no provider and no Google
+brokers, and each turn then answers that no provider is configured. A
+provider that admits no Google binding launches with the provider and no
+brokers.
+
+```quint
+type GoogleLaunch = LaunchRefused | LaunchUnbound | LaunchWithoutGoogle | LaunchBound
+type GoogleLaunchFacts = { slotReadable: bool, cloudProvider: bool, moduleStaged: bool, bindingDerived: bool, bindingOffered: bool, accountCurrent: bool, generationCurrent: bool, credentialCurrent: bool, providerApplies: bool }
+pure def googleLaunch(launch: GoogleLaunchFacts): GoogleLaunch =
+  if (not(launch.slotReadable)) LaunchUnbound
+  else if (launch.cloudProvider and not(launch.moduleStaged)) LaunchRefused
+  else if (launch.cloudProvider and not(launch.bindingDerived)) LaunchUnbound
+  else if (launch.cloudProvider and launch.bindingOffered and not(launch.accountCurrent and launch.generationCurrent and launch.credentialCurrent)) LaunchUnbound
+  else if (not(launch.providerApplies)) LaunchUnbound
+  else if (launch.cloudProvider and launch.bindingOffered) LaunchBound
+  else LaunchWithoutGoogle
+pure def brokersLaunched(launch: GoogleLaunchFacts): bool = googleLaunch(launch) == LaunchBound
+pure val boundLaunch: GoogleLaunchFacts = { slotReadable: true, cloudProvider: true, moduleStaged: true, bindingDerived: true, bindingOffered: true, accountCurrent: true, generationCurrent: true, credentialCurrent: true, providerApplies: true }
+pure val launchValues = Set(boundLaunch, { ...boundLaunch, generationCurrent: false }, { ...boundLaunch, accountCurrent: false },
+  { ...boundLaunch, moduleStaged: false }, { ...boundLaunch, slotReadable: false }, { ...boundLaunch, bindingDerived: false },
+  { ...boundLaunch, bindingOffered: false }, { ...boundLaunch, providerApplies: false }, { ...boundLaunch, cloudProvider: false, moduleStaged: false })
+pure def lawBrokersOnlyForTheCurrentSession(launch: GoogleLaunchFacts): bool =
+  brokersLaunched(launch) implies (launch.slotReadable and launch.cloudProvider and launch.moduleStaged and launch.bindingDerived and launch.accountCurrent and launch.generationCurrent and launch.credentialCurrent and launch.providerApplies)
+pure def lawStaleBindingLaunchesUnbound(launch: GoogleLaunchFacts): bool =
+  (launch.slotReadable and launch.cloudProvider and launch.moduleStaged and launch.bindingDerived and launch.bindingOffered and not(launch.accountCurrent and launch.generationCurrent and launch.credentialCurrent)) implies
+    googleLaunch(launch) == LaunchUnbound
+pure def lawOnlyAMissingModuleRefusesLaunch(launch: GoogleLaunchFacts): bool =
+  googleLaunch(launch) == LaunchRefused implies (launch.cloudProvider and not(launch.moduleStaged))
 ```

@@ -36,6 +36,22 @@ pure def lawProvisionedCredentialAloneIsNotOwnership(topologyUsesCloud: bool): b
   not(cloudInferenceOwnsProvider(topologyUsesCloud, false, false))
 ```
 
+### A deployment bound to the owner's cloud account admits no other model provider
+
+When the runtime profile binds inference to the owner's cloud account, a
+direct provider is not admitted even with a usable credential, so a model
+call reaches the cloud account or fails; it never falls back to another
+provider or to a model on the device.
+
+```quint
+type ProviderKind = CloudAccountProvider | DirectProvider | DeviceModelProvider
+pure def providerLoads(cloudBound: bool, kind: ProviderKind, credentialPresent: bool, credentialUsable: bool): bool =
+  if (cloudBound) kind == CloudAccountProvider and providerAdmitted(credentialPresent, credentialUsable)
+  else kind == DeviceModelProvider or providerAdmitted(credentialPresent, credentialUsable)
+pure def lawCloudBoundDeploymentLoadsOnlyTheCloudAccount(kind: ProviderKind, credentialPresent: bool, credentialUsable: bool): bool =
+  providerLoads(true, kind, credentialPresent, credentialUsable) implies kind == CloudAccountProvider
+```
+
 ## Story: Load a tokenizer once per encoding
 
 > As the owner, counting tokens never loads the same encoder twice at once,

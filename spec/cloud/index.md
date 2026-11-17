@@ -16,7 +16,7 @@ it.
 | --- | --- |
 | Accounts and billing | [Deployment profile](./deployment.md), [accounts and deletion](./accounts.md), [registered native clients](./nativeClients.md), [command-line login](./cliLogin.md), [remote agent pairing](./remotePairing.md), [credits](./credits.md), [subscriptions](./subscriptions.md), [entitlements and plan limits](./entitlements.md), [host operations](./hostOperations.md), [cache and circuit infrastructure](./infrastructure.md), [hosted auth service](./authService.md) |
 | Runtime services | [Inference](./inference.md), [agent hosting](./agentHosting.md), [shared runtime](./sharedRuntime.md), [hosted backups](./backups.md), [background jobs](./jobs.md), [provider connections](./connections.md), [speech](./speech.md), [maps](./maps.md), [object storage](./storage.md), [cloud client](./client.md) |
-| Managed Google | [Connection](./managedGoogle/connection.md), [Gmail](./managedGoogle/gmail.md), [calendar reads](./managedGoogle/calendarRead.md), [calendar sync](./managedGoogle/calendarSync.md), [write switches](./managedGoogle/accessSwitches.md) |
+| Managed Google | [Connection](./managedGoogle/connection.md), [Gmail](./managedGoogle/gmail.md), [calendar reads](./managedGoogle/calendarRead.md), [calendar writes](./managedGoogle/calendarWrite.md), [calendar sync](./managedGoogle/calendarSync.md), [write switches](./managedGoogle/accessSwitches.md) |
 
 Cloud-hosted user applications are not part of Eliza. Only a registered
 native client's Google delegation remains, in

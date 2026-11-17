@@ -200,3 +200,168 @@ pure def lawShadeOnlyReportsAccepted(focused: bool, managesDevice: bool, hasPerm
   shadeDispatch(focused, managesDevice, hasPermission, androidAccepted) == ShadeOpened implies
     focused and managesDevice and hasPermission and androidAccepted
 ```
+
+### System facts are reported only as Android answered them
+
+The system bridge reads the Wi-Fi, Bluetooth, airplane, location and
+mobile data switches, the interruption filter, adaptive brightness, the
+active transport and Internet validation, and battery level, charging
+and power saving, with no permission the app does not hold. Each fact is
+added only when Android answers; a missing or unrecognized value means
+unknown, never off. The Wi-Fi switch reads on for 1 and 2 (kept on in
+airplane mode) and off for 0 and 3; a Bluetooth adapter turning on or off
+is unknown. Nothing here changes a setting: a settings surface shows the
+fact and hands off to Android's own page.
+
+```quint
+type SwitchFact = FactOn | FactOff | FactUnknown
+pure def wifiSwitchFact(reading: int): SwitchFact =
+  if (reading == 1 or reading == 2) FactOn else if (reading == 0 or reading == 3) FactOff else FactUnknown
+pure def binarySwitchFact(reading: int): SwitchFact = if (reading == 1) FactOn else if (reading == 0) FactOff else FactUnknown
+pure def lawUnrecognizedSwitchIsUnknown(reading: int): bool =
+  (reading < 0 or reading > 3) implies wifiSwitchFact(reading) == FactUnknown and binarySwitchFact(reading) == FactUnknown
+pure def lawOffNeedsAnOffReading(reading: int): bool =
+  (wifiSwitchFact(reading) == FactOff implies reading == 0 or reading == 3) and (binarySwitchFact(reading) == FactOff implies reading == 0)
+```
+
+### App info opens Android's own details page for exactly the entry the person chose
+
+App info for a launcher entry first checks the entry: another app's
+package with a well-formed activity, and a profile serial that names a
+profile other than the current one. A malformed entry, or a serial of the
+current profile, refuses before any lookup. A personal-profile entry
+looks the package up including disabled apps and opens Android's app
+details settings for that package in a new task. A work-profile entry
+needs the profile still present (running, paused or locked) and opens
+that profile's details for the chosen component. A removed app answers
+not installed, a removed profile unavailable, and a refused read failed,
+each without a launch. Resolved means Android started the page; a refused
+launch keeps its attempt and answers invalid or failed.
+
+```quint
+type AppEntryKind = PersonalEntry | WorkEntry | MalformedEntry | CurrentProfileSerial
+type ProfilePresence = ProfileVisible | ProfileGone | ProfileReadRefused
+type AppPresence = AppInstalled | AppRemoved | AppReadRefused
+type InfoLaunch = InfoLaunchAllowed | InfoLaunchInvalid | InfoLaunchFailed
+type AppInfoReply = InfoInvalid | InfoProfileUnavailable | InfoFailed | InfoNotInstalled | InfoResolved
+type AppInfoHandoff = { infoReply: AppInfoReply, lookedUp: bool, launched: bool, detailsPage: bool, newTask: bool }
+pure def appInfoHandoff(entry: AppEntryKind, profile: ProfilePresence, app: AppPresence, launch: InfoLaunch): AppInfoHandoff = {
+  val refused = { infoReply: InfoInvalid, lookedUp: false, launched: false, detailsPage: false, newTask: false }
+  val personal = entry == PersonalEntry
+  val looked = { ...refused, lookedUp: true }
+  if (entry == MalformedEntry) refused
+  else if (entry == CurrentProfileSerial) { ...refused, infoReply: InfoProfileUnavailable }
+  else if (not(personal) and profile == ProfileReadRefused) { ...refused, infoReply: InfoFailed }
+  else if (not(personal) and profile == ProfileGone) { ...refused, infoReply: InfoProfileUnavailable }
+  else if (app == AppRemoved) { ...looked, infoReply: InfoNotInstalled }
+  else if (app == AppReadRefused) { ...looked, infoReply: InfoFailed }
+  else { ...looked, launched: true, detailsPage: personal, newTask: personal,
+    infoReply: if (launch == InfoLaunchAllowed) InfoResolved else if (launch == InfoLaunchInvalid) InfoInvalid else InfoFailed }
+}
+pure def lawNoLaunchWithoutAnInstalledApp(entry: AppEntryKind, profile: ProfilePresence, app: AppPresence, launch: InfoLaunch): bool =
+  (appInfoHandoff(entry, profile, app, launch).infoReply == InfoNotInstalled or appInfoHandoff(entry, profile, app, launch).infoReply == InfoProfileUnavailable)
+    implies not(appInfoHandoff(entry, profile, app, launch).launched)
+pure def lawRefusedEntryNeverLooksUp(profile: ProfilePresence, app: AppPresence, launch: InfoLaunch): bool =
+  not(appInfoHandoff(MalformedEntry, profile, app, launch).lookedUp) and not(appInfoHandoff(CurrentProfileSerial, profile, app, launch).lookedUp)
+pure def lawResolvedMeansStarted(entry: AppEntryKind, profile: ProfilePresence, app: AppPresence, launch: InfoLaunch): bool =
+  appInfoHandoff(entry, profile, app, launch).infoReply == InfoResolved implies appInfoHandoff(entry, profile, app, launch).launched and launch == InfoLaunchAllowed
+pure def lawWorkEntryNeverOpensPersonalDetails(profile: ProfilePresence, app: AppPresence, launch: InfoLaunch): bool =
+  not(appInfoHandoff(WorkEntry, profile, app, launch).detailsPage)
+```
+
+### The assistant entry tile is an action that opens the entry only after the owner unlocks
+
+A host's Quick Settings tile opens its assistant entry. It is never a
+toggle: it always reports inactive, so it never implies that an agent,
+inference, a connection or the microphone is active. A tap on a locked
+device asks Android to unlock and opens the entry only after the owner
+unlocks; no tap grants a permission, starts capture or carries data into
+the app. Only the system interface can bind the tile, and a host keeps its
+installed component name across updates.
+
+```quint
+type TileTap = TileOpensEntry | TileAwaitsUnlock
+type TileReport = { tileActive: bool, opened: bool, capture: bool, grant: bool }
+pure def tileTap(locked: bool, ownerUnlocked: bool): TileReport =
+  { tileActive: false, opened: not(locked) or ownerUnlocked, capture: false, grant: false }
+pure def tileTapKind(locked: bool): TileTap = if (locked) TileAwaitsUnlock else TileOpensEntry
+pure def lawTileNeverReportsActive(locked: bool, ownerUnlocked: bool): bool =
+  not(tileTap(locked, ownerUnlocked).tileActive) and not(tileTap(locked, ownerUnlocked).capture) and not(tileTap(locked, ownerUnlocked).grant)
+pure def lawLockedTapOpensOnlyAfterUnlock(ownerUnlocked: bool): bool =
+  tileTap(true, ownerUnlocked).opened implies ownerUnlocked
+```
+
+## Story: Hand an alarm to the system clock and know only what it received
+
+> As the person, I want the assistant to set, show, snooze or dismiss an
+> alarm by opening my phone's clock with the request filled in, so that
+> the clock shows its own review and nothing claims an alarm changed that
+> I did not see.
+
+### A clock handoff opens the system clock with one reviewed request and never reports an alarm change
+
+A handoff is set, show, dismiss or snooze; anything else is refused. Set
+needs an hour of 0 to 23, a minute of 0 to 59 and a label of at most 200
+characters with no control characters, and may carry repeat days: one to
+seven distinct days, each 1 (Sunday) to 7 (Saturday), in ascending order,
+or none for a one-time alarm; days are refused for any other action. Show
+and dismiss carry no options; snooze carries only 1 to 60 minutes. No
+request targets all alarms or a deep-linked alarm, and the clock always
+shows its own review. A handoff starts only after the owner reviewed it,
+with the host focused and the phone unlocked, and a set that named a time
+zone fails when the phone's zone changed since. The receiving activity is
+resolved and bound explicitly, and the host itself never receives it.
+Opened means only that the clock received the request; the outcome is
+opened, unavailable, denied, failed or unknown, and is never reported as
+an applied alarm change.
+
+```quint
+type ClockRequestKind = ClockSet | ClockShow | ClockDismiss | ClockSnooze | ClockOther
+type ClockLaunch = ClockStarted | ClockNotFound | ClockSecurityRefused | ClockStartFailed
+type ClockOutcome = ClockOpened | ClockUnavailable | ClockDenied | ClockFailed | ClockUnknown
+type ClockRequest = { clockKind: ClockRequestKind, hour: int, minute: int, labelLength: int, labelPlain: bool, snoozeMinutes: int, dayCount: int, daysAscendingInRange: bool }
+pure def clockRequestAdmitted(q: ClockRequest): bool =
+  if (q.clockKind == ClockSet)
+    q.hour >= 0 and q.hour <= 23 and q.minute >= 0 and q.minute <= 59 and q.labelLength >= 0 and q.labelLength <= 200 and q.labelPlain and
+    q.snoozeMinutes == 0 and (q.dayCount == 0 or (q.dayCount >= 1 and q.dayCount <= 7 and q.daysAscendingInRange))
+  else if (q.clockKind == ClockSnooze) q.dayCount == 0 and q.snoozeMinutes >= 1 and q.snoozeMinutes <= 60
+  else if (q.clockKind == ClockShow or q.clockKind == ClockDismiss) q.dayCount == 0 and q.snoozeMinutes == 0
+  else false
+pure def clockHandoff(reviewed: bool, admitted: bool, focusedUnlocked: bool, zoneUnchanged: bool, otherReceiver: bool, launch: ClockLaunch): ClockOutcome =
+  if (not(reviewed and admitted and focusedUnlocked)) ClockFailed
+  else if (not(otherReceiver)) ClockUnavailable
+  else if (not(zoneUnchanged)) ClockFailed
+  else if (launch == ClockStarted) ClockOpened
+  else if (launch == ClockNotFound) ClockUnavailable
+  else if (launch == ClockSecurityRefused) ClockDenied
+  else ClockUnknown
+pure def handoffReportsAppliedChange(clockOutcome: ClockOutcome): bool = false
+pure val setRequest: ClockRequest = { clockKind: ClockSet, hour: 7, minute: 30, labelLength: 5, labelPlain: true, snoozeMinutes: 0, dayCount: 0, daysAscendingInRange: true }
+pure val qValues = Set(setRequest, { ...setRequest, hour: 24 }, { ...setRequest, dayCount: 8 }, { ...setRequest, dayCount: 2, daysAscendingInRange: false },
+  { ...setRequest, clockKind: ClockSnooze, snoozeMinutes: 10 }, { ...setRequest, clockKind: ClockSnooze, snoozeMinutes: 61 },
+  { ...setRequest, clockKind: ClockDismiss, dayCount: 1 }, { ...setRequest, clockKind: ClockOther }, { ...setRequest, labelLength: 201 })
+pure def lawDaysOnlyForANewAlarm(q: ClockRequest): bool = (clockRequestAdmitted(q) and q.dayCount > 0) implies q.clockKind == ClockSet
+pure def lawOpenedNeedsReviewAndAnotherReceiver(reviewed: bool, admitted: bool, focusedUnlocked: bool, zoneUnchanged: bool, otherReceiver: bool, launch: ClockLaunch): bool =
+  clockHandoff(reviewed, admitted, focusedUnlocked, zoneUnchanged, otherReceiver, launch) == ClockOpened implies
+    reviewed and admitted and focusedUnlocked and zoneUnchanged and otherReceiver and launch == ClockStarted
+pure def lawHandoffIsNeverAnAlarmReceipt(clockOutcome: ClockOutcome): bool = not(handoffReportsAppliedChange(clockOutcome))
+```
+
+### A booted image's clock is verified only against the exact image and user
+
+The system clock every image keeps is checked on a booted device for an
+explicit Android user and an exact expected image fingerprint: the clock
+package is installed and enabled for that user, and each of the set,
+show, snooze and dismiss alarm intents resolves to it. Handler
+availability is not evidence that an alarm rings.
+
+```quint
+type ClockImageEvidence = { handlersVerified: bool, ringingVerified: bool }
+pure def clockImageEvidence(explicitUser: bool, fingerprintMatches: bool, clockEnabled: bool, handlersResolved: int): ClockImageEvidence =
+  { handlersVerified: explicitUser and fingerprintMatches and clockEnabled and handlersResolved == 4, ringingVerified: false }
+pure val handlersResolvedValues = Set(0, 3, 4)
+pure def lawClockCheckNeedsTheExactImage(explicitUser: bool, clockEnabled: bool, handlersResolved: int): bool =
+  not(clockImageEvidence(explicitUser, false, clockEnabled, handlersResolved).handlersVerified)
+pure def lawHandlersNeverProveRinging(explicitUser: bool, fingerprintMatches: bool, clockEnabled: bool, handlersResolved: int): bool =
+  not(clockImageEvidence(explicitUser, fingerprintMatches, clockEnabled, handlersResolved).ringingVerified)
+```

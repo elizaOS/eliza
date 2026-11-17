@@ -2,9 +2,10 @@
 
 A native client is an installed application registered with the deployment
 by package identifier, environment and exact callback. It signs a person in
-through the browser, receives a one-time code, exchanges it for a key and
-acknowledges the key before using it, then renews the key without the
-browser until an absolute cap. The registry is the deployment's own record
+through the browser, or through the device's own account picker when the
+hosted auth service verifies that identity, receives a one-time code with
+its key, acknowledges the key before using it, then renews the key without
+the browser until an absolute cap. The registry is the deployment's own record
 of native clients and depends on no hosted-application record. The device
 half of this protocol is [native enrollment](../auth/native/enrollment.md)
 and [Android key renewal](../auth/native/android/keyRenewal.md).
@@ -67,8 +68,9 @@ pure def lawStatementKeepsSignerPairs(signers: List[SignerRelations]): bool =
 
 ## Story: Sign a native client in and keep its key renewed
 
-> As a person using a native client, I approve the sign-in once in the
-> browser; the client gets one key, which it acknowledges before use, and
+> As a person using a native client, I approve the sign-in once, in the
+> browser or in my device's account picker; the client gets one key, which
+> it acknowledges before use, and
 > renews it in the background until the sign-in's absolute limit, while
 > signing out or a revocation from my account ends every key of that
 > sign-in.
@@ -87,12 +89,12 @@ type GrantStatus = GrantPending | GrantExchanged | GrantAcknowledged | GrantVoid
 type KeyStatus = KeyMinted | KeyActive | KeyRevoked | KeyDeleted
 type Grant = { id: int, status: GrantStatus, from: int, issuedAt: int, start: int, cipher: bool, reveals: int, redeemedAt: int }
 type Key = { id: int, status: KeyStatus, expires: int, start: int, activated: bool }
-type SignIn = { clock: int, ownerOk: bool, clientOk: bool, ended: bool, approved: bool, grants: List[Grant], keys: List[Key] }
+type SignIn = { clock: int, ownerOk: bool, clientOk: bool, ended: bool, approved: bool, native: bool, grants: List[Grant], keys: List[Key] }
 pure val codeTtl = 1
 pure val keyTtl = 3
 pure val cap = 4
 pure val lastStepWindow = 1
-pure val initial: SignIn = { clock: 0, ownerOk: true, clientOk: true, ended: false, approved: false, grants: List(), keys: List() }
+pure val initial: SignIn = { clock: 0, ownerOk: true, clientOk: true, ended: false, approved: false, native: false, grants: List(), keys: List() }
 pure val noGrant: Grant = { id: 0, status: GrantVoid, from: 0, issuedAt: 0, start: 0, cipher: false, reveals: 0, redeemedAt: 0 }
 pure val noKey: Key = { id: 0, status: KeyDeleted, expires: 0, start: 0, activated: false }
 pure def grantOf(s: SignIn, g: int): Grant = s.grants.select(x => x.id == g).nthOr(0, noGrant)
@@ -123,10 +125,55 @@ pure def alwaysRevealedGrantHasItsKey(s: SignIn): bool = s.grants.every(g => g.r
 pure def sometimesExchangeReplayedSameKey(s: SignIn): bool = s.grants.some(g => g.reveals >= 2) and s.keys.length() == 1
 ```
 
-### No code or key exists before the browser approves the sign-in
+### No code or key exists before the person approves the sign-in, in the browser or by a verified native identity
+
+A sign-in is approved in one of two ways. In the browser, approval issues
+a one-time code that the client then exchanges. In the device's account
+picker, the client sends, in one request, its registration binding, PKCE
+verifier and the identity the picker returned for a challenge the hosted
+auth service issued; the service verifies that identity and consumes the
+challenge once, and only then does the cloud issue the code and exchange
+it at once, returning the key, still inactive until acknowledged, with the
+code to acknowledge it. A refused identity, a reused challenge or an
+unregistered client leaves the sign-in empty. Either way there is one first
+code and one key, and nothing before the approval.
 
 ```quint
+pure def canSignInNatively(s: SignIn, identityVerified: bool, challengeFresh: bool): bool = not(s.approved) and s.ownerOk and s.clientOk and identityVerified and challengeFresh
+pure def signInNatively(s: SignIn, identityVerified: bool, challengeFresh: bool): SignIn =
+  { ...s, approved: true, native: true,
+    grants: List({ id: 1, status: GrantExchanged, from: 0, issuedAt: s.clock, start: s.clock, cipher: true, reveals: 1, redeemedAt: 0 }),
+    keys: List({ id: 1, status: KeyMinted, expires: s.clock + codeTtl, start: s.clock, activated: false }) }
+pure def sometimesNativeSignInAcknowledged(s: SignIn): bool = s.native and keyOf(s, 1).status == KeyActive
 pure def alwaysUnapprovedSignInIsEmpty(s: SignIn): bool = not(s.approved) implies (s.grants.length() == 0 and s.keys.length() == 0)
+```
+
+### A native sign-in that carries a server authorization code links the Google grant in the same exchange, and no other sign-in links one
+
+The account picker may also return a one-time server authorization code
+for the mail and calendar scopes the client asked for. Sent with the
+native sign-in, it is redeemed in the same request, and the answer names
+the [Google connection](./managedGoogle/connection.md) it linked beside the
+key. The code links the grant only when Google is configured for the
+deployment, the code belongs to the same Google account as the verified
+identity, the person owns the organization, and Google accepts the code
+with the scopes asked for. Otherwise the answer says why nothing was
+linked, and the key is issued all the same: a failed link never fails the
+sign-in. A sign-in refused for its identity, its challenge or its client
+redeems nothing, and a sign-in without the code links no grant, so a
+person who declined those scopes keeps a key with no Google access.
+
+```quint
+type NativeSignInAnswer = { keyIssued: bool, googleLinked: bool }
+pure def nativeSignInAnswer(admitted: bool, identityVerified: bool, challengeFresh: bool, serverAuthCode: bool, codeLinkable: bool): NativeSignInAnswer =
+  { keyIssued: admitted and identityVerified and challengeFresh, googleLinked: admitted and identityVerified and challengeFresh and serverAuthCode and codeLinkable }
+pure def lawGoogleLinksOnlyWithItsKeyAndALinkableCode(admitted: bool, identityVerified: bool, challengeFresh: bool, serverAuthCode: bool, codeLinkable: bool): bool =
+  nativeSignInAnswer(admitted, identityVerified, challengeFresh, serverAuthCode, codeLinkable).googleLinked iff
+    (nativeSignInAnswer(admitted, identityVerified, challengeFresh, serverAuthCode, codeLinkable).keyIssued and serverAuthCode and codeLinkable)
+pure def lawAFailedLinkNeverFailsTheSignIn(admitted: bool, identityVerified: bool, challengeFresh: bool, serverAuthCode: bool, codeLinkable: bool): bool =
+  nativeSignInAnswer(admitted, identityVerified, challengeFresh, serverAuthCode, codeLinkable).keyIssued == nativeSignInAnswer(admitted, identityVerified, challengeFresh, false, false).keyIssued
+pure def lawARefusedSignInRedeemsNothing(admitted: bool, identityVerified: bool, challengeFresh: bool, serverAuthCode: bool, codeLinkable: bool): bool =
+  not(admitted and identityVerified and challengeFresh) implies nativeSignInAnswer(admitted, identityVerified, challengeFresh, serverAuthCode, codeLinkable) == { keyIssued: false, googleLinked: false }
 ```
 
 ### Each code has its own number, from one up to the number of codes issued
@@ -236,4 +283,78 @@ pure def reap(s: SignIn, g: int): SignIn =
   { ...s, grants: putGrant(s, { ...grantOf(s, g), status: GrantDeleted, cipher: false }), keys: if (hasKey(s, g)) putKey(s, { ...keyOf(s, g), status: KeyDeleted }) else s.keys }
 pure def alwaysCleanupKeepsLiveKeys(s: SignIn): bool = s.keys.every(k => (k.status == KeyDeleted and k.activated) implies s.clock >= k.expires)
 pure def sometimesUnacknowledgedGrantReaped(s: SignIn): bool = s.grants.some(g => g.status == GrantDeleted and g.redeemedAt == 0) and s.keys.some(k => k.status == KeyDeleted and not(k.activated))
+```
+
+## Story: Tell a native client exactly why its request was refused
+
+> As the developer of a native client, I want every refusal of a sign-in,
+> exchange, acknowledgement or renewal to carry a stable code, a status and
+> whether trying again can help, so that the client retries only an outage
+> and never a request that can never succeed.
+
+### A protocol refusal is never retryable, and only a dependency outage is
+
+Each request body is parsed strictly: a body that is not JSON, misses a
+field, has a field of the wrong shape or length, or carries any property
+the request does not define is `invalid_request` (400). A wrong
+acknowledgement proof (key, code or credential that do not belong
+together) is `credential_proof_invalid` (401); an unknown or disabled client
+is `invalid_client` (401); a mismatched binding, an unknown code or a wrong
+verifier is 400; an expired code is 410 and a code already completed 409; a
+missing server configuration is 503. Every one of these is answered with
+`retryable: false`. Only a failure of a service the request depends on is
+`temporarily_unavailable` (503) with `retryable: true`.
+
+```quint
+type AppAuthRefusal = InvalidRequest | CredentialProofInvalid | InvalidClient | BindingMismatch | InvalidAuthorizationCode | InvalidCodeVerifier | AuthorizationCodeExpired | AuthorizationComplete | ServerConfigurationError | DependencyUnavailable
+type RefusalAnswer = { status: int, retryable: bool }
+pure def refusalAnswer(refusal: AppAuthRefusal): RefusalAnswer =
+  if (refusal == DependencyUnavailable) { status: 503, retryable: true }
+  else if (refusal == ServerConfigurationError) { status: 503, retryable: false }
+  else if (refusal == CredentialProofInvalid or refusal == InvalidClient) { status: 401, retryable: false }
+  else if (refusal == AuthorizationCodeExpired) { status: 410, retryable: false }
+  else if (refusal == AuthorizationComplete) { status: 409, retryable: false }
+  else { status: 400, retryable: false }
+type RequestBody = { json: bool, fieldsValid: bool, extraProperties: bool }
+pure val bodyValues = Set({ json: true, fieldsValid: true, extraProperties: false }, { json: true, fieldsValid: true, extraProperties: true }, { json: false, fieldsValid: false, extraProperties: false }, { json: true, fieldsValid: false, extraProperties: false })
+pure def bodyRefusal(body: RequestBody): bool = not(body.json) or not(body.fieldsValid) or body.extraProperties
+pure def lawOnlyAnOutageIsRetryable(refusal: AppAuthRefusal): bool = refusalAnswer(refusal).retryable iff refusal == DependencyUnavailable
+pure def lawWrongProofIsUnauthenticated(refusal: AppAuthRefusal): bool = refusal == CredentialProofInvalid implies refusalAnswer(refusal) == { status: 401, retryable: false }
+pure def lawMalformedBodyIsAnInvalidRequest(refusal: AppAuthRefusal): bool = refusal == InvalidRequest implies refusalAnswer(refusal) == { status: 400, retryable: false }
+pure def lawAnExtraPropertyRefusesTheBody(body: RequestBody): bool = body.extraProperties implies bodyRefusal(body)
+```
+
+### A key lives thirty days unless its registration sets a lifetime from one to ninety days, and a code five minutes
+
+A code, and so the window to exchange and acknowledge it, lasts five
+minutes. A key's lifetime is its registration's configured lifetime, or
+thirty days when the registration sets none; a configured lifetime shorter
+than one day or longer than ninety days makes the registration invalid, so
+no client is admitted under it. A renewed key never outlives the
+sign-in's cap of one hundred and eighty days.
+
+```quint
+pure val daySeconds = 86400
+pure val codeLifetimeSeconds = 300
+pure val defaultKeyLifetimeSeconds = 2592000
+pure val minimumKeyLifetimeSeconds = 86400
+pure val maximumKeyLifetimeSeconds = 7776000
+pure val renewalCapSeconds = 15552000
+pure def codeExpiresAt(issuedAt: int): int = issuedAt + codeLifetimeSeconds
+pure val issuedAtValues = Set(0, 15000000)
+pure def lawACodeLastsFiveMinutes(issuedAt: int): bool = codeExpiresAt(issuedAt) == issuedAt + 5 * 60
+pure def keyLifetimeSeconds(configured: int): int = if (configured == 0) defaultKeyLifetimeSeconds else configured
+pure def lifetimeValid(configured: int): bool = configured == 0 or (configured >= minimumKeyLifetimeSeconds and configured <= maximumKeyLifetimeSeconds)
+pure def keyEndsAt(acknowledgedAt: int, signInStart: int, configured: int): int =
+  if (acknowledgedAt + keyLifetimeSeconds(configured) < signInStart + renewalCapSeconds) acknowledgedAt + keyLifetimeSeconds(configured) else signInStart + renewalCapSeconds
+pure val configuredValues = Set(0, 3600, 86400, 2592000, 7776000, 7862400)
+pure val acknowledgedAtValues = Set(0, 15000000)
+pure val signInStartValues = Set(0)
+pure def lawUnsetLifetimeIsThirtyDays(configured: int): bool = configured == 0 implies keyLifetimeSeconds(configured) == 30 * daySeconds
+pure def lawConfiguredLifetimeStaysInRange(configured: int): bool =
+  lifetimeValid(configured) implies (keyLifetimeSeconds(configured) >= daySeconds and keyLifetimeSeconds(configured) <= 90 * daySeconds)
+pure def lawOutOfRangeLifetimeAdmitsNoClient(configured: int): bool =
+  not(lifetimeValid(configured)) implies not(clientAdmitted({ ...validPolicy, ttlValid: lifetimeValid(configured) }, CredentialEntry))
+pure def lawNoKeyOutlivesTheRenewalCap(acknowledgedAt: int, signInStart: int, configured: int): bool =
+  keyEndsAt(acknowledgedAt, signInStart, configured) <= signInStart + renewalCapSeconds
 ```

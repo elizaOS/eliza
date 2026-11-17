@@ -12,7 +12,11 @@ launches the agent and gateway under one owned scope; the
 Cloud inference and [provider rebind](./providerRebind.md) rechecks it after
 blocking work; the [Android host](./host.md) keeps custody of the runtime and
 its [provider credential](./credential.md). The packaged inventory is
-[os bundle inventory](../../os/build/bundleInventory.md). This page owns the startup phases the host reports
+[os bundle inventory](../../os/build/bundleInventory.md). An on-device
+resident runs under a [runtime profile](../plugins/profile.md): the device
+profile keeps embeddings and the agent's speech on the device, and the
+cloud-only profile carries no local model; both think only through the
+owner's cloud account. This page owns the startup phases the host reports
 while all of that happens.
 
 ## Story: Report where the agent is in its startup

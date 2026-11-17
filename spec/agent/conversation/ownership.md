@@ -33,12 +33,12 @@ pure def lawInvalidOwnershipCannotAuthorize(loaded: OwnershipInput, requestedId:
 pure val savedOwner: LoadedOwnership = { found: true, strings: true, id: "id", room: "room", ownerId: "account-a" }
 pure val fileOwnership: OwnershipInput = { nativeHost: false, exactOwnershipPort: true, hasValue: true, decodedArray: true, records: List(savedOwner) }
 pure val loadedValues = Set(fileOwnership, { ...fileOwnership, hasValue: false }, { ...fileOwnership, decodedArray: false }, { ...fileOwnership, records: List({ ...savedOwner, strings: false }) }, { ...fileOwnership, records: List(savedOwner, { ...savedOwner, ownerId: "account-b" }) })
-pure val requestedIdValues = Set("id", "other")
+pure val requestedIdValues = Set("id", "other", "room")
 ```
 
 ### A send uses the conversation ID, a Stop uses its room, and both need the captured owner
 
-Conversation creation and buffered and streamed starts precede the upstream call with the host's admission checks. The gateway admits a send using the exact conversation ID under the captured account. It sends the upstream request only after rechecking owner, reset epoch and cancellation. Stop resolves its path by room ID among that owner's records, then rechecks the same authority before it forwards. A well-formed identifier for an unknown room or a different owner is `409 CONVERSATION_NOT_OWNED`. The gateway uses its authenticated credential gate rather than an owner supplied by the request. The existing credential gate and outer route policy stay authoritative.
+Conversation creation and buffered and streamed starts precede the upstream call with the host's admission checks. The gateway admits a send using the exact conversation ID under the captured account. It sends the upstream request only after rechecking owner, reset epoch and cancellation. Stop resolves its path by room ID among that owner's records, then rechecks the same authority before it forwards. The Stop path names the conversation's room and nothing else: a conversation ID, a turn's ID or a message ID in that place is not a room of the owner and is refused, even when it names the owner's own conversation; the turn a Stop acts on is whichever holds that room's slot. A well-formed identifier for an unknown room or a different owner is `409 CONVERSATION_NOT_OWNED`. The gateway uses its authenticated credential gate rather than an owner supplied by the request. The existing credential gate and outer route policy stay authoritative.
 
 The buffered reply reads upstream JSON and rechecks owner and epoch before returning it. The final task-presentation step rechecks the epoch, cancellation and the exact presentation if one was requested. The code does not perform another owner read after that last presentation await. A streaming pull checks the owner and epoch immediately before publishing, and drops the stream on that check's failure. Stream cancel intentionally discards its exact matched handle without an account check. Its acknowledgement does not authorize disclosure. The predicates below model ownership and authority only.
 
@@ -55,6 +55,8 @@ pure def lawForeignOwnerCannotUseRoom(roomRecord: LoadedOwnership, scope: TurnAu
   roomRecord.ownerId != scope.capturedOwner implies not(acceptsTurn(roomRecord, scope, requestedId, abortRoom))
 pure def lawLateTurnCannotUseNewResetEpoch(roomRecord: LoadedOwnership, scope: TurnAuthority, requestedId: str, abortRoom: bool): bool =
   scope.capturedEpoch != scope.liveEpoch implies not(acceptsTurn(roomRecord, scope, requestedId, abortRoom))
+pure def lawStopNamesTheRoomNotTheConversation(roomRecord: LoadedOwnership, scope: TurnAuthority, requestedId: str): bool =
+  (requestedId != roomRecord.room) implies not(acceptsTurn(roomRecord, scope, requestedId, true))
 pure val roomRecordValues = Set(absentOwner, savedOwner, { ...savedOwner, ownerId: "account-b" })
 pure val liveAuthority: TurnAuthority = { capturedOwner: "account-a", observedOwner: "account-a", capturedEpoch: 1, liveEpoch: 1, aborted: false }
 pure val scopeValues = Set(liveAuthority, { ...liveAuthority, observedOwner: "account-b" }, { ...liveAuthority, liveEpoch: 2 }, { ...liveAuthority, aborted: true })

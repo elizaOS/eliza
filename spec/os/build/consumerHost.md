@@ -13,7 +13,8 @@ native bridge modules it may include.
 
 > As a consumer, I want to generate my Android host from a profile that
 > says everything explicitly, so that no source is read from outside the
-> roots I name and no release is published with a partial signing setup.
+> roots I name, no release is published with a partial signing setup, and
+> a host without on-device inference never carries it.
 
 ### Every module source resolves under exactly one declared root
 
@@ -67,13 +68,15 @@ pure def variantsAdmitted(variants: List[str]): bool =
 pure val variantsValues = Set(List(), List("store"), List("store", "sideload"), List("store", "store"), List("release"))
 ```
 
-### A release APK is signed only when every named signing variable is set
+### A release APK is signed only when every named signing variable is set, and a partial set is refused
 
 The profile names the release signing inputs as four distinct environment
 variable names, or none: store file, store password, key alias and key
-password. The names are data, never values. A build signs its release only
-when all four variables are set; otherwise it produces only an unsigned
-release, never a partially signed one.
+password. The names are data, never values, and a refusal names only the
+missing variables. With none of the four variables set, the build produces
+an unsigned release. With all four set, it signs the release. With some
+but not all set, the build is refused before any release is produced, so
+a partial signing setup never yields an unsigned release by accident.
 
 ```quint
 type ReleaseSigning = SignedRelease | UnsignedRelease | SigningRefused
@@ -83,13 +86,75 @@ pure def signingNamesAdmitted(names: List[str]): bool =
 pure def releaseSigning(names: List[str], variablesSet: int): ReleaseSigning =
   if (not(signingNamesAdmitted(names))) SigningRefused
   else if (names.length() == 4 and variablesSet == 4) SignedRelease
+  else if (names.length() == 4 and variablesSet > 0) SigningRefused
   else UnsignedRelease
 pure val signingNamesValues = Set(List(), List("STORE", "STORE_PASS", "KEY", "KEY_PASS"), List("STORE", "STORE"), List("STORE", "STORE", "KEY", "KEY_PASS"))
-pure val variablesSetValues = Set(0, 3, 4)
+pure val variablesSetValues = Set(0, 1, 3, 4)
 pure def lawSignedReleaseNeedsEverySigningVariable(signingNames: List[str], variablesSet: int): bool =
   releaseSigning(signingNames, variablesSet) == SignedRelease implies signingNames.length() == 4 and variablesSet == 4
-pure def lawPartialSigningIsUnsigned(signingNames: List[str], variablesSet: int): bool =
-  (signingNamesAdmitted(signingNames) and variablesSet < 4) implies releaseSigning(signingNames, variablesSet) == UnsignedRelease
+pure def lawPartialSigningIsRefused(signingNames: List[str], variablesSet: int): bool =
+  (signingNames.length() == 4 and variablesSet > 0 and variablesSet < 4) implies releaseSigning(signingNames, variablesSet) == SigningRefused
+pure def lawNoSigningVariableIsUnsigned(signingNames: List[str]): bool =
+  signingNamesAdmitted(signingNames) implies releaseSigning(signingNames, 0) == UnsignedRelease
+```
+
+### A build with every signing variable set fails when a release comes out unsigned
+
+When every named signing variable is set, each variant's release must
+come out signed; an unsigned release then fails the build instead of
+being published under the unsigned name. Without signing variables an
+unsigned release is published under the unsigned name.
+
+```quint
+type ReleasePublication = PublishSignedRelease | PublishUnsignedRelease | ReleaseBuildFails
+pure def releasePublication(signing: ReleaseSigning, outputSigned: bool): ReleasePublication =
+  if (signing == SigningRefused) ReleaseBuildFails
+  else if (signing == SignedRelease) (if (outputSigned) PublishSignedRelease else ReleaseBuildFails)
+  else (if (outputSigned) ReleaseBuildFails else PublishUnsignedRelease)
+pure def lawCompleteSigningNeverPublishesUnsigned(outputSigned: bool): bool =
+  releasePublication(SignedRelease, outputSigned) != PublishUnsignedRelease and
+  (not(outputSigned) implies releasePublication(SignedRelease, outputSigned) == ReleaseBuildFails)
+pure def lawRefusedSigningPublishesNothing(outputSigned: bool): bool =
+  releasePublication(SigningRefused, outputSigned) == ReleaseBuildFails
+```
+
+### The profile schema and the Gradle toolchain are pinned
+
+A profile states schema version 1; any other version is refused. The
+generated project uses the reviewed toolchain record: the Gradle version
+with its distribution digest, the wrapper's digest, and the Android
+Gradle plugin, Kotlin and Java versions. The Gradle wrapper copied from
+upstream must match the reviewed wrapper digest, or generation is
+refused. Shared AndroidX libraries a profile names without a version take
+the toolchain record's version.
+
+```quint
+pure def profileSchemaAdmitted(schema: int): bool = schema == 1
+pure def toolchainAdmitted(wrapperDigestMatches: bool, distributionDigestPinned: bool): bool =
+  wrapperDigestMatches and distributionDigestPinned
+pure val schemaValues = Set(0, 1, 2)
+pure def lawOnlySchemaOneIsAdmitted(schema: int): bool = profileSchemaAdmitted(schema) implies schema == 1
+pure def lawChangedWrapperIsRefused(distributionDigestPinned: bool): bool = not(toolchainAdmitted(false, distributionDigestPinned))
+```
+
+### A host without the local-inference module carries no on-device model or inference library
+
+A profile that selects no local-inference module produces APKs with no
+on-device model or local inference: no model file (`.gguf`, `.onnx`,
+`.ort`, `.tflite`, `.safetensors`, `.pte` or `.task`), no native library
+named for a local inference engine, no local model server executable, and
+no speech or model directory among the assets outside the web interface's
+own public assets. An APK carrying any of them is refused before it is
+published.
+
+```quint
+type PayloadEntry = OrdinaryEntry | ModelFile | InferenceLibrary | ModelServer | ModelAssetDirectory
+pure def inferencePayload(entry: PayloadEntry): bool = entry != OrdinaryEntry
+pure def hostPayloadAdmitted(localInferenceSelected: bool, entries: Set[PayloadEntry]): bool =
+  localInferenceSelected or entries.forall(e => not(inferencePayload(e)))
+pure val entriesValues = Set(Set(), Set(OrdinaryEntry), Set(OrdinaryEntry, ModelFile), Set(InferenceLibrary), Set(ModelServer), Set(ModelAssetDirectory))
+pure def lawCloudOnlyHostCarriesNoInference(entries: Set[PayloadEntry]): bool =
+  hostPayloadAdmitted(false, entries) implies entries.forall(e => e == OrdinaryEntry)
 ```
 
 ### The published manifest lists every APK of this build with its digest and one signer

@@ -92,20 +92,26 @@ pure def leadsToSignOutSettles(v: CloudSessionView, later: CloudSessionView): bo
 
 ### Each capability is routed to the cloud exactly when its flag is on
 
-Routing is typed configuration with one flag per capability group:
-embeddings, media, speech output and speech input. At initialization the
-client registers exactly the groups whose flags are on, and nothing before
-it is configured.
+Routing is typed configuration with one flag per capability group: text
+generation, embeddings, media, speech output and speech input. At
+initialization the client registers exactly the groups whose flags are on,
+and nothing before it is configured. Text generation through the cloud is
+the hosted chat completions API ([inference](./inference.md)) under the
+owner's own cloud key. A cloud-only routing turns every flag on, so the
+client registers every group and an agent with no local model still
+generates text, embeds, sees and speaks.
 
 ```quint
-type CapabilityGroup = EmbeddingsGroup | MediaGroup | SpeechOutputGroup | SpeechInputGroup
-type CloudRouting = { embeddings: bool, media: bool, speechOutput: bool, speechInput: bool }
+type CapabilityGroup = TextGroup | EmbeddingsGroup | MediaGroup | SpeechOutputGroup | SpeechInputGroup
+type CloudRouting = { text: bool, embeddings: bool, media: bool, speechOutput: bool, speechInput: bool }
 pure def routesToCloud(routing: CloudRouting, group: CapabilityGroup): bool =
-  if (group == EmbeddingsGroup) routing.embeddings else if (group == MediaGroup) routing.media else if (group == SpeechOutputGroup) routing.speechOutput else routing.speechInput
+  if (group == TextGroup) routing.text else if (group == EmbeddingsGroup) routing.embeddings else if (group == MediaGroup) routing.media else if (group == SpeechOutputGroup) routing.speechOutput else routing.speechInput
 pure def registered(configured: bool, routing: CloudRouting, group: CapabilityGroup): bool = configured and routesToCloud(routing, group)
 pure def lawRegisteredExactlyWhenEnabled(routing: CloudRouting, group: CapabilityGroup): bool = registered(true, routing, group) == routesToCloud(routing, group)
 pure def lawNothingRegisteredBeforeConfiguration(routing: CloudRouting, group: CapabilityGroup): bool = not(registered(false, routing, group))
-pure val routingValues = Set({ embeddings: true, media: false, speechOutput: true, speechInput: false }, { embeddings: false, media: true, speechOutput: false, speechInput: true }, { embeddings: false, media: false, speechOutput: false, speechInput: false })
+pure val cloudOnlyRouting: CloudRouting = { text: true, embeddings: true, media: true, speechOutput: true, speechInput: true }
+pure def lawCloudOnlyRoutingRegistersEveryGroup(group: CapabilityGroup): bool = registered(true, cloudOnlyRouting, group)
+pure val routingValues = Set(cloudOnlyRouting, { text: false, embeddings: true, media: false, speechOutput: true, speechInput: false }, { text: true, embeddings: false, media: true, speechOutput: false, speechInput: true }, { text: false, embeddings: false, media: false, speechOutput: false, speechInput: false })
 ```
 
 ### A disconnect reports success only after the cleared credentials are saved

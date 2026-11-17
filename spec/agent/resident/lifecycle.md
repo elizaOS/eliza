@@ -159,3 +159,105 @@ pure def alwaysCredentialStopKeepsCustody(s: ResidentHost): bool =
 pure def sometimesShutdownUnconfirmed(s: ResidentHost): bool = s.phase == StopUnconfirmed
 pure def sometimesShutdownConfirmed(s: ResidentHost): bool = s.phase == NoResident and s.epoch >= 2
 ```
+
+## Story: Open another screen on the agent that is already running
+
+> As a device owner, a second screen of my app joins the agent that is
+> already running for me instead of starting it again, but only when the
+> agent really is running for my current provider and my session, and never
+> while my provider is changing or an update holds it.
+
+### A screen attaches only to a listening resident of the same launch, enrolled for a session that outlives the attach, under the provider it was launched with
+
+The native boot state must say the resident is listening, its service
+active and its socket listening. The resident's per-launch root token must
+be known and equal to the one the owner's session was enrolled against; a
+pairing still in progress is never shared. The owner session must outlive
+the attach by thirty seconds, and the provider admission the process was
+launched with must be the stored one. A retiring lifecycle, a credential
+change or pending credential shutdown, or an unverified attach refuses it.
+Attaching never starts, stops or re-pairs the resident and never advances
+its epoch, and every refusal falls back to an ordinary start.
+
+```quint
+type BootState = { listening: bool, serviceActive: bool, socketListening: bool }
+type AttachFacts = { retiring: bool, credentialChanging: bool, attachUnverified: bool, currentRoot: int, enrolledRoot: int,
+  ownerEnrolled: bool, sessionExpiresAt: int, now: int, launchedProvider: int, storedProvider: int }
+type AttachRefusal = AttachAllowed | AttachUnverified | LifecycleRetiring | ProviderChanging | RuntimeNotRunning | RootTokenUnavailable
+  | NotEnrolled | RuntimeChanged | EnrollmentExpiring | ProviderUnadmitted | ProviderChangedSinceLaunch
+pure val enrollmentMarginMs = 30000
+pure def attachRefusal(boot: BootState, f: AttachFacts): AttachRefusal =
+  if (f.attachUnverified) AttachUnverified
+  else if (f.retiring) LifecycleRetiring
+  else if (f.credentialChanging) ProviderChanging
+  else if (not(boot.listening and boot.serviceActive and boot.socketListening)) RuntimeNotRunning
+  else if (f.currentRoot <= 0) RootTokenUnavailable
+  else if (f.enrolledRoot <= 0 or not(f.ownerEnrolled)) NotEnrolled
+  else if (f.currentRoot != f.enrolledRoot) RuntimeChanged
+  else if (f.sessionExpiresAt <= f.now + enrollmentMarginMs) EnrollmentExpiring
+  else if (f.launchedProvider <= 0 or f.storedProvider <= 0) ProviderUnadmitted
+  else if (f.launchedProvider != f.storedProvider) ProviderChangedSinceLaunch
+  else AttachAllowed
+pure val bootValues = Set({ listening: true, serviceActive: true, socketListening: true }, { listening: true, serviceActive: true, socketListening: false })
+pure val goodFacts: AttachFacts = { retiring: false, credentialChanging: false, attachUnverified: false, currentRoot: 1, enrolledRoot: 1,
+  ownerEnrolled: true, sessionExpiresAt: 100000, now: 0, launchedProvider: 1, storedProvider: 1 }
+pure val fValues = Set(goodFacts, { ...goodFacts, enrolledRoot: 2 }, { ...goodFacts, credentialChanging: true }, { ...goodFacts, sessionExpiresAt: 20000 }, { ...goodFacts, storedProvider: 2 })
+pure def lawAttachNeedsTheEnrolledLaunchAndProvider(boot: BootState, f: AttachFacts): bool =
+  attachRefusal(boot, f) == AttachAllowed implies
+    (boot.listening and boot.serviceActive and boot.socketListening and f.currentRoot > 0 and f.currentRoot == f.enrolledRoot and
+     f.sessionExpiresAt > f.now + enrollmentMarginMs and f.launchedProvider > 0 and f.launchedProvider == f.storedProvider and
+     not(f.retiring) and not(f.credentialChanging))
+```
+
+### A stop is read back as confirmed only when the service is dead, inactive and no longer listening
+
+```quint
+type ServiceReadback = { dead: bool, serviceActive: bool, socketListening: bool }
+pure val rValues = Set({ dead: true, serviceActive: false, socketListening: false }, { dead: true, serviceActive: false, socketListening: true }, { dead: false, serviceActive: true, socketListening: true })
+pure def shutdownConfirmed(r: ServiceReadback): bool = r.dead and not(r.serviceActive) and not(r.socketListening)
+pure def lawListeningServiceIsNotStopped(r: ServiceReadback): bool =
+  (r.serviceActive or r.socketListening) implies not(shutdownConfirmed(r))
+```
+
+### A pending update holds every start, and only its exact successor or a proven ended attempt releases it
+
+An owner-confirmed package replacement records its session and the digests
+of the installed and the running package before it begins. While that
+record exists no resident starts, and a record that cannot be read refuses
+the start. The record is released only when both the installed and the
+running package are the target, or both are the baseline and the
+installer's session is no longer pending, and never while the worker that
+owns the update is still alive. A timeout or a dismissed confirmation is
+not a cancellation.
+
+```quint
+type UpdateSession = SessionAbsent | SessionProvenUncommitted | SessionPending
+type PackageIdentity = AtBaseline | AtTarget | AtOther
+type UpdatePause = { installed: PackageIdentity, running: PackageIdentity, session: UpdateSession, liveOwner: bool }
+pure def updateReleased(u: UpdatePause): bool =
+  not(u.liveOwner) and ((u.installed == AtTarget and u.running == AtTarget) or (u.installed == AtBaseline and u.running == AtBaseline and u.session != SessionPending))
+pure def residentStartAllowed(updateRecorded: bool, recordReadable: bool): bool = recordReadable and not(updateRecorded)
+pure val uValues = Set({ installed: AtTarget, running: AtTarget, session: SessionPending, liveOwner: false }, { installed: AtTarget, running: AtBaseline, session: SessionAbsent, liveOwner: false },
+  { installed: AtBaseline, running: AtBaseline, session: SessionPending, liveOwner: false }, { installed: AtBaseline, running: AtBaseline, session: SessionAbsent, liveOwner: true })
+pure def lawPendingOrMixedUpdateKeepsTheFence(u: UpdatePause): bool =
+  (u.liveOwner or u.installed != u.running or u.installed == AtOther or (u.installed == AtBaseline and u.session == SessionPending)) implies not(updateReleased(u))
+pure def lawUnreadableUpdateRecordRefusesStart(updateRecorded: bool): bool = not(residentStartAllowed(updateRecorded, false))
+```
+
+### A system wake or package update starts the resident only while no screen is stopping it or changing its provider
+
+A boot, unlock, package update or schedule broadcast starts the resident
+only after the owner unlocked the device, the runtime is packaged and the
+owner enabled it, and only while no screen is stopping the resident or changing or
+retiring its provider credential; the check and the start happen under the
+same lock. A running resident is not restarted by it.
+
+```quint
+type WakeFacts = { unlocked: bool, packaged: bool, ownerEnabled: bool, accepting: bool, stopping: bool, credentialChanging: bool, running: bool }
+pure def wakeStarts(w: WakeFacts): bool =
+  w.unlocked and w.packaged and w.ownerEnabled and w.accepting and not(w.stopping) and not(w.credentialChanging) and not(w.running)
+pure val wValues = Set({ unlocked: true, packaged: true, ownerEnabled: true, accepting: true, stopping: false, credentialChanging: false, running: false },
+  { unlocked: true, packaged: true, ownerEnabled: true, accepting: true, stopping: false, credentialChanging: true, running: false },
+  { unlocked: false, packaged: true, ownerEnabled: true, accepting: true, stopping: false, credentialChanging: false, running: false })
+pure def lawWakeNeverRacesACredentialChange(w: WakeFacts): bool = (w.stopping or w.credentialChanging or w.running) implies not(wakeStarts(w))
+```

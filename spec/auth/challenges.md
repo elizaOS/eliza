@@ -1,7 +1,8 @@
 # One-time challenges
 
 The identity service keeps short-lived one-time challenges (email codes, SMS
-codes, OAuth states and App Link codes) in a shared store. Each challenge
+codes, OAuth states, App Link codes and native Google challenges) in a
+shared store. Each challenge
 belongs to one purpose, and the store offers three atomic operations on it:
 publish a token, consume that token once, and revoke a claim by
 compare-and-delete. [Code sign-in](./codeSignIn.md),
@@ -35,7 +36,7 @@ pure def openChallenge(s: ChallengeStore, purpose: str): ChallengeStore =
   { ...s, challenges: s.challenges.append({ purpose: purpose, claim: 0, issuer: 0, live: false, consumed: false, expiresAt: s.now + challengeLifetime }) }
 pure def elapse(s: ChallengeStore): ChallengeStore = { ...s, now: s.now + 1 }
 pure def alwaysOneChallengePerPurpose(s: ChallengeStore): bool = s.challenges.every(c => s.challenges.select(o => o.purpose == c.purpose).length() == 1)
-pure val purposeValues = Set("email-code", "oauth-state")
+pure val purposeValues = Set("email-code", "oauth-state", "google-native")
 pure val ownerValues = Set(1, 2)
 ```
 

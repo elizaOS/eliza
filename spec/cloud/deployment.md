@@ -22,7 +22,9 @@ credentials and the default port; the API and web origins are DNS host
 names. The tenant identifier is 1 to 64 letters, digits, `-` or `_`; the
 entitlement audience is 1 to 128 letters, digits, `.`, `_` or `-`; a display
 name, when given, is trimmed, at most 80 characters and has no control or
-format characters. Production and staging use distinct API origins, so a
+format characters. Each environment names the mail sender its sign-in
+mail comes from, a valid address of the deployment's own; there is no
+default sender. Production and staging use distinct API origins, so a
 staging build can never reach the production API by configuration alone.
 
 Everything else derives from the profile. Each registered native client
@@ -41,21 +43,23 @@ interpretation.
 ```quint
 type Environment = Production | Staging
 type OriginEvidence = { https: bool, canonical: bool, credentialFree: bool, defaultPort: bool, dnsHost: bool }
-type EnvironmentRow = { api: str, web: str, services: str, tenant: str, audience: str, apiOrigin: OriginEvidence, webOrigin: OriginEvidence, servicesOrigin: OriginEvidence, tenantValid: bool, audienceValid: bool, nameValid: bool }
+type EnvironmentRow = { api: str, web: str, services: str, tenant: str, audience: str, mailSender: str, apiOrigin: OriginEvidence, webOrigin: OriginEvidence, servicesOrigin: OriginEvidence, tenantValid: bool, audienceValid: bool, nameValid: bool, mailSenderValid: bool }
 type Profile = { exactEnvironments: bool, production: EnvironmentRow, staging: EnvironmentRow, callbackPath: str }
 pure def originValid(o: OriginEvidence, needsDnsHost: bool): bool = o.https and o.canonical and o.credentialFree and o.defaultPort and (not(needsDnsHost) or o.dnsHost)
-pure def rowValid(r: EnvironmentRow): bool = originValid(r.apiOrigin, true) and originValid(r.webOrigin, true) and originValid(r.servicesOrigin, false) and r.tenantValid and r.audienceValid and r.nameValid
+pure def rowValid(r: EnvironmentRow): bool = originValid(r.apiOrigin, true) and originValid(r.webOrigin, true) and originValid(r.servicesOrigin, false) and r.tenantValid and r.audienceValid and r.nameValid and r.mailSender != "" and r.mailSenderValid
 pure val goodOrigin: OriginEvidence = { https: true, canonical: true, credentialFree: true, defaultPort: true, dnsHost: true }
-pure val productionRow: EnvironmentRow = { api: "https://api.one", web: "https://www.one", services: "https://agents.one", tenant: "tenant-one", audience: "cloud-subscription", apiOrigin: goodOrigin, webOrigin: goodOrigin, servicesOrigin: goodOrigin, tenantValid: true, audienceValid: true, nameValid: true }
+pure val productionRow: EnvironmentRow = { api: "https://api.one", web: "https://www.one", services: "https://agents.one", tenant: "tenant-one", audience: "cloud-subscription", mailSender: "sign-in@mail.one", apiOrigin: goodOrigin, webOrigin: goodOrigin, servicesOrigin: goodOrigin, tenantValid: true, audienceValid: true, nameValid: true, mailSenderValid: true }
 pure val stagingRow: EnvironmentRow = { ...productionRow, api: "https://api.staging.one", web: "https://www.staging.one", services: "https://agents.staging.one" }
 pure val sampleProfile: Profile = { exactEnvironments: true, production: productionRow, staging: stagingRow, callbackPath: "/auth/native/callback" }
 pure val pValues = Set(
   sampleProfile,
   { ...sampleProfile, staging: { ...stagingRow, api: "https://api.one" } },
   { ...sampleProfile, production: { ...productionRow, apiOrigin: { ...goodOrigin, credentialFree: false } } },
-  { ...sampleProfile, exactEnvironments: false })
+  { ...sampleProfile, exactEnvironments: false },
+  { ...sampleProfile, staging: { ...stagingRow, mailSender: "" } })
 pure def profileValid(p: Profile): bool = p.exactEnvironments and rowValid(p.production) and rowValid(p.staging) and p.production.api != p.staging.api
 pure def lawSharedApiOriginRefused(p: Profile): bool = p.production.api == p.staging.api implies not(profileValid(p))
+pure def lawProfileWithoutAMailSenderRefused(p: Profile): bool = (p.production.mailSender == "" or p.staging.mailSender == "") implies not(profileValid(p))
 type Redirect = { origin: str, path: str }
 type NativeRegistration = { environment: Environment, packageId: str, displayNameClean: bool, redirect: Redirect }
 pure def rowOf(p: Profile, e: Environment): EnvironmentRow = if (e == Production) p.production else p.staging
@@ -64,6 +68,54 @@ pure def registrationValid(p: Profile, reg: NativeRegistration): bool =
 pure def agentBaseAccepted(p: Profile, e: Environment, base: str): bool = profileValid(p) and base == rowOf(p, e).api
 type Capability = InferenceCapability | AgentHostingCapability | SpeechCapability | MapsCapability | ManagedGoogleCapability | BillingCapability | BackupsCapability | RemotePairingCapability | CliLoginCapability | StorageCapability | ConnectionsCapability | DocumentsCapability
 pure def routeAdmitted(offered: Set[Capability], c: Capability): bool = offered.contains(c)
+```
+
+### Credentialed cross-origin calls are answered only for the deployment's own first-party origins
+
+A browser or app web view that calls the API with credentials is answered
+with its own origin reflected and credentials allowed only when that origin
+is first party: a web origin of the profile, or the document origin of an
+app's web view (`https://localhost` and the app schemes `capacitor`,
+`capacitor-electron`, `app`, `tauri`, `file` and `electrobun`). A loopback
+origin is first party everywhere but production. Any other origin gets no
+credentials: on the public token-authenticated paths, such as chat
+completions and speech, it is allowed as any origin without credentials,
+and elsewhere it is not allowed at all. A wildcard never carries
+credentials. A first-party preflight is allowed the methods GET, POST,
+PUT, PATCH, DELETE and OPTIONS and the headers a client sends, among them
+`Content-Type`, `Authorization`, `Cache-Control`, `Idempotency-Key`,
+`X-Request-ID`, `Traceparent` and `Tracestate`. A deployment whose profile
+is incomplete admits no first-party origin rather than another
+deployment's.
+
+```quint
+type OriginClass = ProfileWebOrigin | AppWebViewOrigin | LoopbackOrigin | ForeignOrigin
+type AllowedOrigin = ReflectedOrigin | AnyOrigin | NoOrigin
+type CorsAnswer = { allowed: AllowedOrigin, credentials: bool }
+type CorsRequest = { origin: OriginClass, environment: Environment, publicTokenPath: bool, profileComplete: bool }
+pure def firstParty(corsRequest: CorsRequest): bool =
+  corsRequest.profileComplete and (corsRequest.origin == ProfileWebOrigin or corsRequest.origin == AppWebViewOrigin or (corsRequest.origin == LoopbackOrigin and corsRequest.environment != Production))
+pure def corsAnswer(corsRequest: CorsRequest): CorsAnswer =
+  if (firstParty(corsRequest)) { allowed: ReflectedOrigin, credentials: true }
+  else if (corsRequest.publicTokenPath) { allowed: AnyOrigin, credentials: false }
+  else { allowed: NoOrigin, credentials: false }
+type ClientHeader = ContentTypeHeader | AuthorizationHeader | CacheControlHeader | IdempotencyKeyHeader | RequestIdHeader | TraceparentHeader | TracestateHeader | UndeclaredHeader
+pure val firstPartyHeaders: List[ClientHeader] = List(ContentTypeHeader, AuthorizationHeader, CacheControlHeader, IdempotencyKeyHeader, RequestIdHeader, TraceparentHeader, TracestateHeader)
+pure def preflightAllowsHeader(header: ClientHeader): bool = firstPartyHeaders.includes(header)
+pure val corsRequestValues = Set(
+  { origin: ProfileWebOrigin, environment: Production, publicTokenPath: false, profileComplete: true },
+  { origin: AppWebViewOrigin, environment: Production, publicTokenPath: true, profileComplete: true },
+  { origin: LoopbackOrigin, environment: Production, publicTokenPath: false, profileComplete: true },
+  { origin: LoopbackOrigin, environment: Staging, publicTokenPath: false, profileComplete: true },
+  { origin: ForeignOrigin, environment: Staging, publicTokenPath: true, profileComplete: true },
+  { origin: ForeignOrigin, environment: Production, publicTokenPath: false, profileComplete: true },
+  { origin: ProfileWebOrigin, environment: Staging, publicTokenPath: false, profileComplete: false })
+pure def lawCredentialsOnlyForAFirstPartyOrigin(corsRequest: CorsRequest): bool = corsAnswer(corsRequest).credentials iff firstParty(corsRequest)
+pure def lawAWildcardNeverCarriesCredentials(corsRequest: CorsRequest): bool = corsAnswer(corsRequest).allowed == AnyOrigin implies not(corsAnswer(corsRequest).credentials)
+pure def lawLoopbackIsNeverFirstPartyInProduction(corsRequest: CorsRequest): bool =
+  (corsRequest.origin == LoopbackOrigin and corsRequest.environment == Production) implies not(corsAnswer(corsRequest).credentials)
+pure def lawIncompleteProfileAdmitsNoFirstParty(corsRequest: CorsRequest): bool = not(corsRequest.profileComplete) implies not(corsAnswer(corsRequest).credentials)
+pure def lawClientHeadersPassThePreflight(header: ClientHeader): bool = preflightAllowsHeader(header) iff header != UndeclaredHeader
 ```
 
 ### Stored credentials are namespaced by every authority of both environments

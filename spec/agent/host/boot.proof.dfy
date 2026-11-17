@@ -1,6 +1,7 @@
 lemma settleTask_ensures(b: Boot, id: int)
   ensures (inv(b) ==> canSettleTask(b, id) ==> alwaysPhaseWithinPipeline(settleTask(b, id)))
   ensures (inv(b) ==> canSettleTask(b, id) ==> alwaysDisposedOnceWhenClosed(settleTask(b, id)))
+  ensures (inv(b) ==> canSettleTask(b, id) ==> stepReadyOnlyByTheLastPhase(b, "settleTask", settleTask(b, id)))
   ensures (inv(b) ==> canSettleTask(b, id) ==> stepNoTaskRegisteredWhileClosing(b, settleTask(b, id)))
 {
   SettledTasks(b, id);

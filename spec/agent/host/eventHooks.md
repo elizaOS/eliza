@@ -107,7 +107,7 @@ pure def stepCountersNeverReset(before: HookService, after: HookService): bool =
 
 ### Eligibility returns every failure in source order and caches successful binary probes
 
-The filesystem boundary validates names and reports regular executable files on POSIX or regular files at the supported Windows suffixes. A changed raw PATH, including unset versus empty, invalidates positive entries on the next binary probe. Each probe checks all required binaries and visits alternative binaries until the first hit. Failures accumulate in platform, required binary, alternatives, environment and configuration order. The environment observation contains keys with nonempty string values. A direct requirements check with no config object skips config paths. Registration eligibility uses the service's config reference, and always-enabled hooks bypass requirements. Dispatch still respects enabled metadata. The adapter resolves JS properties along the dot-separated path after removing empty segments. Nonblank strings, nonzero numbers and objects are truthy under the source helper.
+The filesystem boundary validates names and reports regular executable files on POSIX or regular files at the supported Windows suffixes. A changed raw PATH, including unset versus empty, invalidates positive entries on the next binary probe. Each probe checks all required binaries and visits alternative binaries until the first hit. Failures accumulate in platform, required binary, alternatives, environment and configuration order. The environment observation contains keys with nonempty string values. A direct requirements check with no config object skips config paths. Registration eligibility uses the service's config reference, and always-enabled hooks bypass requirements. Dispatch still respects enabled metadata. The adapter resolves JS properties along the dot-separated path after removing empty segments. Nonblank strings, nonzero numbers and objects are truthy under the source helper. A hook whose platform is not allowed has that failure first, and a hook is eligible exactly when no failure was found.
 
 ```quint
 pure def configTruthy(value: ConfigValue): bool = match value { | ConfigMissing => false | ConfigNull => false | ConfigBoolean(v) => v.value | ConfigNumber(v) => v.value != 0 | ConfigText(v) => v.nonblank | _ => true }
@@ -144,6 +144,14 @@ pure def canSetConfig(s: HookService, configIdentity: int, config: List[ConfigFi
 pure def setConfig(s: HookService, configIdentity: int, config: List[ConfigField]): HookService = { ...s, configIdentity: configIdentity, config: config }
 pure def canUpdateConfigReference(s: HookService, configIdentity: int, config: List[ConfigField]): bool = configIdentity > 0 and config.every(entry => config.select(other => other.path == entry.path).length() == 1)
 pure def updateConfigReference(s: HookService, configIdentity: int, config: List[ConfigField]): HookService = if (configIdentity == s.configIdentity) { ...s, config: config } else s
+pure val hitsValues = Set(Set(), Set("git"))
+pure def lawWrongPlatformIsReportedFirst(requirements: HookRequirement, hits: Set[str], foundBins: Set[str], platform: str, environment: Set[str], config: List[ConfigField], hasConfig: bool): bool =
+  (requirements.os.length() > 0 and not(requirements.os.includes(platform))) implies
+    requirementEligibility(requirements, hits, foundBins, platform, environment, config, hasConfig).reasons.nthOr(0, HookMissing) == WrongPlatform({currentPlatform: platform, allowedPlatforms: requirements.os})
+pure def lawEligibleOnlyWithoutAFailure(requirements: HookRequirement, hits: Set[str], foundBins: Set[str], platform: str, environment: Set[str], config: List[ConfigField], hasConfig: bool): bool = {
+  val verdict = requirementEligibility(requirements, hits, foundBins, platform, environment, config, hasConfig)
+  verdict.eligible iff verdict.reasons.length() == 0
+}
 ```
 
 ### A captured interceptor dispatches sequentially against one payload object

@@ -1,76 +1,12 @@
 # Remote agent pairing
 
-A device pairs with one selected agent instance in two ways. Directly, the
-agent's host issues a short code that the device redeems for a revocable
-session. The pairing link, and the device's trust decision on its origin and
-instance before it pairs, are the
-[remote agent pairing contract](../contracts/remoteAgentPairing.md). Through
-the cloud, a registered host creates a pairing session that a controller
-claims, confirms and commits before the host accepts its commands; revoking
-the host ends its sessions and settles its commands.
-
-## Story: Pair a device with the exact selected agent instance
-
-> As the owner of an agent, I pair my device with the instance I selected,
-> after checking that I trust its origin, and the code I was shown can be
-> used once.
-
-### The agent host consumes a code only after admitting session minting
-
-Only a trusted operator of a deployment with pairing enabled, and not
-managed, reads the owner or guest code. Redeeming it needs the exact current
-instance and a known peer address; an expired code is refused, invalid
-attempts spend the rate limit, and a missing session store asks the device
-to retry and keeps the code. Once ready, the host consumes the code before it
-mints the session, so a failed mint cannot restore it; a success issues a
-session with the code's owner or guest access.
-
-```quint
-type PairAccess = PairedOwner | PairedGuest
-type PairPhase = UnissuedCode | AvailableCode | MintingSession | SessionIssued | SessionIssueFailed
-type PairReply = NoPairReply | RetryPairing | MismatchedPairing | ExpiredPairing | InvalidPairing | ThrottledPairing | PairingDisabled | IssuedPairing | FailedPairing
-type Pairing = { phase: PairPhase, role: PairAccess, serial: int, sessionId: int, reply: PairReply }
-type SessionStatus = SessionPending | SessionClaimed | SessionActivating | SessionActive | SessionDenied | SessionRevoked | SessionExpired
-type RemoteSession = { id: int, status: SessionStatus, verifier: bool, controller: int, confirmed: bool, committedAt: int, pairUntil: int, grantUntil: int }
-type CommandStatus = CommandPending | CommandClaimed | CommandStarted | CommandCompleted | CommandFailed | CommandCancelled | CommandAmbiguous
-type RemoteCommand = { command: int, session: int, status: CommandStatus, claimToken: bool, ended: bool }
-type Remote = {
-  code: Pairing, now: int, hostActive: bool, sessions: List[RemoteSession], commands: List[RemoteCommand], observedClaim: int,
-  lockedSessions: Set[int], lockedCommands: Set[int], revocationReceipt: bool, more: bool
-}
-pure val initial: Remote = {
-  code: { phase: UnissuedCode, role: PairedOwner, serial: 0, sessionId: 0, reply: NoPairReply }, now: 0, hostActive: true, sessions: List(), commands: List(), observedClaim: 0,
-  lockedSessions: Set(), lockedCommands: Set(), revocationReceipt: false, more: false
-}
-pure def canIssueCode(s: Remote, operator: bool, pairingEnabled: bool): bool = s.code.phase == UnissuedCode and operator and pairingEnabled
-pure def issueCode(s: Remote, operator: bool, pairingEnabled: bool, access: PairAccess): Remote =
-  { ...s, code: { ...s.code, phase: AvailableCode, role: access, serial: s.code.serial + 1 } }
-pure def redeemedCode(p: Pairing, pairingEnabled: bool, peerKnown: bool, instanceExact: bool, tokenExact: bool, codeExpired: bool, hasBudget: bool, storeReady: bool): Pairing =
-  if (not(pairingEnabled)) { ...p, reply: PairingDisabled }
-  else if (not(peerKnown)) { ...p, reply: InvalidPairing }
-  else if (not(instanceExact)) { ...p, reply: MismatchedPairing }
-  else if (p.phase == AvailableCode and tokenExact and codeExpired) { ...p, phase: UnissuedCode, reply: ExpiredPairing }
-  else if (p.phase != AvailableCode or not(tokenExact)) { ...p, reply: if (hasBudget) InvalidPairing else ThrottledPairing }
-  else if (not(storeReady)) { ...p, reply: RetryPairing }
-  else { ...p, phase: MintingSession, reply: NoPairReply }
-pure def canRedeemCode(s: Remote): bool = s.code.phase != MintingSession
-pure def redeemCode(s: Remote, pairingEnabled: bool, peerKnown: bool, instanceExact: bool, tokenExact: bool, codeExpired: bool, hasBudget: bool, storeReady: bool): Remote =
-  { ...s, code: redeemedCode(s.code, pairingEnabled, peerKnown, instanceExact, tokenExact, codeExpired, hasBudget, storeReady) }
-pure def canFinishMint(s: Remote): bool = s.code.phase == MintingSession
-pure def finishMint(s: Remote, saved: bool): Remote =
-  if (saved) { ...s, code: { ...s.code, phase: SessionIssued, sessionId: s.code.serial, reply: IssuedPairing } }
-  else { ...s, code: { ...s.code, phase: SessionIssueFailed, reply: FailedPairing } }
-pure def alwaysPairingCoordinates(s: Remote): bool =
-  s.code.serial >= 0 and s.code.sessionId >= 0 and s.code.sessionId <= s.code.serial and
-  ((s.code.phase == SessionIssued) == (s.code.sessionId > 0)) and (s.code.phase != UnissuedCode implies s.code.serial > 0)
-pure def alwaysTransientPairReplyKeepsCode(s: Remote): bool = s.code.reply == RetryPairing implies s.code.phase == AvailableCode
-pure def stepFinishedMintCannotBeRepeated(before: Remote, via: str, after: Remote): bool =
-  ((before.code.phase == SessionIssued or before.code.phase == SessionIssueFailed) and via == "redeemCode") implies
-    after.code.phase == before.code.phase and after.code.sessionId == before.code.sessionId
-pure def sometimesPairingRetries(s: Remote): bool = s.code.reply == RetryPairing
-pure def sometimesGuestPaired(s: Remote): bool = s.code.phase == SessionIssued and s.code.role == PairedGuest
-pure def sometimesCodeConsumedWithoutSession(s: Remote): bool = s.code.phase == SessionIssueFailed
-```
+A controller pairs with a host that is registered with the cloud: the host
+creates a pairing session that the controller claims, confirms and commits
+before the host accepts its commands; revoking the host ends its sessions
+and settles its commands. A device that pairs with an agent host directly,
+with a one-time code the host issues, is the agent host's
+[route access](../agent/host/access.md), and the link it reads is the
+[remote agent pairing contract](../contracts/remoteAgentPairing.md).
 
 ## Story: Pair a controller with a registered host through the cloud
 
@@ -87,6 +23,18 @@ claimed or was claimed but not confirmed, or expires it if its code
 deadline passed.
 
 ```quint
+type SessionStatus = SessionPending | SessionClaimed | SessionActivating | SessionActive | SessionDenied | SessionRevoked | SessionExpired
+type RemoteSession = { id: int, status: SessionStatus, verifier: bool, controller: int, confirmed: bool, committedAt: int, pairUntil: int, grantUntil: int }
+type CommandStatus = CommandPending | CommandClaimed | CommandStarted | CommandCompleted | CommandFailed | CommandCancelled | CommandAmbiguous
+type RemoteCommand = { command: int, session: int, status: CommandStatus, claimToken: bool, ended: bool }
+type Remote = {
+  now: int, hostActive: bool, sessions: List[RemoteSession], commands: List[RemoteCommand], observedClaim: int,
+  lockedSessions: Set[int], lockedCommands: Set[int], revocationReceipt: bool, more: bool
+}
+pure val initial: Remote = {
+  now: 0, hostActive: true, sessions: List(), commands: List(), observedClaim: 0,
+  lockedSessions: Set(), lockedCommands: Set(), revocationReceipt: false, more: false
+}
 pure val pairWindow = 2
 pure val grantWindow = 3
 pure val noSession: RemoteSession = { id: 0, status: SessionDenied, verifier: false, controller: 0, confirmed: false, committedAt: -1, pairUntil: -1, grantUntil: -1 }

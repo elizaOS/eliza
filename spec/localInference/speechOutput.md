@@ -1,21 +1,19 @@
 # Speech output
 
-The device speaks the agent's replies through three parts that share no
+The device speaks the agent's replies through two parts that share no
 state with one another, modeled side by side in one machine:
 
 - **Publication.** A synthesized clip is prepared off the main thread and
   published on it into the one playback slot, which is empty, holds a
   prepared clip, or plays a stream.
-- **Warm-up.** Before the first reply, a warm-up worker opens the audio
-  output and keeps it primed by writing silence, until it is replaced,
-  stopped or times out. Admission and replacement run on the main thread;
-  each worker owns its own output handle.
 - **Bootstrap.** Streamed speech starts with three requests to the same
   authorized origin (consent, session, then the socket upgrade), which
   reuse one connection whenever the protocol and the server allow it.
 
-Device audio hardware, the actual timings and network latency are outside
-this model.
+Priming the audio output before the first reply, and trimming each
+utterance's silent lead, belong to the device's voice path:
+[speech output warm-up](../os/voice/outputWarmup.md). Device audio
+hardware, the actual timings and network latency are outside this model.
 
 ## Story: Speak a reply without cutting off what is playing
 
@@ -35,15 +33,10 @@ room for the next one.
 type Playback = EmptyPlayback | PreparedClip | StreamPlayback
 type PublishPhase = PublishIdle | PublishAdmitted | PublishBusy | Published | PublishCancelled
 type Publication = { playback: Playback, publishPhase: PublishPhase, replace: bool, cancelRequested: bool, playbackAtPublication: Playback, interrupted: bool }
-type OutputMode = ModeIdle | ModeBusy | ModeBackground | ModeCall | ModeDestroyed
-type WorkerPhase = Opening | Opened | Looping | Writing | CleaningUp | WorkerDone
-type WarmupWorker = { workerId: int, workerPhase: WorkerPhase, closed: bool, age: int, writes: int, releases: int }
-type Warmup = { owner: int, mode: OutputMode, workers: List[WarmupWorker], unsafePlay: bool }
 type Bootstrap = { started: bool, stage: int, http1: bool, keepAlive: bool, connections: int, pending: bool, stopped: bool }
-type SpeechOutput = { publication: Publication, warmup: Warmup, bootstrap: Bootstrap }
+type SpeechOutput = { publication: Publication, bootstrap: Bootstrap }
 pure val initial: SpeechOutput = {
   publication: { playback: EmptyPlayback, publishPhase: PublishIdle, replace: false, cancelRequested: false, playbackAtPublication: EmptyPlayback, interrupted: false },
-  warmup: { owner: 0, mode: ModeIdle, workers: List(), unsafePlay: false },
   bootstrap: { started: false, stage: 0, http1: false, keepAlive: false, connections: 0, pending: false, stopped: false }
 }
 pure def requestSettled(phase: PublishPhase): bool = phase == PublishIdle or phase == PublishBusy or phase == Published or phase == PublishCancelled
@@ -93,114 +86,6 @@ pure def leadsToPublicationSettles(s: SpeechOutput, later: SpeechOutput): bool =
 pure def sometimesReplacementInterrupts(s: SpeechOutput): bool = s.publication.interrupted
 pure def sometimesBusyKeepsTheStream(s: SpeechOutput): bool = s.publication.publishPhase == PublishBusy and s.publication.playback == StreamPlayback
 pure def sometimesCancelledKeepsTheStream(s: SpeechOutput): bool = s.publication.publishPhase == PublishCancelled and s.publication.playback == StreamPlayback
-```
-
-## Story: Prime the audio output without playing over anything
-
-> As a person waiting for the agent's first spoken reply, I want the audio
-> output ready quickly, and never a warm-up still writing after it was
-> replaced or after a call or another app took the output.
-
-### A warm-up starts only while the output is idle, and replacing it retires the previous worker
-
-Each worker is launched once. Starting a new one makes it the owner and
-closes the one it replaces. Stopping for a busy output, the background, a
-call or teardown closes the owner and leaves none.
-
-```quint
-pure val warmupTimeoutTicks = 2
-pure val idValues = Set(1, 2, 3)
-pure def workerOf(id: int, s: SpeechOutput): WarmupWorker =
-  s.warmup.workers.select(w => w.workerId == id).nthOr(0, { workerId: 0, workerPhase: WorkerDone, closed: true, age: 0, writes: 0, releases: 0 })
-pure def launched(id: int, s: SpeechOutput): bool = s.warmup.workers.some(w => w.workerId == id)
-pure def retireOwner(w: Warmup): Warmup = { ...w, workers: w.workers.listMap(x => if (x.workerId == w.owner) { ...x, closed: true } else x) }
-pure def updateWorker(id: int, s: SpeechOutput, change: WarmupWorker): SpeechOutput =
-  { ...s, warmup: { ...s.warmup, workers: s.warmup.workers.listMap(x => if (x.workerId == id) change else x) } }
-pure def canRequestWarmup(s: SpeechOutput, id: int): bool = s.warmup.mode == ModeIdle and not(launched(id, s))
-pure def requestWarmup(s: SpeechOutput, id: int): SpeechOutput = {
-  val retired = retireOwner(s.warmup)
-  { ...s, warmup: { ...retired, owner: id, workers: retired.workers.append({ workerId: id, workerPhase: Opening, closed: false, age: 0, writes: 0, releases: 0 }) } }
-}
-pure def canStopWarmup(s: SpeechOutput, mode: OutputMode): bool = s.warmup.mode != ModeDestroyed
-pure def stopWarmup(s: SpeechOutput, mode: OutputMode): SpeechOutput = { ...s, warmup: { ...retireOwner(s.warmup), mode: mode, owner: 0 } }
-pure def alwaysOnlyAnIdleOutputHasAnOwner(s: SpeechOutput): bool = s.warmup.owner == 0 or s.warmup.mode == ModeIdle
-pure def alwaysReplacedWorkersAreClosed(s: SpeechOutput): bool = s.warmup.workers.every(w => w.workerId != s.warmup.owner implies w.closed)
-```
-
-### A retired worker never starts playing
-
-The worker checks that it is still open, publishes its exact output handle
-and starts playing in one step that a concurrent close cannot interrupt.
-An open that completes after its worker was retired goes straight to
-cleanup.
-
-```quint
-pure def canOpenWarmup(s: SpeechOutput, id: int): bool = workerOf(id, s).workerPhase == Opening
-pure def openWarmup(s: SpeechOutput, id: int, success: bool): SpeechOutput =
-  updateWorker(id, s, { ...workerOf(id, s), workerPhase: if (success) Opened else WorkerDone })
-pure def canPlayWarmup(s: SpeechOutput, id: int): bool = workerOf(id, s).workerPhase == Opened
-pure def playWarmup(s: SpeechOutput, id: int, success: bool): SpeechOutput = {
-  val w = workerOf(id, s)
-  val played = updateWorker(id, s, { ...w, workerPhase: if (w.closed or not(success)) CleaningUp else Looping })
-  { ...played, warmup: { ...played.warmup, unsafePlay: s.warmup.unsafePlay or (not(w.closed) and s.warmup.owner != id) } }
-}
-pure def alwaysNoRetiredWorkerPlays(s: SpeechOutput): bool = not(s.warmup.unsafePlay)
-```
-
-### A worker stops writing once closed or timed out, and releases its output once
-
-A write already admitted when the close arrives may still finish, but no
-further write is admitted. The worker times out after two clock ticks. Its
-output is released by exactly one attempt; an open that failed has nothing
-to release.
-
-```quint
-pure def canCheckWarmupLoop(s: SpeechOutput, id: int): bool = workerOf(id, s).workerPhase == Looping
-pure def checkWarmupLoop(s: SpeechOutput, id: int): SpeechOutput = {
-  val w = workerOf(id, s)
-  updateWorker(id, s, { ...w, workerPhase: if (w.closed or w.age >= warmupTimeoutTicks) CleaningUp else Writing })
-}
-pure def canFinishWarmupWrite(s: SpeechOutput, id: int): bool = workerOf(id, s).workerPhase == Writing
-pure def finishWarmupWrite(s: SpeechOutput, id: int, success: bool): SpeechOutput = {
-  val w = workerOf(id, s)
-  updateWorker(id, s, { ...w, workerPhase: if (success) Looping else CleaningUp, writes: w.writes + 1 })
-}
-pure def canTickWarmup(s: SpeechOutput, id: int): bool =
-  (workerOf(id, s).workerPhase == Looping or workerOf(id, s).workerPhase == Writing) and workerOf(id, s).age < warmupTimeoutTicks
-pure def tickWarmup(s: SpeechOutput, id: int): SpeechOutput = updateWorker(id, s, { ...workerOf(id, s), age: workerOf(id, s).age + 1 })
-pure def canReleaseWarmup(s: SpeechOutput, id: int): bool = workerOf(id, s).workerPhase == CleaningUp
-pure def releaseWarmup(s: SpeechOutput, id: int): SpeechOutput = updateWorker(id, s, { ...workerOf(id, s), workerPhase: WorkerDone, releases: workerOf(id, s).releases + 1 })
-pure def alwaysOutputReleasedAtMostOnce(s: SpeechOutput): bool = s.warmup.workers.every(w => w.releases <= 1)
-```
-
-### An unfinished worker has released nothing
-
-A worker's output is released only as the worker finishes, so a worker
-still opening, playing, writing or cleaning up has released nothing yet.
-
-```quint
-pure def alwaysUnfinishedWorkerReleasedNothing(s: SpeechOutput): bool =
-  s.warmup.workers.every(w => w.workerPhase != WorkerDone implies w.releases == 0)
-```
-
-### A retired worker finishes
-
-```quint
-pure val fair_openWarmup = "weak"
-pure val fair_playWarmup = "weak"
-pure val fair_checkWarmupLoop = "weak"
-pure val fair_finishWarmupWrite = "weak"
-pure val fair_releaseWarmup = "weak"
-pure def leadsToRetiredWorkerFinishes(s: SpeechOutput, later: SpeechOutput): bool =
-  s.warmup.workers.every(w => w.closed implies workerOf(w.workerId, later).workerPhase == WorkerDone)
-```
-
-### A late open can be released without playing, a replaced worker can still be writing, and a worker can time out
-
-```quint
-pure def sometimesLateOpenReleasedWithoutPlaying(s: SpeechOutput): bool = s.warmup.workers.some(w => w.closed and w.workerPhase == WorkerDone and w.releases == 1 and w.writes == 0)
-pure def sometimesReplacedWhileWriting(s: SpeechOutput): bool = s.warmup.workers.some(w => w.closed and w.workerPhase == Writing)
-pure def sometimesTimedOut(s: SpeechOutput): bool = s.warmup.workers.some(w => w.age == warmupTimeoutTicks and w.workerPhase == CleaningUp and not(w.closed))
 ```
 
 ## Story: Start streamed speech without needless connections

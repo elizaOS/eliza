@@ -83,3 +83,36 @@ pure def imageApkAdmitted(manifest: ManifestPolicyFacts, signerReviewed: bool, d
 pure def lawDebuggableApkNeverEntersProduction(manifest: ManifestPolicyFacts, signerReviewed: bool, digestMatches: bool): bool =
   manifest.debuggable implies not(imageApkAdmitted(manifest, signerReviewed, digestMatches))
 ```
+
+### Release keys are generated and decrypted only into new private directories outside every working tree
+
+The key ceremony generates every key the key manifest names into a new
+directory outside the os package's repository and outside any Git working
+tree, readable only by its owner. Each private key is written encrypted
+under a passphrase of at least 20 characters read from a file only its
+owner can read; the unencrypted key exists only in memory and the tools'
+pipes, and the public fingerprints are recorded for review. Keys made for
+tests are labelled as such and never sign a release. Decryption for
+signing writes the plaintext layout the release tools need into another
+new owner-only directory, meant to be memory-backed and removed after
+signing, and refuses a key whose certificate differs from its recorded
+fingerprint or whose private half does not match its public half.
+
+```quint
+pure def keyOutputAdmitted(outsideRepository: bool, outsideWorkingTree: bool, newDirectory: bool, ownerOnly: bool): bool =
+  outsideRepository and outsideWorkingTree and newDirectory and ownerOnly
+pure def passphraseAdmitted(ownerOnly: bool, passphraseLength: int): bool = ownerOnly and passphraseLength >= 20
+pure def keyDecryptionAdmitted(outputAdmitted: bool, certificateMatchesFingerprint: bool, privateMatchesPublic: bool): bool =
+  outputAdmitted and certificateMatchesFingerprint and privateMatchesPublic
+pure def releaseKeysAdmitted(testKeys: bool, decryptionAdmitted: bool): bool = not(testKeys) and decryptionAdmitted
+pure val passphraseLengthValues = Set(0, 19, 20, 64)
+pure def lawKeysNeverWrittenIntoAWorkingTree(outsideRepository: bool, newDirectory: bool, ownerOnly: bool): bool =
+  not(keyOutputAdmitted(outsideRepository, false, newDirectory, ownerOnly))
+pure def lawKeysNeverWrittenWhereOthersCanRead(outsideRepository: bool, outsideWorkingTree: bool, newDirectory: bool): bool =
+  not(keyOutputAdmitted(outsideRepository, outsideWorkingTree, newDirectory, false))
+pure def lawShortOrSharedPassphraseIsRefused(ownerOnly: bool, passphraseLength: int): bool =
+  (not(ownerOnly) or passphraseLength < 20) implies not(passphraseAdmitted(ownerOnly, passphraseLength))
+pure def lawMismatchedKeyIsNotDecrypted(outputAdmitted: bool, privateMatchesPublic: bool): bool =
+  not(keyDecryptionAdmitted(outputAdmitted, false, privateMatchesPublic))
+pure def lawTestKeysNeverSignARelease(decryptionAdmitted: bool): bool = not(releaseKeysAdmitted(true, decryptionAdmitted))
+```

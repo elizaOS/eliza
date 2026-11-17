@@ -1,9 +1,13 @@
 lemma runNow_ensures(t: Trigger, key: string)
   ensures (inv(t) ==> canRunNow(t, key) ==> alwaysRunningTriggerIsNotArchived(runNow(t, key)))
+  ensures (inv(t) ==> canRunNow(t, key) ==> alwaysOfflineRunsAreRuns(runNow(t, key)))
+  ensures (inv(t) ==> canRunNow(t, key) ==> alwaysNothingHoldsTheTriggerWhileTheAgentIsDown(runNow(t, key)))
   ensures (inv(t) ==> canRunNow(t, key) ==> alwaysArchivedTriggerIsDisabled(runNow(t, key)))
   ensures (inv(t) ==> canRunNow(t, key) ==> alwaysCheckHoldsTheTriggerForTheOwner(runNow(t, key)))
   ensures (inv(t) ==> canRunNow(t, key) ==> alwaysWriteHasOwnerAndCurrentRevision(runNow(t, key)))
+  ensures (inv(t) ==> canRunNow(t, key) ==> alwaysReplyingRecoveryHoldsTheTrigger(runNow(t, key)))
   ensures (inv(t) ==> canRunNow(t, key) ==> stepRunNowKeyIsUsedOnce(t, "runNow", runNow(t, key)))
+  ensures (inv(t) ==> canRunNow(t, key) ==> stepAMissedOccurrenceIsNeverRun(t, "runNow", runNow(t, key)))
   ensures (inv(t) ==> canRunNow(t, key) ==> stepStaleRunWriteKeepsTheSavedRevision(t, "runNow", runNow(t, key)))
   ensures (inv(t) ==> canRunNow(t, key) ==> stepOnlyAnUnarchivedTriggerIsEnabled(t, "runNow", runNow(t, key)))
 {

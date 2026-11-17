@@ -12,8 +12,8 @@ device side:
   and receipt
 - [Device effect authority and SMS bounds](./telephonyReview.md)
 - [Original read completion](./readCompletion.md)
-- [Camera](./camera.md), [Photos](./photos.md) and
-  [Clock and reminders](./clock.md)
+- [Calendar](./calendar.md), [Camera](./camera.md), [Photos](./photos.md)
+  and [Clock and reminders](./clock.md)
 
 ## Story: Approve a device request once and learn exactly what happened
 
@@ -27,7 +27,9 @@ device side:
 A decision must carry the exact device binding: the right installation and
 the digest of the reviewed proposal. A pending request is approved or
 rejected before its deadline; repeating the same decision is accepted and
-changes nothing. A pending request whose deadline passes is purged as expired.
+changes nothing. A pending request whose deadline passes is purged as expired,
+and nothing else expires a request. A decision with any other binding is
+refused.
 
 ```quint
 type Binding = Exact | Foreign | WrongDigest
@@ -42,6 +44,14 @@ pure def canReachDeadline(d: DeviceRequest): bool = not(d.deadlineReached)
 pure def reachDeadline(d: DeviceRequest): DeviceRequest = { ...d, deadlineReached: true }
 pure def canPurgePending(d: DeviceRequest): bool = d.phase == RequestPending and d.deadlineReached
 pure def purgePending(d: DeviceRequest): DeviceRequest = { ...d, phase: RequestExpired }
+pure def decidedPhase(phase: RequestPhase): bool = phase == RequestApproved or phase == RequestRejected
+pure def stepDecidedOnlyBeforeDeadline(before: DeviceRequest, via: str, after: DeviceRequest): bool =
+  ((before.phase == RequestPending and decidedPhase(after.phase)) implies not(before.deadlineReached)) and
+  ((before.phase != RequestExpired and after.phase == RequestExpired) implies (before.phase == RequestPending and before.deadlineReached)) and
+  ((via == "decide" and before.phase != RequestPending) implies after == before)
+pure val dValues = Set(initial, { ...initial, deadlineReached: true }, { ...initial, phase: RequestApproved }, { ...initial, phase: RequestRejected, deadlineReached: true })
+pure def lawOnlyExactBindingDecides(d: DeviceRequest, binding: Binding, approved: bool): bool = binding != Exact implies not(canDecide(d, binding, approved))
+pure def sometimesRepeatedDecisionAfterDeadline(d: DeviceRequest): bool = d.phase == RequestApproved and d.deadlineReached and d.claims == 0 and canDecide(d, Exact, true)
 pure def sometimesExpiredUnclaimed(d: DeviceRequest): bool = d.phase == RequestExpired and d.claims == 0
 ```
 
