@@ -28,12 +28,14 @@ public final class RuntimeBundleStore {
   @FunctionalInterface public interface Source { InputStream open(String name) throws IOException; }
   @FunctionalInterface public interface Durability { void sync(Path directory) throws IOException; }
   private record Entry(String path, String sha256, long size, boolean nativeFile) {}
+  private record Inventory(String digest, List<Entry> entries) {}
 
   public static Path prepare(Path releases, long version, Source source, Path libraries, Durability durability) throws IOException {
     if (version < 1) throw new IOException("Invalid package version");
-    List<Entry> entries = entries(source);
+    Inventory inventory = inventory(source);
+    List<Entry> entries = inventory.entries();
     Files.createDirectories(releases);
-    Path release = releases.resolve(Long.toString(version));
+    Path release = releases.resolve(version + "-" + inventory.digest());
     if (Files.exists(release, LinkOption.NOFOLLOW_LINKS)) {
       verify(release, entries, libraries);
       return release;
@@ -57,8 +59,9 @@ public final class RuntimeBundleStore {
     } finally { delete(scratch); }
   }
 
-  private static List<Entry> entries(Source source) throws IOException {
-    String json = new String(RuntimeAssets.read(source, INVENTORY, 2 * 1024 * 1024), StandardCharsets.UTF_8);
+  private static Inventory inventory(Source source) throws IOException {
+    byte[] bytes = RuntimeAssets.read(source, INVENTORY, 2 * 1024 * 1024);
+    String json = new String(bytes, StandardCharsets.UTF_8);
     List<Entry> result = new ArrayList<>();
     Set<String> names = new HashSet<>();
     int nativeFiles = 0;
@@ -85,9 +88,10 @@ public final class RuntimeBundleStore {
         } else throw new IOException("Unexpected runtime inventory entry");
       }
     } catch (JSONException invalid) { throw new IOException("Malformed runtime inventory", invalid); }
-    if (nativeFiles != 1 || !names.contains("assets/agent/" + BUNDLE))
+    if (nativeFiles != 1 || !names.containsAll(List.of("assets/agent/" + BUNDLE, "assets/agent/manifest.json",
+        "assets/agent/pglite.wasm", "assets/agent/initdb.wasm", "assets/agent/pglite.data", "assets/agent/pglite-migrated.bin")))
       throw new IOException("Runtime inventory is incomplete");
-    return result;
+    return new Inventory(hex(sha256().digest(bytes)), List.copyOf(result));
   }
 
   private static void verify(Path bundle, List<Entry> entries, Path libraries) throws IOException {
@@ -109,15 +113,22 @@ public final class RuntimeBundleStore {
   }
 
   private static String digest(Path file) throws IOException {
-    final MessageDigest digest;
-    try { digest = MessageDigest.getInstance("SHA-256"); }
-    catch (NoSuchAlgorithmException impossible) { throw new IOException("SHA-256 unavailable", impossible); }
+    MessageDigest digest = sha256();
     try (InputStream input = Files.newInputStream(file)) {
       byte[] bytes = new byte[32768];
       for (int count; (count = input.read(bytes)) != -1;) digest.update(bytes, 0, count);
     }
+    return hex(digest.digest());
+  }
+
+  private static MessageDigest sha256() throws IOException {
+    try { return MessageDigest.getInstance("SHA-256"); }
+    catch (NoSuchAlgorithmException impossible) { throw new IOException("SHA-256 unavailable", impossible); }
+  }
+
+  private static String hex(byte[] digest) {
     StringBuilder hex = new StringBuilder(64);
-    for (byte value : digest.digest()) hex.append(Character.forDigit((value & 255) >> 4, 16)).append(Character.forDigit(value & 15, 16));
+    for (byte value : digest) hex.append(Character.forDigit((value & 255) >> 4, 16)).append(Character.forDigit(value & 15, 16));
     return hex.toString();
   }
 
