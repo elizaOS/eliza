@@ -84,6 +84,7 @@
       "a contact change is exact and closed",
       "a contact result fits the change that was reviewed",
       "a contact SMS names a contact by text and keeps an unknown outcome unknown",
+      "a targeted SMS names a number or a contact and needs its own capability",
       "a reply draft names no recipient and is placed or not, never sent",
       "an open-thread read is a bounded, date-ordered tail with no numbers",
       "a voicemail read carries a transcript and its engine only when ready",
