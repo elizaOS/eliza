@@ -47,7 +47,7 @@ files and the `vibestack/fixtures/` they read, besides the tools every task is k
 as `@repo/app`'s are. `pnpm lint:js` on its own needs what `gen` and `typecheck` write (`gen/`, `.vibe/declarations`);
 `pnpm lint` runs them first.
 
-Pull requests go to `develop`, and `develop` to `main`; what CI runs on each is in
+Pull requests go to `main`, the only long-lived branch; what CI runs on them is in
 [CI](#ci).
 
 ## Changing the tools
@@ -294,8 +294,8 @@ configured scopes are in `knip.config.js`, `.madgerc`, `.jscpd.json` and
 
 | When | Runs |
 |---|---|
-| Pull request or push to `develop` or `main` | `pnpm verify --continue`: build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and selftest |
-| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `develop`. Beside it, `selftest:tools` without the selftest's shared tool runs |
+| Pull request or push to `main` | `pnpm verify --continue`: build, types, tests, browser tests, all checks, ESLint, Stylelint, Knip, Madge, jscpd and selftest |
+| Nightly | Every check fresh under the fixed nightly profile; saved counterexamples become a pull request into `main`. Beside it, `selftest:tools` without the selftest's shared tool runs |
 | A `v*` tag (`release.yml`) | Build, `pnpm pack`, `pnpm selftest` read from the shared cache, and the tarball attached to a GitHub release |
 
 Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
@@ -312,8 +312,6 @@ Pull requests read shared results; only branch pushes receive the publishing
 credential, protected by the `turbo-cache-publish` environment's branch
 policy. A pull request keeps its own Turborepo results in the GitHub cache
 instead, which only that pull request reads, so its next push reuses them. Newer commits replace an older run of the same pull request.
-A pull request from `develop` into `main` waits for the push of the same commit
-to `develop` and replays its published results.
 Every pushed commit can finish. Completed tasks are shared through the cache.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials

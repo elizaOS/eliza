@@ -2,7 +2,7 @@ name: fuzz
 
 # The fixed nightly profile checks 20,000 values with seed 2; repeat it with
 # `pnpm all check -- --nightly`. The shrunk
-# counterexamples a failing run saves come back as a pull request into develop.
+# counterexamples a failing run saves come back as a pull request into main.
 on:
   schedule:
     - cron: "17 4 * * *"
@@ -19,8 +19,6 @@ jobs:
       TURBO_CACHE: local:rw,remote:r
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: develop
       - uses: ./.github/actions/setup
       # --nightly bypasses the inner verification cache and always exercises the real application.
       - run: pnpm all check --continue -- --nightly
@@ -36,7 +34,7 @@ jobs:
           git switch -c "$BRANCH"
           git commit -m "Counterexamples from nightly profile run $GITHUB_RUN_ID"
           git push origin "$BRANCH"
-          gh pr create --base develop --head "$BRANCH" --title "Fuzz counterexamples, nightly profile" \
+          gh pr create --base main --head "$BRANCH" --title "Fuzz counterexamples, nightly profile" \
             --body "The nightly fuzz run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed and saved these shrunk traces. Each is a regression test: decide whether the application or the spec is wrong, fix that, and keep the trace."
   selftest:
     runs-on: ubuntu-latest

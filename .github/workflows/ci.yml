@@ -6,13 +6,13 @@ name: ci
 # installs and checks each standalone example.
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [main]
   push:
-    branches: [develop, main]
+    branches: [main]
 
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && !(github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) && format('pr-{0}', github.event.pull_request.number) || format('sha-{0}', github.event.pull_request.head.sha || github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && !(github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('sha-{0}', github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   TURBO_TELEMETRY_DISABLED: "1"

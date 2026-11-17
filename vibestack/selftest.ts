@@ -2943,6 +2943,7 @@ describe("the documents name what exists", () => {
     });
     assert.ok(groups.every((group) => group.length), JSON.stringify(groups));
     assert.deepEqual(groups.flat().sort(), [...titles].sort(), "each describe runs in exactly one selftest task");
+    assert.deepEqual(fs.readdirSync(path.join(project, ".github/workflows")).filter((flow) => /\bdevelop\b/.test(read(`.github/workflows/${flow}`))), [], "main is the only long-lived branch");
   });
 
   test("a task waits for the root's gen unless its package can never own a root spec; prose, the selftest and a failed run's leftovers rerun no Studio task, and the fixtures its tests read do", async () => {
