@@ -3276,6 +3276,26 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
       assert.deepEqual(written, traces("gen", `${invariant}-`), run.again);
     }
   });
+
+  test("a check that is interrupted, or that exits, ends each tool it started and what the tool started, in its process group or out of it", { skip: process.platform === "win32" }, async () => {
+    const root = scratch({
+      "tool.mjs": 'import { spawn } from "node:child_process";\nimport fs from "node:fs";\nconst started = [false, true].map((detached) => spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore", detached }).pid);\nfs.writeFileSync(process.argv[2], `${process.pid} ${started.join(" ")} `);\nsetInterval(() => {}, 1000);\n',
+      "check.mjs": `import { exec } from ${JSON.stringify(path.join(project, "vibestack/run.ts"))};\nvoid exec(process.execPath, ["tool.mjs", process.argv[2]], import.meta.dirname);\nprocess.stdin.once("data", () => process.exit(3));\n`,
+    });
+    const running = (pid: number) => { try { return process.kill(pid, 0); } catch { return false; } };
+    for (const how of ["SIGTERM", "SIGINT", "SIGHUP", "exit"] as const) {
+      const checking = spawn(process.execPath, ["check.mjs", how], { cwd: root, stdio: ["pipe", "ignore", "inherit"] });
+      const ended = new Promise((resolve) => checking.once("close", (code, signal) => resolve(signal ?? code)));
+      const pids = () => (fs.existsSync(path.join(root, how)) ? read(how, root) : "").split(" ");
+      await until(() => pids().length === 4);
+      const tools = pids().slice(0, 3).map(Number);
+      assert.deepEqual(tools.map(running), [true, true, true]);
+      if (how === "exit") checking.stdin.write("exit");
+      else checking.kill(how);
+      assert.equal(await ended, how === "exit" ? 3 : how);
+      await until(() => !tools.some(running), () => `${how} left ${tools.filter(running).join(" and ")} running`);
+    }
+  });
 }
 
 // Each check uses run.ts's tool queue; bound the fixture graphs and independent CLI processes alive beside it.

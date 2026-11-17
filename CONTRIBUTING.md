@@ -158,7 +158,11 @@ nothing again. A
 simulation cites each rule at the line it is on now, so prose that only moves
 the rules simulates nothing again. The programs and their versions are read
 for each key, so a process that outlives a reinstall, as `watch` does, runs and
-remembers under the programs installed now. A run
+remembers under the programs installed now. Each tool runs in a process group
+of its own, and a check that is interrupted, or that exits, ends each group
+still running and the group of each process a tool started outside its own, as
+a browser is: no verifier, simulation or browser outlives it. A tool stopped
+for its time or its output is ended the same way. A run
 of a tool is remembered when it reached its answer, a refusal of its input
 included, never when it was stopped, timed out or failed for want of a file or
 program: an unchanged unit whose proof failed runs neither again, and an edit
