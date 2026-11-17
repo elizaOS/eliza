@@ -1,5 +1,6 @@
 // The shell of src/greeter.vibe across a reload: what the conformance driver (test/drivers/app.ts) cannot see,
-// which is a greeter started again from its store, and a store holding what is not one.
+// which is a greeter started again from its store, one another page stored to while it was open, and a store holding
+// what is not one.
 import { assert, layer } from "@effect/vitest"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { Machine } from "../gen/app.effect.vibe"
@@ -15,7 +16,9 @@ layer(KeyValueStore.layerMemory)((it) => {
   it.effect("Say hello, then open the page again", () => effect {
     provide greeter {
       try typed({ type: "greet", name: "Ada" })
-      try linked({ type: "greet", name: "Grace" })
+      // spec/app/index.md, "Every step adds exactly one greeting"
+      provide Layer.fresh(greeter) { try linked({ type: "greet", name: "Grace" }) }
+      try typed({ type: "greet", name: "Margaret" })
     }
     const again = try reopened()
     // spec/app/index.md, "Once someone has been greeted, the greeter holds a name"
@@ -24,6 +27,6 @@ layer(KeyValueStore.layerMemory)((it) => {
     // spec/app/index.md, "The number of greetings is never negative"
     try (try KeyValueStore.KeyValueStore).set("greeter", JSON.stringify({ name: "Grace", count: -1 }))
     const negative = reopened() catch (error) => error._tag
-    try Effect.try(() => assert.deepStrictEqual([again, invalid, negative], [{ name: "Grace", count: 2 }, "NotAState", "NotAState"]))
+    try Effect.try(() => assert.deepStrictEqual([again, invalid, negative], [{ name: "Margaret", count: 3 }, "NotAState", "NotAState"]))
   })
 })

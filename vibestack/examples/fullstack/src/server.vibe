@@ -87,7 +87,7 @@ effect function save(file: string, dir: string, s: Server) {
 }
 
 /**
- * The server's Machine, kept in `file`: started from what it holds, and each accepted event saved before it is
+ * The server's Machine, kept in `file`: each accepted event applied to what it holds then, and saved before it is
  * answered. One event at a time, so two requests never interleave their saves. A failed save fails the request and
  * changes nothing.
  */
@@ -95,7 +95,7 @@ function kept(file: string) {
   return Layer.effect(Machine, effect {
     const fs = try FileSystem.FileSystem
     const dir = (try Path.Path).dirname(file)
-    return try machineOver(try load(file), (next) => orDie(provideService(save(file, dir, next), FileSystem.FileSystem, fs)))
+    return try machineOver(() => provideService(load(file), FileSystem.FileSystem, fs), (next) => orDie(provideService(save(file, dir, next), FileSystem.FileSystem, fs)))
   })
 }
 

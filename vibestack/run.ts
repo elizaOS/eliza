@@ -1,6 +1,5 @@
 // Shared bounded execution for the Quint, TypeScript, test and proof stages.
 import { execFile, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { availableParallelism } from "node:os";
 import path from "node:path";
@@ -13,8 +12,14 @@ const OUTPUT_LIMIT = 1 << 28;
 /** How long a tool may run before it is stopped: long enough that only a tool that hangs is stopped. */
 const TOOL_TIMEOUT = 60 * 60 * 1000;
 
-/** The executable's bytes, independent of the directory its installation lives in. */
-export const executableDigest = (file: string): string => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+/** The executable named `name` that the PATH finds first. */
+export const onPath = (name: string) => (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)
+  .flatMap((dir) => (WINDOWS ? [".exe", ".cmd", ""] : [""]).map((ext) => path.join(dir, name + ext))).find((file) => {
+    try { fs.accessSync(file, fs.constants.X_OK); return fs.statSync(file).isFile(); } catch { return false; }
+  });
+
+/** Installed files as they are: a reinstall writes them again, at a new inode, size or modification or change time, which a copy or an archive cannot set back. */
+export const stamp = (files: string[]) => files.map((f) => { const s = fs.statSync(f, { bigint: true }); return `${s.dev}:${s.ino}:${s.size}:${s.mtimeNs}:${s.ctimeNs}`; }).join(" ");
 
 /** An executable from the toolchain's dependencies, wherever npm put it: beside the tools, or in the project. */
 export function bin(cmd: string, root: string): string {
@@ -87,7 +92,7 @@ export function startGroup(command: string, cwd: string, env?: NodeJS.ProcessEnv
 }
 
 /** What the proof stage needs installed. */
-export const NEEDS_DAFNY = "the proof stage needs Dafny 4.11 on the PATH";
+export const NEEDS_DAFNY = "the proof stage needs Dafny 4.11 on the PATH: https://github.com/dafny-lang/dafny/releases";
 
 /** Run a tool from the toolchain, or Dafny, and return whether it succeeded and all it wrote. */
 export async function run(cmd: string, args: string[], cwd: string, input?: string): Promise<{ ok: boolean; out: string; status: number; stderr: string }> {
