@@ -93,6 +93,8 @@ describe("WP0 Foundation", () => {
     provide Store = cloud.store {
       const added = try addCredits({ organizationId: "org-funded", amount: 1_000_000, requestKey: "pilot-1" })
       const again = try addCredits({ organizationId: "org-funded", amount: 1_000_000, requestKey: "pilot-1" })
+      const conflicting = try failureTag(addCredits({ organizationId: "org-funded", amount: 500_000, requestKey: "pilot-1" }))
+      assert.strictEqual(conflicting, "IdempotencyConflict")
       const owner = { organizationId: "org-funded", userId: "user-1" }
       const key = { service: "MeteredInference", caller: owner.userId, requestId: "request-1", part: { tag: "WholeRequest" } } as const
       const first = try reserve(owner, key, 100_000)

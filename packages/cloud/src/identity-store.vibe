@@ -120,7 +120,7 @@ effect function accountForIdentity(db: Client, proof: Identity, now: number) {
   if (result.tag === "AttachTo") {
     if (!byEmail) throw new StorageUnavailable()
     const before = decodeAccount(byEmail.state) catch effect () => { throw new StorageUnavailable() }
-    const attached = applyAccount(before, { type: "attach", identity, verifiedEmail, subjectOwner, emailOwner }) catch effect () => { throw new IdentityConflict() }
+    const attached = applyAccount(before, { type: "link", identity, subjectOwner }) catch effect () => { throw new IdentityConflict() }
     const after = attached.state
     try authQuery(db, "INSERT INTO cloud_sign_in_identities (provider, provider_subject, account_id) VALUES ($1, $2, $3)", [proof.provider, proof.subject, byEmail.id])
     try authQuery(db, "UPDATE accounts SET state = $2, revision = revision + 1, updated_at = $3 WHERE key = $1", [byEmail.id, after, now])
@@ -131,7 +131,7 @@ effect function accountForIdentity(db: Client, proof: Identity, now: number) {
   const organization = try random.uuidV4()
   const referralCode = secretText("R", 8, "hex")
   const opened = applyAccount(unopened, {
-    type: "open", userId: id, organizationId: organization, identity, verifiedEmail, subjectOwner, emailOwner, referralCode
+    type: "openAccount", userId: id, organizationId: organization, identity, verifiedEmail, subjectOwner, emailOwner, referralCode
   }) catch effect () => { throw new StorageUnavailable() }
   const state = opened.state
   try authQuery(db, "INSERT INTO organizations (id, name, created_at) VALUES ($1, $2, $3)", [organization, email ?? "Personal", now])
