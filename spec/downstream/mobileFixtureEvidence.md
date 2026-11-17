@@ -103,9 +103,10 @@ Alpha's `scripts/instrumentation-result.ts` per-class reader accepts up to
 classes when another class fails. `-3` can stand for a JUnit ignored method
 without a start. An assumption `-4` requires its matching start. Either is
 reported as skipped work. Status-only diagnostics with no class and method
-leave test counts unchanged. Duplicate or overlapping lifecycle records,
+leave test counts unchanged. A class with neither starts nor ignored
+methods is missing. Otherwise duplicate or overlapping lifecycle records,
 unmatched completions, a class unfinished at exit, or a failed run fail
-that class. A class with no records is missing. A class whose only results
+that class. A class whose only results
 were skips is skipped. One passing method plus allowed skips can qualify a
 class-level pass. Named classes first use `-e log true`; an empty listing is
 retried once and the result is retained. The listing is an inventory.

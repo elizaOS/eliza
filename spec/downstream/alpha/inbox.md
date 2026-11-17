@@ -61,14 +61,16 @@ pure def sometimesListHasNextPage(s: MailboxFeed): bool = s.cursor != ""
 ### Cached reads respect owner, folder, provider identity and capacity
 
 Saved mailbox reads validate shape and provider labels, and replay only
-for a current connection key. The list cache expires per key and has a
-bounded folder count. The body cache tracks both entry count and decoded
-byte cost, refuses oversize bodies and refreshes insertion order when it remembers or restores an entry. Alpha's
-adapter uses eight list entries with a 30-day horizon and sixteen bodies
-with a four MiB byte bound. Actual persisted key serialization, byte
-encoding, LRU ordering and the provider's body admission require a future
-adapter and refinement test. Attachment rendering and sending do not read
-credentials from cache state.
+for a current connection key. The list cache expires per key and keeps at
+most eight folder entries with a 30-day horizon. Remembering a body
+refreshes insertion order and evicts oldest bodies to fit sixteen entries
+and four MiB of JSON bytes; an oversize body is not retained. Restoring a
+saved body refreshes insertion order without applying those count or byte
+evictions. [The detailed cache contract](./inboxCache.md) specifies these
+separate memory and saved-entry paths. Actual persisted key serialization,
+byte encoding, LRU ordering and the provider's body admission require a
+future adapter and refinement test. Attachment rendering and sending do
+not read credentials from cache state.
 
 ```quint
 type SavedRead = { valid: bool, sameOwner: bool, sameFolder: bool, sameProvider: bool, age: int }

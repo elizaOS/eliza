@@ -8,7 +8,7 @@ As an owner, I want a sender's repeated first messages to consume one reply clai
 
 ### A live retained claim suppresses a reply and expired claims can rearm it
 
-The source retains up to 4096 claims. At capacity, claiming first sweeps expired entries and then evicts oldest survivors until a new entry fits. Updating an existing expired key retains its insertion position. Expiry is `now - claimedAt >= ttl`, and wall-clock changes keep the source's elapsed arithmetic. The model parameter `capacity` is configured once so the exact 4096 production bound and smaller exhaustive scenarios use the same transition.
+The source retains up to 4096 claims. At capacity, claiming first sweeps expired entries and then evicts oldest survivors until a new entry fits. Below capacity, reclaiming an existing expired key retains its insertion position. At capacity, the sweep removes that expired key and its re-admission appends it. A live retained claim returns unchanged before cache maintenance. Expiry is `now - claimedAt >= ttl`, and wall-clock changes keep the source's elapsed arithmetic. The model parameter `capacity` is configured once so the exact 4096 production bound and smaller exhaustive scenarios use the same transition.
 
 ```quint
 type ReplyScope = { channel: str, sender: str }

@@ -14,9 +14,12 @@ lifetime and uses in-memory PGlite on the tablet.
 
 The SQLCipher provider verifies the native library identity and architecture.
 It admits a canonical private path and holds the database lease while
-obtaining a 32-byte key and opening the handle. It wipes temporary key bytes
-and releases the lease on completion or failure. The gateway verifies the
-exact returned connection against the exact path when encryption is
+obtaining a 32-byte key and opening the handle. It wipes fetched key bytes
+when the opening attempt settles. A successful open transfers the writer
+lease to the live connection until close or process death. A failed open
+unwinds acquired custody through the provider and native cleanup paths.
+[The writer lease contract](./taskSqlCipherWriter.md) specifies those paths.
+The gateway verifies the exact returned connection against the exact path when encryption is
 required. Loss of account custody prevents queries and effective responses
 from already prepared statements. SQL, cryptography, and native handles
 remain outside the model, and their checked results enter through these

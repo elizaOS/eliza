@@ -37,7 +37,8 @@ falls back if the view is active and releases it if inactive, even when
 permission is held. A notification Stop ends the matching guidance
 instead of falling back. Explicit End, provider replacement or disposal
 retire the screen state and watch. Arrival retires both native work ports
-while retaining the arrival presentation until End or another Start.
+while retaining its presentation in the owned view. End, another Start
+or a later hide without a native or permission hold retires that presentation.
 Leaving for another app view retires view work and agent location while
 keeping existing guidance. Document `pagehide`, provider replacement
 and disposal release it. A hidden foreground-only route does not resume
