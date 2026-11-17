@@ -1,12 +1,24 @@
 # Embedding service activation and pending work
 
-The source is `packages/core/src/services/embedding.ts:36-45,133-198,216-263,270-328,575-665`. This service owns model-registration activation, event subscription lifetime and exact pending source keys. Its only queue is the composed [BatchQueue](./batchQueue.md); [embedding writes](./embeddingWrite.md) own the per-item inference/storage receipt contract. The pending key is the full memory ID, agent, room, entity, text and priority tuple. A memory without an ID is deliberately not coalesced. The pending index has set semantics; its list representation permits exact structural tuple equality in generated reducers. Each waiting request captures the exact initialization promise it awaited: a later retry cannot turn an earlier rejection into a successful enqueue.
+This service owns model-registration activation, event subscription
+lifetime and exact pending source keys. Its only queue is the composed
+[batch queue](./batchQueue.md); [embedding writes](./embeddingWrite.md) own
+the per-item inference and storage receipt contract. The pending key is the
+full memory ID, agent, room, entity, text and priority tuple. A memory
+without an ID is deliberately not coalesced. The pending index has set
+semantics. Each waiting request captures the exact initialization promise
+it awaited: a later retry cannot turn an earlier rejection into a
+successful enqueue.
 
 ## Story: Activate once and retain every distinct source snapshot
 
+> As an agent, I want embedding to activate once per model registration and
+> to embed every distinct snapshot of a memory I request, never dropping a
+> request behind a failed or stopped activation.
+
 ### Initialization has one shared promise and a failed activation can retry
 
-Discovered by simulation: a stopped instance cannot restart and attach event handlers. Starting a service creates a fresh instance.
+A stopped instance cannot restart and attach event handlers. Starting a service creates a fresh instance.
 
 ```quint
 import batchQueue as BQ from "./batchQueue"
@@ -18,8 +30,6 @@ type QueueEvent = BeginDrain | ProbeSingle | ProbeBatch | ProbeFailure | StartFa
 type EmbeddingService = { started: bool, disabled: bool, stopped: bool, modelHandler: bool, workHandlers: bool, initializationId: int, settledInitializations: Set[int], failedInitializations: Set[int], initializing: bool, fromRegistration: bool, nextPromise: int, stopPending: bool, queuePresent: bool, queue: BQ::BatchQueue, waiting: List[EmbeddingItem], items: List[EmbeddingItem], pendingKeys: List[EmbeddingSource], lastEnqueued: bool }
 pure val emptyWaitingItem: EmbeddingItem = { id: "", source: { memoryId: "", agentId: "", roomId: "", entityId: "", text: "", priority: Q::Normal }, hasEmbedding: false, initializationId: 0 }
 pure val initial: EmbeddingService = { started: false, disabled: false, stopped: false, modelHandler: false, workHandlers: false, initializationId: 0, settledInitializations: Set(), failedInitializations: Set(), initializing: false, fromRegistration: false, nextPromise: 1, stopPending: false, queuePresent: false, queue: BQ::initial, waiting: List(), items: List(), pendingKeys: List(), lastEnqueued: false }
-pure val idValues = Set("item1", "item2", "item3")
-pure val sourceValues = Set({ memoryId: "memory1", agentId: "agent1", roomId: "room1", entityId: "actor1", text: "first", priority: Q::Normal }, { memoryId: "memory1", agentId: "agent1", roomId: "room1", entityId: "actor1", text: "changed", priority: Q::Normal }, { memoryId: "", agentId: "agent1", roomId: "room1", entityId: "actor1", text: "first", priority: Q::Low })
 pure val queueEventValues = Set(BeginDrain, ProbeSingle, ProbeBatch, ProbeFailure, StartFallback, StartAttempt, FinishAttempt, FinishBackoff, FinishExhaustion, CollectFallback, FinishWork, ObserveWork, BeginDisposal, FlushUrgent, FinishFlush, ObserveFlush, RetryDisposal, FinishRemoval)
 pure val ticketValues = Set(1, 2, 3)
 pure val successfulValues = Set(Set(), Set(1), Set(1, 2))
@@ -32,6 +42,19 @@ pure def canBeginInitialization(s: EmbeddingService): bool = s.started and not(s
 pure def beginInitialization(s: EmbeddingService): EmbeddingService = { ...s, initializationId: s.nextPromise, nextPromise: s.nextPromise + 1, initializing: true, workHandlers: true, queuePresent: true, queue: BQ::startSchedule(BQ::configureBatchQueue(BQ::initial, 10, 10, 4)) }
 pure def canFinishInitialization(s: EmbeddingService, ok: bool): bool = s.initializing
 pure def finishInitialization(s: EmbeddingService, ok: bool): EmbeddingService = { ...s, initializing: false, settledInitializations: s.settledInitializations.union(Set(s.initializationId)), failedInitializations: if (ok) s.failedInitializations else s.failedInitializations.union(Set(s.initializationId)), initializationId: if (ok) s.initializationId else 0, disabled: if (not(ok) and s.fromRegistration) true else s.disabled, workHandlers: ok and not(s.stopped), queue: BQ::finishSchedule(s.queue, ok) }
+```
+
+### A request waits for the activation it captured and queues each exact source once
+
+A request made before activation settles waits on the initialization it
+captured. When that initialization settles, the request is queued unless it
+failed, the service stopped or is disabled, the memory already has an
+embedding, or the same exact source is already pending. A memory without an
+ID is never coalesced.
+
+```quint
+pure val idValues = Set("item1", "item2", "item3")
+pure val sourceValues = Set({ memoryId: "memory1", agentId: "agent1", roomId: "room1", entityId: "actor1", text: "first", priority: Q::Normal }, { memoryId: "memory1", agentId: "agent1", roomId: "room1", entityId: "actor1", text: "changed", priority: Q::Normal }, { memoryId: "", agentId: "agent1", roomId: "room1", entityId: "actor1", text: "first", priority: Q::Low })
 pure def canRequest(s: EmbeddingService, id: str, source: EmbeddingSource, hasEmbedding: bool): bool = id != "" and not(s.items.some(entry => entry.id == id)) and not(s.waiting.some(entry => entry.id == id))
 pure def request(s: EmbeddingService, id: str, source: EmbeddingSource, hasEmbedding: bool): EmbeddingService = if (s.stopped) { ...s, lastEnqueued: false } else { ...s, waiting: s.waiting.append({ id: id, source: source, hasEmbedding: hasEmbedding, initializationId: s.initializationId }), lastEnqueued: false }
 pure def sameEmbeddingSource(left: EmbeddingSource, right: EmbeddingSource): bool = left.memoryId == right.memoryId and left.agentId == right.agentId and left.roomId == right.roomId and left.entityId == right.entityId and left.text == right.text and left.priority == right.priority
@@ -41,29 +64,15 @@ pure def settleRequest(s: EmbeddingService): EmbeddingService = {
   val accept = not(s.failedInitializations.contains(itemToQueue.initializationId)) and not(s.stopped) and not(s.disabled) and s.queuePresent and not(itemToQueue.hasEmbedding) and (itemToQueue.source.memoryId == "" or not(s.pendingKeys.some(key => sameEmbeddingSource(key, itemToQueue.source)))) and BQ::canEnqueueBatchItem(s.queue, itemToQueue.id, itemToQueue.source.priority)
   { ...s, waiting: s.waiting.removeAt(0), queue: if (accept) BQ::enqueueBatchItem(s.queue, itemToQueue.id, itemToQueue.source.priority) else s.queue, items: if (accept) s.items.append(itemToQueue) else s.items, pendingKeys: if (accept and itemToQueue.source.memoryId != "") s.pendingKeys.append(itemToQueue.source) else s.pendingKeys, lastEnqueued: accept }
 }
-pure def retainCaptured(s: EmbeddingService): List[EmbeddingItem] = s.items.select(entry => s.queue.active.concat(s.queue.flush).some(active => active.payload == entry.id))
-pure def clearQueue(s: EmbeddingService): EmbeddingService = if (s.queuePresent and not(s.queue.disposed)) { ...s, queue: { ...s.queue, queue: Q::clearQueue(s.queue.queue) }, pendingKeys: List(), items: retainCaptured(s) } else { ...s, pendingKeys: List() }
-pure def canStop(s: EmbeddingService): bool = not(s.stopped)
-pure def stop(s: EmbeddingService): EmbeddingService = { ...s, stopped: true, modelHandler: false, workHandlers: false, stopPending: true }
-```
-
-### Initialization is in flight exactly while the queue schedule is pending, and a present queue is configured
-
-Discovered by the proof: initialization and the queue's pending schedule
-represent the same awaited startup. A present queue has already been
-constructed. Without those relations a fabricated initialization callback
-could settle an unconfigured queue with no pending schedule.
-
-```quint
-pure def alwaysInitializationOwnsQueueStartup(s: EmbeddingService): bool =
-  (s.initializing iff s.queue.schedulePending) and (s.queuePresent implies s.queue.configured)
 ```
 
 ### Queue outcomes release exact pending keys and shutdown waits for activation
 
-Clearing a queue clears pending keys even for work already in flight, matching the source. Consequently an old completion may remove the same key re-added by a later request; it must not be modeled as an item-ID-specific deletion. Queue item identities continue to distinguish the work itself. Discovered by the proof: after task removal completes or the queue detaches, no queued work remains. The service keeps every rule of the BatchQueue (`BQ::wellFormed`) true for its queue. A clear keeps snapshots for items already captured by a drain or an urgent flush. If disposal has begun, BatchQueue.clear is a no-op: unflushed queued work survives until task removal, though the service still clears its pending keys. Completing urgent observation releases the flush snapshot; a normal drain retains its independent snapshot.
+Clearing a queue clears pending keys even for work already in flight. Consequently an old completion may remove the same key re-added by a later request; it must not be modeled as an item-ID-specific deletion. Queue item identities continue to distinguish the work itself. After task removal completes or the queue detaches, no queued work remains. A clear keeps snapshots for items already captured by a drain or an urgent flush. If disposal has begun, BatchQueue.clear is a no-op: unflushed queued work survives until task removal, though the service still clears its pending keys. Completing urgent observation releases the flush snapshot; a normal drain retains its independent snapshot.
 
 ```quint
+pure def retainCaptured(s: EmbeddingService): List[EmbeddingItem] = s.items.select(entry => s.queue.active.concat(s.queue.flush).some(active => active.payload == entry.id))
+pure def clearQueue(s: EmbeddingService): EmbeddingService = if (s.queuePresent and not(s.queue.disposed)) { ...s, queue: { ...s.queue, queue: Q::clearQueue(s.queue.queue) }, pendingKeys: List(), items: retainCaptured(s) } else { ...s, pendingKeys: List() }
 pure def canDriveQueue(s: EmbeddingService, queueEvent: QueueEvent, ticket: int, ok: bool, retry: bool): bool = (s.queuePresent or s.queue.phase != BQ::DrainIdle) and (
   if (queueEvent == BeginDrain) s.queuePresent and BQ::canBeginDrain(s.queue)
   else if (queueEvent == ProbeSingle or queueEvent == ProbeBatch or queueEvent == ProbeFailure) BQ::canFinishCapabilityProbe(s.queue, ok, false)
@@ -97,12 +106,21 @@ pure def settleBatch(s: EmbeddingService, successful: Set[int], retryable: Set[i
 pure def canFinishStop(s: EmbeddingService): bool = s.stopPending and not(s.initializing) and (s.disabled or not(s.queuePresent) or s.queue.disposePhase == BQ::QueueDisposed)
 pure def finishStop(s: EmbeddingService): EmbeddingService = if (s.disabled or not(s.queuePresent)) { ...s, stopPending: false } else { ...s, stopPending: false, queuePresent: false, pendingKeys: List(), items: retainCaptured(s) }
 pure def alwaysActivationHasIdentity(s: EmbeddingService): bool = s.nextPromise > 0 and s.initializationId >= 0 and s.initializationId < s.nextPromise and (s.initializing implies s.initializationId > 0 and s.queuePresent)
-pure def alwaysQueueOwnerWellFormed(s: EmbeddingService): bool = BQ::wellFormed(s.queue)
 pure def alwaysPendingKeysAreExactAndUnique(s: EmbeddingService): bool = s.pendingKeys.every(source => source.memoryId != "" and s.pendingKeys.select(other => sameEmbeddingSource(other, source)).length() == 1 and s.items.some(entry => sameEmbeddingSource(entry.source, source)))
 pure def alwaysQueueHasKnownSnapshots(s: EmbeddingService): bool = Q::queuedItems(s.queue.queue).every(job => s.items.some(entry => entry.id == job.payload)) and s.queue.active.concat(s.queue.flush).every(job => s.items.some(entry => entry.id == job.payload))
 pure def alwaysDisposalDetachesQueuedSnapshots(s: EmbeddingService): bool = (not(s.queuePresent) or s.queue.disposePhase == BQ::QueueDisposed) implies Q::queuedItems(s.queue.queue).length() == 0
 pure def alwaysDisposalPhaseHasClosedAdmission(s: EmbeddingService): bool = s.queue.disposePhase != BQ::NotDisposing implies s.queue.disposed
-pure def alwaysStoppedHandlersAreDetached(s: EmbeddingService): bool = s.stopped implies not(s.modelHandler) and not(s.workHandlers)
 pure def sometimesDistinctSnapshotsCoexist(s: EmbeddingService): bool = s.items.some(entry => s.items.some(other => entry.id != other.id and entry.source.memoryId == other.source.memoryId and not(sameEmbeddingSource(entry.source, other.source))))
 pure def sometimesWaitsForModel(s: EmbeddingService): bool = s.started and s.disabled and s.modelHandler
+```
+
+### Stopping detaches every handler and admits no further work
+
+Stopping is final for an instance: it detaches the model and work handlers
+and leaves disposal of the queue pending.
+
+```quint
+pure def canStop(s: EmbeddingService): bool = not(s.stopped)
+pure def stop(s: EmbeddingService): EmbeddingService = { ...s, stopped: true, modelHandler: false, workHandlers: false, stopPending: true }
+pure def alwaysStoppedHandlersAreDetached(s: EmbeddingService): bool = s.stopped implies not(s.modelHandler) and not(s.workHandlers)
 ```

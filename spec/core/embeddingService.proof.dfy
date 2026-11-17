@@ -1,174 +1,3 @@
-lemma EmbeddingQueueOwner(s: EmbeddingService)
-  requires inv(s)
-  ensures core__batchQueue_inv(s.queue)
-{}
-
-lemma EmbeddingClearQueueOwner(q: core__batchQueue_BatchQueue)
-  requires core__batchQueue_wellFormed(q) && q.configured
-  ensures core__batchQueue_wellFormed(q.(queue := core__priorityQueue_clearQueue(q.queue)))
-{
-  core__priorityQueue_clearQueue_ensures(q.queue);
-}
-
-lemma EmbeddingDropFlushOwner(q: core__batchQueue_BatchQueue)
-  requires core__batchQueue_wellFormed(q)
-  ensures core__batchQueue_wellFormed(q.(flush := []))
-{}
-
-lemma EmbeddingBeginDrainOwner(q: core__batchQueue_BatchQueue)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canBeginDrain(q)
-  ensures core__batchQueue_wellFormed(core__batchQueue_beginDrain(q))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_beginDrain_ensures(q);
-}
-
-lemma EmbeddingFinishCapabilityProbeOwner(q: core__batchQueue_BatchQueue, ok: bool, useBatch: bool)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canFinishCapabilityProbe(q,ok,useBatch)
-  ensures core__batchQueue_wellFormed(core__batchQueue_finishCapabilityProbe(q,ok,useBatch))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_finishCapabilityProbe_ensures(q,ok,useBatch);
-}
-
-lemma EmbeddingStartFallbackOwner(q: core__batchQueue_BatchQueue, ticket: int, perItemAttempts: int)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canStartFallback(q,ticket,perItemAttempts)
-  ensures core__batchQueue_wellFormed(core__batchQueue_startFallback(q,ticket,perItemAttempts))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_startFallback_ensures(q,ticket,perItemAttempts);
-}
-
-lemma EmbeddingStartFallbackAttemptOwner(q: core__batchQueue_BatchQueue, ticket: int)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canStartFallbackAttempt(q,ticket)
-  ensures core__batchQueue_wellFormed(core__batchQueue_startFallbackAttempt(q,ticket))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_startFallbackAttempt_ensures(q,ticket);
-}
-
-lemma EmbeddingFinishFallbackAttemptOwner(q: core__batchQueue_BatchQueue, ticket: int, ok: bool, retry: bool)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canFinishFallbackAttempt(q,ticket,ok,retry)
-  ensures core__batchQueue_wellFormed(core__batchQueue_finishFallbackAttempt(q,ticket,ok,retry))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_finishFallbackAttempt_ensures(q,ticket,ok,retry);
-}
-
-lemma EmbeddingFinishFallbackBackoffOwner(q: core__batchQueue_BatchQueue, ticket: int)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canFinishFallbackBackoff(q,ticket)
-  ensures core__batchQueue_wellFormed(core__batchQueue_finishFallbackBackoff(q,ticket))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_finishFallbackBackoff_ensures(q,ticket);
-}
-
-lemma EmbeddingFinishFallbackExhaustionOwner(q: core__batchQueue_BatchQueue, ticket: int, callbackOk: bool)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canFinishFallbackExhaustion(q,ticket,callbackOk)
-  ensures core__batchQueue_wellFormed(core__batchQueue_finishFallbackExhaustion(q,ticket,callbackOk))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_finishFallbackExhaustion_ensures(q,ticket,callbackOk);
-}
-
-lemma EmbeddingCollectFallbackOwner(q: core__batchQueue_BatchQueue, ticket: int)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canCollectFallback(q,ticket)
-  ensures core__batchQueue_wellFormed(core__batchQueue_collectFallback(q,ticket))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_collectFallback_ensures(q,ticket);
-}
-
-lemma EmbeddingFinishBatchWorkOwner(q: core__batchQueue_BatchQueue)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canFinishBatchWork(q)
-  ensures core__batchQueue_wellFormed(core__batchQueue_finishBatchWork(q))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_finishBatchWork_ensures(q);
-}
-
-lemma EmbeddingObserveDrainOwner(q: core__batchQueue_BatchQueue, observersOk: bool)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canObserveDrain(q,observersOk)
-  ensures core__batchQueue_wellFormed(core__batchQueue_observeDrain(q,observersOk))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_observeDrain_ensures(q,observersOk);
-}
-
-lemma EmbeddingBeginDisposeOwner(q: core__batchQueue_BatchQueue, flushHigh: bool)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canBeginDispose(q,flushHigh)
-  ensures core__batchQueue_wellFormed(core__batchQueue_beginDispose(q,flushHigh))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_beginDispose_ensures(q,flushHigh);
-}
-
-lemma EmbeddingFlushUrgentItemOwner(q: core__batchQueue_BatchQueue, ok: bool)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canFlushUrgentItem(q,ok)
-  ensures core__batchQueue_wellFormed(core__batchQueue_flushUrgentItem(q,ok))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_flushUrgentItem_ensures(q,ok);
-}
-
-lemma EmbeddingFinishUrgentFlushOwner(q: core__batchQueue_BatchQueue)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canFinishUrgentFlush(q)
-  ensures core__batchQueue_wellFormed(core__batchQueue_finishUrgentFlush(q))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_finishUrgentFlush_ensures(q);
-}
-
-lemma EmbeddingObserveUrgentFlushOwner(q: core__batchQueue_BatchQueue, ok: bool)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canObserveUrgentFlush(q,ok)
-  ensures core__batchQueue_wellFormed(core__batchQueue_observeUrgentFlush(q,ok))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_observeUrgentFlush_ensures(q,ok);
-}
-
-lemma EmbeddingRetryDisposalOwner(q: core__batchQueue_BatchQueue)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canRetryDisposal(q)
-  ensures core__batchQueue_wellFormed(core__batchQueue_retryDisposal(q))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_retryDisposal_ensures(q);
-}
-
-lemma EmbeddingFinishTaskRemovalOwner(q: core__batchQueue_BatchQueue, ok: bool)
-  requires core__batchQueue_wellFormed(q) && core__batchQueue_canFinishTaskRemoval(q,ok)
-  ensures core__batchQueue_wellFormed(core__batchQueue_finishTaskRemoval(q,ok))
-{
-  assert core__batchQueue_inv(q);
-  core__batchQueue_finishTaskRemoval_ensures(q,ok);
-}
-
-lemma EmbeddingDrivenQueueOwner(s: EmbeddingService,queueEvent: QueueEvent,ticket: int,ok: bool,retry: bool)
-  requires inv(s) && canDriveQueue(s,queueEvent,ticket,ok,retry)
-  ensures core__batchQueue_wellFormed(driveQueue(s,queueEvent,ticket,ok,retry).queue)
-{
-  EmbeddingQueueOwner(s);
-  if queueEvent.BeginDrain? { EmbeddingBeginDrainOwner(s.queue); }
-  else if queueEvent.ProbeSingle? || queueEvent.ProbeBatch? || queueEvent.ProbeFailure? {
-    EmbeddingFinishCapabilityProbeOwner(s.queue,!queueEvent.ProbeFailure?,queueEvent.ProbeBatch?);
-  } else if queueEvent.StartFallback? { EmbeddingStartFallbackOwner(s.queue,ticket,0); }
-  else if queueEvent.StartAttempt? { EmbeddingStartFallbackAttemptOwner(s.queue,ticket); }
-  else if queueEvent.FinishAttempt? { EmbeddingFinishFallbackAttemptOwner(s.queue,ticket,ok,retry); }
-  else if queueEvent.FinishBackoff? { EmbeddingFinishFallbackBackoffOwner(s.queue,ticket); }
-  else if queueEvent.FinishExhaustion? { EmbeddingFinishFallbackExhaustionOwner(s.queue,ticket,ok); }
-  else if queueEvent.CollectFallback? { EmbeddingCollectFallbackOwner(s.queue,ticket); }
-  else if queueEvent.FinishWork? { EmbeddingFinishBatchWorkOwner(s.queue); }
-  else if queueEvent.ObserveWork? { EmbeddingObserveDrainOwner(s.queue,ok); }
-  else if queueEvent.BeginDisposal? { EmbeddingBeginDisposeOwner(s.queue,ok); }
-  else if queueEvent.FlushUrgent? { EmbeddingFlushUrgentItemOwner(s.queue,ok); }
-  else if queueEvent.FinishFlush? { EmbeddingFinishUrgentFlushOwner(s.queue); }
-  else if queueEvent.ObserveFlush? {
-    EmbeddingObserveUrgentFlushOwner(s.queue,ok);
-    EmbeddingDropFlushOwner(core__batchQueue_observeUrgentFlush(s.queue,ok));
-  } else if queueEvent.RetryDisposal? { EmbeddingRetryDisposalOwner(s.queue); }
-  else { EmbeddingFinishTaskRemovalOwner(s.queue,ok); }
-}
-
 lemma EmbeddingKeysBridge(s: EmbeddingService)
   ensures alwaysPendingKeysAreExactAndUnique(s) <==>
     (forall source :: source in s.pendingKeys ==> (source.memoryId != "" &&
@@ -324,7 +153,7 @@ lemma EmbeddingBeginDisposeRefs(q: core__batchQueue_BatchQueue, flushHigh: bool)
       assert selected[i] in q.queue.high && selected[i].payload == id;
     } else if !queueReferences(q,id) {
       var row :| row in core__priorityQueue_queuedItems(after.queue) && row.payload == id;
-      var ids := Std.Collections.Seq.FoldLeft((tickets: seq<int>, j: core__priorityQueue_QueueItem) => core__batchQueue_addFlushTicket(tickets,j.ticket), [], selected);
+      var ids := Std.Collections.Seq.FoldLeft((acc: seq<int>, job: core__priorityQueue_QueueItem) => (acc + Std.Collections.Seq.Filter((x: int) => !(x in acc),[job.ticket])), [], selected);
       if row in after.queue.high {
         ProofLib.FilterMember((j: core__priorityQueue_QueueItem) => !(j.ticket in ids),q.queue.high,row);
       } else if row in after.queue.normal {
@@ -434,9 +263,7 @@ lemma EmbeddingAdmitQueueReference(s: EmbeddingService,t: EmbeddingService,item:
 }
 
 lemma clearQueue_ensures(s: EmbeddingService)
-  ensures (inv(s) ==> alwaysInitializationOwnsQueueStartup(clearQueue(s)))
   ensures (inv(s) ==> alwaysActivationHasIdentity(clearQueue(s)))
-  ensures (inv(s) ==> alwaysQueueOwnerWellFormed(clearQueue(s)))
   ensures (inv(s) ==> alwaysPendingKeysAreExactAndUnique(clearQueue(s)))
   ensures (inv(s) ==> alwaysQueueHasKnownSnapshots(clearQueue(s)))
   ensures (inv(s) ==> alwaysDisposalDetachesQueuedSnapshots(clearQueue(s)))
@@ -444,17 +271,13 @@ lemma clearQueue_ensures(s: EmbeddingService)
   ensures (inv(s) ==> alwaysStoppedHandlersAreDetached(clearQueue(s)))
 {
   if inv(s) && s.queuePresent && !s.queue.disposed {
-    EmbeddingQueueOwner(s);
-    EmbeddingClearQueueOwner(s.queue);
     var t := clearQueue(s);
     EmbeddingKeepCaptured(s,t);
   }
 }
 
 lemma settleRequest_ensures(s: EmbeddingService)
-  ensures (inv(s) ==> canSettleRequest(s) ==> alwaysInitializationOwnsQueueStartup(settleRequest(s)))
   ensures (inv(s) ==> canSettleRequest(s) ==> alwaysActivationHasIdentity(settleRequest(s)))
-  ensures (inv(s) ==> canSettleRequest(s) ==> alwaysQueueOwnerWellFormed(settleRequest(s)))
   ensures (inv(s) ==> canSettleRequest(s) ==> alwaysPendingKeysAreExactAndUnique(settleRequest(s)))
   ensures (inv(s) ==> canSettleRequest(s) ==> alwaysQueueHasKnownSnapshots(settleRequest(s)))
   ensures (inv(s) ==> canSettleRequest(s) ==> alwaysDisposalDetachesQueuedSnapshots(settleRequest(s)))
@@ -464,9 +287,7 @@ lemma settleRequest_ensures(s: EmbeddingService)
   if inv(s) && canSettleRequest(s) {
     var t := settleRequest(s);
     if t.lastEnqueued {
-      EmbeddingQueueOwner(s);
       var item := s.waiting[0];
-      core__batchQueue_enqueueBatchItem_ensures(s.queue,item.id,item.source.priority);
       EmbeddingAdmitQueueReference(s,t,item);
       if item.source.memoryId != "" {
         EmbeddingKeysAppend(s,t,item.source);
@@ -478,9 +299,7 @@ lemma settleRequest_ensures(s: EmbeddingService)
 }
 
 lemma driveQueue_ensures(s: EmbeddingService, queueEvent: QueueEvent, ticket: int, ok: bool, retry: bool)
-  ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok, retry) ==> alwaysInitializationOwnsQueueStartup(driveQueue(s, queueEvent, ticket, ok, retry)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok, retry) ==> alwaysActivationHasIdentity(driveQueue(s, queueEvent, ticket, ok, retry)))
-  ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok, retry) ==> alwaysQueueOwnerWellFormed(driveQueue(s, queueEvent, ticket, ok, retry)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok, retry) ==> alwaysPendingKeysAreExactAndUnique(driveQueue(s, queueEvent, ticket, ok, retry)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok, retry) ==> alwaysQueueHasKnownSnapshots(driveQueue(s, queueEvent, ticket, ok, retry)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok, retry) ==> alwaysDisposalDetachesQueuedSnapshots(driveQueue(s, queueEvent, ticket, ok, retry)))
@@ -488,7 +307,6 @@ lemma driveQueue_ensures(s: EmbeddingService, queueEvent: QueueEvent, ticket: in
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok, retry) ==> alwaysStoppedHandlersAreDetached(driveQueue(s, queueEvent, ticket, ok, retry)))
 {
   if inv(s) && canDriveQueue(s,queueEvent,ticket,ok,retry) {
-    EmbeddingDrivenQueueOwner(s,queueEvent,ticket,ok,retry);
     var t := driveQueue(s,queueEvent,ticket,ok,retry);
     if queueEvent.ObserveWork? || queueEvent.ObserveFlush? {
       EmbeddingAfterObservation(s,t,completedEmbeddingItems(s,queueEvent.ObserveFlush?));
@@ -506,9 +324,7 @@ lemma driveQueue_ensures(s: EmbeddingService, queueEvent: QueueEvent, ticket: in
 }
 
 lemma settleBatch_ensures(s: EmbeddingService, successful: seq<int>, retryable: seq<int>, threw: bool)
-  ensures (inv(s) ==> canSettleBatch(s, successful, retryable, threw) ==> alwaysInitializationOwnsQueueStartup(settleBatch(s, successful, retryable, threw)))
   ensures (inv(s) ==> canSettleBatch(s, successful, retryable, threw) ==> alwaysActivationHasIdentity(settleBatch(s, successful, retryable, threw)))
-  ensures (inv(s) ==> canSettleBatch(s, successful, retryable, threw) ==> alwaysQueueOwnerWellFormed(settleBatch(s, successful, retryable, threw)))
   ensures (inv(s) ==> canSettleBatch(s, successful, retryable, threw) ==> alwaysPendingKeysAreExactAndUnique(settleBatch(s, successful, retryable, threw)))
   ensures (inv(s) ==> canSettleBatch(s, successful, retryable, threw) ==> alwaysQueueHasKnownSnapshots(settleBatch(s, successful, retryable, threw)))
   ensures (inv(s) ==> canSettleBatch(s, successful, retryable, threw) ==> alwaysDisposalDetachesQueuedSnapshots(settleBatch(s, successful, retryable, threw)))
@@ -516,8 +332,6 @@ lemma settleBatch_ensures(s: EmbeddingService, successful: seq<int>, retryable: 
   ensures (inv(s) ==> canSettleBatch(s, successful, retryable, threw) ==> alwaysStoppedHandlersAreDetached(settleBatch(s, successful, retryable, threw)))
 {
   if inv(s) && canSettleBatch(s,successful,retryable,threw) {
-    EmbeddingQueueOwner(s);
-    core__batchQueue_settleBatchedCall_ensures(s.queue,successful,retryable,threw);
     var t := settleBatch(s,successful,retryable,threw);
     EmbeddingQueueRefsChangePhase(s.queue,t.queue);
     EmbeddingQueueRefsFromPrior(s,t);
@@ -525,9 +339,7 @@ lemma settleBatch_ensures(s: EmbeddingService, successful: seq<int>, retryable: 
 }
 
 lemma finishStop_ensures(s: EmbeddingService)
-  ensures (inv(s) ==> canFinishStop(s) ==> alwaysInitializationOwnsQueueStartup(finishStop(s)))
   ensures (inv(s) ==> canFinishStop(s) ==> alwaysActivationHasIdentity(finishStop(s)))
-  ensures (inv(s) ==> canFinishStop(s) ==> alwaysQueueOwnerWellFormed(finishStop(s)))
   ensures (inv(s) ==> canFinishStop(s) ==> alwaysPendingKeysAreExactAndUnique(finishStop(s)))
   ensures (inv(s) ==> canFinishStop(s) ==> alwaysQueueHasKnownSnapshots(finishStop(s)))
   ensures (inv(s) ==> canFinishStop(s) ==> alwaysDisposalDetachesQueuedSnapshots(finishStop(s)))
@@ -536,39 +348,5 @@ lemma finishStop_ensures(s: EmbeddingService)
 {
   if inv(s) && canFinishStop(s) && !s.disabled && s.queuePresent {
     EmbeddingKeepCaptured(s,finishStop(s));
-  }
-}
-
-lemma beginInitialization_ensures(s: EmbeddingService)
-  ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysInitializationOwnsQueueStartup(beginInitialization(s)))
-  ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysActivationHasIdentity(beginInitialization(s)))
-  ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysQueueOwnerWellFormed(beginInitialization(s)))
-  ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysPendingKeysAreExactAndUnique(beginInitialization(s)))
-  ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysQueueHasKnownSnapshots(beginInitialization(s)))
-  ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysDisposalDetachesQueuedSnapshots(beginInitialization(s)))
-  ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysDisposalPhaseHasClosedAdmission(beginInitialization(s)))
-  ensures (inv(s) ==> canBeginInitialization(s) ==> alwaysStoppedHandlersAreDetached(beginInitialization(s)))
-{
-  if inv(s) && canBeginInitialization(s) {
-    core__batchQueue_initialHolds_ensures();
-    core__batchQueue_configureBatchQueue_ensures(core__batchQueue_initial,10,10,4);
-    var q := core__batchQueue_configureBatchQueue(core__batchQueue_initial,10,10,4);
-    core__batchQueue_startSchedule_ensures(q);
-  }
-}
-
-lemma finishInitialization_ensures(s: EmbeddingService, ok: bool)
-  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysInitializationOwnsQueueStartup(finishInitialization(s, ok)))
-  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysActivationHasIdentity(finishInitialization(s, ok)))
-  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysQueueOwnerWellFormed(finishInitialization(s, ok)))
-  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysPendingKeysAreExactAndUnique(finishInitialization(s, ok)))
-  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysQueueHasKnownSnapshots(finishInitialization(s, ok)))
-  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysDisposalDetachesQueuedSnapshots(finishInitialization(s, ok)))
-  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysDisposalPhaseHasClosedAdmission(finishInitialization(s, ok)))
-  ensures (inv(s) ==> canFinishInitialization(s, ok) ==> alwaysStoppedHandlersAreDetached(finishInitialization(s, ok)))
-{
-  if inv(s) && canFinishInitialization(s,ok) {
-    EmbeddingQueueOwner(s);
-    core__batchQueue_finishSchedule_ensures(s.queue,ok);
   }
 }

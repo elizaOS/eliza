@@ -97,15 +97,6 @@ lemma TurnFirstAbortReasonsAfterReturn(s: TurnEventStack, turnId: int, resolved:
   TurnFirstAbortReasonsPreserved(s, returnTurn(s, turnId, resolved, errorId));
 }
 
-// The allocator rule reads only groups and nextGroup, so a transition that
-// keeps both keeps the rule.
-lemma TurnGroupAllocatorSameGroups(before: TurnEventStack, after: TurnEventStack)
-  requires alwaysGroupAllocatorValid(before)
-  requires after.groups == before.groups && after.nextGroup == before.nextGroup
-  ensures alwaysGroupAllocatorValid(after)
-{
-}
-
 lemma TurnMembershipSnapshotPreserved(before: TurnEventStack, after: TurnEventStack)
   requires alwaysTurnsRetainGroups(before)
   requires after.turnGroups == before.turnGroups && after.groups == before.groups && after.controllers.turns == before.controllers.turns
@@ -127,7 +118,6 @@ lemma abortRoom_ensures(s: TurnEventStack, room: string, selfId: int, reason: st
 {
   if inv(s) && canAbortRoom(s, room, selfId, reason) {
     var after := abortRoom(s, room, selfId, reason);
-    TurnGroupAllocatorSameGroups(s, after);
     TurnMembershipSnapshotPreserved(s, after);
     TurnPendingOwnerFramesPreserved(s, after);
     TurnFrameBeganRoomAbort(s, room, selfId, reason);
@@ -221,7 +211,6 @@ lemma returnRoomAbort_ensures(s: TurnEventStack)
   ensures (inv(s) ==> canReturnRoomAbort(s) ==> stepOuterCallbackWaits(s, "returnRoomAbort", returnRoomAbort(s)))
 {
   if inv(s) && canReturnRoomAbort(s) {
-    TurnGroupAllocatorSameGroups(s, returnRoomAbort(s));
     TurnMembershipSnapshotPreserved(s, returnRoomAbort(s));
     TurnPendingOwnerReturnedRoom(s);
     TurnControllerIdentityFieldsPreserved(s, returnRoomAbort(s));
