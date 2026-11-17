@@ -93,9 +93,12 @@ send or delete a conversation. Older native hosts omit this method.
 
 The native bridge rechecks image admission, foreground user, unlocked foreground
 access, SMS read permission and default SMS role before its conditional provider
-write. It binds the collection delete to the observed row, thread and raw date;
-SMS and MMS stay separate. The content-free receipt is `deleted`, `not-found`,
-`stale` or `unknown`. Only `deleted` confirms this operation removed the row.
+write. It binds the collection delete to the observed row, thread and raw date
+and to a settled box (received or sent); SMS and MMS stay separate. A draft,
+queued, outbox or failed row belongs to a send and is answered `not-settled`
+with nothing deleted. The content-free receipt is `deleted`, `not-found`,
+`stale`, `not-settled` or `unknown`. Only `deleted` confirms this operation
+removed the row.
 A lost or invalid reply is unknown; never retry it automatically. No message
 body or address is included, and no automatic agent mutation is exposed.
 

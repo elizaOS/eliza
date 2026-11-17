@@ -31,7 +31,8 @@
           "unavailableOrCancelledReadsDoNotDelete",
           "unexplainedZeroAndInvalidCountsAreNeverConfirmedDeleted",
           "knownDeletionSurvivesAccessLossAfterTheEffect",
-          "concurrentExternalRemovalReportsMissingNotAnUnprovenOwnDeletion"
+          "concurrentExternalRemovalReportsMissingNotAnUnprovenOwnDeletion",
+          "onlySettledReceivedOrSentRowsAreDeletedNeverAnInFlightSend"
         ]
       },
       {
@@ -57,7 +58,7 @@
     ]
   },
   "bounds": {
-    "domain": "One owner-confirmed reference, one identity read and at most one conditional delete. One same-id foreign transport row remains outside the target. Two thread/date equality classes and two raw-date representations cover replacement and normalization races. Owner confirmation and trustworthy platform affected-row counts are assumptions. Actual SQLite predicates and bridge guards are exercised by JVM cases; real Telephony permission/AppOp/role enforcement, Binder reliability, process death, carrier behavior and physical-device acceptance remain separate. Lost or invalid replies are unknown and grant no retry.",
+    "domain": "One owner-confirmed SMS or MMS reference, one identity read and at most one conditional delete. The other transport holds a same-id row with the same thread and date, so a delete sent to the wrong table would remove it. The row's box can move into or out of a send (draft, outbox, queued or failed) at any time before the effect; only inbox and sent rows are settled. Two thread/date equality classes and two raw-date representations cover replacement and normalization races. Witness runs remove the authority recheck, the collection selection or the settled-box selection and must break their invariant. Owner confirmation and trustworthy platform affected-row counts are assumptions. Actual SQLite predicates and bridge guards are exercised by JVM cases; real Telephony permission/AppOp/role enforcement, Binder reliability, process death, carrier behavior and physical-device acceptance remain separate. Lost or invalid replies are unknown and grant no retry.",
     "conformance": "Whole production Java over an in-memory SQLite ContentProvider, plus actual bridge entry/lifecycle fencing. No radio or real device data is touched."
   },
   "cases": [
@@ -69,7 +70,8 @@
       "invariants": [
         "TypeOK",
         "AtMostOneDispatch",
-        "AppliedNeedsLiveAuthority",
+        "DispatchNeedsLiveAuthority",
+        "OnlySettledRowsDeleted",
         "ConfirmedMeansApplied",
         "ForeignTransportPreserved",
         "RefusalMeansNoDispatch"
