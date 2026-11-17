@@ -76,7 +76,23 @@
       ],
       "temporal": ["ResultStable", "FairProviderSettles"],
       "maxSteps": 20,
-      "maxSamples": 1000
+      "temporalChecks": [
+        {
+          "property": "ResultStable",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Completed content-free outcomes do not change after access loss or unrelated provider activity."
+          ]
+        },
+        {
+          "property": "FairProviderSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of progress: enabled identity reads, refusal handling, provider return or unknown-result settlement eventually execute. Provider success is not assumed. This does not prove a wall-clock deadline or process-death recovery."
+          ]
+        }
+      ],
+      "samples": 1000
     }
   ]
 }
