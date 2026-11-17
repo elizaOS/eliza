@@ -1,4 +1,5 @@
 // spec/core/services.md, "Story: Acquire a declared service"
+import { errorText } from "../utils/errors.vibe"
 import { isPassiveConnectorSource } from "../connectors.vibe"
 import { foreign, foreignSync, promised } from "../edge.vibe"
 import { logger } from "../logger.vibe"
@@ -9,7 +10,7 @@ import type { JsonValue } from "../types/primitives.vibe"
 import { ChannelType } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { ServiceType } from "../types/service.vibe"
-import { isObjectRecord } from "../utils/type-guards.vibe"
+import { isObjectRecord, asNonEmptyString, readFiniteNumber, readBoolean } from "../utils/type-guards.vibe"
 import type { AgentEventService } from "./agent-event.vibe"
 
 interface NotificationServiceLike {
@@ -48,26 +49,12 @@ function reportBridgeFailure(
     {
       src: "agent-event-bridge",
       scope,
-      err: error instanceof Error ? error.message : String(error),
+      err: errorText(error),
       ...context,
     },
     message,
   )
   runtime.reportError?.(`AgentEventBridge.${scope}`, error, context)
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined
-}
-
-function readBoolean(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined
-}
-
-function readNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
@@ -96,7 +83,7 @@ function reportBridgeError(
 
 function firstString(...values: unknown[]): string | undefined {
   for (const value of values) {
-    const string = readString(value)
+    const string = asNonEmptyString(value)
     if (string) return string
   }
   return undefined
@@ -187,11 +174,11 @@ function resolveMessageSource(payload: MessagePayload): string {
   const metadata = messageMetadata(payload)
   const base = readRecord(metadata.base)
   return (
-    readString(payload.source)
-      ?? readString(payload.message.content.source)
-      ?? readString(metadata.source)
-      ?? readString(base.source)
-      ?? readString(metadata.provider)
+    asNonEmptyString(payload.source)
+      ?? asNonEmptyString(payload.message.content.source)
+      ?? asNonEmptyString(metadata.source)
+      ?? asNonEmptyString(base.source)
+      ?? asNonEmptyString(metadata.provider)
       ?? "message"
   )
 }
@@ -205,13 +192,13 @@ function resolveMessageChannel(
   const session = isObjectRecord(metadata.session) ? metadata.session : {}
   const delivery = isObjectRecord(metadata.delivery) ? metadata.delivery : {}
   return (
-    readString(payload.message.content.channelType)
-      ?? readString(metadata.chatType)
-      ?? readString(metadata.channel)
-      ?? readString(session.channel)
-      ?? readString(origin.channel)
-      ?? readString(origin.provider)
-      ?? readString(delivery.channel)
+    asNonEmptyString(payload.message.content.channelType)
+      ?? asNonEmptyString(metadata.chatType)
+      ?? asNonEmptyString(metadata.channel)
+      ?? asNonEmptyString(session.channel)
+      ?? asNonEmptyString(origin.channel)
+      ?? asNonEmptyString(origin.provider)
+      ?? asNonEmptyString(delivery.channel)
       ?? source
   )
 }
@@ -220,9 +207,9 @@ function resolveMessageSessionKey(payload: MessagePayload): string | undefined {
   const metadata = messageMetadata(payload)
   const session = isObjectRecord(metadata.session) ? metadata.session : {}
   return (
-    readString(payload.message.sessionKey)
-      ?? readString(metadata.sessionKey)
-      ?? readString(session.sessionKey)
+    asNonEmptyString(payload.message.sessionKey)
+      ?? asNonEmptyString(metadata.sessionKey)
+      ?? asNonEmptyString(session.sessionKey)
   )
 }
 
@@ -230,10 +217,10 @@ function resolveMessageSenderName(payload: MessagePayload): string | undefined {
   const metadata = messageMetadata(payload)
   const sender = isObjectRecord(metadata.sender) ? metadata.sender : {}
   return (
-    readString(sender.name)
-      ?? readString(sender.username)
-      ?? readString(metadata.entityName)
-      ?? readString(metadata.entityUserName)
+    asNonEmptyString(sender.name)
+      ?? asNonEmptyString(sender.username)
+      ?? asNonEmptyString(metadata.entityName)
+      ?? asNonEmptyString(metadata.entityUserName)
   )
 }
 
@@ -303,11 +290,11 @@ function resolveMessageRunId(
   source: string,
 ): MessageRunId | null {
   const metadata = messageMetadata(payload)
-  const explicitRunId = readString(metadata.trajectoryId)
+  const explicitRunId = asNonEmptyString(metadata.trajectoryId)
   if (explicitRunId) {
     return { runId: explicitRunId, oneShot: false }
   }
-  const messageId = readString(payload.message.id)
+  const messageId = asNonEmptyString(payload.message.id)
   if (messageId && shouldNotifyForInboundMessage(payload, source)) {
     return { runId: messageId, oneShot: true }
   }
@@ -315,7 +302,7 @@ function resolveMessageRunId(
   if (currentRunId) {
     return { runId: currentRunId, oneShot: false }
   }
-  const fallbackId = messageId ?? readString(payload.message.roomId)
+  const fallbackId = messageId ?? asNonEmptyString(payload.message.roomId)
   return fallbackId ? { runId: fallbackId, oneShot: true } : null
 }
 
@@ -437,9 +424,9 @@ function normalizeRawConnectorMessage(
     twitchUser.username,
     root.from,
   )
-  const accountId = readString(root.accountId)
-  const deliveredAt = readNumber(message.timestamp)
-    ?? readNumber(root.createdAt)
+  const accountId = asNonEmptyString(root.accountId)
+  const deliveredAt = readFiniteNumber(message.timestamp)
+    ?? readFiniteNumber(root.createdAt)
     ?? (message.timestamp instanceof Date
       ? message.timestamp.getTime()
       : undefined)
@@ -607,7 +594,7 @@ export effect function bridgeMessageReceivedToStreams(payload: MessagePayload) {
   const channel = resolveMessageChannel(payload, source)
   const sessionKey = resolveMessageSessionKey(payload)
   const messageRunId = resolveMessageRunId(payload, source)
-  const content = readString(payload.message.content.text)
+  const content = asNonEmptyString(payload.message.content.text)
   const attachments = hasAttachments(payload)
 
   if (messageRunId) {

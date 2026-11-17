@@ -1,4 +1,5 @@
 // spec/core/pairing.md, "Each request lookup selects the exact oldest live row for the normalized code"; spec/core/pairing.md, "A retained grant is captured before deletion of that request's ID"; spec/core/pairingAdmission.md, "One read-check-write admission owns the captured row and exact payload"; spec/core/pairingReplies.md, "A live retained claim suppresses a reply and expired claims can rearm it"; spec/core/pairingGrants.md, "Both owner and grant-key indexes identify the same complete row"
+import { randomUuid } from "../utils/uuid.vibe"
 import { compareMemoryIds } from "../database.vibe"
 import { asLegacy, foreign, foreignSync, runDetached } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
@@ -23,13 +24,6 @@ import { Service, ServiceType } from "../types/service.vibe"
 import { stringToUuid } from "../utils/string-to-uuid.vibe"
 
 module node {
-  import { randomUUID } from "node:crypto"
-
-  /** @throws {never} */
-  export function newRequestId(): string {
-    return randomUUID()
-  }
-
   /** @throws {never} */
   export function secureRandomByte(): number | undefined {
     const cryptoObj = (globalThis as { crypto?: Crypto }).crypto
@@ -37,7 +31,7 @@ module node {
     return cryptoObj.getRandomValues(new Uint8Array(1))[0]
   }
 }
-import { newRequestId, secureRandomByte } from node
+import { secureRandomByte } from node
 
 const MAX_PAIRING_REPLY_CLAIMS = 4096
 
@@ -173,7 +167,7 @@ effect function upsertRequestSerial(runtime: IAgentRuntime, pairing: Pairing, pa
   }
   const code = try generateUniqueCode(pairing, existingRequests)
   const newRequest: PairingRequest = {
-    id: try asUUID(newRequestId()),
+    id: try asUUID(randomUuid()),
     channel,
     senderId,
     code,

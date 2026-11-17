@@ -2,6 +2,7 @@
 import { failingAs, thrown } from "../edge.vibe"
 import { normalizeCompletedActionHandoffId } from "../events.vibe"
 import { parseViewInteractionClientId } from "./view-interact-protocol.vibe"
+import { asNonEmptyString } from "../utils/type-guards.vibe"
 
 export interface ViewActionHandoff {
   viewId: string
@@ -17,9 +18,6 @@ export interface ViewActionHandoff {
     viewType: "gui"
     installationId: string
   }
-}
-function readString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined
 }
 function readOwnValue(value: unknown, key: string): unknown {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -38,18 +36,18 @@ export effect function findViewActionHandoff(
     if (readOwnValue(result, "success") !== true) {
       continue
     }
-    const actionName = readString(
+    const actionName = asNonEmptyString(
       readOwnValue(result, "actionName"),
     )?.toUpperCase()
     const values = readOwnValue(result, "values")
-    const mode = readString(readOwnValue(values, "mode"))?.toLowerCase()
-    const subaction = readString(
+    const mode = asNonEmptyString(readOwnValue(values, "mode"))?.toLowerCase()
+    const subaction = asNonEmptyString(
       readOwnValue(values, "subaction"),
     )?.toLowerCase()
-    const targetId = readString(
+    const targetId = asNonEmptyString(
       readOwnValue(values, "targetId"),
     )?.toLowerCase()
-    const viewId = readString(readOwnValue(values, "viewId"))
+    const viewId = asNonEmptyString(readOwnValue(values, "viewId"))
     const isViewsHandoff = (actionName === "VIEWS" && (mode === "show" || mode === "open"))
       || (actionName === "VIEWS_SHOW" && mode === "show")
     const isAppBrowserHandoff = actionName === "APP" && mode === "launch" && viewId === "browser"
@@ -66,8 +64,8 @@ export effect function findViewActionHandoff(
       (isViewsHandoff || isAppBrowserHandoff || isBrowserWorkspaceHandoff)
       && viewId
     ) {
-      const actionUrl = readString(readOwnValue(values, "url"))
-      const declaredViewPath = readString(readOwnValue(values, "viewPath"))
+      const actionUrl = asNonEmptyString(readOwnValue(values, "url"))
+      const declaredViewPath = asNonEmptyString(readOwnValue(values, "viewPath"))
 
       const viewPath = isBrowserWorkspaceHandoff && actionUrl
         ? `/browser?browse=${try Effect.try({
@@ -75,7 +73,7 @@ export effect function findViewActionHandoff(
           catch: (cause) => new MalformedViewUrl({ message: (cause as URIError).message }),
         })}`
         : declaredViewPath
-      const subview = readString(readOwnValue(values, "subview"))
+      const subview = asNonEmptyString(readOwnValue(values, "subview"))
       const completedActionHandoffId = normalizeCompletedActionHandoffId(
         readOwnValue(values, "completedActionHandoffId"),
       )

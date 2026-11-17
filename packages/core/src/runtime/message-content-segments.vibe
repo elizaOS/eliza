@@ -4,12 +4,13 @@ import {
   resolveArtifactDisclosure,
 } from "../access-control/artifact-disclosure.vibe"
 import { Foreign, runDetachedSync, thrown } from "../edge.vibe"
-import { ElizaError } from "../errors.vibe"
+import { ElizaError, elizaErrorOrForeign } from "../errors.vibe"
 import type { AccessContext } from "../types/access-context.vibe"
 import type { MessageContentSourceSelector } from "../types/database.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { Content, ContentValue, Media, UUID } from "../types/primitives.vibe"
 import { sha256Hex } from "./trajectory-provider-attribution.vibe"
+import { nonnegativeSafeInteger } from "../utils/type-guards.vibe"
 
 export const MESSAGE_CONTENT_SEGMENT_VERSION = 1 as const
 export const MESSAGE_CONTENT_SEGMENT_MAX_BYTES = 64 * 1024
@@ -283,7 +284,7 @@ export effect function buildMessageContentProjection(
     const attachments = content.attachments
     content.attachments = try Effect.try({
       try: () => attachments.map((attachment) => runDetachedSync(projectAttachment(attachment, message, segments))),
-      catch: (cause) => cause instanceof ElizaError ? cause : new Foreign({ cause }),
+      catch: elizaErrorOrForeign,
     })
   }
   return { content, segments }
@@ -433,12 +434,6 @@ export function collectMessageContentSegmentIds(
   )
 }
 
-function safeInteger(value: unknown): number | null {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : null
-}
-
 export effect function readMessageContentProjection(args: {
   descriptor: MessageContentSourceDescriptor
   segments: Memory[]
@@ -467,10 +462,10 @@ export effect function readMessageContentProjection(args: {
     })
   }
   const ordered = [...args.segments].sort((left, right) => {
-    const leftStart = safeInteger(
+    const leftStart = nonnegativeSafeInteger(
       (left.metadata as Record<string, unknown> | undefined)?.byteStart,
     )
-    const rightStart = safeInteger(
+    const rightStart = nonnegativeSafeInteger(
       (right.metadata as Record<string, unknown> | undefined)?.byteStart,
     )
     return (leftStart ?? -1) - (rightStart ?? -1)
@@ -482,9 +477,9 @@ export effect function readMessageContentProjection(args: {
   let combinedLength = 0
   for (const segment of ordered) {
     const metadata = (segment.metadata ?? {}) as Record<string, unknown>
-    const start = safeInteger(metadata.byteStart)
-    const end = safeInteger(metadata.byteEnd)
-    const ordinal = safeInteger(metadata.ordinal)
+    const start = nonnegativeSafeInteger(metadata.byteStart)
+    const end = nonnegativeSafeInteger(metadata.byteEnd)
+    const ordinal = nonnegativeSafeInteger(metadata.ordinal)
     const text = segment.content.text
     const encoded = typeof text === "string" ? bytes(text) : undefined
     if (

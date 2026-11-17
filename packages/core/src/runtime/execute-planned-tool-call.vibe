@@ -1,4 +1,6 @@
 // spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/execution.md, "Callbacks wait for a valid admitted result"
+import { errorText } from "../utils/errors.vibe"
+import { randomUuid } from "../utils/uuid.vibe"
 import {
   beginRequestOperationAttempt,
   type BoundRequestOperationAttempt,
@@ -10,7 +12,7 @@ import { copyBoundOperationDenial } from "./operation-restriction-projection.vib
 
 import { type ValidateToolArgsResult, validateToolArgs } from "../actions/validate-tool-args.vibe"
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager.vibe"
-import { failingAs, Foreign, foreign, foreignSync, promised, runDetached, thrown } from "../edge.vibe"
+import { failingAs, type Foreign, foreign, foreignSync, promised, runDetached, thrown, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { restorePseudonymsInValue } from "../security/pii-pseudonymizer.vibe"
 import { isSensitiveKeyName } from "../security/redact.vibe"
@@ -46,7 +48,7 @@ import type { ContentValue, UUID } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import type { State } from "../types/state.vibe"
 import { withActiveRoutingContexts } from "../utils/context-routing.vibe"
-import { isObjectRecord, isPlainObject } from "../utils/type-guards.vibe"
+import { isObjectRecord, isPlainObject, defineOwnValue } from "../utils/type-guards.vibe"
 import { resolveActionEventWorldId } from "./action-event-world.vibe"
 import { actionGateFailure, actionGateNeedsCallerRoles, resolveActionCallerRoles } from "./action-gate.vibe"
 import {
@@ -59,14 +61,6 @@ import { runWithActionRoutingContext } from "./action-routing-context.vibe"
 import { observeOwnerToolExecution } from "./owner-tool-execution-observer.vibe"
 import type { PlannerToolCall } from "./planner-types.vibe"
 import { buildTurnEntityAliases, type EntityAliasCapabilityMap, resolveEntityAliasRefs } from "./tool-arg-aliases.vibe"
-
-module node {
-  /** @throws {never} */
-  export function randomUuid(): string {
-    return crypto.randomUUID()
-  }
-}
-import { randomUuid } from node
 
 export interface ExecutePlannedToolCallContext {
   message: Memory
@@ -108,19 +102,6 @@ function redactDiagnosticString(
   } catch {
     return TOOL_DIAGNOSTIC_MASK
   }
-}
-
-function defineDiagnosticProperty(
-  record: Record<string, ContentValue>,
-  key: string,
-  value: ContentValue,
-): void {
-  Object.defineProperty(record, key, {
-    configurable: true,
-    enumerable: true,
-    value,
-    writable: true,
-  })
 }
 
 function projectActionResultDiagnosticValue(
@@ -241,7 +222,7 @@ function projectActionResultDiagnosticValue(
           budget,
         )
       }
-      defineDiagnosticProperty(record, key, projected)
+      defineOwnValue(record, key, projected)
     }
     return record
   } finally {
@@ -594,10 +575,6 @@ interface ActionRun {
   readonly startedDispatch: Fiber.Fiber<void, Foreign> | undefined
 }
 
-function thrownValue(failure: unknown): unknown {
-  return failure instanceof Foreign ? failure.cause : failure
-}
-
 function early(result: ActionResult, ownerCapture?: OwnerCapture): EarlyResult {
   return { kind: "early", result, ownerCapture }
 }
@@ -913,7 +890,7 @@ function reportEmitEventFailure(
       src: "execute-planned-tool-call",
       action: action.name,
       eventType,
-      err: err instanceof Error ? err.message : String(err),
+      err: errorText(err),
     },
     "emitEvent failed",
   )

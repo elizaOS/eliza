@@ -2,6 +2,7 @@
 import { normalizeCharacterLanguage } from "../character-language.vibe"
 import { failingAs, thrown } from "../edge.vibe"
 import { VALIDATION_KEYWORD_DOCS } from "./keywords.vibe"
+import { escapeRegExp } from "../utils/string-boundaries.vibe"
 
 type ValidationKeywordDoc = {
   base?: string
@@ -27,10 +28,6 @@ effect function lookupValidationKeywordDoc(key: string) {
     throw new UnknownValidationKeyword({ message: `Unknown validation keyword key: ${key}` })
   }
   return current
-}
-
-function escapePattern(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 export function normalizeKeywordMatchText(value: string): string {
@@ -70,7 +67,7 @@ function compileKeywordTerm(term: string): (normalizedText: string) => boolean {
   }
 
   if (usesAsciiWordBoundaries(normalizedTerm)) {
-    const pattern = new RegExp(`\\b${escapePattern(normalizedTerm)}\\b`, "i")
+    const pattern = new RegExp(`\\b${escapeRegExp(normalizedTerm)}\\b`, "i")
     return (normalizedText) => pattern.test(normalizedText)
   }
   return (normalizedText) => normalizedText.includes(normalizedTerm)

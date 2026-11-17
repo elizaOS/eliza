@@ -1,5 +1,5 @@
 // spec/core/embeddingService.md, "Initialization has one shared promise and a failed activation can retry"; spec/core/embeddingService.md, "Queue outcomes release exact pending keys and shutdown waits for activation"; spec/core/embeddingBatch.md, "A batch owns a finite supplied member set without a fixed size limit"
-import { asLegacy, Foreign, foreign, foreignSync, runDetached } from "../edge.vibe"
+import { asLegacy, Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
 import { shouldSkipResponseMemoryPersistence } from "../memory.vibe"
 import { isProcessingPolicyDenial } from "../security/processing-policy.vibe"
 import type { EmbeddingGenerationPayload, MessagePayload, ModelRegisteredEventPayload } from "../types/events.vibe"
@@ -12,6 +12,7 @@ import { type BatchItemOutcome, BatchQueue, disposeBatchQueue, startBatchQueue }
 import { rawEnv } from "../utils/environment.vibe"
 import { isExpectedLocalEmbeddingUnavailability } from "../utils/expected-local-embedding-unavailability.vibe"
 import { isModelFundingAuthorityError } from "../utils/model-errors.vibe"
+import { errorText, asError } from "../utils/errors.vibe"
 
 const SRC = "plugin:basic-capabilities:service:embedding"
 const EMBEDDING_DRAIN_TASK = "EMBEDDING_DRAIN"
@@ -42,11 +43,7 @@ interface Embedding {
 
 function thrownBy(failure: unknown): unknown {
   if (failure instanceof EmptyEmbedding) return new Error(failure.message)
-  return failure instanceof Foreign ? failure.cause : failure
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  return thrownValue(failure)
 }
 
 function embeddingState(runtime: () => IAgentRuntime): Embedding {
@@ -284,7 +281,7 @@ effect function generateEmbedding(embedding: Embedding, item: EmbeddingQueueItem
       runtime.reportError("EmbeddingService.generate", error, { memoryId: memory.id })
     }
     runtime.logger.error(
-      { src: SRC, agentId: runtime.agentId, memoryId: memory.id, error: messageOf(error) },
+      { src: SRC, agentId: runtime.agentId, memoryId: memory.id, error: errorText(error) },
       "Failed to generate embedding",
     )
     throw failure
@@ -374,7 +371,7 @@ effect function generateEmbeddingsBatch(embedding: Embedding, items: EmbeddingQu
     const persisted: BatchItemOutcome<EmbeddingQueueItem> = { item, success: true, retryCount: 0 }
     const outcome = Effect.as(persistEmbedding(embedding, item, vectors[i], duration), persisted) catch (failure) => {
       const thrown = thrownBy(failure)
-      const err = thrown instanceof Error ? thrown : new Error(String(thrown))
+      const err = asError(thrown)
       runtime.reportError("EmbeddingService.persistBatchItem", err, { memoryId: item.memory.id })
       runtime.logger.error(
         { src: SRC, agentId: runtime.agentId, memoryId: item.memory.id, error: err.message },
@@ -396,7 +393,7 @@ effect function stopEmbedding(embedding: Embedding) {
   if (initialization) {
     Deferred.await(initialization) catch (failure) => {
       runtime.logger.debug(
-        { src: SRC, agentId: runtime.agentId, error: messageOf(thrownBy(failure)) },
+        { src: SRC, agentId: runtime.agentId, error: errorText(thrownBy(failure)) },
         "Activation failed while stopping; nothing to dispose",
       )
     }

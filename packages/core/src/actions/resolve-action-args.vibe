@@ -8,6 +8,7 @@ import type { State } from "../types/state.vibe"
 import { runExtractorPipeline } from "./extractor-pipeline.vibe"
 import { parseJsonModelRecord } from "./json-model-output.vibe"
 import { recentConversationTextsFromState } from "./recent-context.vibe"
+import { isNonEmptyString, asTrimmedString } from "../utils/type-guards.vibe"
 
 export interface SubactionSpec<TParams = Record<string, unknown>> {
   description: string
@@ -59,14 +60,6 @@ interface ParsedExtraction<TSubaction extends string> {
   params: Record<string, unknown>
   missing: string[]
   confidence: number
-}
-
-function asTrimmedString(value: unknown): string {
-  return typeof value === "string" ? value.trim() : ""
-}
-
-function nonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0
 }
 
 function valueIsPresent(value: unknown, allowEmptyArray = false): boolean {
@@ -258,7 +251,7 @@ function parseExtractionEnvelope<TSubaction extends string>(
     : {}
 
   const missingRaw = Array.isArray(parsed.missing) ? parsed.missing : []
-  const missing = missingRaw.filter(nonEmptyString).map((s) => s.trim())
+  const missing = missingRaw.filter(isNonEmptyString).map((s) => s.trim())
 
   const confidenceRaw = parsed.confidence
   let confidence = 0

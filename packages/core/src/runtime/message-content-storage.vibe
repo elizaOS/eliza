@@ -1,5 +1,5 @@
 // spec/core/ingressSnapshots.md, "Binding requires matching message agent room and entity identity"; spec/core/ingressSnapshots.md, "Reuse requires exact redacted content and every projected stored segment"
-import { foreign, Foreign, promised, thrown } from "../edge.vibe"
+import { foreign, type Foreign, promised, thrown, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { Content, UUID } from "../types/primitives.vibe"
@@ -21,6 +21,7 @@ module node {
   }
 }
 import { deepEqual } from node
+export { deepEqual }
 
 const ingressPersistenceSnapshots = new WeakMap<Memory, Memory>()
 
@@ -199,7 +200,7 @@ export effect function persistIncomingMessageMemory(
   const [existing] = try foreign(() => runtime.getMemoriesByIds([id], "messages"))
   if (existing) return try assertExisting(existing)
   return persistMessageMemory(runtime, memory) catch effect (error) => {
-    const failure = error instanceof Foreign ? error.cause : error
+    const failure = thrownValue(error)
     if (
       !(failure instanceof ElizaError)
       || failure.code !== "MESSAGE_CONTENT_PUBLICATION_CONFLICT"

@@ -1,6 +1,7 @@
 // spec/core/models.md, "Admission checks the complete request without changing its source bytes"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "Cancellation follows turn identity and blocks fallback"; spec/core/registries.md, "Model registration preserves every handler and its provider identity"; spec/core/modelDiagnostics.md, "Promise identity governs membership independently of the final outcome"; spec/core/runtimeExtensions.md, "Each registry preserves its own normalization and replacement policy"
+import { errorText } from "../utils/errors.vibe"
 import { Machine, machine } from "../../gen/core__runtimeExtensions.effect.vibe"
-import { asLegacy, Foreign, foreign, foreignSync, runDetached } from "../edge.vibe"
+import { asLegacy, Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
 import { copyEmbeddingVectorSpace } from "../embedding-vector-space.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
@@ -203,10 +204,6 @@ export interface FailedModelTrajectory {
 }
 
 export error NoModelHandler { message: string }
-
-function thrownValue(failure: unknown): unknown {
-  return failure instanceof Foreign ? failure.cause : failure
-}
 
 function abortCheck(signal: AbortSignal | undefined) {
   return foreignSync(() => signal?.throwIfAborted())
@@ -552,7 +549,7 @@ export function logModelProviderFailover(core: DispatchCore, args: {
       failedProvider: args.failedModel.provider,
       nextModel: args.nextModel.modelKey,
       nextProvider: args.nextModel.provider,
-      error: args.error instanceof Error ? args.error.message : String(args.error),
+      error: errorText(args.error),
     },
     "Model provider failed; trying next registered provider",
   )
@@ -885,7 +882,7 @@ effect function writeModelCallLog(core: DispatchCore, modelKey: string, pending:
         src: "agent",
         agentId: core.runtime.agentId,
         model: modelKey,
-        error: failure.cause instanceof Error ? failure.cause.message : String(failure.cause),
+        error: errorText(failure.cause),
       },
       "Model call log write failed",
     )

@@ -1,23 +1,17 @@
 // spec/core/confidentialInference.md, "Story: Use only an approved route with durable dispatch evidence"; spec/core/confidentialInference.md, "An attempt captures approved route and handler identity"; spec/core/confidentialInference.md, "A transport callback can authorize its attempt only once"; spec/core/confidentialInference.md, "A response escapes only after its outcome audit and redirects fail closed"; spec/core/asyncContext.md, "Story: Keep concurrent turn context isolated"
-import { failingAs, Foreign, foreign, foreignSync, promised, runDetached } from "../edge.vibe"
+import { randomUuid } from "../utils/uuid.vibe"
+import { failingAs, Foreign, foreign, foreignSync, promised, runDetached, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { logger } from "../logger.vibe"
 import { AsyncContextManager } from "../utils/async-context-manager.vibe"
 
 module node {
-  import { randomUUID } from "node:crypto"
-
-  /** @throws {never} */
-  export function randomAttemptId(): string {
-    return randomUUID()
-  }
-
   /** @throws {TypeError} */
   export function copyHeaders(init: HeadersInit | undefined): Headers {
     return new Headers(init)
   }
 }
-import { copyHeaders, randomAttemptId } from node
+import { copyHeaders } from node
 
 export type ConfidentialInferenceHandler = (...args: never[]) => unknown
 
@@ -162,7 +156,7 @@ effect function deny(
   scope: AttemptScope,
   code: string,
   profile: ConfidentialInferenceProfile | null = null,
-  attemptId: string = randomAttemptId(),
+  attemptId: string = randomUuid(),
   routeId: string | null = null,
 ) {
   try recordAudit(
@@ -395,7 +389,7 @@ export effect function fetchWithConfidentialInference(
     profile,
     route,
     record: {
-      attemptId: randomAttemptId(),
+      attemptId: randomUuid(),
       agentId: scope.agentId,
       modelType: scope.modelType,
       policyRevision: profile.revision,
@@ -408,7 +402,7 @@ export effect function fetchWithConfidentialInference(
   }
   const response = transmit(attempt, endpoint, request, transport) catch effect (failure) => {
     if (!attempt.authorized) {
-      const thrown = failure instanceof Foreign ? failure.cause : failure
+      const thrown = thrownValue(failure)
       if (
         thrown instanceof ElizaError
         && thrown.code.startsWith("CONFIDENTIAL_INFERENCE_")

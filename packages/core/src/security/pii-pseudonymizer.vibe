@@ -1,8 +1,9 @@
 // spec/core/pseudonymSession.md, "Story: Keep substitutions reversible across repeated model calls"; spec/core/pseudonymSession.md, "Learning real values precedes publishing collision-free mappings"; spec/core/pseudonymSession.md, "Replacement and restoration share the exact current mapping"
-import { foreign, Foreign, thrown } from "../edge.vibe"
-import { ElizaError } from "../errors.vibe"
+import { foreign, thrown } from "../edge.vibe"
+import { ElizaError, elizaErrorOrForeign } from "../errors.vibe"
 import { hashStringToUint32 } from "../utils/deterministic.vibe"
 import type { PiiEntityRecognizer } from "./entity-recognizer.vibe"
+import { escapeRegExp } from "../utils/string-boundaries.vibe"
 
 export const MAX_PII_PSEUDONYM_WALK_DEPTH = 64
 export const MAX_PII_PSEUDONYM_WALK_NODES = 100_000
@@ -470,25 +471,21 @@ module walk {
 }
 import { collectPiiStrings, mapPiiStrings } from walk
 
-function walkFailure(cause: unknown): ElizaError | Foreign {
-  return cause instanceof ElizaError ? cause : new Foreign({ cause })
-}
-
 export effect function collectPiiPromptText(
   params: unknown,
   systemPrompt?: string,
 ) {
-  return try Effect.try({ try: () => collectPiiStrings(params, systemPrompt), catch: walkFailure })
+  return try Effect.try({ try: () => collectPiiStrings(params, systemPrompt), catch: elizaErrorOrForeign })
 }
 
 export const collectPiiPromptTextOrThrow = thrown(collectPiiPromptText)
 
 export effect function substitutePseudonymsInValue<T>(session: PseudonymSession, value: T) {
-  return try Effect.try({ try: () => mapPiiStrings(value, (text) => session.substituteText(text)) as T, catch: walkFailure })
+  return try Effect.try({ try: () => mapPiiStrings(value, (text) => session.substituteText(text)) as T, catch: elizaErrorOrForeign })
 }
 
 export effect function restorePseudonymsInValue<T>(session: PseudonymSession, value: T) {
-  return try Effect.try({ try: () => mapPiiStrings(value, (text) => session.restoreText(text)) as T, catch: walkFailure })
+  return try Effect.try({ try: () => mapPiiStrings(value, (text) => session.restoreText(text)) as T, catch: elizaErrorOrForeign })
 }
 
 export effect function learnPseudonyms(session: PseudonymSession, text: string) {
@@ -496,10 +493,6 @@ export effect function learnPseudonyms(session: PseudonymSession, text: string) 
   if (!recognizer || !text) return
   const spans = try foreign(() => recognizer.recognize(text))
   session.learnSpans(text, spans)
-}
-
-function escapeRegExp(input: string): string {
-  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 export function compileReplacer(

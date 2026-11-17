@@ -1,5 +1,6 @@
 // spec/core/embeddingSpace.md, "Story: Keep stored vectors in their verified representation"; spec/core/embeddingSpace.md, "A probe prepares dimensions and representation before pinning"; spec/core/embeddingSpace.md, "The vector write rechecks captured representation after every await"; spec/core/embeddingSpace.md, "Failed initialization fences generation until a confirmed recovery"
-import { asLegacy, foreign, foreignSync, Foreign, runDetached } from "../edge.vibe"
+import { errorText } from "../utils/errors.vibe"
+import { asLegacy, foreign, foreignSync, Foreign, runDetached, thrownValue } from "../edge.vibe"
 import {
   copyEmbeddingVectorSpace,
   getEmbeddingVectorSpace,
@@ -508,7 +509,7 @@ effect function initializeEmbeddingDimension(state: EmbeddingState): void!Initia
       if (!(error instanceof NoModelProviderConfiguredError)) {
         allFailuresBenign = false
       }
-      const message = error instanceof Error ? error.message : String(error)
+      const message = errorText(error)
       attempts.push({
         provider: registration.provider,
         modelKey: registration.modelKey,
@@ -622,7 +623,7 @@ effect function reembedMemoriesByIds(state: EmbeddingState, memoryIds: UUID[]): 
   for (let i = 0; i < memoryIds.length; i += REEMBED_CHUNK) {
     try Effect.catchCause(reembedChunk(state, memoryIds.slice(i, i + REEMBED_CHUNK)), (cause) => sync(() => {
       const error = Cause.squash(cause)
-      runtime.reportError("AgentRuntime.reembedMemoriesByIds", error instanceof Foreign ? error.cause : error, {
+      runtime.reportError("AgentRuntime.reembedMemoriesByIds", thrownValue(error), {
         agentId: runtime.agentId,
       })
     }))
@@ -641,7 +642,7 @@ effect function reportGenerationRequestFailure(
     runtime.logger.warn(
       {
         src: "runtime",
-        error: error instanceof Error ? error.message : String(error),
+        error: errorText(error),
         memoryId: memory.id,
         priority,
       },

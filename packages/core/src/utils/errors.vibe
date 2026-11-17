@@ -47,6 +47,14 @@ export function formatDiagnosticError(value: unknown): string {
   )
 }
 
+export function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+export function asError(cause: unknown): Error {
+  return cause instanceof Error ? cause : new Error(String(cause))
+}
+
 export function formatError(error: unknown): string {
   return safeString(error, () => error instanceof Error ? error.message : error)
 }

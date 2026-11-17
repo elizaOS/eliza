@@ -4,6 +4,7 @@ import { logger } from "../logger.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { type BackoffPolicy, computeBackoff, type RetryConfig, resolveRetryConfig, sleepWithAbort } from "./retry.vibe"
 import { acquirePermit, disposeTaskDrain, Semaphore, startTaskDrain, TaskDrain, updateTaskDrainInterval } from "./task-scheduling.vibe"
+import { asError } from "./errors.vibe"
 
 export interface DrainStats {
   batchSize: number
@@ -66,10 +67,6 @@ interface BatchSplit<T> {
 }
 
 export error BatchQueueDisposed { message: string }
-
-function asError(cause: unknown): Error {
-  return cause instanceof Error ? cause : new Error(String(cause))
-}
 
 function splitBatchOutcomes<T>(name: string, batchOutcomes: BatchItemOutcome<T>[]): BatchSplit<T> {
   const failures: BatchFailure<T>[] = []

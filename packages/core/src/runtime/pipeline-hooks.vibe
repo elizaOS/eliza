@@ -20,6 +20,7 @@ import type {
 import type { UUID } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { isUnavailableLocalModel, TEXT_GENERATION_MODEL_KEYS } from "./model-policy.vibe"
+import { errorText } from "../utils/errors.vibe"
 
 const PIPELINE_HOOK_LOG_LABELS: Readonly<Record<PipelineHookPhase, string>> = {
   incoming_before_compose: "Incoming pipeline hook",
@@ -51,10 +52,6 @@ function skipFlagMetadata(ctx: PipelineHookContext): unknown {
 
 export error PipelinePhaseMismatch { message: string }
 export error UnknownPipelinePhase { message: string }
-
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 function elapsedMs(startedAt: bigint, endedAt: bigint): number {
   return Math.round(Number(endedAt - startedAt) / 1_000_000)

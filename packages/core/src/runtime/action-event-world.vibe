@@ -1,4 +1,5 @@
 // spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { asError } from "../utils/errors.vibe"
 import { foreign, foreignSync, promised, type Foreign } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { Memory } from "../types/memory.vibe"
@@ -48,7 +49,7 @@ export effect function resolveActionEventWorldId(
       message,
       "Action event world lookup failed",
       "ACTION_EVENT_WORLD_LOOKUP_FAILED",
-      cause instanceof Error ? cause : new Error(String(cause)),
+      asError(cause),
     )
   }
   const room = lookup.success

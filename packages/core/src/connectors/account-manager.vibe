@@ -1,7 +1,9 @@
 // spec/core/connectorStorage.md, "Story: Retain full account and flow values under exact identities"; spec/core/accountValues.md, "Story: Patch account policy without changing its durable identity"; spec/core/connectorBackends.md, "Story: Keep a stable facade while durable storage becomes available"; spec/core/connectorHandoff.md, "Story: Transfer complete fallback state before invoking the next backend"; spec/core/connectorMigration.md, "Story: Inspect a complete handoff before the selected operation runs"; spec/core/connectorQueues.md, "Story: Preserve callback and migration order after rejection"; spec/core/oauthBridge.md, "Story: Preserve one-time flow ownership across durable and process state"; spec/core/oauthSecrets.md, "Story: Use a one-time verifier only with its originating flow"; spec/core/oauthStart.md, "Story: Start authorization only after preserving its original state"; spec/core/oauthLifecycle.md, "Story: Complete one authorization without reusing a consumed state"; spec/core/connectorManagers.md, "Story: Resolve account providers through the correct manager"
+import { errorText } from "../utils/errors.vibe"
+import { randomUuid } from "../utils/uuid.vibe"
 import { absentText, normalizedRole } from "../../gen/core__accountValues.effect.vibe"
 import { compareMemoryIds } from "../database.vibe"
-import { asLegacy, Foreign, foreign, foreignSync, promised, runDetached, runDetachedSync } from "../edge.vibe"
+import { asLegacy, Foreign, foreign, foreignSync, promised, runDetached, runDetachedSync, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { logger } from "../logger.vibe"
 import type { Action, ActionParameters } from "../types/components.vibe"
@@ -15,14 +17,6 @@ import type {
 import type { Memory } from "../types/memory.vibe"
 import type { Metadata } from "../types/primitives.vibe"
 import type { IAgentRuntime, MessageConnectorRegistration, PostConnectorRegistration } from "../types/runtime.vibe"
-
-module node {
-  /** @throws {never} */
-  export function randomUuid(): string {
-    return globalThis.crypto.randomUUID()
-  }
-}
-import { randomUuid } from node
 
 export const CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE = "connector_account_storage"
 
@@ -394,10 +388,6 @@ const oauthCompletionQueues = new Map<string, { readonly lock: Semaphore.Semapho
 
 function randomId(prefix: string): string {
   return `${prefix}_${randomUuid()}`
-}
-
-function thrownValue(failure: unknown): unknown {
-  return failure instanceof Foreign ? failure.cause : failure
 }
 
 function looksLikeUuid(value: string): boolean {
@@ -1622,7 +1612,7 @@ export effect function startManagedOAuth(
   }
   const result = foreign(() => start.call(registered, request, state.manager)) catch effect (failure) => {
     const cause = thrownValue(failure)
-    markFlowFailed(state, providerId, flow.id, cause instanceof Error ? cause.message : String(cause)) catch effect (persistenceError) => {
+    markFlowFailed(state, providerId, flow.id, errorText(cause)) catch effect (persistenceError) => {
       throw new Foreign({
         cause: new AggregateError(
           [cause, thrownValue(persistenceError)],

@@ -6,6 +6,10 @@ export effect function foreign<A>(call: (signal: AbortSignal) => A | PromiseLike
   return try tryPromise({ try: async (signal) => await call(signal), catch: (cause) => new Foreign({ cause }) })
 }
 
+export function thrownValue(failure: unknown): unknown {
+  return failure instanceof Foreign ? failure.cause : failure
+}
+
 export effect function foreignSync<A>(call: () => A): A!Foreign {
   return try Effect.try({ try: () => call(), catch: (cause) => new Foreign({ cause }) })
 }
@@ -14,23 +18,18 @@ module edge {
   import { Cause, Effect, Exit, ManagedRuntime, type Layer } from "effect"
   import { publicOutcome, type Outcome } from "../gen/core.ts"
   import { TurnAbortedError } from "./runtime/turn-aborted-error.vibe"
-  import { Foreign } from "./edge.vibe"
+  import { Foreign, thrownValue } from "./edge.vibe"
 
   function outcomeOf<A, E>(exit: Exit.Exit<A, E>): Outcome {
     if (Exit.isSuccess(exit)) return "Succeeded"
     return Cause.hasInterruptsOnly(exit.cause) ? "Interrupted" : "Failed"
   }
 
-  function rejectionOf(cause: Cause.Cause<unknown>): unknown {
-    const error = Cause.squash(cause)
-    return error instanceof Foreign ? error.cause : error
-  }
-
   /** @throws {unknown} */
   export function settle<A, E>(exit: Exit.Exit<A, E>, signal?: AbortSignal): A {
     if (Exit.isSuccess(exit)) return exit.value
     if (publicOutcome(outcomeOf(exit)) === "Aborted") throw signal?.aborted ? signal.reason : new TurnAbortedError("interrupted")
-    throw rejectionOf(exit.cause)
+    throw thrownValue(Cause.squash(exit.cause))
   }
 
   export class Kernel<R> {

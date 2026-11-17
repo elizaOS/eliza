@@ -1,12 +1,5 @@
 // spec/core/traces.md, "Story: Retain enrich and retire active trace records"; spec/core/protocols.md, "A public value retains identity and explicitly declared version"
-
-module node {
-  /** @throws {never} */
-  export function randomUuid(): string {
-    return crypto.randomUUID()
-  }
-}
-import { randomUuid } from node
+import { randomUuid } from "./utils/uuid.vibe"
 
 export const INFERENCE_TRACE_ID_PATTERN = /^[0-9a-f]{32}$/
 

@@ -16,11 +16,13 @@ import type {
 } from "./types/plugin.vibe"
 import type { IAgentRuntime, MessageConnectorRegistration, PostConnectorRegistration } from "./types/runtime.vibe"
 import type { Service, ServiceTypeName } from "./types/service.vibe"
+import { AsyncContextManager } from "./utils/async-context-manager.vibe"
 import {
   lookupProviderCatalogContexts,
   resolveActionContexts,
   resolveProviderContexts,
 } from "./utils/context-catalog.vibe"
+import { asError } from "./utils/errors.vibe"
 
 type RuntimeAction = NonNullable<Plugin["actions"]>[number]
 type RuntimeProvider = NonNullable<Plugin["providers"]>[number]
@@ -127,27 +129,8 @@ type RuntimePrivateState = {
   registerSendHandler?: (source: string, handler: RuntimeSendHandler) => void
 }
 
-module node {
-  import { AsyncLocalStorage } from "node:async_hooks"
-
-  export class AsyncSlot<T> {
-    readonly #storage = new AsyncLocalStorage<T>()
-
-    /** @throws {never} */
-    get(): T | undefined {
-      return this.#storage.getStore()
-    }
-
-    /** @rethrows call */
-    run<A>(value: T, call: () => A): A {
-      return this.#storage.run(value, call)
-    }
-  }
-}
-import { AsyncSlot } from node
-
-const pluginRegistrationContext = new AsyncSlot<RuntimePluginRegistrationCapture>()
-const connectorOwnershipContext = new AsyncSlot<RuntimeConnectorOwnershipCapture>()
+const pluginRegistrationContext = new AsyncContextManager<RuntimePluginRegistrationCapture>()
+const connectorOwnershipContext = new AsyncContextManager<RuntimeConnectorOwnershipCapture>()
 const serviceClassOwners = new WeakMap<
   RuntimeWithPluginLifecycle,
   WeakMap<RuntimeServiceClass, PluginOwnership>
@@ -164,7 +147,7 @@ function getServiceClassOwners(runtime: RuntimeWithPluginLifecycle) {
 }
 
 function getRegistrationCapture(runtime: RuntimeWithPluginLifecycle) {
-  const capture = pluginRegistrationContext.get()
+  const capture = pluginRegistrationContext.active()
   return capture?.runtime === runtime ? capture : undefined
 }
 
@@ -224,7 +207,7 @@ function getPendingPluginOwnership(
 function getCapturingOwnership(
   runtime: RuntimeWithPluginLifecycle,
 ): PluginOwnership | null {
-  const capture = connectorOwnershipContext.get()
+  const capture = connectorOwnershipContext.active()
   return capture?.runtime === runtime ? capture.ownership : null
 }
 
@@ -778,10 +761,6 @@ effect function restoreAdapterIfNeeded(
   runtime.adapter = (adapterBefore ?? null) as IAgentRuntime["adapter"]
 }
 
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error))
-}
-
 effect function teardownPluginOwnership(
   runtime: RuntimeWithPluginLifecycle,
   ownership: PluginOwnership,
@@ -789,7 +768,7 @@ effect function teardownPluginOwnership(
 ): void!Foreign {
   const errors: Error[] = []
   const collect = (error: { readonly cause: unknown }) => {
-    errors.push(toError(error.cause))
+    errors.push(asError(error.cause))
   }
   const lifecyclePlugin = ownership.registeredPlugin ?? ownership.plugin
   const disposeHook = (lifecyclePlugin as RuntimePluginWithLifecycleHooks).dispose

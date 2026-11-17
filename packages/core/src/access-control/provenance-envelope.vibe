@@ -1,7 +1,7 @@
 // spec/core/authorization.md, "Story: Read only the authorized records"; spec/core/authorization.md, "Verified cross-world membership is intersected with the agent membership"
 import { buildAccessContext, buildCrossWorldConversationAccessContext } from "../access-context.vibe"
 import { normalizeConnectorSource } from "../connectors.vibe"
-import { asLegacy, failingAs, Foreign, foreign, promised } from "../edge.vibe"
+import { asLegacy, failingAs, foreign, promised, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
   evaluateOwnerExclusiveDisclosure,
@@ -491,7 +491,7 @@ effect function resolveRequesterAccessContext(
   return Effect.catchDefect(
     Effect.map(asLegacy(TypeError, built, ElizaError), (context) => ({ ok: true as const, context })),
     (defect) => Effect.succeed({ ok: false as const, cause: defect }),
-  ) catch (failure) => ({ ok: false as const, cause: failure instanceof Foreign ? failure.cause : failure })
+  ) catch (failure) => ({ ok: false as const, cause: thrownValue(failure) })
 }
 
 export effect function searchCanonicalConversationMemories(

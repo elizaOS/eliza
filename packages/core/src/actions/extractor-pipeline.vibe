@@ -1,5 +1,6 @@
 // spec/core/execution.md, "Story: Settle an action before publishing its callback"
-import { Foreign, foreign, foreignSync } from "../edge.vibe"
+import { errorText } from "../utils/errors.vibe"
+import { type Foreign, foreign, foreignSync, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { runWithTrajectoryPurpose } from "../trajectory-context.vibe"
 import { type GenerateTextParams, ModelType } from "../types/model.vibe"
@@ -79,13 +80,13 @@ export effect function runExtractorPipeline<TParsed>(
 ): ExtractorPipelineResult<TParsed>!(ElizaError | Foreign) {
   const modelType = args.modelType ?? ModelType.TEXT_LARGE
   return extract(args, modelType) catch effect (error) => {
-    const thrown = error instanceof Foreign ? error.cause : error
+    const thrown = thrownValue(error)
     try foreignSync(() => args.runtime.reportError("ExtractorPipeline.model", thrown, { modelType }))
     try foreignSync(() =>
       args.runtime.logger.warn(
         {
           src: "lifeops:extractor-pipeline",
-          error: thrown instanceof Error ? thrown.message : String(thrown),
+          error: errorText(thrown),
         },
         "Extractor pipeline model call failed",
       )

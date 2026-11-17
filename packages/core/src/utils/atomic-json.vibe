@@ -1,4 +1,5 @@
 // spec/core/atomicWriters.md, "The latest successful rename owns the whole final snapshot"; spec/core/temporaryNames.md, "Every allocated name carries a never-repeated process ordinal"; spec/core/serialisation.md, "Only the head callback executes and every settlement releases its successor"
+import { errorText } from "./errors.vibe"
 import * as EffectSemaphore from "effect/Semaphore"
 import { failingAs, foreign, Foreign, promised, thrown } from "../edge.vibe"
 import { logger } from "../logger.vibe"
@@ -124,7 +125,7 @@ effect function assertFilePath(filePath: string) {
 }
 
 function warnTemporaryLeft(file: string, error: unknown): void {
-  logger.warn({ file, error: error instanceof Error ? error.message : String(error) }, "[AtomicJson] Failed to remove temporary file")
+  logger.warn({ file, error: errorText(error) }, "[AtomicJson] Failed to remove temporary file")
 }
 
 effect function serializeAsyncWrite<A, E, R>(filePath: string, write: A!E!R): A!E!R {

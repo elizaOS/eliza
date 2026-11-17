@@ -6,7 +6,7 @@ import type {
   TrajectoryStepRecord,
   TrajectorySummaryRecord,
 } from "./services/trajectory-types.vibe"
-import { isObjectRecord as isRecord } from "./utils/type-guards.vibe"
+import { isObjectRecord as isRecord, readFiniteNumber, readBoolean } from "./utils/type-guards.vibe"
 import { toWellFormedUnicode, truncateWellFormed } from "./utils/unicode.vibe"
 
 export interface ActivityPlaintextSummary {
@@ -67,19 +67,9 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" ? value.trim() : undefined
 }
 
-function readFiniteNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined
-}
-
 function formatFiniteCount(value: unknown): string {
   const count = readFiniteNumber(value)
   return count === undefined ? "0" : String(count)
-}
-
-function readBoolean(value: unknown): boolean | undefined {
-  return typeof value === "boolean" ? value : undefined
 }
 
 function normalizePlaintext(value: string, maxLength: number): string {

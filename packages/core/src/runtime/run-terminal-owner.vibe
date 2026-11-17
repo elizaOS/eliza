@@ -1,5 +1,5 @@
 // spec/core/terminal.md, "Story: Finalize one run after all admitted child work"; spec/core/terminal.md, "Every child and effect retains identity until the terminal snapshot is captured"; spec/core/terminal.md, "The first request freezes complete outcome evidence and owns one scheduled task"
-import { Foreign, foreignSync, foreign, runDetached } from "../edge.vibe"
+import { type Foreign, foreignSync, foreign, runDetached, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { roomDeliverySettlement, trackPostDeliveryTask } from "../services/post-delivery-task-tracker.vibe"
 import type { ActionResult } from "../types/components.vibe"
@@ -49,7 +49,7 @@ export effect function runOwnedWork(state: RunTerminalState, label: string, work
     try ensuring(
       effect {
         work catch effect (failure) => {
-          const cause = failure instanceof Foreign ? failure.cause : failure
+          const cause = thrownValue(failure)
           try foreignSync(() => runtime.reportError("PostDeliveryTask", cause, { agentId: runtime.agentId, label, runId }))
         }
       },

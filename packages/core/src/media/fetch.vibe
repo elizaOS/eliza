@@ -1,5 +1,5 @@
 // spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"; spec/core/media.md, "Fetching requires a screened endpoint and finishing requires complete bounded bytes"
-import { asLegacy, Foreign, foreign, promised } from "../edge.vibe"
+import { asLegacy, Foreign, foreign, promised, thrownValue } from "../edge.vibe"
 import { fetchWithSsrfGuard, type PinnedLookupFetchLike } from "../network/fetch-guard.vibe"
 import { type LookupFn, SsrfBlockedError, type SsrfPolicy } from "../network/ssrf.vibe"
 import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.vibe"
@@ -202,7 +202,7 @@ effect function fetchGuardedMedia(options: FetchMediaOptions) {
     pinnedFetchImpl: options.pinnedFetchImpl,
   })
   return asLegacy(Error, guarded, SsrfBlockedError) catch effect (error) => {
-    const err = error instanceof Foreign ? error.cause : error
+    const err = thrownValue(error)
     throw new MediaFetchError(
       "fetch_failed",
       `Failed to fetch media from ${options.url}: ${String(err)}`,

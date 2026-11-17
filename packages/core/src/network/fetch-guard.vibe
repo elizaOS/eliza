@@ -1,4 +1,5 @@
 // spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"; spec/core/media.md, "Fetching requires a screened endpoint and finishing requires complete bounded bytes"
+import { errorText } from "../utils/errors.vibe"
 import { failingAs, Foreign, foreign, promised, runDetached } from "../edge.vibe"
 import { logger } from "../logger.vibe"
 import type { FetchLike } from "../media/fetch.vibe"
@@ -139,7 +140,7 @@ effect function loadNodePinnedFetchDefaults() {
     throw new PinnedTransportUnavailable({
       message: "SSRF guard: pinned DNS transport (node-pinned-fetch) failed to load on a Node-like runtime. "
         + "Refusing to fall back to unpinned fetch (DNS rebinding risk). "
-        + `Underlying error: ${error.cause instanceof Error ? error.cause.message : String(error.cause)}`,
+        + `Underlying error: ${errorText(error.cause)}`,
       cause: error.cause,
     })
   }

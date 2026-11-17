@@ -2,7 +2,7 @@
 import { failingAs, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { textFromChatMessageContent } from "../runtime/system-prompt.vibe"
-import { asObjectRecord } from "../utils/type-guards.vibe"
+import { asNonEmptyString, asObjectRecord, readNonEmptyString } from "../utils/type-guards.vibe"
 import { mapPresent, parseTrajectorySemanticStages } from "./trajectory-semantic-stage.vibe"
 import type {
   ElizaNativeModelBoundary,
@@ -64,16 +64,6 @@ function toOptionalFiniteNumber(value: unknown): number | undefined {
   }
   const parsed = toFiniteNumber(value, Number.NaN)
   return Number.isFinite(parsed) ? parsed : undefined
-}
-
-function toOptionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : undefined
-}
-
-function toExactOptionalString(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined
 }
 
 function primitiveTrajectoryMetadata(
@@ -285,7 +275,7 @@ function resolveTrajectorySource(
   if (trajectory.source) {
     return trajectory.source
   }
-  return toOptionalString(asObjectRecord(trajectory.metadata)?.source)
+  return asNonEmptyString(asObjectRecord(trajectory.metadata)?.source)
 }
 
 export effect function iterateTrajectoryLlmCalls(
@@ -303,10 +293,10 @@ function flattenLlmCalls(
   const trajectoryStatus = resolveTrajectoryStatus(trajectory)
   const trajectorySource = resolveTrajectorySource(trajectory)
   for (const [stepIndex, step] of steps.entries()) {
-    const stepId = toOptionalString(step.stepId)
+    const stepId = asNonEmptyString(step.stepId)
       ?? `${trajectory.trajectoryId}:step:${stepIndex + 1}`
     for (const [callIndex, call] of listStepLlmCalls(step).entries()) {
-      const callId = toOptionalString(call.callId)
+      const callId = asNonEmptyString(call.callId)
         ?? `${trajectory.trajectoryId}:${stepId}:call:${callIndex + 1}`
       out.push({
         ...call,
@@ -431,8 +421,8 @@ function buildNativeRequest(
   const messages = buildNativeMessages(call)
   const prompt = messages
     ? undefined
-    : toExactOptionalString(call.prompt ?? call.userPrompt)
-  const system = toExactOptionalString(call.systemPrompt)
+    : readNonEmptyString(call.prompt ?? call.userPrompt)
+  const system = readNonEmptyString(call.systemPrompt)
   if (system && !hasLeadingSystemMessage(messages)) request.system = system
   if (prompt) request.prompt = prompt
   if (messages) request.messages = messages
@@ -644,7 +634,7 @@ effect function buildTrajectoryArtRows(
           messages.push(message)
         }
         const response = includePrompts
-          ? toOptionalString(call.response)
+          ? asNonEmptyString(call.response)
           : undefined
         if (response) {
           messages.push({ role: "assistant", content: response })
@@ -652,20 +642,20 @@ effect function buildTrajectoryArtRows(
         continue
       }
       const systemPrompt = includePrompts
-        ? toOptionalString(call.systemPrompt)
+        ? asNonEmptyString(call.systemPrompt)
         : undefined
       if (systemPrompt && systemPrompt !== previousSystemPrompt) {
         messages.push({ role: "system", content: systemPrompt })
         previousSystemPrompt = systemPrompt
       }
       const userPrompt = includePrompts
-        ? toOptionalString(call.userPrompt)
+        ? asNonEmptyString(call.userPrompt)
         : undefined
       if (userPrompt) {
         messages.push({ role: "user", content: userPrompt })
       }
       const response = includePrompts
-        ? toOptionalString(call.response)
+        ? asNonEmptyString(call.response)
         : undefined
       if (response) {
         messages.push({ role: "assistant", content: response })

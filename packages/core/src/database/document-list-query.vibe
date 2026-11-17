@@ -1,7 +1,7 @@
 // spec/core/storage.md, "Every page read checks current authorization and expected revision"; spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"; spec/core/storage.md, "Revisions and pagination reject invalid numeric inputs"
 import { validPagination } from "../../gen/core__storage.effect.vibe"
-import { foreign, Foreign, promised, thrown } from "../edge.vibe"
-import { ElizaError } from "../errors.vibe"
+import { foreign, type Foreign, promised, thrown } from "../edge.vibe"
+import { ElizaError, elizaErrorOrForeign } from "../errors.vibe"
 import type {
   DocumentFragmentQueryParams,
   DocumentListCursor,
@@ -635,17 +635,13 @@ module edge {
 import { validateDocumentListQueryResultOrThrow } from edge
 export { validateDocumentListQueryResultOrThrow }
 
-function storedDocumentFailure(cause: unknown): ElizaError | Foreign {
-  return cause instanceof ElizaError ? cause : new Foreign({ cause })
-}
-
 export effect function documentCreatedAt(memory: Memory): number!(ElizaError | Foreign) {
-  return try Effect.try({ try: () => storedCreatedAt(memory), catch: storedDocumentFailure })
+  return try Effect.try({ try: () => storedCreatedAt(memory), catch: elizaErrorOrForeign })
 }
 export const documentCreatedAtOrThrow = thrown(documentCreatedAt)
 
 export effect function compareDocumentOrder(left: Memory, right: Memory): number!(ElizaError | Foreign) {
-  return try Effect.try({ try: () => documentOrder(left, right), catch: storedDocumentFailure })
+  return try Effect.try({ try: () => documentOrder(left, right), catch: elizaErrorOrForeign })
 }
 export const compareDocumentOrderOrThrow = thrown(compareDocumentOrder)
 
@@ -1220,7 +1216,7 @@ export effect function queryDocumentsInMemory(
   params: DocumentListQueryParams,
 ): DocumentListQueryResult!(ElizaError | Foreign) {
   try validateDocumentListQueryParams(params)
-  return try Effect.try({ try: () => documentsInMemory(memories, params), catch: storedDocumentFailure })
+  return try Effect.try({ try: () => documentsInMemory(memories, params), catch: elizaErrorOrForeign })
 }
 export const queryDocumentsInMemoryOrThrow = thrown(queryDocumentsInMemory)
 
@@ -1230,7 +1226,7 @@ export effect function queryDocumentFragmentsInMemory(
   expectedEmbeddingDimension?: number,
 ): Memory[]!(ElizaError | Foreign) {
   try validateDocumentFragmentQueryParams(params, expectedEmbeddingDimension)
-  return try Effect.try({ try: () => fragmentsInMemory(memories, params), catch: storedDocumentFailure })
+  return try Effect.try({ try: () => fragmentsInMemory(memories, params), catch: elizaErrorOrForeign })
 }
 export const queryDocumentFragmentsInMemoryOrThrow = thrown(queryDocumentFragmentsInMemory)
 
