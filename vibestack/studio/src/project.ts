@@ -1,4 +1,4 @@
-// What Studio reads of a project, through the tools' own synchronous API (../../spec.ts, ../../parse.ts), and the
+// What Studio reads of a project, through the tools' own synchronous API (../../pipeline.ts, ../../parse.ts), and the
 // Node edges Effect has no service for. Everything that runs, writes or serves is ./server.vibe's.
 // README, "Studio".
 import fs from "node:fs";
@@ -6,7 +6,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { trusted } from "vibelang-runtime";
-import { acceptable, type Result } from "../../spec.ts";
+import { acceptable, type Result } from "../../pipeline.ts";
 import { isStd, parseSpec, readSpecs, specFiles, specName } from "../../parse.ts";
 import { ledgerFile, pending, pendingContracts, pendingKey, pendingSpecs, type Lock, type Pending } from "../../review.ts";
 import { appScript as scriptOfApp, filesUnder, packageScripts, projectRoot, servedAt, short } from "../../util.ts";
@@ -81,6 +81,18 @@ export const specTexts = trusted(function specTexts(root: string): Record<string
   return Object.fromEntries(specFiles(root).map((file) => [file, fs.readFileSync(path.join(root, file), "utf8")]));
 }, [Error]);
 
+/** @throws {never} */
+export function specStamp(root: string): string | undefined {
+  try {
+    return short(filesUnder(root, "spec").map((file) => {
+      const stat = fs.lstatSync(path.join(root, file), { bigint: true, throwIfNoEntry: false });
+      return `${file} ${stat?.ino} ${stat?.ctimeNs} ${stat?.size}`;
+    }).join("\n"));
+  } catch {
+    return undefined;
+  }
+}
+
 /** The command a person or agent runs in a project to check it: its own script if it can, else the tools of this repository. A trusted call. */
 export const checkCommand = trusted(function checkCommand(root: string): string {
   const scripts = packageScripts(root);
@@ -91,9 +103,9 @@ export const checkCommand = trusted(function checkCommand(root: string): string 
 /** The sync skill, as a path from the project root: its own copy, or the nearest one above it. @throws {never} */
 export function skillPath(root: string): string {
   for (let dir = root; ; dir = path.dirname(dir)) {
-    const file = path.join(dir, ".claude/skills/sync/SKILL.md");
+    const file = path.join(dir, ".agents/skills/sync/SKILL.md");
     if (fs.existsSync(file)) return path.relative(root, file);
-    if (dir === path.dirname(dir)) return ".claude/skills/sync/SKILL.md";
+    if (dir === path.dirname(dir)) return ".agents/skills/sync/SKILL.md";
   }
 }
 
@@ -122,7 +134,7 @@ const reviewItem = (p: Pending, file?: string): ReviewItem => ({
 });
 
 /**
- * The specs as the page shows them, and everything `accept` would record (../../spec.ts, the `review` stage), or the
+ * The specs as the page shows them, and everything `accept` would record (../../pipeline.ts, the `review` stage), or the
  * `problem` that keeps the specs from being read as one tree. A trusted call.
  */
 export const readTree = trusted(function readTree(root: string): { specs: SpecView[]; review: ReviewItem[]; problem?: string } {
@@ -188,6 +200,7 @@ export interface Check { results: Result[]; ok?: boolean; next?: string; finishe
 export interface Snapshot {
   project: { id: string; name: string; root: string };
   session: Session;
+  heard: boolean;
   specs: SpecView[];
   review: ReviewItem[];
   problem?: string;

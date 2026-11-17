@@ -48,7 +48,6 @@ export interface Model extends Roles {
   exports: { types: string[]; values: string[]; variants: string[]; visible: Json[]; samples: { name: string; elem: Json }[] };
   ts: string;
   harness: string;
-  /** The supplemental Quint harness for finding positive guard evaluations on long event traces. */
   guardHarness: string;
 }
 
@@ -199,7 +198,7 @@ export function generate(ir: Json, name: string, source: string, origin: (def: s
 
   // --- TypeScript -------------------------------------------------------------------
   // A heading is prose from the spec; it must not be able to end the comment it is quoted in.
-  const doc = (d: string) => (origin(d) ? `/** ${origin(d)!.rule.replace(/\*\//g, "* /").replace(/[\r\n]+/g, " ")} (${source}:${origin(d)!.line}) */\n` : "");
+  const doc = (d: string) => (origin(d) ? `/** ${origin(d)!.rule.replace(/\*\//g, "* /").replace(/[\r\n]+/g, " ")} (${source}) */\n` : "");
   const importLine = (l: (typeof links)[number]) => {
     const item = (n: string, isType: boolean) => `${isType ? "type " : ""}${n} as ${l.module}_${n}`;
     return `import { ${[...l.exports.types.map((t) => item(t, true)), ...l.exports.values.map((v) => item(v, false))].join(", ")} } from "./${l.module}.ts";`;

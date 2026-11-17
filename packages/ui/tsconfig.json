@@ -12,6 +12,7 @@
   },
   "include": [
     "src",
+    "test",
     "vite.config.ts",
     "vitest.config.ts",
     ".storybook"
