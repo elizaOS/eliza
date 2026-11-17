@@ -129,7 +129,12 @@ export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, loc
     `export function ${L("step")}(current: ${state}, event: ${L("Event")}${by}): ${output ? tsType(output.type) : state} {`,
     `  //@ requires ${L("inv")}(current)`,
     `  //@ ensures ${L("inv")}(\\result${output ? ".state" : ""})`,
-    ...transitions.map((t) => `  if (${when(t)}${t.guard ? ` && ${admits(t)}` : ""}) return ${t.emits ? applies(t) : outputs(applies(t))};`),
+    ...transitions.map((t) => {
+      const condition = when(t);
+      const guard = t.guard ? admits(t) : undefined;
+      const result = t.emits ? applies(t) : outputs(applies(t));
+      return `  if (${condition}) return ${guard ? `${guard} ? ${result} : ${outputs("current")}` : result};`;
+    }),
     `  return ${outputs("current")};`,
     `}`,
     ``,
