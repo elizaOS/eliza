@@ -18,12 +18,14 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { isDeepStrictEqual } from "node:util";
 import {
   type ChatFailureKind,
   type ChatTerminalFailure,
   isChatFailureKind,
   PatchConversationRequestSchema,
   PostConversationCleanupEmptyRequestSchema,
+  PostConversationForkRequestSchema,
   PostConversationMessageHeardRequestSchema,
   PostConversationRequestSchema,
   PostConversationTruncateRequestSchema,
@@ -120,6 +122,7 @@ import {
   isLegacyUnavailableCheckin,
   projectLegacySystemNotice,
 } from "../runtime/legacy-system-notice.ts";
+import { conversationForkSnapshot } from "../services/conversation-fork.ts";
 import {
   deleteConversationMemories,
   deleteConversationMessage,
@@ -3008,6 +3011,11 @@ const conversationEndpoints = [
   },
   {
     method: "POST",
+    path: /^\/api\/conversations\/[^/]+\/fork$/,
+    handle: forkConversation,
+  },
+  {
+    method: "POST",
     path: /^\/api\/conversations\/[^/]+\/messages\/truncate$/,
     handle: truncateConversationMessagesRoute,
   },
@@ -3803,6 +3811,16 @@ async function listConversationMessages(
               : undefined;
           return {
             id: m.id ?? "",
+            ...(typeof meta?.forkSourceMessageId === "string" &&
+            typeof meta?.forkSourceRoomId === "string"
+              ? {
+                  forkSourceMessageId: meta.forkSourceMessageId,
+                  forkSourceRoomId: meta.forkSourceRoomId,
+                  forkAttachmentMessageId: meta.forkAttachmentMessageId,
+                  forkAttachmentConversationId:
+                    meta.forkAttachmentConversationId,
+                }
+              : {}),
             role,
             text,
             ...(userTextFormat ? { userTextFormat } : {}),
@@ -4492,6 +4510,193 @@ async function importConversation(
     await historyLease.release();
   }
 }
+async function forkConversation(
+  ctx: ConversationHandlerContext,
+): Promise<boolean> {
+  const { req, res, state, readJsonBody, error, json, trustedApiPrincipal } =
+    ctx;
+  const sourceId = decodePathComponent(
+    ctx.pathname.split("/")[3],
+    res,
+    "conversation id",
+  );
+  if (sourceId === null) return true;
+  const source = await getConversationWithRestore(state, sourceId),
+    runtime = state.runtime;
+  if (!source || !runtime) {
+    error(res, "Conversation not found", 404);
+    return true;
+  }
+  if (
+    rejectWaifuConversationAccessIfNeeded(req, source, error, res) ||
+    rejectWaifuNonAdminMutationIfNeeded(req, error, res)
+  )
+    return true;
+  const parsed = PostConversationForkRequestSchema.safeParse(
+    await readJsonBody(req, res),
+  );
+  if (!parsed.success) {
+    error(res, "A message and request UUID are required", 400);
+    return true;
+  }
+  const { messageId, requestId } = parsed.data;
+  const caller = resolveConversationCaller(
+    req,
+    state,
+    trustedApiPrincipal,
+    runtime,
+  );
+  const id = stringToUuid(
+    `conversation-fork:${runtime.agentId}:${caller.entityId}:${source.id}:${requestId}`,
+  );
+  const roomId = stringToUuid(`web-conv-${id}`);
+  const tracker = createRequestDisconnectAbortTracker({
+    req,
+    res,
+    operation: "Conversation branch admission",
+  });
+  let lease: RoomHandlerLease;
+  try {
+    lease = await runtime.roomHandlerQueue.acquire(
+      source.roomId,
+      tracker.signal,
+    );
+  } catch (cause) {
+    tracker.dispose();
+    if (!tracker.isAborted()) error(res, getErrorMessage(cause), 409);
+    return true;
+  }
+  tracker.markCompleted();
+  tracker.dispose();
+  try {
+    if (
+      state.runtime !== runtime ||
+      state.deletedConversationIds.has(source.id) ||
+      state.conversations.get(source.id) !== source
+    )
+      throw Error("Conversation changed");
+    const previous = await runtime.getRoom(roomId);
+    const prior = previous?.metadata?.conversationFork as
+      | {
+          sourceId?: string;
+          messageId?: string;
+          requestId?: string;
+          fingerprint?: string;
+        }
+      | undefined;
+    if (
+      prior &&
+      (prior.sourceId !== source.id ||
+        prior.messageId !== messageId ||
+        prior.requestId !== requestId)
+    )
+      throw Error("Branch request changed");
+    if (previous && previous.metadata?.conversationForkPending === false) {
+      const completed = await getConversationWithRestore(state, id);
+      if (!completed) throw Error("Branch is unavailable");
+      json(res, { conversation: completed });
+      return true;
+    }
+    const snapshot = await conversationForkSnapshot(
+      runtime,
+      source.roomId,
+      messageId,
+      roomId,
+      source.id,
+    );
+    const metadata = {
+      ...source.metadata,
+      sourceConversationId: source.id,
+      forkMessageId: messageId,
+      forkRequestId: requestId,
+    };
+    const marker = {
+      sourceId: source.id,
+      messageId,
+      requestId,
+      fingerprint: snapshot.fingerprint,
+    };
+    if (previous && !isDeepStrictEqual(prior, marker))
+      throw Error("The original conversation changed. Start a new edit.");
+    const now = new Date().toISOString();
+    const branch: ConversationMeta = {
+      id,
+      roomId,
+      title: `${source.title} · edit`,
+      createdAt: now,
+      updatedAt: now,
+      metadata,
+    };
+    if (!previous) {
+      const originalRoom = await runtime.getRoom(source.roomId);
+      if (!originalRoom) throw Error("Conversation room not found");
+      await runtime.createRoom({
+        ...originalRoom,
+        id: roomId,
+        source: "conversation_fork_pending",
+        channelId: `web-conv-${id}`,
+        metadata: {
+          ...buildConversationRoomMetadata(branch, ensureAdminEntityId(state)),
+          conversationFork: marker,
+          conversationForkPending: true,
+        },
+      });
+    }
+    const absent: Array<{ memory: Memory; tableName: string }> = [];
+    for (const entry of snapshot.copies) {
+      const [existing] = await runtime.getMemoriesByIds(
+        [entry.memory.id!],
+        entry.tableName,
+      );
+      if (!existing) absent.push(entry);
+      else if (
+        existing.roomId !== roomId ||
+        !isDeepStrictEqual(existing.content, entry.memory.content) ||
+        !isDeepStrictEqual(existing.metadata, entry.memory.metadata)
+      )
+        throw Error("Branch content changed");
+    }
+    if (
+      state.runtime !== runtime ||
+      state.deletedConversationIds.has(source.id)
+    )
+      throw Error("Conversation changed");
+    if (absent.length) await runtime.createMemories(absent);
+    if (
+      state.runtime !== runtime ||
+      state.deletedConversationIds.has(source.id) ||
+      state.deletedConversationIds.has(id)
+    )
+      throw Error("Conversation changed");
+    const connection = await ensureConversationRoom(
+      state,
+      runtime,
+      branch,
+      caller,
+    );
+    await syncConversationRoomState(state, branch, connection);
+    const room = await runtime.getRoom(roomId);
+    if (!room) throw Error("Branch room not found");
+    await runtime.updateRoom({
+      ...room,
+      metadata: {
+        ...room.metadata,
+        conversationFork: marker,
+        conversationForkPending: false,
+      },
+    });
+    assertConversationConnectionRuntime(state.runtime, connection);
+    state.conversations.set(id, branch);
+    state.broadcastWs?.({ type: "conversation-updated", conversation: branch });
+    json(res, { conversation: branch });
+  } catch (cause) {
+    error(res, getErrorMessage(cause), 409);
+  } finally {
+    await lease.release();
+  }
+  return true;
+}
+
 async function truncateConversationMessagesRoute(
   ctx: ConversationHandlerContext,
 ): Promise<boolean> {

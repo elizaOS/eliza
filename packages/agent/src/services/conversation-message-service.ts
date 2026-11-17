@@ -112,7 +112,7 @@ function cursorFollows(
   );
 }
 
-async function getCompleteConversationMemories(
+export async function getCompleteConversationMemories(
   runtime: AgentRuntime,
   roomId: UUID,
 ): Promise<Memory[]> {
