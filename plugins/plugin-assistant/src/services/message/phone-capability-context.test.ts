@@ -149,6 +149,39 @@ describe("selected phone capability guidance", () => {
     ])
       expect(text).toContain(required);
   });
+  it("routes a phone contact request to the address-book tool, not the relationship store", async () => {
+    const withAddressBook = async (options: Record<string, unknown>) => {
+      const args = fixture();
+      (
+        binding.turn as { credential: { capabilities: string[] } }
+      ).credential.capabilities = [...capabilities, "contacts.write.v1"];
+      const context = await createV5MessageContextObject({
+        ...args,
+        ...options,
+      });
+      const event = context.events.find(
+        (event) => event.id === "authenticated-phone-capability",
+      );
+      return event && "content" in event ? String(event.content) : "";
+    };
+    // The response handler picks contexts from this compact text.
+    const routing = await withAddressBook({ providerPhase: "response" });
+    expect(routing).toContain("PROPOSE_DEVICE_ACTION contact_create");
+    expect(routing).toContain("never ask for a handle, username or platform");
+    // A turn planned under the contacts context alone still exposes the tool
+    // and its detailed native instructions.
+    expect(native.contexts).toContain("contacts");
+    const planning = await withAddressBook({
+      includeTools: true,
+      providerPhase: "planning",
+      selectedContexts: ["contacts"],
+    });
+    expect(planning).toContain("PROPOSE_DEVICE_ACTION contact_create");
+    expect(planning).toContain("only a native receipt establishes completion");
+    // A phone without the capability is told nothing about its address book.
+    const { text } = await guidance({ providerPhase: "response" });
+    expect(text).not.toContain("contact_create");
+  });
   it("retains Android Clock handoff constraints on a Clock-only installation", async () => {
     const args = fixture();
     (

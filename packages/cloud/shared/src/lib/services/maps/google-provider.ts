@@ -685,7 +685,17 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
     let response = await this.fetchTile(request, session, signal, reportPrice);
     if (response.status === 401 || response.status === 403) {
       // A revoked or expired session is renewed once; a second refusal is a configuration fault.
-      tileSessions.delete(this.tileSessionKey());
+      // Only the session that was refused is dropped: another tile may already hold its renewal.
+      const key = this.tileSessionKey();
+      const held = tileSessions.get(key);
+      const current =
+        held &&
+        (await untilAborted(held, signal).catch((error) => {
+          // This caller's own cancellation is not a session failure.
+          if (signal?.aborted) throw error;
+          return undefined;
+        }));
+      if (current === session && tileSessions.get(key) === held) tileSessions.delete(key);
       session = await this.tileSession(signal);
       response = await this.fetchTile(request, session, signal, reportPrice);
     }
@@ -774,25 +784,44 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
 
   private async tileSession(signal?: AbortSignal): Promise<TileSession> {
     const key = this.tileSessionKey();
-    const cached = tileSessions.get(key);
-    if (cached) {
+    // Twice: the session this caller found may have failed or expired while
+    // another tile already started its replacement, which this caller then shares.
+    for (let pass = 0; pass < 2; pass++) {
+      const held = tileSessions.get(key);
+      if (!held) break;
       try {
-        const session = await cached;
+        const session = await untilAborted(held, signal);
         if (session.expiresAt - SESSION_RENEW_MARGIN_MS > this.now()) return session;
-      } catch {
+      } catch (error) {
+        // This caller's own cancellation is not a session failure.
+        if (signal?.aborted) throw error;
         // error-policy:J4 a failed session creation is retried by the next request.
       }
-      if (tileSessions.get(key) === cached) tileSessions.delete(key);
+      if (tileSessions.get(key) === held) {
+        tileSessions.delete(key);
+        break;
+      }
     }
-    const created = this.createTileSession(signal);
+    // The session is shared by every tile of this isolate, so one caller's
+    // cancellation must not fail it for the others; each caller stops waiting on its own signal.
+    const created = this.createTileSession();
     tileSessions.set(key, created);
     created.catch(() => {
       if (tileSessions.get(key) === created) tileSessions.delete(key);
     });
-    return created;
+    return untilAborted(created, signal);
   }
 
-  private async createTileSession(signal?: AbortSignal): Promise<TileSession> {
+  prepareTiles(): Promise<void> {
+    return this.tiles
+      ? this.tileSession().then(
+          () => undefined,
+          () => undefined,
+        )
+      : Promise.resolve();
+  }
+
+  private async createTileSession(): Promise<TileSession> {
     const url = new URL("createSession", TILES_URL);
     url.searchParams.set("key", this.apiKey);
     const response = await upstreamFetch(
@@ -811,7 +840,7 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
           highDpi: true,
         }),
       },
-      signal,
+      undefined,
       this.fetchImpl,
       [200, 400, 401, 403],
     );
@@ -1000,6 +1029,17 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
         "This location is outside the supported Maps regions.",
       );
   }
+}
+
+/** The value of a shared promise, or this caller's own cancellation, whichever comes first. */
+function untilAborted<T>(shared: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return shared;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener("abort", abort, { once: true });
+    shared.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
 }
 
 async function routeId(parts: string): Promise<string> {

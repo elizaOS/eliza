@@ -46,7 +46,10 @@ import {
 import { subscriptionGrants } from "../../db/schemas/subscription-grants";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
-import { readOrganizationQuotaPolicyInTransaction } from "./organization-quota-policy";
+import {
+  type OrganizationQuotaPolicy,
+  readOrganizationQuotaPolicyInTransaction,
+} from "./organization-quota-policy";
 import { resolveSubscriptionPlanDefinition } from "./subscription-catalog";
 
 export const ENTITLEMENT_TYPE = "eliza-entitlement+jwt";
@@ -253,10 +256,18 @@ export function entitlementStatusForSubscription(
  */
 export async function readOrganizationEntitlementSummary(
   organizationId: string,
-  options: { allowance?: boolean; transaction?: DbTransaction } = {},
+  options: {
+    allowance?: boolean;
+    transaction?: DbTransaction;
+    /** The policy the caller already read in `transaction`, so it is not read twice. */
+    policy?: OrganizationQuotaPolicy;
+  } = {},
 ): Promise<EntitlementPlanSummary> {
+  if (options.policy && !options.transaction)
+    throw new Error("A supplied organization policy needs the transaction that read it");
   const read = async (tx: DbTransaction): Promise<EntitlementPlanSummary> => {
-    const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
+    const policy =
+      options.policy ?? (await readOrganizationQuotaPolicyInTransaction(tx, organizationId));
     const until = policy.authority.effectiveUntil
       ? new Date(policy.authority.effectiveUntil)
       : null;

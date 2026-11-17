@@ -1194,7 +1194,11 @@ export const proposeDeviceAction: Action = {
   name: "PROPOSE_DEVICE_ACTION",
   egress: ["owner-device"],
   description: PROPOSAL_GUIDANCE.map((fragment) => fragment.text).join(" "),
-  contexts: ["general"],
+  // The phone's address book is written only through this tool
+  // (contact_create/update/delete). A request routed as a contacts task must
+  // still reach it, or only the assistant's own relationship records are
+  // offered and the phone contact is never proposed.
+  contexts: ["general", "contacts"],
   parameters: [
     {
       name: "operation",
