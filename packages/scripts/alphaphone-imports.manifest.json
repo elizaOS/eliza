@@ -436,6 +436,10 @@
       "smsReceiptLabel"
     ],
     "packages/contracts/src/native-telephony.ts": [
+      "MessageDeleteReference",
+      "MessageDeleteResult",
+      "parseMessageDeleteReference",
+      "parseMessageDeleteResult",
       "MessageDirection",
       "MessageStatus",
       "MmsAttachmentDraft",

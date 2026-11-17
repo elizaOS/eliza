@@ -1,0 +1,32 @@
+[
+  {
+    "id": "NativeMessageDeletion",
+    "model": "plugins/plugin-native-messages/quint/NativeMessageDeletion.qnt",
+    "sources": [
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MessageDeletion.java",
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/TelephonyPlugin.java",
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsRecords.java",
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MmsStore.java",
+      "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/MessageDeletionTest.java",
+      "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/TelephonyPluginReviewTest.java",
+      "packages/contracts/src/native-telephony.ts",
+      "packages/contracts/src/native-telephony.test.ts",
+      "plugins/plugin-native-messages/android/build.gradle",
+      "packages/scripts/quint/check-native-android.ts",
+      "packages/app/scripts/android-native-plugins-gradle/build.gradle",
+      "packages/app/scripts/android-native-plugins-gradle/settings.gradle"
+    ],
+    "invariants": [
+      "TypeOK",
+      "AtMostOneDispatch",
+      "AppliedNeedsLiveAuthority",
+      "ConfirmedMeansApplied",
+      "ForeignTransportPreserved",
+      "RefusalMeansNoDispatch"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One owner-confirmed reference, one identity read and at most one conditional delete. One same-id foreign transport row remains outside the target. Two thread/date equality classes and two raw-date representations cover replacement and normalization races. Owner confirmation and trustworthy platform affected-row counts are assumptions. Actual SQLite predicates and bridge guards are exercised by JVM cases; real Telephony permission/AppOp/role enforcement, Binder reliability, process death, carrier behavior and physical-device acceptance remain separate. Lost or invalid replies are unknown and grant no retry."
+    ]
+  }
+]

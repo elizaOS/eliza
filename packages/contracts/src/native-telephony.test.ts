@@ -7,6 +7,8 @@ import {
   normalizePhoneNumber,
   parseCallLog,
   parseHandoff,
+  parseMessageDeleteReference,
+  parseMessageDeleteResult,
   parseMessages,
   parsePhoneInfo,
   parsePlaceCall,
@@ -1386,6 +1388,96 @@ test("phone information degrades field by field and never passes an unread SIM l
       { status: async () => ({}) } as never,
       true,
     ).phoneInfo(),
+    TelephonyUnavailable,
+  );
+});
+
+test("single-message deletion admits only the exact listed transport/thread/date and receipt", async () => {
+  const target = {
+    id: "sms:7",
+    kind: "sms" as const,
+    threadId: "thread:9",
+    date: 1700000000123,
+  };
+  for (const status of ["deleted", "not-found", "stale", "unknown"] as const) {
+    const source = stub({ deleteMessage: { status, message: target } });
+    assert.deepEqual(
+      await createTelephonyClient(source.plugin, true).deleteMessage(target),
+      { status, message: target },
+    );
+    assert.deepEqual(source.calls, [["deleteMessage", target]]);
+  }
+  for (const patch of [
+    { id: "mms:7" },
+    { kind: "mms" },
+    { threadId: "thread:10" },
+    { date: target.date + 1 },
+  ])
+    assert.throws(
+      () =>
+        parseMessageDeleteResult(
+          { status: "deleted", message: { ...target, ...patch } },
+          target,
+        ),
+      /invalid/,
+    );
+  for (const patch of [
+    { id: "sms:0" },
+    { id: "pending:7" },
+    { kind: "other" },
+    { threadId: "9" },
+    { date: -1 },
+    { date: 1.5 },
+    { date: Number.MAX_SAFE_INTEGER + 1 },
+  ])
+    assert.throws(
+      () => parseMessageDeleteReference({ ...target, ...patch }),
+      /invalid/,
+    );
+  assert.throws(
+    () =>
+      parseMessageDeleteReference({
+        ...target,
+        body: "not part of deletion authority",
+      }),
+    /invalid/,
+  );
+  assert.throws(
+    () =>
+      parseMessageDeleteResult({ status: "failed", message: target }, target),
+    /invalid/,
+  );
+});
+
+test("deletion snapshots its target before dispatch and never retries an unknown or lost result", async () => {
+  const selected = {
+    id: "sms:7",
+    kind: "sms" as const,
+    threadId: "thread:9",
+    date: 1700000000123,
+  };
+  const original = { ...selected };
+  const source = stub({
+    deleteMessage: () => {
+      selected.id = "sms:8";
+      return { status: "unknown", message: original };
+    },
+  });
+  assert.equal(
+    (await createTelephonyClient(source.plugin, true).deleteMessage(selected))
+      .status,
+    "unknown",
+  );
+  assert.equal(source.calls.length, 1);
+  const lost = stub({ deleteMessage: new Error("lost reply") });
+  await assert.rejects(
+    createTelephonyClient(lost.plugin, true).deleteMessage(original),
+    /lost reply/,
+  );
+  assert.equal(lost.calls.length, 1);
+  const noMethod = { ...lost.plugin, deleteMessage: undefined };
+  await assert.rejects(
+    createTelephonyClient(noMethod, true).deleteMessage(original),
     TelephonyUnavailable,
   );
 });
