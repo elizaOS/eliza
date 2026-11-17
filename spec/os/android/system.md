@@ -3,7 +3,7 @@
 What the system and location bridges may claim about handoffs, device facts,
 volume, brightness and default roles. A handoff reports the [bridge](./bridge.md)'s
 `HandoffOutcome`: `Opened` means Android showed its screen, never that the owner
-changed anything there. [Wi-Fi](./wifi.md) uses the Internet panel and facts here.
+changed anything there. Wi-Fi uses the Internet panel and the facts defined here.
 
 ## Story: Hand me to Android's own screens and apps
 
@@ -116,7 +116,8 @@ type ClockRequest = ClockSet(AlarmSetting) | ClockShow | ClockDismiss | ClockSno
 type ClockReply = ClockOpened | ClockUnavailable | ClockDenied | ClockFailed | ClockUnknown
 type DayScan = { previous: int, ordered: bool }
 pure def scanDay(scan: DayScan, day: int): DayScan = { previous: day, ordered: scan.ordered and day > scan.previous and day <= 7 }
-pure def daysAscending(days: List[int]): bool = days.foldl({ previous: 0, ordered: true }, scanDay).ordered
+pure val weekdayStart: DayScan = { previous: 0, ordered: true }
+pure def daysAscending(days: List[int]): bool = days.foldl(weekdayStart, scanDay).ordered
 pure def clockRequestAdmitted(clockRequest: ClockRequest): bool = match clockRequest {
   | ClockSet(x) => x.hour >= 0 and x.hour <= 23 and x.minute >= 0 and x.minute <= 59 and x.labelLength >= 0 and x.labelLength <= 200 and x.labelPlain and daysAscending(x.days)
   | ClockSnooze(x) => x.minutes >= 1 and x.minutes <= 60
@@ -128,9 +129,10 @@ pure def clockReply(reviewed: bool, clockRequest: ClockRequest, facts: HostFacts
   else if (launch == LaunchStarted) ClockOpened else if (launch == LaunchNotFound) ClockUnavailable
   else if (launch == LaunchDenied) ClockDenied else ClockUnknown
 pure def clockHandoff(reply: ClockReply): HandoffOutcome = if (reply == ClockOpened) Opened else Refused
-pure val clockRequestValues = Set(ClockShow, ClockSnooze({ minutes: 10 }), ClockSnooze({ minutes: 61 }), ClockSet({ hour: 24, minute: 0, labelLength: 201, labelPlain: true, days: List() }),
-  ClockSet({ hour: 7, minute: 30, labelLength: 5, labelPlain: true, days: List(2, 4, 6) }),
-  ClockSet({ hour: 6, minute: 0, labelLength: 0, labelPlain: false, days: List(3, 3) }))
+pure val wakeAt: AlarmSetting = { hour: 7, minute: 30, labelLength: 5, labelPlain: true, days: List() }
+pure val clockRequestValues = Set(ClockSet(wakeAt), ClockSet({ ...wakeAt, hour: 24 }), ClockSet({ ...wakeAt, days: List(2, 4, 6) }),
+  ClockSet({ ...wakeAt, days: List(3, 3) }), ClockSet({ ...wakeAt, labelLength: 201 }), ClockShow, ClockSnooze({ minutes: 10 }), ClockSnooze({ minutes: 61 }))
+pure val daysValues = Set(List(), List(1), List(1, 7), List(2, 2), List(0, 3), List(5, 4), List(1, 2, 3, 4, 5, 6, 7))
 pure val dayValues = Set(-1, 0, 1, 7, 8)
 pure def lawClockOpensOnlyAReviewedAdmittedRequest(reviewed: bool, clockRequest: ClockRequest, facts: HostFacts, otherReceiver: bool, zoneHolds: bool, launch: LaunchReply): bool =
   clockHandoff(clockReply(reviewed, clockRequest, facts, otherReceiver, zoneHolds, launch)) == Opened implies
@@ -297,4 +299,37 @@ pure def lawHeldOnlyFromAndroid(offered: bool, available: bool, heldBefore: bool
   roleResult(offered, available, heldBefore, offeredAfter, heldAfter) == RoleHeld implies (offered and available and (heldBefore or (offeredAfter and heldAfter)))
 pure def lawPromptedRoleIsDecidedByTheReadback(offered: bool, available: bool, heldBefore: bool, heldAfter: bool): bool =
   asksAndroidForRole(offered, available, heldBefore) implies ((roleResult(offered, available, heldBefore, true, heldAfter) == RoleHeld) iff heldAfter)
+```
+
+## Story: Approve a Wi-Fi join and see whether that network connected
+
+> As the owner, I want Android to review the network I selected and the app
+> to report whether that connection worked.
+
+### Settings approval and the selected network's connectivity are separate
+
+The enabled Wi-Fi bridge asks Android's save-network dialog on Android 11
+or later. It validates the network settings before opening the dialog and
+removes the password from the saved bridge request. A declined request
+reports declined. A failed Android result refuses the request.
+
+An approved request observes only Wi-Fi transport. The requested network
+must be named by the observed connection before a validated connection
+or captive portal can settle the requested join. A validated connection
+whose name Android withholds stays unverified at the deadline. A different
+named network does not settle the request. A wrong-password result comes
+from Android's authentication failure signal for a protected join.
+
+```quint
+type WifiJoinEvidence = WifiNotObserved | OtherWifi | NamedWifiValidated | NamedWifiPortal | WithheldWifiValidated
+pure def approvedWifiJoinConnected(approved: bool, observed: WifiJoinEvidence): bool =
+  approved and observed == NamedWifiValidated
+pure def approvedWifiJoinNeedsPortal(approved: bool, observed: WifiJoinEvidence): bool =
+  approved and observed == NamedWifiPortal
+pure def approvedWifiJoinUnverified(approved: bool, observed: WifiJoinEvidence, expired: bool): bool =
+  approved and observed == WithheldWifiValidated and expired
+pure def lawTheWrongWifiCannotSettleAnApprovedJoin(approved: bool): bool =
+  not(approvedWifiJoinConnected(approved, OtherWifi) or approvedWifiJoinNeedsPortal(approved, OtherWifi))
+pure def lawApprovalAloneDoesNotReportAConnection(approved: bool): bool =
+  not(approvedWifiJoinConnected(approved, WifiNotObserved))
 ```

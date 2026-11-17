@@ -29,12 +29,12 @@ export interface LaunchOptions {
   readonly load?: readonly string[];
   readonly productPlugin?: string;
   readonly persistMemory?: boolean;
-  readonly callerRole?: "Owner" | "User";
+  readonly callerRole?: "owner" | "user";
   readonly retention?: { readonly days: number; readonly maxRowsPerRoom: number; readonly intervalMinutes: number };
   readonly privacy?: { readonly secretSwap: boolean; readonly piiSwap: boolean };
   readonly google?: { readonly gmailChanges: boolean; readonly calendarEdits: boolean };
   readonly workflowWorker?: { readonly runtimeDir: string; readonly executable: string; readonly sha256: string };
-  readonly hostContextRevision?: string;
+  readonly hostContextRevision?: number;
   readonly environment?: Readonly<Record<string, string>>;
 }
 
@@ -45,7 +45,7 @@ function model(backend: Backend): Record<string, string> {
     case "cloud":
       return { backend: "cloud", cloudBaseUrl: backend.origin, smallModel: backend.smallModel ?? "small", largeModel: backend.largeModel ?? "large", imageModel: backend.imageModel ?? "small" };
     case "ownKey":
-      return { backend: "ownKey", ownKeyBaseUrl: backend.baseUrl, ownKeySmall: backend.smallModel, ownKeyLarge: backend.largeModel };
+      return { backend: "own-key", ownKeyBaseUrl: backend.baseUrl, ownKeySmall: backend.smallModel, ownKeyLarge: backend.largeModel };
     case "none":
       return { backend: "none" };
     default: {
@@ -62,14 +62,13 @@ export function launchDocument(options: LaunchOptions = {}): Record<string, unkn
     character: { name: options.name ?? "Eliza", system: options.system ?? "You are a helpful assistant on the owner's device." },
     policy: {
       actions: { allowed: options.allowed ?? ["REPLY", "IGNORE", "NONE"] },
-      plugins: { load: options.load ?? [] },
-      ...(options.productPlugin === undefined ? {} : { productPlugin: options.productPlugin }),
+      plugins: { load: options.load ?? [], ...(options.productPlugin === undefined ? {} : { product: options.productPlugin }) },
     },
     model: model(backend),
     ...(backend.kind === "none" ? {} : { account }),
     embeddings: "none",
     persistMemory: options.persistMemory ?? false,
-    callerRole: options.callerRole ?? "User",
+    callerRole: options.callerRole ?? "user",
     ...(options.retention === undefined ? {} : { retention: options.retention }),
     ...(options.privacy === undefined ? {} : { privacy: options.privacy }),
     ...(options.google === undefined ? {} : { google: options.google }),

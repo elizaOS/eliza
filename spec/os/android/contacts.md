@@ -66,8 +66,7 @@ an incomplete placeholder with no contact data, in its place in the page.
 
 ```quint
 pure def readTicketIs(read: ContactRead, ticket: int): bool = match read { | Reading(r) => r.ticket == ticket | NoRead => false }
-pure def pagePublishes(start: Pg::PageStart, providerOk: bool): bool =
-  providerOk and start != Pg::Refused({ reason: Pg::OtherQuery }) and start != Pg::Refused({ reason: Pg::MovedBoundary })
+pure def pagePublishes(start: Pg::PageStart, providerOk: bool): bool = match start { | Refused(_) => false | _ => providerOk }
 pure val startValues = Set(Pg::FromFirst, Pg::AfterRow({ last: { major: 0, minor: 0, rowId: 1 } }), Pg::Refused({ reason: Pg::MovedBoundary }))
 pure def canCompleteRead(s: ContactsState, ticket: int): bool = readTicketIs(s.read, ticket)
 pure def completeRead(s: ContactsState, ticket: int, facts: HostFacts, start: Pg::PageStart, providerOk: bool): ContactsState = {

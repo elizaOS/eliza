@@ -1,5 +1,5 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"; spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"
-import { profileAccepted, routeOpen, methodOffered, type Capability as SpecCapability, type EnvironmentProfile as ProfileRow, type SignInSetup } from "../../gen/cloud__deployment.effect.vibe"
+import { corsGrant, profileAccepted, routeOpen, mountedMethodsAnswer, type MethodsAnswer, type Capability as SpecCapability, type EnvironmentProfile as ProfileRow, type SignInSetup } from "../../gen/cloud__deployment.effect.vibe"
 import { CloudEnvironment as EnvironmentSchema, CloudProfile, type Capability, type EnvironmentProfile, type LegalDocument } from "./profile.schema.ts"
 
 export type { Capability, CloudProfile, EnvironmentProfile, LegalDocument }
@@ -103,13 +103,16 @@ export effect function requireSecrets(): void!SecretMissing!Deployment {
   for (const name of names) try deployment.secret(name)
 }
 
+export function corsForOrigin(settings: EnvironmentProfile, origin: string): boolean {
+  return corsGrant(rowOf("", settings), { tag: "FromOrigin", origin }) === "CredentialedGrant"
+}
+
 export function capabilityEnabled(settings: EnvironmentProfile, capability: Capability): boolean {
   return routeOpen(settings.capabilities.map((offered) => capabilityOf[offered]), { tag: "Gated", capability: capabilityOf[capability] })
 }
 
-export function signInMethods(settings: EnvironmentProfile) {
-  const setup = signInSetup(settings)
-  return { email: methodOffered(setup, "EmailSignIn"), sms: methodOffered(setup, "PhoneSignIn"), google: methodOffered(setup, "GoogleSignIn") }
+export function signInMethods(settings: EnvironmentProfile, mounted: MethodsAnswer): MethodsAnswer {
+  return mountedMethodsAnswer(signInSetup(settings), mounted)
 }
 
 export interface ServiceDocument {

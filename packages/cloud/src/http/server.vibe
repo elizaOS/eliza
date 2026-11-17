@@ -1,8 +1,8 @@
-// spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"; spec/cloud/identity/requestAuth.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/shared/types.md, "Story: Speak one refusal language"
-import { allowedHeaders, corsAnswer, exposedHeaders } from "../../gen/cloud__deployment.effect.vibe"
+// spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"; spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/shared/types.md, "Story: Speak one refusal language"
+import { allowedMethods, allowedRequestHeaders, exposedResponseHeaders } from "../../gen/cloud__deployment.effect.vibe"
 import { planRpm } from "../billing/plans.vibe"
 import { readPolicy } from "../billing/policy.vibe"
-import { capabilityEnabled, Deployment, type EnvironmentProfile } from "../profile/profile.vibe"
+import { capabilityEnabled, corsForOrigin, Deployment, type EnvironmentProfile } from "../profile/profile.vibe"
 import { admit, minute } from "../shared/rate-limit.vibe"
 import { newId } from "../shared/sealing.vibe"
 import { Store } from "../store/store.vibe"
@@ -34,24 +34,22 @@ export { listening }
 export const areas: ReadonlyArray<Area> = [foundation, identity, nativeClients, checkout, billing, inference, speech, maps, google, operator]
 
 const requestIdPattern = /^[A-Za-z0-9._:-]{8,128}$/
-const methods = "GET, POST, PATCH, DELETE, OPTIONS"
 
 function corsHeaders(origin: string | undefined, settings: EnvironmentProfile): Readonly<Record<string, string>> {
   if (origin === undefined) return {}
-  const answer = corsAnswer({ firstParty: settings.firstPartyOrigins.includes(origin) })
-  if (answer.allowed !== "ReflectedOrigin") return { vary: "Origin" }
+  if (!corsForOrigin(settings, origin)) return { vary: "Origin" }
   return {
     vary: "Origin",
     "access-control-allow-origin": origin,
-    ...(answer.credentials ? { "access-control-allow-credentials": "true" } : {}),
-    "access-control-expose-headers": exposedHeaders.join(", ")
+    "access-control-allow-credentials": "true",
+    "access-control-expose-headers": exposedResponseHeaders.join(", ")
   }
 }
 
 function preflightHeaders(origin: string | undefined, settings: EnvironmentProfile): Readonly<Record<string, string>> {
   const cors = corsHeaders(origin, settings)
   if (cors["access-control-allow-origin"] === undefined) return cors
-  return { ...cors, "access-control-allow-methods": methods, "access-control-allow-headers": allowedHeaders.join(", "), "access-control-max-age": "600" }
+  return { ...cors, "access-control-allow-methods": allowedMethods.join(", "), "access-control-allow-headers": allowedRequestHeaders.join(", "), "access-control-max-age": "600" }
 }
 
 function isRefused(failure: { readonly _tag: string }): failure is Refused {
@@ -61,7 +59,7 @@ function isRefused(failure: { readonly _tag: string }): failure is Refused {
 effect function admitPlanRate(route: Route, caller: Caller, now: number): void!Refused!Store {
   if (route.rateClass === undefined || caller.kind === "anonymous") return
   const store = try Store
-  const policy = try store.transaction((tx) => readPolicy(tx, caller.organizationId, now)) catch () => undefined
+  const policy = store.transaction((tx) => readPolicy(tx, caller.organizationId, now)) catch () => undefined
   if (policy === undefined) throw refused("ServiceUnavailable", "NoReason", now + 5000)
   try admit({ subject: caller.organizationId, scope: `plan-${route.rateClass}`, limit: planRpm(policy.planKey, route.rateClass), widthMs: minute })
 }
@@ -78,12 +76,12 @@ effect function dispatch(routes: ReadonlyArray<Route>, requestId: string, now: n
   const limit = route.maxBodyBytes ?? defaultMaxBodyBytes
   const declared = Number(request.headers["content-length"] ?? "0")
   if (!Number.isSafeInteger(declared) || declared > limit) throw refused("ContentTooLarge")
-  const caller = try authenticate(request.headers.authorization, route.auth) catch effect (failure) => match (failure) {
+  const caller = authenticate(request.headers.authorization, route.auth) catch effect (failure) => match (failure) {
     when Refused: throw failure;
     default: throw refused("ServiceUnavailable", "NoReason", now + 5000);
   }
   try admitPlanRate(route, caller, now)
-  const response = try provideService(
+  const response = provideService(
     route.handler({ request, params, query: url.searchParams, caller, requestId, now }),
     HttpServerRequest.MaxBodySize,
     ByteSize.bytes(limit)
@@ -105,7 +103,7 @@ export effect function respond(routes: ReadonlyArray<Route>): HttpServerResponse
   const response = request.method === "OPTIONS" && request.headers["access-control-request-method"] !== undefined
     ? HttpServerResponse.empty({ status: 204, headers: preflightHeaders(origin, deployment.settings) })
     : HttpServerResponse.setHeaders(
-        try dispatch(routes, requestId, now) catch (failure) => refusalResponse(failure.refusal, now),
+        dispatch(routes, requestId, now) catch (failure) => refusalResponse(failure.refusal, now),
         corsHeaders(origin, deployment.settings)
       )
   return HttpServerResponse.setHeader(response, "x-request-id", requestId)
