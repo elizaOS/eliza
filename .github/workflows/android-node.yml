@@ -73,6 +73,7 @@ jobs:
           ndk=${NDK_BIN%/toolchains/llvm/prebuilt/linux-x86_64/bin}
           target="$NDK_BIN/$NDK_TARGET$ANDROID_API_LEVEL"
           export CC="$target-clang" CXX="$target-clang++"
+          export CC_host=/usr/bin/gcc CXX_host=/usr/bin/g++
           export GYP_DEFINES="target_arch=$NODE_ARCH v8_target_arch=$NODE_ARCH android_target_arch=$NODE_ARCH host_os=linux OS=android android_ndk_path=$ndk"
           export SOURCE_DATE_EPOCH
           SOURCE_DATE_EPOCH=$(stat -c %Y configure.py)
@@ -80,7 +81,8 @@ jobs:
           ./configure --dest-cpu="$NODE_ARCH" --dest-os=android --cross-compiling \
             --openssl-no-asm --shared-zlib --v8-disable-temporal-support \
             --without-node-snapshot 2>&1 | tee "$log"
-          make -j "$(nproc)" CC.host=/usr/bin/gcc CXX.host=/usr/bin/g++ AR.host=/usr/bin/ar \
+          python3 -c 'import ast; from pathlib import Path; assert ast.literal_eval(Path("config.gypi").read_text())["variables"]["host_arch"] == "x64"'
+          make -j "$(nproc)" CC.host="$CC_host" CXX.host="$CXX_host" AR.host=/usr/bin/ar \
             AR.target="$NDK_BIN/llvm-ar" \
             'LDFLAGS.target=-static-libstdc++ -Wl,-z,max-page-size=16384' \
             2>&1 | tee -a "$log"
