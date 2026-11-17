@@ -327,7 +327,7 @@ export function findInteractionRegions(text: string): InteractionRegion[] {
   if (!text) return []
   const regions: InteractionRegion[] = []
   for (const raw of scanRawInteractionRegions(text)) {
-    let block: InteractionBlock | null = null
+    let block: InteractionBlock | null
     if (raw.kind === "CHOICE") {
       const header = raw.header.startsWith(":")
         ? raw.header.slice(1).trim()

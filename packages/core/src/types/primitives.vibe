@@ -3,6 +3,8 @@ import { failingAs, thrown } from "../edge.vibe"
 import { validateUuid } from "../utils/uuid.vibe"
 import type { InteractionBlock } from "./interactions.vibe"
 import type { JsonValue } from "./json.vibe"
+import type { ReminderPresentation } from "./reminder-presentation.vibe"
+import type { SystemNotice } from "./system-notice.vibe"
 
 export type { JsonObject, JsonPrimitive, JsonValue } from "./json.vibe"
 
@@ -60,8 +62,8 @@ export interface Content {
   providers?: string[]
   source?: string
   agentVoiced?: boolean
-  reminderPresentation?: import("./reminder-presentation.vibe").ReminderPresentation
-  systemNotice?: import("./system-notice.vibe").SystemNotice
+  reminderPresentation?: ReminderPresentation
+  systemNotice?: SystemNotice
   target?: string
   url?: string
   inReplyTo?: UUID

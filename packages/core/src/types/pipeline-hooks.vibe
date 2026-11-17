@@ -4,6 +4,7 @@ import type { Room } from "./environment.vibe"
 import type { Memory } from "./memory.vibe"
 import { type Content, DEFAULT_UUID, type MentionContext, type UUID } from "./primitives.vibe"
 import type { State } from "./state.vibe"
+import type { IAgentRuntime } from "./runtime.vibe"
 
 export type OutgoingContentSource =
   | "simple"
@@ -137,7 +138,7 @@ export type PipelineHookContextForPhase<P extends PipelineHookPhase> = Extract<
 >
 
 export type PipelineHookHandler = (
-  runtime: import("./runtime.vibe").IAgentRuntime,
+  runtime: IAgentRuntime,
   ctx: PipelineHookContext,
 ) => void | Promise<void>
 

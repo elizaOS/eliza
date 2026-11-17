@@ -7,7 +7,7 @@ import { ModelType, type PiiPseudonymAssignment, type TextEmbeddingParams } from
 import type { UUID } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import type { Service } from "../types/service.vibe"
-import { elizaErrorOrForeign, toWellFormedUnicode } from "../utils/unicode.vibe"
+import { elizaErrorOrForeign } from "../utils/unicode.vibe"
 import { canonicalKind } from "./entity-recognizer.vibe"
 import type { CorpusPseudonymMap } from "./pii-pseudonym-map.vibe"
 

@@ -534,7 +534,7 @@ export effect function isReady(): boolean!(AdapterNotRegistered | Foreign)!Runti
   return try foreign(() => runtime.adapter.isReady())
 }
 
-export effect function installRemotePlugin(plugin: Plugin, options?: RemotePluginInstallOptions): RemotePluginInstanceHandle!RemotePluginBridgeMissing {
+export effect function installRemotePlugin(_plugin: Plugin, _options?: RemotePluginInstallOptions): RemotePluginInstanceHandle!RemotePluginBridgeMissing {
   throw new RemotePluginBridgeMissing({
     message: "installRemotePlugin requires a host with RemotePluginBridge wiring (see @elizaos/agent).",
   })

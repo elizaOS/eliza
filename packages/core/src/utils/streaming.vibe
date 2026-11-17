@@ -907,7 +907,7 @@ module edge {
           return false
         }
       }
-      let allowed = false
+      let allowed: boolean
       try {
         allowed = gate(preceding) === true
       } catch {

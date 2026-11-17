@@ -1,5 +1,5 @@
 // spec/core/services.md, "Story: Acquire a declared service"
-import { Foreign, foreign, promised } from "../edge.vibe"
+import { type Foreign, foreign, promised } from "../edge.vibe"
 import { getPairingIdLabel, type PairingChannel } from "../types/pairing.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { ServiceType } from "../types/service.vibe"
