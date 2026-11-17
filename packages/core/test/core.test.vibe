@@ -2017,8 +2017,39 @@ it.live("Administer a world: roles, components, settings and topics (spec/core/a
   const decrypted = try host(() => getWorldSettings(runtime, serverId)) as Record<string, { value: string }> | null
   const parts = ciphertext.split(":")
   const tamperedText = [parts[0], parts[1], `${parts[2]!.slice(0, -1)}${parts[2]!.endsWith("0") ? "1" : "0"}`, parts[3]].join(":")
+  const nativeDecryption = try host(() => runNode({
+    script: `import { createDecipheriv, createHash } from "node:crypto";
+const [envelope, salt] = JSON.parse(process.argv[1]);
+const [, iv, ciphertext, tag] = envelope.split(":");
+let diagnostic = null;
+try {
+  const decipher = createDecipheriv("aes-256-gcm", createHash("sha256").update(salt).digest(), Buffer.from(iv, "hex"));
+  decipher.setAAD(new TextEncoder().encode("elizaos:settings:v2"));
+  decipher.setAuthTag(Buffer.from(tag, "hex"));
+  decipher.update(Buffer.from(ciphertext, "hex"));
+  decipher.final();
+} catch (error) {
+  diagnostic = [error instanceof Error, error.constructor.name, error.name, error.message, error.code ?? null, error.library ?? null, error.reason ?? null];
+}
+console.log(JSON.stringify(diagnostic));`,
+    args: [JSON.stringify([tamperedText, privateSalt])],
+  }))
+  const nativeDiagnostic = Schema.Tuple([Schema.Boolean, Schema.String, Schema.String, Schema.String, Schema.NullOr(Schema.String), Schema.NullOr(Schema.String), Schema.NullOr(Schema.String)])
+  const nativeCause = try Schema.decodeUnknownEffect(Schema.fromJsonString(nativeDiagnostic), { onExcessProperty: "error" })(nativeDecryption.stdout)
+  try Effect.try(() => assert.deepStrictEqual([nativeDecryption.status, nativeCause[0]], [0, true]))
   try host(() => runtime.updateWorld({ ...persisted!, metadata: { ...persisted!.metadata, settings: { ...storedSettings, API_TOKEN: { ...storedSettings.API_TOKEN!, value: tamperedText } } as unknown as NonNullable<World["metadata"]>["settings"] } }))
   const tampered = try failure(() => getWorldSettings(runtime, serverId))
+  const decryptionFailure = try Effect.try(() => {
+    assert.instanceOf(tampered, ElizaError)
+    const cause = tampered.cause
+    assert.instanceOf(cause, Error)
+    return {
+      code: tampered.code,
+      message: tampered.message,
+      cause: [cause instanceof Error, cause.constructor.name, cause.name, cause.message, "code" in cause ? cause.code ?? null : null, "library" in cause ? cause.library ?? null : null, "reason" in cause ? cause.reason ?? null : null],
+    }
+  })
+  const cause = try Schema.decodeUnknownEffect(nativeDiagnostic, { onExcessProperty: "error" })(decryptionFailure.cause)
   // spec/core/settingsKeys.md, "Production rejects unset and public salts on refresh"
   try withEnv({ SECRET_SALT: undefined, NODE_ENV: "production" })
   clearSaltCache()
@@ -2032,7 +2063,7 @@ it.live("Administer a world: roles, components, settings and topics (spec/core/a
       envelope: [parts[0], parts.length, storedSettings.MODE!.value],
       underConfiguredSalt: decryptStringValue(ciphertext, privateSalt),
       decrypted: [decrypted?.API_TOKEN?.value, decrypted?.MODE?.value],
-      tampered: [(tampered as { code?: string }).code, (tampered as Error).message, ((tampered as Error).cause as Error | undefined)?.message],
+      tampered: [true, decryptionFailure.code, decryptionFailure.message, cause],
       unsafe: [[(unset as Error).constructor.name, (unset as Error).message], [(publicSalt as Error).constructor.name, (publicSalt as Error).message]],
     },
     {
@@ -2040,7 +2071,7 @@ it.live("Administer a world: roles, components, settings and topics (spec/core/a
       envelope: ["v2", 4, "public"],
       underConfiguredSalt: "tok-123",
       decrypted: ["tok-123", "public"],
-      tampered: ["SETTING_DECRYPTION_FAILED", "Failed to decrypt secret setting", "Unsupported state or unable to authenticate data"],
+      tampered: [true, "SETTING_DECRYPTION_FAILED", "Failed to decrypt secret setting", nativeCause],
       unsafe: [
         ["Error", "SECRET_SALT must be set to a non-default value in production."],
         ["Error", "SECRET_SALT must be set to a non-default value in production."],
