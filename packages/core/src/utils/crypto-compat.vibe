@@ -1,4 +1,4 @@
-// spec/core/protocols.md, "Binary helpers preserve byte contents and the input slice ownership contract"
+// spec/core/settingsKeys.md, "Recognized ciphertext fails explicitly when authentication or decryption fails"; spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import { failingAs, Foreign, thrown } from "../edge.vibe"
 
 module node {

@@ -1,4 +1,4 @@
-// spec/core/diagnostics.md, "Story: Redact untrusted diagnostic fields at the sink"; spec/core/diagnostics.md, "A credential field emits only a replacement marker"
+// spec/core/security.md, "A secret never appears in a log line"
 import { Arbitrary, Schema } from "effect";
 import { contract } from "vibestack/testing";
 import { MIN_SECRET_LENGTH, redactSecrets } from "./redact.vibe";

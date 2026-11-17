@@ -122,7 +122,7 @@ export const appSupportsSchema = z.object({
   v2: z.boolean(),
 })
 
-export const appNpmSchema = z.object({
+const appNpmSchema = z.object({
   package: z.string(),
   v0Version: z.string().nullable(),
   v1Version: z.string().nullable(),
@@ -170,8 +170,6 @@ export const appLaunchSchema = z.object({
   bootHook: appBootHookSchema.optional(),
   mainTab: z.boolean().optional(),
 })
-
-export type AppLaunch = z.infer<typeof appLaunchSchema>
 
 const commonFields = {
   id: z

@@ -15,7 +15,11 @@ export const keyOrderNeverChangesTheText = contract({
   run: stableStringify,
   deterministic: true,
   invariant: (value, text) => {
-    const parsed: unknown = JSON.parse(text);
-    return stableStringify(reversedKeys(value)) === text && stableStringify(parsed) === text;
+    try {
+      const parsed: unknown = JSON.parse(text);
+      return stableStringify(reversedKeys(value)) === text && stableStringify(parsed) === text;
+    } catch {
+      return false;
+    }
   },
 });

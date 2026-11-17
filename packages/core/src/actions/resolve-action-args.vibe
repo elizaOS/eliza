@@ -1,4 +1,4 @@
-// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+// spec/core/actionPlanning.md, "Story: Plan and execute tool calls"
 import type { Foreign } from "../edge.vibe"
 import type { ElizaError } from "../errors.vibe"
 import type { HandlerOptions } from "../types/components.vibe"

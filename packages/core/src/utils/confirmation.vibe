@@ -188,13 +188,8 @@ export function isAffirmativeConfirmationReply(message: Memory): boolean {
 }
 
 function settleReply(reply: ConfirmationReply): ConfirmationStatus {
-  const settled = step(
-    initial,
-    reply === "unclear"
-      ? { type: "answerUnclear" }
-      : { type: "answerClear", refusal: reply === "negative", affirmative: reply === "affirmative" },
-  )
-  if (settled.status === "Waiting") return "pending"
+  if (reply === "unclear") return "pending"
+  const settled = step(initial, { type: "answerClear", refusal: reply === "negative", affirmative: reply === "affirmative" })
   return settled.status === "Confirmed" ? "confirmed" : "cancelled"
 }
 

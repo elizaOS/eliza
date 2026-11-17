@@ -1,6 +1,6 @@
-// SPEC.md, "Conformance": spec/core/accountBridges.md against the shared bridge slots of src/account-pool-bridge.vibe, process-wide, observed as the identity of the object each getter returns
+// spec/core/accountBridges.md, "Story: Install and clear shared account-selection contracts"; spec/core/accountBridges.md, "Each bridge slot preserves the last installed object identity"
 import type { Driver, Options } from "../../gen/core__accountBridges.conformance.ts";
-import type { AccountBridges, BridgeReference } from "../../gen/core__accountBridges.ts";
+import type { BridgeReference } from "../../gen/core__accountBridges.ts";
 import {
   type AnthropicAccountPoolBridge,
   type CodingAgentSelectorBridge,
@@ -10,35 +10,31 @@ import {
   setCodingAgentSelectorBridge,
 } from "../../src/account-pool-bridge.vibe";
 
-const anthropicBridges = new Map<string, AnthropicAccountPoolBridge>();
-const codingBridges = new Map<string, CodingAgentSelectorBridge>();
+const modelPoolBridges = new Map<string, AnthropicAccountPoolBridge>();
+const codingPoolBridges = new Map<string, CodingAgentSelectorBridge>();
 
-const anthropicBridge = (identity: string): AnthropicAccountPoolBridge => {
-  const existing = anthropicBridges.get(identity);
+const bridgeOf = <B>(identity: string, bridges: Map<string, B>, create: () => B): B => {
+  const existing = bridges.get(identity);
   if (existing) return existing;
-  const created: AnthropicAccountPoolBridge = {
-    selectAnthropicSubscription: () => Promise.resolve(null),
-    getAccessToken: () => Promise.resolve(null),
-    markInvalid: () => Promise.resolve(),
-    markRateLimited: () => Promise.resolve(),
-  };
-  anthropicBridges.set(identity, created);
+  const created = create();
+  bridges.set(identity, created);
   return created;
 };
 
-const codingBridge = (identity: string): CodingAgentSelectorBridge => {
-  const existing = codingBridges.get(identity);
-  if (existing) return existing;
-  const created: CodingAgentSelectorBridge = {
-    describe: () => ({}),
-    select: () => Promise.resolve(null),
-    markRateLimited: () => Promise.resolve(),
-    markNeedsReauth: () => Promise.resolve(),
-    recordUsage: () => Promise.resolve(),
-  };
-  codingBridges.set(identity, created);
-  return created;
-};
+const modelPoolBridge = (): AnthropicAccountPoolBridge => ({
+  selectAnthropicSubscription: () => Promise.resolve(null),
+  getAccessToken: () => Promise.resolve(null),
+  markInvalid: () => Promise.resolve(),
+  markRateLimited: () => Promise.resolve(),
+});
+
+const codingPoolBridge = (): CodingAgentSelectorBridge => ({
+  describe: () => ({}),
+  select: () => Promise.resolve(null),
+  markRateLimited: () => Promise.resolve(),
+  markNeedsReauth: () => Promise.resolve(),
+  recordUsage: () => Promise.resolve(),
+});
 
 const reference = <B>(installed: B | null, bridges: Map<string, B>): BridgeReference => {
   if (installed === null) return { tag: "NoBridge" };
@@ -47,24 +43,23 @@ const reference = <B>(installed: B | null, bridges: Map<string, B>): BridgeRefer
   return { tag: "InstalledBridge", identity };
 };
 
-export const driver: Driver<AccountBridges> = {
+export const driver: Driver = {
   reset: () => {
     setAnthropicAccountPoolBridge(null);
     setCodingAgentSelectorBridge(null);
   },
-  dispatch: (_key, event) => {
-    const { bridge } = event;
-    if (event.type === "setAnthropic") {
-      setAnthropicAccountPoolBridge(bridge.tag === "NoBridge" ? null : anthropicBridge(bridge.identity));
+  dispatch: (_key, { slot, bridge }) => {
+    if (slot === "ModelPoolSlot") {
+      setAnthropicAccountPoolBridge(bridge.tag === "NoBridge" ? null : bridgeOf(bridge.identity, modelPoolBridges, modelPoolBridge));
     } else {
-      setCodingAgentSelectorBridge(bridge.tag === "NoBridge" ? null : codingBridge(bridge.identity));
+      setCodingAgentSelectorBridge(bridge.tag === "NoBridge" ? null : bridgeOf(bridge.identity, codingPoolBridges, codingPoolBridge));
     }
     return "accepted";
   },
   observe: () => ({
-    anthropic: reference(getAnthropicAccountPoolBridge(), anthropicBridges),
-    coding: reference(getCodingAgentSelectorBridge(), codingBridges),
+    modelPool: reference(getAnthropicAccountPoolBridge(), modelPoolBridges),
+    codingPool: reference(getCodingAgentSelectorBridge(), codingPoolBridges),
   }),
 };
 
-export const options: Options<AccountBridges> = { keys: ["a"] };
+export const options: Options = { keys: ["a"] };

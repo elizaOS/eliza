@@ -1,4 +1,4 @@
-// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+// spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/packageExports.md, "An admitted pack serves exactly the declared leaves, each free of host-only code"
 import type { InferenceTurnSummary } from "../inference-timing.vibe"
 import type { RoomHandlerLease } from "../runtime/room-handler-queue.vibe"
 import type { TypedReadEgressReceipt, TypedReadReplyResolver } from "../runtime/typed-read-contract.vibe"

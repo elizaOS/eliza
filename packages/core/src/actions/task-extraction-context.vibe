@@ -4,12 +4,11 @@ import {
   Machine,
   machine,
   normalizedInterpretation,
-  type NoteOperation,
-  type RequestClassification,
   type RequestIssuer,
   restriction,
   validIssuer as issuerHolds,
 } from "../../gen/core__requestIssuer.effect.vibe"
+import { type Operation, type RequestClass } from "../../gen/core__requestCompletions.effect.vibe"
 import { getAmbientSingleton } from "../ambient-context.vibe"
 import { failingAs, foreignSync, thrown } from "../edge.vibe"
 import { completionContextSources, selectHistoricalNavigation } from "../runtime/completion-context.vibe"
@@ -858,7 +857,7 @@ function issuerView(value: Issuer, state: RequestIssuer): IssuerView {
 function publicInterpretation(interpretation: Interpretation): NotesRequestInterpretation {
   return Object.freeze({
     status: STATUSES[interpretation.status],
-    operations: Object.freeze(interpretation.operations.map((operation) => OPERATIONS[operation])),
+    operations: Object.freeze(interpretation.operations.flatMap((operation) => operation === "NoOperation" ? [] : [OPERATIONS[operation]])),
   })
 }
 
@@ -999,10 +998,10 @@ export function commitNotesRequestRestriction(
 }
 
 const MODEL_CLASSIFICATIONS = {
-  read_only: "ReadOnlyRequest",
-  mutation_requested: "MutationRequest",
-  unresolved: "UnresolvedRequest",
-} as const satisfies Record<RequestOperationClassification, RequestClassification>
+  read_only: "ReadOnlyClass",
+  mutation_requested: "MutationClass",
+  unresolved: "UnresolvedClass",
+} as const satisfies Record<RequestOperationClassification, RequestClass>
 
 const MODEL_STATUSES = {
   explicit: "ExplicitInterpretation",
@@ -1011,13 +1010,13 @@ const MODEL_STATUSES = {
 } as const satisfies Record<NotesRequestInterpretation["status"], Interpretation["status"]>
 
 const MODEL_OPERATIONS = {
-  get: "GetNote",
-  list: "ListNotes",
-  create: "CreateNote",
-  update: "UpdateNote",
-  patch: "PatchNote",
-  delete: "DeleteNote",
-} as const satisfies Record<NotesRequestOperation, NoteOperation>
+  get: "GetOperation",
+  list: "ListOperation",
+  create: "CreateOperation",
+  update: "UpdateOperation",
+  patch: "PatchOperation",
+  delete: "DeleteOperation",
+} as const satisfies Record<NotesRequestOperation, Operation>
 
 function inverse<K extends string, V extends string>(table: Readonly<Record<K, V>>): Readonly<Record<V, K>> {
   return Object.fromEntries(Object.entries(table).map(([key, value]) => [value, key])) as Record<V, K>

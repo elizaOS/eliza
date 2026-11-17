@@ -1,4 +1,4 @@
-// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
+// spec/core/packageExports.md, "Spoken text keeps the prose of a reply and drops reasoning, tool calls, code, addresses, markup and stage directions"
 import { REASONING_TAG_NAMES } from "./utils/reasoning-tags.vibe"
 import { looksLikeStageDirection } from "./utils/stage-directions.vibe"
 

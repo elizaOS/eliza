@@ -1,4 +1,4 @@
-// spec/core/embeddingService.md, "Initialization has one shared promise and a failed activation can retry"; spec/core/embeddingService.md, "Queue outcomes release exact pending keys and shutdown waits for activation"; spec/core/embeddingBatch.md, "A batch owns a finite supplied member set without a fixed size limit"
+// spec/core/embeddingService.md, "Initialization has one shared promise and a failed activation can retry"; spec/core/embeddingService.md, "Queue outcomes release exact pending keys and shutdown waits for activation"; spec/core/batchQueue.md, "A batched call settles successful items before retrying failures"; spec/core/embeddingService.md, "A request waits for the activation it captured and queues each exact source once"; spec/core/embeddingService.md, "Stopping detaches every handler and admits no further work"
 import { asLegacy, Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
 import { shouldSkipResponseMemoryPersistence } from "../memory.vibe"
 import { isProcessingPolicyDenial } from "../security/processing-policy.vibe"

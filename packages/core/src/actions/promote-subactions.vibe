@@ -1,4 +1,4 @@
-// spec/core/execution.md, "Story: Settle an action before publishing its callback"
+// spec/core/actionPlanning.md, "A promoted subaction is checked by its own name and its umbrella's, so allowing an umbrella allows none of its subactions and refusing it refuses them all"; spec/core/actionPlanning.md, "A subaction stays within its parent's authority"
 import { foreign, runDetached } from "../edge.vibe"
 import type {
   Action,

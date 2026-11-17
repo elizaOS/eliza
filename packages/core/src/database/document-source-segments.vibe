@@ -1,4 +1,4 @@
-// spec/core/storage.md, "Story: Publish complete immutable source revisions"; spec/core/storage.md, "Revisions and pagination reject invalid numeric inputs"
+// spec/core/storage.md, "Story: Publish complete immutable source revisions"; spec/core/storage.md, "A stale or malformed revision, or invalid pagination, exposes no page"
 import { randomUuid } from "../utils/uuid.vibe"
 import { failingAs, Foreign, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"

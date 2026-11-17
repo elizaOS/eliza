@@ -1,4 +1,4 @@
-// spec/core/providers.md, "Story: Share provider work without sharing cancellation"
+// spec/core/capabilityRouting.md, "Story: Route to a local or remote runner"; spec/core/capabilityRouting.md, "A request runs on at most one runner, chosen once"
 export interface SandboxEntryInfo {
   path: string
   name: string

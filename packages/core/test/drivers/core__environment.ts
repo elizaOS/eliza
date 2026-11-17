@@ -1,4 +1,4 @@
-// SPEC.md, "Conformance": spec/core/environment.md against Environment of src/utils/environment.vibe, one per key over process variables of its own, observed through what each read returns
+// spec/core/environment.md, "Story: Cache environment reads with explicit invalidation"; spec/core/environment.md, "An absent cached value uses each call's own default"
 import type { Driver, Options } from "../../gen/core__environment.conformance.ts";
 import type { EnvObservation, EnvValue } from "../../gen/core__environment.ts";
 import { Environment } from "../../src/utils/environment.vibe";

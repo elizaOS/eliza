@@ -1,4 +1,4 @@
-// spec/core/retrievalIndex.md, "Story: Update a searchable corpus without stale frequencies"; spec/core/retrievalIndex.md, "Appending records adds one document and registers each distinct term once"; spec/core/retrievalIndex.md, "IDF inputs and score ordering retain the source numerical formulas"
+// spec/core/retrieval.md, "Story: Maintain the corpus"; spec/core/retrieval.md, "Appending records adds one document and registers each distinct term once"; spec/core/retrieval.md, "IDF inputs and score ordering retain the source numerical formulas"; spec/core/retrieval.md, "Story: Ranked retrieval"; spec/core/retrieval.md, "Ranking is a total order, so the same candidates always rank the same"
 // Implementation of BM25 and Porter2 stemming
 // https://github.com/eilvelia/porter2.js
 // https://www.npmjs.com/package/fast-bm25

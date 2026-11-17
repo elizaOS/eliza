@@ -1,4 +1,4 @@
-// spec/core/protocols.md, "A public value retains identity and explicitly declared version"
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import { failingAs, thrown } from "../edge.vibe"
 import { uuidFromString } from "./uuid.vibe"
 

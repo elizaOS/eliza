@@ -1,4 +1,4 @@
-// spec/core/providers.md, "Story: Share provider work without sharing cancellation"
+// spec/core/retrieval.md, "Story: Ranked retrieval"; spec/core/retrieval.md, "Ranking is a total order, so the same candidates always rank the same"
 import { thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 

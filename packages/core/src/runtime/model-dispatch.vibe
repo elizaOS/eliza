@@ -1,6 +1,6 @@
-// spec/core/models.md, "Admission checks the complete request without changing its source bytes"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "Cancellation follows turn identity and blocks fallback"; spec/core/registries.md, "Model registration preserves every handler and its provider identity"; spec/core/modelDiagnostics.md, "Promise identity governs membership independently of the final outcome"; spec/core/runtimeExtensions.md, "Each registry preserves its own normalization and replacement policy"
+// spec/core/models.md, "Admission checks the complete request without changing its source bytes"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"; spec/core/models.md, "Cancellation follows turn identity and blocks fallback"; spec/core/registries.md, "Model registration preserves every handler and its provider identity"; spec/core/modelDiagnostics.md, "Promise identity governs membership independently of the final outcome"; spec/core/registries.md, "Each extension registry preserves its own normalization and replacement policy"
 import { errorText } from "../utils/errors.vibe"
-import { Machine, machine } from "../../gen/core__runtimeExtensions.effect.vibe"
+import { Machine, machine } from "../../gen/core__registries.effect.vibe"
 import { asLegacy, Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
 import { copyEmbeddingVectorSpace } from "../embedding-vector-space.vibe"
 import { ElizaError } from "../errors.vibe"
@@ -462,7 +462,7 @@ export effect function noteResolvedModelProvider(
   try orDie(core.resolvedProviders.send({
     type: "noteResolvedProvider",
     modelType: modelTypeKey,
-    provider,
+    providerName: provider,
     nonblank: true,
   }))
 }

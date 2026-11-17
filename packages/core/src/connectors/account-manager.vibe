@@ -1,7 +1,7 @@
-// spec/core/connectorStorage.md, "Story: Retain full account and flow values under exact identities"; spec/core/accountValues.md, "Story: Patch account policy without changing its durable identity"; spec/core/connectorBackends.md, "Story: Keep a stable facade while durable storage becomes available"; spec/core/connectorHandoff.md, "Story: Transfer complete fallback state before invoking the next backend"; spec/core/connectorMigration.md, "Story: Inspect a complete handoff before the selected operation runs"; spec/core/connectorQueues.md, "Story: Preserve callback and migration order after rejection"; spec/core/oauthBridge.md, "Story: Preserve one-time flow ownership across durable and process state"; spec/core/oauthSecrets.md, "Story: Use a one-time verifier only with its originating flow"; spec/core/oauthStart.md, "Story: Start authorization only after preserving its original state"; spec/core/oauthLifecycle.md, "Story: Complete one authorization without reusing a consumed state"; spec/core/connectorManagers.md, "Story: Resolve account providers through the correct manager"
+// spec/core/connectorStorage.md, "Story: Retain full account and flow values under exact identities"; spec/core/connectorStorage.md, "Story: Connector account lifecycle"; spec/core/accountValues.md, "Story: Patch account policy without changing its durable identity"; spec/core/connectorHandoff.md, "Story: Transfer complete fallback state before invoking the next backend"; spec/core/connectorHandoff.md, "Backend replacement preserves facade identity and memoizes each current adapter"; spec/core/connectorQueues.md, "Story: Preserve callback and migration order after rejection"; spec/core/oauth/bridge.md, "Story: Preserve one-time flow ownership across durable and process state"; spec/core/oauth/verifiers.md, "Story: Use a one-time verifier only with its originating flow"; spec/core/oauth/index.md, "Story: Start authorization only after preserving its original state"; spec/core/oauth/index.md, "Story: Complete one authorization without reusing a consumed state"; spec/core/connectorManagers.md, "Story: Resolve account providers through the correct manager"
 import { errorText } from "../utils/errors.vibe"
 import { randomUuid } from "../utils/uuid.vibe"
-import { absentText, normalizedRole } from "../../gen/core__accountValues.effect.vibe"
+import { absentText, normalizedAccountRole } from "../../gen/core__accountValues.effect.vibe"
 import { compareMemoryIds } from "../database.vibe"
 import { asLegacy, Foreign, foreign, foreignSync, promised, runDetached, runDetachedSync, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
@@ -401,7 +401,7 @@ function normalizeStringArray<T extends string>(
 function normalizeConnectorAccountRole(
   role: ConnectorAccountRole | undefined,
 ): ConnectorAccountRole {
-  return normalizedRole(
+  return normalizedAccountRole(
     typeof role === "string" ? { present: true, text: role.trim().toUpperCase() } : absentText,
   ) as ConnectorAccountRole
 }

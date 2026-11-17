@@ -1,4 +1,4 @@
-// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+// spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/packageExports.md, "An admitted pack serves exactly the declared leaves, each free of host-only code"
 import type { RemotePluginAppManifest } from "../capabilities/protocol.vibe"
 import type { ConnectorSourceDefinition } from "../connectors.vibe"
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators.vibe"
@@ -65,30 +65,23 @@ export type AdapterFactory = (
   settings: Record<string, string>,
 ) => IDatabaseAdapter | Promise<IDatabaseAdapter>
 
-export type PluginAppSessionMode = "viewer" | "spectate-and-steer" | "external"
+type PluginAppSessionMode = "viewer" | "spectate-and-steer" | "external"
 
-export type PluginAppSessionFeature =
-  | "commands"
-  | "telemetry"
-  | "pause"
-  | "resume"
-  | "suggestions"
+type PluginAppControlAction = "pause" | "resume"
 
-export type PluginAppControlAction = "pause" | "resume"
-
-export type PluginAppTelemetryValue =
+type PluginAppTelemetryValue =
   | JsonValue
   | PluginAppTelemetryValue[]
   | { [key: string]: PluginAppTelemetryValue }
 
-export interface PluginAppViewer {
+interface PluginAppViewer {
   url: string
   embedParams?: Record<string, string>
   postMessageAuth?: boolean
   sandbox?: string
 }
 
-export interface PluginAppViewerAuthMessage {
+interface PluginAppViewerAuthMessage {
   type: string
   authToken?: string
   characterId?: string
@@ -97,12 +90,7 @@ export interface PluginAppViewerAuthMessage {
   followEntity?: string
 }
 
-export interface PluginAppSession {
-  mode: PluginAppSessionMode
-  features?: PluginAppSessionFeature[]
-}
-
-export interface PluginAppRecommendation {
+interface PluginAppRecommendation {
   id: string
   label: string
   type?: string
@@ -111,7 +99,7 @@ export interface PluginAppRecommendation {
   command?: string | null
 }
 
-export interface PluginAppActivityItem {
+interface PluginAppActivityItem {
   id: string
   type: string
   message: string
@@ -119,7 +107,7 @@ export interface PluginAppActivityItem {
   severity?: "info" | "warning" | "error"
 }
 
-export interface PluginAppSessionState {
+interface PluginAppSessionState {
   sessionId: string
   appName: string
   mode: PluginAppSessionMode
@@ -138,7 +126,7 @@ export interface PluginAppSessionState {
   telemetry?: Record<string, PluginAppTelemetryValue> | null
 }
 
-export interface PluginAppLaunchDiagnostic {
+interface PluginAppLaunchDiagnostic {
   code: string
   severity: "info" | "warning" | "error"
   message: string
@@ -172,7 +160,7 @@ export interface PluginDiagnosticDescriptor {
   prerequisites: PluginDiagnosticPrerequisite[]
 }
 
-export interface PluginAppBridgeLaunchContext {
+interface PluginAppBridgeLaunchContext {
   appName?: string
   launchUrl?: string | null
   runtime?: IAgentRuntime | null
@@ -184,18 +172,18 @@ export interface PluginAppBridgeLaunchContext {
     | null
 }
 
-export interface PluginAppBridgeRunContext extends PluginAppBridgeLaunchContext {
+interface PluginAppBridgeRunContext extends PluginAppBridgeLaunchContext {
   runId?: string
   session?: PluginAppSessionState | null
 }
 
-export interface PluginAppLaunchPreparation {
+interface PluginAppLaunchPreparation {
   diagnostics?: PluginAppLaunchDiagnostic[]
   launchUrl?: string | null
   viewer?: PluginAppViewer | null
 }
 
-export interface PluginAppBridge {
+interface PluginAppBridge {
   prepareLaunch?: (
     ctx: PluginAppBridgeLaunchContext,
   ) => Promise<PluginAppLaunchPreparation | null>
@@ -217,7 +205,7 @@ export interface PluginAppBridge {
 }
 
 
-export interface PluginAppNavTab {
+interface PluginAppNavTab {
   id: string
 
   label: string
@@ -274,10 +262,6 @@ export interface PluginWidgetDeclaration {
   size?: { cols: number; rows: number }
 
   visibility?: "always" | "fallback" | "snapshot"
-}
-
-export interface PluginAppUiExtension {
-  detailPanelId?: string
 }
 
 export type ViewPlatform =
@@ -397,7 +381,7 @@ export interface ViewDeclaration {
   pinnable?: boolean
 }
 
-export interface PluginApp extends Omit<RemotePluginAppManifest, "navTabs"> {
+interface PluginApp extends Omit<RemotePluginAppManifest, "navTabs"> {
   navTabs?: PluginAppNavTab[]
 }
 

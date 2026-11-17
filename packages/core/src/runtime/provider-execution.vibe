@@ -1,4 +1,4 @@
-// spec/core/providerPromiseRace.md, "Story: Release an aborted execution while observing native work"; spec/core/providerPromiseRace.md, "The invocation microtask checks the execution signal before starting"; spec/core/providerPromiseRace.md, "The first delivered race reaction fixes the shared outcome"
+// spec/core/providers/race.md, "Story: Release an aborted execution while observing native work"; spec/core/providers/race.md, "The invocation microtask checks the execution signal before starting"; spec/core/providers/race.md, "The first delivered race reaction fixes the shared outcome"
 import { errorText } from "../utils/errors.vibe"
 import { Foreign, foreign } from "../edge.vibe"
 import type { ElizaError } from "../errors.vibe"

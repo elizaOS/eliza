@@ -1,4 +1,4 @@
-// spec/core/providers.md, "Story: Share provider work without sharing cancellation"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
+// spec/core/capabilityRouting.md, "Story: Route to a local or remote runner"; spec/core/capabilityRouting.md, "A failed request carries a typed failure"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
 import type { JsonObject, JsonValue } from "../types/primitives.vibe"
 import type { PageLayoutManifest, SurfaceCapability } from "../types/surface-manifest.vibe"
 import type { WorkspaceDeltaReceipt } from "../types/workspace-delta.vibe"
@@ -384,7 +384,7 @@ export type RemotePluginAppBridgeHook =
   | "stopRun"
   | "handleAppRoutes"
 
-export type RemotePluginAppBridgeManifest = {
+type RemotePluginAppBridgeManifest = {
   hooks: RemotePluginAppBridgeHook[]
 }
 

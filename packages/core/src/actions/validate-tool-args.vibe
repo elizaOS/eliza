@@ -1,4 +1,4 @@
-// spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+// spec/core/actionPlanning.md, "Only a registered action with valid arguments and a permitted role is invoked"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
 import { errorText } from "../utils/errors.vibe"
 import { toActionParameterValue } from "../action-parameter-value.vibe"
 import { asLegacy, type Foreign, thrown, thrownValue } from "../edge.vibe"

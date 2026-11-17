@@ -1,5 +1,5 @@
-// spec/core/privacy.md, "Trajectory persistence follows the existing precedence order"
-import { trajectoryEnabled, type LoggingChoice } from "../../gen/core__privacy.effect.vibe"
+// spec/core/trajectories.md, "Trajectory persistence follows the existing precedence order"
+import { trajectoryEnabled, type LoggingChoice } from "../../gen/core__trajectories.effect.vibe"
 import { processEnv } from "../utils/environment.vibe"
 
 const TRUTHY = new Set(["1", "true", "yes", "on"])

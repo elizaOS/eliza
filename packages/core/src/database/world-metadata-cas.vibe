@@ -1,4 +1,4 @@
-// spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"; spec/core/storage.md, "Revisions and pagination reject invalid numeric inputs"
+// spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"; spec/core/storage.md, "A stale or malformed revision, or invalid pagination, exposes no page"
 import { revisionMatches } from "../../gen/core__storage.effect.vibe"
 import { type Foreign, foreignSync, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"

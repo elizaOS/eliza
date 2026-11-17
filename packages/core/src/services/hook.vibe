@@ -1,4 +1,4 @@
-// spec/core/hookService.md, "Registration identities, event membership and live metadata are separate"; spec/core/hookService.md, "Eligibility returns every failure in source order and caches successful binary probes"; spec/core/hookService.md, "A captured interceptor dispatches sequentially against one payload object"
+// spec/agent/host/eventHooks.md, "Registration identities, event membership and live metadata are separate"; spec/agent/host/eventHooks.md, "Eligibility returns every failure in source order and caches successful binary probes"; spec/agent/host/eventHooks.md, "A captured interceptor dispatches sequentially against one payload object"; spec/agent/host/eventHooks.md, "Stopping detaches every registration without resetting counters"
 import { foreign, runDetached } from "../edge.vibe"
 import { EventType, type EventPayload } from "../types/events.vibe"
 import type {

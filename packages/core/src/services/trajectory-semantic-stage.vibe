@@ -1,4 +1,4 @@
-// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+// spec/core/trajectories.md, "Story: Record a turn's trajectory"; spec/core/packageExports.md, "An admitted pack serves exactly the declared leaves, each free of host-only code"
 import { thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { RecordedStage } from "../runtime/trajectory-recorder.vibe"
@@ -283,7 +283,7 @@ effect function parseTrajectorySemanticStageWithState(
   }
 }
 
-export effect function parseTrajectorySemanticStages(
+effect function parseTrajectorySemanticStages(
   value: unknown,
 ): (TrajectorySemanticStageRecord[] | undefined)!ElizaError {
   if (value === undefined) return undefined

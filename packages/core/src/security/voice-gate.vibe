@@ -1,4 +1,5 @@
-// spec/core/voiceRewrite.md, "Story: Reuse scoped rephrasing while retaining original text on failure"; spec/core/voiceRewrite.md, "Cache hits move to most recent and capacity evicts only the oldest key"; spec/core/voiceRewrite.md, "Typed notices and existing voice provenance bypass cosmetic inference"
+// spec/core/outboundStyle.md, "Story: Reuse scoped rephrasing while retaining original text on failure"; spec/core/outboundStyle.md, "Cache hits move to most recent and capacity evicts only the oldest key"; spec/core/outboundStyle.md, "Typed notices and already-styled content bypass the rewrite model"
+import { cacheContains, cachedEntry, storeRewrite, touchCache, type StyleCacheEntry, type StyleCacheKey } from "../../gen/core__outboundStyle.effect.vibe"
 import { foreign, promised } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { readReminderPresentation } from "../types/reminder-presentation.vibe"
@@ -14,25 +15,7 @@ export interface EnsureAgentVoiceOptions {
   source: string
 }
 
-const VOICE_CACHE_MAX = 500
-const voiceCache = new Map<string, string>()
-
-function cacheGet(key: string): string | undefined {
-  const hit = voiceCache.get(key)
-  if (hit === undefined) return undefined
-
-  voiceCache.delete(key)
-  voiceCache.set(key, hit)
-  return hit
-}
-
-function cacheSet(key: string, value: string): void {
-  voiceCache.set(key, value)
-  if (voiceCache.size > VOICE_CACHE_MAX) {
-    const oldest = voiceCache.keys().next().value
-    if (oldest !== undefined) voiceCache.delete(oldest)
-  }
-}
+let voiceCache: StyleCacheEntry[] = []
 
 function hashText(text: string): string {
   let h = 0x811c9dc5
@@ -130,9 +113,10 @@ export effect function ensureAgentVoice(
   if (content.agentVoiced === true) return content
   if (typeof runtime.useModel !== "function") return content
 
-  const key = `${runtime.agentId}\u0000${options.source}\u0000${hashText(raw)}`
-  const cached = cacheGet(key)
-  if (cached !== undefined) {
+  const key: StyleCacheKey = { agent: String(runtime.agentId), source: String(options.source), hash: hashText(raw) }
+  if (cacheContains(voiceCache, key)) {
+    const cached = cachedEntry(voiceCache, key).text
+    voiceCache = touchCache(voiceCache, key)
     return { ...content, text: cached, agentVoiced: true }
   }
 
@@ -169,7 +153,7 @@ export effect function ensureAgentVoice(
     return content
   }
 
-  cacheSet(key, rephrased)
+  voiceCache = storeRewrite(voiceCache, key, rephrased)
   return { ...content, text: rephrased, agentVoiced: true }
 }
 export const ensureAgentVoicePromise = promised(ensureAgentVoice)

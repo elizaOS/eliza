@@ -6,7 +6,7 @@ import { decryptStringValue, encryptStringValue } from "./settings.vibe";
 const text = Arbitrary.schema(Schema.String).pipe(Arbitrary.map((s) => s.toWellFormed()));
 const setting = Arbitrary.all({ value: text.pipe(Arbitrary.map((s) => `p${s}`)), salt: text });
 
-const succeeded = <A, E>(effect: Effect.Effect<A, E>): A | null => {
+const succeeded = <A, E>(effect: A!E): A | null => {
   const exit = Effect.runSyncExit(effect);
   return Exit.isSuccess(exit) ? exit.value : null;
 };

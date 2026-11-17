@@ -1,4 +1,4 @@
-// spec/core/reminderPresentation.md, "Issuance requires a nonblank body and title and a chat text beginning with the body"
+// spec/assistant/reminderPresentation.md, "Issuance requires a nonblank body and title and a chat text beginning with the body"
 import { getAmbientSingleton } from "../ambient-context.vibe"
 import { thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"

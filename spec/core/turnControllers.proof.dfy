@@ -831,7 +831,7 @@ lemma MembersFrame(before: Turns, after: Turns, group: int)
 lemma StackFrame(before: Turns, after: Turns)
   requires alwaysClosedPendingHasGlobalOwner(before) && alwaysFramesRetainNotices(before)
   requires after.controllers.turns == before.controllers.turns && after.controllers.notices == before.controllers.notices && after.controllers.closed == before.controllers.closed
-  requires after.frames == before.frames && after.turnGroups == before.turnGroups
+  requires after.frames == before.frames && after.turnGroups == before.turnGroups && after.groups == before.groups
   ensures alwaysClosedPendingHasGlobalOwner(after) && alwaysFramesRetainNotices(after)
 {
   GroupOfFrame(before, after);
@@ -967,12 +967,12 @@ lemma FrameAt(s: Turns, i: int)
 }
 
 lemma AlwaysCleanupAtBottomFilter(s: Turns)
-  ensures alwaysCleanupAtBottom(s) == (((|ProofLib.Filter((f: TurnFrame) => isCleanupFrame(f), s.frames)| == 0) || ((|ProofLib.Filter((f: TurnFrame) => isCleanupFrame(f), s.frames)| == 1) && isCleanupFrame((if ((0 <= 0) && (0 < |s.frames|)) then s.frames[0] else RoomAbortReturnKind("", false, false))))))
+  ensures alwaysCleanupAtBottom(s) == (((|ProofLib.Filter((f: TurnFrame) => isCleanupFrame(f), s.frames)| == 0) || ((|ProofLib.Filter((f: TurnFrame) => isCleanupFrame(f), s.frames)| == 1) && isCleanupFrame((if ((0 <= 0) && (0 < |s.frames|)) then s.frames[0] else RoomAbortReturnKind(0, "", false, false))))))
 {
 }
 
 lemma ValidStackFrameFilter(s: Turns, f: TurnFrame)
-  ensures validStackFrame(s, f) == (if f.EventFrameKind? then ((((f.noticeId > 0) && (|ProofLib.Filter((other: TurnFrame) => noticeFrameMatches(other, f.noticeId), s.frames)| == 1)) && (exists n :: n in s.controllers.notices && ((n.id == f.noticeId) && !(n.finished)))) && (!(f.invoking) || (exists n :: n in s.controllers.notices && ((n.id == f.noticeId) && (n.cursor == f.listenerGeneration))))) else if f.GlobalFrameKind? then ((f.cursor >= 0) && (f.cursor <= |f.groups|)) else if f.CleanupFrameKind? then (((f.turnId > 0) && (|ProofLib.Filter((other: TurnFrame) => cleanupFrameMatches(other, f.turnId), s.frames)| == 1)) && (exists t :: t in s.controllers.turns && ((t.id == f.turnId) && t.phase.TurnReturned?))) else if f.RoomScanKind? then validRoomScan(s, RoomScan(f.group, f.room, f.global, f.scan)) else true)
+  ensures validStackFrame(s, f) == (if f.EventFrameKind? then ((((f.noticeId > 0) && (|ProofLib.Filter((other: TurnFrame) => noticeFrameMatches(other, f.noticeId), s.frames)| == 1)) && (exists n :: n in s.controllers.notices && ((n.id == f.noticeId) && !(n.finished)))) && (!(f.invoking) || (exists n :: n in s.controllers.notices && ((n.id == f.noticeId) && (n.cursor == f.listenerGeneration))))) else if f.GlobalFrameKind? then (((f.cursor >= 0) && (f.cursor <= |f.groups|)) && !((exists id :: id in f.groups && !((exists g :: g in s.groups && (g.id == id)))))) else if f.CleanupFrameKind? then (((f.turnId > 0) && (|ProofLib.Filter((other: TurnFrame) => cleanupFrameMatches(other, f.turnId), s.frames)| == 1)) && (exists t :: t in s.controllers.turns && ((t.id == f.turnId) && t.phase.TurnReturned?))) else if f.RoomScanKind? then validRoomScan(s, RoomScan(f.group, f.room, f.global, f.scan)) else validRoomCapture(s, f.group, f.abortRoom, f.fromGlobal, f.changedSignal))
 {
 }
 
@@ -1003,6 +1003,7 @@ lemma AlwaysTurnsRetainGroupsFilter(s: Turns)
 
 lemma SoloSame(a: Turns, b: Turns, f: TurnFrame)
   requires a.controllers.turns == b.controllers.turns && a.turnGroups == b.turnGroups
+  requires forall g :: g in b.groups ==> g in a.groups
   requires forall n :: n in b.controllers.notices && f.EventFrameKind? && n.id == f.noticeId ==> n in a.controllers.notices
   ensures validStackFrame(b.(frames := [f]), f) ==> validStackFrame(a.(frames := [f]), f)
 {
@@ -1014,7 +1015,7 @@ lemma SoloSame(a: Turns, b: Turns, f: TurnFrame)
 lemma SoloKept(s: Turns, after: Turns, keep: int, spare: int)
   requires alwaysFramesRetainNotices(s)
   requires 0 <= keep <= |s.frames| && keep <= |after.frames| && after.frames[..keep] == s.frames[..keep]
-  requires after.controllers.turns == s.controllers.turns && after.turnGroups == s.turnGroups
+  requires after.controllers.turns == s.controllers.turns && after.turnGroups == s.turnGroups && after.groups == s.groups
   requires forall n :: n in s.controllers.notices && n.id != spare ==> n in after.controllers.notices
   requires forall i :: 0 <= i < keep && s.frames[i].EventFrameKind? ==> s.frames[i].noticeId != spare
   ensures forall i :: 0 <= i < keep ==> validStackFrame(after.(frames := [after.frames[i]]), after.frames[i])
@@ -1102,8 +1103,23 @@ lemma AbortRoomStack(s: Turns, room: string, selfId: int, reason: string)
   ClosedKeep(s, after, n);
   EventIdsBelow(s);
   SoloKept(s, after, n, 0);
+  AbortRoomTop(s, room, selfId, reason);
   FramesKeep(s, after, n);
   BottomKeep(s, after, n);
+}
+
+lemma AbortRoomTop(s: Turns, room: string, selfId: int, reason: string)
+  requires alwaysGroupAllocatorValid(s) && selfId >= 0
+  ensures validStackFrame(abortRoom(s, room, selfId, reason).(frames := [abortRoom(s, room, selfId, reason).frames[|s.frames|]]), abortRoom(s, room, selfId, reason).frames[|s.frames|])
+{
+  StartLiveGroup(s, room);
+}
+
+lemma ActiveIdsKnown(s: Turns)
+  ensures forall id :: id in activeGroupIds(s) ==> exists g :: g in s.groups && g.id == id
+{
+  ActiveGroupIdsFilter(s);
+  ProofLib.FilterSubset((g: RoomGroup) => g.active, s.groups);
 }
 
 lemma BeginGlobalStack(s: Turns, reason: string, close: bool)
@@ -1117,6 +1133,7 @@ lemma BeginGlobalStack(s: Turns, reason: string, close: bool)
   assert after.frames[..n] == s.frames[..n];
   EventIdsBelow(s);
   SoloKept(s, after, n, 0);
+  ActiveIdsKnown(s);
   FramesKeep(s, after, n);
   BottomKeep(s, after, n);
   if close && !s.controllers.closed {
@@ -1252,8 +1269,18 @@ lemma AdvanceClosed(s: Turns)
   ClosedKeep(s, after, n - 1);
 }
 
+lemma AdvanceRoom(s: Turns, group: int)
+  requires exists g :: g in s.groups && g.id == group
+  ensures exists g :: g in s.groups && g.id == group && g.room == (if ((0 <= 0) && (0 < |ProofLib.Filter((g: RoomGroup) => (g.id == group), s.groups)|)) then ProofLib.Filter((g: RoomGroup) => (g.id == group), s.groups)[0] else RoomGroup(0, "", false)).room
+{
+  var w :| w in s.groups && w.id == group;
+  ProofLib.FilterMember((g: RoomGroup) => (g.id == group), s.groups, w);
+  var hits := ProofLib.Filter((g: RoomGroup) => (g.id == group), s.groups);
+  ProofLib.FilterMember((g: RoomGroup) => (g.id == group), s.groups, hits[0]);
+}
+
 lemma AdvanceFrames(s: Turns)
-  requires alwaysFramesRetainNotices(s) && alwaysNoticesUnique(s) && canAdvanceGlobalAbort(s)
+  requires alwaysFramesRetainNotices(s) && alwaysNoticesUnique(s) && alwaysGroupAllocatorValid(s) && canAdvanceGlobalAbort(s)
   ensures alwaysFramesRetainNotices(advanceGlobalAbort(s))
 {
   var after := advanceGlobalAbort(s);
@@ -1264,7 +1291,10 @@ lemma AdvanceFrames(s: Turns)
   assert after.frames[n - 1] == GlobalFrameKind(top.groups, top.cursor + 1, top.reason, top.abortedRooms);
   FramesIndexed(s);
   FrameAt(s, n - 1);
-  assert after.frames[n] == RoomScanKind(top.groups[top.cursor], after.frames[n].room, true, emptyScan.(scanId := n + 1, reason := top.reason));
+  var group := top.groups[top.cursor];
+  assert group in top.groups;
+  AdvanceRoom(s, group);
+  assert after.frames[n] == RoomScanKind(group, after.frames[n].room, true, emptyScan.(scanId := n + 1, reason := top.reason));
   assert validStackFrame(after.(frames := [after.frames[n - 1]]), after.frames[n - 1]);
   assert validStackFrame(after.(frames := [after.frames[n]]), after.frames[n]);
   EventIdsBelow(s);
@@ -1356,7 +1386,8 @@ lemma FinishRoomFrames(s: Turns)
   TopKind(s);
   var top := s.frames[n - 1];
   var born := freshNotice(s.controllers.nextNotice, TurnNoticeKind.TurnAborted, top.room, top.scan.reason, "", 0);
-  assert after.frames[..n - 1] == s.frames[..n - 1] && after.frames[n - 1].RoomAbortReturnKind?;
+  assert after.frames[..n - 1] == s.frames[..n - 1] && after.frames[n - 1] == RoomAbortReturnKind(top.group, top.room, top.global, top.scan.changed);
+  FramesIndexed(s);
   TurnNoticeFilters(s);
   EventIdsBelow(s);
   if top.scan.changed {
@@ -1682,7 +1713,7 @@ lemma VisitClosed(s: Turns)
 }
 
 lemma VisitSolo(s: Turns, after: Turns, f: TurnFrame, target: TurnEntry, hit: bool, reason: string)
-  requires after.turnGroups == s.turnGroups && after.controllers.notices == s.controllers.notices && |after.controllers.turns| == |s.controllers.turns|
+  requires after.turnGroups == s.turnGroups && after.groups == s.groups && after.controllers.notices == s.controllers.notices && |after.controllers.turns| == |s.controllers.turns|
   requires forall i :: 0 <= i < |s.controllers.turns| ==> after.controllers.turns[i] == (if hit && s.controllers.turns[i].id == target.id then s.controllers.turns[i].(aborted := true, reason := reason) else s.controllers.turns[i])
   requires hit ==> !target.aborted
   requires forall t :: t in s.controllers.turns && t.id == target.id ==> t == target
@@ -2121,6 +2152,7 @@ lemma StartSolo(s: Turns, after: Turns, added: TurnEntry, f: TurnFrame)
   requires forall t :: t in s.controllers.turns ==> t.id != added.id
   requires forall x :: x != added.id ==> groupOf(after, x) == groupOf(s, x)
   requires forall n :: n in s.controllers.notices ==> n in after.controllers.notices
+  requires forall g :: g in s.groups ==> g in after.groups
   requires validStackFrame(s.(frames := [f]), f)
   ensures validStackFrame(after.(frames := [f]), f)
 {

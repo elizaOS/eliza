@@ -154,38 +154,43 @@ async function producerFiles(packageDir: string): Promise<string[]> {
   ].sort();
 }
 
+export async function freezeCore(packageDir: string, work: string): Promise<{ root: string; sourceDir: string; digest: string }> {
+  const workspace = path.resolve(packageDir, "../..");
+  const producer = path.join(await realpath(work), "producer");
+  const sourceDir = path.join(producer, path.relative(workspace, packageDir));
+  const files = await producerFiles(packageDir);
+  const inputs = new Map<string, Buffer>();
+  const digest = createHash("sha256");
+  for (const file of files) {
+    const contents = await readFile(file);
+    const relative = path.relative(workspace, file);
+    inputs.set(file, contents);
+    digest.update(relative).update("\0").update(contents).update("\0");
+    const destination = path.join(producer, relative);
+    await mkdir(path.dirname(destination), { recursive: true });
+    await writeFile(destination, contents);
+  }
+  if (JSON.stringify(files) !== JSON.stringify(await producerFiles(packageDir))) throw new Error("Core inputs changed while freezing the release candidate");
+  for (const [file, contents] of inputs) {
+    if (!contents.equals(await readFile(file))) throw new Error(`Core input changed while freezing: ${file}`);
+  }
+  await symlink(await realpath(path.join(workspace, "node_modules")), path.join(producer, "node_modules"), "dir");
+  await symlink(await realpath(path.join(packageDir, "node_modules")), path.join(sourceDir, "node_modules"), "dir");
+  return { root: producer, sourceDir, digest: digest.digest("hex") };
+}
+
 export async function packCandidate(packageDir: string): Promise<Packed> {
   const work = await mkdtemp(path.join(os.tmpdir(), "core-pack-"));
   const remove = () => rm(work, { recursive: true, force: true });
   try {
-    const workspace = path.resolve(packageDir, "../..");
-    const producer = path.join(work, "producer");
-    const sourceDir = path.join(producer, path.relative(workspace, packageDir));
-    const head = (await run("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
-    const files = await producerFiles(packageDir);
-    const inputs = new Map<string, Buffer>();
-    const digest = createHash("sha256");
-    for (const file of files) {
-      const contents = await readFile(file);
-      const relative = path.relative(workspace, file);
-      inputs.set(file, contents);
-      digest.update(relative).update("\0").update(contents).update("\0");
-      const destination = path.join(producer, relative);
-      await mkdir(path.dirname(destination), { recursive: true });
-      await writeFile(destination, contents);
-    }
-    if (JSON.stringify(files) !== JSON.stringify(await producerFiles(packageDir))) throw new Error("Core inputs changed while freezing the release candidate");
-    for (const [file, contents] of inputs) {
-      if (!contents.equals(await readFile(file))) throw new Error(`Core input changed while freezing: ${file}`);
-    }
-    await symlink(await realpath(path.join(workspace, "node_modules")), path.join(producer, "node_modules"), "dir");
-    await symlink(await realpath(path.join(packageDir, "node_modules")), path.join(sourceDir, "node_modules"), "dir");
+    const head = (await run("git", ["rev-parse", "HEAD"], { cwd: path.resolve(packageDir, "../..") })).stdout.trim();
+    const { sourceDir, digest } = await freezeCore(packageDir, work);
     const options = { cwd: sourceDir, maxBuffer: 64 * 1024 * 1024, timeout: 300_000 };
     await run("pnpm", ["build"], options);
     const { stdout } = await run("pnpm", ["pack", "--json", "--pack-destination", work], options);
     const { filename } = packedSchema.parse(JSON.parse(stdout));
     const tarball = path.resolve(work, filename);
-    return { tarball, sha256: await sha256File(tarball), sourceDir, attemptId: randomUUID(), revision: `${head}+inputs.${digest.digest("hex")}`, remove };
+    return { tarball, sha256: await sha256File(tarball), sourceDir, attemptId: randomUUID(), revision: `${head}+inputs.${digest}`, remove };
   } catch (error) {
     await remove();
     throw error;

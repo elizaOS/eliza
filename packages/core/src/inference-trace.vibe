@@ -1,4 +1,4 @@
-// spec/core/traces.md, "Story: Retain enrich and retire active trace records"; spec/core/protocols.md, "A public value retains identity and explicitly declared version"
+// spec/core/traces.md, "Story: Retain enrich and retire active trace records"; spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import { randomUuid } from "./utils/uuid.vibe"
 
 export const INFERENCE_TRACE_ID_PATTERN = /^[0-9a-f]{32}$/

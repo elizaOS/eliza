@@ -1,6 +1,6 @@
-// spec/core/diagnostics.md, "Story: Redact untrusted diagnostic fields at the sink"; spec/core/diagnostics.md, "A credential field emits only a replacement marker"
+// spec/core/security.md, "Story: Admit content and outbound data"; spec/core/security.md, "A secret never appears in a log line"; spec/core/diagnostics.md, "A renderer's log line redacts its trailing arguments as the host sink does"
+import { redactionMarker } from "../../gen/core__security.effect.vibe"
 import { defineOwnValue } from "../utils/type-guards.vibe"
-const REDACTED_VALUE = "[REDACTED]"
 
 export const REDACTION_FAILED_VALUE = "[REDACTED: redaction failed]"
 
@@ -293,7 +293,7 @@ function redactWalkValue(
   if (typeof value === "function") return null
   if (value === null || typeof value !== "object") return value
   if (seen.has(value)) return CIRCULAR_VALUE
-  if (depth >= MAX_REDACT_DEPTH) return REDACTED_VALUE
+  if (depth >= MAX_REDACT_DEPTH) return redactionMarker
   const repeated = shared.expanded.has(value)
   shared.expanded.add(value)
   if (isLeafObject(value)) {
@@ -402,7 +402,7 @@ function redactObjectValue(
         }
         const safeKey = redactWalkValue(entryKey, seen, depth + 1, shared)
         const safeValue = typeof entryKey === "string" && isSensitiveLogKey(entryKey)
-          ? REDACTED_VALUE
+          ? redactionMarker
           : redactWalkValue(entryValue, seen, depth + 1, shared)
         entries.push([safeKey, safeValue])
       },
@@ -450,7 +450,7 @@ function redactOwnPropertiesInto(
       continue
     }
     if (isSensitiveLogKey(key)) {
-      defineOwnValue(target, key, REDACTED_VALUE)
+      defineOwnValue(target, key, redactionMarker)
       continue
     }
     try {

@@ -1,4 +1,4 @@
-// spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+// spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/packageExports.md, "An admitted pack serves exactly the declared leaves, each free of host-only code"
 export const MESSAGE_SOURCE_CLIENT_CHAT = "client_chat" as const
 export const MESSAGE_SOURCE_SUB_AGENT = "sub_agent" as const
 export const MESSAGE_SOURCE_CODING_AGENT = "coding-agent" as const

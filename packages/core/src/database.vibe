@@ -1,6 +1,7 @@
-// spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"; spec/core/storage.md, "Revisions and pagination reject invalid numeric inputs"
+// spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"; spec/core/storage.md, "A stale or malformed revision, or invalid pagination, exposes no page"
 import { failingAs, thrown } from "./edge.vibe"
 import type { Task } from "./types/task.vibe"
+import { validPagination } from "../gen/core__storage.effect.vibe"
 
 type PaginationParams = { limit?: number; offset?: number }
 
@@ -12,7 +13,7 @@ effect function validateNonNegativePagination(
 ): void!InvalidPagination {
   for (const field of ["limit", "offset"] as const) {
     const value = params[field]
-    if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+    if (value !== undefined && (!Number.isSafeInteger(value) || !validPagination(value, value))) {
       throw new InvalidPagination({
         message: `${operation} ${field} must be a non-negative safe integer`,
       })

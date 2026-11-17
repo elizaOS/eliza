@@ -1,6 +1,45 @@
 // spec/core/traces.md, "Story: Retain enrich and retire active trace records"; spec/core/traces.md, "Recording preserves the insertion position of a replacement in its run"
-import type { ExecutionTrace, ScoreSignal } from "../prompt-optimization.vibe"
-import { ScoreCard } from "../prompt-optimization.vibe"
+import type { ExecutionTrace, ScoreCardData, ScoreSignal } from "../prompt-optimization.vibe"
+const DEFAULT_SIGNAL_WEIGHTS: Record<string, number> = {
+  "dpe:parseSuccess": 3.0,
+  "dpe:schemaValid": 2.0,
+  "dpe:requiredFieldsPresent": 2.0,
+  "dpe:validationCodesMatched": 1.0,
+  "dpe:retriesUsed": 1.0,
+  "dpe:tokenEfficiency": 0.5,
+  "evaluator:*": 1.5,
+  "action:actionSuccess": 2.0,
+  "action:actionFailure": 2.0,
+  "neuro:reaction_positive": 1.0,
+  "neuro:reaction_negative": 1.5,
+  "neuro:reaction_neutral": 0.3,
+  "neuro:user_correction": 2.0,
+  "neuro:conversation_continued": 0.5,
+  "neuro:response_latency": 0.3,
+  "neuro:length_appropriateness": 0.3,
+  "neuro:evaluator_agreement": 1.0,
+}
+
+function compositeScore(scoreCard: ScoreCardData): number {
+  const scored: ScoreSignal[] = []
+  if (scoreCard && Array.isArray(scoreCard.signals)) {
+    for (const signal of scoreCard.signals) {
+      if (signal && typeof signal.value === "number") scored.push(signal)
+    }
+  }
+  let weightedSum = 0
+  let totalWeight = 0
+  for (const signal of scored) {
+    const value = signal.value
+    if (typeof value !== "number" || Number.isNaN(value)) continue
+    const key = `${signal.source}:${signal.kind}`
+    const wildcardKey = `${signal.source}:*`
+    const weight = signal.weight ?? DEFAULT_SIGNAL_WEIGHTS[key] ?? DEFAULT_SIGNAL_WEIGHTS[wildcardKey] ?? 1.0
+    weightedSum += value * weight
+    totalWeight += weight
+  }
+  return totalWeight === 0 ? 0 : weightedSum / totalWeight
+}
 export class ActivePromptTraces {
   private activeTraces = new Map<string, ExecutionTrace>()
   private runToTraces = new Map<string, Set<string>>()
@@ -16,8 +55,8 @@ export class ActivePromptTraces {
       const trace = this.activeTraces.get(tid)
       if (!trace) continue
       trace.scoreCard.signals.push(signal)
-      const card = ScoreCard.fromJSON(trace.scoreCard)
-      trace.scoreCard.compositeScore = card.composite()
+      const composite = compositeScore(trace.scoreCard)
+      trace.scoreCard.compositeScore = composite
       trace.enrichedAt = Date.now()
     }
   }

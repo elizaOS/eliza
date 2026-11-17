@@ -1,4 +1,4 @@
-// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"; spec/core/protocols.md, "A public value retains identity and explicitly declared version"
+// spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"; spec/core/protocols.md, "A store holds only values of the version it declares"
 import type { MeetingPlatform } from "./meetings.vibe"
 import type { TranscriptSegment } from "./transcripts.vibe"
 import { isObjectRecord, isNonEmptyString } from "./utils/type-guards.vibe"

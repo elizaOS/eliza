@@ -1,4 +1,4 @@
-// spec/core/contracts.md, "Story: Consume the replacement through existing imports"
+// spec/core/packageExports.md, "Story: Declare and pack every browser-safe leaf a consumer imports"; spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 export {
   admitTaskChoiceResponseOrThrow as admitTaskChoiceResponse,
   type TaskChoiceWidget,
