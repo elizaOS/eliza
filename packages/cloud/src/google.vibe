@@ -388,6 +388,7 @@ effect function changeTrash(request: Request, env: GoogleEnv, db: Client, accoun
 schema Appointment { title: string; startAt: string; endAt: string; location: string; allDay?: boolean }
 schema CalendarChange { accountId: string; grantId: string; operationId: string; action: "create" | "update" | "delete"; id?: string; version?: string; seriesFor?: string; event?: Appointment }
 schema CalendarOwner { self?: boolean }
+schema CalendarTombstone { id: string; status: "cancelled" }
 schema CalendarTime { dateTime?: string; date?: string; timeZone?: string }
 schema CalendarEvidence { id: string; etag: string; status?: string; eventType?: string; recurrence?: string[]; recurringEventId?: string; attendees?: Schema.Unknown[]; organizer?: CalendarOwner; start?: CalendarTime; end?: CalendarTime; summary?: string; location?: string }
 
@@ -443,15 +444,23 @@ effect function changeCalendar(request: Request, env: GoogleEnv, db: Client, acc
   if (response.status === 412) throw new ItemChanged()
   if (!ok(response.status)) throw new OperationUncertain()
   const readback = try http(item, { access })
-  if (deleting && (readback.status === 404 || readback.status === 410) && eventId) return try finish(db, account, action.operationId, eventId)
+  if (deleting) {
+    if (!eventId) throw new OperationUncertain()
+    if (readback.status !== 404 && readback.status !== 410) {
+      if (!ok(readback.status)) throw new OperationUncertain()
+      const deleted = Schema.decodeUnknownOption(CalendarTombstone)(try timeout(readback.json, "10 seconds"))
+      if (Option.isNone(deleted) || deleted.value.id !== eventId) throw new OperationUncertain()
+    }
+    return try finish(db, account, action.operationId, eventId)
+  }
   if (!ok(readback.status)) throw new OperationUncertain()
   const saved = Schema.decodeUnknownOption(CalendarEvidence)(try timeout(readback.json, "10 seconds"))
-  if (Option.isNone(saved) || saved.value.id !== eventId || (deleting ? saved.value.status !== "cancelled" :
-    (!draft || saved.value.summary !== draft.title || (saved.value.location ?? "") !== draft.location ||
+  if (Option.isNone(saved) || saved.value.id !== eventId || !draft || saved.value.status !== "confirmed" ||
+      saved.value.summary !== draft.title || (saved.value.location ?? "") !== draft.location ||
       (seriesRules && JSON.stringify(seriesRules) !== JSON.stringify(saved.value.recurrence)) ||
       (allDay ? (saved.value.start?.date !== draft.startAt || saved.value.end?.date !== draft.endAt)
         : (Date.parse(saved.value.start?.dateTime ?? "") !== Date.parse(draft.startAt) ||
-          Date.parse(saved.value.end?.dateTime ?? "") !== Date.parse(draft.endAt)))))) throw new OperationUncertain()
+          Date.parse(saved.value.end?.dateTime ?? "") !== Date.parse(draft.endAt)))) throw new OperationUncertain()
   return try finish(db, account, action.operationId, saved.value.id, saved.value.etag)
 }
 
