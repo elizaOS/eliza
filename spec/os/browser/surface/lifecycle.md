@@ -3,7 +3,7 @@
 The surface manager (`ElizaSurfaceManager`) puts one native web page per
 browser tab beside the app's WebView. This spec owns which surfaces exist,
 which renderer realm may command them, where a page draws and takes input,
-closures, load state and the keyboard; `commands.md`, `pageRequests.md`,
+closures, load state, external handoffs and the keyboard; `commands.md`,
 `profiles.md` and `dock.md` build on it. The shell parses every call,
 runs it on the main thread and converts host CSS pixels. Sources:
 `GI:plugins/plugin-native-browser-surface` (`BrowserSurfacePlugin.kt`,
@@ -296,4 +296,31 @@ pure def stepKeyboardReportedOncePerChange(before: SurfaceHost, via: str, after:
   keyboardNotices(out) == (if (after.keyboard == before.keyboard) List() else List(KeyboardChanged({ visible: after.keyboard.visible, height: after.keyboard.height })))
 pure val heightValues = Set(0, 280)
 pure def sometimesKeyboardShown(s: SurfaceHost): bool = s.keyboard.visible and s.keyboard.height > 0
+```
+
+## Story: Open another app only for the exact link I tapped
+
+> As the person using a web surface, I want another app to open only when
+> I choose the exact link, so that a website cannot launch apps on its own.
+
+### A page can ask to open another app only after a person taps
+
+The surface holds a single main-frame external-link request from a person’s
+tap, after the platform policy accepted its scheme and intent. The host
+opens only the held address from the current owner and surface. Loading a
+new page invalidates that request. A dispatch clears the request before
+asking Android to open it. The new Intent carries only the permitted
+action, data and, for a safe intent link, the explicit target package.
+The host checks that the receiving app is installed and is a different app.
+The receipt reports dispatch to Android.
+
+```quint
+pure def externalLinkOffered(mainFrame: bool, userGesture: bool, supportedIntent: bool): bool =
+  mainFrame and userGesture and supportedIntent
+pure def externalLinkDispatches(s: SurfaceHost, realm: Realm, id: str, pendingAddress: str, requestedAddress: str, resolvedOtherApp: bool): bool =
+  owns(s, realm, id) and pendingAddress != "" and pendingAddress == requestedAddress and resolvedOtherApp
+pure def lawAWebsiteCannotOfferAnExternalLink(mainFrame: bool, supportedIntent: bool): bool =
+  not(externalLinkOffered(mainFrame, false, supportedIntent))
+pure def lawAnExternalLinkNeedsItsExactPendingAddress(s: SurfaceHost, realm: Realm, id: str, pendingAddress: str, requestedAddress: str, resolvedOtherApp: bool): bool =
+  externalLinkDispatches(s, realm, id, pendingAddress, requestedAddress, resolvedOtherApp) implies pendingAddress == requestedAddress
 ```

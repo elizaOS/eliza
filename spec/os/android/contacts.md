@@ -66,19 +66,22 @@ an incomplete placeholder with no contact data, in its place in the page.
 
 ```quint
 pure def readTicketIs(read: ContactRead, ticket: int): bool = match read { | Reading(r) => r.ticket == ticket | NoRead => false }
-pure def pagePublishes(start: Pg::PageStart, providerOk: bool): bool = match start { | Pg::Refused(_) => false | _ => providerOk }
+pure def pagePublishes(start: Pg::PageStart, providerOk: bool): bool = match start { | Refused(_) => false | _ => providerOk }
 pure val startValues = Set(Pg::FromFirst, Pg::AfterRow({ last: { major: 0, minor: 0, rowId: 1 } }), Pg::Refused({ reason: Pg::MovedBoundary }))
 pure def canCompleteRead(s: ContactsState, ticket: int): bool = readTicketIs(s.read, ticket)
 pure def completeRead(s: ContactsState, ticket: int, facts: HostFacts, start: Pg::PageStart, providerOk: bool): ContactsState = {
   val published = readAdmission(s.grants, facts) == CallAdmitted and pagePublishes(start, providerOk)
-  val evidence = match s.read {
+  val activeRead = s.read
+  val evidence = match activeRead {
     | Reading(r) => { kind: r.kind, startedAfterSettle: r.afterSettle, succeeded: published }
     | NoRead => { kind: AutomaticRead, startedAfterSettle: false, succeeded: false }
   }
   { ...s, read: NoRead, rowsShown: published, gate: gateOnRead(s.gate, evidence) }
 }
-pure def alwaysAReadBelongsToTheCurrentGenerationOfTheOpenView(s: ContactsState): bool =
-  match s.read { | Reading(r) => s.viewOpen and r.ticket == s.generation | NoRead => true }
+pure def alwaysAReadBelongsToTheCurrentGenerationOfTheOpenView(s: ContactsState): bool = {
+  val activeRead = s.read
+  match activeRead { | Reading(r) => s.viewOpen and r.ticket == s.generation | NoRead => true }
+}
 pure def alwaysRowsOnlyInTheOpenViewWithTheReadGrant(s: ContactsState): bool = s.rowsShown implies (s.viewOpen and s.grants.readGranted)
 pure def stepRowsAppearOnlyFromTheCurrentRead(before: ContactsState, via: str, after: ContactsState): bool =
   (after.rowsShown and not(before.rowsShown)) implies via == "completeRead"
@@ -234,9 +237,20 @@ pure def refreshCaller(s: ContactsState): ContactsState = {
   { ...s, call: match slot { | InCall(c) => InCall({ callId: c.callId, nameCached: c.nameCached, nameShown: c.nameCached and s.grants.readGranted }) | NoCall => NoCall } }
 }
 pure val callIdValues = Set(1, 2)
-pure def alwaysACallBelongsToTheLiveCallService(s: ContactsState): bool = match s.call { | InCall(_) => s.callServiceLive | NoCall => true }
-pure def alwaysAShownCallerNameIsCachedAndGranted(s: ContactsState): bool =
-  match s.call { | InCall(c) => c.nameShown implies (c.nameCached and s.grants.readGranted) | NoCall => true }
-pure def sometimesCallerNamed(s: ContactsState): bool = match s.call { | InCall(c) => c.nameShown | NoCall => false }
-pure def sometimesCachedNameHiddenWithoutGrant(s: ContactsState): bool = match s.call { | InCall(c) => c.nameCached and not(c.nameShown) | NoCall => false }
+pure def alwaysACallBelongsToTheLiveCallService(s: ContactsState): bool = {
+  val activeCall = s.call
+  match activeCall { | InCall(_) => s.callServiceLive | NoCall => true }
+}
+pure def alwaysAShownCallerNameIsCachedAndGranted(s: ContactsState): bool = {
+  val activeCall = s.call
+  match activeCall { | InCall(c) => c.nameShown implies (c.nameCached and s.grants.readGranted) | NoCall => true }
+}
+pure def sometimesCallerNamed(s: ContactsState): bool = {
+  val activeCall = s.call
+  match activeCall { | InCall(c) => c.nameShown | NoCall => false }
+}
+pure def sometimesCachedNameHiddenWithoutGrant(s: ContactsState): bool = {
+  val activeCall = s.call
+  match activeCall { | InCall(c) => c.nameCached and not(c.nameShown) | NoCall => false }
+}
 ```

@@ -147,12 +147,12 @@ pure def lawMoveNeverLosesTheFile(path: MovePath, copied: CopyResult, sourceRemo
 ```quint
 pure def nativeAcknowledged(op: Ro::FilesOp, result: WriteResult): bool =
   if (op == Ro::Copy) result == WriteCopied else result == WriteMoved
-pure def nativeRowOutcome(op: Ro::FilesOp, row: Ro::FilesRowCheck, result: WriteResult, to: str): Ro::FileOutcome =
-  Ro::receiptOutcome(op, nativeRowAdmission(op, row), nativeAcknowledged(op, result), to)
-pure def lawWrittenRowMatchesItsReceipt(op: Ro::FilesOp, row: Ro::FilesRowCheck, result: WriteResult, to: str): bool = {
-  val outcome = nativeRowOutcome(op, row, result, to)
-  (outcome == Ro::Copied implies (result == WriteCopied and nativeRowAdmission(op, row) == Ro::Admitted)) and
-    ((outcome == Ro::Moved or outcome == Ro::Trashed) implies (result == WriteMoved and nativeRowAdmission(op, row) == Ro::Admitted))
+pure def nativeRowOutcome(op: Ro::FilesOp, row: Ro::FilesRowCheck, result: WriteResult, destinationUri: str): Ro::FileOutcome =
+  Ro::receiptOutcome(op, nativeRowAdmission(op, row), nativeAcknowledged(op, result), destinationUri)
+pure def lawWrittenRowMatchesItsReceipt(op: Ro::FilesOp, row: Ro::FilesRowCheck, result: WriteResult, destinationUri: str): bool = {
+  val writeOutcome = nativeRowOutcome(op, row, result, destinationUri)
+  (writeOutcome == Ro::Copied implies (result == WriteCopied and nativeRowAdmission(op, row) == Ro::Admitted)) and
+    ((writeOutcome == Ro::Moved or writeOutcome == Ro::Trashed) implies (result == WriteMoved and nativeRowAdmission(op, row) == Ro::Admitted))
 }
 ```
 
@@ -255,8 +255,8 @@ a removal that fails leaves the entry shown for this scan.
 type TrashCleanup = { payloadLeft: EntryPresence, recordRemoved: bool }
 pure val trashRetentionMs = 2592000000
 pure def recordedAt(record: OriginRecord): int = match record { | Recorded(r) => r.deletedAt | NoRecord => 0 }
-pure def remainingPayload(current: EntryPresence, left: EntryPresence): EntryPresence =
-  if (current == EntryMissing or left == EntryMissing) EntryMissing else if (left == EntryIncomplete) EntryIncomplete else current
+pure def remainingPayload(priorPayload: EntryPresence, left: EntryPresence): EntryPresence =
+  if (priorPayload == EntryMissing or left == EntryMissing) EntryMissing else if (left == EntryIncomplete) EntryIncomplete else priorPayload
 pure def removeEntry(cleanup: TrashCleanup, s: NativeTrashCustody, removed: TrashAnswer, kept: TrashAnswer): NativeTrashCustody = {
   val left = remainingPayload(s.payload, cleanup.payloadLeft)
   val gone = left == EntryMissing and cleanup.recordRemoved

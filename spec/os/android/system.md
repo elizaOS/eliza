@@ -4,7 +4,7 @@ What the system and location bridges (`ElizaSystem`, `ElizaLocation`) may claim
 about handoffs, device facts, volume and brightness, and default roles. A
 handoff reports the [bridge](./bridge.md)'s `HandoffOutcome`: `Opened` means
 Android showed its screen, never that the owner changed anything there.
-[Wi-Fi](./wifi.md) uses the Internet panel handoff and the facts defined here.
+Wi-Fi uses the Internet panel handoff and the facts defined here.
 
 ## Story: Hand me to Android's own screens and apps
 
@@ -126,11 +126,14 @@ explicitly resolved clock that is not this app, and a set that named a time zone
 fails when the zone changed since. The clock shows its own review.
 
 ```quint
-type ClockRequest = ClockSet({ hour: int, minute: int, labelLength: int, labelPlain: bool, days: List[int] })
+type ClockTimeInput = { hour: int, minute: int, labelLength: int, labelPlain: bool, days: List[int] }
+type ClockRequest = ClockSet(ClockTimeInput)
   | ClockShow | ClockDismiss | ClockSnooze({ minutes: int })
 type ClockReply = ClockOpened | ClockUnavailable | ClockDenied | ClockFailed | ClockUnknown
+type WeekdayWalk = { previous: int, ordered: bool }
+pure val weekdayStart: WeekdayWalk = { previous: 0, ordered: true }
 pure def daysAscending(days: List[int]): bool =
-  days.foldl({ previous: 0, ordered: true }, (acc, d) => { previous: d, ordered: acc.ordered and d > acc.previous and d <= 7 }).ordered
+  days.foldl(weekdayStart, (acc, d) => { previous: d, ordered: acc.ordered and d > acc.previous and d <= 7 }).ordered
 pure def clockRequestAdmitted(clockRequest: ClockRequest): bool = match clockRequest {
   | ClockSet(x) => x.hour >= 0 and x.hour <= 23 and x.minute >= 0 and x.minute <= 59 and x.labelLength >= 0 and x.labelLength <= 200 and x.labelPlain and daysAscending(x.days)
   | ClockSnooze(x) => x.minutes >= 1 and x.minutes <= 60
@@ -142,7 +145,7 @@ pure def clockReply(reviewed: bool, clockRequest: ClockRequest, facts: HostFacts
   else if (launch == LaunchStarted) ClockOpened else if (launch == LaunchNotFound) ClockUnavailable
   else if (launch == LaunchDenied) ClockDenied else ClockUnknown
 pure def clockHandoff(reply: ClockReply): HandoffOutcome = if (reply == ClockOpened) Opened else Refused
-pure val wakeAt = { hour: 7, minute: 30, labelLength: 5, labelPlain: true, days: List() }
+pure val wakeAt: ClockTimeInput = { hour: 7, minute: 30, labelLength: 5, labelPlain: true, days: List() }
 pure val clockRequestValues = Set(ClockSet(wakeAt), ClockSet({ ...wakeAt, hour: 24 }), ClockSet({ ...wakeAt, days: List(2, 4, 6) }),
   ClockSet({ ...wakeAt, days: List(3, 3) }), ClockSet({ ...wakeAt, labelLength: 201 }), ClockShow, ClockSnooze({ minutes: 10 }), ClockSnooze({ minutes: 61 }))
 pure val daysValues = Set(List(), List(1), List(1, 7), List(2, 2), List(0, 3), List(5, 4), List(1, 2, 3, 4, 5, 6, 7))
@@ -239,15 +242,15 @@ type ProblemSource = RendererFailure | NativeUncaught | AndroidExit | InferenceD
 type ProblemField = Timestamp | SourceName | Kind | FailureClass | RootClass | ExitReason | ProcessLabel | Thread
   | InferenceFacts | Message | Stack | Address | UserContent
 pure val problemRetentionMs = 2592000000
-pure def problemFieldAllowed(source: ProblemSource, field: ProblemField): bool =
-  field == Timestamp or field == SourceName or
-    (source == RendererFailure and (field == Kind or field == FailureClass or field == ProcessLabel)) or
-    (source == NativeUncaught and (field == FailureClass or field == RootClass or field == ProcessLabel or field == Thread)) or
-    (source == AndroidExit and (field == ExitReason or field == ProcessLabel)) or (source == InferenceDiagnostic and field == InferenceFacts)
+pure def problemFieldAllowed(source: ProblemSource, problemField: ProblemField): bool =
+  problemField == Timestamp or problemField == SourceName or
+    (source == RendererFailure and (problemField == Kind or problemField == FailureClass or problemField == ProcessLabel)) or
+    (source == NativeUncaught and (problemField == FailureClass or problemField == RootClass or problemField == ProcessLabel or problemField == Thread)) or
+    (source == AndroidExit and (problemField == ExitReason or problemField == ProcessLabel)) or (source == InferenceDiagnostic and problemField == InferenceFacts)
 pure def problemRetained(source: ProblemSource, at: int, now: int): bool =
   at > now - problemRetentionMs and at <= now + (if (source == InferenceDiagnostic) 60000 else problemRetentionMs)
-pure def lawNoPersonalContentInAProblem(source: ProblemSource, field: ProblemField): bool =
-  (field == Message or field == Stack or field == Address or field == UserContent) implies not(problemFieldAllowed(source, field))
+pure def lawNoPersonalContentInAProblem(source: ProblemSource, problemField: ProblemField): bool =
+  (problemField == Message or problemField == Stack or problemField == Address or problemField == UserContent) implies not(problemFieldAllowed(source, problemField))
 pure def lawOldProblemIsDropped(source: ProblemSource, now: int): bool = not(problemRetained(source, now - problemRetentionMs, now))
 ```
 
@@ -322,4 +325,37 @@ pure def lawHeldOnlyFromAndroid(offered: bool, available: bool, heldBefore: bool
   roleResult(offered, available, heldBefore, offeredAfter, heldAfter) == RoleHeld implies (offered and available and (heldBefore or (offeredAfter and heldAfter)))
 pure def lawPromptedRoleIsDecidedByTheReadback(offered: bool, available: bool, heldBefore: bool, heldAfter: bool): bool =
   asksAndroidForRole(offered, available, heldBefore) implies ((roleResult(offered, available, heldBefore, true, heldAfter) == RoleHeld) iff heldAfter)
+```
+
+## Story: Approve a Wi-Fi join and see whether that network connected
+
+> As the owner, I want Android to review the network I selected and the app
+> to report whether that connection worked.
+
+### Settings approval and the selected network's connectivity are separate
+
+The enabled Wi-Fi bridge asks Android's save-network dialog on Android 11
+or later. It validates the network settings before opening the dialog and
+removes the password from the saved bridge request. A declined request
+reports declined. A failed Android result refuses the request.
+
+An approved request observes only Wi-Fi transport. The requested network
+must be named by the observed connection before a validated connection
+or captive portal can settle the requested join. A validated connection
+whose name Android withholds stays unverified at the deadline. A different
+named network does not settle the request. A wrong-password result comes
+from Android's authentication failure signal for a protected join.
+
+```quint
+type WifiJoinEvidence = WifiNotObserved | OtherWifi | NamedWifiValidated | NamedWifiPortal | WithheldWifiValidated
+pure def approvedWifiJoinConnected(approved: bool, observed: WifiJoinEvidence): bool =
+  approved and observed == NamedWifiValidated
+pure def approvedWifiJoinNeedsPortal(approved: bool, observed: WifiJoinEvidence): bool =
+  approved and observed == NamedWifiPortal
+pure def approvedWifiJoinUnverified(approved: bool, observed: WifiJoinEvidence, expired: bool): bool =
+  approved and observed == WithheldWifiValidated and expired
+pure def lawTheWrongWifiCannotSettleAnApprovedJoin(approved: bool): bool =
+  not(approvedWifiJoinConnected(approved, OtherWifi) or approvedWifiJoinNeedsPortal(approved, OtherWifi))
+pure def lawApprovalAloneDoesNotReportAConnection(approved: bool): bool =
+  not(approvedWifiJoinConnected(approved, WifiNotObserved))
 ```
