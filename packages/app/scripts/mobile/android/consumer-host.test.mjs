@@ -366,7 +366,8 @@ test("a dependency link outside the allowed roots, or not its package, is refuse
     assert.throws(
       generate,
       (error) =>
-        error instanceof AndroidConsumerHostError && pattern.test(error.message),
+        error instanceof AndroidConsumerHostError &&
+        pattern.test(error.message),
     );
     assert.equal(fs.existsSync(options.output), false);
   };
