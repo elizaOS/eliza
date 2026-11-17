@@ -103,3 +103,48 @@ it("still refuses overlapping commitments on the selected source", async () => {
   expect(result.definitive).toBe(true);
   expect(result.conflicts.length).toBeGreaterThan(0);
 });
+it("lets a write through when only another calendar is unreadable, without calling the slot free", async () => {
+  const source = (grantId: string, status: "fresh" | "error") => ({
+    key: {
+      provider: grantId === "eliza-calendar" ? "eliza" : "google",
+      side: "owner",
+      grantId,
+      connectorAccountId: grantId,
+      calendarId: "primary",
+    },
+    status,
+    visibility: "details",
+    summary: grantId,
+    error: status === "fresh" ? null : { message: "Source unavailable" },
+  });
+  const check = (statuses: ["fresh" | "error", "fresh" | "error"]) =>
+    evaluateCalendarWriteAvailability({
+      runtime: {
+        getService: () => ({
+          getCalendarFeed: async () => ({
+            calendarId: "primary",
+            events: [],
+            source: "synced",
+            state: "partial",
+            syncedAt: start,
+            sources: [
+              source("eliza-calendar", statuses[0]),
+              source("connector-account:linked", statuses[1]),
+            ],
+          }),
+        }),
+      } as never,
+      destination: { grantId: "eliza-calendar", calendarId: "primary" },
+      startAt: start,
+      endAt: end,
+      timeZone: "UTC",
+    });
+  expect(await check(["fresh", "error"])).toMatchObject({
+    writable: true,
+    definitive: false,
+  });
+  expect(await check(["error", "fresh"])).toMatchObject({
+    writable: false,
+    definitive: false,
+  });
+});
