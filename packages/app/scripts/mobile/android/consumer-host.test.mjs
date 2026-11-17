@@ -814,7 +814,19 @@ test("an embedded agent is three data files: the host declares its service, sour
   );
   assert.match(manifest, /android:name="example\.consumer\.HelperService"/);
   assert.match(manifest, /foregroundServiceType="specialUse"/);
-  assert.match(manifest, /FOREGROUND_SERVICE_SPECIAL_USE/);
+  assert.deepEqual(
+    [
+      ...manifest.matchAll(
+        /uses-permission android:name="android\.permission\.(\w+)"/g,
+      ),
+    ].map(([, name]) => name),
+    [
+      "INTERNET",
+      "ACCESS_NETWORK_STATE",
+      "FOREGROUND_SERVICE",
+      "FOREGROUND_SERVICE_SPECIAL_USE",
+    ],
+  );
   const normalized = JSON.parse(
     fs.readFileSync(path.join(options.output, ".eliza-consumer-profile.json")),
   );
