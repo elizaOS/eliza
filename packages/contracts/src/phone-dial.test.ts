@@ -30,6 +30,9 @@ test("a written number becomes the exact dial form or is rejected with the forma
     ["+1 (415) 555-0100", "+14155550100"],
     ["415.555.0100", "4155550100"],
     ["+15555550100", "+15555550100"],
+    ["+1 415 555-0100", "+14155550100"],
+    ["(415)555-0100", "4155550100"],
+    [" 01.23.45.67.89 ", "0123456789"],
   ])
     assert.equal(phoneDialNumber(written), exact);
   for (const bad of [
@@ -38,6 +41,16 @@ test("a written number becomes the exact dial form or is rejected with the forma
     "5",
     "",
     "++1555",
+    // More than one number, a range, a date or an address is not one number.
+    "555-0100 555-0199",
+    "5550100\n5550101",
+    "+1 415 555 0100 - 0105",
+    "415 555 0100 415 555 0199",
+    "(415) (555) 0100",
+    "555--0100",
+    "2026-11-17",
+    "192.168.1.1",
+    "1.5",
     5550100,
     null,
   ])
