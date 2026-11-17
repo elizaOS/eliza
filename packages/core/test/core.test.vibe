@@ -3814,6 +3814,91 @@ it.live("Write durable JSON and log files on disk (spec/core/atomicPublication.m
     ],
   }))
 
+  const closeFaultDir = try scratch("eliza-core-j12-close-reuse")
+  const closeFault = try host(() => runNode({
+    script: `
+    import fs from "node:fs"
+    import { syncBuiltinESMExports } from "node:module"
+    const [dir, entry] = process.argv.slice(1)
+    fs.mkdirSync(dir + "/chat.log")
+    const open = fs.openSync, close = fs.closeSync, write = fs.writeSync, stat = fs.fstatSync
+    const acquired = new Map(), owned = new Set(), attempts = []
+    let injected = false, victim = -1, victimOwned = false, reused = false
+    fs.openSync = (file, ...args) => {
+      const fd = open(file, ...args)
+      if (file === dir + "/output.log" || file === dir + "/prompts.log") {
+        acquired.set(file.slice(dir.length + 1), fd)
+        owned.add(fd)
+      }
+      return fd
+    }
+    fs.closeSync = (fd) => {
+      const label = owned.has(fd) ? [...acquired].find(([, handle]) => handle === fd)?.[0] : victimOwned && fd === victim ? "reused.log" : undefined
+      if (label !== undefined) attempts.push(label)
+      owned.delete(fd)
+      if (!injected && fd === acquired.get("prompts.log")) {
+        injected = true
+        close(fd)
+        victim = open(dir + "/reused.log", "a", 0o600)
+        victimOwned = true
+        reused = victim === fd
+        throw new Error("controlled close acknowledgement failure after native release")
+      }
+      if (victimOwned && fd === victim) victimOwned = false
+      return close(fd)
+    }
+    syncBuiltinESMExports()
+    const isOpen = (fd) => {
+      try { stat(fd); return true } catch { return false }
+    }
+    try {
+      const { logger, logPrompt, recentLogs } = await import(entry)
+      const exits = process.listenerCount("exit")
+      logger.info("j12 close failure")
+      logger.info("j12 after close failure")
+      const slug = logPrompt("TEXT_SMALL", "j12 after uncertain close", { agentName: "Nova" })
+      let victimWritable = false
+      if (victim >= 0) {
+        try { write(victim, "kept\\n"); victimWritable = true } catch {}
+      }
+      const report = {
+        acquired: [...acquired.keys()], attempts: [...attempts], injected, reused,
+        originalHandlesRemaining: owned.size, outputRetired: !isOpen(acquired.get("output.log")),
+        victimWritable, slug, kept: recentLogs().includes("j12 after close failure"),
+        exitHandlersAdded: process.listenerCount("exit") - exits,
+        output: fs.readFileSync(dir + "/output.log", "utf8"),
+        prompt: fs.readFileSync(dir + "/prompts.log", "utf8"),
+        victim: fs.readFileSync(dir + "/reused.log", "utf8"),
+      }
+      console.log(JSON.stringify(report))
+    } finally {
+      fs.openSync = open
+      fs.closeSync = close
+      syncBuiltinESMExports()
+      for (const fd of owned) {
+        owned.delete(fd)
+        try { close(fd) } catch {}
+      }
+      if (victimOwned) {
+        victimOwned = false
+        try { close(victim) } catch {}
+      }
+    }
+    `,
+    args: [closeFaultDir, core],
+    vibe: true,
+    env: { LOG_FILE: `${closeFaultDir}/output.log`, LOG_LEVEL: "info", LOG_JSON_FORMAT: undefined, LOG_TIMESTAMPS: undefined, NO_COLOR: "1", FORCE_COLOR: "0" },
+  }))
+  const closeFaultReport = try Effect.try(() => JSON.parse(closeFault.stdout.trim().split("\n").at(-1) ?? "") as unknown)
+  try Effect.try(() => assert.deepStrictEqual({ status: closeFault.status, report: closeFaultReport }, {
+    status: 0,
+    report: {
+      acquired: ["output.log", "prompts.log"], attempts: ["prompts.log", "output.log"], injected: true, reused: true,
+      originalHandlesRemaining: 0, outputRetired: true, victimWritable: true, slug: "", kept: true,
+      exitHandlersAdded: 0, output: "", prompt: "", victim: "kept\n",
+    },
+  }))
+
   const heard: Array<[number | undefined, string]> = []
   const listener = (entry: LogEntry) => {
     heard.push([entry.level, entry.msg])
