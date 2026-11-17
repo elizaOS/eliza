@@ -9,7 +9,10 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -226,5 +229,83 @@ public class ElizaAssetExtractionPolicyTest {
         // Unknown asset length: fall back to the aux stamp.
         assertTrue(ElizaAssetExtractionPolicy.modelCurrent(67_000_000L, -1L, false));
         assertFalse(ElizaAssetExtractionPolicy.modelCurrent(67_000_000L, -1L, true));
+    }
+
+    // ── payload stamp: image-only updates must move it ──────────────────────
+
+    /** AOSP pins every image file's mtime to 2009-01-01 00:00:00 UTC. */
+    private static final long AOSP_IMAGE_MTIME = 1230768000000L;
+
+    private File apk(String name, String bundle, String extraEntry) throws IOException {
+        File apk = temporary.newFile(name);
+        try (ZipOutputStream zip = new ZipOutputStream(new FileOutputStream(apk))) {
+            zip.putNextEntry(new ZipEntry("classes.dex"));
+            zip.write("dex".getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+            zip.putNextEntry(new ZipEntry("assets/agent/agent-bundle.js"));
+            zip.write(bundle.getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+            if (extraEntry != null) {
+                zip.putNextEntry(new ZipEntry(extraEntry));
+                zip.write(new byte[] {1, 2, 3});
+                zip.closeEntry();
+            }
+        }
+        return apk;
+    }
+
+    @Test
+    public void imageOnlyUpdateWithPinnedMtimeAndUpdateTimeChangesTheStamp() throws IOException {
+        // Same pinned mtime, same lastUpdateTime, same versionCode — only the
+        // agent payload inside the /product priv-app differs (alpha.v403).
+        File before = apk("before.apk", "console.log('agent v1')", null);
+        File after = apk("after.apk", "console.log('agent v2')", null);
+        long lastUpdate = 1762000000000L;
+        long previous = ElizaAssetExtractionPolicy.payloadStamp(AOSP_IMAGE_MTIME, lastUpdate, 1L,
+            before.length(), ElizaAssetExtractionPolicy.agentAssetsDigest(before));
+        long current = ElizaAssetExtractionPolicy.payloadStamp(AOSP_IMAGE_MTIME, lastUpdate, 1L,
+            after.length(), ElizaAssetExtractionPolicy.agentAssetsDigest(after));
+        assertTrue(previous > 0L);
+        assertTrue(current > 0L);
+        assertTrue(ElizaAssetExtractionPolicy.apkChanged(current, previous));
+    }
+
+    @Test
+    public void unchangedPayloadKeepsTheSameStampAcrossBoots() throws IOException {
+        File installed = apk("installed.apk", "console.log('agent')", "assets/agent/arm64-v8a/bun");
+        long digest = ElizaAssetExtractionPolicy.agentAssetsDigest(installed);
+        assertTrue(digest != 0L);
+        assertEquals(digest, ElizaAssetExtractionPolicy.agentAssetsDigest(installed));
+        long stamp = ElizaAssetExtractionPolicy.payloadStamp(AOSP_IMAGE_MTIME, 1L, 7L, installed.length(), digest);
+        assertFalse(ElizaAssetExtractionPolicy.apkChanged(
+            ElizaAssetExtractionPolicy.payloadStamp(AOSP_IMAGE_MTIME, 1L, 7L, installed.length(), digest), stamp));
+    }
+
+    @Test
+    public void agentDigestCoversEveryAgentEntryButNotOtherFiles() throws IOException {
+        long base = ElizaAssetExtractionPolicy.agentAssetsDigest(apk("base.apk", "bundle", null));
+        long withRuntime = ElizaAssetExtractionPolicy.agentAssetsDigest(
+            apk("runtime.apk", "bundle", "assets/agent/arm64-v8a/bun"));
+        long withOther = ElizaAssetExtractionPolicy.agentAssetsDigest(apk("other.apk", "bundle", "res/raw/x"));
+        assertTrue(base != withRuntime);
+        assertEquals(base, withOther);
+    }
+
+    @Test
+    public void versionCodeOrSizeAloneMovesTheStamp() {
+        long stamp = ElizaAssetExtractionPolicy.payloadStamp(AOSP_IMAGE_MTIME, 5L, 10L, 1000L, 42L);
+        assertTrue(ElizaAssetExtractionPolicy.apkChanged(
+            ElizaAssetExtractionPolicy.payloadStamp(AOSP_IMAGE_MTIME, 5L, 11L, 1000L, 42L), stamp));
+        assertTrue(ElizaAssetExtractionPolicy.apkChanged(
+            ElizaAssetExtractionPolicy.payloadStamp(AOSP_IMAGE_MTIME, 5L, 10L, 1001L, 42L), stamp));
+    }
+
+    @Test
+    public void unreadableApkIsAnUnknownStamp() {
+        assertEquals(0L, ElizaAssetExtractionPolicy.agentAssetsDigest(new File(temporary.getRoot(), "absent.apk")));
+        assertEquals(0L, ElizaAssetExtractionPolicy.payloadStamp(0L, 0L, 3L, 0L, 0L));
+        // Unknown reads as no change, so it never re-stages a working tree.
+        assertFalse(ElizaAssetExtractionPolicy.apkChanged(
+            ElizaAssetExtractionPolicy.payloadStamp(0L, 0L, 3L, 0L, 0L), 12345L));
     }
 }

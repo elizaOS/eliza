@@ -6,7 +6,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
+import java.util.Enumeration;
 import java.util.zip.GZIPOutputStream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
  * Pure crash-safety decision for {@link ElizaAgentService}'s on-device agent
@@ -62,6 +65,88 @@ final class ElizaAssetExtractionPolicy {
      */
     static boolean apkChanged(long apkUpdateTime, long stampedUpdateTime) {
         return apkUpdateTime > 0L && apkUpdateTime != stampedUpdateTime;
+    }
+
+    /** APK entry prefix of the agent payload that {@code extractAssetsIfNeeded} stages. */
+    static final String AGENT_ASSET_PREFIX = "assets/agent/";
+
+    private static final long FNV_OFFSET = 0xcbf29ce484222325L;
+    private static final long FNV_PRIME = 0x100000001b3L;
+
+    private static long mix(long state, long value) {
+        for (int i = 0; i < 8; i++) {
+            state ^= (value >>> (8 * i)) & 0xffL;
+            state *= FNV_PRIME;
+        }
+        return state;
+    }
+
+    private static long mix(long state, String value) {
+        for (int i = 0; i < value.length(); i++) {
+            state = mix(state, (long) value.charAt(i));
+        }
+        return state;
+    }
+
+    /**
+     * A content digest of the agent payload inside an APK, read from the zip
+     * central directory only: every {@link #AGENT_ASSET_PREFIX} entry's name,
+     * CRC-32 and uncompressed size. Nothing is decompressed, so this stays cheap
+     * on a ~200 MB APK, yet any rebuilt agent file changes it. Entry order does
+     * not matter. Returns 0 when the APK cannot be read or carries no agent
+     * payload.
+     */
+    static long agentAssetsDigest(File apk) {
+        if (apk == null || !apk.isFile()) return 0L;
+        long digest = 0L;
+        int entries = 0;
+        try (ZipFile zip = new ZipFile(apk)) {
+            Enumeration<? extends ZipEntry> all = zip.entries();
+            while (all.hasMoreElements()) {
+                ZipEntry entry = all.nextElement();
+                String name = entry.getName();
+                if (entry.isDirectory() || !name.startsWith(AGENT_ASSET_PREFIX)) continue;
+                long one = mix(FNV_OFFSET, name);
+                one = mix(one, entry.getCrc());
+                one = mix(one, entry.getSize());
+                digest += one;
+                entries++;
+            }
+        } catch (IOException | RuntimeException unreadable) {
+            return 0L;
+        }
+        return entries == 0 ? 0L : mix(digest, (long) entries);
+    }
+
+    /**
+     * The stamp that identifies the installed APK payload, compared against the
+     * {@code .apk-stamp} of the last completed extraction.
+     *
+     * <p>An APK mtime or {@code lastUpdateTime} alone cannot be the stamp: an
+     * AOSP image normalizes every file mtime in /system and /product to the same
+     * fixed date, and an image-only update of a /product or /system priv-app
+     * does not move {@code lastUpdateTime}, so phones kept booting the agent
+     * extracted from the first image. The stamp therefore folds in the APK's
+     * size, its {@code longVersionCode} and a content digest of the agent
+     * assets, alongside the two timestamps a normal install moves.
+     *
+     * <p>Returns 0 ("unknown", read as no change) when nothing about the APK
+     * could be observed; otherwise a positive value, as the stamp file and
+     * {@link #apkChanged} require.
+     */
+    static long payloadStamp(long apkMtime, long lastUpdateTime, long versionCode,
+            long apkSize, long agentAssetsDigest) {
+        if (apkMtime <= 0L && lastUpdateTime <= 0L && apkSize <= 0L && agentAssetsDigest == 0L) {
+            return 0L;
+        }
+        long state = FNV_OFFSET;
+        state = mix(state, apkMtime);
+        state = mix(state, lastUpdateTime);
+        state = mix(state, versionCode);
+        state = mix(state, apkSize);
+        state = mix(state, agentAssetsDigest);
+        long stamp = state & Long.MAX_VALUE;
+        return stamp == 0L ? 1L : stamp;
     }
 
     /**
