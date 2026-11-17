@@ -161,7 +161,67 @@
         ".cache/test-result-*.json"
       ]
     },
-    "//#selftest:tools": {
+    "//#selftest:tools:a": {
+      "dependsOn": [
+        "//#build",
+        "//#test",
+        "vibestack-studio#typecheck",
+        "vibestack-studio#test",
+        "vibestack-studio#test:browser"
+      ],
+      "inputs": [
+        "vibestack/**",
+        "!vibestack/examples/{assistant,dashboard,fullstack}/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",
+        "!**/.DS_Store",
+        "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
+        "apps/*/package.json",
+        "packages/**",
+        ".agents/**",
+        "AGENTS.md",
+        "SPEC.md",
+        "README.md",
+        "LICENSE",
+        "spec/**",
+        "package.json",
+        "pnpm-lock.yaml",
+        "turbo.json",
+        "tsconfig.json",
+        "tsconfig.build.json"
+      ],
+      "outputs": []
+    },
+    "//#selftest:tools:b": {
+      "dependsOn": [
+        "//#build",
+        "//#test",
+        "vibestack-studio#typecheck",
+        "vibestack-studio#test",
+        "vibestack-studio#test:browser"
+      ],
+      "inputs": [
+        "vibestack/**",
+        "!vibestack/examples/{assistant,dashboard,fullstack}/**",
+        "!**/{node_modules,dist,.vibe,.cache,.spec-cache,.turbo,generated,storybook-static,__traces__}/**",
+        "!**/.DS_Store",
+        "!{apps,packages,vibestack/studio,vibestack/examples}/**/gen/**",
+        "apps/*/package.json",
+        "packages/**",
+        ".agents/**",
+        "AGENTS.md",
+        "SPEC.md",
+        "README.md",
+        "LICENSE",
+        "spec/**",
+        "package.json",
+        "pnpm-lock.yaml",
+        "turbo.json",
+        "tsconfig.json",
+        "tsconfig.build.json"
+      ],
+      "outputs": []
+    },
+    "//#selftest:tools:rest": {
       "dependsOn": [
         "//#build",
         "//#test",

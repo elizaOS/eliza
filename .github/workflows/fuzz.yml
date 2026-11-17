@@ -3,6 +3,8 @@ name: fuzz
 # The fixed nightly profile checks 20,000 values with seed 2; repeat it with
 # `pnpm all check -- --nightly`. The shrunk
 # counterexamples a failing run saves come back as a pull request into main.
+# Beside it, the self-test of the tools runs without the tool runs earlier
+# self-tests kept.
 on:
   schedule:
     - cron: "17 4 * * *"
@@ -40,7 +42,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [a, b, rest]
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
-      - run: rm -rf .cache/selftest && pnpm selftest:tools
+      - run: rm -rf .cache/selftest && pnpm selftest:tools:${{ matrix.shard }}
