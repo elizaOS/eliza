@@ -82,10 +82,18 @@ effect function readMessage<E, R>(api: GoogleReadApi<E, R>, id: string, format: 
 
 function replyTarget(message: MailMessage) {
   if (message.labelIds?.includes("TRASH")) return null
-  const fields = headerMap(message.payload)
-  const recipient = sender(fields.get("reply-to") ?? fields.get("from") ?? "")
-  const messageId = fields.get("message-id")?.trim() ?? ""
-  const subject = fields.get("subject") ?? ""
+  const fields = message.payload?.headers ?? []
+  const all = (name: string) => fields.filter((field) => field.name.toLowerCase() === name).map((field) => field.value.trim())
+  const replyTo = all("reply-to")
+  const addressFields = replyTo.length ? replyTo : all("from")
+  const messageIds = all("message-id")
+  const subjects = all("subject")
+  if (addressFields.length !== 1 || messageIds.length !== 1 || subjects.length > 1) return null
+  const source = addressFields[0]
+  const mailbox = /^(?:"(?:[^"\\]|\\.)*"|[^<>,@]*)\s*<([^<>]+)>$/.exec(source)
+  const recipient = mailbox?.[1].trim() ?? source
+  const messageId = messageIds[0]
+  const subject = subjects[0] ?? ""
   if (!recipient || recipient.length > 254 || !mailAddress.test(recipient) || !rfcMessageId.test(messageId) ||
       messageId.length > 250 || subject.length > 120 || /[\u0000-\u001f\u007f]/.test(subject) ||
       !attachments.test(message.threadId)) return null
