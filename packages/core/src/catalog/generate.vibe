@@ -217,7 +217,7 @@ effect function main() {
   if (check) {
     for (const [path, expected] of artifacts) {
       if (try readFileIfPresent(path) !== expected) {
-        try Console.error(`[registry/generate] ${path} is stale. Run \`bun run --cwd packages/core generate:first-party\` and commit the result.`)
+        try Console.error(`[registry/generate] ${path} is stale. Run \`pnpm --dir packages/core exec node --import vibelang/register --conditions eliza-source src/catalog/generate.vibe\` and commit the result.`)
         return exitFailed()
       }
     }

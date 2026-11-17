@@ -1,0 +1,26 @@
+{
+  "id": "pdf",
+  "name": "Pdf",
+  "description": "Core Node.js plugin for elizaOS that provides essential services and actions for file operations.",
+  "npmName": "@elizaos/plugin-pdf",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["pdf"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "FileText",
+    "group": "documents",
+    "groupOrder": 6,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-pdf#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-pdf"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "documents"
+}

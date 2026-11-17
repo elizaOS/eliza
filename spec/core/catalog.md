@@ -2,6 +2,8 @@
 
 Source contracts are `catalog/{registry,loader,schema,runtime-kernel,apps,generate}.ts`. The generated JSON assets, entry schemas, app-session types, package-name parsing, connector authentication normalization, display order, search scoring and freshness policy remain public compatibility obligations.
 
+Source-tree catalog maintenance uses the 32 curated inputs and 33 original registry-entry metadata snapshots from the pinned `72fed7e4069e` baseline, retained under `src/catalog/curated/pinned-72fed/`. The entry schema normalizes these inputs before the five catalog assets are derived. A returning plugin owner must replace its retained snapshot in the same change; duplicate ids remain an error. The source CLI is checked from the repository root with `pnpm exec node --import vibelang/register packages/core/src/catalog/generate.vibe --check`, and the core build runs that read-only check before compiling. The restart-exit-code asset is separate.
+
 ## Story: Discover and register first-party capabilities
 
 As a host or plugin, I want validated catalog entries with deterministic runtime overrides and consistent lookup indexes.

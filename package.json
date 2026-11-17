@@ -75,6 +75,7 @@
     "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.6",
     "@effect/vitest": "4.1.1",
     "@eslint-react/eslint-plugin": "catalog:",
     "@eslint/js": "catalog:",

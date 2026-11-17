@@ -1,0 +1,44 @@
+{
+  "id": "github",
+  "name": "Github",
+  "description": "Comprehensive GitHub integration plugin for ElizaOS with repository management, issue tracking, and PR workflows",
+  "npmName": "@elizaos/plugin-github",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["github"],
+  "config": {
+    "GITHUB_USER_PAT": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Personal Access Token",
+      "help": "Token for your GitHub account. Not needed when you connect a GitHub account.",
+      "advanced": false
+    },
+    "GITHUB_AGENT_PAT": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Agent Access Token",
+      "help": "Optional token for a separate GitHub account that the agent acts as.",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "GitBranch",
+    "group": "devtools",
+    "groupOrder": 5,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-github#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-github",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#github"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "devtools"
+}
