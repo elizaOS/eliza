@@ -90,6 +90,9 @@ it("rejects whole sound annotations and preserves speech and short answers", () 
   for (const text of [
     "*music*",
     "*Tonk*",
+    "*Dramatic Music*",
+    "[ background music ]",
+    "(  music  )",
     "[noise]",
     "(laughter)",
     " [music] *breathing* ",
@@ -106,6 +109,8 @@ it("rejects whole sound annotations and preserves speech and short answers", () 
     "no",
     "15",
     "music",
+    "dramatic music",
+    "[background music] turn it down",
     "*yes*",
     "play music",
     "[noise] turn it down",

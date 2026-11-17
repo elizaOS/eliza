@@ -41,9 +41,9 @@ const DISFLUENCIES = new Set([
 /** Whole recognizer annotations, without discarding spoken words beside them. */
 export function isNonSpeechVoiceTranscript(transcript: string): boolean {
   const label =
-    "(?:music|noise|silence|inaudible|unintelligible|applause|laughter|laughing|coughing|sighing|breathing|tonk)";
+    "(?:(?:(?:dramatic|background)\\s+)?music|noise|silence|inaudible|unintelligible|applause|laughter|laughing|coughing|sighing|breathing|tonk)";
   const annotation = new RegExp(
-    `\\[${label}\\]|\\(${label}\\)|\\*${label}\\*`,
+    `\\[\\s*${label}\\s*\\]|\\(\\s*${label}\\s*\\)|\\*\\s*${label}\\s*\\*`,
     "gi",
   );
   const text = transcript.trim();

@@ -177,7 +177,15 @@ function expectOneSpokenTurn(f: Fixture, reply: string) {
 }
 
 test("a noise or empty final during a held reply does not take over the turn", async () => {
-  for (const noise of ["", "...", "*music*", "*Tonk*", "[noise]"]) {
+  for (const noise of [
+    "",
+    "...",
+    "*music*",
+    "*Tonk*",
+    "*Dramatic Music*",
+    "[ music ]",
+    "[noise]",
+  ]) {
     const f = setup({ acousticBargeInEnabled: true });
     await startTurn(f);
     f.emit({ type: "start-of-turn", transcript: "", raw: {} });
@@ -200,7 +208,15 @@ test("an empty final with continuous handoff queues no overlap turn", async () =
     referenceAwarePlayback: true,
   });
   await startTurn(f);
-  for (const noise of ["", "...", "*music*", "*Tonk*", "[noise]"]) {
+  for (const noise of [
+    "",
+    "...",
+    "*music*",
+    "*Tonk*",
+    "*Dramatic Music*",
+    "[ music ]",
+    "[noise]",
+  ]) {
     f.emit({ type: "start-of-turn", transcript: "", raw: {} });
     f.emit({ type: "end-of-turn", transcript: noise, raw: {} });
   }
