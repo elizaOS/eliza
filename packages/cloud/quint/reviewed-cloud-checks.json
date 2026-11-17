@@ -664,5 +664,23 @@
         "staging rejects live keys and malformed independent Stripe inputs without logging their values"
       ]
     }
+  ],
+  "subscription_funding_authority.qnt": [
+    {
+      "file": "packages/cloud/shared/src/lib/services/subscriber-inference-funding.pglite.test.ts",
+      "required": [
+        "unconfirmed subscription authority cannot fall back to purchased credits",
+        "capacity is purchased credit plus spendable allowance at the balance revision",
+        "an allowance-only charge advances the revision and reports post-accounting capacity without a readback",
+        "allowance is spent first, purchased credit funds the remainder, and a shortfall is uncollected",
+        "alarm recovery replays the live settlement instead of funding the estimate again",
+        "a zero-collected live settlement cannot debit a larger recovery estimate after top-up",
+        "an affiliate payout commits with the funded debit and pays only collected markup",
+        "a synchronous reservation collects actual usage beyond its estimate up to capacity",
+        "the synchronous subscriber reservation enqueues its pinned affiliate payout on settlement",
+        "a published admission snapshot carries subscriber capacity and hold state at one revision",
+        "an ex-subscriber's lapsed allowance is not counted as capacity"
+      ]
+    }
   ]
 }
