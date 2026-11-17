@@ -12,6 +12,7 @@ import type {
   PairingRequest,
   PairingRequestQuery,
 } from "./pairing.vibe"
+import type { IPluginStore, PluginSchema } from "./plugin-store.vibe"
 import type { Content, JsonObject, JsonValue, Metadata, UUID } from "./primitives.vibe"
 import type { Task, TaskMetadataPatch } from "./task.vibe"
 
@@ -1204,12 +1205,12 @@ export interface IDatabaseAdapter<DB extends object = object> {
   deleteOAuthFlowState(params: DeleteOAuthFlowStateParams): Promise<boolean>
 
   registerPluginSchema?(
-    schema: import("./plugin-store.vibe").PluginSchema,
+    schema: PluginSchema,
   ): Promise<void>
 
   getPluginStore?(
     pluginName: string,
-  ): import("./plugin-store.vibe").IPluginStore | null
+  ): IPluginStore | null
 }
 
 export const VECTOR_DIMS = {

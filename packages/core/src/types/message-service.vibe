@@ -1,6 +1,7 @@
 // spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import type { InferenceTurnSummary } from "../inference-timing.vibe"
 import type { RoomHandlerLease } from "../runtime/room-handler-queue.vibe"
+import type { TypedReadEgressReceipt, TypedReadReplyResolver } from "../runtime/typed-read-contract.vibe"
 import type { ProviderRateLimit } from "../utils/model-retry.vibe"
 import type { CodingActionProfile } from "./coding.vibe"
 import type { ActionResult, AgentContext, HandlerCallback, StreamChunkCallback } from "./components.vibe"
@@ -24,10 +25,10 @@ export type {
 } from "../runtime/typed-read-contract.vibe"
 
 export interface MessageProcessingOptions {
-  resolveTypedReadReply?: import("../runtime/typed-read-contract.vibe").TypedReadReplyResolver
+  resolveTypedReadReply?: TypedReadReplyResolver
 
   onTypedReadEgress?: (
-    receipt: import("../runtime/typed-read-contract.vibe").TypedReadEgressReceipt,
+    receipt: TypedReadEgressReceipt,
   ) => void
   maxRetries?: number
   useMultiStep?: boolean

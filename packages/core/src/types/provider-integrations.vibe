@@ -1,5 +1,5 @@
 // spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"; spec/core/capabilityAuthority.md, "Policy registration binds every request field and its issue time"; spec/core/capabilityAuthority.md, "Confirmation and consumption compare their full immutable records"; spec/core/capabilityAuthority.md, "Every receipt field equals the recorded authorization field"; spec/core/capabilityCoordinator.md, "A dynamic map composes exact per-request authority"; spec/core/capabilityCoordinator.md, "Consumption removes the exact entry before any caller can consume it again"
-import { Foreign, foreign, foreignSync, promised, thrown } from "../edge.vibe"
+import { type Foreign, foreign, foreignSync, promised, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { sha256Hex } from "../runtime/trajectory-provider-attribution.vibe"
 import { type EffectReceipt, normalizeEffectReceipt } from "./effects.vibe"
