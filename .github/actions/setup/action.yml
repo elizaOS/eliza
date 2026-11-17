@@ -32,7 +32,8 @@ runs:
       with:
         node-version-file: .nvmrc
         cache: pnpm
-    # Turborepo skips a task whose inputs it has seen; spec skips a simulation or proof it has seen.
+    # Turborepo skips a task whose inputs it has seen; spec skips a simulation or proof it has seen, and the selftest's
+    # shared projects skip a tool run an earlier selftest made (nightly, fuzz.yml runs it without them).
     # Quint downloads its evaluator to ~/.quint from GitHub's rate-limited API: once per cache, not per run.
     # Only restored here: a job saves it at its end whatever the outcome (ci.yml), since a failed or cancelled run
     # still checked most of what the next one would.
@@ -47,7 +48,7 @@ runs:
           echo "prefix=$prefix"
           echo "key=$key"
           echo "path<<EOF"
-          printf '%s\n' .spec-cache 'apps/*/.spec-cache' 'packages/*/.spec-cache' vibestack/studio/.spec-cache 'vibestack/examples/*/.spec-cache' '~/.quint'
+          printf '%s\n' .spec-cache .cache/selftest/.spec-cache 'apps/*/.spec-cache' 'packages/*/.spec-cache' vibestack/studio/.spec-cache 'vibestack/examples/*/.spec-cache' '~/.quint'
           echo "EOF"
         } >> "$GITHUB_OUTPUT"
     - if: inputs.verification == 'true'

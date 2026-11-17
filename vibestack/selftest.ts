@@ -16,7 +16,7 @@ import { cacheCredentials, collectGarbage } from "./cache.ts";
 import { LIB_FILE, isolatedCopies, parseProofFile, readVerdict, splice } from "./prove.ts";
 import { exec, run as tool } from "./run.ts";
 import { pendingSpecs, showPending, writeLedger } from "./review.ts";
-import { filesUnder, packageScripts, testInputs, testReceipt } from "./util.ts";
+import { filesUnder, packageScripts, testInputs, testReceipt, writeWhole } from "./util.ts";
 import { profile } from "./testing/profile.ts";
 import { bigNumberInteger } from "./gen/types.ts";
 import { canonical, check as conformanceCheck, ConformanceError, departure, replay as replayTrace } from "./conformance.ts";
@@ -41,7 +41,26 @@ const nodeModules = (function find(dir: string): string {
   const here = path.join(dir, "node_modules");
   return fs.existsSync(here) ? here : dir === path.dirname(dir) ? assert.fail("no node_modules: run pnpm install") : find(path.dirname(dir));
 })(project);
-after(() => roots.forEach((root) => fs.rmSync(root, { recursive: true, force: true })));
+const STORE = path.join(project, ".cache/selftest/.spec-cache");
+const WEEK = 7 * 24 * 60 * 60 * 1000;
+const sharing: string[] = [];
+const attempt = (act: () => void) => { try { act(); } catch { return; } };
+const toolRuns = (dir: string) => fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => /^action-[a-f0-9]{24}\.json\.gz$/.test(f)) : [];
+const unused = (root: string, since: number) => toolRuns(path.join(root, ".spec-cache")).filter((f) => fs.statSync(path.join(root, ".spec-cache", f)).mtimeMs < since);
+const keepRuns = (from: string, to: string) => {
+  for (const name of toolRuns(from)) attempt(() => {
+    const [kept, copy] = [path.join(from, name), path.join(to, name)];
+    const used = fs.statSync(kept).mtime;
+    if (!fs.existsSync(copy)) writeWhole(copy, fs.readFileSync(kept));
+    else if (used <= fs.statSync(copy).mtime) return;
+    fs.utimesSync(copy, used, used);
+  });
+};
+after(() => {
+  for (const root of sharing) keepRuns(path.join(root, ".spec-cache"), STORE);
+  for (const name of fs.existsSync(STORE) ? fs.readdirSync(STORE) : []) attempt(() => { if (fs.statSync(path.join(STORE, name)).mtimeMs < Date.now() - WEEK) fs.rmSync(path.join(STORE, name), { force: true }); });
+  roots.forEach((root) => fs.rmSync(root, { recursive: true, force: true }));
+});
 
 /** A scratch project holding the given files. */
 function scratch(files: Record<string, string>): string {
@@ -55,6 +74,12 @@ function scratch(files: Record<string, string>): string {
     fs.writeFileSync(path.join(root, "tsconfig.json"), PACKAGE["tsconfig.json"]);
     fs.symlinkSync(nodeModules, path.join(root, "node_modules"), "dir");
   }
+  return root;
+}
+/** `root`, starting with its own copies of the tool runs earlier selftests kept, each as old as its last use, and leaving its own for later ones: only for a test that does not observe a tool running. */
+function shared(root: string): string {
+  sharing.push(root);
+  keepRuns(STORE, path.join(root, ".spec-cache"));
   return root;
 }
 /** A scratch project whose specs are the named fixtures, with their proof files, each changed by `edit` if it is given. */
@@ -118,7 +143,7 @@ async function until(ready: () => boolean | Promise<boolean>, why: () => string 
 
 // The order example with whatever awaits sign-off here accepted, checked once before the tests that copy it
 // so that every copy starts with its cache: an edit then re-runs only what it changes.
-const pristine = scratch({});
+const pristine = shared(scratch({}));
 
 /** A copy of the pristine project with `edit` applied to one file. */
 function copyOfProject(file?: string, edit: (text: string) => string = (s) => s): string {
@@ -182,16 +207,17 @@ const answer = (stdout: string) => JSON.parse(stdout.trimEnd().split("\n").at(-1
 const unguarded = (s: string) => s.replace("o.status == Draft and o.units > 0", "o.status == Draft");
 const notInductive = (s: string) => s.replace(/### Drafts and cancelled orders hold no money[\s\S]*?```\n\n/, "");
 
-// Each check uses run.ts's tool queue; bound the fixture graphs and independent CLI processes alive beside it.
-describe("each check catches its own kind of mistake", { concurrency: Math.min(4, os.availableParallelism()) }, () => {
+function eachCheck() {
   before(async () => {
     for (const file of ["spec/index.md", "src", "test"]) fs.cpSync(path.join(EXAMPLE, file), path.join(pristine, file), { recursive: true });
     for (const [file, text] of Object.entries(PACKAGE)) fs.writeFileSync(path.join(pristine, file), text);
     fs.symlinkSync(nodeModules, path.join(pristine, "node_modules"), "dir");
     for (const spec of readSpecs(pristine)) acceptReviews(pristine, spec);
     acceptContracts(pristine);
+    const began = Date.now() - 1000;
     const pristineCheck = await check(pristine);
     assert.equal(pristineCheck.ok, true, pristineCheck.results.map(show).join("\n"));
+    for (const name of unused(pristine, began)) fs.rmSync(path.join(pristine, ".spec-cache", name));
   });
 
   test("collection operations preserve structural equality, total lookups and exact integer results", async () => {
@@ -435,21 +461,33 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
   });
 
   test("rules too strict to ever reach a goal are caught by a `sometimes` rule", async () => {
-    const failed = await failedStages("spec/index.md", (s) => s.replace("o.paid + amount <= o.due", "o.paid + amount < o.due"));
-    assert.ok(failed.includes("sometimes"), failed.join());
-  });
-
-  test("a guard that never allows its event is caught, although every rule holds of the event trivially", async () => {
-    // Cancelling refunds every payment, so a reopen that needs money paid can never happen.
-    const { failed, text, said } = await run(copyOfProject("spec/index.md", (s) => s.replace("by == Shopper and o.status == Cancelled", "by == Shopper and o.status == Cancelled and o.paid > 0")));
+    const { failed, said, text } = await run(shared(fixtures(["lamp"], (f) => { f["spec/lamp.md"] = f["spec/lamp.md"].replace("l.mode == On\n", "l.mode == On and l.flips == 0\n"); })));
     assert.ok(failed.includes("sometimes"), text);
-    assert.ok(said("sometimes", /reopen in .* never happened: its guard canReopen refused it/), text);
+    assert.ok(said("sometimes", /\(spec\/lamp\.md:\d+\) was not reached in /), text);
   });
 
-  test("a guard that needs values the simulator does not try says which to define", async () => {
-    const { text, said } = await run(copyOfProject("spec/index.md", (s) => s.replace("o.status == Pending and amount > 0 and neverMoreThanPaid", "o.status == Pending and amount > 6 and neverMoreThanPaid")));
-    assert.ok(said("sometimes", /takeBack in .* never happened: .*define amountValues/), text);
-    assert.ok(!/\bpay in .* never happened/.test(text), text);
+  test("a guard that never allows its event is caught, although every rule holds of the event trivially, and one that needs values the simulator does not try says which to define", async () => {
+    const { failed, text, said } = await run(shared(fixtures(["account", "bank"], (f) => {
+      f["spec/bank.md"] = f["spec/bank.md"].replace("pure def canSpend(b: Bank, amount: int): bool = ", "pure def canClose(b: Bank): bool = total(b) > 6\npure def close(b: Bank): Bank = b\n\npure def canSpend(b: Bank, amount: int): bool = amount > 6 and ");
+    })));
+    assert.ok(failed.includes("sometimes"), text);
+    assert.ok(said("sometimes", /\bclose in .* never happened: its guard canClose refused it/), text);
+    assert.ok(said("sometimes", /\bspend in .* never happened: .*define amountValues/), text);
+    assert.ok(!/\bsave in .* never happened/.test(text), text);
+  });
+
+  test("a shared scratch project starts with the tool runs an earlier one kept and runs none of them again, and the copies of the order project carry only the runs it used", async () => {
+    const began = Date.now() - 1000;
+    const first = shared(fixtures(["door"]));
+    assert.deepEqual((await run(first)).failed, ["review"]);
+    keepRuns(path.join(first, ".spec-cache"), STORE);
+    const second = shared(fixtures(["door"]));
+    const runs = toolRuns(path.join(first, ".spec-cache")).filter((f) => !unused(first, began).includes(f));
+    assert.ok(runs.length > 0 && runs.every((f) => fs.readFileSync(path.join(second, ".spec-cache", f)).equals(fs.readFileSync(path.join(STORE, f)))), runs.join());
+    const again = await run(second);
+    assert.deepEqual(again.failed, ["review"], again.text);
+    assert.ok(!fs.existsSync(path.join(second, "gen/traces")) && !["gen", "check", "verify", "audit"].some((ran) => fs.existsSync(path.join(second, "gen/proof/door", ran))), again.text);
+    assert.deepEqual(unused(pristine, fs.statSync(path.join(pristine, "tsconfig.json")).mtimeMs - 1000), [], "the order project keeps no run older than itself");
   });
 
   test("a guard that never refuses its event is reported without failing", async () => {
@@ -1054,7 +1092,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
   });
 
   test("lists, nested helpers, an imported library, laws, step rules and the proof ledger work together", async () => {
-    const shop = (edit?: (files: Record<string, string>) => void) => fixtures(["lib", "shop"], edit);
+    const shop = (edit?: (files: Record<string, string>) => void) => shared(fixtures(["lib", "shop"], edit));
     const plainRoot = shop();
     const recorded = shop((f) => { f["src/count.ts"] = 'import { type Cart } from "../gen/shop.ts";\n//@ pure\nexport function count(c: Cart): number {\n  //@ ensures \\result === c.count\n  return c.count;\n}\n'; });
     const [plain, recording, wrongStep, wrongLaw, importsMachine, circle] = await Promise.all([
@@ -1122,7 +1160,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
 
   test("a machine is simulated with the sample sets of the specs it imports", async () => {
     // Every amount the account offers is more than the bank's current account holds, so nothing can ever be saved.
-    const { failed, said, text } = await run(fixtures(["account", "bank"], (f) => { f["spec/account.md"] = f["spec/account.md"].replace("type Account", "pure val amountValues = Set(7)\ntype Account"); }));
+    const { failed, said, text } = await run(shared(fixtures(["account", "bank"], (f) => { f["spec/account.md"] = f["spec/account.md"].replace("type Account", "pure val amountValues = Set(7)\ntype Account"); })));
     assert.ok(failed.includes("sometimes"), text);
     assert.ok(said("sometimes", /\bsave in .* never happened/), text);
   });
@@ -2823,7 +2861,7 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     const ledger = path.join(root, "spec/lock.json");
     assert.ok(!fs.existsSync(ledger) || !fs.readFileSync(ledger, "utf8").includes("src-inc.ts"), text);
   });
-});
+}
 
 import { scanSpec } from "./scan.ts";
 
@@ -2898,7 +2936,7 @@ describe("the documents name what exists", () => {
       examplesInTools: [...tools].filter((file) => /^vibestack\/examples\/(?!order\/)/.test(file)),
       selftestInGlobal: global.filter((file) => /^vibestack\/(selftest|remote-cache)\.ts$|\/test\//.test(file)),
     }, { docs: [], examples: [], tools: [], examplesInTools: [], selftestInGlobal: [] });
-    const titles = [...read("vibestack/selftest.ts").matchAll(/^describe\("([^"]+)"/gm)].map(([, title]) => `${title} `);
+    const titles = [...read("vibestack/selftest.ts").matchAll(/^(?:describe|test)\("([^"]+)"/gm)].map(([, title]) => `${title} `);
     const groups = ["tools", "docs", "examples"].map((task) => {
       const [, kind, pattern] = JSON.parse(read("package.json")).scripts[`selftest:${task}`].match(/--test-(name|skip)-pattern="([^"]+)"/);
       return titles.filter((title) => new RegExp(pattern).test(title) === (kind === "name"));
@@ -2955,7 +2993,7 @@ describe("the documents name what exists", () => {
   });
 });
 
-describe("the command line and what a failed proof leaves to start from", { concurrency: true }, () => {
+function theCommandLine() {
   test("usage lists every command, check --json prints a line for each result and then the whole answer, and gen runs under the project's lock", async () => {
     const script = path.join(project, "vibestack/spec.ts");
     const root = oneRule("value", "A value", "pure val answer = 42");
@@ -3175,6 +3213,12 @@ assert.deepEqual(await Effect.runPromise(twoPages()), [1, 2, "Rejected", "2"]);`
     assert.ok(!init(own).includes(".claude/settings.json"));
     assert.equal(read(".claude/settings.json", own), "{}\n");
   });
+}
+
+// Each check uses run.ts's tool queue; bound the fixture graphs and independent CLI processes alive beside it.
+describe("the tools", { concurrency: true }, () => {
+  describe("the command line and what a failed proof leaves to start from", { concurrency: true }, theCommandLine);
+  describe("each check catches its own kind of mistake", { concurrency: Math.min(4, os.availableParallelism()) }, eachCheck);
 });
 
 test("a trace integer of 16 or more digits that Quint wrote as a BigNumber decodes to the same integer", () => {
