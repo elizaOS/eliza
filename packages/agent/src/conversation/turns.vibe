@@ -1,0 +1,149 @@
+// spec/agent/conversation/conversations.md, "Story: Create and find my conversations", "Messages and model-call log rows arrive only in a published conversation"; spec/core/turnControllers.md, "Story: Cancel room work without cancelling the cancel request"
+module node {
+  import { randomUUID } from "node:crypto"
+  import { Schema } from "effect"
+  import { ChannelType, type AgentRuntime, type Content, type Memory, type Room, type UUID } from "@elizaos/core"
+  import { canCreate, defaultTitle, initial } from "../../gen/agent__conversation__conversations.ts"
+  import type { LocalRoute } from "../access/routes.vibe"
+  import { writeReplyStream } from "./stream.vibe"
+
+  const Body = Schema.Struct({ text: Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(32768)) })
+  const Create = Schema.Struct({ title: Schema.optionalKey(Schema.String) })
+  const Stamp = Schema.Struct({
+    id: Schema.String,
+    createdAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    updatedAt: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  })
+  const createBody = Schema.decodeUnknownOption(Create, { onExcessProperty: "error" })
+  const messageBody = Schema.decodeUnknownOption(Body, { onExcessProperty: "error" })
+  const stamp = Schema.decodeUnknownOption(Stamp)
+  const failure = (status: number, error: string) => ({ status, body: { error } })
+  const okay = (body: object) => ({ status: 200, body })
+
+  function conversation(room: Room) {
+    const metadata = stamp(room.metadata?.deviceConversation)
+    if (metadata._tag !== "Some") return undefined
+    return { ...metadata.value, roomId: room.id, title: room.name ?? defaultTitle }
+  }
+
+  interface ConversationOwner {
+    readonly user: UUID
+    readonly world: UUID
+
+  }
+
+  function memory(runtime: AgentRuntime, owner: ConversationOwner, room: Room, text: string): Memory {
+    return {
+      id: randomUUID(), entityId: owner.user, agentId: runtime.agentId, roomId: room.id,
+      worldId: owner.world, createdAt: Date.now(), content: { text, source: "device" },
+    }
+  }
+
+  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner): LocalRoute[] {
+    const adapter = runtime.adapter
+    const service = runtime.messageService ?? (() => { throw new Error("A conversation requires the message service") })()
+    const rooms = () => runtime.getRooms(owner.world)
+    const find = async (id: string | undefined): Promise<Room | undefined> =>
+      (await rooms()).find((room) => conversation(room)?.id === id)
+    const storeReply = async (room: Room, content: Content): Promise<Memory[]> => {
+      if (!content.text?.trim()) return []
+      const response = { ...memory(runtime, owner, room, content.text), entityId: runtime.agentId, content }
+      await adapter.createMemories([{ memory: response, tableName: "messages" }])
+      return [response]
+    }
+    async function process(room: Room, text: string, signal: AbortSignal, onStreamChunk?: (chunk: string) => void) {
+      return runtime.roomHandlerQueue.withLease(room.id, async (lease) => {
+        signal.throwIfAborted()
+        const input = memory(runtime, owner, room, text)
+        await adapter.createMemories([{ memory: input, tableName: "messages" }])
+        const [current] = await adapter.getRoomsByIds([room.id])
+        const metadata = stamp(current?.metadata?.deviceConversation)
+        if (metadata._tag === "Some" && current !== undefined) {
+          await adapter.updateRooms([{
+            ...current, metadata: {
+              ...current.metadata, deviceConversation: { ...metadata.value, updatedAt: Math.max(metadata.value.updatedAt, input.createdAt ?? 0) },
+            },
+          }])
+        }
+        return service.handleMessage(runtime, input, (content) => storeReply(room, content), {
+          roomHandlerLease: lease, abortSignal: signal, ...(onStreamChunk === undefined ? {} : { onStreamChunk }),
+        })
+      }, { signal })
+    }
+
+    return [
+      {
+        method: "POST", path: "/api/conversations",
+        handler: async ({body}) => {
+          const payload = createBody(body ?? {})
+          if (payload._tag !== "Some") return failure(400, "invalid_conversation")
+          const title = payload.value.title?.trim() ?? ""
+          if (!canCreate(initial, title, title.length)) return failure(400, "invalid_title")
+          const id = randomUUID()
+          const roomId = randomUUID()
+          const time = Date.now()
+          const created = { id, roomId, title: title || defaultTitle, createdAt: time, updatedAt: time }
+          await runtime.ensureConnection({
+            entityId: owner.user, roomId, roomName: created.title, worldId: owner.world, userName: "person",
+            name: "Person", source: "device", type: ChannelType.DM, channelId: roomId,
+          })
+          const room = await runtime.getRoom(roomId)
+          if (!room) return failure(500, "room_unavailable")
+          await adapter.updateRooms([{ ...room, metadata: {
+            ...room.metadata, deviceConversation: { id, createdAt: time, updatedAt: time },
+          } }])
+          return { status: 201, body: { conversation: created } }
+        },
+      },
+      {
+        method: "GET", path: "/api/conversations",
+        handler: async () => okay({ conversations: (await rooms()).flatMap((room) => conversation(room) ?? [])
+          .sort((a, b) => b.updatedAt - a.updatedAt || b.id.localeCompare(a.id)) }),
+      },
+      {
+        method: "POST", path: "/api/conversations/{id}/messages",
+        handler: async ({ parameters, body, signal }) => {
+          const room = await find(parameters.get("id"))
+          if (!room) return failure(404, "unknown_conversation")
+          const payload = messageBody(body)
+          if (payload._tag !== "Some") return failure(400, "invalid_message")
+          const result = await process(room, payload.value.text, signal)
+          return result.didRespond && result.responseContent?.text
+            ? okay({ fullText: result.responseContent.text })
+            : failure(502, "turn_failed")
+        },
+      },
+      {
+        method: "POST", path: "/api/conversations/{id}/messages/stream", stream: true,
+        handler: async ({ parameters, body, signal }) => {
+          const room = await find(parameters.get("id"))
+          if (!room) return failure(404, "unknown_conversation")
+          const payload = messageBody(body)
+          if (payload._tag !== "Some") return failure(400, "invalid_message")
+          return writeReplyStream(async (emit, signal) => {
+            let fullText = ""
+            const result = await process(room, payload.value.text, signal, (text) => {
+              fullText += text
+              emit({ type: "token", text, fullText })
+            })
+            if (!result.didRespond || !result.responseContent?.text) {
+              emit({ type: "error", message: "The turn did not complete" })
+              return
+            }
+            emit({ type: "done", fullText: result.responseContent.text })
+          }, signal)
+        },
+      },
+      {
+        method: "POST", path: "/api/turns/{room}/abort",
+        handler: async ({ parameters }) => {
+          const requested = parameters.get("room")
+          const room = (await rooms()).find((candidate) => candidate.id === requested && conversation(candidate) !== undefined)
+          if (!room) return failure(404, "unknown_conversation")
+          return okay({ aborted: runtime.turnControllers.abortTurn(room.id, "owner_requested_abort") })
+        },
+      },
+    ]
+  }
+}
+export { conversationRoutes } from node

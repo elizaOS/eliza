@@ -1,0 +1,61 @@
+// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/resources.md, "Story: Release everything I acquired, once"
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { AGENT_EXIT_CODES, readLaunch, LaunchCredentialMissing } from "./host/launch.vibe"
+import { startAgent, AgentBootFailed } from "./host/process.vibe"
+
+module node {
+  import { lstat, readFile } from "node:fs/promises"
+  import { readManifest } from "./bundle/manifest.schema.vibe"
+  import type { DeviceStorageSnapshot } from "./storage/index.vibe"
+
+  export async function bundledSnapshot(runtimeUrl: string): Promise<DeviceStorageSnapshot | undefined> {
+    const file = new URL("./pglite-migrated.bin", runtimeUrl)
+    try {
+      const entry = await lstat(file)
+      if (!entry.isFile() || entry.size > 64 * 1024 * 1024) throw new Error("Invalid agent bundle snapshot")
+    } catch (error) {
+      if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") return undefined
+      throw error
+    }
+    const manifest = readManifest(await readFile(new URL("./manifest.json", runtimeUrl), "utf8"))
+    const bytes = await readFile(file)
+    return { schemaVersion: manifest.schemaVersion, bytes }
+  }
+}
+import { bundledSnapshot } from node
+
+effect function serve() {
+  const input = try readLaunch()
+  const snapshot = try tryPromise({
+    try: () => bundledSnapshot(import.meta.url),
+    catch: () => new AgentBootFailed({ phase: "Storage" }),
+  })
+  try acquireRelease(
+    startAgent({ ...input, ...(snapshot === undefined ? {} : { snapshot }) }),
+    (agent) => orDie(tryPromise(() => agent.stop())),
+  )
+  try never
+}
+
+function exitCode(gone: Exit.Exit<unknown, unknown>): number {
+  if (Exit.isSuccess(gone) || Cause.hasInterruptsOnly(gone.cause)) return AGENT_EXIT_CODES.clean
+  const error = Cause.squash(gone.cause)
+  if (error instanceof LaunchCredentialMissing) return AGENT_EXIT_CODES.credential
+  if (error instanceof AgentBootFailed) {
+    switch (error.phase) {
+      case "Config": return AGENT_EXIT_CODES.config
+      case "Credential": return AGENT_EXIT_CODES.credential
+      case "Storage": return AGENT_EXIT_CODES.storage
+      case "Agent": return AGENT_EXIT_CODES.agent
+    }
+  }
+  if (typeof error === "object" && error !== null && "_tag" in error
+      && (error._tag === "LaunchDocumentRejected" || error._tag === "LaunchFrameRejected")) return AGENT_EXIT_CODES.config
+  return AGENT_EXIT_CODES.release
+}
+
+NodeRuntime.runMain(Effect.provide(Effect.scoped(serve()), NodeServices.layer), {
+  disableErrorReporting: true,
+  teardown: (result, settle) => settle(exitCode(result)),
+})

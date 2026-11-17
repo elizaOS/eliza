@@ -1,6 +1,6 @@
 // spec/agent/host/launch.md, "Text goes to the owner's cloud account, the owner's own key, or nowhere"
 import { type Plugin, type GenerateTextParams, ModelType } from "@elizaos/core"
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
+import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import type { LaunchDocument, LaunchFrame } from "./launch.schema.vibe"
 
 type Model = Extract<LaunchDocument["model"], { backend: "cloud" }>
@@ -10,6 +10,36 @@ error CloudModelUnavailable
 schema Choice { message: { content: string } }
 const Completion = Schema.Struct({ choices: Schema.Array(Choice).check(Schema.isMinLength(1)) })
 const decode = Schema.decodeUnknownEffect(Completion)
+const Delta = Schema.Struct({ choices: Schema.Array(Schema.Struct({ delta: Schema.Struct({
+  content: Schema.optionalKey(Schema.NullOr(Schema.String)),
+}) })) })
+const decodeDelta = Schema.decodeUnknownOption(Schema.fromJsonString(Delta))
+
+effect function collectStream(result: HttpClientResponse.HttpClientResponse, params: GenerateTextParams) {
+  let text = ""
+  let terminal = false
+  const lines = result.stream.pipe(Stream.decodeText(), Stream.splitLines)
+  const collect = Stream.runForEach(lines, effect (line) => {
+    if (line.length > 262144) throw new CloudModelUnavailable()
+    if (!line.startsWith("data:") || terminal) return
+    const payload = line.slice(5).trim()
+    if (payload === "[DONE]") {
+      terminal = true
+      return
+    }
+    const decoded = decodeDelta(payload)
+    if (decoded._tag !== "Some") throw new CloudModelUnavailable()
+    const delta = decoded.value.choices[0]?.delta.content
+    if (!delta) return
+    text += delta
+    if (text.length > 32768) throw new CloudModelUnavailable()
+    if (params.onStreamChunk) try tryPromise(async () => params.onStreamChunk?.(delta, undefined, text))
+  })
+  timeout(collect, "90 seconds") catch effect () => { throw new CloudModelUnavailable() }
+  if (!terminal || text.trim() === "") throw new CloudModelUnavailable()
+  return text
+}
+
 
 effect function complete(model: Model, credential: Credential, name: string, params: GenerateTextParams) {
   const messages = params.messages ?? (params.prompt ? [{ role: "user", content: params.prompt }] : [])
@@ -17,7 +47,7 @@ effect function complete(model: Model, credential: Credential, name: string, par
     ? [{ role: message.role, content: message.content }]
     : [])
   const conversation = params.system ? [{ role: "system", content: params.system }, ...textMessages] : textMessages
-  const body = try Effect.try({ try: () => JSON.stringify({ model: name, messages: conversation, stream: false, max_tokens: params.maxTokens ?? 1024 }), catch: () => new CloudModelUnavailable() })
+  const body = try Effect.try({ try: () => JSON.stringify({ model: name, messages: conversation, stream: params.stream === true, max_tokens: params.maxTokens ?? 1024 }), catch: () => new CloudModelUnavailable() })
   const request = HttpClientRequest.bodyText(HttpClientRequest.setHeader(
     HttpClientRequest.post(model.cloudBaseUrl + "/api/v1/chat/completions"),
     "authorization", "Bearer " + Redacted.value(credential),
@@ -25,6 +55,7 @@ effect function complete(model: Model, credential: Credential, name: string, par
   const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "error" })
   const result = timeout(response, "90 seconds") catch effect () => { throw new CloudModelUnavailable() }
   if (result.status < 200 || result.status >= 300) throw new CloudModelUnavailable()
+  if (params.stream && result.headers["content-type"]?.startsWith("text/event-stream")) return try collectStream(result, params)
   const raw = timeout(result.json, "20 seconds") catch effect () => { throw new CloudModelUnavailable() }
   const decoded = decode(raw) catch effect () => { throw new CloudModelUnavailable() }
   const first = decoded.choices[0]?.message.content
@@ -36,6 +67,7 @@ export function cloudModel(model: Model, credential: Credential): Plugin {
   return {
     name: "@elizaos/agent/cloud",
     description: "Use only this device account's admitted Cloud model.",
+    modelMetadata: { [ModelType.TEXT_SMALL]: { streamable: true }, [ModelType.TEXT_LARGE]: { streamable: true } },
     models: {
       [ModelType.TEXT_SMALL]: (_runtime, params) => Effect.runPromise(Effect.provide(complete(model, credential, model.smallModel, params), FetchHttpClient.layer), { signal: params.signal }),
       [ModelType.TEXT_LARGE]: (_runtime, params) => Effect.runPromise(Effect.provide(complete(model, credential, model.largeModel, params), FetchHttpClient.layer), { signal: params.signal }),

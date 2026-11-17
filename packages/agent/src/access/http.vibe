@@ -1,0 +1,71 @@
+// spec/agent/access/transport.md, "Story: Answer each local request exactly once"
+module node {
+  import { once } from "node:events"
+  import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
+  import { bodyLimitBytes, deadlineMs } from "../../gen/agent__access__transport.ts"
+  import type { LocalRouter } from "./routes.vibe"
+  import { localRouteClass, runUntilAbort } from "./socket.vibe"
+
+  function error(response: ServerResponse, status: number, code: string) {
+    response.writeHead(status, { "content-type": "application/json; charset=utf-8" })
+    response.end(JSON.stringify({ error: code }))
+  }
+
+  async function handle(request: IncomingMessage, output: ServerResponse, route: LocalRouter) {
+    const peer = new AbortController()
+    output.once("close", () => peer.abort())
+    const target = request.url ?? ""
+    const kind = localRouteClass(target)
+    const streamed = target.split("?", 1)[0].endsWith("/stream")
+    const deadline = AbortSignal.timeout(deadlineMs(kind, streamed))
+    const signal = AbortSignal.any([peer.signal, deadline])
+    const chunks: Uint8Array[] = []
+    let size = 0
+    for await (const chunk of request) {
+      size += chunk.length
+      if (size > bodyLimitBytes(kind)) { error(output, 413, "too_large"); return }
+      chunks.push(chunk)
+    }
+    const response = await runUntilAbort(signal, () => route({
+      target, method: request.method ?? "", streamed, authorization: request.headers.authorization,
+      body: size === 0 ? undefined : Buffer.concat(chunks, size),
+    }, signal))
+    signal.throwIfAborted()
+    output.writeHead(response.status, Object.fromEntries(response.headers))
+    if (response.body !== null) {
+      const reader = response.body.getReader()
+      const cancel = () => { void reader.cancel().catch(() => undefined) }
+      signal.addEventListener("abort", cancel, { once: true })
+      try {
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (!output.write(value)) await once(output, "drain", { signal })
+        }
+      } finally {
+        signal.removeEventListener("abort", cancel)
+        await reader.cancel().catch(() => undefined)
+        reader.releaseLock()
+      }
+    }
+    output.end()
+  }
+
+  export async function listenOnHttp(port: number, route: LocalRouter): Promise<() => Promise<void>> {
+    const server = createServer((request, response) => {
+      void handle(request, response, route).catch(() => {
+        if (response.destroyed) return
+        if (response.headersSent) response.destroy()
+        else error(response, 500, "request_failed")
+      })
+    })
+    server.listen(port, "127.0.0.1")
+    await once(server, "listening")
+    return () => {
+      const closed = new Promise<void>((resolve, reject) => server.close((failure) => failure ? reject(failure) : resolve()))
+      server.closeAllConnections()
+      return closed
+    }
+  }
+}
+export { listenOnHttp } from node

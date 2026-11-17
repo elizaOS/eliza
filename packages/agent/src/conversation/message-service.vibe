@@ -69,8 +69,15 @@ async function respond(
           return [{ role: previous.entityId === runtime.agentId ? "assistant" : "user", content }]
         })
         const messages: ChatMessage[] = [...history, { role: "user", content: message.content.text }]
+        const character = runtime.character
+        const examples = (character.messageExamples ?? []).map(({ examples }) =>
+          examples.flatMap(({ name, content }) => content.text ? [`${name}: ${content.text}`] : []).join("\n"))
+          .filter(Boolean)
+        const system = [character.system, ...(character.bio ?? []), ...(character.style?.all ?? []),
+          ...(character.style?.chat ?? []), ...examples].filter(Boolean).join("\n\n")
         const text = await runtime.useModel(ModelType.TEXT_LARGE, {
-          system: runtime.character.system, messages, maxTokens: 1024, signal,
+          system, messages, maxTokens: 1024, signal,
+          ...(options?.onStreamChunk === undefined ? {} : { stream: true, onStreamChunk: options.onStreamChunk }),
         })
         signal.throwIfAborted()
         const replyText = typeof text === "string" ? text : ""

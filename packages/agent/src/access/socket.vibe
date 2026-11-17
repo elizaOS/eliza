@@ -44,7 +44,7 @@ module node {
     }
   }
 
-  function routeClass(target: string): RouteClass {
+  export function localRouteClass(target: string): RouteClass {
     const path = target.split("?", 1)[0]
     if (/^\/api\/conversations\/[^/]+\/messages(?:\/stream)?$/.test(path)) return "MessageRoute"
     if (/^\/api\/(?:voice|local-speech)(?:\/|$)/.test(path)) return "SpeechRoute"
@@ -54,6 +54,17 @@ module node {
   const responseFor = (status: number, error: string): Response => Response.json({ error }, { status })
   const frameLine = (frame: object): string => JSON.stringify(frame) + "\n"
 
+  export async function runUntilAbort<Result>(signal: AbortSignal, action: () => Promise<Result>): Promise<Result> {
+    signal.throwIfAborted()
+    let cancel: () => void = () => undefined
+    const aborted = new Promise<never>((_resolve, reject) => {
+      cancel = () => reject(signal.reason)
+      signal.addEventListener("abort", cancel, { once: true })
+    })
+    try { return await Promise.race([action(), aborted]) }
+    finally { signal.removeEventListener("abort", cancel) }
+  }
+
   async function send(socket: Socket, signal: AbortSignal, frame: object): Promise<void> {
     signal.throwIfAborted()
     if (!socket.write(frameLine(frame))) await once(socket, "drain", { signal })
@@ -62,7 +73,7 @@ module node {
   async function respond(socket: Socket, id: string, streamed: boolean, response: Response, signal: AbortSignal): Promise<void> {
     const head = { id, status: response.status, statusText: response.statusText, headers: Object.fromEntries(response.headers) }
     if (!streamed) {
-      const body = await response.text()
+      const body = await runUntilAbort(signal, () => response.text())
       await send(socket, signal, { id, ok: true, result: { ...head, body, bodyBase64: null, bodyEncoding: "utf8" } })
       return
     }
@@ -87,7 +98,7 @@ module node {
   }
 
   async function dispatch(socket: Socket, route: LocalRouter, id: string, call: LocalCall, peer: AbortSignal): Promise<void> {
-    const kind = routeClass(call.target)
+    const kind = localRouteClass(call.target)
     const deadline = AbortSignal.timeout(deadlineMs(kind, call.streamed))
     const signal = AbortSignal.any([peer, deadline])
     if ((call.body?.byteLength ?? 0) > bodyLimitBytes(kind)) {
@@ -96,7 +107,7 @@ module node {
     }
     let response
     try {
-      response = await route(call, signal)
+      response = await runUntilAbort(signal, () => route(call, signal))
       signal.throwIfAborted()
     } catch {
       if (peer.aborted) return
@@ -172,4 +183,4 @@ module node {
   }
 }
 
-export { listenOnSocket } from node
+export { listenOnSocket, localRouteClass, runUntilAbort } from node
