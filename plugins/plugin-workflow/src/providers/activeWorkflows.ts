@@ -69,7 +69,7 @@ export const activeWorkflowsProvider: Provider = {
         .map((wf) => {
           const status = wf.active ? 'ACTIVE' : 'INACTIVE';
           const stepCount = wf.steps?.length ?? 0;
-          return `- **${wf.name}** (ID: ${wf.id}, Status: ${status}, Smithers steps: ${stepCount})`;
+          return `- **${wf.name}** (ID: ${wf.id}, Status: ${status}, Steps: ${stepCount})`;
         })
         .join('\n');
 
