@@ -1600,6 +1600,13 @@ export const proposeDeviceAction: Action = {
       request.state === "pending" &&
       operation.type === "browser_navigate" &&
       payload.requestMessageId !== undefined;
+    // The same holds for a requested photo: the phone takes it once Camera is
+    // showing, without a review card.
+    const requestedCameraCapture =
+      request.state === "pending" &&
+      operation.type === "camera_capture_photo" &&
+      payload.requestMessageId !== undefined;
+    const requestedHandoff = requestedBrowserOpen || requestedCameraCapture;
     return {
       success: true,
       transcriptVisibility: "internal",
@@ -1614,25 +1621,29 @@ export const proposeDeviceAction: Action = {
           }
         : requestedBrowserOpen
           ? { userFacingText: `Opening ${new URL(operation.url).host}.` }
-          : request.state === "pending"
-            ? { userFacingText: DEVICE_APPROVAL_REVIEW_TEXT }
-            : {}),
+          : requestedCameraCapture
+            ? { userFacingText: "Opening Camera to take the photo." }
+            : request.state === "pending"
+              ? { userFacingText: DEVICE_APPROVAL_REVIEW_TEXT }
+              : {}),
       text: pendingRingingControl
         ? "Alarm control request recorded and pending for the phone. The phone may request manual review under its native policy. Pending state and approval/pause flags do not prove a visible approval dialog. This tool has performed no device operation. Await an applied native receipt before claiming completion."
         : requestedBrowserOpen
           ? "The requesting phone opens this exact requested address in its Browser right after this reply, with no review. The page has not loaded yet; do not claim its content or that it loaded."
-          : `Durable device proposal state: ${request.state}. This tool has performed no device operation.`,
+          : requestedCameraCapture
+            ? "The requesting phone takes this requested photo right after this reply once Camera is showing, with no review. No photo has been taken yet; do not claim that one was taken or saved."
+            : `Durable device proposal state: ${request.state}. This tool has performed no device operation.`,
       data: {
         proposalId: request.id,
         state: request.state,
         executed: false,
         approvalPersistence: deviceApprovalPersistenceReceipt(outcome),
         ...(reminderTiming ? { reminderTiming } : {}),
-        ...(pendingRingingControl || requestedBrowserOpen
+        ...(pendingRingingControl || requestedHandoff
           ? { awaitingDeviceExecution: true }
           : { awaitingUserInput: request.state === "pending" }),
-        ...(requestedBrowserOpen ? { directRequest: true } : {}),
-        approvalRequired: request.state === "pending" && !requestedBrowserOpen,
+        ...(requestedHandoff ? { directRequest: true } : {}),
+        approvalRequired: request.state === "pending" && !requestedHandoff,
       },
     };
   },

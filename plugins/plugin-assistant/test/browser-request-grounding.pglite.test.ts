@@ -105,6 +105,7 @@ async function fixture() {
     direct = false,
     destination = "https://example.com/dashboard",
     custody = "current",
+    operation: unknown = { type: "browser_navigate", url: destination },
   ) {
     let current = true;
     return withOwnerDeviceActionTurn(
@@ -169,7 +170,7 @@ async function fixture() {
         )!;
         const options = {
           parameters: {
-            operation: { type: "browser_navigate", url: destination },
+            operation,
             operationKey: randomUUID(),
             reason: "Planner claims browser needed for Calendar",
           },
@@ -335,6 +336,52 @@ it.each([false, true])(
         ).rows,
       ).toEqual([{ count: 1 }]);
       expect(f.decide).not.toHaveBeenCalled();
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it.each([false, true])(
+  "answers a requested photo without review text only in direct request mode=%s",
+  async (direct) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, {
+        capabilities: ["camera.capture-photo.v1"],
+      });
+      const result = await f.run(
+        "take a photo",
+        false,
+        direct,
+        undefined,
+        "current",
+        { type: "camera_capture_photo" },
+      );
+      expect(result).toMatchObject(
+        direct
+          ? {
+              success: true,
+              userFacingText: "Opening Camera to take the photo.",
+              data: {
+                state: "pending",
+                executed: false,
+                awaitingDeviceExecution: true,
+                directRequest: true,
+                approvalRequired: false,
+              },
+            }
+          : {
+              success: true,
+              userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+              data: { awaitingUserInput: true, approvalRequired: true },
+            },
+      );
+      expect(isRequestedDeviceHandoff(result as PlannerToolResult)).toBe(
+        direct,
+      );
+      expect(isPersistedDeviceApprovalPause(result as PlannerToolResult)).toBe(
+        !direct,
+      );
     } finally {
       await f.pg.close();
     }
