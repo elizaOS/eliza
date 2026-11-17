@@ -70,6 +70,7 @@ const WINDOW = {
 let pg: PGlite;
 let service: CalendarService;
 let runtime: IAgentRuntime;
+const cache = new Map<string, unknown>();
 const reminderPlans: LifeOpsReminderPlan[] = [];
 
 function createEvidence(
@@ -172,8 +173,12 @@ beforeAll(async () => {
     adapter: { db },
     db,
     initPromise: Promise.resolve(),
-    getCache: async () => undefined,
-    setCache: async () => undefined,
+    getCache: async (key: string) => cache.get(key),
+    setCache: async (key: string, value: unknown) => {
+      cache.set(key, value);
+      return true;
+    },
+    deleteCache: async (key: string) => cache.delete(key),
     getSetting: () => undefined,
     getService: (serviceType: string) =>
       serviceType === CalendarService.serviceType ? service : null,
@@ -192,6 +197,7 @@ beforeEach(async () => {
   await pg.query("DELETE FROM app_calendar.life_calendar_sync_states");
   await pg.query("DELETE FROM app_calendar.life_calendar_feed_preferences");
   reminderPlans.length = 0;
+  cache.clear();
   service.setGate(gate());
 });
 
@@ -3027,6 +3033,17 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
     expect(reversed?.data).toMatchObject({ requiresInput: true });
     expect((await augustEvents())[0]?.endAt).toBe("2026-08-16T00:00:00.000Z");
+    // A new first day alone moves the whole two days.
+    const moved = await update("05", "Move Mom's birthday to start August 20", {
+      allDayStartDate: "2026-08-20",
+      allDayEndDate: null,
+    });
+    expect(moved?.success, JSON.stringify(moved)).toBe(true);
+    expect((await augustEvents())[0]).toMatchObject({
+      isAllDay: true,
+      startAt: "2026-08-20T00:00:00.000Z",
+      endAt: "2026-08-22T00:00:00.000Z",
+    });
   });
 
   it("adds and removes guests by chat update, and only with the owner's own address", async () => {
@@ -3066,6 +3083,16 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       { addGuests: [], removeGuests: ["sam@harbor.io"] },
     );
     expect(removed?.success, JSON.stringify(removed)).toBe(true);
+    // A removal the owner did not ask for is not taken from the extraction.
+    const unasked = await update(
+      "14",
+      "Add amy@harbor.io to Willow Harbor QA",
+      {
+        addGuests: [{ name: null, email: "amy@harbor.io" }],
+        removeGuests: ["kim@harbor.io"],
+      },
+    );
+    expect(unasked?.success).toBe(false);
     const [event] = await augustEvents();
     expect(event?.attendees.map((attendee) => attendee.email)).toEqual([
       "kim@harbor.io",
@@ -3124,10 +3151,20 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     expect(missing?.data).toMatchObject({
       error: "CALENDAR_MUTATION_CONTEXT_INCOMPLETE",
     });
-    const deleted = await runChat("34", "Delete Willow Harbor QA", {
+    // One match is not known to be the only one while Google is unread, so
+    // the built-in delete asks first.
+    const asked = await runChat("34", "Delete Willow Harbor QA", {
       subaction: "delete_event",
       query: "Willow Harbor QA",
       details: { timeZone: "UTC", ...WINDOW },
+    });
+    expect(asked?.success).toBe(false);
+    expect(asked?.data).toMatchObject({ missing: ["delete confirmation"] });
+    const deleted = await runChat("35", "Yes, delete it", {
+      subaction: "delete_event",
+      targetKind: "eventId",
+      target: (asked?.data as { eventId?: string } | undefined)?.eventId,
+      details: { timeZone: "UTC", confirmed: true },
     });
     expect(deleted?.success, JSON.stringify(deleted)).toBe(true);
     expect(
@@ -3227,6 +3264,20 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
         ...parameters,
       });
     const seeded = await seed();
+    // A planner `confirmed` with an id the action never asked about is not
+    // the owner's yes.
+    const unasked = await remove("20", "Get rid of my Willow Harbor thing", {
+      targetKind: "eventId",
+      target: seeded.externalId,
+      details: { timeZone: "UTC", confirmed: true },
+    });
+    expect(unasked?.data).toMatchObject({ missing: ["delete confirmation"] });
+    // A shorter title inside a longer reference is not the event named.
+    const longer = await remove("19", "Delete Willow Harbor QA retro", {
+      query: "Willow Harbor QA retro",
+    });
+    expect(longer?.data).toMatchObject({ missing: ["delete confirmation"] });
+    expect(await augustEvents()).toHaveLength(1);
     const asked = await remove("21", "Delete my Willow Harbor thing", {
       query: "Willow Harbor",
     });

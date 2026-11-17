@@ -2318,14 +2318,30 @@ function endFollowsStart(
  * All-day bounds from the extraction's local dates. `allDayEndDate` is the
  * last included day; the stored range ends on the day after it. Null when the
  * request is not all-day. An end before the start is reported as "invalid" for
- * the caller to ask about; the service validates the dates themselves.
+ * the caller to ask about; the service validates the dates themselves. When an
+ * update moves an all-day event and gives only a new first day, the event
+ * keeps its number of days, as a timed event keeps its duration.
  */
 export function extractedAllDayRange(
   extracted: Record<string, unknown>,
+  target?: Pick<LifeOpsCalendarEvent, "isAllDay" | "startAt" | "endAt">,
 ): LifeOpsCalendarAllDayRange | "invalid" | null {
   const startDate = detailString(extracted, "allDayStartDate");
   if (!startDate) return null;
-  const endDate = detailString(extracted, "allDayEndDate") ?? startDate;
+  const statedEnd = detailString(extracted, "allDayEndDate");
+  const start = new Date(`${startDate}T00:00:00.000Z`);
+  if (!statedEnd && target?.isAllDay && !Number.isNaN(start.getTime())) {
+    const days = Math.round(
+      (Date.parse(`${target.endAt.slice(0, 10)}T00:00:00.000Z`) -
+        Date.parse(`${target.startAt.slice(0, 10)}T00:00:00.000Z`)) /
+        86_400_000,
+    );
+    if (Number.isFinite(days) && days > 1) {
+      start.setUTCDate(start.getUTCDate() + days);
+      return { startDate, endDateExclusive: start.toISOString().slice(0, 10) };
+    }
+  }
+  const endDate = statedEnd ?? startDate;
   const next = new Date(`${endDate}T00:00:00.000Z`);
   if (endDate < startDate || Number.isNaN(next.getTime())) return "invalid";
   next.setUTCDate(next.getUTCDate() + 1);
@@ -2371,6 +2387,15 @@ export function resolveUpdatedCalendarAttendees(args: {
     );
     const email = matches[0]?.email;
     if (matches.length !== 1 || !email) throw calendarGuestRemovalUnresolved();
+    // Like an added address, a removed guest must be in the owner's words:
+    // the extraction sees the whole guest list and the event's own text.
+    if (
+      !ownerNamedCalendarGuest(
+        { email, displayName: matches[0]?.displayName ?? undefined },
+        args.userTexts,
+      )
+    )
+      throw calendarGuestRemovalNotNamed();
     removed.add(email.toLowerCase());
   }
   // The managed Google host accepts guest addresses only; the built-in
@@ -2393,6 +2418,76 @@ export function resolveUpdatedCalendarAttendees(args: {
   return [...guests.values()];
 }
 
+/** Words a reference may add to a title to say which day or time it means. */
+const REFERENCE_DATE_WORD =
+  /^(?:\d+(?:st|nd|rd|th|am|pm|h)?|am|pm|at|on|in|the|my|this|next|today|tomorrow|tonight|morning|afternoon|evening|(?:mon|tues|wednes|thurs|fri|satur|sun)day|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|utc)$/u;
+
+type PendingDeleteConfirmation = {
+  eventId: string;
+  askedInMessageId: string | null;
+  askedAt: number;
+};
+
+/** The built-in delete question this action asked the owner in this room. */
+function pendingDeleteConfirmationKey(message: Memory): string {
+  return `calendar-delete-confirmation:${message.roomId}:${message.entityId}`;
+}
+
+/**
+ * A planner's `confirmed` stands for the owner's yes only after this action
+ * asked about this event in an earlier turn of the same conversation.
+ */
+function pendingDeleteConfirmationMatches(
+  pending: unknown,
+  event: Pick<LifeOpsCalendarEvent, "externalId">,
+  message: Memory,
+): boolean {
+  if (!pending || typeof pending !== "object") return false;
+  const record = pending as Partial<PendingDeleteConfirmation>;
+  return (
+    record.eventId === event.externalId &&
+    record.askedInMessageId !== (message.id ?? null) &&
+    typeof record.askedAt === "number" &&
+    Date.now() - record.askedAt < 30 * 60_000
+  );
+}
+
+/** The owner's words name this guest: their address, the part before the @, or a word of their name. */
+function ownerNamedCalendarGuest(
+  guest: Pick<CreateLifeOpsCalendarEventAttendee, "email" | "displayName">,
+  userTexts: ReadonlyArray<string | null | undefined>,
+): boolean {
+  const spoken = userTexts
+    .filter((text): text is string => typeof text === "string")
+    .join("\n")
+    .toLowerCase();
+  const words = new Set(
+    spoken
+      .split(/[^\p{L}\p{N}@._+-]+/u)
+      .map((token) => token.replace(/^[._+-]+|[._+-]+$/g, ""))
+      .filter((token) => token.length > 0),
+  );
+  const plain = ` ${normalizeText(spoken).replace(/[^\p{L}\p{N}]+/gu, " ")} `;
+  const email = guest.email.trim().toLowerCase();
+  const local = email.slice(0, Math.max(0, email.lastIndexOf("@")));
+  const nameWords = normalizeText(guest.displayName ?? "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word.length > 1);
+  return (
+    words.has(email) ||
+    (local.length > 1 && words.has(local)) ||
+    nameWords.some((word) => plain.includes(` ${word} `))
+  );
+}
+
+function calendarGuestRemovalNotNamed(): CalendarServiceError {
+  return new CalendarServiceError(
+    400,
+    "No event was changed. The owner did not name a guest the change would remove. Ask which guests to remove; do not remove a guest they did not name.",
+    "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
+  );
+}
+
 function calendarGuestRemovalUnresolved(): CalendarServiceError {
   return new CalendarServiceError(
     400,
@@ -2403,14 +2498,32 @@ function calendarGuestRemovalUnresolved(): CalendarServiceError {
 
 /**
  * Whether the owner named this one event: its whole title is in their own
- * words. A partial or model-resolved match is not a name, so a built-in delete
- * asks before removing it.
+ * words, and their reference says no more than the title and a date or time.
+ * A partial or model-resolved match is not a name, and neither is a shorter
+ * title inside a longer reference ("Standup" in "Standup notes review"), so a
+ * built-in delete asks before removing it.
  */
 export function ownerNamedCalendarEvent(
   event: Pick<LifeOpsCalendarEvent, "title">,
   userTexts: ReadonlyArray<string | null | undefined>,
+  reference?: string,
 ): boolean {
   const title = normalizeText(event.title);
+  const words = (text: string) =>
+    normalizeText(text)
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((word) => word.length > 0);
+  const titleWords = ` ${words(event.title).join(" ")} `;
+  const referenceWords = ` ${reference === undefined ? "" : words(reference).join(" ")} `;
+  if (referenceWords.trim() && !titleWords.includes(referenceWords)) {
+    const extra = referenceWords.replace(titleWords, " ").trim();
+    if (
+      extra
+        .split(" ")
+        .some((word) => word.length > 0 && !REFERENCE_DATE_WORD.test(word))
+    )
+      return false;
+  }
   return (
     title.length > 0 &&
     userTexts.some(
@@ -4646,7 +4759,7 @@ async function inferUpdateEventDetails(
     "Notes or body on a calendar event refer to its description field, not a standalone Notes document. Preserve existing description text unless the user asks to replace it; append or insert only when requested.",
     "When the current event is part of a recurring series, set recurrenceScope to instance for only this occurrence, this_and_following for this occurrence and every later one, series for every occurrence including earlier ones, and use null when the user does not say.",
     "Only set recurrence when the user changes how the event repeats (e.g. switch to weekly, stop after 5 times).",
-    "To make the event all-day, or to move an event that is already all-day, set allDayStartDate to its first local date and allDayEndDate to its last included date (null for one day), and use null for startAt and endAt. To give an all-day event a clock time, set startAt and use null for both all-day dates. Use null for both all-day dates when the days do not change.",
+    "To make the event all-day, or to move an event that is already all-day, set allDayStartDate to its first local date and allDayEndDate to its last included date, and use null for startAt and endAt. Use null for allDayEndDate when the user gives only a new first day; the event then keeps its number of days. To make it one day, set allDayEndDate to the same date. To give an all-day event a clock time, set startAt and use null for both all-day dates. Use null for both all-day dates when the days do not change.",
     "List in addGuests only people the user asks to add or invite, with the email address the user wrote (null when the user gave none; never invent or look up an address). List in removeGuests the email or name, copied from the current event's attendees, of each guest the user asks to remove. Use empty arrays when the user asks for no guest change.",
     "If a requested change lacks a necessary detail (for example morning or afternoon without a clock time), return requiresInput:true and clarification asking only for the missing detail. Do not claim free or busy times from earlier dialogue; only a fresh availability read can establish openings. Do not guess a time unless the user explicitly delegates choosing it.",
     "Return JSON only as a single object. No prose.",
@@ -7041,7 +7154,10 @@ export function createCalendarActionRunner(
               );
             }
           }
-          const allDayUpdate = extractedAllDayRange(extractedForUpdate);
+          const allDayUpdate = extractedAllDayRange(
+            extractedForUpdate,
+            targetEvent,
+          );
           const updateTimeRange = resolveUpdateTimeRange({
             extractedStart: extractedStartAt,
             extractedEnd: extractedEndAt,
@@ -7323,6 +7439,10 @@ export function createCalendarActionRunner(
         if (subaction === "delete_event") {
           const explicitEventId = detailString(details, "eventId");
           let targetEvent: LifeOpsCalendarEvent | null = null;
+          // How a looked-up target was found: the owner's reference, and
+          // whether every calendar could be read to show it is the only one.
+          let lookupTitleHint: string | undefined;
+          let lookupSawEveryCalendar = true;
           const recurrenceScopeForDelete = resolveRecurrenceScopeIntent({
             details,
             text: `${messageText(message)} ${intent}`,
@@ -7401,6 +7521,10 @@ export function createCalendarActionRunner(
               timeZone: planningTimeZone,
             });
             requireFreshCalendarMutationTarget(feed, candidates, "delete");
+            lookupTitleHint = titleHint;
+            lookupSawEveryCalendar = feed.sources.every(
+              (source) => source.status === "fresh",
+            );
             if (candidates.length === 0) {
               const fallback = buildCalendarEventNotFoundFallback(
                 "delete",
@@ -7546,27 +7670,47 @@ export function createCalendarActionRunner(
             }
             // A built-in delete has no owner review, so it runs at once only
             // for the one event the owner pointed at: its whole title in their
-            // words, the event open in Calendar, or their yes to the question
-            // below. A partial or model-resolved match is asked about first.
+            // words with every calendar read, the event open in Calendar, or
+            // their answer to the question below, which this action asked in
+            // an earlier turn. A partial or model-resolved match is asked
+            // about first.
             const observation = readClientTurnObservation(
               message.content.metadata,
             );
             const selected = observation?.sensitive
               ? undefined
               : observation?.selectedObject;
-            const ownerChoseTarget =
-              ownerNamedCalendarEvent(
+            const confirmationKey = pendingDeleteConfirmationKey(message);
+            const ownerConfirmed =
+              detailBoolean(details, "confirmed") === true &&
+              explicitEventId !== undefined &&
+              [targetEvent.externalId, targetEvent.id].includes(
+                explicitEventId,
+              ) &&
+              pendingDeleteConfirmationMatches(
+                await runtime.getCache<unknown>(confirmationKey),
                 targetEvent,
-                calendarAuthorizingUserTexts(state, message),
-              ) ||
+                message,
+              );
+            const ownerChoseTarget =
+              ownerConfirmed ||
+              (lookupSawEveryCalendar &&
+                ownerNamedCalendarEvent(
+                  targetEvent,
+                  calendarAuthorizingUserTexts(state, message),
+                  lookupTitleHint ?? searchQueries[0] ?? explicitTitle,
+                )) ||
               (selected?.kind === "canonical-calendar-event" &&
-                selected.id === targetEvent.id) ||
-              (detailBoolean(details, "confirmed") === true &&
-                explicitEventId !== undefined &&
-                [targetEvent.externalId, targetEvent.id].includes(
-                  explicitEventId,
-                ));
+                selected.id === targetEvent.id);
             if (!ownerChoseTarget) {
+              await runtime.setCache(confirmationKey, {
+                eventId: targetEvent.externalId,
+                askedInMessageId: message.id ?? null,
+                askedAt: Date.now(),
+              } satisfies PendingDeleteConfirmation);
+              const unread = lookupSawEveryCalendar
+                ? ""
+                : " Another calendar could not be read, so the event meant may be there.";
               return respond({
                 success: false,
                 text: await renderReply(
@@ -7574,7 +7718,7 @@ export function createCalendarActionRunner(
                   `Nothing was deleted. The request did not name one exact event; the closest match is “${targetEvent.title}” on ${formatCalendarEventDateTime(
                     targetEvent,
                     { includeTimeZoneName: true, timeZone: planningTimeZone },
-                  )}. Ask the owner whether to delete that event. After a yes, delete it with targetKind=eventId, this eventId and details.confirmed=true.`,
+                  )}.${unread} Ask the owner whether to delete that event. After a yes, delete it with targetKind=eventId, this eventId and details.confirmed=true.`,
                   { event: targetEvent },
                 ),
                 effectReceipt: calendarRequestNoopReceipt({
@@ -7604,6 +7748,7 @@ export function createCalendarActionRunner(
               expectedProviderVersion,
               idempotencyKey,
             });
+            if (ownerConfirmed) await runtime.deleteCache(confirmationKey);
             const verifiedReply = verifyAppliedCalendarMutation({
               operation: "delete",
               requestText: messageText(message),
