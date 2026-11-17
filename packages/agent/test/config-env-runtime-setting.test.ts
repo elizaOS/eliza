@@ -241,6 +241,43 @@ it("applies a changed or cleared config env setting on POST /api/config/reload",
       requiresRestart: [],
     });
     expect(runtime.getSetting(KEY)).toBeNull();
+
+    for (const [presetId, voiceId, resolvedVoiceId] of [
+      ["rin", "QtY3JBOUKEB5xzrRfOKc", "QtY3JBOUKEB5xzrRfOKc"],
+      ["satoshi", "8dEUmyPMdDdK91vboYih", "8dEUmyPMdDdK91vboYih"],
+      ["momo", "OZ0L6eISlOejga3XjDFt", "OZ0L6eISlOejga3XjDFt"],
+      ["yuki", "22N9cF8z0o7y23njdyaY", "22N9cF8z0o7y23njdyaY"],
+      ["momo", "BFd5oBc2DDna33pSi4Gf", "BFd5oBc2DDna33pSi4Gf"],
+      ["ryu", "fnYMz3F5gMEDGMWcH1ex", "fnYMz3F5gMEDGMWcH1ex"],
+      ["jin", "ktkP7Nsj67dw2zcplQYt", "ktkP7Nsj67dw2zcplQYt"],
+      ["kei", "fs2OqxduwXgp9foh2xjK", "fs2OqxduwXgp9foh2xjK"],
+      ["rin", "owner-selected-voice", "owner-selected-voice"],
+      ["jin", "pNInz6obpgDQGcFmaJgB", "6IwYbsNENZgAB1dtBZDp"],
+      ["kei", "TxGEqnHWrfWFTfGW9XjX", "eadgjmk4R4uojdsheG9t"],
+      ["momo", "Xb7hH8MSUJpSbSDYk0k2", "n7Wi4g1bhpw4Bs8HK5ph"],
+      ["rin", "XrExE9yKIg1WjnnlVkGX", "cNYrMw9glwJZXR8RwbuR"],
+      ["ryu", "onwK4e9ZLuTAKqWW03F9", "QzTKubutNn9TjrB7Xb2Q"],
+      ["satoshi", "nPczCjzI2devNBz1zQrb", "7cOBG34AiHrAzs842Rdi"],
+      ["yuki", "pFZP5JQG7iQjIQuC4Bku", "4tRn1lSkEn13EVTuqb0g"],
+    ]) {
+      const elevenlabs = { voiceId, modelId: "owner-model", stability: 0.3 };
+      saveElizaConfig({
+        agents,
+        env: {},
+        ui: { presetId },
+        messages: { tts: { provider: "elevenlabs", elevenlabs } },
+      });
+      await reload();
+      const stored = loadElizaConfig();
+      expect(stored.messages?.tts?.elevenlabs).toEqual(elevenlabs);
+      expect(stored.messages?.tts?.mode).toBeUndefined();
+      expect(
+        resolveCharacterVoiceConfigFromAppConfig({
+          config: { ...stored },
+          uiLanguage: "en",
+        })?.elevenlabs,
+      ).toMatchObject({ ...elevenlabs, voiceId: resolvedVoiceId });
+    }
   } finally {
     await runtime.close();
     vi.unstubAllEnvs();
