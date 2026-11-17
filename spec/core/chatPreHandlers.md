@@ -42,3 +42,19 @@ pure def stepSnapshotsStable(before: PreHandlers, after: PreHandlers): bool = be
 pure def sometimesEmptyTextResultWins(s: PreHandlers): bool = s.drains.some(d => d.phase == DrainSucceeded and d.text == "")
 pure def sometimesCancellationAfterAwait(s: PreHandlers): bool = s.drains.some(d => d.phase == DrainAborted and d.cursor > 0)
 ```
+
+### Each drain invocation has one identity
+
+Discovered by the proof: retained drain invocations have distinct IDs. Without this fact, an active invocation could share its ID with a completed invocation and cancellation could change both records. The source keeps each drain's local state in its own async invocation.
+
+```quint
+pure def alwaysDrainIdsUnique(s: PreHandlers): bool = s.drains.every(d => s.drains.select(other => other.id == d.id).length() == 1)
+```
+
+### An active drain cursor names a captured handler
+
+Discovered by the proof: before or while awaiting a handler, the drain cursor is strictly below its captured snapshot length. Without this fact, an already exhausted snapshot could await a handler and then advance past its end. The source enters the awaited callback only inside its captured handler loop.
+
+```quint
+pure def alwaysActiveCursorNamesHandler(s: PreHandlers): bool = s.drains.every(d => (d.phase == BeforeHandler or d.phase == WaitingHandler) implies d.cursor < d.snapshot.length())
+```

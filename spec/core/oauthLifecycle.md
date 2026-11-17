@@ -31,6 +31,46 @@ pure def alwaysStoredAccountRequiresProvider(s: OAuthCompletion): bool = s.accou
 pure def alwaysCompensationFollowsFailedAccountWrite(s: OAuthCompletion): bool = s.compensationAttempted implies s.providerSucceeded and s.persistenceFailed and not(s.accountStored)
 ```
 
+### A new callback has no provider or account history
+
+Discovered by the proof: idle and consumption-pending states admitted outcomes from a provider exchange or account write that had not begun. Each callback starts with no successful or failed provider result, stored account or attempted compensation, and retains that fresh history until consumption finishes.
+
+```quint
+pure def alwaysEarlyCallbackHistoryIsFresh(s: OAuthCompletion): bool = (s.phase == OAuthIdle or s.phase == ConsumePending) implies not(s.providerSucceeded) and not(s.providerFailed) and not(s.accountStored) and not(s.compensationAttempted)
+```
+
+### A pending provider exchange has no account or compensation
+
+Discovered by the proof: a pending provider exchange could otherwise retain an already stored account or attempted compensation. Account persistence and compensation follow the provider result, so neither has happened while that result is pending.
+
+```quint
+pure def alwaysProviderWaitHasNoAccountOrCompensation(s: OAuthCompletion): bool = s.phase == ProviderPending implies not(s.accountStored) and not(s.compensationAttempted)
+```
+
+### Account persistence follows provider success and precedes compensation
+
+Discovered by the proof: an account write could otherwise inherit compensation from an earlier stage. The account-pending phase retains the successful provider result and has not attempted compensation.
+
+```quint
+pure def alwaysAccountWriteFollowsSuccessfulProvider(s: OAuthCompletion): bool = s.phase == AccountPending implies s.providerSucceeded and not(s.compensationAttempted)
+```
+
+### Pending compensation retains the failed account write
+
+Discovered by the proof: the compensation phase could otherwise omit the successful provider result and failed account write that led to it. Pending compensation retains provider success and persistence failure, with no stored account.
+
+```quint
+pure def alwaysCompensationWaitFollowsFailedAccountWrite(s: OAuthCompletion): bool = s.phase == CompensationPending implies s.providerSucceeded and s.persistenceFailed and not(s.accountStored)
+```
+
+### Successful completion does not follow compensation
+
+Discovered by the proof: a pending success update could otherwise carry attempted compensation and lose the persistence failure that justified it. Compensation belongs to the failed-account path; the success-update phase has not attempted compensation.
+
+```quint
+pure def alwaysSuccessWriteHasNoCompensation(s: OAuthCompletion): bool = s.phase == SuccessWritePending implies not(s.compensationAttempted)
+```
+
 ### Terminal persistence and verifier cleanup preserve separate writeResults
 
 A provider exchange failure throws after recording a non-null failed row; a missing or throwing failure-state update aggregates provider and persistence failures. Account persistence failure invokes optional compensation and then attempts a failed update before throwing. A successful exchange performs its terminal update after account persistence, and a throwing success update preserves the stored account. The current source returns the original pending flow when that success update returns null; this observable fallback is retained explicitly here. Successful terminal row updates may carry a provider-selected flow status. Verifier cleanup runs in the provider completion finally block, including failures; pre-provider exits rely on the storage terminal cleanup path.
