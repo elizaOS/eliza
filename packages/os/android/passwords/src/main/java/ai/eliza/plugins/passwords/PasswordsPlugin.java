@@ -8,6 +8,8 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.net.Uri;
 import android.provider.Settings;
+import android.view.View;
+import android.view.ViewTreeObserver;
 import android.view.autofill.AutofillManager;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -33,6 +35,10 @@ import org.json.JSONObject;
 public class PasswordsPlugin extends Plugin {
   private static final SecureRandom RANDOM = new SecureRandom();
   private long unlockTicket;
+  private View clipboardView;
+  private final ViewTreeObserver.OnWindowFocusChangeListener clipboardFocus = focused -> {
+    if (focused) SecretSurfaces.focused();
+  };
 
   private PasswordVaultAccess access(PluginCall call) {
     try { return PasswordVaultAccess.get(getContext()); }
@@ -47,6 +53,7 @@ public class PasswordsPlugin extends Plugin {
 
   private void fail(PluginCall call, Exception failure) {
     if (failure instanceof PasswordVaultStore.RevisionConflict) call.reject("This password changed. Reload it first", "conflict");
+    else if (failure instanceof PasswordVaultAccess.NotAdmitted) call.reject("Saved passwords are not available here", "not-admitted");
     else if (failure instanceof PasswordVaultAccess.Locked) call.reject("Unlock saved passwords first", "locked");
     else if (failure instanceof PasswordVaultAccess.KeyInvalidated) call.reject("Saved passwords can no longer be decrypted on this device", "key-invalidated");
     else if (failure instanceof java.io.IOException && failure.getMessage() != null && SAFE_MESSAGES.contains(failure.getMessage())) call.reject(failure.getMessage(), "invalid");
@@ -228,12 +235,22 @@ public class PasswordsPlugin extends Plugin {
       String value = record.getString("password");
       activity.runOnUiThread(() -> {
         try {
-          if (activity.isFinishing() || activity.isDestroyed() || !access.unlocked(ticket)) { call.reject("Unlock saved passwords first", "locked"); return; }
+          if (activity.isFinishing() || activity.isDestroyed() || !activity.hasWindowFocus()) throw new PasswordVaultAccess.Locked();
           JSObject result = new JSObject();
-          if (reveal) { SecretSurfaces.reveal(activity, label, value); result.put("shown", true); result.put("hidesAfterMs", SecretSurfaces.REVEAL_MILLIS); }
-          else { SecretSurfaces.copy(activity, value); result.put("copied", true); result.put("clearsAfterMs", SecretSurfaces.CLIPBOARD_MILLIS); }
+          access.deliverSecret(activity, ticket, () -> {
+            if (reveal) {
+              SecretSurfaces.revealOwned(activity, label, value,
+                () -> access.unlocked(ticket) && PasswordVaultAccess.admitted(activity));
+              result.put("shown", true);
+              result.put("hidesAfterMs", SecretSurfaces.REVEAL_MILLIS);
+            } else {
+              SecretSurfaces.copy(activity, value);
+              result.put("copied", true);
+              result.put("clearsAfterMs", SecretSurfaces.CLIPBOARD_MILLIS);
+            }
+          });
           call.resolve(result);
-        } catch (RuntimeException unavailable) { call.reject("Saved passwords are unavailable", "unavailable"); }
+        } catch (Exception failure) { fail(call, failure); }
       });
     } catch (Exception failure) { fail(call, failure); }
   }
@@ -254,6 +271,7 @@ public class PasswordsPlugin extends Plugin {
 
   @Override protected void handleOnStop() {
     super.handleOnStop();
+    stopWatchingClipboardFocus();
     try {
       PasswordVaultAccess access = PasswordVaultAccess.get(getContext());
       // The device-credential screen stops the host while an unlock is pending; keep that one.
@@ -265,10 +283,23 @@ public class PasswordsPlugin extends Plugin {
 
   @Override protected void handleOnResume() {
     super.handleOnResume();
-    if (getActivity() != null) SecretSurfaces.resume(getActivity());
+    Activity activity = getActivity();
+    if (activity == null) return;
+    stopWatchingClipboardFocus();
+    clipboardView = activity.getWindow().getDecorView();
+    clipboardView.getViewTreeObserver().addOnWindowFocusChangeListener(clipboardFocus);
+    if (activity.hasWindowFocus()) SecretSurfaces.focused();
+  }
+
+  private void stopWatchingClipboardFocus() {
+    if (clipboardView == null) return;
+    ViewTreeObserver observer = clipboardView.getViewTreeObserver();
+    if (observer.isAlive()) observer.removeOnWindowFocusChangeListener(clipboardFocus);
+    clipboardView = null;
   }
 
   @Override protected void handleOnDestroy() {
+    stopWatchingClipboardFocus();
     try { PasswordVaultAccess.get(getContext()).lock(unlockTicket); }
     catch (Exception ignored) { /* Nothing to lock. */ }
     PasswordEditor.dismiss(getActivity());
