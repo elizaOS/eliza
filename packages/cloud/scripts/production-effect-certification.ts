@@ -1,5 +1,6 @@
 /** Admits production effects after exact-source main validation and tree-bound staging certification. */
 import { createHash } from "node:crypto";
+import { requireReleaseWaiver } from "./production-validation-waiver.ts";
 import {
   appendFileSync,
   mkdtempSync,
@@ -190,7 +191,17 @@ export async function requireMainValidation({
   sourceSha,
   repoRoot,
   now,
+  waiver,
 }) {
+  if (waiver)
+    return requireReleaseWaiver({
+      api,
+      repository,
+      sourceSha,
+      repoRoot,
+      record: waiver,
+      now,
+    });
   if (!/^[a-f0-9]{40}$/.test(sourceSha ?? ""))
     throw new Error("Main validation requires an exact source SHA");
   const endpoint = `/actions/workflows/develop-full.yml/runs?branch=main&head_sha=${sourceSha}&per_page=100`;
@@ -300,6 +311,7 @@ export async function requireProductionCertification({
   sourceSha,
   repoRoot,
   now,
+  waiver,
 }) {
   const name = artifactNameForTree(treeSha);
   const response = await api.request(
@@ -361,6 +373,7 @@ export async function requireProductionCertification({
       sourceSha,
       repoRoot,
       now,
+      waiver,
     });
     return {
       ...staging,
@@ -448,7 +461,14 @@ if (
     encoding: "utf8",
   }).trim();
   const repository = process.env.GITHUB_REPOSITORY;
-  const proof = await (validationOnly
+  const waiverText = process.env.PRODUCTION_VALIDATION_WAIVER_JSON;
+  const waiver = waiverText ? JSON.parse(waiverText) : undefined;
+  if (waiver && process.env.MAIN_VALIDATION_ENVIRONMENT !== "production")
+    throw Error(
+      "Production waiver requires the protected production environment",
+    );
+  // A waiver never skips staging: every mutation rechecks the new exact-tree certificate.
+  const proof = await (validationOnly && !waiver
     ? requireMainValidation
     : requireProductionCertification)({
     api: certificationApi({
@@ -460,6 +480,7 @@ if (
     treeSha,
     sourceSha,
     repoRoot,
+    waiver,
   });
   assertProductionCertificationFresh(proof.expiresAt);
   if (process.env.GITHUB_OUTPUT)
@@ -467,7 +488,11 @@ if (
       process.env.GITHUB_OUTPUT,
       `expires_epoch=${Math.floor(Date.parse(proof.expiresAt) / 1000)}\n`,
     );
+  if (waiver)
+    process.stdout.write(
+      `Production broad validation waived by owner for exact source ${sourceSha}; original results remain unchanged.\n`,
+    );
   process.stdout.write(
-    `Production source ${sourceSha} admitted by ${validationOnly ? "main Full" : "staging and main Full"} evidence until ${proof.expiresAt}\n`,
+    `Production source ${sourceSha} admitted by ${waiver ? "staging and explicit owner waiver" : validationOnly ? "main Full" : "staging and main Full"} evidence until ${proof.expiresAt}\n`,
   );
 }

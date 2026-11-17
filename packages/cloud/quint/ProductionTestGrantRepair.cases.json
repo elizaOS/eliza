@@ -1,0 +1,22 @@
+{
+  "sources": [
+    "packages/cloud/scripts/admin/production-test-grant-admission.ts",
+    "packages/cloud/scripts/admin/production-test-grant-admission.pglite.test.ts",
+    ".github/workflows/cloud-production-test-grant.yml"
+  ],
+  "bounds": "One existing code; original term 0, 1, 7, 31 or 32 days; one repair family and one redemption. Admissibility abstracts exact label, production identity, expiry, disabled state, catalog, single-use capacity and absence of a prior grant. No mint operation. Safety-only finite abstraction; production permissions, actual PostgreSQL row-lock races and redemption/entitlement effects remain separate acceptance gates. The source PGlite suite executes selection/update/rollback SQL, but is not mechanical model refinement. No liveness claim.",
+  "cases": [
+    {
+      "name": "preserve-original-test-grant",
+      "main": "ProductionTestGrantRepair",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "safety"
+      ],
+      "maxSteps": 12,
+      "samples": 100,
+      "temporal": []
+    }
+  ]
+}
