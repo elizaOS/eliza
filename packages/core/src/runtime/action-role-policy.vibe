@@ -133,9 +133,8 @@ export effect function getActionRolePolicyWarnings(
 
   return warnings
 }
-export const getActionRolePolicyWarningsOrThrow = thrown(getActionRolePolicyWarnings)
 
-export effect function warnOnUnmatchedActionRolePolicyKeys(
+effect function warnOnUnmatchedActionRolePolicyKeys(
   actions: readonly PolicyAddressableAction[],
 ): string[]!ElizaError {
   const warnings = try getActionRolePolicyWarnings(actions)

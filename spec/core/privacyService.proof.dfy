@@ -95,18 +95,14 @@ lemma PrivacyWorkMap(s: PrivacyService,t: PrivacyService)
   requires inv(s)
   requires |s.jobs| == |t.jobs|
   requires forall i :: 0 <= i < |s.jobs| ==> s.jobs[i].id == t.jobs[i].id
-  requires forall i :: 0 <= i < |t.jobs| ==> (core__privacy_alwaysAcceptedWorkIsAccounted(t.jobs[i].work) &&
-    core__privacy_alwaysCompletionRequiresPersistentMarker(t.jobs[i].work) &&
-    core__privacy_alwaysCountsAreNonnegative(t.jobs[i].work) &&
+  requires forall i :: 0 <= i < |t.jobs| ==> (core__privacy_wellFormed(t.jobs[i].work) &&
     (t.jobs[i].work.marker ==> t.jobs[i].key in t.markers))
   ensures alwaysEveryJobRetainsSettlement(t) && alwaysCommittedJobHasSharedMarker(t)
   ensures alwaysJobIdsAreUnique(t)
   ensures forall id :: jobAt(s,id).id != "" ==> jobAt(t,id).id == id
 {
   forall job | job in t.jobs
-    ensures job.id != "" && core__privacy_alwaysAcceptedWorkIsAccounted(job.work) &&
-      core__privacy_alwaysCompletionRequiresPersistentMarker(job.work) &&
-      core__privacy_alwaysCountsAreNonnegative(job.work) && (job.work.marker ==> job.key in t.markers)
+    ensures job.id != "" && core__privacy_wellFormed(job.work) && (job.work.marker ==> job.key in t.markers)
   {
     var i :| 0 <= i < |t.jobs| && t.jobs[i] == job;
     assert s.jobs[i] in s.jobs;
@@ -189,6 +185,8 @@ lemma PrivacyTicketLookup(s: PrivacyService, ticket: int)
 lemma request_ensures(s: PrivacyService, id: string, key: string, priority: core__priorityQueue_QueuePriority)
   ensures (inv(s) ==> canRequest(s, id, key, priority) ==> alwaysPromiseIdentitiesAreValid(request(s, id, key, priority)))
   ensures (inv(s) ==> canRequest(s, id, key, priority) ==> alwaysEveryJobRetainsSettlement(request(s, id, key, priority)))
+  ensures (inv(s) ==> canRequest(s, id, key, priority) ==> alwaysQueueOwnerWellFormed(request(s, id, key, priority)))
+  ensures (inv(s) ==> canRequest(s, id, key, priority) ==> alwaysServiceQueueLifecycle(request(s, id, key, priority)))
   ensures (inv(s) ==> canRequest(s, id, key, priority) ==> alwaysCommittedJobHasSharedMarker(request(s, id, key, priority)))
   ensures (inv(s) ==> canRequest(s, id, key, priority) ==> alwaysJobIdsAreUnique(request(s, id, key, priority)))
   ensures (inv(s) ==> canRequest(s, id, key, priority) ==> alwaysQueueReferencesKnownJobs(request(s, id, key, priority)))
@@ -207,6 +205,8 @@ lemma request_ensures(s: PrivacyService, id: string, key: string, priority: core
 lemma finishAdmission_ensures(s: PrivacyService, id: string)
   ensures (inv(s) ==> canFinishAdmission(s, id) ==> alwaysPromiseIdentitiesAreValid(finishAdmission(s, id)))
   ensures (inv(s) ==> canFinishAdmission(s, id) ==> alwaysEveryJobRetainsSettlement(finishAdmission(s, id)))
+  ensures (inv(s) ==> canFinishAdmission(s, id) ==> alwaysQueueOwnerWellFormed(finishAdmission(s, id)))
+  ensures (inv(s) ==> canFinishAdmission(s, id) ==> alwaysServiceQueueLifecycle(finishAdmission(s, id)))
   ensures (inv(s) ==> canFinishAdmission(s, id) ==> alwaysCommittedJobHasSharedMarker(finishAdmission(s, id)))
   ensures (inv(s) ==> canFinishAdmission(s, id) ==> alwaysJobIdsAreUnique(finishAdmission(s, id)))
   ensures (inv(s) ==> canFinishAdmission(s, id) ==> alwaysQueueReferencesKnownJobs(finishAdmission(s, id)))
@@ -214,11 +214,19 @@ lemma finishAdmission_ensures(s: PrivacyService, id: string)
 {
   if inv(s) && canFinishAdmission(s, id) {
     var t := finishAdmission(s, id);
+    var job := jobAt(s,id);
+    var work := core__privacy_finishAdmission(job.work);
+    if work.accepted > job.work.accepted {
+      PrivacyLookup(s,id);
+      core__batchQueue_enqueueBatchItem_ensures(s.queue,id,job.priority);
+      var admitted := core__batchQueue_enqueueBatchItem(s.queue,id,job.priority);
+      if s.startId == 0 && !s.stopping {
+        core__batchQueue_startSchedule_ensures(admitted);
+      }
+    }
     PrivacyLookup(s,id);
     forall i | 0 <= i < |t.jobs|
-      ensures core__privacy_alwaysAcceptedWorkIsAccounted(t.jobs[i].work) &&
-        core__privacy_alwaysCompletionRequiresPersistentMarker(t.jobs[i].work) &&
-        core__privacy_alwaysCountsAreNonnegative(t.jobs[i].work) &&
+      ensures core__privacy_wellFormed(t.jobs[i].work) &&
         (t.jobs[i].work.marker ==> t.jobs[i].key in t.markers)
     {
       var job := s.jobs[i];
@@ -236,6 +244,8 @@ lemma finishAdmission_ensures(s: PrivacyService, id: string)
 lemma scrubbed_ensures(s: PrivacyService, id: string)
   ensures (inv(s) ==> canScrubbed(s, id) ==> alwaysPromiseIdentitiesAreValid(scrubbed(s, id)))
   ensures (inv(s) ==> canScrubbed(s, id) ==> alwaysEveryJobRetainsSettlement(scrubbed(s, id)))
+  ensures (inv(s) ==> canScrubbed(s, id) ==> alwaysQueueOwnerWellFormed(scrubbed(s, id)))
+  ensures (inv(s) ==> canScrubbed(s, id) ==> alwaysServiceQueueLifecycle(scrubbed(s, id)))
   ensures (inv(s) ==> canScrubbed(s, id) ==> alwaysCommittedJobHasSharedMarker(scrubbed(s, id)))
   ensures (inv(s) ==> canScrubbed(s, id) ==> alwaysJobIdsAreUnique(scrubbed(s, id)))
   ensures (inv(s) ==> canScrubbed(s, id) ==> alwaysQueueReferencesKnownJobs(scrubbed(s, id)))
@@ -245,9 +255,7 @@ lemma scrubbed_ensures(s: PrivacyService, id: string)
     var t := scrubbed(s, id);
     PrivacyLookup(s,id);
     forall i | 0 <= i < |t.jobs|
-      ensures core__privacy_alwaysAcceptedWorkIsAccounted(t.jobs[i].work) &&
-        core__privacy_alwaysCompletionRequiresPersistentMarker(t.jobs[i].work) &&
-        core__privacy_alwaysCountsAreNonnegative(t.jobs[i].work) &&
+      ensures core__privacy_wellFormed(t.jobs[i].work) &&
         (t.jobs[i].work.marker ==> t.jobs[i].key in t.markers)
     {
       var job := s.jobs[i];
@@ -264,6 +272,8 @@ lemma scrubbed_ensures(s: PrivacyService, id: string)
 lemma persistMap_ensures(s: PrivacyService, id: string)
   ensures (inv(s) ==> canPersistMap(s, id) ==> alwaysPromiseIdentitiesAreValid(persistMap(s, id)))
   ensures (inv(s) ==> canPersistMap(s, id) ==> alwaysEveryJobRetainsSettlement(persistMap(s, id)))
+  ensures (inv(s) ==> canPersistMap(s, id) ==> alwaysQueueOwnerWellFormed(persistMap(s, id)))
+  ensures (inv(s) ==> canPersistMap(s, id) ==> alwaysServiceQueueLifecycle(persistMap(s, id)))
   ensures (inv(s) ==> canPersistMap(s, id) ==> alwaysCommittedJobHasSharedMarker(persistMap(s, id)))
   ensures (inv(s) ==> canPersistMap(s, id) ==> alwaysJobIdsAreUnique(persistMap(s, id)))
   ensures (inv(s) ==> canPersistMap(s, id) ==> alwaysQueueReferencesKnownJobs(persistMap(s, id)))
@@ -273,9 +283,7 @@ lemma persistMap_ensures(s: PrivacyService, id: string)
     var t := persistMap(s, id);
     PrivacyLookup(s,id);
     forall i | 0 <= i < |t.jobs|
-      ensures core__privacy_alwaysAcceptedWorkIsAccounted(t.jobs[i].work) &&
-        core__privacy_alwaysCompletionRequiresPersistentMarker(t.jobs[i].work) &&
-        core__privacy_alwaysCountsAreNonnegative(t.jobs[i].work) &&
+      ensures core__privacy_wellFormed(t.jobs[i].work) &&
         (t.jobs[i].work.marker ==> t.jobs[i].key in t.markers)
     {
       var job := s.jobs[i];
@@ -292,6 +300,8 @@ lemma persistMap_ensures(s: PrivacyService, id: string)
 lemma confirmMarker_ensures(s: PrivacyService, id: string)
   ensures (inv(s) ==> canConfirmMarker(s, id) ==> alwaysPromiseIdentitiesAreValid(confirmMarker(s, id)))
   ensures (inv(s) ==> canConfirmMarker(s, id) ==> alwaysEveryJobRetainsSettlement(confirmMarker(s, id)))
+  ensures (inv(s) ==> canConfirmMarker(s, id) ==> alwaysQueueOwnerWellFormed(confirmMarker(s, id)))
+  ensures (inv(s) ==> canConfirmMarker(s, id) ==> alwaysServiceQueueLifecycle(confirmMarker(s, id)))
   ensures (inv(s) ==> canConfirmMarker(s, id) ==> alwaysCommittedJobHasSharedMarker(confirmMarker(s, id)))
   ensures (inv(s) ==> canConfirmMarker(s, id) ==> alwaysJobIdsAreUnique(confirmMarker(s, id)))
   ensures (inv(s) ==> canConfirmMarker(s, id) ==> alwaysQueueReferencesKnownJobs(confirmMarker(s, id)))
@@ -304,9 +314,7 @@ lemma confirmMarker_ensures(s: PrivacyService, id: string)
       ProofLib.FilterMember((set_x: string) => !(set_x in s.markers), [jobAt(s,id).key], key);
     }
     forall i | 0 <= i < |t.jobs|
-      ensures core__privacy_alwaysAcceptedWorkIsAccounted(t.jobs[i].work) &&
-        core__privacy_alwaysCompletionRequiresPersistentMarker(t.jobs[i].work) &&
-        core__privacy_alwaysCountsAreNonnegative(t.jobs[i].work) &&
+      ensures core__privacy_wellFormed(t.jobs[i].work) &&
         (t.jobs[i].work.marker ==> t.jobs[i].key in t.markers)
     {
       var job := s.jobs[i];
@@ -324,6 +332,8 @@ lemma confirmMarker_ensures(s: PrivacyService, id: string)
 lemma observeCompletion_ensures(s: PrivacyService, id: string, observerSucceeded: bool)
   ensures (inv(s) ==> canObserveCompletion(s, id, observerSucceeded) ==> alwaysPromiseIdentitiesAreValid(observeCompletion(s, id, observerSucceeded)))
   ensures (inv(s) ==> canObserveCompletion(s, id, observerSucceeded) ==> alwaysEveryJobRetainsSettlement(observeCompletion(s, id, observerSucceeded)))
+  ensures (inv(s) ==> canObserveCompletion(s, id, observerSucceeded) ==> alwaysQueueOwnerWellFormed(observeCompletion(s, id, observerSucceeded)))
+  ensures (inv(s) ==> canObserveCompletion(s, id, observerSucceeded) ==> alwaysServiceQueueLifecycle(observeCompletion(s, id, observerSucceeded)))
   ensures (inv(s) ==> canObserveCompletion(s, id, observerSucceeded) ==> alwaysCommittedJobHasSharedMarker(observeCompletion(s, id, observerSucceeded)))
   ensures (inv(s) ==> canObserveCompletion(s, id, observerSucceeded) ==> alwaysJobIdsAreUnique(observeCompletion(s, id, observerSucceeded)))
   ensures (inv(s) ==> canObserveCompletion(s, id, observerSucceeded) ==> alwaysQueueReferencesKnownJobs(observeCompletion(s, id, observerSucceeded)))
@@ -333,9 +343,7 @@ lemma observeCompletion_ensures(s: PrivacyService, id: string, observerSucceeded
     var t := observeCompletion(s, id, observerSucceeded);
     PrivacyLookup(s,id);
     forall i | 0 <= i < |t.jobs|
-      ensures core__privacy_alwaysAcceptedWorkIsAccounted(t.jobs[i].work) &&
-        core__privacy_alwaysCompletionRequiresPersistentMarker(t.jobs[i].work) &&
-        core__privacy_alwaysCountsAreNonnegative(t.jobs[i].work) &&
+      ensures core__privacy_wellFormed(t.jobs[i].work) &&
         (t.jobs[i].work.marker ==> t.jobs[i].key in t.markers)
     {
       var job := s.jobs[i];
@@ -352,6 +360,8 @@ lemma observeCompletion_ensures(s: PrivacyService, id: string, observerSucceeded
 lemma finishAttempt_ensures(s: PrivacyService, ticket: int, ok: bool, retry: bool)
   ensures (inv(s) ==> canFinishAttempt(s, ticket, ok, retry) ==> alwaysPromiseIdentitiesAreValid(finishAttempt(s, ticket, ok, retry)))
   ensures (inv(s) ==> canFinishAttempt(s, ticket, ok, retry) ==> alwaysEveryJobRetainsSettlement(finishAttempt(s, ticket, ok, retry)))
+  ensures (inv(s) ==> canFinishAttempt(s, ticket, ok, retry) ==> alwaysQueueOwnerWellFormed(finishAttempt(s, ticket, ok, retry)))
+  ensures (inv(s) ==> canFinishAttempt(s, ticket, ok, retry) ==> alwaysServiceQueueLifecycle(finishAttempt(s, ticket, ok, retry)))
   ensures (inv(s) ==> canFinishAttempt(s, ticket, ok, retry) ==> alwaysCommittedJobHasSharedMarker(finishAttempt(s, ticket, ok, retry)))
   ensures (inv(s) ==> canFinishAttempt(s, ticket, ok, retry) ==> alwaysJobIdsAreUnique(finishAttempt(s, ticket, ok, retry)))
   ensures (inv(s) ==> canFinishAttempt(s, ticket, ok, retry) ==> alwaysQueueReferencesKnownJobs(finishAttempt(s, ticket, ok, retry)))
@@ -359,11 +369,10 @@ lemma finishAttempt_ensures(s: PrivacyService, ticket: int, ok: bool, retry: boo
 {
   if inv(s) && canFinishAttempt(s, ticket, ok, retry) {
     var t := finishAttempt(s, ticket, ok, retry);
+    core__batchQueue_finishFallbackAttempt_ensures(s.queue,ticket,ok,retry);
     PrivacyTicketLookup(s,ticket);
     forall i | 0 <= i < |t.jobs|
-      ensures core__privacy_alwaysAcceptedWorkIsAccounted(t.jobs[i].work) &&
-        core__privacy_alwaysCompletionRequiresPersistentMarker(t.jobs[i].work) &&
-        core__privacy_alwaysCountsAreNonnegative(t.jobs[i].work) &&
+      ensures core__privacy_wellFormed(t.jobs[i].work) &&
         (t.jobs[i].work.marker ==> t.jobs[i].key in t.markers)
     {
       var job := s.jobs[i];
@@ -410,6 +419,8 @@ lemma lawDetachedCollectionPreservesSettlement_ensures(s: PrivacyService, ticket
 lemma driveQueue_ensures(s: PrivacyService, queueEvent: PiiQueueEvent, ticket: int, ok: bool)
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysPromiseIdentitiesAreValid(driveQueue(s, queueEvent, ticket, ok)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysEveryJobRetainsSettlement(driveQueue(s, queueEvent, ticket, ok)))
+  ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysQueueOwnerWellFormed(driveQueue(s, queueEvent, ticket, ok)))
+  ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysServiceQueueLifecycle(driveQueue(s, queueEvent, ticket, ok)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysCommittedJobHasSharedMarker(driveQueue(s, queueEvent, ticket, ok)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysJobIdsAreUnique(driveQueue(s, queueEvent, ticket, ok)))
   ensures (inv(s) ==> canDriveQueue(s, queueEvent, ticket, ok) ==> alwaysQueueReferencesKnownJobs(driveQueue(s, queueEvent, ticket, ok)))
@@ -417,12 +428,11 @@ lemma driveQueue_ensures(s: PrivacyService, queueEvent: PiiQueueEvent, ticket: i
 {
   if inv(s) && canDriveQueue(s, queueEvent, ticket, ok) {
     var t := driveQueue(s, queueEvent, ticket, ok);
+    PrivacyDriveQueueOwner(s,queueEvent,ticket,ok);
     PrivacyTicketLookup(s,ticket);
     PrivacyQueueSubset(s.queue.queue,s.queue.batchSize,[]);
     forall i | 0 <= i < |t.jobs|
-      ensures core__privacy_alwaysAcceptedWorkIsAccounted(t.jobs[i].work) &&
-        core__privacy_alwaysCompletionRequiresPersistentMarker(t.jobs[i].work) &&
-        core__privacy_alwaysCountsAreNonnegative(t.jobs[i].work) &&
+      ensures core__privacy_wellFormed(t.jobs[i].work) &&
         (t.jobs[i].work.marker ==> t.jobs[i].key in t.markers)
     {
       var job := s.jobs[i];
@@ -445,6 +455,8 @@ lemma driveQueue_ensures(s: PrivacyService, queueEvent: PiiQueueEvent, ticket: i
 lemma stop_ensures(s: PrivacyService)
   ensures (inv(s) ==> alwaysPromiseIdentitiesAreValid(stop(s)))
   ensures (inv(s) ==> alwaysEveryJobRetainsSettlement(stop(s)))
+  ensures (inv(s) ==> alwaysQueueOwnerWellFormed(stop(s)))
+  ensures (inv(s) ==> alwaysServiceQueueLifecycle(stop(s)))
   ensures (inv(s) ==> alwaysCommittedJobHasSharedMarker(stop(s)))
   ensures (inv(s) ==> alwaysJobIdsAreUnique(stop(s)))
   ensures (inv(s) ==> alwaysQueueReferencesKnownJobs(stop(s)))
@@ -453,9 +465,7 @@ lemma stop_ensures(s: PrivacyService)
   if inv(s) && true {
     var t := stop(s);
     forall i | 0 <= i < |t.jobs|
-      ensures core__privacy_alwaysAcceptedWorkIsAccounted(t.jobs[i].work) &&
-        core__privacy_alwaysCompletionRequiresPersistentMarker(t.jobs[i].work) &&
-        core__privacy_alwaysCountsAreNonnegative(t.jobs[i].work) &&
+      ensures core__privacy_wellFormed(t.jobs[i].work) &&
         (t.jobs[i].work.marker ==> t.jobs[i].key in t.markers)
     {
       var job := s.jobs[i];
@@ -470,6 +480,8 @@ lemma stop_ensures(s: PrivacyService)
 lemma completeStop_ensures(s: PrivacyService)
   ensures (inv(s) ==> canCompleteStop(s) ==> alwaysPromiseIdentitiesAreValid(completeStop(s)))
   ensures (inv(s) ==> canCompleteStop(s) ==> alwaysEveryJobRetainsSettlement(completeStop(s)))
+  ensures (inv(s) ==> canCompleteStop(s) ==> alwaysQueueOwnerWellFormed(completeStop(s)))
+  ensures (inv(s) ==> canCompleteStop(s) ==> alwaysServiceQueueLifecycle(completeStop(s)))
   ensures (inv(s) ==> canCompleteStop(s) ==> alwaysCommittedJobHasSharedMarker(completeStop(s)))
   ensures (inv(s) ==> canCompleteStop(s) ==> alwaysJobIdsAreUnique(completeStop(s)))
   ensures (inv(s) ==> canCompleteStop(s) ==> alwaysQueueReferencesKnownJobs(completeStop(s)))
@@ -478,9 +490,7 @@ lemma completeStop_ensures(s: PrivacyService)
   if inv(s) && canCompleteStop(s) {
     var t := completeStop(s);
     forall i | 0 <= i < |t.jobs|
-      ensures core__privacy_alwaysAcceptedWorkIsAccounted(t.jobs[i].work) &&
-        core__privacy_alwaysCompletionRequiresPersistentMarker(t.jobs[i].work) &&
-        core__privacy_alwaysCountsAreNonnegative(t.jobs[i].work) &&
+      ensures core__privacy_wellFormed(t.jobs[i].work) &&
         (t.jobs[i].work.marker ==> t.jobs[i].key in t.markers)
     {
       var job := s.jobs[i];
@@ -495,6 +505,8 @@ lemma completeStop_ensures(s: PrivacyService)
 lemma beginDisposal_ensures(s: PrivacyService, fast: bool)
   ensures (inv(s) ==> canBeginDisposal(s, fast) ==> alwaysPromiseIdentitiesAreValid(beginDisposal(s, fast)))
   ensures (inv(s) ==> canBeginDisposal(s, fast) ==> alwaysEveryJobRetainsSettlement(beginDisposal(s, fast)))
+  ensures (inv(s) ==> canBeginDisposal(s, fast) ==> alwaysQueueOwnerWellFormed(beginDisposal(s, fast)))
+  ensures (inv(s) ==> canBeginDisposal(s, fast) ==> alwaysServiceQueueLifecycle(beginDisposal(s, fast)))
   ensures (inv(s) ==> canBeginDisposal(s, fast) ==> alwaysCommittedJobHasSharedMarker(beginDisposal(s, fast)))
   ensures (inv(s) ==> canBeginDisposal(s, fast) ==> alwaysJobIdsAreUnique(beginDisposal(s, fast)))
   ensures (inv(s) ==> canBeginDisposal(s, fast) ==> alwaysQueueReferencesKnownJobs(beginDisposal(s, fast)))
@@ -502,14 +514,19 @@ lemma beginDisposal_ensures(s: PrivacyService, fast: bool)
 {
   if inv(s) && canBeginDisposal(s, fast) {
     var t := beginDisposal(s, fast);
+    var queue := s.queue;
+    if fast {
+      core__priorityQueue_clearQueue_ensures(s.queue.queue);
+      queue := s.queue.(queue := core__priorityQueue_clearQueue(s.queue.queue));
+      assert core__batchQueue_wellFormed(queue);
+    }
+    core__batchQueue_beginDispose_ensures(queue,!fast);
     if !fast {
-      var tickets := Std.Collections.Seq.FoldLeft((tickets: seq<int>, j: core__priorityQueue_QueueItem) => (tickets + Std.Collections.Seq.Filter((set_x: int) => !((set_x in tickets)), [j.ticket])), [], s.queue.queue.high);
+      var tickets := Std.Collections.Seq.FoldLeft((tickets: seq<int>, j: core__priorityQueue_QueueItem) => core__batchQueue_addFlushTicket(tickets,j.ticket), [], s.queue.queue.high);
       PrivacyQueueSubset(s.queue.queue,s.queue.batchSize,tickets);
     }
     forall i | 0 <= i < |t.jobs|
-      ensures core__privacy_alwaysAcceptedWorkIsAccounted(t.jobs[i].work) &&
-        core__privacy_alwaysCompletionRequiresPersistentMarker(t.jobs[i].work) &&
-        core__privacy_alwaysCountsAreNonnegative(t.jobs[i].work) &&
+      ensures core__privacy_wellFormed(t.jobs[i].work) &&
         (t.jobs[i].work.marker ==> t.jobs[i].key in t.markers)
     {
       var job := s.jobs[i];
@@ -524,6 +541,8 @@ lemma beginDisposal_ensures(s: PrivacyService, fast: bool)
 lemma finishUrgentItem_ensures(s: PrivacyService, ok: bool)
   ensures (inv(s) ==> canFinishUrgentItem(s, ok) ==> alwaysPromiseIdentitiesAreValid(finishUrgentItem(s, ok)))
   ensures (inv(s) ==> canFinishUrgentItem(s, ok) ==> alwaysEveryJobRetainsSettlement(finishUrgentItem(s, ok)))
+  ensures (inv(s) ==> canFinishUrgentItem(s, ok) ==> alwaysQueueOwnerWellFormed(finishUrgentItem(s, ok)))
+  ensures (inv(s) ==> canFinishUrgentItem(s, ok) ==> alwaysServiceQueueLifecycle(finishUrgentItem(s, ok)))
   ensures (inv(s) ==> canFinishUrgentItem(s, ok) ==> alwaysCommittedJobHasSharedMarker(finishUrgentItem(s, ok)))
   ensures (inv(s) ==> canFinishUrgentItem(s, ok) ==> alwaysJobIdsAreUnique(finishUrgentItem(s, ok)))
   ensures (inv(s) ==> canFinishUrgentItem(s, ok) ==> alwaysQueueReferencesKnownJobs(finishUrgentItem(s, ok)))
@@ -531,11 +550,10 @@ lemma finishUrgentItem_ensures(s: PrivacyService, ok: bool)
 {
   if inv(s) && canFinishUrgentItem(s, ok) {
     var t := finishUrgentItem(s, ok);
+    core__batchQueue_flushUrgentItem_ensures(s.queue,ok);
     PrivacyTicketLookup(s,s.flushTicket);
     forall i | 0 <= i < |t.jobs|
-      ensures core__privacy_alwaysAcceptedWorkIsAccounted(t.jobs[i].work) &&
-        core__privacy_alwaysCompletionRequiresPersistentMarker(t.jobs[i].work) &&
-        core__privacy_alwaysCountsAreNonnegative(t.jobs[i].work) &&
+      ensures core__privacy_wellFormed(t.jobs[i].work) &&
         (t.jobs[i].work.marker ==> t.jobs[i].key in t.markers)
     {
       var job := s.jobs[i];
@@ -549,6 +567,8 @@ lemma finishUrgentItem_ensures(s: PrivacyService, ok: bool)
 lemma beginUrgentItem_ensures(s: PrivacyService)
   ensures (inv(s) ==> canBeginUrgentItem(s) ==> alwaysPromiseIdentitiesAreValid(beginUrgentItem(s)))
   ensures (inv(s) ==> canBeginUrgentItem(s) ==> alwaysEveryJobRetainsSettlement(beginUrgentItem(s)))
+  ensures (inv(s) ==> canBeginUrgentItem(s) ==> alwaysQueueOwnerWellFormed(beginUrgentItem(s)))
+  ensures (inv(s) ==> canBeginUrgentItem(s) ==> alwaysServiceQueueLifecycle(beginUrgentItem(s)))
   ensures (inv(s) ==> canBeginUrgentItem(s) ==> alwaysCommittedJobHasSharedMarker(beginUrgentItem(s)))
   ensures (inv(s) ==> canBeginUrgentItem(s) ==> alwaysJobIdsAreUnique(beginUrgentItem(s)))
   ensures (inv(s) ==> canBeginUrgentItem(s) ==> alwaysQueueReferencesKnownJobs(beginUrgentItem(s)))
@@ -558,9 +578,7 @@ lemma beginUrgentItem_ensures(s: PrivacyService)
     var t := beginUrgentItem(s);
     PrivacyTicketLookup(s,urgentTicket(s));
     forall i | 0 <= i < |t.jobs|
-      ensures core__privacy_alwaysAcceptedWorkIsAccounted(t.jobs[i].work) &&
-        core__privacy_alwaysCompletionRequiresPersistentMarker(t.jobs[i].work) &&
-        core__privacy_alwaysCountsAreNonnegative(t.jobs[i].work) &&
+      ensures core__privacy_wellFormed(t.jobs[i].work) &&
         (t.jobs[i].work.marker ==> t.jobs[i].key in t.markers)
     {
       var job := s.jobs[i];
@@ -571,5 +589,52 @@ lemma beginUrgentItem_ensures(s: PrivacyService)
       }
     }
     PrivacyWorkMap(s,t);
+  }
+}
+lemma startResult_ensures(s: PrivacyService, ok: bool)
+  ensures (inv(s) ==> canStartResult(s, ok) ==> alwaysPromiseIdentitiesAreValid(startResult(s, ok)))
+  ensures (inv(s) ==> canStartResult(s, ok) ==> alwaysEveryJobRetainsSettlement(startResult(s, ok)))
+  ensures (inv(s) ==> canStartResult(s, ok) ==> alwaysQueueOwnerWellFormed(startResult(s, ok)))
+  ensures (inv(s) ==> canStartResult(s, ok) ==> alwaysServiceQueueLifecycle(startResult(s, ok)))
+  ensures (inv(s) ==> canStartResult(s, ok) ==> alwaysCommittedJobHasSharedMarker(startResult(s, ok)))
+  ensures (inv(s) ==> canStartResult(s, ok) ==> alwaysJobIdsAreUnique(startResult(s, ok)))
+  ensures (inv(s) ==> canStartResult(s, ok) ==> alwaysQueueReferencesKnownJobs(startResult(s, ok)))
+  ensures (inv(s) ==> canStartResult(s, ok) ==> stepJoiningStopKeepsIdentity(s, "startResult", startResult(s, ok)))
+{
+  if inv(s) && canStartResult(s, ok) {
+    core__batchQueue_finishSchedule_ensures(s.queue, ok);
+  }
+}
+
+lemma PrivacyDriveQueueOwner(s: PrivacyService, queueEvent: PiiQueueEvent, ticket: int, ok: bool)
+  requires inv(s) && canDriveQueue(s,queueEvent,ticket,ok)
+  ensures core__batchQueue_wellFormed(driveQueue(s,queueEvent,ticket,ok).queue)
+{
+  if queueEvent.BeginDrain? {
+    core__batchQueue_beginDrain_ensures(s.queue);
+  } else if queueEvent.ProbeSucceeded? || queueEvent.ProbeFailed? {
+    core__batchQueue_finishCapabilityProbe_ensures(s.queue,queueEvent.ProbeSucceeded?,false);
+  } else if queueEvent.StartFallback? {
+    core__batchQueue_startFallback_ensures(s.queue,ticket,0);
+  } else if queueEvent.StartAttempt? {
+    core__batchQueue_startFallbackAttempt_ensures(s.queue,ticket);
+  } else if queueEvent.FinishBackoff? {
+    core__batchQueue_finishFallbackBackoff_ensures(s.queue,ticket);
+  } else if queueEvent.FinishExhaustion? {
+    core__batchQueue_finishFallbackExhaustion_ensures(s.queue,ticket,ok);
+  } else if queueEvent.CollectFallback? {
+    core__batchQueue_collectFallback_ensures(s.queue,ticket);
+  } else if queueEvent.FinishWork? {
+    core__batchQueue_finishBatchWork_ensures(s.queue);
+  } else if queueEvent.ObserveWork? {
+    core__batchQueue_observeDrain_ensures(s.queue,ok);
+  } else if queueEvent.FinishFlush? {
+    core__batchQueue_finishUrgentFlush_ensures(s.queue);
+  } else if queueEvent.ObserveFlush? {
+    core__batchQueue_observeUrgentFlush_ensures(s.queue,ok);
+  } else if queueEvent.RetryDisposal? {
+    core__batchQueue_retryDisposal_ensures(s.queue);
+  } else {
+    core__batchQueue_finishTaskRemoval_ensures(s.queue,ok);
   }
 }

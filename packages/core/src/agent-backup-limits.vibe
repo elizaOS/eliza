@@ -3,9 +3,9 @@ import { failingAs, thrown } from "./edge.vibe"
 
 export const MAX_RESTORABLE_AGENT_BACKUP_BYTES = 128 * 1024 * 1024
 
-export error InvalidSnapshotRetainBudget { message: string }
+error InvalidSnapshotRetainBudget { message: string }
 
-export effect function resolveRetainableAgentBackupBytes(rawOverride: string | undefined): number!InvalidSnapshotRetainBudget {
+effect function resolveRetainableAgentBackupBytes(rawOverride: string | undefined): number!InvalidSnapshotRetainBudget {
   if (rawOverride === undefined) return MAX_RESTORABLE_AGENT_BACKUP_BYTES
   const trimmed = rawOverride.trim()
   const parsed = Number(trimmed)

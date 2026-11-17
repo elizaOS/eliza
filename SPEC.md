@@ -118,9 +118,8 @@ from its name and signature:
 | `pure val within_leadsToPaid = 3` | a bound for a `leadsTo` rule: every run meets it within 3 events, from 1 to 100 | a search of simulated traces for a run that does not ("Liveness", below) |
 | any other `pure val` or `pure def` | a constant or helper | the same constant or function |
 
-When a reachability search uses multiple trace lengths, it tries two
-single-threaded rounds before spending the full search budgets. The rounds
-use 32 and 1,024 traces at each length whose full budget is larger. A trace
+When a reachability search uses multiple trace lengths, it tries short,
+single-threaded batches before spending the full search budgets. A trace
 that reaches the goal or breaks a rule goes through the usual replay.
 
 A transition parameter named `by` identifies its sender. All such parameters

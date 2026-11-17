@@ -1,14 +1,10 @@
 # PII scrub persistence and retirement
 
-One PII scrub job for an exact content and ruleset key, from `services/pii-scrub.ts` and `security/pii-scrub-*.ts`. Encrypted pseudonym assignments are stored before the completion marker, and model or storage failures keep quarantine and retry ownership. The [privacy service](./privacyService.md) owns the queue around these jobs; whether trajectories persist is [trajectories](./trajectories.md); address, environment, log and outbound protections are [content and outbound security](./security.md).
+The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/services/pii-scrub.ts`, `security/pii-scrub-markers.ts`, `security/pii-scrub-seam.ts`, `runtime/trajectory-gate.ts`, LazyPiiDrain and PiiScrubSettlement. This component is a single-active settlement projection for one exact content and ruleset key. The [PII service queue and promise owner](./privacyService.md) embeds a separate component for each job and owns the shared markers, two-job concurrency, lazy queue and stop promises. Different content or ruleset values require different keys. Pseudonym assignment storage is encrypted and must precede completion markers. Model and storage failures preserve quarantine and retry ownership.
 
 ## Story: Publish scrub completion only after durable privacy work
 
-> As an operator, I want a completion event only after the scrub succeeded,
-> pseudonym assignments persisted and the exact content/ruleset marker was
-> acknowledged, so that completion always means durable privacy work.
-
-A failed observer does not revoke an existing marker or repeat committed work. Concurrent initial misses may both scrub, since the marker check is not an exclusive claim.
+As an operator, I receive a completion event only after the scrub succeeded, pseudonym assignments persisted and the exact content/ruleset marker was acknowledged. A failed observer does not revoke an existing marker or repeat committed work. In the service composition, concurrent initial misses may both scrub, since the marker check is not an exclusive claim.
 
 ### Admission checks shutdown again after the asynchronous marker lookup
 
@@ -72,7 +68,25 @@ pure def stop(s: Privacy): Privacy = { ...s, life: Stopping }
 pure def canDispose(s: Privacy): bool = s.life == Stopping and s.startup != Starting and s.phase == Idle
 pure def dispose(s: Privacy): Privacy = { ...s, life: Stopped, startup: Dormant, discarded: s.discarded + s.queued, queued: 0 }
 pure def alwaysStoppedOwnsNoQueue(s: Privacy): bool = s.life != Stopped or (s.startup == Dormant and s.queued == 0 and s.phase == Idle)
+pure def wellFormed(s: Privacy): bool = alwaysAcceptedWorkIsAccounted(s) and alwaysCountsAreNonnegative(s) and
+  alwaysCompletionRequiresPersistentMarker(s) and alwaysStoppedOwnsNoQueue(s)
 pure def sometimesShutdownDuringLookup(s: Privacy): bool = s.life == Stopped and s.checking and s.accepted == 0
+```
+
+## Story: Respect the operator's trajectory persistence setting
+
+As an operator, I can disable trajectory persistence explicitly. Hard disable wins over all other settings. Explicit nonblank logging settings override environment defaults. Protected, test and production profiles default off. Development defaults on. Blank values are represented as unspecified after normalization. User-specific consent belongs to the host's policy boundary and must be supplied before publication.
+
+### Trajectory persistence follows the existing precedence order
+
+```quint
+type LoggingChoice = Unspecified | Enabled | Disabled
+pure def trajectoryEnabled(hardDisabled: bool, explicit: LoggingChoice, protectedProfile: bool, testProfile: bool, productionProfile: bool): bool =
+  not(hardDisabled) and (if (explicit == Enabled) true else if (explicit == Disabled) false else not(protectedProfile or testProfile or productionProfile))
+pure def lawHardDisableWins(explicit: LoggingChoice, protectedProfile: bool, testProfile: bool, productionProfile: bool): bool =
+  not(trajectoryEnabled(true, explicit, protectedProfile, testProfile, productionProfile))
+pure def lawProductionRequiresOptIn(protectedProfile: bool, testProfile: bool): bool =
+  not(trajectoryEnabled(false, Unspecified, protectedProfile, testProfile, true))
 ```
 
 ### Fairly settling startup and active work lets shutdown finish

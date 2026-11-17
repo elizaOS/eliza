@@ -9,7 +9,7 @@ import { SENDER } from "./gen/classify.ts";
 import { act, violated, type Input } from "./action.ts";
 import { entry, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
-import { simulated } from "./gen/harness.ts";
+import { positiveGuardEvaluation, positiveGuardProbe, simulated } from "./gen/harness.ts";
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
 import type { Result } from "./pipeline.ts";
 import { allDone, digest, indent, SIMULATIONS } from "./util.ts";
@@ -50,7 +50,7 @@ function readTrace(itf: string, model: Model): Step[] {
     const picked = (ps: { name: string; type: any }[]) => Object.fromEntries(ps.map((p) => [p.name, read(p.type, st["mbt::nondetPicks"][p.name].value)]));
     const taken: string = st["mbt::actionTaken"];
     const t = model.transitions.find((t) => t.name === taken);
-    const v = model.evals.find((v) => `eval_${v.name}` === taken);
+    const v = model.evals.find((v) => `eval_${v.name}` === taken || positiveGuardEvaluation(v.name) === taken);
     const l = model.laws.find((l) => l.name === taken);
     return {
       event: t && { type: t.name, ...picked(t.params) },
@@ -112,7 +112,7 @@ const SHARD_SAMPLES = 1000;
 const MAX_SHARDS = 4;
 
 /** What a spec's runs of Quint share: the check's memory, the model, and every file of Quint its harness reads. */
-export interface Harness { memory: Memory; model: Model; files: Record<string, Input> }
+export interface Harness { memory: Memory; model: Model; files: Record<string, Input>; main?: string }
 /** What a spec's harness reads: its modules, the harness itself, and the spec as the harness reads it where it has opaque functions. */
 export function harnessFiles(spec: Spec, specs: Spec[], model: Model): Record<string, Input> {
   const sim = model.opaques.length ? simulated(spec.qnt, model.opaques) : undefined;
@@ -126,12 +126,11 @@ export function harnessFiles(spec: Spec, specs: Spec[], model: Model): Record<st
  * the same traces. When a run breaks the invariant, the command is the one for that run. A run that ran is in
  * gen/traces until the next check; one remembered (action.ts) is not.
  */
-export async function simulate({ memory, model, files }: Harness, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
+export async function simulate({ memory, model, files, main = `${model.name}.run.qnt` }: Harness, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
   const dir = `${SIMULATIONS}/${model.name}.${invariant}.${step}`;
   const shards = !split ? 1 : Math.max(1, Math.min(MAX_SHARDS, Math.floor(samples / SHARD_SAMPLES)));
   const runs = Array.from({ length: shards }, async (_, k) => {
-    const derivedSeed = seedFor(seed, model.harness, invariant, step, String(samples), String(steps), ...(shards === 1 ? [] : [`${k} of ${shards}`]));
-    const main = `${model.name}.run.qnt`;
+    const derivedSeed = seedFor(seed, files[main].text, invariant, step, String(samples), String(steps), ...(shards === 1 ? [] : [`${k} of ${shards}`]));
     const args = ["--main", `${model.name}_run`, "--step", step, "--invariant", invariant,
       "--max-samples", String(Math.ceil(sampleLimit / shards)), "--max-steps", String(steps), "--mbt", "--seed", derivedSeed, "--n-threads", "1"];
     const r = await simulating(memory.root, () => act(memory, "quint", ["run", main, ...args, "--n-traces", String(Math.ceil(traces / shards)), "--out-itf", "{seq}.itf.json"], shards === 1 ? dir : `${dir}/${k}`, files));
@@ -310,7 +309,7 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
   };
   const simulationSteps = STEPS + Math.max(0, ...model.within.values());
   const files = harnessFiles(spec, specs, model);
-  const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
+  const key = [...Object.keys(files).sort().map((f) => `${f}\0${files[f].key}`), model.guardHarness, spec.file, spec.rules.map((r) => `${r.key}\0${r.defs.join(" ")}`).join("\n"),
     String([SAMPLES, WITNESS_SAMPLES, WITNESS_PREFLIGHT_SAMPLES, COMPARED_SAMPLES, REPLAYED, LASSO_TRACES, simulationSteps, ...DEPTHS, seed])];
   return remembered<Simulation>(memory, entry(memory.root, "simulate", key), async (memory) => {
     const harness: Harness = { memory, model, files };
@@ -380,7 +379,9 @@ export function simulation(memory: Memory, spec: Spec, specs: Spec[], model: Mod
       // only that search goes deeper and gets the witness budget; one that never refuses it is only reported.
       const missing = guarded.flatMap((t) => (["allows", "refuses"] as const).filter((side) => !seen.get(t.guard!)![side]).map((side) => ({ t, side })));
       const searched = await allDone(missing.map(({ t, side }) => model.evals.some((v) => v.name === t.guard)
-        ? search(harness, `never_${side}_${t.guard}`, "probe", side === "allows" ? DEPTHS : [STEPS], side === "allows" ? WITNESS_SAMPLES : SAMPLES, seed)
+        ? side === "allows"
+          ? search({ ...harness, main: `${model.name}.guard.run.qnt`, files: { ...files, [`${model.name}.guard.run.qnt`]: { text: model.guardHarness, key: model.guardHarness } } }, `never_allows_${t.guard}`, positiveGuardProbe(t.guard!), DEPTHS, WITNESS_SAMPLES, seed)
+          : search(harness, `never_refuses_${t.guard}`, "probe", [STEPS], SAMPLES, seed)
         : Promise.resolve(undefined)));
       for (const [i, { t, side }] of missing.entries()) {
         const found = searched[i];

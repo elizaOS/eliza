@@ -120,7 +120,7 @@ export interface MessageInteractionHost {
   ): () => void
 }
 
-export effect function resolveMessageInteractionHost(
+effect function resolveMessageInteractionHost(
   runtime: IAgentRuntime,
 ): (MessageInteractionHost | null)!(ElizaError | Foreign) {
   const service = try foreignSync(() => runtime.getService(MESSAGE_INTERACTION_HOST_SERVICE))

@@ -16,14 +16,14 @@ export interface PiiScrubDoneMarker {
   readonly tier0Only: boolean
 }
 
-export error MissingRulesetVersion { message: string }
-export error MissingContentHash { message: string }
+error MissingRulesetVersion { message: string }
+error MissingContentHash { message: string }
 
 export function hashScrubContent(content: string): string {
   return sha256Hex(content)
 }
 
-export effect function scrubMarkerKey(
+effect function scrubMarkerKey(
   contentHash: string,
   rulesetVersion: string,
 ) {
@@ -42,7 +42,7 @@ export effect function scrubMarkerKey(
 
 export const scrubMarkerKeyOrThrow = thrown(failingAs(Error, scrubMarkerKey))
 
-export effect function scrubMarkerKeyForContent(
+effect function scrubMarkerKeyForContent(
   content: string,
   rulesetVersion: string,
 ) {
@@ -88,7 +88,7 @@ export effect function markScrubDone(
 
 export const markScrubDonePromise = promised(failingAs(Error, markScrubDone))
 
-export effect function getScrubMarker(
+effect function getScrubMarker(
   cache: ScrubMarkerCache,
   content: string,
   rulesetVersion: string,

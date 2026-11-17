@@ -7,14 +7,10 @@ import type {
   ActionParameter,
   ActionParameters,
   Handler,
-  HandlerCallback,
   HandlerOptions,
   Validator,
 } from "../types/components.vibe"
-import type { Memory } from "../types/memory.vibe"
 import type { JsonValue } from "../types/primitives.vibe"
-import type { IAgentRuntime } from "../types/runtime.vibe"
-import type { State } from "../types/state.vibe"
 import { CANONICAL_SUBACTION_KEY, DEFAULT_SUBACTION_KEYS, normalizeSubaction } from "./subaction-dispatch.vibe"
 
 export interface SubactionPromotionOverrides {

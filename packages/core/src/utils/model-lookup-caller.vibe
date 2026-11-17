@@ -54,7 +54,7 @@ function dedupeConsecutive(names: string[]): string[] {
   return out
 }
 
-export function captureModelLookupCallerFromStack(
+function captureModelLookupCallerFromStack(
   stack: string | undefined,
   maxFrames = 4,
 ): ModelLookupCallerTrace | undefined {

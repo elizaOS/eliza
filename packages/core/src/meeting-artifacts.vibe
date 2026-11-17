@@ -301,21 +301,7 @@ function mediaUrlIsContentAddressed(url: string): boolean {
   return /^\/api\/media\/[a-f0-9]{16,64}\.[a-z0-9]+$/i.test(url)
 }
 
-export function validateMeetingArtifact(
-  value: unknown,
-): MeetingArtifactValidation {
-  const errors: string[] = []
-  if (!isObjectRecord(value)) {
-    return { valid: false, errors: ["artifact must be an object"] }
-  }
-  if (value.schemaVersion !== MEETING_ARTIFACT_SCHEMA_VERSION) {
-    errors.push(`schemaVersion must be ${MEETING_ARTIFACT_SCHEMA_VERSION}`)
-  }
-  if (!isNonEmptyString(value.artifactId)) {
-    errors.push("artifactId is required")
-  }
-
-  const meeting = value.meeting
+function validateMeetingMetadata(meeting: unknown, errors: string[]): void {
   if (!isObjectRecord(meeting)) {
     errors.push("meeting must be an object")
   } else {
@@ -352,6 +338,92 @@ export function validateMeetingArtifact(
       }
     }
   }
+}
+
+type TranscriptSpanValidation = {
+  rows: readonly unknown[]
+  streamIds: ReadonlySet<string>
+  speakerIds: ReadonlySet<string>
+  participantIds: ReadonlySet<string>
+  errors: string[]
+}
+
+function validateTranscriptSpans({
+  rows,
+  streamIds,
+  speakerIds,
+  participantIds,
+  errors,
+}: TranscriptSpanValidation): void {
+  rows.forEach((row, index) => {
+    if (!isObjectRecord(row)) return
+    requireTimeRange(row, `transcriptSpans[${index}]`, errors)
+    if (
+      !isNonEmptyString(row.sourceStreamId)
+      || !streamIds.has(row.sourceStreamId)
+    ) {
+      errors.push(
+        `transcriptSpans[${index}].sourceStreamId references missing stream`,
+      )
+    }
+    if (
+      row.speakerId !== undefined
+      && (!isNonEmptyString(row.speakerId) || !speakerIds.has(row.speakerId))
+    ) {
+      errors.push(
+        `transcriptSpans[${index}].speakerId references missing speaker`,
+      )
+    }
+    if (
+      row.platformParticipantId !== undefined
+      && (!isNonEmptyString(row.platformParticipantId)
+        || !participantIds.has(row.platformParticipantId))
+    ) {
+      errors.push(
+        `transcriptSpans[${index}].platformParticipantId references missing participant`,
+      )
+    }
+    const words = Array.isArray(row.words) ? row.words : []
+    if (!Array.isArray(row.words)) {
+      errors.push(`transcriptSpans[${index}].words must be an array`)
+    }
+    words.forEach((word, wordIndex) => {
+      if (!isObjectRecord(word)) {
+        errors.push(
+          `transcriptSpans[${index}].words[${wordIndex}] must be an object`,
+        )
+        return
+      }
+      if (!isNonEmptyString(word.text)) {
+        errors.push(
+          `transcriptSpans[${index}].words[${wordIndex}].text is required`,
+        )
+      }
+      requireTimeRange(
+        word,
+        `transcriptSpans[${index}].words[${wordIndex}]`,
+        errors,
+      )
+    })
+  })
+}
+
+export function validateMeetingArtifact(
+  value: unknown,
+): MeetingArtifactValidation {
+  const errors: string[] = []
+  if (!isObjectRecord(value)) {
+    return { valid: false, errors: ["artifact must be an object"] }
+  }
+  if (value.schemaVersion !== MEETING_ARTIFACT_SCHEMA_VERSION) {
+    errors.push(`schemaVersion must be ${MEETING_ARTIFACT_SCHEMA_VERSION}`)
+  }
+  if (!isNonEmptyString(value.artifactId)) {
+    errors.push("artifactId is required")
+  }
+
+  const meeting = value.meeting
+  validateMeetingMetadata(meeting, errors)
 
   const media = Array.isArray(value.media) ? value.media : []
   const streams = Array.isArray(value.sourceStreams) ? value.sourceStreams : []
@@ -527,57 +599,7 @@ export function validateMeetingArtifact(
     }
   })
 
-  spans.forEach((row, index) => {
-    if (!isObjectRecord(row)) return
-    requireTimeRange(row, `transcriptSpans[${index}]`, errors)
-    if (
-      !isNonEmptyString(row.sourceStreamId)
-      || !streamIds.has(row.sourceStreamId)
-    ) {
-      errors.push(
-        `transcriptSpans[${index}].sourceStreamId references missing stream`,
-      )
-    }
-    if (
-      row.speakerId !== undefined
-      && (!isNonEmptyString(row.speakerId) || !speakerIds.has(row.speakerId))
-    ) {
-      errors.push(
-        `transcriptSpans[${index}].speakerId references missing speaker`,
-      )
-    }
-    if (
-      row.platformParticipantId !== undefined
-      && (!isNonEmptyString(row.platformParticipantId)
-        || !participantIds.has(row.platformParticipantId))
-    ) {
-      errors.push(
-        `transcriptSpans[${index}].platformParticipantId references missing participant`,
-      )
-    }
-    const words = Array.isArray(row.words) ? row.words : []
-    if (!Array.isArray(row.words)) {
-      errors.push(`transcriptSpans[${index}].words must be an array`)
-    }
-    words.forEach((word, wordIndex) => {
-      if (!isObjectRecord(word)) {
-        errors.push(
-          `transcriptSpans[${index}].words[${wordIndex}] must be an object`,
-        )
-        return
-      }
-      if (!isNonEmptyString(word.text)) {
-        errors.push(
-          `transcriptSpans[${index}].words[${wordIndex}].text is required`,
-        )
-      }
-      requireTimeRange(
-        word,
-        `transcriptSpans[${index}].words[${wordIndex}]`,
-        errors,
-      )
-    })
-  })
+  validateTranscriptSpans({ rows: spans, streamIds, speakerIds, participantIds, errors })
 
   for (const key of ["notes", "actionItems", "decisions"] as const) {
     const rows = Array.isArray(value[key]) ? value[key] : []

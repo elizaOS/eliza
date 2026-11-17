@@ -33,7 +33,7 @@ module edge {
   import type { Memory } from "./types/memory.vibe"
   import type { IMessageService } from "./types/message-service.vibe"
   import type { IMessagingAdapter } from "./types/messaging.vibe"
-  import type { GenerateTextOptions, GenerateTextResult, ModelHandler, ModelParamsMap, ModelResultMap } from "./types/model.vibe"
+  import type { GenerateTextOptions, GenerateTextResult, LLMModeType, ModelHandler, ModelParamsMap, ModelResultMap } from "./types/model.vibe"
   import type { PairingAllowlistEntry, PairingChannel, PairingRequest } from "./types/pairing.vibe"
   import type { Plugin, PluginOwnership, RemotePluginInstallOptions, RemotePluginInstanceHandle, RuntimeEventStorage, ServiceClass } from "./types/plugin.vibe"
   import type { ChannelType, JsonValue, UUID } from "./types/primitives.vibe"
@@ -248,7 +248,7 @@ module edge {
     }
 
     /** @throws {unknown} */
-    getLLMMode(): import("./types/model.vibe").LLMModeType {
+    getLLMMode(): LLMModeType {
       return this.#kernel.runSync(legacy(agentSettings.getLLMMode()))
     }
 

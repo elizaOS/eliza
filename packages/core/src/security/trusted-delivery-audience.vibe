@@ -358,7 +358,7 @@ function bindAudience(
   })
 }
 
-export effect function attestDeliveryAudienceFromCanonicalRoom(
+effect function attestDeliveryAudienceFromCanonicalRoom(
   runtime: IAgentRuntime,
   message: Memory,
   options: { nowMs?: number; ttlMs?: number } = {},
@@ -404,7 +404,7 @@ effect function deriveCanonicalRoomAudience(
   })
 }
 
-export effect function attestAuthenticatedApiDeliveryAudience(
+effect function attestAuthenticatedApiDeliveryAudience(
   runtime: IAgentRuntime,
   message: Memory,
   principal: TrustedApiPrincipal,
@@ -515,7 +515,7 @@ export type TrustedDeliveryAudienceRenewal =
       | "audience_lookup_failed"
   }
 
-export effect function renewTrustedDeliveryAudience(
+effect function renewTrustedDeliveryAudience(
   runtime: IAgentRuntime,
   message: Memory,
   nowMs = Date.now(),

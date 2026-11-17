@@ -2,6 +2,7 @@
 import type { JsonObject, JsonValue } from "../types/primitives.vibe"
 import type { PageLayoutManifest, SurfaceCapability } from "../types/surface-manifest.vibe"
 import type { WorkspaceDeltaReceipt } from "../types/workspace-delta.vibe"
+import type { ViewKind } from "../views/declarations.vibe"
 
 export const CAPABILITY_ROUTER_SERVICE_TYPE = "capability-router" as const
 
@@ -239,7 +240,7 @@ export type RemotePluginSurfaceManifest = JsonObject & {
 }
 
 export type RemotePluginViewManifest = {
-  viewKind?: import("../views/declarations.vibe").ViewKind
+  viewKind?: ViewKind
   id: string
   label: string
   viewType?: "gui" | "tui" | "xr"
@@ -320,7 +321,7 @@ export type RemotePluginWidgetManifest = {
   order?: number
   defaultEnabled?: boolean
   navGroup?: string
-  viewKind?: import("../views/declarations.vibe").ViewKind
+  viewKind?: ViewKind
   componentExport?: string
 }
 
@@ -344,7 +345,7 @@ export type RemotePluginAppNavTabManifest = {
   icon?: string
   path: string
   order?: number
-  viewKind?: import("../views/declarations.vibe").ViewKind
+  viewKind?: ViewKind
   group?: string
 
   surface?: RemotePluginSurfaceManifest
@@ -367,7 +368,7 @@ export type RemotePluginAppManifest = {
   uiExtension?: {
     detailPanelId?: string
   }
-  viewKind?: import("../views/declarations.vibe").ViewKind
+  viewKind?: ViewKind
   visibleInAppStore?: boolean
   navTabs?: RemotePluginAppNavTabManifest[]
 }

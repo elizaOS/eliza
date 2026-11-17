@@ -54,7 +54,7 @@ effect function disposeProcessTask(name: string, task: ProcessTask) {
   if (task.active) try join task.active
 }
 
-export effect function registerScheduledProcessTask(
+effect function registerScheduledProcessTask(
   name: string,
   run: (signal: AbortSignal) => Promise<void>,
 ) {

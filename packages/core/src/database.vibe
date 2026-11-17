@@ -79,6 +79,7 @@ module edge {
     DocumentListQueryResult,
     DocumentMutationResult,
     DocumentRevisionReplaceParams,
+    EntitiesForRoomsResult,
     GetConnectorAccountCredentialRefParams,
     GetConnectorAccountParams,
     GetOAuthFlowStateParams,
@@ -88,12 +89,16 @@ module edge {
     Log,
     LogBody,
     LogInventoryRow,
+    MemoryEmbeddingUpdate,
     MessageContentPublicationParams,
     MessageContentPublicationResult,
     MessageContentRangeReadParams,
     MessageContentRangeReadResult,
     MessageSearchHit,
     OAuthFlowRecord,
+    PairingAllowlistsResult,
+    PairingRequestsResult,
+    ParticipantsForRoomsResult,
     ParticipantUpdateFields,
     ParticipantUserState,
     PatchOp,
@@ -213,7 +218,7 @@ module edge {
     abstract getEntitiesForRooms(
       roomIds: UUID[],
       includeComponents?: boolean,
-    ): Promise<import("./types/database.vibe").EntitiesForRoomsResult>
+    ): Promise<EntitiesForRoomsResult>
 
     abstract createEntities(entities: Entity[]): Promise<UUID[]>
 
@@ -404,7 +409,7 @@ module edge {
       options?: { entityContext?: UUID },
     ): Promise<void>
     abstract updateMemoryEmbedding(
-      update: import("./types/database.vibe").MemoryEmbeddingUpdate,
+      update: MemoryEmbeddingUpdate,
     ): Promise<boolean>
     abstract deleteMemories(memoryIds: UUID[]): Promise<void>
 
@@ -469,7 +474,7 @@ module edge {
 
     abstract getParticipantsForRooms(
       roomIds: UUID[],
-    ): Promise<import("./types/database.vibe").ParticipantsForRoomsResult>
+    ): Promise<ParticipantsForRoomsResult>
 
     abstract areRoomParticipants(
       pairs: Array<{ roomId: UUID; entityId: UUID }>,
@@ -579,11 +584,11 @@ module edge {
 
     abstract getPairingRequests(
       queries: PairingRequestQuery[],
-    ): Promise<import("./types/database.vibe").PairingRequestsResult>
+    ): Promise<PairingRequestsResult>
 
     abstract getPairingAllowlists(
       queries: PairingAllowlistQuery[],
-    ): Promise<import("./types/database.vibe").PairingAllowlistsResult>
+    ): Promise<PairingAllowlistsResult>
 
     abstract createPairingRequests(requests: PairingRequest[]): Promise<UUID[]>
     abstract updatePairingRequests(requests: PairingRequest[]): Promise<void>

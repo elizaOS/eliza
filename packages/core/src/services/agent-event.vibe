@@ -355,5 +355,3 @@ export class AgentEventService extends Service {
     this.emitEvaluator(runId, { type: "complete", ...params }, sessionKey)
   }
 }
-
-export default AgentEventService

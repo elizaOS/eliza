@@ -219,7 +219,7 @@ export function readTaskExtractionContext(
   })
 }
 
-export effect function readTaskExtractionUserSources(
+effect function readTaskExtractionUserSources(
   state: State | undefined,
   message: Memory | undefined,
 ) {
@@ -560,7 +560,7 @@ const completionFields = [
   "effectReceipts",
   "receipt",
 ]
-export error InvalidCompletionEvidence { message: string }
+error InvalidCompletionEvidence { message: string }
 
 effect function ownData(object: object, key: string): unknown!InvalidCompletionEvidence {
   const descriptor = Object.getOwnPropertyDescriptor(object, key)
@@ -1310,7 +1310,7 @@ export effect function bindRequestOperationResult(
 
 export const bindRequestOperationResultOrThrow = thrown(failingAs(TypeError, bindRequestOperationResult))
 
-export effect function bindRequestOperationProjection(
+effect function bindRequestOperationProjection(
   source: object,
   target: object,
   consumer: RequestOperationIssuer | undefined,
@@ -1347,7 +1347,7 @@ export effect function bindRequestOperationProjection(
 
 export const bindRequestOperationProjectionOrThrow = thrown(failingAs(TypeError, bindRequestOperationProjection))
 
-export effect function copyRequestOperationResult(
+effect function copyRequestOperationResult(
   source: object,
   target: object,
 ) {

@@ -70,6 +70,7 @@ export function generated(root: string, spec: Spec, ir: any, models: Map<string,
   const write = (name: string, text: string) => put(root, path.join(dir, name), text);
   write(`${spec.name}.ts`, model.ts);
   write(`${spec.name}.run.qnt`, model.harness);
+  if (model.guardHarness) write(`${spec.name}.guard.run.qnt`, model.guardHarness);
   writeFaces(root, root, dir, spec, model.ts);
   if (model.opaques.length) write(`${spec.name}.sim.qnt`, simulated(spec.qnt, model.opaques));
   writeConformance(model, write);

@@ -2,7 +2,7 @@
 import { thrown } from "../edge.vibe"
 import { sha256Hex } from "../runtime/trajectory-provider-attribution.vibe"
 
-export const BIP39_WORDLIST: readonly string[] = [
+const BIP39_WORDLIST: readonly string[] = [
   "abandon",
   "ability",
   "able",
@@ -2055,7 +2055,7 @@ export const BIP39_WORDLIST: readonly string[] = [
 
 export const BIP39_WORD_SET: ReadonlySet<string> = new Set(BIP39_WORDLIST)
 
-export const BIP39_WORD_INDEX: ReadonlyMap<string, number> = new Map(
+const BIP39_WORD_INDEX: ReadonlyMap<string, number> = new Map(
   BIP39_WORDLIST.map((w, i) => [w, i]),
 )
 
@@ -2088,7 +2088,7 @@ function checksumMatches(phrase: string): boolean {
   return firstHashByte.toString(2).padStart(8, "0").slice(0, checksumBits) === checksum
 }
 
-export interface MnemonicSpan {
+interface MnemonicSpan {
   value: string
   start: number
   end: number
@@ -2137,7 +2137,7 @@ function findSpans(text: string): MnemonicSpan[] {
   return spans
 }
 
-export effect function mnemonicValid(phrase: string) {
+effect function mnemonicValid(phrase: string) {
   return checksumMatches(phrase)
 }
 
@@ -2149,8 +2149,3 @@ export effect function findAllMnemonicPhrases(text: string) {
 
 export const findAllMnemonicPhrasesOrThrow = thrown(findAllMnemonicPhrases)
 
-export effect function findMnemonicPhrase(text: string) {
-  return findSpans(text)[0]?.value ?? null
-}
-
-export const findMnemonicPhraseOrThrow = thrown(findMnemonicPhrase)

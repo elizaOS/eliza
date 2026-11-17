@@ -17,7 +17,7 @@ export interface DeriveCompactionContentManifestsOptions {
   lastUsedAt: string
 }
 
-export error InvalidTimestamp { message: string }
+error InvalidTimestamp { message: string }
 
 effect function canonicalTimestamp(value: string, label: string): string!InvalidTimestamp {
   const epoch = Date.parse(value)
@@ -150,7 +150,7 @@ function manifestFor(contentRefs: CompactionContentEntry[]) {
   }
 }
 
-export effect function deriveCompactionContentManifests(
+effect function deriveCompactionContentManifests(
   trajectory: Pick<PlannerTrajectory, "steps" | "archivedSteps">,
   options: DeriveCompactionContentManifestsOptions,
 ): CompactionContentManifest[]!(ElizaError | InvalidTimestamp | InvalidContentManifest | InvalidContentContract) {

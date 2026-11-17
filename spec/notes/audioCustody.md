@@ -22,11 +22,22 @@ and 64,000 transcript units. A long note keeps up to 150,000 UTF-16 units
 of transcript in its audio metadata without splitting a surrogate pair;
 the complete transcript belongs to the note.
 
-New audio is installed through a pending file that is then renamed; a
-failed copy or rename cleans up the pending file. The metadata write
-follows and must read back the exact encrypted slot. A failure can leave
-audio with missing or unconfirmed metadata, and the retention is saved
-only when both the bytes and the exact encrypted row are confirmed.
+`RetainFacts` describes the arguments supplied to `RecordingStore.retain`.
+Its `transcriptUnits` is the supplied metadata string length: the whole
+transcript for `ShortClip`, and the host's transcript prefix
+for `LongNote`. `longTranscriptUnits` models that raw-to-stored length
+conversion.
+
+New audio first moves or copies to `<id>.pending`. The same-filesystem
+move can avoid duplication. A copy uses bounded streaming and file sync.
+Then the pending file is renamed to `<id>.audio`. A failed pending copy
+or target rename attempts pending cleanup. The metadata write is next.
+It must read back the exact serialized encrypted slot before replacing
+the legacy sidecar with `{"encrypted":1}`. A failure can leave audio
+with missing or unconfirmed metadata. No `saved` answer is owed until
+both stages report success. The port reports whether this attempt's
+bytes are installed and whether the exact encrypted row and marker
+were confirmed. That readback is live process evidence.
 
 An existing audio file with a readable row may update its transcript
 only for the same owner and only while the row is live. A retained

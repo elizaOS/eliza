@@ -4,7 +4,6 @@ import { type Foreign, foreign, runDetached, thrownValue } from "../edge.vibe"
 import { AsyncContextManager } from "../utils/async-context-manager.vibe"
 import { TurnAbortedError } from "./turn-aborted-error.vibe"
 
-export { TurnAbortedError }
 
 interface ActiveTurn {
   roomId: string

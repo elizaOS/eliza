@@ -15,9 +15,9 @@ export type DurationMsParseOptions = {
   defaultUnit?: DurationUnit
 }
 
-export error InvalidDuration { message: string }
+error InvalidDuration { message: string }
 
-export effect function parseDurationMs(raw: string, opts?: DurationMsParseOptions) {
+effect function parseDurationMs(raw: string, opts?: DurationMsParseOptions) {
   const trimmed = typeof raw === "string" ? raw.trim().toLowerCase() : ""
   if (!trimmed) throw new InvalidDuration({ message: "invalid duration (empty)" })
   const m = /^(\d+(?:\.\d+)?)(ms|s|m|h|d)?$/.exec(trimmed)

@@ -1,5 +1,5 @@
 // spec/core/hooks.md, "Each phase dispatch captures the current handler identities"; spec/core/hooks.md, "Mutators and serial readers complete before concurrent readers"; spec/core/hooks.md, "A captured hook dispatch eventually settles under fair handlers"; spec/core/concurrentHooks.md, "A call captures exactly the memo visible at its own start"
-import { asLegacy, foreign, Foreign, runDetached } from "../edge.vibe"
+import { asLegacy, foreign, type Foreign, runDetached } from "../edge.vibe"
 import { guardOutboundEnvelopeText } from "../security/outbound-envelope-guard.vibe"
 import { sanitizeOutboundText } from "../security/outbound-sanitize.vibe"
 import { EventType } from "../types/events.vibe"
@@ -50,8 +50,8 @@ function skipFlagMetadata(ctx: PipelineHookContext): unknown {
   return "message" in ctx ? ctx.message?.content.metadata : undefined
 }
 
-export error PipelinePhaseMismatch { message: string }
-export error UnknownPipelinePhase { message: string }
+error PipelinePhaseMismatch { message: string }
+error UnknownPipelinePhase { message: string }
 
 function elapsedMs(startedAt: bigint, endedAt: bigint): number {
   return Math.round(Number(endedAt - startedAt) / 1_000_000)

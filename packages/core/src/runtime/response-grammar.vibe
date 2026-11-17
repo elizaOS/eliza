@@ -1,6 +1,6 @@
 // spec/core/grammar.md, "Story: Compile model input schemas to portable grammar classes"; spec/core/grammar.md, "Portable escaping preserves literal members and range structure"
 import { type ClassMember, encodeMember } from "../../gen/core__grammar.effect.vibe"
-import { type JsonSchema, normalizeActionJsonSchema } from "../actions/action-schema.vibe"
+import { normalizeActionJsonSchema } from "../actions/action-schema.vibe"
 import { failingAs, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { Action } from "../types/components.vibe"
@@ -875,9 +875,9 @@ function gbnfRefForFieldSchema(
   return "jsonvalue"
 }
 
-export error ResponseHandlerFieldsMissing { message: string }
+error ResponseHandlerFieldsMissing { message: string }
 
-export effect function buildResponseGrammar(
+effect function buildResponseGrammar(
   runtime: ResponseGrammarRuntimeView,
   options: BuildResponseGrammarOptions,
 ): ResponseGrammarResult!ResponseHandlerFieldsMissing {
@@ -1062,7 +1062,7 @@ effect function plannerGrammarInput(
   return { names, sortedDescriptors, cacheKey, actionSchemas }
 }
 
-export effect function actionToPlannerDescriptor(
+effect function actionToPlannerDescriptor(
   action: Pick<Action, "name" | "parameters" | "allowAdditionalParameters">,
 ) {
   const descriptor: PlannerActionDescriptor = {
@@ -1074,7 +1074,7 @@ export effect function actionToPlannerDescriptor(
 }
 export const actionToPlannerDescriptorOrThrow = thrown(failingAs(Error, actionToPlannerDescriptor, ElizaError))
 
-export effect function buildPlannerActionGrammar(
+effect function buildPlannerActionGrammar(
   actions: ReadonlyArray<
     Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
   >,
@@ -1134,7 +1134,7 @@ export effect function buildPlannerActionGrammar(
 }
 export const buildPlannerActionGrammarOrThrow = thrown(failingAs(Error, buildPlannerActionGrammar, ElizaError))
 
-export effect function buildPlannerActionGrammarStrict(
+effect function buildPlannerActionGrammarStrict(
   actions: ReadonlyArray<
     Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
   >,
@@ -1413,7 +1413,7 @@ function escapeJsonKey(key: string): string {
   return key.replace(/\\/g, "\\\\").replace(/"/g, "\\\"")
 }
 
-export effect function buildPlannerParamsSkeleton(
+effect function buildPlannerParamsSkeleton(
   action: Pick<Action, "name" | "parameters" | "allowAdditionalParameters">,
 ) {
   const schema = try normalizeActionJsonSchema(action)
@@ -1471,5 +1471,3 @@ function readStringEnum(propSchema: JSONSchema): string[] | null {
   return normalized
 }
 
-export type { JsonSchema }
-export { normalizeActionJsonSchema }

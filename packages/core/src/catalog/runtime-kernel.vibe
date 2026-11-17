@@ -189,7 +189,7 @@ function normalizeEntry(
   }
 }
 
-export effect function decodeRuntimeRegistry(input: unknown, options: DecodeRuntimeRegistryOptions = {}) {
+effect function decodeRuntimeRegistry(input: unknown, options: DecodeRuntimeRegistryOptions = {}) {
   const decoded = try Effect.try({ try: () => runtimeRegistryFileSchema.parse(input), catch: (cause) => new Foreign({ cause }) })
   const result = new Map<string, NormalizedRegistryEntry>()
   for (const [name, entry] of Object.entries(decoded.registry)) {

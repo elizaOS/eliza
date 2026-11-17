@@ -1,76 +1,114 @@
-lemma FieldsAttemptedOnce(f: FieldDispatch)
-  ensures alwaysAttemptedOnce(f) == (|ProofLib.Filter((set_x: string) => (set_x in f.attempted), f.ready)| == 0)
-{}
-
-lemma FieldsNoneAttempted(f: FieldDispatch)
-  ensures alwaysAttemptedOnce(f) == (forall i :: 0 <= i < |f.ready| ==> f.ready[i] !in f.attempted)
+lemma FieldUnionMembership(xs: seq<string>, name: string)
+  ensures name in xs + ProofLib.Filter((set_x: string) => !((set_x in xs)), [name])
+  ensures forall item :: item in xs + ProofLib.Filter((set_x: string) => !((set_x in xs)), [name]) ==> item in xs || item == name
 {
-  FieldsAttemptedOnce(f);
-  ProofLib.FilterNone((set_x: string) => (set_x in f.attempted), f.ready);
+  ProofLib.FilterMember((set_x: string) => !((set_x in xs)), [name], name);
+  forall item | item in xs + ProofLib.Filter((set_x: string) => !((set_x in xs)), [name])
+    ensures item in xs || item == name
+  {
+    ProofLib.FilterMember((set_x: string) => !((set_x in xs)), [name], item);
+  }
 }
 
-lemma FieldsParse(f: FieldDispatch, name: string, parseResult: ParseOutcome, hasHandler: bool)
-  ensures parseField(f, name, parseResult, hasHandler).pending == ProofLib.Filter((set_x: string) => !((set_x in [name])), f.pending)
-  ensures parseField(f, name, parseResult, hasHandler).ready == (if (parseResult.ParsedOk? && hasHandler) then (f.ready + ProofLib.Filter((set_x: string) => !((set_x in f.ready)), [name])) else f.ready)
-{}
+lemma FieldExcludedMembership(xs: seq<string>, name: string)
+  ensures forall item :: item in ProofLib.Filter((set_x: string) => !((set_x in [name])), xs) ==> item in xs && item != name
+{
+  forall item | item in ProofLib.Filter((set_x: string) => !((set_x in [name])), xs)
+    ensures item in xs && item != name
+  {
+    ProofLib.FilterMember((set_x: string) => !((set_x in [name])), xs, item);
+  }
+}
 
-lemma FieldsHandle(f: FieldDispatch, name: string, failed: bool, preempt: bool, cancelled: bool)
-  ensures handleField(f, name, failed, preempt, cancelled).ready == ProofLib.Filter((set_x: string) => !((set_x in [name])), f.ready)
-  ensures handleField(f, name, failed, preempt, cancelled).attempted == f.attempted + ProofLib.Filter((set_x: string) => !((set_x in f.attempted)), [name])
-  ensures handleField(f, name, failed, preempt, cancelled).handled == (if (failed || cancelled) then f.handled else (f.handled + ProofLib.Filter((set_x: string) => !((set_x in f.handled)), [name])))
-{}
+lemma FieldDisjointMembers(ready: seq<string>, attempted: seq<string>)
+  requires |ProofLib.Filter((set_x: string) => (set_x in attempted), ready)| == 0
+  ensures forall item :: item in ready ==> item !in attempted
+{
+  forall item | item in ready ensures item !in attempted {
+    ProofLib.FilterMember((set_x: string) => (set_x in attempted), ready, item);
+  }
+}
+
+lemma FieldParseFieldView(f: FieldDispatch, name: string, parseResult: ParseOutcome, hasHandler: bool)
+  ensures parseField(f, name, parseResult, hasHandler) == (f.(pending := ProofLib.Filter((set_x: string) => !((set_x in [name])), f.pending), ready := (if (parseResult.ParsedOk? && hasHandler) then (f.ready + ProofLib.Filter((set_x: string) => !((set_x in f.ready)), [name])) else f.ready), errors := (if (parseResult.SoftParseFailure? || parseResult.HardParseFailure?) then (f.errors + ProofLib.Filter((set_x: string) => !((set_x in f.errors)), [name])) else f.errors), aborted := parseResult.CancelledField?))
+{
+}
+
+lemma FieldHandleFieldView(f: FieldDispatch, name: string, handlerResult: HandlerOutcome)
+  ensures handleField(f, name, handlerResult) == (f.(ready := ProofLib.Filter((set_x: string) => !((set_x in [name])), f.ready), attempted := (f.attempted + ProofLib.Filter((set_x: string) => !((set_x in f.attempted)), [name])), handled := (if completedCallback(handlerResult) then (f.handled + ProofLib.Filter((set_x: string) => !((set_x in f.handled)), [name])) else f.handled), errors := (if failedHandler(handlerResult) then (f.errors + ProofLib.Filter((set_x: string) => !((set_x in f.errors)), [name])) else f.errors), preemption := handlerPreemption(name, handlerResult), aborted := cancelledHandler(handlerResult)))
+{
+}
+
+lemma FieldAlwaysAttemptedOnceView(f: FieldDispatch)
+  ensures alwaysAttemptedOnce(f) == ((|ProofLib.Filter((set_x: string) => (set_x in f.attempted), f.ready)| == 0))
+{
+}
 
 lemma parseField_ensures(f: FieldDispatch, name: string, parseResult: ParseOutcome, hasHandler: bool)
-  ensures (inv(f) ==> canParseField(f, name) ==> alwaysFenceWidthMatchesKind(parseField(f, name, parseResult, hasHandler)))
-  ensures (inv(f) ==> canParseField(f, name) ==> alwaysCursorBounded(parseField(f, name, parseResult, hasHandler)))
   ensures (inv(f) ==> canParseField(f, name) ==> alwaysOnlySnapshotHandled(parseField(f, name, parseResult, hasHandler)))
-  ensures (inv(f) ==> canParseField(f, name) ==> alwaysPendingFromSnapshot(parseField(f, name, parseResult, hasHandler)))
   ensures (inv(f) ==> canParseField(f, name) ==> alwaysHandlersAfterParse(parseField(f, name, parseResult, hasHandler)))
   ensures (inv(f) ==> canParseField(f, name) ==> alwaysAttemptedOnce(parseField(f, name, parseResult, hasHandler)))
-  ensures (inv(f) ==> canParseField(f, name) ==> stepQuotedFieldNeverBecomesOuter(f, "parseField", parseField(f, name, parseResult, hasHandler)))
+  ensures (inv(f) ==> canParseField(f, name) ==> alwaysPreemptionNamesHandledField(parseField(f, name, parseResult, hasHandler)))
+  ensures (inv(f) ==> canParseField(f, name) ==> alwaysPendingBelongsToSnapshot(parseField(f, name, parseResult, hasHandler)))
+  ensures (inv(f) ==> canParseField(f, name) ==> stepPreemptionPersistsUntilNextDispatch(f, "parseField", parseField(f, name, parseResult, hasHandler)))
 {
   if inv(f) && canParseField(f, name) {
+    FieldParseFieldView(f, name, parseResult, hasHandler);
     var after := parseField(f, name, parseResult, hasHandler);
-    FieldsParse(f, name, parseResult, hasHandler);
+    FieldAlwaysAttemptedOnceView(after);
+    FieldExcludedMembership(f.pending, name);
+    FieldUnionMembership(f.ready, name);
+    assert name in f.snapshot;
     assert |f.pending| > 0;
     assert |f.attempted| == 0;
-    forall x | x in after.pending ensures x in f.snapshot {
-      ProofLib.FilterMember((set_x: string) => !((set_x in [name])), f.pending, x);
-    }
-    forall x | x in after.ready ensures x in f.snapshot {
-      if x !in f.ready { ProofLib.FilterMember((set_x: string) => !((set_x in f.ready)), [name], x); }
-    }
-    FieldsNoneAttempted(after);
+    ProofLib.FilterNone((set_x: string) => (set_x in after.attempted), after.ready);
   }
 }
 
-lemma handleField_ensures(f: FieldDispatch, name: string, failed: bool, preempt: bool, cancelled: bool)
-  ensures (inv(f) ==> canHandleField(f, name) ==> alwaysFenceWidthMatchesKind(handleField(f, name, failed, preempt, cancelled)))
-  ensures (inv(f) ==> canHandleField(f, name) ==> alwaysCursorBounded(handleField(f, name, failed, preempt, cancelled)))
-  ensures (inv(f) ==> canHandleField(f, name) ==> alwaysOnlySnapshotHandled(handleField(f, name, failed, preempt, cancelled)))
-  ensures (inv(f) ==> canHandleField(f, name) ==> alwaysPendingFromSnapshot(handleField(f, name, failed, preempt, cancelled)))
-  ensures (inv(f) ==> canHandleField(f, name) ==> alwaysHandlersAfterParse(handleField(f, name, failed, preempt, cancelled)))
-  ensures (inv(f) ==> canHandleField(f, name) ==> alwaysAttemptedOnce(handleField(f, name, failed, preempt, cancelled)))
-  ensures (inv(f) ==> canHandleField(f, name) ==> stepQuotedFieldNeverBecomesOuter(f, "handleField", handleField(f, name, failed, preempt, cancelled)))
+lemma handleField_ensures(f: FieldDispatch, name: string, handlerResult: HandlerOutcome)
+  ensures (inv(f) ==> canHandleField(f, name) ==> alwaysOnlySnapshotHandled(handleField(f, name, handlerResult)))
+  ensures (inv(f) ==> canHandleField(f, name) ==> alwaysHandlersAfterParse(handleField(f, name, handlerResult)))
+  ensures (inv(f) ==> canHandleField(f, name) ==> alwaysAttemptedOnce(handleField(f, name, handlerResult)))
+  ensures (inv(f) ==> canHandleField(f, name) ==> alwaysPreemptionNamesHandledField(handleField(f, name, handlerResult)))
+  ensures (inv(f) ==> canHandleField(f, name) ==> alwaysPendingBelongsToSnapshot(handleField(f, name, handlerResult)))
+  ensures (inv(f) ==> canHandleField(f, name) ==> stepPreemptionPersistsUntilNextDispatch(f, "handleField", handleField(f, name, handlerResult)))
 {
   if inv(f) && canHandleField(f, name) {
-    var after := handleField(f, name, failed, preempt, cancelled);
-    FieldsHandle(f, name, failed, preempt, cancelled);
-    FieldsNoneAttempted(f);
-    forall x | x in after.ready ensures x in f.ready && x != name {
-      ProofLib.FilterMember((set_x: string) => !((set_x in [name])), f.ready, x);
+    FieldHandleFieldView(f, name, handlerResult);
+    FieldAlwaysAttemptedOnceView(f);
+    FieldDisjointMembers(f.ready, f.attempted);
+    FieldUnionMembership(f.attempted, name);
+    FieldUnionMembership(f.handled, name);
+    FieldExcludedMembership(f.ready, name);
+    var after := handleField(f, name, handlerResult);
+    FieldAlwaysAttemptedOnceView(after);
+    forall item | item in after.ready ensures item !in after.attempted {
+      assert item in f.ready && item != name;
     }
-    forall x | x in after.attempted ensures x in f.attempted || x == name {
-      if x !in f.attempted { ProofLib.FilterMember((set_x: string) => !((set_x in f.attempted)), [name], x); }
-    }
-    forall x | x in after.handled ensures x in f.handled || x == name {
-      if !(failed || cancelled) && x !in f.handled { ProofLib.FilterMember((set_x: string) => !((set_x in f.handled)), [name], x); }
-    }
-    assert name in after.attempted by { ProofLib.FilterMember((set_x: string) => !((set_x in f.attempted)), [name], name); }
-    forall i | 0 <= i < |after.ready| ensures after.ready[i] !in after.attempted {
-      assert after.ready[i] in after.ready;
-      var j :| 0 <= j < |f.ready| && f.ready[j] == after.ready[i];
-    }
-    FieldsNoneAttempted(after);
+    ProofLib.FilterNone((set_x: string) => (set_x in after.attempted), after.ready);
   }
+}
+
+lemma lawFailedHandlerDoesNotPreempt_ensures(f: FieldDispatch, name: string)
+  ensures (lawFailedHandlerDoesNotPreempt(f, name) == true)
+{
+  FieldHandleFieldView(f, name, HandlerOutcome.HandlerCallbackFailed);
+  FieldUnionMembership(f.errors, name);
+  FieldUnionMembership(f.handled, name);
+}
+
+lemma lawEffectFailureDoesNotPreempt_ensures(f: FieldDispatch, name: string)
+  ensures (lawEffectFailureDoesNotPreempt(f, name) == true)
+{
+  FieldHandleFieldView(f, name, HandlerOutcome.HandlerEffectFailed);
+  FieldUnionMembership(f.errors, name);
+  FieldUnionMembership(f.handled, name);
+}
+
+lemma lawEffectCancellationKeepsHandledTrace_ensures(f: FieldDispatch, name: string)
+  ensures (lawEffectCancellationKeepsHandledTrace(f, name) == true)
+{
+  FieldHandleFieldView(f, name, HandlerOutcome.HandlerEffectCancelled);
+  FieldUnionMembership(f.errors, name);
+  FieldUnionMembership(f.handled, name);
 }

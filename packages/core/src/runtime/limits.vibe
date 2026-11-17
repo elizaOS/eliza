@@ -89,7 +89,7 @@ export function mergeChainingLoopConfig(
   }
 }
 
-export effect function assertTrajectoryLimit(params: {
+effect function assertTrajectoryLimit(params: {
   kind: TrajectoryLimitKind
   max: number
   observed: number
@@ -135,7 +135,7 @@ function getFailureComparisonKey(failure: FailureLike): string | null {
   return repeatKey ? `${signature}:${repeatKey}` : signature
 }
 
-export effect function assertRepeatedFailureLimit(params: {
+effect function assertRepeatedFailureLimit(params: {
   failures: readonly FailureLike[]
   latestFailure: FailureLike
   maxRepeatedFailures: number

@@ -1,5 +1,5 @@
 // spec/core/awareness.md, "Story: Compose ordered awareness from installed contributors"; spec/core/awareness.md, "Story: Cache each runtime independently and invalidate selected contributors"; spec/core/awarenessRegistry.md, "Story: Register independent awareness contributors"; spec/core/awarenessRegistry.md, "A request uses its contributor's TTL and runtime cache"
-import { Foreign, foreign, foreignSync } from "./edge.vibe"
+import { type Foreign, foreign, foreignSync } from "./edge.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
 import { toWellFormedUnicode } from "./utils/unicode.vibe"
 

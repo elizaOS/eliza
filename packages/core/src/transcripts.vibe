@@ -234,11 +234,11 @@ export interface TranscriptKnowledgeFragment {
 
 export const TRANSCRIPT_FRAGMENT_MAX_CHARS = 2000
 
-export error InvalidFragmentLimit { message: string }
-export error MissingSegmentId { message: string }
-export error InvalidSegmentTiming { message: string }
+error InvalidFragmentLimit { message: string }
+error MissingSegmentId { message: string }
+error InvalidSegmentTiming { message: string }
 
-export effect function transcriptKnowledgeFragments(
+effect function transcriptKnowledgeFragments(
   segments: ReadonlyArray<TranscriptSegment>,
   maxChars = TRANSCRIPT_FRAGMENT_MAX_CHARS,
 ) {
@@ -311,7 +311,7 @@ export effect function transcriptKnowledgeFragments(
 
 export const transcriptKnowledgeFragmentsOrThrow = thrown(failingAs(Error, transcriptKnowledgeFragments))
 
-export effect function transcriptPreview(
+effect function transcriptPreview(
   segments: ReadonlyArray<TranscriptSegment>,
   max = TRANSCRIPT_PREVIEW_CHARS,
 ) {
@@ -477,7 +477,7 @@ export function transcriptCapturePrivacyState(
   }
 }
 
-export effect function summarizeTranscript(transcript: Transcript) {
+effect function summarizeTranscript(transcript: Transcript) {
   const summary: TranscriptSummary = {
     id: transcript.id,
     title: transcript.title,
@@ -544,9 +544,9 @@ export interface WordTimingValidation {
   violations: WordTimingViolation[]
 }
 
-export error InvalidTimingBound { message: string }
+error InvalidTimingBound { message: string }
 
-export effect function validateAsrWordTimings(
+effect function validateAsrWordTimings(
   words: ReadonlyArray<TranscriptWord>,
   audioDurationMs = 0,
   toleranceMs = 1,

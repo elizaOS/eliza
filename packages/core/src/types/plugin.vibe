@@ -216,7 +216,6 @@ export interface PluginAppBridge {
   stopRun?: (ctx: PluginAppBridgeRunContext) => Promise<void>
 }
 
-export type { AppShellBackgroundPolicy, ViewHeaderPolicy } from "./surface-manifest.vibe"
 
 export interface PluginAppNavTab {
   id: string
@@ -295,7 +294,7 @@ export interface CollapsedView extends ViewDeclaration {
   modalities: ViewModality[]
 }
 
-export type { ViewCapability, ViewCapabilityParameter } from "./view-capability.vibe"
+export type { ViewCapability } from "./view-capability.vibe"
 
 export interface ViewScopedActionStep {
   kind: "agent-fill" | "agent-click" | "agent-focus"

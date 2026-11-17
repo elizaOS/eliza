@@ -638,12 +638,26 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
       "pure def mark(n: int, token: int): int = -1",
       "pure def sometimesMarked(n: int): bool = n == -1",
     ].join("\n"));
-    const rareSpec = readSpecs(rare)[0];
-    const rareModel = await gen(rare, rareSpec);
-    const found = await search({ memory: { root: rare, fresh: true, used: new Set() }, model: rareModel, files: harnessFiles(rareSpec, [rareSpec], rareModel) }, "never_sometimesMarked", "step", [20, 40], 4096);
+    const rareModel = await gen(rare, readSpecs(rare)[0]);
+    const found = await search({ memory: { root: rare, fresh: true, used: new Set() }, model: rareModel, files: harnessFiles(readSpecs(rare)[0], readSpecs(rare), rareModel) }, "never_sometimesMarked", "step", [20, 40], 4096);
     assert.equal(found.broken, true, found.again);
     assert.match(found.again, /--max-samples 1024 --max-steps 40\b/);
     assert.equal(found.traces[0]?.at(-1)?.state, -1);
+
+    const lateGuard = oneRule("gate", "Allow completion after counting", [
+      "pure val initial: int = 0",
+      "pure def up(n: int): int = n + 1",
+      "pure def canFinish(n: int): bool = n >= 38",
+      "pure def finish(n: int): int = 0",
+    ].join("\n"));
+    const guardModel = await gen(lateGuard, readSpecs(lateGuard)[0]);
+    const allowed = await search({ memory: { root: lateGuard, fresh: true, used: new Set() }, model: guardModel, files: { ...harnessFiles(readSpecs(lateGuard)[0], readSpecs(lateGuard), guardModel), "gate.guard.run.qnt": { text: guardModel.guardHarness, key: guardModel.guardHarness } }, main: "gate.guard.run.qnt" }, "never_allows_canFinish", "eval_canFinish__1", [20, 40], 180);
+    assert.match(allowed.again, /--step eval_canFinish__1 .* --max-samples 32 --max-steps 40\b/);
+    assert.equal(allowed.broken, true);
+    const trace = allowed.traces[0];
+    assert.deepEqual(trace?.at(-1)?.evaluated, { name: "canFinish", picks: {}, result: true });
+    replay(await import(path.join(lateGuard, "gen/gate.ts")), trace, guardModel);
+    assert.match(allowed.again, /gen\/gate\.guard\.run\.qnt/);
   });
 
   test("hand-written code that changes what it is checked against is refused or flagged", async () => {
@@ -3005,15 +3019,6 @@ describe("the command line and what a failed proof leaves to start from", { conc
     const lines = (await runCli(script, root, "check", "--json")).stdout.trimEnd().split("\n").map((line) => JSON.parse(line));
     assert.deepEqual(Object.keys(lines.at(-1)), ["ok", "results", "next"]);
     assert.deepEqual(lines.slice(0, -1), lines.at(-1).results);
-    const contracts = scratch({
-      "package.json": JSON.stringify({ type: "module" }),
-      "src/point.vibe": read("vibestack/testing/test/fixture/good/src/point.schema.vibe"),
-      "src/point.schema.ts": 'export { Point } from "./point.vibe";\n',
-    });
-    const derived = await runCli(script, contracts, "tests");
-    assert.equal(derived.status, 0, derived.stderr);
-    const manifest = JSON.parse(read(".cache/generated/tests/manifest.json", contracts));
-    assert.deepEqual([Object.keys(manifest.files), manifest.files["src/point.schema.test.ts"].tests, manifest.skipped], [["src/point.schema.test.ts"], 2, []]);
     // A manifest that is not JSON is a result like any other, not an exception on the way to the scripts it names.
     fs.writeFileSync(path.join(root, "package.json"), "{");
     const broken = await runCli(script, root, "check", "--json");

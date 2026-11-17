@@ -49,9 +49,17 @@ pure def startResult(s: PrivacyService, ok: bool): PrivacyService = { ...s, queu
 
 Attempt failure is possible only before the marker is acknowledged. A later observer failure cannot revoke the committed marker or reopen processing.
 
-Discovered by the proof: starting an urgent flush item and settling a processor ticket require the same queued or running job owner. A missing lookup or an already disposed local job cannot advance work. The model checks the shared marker again when a queued attempt starts. Earlier simultaneous misses may both already be active and can both finish. Terminal queue rejection records failure without inventing a committed marker. Publication becomes shared only after the exact marker acknowledgement.
+Discovered by the proof: starting an urgent flush item and settling a processor ticket require the same queued or running job owner. A missing lookup or an already disposed local job cannot advance work. The service retains the complete queue and per-job settlement owner contracts through their `wellFormed` predicates, including constructor, occurrence identity and retirement facts. The model checks the shared marker again when a queued attempt starts. Earlier simultaneous misses may both already be active and can both finish. Terminal queue rejection records failure without inventing a committed marker. Publication becomes shared only after the exact marker acknowledgement.
 
 Late bookkeeping belongs to collection of the detached processor result, not an independent public event. An in-flight scrub retains its work during detachment. The collector disposes only after the batch records that ticket's terminal processor outcome, the job is idle, and no further fallback owns that job. Settled counts and marker evidence remain.
+
+Discovered by the proof: the service constructs its queue before marker
+admission. Its pending lazy-start promise is the queue's pending schedule,
+and an absent start identity cannot retain a scheduled task. Shutdown
+retires each job before allocating its stop identity and disposing the
+queue. A detached queue has completed disposal. These relations prevent a
+fabricated admitted job from enqueuing into an unconfigured or disposed
+queue, or a fabricated startup callback from settling another schedule.
 
 ```quint
 pure def terminalFailure(failureCount: int, work: P::Privacy): P::Privacy = { ...work, phase: P::Idle, failed: failureCount, attempts: 0 }
@@ -135,7 +143,15 @@ pure def completeStop(s: PrivacyService): PrivacyService = {
 pure def canFinalizeStop(s: PrivacyService): bool = s.stopId != 0 and s.stopWaiters.some(waiter => waiter.id == s.stopId and waiter.done)
 pure def finalizeStop(s: PrivacyService): PrivacyService = { ...s, stopId: 0 }
 pure def alwaysPromiseIdentitiesAreValid(s: PrivacyService): bool = s.nextPromise > 0 and s.startId >= 0 and s.startId < s.nextPromise and s.stopId >= 0 and s.stopId < s.nextPromise and (s.startPending implies s.startId > 0) and s.stopWaiters.every(waiter => waiter.id > 0 and waiter.id < s.nextPromise and s.stopWaiters.select(other => other.id == waiter.id).length() == 1)
-pure def alwaysEveryJobRetainsSettlement(s: PrivacyService): bool = s.jobs.every(job => P::alwaysAcceptedWorkIsAccounted(job.work) and P::alwaysCompletionRequiresPersistentMarker(job.work) and P::alwaysCountsAreNonnegative(job.work))
+pure def alwaysEveryJobRetainsSettlement(s: PrivacyService): bool = s.jobs.every(job => P::wellFormed(job.work))
+pure def alwaysQueueOwnerWellFormed(s: PrivacyService): bool = BQ::wellFormed(s.queue)
+pure def alwaysServiceQueueLifecycle(s: PrivacyService): bool =
+  s.queue.configured and (s.startPending iff s.queue.schedulePending) and
+  (s.startId == 0 implies not(s.queue.scheduled)) and
+  (not(s.queuePresent) implies s.queue.disposePhase == BQ::QueueDisposed) and
+  (s.stopId > 0 implies s.stopping) and
+  (s.stopping implies s.jobs.every(job => job.work.life != P::Open)) and
+  (not(s.stopping) implies s.queuePresent and not(s.queue.disposed))
 pure def alwaysQueueReferencesKnownJobs(s: PrivacyService): bool = Q::queuedItems(s.queue.queue).every(entry => jobAt(s, entry.payload).id != "") and s.queue.active.concat(s.queue.flush).every(entry => jobAt(s, entry.payload).id != "")
 pure def alwaysCommittedJobHasSharedMarker(s: PrivacyService): bool = s.jobs.every(job => job.work.marker implies s.markers.contains(job.key))
 pure def alwaysJobIdsAreUnique(s: PrivacyService): bool = s.jobs.every(job => job.id != "" and s.jobs.select(other => other.id == job.id).length() == 1)

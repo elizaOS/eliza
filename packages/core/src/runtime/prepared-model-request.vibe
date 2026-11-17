@@ -1,5 +1,5 @@
 // spec/core/preparedRequests.md, "A request guard captures its exact admitted serialization"; spec/core/preparedRequests.md, "Only the admitted body can supply its input token count"; spec/core/preparedRequests.md, "Rejection authority uses explicit limits and reservation uses the original output argument"; spec/core/preparedRequests.md, "Every dispatched attempt rechecks bytes counts and lease authority"
-import { foreignSync, Foreign, thrown } from "../edge.vibe"
+import { foreignSync, type Foreign, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { getModelAttemptLease, type ModelAttemptLease } from "../streaming-context.vibe"
 import { isPlainObject } from "../utils/type-guards.vibe"
@@ -203,7 +203,7 @@ effect function countPreparedInputTokens(
   }
 }
 
-export effect function createPreparedModelRequestGuard(
+effect function createPreparedModelRequestGuard(
   args: CreatePreparedModelRequestGuardArgs,
 ): PreparedModelRequestGuard!(ElizaError | Foreign) {
   const provider = args.provider.trim()

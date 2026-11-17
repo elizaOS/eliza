@@ -38,7 +38,7 @@ interface ExtensionsPayload {
 
 export service Components {
   static readonly key = "@elizaos/core/runtime/Components"
-  readonly extensionsMachine: Machine.Shape
+  readonly extensionsMachine: Context.Service.Shape<typeof Machine>
   readonly extensions: Owned<RuntimeExtensions, ExtensionsEvent, RuntimeExtensions, ExtensionsRejected, ExtensionsPayload>
   readonly pipelineHooks: RuntimePipelineHooks
   readonly connectors: RuntimeConnectorRegistry

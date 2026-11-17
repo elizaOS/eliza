@@ -7,9 +7,8 @@ import { ModelType, type PiiPseudonymAssignment, type TextEmbeddingParams } from
 import type { UUID } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import type { Service } from "../types/service.vibe"
-import { toWellFormedUnicode } from "../utils/unicode.vibe"
 import { canonicalKind } from "./entity-recognizer.vibe"
-import { type CorpusPseudonymMap, PseudonymMapIntegrityError } from "./pii-pseudonym-map.vibe"
+import type { CorpusPseudonymMap } from "./pii-pseudonym-map.vibe"
 
 export interface PiiScrubCandidate {
   readonly surfaceForm: string
@@ -283,7 +282,7 @@ effect function assertResolvedEntity(entity: PiiResolvedEntity, field: string): 
 export effect function assembleContextPack(
   sources: PiiContextSources,
   request: AssembleContextPackRequest,
-): PiiContextPack!(ElizaError | PseudonymMapIntegrityError | Foreign) {
+): PiiContextPack!(ElizaError | Foreign) {
   const {
     chunk,
     candidates,
@@ -314,7 +313,7 @@ export effect function assembleContextPack(
         resolvedEntities.push(entity)
         if (entity.confidence >= minEntityConfidence) {
           try Effect.try({
-            try: () =>
+            try: () => {
               map.assign({
                 clusterId: entity.clusterId,
                 kind: entity.kind,
@@ -322,8 +321,9 @@ export effect function assembleContextPack(
                 identities: entity.identities,
                 evidence: entity.evidence,
                 rulesetVersion,
-              }),
-            catch: (cause) => cause instanceof PseudonymMapIntegrityError ? cause : new Foreign({ cause }),
+              })
+            },
+            catch: (cause) => new Foreign({ cause }),
           })
         }
       }

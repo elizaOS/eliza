@@ -186,7 +186,7 @@ export function resolvePluginDependencies(
   return finalPlugins
 }
 
-export effect function loadPlugin(
+effect function loadPlugin(
   nameOrPlugin: string | Plugin,
   resolver?: PluginResolver,
 ): (Plugin | null)!Foreign {
@@ -264,7 +264,7 @@ function queueDependency(
   queue.push(depName)
 }
 
-export effect function resolvePlugins(
+effect function resolvePlugins(
   plugins: (string | Plugin)[],
   isTestMode: boolean = false,
   resolver?: PluginResolver,

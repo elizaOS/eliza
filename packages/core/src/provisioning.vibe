@@ -12,9 +12,9 @@ import { rawEnv } from "./utils/environment.vibe"
 
 const logger = createLogger({ namespace: "provisioning", level: "info" })
 
-export error ProvisioningUnsupported { message: string }
-export error AgentMissing { message: string }
-export error AgentEntityMissing { message: string }
+error ProvisioningUnsupported { message: string }
+error AgentMissing { message: string }
+error AgentEntityMissing { message: string }
 
 export interface ProvisionAgentOptions {
   runMigrations?: boolean
@@ -93,7 +93,7 @@ export effect function runPluginMigrations(runtime: IAgentRuntime) {
 
 export const runPluginMigrationsPromise = promised(runPluginMigrations)
 
-export effect function ensureAgentInfrastructure(runtime: IAgentRuntime) {
+effect function ensureAgentInfrastructure(runtime: IAgentRuntime) {
   const adapter = runtime.adapter
   const agentId = runtime.agentId
   const character = runtime.character
@@ -147,7 +147,7 @@ export effect function ensureAgentInfrastructure(runtime: IAgentRuntime) {
 
 export const ensureAgentInfrastructurePromise = promised(failingAs(Error, ensureAgentInfrastructure))
 
-export effect function ensureEmbeddingDimension(runtime: IAgentRuntime) {
+effect function ensureEmbeddingDimension(runtime: IAgentRuntime) {
   const adapter = runtime.adapter
   const model = runtime.getModel(ModelType.TEXT_EMBEDDING)
   if (!model) {
@@ -198,7 +198,7 @@ export effect function ensureEmbeddingDimension(runtime: IAgentRuntime) {
 
 export const ensureEmbeddingDimensionPromise = promised(ensureEmbeddingDimension)
 
-export effect function provisionAgent(
+effect function provisionAgent(
   runtime: IAgentRuntime,
   options: ProvisionAgentOptions = {},
 ) {
@@ -213,7 +213,7 @@ export effect function provisionAgent(
 
 export const provisionAgentPromise = promised(failingAs(Error, provisionAgent))
 
-export effect function mergeDbSettings(
+effect function mergeDbSettings(
   character: Character,
   adapter: IDatabaseAdapter,
   agentId: UUID,

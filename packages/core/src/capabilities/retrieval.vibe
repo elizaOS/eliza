@@ -122,7 +122,7 @@ function scoreEntry(
   return { score, matchedTokens }
 }
 
-export effect function retrieveCapabilities(input: RetrieveCapabilitiesInput): CapabilityRetrievalResult!ElizaError {
+effect function retrieveCapabilities(input: RetrieveCapabilitiesInput): CapabilityRetrievalResult!ElizaError {
   const limit = input.limit ?? DEFAULT_LIMIT
   if (!Number.isInteger(limit) || limit <= 0) {
     throw invalidRetrievalInput("Capability retrieval limit must be a positive integer.", { limit })

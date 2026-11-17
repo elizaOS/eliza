@@ -1,6 +1,6 @@
 // spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import { normalizeSpokenText } from "./audio-redaction.vibe"
-import { Foreign, foreign, promised, thrown } from "./edge.vibe"
+import { type Foreign, foreign, promised, thrown } from "./edge.vibe"
 import { ElizaError } from "./errors.vibe"
 import type { TranscriptWord } from "./transcripts.vibe"
 
@@ -92,7 +92,7 @@ function missingSentinels(
   return missing
 }
 
-export effect function judgeRedactedTranscript(
+effect function judgeRedactedTranscript(
   verifierId: string,
   transcript: string,
   expectation: RedactionVerifyExpectation,
@@ -129,7 +129,7 @@ function judge(
   }
 }
 
-export effect function verifyAudioRedaction(
+effect function verifyAudioRedaction(
   transcribers: readonly RedactionTranscriber[],
   input: RedactionTranscribeInput,
   expectation: RedactionVerifyExpectation,

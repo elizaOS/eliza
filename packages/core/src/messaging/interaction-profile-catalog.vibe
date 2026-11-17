@@ -229,7 +229,7 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
   },
 ] as const satisfies readonly FirstPartyInteractionConnectorAuditEntry[]
 
-export effect function renderFirstPartyInteractionCapabilityMatrix() {
+effect function renderFirstPartyInteractionCapabilityMatrix() {
   const profiles = try forEach(
     FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT.filter(
       (entry) => entry.profileFamily !== "read-only",

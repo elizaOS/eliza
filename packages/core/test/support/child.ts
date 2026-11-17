@@ -1,11 +1,12 @@
 // spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/release.md, "Every release check names the candidate it actually examined"; spec/core/atomicWriters.md, "Story: Publish whole snapshots despite interleaved processes"
 import { execFile, spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { cp, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { z } from "zod";
 
 export interface NodeRun {
   file?: string;
@@ -14,6 +15,7 @@ export interface NodeRun {
   env?: Record<string, string | undefined>;
   cwd?: string;
   timeoutMs?: number;
+  conditions?: string[];
   vibe?: boolean;
 }
 
@@ -34,8 +36,11 @@ export interface NodeChild {
 }
 
 export interface Packed {
-  tarball: string;
-  sha256: string;
+  readonly tarball: string;
+  readonly sha256: string;
+  readonly sourceDir: string;
+  readonly revision: string;
+  readonly attemptId: string;
   remove(): Promise<void>;
 }
 
@@ -44,7 +49,7 @@ export const coreDir = path.resolve(import.meta.dirname, "../..");
 const run = promisify(execFile);
 
 function nodeArguments(options: NodeRun): string[] {
-  const loader = options.vibe ? ["--import", "vibelang/register"] : [];
+  const loader = [...(options.conditions ?? []).flatMap((condition) => ["--conditions", condition]), ...(options.vibe ? ["--import", "vibelang/register"] : [])];
   if (options.file !== undefined && options.script === undefined) return ["--no-warnings", ...loader, options.file, ...(options.args ?? [])];
   if (options.script !== undefined && options.file === undefined) return ["--no-warnings", ...loader, "--input-type=module", "--eval", options.script, "--", ...(options.args ?? [])];
   throw new TypeError("runNode needs exactly one of file and script");
@@ -116,37 +121,90 @@ export async function sha256File(file: string): Promise<string> {
   return createHash("sha256").update(await readFile(file)).digest("hex");
 }
 
-export async function extractTarball(tarball: string, destination: string): Promise<void> {
-  await mkdir(destination, { recursive: true });
-  await run("tar", ["-xzf", tarball, "-C", destination, "--strip-components=1"]);
-}
+const manifestSchema = z.object({
+  name: z.string(),
+  version: z.string(),
+  exports: z.record(z.string(), z.record(z.string(), z.string())),
+  dependencies: z.record(z.string(), z.string()).optional(),
+});
+const versionSchema = z.object({ version: z.string() });
+const workspaceSchema = z.object({ packageManager: z.string() });
+const packedSchema = z.object({ filename: z.string() });
 
-async function stagePackage(packageDir: string, stage: string): Promise<void> {
-  await run(path.join(coreDir, "node_modules", ".bin", "vibelang"), ["-p", path.join(packageDir, "tsconfig.build.json"), "--outDir", path.join(stage, "dist")], {
-    cwd: packageDir,
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  const manifest = JSON.parse(await readFile(path.join(packageDir, "package.json"), "utf8")) as { files?: string[] };
-  const copied = ["package.json", "README.md", "LICENSE", ...(manifest.files ?? []).filter((entry) => entry !== "dist")];
-  for (const entry of copied) {
-    if (existsSync(path.join(packageDir, entry))) await cp(path.join(packageDir, entry), path.join(stage, entry), { recursive: true });
+async function filesUnder(directory: string): Promise<string[]> {
+  const files: string[] = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const file = path.join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...await filesUnder(file));
+    else if (entry.isFile()) files.push(file);
   }
+  return files.sort();
 }
 
-export async function packAndExtract(packageDir: string, destination: string): Promise<Packed> {
+async function producerFiles(packageDir: string): Promise<string[]> {
+  const workspace = path.resolve(packageDir, "../..");
+  const rootFiles = ["package.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", "tsconfig.base.json", "LICENSE"];
+  const packageFiles = ["package.json", ...(await readdir(packageDir)).filter((name) => /^tsconfig(?:\..+)?\.json$/.test(name)), ...["LICENSE", "README.md"].filter((name) => existsSync(path.join(packageDir, name)))];
+  return [
+    ...rootFiles.map((file) => path.join(workspace, file)),
+    ...packageFiles.map((file) => path.join(packageDir, file)),
+    ...await filesUnder(path.join(packageDir, "src")),
+    ...(await readdir(path.join(packageDir, "gen"))).filter((file) => file.endsWith(".ts") || file.endsWith(".vibe")).map((file) => path.join(packageDir, "gen", file)),
+    ...await filesUnder(path.join(workspace, "spec/core")),
+  ].sort();
+}
+
+export async function packCandidate(packageDir: string): Promise<Packed> {
   const work = await mkdtemp(path.join(os.tmpdir(), "core-pack-"));
   const remove = () => rm(work, { recursive: true, force: true });
   try {
-    const stage = path.join(work, "stage");
-    await stagePackage(packageDir, stage);
-    const { stdout } = await run("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", work], { cwd: stage, maxBuffer: 64 * 1024 * 1024 });
-    const [packed] = JSON.parse(stdout) as Array<{ filename: string }>;
-    const tarball = path.join(work, packed.filename);
-    await rm(stage, { recursive: true, force: true });
-    await extractTarball(tarball, destination);
-    return { tarball, sha256: await sha256File(tarball), remove };
+    const workspace = path.resolve(packageDir, "../..");
+    const producer = path.join(work, "producer");
+    const sourceDir = path.join(producer, path.relative(workspace, packageDir));
+    const head = (await run("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
+    const files = await producerFiles(packageDir);
+    const inputs = new Map<string, Buffer>();
+    const digest = createHash("sha256");
+    for (const file of files) {
+      const contents = await readFile(file);
+      const relative = path.relative(workspace, file);
+      inputs.set(file, contents);
+      digest.update(relative).update("\0").update(contents).update("\0");
+      const destination = path.join(producer, relative);
+      await mkdir(path.dirname(destination), { recursive: true });
+      await writeFile(destination, contents);
+    }
+    if (JSON.stringify(files) !== JSON.stringify(await producerFiles(packageDir))) throw new Error("Core inputs changed while freezing the release candidate");
+    for (const [file, contents] of inputs) {
+      if (!contents.equals(await readFile(file))) throw new Error(`Core input changed while freezing: ${file}`);
+    }
+    await symlink(await realpath(path.join(workspace, "node_modules")), path.join(producer, "node_modules"), "dir");
+    await symlink(await realpath(path.join(packageDir, "node_modules")), path.join(sourceDir, "node_modules"), "dir");
+    const options = { cwd: sourceDir, maxBuffer: 64 * 1024 * 1024, timeout: 300_000 };
+    await run("pnpm", ["build"], options);
+    const { stdout } = await run("pnpm", ["pack", "--json", "--pack-destination", work], options);
+    const { filename } = packedSchema.parse(JSON.parse(stdout));
+    const tarball = path.resolve(work, filename);
+    return { tarball, sha256: await sha256File(tarball), sourceDir, attemptId: randomUUID(), revision: `${head}+inputs.${digest.digest("hex")}`, remove };
   } catch (error) {
     await remove();
     throw error;
   }
+}
+
+export async function installPacked(packed: Packed, directory: string, withTypes = false) {
+  if (await sha256File(packed.tarball) !== packed.sha256) throw new Error("Packed candidate changed before installation");
+  const { packageManager } = workspaceSchema.parse(JSON.parse(await readFile(path.resolve(packed.sourceDir, "../../package.json"), "utf8")));
+  const devDependencies: Record<string, string> = {};
+  if (withTypes) {
+    for (const name of ["typescript", "@types/node"]) {
+      devDependencies[name] = versionSchema.parse(JSON.parse(await readFile(path.join(packed.sourceDir, "node_modules", name, "package.json"), "utf8"))).version;
+    }
+  }
+  await mkdir(directory, { recursive: true });
+  await writeFile(path.join(directory, "package.json"), JSON.stringify({ name: "packed-core-consumer", private: true, type: "module", packageManager, dependencies: { "@elizaos/core": `file:${packed.tarball}` }, devDependencies }, null, 2) + "\n");
+  await run("pnpm", ["install", "--strict-peer-dependencies", "--reporter", "append-only"], { cwd: directory, maxBuffer: 64 * 1024 * 1024, timeout: 300_000 });
+  const packageDirectory = await realpath(path.join(directory, "node_modules/@elizaos/core"));
+  const manifest = manifestSchema.parse(JSON.parse(await readFile(path.join(packageDirectory, "package.json"), "utf8")));
+  return { packageDirectory, manifest };
 }

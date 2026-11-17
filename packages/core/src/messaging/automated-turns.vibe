@@ -2,7 +2,7 @@
 import type { Memory } from "../types/memory.vibe"
 import { asObjectRecordOrUndefined } from "../utils/type-guards.vibe"
 
-export const INTERNAL_BRIDGE_MESSAGE_SOURCES: ReadonlySet<string> = new Set([
+const INTERNAL_BRIDGE_MESSAGE_SOURCES: ReadonlySet<string> = new Set([
   "acpx:sub-agent-router",
   "swarm_synthesis",
 ])

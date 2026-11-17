@@ -1,5 +1,5 @@
 // spec/core/models.md, "Story: Dispatch a complete admitted request"; spec/core/models.md, "Eligible text failures advance only to registrations with remaining budget"
-import { failingAs, foreign, promised, thrown } from "../edge.vibe"
+import { foreign } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
   getModelFallbackChain,
@@ -112,7 +112,6 @@ export effect function assertModelResultPresent(
   }
   throw new InvalidTextResult({ message: `Invalid text result for model type ${modelType}` })
 }
-export const assertModelResultPresentOrThrow = thrown(failingAs(TypeError, assertModelResultPresent))
 
 export effect function assertRuntimeModelOutputComplete(args: {
   result: unknown
@@ -128,7 +127,6 @@ export effect function assertRuntimeModelOutputComplete(args: {
     model: args.model,
   })
 }
-export const assertRuntimeModelOutputCompletePromise = promised(assertRuntimeModelOutputComplete)
 
 export function readReasoningTokensFromResponse(
   response: unknown,
@@ -215,8 +213,8 @@ export function resolveProviderModelString(
   return resolvedModelType
 }
 
-export const CANONICAL_TEXT_CAPABILITY_SETTING = "ELIZA_CANONICAL_LLM_TEXT_ENABLED"
-export const CANONICAL_EMBEDDING_CAPABILITY_SETTING = "ELIZA_CANONICAL_EMBEDDINGS_ENABLED"
+const CANONICAL_TEXT_CAPABILITY_SETTING = "ELIZA_CANONICAL_LLM_TEXT_ENABLED"
+const CANONICAL_EMBEDDING_CAPABILITY_SETTING = "ELIZA_CANONICAL_EMBEDDINGS_ENABLED"
 
 export function isCanonicalModelCapabilityDisabled(
   runtime: Pick<IAgentRuntime, "getSetting">,

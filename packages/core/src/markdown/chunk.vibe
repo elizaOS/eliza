@@ -13,7 +13,7 @@ import {
 
 export const MARKDOWN_CHUNK_LIMIT_INVALID = "MARKDOWN_CHUNK_LIMIT_INVALID"
 
-export effect function assertValidMarkdownChunkLimit(limit: number) {
+effect function assertValidMarkdownChunkLimit(limit: number) {
   if (Number.isSafeInteger(limit) && limit > 0) {
     return
   }
@@ -26,7 +26,7 @@ export effect function assertValidMarkdownChunkLimit(limit: number) {
 
 export const assertValidMarkdownChunkLimitOrThrow = thrown(assertValidMarkdownChunkLimit)
 
-export effect function chunkText(text: string, limit: number) {
+effect function chunkText(text: string, limit: number) {
   try assertValidMarkdownChunkLimit(limit)
   if (!text) {
     return []
@@ -74,7 +74,7 @@ export effect function chunkText(text: string, limit: number) {
 
 export const chunkTextOrThrow = thrown(chunkText)
 
-export effect function chunkByParagraph(
+effect function chunkByParagraph(
   text: string,
   limit: number,
   opts?: { splitLongParagraphs?: boolean },
@@ -135,7 +135,7 @@ export effect function chunkByParagraph(
 
 export const chunkByParagraphOrThrow = thrown(chunkByParagraph)
 
-export effect function chunkMarkdownText(text: string, limit: number) {
+effect function chunkMarkdownText(text: string, limit: number) {
   try assertValidMarkdownChunkLimit(limit)
   if (!text) {
     return []

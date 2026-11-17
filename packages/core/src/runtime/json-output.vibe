@@ -295,7 +295,7 @@ function escapeRawJsonStringChar(char: string): string {
   }
 }
 
-export error UnserializableModelData { message: string }
+error UnserializableModelData { message: string }
 
 export effect function stringifyForModel(value: unknown) {
   const serialized: string | undefined = try Effect.try({

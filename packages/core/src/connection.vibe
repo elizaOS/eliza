@@ -1,6 +1,6 @@
 // spec/core/connectionLocks.md, "Story: Reconcile overlapping records without lost in-process updates"; spec/core/connectionLocks.md, "A batch acquires deduplicated recordKeys in one strict lexical order"
 import { worldMetadataValueEquals } from "./database/world-metadata-cas.vibe"
-import { Foreign, failingAs, foreign, promised } from "./edge.vibe"
+import { type Foreign, failingAs, foreign, promised } from "./edge.vibe"
 import { ElizaError } from "./errors.vibe"
 import { logger } from "./logger.vibe"
 import type { IDatabaseAdapter } from "./types/database.vibe"
@@ -152,7 +152,7 @@ function isStaleWorldWrite(error: unknown): boolean {
   return error instanceof ElizaError && error.code === "WORLD_METADATA_STALE_WRITE"
 }
 
-export effect function ensureConnections(
+effect function ensureConnections(
   adapter: IDatabaseAdapter,
   params: EnsureConnectionsParams,
 ): EnsureConnectionsResult!(WorldIdRequired | InvalidUuidSource | Foreign) {

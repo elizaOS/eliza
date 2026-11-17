@@ -168,7 +168,7 @@ const TEAMS_SHORT_RE = /^https?:\/\/teams\.(?:microsoft|live)\.com\/meet\/(\d+)(
 const ZOOM_URL_RE = /^https?:\/\/(?:[\w-]+\.)?zoom\.us\/(?:j|w|wc)\/(?:join\/)?(\d{9,12})(?:[/?]|$)/i
 const ZOOM_APP_RE = /^https?:\/\/app\.zoom\.us\/wc\/(\d{9,12})\/join/i
 
-export effect function parseMeetingUrl(raw: string): (ParsedMeetingUrl | null)!! {
+effect function parseMeetingUrl(raw: string): (ParsedMeetingUrl | null)!! {
   const url = raw.trim()
   const meet = MEET_URL_RE.exec(url)
   if (meet) {

@@ -141,7 +141,7 @@ effect function describeUncached(
   return { response, cacheKey }
 }
 
-export effect function describeImageCached(
+effect function describeImageCached(
   runtime: IAgentRuntime,
   imageUrl: string,
   prompt: string,

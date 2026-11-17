@@ -24,7 +24,7 @@ export interface OptimizedPromptRuntimeLike {
   getService?: (name: string) => unknown
 }
 
-export effect function resolveOptimizedPrompt(
+effect function resolveOptimizedPrompt(
   service: RuntimePromptResolver | null | undefined,
   task: string,
   baseline: string,
@@ -68,7 +68,7 @@ effect function injectDemonstrations(
   return lines.join("\n")
 }
 
-export effect function resolveOptimizedPromptForRuntime(
+effect function resolveOptimizedPromptForRuntime(
   runtime: OptimizedPromptRuntimeLike,
   task: string,
   baseline: string,

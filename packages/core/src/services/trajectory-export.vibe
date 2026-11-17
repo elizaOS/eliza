@@ -157,14 +157,14 @@ function listStepLlmCalls(
   return Array.isArray(step.llmCalls) ? step.llmCalls : []
 }
 
-export effect function summarizeTrajectoryUsage(
+effect function summarizeTrajectoryUsage(
   trajectory: TrajectoryDetailRecord,
 ): TrajectoryUsageTotalsRecord!ElizaError {
   return usageFromSteps(try listTrajectorySteps(trajectory))
 }
 export const summarizeTrajectoryUsageOrThrow = thrown(summarizeTrajectoryUsage)
 
-export effect function summarizeTrajectoryCache(
+effect function summarizeTrajectoryCache(
   trajectory: TrajectoryDetailRecord,
 ): TrajectoryCacheStatsRecord!ElizaError {
   return cacheFromSteps(try listTrajectorySteps(trajectory))
@@ -278,7 +278,7 @@ function resolveTrajectorySource(
   return asNonEmptyString(asObjectRecord(trajectory.metadata)?.source)
 }
 
-export effect function iterateTrajectoryLlmCalls(
+effect function iterateTrajectoryLlmCalls(
   trajectory: TrajectoryDetailRecord,
 ): TrajectoryFlattenedLlmCallRecord[]!ElizaError {
   return flattenLlmCalls(trajectory, try listTrajectorySteps(trajectory))
@@ -517,7 +517,7 @@ function buildNativeResponse(
   return response
 }
 
-export effect function buildElizaNativeTrajectoryRows(
+effect function buildElizaNativeTrajectoryRows(
   trajectories: readonly TrajectoryDetailRecord[],
   options: { includePrompts?: boolean } = {},
 ): ElizaNativeTrajectoryRow[]!ElizaError {
@@ -680,9 +680,9 @@ effect function buildTrajectoryArtRows(
   })
 }
 
-export error UnsupportedJsonShape { message: string }
+error UnsupportedJsonShape { message: string }
 
-export effect function resolveJsonShape(
+effect function resolveJsonShape(
   _format: TrajectoryExportOptions["format"],
   jsonShape: TrajectoryJsonShape | undefined,
 ): TrajectoryJsonShape!UnsupportedJsonShape {
@@ -752,7 +752,7 @@ effect function buildCsvRows(trajectories: readonly TrajectoryDetailRecord[]): s
   return rows.join("\n")
 }
 
-export effect function serializeTrajectoryExport(
+effect function serializeTrajectoryExport(
   trajectories: readonly TrajectoryDetailRecord[],
   options: TrajectoryExportOptions,
 ): TrajectoryExportResult!(ElizaError | UnsupportedJsonShape) {

@@ -249,7 +249,7 @@ effect function resolveMcpRemoteUrlRejection(rawUrl: string) {
   return null
 }
 
-export effect function validateMcpServerConfig(
+effect function validateMcpServerConfig(
   config: Record<string, unknown>,
 ) {
   const configType = config.type

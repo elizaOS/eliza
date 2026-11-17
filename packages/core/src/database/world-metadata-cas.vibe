@@ -1,6 +1,6 @@
 // spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"; spec/core/storage.md, "Revisions and pagination reject invalid numeric inputs"
 import { revisionMatches } from "../../gen/core__storage.effect.vibe"
-import { Foreign, foreignSync, thrown } from "../edge.vibe"
+import { type Foreign, foreignSync, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { Metadata } from "../types/primitives.vibe"
 import { isPlainObject } from "../utils/type-guards.vibe"
@@ -49,7 +49,7 @@ effect function cloneMetadata(metadata: Metadata | undefined): Metadata!Foreign 
   return try foreignSync(() => structuredClone(metadata ?? {}) as Metadata)
 }
 
-export effect function requireFreshWorldMetadataRevision(
+effect function requireFreshWorldMetadataRevision(
   storedMetadata: Metadata | undefined,
   writerMetadata: Metadata | undefined,
   worldId: string,
@@ -109,7 +109,7 @@ export effect function mergeWorldMetadataForLegacyWrite(
 }
 export const mergeWorldMetadataForLegacyWriteOrThrow = thrown(mergeWorldMetadataForLegacyWrite)
 
-export effect function advanceWorldMetadataRevision(
+effect function advanceWorldMetadataRevision(
   metadata: Metadata | undefined,
   currentRevision: number,
 ): Metadata!(ElizaError | Foreign) {
@@ -130,7 +130,7 @@ export effect function advanceWorldMetadataRevision(
 }
 export const advanceWorldMetadataRevisionOrThrow = thrown(advanceWorldMetadataRevision)
 
-export effect function appendWorldMetadataRoleAudit(
+effect function appendWorldMetadataRoleAudit(
   metadata: Metadata | undefined,
   audit: Record<string, unknown>,
 ): Metadata!Foreign {
@@ -145,7 +145,7 @@ export effect function appendWorldMetadataRoleAudit(
 }
 export const appendWorldMetadataRoleAuditOrThrow = thrown(appendWorldMetadataRoleAudit)
 
-export effect function initializeWorldMetadataRevision(
+effect function initializeWorldMetadataRevision(
   metadata: Metadata | undefined,
 ): Metadata!Foreign {
   const replacement = try cloneMetadata(metadata)
