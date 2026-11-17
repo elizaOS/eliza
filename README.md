@@ -12,6 +12,8 @@ The source baseline is Eliza commit
 starts from elizaOS/eliza-vibestack commit
 `71d7b30f404b91d7ec48741ac288d6c8d911f3e2`; its toolchain is merged from
 lalalune/vibestack commit `fd4f726016c0e2b465bc6dc7a02abebc0c2e0fb3`.
+The mixed-event dispatcher correction is shared with
+[Vibestack #128](https://github.com/lalalune/vibestack/pull/128).
 
 ## Setup and verification
 
