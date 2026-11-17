@@ -299,8 +299,9 @@ public final class ContactsEditor {
   }
   /**
    * The contact's one note row, or null when it has none. Several note rows (each linked raw contact
-   * can carry one) or a note this class would refuse to write back are Incomplete: only the notes
-   * field is then unavailable; the rest of the contact stays editable.
+   * can carry one), or a note this class would refuse to write back (longer than MAX_NOTES or with
+   * other control characters), are Incomplete: only the notes field is then unavailable; the rest
+   * of the contact stays editable.
    */
   private ScalarRow noteRow(long contact, CancellationSignal cancel) throws Incomplete {
     ScalarRow note = scalar(contact, Note.CONTENT_ITEM_TYPE, new String[] { Note.NOTE }, 0, cancel);

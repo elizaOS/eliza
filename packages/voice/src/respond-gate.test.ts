@@ -132,6 +132,9 @@ it("defers only interim transcripts that can still become a whole annotation", (
     "(laugh",
     "*music* *To",
     "*music*",
+    "*Dramatic ",
+    "*music ",
+    "[",
   ])
     expect(mayBecomeNonSpeechVoiceTranscript(text), text).toBe(true);
   for (const text of [
@@ -140,6 +143,10 @@ it("defers only interim transcripts that can still become a whole annotation", (
     "[noise] wait",
     "*yes* stop",
     "(laughs) wait",
+    "(wait stop talking",
+    "*yes stop",
+    "[ speaking in foreign language",
+    "*music now",
   ])
     expect(mayBecomeNonSpeechVoiceTranscript(text), text).toBe(false);
 });

@@ -493,6 +493,13 @@ public final class ContactsEditorTest {
     require(!imported.has("notes") && imported.getJSONArray("phoneNumbers").length() == 0, "a note with control characters is omitted, not refused");
     JSObject overwrite = off(() -> editor.save("103", imported.getString("version"), structured("", null, null, "clean", list("number", "5550101", "home"), new JSONArray())));
     require(overwrite.getString("status").equals("failed") && data.get(note).get("data1").equals("form\ffeed"), "it is never overwritten from an omitted field");
+
+    long longRaw = addRaw(0); addData(longRaw, PHONE, "5550102", 2, null);
+    String longNote = "x".repeat(ContactsEditor.MAX_NOTES + 1); long kept = addData(longRaw, NOTE, longNote, null, null);
+    JSObject tooLong = get(String.valueOf(longRaw + 100));
+    require(!tooLong.has("notes") && tooLong.getJSONArray("phoneNumbers").length() == 1, "a note over the bound is omitted, not clipped or refused");
+    JSObject clipped = off(() -> editor.save(String.valueOf(longRaw + 100), tooLong.getString("version"), structured("", null, null, "x", list("number", "5550102", "mobile"), new JSONArray())));
+    require(clipped.getString("status").equals("failed") && data.get(kept).get("data1").equals(longNote), "and never overwritten");
   }
   @Test public void renamingALinkedContactMakesTheEditedNameTheOneAndroidShows() throws Exception {
     aggregateNames = true;

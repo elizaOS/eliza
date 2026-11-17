@@ -95,9 +95,9 @@ Owner notes are edit-screen data, never added to the catalog or automatic agent
 context. `notes` omission preserves the provider rows; an empty string clears
 only the selected note value. Notes keep whitespace and allow CR, LF and tabs,
 with `CONTACT_MAX_NOTES` / `ContactsEditor.MAX_NOTES` set to 8192 UTF-16 code units.
-A scalar editor cannot represent multiple note rows (linked raw contacts can
-each carry one) or a stored note with other control characters. `get` then
-omits `notes` and keeps the rest of the contact editable; a save that omits
+A scalar editor cannot represent several note rows (linked raw contacts can
+each carry one), a stored note longer than 8192 code units, or a note with
+other control characters. `get` then omits `notes` and keeps the rest of the contact editable; a save that omits
 notes does not touch those rows, and a save that supplies notes is answered
 `failed` with nothing written. Use the system editor for those notes. Multiple
 name rows on the selected name raw contact are refused as `incomplete`.

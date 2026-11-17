@@ -95,8 +95,9 @@ export interface ContactDetail {
   /** Structured values from the provider, never split from displayName. Older hosts omit them. */
   givenName?: string;
   familyName?: string;
-  /** Omitted by older hosts, and when the stored notes cannot be edited as one value (several
-   * linked note rows, or other control characters). Leave `notes` out of the draft then. */
+  /** Omitted by older hosts, and when the stored notes cannot be edited as one value: several
+   * note rows (linked raw contacts can each carry one), a note longer than CONTACT_MAX_NOTES, or
+   * a note with control characters other than CR, LF and tab. Leave `notes` out of the draft then. */
   notes?: string;
   starred: boolean;
   phoneNumbers: ContactPhone[];
