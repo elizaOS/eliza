@@ -4,7 +4,7 @@ What every native bridge of an Android host shares: when a renderer call is
 admitted, how the app's main Activity keeps its WebView, and how a device
 change is reported. Each bridge spec in this directory imports it
 (`import bridge.* from "./bridge"`, or `"../bridge"`) and adds its own
-operations; host generation is [the host profile](../build/androidHost.md).
+operations; host generation is the host profile in [os builds](../index.md).
 The sources are `ElizaBridgeActivity.java` of the browser surface plugin and
 the provider writes of the calendar and contacts plugins.
 

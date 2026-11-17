@@ -4,7 +4,7 @@ What the system and location bridges (`ElizaSystem`, `ElizaLocation`) may claim
 about handoffs, device facts, volume and brightness, and default roles. A
 handoff reports the [bridge](./bridge.md)'s `HandoffOutcome`: `Opened` means
 Android showed its screen, never that the owner changed anything there.
-[Wi-Fi](./wifi.md) uses the Internet panel handoff and the facts defined here.
+Wi-Fi uses the Internet panel handoff and the facts defined here.
 
 ## Story: Hand me to Android's own screens and apps
 
