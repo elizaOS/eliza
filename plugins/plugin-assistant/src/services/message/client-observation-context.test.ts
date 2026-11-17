@@ -114,6 +114,16 @@ describe("current-turn client observation", () => {
       expect(text).not.toContain(omitted);
   });
 
+  test("keeps a turn that carries the Notes folder list as dialogue", () => {
+    const text = renderedText(
+      currentMessageEvents(
+        residentTurn({ notesFolders: [{ id: "f-travel", name: "Travel" }] }),
+      ),
+    );
+    expect(text).toContain("# Current message\nOwner: Add milk to this note");
+    expect(text).not.toContain("f-travel");
+  });
+
   test("records the before and after prompt size of one resident turn", () => {
     const before = renderedText(unprojected(residentTurn()));
     const after = renderedText(currentMessageEvents(residentTurn()));

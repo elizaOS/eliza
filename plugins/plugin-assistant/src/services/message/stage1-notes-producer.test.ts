@@ -95,7 +95,7 @@ describe("same-call Notes field producer", () => {
   );
   it.each([
     { classification: "mutation_requested", operations: ["create", "create"] },
-    { classification: "mutation_requested", operations: ["restore"] },
+    { classification: "mutation_requested", operations: ["archive"] },
     {
       classification: "mutation_requested",
       operations: ["create"],

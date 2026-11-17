@@ -225,6 +225,7 @@ const DIALOGUE_METADATA_FIELDS = new Set([
 	"__responseContext",
 	"viewClientId",
 	"injectionRisk",
+	"notesFolders",
 ]);
 
 function isStringArray(value: unknown): boolean {
@@ -258,6 +259,22 @@ function isDialogueMetadataValue(key: string, value: unknown): boolean {
 		return true;
 	if (key === "uiViewCapabilities" || key === "uiViewActionNames")
 		return isStringArray(value);
+	// The device's Notes folder list rides each message for the Notes
+	// providers; it is host context, not dialogue.
+	if (key === "notesFolders")
+		return (
+			Array.isArray(value) &&
+			value.every(
+				(row) =>
+					row &&
+					typeof row === "object" &&
+					!Array.isArray(row) &&
+					Object.entries(row).every(
+						([field, item]) =>
+							(field === "id" || field === "name") && typeof item === "string",
+					),
+			)
+		);
 	if (key === "__responseContext" || key === "injectionRisk") {
 		if (!value || typeof value !== "object" || Array.isArray(value))
 			return false;

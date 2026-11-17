@@ -2131,6 +2131,114 @@ describe("NOTES operation parsing", () => {
   });
 });
 
+describe("restore and folder moves", () => {
+  it("restores a deleted note by text or ID and reports misses as results", async () => {
+    const runtime = await harness();
+    const service = getNotesService(runtime);
+    const packing = await service.createNote({ content: "Packing\nSocks" });
+    const taxes = await service.createNote({ content: "Taxes\nReceipts" });
+    await service.deleteNote(packing.id);
+    await service.deleteNote(taxes.id);
+
+    const byText = await run(runtime, "restore", {
+      action: "restore",
+      content: "packing",
+    });
+    expect(byText).toMatchObject({
+      success: true,
+      data: { op: "restore", noteId: packing.id },
+      effectReceipts: [
+        {
+          operation: "notes.note.restore",
+          resource: { kind: "notes.note", id: packing.id },
+        },
+      ],
+    });
+    expect(service.listNotes().map((note) => note.id)).toEqual([packing.id]);
+
+    // A current note is not in Recently deleted, so it cannot be restored.
+    expect(
+      await run(runtime, "restore", { action: "restore", content: "packing" }),
+    ).toMatchObject({ success: false, error: "NOTES_NOT_FOUND" });
+    expect(
+      await run(runtime, "restore", { action: "restore", noteId: taxes.id }),
+    ).toMatchObject({ success: true, data: { noteId: taxes.id } });
+    expect(service.snapshot().trash ?? []).toEqual([]);
+  });
+
+  it("moves a note by folder name only when the message shares the folder list", async () => {
+    const runtime = await harness();
+    const service = getNotesService(runtime);
+    const note = await service.createNote({ content: "Packing\nSocks" });
+    const move = async (
+      parameters: Record<string, unknown>,
+      notesFolders?: { id: string; name: string }[],
+    ) => {
+      const request = await boundNotesRequest(runtime, {
+        text: notesFixtureText.move,
+        operations: ["move"],
+        message: notesFolders
+          ? { content: { text: "", metadata: { notesFolders } } }
+          : undefined,
+      });
+      return {
+        offered: await notesPlugin.actions
+          ?.find((action) => action.name === "NOTES_MOVE")
+          ?.validate?.(runtime, request.message, request.state),
+        result: await request.handler(notesAction, {
+          action: "move",
+          ...parameters,
+        }),
+      };
+    };
+    const folders = [
+      { id: "f-travel", name: "Travel" },
+      { id: "f-work", name: "Work" },
+    ];
+
+    const unshared = await move({ noteId: note.id, folder: "Travel" });
+    expect(unshared.offered).toBe(false);
+    expect(unshared.result).toMatchObject({
+      success: false,
+      error: "NOTES_FOLDERS_UNAVAILABLE",
+    });
+
+    const unknown = await move({ noteId: note.id, folder: "Trips" }, folders);
+    expect(unknown.offered).toBe(true);
+    expect(unknown.result).toMatchObject({
+      success: false,
+      error: "NOTES_FOLDER_NOT_FOUND",
+      data: { requiresInput: true, folders: ["Travel", "Work"] },
+    });
+    expect(service.listNotes()[0]?.format).toBeUndefined();
+
+    const moved = await move(
+      { content: "packing", folder: " travel " },
+      folders,
+    );
+    expect(moved.result).toMatchObject({
+      success: true,
+      data: { op: "update", noteId: note.id, folder: "Travel" },
+      effectReceipts: [{ operation: "notes.note.update" }],
+    });
+    expect(service.listNotes()[0]).toMatchObject({
+      title: "Packing",
+      body: "\nSocks",
+      format: { kind: "text", data: { folderId: "f-travel" } },
+    });
+
+    const removed = await move({ noteId: note.id, folder: null }, folders);
+    expect(removed.result).toMatchObject({
+      success: true,
+      data: { folder: null },
+    });
+    expect(service.listNotes()[0]?.format).toEqual({ kind: "text", data: {} });
+    expect(
+      (await move({ content: "dentist", folder: "Work" }, folders)).result,
+    ).toMatchObject({ success: false, error: "NOTES_NOT_FOUND" });
+  });
+});
+
 describe("identical-duplicate notes", () => {
   async function seedLegacyCopies(
     runtime: IAgentRuntime,

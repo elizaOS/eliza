@@ -268,6 +268,8 @@ export const NOTES_REQUEST_OPERATIONS = Object.freeze([
 	"update",
 	"patch",
 	"delete",
+	"restore",
+	"move",
 ] as const);
 export type NotesRequestOperation = (typeof NOTES_REQUEST_OPERATIONS)[number];
 export type NotesRequestInterpretation = {
@@ -1059,7 +1061,9 @@ export function checkBoundNotesOperation(
 		operation === "create" ||
 		operation === "update" ||
 		operation === "patch" ||
-		operation === "delete";
+		operation === "delete" ||
+		operation === "restore" ||
+		operation === "move";
 	// An observation never fixes or changes the mutation identity of this host
 	// action. A compound view action may read before its one resolved mutation,
 	// and a later read cannot erase a settled denied mutation.
@@ -1237,15 +1241,17 @@ export function bindRequestOperationResult(
 						row.op === attempt.registeredOperation ||
 						row.op === attempt.resolved,
 				);
-			// The Notes owner resolves its registered patch action to update before
-			// checking permission. An explicit edit may be fulfilled by that patch;
-			// keep its raw dispatch identity for matching and freshness checks.
+			// The Notes owner resolves its registered patch and move actions to
+			// update before checking permission. An explicit edit may be fulfilled
+			// by either; keep the raw dispatch identity for matching and freshness
+			// checks.
 			const requested =
 				value.interpretation?.status === "explicit"
 					? value.interpretation.operations.includes(
 							attempt.registeredOperation,
 						) ||
-						(attempt.registeredOperation === "patch" &&
+						((attempt.registeredOperation === "patch" ||
+							attempt.registeredOperation === "move") &&
 							attempt.resolved === "update" &&
 							value.interpretation.operations.includes("update"))
 					: undefined;

@@ -20,7 +20,7 @@ export const notesRequestEffectField: ResponseHandlerFieldEvaluator<NotesFieldVa
     // turn has no Notes effect.
     priority: 19.5,
     description:
-      "Classify only the CURRENT user's requested Notes effects: read_only for reads/history/navigation, mutation_requested for an explicit create/edit/append/delete request, unresolved for no Notes effect or uncertainty or unsupported operations such as restoring a deleted note. List only the requested registered operations, not a tool plan: create=new note, get/list=reads, update=edit, patch=append or patch edit, delete=remove; include read and write for compounds, with no duplicates. Quoted commands, past requests and operation words inside note content do not add operations. Use [] for unresolved/navigation-only; mutation_requested must name a mutation and read_only must not. This is semantic interpretation for completion accounting, not proof of intent truth, execution or write permission; existing permissions and full outcome evaluation still apply.",
+      "Classify only the CURRENT user's requested Notes effects: read_only for reads/history/navigation, mutation_requested for an explicit create/edit/append/delete/restore/move request, unresolved for no Notes effect or uncertainty or unsupported operations. List only the requested registered operations, not a tool plan: create=new note, get/list=reads, update=edit, patch=append or patch edit, delete=remove, restore=bring back a deleted note, move=put a note in a folder or take it out; include read and write for compounds, with no duplicates. Quoted commands, past requests and operation words inside note content do not add operations. Use [] for unresolved/navigation-only; mutation_requested must name a mutation and read_only must not. This is semantic interpretation for completion accounting, not proof of intent truth, execution or write permission; existing permissions and full outcome evaluation still apply.",
     schema: {
       type: "object",
       properties: {
@@ -31,7 +31,7 @@ export const notesRequestEffectField: ResponseHandlerFieldEvaluator<NotesFieldVa
         operations: {
           type: "array",
           items: { type: "string", enum: [...NOTES_REQUEST_OPERATIONS] },
-          maxItems: 6,
+          maxItems: NOTES_REQUEST_OPERATIONS.length,
         },
       },
       required: ["classification", "operations"],
