@@ -110,6 +110,10 @@ export const notesPlugin: Plugin = {
           ),
         },
         get: { similes: ["NOTES_GET_NOTE"] },
+        delete: {
+          description:
+            "Move one note to Recently deleted. Use noteId for an exact ID from a current record. A content lookup deletes only when the user's message names the note's title; otherwise the result returns the closest note as a candidate and nothing is deleted until the user confirms. Several matches also return candidates for the user's choice.",
+        },
         // Strict tool grammars cannot require UPDATE's target, edit form or
         // revision because each form needs different fields. Sent here to
         // append, the live planner wrote {} and then an empty literal edit

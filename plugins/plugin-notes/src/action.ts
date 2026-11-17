@@ -273,6 +273,38 @@ function updateNoteFromChatReference(
   return service.updateNoteWithCommit(noteId, patch, expectedRevision);
 }
 
+/**
+ * A lookup that finds no note, several notes, or a note the owner did not
+ * name is an answer for the model, not a crash. Several notes and a name
+ * mismatch need the owner's choice, so they list the candidates.
+ */
+function lookupFailure(
+  error: unknown,
+  pool: readonly StickyNote[],
+): ActionResult | undefined {
+  if (!(error instanceof ElizaError)) return undefined;
+  if (error.code === "NOTES_NOT_FOUND" || error.code === "NOTES_TRASH_EXPIRED")
+    return failure(error.message, error.code);
+  if (
+    error.code !== "NOTES_AMBIGUOUS_NOTE" &&
+    error.code !== "NOTES_DELETE_NAME_MISMATCH"
+  )
+    return undefined;
+  const ids = error.context?.candidateIds;
+  const rejected = failure(error.message, error.code);
+  return {
+    ...rejected,
+    data: {
+      ...rejected.data,
+      awaitingUserInput: true,
+      requiresInput: true,
+      candidates: pool
+        .filter((note) => Array.isArray(ids) && ids.includes(note.id))
+        .map(projectNoteForModel),
+    },
+  };
+}
+
 /** Known lookup/literal-edit guards reject before the store commits. */
 async function updateNoteResult(
   update: () => ReturnType<NotesService["updateNoteWithCommit"]>,
@@ -290,25 +322,8 @@ async function updateNoteResult(
   } catch (error) {
     // A valid edit with more than one target needs a user's selection, not
     // another planner attempt choosing an arbitrary ID from the note index.
-    if (error instanceof ElizaError && error.code === "NOTES_AMBIGUOUS_NOTE") {
-      const target = error.context?.target;
-      const rejected = failure(error.message, error.code);
-      return {
-        ...rejected,
-        data: {
-          ...rejected.data,
-          awaitingUserInput: true,
-          requiresInput: true,
-          ...(typeof target === "string"
-            ? {
-                candidates: service
-                  .findNotesByQuery(target)
-                  .map(projectNoteForModel),
-              }
-            : {}),
-        },
-      };
-    }
+    const rejected = lookupFailure(error, service.snapshot().notes);
+    if (rejected) return rejected;
     // error-policy:J3 literal-edit guards reject untrusted arguments before writing.
     if (
       error instanceof ElizaError &&
@@ -364,7 +379,7 @@ export const notesAction: Action = {
     "UPDATE_NOTE",
   ],
   description:
-    "Durable notes the user can write and read back. action=create writes a note from one content field; action=get reads one exact noteId; action=list reads/searches note text; action=patch appends text or edits selected title/body fields or exact text, preserving other content; action=update substitutes exact text, adds a NEW checklist item or edits authored checklist/transcript entries, or replaces complete plain-note content; action=delete removes one by exact noteId or matching title/body text. The first line is the note's label and later lines are its body. For append/add use action=patch with changes [] and textEdit append: field=item for one list item, field=body for an exact suffix; never rewrite existing content. Prefer textEdit for an exact substitution: the service preserves every other character without needing the model to read and rewrite the note. NOTES changes data, not the visible view: an explicit request to also open Notes needs its own navigation action (prefer VIEWS_SHOW when available).",
+    "Durable notes the user can write and read back. action=create writes a note from one content field; action=get reads one exact noteId; action=list reads/searches note text; action=patch appends text or edits selected title/body fields or exact text, preserving other content; action=update substitutes exact text, adds a NEW checklist item or edits authored checklist/transcript entries, or replaces complete plain-note content; action=delete moves one to Recently deleted by exact noteId or by the title the user named. The first line is the note's label and later lines are its body. For append/add use action=patch with changes [] and textEdit append: field=item for one list item, field=body for an exact suffix; never rewrite existing content. Prefer textEdit for an exact substitution: the service preserves every other character without needing the model to read and rewrite the note. NOTES changes data, not the visible view: an explicit request to also open Notes needs its own navigation action (prefer VIEWS_SHOW when available).",
   descriptionCompressed:
     "notes: create, list/search, patch append/title/body/exact text, authored checklist append/edit or whole-note update, delete; opening the Notes view separately uses VIEWS_SHOW when available, otherwise VIEWS",
   routingHint:
@@ -728,19 +743,29 @@ export const notesAction: Action = {
     }
 
     if (op === "delete") {
-      const removed = noteId
-        ? await service.deleteNoteWithCommit(noteId)
-        : await service.deleteNoteByLookupWithCommit("query", target);
-      return committed({
-        op,
-        noteId: removed.value.id,
-        note: removed.value,
-        deletedAt: removed.snapshot.trash?.findLast(
-          (entry) => entry.note.id === removed.value.id,
-        )?.deletedAt,
-        notesRevision: removed.snapshot.revision,
-        removedCount: removed.removedIds.length,
-      });
+      try {
+        // A text lookup can match body text. Deleting needs the note's title
+        // in the owner's own words; an exact ID comes from a current record.
+        const removed = noteId
+          ? await service.deleteNoteWithCommit(noteId)
+          : await service.deleteNoteByLookupWithCommit("query", target, {
+              requireTitleInText: message.content.text,
+            });
+        return committed({
+          op,
+          noteId: removed.value.id,
+          note: removed.value,
+          deletedAt: removed.snapshot.trash?.findLast(
+            (entry) => entry.note.id === removed.value.id,
+          )?.deletedAt,
+          notesRevision: removed.snapshot.revision,
+          removedCount: removed.removedIds.length,
+        });
+      } catch (error) {
+        const rejected = lookupFailure(error, service.snapshot().notes);
+        if (rejected) return rejected;
+        throw error;
+      }
     }
 
     const replacements = readAlternatives(params, [
@@ -883,7 +908,7 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; use latestBy for an explicit creation/update recency selection, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, put a known exact note ID in noteId; content searches the EXISTING note by title or body text, not by ID. For create, first resolve what the user wants stored versus instructions to the app. Do not assume every word after body is note content. An unquoted trailing app instruction can be ambiguous: ask before creating if it could belong to either. Quotation delimiters are not content unless explicitly requested; embedded or explicitly literal quote characters are content. Then preserve the resolved note text exactly, including punctuation, spaces and line breaks. A single-line note stays one line; do not invent a title/body split. If the user supplies a separate title and body, join those exact values with one newline.",
+        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; use latestBy for an explicit creation/update recency selection, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, put a known exact note ID in noteId; content searches the EXISTING note by title or body text, not by ID, and deletes only a note whose title the user named. For create, first resolve what the user wants stored versus instructions to the app. Do not assume every word after body is note content. An unquoted trailing app instruction can be ambiguous: ask before creating if it could belong to either. Quotation delimiters are not content unless explicitly requested; embedded or explicitly literal quote characters are content. Then preserve the resolved note text exactly, including punctuation, spaces and line breaks. A single-line note stays one line; do not invent a title/body split. If the user supplies a separate title and body, join those exact values with one newline.",
       required: false,
       subactions: ["create", "list", "update", "delete"],
       requiredForSubactions: ["create"],

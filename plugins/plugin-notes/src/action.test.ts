@@ -91,9 +91,10 @@ async function run(
   operation: NotesRequestOperation,
   parameters: Record<string, unknown>,
   callback?: Parameters<typeof notesAction.handler>[4],
+  text = notesFixtureText[operation],
 ): Promise<ActionResult> {
   const request = await boundNotesRequest(runtime, {
-    text: notesFixtureText[operation],
+    text,
     operations: [operation],
   });
   return request.handler(notesAction, parameters, callback);
@@ -584,10 +585,13 @@ describe("promoted Notes execution", () => {
         { title: "Exact label", body: "\nChanged body." },
       ]);
       expect(
-        await execute(runtime, "delete", {
-          name: "NOTES_DELETE",
-          params: { [name]: "Exact label" },
-        }),
+        await execute(
+          runtime,
+          "delete",
+          { name: "NOTES_DELETE", params: { [name]: "Exact label" } },
+          ["OWNER"],
+          "Delete the Exact label note.",
+        ),
       ).toMatchObject({ success: true });
       expect(getNotesService(runtime).listNotes()).toEqual([]);
     },
@@ -1341,10 +1345,13 @@ describe("promoted Notes execution", () => {
       },
     ]);
     expect(listed.data?.filterApplied).toBe(false);
-    const deleted = await execute(runtime, "delete", {
-      name: "NOTES_DELETE",
-      params: { content: "Conversation context QA" },
-    });
+    const deleted = await execute(
+      runtime,
+      "delete",
+      { name: "NOTES_DELETE", params: { content: "Conversation context QA" } },
+      ["OWNER"],
+      "Delete the Conversation context QA note.",
+    );
     expect(deleted.success).toBe(true);
     expect(deleted.data?.deletedAt).toEqual(
       getNotesService(runtime)
@@ -2089,12 +2096,35 @@ describe("NOTES operation parsing", () => {
       title: "bins go out wednesday",
     });
 
-    const deleted = await run(runtime, "delete", {
+    // A text match is not enough to delete: the owner must name the title.
+    const unnamed = await run(runtime, "delete", {
       action: "delete",
       content: "wednesday",
     });
+    expect(unnamed).toMatchObject({
+      success: false,
+      error: "NOTES_DELETE_NAME_MISMATCH",
+      data: {
+        requiresInput: true,
+        candidates: [{ id: created.data?.noteId }],
+      },
+    });
+    expect(unnamed.effectReceipts).toBeUndefined();
+    expect(getNotesService(runtime).listNotes()).toHaveLength(1);
+
+    const deleted = await run(
+      runtime,
+      "delete",
+      { action: "delete", content: "wednesday" },
+      undefined,
+      "delete the bins go out wednesday note",
+    );
     expect(deleted.success).toBe(true);
     expect(deleted.data?.note).toEqual(updated.data?.note);
+
+    expect(
+      await run(runtime, "delete", { action: "delete", content: "dentist" }),
+    ).toMatchObject({ success: false, error: "NOTES_NOT_FOUND" });
 
     const after = await run(runtime, "list", { action: "list" });
     expect(after.data).toMatchObject({ count: 0, total: 0, notes: [] });
@@ -2177,10 +2207,13 @@ describe("identical-duplicate notes", () => {
       content: "spare key under the mat",
     });
 
-    const result = await run(runtime, "delete", {
-      action: "delete",
-      content: "milk",
-    });
+    const result = await run(
+      runtime,
+      "delete",
+      { action: "delete", content: "milk" },
+      undefined,
+      "delete the i need to buy milk note",
+    );
     expect(result.success).toBe(true);
     expect(result.data).toMatchObject({
       removedCount: 4,
@@ -2204,9 +2237,23 @@ describe("identical-duplicate notes", () => {
       content: "buy milk for the cat",
     });
 
-    await expect(
-      run(runtime, "delete", { action: "delete", content: "milk" }),
-    ).rejects.toMatchObject({ code: "NOTES_AMBIGUOUS_NOTE" });
+    const result = await run(runtime, "delete", {
+      action: "delete",
+      content: "milk",
+    });
+    expect(result).toMatchObject({
+      success: false,
+      error: "NOTES_AMBIGUOUS_NOTE",
+      data: { requiresInput: true, awaitingUserInput: true },
+    });
+    expect(
+      (result.data?.candidates as StickyNote[] | undefined)?.map(
+        (note) => note.title,
+      ),
+    ).toEqual(
+      expect.arrayContaining(["buy milk at aldi", "buy milk for the cat"]),
+    );
+    expect(getNotesService(runtime).listNotes()).toHaveLength(2);
   });
 
   it("updates one logical note and consolidates its identical stored copies", async () => {
@@ -2236,14 +2283,17 @@ describe("identical-duplicate notes", () => {
     await service.createNote({ title: "buy milk", body: "", color: "yellow" });
     await service.createNote({ title: "buy milk", body: "", color: "green" });
 
-    await expect(
-      run(runtime, "delete", { action: "delete", content: "buy milk" }),
-    ).rejects.toMatchObject({ code: "NOTES_AMBIGUOUS_NOTE" });
+    expect(
+      await run(runtime, "delete", { action: "delete", content: "buy milk" }),
+    ).toMatchObject({ success: false, error: "NOTES_AMBIGUOUS_NOTE" });
 
-    const deleted = await run(runtime, "delete", {
-      action: "delete",
-      content: "buy milk green",
-    });
+    const deleted = await run(
+      runtime,
+      "delete",
+      { action: "delete", content: "buy milk green" },
+      undefined,
+      "delete the green buy milk note",
+    );
     expect(deleted.success).toBe(true);
     expect(service.listNotes().map((note) => note.color)).toEqual(["yellow"]);
   });
