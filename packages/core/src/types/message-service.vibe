@@ -15,13 +15,7 @@ import type { State } from "./state.vibe"
 
 export type {
   TypedReadEgressReceipt,
-  TypedReadFact,
-  TypedReadReplyBinding,
-  TypedReadReplyPart,
-  TypedReadReplyPolicy,
   TypedReadReplyResolver,
-  TypedReadReplyVerdict,
-  TypedReadRequirement,
 } from "../runtime/typed-read-contract.vibe"
 
 export interface MessageProcessingOptions {

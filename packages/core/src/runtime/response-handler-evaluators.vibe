@@ -408,7 +408,7 @@ effect function recordEvaluatorFailure(
   ))
 }
 
-export effect function runResponseHandlerEvaluators(args: ResponseHandlerEvaluatorsArgs): ResponseHandlerEvaluationRunResult!Foreign {
+effect function runResponseHandlerEvaluators(args: ResponseHandlerEvaluatorsArgs): ResponseHandlerEvaluationRunResult!Foreign {
   const candidates = [
     ...(args.evaluators ?? []),
     ...(args.runtime.responseHandlerEvaluators ?? []),

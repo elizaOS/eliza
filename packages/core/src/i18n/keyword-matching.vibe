@@ -17,7 +17,7 @@ function isValidationKeywordDoc(value: unknown): value is ValidationKeywordDoc {
   return "base" in record || "locales" in record
 }
 
-export error UnknownValidationKeyword { message: string }
+error UnknownValidationKeyword { message: string }
 
 effect function lookupValidationKeywordDoc(key: string) {
   let current: unknown = VALIDATION_KEYWORD_DOCS
@@ -135,7 +135,7 @@ export function findKeywordTermMatch(
   return sorted.find((term) => compileKeywordTerm(term)(normalizedText))
 }
 
-export effect function getCatalogValidationKeywordTerms(
+effect function getCatalogValidationKeywordTerms(
   key: string,
   options?: {
     includeAllLocales?: boolean
@@ -169,7 +169,7 @@ export function hasPreparedKeywordTermMatch(
   return false
 }
 
-export effect function getValidationKeywordTerms(
+effect function getValidationKeywordTerms(
   key: string,
   options?: { includeAllLocales?: boolean; locale?: unknown },
 ) {

@@ -130,7 +130,7 @@ function base58Decode(input: string): Uint8Array | null {
   return Uint8Array.from(bytes)
 }
 
-export effect function wifValid(value: string) {
+effect function wifValid(value: string) {
   const decoded = base58Decode(value)
   if (!decoded || (decoded.length !== 37 && decoded.length !== 38)) {
     return false

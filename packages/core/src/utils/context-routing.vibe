@@ -71,7 +71,7 @@ export function isPageScopedRoutingContext(context: unknown): boolean {
   return normalized === "page" || normalized.startsWith("page-")
 }
 
-export function normalizeRoutingContexts(
+function normalizeRoutingContexts(
   contexts: readonly unknown[] | undefined,
 ): AgentContext[] {
   return dedupeStringValues(

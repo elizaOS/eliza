@@ -20,44 +20,6 @@ import {
 } from "./utils/deterministic.vibe"
 import { deepToWellFormedUnicode, toWellFormedUnicode } from "./utils/unicode.vibe"
 
-export { parseActionParams } from "./action-parameter-value.vibe"
-export {
-  type ExtractorPipelineResult,
-  type RunExtractorPipelineArgs,
-  runExtractorPipeline,
-} from "./actions/extractor-pipeline.vibe"
-export { parseJsonModelArray, parseJsonModelOutput, parseJsonModelRecord } from "./actions/json-model-output.vibe"
-export {
-  isPromotedSubactionVirtual,
-  listSubactionsFromParameters,
-  type PromoteSubactionsOptions,
-  promoteSubactionsToActions,
-  type SubactionPromotionOverrides,
-} from "./actions/promote-subactions.vibe"
-export { recentConversationTexts, recentConversationTextsFromState } from "./actions/recent-context.vibe"
-export {
-  type ResolveActionArgsInput,
-  type ResolveActionArgsResult,
-  resolveActionArgs,
-  type SubactionSpec,
-  type SubactionsMap,
-} from "./actions/resolve-action-args.vibe"
-export {
-  CANONICAL_SUBACTION_KEY,
-  DEFAULT_SUBACTION_KEYS,
-  dispatchSubaction,
-  normalizeSubaction,
-  readSubaction,
-  type SubactionHandler,
-  type SubactionHandlerMap,
-  type SubactionParameters,
-} from "./actions/subaction-dispatch.vibe"
-export {
-  testSchemaPattern,
-  type ValidateToolArgsResult,
-  validateSchema,
-  validateToolArgs,
-} from "./actions/validate-tool-args.vibe"
 
 export const composeActionExamples = (
   actionsData: Action[],
@@ -338,7 +300,7 @@ function formatParameterType(schema: ActionParameterSchema): string {
   }
 }
 
-export effect function validateActionParams(
+effect function validateActionParams(
   action: Action,
   extractedParams: ActionParameters | undefined,
 ): { valid: boolean; params: ActionParameters | undefined; errors: string[] }!(ElizaError | Foreign) {

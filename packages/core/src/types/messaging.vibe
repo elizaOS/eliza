@@ -329,11 +329,11 @@ export function inspectSendHandlerResult(
   }
 }
 
-export error DeliveryNotConfirmed { message: string }
+error DeliveryNotConfirmed { message: string }
 
-export error DeliveryEvidenceIncomplete { message: string }
+error DeliveryEvidenceIncomplete { message: string }
 
-export effect function requireConfirmedSendHandlerDelivery(
+effect function requireConfirmedSendHandlerDelivery(
   value: Awaited<SendHandlerResult>,
 ): Extract<SendHandlerDisposition, { kind: "delivered" }>!(DeliveryNotConfirmed | DeliveryEvidenceIncomplete) {
   const disposition = inspectSendHandlerResult(value)

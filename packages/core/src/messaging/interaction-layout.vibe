@@ -55,7 +55,7 @@ function firstNonBlankText(
   return undefined
 }
 
-export error InvalidButtonsPerRow { message: string }
+error InvalidButtonsPerRow { message: string }
 
 effect function resolveButtonsPerRow(value: number | undefined): number!InvalidButtonsPerRow {
   if (value === undefined) return 3
@@ -98,7 +98,7 @@ function optionButtons(
   }
 }
 
-export effect function toNeutralLayout(
+effect function toNeutralLayout(
   block: InteractionBlock,
   opts: LayoutOptions = {},
 ): NeutralLayout!(InvalidButtonsPerRow | Foreign) {

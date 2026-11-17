@@ -32,7 +32,7 @@ effect function throwIfAborted(signal: AbortSignal | undefined): void!Foreign {
   return try Effect.try({ try: () => signal?.throwIfAborted(), catch: (cause) => new Foreign({ cause }) })
 }
 
-export effect function drainChatPreHandlers(
+effect function drainChatPreHandlers(
   registry: ChatPreHandlerRegistry,
   ctx: ChatPreHandlerContext,
 ): (ChatPreHandlerResult | null)!Foreign {

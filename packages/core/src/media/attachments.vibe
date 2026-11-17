@@ -56,7 +56,7 @@ export interface ResolvedAttachmentBytes {
   fileName?: string
 }
 
-export effect function resolveAttachmentBytes(
+effect function resolveAttachmentBytes(
   url: string,
   opts?: { maxBytes?: number },
 ) {

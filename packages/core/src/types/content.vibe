@@ -176,7 +176,7 @@ export function isContentReference(value: unknown): value is ContentReference {
   return Exit.isSuccess(runSyncExit(validateContentReference(value)))
 }
 
-export effect function validateReadSlice(value: unknown): ReadSlice!InvalidContentContract {
+effect function validateReadSlice(value: unknown): ReadSlice!InvalidContentContract {
   const input = try record(value, "slice")
   try rejectUnknownKeys(input, READ_SLICE_KEYS, "slice")
   const rawRange = try record(input.range, "slice.range")
@@ -216,7 +216,7 @@ export effect function validateReadSlice(value: unknown): ReadSlice!InvalidConte
 }
 export const validateReadSliceOrThrow = thrown(failingAs(TypeError, validateReadSlice))
 
-export effect function validateReadView(value: unknown): ReadView!InvalidContentContract {
+effect function validateReadView(value: unknown): ReadView!InvalidContentContract {
   const input = try record(value, "readView")
   try rejectUnknownKeys(input, READ_VIEW_KEYS, "readView")
   const reference = try validateContentReference(input.reference)
@@ -232,12 +232,12 @@ export function isReadView(value: unknown): value is ReadView {
   return Exit.isSuccess(runSyncExit(validateReadView(value)))
 }
 
-export effect function buildContentReference(input: ContentReference): ContentReference!InvalidContentContract {
+effect function buildContentReference(input: ContentReference): ContentReference!InvalidContentContract {
   return try validateContentReference(input)
 }
 export const buildContentReferenceOrThrow = thrown(failingAs(TypeError, buildContentReference))
 
-export effect function buildReadSlice(input: BuildReadSliceInput): ReadSlice!InvalidContentContract {
+effect function buildReadSlice(input: BuildReadSliceInput): ReadSlice!InvalidContentContract {
   return try validateReadSlice({
     ...input,
     hasPrevious: input.range.start > 0,
@@ -247,7 +247,7 @@ export effect function buildReadSlice(input: BuildReadSliceInput): ReadSlice!Inv
 }
 export const buildReadSliceOrThrow = thrown(failingAs(TypeError, buildReadSlice))
 
-export effect function buildReadView(input: ReadView): ReadView!InvalidContentContract {
+effect function buildReadView(input: ReadView): ReadView!InvalidContentContract {
   return try validateReadView(input)
 }
 export const buildReadViewOrThrow = thrown(failingAs(TypeError, buildReadView))

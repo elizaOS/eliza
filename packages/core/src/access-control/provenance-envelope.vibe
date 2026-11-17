@@ -316,7 +316,7 @@ type CrossRoomRecallGate =
   | { allowed: true }
   | { allowed: false; reason: string }
 
-export error UnhandledDisclosureBasis { message: string }
+error UnhandledDisclosureBasis { message: string }
 
 effect function deniedCrossRoomGateReason(
   decision: OwnerExclusiveDisclosureDecision,
@@ -494,7 +494,7 @@ effect function resolveRequesterAccessContext(
   ) catch (failure) => ({ ok: false as const, cause: thrownValue(failure) })
 }
 
-export effect function searchCanonicalConversationMemories(
+effect function searchCanonicalConversationMemories(
   input: CanonicalMemorySearchInput,
 ) {
   const { deliveryMessage } = input

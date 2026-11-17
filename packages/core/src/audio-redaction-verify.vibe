@@ -92,7 +92,7 @@ function missingSentinels(
   return missing
 }
 
-export effect function judgeRedactedTranscript(
+effect function judgeRedactedTranscript(
   verifierId: string,
   transcript: string,
   expectation: RedactionVerifyExpectation,
@@ -129,7 +129,7 @@ function judge(
   }
 }
 
-export effect function verifyAudioRedaction(
+effect function verifyAudioRedaction(
   transcribers: readonly RedactionTranscriber[],
   input: RedactionTranscribeInput,
   expectation: RedactionVerifyExpectation,

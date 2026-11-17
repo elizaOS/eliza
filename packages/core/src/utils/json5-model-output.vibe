@@ -4,8 +4,8 @@ import { thrown } from "../edge.vibe"
 
 const jsonBlockPattern = /```(?:(?:json5|json)(?![A-Za-z0-9_-]))?\s*\r?\n?([\s\S]*?)\r?\n?```/i
 
-export error InvalidModelText { message: string }
-export error UnparsableModelJson { message: string; cause: unknown }
+error InvalidModelText { message: string }
+error UnparsableModelJson { message: string; cause: unknown }
 
 function unparsable(cause: unknown): UnparsableModelJson {
   return new UnparsableModelJson({ message: "Failed to parse invalid JSON", cause })
@@ -15,7 +15,7 @@ function parseJson5(source: string) {
   return Effect.try({ try: (): unknown => JSON5.parse(source.trim()), catch: unparsable })
 }
 
-export effect function extractAndParseJSONObjectFromText(text: string) {
+effect function extractAndParseJSONObjectFromText(text: string) {
   if (!text || typeof text !== "string") throw new InvalidModelText({ message: "Invalid input: text must be a non-empty string" })
   const parsed = parseJson5(text) catch effect (error) => {
     const match = text.match(jsonBlockPattern)

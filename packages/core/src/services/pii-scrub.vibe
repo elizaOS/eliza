@@ -350,5 +350,3 @@ export class PiiScrubService extends Service {
     this.scrub.batchQueue?.clear()
   }
 }
-
-export default PiiScrubService

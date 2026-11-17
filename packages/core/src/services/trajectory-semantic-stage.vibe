@@ -168,7 +168,7 @@ function createSemanticStageValidationState(): {
   }
 }
 
-export effect function recordedStageToSemanticStage(
+effect function recordedStageToSemanticStage(
   stage: RecordedStage,
 ): TrajectorySemanticStageRecord!ElizaError {
   const payload = sanitizeTrajectoryJsonObject({
@@ -197,7 +197,7 @@ export effect function recordedStageToSemanticStage(
 }
 export const recordedStageToSemanticStageOrThrow = thrown(recordedStageToSemanticStage)
 
-export effect function recordedStagesToSemanticStages(
+effect function recordedStagesToSemanticStages(
   stages: readonly RecordedStage[],
 ): TrajectorySemanticStageRecord[]!ElizaError {
   const converted = try mapPresent(stages, recordedStageToSemanticStage)
@@ -230,7 +230,7 @@ effect function assertUniqueStageIds(
   }
 }
 
-export effect function parseTrajectorySemanticStage(
+effect function parseTrajectorySemanticStage(
   value: unknown,
 ): TrajectorySemanticStageRecord!ElizaError {
   return try parseTrajectorySemanticStageWithState(

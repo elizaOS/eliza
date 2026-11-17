@@ -108,7 +108,7 @@ export const COMPLETION_CONTEXT_SCHEMA = {
   ],
 } satisfies JSONSchema & ActionParameterSchema
 
-export effect function withRequiredCompletionSourceIdentity(
+effect function withRequiredCompletionSourceIdentity(
   schema: JSONSchema,
   context: ContextObject,
   _exactRepair = false,
@@ -303,7 +303,7 @@ interface HistoricalEvidenceBinding {
   historicalEffects?: boolean | "settled"
 }
 
-export error UnparsableHistoricalReceipt { cause: unknown }
+error UnparsableHistoricalReceipt { cause: unknown }
 
 effect function historicalEntryBound(
   observation: unknown,
@@ -444,7 +444,7 @@ export effect function completionContextSources(context: ContextObject) {
 }
 export const completionContextSourcesOrThrow = thrown(failingAs(TypeError, completionContextSources))
 
-export effect function selectCompletionContext(
+effect function selectCompletionContext(
   context: ContextObject,
   options: { historicalEffects?: boolean | "settled" } = {},
 ): {
@@ -497,7 +497,7 @@ const PLANNER_QUERY_TOKEN_SURFACE_MODES: ReadonlySet<string> = new Set([
   "relay-delivery",
 ])
 
-export effect function referencePlannerQueryTokens(context: ContextObject): {
+effect function referencePlannerQueryTokens(context: ContextObject): {
   context: ContextObject
   applied: boolean
 }!(UnstableJson | Foreign) {

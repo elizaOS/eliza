@@ -531,7 +531,7 @@ function messageEventData(
   }
 }
 
-export effect function bridgeConnectorMessageReceivedToStreams(
+effect function bridgeConnectorMessageReceivedToStreams(
   eventType: string,
   payload: unknown,
 ) {
@@ -589,7 +589,7 @@ export effect function bridgeConnectorMessageReceivedToStreams(
 
 export const bridgeConnectorMessageReceivedToStreamsPromise = promised(bridgeConnectorMessageReceivedToStreams)
 
-export effect function bridgeMessageReceivedToStreams(payload: MessagePayload) {
+effect function bridgeMessageReceivedToStreams(payload: MessagePayload) {
   const source = resolveMessageSource(payload)
   const channel = resolveMessageChannel(payload, source)
   const sessionKey = resolveMessageSessionKey(payload)

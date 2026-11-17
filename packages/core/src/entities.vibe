@@ -7,7 +7,7 @@ import type { UUID } from "./types/primitives.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
 import { stringToUuid } from "./utils/string-to-uuid.vibe"
 
-export effect function resolveTrustedComponentSourceIds(
+effect function resolveTrustedComponentSourceIds(
   runtime: IAgentRuntime,
   world: World | null,
   components: NonNullable<Entity["components"]>,
@@ -67,7 +67,7 @@ function visibleComponents(
   })
 }
 
-export effect function withVisibleComponents(
+effect function withVisibleComponents(
   runtime: IAgentRuntime,
   world: World | null,
   entity: Entity,

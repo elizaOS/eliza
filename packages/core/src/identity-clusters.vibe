@@ -27,7 +27,7 @@ function getIdentityClusterResolver(
   return service
 }
 
-export effect function getRelatedEntityIds(
+effect function getRelatedEntityIds(
   runtime: IAgentRuntime,
   entityId: UUID,
 ) {
@@ -110,7 +110,7 @@ export function invalidateRelatedEntityIds(
   }
 }
 
-export effect function resolvePrimaryEntityId(
+effect function resolvePrimaryEntityId(
   runtime: IAgentRuntime,
   entityId: UUID,
 ) {

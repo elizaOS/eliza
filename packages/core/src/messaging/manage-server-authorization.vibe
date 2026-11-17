@@ -26,7 +26,7 @@ function denial(
   })
 }
 
-export effect function authorizeManageServerDestination(
+effect function authorizeManageServerDestination(
   runtime: IAgentRuntime,
   requesterEntityId: UUID,
   destination: MessageConnectorManageServerDestination,

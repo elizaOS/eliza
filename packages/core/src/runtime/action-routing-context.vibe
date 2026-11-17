@@ -43,8 +43,3 @@ export function getActionRoutingContext(): ActionRoutingContext | undefined {
   return getOrCreate().active()
 }
 
-export function runWithoutActionRoutingContext<T>(
-  fn: () => T | Promise<T>,
-): T | Promise<T> {
-  return getOrCreate().run(undefined, fn)
-}

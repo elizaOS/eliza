@@ -198,7 +198,7 @@ function settleReply(reply: ConfirmationReply): ConfirmationStatus {
   return settled.status === "Confirmed" ? "confirmed" : "cancelled"
 }
 
-export effect function requireConfirmation(
+effect function requireConfirmation(
   args: RequireConfirmationArgs,
 ): ConfirmationDecision!Foreign {
   const ttlMs = typeof args.ttlMs === "number"
@@ -265,7 +265,7 @@ export type DestructiveConfirmationGateResult =
     readonly metadata?: Record<string, unknown>
   }
 
-export effect function gateDestructiveConfirmation(
+effect function gateDestructiveConfirmation(
   args: RequireConfirmationArgs,
 ): DestructiveConfirmationGateResult!Foreign {
   const decision = try requireConfirmation(args)

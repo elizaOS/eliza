@@ -152,7 +152,7 @@ function isStaleWorldWrite(error: unknown): boolean {
   return error instanceof ElizaError && error.code === "WORLD_METADATA_STALE_WRITE"
 }
 
-export effect function ensureConnections(
+effect function ensureConnections(
   adapter: IDatabaseAdapter,
   params: EnsureConnectionsParams,
 ): EnsureConnectionsResult!(WorldIdRequired | InvalidUuidSource | Foreign) {

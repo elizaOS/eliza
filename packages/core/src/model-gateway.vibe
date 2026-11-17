@@ -52,7 +52,7 @@ export class ModelGatewayStrictError extends Data.TaggedError("ModelGatewayStric
   }
 }
 
-export effect function resolveModelGateway(
+effect function resolveModelGateway(
   getSetting: GetSettingFn,
 ): ModelGatewayResolution!ModelGatewayStrictError {
   const gatewayURL = trimToUndefined(getSetting(MODEL_GATEWAY_URL_KEY))

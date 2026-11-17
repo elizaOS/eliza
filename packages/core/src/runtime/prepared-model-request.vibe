@@ -203,7 +203,7 @@ effect function countPreparedInputTokens(
   }
 }
 
-export effect function createPreparedModelRequestGuard(
+effect function createPreparedModelRequestGuard(
   args: CreatePreparedModelRequestGuardArgs,
 ): PreparedModelRequestGuard!(ElizaError | Foreign) {
   const provider = args.provider.trim()

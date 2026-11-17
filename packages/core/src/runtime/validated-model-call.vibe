@@ -132,7 +132,7 @@ export interface CallModelWithValidationResult {
   attempts: number
 }
 
-export effect function callModelWithValidation(
+effect function callModelWithValidation(
   runtime: IAgentRuntime,
   options: CallModelWithValidationOptions,
 ): CallModelWithValidationResult!(SchemaValidationFailedError | Foreign) {

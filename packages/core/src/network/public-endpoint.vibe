@@ -190,10 +190,10 @@ export function isPublicInternetAddress(
   return false
 }
 
-export error NonPublicAddress { message: string }
-export error NonPublicHttpsUrl { message: string }
+error NonPublicAddress { message: string }
+error NonPublicHttpsUrl { message: string }
 
-export effect function assertPublicInternetAddress(address: string, family: number, resource: string) {
+effect function assertPublicInternetAddress(address: string, family: number, resource: string) {
   if (!isPublicInternetAddress(address, family)) {
     throw new NonPublicAddress({ message: `${resource} must resolve to a public address` })
   }
@@ -223,7 +223,7 @@ function parseEndpoint(value: string): URL | null {
   }
 }
 
-export effect function assertPublicHttpsEndpoint(value: string, resource: string) {
+effect function assertPublicHttpsEndpoint(value: string, resource: string) {
   const url = parseEndpoint(value)
   if (!url || !isPublicHttpsUrl(url)) throw new NonPublicHttpsUrl({ message: `${resource} must be a public https URL` })
   return url

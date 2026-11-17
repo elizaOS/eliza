@@ -40,7 +40,7 @@ export type RoleGrantSource =
   | "connector_admin"
   | "session"
 
-export { CANONICAL_ROLE_RANK, hasAtLeastRole, isAdminRank, ROLE_RANK } from "./access-control/role-primitives.vibe"
+export { hasAtLeastRole } from "./access-control/role-primitives.vibe"
 export type RolesWorldMetadata = {
   ownership?: { ownerId?: string }
   roles?: Record<string, RoleName>
@@ -276,7 +276,7 @@ effect function getEntityMetadata(
   return asRecord(entity?.metadata)
 }
 
-export effect function findWorldsForOwner(
+effect function findWorldsForOwner(
   runtime: IAgentRuntime,
   entityId: string,
 ): (World[] | null)!Foreign {
@@ -312,7 +312,7 @@ export effect function findWorldsForOwner(
 
 export const findWorldsForOwnerPromise = promised(findWorldsForOwner)
 
-export effect function getConfiguredOwnerEntityIds(
+effect function getConfiguredOwnerEntityIds(
   runtime: Pick<IAgentRuntime, "getSetting">,
 ) {
   const configuredAdminEntityId = getRuntimeSettingString(
@@ -345,7 +345,7 @@ export effect function hasConfiguredCanonicalOwner(runtime: IAgentRuntime) {
 
 export const hasConfiguredCanonicalOwnerOrThrow = thrown(hasConfiguredCanonicalOwner)
 
-export effect function resolveCanonicalOwnerId(
+effect function resolveCanonicalOwnerId(
   runtime: Pick<IAgentRuntime, "getSetting">,
   metadata?: RolesWorldMetadata,
 ): (string | null)!ElizaError {
@@ -595,7 +595,7 @@ export function setConnectorAdminWhitelist(
   runtime.setSetting(CONNECTOR_ADMINS_SETTING_KEY, JSON.stringify(normalized))
 }
 
-export effect function getConnectorAdminWhitelist(
+effect function getConnectorAdminWhitelist(
   runtime: IAgentRuntime,
 ) {
   const raw = getRuntimeSettingString(runtime, CONNECTOR_ADMINS_SETTING_KEY)
@@ -845,7 +845,7 @@ effect function resolveGrantedRole(
   return "ADMIN"
 }
 
-export effect function checkSenderPrivateAccess(
+effect function checkSenderPrivateAccess(
   runtime: IAgentRuntime,
   message: Memory,
 ): (
@@ -928,7 +928,7 @@ type ResolvedWorld = {
   metadata: RolesWorldMetadata
 }
 
-export effect function resolveWorldById(
+effect function resolveWorldById(
   runtime: IAgentRuntime,
   worldId: UUID,
 ): (ResolvedWorld | null)!Foreign {
@@ -1097,7 +1097,7 @@ effect function senderMeetsRole(context: AccessContext, requiredRole: RoleName, 
   return senderRank >= (ROLE_RANK[requiredRole] ?? 0)
 }
 
-export effect function hasRoleAccess(
+effect function hasRoleAccess(
   runtime: IAgentRuntime | undefined,
   message: Memory | undefined,
   requiredRole: RoleName,
@@ -1167,9 +1167,9 @@ export function recordRoleGrant(
   return changed
 }
 
-export error WorldUnresolved { message: string }
+error WorldUnresolved { message: string }
 
-export effect function setEntityRole(
+effect function setEntityRole(
   runtime: IAgentRuntime,
   message: Memory,
   targetEntityId: string,
@@ -1236,7 +1236,7 @@ effect function requireWorldMetadataCasCapability(adapter: IAgentRuntime["adapte
   )
 }
 
-export effect function setEntityRoleCas(
+effect function setEntityRoleCas(
   runtime: IAgentRuntime,
   message: Memory,
   targetEntityId: string,
@@ -1329,7 +1329,7 @@ export effect function setEntityRoleCas(
 
 export const setEntityRoleCasPromise = promised(failingAs(TypeError, setEntityRoleCas, ElizaError))
 
-export effect function hasOwnerAccess(
+effect function hasOwnerAccess(
   runtime: IAgentRuntime | undefined,
   message: Memory | undefined,
   deps: RoleAccessDeps = {},
@@ -1339,7 +1339,7 @@ export effect function hasOwnerAccess(
 
 export const hasOwnerAccessPromise = promised(hasOwnerAccess)
 
-export effect function hasAdminAccess(
+effect function hasAdminAccess(
   runtime: IAgentRuntime | undefined,
   message: Memory | undefined,
   deps: RoleAccessDeps = {},

@@ -18,7 +18,7 @@ import {
   type TrajectoryProviderAttribution,
 } from "./trajectory-provider-attribution.vibe"
 
-export { RECORDED_STAGE_KINDS, type RecordedStageKind } from "../services/trajectory-semantic-stage.vibe"
+export { type RecordedStageKind } from "../services/trajectory-semantic-stage.vibe"
 
 export interface RecordedUsage {
   promptTokens?: number
@@ -385,7 +385,7 @@ export function cloneTrajectoryValue<T>(value: T): T {
   return sanitizeForRecord(value) as T
 }
 
-export effect function encodeTrajectoryFieldValue(value: unknown): string!ElizaError {
+effect function encodeTrajectoryFieldValue(value: unknown): string!ElizaError {
   if (typeof value === "string") return value
   if (value === undefined || value === null) return ""
   const serialized = JSON.stringify(sanitizeForRecord(value))
@@ -410,7 +410,7 @@ export interface ToolStageIOCapture {
   errorText?: string
 }
 
-export effect function captureToolStageIO(args: ToolStageIOInput): ToolStageIOCapture!ElizaError {
+effect function captureToolStageIO(args: ToolStageIOInput): ToolStageIOCapture!ElizaError {
   const out: ToolStageIOCapture = {}
   if (args.input !== undefined) {
     out.input = try encodeWellFormedTrajectoryField(args.input)
@@ -431,7 +431,7 @@ effect function encodeWellFormedTrajectoryField(value: unknown): string!ElizaErr
     : try encodeTrajectoryFieldValue(value)
 }
 
-export effect function projectRecordedStageToolDiagnostics(
+effect function projectRecordedStageToolDiagnostics(
   stage: RecordedStage,
   redactText: ToolDiagnosticTextRedactor,
 ): void!(ElizaError | Foreign) {
@@ -513,7 +513,7 @@ export interface FinalizeTrajectoryRecordingOptions {
   ) => void
 }
 
-export effect function finalizeTrajectoryRecording(
+effect function finalizeTrajectoryRecording(
   opts: FinalizeTrajectoryRecordingOptions,
 ): void!Foreign {
   foreign(() => opts.recorder.endTrajectory(opts.trajectoryId, opts.status)) catch effect (failure) => {

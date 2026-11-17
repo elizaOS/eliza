@@ -24,8 +24,8 @@ interface EmbeddingQueueItem {
   pendingKey?: string
 }
 
-export error EmptyEmbedding { message: string }
-export error BatchSizeMismatch { message: string }
+error EmptyEmbedding { message: string }
+error BatchSizeMismatch { message: string }
 
 type ActivationFailure = Foreign | Effect.Error<ReturnType<typeof startBatchQueue<EmbeddingQueueItem>>>
 
@@ -453,5 +453,3 @@ export class EmbeddingGenerationService extends Service {
     runtime.logger.info({ src: SRC, agentId: runtime.agentId, clearedCount: size }, "Cleared queue")
   }
 }
-
-export default EmbeddingGenerationService

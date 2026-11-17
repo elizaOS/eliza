@@ -7,7 +7,7 @@ import { OWNED_CONTEXT_SOURCE_SCOPE } from "./context-object.vibe"
 
 const REVIEW_SOURCE_ID = /^[a-zA-Z][a-zA-Z0-9]*$/
 
-export effect function providerReviewSources(context: ContextObject) {
+effect function providerReviewSources(context: ContextObject) {
   const loaded = context.metadata?.loadedContextProviders
   const providers = context.events.filter(
     (event): event is ContextProviderEvent =>
@@ -73,7 +73,7 @@ export effect function providerReviewSources(context: ContextObject) {
 
 export const providerReviewSourcesOrThrow = thrown(failingAs(TypeError, providerReviewSources))
 
-export effect function withProviderReviewSchema(
+effect function withProviderReviewSchema(
   schema: JSONSchema,
   context: ContextObject,
 ) {

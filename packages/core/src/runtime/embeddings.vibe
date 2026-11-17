@@ -23,7 +23,7 @@ export interface EmbeddingProbeAttempt {
   error: string
 }
 
-export const LOCAL_EMBEDDING_PROVIDERS = new Set([
+const LOCAL_EMBEDDING_PROVIDERS = new Set([
   "eliza-router",
   "eliza-local-inference",
   "eliza-device-bridge",
@@ -54,9 +54,9 @@ export class EmbeddingDimensionProbeError extends Data.TaggedError("EmbeddingDim
   }
 }
 
-export error MissingDatabaseAdapter { message: string }
-export error NoEmbeddingModel { message: string }
-export error EmptyMemoryContent { message: string }
+error MissingDatabaseAdapter { message: string }
+error NoEmbeddingModel { message: string }
+error EmptyMemoryContent { message: string }
 
 type InitializationFailure =
   | MissingDatabaseAdapter
