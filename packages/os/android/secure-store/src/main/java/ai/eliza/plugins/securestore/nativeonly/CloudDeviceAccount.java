@@ -144,6 +144,10 @@ public final class CloudDeviceAccount {
   return finishAcknowledgment();
  }
 
+ public boolean awaitingAcknowledgment() throws Exception {
+  synchronized (LOCK) { return slots.read(ACK) != null; }
+ }
+
  public boolean finishAcknowledgment() throws Exception {
   final String pending;
   synchronized (LOCK) { pending = slots.read(ACK); }
