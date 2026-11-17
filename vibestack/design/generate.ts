@@ -1,4 +1,4 @@
-import { type Tokens, contrastIssues } from "./tokens.ts"
+import { type Tokens, contrastIssues, leaves } from "./tokens.ts"
 
 const block = (selector: string, lines: string[], indent = "") =>
   `${indent}${selector} {\n${lines.map((line) => `${indent}  ${line}\n`).join("")}${indent}}\n`
@@ -7,6 +7,13 @@ const vars = (prefix: string, values: Record<string, string>) => Object.entries(
 const names = (tokens: Tokens) => Object.keys(tokens.color.light)
 const scheme = (tokens: Tokens, theme: "light" | "dark") =>
   [`color-scheme: ${theme};`, ...names(tokens).filter((name) => name in tokens.color[theme]).map((name) => `--${name}: ${tokens.color[theme][name]};`)]
+/** A font size, and the line height and letter spacing Tailwind sets with it where the size gives them. */
+const sizes = (tokens: Tokens) => Object.entries(tokens.text).flatMap(([name, value]) => typeof value === "string" ? [`--text-${name}: ${value};`] : [
+  `--text-${name}: ${value.size};`,
+  ...value.leading === undefined ? [] : [`--text-${name}--line-height: ${value.leading};`],
+  ...value.tracking === undefined ? [] : [`--text-${name}--letter-spacing: ${value.tracking};`],
+])
+const focus = (tokens: Tokens) => ({ width: "2px", offset: "2px", ...tokens.focus })
 const fixed = (tokens: Tokens, duration: string) => [
   ...vars("font-", tokens.font), ...vars("shadow-", tokens.shadow),
   ...vars(duration, tokens.motion.duration), ...vars("ease-", tokens.motion.ease),
@@ -31,13 +38,16 @@ export const themeCss = (tokens: Tokens) =>
   ]) +
   block("@theme", [
     ...fixed(tokens, "transition-duration-"), ...vars("breakpoint-", tokens.breakpoint),
-    ...vars("radius-", tokens.rounded), ...vars("text-", tokens.text), ...vars("blur-", tokens.blur), ...vars("animate-", tokens.animate),
+    ...vars("radius-", tokens.rounded), ...sizes(tokens), ...vars("blur-", tokens.blur), ...vars("animate-", tokens.animate),
+    ...vars("font-weight-", tokens.weight), ...vars("leading-", tokens.leading), ...vars("tracking-", tokens.tracking), ...vars("z-index-", tokens.z),
+    ...tokens.focus?.width === undefined ? [] : [`--outline-width-focus: ${tokens.focus.width};`],
+    ...tokens.focus?.offset === undefined ? [] : [`--outline-offset-focus: ${tokens.focus.offset};`],
     ...Object.entries(tokens.keyframes).map(([name, stops]) => `@keyframes ${name} { ${stops} }`),
   ]) +
   Object.keys(tokens.gradient).map((name) => block(`@utility bg-gradient-${name}`, [`background-image: var(--gradient-${name});`])).join("") +
   `@layer base {\n${block("*", ["border-color: var(--border);"], "  ")}${
     block("body", ["background: var(--background);", "color: var(--foreground);", "font-family: var(--font-sans);"], "  ")}${
-    block(":focus-visible", ["outline: 2px solid var(--ring);", "outline-offset: 2px;"], "  ")}}\n`
+    block(":focus-visible", [`outline: ${focus(tokens).width} solid var(--ring);`, `outline-offset: ${focus(tokens).offset};`], "  ")}}\n`
 
 const [start, end] = ["<!-- tokens:start -->", "<!-- tokens:end -->"]
 const table = (head: string[], rows: string[][]) =>
@@ -48,8 +58,7 @@ export function syncDoc(doc: string, tokens: Tokens): string {
   const [from, to] = [doc.indexOf(start), doc.indexOf(end)]
   if (from < 0 || to < from) throw new Error(`design.md needs ${start} and ${end}`)
   const { color, motion, ...rest } = tokens
-  const flat = Object.entries({ ...rest, ...motion }).flatMap(([group, value]) =>
-    typeof value === "string" ? [[`\`${group}\``, value]] : Object.entries(value).map(([name, each]) => [`\`${group}.${name}\``, each]))
+  const flat = leaves({ ...rest, ...motion }).map(([path, value]) => [`\`${path}\``, String(value)])
   const tables = [
     table(["Color", "Light", "Dark"], Object.keys(color.light).map((name) => [`\`${name}\``, color.light[name]!, color.dark[name] ?? "—"])),
     table(["Token", "Value"], flat),
