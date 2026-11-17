@@ -1,6 +1,6 @@
 // Runs against packages/design-system: its tokens.json, design.md and installed Tailwind and ESLint.
 import { execFileSync } from "node:child_process"
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { createRequire } from "node:module"
 import { dirname, join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
@@ -184,11 +184,17 @@ test("check passes on the project's tokens and design.md, and detects a stale de
   expect(check(next, syncDoc(doc, next))).toEqual([])
 })
 
-test("the ESLint config flags values that bypass the tokens and accepts token classes", async () => {
+test("a build that changes nothing rewrites nothing, and the ESLint config flags values that bypass the tokens and accepts token classes", async () => {
   // The CLI builds a copy under the project's .cache/, so this never races the project's own build; Tailwind still resolves from the project.
   mkdirSync(join(dir, ".cache"), { recursive: true })
   const copy = mkdtempSync(join(dir, ".cache/design-test-"))
   onTestFinished(() => rmSync(copy, { recursive: true, force: true }))
+  for (const file of ["tokens.json", "design.md"]) cpSync(join(dir, file), join(copy, file))
+  const build = () => {
+    execFileSync("node", [here("../cli.ts"), "build"], { cwd: copy })
+    return ["generated/tokens.css", "generated/theme.css", "design.md"].map((file) => statSync(join(copy, file), { bigint: true }).mtimeNs)
+  }
+  expect(build()).toEqual(build())
   const [{ ESLint }, { default: tailwind }, { parser }] = await Promise.all(["eslint", "eslint-plugin-better-tailwindcss", "typescript-eslint"].map(load))
   const linter = (name: string, json: string) => {
     mkdirSync(join(copy, name))

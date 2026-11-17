@@ -7,7 +7,7 @@ import vibelang from "vibelang-vite";
 import { defineConfig } from "vitest/config";
 import type { Reporter } from "vitest/node";
 import type { PluginOption } from "vite";
-import { testInputs, testReceipt } from "../util.ts";
+import { testInputs, testReceipt, writeWhole } from "../util.ts";
 
 export interface Project {
   /** The package directory: `import.meta.dirname` of its vitest.config.ts. */
@@ -51,14 +51,7 @@ export const project = ({ root, tests = TESTS, plugins = [] }: Project) =>
       onTestRunEnd(modules, errors, reason) {
         if (!complete || reason !== "passed" || errors.length || modules.length !== scheduled.size
           || modules.some((module) => !module.ok() || !scheduled.has(module.moduleId)) || fingerprint !== testInputs(root, selected)) return;
-        fs.mkdirSync(path.dirname(receipt), { recursive: true });
-        const temporary = `${receipt}.${process.pid}.tmp`;
-        try {
-          fs.writeFileSync(temporary, JSON.stringify({ fingerprint }));
-          fs.renameSync(temporary, receipt);
-        } finally {
-          fs.rmSync(temporary, { force: true });
-        }
+        writeWhole(receipt, JSON.stringify({ fingerprint }));
       },
     };
     return {
@@ -68,11 +61,13 @@ export const project = ({ root, tests = TESTS, plugins = [] }: Project) =>
         reporters: ["default", record],
         allowOnly: false,
         passWithNoTests: true,
+        attachmentsDir: ".cache/vitest/attachments",
         // `vitest run` leaves Chromium to `test:browser`, whose `--project browser` takes the place of this filter.
         project: ["!browser"],
         // A failure repeats: fixed order, no retry that could hide a flaky test. Properties use profile.ts.
         sequence: { shuffle: false, seed: 1 },
         retry: 0,
+        maxConcurrency: 3,
         // A journey fails by its assertions, not by the clock: it starts real servers and databases, and the first
         // import of Effect alone can take longer than Vitest's 5 s on a busy machine.
         testTimeout: 60_000,

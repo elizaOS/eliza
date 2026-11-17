@@ -12,8 +12,7 @@ import { conformanceFound, type Simulated } from "./conform.ts";
 import { simulated } from "./gen/harness.ts";
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
 import type { Result } from "./pipeline.ts";
-import { SIMULATIONS } from "./units.ts";
-import { allDone, digest, indent } from "./util.ts";
+import { allDone, digest, indent, SIMULATIONS } from "./util.ts";
 
 const SAMPLES = 10000;
 const WITNESS_SAMPLES = 20 * SAMPLES;

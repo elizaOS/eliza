@@ -38,7 +38,11 @@ what a change reaches. `check` is never skipped whole: `spec` keeps its own fine
 application again each time.
 
 A package joins by having a script named `gen`, `build`, `typecheck`, `test`, `test:browser` or `check`. Its other
-tasks wait for its `gen` and the root's, and its `check` for all of them, since `check` rewrites `gen/`. The root's
+tasks wait for its `gen` and the root's, and its `check` for all of them, since `check` rewrites `gen/`. A package that
+can never own a root spec waits for no root `gen`, so a spec edit leaves its tasks cached: Studio, which has a `spec/`
+of its own, and `@repo/design-system` and `@repo/ui`, which have no `spec/<name>/`; `@repo/ui`'s tests still wait for
+its stories, whose `@model` tags read the root's `gen/`. Studio's tests wait for its page build and are keyed by its
+files and the `vibestack/fixtures/` they read, besides the tools every task is keyed by. The root's
 `check` rewrites its owners' `gen/` too, so it waits for their tasks: name each owner's in `//#check` of `turbo.json`,
 as `@repo/app`'s are. `pnpm lint:js` on its own needs what `gen` and `typecheck` write (`gen/`, `.vibe/declarations`);
 `pnpm lint` runs them first.
@@ -169,8 +173,9 @@ explorations, hidden directories), since a missed change would leave a stale
 pass on screen; it does not check again for a file the last check wrote
 itself, such as a driver to fill in or a saved counterexample, while the file
 still holds what it wrote. `spec.ts` turns on Node's compile cache before it
-loads the pipeline, so each `spec` process, Studio's checks and Turborepo's
-tasks included, compiles only the tools that changed.
+loads the pipeline, and hands its directory to every process a check starts,
+so each `spec` process, Studio's checks, Turborepo's tasks and the tests and
+drivers they run included, compiles only the code that changed.
 
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3
@@ -178,7 +183,10 @@ and their runtime files before Turbo hashes its inputs. What it reads of an
 installed file, and Dafny's version, is remembered across processes in
 `$XDG_CACHE_HOME/vibestack` (`~/.cache/vibestack` by default) while the file's
 device, inode, size and modification and change times stay the same, so an
-unchanged toolchain is not read again. Generated stories,
+unchanged toolchain is not read again, nor Z3 asked its version. A check
+reads those times of Dafny's installation once, and reads them again after each
+run of Dafny, so a result is not remembered when the verifier was installed
+again during the run. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts
 are restored with their owning task. `check` is never skipped whole: its
 `driver:` programs run the real application in `traces` every time. Standalone examples install and check
@@ -189,14 +197,17 @@ that result only while its source, generated core, transitive workspace
 inputs, lockfile and fixed profile match. The fingerprint covers the package's
 files, with the packages nested under its `test/` as fixtures but not other
 nested packages, and of each `workspace:` dependency what a dependent can
-load: not its `spec/`, Markdown, tests, drivers, traces, counterexamples or
-nested packages, nor its `gen/` unless its code or manifest reaches into it; a
+load: not its `spec/`, Markdown outside `fixtures/`, tests, drivers, traces,
+counterexamples or nested packages, nor its `gen/` unless its code or manifest reaches into it; a
 file a test reads from elsewhere comes through a declared dependency, as the
 root's `@repo/design-system` does. A typecheck is keyed by the scripts and
-JSON alone, and then by the content of every file the compile read. Turbo's
+JSON alone, and then by the content of every file the compile read. Neither
+covers the simulations' traces in `gen/traces/`, which no test reads and a
+check rewrites, nor the prose `spec init` and the tools keep at a package's
+top (`README.md`, `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `SPEC.md`). Turbo's
 `//#test` inputs cover the same files but the root's Markdown, so a restored
-receipt matches unless only a document changed, and then `check` runs the root's
-tests itself. Generated code names each rule by its heading, not its line, so
+receipt matches unless another root document changed, and then `check` runs the
+root's tests itself. Generated code names each rule by its heading, not its line, so
 prose that only moves a rule changes none of these keys. Filtered, exclusive, interrupted
 and failed runs record no complete result. Acceptance and nightly checks
 bypass these receipts and the inner verification cache.
@@ -287,7 +298,9 @@ Each row's budget is in [Seeds and budgets](#seeds-and-budgets). A failing
 run keeps `test/counterexamples/` and `test/__traces__/`, where a broken
 exploration is, as an artifact.
 
-Each run restores pnpm's store, every `.spec-cache/`, and Quint's evaluator.
+Each run installs Dafny from its pinned release, checked against its SHA-256,
+and restores pnpm's store, the spec cache of the root, each workspace package
+and each example, and Quint's evaluator, under a key of the commit.
 Turborepo shares task results through the private Cloudflare/R2 cache.
 The task entry point disables Turbo telemetry. `selftest:tools` waits for the root and
 Studio test tasks so those integration journeys do not compete with it.
@@ -295,6 +308,8 @@ Pull requests read shared results; only branch pushes receive the publishing
 credential, protected by the `turbo-cache-publish` environment's branch
 policy. A pull request keeps its own Turborepo results in the GitHub cache
 instead, which only that pull request reads, so its next push reuses them. Newer commits replace an older run of the same pull request.
+A pull request from `develop` into `main` waits for the push of the same commit
+to `develop` and replays its published results.
 Every pushed commit can finish. Completed tasks are shared through the cache.
 Local `pnpm` task commands read the operator's cache credential from
 `~/.config/vibestack/turbo-cache.json`, outside the repository. Credentials

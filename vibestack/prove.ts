@@ -20,8 +20,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { SENDER } from "./gen/classify.ts";
 import { act, type Input } from "./action.ts";
-import type { Memory } from "./cache.ts";
-import { bin, solver } from "./run.ts";
+import { solver, type Memory } from "./cache.ts";
+import { bin } from "./run.ts";
 import { plainText } from "./scan.ts";
 
 /** The library of general lemmas that proof files call as ProofLib.<Name>. */

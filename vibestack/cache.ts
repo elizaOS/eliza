@@ -1,10 +1,11 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { filesUnder, sha, tokenize, writeWhole } from "./util.ts";
-import { NEEDS_DAFNY, exec, onPath, solver, stamp } from "./run.ts";
+import { NEEDS_DAFNY, exec, onPath, stamp } from "./run.ts";
 
 /** Load an operator's publishing credential only for the exact cache endpoint it belongs to. */
 export function cacheCredentials(env: NodeJS.ProcessEnv, args: string[], declared: string | undefined, credentials: { apiUrl: string; writeToken: string }): NodeJS.ProcessEnv {
@@ -114,21 +115,36 @@ const dafnySaid = (version: string | undefined, stopped?: string, out = "") => {
   return { version, problem: stopped ?? (problem && `${problem}: ${NEEDS_DAFNY}`) };
 };
 /**
+ * Dafny's files and their stamps with Z3's on the PATH, as installed now: read once for each check (`steady`), and on
+ * every call outside one.
+ */
+const checking = new AsyncLocalStorage<{ installation?: { files?: string[]; at: string } }>();
+function installation() {
+  const now = () => {
+    const files = dafnyFiles();
+    if (!files) return { at: "" };
+    try {
+      const z3 = onPath("z3");
+      return { files, at: [...files, ...z3 ? [z3, fs.realpathSync(z3)] : []].map((file) => `${file}=${stamp([file])}`).join("\0") };
+    } catch (e) {
+      return { files, at: (e as Error).message };
+    }
+  };
+  const scope = checking.getStore();
+  return scope ? (scope.installation ??= now()) : now();
+}
+/** Run a check, which reads Dafny's installation once: a reinstall during it is seen by the next check, and by `verifiedNow`. */
+export const steady = <T>(run: () => Promise<T>) => checking.run({}, run);
+
+/**
  * What is read of Dafny once for its installation as it is now: its launchers, its assemblies and Z3 on the PATH. A
  * process that outlives a reinstall, as `watch` does, reads it again. A value `kept` refuses is read again next time.
  */
 function perDafny<T>(read: () => Promise<T>, kept: (value: T) => boolean = () => true): () => Promise<T> {
   const known = new Map<string, Promise<T>>();
   return () => {
-    let at: string;
-    try {
-      const files = dafnyFiles();
-      if (!files) return read();
-      const z3 = onPath("z3");
-      at = [...files, ...z3 ? [z3, fs.realpathSync(z3)] : []].map((file) => `${file}=${stamp([file])}`).join("\0");
-    } catch (e) {
-      at = (e as Error).message;
-    }
+    const { files, at } = installation();
+    if (!files) return read();
     let value = known.get(at);
     if (!value) known.set(at, value = read().then((v) => { if (!kept(v)) known.delete(at); return v; }, (e) => { known.delete(at); throw e; }));
     return value;
@@ -138,7 +154,7 @@ function perDafny<T>(read: () => Promise<T>, kept: (value: T) => boolean = () =>
 /** The version of Dafny on the PATH, or why it could not be read: asked of Dafny only when its installation changed. */
 export const dafnyVersion = perDafny(async (): Promise<{ version?: string; problem?: string }> => {
   try {
-    const files = dafnyFiles();
+    const { files } = installation();
     const installed = files && lasting(`dafny --version ${files[0]}`, files);
     if (installed?.value) return dafnySaid(installed.value);
     const r = await exec("dafny", ["--version"], process.cwd());
@@ -161,7 +177,46 @@ export const verifierIdentity = perDafny(async () => {
   const [dafny, z3] = await Promise.all([dafnyIdentity(), solver()]);
   return JSON.stringify({ dafny, z3: `${z3.version}:${executableDigest(z3.path)}`, platform: `${process.platform}:${process.arch}` });
 });
+/** The verifier as installed now, even within a check: whether it was installed again while a tool ran. */
+export const verifiedNow = () => checking.exit(verifierIdentity);
 
+/**
+ * The solver selected by Dafny's installation, pinned for every proof and recorded in its cache key; selected again once
+ * Dafny or Z3 on the PATH is another or installed again. A candidate's version is asked of it only once it changed.
+ */
+const selected = new Map<string, Promise<{ path: string; version: string }>>();
+export function solver(): Promise<{ path: string; version: string }> {
+  const dafny = onPath("dafny");
+  const z3 = onPath("z3");
+  const installed = [dafny, z3].map((f) => f ? `${f}=${stamp([f, fs.realpathSync(f)])}` : "").join("\0");
+  let chosen = selected.get(installed);
+  if (!chosen) selected.set(installed, chosen = (async () => {
+    const candidates: string[] = [];
+    if (dafny) {
+      const real = fs.realpathSync(dafny);
+      for (const dir of [path.dirname(real), path.join(path.dirname(real), "..", "libexec")]) {
+        const bundled = path.join(dir, "z3", "bin");
+        if (!fs.existsSync(bundled)) continue;
+        const preferred = (name: string) => name.includes("4.12.1") ? 0 : name.includes("4.8.5") ? 1 : 2;
+        candidates.push(...fs.readdirSync(bundled).filter((name) => /^z3(-\d+(\.\d+)*)?(\.exe)?$/.test(name))
+          .sort((a, b) => preferred(a) - preferred(b) || a.localeCompare(b)).map((name) => path.join(bundled, name)));
+      }
+    }
+    if (z3) candidates.push(z3);
+    for (const candidate of candidates) {
+      try {
+        const real = fs.realpathSync(candidate);
+        const { value, keep } = lasting(`z3 --version ${candidate}`, [candidate, real]);
+        if (value) return { path: real, version: value };
+        const result = await exec(candidate, ["--version"], path.dirname(candidate));
+        const version = result.status === 0 && !result.stopped && result.stdout.match(/Z3 version (\d+\.\d+\.\d+)/)?.[1];
+        if (version) return { path: real, version: keep(version) };
+      } catch { /* try the next solver supplied by this installation */ }
+    }
+    throw new Error("the proof stage needs the Z3 solver bundled with Dafny or on the PATH");
+  })().catch((e) => { selected.delete(installed); throw e; }));
+  return chosen;
+}
 /** The native toolchain that a Turbo task's inputs cannot read from the repository. */
 export async function toolchainFingerprint() {
   const z3 = await solver();

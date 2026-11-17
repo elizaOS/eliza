@@ -24,7 +24,7 @@
     "test": "vitest run",
     "test:browser": "node vibestack/spec.ts tasks test:browser",
     "test:models": "node vibestack/spec.ts tasks check",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "vibelang --noEmit -p tsconfig.json",
     "lint": "node vibestack/spec.ts tasks //#lint:js //#lint:css",
     "lint:js": "eslint . --max-warnings 0",
     "lint:css": "stylelint \"**/*.css\" --allow-empty-input",

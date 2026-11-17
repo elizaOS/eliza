@@ -13,12 +13,9 @@ import { defines } from "./review.ts";
 import { act } from "./action.ts";
 import type { Memory } from "./cache.ts";
 import { plainText } from "./scan.ts";
-import { codeDirOf, codeDirs, filesUnder, manifest, owner, readSrc, type SrcFile } from "./util.ts";
+import { codeDirOf, codeDirs, filesUnder, manifest, owner, readSrc, SIMULATIONS, type SrcFile } from "./util.ts";
 import { effectAdapter } from "./gen/vibe.ts";
 import { reactHook } from "./gen/react.ts";
-
-/** Where Quint writes the traces of the simulations a check ran. */
-export const SIMULATIONS = "gen/traces";
 
 const ANNOTATIONS = ["backend", "pure", "requires", "ensures", "invariant", "decreases", "type", "ghost", "assert"];
 
@@ -111,7 +108,8 @@ function namespace(dir: string, name: unknown): string {
  * adapter and the React hook are written for the owner (`writeFaces`): that is the package the service runs in.
  * A module not generated, because its spec is not valid, is not there. This ends a generation: what it did not write,
  * in the root's gen/ or an owner's, is removed, so that nothing stale survives a rename; but for gen/traces, where this
- * check's simulations wrote what they ran (simulate.ts), and which the next generation begins by removing.
+ * check's simulations write what they run (simulate.ts), still running as this does, and which the next generation
+ * begins by removing.
  */
 export function mirrorGen(root: string, specs: Spec[]) {
   const written = generations.get(root) ?? new Set<string>();

@@ -166,15 +166,15 @@ describe.concurrent("generated tests", () => {
     const filtered = await vitest(dir, {}, undefined, "normal", ["--testNamePattern", "clamped"]);
     expect(filtered.status, filtered.said).toBe(0);
     expect(fs.existsSync(receipt)).toBe(false);
-    const complete = await vitest(dir);
-    expect(complete.status, complete.said).toBe(0);
-    expect(JSON.parse(fs.readFileSync(receipt, "utf8"))).toEqual({ fingerprint: testInputs(dir) });
+    const seeded = JSON.stringify({ fingerprint: testInputs(dir) });
+    fs.writeFileSync(receipt, seeded);
     const exclusive = await vitest(dir, {}, undefined, "normal", ["--allowOnly"]);
     expect(exclusive.status, exclusive.said).toBe(0);
     expect(fs.existsSync(receipt)).toBe(false);
+    fs.writeFileSync(receipt, seeded);
     const otherMode = await vitest(dir, {}, undefined, "production");
     expect(otherMode.status, otherMode.said).toBe(0);
-    expect(fs.existsSync(receipt)).toBe(false);
+    expect(fs.readFileSync(receipt, "utf8")).toBe(seeded);
 
     fs.rmSync(path.join(dir, "src/math.contract.ts"));
     expect(await generateTests(dir)).toEqual({ written: [], unchanged: files.slice(1), removed: files.slice(0, 1), skipped: skipped.slice(1) });

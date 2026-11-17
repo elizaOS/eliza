@@ -11,8 +11,8 @@ on:
     branches: [develop, main]
 
 concurrency:
-  group: ci-${{ github.ref }}-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && !(github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) && format('pr-{0}', github.event.pull_request.number) || format('sha-{0}', github.event.pull_request.head.sha || github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && !(github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
 
 env:
   TURBO_TELEMETRY_DISABLED: "1"
@@ -60,7 +60,17 @@ jobs:
         with:
           name: failures
           path: |
-            **/test/counterexamples/
-            **/test/__traces__/
-            !**/node_modules/**
+            test/counterexamples/
+            test/__traces__/
+            apps/*/test/counterexamples/
+            apps/*/test/__traces__/
+            packages/*/test/counterexamples/
+            packages/*/test/__traces__/
+            apps/*/.cache/vitest/attachments/
+            packages/*/.cache/vitest/attachments/
+            vibestack/studio/test/counterexamples/
+            vibestack/studio/test/__traces__/
+            vibestack/examples/*/test/counterexamples/
+            vibestack/examples/*/test/__traces__/
           if-no-files-found: ignore
+          include-hidden-files: true

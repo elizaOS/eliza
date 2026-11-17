@@ -204,6 +204,9 @@ function addVitest(root: string): string {
  */
 export type Inputs = "tests" | "types";
 
+/** What no test reads: a spec's prose and its Quint copy, and the prose `spec init` and these tools keep for people and agents at a package's top. */
+const PROSE = /^spec\/.*\.md$|^gen\/[^/]*\.qnt$|^(?:README|AGENTS|CLAUDE|CONTRIBUTING|SPEC)\.md$/;
+
 /** A package and the workspace packages it depends on, and theirs, each once: by its real directory and the name it is depended on by. */
 export function workspacePackages(root: string): { directory: string; name: string }[] {
   const found = new Map<string, string>();
@@ -225,18 +228,18 @@ export function workspacePackages(root: string): { directory: string; name: stri
 const SPECIFIER = /(?:\bfrom\s+|\bimport\s*\(\s*|^\s*import\s+)["'](\.\.?\/[^"']+)["']/gm;
 
 /**
- * A fingerprint of what a package's tests or its typecheck read: its files and the top of its gen/ (an owner's is
- * mirrored from the root's), the fixtures nested under its test/, the workspace packages it depends on, the lock file
- * and the fuzzing budget. Of a workspace package depended on, only what a dependent can load: not its spec/, Markdown,
- * tests, drivers, traces or counterexamples, nor the packages nested in it, nor its gen/ unless its scripts or its
- * manifest reach into it.
+ * A fingerprint of what a package's tests or its typecheck read: its files but `PROSE` and the simulations' traces, and
+ * the top of its gen/ (an owner's is mirrored from the root's), the fixtures nested under its test/, the workspace packages it depends on, the lock file
+ * and the fuzzing budget. Of a workspace package depended on, only what a dependent can load: not its spec/, Markdown
+ * outside fixtures/, tests, drivers, traces or counterexamples, nor the packages nested in it, nor its gen/ unless its
+ * scripts or its manifest reach into it.
  */
 export function testInputs(root: string, mode: TestProfile = "normal", read: Inputs = "tests"): string {
-  const hash = createHash("sha256").update(JSON.stringify(["tests-v5", read, process.versions.node, process.platform, process.arch, profile(mode)]));
+  const hash = createHash("sha256").update(JSON.stringify(["tests-v6", read, process.versions.node, process.platform, process.arch, profile(mode)]));
   const served = (file: string) => !isTestFile(file) && ![DRIVERS, TRACES, COUNTEREXAMPLES].some((dir) => file.startsWith(`${dir}/`));
   const reads: Record<Inputs, (file: string) => boolean> = {
-    tests: (file) => !/^spec\/.*\.md$|^gen\/[^/]*\.qnt$/.test(file),
-    types: (file) => /\.(?:[cm]?[jt]sx?|json|vibex?)$/.test(file) && ![TRACES, COUNTEREXAMPLES].some((dir) => file.startsWith(`${dir}/`)),
+    tests: (file) => !PROSE.test(file) && !file.startsWith(`${SIMULATIONS}/`),
+    types: (file) => /\.(?:[cm]?[jt]sx?|json|vibex?)$/.test(file) && ![TRACES, COUNTEREXAMPLES, SIMULATIONS].some((dir) => file.startsWith(`${dir}/`)),
   };
   const update = (from: string, file: string) => {
     const bytes = fs.readFileSync(path.join(from, file));
@@ -246,7 +249,7 @@ export function testInputs(root: string, mode: TestProfile = "normal", read: Inp
   for (const { directory: from, name } of workspacePackages(root)) {
     hash.update(JSON.stringify(name));
     const own = name === ".";
-    const keep = (file: string) => reads[read](file) && (own || (served(file) && !/^(?:spec|gen)\//.test(file) && !file.endsWith(".md")));
+    const keep = (file: string) => reads[read](file) && (own || (served(file) && !/^(?:spec|gen)\//.test(file) && (!file.endsWith(".md") || /(?:^|\/)fixtures\//.test(file))));
     const pkg = manifest(from);
     let gen = own || /(?:^|["/.])gen\//.test(JSON.stringify([pkg.exports, pkg.main, pkg.module, pkg.types]));
     for (const file of packageFiles(from, keep, "", own)) {
@@ -306,6 +309,8 @@ const testFiles = (root: string) => packageCode(root).filter(isTestFile);
 
 /** Where a package keeps its drivers, the traces they replay and the counterexamples the simulator found (SPEC.md, "Conformance"). */
 export const TRACES = "test/traces", DRIVERS = "test/drivers", COUNTEREXAMPLES = "test/counterexamples";
+/** Where Quint writes the traces of the simulations a check ran. */
+export const SIMULATIONS = "gen/traces";
 
 /** A token of a script, and how many brackets it sits in. */
 interface Token { text: string; pos: number; start: number; depth: number; fresh: boolean }

@@ -31,7 +31,7 @@ with the reason.
 | `explore` | Bombadil explores the package's page, served by its `start` or `dev` script, and the properties of `test/bombadil.ts`, or Bombadil's defaults, hold in every state it reaches ([Exploring the page](#exploring-the-page)) | a stage above failed; a `-` line on a platform Bombadil has no executable for |
 | `review` | every story, rule and contract changed since `spec/lock.json` was accepted ([Review](#review)) | never |
 
-Types and proofs run concurrently; tests, traces and explore wait for both.
+Types and proofs start once every model is valid, and run while the simulations do; they are reported only if every simulation passed, and otherwise finish unreported before the check returns. Tests, traces and explore wait for all three.
 
 ## Writing a spec
 
@@ -584,7 +584,8 @@ under `src/`.
   configurations it extends, every file outside `node_modules` the compile
   read, the lock file and the compiler's bytes. A test pass is kept under the
   files its tests read, which are the package's but its specs' Markdown and
-  their Quint in `gen/`: a test reads the generated modules, so a prose edit
+  their Quint in `gen/`, the simulations' traces and the agent and reader
+  prose at its top: a test reads the generated modules, so a prose edit
   runs no test again. A driver's passing run is kept under those files and the
   events the simulator found; a failure, and a `driver:` program, run every
   time.
