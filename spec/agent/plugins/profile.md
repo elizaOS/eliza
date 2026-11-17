@@ -264,8 +264,8 @@ profile and never widens it.
 type PluginPolicy = { hasLoadList: bool, load: Set[str], refuse: Set[str] }
 pure def policyAdmits(policy: PluginPolicy, pluginName: str): bool =
   (not(policy.hasLoadList) or policy.load.contains(pluginName)) and not(policy.refuse.contains(pluginName))
-pure def loadsUnder(policy: PluginPolicy, profile: HostProfile, capability: CapabilityClass, pluginName: str, denied: bool): bool =
-  admitted(profile, capability, denied) and policyAdmits(policy, pluginName)
+pure def loadsUnder(policy: PluginPolicy, profile: HostProfile, gates: ProfileGates, capability: CapabilityClass, pluginName: str, denied: bool): bool =
+  admitted(profile, gates, capability, denied) and policyAdmits(policy, pluginName)
 pure val policyValues = Set(
   { hasLoadList: false, load: Set(), refuse: Set() },
   { hasLoadList: true, load: Set("assistant", "cloud"), refuse: Set("browser") },
@@ -274,10 +274,10 @@ pure val policyValues = Set(
 pure val pluginNameValues = Set("assistant", "cloud", "browser", "wallet")
 pure def lawLoadListAdmitsOnlyWhatItNames(policy: PluginPolicy, pluginName: str): bool =
   (policy.hasLoadList and policyAdmits(policy, pluginName)) implies policy.load.contains(pluginName)
-pure def lawRefusedPluginNeverLoads(policy: PluginPolicy, profile: HostProfile, capability: CapabilityClass, pluginName: str, denied: bool): bool =
-  policy.refuse.contains(pluginName) implies not(loadsUnder(policy, profile, capability, pluginName, denied))
-pure def lawPolicyNeverWidensTheProfile(policy: PluginPolicy, profile: HostProfile, capability: CapabilityClass, pluginName: str, denied: bool): bool =
-  loadsUnder(policy, profile, capability, pluginName, denied) implies admitted(profile, capability, denied)
+pure def lawRefusedPluginNeverLoads(policy: PluginPolicy, profile: HostProfile, gates: ProfileGates, capability: CapabilityClass, pluginName: str, denied: bool): bool =
+  policy.refuse.contains(pluginName) implies not(loadsUnder(policy, profile, gates, capability, pluginName, denied))
+pure def lawPolicyNeverWidensTheProfile(policy: PluginPolicy, profile: HostProfile, gates: ProfileGates, capability: CapabilityClass, pluginName: str, denied: bool): bool =
+  loadsUnder(policy, profile, gates, capability, pluginName, denied) implies admitted(profile, gates, capability, denied)
 ```
 
 ### An action is offered only when the plugin that registered it loaded
