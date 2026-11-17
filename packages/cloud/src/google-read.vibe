@@ -1,0 +1,171 @@
+// spec/cloud/index.md, "Story: Connect Google mail and calendar"
+
+export type GoogleReadApi<E, R> = (url: string) => unknown!E!R
+export error GoogleReadInput
+error GoogleReadResponse
+
+schema MessageId { id: string }
+schema MessageList { messages?: MessageId[]; nextPageToken?: string }
+schema Header { name: string; value: string }
+schema MessageBody { data?: string; attachmentId?: string }
+schema MailPart { mimeType?: string; filename?: string; headers?: Header[]; body?: MessageBody; parts?: Schema.Unknown[] }
+schema MailMessage {
+  id: string; threadId: string; historyId?: string; snippet?: string; internalDate?: string; labelIds?: string[]; payload?: MailPart
+}
+
+schema EventTime { dateTime?: string; date?: string; timeZone?: string }
+schema Attendee {
+  email?: string; displayName?: string; responseStatus?: string; self?: boolean; organizer?: boolean; optional?: boolean
+}
+schema EventOrganizer { email?: string; displayName?: string; self?: boolean }
+schema CalendarEvent {
+  id: string; summary?: string; description?: string; location?: string; status?: string
+  htmlLink?: string; hangoutLink?: string; etag?: string; start?: EventTime; end?: EventTime
+  organizer?: EventOrganizer; attendees?: Attendee[]
+}
+schema CalendarList { items?: CalendarEvent[]; timeZone?: string; nextPageToken?: string }
+
+const gmail = "https://gmail.googleapis.com/gmail/v1/users/me"
+const calendar = "https://www.googleapis.com/calendar/v3/calendars"
+const attachments = /^[a-zA-Z0-9_-]{1,1024}$/
+const history = /^[0-9]+$/
+const isoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/
+const isoDate = /^\d{4}-\d{2}-\d{2}$/
+const safeContent = "Content-Type"
+const headerNames = ["From", "To", "Cc", "Subject", "Reply-To", safeContent]
+
+function headerMap(payload: MailPart | undefined) {
+  return new Map((payload?.headers ?? []).map((header) => [header.name.toLowerCase(), header.value]))
+}
+
+function sender(value: string) {
+  const bracketed = value.match(/<([^<>]+)>$/)
+  const candidate = (bracketed?.[1] ?? value).trim()
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(candidate) ? candidate : null
+}
+
+function isoMailDate(value: string | undefined) {
+  if (!value || !history.test(value)) return null
+  const instant = new Date(Number(value))
+  return Number.isFinite(instant.getTime()) ? instant.toISOString() : null
+}
+
+effect function mailCard(message: MailMessage) {
+  if (!attachments.test(message.id)) throw new GoogleReadResponse()
+  const receivedAt = isoMailDate(message.internalDate)
+  if (!receivedAt) throw new GoogleReadResponse()
+  const headers = headerMap(message.payload)
+  const labels = message.labelIds ?? []
+  const from = headers.get("from") ?? ""
+  const latest = labels.includes("IMPORTANT") || labels.includes("STARRED")
+  const split = (name: string) => (headers.get(name) ?? "").split(",").map((part) => part.trim()).filter(Boolean)
+  return {
+    externalId: message.id, threadId: message.threadId, subject: headers.get("subject") ?? "", from, fromEmail: sender(from),
+    replyTo: sender(headers.get("reply-to") ?? ""), to: split("to"), cc: split("cc"), snippet: message.snippet ?? "",
+    receivedAt, isUnread: labels.includes("UNREAD"), isImportant: latest, likelyReplyNeeded: false,
+    triageScore: latest ? 1 : 0, triageReason: latest ? "Marked important in Gmail" : "", labels,
+    htmlLink: `https://mail.google.com/mail/u/0/#all/${message.id}`, metadata: { historyId: message.historyId ?? null }
+  }
+}
+
+effect function readMessage<E, R>(api: GoogleReadApi<E, R>, id: string, format: "metadata" | "full") {
+  if (!attachments.test(id)) throw new GoogleReadInput()
+  const query = new URLSearchParams({ format })
+  if (format === "metadata") for (const header of headerNames) query.append("metadataHeaders", header)
+  const raw = try api(`${gmail}/messages/${id}?${query}`)
+  const result = Schema.decodeUnknownOption(MailMessage)(raw)
+  if (Option.isNone(result) || result.value.id !== id) throw new GoogleReadResponse()
+  return result.value
+}
+
+function plainPart(root: MailPart | undefined) {
+  const pending: unknown[] = root ? [root] : []
+  let scanned = 0
+  while (pending.length > 0 && scanned < 100) {
+    const candidate = Schema.decodeUnknownOption(MailPart)(pending.shift())
+    scanned += 1
+    if (Option.isNone(candidate) || candidate.value.filename) continue
+    const part = candidate.value
+    if (part.mimeType === "text/plain" && part.body) return part.body
+    if (part.parts) pending.push(...part.parts.slice(0, 100 - scanned))
+  }
+  return null
+}
+
+effect function bodyText<E, R>(api: GoogleReadApi<E, R>, message: MailMessage) {
+  const part = plainPart(message.payload)
+  if (!part) return null
+  let data = part.data
+  if (!data && part.attachmentId && attachments.test(part.attachmentId)) {
+    const raw = try api(`${gmail}/messages/${message.id}/attachments/${part.attachmentId}?fields=data`)
+    const result = Schema.decodeUnknownOption(MessageBody)(raw)
+    if (Option.isSome(result)) data = result.value.data
+  }
+  if (!data || data.length > 1_048_576 || !/^[A-Za-z0-9_=-]+$/.test(data)) return null
+  return Effect.try(() => new TextDecoder().decode(Uint8Array.from(atob(data.replaceAll("-", "+").replaceAll("_", "/")), (byte) => byte.charCodeAt(0)))) catch () => null
+}
+
+function paging(params: URLSearchParams, target: URLSearchParams) {
+  const cursor = params.get("pageToken")
+  if (cursor && cursor.length <= 1024) target.set("pageToken", cursor)
+}
+
+export effect function googleGmailTriage<E, R>(api: GoogleReadApi<E, R>, url: URL, syncedAt: string) {
+  const limit = url.searchParams.get("maxResults") ?? "12"
+  if (!/^\d{1,2}$/.test(limit) || Number(limit) < 1 || Number(limit) > 20) throw new GoogleReadInput()
+  const query = new URLSearchParams({ maxResults: limit, labelIds: "INBOX", fields: "messages/id,nextPageToken" })
+  paging(url.searchParams, query)
+  const raw = try api(gmail + "/messages?" + query)
+  const result = Schema.decodeUnknownOption(MessageList)(raw)
+  if (Option.isNone(result) || (result.value.messages?.length ?? 0) > 20) throw new GoogleReadResponse()
+  const messages = try Effect.forEach(result.value.messages ?? [], effect (entry) => {
+    return try mailCard(try readMessage(api, entry.id, "metadata"))
+  }, { concurrency: 4 })
+  return { messages, syncedAt, nextPageToken: result.value.nextPageToken ?? null }
+}
+
+export effect function googleGmailMessage<E, R>(api: GoogleReadApi<E, R>, url: URL) {
+  const id = url.searchParams.get("messageId")
+  if (!id) throw new GoogleReadInput()
+  const message = try readMessage(api, id, "full")
+  const text = try bodyText(api, message)
+  return { message: try mailCard(message), bodyText: text ?? "", bodyTextAvailable: text !== null, bodyHtml: null, bodyHtmlStatus: "none" }
+}
+
+function eventCard(event: CalendarEvent, timezone: string | null) {
+  const allDay = Boolean(event.start?.date && event.end?.date)
+  const start = allDay ? event.start?.date : event.start?.dateTime
+  const end = allDay ? event.end?.date : event.end?.dateTime
+  const pattern = allDay ? isoDate : isoDateTime
+  if (!start || !end || !pattern.test(start) || !pattern.test(end) ||
+      !(Date.parse(start) < Date.parse(end))) return null
+  const attendees = (event.attendees ?? []).map((who) => ({
+    email: who.email ?? null, displayName: who.displayName ?? null, responseStatus: who.responseStatus ?? null,
+    self: who.self ?? false, organizer: who.organizer ?? false, optional: who.optional ?? false
+  }))
+  return {
+    externalId: event.id, calendarId: "primary", title: event.summary ?? "", description: event.description ?? "",
+    location: event.location ?? "", status: event.status ?? "", startAt: start, endAt: end, isAllDay: allDay,
+    timezone: event.start?.timeZone ?? timezone, htmlLink: event.htmlLink ?? null, conferenceLink: event.hangoutLink ?? null,
+    etag: event.etag ?? null, organizer: event.organizer ?? null, attendees, metadata: {}
+  }
+}
+
+export effect function googleCalendarFeed<E, R>(api: GoogleReadApi<E, R>, url: URL, syncedAt: string) {
+  const timeMin = url.searchParams.get("timeMin")
+  const timeMax = url.searchParams.get("timeMax")
+  const calendarId = url.searchParams.get("calendarId") ?? "primary"
+  if (!timeMin || !timeMax || !isoDateTime.test(timeMin) || !isoDateTime.test(timeMax) || calendarId !== "primary") throw new GoogleReadInput()
+  const duration = Date.parse(timeMax) - Date.parse(timeMin)
+  if (!(duration > 0 && duration <= 95 * 24 * 60 * 60 * 1000)) throw new GoogleReadInput()
+  const query = new URLSearchParams({ timeMin, timeMax, maxResults: "250", singleEvents: "true", orderBy: "startTime" })
+  paging(url.searchParams, query)
+  const raw = try api(calendar + "/primary/events?" + query)
+  const result = Schema.decodeUnknownOption(CalendarList)(raw)
+  if (Option.isNone(result)) throw new GoogleReadResponse()
+  const events = (result.value.items ?? []).flatMap((event) => {
+    const normalized = eventCard(event, result.value.timeZone ?? null)
+    return normalized === null ? [] : [normalized]
+  })
+  return { calendarId, events, syncedAt, nextPageToken: result.value.nextPageToken ?? null }
+}

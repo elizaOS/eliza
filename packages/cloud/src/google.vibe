@@ -1,0 +1,348 @@
+// spec/cloud/index.md, "Story: Connect Google mail and calendar"
+import type { Client } from "pg"
+import { Aead, Digest, SecureRandom } from "effect/crypto"
+import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse, HttpServerRequest, HttpIncomingMessage } from "effect/http"
+import { googleCalendarFeed, googleGmailMessage, googleGmailTriage, GoogleReadInput, type GoogleReadApi } from "./google-read.vibe"
+
+export type GoogleEnv = {
+  PUBLIC_API_ORIGIN: string
+  WEB_ORIGIN: string
+  GOOGLE_CLIENT_ID?: string
+  GOOGLE_CLIENT_SECRET?: string
+  GOOGLE_CONNECT_CLIENT_ID?: string
+  GOOGLE_CONNECT_CLIENT_SECRET?: string
+  GOOGLE_CONNECT_TOKEN_KEY?: string
+}
+
+type Config = { clientId: string; clientSecret: string; key: Aead.Key; redirectUri: string }
+type Capabilities = { mail: boolean; calendar: boolean }
+type Connection = Capabilities & {
+  id: string; account_id: string; subject: string; email: string; refresh_cipher: string; linked_at: Date; last_used_at: Date | null
+}
+type Authorization = Capabilities & { expected_email: string | null; provider: string; provider_subject: string }
+type User = { provider: string; provider_subject: string; email: string | null }
+
+schema Consent { mail: boolean; calendar: boolean; expectedEmail?: string }
+schema OAuthResult { access_token: string; refresh_token?: string; scope?: string }
+schema GoogleProfile { sub: string; email: string; email_verified: boolean }
+
+error BadRequest
+error AuthorizationFailed
+error ConnectionUnavailable
+error ProviderUnavailable
+error GoogleNotFound
+error DatabaseUnavailable
+
+const route = "/api/v1/eliza/google"
+const callbackPath = route + "/connect/callback"
+const oauthCookie = "__Host-eliza-google-connect"
+const oauthSeconds = 300
+const googleOAuth = "https://oauth2.googleapis.com"
+const scopeByCapability = {
+  mail: "https://www.googleapis.com/auth/gmail.readonly",
+  calendar: "https://www.googleapis.com/auth/calendar.events.readonly"
+} as const
+const encoder = new TextEncoder()
+const decoder = new TextDecoder()
+const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
+const fromHex = (value: string) => Uint8Array.from(value.match(/../g) ?? [], (pair) => Number.parseInt(pair, 16))
+const secureRandom = SecureRandom.layerWebCrypto
+const providerLayer = Layer.mergeAll(secureRandom, Digest.layerWebCrypto, Layer.provide(Aead.layerWebCrypto, secureRandom), FetchHttpClient.layer)
+
+function client(env: GoogleEnv) {
+  const connector = env.GOOGLE_CONNECT_CLIENT_ID || env.GOOGLE_CONNECT_CLIENT_SECRET
+  const id = connector ? env.GOOGLE_CONNECT_CLIENT_ID : env.GOOGLE_CLIENT_ID
+  const secret = connector ? env.GOOGLE_CONNECT_CLIENT_SECRET : env.GOOGLE_CLIENT_SECRET
+  return id && secret ? { id, secret } : null
+}
+
+function enabled(env: GoogleEnv) {
+  return client(env) !== null && /^[a-f0-9A-F]{64}$/.test(env.GOOGLE_CONNECT_TOKEN_KEY ?? "")
+}
+
+effect function googleConfig(env: GoogleEnv) {
+  const credentials = client(env)
+  const raw = env.GOOGLE_CONNECT_TOKEN_KEY
+  if (!credentials || !raw || !/^[a-f0-9A-F]{64}$/.test(raw)) throw new ConnectionUnavailable()
+  const key = Aead.key(Aead.aes256Gcm, fromHex(raw)) catch effect () => { throw new ConnectionUnavailable() }
+  return { clientId: credentials.id, clientSecret: credentials.secret, key, redirectUri: env.PUBLIC_API_ORIGIN + callbackPath }
+}
+
+effect function query<Row extends Record<string, unknown>>(db: Client, statement: string, args: (string | boolean | number | null)[]) {
+  return try tryPromise({ try: () => db.query<Row>(statement, args), catch: () => new DatabaseUnavailable() })
+}
+
+effect function forAccount<A, E, R>(db: Client, account: string, change: A!E!R) {
+  return try Effect.uninterruptible(effect {
+    try query(db, "BEGIN", [])
+    const transaction = effect {
+      const owner = try query(db, "SELECT key FROM accounts WHERE key = $1 AND status = 'active' FOR UPDATE", [account])
+      if (!owner.rowCount) throw new AuthorizationFailed()
+      const changed = try change
+      try query(db, "COMMIT", [])
+      return changed
+    }
+    return transaction catch effect (failure) => {
+      query(db, "ROLLBACK", []) catch () => undefined
+      throw failure
+    }
+  })
+}
+
+effect function sha256(value: string) {
+  return try (try Digest.Digest).digest(Digest.sha256, encoder.encode(value))
+}
+
+function capabilities(value: Capabilities) {
+  const entries = []
+  if (value.mail) entries.push(scopeByCapability.mail)
+  if (value.calendar) entries.push(scopeByCapability.calendar)
+  return entries
+}
+
+function body(status: number, value: object) {
+  return HttpServerResponse.jsonUnsafe(value, { status, headers: { "cache-control": "no-store" } })
+}
+
+function flowCookie(response: HttpServerResponse.HttpServerResponse, state: string, verifier: string, seconds: number) {
+  const value = seconds === 0 ? "" : state + "." + verifier
+  return HttpServerResponse.setCookieUnsafe(response, oauthCookie, value, { path: "/", httpOnly: true, secure: true, sameSite: "lax", maxAge: Duration.seconds(seconds) })
+}
+
+function flow(request: Request) {
+  const cookies = (request.headers.get("cookie") ?? "").split(";").map((raw) => raw.trim()).filter((value) => value.startsWith(oauthCookie + "="))
+  if (cookies.length !== 1) return null
+  const value = cookies[0].slice(oauthCookie.length + 1)
+  if (!/^[a-f0-9]{64}\.[a-f0-9]{64}$/.test(value)) return null
+  const [state, verifier] = value.split(".")
+  return { state, verifier }
+}
+
+effect function http(url: string, input: { access?: string; form?: URLSearchParams }) {
+  let request = input.form
+    ? HttpClientRequest.bodyText(HttpClientRequest.post(url), input.form.toString(), "application/x-www-form-urlencoded")
+    : HttpClientRequest.get(url)
+  if (input.access) request = HttpClientRequest.setHeader(request, "authorization", "Bearer " + input.access)
+  const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" })
+  return timeout(response, "10 seconds") catch effect () => { throw new ProviderUnavailable() }
+}
+
+function ok(status: number) {
+  return status >= 200 && status < 300
+}
+
+effect function oauthToken(config: Config, grant: URLSearchParams) {
+  grant.set("client_id", config.clientId)
+  grant.set("client_secret", config.clientSecret)
+  const response = try http(googleOAuth + "/token", { form: grant })
+  if (response.status === 400 || response.status === 401) throw new AuthorizationFailed()
+  if (!ok(response.status)) throw new ProviderUnavailable()
+  const raw = timeout(response.json, "10 seconds") catch effect () => { throw new ProviderUnavailable() }
+  const decoded = Schema.decodeUnknownOption(OAuthResult)(raw)
+  if (Option.isNone(decoded) || !decoded.value.access_token) throw new ProviderUnavailable()
+  return decoded.value
+}
+
+function credentialContext(env: GoogleEnv, account: string, subject: string, scopes: Capabilities) {
+  return encoder.encode(JSON.stringify(["cloud-google-token-v1", env.PUBLIC_API_ORIGIN, account, subject, scopes.mail, scopes.calendar]))
+}
+
+effect function seal(config: Config, token: string, aad: Uint8Array) {
+  const nonce = try (try SecureRandom.SecureRandom).randomBytes(12)
+  const vault = try Aead.Aead
+  const cipher = vault.encrypt(config.key, encoder.encode(token), { nonce, aad }) catch effect () => { throw new ProviderUnavailable() }
+  return hex(nonce) + hex(cipher)
+}
+
+effect function unseal(env: GoogleEnv, config: Config, connected: Connection) {
+  const encoded = connected.refresh_cipher
+  if (!/^[a-f0-9]+$/.test(encoded) || encoded.length < 58 || encoded.length % 2 !== 0) throw new ConnectionUnavailable()
+  const nonce = fromHex(encoded.slice(0, 24))
+  const cipher = fromHex(encoded.slice(24))
+  const aad = credentialContext(env, connected.account_id, connected.subject, connected)
+  const vault = try Aead.Aead
+  const plain = vault.decrypt(config.key, cipher, { nonce, aad }) catch effect () => { throw new ConnectionUnavailable() }
+  return decoder.decode(plain)
+}
+
+effect function status(db: Client, env: GoogleEnv, account: string) {
+  const { rows } = try query<Connection>(db, "SELECT * FROM cloud_google_connections WHERE account_id = $1", [account])
+  const connection = rows[0]
+  const configured = enabled(env)
+  const capabilities = connection
+    ? ["google.basic_identity", ...(connection.mail ? ["google.gmail.triage"] : []), ...(connection.calendar ? ["google.calendar.read"] : [])]
+    : []
+  return body(200, {
+    provider: "google", side: "owner", mode: "cloud_managed", configured, connected: Boolean(connection),
+    reason: connection ? "connected" : "disconnected", identity: connection ? { email: connection.email } : null,
+    grantedCapabilities: capabilities, grantedScopes: connection ? selectedScopes(connection) : [], expiresAt: null,
+    hasRefreshToken: Boolean(connection), connectionId: connection?.id ?? null,
+    linkedAt: connection?.linked_at ?? null, lastUsedAt: connection?.last_used_at ?? null
+  })
+}
+
+function selectedScopes(consent: Capabilities) {
+  return ["openid", "email", ...capabilities(consent)]
+}
+
+effect function authorize(request: Request, env: GoogleEnv, db: Client, account: string) {
+  const config = try googleConfig(env)
+  if (request.headers.get("content-type")?.split(";")[0] !== "application/json") throw new BadRequest()
+  const message = HttpServerRequest.fromWeb(request)
+  const raw = Effect.provideService(message.json, HttpIncomingMessage.MaxBodySize, ByteSize.kibibytes(4)) catch effect () => { throw new BadRequest() }
+  const parsed = Schema.decodeUnknownOption(Consent, { onExcessProperty: "error" })(raw)
+  if (Option.isNone(parsed) || !(parsed.value.mail || parsed.value.calendar)) throw new BadRequest()
+  const consent = parsed.value
+  const { rows } = try query<User>(db, "SELECT p.provider, p.provider_subject, a.email     FROM accounts a     JOIN cloud_sign_in_identities p ON p.account_id = a.key     WHERE a.key = $1 AND a.status = 'active'     ORDER BY CASE p.provider WHEN 'google' THEN 1 WHEN 'email' THEN 2 ELSE 3 END     LIMIT 1", [account])
+  const user = rows[0]
+  if (!user) throw new AuthorizationFailed()
+  const expected = user.provider === "google" || user.provider === "email"
+    ? user.email?.trim().toLowerCase() ?? null
+    : consent.expectedEmail?.trim().toLowerCase() ?? null
+  if (user.provider !== "google" && (!expected || expected.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(expected))) throw new BadRequest()
+  const random = try SecureRandom.SecureRandom
+  const state = hex(try random.randomBytes(32))
+  const verifier = hex(try random.randomBytes(32))
+  const challenge = try sha256(verifier)
+  const codeChallenge = try sync(() => btoa(String.fromCharCode(...challenge)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", ""))
+  const stateHash = hex(try sha256(state))
+  try forAccount(db, account, query(db, `
+    INSERT INTO cloud_google_authorizations (account_id, state_hash, expected_email, mail, calendar, expires_at)
+    VALUES ($1, $2, $3, $4, $5, now() + $6 * interval '1 second')
+    ON CONFLICT (account_id) DO UPDATE
+      SET state_hash = EXCLUDED.state_hash, expected_email = EXCLUDED.expected_email,
+          mail = EXCLUDED.mail, calendar = EXCLUDED.calendar, expires_at = EXCLUDED.expires_at
+  `, [account, stateHash, expected, consent.mail, consent.calendar, oauthSeconds]))
+  const params = new URLSearchParams({
+    client_id: config.clientId, redirect_uri: config.redirectUri, response_type: "code",
+    scope: selectedScopes(consent).join(" "), state, code_challenge: codeChallenge, code_challenge_method: "S256",
+    access_type: "offline", include_granted_scopes: "false", prompt: "select_account consent"
+  })
+  if (expected) params.set("login_hint", expected)
+  return flowCookie(body(200, { authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth?" + params }), state, verifier, oauthSeconds)
+}
+
+effect function complete(request: Request, url: URL, env: GoogleEnv, db: Client, account: string) {
+  const config = try googleConfig(env)
+  const proof = flow(request)
+  const code = url.searchParams.get("code")
+  if (!proof || !code || code.length > 2048 || proof.state !== url.searchParams.get("state") || url.searchParams.has("error")) throw new AuthorizationFailed()
+  const stateHash = hex(try sha256(proof.state))
+  const { rows } = try query<Authorization>(db, `
+    SELECT o.expected_email, o.mail, o.calendar, p.provider, p.provider_subject
+    FROM cloud_google_authorizations o JOIN accounts a ON a.key = o.account_id
+    JOIN cloud_sign_in_identities p ON p.account_id = a.key
+    WHERE o.account_id = $1 AND o.state_hash = $2 AND o.expires_at > now() AND a.status = 'active'
+    ORDER BY CASE p.provider WHEN 'google' THEN 1 WHEN 'email' THEN 2 ELSE 3 END
+    LIMIT 1
+  `, [account, stateHash])
+  const intended = rows[0]
+  if (!intended) throw new AuthorizationFailed()
+  const credentials = try oauthToken(config, new URLSearchParams({
+    grant_type: "authorization_code", code, code_verifier: proof.verifier, redirect_uri: config.redirectUri
+  }))
+  const granted = new Set((credentials.scope ?? "").split(/\s+/))
+  if (!credentials.refresh_token || !capabilities(intended).every((scope) => granted.has(scope))) throw new AuthorizationFailed()
+  const profileResponse = try http("https://openidconnect.googleapis.com/v1/userinfo", { access: credentials.access_token })
+  if (!ok(profileResponse.status)) throw new ProviderUnavailable()
+  const profileRaw = timeout(profileResponse.json, "10 seconds") catch effect () => { throw new ProviderUnavailable() }
+  const verified = Schema.decodeUnknownOption(GoogleProfile)(profileRaw)
+  if (Option.isNone(verified) || !verified.value.email_verified || !/^[a-zA-Z0-9_-]{1,255}$/.test(verified.value.sub)) throw new AuthorizationFailed()
+  const email = verified.value.email.trim().toLowerCase()
+  if (intended.provider === "google" ? intended.provider_subject !== verified.value.sub : email !== intended.expected_email) throw new AuthorizationFailed()
+  const id = try (try SecureRandom.SecureRandom).uuidV4()
+  const refresh = try seal(config, credentials.refresh_token, credentialContext(env, account, verified.value.sub, intended))
+  const { rowCount } = try forAccount(db, account, query(db, `
+    WITH approved AS (
+      DELETE FROM cloud_google_authorizations
+      WHERE account_id = $1 AND state_hash = $2 AND expires_at > now()
+      RETURNING account_id, mail, calendar
+    )
+    INSERT INTO cloud_google_connections (account_id, id, subject, email, mail, calendar, refresh_cipher)
+    SELECT account_id, $3, $4, $5, mail, calendar, $6 FROM approved
+    ON CONFLICT (account_id) DO UPDATE SET
+      id = EXCLUDED.id, subject = EXCLUDED.subject, email = EXCLUDED.email, mail = EXCLUDED.mail,
+      calendar = EXCLUDED.calendar, refresh_cipher = EXCLUDED.refresh_cipher, linked_at = now(), last_used_at = NULL
+  `, [account, stateHash, id, verified.value.sub, email, refresh]))
+  if (!rowCount) throw new AuthorizationFailed()
+}
+
+effect function disconnect(db: Client, account: string) {
+  try forAccount(db, account, query(db, `
+    WITH canceled AS (DELETE FROM cloud_google_authorizations WHERE account_id = $1)
+    DELETE FROM cloud_google_connections WHERE account_id = $1
+  `, [account]))
+  return body(200, { disconnected: true })
+}
+
+effect function accessFor(env: GoogleEnv, db: Client, account: string, capability: keyof Capabilities, selected: string | null) {
+  const config = try googleConfig(env)
+  const { rows } = try query<Connection>(db, "SELECT * FROM cloud_google_connections WHERE account_id = $1 AND ($2::text IS NULL OR id::text = $2)", [account, selected])
+  const connection = rows[0]
+  if (!connection?.[capability]) throw new ConnectionUnavailable()
+  const refresh = try unseal(env, config, connection)
+  const credentials = try oauthToken(config, new URLSearchParams({ grant_type: "refresh_token", refresh_token: refresh }))
+  if (credentials.scope && !credentials.scope.split(/\s+/).includes(scopeByCapability[capability])) throw new AuthorizationFailed()
+  const used = try query(db, "UPDATE cloud_google_connections SET last_used_at = now() WHERE account_id = $1 AND id = $2", [account, connection.id])
+  if (!used.rowCount) throw new ConnectionUnavailable()
+  return credentials.access_token
+}
+
+function googleReadApi(access: string): GoogleReadApi<ProviderUnavailable | GoogleNotFound, HttpClient.HttpClient> {
+  return effect (url: string) => {
+    const response = try http(url, { access })
+    if (response.status === 404) throw new GoogleNotFound()
+    if (!ok(response.status)) throw new ProviderUnavailable()
+    return timeout(response.json, "10 seconds") catch effect () => { throw new ProviderUnavailable() }
+  }
+}
+
+effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, account: string) {
+  const url = try Effect.try({ try: () => new URL(request.url), catch: () => new BadRequest() })
+  const path = url.pathname.slice(route.length)
+  if (request.method === "POST") {
+    const origin = request.headers.get("origin")
+    if (origin !== env.PUBLIC_API_ORIGIN && origin !== env.WEB_ORIGIN) return body(403, { error: "forbidden_origin" })
+    if (path === "/connect/initiate") return try authorize(request, env, db, account)
+    if (path === "/disconnect") return try disconnect(db, account)
+  }
+  if (request.method === "GET") {
+    if (url.pathname === callbackPath) {
+      const suffix = effect {
+        try complete(request, url, env, db, account)
+        return "/#account"
+      } catch () => "/?googleConnectionError=authorization_failed#account"
+      const response = HttpServerResponse.redirect(env.WEB_ORIGIN + suffix, { status: 303, headers: { "cache-control": "no-store", "referrer-policy": "no-referrer" } })
+      return flowCookie(response, "", "", 0)
+    }
+    if (url.searchParams.has("side") && url.searchParams.get("side") !== "owner") return body(403, { error: "owner_consent_required" })
+    if (path === "/status") return try status(db, env, account)
+    const selected = url.searchParams.get("grantId")
+    const now = new Date(try Clock.currentTimeMillis).toISOString()
+    if (path === "/gmail/triage" || path === "/gmail/read") {
+      const api = googleReadApi(try accessFor(env, db, account, "mail", selected))
+      return body(200, path === "/gmail/triage" ? try googleGmailTriage(api, url, now) : try googleGmailMessage(api, url))
+    }
+    if (path === "/calendar/feed") {
+      const api = googleReadApi(try accessFor(env, db, account, "calendar", selected))
+      return body(200, try googleCalendarFeed(api, url, now))
+    }
+  }
+  return body(404, { error: "route_not_found" })
+}
+
+export function googleRequest(request: Request, env: GoogleEnv, db: Client, account: string): Promise<Response> {
+  return runPromise(Effect.provide(effect {
+    const response = routeGoogle(request, env, db, account) catch (error) => match (error) {
+      when BadRequest: body(400, { error: "invalid_request" });
+      when GoogleReadInput: body(400, { error: "invalid_request" });
+      when GoogleNotFound: body(404, { error: "google_item_not_found" });
+      when AuthorizationFailed: body(409, { error: "google_reconnect_required" });
+      when ConnectionUnavailable: body(409, { error: "google_connection_unavailable" });
+      when DatabaseUnavailable: body(503, { error: "storage_unavailable" });
+      when ProviderUnavailable: body(502, { error: "google_unavailable" });
+      default: body(502, { error: "google_response_invalid" });
+    }
+    return HttpServerResponse.toWeb(response)
+  }, providerLayer))
+}

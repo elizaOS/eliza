@@ -1,0 +1,262 @@
+// spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/sessions.md, "Story: Sign out here, or everywhere"
+import type { Client } from "pg"
+import { SecureRandom } from "effect/crypto"
+import { apply, decodeState, initial, accepts, canRefresh, canLogout, type Family } from "../gen/cloud__identity__sessions.effect.vibe"
+import { firstSight, apply as applyAccount, decodeState as decodeAccount, initial as unopened, type Owner } from "../gen/cloud__identity__accounts.effect.vibe"
+import { secretText, tokenDigest } from "./shared/credential-crypto.vibe"
+
+export type Account = { id: string; email: string | null }
+export type Identity = { provider: "google" | "email" | "sms"; subject: string; email: string | null }
+type AccountRow = Account & { organization_id: string; sessions_revoked_before: string; status: "active" | "deleting" | "erased"; state: unknown }
+type SessionRow = AccountRow & { key: string; state: unknown; access_digest: string; generation: number | null }
+export type BrowserSession = { account: Account; access: string; refresh: string; accessSeconds: number; refreshSeconds: number }
+
+export error StorageUnavailable
+export error IdentityConflict
+
+export const accessCookie = "__Host-eliza-session"
+export const refreshCookie = "__Host-eliza-refresh"
+const accessPattern = /^eliza_session_[A-Za-z0-9_-]{43}$/
+const refreshPattern = /^eliza_refresh_[A-Za-z0-9_-]{54}$/
+export const devicePattern = /^eliza_mobile_[0-9a-f]{64}$/
+
+export effect function authQuery<Row extends Record<string, unknown>>(db: Client, sql: string, params: readonly unknown[] = []) {
+  return try tryPromise({ try: () => db.query<Row>(sql, [...params]), catch: () => new StorageUnavailable() })
+}
+
+export effect function accountTransaction<A, E, R>(db: Client, body: A!E!R) {
+  return try Effect.uninterruptible(effect {
+    try authQuery(db, "BEGIN")
+    return effect {
+      const result = try body
+      try authQuery(db, "COMMIT")
+      return result
+    } catch effect (failure) => {
+      authQuery(db, "ROLLBACK") catch () => undefined
+      throw failure
+    }
+  })
+}
+
+export effect function digestCredential(value: string) {
+  return tokenDigest(value)
+}
+
+export effect function newSecret(kind: "device" | "session" | "refresh") {
+  return kind === "device" ? secretText("eliza_mobile_", 32, "hex") : secretText("eliza_" + kind + "_", kind === "refresh" ? 40 : 32, "base64url")
+}
+
+export function readCookie(request: Request, name: string) {
+  const entries = (request.headers.get("cookie") ?? "").split(";").map((entry) => entry.trim()).filter((entry) => entry.startsWith(name + "="))
+  return entries.length === 1 ? entries[0].slice(name.length + 1) : null
+}
+
+export effect function accessDigest(request: Request) {
+  const token = readCookie(request, accessCookie)
+  return token && accessPattern.test(token) ? try digestCredential(token) : null
+}
+
+export effect function refreshDigest(request: Request) {
+  const token = readCookie(request, refreshCookie)
+  return token && refreshPattern.test(token) ? try digestCredential(token) : null
+}
+
+export effect function deviceDigest(request: Request) {
+  const authorization = request.headers.get("authorization")
+  if (!authorization?.startsWith("Bearer ")) return null
+  const token = authorization.slice(7)
+  return devicePattern.test(token) ? try digestCredential(token) : null
+}
+
+effect function advance(input: unknown, now: number) {
+  const stored = decodeState(input) catch effect () => { throw new StorageUnavailable() }
+  if (stored.now >= now) return stored
+  const next = apply(stored, { type: "elapse", elapsed: now - stored.now }) catch effect () => { throw new StorageUnavailable() }
+  return next.state
+}
+
+effect function forAccount(db: Client, id: string) {
+  const { rows } = try authQuery<AccountRow>(db, `
+    SELECT key AS id, email, organization_id, sessions_revoked_before::text, status, state
+    FROM accounts WHERE key = $1 AND status = 'active' FOR UPDATE
+  `, [id])
+  return rows[0] ?? null
+}
+
+function ownerOf(row: AccountRow | undefined): Owner {
+  if (!row) return { tag: "Unowned" }
+  const status = row.status === "active" ? "Active" : row.status === "deleting" ? "Deleting" : "Erased"
+  return { tag: "OwnedBy", userId: row.id, status }
+}
+
+effect function accountForIdentity(db: Client, proof: Identity, now: number) {
+  const email = proof.email?.trim().toLowerCase() || null
+  const phone = proof.provider === "sms" ? proof.subject : null
+  const identity = {
+    method: proof.provider === "google" ? "GoogleSignIn" : proof.provider === "email" ? "EmailSignIn" : "PhoneSignIn",
+    subject: proof.subject
+  } as const
+  const locks = ["subject:" + proof.provider + ":" + proof.subject, ...(email ? ["email:" + email] : [])].sort()
+  for (const lock of locks) try authQuery(db, "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [lock])
+  const linked = try authQuery<AccountRow>(db, `
+    SELECT a.key AS id, a.email, a.organization_id, a.sessions_revoked_before::text, a.status, a.state
+    FROM cloud_sign_in_identities p JOIN accounts a ON a.key = p.account_id
+    WHERE p.provider = $1 AND p.provider_subject = $2 FOR UPDATE OF a
+  `, [proof.provider, proof.subject])
+  const known = linked.rows[0]
+  const byEmail = !known && email ? (try authQuery<AccountRow>(db, `
+    SELECT key AS id, email, organization_id, sessions_revoked_before::text, status, state
+    FROM accounts WHERE email = $1 FOR UPDATE
+  `, [email])).rows[0] : undefined
+  const subjectOwner = ownerOf(known)
+  const emailOwner = ownerOf(byEmail)
+  const verifiedEmail = email !== null
+  const result = firstSight(identity, verifiedEmail, subjectOwner, emailOwner)
+  if (result.tag === "AccountClosed") throw new IdentityConflict()
+  if (result.tag === "SignInAs") {
+    if (!known) throw new StorageUnavailable()
+    return known
+  }
+  if (result.tag === "AttachTo") {
+    if (!byEmail) throw new StorageUnavailable()
+    const before = decodeAccount(byEmail.state) catch effect () => { throw new StorageUnavailable() }
+    const attached = applyAccount(before, { type: "attach", identity, verifiedEmail, subjectOwner, emailOwner }) catch effect () => { throw new IdentityConflict() }
+    const after = attached.state
+    try authQuery(db, "INSERT INTO cloud_sign_in_identities (provider, provider_subject, account_id) VALUES ($1, $2, $3)", [proof.provider, proof.subject, byEmail.id])
+    try authQuery(db, "UPDATE accounts SET state = $2, revision = revision + 1, updated_at = $3 WHERE key = $1", [byEmail.id, after, now])
+    return { ...byEmail, state: after }
+  }
+  const random = try SecureRandom.SecureRandom
+  const id = try random.uuidV4()
+  const organization = try random.uuidV4()
+  const referralCode = secretText("R", 8, "hex")
+  const opened = applyAccount(unopened, {
+    type: "open", userId: id, organizationId: organization, identity, verifiedEmail, subjectOwner, emailOwner, referralCode
+  }) catch effect () => { throw new StorageUnavailable() }
+  const state = opened.state
+  try authQuery(db, "INSERT INTO organizations (id, name, created_at) VALUES ($1, $2, $3)", [organization, email ?? "Personal", now])
+  const inserted = try authQuery<AccountRow>(db, `
+    INSERT INTO accounts (key, state, revision, organization_id, status, email, phone, created_at, updated_at)
+    VALUES ($1, $6, 1, $2, 'active', $3, $4, $5, $5)
+    RETURNING key AS id, email, organization_id, sessions_revoked_before::text, status, state
+  `, [id, organization, email, phone, now, state])
+  const account = inserted.rows[0]
+  if (!account) throw new StorageUnavailable()
+  try authQuery(db, "INSERT INTO cloud_sign_in_identities (provider, provider_subject, account_id) VALUES ($1, $2, $3)", [proof.provider, proof.subject, id])
+  return account
+}
+
+function browserSession(account: AccountRow, access: string, refresh: string, session: Family): BrowserSession {
+  return {
+    account: { id: account.id, email: account.email }, access, refresh,
+    accessSeconds: Math.ceil((session.accessExpiresAt - session.now) / 1000),
+    refreshSeconds: Math.ceil((session.refreshExpiresAt - session.now) / 1000)
+  }
+}
+
+export effect function signInWithProof(db: Client, identity: Identity) {
+  return try accountTransaction(db, effect {
+    const now = try Clock.currentTimeMillis
+    const account = try accountForIdentity(db, identity, now)
+    const epoch = Number(account.sessions_revoked_before)
+    if (!Number.isSafeInteger(epoch) || epoch < 0) throw new StorageUnavailable()
+    const opened = apply({ ...initial, now }, { type: "signIn", assurance: "SingleFactor", personEpoch: epoch }) catch effect () => { throw new StorageUnavailable() }
+    const state = opened.state
+    const key = try (try SecureRandom.SecureRandom).uuidV4()
+    const access = try newSecret("session")
+    const refresh = try newSecret("refresh")
+    const accessHash = try digestCredential(access)
+    const refreshHash = try digestCredential(refresh)
+    try authQuery(db, `
+      INSERT INTO sessions (key, user_id, state, revision, access_digest, refresh_digest, live, access_expires_at, refresh_expires_at, auth_at, updated_at)
+      VALUES ($1, $2, $3, 1, $4, $5, true, $6, $7, $8, $8)
+    `, [key, account.id, state, accessHash, refreshHash, state.accessExpiresAt, state.refreshExpiresAt, state.authAt])
+    return browserSession(account, access, refresh, state)
+  })
+}
+
+export effect function browserAccount(request: Request, db: Client) {
+  const token = try accessDigest(request)
+  if (!token) return null
+  const { rows } = try authQuery<SessionRow>(db, `
+    SELECT a.key AS id, a.email, a.organization_id, a.sessions_revoked_before::text, s.state, s.key
+    FROM sessions s JOIN accounts a ON a.key = s.user_id
+    WHERE s.access_digest = $1 AND s.live AND a.status = 'active'
+  `, [token])
+  const row = rows[0]
+  if (!row) return null
+  const state = try advance(row.state, try Clock.currentTimeMillis)
+  return accepts(state, state.generation, Number(row.sessions_revoked_before)) ? { id: row.id, email: row.email, sessionKey: row.key } : null
+}
+
+export effect function renewBrowserSession(request: Request, db: Client) {
+  const presented = try refreshDigest(request)
+  if (!presented) return null
+  return try accountTransaction(db, effect {
+    const found = try authQuery<{ user_id: string }>(db, `
+      SELECT user_id FROM sessions WHERE refresh_digest = $1
+      UNION ALL
+      SELECT s.user_id FROM cloud_spent_refresh d JOIN sessions s ON s.key = d.session_key WHERE d.digest = $1
+    `, [presented])
+    const owner = found.rows[0]
+    if (!owner) return null
+    const account = try forAccount(db, owner.user_id)
+    if (!account) return null
+    const { rows } = try authQuery<SessionRow>(db, `
+      SELECT s.key, s.state, s.access_digest, d.generation
+      FROM sessions s LEFT JOIN cloud_spent_refresh d ON d.session_key = s.key AND d.digest = $1
+      WHERE s.user_id = $2 AND (s.refresh_digest = $1 OR d.digest IS NOT NULL)
+    `, [presented, account.id])
+    const row = rows[0]
+    if (!row) return null
+    const now = try Clock.currentTimeMillis
+    const before = try advance(row.state, now)
+    const personEpoch = Number(account.sessions_revoked_before)
+    const generation = row.generation ?? before.generation
+    if (!Number.isSafeInteger(personEpoch) || personEpoch < 0 || !canRefresh(before, generation, personEpoch)) return null
+    const changed = apply(before, { type: "refresh", presented: generation, personEpoch }) catch effect () => { throw new StorageUnavailable() }
+    const after = changed.state
+    if (after.phase === "Reused") {
+      const revoked = changed.out[0]
+      if (!revoked || revoked.tag !== "RevokePersonSessions") throw new StorageUnavailable()
+      try authQuery(db, "UPDATE accounts SET sessions_revoked_before = $2, updated_at = $3 WHERE key = $1", [account.id, revoked.toEpoch, now])
+      try authQuery(db, "UPDATE sessions SET state = $2, revision = revision + 1, live = false, updated_at = $3 WHERE key = $1", [row.key, after, now])
+      return null
+    }
+    const access = try newSecret("session")
+    const refresh = try newSecret("refresh")
+    const accessHash = try digestCredential(access)
+    const refreshHash = try digestCredential(refresh)
+    try authQuery(db, "INSERT INTO cloud_spent_refresh (digest, session_key, generation, access_digest) VALUES ($1, $2, $3, $4)", [presented, row.key, before.generation, row.access_digest])
+    try authQuery(db, `
+      UPDATE sessions SET state = $2, revision = revision + 1, access_digest = $3,
+        refresh_digest = $4, access_expires_at = $5, updated_at = $6 WHERE key = $1
+    `, [row.key, after, accessHash, refreshHash, after.accessExpiresAt, now])
+    return browserSession(account, access, refresh, after)
+  })
+}
+
+export effect function logoutBrowserSession(request: Request, db: Client) {
+  const access = try accessDigest(request)
+  const refresh = try refreshDigest(request)
+  if (!access && !refresh) return
+  try accountTransaction(db, effect {
+    const found = try authQuery<{ user_id: string; key: string }>(db, `
+      SELECT DISTINCT s.user_id, s.key FROM sessions s
+      LEFT JOIN cloud_spent_refresh d ON d.session_key = s.key AND (d.access_digest = $1 OR d.digest = $2)
+      WHERE s.access_digest = $1 OR s.refresh_digest = $2 OR d.digest IS NOT NULL
+    `, [access, refresh])
+    if (found.rows.length !== 1) return
+    const account = try forAccount(db, found.rows[0].user_id)
+    if (!account) return
+    const { rows } = try authQuery<SessionRow>(db, "SELECT key, state FROM sessions WHERE key = $1 AND user_id = $2", [found.rows[0].key, account.id])
+    const row = rows[0]
+    if (!row) return
+    const now = try Clock.currentTimeMillis
+    const before = try advance(row.state, now)
+    if (!canLogout(before)) return
+    const ended = apply(before, { type: "logout" }) catch effect () => { throw new StorageUnavailable() }
+    if (before.phase === ended.state.phase) return
+    try authQuery(db, "UPDATE sessions SET state = $2, revision = revision + 1, live = false, updated_at = $3 WHERE key = $1", [row.key, ended.state, now])
+  })
+}

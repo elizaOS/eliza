@@ -2,33 +2,11 @@
 import { Deployment, SecretMissing } from "../profile/profile.vibe"
 
 module node {
-  import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
-
-  /** @throws {never} */
-  export function sha256Hex(text: string): string {
-    return createHash("sha256").update(text, "utf8").digest("hex")
-  }
+  import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto"
 
   /** @throws {never} */
   export function hmacHex(key: string, text: string): string {
     return createHmac("sha256", key).update(text, "utf8").digest("hex")
-  }
-
-  /** @throws {never} */
-  export function randomText(bytes: number, encoding: "hex" | "base64url"): string {
-    return randomBytes(bytes).toString(encoding)
-  }
-
-  /** @throws {never} */
-  export function uuid(): string {
-    return randomUUID()
-  }
-
-  /** @throws {never} */
-  export function sameText(left: string, right: string): boolean {
-    const a = Buffer.from(left, "utf8")
-    const b = Buffer.from(right, "utf8")
-    return a.length === b.length && timingSafeEqual(a, b)
   }
 
   /** @throws {unknown} */
@@ -50,25 +28,12 @@ module node {
     return Buffer.concat([decipher.update(Buffer.from(data, "base64url")), decipher.final()]).toString("utf8")
   }
 }
-import { hmacHex, randomText, sameText, sealWith, sha256Hex, unsealWith, uuid } from node
-
-export { sameText, sha256Hex }
+import { hmacHex, sealWith, unsealWith } from node
+export { newId, secretText, tokenDigest, sameText, sha256Hex } from "./credential-crypto.vibe"
 
 export type SealPurpose = "device-key" | "google-tokens" | "totp-secret" | "provider-secret"
 
 export error SealingFailed { purpose: SealPurpose; cause: unknown }
-
-export function newId(): string {
-  return uuid()
-}
-
-export function secretText(prefix: string, bytes: number, encoding: "hex" | "base64url"): string {
-  return `${prefix}${randomText(bytes, encoding)}`
-}
-
-export function tokenDigest(token: string): string {
-  return sha256Hex(token)
-}
 
 export effect function keyedDigest(text: string): string!SecretMissing!Deployment {
   const deployment = try Deployment
