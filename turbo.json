@@ -280,7 +280,17 @@
         "vibestack-studio#test",
         "@elizaos/core#build",
         "@elizaos/core#typecheck",
-        "@elizaos/core#test"
+        "@elizaos/core#test",
+        "@elizaos/cloud#build",
+        "@elizaos/cloud#typecheck",
+        "@elizaos/cloud#test",
+        "@elizaos/cloud#test:browser",
+        "@elizaos/agent#build",
+        "@elizaos/agent#typecheck",
+        "@elizaos/agent#test",
+        "@elizaos/os#build",
+        "@elizaos/os#typecheck",
+        "@elizaos/os#test"
       ],
       "cache": false
     },
@@ -288,6 +298,9 @@
       "dependsOn": [
         "@repo/design-system#build",
         "@elizaos/core#typecheck",
+        "@elizaos/cloud#typecheck",
+        "@elizaos/agent#typecheck",
+        "@elizaos/os#typecheck",
         "vibestack-studio#typecheck"
       ],
       "inputs": [

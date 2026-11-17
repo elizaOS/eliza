@@ -7,6 +7,7 @@ packages:
 # Effect and VibeLang are pinned exactly in the root package.json instead,
 # where `spec init` reads them: VibeLang 0.0.13 accepts Effect 4.1.1 only.
 catalog:
+  "@electric-sql/pglite": ^0.4.6
   "@eslint-react/eslint-plugin": ^5.30.2
   "@eslint/js": ^10.0.1
   "@tailwindcss/vite": ^4.3.5
@@ -16,6 +17,7 @@ catalog:
   "@vitejs/plugin-react": ^6.3.0
   "@vitest/browser": 5.1.0
   "@vitest/browser-playwright": 5.1.0
+  esbuild: ^0.28.2
   eslint: ^10.14.0
   eslint-plugin-boundaries: ^7.4.3
   eslint-plugin-react-hooks: ^7.1.1
@@ -25,11 +27,13 @@ catalog:
   knip: ^6.45.1
   madge: ^8.0.0
   playwright: 1.65.0
+  punycode: 2.3.1
   react: ^19.3.1
   react-dom: ^19.3.1
   stylelint: ^18.0.0
   stylelint-config-standard: ^41.0.0
   tailwindcss: ^4.3.5
+  tldts: 7.4.16
   turbo: ^2.11.11
   typescript: ^6.0.3
   typescript-eslint: ^8.72.2

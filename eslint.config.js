@@ -30,7 +30,7 @@ const noReact = { patterns: [...imports.patterns, { regex: "^react(?:-dom)?(?:/|
 // What no tsconfig.json includes, so the type-aware rules cannot see it.
 const untyped = ["*.{js,ts}", "**/.storybook/**", "packages/design-system/**", "vibestack/design/test/**", "vibestack/stories/test/**"]
 // Every React interface: Studio's page is built on the same theme (vibestack/studio/vite.config.ts).
-const tsx = ["packages/ui/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}", "vibestack/studio/src/page/**/*.{ts,tsx}"]
+const tsx = ["packages/ui/**/*.{ts,tsx}", "packages/cloud/src/pages/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}", "vibestack/studio/src/page/**/*.{ts,tsx}"]
 const design = "packages/design-system"
 const unused = { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" }
 const coreUnused = { ...unused, ignoreRestSiblings: true }
@@ -39,8 +39,8 @@ const coreUnused = { ...unused, ignoreRestSiblings: true }
 const loose = Object.fromEntries(["no-explicit-any", "no-unsafe-argument", "no-unsafe-assignment", "no-unsafe-call", "no-unsafe-member-access", "no-unsafe-return"].map((rule) => [`@typescript-eslint/${rule}`, "off"]))
 
 export default defineConfig(
-  // Generated or disposable, and .claude/worktrees holds other checkouts of this repository.
-  globalIgnores(["**/gen/", "!vibestack/gen/", "**/.vibe/", "**/dist/", "**/.cache/", "**/.spec-cache/", "**/generated/", "**/storybook-static/", "**/test/fixtures/", "vibestack/examples/", "vibestack/fixtures/", ".claude/", ".lemmascript/", ".studio/", ".turbo/", "_apalache-out/"]),
+  // Generated or disposable, .claude/worktrees holds other checkouts of this repository, and os ships the Android, browser and Go trees it copies as files.
+  globalIgnores(["**/gen/", "!vibestack/gen/", "**/.vibe/", "**/dist/", "**/.cache/", "**/.spec-cache/", "**/generated/", "**/storybook-static/", "**/test/fixtures/", "packages/os/{android,browser,native}/", "vibestack/examples/", "vibestack/fixtures/", ".claude/", ".lemmascript/", ".studio/", ".turbo/", "_apalache-out/"]),
   { linterOptions: { reportUnusedDisableDirectives: "error", reportUnusedInlineConfigs: "error" } },
   js.configs.recommended,
   tseslint.configs.recommendedTypeChecked,
@@ -132,10 +132,10 @@ export default defineConfig(
     files: ["packages/core/src/catalog/loader.vibe"],
     rules: { "no-warning-comments": ["error", { terms: ["todo", "fixme", "deprecated"], location: "anywhere" }] },
   },
-  // React belongs to interfaces: the tools apart from Studio's page, and schemas, contracts, drivers and the shell everywhere, do without it.
+  // React belongs to interfaces: the tools apart from Studio's page, the owners apart from cloud's pages, and schemas, contracts, drivers and the shell everywhere, do without it.
   {
-    files: ["vibestack/**", "packages/core/**", "**/*.{schema,contract}.ts", "**/test/drivers/**", "**/*.vibe"],
-    ignores: ["vibestack/studio/src/page/**"],
+    files: ["vibestack/**", "packages/{core,cloud,agent,os}/**", "**/*.{schema,contract}.ts", "**/test/drivers/**", "**/*.vibe"],
+    ignores: ["vibestack/studio/src/page/**", "packages/cloud/src/pages/**"],
     rules: { "no-restricted-imports": ["error", noReact] },
   },
   // eslint-plugin-react-hooks owns the rules both plugins ship; @eslint-react adds the rest.

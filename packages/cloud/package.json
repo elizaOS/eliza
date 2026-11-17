@@ -1,8 +1,85 @@
 {
   "name": "@elizaos/cloud",
   "version": "4.0.0-alpha.0",
-  "private": true,
   "type": "module",
-  "description": "Hosted services a branded cloud deployment runs: accounts, billing, inference, agent hosting, connections and managed mail and calendar.",
-  "license": "MIT"
+  "description": "Hosted services a deployment runs for on-device agents: identity, native clients, billing, inference, speech, maps and managed mail and calendar.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=26"
+  },
+  "bin": {
+    "elizaos-cloud": "./dist/src/main.js"
+  },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    },
+    "./client": {
+      "eliza-source": "./src/client/index.vibe",
+      "types": "./dist/src/client/index.d.ts",
+      "import": "./dist/src/client/index.js",
+      "default": "./dist/src/client/index.js"
+    },
+    "./profile": {
+      "eliza-source": "./src/profile/profile.vibe",
+      "types": "./dist/src/profile/profile.d.ts",
+      "import": "./dist/src/profile/profile.js",
+      "default": "./dist/src/profile/profile.js"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && vite build && node -e \"const fs=require('node:fs');const path=require('node:path');const source=JSON.parse(fs.readFileSync('package.json','utf8'));const target=value=>value.startsWith('./dist/')?'./'+value.slice(7):value;for(const file of fs.globSync('src/**/*.sql')){fs.mkdirSync(path.dirname('dist/'+file),{recursive:true});fs.copyFileSync(file,'dist/'+file);}const publishedExports=Object.fromEntries(Object.entries(source.exports).map(([name,conditions])=>[name,Object.fromEntries(Object.entries(conditions).map(([condition,value])=>[condition,target(condition==='eliza-source'?(conditions.import??conditions.default):value)]))]));const publication={...source,main:target(source.main),types:target(source.types),bin:Object.fromEntries(Object.entries(source.bin).map(([name,value])=>[name,target(value)])),files:['src','gen','pages'],exports:publishedExports};delete publication.scripts;delete publication.publishConfig;fs.writeFileSync('dist/package.json',JSON.stringify(publication,null,2)+'\\n');\"",
+    "typecheck": "vibelang --noEmit -p .",
+    "test": "vitest run",
+    "test:browser": "vitest run --project browser",
+    "start": "node --import vibelang/register src/main.vibe serve --profile test/fixtures/profile.json --environment staging --store pglite:.cache/cloud.pglite --seed test/fixtures/seed.json"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.1.1",
+    "@effect/platform-node-shared": "4.1.1",
+    "@elizaos/core": "workspace:*",
+    "effect": "4.1.1",
+    "vibelang-runtime": "0.0.13"
+  },
+  "peerDependencies": {
+    "pg": "^8.23.1"
+  },
+  "peerDependenciesMeta": {
+    "pg": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@antithesishq/bombadil": "0.7.10",
+    "@effect/vitest": "4.1.1",
+    "@electric-sql/pglite": "catalog:",
+    "@repo/design-system": "workspace:*",
+    "@repo/ui": "workspace:*",
+    "@tailwindcss/vite": "catalog:",
+    "@types/node": "catalog:",
+    "@types/pg": "^8.23.1",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13",
+    "vibelang-vite": "0.0.13",
+    "vibestack": "workspace:*",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  },
+  "publishConfig": {
+    "directory": "dist",
+    "linkDirectory": false
+  }
 }

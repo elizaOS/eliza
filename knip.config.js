@@ -7,9 +7,10 @@
 //   root @informalsystems/quint, lemmascript  run as executables by vibestack/units.ts and vibestack/prove.ts
 //   root @vitest/browser                    loaded by Vitest's browser mode, beside @vitest/browser-playwright
 //   root @repo/design-system                read as files by vibestack/design/test/design.test.ts
-//   tailwindcss (ui, design-system, studio, apps)  resolved by @tailwindcss/vite and the lint plugin from CSS
+//   tailwindcss (ui, design-system, studio, apps, cloud)  resolved by @tailwindcss/vite and the lint plugin from CSS
 //   entry *.schema, *.contract              imported by the tests vibestack/testing/generate.ts writes under .cache/
 //   design-system eslint, eslint-plugin-better-tailwindcss, typescript-eslint  loaded by name in vibestack/design/test/design.test.ts
+//   os esbuild, punycode, tldts             used by browser/protection, which ships as files outside the package's project
 import vibelang from "vibelang/knip"
 
 const vibe = (text, path) => vibelang(text, path).replace(/^import\s+(?:type\s+)?\{[^}"']*\}\s+from\s+[A-Za-z_$][\w$]*\s*$/gm, "")
@@ -91,6 +92,63 @@ export default {
       ],
       "ignoreDependencies": [
         "@effect/platform-node-shared"
+      ]
+    },
+    "packages/cloud": {
+      "entry": [
+        "src/{index,main}.vibe",
+        "src/client/index.vibe",
+        "src/profile/profile.vibe",
+        "src/pages/render.tsx",
+        "test/**/*.test.{ts,vibe}",
+        "test/drivers/*.ts",
+        "test/bombadil.ts",
+        "src/**/*.{schema,contract}.{ts,vibe}"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx,vibe,css}",
+        "test/**/*.{ts,vibe}"
+      ],
+      "ignoreDependencies": [
+        "@effect/platform-node-shared",
+        "tailwindcss"
+      ]
+    },
+    "packages/agent": {
+      "entry": [
+        "src/{index,bin}.vibe",
+        "src/{client,voice,tasks}/index.vibe",
+        "src/access/routes.vibe",
+        "src/bundle/build.vibe",
+        "test/**/*.test.{ts,vibe}",
+        "test/drivers/*.ts",
+        "src/**/*.{schema,contract}.{ts,vibe}"
+      ],
+      "project": [
+        "src/**/*.{ts,vibe}",
+        "test/**/*.{ts,vibe}"
+      ]
+    },
+    "packages/os": {
+      "entry": [
+        "src/{index,cli}.vibe",
+        "src/{image,build,browser,app-update}/index.vibe",
+        "src/browser/address.ts",
+        "src/bridges/*.vibe",
+        "src/bridges/definitions/*.ts",
+        "test/**/*.test.{ts,vibe}",
+        "test/drivers/*.ts",
+        "src/**/*.{schema,contract}.{ts,vibe}"
+      ],
+      "project": [
+        "src/**/*.{ts,vibe}",
+        "test/**/*.{ts,vibe}"
+      ],
+      "ignoreDependencies": [
+        "@effect/platform-node-shared",
+        "esbuild",
+        "punycode",
+        "tldts"
       ]
     },
     "apps/*": {

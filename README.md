@@ -1,7 +1,8 @@
 # Eliza on Vibestack
 
 This workspace specifies Eliza v4 on Vibestack: the kernel, the agent host,
-auth, the device image, the cloud services and the assistant plugins. The
+the device image, the cloud services and the assistant plugins. Agents run
+on the device; the cloud serves identity, billing and model access. The
 specification covers requirements, Quint models, and the generated
 contracts for the VibeLang and Effect implementation.
 

@@ -3,6 +3,106 @@
   "version": "4.0.0-alpha.0",
   "private": true,
   "type": "module",
-  "description": "Android device image, build, updates, native system bridges, browser surfaces and voice.",
-  "license": "MIT"
+  "description": "Android device image, Android host build, app updates, native system bridges, browser surfaces and voice.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=26"
+  },
+  "bin": {
+    "eliza-os": "./dist/src/cli.js"
+  },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "files": [
+    "dist",
+    "android",
+    "aosp",
+    "browser",
+    "native"
+  ],
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.vibe",
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    },
+    "./image": {
+      "eliza-source": "./src/image/index.vibe",
+      "types": "./dist/src/image/index.d.ts",
+      "import": "./dist/src/image/index.js",
+      "default": "./dist/src/image/index.js"
+    },
+    "./build": {
+      "eliza-source": "./src/build/index.vibe",
+      "types": "./dist/src/build/index.d.ts",
+      "import": "./dist/src/build/index.js",
+      "default": "./dist/src/build/index.js"
+    },
+    "./browser": {
+      "eliza-source": "./src/browser/index.vibe",
+      "types": "./dist/src/browser/index.d.ts",
+      "import": "./dist/src/browser/index.js",
+      "default": "./dist/src/browser/index.js"
+    },
+    "./browser/address": {
+      "eliza-source": "./src/browser/address.ts",
+      "types": "./dist/src/browser/address.d.ts",
+      "import": "./dist/src/browser/address.js",
+      "default": "./dist/src/browser/address.js"
+    },
+    "./browser/runtime/*": "./browser/src/*",
+    "./browser/protection/*": "./browser/protection/*",
+    "./browser/chromium/component/*": "./browser/chromium/component/*",
+    "./app-update": {
+      "eliza-source": "./src/app-update/index.vibe",
+      "types": "./dist/src/app-update/index.d.ts",
+      "import": "./dist/src/app-update/index.js",
+      "default": "./dist/src/app-update/index.js"
+    },
+    "./bridges/*": {
+      "eliza-source": "./src/bridges/*.vibe",
+      "types": "./dist/src/bridges/*.d.ts",
+      "import": "./dist/src/bridges/*.js",
+      "default": "./dist/src/bridges/*.js"
+    },
+    "./bridges/definitions/*": {
+      "eliza-source": "./src/bridges/definitions/*.ts",
+      "types": "./dist/src/bridges/definitions/*.d.ts",
+      "import": "./dist/src/bridges/definitions/*.js",
+      "default": "./dist/src/bridges/definitions/*.js"
+    },
+    "./android/*": "./android/*",
+    "./aosp/*": "./aosp/*"
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json",
+    "typecheck": "vibelang --noEmit -p .",
+    "test": "vitest run",
+    "jvm:prepare": "node test/drivers/jvm-adapter.ts --compile"
+  },
+  "dependencies": {
+    "@effect/platform-node": "4.1.1",
+    "@effect/platform-node-shared": "4.1.1",
+    "@elizaos/core": "workspace:*",
+    "effect": "4.1.1",
+    "esbuild": "catalog:",
+    "punycode": "catalog:",
+    "tldts": "catalog:",
+    "vibelang-runtime": "0.0.13"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/core": "8.5.2",
+    "@effect/vitest": "4.1.1",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vibelang": "0.0.13",
+    "vibelang-vite": "0.0.13",
+    "vibestack": "workspace:*",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
 }
