@@ -96,6 +96,7 @@ pure def canReadCloudGoogle(ownerSessionActive: bool, connectionPresent: bool, g
 
 Opting in needs an explicit native request and recent interactive approval. The
 registered native client binds the approval to its own one-time verifier.
+Owner verification can authorize local use without opening any cloud copy.
 The backup grant belongs to the current deployment, registered product and
 account. The cloud refuses a grant after expiry or revocation, or if the
 account or registration is no longer eligible. An inference credential
@@ -111,13 +112,13 @@ pure def lawInferenceCannotAccessPasswordBackup(active: bool, scopeMatches: bool
   not(canAccessPasswordBackup(BackupInferenceCredential, active, scopeMatches))
 pure def lawOtherAccountsCannotAccessPasswordBackup(access: BackupAccess, active: bool): bool =
   not(canAccessPasswordBackup(access, active, false))
-type PasswordBackupPurpose = BackupRead | BackupWrite | BackupRemove
+type PasswordBackupPurpose = BackupRead | BackupWrite | BackupRemove | BackupVerify
 pure def canApprovePasswordBackup(active: bool, recent: bool, registered: bool): bool =
   active and recent and registered
 pure def lawStaleSignInCannotApprovePasswordBackup(active: bool, registered: bool): bool =
   not(canApprovePasswordBackup(active, false, registered))
 pure def canRedeemBackupApproval(approved: PasswordBackupPurpose, requested: PasswordBackupPurpose, exactVerifier: bool, exactState: bool, grantLive: bool, unspent: bool): bool =
-  approved == requested and exactVerifier and exactState and grantLive and unspent
+  approved == requested and requested != BackupVerify and exactVerifier and exactState and grantLive and unspent
 pure def lawBackupApprovalCannotBeReplayed(approved: PasswordBackupPurpose, requested: PasswordBackupPurpose, exactVerifier: bool, exactState: bool, grantLive: bool): bool =
   not(canRedeemBackupApproval(approved, requested, exactVerifier, exactState, grantLive, false))
 ```
