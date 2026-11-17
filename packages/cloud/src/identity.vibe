@@ -13,6 +13,7 @@ import { browserNativeRegistration, mobileRegistration, type NativeRegistryEnv }
 
 export type IdentityEnv = NativeRegistryEnv & {
   GOOGLE_CLIENT_SECRET?: string
+  SIGN_IN_EMAIL?: { send(message: { from: string; to: string; subject: string; text: string }): Promise<unknown> }
   RESEND_API_KEY?: string
   EMAIL_FROM?: string
   EMAIL_CODE_SECRET?: string
@@ -238,7 +239,7 @@ function smsBudget(env: IdentityEnv) {
 }
 
 function emailReady(env: IdentityEnv) {
-  return Boolean(env.RESEND_API_KEY && env.EMAIL_FROM && env.EMAIL_CODE_SECRET && env.EMAIL_CODE_SECRET.length >= 32)
+  return Boolean((env.SIGN_IN_EMAIL || env.RESEND_API_KEY) && env.EMAIL_FROM && env.EMAIL_CODE_SECRET && env.EMAIL_CODE_SECRET.length >= 32)
 }
 
 function smsReady(env: IdentityEnv) {
@@ -246,15 +247,20 @@ function smsReady(env: IdentityEnv) {
 }
 
 effect function sendEmail(env: IdentityEnv, address: string, code: string) {
-  if (!env.RESEND_API_KEY || !env.EMAIL_FROM) throw new ProviderUnavailable()
+  if (!env.EMAIL_FROM) throw new ProviderUnavailable()
+  const message = {
+    from: env.EMAIL_FROM, to: address, subject: "Your sign-in code",
+    text: `Your sign-in code is ${code}. It expires in ten minutes. If you did not request this code, you can ignore this email.`
+  }
+  const binding = env.SIGN_IN_EMAIL
+  if (binding) {
+    try Effect.tryPromise({ try: () => binding.send(message), catch: () => new ProviderUnavailable() })
+    return
+  }
+  if (!env.RESEND_API_KEY) throw new ProviderUnavailable()
   const sent = try external("https://api.resend.com/emails", {
     authorization: "Bearer " + env.RESEND_API_KEY,
-    body: JSON.stringify({
-      from: env.EMAIL_FROM,
-      to: [address],
-      subject: "Your sign-in code",
-      text: `Your sign-in code is ${code}. It expires in ten minutes. If you did not request this code, you can ignore this email.`
-    })
+    body: JSON.stringify({ ...message, to: [address] })
   })
   if (sent.status < 200 || sent.status >= 300) throw new ProviderUnavailable()
 }
