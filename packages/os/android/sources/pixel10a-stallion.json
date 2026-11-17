@@ -26,13 +26,13 @@
       },
       {
         "path": ".repo/project.list",
-        "sizeBytes": 25438,
-        "sha256": "bfbbd52d0f2d1c71326fd1c381da1e8038fb1dfdf376e649e4138ab660d01cc5"
+        "sizeBytes": 25481,
+        "sha256": "1202e9920d10b28aa5e1d85d8cea2b0c6a7a2d4c31759de26152108c38b9dfaf"
       },
       {
         "path": ".repo/local_manifests/alpha-pins.xml",
-        "sizeBytes": 154204,
-        "sha256": "36c916c7e0c9b3855c4f0226a66f1f1a2520d7746bf8381e25d21dda17aa9f43"
+        "sizeBytes": 154763,
+        "sha256": "ba5bf58592162528831d67acf0c50e0ef2bdf28d7e2458ab786a5a37a9146c5c"
       }
     ]
   },

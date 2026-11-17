@@ -183,7 +183,7 @@ test("exact shared SystemUI patch stages only into a new overlay and retains all
   assert.equal(envelope.manifest.files.length, 9);
   assert.equal(
     envelope.manifest.baselineLockSha256,
-    "760a7184c62c93aeac40595cf5733f8089aa16ccd28eb7a5f5ce41d4dae741d3",
+    "74d92925c7ae52f4032876de36c8ee76eb7ee449ef5083411796b3d003c8552b",
   );
   const output = path.join(temp, "overlay");
   const result = prepareListenerSystemui(source, output, "chip");

@@ -2,7 +2,7 @@
   "schema": 1,
   "project": "frameworks/base",
   "revision": "94b4c163b7dfe5ce3607f7bb8456f9573f7de57d",
-  "baselineLockSha256": "760a7184c62c93aeac40595cf5733f8089aa16ccd28eb7a5f5ce41d4dae741d3",
+  "baselineLockSha256": "74d92925c7ae52f4032876de36c8ee76eb7ee449ef5083411796b3d003c8552b",
   "patch": "assist-identity.patch",
   "patchSha256": "3d9c19ad4350361d8d6e8857a68d3fa53869959a8242ae3812c5171d68f49481",
   "files": [
