@@ -1,7 +1,7 @@
 // spec/cloud/billing/allowance.md, "Story: Spend my plan's allowance before my credits, and never carry it over"
 import type { Client } from "pg"
 import {
-  apply, decodeState, initial, canClawBack, canRestore, canClose,
+  apply, decodeState, initial, canClawBack, canRestore, canClose, canExpire,
   type Event, type Period
 } from "../../gen/cloud__billing__allowance.effect.vibe"
 import type { PlanKey } from "../../gen/cloud__billing__plans.ts"
@@ -36,13 +36,15 @@ export async function projectSubscription(db: Client, org: string, subscription:
     VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (key) DO UPDATE SET state=excluded.state,revision=subscriptions.revision+(subscriptions.state IS DISTINCT FROM excluded.state)::int,
       status=excluded.status,plan_key=excluded.plan_key,customer_id=excluded.customer_id,provider_subscription_id=excluded.provider_subscription_id,
       period_end=excluded.period_end,stale_after=excluded.stale_after,updated_at=excluded.updated_at`,
-    [org,JSON.stringify(state),state.status,state.planKey,state.customerId,state.subscriptionId,state.periodEnd,now+300000,now])
-  if (prior?.status === "active" && (subscription.status !== "active" || prior.provider_subscription_id !== subscription.subscriptionId)) {
-    const open = await db.query<{ key: string; state: unknown }>("SELECT key,state FROM allowance_periods WHERE organization_id=$1 AND status='open' FOR UPDATE", [org])
-    for (const row of open.rows) {
-      const period = await Effect.runPromise(decodeState(row.state))
-      if (canClose(period, "SubscriptionEnded")) await savePeriod(db, org, row.key, period, {type:"close",closeReason:"SubscriptionEnded"}, now)
-    }
+    [org,JSON.stringify(state),state.status,state.planKey,state.customerId,state.subscriptionId,state.periodEnd,now + 300_000,now])
+  const ended = prior?.status === "active" && (subscription.status !== "active" || prior.provider_subscription_id !== subscription.subscriptionId)
+  const retiring = await db.query<{ key: string; state: unknown }>(
+    "SELECT key,state FROM allowance_periods WHERE organization_id=$1 AND status='open' AND (period_end <= $2 OR $3) FOR UPDATE",
+    [org, now, ended])
+  for (const row of retiring.rows) {
+    const period = await Effect.runPromise(decodeState(row.state))
+    if (canExpire(period, now)) await savePeriod(db, org, row.key, period, {type:"expire",now}, now)
+    else if (ended && canClose(period, "SubscriptionEnded")) await savePeriod(db, org, row.key, period, {type:"close",closeReason:"SubscriptionEnded"}, now)
   }
   if (!subscription.payment || subscription.plan === "free") return
   const payment = subscription.payment
