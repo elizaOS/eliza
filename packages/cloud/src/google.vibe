@@ -321,11 +321,12 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
     const now = new Date(try Clock.currentTimeMillis).toISOString()
     if (path === "/gmail/triage" || path === "/gmail/read") {
       const api = googleReadApi(try accessFor(env, db, account, "mail", selected))
-      return body(200, path === "/gmail/triage" ? try googleGmailTriage(api, url, now) : try googleGmailMessage(api, url))
+      const result = path === "/gmail/triage" ? try googleGmailTriage(api, url, now) : try googleGmailMessage(api, url)
+      return body(200, { accountId: account, ...result })
     }
     if (path === "/calendar/feed") {
       const api = googleReadApi(try accessFor(env, db, account, "calendar", selected))
-      return body(200, try googleCalendarFeed(api, url, now))
+      return body(200, { accountId: account, ...try googleCalendarFeed(api, url, now) })
     }
   }
   return body(404, { error: "route_not_found" })
