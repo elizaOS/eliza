@@ -105,10 +105,10 @@
       "packages/host/src/voice/session.ts",
       "packages/host/src/voice/session-turn-ownership.test.ts"
     ],
-    "invariants": ["safety"],
+    "invariants": ["TypeOK", "NoAnnotationTakeover"],
     "status": "partial",
     "limitations": [
-      "Abstract whole annotation classification. Focused source tests check classifier behavior, active reply ownership and terminal metering. Acoustic accuracy, actual providers and wall-clock progress are outside this model."
+      "Abstracts transcript text into final kinds (speech, whole annotation, empty) and interim kinds (speech, annotation prefix). Focused source tests check the text classifiers and the session's use of them for finals and interim transcripts. Acoustic accuracy, actual providers and wall-clock progress are outside this model."
     ]
   }
 ]

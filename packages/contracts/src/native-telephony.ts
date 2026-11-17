@@ -1225,8 +1225,14 @@ export type MessageDeleteReference = Pick<
   SmsMessage,
   "id" | "kind" | "threadId" | "date"
 >;
-export type MessageDeleteStatus = "deleted" | "not-found" | "stale" | "unknown";
-/** Only `deleted` confirms this delete. Unknown never grants a retry or hides the message. */
+export type MessageDeleteStatus =
+  | "deleted"
+  | "not-found"
+  | "stale"
+  | "not-settled"
+  | "unknown";
+/** Only `deleted` confirms this delete. Unknown never grants a retry or hides the message.
+ * `not-settled`: the row is a draft, queued, outbox or failed send; nothing was deleted. */
 export interface MessageDeleteResult {
   status: MessageDeleteStatus;
   message: MessageDeleteReference;
@@ -1313,7 +1319,7 @@ export function parseMessageDeleteResult(
   const data = object(value, "message deletion");
   exact(data, ["status", "message"], "message deletion");
   if (
-    !["deleted", "not-found", "stale", "unknown"].includes(
+    !["deleted", "not-found", "stale", "not-settled", "unknown"].includes(
       data.status as string,
     )
   )

@@ -95,6 +95,9 @@ export interface ContactDetail {
   /** Structured values from the provider, never split from displayName. Older hosts omit them. */
   givenName?: string;
   familyName?: string;
+  /** Omitted by older hosts, and when the stored notes cannot be edited as one value: several
+   * note rows (linked raw contacts can each carry one), a note longer than CONTACT_MAX_NOTES, or
+   * a note with control characters other than CR, LF and tab. Leave `notes` out of the draft then. */
   notes?: string;
   starred: boolean;
   phoneNumbers: ContactPhone[];
@@ -118,7 +121,8 @@ export interface ContactDraft {
 /**
  * `saved`: written. `id` and `version` are null only if the saved contact could not be read back;
  * read the list again then. `stale`: the contact changed after it was read; nothing was written.
- * `not-found`: the contact is gone. `failed`: Android refused the write; nothing was written.
+ * `not-found`: the contact is gone. `failed`: Android refused the write, or the draft supplied notes
+ * that `get` omitted; nothing was written.
  * `unknown`: the provider did not confirm the write; refresh before deciding whether to try again.
  */
 export type ContactSaveResult =
@@ -374,9 +378,13 @@ export function parseContactDetail(value: unknown, id: string): ContactDetail {
   };
 }
 
-/** Why the native editor would refuse this draft, or null. The draft is checked as given. */
+/** Why the native editor would refuse this draft, or null. The draft is checked as given.
+ * A new contact stores only what the draft names: when it supplies a structured name field, the
+ * name comes from givenName/familyName and displayName is not stored. An edit's omitted field
+ * keeps its stored value, so only `create` can judge the name from the draft alone. */
 export function contactDraftProblem(
   draft: ContactDraft,
+  { create = false }: { create?: boolean } = {},
 ): ContactDraftProblem | null {
   if (
     typeof draft.displayName !== "string" ||
@@ -409,10 +417,15 @@ export function contactDraftProblem(
     if (!clean(email?.address, CONTACT_MAX_ADDRESS)) return "invalid-address";
     if (!knownType(email.type, CONTACT_EMAIL_TYPES)) return "invalid-type";
   }
+  const structured =
+    draft.givenName !== undefined || draft.familyName !== undefined;
+  const named =
+    create && structured
+      ? Boolean(draft.givenName || draft.familyName)
+      : draft.displayName !== "" ||
+        Boolean(draft.givenName || draft.familyName);
   if (
-    draft.displayName === "" &&
-    !draft.givenName &&
-    !draft.familyName &&
+    !named &&
     !draft.notes?.trim() &&
     !draft.phoneNumbers.length &&
     !draft.emailAddresses.length
@@ -565,7 +578,7 @@ export function createAddressBookClient(
     /** Creates a contact in the phone's local account from the owner's draft. */
     async createContact(draft: ContactDraft) {
       const bridge = editor();
-      const problem = contactDraftProblem(draft);
+      const problem = contactDraftProblem(draft, { create: true });
       if (problem) throw new RangeError(`Invalid contact: ${problem}`);
       return parseContactSave(
         await bridge.save({

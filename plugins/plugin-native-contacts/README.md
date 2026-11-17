@@ -82,16 +82,23 @@ Structured `givenName` and `familyName` values come from the provider, not from
 splitting its display label. An omitted component stays unchanged; an explicit
 empty string clears only that component. When either component is supplied,
 Android formats the display label from the retained name components. Otherwise,
-`displayName` is the legacy full-name edit. Name changes update the selected
-name row in place and retain other raw names, middle names, prefixes, suffixes,
-phonetic/style columns, photos and other MIME rows.
+`displayName` is the legacy full-name edit. A new contact that supplies a
+structured component stores only those components, so
+`contactDraftProblem(draft, { create: true })` judges its name from them, as
+Android does. Name changes update the selected name row in place and retain
+other raw names, middle names, prefixes, suffixes, phonetic/style columns,
+photos and other MIME rows. On a linked contact the edited name row becomes
+super-primary, so Android shows the new name instead of another raw contact's
+older name.
 
 Owner notes are edit-screen data, never added to the catalog or automatic agent
 context. `notes` omission preserves the provider rows; an empty string clears
 only the selected note value. Notes keep whitespace and allow CR, LF and tabs,
 with `CONTACT_MAX_NOTES` / `ContactsEditor.MAX_NOTES` set to 8192 UTF-16 code units.
-A scalar editor cannot represent multiple note rows, or multiple name rows on
-the selected name raw contact. `get` refuses these as `incomplete`; use the system
-editor rather than flattening or deleting values. Legacy saves that omit notes
-do not touch those rows. Provider versions and the atomic stale-write checks
-are unchanged.
+A scalar editor cannot represent several note rows (linked raw contacts can
+each carry one), a stored note longer than 8192 code units, or a note with
+other control characters. `get` then omits `notes` and keeps the rest of the contact editable; a save that omits
+notes does not touch those rows, and a save that supplies notes is answered
+`failed` with nothing written. Use the system editor for those notes. Multiple
+name rows on the selected name raw contact are refused as `incomplete`.
+Provider versions and the atomic stale-write checks are unchanged.

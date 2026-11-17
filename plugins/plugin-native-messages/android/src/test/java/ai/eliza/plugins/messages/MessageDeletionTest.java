@@ -39,7 +39,7 @@ public final class MessageDeletionTest {
   @Override public int update(Uri uri,ContentValues values,String selection,String[]args){throw new UnsupportedOperationException();}
   @Override public Cursor query(Uri uri,String[]projection,String selection,String[]args,String order){
    queries++;
-   assertArrayEquals(new String[]{"_id","thread_id","date"},projection);
+   assertArrayEquals(new String[]{"_id","thread_id","date",box(uri.getAuthority())},projection);
    if(nullQuery)return null;
    Cursor result=db.query(uri.getAuthority(),projection,selection,args,null,null,order);
    Runnable action=afterQuery;afterQuery=null;if(action!=null)action.run();
@@ -60,13 +60,15 @@ public final class MessageDeletionTest {
  }
  @Before public void setup(){
   if(db!=null)db.close();db=SQLiteDatabase.create(null);
-  for(String table:new String[]{"sms","mms"})db.execSQL("CREATE TABLE "+table+" (_id INTEGER PRIMARY KEY, thread_id INTEGER, date INTEGER)");
+  for(String table:new String[]{"sms","mms"})db.execSQL("CREATE TABLE "+table+" (_id INTEGER PRIMARY KEY, thread_id INTEGER, date INTEGER, "+box(table)+" INTEGER)");
   queries=deletes=rowUriDeletes=0;afterQuery=beforeDelete=afterDelete=null;nullQuery=lostReply=false;forceCount=null;access.set(true);
   for(String authority:new String[]{"sms","mms"}){
    ProviderInfo info=new ProviderInfo();info.authority=authority;Robolectric.buildContentProvider(Provider.class).create(info);
   }
  }
- static void row(String kind,long id,long thread,long date){db.execSQL("INSERT INTO "+kind+" VALUES (?,?,?)",new Object[]{id,thread,date});}
+ static String box(String kind){return kind.equals("sms")?"type":"msg_box";}
+ static void row(String kind,long id,long thread,long date){row(kind,id,thread,date,SmsRecords.INBOX);}
+ static void row(String kind,long id,long thread,long date,int box){db.execSQL("INSERT INTO "+kind+" VALUES (?,?,?,?)",new Object[]{id,thread,date,box});}
  static boolean exists(String kind,long id){try(Cursor c=db.rawQuery("SELECT _id FROM "+kind+" WHERE _id = ?",new String[]{Long.toString(id)})){return c.moveToFirst();}}
  static MessageDeletion.Reference reference(String kind,long id,long thread,long date)throws Exception{
   return MessageDeletion.reference(new JSONObject().put("id",kind+":"+id).put("kind",kind).put("threadId","thread:"+thread).put("date",date));
@@ -128,6 +130,22 @@ public final class MessageDeletionTest {
  @Test public void concurrentExternalRemovalReportsMissingNotAnUnprovenOwnDeletion()throws Exception{
   row("sms",7,9,1700000000123L);beforeDelete=()->db.delete("sms","_id = ?",new String[]{"7"});
   assertEquals("not-found",delete(reference("sms",7,9,1700000000123L)).getString("status"));assertEquals(1,deletes);
+ }
+ @Test public void onlySettledReceivedOrSentRowsAreDeletedNeverAnInFlightSend()throws Exception{
+  int[] unsettled={SmsRecords.DRAFT,SmsRecords.OUTBOX,SmsRecords.FAILED,SmsRecords.QUEUED};
+  for(String kind:new String[]{"sms","mms"})for(int box:unsettled){
+   setup();row(kind,7,9,1700000000000L,box);
+   assertEquals(kind+" box "+box,"not-settled",delete(reference(kind,7,9,1700000000000L)).getString("status"));
+   assertTrue(exists(kind,7));assertEquals(0,deletes);
+  }
+  setup();row("sms",7,9,1700000000123L,SmsRecords.SENT);
+  assertEquals("deleted",delete(reference("sms",7,9,1700000000123L)).getString("status"));assertFalse(exists("sms",7));
+  // A settled row the composer moves back to the queue between the read and the delete is never removed.
+  setup();row("sms",7,9,1700000000123L,SmsRecords.SENT);row("mms",8,9,1700000000L,SmsRecords.INBOX);
+  beforeDelete=()->db.execSQL("UPDATE sms SET type="+SmsRecords.QUEUED+" WHERE _id=7");
+  assertEquals("not-settled",delete(reference("sms",7,9,1700000000123L)).getString("status"));assertTrue(exists("sms",7));assertEquals(1,deletes);
+  beforeDelete=()->db.execSQL("UPDATE mms SET msg_box="+SmsRecords.OUTBOX+" WHERE _id=8");
+  assertEquals("not-settled",delete(reference("mms",8,9,1700000000000L)).getString("status"));assertTrue(exists("mms",8));
  }
  @Test public void malformedIdentityNeverReachesTheProvider()throws Exception{
   for(JSONObject bad:new JSONObject[]{new JSONObject().put("id","mms:7").put("kind","sms").put("threadId","thread:9").put("date",0),

@@ -395,7 +395,7 @@ public final class TelephonyPluginReviewTest {
     @Override public Uri insert(Uri uri,ContentValues values){throw new UnsupportedOperationException();}
     @Override public int update(Uri uri,ContentValues values,String where,String[]args){throw new UnsupportedOperationException();}
     @Override public Cursor query(Uri uri,String[]projection,String where,String[]args,String order){
-      reads++;MatrixCursor row=new MatrixCursor(new String[]{"_id","thread_id","date"});row.addRow(new Object[]{7,9,1700000000123L});
+      reads++;MatrixCursor row=new MatrixCursor(new String[]{"_id","thread_id","date","type"});row.addRow(new Object[]{7,9,1700000000123L,SmsRecords.INBOX});
       Runnable action=onRead;onRead=null;if(action!=null)action.run();return row;
     }
     @Override public int delete(Uri uri,String where,String[]args){

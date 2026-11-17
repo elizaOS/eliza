@@ -1399,7 +1399,13 @@ test("single-message deletion admits only the exact listed transport/thread/date
     threadId: "thread:9",
     date: 1700000000123,
   };
-  for (const status of ["deleted", "not-found", "stale", "unknown"] as const) {
+  for (const status of [
+    "deleted",
+    "not-found",
+    "stale",
+    "not-settled",
+    "unknown",
+  ] as const) {
     const source = stub({ deleteMessage: { status, message: target } });
     assert.deepEqual(
       await createTelephonyClient(source.plugin, true).deleteMessage(target),

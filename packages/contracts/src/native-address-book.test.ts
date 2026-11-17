@@ -185,6 +185,46 @@ test("a contact read for editing has typed fields and a version", async () => {
     assert.throws(() => parseContactDetail(bad, "101"), /invalid/);
 });
 
+test("a new contact's name follows its structured fields as Android stores it", () => {
+  const create = { create: true };
+  for (const patch of [
+    { givenName: "", familyName: "" },
+    { givenName: "" },
+    { familyName: "" },
+  ])
+    assert.equal(
+      contactDraftProblem(
+        draft({ displayName: "Ada", phoneNumbers: [], ...patch }),
+        create,
+      ),
+      "empty-contact",
+    );
+  for (const patch of [
+    { givenName: "Ada" },
+    { displayName: "", familyName: "Lovelace" },
+    { givenName: "", phoneNumbers: [{ number: "5550100", type: "mobile" }] },
+    { givenName: "", notes: "met at the lab" },
+  ])
+    assert.equal(
+      contactDraftProblem(draft({ phoneNumbers: [], ...patch }), create),
+      null,
+    );
+  assert.equal(
+    contactDraftProblem(
+      draft({ displayName: "Ada", phoneNumbers: [] }),
+      create,
+    ),
+    null,
+  );
+  // An edit's omitted component keeps its stored value; Android admits these edits.
+  assert.equal(
+    contactDraftProblem(
+      draft({ displayName: "Ada", phoneNumbers: [], givenName: "" }),
+    ),
+    null,
+  );
+});
+
 test("a draft is checked as given, before anything reaches the phone", () => {
   assert.equal(contactDraftProblem(draft()), null);
   assert.equal(
@@ -284,6 +324,13 @@ test("saves name the version that was read; a changed contact is stale, not over
   );
   await assert.rejects(
     client.createContact(draft({ displayName: "", phoneNumbers: [] })),
+    /empty-contact/,
+  );
+  // Android's newContactHasContent ignores the label when a structured field is supplied.
+  await assert.rejects(
+    client.createContact(
+      draft({ givenName: "", familyName: "", phoneNumbers: [] }),
+    ),
     /empty-contact/,
   );
   assert.equal(calls.length, 2, "an invalid save never reaches native");
