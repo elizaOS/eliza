@@ -469,36 +469,36 @@ lemma RequestCompletionPeers(s: RequestRegistry, a: IssuerOwner, replacement: co
   }
 }
 
-lemma registerRuntime_ensures(s: RequestRegistry, by_: RegistryCaller, runtimeId: int, agentId: string, live: bool)
-  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, agentId, live) ==> alwaysDenialOwnershipIsUnique(registerRuntime(s, by_, runtimeId, agentId, live)))
-  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, agentId, live) ==> alwaysSourceObjectIdentitiesAreUnique(registerRuntime(s, by_, runtimeId, agentId, live)))
-  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, agentId, live) ==> alwaysActivePairsAreUnique(registerRuntime(s, by_, runtimeId, agentId, live)))
-  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, agentId, live) ==> alwaysAttemptOwnershipIsUnique(registerRuntime(s, by_, runtimeId, agentId, live)))
-  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, agentId, live) ==> alwaysResultOwnershipIsUnique(registerRuntime(s, by_, runtimeId, agentId, live)))
-  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, agentId, live) ==> alwaysOwnersRetainProtocolSafety(registerRuntime(s, by_, runtimeId, agentId, live)))
-  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, agentId, live) ==> alwaysViewsHaveOneDataOwner(registerRuntime(s, by_, runtimeId, agentId, live)))
-  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, agentId, live) ==> stepActivePairIdentityNeverChanges(s, "registerRuntime", registerRuntime(s, by_, runtimeId, agentId, live)))
+lemma registerRuntime_ensures(s: RequestRegistry, by_: RegistryCaller, runtimeId: int, runtimeRegistration: RuntimeRegistration)
+  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, runtimeRegistration) ==> alwaysDenialOwnershipIsUnique(registerRuntime(s, by_, runtimeId, runtimeRegistration)))
+  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, runtimeRegistration) ==> alwaysSourceObjectIdentitiesAreUnique(registerRuntime(s, by_, runtimeId, runtimeRegistration)))
+  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, runtimeRegistration) ==> alwaysActivePairsAreUnique(registerRuntime(s, by_, runtimeId, runtimeRegistration)))
+  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, runtimeRegistration) ==> alwaysAttemptOwnershipIsUnique(registerRuntime(s, by_, runtimeId, runtimeRegistration)))
+  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, runtimeRegistration) ==> alwaysResultOwnershipIsUnique(registerRuntime(s, by_, runtimeId, runtimeRegistration)))
+  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, runtimeRegistration) ==> alwaysOwnersRetainProtocolSafety(registerRuntime(s, by_, runtimeId, runtimeRegistration)))
+  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, runtimeRegistration) ==> alwaysViewsHaveOneDataOwner(registerRuntime(s, by_, runtimeId, runtimeRegistration)))
+  ensures (inv(s) ==> canRegisterRuntime(s, by_, runtimeId, runtimeRegistration) ==> stepActivePairIdentityNeverChanges(s, "registerRuntime", registerRuntime(s, by_, runtimeId, runtimeRegistration)))
 {
-  if inv(s) && canRegisterRuntime(s, by_, runtimeId, agentId, live) {
+  if inv(s) && canRegisterRuntime(s, by_, runtimeId, runtimeRegistration) {
 
-    var t := registerRuntime(s, by_, runtimeId, agentId, live);
+    var t := registerRuntime(s, by_, runtimeId, runtimeRegistration);
     RequestRuntimeAppend(s,t,t.runtimes[|s.runtimes|]);
   }
 }
 
-lemma createMessage_ensures(s: RequestRegistry, by_: RegistryCaller, messageObject: int, agentId: string, messageId: string, roomId: string, entityId: string, requestHash: string)
-  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash) ==> alwaysDenialOwnershipIsUnique(createMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash)))
-  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash) ==> alwaysSourceObjectIdentitiesAreUnique(createMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash)))
-  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash) ==> alwaysActivePairsAreUnique(createMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash)))
-  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash) ==> alwaysAttemptOwnershipIsUnique(createMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash)))
-  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash) ==> alwaysResultOwnershipIsUnique(createMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash)))
-  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash) ==> alwaysOwnersRetainProtocolSafety(createMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash)))
-  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash) ==> alwaysViewsHaveOneDataOwner(createMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash)))
-  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash) ==> stepActivePairIdentityNeverChanges(s, "createMessage", createMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash)))
+lemma createMessage_ensures(s: RequestRegistry, by_: RegistryCaller, messageObject: int, messageAgent: MessageAgent, messageId: string, roomId: string, entityId: string, requestHash: string)
+  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash) ==> alwaysDenialOwnershipIsUnique(createMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash)))
+  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash) ==> alwaysSourceObjectIdentitiesAreUnique(createMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash)))
+  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash) ==> alwaysActivePairsAreUnique(createMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash)))
+  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash) ==> alwaysAttemptOwnershipIsUnique(createMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash)))
+  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash) ==> alwaysResultOwnershipIsUnique(createMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash)))
+  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash) ==> alwaysOwnersRetainProtocolSafety(createMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash)))
+  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash) ==> alwaysViewsHaveOneDataOwner(createMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash)))
+  ensures (inv(s) ==> canCreateMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash) ==> stepActivePairIdentityNeverChanges(s, "createMessage", createMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash)))
 {
-  if inv(s) && canCreateMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash) {
+  if inv(s) && canCreateMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash) {
 
-    var t := createMessage(s, by_, messageObject, agentId, messageId, roomId, entityId, requestHash);
+    var t := createMessage(s, by_, messageObject, messageAgent, messageId, roomId, entityId, requestHash);
     RequestMessageAppend(s,t,t.messages[|s.messages|]);
   }
 }
@@ -577,22 +577,23 @@ lemma beginIssuer_ensures(s: RequestRegistry, by_: RegistryCaller, runtimeId: in
   }
 }
 
-lemma commitRestriction_ensures(s: RequestRegistry, by_: RegistryCaller, issuerId: int, classification: core__requestCompletions_RequestClass, interpretation: core__requestIssuer_Interpretation, sourceHash: string, observedSourceHash: string)
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysDenialOwnershipIsUnique(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysSourceObjectIdentitiesAreUnique(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysActivePairsAreUnique(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysAttemptOwnershipIsUnique(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysResultOwnershipIsUnique(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysOwnersRetainProtocolSafety(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> alwaysViewsHaveOneDataOwner(commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
-  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) ==> stepActivePairIdentityNeverChanges(s, "commitRestriction", commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash)))
+lemma commitRestriction_ensures(s: RequestRegistry, by_: RegistryCaller, issuerId: int, restrictionCommit: RestrictionCommit)
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restrictionCommit) ==> alwaysDenialOwnershipIsUnique(commitRestriction(s, by_, issuerId, restrictionCommit)))
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restrictionCommit) ==> alwaysSourceObjectIdentitiesAreUnique(commitRestriction(s, by_, issuerId, restrictionCommit)))
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restrictionCommit) ==> alwaysActivePairsAreUnique(commitRestriction(s, by_, issuerId, restrictionCommit)))
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restrictionCommit) ==> alwaysAttemptOwnershipIsUnique(commitRestriction(s, by_, issuerId, restrictionCommit)))
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restrictionCommit) ==> alwaysResultOwnershipIsUnique(commitRestriction(s, by_, issuerId, restrictionCommit)))
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restrictionCommit) ==> alwaysOwnersRetainProtocolSafety(commitRestriction(s, by_, issuerId, restrictionCommit)))
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restrictionCommit) ==> alwaysViewsHaveOneDataOwner(commitRestriction(s, by_, issuerId, restrictionCommit)))
+  ensures (inv(s) ==> canCommitRestriction(s, by_, issuerId, restrictionCommit) ==> stepActivePairIdentityNeverChanges(s, "commitRestriction", commitRestriction(s, by_, issuerId, restrictionCommit)))
 {
-  if inv(s) && canCommitRestriction(s, by_, issuerId, sourceHash, observedSourceHash) {
+  if inv(s) && canCommitRestriction(s, by_, issuerId, restrictionCommit) {
     RequestOwnerLookup(s,issuerId);
     var a := ownerAt(s,issuerId);
+    var commit := committedRestriction(s,issuerId,restrictionCommit);
     assert a in s.owners;
-    core__requestIssuer_commitRestriction_ensures(a.issuer,classification,interpretation,sourceHash,observedSourceHash);
-    var t := commitRestriction(s, by_, issuerId, classification, interpretation, sourceHash, observedSourceHash);
+    core__requestIssuer_commitRestriction_ensures(a.issuer,commit.classification,commit.interpretation,commit.sourceHash,commit.observedSourceHash);
+    var t := commitRestriction(s, by_, issuerId, restrictionCommit);
     var i :| 0 <= i < |s.owners| && s.owners[i] == a;
     var changed := t.owners[i];
     RequestCompletionPeers(s,a,changed.completions,"","","");
@@ -623,23 +624,24 @@ lemma observeSources_ensures(s: RequestRegistry, by_: RegistryCaller, issuerId: 
   }
 }
 
-lemma beginAttempt_ensures(s: RequestRegistry, by_: RegistryCaller, issuerId: int, stateObject: int, messageObject: int, attemptId: string, registration: core__requestCompletions_RegistrationSnapshot)
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysDenialOwnershipIsUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysSourceObjectIdentitiesAreUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysActivePairsAreUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysAttemptOwnershipIsUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysResultOwnershipIsUnique(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysOwnersRetainProtocolSafety(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> alwaysViewsHaveOneDataOwner(beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
-  ensures (inv(s) ==> canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) ==> stepActivePairIdentityNeverChanges(s, "beginAttempt", beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration)))
+lemma beginAttempt_ensures(s: RequestRegistry, by_: RegistryCaller, executionContext: ExecutionContext, attemptId: string, registration: core__requestCompletions_RegistrationSnapshot)
+  ensures (inv(s) ==> canBeginAttempt(s, by_, executionContext, attemptId) ==> alwaysDenialOwnershipIsUnique(beginAttempt(s, by_, executionContext, attemptId, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, by_, executionContext, attemptId) ==> alwaysSourceObjectIdentitiesAreUnique(beginAttempt(s, by_, executionContext, attemptId, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, by_, executionContext, attemptId) ==> alwaysActivePairsAreUnique(beginAttempt(s, by_, executionContext, attemptId, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, by_, executionContext, attemptId) ==> alwaysAttemptOwnershipIsUnique(beginAttempt(s, by_, executionContext, attemptId, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, by_, executionContext, attemptId) ==> alwaysResultOwnershipIsUnique(beginAttempt(s, by_, executionContext, attemptId, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, by_, executionContext, attemptId) ==> alwaysOwnersRetainProtocolSafety(beginAttempt(s, by_, executionContext, attemptId, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, by_, executionContext, attemptId) ==> alwaysViewsHaveOneDataOwner(beginAttempt(s, by_, executionContext, attemptId, registration)))
+  ensures (inv(s) ==> canBeginAttempt(s, by_, executionContext, attemptId) ==> stepActivePairIdentityNeverChanges(s, "beginAttempt", beginAttempt(s, by_, executionContext, attemptId, registration)))
 {
-  if inv(s) && canBeginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId) {
+  if inv(s) && canBeginAttempt(s, by_, executionContext, attemptId) {
+    var issuerId := viewAt(s,executionContext.stateObject).issuerId;
     RequestOwnerLookup(s,issuerId);
     var a := ownerAt(s,issuerId);
     assert a in s.owners;
     core__requestCompletions_beginAttempt_ensures(refreshedOwner(a,s).completions,attemptId,registration);
     RequestAttemptLookup(s,attemptId);
-    var t := beginAttempt(s, by_, issuerId, stateObject, messageObject, attemptId, registration);
+    var t := beginAttempt(s, by_, executionContext, attemptId, registration);
     var i :| 0 <= i < |s.owners| && s.owners[i] == a;
     var changed := t.owners[i];
     RequestCompletionPeers(s,a,changed.completions,attemptId,"","");
@@ -647,13 +649,16 @@ lemma beginAttempt_ensures(s: RequestRegistry, by_: RegistryCaller, issuerId: in
   }
 }
 
-lemma RequestProjectResultAggregate(s: RequestRegistry, by_: RegistryCaller, issuerId: int, sourceId: string, targetId: string, fingerprint: string, projectionHash: string, sourceFingerprint: string)
+lemma RequestProjectResultAggregate(s: RequestRegistry, by_: RegistryCaller, issuerId: int, sourceId: string, targetId: string, projectionObservation: ProjectionObservation)
   requires inv(s) && canProjectResult(s, by_, issuerId, sourceId, targetId)
-  ensures inv(projectResult(s, by_, issuerId, sourceId, targetId, fingerprint, projectionHash, sourceFingerprint)) && stepActivePairIdentityNeverChanges(s, "", projectResult(s, by_, issuerId, sourceId, targetId, fingerprint, projectionHash, sourceFingerprint))
+  ensures inv(projectResult(s, by_, issuerId, sourceId, targetId, projectionObservation)) && stepActivePairIdentityNeverChanges(s, "", projectResult(s, by_, issuerId, sourceId, targetId, projectionObservation))
 {
   RequestResultLookup(s,sourceId);
   var a := resultOwner(s,sourceId);
   var c := a.completions;
+  var fingerprint := projectionObservation.fingerprint;
+  var projectionHash := projectedHash(s,sourceId,projectionObservation);
+  var sourceFingerprint := observedFingerprint(s,sourceId,projectionObservation.sourceUnchanged,projectionObservation.sourceFingerprint);
   assert a in s.owners && core__requestCompletions_inv(c);
   RequestTargetResultAvailable(s,a,targetId);
   RequestLeafProjectResult(c,sourceId,targetId,fingerprint,projectionHash,sourceFingerprint);
@@ -661,64 +666,70 @@ lemma RequestProjectResultAggregate(s: RequestRegistry, by_: RegistryCaller, iss
 
   RequestCompletionPeers(s,a,updated,"",targetId,"");
   var changed := a.(completions := updated);
-  var t := projectResult(s,by_,issuerId,sourceId,targetId,fingerprint,projectionHash,sourceFingerprint);
+  var t := projectResult(s,by_,issuerId,sourceId,targetId,projectionObservation);
   RequestReplacement(s,t,a,changed);
 }
 
-lemma projectResult_ensures(s: RequestRegistry, by_: RegistryCaller, issuerId: int, sourceId: string, targetId: string, fingerprint: string, projectionHash: string, sourceFingerprint: string)
-  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> alwaysDenialOwnershipIsUnique(projectResult(s, by_, issuerId, sourceId, targetId, fingerprint, projectionHash, sourceFingerprint)))
-  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> alwaysSourceObjectIdentitiesAreUnique(projectResult(s, by_, issuerId, sourceId, targetId, fingerprint, projectionHash, sourceFingerprint)))
-  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> alwaysActivePairsAreUnique(projectResult(s, by_, issuerId, sourceId, targetId, fingerprint, projectionHash, sourceFingerprint)))
-  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> alwaysAttemptOwnershipIsUnique(projectResult(s, by_, issuerId, sourceId, targetId, fingerprint, projectionHash, sourceFingerprint)))
-  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> alwaysResultOwnershipIsUnique(projectResult(s, by_, issuerId, sourceId, targetId, fingerprint, projectionHash, sourceFingerprint)))
-  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> alwaysOwnersRetainProtocolSafety(projectResult(s, by_, issuerId, sourceId, targetId, fingerprint, projectionHash, sourceFingerprint)))
-  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> alwaysViewsHaveOneDataOwner(projectResult(s, by_, issuerId, sourceId, targetId, fingerprint, projectionHash, sourceFingerprint)))
-  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> stepActivePairIdentityNeverChanges(s, "projectResult", projectResult(s, by_, issuerId, sourceId, targetId, fingerprint, projectionHash, sourceFingerprint)))
+lemma projectResult_ensures(s: RequestRegistry, by_: RegistryCaller, issuerId: int, sourceId: string, targetId: string, projectionObservation: ProjectionObservation)
+  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> alwaysDenialOwnershipIsUnique(projectResult(s, by_, issuerId, sourceId, targetId, projectionObservation)))
+  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> alwaysSourceObjectIdentitiesAreUnique(projectResult(s, by_, issuerId, sourceId, targetId, projectionObservation)))
+  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> alwaysActivePairsAreUnique(projectResult(s, by_, issuerId, sourceId, targetId, projectionObservation)))
+  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> alwaysAttemptOwnershipIsUnique(projectResult(s, by_, issuerId, sourceId, targetId, projectionObservation)))
+  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> alwaysResultOwnershipIsUnique(projectResult(s, by_, issuerId, sourceId, targetId, projectionObservation)))
+  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> alwaysOwnersRetainProtocolSafety(projectResult(s, by_, issuerId, sourceId, targetId, projectionObservation)))
+  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> alwaysViewsHaveOneDataOwner(projectResult(s, by_, issuerId, sourceId, targetId, projectionObservation)))
+  ensures (inv(s) ==> canProjectResult(s, by_, issuerId, sourceId, targetId) ==> stepActivePairIdentityNeverChanges(s, "projectResult", projectResult(s, by_, issuerId, sourceId, targetId, projectionObservation)))
 {
-  if inv(s) && canProjectResult(s, by_, issuerId, sourceId, targetId) { RequestProjectResultAggregate(s, by_, issuerId, sourceId, targetId, fingerprint, projectionHash, sourceFingerprint); }
+  if inv(s) && canProjectResult(s, by_, issuerId, sourceId, targetId) { RequestProjectResultAggregate(s, by_, issuerId, sourceId, targetId, projectionObservation); }
 }
 
-lemma copyCompletion_ensures(s: RequestRegistry, sourceId: string, targetId: string, sourceFingerprint: string, targetFingerprint: string)
-  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint) ==> alwaysDenialOwnershipIsUnique(copyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint)))
-  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint) ==> alwaysSourceObjectIdentitiesAreUnique(copyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint)))
-  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint) ==> alwaysActivePairsAreUnique(copyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint)))
-  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint) ==> alwaysAttemptOwnershipIsUnique(copyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint)))
-  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint) ==> alwaysResultOwnershipIsUnique(copyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint)))
-  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint) ==> alwaysOwnersRetainProtocolSafety(copyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint)))
-  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint) ==> alwaysViewsHaveOneDataOwner(copyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint)))
-  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint) ==> stepActivePairIdentityNeverChanges(s, "copyCompletion", copyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint)))
+lemma copyCompletion_ensures(s: RequestRegistry, sourceId: string, targetId: string, copyObservation: CopyObservation)
+  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, copyObservation) ==> alwaysDenialOwnershipIsUnique(copyCompletion(s, sourceId, targetId, copyObservation)))
+  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, copyObservation) ==> alwaysSourceObjectIdentitiesAreUnique(copyCompletion(s, sourceId, targetId, copyObservation)))
+  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, copyObservation) ==> alwaysActivePairsAreUnique(copyCompletion(s, sourceId, targetId, copyObservation)))
+  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, copyObservation) ==> alwaysAttemptOwnershipIsUnique(copyCompletion(s, sourceId, targetId, copyObservation)))
+  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, copyObservation) ==> alwaysResultOwnershipIsUnique(copyCompletion(s, sourceId, targetId, copyObservation)))
+  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, copyObservation) ==> alwaysOwnersRetainProtocolSafety(copyCompletion(s, sourceId, targetId, copyObservation)))
+  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, copyObservation) ==> alwaysViewsHaveOneDataOwner(copyCompletion(s, sourceId, targetId, copyObservation)))
+  ensures (inv(s) ==> canCopyCompletion(s, sourceId, targetId, copyObservation) ==> stepActivePairIdentityNeverChanges(s, "copyCompletion", copyCompletion(s, sourceId, targetId, copyObservation)))
 {
-  if inv(s) && canCopyCompletion(s, sourceId, targetId, sourceFingerprint, targetFingerprint) {
+  if inv(s) && canCopyCompletion(s, sourceId, targetId, copyObservation) {
     RequestResultLookup(s,sourceId);
     var a := resultOwner(s,sourceId);
     var c := a.completions;
+    var sourceFingerprint := observedFingerprint(s,sourceId,copyObservation.sourceUnchanged,copyObservation.sourceFingerprint);
+    var targetFingerprint := observedFingerprint(s,targetId,copyObservation.targetUnchanged,copyObservation.targetFingerprint);
     assert a in s.owners && core__requestCompletions_inv(c);
     core__requestCompletions_copyCompletion_ensures(c,sourceId,targetId,sourceFingerprint,targetFingerprint);
     var updated := core__requestCompletions_copyCompletion(c,sourceId,targetId,sourceFingerprint,targetFingerprint);
     RequestResultKeys(c.results,updated.results,"");
     RequestCompletionPeers(s,a,updated,"","","");
     var changed := a.(completions := updated);
-    var t := copyCompletion(s,sourceId,targetId,sourceFingerprint,targetFingerprint);
+    var t := copyCompletion(s,sourceId,targetId,copyObservation);
     RequestReplacement(s,t,a,changed);
   }
 }
 
-lemma inspectCompletion_ensures(s: RequestRegistry, issuerId: int, resultId: string, fingerprint: string, observation: core__requestCompletions_RegistrationSnapshot, child: core__requestCompletions_ChildSnapshot)
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysDenialOwnershipIsUnique(inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysSourceObjectIdentitiesAreUnique(inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysActivePairsAreUnique(inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysAttemptOwnershipIsUnique(inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysResultOwnershipIsUnique(inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysOwnersRetainProtocolSafety(inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysViewsHaveOneDataOwner(inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
-  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> stepActivePairIdentityNeverChanges(s, "inspectCompletion", inspectCompletion(s, issuerId, resultId, fingerprint, observation, child)))
+lemma inspectCompletion_ensures(s: RequestRegistry, issuerId: int, resultId: string, inspection: InspectionObservation)
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysDenialOwnershipIsUnique(inspectCompletion(s, issuerId, resultId, inspection)))
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysSourceObjectIdentitiesAreUnique(inspectCompletion(s, issuerId, resultId, inspection)))
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysActivePairsAreUnique(inspectCompletion(s, issuerId, resultId, inspection)))
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysAttemptOwnershipIsUnique(inspectCompletion(s, issuerId, resultId, inspection)))
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysResultOwnershipIsUnique(inspectCompletion(s, issuerId, resultId, inspection)))
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysOwnersRetainProtocolSafety(inspectCompletion(s, issuerId, resultId, inspection)))
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> alwaysViewsHaveOneDataOwner(inspectCompletion(s, issuerId, resultId, inspection)))
+  ensures (inv(s) ==> canInspectCompletion(s, issuerId, resultId) ==> stepActivePairIdentityNeverChanges(s, "inspectCompletion", inspectCompletion(s, issuerId, resultId, inspection)))
 {
   if inv(s) && canInspectCompletion(s, issuerId, resultId) {
     RequestResultLookup(s,resultId);
     var a := resultOwner(s,resultId);
     assert a in s.owners;
+    var stored := core__requestCompletions_resultAt(refreshedOwner(a,s).completions,resultId);
+    var fingerprint := if inspection.fingerprintUnchanged then stored.fingerprint else inspection.fingerprint;
+    var observation := if inspection.evidenceUnchanged then stored.registration else inspection.observation;
+    var child := if inspection.evidenceUnchanged then stored.child else inspection.child;
     core__requestCompletions_inspectCompletion_ensures(refreshedOwner(a,s).completions,resultId,true,fingerprint,observation, child);
-    var t := inspectCompletion(s, issuerId, resultId, fingerprint, observation, child);
+    var t := inspectCompletion(s, issuerId, resultId, inspection);
     var i :| 0 <= i < |s.owners| && s.owners[i] == a;
     var changed := t.owners[i];
     RequestCompletionPeers(s,a,changed.completions,"","","");
@@ -970,21 +981,21 @@ lemma mutateView_ensures(s: RequestRegistry, stateObject: int, sourceHash: strin
 }
 
 lemma bindView_ensures(s: RequestRegistry, by_: RegistryCaller, stateObject: int, messageObject: int, binding: ViewBindingObservation)
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> alwaysDenialOwnershipIsUnique(bindView(s, by_, stateObject, messageObject, binding)))
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> alwaysSourceObjectIdentitiesAreUnique(bindView(s, by_, stateObject, messageObject, binding)))
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> alwaysActivePairsAreUnique(bindView(s, by_, stateObject, messageObject, binding)))
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> alwaysAttemptOwnershipIsUnique(bindView(s, by_, stateObject, messageObject, binding)))
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> alwaysResultOwnershipIsUnique(bindView(s, by_, stateObject, messageObject, binding)))
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> alwaysOwnersRetainProtocolSafety(bindView(s, by_, stateObject, messageObject, binding)))
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> alwaysViewsHaveOneDataOwner(bindView(s, by_, stateObject, messageObject, binding)))
-  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject) ==> stepActivePairIdentityNeverChanges(s, "bindView", bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, binding) ==> alwaysDenialOwnershipIsUnique(bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, binding) ==> alwaysSourceObjectIdentitiesAreUnique(bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, binding) ==> alwaysActivePairsAreUnique(bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, binding) ==> alwaysAttemptOwnershipIsUnique(bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, binding) ==> alwaysResultOwnershipIsUnique(bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, binding) ==> alwaysOwnersRetainProtocolSafety(bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, binding) ==> alwaysViewsHaveOneDataOwner(bindView(s, by_, stateObject, messageObject, binding)))
+  ensures (inv(s) ==> canBindView(s, by_, stateObject, messageObject, binding) ==> stepActivePairIdentityNeverChanges(s, "bindView", bindView(s, by_, stateObject, messageObject, binding)))
 {
-  if inv(s) && canBindView(s,by_,stateObject,messageObject) {
+  if inv(s) && canBindView(s,by_,stateObject,messageObject,binding) {
     var t := bindView(s,by_,stateObject,messageObject, binding);
     RequestStateLookup(s,stateObject);
     var frame := stateAt(s,stateObject);
     assert frame in s.states;
-    RequestOwnerLookup(s,binding.issuerId);
+    RequestOwnerLookup(s,bindingIssuer(s,boundMessage(s,messageObject,binding),binding));
     var keep := ProofLib.Filter((view: ExtractionView) => view.dataId != frame.dataId,s.views);
     if t.views != keep {
       assert |t.views| == |keep| + 1;
@@ -997,20 +1008,26 @@ lemma bindView_ensures(s: RequestRegistry, by_: RegistryCaller, stateObject: int
   }
 }
 
-lemma checkOperation_ensures(s: RequestRegistry, stateObject: int, messageObject: int, attemptId: string, operation: core__requestCompletions_Operation, registered: core__requestCompletions_Operation, denialId: string)
-  ensures (inv(s) ==> canCheckOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId) ==> alwaysDenialOwnershipIsUnique(checkOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId)))
-  ensures (inv(s) ==> canCheckOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId) ==> alwaysSourceObjectIdentitiesAreUnique(checkOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId)))
-  ensures (inv(s) ==> canCheckOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId) ==> alwaysActivePairsAreUnique(checkOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId)))
-  ensures (inv(s) ==> canCheckOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId) ==> alwaysAttemptOwnershipIsUnique(checkOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId)))
-  ensures (inv(s) ==> canCheckOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId) ==> alwaysResultOwnershipIsUnique(checkOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId)))
-  ensures (inv(s) ==> canCheckOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId) ==> alwaysOwnersRetainProtocolSafety(checkOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId)))
-  ensures (inv(s) ==> canCheckOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId) ==> alwaysViewsHaveOneDataOwner(checkOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId)))
-  ensures (inv(s) ==> canCheckOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId) ==> stepActivePairIdentityNeverChanges(s, "checkOperation", checkOperation(s, stateObject, messageObject, attemptId, operation, registered, denialId)))
+lemma checkOperation_ensures(s: RequestRegistry, operationCheck: OperationCheck)
+  ensures (inv(s) ==> canCheckOperation(s, operationCheck) ==> alwaysDenialOwnershipIsUnique(checkOperation(s, operationCheck)))
+  ensures (inv(s) ==> canCheckOperation(s, operationCheck) ==> alwaysSourceObjectIdentitiesAreUnique(checkOperation(s, operationCheck)))
+  ensures (inv(s) ==> canCheckOperation(s, operationCheck) ==> alwaysActivePairsAreUnique(checkOperation(s, operationCheck)))
+  ensures (inv(s) ==> canCheckOperation(s, operationCheck) ==> alwaysAttemptOwnershipIsUnique(checkOperation(s, operationCheck)))
+  ensures (inv(s) ==> canCheckOperation(s, operationCheck) ==> alwaysResultOwnershipIsUnique(checkOperation(s, operationCheck)))
+  ensures (inv(s) ==> canCheckOperation(s, operationCheck) ==> alwaysOwnersRetainProtocolSafety(checkOperation(s, operationCheck)))
+  ensures (inv(s) ==> canCheckOperation(s, operationCheck) ==> alwaysViewsHaveOneDataOwner(checkOperation(s, operationCheck)))
+  ensures (inv(s) ==> canCheckOperation(s, operationCheck) ==> stepActivePairIdentityNeverChanges(s, "checkOperation", checkOperation(s, operationCheck)))
 {
-  if inv(s) && canCheckOperation(s,stateObject,messageObject,attemptId,operation,registered,denialId) {
+  if inv(s) && canCheckOperation(s,operationCheck) {
+    var stateObject := checkedStateObject(s,operationCheck);
+    var messageObject := checkedMessageObject(s,operationCheck);
+    var attemptId := operationCheck.attemptId;
+    var operation := checkedOperation(s,operationCheck);
+    var registered := checkedRegistered(s,operationCheck);
+    var denialId := operationCheck.denialId;
     var a := attemptOwner(s,attemptId);
     var owner := refreshedOwner(a,s);
-    var t := checkOperation(s,stateObject,messageObject,attemptId,operation,registered,denialId);
+    var t := checkOperation(s,operationCheck);
     if owner.id != 0 && owner.messageObject == messageObject && boundViewCurrent(s,stateObject,messageObject) && viewAt(s,stateObject).issuerId == owner.id {
       RequestAttemptLookup(s,attemptId);
       assert a in s.owners;
@@ -1072,16 +1089,22 @@ lemma RequestFreshResultAssociation(s: RequestRegistry, t: RequestRegistry, a: I
   RequestReplacement(s,t,a,owner.(completions := updated));
 }
 
-lemma RequestBindResultAggregate(s: RequestRegistry, by_: RegistryCaller, resultId: string, attemptId: string, fingerprint: string, projectionHash: string, observation: core__requestCompletions_RegistrationSnapshot, child: core__requestCompletions_ChildSnapshot)
-  requires inv(s) && canBindResult(s,by_,resultId,attemptId)
-  ensures inv(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)) && stepActivePairIdentityNeverChanges(s, "", bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child))
+lemma RequestBindResultAggregate(s: RequestRegistry, by_: RegistryCaller, attemptId: string, resultObservation: ResultObservation)
+  requires inv(s) && canBindResult(s,by_,attemptId,resultObservation)
+  ensures inv(bindResult(s, by_, attemptId, resultObservation)) && stepActivePairIdentityNeverChanges(s, "", bindResult(s, by_, attemptId, resultObservation))
 {
+  var resultId := resultObservation.resultId;
+  var fingerprint := resultObservation.fingerprint;
+  var projectionHash := resultObservation.projectionHash;
   RequestAttemptLookup(s,attemptId);
   RequestResultLookup(s,resultId);
   var a := attemptOwner(s,attemptId);
+  var attempt := core__requestCompletions_attemptAt(refreshedOwner(a,s).completions,attemptId);
+  var observation := if resultObservation.registrationUnchanged then attempt.registration else resultObservation.observation;
+  var child := if resultObservation.childUnchanged then canonicalChild(attempt.registered) else resultObservation.child;
   var existingOwner := resultOwner(s,resultId);
   var existing := core__requestCompletions_resultAt(existingOwner.completions,resultId);
-  var t := bindResult(s,by_,resultId,attemptId,fingerprint,projectionHash,observation, child);
+  var t := bindResult(s,by_,attemptId,resultObservation);
   assert a in s.owners;
   if existingOwner.id == 0 || (existingOwner.id == a.id && existing.attempt == attemptId) {
     RequestFreshResultAssociation(s,t,a,resultId,attemptId,fingerprint,projectionHash,observation, child);
@@ -1091,17 +1114,17 @@ lemma RequestBindResultAggregate(s: RequestRegistry, by_: RegistryCaller, result
   }
 }
 
-lemma bindResult_ensures(s: RequestRegistry, by_: RegistryCaller, resultId: string, attemptId: string, fingerprint: string, projectionHash: string, observation: core__requestCompletions_RegistrationSnapshot, child: core__requestCompletions_ChildSnapshot)
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysDenialOwnershipIsUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysSourceObjectIdentitiesAreUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysActivePairsAreUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysAttemptOwnershipIsUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysResultOwnershipIsUnique(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysOwnersRetainProtocolSafety(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> alwaysViewsHaveOneDataOwner(bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
-  ensures (inv(s) ==> canBindResult(s, by_, resultId, attemptId) ==> stepActivePairIdentityNeverChanges(s, "bindResult", bindResult(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child)))
+lemma bindResult_ensures(s: RequestRegistry, by_: RegistryCaller, attemptId: string, resultObservation: ResultObservation)
+  ensures (inv(s) ==> canBindResult(s, by_, attemptId, resultObservation) ==> alwaysDenialOwnershipIsUnique(bindResult(s, by_, attemptId, resultObservation)))
+  ensures (inv(s) ==> canBindResult(s, by_, attemptId, resultObservation) ==> alwaysSourceObjectIdentitiesAreUnique(bindResult(s, by_, attemptId, resultObservation)))
+  ensures (inv(s) ==> canBindResult(s, by_, attemptId, resultObservation) ==> alwaysActivePairsAreUnique(bindResult(s, by_, attemptId, resultObservation)))
+  ensures (inv(s) ==> canBindResult(s, by_, attemptId, resultObservation) ==> alwaysAttemptOwnershipIsUnique(bindResult(s, by_, attemptId, resultObservation)))
+  ensures (inv(s) ==> canBindResult(s, by_, attemptId, resultObservation) ==> alwaysResultOwnershipIsUnique(bindResult(s, by_, attemptId, resultObservation)))
+  ensures (inv(s) ==> canBindResult(s, by_, attemptId, resultObservation) ==> alwaysOwnersRetainProtocolSafety(bindResult(s, by_, attemptId, resultObservation)))
+  ensures (inv(s) ==> canBindResult(s, by_, attemptId, resultObservation) ==> alwaysViewsHaveOneDataOwner(bindResult(s, by_, attemptId, resultObservation)))
+  ensures (inv(s) ==> canBindResult(s, by_, attemptId, resultObservation) ==> stepActivePairIdentityNeverChanges(s, "bindResult", bindResult(s, by_, attemptId, resultObservation)))
 {
-  if inv(s) && canBindResult(s,by_,resultId,attemptId) { RequestBindResultAggregate(s, by_, resultId, attemptId, fingerprint, projectionHash, observation, child); }
+  if inv(s) && canBindResult(s,by_,attemptId,resultObservation) { RequestBindResultAggregate(s, by_, attemptId, resultObservation); }
 }
 
 lemma RequestCompletionAttemptAt(c: core__requestCompletions_RequestCompletions, a: core__requestCompletions_Attempt)
