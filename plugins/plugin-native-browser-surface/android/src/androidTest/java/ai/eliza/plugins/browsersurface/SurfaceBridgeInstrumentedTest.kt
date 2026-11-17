@@ -213,6 +213,55 @@ class SurfaceBridgeInstrumentedTest {
     }
 
     @Test
+    fun manualSignInKeepsTheBrowserToolsOutsideTheTemporaryProfile() {
+        val invalid = answer(send("createSurface") {
+            put("id", SURFACE)
+            put("purpose", "manual-sign-in")
+            put("process", "shared")
+            put("storage", "shared")
+        })
+        assertTrue(invalid.optString("error").contains("INVALID_REQUEST"))
+
+        val created = answer(send("createSurface") {
+            put("id", SURFACE)
+            put("purpose", "manual-sign-in")
+            put("process", "isolated")
+            put("storage", "isolated")
+        })
+        if (!BrowserLoginFields.supported()) {
+            assertTrue(created.optString("error").contains("UNSUPPORTED"))
+            assertFalse(call("getSurfaceState") { put("id", SURFACE) }.getBoolean("exists"))
+            return
+        }
+        assertFalse(created.toString(), created.has("error"))
+        call("presentSurface") { put("id", SURFACE) }
+        val ordinary = "ordinary-test"
+        try {
+            call("createSurface") {
+                put("id", ordinary)
+                put("process", "shared")
+                put("storage", "shared")
+            }
+            for (method in listOf("readPage", "controlPage", "observeHistory", "captureSurface")) {
+                val denied = answer(send(method) {
+                    put("id", if (method == "captureSurface") ordinary else SURFACE)
+                    if (method == "controlPage") put("command", JSObject().put("subaction", "snapshot"))
+                })
+                assertTrue("$method: $denied", denied.optString("error").contains("PROTECTED_SURFACE"))
+            }
+        } finally {
+            call("destroySurface") { put("id", ordinary) }
+        }
+
+        val changedPurpose = answer(send("createSurface") {
+            put("id", SURFACE)
+            put("process", "isolated")
+            put("storage", "isolated")
+        })
+        assertTrue(changedPurpose.optString("error").contains("already exists"))
+    }
+
+    @Test
     fun aSurfaceIdIsCreatedAgainOnlyInTheSameLayer() {
         create("below-host")
         // The same options again keep the one surface.

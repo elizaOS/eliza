@@ -55,6 +55,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.view.autofill.AutofillManager
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
 import android.webkit.JsPromptResult
@@ -223,11 +224,13 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         }
     }
 
+    private var protectedSurfaceGeneration = 0L
     private val dockScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun handleOnResume() {
         super.handleOnResume()
         helperEntry?.reconcilePermission()
+        surfaces.values.forEach { it.signIn?.fields?.retry() }
     }
 
     override fun handleOnPause() {
@@ -427,6 +430,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val cornerRadius: Double,
     )
 
+    private class ManualSignIn(val fields: BrowserLoginFields, var committedUrl: String? = null)
+
     private data class Surface(
         val container: OccludingSurfaceLayout,
         val webView: WebView,
@@ -438,6 +443,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val profileName: String?,
         var foregrounded: Boolean,
         var control: SurfaceControlChannel? = null,
+        val signIn: ManualSignIn? = null,
         var disposed: Boolean = false,
         var pageRevision: Long = 0,
         var historyObservation: HistoryObservation? = null,
@@ -638,6 +644,20 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         return surface
     }
 
+    private fun controlledSurface(
+        call: PluginCall,
+        id: String,
+        identity: NativeOwnerIdentity,
+        operation: String,
+    ): Surface? {
+        val surface = ownedSurface(call, id, identity, operation) ?: return null
+        if (surface.signIn != null) {
+            call.reject("Unavailable in a protected sign-in surface", "PROTECTED_SURFACE")
+            return null
+        }
+        return surface
+    }
+
     private fun digest(value: String): String = MessageDigest
         .getInstance("SHA-256")
         .digest(value.toByteArray(Charsets.UTF_8))
@@ -735,6 +755,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             closeRequests(id, surface)
             stopHostSaves(surface)
             surface.control?.interrupt("The website sign-ins were removed", navigation = true)
+            cancelSignIn(surface)
+            surface.signIn?.fields?.close()
             surface.container.visibility = View.GONE
             surface.foregrounded = false
             surface.webView.stopLoading()
@@ -750,6 +772,46 @@ class ElizaSurfaceManagerPlugin : Plugin() {
 
     private fun isLive(surface: Surface): Boolean =
         !surface.disposed && activeOwners.isActive(NativeOwnerIdentity(surface.owner, surface.session, surface.epoch))
+
+    private fun signInSnapshot(id: String, webView: WebView): BrowserFieldOrigin.TabSnapshot {
+        val surface = surfaces[id]?.takeIf { it.webView === webView && isLive(it) }
+        val signIn = surface?.signIn
+        val state = BrowserAutofillEligibility.TabState().apply {
+            paused = surface?.paused != false || !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+            closed = signIn == null
+            selected = surface?.foregrounded == true
+            shown = webView.isShown
+            committed = signIn?.committedUrl != null
+            loading = webView.progress < 100
+            overlay = fullscreen != null
+            loadError = surface?.let(::pageFailure).orEmpty()
+            documentUrl = signIn?.committedUrl.orEmpty()
+            engineUrl = webView.url.orEmpty()
+        }
+        return BrowserFieldOrigin.TabSnapshot().apply {
+            supported = signIn != null
+            this.state = state
+            navigation = surface?.pageRevision ?: 0L
+        }
+    }
+
+    private fun cancelSignIn(surface: Surface) {
+        val signIn = surface.signIn ?: return
+        signIn.fields.revoke(true)
+        if (surface.foregrounded) activity.getSystemService(AutofillManager::class.java)?.cancel()
+    }
+
+    private fun hasProtectedSurface(): Boolean =
+        surfaces.values.any { it.signIn != null && !it.disposed }
+
+    private fun protectedAddress(url: String?): String? =
+        BrowserWebOrigin.of(url)?.takeIf { it.startsWith("https://") }
+
+    private fun admitsSignInAddress(url: String): Boolean =
+        protectedAddress(url) != null && BrowserPageHandoffs.identityProvider(url) == null
+
+    private fun surfaceAddress(surface: Surface, url: String?): String? =
+        if (surface.signIn == null) url else protectedAddress(url)
 
     private fun surfaceEvent(id: String, surface: Surface): JSObject = JSObject().apply {
         put("id", id)
@@ -791,6 +853,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
      * others; the load then runs the page's `beforeunload` again, which may hold a new one.
      */
     private fun loadForHost(id: String, surface: Surface, load: () -> Unit) {
+        cancelSignIn(surface)
+        surface.signIn?.committedUrl = null
         surface.historyObservation = null
         closeRequests(id, surface)
         load()
@@ -1018,6 +1082,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         if (!surface.disposed) {
             surface.historyObservation = null
             surface.control?.interrupt("The native page was closed", navigation = true)
+            cancelSignIn(surface)
+            surface.signIn?.fields?.close()
             surface.container.visibility = View.GONE
             surface.foregrounded = false
             surface.webView.stopLoading()
@@ -1050,6 +1116,21 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         val interceptNavigation = call.getBoolean("interceptNavigation", false) ?: false
         val answersRequests = call.getBoolean("answersRequests", false) ?: false
         val profileKey = call.getString("profileKey")
+        val purpose = call.data.opt("purpose")
+        val manualSignIn = purpose == "manual-sign-in"
+        if (purpose != null && purpose != JSONObject.NULL && !manualSignIn) {
+            call.reject("createSurface purpose is invalid", "INVALID_REQUEST")
+            return
+        }
+        if (manualSignIn && (process != "isolated" || storage != "isolated" || profileKey != null ||
+                interceptNavigation || answersRequests || (url != null && !admitsSignInAddress(url)))) {
+            call.reject("Manual sign-in requires an isolated temporary HTTPS surface", "INVALID_REQUEST")
+            return
+        }
+        if (manualSignIn && (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !BrowserLoginFields.supported())) {
+            call.reject("This WebView does not attest password field origins", "UNSUPPORTED")
+            return
+        }
         if (profileKey != null && (storage != "isolated" || !BrowserProfilePolicy.validKey(profileKey))) {
             call.reject("createSurface profileKey needs isolated storage and 1 to 128 plain characters")
             return
@@ -1075,12 +1156,15 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     existing.process != process || existing.storage != storage ||
                     existing.interceptNavigation != interceptNavigation ||
                     existing.answersRequests != answersRequests ||
-                    existing.profileKey != profileKey || existing.layer != layer
+                    existing.profileKey != profileKey || existing.layer != layer ||
+                    (existing.signIn != null) != manualSignIn
                 ) {
                     call.reject("surface $id already exists with different owner/session/policy")
                     return@runOnUiThread
                 }
                 if (url != null && existing.webView.url != url) {
+                    cancelSignIn(existing)
+                    existing.signIn?.committedUrl = null
                     existing.gate.approve(url)
                     existing.webView.loadUrl(url)
                 }
@@ -1114,6 +1198,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     val surface = surfaces[id]
                     if (surface == null || surface.webView !== view) return false
                     val target = request.url.toString()
+                    if (request.isForMainFrame && manualSignIn && !admitsSignInAddress(target)) return true
                     if (request.isForMainFrame && handOff(id, surface, target, request.hasGesture())) return true
                     if (request.isForMainFrame) mainRequest.set(target)
                     if (!surface.interceptNavigation) return false
@@ -1144,7 +1229,12 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 // gets a local empty 204, which ends the navigation without sending anything.
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     val now = System.currentTimeMillis()
+                    if (request.isForMainFrame && manualSignIn && !admitsSignInAddress(request.url.toString())) {
+                        return WebResourceResponse("text/plain", "utf-8", 204, "No Content", emptyMap(),
+                            ByteArrayInputStream(ByteArray(0)))
+                    }
                     if (request.isForMainFrame) mainRequest.set(request.url.toString())
+                    if (manualSignIn) return null
                     if (!interceptNavigation || !request.isForMainFrame) {
                         effects.observe(request.url.toString(), request.method, request.isForMainFrame, now,
                             request.requestHeaders?.get("Accept"))
@@ -1177,6 +1267,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     effects.close(System.currentTimeMillis())
                     surfaces.values.firstOrNull { it.webView === view }?.let {
                         it.control?.interrupt("The native page navigated", navigation = true)
+                        cancelSignIn(it)
+                        it.signIn?.committedUrl = null
                         it.historyObservation = null
                         it.pageRevision += 1
                         it.pageError = null
@@ -1189,11 +1281,21 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                         view.settings.mediaPlaybackRequiresUserGesture = true
                         // WebView starts pages for the main frame only. After closeRequests, so the
                         // host hears every sitePermissionWithdrawn this start caused before it.
-                        if (surfaces[id] === it && isLive(it)) {
-                            notifyListeners("pageStarted", surfaceEvent(id, it).apply { put("url", url) })
+                        val reportedUrl = surfaceAddress(it, url)
+                        if (reportedUrl != null && surfaces[id] === it && isLive(it)) {
+                            notifyListeners("pageStarted", surfaceEvent(id, it).apply { put("url", reportedUrl) })
                         }
                     }
                     gate.commit(url)
+                }
+
+                override fun onPageCommitVisible(view: WebView, url: String) {
+                    val surface = surfaces[id]?.takeIf { it.webView === view && isLive(it) } ?: return
+                    val signIn = surface.signIn ?: return
+                    if (view.url == url && admitsSignInAddress(url) && pageFailure(surface) == null) {
+                        signIn.committedUrl = url
+                        signIn.fields.retry()
+                    }
                 }
 
                 // History traversal must never silently resubmit a payment/form POST.
@@ -1208,6 +1310,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     val surface = surfaces[id] ?: return
                     if (surface.webView !== view || error.url != mainRequest.get()) return
                     surface.securityBlocked = error.url
+                    cancelSignIn(surface)
+                    surface.signIn?.committedUrl = null
                     if (isLive(surface)) notifyListeners("navigationChanged", surfaceState(id, surface))
                 }
 
@@ -1228,6 +1332,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     if (!request.isForMainFrame) return
                     val surface = surfaces.values.firstOrNull { it.webView === view } ?: return
                     surface.pageError = error.description.toString()
+                    cancelSignIn(surface)
+                    surface.signIn?.committedUrl = null
                 }
 
                 override fun onPageFinished(view: WebView, url: String) {
@@ -1235,6 +1341,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     val surface = surfaces[id] ?: return
                     if (surface.webView !== view || surface.disposed || view.url != url) return
                     if (!isLive(surface)) return
+                    surface.signIn?.fields?.retry()
                     notifyListeners("navigationChanged", surfaceState(id, surface))
                 }
 
@@ -1245,6 +1352,16 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     if (surface.webView !== view) return
                     surface.historyObservation = null
                     surface.pageRevision += 1
+                    surface.signIn?.let { signIn ->
+                        val previous = signIn.committedUrl
+                        if (previous != null) {
+                            cancelSignIn(surface)
+                            signIn.committedUrl = url?.takeIf {
+                                !isReload && view.progress == 100 && pageFailure(surface) == null &&
+                                    BrowserWebOrigin.sameOrigin(previous, it) && view.url == it
+                            }
+                        }
+                    }
                     if (isReload || !isLive(surface) || view.progress < 100) return
                     gate.commit(url)
                     notifyListeners("navigationChanged", surfaceState(id, surface))
@@ -1273,7 +1390,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     if (live) {
                         notifyListeners("surfaceCrashed", surfaceEvent(id, surface).apply {
                             put("didCrash", detail.didCrash())
-                            put("url", url ?: JSObject.NULL)
+                            put("url", surfaceAddress(surface, url) ?: JSObject.NULL)
                         })
                     }
                     return true
@@ -1338,7 +1455,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
 
                 override fun onShowCustomView(view: View, callback: CustomViewCallback) {
                     val surface = surfaces[id]
-                    if (surface == null || surface.webView !== webView) callback.onCustomViewHidden()
+                    if (surface == null || surface.webView !== webView || manualSignIn) callback.onCustomViewHidden()
                     else enterFullscreen(id, surface, view, callback)
                 }
 
@@ -1350,7 +1467,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 // throwaway WebView that never loads it, then reported for the host to check.
                 override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: android.os.Message): Boolean {
                     val surface = surfaces[id] ?: return false
-                    if (surface.webView !== view || !isLive(surface) || !isUserGesture) return false
+                    if (surface.webView !== view || !isLive(surface) || manualSignIn || !isUserGesture) return false
                     val catcher = WebView(activity)
                     surface.profileName?.let { WebViewCompat.setProfile(catcher, it) }
                     catcher.settings.javaScriptEnabled = false
@@ -1405,6 +1522,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 }
             }
             webView.setDownloadListener { downloadUrl, userAgent, contentDisposition, mimeType, contentLength ->
+                if (manualSignIn) return@setDownloadListener
                 val surface = surfaces[id]
                 if (surface == null || surface.webView !== webView || !isLive(surface)) return@setDownloadListener
                 val download = BrowserPageHandoffs.Download(downloadUrl,
@@ -1420,7 +1538,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     put("pdf", download.pdf)
                 })
             }
-            webView.settings.setSupportMultipleWindows(true)
+            webView.settings.setSupportMultipleWindows(!manualSignIn)
+            if (manualSignIn) {
+                webView.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+                webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            }
             webView.settings.javaScriptCanOpenWindowsAutomatically = false
             webView.settings.javaScriptEnabled = true
             webView.settings.domStorageEnabled = true
@@ -1451,7 +1573,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     call.reject("isolated storage requires WebView multi-profile support; system WebView is too old")
                     return@runOnUiThread
                 }
-                profileName = if (profileKey == null) profileName(owner, session, identity.epoch, id)
+                val profileId = if (manualSignIn) "$id:${UUID.randomUUID()}" else id
+                profileName = if (profileKey == null) profileName(owner, session, identity.epoch, profileId)
                     else keyedProfileName(owner, profileKey).also {
                         // A purge that could not delete it yet already cleared it; it starts a new life.
                         retiredProfiles.remove(it)
@@ -1475,7 +1598,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 if (bridge.webView.id != View.NO_ID) webView.accessibilityTraversalAfter = bridge.webView.id
             }
             val control = try {
-                if (SurfaceControlChannel.supported()) SurfaceControlChannel(webView, pageControl, effects) else null
+                if (!manualSignIn && SurfaceControlChannel.supported()) SurfaceControlChannel(webView, pageControl, effects) else null
             } catch (error: Exception) {
                 host.removeView(container)
                 webView.destroy()
@@ -1483,7 +1606,21 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 call.reject("Could not install isolated browser control", error)
                 return@runOnUiThread
             }
-            if (url != null) {
+            val signIn = if (manualSignIn) {
+                val fields = BrowserLoginFields.install(webView, { signInSnapshot(id, webView) },
+                    BrowserAutofillExtras.ELIZA_PASSWORDS)
+                if (fields == null) {
+                    host.removeView(container)
+                    webView.destroy()
+                    profileName?.let(::retireProfile)
+                    if (layer == SurfaceLayer.BELOW_HOST) releaseUnusedRouter()
+                    call.reject("Could not install origin-attested password fields", "UNSUPPORTED")
+                    return@runOnUiThread
+                }
+                container.addView(fields.anchor, FrameLayout.LayoutParams(-1, -1))
+                ManualSignIn(fields)
+            } else null
+            if (url != null && !manualSignIn) {
                 gate.approve(url)
                 webView.loadUrl(url)
             }
@@ -1505,7 +1642,9 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 )
             ) {
                 host.removeView(container)
+                signIn?.fields?.close()
                 webView.destroy()
+                if (layer == SurfaceLayer.BELOW_HOST) releaseUnusedRouter()
                 try {
                     if (profileKey == null) profileName?.let(::retireProfile)
                     call.reject("isolated process policy requires an out-of-app WebView renderer, which is unavailable on this device")
@@ -1526,12 +1665,20 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 profileName,
                 false,
                 control,
+                signIn,
                 interceptNavigation = interceptNavigation,
                 answersRequests = answersRequests,
                 gate = gate,
                 profileKey = profileKey,
                 layer = layer,
             )
+            if (manualSignIn) {
+                protectedSurfaceGeneration += 1
+                if (url != null) {
+                    gate.approve(url)
+                    webView.loadUrl(url)
+                }
+            }
             call.resolve()
         }
     }
@@ -1652,6 +1799,10 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val identity = requireActiveIdentity(call, "navigate") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "navigate")
                 ?: return@runOnUiThread
+            if (surface.signIn != null && !admitsSignInAddress(url)) {
+                call.reject("This HTTPS page cannot open in the protected sign-in surface", "INVALID_REQUEST")
+                return@runOnUiThread
+            }
             // A sign-in page that refuses WebViews is reported instead of showing its error page.
             if (BrowserPageHandoffs.identityProvider(url) == null) {
                 loadForHost(id, surface) {
@@ -1694,6 +1845,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val identity = requireActiveIdentity(call, "stopLoading") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "stopLoading")
                 ?: return@runOnUiThread
+            cancelSignIn(surface)
+            surface.signIn?.committedUrl = null
             surface.historyObservation = null
             surface.webView.stopLoading()
             // A navigation stopped before it commits never finishes, so its approval ends here.
@@ -1733,7 +1886,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         }
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "observeHistory") ?: return@runOnUiThread
-            val surface = ownedSurface(call, id, identity, "observeHistory") ?: return@runOnUiThread
+            val surface = controlledSurface(call, id, identity, "observeHistory") ?: return@runOnUiThread
             surface.historyObservation = null
             if (!historyReady(surface)) {
                 call.reject("The native page is unavailable for history observation", "UNAVAILABLE")
@@ -1770,7 +1923,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         }
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "navigateHistory") ?: return@runOnUiThread
-            val surface = ownedSurface(call, id, identity, "navigateHistory") ?: return@runOnUiThread
+            val surface = controlledSurface(call, id, identity, "navigateHistory") ?: return@runOnUiThread
             val observed = surface.historyObservation
             val history = surface.webView.copyBackForwardList()
             val offset = when (reference) {
@@ -1998,7 +2151,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 return@runOnUiThread
             }
             val identity = requireActiveIdentity(call, "saveDownload") ?: return@runOnUiThread
-            val surface = ownedSurface(call, id, identity, "saveDownload") ?: return@runOnUiThread
+            val surface = controlledSurface(call, id, identity, "saveDownload") ?: return@runOnUiThread
             val held = surface.holds.takeDownload(requestId) ?: run {
                 call.reject("This download is no longer waiting", "DOWNLOAD_NOT_PENDING")
                 return@runOnUiThread
@@ -2159,7 +2312,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         }
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "setTaskOrigins") ?: return@runOnUiThread
-            val surface = ownedSurface(call, id, identity, "setTaskOrigins") ?: return@runOnUiThread
+            val surface = controlledSurface(call, id, identity, "setTaskOrigins") ?: return@runOnUiThread
             if (!surface.interceptNavigation) {
                 call.reject("setTaskOrigins requires a surface created with interceptNavigation", "UNSUPPORTED")
                 return@runOnUiThread
@@ -2326,6 +2479,11 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "captureSurface") ?: return@runOnUiThread
             val surface = ownedSurface(call, id, identity, "captureSurface") ?: return@runOnUiThread
+            if (hasProtectedSurface()) {
+                call.reject("Capture is unavailable during protected sign-in", "PROTECTED_SURFACE")
+                return@runOnUiThread
+            }
+            val generation = protectedSurfaceGeneration
             if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || !surface.foregrounded ||
                 surface.paused || surface.webView.progress < 100 || pageFailure(surface) != null ||
                 surface.container.width <= 0 || surface.container.height <= 0) {
@@ -2338,7 +2496,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             val token = UUID.randomUUID().toString()
             val unchanged = {
                 isLive(surface) && surfaces[id] === surface && surface.foregrounded && !surface.paused &&
-                    surface.pageRevision == revision && webView.url == url
+                    surface.pageRevision == revision && webView.url == url && protectedSurfaceGeneration == generation
             }
             var settled = false
             var masked: JSONObject? = null
@@ -2452,7 +2610,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         }
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "readPage") ?: return@runOnUiThread
-            val surface = ownedSurface(call, id, identity, "readPage") ?: return@runOnUiThread
+            val surface = controlledSurface(call, id, identity, "readPage") ?: return@runOnUiThread
             if (!surface.foregrounded || surface.webView.progress < 100 || pageFailure(surface) != null) {
                 call.reject(pageFailure(surface) ?: "The native page is hidden or still loading")
                 return@runOnUiThread
@@ -2503,7 +2661,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         }
         activity.runOnUiThread {
             val identity = requireActiveIdentity(call, "controlPage") ?: return@runOnUiThread
-            val surface = ownedSurface(call, id, identity, "controlPage") ?: return@runOnUiThread
+            val surface = controlledSurface(call, id, identity, "controlPage") ?: return@runOnUiThread
             val control = surface.control ?: run {
                 call.reject("This WebView provider does not support isolated page control", "UNSUPPORTED")
                 return@runOnUiThread
@@ -2538,6 +2696,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 if (surface.owner == owner) {
                     if (surface !== selected) {
                         surface.control?.interrupt("The native page was hidden")
+                        cancelSignIn(surface)
                         closeRequests(surfaceId, surface)
                         surface.historyObservation = null
                     }
@@ -2551,6 +2710,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 }
                 surface.container.visibility = View.VISIBLE
                 surface.foregrounded = true
+                surface.signIn?.fields?.retry()
             }
             call.resolve()
         }
@@ -2582,6 +2742,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
             if (surface.paused != paused) {
                 surface.paused = paused
                 if (paused) {
+                    cancelSignIn(surface)
                     surface.historyObservation = null
                     surface.control?.interrupt("The native page was paused")
                     dismissDialogs(surface)
@@ -2594,6 +2755,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     surface.webView.onPause()
                 } else {
                     surface.webView.onResume()
+                    surface.signIn?.fields?.retry()
                 }
             }
             call.resolve()
@@ -2720,6 +2882,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 if (surface.owner == owner) {
                     surface.historyObservation = null
                     surface.control?.interrupt("The native owner was reconciled")
+                    cancelSignIn(surface)
                     // Hidden here as by presentSurface, so what the page waits on ends the same way.
                     closeRequests(surfaceId, surface)
                     surface.container.visibility = View.GONE
@@ -2753,17 +2916,17 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         put("exists", true)
         put("foregrounded", surface.foregrounded)
         put("paused", surface.paused)
-        put("currentUrl", surface.webView.url ?: JSObject.NULL)
+        put("currentUrl", surfaceAddress(surface, surface.webView.url) ?: JSObject.NULL)
         put("process", surface.process)
         put("storage", surface.storage)
         put("owner", surface.owner)
         put("session", surface.session)
         put("epoch", surface.epoch)
-        put("title", surface.webView.title?.let(BrowserPageHandoffs::text) ?: JSObject.NULL)
+        put("title", if (surface.signIn == null) surface.webView.title?.let(BrowserPageHandoffs::text) ?: JSObject.NULL else JSObject.NULL)
         put("canGoBack", surface.webView.canGoBack())
         put("canGoForward", surface.webView.canGoForward())
         put("progress", surface.webView.progress)
-        put("pageError", pageFailure(surface) ?: JSObject.NULL)
+        put("pageError", pageFailure(surface)?.let { if (surface.signIn == null) it else "The sign-in page failed to load" } ?: JSObject.NULL)
         put("securityBlocked", surface.securityBlocked != null)
         put("textZoom", surface.webView.settings.textZoom)
         put("pageScale", surface.pageScale)
