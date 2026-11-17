@@ -167,6 +167,13 @@ pure def alwaysClaimedCommandHoldsItsClaim(s: Remote): bool = s.commands.every(c
 pure def stepSettledCommandIsFinal(before: Remote, after: Remote): bool =
   before.commands.every(c => not(commandOpen(c.status)) implies commandOf(after, c.command) == c)
 pure def sometimesCommandCompleted(s: Remote): bool = s.commands.some(c => c.status == CommandCompleted)
+pure val weight_issueSession = 10
+pure val weight_claimSession = 10
+pure val weight_observeClaim = 10
+pure val weight_confirmClaim = 10
+pure val weight_commitSession = 10
+pure val weight_enqueueCommand = 10
+pure val weight_advanceCommand = 10
 ```
 
 ## Story: Revoke a host and everything it was paired with

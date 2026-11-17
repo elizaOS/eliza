@@ -15,7 +15,6 @@ Runtime bindings and native objects are maps, so each runtime and each object id
 Manager and provider references are process-local object identities. The allocator is a verification device: observed external service, provider-owner and provider-object references are reserved before fresh construction, so a later model allocation cannot collide with them. It does not assign numeric ids in the source runtime. Backend-cache allocation references and storage references retain their own owner's identity domains. Provider ids are trimmed and lowercased at the boundary. Registering the same provider replaces that manager's normalized provider object at its existing insertion position; new provider ids append. The reference denotes the normalized object retained by the source, not the caller's original input object. Public `listProviders` sorts these values with `provider.localeCompare`, whose locale ordering is a host adapter contract, rather than returning insertion order. Unregistering it leaves other managers untouched. Service classification, object identity, supplied native snapshots and storage truthiness are host observations requiring source conformance. A repeated native observation reuses retained state; it cannot reset an existing object from a new snapshot.
 
 ```quint
-import accountValues as A from "./accountValues"
 import connectorBackends as B from "./connectorBackends"
 type RegisteredManagerService = NoManagerService | NativeManagerService({ id: int, backend: B::BackendCache }) | CompatibleManagerService({ id: int })
 type StorageOverrideInput = NoStorageOverride | SuppliedStorage({ reference: int })
@@ -76,20 +75,4 @@ pure def sometimesUncachedNativeOverride(s: ConnectorManagers): bool = s.nativeI
 pure val serviceValues = Set(NoManagerService, NativeManagerService({ id: 0, backend: B::initial }), NativeManagerService({ id: 2, backend: B::initial }), CompatibleManagerService({ id: 3 }))
 pure val storageValues = Set(NoStorageOverride, SuppliedStorage({ reference: 0 }), SuppliedStorage({ reference: 30 }))
 pure val backendValues = Set(B::initial)
-```
-
-### Stored disable and revoke decisions win over provider readiness
-
-When the provider owns status, live provider status replaces a stored status except disabled and revoked. A stored account missing from live inventory becomes pending unless explicitly disabled or revoked. Stored identity, role, purposes and access policy remain authoritative. Ambiguous live identity matches fail with `CONNECTOR_ACCOUNT_AMBIGUOUS`.
-
-```quint
-type AccountStatus = AccountConnected | AccountPending | AccountDisabled | AccountRevoked | AccountError
-pure def mergedAccountStatus(stored: AccountStatus, provider: AccountStatus, providerOwns: bool, found: bool): AccountStatus = if (not(providerOwns) or stored == AccountDisabled or stored == AccountRevoked) stored else if (found) provider else AccountPending
-pure def lawDisabledAccountStaysDisabled(provider: AccountStatus, found: bool): bool = mergedAccountStatus(AccountDisabled, provider, true, found) == AccountDisabled
-pure def policyAllows(account: A::AccountValue, policy: A::AccountPolicy, purpose: A::OptionalText, verifiedBinding: bool): bool = A::accountPolicyDenial(account, policy, purpose, verifiedBinding) == A::PolicyAllowed
-pure def lawMissingOwnerBindingRefuses(account: A::AccountValue, policy: A::AccountPolicy, purpose: A::OptionalText): bool = account.gate == "owner_binding" implies not(policyAllows(account, policy, purpose, false))
-pure val accountValues = A::accountValues
-pure val policyValues = A::policyValues
-pure val purposeValues = A::purposeValues
-
 ```

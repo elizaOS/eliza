@@ -60,6 +60,13 @@ pure def alwaysMintNeedsKnownConsent(s: Successor): bool = s.minted implies s.pr
 pure def alwaysSocketNeedsCurrentSuccessor(s: Successor): bool =
   s.socket implies successorValid(s) and s.minted and not(s.ledgerClosed)
 pure def sometimesSuccessorSocketOpen(s: Successor): bool = s.socket
+pure val weight_prepareSuccessor = 10
+pure val weight_beginRetirement = 10
+pure val weight_confirmRetirement = 10
+pure val weight_releaseSuccessor = 10
+pure val weight_recoverSuccessor = 10
+pure val weight_mintSuccessor = 10
+pure val weight_openSuccessorSocket = 10
 ```
 
 ### A lost consent response leaves only a server-expiring ledger

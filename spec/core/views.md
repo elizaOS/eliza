@@ -30,26 +30,6 @@ pure def sometimesViewDelivered(v: ViewRequest): bool = v.phase == Delivered
 pure def sometimesViewRetired(v: ViewRequest): bool = v.phase == Retired
 ```
 
-## Story: Offer a caller only the actions its view allows
-
-> As the owner, a view sees only the actions its declaration allows, so an
-> action meant for another view is never offered there.
-
-### A view offers only registered actions its declaration lists
-
-A view's declaration lists the actions it scopes. Within that view, the
-caller is offered exactly the registered actions the declaration lists; an
-unlisted action is unavailable there whatever the caller's role. Whether
-the caller's role may run an offered action is [action
-planning](./actionPlanning.md)'s check.
-
-```quint
-pure def offeredInView(viewActions: Set[str], registeredActions: Set[str]): Set[str] = registeredActions.intersect(viewActions)
-pure def lawUnlistedActionUnavailable(viewActions: Set[str], registeredActions: Set[str], actionName: str): bool =
-  not(viewActions.contains(actionName)) implies not(offeredInView(viewActions, registeredActions).contains(actionName))
-pure val viewActionsValues = Set(Set(), Set("reply"), Set("reply", "manage"))
-pure val registeredActionsValues = Set(Set("reply", "manage", "browse"), Set("reply"))
-pure val actionNameValues = Set("reply", "manage", "browse")
 
 ### Candidate observations preserve conditional reflection and codec order
 
@@ -158,4 +138,26 @@ pure val candidateValues = Set(emptyCandidate, legacyBrowserCandidate, preparedV
 pure val candidatesValues = Set(List(), List(legacyBrowserCandidate), List({...preparedViewsCandidate, normalizedRequestId: "wrong"}, preparedViewsCandidate), List({...emptyCandidate, faults: Set(SuccessRead)}, preparedViewsCandidate))
 pure val handoffValues = Set({target: {viewId: "files", viewPath: AbsentViewPath, subview: ""}, handoffId: "handoff:1", clientId: "client-1", installationId: "install-1", delivered: false})
 pure val foundValues = Set(NoHandoff, parseCandidate(legacyBrowserCandidate), parseCandidate(preparedViewsCandidate), HandoffFailed({stage: SuccessRead}))
+```
+
+## Story: Offer a caller only the actions its view allows
+
+> As the owner, a view sees only the actions its declaration allows, so an
+> action meant for another view is never offered there.
+
+### A view offers only registered actions its declaration lists
+
+A view's declaration lists the actions it scopes. Within that view, the
+caller is offered exactly the registered actions the declaration lists; an
+unlisted action is unavailable there whatever the caller's role. Whether
+the caller's role may run an offered action is [action
+planning](./actionPlanning.md)'s check.
+
+```quint
+pure def offeredInView(viewActions: Set[str], registeredActions: Set[str]): Set[str] = registeredActions.intersect(viewActions)
+pure def lawUnlistedActionUnavailable(viewActions: Set[str], registeredActions: Set[str], actionName: str): bool =
+  not(viewActions.contains(actionName)) implies not(offeredInView(viewActions, registeredActions).contains(actionName))
+pure val viewActionsValues = Set(Set(), Set("reply"), Set("reply", "manage"))
+pure val registeredActionsValues = Set(Set("reply", "manage", "browse"), Set("reply"))
+pure val actionNameValues = Set("reply", "manage", "browse")
 ```
