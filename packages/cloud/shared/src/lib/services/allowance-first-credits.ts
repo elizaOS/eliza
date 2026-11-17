@@ -10,7 +10,6 @@ import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
 import type { DbTransaction } from "../../db/client";
 import type { BillingFundingReservation } from "../../db/schemas/billing-funding-reservations";
-import { logger } from "../utils/logger";
 import { readAgentFundingAccount } from "./agent-funding-account";
 import { billingHoldService } from "./billing-hold";
 import {
@@ -93,28 +92,11 @@ export function canonicalFundingAmount(
     .toFixed(6);
 }
 
-function isPolicyUnavailable(error: unknown): boolean {
-  return error instanceof ElizaError && error.code === "ORGANIZATION_POLICY_UNAVAILABLE";
-}
-
-/**
- * Whether new allowance-eligible spend must use allowance-first funding. When
- * the subscription policy cannot be resolved (for example between a period end
- * and its renewal), the organization keeps its purchased-credit lane: that lane
- * needs no subscription authority, and refusing it would stop paid work.
- */
+/** Subscription authority must be confirmed before selecting a funding source.
+ * Unavailable policy is not evidence that a subscriber should pay with purchased credits. */
 export async function isAllowanceFirstOrganization(organizationId: string): Promise<boolean> {
   if (organizationId === "anonymous") return false;
-  try {
-    return (await readOrganizationQuotaPolicy(organizationId)).subscriptionFunded;
-  } catch (error) {
-    if (!isPolicyUnavailable(error)) throw error;
-    // error-policy:J4 unresolved subscription authority selects the cash lane.
-    logger.warn("[AllowanceFirst] Subscription policy unavailable; using purchased credits", {
-      organizationId,
-    });
-    return false;
-  }
+  return (await readOrganizationQuotaPolicy(organizationId)).subscriptionFunded;
 }
 
 /** Transactional counterpart of {@link isAllowanceFirstOrganization}. */
@@ -122,16 +104,7 @@ export async function isAllowanceFirstOrganizationInTransaction(
   tx: DbTransaction,
   organizationId: string,
 ): Promise<boolean> {
-  try {
-    return (await readOrganizationQuotaPolicyInTransaction(tx, organizationId)).subscriptionFunded;
-  } catch (error) {
-    if (!isPolicyUnavailable(error)) throw error;
-    // error-policy:J4 unresolved subscription authority selects the cash lane.
-    logger.warn("[AllowanceFirst] Subscription policy unavailable; using purchased credits", {
-      organizationId,
-    });
-    return false;
-  }
+  return (await readOrganizationQuotaPolicyInTransaction(tx, organizationId)).subscriptionFunded;
 }
 
 /** A reservation held in `billing_funding_reservations` rather than the credit ledger. */

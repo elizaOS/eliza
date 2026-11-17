@@ -110,6 +110,13 @@ Open it locally with the matching private key. Never put plaintext codes in logs
 or issue comments. The workflow is not a payment, redemption, or service-acceptance
 check. Do not dispatch the staging workflow against production.
 
+If an unused test code is refused because the account used an earlier
+`production_qa` campaign, `repair_unredeemed_run_id` gives that exact code its own
+run-specific campaign. It accepts the same 1-to-31-day terms as the mint workflow.
+It preserves the term, expiry and single-use limit. It refuses used, disabled,
+expired or non-test codes and does not mint a replacement. Run with `mint=false`
+and the exact original mint run ID, then redeem the same code normally.
+
 ## Production pending migration review
 
 The read-only `Production Railway Database Authority Audit` reports

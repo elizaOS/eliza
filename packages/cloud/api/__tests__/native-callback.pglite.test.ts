@@ -349,3 +349,55 @@ test("installed client aliases share one current callback policy and refuse conf
   );
   expect((await app.request(redirect, {}, env as never)).status).toBe(200);
 });
+
+test("Alpha package migration preserves the legacy login alias but returns both to the canonical app", async () => {
+  const id = randomUUID();
+  const redirect = "https://eliza.app/alphaphone/auth/callback";
+  await dbWrite.execute(`INSERT INTO apps (id, name, app_url, allowed_origins, is_active, is_approved)
+    VALUES ('${id}', 'Alpha Phone', 'https://eliza.app', '["${redirect}"]'::jsonb, true, true)`);
+  for (const client of [
+    "ai.elizaresearch.alphaphone",
+    "ai.alphacompute.alphaphone",
+  ]) {
+    await dbWrite.execute(`INSERT INTO mobile_app_auth_clients
+      (client_id, app_id, redirect_uri, android_package_name, callback_android_package, enabled)
+      VALUES ('${client}', '${id}', '${redirect}', '${client}', 'ai.elizaresearch.alphaphone', true)`);
+  }
+  const env = {
+    ENVIRONMENT: "production",
+    ELIZA_MOBILE_APP_AUTH_ENABLED: "true",
+  };
+  expect(
+    await (
+      await app.request(
+        redirect.replace("/auth/callback", "/billing/return"),
+        {},
+        env as never,
+      )
+    ).text(),
+  ).toContain("package=ai.elizaresearch.alphaphone;end");
+  await applyMigrationFile("0576_alpha_native_callback_package.sql");
+  await applyMigrationFile("0576_alpha_native_callback_package.sql");
+  const result = await app.request(
+    redirect.replace("/auth/callback", "/billing/return"),
+    {},
+    env as never,
+  );
+  expect(result.status).toBe(200);
+  expect(await result.text()).toContain(
+    "package=ai.alphacompute.alphaphone;end",
+  );
+  const rows = await dbWrite.execute(
+    `SELECT client_id, android_package_name, callback_android_package FROM mobile_app_auth_clients WHERE app_id='${id}'`,
+  );
+  expect(rows.rows).toHaveLength(2);
+  expect(
+    rows.rows.every(
+      (row) => row.callback_android_package === "ai.alphacompute.alphaphone",
+    ),
+  ).toBe(true);
+  expect(
+    rows.rows.find((row) => row.client_id === "ai.elizaresearch.alphaphone")
+      ?.android_package_name,
+  ).toBe("ai.elizaresearch.alphaphone");
+});

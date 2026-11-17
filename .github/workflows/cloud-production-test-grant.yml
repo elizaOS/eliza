@@ -20,7 +20,7 @@ on:
         type: string
         default: "7"
       repair_unredeemed_run_id:
-        description: Give one unused one-day test code its own campaign; does not mint
+        description: Give one unused 1-to-31-day test code its own campaign; preserves its term and does not mint
         type: string
 
 permissions:
