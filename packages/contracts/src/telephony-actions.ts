@@ -675,14 +675,27 @@ export function smsComposeCapabilityAvailable(
       capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY))
   );
 }
-export function validateSmsComposeResult(value: unknown): SmsComposeResult {
+/**
+ * Validates a device result for the reviewed message. A draft cannot report
+ * a send, and a number target cannot report that no contact matched.
+ */
+export function validateSmsComposeResult(
+  operation: SmsComposeOperation,
+  value: unknown,
+): SmsComposeResult {
   const v = record(value, "message result");
   exact(v, ["kind", "status"], "message result");
   if (v.kind !== "sms-compose") throw Error("Invalid message result");
-  return {
-    kind: "sms-compose",
-    status: oneOf(v.status, COMPOSE_STATUS, "message result"),
-  };
+  const status = oneOf(v.status, COMPOSE_STATUS, "message result");
+  if (
+    "draft" in operation &&
+    operation.draft &&
+    ["submitted", "sent", "delivered", "unknown"].includes(status)
+  )
+    throw Error("A draft message cannot report a send");
+  if (status === "not-found" && smsComposeTarget(operation).kind !== "contact")
+    throw Error("Only a contact message can find no contact");
+  return { kind: "sms-compose", status };
 }
 /**
  * `unknown` is not a failure and is never retried: the radio may have taken the

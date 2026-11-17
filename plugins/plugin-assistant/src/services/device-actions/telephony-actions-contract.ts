@@ -117,7 +117,8 @@ export function validateTelephonyActionResult(
     return validateContactWriteResult(operation, value);
   if (isContactShow(operation)) return validateContactShowResult(value);
   if (isContactRead(operation)) return validateContactReadResult(value);
-  if (isSmsCompose(operation)) return validateSmsComposeResult(value);
+  if (isSmsCompose(operation))
+    return validateSmsComposeResult(operation, value);
   if (isSmsReply(operation)) return validateSmsReplyResult(value);
   if (isMessagesRead(operation)) return validateMessagesReadResult(value);
   if (isVoicemailRead(operation)) return validateVoicemailReadResult(value);

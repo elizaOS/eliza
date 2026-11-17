@@ -442,7 +442,7 @@ test("a contact SMS names a contact by text and keeps an unknown outcome unknown
   ])
     assert.throws(() => validateSmsCompose(bad), REJECTED);
   const result = (status: string) =>
-    validateSmsComposeResult({ kind: "sms-compose", status });
+    validateSmsComposeResult(compose, { kind: "sms-compose", status });
   for (const status of ["drafted", "submitted", "sent", "delivered"])
     assert.equal(smsComposeReceiptOutcome(result(status)), "applied");
   assert.equal(
@@ -460,7 +460,7 @@ test("a contact SMS names a contact by text and keeps an unknown outcome unknown
     { kind: "sms-compose", status: "sent", recipient: "+15555550123" },
     { kind: "sms-compose" },
   ])
-    assert.throws(() => validateSmsComposeResult(bad), REJECTED);
+    assert.throws(() => validateSmsComposeResult(compose, bad), REJECTED);
 });
 
 test("a targeted SMS names a number or a contact and needs its own capability", () => {
@@ -517,6 +517,20 @@ test("a targeted SMS names a number or a contact and needs its own capability", 
     );
     assert.equal(smsComposeCapabilityAvailable(operation, undefined), false);
   }
+  // The result is bound to the reviewed form: a draft never sends, and a
+  // number has no contact to miss.
+  const reported = (operation: unknown, status: string) =>
+    validateSmsComposeResult(validateSmsCompose(operation), {
+      kind: "sms-compose",
+      status,
+    });
+  for (const status of ["drafted", "not-found", "cancelled", "unavailable"])
+    assert.equal(reported(draft, status).status, status);
+  for (const status of ["submitted", "sent", "delivered", "unknown"]) {
+    assert.throws(() => reported(draft, status), /draft message cannot/);
+    assert.equal(reported(toNumber, status).status, status);
+  }
+  assert.throws(() => reported(toNumber, "not-found"), /Only a contact/);
 });
 
 test("a reply draft names no recipient and is placed or not, never sent", () => {
