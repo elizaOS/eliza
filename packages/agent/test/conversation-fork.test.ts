@@ -6,7 +6,7 @@
  * The same real HTTP and SQLite fixture checks readiness across deletion.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -31,6 +31,7 @@ async function call(
   method: string,
   url: string,
   body: Record<string, unknown> | null = null,
+  token?: string,
 ): Promise<{ status: number; payload: unknown }> {
   const server = http.createServer((req, res) => {
     const json = (
@@ -78,7 +79,10 @@ async function call(
       method,
       ...(body
         ? {
-            headers: { "content-type": "application/json" },
+            headers: {
+              "content-type": "application/json",
+              ...(token ? { authorization: `Bearer ${token}` } : {}),
+            },
             body: JSON.stringify(body),
           }
         : {}),
@@ -200,6 +204,34 @@ it("forks before an edited user message and preserves the original after restart
       },
     );
     expect(stale.status).toBe(409);
+    vi.stubEnv("WAIFU_CHAT_ACCESS_JWT_SECRET", "synthetic-branch-secret");
+    const header = Buffer.from(
+      JSON.stringify({ alg: "HS256", typ: "JWT" }),
+    ).toString("base64url");
+    const payload = Buffer.from(
+      JSON.stringify({
+        iss: "waifu.fun",
+        aud: "eliza-cloud-chat",
+        exp: Math.floor(Date.now() / 1000) + 300,
+        role: "guest",
+        walletAddress: "0x" + "a".repeat(40),
+      }),
+    ).toString("base64url");
+    const signed = header + "." + payload;
+    const token =
+      signed +
+      "." +
+      createHmac("sha256", "synthetic-branch-secret")
+        .update(signed)
+        .digest("base64url");
+    const foreignOwner = await call(
+      state,
+      "POST",
+      `/api/conversations/${source.id}/fork`,
+      { messageId: ids[2], requestId: randomUUID(), expectedText: "message 2" },
+      token,
+    );
+    expect(foreignOwner.status).toBe(404);
     const initialCount = state.conversations.size;
     const interruptedRequest = {
       messageId: ids[2],
