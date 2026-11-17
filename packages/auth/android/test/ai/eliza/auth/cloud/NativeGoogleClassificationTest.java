@@ -8,12 +8,8 @@ check("state-mismatch", "tenant-binding-mismatch", CloudSignInFlow.googleFailure
 check("provider-refused", "client-unavailable", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 404, false, "App client not found or disabled"));
 check("unavailable", "native-google-unconfigured", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 503, false, "Native Google sign-in is not configured for this app"));
 check("invalid-request", "pkce-challenge-invalid", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.CHALLENGE, 400, false, "An S256 code challenge is required"));
-check("invalid-request", "verification-input-invalid", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 400, false, "challengeId, idToken and codeVerifier are required"));
-check("expired", "challenge-unavailable", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 401, false, "Sign-in challenge expired or was already used"));
-check("state-mismatch", "challenge-request-mismatch", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 401, false, "Sign-in challenge does not match this request"));
-check("provider-refused", "google-identity-unverified", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 401, false, "Google identity could not be verified"));
-check("expired", "challenge-consumed", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 401, false, "Sign-in challenge was already used"));
-check("provider-refused", "identity-proof-unavailable", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 401, false, "Google identity token was already used or expired"));
+check("provider-refused", "google-identity-rejected", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 401, null, "google_identity_rejected"));
+check("rejected", "unclassified-provider-refusal", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 401, false, "Sign-in challenge expired or was already used"));
 check("rate-limited", "rate-limited", CloudSignInFlow.googleFailure(CloudSignInFlow.GoogleStage.VERIFY, 429, false, "Too many sign-in attempts. Try again later."));
   for(int status:new int[]{400,401,404}){
    for(Object error:new Object[]{null,"<html>secret</html>","Bearer secret.jwt.payload","https://evil.test/?token=secret", "Google identity could not be verified\nsecret",new Object(){public String toString(){throw new AssertionError("must not stringify");}}}){

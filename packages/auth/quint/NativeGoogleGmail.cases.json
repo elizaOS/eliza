@@ -1,0 +1,34 @@
+{
+  "sources": [
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInPlugin.java",
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/NativeGoogleCredential.java",
+    "packages/auth/android/src/main/java/ai/eliza/auth/cloud/CloudSignInConfig.java",
+    "packages/auth/android/test/native-sign-in.test.mjs",
+    "packages/auth/android/test/ai/eliza/auth/cloud/CloudSignInChainTest.java.txt"
+  ],
+  "bounds": {
+    "domain": "One native Google attempt for a host that registers Google scopes or none: Cloud's web client, the account picker, Google's permission sheet, the Android authorization dialog, one Cloud call that signs in, asks for a second factor or refuses, the factor, and Cloud's acknowledgement of the key.",
+    "assumptions": "Cloud verifies the identity and exchanges the Google code in the one call and reports the connection in its reply. When it answers mfa_required it has not exchanged the code that came with the call (packages/cloud/api/v1/app-auth/mobile/google/route.ts). The acknowledgement's background rounds are projected to their final answer, which NativeAndroidActivation models.",
+    "limitations": "The Steward challenge, deadlines, cancellation and the renderer's handling of the outcome are outside this model (NativeGoogleAdmission and NativeGoogleMfa cover admission and the factor). The account picker and permission sheet run only on a device; the JVM fixture runs the exact signInWithGoogle, commit and connectGmail methods with them stubbed."
+  },
+  "conformance": "packages/auth/quint/check-native-android-sign-in.mjs",
+  "cases": [
+    {
+      "name": "one-call-google-connection",
+      "main": "NativeGoogleGmail",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "CodeAtMostOnce",
+        "ConnectOnlyConfirmed",
+        "NoCodeLeftHeld",
+        "ConnectionReported",
+        "NoScopesNoGoogle",
+        "GoogleNeverFailsSignIn"
+      ],
+      "temporal": [],
+      "maxSteps": 12,
+      "samples": 1000
+    }
+  ]
+}
