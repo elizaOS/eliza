@@ -1,0 +1,72 @@
+// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+export type Row = Readonly<Record<string, unknown>>
+
+export interface Connection {
+  query(sql: string, params: ReadonlyArray<unknown>): Promise<ReadonlyArray<Row>>
+  script(sql: string): Promise<void>
+  release(): Promise<void>
+}
+
+export interface Pool {
+  readonly permits: number
+  connect(): Promise<Connection>
+  close(): Promise<void>
+}
+
+export type StoreLocation =
+  | { readonly kind: "pg"; readonly url: string }
+  | { readonly kind: "pglite"; readonly file: string | undefined }
+
+export error StoreFailure { operation: string; cause: unknown }
+
+export interface Tx {
+  query(sql: string, params?: ReadonlyArray<unknown>): ReadonlyArray<Row>!StoreFailure
+  script(sql: string): void!StoreFailure
+}
+
+export service Store {
+  static readonly key = "@elizaos/cloud/store/Store"
+  readonly location: StoreLocation | { readonly kind: "connected-pg" }
+  transaction<A, E, R>(body: (tx: Tx) => A!E!R): A!(E | StoreFailure)!R
+}
+
+export effect function foreign<A>(operation: string, run: () => Promise<A>): A!StoreFailure {
+  return try tryPromise({ try: run, catch: (cause) => new StoreFailure({ operation, cause }) })
+}
+
+function txOver(connection: Connection): Tx {
+  return {
+    query: (sql, params = []) => foreign("query", () => connection.query(sql, params)),
+    script: (sql) => foreign("script", () => connection.script(sql))
+  }
+}
+
+export effect function storeOver(location: Store.Shape["location"], pool: Pool): Store.Shape!! {
+  const permits = try Semaphore.make(pool.permits)
+  return {
+    location,
+    transaction: <A, E, R>(body: (tx: Tx) => A!E!R) => permits.withPermits(1)(acquireUseRelease(
+      foreign("connect", () => pool.connect()),
+      effect (connection: Connection) => {
+        try foreign("begin", () => connection.query("BEGIN", []))
+        const value = try body(txOver(connection))
+        try foreign("commit", () => connection.query("COMMIT", []))
+        return value
+      },
+      effect (connection: Connection, exit) => {
+        if (Exit.isFailure(exit)) {
+          foreign("rollback", () => connection.query("ROLLBACK", [])) catch () => undefined
+        }
+        foreign("release", () => connection.release()) catch () => undefined
+      }
+    ))
+  }
+}
+
+export function toInt(value: unknown): number {
+  return typeof value === "number" ? value : typeof value === "bigint" ? Number(value) : typeof value === "string" && /^-?\d+$/.test(value) ? Number(value) : Number.NaN
+}
+
+export function toText(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined
+}

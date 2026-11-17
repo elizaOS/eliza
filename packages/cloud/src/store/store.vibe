@@ -3,19 +3,7 @@ module node {
   import { readdir, readFile } from "node:fs/promises"
   import { PGlite } from "@electric-sql/pglite"
 
-  export type Row = Readonly<Record<string, unknown>>
-
-  export interface Connection {
-    query(sql: string, params: ReadonlyArray<unknown>): Promise<ReadonlyArray<Row>>
-    script(sql: string): Promise<void>
-    release(): Promise<void>
-  }
-
-  export interface Pool {
-    readonly permits: number
-    connect(): Promise<Connection>
-    close(): Promise<void>
-  }
+  import type { Connection, Pool, Row } from "./connection.vibe"
 
   export interface Migration {
     readonly name: string
@@ -66,34 +54,16 @@ module node {
   }
 
   /** @throws {unknown} */
-  export async function migrationFiles(): Promise<ReadonlyArray<Migration>> {
-    const directory = new URL("./migrations/", import.meta.url)
+  export async function migrationFiles(directory: URL): Promise<ReadonlyArray<Migration>> {
     const names = (await readdir(directory)).filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/.test(name)).sort()
     return Promise.all(names.map(async (name) => ({ name, sql: await readFile(new URL(name, directory), "utf8") })))
   }
 }
-import { migrationFiles, openPg, openPglite, type Connection, type Migration, type Pool, type Row } from node
-
-export type { Row }
-
-export type StoreLocation =
-  | { readonly kind: "pg"; readonly url: string }
-  | { readonly kind: "pglite"; readonly file: string | undefined }
-
-export error StoreFailure { operation: string; cause: unknown }
+import { migrationFiles, openPg, openPglite, type Migration } from node
+import { Store, StoreFailure, foreign, storeOver, toText, type StoreLocation, type Tx } from "./connection.vibe"
+export { Store, StoreFailure, toInt, toText, type Row, type StoreLocation, type Tx } from "./connection.vibe"
 export error DatabaseIdentityMismatch { expected: string; found: string }
 export error StoreLocationInvalid { input: string }
-
-export interface Tx {
-  query(sql: string, params?: ReadonlyArray<unknown>): ReadonlyArray<Row>!StoreFailure
-  script(sql: string): void!StoreFailure
-}
-
-export service Store {
-  static readonly key = "@elizaos/cloud/store/Store"
-  readonly location: StoreLocation
-  transaction<A, E, R>(body: (tx: Tx) => A!E!R): A!(E | StoreFailure)!R
-}
 
 export effect function parseStoreLocation(input: string): StoreLocation!StoreLocationInvalid {
   if (input === "pglite") return { kind: "pglite", file: undefined }
@@ -102,60 +72,17 @@ export effect function parseStoreLocation(input: string): StoreLocation!StoreLoc
   throw new StoreLocationInvalid({ input: input.startsWith("postgres") ? "postgres://…" : input })
 }
 
-effect function foreign<A>(operation: string, run: () => Promise<A>): A!StoreFailure {
-  return try tryPromise({ try: run, catch: (cause) => new StoreFailure({ operation, cause }) })
-}
-
-function txOver(connection: Connection): Tx {
-  return {
-    query: (sql, params = []) => foreign("query", () => connection.query(sql, params)),
-    script: (sql) => foreign("script", () => connection.script(sql))
-  }
-}
-
-effect function finish(connection: Connection, committed: boolean) {
-  try foreign(committed ? "commit" : "rollback", () => connection.query(committed ? "COMMIT" : "ROLLBACK", [])) catch () => undefined
-  try foreign("release", () => connection.release()) catch () => undefined
-}
-
-effect function storeOver(location: StoreLocation, pool: Pool): Store.Shape!! {
-  const permits = try Semaphore.make(pool.permits)
-  return {
-    location,
-    transaction: <A, E, R>(body: (tx: Tx) => A!E!R) => permits.withPermits(1)(acquireUseRelease(
-      effect {
-        const connection = try foreign("connect", () => pool.connect())
-        try foreign("begin", () => connection.query("BEGIN", [])) catch effect (failure) => {
-          try foreign("release", () => connection.release()) catch () => undefined
-          throw failure
-        }
-        return connection
-      },
-      (connection) => body(txOver(connection)),
-      (connection, exit) => finish(connection, Exit.isSuccess(exit))
-    ))
-  }
-}
-
 export function storeLayer(location: StoreLocation): Layer.Layer<Store, StoreFailure> {
   return Layer.effect(Store, effect {
     const pool = try acquireRelease(
-      foreign("open", () => location.kind === "pg" ? openPg(location.url) : openPglite(location.file)),
-      (opened) => foreign("close", () => opened.close()) catch () => undefined
+      foreign("open", async () => location.kind === "pg" ? await openPg(location.url) : await openPglite(location.file)),
+      (opened) => Effect.ignore(foreign("close", () => opened.close()))
     )
     return try storeOver(location, pool)
   })
 }
 
-export function toInt(value: unknown): number {
-  return typeof value === "number" ? value : typeof value === "bigint" ? Number(value) : typeof value === "string" && /^-?\d+$/.test(value) ? Number(value) : Number.NaN
-}
-
-export function toText(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined
-}
-
-effect function identityDigest(tx: Tx): string | undefined!StoreFailure {
+effect function identityDigest(tx: Tx): (string | undefined)!StoreFailure {
   const table = try tx.query("SELECT to_regclass('cloud_identity') IS NOT NULL AS present")
   if (table[0]?.present !== true) return undefined
   return toText((try tx.query("SELECT digest FROM cloud_identity"))[0]?.digest)
@@ -173,11 +100,17 @@ export interface MigrationReport {
 
 export effect function migrate(options: { readonly digest: string; readonly environment: "production" | "staging"; readonly now: number }): MigrationReport!(StoreFailure | DatabaseIdentityMismatch)!Store {
   const store = try Store
-  const migrations: ReadonlyArray<Migration> = try foreign("read migrations", () => migrationFiles())
+  const migrations: ReadonlyArray<Migration> = try foreign("read migrations", async () => await migrationFiles(new URL("./migrations/", import.meta.url)))
   return try store.transaction(effect (tx: Tx) => {
     try tx.query("SELECT pg_advisory_xact_lock(4242001)")
     const found = try identityDigest(tx)
-    if (found !== undefined && found !== options.digest) throw new DatabaseIdentityMismatch({ expected: options.digest, found })
+    if (found === undefined) {
+      const objects = try tx.query("SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind IN ('r','p','v','m','f','S') LIMIT 1")
+      if (objects.length) throw new DatabaseIdentityMismatch({ expected: options.digest, found: "unidentified non-empty database" })
+    } else {
+      const row = (try tx.query("SELECT environment FROM cloud_identity WHERE singleton"))[0]
+      if (found !== options.digest || row?.environment !== options.environment) throw new DatabaseIdentityMismatch({ expected: options.environment + "/" + options.digest, found: String(row?.environment) + "/" + found })
+    }
     try tx.query("CREATE TABLE IF NOT EXISTS schema_migrations (name text PRIMARY KEY, applied_at bigint NOT NULL)")
     const done = new Set((try tx.query("SELECT name FROM schema_migrations")).map((row) => toText(row.name)))
     const applied: string[] = []
