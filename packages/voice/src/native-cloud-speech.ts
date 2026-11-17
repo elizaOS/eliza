@@ -29,6 +29,7 @@ export interface CloudStreamPort {
     echoCancelled: boolean;
   }>;
   stopCloudSpeech(input: { sessionId: string }): Promise<unknown>;
+  setCloudSpeechOutputMuted?(input: { sessionId: string; muted: boolean }): Promise<unknown>;
   setCloudSpeechMuted(input: {
     sessionId: string;
     muted: boolean;
@@ -256,6 +257,13 @@ export function createCloudStreamingSpeech(
     }
   };
   return {
+    async setOutputMuted(muted: boolean): Promise<void> {
+      check();
+      if (!opened || !port.setCloudSpeechOutputMuted)
+        throw Error("Speaker mute is unavailable.");
+      await port.setCloudSpeechOutputMuted({ sessionId, muted });
+      check();
+    },
     async listen(handlers: AssistantListenHandlers): Promise<AssistantCapture> {
       check();
       handlers.signal.throwIfAborted();
