@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   PHONE_WORKFLOW_DEVICE_OPERATIONS,
   phoneWorkflowRequiredProtocol,
@@ -53,6 +53,8 @@ export interface WorkflowGenerationOptions {
   userId: string;
   triggerContext?: TriggerContext;
   existingWorkflow?: WorkflowDefinitionResponse;
+  /** The owner's IANA time zone. A schedule uses it unless the request names another zone. */
+  timeZone?: string;
 }
 
 const OWNER_METADATA_KEY = 'elizaOwnerEntityId';
@@ -77,11 +79,14 @@ function generationPrompt(instruction: string, context: WorkflowGenerationOption
   const trigger = context.triggerContext
     ? `\nConversation routing context:\n${JSON.stringify(context.triggerContext, null, 2)}`
     : '';
+  const timeZone = context.timeZone
+    ? `\nThe owner's time zone is ${context.timeZone}. A schedule uses this zone unless the request names another one.`
+    : '';
   return `You are the Smithers workflow author inside elizaOS.
 
 Create a production-ready native Smithers workflow for this request:
 ${instruction}
-${trigger}${existing}
+${trigger}${timeZone}${existing}
 
 Return one JSON object with exactly these top-level fields:
 - name: concise string
@@ -334,7 +339,7 @@ export class WorkflowService extends Service {
     const service = this.runtime.getService<EmbeddedWorkflowService>(
       EMBEDDED_WORKFLOW_SERVICE_TYPE
     );
-    if (!service) throw new WorkflowApiError('Smithers workflow runtime is unavailable', 503);
+    if (!service) throw new WorkflowApiError('The workflow runtime is unavailable', 503);
     return service;
   }
 
@@ -413,10 +418,7 @@ export class WorkflowService extends Service {
       // must not turn a valid answer into a generation error.
       const parsed = parseJsonObject<Record<string, unknown>>(response);
       if (!parsed) {
-        throw new WorkflowApiError(
-          'The model did not return a valid Smithers workflow object',
-          502
-        );
+        throw new WorkflowApiError('The model did not return a valid workflow', 502);
       }
       const draft = asWorkflow(parsed);
       let diagnostics: string[];
@@ -444,7 +446,7 @@ export class WorkflowService extends Service {
 
   async generateWorkflowDraft(
     instruction: string,
-    options: { userId: string; triggerContext?: TriggerContext }
+    options: Omit<WorkflowGenerationOptions, 'existingWorkflow'>
   ): Promise<WorkflowDefinition> {
     return this.authorCheckedDraft(instruction, options);
   }
@@ -452,7 +454,7 @@ export class WorkflowService extends Service {
   async modifyWorkflowDraft(
     workflow: WorkflowDefinitionResponse,
     instruction: string,
-    options: { userId: string; triggerContext?: TriggerContext }
+    options: Omit<WorkflowGenerationOptions, 'existingWorkflow'>
   ): Promise<WorkflowDefinition> {
     return this.authorCheckedDraft(instruction, {
       ...options,
@@ -595,6 +597,45 @@ export class WorkflowService extends Service {
         this.requireOwned(workflow, ownerId);
       }
     );
+  }
+
+  /**
+   * Changes the name only and returns the committed version. A typed phone
+   * workflow keeps its reviewed steps, trigger and phone target and is saved
+   * through its own reviewed path, so it is paused like every typed save.
+   */
+  async renameWorkflow(id: string, name: string, ownerId: string) {
+    const current = await this.getWorkflow(id, ownerId);
+    const encoded = current.metadata?.[PHONE_SPEC_KEY];
+    if (current.metadata?.[HOSTED_SPEC])
+      throw new WorkflowApiError('A digest is renamed in its digest settings', 409);
+    const receipt =
+      typeof encoded === 'string'
+        ? await this.savePhoneDraft(
+            ownerId,
+            randomUUID(),
+            { ...validatePhoneSpec(JSON.parse(encoded)), name },
+            PHONE_CATALOG_REVISION,
+            PHONE_COMPILER_REVISION,
+            id,
+            current.versionId
+          )
+        : await this.changeMetadata(
+            id,
+            randomUUID(),
+            current.versionId,
+            name,
+            current.description ?? '',
+            ownerId
+          );
+    return {
+      id,
+      name,
+      previousName: current.name,
+      active: typeof encoded === 'string' ? false : current.active === true,
+      versionId: receipt.versionId,
+      updatedAt: receipt.appliedAt,
+    };
   }
 
   async updateWorkflow(

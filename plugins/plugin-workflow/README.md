@@ -11,6 +11,17 @@ bun run --cwd plugins/plugin-workflow build  # build
 bun run --cwd plugins/plugin-workflow test   # tests
 ```
 
+## Chat operations
+
+The owner-only `WORKFLOW` action takes `action` and a workflow given by `workflowId` or `workflowName`. A name matches exactly first, then as a whole phrase, then as a fragment. A miss or an ambiguous name changes nothing and can be retried.
+
+- `create` and `modify` refuse a request for calls, text messages, payments, Contacts or email to unnamed people before any model call. They pass the owner's time zone to generation. Both leave the workflow off. `modify` turns an active workflow off until the owner reviews the change.
+- `rename` changes only the name. A workflow built in the Workflows view (a typed phone workflow) is saved again through its reviewed path with the same steps, trigger and phone target, so it is paused.
+- `remove` and `restore_removed` use the receipt-preserving lifecycle. The reply names the exact workflow. A restored workflow is off.
+- A typed phone workflow is not edited or turned on from chat. The reply tells the owner to do that in the Workflows view, where the phone confirms the version.
+
+Each change returns an applied `workflow.definition` effect receipt with operation `workflow.<action>`.
+
 ## Portable approval presentation
 
 Workflow authors may supply `request.metadata.approvalPresentation` with `version: 1`, `operation`, `target`, and `account` strings. Keep `request.title` and `request.summary` as the human review heading and explanation. The receipt API bounds these fields and only supports its existing simple approval modes; adding presentation metadata does not authorize execution or relax owner/version checks.
