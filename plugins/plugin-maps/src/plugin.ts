@@ -28,7 +28,7 @@ const promotedMapsActions = promoteSubactionsToActions(mapsAction, {
     },
     navigate: {
       description:
-        "Hand one destination to navigation: the connected phone when it can take it now, otherwise a directions link.",
+        "Hand one destination to navigation: the connected phone when it can take it now, otherwise a directions link. For the nearest or a nearby kind of place, set useCurrentLocation.",
     },
   },
 });
@@ -54,7 +54,7 @@ const promotedNavigationActions = promoteSubactionsToActions(
     overrides: {
       start: {
         description:
-          "Directions from where the user is now to a destination, by drive, walk, bicycle or transit. The phone plans the route from its own location and shows it; the user starts guidance.",
+          "Directions from where the user is now to a destination, by drive, walk, bicycle or transit. The phone plans the route from its own location and shows it; the user starts guidance. For the nearest or a nearby kind of place (nearest pharmacy), set useCurrentLocation: the phone finds it around its own position.",
         similes: ["DIRECTIONS_FROM_HERE", "TAKE_ME_TO", "GET_ME_TO"],
       },
     },

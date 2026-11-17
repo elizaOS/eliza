@@ -404,6 +404,39 @@ describe("Google Places and Geocoding", () => {
     });
   });
 
+  test("a distance-ranked search reads the largest page and returns the closest places first", async () => {
+    const at = (id: string, latitude: number) => ({
+      id,
+      displayName: { text: id },
+      location: { latitude, longitude: CASINO.longitude },
+    });
+    const { calls, provider } = google(() =>
+      Response.json({
+        places: [
+          at("ChIJ_far_place", 43.76),
+          at("ChIJ_near_place", 43.74),
+          at("ChIJ_mid_place", 43.75),
+        ],
+      }),
+    );
+    expect(provider.coverage().capabilities.distanceRank).toBe(true);
+    const places = await provider.search({
+      query: "pharmacy",
+      near: CASINO,
+      rank: "distance",
+      limit: 2,
+    });
+    expect(places.map((place) => place.id)).toEqual([
+      "ChIJ_near_place",
+      "ChIJ_mid_place",
+    ]);
+    expect(calls[0].body).toEqual({
+      textQuery: "pharmacy",
+      pageSize: 20,
+      locationBias: { circle: { center: CASINO, radius: 50_000 } },
+    });
+  });
+
   test("an empty search is no places, not an error", async () => {
     const { provider } = google(() => Response.json({}));
     expect(await provider.search({ query: "nowhere at all" })).toEqual([]);
