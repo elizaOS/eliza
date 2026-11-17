@@ -1388,12 +1388,24 @@ public abstract class CloudSignInPlugin extends Plugin {
    current.gmail = connected.status == 200 ? gmailOutcome(connected.data) : gmailRefused(connected.data.optString("code", null));
   } catch (Exception unavailable) { current.gmail = gmailRefused("google_unavailable"); }
  }
+ /**
+  * Cloud's account of the Gmail connection. A connected answer whose scope list is missing or holds
+  * anything but a scope, or whose address is not one, is a fault (`google_unavailable`): the renderer
+  * never sees a filtered or empty grant standing in for an answer Cloud did not give.
+  */
  private static JSObject gmailOutcome(JSONObject google) {
   if (google == null || !Boolean.TRUE.equals(google.opt("connected"))) return gmailRefused(google == null ? null : google.optString("code", null));
-  JSONArray granted = google.optJSONArray("scopes"), scopes = new JSONArray();
-  for (int i = 0; granted != null && i < granted.length(); i++) if (granted.optString(i, "").matches(CloudSignInConfig.GOOGLE_SCOPE)) scopes.put(granted.optString(i));
-  String email = google.optString("email", "");
-  return new JSObject().put("connected", true).put("email", CloudSignInFlow.validEmail(email) ? email : JSONObject.NULL).put("scopes", scopes);
+  Object granted = google.opt("scopes"), address = google.opt("email");
+  if (!(granted instanceof JSONArray)) return gmailRefused("google_unavailable");
+  JSONArray scopes = new JSONArray();
+  for (int i = 0; i < ((JSONArray) granted).length(); i++) {
+   Object scope = ((JSONArray) granted).opt(i);
+   if (!(scope instanceof String) || !((String) scope).matches(CloudSignInConfig.GOOGLE_SCOPE)) return gmailRefused("google_unavailable");
+   scopes.put(scope);
+  }
+  boolean noAddress = address == null || JSONObject.NULL.equals(address);
+  if (!noAddress && !(address instanceof String && CloudSignInFlow.validEmail((String) address))) return gmailRefused("google_unavailable");
+  return new JSObject().put("connected", true).put("email", noAddress ? JSONObject.NULL : address).put("scopes", scopes);
  }
  private static JSObject gmailRefused(String reason) {
   return new JSObject().put("connected", false).put("reason", reason != null && reason.matches("[a-z][a-z_]{1,63}") ? reason : "google_unavailable");

@@ -360,7 +360,7 @@ public class CloudSignInChainTest {
    JSONObject signedIn=new JSONObject().put("success",true).put("status","signed_in").put("secret",NEW).put("credentialId",ID).put("tokenType","Bearer").put("expiresAt",System.currentTimeMillis()+mintedLife)
     .put("acknowledgeBy",System.currentTimeMillis()+ackWindow).put("acknowledgementRequired",true).put("code","emac_"+"a".repeat(64)).put("accountCreated",true);
    if(body.has("serverAuthCode"))signedIn.put("google",mode.equals("google-mismatch")?new JSONObject().put("connected",false).put("code","google_account_mismatch")
-    :new JSONObject().put("connected",true).put("connectionId","synthetic-connection").put("email","owner@example.invalid").put("scopes",new JSONArray().put(GMAIL).put("<b>")).put("refreshTokenIssued",true));
+    :new JSONObject().put("connected",true).put("connectionId","synthetic-connection").put("email","owner@example.invalid").put("scopes",mode.equals("google-malformed")?new JSONArray().put(GMAIL).put("<b>"):new JSONArray().put(GMAIL)).put("refreshTokenIssued",true));
    return new Response(200,signedIn);
   }
   if(path.equals("/api/v1/eliza/google/connect/native")){
@@ -1336,6 +1336,10 @@ public class CloudSignInChainTest {
   call=new PluginCall();host=googleAttempt("google-mismatch",SERVER_AUTH_CODE,call);host.signInWithGoogle(host.attempt,ID_TOKEN);
   check("authenticated".equals(call.result.getString("status"))&&call.result.getJSONObject("google").length()==2&&!call.result.getJSONObject("google").getBoolean("connected")
    &&"google_account_mismatch".equals(call.result.getJSONObject("google").getString("reason")),"a Gmail grant Cloud refused leaves the sign-in standing and says why");
+
+  call=new PluginCall();host=googleAttempt("google-malformed",SERVER_AUTH_CODE,call);host.signInWithGoogle(host.attempt,ID_TOKEN);
+  check("authenticated".equals(call.result.getString("status"))&&call.result.getJSONObject("google").length()==2&&!call.result.getJSONObject("google").getBoolean("connected")
+   &&"google_unavailable".equals(call.result.getJSONObject("google").getString("reason")),"a Gmail grant Cloud reports with a malformed scope is a fault, never a filtered grant");
 
   call=new PluginCall();host=googleAttempt("valid",null,call);host.attempt.gmail=host.gmailRefused("google_declined");host.signInWithGoogle(host.attempt,ID_TOKEN);
   check("authenticated".equals(call.result.getString("status"))&&"google_declined".equals(call.result.getJSONObject("google").getString("reason")),"a declined permission sheet signs in without Gmail");

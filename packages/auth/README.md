@@ -234,7 +234,8 @@ same outcomes as the in-process retries (below).
   `google: {connected: false, reason}`. The reason is Cloud's code (for example
   `google_account_mismatch`) or a local one (`google_declined`,
   `google_not_configured` when Cloud's `GET` answers that code,
-  `google_unavailable`). A Gmail failure never fails the sign-in.
+  `google_unavailable`, also for a connected answer whose scope list or address
+  is malformed). A Gmail failure never fails the sign-in.
 - An account with a second factor completes the code step first. The unused Google
   code stays in memory. After Cloud confirms the new key, the plugin sends the code
   to `POST /api/v1/eliza/google/connect/native` with that key. A key Cloud has not
