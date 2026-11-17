@@ -298,6 +298,13 @@
       "host": {
         "schema": 1.5
       }
+    },
+    {
+      "policy": {
+        "plugins": {
+          "denied": null
+        }
+      }
     }
   ]
 }

@@ -98,8 +98,11 @@ encrypted-store identity and revocation policy.
 
 `EmbeddedAgentService` runs the embedded agent with Eliza Cloud inference only, and
 `EmbeddedAgentPlugin` (`EmbeddedAgent` in `src/embedded.ts`) is the page's bridge to
-it. Both are Java. A consumer supplies three data files, packaged as assets by the
-consumer host's `embeddedAgent` profile entry:
+it. Both are Java. Text and embeddings are routed to Eliza Cloud, and the agent is
+launched with `ELIZA_DEPLOYMENT_RUNTIME=cloud` and `ELIZA_DISABLE_LOCAL_EMBEDDINGS=1`,
+so it registers no local model handler and fetches no model. A consumer may not
+override these settings. A consumer supplies three data files, each at most 256 KB,
+packaged as assets by the consumer host's `embeddedAgent` profile entry:
 
 - `host`: `schema` 1, the `service` class, `notification` words (`channel`,
   `title`, `text`), `cloud` (`baseUrl`, an https origin, and optional
@@ -111,31 +114,38 @@ consumer host's `embeddedAgent` profile entry:
 - `policy`: `schema` 1, `actions.allowed` and `actions.refused` (name to reason),
   and `plugins.denied`.
 
+A host binds the signed-in Cloud credential by overriding `cloudCredential()` in a
+subclass named as `service`, and registers `EmbeddedAgentPlugin` with its Capacitor
+bridge; the generator writes no plugin registration.
+
 The service runs the agent alone; the bridge is its only client. The bridge
-refuses a route that is not listed before any I/O and talks to the agent over its
-loopback socket, so the page needs no cleartext access and never holds a token.
-`requestStream` sends each event's data as `streamData` and ends with `streamEnd`;
-`abort` closes the request, which ends the agent's turn. `status` events follow
-each lifecycle change. A failed status names its `failure`: `payload`, `storage`,
-`config`, `credential`, `agent`, `crashed` or `runtime`; an `unavailable` status
-(no runtime payload in the build, or data the bridge cannot read) names `payload`
-or `config`. A start cannot know whether Eliza Cloud is reachable until a turn is
-made, so a start fails only on what it can check, the payload and the credential
-among them, and a cloud failure is reported per turn. Private files that cannot
-be prepared fail the start with `runtime`. An agent that exits before it is
-ready, or that cannot be spawned, fails the start with `agent`; a running agent that exits is restarted twice, 3 and 6 seconds apart, then fails with
-`crashed` (`quint/EmbeddedAgentLifecycle.qnt`). The service returns `START_STICKY`
-so that Android may restart it after its process is killed; that has not been
-observed on a device, and a restart Android refuses to bring to the foreground
-stops the service. The start does not ask Eliza Cloud whether it accepts the key.
-A turn's stream answers HTTP 200 once the agent has validated the request; a
-refused key or an unfunded account then ends the turn with a `done` event whose
-`failureKind` is `provider_issue` or `insufficient_credits`, and any other failure
-with an `error` event (`type`, `message`, optional `code`). Both reach the page as
-`streamData`. A host binds the signed-in Cloud credential by overriding
-`cloudCredential()` in a subclass named as `service`, and registers
-`EmbeddedAgentPlugin` with its Capacitor bridge; the generator writes no plugin
-registration.
+refuses a route that is not listed, or a body that is not an object, before any
+I/O. It talks to the agent over its loopback socket, so the page needs no
+cleartext access and never holds a token.
+
+`requestStream` sends each event's data as `streamData` and ends with `streamEnd`.
+`abort` closes the request, which ends the agent's turn and sets `aborted`. A
+stream cut any other way, such as by an agent crash, ends with an `error`.
+
+`status` events follow each lifecycle change. A failed status names its
+`failure`: `payload`, `storage`, `config`, `credential`, `agent`, `crashed` or
+`runtime`. An `unavailable` status (no runtime payload in the build, or data the
+bridge cannot read) names `payload` or `config`. An agent that exits before it is
+ready, or cannot be spawned, fails with `agent`; a running agent that exits is
+restarted twice, 3 and 6 seconds apart, then fails with `crashed`
+(`quint/EmbeddedAgentLifecycle.qnt`). Private files that cannot be prepared fail
+with `runtime`.
+
+A start fails only on what it can check, the payload and the credential among
+them; it does not ask Eliza Cloud whether it accepts the key. A turn's stream
+answers HTTP 200 once the agent has validated the request. A refused key or an
+unfunded account then ends the turn with a `done` event whose `failureKind` is
+`provider_issue` or `insufficient_credits`, and any other failure with an `error`
+event (`type`, `message`, optional `code`).
+
+The service returns `START_STICKY` so that Android may restart it after its
+process is killed; that has not been observed on a device, and a restart Android
+refuses to bring to the foreground stops the service.
 
 `native-host/embedded-agent.mjs` exports `embeddedAgentDevelopment`, a Vite plugin
 that starts the agent from the Eliza checkout at `source` with the same data files,
