@@ -19,7 +19,7 @@ concurrency:
 env:
   NODE_VERSION: "26.13.1"
   NODE_SOURCE_SHA256: a7f6204ff63b6a2cd274d48903285abb86ed53a99070e532d4c2fd787457d9e6
-  NDK_VERSION: "29.0.13113456"
+  NDK_VERSION: "29.0.14206865"
   ANDROID_API_LEVEL: "29"
 
 jobs:
@@ -50,7 +50,10 @@ jobs:
         run: |
           sdk=${ANDROID_SDK_ROOT:-${ANDROID_HOME:?Android SDK is required}}
           "$sdk/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION"
-          printf 'NDK_BIN=%s\n' "$sdk/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_ENV"
+          ndk_bin="$sdk/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          "$ndk_bin/$NDK_TARGET$ANDROID_API_LEVEL-clang" --version
+          "$ndk_bin/$NDK_TARGET$ANDROID_API_LEVEL-clang++" --version
+          printf 'NDK_BIN=%s\n' "$ndk_bin" >> "$GITHUB_ENV"
 
       - name: Verify and extract the official Node sources
         shell: bash
@@ -84,6 +87,7 @@ jobs:
           test -x out/Release/node
           "$NDK_BIN/llvm-strip" --strip-debug out/Release/node \
             -o "$RUNNER_TEMP/android-node/libeliza_node.so"
+          cp LICENSE "$RUNNER_TEMP/android-node/LICENSE"
 
       - name: Verify ABI, Android interpreter and dependency closure
         shell: bash
@@ -133,6 +137,7 @@ jobs:
             ${{ runner.temp }}/android-node/manifest.json
             ${{ runner.temp }}/android-node/SHA256SUMS
             ${{ runner.temp }}/android-node/elf.txt
+            ${{ runner.temp }}/android-node/LICENSE
           if-no-files-found: error
 
       - name: Upload failed build log
