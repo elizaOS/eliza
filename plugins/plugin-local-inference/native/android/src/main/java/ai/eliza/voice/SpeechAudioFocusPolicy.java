@@ -7,7 +7,8 @@ package ai.eliza.voice;
  *
  * <ul>
  * <li>Speech requests transient focus that lets other audio duck (assistant usage, speech content)
- *     only while it plays, and abandons it when the utterance ends or is stopped.</li>
+ *     while its owner needs it (while it speaks; the cloud bridge also while it listens), and
+ *     abandons it afterwards.</li>
  * <li>No speech starts while the phone is ringing or in a call (telephony or VoIP mode): the
  *     caller reports {@link #CALL_ACTIVE} instead of playing over the call.</li>
  * <li>Permanent or transient loss stops the utterance and clears its unplayed audio; a ducking
@@ -37,6 +38,7 @@ public final class SpeechAudioFocusPolicy {
  /** The platform answered the focus request. */
  public synchronized boolean granted(boolean granted){state=granted?State.HELD:State.IDLE;requested|=granted;return granted;}
  public synchronized boolean held(){return state!=State.IDLE;}
+ public synchronized boolean ducked(){return state==State.DUCKED;}
  /**
   * Speech ended or was stopped: true when a granted request must now be abandoned, including after
   * a loss (a transiently displaced request would otherwise get focus back with nothing playing).
