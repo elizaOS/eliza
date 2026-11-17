@@ -34,6 +34,30 @@ The plugin owns the Chromium native-messaging AIDL definitions. Host apps use
 the library classes and must not compile duplicate copies of those definitions.
 Eliza retains its existing service component as a thin subclass of this relay.
 
+For a sign-in that the person completes themselves, use an Android surface with
+`purpose: "manual-sign-in"`, `process: "isolated"`, and `storage: "isolated"`.
+The surface gets a new temporary profile on every open and accepts only HTTPS
+top-level navigation. Omit `profileKey`, `interceptNavigation` and `answersRequests`.
+Creation fails if the installed WebView cannot attest field origins in an isolated
+world. On iOS, this purpose is unavailable.
+
+The person focuses a login field on the website and chooses Autofill in Android.
+The installed password provider handles authentication and selection. The native
+browser supplies the committed document origin and the origin Android WebView
+reported for the field's frame. A cross-origin field cannot get a password.
+To use the Eliza provider, configure its host-browser mode as described in the
+[password plugin](../plugin-native-passwords/README.md#host-integration-android).
+The host can manage saved passwords in the native vault editor.
+
+The bridge reports the HTTPS origin and load state. Page titles, URL paths,
+query parameters, field data and download requests stay off the bridge. Page
+reading, control, task-origin extension and history observation are unavailable
+on this surface. Window capture is blocked across all surfaces while one of
+these surfaces exists. Close it on exit so the temporary profile is retired.
+Only the local user interface should open and navigate this surface. The host
+sets Android `FLAG_SECURE` during presentation to protect screenshots and
+recent-app previews. An assistant can describe the public sign-in destination.
+
 Android surfaces may opt in to navigation interception with
 `createSurface({ ..., interceptNavigation: true })`. The page then navigates within its
 own origin by itself; a main-frame navigation to another origin, a cross-origin redirect

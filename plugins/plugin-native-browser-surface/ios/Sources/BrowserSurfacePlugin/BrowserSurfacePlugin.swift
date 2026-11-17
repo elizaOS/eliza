@@ -147,6 +147,11 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
     }
 
     @objc func createSurface(_ call: CAPPluginCall) {
+        if call.getString("purpose") == "manual-sign-in" {
+            call.reject("Protected password Autofill is only available on supported Android WebViews", "UNSUPPORTED")
+            return
+        }
+
         guard let id = call.getString("id") else {
             call.reject("createSurface requires an id")
             return
