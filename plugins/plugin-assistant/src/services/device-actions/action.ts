@@ -31,6 +31,7 @@ import {
   DEVICE_VIEWS,
   deviceOperationSupportedByCapabilities,
   object,
+  PROFILE_ONLY_DEVICE_VIEWS,
   text,
   validateDevicePayload,
 } from "./contract.ts";
@@ -1101,7 +1102,14 @@ export const proposeDeviceAction: Action = {
             required: ["type", "view"],
             properties: {
               type: { type: "string", enum: ["open_view"] },
-              view: { type: "string", enum: [...DEVICE_VIEWS] },
+              // The turn narrows this to the enrolled view profile, which
+              // is the only way a profile-only view is offered.
+              view: {
+                type: "string",
+                enum: DEVICE_VIEWS.filter(
+                  (view) => !PROFILE_ONLY_DEVICE_VIEWS.includes(view),
+                ),
+              },
             },
           },
           {

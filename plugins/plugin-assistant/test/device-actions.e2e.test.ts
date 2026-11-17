@@ -4058,7 +4058,9 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         status: 200,
         body: { version: 1, profile: null },
       });
-      expect(discovery.body.supportedViews).toContain("workflows");
+      expect(discovery.body.supportedViews).toEqual(
+        expect.arrayContaining(["workflows", "phone", "messages", "contacts"]),
+      );
       expect(
         (await request("/register", { label: "Profile fixture" })).body
           .viewProfileVersion,
@@ -4143,6 +4145,8 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         "workflows",
       ]);
       expect(branch(contexts[1]).properties.view.enum).toContain("browser");
+      // A profile-only view is never offered to an installation without one.
+      expect(branch(contexts[1]).properties.view.enum).not.toContain("phone");
       expect(JSON.stringify(proposeDeviceAction.parameters)).toBe(
         globalParameters,
       );

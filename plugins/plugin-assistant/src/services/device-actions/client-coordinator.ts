@@ -482,6 +482,10 @@ const OPENABLE_VIEWS = new Set([
   "inbox",
   "settings",
   "workflows",
+  // Offered only when this host enabled them in its view profile.
+  "phone",
+  "messages",
+  "contacts",
 ]);
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))

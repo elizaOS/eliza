@@ -110,7 +110,20 @@ export const DEVICE_VIEWS = [
   "inbox",
   "settings",
   "workflows",
+  "phone",
+  "messages",
+  "contacts",
 ] as const;
+/**
+ * Views that only some hosts have. A host must enable them in its view
+ * profile; an installation without a profile is never offered them, so an
+ * older client that cannot open them is unaffected.
+ */
+export const PROFILE_ONLY_DEVICE_VIEWS: readonly string[] = [
+  "phone",
+  "messages",
+  "contacts",
+];
 export type DeviceOperation =
   | CameraCaptureOperation
   | SmsSendOperation

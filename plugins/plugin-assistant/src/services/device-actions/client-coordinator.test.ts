@@ -858,6 +858,20 @@ describe("DeviceActionCoordinator", () => {
         profile.operations,
       ),
     ).toEqual({ type: "open_view", view: "notes" });
+    for (const view of ["phone", "messages", "contacts"]) {
+      expect(
+        validateDeviceOperation(
+          { type: "open_view", view },
+          profile.operations,
+        ),
+      ).toEqual({ type: "open_view", view });
+      expect(() =>
+        validateDeviceOperation(
+          { type: "open_view", view },
+          { ...profile.operations, admitView: () => false },
+        ),
+      ).toThrow(/Unsupported/);
+    }
     expect(() =>
       validateDeviceOperation(
         { type: "open_view", view: "files" },

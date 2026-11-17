@@ -100,6 +100,7 @@ import {
   exactKeys,
   identifier,
   object,
+  PROFILE_ONLY_DEVICE_VIEWS,
   text,
   validateDeviceOperation,
   validateDevicePayload,
@@ -2340,8 +2341,9 @@ export class DeviceActionService {
         const viewProfile = storedDeviceViewProfile(row.view_profile);
         if (
           validated.type === "open_view" &&
-          viewProfile &&
-          !viewProfile.views.includes(validated.view)
+          (viewProfile
+            ? !viewProfile.views.includes(validated.view)
+            : PROFILE_ONLY_DEVICE_VIEWS.includes(validated.view))
         )
           throw new DeviceActionError("View unavailable on this installation");
         const turn = getDeviceActionTurn();
