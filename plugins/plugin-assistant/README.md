@@ -227,6 +227,31 @@ the matches. The agent learns only `shown` or `not-found`.
 the one contact open in Contacts: its name, numbers and email addresses. The
 agent never searches or lists the address book.
 
+## Browser from chat
+
+`browser_navigate {url}` opens only an address the owner typed in the current
+message. A typed `http://` address opens over HTTPS. The phone opens it without
+a review only when the whole message is a direct request, such as "open
+example.com". Any other typed address gets a review card. The host's assistant
+name may come before the request ("Alpha, open example.com"): the server reads
+the character name, and the phone passes `assistantName` in its client profile.
+
+Each control below needs its own negotiated capability. The agent learns only
+whether it ran. It never receives the tab list, a title, an address or page
+content.
+
+- `browser.search.v1`: `browser_search {query}`. The query is words the owner
+  typed in the current message. The phone builds the search address with its
+  own search engine.
+- `browser.tabs.v1`: `browser_tab_new {private}`, `browser_tab_switch {target}`
+  and `browser_tab_close {target}`. `target` is a word of the tab's title or
+  site. The phone finds the tab, and the owner picks when more than one
+  matches. Without `target`, close acts on the tab that is showing. The owner
+  always reviews a close.
+- `browser.find.v1`: `browser_find {text}` shows the matches on the open page.
+- `browser.history.v1`: `browser_history {action}` with `back`, `forward`,
+  `reload` or `stop`.
+
 ## Requested Camera capture
 
 The `camera.capture-photo.v1` device capability adds `camera_capture_photo`.

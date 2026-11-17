@@ -8,6 +8,12 @@ import type {
 } from "@elizaos/core";
 import { extractUserText, unwrapUserMessageText } from "@elizaos/core";
 import {
+  BROWSER_CONTROL_DIRECT_TYPES,
+  BROWSER_HISTORY_ACTIONS,
+  isBrowserControl,
+  isBrowserControlType,
+} from "./browser-contract.ts";
+import {
   containsWebAddress,
   DeviceBrowserNotRequestedError,
 } from "./browser-request-grounding.ts";
@@ -934,6 +940,78 @@ const telephonyActionSchemas: ActionParameterSchema[] = [
   })),
 ];
 
+/** Strict tool grammars reject length bounds, so service validation enforces them. */
+const browserControlSchemas: ActionParameterSchema[] = [
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "query"],
+    properties: {
+      type: { type: "string", enum: ["browser_search"] },
+      query: {
+        type: "string",
+        description:
+          "The search words exactly as the user typed them in this message",
+      },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type"],
+    properties: {
+      type: { type: "string", enum: ["browser_tab_new"] },
+      private: {
+        type: "boolean",
+        description: "true only when the owner asks for a private tab",
+      },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "target"],
+    properties: {
+      type: { type: "string", enum: ["browser_tab_switch"] },
+      target: {
+        type: "string",
+        description:
+          "A word of the tab's title or site as the owner said it, such as bbc",
+      },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type"],
+    properties: {
+      type: { type: "string", enum: ["browser_tab_close"] },
+      target: {
+        type: "string",
+        description:
+          "A word of the tab's title or site as the owner said it. Leave it out to close the tab that is showing.",
+      },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "text"],
+    properties: {
+      type: { type: "string", enum: ["browser_find"] },
+      text: { type: "string", description: "The text to find on the page" },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "action"],
+    properties: {
+      type: { type: "string", enum: ["browser_history"] },
+      action: { type: "string", enum: [...BROWSER_HISTORY_ACTIONS] },
+    },
+  },
+];
 /** Proposal guidance by operation. A connection is told only about the operations its schema offers. */
 const PROPOSAL_GUIDANCE: ReadonlyArray<{
   types?: readonly string[];
@@ -1038,6 +1116,22 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   },
   {
     text: "Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Browser navigation is only for a web address the user typed in this message and asks to open now; never for a deferred, hypothetical, question-about, past or reported mention.",
+  },
+  {
+    types: ["browser_search"],
+    text: "browser_search {query} (browser.search.v1) opens a web search in the phone Browser when the owner asks to search the web, look something up online or google something now. query must be words the user typed in this message, copied exactly; never add, reorder or reword them. The phone builds the search with its own search engine. You receive no results and no page content; never claim what the search found.",
+  },
+  {
+    types: ["browser_tab_new", "browser_tab_switch", "browser_tab_close"],
+    text: "Browser tabs (browser.tabs.v1): browser_tab_new {private} opens an empty tab; set private true only when the owner asks for a private tab. browser_tab_switch {target} shows an open tab and browser_tab_close {target} closes one; target is a word of the tab's title or site as the owner said it. Leave target out of browser_tab_close to close the tab that is showing. The phone finds the tab and the owner picks when more than one matches. Closing a tab is always reviewed by the owner. You never receive the list of tabs, a title or an address; never say which tabs are open.",
+  },
+  {
+    types: ["browser_find"],
+    text: "browser_find {text} (browser.find.v1) shows the matches for text on the page open in the phone Browser. You receive no match count and no page content.",
+  },
+  {
+    types: ["browser_history"],
+    text: "browser_history {action: back|forward|reload|stop} (browser.history.v1) acts on the tab that is showing in the phone Browser. Use it instead of a BROWSER back, forward or reload command when both are offered.",
   },
   {
     types: ["notes_read_selected", "notes_update", "notes_delete"],
@@ -1180,6 +1274,7 @@ export const proposeDeviceAction: Action = {
           ...notesSchemas,
           ...notesOrganizeSchemas,
           ...photosViewSchemas,
+          ...browserControlSchemas,
           notesQuerySchema,
           notesSearchSchema,
           ...namedTargetSchemas,
@@ -1424,11 +1519,12 @@ export const proposeDeviceAction: Action = {
       if (!(error instanceof DeviceBrowserNotRequestedError)) throw error;
       // Plain copy that is true either way: with no address in the user's
       // words, say how to ask; with one, only that it was not opened.
-      const reply = containsWebAddress(
-        extractUserText(unwrapUserMessageText(_message)),
-      )
-        ? "I didn't open that address."
-        : 'Tell me the address, like "open nytimes.com".';
+      const reply =
+        error.request === "search"
+          ? 'Tell me the words to search for, like "search for weather in Paris".'
+          : containsWebAddress(extractUserText(unwrapUserMessageText(_message)))
+            ? "I didn't open that address."
+            : 'Tell me the address, like "open nytimes.com".';
       return {
         success: false,
         text: error.message,
@@ -1714,7 +1810,15 @@ export const proposeDeviceAction: Action = {
       request.state === "pending" &&
       operation.type === "camera_capture_photo" &&
       payload.requestMessageId !== undefined;
-    const requestedHandoff = requestedBrowserOpen || requestedCameraCapture;
+    // A search, tab, find or history control the owner's current message
+    // asked for also runs on the phone without a review card.
+    const requestedBrowserControl =
+      request.state === "pending" &&
+      isBrowserControl(operation) &&
+      BROWSER_CONTROL_DIRECT_TYPES.includes(operation.type) &&
+      payload.requestMessageId !== undefined;
+    const requestedHandoff =
+      requestedBrowserOpen || requestedCameraCapture || requestedBrowserControl;
     return {
       success: true,
       transcriptVisibility: "internal",
@@ -1731,16 +1835,24 @@ export const proposeDeviceAction: Action = {
           ? { userFacingText: `Opening ${new URL(operation.url).host}.` }
           : requestedCameraCapture
             ? { userFacingText: "Opening Camera to take the photo." }
-            : request.state === "pending"
-              ? { userFacingText: DEVICE_APPROVAL_REVIEW_TEXT }
-              : {}),
+            : requestedBrowserControl && operation.type === "browser_search"
+              ? {
+                  userFacingText: `Searching the web for “${operation.query}”.`,
+                }
+              : requestedBrowserControl
+                ? { userFacingText: "Doing that in Browser." }
+                : request.state === "pending"
+                  ? { userFacingText: DEVICE_APPROVAL_REVIEW_TEXT }
+                  : {}),
       text: pendingRingingControl
         ? "Alarm control request recorded and pending for the phone. The phone may request manual review under its native policy. Pending state and approval/pause flags do not prove a visible approval dialog. This tool has performed no device operation. Await an applied native receipt before claiming completion."
         : requestedBrowserOpen
           ? "The requesting phone opens this exact requested address in its Browser right after this reply, with no review. The page has not loaded yet; do not claim its content or that it loaded."
           : requestedCameraCapture
             ? "The requesting phone takes this requested photo right after this reply once Camera is showing, with no review. No photo has been taken yet; do not claim that one was taken or saved."
-            : `Durable device proposal state: ${request.state}. This tool has performed no device operation.`,
+            : requestedBrowserControl
+              ? "The requesting phone runs this requested Browser control right after this reply, with no review. It has not run yet; do not claim that it finished, what a search found or what a page shows."
+              : `Durable device proposal state: ${request.state}. This tool has performed no device operation.`,
       data: {
         proposalId: request.id,
         state: request.state,
@@ -1870,6 +1982,7 @@ export function deviceActionForCapabilities(
               type !== "notes_query" &&
               !isNotesOrganizeType(type) &&
               !isPhotosViewType(type) &&
+              !isBrowserControlType(type) &&
               !isForegroundReviewType(type)
             : deviceOperationSupportedByCapabilities(
                 type === "reminder_create_after" ? "reminder_create" : type,

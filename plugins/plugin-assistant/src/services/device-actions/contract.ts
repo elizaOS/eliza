@@ -6,6 +6,12 @@ import {
   validateNativeNotesQuery,
 } from "@elizaos/contracts/native-notes-query";
 import {
+  type BrowserControlOperation,
+  browserControlCapabilityAvailable,
+  isBrowserControlType,
+  validateBrowserControl,
+} from "./browser-contract.ts";
+import {
   CALENDAR_CREATE_CAPABILITY,
   CALENDAR_NEXT_CAPABILITY,
   type CalendarOperation,
@@ -149,7 +155,8 @@ export type DeviceOperation =
   | { type: "create_note"; title: string; body: string }
   | { type: "create_reminder"; title: string; dueAt: string }
   | { type: "open_view"; view: (typeof DEVICE_VIEWS)[number] }
-  | { type: "browser_navigate"; url: string };
+  | { type: "browser_navigate"; url: string }
+  | BrowserControlOperation;
 
 /** Clock-only executors do not inherit the legacy phone executor's base operations. */
 export function deviceOperationSupportedByCapabilities(
@@ -187,6 +194,8 @@ export function deviceOperationSupportedByCapabilities(
     );
   if (isPhotosViewType(type))
     return photosViewCapabilityAvailable(capabilities);
+  if (isBrowserControlType(type))
+    return browserControlCapabilityAvailable(type, capabilities);
   if (type === "clock_alarm")
     return capabilities?.includes(CLOCK_ALARMS_CAPABILITY) === true;
   if (type === "clock_handoff")
@@ -504,12 +513,27 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       } catch {
         throw new DeviceActionError("Invalid browser destination");
       }
+      // A typed http:// address opens over HTTPS, like the address bar.
+      if (url.protocol === "http:") url.protocol = "https:";
       if (url.protocol !== "https:" || url.username || url.password)
         throw new DeviceActionError(
           "Only HTTPS browser destinations are supported",
         );
       return { type: p.type, url: url.href };
     }
+    case "browser_search":
+    case "browser_tab_new":
+    case "browser_tab_switch":
+    case "browser_tab_close":
+    case "browser_find":
+    case "browser_history":
+      try {
+        return validateBrowserControl(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          `Invalid Browser operation: ${(error as Error).message}. Use browser_search {query}, browser_tab_new {private}, browser_tab_switch {target}, browser_tab_close {target}, browser_find {text} or browser_history {action: back|forward|reload|stop}.`,
+        );
+      }
     default:
       throw new DeviceActionError("Unsupported device operation");
   }

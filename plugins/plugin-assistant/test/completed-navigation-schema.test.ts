@@ -398,3 +398,82 @@ it("offers each telephony action only with its own capability and states its lim
       }),
     ).toThrow();
 });
+
+it("offers each Browser control only with its own capability and validates its exact form", () => {
+  const browser = {
+    "browser.search.v1": ["browser_search"],
+    "browser.tabs.v1": [
+      "browser_tab_new",
+      "browser_tab_switch",
+      "browser_tab_close",
+    ],
+    "browser.find.v1": ["browser_find"],
+    "browser.history.v1": ["browser_history"],
+  };
+  const all = Object.values(browser).flat();
+  for (const capabilities of [undefined, ["notes.local-record.v1"]]) {
+    const offered = deviceActionForCapabilities(
+      proposeDeviceAction,
+      capabilities,
+    );
+    for (const type of all) {
+      expect(types(offered)).not.toContain(type);
+      expect(offered.description).not.toContain(type);
+    }
+  }
+  for (const [capability, own] of Object.entries(browser)) {
+    const offered = deviceActionForCapabilities(proposeDeviceAction, [
+      "notes.local-record.v1",
+      capability,
+    ]);
+    for (const type of all)
+      expect(types(offered).includes(type)).toBe(own.includes(type));
+    expect(offered.description).toContain(capability);
+  }
+  const text = deviceActionForCapabilities(proposeDeviceAction, [
+    "notes.local-record.v1",
+    ...Object.keys(browser),
+  ]).description;
+  for (const required of [
+    "query must be words the user typed in this message",
+    "You never receive the list of tabs, a title or an address",
+    "Closing a tab is always reviewed by the owner",
+    "You receive no match count and no page content",
+  ])
+    expect(text).toContain(required);
+  const operation = (value: unknown) =>
+    validateDevicePayload({
+      action: "device_action",
+      version: 1,
+      installationId: "device",
+      enrollmentId: "enrollment",
+      operation: value,
+    }).operation;
+  for (const value of [
+    { type: "browser_search", query: "best pizza near me" },
+    { type: "browser_tab_new" },
+    { type: "browser_tab_new", private: true },
+    { type: "browser_tab_switch", target: "bbc" },
+    { type: "browser_tab_close" },
+    { type: "browser_tab_close", target: "bbc" },
+    { type: "browser_find", text: "refund" },
+    { type: "browser_history", action: "stop" },
+  ])
+    expect(operation(value)).toEqual(value);
+  for (const value of [
+    { type: "browser_search", query: " " },
+    { type: "browser_search", query: "cats", engine: "https://evil.example" },
+    { type: "browser_search", query: "x".repeat(513) },
+    { type: "browser_tab_new", private: "yes" },
+    { type: "browser_tab_switch" },
+    { type: "browser_tab_switch", target: "bbc", id: "3" },
+    { type: "browser_tab_close", target: "a\nb" },
+    { type: "browser_find", text: "" },
+    { type: "browser_history", action: "home" },
+  ])
+    expect(() => operation(value)).toThrow("Invalid Browser operation");
+  // A typed http:// address is stored as HTTPS.
+  expect(
+    operation({ type: "browser_navigate", url: "http://example.com:80/a" }),
+  ).toEqual({ type: "browser_navigate", url: "https://example.com/a" });
+});

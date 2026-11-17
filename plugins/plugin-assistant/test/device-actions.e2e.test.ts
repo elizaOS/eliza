@@ -2070,6 +2070,10 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "contacts.show.v1",
           "contacts.read.v1",
           "camera.capture-lens.v1",
+          "browser.search.v1",
+          "browser.tabs.v1",
+          "browser.find.v1",
+          "browser.history.v1",
           "messages.read.v1",
           "voicemail.read.v1",
           "voicemail.delete.v1",
@@ -4455,7 +4459,7 @@ test.each([
     opened: openedUrl,
   }) => {
     const fixture = await createRealTestRuntime({
-      characterName: "DirectBrowserOpenFixture",
+      characterName: "Eliza",
     });
     const runtime = fixture.runtime;
     const owner = resolveOwnerEntityIdOrDefault(runtime);

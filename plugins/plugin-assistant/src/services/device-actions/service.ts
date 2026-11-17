@@ -57,8 +57,20 @@ import type {
   ApprovalRequest,
 } from "../approval/types.ts";
 import {
+  BROWSER_CONTROL_TYPES,
+  BROWSER_FIND_CAPABILITY,
+  BROWSER_HISTORY_CAPABILITY,
+  BROWSER_SEARCH_CAPABILITY,
+  BROWSER_TABS_CAPABILITY,
+  isBrowserControl,
+} from "./browser-contract.ts";
+import {
+  browserDestinationMatches,
   DeviceBrowserNotRequestedError,
+  directBrowserDestination,
+  directBrowserSearchQuery,
   groundBrowserDestination,
+  groundBrowserSearchQuery,
 } from "./browser-request-grounding.ts";
 import type { CalendarFields } from "./calendar-contract.ts";
 import {
@@ -1193,6 +1205,10 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   CONTACT_UPDATE_VALUES_CAPABILITY,
   CONTACT_SHOW_CAPABILITY,
   CONTACT_READ_CAPABILITY,
+  BROWSER_SEARCH_CAPABILITY,
+  BROWSER_TABS_CAPABILITY,
+  BROWSER_FIND_CAPABILITY,
+  BROWSER_HISTORY_CAPABILITY,
 ];
 export class DeviceActionService {
   constructor(private readonly runtime: IAgentRuntime) {}
@@ -2289,6 +2305,7 @@ export class DeviceActionService {
         "reminder_cancel",
         "open_view",
         "browser_navigate",
+        ...BROWSER_CONTROL_TYPES,
         "calendar_create_local",
         "calendar_read_next",
         "read_calendar_range",
@@ -2301,7 +2318,10 @@ export class DeviceActionService {
       ].includes(validated.type)
     )
       throw new DeviceActionError("Workflow read requires bound dispatcher");
-    const browserRequest = validated.type === "browser_navigate";
+    // A destination and a search are both built from the owner's own words.
+    const browserRequest =
+      validated.type === "browser_navigate" ||
+      validated.type === "browser_search";
     const selectedTelephony = selectedTelephonyView(validated) !== undefined;
     const foregroundTurn =
       isPhotosViewOperation(validated) || isFilesOperation(validated)
@@ -2340,10 +2360,40 @@ export class DeviceActionService {
       // address, never the model's spelling of it.
       const destination =
         requestOrigin &&
-        groundBrowserDestination(requestOrigin.requestText, validated.url);
+        groundBrowserDestination(
+          requestOrigin.requestText,
+          validated.url,
+          this.runtime.character.name,
+        );
       if (!destination) throw new DeviceBrowserNotRequestedError();
       validated = { ...validated, url: destination };
     }
+    if (validated.type === "browser_search") {
+      // The same holds for a search: the words the user typed, never the
+      // model's wording of them.
+      const query =
+        requestOrigin &&
+        groundBrowserSearchQuery(requestOrigin.requestText, validated.query);
+      if (!query) throw new DeviceBrowserNotRequestedError("search");
+      validated = { ...validated, query };
+    }
+    // An open or a search runs without a review only when the whole message
+    // is that direct request. Any other typed address or query is reviewed.
+    const assistantName = this.runtime.character.name;
+    const reviewedBrowserRequest =
+      validated.type === "browser_navigate"
+        ? !browserDestinationMatches(
+            validated,
+            directBrowserDestination(
+              requestOrigin?.requestText ?? "",
+              assistantName,
+            ),
+          )
+        : validated.type === "browser_search" &&
+          directBrowserSearchQuery(
+            requestOrigin?.requestText ?? "",
+            assistantName,
+          )?.toLowerCase() !== validated.query.toLowerCase();
     const originMessageId = requestOrigin?.messageId;
     if (
       agenda &&
@@ -2376,7 +2426,7 @@ export class DeviceActionService {
           "agentActionMode" in metadata &&
           metadata.agentActionMode === "direct-request-v1";
         const requestingMessage =
-          directRequest || selectedTelephony
+          (directRequest && !reviewedBrowserRequest) || selectedTelephony
             ? requestOrigin?.messageId
             : undefined;
         const payload: DeviceActionPayload = {
@@ -2902,6 +2952,7 @@ export class DeviceActionService {
             isNativeNotesQuery(operation) ||
             isNotesOrganizeOperation(operation) ||
             isPhotosViewOperation(operation) ||
+            isBrowserControl(operation) ||
             isFilesOperation(operation) ||
             isForegroundReviewOperation(operation) ||
             operation.type === "calendar_create_local" ||

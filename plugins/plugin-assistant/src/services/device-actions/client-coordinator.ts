@@ -25,6 +25,7 @@ import { NOTES_LIST_FILTER_CAPABILITY } from "@elizaos/contracts";
 import {
   browserDestinationMatches,
   directBrowserDestination,
+  directBrowserSearchQuery,
 } from "@elizaos/contracts/browser-request-grounding";
 import { createDeviceActionExecution } from "@elizaos/contracts/device-action-execution";
 import {
@@ -59,6 +60,14 @@ import {
   validateSmsResult,
   validateSmsSend,
 } from "@elizaos/contracts/sms-send";
+import {
+  BROWSER_CONTROL_DIRECT_TYPES,
+  type BrowserControlOperation,
+  browserControlCapabilityAvailable,
+  describeBrowserControl,
+  isBrowserControl,
+  validateBrowserControl,
+} from "./browser-contract.ts";
 import {
   CALENDAR_AGENDA_CAPABILITY,
   type CalendarOperation,
@@ -279,6 +288,7 @@ export type DeviceOperation =
   | NativeNotesQueryOperation
   | CalendarOperation
   | WorkflowReadOperation
+  | BrowserControlOperation
   | LegacyDeviceOperation;
 /** Every operation a proposal may carry. Foreground reviews run through their own executor. */
 export type ReviewableDeviceOperation =
@@ -452,6 +462,8 @@ export interface DeviceActionClientProfile<
 > {
   /** Owner-facing product name used in Clock and Photos review text. */
   appName: string;
+  /** The name the owner calls the assistant ("Alpha, open example.com"); "Eliza" when absent. */
+  assistantName?: string;
   operations: DeviceOperationPolicy;
   workflow: DeviceWorkflowPort<R>;
   /** Review copy for record writes; undefined falls back to generic text. */
@@ -568,6 +580,7 @@ export function validateDeviceOperation(
   if (isNotesOrganizeOperation(p)) return validateNotesOrganizeOperation(p);
   if (isFilesOperation(p)) return validateFilesOperation(p);
   if (isPhotosViewOperation(p)) return validatePhotosViewOperation(p);
+  if (isBrowserControl(p)) return validateBrowserControl(p);
   if (isReminderOperation(p)) return validateReminderOperation(p);
   if (isNotesOperation(p)) return validateNotesOperation(p);
   if (isCalendarOperation(p)) return validateCalendarOperation(p);
@@ -891,6 +904,8 @@ export function assertProposalContext<C extends DeviceContextEnvelope>(
         ? "Unlock the phone to review this action."
         : "Open Photos to review this action.",
     );
+  if (isBrowserControl(operation) && context.sensitive)
+    throw new ContextNotice("Unlock the phone to review this action.");
   if (isReminderOperation(operation)) assertReminderContext(operation, context);
   if (isNativeNotesQuery(operation)) assertNotesQueryContext(context);
   if (isNotesOperation(operation)) assertNotesContext(operation, context);
@@ -1226,9 +1241,11 @@ export class DeviceActionCoordinator<
     proposal: DeviceProposal,
     proof?: CurrentDeviceActionRequest,
   ): boolean {
+    const operation = proposal.operation;
     if (
       !this.options.currentRequestBrowserPolicy ||
-      proposal.operation.type !== "browser_navigate"
+      (operation.type !== "browser_navigate" &&
+        operation.type !== "browser_search")
     )
       return true;
     if (!proof || proof.messageId !== proposal.requestMessageId) return false;
@@ -1241,11 +1258,18 @@ export class DeviceActionCoordinator<
     ]);
     const cached = this.browserPolicy.get(proposal.id);
     if (cached?.key === key) return cached.allowed;
-    // Automatic client effects need direct intent, not merely a URL mentioned in prose.
-    const allowed = browserDestinationMatches(
-      proposal.operation,
-      directBrowserDestination(proof.text),
-    );
+    // Automatic client effects need direct intent, not merely a URL or
+    // search words mentioned in prose.
+    const allowed =
+      operation.type === "browser_search"
+        ? directBrowserSearchQuery(
+            proof.text,
+            this.profile.assistantName,
+          )?.toLowerCase() === operation.query.toLowerCase()
+        : browserDestinationMatches(
+            operation,
+            directBrowserDestination(proof.text, this.profile.assistantName),
+          );
     if (this.browserPolicy.has(proposal.id) || this.browserPolicy.size < 128)
       this.browserPolicy.set(proposal.id, { key, allowed });
     return allowed;
@@ -1400,6 +1424,11 @@ export class DeviceActionCoordinator<
       !photosViewCapabilityAvailable(this.credential.capabilities)
     )
       throw Error("Photos actions were not negotiated with this agent");
+    if (
+      isBrowserControl(op) &&
+      !browserControlCapabilityAvailable(op.type, this.credential.capabilities)
+    )
+      throw Error("This Browser action was not negotiated with this agent");
     if (
       isForegroundReviewOperation(op) &&
       (!foregroundReviewOperationAvailable(op, this.credential.capabilities) ||
@@ -1586,6 +1615,7 @@ export class DeviceActionCoordinator<
         ...base,
         ...describePhotosViewOperation(op, this.profile.appName),
       };
+    if (isBrowserControl(op)) return { ...base, ...describeBrowserControl(op) };
     const notesDestination =
       (op.type === "notes_delete" || op.type === "notes_update") &&
       !context.sensitive &&
@@ -1864,6 +1894,7 @@ export class DeviceActionCoordinator<
       ...NOTES_ORGANIZE_DIRECT_TYPES,
       ...FILES_DIRECT_TYPES,
       ...PHOTOS_VIEW_DIRECT_TYPES,
+      ...BROWSER_CONTROL_DIRECT_TYPES,
     ];
     const results: DeviceOperationReceipt[] = [];
     for (const [proposalId, entry] of [...this.proposals]) {
@@ -1880,7 +1911,8 @@ export class DeviceActionCoordinator<
       if (this.card(entry.proposal, context).reviewDestination) continue;
       const browser =
         this.options.currentRequestBrowserPolicy &&
-        entry.proposal.operation.type === "browser_navigate";
+        (entry.proposal.operation.type === "browser_navigate" ||
+          entry.proposal.operation.type === "browser_search");
       const requestKey = this.requestKey(messageId);
       if (
         browser &&
@@ -2449,7 +2481,8 @@ export class DeviceActionCoordinator<
       // Run it only after this exact action's receipt attempt, never as a retry.
       const presentBrowser = () => {
         if (
-          p.operation.type === "browser_navigate" &&
+          (p.operation.type === "browser_navigate" ||
+            isBrowserControl(p.operation)) &&
           result.status === "succeeded"
         ) {
           try {
