@@ -3,8 +3,11 @@ import type http from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { AgentRuntime } from "@elizaos/core";
+import { getDefaultStylePreset } from "@elizaos/host/protocol";
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
+import { buildVoiceConfigForCharacterEntry } from "../../ui/src/components/character/character-voice-config.ts";
+import { resolveCharacterVoiceConfigFromAppConfig } from "../../ui/src/voice/character-voice-config.ts";
 import { handleConfigRoutes } from "../src/api/config-routes.ts";
 import {
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
@@ -49,7 +52,7 @@ it("applies a changed or cleared config env setting to the running agent", async
     ),
   );
   const config = loadElizaConfig();
-  const put = async (env: Record<string, string>) => {
+  const put = async (patch: Record<string, unknown>) => {
     let status = 0;
     await handleConfigRoutes({
       req: {} as http.IncomingMessage,
@@ -65,7 +68,7 @@ it("applies a changed or cleared config env setting to the running agent", async
       error: (_res, message) => {
         throw new Error(message);
       },
-      readJsonBody: async <T extends object>() => ({ env }) as unknown as T,
+      readJsonBody: async <T extends object>() => patch as T,
       redactConfigSecrets,
       isBlockedObjectKey,
       stripRedactedPlaceholderValuesDeep,
@@ -81,14 +84,54 @@ it("applies a changed or cleared config env setting to the running agent", async
     await runtime.init();
     expect(runtime.getSetting(KEY)).toBe("chatty");
 
-    expect(await put({ [KEY]: "off" })).toBe(200);
+    expect(await put({ env: { [KEY]: "off" } })).toBe(200);
     expect(loadElizaConfig().env?.[KEY]).toBe("off");
     expect(process.env[KEY]).toBe("off");
     expect(runtime.getSetting(KEY)).toBe("off");
 
-    expect(await put({ [KEY]: "" })).toBe(200);
+    expect(await put({ env: { [KEY]: "" } })).toBe(200);
     expect(process.env[KEY]).toBeUndefined();
     expect(runtime.getSetting(KEY)).toBeNull();
+
+    const preset = getDefaultStylePreset("en");
+    const selected = buildVoiceConfigForCharacterEntry({
+      entry: {
+        id: preset.id,
+        name: preset.name,
+        avatarIndex: preset.avatarIndex,
+        voicePresetId: "brian",
+        preset,
+      },
+      useElevenLabs: true,
+      voiceConfig: {
+        provider: "elevenlabs",
+        mode: "own-key",
+        elevenlabs: { modelId: "owner-model", stability: 0.3 },
+      },
+    });
+    if (!selected) throw new Error("Voice selection did not resolve");
+    expect(
+      await put({ messages: { tts: selected.persistedVoiceConfig } }),
+    ).toBe(200);
+    expect(loadElizaConfig().messages?.tts?.elevenlabs).toMatchObject({
+      voiceId: "8dEUmyPMdDdK91vboYih",
+      modelId: "owner-model",
+      stability: 0.3,
+    });
+    for (const voiceId of ["owner-selected-voice", "nPczCjzI2devNBz1zQrb"]) {
+      const explicit = {
+        ...selected.persistedVoiceConfig,
+        elevenlabs: { ...selected.persistedVoiceConfig.elevenlabs, voiceId },
+      };
+      expect(await put({ messages: { tts: explicit } })).toBe(200);
+      const stored = loadElizaConfig();
+      expect(
+        resolveCharacterVoiceConfigFromAppConfig({
+          config: { ...stored, ui: { presetId: preset.id } },
+          uiLanguage: "en",
+        })?.elevenlabs?.voiceId,
+      ).toBe(voiceId);
+    }
   } finally {
     await runtime.close();
     vi.unstubAllEnvs();

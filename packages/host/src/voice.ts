@@ -128,13 +128,11 @@ export const PREMADE_VOICES: VoicePreset[] = [
   // Male
   {
     id: "brian",
-    name: "Brian",
-    voiceId: "nPczCjzI2devNBz1zQrb",
+    name: "Sawyer",
+    voiceId: "8dEUmyPMdDdK91vboYih",
     gender: "male",
-    hint: "Deep, smooth",
-    hintKey: "voice.hint.deep_smooth",
-    previewUrl:
-      "https://storage.googleapis.com/eleven-public-prod/premade/voices/nPczCjzI2devNBz1zQrb/f4dbda0c-aff0-45c0-93fa-f5d5ec95a2eb.mp3",
+    hint: "Storyteller",
+    previewUrl: "",
   },
   {
     id: "adam",
