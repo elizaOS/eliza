@@ -16,7 +16,7 @@ pure val initial: Registry = { bundled: Map(), contributed: Map(), contributedId
 pure def canRegister(r: Registry, valid: bool): bool = valid
 pure def register(r: Registry, id: str, version: int, valid: bool): Registry = { ...r, contributed: r.contributed.put(id, version), contributedIds: r.contributedIds.union(Set(id)), cached: false }
 pure def load(r: Registry): Registry = { ...r, cached: true }
-pure def lookup(r: Registry, id: str): int = if (r.contributed.keys().contains(id)) r.contributed.get(id) else r.bundled.getOr(id, -1)
+pure def lookup(r: Registry, id: str): int = if (r.contributed.keys().contains(id)) r.contributed.getOr(id, -1) else r.bundled.getOr(id, -1)
 pure def stepRegistrationDropsCache(before: Registry, via: str, after: Registry): bool = via == "register" implies not(after.cached)
 pure val rValues = Set(initial)
 pure def lawRuntimeEntryWins(r: Registry, id: str, version: int): bool = lookup(register(r, id, version, true), id) == version
