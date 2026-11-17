@@ -113,6 +113,15 @@ This operation covers single-choice native selects; multi-select widgets need
 separate support. The task actuator uses a host-held value reference and verifies
 the result from a new observation, as it does for other effects.
 
+## Mobile native commands
+
+The mobile entrypoint offers the `BROWSER` action for the requesting device's
+own browser. A host whose renderer runs only some commands sets
+`ELIZA_NATIVE_BROWSER_COMMANDS` to a comma list, for example
+`back,forward,reload`. The model is then offered only those commands and their
+parameters, and the service refuses any other command. Without the variable,
+every command is offered.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:
