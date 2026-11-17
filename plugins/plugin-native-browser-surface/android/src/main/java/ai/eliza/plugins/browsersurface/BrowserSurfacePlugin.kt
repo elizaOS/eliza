@@ -472,6 +472,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         var securityBlocked: String? = null,
         /** Density-independent pixels per CSS pixel ([BrowserSurfaceRequests.pageScale]). */
         var pageScale: Double = 1.0,
+        /** Stops for host-confirmed saves still in flight; run when the surface or its profile ends. */
+        val hostSaves: MutableSet<Runnable> = mutableSetOf(),
     )
 
     private data class HistoryObservation(
@@ -731,6 +733,7 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         for ((id, surface) in surfaces.entries.filter { it.value.profileName == name }) {
             val live = isLive(surface)
             closeRequests(id, surface)
+            stopHostSaves(surface)
             surface.control?.interrupt("The website sign-ins were removed", navigation = true)
             surface.container.visibility = View.GONE
             surface.foregrounded = false
@@ -997,8 +1000,19 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         return true
     }
 
+    /**
+     * Stops the surface's host-confirmed saves that are not yet published: once the surface or its
+     * sign-ins are gone, its cookie is never sent again and nobody is left to hear the outcome.
+     * Navigation does not stop them; the person already chose to keep that file.
+     */
+    private fun stopHostSaves(surface: Surface) {
+        surface.hostSaves.toList().forEach { it.run() }
+        surface.hostSaves.clear()
+    }
+
     private fun disposeSurface(id: String, surface: Surface) {
         closeRequests(id, surface)
+        stopHostSaves(surface)
         surface.pendingExternalLink = null
         surface.pendingIdentityProvider = null
         if (!surface.disposed) {
@@ -1994,11 +2008,20 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 call.reject("This file exists only inside the page and cannot be saved here", "DOWNLOAD_UNSUPPORTED")
                 return@runOnUiThread
             }
+            val saver = downloads ?: BrowserDownloads(context, BrowserDownloads.Config(DOWNLOAD_PREFS, false)).also { downloads = it }
+            // Only https (or inline data:) is saved here; anything else is refused before it starts.
+            if (!saver.savable(held.url)) {
+                call.reject("This download address cannot be saved here", "DOWNLOAD_UNSUPPORTED")
+                return@runOnUiThread
+            }
             val cookies = if (surface.profileName == null) CookieManager.getInstance()
                 else WebViewCompat.getProfile(surface.webView).cookieManager
             val source = BrowserDownloads.Source(id, false, held.pageOrigin, { cookies.getCookie(held.url) }, held.userAgent)
-            val saver = downloads ?: BrowserDownloads(context, BrowserDownloads.Config(DOWNLOAD_PREFS, false)).also { downloads = it }
-            saver.save(source, held.url, held.download.fileName, held.download.mimeType) { saved ->
+            var stop: Runnable? = null
+            var finished = false
+            stop = saver.save(source, held.url, held.download.fileName, held.download.mimeType) { saved ->
+                finished = true
+                stop?.let { surface.hostSaves.remove(it) }
                 // A surface closed or replaced meanwhile has nobody to tell.
                 if (surfaces[id] !== surface || !isLive(surface)) return@save
                 notifyListeners("downloadFinished", surfaceEvent(id, surface).apply {
@@ -2008,6 +2031,8 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                     put("mimeType", held.download.mimeType)
                 })
             }
+            // A save the stopped worker refused has already reported; nothing is left to stop.
+            if (!finished) stop?.let { surface.hostSaves.add(it) }
             call.resolve()
         }
     }

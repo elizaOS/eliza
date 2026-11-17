@@ -401,6 +401,56 @@ test("a dependency link outside the allowed roots, or not its package, is refuse
   assert.equal(fs.existsSync(options.output), false);
 });
 
+test("a pnpm workspace widens the dependency roots only when it holds the consumer", (t) => {
+  const workspace = fs.mkdtempSync(
+    path.join(os.tmpdir(), "android-workspace-"),
+  );
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+  fs.writeFileSync(
+    path.join(workspace, "pnpm-workspace.yaml"),
+    "packages: []\n",
+  );
+  const capacitorPackage = path.join(workspace, "packages/capacitor-android");
+  fs.mkdirSync(path.join(capacitorPackage, "capacitor"), { recursive: true });
+  fs.writeFileSync(
+    path.join(capacitorPackage, "package.json"),
+    JSON.stringify({ name: "@capacitor/android" }),
+  );
+  const dependencyRoot = path.join(workspace, "apps/host/node_modules");
+  fs.mkdirSync(path.join(dependencyRoot, "@capacitor"), { recursive: true });
+  fs.symlinkSync(
+    capacitorPackage,
+    path.join(dependencyRoot, "@capacitor/android"),
+  );
+  const generateFor = (consumerRoot) => {
+    const options = {
+      consumerRoot,
+      upstreamRoot,
+      output: path.join(consumerRoot, "android"),
+      ...createConsumerFixture(consumerRoot, "example.consumer"),
+      dependencyRoot,
+    };
+    options.profile.modules = [
+      {
+        name: "capacitor-android",
+        source: { root: "dependencies", path: "@capacitor/android/capacitor" },
+      },
+    ];
+    return () => generateAndroidConsumerHost(options);
+  };
+  // A workspace marker that does not contain the consumer admits none of its packages.
+  const outsider = fs.mkdtempSync(
+    path.join(os.tmpdir(), "android-consumer-host-"),
+  );
+  t.after(() => fs.rmSync(outsider, { recursive: true, force: true }));
+  assert.throws(generateFor(outsider), /escapes/);
+  assert.equal(fs.existsSync(path.join(outsider, "android")), false);
+  // The consumer's own workspace admits its packages.
+  const member = path.join(workspace, "apps/consumer");
+  fs.mkdirSync(member, { recursive: true });
+  generateFor(member)();
+});
+
 test("independent modules remain included without becoming app dependencies", (t) => {
   const { options, generate } = setup(t);
   options.profile.modules = [

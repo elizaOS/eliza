@@ -402,24 +402,45 @@ public final class BrowserDownloads {
    * reviewed or listed here. An https file is fetched in-app like a signed-in download (the page's
    * cookie only on hops to its exact origin); a {@code data:} file is decoded natively. Either is
    * published to Downloads. {@code done} gets the saved row, or null when nothing was saved, on the
-   * main thread. The address is never logged.
+   * main thread. The address is never logged. Call only for a {@link #savable} address.
+   *
+   * <p>Returns a handle that stops the save before it is published: the owner calls it when the
+   * surface closes or its sign-ins are purged, so the cookie is never sent again and no file
+   * lands where the host can no longer hear about it. A stopped save reports null.
    */
-  public void save(Source source, String raw, String name, String mime, Consumer<Uri> done) {
+  public Runnable save(Source source, String raw, String name, String mime, Consumer<Uri> done) {
+    if (!savable(raw))
+      throw new IllegalArgumentException("Unsupported download address");
     String cookie = BrowserDownloadPolicy.cookieAllowed(raw, source.pageOrigin, true) ? cookie(source) : null;
     String header = BrowserDownloadPolicy.cookieHeaderAcceptable(cookie) ? cookie : null;
+    long id = --localSequence;
+    transfers.put(id, TransferState.FETCHING);
     work(network, () -> {
       Uri saved = null;
       try {
         if (raw.regionMatches(true, 0, "data:", 0, 5))
-          saved = publish(new ByteArrayInputStream(BrowserDownloadPolicy.decodeData(raw)), name, mime, 0);
-        else if (fetchable(raw))
-          saved = fetch(0, raw, source.pageOrigin, header, source.userAgent, name, mime);
+          saved = publish(new ByteArrayInputStream(BrowserDownloadPolicy.decodeData(raw)), name, mime, id);
+        else
+          saved = fetch(id, raw, source.pageOrigin, header, source.userAgent, name, mime);
       } catch (Exception failed) {
-        // error-policy:J1 The host hears that the save failed; the address stays out of logs.
+        // error-policy:J1 The host hears that the save failed or stopped; the address stays out of logs.
       }
       Uri result = saved;
-      handler.post(() -> done.accept(result));
-    }, () -> done.accept(null));
+      handler.post(() -> {
+        transfers.remove(id);
+        received.remove(id);
+        done.accept(result);
+      });
+    }, () -> {
+      transfers.remove(id);
+      done.accept(null);
+    });
+    return () -> cancelTransfer(id);
+  }
+
+  /** Whether {@link #save} can save this address: an inline {@code data:} file or a fetchable one. */
+  public boolean savable(String raw) {
+    return plainAddress(raw) && (raw.regionMatches(true, 0, "data:", 0, 5) || fetchable(raw));
   }
 
   /** data: URLs carry their bytes inline; decode natively, never through page script. */
