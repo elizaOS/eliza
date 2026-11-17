@@ -14,7 +14,7 @@ cloud hosts no agent. Its specifications are being written.
 ### Sign-in requires proof from the chosen provider
 
 Google signs in the subject reached by redeeming the browser-bound OAuth code.
-Email and SMS prove the destination for which the code was verified. The
+Email and SMS prove the destination and the browser that requested the code. SMS is available only for the deployment’s allowed calling codes and remaining send budget. The
 deployment resolves the proof to a single account, preferring a known subject
 and then the account that owns the proven email address. Accounts and sessions
 belong to the deployment that issued them.
@@ -36,10 +36,10 @@ pure def cloudSessionAllows(sessionEndsAt: int, nowAt: int, sessionPresent: bool
   sessionPresent and nowAt < sessionEndsAt
 ```
 
-### A separate device grant permits only inference
+### A registered device grant authorizes device services
 
-The person approves a short-lived grant while signed in. Only the device
-proving possession of the grant’s verifier can redeem it, once. The device
+The person approves a short-lived grant for the registered Android client
+and its verified return address while signed in. Only the device proving possession of the grant’s verifier can redeem it, once. The device
 acknowledges receipt before it can use the key. Signing out stops activation
 of an unfinished grant. An active key continues to authorize inference and
 consented speech until its deadline or its own revocation.

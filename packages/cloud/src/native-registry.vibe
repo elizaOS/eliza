@@ -1,0 +1,110 @@
+// spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"
+import {
+  assetStatements, clientCheck, defaultCredentialTtl, registryValid,
+  type Registration, type ReturnUrl
+} from "../gen/cloud__nativeClients__registry.effect.vibe"
+import { WorkerResponse } from "./worker-platform.ts"
+
+export type NativeRegistryEnv = {
+  CLOUD_ENVIRONMENT?: "production" | "staging"
+  PUBLIC_API_ORIGIN: string
+  WEB_ORIGIN: string
+  NATIVE_AUTH_CALLBACK?: string
+  NATIVE_CLIENT_ID?: string
+  NATIVE_CLIENT_REGISTRY?: string
+  GOOGLE_CLIENT_ID?: string
+}
+
+const Nonempty = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200))
+const Fingerprint = Schema.String.check(Schema.isPattern(/^(?:[0-9A-F]{2}:){31}[0-9A-F]{2}$/))
+const PackageName = Schema.String.check(Schema.isPattern(/^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)+$/))
+const Entry = Schema.Struct({
+  clientId: Nonempty, environment: Schema.Literals(["production", "staging"]),
+  displayName: Nonempty, androidPackage: PackageName, certFingerprints: Schema.Array(Fingerprint),
+  signInReturn: Schema.String, billingReturn: Schema.String, connectReturn: Schema.optionalKey(Schema.String),
+  credentialTtlMs: Schema.optionalKey(Schema.Int), enabled: Schema.Boolean
+})
+const Registry = Schema.Array(Entry)
+
+function returnUrl(raw: string): ReturnUrl | null {
+  if (raw.length > 1024) return null
+  try {
+    const parsed = new URL(raw)
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.search || parsed.hash ||
+      parsed.port || parsed.origin + parsed.pathname !== raw) return null
+    return { origin: parsed.origin, path: parsed.pathname }
+  } catch {
+    return null
+  }
+}
+
+function registry(env: NativeRegistryEnv) {
+  if (!env.NATIVE_CLIENT_REGISTRY || env.NATIVE_CLIENT_REGISTRY.length > 32768 || !env.CLOUD_ENVIRONMENT) return null
+  let raw: unknown
+  try {
+    raw = JSON.parse(env.NATIVE_CLIENT_REGISTRY)
+  } catch {
+    return null
+  }
+  const parsed = Schema.decodeUnknownOption(Registry, { onExcessProperty: "error" })(raw)
+  if (Option.isNone(parsed)) return null
+  const entries: Registration[] = []
+  for (const item of parsed.value) {
+    const signInReturn = returnUrl(item.signInReturn)
+    const billingReturn = returnUrl(item.billingReturn)
+    const optionalConnect = item.connectReturn === undefined ? null : returnUrl(item.connectReturn)
+    if (!signInReturn || !billingReturn || (item.connectReturn !== undefined && !optionalConnect)) return null
+    entries.push({
+      clientId: item.clientId, environment: item.environment === "production" ? "Production" : "Staging",
+      displayName: item.displayName, androidPackage: item.androidPackage, certFingerprints: [...item.certFingerprints],
+      signInReturn, billingReturn, connectReturn: optionalConnect ? { tag: "ConnectsTo", url: optionalConnect } : { tag: "NoConnectReturn" },
+      credentialTtl: item.credentialTtlMs ?? defaultCredentialTtl, nativeGoogle: false, enabled: item.enabled
+    })
+  }
+  const served: Registration["environment"] = env.CLOUD_ENVIRONMENT === "production" ? "Production" : "Staging"
+  if (!registryValid(entries, served)) return null
+  return { entries, served }
+}
+
+export function browserNativeRegistration(env: NativeRegistryEnv) {
+  const id = env.NATIVE_CLIENT_ID
+  const directory = registry(env)
+  if (!id || !env.NATIVE_AUTH_CALLBACK || !directory) return null
+  const callback = returnUrl(env.NATIVE_AUTH_CALLBACK)
+  if (!callback || callback.origin !== env.WEB_ORIGIN) return null
+  const match = clientCheck(directory.entries, directory.served, {
+    clientId: id, environment: directory.served, redirect: { tag: "ClaimsReturn", purpose: "SignInPurpose", url: callback }
+  })
+  if (match.tag !== "ClientAdmitted") return null
+  return directory.entries.find((item) => item.clientId === id) ?? null
+}
+
+const invalidClient = { kind: "refused", status: 400, error: "invalid_client" } as const
+
+export function mobileRegistration(env: NativeRegistryEnv, clientId: string | null, environment: string | null, redirect: string | null) {
+  const directory = registry(env)
+  if (!directory || !clientId || (environment !== "production" && environment !== "staging")) return invalidClient
+  const callback = redirect ? returnUrl(redirect) : null
+  const matched = clientCheck(directory.entries, directory.served, {
+    clientId, environment: environment === "production" ? "Production" : "Staging",
+    redirect: { tag: "ClaimsReturn", purpose: "SignInPurpose", url: callback ?? { origin: "", path: "" } }
+  })
+  if (matched.tag !== "ClientAdmitted") {
+    if (matched.fault === "DisabledClient") return { kind: "refused", status: 403, error: "client_disabled" } as const
+    if (matched.fault === "WrongRedirect") return { kind: "refused", status: 400, error: "redirect_mismatch" } as const
+    return invalidClient
+  }
+  const registration = directory.entries.find((item) => item.clientId === clientId)
+  return registration ? { kind: "registered", registration } as const : invalidClient
+}
+
+export function nativeAssetLinks(env: NativeRegistryEnv) {
+  const current = registry(env)
+  const headers = { "cache-control": "no-store" }
+  if (!current) return WorkerResponse.json({ error: "native_clients_unconfigured" }, { status: 404, headers })
+  const statements = assetStatements(current.entries, current.served)
+  return WorkerResponse.json(statements.map(({ packageName, fingerprints }) => ({
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: { namespace: "android_app", package_name: packageName, sha256_cert_fingerprints: fingerprints }
+  })), { headers })
+}

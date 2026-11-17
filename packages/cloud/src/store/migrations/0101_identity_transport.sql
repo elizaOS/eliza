@@ -21,13 +21,6 @@ CREATE TABLE IF NOT EXISTS cloud_device_proofs (
   challenge text NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS cloud_email_codes (
-  email text PRIMARY KEY,
-  code_hash text NOT NULL,
-  expires_at timestamptz NOT NULL,
-  tries integer NOT NULL CHECK (tries BETWEEN 0 AND 5)
-);
-
 CREATE TABLE IF NOT EXISTS cloud_auth_limits (
   scope text NOT NULL,
   subject_hash text NOT NULL,

@@ -5,14 +5,13 @@ import { FetchHttpClient, HttpClient, HttpClientRequest, HttpIncomingMessage, Ht
 
 import {
   accessCookie, refreshCookie, accessDigest, deviceDigest, digestCredential, readCookie, newSecret,
-  authQuery as query, browserAccount, signInWithProof, renewBrowserSession, logoutBrowserSession,
+  authQuery as query, accountTransaction, browserAccount, signInWithProof, renewBrowserSession, logoutBrowserSession,
   StorageUnavailable, IdentityConflict, type BrowserSession, type Identity
 } from "./identity-store.vibe"
 
-export type IdentityEnv = {
-  PUBLIC_API_ORIGIN: string
-  WEB_ORIGIN: string
-  GOOGLE_CLIENT_ID?: string
+import { browserNativeRegistration, mobileRegistration, type NativeRegistryEnv } from "./native-registry.vibe"
+
+export type IdentityEnv = NativeRegistryEnv & {
   GOOGLE_CLIENT_SECRET?: string
   RESEND_API_KEY?: string
   EMAIL_FROM?: string
@@ -20,7 +19,8 @@ export type IdentityEnv = {
   TWILIO_ACCOUNT_SID?: string
   TWILIO_AUTH_TOKEN?: string
   TWILIO_VERIFY_SERVICE_SID?: string
-  NATIVE_AUTH_CALLBACK?: string
+  SMS_ALLOWED_COUNTRY_CODES?: string
+  SMS_HOURLY_BUDGET?: string
 }
 
 type Destination = "email" | "sms"
@@ -40,8 +40,8 @@ schema SmsReceipt { status: string; to?: string; channel?: string; service_sid?:
 
 const flowCookie = "__Host-eliza-google"
 const codeSeconds = 10 * 60
+const smsCodeSeconds = 5 * 60
 const deviceGrantSeconds = 2 * 60
-const deviceSessionSeconds = 7 * 24 * 60 * 60
 const callbackPath = "/api/auth/google/callback"
 const encoder = new TextEncoder()
 const opaqueToken = /^[a-f0-9]{64}$/
@@ -103,21 +103,22 @@ export function cloudCredential(request: Request) {
   return runPromise(Effect.provide(requestCredential(request), cryptoServices))
 }
 
-effect function accountForInference(request: Request, db: Client) {
+effect function accountForInference(request: Request, db: Client, env: NativeRegistryEnv | undefined) {
   if (!request.headers.has("authorization")) return (try browserAccount(request, db))?.id ?? null
+  const registration = env ? browserNativeRegistration(env) : null
   const hash = try deviceDigest(request)
-  if (hash === null) return null
+  if (hash === null || !registration) return null
   const now = try Clock.currentTimeMillis
   const { rows } = try query<{ user_id: string }>(db, `
     SELECT d.user_id FROM device_grants d JOIN accounts a ON a.key = d.user_id
     WHERE d.secret_digest = $1 AND d.phase = 'active' AND d.key_expires_at > $2
-      AND a.status = 'active' AND d.issued_at >= a.devices_revoked_before
-  `, [hash, now])
+      AND a.status = 'active' AND d.issued_at >= a.devices_revoked_before AND d.client_id = $3
+  `, [hash, now, registration.clientId])
   return rows[0]?.user_id ?? null
 }
 
-export function inferenceAccount(request: Request, db: Client): Promise<string | null> {
-  return runPromise(Effect.provide(accountForInference(request, db), cryptoServices))
+export function inferenceAccount(request: Request, db: Client, env?: NativeRegistryEnv): Promise<string | null> {
+  return runPromise(Effect.provide(accountForInference(request, db, env), cryptoServices))
 }
 
 function json(status: number, body: object) {
@@ -225,20 +226,27 @@ effect function otpInput(request: Request, kind: Destination, verify: boolean) {
   if (Option.isNone(value)) throw new InvalidRequest()
   if (!/^\+[1-9]\d{6,14}$/.test(value.value.phone)) throw new InvalidRequest()
   const code = value.value.code ?? ""
-  if (verify && !/^\d{4,10}$/.test(code)) throw new InvalidRequest()
+  if (verify && !/^\d{6}$/.test(code)) throw new InvalidRequest()
   return { address: value.value.phone, code }
 }
 
-effect function sendEmail(env: IdentityEnv, db: Client, address: string) {
-  if (!env.EMAIL_CODE_SECRET || env.EMAIL_CODE_SECRET.length < 32 || !env.RESEND_API_KEY || !env.EMAIL_FROM) throw new ProviderUnavailable()
-  const code = try emailCode()
-  const hash = try makeCodeHash(env.EMAIL_CODE_SECRET, address, code)
-  try query(db, `
-    INSERT INTO cloud_email_codes (email, code_hash, expires_at, tries)
-    VALUES ($1, $2, now() + $3 * interval '1 second', 0)
-    ON CONFLICT (email) DO UPDATE
-    SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at, tries = 0
-  `, [address, hash, codeSeconds])
+function smsBudget(env: IdentityEnv) {
+  const allowed = (env.SMS_ALLOWED_COUNTRY_CODES ?? "").split(",").map((code) => code.trim()).filter(Boolean)
+  const hourly = Number(env.SMS_HOURLY_BUDGET)
+  if (!allowed.length || allowed.some((code) => !/^\+[1-9]\d{0,2}$/.test(code)) || !Number.isSafeInteger(hourly) || hourly <= 0) return null
+  return { allowed, hourly }
+}
+
+function emailReady(env: IdentityEnv) {
+  return Boolean(env.RESEND_API_KEY && env.EMAIL_FROM && env.EMAIL_CODE_SECRET && env.EMAIL_CODE_SECRET.length >= 32)
+}
+
+function smsReady(env: IdentityEnv) {
+  return Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_VERIFY_SERVICE_SID && smsBudget(env))
+}
+
+effect function sendEmail(env: IdentityEnv, address: string, code: string) {
+  if (!env.RESEND_API_KEY || !env.EMAIL_FROM) throw new ProviderUnavailable()
   const sent = try external("https://api.resend.com/emails", {
     authorization: "Bearer " + env.RESEND_API_KEY,
     body: JSON.stringify({
@@ -248,22 +256,7 @@ effect function sendEmail(env: IdentityEnv, db: Client, address: string) {
       text: `Your sign-in code is ${code}. It expires in ten minutes. If you did not request this code, you can ignore this email.`
     })
   })
-  if (sent.status < 200 || sent.status >= 300) {
-    try query(db, "DELETE FROM cloud_email_codes WHERE email = $1 AND code_hash = $2", [address, hash])
-    throw new ProviderUnavailable()
-  }
-}
-
-effect function verifyEmail(env: IdentityEnv, db: Client, address: string, code: string) {
-  if (!env.EMAIL_CODE_SECRET || env.EMAIL_CODE_SECRET.length < 32 || !env.RESEND_API_KEY || !env.EMAIL_FROM) throw new ProviderUnavailable()
-  const hash = try makeCodeHash(env.EMAIL_CODE_SECRET, address, code)
-  const { rows } = try query<{ approved: boolean }>(db, `
-    UPDATE cloud_email_codes
-    SET tries = CASE WHEN code_hash = $2 THEN 5 ELSE tries + 1 END
-    WHERE email = $1 AND expires_at > now() AND tries < 5
-    RETURNING code_hash = $2 AS approved
-  `, [address, hash])
-  if (rows[0]?.approved !== true) throw new Unauthorized()
+  if (sent.status < 200 || sent.status >= 300) throw new ProviderUnavailable()
 }
 
 effect function twilio(env: IdentityEnv, address: string, code: string | null) {
@@ -288,29 +281,88 @@ effect function twilio(env: IdentityEnv, address: string, code: string | null) {
   if (code === null && result.status !== "pending") throw new ProviderUnavailable()
 }
 
+const codeCookie = (provider: Destination) => "__Host-eliza-code-" + provider
+
+effect function requestCode(env: IdentityEnv, db: Client, provider: Destination, address: string) {
+  const code = provider === "email" ? try emailCode() : null
+  const secret = env.EMAIL_CODE_SECRET
+  if (code !== null && (!secret || secret.length < 32)) throw new ProviderUnavailable()
+  const hash = code !== null && secret ? try makeCodeHash(secret, address, code) : null
+  const verifier = try token()
+  const challenge = try pkceChallenge(verifier)
+  const age = provider === "email" ? codeSeconds : smsCodeSeconds
+  const { rows } = try query<{ expires_at: Date }>(db, `
+    INSERT INTO cloud_code_challenges (provider, destination, challenge, code_hash, expires_at, tries, consumed)
+    VALUES ($1, $2, $3, $4, now() + $5 * interval '1 second', 0, false)
+    ON CONFLICT (provider, destination) DO UPDATE
+    SET challenge = EXCLUDED.challenge, code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at, tries = 0, consumed = false
+    RETURNING expires_at
+  `, [provider, address, challenge, hash, age])
+  const pending = rows[0]
+  if (!pending) throw new StorageUnavailable()
+  effect {
+    if (code !== null) try sendEmail(env, address, code)
+    else try twilio(env, address, null)
+  } catch effect (failure) => {
+    try query(db, "DELETE FROM cloud_code_challenges WHERE provider = $1 AND destination = $2 AND challenge = $3", [provider, address, challenge])
+    throw failure
+  }
+  return HttpServerResponse.setCookiesUnsafe(json(200, { ok: true, expiresAt: pending.expires_at, codeLength: 6 }),
+    [cookieValue(codeCookie(provider), verifier, age)])
+}
+
+effect function verifyCode(request: Request, env: IdentityEnv, db: Client, provider: Destination, address: string, code: string) {
+  const verifier = readCookie(request, codeCookie(provider))
+  if (!verifier || !opaqueToken.test(verifier)) throw new Unauthorized()
+  const challenge = try pkceChallenge(verifier)
+  const secret = env.EMAIL_CODE_SECRET
+  const hash = provider === "email" && secret ? try makeCodeHash(secret, address, code) : null
+  const attempt = try query<{ consumed: boolean }>(db, `
+    UPDATE cloud_code_challenges
+    SET tries = tries + 1, consumed = CASE WHEN provider = 'email' THEN code_hash = $4 ELSE false END
+    WHERE provider = $1 AND destination = $2 AND challenge = $3 AND expires_at > now() AND tries < 5 AND NOT consumed
+    RETURNING consumed
+  `, [provider, address, challenge, hash])
+  const admitted = attempt.rows[0]
+  if (!admitted || (provider === "email" && !admitted.consumed)) throw new Unauthorized()
+  if (provider === "sms") {
+    try twilio(env, address, code)
+    const finished = try query(db, `
+      UPDATE cloud_code_challenges SET consumed = true
+      WHERE provider = $1 AND destination = $2 AND challenge = $3 AND expires_at > now() AND NOT consumed
+      RETURNING consumed
+    `, [provider, address, challenge])
+    if (!finished.rowCount) throw new Unauthorized()
+  }
+  const session = try signInWithProof(db, { provider, subject: address, email: provider === "email" ? address : null })
+  return HttpServerResponse.setCookiesUnsafe(json(200, { account: session.account }),
+    [...sessionCookies(session), cookieValue(codeCookie(provider), "", 0)])
+}
+
 effect function otp(request: Request, env: IdentityEnv, db: Client, provider: Destination, verify: boolean) {
   const input = try otpInput(request, provider, verify)
+  const budget = provider === "sms" ? smsBudget(env) : null
+  if (provider === "sms") {
+    if (!smsReady(env) || !budget) throw new ProviderUnavailable()
+    if (!budget.allowed.some((code) => input.address.startsWith(code))) throw new InvalidRequest()
+  } else if (!emailReady(env)) {
+    throw new ProviderUnavailable()
+  }
   const ip = request.headers.get("cf-connecting-ip") ?? "local"
   const action = verify ? "verify" : "send"
-  try rateLimit(db, provider + ":" + action + ":ip", ip, verify ? 20 : 10, 600)
-  try rateLimit(db, provider + ":" + action + ":destination", input.address, verify ? 10 : 1, verify ? 600 : 60)
-  if (!verify) {
-    try rateLimit(db, provider + ":send:deployment", "all", 100, 3600)
-    if (provider === "email") try sendEmail(env, db, input.address)
-    else try twilio(env, input.address, null)
-    return json(200, { ok: true })
-  }
-  if (provider === "email") try verifyEmail(env, db, input.address, input.code)
-  else try twilio(env, input.address, input.code)
-  const session = try signInWithProof(db, { provider, subject: input.address, email: provider === "email" ? input.address : null })
-  return HttpServerResponse.setCookiesUnsafe(json(200, { account: session.account }), sessionCookies(session))
+  try accountTransaction(db, effect {
+    try rateLimit(db, provider + ":" + action + ":ip", ip, verify ? 10 : provider === "sms" ? 5 : 30, 60)
+    try rateLimit(db, provider + ":" + action + ":destination", input.address, 5, 600)
+    if (!verify && budget) try rateLimit(db, "sms:send:deployment", "all", budget.hourly, 3600)
+  })
+  if (verify) return try verifyCode(request, env, db, provider, input.address, input.code)
+  return try requestCode(env, db, provider, input.address)
 }
 
 effect function authorizeDevice(request: Request, env: IdentityEnv, db: Client) {
-  const callbackUrl = env.NATIVE_AUTH_CALLBACK
-  if (!callbackUrl) throw new ProviderUnavailable()
-  const callback = try Effect.try({ try: () => new URL(callbackUrl), catch: () => new ProviderUnavailable() })
-  if (callback.protocol !== "https:" || callback.search || callback.hash || callback.username || callback.password) throw new ProviderUnavailable()
+  const registration = browserNativeRegistration(env)
+  if (!registration) throw new ProviderUnavailable()
+  const callback = try Effect.try({ try: () => new URL(registration.signInReturn.origin + registration.signInReturn.path), catch: () => new ProviderUnavailable() })
   const browser = try browserAccount(request, db)
   if (!browser) throw new Unauthorized()
   const raw = try readJson(request)
@@ -328,13 +380,15 @@ effect function authorizeDevice(request: Request, env: IdentityEnv, db: Client) 
     )
     INSERT INTO cloud_device_proofs (grant_key, session_key, challenge)
     SELECT key,$7,$8 FROM created
-  `, [key, browser.id, callback.href, codeHash, now + deviceGrantSeconds * 1000, now, browser.sessionKey, parsed.value.challenge])
+  `, [key, browser.id, registration.clientId, codeHash, now + deviceGrantSeconds * 1000, now, browser.sessionKey, parsed.value.challenge])
   callback.searchParams.set("code", code)
   callback.searchParams.set("state", parsed.value.state)
   return json(200, { redirectUrl: callback.href })
 }
 
-effect function exchangeDevice(request: Request, db: Client) {
+effect function exchangeDevice(request: Request, env: IdentityEnv, db: Client) {
+  const registration = browserNativeRegistration(env)
+  if (!registration) throw new ProviderUnavailable()
   const raw = try readJson(request)
   const parsed = Schema.decodeUnknownOption(DeviceExchange, { onExcessProperty: "error" })(raw)
   if (Option.isNone(parsed) || !opaqueToken.test(parsed.value.code) || !pkceText.test(parsed.value.verifier)) throw new InvalidRequest()
@@ -351,17 +405,19 @@ effect function exchangeDevice(request: Request, db: Client) {
     WHERE d.key = p.grant_key AND d.user_id = a.key AND d.phase = 'code_issued' AND d.code_digest = $1 AND p.challenge = $2
       AND d.code_expires_at > $3 AND s.refresh_expires_at > $3 AND s.live AND a.status = 'active'
       AND (s.state->>'epoch')::bigint = a.sessions_revoked_before
-      AND d.issued_at >= a.devices_revoked_before
+      AND d.issued_at >= a.devices_revoked_before AND d.client_id = $7
     RETURNING a.key AS id, a.organization_id
-  `, [codeHash, challenge, now, credential, bearerHash, now + deviceSessionSeconds * 1000])
+  `, [codeHash, challenge, now, credential, bearerHash, now + registration.credentialTtl, registration.clientId])
   const device = rows[0]
   if (!device) throw new Unauthorized()
-  return json(200, { token: bearer, expiresIn: deviceSessionSeconds, accountId: device.id, organizationId: device.organization_id })
+  return json(200, { token: bearer, expiresIn: Math.floor(registration.credentialTtl / 1000), accountId: device.id, organizationId: device.organization_id })
 }
 
 const empty = () => HttpServerResponse.empty({ status: 204, headers: { "cache-control": "no-store" } })
 
-effect function acknowledgeDevice(request: Request, db: Client) {
+effect function acknowledgeDevice(request: Request, env: IdentityEnv, db: Client) {
+  const registration = browserNativeRegistration(env)
+  if (!registration) throw new ProviderUnavailable()
   const hash = try deviceDigest(request)
   if (hash === null) throw new Unauthorized()
   const now = try Clock.currentTimeMillis
@@ -371,11 +427,11 @@ effect function acknowledgeDevice(request: Request, db: Client) {
       updated_at = CASE WHEN d.phase = 'exchanged' THEN $2 ELSE d.updated_at END
     FROM cloud_device_proofs p JOIN sessions s ON s.key = p.session_key JOIN accounts a ON a.key = s.user_id
     WHERE d.key = p.grant_key AND d.user_id = a.key AND d.secret_digest = $1
-      AND d.key_expires_at > $2 AND d.issued_at >= a.devices_revoked_before AND a.status = 'active'
+      AND d.key_expires_at > $2 AND d.issued_at >= a.devices_revoked_before AND a.status = 'active' AND d.client_id = $3
       AND (d.phase = 'active' OR (d.phase = 'exchanged' AND d.code_expires_at > $2 AND s.live
         AND s.refresh_expires_at > $2 AND (s.state->>'epoch')::bigint = a.sessions_revoked_before))
     RETURNING d.key
-  `, [hash, now])
+  `, [hash, now, registration.clientId])
   if (!rowCount) throw new Unauthorized()
   return empty()
 }
@@ -395,8 +451,22 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
   const url = try Effect.try({ try: () => new URL(request.url), catch: () => new InvalidRequest() })
   if (request.method === "GET") {
     switch (url.pathname) {
+      case "/api/v1/app-auth/mobile/config": {
+        const id = url.searchParams.get("clientId")
+        const environment = url.searchParams.get("environment")
+        const redirect = url.searchParams.get("redirectUri")
+        const matched = mobileRegistration(env, id, environment, redirect)
+        if (matched.kind === "refused") return json(matched.status, { error: matched.error })
+        const registered = matched.registration
+        const configured = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET)
+        return json(200, {
+          clientId: registered.clientId, environment, redirectUri: redirect, codeChallengeMethod: "S256",
+          credentialTtlMs: registered.credentialTtl, methods: { google: configured, email: emailReady(env), sms: smsReady(env) },
+          google: { configured, serverClientId: configured ? env.GOOGLE_CLIENT_ID : "", nativeSignIn: false }
+        })
+      }
       case "/api/auth/providers":
-        return json(200, { google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET), email: Boolean(env.RESEND_API_KEY && env.EMAIL_FROM && env.EMAIL_CODE_SECRET && env.EMAIL_CODE_SECRET.length >= 32), sms: Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_VERIFY_SERVICE_SID) })
+        return json(200, { google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET), email: emailReady(env), sms: smsReady(env) })
       case "/api/auth/session": {
         const account = try browserAccount(request, db)
         return json(200, { account: account ? { id: account.id, email: account.email } : null })
@@ -414,8 +484,8 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
     }
   }
   if (request.method === "POST") {
-    if (url.pathname === "/api/auth/device/exchange") return try exchangeDevice(request, db)
-    if (url.pathname === "/api/auth/device/ack") return try acknowledgeDevice(request, db)
+    if (url.pathname === "/api/auth/device/exchange") return try exchangeDevice(request, env, db)
+    if (url.pathname === "/api/auth/device/ack") return try acknowledgeDevice(request, env, db)
     if (url.pathname === "/api/auth/device/revoke") return try revokeDevice(request, db)
     const origin = request.headers.get("origin")
     if (origin !== env.WEB_ORIGIN && origin !== env.PUBLIC_API_ORIGIN) return json(403, { error: "forbidden_origin" })
