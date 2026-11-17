@@ -37,7 +37,6 @@
       "plugins/plugin-native-agent/src/embedded-web.ts"
     ],
     "invariants": [
-      "AgentAlone",
       "FailureNamesCause",
       "RunningWasReady",
       "ChildOnlyWhileLaunched",

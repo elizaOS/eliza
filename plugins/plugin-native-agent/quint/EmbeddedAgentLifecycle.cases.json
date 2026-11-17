@@ -28,7 +28,6 @@
       "init": "init",
       "step": "step",
       "invariants": [
-        "AgentAlone",
         "FailureNamesCause",
         "RunningWasReady",
         "ChildOnlyWhileLaunched",
