@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
-import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
+import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
+import { users } from "@elizaos/cloud-shared/db/schemas/users";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { sql } from "drizzle-orm";
+import { getTableConfig } from "drizzle-orm/pg-core";
 import { Hono } from "hono";
 import { SignJWT } from "jose";
 
@@ -18,9 +20,10 @@ const { dbWrite, closeDatabaseConnectionsForTests } = await import(
 const { deriveMobileAppAuthS256Challenge } = await import(
   "@elizaos/cloud-shared/lib/services/mobile-app-auth"
 );
-const { default: backup } = await import(
-  "../v1/app-auth/mobile/password-backup/route"
-);
+const { mountShardRoutes } = await import("../src/_router.generated");
+const { routeShardKey } = await import("../src/router-shards");
+const { authMiddleware } = await import("../src/middleware/auth");
+const backupPath = "/api/v1/app-auth/mobile/password-backup";
 const organizationId = randomUUID();
 const appId = randomUUID();
 const ownerId = randomUUID();
@@ -51,43 +54,61 @@ const olderToken = await signedToken(ownerSubject, 301);
 
 const verifier = "v".repeat(44);
 const state = "s".repeat(44);
-const bytes = Buffer.from([0x31, 0x5a, 0x04, 0x87]);
+const bytes = new Uint8Array([0x31, 0x5a, 0x04, 0x87]);
 
 const app = new Hono<AppEnv>();
-app.use("*", async (c, next) => {
-  const bearer = c.req.header("authorization");
-  if (
-    bearer === `Bearer ${ownerToken}` ||
-    bearer === `Bearer ${olderToken}` ||
-    bearer === `Bearer ${otherToken}`
-  ) {
-    const isOther = bearer === `Bearer ${otherToken}`;
-    c.set("user", {
-      id: isOther ? otherId : ownerId,
-      steward_id: isOther ? otherSubject : ownerSubject,
-      organization_id: organizationId,
-      organization: { id: organizationId, is_active: true },
-      is_active: true,
-    });
-    c.set("authMethod", "session");
+app.use("*", authMiddleware);
+await mountShardRoutes(app, routeShardKey(backupPath));
+
+function quote(value: string) {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+async function installIdentityFixture() {
+  const enums = new Set<string>();
+  for (const table of [organizations, users]) {
+    const config = getTableConfig(table);
+    for (const column of config.columns) {
+      const definition = "enum" in column ? column.enum : undefined;
+      if (
+        typeof definition !== "object" ||
+        definition === null ||
+        !("enumName" in definition) ||
+        typeof definition.enumName !== "string" ||
+        !("enumValues" in definition) ||
+        !Array.isArray(definition.enumValues) ||
+        enums.has(definition.enumName)
+      )
+        continue;
+      const values = definition.enumValues.map(
+        (value) => `'${String(value).replaceAll("'", "''")}'`,
+      );
+      await dbWrite.execute(
+        sql.raw(
+          `CREATE TYPE ${quote(definition.enumName)} AS ENUM (${values.join(",")})`,
+        ),
+      );
+      enums.add(definition.enumName);
+    }
+    const columns = config.columns.map(
+      (column) =>
+        `${quote(column.name)} ${column.getSQLType()}${column.primary ? " PRIMARY KEY" : ""}`,
+    );
+    await dbWrite.execute(
+      sql.raw(`CREATE TABLE ${quote(config.name)} (${columns.join(",")})`),
+    );
   }
-  await next();
-});
-app.route("/", backup);
+  await dbWrite.execute(
+    sql`CREATE TABLE user_identities (user_id uuid, steward_user_id text)`,
+  );
+}
 
 beforeAll(async () => {
   await dbWrite.execute(sql`CREATE TABLE apps (
     id uuid PRIMARY KEY, name text, description text, logo_url text, website_url text,
     app_url text, allowed_origins jsonb, is_active boolean, is_approved boolean
   )`);
-  await dbWrite.execute(sql`CREATE TABLE organizations (
-    id uuid PRIMARY KEY, is_active boolean DEFAULT true, account_lifecycle_state text DEFAULT 'active',
-    account_lifecycle_revision int DEFAULT 0, account_deletion_request_id uuid
-  )`);
-  await dbWrite.execute(sql`CREATE TABLE users (
-    id uuid PRIMARY KEY, organization_id uuid, is_active boolean DEFAULT true, deleted_at timestamptz,
-    expires_at timestamptz, account_lifecycle_state text DEFAULT 'active', account_deletion_request_id uuid
-  )`);
+  await installIdentityFixture();
   for (const name of [
     "0574_native_app_auth_client_registration",
     "0577_password_backup",
@@ -100,12 +121,10 @@ beforeAll(async () => {
   }
   await dbWrite.execute(sql`INSERT INTO apps (id, name, app_url, allowed_origins, is_active, is_approved)
     VALUES (${appId}, 'Test', 'https://example.com', ${JSON.stringify([redirectUri])}::jsonb, true, true)`);
-  await dbWrite.execute(
-    sql`INSERT INTO organizations (id) VALUES (${organizationId})`,
-  );
-  await dbWrite.execute(
-    sql`INSERT INTO users (id, organization_id) VALUES (${ownerId}, ${organizationId}), (${otherId}, ${organizationId})`,
-  );
+  await dbWrite.execute(sql`INSERT INTO organizations (id, is_active, account_lifecycle_state, account_lifecycle_revision)
+    VALUES (${organizationId}, true, 'active', 0)`);
+  await dbWrite.execute(sql`INSERT INTO users (id, steward_user_id, organization_id, is_active, account_lifecycle_state)
+    VALUES (${ownerId}, ${ownerSubject}, ${organizationId}, true, 'active'), (${otherId}, ${otherSubject}, ${organizationId}, true, 'active')`);
   await dbWrite.execute(sql`INSERT INTO mobile_app_auth_clients (client_id, app_id, redirect_uri)
     VALUES (${clientId}, ${appId}, ${redirectUri})`);
 }, 90_000);
@@ -116,7 +135,7 @@ afterAll(async () => {
 
 function issue(purpose: string, bearer = ownerToken) {
   return app.request(
-    "/",
+    backupPath,
     {
       method: "POST",
       headers: {
@@ -147,10 +166,10 @@ function use(
   code: string,
   method: string,
   extra: Record<string, string> = {},
-  body?: Buffer | ReadableStream<Uint8Array>,
+  body?: BodyInit,
 ) {
   return app.request(
-    "/",
+    backupPath,
     {
       method,
       headers: {
@@ -167,10 +186,17 @@ function use(
 
 test("proof-bound approvals protect encrypted snapshot round-trip, replay, delete, and revision", async () => {
   expect(
-    (await app.request(`/readiness?clientId=${clientId}`, undefined, env))
-      .status,
+    (
+      await app.request(
+        `${backupPath}/readiness?clientId=${clientId}`,
+        undefined,
+        env,
+      )
+    ).status,
   ).toBe(204);
-  expect((await app.request("/readiness", undefined, env)).status).toBe(404);
+  expect(
+    (await app.request(`${backupPath}/readiness`, undefined, env)).status,
+  ).toBe(404);
   expect((await issue("save", "eliza_mobile_inference")).status).toBe(401);
   const staleAuthentication = await issue("save", olderToken);
   expect(staleAuthentication.status).toBe(401);
@@ -183,11 +209,18 @@ test("proof-bound approvals protect encrypted snapshot round-trip, replay, delet
   const create = await grant("save");
   expect((await use(create.code, "GET")).status).toBe(401);
   expect(
-    (await use(create.code, "PUT", {
-      "X-Backup-Verifier": "w".repeat(44),
-      "If-None-Match": "*",
-      "Content-Type": "application/octet-stream",
-    }, bytes)).status,
+    (
+      await use(
+        create.code,
+        "PUT",
+        {
+          "X-Backup-Verifier": "w".repeat(44),
+          "If-None-Match": "*",
+          "Content-Type": "application/octet-stream",
+        },
+        bytes,
+      )
+    ).status,
   ).toBe(401);
   const stored = await use(
     create.code,
@@ -203,8 +236,9 @@ test("proof-bound approvals protect encrypted snapshot round-trip, replay, delet
   ]);
   expect(reads.map((response) => response.status).sort()).toEqual([200, 401]);
   const snapshot = reads.find((response) => response.status === 200);
-  expect(snapshot?.headers.get("Cache-Control")).toBe("no-store");
-  expect(Buffer.from(await snapshot!.arrayBuffer())).toEqual(bytes);
+  if (!snapshot) throw new Error("Missing successful backup read");
+  expect(snapshot.headers.get("Cache-Control")).toBe("no-store");
+  expect(new Uint8Array(await snapshot.arrayBuffer())).toEqual(bytes);
   const other = await grant("read", otherToken);
   expect(other.scope).not.toEqual(create.scope);
   expect((await use(other.code, "GET")).status).toBe(404);
@@ -226,20 +260,36 @@ test("proof-bound approvals protect encrypted snapshot round-trip, replay, delet
         oversized.code,
         "PUT",
         { "If-Match": '"1"', "Content-Type": "application/octet-stream" },
-        Buffer.alloc(2 * 1024 * 1024 + 1),
+        new Uint8Array(2 * 1024 * 1024 + 1),
       )
     ).status,
   ).toBe(413);
   const interrupted = await grant("save");
-  const stream = new ReadableStream<Uint8Array>({
-    async pull(writer) {
-      await dbWrite.execute(sql`UPDATE mobile_app_auth_clients SET enabled = false WHERE client_id = ${clientId}`);
-      writer.enqueue(new Uint8Array(bytes));
-      writer.close();
+  const stream = new ReadableStream<Uint8Array<ArrayBuffer>>(
+    {
+      async pull(writer) {
+        await dbWrite.execute(
+          sql`UPDATE mobile_app_auth_clients SET enabled = false WHERE client_id = ${clientId}`,
+        );
+        writer.enqueue(new Uint8Array(bytes));
+        writer.close();
+      },
     },
-  }, { highWaterMark: 0 });
-  expect((await use(interrupted.code, "PUT", { "If-Match": '"1"', "Content-Type": "application/octet-stream" }, stream)).status).toBe(401);
-  await dbWrite.execute(sql`UPDATE mobile_app_auth_clients SET enabled = true WHERE client_id = ${clientId}`);
+    { highWaterMark: 0 },
+  );
+  expect(
+    (
+      await use(
+        interrupted.code,
+        "PUT",
+        { "If-Match": '"1"', "Content-Type": "application/octet-stream" },
+        stream,
+      )
+    ).status,
+  ).toBe(401);
+  await dbWrite.execute(
+    sql`UPDATE mobile_app_auth_clients SET enabled = true WHERE client_id = ${clientId}`,
+  );
   const remove = await grant("delete");
   expect((await use(remove.code, "DELETE", { "If-Match": '"1"' })).status).toBe(
     204,
