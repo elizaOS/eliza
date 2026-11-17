@@ -1,0 +1,23 @@
+// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+import { Client } from "pg"
+
+export type WorkerDatabase = {
+  CLOUD_IDENTITY_DIGEST: string
+  CLOUD_ENVIRONMENT: "staging" | "production"
+  HYPERDRIVE?: { connectionString: string }
+  DATABASE_URL?: string
+}
+
+export async function withCloudDatabase<T>(env: WorkerDatabase, action: (db: Client) => Promise<T>) {
+  const connectionString = env.HYPERDRIVE?.connectionString ?? env.DATABASE_URL
+  if (!connectionString || !/^[a-f0-9]{64}$/.test(env.CLOUD_IDENTITY_DIGEST)) throw new Error("cloud database is unconfigured")
+  const db = new Client({ connectionString, connectionTimeoutMillis: 5000, statement_timeout: 15000 })
+  try {
+    await db.connect()
+    const identity = await db.query("SELECT 1 FROM public.cloud_identity WHERE singleton AND digest = $1 AND environment = $2", [env.CLOUD_IDENTITY_DIGEST, env.CLOUD_ENVIRONMENT])
+    if (identity.rowCount !== 1) throw new Error("cloud database identity mismatch")
+    return await action(db)
+  } finally {
+    await db.end().catch(() => undefined)
+  }
+}

@@ -1,7 +1,7 @@
 // spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"; spec/cloud/identity/requestAuth.md, "Story: Admit a request only for a live credential of an active account"
 import type { RateClass } from "../billing/plans.vibe"
 import type { Capability, Deployment } from "../profile/profile.vibe"
-import type { Store } from "../store/store.vibe"
+import type { Store } from "../store/connection.vibe"
 import { refused, Refused } from "./refusal.vibe"
 import type { Caller, RouteClass } from "./request-auth.vibe"
 

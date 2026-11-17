@@ -1,0 +1,58 @@
+// spec/cloud/shared/metering.md, "Story: Settle every call once"
+import type { Client } from "pg"
+import { Store, storeOver, type Connection } from "./store/connection.vibe"
+import { reserve, markDispatched, settle, sweepHolds, type HoldKey } from "./shared/metering.vibe"
+
+function connectionLayer(db: Client) {
+  const connection: Connection = {
+    query: async (sql, params) => (await db.query(sql, [...params])).rows,
+    script: async (sql) => { await db.query(sql) },
+    release: async () => {}
+  }
+  return Layer.effect(Store, storeOver({ kind: "connected-pg" }, {
+    permits: 1, connect: async () => connection, close: async () => {}
+  }))
+}
+
+type Reservation = { kind: "reserved"; key: string } | { kind: "duplicate" | "unfunded" | "inactive" }
+type Usage = { account: string; service: "inference" | "speech"; requestId: string; quoteMicros: number; part?: HoldKey["part"] }
+
+export async function reserveUsage(db: Client, input: Usage): Promise<Reservation> {
+  if (!Number.isSafeInteger(input.quoteMicros) || input.quoteMicros < 1) throw new RangeError("invalid usage quote")
+  const owner = (await db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1 AND status = 'active'", [input.account])).rows[0]
+  if (!owner) return { kind: "inactive" }
+  const key: HoldKey = {
+    service: input.service === "inference" ? "MeteredInference" : "MeteredSpeech",
+    caller: input.account, requestId: input.requestId, part: input.part ?? { tag: "WholeRequest" }
+  }
+  const admission = effect {
+    const ticket = try reserve({ organizationId: owner.organization_id, userId: input.account }, key, input.quoteMicros)
+    return ticket.replayed ? { kind: "duplicate" } as const : { kind: "reserved", key: ticket.key } as const
+  }
+  const result = Effect.catchIf(admission, (error) => error._tag === "Refused" && error.refusal.code === "InsufficientCredits", () => Effect.succeed({ kind: "unfunded" } as const))
+  return Effect.runPromise(Effect.provide(result, connectionLayer(db)))
+}
+
+export async function dispatchUsage(db: Client, key: string): Promise<boolean> {
+  const dispatch = effect {
+    const hold = markDispatched(key) catch effect (failure) => {
+      if (failure._tag === "Rejected") return null
+      throw failure
+    }
+    return hold !== null && hold.phase === "Dispatched"
+  }
+  return Effect.runPromise(Effect.provide(dispatch, connectionLayer(db)))
+}
+
+export async function settleUsage(db: Client, key: string, actualMicros: number | null) {
+  if (actualMicros !== null && (!Number.isSafeInteger(actualMicros) || actualMicros < 0)) throw new RangeError("invalid usage settlement")
+  await Effect.runPromise(Effect.provide(settle(key, actualMicros === null ? { kind: "unknown" } : { kind: "known", actual: actualMicros }), connectionLayer(db)))
+}
+
+export async function releaseUsage(db: Client, key: string) {
+  await Effect.runPromise(Effect.provide(settle(key, { kind: "release" }), connectionLayer(db)))
+}
+
+export function sweepUsage(db: Client) {
+  return Effect.runPromise(Effect.provide(sweepHolds(), connectionLayer(db)))
+}

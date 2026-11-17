@@ -2,7 +2,7 @@
 import { Rejected, apply, decodeState, initial, windowEnd, windowStart, type Window } from "../../gen/cloud__shared__rateLimit.effect.vibe"
 import { refused, Refused } from "../http/refusal.vibe"
 import { machineRows, stepRow } from "../store/rows.vibe"
-import { Store } from "../store/store.vibe"
+import { Store } from "../store/connection.vibe"
 
 const windows = machineRows<Window, { readonly type: "admit"; readonly limit: number }, Rejected, unknown>("rate_windows", { initial, decodeState, apply })
 

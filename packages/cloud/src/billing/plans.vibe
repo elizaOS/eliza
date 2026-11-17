@@ -1,10 +1,10 @@
 // spec/cloud/billing/plans.md, "Story: Offer the paid plans as the provider sells them"; spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
-import { catalog, planOf, rpmFor, type Plan, type PlanKey, type RateClass } from "../../gen/cloud__billing__plans.effect.vibe"
-import { priceMatches, type ObservedPrice } from "../../gen/cloud__deployment.effect.vibe"
+import { planOffers, paidPlanKeys, requestsPerMinute, isPaid, type PlanOffer, type PlanKey, type RateClass } from "../../gen/cloud__billing__plans.effect.vibe"
+import { priceCheck, type ProviderPrice as ObservedPrice } from "../../gen/cloud__deployment.effect.vibe"
 import { Deployment, SecretMissing } from "../profile/profile.vibe"
 import { wireName } from "../http/refusal.vibe"
 
-export type { Plan, PlanKey, RateClass }
+export type { PlanOffer, PlanKey, RateClass }
 
 export error CatalogMismatch { plan: string; problem: string }
 
@@ -16,16 +16,16 @@ export function wirePlanKey(key: PlanKey): WirePlanKey {
 }
 
 export function parsePlanKey(input: unknown): PlanKey | undefined {
-  return catalog.find((plan) => wirePlanKey(plan.key) === input)?.key
+  switch (input) {
+    case "free": return "Free"
+    case "plus_monthly": return "PlusMonthly"
+    case "pro_monthly": return "ProMonthly"
+    default: return undefined
+  }
 }
 
-export function planRpm(key: PlanKey, rateClass: RateClass): number {
-  return rpmFor(key, rateClass)
-}
-
-export function isPaid(key: PlanKey): boolean {
-  return planOf(key).amountCents > 0
-}
+export const planRpm = requestsPerMinute
+export { isPaid }
 
 function usd(micros: number): string {
   return `${Math.floor(micros / 1_000_000)}.${String(micros % 1_000_000).padStart(6, "0")}`
@@ -44,7 +44,7 @@ export interface PlansAnswer {
 
 export function plansAnswer(): PlansAnswer {
   return {
-    plans: catalog.filter((plan) => isPaid(plan.key)).map((plan) => ({
+    plans: planOffers.map((plan) => ({
       key: wirePlanKey(plan.key),
       name: plan.name,
       amountCents: plan.amountCents,
@@ -81,7 +81,7 @@ effect function providerRead<A>(path: string, schema: Schema.Codec<A>, plan: str
   if (billing === undefined) throw new CatalogMismatch({ plan, problem: "billing is not configured" })
   const key = try deployment.secret(billing.secretKeyEnv)
   const client = try HttpClient.HttpClient
-  return try effect {
+  return effect {
     const response = try client.get(`${billing.apiUrl}${path}`, { headers: { authorization: `Bearer ${key}` } })
     if (response.status !== 200) throw new CatalogMismatch({ plan, problem: `${path} answered ${response.status}` })
     return try Schema.decodeUnknownEffect(schema)(try response.json)
@@ -96,27 +96,24 @@ export effect function checkCatalog(): void!(CatalogMismatch | SecretMissing)!(D
   const billing = deployment.settings.billing
   if (billing === undefined) return
   const livemode = deployment.environment === "production"
-  for (const plan of catalog.filter((candidate) => isPaid(candidate.key))) {
-    const wire = wirePlanKey(plan.key) as PaidPlanKey
+  for (const key of paidPlanKeys) {
+    const wire: PaidPlanKey = key === "ProMonthly" ? "pro_monthly" : "plus_monthly"
     const binding = billing.plans[wire]
     const price = try providerRead(`/v1/prices/${encodeURIComponent(binding.priceId)}`, ProviderPrice, wire)
     const product = try providerRead(`/v1/products/${encodeURIComponent(binding.productId)}`, ProviderProduct, wire)
     const observed: ObservedPrice = {
       active: price.active,
-      usd: price.currency === "usd",
-      otherCurrencies: Object.keys(price.currency_options ?? {}).some((currency) => currency !== "usd"),
-      unitAmount: price.unit_amount ?? -1,
-      recurring: price.type === "recurring" && price.recurring !== null,
+      currency: price.currency === "usd" && !Object.keys(price.currency_options ?? {}).some((currency) => currency !== "usd") ? "Usd" : "OtherCurrency",
+      amountCents: price.unit_amount ?? -1,
       perUnit: price.billing_scheme === "per_unit" && price.transform_quantity === null,
-      monthly: price.recurring?.interval === "month" && price.recurring.interval_count === 1,
-      licensed: price.recurring?.usage_type === "licensed",
+      interval: price.type === "recurring" && price.recurring?.interval === "month" && price.recurring.interval_count === 1 ? "OneMonth" : "OtherInterval",
+      usage: price.recurring?.usage_type === "licensed" ? "Licensed" : "Metered",
       trial: (price.recurring?.trial_period_days ?? null) !== null,
       sameProduct: price.product === binding.productId && product.id === binding.productId,
       productActive: product.active && product.deleted !== true,
-      livemode: price.livemode && product.livemode,
-      testmode: !price.livemode && !product.livemode
+      mode: price.livemode ? "LivePrice" : "TestPrice"
     }
-    if (!priceMatches(observed, plan.amountCents, livemode)) {
+    if (price.livemode !== product.livemode || priceCheck(key, observed, livemode ? "Production" : "Staging").tag !== "PriceFits") {
       throw new CatalogMismatch({ plan: wire, problem: `price ${binding.priceId} is not the catalog's ${wire} as the provider sells it` })
     }
   }

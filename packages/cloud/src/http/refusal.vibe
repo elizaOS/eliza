@@ -1,5 +1,5 @@
 // spec/cloud/shared/types.md, "Story: Speak one refusal language"
-import { refusal, type Refusal, type RefusalCode, type RefusalReason } from "../../gen/cloud__shared__types.effect.vibe"
+import { refuse, refuseFor, refuseUntil, refuseAllowance, statusOf, retryableOf, type Refusal, type RefusalCode, type RefusalReason } from "../../gen/cloud__shared__types.effect.vibe"
 
 export type { Refusal, RefusalCode, RefusalReason }
 
@@ -19,7 +19,10 @@ export function wireName(name: string): string {
 }
 
 export function refused(code: RefusalCode, reason: RefusalReason = "NoReason", retryAt = 0): Refused {
-  return new Refused({ refusal: refusal(code, reason, retryAt) })
+  const refusal = code === "AllowanceExhausted" ? refuseAllowance(retryAt)
+    : retryAt > 0 ? refuseUntil(code, retryAt)
+    : reason === "NoReason" ? refuse(code) : refuseFor(code, reason)
+  return new Refused({ refusal })
 }
 
 export function refusalBody(value: Refusal): RefusalBody {
@@ -29,20 +32,22 @@ export function refusalBody(value: Refusal): RefusalBody {
   return {
     error,
     errorDescription: `${words.charAt(0).toUpperCase()}${words.slice(1)}${reason === undefined ? "" : ` (${reason.replaceAll("_", " ")})`}.`,
-    retryable: value.retryable,
-    ...(value.retryAt > 0 && value.code !== "AllowanceExhausted" ? { retryAt: value.retryAt } : {}),
-    ...(value.retryAt > 0 && value.code === "AllowanceExhausted" ? { resetsAt: value.retryAt } : {}),
+    retryable: retryableOf(value),
+    ...(value.wait.tag === "RetryAt" ? { retryAt: value.wait.retryAtMs } : {}),
+    ...(value.wait.tag === "ResetsAt" ? { resetsAt: value.wait.resetsAtMs } : {}),
     ...(reason === undefined ? {} : { reason })
   }
 }
 
 export function refusalResponse(value: Refusal, now: number): HttpServerResponse.HttpServerResponse {
-  const waitSeconds = Math.max(1, Math.ceil((value.retryAt - now) / 1000))
+  const status = statusOf(value.code)
+  const retryAt = value.wait.tag === "RetryAt" ? value.wait.retryAtMs : 0
+  const waitSeconds = Math.max(1, Math.ceil((retryAt - now) / 1000))
   return HttpServerResponse.jsonUnsafe(refusalBody(value), {
-    status: value.status,
+    status,
     headers: {
       "cache-control": "no-store",
-      ...(value.retryAt > now && (value.status === 429 || value.status === 503) ? { "retry-after": String(waitSeconds) } : {})
+      ...(retryAt > now && (status === 429 || status === 503) ? { "retry-after": String(waitSeconds) } : {})
     }
   })
 }

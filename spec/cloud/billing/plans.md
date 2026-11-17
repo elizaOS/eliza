@@ -154,3 +154,33 @@ pure val speechUsedValues = Set(0, 7140000, 7199999, 7200000)
 pure val speechUsedBeforeValues = Set(0, 7140000, 7200000)
 pure val speechRequestedValues = Set(1, 60000)
 ```
+
+## Story: Apply the plan that funds a call
+
+> As an account owner, I want a call to use the paid period or grant that
+> belongs to my organization, then any credits I have funded.
+
+### A paid subscription takes precedence over an in-force grant
+
+An active paid subscription supplies its catalog plan. Otherwise, an
+unrevoked grant in its effective interval supplies its plan. Among
+overlapping grants the highest catalog rank wins. An account with neither
+can use its funded credits. The ledger locks the organization and spends
+only the amount available in an open allowance period or a credit balance.
+
+```quint
+type FundingGrant = { planKey: PlanKey, effectiveFrom: int, effectiveUntil: int, revoked: bool }
+pure def grantPlanAt(grants: List[FundingGrant], fundingTime: int): PlanKey =
+  grants.foldl(Free, (best, grant) =>
+    if (not(grant.revoked) and grant.effectiveFrom <= fundingTime and fundingTime < grant.effectiveUntil and rankOf(grant.planKey) > rankOf(best)) grant.planKey else best)
+pure def fundedPlan(active: bool, subscribed: PlanKey, grants: List[FundingGrant], fundingTime: int): PlanKey =
+  if (active and isPaid(subscribed)) subscribed else grantPlanAt(grants, fundingTime)
+pure val grantsValues = Set(List(), List({ planKey: PlusMonthly, effectiveFrom: 1, effectiveUntil: 3, revoked: false }), List({ planKey: ProMonthly, effectiveFrom: 0, effectiveUntil: 3, revoked: true }))
+pure val activeValues = Set(true, false)
+pure val subscribedValues = Set(Free, PlusMonthly, ProMonthly)
+pure val fundingTimeValues = Set(0, 1, 3)
+pure def lawPaidPlanHasPrecedence(subscribed: PlanKey, grants: List[FundingGrant], fundingTime: int): bool =
+  isPaid(subscribed) implies fundedPlan(true, subscribed, grants, fundingTime) == subscribed
+pure def lawUnfundedPlanIsFree(active: bool, subscribed: PlanKey, fundingTime: int): bool =
+  (not(active) or subscribed == Free) implies fundedPlan(active, subscribed, List(), fundingTime) == Free
+```
