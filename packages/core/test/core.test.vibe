@@ -4042,7 +4042,7 @@ it.live("Generate the first-party catalog from plugin-owned and curated manifest
 }), 300_000)
 
 // spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/release.md, "Every release check names the candidate it actually examined"; spec/core/packageExports.md, "Story: Preserve the imported core surface in the consumer build and the npm package"; spec/core/packageExports.md, "An admitted pack serves exactly the declared leaves, each free of host-only code"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/accountBridges.md, "Each bridge slot preserves the last installed object identity"; spec/core/ambientManagers.md, "Story: Share injected managers across bundled core copies"; spec/core/accountBridges.md, "Story: Install and clear shared account-selection contracts"; spec/core/catalog.md, "A valid runtime registration overrides its id and invalidates cached indexes"
-it.live('the packed tarball installs, imports, compiles and shares state across copies (spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/packageExports.md, "Story: Preserve the imported core surface in the consumer build and the npm package")', () => effect {
+it.live('the packed tarball installs, imports, compiles and shares state across copies (spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/packageExports.md, "Story: Preserve the imported core surface in the consumer build and the npm package"; spec/core/valueGuards.md, "Plain records require the intrinsic object prototype or a null prototype")', () => effect {
   const BASELINE = `import fs from "node:fs"; import path from "node:path";
 const read = (name) => JSON.parse(fs.readFileSync(path.resolve(JSON.parse(process.argv[1]), "../../spec/core/baseline", name), "utf8"));
 const surface = read("core-public-surface.json"); const consumers = read("core-consumers.json"); const graph = read("import-graph.json");
@@ -4055,6 +4055,61 @@ console.log(JSON.stringify({
   const NAMES = `const entries = JSON.parse(process.argv[1]); const names = {};
 for (const entry of entries) names[entry] = Object.keys(await import("@elizaos/core" + entry.slice(1), entry.endsWith(".json") ? { with: { type: "json" } } : undefined)).sort();
 console.log(JSON.stringify(names));`
+  const NATIVE_RECORDS = `import assert from "node:assert/strict";
+import { asObjectRecord, asRecord, hasPlainObjectTag, isObjectRecord, isPlainObject, validateMeetingArtifact } from "@elizaos/core";
+const prototypeFailure = new Error("native-record-prototype");
+const tagFailure = new Error("native-record-tag");
+const events = [];
+const target = Object.defineProperty({}, Symbol.toStringTag, { get() { assert.strictEqual(this, observed); events.push("tag"); return "Object"; } });
+const observed = new Proxy(target, { getPrototypeOf() { events.push("prototype"); throw prototypeFailure; } });
+assert.throws(() => isPlainObject(observed), (error) => error === prototypeFailure);
+assert.deepStrictEqual(events, ["prototype"]);
+events.length = 0;
+assert.strictEqual(isObjectRecord(observed), true);
+assert.strictEqual(asObjectRecord(observed), observed);
+assert.deepStrictEqual(events, []);
+assert.strictEqual(hasPlainObjectTag(observed), true);
+assert.deepStrictEqual(events, ["tag"]);
+events.length = 0;
+const nullPrototype = new Proxy({}, { getPrototypeOf() { events.push("prototype"); return null; } });
+assert.strictEqual(isPlainObject(nullPrototype), true);
+assert.strictEqual(isObjectRecord(nullPrototype), true);
+assert.deepStrictEqual(events, ["prototype"]);
+for (const prototype of [null, Object.prototype]) {
+  const array = Object.setPrototypeOf([], prototype);
+  Object.defineProperty(array, Symbol.toStringTag, { get() { throw tagFailure; } });
+  assert.strictEqual(isPlainObject(array), true);
+  assert.strictEqual(asRecord(array), array);
+  assert.strictEqual(isObjectRecord(array), false);
+  assert.strictEqual(hasPlainObjectTag(array), false);
+}
+const arrayProxy = new Proxy([], { getPrototypeOf() { throw prototypeFailure; }, get(target, key, receiver) { if (key === Symbol.toStringTag) throw tagFailure; return Reflect.get(target, key, receiver); } });
+assert.throws(() => isPlainObject(arrayProxy), (error) => error === prototypeFailure);
+assert.strictEqual(isObjectRecord(arrayProxy), false);
+assert.strictEqual(hasPlainObjectTag(arrayProxy), false);
+const callable = Object.defineProperty(function () {}, Symbol.toStringTag, { get() { throw tagFailure; } });
+assert.strictEqual(hasPlainObjectTag(callable), false);
+const tagged = Object.defineProperty({}, Symbol.toStringTag, { get() { throw tagFailure; } });
+assert.throws(() => hasPlainObjectTag(tagged), (error) => error === tagFailure);
+const nativeError = (operation) => { try { operation(); } catch (error) { return error; } assert.fail("native operation must throw"); };
+const revoked = Proxy.revocable([], {});
+revoked.revoke();
+for (const [predicate, operation] of [[isPlainObject, () => Object.getPrototypeOf(revoked.proxy)], [isObjectRecord, () => Array.isArray(revoked.proxy)], [hasPlainObjectTag, () => Array.isArray(revoked.proxy)]]) {
+  const expected = nativeError(operation);
+  assert.throws(() => predicate(revoked.proxy), (error) => error.constructor === expected.constructor && error.message === expected.message);
+}
+const revokedCallable = Proxy.revocable(function () {}, {});
+revokedCallable.revoke();
+assert.strictEqual(isPlainObject(revokedCallable.proxy), false);
+assert.strictEqual(isObjectRecord(revokedCallable.proxy), false);
+assert.strictEqual(hasPlainObjectTag(revokedCallable.proxy), false);
+const artifact = { "schemaVersion": "eliza.meeting_artifact.v1", "artifactId": "artifact-1", "meeting": { "id": "meeting-1", "captureMode": "local_capture", "platform": "local", "consent": { "state": "granted" }, "retentionPolicy": { "retainAudio": true, "retainTranscript": true, "scope": "owner-private" } }, "media": [{ "id": "media-1", "url": "/api/media/0123456789abcdef.wav", "mimeType": "audio/wav" }], "sourceStreams": [{ "id": "stream-1", "kind": "local_mic", "mediaRefId": "media-1", "platformParticipantId": "participant-1" }], "platformParticipants": [{ "id": "participant-1" }], "diarizedSpeakers": [{ "id": "speaker-1", "sourceStreamIds": ["stream-1"], "platformParticipantIds": ["participant-1"], "entityBindingId": "binding-1", "name": { "displayName": "Ada", "provenance": "self_introduction", "confidence": 0.9 } }], "entityBindings": [{ "id": "binding-1", "diarizedSpeakerId": "speaker-1", "entityId": "entity-1", "status": "active", "provenance": "self_introduction", "confidence": 0.9 }], "transcriptSpans": [{ "id": "span-1", "sourceStreamId": "stream-1", "speakerId": "speaker-1", "platformParticipantId": "participant-1", "startMs": 0, "endMs": 1000, "text": "hello", "words": [{ "text": "hello", "startMs": 0, "endMs": 1000 }] }], "notes": [{ "id": "note-1", "transcriptSpanIds": ["span-1"] }], "actionItems": [{ "id": "action-1", "transcriptSpanIds": ["span-1"] }], "decisions": [{ "id": "decision-1", "transcriptSpanIds": ["span-1"] }], "evidenceArtifacts": [{ "id": "evidence-1", "mediaRefId": "media-1", "transcriptSpanIds": ["span-1"] }] };
+const validation = { valid: true, errors: [] };
+let meetingPrototypeReads = 0;
+assert.deepStrictEqual(validateMeetingArtifact(new Proxy(artifact, { getPrototypeOf(target) { meetingPrototypeReads += 1; return Reflect.getPrototypeOf(target); } })), validation);
+assert.strictEqual(meetingPrototypeReads, 0);
+assert.deepStrictEqual(validateMeetingArtifact(new Proxy(artifact, { getPrototypeOf() { throw prototypeFailure; } })), validation);
+console.log("null");`
   const ASSETS = `import { createHash } from "node:crypto"; import fs from "node:fs"; import path from "node:path";
 const [dir, catalogs] = JSON.parse(process.argv[1]);
 const restart = await import("@elizaos/core/restart-exit-code.json", { with: { type: "json" } }).then((json) => json.default, (error) => error.code);
@@ -4194,6 +4249,9 @@ console.log(JSON.stringify({
   const sourceImports = try record("PackedImports", "source-condition imports", baseline.flatMap((entry) =>
     differences(entry.entry, sourceNames[entry.entry], entry.entry.endsWith(".json") ? ["default"] : entry.exports.filter((symbol) => !symbol.typeOnly).map((symbol) => symbol.name))))
 
+  const nativeRecords = try host(() => runNode({ script: NATIVE_RECORDS, cwd: consumer, timeoutMs: 300_000 }))
+  const nativeRecordChecks = try record("PackedImports", "native record observations", nativeRecords.status === 0 ? [] : [nativeRecords.stderr || nativeRecords.stdout || `node exit ${nativeRecords.status}`])
+
   const catalogs = baseline.filter((entry) => entry.entry.startsWith("./catalog/")).map((entry) => [entry.entry, manifest.exports[entry.entry]?.default ?? entry.conditions.default])
   const assets = (try node(consumer, ASSETS, [`${consumer}/node_modules/@elizaos/core`, catalogs])) as { restart: unknown; digests: Record<string, string | null>; privateSubpath: string; guard: string }
   const assetChecks = try record("PackedImports", "json assets and private subpath", [
@@ -4276,10 +4334,11 @@ console.log(JSON.stringify({
   ])
 
   const passed = (kind: string, check: string) => ({ kind, check, candidate: selected, ok: true, detail: [] as string[] })
-  try Effect.try(() => assert.deepStrictEqual([exportMap, names, sourceImports, assetChecks, browserSafe, rootBoundary, consumerTypes, sourceTypes, declarations, fields, copies], [
+  try Effect.try(() => assert.deepStrictEqual([exportMap, names, sourceImports, nativeRecordChecks, assetChecks, browserSafe, rootBoundary, consumerTypes, sourceTypes, declarations, fields, copies], [
     passed("PackedImports", "export map"),
     passed("PackedImports", "runtime names"),
     passed("PackedImports", "source-condition imports"),
+    passed("PackedImports", "native record observations"),
     passed("PackedImports", "json assets and private subpath"),
     passed("PackedImports", "browser-safe leaves"),
     passed("PackedImports", "root boundary"),
