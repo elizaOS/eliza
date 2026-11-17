@@ -30,6 +30,7 @@ import {
   type State,
   stringToUuid,
 } from "@elizaos/core";
+import { authoredNoteText } from "./note-authored.js";
 import {
   getNotesService,
   type NotesService,
@@ -522,9 +523,11 @@ export const notesAction: Action = {
         ? notes.filter((note) => note.id === noteId)
         : normalizedTopic
           ? notes.filter((note) =>
-              normalizedLookup(reconstructNoteContent(note)).includes(
-                normalizedTopic,
-              ),
+              // Checklist items and link clips live in the authored format,
+              // not the body; update and delete lookups search them too.
+              normalizedLookup(
+                `${reconstructNoteContent(note)}\n${authoredNoteText(note.format)}`,
+              ).includes(normalizedTopic),
             )
           : notes;
       if (

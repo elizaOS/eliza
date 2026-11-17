@@ -1896,6 +1896,24 @@ describe("NOTES operation parsing", () => {
       filterApplied: true,
     });
 
+    // Checklist items live in the authored format, with an empty body.
+    const checklist = await getNotesService(runtime).createNote({
+      title: "Groceries",
+      body: "",
+      color: "yellow",
+      format: {
+        kind: "list",
+        data: { items: [{ t: "Oat milk", done: false }] },
+      },
+    });
+    const authored = await run(runtime, "list", {
+      action: "list",
+      content: "oat milk",
+    });
+    expect(authored.data).toMatchObject({ count: 1, total: 3 });
+    expect(authored.data?.notes).toMatchObject([{ id: checklist.id }]);
+    await getNotesService(runtime).deleteNote(checklist.id);
+
     const absent = await run(runtime, "list", {
       action: "list",
       query: "dentist",
