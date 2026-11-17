@@ -6,12 +6,13 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import type { Model } from "./gen.ts";
 import { SENDER } from "./gen/classify.ts";
-import { act, violated, type Input } from "./action.ts";
+import { act, completed, violated, type Input } from "./action.ts";
 import { entry, remembered, type Memory } from "./cache.ts";
 import { conformanceFound, type Simulated } from "./conform.ts";
 import { simulated } from "./gen/harness.ts";
 import { codeOf, modules, type Rule, type Spec } from "./parse.ts";
 import type { Result } from "./pipeline.ts";
+import { TABLE, compiledAs } from "./simulator.ts";
 import { allDone, digest, indent, SIMULATIONS } from "./util.ts";
 
 const SAMPLES = 10000;
@@ -107,7 +108,7 @@ async function simulating<T>(root: string, go: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** Simulated traces per process, at least: below this, a run is not split, since each process costs about a second to start. */
+/** Simulated traces per process, at least: below this, a run is not split, since each process costs about a tenth of a second of processor time to start. */
 const SHARD_SAMPLES = 1000;
 const MAX_SHARDS = 4;
 
@@ -120,21 +121,43 @@ export function harnessFiles(spec: Spec, specs: Spec[], model: Model): Record<st
 }
 
 /**
- * Simulate the harness until `invariant` breaks; returns the traces Quint wrote, and the command that runs the same
- * simulation again. One run of Quint uses one core, so with `split` a large budget is split among up to four runs of a
- * single thread, each with a seed of its own; how it is split depends only on the budget, so the same harness always gives
- * the same traces. When a run breaks the invariant, the command is the one for that run. A run that ran is in
- * gen/traces until the next check; one remembered (action.ts) is not.
+ * A harness as Quint parses and typechecks it, once for all its runs: the table of its definitions, and each `val` and
+ * action of its run module as the expression a run names it by (simulator.ts). Undefined if Quint refuses the harness.
  */
-export async function simulate({ memory, model, files }: Harness, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
+const compilations = new WeakMap<Harness, Promise<Record<string, Input> | undefined>>();
+function compiled(harness: Harness): Promise<Record<string, Input> | undefined> {
+  const { memory, model, files } = harness;
+  let parts = compilations.get(harness);
+  if (!parts) compilations.set(harness, parts = act(memory, "simulator", ["compile", `${model.name}.run.qnt`, "--main", `${model.name}_run`], `${SIMULATIONS}/${model.name}.compiled`, files)
+    .then((r) => (r.ok ? Object.fromEntries(Object.entries(r.files).map(([f, text]) => [f, { text, key: digest(text) }])) : undefined)));
+  return parts;
+}
+
+/**
+ * Simulate the harness until `invariant` breaks; returns the traces Quint wrote, and the command that runs the same
+ * simulation again. Each run gives Quint's evaluator the compiled harness and writes the traces `quint run` writes for
+ * the same arguments; a run that ends with no answer that way is run by `quint run` itself, which says why. One run uses
+ * one core, so with `split` a large budget is split among up to four runs of a single thread, each with a seed of its
+ * own; how it is split depends only on the budget, so the same harness always gives the same traces. When a run breaks
+ * the invariant, the command is the one for that run. A run that ran is in gen/traces until the next check; one
+ * remembered (action.ts) is not.
+ */
+export async function simulate(harness: Harness, invariant: string, traces: number, samples: number, step = "step", split = false, steps = STEPS, seed = 1, sampleLimit = samples): Promise<{ broken: boolean; traces: Step[][]; again: string }> {
+  const { memory, model, files } = harness;
   const dir = `${SIMULATIONS}/${model.name}.${invariant}.${step}`;
+  const parts = await compiled(harness);
+  const needed = [TABLE, ...["init", step, invariant].map(compiledAs)];
+  const direct = parts && needed.every((f) => Object.hasOwn(parts, f)) ? Object.fromEntries(needed.map((f) => [f, parts[f]])) : undefined;
   const shards = !split ? 1 : Math.max(1, Math.min(MAX_SHARDS, Math.floor(samples / SHARD_SAMPLES)));
   const runs = Array.from({ length: shards }, async (_, k) => {
     const derivedSeed = seedFor(seed, model.harness, invariant, step, String(samples), String(steps), ...(shards === 1 ? [] : [`${k} of ${shards}`]));
     const main = `${model.name}.run.qnt`;
     const args = ["--main", `${model.name}_run`, "--step", step, "--invariant", invariant,
       "--max-samples", String(Math.ceil(sampleLimit / shards)), "--max-steps", String(steps), "--mbt", "--seed", derivedSeed, "--n-threads", "1"];
-    const r = await simulating(memory.root, () => act(memory, "quint", ["run", main, ...args, "--n-traces", String(Math.ceil(traces / shards)), "--out-itf", "{seq}.itf.json"], shards === 1 ? dir : `${dir}/${k}`, files));
+    const run = ["run", main, ...args, "--n-traces", String(Math.ceil(traces / shards)), "--out-itf", "{seq}.itf.json"];
+    const where = shards === 1 ? dir : `${dir}/${k}`;
+    const evaluated = direct && await simulating(memory.root, () => act(memory, "simulator", run, where, direct));
+    const r = evaluated && (completed(evaluated) || evaluated.stopped) ? evaluated : await simulating(memory.root, () => act(memory, "quint", run, where, files));
     const broken = violated(r);
     // In the order Quint wrote them, so that the same simulation always gives the traces in the same order.
     const written = Object.keys(r.files).filter((f) => f.endsWith(".itf.json")).sort((x, y) => parseInt(x, 10) - parseInt(y, 10) || x.localeCompare(y));

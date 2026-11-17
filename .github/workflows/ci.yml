@@ -1,18 +1,20 @@
 name: ci
 
-# Every run is `pnpm verify`, the tools' own self-test included; Turborepo and
-# spec skip what the change does not reach, from the cache of the last run.
-# The fixed normal profile is the same locally and in CI. The self-test also
-# installs and checks each standalone example.
+# Every run is the tasks of `pnpm verify`, the tools' own self-test included,
+# split over four jobs that run side by side: the self-test of the tools in
+# three, everything else in one. Turborepo and spec skip what the change does
+# not reach, from the cache of the last run. The fixed normal profile is the
+# same locally and in CI. The self-test also installs and checks each
+# standalone example.
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [main]
   push:
-    branches: [develop, main]
+    branches: [main]
 
 concurrency:
-  group: ci-${{ github.event_name == 'pull_request' && !(github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) && format('pr-{0}', github.event.pull_request.number) || format('sha-{0}', github.event.pull_request.head.sha || github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && !(github.head_ref == 'develop' && github.event.pull_request.head.repo.full_name == github.repository) }}
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('sha-{0}', github.sha) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   TURBO_TELEMETRY_DISABLED: "1"
@@ -22,7 +24,20 @@ permissions:
 
 jobs:
   verify:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: verify
+            tasks: build typecheck test test:browser check //#lint:js //#lint:css //#analyze //#selftest:docs //#selftest:examples
+          - name: selftest-a
+            tasks: //#selftest:tools:a
+          - name: selftest-b
+            tasks: //#selftest:tools:b
+          - name: selftest-rest
+            tasks: //#selftest:tools:rest
     environment: ${{ github.event_name == 'push' && 'turbo-cache-publish' || 'turbo-cache-read' }}
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -31,7 +46,9 @@ jobs:
       - uses: actions/checkout@v7
       - id: setup
         uses: ./.github/actions/setup
-      - run: pnpm verify --continue --summarize
+        with:
+          job: ${{ matrix.name }}
+      - run: node vibestack/spec.ts tasks ${{ matrix.tasks }} --continue --summarize
       - if: always() && steps.setup.outputs.spec-cache-key != ''
         uses: actions/cache/save@v6
         with:
@@ -50,7 +67,7 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: proof
+          name: proof-${{ matrix.name }}
           path: |
             gen/proof/
             vibestack/studio/gen/proof/
@@ -58,7 +75,7 @@ jobs:
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: failures
+          name: failures-${{ matrix.name }}
           path: |
             test/counterexamples/
             test/__traces__/
