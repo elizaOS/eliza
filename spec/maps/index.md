@@ -4,7 +4,10 @@ The maps package plans routes, guides the person along a route they
 started, and lets the agent see what the Maps screen shows. The agent
 can prepare a route but never starts guidance; guidance continues with
 the screen off only for the session the person started. Managed map
-data comes from the Cloud's [maps](../cloud/maps.md) service.
+data comes from the Cloud's [maps](../cloud/index.md) service.
+
+The linked cloud contracts are being rebuilt. Their detailed models and
+execution evidence remain pending.
 
 | Area | Specifications |
 | --- | --- |

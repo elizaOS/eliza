@@ -1,9 +1,12 @@
 # Reviewed scan links
 
 [Local OCR](../localOcr.md) supplies a scan's text, and [browser page
-requests](../../os/browser/surface/pageRequests.md) govern the
+requests](../../os/index.md) govern the
 external-link bridge. This spec governs which exact URLs the current scan offers and when
 a click or completion can act on that review.
+
+The linked OS contracts are being rebuilt. Their detailed models and execution
+evidence remain pending.
 
 ## Story: Review links in my scanned text and open the one I choose
 

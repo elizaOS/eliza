@@ -5,8 +5,11 @@ slot on the device, apart from the saved collection, so that a failed save
 loses nothing. It also opens the notes collection an earlier version of
 the client left on the device, the previous notes, without changing it.
 The [Notes client](./client.md) owns canonical saves, [Trash](./trash.md)
-owns removed notes and recordings, and [secure slots](../auth/secureSlots.md)
+owns removed notes and recordings, and [secure slots](../os/index.md)
 own slot storage and compare-and-exchange.
+
+The linked OS contracts are being rebuilt. Their detailed models and execution
+evidence remain pending.
 
 ## Story: Keep the unsaved text from my previous notes
 

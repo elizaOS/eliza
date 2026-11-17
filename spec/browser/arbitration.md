@@ -1,6 +1,6 @@
 # Website browser arbitration
 
-A host that guides the person through a website has two browser peers: an owned Chromium and the embedded web view, each holding its own task bindings. This spec governs which peer receives the host's task operations. The [interactive task kernel](../core/interactiveTask.md) owns task epochs, the [surface channel](../agent/nativeHost/surfaceChannel.md) owns command delivery, and each browser checks its own bindings and receipts.
+A host that guides the person through a website has two browser peers: an owned Chromium and the embedded web view, each holding its own task bindings. This spec governs which peer receives the host's task operations. The [interactive task kernel](../core/interactiveTask.md) owns task epochs, the [surface channel](../agent/surfaceChannel.md) owns command delivery, and each browser checks its own bindings and receipts.
 
 ## Story: Follow the browser the person can see
 

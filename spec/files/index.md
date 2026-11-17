@@ -5,7 +5,10 @@ scans documents, and keeps links back to the documents a note or answer
 came from. Every change acts on the exact revision the owner reviewed,
 every open belongs to the request and view that asked for it, and
 document text is recognized on the device. The device's own file
-custody is the os package's [file mutation](../os/android/files/mutation.md).
+custody is the os package's [file mutation](../os/index.md).
+
+The linked OS contracts are being rebuilt. Their detailed models and execution
+evidence remain pending.
 
 | Area | Specifications |
 | --- | --- |

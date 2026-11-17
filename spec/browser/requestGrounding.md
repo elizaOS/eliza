@@ -1,8 +1,11 @@
 # Browser request grounding
 
 The browser opens a destination only when the current message grounds it.
-The device's [browser document custody](../os/browser/documentCustody.md)
+The device's [browser document custody](../os/index.md)
 owns browser visits; this spec owns admission from the current message.
+
+The linked OS contracts are being rebuilt. Their detailed models and execution
+evidence remain pending.
 
 ## Story: Open a destination stated in this message
 

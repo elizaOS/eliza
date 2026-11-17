@@ -4,7 +4,10 @@ A note's recording lives on the device as an audio file in private,
 non-backed-up storage, with its metadata, owned by its note, in an
 encrypted slot. This spec begins when the device's recorder hands over a
 stopped clip. [Notes Trash](./trash.md) owns journal admission and
-[secure slots](../auth/secureSlots.md) own encrypted slot readback.
+[secure slots](../os/index.md) own encrypted slot readback.
+
+The linked OS contracts are being rebuilt. Their detailed models and execution
+evidence remain pending.
 
 ## Story: Retain a finished recording for the same note and recover interrupted metadata
 

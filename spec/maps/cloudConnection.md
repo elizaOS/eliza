@@ -1,10 +1,13 @@
 # Cloud Maps connection ownership
 
 The maps client reaches its provider through the owner's Cloud account.
-The Cloud side is [Cloud maps](../cloud/maps.md). [Maps planning](./navigation.md)
+The Cloud side is [Cloud maps](../cloud/index.md). [Maps planning](./navigation.md)
 owns routes, live location, and guidance.
 [Request pauses](./requests.md) and [attribution](./attribution.md)
 cover what the connected provider returns.
+
+The linked cloud contracts are being rebuilt. Their detailed models and
+execution evidence remain pending.
 
 ## Story: Keep Cloud Maps on the account that requested it
 

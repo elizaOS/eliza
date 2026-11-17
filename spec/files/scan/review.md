@@ -2,11 +2,14 @@
 
 A consumer imports `createScanDocument`, image admission and scan limits
 from Eliza's `plugins/plugin-native-camera/src/scan-document.ts`. Its
-[camera](../../os/android/camera.md) adapter also imports `createScanCapture` from that
+[camera](../../os/index.md) adapter also imports `createScanCapture` from that
 file. The consumer binds `plugins/plugin-files/src/documents/scan-draft.ts`
 to a consumer-named device database. The editor runs on the native and
 browser surfaces. The native surface enables autosave and native save
 pickers.
+
+The linked OS contracts are being rebuilt. Their detailed models and execution
+evidence remain pending.
 
 ## Story: Assemble a document and retain a reviewable draft
 

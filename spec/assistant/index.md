@@ -3,15 +3,18 @@
 `@elizaos/plugin-personal-assistant` helps one owner with their own time:
 reminders, goals, to-dos and routines, follow-ups on approvals they left
 open, check-in summaries, a daily dossier, and the owner's local time zone
-that all of them fire in. It runs inside the owner's agent, on the device
-or hosted, and it stores the owner's records in the agent's database.
+that all of them fire in. It runs inside the owner's agent on the device
+and stores the owner's records in the agent's database.
 
 The scheduled-task runner, the agent's approvals and the device's native
-reminders are owned elsewhere ([agent scheduled tasks](../agent/scheduledTasks.md),
-[device action custody](../agent/deviceActions/execution.md),
-[device reminders](../os/android/reminders.md)); the specs here say what
+reminders are owned elsewhere ([agent scheduled tasks](../agent/schedule/scheduledTasks.md),
+[device action custody](../os/index.md),
+[device reminders](../os/index.md)); the specs here say what
 the assistant asks of them and what it keeps itself. Household, family,
 travel, health, bill and blocking services are not part of this package.
+
+The linked OS contracts are being rebuilt. Their detailed models and execution
+evidence remain pending.
 
 | Area | Specification |
 | --- | --- |

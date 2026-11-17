@@ -3,8 +3,11 @@
 A managed account's aggregate inbox read is a fresh read for the owner
 who asked for it, never served from a cache, and a read the managed
 route does not support is refused before anything is sent. The Cloud
-side of the read is [managed Gmail](../cloud/managedGoogle/gmail.md); the
+side of the read is [managed Gmail](../cloud/index.md); the
 device's own cached reads are [mailbox reads](./reads.md).
+
+The linked cloud contracts are being rebuilt. Their detailed models and
+execution evidence remain pending.
 
 ## Story: Read my managed inbox fresh, and only for me
 

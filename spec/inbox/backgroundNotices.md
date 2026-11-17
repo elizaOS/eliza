@@ -3,9 +3,12 @@
 A background notice tells the owner that mail arrived. Tapping it opens
 the inbox, or asks the agent about that exact message after the owner
 reviews its excerpt. The device's stored history, scheduler, delivery and
-tap verification are [mail background delivery](../os/android/mailBackgroundDelivery.md).
+tap verification are [mail background delivery](../os/index.md).
 A notice carries counts only; the subject and snippet stay in the
 reviewed excerpt.
+
+The linked OS contracts are being rebuilt. Their detailed models and execution
+evidence remain pending.
 
 ## Story: Open the Inbox or ask about the exact notification I tapped
 
