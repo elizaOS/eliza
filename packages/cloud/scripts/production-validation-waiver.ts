@@ -296,6 +296,14 @@ export async function requireReleaseWaiver({
       encoding: "utf8",
       timeout: 30000,
     }).trim();
+  // Artifact-only deployment checkouts contain the release commit, but may omit
+  // its parent. Fetch only the fixed reviewed baseline before comparing trees.
+  try {
+    git(["cat-file", "-e", `${WAIVER_BASELINE}^{commit}`]);
+  } catch {
+    git(["fetch", "--no-tags", "--depth=1", "origin", WAIVER_BASELINE]);
+    git(["cat-file", "-e", `${WAIVER_BASELINE}^{commit}`]);
+  }
   const treeSha = git(["rev-parse", `${sourceSha}^{tree}`]);
   const changedPaths = git([
     "diff",
