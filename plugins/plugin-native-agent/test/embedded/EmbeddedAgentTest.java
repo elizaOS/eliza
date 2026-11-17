@@ -42,8 +42,10 @@ public final class EmbeddedAgentTest {
     check(env.get("ELIZAOS_CLOUD_API_KEY").equals("cloud-key-1") && env.get("ELIZAOS_CLOUD_BASE_URL").equals("https://cloud.example"));
     check(env.get("ELIZA_ACTION_ALLOWLIST").equals("[\"NONE\",\"REPLY\"]") && env.get("ELIZA_PLUGIN_SET").equals("lean-chat"));
     check(env.get("ELIZAOS_CLOUD_LARGE_MODEL").equals("large-1") && env.get("ELIZA_PAIRING_DISABLED").equals("1"));
+    check(env.get("ELIZA_DEPLOYMENT_RUNTIME").equals("cloud") && env.get("ELIZA_DISABLE_LOCAL_EMBEDDINGS").equals("1"));
     JSONObject agent = config.agentConfig();
     check(agent.getJSONObject("serviceRouting").getJSONObject("llmText").getString("backend").equals("elizacloud"));
+    check(agent.getJSONObject("serviceRouting").getJSONObject("embeddings").getString("transport").equals("cloud-proxy"));
     check(agent.getJSONObject("agents").getJSONArray("list").getJSONObject(0).getBoolean("default"));
     check(agent.getJSONObject("plugins").getJSONArray("deny").getString(0).equals("@elizaos/plugin-browser"));
     check(agent.getJSONObject("database").getJSONObject("pglite").getString("dataDir").equals("memory://"));
@@ -54,7 +56,7 @@ public final class EmbeddedAgentTest {
       ExecutorService agentSide = Executors.newCachedThreadPool();
       CountDownLatch held = new CountDownLatch(1);
       agentSide.execute(() -> {
-        for (String mode : List.of("events", "refusal", "held")) try (Socket socket = server.accept()) {
+        for (String mode : List.of("events", "refusal", "cut", "held")) try (Socket socket = server.accept()) {
           BufferedReader request = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
           String line; boolean authorized = false;
           while (!(line = request.readLine()).isEmpty()) authorized |= line.equals("Authorization: Bearer agent-token");
@@ -64,10 +66,11 @@ public final class EmbeddedAgentTest {
             continue;
           }
           out.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n".getBytes(StandardCharsets.UTF_8));
-          for (String frame : mode.equals("held") ? List.of("data: {\"text\":\"Hel\"}\n\n") : List.of("data: {\"text\":\"Hé\"}\n\n", ": keep\n\ndata: line one\ndata: line two\n\n", "data: [DONE]\n\n")) {
+          for (String frame : !mode.equals("events") ? List.of("data: {\"text\":\"Hel\"}\n\n") : List.of("data: {\"text\":\"Hé\"}\n\n", ": keep\n\ndata: line one\ndata: line two\n\n", "data: [DONE]\n\n")) {
             byte[] bytes = frame.getBytes(StandardCharsets.UTF_8);
             out.write((Integer.toHexString(bytes.length) + "\r\n").getBytes(StandardCharsets.US_ASCII)); out.write(bytes); out.write("\r\n".getBytes(StandardCharsets.US_ASCII)); out.flush();
           }
+          if (mode.equals("cut")) continue;
           if (mode.equals("held")) { held.countDown(); socket.getInputStream().read(); }
           else out.write("0\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
         } catch (IOException closed) { }
@@ -78,6 +81,9 @@ public final class EmbeddedAgentTest {
       check(frames.equals(List.of("{\"text\":\"Hé\"}", "line one\nline two", "[DONE]")));
       JSONObject refusal = LocalRuntimeHttp.stream(new Socket(), server.getLocalPort(), "agent-token", "POST", "/api/conversations/c1/messages/stream", null, 5000, 65536, frames::add);
       check(refusal.getInt("status") == 409 && refusal.getJSONObject("data").getString("error").equals("busy"));
+      Socket crashed = new Socket();
+      try { LocalRuntimeHttp.stream(crashed, server.getLocalPort(), "agent-token", "POST", "/api/conversations/c1/messages/stream", null, 5000, 65536, frames::add); check(false); }
+      catch (IOException cut) { check(cut.getMessage() != null && !cut.getMessage().isEmpty()); }
       Socket aborted = new Socket();
       List<String> partial = new CopyOnWriteArrayList<>();
       CountDownLatch arrived = new CountDownLatch(1);

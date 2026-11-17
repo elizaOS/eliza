@@ -98,9 +98,10 @@ public final class LocalRuntimeHttp {
     }
     return lines.toString();
   }
+  private static EOFException cut() { return new EOFException("The agent closed the response before it ended"); }
   private static String line(InputStream in) throws IOException {
     String value = textLine(in, 16384);
-    if (value == null) throw new EOFException();
+    if (value == null) throw cut();
     return value;
   }
   private static String textLine(InputStream in, int limit) throws IOException {
@@ -122,7 +123,7 @@ public final class LocalRuntimeHttp {
     @Override public int read(byte[] buffer, int offset, int length) throws IOException {
       if (remaining == 0) return -1;
       int count = in.read(buffer, offset, (int) Math.min(length, remaining));
-      if (count < 0) throw new EOFException();
+      if (count < 0) throw cut();
       remaining -= count; return count;
     }
   }
@@ -140,7 +141,7 @@ public final class LocalRuntimeHttp {
         if (remaining == 0) { ended = true; return -1; }
       }
       int count = in.read(buffer, offset, Math.min(length, remaining));
-      if (count < 0) throw new EOFException();
+      if (count < 0) throw cut();
       remaining -= count; return count;
     }
   }
