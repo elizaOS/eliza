@@ -560,6 +560,7 @@
     {
       "file": "packages/cloud/api/__tests__/native-callback.pglite.test.ts",
       "required": [
+        "root asset links is limited before database registration lookup",
         "serves fallback HTML for database-registered client without any environment variable",
         "immediately reflects client or app renaming without server deployment",
         "serves native billing return fallback page with session parameters",
@@ -568,7 +569,7 @@
         "returns 404 when parent app is unapproved",
         "Pages uses the current database callback and browser-start registration",
         "installed client aliases share one current callback policy and refuse conflicting policies",
-        "root asset links is limited before database registration lookup"
+        "Alpha package migration preserves the legacy login alias but returns both to the canonical app"
       ]
     }
   ],
