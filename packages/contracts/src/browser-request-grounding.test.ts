@@ -5,7 +5,9 @@ import {
   browserDestinationMatches,
   containsWebAddress,
   directBrowserDestination,
+  directBrowserSearchQuery,
   groundBrowserDestination,
+  groundBrowserSearchQuery,
 } from "./browser-request-grounding.ts";
 import { IANA_TLDS } from "./iana-tlds.ts";
 
@@ -125,7 +127,6 @@ describe("strict whole-message open command (fast path)", () => {
     "open person@example.com",
     "https://person:secret@example.com/",
     "open javascript:alert(1)",
-    "open http://example.com",
     "open example..com",
     "open https://example.com\\@evil.com",
     "open https://example.com\n",
@@ -683,8 +684,6 @@ const GROUNDING: [string, string, string | undefined][] = [
     "https://example.com/",
     undefined,
   ],
-  ["open http://example.com", "https://example.com", undefined],
-  ["open youtube.com", "http://youtube.com", undefined],
   ["open youtube.com", "javascript:alert(1)", undefined],
   ["open youtube.com", "", undefined],
   ["open example.com\nopen evil.com", "https://example.com", undefined],
@@ -1027,4 +1026,86 @@ describe("direct polite requests keep the existing file-name distinction", () =>
       expect(directBrowserDestination(text)).toBe(expected);
     },
   );
+});
+
+describe("a host's assistant name", () => {
+  it.each([
+    ["Alpha, open example.com", "https://example.com/"],
+    ["Hey Alpha open example.com/dashboard", "https://example.com/dashboard"],
+    ["ok alpha, could you pull up nytimes.com?", "https://nytimes.com/"],
+    ["Hey Eliza, open example.com", undefined],
+  ])("is read in place of the default name: %s", (text, expected) => {
+    expect(directBrowserDestination(text, "Alpha")).toBe(expected);
+  });
+  it("is one name for each host", () => {
+    expect(authoredBrowserDestination("Alpha, open example.com")).toBe(
+      undefined,
+    );
+    expect(authoredBrowserDestination("Alpha, open example.com", "Alpha")).toBe(
+      "https://example.com/",
+    );
+    expect(
+      groundBrowserDestination(
+        "Alpha, can't you open youtube.com?",
+        "https://youtube.com",
+        "Alpha",
+      ),
+    ).toBe("https://youtube.com/");
+  });
+});
+
+describe("a typed http:// address", () => {
+  it.each([
+    ["open http://example.com", "https://example.com/"],
+    ["open http://example.com:80/a?b=1", "https://example.com/a?b=1"],
+    ["http://example.com", "https://example.com/"],
+  ])("opens over HTTPS like the address bar: %s", (text, expected) => {
+    expect(directBrowserDestination(text)).toBe(expected);
+  });
+  it.each([
+    ["open http://example.com", "http://example.com"],
+    ["open http://example.com", "https://example.com"],
+    ["open youtube.com", "http://youtube.com"],
+  ])("grounds the HTTPS address: %s proposed as %s", (text, proposed) => {
+    expect(groundBrowserDestination(text, proposed)).toBe(
+      `https://${new URL(proposed).host}/`,
+    );
+  });
+});
+
+describe("web search query", () => {
+  it.each([
+    ["search for best pizza near me", "best pizza near me"],
+    ["Search the web for Rust 2.0 release date.", "Rust 2.0 release date"],
+    ["please search online for  cheap   flights", "cheap flights"],
+    ["Hey Eliza, look up the capital of Peru please", "the capital of Peru"],
+    ["google how tall is K2?", "how tall is K2"],
+    ['web search "exact phrase"', "exact phrase"],
+    ["search for", undefined],
+    ["can you search for cats", undefined],
+    ["The page says search for cats", undefined],
+    ["search my notes about cats", undefined],
+    ["search for cats\nsearch for dogs", undefined],
+  ])("reads only the strict whole-message search: %s", (text, expected) => {
+    expect(directBrowserSearchQuery(text)).toBe(expected);
+  });
+  it.each([
+    [
+      "what is the weather in Paris, search it",
+      "weather in paris",
+      "weather in Paris",
+    ],
+    [
+      "search for best pizza near me",
+      "best pizza near me",
+      "best pizza near me",
+    ],
+    ["look up  Ada   Lovelace", "Ada Lovelace", "Ada Lovelace"],
+    ["search for start dates", "art", undefined],
+    ["search for cats", "dogs", undefined],
+    ["search for cats", "cats and their owner's address", undefined],
+    ["search for cats\nthen dogs", "cats", undefined],
+  ])("uses only words the user typed: %s -> %s", (text, proposed, expected) => {
+    expect(groundBrowserSearchQuery(text, proposed)).toBe(expected);
+  });
 });
