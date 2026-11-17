@@ -49,7 +49,7 @@ const requestOperations = new Map<string, NotesRequestOperation>([
   ["read my workflow note without changing it", "get"],
   ["update my workflow note", "patch"],
   ["read my updated workflow note", "list"],
-  ["delete my workflow note", "delete"],
+  ["delete my Workflow launch checklist note", "delete"],
 ]);
 
 function bindScenarioNotesRequests(original: Action): Action {
@@ -356,7 +356,8 @@ export default scenario({
       kind: "action",
       name: "delete the updated note",
       actionName: "NOTES",
-      text: "delete my workflow note",
+      // Chat deletes by text only a note whose title the owner names.
+      text: "delete my Workflow launch checklist note",
       options: {
         parameters: { action: "delete", content: "Workflow launch checklist" },
       },
