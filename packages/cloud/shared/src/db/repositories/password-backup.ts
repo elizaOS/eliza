@@ -15,10 +15,23 @@ type BackupChange =
   | { kind: "save"; expectedRevision: number | null; snapshot: Uint8Array }
   | { kind: "delete"; expectedRevision: number };
 
+export async function assertPasswordBackupStorageReady() {
+  await dbWrite.execute(sql`SELECT revision FROM password_backups LIMIT 0`);
+}
+
 export async function readPasswordBackup(scope: PasswordBackupScope) {
   const { appId, organizationId, userId } = scope;
   const result = await dbWrite.execute<BackupRow>(sql`
     SELECT revision, snapshot FROM password_backups
+    WHERE app_id = ${appId} AND organization_id = ${organizationId} AND user_id = ${userId}
+  `);
+  return result.rows[0] ?? null;
+}
+
+export async function readPasswordBackupState(scope: PasswordBackupScope) {
+  const { appId, organizationId, userId } = scope;
+  const result = await dbWrite.execute<{ revision: number; present: boolean }>(sql`
+    SELECT revision, snapshot IS NOT NULL AS present FROM password_backups
     WHERE app_id = ${appId} AND organization_id = ${organizationId} AND user_id = ${userId}
   `);
   return result.rows[0] ?? null;
