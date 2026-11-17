@@ -32,6 +32,7 @@ import {
   normalizeMessageConnector,
   normalizePostConnector,
 } from "./connector-registration.vibe"
+import { asTrimmedString } from "../utils/type-guards.vibe"
 
 export interface ConnectorTables {
   readonly runtime: IAgentRuntime
@@ -49,10 +50,6 @@ type ConnectorWithHook<K extends keyof MessageConnector> =
 export error MissingConnectorSource { message: string }
 export error ConnectorNotRegistered { message: string }
 export error ConnectorCapabilityUnsupported { message: string }
-
-function normalizeSource(source: unknown): string {
-  return typeof source === "string" ? source.trim() : ""
-}
 
 function compareConnectors(
   a: { source: string; accountId?: string },
@@ -90,7 +87,7 @@ effect function registrationRoute(
   registration: MessageConnectorRegistration | PostConnectorRegistration,
   kind: string,
 ) {
-  const source = normalizeSource(registration.source)
+  const source = asTrimmedString(registration.source)
   if (!source) {
     throw new MissingConnectorSource({ message: `${kind} registration requires a source` })
   }
@@ -105,7 +102,7 @@ export effect function setSendHandler(
   handler: SendHandlerFunction,
   kind: SendHandlerKind,
 ) {
-  const normalized = normalizeSource(source)
+  const normalized = asTrimmedString(source)
   if (!normalized) {
     throw new MissingConnectorSource({ message: `${kind} registration requires a source` })
   }
@@ -167,7 +164,7 @@ function unregistrationRoute(
   accountId: string | undefined,
   options: ConnectorUnregisterOptions | undefined,
 ) {
-  const normalized = normalizeSource(source)
+  const normalized = asTrimmedString(source)
   if (!normalized) return undefined
   const normalizedAccountId = normalizeConnectorAccountId(accountId)
   const exactRoute = normalizedAccountId || options?.exactAccount
@@ -235,7 +232,7 @@ export effect function sendMessageToTarget(
   target: TargetInfo,
   content: Content,
 ) {
-  const source = normalizeSource(target.source)
+  const source = asTrimmedString(target.source)
   const accountId = normalizeConnectorAccountId(target.accountId)
   const handler = tables.sendHandlers.get(connectorRouteKey(source, accountId))
     ?? tables.sendHandlers.get(connectorRouteKey(source))
@@ -281,7 +278,7 @@ export effect function requireConnectorHook<K extends keyof MessageConnector>(
   hook: K,
   capability: string,
 ) {
-  const source = normalizeSource(target.source)
+  const source = asTrimmedString(target.source)
   const accountId = normalizeConnectorAccountId(target.accountId)
   const connector = tables.messageConnectors.get(connectorRouteKey(source, accountId))
     ?? tables.messageConnectors.get(connectorRouteKey(source))

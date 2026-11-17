@@ -1,7 +1,9 @@
 // spec/core/concurrency.md, "Story: Own each room through durable settlement"; spec/core/concurrency.md, "Room leases admit bounded FIFO requests and one owner per room"; spec/core/concurrency.md, "Release closes write admission and waits for every admitted write"; spec/core/roomQueueObservers.md, "Story: Observe and drain room queues without racing their owners"; spec/core/roomQueueObservers.md, "Queue identities and idle promises follow actual admission and drain"; spec/core/roomQueueObservers.md, "Live telemetry observers finish nested emissions before resuming"
+import { errorText } from "../utils/errors.vibe"
 import * as EffectSemaphore from "effect/Semaphore"
-import { Foreign, foreign, foreignSync, runDetached } from "../edge.vibe"
+import { Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
+import { AsyncContextManager } from "../utils/async-context-manager.vibe"
 
 export class RoomHandlerQueueAbortedError extends Data.TaggedError("RoomHandlerQueueAbortedError")<{ readonly roomId: string }> {
   override readonly name = "RoomHandlerQueueAbortedError"
@@ -95,27 +97,7 @@ export interface RoomHandlerOwnershipContext {
 
 type AmbientLeases = ReadonlyMap<string, RoomHandlerLease>
 
-module node {
-  import { AsyncLocalStorage } from "node:async_hooks"
-
-  export interface OwnershipStorage<T> {
-    run<R>(value: T, fn: () => R): R
-    /** @throws {never} */
-    current(): T | undefined
-  }
-
-  /** @throws {never} */
-  export function ownershipStorage<T>(): OwnershipStorage<T> {
-    const storage = new AsyncLocalStorage<T>()
-    return {
-      run: (value, fn) => storage.run(value, fn),
-      current: () => storage.getStore(),
-    }
-  }
-}
-import { ownershipStorage, type OwnershipStorage } from node
-
-const roomHandlerOwnershipStorage = ownershipStorage<AmbientLeases>()
+const roomHandlerOwnershipStorage = new AsyncContextManager<AmbientLeases>()
 
 function crossRoomReentry(
   ownerRoomIds: readonly string[],
@@ -185,7 +167,7 @@ export interface RoomTable {
   readonly leases: WeakMap<RoomHandlerLease, LeaseOwnership>
   readonly limits: RoomQueueLimits
   readonly onListenerError?: (error: unknown, event: RoomQueueEvent) => void
-  readonly ownershipStorage: OwnershipStorage<AmbientLeases> | null
+  readonly ownershipStorage: AsyncContextManager<AmbientLeases> | null
   admissionClosedReason: string | null
 }
 
@@ -375,7 +357,7 @@ effect function settleRoomWork(
 ): unknown!RoomWorkFailure {
   const settled = effect {
     const value = Deferred.await(done) catch effect (failure) => {
-      const error = failure instanceof Foreign ? failure.cause : failure
+      const error = thrownValue(failure)
       if (error instanceof RoomHandlerQueueAbortedError) {
         try forkDetach(effect {
           try Effect.promise(() => Promise.resolve())
@@ -385,7 +367,7 @@ effect function settleRoomWork(
         emit(table, {
           type: "errored",
           roomId,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorText(error),
         })
       }
       throw failure
@@ -488,7 +470,7 @@ export function ownsLease(
 
 function liveAmbientLeases(table: RoomTable): Map<string, RoomHandlerLease> {
   const live = new Map<string, RoomHandlerLease>()
-  for (const [roomId, lease] of table.ownershipStorage?.current() ?? []) {
+  for (const [roomId, lease] of table.ownershipStorage?.active() ?? []) {
     if (ownsLease(table, roomId, lease)) live.set(roomId, lease)
   }
   return live
@@ -519,7 +501,7 @@ export effect function runInLeaseScope<T>(
   const storage = table.ownershipStorage
   if (!storage) return try foreignSync(fn)
 
-  if (storage.current()?.get(roomId) === lease) return try foreignSync(fn)
+  if (storage.active()?.get(roomId) === lease) return try foreignSync(fn)
   return try foreignSync(() => storage.run(new Map([[roomId, lease]]), fn))
 }
 
@@ -747,13 +729,13 @@ module edge {
 
     /** @throws {never} */
     currentLease(roomId: string): RoomHandlerLease | undefined {
-      const lease = this.table.ownershipStorage?.current()?.get(roomId)
+      const lease = this.table.ownershipStorage?.active()?.get(roomId)
       return ownsLease(this.table, roomId, lease) ? lease : undefined
     }
 
     /** @throws {never} */
     currentOwnership(): RoomHandlerOwnershipContext | undefined {
-      const context = this.table.ownershipStorage?.current()
+      const context = this.table.ownershipStorage?.active()
       if (context?.size !== 1) return undefined
       const [[roomId, lease]] = context
       return ownsLease(this.table, roomId, lease) ? { roomId, lease } : undefined

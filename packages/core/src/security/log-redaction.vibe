@@ -1,4 +1,5 @@
 // spec/core/diagnostics.md, "Story: Redact untrusted diagnostic fields at the sink"; spec/core/diagnostics.md, "A credential field emits only a replacement marker"
+import { defineOwnValue } from "../utils/type-guards.vibe"
 const REDACTED_VALUE = "[REDACTED]"
 
 export const REDACTION_FAILED_VALUE = "[REDACTED: redaction failed]"
@@ -393,8 +394,8 @@ function redactObjectValue(
       },
     )
     const result: Record<string, unknown> = {}
-    defineSafeProperty(result, "type", "Map")
-    defineSafeProperty(result, "entries", entries)
+    defineOwnValue(result, "type", "Map")
+    defineOwnValue(result, "entries", entries)
     return result
   }
   if (value instanceof Set) {
@@ -407,8 +408,8 @@ function redactObjectValue(
       )
     })
     const result: Record<string, unknown> = {}
-    defineSafeProperty(result, "type", "Set")
-    defineSafeProperty(result, "values", values)
+    defineOwnValue(result, "type", "Set")
+    defineOwnValue(result, "values", values)
     return result
   }
 
@@ -421,18 +422,6 @@ function redactObjectValue(
   return result
 }
 
-function defineSafeProperty(
-  target: Record<string, unknown>,
-  key: string,
-  value: unknown,
-): void {
-  Object.defineProperty(target, key, {
-    value,
-    enumerable: true,
-    configurable: true,
-    writable: true,
-  })
-}
 
 function redactOwnPropertiesInto(
   source: object,
@@ -443,24 +432,24 @@ function redactOwnPropertiesInto(
 ): void {
   for (const key of Object.keys(source)) {
     if (!spendRepeatedSlot(shared)) {
-      defineSafeProperty(target, key, SHARED_VALUE)
+      defineOwnValue(target, key, SHARED_VALUE)
       continue
     }
     if (isSensitiveLogKey(key)) {
-      defineSafeProperty(target, key, REDACTED_VALUE)
+      defineOwnValue(target, key, REDACTED_VALUE)
       continue
     }
     try {
       const entry = (source as Record<string, unknown>)[key]
 
       if (typeof entry === "function") continue
-      defineSafeProperty(
+      defineOwnValue(
         target,
         key,
         redactWalkValue(entry, seen, depth, shared),
       )
     } catch {
-      defineSafeProperty(target, key, REDACTION_FAILED_VALUE)
+      defineOwnValue(target, key, REDACTION_FAILED_VALUE)
     }
   }
 }

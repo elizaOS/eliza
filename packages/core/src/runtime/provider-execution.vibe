@@ -1,4 +1,5 @@
 // spec/core/providerPromiseRace.md, "Story: Release an aborted execution while observing native work"; spec/core/providerPromiseRace.md, "The invocation microtask checks the execution signal before starting"; spec/core/providerPromiseRace.md, "The first delivered race reaction fixes the shared outcome"
+import { errorText } from "../utils/errors.vibe"
 import { Foreign, foreign, thrown } from "../edge.vibe"
 import type { ElizaError } from "../errors.vibe"
 import type { ProviderResult } from "../types/components.vibe"
@@ -130,7 +131,7 @@ export effect function throwIfProviderCompositionAborted(
     throw reason instanceof TurnAbortedError
       ? reason
       : new TurnAbortedError(
-        reason instanceof Error ? reason.message : String(reason),
+        errorText(reason),
       )
   }
   if (runtimeStopped) {

@@ -1,7 +1,7 @@
 // spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"; spec/core/protocols.md, "A public value retains identity and explicitly declared version"
 import type { MeetingPlatform } from "./meetings.vibe"
 import type { TranscriptSegment } from "./transcripts.vibe"
-import { isObjectRecord } from "./utils/type-guards.vibe"
+import { isObjectRecord, isNonEmptyString } from "./utils/type-guards.vibe"
 
 export const MEETING_ARTIFACT_SCHEMA_VERSION = "eliza.meeting_artifact.v1" as const
 
@@ -226,10 +226,6 @@ export interface MeetingArtifact {
 export interface MeetingArtifactValidation {
   valid: boolean
   errors: string[]
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0
 }
 
 function isNumber(value: unknown): value is number {

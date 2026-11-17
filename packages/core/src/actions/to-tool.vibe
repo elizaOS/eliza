@@ -1,5 +1,5 @@
 // spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
-import { asLegacy, failingAs, Foreign, foreignSync, thrown } from "../edge.vibe"
+import { asLegacy, failingAs, foreignSync, thrown, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { COMPLETION_CONTEXT_SCHEMA } from "../runtime/completion-context.vibe"
 import type { Action } from "../types/components.vibe"
@@ -405,7 +405,7 @@ export effect function buildPlannerToolsFromTieredActions(
         const error = Cause.squash(failure)
         return Effect.fail(new ElizaError("Failed to expand planner sub-action", {
           code: "INVALID_SUB_ACTION_TOOL",
-          cause: error instanceof Foreign ? error.cause : error,
+          cause: thrownValue(error),
           context: { actionName: action.name, subActionName },
         }))
       })

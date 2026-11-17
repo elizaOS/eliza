@@ -1,6 +1,7 @@
 // spec/core/execution.md, "Story: Settle an action before publishing its callback"; spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
+import { errorText } from "../utils/errors.vibe"
 import { toActionParameterValue } from "../action-parameter-value.vibe"
-import { asLegacy, Foreign, thrown } from "../edge.vibe"
+import { asLegacy, type Foreign, thrown, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { Action } from "../types/components.vibe"
 import { isObjectRecord as isRecord } from "../utils/type-guards.vibe"
@@ -31,7 +32,7 @@ function compilePattern(pattern: string): RegExp | { invalid: string } {
   try {
     compiled = new RegExp(pattern)
   } catch (err) {
-    compiled = { invalid: err instanceof Error ? err.message : String(err) }
+    compiled = { invalid: errorText(err) }
   }
   if (compiledPatterns.size >= MAX_COMPILED_PATTERNS) compiledPatterns.clear()
   compiledPatterns.set(pattern, compiled)
@@ -468,7 +469,7 @@ export effect function validateToolArgs(
       {
         code: "ACTION_DEFINITION_INVALID",
         severity: "fatal",
-        cause: cause instanceof Foreign ? cause.cause : cause,
+        cause: thrownValue(cause),
         context: { actionName: action.name },
       },
     ))

@@ -1,5 +1,6 @@
 // spec/core/taskServiceOwners.md, "Exclusive tasks observe every active invocation of the same task"; spec/core/taskServiceOwners.md, "Local timer replacement retains the earliest deadline and exact active tick"; spec/core/taskServiceOwners.md, "Stop joins scheduler drain, current tick, and then its pending-operation snapshot"; spec/core/scheduling.md, "Pausing affects later selections while admitted work retains its outcome"; spec/core/scheduling.md, "Retirement fences new admission and drains actual storage ownership"; spec/core/scheduling.md, "Worker bookkeeping changes its keys while retaining the operator pause"
-import { Foreign, foreign, foreignSync, runDetached } from "../edge.vibe"
+import { errorText } from "../utils/errors.vibe"
+import { foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { withStandaloneTrajectory } from "../trajectory-utils.vibe"
 import type { JsonValue, UUID } from "../types/primitives.vibe"
@@ -177,10 +178,6 @@ export function runnerOf(runtime: () => IAgentRuntime, clock: TaskServiceClock):
 
 effect function clockNow(runner: TaskRunner) {
   return try foreignSync(() => runner.clock.now())
-}
-
-function thrownValue(failure: unknown): unknown {
-  return failure instanceof Foreign ? failure.cause : failure
 }
 
 effect function note(
@@ -815,7 +812,7 @@ effect function persistFailure(runner: TaskRunner, task: Task, taskId: UUID, err
   const newMeta: Partial<TaskMetadata> = {
     updatedAt: failedAt,
     failureCount,
-    lastError: try foreignSync(() => error instanceof Error ? error.message : String(error)),
+    lastError: try foreignSync(() => errorText(error)),
   }
   if (!neverPause && failureCount >= maxFailures) {
     newMeta.paused = true

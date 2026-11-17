@@ -1,4 +1,5 @@
 // spec/core/storage.md, "Story: Publish complete immutable source revisions"; spec/core/storage.md, "Revisions and pagination reject invalid numeric inputs"
+import { randomUuid } from "../utils/uuid.vibe"
 import { failingAs, Foreign, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { sha256Hex } from "../runtime/trajectory-provider-attribution.vibe"
@@ -8,6 +9,7 @@ import type { Memory } from "../types/memory.vibe"
 import { MemoryType } from "../types/memory.vibe"
 import type { Content, UUID } from "../types/primitives.vibe"
 import { utf8ByteLength } from "../utils/unicode.vibe"
+import { nonnegativeSafeInteger } from "../utils/type-guards.vibe"
 
 interface DocumentSourceMetadata extends DocumentMetadata, Record<string, unknown> {
   source: string
@@ -26,16 +28,6 @@ export const DOCUMENT_SOURCE_SEGMENT_MAX_BYTES = 64 * 1024
 export const DOCUMENT_SOURCE_READ_MAX_SEGMENTS = 4
 export const DOCUMENT_SOURCE_READ_LOOKAHEAD_SEGMENTS = DOCUMENT_SOURCE_READ_MAX_SEGMENTS + 1
 export const DOCUMENT_PARENT_INLINE_MAX_BYTES = 64 * 1024
-
-module node {
-  import { randomUUID } from "node:crypto"
-
-  /** @throws {never} */
-  export function segmentId(): string {
-    return randomUUID()
-  }
-}
-import { segmentId } from node
 
 export error Utf8BoundaryNotFound { message: string }
 
@@ -236,7 +228,7 @@ export effect function buildDocumentSourceProjection(args: {
       timestamp: Date.now(),
     }
     segments.push({
-      id: segmentId() as UUID,
+      id: randomUuid() as UUID,
       agentId: args.agentId,
       roomId: args.roomId,
       entityId: args.entityId,
@@ -269,12 +261,6 @@ export effect function buildDocumentSourceProjection(args: {
 }
 export const buildDocumentSourceProjectionOrThrow = thrown(failingAs(Error, buildDocumentSourceProjection))
 
-function safeNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : null
-}
-
 export effect function requireDocumentSourceReadMetadata(
   metadata: Record<string, unknown>,
   documentId: UUID,
@@ -291,11 +277,11 @@ export effect function requireDocumentSourceReadMetadata(
       },
     )
   }
-  const documentRevision = safeNumber(metadata.documentRevision)
-  const sourceByteLength = safeNumber(metadata.sourceByteLength)
-  const sourceLineCount = safeNumber(metadata.sourceLineCount)
-  const sourceFragmentCount = safeNumber(metadata.sourceFragmentCount)
-  const sourceSegmentCount = safeNumber(metadata.sourceSegmentCount)
+  const documentRevision = nonnegativeSafeInteger(metadata.documentRevision)
+  const sourceByteLength = nonnegativeSafeInteger(metadata.sourceByteLength)
+  const sourceLineCount = nonnegativeSafeInteger(metadata.sourceLineCount)
+  const sourceFragmentCount = nonnegativeSafeInteger(metadata.sourceFragmentCount)
+  const sourceSegmentCount = nonnegativeSafeInteger(metadata.sourceSegmentCount)
   if (
     documentRevision === null
     || sourceByteLength === null
@@ -329,7 +315,7 @@ function coordinate(
   unit: "line" | "fragment",
   boundary: "Start" | "End",
 ): number | null {
-  return safeNumber(
+  return nonnegativeSafeInteger(
     metadata[`source${unit === "line" ? "Line" : "Fragment"}${boundary}`],
   )
 }
@@ -370,10 +356,10 @@ type DocumentSourceProjectionArgs = {
 effect function orderedSourceSegments(args: DocumentSourceProjectionArgs): Memory[]!ElizaError {
   const ordered = [...args.segments].sort(
     (left, right) =>
-      (safeNumber(
+      (nonnegativeSafeInteger(
         (left.metadata as Record<string, unknown>)?.sourceByteStart,
       ) ?? -1)
-      - (safeNumber(
+      - (nonnegativeSafeInteger(
         (right.metadata as Record<string, unknown>)?.sourceByteStart,
       ) ?? -1),
   )
@@ -387,9 +373,9 @@ effect function orderedSourceSegments(args: DocumentSourceProjectionArgs): Memor
   let previousPosition: number | undefined
   for (const segment of ordered) {
     const metadata = (segment.metadata ?? {}) as Record<string, unknown>
-    const start = safeNumber(metadata.sourceByteStart)
-    const end = safeNumber(metadata.sourceByteEnd)
-    const position = safeNumber(metadata.position)
+    const start = nonnegativeSafeInteger(metadata.sourceByteStart)
+    const end = nonnegativeSafeInteger(metadata.sourceByteEnd)
+    const position = nonnegativeSafeInteger(metadata.position)
     const text = segment.content.text
     if (
       metadata.fragmentRole !== "source-segment"
@@ -427,8 +413,8 @@ effect function readBytePage(
   const rows = ordered
     .filter((segment) => {
       const metadata = segment.metadata as Record<string, unknown>
-      const rowStart = safeNumber(metadata.sourceByteStart)
-      const rowEnd = safeNumber(metadata.sourceByteEnd)
+      const rowStart = nonnegativeSafeInteger(metadata.sourceByteStart)
+      const rowEnd = nonnegativeSafeInteger(metadata.sourceByteEnd)
       return (
         rowStart !== null
         && rowEnd !== null
@@ -443,7 +429,7 @@ effect function readBytePage(
       context: { documentId: args.documentId, start },
     })
   }
-  const firstStart = safeNumber(
+  const firstStart = nonnegativeSafeInteger(
     (rows[0]?.metadata as Record<string, unknown>)?.sourceByteStart,
   ) ?? start
   const localStart = start - firstStart
@@ -604,7 +590,7 @@ export effect function readDocumentSourceProjection(args: DocumentSourceProjecti
     )
       .slice(0, args.params.offset - firstUnit)
       .join("")
-    const firstByte = safeNumber(firstMetadata.sourceByteStart) ?? 0
+    const firstByte = nonnegativeSafeInteger(firstMetadata.sourceByteStart) ?? 0
     return try readBytePage(
       args,
       ordered,

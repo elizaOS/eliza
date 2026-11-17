@@ -1,6 +1,6 @@
 // spec/core/settingsKeys.md, "Production rejects unset and public salts on refresh"; spec/core/settingsKeys.md, "A configured private salt always has a positive key identity"; spec/core/settingsKeys.md, "Recognized ciphertext fails explicitly when authentication or decryption fails"; spec/core/settingsKeys.md, "The ephemeral-key warning is emitted once until explicit cache clearing"
 import { Machine, cacheValid, encryptionRequired, machine, type EnvelopeKind, type KeyCache, type SaltKind } from "../gen/core__settingsKeys.effect.vibe"
-import { failingAs, foreign, Foreign, promised, thrown } from "./edge.vibe"
+import { failingAs, foreign, Foreign, promised, thrown, thrownValue } from "./edge.vibe"
 import { createUniqueUuid } from "./entities.vibe"
 import { ElizaError } from "./errors.vibe"
 import { logger } from "./logger.vibe"
@@ -188,7 +188,7 @@ export effect function decryptStringValue(value: string, salt: string) {
   return Effect.catchDefect(decryptEnvelope(value, salt), (cause) => fail(new Foreign({ cause }))) catch effect (error) => {
     throw new ElizaError("Failed to decrypt secret setting", {
       code: "SETTING_DECRYPTION_FAILED",
-      cause: error instanceof Foreign ? error.cause : error,
+      cause: thrownValue(error),
       severity: "fatal",
     })
   }

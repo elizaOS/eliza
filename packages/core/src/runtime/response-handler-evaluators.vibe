@@ -1,5 +1,6 @@
 // spec/core/responseEvaluation.md, "Story: Apply response evaluator decisions in priority order"; spec/core/responseEvaluation.md, "Each candidate checks eligibility before evaluating its patch"; spec/core/responseEvaluation.md, "Invalid tool choices and scope replacements reject the entire patch"; spec/core/responseEvaluation.md, "Applied patches retain exact ordering and context evidence"
-import { Foreign, foreign, foreignSync, promised } from "../edge.vibe"
+import { errorText } from "../utils/errors.vibe"
+import { Foreign, foreign, foreignSync, promised, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type {
   MessageHandlerAction,
@@ -390,12 +391,12 @@ effect function recordEvaluatorFailure(
   failure: Foreign | ElizaError,
 ): void!Foreign {
   if (failure instanceof Foreign && failure.cause instanceof TurnAbortedError) throw failure
-  const error = failure instanceof Foreign ? failure.cause : failure
+  const error = thrownValue(failure)
   const { runtime } = run.args
   try foreignSync(() => runtime.reportError("ResponseHandlerEvaluator.evaluate", error, {
     evaluator: evaluator.name,
   }))
-  const message = error instanceof Error ? error.message : String(error)
+  const message = errorText(error)
   run.result.errors.push({ evaluatorName: evaluator.name, error: message })
   try foreignSync(() => runtime.logger.warn(
     {

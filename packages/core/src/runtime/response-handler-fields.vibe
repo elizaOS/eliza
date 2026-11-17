@@ -6,6 +6,7 @@ import type { JSONSchema } from "../types/model.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import type { State } from "../types/state.vibe"
 import { TurnAbortedError } from "./turn-aborted-error.vibe"
+import { errorText } from "../utils/errors.vibe"
 
 export type ResponseHandlerSenderRole =
   | "OWNER"
@@ -166,10 +167,6 @@ effect function handleField(
   return outcome
 }
 
-function failureMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 function recordFieldFailure(
   runtime: IAgentRuntime,
   evaluatorName: string,
@@ -179,7 +176,7 @@ function recordFieldFailure(
   stage: "parse" | "shouldRun" | "handle",
   logMessage: string,
 ): void {
-  const messageStr = failureMessage(error)
+  const messageStr = errorText(error)
   trace.errorMessage = messageStr
   fieldErrors[evaluatorName] = messageStr
   runtime.logger.warn(

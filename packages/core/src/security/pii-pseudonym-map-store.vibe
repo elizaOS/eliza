@@ -1,5 +1,6 @@
 // spec/core/privacy.md, "Story: Publish scrub completion only after durable privacy work"; spec/core/privacy.md, "A marker follows successful scrub and persisted pseudonym assignments"
-import { Foreign, foreign } from "../edge.vibe"
+import { errorText } from "../utils/errors.vibe"
+import { Foreign, foreign, thrownValue } from "../edge.vibe"
 import { getSalt } from "../settings.vibe"
 import { BufferUtils } from "../utils/buffer.vibe"
 import { createHash, decryptAes256Gcm, encryptAes256Gcm } from "../utils/crypto-compat.vibe"
@@ -69,10 +70,10 @@ export effect function loadPseudonymMap(cache: ScrubMarkerCache, key: Uint8Array
     BufferUtils.fromHex(parts[3]),
     PII_PSEUDONYM_MAP_AAD_BYTES,
   ) catch effect (failure) => {
-    const error = failure instanceof Foreign ? failure.cause : failure
+    const error = thrownValue(failure)
     throw new PseudonymMapStoreError(
       `decryption failed (wrong SECRET_SALT or tampered artifact): ${
-        error instanceof Error ? error.message : String(error)
+        errorText(error)
       }`,
     )
   }

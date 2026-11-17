@@ -8,6 +8,7 @@ import {
   redactTrailingArgs,
   SENSITIVE_ASSIGNMENT_PATTERNS,
 } from "./log-redaction.vibe"
+import { escapeRegExp } from "../utils/string-boundaries.vibe"
 
 export type RedactSensitiveMode = "off" | "tools"
 
@@ -141,10 +142,6 @@ export function getDefaultRedactPatterns(
     : [...DEFAULT_REDACT_PATTERNS]
 }
 
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-}
-
 const SECRET_REGEX_CACHE = new Map<string, RegExp>()
 const SECRET_REGEX_CACHE_LIMIT = 256
 
@@ -153,7 +150,7 @@ function getSecretRegex(value: string): RegExp {
   if (cached) {
     return cached
   }
-  const regex = new RegExp(escapeRegex(value), "g")
+  const regex = new RegExp(escapeRegExp(value), "g")
   SECRET_REGEX_CACHE.set(value, regex)
   if (SECRET_REGEX_CACHE.size > SECRET_REGEX_CACHE_LIMIT) {
     const oldest = SECRET_REGEX_CACHE.keys().next().value

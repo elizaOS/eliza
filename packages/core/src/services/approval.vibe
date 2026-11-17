@@ -1,5 +1,5 @@
 // spec/core/approvals.md, "Claiming removes pending ownership before a callback starts"; spec/core/approvals.md, "Restart drops process-owned callbacks and service retirement drains a claimed callback"; spec/core/approvalWorkers.md, "Successful registrations retain one name and failed registrations retain none"; spec/core/approvalService.md, "Admission and callback ownership compose under one service stop"; spec/core/approvalRetirement.md, "Stop closes admission and joins the original read and approval work"
-import { Foreign, foreign, foreignSync, promised, runDetached } from "../edge.vibe"
+import { foreign, foreignSync, promised, runDetached, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { logger } from "../logger.vibe"
 import { checkSenderRole } from "../roles.vibe"
@@ -10,6 +10,7 @@ import type { UUID } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { Service, ServiceType } from "../types/service.vibe"
 import type { Task, TaskWorker } from "../types/task.vibe"
+import { asError } from "../utils/errors.vibe"
 
 export interface ApprovalOption {
   name: string
@@ -102,10 +103,6 @@ function isCancelApprovalOption(
 
 function cancelled(taskId: UUID): ApprovalResult {
   return { selectedOption: "cancel", success: false, timedOut: false, cancelled: true, taskId, resolvedAt: Date.now() }
-}
-
-function asError(cause: unknown): Error {
-  return cause instanceof Error ? cause : new Error(String(cause))
 }
 
 function callbackUnavailable(taskId: UUID): ElizaError {
@@ -251,7 +248,7 @@ function admitTimeout(approvals: Approvals, pending: PendingApproval, scope: str
 effect function expire(approvals: Approvals, pending: PendingApproval, scope: string) {
   const { taskId } = pending
   handleTimeout(approvals, taskId) catch effect (failure) => {
-    const error = failure instanceof Foreign ? failure.cause : failure
+    const error = thrownValue(failure)
     approvals.runtime.reportError(scope, error, { taskId })
     approvals.pending.delete(taskId)
     try Deferred.fail(pending.decision, asError(error))

@@ -1,4 +1,5 @@
 // spec/core/execution.md, "Story: Settle an action before publishing its callback"
+import { errorText } from "../utils/errors.vibe"
 import { foreign, foreignSync, type Foreign, promised, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
@@ -519,7 +520,7 @@ export effect function finalizeTrajectoryRecording(
     const err = failure.cause
     try foreignSync(() => opts.logger?.warn?.(
       {
-        err: err instanceof Error ? err.message : String(err),
+        err: errorText(err),
         trajectoryId: opts.trajectoryId,
       },
       "[TrajectoryRecorder] endTrajectory failed",

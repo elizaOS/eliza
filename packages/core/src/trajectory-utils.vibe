@@ -1,6 +1,6 @@
 // spec/core/ambientManagers.md, "Story: Share injected managers across bundled core copies"; spec/core/ambientManagers.md, "A symbol slot is the single source of manager identity"; spec/core/trajectorySources.md, "Story: Apply the current registered training-exclusion policy"; spec/core/trajectorySources.md, "The latest copied metadata record determines exclusion"
 import { getAmbientSingleton } from "./ambient-context.vibe"
-import { asLegacy, Foreign, foreign, foreignSync, failingAs, promised, runDetached, thrown } from "./edge.vibe"
+import { asLegacy, type Foreign, foreign, foreignSync, failingAs, promised, runDetached, thrown, thrownValue } from "./edge.vibe"
 import { ElizaError } from "./errors.vibe"
 import type { ContextEvent, ContextObject } from "./runtime/context-object.vibe"
 import { stringifyForDiagnostics } from "./runtime/json-output.vibe"
@@ -1096,7 +1096,7 @@ export effect function recordLlmCall<T>(
     asLegacy(Error, logFailedCall, ElizaError) catch (recordingError) => {
       runtime?.reportError?.(
         "TrajectoryFailedProviderCall",
-        recordingError instanceof Foreign ? recordingError.cause : recordingError,
+        thrownValue(recordingError),
       )
       return false
     }

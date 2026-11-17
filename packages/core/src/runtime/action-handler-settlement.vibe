@@ -6,7 +6,7 @@ import {
 } from "../actions/task-extraction-context.vibe"
 import { copyBoundOperationDenial } from "./operation-restriction-projection.vibe"
 
-import { Foreign, failingAs, foreign, foreignSync, asLegacy, promised, runDetached, thrown } from "../edge.vibe"
+import { Foreign, failingAs, foreign, foreignSync, asLegacy, promised, runDetached, thrown, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
   admitProcessing,
@@ -36,6 +36,7 @@ import type { IAgentRuntime } from "../types/runtime.vibe"
 import { isProviderContextOverflowFailure, PROVIDER_CONTEXT_OVERFLOW } from "../utils/model-errors.vibe"
 import { isPlainObject } from "../utils/type-guards.vibe"
 import { bindEffectDelivery } from "./effect-delivery.vibe"
+import { errorText } from "../utils/errors.vibe"
 
 type BufferedActionCallback = {
   response: Content
@@ -61,10 +62,6 @@ function invalidActionResult(message: string): ElizaError {
     code: "INVALID_ACTION_RESULT",
     severity: "fatal",
   })
-}
-
-function thrownValue(error: unknown): unknown {
-  return error instanceof Foreign ? error.cause : error
 }
 
 function markCanonicalCallback(
@@ -157,10 +154,6 @@ export function actionFailureResult(
   }
 }
 
-export function stringifyActionError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 effect function deliverSettledCallback(args: {
   runtime: IAgentRuntime
   action: Action
@@ -215,7 +208,7 @@ function reportCallbackDeliveryFailure(
   result: ActionResult,
   error: unknown,
 ): void {
-  const message = stringifyActionError(error)
+  const message = errorText(error)
   if (typeof runtime.reportError === "function") {
     try {
       runtime.reportError("ActionCallbackDelivery", error, {
@@ -229,7 +222,7 @@ function reportCallbackDeliveryFailure(
           src: "action-handler-settlement",
           action: action.name,
           error: message,
-          reportingError: stringifyActionError(reportingError),
+          reportingError: errorText(reportingError),
         },
         "Action callback delivery and error reporting both failed",
       )
@@ -292,7 +285,7 @@ effect function handlerFailureResult(options: SettleActionHandlerOptions, error:
   const processingDenied = isProcessingPolicyDenial(error)
   return actionFailureResult(
     options.action.name,
-    stringifyActionError(error),
+    errorText(error),
     {
       error,
       ...(contextOverflow ? { retryable: false } : {}),
@@ -326,7 +319,7 @@ export effect function settleActionHandler(options: SettleActionHandlerOptions) 
       effectContractDeclared,
     }), (cause) => fail(new Foreign({ cause }))) catch (failure) => {
       const error = thrownValue(failure)
-      callbackDeliveryFailures.push(stringifyActionError(error))
+      callbackDeliveryFailures.push(errorText(error))
       reportCallbackDeliveryFailure(options.runtime, options.action, result, error)
       return [] as Memory[]
     }
@@ -374,7 +367,7 @@ export effect function settleActionHandler(options: SettleActionHandlerOptions) 
     const error = thrownValue(admission.failure)
     return actionFailureResult(
       options.action.name,
-      stringifyActionError(error),
+      errorText(error),
       { error, retryable: false, processingDenied: true },
       {
         kind: "handler_error",
@@ -478,3 +471,5 @@ export effect function settleActionHandler(options: SettleActionHandlerOptions) 
 }
 
 export const settleActionHandlerPromise = promised(failingAs(TypeError, settleActionHandler, ElizaError))
+
+export { errorText as stringifyActionError }

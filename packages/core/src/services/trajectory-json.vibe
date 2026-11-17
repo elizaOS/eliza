@@ -1,23 +1,12 @@
 // spec/core/services.md, "Story: Acquire a declared service"
 import type { JsonValue } from "../types/primitives.vibe"
+import { defineOwnValue } from "../utils/type-guards.vibe"
 import { toWellFormedUnicode } from "../utils/unicode.vibe"
 
 export type SanitizationState = {
   seen: WeakSet<object>
 }
 
-function defineOwnEntry(
-  target: Record<string, JsonValue>,
-  key: string,
-  value: JsonValue,
-): void {
-  Object.defineProperty(target, key, {
-    configurable: true,
-    enumerable: true,
-    value,
-    writable: true,
-  })
-}
 
 function sanitizeTrajectoryJsonValueInternal(
   value: unknown,
@@ -71,7 +60,7 @@ function sanitizeTrajectoryJsonValueInternal(
     for (const [keyValue, entry] of value.entries()) {
       const key = String(keyValue)
       const sanitized = sanitizeTrajectoryJsonValueInternal(entry, state)
-      if (sanitized !== undefined) defineOwnEntry(output, key, sanitized)
+      if (sanitized !== undefined) defineOwnValue(output, key, sanitized)
     }
     state.seen.delete(value)
     return output
@@ -113,7 +102,7 @@ function sanitizeTrajectoryJsonValueInternal(
     const output: Record<string, JsonValue> = {}
     for (const [key, entry] of entries) {
       const sanitized = sanitizeTrajectoryJsonValueInternal(entry, state)
-      if (sanitized !== undefined) defineOwnEntry(output, key, sanitized)
+      if (sanitized !== undefined) defineOwnValue(output, key, sanitized)
     }
     state.seen.delete(value)
     return output

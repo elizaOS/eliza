@@ -2,6 +2,15 @@
 import type { UUID } from "../types/primitives.vibe"
 import { failingAs, thrown } from "../edge.vibe"
 
+module node {
+  /** @throws {never} */
+  export function randomUuid(): string {
+    return crypto.randomUUID()
+  }
+}
+
+export { randomUuid } from node
+
 export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function validateUuid(value: unknown): UUID | null {

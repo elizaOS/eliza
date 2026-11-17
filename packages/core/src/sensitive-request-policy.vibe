@@ -1,5 +1,6 @@
 // spec/core/authorization.md, "Story: Read only the authorized records"
 import { ChannelType } from "./types/primitives.vibe"
+import { asNonEmptyString } from "./utils/type-guards.vibe"
 
 export type SensitiveRequestKind =
   | "secret"
@@ -222,10 +223,6 @@ function isTruthy(value: unknown): boolean {
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase())
 }
 
-function nonEmpty(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined
-}
-
 export function classifySensitiveRequestSource(input: {
   channelType?: string
   source?: SensitiveRequestSourceContext
@@ -350,8 +347,8 @@ export function resolveSensitiveRequestDelivery(
     input.paymentContext,
   )
 
-  const cloudBaseUrl = nonEmpty(env.cloud?.baseUrl)
-  const tunnelUrl = nonEmpty(env.tunnel?.url)
+  const cloudBaseUrl = asNonEmptyString(env.cloud?.baseUrl)
+  const tunnelUrl = asNonEmptyString(env.tunnel?.url)
   const cloudAvailable = Boolean(env.cloud?.available)
   const tunnelAvailable = Boolean(env.tunnel?.available && tunnelUrl)
   const tunnelAuthenticated = Boolean(
@@ -437,9 +434,9 @@ export function sensitiveRequestEnvironmentFromSettings(settings: {
   dmAvailable?: unknown
   ownerAppPrivateChat?: unknown
 }): SensitiveRequestEnvironment {
-  const cloudApiKey = nonEmpty(settings.cloudApiKey)
-  const cloudBaseUrl = nonEmpty(settings.cloudBaseUrl)
-  const tunnelUrl = nonEmpty(settings.tunnelUrl)
+  const cloudApiKey = asNonEmptyString(settings.cloudApiKey)
+  const cloudBaseUrl = asNonEmptyString(settings.cloudBaseUrl)
+  const tunnelUrl = asNonEmptyString(settings.tunnelUrl)
 
   return {
     cloud: {

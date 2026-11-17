@@ -1,4 +1,5 @@
 // spec/core/providers.md, "Story: Share provider work without sharing cancellation"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"
+import { errorText } from "../utils/errors.vibe"
 import { foreign, runDetached } from "../edge.vibe"
 import type { JsonObject, JsonValue } from "../types/primitives.vibe"
 import { normalizeWorkspaceDeltaReceipt, type WorkspaceDeltaReceipt } from "../types/workspace-delta.vibe"
@@ -395,7 +396,7 @@ effect function request(
     if (error instanceof CapabilityError) throw error
     throw new CapabilityError({
       code: "CAPABILITY_REQUEST_FAILED",
-      message: error instanceof Error ? error.message : String(error),
+      message: errorText(error),
       capability,
       method,
     })
@@ -520,7 +521,7 @@ effect function workspaceDeltaReceiptOf(
     const error = Cause.squash(cause)
     return Effect.fail(decodeError(
       "pty.command.run",
-      `workspaceDeltaReceipt is invalid: ${error instanceof Error ? error.message : String(error)}`,
+      `workspaceDeltaReceipt is invalid: ${errorText(error)}`,
     ))
   })
   if (

@@ -1,5 +1,5 @@
 // spec/core/execution.md, "Story: Settle an action before publishing its callback"
-import { Foreign, foreign, promised } from "../edge.vibe"
+import { foreign, promised, thrownValue } from "../edge.vibe"
 import { getRecentMessagesData } from "../recent-messages-state.vibe"
 import type { Memory } from "../types/memory.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
@@ -157,7 +157,7 @@ export effect function recentConversationTexts(args: {
   return try Effect.tapCause(storedConversationTexts(args.runtime, roomId, args.state), (cause) =>
     sync(() => {
       const error = Cause.squash(cause)
-      args.runtime.reportError("RecentContext.getMemories", error instanceof Foreign ? error.cause : error, { roomId })
+      args.runtime.reportError("RecentContext.getMemories", thrownValue(error), { roomId })
     })
   )
 }

@@ -1,4 +1,5 @@
 // spec/core/entities.md, "Story: Observe committed mutations through fresh runtime reads"; spec/core/entities.md, "Each mutation invalidates exactly the affected cache families"; spec/core/entities.md, "Adapter failure cannot become a successful mutation result"; spec/core/factWrites.md, "Story: Merge every contribution once into its canonical fact"; spec/core/factWrites.md, "One writer owns the read and commit interval"
+import { randomUuid } from "../utils/uuid.vibe"
 import { cachePlan, type MutationKind } from "../../gen/core__entities.effect.vibe"
 import { Machine, machine, type Rejected } from "../../gen/core__factWrites.effect.vibe"
 import { foreign, runDetached, type Foreign } from "../edge.vibe"
@@ -17,23 +18,8 @@ import {
   collectMessageContentSegmentIds,
   messageContentRequiresSegments,
 } from "./message-content-segments.vibe"
+import { deepEqual } from "./message-content-storage.vibe"
 import type { SingleFlightMemo } from "./single-flight-memo.vibe"
-
-module node {
-  import { randomUUID } from "node:crypto"
-  import { isDeepStrictEqual } from "node:util"
-
-  /** @throws {never} */
-  export function newId(): string {
-    return randomUUID()
-  }
-
-  /** @throws {never} */
-  export function deepEqual(left: unknown, right: unknown): boolean {
-    return isDeepStrictEqual(left, right)
-  }
-}
-import { deepEqual, newId } from node
 
 type EvidenceMutationService = Service & {
   mutateSourceEvidence<T>(
@@ -236,7 +222,7 @@ effect function createMessageMemory(
   unique?: boolean,
 ): UUID!(ElizaError | Foreign | Rejected) {
   const { runtime } = owner
-  const id = memory.id ?? (newId() as UUID)
+  const id = memory.id ?? (randomUuid() as UUID)
   const parent: Memory & { id: UUID } = {
     ...memory,
     agentId: memory.agentId ?? runtime.agentId,
@@ -420,7 +406,7 @@ effect function writeFact(
   owner.factLanes.set(roomId, lane)
   const write = effect {
     try foreign(() => Promise.resolve())
-    try lane.writes.send({ type: "begin", writer: newId() })
+    try lane.writes.send({ type: "begin", writer: randomUuid() })
     return try onExit(
       mergeFact(owner, lane.writes, memory, insert),
       (exit) => Exit.isSuccess(exit) ? Effect.void : ignore(lane.writes.send({ type: "writeFailed" })),

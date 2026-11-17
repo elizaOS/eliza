@@ -1,6 +1,6 @@
 // spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import { thrown } from "../edge.vibe"
-import { elizaErrorOrForeign } from "./unicode.vibe"
+import { elizaErrorOrForeign } from "../errors.vibe"
 
 export const MAX_TEXT_NORMALIZE_DEPTH = 64
 

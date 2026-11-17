@@ -1,6 +1,6 @@
 // spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
-import { Foreign, thrown } from "./edge.vibe"
-import { ElizaError } from "./errors.vibe"
+import { type Foreign, thrown } from "./edge.vibe"
+import { type ElizaError, elizaErrorOrForeign } from "./errors.vibe"
 import type { ActionParameters } from "./types/components.vibe"
 
 export const MAX_ACTION_PARAMETER_DEPTH = 32
@@ -10,6 +10,7 @@ export const ACTION_PARAMETER_UNBOUNDED = "ACTION_PARAMETER_UNBOUNDED"
 module walk {
   import { ElizaError } from "./errors.vibe"
   import type { ActionParameters } from "./types/components.vibe"
+  import { defineOwnValue } from "./utils/type-guards.vibe"
   import { toWellFormedUnicode } from "./utils/unicode.vibe"
   import { ACTION_PARAMETER_UNBOUNDED, MAX_ACTION_PARAMETER_DEPTH, MAX_ACTION_PARAMETER_NODES } from "./action-parameter-value.vibe"
 
@@ -46,19 +47,6 @@ module walk {
     } catch (cause) {
       failUnbounded({ inspection: operation }, cause)
     }
-  }
-
-  function defineDataProperty(
-    target: ActionParameters,
-    key: string,
-    value: ActionParameters[string],
-  ): void {
-    Object.defineProperty(target, key, {
-      value,
-      enumerable: true,
-      configurable: true,
-      writable: true,
-    })
   }
 
   function ownDescriptor(
@@ -203,7 +191,7 @@ module walk {
             ctx,
           )
         ) {
-          defineDataProperty(
+          defineOwnValue(
             params,
             paramName,
             toActionParameterValueInner(paramValue, 0, ctx, true),
@@ -286,7 +274,7 @@ module walk {
       const entries = ownEnumerableStringDataEntries(value, ctx)
       const normalized: ActionParameters = {}
       for (const [key, entry] of entries) {
-        defineDataProperty(
+        defineOwnValue(
           normalized,
           key,
           toActionParameterValueInner(entry, depth + 1, ctx, true),
@@ -300,16 +288,12 @@ module walk {
 }
 import { normalizeValue, parseParams } from walk
 
-function unbounded(cause: unknown): ElizaError | Foreign {
-  return cause instanceof ElizaError ? cause : new Foreign({ cause })
-}
-
 export effect function toActionParameterValue(value: unknown): ActionParameters[string]!(ElizaError | Foreign) {
-  return try Effect.try({ try: () => normalizeValue(value), catch: unbounded })
+  return try Effect.try({ try: () => normalizeValue(value), catch: elizaErrorOrForeign })
 }
 export const toActionParameterValueOrThrow = thrown(toActionParameterValue)
 
 export effect function parseActionParams(paramsInput: unknown): Map<string, ActionParameters>!(ElizaError | Foreign) {
-  return try Effect.try({ try: () => parseParams(paramsInput), catch: unbounded })
+  return try Effect.try({ try: () => parseParams(paramsInput), catch: elizaErrorOrForeign })
 }
 export const parseActionParamsOrThrow = thrown(parseActionParams)

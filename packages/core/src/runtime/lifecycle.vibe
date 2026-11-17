@@ -1,7 +1,8 @@
 // spec/core/runtime.md, "Initialization releases waiters on success and failure"; spec/core/runtime.md, "Stop closes admissions and prepares services once"; spec/core/runtime.md, "Strict retirement succeeds only when original work is drained"; spec/core/anonymousIdentity.md, "Only anonymous construction advances the shared name counter"; spec/core/runtimeRunContext.md, "Run context setters preserve the same runtime lifecycle state"
+import { errorText } from "../utils/errors.vibe"
 import { Machine as NamingMachine, machine as namingMachine } from "../../gen/core__anonymousIdentity.effect.vibe"
 import { Machine, machine, type Event as RuntimeEvent, type Rejected as RuntimeRejected, type Runtime as RuntimeState } from "../../gen/core__runtime.effect.vibe"
-import { Foreign, foreign, foreignSync, runDetached } from "../edge.vibe"
+import { type Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { own, type Owned } from "../owned.vibe"
 import { runPluginMigrations as migratePlugins } from "../provisioning.vibe"
@@ -17,7 +18,7 @@ import type { RuntimeStopOptions } from "../types/runtime.vibe"
 import { processEnv, rawEnv } from "../utils/environment.vibe"
 import { timerDelay } from "../utils/retry.vibe"
 import { stringToUuid } from "../utils/string-to-uuid.vibe"
-import { validateUuid, type InvalidUuidSource } from "../utils/uuid.vibe"
+import { validateUuid, type InvalidUuidSource, randomUuid } from "../utils/uuid.vibe"
 import { getActionRolePolicyWarnings } from "./action-role-policy.vibe"
 import * as agentSettings from "./agent-settings.vibe"
 import * as components from "./components.vibe"
@@ -86,16 +87,11 @@ export const LifecycleLive: Layer.Layer<Lifecycle, never, Host> = Layer.effect(L
 
 module node {
   /** @throws {never} */
-  export function randomUuid(): string {
-    return crypto.randomUUID()
-  }
-
-  /** @throws {never} */
   export function stopRequestReason(): DOMException {
     return new DOMException("Runtime stop requested", "AbortError")
   }
 }
-import { randomUuid, stopRequestReason } from node
+import { stopRequestReason } from node
 
 effect function namingAuthority() {
   provide namingMachine() {
@@ -167,11 +163,6 @@ effect function lifecyclePayload(): LifecyclePayload!!Lifecycle {
 effect function cells(): LifecycleCells!!Lifecycle {
   const { cells } = try Lifecycle
   return try SynchronizedRef.get(cells)
-}
-
-function hostRejection(cause: Cause.Cause<unknown>): unknown {
-  const error = Cause.squash(cause)
-  return error instanceof Foreign ? error.cause : error
 }
 
 export effect function recordRetirementFailure(scope: string, cause: unknown, beforeClose: boolean): void!!Lifecycle {
@@ -314,7 +305,7 @@ effect function prepareServicesForStop(): void!!RuntimeKernel {
             src: "agent",
             agentId: runtime.agentId,
             serviceType,
-            error: cause instanceof Error ? cause.message : String(cause),
+            error: errorText(cause),
           },
           "Service prepareStop() threw; continuing",
         )
@@ -397,7 +388,7 @@ effect function stopBestEffort(options?: RuntimeStopOptions): void!LifecycleFail
     try prepareServicesForStop()
   }
   const outcome = try exit(stopAfterAdmissionCordon(options))
-  if (Exit.isFailure(outcome)) try recordRetirementFailure("runtime-stop", hostRejection(outcome.cause), false)
+  if (Exit.isFailure(outcome)) try recordRetirementFailure("runtime-stop", thrownValue(Cause.squash(outcome.cause)), false)
   try Deferred.done(turn.attempt, outcome)
   const { cells } = try Lifecycle
   try SynchronizedRef.update(cells, (current) =>
@@ -446,7 +437,7 @@ export effect function close(): void!LifecycleFailure!RuntimeKernel {
     if (retirementFailure) {
       throw new ElizaError("Shared adapter retirement and closure failed", {
         code: "RUNTIME_ADAPTER_RETIREMENT_CLOSE_FAILED",
-        cause: new AggregateError([retirementFailure.cause, hostRejection(closed.cause)]),
+        cause: new AggregateError([retirementFailure.cause, thrownValue(Cause.squash(closed.cause))]),
       })
     }
     return try closed

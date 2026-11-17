@@ -1,5 +1,6 @@
 // spec/core/privacy.md, "Admission checks shutdown again after the asynchronous marker lookup"; spec/core/privacy.md, "A marker follows successful scrub and persisted pseudonym assignments"; spec/core/privacy.md, "Stop waits for lazy startup and active work before disposing the queue"; spec/core/privacyService.md, "Each marker lookup captures its own result before queue admission"; spec/core/privacyService.md, "Each processor attempt preserves its own marker and retry ownership"; spec/core/privacyService.md, "Stop captures lazy startup, flushes eligible work and finalizes its own promise"
-import { asLegacy, Foreign, foreign, runDetached } from "../edge.vibe"
+import { errorText } from "../utils/errors.vibe"
+import { asLegacy, Foreign, foreign, runDetached, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
   assembleContextPack,
@@ -66,8 +67,7 @@ function scrubState(runtime: () => IAgentRuntime): Scrub {
 }
 
 function messageOf(failure: unknown): string {
-  const thrown = failure instanceof Foreign ? failure.cause : failure
-  return thrown instanceof Error ? thrown.message : String(thrown)
+  return errorText(thrownValue(failure))
 }
 
 function initializeScrub(scrub: Scrub): void {
@@ -163,7 +163,7 @@ effect function scrubItem(scrub: Scrub, item: PiiScrubQueueItem) {
           src: SRC,
           agentId: runtime.agentId,
           itemRef: item.itemRef,
-          failClosed: (failure instanceof Foreign ? failure.cause : failure) instanceof PiiScrubFabricationError,
+          failClosed: thrownValue(failure) instanceof PiiScrubFabricationError,
           error: messageOf(failure),
         },
         "Scrub item failed (fail-closed, not marking done)",

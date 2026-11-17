@@ -1,4 +1,5 @@
 // spec/core/inferenceTiming.md, "Story: Measure a turn without changing its execution"; spec/core/inferenceTiming.md, "A timer starts with no invented marks or provider attribution"; spec/core/inferenceTiming.md, "Span capacity records an anomaly and each closer appends at most once"; spec/core/inferenceTiming.md, "Duplicate marks keep their first measurement and remain observable"; spec/core/timingRegistry.md, "Histogram admission keeps finite samples in arrival order"
+import { errorText } from "./utils/errors.vibe"
 import { foreign } from "./edge.vibe"
 import { logger, RUNTIME_DEBUG_LOG_ENABLED } from "./logger.vibe"
 import { AsyncContextManager } from "./utils/async-context-manager.vibe"
@@ -839,7 +840,7 @@ export function emitInferenceTiming(
     return summary
   } catch (err) {
     logger.warn(
-      `[InferenceTiming] emit failed: ${err instanceof Error ? err.message : String(err)}`,
+      `[InferenceTiming] emit failed: ${errorText(err)}`,
     )
     return null
   }

@@ -1,4 +1,5 @@
 // spec/core/diagnostics.md, "Story: Observe a failure without failing the reporting path"; spec/core/diagnostics.md, "A structured failure retains its identity and an unclassified one gets a code"
+import { Foreign } from "./edge.vibe"
 import { formatError, readDiagnosticProperty } from "./utils/errors.vibe"
 
 export type ElizaErrorSeverity = "ephemeral" | "fatal"
@@ -68,4 +69,8 @@ export function toElizaError(
     code: fallbackCode,
     cause: value,
   })
+}
+
+export function elizaErrorOrForeign(cause: unknown): ElizaError | Foreign {
+  return cause instanceof ElizaError ? cause : new Foreign({ cause })
 }

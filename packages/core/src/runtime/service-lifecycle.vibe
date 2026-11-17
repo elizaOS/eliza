@@ -1,5 +1,6 @@
 // spec/core/serviceInstances.md, "Story: Share starts and stop each returned object once"; spec/core/serviceInstances.md, "Instance stop promises retain identity across every caller"
-import { asLegacy, Foreign, foreign, foreignSync, runDetached } from "../edge.vibe"
+import { errorText } from "../utils/errors.vibe"
+import { asLegacy, Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
 import { warnOnDuplicateServiceTypeRegistration } from "../plugin-lifecycle.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { AgentRuntime } from "../runtime.vibe"
@@ -69,10 +70,8 @@ module edge {
 
 import { createServiceResolver, stopOnce } from edge
 
-function thrownValue(failure: Foreign | ElizaError | ServiceStartAfterStop | ServiceUnregisteredDuringStart): unknown {
-  if (failure instanceof Foreign) return failure.cause
-  if (failure instanceof ElizaError) return failure
-  return new Error(failure.message)
+function startFailure(failure: Foreign | ElizaError | ServiceStartAfterStop | ServiceUnregisteredDuringStart): unknown {
+  return failure instanceof ServiceStartAfterStop || failure instanceof ServiceUnregisteredDuringStart ? new Error(failure.message) : thrownValue(failure)
 }
 
 effect function startServiceEagerly(serviceType: ServiceTypeName, pluginName: string): void!!RuntimeKernel {
@@ -80,7 +79,7 @@ effect function startServiceEagerly(serviceType: ServiceTypeName, pluginName: st
   for (let attempt = 0;; attempt += 1) {
     const started = try result(Effect.catchDefect(ensureServiceStarted(serviceType), (cause) => fail(new Foreign({ cause }))))
     if (Result.isSuccess(started)) return
-    const err = started.failure instanceof Foreign ? started.failure.cause : started.failure
+    const err = thrownValue(started.failure)
     const delayMs = EAGER_SERVICE_START_RETRY_DELAYS_MS[attempt]
     const stopRequested = try lifecycle.isStopRequested()
     const willRetry = delayMs !== undefined && !stopRequested
@@ -92,7 +91,7 @@ effect function startServiceEagerly(serviceType: ServiceTypeName, pluginName: st
         serviceType,
         attempt: attempt + 1,
         willRetry,
-        error: err instanceof Error ? err.message : String(err),
+        error: errorText(err),
       },
       willRetry ? "Service start failed; retrying" : "Service start failed",
     )
@@ -144,7 +143,7 @@ effect function stopServiceInstance(
         agentId: runtime.agentId,
         serviceType,
         reason,
-        error: err instanceof Error ? err.message : String(err),
+        error: errorText(err),
       },
       "Service stop() threw; continuing",
     )
@@ -496,7 +495,7 @@ export effect function runServiceStart(key: ServiceTypeName, serviceType: string
       })
     }
     return Effect.catchDefect(publishStartedService(key, serviceType, serviceDef), (cause) => fail(new Foreign({ cause }))) catch effect (failure) => {
-      const error = thrownValue(failure)
+      const error = startFailure(failure)
       runtime.reportError("AgentRuntime.serviceStart", error, { serviceType })
       throw new ElizaError(`Service ${serviceType} failed to start`, {
         code: "SERVICE_START_FAILED",

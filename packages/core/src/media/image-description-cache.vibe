@@ -1,5 +1,5 @@
 // spec/core/media.md, "Story: Fetch an attachment through its correct trust boundary"
-import { Foreign, foreign, foreignSync, promised } from "../edge.vibe"
+import { type Foreign, foreign, foreignSync, promised, thrownValue } from "../edge.vibe"
 import { ModelType } from "../types/model.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { resolveSetting } from "../utils/environment.vibe"
@@ -149,7 +149,7 @@ export effect function describeImageCached(
   const url = imageUrl.trim()
   if (!url) return null
   const described = describeUncached(runtime, url, prompt) catch (failure) => {
-    runtime.reportError("ImageDescriptionCache.describe", failure instanceof Foreign ? failure.cause : failure, {
+    runtime.reportError("ImageDescriptionCache.describe", thrownValue(failure), {
       imageUrl: url,
     })
     return null

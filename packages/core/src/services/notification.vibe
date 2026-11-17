@@ -1,6 +1,7 @@
 // spec/core/notifications.md, "Inbox mutations retain stable IDs and increasing sequence coordinates"; spec/core/notifications.md, "Acknowledgement publishes success while ambiguity requires reconciliation"; spec/core/notifications.md, "Read fences use quiescent durable state and restart reloads that state"; spec/core/notifications.md, "Exact grouped projections reuse the durable row"; spec/core/notifications.md, "Group count and expiry use the current row and commit time"; spec/core/notifications.md, "Hydration validates every row and the complete coordinate map"; spec/core/notificationRecovery.md, "Availability and in-flight ownership decide recovery admission"; spec/core/notificationRecovery.md, "Failure cleanup retains attempt ownership and elapsed time controls the next retry"; spec/core/notificationRecoveryOwners.md, "A successful old callback clears the map only if its own identity is still mapped"
+import { errorText } from "../utils/errors.vibe"
 import { delayMs } from "../../gen/core__notificationRecovery.effect.vibe"
-import { asLegacy, Foreign, foreign, foreignSync, runDetached } from "../edge.vibe"
+import { asLegacy, Foreign, foreign, foreignSync, runDetached, thrownValue } from "../edge.vibe"
 import { logger } from "../logger.vibe"
 import {
   type AgentNotification,
@@ -27,22 +28,15 @@ import { asUUID, type UUID } from "../types/primitives.vibe"
 import type { IAgentRuntime } from "../types/runtime.vibe"
 import { Service, ServiceType } from "../types/service.vibe"
 import { utf8ByteLength } from "../utils/unicode.vibe"
-import { validateUuid } from "../utils/uuid.vibe"
+import { validateUuid, randomUuid } from "../utils/uuid.vibe"
 
 module node {
-  import { randomUUID } from "node:crypto"
-
-  /** @throws {never} */
-  export function newId(): string {
-    return randomUUID()
-  }
-
   /** @throws {never} */
   export function monotonicNow(): number {
     return performance.now()
   }
 }
-import { monotonicNow, newId } from node
+import { monotonicNow } from node
 
 export type NotificationServiceAvailability =
   | "disabled"
@@ -250,7 +244,7 @@ effect function recover(
           agentId: runtime.agentId,
           attempt,
           retryAfterSeconds: retryAfterSeconds(delay),
-          error: error instanceof Error ? error.message : String(error),
+          error: errorText(error),
         },
         "NotificationService recovery failed; backing off",
       )
@@ -298,7 +292,7 @@ function newInbox(runtime: () => IAgentRuntime): Inbox {
       return runtime()
     },
     notifications: [],
-    nativeEpoch: newId(),
+    nativeEpoch: randomUuid(),
     nativeSequence: 0,
     nativeSequences: Object.create(null),
     persistenceUncertain: false,
@@ -320,8 +314,7 @@ function inboxUnavailable(): NotificationNativeError {
 }
 
 function legacyOf(failure: Foreign | PersistRejected | NotificationNativeError): unknown {
-  if (failure instanceof Foreign) return failure.cause
-  return failure instanceof PersistRejected ? new Error(failure.message) : failure
+  return failure instanceof PersistRejected ? new Error(failure.message) : thrownValue(failure)
 }
 
 function settled<A, E extends Error>(effect: A!E): Promise<A> {
@@ -509,7 +502,7 @@ effect function notifySerialized(inbox: Inbox, input: NotificationInput, coalesc
     expiresAt = createdAt + SILENT_TIER_DEFAULT_EXPIRY_MS
   }
   const notification: AgentNotification = {
-    id: try asUUID(newId()),
+    id: try asUUID(randomUuid()),
     title,
     body: input.body?.trim()
       ? category === "reminder" && input.source === "lifeops"

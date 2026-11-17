@@ -46,6 +46,7 @@ module bounded {
     MAX_CONNECTOR_JSON_NODES,
     MAX_CONNECTOR_JSON_STRING_BYTES,
   } from "./connector-json.vibe"
+  import { defineOwnValue } from "../utils/type-guards.vibe"
 
   type OverflowReason = ConstructorParameters<typeof ConnectorJsonUnboundedError>[0]
   type OverflowMode = "throw" | "sentinel"
@@ -107,19 +108,6 @@ module bounded {
       return overflow(options, "leaf", { [`${kind}Bytes`]: bytes })
     }
     return charge(state, Math.max(1, Math.ceil(bytes / 1024)), options)
-  }
-
-  function defineOwn(
-    target: Record<string, unknown>,
-    key: string,
-    value: unknown,
-  ): void {
-    Object.defineProperty(target, key, {
-      configurable: true,
-      enumerable: true,
-      value,
-      writable: true,
-    })
   }
 
   function genuineDateIso(value: object): string | undefined {
@@ -320,41 +308,41 @@ module bounded {
         if (typeof key !== "string") continue
         const descriptor = ownDescriptor(objectValue, key, options)
         if (descriptor === BOUNDED_BRANCH || descriptor === BOUNDED_EXHAUSTED) {
-          defineOwn(output, key, CONNECTOR_JSON_BOUNDED)
+          defineOwnValue(output, key, CONNECTOR_JSON_BOUNDED)
           if (descriptor === BOUNDED_EXHAUSTED) break
           continue
         }
         if (!descriptor) {
           const missing = overflow(options, "reflection", { key })
-          defineOwn(output, key, CONNECTOR_JSON_BOUNDED)
+          defineOwnValue(output, key, CONNECTOR_JSON_BOUNDED)
           if (missing === BOUNDED_EXHAUSTED) break
           continue
         }
         if (!descriptor.enumerable) continue
         const keyHit = chargeText(key, state, options, "key")
         if (keyHit !== undefined) {
-          defineOwn(output, key, CONNECTOR_JSON_BOUNDED)
+          defineOwnValue(output, key, CONNECTOR_JSON_BOUNDED)
           if (keyHit === BOUNDED_EXHAUSTED) break
           continue
         }
         if (options.redactKey?.(key)) {
-          defineOwn(output, key, "[REDACTED]")
+          defineOwnValue(output, key, "[REDACTED]")
           continue
         }
         if (!("value" in descriptor)) {
           overflow(options, "accessor", { key })
-          defineOwn(output, key, CONNECTOR_JSON_BOUNDED)
+          defineOwnValue(output, key, CONNECTOR_JSON_BOUNDED)
           continue
         }
 
         if (descriptor.value === undefined) continue
         const cloned = walk(descriptor.value, depth + 1, false, state, options)
         if (cloned === BOUNDED_BRANCH || cloned === BOUNDED_EXHAUSTED) {
-          defineOwn(output, key, CONNECTOR_JSON_BOUNDED)
+          defineOwnValue(output, key, CONNECTOR_JSON_BOUNDED)
           if (cloned === BOUNDED_EXHAUSTED) break
           continue
         }
-        if (cloned !== undefined) defineOwn(output, key, cloned)
+        if (cloned !== undefined) defineOwnValue(output, key, cloned)
       }
       return output
     } finally {

@@ -201,7 +201,7 @@ module edge {
   import { runDetachedSync } from "../edge.vibe"
   import type { PiiPseudonymAssignment } from "../types/model.vibe"
   import { BufferUtils } from "../utils/buffer.vibe"
-  import { compileReplacer, DEFAULT_PSEUDONYM_BLOCKLIST, mintSurrogate } from "./pii-pseudonymizer.vibe"
+  import { compileReplacer, mintSurrogate, pseudonymBlocklist } from "./pii-pseudonymizer.vibe"
   import {
     type AliasSubstitutionResult,
     type AssignClusterInput,
@@ -280,11 +280,7 @@ module edge {
     /** @throws {never} */
     constructor(options: CorpusPseudonymMapOptions = {}) {
       this.salt = options.salt ?? BufferUtils.toHex(BufferUtils.randomBytes(16))
-      this.blocklistLower = new Set(
-        [...DEFAULT_PSEUDONYM_BLOCKLIST, ...(options.blocklist ?? [])]
-          .map((v) => v.trim().toLowerCase())
-          .filter(Boolean),
-      )
+      this.blocklistLower = pseudonymBlocklist(options)
       this.minAliasLength = options.minAliasLength ?? 2
       this.now = options.now ?? Date.now
     }

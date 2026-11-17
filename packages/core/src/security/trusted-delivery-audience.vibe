@@ -1,5 +1,5 @@
 // spec/core/trustedAudience.md, "Story: Renew audience evidence only for the same active turn"; spec/core/trustedAudience.md, "Attestation binds an exact runtime and audience"; spec/core/trustedAudience.md, "Renewal rechecks lease identity and audience after the authority await"; spec/core/trustedAudience.md, "Sensitive-use and suppression evidence stays attached to the exact turn"; spec/core/internalActors.md, "Story: Keep an internal actor registered while any owner still uses it"; spec/core/internalActors.md, "Each disposer removes only its own registration"; spec/core/audienceRegistry.md, "Story: Keep audience authority isolated while allowing exact in-process aliases"; spec/core/audienceRegistry.md, "Renewal validates the shared record after the asynchronous authority lookup"
-import { Foreign, failingAs, foreign, promised } from "../edge.vibe"
+import { failingAs, foreign, promised, thrownValue } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { resolveCanonicalOwnerIdForMessage } from "../roles.vibe"
 import type { DisclosureGate } from "../types/components.vibe"
@@ -173,9 +173,8 @@ function normalizeTtlMs(ttlMs: number | undefined): number {
   return Math.floor(ttlMs)
 }
 
-function thrownValue(failure: unknown): unknown {
-  if (failure instanceof InvalidUuidSource) return new TypeError(failure.message)
-  return failure instanceof Foreign ? failure.cause : failure
+function audienceFailure(failure: unknown): unknown {
+  return failure instanceof InvalidUuidSource ? new TypeError(failure.message) : thrownValue(failure)
 }
 
 effect function filterRuntimeInternalParticipants(
@@ -210,7 +209,7 @@ effect function filterRuntimeInternalParticipants(
         && marker.triggerId.length > 0
         && (try stringToUuid(`trigger-entity:${marker.triggerId}`)) === participantId
     }) catch (failure) => {
-      lookupFailures.push(thrownValue(failure))
+      lookupFailures.push(audienceFailure(failure))
       return false
     }
     return internal ? null : participantId
@@ -563,7 +562,7 @@ export effect function renewTrustedDeliveryAudience(
       "TrustedDeliveryAudience.renew",
       new ElizaError("Could not renew the owner-private delivery audience.", {
         code: "DELIVERY_AUDIENCE_RENEWAL_FAILED",
-        cause: thrownValue(failure),
+        cause: audienceFailure(failure),
         context: {
           attestationId: current.attestationId,
           roomId: message.roomId,
@@ -838,7 +837,7 @@ export effect function revalidateOwnerExclusiveDisclosure(
         "Could not revalidate the owner-private delivery audience.",
         {
           code: "DELIVERY_AUDIENCE_LOOKUP_FAILED",
-          cause: thrownValue(failure),
+          cause: audienceFailure(failure),
           context: {
             attestationId: allowed.audience.attestationId,
             roomId: message.roomId,
