@@ -898,6 +898,8 @@ describe("Google Map Tiles", () => {
       mapType: "roadmap",
       language: "en-US",
       region: "US",
+      scale: "scaleFactor2x",
+      highDpi: true,
     });
     const tileCall = calls.find(
       (call) => call.url.pathname === "/v1/2dtiles/3/4/2",

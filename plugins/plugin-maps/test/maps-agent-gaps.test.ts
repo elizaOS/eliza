@@ -728,6 +728,45 @@ describe("forms ask for names, not ids", () => {
     return service;
   }
 
+  it("orders a search around a point nearest first and says how far each place is", async () => {
+    const result = await run(
+      searching([hit(3, "Far Cafe"), hit(1, "Near Cafe"), hit(2, "Mid Cafe")]),
+      { action: "place", query: "cafe", latitude: 43.73, longitude: 7.42 },
+    );
+    expect(result?.text).toBe(
+      [
+        "Found 3 places, nearest first:",
+        "Near Cafe, 1 Quai, Monaco (1.1 km away)",
+        "Mid Cafe, 2 Quai, Monaco (2.2 km away)",
+        "Far Cafe, 3 Quai, Monaco (3.3 km away)",
+      ].join("\n"),
+    );
+    expect(result).toMatchObject({
+      data: {
+        page: {
+          places: [
+            { name: "Near Cafe" },
+            { name: "Mid Cafe" },
+            { name: "Far Cafe" },
+          ],
+        },
+      },
+    });
+  });
+
+  it("keeps the provider's order and names each place when no point is given", async () => {
+    const result = await run(
+      searching([hit(3, "Far Cafe"), hit(1, "Near Cafe")]),
+      {
+        action: "place",
+        query: "cafe",
+      },
+    );
+    expect(result?.text).toBe(
+      "Found 2 places:\nFar Cafe, 3 Quai, Monaco\nNear Cafe, 1 Quai, Monaco",
+    );
+  });
+
   it("labels route fields by name or address", async () => {
     const result = await run(searching([]), { action: "route" });
     const fields =
