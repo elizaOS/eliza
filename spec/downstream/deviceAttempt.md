@@ -55,6 +55,8 @@ true in the settled phase. A fresh guard needs a distinct authoritative
 admission. This model follows one constructed guard and assumes the
 current caller assertion is synchronous and does not reenter that guard,
 as with the pinned coordinator.
+The lifecycle uses symbolic identities after decoding; its sample keys
+are identity tokens rather than raw scope text.
 
 ```quint
 type RendererPhase = AttemptPrepared | AttemptDispatched | AttemptSettled

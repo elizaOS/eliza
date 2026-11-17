@@ -15,10 +15,14 @@ The three recorded manifests, Grace's `2.0.12-beta.0`, AlphaPhone's
 `2.0.5`, and the core baseline `2.0.6`, expose the same ordered
 conditions. For a code entry, `eliza-source` precedes `types`,
 `import`, and `default`. The last two target the same ESM file. JSON
-entries expose `eliza-source` and `default`. The packed package lists
-`dist` as its shipped files, so a validation intended for ordinary
-package consumers must exercise declaration and ESM resolution without
-the source condition.
+entries expose `eliza-source` and `default`. These pinned source manifests
+declare `dist` as their shipped files. The resolution function below
+describes those manifests; a candidate producer may rewrite paths when
+publishing from `publishConfig.directory`. Packed evidence must inspect
+the manifest and files inside the actual tarball. Ordinary package
+consumers exercise declaration and ESM resolution without the source
+condition; any additional condition is checked against that same packed
+manifest rather than presumed to load source.
 
 Grace's task-widget import resolves to
 `.generated/task-events/messaging/task-widgets.ts`. The selected UI

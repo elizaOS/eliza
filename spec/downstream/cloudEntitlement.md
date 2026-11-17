@@ -75,6 +75,8 @@ account. When a method asks for the exact binding, the current binding
 must match too. A cancelled operation reports cancellation. The host
 never projects a failed HTTP response as a successful billing snapshot.
 These decisions are parameterized by post-transport evidence.
+The initial credential read, expiry check and transport dispatch precede
+this projection and remain source-conformance obligations at the host.
 
 ```quint
 type BillingCredential = { id: str, bindingKey: str, hasExpiry: bool, expiresAt: int }
