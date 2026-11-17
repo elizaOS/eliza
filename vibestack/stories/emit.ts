@@ -42,6 +42,8 @@ interface Entry { hash: string; inputs: string[]; outputs: string[]; manual: str
 const COMPONENTS = ["src/**/*.tsx", "packages/*/src/**/*.tsx"];
 // Not a dot-directory: Storybook's index does not follow changes inside one (verified on 10.6.7).
 export const outOf = (root: string) => join(root, "generated", "stories");
+/** What each source gave, kept in a hidden directory, which no stage's key reads: it changes when only its inputs' hashes do. */
+const MANIFEST = ".cache/manifest.json";
 /** Whether a changed path can change the stories: the project's source and tsconfig, outside `out`, dot-directories and `node_modules`. */
 export const watched = (root: string, out = outOf(root)) => (file: string) => {
   const path = relative(root, resolve(root, file));
@@ -193,12 +195,12 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): () =>
     built = undefined;
     // Compiler options are read again only when the tsconfig changed.
     if (configured !== (configured = text(config))) build = programs(root);
-    const manifest = join(out, "manifest.json");
+    const manifest = join(out, MANIFEST);
     const known: Record<string, Entry> = existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")) : {};
     const written: string[] = [];
     const write = (name: string, text: string) => {
       if (existsSync(join(out, name)) && readFileSync(join(out, name), "utf8") === text) return;
-      mkdirSync(out, { recursive: true });
+      mkdirSync(dirname(join(out, name)), { recursive: true });
       writeFileSync(join(out, name), text);
       written.push(name);
     };
@@ -249,7 +251,7 @@ export function generator({ root, out = outOf(root), cap = 12 }: Options): () =>
     write("stories.test.tsx", smoke(tested));
     const preview = ["ts", "tsx", "js", "jsx"].map((ext) => join(root, ".storybook", `preview.${ext}`)).find(existsSync);
     write("stories.browser.test.tsx", browser(tested, preview && from(preview)));
-    write("manifest.json", `${JSON.stringify(entries)}\n`);
+    write(MANIFEST, `${JSON.stringify(entries)}\n`);
     const removed = (existsSync(out) ? readdirSync(out) : []).filter((name) => name.endsWith(".stories.tsx") && !outputs.includes(name));
     for (const name of removed) rmSync(join(out, name));
     return { index, written, removed, analyzed: stale.length, diagnostics: index.components.flatMap((c) => c.diagnostics) };

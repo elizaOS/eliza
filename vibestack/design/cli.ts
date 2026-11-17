@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 // Works on the current directory: ./tokens.json and ./design.md in, ./generated/{tokens,theme}.css out.
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { check, syncDoc, themeCss, tokensCss } from "./generate.ts"
 import { type Tokens, applyChanges, parseTokens } from "./tokens.ts"
 
 const read = (file: string) => readFileSync(file, "utf8")
+const put = (file: string, text: string) => {
+  if (!existsSync(file) || read(file) !== text) writeFileSync(file, text)
+}
 const load = () => parseTokens(JSON.parse(read("tokens.json")))
 const build = (tokens: Tokens) => {
   mkdirSync("generated", { recursive: true })
-  writeFileSync("generated/tokens.css", tokensCss(tokens))
-  writeFileSync("generated/theme.css", themeCss(tokens))
-  writeFileSync("design.md", syncDoc(read("design.md"), tokens))
+  put("generated/tokens.css", tokensCss(tokens))
+  put("generated/theme.css", themeCss(tokens))
+  put("design.md", syncDoc(read("design.md"), tokens))
 }
 
 const [command, ...rest] = process.argv.slice(2)

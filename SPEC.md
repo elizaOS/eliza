@@ -584,7 +584,8 @@ under `src/`.
   configurations it extends, every file outside `node_modules` the compile
   read, the lock file and the compiler's bytes. A test pass is kept under the
   files its tests read, which are the package's but its specs' Markdown and
-  their Quint in `gen/`: a test reads the generated modules, so a prose edit
+  their Quint in `gen/`, the simulations' traces and the agent and reader
+  prose at its top: a test reads the generated modules, so a prose edit
   runs no test again. A driver's passing run is kept under those files and the
   events the simulator found; a failure, and a `driver:` program, run every
   time.

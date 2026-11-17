@@ -12,7 +12,7 @@ import { ensuresOf, LIB_FILE, libraryFor, proofPaths, prove, type Offered, type 
 import { bin, run } from "./run.ts";
 import { readSpecs, badSpecName, specFiles, specName, isStd, located, type Spec } from "./parse.ts";
 import { contracts, pending, pendingKey, pendingContracts, acceptAllReviews, pendingSpecs, moved, showPending, ledgerFile, readReviewLock, writeLedger, type Pending, type Accepted, type ReviewLock } from "./review.ts";
-import { cacheCredentials, dafnyVersion, entry, recall, remembered, store, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
+import { cacheCredentials, dafnyVersion, entry, recall, remembered, steady, store, collectGarbage, toolchainFingerprint, type Memory } from "./cache.ts";
 import { generated, mirrorGen, typecheckAll, proofUnits, proofFiles, strayProofFiles } from "./units.ts";
 import { simulation, type Simulation } from "./simulate.ts";
 import { sha, digest, indent, packageScripts, pruneSidecars, configured, testInputs, tests, VITEST_CONFIG, readSrc, codeDirs, codeDirOf, projectRoot, allDone, UNREAD, workspacePackages, type Reported, type SrcFile } from "./util.ts";
@@ -137,7 +137,7 @@ export async function check(root: string, accept: false | "reviews" | "unproved"
   try {
     const results: Result[] = [];
     const wrote = new Map<string, string>();
-    await checkLocked(root, accept, loaded, (r) => { results.push(r); log(r); }, mode, wrote);
+    await steady(() => checkLocked(root, accept, loaded, (r) => { results.push(r); log(r); }, mode, wrote));
     return { ok: results.every((r) => r.ok), results, next: nextStep(results), wrote };
   } finally {
     fs.rmSync(loaded, { recursive: true, force: true });
@@ -325,17 +325,20 @@ async function checkLocked(root: string, accept: false | "reviews" | "unproved",
     simulated.catch(() => {}); // a failure is reported in its turn, not as an unhandled rejection
     simulations.push({ spec, model, domain, simulated });
   }
-  // Every simulation finishes before anything is reported, so that none is left writing into gen/.
-  await Promise.allSettled(simulations.map((s) => s.simulated));
-  for (const { spec, model, domain, simulated } of simulations) {
-    const { said, tested } = await simulated;
-    if (tested) machines.set(model.name, { domain, model, found: tested });
-    said.forEach(report);
-    const ran = new Set(said.map((r) => r.stage));
-    const notRun = (["sometimes", "replay"] as const).filter((s) => !ran.has(s) && (s !== "sometimes" || model.sometimes.length));
-    if (notRun.length && said.some((r) => !r.ok)) skip(`${notRun.join(" and ")} of ${spec.file}`, "simulation stopped at the failure above");
+  // None is left writing into gen/ when the check goes on or returns.
+  try {
+    mirrorGen(root, specs);
+    for (const { spec, model, domain, simulated } of simulations) {
+      const { said, tested } = await simulated;
+      if (tested) machines.set(model.name, { domain, model, found: tested });
+      said.forEach(report);
+      const ran = new Set(said.map((r) => r.stage));
+      const notRun = (["sometimes", "replay"] as const).filter((s) => !ran.has(s) && (s !== "sometimes" || model.sometimes.length));
+      if (notRun.length && said.some((r) => !r.ok)) skip(`${notRun.join(" and ")} of ${spec.file}`, "simulation stopped at the failure above");
+    }
+  } finally {
+    await Promise.allSettled(simulations.map((s) => s.simulated));
   }
-  mirrorGen(root, specs);
   /** A result about an owner's code names its package; the root's own reads as it always has. */
   const within = (dir: string, r: Result): Result => (dir ? { ...r, summary: `${dir.slice(0, -1)}: ${r.summary}`, where: dir.slice(0, -1) } : r);
   const result = ([ok, stage, summary, detail = "", where]: Reported): Result => ({ ok, stage, summary, detail: ok ? "" : detail, ...(where ? { where } : {}) });

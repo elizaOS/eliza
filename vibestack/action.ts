@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { entry, executableDigest, recall, store, verifierIdentity, type Memory } from "./cache.ts";
+import { entry, executableDigest, recall, store, verifiedNow, verifierIdentity, type Memory } from "./cache.ts";
 import { NEEDS_DAFNY, bin, exec, stamp } from "./run.ts";
 
 /** A file a tool reads: its text, and what of the text decides the run, which is what the run is remembered under. */
@@ -112,6 +112,6 @@ export async function act(memory: Memory, tool: keyof typeof TOOLS, args: string
   const written = fs.readdirSync(where, { withFileTypes: true }).filter((f) => f.isFile() && !Object.hasOwn(files, f.name)).map((f) => f.name).sort();
   const ran: Ran = { ok: r.status === 0 && !r.stopped, status: r.status, out: `${r.stdout}${r.stderr}${r.stopped ? `\n${r.stopped}\n` : ""}`, stderr: r.stderr, stopped: r.stopped,
     files: Object.fromEntries(written.map((f) => [f, fs.readFileSync(path.join(where, f), "utf8")])) };
-  if (!ran.stopped && answered(args, ran) && (installs ? stamp([exe]) === since : await verifierIdentity() === id)) store(memory, at, ran);
+  if (!ran.stopped && answered(args, ran) && (installs ? stamp([exe]) === since : await verifiedNow() === id)) store(memory, at, ran);
   return ran;
 }

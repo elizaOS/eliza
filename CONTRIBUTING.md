@@ -173,8 +173,9 @@ explorations, hidden directories), since a missed change would leave a stale
 pass on screen; it does not check again for a file the last check wrote
 itself, such as a driver to fill in or a saved counterexample, while the file
 still holds what it wrote. `spec.ts` turns on Node's compile cache before it
-loads the pipeline, so each `spec` process, Studio's checks and Turborepo's
-tasks included, compiles only the tools that changed.
+loads the pipeline, and hands its directory to every process a check starts,
+so each `spec` process, Studio's checks, Turborepo's tasks and the tests and
+drivers they run included, compiles only the code that changed.
 
 Turborepo caches `gen`, `build`, `typecheck`, tests, selftest and lint according
 to `turbo.json`. The task entry point fingerprints Node, VibeLang, Dafny, Z3
@@ -182,7 +183,10 @@ and their runtime files before Turbo hashes its inputs. What it reads of an
 installed file, and Dafny's version, is remembered across processes in
 `$XDG_CACHE_HOME/vibestack` (`~/.cache/vibestack` by default) while the file's
 device, inode, size and modification and change times stay the same, so an
-unchanged toolchain is not read again. Generated stories,
+unchanged toolchain is not read again, nor Z3 asked its version. A check
+reads those times of Dafny's installation once, and reads them again after each
+run of Dafny, so a result is not remembered when the verifier was installed
+again during the run. Generated stories,
 browser build artifacts, compiler declarations and successful test receipts
 are restored with their owning task. `check` is never skipped whole: its
 `driver:` programs run the real application in `traces` every time. Standalone examples install and check
@@ -197,10 +201,13 @@ load: not its `spec/`, Markdown outside `fixtures/`, tests, drivers, traces,
 counterexamples or nested packages, nor its `gen/` unless its code or manifest reaches into it; a
 file a test reads from elsewhere comes through a declared dependency, as the
 root's `@repo/design-system` does. A typecheck is keyed by the scripts and
-JSON alone, and then by the content of every file the compile read. Turbo's
+JSON alone, and then by the content of every file the compile read. Neither
+covers the simulations' traces in `gen/traces/`, which no test reads and a
+check rewrites, nor the prose `spec init` and the tools keep at a package's
+top (`README.md`, `AGENTS.md`, `CLAUDE.md`, `CONTRIBUTING.md`, `SPEC.md`). Turbo's
 `//#test` inputs cover the same files but the root's Markdown, so a restored
-receipt matches unless only a document changed, and then `check` runs the root's
-tests itself. Generated code names each rule by its heading, not its line, so
+receipt matches unless another root document changed, and then `check` runs the
+root's tests itself. Generated code names each rule by its heading, not its line, so
 prose that only moves a rule changes none of these keys. Filtered, exclusive, interrupted
 and failed runs record no complete result. Acceptance and nightly checks
 bypass these receipts and the inner verification cache.
