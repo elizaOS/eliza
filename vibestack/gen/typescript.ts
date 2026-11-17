@@ -7,7 +7,7 @@ import type { Json, Types } from "./types.ts";
 /** The names a module defines beside the spec's, and the locals of what it defines (TAKEN in gen.ts). */
 export const EMITTED = ["Event", "opaque", "inv", "enabled", "step", "parseEvent", "parseState", "parseSender", "initialHolds", "current", "event", "raw"];
 /** Prefixes reserved for the helpers a module may carry for itself, each named `<helper>_<module>`, and for local bindings. */
-export const HELPERS = ["quotient", "remainder", "exact", "equal", "nth", "get", "lookup\\d+", "snapshot", "local"];
+export const HELPERS = ["quotient", "remainder", "exact", "equal", "nth", "get", "lookup\\d+", "typed\\d+", "snapshot", "local"];
 
 export interface Source {
   /** The line that opens the file, and one import line per spec this one imports. */
@@ -70,7 +70,7 @@ export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, loc
     `  return given(${o.params.map((p) => p.name).join(", ")});`,
     `}`,
   );
-  out.push(``, ...vals.map((d) => `${doc(d.name)}export const ${L(d.name)}: ${tsType(typeOf(d.id))} = ${print.ex(d.expr)};`));
+  out.push(``, ...vals.map((d) => `${doc(d.name)}export const ${L(d.name)}: ${tsType(typeOf(d.id))} = ${print.constant(d.expr)};`));
   if (state) out.push(
     ``,
     `/** Every \`always\` rule at once. Holds initially and after every transition. */`,
@@ -191,6 +191,15 @@ export function typescript({ header, typedefs, vals, funs, sig, typeOf, doc, loc
     `export function ${helper(`lookup${i}`)}(m: ${map}, k: ${key}, otherwise: ${of}): ${of} {`,
     `  const key = ${stored};`,
     `  return key in m ? m[key] : otherwise;`,
+    `}`,
+  ));
+  // Only in the prover's code, which states a type where LemmaScript would not know it (Expected in print.ts).
+  print.typings.forEach((type, i) => out.push(
+    ``,
+    `/** A value of type ${type}, as the prover reads it. */`,
+    `//@ pure`,
+    `export function ${helper(`typed${i}`)}(x: ${type}): ${type} {`,
+    `  return x;`,
     `}`,
   ));
   // Only in the code Node runs, which checks what the proof takes as given (Scope.proof in print.ts).

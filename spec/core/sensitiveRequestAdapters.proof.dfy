@@ -25,7 +25,7 @@ lemma SensitiveAdapterAppend(before: seq<Adapter>, after: seq<Adapter>, incoming
   }
 }
 
-lemma SensitiveAdapterMap(r: AdapterRegistry,t: AdapterRegistry,target: DeliveryTarget,adapter: Adapter)
+lemma SensitiveAdapterMap(r: AdapterRegistry,t: AdapterRegistry,target: string,adapter: Adapter)
   requires inv(r) && adapter.objectId > 0
   requires !(exists a :: a in adaptersFor(r,target) && a.objectId == adapter.objectId)
   requires |r.groups| == |t.groups|
@@ -94,7 +94,7 @@ lemma SensitiveRejectAll(adapters: seq<Adapter>)
   }
 }
 
-lemma register_ensures(r: AdapterRegistry, target: DeliveryTarget, adapter: Adapter)
+lemma register_ensures(r: AdapterRegistry, target: string, adapter: Adapter)
   ensures (inv(r) ==> canRegister(r, target, adapter) ==> alwaysTargetOrderIsUnique(register(r, target, adapter)))
   ensures (inv(r) ==> canRegister(r, target, adapter) ==> alwaysObjectRegistrationIsIdempotent(register(r, target, adapter)))
 {
@@ -108,7 +108,7 @@ lemma register_ensures(r: AdapterRegistry, target: DeliveryTarget, adapter: Adap
   }
 }
 
-lemma unregister_ensures(r: AdapterRegistry, target: DeliveryTarget)
+lemma unregister_ensures(r: AdapterRegistry, target: string)
   ensures (inv(r) ==> alwaysTargetOrderIsUnique(unregister(r, target)))
   ensures (inv(r) ==> alwaysObjectRegistrationIsIdempotent(unregister(r, target)))
 {
@@ -126,7 +126,7 @@ lemma unregister_ensures(r: AdapterRegistry, target: DeliveryTarget)
   }
 }
 
-lemma lawResolvedAdapterIsRegistered_ensures(r: AdapterRegistry, target: DeliveryTarget, supports: seq<int>, throws: seq<int>)
+lemma lawResolvedAdapterIsRegistered_ensures(r: AdapterRegistry, target: string, supports: seq<int>, throws: seq<int>)
   ensures (lawResolvedAdapterIsRegistered(r, target, supports, throws) == true)
 {
   var entries := adaptersFor(r,target);
@@ -137,7 +137,7 @@ lemma lawResolvedAdapterIsRegistered_ensures(r: AdapterRegistry, target: Deliver
   }
 }
 
-lemma lawAllRejectFallBackToLatest_ensures(r: AdapterRegistry, target: DeliveryTarget)
+lemma lawAllRejectFallBackToLatest_ensures(r: AdapterRegistry, target: string)
   ensures (lawAllRejectFallBackToLatest(r, target) == true)
 {
   if forall a :: a in adaptersFor(r,target) ==> a.hasSupports {

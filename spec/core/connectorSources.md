@@ -4,7 +4,9 @@ The process-level source registry retains owner insertion order, merges aliases,
 
 ## Story: Register connector aliases without clobbering other owners
 
-As a connector plugin I contribute source aliases and metadata, and unloading my owner restores the remaining contributions.
+> As a connector plugin, I want my source aliases added and removed with
+> my owner only, so that unloading me never erases another plugin's
+> contributions.
 
 ### Owner registration merges aliases and replaces only supplied metadata fields
 
@@ -14,20 +16,26 @@ Owners retain insertion order. Presence flags distinguish an omitted field from 
 type SourceKind = UnspecifiedKind | ActiveKind | PassiveKind
 type PassiveValue = UnspecifiedPassive | PassiveTrue | PassiveFalse
 type SourceMetadata = { canonical: str, aliases: List[str], kind: SourceKind, passive: PassiveValue, identity: List[str], hasIdentity: bool, worldKeys: List[str], hasWorldKeys: bool }
+type KindPatch = { present: bool, kind: SourceKind }
+type PassivePatch = { present: bool, passive: PassiveValue }
+type KeysPatch = { present: bool, defined: bool, keys: List[str] }
+type SourcePatch = { canonical: str, aliases: List[str], kind: KindPatch, passive: PassivePatch, identity: KeysPatch, worldKeys: KeysPatch }
 type SourceOwner = { owner: str, registrations: List[SourceMetadata] }
 type AliasBinding = { alias: str, canonical: str }
 type SourceRegistry = { owners: List[SourceOwner], merged: List[SourceMetadata], aliases: List[AliasBinding] }
 pure val initial: SourceRegistry = { owners: List(), merged: List(), aliases: List() }
-pure val canonicalValues = Set("chat", "mail")
 pure val ownerValues = Set("manual", "plugin-a", "plugin-b")
-pure val aliasesValues = Set(List("chat"), List("alias"), List("mail", "alias"))
-pure val identityValues = Set(List(), List("userId"), List("userId", "name"))
-pure val worldKeysValues = Set(List(), List("guildId", "channelId"))
+pure val keptKeys: KeysPatch = { present: false, defined: false, keys: List() }
+pure val patchValues: Set[SourcePatch] = Set(
+  { canonical: "chat", aliases: List("chat"), kind: { present: true, kind: ActiveKind }, passive: { present: false, passive: UnspecifiedPassive }, identity: { present: true, defined: true, keys: List("userId") }, worldKeys: keptKeys },
+  { canonical: "mail", aliases: List("mail", "alias"), kind: { present: false, kind: UnspecifiedKind }, passive: { present: true, passive: PassiveTrue }, identity: { present: true, defined: false, keys: List() }, worldKeys: { present: true, defined: true, keys: List("guildId", "channelId") } },
+  { canonical: "chat", aliases: List("alias"), kind: { present: true, kind: UnspecifiedKind }, passive: { present: false, passive: UnspecifiedPassive }, identity: keptKeys, worldKeys: keptKeys },
+  { canonical: "mail", aliases: List("alias"), kind: { present: false, kind: UnspecifiedKind }, passive: { present: true, passive: PassiveFalse }, identity: { present: true, defined: true, keys: List("userId", "name") }, worldKeys: keptKeys },
+  { canonical: "mail", aliases: List(), kind: { present: false, kind: UnspecifiedKind }, passive: { present: false, passive: UnspecifiedPassive }, identity: keptKeys, worldKeys: { present: true, defined: false, keys: List() } })
 pure val emptyMetadata: SourceMetadata = {canonical: "", aliases: List(), kind: UnspecifiedKind, passive: UnspecifiedPassive, identity: List(), hasIdentity: false, worldKeys: List(), hasWorldKeys: false}
 pure val emptyOwner: SourceOwner = {owner: "", registrations: List()}
-pure def concatAliases(left: List[str], right: List[str]): List[str] = right.foldl(left, (acc, alias) => acc.append(alias))
 pure def uniqueAliases(xs: List[str]): List[str] = xs.foldl(List(), (acc, alias) => if (acc.includes(alias)) acc else acc.append(alias))
-pure def mergeMetadata(base: SourceMetadata, supplied: SourceMetadata): SourceMetadata = { canonical: supplied.canonical, aliases: uniqueAliases(concatAliases(base.aliases, supplied.aliases)), kind: if (supplied.kind == UnspecifiedKind) base.kind else supplied.kind, passive: if (supplied.passive == UnspecifiedPassive) base.passive else supplied.passive, identity: if (supplied.hasIdentity) supplied.identity else base.identity, hasIdentity: base.hasIdentity or supplied.hasIdentity, worldKeys: if (supplied.hasWorldKeys) supplied.worldKeys else base.worldKeys, hasWorldKeys: base.hasWorldKeys or supplied.hasWorldKeys }
+pure def mergeMetadata(base: SourceMetadata, supplied: SourceMetadata): SourceMetadata = { canonical: supplied.canonical, aliases: uniqueAliases(base.aliases.concat(supplied.aliases)), kind: if (supplied.kind == UnspecifiedKind) base.kind else supplied.kind, passive: if (supplied.passive == UnspecifiedPassive) base.passive else supplied.passive, identity: if (supplied.hasIdentity) supplied.identity else base.identity, hasIdentity: base.hasIdentity or supplied.hasIdentity, worldKeys: if (supplied.hasWorldKeys) supplied.worldKeys else base.worldKeys, hasWorldKeys: base.hasWorldKeys or supplied.hasWorldKeys }
 pure def mergeRegistration(entries: List[SourceMetadata], supplied: SourceMetadata): List[SourceMetadata] = if (entries.some(m => m.canonical == supplied.canonical)) entries.listMap(m => if (m.canonical == supplied.canonical) mergeMetadata(m, supplied) else m) else entries.append(supplied)
 pure def mergeOwnerMetadata(entries: List[SourceMetadata], sourceOwner: SourceOwner): List[SourceMetadata] = sourceOwner.registrations.foldl(entries, (acc, registration) => mergeRegistration(acc, registration))
 pure def mergedOwners(owners: List[SourceOwner]): List[SourceMetadata] = owners.foldl(List(), (acc, owner) => mergeOwnerMetadata(acc, owner))
@@ -36,13 +44,12 @@ pure def mergeAliases(entries: List[AliasBinding], metadata: SourceMetadata): Li
 pure def rebuiltAliases(metadata: List[SourceMetadata]): List[AliasBinding] = metadata.foldl(List(), (acc, m) => mergeAliases(acc, m))
 pure def rebuildSources(owners: List[SourceOwner], s: SourceRegistry): SourceRegistry = {owners: owners, merged: mergedOwners(owners), aliases: rebuiltAliases(mergedOwners(owners))}
 pure def ownerEntry(s: SourceRegistry, owner: str): SourceOwner = s.owners.select(o => o.owner == owner).nthOr(0, emptyOwner)
-pure def canRegisterSource(s: SourceRegistry, owner: str, canonical: str, aliases: List[str], kind: SourceKind, passive: PassiveValue, identity: List[str], hasIdentity: bool, worldKeys: List[str], hasWorldKeys: bool, kindPresent: bool, passivePresent: bool, identityPresent: bool, worldKeysPresent: bool): bool = owner != "" and canonical != ""
-pure def registerSource(s: SourceRegistry, owner: str, canonical: str, aliases: List[str], kind: SourceKind, passive: PassiveValue, identity: List[str], hasIdentity: bool, worldKeys: List[str], hasWorldKeys: bool, kindPresent: bool, passivePresent: bool, identityPresent: bool, worldKeysPresent: bool): SourceRegistry = {
-  val supplied = {canonical: canonical, aliases: uniqueAliases(List(canonical).concat(aliases)), kind: kind, passive: passive, identity: identity, hasIdentity: hasIdentity, worldKeys: worldKeys, hasWorldKeys: hasWorldKeys}
+pure def patchedMetadata(prior: SourceMetadata, patch: SourcePatch): SourceMetadata = { canonical: patch.canonical, aliases: uniqueAliases(prior.aliases.concat(uniqueAliases(List(patch.canonical).concat(patch.aliases)))), kind: if (patch.kind.present) patch.kind.kind else prior.kind, passive: if (patch.passive.present) patch.passive.passive else prior.passive, identity: if (patch.identity.present) patch.identity.keys else prior.identity, hasIdentity: if (patch.identity.present) patch.identity.defined else prior.hasIdentity, worldKeys: if (patch.worldKeys.present) patch.worldKeys.keys else prior.worldKeys, hasWorldKeys: if (patch.worldKeys.present) patch.worldKeys.defined else prior.hasWorldKeys }
+pure def canRegisterSource(s: SourceRegistry, owner: str, patch: SourcePatch): bool = owner != "" and patch.canonical != ""
+pure def registerSource(s: SourceRegistry, owner: str, patch: SourcePatch): SourceRegistry = {
   val existing = ownerEntry(s, owner)
-  val prior = existing.registrations.select(m => m.canonical == canonical).nthOr(0, emptyMetadata)
-  val patched = {canonical: canonical, aliases: uniqueAliases(concatAliases(prior.aliases, supplied.aliases)), kind: if (kindPresent) kind else prior.kind, passive: if (passivePresent) passive else prior.passive, identity: if (identityPresent) identity else prior.identity, hasIdentity: if (identityPresent) hasIdentity else prior.hasIdentity, worldKeys: if (worldKeysPresent) worldKeys else prior.worldKeys, hasWorldKeys: if (worldKeysPresent) hasWorldKeys else prior.hasWorldKeys}
-  val ownerEntries = if (existing.registrations.some(m => m.canonical == canonical)) existing.registrations.listMap(m => if (m.canonical == canonical) patched else m) else existing.registrations.append(patched)
+  val patched = patchedMetadata(existing.registrations.select(m => m.canonical == patch.canonical).nthOr(0, emptyMetadata), patch)
+  val ownerEntries = if (existing.registrations.some(m => m.canonical == patch.canonical)) existing.registrations.listMap(m => if (m.canonical == patch.canonical) patched else m) else existing.registrations.append(patched)
   val updated = {owner: owner, registrations: ownerEntries}
   rebuildSources(if (existing.owner == "") s.owners.append(updated) else s.owners.listMap(o => if (o.owner == owner) updated else o), s)
 }

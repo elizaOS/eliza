@@ -1,10 +1,12 @@
 # Provider-prepared request guards
 
-Each guard captures the complete serialized request and tokenizer result. Rechecking bytes and token counts precedes every transport attempt and optional host allowance reservation. Sources include [prepared-model-request.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/prepared-model-request.ts) and [streaming-context.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/streaming-context.ts).
+Each guard captures the complete serialized request and tokenizer result, and every transport attempt and optional host allowance reservation rechecks bytes and token count first. [Request serializers](./preparedRequestSerialization.md) choose the serialization; [model attempt leases](./modelAttemptLeases.md) own allowances. Sources: `runtime/prepared-model-request.ts`, `streaming-context.ts`.
 
 ## Story: Bind every transport retry to the admitted request
 
-As a provider I serialize a request once and prove that retries preserve its model-visible bytes and token count.
+> As a provider, I want a request serialized once and every retry to keep
+> its model-visible bytes and token count, so that a retry never sends what
+> was not admitted.
 
 ### A request guard captures its exact admitted serialization
 
@@ -14,6 +16,7 @@ The guard derives its retained body and count from one preparation observation. 
 import modelAttemptLeases as L from "./modelAttemptLeases"
 import preparedRequestSerialization as S from "./preparedRequestSerialization"
 import unicode as U from "./unicode"
+import numbers as Num from "./numbers"
 type CountSource = ProviderTokenizer | TokenizerEstimate | Utf8UpperBound
 type GuardPhase = GuardReady | GuardRejected
 type LimitObservation = {supplied: bool, positiveFinite: bool, roundedDown: int, safeInteger: bool}
@@ -29,14 +32,11 @@ pure val initial: PreparedRequests = {guards: List(), leases: L::initial}
 pure val guardIdValues = Set(1, 2, 3)
 pure val leaseIdValues = Set(0, 1, 2)
 pure val messageIdValues = Set("turn-a", "turn-b")
-pure val providerTokenizer: CountSource = ProviderTokenizer
-pure val tokenizerEstimate: CountSource = TokenizerEstimate
-pure val utf8UpperBound: CountSource = Utf8UpperBound
 pure val admittedCodeUnits = List(65, 55357, 56832)
 pure val changedCodeUnits = List(66, 55357, 56832)
 pure val absentLimit: LimitObservation = {supplied: false, positiveFinite: false, roundedDown: 0, safeInteger: false}
 pure val badLimit: LimitObservation = { ...absentLimit, supplied: true }
-pure def integerLimit(value: int): LimitObservation = {supplied: true, positiveFinite: value > 0, roundedDown: value, safeInteger: value > 0 and value <= 9007199254740991}
+pure def integerLimit(value: int): LimitObservation = {supplied: true, positiveFinite: value > 0, roundedDown: value, safeInteger: value > 0 and value <= Num::maxSafeInteger}
 pure val exactLimits: PreparationLimits = {contextWindow: integerLimit(11), outputReserve: integerLimit(1)}
 pure val diagnosticLimits: PreparationLimits = {contextWindow: integerLimit(20), outputReserve: integerLimit(10)}
 pure val defaultLimits: PreparationLimits = {contextWindow: absentLimit, outputReserve: absentLimit}
@@ -49,25 +49,24 @@ pure def wirePreparation(body: List[int], count: int, source: CountSource): Prep
 pure val projectionPreparation: PreparationObservation =
   { ...wirePreparation(admittedCodeUnits, 1, ProviderTokenizer), serializer: S::serializerChoice(true, false) }
 pure val requestInputValues = Set(
-  {provider: "alpha", model: "small", route: "text", preparation: projectionPreparation, limits: exactLimits, leaseId: 0, messageId: "turn-a"},
-  {provider: "alpha", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 1, providerTokenizer), limits: exactLimits, leaseId: 1, messageId: "turn-a"},
-  {provider: "alpha", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 1, providerTokenizer), limits: exactLimits, leaseId: 2, messageId: "turn-b"},
-  {provider: "alpha", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 10, providerTokenizer), limits: exactLimits, leaseId: 0, messageId: "turn-a"},
-  {provider: "beta", model: "large", route: "text", preparation: wirePreparation(admittedCodeUnits, 20, tokenizerEstimate), limits: diagnosticLimits, leaseId: 0, messageId: "turn-b"},
-  {provider: "beta", model: "large", route: "missing", preparation: wirePreparation(changedCodeUnits, 5, utf8UpperBound), limits: defaultLimits, leaseId: 0, messageId: "turn-b"},
-  {provider: "alpha", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 20, providerTokenizer), limits: {contextWindow: integerLimit(11), outputReserve: absentLimit}, leaseId: 0, messageId: "turn-a"},
-  {provider: "alpha", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 1, tokenizerEstimate), limits: {contextWindow: badLimit, outputReserve: integerLimit(1)}, leaseId: 0, messageId: "turn-a"},
+  {provider: "p1", model: "small", route: "text", preparation: projectionPreparation, limits: exactLimits, leaseId: 0, messageId: "turn-a"},
+  {provider: "p1", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 1, ProviderTokenizer), limits: exactLimits, leaseId: 1, messageId: "turn-a"},
+  {provider: "p1", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 1, ProviderTokenizer), limits: exactLimits, leaseId: 2, messageId: "turn-b"},
+  {provider: "p1", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 10, ProviderTokenizer), limits: exactLimits, leaseId: 0, messageId: "turn-a"},
+  {provider: "p2", model: "large", route: "text", preparation: wirePreparation(admittedCodeUnits, 20, TokenizerEstimate), limits: diagnosticLimits, leaseId: 0, messageId: "turn-b"},
+  {provider: "p2", model: "large", route: "missing", preparation: wirePreparation(changedCodeUnits, 5, Utf8UpperBound), limits: defaultLimits, leaseId: 0, messageId: "turn-b"},
+  {provider: "p1", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 20, ProviderTokenizer), limits: {contextWindow: integerLimit(11), outputReserve: absentLimit}, leaseId: 0, messageId: "turn-a"},
+  {provider: "p1", model: "small", route: "text", preparation: wirePreparation(admittedCodeUnits, 1, TokenizerEstimate), limits: {contextWindow: badLimit, outputReserve: integerLimit(1)}, leaseId: 0, messageId: "turn-a"},
   {provider: "p1", model: "small", route: "text", preparation: { ...projectionPreparation, tokens: ExactTokenizerMissing }, limits: exactLimits, leaseId: 0, messageId: "turn-a"},
   {provider: "p1", model: "small", route: "text", preparation: { ...projectionPreparation, walk: { ...S::initial, ancestors: List(1) } }, limits: exactLimits, leaseId: 0, messageId: "turn-a"},
   {provider: "p1", model: "small", route: "text", preparation: { ...projectionPreparation, tokens: TokenizerCount({body: changedCodeUnits, roundedUp: 1, exact: true}) }, limits: exactLimits, leaseId: 0, messageId: "turn-a"})
 pure val observedValues = Set(
-  {codeUnits: admittedCodeUnits, inputCount: 1, countSource: providerTokenizer},
-  {codeUnits: changedCodeUnits, inputCount: 1, countSource: providerTokenizer},
-  {codeUnits: admittedCodeUnits, inputCount: 10, countSource: providerTokenizer},
-  {codeUnits: admittedCodeUnits, inputCount: 1, countSource: tokenizerEstimate},
-  {codeUnits: admittedCodeUnits, inputCount: 20, countSource: tokenizerEstimate},
-  {codeUnits: changedCodeUnits, inputCount: 5, countSource: utf8UpperBound})
-pure val allowanceInputValues = L::allowanceInputValues
+  {codeUnits: admittedCodeUnits, inputCount: 1, countSource: ProviderTokenizer},
+  {codeUnits: changedCodeUnits, inputCount: 1, countSource: ProviderTokenizer},
+  {codeUnits: admittedCodeUnits, inputCount: 10, countSource: ProviderTokenizer},
+  {codeUnits: admittedCodeUnits, inputCount: 1, countSource: TokenizerEstimate},
+  {codeUnits: admittedCodeUnits, inputCount: 20, countSource: TokenizerEstimate},
+  {codeUnits: changedCodeUnits, inputCount: 5, countSource: Utf8UpperBound})
 pure val noGuard: PreparedGuard = {id: 0, phase: GuardRejected, provider: "", model: "", route: "", codeUnits: List(), inputCount: 0, countSource: Utf8UpperBound, threshold: 0, exactAuthority: false, contextTokens: 0, outputTokens: 0, reservationTokens: 0, leaseId: 0, messageId: "", attempts: 0, errorCode: "missing"}
 pure def alwaysGuardIdsUnique(s: PreparedRequests): bool = s.guards.every(g => g.id > 0 and s.guards.select(other => other.id == g.id).length() == 1)
 pure def preparedGuard(s: PreparedRequests, guardId: int): PreparedGuard = s.guards.select(g => g.id == guardId).nthOr(0, noGuard)
@@ -261,7 +260,7 @@ cannot authorize the charge.
 ```quint
 pure def validLimit(limit: LimitObservation): bool =
   not(limit.supplied) or (limit.positiveFinite and limit.roundedDown >= 0 and
-    (limit.safeInteger implies limit.roundedDown > 0 and limit.roundedDown <= 9007199254740991))
+    (limit.safeInteger implies limit.roundedDown > 0 and limit.roundedDown <= Num::maxSafeInteger))
 pure def validPreparationLimits(limits: PreparationLimits): bool =
   validLimit(limits.contextWindow) and validLimit(limits.outputReserve)
 pure def atLeastOne(value: int): int = if (value < 1) 1 else value
@@ -276,7 +275,7 @@ pure def hasRejectionAuthority(countSource: CountSource, limits: PreparationLimi
   countSource == ProviderTokenizer and limits.contextWindow.supplied and limits.outputReserve.supplied
 pure def qualifiedReservationTokens(outputReserve: LimitObservation): int =
   if (outputReserve.supplied and outputReserve.positiveFinite and outputReserve.safeInteger and
-      outputReserve.roundedDown > 0 and outputReserve.roundedDown <= 9007199254740991)
+      outputReserve.roundedDown > 0 and outputReserve.roundedDown <= Num::maxSafeInteger)
     outputReserve.roundedDown
   else 0
 pure def lawDefaultOutputCannotReserve(limits: PreparationLimits): bool =
@@ -300,14 +299,13 @@ does not freeze the projection again. A failed check leaves the lease and
 attempt count intact. The guard remains usable if a later check observes the
 original bytes and count again.
 
-The aggregate also selects an existing eligible guard and submits its captured
-bytes and count through the same dispatch guard. This models a normal unchanged
-retry without requiring a sampled caller to guess values already held by the
-provider; explicit changed-byte and changed-count operations remain available.
+An unchanged retry resubmits an existing eligible guard's captured bytes and
+count through the same dispatch guard; changed-byte and changed-count
+submissions are separate operations.
 
-Discovered by the proof. The composition retains the complete allowance and
-lease invariant. The unchanged retry uses the same dispatch guard as the
-identity-specific entry point. Each guard ID uniquely identifies its retained request and latest diagnostic.
+Discovered by the proof: the composition keeps the complete allowance and
+lease invariant, and the unchanged retry uses the same dispatch guard as the
+identity-specific entry point; without them a retry could dispatch past its allowance. Each guard ID uniquely identifies its retained request and latest diagnostic.
 
 ```quint
 pure def requestUnchanged(g: PreparedGuard, observed: RequestObservation): bool = g.codeUnits == observed.codeUnits and g.inputCount == observed.inputCount and g.countSource == observed.countSource
@@ -354,6 +352,5 @@ pure def closeTurnLease(s: PreparedRequests, leaseId: int): PreparedRequests = {
 pure def canCloseAllowance(s: PreparedRequests, allowanceId: int): bool = L::canCloseAllowance(s.leases, allowanceId)
 pure def closeAllowance(s: PreparedRequests, allowanceId: int): PreparedRequests = { ...s, leases: L::closeAllowance(s.leases, allowanceId) }
 pure def setAllowanceClock(s: PreparedRequests, now: int): PreparedRequests = { ...s, leases: L::setAllowanceClock(s.leases, now) }
-pure val nowValues = L::nowValues
 pure def sometimesLeasedTransportReserved(s: PreparedRequests): bool = s.guards.some(g => g.leaseId > 0 and g.attempts > 0) and s.leases.reservations.length() > 0
 ```

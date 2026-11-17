@@ -1,12 +1,20 @@
 # Nested stream-chunk delivery depth
 
-The process-shared `elizaos.modelStreamChunkDeliveryDepth` AsyncLocalStorage in `packages/core/src/streaming-context.ts:510-550` at `72fed7e4069ecd35d61d886ab6eec5c02c137517` stores a numeric depth independently from streaming manager identity. `runInsideModelStreamChunkDelivery` increments the current depth for the callback's continuation and restores the parent on return or throw. Continuations created inside retain the inherited depth.
+The process-shared `elizaos.modelStreamChunkDeliveryDepth` AsyncLocalStorage in `streaming-context.ts` stores a numeric depth independently from streaming manager identity. `runInsideModelStreamChunkDelivery` increments the current depth for the callback's continuation and restores the parent on return or throw. Continuations created inside retain the inherited depth.
 
 ## Story: Avoid duplicate hooks for one delivered model chunk
 
-As the message service I skip its duplicate chunk hook while the current continuation is already inside useModel chunk delivery. Peer continuations retain their independent depth.
+> As the message service, I want to skip my chunk hook while the current
+> continuation is already inside model chunk delivery, so that one chunk
+> never fires the hook twice. Peer continuations keep their own depth.
 
 ### Entering and leaving a chunk scope preserve inherited depth exactly
+
+A new continuation inherits its parent's depth. Entering chunk delivery
+raises the current continuation's depth by one and leaving restores the
+exact depth it had, whether the callback returned or threw; a peer's depth
+never changes. The message service skips its hook exactly when the
+current depth is positive.
 
 ```quint
 type ChunkContinuation = {id: str, depth: int, stack: List[int]}

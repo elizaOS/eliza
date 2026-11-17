@@ -1,17 +1,19 @@
 # Inference timing observations
 
-The source is `packages/core/src/inference-timing.ts` at
-`72fed7e4069ecd35d61d886ab6eec5c02c137517`. Time values in this model are
-integer clock units. The public API's fractional milliseconds, clock reads,
-trace-ID validation and decimal formatting retain their explicit numeric
-adapter contracts in the baseline. Missing observations remain missing.
+Time values in this model are integer clock units. The public API's
+fractional milliseconds, clock reads, trace-ID validation and decimal
+formatting retain their explicit numeric adapter contracts. Missing
+observations remain missing.
 
 ## Story: Measure a turn without changing its execution
 
+> As an operator, I want a turn's timing recorded without changing how the
+> turn runs, so measurements are trustworthy and free.
+
 As an operator, I collect spans and first-occurrence marks, retain the first
 provider attribution, and close a timer idempotently. A span closer can run
-once. Recording remains allowed after the timer's first close, matching the
-source's snapshot behavior. Closing again retains the original close time.
+once. Recording remains allowed after the timer's first close. Closing again
+retains the original close time.
 
 ### A timer starts with no invented marks or provider attribution
 
@@ -24,6 +26,7 @@ type Timer = { started: bool, now: int, t0: int, closed: bool, closedAt: int, ma
 pure val initial: Timer = { started: false, now: 0, t0: 0, closed: false, closedAt: 0, maxSpans: 512, spans: List(), closers: List(), marks: List(), provider: "", capReached: false, duplicateMarks: 0 }
 pure def canStartTimer(t: Timer, t0: int, maxSpans: int): bool = not(t.started)
 pure def startTimer(t: Timer, t0: int, maxSpans: int): Timer = { ...t, started: true, t0: t0, maxSpans: if (maxSpans < 1) 1 else maxSpans }
+pure val maxSpansValues = Set(0, 1, 2, 512)
 pure def setClock(t: Timer, now: int): Timer = { ...t, now: now }
 pure def elapsed(t: Timer): Metric = if (t.closed) Measured({ amount: t.closedAt - t.t0 }) else MissingMetric
 pure def measuredMark(t: Timer, name: str): Metric = {
@@ -44,7 +47,7 @@ pure def alwaysOpenTimerHasNoDuration(t: Timer): bool = not(t.closed) implies me
 
 The default 512-span capacity belongs to diagnostics. It does not limit
 model context, effect receipts or trajectory data. A negative or nonfinite
-explicit duration is ignored by the source instrumentation boundary.
+explicit duration is ignored at the instrumentation boundary.
 
 ```quint
 pure def appendSpan(span: Span, t: Timer): Timer = if (t.spans.length() >= t.maxSpans) { ...t, capReached: true } else { ...t, spans: t.spans.append(span) }
@@ -62,7 +65,6 @@ pure def alwaysSpanCapacity(t: Timer): bool = t.maxSpans >= 1 and t.spans.length
 pure def alwaysCloserIdentityUnique(t: Timer): bool = t.closers.every(closer => t.closers.select(other => other.id == closer.id).length() == 1)
 pure def sometimesSpanCapReported(t: Timer): bool = t.capReached
 pure def sometimesRecordedAfterClose(t: Timer): bool = t.closed and t.spans.some(span => span.endedAt > t.closedAt)
-pure val maxSpansValues = Set(0, 1, 2, 512)
 pure val idValues = Set("a", "b", "c")
 ```
 
@@ -78,7 +80,7 @@ pure def sometimesDuplicateMarkObserved(t: Timer): bool = t.duplicateMarks > 0
 
 ### An unstarted timer contains no prior instrumentation
 
-Discovered by the proof: starting a smaller-capacity timer from a fabricated
+Starting a smaller-capacity timer from a fabricated
 unstarted state with retained spans could exceed the new limit. A newly
 constructed timer has no spans, closers, marks, provider or close timestamp.
 

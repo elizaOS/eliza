@@ -1,18 +1,33 @@
-# Awareness registry composition
+# Awareness registry
 
-This model composes the contributor cache protocol from
-[awareness](./awareness.md) into the registry in `packages/core/src/awareness.ts`
-at `72fed7e4069ecd35d61d886ab6eec5c02c137517`. Each registered contributor
-owns one cache containing separate rows for runtime identities.
+The source is `packages/core/src/awareness.ts` at
+`72fed7e4069ecd35d61d886ab6eec5c02c137517`. The registry orders contributors
+and gives each registered contributor one [summary cache](./awareness.md),
+with separate rows for runtime identities. Its summary and detail boundaries
+report contributor errors and render the declared unavailable marker while
+continuing peers.
 
 ## Story: Register independent awareness contributors
+
+> As a plugin, I want to register an awareness contributor under a unique
+> ID, so that my contribution never replaces another plugin's.
 
 As a plugin, I register a unique contributor ID with its position, TTL,
 trust classification and invalidating events. Equal-position registration
 is stable. Invalidation drops caches for matching contributors across all
 runtimes and preserves every unrelated contributor's cache.
 
+As an agent, I see contributor output in ascending position order, retaining
+registration order for equal positions. Duplicate contributor IDs fail.
+Untrusted text passes through the existing sanitization patterns and
+summary text passes through well-formed Unicode conversion. Empty summary
+lines are omitted and the versioned self-status header remains present.
+
 ### A registry keeps one ordered contributor and one cache per ID
+
+Registering inserts the new contributor after every contributor at or below
+its position and before every contributor above it, keeping every existing
+contributor. A duplicate ID is refused.
 
 ```quint
 import awareness as A from "./awareness"
@@ -26,13 +41,15 @@ pure val noEntry: Entry = { id: "", position: 0, ttl: 60000, trusted: false, eve
 pure def entryAt(r: Registry, id: str): Entry = r.entries.select(entry => entry.id == id).nthOr(0, noEntry)
 pure def contributorRegistered(r: Registry, id: str): bool = r.entries.some(entry => entry.id == id)
 pure def canRegisterContributor(r: Registry, id: str, position: int, ttl: int, trusted: bool, events: Set[str]): bool = not(contributorRegistered(r, id))
-pure def registerContributor(r: Registry, id: str, position: int, ttl: int, trusted: bool, events: Set[str]): Registry = {
-  val entry = { id: id, position: position, ttl: ttl, trusted: trusted, events: events, cache: A::initial }
-  { entries: r.entries.select(existing => existing.position <= position).append(entry).concat(r.entries.select(existing => existing.position > position)) }
-}
+pure def inserted(entries: List[Entry], candidate: Entry): List[Entry] =
+  entries.select(existing => existing.position <= candidate.position).append(candidate).concat(entries.select(existing => existing.position > candidate.position))
+pure def registerContributor(r: Registry, id: str, position: int, ttl: int, trusted: bool, events: Set[str]): Registry =
+  { entries: inserted(r.entries, { id: id, position: position, ttl: ttl, trusted: trusted, events: events, cache: A::initial }) }
+pure def lawInsertionKeepsExistingContributors(entries: List[Entry], candidate: Entry): bool = inserted(entries, candidate).length() == entries.length() + 1
 pure val eventsValues = Set(Set(), Set("settings-updated"), Set("plugin-loaded", "settings-updated"))
 pure val idValues = Set("first", "second")
-pure val entriesValues: Set[List[Entry]] = Set(List())
+pure val entriesValues: Set[List[Entry]] = Set(List(), List({ ...noEntry, id: "first", position: 1, trusted: true }, { ...noEntry, id: "second", position: 2 }))
+pure val candidateValues: Set[Entry] = Set({ ...noEntry, id: "new", position: 1 }, { ...noEntry, id: "first", position: 0, trusted: true })
 pure val ttlValues = A::ttlValues
 pure def alwaysUniqueContributorIds(r: Registry): bool = r.entries.every(entry => r.entries.select(other => other.id == entry.id).length() == 1)
 pure def alwaysContributorCachesValid(r: Registry): bool = r.entries.every(entry => A::alwaysOneCachePerRuntime(entry.cache) and A::alwaysUniqueRequestIdentity(entry.cache) and A::alwaysGenerationsAreValid(entry.cache))

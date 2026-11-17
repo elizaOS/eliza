@@ -74,13 +74,13 @@ lemma RemoveSourceOwnerParts(s: SourceRegistry, owner: string)
   ensures removeSourceOwner(s, owner).owners == ProofLib.Filter((o: SourceOwner) => (o.owner != owner), s.owners)
 {}
 
-lemma registerSource_ensures(s: SourceRegistry, owner: string, canonical: string, aliases: seq<string>, kind: SourceKind, passive: PassiveValue, identity: seq<string>, hasIdentity: bool, worldKeys: seq<string>, hasWorldKeys: bool, kindPresent: bool, passivePresent: bool, identityPresent: bool, worldKeysPresent: bool)
-  ensures (inv(s) ==> canRegisterSource(s, owner, canonical, aliases, kind, passive, identity, hasIdentity, worldKeys, hasWorldKeys, kindPresent, passivePresent, identityPresent, worldKeysPresent) ==> alwaysSourceOwnersUnique(registerSource(s, owner, canonical, aliases, kind, passive, identity, hasIdentity, worldKeys, hasWorldKeys, kindPresent, passivePresent, identityPresent, worldKeysPresent)))
-  ensures (inv(s) ==> canRegisterSource(s, owner, canonical, aliases, kind, passive, identity, hasIdentity, worldKeys, hasWorldKeys, kindPresent, passivePresent, identityPresent, worldKeysPresent) ==> alwaysSourceCachesMatchOwners(registerSource(s, owner, canonical, aliases, kind, passive, identity, hasIdentity, worldKeys, hasWorldKeys, kindPresent, passivePresent, identityPresent, worldKeysPresent)))
-  ensures (inv(s) ==> canRegisterSource(s, owner, canonical, aliases, kind, passive, identity, hasIdentity, worldKeys, hasWorldKeys, kindPresent, passivePresent, identityPresent, worldKeysPresent) ==> alwaysAliasesUnique(registerSource(s, owner, canonical, aliases, kind, passive, identity, hasIdentity, worldKeys, hasWorldKeys, kindPresent, passivePresent, identityPresent, worldKeysPresent)))
+lemma registerSource_ensures(s: SourceRegistry, owner: string, patch: SourcePatch)
+  ensures (inv(s) ==> canRegisterSource(s, owner, patch) ==> alwaysSourceOwnersUnique(registerSource(s, owner, patch)))
+  ensures (inv(s) ==> canRegisterSource(s, owner, patch) ==> alwaysSourceCachesMatchOwners(registerSource(s, owner, patch)))
+  ensures (inv(s) ==> canRegisterSource(s, owner, patch) ==> alwaysAliasesUnique(registerSource(s, owner, patch)))
 {
-  if inv(s) && canRegisterSource(s, owner, canonical, aliases, kind, passive, identity, hasIdentity, worldKeys, hasWorldKeys, kindPresent, passivePresent, identityPresent, worldKeysPresent) {
-    var after := registerSource(s, owner, canonical, aliases, kind, passive, identity, hasIdentity, worldKeys, hasWorldKeys, kindPresent, passivePresent, identityPresent, worldKeysPresent);
+  if inv(s) && canRegisterSource(s, owner, patch) {
+    var after := registerSource(s, owner, patch);
     SourceOwnerFilters(s); SourceOwnerFilters(after); SourceOwnerAbsent(s, owner);
     SourceAliasFilters([]); RebuildSourceAliases([], after.merged);
     if ownerEntry(s, owner).owner == "" {

@@ -1,0 +1,8 @@
+{
+  "name": "@elizaos/plugin-workflow",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Reviewed workflows: authoring, admission, approvals, scheduling, execution and hosted digests.",
+  "license": "MIT"
+}

@@ -1,12 +1,18 @@
 # Shared scheduler ownership
 
-`services/task-scheduler.ts` has one timer and one attached tick, with detached database awaits that can outlive adapter or service replacement. This product composes the [timer and process callbacks](./processScheduler.md) with [query and dispatch ownership](./queryDrain.md). It preserves both canonical owners and adds only a lineage link from each real tick to its captured query.
+`services/task-scheduler.ts` has one timer and one attached tick, with detached database awaits that can outlive adapter or service replacement. This spec composes the [timer and process callbacks](./processScheduler.md) with [query and dispatch ownership](./queryDrain.md). It preserves both canonical owners and adds only a lineage link from each real tick to its captured query.
 
 ## Story: Replace scheduler storage while process tasks and safely owned queries continue
+
+> As a host, I want to replace or stop the scheduler's storage while
+> process tasks keep running, so that an old database await can never
+> release or overwrite work owned by its replacement.
 
 ### Each timer tick queues process work and captures at most one query for its own generation
 
 The timer first queues the current process tasks. When a database adapter is attached and no tick is active, it snapshots dirty registrations, retains busy registrations for a later tick and removes the other visited names. The tick then either owns the newly issued query ticket or completes as an empty tick. A process callback's own settlement and disposal proceed independently. Query completion releases storage ownership, while its tick can still own grouped dispatches, and only the same tick can release its active pointer. A replacement query can dispatch while an older database await is still unresolved; fairness for older work does not impose settlement order.
+
+Each link pairs one issued tick with one issued query: both identities are positive and below their next serial, so no tick serves two queries and no query is owned by two ticks.
 
 ```quint
 import processScheduler as P from "./processScheduler"
@@ -51,49 +57,13 @@ pure def canReturnCallback(s: SharedScheduler, id: int): bool = P::canFinishProc
 pure def returnCallback(s: SharedScheduler, id: int, succeeded: bool): SharedScheduler = { ...s, process: P::finishProcess(s.process, id, succeeded) }
 pure def canAdvanceDisposal(s: SharedScheduler): bool = P::canAdvanceDisposal(s.process)
 pure def advanceDisposal(s: SharedScheduler, succeeded: bool): SharedScheduler = { ...s, process: P::advanceDisposal(s.process, succeeded) }
+pure def alwaysLinksPairIssuedTicksAndQueries(s: SharedScheduler): bool = s.links.every(link => link.tick > 0 and link.tick < s.process.serial and link.query > 0 and link.query < s.drain.nextQuery and s.links.every(other => (other.tick == link.tick) == (other.query == link.query)))
 pure val resultRowsValues = Q::resultRowsValues
 pure val keyValues = Q::keyValues
 pure val agentValues = Q::agentValues
 pure val serviceValues = Q::serviceValues
 pure val nameValues = P::nameValues
 pure val idValues = P::idValues
-```
-
-### Each captured query has exactly one link, to a distinct tick that was already allocated
-
-Discovered by the proof. Only a tick that captures a query adds a link, and it
-adds the link together with that query, so the link at position i names the
-query with key i + 1. Each link names the fresh tick of the callback that
-captured it: a tick identity below the next allocation serial that no other
-link names.
-
-```quint
-pure def alwaysLinksFollowQueries(s: SharedScheduler): bool = s.links.length() == s.drain.queries.length() and s.links.every(link => link.tick > 0 and link.tick < s.process.serial and s.links.nthOr(link.query - 1, noLink) == link and s.links.select(other => other.tick == link.tick).length() == 1)
-```
-
-### The composed query drain keeps the rules of its own unit
-
-Discovered by the proof. Every transition of this product moves the drain by a
-transition of [query ownership](./queryDrain.md) that its guard allows, or
-rearms the registry when an adapter attaches to a timer that already exists.
-So the drain keeps the rules of that unit that the rule about retired storage
-does not already state: the active adapter is open, running services own a
-busy slot once, query keys are positional, dirty agents are unique, closing
-requires retirement, the stop snapshot uses issued keys and a ready query has
-work to dispatch.
-
-```quint
-pure def alwaysDrainKeepsItsRules(s: SharedScheduler): bool = Q::alwaysActiveAdapterIsOpen(s.drain) and Q::alwaysRunningServiceOwnsBusySlot(s.drain) and Q::alwaysRunningServicesAreUnique(s.drain) and Q::alwaysQueryKeysUnique(s.drain) and Q::alwaysDirtyKeysUnique(s.drain) and Q::alwaysCloseRequiresRetirement(s.drain) and Q::alwaysStopSnapshotUsesIssuedKeys(s.drain) and Q::alwaysReadyHasDispatch(s.drain)
-```
-
-### The composed process scheduler keeps the rules of its own unit
-
-Discovered by the proof. Every transition of this product moves the process
-scheduler by a transition of [the timer and process callbacks](./processScheduler.md)
-that its guard allows, so the process scheduler keeps every rule of that unit.
-
-```quint
-pure def alwaysProcessKeepsItsRules(s: SharedScheduler): bool = P::alwaysRegisteredNamesUnique(s.process) and P::alwaysDisposedCallbacksDrained(s.process) and P::alwaysDisposingIsDetached(s.process) and P::alwaysAllocatedIdentitiesFresh(s.process) and P::alwaysTimerIsRequired(s.process) and P::alwaysActiveTickIsOwned(s.process)
 ```
 
 ### Adapter replacement and stop retain detached query and process ownership
@@ -132,6 +102,17 @@ pure val weight_advanceQuery = 5
 pure val weight_fire = 4
 pure val weight_attach = 3
 pure val weight_registerRuntime = 3
+```
+
+### Both owners' own rules still hold inside the composition
+
+Composing the owners must not break their rules, and each step here relies on them. This rule restates, for the composed state, rules that [processScheduler](./processScheduler.md) and [queryDrain](./queryDrain.md) already own: a present process name is registered once; a disposed callback is idle, aborted and unregistered; a disposing callback is aborted and unregistered; every task and tick identity is positive, below the next serial and allocated once; the timer exists while an adapter is attached or a process task is registered; an active tick names an uncompleted tick of the current generation; query tickets are issued in order, each once; the active adapter is neither retired nor closed; only retired services and adapters are closed; and the stop snapshot names only issued query tickets.
+
+```quint
+pure def alwaysOwnersKeepTheirRules(s: SharedScheduler): bool =
+  P::alwaysRegisteredNamesUnique(s.process) and P::alwaysDisposedCallbacksDrained(s.process) and P::alwaysDisposingIsDetached(s.process) and
+  P::alwaysAllocatedIdentitiesFresh(s.process) and P::alwaysTimerIsRequired(s.process) and P::alwaysActiveTickIsOwned(s.process) and
+  Q::alwaysQueryKeysUnique(s.drain) and Q::alwaysActiveAdapterIsOpen(s.drain) and Q::alwaysCloseRequiresRetirement(s.drain) and Q::alwaysStopSnapshotUsesIssuedKeys(s.drain)
 ```
 
 ### Fair timer service captures dirty registrations and releases their owned awaits

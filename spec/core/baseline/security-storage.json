@@ -1107,7 +1107,7 @@
           "role": "Shared owner composition: preserves cross-instance identities and admission/settlement state beyond the legacy finite projection."
         },
         {
-          "path": "spec/core/approvalWorkers.md",
+          "path": "spec/core/approvalService.md",
           "properties": [
             "alwaysCountMatchesDistinctWorkers",
             "lawFailedRegistrationPreventsTask",
@@ -3897,7 +3897,7 @@
       ],
       "targetSpecs": [
         {
-          "path": "spec/core/notificationCursor.md",
+          "path": "spec/core/notifications/cursor.md",
           "properties": [
             "alwaysReturnedRowsWithinFence",
             "alwaysIncompleteAdvances",
@@ -4323,7 +4323,7 @@
       ],
       "targetSpecs": [
         {
-          "path": "spec/core/notifications.md",
+          "path": "spec/core/notifications/index.md",
           "properties": [
             "alwaysCoordinatesRemainValid",
             "alwaysReadyMatchesDisk",
@@ -4902,7 +4902,7 @@
       ],
       "targetSpecs": [
         {
-          "path": "spec/core/notifications.md",
+          "path": "spec/core/notifications/index.md",
           "properties": [
             "alwaysCoordinatesRemainValid",
             "alwaysReadyMatchesDisk",
@@ -5169,7 +5169,7 @@
       ],
       "targetSpecs": [
         {
-          "path": "spec/core/notifications.md",
+          "path": "spec/core/notifications/index.md",
           "properties": [
             "alwaysCoordinatesRemainValid",
             "alwaysReadyMatchesDisk",
@@ -5724,7 +5724,7 @@
       ],
       "targetSpecs": [
         {
-          "path": "spec/core/notificationRecovery.md",
+          "path": "spec/core/notifications/recovery.md",
           "properties": [
             "alwaysCooldownIsBounded",
             "alwaysLoaderOwnsRegistering",
@@ -5735,7 +5735,7 @@
           ]
         },
         {
-          "path": "spec/core/notificationRecoveryOwners.md",
+          "path": "spec/core/notifications/recoveryOwners.md",
           "properties": [
             "alwaysMappedIdentityExists",
             "alwaysRecordIdentitiesAreUnique",
@@ -6151,7 +6151,7 @@
       ],
       "targetSpecs": [
         {
-          "path": "spec/core/pairing.md",
+          "path": "spec/core/pairing/index.md",
           "properties": [
             "lawDifferentAgentsStayIndependent",
             "lawDifferentChannelsStayIndependent",
@@ -6477,7 +6477,7 @@
       ],
       "targetSpecs": [
         {
-          "path": "spec/core/pairing.md",
+          "path": "spec/core/pairing/index.md",
           "properties": [
             "lawDifferentAgentsStayIndependent",
             "lawDifferentChannelsStayIndependent",
@@ -11225,7 +11225,7 @@
     {
       "source": "packages/core/src/services/approval.ts",
       "targetSpecs": [
-        "spec/core/approvalWorkers.md"
+        "spec/core/approvalService.md"
       ],
       "stateEvidence": [
         {
@@ -11400,7 +11400,7 @@
       "sourceSha256": "bf081cc63c4f42999c0b06180d853a9bd830dcd5f4233e58d6670ba62bce5d49",
       "targetSpecs": [
         "spec/core/approvalService.md",
-        "spec/core/approvalWorkers.md",
+        "spec/core/approvalService.md",
         "spec/core/approvals.md"
       ],
       "stateEvidence": [
@@ -11526,8 +11526,8 @@
     "spec/core/scheduling.md",
     "spec/core/receipts.md",
     "spec/core/approvals.md",
-    "spec/core/pairing.md",
-    "spec/core/notifications.md",
+    "spec/core/pairing/index.md",
+    "spec/core/notifications/index.md",
     "spec/core/privacy.md",
     "spec/core/sessions.md",
     "spec/core/interactiveTask.md",
@@ -11536,8 +11536,8 @@
     "spec/core/embeddingBatch.md",
     "spec/core/factWrites.md",
     "spec/core/sourceSweep.md",
-    "spec/core/notificationRecovery.md",
-    "spec/core/notificationRecoveryOwners.md",
+    "spec/core/notifications/recovery.md",
+    "spec/core/notifications/recoveryOwners.md",
     "spec/core/queryDrain.md",
     "spec/core/capabilityAuthority.md",
     "spec/core/trustedAudience.md",
@@ -11548,11 +11548,11 @@
     "spec/core/secretSession.md",
     "spec/core/corpusPseudonyms.md",
     "spec/core/guardedStream.md",
-    "spec/core/notificationCursor.md",
+    "spec/core/notifications/cursor.md",
     "spec/core/capabilityCoordinator.md",
     "spec/core/secretProfile.md",
     "spec/core/sensitiveRequestAdapters.md",
-    "spec/core/approvalWorkers.md",
+    "spec/core/approvalService.md",
     "spec/core/trajectorySources.md",
     "spec/core/receiptBindings.md",
     "spec/core/audienceRegistry.md",
@@ -11606,7 +11606,7 @@
       "contract": "Dynamic registered decision map composes request authority. Decision and confirmation IDs remain permanently reserved after atomic consume or stale-snapshot deletion."
     },
     {
-      "spec": "spec/core/notifications.md",
+      "spec": "spec/core/notifications/index.md",
       "contract": "Explicit admitted mutation queue, no-op completion, active persistence/reconciliation/fanout ownership, stop drain, expired-row pruning and group count/replacement ordering."
     },
     {

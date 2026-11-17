@@ -9,6 +9,9 @@ character defaults before the normal agent-ID derivation.
 
 ## Story: Construct anonymous agents with distinct generated names
 
+> As an embedded host, I want an agent built without a character to get a
+> usable, distinct name, so that two anonymous agents are never confused.
+
 As an embedded host, I can omit a character and receive a usable default
 without overwriting the identity of an explicitly supplied character.
 

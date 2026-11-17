@@ -4,7 +4,8 @@ Bundled core copies read shared global symbol slots on every manager lookup. A d
 
 ## Story: Share injected managers across bundled core copies
 
-As a host I replace a global manager and require subsequent lookups from every bundle to observe it.
+> As a host, I want a manager I inject to be the one every bundled copy of
+> core sees, so that no bundle keeps using a stale manager.
 
 ### A symbol slot is the single source of manager identity
 

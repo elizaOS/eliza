@@ -1,12 +1,20 @@
 # Service builder snapshots
 
-`packages/core/src/services.ts:29-118` at `72fed7e4069ecd35d61d886ab6eec5c02c137517` stores description, start and stop closures in a mutable builder. Each build captures the current values in a new constructor. Its static serviceType and start properties are immutable and enumerable.
+`services.ts` stores description, start and stop closures in a mutable builder. Each build captures the current values in a new constructor. Its static serviceType and start properties are immutable and enumerable.
 
 ## Story: Build independent service classes from a mutable builder
 
-As a plugin author I can change the builder and build again without altering an earlier constructor. A constructor without a start closure rejects when started; an absent stop closure fulfills without work.
+> As a plugin author, I want to change the builder and build again, so that
+> I get a new service class without altering one I built earlier.
 
 ### Building captures all current closures and description
+
+Each build appends a new class with the next identity, counting up from
+one, and the builder's
+current type, description and start and stop closures; changing the
+builder afterwards never changes a class already built. A class without a
+start closure rejects when started, and one without a stop closure stops
+without work.
 
 ```quint
 type BuiltService = {id: int, serviceType: str, description: str, startRef: int, stopRef: int}
@@ -28,14 +36,6 @@ pure def build(s: ServiceBuilder): ServiceBuilder = { ...s, built: s.built.appen
 pure def startDisposition(service: BuiltService): str = if (service.startRef == 0) "missing-start-error" else "invoke-captured-start"
 pure def stopDisposition(service: BuiltService): str = if (service.stopRef == 0) "fulfilled-without-hook" else "await-captured-stop"
 pure def stepBuiltClassesStayFixed(before: ServiceBuilder, after: ServiceBuilder): bool = before.built.every(service => after.built.includes(service))
-pure def alwaysClassIdsUnique(s: ServiceBuilder): bool = s.built.every(service => service.id > 0 and service.id < s.nextId and s.built.select(other => other.id == service.id).length() == 1)
+pure def alwaysClassIdsUnique(s: ServiceBuilder): bool = s.nextId > 0 and s.built.every(service => service.id > 0 and service.id < s.nextId and s.built.select(other => other.id == service.id).length() == 1)
 pure def sometimesDistinctBuildSnapshots(s: ServiceBuilder): bool = s.built.some(first => s.built.some(second => first.id != second.id and (first.startRef != second.startRef or first.stopRef != second.stopRef or first.description != second.description)))
-```
-
-### The next class identity stays positive
-
-Discovered by the proof: a builder with no built classes and a nonpositive next identity satisfied the uniqueness rule but gave its next built class an invalid identity. The model identity starts at one, and only a build changes it, by adding one.
-
-```quint
-pure def alwaysNextIdIsPositive(s: ServiceBuilder): bool = s.nextId > 0
 ```

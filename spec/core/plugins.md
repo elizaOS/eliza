@@ -1,10 +1,12 @@
 # Plugin registration and ownership
 
-Plugin ownership is bound to runtime identity and object identity. Register, rollback, unload, reload and successor connector ownership retain separate transition boundaries. Sources include [plugin-lifecycle.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/plugin-lifecycle.ts), [plugin.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/types/plugin.ts) and [PluginLifecycle.qnt](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/quint/PluginLifecycle.qnt).
+Plugin ownership is bound to runtime and object identity. Register, rollback, unload, reload and successor connector ownership are separate transitions. Sources: `plugin-lifecycle.ts`, `types/plugin.ts`.
 
 ## Story: Load and roll back a plugin
 
-As a plugin author I receive one shared registration result, and partial contributions remain owned until cleanup finishes.
+> As a plugin author, I want one shared registration result and my partial
+> contributions owned until cleanup finishes, so that a failed load rolls
+> back completely.
 
 ### Duplicate callers share the registration outcome
 

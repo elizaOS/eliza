@@ -1,22 +1,37 @@
 # Eliza
 
-Eliza's replacement runtime kernel is specified before its VibeLang and
-Effect implementation. The target is a replacement for `@elizaos/core`
-with a public Promise-based facade and browser-safe protocol exports.
-Preserving current consumer contracts is a release requirement. The shell
-will use Effect services and typed failures internally.
+Eliza is an agent runtime and the packages a product builds on it: the
+kernel, the agent host, identity and sign-in, the Android device image, the
+hosted cloud services and the assistant plugins. Each package is specified
+top-down here before its VibeLang and Effect implementation: stories, then
+rules, then the Quint model the generated code and proofs come from. A
+change to Eliza starts in this tree.
 
-The research baseline is elizaOS/eliza commit
-`72fed7e4069ecd35d61d886ab6eec5c02c137517`. The imported toolchain is
-lalalune/vibestack commit `f3701e96e0e6845a4c67741433c76c50f3ffd9e4`.
-The original core source, declarations, consumers, formal assertions and
-scenario bounds are traceable from the core specification.
+Products compose these packages and keep their own interfaces, branding and
+deployments. A branded cloud deployment imports the cloud and auth packages
+and supplies its own configuration. Eliza names no product: what a product
+needs is stated as a generic capability of the package that owns it, and
+[consumer contracts](./core/consumerContracts.md) state how a consumer's
+recorded imports are traced to an owning rule.
 
-- [Downstream consumer contracts and models](./downstream/)
-- [Core requirements and models](./core/)
-- [Imported toolchain demonstration](./app/)
+| Package | Specification |
+| --- | --- |
+| `@elizaos/core` | [Kernel](./core/) |
+| `@elizaos/contracts` | [Wire contracts](./contracts/) |
+| `@elizaos/agent` | [Agent host](./agent/) |
+| `@elizaos/auth` | [Identity and sign-in](./auth/) |
+| `@elizaos/os` | [Device image, native bridges and voice](./os/) |
+| `@elizaos/cloud` | [Hosted services](./cloud/) |
+| `@elizaos/plugin-workflow` | [Workflows](./workflow/) |
+| `@elizaos/plugin-browser` | [Browser automation](./browser/) |
+| `@elizaos/plugin-calendar` | [Calendar](./calendar/) |
+| `@elizaos/plugin-inbox` | [Inbox](./inbox/) |
+| `@elizaos/plugin-notes` | [Notes](./notes/) |
+| `@elizaos/plugin-maps` | [Maps](./maps/) |
+| `@elizaos/plugin-files` | [Files](./files/) |
+| `@elizaos/plugin-personal-assistant` | [Personal assistance](./assistant/) |
+| `@elizaos/plugin-local-inference` | [Local inference](./localInference/) |
 
-This phase owns requirements, models, generated contracts and verification.
-External database, transport, model-provider and package-consumer execution
-belongs to implementation acceptance after the core shell exists. The
-imported demonstration remains available for checking the toolchain.
+Eliza has no shared user interface, training, benchmark, testing or script
+package; `packages/ui` and `packages/design-system` are the toolchain's
+private React components and design tokens, not a published Eliza package. Cloud-hosted user applications are not part of Eliza.

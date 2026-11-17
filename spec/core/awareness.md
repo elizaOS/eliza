@@ -1,33 +1,17 @@
-# Awareness contributors and caches
+# Awareness summary cache
 
 The source is `packages/core/src/awareness.ts` at
 `72fed7e4069ecd35d61d886ab6eec5c02c137517`. Contributor registration is
 global to a registry. Cached summaries are additionally keyed by runtime
-identity. The registry's summary and detail boundaries report contributor
-errors and render the declared unavailable marker while continuing peers.
-
-## Story: Compose ordered awareness from installed contributors
-
-As an agent, I see contributor output in ascending position order, retaining
-registration order for equal positions. Duplicate contributor IDs fail.
-Untrusted text passes through the existing sanitization patterns and
-summary text passes through well-formed Unicode conversion. Empty summary
-lines are omitted and the versioned self-status header remains present.
-
-### Inserting a contributor preserves stable position order
-
-```quint
-type Contributor = { id: str, position: int, trusted: bool }
-pure def mayRegister(entries: List[Contributor], candidate: Contributor): bool = not(entries.some(entry => entry.id == candidate.id))
-pure def inserted(entries: List[Contributor], candidate: Contributor): List[Contributor] =
-  entries.select(entry => entry.position <= candidate.position).append(candidate).concat(entries.select(entry => entry.position > candidate.position))
-pure val entriesValues = Set(List(), List({ id: "first", position: 1, trusted: true }, { id: "second", position: 2, trusted: false }))
-pure val candidateValues = Set({ id: "new", position: 1, trusted: false }, { id: "first", position: 0, trusted: true })
-pure def lawDuplicateRegistrationRejected(entries: List[Contributor], candidate: Contributor): bool = entries.some(entry => entry.id == candidate.id) implies not(mayRegister(entries, candidate))
-pure def lawInsertionKeepsExistingContributors(entries: List[Contributor], candidate: Contributor): bool = inserted(entries, candidate).length() == entries.length() + 1
-```
+identity. This spec owns one contributor's summary cache; the
+[awareness registry](./awarenessRegistry.md) orders contributors and owns one
+cache per contributor.
 
 ## Story: Cache each runtime independently and invalidate selected contributors
+
+> As a host, I want each runtime's awareness cached on its own and
+> refreshed per contributor, so that one runtime or contributor never
+> serves another's stale view.
 
 As a host, I use the configured contributor TTL or its 60000 millisecond
 default. Cache expiry uses the invocation's captured clock. Concurrent

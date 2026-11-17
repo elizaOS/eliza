@@ -82,9 +82,9 @@ lemma FreshReadPreservesRows(m: MemoReads, readerId: string)
 }
 
 lemma readFresh_ensures(m: MemoReads, readerId: string)
-  ensures (inv(m) ==> canReadFresh(m, readerId) ==> alwaysMemoOwnsCache(readFresh(m, readerId)))
   ensures (inv(m) ==> canReadFresh(m, readerId) ==> alwaysVersionOrder(readFresh(m, readerId)))
   ensures (inv(m) ==> canReadFresh(m, readerId) ==> alwaysMemoPolicy(readFresh(m, readerId)))
+  ensures (inv(m) ==> canReadFresh(m, readerId) ==> alwaysMemoOwnsCache(readFresh(m, readerId)))
   ensures (inv(m) ==> canReadFresh(m, readerId) ==> alwaysFetchCaptureAfterFloor(readFresh(m, readerId)))
   ensures (inv(m) ==> canReadFresh(m, readerId) ==> alwaysResidentUsesCurrentFloor(readFresh(m, readerId)))
   ensures (inv(m) ==> canReadFresh(m, readerId) ==> alwaysReaderBoundToItsFetch(readFresh(m, readerId)))
@@ -99,10 +99,10 @@ lemma readFresh_ensures(m: MemoReads, readerId: string)
     FreshReadShape(m, readerId);
     var after := readFresh(m, readerId);
     forall id | id in after.fetchIds
-      ensures id > 0 && id <= after.serial && fetchAt(after, id).phase != fetchAbsentValue
+      ensures id > 0 && id <= after.serial && fetchAt(after, id).phase != FetchAbsent
       ensures 0 <= fetchAt(after, id).floor <= after.completed
       ensures fetchAt(after, id).captured ==> fetchAt(after, id).floor <= fetchAt(after, id).version <= after.durable
-      ensures fetchAt(after, id).phase == fetchResolvedValue ==> fetchAt(after, id).captured
+      ensures fetchAt(after, id).phase == FetchResolved ==> fetchAt(after, id).captured
     {
       if id != m.serial + 1 { assert id in m.fetchIds; }
     }
@@ -115,9 +115,9 @@ lemma readFresh_ensures(m: MemoReads, readerId: string)
 }
 
 lemma readShared_ensures(m: MemoReads, readerId: string)
-  ensures (inv(m) ==> canReadShared(m, readerId) ==> alwaysMemoOwnsCache(readShared(m, readerId)))
   ensures (inv(m) ==> canReadShared(m, readerId) ==> alwaysVersionOrder(readShared(m, readerId)))
   ensures (inv(m) ==> canReadShared(m, readerId) ==> alwaysMemoPolicy(readShared(m, readerId)))
+  ensures (inv(m) ==> canReadShared(m, readerId) ==> alwaysMemoOwnsCache(readShared(m, readerId)))
   ensures (inv(m) ==> canReadShared(m, readerId) ==> alwaysFetchCaptureAfterFloor(readShared(m, readerId)))
   ensures (inv(m) ==> canReadShared(m, readerId) ==> alwaysResidentUsesCurrentFloor(readShared(m, readerId)))
   ensures (inv(m) ==> canReadShared(m, readerId) ==> alwaysReaderBoundToItsFetch(readShared(m, readerId)))
@@ -135,9 +135,9 @@ lemma readShared_ensures(m: MemoReads, readerId: string)
 }
 
 lemma commitWrite_ensures(m: MemoReads, writerId: string)
-  ensures (inv(m) ==> canCommitWrite(m, writerId) ==> alwaysMemoOwnsCache(commitWrite(m, writerId)))
   ensures (inv(m) ==> canCommitWrite(m, writerId) ==> alwaysVersionOrder(commitWrite(m, writerId)))
   ensures (inv(m) ==> canCommitWrite(m, writerId) ==> alwaysMemoPolicy(commitWrite(m, writerId)))
+  ensures (inv(m) ==> canCommitWrite(m, writerId) ==> alwaysMemoOwnsCache(commitWrite(m, writerId)))
   ensures (inv(m) ==> canCommitWrite(m, writerId) ==> alwaysFetchCaptureAfterFloor(commitWrite(m, writerId)))
   ensures (inv(m) ==> canCommitWrite(m, writerId) ==> alwaysResidentUsesCurrentFloor(commitWrite(m, writerId)))
   ensures (inv(m) ==> canCommitWrite(m, writerId) ==> alwaysReaderBoundToItsFetch(commitWrite(m, writerId)))
@@ -155,9 +155,9 @@ lemma commitWrite_ensures(m: MemoReads, writerId: string)
 }
 
 lemma invalidateResident_ensures(m: MemoReads)
-  ensures (inv(m) ==> alwaysMemoOwnsCache(invalidateResident(m)))
   ensures (inv(m) ==> alwaysVersionOrder(invalidateResident(m)))
   ensures (inv(m) ==> alwaysMemoPolicy(invalidateResident(m)))
+  ensures (inv(m) ==> alwaysMemoOwnsCache(invalidateResident(m)))
   ensures (inv(m) ==> alwaysFetchCaptureAfterFloor(invalidateResident(m)))
   ensures (inv(m) ==> alwaysResidentUsesCurrentFloor(invalidateResident(m)))
   ensures (inv(m) ==> alwaysReaderBoundToItsFetch(invalidateResident(m)))
@@ -172,9 +172,9 @@ lemma invalidateResident_ensures(m: MemoReads)
 }
 
 lemma deliverRejection_ensures(m: MemoReads, observerId: int)
-  ensures (inv(m) ==> canDeliverRejection(m, observerId) ==> alwaysMemoOwnsCache(deliverRejection(m, observerId)))
   ensures (inv(m) ==> canDeliverRejection(m, observerId) ==> alwaysVersionOrder(deliverRejection(m, observerId)))
   ensures (inv(m) ==> canDeliverRejection(m, observerId) ==> alwaysMemoPolicy(deliverRejection(m, observerId)))
+  ensures (inv(m) ==> canDeliverRejection(m, observerId) ==> alwaysMemoOwnsCache(deliverRejection(m, observerId)))
   ensures (inv(m) ==> canDeliverRejection(m, observerId) ==> alwaysFetchCaptureAfterFloor(deliverRejection(m, observerId)))
   ensures (inv(m) ==> canDeliverRejection(m, observerId) ==> alwaysResidentUsesCurrentFloor(deliverRejection(m, observerId)))
   ensures (inv(m) ==> canDeliverRejection(m, observerId) ==> alwaysReaderBoundToItsFetch(deliverRejection(m, observerId)))
@@ -192,9 +192,9 @@ lemma deliverRejection_ensures(m: MemoReads, observerId: int)
 }
 
 lemma invalidateWrite_ensures(m: MemoReads, writerId: string)
-  ensures (inv(m) ==> canInvalidateWrite(m, writerId) ==> alwaysMemoOwnsCache(invalidateWrite(m, writerId)))
   ensures (inv(m) ==> canInvalidateWrite(m, writerId) ==> alwaysVersionOrder(invalidateWrite(m, writerId)))
   ensures (inv(m) ==> canInvalidateWrite(m, writerId) ==> alwaysMemoPolicy(invalidateWrite(m, writerId)))
+  ensures (inv(m) ==> canInvalidateWrite(m, writerId) ==> alwaysMemoOwnsCache(invalidateWrite(m, writerId)))
   ensures (inv(m) ==> canInvalidateWrite(m, writerId) ==> alwaysFetchCaptureAfterFloor(invalidateWrite(m, writerId)))
   ensures (inv(m) ==> canInvalidateWrite(m, writerId) ==> alwaysResidentUsesCurrentFloor(invalidateWrite(m, writerId)))
   ensures (inv(m) ==> canInvalidateWrite(m, writerId) ==> alwaysReaderBoundToItsFetch(invalidateWrite(m, writerId)))
@@ -212,9 +212,9 @@ lemma invalidateWrite_ensures(m: MemoReads, writerId: string)
 }
 
 lemma captureNextFetch_ensures(m: MemoReads)
-  ensures (inv(m) ==> canCaptureNextFetch(m) ==> alwaysMemoOwnsCache(captureNextFetch(m)))
   ensures (inv(m) ==> canCaptureNextFetch(m) ==> alwaysVersionOrder(captureNextFetch(m)))
   ensures (inv(m) ==> canCaptureNextFetch(m) ==> alwaysMemoPolicy(captureNextFetch(m)))
+  ensures (inv(m) ==> canCaptureNextFetch(m) ==> alwaysMemoOwnsCache(captureNextFetch(m)))
   ensures (inv(m) ==> canCaptureNextFetch(m) ==> alwaysFetchCaptureAfterFloor(captureNextFetch(m)))
   ensures (inv(m) ==> canCaptureNextFetch(m) ==> alwaysResidentUsesCurrentFloor(captureNextFetch(m)))
   ensures (inv(m) ==> canCaptureNextFetch(m) ==> alwaysReaderBoundToItsFetch(captureNextFetch(m)))
@@ -226,9 +226,9 @@ lemma captureNextFetch_ensures(m: MemoReads)
 }
 
 lemma resolveNextFetch_ensures(m: MemoReads)
-  ensures (inv(m) ==> canResolveNextFetch(m) ==> alwaysMemoOwnsCache(resolveNextFetch(m)))
   ensures (inv(m) ==> canResolveNextFetch(m) ==> alwaysVersionOrder(resolveNextFetch(m)))
   ensures (inv(m) ==> canResolveNextFetch(m) ==> alwaysMemoPolicy(resolveNextFetch(m)))
+  ensures (inv(m) ==> canResolveNextFetch(m) ==> alwaysMemoOwnsCache(resolveNextFetch(m)))
   ensures (inv(m) ==> canResolveNextFetch(m) ==> alwaysFetchCaptureAfterFloor(resolveNextFetch(m)))
   ensures (inv(m) ==> canResolveNextFetch(m) ==> alwaysResidentUsesCurrentFloor(resolveNextFetch(m)))
   ensures (inv(m) ==> canResolveNextFetch(m) ==> alwaysReaderBoundToItsFetch(resolveNextFetch(m)))
@@ -240,9 +240,9 @@ lemma resolveNextFetch_ensures(m: MemoReads)
 }
 
 lemma completeNextRead_ensures(m: MemoReads)
-  ensures (inv(m) ==> canCompleteNextRead(m) ==> alwaysMemoOwnsCache(completeNextRead(m)))
   ensures (inv(m) ==> canCompleteNextRead(m) ==> alwaysVersionOrder(completeNextRead(m)))
   ensures (inv(m) ==> canCompleteNextRead(m) ==> alwaysMemoPolicy(completeNextRead(m)))
+  ensures (inv(m) ==> canCompleteNextRead(m) ==> alwaysMemoOwnsCache(completeNextRead(m)))
   ensures (inv(m) ==> canCompleteNextRead(m) ==> alwaysFetchCaptureAfterFloor(completeNextRead(m)))
   ensures (inv(m) ==> canCompleteNextRead(m) ==> alwaysResidentUsesCurrentFloor(completeNextRead(m)))
   ensures (inv(m) ==> canCompleteNextRead(m) ==> alwaysReaderBoundToItsFetch(completeNextRead(m)))
@@ -254,9 +254,9 @@ lemma completeNextRead_ensures(m: MemoReads)
 }
 
 lemma invalidateNextWrite_ensures(m: MemoReads)
-  ensures (inv(m) ==> canInvalidateNextWrite(m) ==> alwaysMemoOwnsCache(invalidateNextWrite(m)))
   ensures (inv(m) ==> canInvalidateNextWrite(m) ==> alwaysVersionOrder(invalidateNextWrite(m)))
   ensures (inv(m) ==> canInvalidateNextWrite(m) ==> alwaysMemoPolicy(invalidateNextWrite(m)))
+  ensures (inv(m) ==> canInvalidateNextWrite(m) ==> alwaysMemoOwnsCache(invalidateNextWrite(m)))
   ensures (inv(m) ==> canInvalidateNextWrite(m) ==> alwaysFetchCaptureAfterFloor(invalidateNextWrite(m)))
   ensures (inv(m) ==> canInvalidateNextWrite(m) ==> alwaysResidentUsesCurrentFloor(invalidateNextWrite(m)))
   ensures (inv(m) ==> canInvalidateNextWrite(m) ==> alwaysReaderBoundToItsFetch(invalidateNextWrite(m)))

@@ -1,8 +1,12 @@
 # Core-owned delivery binding registry
 
-The source is `packages/core/src/runtime/effect-delivery.ts:13-98` at the pinned baseline. This aggregate owns the private WeakSet of binding object identities and the enumerable private-symbol associations on content objects. [Receipt settlement](./receipts.md) supplies the action-validated `applied` value. Strings here are already trimmed by the exact text normalization boundary. The `CoreAction` caller denotes the installed action-runtime capability; it is supplied separately from parsed external event data.
+The delivery binding registry of `runtime/effect-delivery.ts`: binding object identities and their private associations on content objects. [Receipt settlement](./receipts.md) supplies the action-validated `applied` value. Strings are already trimmed by the text normalization boundary. The `CoreAction` caller is the installed action-runtime capability, supplied separately from parsed event data.
 
 ## Story: Preserve authentic binding identity across concurrent replies
+
+> As a connector, I want each reply's delivery binding to keep its exact
+> receipt IDs and text even when replies run concurrently, so that a
+> confirmation is only ever proved by its own binding.
 
 ### Distinct bindings retain exact ordered receipt IDs and text
 

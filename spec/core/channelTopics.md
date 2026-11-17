@@ -1,10 +1,11 @@
 # Channel-topic service retirement
 
-This model migrates lifecycle and durable/local separation from `quint/ChannelTopicRetirement.qnt` and `services/channel-topics.ts`. Each room owns the exact call identities, read/write inputs and results, and local/durable LRU lists. Hydration occupies that queue, so a cold read orders with writes in its room while another room can progress independently.
+Source: `services/channel-topics.ts`, its lifecycle and durable/local separation. Each room owns the exact call identities, read/write inputs and results, and local/durable LRU lists. Hydration occupies that queue, so a cold read orders with writes in its room while another room can progress independently.
 
 ## Story: Replace a topic service after its admitted work settles
 
-As a host, I want retiring services to join their accepted operations and replacements to hydrate persisted topic state.
+> As a host, I want retiring services to join their accepted operations and
+> replacements to hydrate persisted topic state.
 
 ### Retirement rejects new work and joins admitted operations before clearing local state
 

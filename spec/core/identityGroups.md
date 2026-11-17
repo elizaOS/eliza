@@ -1,17 +1,24 @@
 # Identity equivalence groups
 
-The source is `packages/core/src/utils/union-find.ts` at
-`72fed7e4069ecd35d61d886ab6eec5c02c137517`. The model stores the observed
-root of each registered identity. Path compression changes internal
-pointers while preserving this representation. An identity denotes a
-Map key's equality identity, including reference identity for object keys.
+The model stores the observed root of each registered identity. Path
+compression changes internal pointers while preserving this
+representation. An identity denotes a Map key's equality identity,
+including reference identity for object keys.
 
 ## Story: Merge identity groups without losing their members
+
+> As a relationship service, I want to group identities that belong to one
+> person, so membership queries answer consistently without inventing
+> identities.
 
 As a relationship service, I register identities idempotently, merge the
 right group into the left root, and query membership without creating an
 unknown identity. `find` and `union` register unknown identities lazily.
-`componentOf` returns a singleton for an unknown identity without storing it.
+`componentOf` returns a singleton for an unknown identity without storing
+it.
+
+`find` changes the groups exactly as registration does, so one
+`registerIdentity` event models both; `find` returns the representative.
 
 ### Every registered identity belongs to one registered canonical root
 
@@ -23,7 +30,6 @@ pure def registered(nodes: List[IdentityNode], identity: str): bool = nodes.some
 pure def representative(nodes: List[IdentityNode], identity: str): str = nodes.select(node => node.identity == identity).nthOr(0, { identity: identity, root: identity }).root
 pure def withIdentity(nodes: List[IdentityNode], identity: str): List[IdentityNode] = if (registered(nodes, identity)) nodes else nodes.append({ identity: identity, root: identity })
 pure def registerIdentity(s: IdentityGroups, identity: str): IdentityGroups = { nodes: withIdentity(s.nodes, identity) }
-pure def findIdentity(s: IdentityGroups, identity: str): IdentityGroups = { nodes: withIdentity(s.nodes, identity) }
 pure def unionIdentities(s: IdentityGroups, left: str, right: str): IdentityGroups = {
   val nodes = withIdentity(withIdentity(s.nodes, left), right)
   val leftRoot = representative(nodes, left)

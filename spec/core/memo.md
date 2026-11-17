@@ -1,13 +1,16 @@
 # Single-flight read memo
 
-The owner is `runtime/single-flight-memo.ts` and its public `read-memo.ts`
-export at `72fed7e4069ecd35d61d886ab6eec5c02c137517`. One registry owns
-all keys of one memo instance. The [read ordering scenario](./memoConcurrency.md)
-embeds this registry when relating cache reuse to durable mutation boundaries.
-Promise execution remains an external effect; each installed rejection
-observer is represented separately from settlement of the promise itself.
+One registry owns all keys of one memo instance. The
+[read ordering scenario](./memoConcurrency.md) embeds this registry when
+relating cache reuse to durable mutation boundaries. Promise execution
+remains an external effect; each installed rejection observer is
+represented separately from settlement of the promise itself.
 
 ## Story: Reuse concurrent reads and evict only the matching rejected promise
+
+> As a provider, I want a memoized read to keep its promise for every
+> caller that joined it, so replacement or eviction never strands a
+> caller.
 
 As a provider, I retrieve the original promise and metadata while its entry
 is live. Replacement, invalidation and eviction retain existing callers'
@@ -16,7 +19,7 @@ promises. A rejection observer cannot delete a different resident promise.
 ### Entries retain insertion order and each put installs its own rejection observer
 
 Overwriting an existing key preserves its position. Inserting a new key at
-capacity removes the first key, including expired entries. The source
+capacity removes the first key, including expired entries. The
 constructor accepts zero or negative capacity; these still retain at most
 one inserted key. A negative or zero TTL gives no live peek. `peek` never
 removes an expired entry. Multiple puts may use the same promise object;
@@ -72,9 +75,8 @@ pure def sometimesEvictedPromiseStillHasObserver(m: Memo): bool = m.observers.so
 ### A rejection affects only its captured key and promise identity
 
 A rejected promise can remain resident until the installed observer runs.
-No rule equates rejection settlement with callback delivery. The earlier
-single-key model did; this rule corrects that abstraction to the source's
-asynchronous ordering.
+No rule equates rejection settlement with callback delivery: the observer
+runs asynchronously after settlement.
 
 ```quint
 pure def lawRejectionPreservesOtherKeys(m: Memo, observerId: int, key: str): bool =

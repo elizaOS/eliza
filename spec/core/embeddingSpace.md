@@ -1,14 +1,24 @@
 # Embedding representation identity
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/runtime/embeddings.ts`, `embedding-vector-space.ts`, and `quint/EmbeddingDimension.qnt`. Equal dimensions do not establish equal encoder, pooling or normalization. Provider identity and vector-space metadata remain attached to numeric vectors and exact copies. A configured model label alone cannot identify output.
+Equal dimensions do not establish equal encoder, pooling or
+normalization. Provider identity and vector-space metadata remain attached
+to numeric vectors and exact copies. A configured model label alone cannot
+identify output.
 
 ## Story: Keep stored vectors in their verified representation
 
-As an agent, I initialize and pin the embedding provider only after its probe and adapter preparation succeed. A named representation cannot be silently relabeled. The storage boundary captures dimension and representation before awaiting and rechecks both before committing each vector.
+> As an agent, I want the embedding provider pinned to one dimension and
+> representation, so stored vectors never mix incompatible spaces.
+
+As an agent, I initialize and pin the embedding provider only after its
+probe and adapter preparation succeed. A named representation cannot be
+silently relabeled. The storage boundary captures dimension and
+representation before awaiting and rechecks both before committing each
+vector.
 
 ### A probe prepares dimensions and representation before pinning
 
-Discovered by the proof: before an adapter mutation, a probe keeps the previous durable dimensions and metadata. A named candidate in the prepared state already matches its stored representation. A failed preparation retains the fence if the adapter might have changed durable state.
+Before an adapter mutation, a probe keeps the previous durable dimensions and metadata. A named candidate in the prepared state already matches its stored representation. A failed preparation retains the fence if the adapter might have changed durable state.
 
 ```quint
 type ProbePhase = Idle | Probing | Resized | Spaced | Pinned

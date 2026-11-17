@@ -122,6 +122,7 @@ lemma admitTransaction_ensures(s: SessionStore, transactionId: int, reference: s
   ensures (inv(s) ==> canAdmitTransaction(s, transactionId, reference) ==> alwaysEverySessionKeepsItsEffect(admitTransaction(s, transactionId, reference)))
   ensures (inv(s) ==> canAdmitTransaction(s, transactionId, reference) ==> alwaysAtomicTailHasOneOwner(admitTransaction(s, transactionId, reference)))
   ensures (inv(s) ==> canAdmitTransaction(s, transactionId, reference) ==> stepOnlySelectedSessionChanges(s, "admitTransaction", admitTransaction(s, transactionId, reference)))
+  ensures (inv(s) ==> canAdmitTransaction(s, transactionId, reference) ==> stepCleanupKeepsCommittedRows(s, "admitTransaction", admitTransaction(s, transactionId, reference)))
 {
   if inv(s) && canAdmitTransaction(s, transactionId, reference) {
     var t := admitTransaction(s, transactionId, reference);
@@ -138,6 +139,7 @@ lemma beginTransaction_ensures(s: SessionStore)
   ensures (inv(s) ==> canBeginTransaction(s) ==> alwaysEverySessionKeepsItsEffect(beginTransaction(s)))
   ensures (inv(s) ==> canBeginTransaction(s) ==> alwaysAtomicTailHasOneOwner(beginTransaction(s)))
   ensures (inv(s) ==> canBeginTransaction(s) ==> stepOnlySelectedSessionChanges(s, "beginTransaction", beginTransaction(s)))
+  ensures (inv(s) ==> canBeginTransaction(s) ==> stepCleanupKeepsCommittedRows(s, "beginTransaction", beginTransaction(s)))
 {
   if inv(s) && canBeginTransaction(s) {
     var t := beginTransaction(s);
@@ -150,6 +152,7 @@ lemma endTransaction_ensures(s: SessionStore)
   ensures (inv(s) ==> canEndTransaction(s) ==> alwaysEverySessionKeepsItsEffect(endTransaction(s)))
   ensures (inv(s) ==> canEndTransaction(s) ==> alwaysAtomicTailHasOneOwner(endTransaction(s)))
   ensures (inv(s) ==> canEndTransaction(s) ==> stepOnlySelectedSessionChanges(s, "endTransaction", endTransaction(s)))
+  ensures (inv(s) ==> canEndTransaction(s) ==> stepCleanupKeepsCommittedRows(s, "endTransaction", endTransaction(s)))
 {
   if inv(s) && canEndTransaction(s) {
     var t := endTransaction(s);
@@ -162,6 +165,7 @@ lemma createSession_ensures(s: SessionStore, bindings: SessionBindings, decision
   ensures (inv(s) ==> canCreateSession(s, bindings, decisionId, expiresAt) ==> alwaysEverySessionKeepsItsEffect(createSession(s, bindings, decisionId, expiresAt)))
   ensures (inv(s) ==> canCreateSession(s, bindings, decisionId, expiresAt) ==> alwaysAtomicTailHasOneOwner(createSession(s, bindings, decisionId, expiresAt)))
   ensures (inv(s) ==> canCreateSession(s, bindings, decisionId, expiresAt) ==> stepOnlySelectedSessionChanges(s, "createSession", createSession(s, bindings, decisionId, expiresAt)))
+  ensures (inv(s) ==> canCreateSession(s, bindings, decisionId, expiresAt) ==> stepCleanupKeepsCommittedRows(s, "createSession", createSession(s, bindings, decisionId, expiresAt)))
 {
   if inv(s) && canCreateSession(s, bindings, decisionId, expiresAt) {
     var t := createSession(s, bindings, decisionId, expiresAt);
@@ -190,6 +194,7 @@ lemma observeTime_ensures(s: SessionStore, now: int)
   ensures (inv(s) ==> canObserveTime(s, now) ==> alwaysEverySessionKeepsItsEffect(observeTime(s, now)))
   ensures (inv(s) ==> canObserveTime(s, now) ==> alwaysAtomicTailHasOneOwner(observeTime(s, now)))
   ensures (inv(s) ==> canObserveTime(s, now) ==> stepOnlySelectedSessionChanges(s, "observeTime", observeTime(s, now)))
+  ensures (inv(s) ==> canObserveTime(s, now) ==> stepCleanupKeepsCommittedRows(s, "observeTime", observeTime(s, now)))
 {
   if inv(s) && canObserveTime(s, now) {
     var t := observeTime(s, now);
@@ -206,10 +211,16 @@ lemma deleteExpired_ensures(s: SessionStore, cutoff: int)
   ensures (inv(s) ==> canDeleteExpired(s, cutoff) ==> alwaysEverySessionKeepsItsEffect(deleteExpired(s, cutoff)))
   ensures (inv(s) ==> canDeleteExpired(s, cutoff) ==> alwaysAtomicTailHasOneOwner(deleteExpired(s, cutoff)))
   ensures (inv(s) ==> canDeleteExpired(s, cutoff) ==> stepOnlySelectedSessionChanges(s, "deleteExpired", deleteExpired(s, cutoff)))
+  ensures (inv(s) ==> canDeleteExpired(s, cutoff) ==> stepCleanupKeepsCommittedRows(s, "deleteExpired", deleteExpired(s, cutoff)))
 {
   if inv(s) && canDeleteExpired(s, cutoff) {
     var t := deleteExpired(s, cutoff);
     SessionRowsPruned(s,t,cutoff);
+    var keep := (row: StoredSession) => row.session.phase.Committed? || (if row.session.phase.Completed? then row.completedAt > cutoff else row.session.expiresAt > cutoff);
+    assert t.rows == ProofLib.Filter(keep, s.rows);
+    forall r | r in s.rows && r.session.phase.Committed?
+      ensures r in t.rows
+    { ProofLib.FilterMember(keep, s.rows, r); }
   }
 }
 
@@ -218,6 +229,7 @@ lemma elapse_ensures(s: SessionStore, elapsed: int)
   ensures (inv(s) ==> canElapse(s, elapsed) ==> alwaysEverySessionKeepsItsEffect(elapse(s, elapsed)))
   ensures (inv(s) ==> canElapse(s, elapsed) ==> alwaysAtomicTailHasOneOwner(elapse(s, elapsed)))
   ensures (inv(s) ==> canElapse(s, elapsed) ==> stepOnlySelectedSessionChanges(s, "elapse", elapse(s, elapsed)))
+  ensures (inv(s) ==> canElapse(s, elapsed) ==> stepCleanupKeepsCommittedRows(s, "elapse", elapse(s, elapsed)))
 {
   if inv(s) && canElapse(s, elapsed) {
     var t := elapse(s, elapsed);
@@ -234,6 +246,7 @@ lemma advanceSession_ensures(s: SessionStore, command: SessionCommand, bindings:
   ensures (inv(s) ==> canAdvanceSession(s, command, bindings, decisionId, replayKey, responseDigest, leaseDuration, claimToken) ==> alwaysEverySessionKeepsItsEffect(advanceSession(s, command, bindings, decisionId, replayKey, responseDigest, leaseDuration, claimToken)))
   ensures (inv(s) ==> canAdvanceSession(s, command, bindings, decisionId, replayKey, responseDigest, leaseDuration, claimToken) ==> alwaysAtomicTailHasOneOwner(advanceSession(s, command, bindings, decisionId, replayKey, responseDigest, leaseDuration, claimToken)))
   ensures (inv(s) ==> canAdvanceSession(s, command, bindings, decisionId, replayKey, responseDigest, leaseDuration, claimToken) ==> stepOnlySelectedSessionChanges(s, "advanceSession", advanceSession(s, command, bindings, decisionId, replayKey, responseDigest, leaseDuration, claimToken)))
+  ensures (inv(s) ==> canAdvanceSession(s, command, bindings, decisionId, replayKey, responseDigest, leaseDuration, claimToken) ==> stepCleanupKeepsCommittedRows(s, "advanceSession", advanceSession(s, command, bindings, decisionId, replayKey, responseDigest, leaseDuration, claimToken)))
 {
   if inv(s) && canAdvanceSession(s, command, bindings, decisionId, replayKey, responseDigest, leaseDuration, claimToken) {
     var t := advanceSession(s, command, bindings, decisionId, replayKey, responseDigest, leaseDuration, claimToken);

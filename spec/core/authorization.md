@@ -4,7 +4,11 @@ The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c1
 
 ## Story: Read only the authorized records
 
-As a requester, I receive records within my agent, world, verified room membership and disclosure scope. Legacy callers may omit AccessContext at their established trusted boundary. A present empty room set denies room-backed reads. Filtering precedes ranking and pagination.
+> As a requester, I want to receive only records within my agent, world,
+> room membership and disclosure scope, so that nothing I may not see
+> reaches me.
+
+As a requester, I receive records within my agent, world, verified room membership and disclosure scope. A caller at an established trusted boundary may omit AccessContext. A present empty room set denies room-backed reads. Filtering precedes ranking and pagination.
 
 ### Memory and artifact scopes preserve their distinct compatibility decisions
 
@@ -51,13 +55,16 @@ pure def lawRoomsRequireBothMemberships(requesterRooms: Set[str], agentRooms: Se
 
 ## Story: Change roles against fresh authority
 
+> As an owner or administrator, I want each role change authorized against
+> the current world, so that it never overwrites a concurrent revocation.
+
 As an owner or administrator, I change roles without overwriting a concurrent revocation. Each retry resolves and authorizes the current world snapshot. The authority replacement and audit row commit atomically. Unsupported CAS capability raises a typed failure. The model records one target and one actor, with unbounded revisions and finite sampled values.
 
 ### A role write captures the target and authority revision
 
 Authority starts unresolved. The authenticated sender parameter supplies a role only after the owning boundary resolves trusted world evidence.
 
-An owner may change any different role. An administrator may change a lower-ranked target to any role except owner. Other actors cannot change roles. This preserves the existing administrator-to-administrator promotion behavior in `roles.ts`.
+An owner may change any different role. An administrator may change a lower-ranked target to any role except owner. An administrator may therefore promote a lower-ranked user to administrator, as `roles.ts` does, but cannot change another administrator. Other actors cannot change roles.
 
 ```quint
 type RolePhase = Idle | Read | Committed | Denied | Conflict | Exhausted
@@ -70,7 +77,6 @@ pure def resolveAuthority(s: Authorization, by: Role): Authorization = { ...s, a
 pure val byValues = Set(Guest, User, Admin, Owner)
 pure def canBegin(s: Authorization, requestedRole: Role, maxAttempts: int): bool = s.phase == Idle and rank(requestedRole) > 0 and maxAttempts >= 1
 pure def begin(s: Authorization, requestedRole: Role, maxAttempts: int): Authorization = { ...s, phase: Read, requestedRole: requestedRole, observedRevision: s.revision, attempts: 1, maxAttempts: maxAttempts }
-pure val defaultRoleWriteAttempts = 3
 pure val maxAttemptsValues = Set(1, 3, 5)
 pure val requestedRoleValues = Set(Guest, User, Admin, Owner)
 ```

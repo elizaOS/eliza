@@ -3,7 +3,7 @@
 [Service instances](./serviceInstances.md) owns class attempts, type aggregate
 identities and the live service array. This model follows one acquisition's
 public result and the retained startup error from
-[service-lifecycle.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/service-lifecycle.ts#L225-L280).
+[service-lifecycle.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/service-lifecycle.ts).
 The shell supplies the slot-ordered results of that exact aggregate and the
 service array's first instance when the acquiring caller resumes.
 The caller enters this model once it has captured an aggregate. Earlier
@@ -11,9 +11,9 @@ absence and the initialization fast path belong to service admission.
 
 ## Story: Explain a service acquisition failure with every original cause
 
-As a service consumer, I want the first currently published instance on a
-successful acquisition. If no instance is published, I want the startup
-error to retain every implementation rejection in declaration order.
+> As a service consumer, I want the first published instance on success,
+> or a startup error that keeps every implementation rejection in
+> declaration order, so that a failure explains all of its causes.
 
 ### Captured results and the live publication supply distinct observations
 

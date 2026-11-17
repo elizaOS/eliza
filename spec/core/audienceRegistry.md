@@ -4,6 +4,10 @@ The source is `packages/core/src/security/trusted-delivery-audience.ts:182-187,3
 
 ## Story: Keep audience authority isolated while allowing exact in-process aliases
 
+> As an owner, I want each message's delivery audience to keep its own
+> lease even when copies of the message share it, so that one copy's
+> renewal never widens what another may disclose.
+
 ### Binding objects share one global sequence and retain their own lease
 
 Every binding and carrier has a positive unique identity. An unbound message has binding zero. A record's installed lease belongs to that record; returned callbacks retain their original record and lease through later reattestation. Only this registry allocates the process-wide attestation sequence. The component receives that sequence as an observation rather than keeping a second allocator.

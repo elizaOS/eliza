@@ -1,8 +1,11 @@
 # Approval ownership and durable choices
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/services/approval.ts`, `messaging/interactive-task.ts`, and the ApprovalService, ApprovalRetirement, ApprovalPersisted and InteractionSession models. Approval callbacks are process-owned capabilities. A durable task row alone cannot recreate them after restart. This machine follows one approval and separates publication, claim, callback settlement, deletion acknowledgement and service retirement.
+The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/services/approval.ts` and `messaging/interactive-task.ts`. Approval callbacks are process-owned capabilities. A durable task row alone cannot recreate them after restart. This machine follows one approval and separates publication, claim, callback settlement, deletion acknowledgement and service retirement.
 
 ## Story: Resolve an approval exactly once
+
+> As a user, I want my choice, a timeout or a cancellation to settle an
+> approval once, so that competing handlers never act on two outcomes.
 
 As a user, I can select, time out or cancel an approval while competing handlers observe one terminal outcome. Admission and permission checks happen before publishing the choice. Callback failure remains a failure. A result cannot imply that a missing callback executed.
 

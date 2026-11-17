@@ -1,10 +1,15 @@
 # Exact retained state of skeleton streams
 
-`ResponseSkeletonStreamExtractor` in `utils/streaming.ts` owns complete UTF-16 buffers, ordered span position, selected field and parts-array position, pending JSON escape, gate prefix, format decision and per-field reasoning-filter carries. This model uses [exact unit operations](./streamUnits.md) and specifies all those retained values. The higher-level gate contract is [streamSkeleton](./streamSkeleton.md).
+`ResponseSkeletonStreamExtractor` in `utils/streaming.ts` owns complete UTF-16 buffers, ordered span position, selected field and parts-array position, pending JSON escape, gate prefix, format decision and per-field reasoning-filter carries. This model specifies all of those retained values with [exact unit operations](./streamUnits.md); observers read them directly.
 
-JSON value classification and strict JSON decoding of property names/part-kind strings are pure decoder boundaries: they must consume the exact supplied prefix and return its actual decoded value. This model does not claim that an arbitrary claimed decoded value proves that lexical contract. Exact [input/output/refusal contracts](./baseline/stream-decoder-contracts.json) and executed [source fixtures](./baseline/stream-decoder-fixtures.json) define future adapter conformance, including malformed/partial JSON, denied envelope prefixes and ordered part shapes. Quoted-string end scanning, escape decoding, reasoning-tag matching, retained suffixes and emitted Unicode below are executable pure rules.
+JSON value classification and strict decoding of property names and part-kind strings are pure decoder boundaries: each consumes exactly the supplied prefix and returns its actual decoded value. The [decoder contracts](./baseline/stream-decoder-contracts.json) and [source fixtures](./baseline/stream-decoder-fixtures.json) fix their inputs, outputs and refusals, including malformed or partial JSON, denied envelope prefixes and ordered part shapes. Quoted-string end scanning, escape decoding, reasoning-tag matching, retained suffixes and emitted Unicode are the pure rules below.
 
 ## Story: Stream exact visible text without losing partial parser state
+
+> As a streaming host, I want each selected field's visible text delivered
+> as soon as it is safe, with every partial key, escape, tag and surrogate
+> retained across chunk boundaries, so that what I show is exactly what the
+> model wrote, minus its reasoning.
 
 ### Buffer and gate ownership survive chunk boundaries
 

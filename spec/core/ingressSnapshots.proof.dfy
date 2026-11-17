@@ -1,87 +1,14 @@
-// The rule alwaysOneObjectAndBindingPerReference says that no two objects
-// and no two bindings share a reference. The helpers below show it is the
-// same as ProofLib.DistinctBy on the reference.
-
-lemma CountsGiveDistinct(xs: seq<MessageObject>)
-  requires !((exists entry :: entry in xs && !((|ProofLib.Filter((other: MessageObject) => (other.reference == entry.reference), xs)| == 1))))
-  ensures ProofLib.DistinctBy(xs, (m: MessageObject) => m.reference)
-{
-  forall i, k | 0 <= i < |xs| && 0 <= k < |xs| && i != k
-    ensures xs[i].reference != xs[k].reference
-  {
-    var entry := xs[i];
-    ProofLib.FilterCountOneIffUnique((other: MessageObject) => (other.reference == entry.reference), xs, (m: MessageObject) => m.reference, i);
-  }
-}
-
-lemma DistinctGivesCounts(xs: seq<MessageObject>)
-  requires ProofLib.DistinctBy(xs, (m: MessageObject) => m.reference)
-  ensures !((exists entry :: entry in xs && !((|ProofLib.Filter((other: MessageObject) => (other.reference == entry.reference), xs)| == 1))))
-{
-  forall entry | entry in xs
-    ensures |ProofLib.Filter((other: MessageObject) => (other.reference == entry.reference), xs)| == 1
-  {
-    var i :| 0 <= i < |xs| && xs[i] == entry;
-    ProofLib.FilterCountOneIffUnique((other: MessageObject) => (other.reference == entry.reference), xs, (m: MessageObject) => m.reference, i);
-  }
-}
-
-lemma InvDistinct(s: IngressSnapshots)
-  requires alwaysOneObjectAndBindingPerReference(s)
-  ensures ProofLib.DistinctBy(s.objects, (m: MessageObject) => m.reference)
-  ensures ProofLib.DistinctBy(s.bindings, (m: MessageObject) => m.reference)
-{
-  CountsGiveDistinct(s.objects);
-  CountsGiveDistinct(s.bindings);
-}
-
-lemma DistinctInv(s: IngressSnapshots)
-  requires ProofLib.DistinctBy(s.objects, (m: MessageObject) => m.reference)
-  requires ProofLib.DistinctBy(s.bindings, (m: MessageObject) => m.reference)
-  ensures alwaysOneObjectAndBindingPerReference(s)
-{
-  DistinctGivesCounts(s.objects);
-  DistinctGivesCounts(s.bindings);
-}
-
-lemma AppendFresh(xs: seq<MessageObject>, x: MessageObject)
-  requires ProofLib.DistinctBy(xs, (m: MessageObject) => m.reference)
-  requires forall y :: y in xs ==> y.reference != x.reference
-  ensures ProofLib.DistinctBy(xs + [x], (m: MessageObject) => m.reference)
-{
-  ProofLib.DistinctByConcat(xs, [x], (m: MessageObject) => m.reference);
-}
-
-lemma InstallKeepsReferences(s: IngressSnapshots, reference: string, identity: MessageIdentity, content: string)
-  requires alwaysOneObjectAndBindingPerReference(s)
-  ensures alwaysOneObjectAndBindingPerReference(installObject(s, reference, identity, content))
-{
-  InvDistinct(s);
-  var after := installObject(s, reference, identity, content);
-  if !exists entry :: entry in s.objects && (entry.reference == reference) {
-    AppendFresh(s.objects, MessageObject(reference, identity, content));
-  }
-  DistinctInv(after);
-}
-
-lemma BindKeepsReferences(s: IngressSnapshots, reference: string, identity: MessageIdentity, content: string)
-  requires alwaysOneObjectAndBindingPerReference(s)
-  ensures alwaysOneObjectAndBindingPerReference(bindSnapshot(s, reference, identity, content))
-{
-  InvDistinct(s);
-  var after := bindSnapshot(s, reference, identity, content);
-  var kept := ProofLib.Filter((entry: MessageObject) => (entry.reference != reference), s.bindings);
-  ProofLib.FilterKeepsDistinctBy((entry: MessageObject) => (entry.reference != reference), s.bindings, (m: MessageObject) => m.reference);
-  AppendFresh(kept, MessageObject(reference, identity, content));
-  DistinctInv(after);
-}
-
 lemma installObject_ensures(s: IngressSnapshots, reference: string, identity: MessageIdentity, content: string)
   ensures (inv(s) ==> alwaysOneObjectAndBindingPerReference(installObject(s, reference, identity, content)))
   ensures (inv(s) ==> stepPromptMutationLeavesSnapshot(s, "installObject", installObject(s, reference, identity, content)))
 {
   if inv(s) {
-    InstallKeepsReferences(s, reference, identity, content);
+    var after := installObject(s, reference, identity, content);
+    OneRefRule(s);
+    OneRefRule(after);
+    if !(exists entry :: entry in s.objects && (entry.reference == reference)) {
+      ProofLib.DistinctByConcat(s.objects, [MessageObject(reference, identity, content)], (m: MessageObject) => m.reference);
+    }
   }
 }
 
@@ -90,7 +17,7 @@ lemma bindSnapshot_ensures(s: IngressSnapshots, reference: string, identity: Mes
   ensures (inv(s) ==> canBindSnapshot(s, reference, identity) ==> stepPromptMutationLeavesSnapshot(s, "bindSnapshot", bindSnapshot(s, reference, identity, content)))
 {
   if inv(s) {
-    BindKeepsReferences(s, reference, identity, content);
+    BindKeepsOneRef(s, reference, identity, content);
   }
 }
 
@@ -99,6 +26,53 @@ lemma inheritSnapshot_ensures(s: IngressSnapshots, sourceReference: string, targ
   ensures (inv(s) ==> canInheritSnapshot(s, sourceReference, targetReference) ==> stepPromptMutationLeavesSnapshot(s, "inheritSnapshot", inheritSnapshot(s, sourceReference, targetReference)))
 {
   if inv(s) {
-    BindKeepsReferences(s, targetReference, bindingAt(s, sourceReference).identity, bindingAt(s, sourceReference).content);
+    BindKeepsOneRef(s, targetReference, bindingAt(s, sourceReference).identity, bindingAt(s, sourceReference).content);
+  }
+}
+
+lemma BindKeepsOneRef(s: IngressSnapshots, reference: string, identity: MessageIdentity, content: string)
+  requires alwaysOneObjectAndBindingPerReference(s)
+  ensures alwaysOneObjectAndBindingPerReference(bindSnapshot(s, reference, identity, content))
+{
+  var after := bindSnapshot(s, reference, identity, content);
+  var kept := ProofLib.Filter((entry: MessageObject) => (entry.reference != reference), s.bindings);
+  OneRefRule(s);
+  OneRefRule(after);
+  assert after.bindings == kept + [MessageObject(reference, identity, content)];
+  ProofLib.FilterKeepsDistinctBy((entry: MessageObject) => (entry.reference != reference), s.bindings, (m: MessageObject) => m.reference);
+  forall x | x in kept ensures x.reference != reference {
+    ProofLib.FilterMember((entry: MessageObject) => (entry.reference != reference), s.bindings, x);
+  }
+  ProofLib.DistinctByConcat(kept, [MessageObject(reference, identity, content)], (m: MessageObject) => m.reference);
+}
+
+lemma OneRefRule(s: IngressSnapshots)
+  ensures alwaysOneObjectAndBindingPerReference(s) <==> ProofLib.DistinctBy(s.objects, (m: MessageObject) => m.reference) && ProofLib.DistinctBy(s.bindings, (m: MessageObject) => m.reference)
+{
+  OneRefFilter(s);
+  UniqueRefs(s.objects);
+  UniqueRefs(s.bindings);
+}
+
+lemma OneRefFilter(s: IngressSnapshots)
+  ensures alwaysOneObjectAndBindingPerReference(s) == (!((exists entry :: entry in s.objects && !((|ProofLib.Filter((other: MessageObject) => (other.reference == entry.reference), s.objects)| == 1)))) && !((exists entry :: entry in s.bindings && !((|ProofLib.Filter((other: MessageObject) => (other.reference == entry.reference), s.bindings)| == 1)))))
+{
+}
+
+lemma UniqueRefs(xs: seq<MessageObject>)
+  ensures !((exists entry :: entry in xs && !((|ProofLib.Filter((other: MessageObject) => (other.reference == entry.reference), xs)| == 1)))) <==> ProofLib.DistinctBy(xs, (m: MessageObject) => m.reference)
+{
+  forall i | 0 <= i < |xs|
+    ensures |ProofLib.Filter((other: MessageObject) => (other.reference == xs[i].reference), xs)| == 1 <==> forall j :: 0 <= j < |xs| && j != i ==> xs[j].reference != xs[i].reference
+  {
+    ProofLib.FilterCountOneIffUnique((other: MessageObject) => (other.reference == xs[i].reference), xs, (m: MessageObject) => m.reference, i);
+  }
+  if ProofLib.DistinctBy(xs, (m: MessageObject) => m.reference) {
+    forall entry | entry in xs ensures |ProofLib.Filter((other: MessageObject) => (other.reference == entry.reference), xs)| == 1 {
+      var i :| 0 <= i < |xs| && xs[i] == entry;
+    }
+  } else {
+    var i, j :| 0 <= i < |xs| && 0 <= j < |xs| && i != j && xs[i].reference == xs[j].reference;
+    assert xs[i] in xs;
   }
 }

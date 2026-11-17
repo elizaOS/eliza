@@ -9,9 +9,15 @@ retain the exact public interfaces in the baseline.
 
 ## Story: Install and clear shared account-selection contracts
 
+> As an authentication host, I want to install one account-selection
+> bridge that every plugin reads, so that plugins agree on which account
+> is selected.
+
 As an authentication host, I install a bridge once and plugin consumers
-can read it without a runtime or host-package import. Replacing or clearing
-one bridge leaves the other intact. Setting the same reference is idempotent.
+can read it without a runtime or host-package import. There is one slot for
+the model provider's account pool and one for the coding agent's account
+pool. Replacing or clearing one bridge leaves the other intact. Setting the
+same reference is idempotent.
 
 ### Each bridge slot preserves the last installed object identity
 
@@ -19,17 +25,18 @@ one bridge leaves the other intact. Setting the same reference is idempotent.
 represents the actual object reference and preserves its methods.
 
 ```quint
-type BridgeReference = NoBridge | InstalledBridge({ identity: str })
-type AccountBridges = { anthropic: BridgeReference, coding: BridgeReference }
-pure val initial: AccountBridges = { anthropic: NoBridge, coding: NoBridge }
+type BridgeObject = { identity: str }
+type BridgeReference = NoBridge | InstalledBridge(BridgeObject)
+type BridgeSlot = ModelPoolSlot | CodingPoolSlot
+type AccountBridges = { modelPool: BridgeReference, codingPool: BridgeReference }
+pure val initial: AccountBridges = { modelPool: NoBridge, codingPool: NoBridge }
 pure def bridgeInstalled(bridge: BridgeReference): bool = match bridge { | NoBridge => false | InstalledBridge(value) => true }
-pure def setAnthropic(s: AccountBridges, bridge: BridgeReference): AccountBridges = { ...s, anthropic: bridge }
-pure def setCoding(s: AccountBridges, bridge: BridgeReference): AccountBridges = { ...s, coding: bridge }
+pure def setBridge(s: AccountBridges, slot: BridgeSlot, bridge: BridgeReference): AccountBridges = match slot { | ModelPoolSlot => { ...s, modelPool: bridge } | CodingPoolSlot => { ...s, codingPool: bridge } }
 pure val bridgeValues = Set(NoBridge, InstalledBridge({ identity: "first-object" }), InstalledBridge({ identity: "second-object" }))
-pure def stepIndependentBridgeSlots(before: AccountBridges, via: str, after: AccountBridges): bool = (via == "setAnthropic" implies after.coding == before.coding) and (via == "setCoding" implies after.anthropic == before.anthropic)
-pure def lawAnthropicInstallationIsIdempotent(s: AccountBridges, bridge: BridgeReference): bool = setAnthropic(setAnthropic(s, bridge), bridge) == setAnthropic(s, bridge)
-pure def lawCodingInstallationIsIdempotent(s: AccountBridges, bridge: BridgeReference): bool = setCoding(setCoding(s, bridge), bridge) == setCoding(s, bridge)
-pure val sValues = Set(initial, { anthropic: InstalledBridge({ identity: "first-object" }), coding: InstalledBridge({ identity: "second-object" }) })
-pure def sometimesBothBridgesInstalled(s: AccountBridges): bool = bridgeInstalled(s.anthropic) and bridgeInstalled(s.coding)
-pure def sometimesAnthropicClearedIndependently(s: AccountBridges): bool = not(bridgeInstalled(s.anthropic)) and bridgeInstalled(s.coding)
+pure def stepIndependentBridgeSlots(before: AccountBridges, after: AccountBridges): bool = after.modelPool == before.modelPool or after.codingPool == before.codingPool
+pure def lawSettingOneSlotLeavesTheOther(s: AccountBridges, bridge: BridgeReference): bool = setBridge(s, ModelPoolSlot, bridge).codingPool == s.codingPool and setBridge(s, CodingPoolSlot, bridge).modelPool == s.modelPool
+pure def lawInstallationIsIdempotent(s: AccountBridges, slot: BridgeSlot, bridge: BridgeReference): bool = setBridge(setBridge(s, slot, bridge), slot, bridge) == setBridge(s, slot, bridge)
+pure val sValues = Set(initial, { modelPool: InstalledBridge({ identity: "first-object" }), codingPool: InstalledBridge({ identity: "second-object" }) })
+pure def sometimesBothBridgesInstalled(s: AccountBridges): bool = bridgeInstalled(s.modelPool) and bridgeInstalled(s.codingPool)
+pure def sometimesModelPoolClearedIndependently(s: AccountBridges): bool = not(bridgeInstalled(s.modelPool)) and bridgeInstalled(s.codingPool)
 ```

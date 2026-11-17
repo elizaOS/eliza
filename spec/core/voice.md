@@ -1,15 +1,17 @@
 # Voice cancellation and speech contracts
 
-The owner is `voice-cancellation-token.ts` at
-`72fed7e4069ecd35d61d886ab6eec5c02c137517`. Each token preserves its run,
+The owner is `voice-cancellation-token.ts`. Each token preserves its run,
 optional inference slot, first reason, native signal, external-link disposer
 and listener identities. Speech generation and playback remain host effects.
 [The room registry](./voiceRegistry.md) composes these tokens.
 
 ## Story: Interrupt one voice turn across its consumers
 
-As a speaker, I want the first cancellation reason to reach planning,
-inference and playback. Callbacks may unsubscribe peers, subscribe again,
+> As a speaker, I want the first cancellation reason to reach planning,
+> inference and playback, so that interrupting the agent stops every part
+> of its turn.
+
+Callbacks may unsubscribe peers, subscribe again,
 throw or reenter cancellation. Their snapshot delivery remains ordered.
 
 ### Reason ownership precedes unlinking and signal abortion follows callbacks
@@ -100,10 +102,12 @@ pure def sometimesExternalLinkRemoved(v: VoiceToken): bool = v.reason != Active 
 
 ### Internal handoffs retain their completed cleanup
 
-Discovered by the proof: a fabricated snapshot-ready state could still own
-an external listener, and a signal-ready state could still retain pending
-listeners. The source reaches these handoffs only after unlinking and
-clearing have completed.
+Snapshotting starts only after the external link is removed, and native
+abortion only after every listener is cleared.
+
+Without these facts a snapshot could still
+include the external link's listener, and the signal could abort while
+listeners were still pending.
 
 ```quint
 pure def alwaysSnapshotFollowsUnlink(v: VoiceToken): bool = v.phase == Snapshotting implies not(v.linkInstalled) and not(v.unlinkOwned)

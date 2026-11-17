@@ -4,6 +4,10 @@ The source is `packages/core/src/security/pii-pseudonym-map.ts` at the pinned ba
 
 ## Story: Preserve one pseudonym per verified cluster across corpus writes
 
+> As a user whose data is pseudonymized, I want each verified person to keep
+> one stable pseudonym across writes, so that the model never sees my real
+> identifiers or confuses two people.
+
 ### Assignment keeps platform identity ownership unique and aliases explicitly ambiguous
 
 Each atomic assignment unions aliases and identity keys into the existing cluster. A new pseudonym must avoid all current aliases and other pseudonyms. Remint proposals cover existing pseudonyms that collide with newly learned real aliases, with prior pseudonyms retained for artifact repair.
@@ -29,8 +33,8 @@ pure def reminted(cluster: Cluster, remints: List[Remint]): Cluster = {
 pure val clusterValues: Set[Cluster] = Set({ id: "cluster1", pseudonym: "aliasA", aliases: Set("personA"), identities: Set("platform:user1"), evidence: Set(), superseded: Set(), ruleset: "v1" })
 pure def assignedClusters(s: Corpus, id: str, aliases: Set[str], identities: Set[str], evidence: Set[str], pseudonym: str, ruleset: str, remints: List[Remint]): List[Cluster] = {
   val prior = clusterAt(s, id)
-  val assigned = { id: id, pseudonym: if (prior.id == "") pseudonym else prior.pseudonym, aliases: prior.aliases.union(aliases), identities: prior.identities.union(identities), evidence: prior.evidence.union(evidence), superseded: prior.superseded, ruleset: ruleset }
-  s.clusters.select(cluster => cluster.id != id).append(assigned).listMap(cluster => reminted(cluster, remints))
+  val merged = { id: id, pseudonym: if (prior.id == "") pseudonym else prior.pseudonym, aliases: prior.aliases.union(aliases), identities: prior.identities.union(identities), evidence: prior.evidence.union(evidence), superseded: prior.superseded, ruleset: ruleset }
+  s.clusters.select(cluster => cluster.id != id).append(merged).listMap(cluster => reminted(cluster, remints))
 }
 pure def uniqueAndDisjoint(clusters: List[Cluster]): bool = clusters.every(cluster => cluster.id != "" and cluster.pseudonym != "" and clusters.select(other => other.id == cluster.id).length() == 1 and clusters.select(other => other.pseudonym == cluster.pseudonym).length() == 1 and clusters.every(other => not(other.aliases.contains(cluster.pseudonym)) and (cluster.id == other.id or cluster.identities.intersect(other.identities).size() == 0)))
 pure val clustersValues: Set[List[Cluster]] = Set(List(), List({ id: "cluster1", pseudonym: "aliasA", aliases: Set("personA"), identities: Set("platform:user1"), evidence: Set(), superseded: Set(), ruleset: "v1" }))

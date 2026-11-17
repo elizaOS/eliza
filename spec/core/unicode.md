@@ -1,10 +1,12 @@
 # Unicode byte lengths and boundaries
 
-Source `utils/unicode.ts` defines UTF-8 byte counting, lone-surrogate sanitation, prefix and suffix boundaries, and deep payload sanitation. The model represents a JavaScript string as its exact UTF-16 code-unit sequence. Converting a JavaScript string to that sequence is the future adapter's mechanical contract.
+Source `utils/unicode.ts` defines UTF-8 byte counting, lone-surrogate sanitation, prefix and suffix boundaries, and deep payload sanitation. The model represents a JavaScript string as its exact UTF-16 code-unit sequence. Converting a JavaScript string to that sequence is an exact codec at the shell boundary.
 
 ## Story: Preserve Unicode in provider requests and diagnostics
 
-As a caller, I want emoji and multilingual text preserved across encoding and authorized boundary operations.
+> As a caller, I want emoji and multilingual text preserved through byte
+> counting and truncation, so that no request or diagnostic carries a
+> broken character.
 
 ### Byte counting combines surrogate pairs and replaces unpaired surrogates
 

@@ -1,16 +1,19 @@
 # Room queue observers and idle waiters
 
-The source is `packages/core/src/runtime/room-handler-queue.ts:131-207,268-342,610-671` at `72fed7e4069ecd35d61d886ab6eec5c02c137517`. This composition stores one authoritative room lease queue, plus the concrete RoomQueue object identities, quiescence promises and live telemetry listener set. Listener invocation is synchronous and may reenter admission only after the original slot has been reserved.
-
-
-Discovered by the proof: each embedded machine must retain its complete safety
-invariant before the composition can rely on that machine's transition lemmas.
+Room queue observation in `runtime/room-handler-queue.ts`: one [room lease queue](./concurrency.md), the RoomQueue object identities, quiescence promises and the live telemetry listener set. Listener invocation is synchronous and may reenter admission only after the original slot is reserved.
 
 ## Story: Observe and drain room queues without racing their owners
 
-As a caller I can await a room or the current set of rooms becoming idle. Each promise captures queue objects once and stays resolved even if later work arrives. Empty queues are pruned after the outer invocation's terminal telemetry finishes. Listener failure and diagnostic failure cannot change a handler result.
+> As a caller, I want to await a room, or the rooms busy now, becoming idle,
+> so that I know when queued work has drained without racing the queue.
+
+Each promise captures queue objects once and stays resolved even if later work arrives. Empty queues are pruned after the outer invocation's terminal telemetry finishes. Listener failure and diagnostic failure cannot change a handler result.
 
 ### Queue identities and idle promises follow actual admission and drain
+
+Discovered by the proof: the composition relies on the room lease queue's
+transition lemmas only while that queue keeps its complete safety invariant,
+so the invariant is required of the embedded queue.
 
 Discovered by the proof: the next queue-object identity stays positive even
 when the last room is removed. Admission uses zero to distinguish an absent
@@ -29,11 +32,6 @@ type QueueNotice = {id: int, kind: QueueNoticeKind, room: int, depth: int, error
 type QueueListener = {callback: int, generation: int, present: bool}
 type RoomQueueObservers = {queue: C::RoomState, queues: List[QueueObject], calls: List[QueueCall], waiters: List[IdleWaiter], listeners: List[QueueListener], notices: List[QueueNotice], stack: List[int], nextQueue: int, nextNotice: int, nextListener: int, listenerErrors: int, diagnosticErrors: int}
 pure val initial: RoomQueueObservers = {queue: C::initial, queues: List(), calls: List(), waiters: List(), listeners: List(), notices: List(), stack: List(), nextQueue: 1, nextNotice: 1, nextListener: 1, listenerErrors: 0, diagnosticErrors: 0}
-pure val callerValues = C::callerValues
-pure val roomValues = C::roomValues
-pure val capacityValues = C::capacityValues
-pure val maxPerRoomValues = C::maxPerRoomValues
-pure val maxRoomsValues = C::maxRoomsValues
 pure val waiterIdValues = Set(1, 2, 3)
 pure val callbackValues = Set(1, 2, 3)
 pure val errorIdValues = Set("handler-error", "caller-abort")
@@ -118,7 +116,7 @@ pure def canEndListener(s: RoomQueueObservers, ok: bool, diagnosticOk: bool): bo
 pure def endListener(s: RoomQueueObservers, ok: bool, diagnosticOk: bool): RoomQueueObservers = { ...s, listenerErrors: s.listenerErrors + (if (ok) 0 else 1), diagnosticErrors: s.diagnosticErrors + (if (not(ok) and not(diagnosticOk)) 1 else 0), notices: s.notices.listMap(n => if (n.id == topNotice(s).id) { ...n, invoking: false, listener: 0 } else n) }
 pure def canFinishNotice(s: RoomQueueObservers): bool = topNotice(s).id != 0 and not(topNotice(s).invoking) and not(nextListener(s).present)
 pure def finishNotice(s: RoomQueueObservers): RoomQueueObservers = { ...s, stack: s.stack.removeAt(s.stack.length() - 1), notices: s.notices.listMap(n => if (n.id == topNotice(s).id) { ...n, finished: true } else n) }
-pure def alwaysQueueSafety(s: RoomQueueObservers): bool = C::alwaysRoomMutualExclusion(s.queue) and C::alwaysWaitersUnique(s.queue) and C::alwaysQueueBounded(s.queue) and C::alwaysWritesRetainLease(s.queue) and C::alwaysCancelledWaitersRemoved(s.queue) and C::alwaysAcquisitionOrdered(s.queue) and C::alwaysNoLeakedTerminalOwnership(s.queue) and C::alwaysRoomQueueDeadlockFree(s.queue)
+pure def alwaysQueueSafety(s: RoomQueueObservers): bool = C::alwaysRoomMutualExclusion(s.queue) and C::alwaysWaitersUnique(s.queue) and C::alwaysQueueBounded(s.queue) and C::alwaysLeaseWriteCountsNonnegative(s.queue) and C::alwaysCancelledWaitersRemoved(s.queue) and C::alwaysAcquisitionOrdered(s.queue) and C::alwaysNoLeakedTerminalOwnership(s.queue) and C::alwaysRoomQueueDeadlockFree(s.queue)
 pure def alwaysOneQueueObjectPerRoom(s: RoomQueueObservers): bool = s.nextQueue > 0 and s.queues.every(q => s.queues.select(other => other.room == q.room).length() == 1 and q.id > 0 and q.id < s.nextQueue)
 pure def alwaysPendingWorkHasQueue(s: RoomQueueObservers): bool = s.queue.leases.every(l => queueObject(s, l.room) != 0) and s.queue.waiting.every(w => queueObject(s, w.room) != 0)
 pure def alwaysWaiterResolutionAgrees(s: RoomQueueObservers): bool = s.waiters.every(w => w.resolved iff w.pendingQueues.length() == 0)

@@ -1,8 +1,12 @@
 # PII service queue and promise ownership
 
-The source is `packages/core/src/services/pii-scrub.ts:58-61,89-134,138-198,203-317,404-452`. This aggregate owns the actual [BatchQueue](./batchQueue.md), all content/ruleset job identities, the shared committed-marker set, lazy drain-start and stop promise identities. Every job embeds [PII scrub settlement](./privacy.md) for its own marker/pseudonym/notification outcome; the component's lifecycle fields are driven only by this service. The queue's per-item processor permits two simultaneous jobs, including two initial misses for the same content key. Keys represent complete content/ruleset identity, not raw private text.
+The PII scrub service of `services/pii-scrub.ts`: the [batch queue](./batchQueue.md), every content/ruleset job, the shared committed-marker set and the lazy start and stop promises. Each job embeds one [PII scrub](./privacy.md) settlement. The per-item processor permits two simultaneous jobs, including two initial misses for one key. Keys stand for complete content/ruleset identity, never raw private text.
 
 ## Story: Share service startup while keeping independent scrub attempts
+
+> As an operator, I want one shared service startup and stop while each
+> content/ruleset job keeps its own scrub attempt, so that concurrent jobs
+> neither block nor overwrite each other.
 
 ### Each marker lookup captures its own result before queue admission
 
@@ -43,11 +47,19 @@ pure def startResult(s: PrivacyService, ok: bool): PrivacyService = { ...s, queu
 
 ### Each processor attempt preserves its own marker and retry ownership
 
-Source review correction: attempt failure is possible only before the marker is acknowledged. A later observer failure cannot revoke the committed marker or reopen processing.
+Attempt failure is possible only before the marker is acknowledged. A later observer failure cannot revoke the committed marker or reopen processing.
 
 Discovered by the proof: starting an urgent flush item and settling a processor ticket require the same queued or running job owner. A missing lookup or an already disposed local job cannot advance work. The service retains the complete queue and per-job settlement owner contracts through their `wellFormed` predicates, including constructor, occurrence identity and retirement facts. The model checks the shared marker again when a queued attempt starts. Earlier simultaneous misses may both already be active and can both finish. Terminal queue rejection records failure without inventing a committed marker. Publication becomes shared only after the exact marker acknowledgement.
 
-Discovered by simulation: late bookkeeping belongs to collection of the detached processor result, not an independent public event. An in-flight scrub retains its work during detachment. The collector disposes only after the batch records that ticket's terminal processor outcome, the job is idle, and no further fallback owns that job. Settled counts and marker evidence remain.
+Late bookkeeping belongs to collection of the detached processor result, not an independent public event. An in-flight scrub retains its work during detachment. The collector disposes only after the batch records that ticket's terminal processor outcome, the job is idle, and no further fallback owns that job. Settled counts and marker evidence remain.
+
+Discovered by the proof: the service constructs its queue before marker
+admission. Its pending lazy-start promise is the queue's pending schedule,
+and an absent start identity cannot retain a scheduled task. Shutdown
+retires each job before allocating its stop identity and disposing the
+queue. A detached queue has completed disposal. These relations prevent a
+fabricated admitted job from enqueuing into an unconfigured or disposed
+queue, or a fabricated startup callback from settling another schedule.
 
 ```quint
 pure def terminalFailure(failureCount: int, work: P::Privacy): P::Privacy = { ...work, phase: P::Idle, failed: failureCount, attempts: 0 }
@@ -105,17 +117,6 @@ Stop closes admission before awaiting the current lazy-start promise. A failed s
 
 Discovered by simulation: retrying a failed removal while its original stop promise was still pending admitted a loop in which that promise never settled. The source awaits one disposal call per stop identity. A failed removal settles that promise with failure; a fresh stop identity may then retry.
 
-Discovered by the proof: the service constructs its queue before marker
-admission. The lazy-start promise is pending exactly while the queue's
-schedule is pending, and without a start identity the queue retains no
-scheduled task. A stop identity exists only while stopping, and stopping
-leaves no job open. A detached queue has completed disposal. Before
-shutdown the queue is present and not disposed. The service constructs its
-queue without a pressure callback, so the queue never has one. These
-relations prevent a fabricated admitted job from enqueuing into an
-unconfigured or disposed queue, or a fabricated startup callback from
-settling another schedule.
-
 ```quint
 pure def stop(s: PrivacyService): PrivacyService = {
   val identity = if (s.stopId == 0) s.nextPromise else s.stopId
@@ -145,7 +146,7 @@ pure def alwaysPromiseIdentitiesAreValid(s: PrivacyService): bool = s.nextPromis
 pure def alwaysEveryJobRetainsSettlement(s: PrivacyService): bool = s.jobs.every(job => P::wellFormed(job.work))
 pure def alwaysQueueOwnerWellFormed(s: PrivacyService): bool = BQ::wellFormed(s.queue)
 pure def alwaysServiceQueueLifecycle(s: PrivacyService): bool =
-  s.queue.configured and not(s.queue.queue.hasPressure) and (s.startPending iff s.queue.schedulePending) and
+  s.queue.configured and (s.startPending iff s.queue.schedulePending) and
   (s.startId == 0 implies not(s.queue.scheduled)) and
   (not(s.queuePresent) implies s.queue.disposePhase == BQ::QueueDisposed) and
   (s.stopId > 0 implies s.stopping) and

@@ -1,0 +1,8 @@
+{
+  "name": "@elizaos/plugin-maps",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Navigation, guidance voice and cloud map connections.",
+  "license": "MIT"
+}

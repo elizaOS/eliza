@@ -217,10 +217,7 @@
         "//#build",
         "//#typecheck",
         "//#test",
-        "@repo/app#build",
-        "@repo/app#typecheck",
-        "@repo/app#test",
-        "@repo/app#test:browser",
+        "vibestack-studio#test",
         "@elizaos/core#build",
         "@elizaos/core#typecheck",
         "@elizaos/core#test"
@@ -230,9 +227,8 @@
     "//#lint:js": {
       "dependsOn": [
         "@repo/design-system#build",
-        "@repo/app#typecheck",
-        "vibestack-studio#typecheck",
-        "@elizaos/core#typecheck"
+        "@elizaos/core#typecheck",
+        "vibestack-studio#typecheck"
       ],
       "inputs": [
         "apps/**",
@@ -352,6 +348,14 @@
       "outputs": [
         "generated/**",
         "design.md"
+      ]
+    },
+    "@repo/ui#gen": {
+      "dependsOn": [
+        "//#gen"
+      ],
+      "outputs": [
+        "generated/**"
       ]
     }
   },

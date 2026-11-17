@@ -1,8 +1,12 @@
 # Shared request authority and completion registry
 
-The source is `packages/core/src/actions/task-extraction-context.ts:40-146,431-524,810-1087,1184-1415`. Runtime/message pairs own issuer objects. State.data objects own extraction views. Each opaque attempt and result object has one issuer owner, and its [issuer restriction](./requestIssuer.md) and [completion evidence](./requestCompletions.md) live under that owner. IDs denote actual host object references. The authenticated sender supplies `HostBoundary` separately from parsed payloads. The host derives hashes and resolves the registered action, family and canonical child from its live registry.
+Shared request authority of `actions/task-extraction-context.ts`. Runtime/message pairs own issuers, `State.data` objects own extraction views, and each opaque attempt and result object has one issuer owner, under which its [issuer restriction](./requestIssuer.md) and [completion evidence](./requestCompletions.md) live. IDs denote host object references. The authenticated sender supplies `HostBoundary` separately from parsed payloads, and the host derives hashes and resolves the registered action, family and canonical child from its live registry.
 
 ## Story: Keep concurrent requests and their copied views isolated
+
+> As the execution boundary, I want concurrent requests and their copied
+> views kept isolated, so that one request's authority or completion
+> evidence never reaches another.
 
 ### Object identity and current request fields determine the active issuer
 
@@ -48,24 +52,23 @@ pure val sourceHashValues = Set("source1", "source2")
 pure val projectionHashValues = Set("projection1", "projection2")
 pure val currentSourceHashValues = sourceHashValues
 pure val currentOriginalHashValues = sourceHashValues
-type RestrictionObservation = { classification: I::RequestClassification, interpretation: I::Interpretation, sourceHash: str, observedSourceHash: str }
+type RestrictionObservation = { classification: C::RequestClass, interpretation: I::Interpretation, sourceHash: str, observedSourceHash: str }
 pure val restrictionValues = Set(
-  { classification: I::MutationRequest, interpretation: { status: I::ExplicitInterpretation, operations: Set(I::UpdateNote) }, sourceHash: "source1", observedSourceHash: "source1" },
-  { classification: I::MutationRequest, interpretation: { status: I::ExplicitInterpretation, operations: Set(I::UpdateNote) }, sourceHash: "source2", observedSourceHash: "source2" },
-  { classification: I::MutationRequest, interpretation: { status: I::ExplicitInterpretation, operations: Set(I::CreateNote, I::DeleteNote) }, sourceHash: "source1", observedSourceHash: "source1" },
-  { classification: I::MutationRequest, interpretation: { status: I::ExplicitInterpretation, operations: Set(I::CreateNote, I::DeleteNote) }, sourceHash: "source2", observedSourceHash: "source2" },
-  { classification: I::ReadOnlyRequest, interpretation: { status: I::ExplicitInterpretation, operations: Set(I::GetNote, I::ListNotes) }, sourceHash: "source1", observedSourceHash: "source1" },
-  { classification: I::ReadOnlyRequest, interpretation: { status: I::UnavailableInterpretation, operations: Set() }, sourceHash: "source2", observedSourceHash: "source2" },
-  { classification: I::ReadOnlyRequest, interpretation: { status: I::ExplicitInterpretation, operations: Set(I::UpdateNote) }, sourceHash: "source1", observedSourceHash: "source1" },
-  { classification: I::MutationRequest, interpretation: { status: I::ExplicitInterpretation, operations: Set(I::UpdateNote) }, sourceHash: "source2", observedSourceHash: "source1" })
+  { classification: C::MutationClass, interpretation: { status: I::ExplicitInterpretation, operations: Set(C::UpdateOperation) }, sourceHash: "source1", observedSourceHash: "source1" },
+  { classification: C::MutationClass, interpretation: { status: I::ExplicitInterpretation, operations: Set(C::UpdateOperation) }, sourceHash: "source2", observedSourceHash: "source2" },
+  { classification: C::MutationClass, interpretation: { status: I::ExplicitInterpretation, operations: Set(C::CreateOperation, C::DeleteOperation) }, sourceHash: "source1", observedSourceHash: "source1" },
+  { classification: C::MutationClass, interpretation: { status: I::ExplicitInterpretation, operations: Set(C::CreateOperation, C::DeleteOperation) }, sourceHash: "source2", observedSourceHash: "source2" },
+  { classification: C::ReadOnlyClass, interpretation: { status: I::ExplicitInterpretation, operations: Set(C::GetOperation, C::ListOperation) }, sourceHash: "source1", observedSourceHash: "source1" },
+  { classification: C::ReadOnlyClass, interpretation: { status: I::UnavailableInterpretation, operations: Set() }, sourceHash: "source2", observedSourceHash: "source2" },
+  { classification: C::ReadOnlyClass, interpretation: { status: I::ExplicitInterpretation, operations: Set(C::UpdateOperation) }, sourceHash: "source1", observedSourceHash: "source1" },
+  { classification: C::MutationClass, interpretation: { status: I::ExplicitInterpretation, operations: Set(C::UpdateOperation) }, sourceHash: "source2", observedSourceHash: "source1" })
 pure def runtimeAt(s: RequestRegistry, runtimeId: int): RuntimeObject = s.runtimes.select(runtime => runtime.id == runtimeId).nthOr(0, emptyRuntime)
 pure def messageAt(s: RequestRegistry, messageObject: int): RequestMessage = s.messages.select(message => message.objectId == messageObject).nthOr(0, emptyMessage)
 pure def stateAt(s: RequestRegistry, stateObject: int): RequestState = s.states.select(frame => frame.objectId == stateObject).nthOr(0, emptyState)
 pure def ownerAt(s: RequestRegistry, issuerId: int): IssuerOwner = s.owners.select(owner => owner.id == issuerId).nthOr(0, emptyOwner)
 pure def pairOwner(s: RequestRegistry, runtimeId: int, messageObject: int): IssuerOwner = s.owners.select(owner => owner.runtimeId == runtimeId and owner.messageObject == messageObject).nthOr(0, emptyOwner)
 pure def ownerCurrent(owner: IssuerOwner, s: RequestRegistry): bool = owner.id != 0 and runtimeAt(s, owner.runtimeId).live and runtimeAt(s, owner.runtimeId).agentId == owner.agentId and messageAt(s, owner.messageObject).agentId == owner.agentId and messageAt(s, owner.messageObject).messageId == owner.messageId and messageAt(s, owner.messageObject).roomId == owner.roomId and messageAt(s, owner.messageObject).entityId == owner.entityId and messageAt(s, owner.messageObject).requestHash == owner.issuer.requestHash and I::validIssuer(owner.issuer) and (not(owner.issuer.committed) or owner.originalSourceHash == owner.issuer.sourceHash)
-pure def completionClass(classification: I::RequestClassification): C::RequestClass = if (classification == I::MutationRequest) C::MutationClass else if (classification == I::ReadOnlyRequest) C::ReadOnlyClass else C::UnresolvedClass
-pure def refreshedOwner(owner: IssuerOwner, s: RequestRegistry): IssuerOwner = { ...owner, completions: C::observeAuthority(owner.completions, owner.issuer.revision, ownerCurrent(owner, s) and owner.issuer.committed, completionClass(I::restriction(owner.issuer))) }
+pure def refreshedOwner(owner: IssuerOwner, s: RequestRegistry): IssuerOwner = { ...owner, completions: C::observeAuthority(owner.completions, owner.issuer.revision, ownerCurrent(owner, s) and owner.issuer.committed, I::restriction(owner.issuer)) }
 pure def replaceOwner(owner: IssuerOwner, s: RequestRegistry): RequestRegistry = { ...s, owners: s.owners.listMap(existing => if (existing.id == owner.id) owner else existing) }
 pure def canRegisterRuntime(s: RequestRegistry, by: RegistryCaller, runtimeId: int, agentId: str, live: bool): bool = by == HostBoundary and runtimeId > 0 and agentId != "" and not(s.runtimes.some(runtime => runtime.id == runtimeId))
 pure def registerRuntime(s: RequestRegistry, by: RegistryCaller, runtimeId: int, agentId: str, live: bool): RequestRegistry = { ...s, runtimes: s.runtimes.append({ id: runtimeId, agentId: agentId, live: live }) }
@@ -147,9 +150,7 @@ pure def mutateView(s: RequestRegistry, stateObject: int, sourceHash: str, proje
 
 Discovered by the proof: each owner retains the identity uniqueness of its own completion records as well as the cross-owner fence. A reordered or copied view cannot supply a duplicate identity to a component. An issued view names an actual issuer, so a view with a fabricated issuer ID cannot pick up authority when that ID is allocated later.
 
-Discovered by simulation: completing an attempt requires a live issuer, a committed restriction and a current bound view before the operation and result can be observed. A later restriction observation can retire a resolved attempt before its result binds. Give bind, projection and copy more chances once their guards allow them. Include both a mutation that can complete and a restricted request whose denial can transfer.
-
-Discovered by simulation: attempt, result and denial IDs are each owned once across every issuer, so a run that spends them early can never complete. Sample a third attempt ID, let either bound result be a projection source, project only onto fresh result objects that no attempt binds, and let an operation check name no denial (`""`) as the imported completion model does; otherwise two denials disable every later check. Registration and classification samples stay on the values that can mint a completion: the captured registration is known, and a request is restricted as read-only or mutation (an unresolved restriction still arises from contradiction). A bound result and its observed source share one fingerprint, so here a changed association comes from a differing projection hash, and a differing target fingerprint leaves a copy without a fact; the sticky source mismatch is the [completion model's](./requestCompletions.md) own rule. A later restriction commit or view rebinding usually taints the issuer or unbinds the view, so those run rarely while the completion steps run often.
+Discovered by simulation: completing an attempt requires a live issuer, a committed restriction and a current bound view before the operation and result can be observed, and a later restriction observation can retire a resolved attempt before its result binds. Attempt, result and denial IDs are each owned once across every issuer, so a run that spends them early can never complete: a third attempt ID is sampled, either bound result can be a projection source, projection targets only fresh result objects that no attempt binds, and an operation check names no denial (`""`) when there is none; otherwise two denials would disable every later check. Registration and classification samples stay on the values that can mint a completion: the captured registration is known, and a request is restricted as read-only or mutation (an unresolved restriction still arises from contradiction). A bound result and its observed source share one fingerprint, so a changed association comes from a differing projection hash, and a differing target fingerprint leaves a copy without a fact; the sticky source mismatch is the [completion model's](./requestCompletions.md) own rule. A later restriction commit or view rebinding usually taints the issuer or unbinds the view, so those run rarely while bind, projection and copy run often.
 
 ```quint
 pure val attemptIdValues = Set("attempt1", "attempt2", "attempt3")
@@ -163,8 +164,6 @@ pure val fingerprintValues = Set("fingerprint1")
 pure val sourceFingerprintValues = fingerprintValues
 pure val targetFingerprintValues = Set("fingerprint1", "fingerprint2")
 pure val registrationValues = Set(C::sampleRegistration)
-pure val observationValues = C::observationValues
-pure val childValues = C::childValues
 pure def attemptOwner(s: RequestRegistry, attemptId: str): IssuerOwner = s.owners.select(owner => owner.completions.attempts.some(attempt => attempt.id == attemptId)).nthOr(0, emptyOwner)
 pure def resultOwner(s: RequestRegistry, resultId: str): IssuerOwner = s.owners.select(owner => owner.completions.results.some(result => result.id == resultId)).nthOr(0, emptyOwner)
 pure def canBeginAttempt(s: RequestRegistry, by: RegistryCaller, issuerId: int, stateObject: int, messageObject: int, attemptId: str): bool = by == HostBoundary and boundViewCurrent(s, stateObject, messageObject) and viewAt(s, stateObject).issuerId == issuerId and ownerAt(s, issuerId).messageObject == messageObject and attemptOwner(s, attemptId).id == 0 and C::canBeginAttempt(refreshedOwner(ownerAt(s, issuerId), s).completions, attemptId)

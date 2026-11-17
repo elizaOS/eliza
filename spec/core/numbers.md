@@ -1,12 +1,17 @@
 # Canonical numeric inputs
 
-Source `utils/number-parsing.ts` distinguishes absent canonical integers, invalid text and parsed values. Plain positive/nonnegative parsers additionally preserve their optional finite fallback. Float helpers retain JavaScript finite-number and flooring behavior. The following model defines canonical unsigned decimal parsing over the exact digit sequence exposed by the string boundary, including bounds and optional clamping.
+Number parsing distinguishes absent canonical integers, invalid text and
+parsed values. Plain positive and nonnegative parsers additionally preserve
+their optional finite fallback. Float helpers retain JavaScript
+finite-number and flooring behavior. The following model defines canonical
+unsigned decimal parsing over the exact digit sequence exposed by the
+string boundary, including bounds and optional clamping.
 
 ## Story: Reject malformed numeric boundary data explicitly
 
-As an API consumer, I want an absent optional number distinguishable from an invalid one.
+> As an API consumer, I want an absent optional number distinguishable from an invalid one.
 
-### Canonical integers reject signs leading zeroes padding fractions and unsafe values
+### Canonical integers reject signs, leading zeroes, padding, fractions and unsafe values
 
 Whitespace-only input is absent. Nonempty padded input is invalid. A nonempty canonical decimal starts with a nonzero digit unless it is exactly zero. The value must fit a safe integer. Bad configured bounds raise RangeError. Out-of-range valid digits either clamp or return invalid according to the caller option.
 

@@ -1,0 +1,8 @@
+{
+  "name": "@elizaos/plugin-calendar",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Calendar reads, linked and managed sync, availability and reviewed series writes.",
+  "license": "MIT"
+}

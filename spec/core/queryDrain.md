@@ -1,14 +1,17 @@
 # Scheduler query ownership across replacement
 
-The baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`, `packages/core/src/services/task-scheduler.ts`, and `TaskScheduler{,QueryDrain}.qnt`. Query ownership lasts until the actual adapter await settles. Registration identity controls dispatch separately. A handoff records both adapter handles against pending queries. The machine supplies fresh monotonic query tickets to represent distinct source promise identities and preserves multi-agent batch ordering across each worker await.
+Scheduler query ownership in `services/task-scheduler.ts`. A query owns its storage until the actual adapter await settles; registration identity controls dispatch separately. A handoff records both adapter handles against pending queries. Fresh monotonic query tickets stand for distinct promise identities, and multi-agent batch order is kept across each worker await.
 
 ## Story: Replace services without dispatching stale results or closing active storage
 
-As a host, I can replace a service or adapter while old queries drain. Old results cannot run a replacement registration. Closing an adapter or service waits for every query that actually owns it. A newer scheduler generation proceeds while old generations settle.
+> As a host, I want to replace a service or adapter while old queries drain,
+> so that stale results never dispatch and active storage is never closed.
+
+Old results cannot run a replacement registration. Closing an adapter or service waits for every query that actually owns it. A newer scheduler generation proceeds while old generations settle.
 
 ### Queries capture every selected registration and their adapter ownership
 
-Each tick visits dirty agents in the order first marked. It preserves busy agents for the next tick and removes every other visited dirty name, including names with no registration. Replacing a map entry keeps its registration order but allocates a distinct registration identity. Marking an agent dirty is allowed only when it is not dirty yet: the dirty agents are a set, so marking it again would change nothing.
+Each tick visits dirty agents in the order first marked. It preserves busy agents for the next tick and removes every other visited dirty name, including names with no registration. Replacing a map entry keeps its registration order but allocates a distinct registration identity.
 
 ```quint
 type QueryPhase = Missing | Querying | Ready | Running | Done
@@ -33,8 +36,6 @@ pure val absentQuery: Query = { key: 0, generation: 0, captured: List(), adapter
 pure def registrationFor(s: Drain, agent: str): Registration = s.registry.select(entry => entry.agent == agent).nthOr(0, absentRegistration)
 pure def queryFor(s: Drain, key: int): Query = s.queries.nthOr(key - 1, absentQuery)
 pure def addDirty(dirty: List[str], agent: str): List[str] = if (dirty.includes(agent)) dirty else dirty.append(agent)
-pure def canMarkDirty(s: Drain, agent: str): bool = not(s.dirtyAgents.includes(agent))
-pure def markDirty(s: Drain, agent: str): Drain = { ...s, dirtyAgents: addDirty(s.dirtyAgents, agent) }
 pure def rearmRegistry(s: Drain): List[str] = s.registry.foldl(s.dirtyAgents, (dirty, entry) => addDirty(dirty, entry.agent))
 pure def canStartAdapter(s: Drain, adapter: str): bool = adapter != "" and not(s.retiredAdapters.contains(adapter)) and not(s.closedAdapters.contains(adapter)) and s.activeAdapter != adapter
 pure def attachAfterTimerState(hadTimer: bool, s: Drain, adapter: str): Drain = { ...s, activeAdapter: adapter, generation: s.generation + 1, dirtyAgents: if (hadTimer) rearmRegistry(s) else s.dirtyAgents }
@@ -49,11 +50,11 @@ pure def eligibleAgent(s: Drain, agent: str): bool = {
   registered.agent == agent and agent != "" and not(s.busyServices.contains(registered.service)) and not(s.retiredServices.contains(registered.service))
 }
 pure def queryRegistrations(s: Drain): List[Registration] = s.dirtyAgents.select(agent => eligibleAgent(s, agent)).listMap(agent => registrationFor(s, agent))
-pure def keepsDirty(s: Drain, agent: str): bool = {
+pure def preservedAgent(s: Drain, agent: str): bool = {
   val registered = registrationFor(s, agent)
   registered.agent != "" and s.busyServices.contains(registered.service)
 }
-pure def dirtyToPreserve(s: Drain): List[str] = s.dirtyAgents.select(agent => keepsDirty(s, agent))
+pure def dirtyToPreserve(s: Drain): List[str] = s.dirtyAgents.select(agent => preservedAgent(s, agent))
 pure def canBeginQuery(s: Drain): bool = s.activeAdapter != "" and not(s.queries.some(query => query.generation == s.generation and query.phase != Done)) and queryRegistrations(s).length() > 0
 pure def beginQuery(s: Drain): Drain = {
   val captured = queryRegistrations(s)
@@ -101,6 +102,7 @@ pure def finishRun(s: Drain, key: int): Drain = {
   { ...s, busyServices: s.busyServices.exclude(Set(own.service)), dirtyAgents: rearmed, queries: s.queries.listMap(queuedQuery => if (queuedQuery.key == key) { ...queuedQuery, phase: if (queuedQuery.remaining.length() > 0) Ready else Done, running: absentTaskGroup } else queuedQuery) }
 }
 pure def unregister(s: Drain, agent: str, service: str): Drain = { ...s, registry: s.registry.select(entry => entry.agent != agent or entry.service != service), retiredServices: s.retiredServices.union(Set(service)), dirtyAgents: if (registrationFor(s, agent).service == service) s.dirtyAgents.select(dirty => dirty != agent) else s.dirtyAgents }
+pure def markDirty(s: Drain, agent: str): Drain = { ...s, dirtyAgents: addDirty(s.dirtyAgents, agent) }
 pure def pendingForService(s: Drain, service: str): bool = s.queries.some(query => query.phase == Querying and query.captured.some(entry => entry.service == service))
 pure def pendingForAdapter(s: Drain, adapter: str): bool = s.queries.some(query => query.phase == Querying and query.adapters.contains(adapter))
 pure def canCloseService(s: Drain, service: str): bool = s.retiredServices.contains(service) and not(pendingForService(s, service)) and not(s.busyServices.contains(service))
@@ -142,8 +144,8 @@ pure def sometimesClosedAfterHandoff(s: Drain): bool = s.closedAdapters.contains
 
 Pending external reads and worker passes are assumed to return, including
 failures. An enabled close requires every actual query/worker owner to release
-the handle. Fair progress selects captured queries by real insertion order,
-and closes eligible retired handles without relying on sampled identities.
+the handle. Fair progress selects captured queries by insertion order and
+closes eligible retired handles.
 The host still owns poll timing and the liveness of any task returned repeatedly
 by an external store. Fair ticks eventually capture each attached dirty
 registration or observe its detachment. Capturing a dirty registration does

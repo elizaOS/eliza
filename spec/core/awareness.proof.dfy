@@ -1,29 +1,3 @@
-lemma ContributorPartition(entries: seq<Contributor>, position: int)
-  ensures |ProofLib.Filter((entry: Contributor) => (entry.position <= position), entries)| + |ProofLib.Filter((entry: Contributor) => (entry.position > position), entries)| == |entries|
-  decreases |entries|
-{
-  if |entries| == 0 {
-    ProofLib.FilterNil((entry: Contributor) => (entry.position <= position), entries);
-    ProofLib.FilterNil((entry: Contributor) => (entry.position > position), entries);
-  } else {
-    ProofLib.FilterCons((entry: Contributor) => (entry.position <= position), entries);
-    ProofLib.FilterCons((entry: Contributor) => (entry.position > position), entries);
-    ContributorPartition(entries[1..], position);
-  }
-}
-
-lemma InsertionLength(entries: seq<Contributor>, candidate: Contributor)
-  ensures |inserted(entries, candidate)| == |ProofLib.Filter((entry: Contributor) => (entry.position <= candidate.position), entries)| + 1 + |ProofLib.Filter((entry: Contributor) => (entry.position > candidate.position), entries)|
-{
-}
-
-lemma lawInsertionKeepsExistingContributors_ensures(entries: seq<Contributor>, candidate: Contributor)
-  ensures (lawInsertionKeepsExistingContributors(entries, candidate) == true)
-{
-  InsertionLength(entries, candidate);
-  ContributorPartition(entries, candidate.position);
-}
-
 lemma SummaryFilters(s: SummaryCache)
   ensures alwaysUniqueRequestIdentity(s) == (forall call :: call in s.pending ==> |ProofLib.Filter((other: PendingSummary) => (other.requestId == call.requestId), s.pending)| == 1)
   ensures alwaysOneCachePerRuntime(s) == (forall row :: row in s.rows ==> |ProofLib.Filter((other: CacheRow) => (other.runtimeId == row.runtimeId), s.rows)| == 1)

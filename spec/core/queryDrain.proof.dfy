@@ -1,663 +1,3 @@
-// Proofs for spec/core/queryDrain.md.
-// The plan: every transition keeps the query list positional (the query at
-// index i has key i + 1), keeps dirtyAgents without repeats, and either
-// leaves the query list alone, changes one query (finishQuery, dispatchNext,
-// finishRun), appends one (beginQuery) or only widens adapters (handoff).
-// Frame lemmas below prove the query rules once for each of those shapes.
-
-// ---- Lists without repeats ----------------------------------------------
-
-lemma QdDirtyView(s: Drain)
-  ensures alwaysDirtyKeysUnique(s) == !((exists agent :: agent in s.dirtyAgents && !((|ProofLib.Filter((other: string) => (other == agent), s.dirtyAgents)| == 1))))
-{
-}
-
-lemma QdDistinctOfCounts(xs: seq<string>)
-  requires !((exists agent :: agent in xs && !((|ProofLib.Filter((other: string) => (other == agent), xs)| == 1))))
-  ensures ProofLib.Distinct(xs)
-{
-  forall i, j | 0 <= i < j < |xs| ensures xs[i] != xs[j] {
-    if xs[i] == xs[j] {
-      var agent := xs[i];
-      assert agent in xs;
-      ProofLib.FilterTwo((other: string) => (other == agent), xs, i, j);
-    }
-  }
-}
-
-lemma QdCountsOfDistinct(xs: seq<string>)
-  requires ProofLib.Distinct(xs)
-  ensures !((exists agent :: agent in xs && !((|ProofLib.Filter((other: string) => (other == agent), xs)| == 1))))
-{
-  forall agent | agent in xs ensures |ProofLib.Filter((other: string) => (other == agent), xs)| == 1 {
-    ProofLib.FilterDistinctCountOne((other: string) => (other == agent), xs, agent);
-  }
-}
-
-lemma QdDistinctOfDirty(s: Drain)
-  requires alwaysDirtyKeysUnique(s)
-  ensures ProofLib.Distinct(s.dirtyAgents)
-{
-  QdDirtyView(s);
-  QdDistinctOfCounts(s.dirtyAgents);
-}
-
-lemma QdDirtyOfDistinct(t: Drain)
-  requires ProofLib.Distinct(t.dirtyAgents)
-  ensures alwaysDirtyKeysUnique(t)
-{
-  QdDirtyView(t);
-  QdCountsOfDistinct(t.dirtyAgents);
-}
-
-lemma QdAddDirty(d: seq<string>, a: string)
-  requires ProofLib.Distinct(d)
-  ensures ProofLib.Distinct(addDirty(d, a))
-  ensures forall x :: x in addDirty(d, a) <==> (x in d || x == a)
-{
-  if a !in d {
-    var r := d + [a];
-    assert addDirty(d, a) == r;
-    forall i, j | 0 <= i < j < |r| ensures r[i] != r[j] {
-      assert r[i] == d[i];
-      assert d[i] in d;
-      if j < |d| {
-        assert r[j] == d[j];
-      }
-    }
-  }
-}
-
-lemma QdRearm(f: (seq<string>, Registration) -> seq<string>, acc: seq<string>, xs: seq<Registration>)
-  requires forall a, e :: f(a, e) == addDirty(a, e.agent)
-  requires ProofLib.Distinct(acc)
-  ensures ProofLib.Distinct(Std.Collections.Seq.FoldLeft(f, acc, xs))
-  decreases |xs|
-{
-  if |xs| > 0 {
-    QdAddDirty(acc, xs[0].agent);
-    QdRearm(f, f(acc, xs[0]), xs[1..]);
-  }
-}
-
-lemma QdRearmRegistry(s: Drain)
-  requires ProofLib.Distinct(s.dirtyAgents)
-  ensures ProofLib.Distinct(rearmRegistry(s))
-{
-  QdRearm((dirty: seq<string>, entry: Registration) => addDirty(dirty, entry.agent), s.dirtyAgents, s.registry);
-}
-
-lemma QdRearmAny(f: (seq<string>, Registration) -> seq<string>, acc: seq<string>)
-  requires forall a, e :: f(a, e) == addDirty(a, e.agent)
-  requires ProofLib.Distinct(acc)
-  ensures forall xs: seq<Registration> :: ProofLib.Distinct(Std.Collections.Seq.FoldLeft(f, acc, xs))
-{
-  forall xs: seq<Registration> ensures ProofLib.Distinct(Std.Collections.Seq.FoldLeft(f, acc, xs)) {
-    QdRearm(f, acc, xs);
-  }
-}
-
-lemma QdFilterDistinct(p: string -> bool, xs: seq<string>)
-  requires ProofLib.Distinct(xs)
-  ensures ProofLib.Distinct(ProofLib.Filter(p, xs))
-  decreases |xs|
-{
-  if |xs| == 0 {
-    ProofLib.FilterNil(p, xs);
-  } else {
-    ProofLib.FilterCons(p, xs);
-    var rest := xs[1..];
-    forall i, j | 0 <= i < j < |rest| ensures rest[i] != rest[j] {
-      assert rest[i] == xs[i + 1] && rest[j] == xs[j + 1];
-    }
-    QdFilterDistinct(p, rest);
-    var r := ProofLib.Filter(p, xs);
-    var rt := ProofLib.Filter(p, rest);
-    if p(xs[0]) {
-      assert r == [xs[0]] + rt;
-      forall i, j | 0 <= i < j < |r| ensures r[i] != r[j] {
-        if i == 0 {
-          assert r[j] == rt[j - 1];
-          assert rt[j - 1] in rt;
-          ProofLib.FilterMember(p, rest, rt[j - 1]);
-          var m :| 0 <= m < |rest| && rest[m] == rt[j - 1];
-          assert rest[m] == xs[m + 1];
-        } else {
-          assert r[i] == rt[i - 1] && r[j] == rt[j - 1];
-        }
-      }
-    } else {
-      assert r == rt;
-    }
-  }
-}
-
-// ---- Set additions written as a filter --------------------------------------
-
-lemma QdAddOne(a: seq<string>, x: string)
-  ensures forall y :: y in (a + ProofLib.Filter((set_x: string) => !((set_x in a)), [x])) <==> (y in a || y == x)
-{
-  forall y ensures y in (a + ProofLib.Filter((set_x: string) => !((set_x in a)), [x])) <==> (y in a || y == x) {
-    ProofLib.FilterMember((set_x: string) => !((set_x in a)), [x], y);
-  }
-}
-
-// ---- Positional query keys -----------------------------------------------------
-
-lemma QdKeysView(s: Drain)
-  ensures alwaysQueryKeysUnique(s) == ((s.nextQuery == (|s.queries| + 1)) && !((exists query :: query in s.queries && !(((((query.key > 0) && (query.key < s.nextQuery)) && ((if ((0 <= (query.key - 1)) && ((query.key - 1) < |s.queries|)) then s.queries[(query.key - 1)] else absentQuery).key == query.key)) && (|ProofLib.Filter((other: Query) => (other.key == query.key), s.queries)| == 1))))))
-{
-}
-
-lemma QdKeysPositional(s: Drain)
-  requires alwaysQueryKeysUnique(s)
-  ensures s.nextQuery == |s.queries| + 1
-  ensures forall i :: 0 <= i < |s.queries| ==> s.queries[i].key == i + 1
-{
-  QdKeysView(s);
-  forall i | 0 <= i < |s.queries| ensures s.queries[i].key == i + 1 {
-    var query := s.queries[i];
-    assert query in s.queries;
-    var j := query.key - 1;
-    assert 0 <= j < |s.queries| && s.queries[j].key == query.key;
-    if j != i {
-      ProofLib.FilterTwo((other: Query) => (other.key == query.key), s.queries, i, j);
-    }
-  }
-}
-
-lemma QdKeysOfPositional(t: Drain)
-  requires t.nextQuery == |t.queries| + 1
-  requires forall i :: 0 <= i < |t.queries| ==> t.queries[i].key == i + 1
-  ensures alwaysQueryKeysUnique(t)
-{
-  QdKeysView(t);
-  forall query | query in t.queries
-    ensures (query.key > 0) && (query.key < t.nextQuery) && (if ((0 <= (query.key - 1)) && ((query.key - 1) < |t.queries|)) then t.queries[(query.key - 1)] else absentQuery).key == query.key && |ProofLib.Filter((other: Query) => (other.key == query.key), t.queries)| == 1
-  {
-    var i :| 0 <= i < |t.queries| && t.queries[i] == query;
-    ProofLib.FilterOne((other: Query) => (other.key == query.key), t.queries, i);
-  }
-}
-
-// queryFor finds the query with that key, whenever its phase is not Missing.
-lemma QdQueryFor(s: Drain, key: int)
-  requires alwaysQueryKeysUnique(s)
-  requires !queryFor(s, key).phase.Missing?
-  ensures 1 <= key <= |s.queries|
-  ensures queryFor(s, key) == s.queries[key - 1]
-  ensures forall i :: 0 <= i < |s.queries| ==> (s.queries[i].key == key <==> i == key - 1)
-{
-  QdKeysPositional(s);
-}
-
-// ---- Frames ------------------------------------------------------------------
-
-// Transitions that leave queries, busy services and stop bookkeeping alone.
-lemma QdFrameQueries(s: Drain, t: Drain)
-  requires inv(s)
-  requires t.queries == s.queries && t.busyServices == s.busyServices && t.nextQuery == s.nextQuery
-  ensures alwaysRunningServiceOwnsBusySlot(t) && alwaysRunningServicesAreUnique(t) && alwaysQueryKeysUnique(t) && alwaysReadyHasDispatch(t)
-{
-  QdKeysView(s);
-  QdKeysView(t);
-}
-
-lemma QdFrameStop(s: Drain, t: Drain)
-  requires inv(s)
-  requires t.queries == s.queries && t.nextQuery == s.nextQuery && t.stopReturned == s.stopReturned && t.stopWaiting == s.stopWaiting
-  ensures alwaysStopReceiptDrainedItsSnapshot(t) && alwaysStopSnapshotUsesIssuedKeys(t)
-{
-}
-
-lemma QdFrameIssued(s: Drain, t: Drain)
-  requires inv(s)
-  requires t.nextQuery == s.nextQuery && t.stopWaiting == s.stopWaiting
-  ensures alwaysStopSnapshotUsesIssuedKeys(t)
-{
-}
-
-lemma QdFrameClosedServices(s: Drain, t: Drain)
-  requires inv(s)
-  requires t.queries == s.queries && t.busyServices == s.busyServices && t.closedServices == s.closedServices
-  ensures alwaysClosedServicesHaveNoQueries(t)
-{
-  forall c | c in t.closedServices ensures !pendingForService(t, c) && !(c in t.busyServices) {
-    assert pendingForService(t, c) == pendingForService(s, c);
-  }
-}
-
-lemma QdFrameClosedAdapters(s: Drain, t: Drain)
-  requires inv(s)
-  requires t.queries == s.queries && t.closedAdapters == s.closedAdapters
-  ensures alwaysClosedAdaptersHaveNoQueries(t)
-{
-  forall c | c in t.closedAdapters ensures !pendingForAdapter(t, c) {
-    assert pendingForAdapter(t, c) == pendingForAdapter(s, c);
-  }
-}
-
-lemma QdFrameRetire(s: Drain, t: Drain)
-  requires inv(s)
-  requires t.closedServices == s.closedServices && t.closedAdapters == s.closedAdapters
-  requires forall x :: x in s.retiredServices ==> x in t.retiredServices
-  requires forall x :: x in s.retiredAdapters ==> x in t.retiredAdapters
-  ensures alwaysCloseRequiresRetirement(t)
-{
-}
-
-lemma QdFrameActive(s: Drain, t: Drain)
-  requires inv(s)
-  requires t.activeAdapter == s.activeAdapter && t.closedAdapters == s.closedAdapters && t.retiredAdapters == s.retiredAdapters
-  ensures alwaysActiveAdapterIsOpen(t)
-{
-}
-
-lemma QdFrameDispatch(s: Drain, t: Drain)
-  requires t.dispatches == s.dispatches
-  ensures stepDispatchUsesCurrentRegistration(s, t)
-{
-}
-
-// Everything but the dirty list, the registry and the active adapter stays.
-lemma QdFrameAll(s: Drain, t: Drain)
-  requires inv(s)
-  requires t.queries == s.queries && t.busyServices == s.busyServices && t.nextQuery == s.nextQuery
-  requires t.stopReturned == s.stopReturned && t.stopWaiting == s.stopWaiting
-  requires t.closedServices == s.closedServices && t.closedAdapters == s.closedAdapters
-  requires t.retiredServices == s.retiredServices && t.retiredAdapters == s.retiredAdapters
-  requires t.dispatches == s.dispatches
-  ensures alwaysRunningServiceOwnsBusySlot(t) && alwaysRunningServicesAreUnique(t) && alwaysQueryKeysUnique(t) && alwaysReadyHasDispatch(t)
-  ensures alwaysStopReceiptDrainedItsSnapshot(t) && alwaysStopSnapshotUsesIssuedKeys(t)
-  ensures alwaysClosedServicesHaveNoQueries(t) && alwaysClosedAdaptersHaveNoQueries(t) && alwaysCloseRequiresRetirement(t)
-  ensures stepDispatchUsesCurrentRegistration(s, t)
-{
-  QdFrameQueries(s, t);
-  QdFrameStop(s, t);
-  QdFrameClosedServices(s, t);
-  QdFrameClosedAdapters(s, t);
-  QdFrameRetire(s, t);
-  QdFrameDispatch(s, t);
-}
-
-// One query, at index k - 1, changes and leaves the Querying phase.
-// Each rule has its own lemma, so that each proof stays small.
-
-lemma QdOneKeys(s: Drain, t: Drain, k: int)
-  requires alwaysQueryKeysUnique(s)
-  requires 1 <= k <= |s.queries|
-  requires |t.queries| == |s.queries| && t.nextQuery == s.nextQuery
-  requires forall i :: 0 <= i < |s.queries| && i != k - 1 ==> t.queries[i] == s.queries[i]
-  requires t.queries[k - 1].key == k
-  ensures alwaysQueryKeysUnique(t)
-{
-  QdKeysPositional(s);
-  forall i | 0 <= i < |t.queries| ensures t.queries[i].key == i + 1 {
-    if i != k - 1 {
-      assert t.queries[i] == s.queries[i];
-    }
-  }
-  QdKeysOfPositional(t);
-}
-
-lemma QdOneClosedServices(s: Drain, t: Drain, k: int)
-  requires alwaysClosedServicesHaveNoQueries(s)
-  requires 1 <= k <= |s.queries|
-  requires |t.queries| == |s.queries| && t.closedServices == s.closedServices
-  requires forall i :: 0 <= i < |s.queries| && i != k - 1 ==> t.queries[i] == s.queries[i]
-  requires !t.queries[k - 1].phase.Querying?
-  requires forall c :: c in t.busyServices && c in s.closedServices ==> c in s.busyServices
-  ensures alwaysClosedServicesHaveNoQueries(t)
-{
-  forall c | c in t.closedServices ensures !pendingForService(t, c) && !(c in t.busyServices) {
-    assert !pendingForService(s, c) && !(c in s.busyServices);
-    if pendingForService(t, c) {
-      var q :| q in t.queries && q.phase.Querying? && (exists e :: e in q.captured && e.service == c);
-      var i :| 0 <= i < |t.queries| && t.queries[i] == q;
-      assert i != k - 1;
-      assert s.queries[i] in s.queries;
-    }
-  }
-}
-
-lemma QdOneClosedAdapters(s: Drain, t: Drain, k: int)
-  requires alwaysClosedAdaptersHaveNoQueries(s)
-  requires 1 <= k <= |s.queries|
-  requires |t.queries| == |s.queries| && t.closedAdapters == s.closedAdapters
-  requires forall i :: 0 <= i < |s.queries| && i != k - 1 ==> t.queries[i] == s.queries[i]
-  requires !t.queries[k - 1].phase.Querying?
-  ensures alwaysClosedAdaptersHaveNoQueries(t)
-{
-  forall c | c in t.closedAdapters ensures !pendingForAdapter(t, c) {
-    assert !pendingForAdapter(s, c);
-    if pendingForAdapter(t, c) {
-      var q :| q in t.queries && q.phase.Querying? && c in q.adapters;
-      var i :| 0 <= i < |t.queries| && t.queries[i] == q;
-      assert i != k - 1;
-      assert s.queries[i] in s.queries;
-    }
-  }
-}
-
-lemma QdOneStop(s: Drain, t: Drain, k: int)
-  requires alwaysStopReceiptDrainedItsSnapshot(s)
-  requires 1 <= k <= |s.queries|
-  requires |t.queries| == |s.queries| && t.stopReturned == s.stopReturned && t.stopWaiting == s.stopWaiting
-  requires forall i :: 0 <= i < |s.queries| && i != k - 1 ==> t.queries[i] == s.queries[i]
-  requires !t.queries[k - 1].phase.Querying?
-  ensures alwaysStopReceiptDrainedItsSnapshot(t)
-{
-  if t.stopReturned {
-    forall q | q in t.queries ensures !(q.key in t.stopWaiting) || !q.phase.Querying? {
-      var i :| 0 <= i < |t.queries| && t.queries[i] == q;
-      if i != k - 1 {
-        assert s.queries[i] in s.queries;
-      }
-    }
-  }
-}
-
-lemma QdOneRunningBusy(s: Drain, t: Drain, k: int)
-  requires 1 <= k <= |s.queries|
-  requires |t.queries| == |s.queries|
-  requires forall i :: 0 <= i < |s.queries| && i != k - 1 ==> t.queries[i] == s.queries[i]
-  requires forall i :: 0 <= i < |s.queries| && i != k - 1 && s.queries[i].phase.Running? ==> s.queries[i].running.registered.service in t.busyServices
-  requires t.queries[k - 1].phase.Running? ==> t.queries[k - 1].running.registered.service in t.busyServices
-  ensures alwaysRunningServiceOwnsBusySlot(t)
-{
-  forall q | q in t.queries && q.phase.Running? ensures q.running.registered.service in t.busyServices {
-    var i :| 0 <= i < |t.queries| && t.queries[i] == q;
-    if i != k - 1 {
-      assert t.queries[i] == s.queries[i];
-    }
-  }
-}
-
-lemma QdOneRunningUnique(s: Drain, t: Drain, k: int)
-  requires alwaysRunningServicesAreUnique(s)
-  requires 1 <= k <= |s.queries|
-  requires |t.queries| == |s.queries|
-  requires forall i :: 0 <= i < |s.queries| && i != k - 1 ==> t.queries[i] == s.queries[i]
-  requires t.queries[k - 1].phase.Running? ==> forall i :: 0 <= i < |s.queries| && i != k - 1 && s.queries[i].phase.Running? ==> s.queries[i].running.registered.service != t.queries[k - 1].running.registered.service
-  ensures alwaysRunningServicesAreUnique(t)
-{
-  forall q, o | q in t.queries && q.phase.Running? && o in t.queries && o.phase.Running? && o.running.registered.service == q.running.registered.service
-    ensures o.key == q.key
-  {
-    var i :| 0 <= i < |t.queries| && t.queries[i] == q;
-    var j :| 0 <= j < |t.queries| && t.queries[j] == o;
-    if i != k - 1 && j != k - 1 {
-      assert t.queries[i] == s.queries[i] && t.queries[j] == s.queries[j];
-      assert s.queries[i] in s.queries && s.queries[j] in s.queries;
-    } else if i != k - 1 {
-      assert t.queries[i] == s.queries[i];
-    } else if j != k - 1 {
-      assert t.queries[j] == s.queries[j];
-    }
-  }
-}
-
-lemma QdOneReady(s: Drain, t: Drain, k: int)
-  requires alwaysReadyHasDispatch(s)
-  requires 1 <= k <= |s.queries|
-  requires |t.queries| == |s.queries|
-  requires forall i :: 0 <= i < |s.queries| && i != k - 1 ==> t.queries[i] == s.queries[i]
-  requires t.queries[k - 1].phase.Ready? ==> |t.queries[k - 1].remaining| > 0
-  ensures alwaysReadyHasDispatch(t)
-{
-  forall q | q in t.queries && q.phase.Ready? ensures |q.remaining| > 0 {
-    var i :| 0 <= i < |t.queries| && t.queries[i] == q;
-    if i != k - 1 {
-      assert s.queries[i] in s.queries;
-    }
-  }
-}
-
-lemma QdFrameOne(s: Drain, t: Drain, k: int)
-  requires inv(s)
-  requires 1 <= k <= |s.queries|
-  requires |t.queries| == |s.queries| && t.nextQuery == s.nextQuery
-  requires t.stopReturned == s.stopReturned && t.stopWaiting == s.stopWaiting
-  requires t.closedServices == s.closedServices && t.closedAdapters == s.closedAdapters
-  requires forall i :: 0 <= i < |s.queries| && i != k - 1 ==> t.queries[i] == s.queries[i]
-  requires t.queries[k - 1].key == k
-  requires !t.queries[k - 1].phase.Querying?
-  requires t.queries[k - 1].phase.Ready? ==> |t.queries[k - 1].remaining| > 0
-  requires forall c :: c in t.busyServices && c in s.closedServices ==> c in s.busyServices
-  requires forall i :: 0 <= i < |s.queries| && i != k - 1 && s.queries[i].phase.Running? ==> s.queries[i].running.registered.service in t.busyServices
-  requires t.queries[k - 1].phase.Running? ==> t.queries[k - 1].running.registered.service in t.busyServices
-  requires t.queries[k - 1].phase.Running? ==> forall i :: 0 <= i < |s.queries| && i != k - 1 && s.queries[i].phase.Running? ==> s.queries[i].running.registered.service != t.queries[k - 1].running.registered.service
-  ensures alwaysClosedServicesHaveNoQueries(t) && alwaysStopReceiptDrainedItsSnapshot(t) && alwaysRunningServiceOwnsBusySlot(t) && alwaysRunningServicesAreUnique(t)
-  ensures alwaysQueryKeysUnique(t) && alwaysStopSnapshotUsesIssuedKeys(t) && alwaysReadyHasDispatch(t) && alwaysClosedAdaptersHaveNoQueries(t)
-{
-  QdOneKeys(s, t, k);
-  QdOneClosedServices(s, t, k);
-  QdOneClosedAdapters(s, t, k);
-  QdOneStop(s, t, k);
-  QdOneRunningBusy(s, t, k);
-  QdOneRunningUnique(s, t, k);
-  QdOneReady(s, t, k);
-  QdFrameIssued(s, t);
-}
-
-// Every query keeps everything but its adapters, which only gain `added`.
-
-lemma QdSameKeys(s: Drain, t: Drain)
-  requires alwaysQueryKeysUnique(s)
-  requires |t.queries| == |s.queries| && t.nextQuery == s.nextQuery
-  requires forall i :: 0 <= i < |s.queries| ==> t.queries[i].key == s.queries[i].key
-  ensures alwaysQueryKeysUnique(t)
-{
-  QdKeysPositional(s);
-  forall i | 0 <= i < |t.queries| ensures t.queries[i].key == i + 1 {
-    assert t.queries[i].key == s.queries[i].key;
-  }
-  QdKeysOfPositional(t);
-}
-
-lemma QdAdaptersClosedServices(s: Drain, t: Drain)
-  requires alwaysClosedServicesHaveNoQueries(s)
-  requires |t.queries| == |s.queries| && t.closedServices == s.closedServices && t.busyServices == s.busyServices
-  requires forall i :: 0 <= i < |s.queries| ==> t.queries[i].phase == s.queries[i].phase && t.queries[i].captured == s.queries[i].captured
-  ensures alwaysClosedServicesHaveNoQueries(t)
-{
-  forall c | c in t.closedServices ensures !pendingForService(t, c) && !(c in t.busyServices) {
-    assert !pendingForService(s, c);
-    if pendingForService(t, c) {
-      var q :| q in t.queries && q.phase.Querying? && (exists e :: e in q.captured && e.service == c);
-      var i :| 0 <= i < |t.queries| && t.queries[i] == q;
-      assert s.queries[i] in s.queries;
-    }
-  }
-}
-
-lemma QdAdaptersClosedAdapters(s: Drain, t: Drain, added: string)
-  requires alwaysClosedAdaptersHaveNoQueries(s)
-  requires |t.queries| == |s.queries| && t.closedAdapters == s.closedAdapters
-  requires !(added in s.closedAdapters)
-  requires forall i :: 0 <= i < |s.queries| ==> t.queries[i].phase == s.queries[i].phase
-  requires forall i, c :: 0 <= i < |s.queries| && c in t.queries[i].adapters ==> c in s.queries[i].adapters || c == added
-  ensures alwaysClosedAdaptersHaveNoQueries(t)
-{
-  forall c | c in t.closedAdapters ensures !pendingForAdapter(t, c) {
-    assert !pendingForAdapter(s, c);
-    if pendingForAdapter(t, c) {
-      var q :| q in t.queries && q.phase.Querying? && c in q.adapters;
-      var i :| 0 <= i < |t.queries| && t.queries[i] == q;
-      assert c in s.queries[i].adapters;
-      assert s.queries[i] in s.queries;
-    }
-  }
-}
-
-lemma QdAdaptersStop(s: Drain, t: Drain)
-  requires alwaysStopReceiptDrainedItsSnapshot(s)
-  requires |t.queries| == |s.queries| && t.stopReturned == s.stopReturned && t.stopWaiting == s.stopWaiting
-  requires forall i :: 0 <= i < |s.queries| ==> t.queries[i].key == s.queries[i].key && t.queries[i].phase == s.queries[i].phase
-  ensures alwaysStopReceiptDrainedItsSnapshot(t)
-{
-  if t.stopReturned {
-    forall q | q in t.queries ensures !(q.key in t.stopWaiting) || !q.phase.Querying? {
-      var i :| 0 <= i < |t.queries| && t.queries[i] == q;
-      assert s.queries[i] in s.queries;
-    }
-  }
-}
-
-lemma QdAdaptersRunning(s: Drain, t: Drain)
-  requires alwaysRunningServiceOwnsBusySlot(s) && alwaysRunningServicesAreUnique(s)
-  requires |t.queries| == |s.queries| && t.busyServices == s.busyServices
-  requires forall i :: 0 <= i < |s.queries| ==> t.queries[i].key == s.queries[i].key && t.queries[i].phase == s.queries[i].phase && t.queries[i].running == s.queries[i].running
-  ensures alwaysRunningServiceOwnsBusySlot(t) && alwaysRunningServicesAreUnique(t)
-{
-  forall q | q in t.queries && q.phase.Running? ensures q.running.registered.service in t.busyServices {
-    var i :| 0 <= i < |t.queries| && t.queries[i] == q;
-    assert s.queries[i] in s.queries;
-  }
-  forall q, o | q in t.queries && q.phase.Running? && o in t.queries && o.phase.Running? && o.running.registered.service == q.running.registered.service
-    ensures o.key == q.key
-  {
-    var i :| 0 <= i < |t.queries| && t.queries[i] == q;
-    var j :| 0 <= j < |t.queries| && t.queries[j] == o;
-    assert s.queries[i] in s.queries && s.queries[j] in s.queries;
-  }
-}
-
-lemma QdAdaptersReady(s: Drain, t: Drain)
-  requires alwaysReadyHasDispatch(s)
-  requires |t.queries| == |s.queries|
-  requires forall i :: 0 <= i < |s.queries| ==> t.queries[i].phase == s.queries[i].phase && t.queries[i].remaining == s.queries[i].remaining
-  ensures alwaysReadyHasDispatch(t)
-{
-  forall q | q in t.queries && q.phase.Ready? ensures |q.remaining| > 0 {
-    var i :| 0 <= i < |t.queries| && t.queries[i] == q;
-    assert s.queries[i] in s.queries;
-  }
-}
-
-lemma QdFrameAdapters(s: Drain, t: Drain, added: string)
-  requires inv(s)
-  requires |t.queries| == |s.queries| && t.nextQuery == s.nextQuery
-  requires t.stopReturned == s.stopReturned && t.stopWaiting == s.stopWaiting
-  requires t.closedServices == s.closedServices && t.closedAdapters == s.closedAdapters && t.busyServices == s.busyServices
-  requires !(added in s.closedAdapters)
-  requires forall i :: 0 <= i < |s.queries| ==> t.queries[i].key == s.queries[i].key && t.queries[i].phase == s.queries[i].phase && t.queries[i].captured == s.queries[i].captured && t.queries[i].running == s.queries[i].running && t.queries[i].remaining == s.queries[i].remaining
-  requires forall i, c :: 0 <= i < |s.queries| && c in t.queries[i].adapters ==> c in s.queries[i].adapters || c == added
-  ensures alwaysClosedServicesHaveNoQueries(t) && alwaysStopReceiptDrainedItsSnapshot(t) && alwaysRunningServiceOwnsBusySlot(t) && alwaysRunningServicesAreUnique(t)
-  ensures alwaysQueryKeysUnique(t) && alwaysStopSnapshotUsesIssuedKeys(t) && alwaysReadyHasDispatch(t) && alwaysClosedAdaptersHaveNoQueries(t)
-{
-  QdSameKeys(s, t);
-  QdAdaptersClosedServices(s, t);
-  QdAdaptersClosedAdapters(s, t, added);
-  QdAdaptersStop(s, t);
-  QdAdaptersRunning(s, t);
-  QdAdaptersReady(s, t);
-  QdFrameIssued(s, t);
-}
-
-// ---- Views of generated filters -------------------------------------------
-
-lemma QdPreserveView(s: Drain)
-  ensures dirtyToPreserve(s) == ProofLib.Filter((agent: string) => keepsDirty(s, agent), s.dirtyAgents)
-{
-}
-
-lemma QdPreserveDistinct(s: Drain)
-  requires alwaysDirtyKeysUnique(s)
-  ensures ProofLib.Distinct(dirtyToPreserve(s))
-{
-  QdDistinctOfDirty(s);
-  QdPreserveView(s);
-  QdFilterDistinct((agent: string) => keepsDirty(s, agent), s.dirtyAgents);
-}
-
-lemma QdRegistrationsView(s: Drain)
-  ensures |queryRegistrations(s)| == |ProofLib.Filter((agent: string) => eligibleAgent(s, agent), s.dirtyAgents)|
-  ensures forall i :: 0 <= i < |queryRegistrations(s)| ==> queryRegistrations(s)[i] == registrationFor(s, ProofLib.Filter((agent: string) => eligibleAgent(s, agent), s.dirtyAgents)[i])
-{
-}
-
-// A captured registration is eligible, so it is not preserved as dirty.
-lemma QdCaptured(s: Drain, e: Registration)
-  requires e in queryRegistrations(s)
-  ensures !(e.service in s.busyServices) && !(e.service in s.retiredServices)
-  ensures !(e.agent in dirtyToPreserve(s))
-{
-  QdRegistrationsView(s);
-  var i :| 0 <= i < |queryRegistrations(s)| && queryRegistrations(s)[i] == e;
-  var a := ProofLib.Filter((agent: string) => eligibleAgent(s, agent), s.dirtyAgents)[i];
-  assert a in ProofLib.Filter((agent: string) => eligibleAgent(s, agent), s.dirtyAgents);
-  ProofLib.FilterMember((agent: string) => eligibleAgent(s, agent), s.dirtyAgents, a);
-  assert eligibleAgent(s, a);
-  assert e == registrationFor(s, a);
-  assert e.agent == a;
-  assert !keepsDirty(s, a);
-  QdPreserveView(s);
-  ProofLib.FilterMember((agent: string) => keepsDirty(s, agent), s.dirtyAgents, a);
-}
-
-lemma QdUnregisterView(s: Drain, agent: string, service: string)
-  ensures unregister(s, agent, service).retiredServices == s.retiredServices + ProofLib.Filter((set_x: string) => !((set_x in s.retiredServices)), [service])
-  ensures unregister(s, agent, service).dirtyAgents == (if (registrationFor(s, agent).service == service) then ProofLib.Filter((dirty: string) => (dirty != agent), s.dirtyAgents) else s.dirtyAgents)
-{
-}
-
-lemma QdCloseServiceView(s: Drain, service: string)
-  ensures closeService(s, service).closedServices == s.closedServices + ProofLib.Filter((set_x: string) => !((set_x in s.closedServices)), [service])
-{
-}
-
-lemma QdRetireAdapterView(s: Drain, adapter: string)
-  ensures retireAdapter(s, adapter).retiredAdapters == s.retiredAdapters + ProofLib.Filter((set_x: string) => !((set_x in s.retiredAdapters)), [adapter])
-{
-}
-
-lemma QdCloseAdapterView(s: Drain, adapter: string)
-  ensures closeAdapter(s, adapter).closedAdapters == s.closedAdapters + ProofLib.Filter((set_x: string) => !((set_x in s.closedAdapters)), [adapter])
-{
-}
-
-lemma QdStopView(s: Drain)
-  ensures |stopScheduler(s).stopWaiting| == |ProofLib.Filter((query: Query) => query.phase.Querying?, s.queries)|
-  ensures forall i :: 0 <= i < |stopScheduler(s).stopWaiting| ==> stopScheduler(s).stopWaiting[i] == ProofLib.Filter((query: Query) => query.phase.Querying?, s.queries)[i].key
-{
-}
-
-lemma QdHandoffView(s: Drain, oldAdapter: string, replacementAdapter: string)
-  ensures handoff(s, oldAdapter, replacementAdapter).retiredAdapters == s.retiredAdapters + ProofLib.Filter((set_x: string) => !((set_x in s.retiredAdapters)), [oldAdapter])
-  ensures |handoff(s, oldAdapter, replacementAdapter).queries| == |s.queries|
-  ensures forall i :: 0 <= i < |s.queries| ==> handoff(s, oldAdapter, replacementAdapter).queries[i] == (if (s.queries[i].phase.Querying? && (oldAdapter in s.queries[i].adapters)) then s.queries[i].(adapters := (s.queries[i].adapters + ProofLib.Filter((set_x: string) => !((set_x in s.queries[i].adapters)), [replacementAdapter]))) else s.queries[i])
-{
-}
-
-lemma QdCloseRetiredServicesView(s: Drain)
-  ensures closeRetiredServices(s).closedServices == s.closedServices + ProofLib.Filter((set_x: string) => !((set_x in s.closedServices)), ProofLib.Filter((service: string) => canCloseService(s, service), s.retiredServices))
-{
-}
-
-lemma QdCloseRetiredAdaptersView(s: Drain)
-  ensures closeRetiredAdapters(s).closedAdapters == s.closedAdapters + ProofLib.Filter((set_x: string) => !((set_x in s.closedAdapters)), ProofLib.Filter((adapter: string) => canCloseAdapter(s, adapter), s.retiredAdapters))
-{
-}
-
-lemma QdFinishRunView(s: Drain, key: int)
-  ensures finishRun(s, key).busyServices == ProofLib.Filter((set_x: string) => !((set_x in [queryFor(s, key).running.registered.service])), s.busyServices)
-{
-}
-
-lemma QdDispatchBusy(s: Drain, key: int, e: Registration)
-  requires canDispatchNext(s, key) && e == queryFor(s, key).remaining[0].registered
-  ensures dispatchNext(s, key).busyServices == (if (currentRegistration(s, queryFor(s, key).generation, e) && !((e.service in s.busyServices))) then (s.busyServices + ProofLib.Filter((set_x: string) => !((set_x in s.busyServices)), [e.service])) else s.busyServices)
-{
-}
-
-lemma QdNextPendingView(s: Drain)
-  ensures nextPendingQuery(s) == (if 0 < |ProofLib.Filter((query: Query) => ((query.phase.Querying? || query.phase.Ready?) || query.phase.Running?), s.queries)| then ProofLib.Filter((query: Query) => ((query.phase.Querying? || query.phase.Ready?) || query.phase.Running?), s.queries)[0] else absentQuery)
-{
-}
-
-// ---- Transitions ---------------------------------------------------------------
-
 lemma register_ensures(s: Drain, agent: string, service: string)
   ensures (inv(s) ==> canRegister(s, agent, service) ==> alwaysClosedServicesHaveNoQueries(register(s, agent, service)))
   ensures (inv(s) ==> canRegister(s, agent, service) ==> alwaysStopReceiptDrainedItsSnapshot(register(s, agent, service)))
@@ -674,12 +14,9 @@ lemma register_ensures(s: Drain, agent: string, service: string)
   ensures (inv(s) ==> canRegister(s, agent, service) ==> stepTakenClearsDirty(s, "register", register(s, agent, service)))
 {
   if inv(s) && canRegister(s, agent, service) {
-    var t := register(s, agent, service);
-    QdDistinctOfDirty(s);
-    QdAddDirty(s.dirtyAgents, agent);
-    QdDirtyOfDistinct(t);
-    QdFrameAll(s, t);
-    QdFrameActive(s, t);
+    QDDirty(s);
+    QDAddDirty(s.dirtyAgents, agent);
+    QDDirty(register(s, agent, service));
   }
 }
 
@@ -699,13 +36,9 @@ lemma startAdapter_ensures(s: Drain, adapter: string)
   ensures (inv(s) ==> canStartAdapter(s, adapter) ==> stepTakenClearsDirty(s, "startAdapter", startAdapter(s, adapter)))
 {
   if inv(s) && canStartAdapter(s, adapter) {
-    var t := startAdapter(s, adapter);
-    QdDistinctOfDirty(s);
-    QdRearmRegistry(s);
-    assert t.dirtyAgents == (if s.activeAdapter != "" then rearmRegistry(s) else s.dirtyAgents);
-    QdDirtyOfDistinct(t);
-    QdFrameAll(s, t);
-    assert t.activeAdapter == adapter;
+    QDDirty(s);
+    QDRearm(s);
+    QDDirty(startAdapter(s, adapter));
   }
 }
 
@@ -725,11 +58,9 @@ lemma clearUnregisteredDirty_ensures(s: Drain)
   ensures (inv(s) ==> canClearUnregisteredDirty(s) ==> stepTakenClearsDirty(s, "clearUnregisteredDirty", clearUnregisteredDirty(s)))
 {
   if inv(s) && canClearUnregisteredDirty(s) {
-    var t := clearUnregisteredDirty(s);
-    QdPreserveDistinct(s);
-    QdDirtyOfDistinct(t);
-    QdFrameAll(s, t);
-    QdFrameActive(s, t);
+    QDDirty(s);
+    QDPreserve(s);
+    QDDirty(clearUnregisteredDirty(s));
   }
 }
 
@@ -749,95 +80,35 @@ lemma beginQuery_ensures(s: Drain)
   ensures (inv(s) ==> canBeginQuery(s) ==> stepTakenClearsDirty(s, "beginQuery", beginQuery(s)))
 {
   if inv(s) && canBeginQuery(s) {
-    var t := beginQuery(s);
-    var captured := queryRegistrations(s);
-    var nq := Query(s.nextQuery, s.generation, captured, [s.activeAdapter], QueryPhase.Querying, [], absentTaskGroup);
-    assert t.queries == s.queries + [nq];
-    QdKeysPositional(s);
-    assert t.nextQuery == |t.queries| + 1;
-    forall i | 0 <= i < |t.queries| ensures t.queries[i].key == i + 1 {
-      if i < |s.queries| {
-        assert t.queries[i] == s.queries[i];
-      }
-    }
-    QdKeysOfPositional(t);
-    forall e | e in captured
-      ensures !(e.service in s.busyServices) && !(e.service in s.retiredServices) && !(e.service in s.closedServices) && !(e.agent in t.dirtyAgents)
-    {
-      QdCaptured(s, e);
-    }
-    QdPreserveDistinct(s);
-    QdDirtyOfDistinct(t);
-    forall c | c in t.closedServices ensures !pendingForService(t, c) && !(c in t.busyServices) {
-      assert !pendingForService(s, c) && !(c in s.busyServices);
-      if pendingForService(t, c) {
-        var q :| q in t.queries && q.phase.Querying? && (exists e :: e in q.captured && e.service == c);
-        if q in s.queries {
-        } else {
-          assert q == nq;
-          var e :| e in captured && e.service == c;
-          assert c in s.retiredServices;
-        }
-      }
-    }
-    forall c | c in t.closedAdapters ensures !pendingForAdapter(t, c) {
-      assert !pendingForAdapter(s, c);
-      if pendingForAdapter(t, c) {
-        var q :| q in t.queries && q.phase.Querying? && c in q.adapters;
-        if q in s.queries {
-        } else {
-          assert q == nq;
-          assert c == s.activeAdapter;
-        }
-      }
-    }
-    if t.stopReturned {
-      forall q | q in t.queries ensures !(q.key in t.stopWaiting) || !q.phase.Querying? {
-        if q in s.queries {
-        } else {
-          assert q == nq;
-          assert !(s.nextQuery in s.stopWaiting);
-        }
-      }
-    }
-    forall q | q in t.queries && q.phase.Running? ensures q.running.registered.service in t.busyServices {
-      assert q in s.queries;
-    }
-    forall q, o | q in t.queries && q.phase.Running? && o in t.queries && o.phase.Running? && o.running.registered.service == q.running.registered.service
-      ensures o.key == q.key
-    {
-      assert q in s.queries && o in s.queries;
-    }
-    forall q | q in t.queries && q.phase.Ready? ensures |q.remaining| > 0 {
-      assert q in s.queries;
-    }
-    assert queryFor(t, s.nextQuery) == nq;
-    QdFrameDispatch(s, t);
+    var after := beginQuery(s);
+    QDDirty(s);
+    QDPreserve(s);
+    QDDirty(after);
+    QDKeysIndexed(s);
+    assert after.queries[|s.queries|].key == |s.queries| + 1;
+    QDKeysByIndex(after);
   }
 }
 
 lemma markDirty_ensures(s: Drain, agent: string)
-  ensures (inv(s) ==> canMarkDirty(s, agent) ==> alwaysClosedServicesHaveNoQueries(markDirty(s, agent)))
-  ensures (inv(s) ==> canMarkDirty(s, agent) ==> alwaysStopReceiptDrainedItsSnapshot(markDirty(s, agent)))
-  ensures (inv(s) ==> canMarkDirty(s, agent) ==> alwaysActiveAdapterIsOpen(markDirty(s, agent)))
-  ensures (inv(s) ==> canMarkDirty(s, agent) ==> alwaysRunningServiceOwnsBusySlot(markDirty(s, agent)))
-  ensures (inv(s) ==> canMarkDirty(s, agent) ==> alwaysRunningServicesAreUnique(markDirty(s, agent)))
-  ensures (inv(s) ==> canMarkDirty(s, agent) ==> alwaysQueryKeysUnique(markDirty(s, agent)))
-  ensures (inv(s) ==> canMarkDirty(s, agent) ==> alwaysDirtyKeysUnique(markDirty(s, agent)))
-  ensures (inv(s) ==> canMarkDirty(s, agent) ==> alwaysCloseRequiresRetirement(markDirty(s, agent)))
-  ensures (inv(s) ==> canMarkDirty(s, agent) ==> alwaysStopSnapshotUsesIssuedKeys(markDirty(s, agent)))
-  ensures (inv(s) ==> canMarkDirty(s, agent) ==> alwaysReadyHasDispatch(markDirty(s, agent)))
-  ensures (inv(s) ==> canMarkDirty(s, agent) ==> alwaysClosedAdaptersHaveNoQueries(markDirty(s, agent)))
-  ensures (inv(s) ==> canMarkDirty(s, agent) ==> stepDispatchUsesCurrentRegistration(s, markDirty(s, agent)))
-  ensures (inv(s) ==> canMarkDirty(s, agent) ==> stepTakenClearsDirty(s, "markDirty", markDirty(s, agent)))
+  ensures (inv(s) ==> alwaysClosedServicesHaveNoQueries(markDirty(s, agent)))
+  ensures (inv(s) ==> alwaysStopReceiptDrainedItsSnapshot(markDirty(s, agent)))
+  ensures (inv(s) ==> alwaysActiveAdapterIsOpen(markDirty(s, agent)))
+  ensures (inv(s) ==> alwaysRunningServiceOwnsBusySlot(markDirty(s, agent)))
+  ensures (inv(s) ==> alwaysRunningServicesAreUnique(markDirty(s, agent)))
+  ensures (inv(s) ==> alwaysQueryKeysUnique(markDirty(s, agent)))
+  ensures (inv(s) ==> alwaysDirtyKeysUnique(markDirty(s, agent)))
+  ensures (inv(s) ==> alwaysCloseRequiresRetirement(markDirty(s, agent)))
+  ensures (inv(s) ==> alwaysStopSnapshotUsesIssuedKeys(markDirty(s, agent)))
+  ensures (inv(s) ==> alwaysReadyHasDispatch(markDirty(s, agent)))
+  ensures (inv(s) ==> alwaysClosedAdaptersHaveNoQueries(markDirty(s, agent)))
+  ensures (inv(s) ==> stepDispatchUsesCurrentRegistration(s, markDirty(s, agent)))
+  ensures (inv(s) ==> stepTakenClearsDirty(s, "markDirty", markDirty(s, agent)))
 {
-  if inv(s) && canMarkDirty(s, agent) {
-    var t := markDirty(s, agent);
-    QdDistinctOfDirty(s);
-    QdAddDirty(s.dirtyAgents, agent);
-    QdDirtyOfDistinct(t);
-    QdFrameAll(s, t);
-    QdFrameActive(s, t);
+  if inv(s) {
+    QDDirty(s);
+    QDAddDirty(s.dirtyAgents, agent);
+    QDDirty(markDirty(s, agent));
   }
 }
 
@@ -857,17 +128,8 @@ lemma closeService_ensures(s: Drain, service: string)
   ensures (inv(s) ==> canCloseService(s, service) ==> stepTakenClearsDirty(s, "closeService", closeService(s, service)))
 {
   if inv(s) && canCloseService(s, service) {
-    var t := closeService(s, service);
-    QdCloseServiceView(s, service);
-    QdAddOne(s.closedServices, service);
-    forall c | c in t.closedServices ensures !pendingForService(t, c) && !(c in t.busyServices) && c in t.retiredServices {
-      assert pendingForService(t, c) == pendingForService(s, c);
-    }
-    QdFrameQueries(s, t);
-    QdFrameStop(s, t);
-    QdFrameClosedAdapters(s, t);
-    QdFrameActive(s, t);
-    QdFrameDispatch(s, t);
+    QDAdd(s.closedServices, service);
+    assert closeService(s, service).closedServices == s.closedServices + ProofLib.Filter((set_x: string) => !((set_x in s.closedServices)), [service]);
   }
 }
 
@@ -887,20 +149,10 @@ lemma unregister_ensures(s: Drain, agent: string, service: string)
   ensures (inv(s) ==> stepTakenClearsDirty(s, "unregister", unregister(s, agent, service)))
 {
   if inv(s) {
-    var t := unregister(s, agent, service);
-    QdUnregisterView(s, agent, service);
-    QdAddOne(s.retiredServices, service);
-    QdDistinctOfDirty(s);
-    QdFilterDistinct((dirty: string) => (dirty != agent), s.dirtyAgents);
-    assert ProofLib.Distinct(t.dirtyAgents);
-    QdDirtyOfDistinct(t);
-    QdFrameQueries(s, t);
-    QdFrameStop(s, t);
-    QdFrameClosedServices(s, t);
-    QdFrameClosedAdapters(s, t);
-    QdFrameRetire(s, t);
-    QdFrameActive(s, t);
-    QdFrameDispatch(s, t);
+    QDDirty(s);
+    QDFilterDistinct((dirty: string) => (dirty != agent), s.dirtyAgents);
+    assert unregister(s, agent, service).dirtyAgents == (if registrationFor(s, agent).service == service then ProofLib.Filter((dirty: string) => (dirty != agent), s.dirtyAgents) else s.dirtyAgents);
+    QDDirty(unregister(s, agent, service));
   }
 }
 
@@ -920,26 +172,11 @@ lemma finishQuery_ensures(s: Drain, key: int, succeeded: bool, resultRows: seq<T
   ensures (inv(s) ==> canFinishQuery(s, key) ==> stepTakenClearsDirty(s, "finishQuery", finishQuery(s, key, succeeded, resultRows)))
 {
   if inv(s) && canFinishQuery(s, key) {
-    var t := finishQuery(s, key, succeeded, resultRows);
-    QdQueryFor(s, key);
-    var p := s.queries[key - 1];
-    assert |t.queries| == |s.queries|;
-    forall i | 0 <= i < |s.queries| && i != key - 1 ensures t.queries[i] == s.queries[i] {
-    }
-    var q := t.queries[key - 1];
-    assert !q.phase.Querying? && !q.phase.Running?;
-    assert q.phase.Ready? ==> |q.remaining| > 0;
-    forall i | 0 <= i < |s.queries| && i != key - 1 && s.queries[i].phase.Running? ensures s.queries[i].running.registered.service in t.busyServices {
-      assert s.queries[i] in s.queries;
-    }
-    QdFrameOne(s, t, key);
-    QdDistinctOfDirty(s);
-    QdRearmAny((agents: seq<string>, entry: Registration) => addDirty(agents, entry.agent), s.dirtyAgents);
-    assert ProofLib.Distinct(t.dirtyAgents);
-    QdDirtyOfDistinct(t);
-    QdFrameRetire(s, t);
-    QdFrameActive(s, t);
-    QdFrameDispatch(s, t);
+    var after := finishQuery(s, key, succeeded, resultRows);
+    QDKeysKept(s, after);
+    QDDirty(s);
+    QDFoldDirtyAll((agents: seq<string>, entry: Registration) => addDirty(agents, entry.agent), s.dirtyAgents);
+    QDDirty(after);
   }
 }
 
@@ -959,36 +196,21 @@ lemma finishRun_ensures(s: Drain, key: int)
   ensures (inv(s) ==> canFinishRun(s, key) ==> stepTakenClearsDirty(s, "finishRun", finishRun(s, key)))
 {
   if inv(s) && canFinishRun(s, key) {
-    var t := finishRun(s, key);
-    QdQueryFor(s, key);
-    var p := s.queries[key - 1];
-    var own := p.running.registered;
-    QdFinishRunView(s, key);
-    forall c ensures c in t.busyServices <==> (c in s.busyServices && c != own.service) {
-      ProofLib.FilterMember((set_x: string) => !((set_x in [queryFor(s, key).running.registered.service])), s.busyServices, c);
+    var after := finishRun(s, key);
+    var own := queryFor(s, key).running.registered;
+    QDKeysIndexed(s);
+    QDKeysKept(s, after);
+    QDDirty(s);
+    QDAddDirty(s.dirtyAgents, own.agent);
+    QDDirty(after);
+    QDQueryingKept(s, after);
+    QDDrop(s.busyServices, own.service);
+    assert after.busyServices == ProofLib.Filter((set_x: string) => !((set_x in [own.service])), s.busyServices);
+    assert s.queries[key - 1] in s.queries;
+    forall query | query in after.queries && query.phase.Running? ensures query.running.registered.service in after.busyServices {
+      var i :| 0 <= i < |after.queries| && after.queries[i] == query;
+      assert s.queries[i] in s.queries;
     }
-    assert |t.queries| == |s.queries|;
-    forall i | 0 <= i < |s.queries| && i != key - 1 ensures t.queries[i] == s.queries[i] {
-    }
-    var q := t.queries[key - 1];
-    assert !q.phase.Querying? && !q.phase.Running?;
-    assert q.phase.Ready? ==> |q.remaining| > 0;
-    forall i | 0 <= i < |s.queries| && i != key - 1 && s.queries[i].phase.Running? ensures s.queries[i].running.registered.service in t.busyServices {
-      var o := s.queries[i];
-      assert o in s.queries;
-      if o.running.registered.service == own.service {
-        assert o.key == p.key;
-        assert false;
-      }
-    }
-    QdFrameOne(s, t, key);
-    QdDistinctOfDirty(s);
-    QdAddDirty(s.dirtyAgents, own.agent);
-    assert ProofLib.Distinct(t.dirtyAgents);
-    QdDirtyOfDistinct(t);
-    QdFrameRetire(s, t);
-    QdFrameActive(s, t);
-    QdFrameDispatch(s, t);
   }
 }
 
@@ -1008,32 +230,18 @@ lemma dispatchNext_ensures(s: Drain, key: int)
   ensures (inv(s) ==> canDispatchNext(s, key) ==> stepTakenClearsDirty(s, "dispatchNext", dispatchNext(s, key)))
 {
   if inv(s) && canDispatchNext(s, key) {
-    var t := dispatchNext(s, key);
-    QdQueryFor(s, key);
-    var p := s.queries[key - 1];
-    var g := p.remaining[0];
-    var e := g.registered;
-    var accepted := currentRegistration(s, p.generation, e) && !(e.service in s.busyServices);
-    QdDispatchBusy(s, key, e);
-    QdAddOne(s.busyServices, e.service);
-    assert forall c :: c in t.busyServices <==> (c in s.busyServices || (accepted && c == e.service));
-    assert |t.queries| == |s.queries|;
-    forall i | 0 <= i < |s.queries| && i != key - 1 ensures t.queries[i] == s.queries[i] {
-    }
-    var q := t.queries[key - 1];
-    assert q == p.(remaining := p.remaining[1..], phase := (if accepted then QueryPhase.Running else (if (|p.remaining[1..]| > 0) then QueryPhase.Ready else QueryPhase.Done)), running := (if accepted then g else absentTaskGroup));
-    assert q.phase.Running? ==> q.running.registered == e && accepted;
-    forall i | 0 <= i < |s.queries| && i != key - 1 && s.queries[i].phase.Running? ensures s.queries[i].running.registered.service in s.busyServices {
+    var after := dispatchNext(s, key);
+    var group := queryFor(s, key).remaining[0];
+    var e := group.registered;
+    var accepted := currentRegistration(s, queryFor(s, key).generation, e) && !(e.service in s.busyServices);
+    QDKeysIndexed(s);
+    QDKeysKept(s, after);
+    QDQueryingKept(s, after);
+    QDAdd(s.busyServices, e.service);
+    assert after.busyServices == (if accepted then s.busyServices + ProofLib.Filter((set_x: string) => !((set_x in s.busyServices)), [e.service]) else s.busyServices);
+    forall query | query in after.queries && query.phase.Running? ensures query.running.registered.service in after.busyServices {
+      var i :| 0 <= i < |after.queries| && after.queries[i] == query;
       assert s.queries[i] in s.queries;
-    }
-    QdFrameOne(s, t, key);
-    QdFrameRetire(s, t);
-    QdFrameActive(s, t);
-    if accepted {
-      assert t.dispatches == s.dispatches + 1 && t.lastDispatched == e && t.lastDispatchGeneration == s.generation;
-      assert registrationFor(s, e.agent) == e;
-    } else {
-      QdFrameDispatch(s, t);
     }
   }
 }
@@ -1054,22 +262,8 @@ lemma retireAdapter_ensures(s: Drain, adapter: string)
   ensures (inv(s) ==> stepTakenClearsDirty(s, "retireAdapter", retireAdapter(s, adapter)))
 {
   if inv(s) {
-    var t := retireAdapter(s, adapter);
-    QdRetireAdapterView(s, adapter);
-    QdAddOne(s.retiredAdapters, adapter);
-    QdDistinctOfDirty(s);
-    assert ProofLib.Distinct(t.dirtyAgents);
-    QdDirtyOfDistinct(t);
-    QdFrameQueries(s, t);
-    QdFrameStop(s, t);
-    QdFrameClosedServices(s, t);
-    QdFrameClosedAdapters(s, t);
-    QdFrameRetire(s, t);
-    QdFrameDispatch(s, t);
-    if t.activeAdapter != "" {
-      assert t.activeAdapter == s.activeAdapter && s.activeAdapter != adapter;
-      assert !(t.activeAdapter in t.retiredAdapters);
-    }
+    QDAdd(s.retiredAdapters, adapter);
+    assert retireAdapter(s, adapter).retiredAdapters == s.retiredAdapters + ProofLib.Filter((set_x: string) => !((set_x in s.retiredAdapters)), [adapter]);
   }
 }
 
@@ -1089,20 +283,8 @@ lemma closeAdapter_ensures(s: Drain, adapter: string)
   ensures (inv(s) ==> canCloseAdapter(s, adapter) ==> stepTakenClearsDirty(s, "closeAdapter", closeAdapter(s, adapter)))
 {
   if inv(s) && canCloseAdapter(s, adapter) {
-    var t := closeAdapter(s, adapter);
-    QdCloseAdapterView(s, adapter);
-    QdAddOne(s.closedAdapters, adapter);
-    forall c | c in t.closedAdapters ensures !pendingForAdapter(t, c) && c in t.retiredAdapters {
-      assert pendingForAdapter(t, c) == pendingForAdapter(s, c);
-    }
-    if t.activeAdapter != "" {
-      assert t.activeAdapter == s.activeAdapter && s.activeAdapter != adapter;
-      assert !(t.activeAdapter in t.closedAdapters);
-    }
-    QdFrameQueries(s, t);
-    QdFrameStop(s, t);
-    QdFrameClosedServices(s, t);
-    QdFrameDispatch(s, t);
+    QDAdd(s.closedAdapters, adapter);
+    assert closeAdapter(s, adapter).closedAdapters == s.closedAdapters + ProofLib.Filter((set_x: string) => !((set_x in s.closedAdapters)), [adapter]);
   }
 }
 
@@ -1122,50 +304,14 @@ lemma stopScheduler_ensures(s: Drain)
   ensures (inv(s) ==> canStopScheduler(s) ==> stepTakenClearsDirty(s, "stopScheduler", stopScheduler(s)))
 {
   if inv(s) && canStopScheduler(s) {
-    var t := stopScheduler(s);
-    QdStopView(s);
-    var waiting := ProofLib.Filter((query: Query) => query.phase.Querying?, s.queries);
-    forall k | k in t.stopWaiting ensures k > 0 && k < t.nextQuery {
-      var i :| 0 <= i < |t.stopWaiting| && t.stopWaiting[i] == k;
-      assert k == waiting[i].key;
-      assert waiting[i] in waiting;
-      ProofLib.FilterMember((query: Query) => query.phase.Querying?, s.queries, waiting[i]);
-      assert waiting[i] in s.queries;
+    var after := stopScheduler(s);
+    assert |after.stopWaiting| == |ProofLib.Filter((query: Query) => query.phase.Querying?, s.queries)|;
+    forall k | k in after.stopWaiting ensures k > 0 && k < after.nextQuery {
+      var i :| 0 <= i < |after.stopWaiting| && after.stopWaiting[i] == k;
+      var query := ProofLib.Filter((query: Query) => query.phase.Querying?, s.queries)[i];
+      assert k == query.key;
+      ProofLib.FilterMember((query: Query) => query.phase.Querying?, s.queries, query);
     }
-    assert t.dirtyAgents == [];
-    QdDirtyOfDistinct(t);
-    QdFrameQueries(s, t);
-    QdFrameClosedServices(s, t);
-    QdFrameClosedAdapters(s, t);
-    QdFrameRetire(s, t);
-    QdFrameDispatch(s, t);
-  }
-}
-
-lemma returnStop_ensures(s: Drain)
-  ensures (inv(s) ==> canReturnStop(s) ==> alwaysClosedServicesHaveNoQueries(returnStop(s)))
-  ensures (inv(s) ==> canReturnStop(s) ==> alwaysStopReceiptDrainedItsSnapshot(returnStop(s)))
-  ensures (inv(s) ==> canReturnStop(s) ==> alwaysActiveAdapterIsOpen(returnStop(s)))
-  ensures (inv(s) ==> canReturnStop(s) ==> alwaysRunningServiceOwnsBusySlot(returnStop(s)))
-  ensures (inv(s) ==> canReturnStop(s) ==> alwaysRunningServicesAreUnique(returnStop(s)))
-  ensures (inv(s) ==> canReturnStop(s) ==> alwaysQueryKeysUnique(returnStop(s)))
-  ensures (inv(s) ==> canReturnStop(s) ==> alwaysDirtyKeysUnique(returnStop(s)))
-  ensures (inv(s) ==> canReturnStop(s) ==> alwaysCloseRequiresRetirement(returnStop(s)))
-  ensures (inv(s) ==> canReturnStop(s) ==> alwaysStopSnapshotUsesIssuedKeys(returnStop(s)))
-  ensures (inv(s) ==> canReturnStop(s) ==> alwaysReadyHasDispatch(returnStop(s)))
-  ensures (inv(s) ==> canReturnStop(s) ==> alwaysClosedAdaptersHaveNoQueries(returnStop(s)))
-  ensures (inv(s) ==> canReturnStop(s) ==> stepDispatchUsesCurrentRegistration(s, returnStop(s)))
-  ensures (inv(s) ==> canReturnStop(s) ==> stepTakenClearsDirty(s, "returnStop", returnStop(s)))
-{
-  if inv(s) && canReturnStop(s) {
-    var t := returnStop(s);
-    QdFrameIssued(s, t);
-    QdFrameQueries(s, t);
-    QdFrameClosedServices(s, t);
-    QdFrameClosedAdapters(s, t);
-    QdFrameRetire(s, t);
-    QdFrameActive(s, t);
-    QdFrameDispatch(s, t);
   }
 }
 
@@ -1185,26 +331,20 @@ lemma handoff_ensures(s: Drain, oldAdapter: string, replacementAdapter: string)
   ensures (inv(s) ==> canHandoff(s, oldAdapter, replacementAdapter) ==> stepTakenClearsDirty(s, "handoff", handoff(s, oldAdapter, replacementAdapter)))
 {
   if inv(s) && canHandoff(s, oldAdapter, replacementAdapter) {
-    var t := handoff(s, oldAdapter, replacementAdapter);
-    QdHandoffView(s, oldAdapter, replacementAdapter);
-    QdAddOne(s.retiredAdapters, oldAdapter);
-    forall i | 0 <= i < |s.queries|
-      ensures t.queries[i].key == s.queries[i].key && t.queries[i].phase == s.queries[i].phase && t.queries[i].captured == s.queries[i].captured && t.queries[i].running == s.queries[i].running && t.queries[i].remaining == s.queries[i].remaining
-      ensures forall c :: c in t.queries[i].adapters ==> c in s.queries[i].adapters || c == replacementAdapter
-    {
-      QdAddOne(s.queries[i].adapters, replacementAdapter);
-    }
-    QdFrameAdapters(s, t, replacementAdapter);
-    QdDistinctOfDirty(s);
-    QdRearmRegistry(s);
-    assert t.dirtyAgents == (if s.activeAdapter == oldAdapter then rearmRegistry(s) else s.dirtyAgents);
-    QdDirtyOfDistinct(t);
-    QdFrameRetire(s, t);
-    QdFrameDispatch(s, t);
-    if t.activeAdapter != "" {
-      assert !(t.activeAdapter in t.closedAdapters);
-      assert !(t.activeAdapter in s.retiredAdapters) && t.activeAdapter != oldAdapter;
-      assert !(t.activeAdapter in t.retiredAdapters);
+    var after := handoff(s, oldAdapter, replacementAdapter);
+    QDKeysKept(s, after);
+    QDDirty(s);
+    QDRearm(s);
+    QDDirty(after);
+    QDAdd(s.retiredAdapters, oldAdapter);
+    assert after.retiredAdapters == s.retiredAdapters + ProofLib.Filter((set_x: string) => !((set_x in s.retiredAdapters)), [oldAdapter]);
+    QDHandoffAdapters(s, oldAdapter, replacementAdapter);
+    forall adapter | adapter in after.closedAdapters ensures !pendingForAdapter(after, adapter) {
+      if pendingForAdapter(after, adapter) {
+        var query :| query in after.queries && query.phase.Querying? && adapter in query.adapters;
+        var i :| 0 <= i < |after.queries| && after.queries[i] == query;
+        assert s.queries[i] in s.queries;
+      }
     }
   }
 }
@@ -1225,23 +365,7 @@ lemma closeRetiredServices_ensures(s: Drain)
   ensures (inv(s) ==> canCloseRetiredServices(s) ==> stepTakenClearsDirty(s, "closeRetiredServices", closeRetiredServices(s)))
 {
   if inv(s) && canCloseRetiredServices(s) {
-    var t := closeRetiredServices(s);
-    QdCloseRetiredServicesView(s);
-    var ready := ProofLib.Filter((service: string) => canCloseService(s, service), s.retiredServices);
-    forall c | c in t.closedServices ensures c in s.closedServices || (c in s.retiredServices && canCloseService(s, c)) {
-      if !(c in s.closedServices) {
-        ProofLib.FilterMember((set_x: string) => !((set_x in s.closedServices)), ready, c);
-        ProofLib.FilterMember((service: string) => canCloseService(s, service), s.retiredServices, c);
-      }
-    }
-    forall c | c in t.closedServices ensures !pendingForService(t, c) && !(c in t.busyServices) && c in t.retiredServices {
-      assert pendingForService(t, c) == pendingForService(s, c);
-    }
-    QdFrameQueries(s, t);
-    QdFrameStop(s, t);
-    QdFrameClosedAdapters(s, t);
-    QdFrameActive(s, t);
-    QdFrameDispatch(s, t);
+    QDCloseRetiredServices(s);
   }
 }
 
@@ -1261,26 +385,7 @@ lemma closeRetiredAdapters_ensures(s: Drain)
   ensures (inv(s) ==> canCloseRetiredAdapters(s) ==> stepTakenClearsDirty(s, "closeRetiredAdapters", closeRetiredAdapters(s)))
 {
   if inv(s) && canCloseRetiredAdapters(s) {
-    var t := closeRetiredAdapters(s);
-    QdCloseRetiredAdaptersView(s);
-    var ready := ProofLib.Filter((adapter: string) => canCloseAdapter(s, adapter), s.retiredAdapters);
-    forall c | c in t.closedAdapters ensures c in s.closedAdapters || (c in s.retiredAdapters && canCloseAdapter(s, c)) {
-      if !(c in s.closedAdapters) {
-        ProofLib.FilterMember((set_x: string) => !((set_x in s.closedAdapters)), ready, c);
-        ProofLib.FilterMember((adapter: string) => canCloseAdapter(s, adapter), s.retiredAdapters, c);
-      }
-    }
-    forall c | c in t.closedAdapters ensures !pendingForAdapter(t, c) && c in t.retiredAdapters {
-      assert pendingForAdapter(t, c) == pendingForAdapter(s, c);
-    }
-    if t.activeAdapter != "" {
-      assert t.activeAdapter == s.activeAdapter && !(s.activeAdapter in s.retiredAdapters) && !(s.activeAdapter in s.closedAdapters);
-      assert !(t.activeAdapter in t.closedAdapters);
-    }
-    QdFrameQueries(s, t);
-    QdFrameStop(s, t);
-    QdFrameClosedServices(s, t);
-    QdFrameDispatch(s, t);
+    QDCloseRetiredAdapters(s);
   }
 }
 
@@ -1302,13 +407,10 @@ lemma advanceQuery_ensures(s: Drain, key: int, succeeded: bool, resultRows: seq<
   if inv(s) && canAdvanceQuery(s, key) {
     if canFinishQuery(s, key) {
       finishQuery_ensures(s, key, succeeded, resultRows);
-      assert advanceQuery(s, key, succeeded, resultRows) == finishQuery(s, key, succeeded, resultRows);
     } else if canDispatchNext(s, key) {
       dispatchNext_ensures(s, key);
-      assert advanceQuery(s, key, succeeded, resultRows) == dispatchNext(s, key);
     } else {
       finishRun_ensures(s, key);
-      assert advanceQuery(s, key, succeeded, resultRows) == finishRun(s, key);
     }
   }
 }
@@ -1329,18 +431,205 @@ lemma advancePending_ensures(s: Drain, succeeded: bool, resultRows: seq<TaskResu
   ensures (inv(s) ==> canAdvancePending(s) ==> stepTakenClearsDirty(s, "advancePending", advancePending(s, succeeded, resultRows)))
 {
   if inv(s) && canAdvancePending(s) {
-    var q := nextPendingQuery(s);
-    var pending := ProofLib.Filter((query: Query) => ((query.phase.Querying? || query.phase.Ready?) || query.phase.Running?), s.queries);
-    QdNextPendingView(s);
-    assert 0 < |pending| && q == pending[0];
-    ProofLib.FilterMember((query: Query) => ((query.phase.Querying? || query.phase.Ready?) || query.phase.Running?), s.queries, q);
-    assert q in s.queries && (q.phase.Querying? || q.phase.Ready? || q.phase.Running?);
-    QdKeysPositional(s);
-    var i :| 0 <= i < |s.queries| && s.queries[i] == q;
-    assert q.key == i + 1;
-    assert queryFor(s, q.key) == q;
-    assert canAdvanceQuery(s, q.key);
-    advanceQuery_ensures(s, q.key, succeeded, resultRows);
-    assert advancePending(s, succeeded, resultRows) == advanceQuery(s, q.key, succeeded, resultRows);
+    var query := nextPendingQuery(s);
+    QDPending(s);
+    QDKeysIndexed(s);
+    var i :| 0 <= i < |s.queries| && s.queries[i] == query;
+    assert queryFor(s, query.key) == query;
+    advanceQuery_ensures(s, query.key, succeeded, resultRows);
+  }
+}
+
+lemma QDDistinctCount(xs: seq<string>)
+  ensures (forall agent :: agent in xs ==> |ProofLib.Filter((other: string) => (other == agent), xs)| == 1) <==> ProofLib.Distinct(xs)
+{
+  if ProofLib.Distinct(xs) {
+    forall agent | agent in xs ensures |ProofLib.Filter((other: string) => (other == agent), xs)| == 1 {
+      ProofLib.FilterDistinctCountOne((other: string) => (other == agent), xs, agent);
+    }
+  }
+  if forall agent :: agent in xs ==> |ProofLib.Filter((other: string) => (other == agent), xs)| == 1 {
+    forall i, j | 0 <= i < j < |xs| ensures xs[i] != xs[j] {
+      var agent := xs[i];
+      assert agent in xs;
+      if xs[j] == agent {
+        ProofLib.FilterTwo((other: string) => (other == agent), xs, i, j);
+      }
+    }
+  }
+}
+
+lemma QDDirty(s: Drain)
+  ensures alwaysDirtyKeysUnique(s) <==> ProofLib.Distinct(s.dirtyAgents)
+{
+  assert alwaysDirtyKeysUnique(s) == !(exists agent :: agent in s.dirtyAgents && !(|ProofLib.Filter((other: string) => (other == agent), s.dirtyAgents)| == 1));
+  QDDistinctCount(s.dirtyAgents);
+}
+
+lemma QDFilterDistinct(p: string -> bool, xs: seq<string>)
+  requires ProofLib.Distinct(xs)
+  ensures ProofLib.Distinct(ProofLib.Filter(p, xs))
+{
+  assert ProofLib.DistinctBy(xs, (x: string) => x);
+  ProofLib.FilterKeepsDistinctBy(p, xs, (x: string) => x);
+}
+
+lemma QDAddDirty(xs: seq<string>, a: string)
+  requires ProofLib.Distinct(xs)
+  ensures ProofLib.Distinct(addDirty(xs, a))
+{
+}
+
+lemma QDFoldDirty(f: (seq<string>, Registration) -> seq<string>, acc: seq<string>, rs: seq<Registration>)
+  requires forall b, e :: f(b, e) == addDirty(b, e.agent)
+  requires ProofLib.Distinct(acc)
+  ensures ProofLib.Distinct(Std.Collections.Seq.FoldLeft(f, acc, rs))
+  decreases |rs|
+{
+  if |rs| > 0 {
+    QDAddDirty(acc, rs[0].agent);
+    QDFoldDirty(f, f(acc, rs[0]), rs[1..]);
+  }
+}
+
+lemma QDFoldDirtyAll(f: (seq<string>, Registration) -> seq<string>, acc: seq<string>)
+  requires forall b, e :: f(b, e) == addDirty(b, e.agent)
+  requires ProofLib.Distinct(acc)
+  ensures forall rs :: ProofLib.Distinct(Std.Collections.Seq.FoldLeft(f, acc, rs))
+{
+  forall rs ensures ProofLib.Distinct(Std.Collections.Seq.FoldLeft(f, acc, rs)) {
+    QDFoldDirty(f, acc, rs);
+  }
+}
+
+lemma QDRearm(s: Drain)
+  requires ProofLib.Distinct(s.dirtyAgents)
+  ensures ProofLib.Distinct(rearmRegistry(s))
+{
+  QDFoldDirty((dirty: seq<string>, entry: Registration) => addDirty(dirty, entry.agent), s.dirtyAgents, s.registry);
+}
+
+lemma QDPreserve(s: Drain)
+  requires ProofLib.Distinct(s.dirtyAgents)
+  ensures ProofLib.Distinct(dirtyToPreserve(s))
+{
+  assert dirtyToPreserve(s) == ProofLib.Filter((agent: string) => preservedAgent(s, agent), s.dirtyAgents);
+  QDFilterDistinct((agent: string) => preservedAgent(s, agent), s.dirtyAgents);
+}
+
+lemma QDKeysView(s: Drain)
+  ensures alwaysQueryKeysUnique(s) == ((s.nextQuery == (|s.queries| + 1)) && !((exists query :: query in s.queries && !(((((query.key > 0) && (query.key < s.nextQuery)) && ((if ((0 <= (query.key - 1)) && ((query.key - 1) < |s.queries|)) then s.queries[(query.key - 1)] else absentQuery).key == query.key)) && (|ProofLib.Filter((other: Query) => (other.key == query.key), s.queries)| == 1))))))
+{
+}
+
+lemma QDKeysIndexed(s: Drain)
+  requires alwaysQueryKeysUnique(s)
+  ensures s.nextQuery == |s.queries| + 1
+  ensures forall i :: 0 <= i < |s.queries| ==> s.queries[i].key == i + 1
+{
+  QDKeysView(s);
+  forall i | 0 <= i < |s.queries| ensures s.queries[i].key == i + 1 {
+    var query := s.queries[i];
+    assert query in s.queries;
+    var k := query.key - 1;
+    if k != i {
+      ProofLib.FilterTwo((other: Query) => (other.key == query.key), s.queries, i, k);
+    }
+  }
+}
+
+lemma QDKeysByIndex(s: Drain)
+  requires s.nextQuery == |s.queries| + 1
+  requires forall i :: 0 <= i < |s.queries| ==> s.queries[i].key == i + 1
+  ensures alwaysQueryKeysUnique(s)
+{
+  QDKeysView(s);
+  forall query | query in s.queries ensures |ProofLib.Filter((other: Query) => (other.key == query.key), s.queries)| == 1 {
+    var i :| 0 <= i < |s.queries| && s.queries[i] == query;
+    ProofLib.FilterOne((other: Query) => (other.key == query.key), s.queries, i);
+  }
+}
+
+lemma QDKeysKept(s: Drain, after: Drain)
+  requires alwaysQueryKeysUnique(s)
+  requires after.nextQuery == s.nextQuery && |after.queries| == |s.queries|
+  requires forall i :: 0 <= i < |s.queries| ==> after.queries[i].key == s.queries[i].key
+  ensures alwaysQueryKeysUnique(after)
+{
+  QDKeysIndexed(s);
+  QDKeysByIndex(after);
+}
+
+lemma QDQueryingKept(s: Drain, after: Drain)
+  requires |after.queries| == |s.queries|
+  requires forall i :: 0 <= i < |s.queries| && after.queries[i].phase.Querying? ==> after.queries[i] == s.queries[i]
+  ensures forall service :: pendingForService(after, service) ==> pendingForService(s, service)
+  ensures forall adapter :: pendingForAdapter(after, adapter) ==> pendingForAdapter(s, adapter)
+{
+  forall service | pendingForService(after, service) ensures pendingForService(s, service) {
+    var query :| query in after.queries && query.phase.Querying? && exists entry :: entry in query.captured && entry.service == service;
+    var i :| 0 <= i < |after.queries| && after.queries[i] == query;
+    assert s.queries[i] in s.queries;
+  }
+  forall adapter | pendingForAdapter(after, adapter) ensures pendingForAdapter(s, adapter) {
+    var query :| query in after.queries && query.phase.Querying? && adapter in query.adapters;
+    var i :| 0 <= i < |after.queries| && after.queries[i] == query;
+    assert s.queries[i] in s.queries;
+  }
+}
+
+lemma QDAdd(xs: seq<string>, v: string)
+  ensures forall x :: x in xs + ProofLib.Filter((set_x: string) => !((set_x in xs)), [v]) <==> x in xs || x == v
+{
+  forall x ensures x in xs + ProofLib.Filter((set_x: string) => !((set_x in xs)), [v]) <==> x in xs || x == v {
+    ProofLib.FilterMember((set_x: string) => !((set_x in xs)), [v], x);
+  }
+}
+
+lemma QDDrop(xs: seq<string>, v: string)
+  ensures forall x :: x in ProofLib.Filter((set_x: string) => !((set_x in [v])), xs) <==> x in xs && x != v
+{
+  forall x ensures x in ProofLib.Filter((set_x: string) => !((set_x in [v])), xs) <==> x in xs && x != v {
+    ProofLib.FilterMember((set_x: string) => !((set_x in [v])), xs, x);
+  }
+}
+
+lemma QDHandoffAdapters(s: Drain, oldAdapter: string, replacementAdapter: string)
+  ensures |handoff(s, oldAdapter, replacementAdapter).queries| == |s.queries|
+  ensures forall i, x :: 0 <= i < |s.queries| ==> (x in handoff(s, oldAdapter, replacementAdapter).queries[i].adapters <==> (x in s.queries[i].adapters || (x == replacementAdapter && s.queries[i].phase.Querying? && oldAdapter in s.queries[i].adapters)))
+  ensures forall i :: 0 <= i < |s.queries| ==> handoff(s, oldAdapter, replacementAdapter).queries[i].phase == s.queries[i].phase && handoff(s, oldAdapter, replacementAdapter).queries[i].key == s.queries[i].key
+{
+  forall i, x | 0 <= i < |s.queries| ensures (x in handoff(s, oldAdapter, replacementAdapter).queries[i].adapters <==> (x in s.queries[i].adapters || (x == replacementAdapter && s.queries[i].phase.Querying? && oldAdapter in s.queries[i].adapters))) {
+    var query := s.queries[i];
+    ProofLib.FilterMember((set_x: string) => !((set_x in query.adapters)), [replacementAdapter], x);
+  }
+}
+
+lemma QDCloseRetiredServices(s: Drain)
+  ensures forall x :: x in closeRetiredServices(s).closedServices <==> x in s.closedServices || (x in s.retiredServices && canCloseService(s, x))
+{
+  assert closeRetiredServices(s).closedServices == s.closedServices + ProofLib.Filter((set_x: string) => !((set_x in s.closedServices)), ProofLib.Filter((service: string) => canCloseService(s, service), s.retiredServices));
+  forall x ensures x in closeRetiredServices(s).closedServices <==> x in s.closedServices || (x in s.retiredServices && canCloseService(s, x)) {
+    ProofLib.FilterMember((set_x: string) => !((set_x in s.closedServices)), ProofLib.Filter((service: string) => canCloseService(s, service), s.retiredServices), x);
+    ProofLib.FilterMember((service: string) => canCloseService(s, service), s.retiredServices, x);
+  }
+}
+
+lemma QDCloseRetiredAdapters(s: Drain)
+  ensures forall x :: x in closeRetiredAdapters(s).closedAdapters <==> x in s.closedAdapters || (x in s.retiredAdapters && canCloseAdapter(s, x))
+{
+  assert closeRetiredAdapters(s).closedAdapters == s.closedAdapters + ProofLib.Filter((set_x: string) => !((set_x in s.closedAdapters)), ProofLib.Filter((adapter: string) => canCloseAdapter(s, adapter), s.retiredAdapters));
+  forall x ensures x in closeRetiredAdapters(s).closedAdapters <==> x in s.closedAdapters || (x in s.retiredAdapters && canCloseAdapter(s, x)) {
+    ProofLib.FilterMember((set_x: string) => !((set_x in s.closedAdapters)), ProofLib.Filter((adapter: string) => canCloseAdapter(s, adapter), s.retiredAdapters), x);
+    ProofLib.FilterMember((adapter: string) => canCloseAdapter(s, adapter), s.retiredAdapters, x);
+  }
+}
+
+lemma QDPending(s: Drain)
+  ensures nextPendingQuery(s).key != 0 ==> nextPendingQuery(s) in s.queries && (nextPendingQuery(s).phase.Querying? || nextPendingQuery(s).phase.Ready? || nextPendingQuery(s).phase.Running?)
+{
+  assert nextPendingQuery(s) == (if 0 < |ProofLib.Filter((query: Query) => ((query.phase.Querying? || query.phase.Ready?) || query.phase.Running?), s.queries)| then ProofLib.Filter((query: Query) => ((query.phase.Querying? || query.phase.Ready?) || query.phase.Running?), s.queries)[0] else absentQuery);
+  if 0 < |ProofLib.Filter((query: Query) => ((query.phase.Querying? || query.phase.Ready?) || query.phase.Running?), s.queries)| {
+    ProofLib.FilterMember((query: Query) => ((query.phase.Querying? || query.phase.Ready?) || query.phase.Running?), s.queries, ProofLib.Filter((query: Query) => ((query.phase.Querying? || query.phase.Ready?) || query.phase.Running?), s.queries)[0]);
   }
 }

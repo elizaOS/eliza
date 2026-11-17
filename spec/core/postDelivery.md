@@ -1,17 +1,18 @@
 # Post-delivery task ownership and quarantine
 
-Post-delivery work stays tracked until its original promise settles. Runtime quarantine is permanent and requests cooperative cancellation while retaining pending entries. Sources include [post-delivery-task-tracker.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/services/post-delivery-task-tracker.ts) and [PostDeliveryTasks.qnt](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/quint/PostDeliveryTasks.qnt).
+Post-delivery work stays tracked until its original promise settles. Runtime quarantine is permanent and requests cooperative cancellation while keeping pending entries. Source: `services/post-delivery-task-tracker.ts`.
 
 ## Story: Track detached work under runtime and room ownership
 
-As a host I distinguish diagnostic work from room-state work and wait for real settlement before releasing a room.
+> As a host, I want diagnostic work kept apart from room-state work and real
+> settlement awaited before a room is released, so that no detached work
+> outlives its owner.
 
 ### Room-state work captures a live lease and belongs to both indexes
 
 Diagnostic work is runtime-scoped. Room-state work can be roomless only when the host permits implicit ownership.
 
-Discovered by simulation: the diagnostic path uses lease zero. Include that
-value in the sampler so diagnostic and room-owned work can coexist in a trace.
+Diagnostic work carries lease zero.
 
 ```quint
 type PostTaskKind = DiagnosticTask | RoomStateTask
@@ -92,7 +93,9 @@ pure def sometimesCancelledWorkStillPending(s: PostDelivery): bool = s.tasks.som
 
 ## Story: Capture and settle a connector delivery boundary
 
-As a connector I bind delivery to its live room lease and drain the room tasks before removing that boundary.
+> As a connector, I want delivery bound to its live room lease and the
+> room's tasks drained before that boundary is removed, so that delivery
+> never runs without its room.
 
 ### Each runtime room has one live delivery boundary
 

@@ -1,12 +1,22 @@
 # Trusted delivery audience and turn leases
 
-The source is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`, `packages/core/src/security/trusted-delivery-audience.ts`. The trusted runtime supplies `RuntimeCaller` separately from decoded payloads. HTTP and model inputs cannot attest audiences, acquire leases or renew authority. This component owns one binding's retained record, lease and asynchronous renewal identities. The [shared registry](./audienceRegistry.md) owns message aliases, the process-wide attestation sequence and independent suppression carriers. Numeric identities denote exact source objects, not payload labels. Returned-call history is a verification observation, not an added runtime registry.
+The source is `security/trusted-delivery-audience.ts`. The trusted runtime supplies the `RuntimeCaller` sender separately from decoded payloads. HTTP and model inputs use `ExternalCaller`; they cannot attest audiences, acquire leases or renew authority. This component owns one binding's retained record, lease and asynchronous renewal identities. The [audience registry](./audienceRegistry.md) owns message aliases, the process-wide attestation sequence and independent suppression carriers. Reference-counted internal actors are [internal actors](./internalActors.md). Numeric identities denote exact source objects, not payload labels. Returned-call history is a verification observation, not an added runtime registry.
 
 ## Story: Renew audience evidence only for the same active turn
 
-As an owner, I disclose private data only into a verified destination with the current actor, agent, owner and participant census. An expired attestation can renew during its active uncancelled turn after fresh authority checks. Renewal preserves exact audience identity and rejects a replaced or ended lease. Concurrent calls can capture the same lease, and each keeps its original record through reattestation.
+> As an owner, I want private data disclosed only into a destination
+> verified for the current actor, agent, owner and participants, so that a
+> changed audience never receives what it was not cleared for.
+
+An expired attestation can renew during its active uncancelled turn after fresh authority checks. Renewal preserves exact audience identity and rejects a replaced or ended lease. Concurrent calls can capture the same lease, and each keeps its original record through reattestation.
 
 ### Attestation binds an exact runtime and audience
+
+Only the trusted runtime caller attests an audience, begins or ends a turn
+lease, or moves the clock. An attestation names one runtime and the exact
+audience, issued now with a positive lifetime and a positive sequence; a
+turn lease can begin only for that runtime while the attestation is
+unexpired and not issued more than five seconds in the future.
 
 Reattestation installs a fresh record with no inherited lease. It retains the old record while a callback or release closure can still reference it. Sensitive-use history is copied only when the preceding record belongs to the same runtime. A new turn installs one fresh lease on its record; releasing an older lease never removes a newer one. The audience retains all ten source destination kinds and exactly one of the three source provenance variants; private-disclosure classification derives from that provenance. Renewal compares the exact kind and provenance even when both destinations deny private disclosure.
 
@@ -72,7 +82,7 @@ pure def setTime(s: AudienceLease, by: AudienceCaller, time: int): AudienceLease
 
 ### Renewal rechecks lease identity and audience after the authority await
 
-Every expired call captures its exact record, installed lease, audience and invocation time. There is no single-flight latch and no post-await audience-sequence fence in the pinned source. A derived audience consumes the registry's global sequence before final checks, including when those checks reject it. Renewal uses the fixed five-minute default TTL and the captured invocation time, not the clock when the await returns. A successful result can therefore already be expired; disclosure still checks the current clock.
+Every expired call captures its exact record, installed lease, audience and invocation time. There is no single-flight latch and no post-await audience-sequence fence in the pinned source. A derived audience consumes the registry's global sequence before final checks, including when those checks reject it. Renewal uses the fixed five-minute default TTL and the captured invocation time, not the clock when the await returns. A successful result can therefore already be expired; disclosure still checks the current clock. Disclosure is allowed only for fresh evidence of a private audience that still matches.
 
 Final checks address the captured record. Ending or replacing that record's lease, cancellation, or changed audience rejects the call. Reattestation instead replaces the WeakMap's mapped record: an old call can still succeed on its retained old record without changing the newly mapped evidence. Overlapping calls on one lease can both succeed; their completion order determines the last write to that record.
 
@@ -144,6 +154,9 @@ pure def sometimesSensitiveUseRecorded(s: AudienceLease): bool = s.records.some(
 ```
 
 ### External event payloads cannot mint an attestation
+
+An external caller, such as an HTTP request or model input, can neither
+attest an audience nor renew one.
 
 ```quint
 pure def lawExternalCannotAttest(s: AudienceLease, audience: Audience, lifetime: int): bool = not(canAttest(s, ExternalCaller, audience, lifetime, 1))

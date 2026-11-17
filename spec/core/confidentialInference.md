@@ -4,6 +4,10 @@ The source is `packages/core/src/security/confidential-inference.ts` at `elizaOS
 
 ## Story: Use only an approved route with durable dispatch evidence
 
+> As an operator, I want confidential inference to use only host-approved
+> routes with recorded evidence, so that private prompts never leave by an
+> unapproved path.
+
 As an operator, I can require confidential inference to use exact host-approved handlers, routes and connection evidence. The policy is checked before and after audit persistence. An authorization consumed under deny-after-authorization remains consumed across failures and retries.
 
 ### An attempt captures approved route and handler identity

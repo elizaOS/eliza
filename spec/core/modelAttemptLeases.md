@@ -1,10 +1,18 @@
 # Host model attempt allowances
 
-The host issues a session allowance and unforgeable per-turn leases. Each qualified request atomically debits its conservative reservation and consumes an attempt, including failed transport attempts. Sources include [streaming-context.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/streaming-context.ts) and [prepared-model-request.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/prepared-model-request.ts). The arithmetic helpers compare affordability before multiplying values that can exceed the safe integer range.
+The host issues a session allowance and unforgeable per-turn leases. Each
+qualified request atomically debits its conservative reservation and
+consumes an attempt, including failed transport attempts. The arithmetic
+helpers compare affordability before multiplying values that can exceed
+the safe integer range.
 
 ## Story: Issue a turn-scoped model allowance
 
-As a host I authorize bounded model attempts with a concrete provider tariff, expiry and output cap.
+> As a host, I want each model attempt authorized against a concrete
+> tariff, expiry and output cap, so no attempt can spend beyond its lease.
+
+As a host I authorize bounded model attempts with a concrete provider
+tariff, expiry and output cap.
 
 ### Only host-issued leases bind an existing allowance to a turn
 
@@ -23,24 +31,24 @@ pure val initial: ModelLeases = {now: 0, allowances: List(), leases: List(), res
 pure val allowanceIdValues = Set(1, 2)
 pure val leaseIdValues = Set(1, 2, 3)
 pure val allowanceInputValues = Set(
-  {budget: 100, maxAttempts: 3, maxOutput: 10, expiresAt: 100, tariffs: List({provider: "alpha", model: "small", route: "text", inputRate: 1, outputRate: 2, inputBound: 20})},
-  {budget: 1, maxAttempts: 1, maxOutput: 1, expiresAt: 1, tariffs: List({provider: "alpha", model: "small", route: "text", inputRate: 1, outputRate: 2, inputBound: 20})},
-  {budget: 10, maxAttempts: 2, maxOutput: 10, expiresAt: 10, tariffs: List({provider: "beta", model: "large", route: "text", inputRate: 100, outputRate: 200, inputBound: 100})},
+  {budget: 100, maxAttempts: 3, maxOutput: 10, expiresAt: 100, tariffs: List({provider: "p1", model: "small", route: "text", inputRate: 1, outputRate: 2, inputBound: 20})},
+  {budget: 1, maxAttempts: 1, maxOutput: 1, expiresAt: 1, tariffs: List({provider: "p1", model: "small", route: "text", inputRate: 1, outputRate: 2, inputBound: 20})},
+  {budget: 10, maxAttempts: 2, maxOutput: 10, expiresAt: 10, tariffs: List({provider: "p2", model: "large", route: "text", inputRate: 100, outputRate: 200, inputBound: 100})},
   {budget: 0, maxAttempts: 1, maxOutput: 1, expiresAt: 10, tariffs: List()})
-pure val tValues = Set({provider: "alpha", model: "small", route: "text", inputRate: 1, outputRate: 2, inputBound: 20}, {provider: "beta", model: "large", route: "text", inputRate: 100, outputRate: 200, inputBound: 100})
+pure val tValues = Set({provider: "p1", model: "small", route: "text", inputRate: 1, outputRate: 2, inputBound: 20}, {provider: "p2", model: "large", route: "text", inputRate: 100, outputRate: 200, inputBound: 100})
 pure val messageIdValues = Set("turn-a", "turn-b")
-pure val providerValues = Set("alpha", "beta", "missing")
+pure val providerValues = Set("p1", "p2", "missing")
 pure val modelValues = Set("small", "large")
 pure val routeValues = Set("text", "missing")
 pure val outputTokensValues = Set(0, 1, 10)
 pure val reservationInputValues = Set(
-  {messageId: "turn-a", provider: "alpha", model: "small", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 1, currentTurn: true},
-  {messageId: "turn-b", provider: "alpha", model: "small", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 10, currentTurn: true},
-  {messageId: "turn-a", provider: "beta", model: "large", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 1, currentTurn: true},
-  {messageId: "turn-a", provider: "alpha", model: "small", route: "missing", codeUnits: List(65, 55357, 56832), outputTokens: 1, currentTurn: true},
-  {messageId: "turn-a", provider: "alpha", model: "small", route: "text", codeUnits: List(55357, 56832, 55357, 56832, 55357, 56832, 55357, 56832, 55357, 56832, 65), outputTokens: 1, currentTurn: true},
-  {messageId: "turn-a", provider: "alpha", model: "small", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 0, currentTurn: true},
-  {messageId: "turn-a", provider: "alpha", model: "small", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 1, currentTurn: false})
+  {messageId: "turn-a", provider: "p1", model: "small", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 1, currentTurn: true},
+  {messageId: "turn-b", provider: "p1", model: "small", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 10, currentTurn: true},
+  {messageId: "turn-a", provider: "p2", model: "large", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 1, currentTurn: true},
+  {messageId: "turn-a", provider: "p1", model: "small", route: "missing", codeUnits: List(65, 55357, 56832), outputTokens: 1, currentTurn: true},
+  {messageId: "turn-a", provider: "p1", model: "small", route: "text", codeUnits: List(55357, 56832, 55357, 56832, 55357, 56832, 55357, 56832, 55357, 56832, 65), outputTokens: 1, currentTurn: true},
+  {messageId: "turn-a", provider: "p1", model: "small", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 0, currentTurn: true},
+  {messageId: "turn-a", provider: "p1", model: "small", route: "text", codeUnits: List(65, 55357, 56832), outputTokens: 1, currentTurn: false})
 pure val nowValues = Set(-1, 0, 1, 10, 100, 101)
 pure val noAllowance: Allowance = {id: 0, remaining: 0, attemptsRemaining: 0, maxOutput: 0, expiresAt: 0, closed: true, expiryObserved: false, tariffs: List()}
 pure val noLease: AttemptLease = {id: 0, allowance: 0, messageId: "", ended: true}
@@ -68,7 +76,7 @@ pure def sometimesIndependentTurnLeases(s: ModelLeases): bool = s.leases.some(a 
 
 Reservation receives the complete serialized UTF-16 sequence with its captured route and turn authority. Provider, model and route match the first qualified tariff. The UTF-8 length of that sequence fits its conservative input bound and an explicit output count fits the allowance cap. Each code unit must fit the unsigned 16-bit range. Funds and attempts are never refunded.
 
-Discovered by the proof. Every retained allowance has a positive distinct identity, so a lease can resolve its captured allowance after an unrelated allowance update.
+Every retained allowance has a positive distinct identity, so a lease can resolve its captured allowance after an unrelated allowance update.
 
 ```quint
 type ChargePart = {within: bool, whole: int, remainder: int}

@@ -1,14 +1,16 @@
 # Priority queue ordering and pressure
 
-Queue priority controls dequeue order while maxSize is a pressure threshold. It is not a hard capacity unless the installed pressure callback rejects admission. Source [batch-queue.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/utils/batch-queue.ts).
+Priority decides dequeue order, and `maxSize` is a pressure threshold, not a hard capacity, unless the installed pressure callback rejects admission. Source: `utils/batch-queue.ts`.
 
 ## Story: Enqueue and drain ordered work
 
-As a producer I preserve FIFO within each priority and receive explicit admission results under pressure.
+> As a producer, I want FIFO order within each priority and an explicit
+> admission result under pressure, so that work is neither reordered nor
+> dropped silently.
 
 ### High priority precedes normal priority which precedes low priority
 
-Every enqueue gets a unique ticket even when the same payload value is enqueued more than once. Invalid priority is normalized to normal and warns once.
+Every enqueue gets a unique ticket even when the same payload value is enqueued more than once. Tickets count up from one. Invalid priority is normalized to normal and warns once.
 
 ```quint
 type QueuePriority = High | Normal | Low | InvalidPriority
@@ -37,13 +39,14 @@ pure def canResolvePressure(s: PriorityState, accepted: bool): bool = s.pressure
 pure def resolvePressure(s: PriorityState, accepted: bool): PriorityState = if (accepted) insertPayload(s.pendingPayload, s.pendingPriority, { ...s, pressurePending: false }) else { ...s, pressurePending: false, lastAccepted: false }
 pure def alwaysPriorityBucketsAgree(s: PriorityState): bool = s.high.every(j => j.priority == High) and s.normal.every(j => j.priority == Normal) and s.low.every(j => j.priority == Low)
 pure def alwaysQueueTicketsUnique(s: PriorityState): bool = queuedItems(s).every(j => j.ticket > 0 and j.ticket < s.nextTicket and queuedItems(s).select(other => other.ticket == j.ticket).length() == 1)
+pure def alwaysTicketsCountFromOne(s: PriorityState): bool = s.nextTicket >= 1
 pure def sometimesSoftThresholdExceeded(s: PriorityState): bool = s.hasMax and not(s.hasPressure) and queueSize(s) > s.maxSize
 pure def sometimesPressureRejected(s: PriorityState): bool = s.hasPressure and s.configured and not(s.pressurePending) and not(s.lastAccepted) and s.nextTicket > 1
 ```
 
 ### The next queue ticket stays positive
 
-The next ticket number is always positive. Tickets exist only in the model. They tell apart repeated enqueues of the same payload value. A well-formed queue satisfies the bucket rule, the ticket-uniqueness rule and this rule.
+Discovered by the proof: an empty queue with a nonpositive next ticket satisfied the bucket and uniqueness rules but assigned an invalid ticket on its next admission. The model occurrence serial starts at one, advances on each admission, and remains positive through every queue mutation. A well-formed queue satisfies all three queue invariants.
 
 ```quint
 pure def alwaysNextTicketIsPositive(s: PriorityState): bool = s.nextTicket > 0

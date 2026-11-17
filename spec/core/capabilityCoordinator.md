@@ -4,6 +4,10 @@ The source is `packages/core/src/types/provider-integrations.ts:915-1101` at `el
 
 ## Story: Reserve identities across concurrent requests and single-use consumption
 
+> As the host, I want each decision and confirmation ID consumed once and
+> reserved for good, so that two callers can never spend the same
+> decision.
+
 As the host, I can register independent policy decisions concurrently. A consumed, rejected or expired decision ID remains reserved for the coordinator's lifetime. Confirmation IDs are equally permanent. Two callers cannot both remove and consume the same registered decision. A malformed or expired consume attempt leaves the registered entry in place; a current-shape attempt with a stale account removes it and reports failure.
 
 ### A dynamic map composes exact per-request authority

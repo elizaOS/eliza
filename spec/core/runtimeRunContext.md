@@ -1,36 +1,31 @@
 # Runtime run and room logging context
 
-The `currentRunId` and `currentRoomId` fields in `packages/core/src/runtime.ts:604-605,805-832` at `72fed7e4069ecd35d61d886ab6eec5c02c137517` belong to the runtime object, independently of AsyncLocalStorage. startRun replaces both fields; endRun clears both; getCurrentRunId lazily creates only the run ID. No previous value is restored by endRun.
+The `currentRunId` and `currentRoomId` fields of the runtime object in `runtime.ts`, independent of AsyncLocalStorage and of the [runtime lifecycle](./runtime.md), which these setters never read or change.
 
 ## Story: Keep runtime run context explicit
 
-As a host I select logging context on an initialized or uninitialized runtime. Starting a second run replaces its current global context, and ending a run clears the current context even if another caller most recently installed it.
+> As a host, I want to select the logging context on an initialized or
+> uninitialized runtime, so that every log line names the run and room it
+> belongs to.
 
-### Run context setters preserve the same runtime lifecycle state
+Starting a second run replaces the current context, and ending a run clears it even if another caller most recently installed it.
+
+### Starting a run replaces both fields, ending one clears both, and a lookup creates only the run ID
+
+No previous value is restored when a run ends. Looking up the current run creates a run ID only when none is set and never changes the room.
 
 ```quint
-import runtime as R from "./runtime"
-type RuntimeRunContext = {kernel: R::Runtime, runId: str, roomId: str}
-pure val initial: RuntimeRunContext = {kernel: R::initial, runId: "", roomId: ""}
+type RuntimeRunContext = {runId: str, roomId: str}
+pure val initial: RuntimeRunContext = {runId: "", roomId: ""}
 pure val runIdValues = Set("run-a", "run-b")
 pure val roomIdValues = Set("", "room-a", "room-b")
 pure def canStartRun(s: RuntimeRunContext, runId: str, roomId: str): bool = runId != ""
-pure def startRun(s: RuntimeRunContext, runId: str, roomId: str): RuntimeRunContext = { ...s, runId: runId, roomId: roomId }
-pure def endRun(s: RuntimeRunContext): RuntimeRunContext = { ...s, runId: "", roomId: "" }
+pure def startRun(s: RuntimeRunContext, runId: str, roomId: str): RuntimeRunContext = { runId: runId, roomId: roomId }
+pure def endRun(s: RuntimeRunContext): RuntimeRunContext = initial
 pure def canGetCurrentRun(s: RuntimeRunContext, runId: str): bool = runId != ""
 pure def getCurrentRun(s: RuntimeRunContext, runId: str): RuntimeRunContext = if (s.runId == "") { ...s, runId: runId } else s
-pure def canBeginInitialization(s: RuntimeRunContext): bool = R::canBeginInitialization(s.kernel)
-pure def beginInitialization(s: RuntimeRunContext): RuntimeRunContext = { ...s, kernel: R::beginInitialization(s.kernel) }
-pure def canCompleteInitialization(s: RuntimeRunContext, ok: bool): bool = R::canCompleteInitialization(s.kernel, ok)
-pure def completeInitialization(s: RuntimeRunContext, ok: bool): RuntimeRunContext = { ...s, kernel: R::completeInitialization(s.kernel, ok) }
-pure def sameRuntimeLifecycle(left: R::Runtime, right: R::Runtime): bool =
-  left.initPhase == right.initPhase and left.stopPhase == right.stopPhase and
-  left.initWaitersReleased == right.initWaitersReleased and left.admissionOpen == right.admissionOpen and
-  left.activeTurns == right.activeTurns and left.pendingDeliveries == right.pendingDeliveries and
-  left.pendingServices == right.pendingServices and left.pendingBeforeClose == right.pendingBeforeClose and
-  left.fast == right.fast and left.prepareCalls == right.prepareCalls and
-  left.retirementFailed == right.retirementFailed and left.strictSuccess == right.strictSuccess and left.adapterClosed == right.adapterClosed
-pure def stepContextDoesNotMutateKernel(before: RuntimeRunContext, via: str, after: RuntimeRunContext): bool = (via == "startRun" or via == "endRun" or via == "getCurrentRun") implies sameRuntimeLifecycle(after.kernel, before.kernel)
-pure def stepLookupKeepsRoom(before: RuntimeRunContext, via: str, after: RuntimeRunContext): bool = via == "getCurrentRun" implies after.roomId == before.roomId
+pure def lawStartRunReplacesBoth(s: RuntimeRunContext, runId: str, roomId: str): bool = startRun(s, runId, roomId) == {runId: runId, roomId: roomId}
+pure def stepEndRunClearsBoth(before: RuntimeRunContext, via: str, after: RuntimeRunContext): bool = via == "endRun" implies after.runId == "" and after.roomId == ""
+pure def stepLookupCreatesOnlyRunId(before: RuntimeRunContext, via: str, after: RuntimeRunContext): bool = via == "getCurrentRun" implies after.roomId == before.roomId and after.runId != "" and (before.runId != "" implies after.runId == before.runId)
 pure def sometimesRunWithoutRoom(s: RuntimeRunContext): bool = s.runId != "" and s.roomId == ""
 ```

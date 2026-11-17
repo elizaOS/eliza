@@ -1,10 +1,14 @@
 # Effect receipts and delivery settlement
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/types/effects.ts`, `runtime/effect-delivery.ts`, `runtime/action-handler-settlement.ts`, and `quint/ActionSettlement.qnt`. Receipts retain stable IDs, operation, resource and child references, idempotency identity, observation times, outcome-specific proof, and rollback links. Boundary decoding checks these shapes and rejects conflicting duplicate IDs. The state model follows one receipt and its exact reply through settlement.
+Effect receipts and delivery settlement, from `types/effects.ts`, `runtime/effect-delivery.ts` and `runtime/action-handler-settlement.ts`. Receipts keep stable IDs, operation, resource and child references, idempotency identity, observation times, outcome-specific proof and rollback links; boundary decoding checks these shapes and rejects conflicting duplicate IDs. The machine follows one receipt and its exact reply through settlement, and [receipt bindings](./receiptBindings.md) own binding identity.
 
 ## Story: Confirm only a committed requested effect
 
-As a user, I receive a confirmation only when the current turn binds exact action-owned text to active committed receipt IDs. A preview, ordinary no-op, failure or rollback cannot prove application. A replayed no-op qualifies after the handler re-observes the earlier committed result under a nonempty idempotency key.
+> As a user, I want a confirmation only when the current turn binds exact
+> action-owned text to active committed receipt IDs, so that I am never told
+> an effect happened when it did not.
+
+A preview, ordinary no-op, failure or rollback cannot prove application. A replayed no-op qualifies after the handler re-observes the earlier committed result under a nonempty idempotency key.
 
 ### ReceiptOutcome evidence determines which receipts prove a committed result
 

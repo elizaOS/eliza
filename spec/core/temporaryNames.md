@@ -4,6 +4,10 @@
 
 ## Story: Give concurrent publications distinct temporary paths
 
+> As a writer of atomic files, I want every temporary path in a process to
+> be distinct, so that concurrent publications never write over each
+> other.
+
 ### Every allocated name carries a never-repeated process ordinal
 
 The counter is shared across all targets and both writer APIs. PID and wall clock may repeat or move backward without repeating an ordinal. Failed writes consume their ordinal. This is a process-lifetime guarantee; exclusive file creation handles pre-existing names across process restarts.

@@ -4,6 +4,10 @@ Sources are `packages/core/src/runtime.ts:1924-1943,5478-5489`, `plugin-lifecycl
 
 ## Story: Preserve adapter identity through plugin failure and migrations
 
+> As a host, I want my registered adapter kept through a failed plugin or
+> migration, so that a failure is reported and never hidden by a false
+> restoration.
+
 As a host I can register an adapter and run its declared migrations. Unsupported plugin migrations skip explicitly; a migration rejection stays a rejection. Rollback failure preserves the installed adapter instead of falsely claiming restoration.
 
 ### Registration captures object references and rollback preserves close ordering

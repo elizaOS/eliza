@@ -1,16 +1,21 @@
 # Paged task event observation
 
-`messaging/task-events.ts` owns a reusable read-only polling reader. It never dispatches or replays task actions. Events enter this model after the exact schema decoder has checked field names, opaque reference grammar and canonical HTTPS origins. That decoder remains an explicit lexical boundary; event kind/status/operation relationships, history merging, cursors and reader state are modeled here.
+`messaging/task-events.ts` owns a reusable read-only polling reader. It never dispatches or replays task actions. Events enter this model after the schema decoder, a lexical boundary, has checked field names, opaque reference grammar and canonical HTTPS origins; event kind, status and operation relationships, history merging, cursors and reader state are modeled here.
 
-The immutable polling interval defaults to 2,000 ms and must be a safe integer from 1 through 2,147,483,647 inclusive. Invalid intervals reject construction before a reader exists.
+The immutable polling interval defaults to 2,000 ms. The constructor, a shell boundary, accepts only a safe integer from 1 through 2,147,483,647 inclusive and rejects any other interval before a reader exists, so the model below starts from a constructed reader.
 
 ## Story: Observe complete task history without stale page replacement
+
+> As an observer of a task, I want its complete event history, paged in
+> order and never replaced by a stale page, so that what I show matches
+> what the task did.
 
 ### Replay is idempotent and histories reject conflicting duplicates or gaps
 
 The initial event is create at sequence/epoch zero with active status, or a checkpoint. Further distinct events increment sequence by one and never decrease epoch. An identical sequence replay is ignored only when every event field agrees. A page contains at most 128 incoming events, but retained history has no truncation. Task head revision/epoch never decrease; a nonterminal page must advance the cursor, while the last page must reach the head revision.
 
 ```quint
+import numbers as Num from "./numbers"
 type TaskStatus = ActiveTask | PausedTask | BlockedTask | WaitingTask | CompletedTask | CancelledTask
 type EventKind = CreateEvent | CheckpointEvent | ObserveEvent | ResumeEvent | RebindEvent | PauseEvent | CancelEvent | RecoverEvent | RevokeEvent | CompleteEvent | PrepareEvent | DispatchEvent | ResultEvent | ReconcileEvent | ExtendOriginEvent | RetractOriginEvent
 type OperationStatus = NoOperation | PreparedOperation | DispatchedOperation | SucceededOperation | FailedOperation | CancelledOperation | UnknownOperation
@@ -19,9 +24,7 @@ type TaskPage = { events: List[TaskEvent], cursor: int, hasMore: bool, task: str
 type MergeState = { events: List[TaskEvent], valid: bool }
 pure val noEvent: TaskEvent = { task: "", sequence: -1, epoch: 0, at: 0, status: ActiveTask, kind: CheckpointEvent, operationId: "", operationStatus: NoOperation, origin: "" }
 pure val noPage: TaskPage = { events: List(), cursor: -1, hasMore: false, task: "", revision: 0, epoch: 0, status: ActiveTask, unknownOutcome: false }
-pure def safeCounter(value: int): bool = value >= 0 and value <= 9007199254740991
-pure def validPollingInterval(value: int): bool = value >= 1 and value <= 2147483647
-pure def lawInvalidPollingIntervalRejected(value: int): bool = (value < 1 or value > 2147483647) implies not(validPollingInterval(value))
+pure def safeCounter(value: int): bool = value >= 0 and value <= Num::maxSafeInteger
 pure def validEvent(activity: TaskEvent): bool = activity.task != "" and safeCounter(activity.sequence) and safeCounter(activity.epoch) and safeCounter(activity.at) and (activity.kind != CreateEvent or (activity.sequence == 0 and activity.epoch == 0 and activity.status == ActiveTask)) and (if (activity.kind == PrepareEvent) activity.operationId != "" and activity.operationStatus == PreparedOperation else if (activity.kind == DispatchEvent) activity.operationId != "" and activity.operationStatus == DispatchedOperation else if (activity.kind == ResultEvent or activity.kind == ReconcileEvent) activity.operationId != "" and (activity.operationStatus == SucceededOperation or activity.operationStatus == FailedOperation or activity.operationStatus == UnknownOperation) else activity.operationId == "" and activity.operationStatus == NoOperation) and (if (activity.kind == ExtendOriginEvent or activity.kind == RetractOriginEvent) activity.origin != "" else if (activity.kind == ObserveEvent or activity.kind == ResumeEvent) true else activity.origin == "")
 pure def appendEvent(s: MergeState, task: str, activity: TaskEvent): MergeState = {
   val duplicates = s.events.select(prior => prior.sequence == activity.sequence)
@@ -33,18 +36,19 @@ pure def mergedEvents(task: str, previousEvents: List[TaskEvent], newEvents: Lis
 pure def acceptsPage(task: str, previous: TaskPage, incoming: TaskPage): bool = {
   val merged = mergedEvents(task, previous.events, incoming.events)
   val cursor = merged.events.nthOr(merged.events.length() - 1, noEvent).sequence
-  incoming.task == task and incoming.events.length() <= 128 and incoming.cursor >= -1 and incoming.cursor <= 9007199254740991 and safeCounter(incoming.revision) and safeCounter(incoming.epoch) and incoming.revision >= previous.revision and incoming.epoch >= previous.epoch and merged.valid and incoming.cursor == cursor and cursor <= incoming.revision and (if (incoming.hasMore) cursor > previous.cursor else cursor == incoming.revision)
+  incoming.task == task and incoming.events.length() <= 128 and incoming.cursor >= -1 and incoming.cursor <= Num::maxSafeInteger and safeCounter(incoming.revision) and safeCounter(incoming.epoch) and incoming.revision >= previous.revision and incoming.epoch >= previous.epoch and merged.valid and incoming.cursor == cursor and cursor <= incoming.revision and (if (incoming.hasMore) cursor > previous.cursor else cursor == incoming.revision)
 }
 pure def combinePage(task: str, previous: TaskPage, incoming: TaskPage): TaskPage = { ...incoming, events: mergedEvents(task, previous.events, incoming.events).events }
 ```
 
 ### A generation owns its pending read and every publish boundary rechecks it
 
-Start detaches the old generation and clears its page; stop increments generation, clears the timer and pending flag, retains the last page, and publishes nothing. Refresh while pending or detached is a no-op. Accepted pages publish immediately and continue synchronously while hasMore. Read/merge failure retains the last page and does not schedule retries. Polling rearms only after a successful complete page whose task is nonterminal or has unknown effects. Observer callbacks receive clones. Observer failures are typed as `TASK_EVENT_OBSERVER_FAILED`, release pending ownership, preserve the admitted page, and never schedule an automatic retry. Explicit `refresh`, `start` or `stop` remains available after failure. This intentionally repairs the baseline's first-publish throw, which occurs before its try/finally and leaves pending stuck; no consumer contract depends on that leaked latch. A regression scenario is start → first observer throws → pending false/observer failure → explicit refresh succeeds. Read or validation failures also remain explicitly retryable through `refresh` rather than an unbounded automatic network loop.
-Discovered by the proof: pending belongs exactly to start publication, reading
-and page publication. Every non-idle stage retains the same attached task and
-generation; only an idle reader owns a timer. A finishing page can request
-another poll only while its preceding publication has succeeded.
+Start detaches the old generation and clears its page; stop increments generation, clears the timer and pending flag, retains the last page, and publishes nothing. Refresh while pending or detached is a no-op. Accepted pages publish immediately and continue synchronously while hasMore. Read/merge failure retains the last page and does not schedule retries. Polling rearms only after a successful complete page whose task is nonterminal or has unknown effects. Observer callbacks receive clones. Observer failures are typed as `TASK_EVENT_OBSERVER_FAILED`, release pending ownership, preserve the admitted page, and never schedule an automatic retry. Explicit `refresh`, `start` or `stop` remains available after any failure, including a throw from the first observer call; read and validation failures are retried only through `refresh`, never by an automatic loop.
+
+Without these facts a reader could stay pending
+outside start publication, reading and page publication, a non-idle stage
+could serve another task or generation, a busy reader could own a timer,
+and a page could request another poll after its publication failed.
 
 Discovered by simulation: an observer completion from a replaced generation
 could advance a newer generation waiting at the same publication stage.
@@ -73,7 +77,6 @@ pure def canPublishedPage(s: TaskReader, ticket: int): bool = s.phase == Publish
 pure def publishedPage(s: TaskReader, ticket: int, success: bool): TaskReader = { ...s, publishes: s.publishes + 1, failed: not(success), error: if (success) NoReaderError else ObserverFailure, pending: success and s.page.hasMore, phase: if (success and s.page.hasMore) ReadingPage else PublishFinish, again: success and not(s.page.hasMore) and ((s.page.status != CompletedTask and s.page.status != CancelledTask) or s.page.unknownOutcome) }
 pure def canPublishedFinish(s: TaskReader, ticket: int): bool = s.phase == PublishFinish and ownsRead(s, ticket)
 pure def publishedFinish(s: TaskReader, ticket: int, success: bool): TaskReader = { ...s, publishes: s.publishes + 1, pending: false, failed: s.failed or not(success), error: if (success) s.error else ObserverFailure, phase: ReaderIdle, timer: success and s.again }
-pure def stalePage(s: TaskReader, ticket: int, incoming: TaskPage): TaskReader = s
 pure def lawStalePublicationCannotComplete(s: TaskReader, ticket: int): bool =
   ticket != s.generation implies
     not(canPublishedStart(s, ticket) or canPublishedPage(s, ticket) or canPublishedFinish(s, ticket))

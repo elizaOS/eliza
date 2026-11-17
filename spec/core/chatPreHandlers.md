@@ -4,9 +4,14 @@ The source is `packages/core/src/runtime/chat-pre-handler-registry.ts` at `72fed
 
 ## Story: Resolve a turn before normal chat generation
 
-As a plugin I can handle a matching turn deterministically. Nonmatching handlers pass through; throwing handlers and cancellation reject the drain without running later handlers.
+> As a plugin I can handle a matching turn deterministically. Nonmatching
+> handlers pass through; throwing handlers and cancellation reject the
+> drain without running later handlers.
 
 ### A drain owns its ordered snapshot and cancellation signal
+
+Each drain has its own identifier, and a drain about to run or awaiting a
+handler still has that handler in its snapshot.
 
 ```quint
 type PreHandler = {id: str, priority: int, reference: int}
@@ -38,23 +43,10 @@ pure def canRejectHandler(s: PreHandlers, drainId: int, errorId: str): bool = pr
 pure def rejectHandler(s: PreHandlers, drainId: int, errorId: str): PreHandlers = { ...s, drains: s.drains.listMap(d => if (d.id == drainId) { ...d, phase: DrainFailed, errorId: errorId } else d) }
 pure def alwaysDrainBounds(s: PreHandlers): bool = s.drains.every(d => d.cursor >= 0 and d.cursor <= d.snapshot.length())
 pure def alwaysSuccessSurvivesPostAwaitCheck(s: PreHandlers): bool = s.drains.every(d => d.phase == DrainSucceeded implies not(d.aborted))
+pure def alwaysDrainIdsUnique(s: PreHandlers): bool = s.drains.every(d => s.drains.select(e => e.id == d.id).length() == 1)
+pure def alwaysActiveDrainHasAHandlerLeft(s: PreHandlers): bool =
+  s.drains.every(d => (d.phase == BeforeHandler or d.phase == WaitingHandler) implies d.cursor < d.snapshot.length())
 pure def stepSnapshotsStable(before: PreHandlers, after: PreHandlers): bool = before.drains.every(d => after.drains.some(other => other.id == d.id and other.snapshot == d.snapshot))
 pure def sometimesEmptyTextResultWins(s: PreHandlers): bool = s.drains.some(d => d.phase == DrainSucceeded and d.text == "")
 pure def sometimesCancellationAfterAwait(s: PreHandlers): bool = s.drains.some(d => d.phase == DrainAborted and d.cursor > 0)
-```
-
-### Each drain ID names exactly one drain
-
-Every call to `drain` is its own run: it has its own snapshot, cursor and cancellation signal. The model gives each run one ID, so no two drains in the state share an ID.
-
-```quint
-pure def alwaysDrainIdsUnique(s: PreHandlers): bool = s.drains.every(d => s.drains.select(other => other.id == d.id).length() == 1)
-```
-
-### A drain that is about to run or is awaiting a handler has a handler at its cursor
-
-The drain loop only checks cancellation and awaits a handler while its snapshot has a handler left. An empty snapshot ends the drain at once, and a handler without a result lets the loop go on only if another handler follows.
-
-```quint
-pure def alwaysActiveDrainHasHandler(s: PreHandlers): bool = s.drains.every(d => (d.phase == BeforeHandler or d.phase == WaitingHandler) implies d.cursor < d.snapshot.length())
 ```

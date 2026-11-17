@@ -4,6 +4,10 @@ This composes [connector selection](./messaging.md) across one shared registry a
 
 ## Story: Retain captured transports during registry replacement
 
+> As a host, I want each send, hook and post call to keep the callback it
+> selected while I replace account registrations, so that a replacement
+> never redirects a call already in flight.
+
 As a host I can dispatch multiple send, hook and post calls while replacing account registrations. Each call retains its own selected callback through voice preparation, deferred invocation and transport settlement.
 
 ### Shared descriptors expose distinct capabilities to independent calls

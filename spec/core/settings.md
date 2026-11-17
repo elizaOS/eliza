@@ -1,8 +1,7 @@
 # Runtime settings
 
-The baseline is `packages/core/src/runtime.ts` methods `getSetting` and
-`setSetting`, and `packages/core/src/settings.ts`, at commit
-`72fed7e4069ecd35d61d886ab6eec5c02c137517`. Each `SettingLayers` represents
+The sources are `runtime.ts` (`getSetting`, `setSetting`) and
+`settings.ts`. Each `SettingLayers` represents
 one key of one runtime. The registry composes every runtime and key with
 shared-container identity retained across key creation.
 Secret encryption and envelope authentication are specified in
@@ -10,9 +9,10 @@ Secret encryption and envelope authentication are specified in
 
 ## Story: Resolve the same setting in every host
 
-As a host author, I configure each agent independently and retain the
-existing precedence of character secrets, direct settings, extra settings,
-nested secrets, character environment, and constructor settings.
+> As a host author, I want each agent configured independently with the
+> existing precedence of character secrets, direct settings, extra
+> settings, nested secrets, character environment and constructor
+> settings, so that every host resolves the same value.
 
 ### Resolution preserves precedence and valid false zero and empty values
 
@@ -26,11 +26,9 @@ type Value = Missing | Text({ text: str }) | BooleanValue({ enabled: bool }) | N
 type SettingLayers = { secret: Value, direct: Value, extra: Value, nested: Value, nestedAliasesSecret: bool, environment: Value, variables: Value, constructorValue: Value }
 pure val emptyLayers: SettingLayers = { secret: Missing, direct: Missing, extra: Missing, nested: Missing, nestedAliasesSecret: false, environment: Missing, variables: Missing, constructorValue: Missing }
 pure val valueValues = Set(Missing, Text({ text: "" }), Text({ text: "true" }), Text({ text: "credential" }), BooleanValue({ enabled: false }), NumericValue({ number: 0 }))
-pure val preferredValues = valueValues
 pure val fallbackValues = valueValues
 pure val layersValues = Set(emptyLayers, { ...emptyLayers, secret: Text({ text: "credential" }), direct: BooleanValue({ enabled: false }) }, { ...emptyLayers, direct: NumericValue({ number: 0 }), constructorValue: Text({ text: "fallback" }) })
 pure def isMissing(value: Value): bool = match value { | Missing => true | _ => false }
-pure def sameValue(left: Value, right: Value): bool = left == right
 pure def firstValue(preferred: Value, fallback: Value): Value = if (isMissing(preferred)) fallback else preferred
 pure def resolved(layers: SettingLayers): Value =
   firstValue(layers.secret, firstValue(layers.direct, firstValue(layers.extra, firstValue(layers.nested, firstValue(layers.environment, firstValue(layers.variables, layers.constructorValue))))))
@@ -38,11 +36,11 @@ pure def normalizePlaintext(value: Value): Value = match value {
   | Text(v) => if (v.text == "true") BooleanValue({ enabled: true }) else if (v.text == "false") BooleanValue({ enabled: false }) else Text({ text: v.text })
   | _ => value
 }
-pure def lawSecretWins(layers: SettingLayers, text: str): bool = sameValue(resolved({ ...layers, secret: Text({ text: text }) }), Text({ text: text }))
-pure def lawFalseIsPresent(fallback: Value): bool = sameValue(firstValue(BooleanValue({ enabled: false }), fallback), BooleanValue({ enabled: false }))
-pure def lawZeroIsPresent(fallback: Value): bool = sameValue(firstValue(NumericValue({ number: 0 }), fallback), NumericValue({ number: 0 }))
-pure def lawEmptyStringIsPresent(fallback: Value): bool = sameValue(firstValue(Text({ text: "" }), fallback), Text({ text: "" }))
-pure def lawBooleanStringsNormalize(settingEnabled: bool): bool = sameValue(normalizePlaintext(Text({ text: if (settingEnabled) "true" else "false" })), BooleanValue({ enabled: settingEnabled }))
+pure def lawSecretWins(layers: SettingLayers, text: str): bool = resolved({ ...layers, secret: Text({ text: text }) }) == Text({ text: text })
+pure def lawFalseIsPresent(fallback: Value): bool = firstValue(BooleanValue({ enabled: false }), fallback) == BooleanValue({ enabled: false })
+pure def lawZeroIsPresent(fallback: Value): bool = firstValue(NumericValue({ number: 0 }), fallback) == NumericValue({ number: 0 })
+pure def lawEmptyStringIsPresent(fallback: Value): bool = firstValue(Text({ text: "" }), fallback) == Text({ text: "" })
+pure def lawBooleanStringsNormalize(settingEnabled: bool): bool = normalizePlaintext(Text({ text: if (settingEnabled) "true" else "false" })) == BooleanValue({ enabled: settingEnabled })
 ```
 
 ### Setting and clearing align live secret and constructor slots
@@ -68,13 +66,15 @@ pure def linkedSecretContainers(layers: SettingLayers): SettingLayers = { ...lay
 pure def lawSecretClearRemovesRevokedSnapshots(layers: SettingLayers): bool =
   isMissing(updated(layers, Missing, true).secret) and isMissing(updated(layers, Missing, true).nested) and isMissing(updated(layers, Missing, true).constructorValue)
 pure def lawOrdinaryUpdateKeepsSecretOwnership(layers: SettingLayers, text: str): bool =
-  not(isMissing(layers.secret)) implies sameValue(updated(layers, Text({ text: text }), false).secret, Text({ text: text }))
+  not(isMissing(layers.secret)) implies updated(layers, Text({ text: text }), false).secret == Text({ text: text })
 ```
 
 ## Story: Isolate settings between agents and keys
 
-As an operator, I update any key of any runtime while retaining every
-other runtime and key. A runtime whose secret containers share identity
+> As an operator, I want to update any key of any runtime, so that changing
+> one agent's setting never changes another runtime's or another key's.
+
+A runtime whose secret containers share identity
 keeps that identity when a previously absent key is created.
 
 ### The registry owns arbitrary runtime and key pairs

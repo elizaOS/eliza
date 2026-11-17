@@ -1,0 +1,8 @@
+{
+  "name": "@elizaos/plugin-personal-assistant",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal assistance: reminders, time zones, follow-ups, check-ins, goals, todos and routines.",
+  "license": "MIT"
+}

@@ -1345,7 +1345,7 @@
         ],
         "conformance": "packages/core/quint/check-model-provider-failover.mjs",
         "bounds": {
-          "domain": "One useModel dispatch over three registrations in dispatch order (provider alpha at priority 30 and 20, provider beta at 10) for TEXT_SMALL or TEXT_TO_SPEECH. Each registration answers or fails with one of eight errors: a refused connection on the AI SDK error's cause, a retry envelope whose lastError carries Bun's ConnectionRefused on its cause, an HTTP 400, a funding authority denial, a processing-policy denial or an AbortError whose cause is a refused connection, a caller abort followed by a refused connection, or an exhausted provider retry budget.",
+          "domain": "One useModel dispatch over three registrations in dispatch order (provider p1 at priority 30 and 20, provider p2 at 10) for TEXT_SMALL or TEXT_TO_SPEECH. Each registration answers or fails with one of eight errors: a refused connection on the AI SDK error's cause, a retry envelope whose lastError carries Bun's ConnectionRefused on its cause, an HTTP 400, a funding authority denial, a processing-policy denial or an AbortError whose cause is a refused connection, a caller abort followed by a refused connection, or an exhausted provider retry budget.",
           "limitations": "The implementation check replays all 90 reachable dispatches through AgentRuntime.useModel on a real SQLite runtime with the production classifier and dispatch loop; the handlers throw the modeled error shapes instead of calling a provider. Retries inside one provider (the SDK's own retries and generateTextWithTransientRetry) are bounded by the plugin-openai wire test, not by this model. HTTP 5xx and 429 statuses, message heuristics, local-inference availability, a pinned provider, streaming output already started, preparation rejections, deeper or cyclic error graphs, and cross-model-type fallback chains are outside this model. Production funding and cancellation checks walk the full cycle-safe error graph. Transport-code lookup remains limited to 12 nodes."
         },
         "cases": [
@@ -1614,8 +1614,8 @@
     {
       "legacyFile": "packages/core/quint/ProviderExecution.qnt",
       "specFiles": [
-        "spec/core/providers.md",
-        "spec/core/providerExecutions.md"
+        "spec/core/providers/work.md",
+        "spec/core/providers/index.md"
       ],
       "properties": [
         {
@@ -1626,7 +1626,7 @@
           "status": "partial-terminal-projection",
           "category": "terminal-state-predicate",
           "targetDefinitions": [
-            "providers.providersTerminal"
+            "providers/work.providersTerminal"
           ],
           "reason": "Concrete target predicates listed. They describe quiescence of retained work and identities, while legacy Finished additionally records finite scenario actors as executed. The actor-history refinement is not encoded by quiescence alone and remains unproved."
         },
@@ -1638,9 +1638,9 @@
           "status": "candidate-correspondence-unproved",
           "category": "enabledness-invariant",
           "targetDefinitions": [
-            "providers.alwaysProviderDeadlockFree",
-            "providers.providersTerminal",
-            "providers.providersProgressEnabled"
+            "providers/work.alwaysProviderDeadlockFree",
+            "providers/work.providersTerminal",
+            "providers/work.providersProgressEnabled"
           ],
           "reason": "The target explicitly states terminal-or-enabled-progress using actual guard disjunctions, corresponding to the legacy terminal stutter branch. The listed terminal abstraction differs from actor PC maps; refinement of those predicates and enabled branches is unproved. This is an available-state safety invariant, not a claim that fair progress was proved."
         },
@@ -1652,11 +1652,11 @@
           "status": "partial-fairness-correspondence",
           "category": "fairness-assumption",
           "targetDefinitions": [
-            "providers.fair_settleNextWork",
-            "providers.fair_cleanNextWork",
-            "providers.fair_runNextCallback",
-            "providerExecutions.fair_runNextProviderCallback",
-            "providerExecutions.fair_runNextProviderCleanup"
+            "providers/work.fair_settleNextWork",
+            "providers/work.fair_cleanNextWork",
+            "providers/work.fair_runNextCallback",
+            "providers/index.fair_runNextProviderCallback",
+            "providers/index.fair_runNextProviderCleanup"
           ],
           "reason": "Eligible callback consumption selects an actual retained attachment independent of sampled identities. Attachments append at the tail, and multiple key domains rotate once an eligible callback runs. Identity-specific host callbacks remain permitted. Lifecycle stop is a host operation; holder progress after it is conditional on fair work settlement and cleanup. The frontend expresses fairness over event kinds. Unbounded equivalence to legacy parameterized fairness remains unproved. Settled work enqueues its captured cleanup identity, which the fair cleanup event consumes independently of later work and callback emplacements."
         },
@@ -1668,7 +1668,7 @@
           "status": "generalized-domain-specified",
           "category": "domain-invariant",
           "targetDefinitions": [
-            "spec/core/providers.md: named record and variant types, domain invariants, generated event/state decoding"
+            "spec/core/providers/work.md: named record and variant types, domain invariants, generated event/state decoding"
           ],
           "reason": "Finite legacy actor/count universes are verification fixtures; new public state uses extensible identities and configured capacities. No refinement theorem is claimed."
         },
@@ -1680,7 +1680,7 @@
           "status": "candidate-correspondence-unproved",
           "category": "safety-invariant",
           "targetDefinitions": [
-            "providers.waiters derives from ProviderState.callers"
+            "providers/work.waiters derives from ProviderState.callers"
           ],
           "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
         },
@@ -1692,7 +1692,7 @@
           "status": "candidate-correspondence-unproved",
           "category": "safety-invariant",
           "targetDefinitions": [
-            "providers.alwaysWaiterAbortHasNoCallers"
+            "providers/work.alwaysWaiterAbortHasNoCallers"
           ],
           "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
         },
@@ -1704,7 +1704,7 @@
           "status": "candidate-correspondence-unproved",
           "category": "safety-invariant",
           "targetDefinitions": [
-            "providers.alwaysUnwantedWorkAborted"
+            "providers/work.alwaysUnwantedWorkAborted"
           ],
           "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
         },
@@ -1716,7 +1716,7 @@
           "status": "candidate-correspondence-unproved",
           "category": "safety-invariant",
           "targetDefinitions": [
-            "providers.alwaysKeyedWorkCanBeJoined"
+            "providers/work.alwaysKeyedWorkCanBeJoined"
           ],
           "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
         },
@@ -1728,7 +1728,7 @@
           "status": "candidate-correspondence-unproved",
           "category": "safety-invariant",
           "targetDefinitions": [
-            "providers.alwaysStopReachesEveryExecution"
+            "providers/work.alwaysStopReachesEveryExecution"
           ],
           "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
         },
@@ -1740,7 +1740,7 @@
           "status": "candidate-correspondence-unproved",
           "category": "safety-invariant",
           "targetDefinitions": [
-            "providers.alwaysKeyedWorkCanBeJoined"
+            "providers/work.alwaysKeyedWorkCanBeJoined"
           ],
           "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
         },
@@ -1752,7 +1752,7 @@
           "status": "candidate-correspondence-unproved",
           "category": "safety-invariant",
           "targetDefinitions": [
-            "providers.alwaysExecutionIdentitiesUnique + alwaysCleanedWorkIsInactive"
+            "providers/work.alwaysExecutionIdentitiesUnique + alwaysCleanedWorkIsInactive"
           ],
           "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
         },
@@ -1764,9 +1764,9 @@
           "status": "candidate-correspondence-unproved",
           "category": "liveness",
           "targetDefinitions": [
-            "providers.leadsToAbortedCallersLeave",
-            "providers.runNextCallback",
-            "providerExecutions.leadsToReadyDomainCallersLeave"
+            "providers/work.leadsToAbortedCallersLeave",
+            "providers/work.runNextCallback",
+            "providers/index.leadsToReadyDomainCallersLeave"
           ],
           "reason": "Quantifies actual caller and execution identities captured before settlement. Older eligible attachments cannot be displaced by new work in the fair callback witness. The multi-key progress premise begins at shared work settlement or when the caller's cancellation callback is eligible. Legacy-site refinement and unbounded liveness proof remain outstanding."
         },
@@ -1778,9 +1778,9 @@
           "status": "candidate-correspondence-unproved",
           "category": "step-safety",
           "targetDefinitions": [
-            "providers.leadsToStoppedCallersLeave",
-            "providers.runNextCallback",
-            "providerExecutions.leadsToReadyDomainCallersLeave"
+            "providers/work.leadsToStoppedCallersLeave",
+            "providers/work.runNextCallback",
+            "providers/index.leadsToReadyDomainCallersLeave"
           ],
           "reason": "Quantifies actual caller and execution identities captured before settlement. Older eligible attachments cannot be displaced by new work in the fair callback witness. The multi-key progress premise begins at shared work settlement or when the caller's cancellation callback is eligible. Legacy-site refinement and unbounded liveness proof remain outstanding."
         },
@@ -1792,9 +1792,9 @@
           "status": "candidate-correspondence-unproved",
           "category": "liveness",
           "targetDefinitions": [
-            "providers.leadsToSettledCallersLeave",
-            "providers.runNextCallback",
-            "providerExecutions.leadsToReadyDomainCallersLeave"
+            "providers/work.leadsToSettledCallersLeave",
+            "providers/work.runNextCallback",
+            "providers/index.leadsToReadyDomainCallersLeave"
           ],
           "reason": "Quantifies actual caller and execution identities captured before settlement. Older eligible attachments cannot be displaced by new work in the fair callback witness. The multi-key progress premise begins at shared work settlement or when the caller's cancellation callback is eligible. Legacy-site refinement and unbounded liveness proof remain outstanding."
         }
@@ -2118,7 +2118,7 @@
           "status": "candidate-correspondence-unproved",
           "category": "safety-invariant",
           "targetDefinitions": [
-            "concurrency.Lease.writes + alwaysWritesRetainLease"
+            "concurrency.Lease.writes + alwaysLeaseWriteCountsNonnegative"
           ],
           "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
         },
@@ -2885,7 +2885,7 @@
       "specFiles": [
         "spec/core/services.md",
         "spec/core/plugins.md",
-        "spec/core/serviceRegistry.md",
+        "spec/core/serviceInstances.md",
         "spec/core/pluginServices.md",
         "spec/core/serviceInstances.md",
         "spec/core/eagerServices.md"
@@ -2962,7 +2962,7 @@
           "targetDefinitions": [
             "spec/core/services.md: named record and variant types, domain invariants, generated event/state decoding",
             "spec/core/plugins.md: named record and variant types, domain invariants, generated event/state decoding",
-            "spec/core/serviceRegistry.md: named record and variant types, domain invariants, generated event/state decoding"
+            "spec/core/serviceInstances.md: named record and variant types, domain invariants, generated event/state decoding"
           ],
           "reason": "Finite legacy actor/count universes are verification fixtures; new public state uses extensible identities and configured capacities. No refinement theorem is claimed."
         },
@@ -3220,7 +3220,7 @@
         "spec/core/plugins.md",
         "spec/core/services.md",
         "spec/core/messaging.md",
-        "spec/core/pluginRegistry.md",
+        "spec/core/pluginServices.md",
         "spec/core/registries.md",
         "spec/core/pluginServices.md"
       ],
@@ -3307,7 +3307,7 @@
             "spec/core/plugins.md: named record and variant types, domain invariants, generated event/state decoding",
             "spec/core/services.md: named record and variant types, domain invariants, generated event/state decoding",
             "spec/core/messaging.md: named record and variant types, domain invariants, generated event/state decoding",
-            "spec/core/pluginRegistry.md: named record and variant types, domain invariants, generated event/state decoding",
+            "spec/core/pluginServices.md: named record and variant types, domain invariants, generated event/state decoding",
             "spec/core/registries.md: named record and variant types, domain invariants, generated event/state decoding"
           ],
           "reason": "Finite legacy actor/count universes are verification fixtures; new public state uses extensible identities and configured capacities. No refinement theorem is claimed."
@@ -3333,7 +3333,7 @@
           "status": "candidate-correspondence-unproved",
           "category": "safety-invariant",
           "targetDefinitions": [
-            "plugins.alwaysOneDispose + pluginRegistry.alwaysOneActiveEpochPerName"
+            "plugins.alwaysOneDispose + pluginServices.alwaysOneActiveEpochPerName"
           ],
           "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
         },
@@ -3418,7 +3418,7 @@
           "status": "candidate-correspondence-unproved",
           "category": "safety-invariant",
           "targetDefinitions": [
-            "pluginRegistry.alwaysEpochOutcomeHonest + plugins.alwaysRegistrationOutcomeAgrees"
+            "pluginServices.alwaysEpochOutcomeHonest + plugins.alwaysRegistrationOutcomeAgrees"
           ],
           "reason": "Concrete state/transition definition listed. Preservation under generated transitions and semantic refinement against the legacy expression remain separate obligations."
         },

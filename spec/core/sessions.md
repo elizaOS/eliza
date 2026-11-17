@@ -1,12 +1,18 @@
 # Durable interaction sessions
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/messaging/interaction-sessions.ts` and `quint/InteractionSession.qnt`. A session authorizes one external invocation under a claim identity, response digest, owner binding, lease and absolute expiry. Claim, commit, invocation, completion and reconciliation are distinct transitions. A committed session remains recoverable after process loss and never returns to claimable pending state.
+The source is `messaging/interaction-sessions.ts`. A session authorizes one external invocation under a claim identity, response digest, owner binding, lease and absolute expiry. Claim, commit, invocation, completion and reconciliation are distinct transitions. A committed session remains recoverable after process loss and never returns to claimable pending state.
 
 ## Story: Retry an interaction without repeating its external effect
 
-As a caller, I can retry a response with the same digest and obtain its existing status. A different response digest cannot reuse the committed authority. An expired uncommitted lease may be reacquired with a fresh claim token. Only the current claim can commit before both deadlines. The session row is retained while a committed outcome is ambiguous.
+> As a caller, I want to retry a response and get its existing status, so
+> that a retry never repeats the external effect it authorized.
+
+A retry with the same digest returns the existing status. A different response digest cannot reuse the committed authority. An expired uncommitted lease may be reacquired with a fresh claim token. Only the current claim can commit before both deadlines. The session row is retained while a committed outcome is ambiguous.
 
 ### Creating a session binds its owner and expiration
+
+A session is created once, for a complete owner of agent, actor and
+connector, with an expiry later than now. The clock only moves forward.
 
 ```quint
 type SessionOwner = { agentId: str, actorId: str, connector: str }

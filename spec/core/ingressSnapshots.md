@@ -1,12 +1,16 @@
 # Host-bound ingress persistence snapshots
 
-Source `runtime/message-content-storage.ts` uses a WeakMap keyed by the routed message object. A host binding records a structured clone of the persisted Memory. Metadata supplied by a caller does not create a binding. Body and attachment redaction, segmented content projection and exact stored-segment validation remain the storage boundary described below.
+Each routed message object is bound, by identity, to a structured clone of
+the Memory its host persisted. Metadata supplied by a caller does not
+create a binding. Body and attachment redaction, segmented content
+projection and exact stored-segment validation remain the storage boundary
+described below.
 
 ## Story: Preserve a durable original through prompt-only augmentation
 
-As a host, I want routing or prompt augmentation to retain the exact persisted original while rejecting an identity mismatch.
+> As a host, I want routing or prompt augmentation to retain the exact persisted original while rejecting an identity mismatch.
 
-### Binding requires matching message agent room and entity identity
+### Binding requires matching message, agent, room and entity identity
 
 A persisted snapshot is keyed by object identity. Binding requires a present message id and exact message, agent, room and entity ids. A later change to any of these identities makes snapshot retrieval fail with `MESSAGE_CONTENT_PUBLICATION_CONFLICT`. Mutating prompt-only content leaves the cloned original unchanged. Inheritance copies a trusted binding only when the source object has one and the augmented object's identity still matches it.
 
@@ -17,10 +21,9 @@ type SnapshotRead = NoSnapshot | SnapshotFound({ identity: MessageIdentity, cont
 type IngressSnapshots = { objects: List[MessageObject], bindings: List[MessageObject], lastRead: SnapshotRead }
 pure val emptyIdentity: MessageIdentity = { messageId: "", agentId: "", roomId: "", entityId: "" }
 pure val emptyObject: MessageObject = { reference: "", identity: emptyIdentity, content: "" }
-pure val emptyBinding: MessageObject = { reference: "", identity: emptyIdentity, content: "" }
 pure val initial: IngressSnapshots = { objects: List(), bindings: List(), lastRead: NoSnapshot }
 pure def objectAt(s: IngressSnapshots, reference: str): MessageObject = s.objects.select(entry => entry.reference == reference).nthOr(0, emptyObject)
-pure def bindingAt(s: IngressSnapshots, reference: str): MessageObject = s.bindings.select(entry => entry.reference == reference).nthOr(0, emptyBinding)
+pure def bindingAt(s: IngressSnapshots, reference: str): MessageObject = s.bindings.select(entry => entry.reference == reference).nthOr(0, emptyObject)
 pure def installObject(s: IngressSnapshots, reference: str, identity: MessageIdentity, content: str): IngressSnapshots = { ...s, objects: if (s.objects.some(entry => entry.reference == reference)) s.objects.listMap(entry => if (entry.reference == reference) { reference: reference, identity: identity, content: content } else entry) else s.objects.append({ reference: reference, identity: identity, content: content }) }
 pure def canBindSnapshot(s: IngressSnapshots, reference: str, identity: MessageIdentity): bool = reference != "" and s.objects.some(entry => entry.reference == reference) and identity.messageId != "" and objectAt(s, reference).identity == identity
 pure def bindSnapshot(s: IngressSnapshots, reference: str, identity: MessageIdentity, content: str): IngressSnapshots = { ...s, bindings: s.bindings.select(entry => entry.reference != reference).append({ reference: reference, identity: identity, content: content }) }

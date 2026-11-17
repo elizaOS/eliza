@@ -6,8 +6,9 @@ actual serialization before the first transport attempt.
 
 ## Story: Prepare a request without silently losing model input
 
-As a provider I want an invalid projection or wire serializer to fail
-before token counting, allowance reservation or transport.
+> As a provider, I want an invalid projection or wire serializer to fail
+> before token counting, allowance reservation or transport, so that model
+> input is never silently lost.
 
 ### Exactly one provider serializer determines the request body
 

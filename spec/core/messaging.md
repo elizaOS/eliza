@@ -1,10 +1,15 @@
 # Connector dispatch
 
-Send transports and connector metadata retain separate ownership. Sources include [connector-registry.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/connector-registry.ts), [connector-registration.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/connector-registration.ts) and [ConnectorDispatch.qnt](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/quint/ConnectorDispatch.qnt).
+Send transports and connector metadata retain separate ownership.
 
 ## Story: Dispatch through a selected connector account
 
-As a caller I use the account-specific capability when available and receive explicit missing or unsupported outcomes.
+> As a caller, I want a message sent through the account-specific
+> capability when there is one, so I get an explicit missing or
+> unsupported answer otherwise.
+
+As a caller I use the account-specific capability when available and receive
+explicit missing or unsupported outcomes.
 
 ### Send routing and hook routing have distinct fallback rules
 
@@ -77,7 +82,7 @@ pure def leadsToConnectorSettled(s: ConnectorState, later: ConnectorState): bool
 
 ### Invocation requires a registered callback identity
 
-Discovered by the proof: an invented Handler phase could reach settlement
+An invented Handler phase could reach settlement
 without having invoked a callback. A transport holds a positive callback
 identity. A descriptor can use zero to record an unsupported hook. A
 dispatch waiting for voice processing or deferred invocation has already

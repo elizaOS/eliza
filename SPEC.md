@@ -10,8 +10,7 @@ A path under `vibestack/` names a file of the
 installed package does not ship. There, "the order example" is
 `vibestack/examples/order/spec/index.md` and "the tracker example" is
 `vibestack/examples/dashboard/spec/tracker.md`. The root `spec/index.md` links to
-`spec/app/index.md`, the hello world in `apps/app` that uses one of each thing
-Vibestack offers (`apps/app/README.md`), to be replaced by your application.
+the spec of each package under `packages/` that owns one.
 
 ## Stages of `pnpm check`
 
@@ -205,18 +204,18 @@ it does for the root's own `src/` and `test/`:
 
 - **`gen/`.** The modules of the owner's specs, and of every spec they
   import, are also written to `<owner>/gen/` under the names they have in the
-  root's: `spec/app/index.md` is `apps/app/gen/app.ts`, with
-  `app.effect.vibe` and `app.conformance.ts` (its driver's types); `spec/app/cart.md` is
-  `app__cart.ts`; a library `spec/shared/money.md` it imports is
+  root's: `spec/agent/index.md` is `packages/agent/gen/agent.ts`, with
+  `agent.effect.vibe` and `agent.conformance.ts` (its driver's types); `spec/agent/cart.md` is
+  `agent__cart.ts`; a library `spec/shared/money.md` it imports is
   `shared__money.ts`. A package imports only from its own `gen/`. `pnpm gen`
   and `pnpm install` write it too.
 - **Stages.** `types`, `tests` and `traces` run in the owner's directory, on
   its `tsconfig.json`, `test` script, `test/drivers/`, `test/traces/` and
   `driver:` scripts;
   its `//@` files under `src/` are proved and their contracts reviewed. Each
-  result names the package: `apps/app: pass`.
+  result names the package: `packages/agent: pass`.
 - **Citations** in an owner's code are written from the root, as everywhere:
-  `// spec/app/index.md, "A rule"`.
+  `// spec/agent/index.md, "A rule"`.
 
 An owner has no `check`, `gen` or `accept` script: the root's are its own.
 
@@ -485,10 +484,10 @@ spec, in the package whose code it is, with the events the simulator found.
 | `driver:<name>` script | a program, in any language, that answers each `{}` (reset) or `{event, by?}` line with one `{state, out?}` line | on the simulated traces |
 
 `<name>` is the module's name in the root's `gen/`, and the paths are the
-package's own: an owner of `spec/app/cart.md` writes
-`test/drivers/app__cart.ts` on `gen/app__cart.conformance.ts`, records
-`test/traces/app__cart.jsonl` or names its script `driver:app__cart`, all in
-`apps/app`. `vibestack/examples/order/test/drivers/index.ts` is a worked
+package's own: an owner of `spec/agent/cart.md` writes
+`test/drivers/agent__cart.ts` on `gen/agent__cart.conformance.ts`, records
+`test/traces/agent__cart.jsonl` or names its script `driver:agent__cart`, all in
+the owner's directory. `vibestack/examples/order/test/drivers/index.ts` is a worked
 driver; `effectDriver` from `vibestack/testing` builds one from a `Layer`.
 
 A `Driver` has `reset`, `dispatch` (sends an event through the
@@ -541,7 +540,7 @@ under `src/`.
   error), and export a property for each rule the page must keep, citing
   it as a test does. The types come from `@antithesishq/bombadil`, which
   `spec init` adds. Without the file, the defaults are checked.
-  `apps/app/test/bombadil.ts` is a worked one.
+  `vibestack/examples/fullstack/test/bombadil.ts` is a worked one.
 - **A broken property is saved.** The run is kept in
   `test/__traces__/bombadil`, which is not committed;
   `pnpm exec bombadil browser inspect test/__traces__/bombadil` shows each

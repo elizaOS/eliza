@@ -4,6 +4,10 @@ Streaming buffers are JavaScript strings represented here by their complete UTF-
 
 ## Story: Preserve every buffered unit until it is consumed or explicitly withheld
 
+> As a stream parser, I want exact slicing, search, trimming, surrogate
+> handling and JSON boundary scanning over UTF-16 units, so that no
+> character is lost, split or invented between chunks.
+
 ### Slices, prefix search and whitespace stripping preserve exact unit order
 
 The whitespace predicate is the ECMAScript whitespace and line-terminator set used by the source's `\s`. Search selects the first exact occurrence. A slice consumes only the requested half-open interval.

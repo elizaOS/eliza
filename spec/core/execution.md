@@ -1,16 +1,26 @@
 # Action result settlement
 
-Callbacks are buffered until the action result settles. This model preserves emission order, transport completion, canonical receipt binding and failure separation. The delivered counter counts callbacks passed through the delivery chain; successfulDeliveries counts callbacks whose transport completed successfully. Sources include [action-handler-settlement.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/action-handler-settlement.ts), [effects.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/types/effects.ts) and [ActionSettlement.qnt](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/quint/ActionSettlement.qnt).
+Callbacks are buffered until the action result settles. This model
+preserves emission order, transport completion, canonical receipt binding
+and failure separation. The delivered counter counts callbacks passed
+through the delivery chain; successfulDeliveries counts callbacks whose
+transport completed successfully. Which planned calls are validated and
+invoked is [action planning](./actionPlanning.md); this spec begins once a
+handler is admitted.
 
 ## Story: Settle an action before publishing its callback
 
-As a caller I observe only a settled authorized result, with callbacks in emission order.
+> As a caller, I want only settled, authorized action results, so I never
+> act on an unauthorized or half-finished action.
+
+As a caller I observe only a settled authorized result, with callbacks in
+emission order.
 
 ### Callbacks wait for a valid admitted result
 
 A denied action never invokes its handler. Invalid, thrown and reply-failure results suppress callback delivery.
 
-Discovered by the proof: a settled or returned settlement already has a valid
+A settled or returned settlement already has a valid
 handler result. A transport in flight owns one delivered callback that has yet
 to count toward successful deliveries.
 

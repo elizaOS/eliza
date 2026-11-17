@@ -1,10 +1,18 @@
 # Local inference priority admission
 
-One process-wide gate serializes local inference. Interactive requests precede queued background requests without preempting an active holder. Source [inference-priority-gate.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/utils/inference-priority-gate.ts).
+One process-wide gate serializes local inference. Interactive requests
+precede queued background requests without preempting an active holder.
 
 ## Story: Prioritize interactive inference without changing requests
 
-As a caller I acquire the native lane in FIFO priority order with the full request bytes and token limit. The admission boundary retains label, holder acquisition time, and the identity of the waiter that owns each native timer and abort listener. The constructor's clock is injectable. Its default wall clock can move backward.
+> As a caller, I want the native inference lane granted in priority order,
+> so urgent requests run first and none is lost on abort or timeout.
+
+As a caller I acquire the native lane in FIFO priority order with the full
+request bytes and token limit. The admission boundary retains label, holder
+acquisition time, and the identity of the waiter that owns each native timer
+and abort listener. The constructor's clock is injectable. Its default wall
+clock can move backward.
 
 ### Native inference starts only for lane owners
 
@@ -21,19 +29,14 @@ type InferenceGate = {now: int, holder: int, requests: List[InferenceRequest]}
 pure val initial: InferenceGate = {now: 0, holder: 0, requests: List()}
 pure val requestIdValues = Set(1, 2, 3, 4)
 pure val observedTimeValues = Set(-2, 0, 1, 5, 20)
-pure val absentTokenLimit: TokenLimit = NoTokenLimit
-pure val noTimeoutOrigin: TimeoutOrigin = NoTimeout
-pure val abortedAdmission: InferencePhase = InferenceAborted
-pure val immediateAdmission: InferencePhase = AcquiredInference
-pure val queuedAdmission: InferencePhase = QueuedInference
 pure val inputValues = Set(
   {priority: Interactive, prompt: "complete interactive", maxTokens: TokenLimitValue({limit: 4096}), label: "chat", waitMs: 1, hasDeadline: true, hasSignal: true, signalAborted: false},
-  {priority: Interactive, prompt: "already cancelled", maxTokens: absentTokenLimit, label: "chat", waitMs: 0, hasDeadline: false, hasSignal: true, signalAborted: true},
+  {priority: Interactive, prompt: "already cancelled", maxTokens: NoTokenLimit, label: "chat", waitMs: 0, hasDeadline: false, hasSignal: true, signalAborted: true},
   {priority: Background, prompt: "complete zero wait", maxTokens: TokenLimitValue({limit: 100}), label: "task", waitMs: 0, hasDeadline: true, hasSignal: false, signalAborted: false},
-  {priority: Background, prompt: "complete long wait", maxTokens: absentTokenLimit, label: "task-slow", waitMs: 5, hasDeadline: true, hasSignal: true, signalAborted: false},
+  {priority: Background, prompt: "complete long wait", maxTokens: NoTokenLimit, label: "task-slow", waitMs: 5, hasDeadline: true, hasSignal: true, signalAborted: false},
   {priority: Background, prompt: "complete unbounded wait", maxTokens: TokenLimitValue({limit: -1}), label: "task-unbounded", waitMs: -1, hasDeadline: false, hasSignal: false, signalAborted: false}
 )
-pure val absentRequest: InferenceRequest = {id: 0, priority: Background, phase: InferenceFailed, prompt: "", maxTokens: absentTokenLimit, label: "", enqueuedAt: 0, acquiredAt: 0, expiresAt: 0, timer: false, listener: false, hasSignal: false, signalAborted: false, timeout: NoTimeout, waitedMs: 0, holderAtTimeout: 0, holderLabel: ""}
+pure val absentRequest: InferenceRequest = {id: 0, priority: Background, phase: InferenceFailed, prompt: "", maxTokens: NoTokenLimit, label: "", enqueuedAt: 0, acquiredAt: 0, expiresAt: 0, timer: false, listener: false, hasSignal: false, signalAborted: false, timeout: NoTimeout, waitedMs: 0, holderAtTimeout: 0, holderLabel: ""}
 pure def inferenceRequest(s: InferenceGate, requestId: int): InferenceRequest = s.requests.select(r => r.id == requestId).nthOr(0, absentRequest)
 pure def isLaneHolder(r: InferenceRequest): bool = r.phase == AcquiredInference or r.phase == RunningInference
 pure def canRequestInference(s: InferenceGate, requestId: int, input: InferenceInput): bool = requestId > 0 and not(s.requests.some(r => r.id == requestId)) and (not(input.signalAborted) or input.hasSignal)
@@ -42,11 +45,11 @@ pure def requestInference(s: InferenceGate, requestId: int, input: InferenceInpu
   val waiting = not(input.signalAborted) and not(immediately)
   val boundedWait = if (input.waitMs < 0) 0 else input.waitMs
   val request: InferenceRequest = {
-    id: requestId, priority: input.priority, phase: if (input.signalAborted) abortedAdmission else if (immediately) immediateAdmission else queuedAdmission,
+    id: requestId, priority: input.priority, phase: if (input.signalAborted) InferenceAborted else if (immediately) AcquiredInference else QueuedInference,
     prompt: input.prompt, maxTokens: input.maxTokens, label: input.label,
     enqueuedAt: s.now, acquiredAt: if (immediately) s.now else 0, expiresAt: s.now + boundedWait,
     timer: waiting and input.priority == Background and input.hasDeadline, listener: waiting and input.hasSignal,
-    hasSignal: input.hasSignal, signalAborted: input.signalAborted, timeout: noTimeoutOrigin, waitedMs: 0, holderAtTimeout: 0, holderLabel: ""
+    hasSignal: input.hasSignal, signalAborted: input.signalAborted, timeout: NoTimeout, waitedMs: 0, holderAtTimeout: 0, holderLabel: ""
   }
   { ...s, holder: if (immediately) requestId else s.holder, requests: s.requests.append(request) }
 }
@@ -60,7 +63,7 @@ pure def sometimesInteractiveWaitsForBackground(s: InferenceGate): bool = s.requ
 
 ### Handoff prunes the examined background prefix only
 
-Completing a holder releases its lane and synchronously scans FIFO queues. A queued interactive request takes the lane before any background request is checked. With no interactive waiter, release rejects expired background entries until it grants the first eligible background entry or observes an empty queue. An expired entry behind the new holder remains queued and retains its own timer. The handoff diagnostic captures the released holder. The model projects a single clock observation per synchronous handoff. Source refinement still needs to account for distinct clock reads within one scan and reentry through an injected clock or logger.
+Completing a holder releases its lane and synchronously scans FIFO queues. A queued interactive request takes the lane before any background request is checked. With no interactive waiter, release rejects expired background entries until it grants the first eligible background entry or observes an empty queue. An expired entry behind the new holder remains queued and retains its own timer. The handoff diagnostic captures the released holder. A synchronous handoff reads the clock once and judges every entry it scans against that one reading; the injected clock and logger do not reenter the gate during a scan.
 
 ```quint
 type Handoff = {granted: int, expired: List[int]}

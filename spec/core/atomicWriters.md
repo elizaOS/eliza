@@ -4,11 +4,13 @@ This composes [atomic publication](./atomicPublication.md) for multiple writers 
 
 ## Story: Publish whole snapshots despite interleaved processes
 
-As a reader, I want the final file to contain a complete successfully renamed writer body while independent cleanup and crashes proceed.
+> As a reader, I want the final file to hold one writer's complete body,
+> so that interleaved writers, cleanups and crashes never leave a mixed
+> file.
 
 ### The latest successful rename owns the whole final snapshot
 
-A failed rename leaves the previous snapshot. Cleanup and crashes affect the addressed writer's temporary state and receipt. They cannot change another writer or undo a published rename. Publication can outlive an unknown caller receipt. Same-process asynchronous writers cannot create their temporary files until earlier callbacks settle, including rejection. The independent crash case follows the legacy model; whole-process recovery of a shared async queue is an external restart boundary.
+A failed rename leaves the previous snapshot. Cleanup and crashes affect the addressed writer's temporary state and receipt. They cannot change another writer or undo a published rename. Publication can outlive an unknown caller receipt. Same-process asynchronous writers cannot create their temporary files until earlier callbacks settle, including rejection. An independent crash affects only the crashed writer; whole-process recovery of a shared async queue is an external restart boundary.
 
 ```quint
 import atomicPublication as P from "./atomicPublication"

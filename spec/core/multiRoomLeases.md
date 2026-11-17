@@ -1,14 +1,21 @@
 # Multiple-room lease transactions
 
-[RoomHandlerQueue.withLeases](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/room-handler-queue.ts#L433-L484) acquires a deduplicated set of rooms, retains the acquired prefix on failure and releases it in reverse order. [Admission and lease release](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/room-handler-queue.ts#L269-L400) define rejection precedence and durable write settlement. [Legacy RoomHandlerQueue](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/quint/RoomHandlerQueue.qnt) checks ordering, cycle avoidance and caller completion.
+A multi-room lease acquires a deduplicated set of rooms, retains the
+acquired prefix on failure and releases it in reverse order. Admission and
+lease release define rejection precedence and durable write settlement.
 
 ## Story: Own a room set through the callback and every admitted write
 
-As a caller I acquire every requested room before entering my callback. If a later acquisition or the callback fails, my promise retains that failure and settles after the acquired leases release.
+> As a caller, I want every room I asked for held before my callback runs,
+> so a failure always releases what was acquired.
+
+As a caller I acquire every requested room before entering my callback. If a
+later acquisition or the callback fails, my promise retains that failure and
+settles after the acquired leases release.
 
 ### Each transaction captures the sorted deduplicated room set
 
-Positive room identities represent the ordering of source room strings by JavaScript code units. Batch identities denote unique invocation promises and, paired with a room, identify the only lease this invocation can hold for that room. The imported room queue owns the actual leases, FIFO tickets, write counts and admission limits. Batch position selects the next requested room. Discovered by the proof. A partially acquired batch retains exactly one room per completed acquisition. Its next room is in range until its callback can begin. Only unwind or completed phases retain a terminal result. Released room IDs remain in the original request so that failure and completion can be attributed to the exact operation.
+Positive room identities represent the ordering of source room strings by JavaScript code units. Batch identities denote unique invocation promises and, paired with a room, identify the only lease this invocation can hold for that room. The imported room queue owns the actual leases, FIFO tickets, write counts and admission limits. Batch position selects the next requested room. A partially acquired batch retains exactly one room per completed acquisition. Its next room is in range until its callback can begin. Only unwind or completed phases retain a terminal result. Released room IDs remain in the original request so that failure and completion can be attributed to the exact operation. Each captured room set stays in strictly ascending rank for the whole life of its batch.
 
 ```quint
 import concurrency as C from "./concurrency"
@@ -45,11 +52,12 @@ pure def canConfigure(s: MultiRoomLeases, capacity: int, maxPerRoom: int, maxRoo
 pure def configure(s: MultiRoomLeases, capacity: int, maxPerRoom: int, maxRooms: int): MultiRoomLeases = { ...s, queue: C::configureRooms(s.queue, capacity, maxPerRoom, maxRooms) }
 pure def canOpenBatch(s: MultiRoomLeases, caller: int, requestedRooms: List[int], ambient: int, explicitOwner: int): bool = s.queue.configured and caller > 0 and batchAt(s, caller).id == 0 and requestedRooms.every(r => r > 0) and (requestedRooms.length() == 0 or (ambientRooms(s, ambient).length() == 0 and explicitOwner == 0))
 pure def openBatch(s: MultiRoomLeases, caller: int, requestedRooms: List[int], ambient: int, explicitOwner: int): MultiRoomLeases = { ...s, calls: s.calls.append({id: caller, wanted: orderedRooms(requestedRooms), position: 0, phase: if (requestedRooms.length() == 0) BatchInvoking else BatchAcquiring, resultKind: BatchPending, errorRoom: 0, cause: 0, aborted: false, abortCause: 0}) }
+pure def alwaysRequestedRoomsAscending(s: MultiRoomLeases): bool = s.calls.every(c => roomRanksAscending(c.wanted))
 ```
 
 ### The next admission either obtains a FIFO ticket or enters unwind
 
-Closed admission takes precedence over a pre-aborted signal. Exhausting active rooms takes precedence over total and per-room capacity failure. The model uses occupied queue identities at the admission boundary; the separate queue-observer model exposes the empty-object interval around synchronous telemetry and pruning. Error cause denotes the original opaque failure identity. The first available FIFO slot is reserved synchronously, so a later signal cannot cancel it as a waiter.
+Closed admission takes precedence over a pre-aborted signal. Exhausting active rooms takes precedence over total and per-room capacity failure. The model uses occupied queue identities at the admission boundary; the separate queue-observer model exposes the empty-object interval around synchronous telemetry and pruning. Error cause denotes the original opaque failure identity. The first available FIFO slot is reserved synchronously, so a later signal cannot cancel it as a waiter. The room queue cancels only the caller of an opened batch.
 
 ```quint
 pure def roomDepth(s: MultiRoomLeases, room: int): int = C::roomOccupancy(s.queue, room)
@@ -87,6 +95,7 @@ pure def abortBatch(s: MultiRoomLeases, caller: int, cause: int): MultiRoomLease
 }
 pure def canCloseAdmission(s: MultiRoomLeases, cause: int): bool = C::canCloseRoomAdmission(s.queue) and cause > 0
 pure def closeAdmission(s: MultiRoomLeases, cause: int): MultiRoomLeases = { ...s, queue: C::closeRoomAdmission(s.queue), closeCause: cause }
+pure def alwaysCancelledCallersOpened(s: MultiRoomLeases): bool = s.queue.cancelled.forall(caller => s.calls.some(c => c.id == caller))
 ```
 
 ### A nested room request reuses the exact live subset or rejects widening
@@ -99,7 +108,7 @@ pure def resolveNested(s: MultiRoomLeases, requestedRooms: List[int], ambient: i
   val wanted = orderedRooms(requestedRooms)
   val live = ambientRooms(s, ambient)
   val reuseAmbient = live.length() > 0 and wanted.every(r => live.includes(r))
-  val reuseExplicit = live.length() == 0 and wanted == List(explicitRoom) and exposedBatch(s, explicitOwner) and C::canReuseLease(s.queue, explicitOwner, explicitRoom)
+  val reuseExplicit = live.length() == 0 and wanted == List(explicitRoom) and exposedBatch(s, explicitOwner) and C::leaseReusable(s.queue, explicitOwner, explicitRoom)
   { ...s, nested: s.nested.append({ambient: ambient, explicitOwner: explicitOwner, explicitRoom: explicitRoom, wanted: wanted, reused: if (reuseAmbient or reuseExplicit) wanted else List(), resultKind: if (reuseAmbient) ReusedAmbient else if (reuseExplicit) ReusedExplicit else RefusedWidening}) }
 }
 pure def alwaysNestedReuseExact(s: MultiRoomLeases): bool = s.nested.every(n => if (n.resultKind == RefusedWidening) n.reused.length() == 0 else n.reused == n.wanted)
@@ -132,7 +141,7 @@ pure def releaseBatchRoom(s: MultiRoomLeases, caller: int): MultiRoomLeases = {
 }
 pure def canFinishBatch(s: MultiRoomLeases, caller: int): bool = batchAt(s, caller).phase == BatchReleasing and heldRooms(s, caller).length() == 0 and not(s.queue.waiting.some(w => w.caller == caller))
 pure def finishBatch(s: MultiRoomLeases, caller: int): MultiRoomLeases = { ...s, calls: s.calls.listMap(c => if (c.id == caller) { ...c, phase: BatchDone } else c) }
-pure def alwaysQueueInvariant(s: MultiRoomLeases): bool = C::alwaysRoomMutualExclusion(s.queue) and C::alwaysQueueBounded(s.queue) and C::alwaysWaitersUnique(s.queue) and C::alwaysWritesRetainLease(s.queue) and C::alwaysCancelledWaitersRemoved(s.queue) and C::alwaysAcquisitionOrdered(s.queue) and C::alwaysNoLeakedTerminalOwnership(s.queue) and C::alwaysRoomQueueDeadlockFree(s.queue)
+pure def alwaysQueueInvariant(s: MultiRoomLeases): bool = C::alwaysRoomMutualExclusion(s.queue) and C::alwaysQueueBounded(s.queue) and C::alwaysWaitersUnique(s.queue) and C::alwaysLeaseWriteCountsNonnegative(s.queue) and C::alwaysCancelledWaitersRemoved(s.queue) and C::alwaysAcquisitionOrdered(s.queue) and C::alwaysNoLeakedTerminalOwnership(s.queue) and C::alwaysRoomQueueDeadlockFree(s.queue)
 pure def alwaysBatchIdentitiesUnique(s: MultiRoomLeases): bool = s.calls.every(c => c.id > 0 and s.calls.select(other => other.id == c.id).length() == 1)
 pure def alwaysBatchesHaveValidPosition(s: MultiRoomLeases): bool = s.calls.every(c => 0 <= c.position and c.position <= c.wanted.length() and (c.phase == BatchAcquiring or c.phase == BatchWaiting implies c.position < c.wanted.length()))
 pure def alwaysHeldPrefixMatchesRequests(s: MultiRoomLeases): bool = s.calls.every(c => c.phase == BatchAcquiring or c.phase == BatchWaiting implies heldRooms(s, c.id).length() == c.position and heldRooms(s, c.id).every(r => c.wanted.includes(r)))
@@ -155,7 +164,7 @@ pure def sometimesBodyFailureFullyUnwound(s: MultiRoomLeases): bool = s.calls.so
 
 ### Admitted batches progress under fair host settlement
 
-The FIFO queue reserves the next waiting room owner when the current lease releases. Fair settlement of callback bodies and admitted writer promises is an environment obligation. Scheduler witnesses select actual eligible calls and closing writes in retention order. Explicit host callbacks may still settle any eligible addressed invocation or writer. Each closing room's finite writer tail must drain. Batch identities remain in their terminal phase. Awaiting a higher rank than every held room rules out wait cycles across owners by strict ascent around the proposed cycle. Discovered by the proof. Batch acquisition never seals a child caller, and a cancelled caller already in the queue immediately enters unwind. Because successful grants always append a higher-ranked room, the last held room is the highest one throughout unwind.
+The FIFO queue reserves the next waiting room owner when the current lease releases. Fair settlement of callback bodies and admitted writer promises is an environment obligation. Scheduler witnesses select actual eligible calls and closing writes in retention order. Explicit host callbacks may still settle any eligible addressed invocation or writer. Each closing room's finite writer tail must drain. Batch identities remain in their terminal phase. Awaiting a higher rank than every held room rules out wait cycles across owners by strict ascent around the proposed cycle. Batch acquisition never seals a child caller, and a cancelled caller already in the queue immediately enters unwind. Because successful grants always append a higher-ranked room, the last held room is the highest one throughout unwind.
 
 Every cancelled queue caller still has its original retained batch. Cancellation
 cannot carry over to a fresh batch identity.

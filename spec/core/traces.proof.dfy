@@ -59,7 +59,6 @@ lemma TraceAppendKey(base: seq<Trace>, added: Trace)
 
 lemma recordTrace_ensures(s: TraceState, trace: Trace)
   ensures (inv(s) ==> canRecordTrace(s, trace) ==> alwaysTraceIdentitiesUnique(recordTrace(s, trace)))
-  ensures (inv(s) ==> canRecordTrace(s, trace) ==> alwaysPurgeCounterNonnegative(recordTrace(s, trace)))
   ensures (inv(s) ==> canRecordTrace(s, trace) ==> stepRecordCountsEveryAttempt(s, "recordTrace", recordTrace(s, trace)))
   ensures (inv(s) ==> canRecordTrace(s, trace) ==> stepEnrichmentStaysInOneRun(s, "recordTrace", recordTrace(s, trace)))
   ensures (inv(s) ==> canRecordTrace(s, trace) ==> stepConflictPreservesTraces(s, "recordTrace", recordTrace(s, trace)))
@@ -88,7 +87,6 @@ lemma recordTrace_ensures(s: TraceState, trace: Trace)
 
 lemma enrichTraces_ensures(s: TraceState, runId: string, id: string, signal: string)
   ensures (inv(s) ==> alwaysTraceIdentitiesUnique(enrichTraces(s, runId, id, signal)))
-  ensures (inv(s) ==> alwaysPurgeCounterNonnegative(enrichTraces(s, runId, id, signal)))
   ensures (inv(s) ==> stepRecordCountsEveryAttempt(s, "enrichTraces", enrichTraces(s, runId, id, signal)))
   ensures (inv(s) ==> stepEnrichmentStaysInOneRun(s, "enrichTraces", enrichTraces(s, runId, id, signal)))
   ensures (inv(s) ==> stepConflictPreservesTraces(s, "enrichTraces", enrichTraces(s, runId, id, signal)))
@@ -116,19 +114,8 @@ lemma enrichTraces_ensures(s: TraceState, runId: string, id: string, signal: str
   }
 }
 
-lemma lawRunViewKeepsOwners_ensures(s: TraceState, runId: string)
-  ensures (lawRunViewKeepsOwners(s, runId) == true)
-{
-  forall trace | trace in runTraces(s, runId)
-    ensures trace.runId == runId
-  {
-    ProofLib.FilterMember((trace: Trace) => (trace.runId == runId), s.traces, trace);
-  }
-}
-
 lemma deleteTrace_ensures(s: TraceState, id: string)
   ensures (inv(s) ==> alwaysTraceIdentitiesUnique(deleteTrace(s, id)))
-  ensures (inv(s) ==> alwaysPurgeCounterNonnegative(deleteTrace(s, id)))
   ensures (inv(s) ==> stepRecordCountsEveryAttempt(s, "deleteTrace", deleteTrace(s, id)))
   ensures (inv(s) ==> stepEnrichmentStaysInOneRun(s, "deleteTrace", deleteTrace(s, id)))
   ensures (inv(s) ==> stepConflictPreservesTraces(s, "deleteTrace", deleteTrace(s, id)))
@@ -143,7 +130,6 @@ lemma deleteTrace_ensures(s: TraceState, id: string)
 
 lemma finalizeRun_ensures(s: TraceState, runId: string)
   ensures (inv(s) ==> alwaysTraceIdentitiesUnique(finalizeRun(s, runId)))
-  ensures (inv(s) ==> alwaysPurgeCounterNonnegative(finalizeRun(s, runId)))
   ensures (inv(s) ==> stepRecordCountsEveryAttempt(s, "finalizeRun", finalizeRun(s, runId)))
   ensures (inv(s) ==> stepEnrichmentStaysInOneRun(s, "finalizeRun", finalizeRun(s, runId)))
   ensures (inv(s) ==> stepConflictPreservesTraces(s, "finalizeRun", finalizeRun(s, runId)))
@@ -158,7 +144,6 @@ lemma finalizeRun_ensures(s: TraceState, runId: string)
 
 lemma purgeTraces_ensures(s: TraceState)
   ensures (inv(s) ==> alwaysTraceIdentitiesUnique(purgeTraces(s)))
-  ensures (inv(s) ==> alwaysPurgeCounterNonnegative(purgeTraces(s)))
   ensures (inv(s) ==> stepRecordCountsEveryAttempt(s, "purgeTraces", purgeTraces(s)))
   ensures (inv(s) ==> stepEnrichmentStaysInOneRun(s, "purgeTraces", purgeTraces(s)))
   ensures (inv(s) ==> stepConflictPreservesTraces(s, "purgeTraces", purgeTraces(s)))

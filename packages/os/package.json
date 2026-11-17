@@ -1,0 +1,8 @@
+{
+  "name": "@elizaos/os",
+  "version": "4.0.0-alpha.0",
+  "private": true,
+  "type": "module",
+  "description": "Android device image, build, updates, native system bridges, browser surfaces and voice.",
+  "license": "MIT"
+}

@@ -1,14 +1,16 @@
 # Cancellable semaphore ownership
 
-A configured positive permit count controls concurrency without reducing the set of possible caller identities. Sources include [task-scheduling.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/utils/task-scheduling.ts) and [Semaphore.qnt](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/quint/Semaphore.qnt).
+A cancellable semaphore from `utils/task-scheduling.ts`: a configured positive permit count limits concurrency without limiting caller identities.
 
 ## Story: Acquire cancellable capacity
 
-As an asynchronous caller I acquire in FIFO order and an aborted queued request never receives a permit.
+> As an asynchronous caller, I want permits granted in FIFO order and none
+> granted to an aborted queued request, so that capacity is fair and
+> cancellation is final.
 
 ### A permit is always available or owned by one caller
 
-Capacity is supplied during setup. Immediate acquisitions consume a permit and queued acquisitions retain increasing tickets.
+Capacity is supplied during setup. Immediate acquisitions consume a permit and queued acquisitions retain increasing tickets. Each holder is counted once among the holders.
 
 ```quint
 type Waiter = { id: int, ticket: int }
@@ -26,36 +28,13 @@ pure def acquire(s: SemaphoreState, caller: int): SemaphoreState =
 pure def alwaysPermitConservation(s: SemaphoreState): bool = s.available >= 0 and s.available + s.holders.size() == s.capacity
 pure def alwaysNoIdlePermitWithWaiters(s: SemaphoreState): bool = s.available > 0 implies s.waiters.length() == 0
 pure def alwaysWaitersUnique(s: SemaphoreState): bool = s.waiters.every(w => w.id > 0 and w.ticket > 0 and w.ticket < s.nextTicket and s.waiters.select(x => x.id == w.id).length() == 1 and not(s.holders.contains(w.id)))
+pure def alwaysEachHolderCountedOnce(s: SemaphoreState): bool = s.holders.forall(h => s.holders.filter(x => x == h).size() == 1)
 pure def sometimesCallerWaits(s: SemaphoreState): bool = s.waiters.length() > 0
-```
-
-### Each caller holds at most one permit
-
-One acquisition gives a caller at most one permit, so no caller is counted twice among the holders.
-
-```quint
-pure def alwaysHoldersDistinct(s: SemaphoreState): bool = s.holders.forall(h => s.holders.filter(x => x == h).size() == 1)
-```
-
-### Every granted ticket is lower than the next ticket
-
-A release grants only a ticket that a queued acquisition already received, so each granted ticket is lower than the next ticket.
-
-```quint
-pure def alwaysGrantedTicketsIssued(s: SemaphoreState): bool = s.granted.every(g => g.ticket < s.nextTicket)
-```
-
-### The next ticket is always positive
-
-Tickets start at one and a queued acquisition only raises the next ticket, so the next ticket stays positive.
-
-```quint
-pure def alwaysNextTicketPositive(s: SemaphoreState): bool = s.nextTicket > 0
 ```
 
 ### A release skips cancelled waiters before granting the oldest live ticket
 
-Signal observation and cancellation listener execution remain separate so a release can observe an aborted caller first.
+Signal observation and cancellation listener execution remain separate so a release can observe an aborted caller first. Only an aborted caller is recorded as aborted while queued, the next ticket is positive, and every granted ticket was issued before it.
 
 ```quint
 pure def canAbortWaiter(s: SemaphoreState, caller: int): bool = caller > 0 and not(s.aborted.contains(caller))
@@ -67,9 +46,8 @@ pure def release(s: SemaphoreState, caller: int): SemaphoreState = {
   val live = s.waiters.select(w => not(s.aborted.contains(w.id)))
   val selected = live.nthOr(0, {id: 0, ticket: s.nextTicket})
   val skipped = s.waiters.select(w => w.ticket < selected.ticket).foldl(Set(), (ids, w) => ids.union(Set(w.id)))
-  val remaining = s.holders.exclude(Set(caller))
   { ...s, available: if (live.length() == 0) s.available + 1 else s.available,
-    holders: if (live.length() == 0) remaining else remaining.union(Set(selected.id)),
+    holders: if (live.length() == 0) s.holders.exclude(Set(caller)) else s.holders.exclude(Set(caller)).union(Set(selected.id)),
     completed: s.completed.union(Set(caller)), granted: if (live.length() == 0) s.granted else s.granted.append(selected), rejected: s.rejected.union(skipped),
     waiters: if (live.length() == 0) List() else s.waiters.select(w => w.ticket > selected.ticket) }
 }
@@ -77,15 +55,9 @@ pure def alwaysCancelledQueuedNeverOwns(s: SemaphoreState): bool = s.queuedAbort
 pure def alwaysTerminalCallersDoNotWait(s: SemaphoreState): bool = s.waiters.every(w => not(s.rejected.contains(w.id)) and not(s.completed.contains(w.id)))
 pure def sometimesAbortListenerRaceSettles(s: SemaphoreState): bool = s.queuedAbort.size() > 0 and s.rejected.intersect(s.queuedAbort).size() > 0 and s.waiters.length() == 0
 pure def alwaysFIFOGrants(s: SemaphoreState): bool = s.waiters.every(w => s.granted.every(g => g.ticket < w.ticket))
-pure def sometimesAllPermitsReturned(s: SemaphoreState): bool = s.completed.size() > 0 and s.available == s.capacity
-```
-
-### A caller cancelled while queued is an aborted caller
-
-A queued caller is recorded as cancelled only when its signal aborts, and a signal stays aborted, so every caller cancelled while queued is also an aborted caller.
-
-```quint
 pure def alwaysQueuedAbortWasAborted(s: SemaphoreState): bool = s.queuedAbort.subseteq(s.aborted)
+pure def alwaysGrantedTicketsWereIssued(s: SemaphoreState): bool = s.nextTicket > 0 and s.granted.every(g => g.ticket < s.nextTicket)
+pure def sometimesAllPermitsReturned(s: SemaphoreState): bool = s.completed.size() > 0 and s.available == s.capacity
 ```
 
 ### Every queued caller eventually acquires or is rejected under fair release

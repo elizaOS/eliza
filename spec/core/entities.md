@@ -1,14 +1,15 @@
-# Entities components and relationship mutations
+# Entities, components and relationship mutations
 
-Sources are `packages/core/src/entities.ts`, `types/environment.ts`,
-`runtime/data-mutations.ts` and `runtime.ts` at
-`72fed7e4069ecd35d61d886ab6eec5c02c137517`. The complete entity, component,
-world, room, participant and relationship declarations are in the public
-surface baseline. Database adapters own their storage and transaction
-semantics. Runtime mutation wrappers preserve adapter failures and
-invalidate their corresponding cached reads after successful completion.
+The complete entity, component, world, room, participant and relationship
+declarations are in the [public surface](./baseline/core-public-surface.json).
+Database adapters own their storage and transaction semantics. Runtime
+mutation wrappers preserve adapter failures and invalidate their
+corresponding cached reads after successful completion.
 
 ## Story: Show only components from authorized sources
+
+> As an agent, I want to trust a component only from an authorized source,
+> so a cached or forged role cannot grant authority.
 
 As an agent, I can use components from the message author, the entity
 itself, my agent identity, or a source whose current resolved role is
@@ -36,6 +37,9 @@ pure def lawVisibleComponentsRetainExactData(components: List[EntityComponent], 
 ```
 
 ## Story: Observe committed mutations through fresh runtime reads
+
+> As a caller, I want entity and memory mutations to return the adapter's
+> real result, so the cache never serves data that changed.
 
 As a caller, I receive the adapter's result or original error and subsequent
 runtime reads invalidate the cache for the data that changed. Bulk memory
@@ -89,7 +93,7 @@ pure def alwaysSuccessfulWriteInvalidates(m: Mutation): bool = m.phase == Succee
 
 ### A pending adapter call has no completed mutation result
 
-Discovered by the proof: a state with a pending call and an already-set
+A state with a pending call and an already-set
 success flag could make rejection retain a fabricated success. The result
 and invalidation flags remain unset until adapter completion.
 

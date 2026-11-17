@@ -4,6 +4,10 @@
 
 ## Story: Register an internally consistent context graph
 
+> As a host or plugin, I want a batch of context definitions registered
+> all at once or not at all, so that the graph never holds a dangling edge
+> or a cycle.
+
 As a host or plugin, I can register a mutually referencing batch atomically. A duplicate ID, unknown edge or cycle rejects the whole batch and preserves all prior definitions. An idempotent batch skips existing IDs, but duplicate IDs among its new records still reject the batch.
 
 ### Graph validation precedes replacement of the live map
@@ -11,8 +15,8 @@ As a host or plugin, I can register a mutually referencing batch atomically. A d
 Parent edges point from parent to child. The boundary combines the normalized singular parent and normalized parents list in that order. Subcontext edges point from the definition to its subcontext. Reachability is computed by finite vertex elimination over the entire candidate graph, so a directed self-edge or any longer cycle rejects the batch. A definition may have an empty normalized ID. An empty parent contributes no edge. An empty subcontext skips the unknown-reference check and still contributes an edge for cycle detection.
 
 ```quint
+import authorization as Z from "./authorization"
 type ContextEdge = { source: str, target: str }
-type TextOrderCheck = { index: int, matched: bool }
 type ContextGate = { present: bool, roles: Set[str], anyOf: Set[str], allOf: Set[str], noneOf: Set[str], minimum: str }
 type ContextDefinition = { id: str, parents: List[str], subcontexts: List[str], aliases: List[str], gate: ContextGate, body: str }
 type RegistryResult = RegistryIdle | RegistryUpdated | DuplicateContext | UnknownContext | ContextCycle
@@ -39,18 +43,13 @@ pure def registerMany(s: ContextRegistry, incoming: List[ContextDefinition], ide
   { ...s, definitions: if (status == RegistryUpdated) candidate else s.definitions, resultKind: status, added: if (status == RegistryUpdated) incoming.select(definition => not(s.definitions.some(prior => prior.id == definition.id))).listMap(definition => definition.id) else List(), skipped: if (status == RegistryUpdated and idempotent) incoming.select(definition => s.definitions.some(prior => prior.id == definition.id)).listMap(definition => definition.id) else List() }
 }
 pure def alwaysValidGraph(s: ContextRegistry): bool = uniqueIds(s.definitions) and knownEdges(s.definitions) and acyclic(s.definitions)
-pure val initialTextOrderCheck: TextOrderCheck = { index: 0, matched: true }
-pure def sameTextOrder(left: List[str], right: List[str]): bool = {
-  val compared = left.foldl(initialTextOrderCheck, (at, value) => { index: at.index + 1, matched: at.matched and value == right.nthOr(at.index, "") })
-  left.length() == right.length() and compared.matched
-}
 pure def sameGate(left: ContextGate, right: ContextGate): bool = left.present == right.present and left.minimum == right.minimum and left.roles.subseteq(right.roles) and right.roles.subseteq(left.roles) and left.anyOf.subseteq(right.anyOf) and right.anyOf.subseteq(left.anyOf) and left.allOf.subseteq(right.allOf) and right.allOf.subseteq(left.allOf) and left.noneOf.subseteq(right.noneOf) and right.noneOf.subseteq(left.noneOf)
-pure def sameDefinition(left: ContextDefinition, right: ContextDefinition): bool = left.id == right.id and sameTextOrder(left.parents, right.parents) and sameTextOrder(left.subcontexts, right.subcontexts) and sameTextOrder(left.aliases, right.aliases) and left.body == right.body and sameGate(left.gate, right.gate)
+pure def sameDefinition(left: ContextDefinition, right: ContextDefinition): bool = left.id == right.id and left.parents == right.parents and left.subcontexts == right.subcontexts and left.aliases == right.aliases and left.body == right.body and sameGate(left.gate, right.gate)
 pure def definitionIds(definitions: List[ContextDefinition]): List[str] = definitions.listMap(definition => definition.id)
 pure def existingDefinitions(before: List[ContextDefinition], after: List[ContextDefinition]): List[ContextDefinition] = after.select(definition => before.some(prior => prior.id == definition.id))
 pure def retainsDefinitionValues(before: List[ContextDefinition], after: List[ContextDefinition]): bool = before.every(definition => after.some(other => sameDefinition(definition, other)))
-pure def stepRejectedBatchPreservesRegistry(before: ContextRegistry, after: ContextRegistry): bool = after.resultKind != RegistryUpdated implies sameTextOrder(definitionIds(before.definitions), definitionIds(after.definitions)) and retainsDefinitionValues(before.definitions, after.definitions)
-pure def stepExistingDefinitionsNeverChange(before: ContextRegistry, after: ContextRegistry): bool = retainsDefinitionValues(before.definitions, after.definitions) and sameTextOrder(definitionIds(before.definitions), definitionIds(existingDefinitions(before.definitions, after.definitions)))
+pure def stepRejectedBatchPreservesRegistry(before: ContextRegistry, after: ContextRegistry): bool = after.resultKind != RegistryUpdated implies definitionIds(before.definitions) == definitionIds(after.definitions) and retainsDefinitionValues(before.definitions, after.definitions)
+pure def stepExistingDefinitionsNeverChange(before: ContextRegistry, after: ContextRegistry): bool = retainsDefinitionValues(before.definitions, after.definitions) and definitionIds(before.definitions) == definitionIds(existingDefinitions(before.definitions, after.definitions))
 pure val incomingValues: Set[List[ContextDefinition]] = Set(List({ id: "root", parents: List(), subcontexts: List(), aliases: List(), gate: emptyGate, body: "root-data" }), List({ id: "root", parents: List(), subcontexts: List("leaf"), aliases: List(), gate: emptyGate, body: "root-data" }, { id: "leaf", parents: List("root"), subcontexts: List(), aliases: List(), gate: emptyGate, body: "leaf-data" }), List({ id: "root", parents: List("root"), subcontexts: List(), aliases: List(), gate: emptyGate, body: "cycle-data" }), List({ id: "leaf", parents: List("absent"), subcontexts: List(), aliases: List(), gate: emptyGate, body: "unknown-data" }))
 pure def sometimesBatchRegistered(s: ContextRegistry): bool = s.definitions.length() > 1 and s.resultKind == RegistryUpdated
 pure def sometimesCycleRejected(s: ContextRegistry): bool = s.resultKind == ContextCycle
@@ -70,11 +69,12 @@ pure def lawEmptySubcontextCycleRejected(idempotent: bool): bool = registerMany(
 
 ### Available contexts preserve insertion order and apply every role gate clause
 
-Role normalization trims and uppercases, with `USER` canonicalized to `MEMBER`. Unknown roles retain their normalized identity and have rank zero. `noneOf` denies before all other clauses; minimum rank, combined roles/anyOf, and allOf must each pass. An absent gate permits all callers. Aliases remain metadata and never create extra graph vertices.
+Role normalization trims and uppercases, with `USER` canonicalized to `MEMBER`. Unknown roles retain their normalized identity and have rank zero. The known ranks are [authorization](./authorization.md)'s; a context gate keeps role names as text because it may name a custom role that authorization's role set cannot represent, and dropping one at decoding would let an `allOf` clause on it pass. `noneOf` denies before all other clauses; minimum rank, combined roles/anyOf, and allOf must each pass. An absent gate permits all callers. Aliases remain metadata and never create extra graph vertices.
 
 ```quint
-pure def roleRank(role: str): int = if (role == "OWNER") 4 else if (role == "ADMIN") 3 else if (role == "MEMBER") 2 else if (role == "GUEST") 1 else 0
-pure def highestRoleRank(roles: Set[str]): int = if (roles.contains("OWNER")) 4 else if (roles.contains("ADMIN")) 3 else if (roles.contains("MEMBER")) 2 else if (roles.contains("GUEST")) 1 else 0
+pure def namedRole(role: str): Z::Role = if (role == "OWNER") Z::Owner else if (role == "ADMIN") Z::Admin else if (role == "MEMBER") Z::User else if (role == "GUEST") Z::Guest else Z::Unresolved
+pure def roleRank(role: str): int = Z::rank(namedRole(role))
+pure def highestRoleRank(roles: Set[str]): int = List("OWNER", "ADMIN", "MEMBER", "GUEST").foldl(0, (best, role) => if (roles.contains(role) and roleRank(role) > best) roleRank(role) else best)
 pure def roleGateAllows(roles: Set[str], gate: ContextGate): bool = not(gate.present) or (roles.intersect(gate.noneOf).size() == 0 and (gate.minimum == "" or highestRoleRank(roles) >= roleRank(gate.minimum)) and ((gate.roles.size() == 0 and gate.anyOf.size() == 0) or roles.intersect(gate.roles).size() > 0 or roles.intersect(gate.anyOf).size() > 0) and gate.allOf.subseteq(roles))
 pure def availableContexts(s: ContextRegistry, roles: Set[str]): List[str] = s.definitions.select(definition => roleGateAllows(roles, definition.gate)).listMap(definition => definition.id)
 pure def lawDeniedRoleCannotPass(roles: Set[str], gate: ContextGate): bool = (gate.present and roles.intersect(gate.noneOf).size() > 0) implies not(roleGateAllows(roles, gate))

@@ -759,33 +759,6 @@
       }
     ],
     "packages/core/src/capability-catalog.ts": [],
-    "packages/core/src/catalog/apps.ts": [
-      {
-        "module": "zod",
-        "typeOnly": true,
-        "resolved": null
-      },
-      {
-        "module": "../types/runtime.js",
-        "typeOnly": true,
-        "resolved": "packages/core/src/types/runtime.ts"
-      },
-      {
-        "module": "../views/declarations.js",
-        "typeOnly": true,
-        "resolved": "packages/core/src/views/declarations.ts"
-      },
-      {
-        "module": "./curated-app-definitions.json",
-        "typeOnly": false,
-        "resolved": "packages/core/src/catalog/curated-app-definitions.json"
-      },
-      {
-        "module": "./schema.js",
-        "typeOnly": true,
-        "resolved": "packages/core/src/catalog/schema.ts"
-      }
-    ],
     "packages/core/src/catalog/generate.ts": [
       {
         "module": "node:child_process",
@@ -811,11 +784,6 @@
         "module": "node:url",
         "typeOnly": false,
         "resolved": null
-      },
-      {
-        "module": "./apps.js",
-        "typeOnly": true,
-        "resolved": "packages/core/src/catalog/apps.ts"
       },
       {
         "module": "./schema.js",
@@ -2486,13 +2454,6 @@
         "resolved": "packages/core/src/types/service.ts"
       }
     ],
-    "packages/core/src/model-gateway.ts": [
-      {
-        "module": "./utils/env.ts",
-        "typeOnly": false,
-        "resolved": "packages/core/src/utils/env.ts"
-      }
-    ],
     "packages/core/src/name-tokens.ts": [],
     "packages/core/src/network/fetch-guard.ts": [
       {
@@ -2656,23 +2617,6 @@
         "resolved": "packages/core/src/types/plugin.ts"
       }
     ],
-    "packages/core/src/prompt-optimization.ts": [
-      {
-        "module": "./types/primitives",
-        "typeOnly": true,
-        "resolved": "packages/core/src/types/primitives.ts"
-      },
-      {
-        "module": "./types/runtime",
-        "typeOnly": true,
-        "resolved": "packages/core/src/types/runtime.ts"
-      },
-      {
-        "module": "./types/state",
-        "typeOnly": true,
-        "resolved": "packages/core/src/types/state.ts"
-      }
-    ],
     "packages/core/src/protocol.ts": [
       {
         "module": "./access-control/artifact-disclosure",
@@ -2783,11 +2727,6 @@
         "module": "./capability-catalog.js",
         "typeOnly": false,
         "resolved": "packages/core/src/capability-catalog.ts"
-      },
-      {
-        "module": "./catalog/apps.js",
-        "typeOnly": false,
-        "resolved": "packages/core/src/catalog/apps.ts"
       },
       {
         "module": "./catalog/channel-plugin-map.json",
@@ -3000,11 +2939,6 @@
         "resolved": "packages/core/src/mobile-device-bridge-service.ts"
       },
       {
-        "module": "./model-gateway",
-        "typeOnly": false,
-        "resolved": "packages/core/src/model-gateway.ts"
-      },
-      {
         "module": "./name-tokens",
         "typeOnly": false,
         "resolved": "packages/core/src/name-tokens.ts"
@@ -3013,11 +2947,6 @@
         "module": "./network/ssrf.js",
         "typeOnly": false,
         "resolved": "packages/core/src/network/ssrf.ts"
-      },
-      {
-        "module": "./prompt-optimization.js",
-        "typeOnly": false,
-        "resolved": "packages/core/src/prompt-optimization.ts"
       },
       {
         "module": "./recent-messages-state",
@@ -3255,11 +3184,6 @@
         "resolved": "packages/core/src/services"
       },
       {
-        "module": "./services/optimized-prompt-resolver",
-        "typeOnly": false,
-        "resolved": "packages/core/src/services/optimized-prompt-resolver.ts"
-      },
-      {
         "module": "./services/pairing-integration",
         "typeOnly": false,
         "resolved": "packages/core/src/services/pairing-integration.ts"
@@ -3273,11 +3197,6 @@
         "module": "./services/runtime-capability-service",
         "typeOnly": false,
         "resolved": "packages/core/src/services/runtime-capability-service.ts"
-      },
-      {
-        "module": "./services/trajectory-export.ts",
-        "typeOnly": false,
-        "resolved": "packages/core/src/services/trajectory-export.ts"
       },
       {
         "module": "./services/trajectory-json.ts",
@@ -3603,11 +3522,6 @@
         "module": "./types/testing.js",
         "typeOnly": false,
         "resolved": "packages/core/src/types/testing.ts"
-      },
-      {
-        "module": "./types/trajectory-export.ts",
-        "typeOnly": false,
-        "resolved": "packages/core/src/types/trajectory-export.ts"
       },
       {
         "module": "./types/trigger.js",
@@ -4087,11 +4001,6 @@
         "module": "./plugin-lifecycle",
         "typeOnly": false,
         "resolved": "packages/core/src/plugin-lifecycle.ts"
-      },
-      {
-        "module": "./prompt-optimization",
-        "typeOnly": true,
-        "resolved": "packages/core/src/prompt-optimization.ts"
       },
       {
         "module": "./provisioning",
@@ -4682,18 +4591,7 @@
       }
     ],
     "packages/core/src/runtime/action-wildcard-glob.ts": [],
-    "packages/core/src/runtime/active-prompt-traces.ts": [
-      {
-        "module": "../prompt-optimization",
-        "typeOnly": true,
-        "resolved": "packages/core/src/prompt-optimization.ts"
-      },
-      {
-        "module": "../prompt-optimization",
-        "typeOnly": false,
-        "resolved": "packages/core/src/prompt-optimization.ts"
-      }
-    ],
+    "packages/core/src/runtime/active-prompt-traces.ts": [],
     "packages/core/src/runtime/candidate-action-backstop.ts": [
       {
         "module": "../types/runtime",
@@ -7317,18 +7215,6 @@
         "resolved": "packages/core/src/utils/uuid.ts"
       }
     ],
-    "packages/core/src/services/optimized-prompt-resolver.ts": [
-      {
-        "module": "../errors.ts",
-        "typeOnly": false,
-        "resolved": "packages/core/src/errors.ts"
-      },
-      {
-        "module": "../utils/unicode.ts",
-        "typeOnly": false,
-        "resolved": "packages/core/src/utils/unicode.ts"
-      }
-    ],
     "packages/core/src/services/pairing-integration.ts": [
       {
         "module": "../types/pairing",
@@ -7566,38 +7452,6 @@
         "module": "./task-scheduler",
         "typeOnly": false,
         "resolved": "packages/core/src/services/task-scheduler.ts"
-      }
-    ],
-    "packages/core/src/services/trajectory-export.ts": [
-      {
-        "module": "../errors.ts",
-        "typeOnly": false,
-        "resolved": "packages/core/src/errors.ts"
-      },
-      {
-        "module": "../runtime/system-prompt.ts",
-        "typeOnly": false,
-        "resolved": "packages/core/src/runtime/system-prompt.ts"
-      },
-      {
-        "module": "../utils/type-guards.ts",
-        "typeOnly": false,
-        "resolved": "packages/core/src/utils/type-guards.ts"
-      },
-      {
-        "module": "./trajectory-semantic-stage.ts",
-        "typeOnly": false,
-        "resolved": "packages/core/src/services/trajectory-semantic-stage.ts"
-      },
-      {
-        "module": "./trajectory-types.ts",
-        "typeOnly": true,
-        "resolved": "packages/core/src/services/trajectory-types.ts"
-      },
-      {
-        "module": "./trajectory-types.ts",
-        "typeOnly": false,
-        "resolved": "packages/core/src/services/trajectory-types.ts"
       }
     ],
     "packages/core/src/services/trajectory-json.ts": [
@@ -7907,11 +7761,6 @@
         "module": "./types/runtime",
         "typeOnly": true,
         "resolved": "packages/core/src/types/runtime.ts"
-      },
-      {
-        "module": "./types/trajectory-export.ts",
-        "typeOnly": false,
-        "resolved": "packages/core/src/types/trajectory-export.ts"
       },
       {
         "module": "./utils/crypto-compat",
@@ -8748,11 +8597,6 @@
         "resolved": "packages/core/src/messaging/interaction-profiles.ts"
       },
       {
-        "module": "../prompt-optimization",
-        "typeOnly": true,
-        "resolved": "packages/core/src/prompt-optimization.ts"
-      },
-      {
         "module": "../runtime/context-registry",
         "typeOnly": true,
         "resolved": "packages/core/src/runtime/context-registry.ts"
@@ -9014,28 +8858,6 @@
         "module": "./runtime",
         "typeOnly": true,
         "resolved": "packages/core/src/types/runtime.ts"
-      }
-    ],
-    "packages/core/src/types/trajectory-export.ts": [
-      {
-        "module": "../runtime/context-object.ts",
-        "typeOnly": true,
-        "resolved": "packages/core/src/runtime/context-object.ts"
-      },
-      {
-        "module": "../runtime/trajectory-provider-attribution.ts",
-        "typeOnly": true,
-        "resolved": "packages/core/src/runtime/trajectory-provider-attribution.ts"
-      },
-      {
-        "module": "../services/trajectory-semantic-stage.ts",
-        "typeOnly": true,
-        "resolved": "packages/core/src/services/trajectory-semantic-stage.ts"
-      },
-      {
-        "module": "./primitives.js",
-        "typeOnly": true,
-        "resolved": "packages/core/src/types/primitives.ts"
       }
     ],
     "packages/core/src/types/trigger.ts": [
@@ -9686,9 +9508,7 @@
         "packages/core/src/capabilities/retrieval.ts",
         "packages/core/src/capabilities/router.ts",
         "packages/core/src/capability-catalog.ts",
-        "packages/core/src/catalog/apps.ts",
         "packages/core/src/catalog/channel-plugin-map.json",
-        "packages/core/src/catalog/curated-app-definitions.json",
         "packages/core/src/catalog/loader.ts",
         "packages/core/src/catalog/provider-plugin-map.json",
         "packages/core/src/catalog/registry.ts",
@@ -9759,7 +9579,6 @@
         "packages/core/src/messaging/task-events.ts",
         "packages/core/src/messaging/task-widgets.ts",
         "packages/core/src/mobile-device-bridge-service.ts",
-        "packages/core/src/model-gateway.ts",
         "packages/core/src/name-tokens.ts",
         "packages/core/src/network/fetch-guard.ts",
         "packages/core/src/network/node-pinned-fetch.ts",
@@ -9767,7 +9586,6 @@
         "packages/core/src/network/ssrf.ts",
         "packages/core/src/owner-entity.ts",
         "packages/core/src/plugin.ts",
-        "packages/core/src/prompt-optimization.ts",
         "packages/core/src/protocol.ts",
         "packages/core/src/provisioning.ts",
         "packages/core/src/recent-messages-state.ts",
@@ -9872,7 +9690,6 @@
         "packages/core/src/services/embedding.ts",
         "packages/core/src/services/hook.ts",
         "packages/core/src/services/notification.ts",
-        "packages/core/src/services/optimized-prompt-resolver.ts",
         "packages/core/src/services/pairing-integration.ts",
         "packages/core/src/services/pairing.ts",
         "packages/core/src/services/pii-scrub.ts",
@@ -9880,7 +9697,6 @@
         "packages/core/src/services/runtime-capability-service.ts",
         "packages/core/src/services/task-scheduler.ts",
         "packages/core/src/services/task.ts",
-        "packages/core/src/services/trajectory-export.ts",
         "packages/core/src/services/trajectory-json.ts",
         "packages/core/src/services/trajectory-semantic-stage.ts",
         "packages/core/src/services/trajectory-types.ts",
@@ -9952,7 +9768,6 @@
         "packages/core/src/types/system-notice.ts",
         "packages/core/src/types/task.ts",
         "packages/core/src/types/testing.ts",
-        "packages/core/src/types/trajectory-export.ts",
         "packages/core/src/types/trigger.ts",
         "packages/core/src/types/workspace-delta.ts",
         "packages/core/src/utils",
@@ -10051,14 +9866,6 @@
       "externalRuntimeImports": []
     },
     {
-      "entry": "./catalog/curated-app-definitions.json",
-      "source": "packages/core/src/catalog/curated-app-definitions.json",
-      "runtimeModuleClosure": [
-        "packages/core/src/catalog/curated-app-definitions.json"
-      ],
-      "externalRuntimeImports": []
-    },
-    {
       "entry": "./catalog/generated.json",
       "source": "packages/core/src/catalog/generated.json",
       "runtimeModuleClosure": [
@@ -10141,9 +9948,7 @@
         "packages/core/src/capabilities/retrieval.ts",
         "packages/core/src/capabilities/router.ts",
         "packages/core/src/capability-catalog.ts",
-        "packages/core/src/catalog/apps.ts",
         "packages/core/src/catalog/channel-plugin-map.json",
-        "packages/core/src/catalog/curated-app-definitions.json",
         "packages/core/src/catalog/loader.ts",
         "packages/core/src/catalog/provider-plugin-map.json",
         "packages/core/src/catalog/runtime-kernel.ts",
@@ -10186,10 +9991,8 @@
         "packages/core/src/messaging/task-events.ts",
         "packages/core/src/messaging/task-widgets.ts",
         "packages/core/src/mobile-device-bridge-service.ts",
-        "packages/core/src/model-gateway.ts",
         "packages/core/src/name-tokens.ts",
         "packages/core/src/network/ssrf.ts",
-        "packages/core/src/prompt-optimization.ts",
         "packages/core/src/protocol.ts",
         "packages/core/src/recent-messages-state.ts",
         "packages/core/src/retrieval.ts",
@@ -10237,11 +10040,9 @@
         "packages/core/src/sensitive-request-dispatch.ts",
         "packages/core/src/sensitive-request-policy.ts",
         "packages/core/src/services",
-        "packages/core/src/services/optimized-prompt-resolver.ts",
         "packages/core/src/services/pairing-integration.ts",
         "packages/core/src/services/post-delivery-task-tracker.ts",
         "packages/core/src/services/runtime-capability-service.ts",
-        "packages/core/src/services/trajectory-export.ts",
         "packages/core/src/services/trajectory-json.ts",
         "packages/core/src/services/trajectory-semantic-stage.ts",
         "packages/core/src/services/trajectory-types.ts",
@@ -10306,7 +10107,6 @@
         "packages/core/src/types/system-notice.ts",
         "packages/core/src/types/task.ts",
         "packages/core/src/types/testing.ts",
-        "packages/core/src/types/trajectory-export.ts",
         "packages/core/src/types/trigger.ts",
         "packages/core/src/types/workspace-delta.ts",
         "packages/core/src/utils/action-results.ts",

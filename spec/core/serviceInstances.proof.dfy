@@ -47,7 +47,7 @@ lemma ServiceObjectProjection(s: ServiceInstances, after: ServiceInstances)
 }
 
 lemma ServiceStopReferencePreserved(s: ServiceInstances, after: ServiceInstances)
-  requires |s.objects| <= |after.objects|
+  requires |s.objects| == |after.objects|
   requires forall i :: 0 <= i < |s.objects| && !s.objects[i].stopPhase.StopNotRequested? ==>
     after.objects[i].id == s.objects[i].id && after.objects[i].stopCalls == 1 &&
     (s.objects[i].stopPhase.StopWaiting? || after.objects[i].stopPhase == s.objects[i].stopPhase)
@@ -102,18 +102,18 @@ lemma requestObjectStop_ensures(s: ServiceInstances, instanceId: int)
   ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysAcquisitionIdsUnique(requestObjectStop(s, instanceId)))
   ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysInitWaitingHasNoAggregate(requestObjectStop(s, instanceId)))
   ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysTypeReferencesRetained(requestObjectStop(s, instanceId)))
+  ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysFailedTypeHasNoPublication(requestObjectStop(s, instanceId)))
   ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysClassAndObjectIdentities(requestObjectStop(s, instanceId)))
+  ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysPendingAttemptsOwned(requestObjectStop(s, instanceId)))
+  ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysCapturedAttemptsExist(requestObjectStop(s, instanceId)))
+  ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysDeclarationsMatch(requestObjectStop(s, instanceId)))
   ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysObjectStopOnce(requestObjectStop(s, instanceId)))
   ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysClassOwnsKnownObjects(requestObjectStop(s, instanceId)))
   ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysStoppedHasNoPublication(requestObjectStop(s, instanceId)))
   ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysPublicationIdentitiesValid(requestObjectStop(s, instanceId)))
-  ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysPendingAttemptsOwned(requestObjectStop(s, instanceId)))
-  ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysCapturedAttemptsExist(requestObjectStop(s, instanceId)))
-  ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysDeclarationsMatch(requestObjectStop(s, instanceId)))
   ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysAttemptGeneration(requestObjectStop(s, instanceId)))
-  ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> alwaysFailedTypeHasNoPublication(requestObjectStop(s, instanceId)))
-  ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> stepStopIdentityRetained(s, requestObjectStop(s, instanceId)))
   ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> stepSupersededAggregateKeepsSuccessor(s, "requestObjectStop", requestObjectStop(s, instanceId)))
+  ensures (inv(s) ==> canRequestObjectStop(s, instanceId) ==> stepStopIdentityRetained(s, requestObjectStop(s, instanceId)))
 {
   if inv(s) && canRequestObjectStop(s, instanceId) {
     var after := requestObjectStop(s, instanceId);
@@ -145,18 +145,18 @@ lemma invokeObjectStop_ensures(s: ServiceInstances, instanceId: int)
   ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysAcquisitionIdsUnique(invokeObjectStop(s, instanceId)))
   ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysInitWaitingHasNoAggregate(invokeObjectStop(s, instanceId)))
   ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysTypeReferencesRetained(invokeObjectStop(s, instanceId)))
+  ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysFailedTypeHasNoPublication(invokeObjectStop(s, instanceId)))
   ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysClassAndObjectIdentities(invokeObjectStop(s, instanceId)))
+  ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysPendingAttemptsOwned(invokeObjectStop(s, instanceId)))
+  ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysCapturedAttemptsExist(invokeObjectStop(s, instanceId)))
+  ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysDeclarationsMatch(invokeObjectStop(s, instanceId)))
   ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysObjectStopOnce(invokeObjectStop(s, instanceId)))
   ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysClassOwnsKnownObjects(invokeObjectStop(s, instanceId)))
   ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysStoppedHasNoPublication(invokeObjectStop(s, instanceId)))
   ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysPublicationIdentitiesValid(invokeObjectStop(s, instanceId)))
-  ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysPendingAttemptsOwned(invokeObjectStop(s, instanceId)))
-  ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysCapturedAttemptsExist(invokeObjectStop(s, instanceId)))
-  ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysDeclarationsMatch(invokeObjectStop(s, instanceId)))
   ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysAttemptGeneration(invokeObjectStop(s, instanceId)))
-  ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> alwaysFailedTypeHasNoPublication(invokeObjectStop(s, instanceId)))
-  ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> stepStopIdentityRetained(s, invokeObjectStop(s, instanceId)))
   ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> stepSupersededAggregateKeepsSuccessor(s, "invokeObjectStop", invokeObjectStop(s, instanceId)))
+  ensures (inv(s) ==> canInvokeObjectStop(s, instanceId) ==> stepStopIdentityRetained(s, invokeObjectStop(s, instanceId)))
 {
   if inv(s) && canInvokeObjectStop(s, instanceId) {
     var after := invokeObjectStop(s, instanceId);
@@ -188,18 +188,18 @@ lemma settleObjectStop_ensures(s: ServiceInstances, instanceId: int, ok: bool, e
   ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysAcquisitionIdsUnique(settleObjectStop(s, instanceId, ok, errorId)))
   ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysInitWaitingHasNoAggregate(settleObjectStop(s, instanceId, ok, errorId)))
   ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysTypeReferencesRetained(settleObjectStop(s, instanceId, ok, errorId)))
+  ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysFailedTypeHasNoPublication(settleObjectStop(s, instanceId, ok, errorId)))
   ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysClassAndObjectIdentities(settleObjectStop(s, instanceId, ok, errorId)))
+  ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysPendingAttemptsOwned(settleObjectStop(s, instanceId, ok, errorId)))
+  ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysCapturedAttemptsExist(settleObjectStop(s, instanceId, ok, errorId)))
+  ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysDeclarationsMatch(settleObjectStop(s, instanceId, ok, errorId)))
   ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysObjectStopOnce(settleObjectStop(s, instanceId, ok, errorId)))
   ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysClassOwnsKnownObjects(settleObjectStop(s, instanceId, ok, errorId)))
   ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysStoppedHasNoPublication(settleObjectStop(s, instanceId, ok, errorId)))
   ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysPublicationIdentitiesValid(settleObjectStop(s, instanceId, ok, errorId)))
-  ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysPendingAttemptsOwned(settleObjectStop(s, instanceId, ok, errorId)))
-  ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysCapturedAttemptsExist(settleObjectStop(s, instanceId, ok, errorId)))
-  ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysDeclarationsMatch(settleObjectStop(s, instanceId, ok, errorId)))
   ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysAttemptGeneration(settleObjectStop(s, instanceId, ok, errorId)))
-  ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> alwaysFailedTypeHasNoPublication(settleObjectStop(s, instanceId, ok, errorId)))
-  ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> stepStopIdentityRetained(s, settleObjectStop(s, instanceId, ok, errorId)))
   ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> stepSupersededAggregateKeepsSuccessor(s, "settleObjectStop", settleObjectStop(s, instanceId, ok, errorId)))
+  ensures (inv(s) ==> canSettleObjectStop(s, instanceId, ok, errorId) ==> stepStopIdentityRetained(s, settleObjectStop(s, instanceId, ok, errorId)))
 {
   if inv(s) && canSettleObjectStop(s, instanceId, ok, errorId) {
     var after := settleObjectStop(s, instanceId, ok, errorId);
@@ -362,16 +362,14 @@ lemma ServiceStartAttemptFields(s: ServiceInstances, after: ServiceInstances, at
 }
 
 lemma ServicePendingSettlement(s: ServiceInstances, after: ServiceInstances, attemptId: int)
-  requires alwaysPendingAttemptsOwned(s) && alwaysAttemptGeneration(s)
-  requires alwaysClassAndObjectIdentities(after) && s.stopped == after.stopped
-  requires forall a | a in after.attempts && a.id == attemptId :: !a.phase.StartInvoking?
+  requires alwaysPendingAttemptsOwned(s)
   requires |s.classes| == |after.classes| && |s.attempts| == |after.attempts|
   requires forall i :: 0 <= i < |s.attempts| ==>
     (s.attempts[i].id == after.attempts[i].id && s.attempts[i].classId == after.attempts[i].classId &&
       s.attempts[i].generation == after.attempts[i].generation &&
       (s.attempts[i].id != attemptId ==> s.attempts[i].phase == after.attempts[i].phase))
   requires forall i :: 0 <= i < |s.classes| ==>
-    (s.classes[i].id == after.classes[i].id && s.classes[i].generation == after.classes[i].generation && s.classes[i].live == after.classes[i].live &&
+    (s.classes[i].id == after.classes[i].id && s.classes[i].generation == after.classes[i].generation &&
       after.classes[i].pending == (if s.classes[i].pending == attemptId && s.classes[i].id == serviceAttempt(s, attemptId).classId then 0 else s.classes[i].pending))
   ensures alwaysPendingAttemptsOwned(after)
 {
@@ -387,18 +385,6 @@ lemma ServicePendingSettlement(s: ServiceInstances, after: ServiceInstances, att
     assert c.pending != attemptId;
     ServiceStartAttemptFields(s, after, c.pending, attemptId);
   }
-  forall a | a in after.attempts && a.phase.StartInvoking? && !after.stopped
-    ensures serviceClass(after, a.classId).pending == a.id && serviceClass(after, a.classId).live == 0
-  {
-    var i :| 0 <= i < |after.attempts| && after.attempts[i] == a;
-    var prior := s.attempts[i];
-    assert prior in s.attempts && prior.id == a.id && a.id != attemptId && prior.phase.StartInvoking?;
-    var owner := serviceClass(s, a.classId);
-    ServiceInvokingAttemptClassMember(s, prior);
-    var j :| 0 <= j < |s.classes| && s.classes[j] == owner;
-    assert after.classes[j] in after.classes && after.classes[j].id == a.classId;
-    ServiceClassFind(after, a.classId);
-  }
 }
 
 lemma failStart_ensures(s: ServiceInstances, attemptId: int, errorId: string)
@@ -407,18 +393,18 @@ lemma failStart_ensures(s: ServiceInstances, attemptId: int, errorId: string)
   ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysAcquisitionIdsUnique(failStart(s, attemptId, errorId)))
   ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysInitWaitingHasNoAggregate(failStart(s, attemptId, errorId)))
   ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysTypeReferencesRetained(failStart(s, attemptId, errorId)))
+  ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysFailedTypeHasNoPublication(failStart(s, attemptId, errorId)))
   ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysClassAndObjectIdentities(failStart(s, attemptId, errorId)))
+  ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysPendingAttemptsOwned(failStart(s, attemptId, errorId)))
+  ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysCapturedAttemptsExist(failStart(s, attemptId, errorId)))
+  ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysDeclarationsMatch(failStart(s, attemptId, errorId)))
   ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysObjectStopOnce(failStart(s, attemptId, errorId)))
   ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysClassOwnsKnownObjects(failStart(s, attemptId, errorId)))
   ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysStoppedHasNoPublication(failStart(s, attemptId, errorId)))
   ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysPublicationIdentitiesValid(failStart(s, attemptId, errorId)))
-  ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysPendingAttemptsOwned(failStart(s, attemptId, errorId)))
-  ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysCapturedAttemptsExist(failStart(s, attemptId, errorId)))
-  ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysDeclarationsMatch(failStart(s, attemptId, errorId)))
   ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysAttemptGeneration(failStart(s, attemptId, errorId)))
-  ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> alwaysFailedTypeHasNoPublication(failStart(s, attemptId, errorId)))
-  ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> stepStopIdentityRetained(s, failStart(s, attemptId, errorId)))
   ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> stepSupersededAggregateKeepsSuccessor(s, "failStart", failStart(s, attemptId, errorId)))
+  ensures (inv(s) ==> canFailStart(s, attemptId, errorId) ==> stepStopIdentityRetained(s, failStart(s, attemptId, errorId)))
 {
   if inv(s) && canFailStart(s, attemptId, errorId) {
     var after := failStart(s, attemptId, errorId);
@@ -433,18 +419,18 @@ lemma finishObserver_ensures(s: ServiceInstances, attemptId: int, ok: bool)
   ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysAcquisitionIdsUnique(finishObserver(s, attemptId, ok)))
   ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysInitWaitingHasNoAggregate(finishObserver(s, attemptId, ok)))
   ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysTypeReferencesRetained(finishObserver(s, attemptId, ok)))
+  ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysFailedTypeHasNoPublication(finishObserver(s, attemptId, ok)))
   ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysClassAndObjectIdentities(finishObserver(s, attemptId, ok)))
+  ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysPendingAttemptsOwned(finishObserver(s, attemptId, ok)))
+  ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysCapturedAttemptsExist(finishObserver(s, attemptId, ok)))
+  ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysDeclarationsMatch(finishObserver(s, attemptId, ok)))
   ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysObjectStopOnce(finishObserver(s, attemptId, ok)))
   ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysClassOwnsKnownObjects(finishObserver(s, attemptId, ok)))
   ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysStoppedHasNoPublication(finishObserver(s, attemptId, ok)))
   ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysPublicationIdentitiesValid(finishObserver(s, attemptId, ok)))
-  ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysPendingAttemptsOwned(finishObserver(s, attemptId, ok)))
-  ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysCapturedAttemptsExist(finishObserver(s, attemptId, ok)))
-  ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysDeclarationsMatch(finishObserver(s, attemptId, ok)))
   ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysAttemptGeneration(finishObserver(s, attemptId, ok)))
-  ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> alwaysFailedTypeHasNoPublication(finishObserver(s, attemptId, ok)))
-  ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> stepStopIdentityRetained(s, finishObserver(s, attemptId, ok)))
   ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> stepSupersededAggregateKeepsSuccessor(s, "finishObserver", finishObserver(s, attemptId, ok)))
+  ensures (inv(s) ==> canFinishObserver(s, attemptId, ok) ==> stepStopIdentityRetained(s, finishObserver(s, attemptId, ok)))
 {
   if inv(s) && canFinishObserver(s, attemptId, ok) {
     var after := finishObserver(s, attemptId, ok);
@@ -459,18 +445,18 @@ lemma finishLateStart_ensures(s: ServiceInstances, attemptId: int)
   ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysAcquisitionIdsUnique(finishLateStart(s, attemptId)))
   ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysInitWaitingHasNoAggregate(finishLateStart(s, attemptId)))
   ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysTypeReferencesRetained(finishLateStart(s, attemptId)))
+  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysFailedTypeHasNoPublication(finishLateStart(s, attemptId)))
   ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysClassAndObjectIdentities(finishLateStart(s, attemptId)))
+  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysPendingAttemptsOwned(finishLateStart(s, attemptId)))
+  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysCapturedAttemptsExist(finishLateStart(s, attemptId)))
+  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysDeclarationsMatch(finishLateStart(s, attemptId)))
   ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysObjectStopOnce(finishLateStart(s, attemptId)))
   ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysClassOwnsKnownObjects(finishLateStart(s, attemptId)))
   ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysStoppedHasNoPublication(finishLateStart(s, attemptId)))
   ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysPublicationIdentitiesValid(finishLateStart(s, attemptId)))
-  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysPendingAttemptsOwned(finishLateStart(s, attemptId)))
-  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysCapturedAttemptsExist(finishLateStart(s, attemptId)))
-  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysDeclarationsMatch(finishLateStart(s, attemptId)))
   ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysAttemptGeneration(finishLateStart(s, attemptId)))
-  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> alwaysFailedTypeHasNoPublication(finishLateStart(s, attemptId)))
-  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> stepStopIdentityRetained(s, finishLateStart(s, attemptId)))
   ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> stepSupersededAggregateKeepsSuccessor(s, "finishLateStart", finishLateStart(s, attemptId)))
+  ensures (inv(s) ==> canFinishLateStart(s, attemptId) ==> stepStopIdentityRetained(s, finishLateStart(s, attemptId)))
 {
   if inv(s) && canFinishLateStart(s, attemptId) {
     var after := finishLateStart(s, attemptId);
@@ -485,18 +471,18 @@ lemma finishNextObserver_ensures(s: ServiceInstances, ok: bool)
   ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysAcquisitionIdsUnique(finishNextObserver(s, ok)))
   ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysInitWaitingHasNoAggregate(finishNextObserver(s, ok)))
   ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysTypeReferencesRetained(finishNextObserver(s, ok)))
+  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysFailedTypeHasNoPublication(finishNextObserver(s, ok)))
   ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysClassAndObjectIdentities(finishNextObserver(s, ok)))
+  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysPendingAttemptsOwned(finishNextObserver(s, ok)))
+  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysCapturedAttemptsExist(finishNextObserver(s, ok)))
+  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysDeclarationsMatch(finishNextObserver(s, ok)))
   ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysObjectStopOnce(finishNextObserver(s, ok)))
   ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysClassOwnsKnownObjects(finishNextObserver(s, ok)))
   ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysStoppedHasNoPublication(finishNextObserver(s, ok)))
   ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysPublicationIdentitiesValid(finishNextObserver(s, ok)))
-  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysPendingAttemptsOwned(finishNextObserver(s, ok)))
-  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysCapturedAttemptsExist(finishNextObserver(s, ok)))
-  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysDeclarationsMatch(finishNextObserver(s, ok)))
   ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysAttemptGeneration(finishNextObserver(s, ok)))
-  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> alwaysFailedTypeHasNoPublication(finishNextObserver(s, ok)))
-  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> stepStopIdentityRetained(s, finishNextObserver(s, ok)))
   ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> stepSupersededAggregateKeepsSuccessor(s, "finishNextObserver", finishNextObserver(s, ok)))
+  ensures (inv(s) ==> canFinishNextObserver(s, ok) ==> stepStopIdentityRetained(s, finishNextObserver(s, ok)))
 {
   if inv(s) && canFinishNextObserver(s, ok) {
     finishObserver_ensures(s, nextObservableAttempt(s), ok);
@@ -509,18 +495,18 @@ lemma finishNextLateStart_ensures(s: ServiceInstances)
   ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysAcquisitionIdsUnique(finishNextLateStart(s)))
   ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysInitWaitingHasNoAggregate(finishNextLateStart(s)))
   ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysTypeReferencesRetained(finishNextLateStart(s)))
+  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysFailedTypeHasNoPublication(finishNextLateStart(s)))
   ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysClassAndObjectIdentities(finishNextLateStart(s)))
+  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysPendingAttemptsOwned(finishNextLateStart(s)))
+  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysCapturedAttemptsExist(finishNextLateStart(s)))
+  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysDeclarationsMatch(finishNextLateStart(s)))
   ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysObjectStopOnce(finishNextLateStart(s)))
   ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysClassOwnsKnownObjects(finishNextLateStart(s)))
   ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysStoppedHasNoPublication(finishNextLateStart(s)))
   ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysPublicationIdentitiesValid(finishNextLateStart(s)))
-  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysPendingAttemptsOwned(finishNextLateStart(s)))
-  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysCapturedAttemptsExist(finishNextLateStart(s)))
-  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysDeclarationsMatch(finishNextLateStart(s)))
   ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysAttemptGeneration(finishNextLateStart(s)))
-  ensures (inv(s) ==> canFinishNextLateStart(s) ==> alwaysFailedTypeHasNoPublication(finishNextLateStart(s)))
-  ensures (inv(s) ==> canFinishNextLateStart(s) ==> stepStopIdentityRetained(s, finishNextLateStart(s)))
   ensures (inv(s) ==> canFinishNextLateStart(s) ==> stepSupersededAggregateKeepsSuccessor(s, "finishNextLateStart", finishNextLateStart(s)))
+  ensures (inv(s) ==> canFinishNextLateStart(s) ==> stepStopIdentityRetained(s, finishNextLateStart(s)))
 {
   if inv(s) && canFinishNextLateStart(s) {
     finishLateStart_ensures(s, nextRetiredAttempt(s));
@@ -614,21 +600,7 @@ lemma ServiceClearUpdatesOnlyTypeMetadata(s: ServiceInstances, callId: int)
   ensures forall i :: 0 <= i < |s.typeEntries| ==>
     clearTypeAggregate(s, callId).typeEntries[i] ==
       (if s.typeEntries[i].latestAggregate == callId then s.typeEntries[i].(latestAggregate := 0) else s.typeEntries[i])
-  ensures alwaysClassAndObjectIdentities(s) ==> alwaysClassAndObjectIdentities(clearTypeAggregate(s, callId))
-  ensures alwaysAggregateAndLoadIdsUnique(s) ==> alwaysAggregateAndLoadIdsUnique(clearTypeAggregate(s, callId))
-{
-  var after := clearTypeAggregate(s, callId);
-  if alwaysClassAndObjectIdentities(s) {
-    assert after.classes == s.classes && after.objects == s.objects;
-    ServiceObjectIdentityFilters(s);
-    ServiceObjectIdentityFilters(after);
-  }
-  if alwaysAggregateAndLoadIdsUnique(s) {
-    assert after.aggregates == s.aggregates && after.loadPromises == s.loadPromises && after.nextLoad == s.nextLoad;
-    ServicePromiseIdentityFilters(s);
-    ServicePromiseIdentityFilters(after);
-  }
-}
+{}
 
 lemma ServiceClearPreservesFailedStatus(s: ServiceInstances, callId: int)
   requires alwaysFailedTypeHasNoPublication(s)
@@ -651,36 +623,23 @@ lemma clearTypeAggregate_ensures(s: ServiceInstances, callId: int)
   ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysAcquisitionIdsUnique(clearTypeAggregate(s, callId)))
   ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysInitWaitingHasNoAggregate(clearTypeAggregate(s, callId)))
   ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysTypeReferencesRetained(clearTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysFailedTypeHasNoPublication(clearTypeAggregate(s, callId)))
   ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysClassAndObjectIdentities(clearTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysPendingAttemptsOwned(clearTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysCapturedAttemptsExist(clearTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysDeclarationsMatch(clearTypeAggregate(s, callId)))
   ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysObjectStopOnce(clearTypeAggregate(s, callId)))
   ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysClassOwnsKnownObjects(clearTypeAggregate(s, callId)))
   ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysStoppedHasNoPublication(clearTypeAggregate(s, callId)))
   ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysPublicationIdentitiesValid(clearTypeAggregate(s, callId)))
-  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysPendingAttemptsOwned(clearTypeAggregate(s, callId)))
-  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysCapturedAttemptsExist(clearTypeAggregate(s, callId)))
-  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysDeclarationsMatch(clearTypeAggregate(s, callId)))
   ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysAttemptGeneration(clearTypeAggregate(s, callId)))
-  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> alwaysFailedTypeHasNoPublication(clearTypeAggregate(s, callId)))
-  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> stepStopIdentityRetained(s, clearTypeAggregate(s, callId)))
   ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> stepSupersededAggregateKeepsSuccessor(s, "clearTypeAggregate", clearTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> stepStopIdentityRetained(s, clearTypeAggregate(s, callId)))
 {
   if inv(s) && canClearTypeAggregate(s, callId) {
-    var after := clearTypeAggregate(s, callId);
-    ServiceClearUpdatesOnlyTypeMetadata(s, callId);
-    ServiceMapTypeIdentities(s, after);
-    ServiceClearAggregateOwnership(s, after, callId);
-    ServiceStopReferencePreserved(s, after);
-    ServiceClearPreservesFailedStatus(s, callId);
-    ServiceCapturedAttemptsFrame(s, after);
+    ServiceClearKeepsInvariant(s, callId);
   }
 }
-
-// alwaysCapturedAttemptsExist reads only calls, attempts, objects and aggregates.
-lemma ServiceCapturedAttemptsFrame(s: ServiceInstances, after: ServiceInstances)
-  requires alwaysCapturedAttemptsExist(s)
-  requires after.calls == s.calls && after.attempts == s.attempts && after.objects == s.objects && after.aggregates == s.aggregates
-  ensures alwaysCapturedAttemptsExist(after)
-{}
 
 lemma settleTypeAggregate_ensures(s: ServiceInstances, callId: int)
   ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysTypeEntriesUnique(settleTypeAggregate(s, callId)))
@@ -688,18 +647,18 @@ lemma settleTypeAggregate_ensures(s: ServiceInstances, callId: int)
   ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysAcquisitionIdsUnique(settleTypeAggregate(s, callId)))
   ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysInitWaitingHasNoAggregate(settleTypeAggregate(s, callId)))
   ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysTypeReferencesRetained(settleTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysFailedTypeHasNoPublication(settleTypeAggregate(s, callId)))
   ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysClassAndObjectIdentities(settleTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysPendingAttemptsOwned(settleTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysCapturedAttemptsExist(settleTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysDeclarationsMatch(settleTypeAggregate(s, callId)))
   ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysObjectStopOnce(settleTypeAggregate(s, callId)))
   ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysClassOwnsKnownObjects(settleTypeAggregate(s, callId)))
   ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysStoppedHasNoPublication(settleTypeAggregate(s, callId)))
   ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysPublicationIdentitiesValid(settleTypeAggregate(s, callId)))
-  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysPendingAttemptsOwned(settleTypeAggregate(s, callId)))
-  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysCapturedAttemptsExist(settleTypeAggregate(s, callId)))
-  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysDeclarationsMatch(settleTypeAggregate(s, callId)))
   ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysAttemptGeneration(settleTypeAggregate(s, callId)))
-  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> alwaysFailedTypeHasNoPublication(settleTypeAggregate(s, callId)))
-  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> stepStopIdentityRetained(s, settleTypeAggregate(s, callId)))
   ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> stepSupersededAggregateKeepsSuccessor(s, "settleTypeAggregate", settleTypeAggregate(s, callId)))
+  ensures (inv(s) ==> canSettleTypeAggregate(s, callId) ==> stepStopIdentityRetained(s, settleTypeAggregate(s, callId)))
 {
   if inv(s) && canSettleTypeAggregate(s, callId) {
     var after := settleTypeAggregate(s, callId);
@@ -719,18 +678,18 @@ lemma settleAcquire_ensures(s: ServiceInstances, callId: int)
   ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysAcquisitionIdsUnique(settleAcquire(s, callId)))
   ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysInitWaitingHasNoAggregate(settleAcquire(s, callId)))
   ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysTypeReferencesRetained(settleAcquire(s, callId)))
+  ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysFailedTypeHasNoPublication(settleAcquire(s, callId)))
   ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysClassAndObjectIdentities(settleAcquire(s, callId)))
+  ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysPendingAttemptsOwned(settleAcquire(s, callId)))
+  ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysCapturedAttemptsExist(settleAcquire(s, callId)))
+  ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysDeclarationsMatch(settleAcquire(s, callId)))
   ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysObjectStopOnce(settleAcquire(s, callId)))
   ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysClassOwnsKnownObjects(settleAcquire(s, callId)))
   ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysStoppedHasNoPublication(settleAcquire(s, callId)))
   ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysPublicationIdentitiesValid(settleAcquire(s, callId)))
-  ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysPendingAttemptsOwned(settleAcquire(s, callId)))
-  ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysCapturedAttemptsExist(settleAcquire(s, callId)))
-  ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysDeclarationsMatch(settleAcquire(s, callId)))
   ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysAttemptGeneration(settleAcquire(s, callId)))
-  ensures (inv(s) ==> canSettleAcquire(s, callId) ==> alwaysFailedTypeHasNoPublication(settleAcquire(s, callId)))
-  ensures (inv(s) ==> canSettleAcquire(s, callId) ==> stepStopIdentityRetained(s, settleAcquire(s, callId)))
   ensures (inv(s) ==> canSettleAcquire(s, callId) ==> stepSupersededAggregateKeepsSuccessor(s, "settleAcquire", settleAcquire(s, callId)))
+  ensures (inv(s) ==> canSettleAcquire(s, callId) ==> stepStopIdentityRetained(s, settleAcquire(s, callId)))
 {
   if inv(s) && canSettleAcquire(s, callId) {
     var after := settleAcquire(s, callId);
@@ -936,18 +895,18 @@ lemma stopRuntime_ensures(s: ServiceInstances)
   ensures (inv(s) ==> canStopRuntime(s) ==> alwaysAcquisitionIdsUnique(stopRuntime(s)))
   ensures (inv(s) ==> canStopRuntime(s) ==> alwaysInitWaitingHasNoAggregate(stopRuntime(s)))
   ensures (inv(s) ==> canStopRuntime(s) ==> alwaysTypeReferencesRetained(stopRuntime(s)))
+  ensures (inv(s) ==> canStopRuntime(s) ==> alwaysFailedTypeHasNoPublication(stopRuntime(s)))
   ensures (inv(s) ==> canStopRuntime(s) ==> alwaysClassAndObjectIdentities(stopRuntime(s)))
+  ensures (inv(s) ==> canStopRuntime(s) ==> alwaysPendingAttemptsOwned(stopRuntime(s)))
+  ensures (inv(s) ==> canStopRuntime(s) ==> alwaysCapturedAttemptsExist(stopRuntime(s)))
+  ensures (inv(s) ==> canStopRuntime(s) ==> alwaysDeclarationsMatch(stopRuntime(s)))
   ensures (inv(s) ==> canStopRuntime(s) ==> alwaysObjectStopOnce(stopRuntime(s)))
   ensures (inv(s) ==> canStopRuntime(s) ==> alwaysClassOwnsKnownObjects(stopRuntime(s)))
   ensures (inv(s) ==> canStopRuntime(s) ==> alwaysStoppedHasNoPublication(stopRuntime(s)))
   ensures (inv(s) ==> canStopRuntime(s) ==> alwaysPublicationIdentitiesValid(stopRuntime(s)))
-  ensures (inv(s) ==> canStopRuntime(s) ==> alwaysPendingAttemptsOwned(stopRuntime(s)))
-  ensures (inv(s) ==> canStopRuntime(s) ==> alwaysCapturedAttemptsExist(stopRuntime(s)))
-  ensures (inv(s) ==> canStopRuntime(s) ==> alwaysDeclarationsMatch(stopRuntime(s)))
   ensures (inv(s) ==> canStopRuntime(s) ==> alwaysAttemptGeneration(stopRuntime(s)))
-  ensures (inv(s) ==> canStopRuntime(s) ==> alwaysFailedTypeHasNoPublication(stopRuntime(s)))
-  ensures (inv(s) ==> canStopRuntime(s) ==> stepStopIdentityRetained(s, stopRuntime(s)))
   ensures (inv(s) ==> canStopRuntime(s) ==> stepSupersededAggregateKeepsSuccessor(s, "stopRuntime", stopRuntime(s)))
+  ensures (inv(s) ==> canStopRuntime(s) ==> stepStopIdentityRetained(s, stopRuntime(s)))
 {
   if inv(s) && canStopRuntime(s) {
     ServiceStopPublicationFold(s.published, s);
@@ -970,20 +929,15 @@ lemma ServiceClassMapIncarnations(before: ServiceInstances, after: ServiceInstan
   requires forall i :: 0 <= i < |before.classes| ==>
     (before.classes[i].id == after.classes[i].id && before.classes[i].serviceType == after.classes[i].serviceType &&
       before.classes[i].generation == after.classes[i].generation && before.classes[i].registered == after.classes[i].registered && after.classes[i].pending >= 0)
-  requires forall i | 0 <= i < |before.classes| && !after.classes[i].registered ::
-    after.classes[i].live == 0 || after.classes[i].live == before.classes[i].live
   ensures alwaysClassAndObjectIdentities(after)
   ensures alwaysDeclarationsMatch(before) ==> alwaysDeclarationsMatch(after)
   ensures alwaysAttemptGeneration(before) ==> alwaysAttemptGeneration(after)
 {
-  hide *;
-  reveal alwaysClassAndObjectIdentities(), alwaysDeclarationsMatch(), alwaysAttemptGeneration();
   ServiceObjectIdentityFilters(before);
   ServiceObjectIdentityFilters(after);
   forall cls | cls in after.classes
     ensures cls.id > 0 && cls.generation >= 0 && cls.pending >= 0 && |ProofLib.Filter((other: ServiceClassEntry) => other.id == cls.id, after.classes)| == 1
     ensures alwaysDeclarationsMatch(before) ==> (cls.registered <==> (exists d :: d in after.declarations && d.classId == cls.id))
-    ensures alwaysDeclarationsMatch(before) && cls.live != 0 ==> cls.registered
   {
     var i :| 0 <= i < |after.classes| && after.classes[i] == cls;
     assert before.classes[i] in before.classes;
@@ -1076,7 +1030,6 @@ lemma ServiceAttemptPostClass(s: ServiceInstances, after: ServiceInstances, clas
 lemma ServiceAttemptAppend(s: ServiceInstances, classId: int)
   requires inv(s)
   requires serviceClass(s, classId).id == classId && classId > 0
-  requires serviceClass(s, classId).pending == 0 && serviceClass(s, classId).live == 0
   ensures inv(beginClassAttempt(classId, s))
   ensures stepStopIdentityRetained(s, beginClassAttempt(classId, s))
 {
@@ -1162,18 +1115,6 @@ lemma ServiceAttemptAppend(s: ServiceInstances, classId: int)
   {
     forall m | m in a.members && m.attemptId != 0 ensures serviceAttempt(after, m.attemptId).id == m.attemptId {
       ServiceRetainPriorAttempt(s, after, m.attemptId);
-    }
-  }
-  forall a | a in after.attempts && a.phase.StartInvoking? && !after.stopped
-    ensures serviceClass(after, a.classId).pending == a.id && serviceClass(after, a.classId).live == 0
-  {
-    ServiceAttemptPostClass(s, after, classId, a.classId);
-    if a == added {
-      ServiceClassLookupMember(s, classId);
-    } else {
-      assert a in s.attempts && a.id > 0;
-      assert serviceClass(s, a.classId).pending == a.id;
-      assert a.classId != classId;
     }
   }
 }
@@ -1452,8 +1393,6 @@ lemma ServiceAdmitAcquisition(s: ServiceInstances, callId: int, serviceType: str
   ensures inv(admittedAcquire(callId, serviceType, s))
   ensures stepStopIdentityRetained(s, admittedAcquire(callId, serviceType, s))
 {
-  hide *;
-  reveal admittedAcquire(), canAcquireServices(), ProofLib.Filter();
   var absent := s.stopped || s.initialization.InitializationFailed? ||
     (s.initialization.InitializationReady? && !(exists c :: c in s.classes && c.registered && c.serviceType == serviceType));
   var waiting := !absent && s.initialization.InitializationPending? && firstLive(s, serviceType) == 0;
@@ -1471,16 +1410,11 @@ lemma ServiceAdmitAcquisition(s: ServiceInstances, callId: int, serviceType: str
     assert waiting && noStarts && published.aggregates == s.aggregates;
   }
   if !noStarts {
-    assert alwaysDeclarationsMatch(published) && alwaysPendingAttemptsOwned(published) && alwaysClassAndObjectIdentities(published) by {
-      reveal inv();
-    }
     ServiceCapturedCallAttempts(published, serviceType, call.attempts);
   } else {
     assert call.attempts == [];
   }
   ServiceAppendAcquisition(published, call);
-  assert alwaysObjectStopOnce(s) by { reveal inv(); }
-  reveal alwaysObjectStopOnce();
   ServiceStopReferencePreserved(s, after);
 }
 
@@ -1520,18 +1454,18 @@ lemma acquireServices_ensures(s: ServiceInstances, callId: int, serviceType: str
   ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysAcquisitionIdsUnique(acquireServices(s, callId, serviceType)))
   ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysInitWaitingHasNoAggregate(acquireServices(s, callId, serviceType)))
   ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysTypeReferencesRetained(acquireServices(s, callId, serviceType)))
+  ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysFailedTypeHasNoPublication(acquireServices(s, callId, serviceType)))
   ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysClassAndObjectIdentities(acquireServices(s, callId, serviceType)))
+  ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysPendingAttemptsOwned(acquireServices(s, callId, serviceType)))
+  ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysCapturedAttemptsExist(acquireServices(s, callId, serviceType)))
+  ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysDeclarationsMatch(acquireServices(s, callId, serviceType)))
   ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysObjectStopOnce(acquireServices(s, callId, serviceType)))
   ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysClassOwnsKnownObjects(acquireServices(s, callId, serviceType)))
   ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysStoppedHasNoPublication(acquireServices(s, callId, serviceType)))
   ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysPublicationIdentitiesValid(acquireServices(s, callId, serviceType)))
-  ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysPendingAttemptsOwned(acquireServices(s, callId, serviceType)))
-  ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysCapturedAttemptsExist(acquireServices(s, callId, serviceType)))
-  ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysDeclarationsMatch(acquireServices(s, callId, serviceType)))
   ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysAttemptGeneration(acquireServices(s, callId, serviceType)))
-  ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> alwaysFailedTypeHasNoPublication(acquireServices(s, callId, serviceType)))
-  ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> stepStopIdentityRetained(s, acquireServices(s, callId, serviceType)))
   ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> stepSupersededAggregateKeepsSuccessor(s, "acquireServices", acquireServices(s, callId, serviceType)))
+  ensures (inv(s) ==> canAcquireServices(s, callId, serviceType) ==> stepStopIdentityRetained(s, acquireServices(s, callId, serviceType)))
 {
   if inv(s) && canAcquireServices(s, callId, serviceType) {
     ServiceAdmitAcquisition(s, callId, serviceType);
@@ -1544,18 +1478,18 @@ lemma resumeAcquire_ensures(s: ServiceInstances, callId: int)
   ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysAcquisitionIdsUnique(resumeAcquire(s, callId)))
   ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysInitWaitingHasNoAggregate(resumeAcquire(s, callId)))
   ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysTypeReferencesRetained(resumeAcquire(s, callId)))
+  ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysFailedTypeHasNoPublication(resumeAcquire(s, callId)))
   ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysClassAndObjectIdentities(resumeAcquire(s, callId)))
+  ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysPendingAttemptsOwned(resumeAcquire(s, callId)))
+  ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysCapturedAttemptsExist(resumeAcquire(s, callId)))
+  ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysDeclarationsMatch(resumeAcquire(s, callId)))
   ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysObjectStopOnce(resumeAcquire(s, callId)))
   ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysClassOwnsKnownObjects(resumeAcquire(s, callId)))
   ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysStoppedHasNoPublication(resumeAcquire(s, callId)))
   ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysPublicationIdentitiesValid(resumeAcquire(s, callId)))
-  ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysPendingAttemptsOwned(resumeAcquire(s, callId)))
-  ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysCapturedAttemptsExist(resumeAcquire(s, callId)))
-  ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysDeclarationsMatch(resumeAcquire(s, callId)))
   ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysAttemptGeneration(resumeAcquire(s, callId)))
-  ensures (inv(s) ==> canResumeAcquire(s, callId) ==> alwaysFailedTypeHasNoPublication(resumeAcquire(s, callId)))
-  ensures (inv(s) ==> canResumeAcquire(s, callId) ==> stepStopIdentityRetained(s, resumeAcquire(s, callId)))
   ensures (inv(s) ==> canResumeAcquire(s, callId) ==> stepSupersededAggregateKeepsSuccessor(s, "resumeAcquire", resumeAcquire(s, callId)))
+  ensures (inv(s) ==> canResumeAcquire(s, callId) ==> stepStopIdentityRetained(s, resumeAcquire(s, callId)))
 {
   if inv(s) && canResumeAcquire(s, callId) {
     ServiceResumeAcquisition(s, callId);
@@ -1711,90 +1645,30 @@ lemma ServiceDeclarationAppended(s: ServiceInstances, after: ServiceInstances, c
   }
 }
 
-lemma ServiceRetainedClassGenerationsPreserveAttempts(s: ServiceInstances, after: ServiceInstances)
-  requires alwaysAttemptGeneration(s) && alwaysClassAndObjectIdentities(after)
-  requires after.nextAttempt == s.nextAttempt && after.attempts == s.attempts
-  requires |s.classes| <= |after.classes|
-  requires forall i :: 0 <= i < |s.classes| ==>
-    (after.classes[i].id == s.classes[i].id && after.classes[i].generation == s.classes[i].generation)
-  requires alwaysPendingAttemptsOwned(s) && (s.stopped ==> after.stopped)
-  requires forall i | 0 <= i < |s.classes| ::
-    s.classes[i].pending == after.classes[i].pending &&
-      (s.classes[i].live == 0 ==> after.classes[i].live == 0)
-  ensures alwaysAttemptGeneration(after)
-  ensures !after.stopped ==> (forall a | a in after.attempts && a.phase.StartInvoking? ::
-    serviceClass(after, a.classId).pending == a.id && serviceClass(after, a.classId).live == 0)
-{
-  ServiceAttemptFilters(s);
-  ServiceAttemptFilters(after);
-  forall attempt | attempt in after.attempts
-    ensures attempt.generation <= serviceClass(after, attempt.classId).generation
-  {
-    assert attempt in s.attempts;
-    var prior := serviceClass(s, attempt.classId);
-    assert 0 < attempt.generation <= prior.generation;
-    ServiceClassLookupMember(s, attempt.classId);
-    var i :| 0 <= i < |s.classes| && s.classes[i] == prior;
-    var retained := after.classes[i];
-    assert retained in after.classes && retained.id == attempt.classId && retained.generation == prior.generation;
-    ServiceClassFind(after, attempt.classId);
-  }
-  forall a | a in after.attempts && a.phase.StartInvoking? && !after.stopped
-    ensures serviceClass(after, a.classId).pending == a.id && serviceClass(after, a.classId).live == 0
-  {
-    var prior := serviceClass(s, a.classId);
-    ServiceInvokingAttemptClassMember(s, a);
-    var i :| 0 <= i < |s.classes| && s.classes[i] == prior;
-    assert after.classes[i] in after.classes && after.classes[i].id == prior.id;
-    ServiceClassFind(after, a.classId);
-  }
-}
-
-lemma ServiceRetainedPublicationsHaveOwners(s: ServiceInstances, after: ServiceInstances)
-  requires alwaysPublicationIdentitiesValid(s) && after.published == s.published
-  requires |s.classes| <= |after.classes|
-  requires forall i :: 0 <= i < |s.classes| ==>
-    (after.classes[i].serviceType == s.classes[i].serviceType && after.classes[i].live == s.classes[i].live)
-  ensures alwaysPublicationIdentitiesValid(after)
-{
-  forall publication | publication in after.published
-    ensures forall id :: id in publication.instances ==>
-      (exists owner :: owner in after.classes && owner.serviceType == publication.serviceType && owner.live == id)
-  {
-    forall id | id in publication.instances
-      ensures (exists owner :: owner in after.classes && owner.serviceType == publication.serviceType && owner.live == id)
-    {
-      var i :| 0 <= i < |s.classes| && s.classes[i].serviceType == publication.serviceType && s.classes[i].live == id;
-      assert after.classes[i] in after.classes;
-    }
-  }
-}
-
 lemma registerClass_ensures(s: ServiceInstances, classId: int, serviceType: string)
   ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysTypeEntriesUnique(registerClass(s, classId, serviceType)))
   ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysAggregateAndLoadIdsUnique(registerClass(s, classId, serviceType)))
   ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysAcquisitionIdsUnique(registerClass(s, classId, serviceType)))
   ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysInitWaitingHasNoAggregate(registerClass(s, classId, serviceType)))
   ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysTypeReferencesRetained(registerClass(s, classId, serviceType)))
+  ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysFailedTypeHasNoPublication(registerClass(s, classId, serviceType)))
   ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysClassAndObjectIdentities(registerClass(s, classId, serviceType)))
+  ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysPendingAttemptsOwned(registerClass(s, classId, serviceType)))
+  ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysCapturedAttemptsExist(registerClass(s, classId, serviceType)))
+  ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysDeclarationsMatch(registerClass(s, classId, serviceType)))
   ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysObjectStopOnce(registerClass(s, classId, serviceType)))
   ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysClassOwnsKnownObjects(registerClass(s, classId, serviceType)))
   ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysStoppedHasNoPublication(registerClass(s, classId, serviceType)))
   ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysPublicationIdentitiesValid(registerClass(s, classId, serviceType)))
-  ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysPendingAttemptsOwned(registerClass(s, classId, serviceType)))
-  ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysCapturedAttemptsExist(registerClass(s, classId, serviceType)))
-  ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysDeclarationsMatch(registerClass(s, classId, serviceType)))
   ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysAttemptGeneration(registerClass(s, classId, serviceType)))
-  ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> alwaysFailedTypeHasNoPublication(registerClass(s, classId, serviceType)))
-  ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> stepStopIdentityRetained(s, registerClass(s, classId, serviceType)))
   ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> stepSupersededAggregateKeepsSuccessor(s, "registerClass", registerClass(s, classId, serviceType)))
+  ensures (inv(s) ==> canRegisterClass(s, classId, serviceType) ==> stepStopIdentityRetained(s, registerClass(s, classId, serviceType)))
 {
   if inv(s) && canRegisterClass(s, classId, serviceType) {
     var after := registerClass(s, classId, serviceType);
     ServiceClassRegisteredIdentity(s, after, classId, serviceType);
     ServiceDeclarationAppended(s, after, classId, serviceType);
-    ServiceRetainedClassGenerationsPreserveAttempts(s, after);
-    ServiceRetainedPublicationsHaveOwners(s, after);
+    ServiceRegisteredGenerations(s, classId, serviceType);
     var contextual := s.(classes := after.classes, declarations := after.declarations);
     assert after == registerType(serviceType, contextual);
     ServiceRegisterLoadIdentity(contextual, serviceType);
@@ -1874,451 +1748,54 @@ lemma ServiceReturnedClassObjects(s: ServiceInstances, after: ServiceInstances, 
   }
 }
 
-lemma ServiceClassLookupMember(s: ServiceInstances, classId: int)
-  requires serviceClass(s, classId) != noClass
-  ensures serviceClass(s, classId) in s.classes && serviceClass(s, classId).id == classId
-{
-  ServiceClassProjection(s, classId);
-  var byId := (c: ServiceClassEntry) => c.id == classId;
-  var matches := ProofLib.Filter(byId, s.classes);
-  assert |matches| > 0;
-  ProofLib.FilterMember(byId, s.classes, matches[0]);
-}
-
-lemma ServiceReturnedPublicationInstances(s: ServiceInstances, after: ServiceInstances, classId: int, serviceType: string, instanceId: int)
-  requires alwaysClassAndObjectIdentities(s) && alwaysClassOwnsKnownObjects(s) && alwaysDeclarationsMatch(s)
-  requires instanceId > 0 && after.declarations == s.declarations && |after.classes| == |s.classes|
-  requires forall i :: 0 <= i < |s.classes| ==>
-    (after.classes[i] == (if s.classes[i].id == classId then s.classes[i].(live := instanceId) else s.classes[i]))
-  ensures forall instance :: instance in classInstances(after, serviceType) ==>
-    (instance > 0 && (exists c :: c in after.classes && c.serviceType == serviceType && c.live == instance))
-{
-  var instances := classInstances(after, serviceType);
-  var byType := (d: ServiceDeclaration) => d.serviceType == serviceType && serviceClass(after, d.classId).live != 0;
-  var contributing := ProofLib.Filter(byType, after.declarations);
-  assert |instances| == |contributing|;
-  forall instance | instance in instances
-    ensures instance > 0 && (exists c :: c in after.classes && c.serviceType == serviceType && c.live == instance)
-  {
-    var i :| 0 <= i < |instances| && instances[i] == instance;
-    var declaration := contributing[i];
-    ProofLib.FilterMember(byType, after.declarations, declaration);
-    var owner := serviceClass(after, declaration.classId);
-    assert instance == owner.live && owner.live != 0;
-    ServiceClassLookupMember(after, declaration.classId);
-    ServiceStartClassFields(s, after, declaration.classId);
-    var j :| 0 <= j < |after.classes| && after.classes[j] == owner;
-    assert s.classes[j] in s.classes;
-    if owner.live != instanceId {
-      assert owner.live == s.classes[j].live;
-      var priorObject :| priorObject in s.objects && priorObject.id == owner.live;
-      assert priorObject.id > 0;
-    }
-  }
-}
-
-lemma ServiceOtherPublicationOwners(s: ServiceInstances, after: ServiceInstances, classId: int, serviceType: string)
-  requires alwaysPublicationIdentitiesValid(s) && alwaysClassAndObjectIdentities(s)
-  requires serviceClass(s, classId).serviceType == serviceType && |after.classes| == |s.classes|
-  requires forall i :: 0 <= i < |s.classes| && s.classes[i].id != classId ==> after.classes[i] == s.classes[i]
-  ensures forall p :: p in s.published && p.serviceType != serviceType ==>
-    (forall id :: id in p.instances ==> (exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id))
-{
-  ServiceClassFind(s, classId);
-  forall p | p in s.published && p.serviceType != serviceType
-    ensures forall id :: id in p.instances ==> (exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id)
-  {
-    forall id | id in p.instances
-      ensures exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id
-    {
-      var i :| 0 <= i < |s.classes| && s.classes[i].serviceType == p.serviceType && s.classes[i].live == id;
-      assert s.classes[i] in s.classes;
-      assert s.classes[i].id != classId && after.classes[i] == s.classes[i];
-      assert after.classes[i] in after.classes;
-    }
-  }
-}
-
-lemma ServiceClassInstancesSameClasses(before: ServiceInstances, after: ServiceInstances, serviceType: string)
-  requires before.classes == after.classes && before.declarations == after.declarations
-  ensures classInstances(before, serviceType) == classInstances(after, serviceType)
-{
-  var beforeFilter := (d: ServiceDeclaration) => d.serviceType == serviceType && serviceClass(before, d.classId).live != 0;
-  var afterFilter := (d: ServiceDeclaration) => d.serviceType == serviceType && serviceClass(after, d.classId).live != 0;
-  ProofLib.FilterSamePredicate(beforeFilter, afterFilter, before.declarations);
-  var contributors := ProofLib.Filter(beforeFilter, before.declarations);
-  var earlier := classInstances(before, serviceType);
-  var later := classInstances(after, serviceType);
-  assert |earlier| == |contributors| == |later|;
-  forall i | 0 <= i < |contributors| ensures earlier[i] == later[i] {
-    var declaration := contributors[i];
-    assert serviceClass(before, declaration.classId) == serviceClass(after, declaration.classId);
-  }
-}
-
-lemma ServicePublicationIdentityFilters(s: ServiceInstances)
-  ensures alwaysPublicationIdentitiesValid(s) ==
-    (forall p :: p in s.published ==>
-      p.serviceType != "" && 0 < |p.instances| &&
-      |ProofLib.Filter((other: ServicePublication) => (other.serviceType == p.serviceType), s.published)| == 1 &&
-      (forall id :: id in p.instances ==>
-        id > 0 && (exists c :: c in s.classes && c.serviceType == p.serviceType && c.live == id)))
-{}
-
-lemma ServiceReplacedPublicationValid(s: ServiceInstances, after: ServiceInstances, serviceType: string, instances: seq<int>)
-  requires alwaysPublicationIdentitiesValid(s) && serviceType != ""
-  requires after.published == replacePublication(serviceType, instances, after.(published := s.published)).published
-  requires forall id :: id in instances ==>
-    (id > 0 && (exists c :: c in after.classes && c.serviceType == serviceType && c.live == id))
-  requires forall p :: p in s.published && p.serviceType != serviceType ==>
-    (forall id :: id in p.instances ==> (exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id))
-  ensures alwaysPublicationIdentitiesValid(after)
-  ensures forall p :: p in after.published && p.serviceType != serviceType ==> p in s.published
-{
-  ServicePublicationIdentityFilters(s);
-  ServicePublicationIdentityFilters(after);
-  var replacement := ServicePublication(serviceType, instances);
-  forall p | p in after.published
-    ensures p.serviceType != "" && 0 < |p.instances| &&
-      |ProofLib.Filter((other: ServicePublication) => (other.serviceType == p.serviceType), after.published)| == 1
-    ensures forall id :: id in p.instances ==> id > 0 && (exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id)
-    ensures p.serviceType != serviceType ==> p in s.published
-  {
-    var byType := (other: ServicePublication) => (other.serviceType == p.serviceType);
-    var replacing := (other: ServicePublication) => (other.serviceType == serviceType);
-    if |instances| == 0 {
-      var retained := (other: ServicePublication) => (other.serviceType != serviceType);
-      assert after.published == ProofLib.Filter(retained, s.published);
-      ProofLib.FilterMember(retained, s.published, p);
-      ProofLib.FilterOfFilterLength(retained, byType, byType, s.published);
-      assert |ProofLib.Filter(byType, s.published)| == 1;
-      ProofLib.FilterMember(byType, after.published, p);
-      assert |ProofLib.Filter(byType, after.published)| == 1;
-    } else if exists current :: current in s.published && replacing(current) {
-      var i :| 0 <= i < |after.published| && after.published[i] == p;
-      var prior := s.published[i];
-      assert p == replacement || (p == prior && p in s.published && p.serviceType != serviceType);
-      assert prior in s.published && prior.serviceType == p.serviceType;
-      ProofLib.FilterSamePredicate(byType, (other: ServicePublication) => (other.serviceType == prior.serviceType), s.published);
-      assert |ProofLib.Filter(byType, s.published)| == 1;
-      ProofLib.FilterLengthPointwise(byType, byType, s.published, after.published);
-      assert |ProofLib.Filter(byType, after.published)| == 1;
-    } else {
-      assert after.published == s.published + [replacement];
-      assert p == replacement || (p in s.published && p.serviceType != serviceType);
-      if p == replacement {
-        ProofLib.FilterNone(byType, s.published);
-      } else {
-        assert |ProofLib.Filter(byType, s.published)| == 1;
-      }
-      ProofLib.FilterAppend(byType, s.published, replacement);
-      assert |ProofLib.Filter(byType, after.published)| == 1;
-    }
-    if p == replacement {
-      assert 0 < |instances|;
-      assert p.serviceType == serviceType;
-    } else {
-      assert p in s.published;
-      assert p.serviceType != "" && 0 < |p.instances|;
-    }
-    assert |ProofLib.Filter((other: ServicePublication) => (other.serviceType == p.serviceType), after.published)| == 1;
-  }
-}
-
-lemma ServiceReturnedPublication(s: ServiceInstances, after: ServiceInstances, attemptId: int, instanceId: int)
-  requires alwaysPublicationIdentitiesValid(s) && alwaysDeclarationsMatch(s) && alwaysClassAndObjectIdentities(s)
-  requires alwaysClassOwnsKnownObjects(s)
-  requires canReturnInstance(s, attemptId, instanceId)
-  requires after == returnInstance(s, attemptId, instanceId)
-  ensures alwaysPublicationIdentitiesValid(after)
-  ensures forall p :: p in after.published && p.serviceType != serviceClass(s, serviceAttempt(s, attemptId).classId).serviceType ==> p in s.published
-{
-  var classId := serviceAttempt(s, attemptId).classId;
-  var owner := serviceClass(s, classId);
-  if s.stopped || !owner.registered {
-    assert after.published == s.published && after.classes == s.classes;
-  } else {
-    ServiceClassLookupMember(s, classId);
-    var declaration :| declaration in s.declarations && declaration.classId == classId;
-    assert declaration.serviceType == owner.serviceType && owner.serviceType != "";
-    var prepared := s.(objects := after.objects, attempts := after.attempts, classes := after.classes);
-    assert after.published == replacePublication(owner.serviceType, classInstances(prepared, owner.serviceType), prepared).published;
-    ServiceClassInstancesSameClasses(prepared, after, owner.serviceType);
-    ServiceReturnedPublicationInstances(s, after, classId, owner.serviceType, instanceId);
-    ServiceOtherPublicationOwners(s, after, classId, owner.serviceType);
-    ServiceReplacedPublicationValid(s, after, owner.serviceType, classInstances(after, owner.serviceType));
-  }
-}
-
-lemma ServiceReturnedAttemptLookup(s: ServiceInstances, after: ServiceInstances, attemptId: int, instanceId: int, query: int)
-  requires canReturnInstance(s, attemptId, instanceId) && after == returnInstance(s, attemptId, instanceId)
-  ensures serviceAttempt(after, query) ==
-    (if query == attemptId then serviceAttempt(s, query).(instance := instanceId, phase :=
-      (if s.stopped || !serviceClass(s, serviceAttempt(s, attemptId).classId).registered then AttemptPhase.StartLateStop else AttemptPhase.StartObserver))
-      else serviceAttempt(s, query))
-{
-  ServiceAttemptProjection(s, query);
-  ServiceAttemptProjection(after, query);
-  var byId := (a: ServiceAttempt) => a.id == query;
-  var phase := if s.stopped || !serviceClass(s, serviceAttempt(s, attemptId).classId).registered
-    then AttemptPhase.StartLateStop else AttemptPhase.StartObserver;
-  var related := (prior: ServiceAttempt, returned: ServiceAttempt) =>
-    returned == (if prior.id == attemptId then prior.(instance := instanceId, phase := phase) else prior);
-  var earlier := ProofLib.Filter(byId, s.attempts);
-  var later := ProofLib.Filter(byId, after.attempts);
-  ProofLib.FilterPointwise(byId, byId, related, s.attempts, after.attempts);
-  if |earlier| > 0 {
-    ProofLib.FilterMember(byId, s.attempts, earlier[0]);
-    assert earlier[0].id == query && related(earlier[0], later[0]);
-  }
-}
-
-lemma ServiceReturnedPendingOwners(s: ServiceInstances, after: ServiceInstances, attemptId: int, instanceId: int)
-  requires alwaysPendingAttemptsOwned(s) && alwaysAttemptGeneration(s)
-  requires alwaysClassAndObjectIdentities(after) && canReturnInstance(s, attemptId, instanceId)
-  requires after == returnInstance(s, attemptId, instanceId)
-  ensures alwaysPendingAttemptsOwned(after)
-{
-  forall cls | cls in after.classes && cls.pending != 0
-    ensures (serviceAttempt(after, cls.pending).classId == cls.id &&
-      serviceAttempt(after, cls.pending).generation == cls.generation &&
-      (serviceAttempt(after, cls.pending).phase.StartInvoking? ||
-        serviceAttempt(after, cls.pending).phase.StartObserver? ||
-        serviceAttempt(after, cls.pending).phase.StartLateStop?))
-  {
-    var i :| 0 <= i < |after.classes| && after.classes[i] == cls;
-    var prior := s.classes[i];
-    assert prior in s.classes && prior.pending == cls.pending && prior.id == cls.id && prior.generation == cls.generation;
-    ServiceReturnedAttemptLookup(s, after, attemptId, instanceId, cls.pending);
-  }
-  if !after.stopped {
-    var selected := serviceAttempt(s, attemptId);
-    ServiceAttemptProjection(s, attemptId);
-    var byId := (a: ServiceAttempt) => a.id == attemptId;
-    ProofLib.FilterMember(byId, s.attempts, selected);
-    assert selected in s.attempts && selected.id == attemptId;
-    assert serviceClass(s, selected.classId).pending == attemptId;
-    forall a | a in after.attempts && a.phase.StartInvoking?
-      ensures serviceClass(after, a.classId).pending == a.id && serviceClass(after, a.classId).live == 0
-    {
-      var i :| 0 <= i < |after.attempts| && after.attempts[i] == a;
-      var prior := s.attempts[i];
-      assert prior in s.attempts && prior == a && a.id != attemptId;
-      ServiceInvokingAttemptClassMember(s, a);
-      var owner := serviceClass(s, a.classId);
-      assert owner.pending == a.id && a.classId != selected.classId;
-      var j :| 0 <= j < |s.classes| && s.classes[j] == owner;
-      assert after.classes[j] == owner && owner in after.classes && owner.id == a.classId;
-      ServiceClassFind(after, a.classId);
-    }
-  }
-}
-
-lemma ServiceReturnedAttemptGenerations(s: ServiceInstances, after: ServiceInstances, attemptId: int, instanceId: int)
-  requires alwaysAttemptGeneration(s)
-  requires after == returnInstance(s, attemptId, instanceId)
-  ensures alwaysAttemptGeneration(after)
-{
-  ServiceAttemptFilters(s);
-  ServiceAttemptFilters(after);
-  forall attempt | attempt in after.attempts
-    ensures attempt.id > 0 && attempt.id < after.nextAttempt &&
-      attempt.generation > 0 && attempt.generation <= serviceClass(after, attempt.classId).generation &&
-      |ProofLib.Filter((other: ServiceAttempt) => (other.id == attempt.id), after.attempts)| == 1
-  {
-    var i :| 0 <= i < |after.attempts| && after.attempts[i] == attempt;
-    var prior := s.attempts[i];
-    assert prior in s.attempts && prior.id == attempt.id &&
-      prior.classId == attempt.classId && prior.generation == attempt.generation;
-    ServiceStartClassFields(s, after, attempt.classId);
-    var byId := (other: ServiceAttempt) => (other.id == attempt.id);
-    ProofLib.FilterSamePredicate(byId, (other: ServiceAttempt) => (other.id == prior.id), s.attempts);
-    ProofLib.FilterLengthPointwise(byId, byId, s.attempts, after.attempts);
-  }
-}
-
-lemma ServiceReturnedObjectWitness(s: ServiceInstances, after: ServiceInstances, attemptId: int, instanceId: int, wanted: int)
-  requires canReturnInstance(s, attemptId, instanceId) && after == returnInstance(s, attemptId, instanceId)
-  requires wanted == instanceId || (wanted != 0 && serviceObject(s, wanted).id == wanted)
-  ensures serviceObject(after, wanted).id == wanted
-{
-  if wanted == instanceId && serviceObject(s, wanted).id == 0 {
-    var added := after.objects[|s.objects|];
-    assert added.id == wanted && added in after.objects;
-    ServiceObjectExistence(after, added);
-  } else {
-    ServiceObjectPresence(s, wanted);
-    var i :| 0 <= i < |s.objects| && s.objects[i].id == wanted;
-    var returned := after.objects[i];
-    assert returned.id == wanted && returned in after.objects;
-    ServiceObjectExistence(after, returned);
-  }
-}
-
-lemma ServiceReturnedCapturedAttempts(s: ServiceInstances, after: ServiceInstances, attemptId: int, instanceId: int)
-  requires alwaysCapturedAttemptsExist(s) && canReturnInstance(s, attemptId, instanceId)
-  requires after == returnInstance(s, attemptId, instanceId)
-  ensures alwaysCapturedAttemptsExist(after)
-{
-  forall call | call in after.calls
-    ensures forall id :: id in call.attempts ==> id > 0 && serviceAttempt(after, id).id == id
-  {
-    forall id | id in call.attempts ensures id > 0 && serviceAttempt(after, id).id == id {
-      ServiceReturnedAttemptLookup(s, after, attemptId, instanceId, id);
-    }
-  }
-  forall aggregate | aggregate in after.aggregates
-    ensures forall m :: m in aggregate.members && m.attemptId != 0 ==> serviceAttempt(after, m.attemptId).id == m.attemptId
-  {
-    forall m | m in aggregate.members && m.attemptId != 0 ensures serviceAttempt(after, m.attemptId).id == m.attemptId {
-      ServiceReturnedAttemptLookup(s, after, attemptId, instanceId, m.attemptId);
-    }
-  }
-  forall attempt | attempt in after.attempts && attempt.instance != 0
-    ensures serviceObject(after, attempt.instance).id == attempt.instance
-  {
-    if attempt.instance != instanceId {
-      var i :| 0 <= i < |after.attempts| && after.attempts[i] == attempt;
-      assert s.attempts[i] in s.attempts && s.attempts[i].instance == attempt.instance;
-    }
-    ServiceReturnedObjectWitness(s, after, attemptId, instanceId, attempt.instance);
-  }
-}
-
-lemma ServicePublishedInstancesProjection(s: ServiceInstances, serviceType: string)
-  ensures publishedInstances(s, serviceType) ==
-    (var matches := ProofLib.Filter((p: ServicePublication) => p.serviceType == serviceType, s.published);
-      if |matches| > 0 then matches[0].instances else [])
-{}
-
-lemma ServicePublicationHasFirstLive(s: ServiceInstances, publication: ServicePublication)
-  requires alwaysPublicationIdentitiesValid(s) && publication in s.published
-  ensures firstLive(s, publication.serviceType) > 0
-{
-  ServicePublicationIdentityFilters(s);
-  ServicePublishedInstancesProjection(s, publication.serviceType);
-  var byType := (p: ServicePublication) => p.serviceType == publication.serviceType;
-  var matches := ProofLib.Filter(byType, s.published);
-  ProofLib.FilterMember(byType, s.published, publication);
-  assert |matches| == 1 && matches[0] == publication;
-  assert publication.instances[0] in publication.instances;
-}
-
-lemma ServiceOtherFailedTypesRemainUnpublished(s: ServiceInstances, after: ServiceInstances, publishedType: string)
-  requires alwaysPublicationIdentitiesValid(s) && alwaysFailedTypeHasNoPublication(s)
-  requires forall e :: e in after.typeEntries && e.status.TypeFailed? ==> (e in s.typeEntries && e.serviceType != publishedType)
-  requires forall p :: p in after.published && p.serviceType != publishedType ==> p in s.published
-  ensures alwaysFailedTypeHasNoPublication(after)
-{
-  forall e | e in after.typeEntries && e.status.TypeFailed? ensures firstLive(after, e.serviceType) == 0
-  {
-    ServicePublishedInstancesProjection(after, e.serviceType);
-    var byType := (p: ServicePublication) => p.serviceType == e.serviceType;
-    var matches := ProofLib.Filter(byType, after.published);
-    if |matches| > 0 {
-      var published := matches[0];
-      ProofLib.FilterMember(byType, after.published, published);
-      assert published in s.published;
-      ServicePublicationHasFirstLive(s, published);
-      assert false;
-    }
-  }
-}
-
-lemma ServiceReturnedObjectIdentities(s: ServiceInstances, after: ServiceInstances, attemptId: int, instanceId: int)
-  requires alwaysClassAndObjectIdentities(s) && alwaysDeclarationsMatch(s) && alwaysObjectStopOnce(s)
-  requires canReturnInstance(s, attemptId, instanceId) && after == returnInstance(s, attemptId, instanceId)
-  ensures alwaysClassAndObjectIdentities(after) && alwaysDeclarationsMatch(after) && alwaysObjectStopOnce(after)
-{
-  var late := s.stopped || !serviceClass(s, serviceAttempt(s, attemptId).classId).registered;
-  var registrationView := if late then after.(objects := if serviceObject(s, instanceId).id == 0 then
-    s.objects + [ServiceObject(instanceId, StopPhase.StopNotRequested, 0, false, "")] else s.objects) else after;
-  ServiceObjectCreated(s, registrationView, instanceId);
-  var classView := s.(classes := after.classes);
-  var changedClass := serviceAttempt(s, attemptId).classId;
-  ServiceClassFind(s, changedClass);
-  forall i | 0 <= i < |s.classes| && !classView.classes[i].registered
-    ensures classView.classes[i].live == s.classes[i].live
-  {
-    if !late && s.classes[i].id == changedClass {
-      assert s.classes[i] in s.classes;
-      assert serviceClass(s, changedClass) == s.classes[i];
-      assert s.classes[i].registered == classView.classes[i].registered;
-      assert false;
-    }
-  }
-  ServiceClassMapIncarnations(s, classView);
-  ServiceObjectIdentityFilters(classView);
-  ServiceObjectIdentityFilters(after);
-  if late {
-    forall o | o in after.objects ensures o.id > 0 && |ProofLib.Filter((other: ServiceObject) => other.id == o.id, after.objects)| == 1 {
-      var i :| 0 <= i < |after.objects| && after.objects[i] == o;
-      assert registrationView.objects[i] in registrationView.objects;
-      var byId := (other: ServiceObject) => other.id == o.id;
-      ProofLib.FilterLengthPointwise(byId, byId, registrationView.objects, after.objects);
-    }
-  }
-}
-
-lemma ServiceReturnedStopReferences(s: ServiceInstances, after: ServiceInstances, attemptId: int, instanceId: int)
-  requires alwaysObjectStopOnce(s) && after == returnInstance(s, attemptId, instanceId)
-  ensures stepStopIdentityRetained(s, after)
-{
-  forall i | 0 <= i < |s.objects| && !s.objects[i].stopPhase.StopNotRequested?
-    ensures after.objects[i] == s.objects[i] && after.objects[i].stopCalls == 1
-  {
-    assert s.objects[i] in s.objects;
-  }
-  ServiceStopReferencePreserved(s, after);
-}
-
-lemma ServiceReturnedTypeLedger(s: ServiceInstances, after: ServiceInstances, attemptId: int, instanceId: int)
-  requires alwaysTypeEntriesUnique(s) && alwaysTypeReferencesRetained(s)
-  requires alwaysPublicationIdentitiesValid(s) && alwaysFailedTypeHasNoPublication(s)
-  requires after == returnInstance(s, attemptId, instanceId)
-  requires forall p :: p in after.published && p.serviceType != serviceClass(s, serviceAttempt(s, attemptId).classId).serviceType ==> p in s.published
-  ensures alwaysTypeEntriesUnique(after) && alwaysTypeReferencesRetained(after) && alwaysFailedTypeHasNoPublication(after)
-{
-  var owner := serviceClass(s, serviceAttempt(s, attemptId).classId);
-  if !s.stopped && owner.registered {
-    ServiceTypeReferenceMetadata(s, after, owner.serviceType, TypeStatus.TypeRegistered);
-    var publishedView := after.(typeEntries := s.typeEntries);
-    var registered := serviceTypeEntry(s, owner.serviceType).(serviceType := owner.serviceType, status := TypeStatus.TypeRegistered);
-    assert after == putType(registered, publishedView);
-    ServiceTypeEntryPut(publishedView, registered);
-    ServiceOtherFailedTypesRemainUnpublished(s, after, owner.serviceType);
-  }
-}
-
 lemma returnInstance_ensures(s: ServiceInstances, attemptId: int, instanceId: int)
   ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysTypeEntriesUnique(returnInstance(s, attemptId, instanceId)))
   ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysAggregateAndLoadIdsUnique(returnInstance(s, attemptId, instanceId)))
   ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysAcquisitionIdsUnique(returnInstance(s, attemptId, instanceId)))
   ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysInitWaitingHasNoAggregate(returnInstance(s, attemptId, instanceId)))
   ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysTypeReferencesRetained(returnInstance(s, attemptId, instanceId)))
+  ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysFailedTypeHasNoPublication(returnInstance(s, attemptId, instanceId)))
   ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysClassAndObjectIdentities(returnInstance(s, attemptId, instanceId)))
+  ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysPendingAttemptsOwned(returnInstance(s, attemptId, instanceId)))
+  ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysCapturedAttemptsExist(returnInstance(s, attemptId, instanceId)))
+  ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysDeclarationsMatch(returnInstance(s, attemptId, instanceId)))
   ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysObjectStopOnce(returnInstance(s, attemptId, instanceId)))
   ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysClassOwnsKnownObjects(returnInstance(s, attemptId, instanceId)))
   ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysStoppedHasNoPublication(returnInstance(s, attemptId, instanceId)))
   ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysPublicationIdentitiesValid(returnInstance(s, attemptId, instanceId)))
-  ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysPendingAttemptsOwned(returnInstance(s, attemptId, instanceId)))
-  ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysCapturedAttemptsExist(returnInstance(s, attemptId, instanceId)))
-  ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysDeclarationsMatch(returnInstance(s, attemptId, instanceId)))
   ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysAttemptGeneration(returnInstance(s, attemptId, instanceId)))
-  ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> alwaysFailedTypeHasNoPublication(returnInstance(s, attemptId, instanceId)))
-  ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> stepStopIdentityRetained(s, returnInstance(s, attemptId, instanceId)))
   ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> stepSupersededAggregateKeepsSuccessor(s, "returnInstance", returnInstance(s, attemptId, instanceId)))
+  ensures (inv(s) ==> canReturnInstance(s, attemptId, instanceId) ==> stepStopIdentityRetained(s, returnInstance(s, attemptId, instanceId)))
 {
   if inv(s) && canReturnInstance(s, attemptId, instanceId) {
     var after := returnInstance(s, attemptId, instanceId);
+    var attempt := serviceAttempt(s, attemptId);
+    var owner := serviceClass(s, attempt.classId);
+    var late := s.stopped || !owner.registered;
     ServiceReturnedClassObjects(s, after, attemptId, instanceId);
-    ServiceReturnedPublication(s, after, attemptId, instanceId);
-    ServiceReturnedObjectIdentities(s, after, attemptId, instanceId);
-    ServiceReturnedPendingOwners(s, after, attemptId, instanceId);
-    ServiceReturnedAttemptGenerations(s, after, attemptId, instanceId);
-    ServiceReturnedCapturedAttempts(s, after, attemptId, instanceId);
-    ServiceReturnedStopReferences(s, after, attemptId, instanceId);
-    ServiceReturnedTypeLedger(s, after, attemptId, instanceId);
+    ServiceReturnKeepsInvariant(s, attemptId, instanceId);
+    var registrationView := if late then after.(objects := if serviceObject(s, instanceId).id == 0 then s.objects + [ServiceObject(instanceId, StopPhase.StopNotRequested, 0, false, "")] else s.objects) else after;
+    ServiceObjectCreated(s, registrationView, instanceId);
+    ServiceObjectIdentityFilters(s);
+    ServiceObjectIdentityFilters(after);
+    forall c | c in after.classes
+      ensures c.id > 0 && c.generation >= 0 && c.pending >= 0 && |ProofLib.Filter((other: ServiceClassEntry) => other.id == c.id, after.classes)| == 1
+    {
+      var i :| 0 <= i < |after.classes| && after.classes[i] == c;
+      assert s.classes[i] in s.classes;
+      var byId := (other: ServiceClassEntry) => other.id == c.id;
+      ProofLib.FilterLengthPointwise(byId, byId, s.classes, after.classes);
+    }
+    if late {
+      forall o | o in after.objects ensures o.id > 0 && |ProofLib.Filter((other: ServiceObject) => other.id == o.id, after.objects)| == 1 {
+        var i :| 0 <= i < |after.objects| && after.objects[i] == o;
+        assert registrationView.objects[i] in registrationView.objects;
+        var byId := (other: ServiceObject) => other.id == o.id;
+        ProofLib.FilterLengthPointwise(byId, byId, registrationView.objects, after.objects);
+      }
+    } else {
+      ServiceTypeReferenceMetadata(s, after, owner.serviceType, TypeStatus.TypeRegistered);
+    }
   }
 }
 
@@ -2328,18 +1805,18 @@ lemma resolveNextStart_ensures(s: ServiceInstances, ok: bool, instanceId: int, e
   ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysAcquisitionIdsUnique(resolveNextStart(s, ok, instanceId, errorId)))
   ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysInitWaitingHasNoAggregate(resolveNextStart(s, ok, instanceId, errorId)))
   ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysTypeReferencesRetained(resolveNextStart(s, ok, instanceId, errorId)))
+  ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysFailedTypeHasNoPublication(resolveNextStart(s, ok, instanceId, errorId)))
   ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysClassAndObjectIdentities(resolveNextStart(s, ok, instanceId, errorId)))
+  ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysPendingAttemptsOwned(resolveNextStart(s, ok, instanceId, errorId)))
+  ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysCapturedAttemptsExist(resolveNextStart(s, ok, instanceId, errorId)))
+  ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysDeclarationsMatch(resolveNextStart(s, ok, instanceId, errorId)))
   ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysObjectStopOnce(resolveNextStart(s, ok, instanceId, errorId)))
   ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysClassOwnsKnownObjects(resolveNextStart(s, ok, instanceId, errorId)))
   ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysStoppedHasNoPublication(resolveNextStart(s, ok, instanceId, errorId)))
   ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysPublicationIdentitiesValid(resolveNextStart(s, ok, instanceId, errorId)))
-  ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysPendingAttemptsOwned(resolveNextStart(s, ok, instanceId, errorId)))
-  ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysCapturedAttemptsExist(resolveNextStart(s, ok, instanceId, errorId)))
-  ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysDeclarationsMatch(resolveNextStart(s, ok, instanceId, errorId)))
   ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysAttemptGeneration(resolveNextStart(s, ok, instanceId, errorId)))
-  ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> alwaysFailedTypeHasNoPublication(resolveNextStart(s, ok, instanceId, errorId)))
-  ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> stepStopIdentityRetained(s, resolveNextStart(s, ok, instanceId, errorId)))
   ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> stepSupersededAggregateKeepsSuccessor(s, "resolveNextStart", resolveNextStart(s, ok, instanceId, errorId)))
+  ensures (inv(s) ==> canResolveNextStart(s, ok, instanceId, errorId) ==> stepStopIdentityRetained(s, resolveNextStart(s, ok, instanceId, errorId)))
 {
   if inv(s) && canResolveNextStart(s, ok, instanceId, errorId) {
     if ok {
@@ -2453,8 +1930,6 @@ lemma ServiceTypeReconciliationRetainsReferences(s: ServiceInstances, serviceTyp
   requires alwaysTypeEntriesUnique(s) && alwaysTypeReferencesRetained(s)
   ensures alwaysTypeEntriesUnique(reconcileType(serviceType, s))
   ensures alwaysTypeReferencesRetained(reconcileType(serviceType, s))
-  ensures forall e :: e in reconcileType(serviceType, s).typeEntries && e.status.TypeFailed? ==>
-    (e in s.typeEntries && e.serviceType != serviceType)
 {
   var entry := serviceTypeEntry(s, serviceType);
   var published := firstLive(s, serviceType) != 0;
@@ -2471,7 +1946,6 @@ lemma ServiceTypeReconciliationRetainsReferences(s: ServiceInstances, serviceTyp
     ensures (e.promiseId == 0 || (exists p :: p in after.loadPromises && p.id == e.promiseId && p.serviceType == e.serviceType))
     ensures (e.handlerId == 0 || (e.handlerId == e.promiseId && (exists p :: p in after.loadPromises && p.id == e.handlerId && p.phase.LoadPending?)))
     ensures (e.latestAggregate == 0 || (exists a :: a in after.aggregates && a.id == e.latestAggregate && a.serviceType == e.serviceType))
-    ensures e.status.TypeFailed? ==> (e in s.typeEntries && e.serviceType != serviceType)
   {
     if e == updated {
       if entry !in s.typeEntries { assert entry == noTypeEntry; }
@@ -2481,115 +1955,24 @@ lemma ServiceTypeReconciliationRetainsReferences(s: ServiceInstances, serviceTyp
   }
 }
 
-lemma ServiceWithdrawnDeclarationOwners(s: ServiceInstances, after: ServiceInstances, classId: int)
-  requires alwaysDeclarationsMatch(s) && alwaysClassAndObjectIdentities(after)
-  requires after.classes == withdrawClass(classId, s).classes
-  requires after.declarations == withdrawClass(classId, s).declarations
-  ensures alwaysDeclarationsMatch(after)
-{
-  var retained := (d: ServiceDeclaration) => d.classId != classId;
-  assert after.declarations == ProofLib.Filter(retained, s.declarations);
-  forall d | d in after.declarations
-    ensures d.serviceType != "" && serviceClass(after, d.classId).registered && serviceClass(after, d.classId).serviceType == d.serviceType
-  {
-    ProofLib.FilterMember(retained, s.declarations, d);
-    var owner := serviceClass(s, d.classId);
-    assert owner.registered;
-    ServiceClassLookupMember(s, d.classId);
-    var i :| 0 <= i < |s.classes| && s.classes[i] == owner;
-    assert after.classes[i] == owner && owner in after.classes;
-    ServiceClassFind(after, d.classId);
-  }
-  forall cls | cls in after.classes
-    ensures cls.registered <==> (exists d :: d in after.declarations && d.classId == cls.id)
-  {
-    var i :| 0 <= i < |after.classes| && after.classes[i] == cls;
-    var prior := s.classes[i];
-    assert prior in s.classes && prior.id == cls.id;
-    if cls.registered {
-      assert prior.registered && cls.id != classId;
-      var d :| d in s.declarations && d.classId == cls.id;
-      ProofLib.FilterMember(retained, s.declarations, d);
-    }
-    if exists d :: d in after.declarations && d.classId == cls.id {
-      var d :| d in after.declarations && d.classId == cls.id;
-      ProofLib.FilterMember(retained, s.declarations, d);
-      assert prior.registered && cls.id != classId;
-    }
-  }
-}
-
-lemma ServiceWithdrawalInstancesHaveOwners(s: ServiceInstances, after: ServiceInstances, classId: int, serviceType: string, remaining: seq<int>)
-  requires alwaysPublicationIdentitiesValid(s) && alwaysClassAndObjectIdentities(s)
-  requires serviceClass(s, classId).serviceType == serviceType && |after.classes| == |s.classes|
-  requires forall i :: 0 <= i < |s.classes| && s.classes[i].id != classId ==> after.classes[i] == s.classes[i]
-  requires remaining == ProofLib.Filter((id: int) => id != serviceClass(s, classId).live, publishedInstances(s, serviceType))
-  ensures forall id :: id in remaining ==>
-    (id > 0 && (exists owner :: owner in after.classes && owner.serviceType == serviceType && owner.live == id))
-{
-  var published := publishedInstances(s, serviceType);
-  var byType := (p: ServicePublication) => p.serviceType == serviceType;
-  var candidates := ProofLib.Filter(byType, s.published);
-  ServicePublishedInstancesProjection(s, serviceType);
-  ServiceClassFind(s, classId);
-  forall id | id in remaining
-    ensures id > 0 && (exists owner :: owner in after.classes && owner.serviceType == serviceType && owner.live == id)
-  {
-    ProofLib.FilterMember((id: int) => id != serviceClass(s, classId).live, published, id);
-    assert id in published && id != serviceClass(s, classId).live;
-    assert |candidates| > 0;
-    var publication := candidates[0];
-    ProofLib.FilterMember(byType, s.published, publication);
-    var i :| 0 <= i < |s.classes| && s.classes[i].serviceType == serviceType && s.classes[i].live == id;
-    assert s.classes[i] in s.classes;
-    assert s.classes[i].id != classId && after.classes[i] == s.classes[i];
-    assert after.classes[i] in after.classes;
-  }
-}
-
-lemma ServiceWithdrawalPreservesPublications(s: ServiceInstances, after: ServiceInstances, classId: int)
-  requires alwaysPublicationIdentitiesValid(s) && alwaysClassAndObjectIdentities(s) && alwaysDeclarationsMatch(s)
-  requires canUnregisterClass(s, classId) && after == unregisterClass(s, classId)
-  ensures alwaysPublicationIdentitiesValid(after)
-  ensures forall p :: p in after.published && p.serviceType != serviceClass(s, classId).serviceType ==> p in s.published
-{
-  var owner := serviceClass(s, classId);
-  ServiceClassLookupMember(s, classId);
-  var declaration :| declaration in s.declarations && declaration.classId == classId;
-  assert declaration.serviceType == owner.serviceType && owner.serviceType != "";
-  var original := publishedInstances(s, owner.serviceType);
-  var removed := [owner.live];
-  var retained := (id: int) => id != owner.live;
-  var remaining := ProofLib.Filter(retained, original);
-  ProofLib.FilterSamePredicate(retained, (id: int) => !((id in removed)), original);
-  var stopped := if owner.live != 0 then stopObjectOnce(owner.live, s) else s;
-  var withdrawn := withdrawClass(classId, stopped);
-  assert withdrawn.published == s.published && publishedInstances(withdrawn, owner.serviceType) == original;
-  assert after.published == replacePublication(owner.serviceType, remaining, withdrawn).published;
-  assert after.published == replacePublication(owner.serviceType, remaining, after.(published := s.published)).published;
-  ServiceWithdrawalInstancesHaveOwners(s, after, classId, owner.serviceType, remaining);
-  ServiceOtherPublicationOwners(s, after, classId, owner.serviceType);
-  ServiceReplacedPublicationValid(s, after, owner.serviceType, remaining);
-}
-
 lemma unregisterClass_ensures(s: ServiceInstances, classId: int)
   ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysTypeEntriesUnique(unregisterClass(s, classId)))
   ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysAggregateAndLoadIdsUnique(unregisterClass(s, classId)))
   ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysAcquisitionIdsUnique(unregisterClass(s, classId)))
   ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysInitWaitingHasNoAggregate(unregisterClass(s, classId)))
   ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysTypeReferencesRetained(unregisterClass(s, classId)))
+  ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysFailedTypeHasNoPublication(unregisterClass(s, classId)))
   ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysClassAndObjectIdentities(unregisterClass(s, classId)))
+  ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysPendingAttemptsOwned(unregisterClass(s, classId)))
+  ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysCapturedAttemptsExist(unregisterClass(s, classId)))
+  ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysDeclarationsMatch(unregisterClass(s, classId)))
   ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysObjectStopOnce(unregisterClass(s, classId)))
   ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysClassOwnsKnownObjects(unregisterClass(s, classId)))
   ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysStoppedHasNoPublication(unregisterClass(s, classId)))
   ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysPublicationIdentitiesValid(unregisterClass(s, classId)))
-  ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysPendingAttemptsOwned(unregisterClass(s, classId)))
-  ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysCapturedAttemptsExist(unregisterClass(s, classId)))
-  ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysDeclarationsMatch(unregisterClass(s, classId)))
   ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysAttemptGeneration(unregisterClass(s, classId)))
-  ensures (inv(s) ==> canUnregisterClass(s, classId) ==> alwaysFailedTypeHasNoPublication(unregisterClass(s, classId)))
-  ensures (inv(s) ==> canUnregisterClass(s, classId) ==> stepStopIdentityRetained(s, unregisterClass(s, classId)))
   ensures (inv(s) ==> canUnregisterClass(s, classId) ==> stepSupersededAggregateKeepsSuccessor(s, "unregisterClass", unregisterClass(s, classId)))
+  ensures (inv(s) ==> canUnregisterClass(s, classId) ==> stepStopIdentityRetained(s, unregisterClass(s, classId)))
 {
   if inv(s) && canUnregisterClass(s, classId) {
     var selected := serviceClass(s, classId);
@@ -2600,52 +1983,577 @@ lemma unregisterClass_ensures(s: ServiceInstances, classId: int)
     ServiceStopWorkProjection(s, stopped);
     ServiceClassWithdrawalKeepsKnownObjects(stopped, after, classId);
     ServiceTypeReconciliationRetainsReferences(withdrawn, selected.serviceType);
-    ServiceWithdrawnDeclarationOwners(s, after, classId);
-    ServiceRetainedClassGenerationsPreserveAttempts(s, after);
-    ServiceWithdrawalPreservesPublications(s, after, classId);
-    ServiceUnregisterDuringStopRetainsEmptyPublication(s, classId);
-    ServiceOtherFailedTypesRemainUnpublished(s, after, selected.serviceType);
+    ServiceUnregisteredMatches(s, classId);
+    ServiceUnregisteredPublications(s, classId);
   }
 }
 
-lemma ServiceUnregisterDuringStopRetainsEmptyPublication(s: ServiceInstances, classId: int)
-  requires alwaysStoppedHasNoPublication(s)
-  requires alwaysPublicationIdentitiesValid(unregisterClass(s, classId))
-  ensures alwaysStoppedHasNoPublication(unregisterClass(s, classId))
+lemma ServiceTypeEntriesIrrelevant(s: ServiceInstances, after: ServiceInstances)
+  requires after.declarations == s.declarations && after.classes == s.classes && after.attempts == s.attempts && after.objects == s.objects
+  requires after.published == s.published && after.calls == s.calls && after.nextAttempt == s.nextAttempt && after.stopped == s.stopped
+  requires after.loadPromises == s.loadPromises && after.aggregates == s.aggregates && after.nextLoad == s.nextLoad
+  requires alwaysObjectStopOnce(s)
+  ensures alwaysAggregateAndLoadIdsUnique(after) == alwaysAggregateAndLoadIdsUnique(s)
+  ensures alwaysAcquisitionIdsUnique(after) == alwaysAcquisitionIdsUnique(s)
+  ensures alwaysInitWaitingHasNoAggregate(after) == alwaysInitWaitingHasNoAggregate(s)
+  ensures alwaysClassAndObjectIdentities(after) == alwaysClassAndObjectIdentities(s)
+  ensures alwaysPendingAttemptsOwned(after) == alwaysPendingAttemptsOwned(s)
+  ensures alwaysCapturedAttemptsExist(after) == alwaysCapturedAttemptsExist(s)
+  ensures alwaysDeclarationsMatch(after) == alwaysDeclarationsMatch(s)
+  ensures alwaysObjectStopOnce(after) == alwaysObjectStopOnce(s)
+  ensures alwaysClassOwnsKnownObjects(after) == alwaysClassOwnsKnownObjects(s)
+  ensures alwaysStoppedHasNoPublication(after) == alwaysStoppedHasNoPublication(s)
+  ensures alwaysPublicationIdentitiesValid(after) == alwaysPublicationIdentitiesValid(s)
+  ensures alwaysAttemptGeneration(after) == alwaysAttemptGeneration(s)
+  ensures stepStopIdentityRetained(s, after)
 {
-  hide *;
-  reveal alwaysStoppedHasNoPublication(), alwaysPublicationIdentitiesValid(), unregisterClass(), stopObjectOnce();
-  reveal withdrawClass(), reconcileType(), putType(), removePublishedInstances(), replacePublication();
-  var after := unregisterClass(s, classId);
-  if after.stopped {
-    assert s.stopped && |after.classes| == |s.classes|;
-    forall c | c in after.classes
-      ensures c.live == 0
-    {
-      var i :| 0 <= i < |after.classes| && after.classes[i] == c;
-      assert s.classes[i] in s.classes;
+  assert forall id :: serviceClass(after, id) == serviceClass(s, id);
+  assert forall id :: serviceAttempt(after, id) == serviceAttempt(s, id);
+  assert forall id :: serviceObject(after, id) == serviceObject(s, id);
+  forall o | o in s.objects && !o.stopPhase.StopNotRequested?
+    ensures exists laterObject :: laterObject in after.objects && laterObject.id == o.id && laterObject.stopCalls == 1 && (o.stopPhase.StopWaiting? || laterObject.stopPhase == o.stopPhase)
+  {
+    assert o in after.objects;
+  }
+}
+
+lemma ServiceClearKeepsInvariant(s: ServiceInstances, callId: int)
+  requires inv(s) && canClearTypeAggregate(s, callId)
+  ensures inv(clearTypeAggregate(s, callId))
+  ensures stepSupersededAggregateKeepsSuccessor(s, "clearTypeAggregate", clearTypeAggregate(s, callId))
+  ensures stepStopIdentityRetained(s, clearTypeAggregate(s, callId))
+{
+  var after := clearTypeAggregate(s, callId);
+  ServiceTypeEntriesIrrelevant(s, after);
+  ServiceClearUpdatesOnlyTypeMetadata(s, callId);
+  ServiceMapTypeIdentities(s, after);
+  ServiceClearAggregateOwnership(s, after, callId);
+  ServiceClearPreservesFailedStatus(s, callId);
+}
+
+lemma ServiceReturnShape(s: ServiceInstances, attemptId: int, instanceId: int)
+  requires canReturnInstance(s, attemptId, instanceId)
+  ensures var after := returnInstance(s, attemptId, instanceId);
+    var a := serviceAttempt(s, attemptId);
+    var late := s.stopped || !serviceClass(s, a.classId).registered;
+    after.declarations == s.declarations && after.calls == s.calls && after.aggregates == s.aggregates &&
+    after.nextAttempt == s.nextAttempt && after.stopped == s.stopped && after.loadPromises == s.loadPromises && after.nextLoad == s.nextLoad &&
+    |after.classes| == |s.classes| &&
+    (forall i :: 0 <= i < |s.classes| ==> after.classes[i] == (if s.classes[i].id == a.classId && !late then s.classes[i].(live := instanceId) else s.classes[i])) &&
+    |after.attempts| == |s.attempts| &&
+    (forall i :: 0 <= i < |s.attempts| ==> after.attempts[i] == (if s.attempts[i].id == attemptId then s.attempts[i].(instance := instanceId, phase := if late then AttemptPhase.StartLateStop else AttemptPhase.StartObserver) else s.attempts[i])) &&
+    |after.objects| >= |s.objects| &&
+    (forall i :: 0 <= i < |s.objects| ==> (after.objects[i].id == s.objects[i].id &&
+      (after.objects[i] == s.objects[i] || (s.objects[i].stopPhase.StopNotRequested? && after.objects[i] == s.objects[i].(stopPhase := StopPhase.StopWaiting, stopCalls := 1))))) &&
+    (exists o :: o in after.objects && o.id == instanceId) &&
+    (late ==> after.published == s.published && after.typeEntries == s.typeEntries)
+{
+  var a := serviceAttempt(s, attemptId);
+  var late := s.stopped || !serviceClass(s, a.classId).registered;
+  var after := returnInstance(s, attemptId, instanceId);
+  var added := s.(objects := (if (serviceObject(s, instanceId).id == 0) then (s.objects + [ServiceObject(instanceId, StopPhase.StopNotRequested, 0, false, "")]) else s.objects), attempts := (var s_map := s.attempts; seq(|s_map|, i_map requires 0 <= i_map < |s_map| => var x := s_map[i_map]; (if (x.id == attemptId) then x.(instance := instanceId, phase := (if late then AttemptPhase.StartLateStop else AttemptPhase.StartObserver)) else x))), classes := (var s_map := s.classes; seq(|s_map|, i_map requires 0 <= i_map < |s_map| => var c := s_map[i_map]; (if ((c.id == a.classId) && !(late)) then c.(live := instanceId) else c))));
+  var present: ServiceObject;
+  if serviceObject(s, instanceId).id == 0 {
+    present := added.objects[|s.objects|];
+  } else {
+    ServiceObjectPresence(s, instanceId);
+    present := serviceObject(s, instanceId);
+  }
+  assert present in added.objects && present.id == instanceId;
+  if late {
+    assert after == stopObjectOnce(instanceId, added);
+    var k :| 0 <= k < |added.objects| && added.objects[k] == present;
+    assert after.objects[k] in after.objects;
+  } else {
+    assert after.objects == added.objects;
+  }
+}
+
+lemma ServiceReturnedAttemptLookup(s: ServiceInstances, after: ServiceInstances, attemptId: int, instanceId: int, late: bool)
+  requires serviceAttempt(s, attemptId).id > 0
+  requires |after.attempts| == |s.attempts|
+  requires forall i :: 0 <= i < |s.attempts| ==> after.attempts[i] == (if s.attempts[i].id == attemptId then s.attempts[i].(instance := instanceId, phase := if late then AttemptPhase.StartLateStop else AttemptPhase.StartObserver) else s.attempts[i])
+  ensures serviceAttempt(after, attemptId) == serviceAttempt(s, attemptId).(instance := instanceId, phase := if late then AttemptPhase.StartLateStop else AttemptPhase.StartObserver)
+{
+  ServiceAttemptProjection(s, attemptId);
+  ServiceAttemptProjection(after, attemptId);
+  ProofLib.FilterPointwise(
+    (a: ServiceAttempt) => (a.id == attemptId),
+    (a: ServiceAttempt) => (a.id == attemptId),
+    (p: ServiceAttempt, q: ServiceAttempt) => q == (if p.id == attemptId then p.(instance := instanceId, phase := if late then AttemptPhase.StartLateStop else AttemptPhase.StartObserver) else p),
+    s.attempts, after.attempts);
+  var selected := ProofLib.Filter((a: ServiceAttempt) => (a.id == attemptId), s.attempts);
+  assert |selected| > 0;
+  ProofLib.FilterMember((a: ServiceAttempt) => (a.id == attemptId), s.attempts, selected[0]);
+}
+
+lemma ServiceReturnedOwnership(s: ServiceInstances, attemptId: int, instanceId: int)
+  requires inv(s) && canReturnInstance(s, attemptId, instanceId)
+  ensures alwaysPendingAttemptsOwned(returnInstance(s, attemptId, instanceId))
+  ensures alwaysAttemptGeneration(returnInstance(s, attemptId, instanceId))
+  ensures alwaysDeclarationsMatch(returnInstance(s, attemptId, instanceId))
+{
+  var after := returnInstance(s, attemptId, instanceId);
+  var a := serviceAttempt(s, attemptId);
+  var late := s.stopped || !serviceClass(s, a.classId).registered;
+  ServiceReturnShape(s, attemptId, instanceId);
+  ServiceAttemptProjection(s, attemptId);
+  ProofLib.FilterMember((a: ServiceAttempt) => (a.id == attemptId), s.attempts, ProofLib.Filter((a: ServiceAttempt) => (a.id == attemptId), s.attempts)[0]);
+  ServiceReturnedAttemptLookup(s, after, attemptId, instanceId, late);
+  forall c | c in after.classes && c.pending != 0
+    ensures serviceAttempt(after, c.pending).classId == c.id && serviceAttempt(after, c.pending).generation == c.generation &&
+      (serviceAttempt(after, c.pending).phase.StartInvoking? || serviceAttempt(after, c.pending).phase.StartObserver? || serviceAttempt(after, c.pending).phase.StartLateStop?)
+  {
+    var i :| 0 <= i < |after.classes| && after.classes[i] == c;
+    assert s.classes[i] in s.classes;
+    ServiceStartAttemptFields(s, after, c.pending, attemptId);
+  }
+  ServiceAttemptFilters(s);
+  ServiceAttemptFilters(after);
+  forall x | x in after.attempts
+    ensures x.id > 0 && x.id < after.nextAttempt && x.generation > 0 && x.generation <= serviceClass(after, x.classId).generation &&
+      |ProofLib.Filter((other: ServiceAttempt) => (other.id == x.id), after.attempts)| == 1
+  {
+    var i :| 0 <= i < |after.attempts| && after.attempts[i] == x;
+    assert s.attempts[i] in s.attempts;
+    ServiceStartClassFields(s, after, x.classId);
+    ProofLib.FilterLengthPointwise((other: ServiceAttempt) => (other.id == x.id), (other: ServiceAttempt) => (other.id == x.id), s.attempts, after.attempts);
+  }
+  forall d | d in after.declarations
+    ensures d.serviceType != "" && serviceClass(after, d.classId).registered && serviceClass(after, d.classId).serviceType == d.serviceType
+  {
+    ServiceStartClassFields(s, after, d.classId);
+  }
+  forall c | c in after.classes
+    ensures c.registered == (exists d :: d in after.declarations && d.classId == c.id)
+  {
+    var i :| 0 <= i < |after.classes| && after.classes[i] == c;
+    assert s.classes[i] in s.classes;
+  }
+}
+
+lemma ServiceReturnedCaptures(s: ServiceInstances, attemptId: int, instanceId: int)
+  requires inv(s) && canReturnInstance(s, attemptId, instanceId)
+  ensures alwaysCapturedAttemptsExist(returnInstance(s, attemptId, instanceId))
+  ensures stepStopIdentityRetained(s, returnInstance(s, attemptId, instanceId))
+{
+  var after := returnInstance(s, attemptId, instanceId);
+  var a := serviceAttempt(s, attemptId);
+  var late := s.stopped || !serviceClass(s, a.classId).registered;
+  ServiceReturnShape(s, attemptId, instanceId);
+  forall id | serviceAttempt(s, id).id == id
+    ensures serviceAttempt(after, id).id == id
+  {
+    ServiceStartAttemptFields(s, after, id, attemptId);
+  }
+  var present :| present in after.objects && present.id == instanceId;
+  ServiceObjectExistence(after, present);
+  forall x | x in after.attempts && x.instance != 0
+    ensures serviceObject(after, x.instance).id == x.instance
+  {
+    var i :| 0 <= i < |after.attempts| && after.attempts[i] == x;
+    assert s.attempts[i] in s.attempts;
+    if s.attempts[i].id != attemptId {
+      ServiceObjectPresence(s, x.instance);
+      var k :| 0 <= k < |s.objects| && s.objects[k] == serviceObject(s, x.instance);
+      assert after.objects[k] in after.objects;
+      ServiceObjectExistence(after, after.objects[k]);
     }
-    if |after.published| > 0 {
-      var publication := after.published[0];
-      assert publication in after.published && |publication.instances| > 0;
-      var published := publication.instances[0];
-      assert published in publication.instances && published > 0;
-      var owner :| owner in after.classes && owner.serviceType == publication.serviceType && owner.live == published;
-      assert false;
+  }
+  forall o | o in s.objects && !o.stopPhase.StopNotRequested?
+    ensures exists laterObject :: laterObject in after.objects && laterObject.id == o.id && laterObject.stopCalls == 1 && (o.stopPhase.StopWaiting? || laterObject.stopPhase == o.stopPhase)
+  {
+    var k :| 0 <= k < |s.objects| && s.objects[k] == o;
+    assert after.objects[k] in after.objects;
+  }
+}
+
+lemma ServicePublicationView(s: ServiceInstances)
+  ensures alwaysPublicationIdentitiesValid(s) ==
+    (forall p :: p in s.published ==> (p.serviceType != "" && |p.instances| > 0 &&
+      |ProofLib.Filter((other: ServicePublication) => (other.serviceType == p.serviceType), s.published)| == 1 &&
+      (forall id :: id in p.instances ==> id > 0 && (exists c :: c in s.classes && c.serviceType == p.serviceType && c.live == id))))
+{}
+
+lemma ServiceFilterDropType(serviceType: string, xs: seq<ServicePublication>, f: ServicePublication -> bool)
+  requires forall q: ServicePublication :: q.serviceType == serviceType ==> !f(q)
+  ensures ProofLib.Filter(f, ProofLib.Filter((p: ServicePublication) => (p.serviceType != serviceType), xs)) == ProofLib.Filter(f, xs)
+  decreases |xs|
+{
+  if |xs| > 0 {
+    var init := xs[..|xs| - 1];
+    var last := xs[|xs| - 1];
+    assert xs == init + [last];
+    ServiceFilterDropType(serviceType, init, f);
+    ProofLib.FilterAppend((p: ServicePublication) => (p.serviceType != serviceType), init, last);
+    ProofLib.FilterAppend(f, init, last);
+    ProofLib.FilterAppend(f, ProofLib.Filter((p: ServicePublication) => (p.serviceType != serviceType), init), last);
+    if last.serviceType == serviceType {
+      assert !f(last);
+      assert ProofLib.Filter((p: ServicePublication) => (p.serviceType != serviceType), xs) == ProofLib.Filter((p: ServicePublication) => (p.serviceType != serviceType), init);
+      assert ProofLib.Filter(f, xs) == ProofLib.Filter(f, init);
+    }
+  } else {
+    ProofLib.FilterNil((p: ServicePublication) => (p.serviceType != serviceType), xs);
+    ProofLib.FilterNil(f, xs);
+    ProofLib.FilterNil(f, ProofLib.Filter((p: ServicePublication) => (p.serviceType != serviceType), xs));
+  }
+}
+
+lemma ServicePublishedFilterKept(serviceType: string, instances: seq<int>, s: ServiceInstances, f: ServicePublication -> bool)
+  requires forall q: ServicePublication :: q.serviceType == serviceType ==> !f(q)
+  ensures ProofLib.Filter(f, replacePublication(serviceType, instances, s).published) == ProofLib.Filter(f, s.published)
+  ensures forall q :: q in replacePublication(serviceType, instances, s).published ==>
+    (q == ServicePublication(serviceType, instances) && |instances| > 0) || (q in s.published && q.serviceType != serviceType)
+{
+  var xs := s.published;
+  var entry := ServicePublication(serviceType, instances);
+  var ys := replacePublication(serviceType, instances, s).published;
+  if |instances| == 0 {
+    ServiceFilterDropType(serviceType, xs, f);
+    forall q | q in ys ensures q in xs && q.serviceType != serviceType {
+      ProofLib.FilterMember((p: ServicePublication) => (p.serviceType != serviceType), xs, q);
+    }
+  } else if exists p :: p in xs && p.serviceType == serviceType {
+    assert |ys| == |xs|;
+    assert forall i :: 0 <= i < |xs| ==> ys[i] == (if xs[i].serviceType == serviceType then entry else xs[i]);
+    ProofLib.FilterPointwise(f, f, (a: ServicePublication, b: ServicePublication) => f(a) ==> a == b, xs, ys);
+    var fx := ProofLib.Filter(f, xs);
+    var fy := ProofLib.Filter(f, ys);
+    forall i | 0 <= i < |fx| ensures fx[i] == fy[i] {
+      ProofLib.FilterMember(f, xs, fx[i]);
+    }
+    assert fx == fy;
+    forall q | q in ys ensures q == entry || (q in xs && q.serviceType != serviceType) {
+      var i :| 0 <= i < |ys| && ys[i] == q;
+      assert xs[i] in xs;
+    }
+  } else {
+    assert ys == xs + [entry];
+    ProofLib.FilterAppend(f, xs, entry);
+  }
+}
+
+lemma ServiceReplacedPublicationValid(s: ServiceInstances, after: ServiceInstances, serviceType: string, instances: seq<int>)
+  requires alwaysPublicationIdentitiesValid(s)
+  requires serviceType != ""
+  requires after.published == replacePublication(serviceType, instances, s).published
+  requires forall id :: id in instances ==> id > 0 && (exists c :: c in after.classes && c.serviceType == serviceType && c.live == id)
+  requires forall c :: c in s.classes && c.serviceType != serviceType ==> c in after.classes
+  ensures alwaysPublicationIdentitiesValid(after)
+{
+  ServicePublicationView(s);
+  ServicePublicationView(after);
+  var entry := ServicePublication(serviceType, instances);
+  var none := (q: ServicePublication) => false;
+  ServicePublishedFilterKept(serviceType, instances, s, none);
+  forall p | p in after.published
+    ensures p.serviceType != "" && |p.instances| > 0 &&
+      |ProofLib.Filter((other: ServicePublication) => (other.serviceType == p.serviceType), after.published)| == 1 &&
+      (forall id :: id in p.instances ==> id > 0 && (exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id))
+  {
+    var same := (other: ServicePublication) => (other.serviceType == p.serviceType);
+    if p.serviceType == serviceType {
+      assert p == entry && |instances| > 0;
+      if exists q :: q in s.published && q.serviceType == serviceType {
+        var q :| q in s.published && q.serviceType == serviceType;
+        assert |ProofLib.Filter((other: ServicePublication) => (other.serviceType == q.serviceType), s.published)| == 1;
+        assert |after.published| == |s.published|;
+        assert forall i :: 0 <= i < |s.published| ==> after.published[i] == (if s.published[i].serviceType == serviceType then entry else s.published[i]);
+        ProofLib.FilterLengthPointwise(same, same, s.published, after.published);
+      } else {
+        assert after.published == s.published + [entry];
+        ProofLib.FilterNone(same, s.published);
+        ProofLib.FilterAppend(same, s.published, entry);
+      }
+    } else {
+      ServicePublishedFilterKept(serviceType, instances, s, same);
+      assert p in s.published;
+      forall id | id in p.instances
+        ensures id > 0 && (exists c :: c in after.classes && c.serviceType == p.serviceType && c.live == id)
+      {
+        var c :| c in s.classes && c.serviceType == p.serviceType && c.live == id;
+        assert c in after.classes;
+      }
     }
   }
 }
 
-lemma ServiceInvokingAttemptClassMember(s: ServiceInstances, a: ServiceAttempt)
-  requires alwaysPendingAttemptsOwned(s) && alwaysAttemptGeneration(s) && !s.stopped
-  requires a in s.attempts && a.phase.StartInvoking?
-  ensures serviceClass(s, a.classId) in s.classes && serviceClass(s, a.classId).id == a.classId
+lemma ServiceClassMember(s: ServiceInstances, classId: int)
+  requires serviceClass(s, classId) != noClass
+  ensures serviceClass(s, classId) in s.classes && serviceClass(s, classId).id == classId
 {
-  hide *;
-  reveal alwaysPendingAttemptsOwned(), alwaysAttemptGeneration(), noClass;
+  ServiceClassProjection(s, classId);
+  var matches := ProofLib.Filter((c: ServiceClassEntry) => (c.id == classId), s.classes);
+  ProofLib.FilterMember((c: ServiceClassEntry) => (c.id == classId), s.classes, matches[0]);
+}
+
+lemma ServiceClassInstancesValid(s: ServiceInstances, serviceType: string)
+  requires forall d :: d in s.declarations ==> serviceClass(s, d.classId).serviceType == d.serviceType
+  requires forall c :: c in s.classes ==> c.live >= 0
+  ensures forall id :: id in classInstances(s, serviceType) ==> id > 0 && (exists c :: c in s.classes && c.serviceType == serviceType && c.live == id)
+{
+  var byType := (d: ServiceDeclaration) => ((d.serviceType == serviceType) && (serviceClass(s, d.classId).live != 0));
+  var matched := ProofLib.Filter(byType, s.declarations);
+  var instances := classInstances(s, serviceType);
+  assert |instances| == |matched|;
+  forall id | id in instances
+    ensures id > 0 && (exists c :: c in s.classes && c.serviceType == serviceType && c.live == id)
+  {
+    var i :| 0 <= i < |instances| && instances[i] == id;
+    var d := matched[i];
+    assert id == serviceClass(s, d.classId).live;
+    ProofLib.FilterMember(byType, s.declarations, d);
+    ServiceClassMember(s, d.classId);
+  }
+}
+
+lemma ServiceReturnedPublications(s: ServiceInstances, attemptId: int, instanceId: int)
+  requires inv(s) && canReturnInstance(s, attemptId, instanceId)
+  ensures alwaysPublicationIdentitiesValid(returnInstance(s, attemptId, instanceId))
+{
+  var after := returnInstance(s, attemptId, instanceId);
+  var a := serviceAttempt(s, attemptId);
   var owner := serviceClass(s, a.classId);
-  assert a.id > 0 && owner.pending == a.id && owner != noClass;
-  ServiceClassProjection(s, a.classId);
-  var byId := (c: ServiceClassEntry) => c.id == a.classId;
-  ProofLib.FilterMember(byId, s.classes, owner);
+  var late := s.stopped || !owner.registered;
+  ServiceReturnShape(s, attemptId, instanceId);
+  if late {
+    assert after.classes == s.classes;
+  } else {
+    var serviceType := owner.serviceType;
+    var view := after.(published := s.published, typeEntries := s.typeEntries);
+    assert after.published == replacePublication(serviceType, classInstances(view, serviceType), s).published;
+    ServiceClassMember(s, a.classId);
+    var declaration :| declaration in s.declarations && declaration.classId == owner.id;
+    assert serviceType != "";
+    forall d | d in view.declarations
+      ensures serviceClass(view, d.classId).serviceType == d.serviceType
+    {
+      ServiceStartClassFields(s, view, d.classId);
+    }
+    forall c | c in view.classes ensures c.live >= 0 {
+      var i :| 0 <= i < |view.classes| && view.classes[i] == c;
+      assert s.classes[i] in s.classes;
+      if c.live != instanceId && c.live != 0 {
+        var o :| o in s.objects && o.id == s.classes[i].live;
+      }
+    }
+    ServiceClassInstancesValid(view, serviceType);
+    ServiceClassFind(s, a.classId);
+    forall c | c in s.classes && c.serviceType != serviceType
+      ensures c in after.classes
+    {
+      var i :| 0 <= i < |s.classes| && s.classes[i] == c;
+      assert after.classes[i] == c;
+    }
+    ServiceReplacedPublicationValid(s, after, serviceType, classInstances(view, serviceType));
+  }
+}
+
+lemma ServiceClassGenerationKept(s: ServiceInstances, after: ServiceInstances, classId: int)
+  requires |s.classes| == |after.classes|
+  requires forall i :: 0 <= i < |s.classes| ==> s.classes[i].id == after.classes[i].id && s.classes[i].generation == after.classes[i].generation
+  ensures serviceClass(s, classId).generation == serviceClass(after, classId).generation
+{
+  ServiceClassProjection(s, classId);
+  ServiceClassProjection(after, classId);
+  ProofLib.FilterPointwise(
+    (c: ServiceClassEntry) => (c.id == classId),
+    (c: ServiceClassEntry) => (c.id == classId),
+    (p: ServiceClassEntry, q: ServiceClassEntry) => p.generation == q.generation,
+    s.classes, after.classes);
+}
+
+lemma ServiceClassMapOther(s: ServiceInstances, after: ServiceInstances, changed: int, classId: int)
+  requires classId != changed
+  requires |s.classes| == |after.classes|
+  requires forall i :: 0 <= i < |s.classes| ==> s.classes[i].id == after.classes[i].id && (s.classes[i].id != changed ==> after.classes[i] == s.classes[i])
+  ensures serviceClass(after, classId) == serviceClass(s, classId)
+{
+  ServiceClassProjection(s, classId);
+  ServiceClassProjection(after, classId);
+  ProofLib.FilterPointwise(
+    (c: ServiceClassEntry) => (c.id == classId),
+    (c: ServiceClassEntry) => (c.id == classId),
+    (p: ServiceClassEntry, q: ServiceClassEntry) => p.id == classId ==> p == q,
+    s.classes, after.classes);
+  var matches := ProofLib.Filter((c: ServiceClassEntry) => (c.id == classId), s.classes);
+  if |matches| > 0 {
+    ProofLib.FilterMember((c: ServiceClassEntry) => (c.id == classId), s.classes, matches[0]);
+  }
+}
+
+lemma ServicePublishedOther(serviceType: string, instances: seq<int>, s: ServiceInstances, other: string)
+  requires other != serviceType
+  ensures publishedInstances(replacePublication(serviceType, instances, s), other) == publishedInstances(s, other)
+{
+  ServicePublishedFilterKept(serviceType, instances, s, (p: ServicePublication) => (p.serviceType == other));
+}
+
+lemma ServiceRegisteredGenerations(s: ServiceInstances, classId: int, serviceType: string)
+  requires inv(s) && canRegisterClass(s, classId, serviceType)
+  ensures alwaysAttemptGeneration(registerClass(s, classId, serviceType))
+{
+  var after := registerClass(s, classId, serviceType);
+  assert after.attempts == s.attempts && after.nextAttempt == s.nextAttempt;
+  forall a | a in after.attempts
+    ensures a.generation <= serviceClass(after, a.classId).generation
+  {
+    assert a.generation <= serviceClass(s, a.classId).generation;
+    if serviceClass(s, classId).id == 0 {
+      var appended := ServiceClassEntry(classId, serviceType, true, 0, 0, 0, false);
+      assert after.classes == s.classes + [appended];
+      ServiceClassProjection(s, a.classId);
+      ServiceClassProjection(after, a.classId);
+      ProofLib.FilterAppend((c: ServiceClassEntry) => (c.id == a.classId), s.classes, appended);
+    } else {
+      ServiceClassGenerationKept(s, after, a.classId);
+    }
+  }
+}
+
+lemma ServiceUnregisterShape(s: ServiceInstances, classId: int)
+  requires inv(s) && canUnregisterClass(s, classId)
+  ensures var after := unregisterClass(s, classId);
+    var c := serviceClass(s, classId);
+    c in s.classes && c.id == classId && c.serviceType != "" &&
+    after.attempts == s.attempts && after.nextAttempt == s.nextAttempt &&
+    after.declarations == ProofLib.Filter((d: ServiceDeclaration) => (d.classId != classId), s.declarations) &&
+    |after.classes| == |s.classes| &&
+    (forall i :: 0 <= i < |s.classes| ==> after.classes[i] == (if s.classes[i].id == classId then s.classes[i].(registered := false, live := 0) else s.classes[i])) &&
+    after.published == replacePublication(c.serviceType, ProofLib.Filter((id: int) => !((id in [c.live])), publishedInstances(s, c.serviceType)), s).published &&
+    (forall e :: e in after.typeEntries ==> (e.serviceType == c.serviceType && !e.status.TypeFailed?) || (e in s.typeEntries && e.serviceType != c.serviceType))
+{
+  var c := serviceClass(s, classId);
+  var stopped := if c.live != 0 then stopObjectOnce(c.live, s) else s;
+  var withdrawn := removePublishedInstances(c.serviceType, [c.live], withdrawClass(classId, stopped));
+  var after := unregisterClass(s, classId);
+  assert after == reconcileType(c.serviceType, withdrawn);
+  ServiceClassMember(s, classId);
+  var declaration :| declaration in s.declarations && declaration.classId == c.id;
+  assert withdrawn.typeEntries == s.typeEntries;
+  var entry := serviceTypeEntry(withdrawn, c.serviceType);
+  ServiceTypeEntryPut(withdrawn, entry.(serviceType := c.serviceType, status := (if firstLive(withdrawn, c.serviceType) != 0 then TypeStatus.TypeRegistered else (if (exists d :: d in withdrawn.declarations && (d.serviceType == c.serviceType)) then TypeStatus.TypePending else TypeStatus.TypeUnknown)), promiseId := (if ((exists d :: d in withdrawn.declarations && (d.serviceType == c.serviceType)) || firstLive(withdrawn, c.serviceType) != 0) then entry.promiseId else 0), handlerId := (if ((exists d :: d in withdrawn.declarations && (d.serviceType == c.serviceType)) || firstLive(withdrawn, c.serviceType) != 0) then entry.handlerId else 0)));
+}
+
+lemma ServiceUnregisteredMatches(s: ServiceInstances, classId: int)
+  requires inv(s) && canUnregisterClass(s, classId)
+  ensures alwaysDeclarationsMatch(unregisterClass(s, classId))
+  ensures alwaysAttemptGeneration(unregisterClass(s, classId))
+{
+  var after := unregisterClass(s, classId);
+  ServiceUnregisterShape(s, classId);
+  var keep := (d: ServiceDeclaration) => (d.classId != classId);
+  forall d | d in after.declarations
+    ensures d.serviceType != "" && serviceClass(after, d.classId).registered && serviceClass(after, d.classId).serviceType == d.serviceType
+  {
+    ProofLib.FilterMember(keep, s.declarations, d);
+    ServiceClassMapOther(s, after, classId, d.classId);
+  }
+  forall x | x in after.classes
+    ensures x.registered == (exists d :: d in after.declarations && d.classId == x.id)
+  {
+    var i :| 0 <= i < |after.classes| && after.classes[i] == x;
+    assert s.classes[i] in s.classes;
+    if s.classes[i].id == classId {
+      forall d | d in after.declarations ensures d.classId != x.id {
+        ProofLib.FilterMember(keep, s.declarations, d);
+      }
+    } else {
+      if exists d :: d in s.declarations && d.classId == x.id {
+        var d :| d in s.declarations && d.classId == x.id;
+        ProofLib.FilterMember(keep, s.declarations, d);
+      }
+      forall d | d in after.declarations && d.classId == x.id ensures d in s.declarations {
+        ProofLib.FilterMember(keep, s.declarations, d);
+      }
+    }
+  }
+  forall a | a in after.attempts
+    ensures a.generation <= serviceClass(after, a.classId).generation
+  {
+    assert a in s.attempts;
+    ServiceClassGenerationKept(s, after, a.classId);
+  }
+}
+
+lemma ServiceUnregisteredPublications(s: ServiceInstances, classId: int)
+  requires inv(s) && canUnregisterClass(s, classId)
+  ensures alwaysPublicationIdentitiesValid(unregisterClass(s, classId))
+  ensures alwaysFailedTypeHasNoPublication(unregisterClass(s, classId))
+{
+  var after := unregisterClass(s, classId);
+  ServiceUnregisterShape(s, classId);
+  var c := serviceClass(s, classId);
+  var serviceType := c.serviceType;
+  var removed := [c.live];
+  var kept := ProofLib.Filter((id: int) => !((id in removed)), publishedInstances(s, serviceType));
+  ServiceClassFind(s, classId);
+  ServicePublicationView(s);
+  var matches := ProofLib.Filter((p: ServicePublication) => (p.serviceType == serviceType), s.published);
+  if |matches| > 0 {
+    ProofLib.FilterMember((p: ServicePublication) => (p.serviceType == serviceType), s.published, matches[0]);
+  }
+  forall id | id in kept
+    ensures id > 0 && (exists x :: x in after.classes && x.serviceType == serviceType && x.live == id)
+  {
+    ProofLib.FilterMember((id: int) => !((id in removed)), publishedInstances(s, serviceType), id);
+    var x :| x in s.classes && x.serviceType == serviceType && x.live == id;
+    var i :| 0 <= i < |s.classes| && s.classes[i] == x;
+    assert after.classes[i] in after.classes;
+  }
+  forall x | x in s.classes && x.serviceType != serviceType
+    ensures x in after.classes
+  {
+    var i :| 0 <= i < |s.classes| && s.classes[i] == x;
+    assert after.classes[i] in after.classes;
+  }
+  ServiceReplacedPublicationValid(s, after, serviceType, kept);
+  forall e | e in after.typeEntries && e.status.TypeFailed?
+    ensures firstLive(after, e.serviceType) == 0
+  {
+    ServicePublishedOther(serviceType, kept, s, e.serviceType);
+  }
+}
+
+lemma ServiceReturnedFailedTypes(s: ServiceInstances, attemptId: int, instanceId: int)
+  requires inv(s) && canReturnInstance(s, attemptId, instanceId)
+  ensures alwaysFailedTypeHasNoPublication(returnInstance(s, attemptId, instanceId))
+{
+  var after := returnInstance(s, attemptId, instanceId);
+  var a := serviceAttempt(s, attemptId);
+  var owner := serviceClass(s, a.classId);
+  var late := s.stopped || !owner.registered;
+  ServiceReturnShape(s, attemptId, instanceId);
+  if !late {
+    var serviceType := owner.serviceType;
+    var view := after.(published := s.published, typeEntries := s.typeEntries);
+    var instances := classInstances(view, serviceType);
+    var middle := replacePublication(serviceType, instances, view);
+    var entry := serviceTypeEntry(middle, serviceType).(serviceType := serviceType, status := TypeStatus.TypeRegistered);
+    assert after == putType(entry, middle);
+    ServiceTypeEntryPut(middle, entry);
+    forall e | e in after.typeEntries && e.status.TypeFailed?
+      ensures firstLive(after, e.serviceType) == 0
+    {
+      assert e in s.typeEntries && e.serviceType != serviceType;
+      ServicePublishedOther(serviceType, instances, view, e.serviceType);
+    }
+  }
+}
+
+lemma ServiceReturnKeepsInvariant(s: ServiceInstances, attemptId: int, instanceId: int)
+  requires inv(s) && canReturnInstance(s, attemptId, instanceId)
+  ensures alwaysPendingAttemptsOwned(returnInstance(s, attemptId, instanceId))
+  ensures alwaysAttemptGeneration(returnInstance(s, attemptId, instanceId))
+  ensures alwaysDeclarationsMatch(returnInstance(s, attemptId, instanceId))
+  ensures alwaysCapturedAttemptsExist(returnInstance(s, attemptId, instanceId))
+  ensures stepStopIdentityRetained(s, returnInstance(s, attemptId, instanceId))
+  ensures alwaysPublicationIdentitiesValid(returnInstance(s, attemptId, instanceId))
+  ensures alwaysFailedTypeHasNoPublication(returnInstance(s, attemptId, instanceId))
+{
+  ServiceReturnedOwnership(s, attemptId, instanceId);
+  ServiceReturnedCaptures(s, attemptId, instanceId);
+  ServiceReturnedPublications(s, attemptId, instanceId);
+  ServiceReturnedFailedTypes(s, attemptId, instanceId);
 }

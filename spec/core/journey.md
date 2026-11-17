@@ -6,19 +6,21 @@ machines directly. Host authentication, request serialization, provider
 responses and durable adapter acknowledgements enter through their typed
 boundaries. A successful model answer alone provides no effect receipt.
 
-
-Discovered by the proof: each embedded machine must retain its complete safety
-invariant before the composition can rely on that machine's transition lemmas.
-
 ## Story: Complete or cancel a turn and retire its runtime
 
-As a host author, I initialize the kernel, load complete authorized context,
+> As a host author, I want one turn to run from initialization through
+> retirement across the kernel's machines without a second state store.
+
+I initialize the kernel, load complete authorized context,
 dispatch through registered models, settle an action receipt, acknowledge
 its reply, and drain the turn before closing the kernel.
 
 ### A turn composes the existing machines without a second state store
 
 The composition builds the model request envelope directly from the complete visible context and mandatory evidence. Tool definitions and schemas enter as complete declared values. The provider adapter binds `token` to the serialization of that envelope and must verify that correspondence before implementation acceptance. The model preserves the structural evidence and byte string throughout dispatch.
+
+Each embedded machine must retain its complete safety
+invariant before the composition can rely on that machine's transition lemmas.
 
 ```quint
 import runtime as R from "./runtime"
@@ -83,11 +85,6 @@ guard checks the outcome's evidence. A hook may invalidate the exact reply
 binding before dispatch. Transport failure retains the committed receipt
 and withholds a delivered confirmation.
 
-Discovered by simulation: consecutive model, action and reply steps need
-enough samples to exercise their complete path before early cancellation
-or rejection. The sampler gives those steps more weight. It still includes
-the refusal and cancellation paths.
-
 ```quint
 pure val weight_beginInitialization = 4
 pure val weight_completeInitialization = 4
@@ -128,7 +125,7 @@ Stopping closes future admission. An already admitted action retains its
 original settlement path, and its pending transport cannot disappear from
 the drain accounting. The host can cancel a pre-action turn and then drain.
 
-Discovered by the proof: an active turn follows successful initialization.
+An active turn follows successful initialization.
 Preparation and inference carry no prior action outcome or receipt into the
 action phase.
 An in-flight reply remains in the replying phase of its admitted turn until

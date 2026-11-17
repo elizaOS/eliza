@@ -1,14 +1,16 @@
 # Room leases and durable writes
 
-Room handler ownership serializes durable effects. Multiple-room requests acquire ascending room IDs and release in reverse order. Sources include [room-handler-queue.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/room-handler-queue.ts) and [RoomHandlerQueue.qnt](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/quint/RoomHandlerQueue.qnt). Capacity is a host configuration input.
+Room handler ownership serializes durable effects. Multiple-room requests acquire ascending room IDs and release in reverse order. Sources include [room-handler-queue.ts](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/room-handler-queue.ts). Capacity is a host configuration input.
 
 ## Story: Own each room through durable settlement
 
-As a caller I acquire room leases in a deadlock-free order and keep them while admitted writes settle.
+> As a caller, I want room leases taken in a deadlock-free order and held
+> until my writes settle, so that two turns never write the same room at
+> once.
 
 ### Room leases admit bounded FIFO requests and one owner per room
 
-The host supplies capacity. An already-held room is reentrant through the existing owner, while a new room must follow ascending acquisition order.
+The host supplies capacity. An already-held room is reentrant through the existing owner while that lease still accepts writes (`leaseReusable`); reuse acquires nothing, so it is a predicate and not a transition. A new room must follow ascending acquisition order.
 
 Discovered by the proof: an unconfigured queue has no leases or waiters. Configuration therefore cannot reduce limits beneath already-admitted work; all admission requires configuration first. Ticket allocation starts positive, remains positive and never assigns the same ticket to two waiting callers.
 
@@ -29,8 +31,7 @@ pure val maxPerRoomValues = Set(1, 2)
 pure val maxRoomsValues = Set(1, 2)
 pure def activeRoomIds(s: RoomState): List[int] = s.leases.listMap(l => l.room).concat(s.waiting.listMap(w => w.room))
 pure def activeRooms(s: RoomState): List[int] = activeRoomIds(s).foldl(List(), (rooms, room) => if (rooms.includes(room)) rooms else rooms.append(room))
-pure def canReuseLease(s: RoomState, caller: int, room: int): bool = s.leases.some(l => l.caller == caller and l.room == room and l.acceptingWrites)
-pure def reuseLease(s: RoomState, caller: int, room: int): RoomState = s
+pure def leaseReusable(s: RoomState, caller: int, room: int): bool = s.leases.some(l => l.caller == caller and l.room == room and l.acceptingWrites)
 pure def roomOccupancy(s: RoomState, room: int): int = s.waiting.select(w => w.room == room).length() + s.leases.select(l => l.room == room).length()
 pure def canQueueRoom(s: RoomState, caller: int, room: int): bool = s.configured and not(s.closed) and caller > 0 and room > 0 and not(s.cancelled.contains(caller)) and not(s.sealedCallers.contains(caller)) and not(s.finishedCallers.contains(caller)) and s.waiting.length() + s.leases.length() < s.capacity and not(s.waiting.some(w => w.caller == caller)) and s.leases.every(l => l.caller != caller or l.room < room) and roomOccupancy(s, room) < s.maxPerRoom and (activeRooms(s).includes(room) or activeRooms(s).length() < s.maxRooms)
 pure def queueRoom(s: RoomState, caller: int, room: int): RoomState = { ...s, waiting: s.waiting.append({caller: caller, room: room, ticket: s.nextTicket}), nextTicket: s.nextTicket + 1 }
@@ -62,7 +63,7 @@ pure def canCancelQueued(s: RoomState, caller: int): bool = s.waiting.some(w => 
 pure def cancelQueued(s: RoomState, caller: int): RoomState = { ...s, waiting: s.waiting.select(w => w.caller != caller), cancelled: s.cancelled.union(Set(caller)) }
 pure def canCloseRoomAdmission(s: RoomState): bool = not(s.closed)
 pure def closeRoomAdmission(s: RoomState): RoomState = { ...s, closed: true }
-pure def alwaysWritesRetainLease(s: RoomState): bool = s.leases.every(l => l.writes >= 0)
+pure def alwaysLeaseWriteCountsNonnegative(s: RoomState): bool = s.leases.every(l => l.writes >= 0)
 pure def alwaysCancelledWaitersRemoved(s: RoomState): bool = s.waiting.every(w => not(s.cancelled.contains(w.caller)))
 pure def stepClosedQueueCannotGrow(before: RoomState, after: RoomState): bool = before.closed implies after.waiting.length() <= before.waiting.length()
 pure def sometimesPendingWritePreventsRelease(s: RoomState): bool = s.leases.some(l => l.writes > 0 and not(l.acceptingWrites) and not(canReleaseRoom(s, l.caller, l.room)))

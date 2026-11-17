@@ -1,8 +1,11 @@
 # Connector account and OAuth record ownership
 
-`connectors/account-manager.ts` uses a per-instance account map, a dual-alias OAuth map and consumed-alias set, plus owner bindings. This canonical store is embedded by the database bridge/migration owner; it is not a second copy of their data. Account normalization and patching are defined in [accountValues](./accountValues.md).
+`connectors/account-manager.ts` uses a per-instance account map, a dual-alias OAuth map and consumed-alias set, plus owner bindings. This canonical store is embedded by the [database bridge](./oauth/bridge.md) and the [storage handoff](./connectorHandoff.md), which moves it from the boot-time store to durable storage; it is not a second copy of their data. Account normalization, status and policy are [account values](./accountValues.md); which manager answers for a provider is [connector managers](./connectorManagers.md); OAuth completion is [OAuth](./oauth/) and its verifiers [OAuth verifiers](./oauth/verifiers.md). Credentials themselves stay in the agent's vault ([agent connectors](../agent/connectors.md)).
 
 ## Story: Retain full account and flow values under exact identities
+
+> As a user, I want every connector account and pending sign-in I have kept
+> exactly as stored, so that replacing one never loses or reorders another.
 
 ### Account replacement preserves identity ordering and complete values
 
@@ -14,25 +17,24 @@ type FlowStatus = PendingFlow | CompletedFlow | FailedFlow | CancelledFlow
 type FlowValue = { provider: str, id: str, token: str, status: FlowStatus, accountId: A::OptionalText, authUrl: A::OptionalText, error: A::OptionalText, redirectUri: A::OptionalText, verifier: A::OptionalText, createdAt: int, updatedAt: int, hasExpiry: bool, expiresAt: int, metadata: A::Metadata }
 type FlowEntry = { value: FlowValue, consumed: bool }
 type OwnerBinding = { connector: str, externalId: str, instanceId: str, body: str }
-type ConnectorStore = { accounts: List[A::AccountValue], flows: List[FlowEntry], ownerBindings: List[OwnerBinding], now: int }
+type AccountRef = { provider: str, id: str }
+type ConnectorStore = { accounts: List[A::AccountValue], flows: List[FlowEntry], ownerBindings: List[OwnerBinding], revoked: List[AccountRef], now: int }
 pure val emptyFlow: FlowValue = { provider: "", id: "", token: "", status: CancelledFlow, accountId: A::absentText, authUrl: A::absentText, error: A::absentText, redirectUri: A::absentText, verifier: A::absentText, createdAt: 0, updatedAt: 0, hasExpiry: false, expiresAt: 0, metadata: A::absentMetadata }
 pure val noEntry: FlowEntry = { value: emptyFlow, consumed: false }
-pure val initial: ConnectorStore = { accounts: List(), flows: List(), ownerBindings: List(), now: 0 }
+pure val initial: ConnectorStore = { accounts: List(), flows: List(), ownerBindings: List(), revoked: List(), now: 0 }
 pure def accountAt(s: ConnectorStore, provider: str, id: str): A::AccountValue = {
   val exact = s.accounts.select(account => account.provider == provider and account.id == id)
   if (exact.length() > 0) exact.nthOr(0, A::emptyAccount) else s.accounts.select(account => account.provider == provider and account.accountKey.present and account.accountKey.text == id).nthOr(0, A::emptyAccount)
 }
 pure def canUpsertAccount(s: ConnectorStore, account: A::AccountValue): bool = account.provider != "" and account.id != ""
 pure def upsertAccount(s: ConnectorStore, account: A::AccountValue): ConnectorStore = { ...s, accounts: if (s.accounts.some(prior => prior.provider == account.provider and prior.id == account.id)) s.accounts.listMap(prior => if (prior.provider == account.provider and prior.id == account.id) account else prior) else s.accounts.append(account) }
-pure def deleteAccount(s: ConnectorStore, provider: str, id: str): ConnectorStore = { ...s, accounts: s.accounts.select(account => account.provider != provider or account.id != accountAt(s, provider, id).id) }
 pure def bindOwner(s: ConnectorStore, connector: str, externalId: str, instanceId: str, body: str): ConnectorStore = { ...s, ownerBindings: s.ownerBindings.select(binding => binding.connector != connector or binding.externalId != externalId or binding.instanceId != instanceId).append({ connector: connector, externalId: externalId, instanceId: instanceId, body: body }) }
-pure def alwaysAccountIdentityUnique(s: ConnectorStore): bool = s.accounts.every(account => s.accounts.select(other => other.provider == account.provider and other.id == account.id).length() == 1)
 pure def alwaysOwnerBindingIdentityUnique(s: ConnectorStore): bool = s.ownerBindings.every(binding => s.ownerBindings.select(other => other.connector == binding.connector and other.externalId == binding.externalId and other.instanceId == binding.instanceId).length() == 1)
 ```
 
 ### Pending flow consumption retains both aliases until terminal update
 
-Newly generated flow and state identities are fresh per provider. Identical row reinsertion used by migration preserves insertion position and preserves an existing consumed marker; migration still invokes consumption after insertion. Updating retains provider/ID/state. Consumption requires pending, unconsumed and absent/zero/future expiry. Expired unconsumed rows are swept; consumed pending rows remain addressable. Clearing migration removes accounts, flows and consumed markers but retains owner bindings.
+Newly generated flow and state identities are fresh per provider. Identical row reinsertion used by migration preserves insertion position and preserves an existing consumed marker; migration still invokes consumption after insertion. Updating retains provider/ID/state. Consumption requires pending, unconsumed and absent/zero/future expiry. Expired unconsumed rows are swept; consumed pending rows remain addressable. Clearing migration removes accounts, flows and consumed markers but retains owner bindings and revocations.
 
 ```quint
 pure def flowEntry(s: ConnectorStore, provider: str, id: str): FlowEntry = s.flows.select(entry => entry.value.provider == provider and (entry.value.id == id or entry.value.token == id)).nthOr(0, noEntry)
@@ -52,10 +54,40 @@ pure def migratableFlows(s: ConnectorStore): List[FlowEntry] = s.flows.select(en
 pure def alwaysFlowAliasesUnique(s: ConnectorStore): bool = s.flows.every(entry => s.flows.select(other => other.value.provider == entry.value.provider and (other.value.id == entry.value.id or other.value.token == entry.value.token or other.value.id == entry.value.token or other.value.token == entry.value.id)).length() == 1)
 pure def sometimesFlowConsumed(s: ConnectorStore): bool = s.flows.some(entry => entry.consumed)
 pure def sometimesAccountPersisted(s: ConnectorStore): bool = s.accounts.length() > 0
-pure val accountValues: Set[A::AccountValue] = Set({ ...A::emptyAccount, id: "account1", provider: "provider1" }, { ...A::emptyAccount, id: "account2", provider: "provider1" })
+pure val accountValues: Set[A::AccountValue] = Set({ ...A::emptyAccount, id: "account1", provider: "provider1" }, { ...A::emptyAccount, id: "account2", provider: "provider1" }, { ...A::emptyAccount, id: "account1", provider: "provider1", status: A::AccountDisabled })
 pure val valueValues: Set[FlowValue] = Set({ ...emptyFlow, provider: "provider1", id: "flow1", token: "state1", status: PendingFlow }, { ...emptyFlow, provider: "provider1", id: "flow2", token: "state2", status: PendingFlow })
 pure val updatedValues = valueValues
 pure val providerValues = Set("provider1", "provider2")
 pure val tokenValues = Set("state1", "state2")
 pure val idValues = Set("flow1", "flow2", "account1")
+```
+
+## Story: Connector account lifecycle
+
+> As a user, I want each account a provider reports for me to be one account
+> of the agent, and revoked when I remove it, so that I never act through a
+> duplicate or a forgotten account. Keeping every account across the move to
+> durable storage is the [storage handoff](./connectorHandoff.md).
+
+### Each provider account ID is one account
+
+An account is keyed by its provider and the account ID the provider reports; the source does not deduplicate by external identity, so two account IDs sharing one external identity are two accounts. Connecting an account ID that already has an account replaces that account's value in place; it never adds a second. Disabling an account keeps it and its key.
+
+```quint
+pure def alwaysAccountIdentityUnique(s: ConnectorStore): bool = s.accounts.every(account => s.accounts.select(other => other.provider == account.provider and other.id == account.id).length() == 1)
+pure def sometimesDisabledAccountKept(s: ConnectorStore): bool = s.accounts.some(account => account.status == A::AccountDisabled)
+```
+
+### Removing an account revokes it before deleting it
+
+Removal first lets the provider revoke the account, then deletes the stored account; the revocation is retained after the account is gone. Removing an absent account changes nothing. No other transition drops an account's key without revoking it, except clearing the boot-time store once the [storage handoff](./connectorHandoff.md) has copied it. The agent's vault deletes the account's credential on disconnect.
+
+```quint
+pure def deleteAccount(s: ConnectorStore, provider: str, id: str): ConnectorStore = {
+  val removed = accountAt(s, provider, id)
+  if (removed.id == "") s else { ...s, accounts: s.accounts.select(account => account.provider != removed.provider or account.id != removed.id), revoked: if (s.revoked.includes({ provider: removed.provider, id: removed.id })) s.revoked else s.revoked.append({ provider: removed.provider, id: removed.id }) }
+}
+pure def stepRemovalRevokes(before: ConnectorStore, via: str, after: ConnectorStore): bool =
+  via != "clearMigrated" implies before.accounts.every(account => after.accounts.some(kept => kept.provider == account.provider and kept.id == account.id) or after.revoked.includes({ provider: account.provider, id: account.id }))
+pure def sometimesRemovedAndRevoked(s: ConnectorStore): bool = s.revoked.length() > 0
 ```

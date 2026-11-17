@@ -1,10 +1,13 @@
 # Grammar character-class escapes
 
-This migrates `quint/GrammarClassEscape.qnt` and the planner GBNF schema compiler. Both pinned llama.cpp parsers accept the shared escape subset. Literal hyphen and caret use hexadecimal escapes, closing brackets use an escape, ranges remain ranges, and unsupported classes retain the general JSON-string grammar.
+The planner's grammar schema compiler emits only the escape subset both
+supported grammar parsers accept. Literal hyphen and caret use hexadecimal
+escapes, closing brackets use an escape, ranges remain ranges, and
+unsupported classes retain the general JSON-string grammar.
 
 ## Story: Compile model input schemas to portable grammar classes
 
-As a model provider, I want character classes to preserve their literal or range meaning across supported native parsers.
+> As a model provider, I want character classes to preserve their literal or range meaning across supported native parsers.
 
 ### Portable escaping preserves literal members and range structure
 

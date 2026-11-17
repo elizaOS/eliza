@@ -4,6 +4,10 @@ The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c1
 
 ## Story: Select relevant history while retaining complete evidence
 
+> As an agent, I want to trim history only after a complete review of its
+> sources, so that a reply never loses the request, instructions or
+> evidence it depends on.
+
 As an agent, I can select exact relevant prior dialogue only after a complete source-bound review. Current requests, instructions, provider constraints, runtime feedback and current tool evidence remain present. Original source bodies and attribution remain available for restoration. An invalid, stale or incomplete selector retains full history.
 
 ### Context starts with complete original sources and mandatory evidence
@@ -54,6 +58,10 @@ pure def sometimesRestoreAfterSelection(s: Context): bool = s.restored and s.vis
 ```
 
 ## Story: Keep historical evidence bound to its own request
+
+> As an agent, I want each historical receipt kept with the request it
+> answered, so that old evidence is never read as an answer to a new
+> request.
 
 As an agent, I can defer a historical navigation receipt only with its unambiguous original request. Historical read observations require canonical validated receipt shapes. Historical mutations remain inline by default. An explicitly reviewed historical-effect projection may defer validated mutations. Its settled-only mode requires a committed outcome or an owner-scoped terminal proof establishing done, rejected or expired state; uncertain outcomes stay inline in that mode. The broader reviewed mode may also defer unsettled historical effects. Current effects remain inline.
 

@@ -1,6 +1,6 @@
 # Service stop boundary observations
 
-[RuntimeServiceLifecycle._stopServiceInstance](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/service-lifecycle.ts#L115-L157)
+[RuntimeServiceLifecycle._stopServiceInstance](https://github.com/elizaOS/eliza/blob/72fed7e4069ecd35d61d886ab6eec5c02c137517/packages/core/src/runtime/service-lifecycle.ts)
 wraps a runtime shutdown or late-start stop attempt. [Service instance
 ownership](./serviceInstances.md) supplies the shared object stop operation.
 The [retirement tracker](./retirementTracker.md) owns retained failures.
@@ -8,9 +8,10 @@ References below denote the original host identities.
 
 ## Story: Continue best-effort shutdown with its failures retained
 
-As a runtime owner, I want each stop wrapper to finish after recording why
-an invalid instance could not stop or after the shared stop promise settles.
-Strict retirement needs the recorded failures to decide its own outcome.
+> As a runtime owner, I want each stop wrapper to finish after recording why
+> an invalid instance could not stop or after the shared stop promise
+> settles, so that strict retirement can decide its outcome from the
+> recorded failures.
 
 ### An invalid stop target records a failure without publishing work
 

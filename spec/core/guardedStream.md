@@ -1,12 +1,22 @@
 # Guarded stream buffer ownership
 
-The source is `packages/core/src/security/guarded-stream.ts` at the pinned baseline. The scanner owns the pending exact character sequence. It chooses a safe cut using known token lengths, whitespace, grouped number/phone/mnemonic runs, credential openers, armor blocks and known token crossings. The normalized intervals below represent those detector results. The shell's detector-to-interval adapter must preserve that classification. Secret substitution precedes PII substitution; visible text restores PII and applies the secret reply policy.
+The scanner owns the pending exact character sequence. It chooses a safe
+cut using known token lengths, whitespace, grouped number, phone and
+mnemonic runs, credential openers, armor blocks and known token crossings.
+The normalized intervals below represent those detector results. The
+shell's detector-to-interval adapter must preserve that classification.
+Secret substitution precedes PII substitution; visible text restores PII
+and applies the secret reply policy.
 
 ## Story: Retain incomplete sensitive text across stream chunks
 
+> As a user, I want a streamed reply to hold back text that may be part of a
+> secret or personal detail until it is complete, so no fragment of it is
+> released unredacted.
+
 ### Appending and releasing conserve every source character
 
-A cut is permitted only inside the pending sequence and outside every sensitive interval. The buffer has no truncation operation. `sourceEmitted` records original source characters released to the transformation pipeline, preserving order independently of the transformed output length. Discovered by the proof: only cancellation can move pending characters to the discarded ledger; until then, the stream has no discarded suffix.
+A cut is permitted only inside the pending sequence and outside every sensitive interval. The buffer has no truncation operation. `sourceEmitted` records original source characters released to the transformation pipeline, preserving order independently of the transformed output length. Only cancellation can move pending characters to the discarded ledger; until then, the stream has no discarded suffix.
 
 ```quint
 type SensitiveSpan = { start: int, end: int, open: bool }

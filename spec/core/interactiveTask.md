@@ -1,10 +1,19 @@
 # Interactive task authority and operation journal
 
-The compatibility baseline is `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`. Sources are `packages/core/src/messaging/interactive-task.ts`, `task-events.ts`, and `quint/InteractiveTask.qnt`. Hosts persist every transition atomically before dispatch, and actuators independently recheck the committed proposal against the current page. The generated machine owns the task epoch, revision, scope, observation and operation journal. It performs no browser or device effect.
+Hosts persist every transition atomically before dispatch, and actuators
+independently recheck the committed proposal against the current page. The
+generated machine owns the task epoch, revision, scope, observation and
+operation journal. It performs no browser or device effect.
 
 ## Story: Act only against the current authorized observation
 
-As a user, I control which agent, actor, connector, origins and capabilities own a task. A proposal refers to one current observation and epoch. A stale revision, wrong owner, expired proposal, revoked authority or unresolved prior operation prevents dispatch. A proposal ID cannot execute twice.
+> As a user, I want a task to act only on what I authorized and currently
+> see, so a stale or revoked proposal never runs.
+
+As a user, I control which agent, actor, connector, origins and capabilities
+own a task. A proposal refers to one current observation and epoch. A stale
+revision, wrong owner, expired proposal, revoked authority or unresolved
+prior operation prevents dispatch. A proposal ID cannot execute twice.
 
 ### An empty task takes an explicit owner and authorized scope
 
@@ -35,7 +44,7 @@ pure val journalValues: Set[List[Operation]] = Set(List(), List({ id: "op1", sta
 
 ### Observations and proposals bind to the same revision and epoch
 
-Changing the observation cancels a prepared operation. An unresolved dispatched or unknown operation must first settle. Observations retain their original IDs and origins, and action capabilities come from the trusted adapter classification. Observation payload fields travel as one typed input, as they do at the source boundary; simulation supplies coherent payloads and explicit malformed/stale variants rather than constructing an unrelated Cartesian product of fields.
+Changing the observation cancels a prepared operation. An unresolved dispatched or unknown operation must first settle. Observations retain their original IDs and origins, and action capabilities come from the trusted adapter classification. Observation payload fields travel as one typed input.
 
 ```quint
 pure val pointValues = Set({ origin: "https://originA", epoch: 0, at: 0 }, { origin: "https://originB", epoch: 1, at: 1 })
