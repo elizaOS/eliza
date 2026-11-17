@@ -48,6 +48,7 @@ import {
   matchTodosByContent,
   readTodoRef,
   sameTodoContent,
+  swapsWords,
   todoRef,
 } from "./todo-match.js";
 import {
@@ -1617,7 +1618,18 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
       }
     }
     const [only] = matches;
-    if (matches.length === 1 && only) return { id: only.id };
+    if (matches.length === 1 && only) {
+      // "Pay water bill" when only "Pay electricity bill" is left: a
+      // paraphrase that swaps a word is offered for the user to confirm,
+      // never changed on a guess.
+      if (
+        locator.match !== undefined &&
+        swapsWords(locator.match, only.content)
+      ) {
+        return { miss: { kind: "ambiguous", candidates: [only] } };
+      }
+      return { id: only.id };
+    }
     if (matches.length === 0) return { miss: { kind: "not_found" } };
     return { miss: { kind: "ambiguous", candidates: matches } };
   }
