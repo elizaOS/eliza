@@ -1,6 +1,6 @@
 // spec/core/execution.md, "Story: Settle an action before publishing its callback"
 import { errorText } from "../utils/errors.vibe"
-import { foreign, foreignSync, Foreign, promised, thrown } from "../edge.vibe"
+import { foreign, foreignSync, type Foreign, promised, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import {
   projectCompleteToolArgsForModel,

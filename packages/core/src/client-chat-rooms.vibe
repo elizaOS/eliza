@@ -1,6 +1,5 @@
 // spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import { foreign, promised } from "./edge.vibe"
-import type { Room } from "./types/environment.vibe"
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "./types/message-source.vibe"
 import type { IAgentRuntime } from "./types/runtime.vibe"
 

@@ -1,5 +1,5 @@
 // spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
-import { Foreign, foreign, runDetached } from "../edge.vibe"
+import { type Foreign, foreign, runDetached } from "../edge.vibe"
 
 export type NormalizedChatType = "direct" | "group" | "channel"
 
@@ -351,7 +351,7 @@ export function formatLocationText(location: NormalizedLocation): string {
   const coords = formatCoords(resolved.latitude, resolved.longitude)
   const accuracy = formatAccuracy(resolved.accuracy)
   const caption = resolved.caption?.trim()
-  let header = ""
+  let header: string
 
   if (resolved.source === "live" || resolved.isLive) {
     header = `🛰 Live location: ${coords}${accuracy}`

@@ -30,15 +30,7 @@ const TASK_STATUSES = [
   "cancelled",
 ] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number]
-const TASK_OPERATION_STATUSES = [
-  "prepared",
-  "dispatched",
-  "succeeded",
-  "failed",
-  "cancelled",
-  "unknown",
-] as const
-export type TaskOperationStatus = (typeof TASK_OPERATION_STATUSES)[number]
+export type TaskOperationStatus = keyof typeof MODEL_OPERATION
 
 interface TaskEventShape {
   operation: readonly TaskOperationStatus[] | null
@@ -343,7 +335,7 @@ const MODEL_OPERATION = {
   failed: "FailedOperation",
   cancelled: "CancelledOperation",
   unknown: "UnknownOperation",
-} as const satisfies Record<TaskOperationStatus, ModelOperationStatus>
+} as const satisfies Record<string, ModelOperationStatus>
 
 function modelEvent(event: TaskEvent): ModelEvent {
   return {

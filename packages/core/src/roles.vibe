@@ -6,7 +6,7 @@ import {
   normalizeConnectorSource,
 } from "./connectors.vibe"
 import { worldMetadataValueEquals } from "./database/world-metadata-cas.vibe"
-import { failingAs, Foreign, foreign, foreignSync, promised, settle, thrown } from "./edge.vibe"
+import { failingAs, type Foreign, foreign, foreignSync, promised, settle, thrown } from "./edge.vibe"
 import { createUniqueUuid } from "./entities.vibe"
 import { ElizaError } from "./errors.vibe"
 import { logger } from "./logger.vibe"
