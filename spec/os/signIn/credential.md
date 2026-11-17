@@ -149,7 +149,10 @@ pure def rejected(s: DeviceCredential, version: int, reason: RefusalReason, from
   else { state: s, out: List(VerifyAccount) }
 pure val versionValues = Set(1, 2)
 pure val reasonValues = Set(CredentialExpired, CredentialRevoked, CredentialUnknown, NoReason)
-pure def sometimesExpired(s: DeviceCredential): bool = match s.custody { | Expired(e) => e.account.userId != "" | _ => false }
+pure def sometimesExpired(s: DeviceCredential): bool = {
+  val held = s.custody
+  match held { | Expired(e) => e.account.userId != "" | _ => false }
+}
 pure def sometimesSignedOutByCloud(s: DeviceCredential): bool = s.custody == SignedOut and s.lastVersion >= 1 and s.generation == 1 and s.duties == List()
 ```
 
@@ -199,8 +202,8 @@ duty is dropped once its key has lapsed.
 ```quint
 pure val startAttempts = 1
 pure def canRevokeAnswered(s: DeviceCredential, version: int): bool = s.duties.some(d => d.version == version and d.tries > 0)
-pure def revokeAnswered(s: DeviceCredential, version: int, settled: bool): DeviceCredential =
-  { ...s, duties: if (settled) s.duties.select(d => d.version != version)
+pure def revokeAnswered(s: DeviceCredential, version: int, revocationConfirmed: bool): DeviceCredential =
+  { ...s, duties: if (revocationConfirmed) s.duties.select(d => d.version != version)
     else s.duties.listMap(d => if (d.version == version and d.tries > 0) { ...d, tries: d.tries - 1 } else d) }
 pure def canElapse(s: DeviceCredential, ms: Millis): bool = ms > 0
 pure def elapse(s: DeviceCredential, ms: Millis): DeviceCredential =
@@ -247,12 +250,18 @@ pure def grantSession(s: DeviceCredential, account: Account, accessExpiresAt: Mi
 }
 pure def canDropSession(s: DeviceCredential): bool = s.session != NoSession
 pure def dropSession(s: DeviceCredential): DeviceCredential = { ...s, session: NoSession }
-pure def sessionUsable(s: DeviceCredential): bool = match s.session { | Session(t) => s.now < t.accessExpiresAt | NoSession => false }
+pure def sessionUsable(s: DeviceCredential): bool = {
+  val held = s.session
+  match held { | Session(t) => s.now < t.accessExpiresAt | NoSession => false }
+}
 pure val accessExpiresAtValues = Set(900000, 7200000)
 pure val weight_grantSession = 3
-pure def alwaysSessionBelongsToTheActiveKey(s: DeviceCredential): bool = match s.session {
-  | Session(t) => t.version >= 1 and t.version == activeVersion(s) and s.now < t.until and t.until <= s.now + Iss::freshWindow and t.accessExpiresAt <= t.until
-  | NoSession => true
+pure def alwaysSessionBelongsToTheActiveKey(s: DeviceCredential): bool = {
+  val held = s.session
+  match held {
+    | Session(t) => t.version >= 1 and t.version == activeVersion(s) and s.now < t.until and t.until <= s.now + Iss::freshWindow and t.accessExpiresAt <= t.until
+    | NoSession => true
+  }
 }
 pure def sometimesSessionUsable(s: DeviceCredential): bool = sessionUsable(s)
 ```
@@ -278,7 +287,10 @@ pure def readSession(s: DeviceCredential): DeviceCredential = {
     | NoSession => s
   }
 }
-pure def canRefreshAnswered(s: DeviceCredential): bool = match s.session { | Session(t) => t.refreshing | NoSession => false }
+pure def canRefreshAnswered(s: DeviceCredential): bool = {
+  val held = s.session
+  match held { | Session(t) => t.refreshing | NoSession => false }
+}
 pure def refreshAnswered(s: DeviceCredential, answer: RefreshAnswer): DeviceCredential = {
   val x = s.session
   match x {
@@ -292,6 +304,12 @@ pure def refreshAnswered(s: DeviceCredential, answer: RefreshAnswer): DeviceCred
 }
 pure val answerValues = Set(Refreshed({ accessExpiresAt: 2000000 }), RefreshUnanswered, RefreshRefused)
 pure val weight_readSession = 3
-pure def alwaysOneRefreshInFlight(s: DeviceCredential): bool = match s.session { | Session(t) => t.waiters >= 0 and (t.waiters >= 1 implies t.refreshing) | NoSession => true }
-pure def sometimesReadersShareOneRefresh(s: DeviceCredential): bool = match s.session { | Session(t) => t.waiters >= 1 | NoSession => false }
+pure def alwaysOneRefreshInFlight(s: DeviceCredential): bool = {
+  val held = s.session
+  match held { | Session(t) => t.waiters >= 0 and (t.waiters >= 1 implies t.refreshing) | NoSession => true }
+}
+pure def sometimesReadersShareOneRefresh(s: DeviceCredential): bool = {
+  val held = s.session
+  match held { | Session(t) => t.waiters >= 1 | NoSession => false }
+}
 ```
