@@ -66,8 +66,9 @@ contact's lookup key and revision first.
 
 A host whose manifest keeps `WRITE_CONTACTS` (and whose `contacts` alias asks
 for it) can also save from its own screen through `ContactsEditor`:
-`get({ id })` returns the name, typed phone numbers and emails and an opaque
-`version`; `save({ id?, version?, displayName, phoneNumbers, emailAddresses })`
+`get({ id })` returns the display and structured names, owner notes, typed phone
+numbers and emails and an opaque `version`;
+`save({ id?, version?, displayName, phoneNumbers, emailAddresses, givenName?, familyName?, notes? })`
 creates a contact in the device-local account or changes only the rows that
 differ; `remove({ id, version })` deletes it. A write names the version that
 was read and asserts it again inside the provider's transaction, so a contact
@@ -76,3 +77,21 @@ than 32 numbers or emails is refused as `incomplete`, never clipped. Without
 the permission these methods reject with `permission-required`.
 `status().writable` reports it. `android/src/test` holds the JVM tests.
 The renderer contract is `@elizaos/contracts/native-address-book`.
+
+Structured `givenName` and `familyName` values come from the provider, not from
+splitting its display label. An omitted component stays unchanged; an explicit
+empty string clears only that component. When either component is supplied,
+Android formats the display label from the retained name components. Otherwise,
+`displayName` is the legacy full-name edit. Name changes update the selected
+name row in place and retain other raw names, middle names, prefixes, suffixes,
+phonetic/style columns, photos and other MIME rows.
+
+Owner notes are edit-screen data, never added to the catalog or automatic agent
+context. `notes` omission preserves the provider rows; an empty string clears
+only the selected note value. Notes keep whitespace and allow CR, LF and tabs,
+with `CONTACT_MAX_NOTES` / `ContactsEditor.MAX_NOTES` set to 8192 UTF-16 code units.
+A scalar editor cannot represent multiple note rows, or multiple name rows on
+the selected name raw contact. `get` refuses these as `incomplete`; use the system
+editor rather than flattening or deleting values. Legacy saves that omit notes
+do not touch those rows. Provider versions and the atomic stale-write checks
+are unchanged.

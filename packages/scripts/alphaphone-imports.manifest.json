@@ -413,6 +413,7 @@
     "packages/contracts/src/lifeops/workflows.ts": [],
     "packages/contracts/src/mms-send.ts": ["MMS_MAX_ATTACHMENTS"],
     "packages/contracts/src/native-address-book.ts": [
+      "CONTACT_MAX_NOTES",
       "ContactDetail",
       "ContactDraft",
       "contactDraftProblem",
