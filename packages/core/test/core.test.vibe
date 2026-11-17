@@ -3957,6 +3957,114 @@ it.live("Speak a reply and interrupt it (spec/core/voice.md, \"Story: Interrupt 
   }))
 }), 15_000)
 
+// spec/core/taskEventReader.md, "Story: Observe complete task history without stale page replacement"; spec/core/taskEventReader.md, "A generation owns its pending read and every publish boundary rechecks it"
+it.live('Recover read-only task observation after an observer throws (spec/core/taskEventReader.md, "Story: Observe complete task history without stale page replacement")', () => scoped(effect {
+  const directory = try scratch("task-event-observer")
+  const script = String.raw`import assert from "node:assert/strict";
+import { readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { TaskEventReader } from "./src/entry/task-events.vibe";
+const directory = process.argv[1];
+const event = (taskId, sequence) => ({ schemaVersion: 1, eventId: taskId + "#" + sequence, taskId, sequence, epoch: 0, at: sequence, kind: sequence === 0 ? "create" : "observe", status: "active" });
+const page = (taskId, sequence) => ({ events: [event(taskId, sequence)], cursor: sequence, hasMore: false, task: { id: taskId, revision: sequence, epoch: 0, status: "completed", hasUnknownOutcome: false } });
+const put = (taskId, sequence) => writeFile(path.join(directory, taskId + ".json"), JSON.stringify(page(taskId, sequence)));
+const source = (calls) => async (taskId, after) => {
+  calls.push([taskId, after]);
+  return JSON.parse(await readFile(path.join(directory, taskId + ".json"), "utf8"));
+};
+async function rejectsOriginal(call, expected) {
+  let rejected = false;
+  try { await call(); } catch (error) { rejected = true; assert.strictEqual(error, expected); }
+  assert.strictEqual(rejected, true);
+}
+for (const marker of [new Error("observer"), Object.freeze({ observer: true }), 0, undefined]) {
+  await put("retry", 0);
+  const calls = [], views = [];
+  let armed = true;
+  const reader = new TaskEventReader({
+    read: source(calls),
+    changed: (view) => {
+      views.push(structuredClone(view));
+      if (armed) { armed = false; throw marker; }
+      if (view.page) view.page.events.length = 0;
+    },
+  });
+  try {
+    await rejectsOriginal(() => reader.start("retry"), marker);
+    assert.deepEqual(calls, []);
+    await reader.refresh();
+    assert.deepEqual(calls, [["retry", -1]]);
+    assert.deepEqual(views.at(-1), { page: page("retry", 0), pending: false, failed: false });
+    armed = true;
+    await rejectsOriginal(() => reader.refresh(), marker);
+    assert.deepEqual(calls, [["retry", -1]]);
+    await put("retry", 1);
+    await reader.refresh();
+    assert.deepEqual(calls, [["retry", -1], ["retry", 0]]);
+    assert.deepEqual(views.at(-1), { page: { ...page("retry", 1), events: [event("retry", 0), event("retry", 1)] }, pending: false, failed: false });
+  } finally { reader.stop(); }
+}
+await put("retry", 0);
+{
+  const marker = Object.freeze({ stopped: true }), calls = [];
+  let first = true;
+  const reader = new TaskEventReader({
+    read: source(calls),
+    changed: () => { if (first) { first = false; reader.stop(); throw marker; } },
+  });
+  try {
+    await rejectsOriginal(() => reader.start("retry"), marker);
+    await reader.refresh();
+    assert.deepEqual(calls, []);
+    await reader.start("retry");
+    assert.deepEqual(calls, [["retry", -1]]);
+  } finally { reader.stop(); }
+}
+await put("replacement", 0);
+{
+  const marker = Object.freeze({ replaced: true }), calls = [], views = [];
+  let first = true, replacement;
+  const reader = new TaskEventReader({
+    read: source(calls),
+    changed: (view) => {
+      views.push(view);
+      if (first) {
+        first = false;
+        replacement = reader.start("replacement").then(() => ({ ok: true }), (error) => ({ ok: false, error }));
+        throw marker;
+      }
+    },
+  });
+  try {
+    await rejectsOriginal(() => reader.start("retry"), marker);
+    assert.deepEqual(await replacement, { ok: true });
+    await reader.refresh();
+    assert.deepEqual(calls, [["replacement", -1], ["replacement", 0]]);
+    assert.deepEqual(views.at(-1), { page: page("replacement", 0), pending: false, failed: false });
+  } finally { reader.stop(); }
+}
+for (const stage of ["page", "finish"]) {
+  const marker = Object.freeze({ stage }), calls = [], views = [];
+  let armed = true;
+  const reader = new TaskEventReader({
+    read: source(calls),
+    changed: (view) => {
+      views.push(view);
+      if (armed && view.page && (stage === "page" ? view.pending : !view.pending)) { armed = false; throw marker; }
+    },
+  });
+  try {
+    if (stage === "finish") await rejectsOriginal(() => reader.start("retry"), marker);
+    else { await reader.start("retry"); assert.equal(views.at(-1).failed, true); }
+    await reader.refresh();
+    assert.deepEqual(calls, [["retry", -1], ["retry", 0]]);
+    assert.deepEqual(views.at(-1), { page: page("retry", 0), pending: false, failed: false });
+  } finally { reader.stop(); }
+}`
+  const result = try host(() => runNode({ script, args: [directory], vibe: true }))
+  try Effect.try(() => assert.deepStrictEqual(result, { status: 0, signal: null, stdout: "", stderr: "" }))
+}))
+
 // spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/release.md, "Every release check names the candidate it actually examined"; spec/core/contracts.md, "Story: Consume the replacement through existing imports"; spec/core/contracts.md, "A release accounts for every required public symbol and consumer"; spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"; spec/core/curatedApps.md, "Story: Resolve apps registered through a different package instance"; spec/core/ambientManagers.md, "Story: Share injected managers across bundled core copies"; spec/core/accountBridges.md, "Story: Install and clear shared account-selection contracts"; spec/core/catalog.md, "A valid runtime registration overrides its id and invalidates cached indexes"
 it.live('the packed tarball installs, imports, compiles and shares state across copies (spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/contracts.md, "Story: Consume the replacement through existing imports")', () => effect {
   const BASELINE = `import fs from "node:fs"; import path from "node:path";

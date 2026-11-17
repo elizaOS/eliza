@@ -446,8 +446,8 @@ effect function rearm(reader: ReaderRuntime) {
 
 export effect function pollReader(reader: ReaderRuntime, ticket: number): void!Foreign {
   const startFailure = try notify(reader)
+  const afterStart = try owns(reader.owned.step({ type: "publishedStart", ticket, success: !startFailure }, (payload, state) => [state, payload]))
   if (startFailure) throw startFailure
-  const afterStart = try owns(reader.owned.step({ type: "publishedStart", ticket, success: true }, (payload, state) => [state, payload]))
   if (!afterStart) return
   let reading = true
   while (reading) {
