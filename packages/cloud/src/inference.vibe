@@ -7,10 +7,14 @@ import { reserveUsage, dispatchUsage, releaseUsage, settleUsage } from "./worker
 import { withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
 import { billedUsage, sideCost, isValidPrice, sideInBound } from "../gen/cloud__services__models.effect.vibe"
 
-export type InferenceEnv = WorkerDatabase & NativeRegistryEnv & {
+type WorkersAI = {
+  run(model: string, input: Record<string, unknown>, options: { returnRawResponse: true; signal: AbortSignal }): Promise<Response>
+}
+type InferenceProvider = { AI: WorkersAI; INFERENCE_BASE_URL?: never; INFERENCE_API_KEY?: never } |
+  { AI?: undefined; INFERENCE_BASE_URL: string; INFERENCE_API_KEY: string }
+
+export type InferenceEnv = WorkerDatabase & NativeRegistryEnv & InferenceProvider & {
   WEB_ORIGIN: string
-  INFERENCE_BASE_URL: string
-  INFERENCE_API_KEY: string
   CHAT_MODEL: string
   CHAT_UPSTREAM_MODEL?: string
   EMBEDDING_MODEL: string
@@ -60,13 +64,14 @@ export async function inferenceRequest(request: Request, env: InferenceEnv, db: 
   const path = new URL(request.url).pathname
   const embedding = path === "/api/v1/embeddings"
   if (request.method !== "POST" || (!embedding && path !== "/api/v1/chat/completions")) return jsonError(404, "route_not_found")
-  const root = new URL(env.INFERENCE_BASE_URL)
-  const local = ["localhost", "127.0.0.1", "[::1]"].includes(root.hostname) && new URL(env.WEB_ORIGIN).protocol === "http:"
+  const root = !env.AI && env.INFERENCE_BASE_URL ? new URL(env.INFERENCE_BASE_URL) : undefined
+  const local = root && ["localhost", "127.0.0.1", "[::1]"].includes(root.hostname) && new URL(env.WEB_ORIGIN).protocol === "http:"
+  const transportReady = env.AI || (root && (local || root.protocol === "https:") && !root.username && !root.password && !root.search && !root.hash && env.INFERENCE_API_KEY)
   const inputPrice = Number(embedding ? env.EMBEDDING_INPUT_MICROS_PER_1K : env.CHAT_INPUT_MICROS_PER_1K)
   const outputPrice = embedding ? 0 : Number(env.CHAT_OUTPUT_MICROS_PER_1K)
   const maxTokens = Number(env.MAX_COMPLETION_TOKENS)
   const model = embedding ? env.EMBEDDING_MODEL : env.CHAT_MODEL
-  if ((!local && root.protocol !== "https:") || root.username || root.password || root.search || root.hash || !model || !env.INFERENCE_API_KEY ||
+  if (!transportReady || !model ||
       !Number.isSafeInteger(inputPrice) || !isValidPrice(inputPrice) || (!embedding && (!Number.isSafeInteger(outputPrice) || !isValidPrice(outputPrice))) || !Number.isSafeInteger(maxTokens) || !sideInBound(maxTokens) || maxTokens < 1) return jsonError(503, "inference_unconfigured")
 
   const id = request.headers.get("idempotency-key") ?? newRequestId()
@@ -83,6 +88,7 @@ export async function inferenceRequest(request: Request, env: InferenceEnv, db: 
   if (embedding) {
     const value = input.input
     if (typeof value !== "string" && !(Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === "string"))) return jsonError(400, "invalid_input")
+    if (env.AI && (input.dimensions !== undefined || (input.encoding_format !== undefined && input.encoding_format !== "float"))) return jsonError(400, "unsupported_embedding_format")
     body.input = value
     if (input.dimensions !== undefined) body.dimensions = input.dimensions
     if (input.encoding_format !== undefined) body.encoding_format = input.encoding_format
@@ -110,14 +116,20 @@ export async function inferenceRequest(request: Request, env: InferenceEnv, db: 
     await releaseUsage(db, admission.key)
     return jsonError(401, "authentication_required")
   }
-  root.pathname = root.pathname.replace(/\/$/, "") + (embedding ? "/embeddings" : "/chat/completions")
   if (!await dispatchUsage(db, admission.key)) return jsonError(409, "already_dispatched")
   let response: Response
   try {
-    response = await send(root, {
-      method: "POST", headers: { Authorization: "Bearer " + env.INFERENCE_API_KEY, "Content-Type": "application/json", "Idempotency-Key": id },
-      body: JSON.stringify(body), signal: request.signal, redirect: "manual"
-    })
+    if (env.AI) {
+      const providerInput = embedding ? { text: body.input } : body
+      response = await env.AI.run(upstreamModel, providerInput, { returnRawResponse: true, signal: request.signal })
+    } else {
+      if (!root) throw new Error("Missing inference endpoint")
+      root.pathname = root.pathname.replace(/\/$/, "") + (embedding ? "/embeddings" : "/chat/completions")
+      response = await send(root, {
+        method: "POST", headers: { Authorization: "Bearer " + env.INFERENCE_API_KEY, "Content-Type": "application/json", "Idempotency-Key": id },
+        body: JSON.stringify(body), signal: request.signal, redirect: "manual"
+      })
+    }
   } catch {
     await settleUsage(db, admission.key, null)
     return jsonError(502, "inference_provider_unavailable")
@@ -138,7 +150,15 @@ export async function inferenceRequest(request: Request, env: InferenceEnv, db: 
     await settleUsage(db, admission.key, null)
     return jsonError(502, "invalid_provider_response")
   }
-  await settleUsage(db, admission.key, costOf(new TextDecoder().decode(reply), inputPrice, outputPrice, embedding))
+  const json = new TextDecoder().decode(reply)
+  await settleUsage(db, admission.key, costOf(json, inputPrice, outputPrice, embedding))
+  if (env.AI && embedding) {
+    let vectors: unknown
+    try { vectors = JSON.parse(json) } catch { return jsonError(502, "invalid_provider_response") }
+    if (!record(vectors) || !Array.isArray(vectors.data) || !vectors.data.length ||
+        !vectors.data.every((row) => Array.isArray(row) && row.length && row.every((value) => typeof value === "number" && Number.isFinite(value)))) return jsonError(502, "invalid_provider_response")
+    return WorkerResponse.json({ object: "list", model, ...(record(vectors.usage) ? { usage: vectors.usage } : {}), data: vectors.data.map((embedding: number[], index: number) => ({ object: "embedding", index, embedding })) }, { headers })
+  }
   return new WorkerResponse(Uint8Array.from(reply), { headers })
 }
 
