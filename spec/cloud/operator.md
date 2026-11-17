@@ -77,13 +77,6 @@ identity that cannot be read is refused as unavailable; another one as a
 failed precondition.
 
 ```quint
-type StoreIdentity = MatchingDatabase | OtherDatabase | UnreadableDatabase
-type IdentityRead = UnreadableIdentity | ReadDigest({ digest: str })
-pure def identityOf(p: Profile, environment: Environment, read: IdentityRead): StoreIdentity = match read {
-  | ReadDigest(r) => if (r.digest == rowOf(p, environment).databaseDigest) MatchingDatabase else OtherDatabase
-  | UnreadableIdentity => UnreadableDatabase
-}
-pure val readValues: Set[IdentityRead] = Set(UnreadableIdentity, ReadDigest({ digest: "d1" }), ReadDigest({ digest: "d2" }), ReadDigest({ digest: "d3" }))
 pure def lawCommandsRunOnlyOnTheNamedDatabase(p: Profile, environment: Environment, read: IdentityRead, command: OperatorCommand, account: AccountSeen, confirmed: bool, count: int): bool =
   runs(decide(identityOf(p, environment, read), command, account, confirmed, count)) implies read == ReadDigest({ digest: rowOf(p, environment).databaseDigest })
 pure def lawACommandNeverReachesTheOtherEnvironmentsDatabase(p: Profile, environment: Environment, read: IdentityRead, command: OperatorCommand, account: AccountSeen, confirmed: bool, count: int): bool =

@@ -1,0 +1,91 @@
+// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"
+const Name = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(50), Schema.isTrimmed())
+const Nonblank = Schema.String.check(Schema.makeFilter((value) => value.trim().length > 0))
+const PositiveInteger = Schema.Int.check(Schema.isGreaterThan(0))
+const UniqueNames = Schema.Array(Nonblank).check(Schema.makeFilter((names) => new Set(names).size === names.length))
+const Origin = Schema.String.check(Schema.isPattern(/^https:\/\/([a-zA-Z0-9-]+\.)*[a-zA-Z0-9-]+(:[0-9]{1,5})?$/), Schema.makeFilter((url) => URL.canParse(url)))
+const HttpsUrl = Schema.String.check(Schema.isPattern(/^https:\/\/[^\s?#@]+$/), Schema.makeFilter((url) => URL.canParse(url)))
+const EnvironmentName = Schema.String.check(Schema.isPattern(/^[A-Z][A-Z0-9_]*$/), Schema.makeFilter((name) =>
+  !/^(?:ELIZA_AGENT_|ELIZA_CLOUD_|ELIZA_OWN_|LD_|NODE_)/.test(name) && !["PATH", "HOME", "TMPDIR"].includes(name)))
+const EnvironmentValue = Schema.String.check(Schema.isPattern(/^[^\u0000\r\n]*$/))
+const Zone = Schema.String.check(Schema.makeFilter((name) => {
+  try { new Intl.DateTimeFormat("en", { timeZone: name }); return true }
+  catch { return false }
+}))
+const Secret = Schema.RedactedFromValue(Nonblank)
+const Views = Schema.Array(Schema.Struct({ viewId: Nonblank, viewType: Schema.Literals(["gui", "tui", "xr"]), installationId: Nonblank }))
+  .check(Schema.makeFilter((views) => new Set(views.map((view) => JSON.stringify([view.viewId, view.viewType]))).size === views.length))
+
+const Examples = Schema.Array(Schema.Struct({
+  name: Nonblank,
+  content: Schema.Struct({ text: Schema.optionalKey(Schema.String), actions: Schema.optionalKey(Schema.Array(Nonblank)) }),
+}))
+
+const Character = Schema.Struct({
+  name: Name,
+  system: Nonblank,
+  bio: Schema.optionalKey(Schema.Union([Schema.String, Schema.Array(Schema.String)])),
+  adjectives: Schema.optionalKey(Schema.Array(Schema.String)),
+  style: Schema.optionalKey(Schema.Struct({
+    all: Schema.optionalKey(Schema.Array(Schema.String)),
+    chat: Schema.optionalKey(Schema.Array(Schema.String)),
+    post: Schema.optionalKey(Schema.Array(Schema.String)),
+  })),
+  messageExamples: Schema.optionalKey(Schema.Array(Schema.Union([Schema.Struct({ examples: Examples }), Examples]))),
+})
+
+const Model = Schema.Union([
+  Schema.Struct({ backend: Schema.Literal("cloud"), cloudBaseUrl: Origin, smallModel: Schema.String, largeModel: Schema.String, imageModel: Schema.String }),
+  Schema.Struct({ backend: Schema.Literal("own-key"), ownKeyBaseUrl: HttpsUrl, ownKeySmall: Nonblank, ownKeyLarge: Nonblank }),
+  Schema.Struct({ backend: Schema.Literal("none") }),
+])
+const Policy = Schema.Struct({
+  actions: Schema.Struct({ allowed: UniqueNames.check(Schema.isMinLength(1)) }),
+  plugins: Schema.Struct({ load: UniqueNames, product: Schema.optionalKey(Nonblank) }),
+}).check(Schema.makeFilter(({ plugins }) => plugins.product === undefined || !plugins.load.includes(plugins.product)))
+
+export const LaunchDocument = Schema.Struct({
+  schema: Schema.Literal(1),
+  character: Character,
+  policy: Policy,
+  model: Model,
+  account: Schema.optionalKey(Schema.Struct({ userId: Nonblank, organizationId: Nonblank })),
+  embeddings: Schema.Literals(["local", "none"]),
+  embeddingDimensions: Schema.optionalKey(PositiveInteger),
+  persistMemory: Schema.optionalKey(Schema.Boolean),
+  callerRole: Schema.Literals(["owner", "user"]),
+  views: Schema.optionalKey(Views),
+  timeZone: Schema.optionalKey(Zone),
+  privacy: Schema.optionalKey(Schema.Struct({ secretSwap: Schema.Boolean, piiSwap: Schema.Boolean })),
+  google: Schema.optionalKey(Schema.Struct({ gmailChanges: Schema.Boolean, calendarEdits: Schema.Boolean })),
+  workflowWorker: Schema.optionalKey(Schema.Struct({
+    runtimeDir: Nonblank, executable: Nonblank, sha256: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/)),
+  })),
+  retention: Schema.optionalKey(Schema.Struct({
+    days: Schema.Number.check(Schema.isGreaterThan(0)), maxRowsPerRoom: PositiveInteger, intervalMinutes: PositiveInteger,
+  })),
+  hostContextRevision: Schema.optionalKey(PositiveInteger),
+  environment: Schema.optionalKey(Schema.Record(EnvironmentName, EnvironmentValue)),
+}).check(Schema.makeFilter((launch) =>
+  (launch.model.backend !== "cloud" || launch.account !== undefined)
+  && (launch.embeddings === "none" || launch.embeddingDimensions !== undefined)))
+
+export const LaunchFrame = Schema.Struct({
+  version: Schema.Literal(1),
+  token: Secret,
+  epoch: PositiveInteger,
+  credential: Schema.optionalKey(Schema.Struct({ version: PositiveInteger, value: Secret })),
+  storageKey: Schema.optionalKey(Secret),
+})
+
+export type LaunchDocument = typeof LaunchDocument.Type
+export type LaunchFrame = typeof LaunchFrame.Type
+
+export error LaunchDocumentRejected
+export error LaunchFrameRejected
+
+const documentJson = Schema.decodeUnknownEffect(Schema.fromJsonString(LaunchDocument), { onExcessProperty: "error" })
+const frameJson = Schema.decodeUnknownEffect(Schema.fromJsonString(LaunchFrame), { onExcessProperty: "error" })
+
+export const decodeLaunchDocument = (input: string) => documentJson(input).pipe(Effect.mapError(() => new LaunchDocumentRejected()))
+export const decodeLaunchFrame = (input: string) => frameJson(input).pipe(Effect.mapError(() => new LaunchFrameRejected()))

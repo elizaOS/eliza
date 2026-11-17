@@ -3,7 +3,7 @@ import { admit, deviceKeyRequestsPerMinute, type AccountStatus, type CredentialV
 import { refused, Refused } from "./refusal.vibe"
 import { admit as admitRate, minute } from "../shared/rate-limit.vibe"
 import { tokenDigest } from "../shared/sealing.vibe"
-import { Store, StoreFailure, toInt, toText, type Row } from "../store/store.vibe"
+import { Store, StoreFailure, toInt, toText, type Row } from "../store/connection.vibe"
 
 export type { RouteClass }
 
@@ -82,16 +82,16 @@ effect function deviceKeyCaller(token: string, routeClass: RouteClass, now: numb
 effect function sessionCaller(token: string, routeClass: RouteClass, now: number): Caller!(Refused | StoreFailure)!Store {
   const store = try Store
   const row = (try store.transaction((tx) => tx.query(
-    "SELECT s.key, s.user_id, s.live, s.access_expires_at, s.auth_at, s.step_up_at, s.mfa_at, a.organization_id, a.status, a.sessions_revoked_before FROM sessions s JOIN accounts a ON a.key = s.user_id WHERE s.access_digest = $1",
+    "SELECT s.key, s.user_id, s.live, (s.state->>'epoch')::bigint AS epoch, s.access_expires_at, s.auth_at, s.step_up_at, s.mfa_at, a.organization_id, a.status, a.sessions_revoked_before FROM sessions s JOIN accounts a ON a.key = s.user_id WHERE s.access_digest = $1",
     [tokenDigest(token)]
   )))[0]
   try verdict({
     kind: "Session",
     found: row !== undefined,
-    live: row?.live === true,
+    live: row?.live === true && toInt(row.epoch) === toInt(row.sessions_revoked_before),
     expiresAt: toInt(row?.access_expires_at ?? 0),
     issuedAt: toInt(row?.auth_at ?? 0),
-    revokedBefore: toInt(row?.sessions_revoked_before ?? 0),
+    revokedBefore: 0,
     accountStatus: row === undefined ? "Erased" : status(row),
     authAt: toInt(row?.auth_at ?? 0),
     stepUpAt: toInt(row?.step_up_at ?? 0)

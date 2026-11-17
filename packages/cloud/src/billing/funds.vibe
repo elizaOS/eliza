@@ -1,7 +1,7 @@
 // spec/cloud/billing/funds.md, "Story: Spend only money the account has"
 import { Rejected, apply, decodeState, initial, type Event, type Funds } from "../../gen/cloud__billing__funds.effect.vibe"
 import { loadRow, machineRows, RowConflict, RowCorrupt, stepRow } from "../store/rows.vibe"
-import { Store, StoreFailure, type Tx } from "../store/store.vibe"
+import { Store, StoreFailure, type Tx } from "../store/connection.vibe"
 
 export type { Funds }
 
@@ -27,7 +27,7 @@ export effect function stepFunds(tx: Tx, organizationId: string, event: Event, n
   if (moved !== 0) {
     try tx.query(
       "INSERT INTO credit_entries (id, organization_id, kind, amount, request_key, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
-      [`${organizationId}:${event.type}:${requestKey}`, organizationId, event.type === "add" ? "add" : "settle", moved, requestKey, now]
+      [`${organizationId}:${event.type}:${requestKey}`, organizationId, event.type === "addCredits" ? "add" : "settle", moved, requestKey, now]
     )
   }
   return state
@@ -47,7 +47,7 @@ export effect function addCredits(input: { readonly organizationId: string; read
     if (organization.length === 0) throw new OrganizationUnknown({ organizationId: input.organizationId })
     const done = try tx.query("SELECT 1 FROM credit_entries WHERE organization_id = $1 AND kind = 'add' AND request_key = $2", [input.organizationId, input.requestKey])
     if (done.length > 0) return { organizationId: input.organizationId, balance: (try readFunds(tx, input.organizationId)).creditBalance, replayed: true }
-    const funds = try stepFunds(tx, input.organizationId, { type: "add", amount: input.amount }, now, input.requestKey)
+    const funds = try stepFunds(tx, input.organizationId, { type: "addCredits", request: input.requestKey, amount: input.amount }, now, input.requestKey)
     return { organizationId: input.organizationId, balance: funds.creditBalance, replayed: false }
   })
 }

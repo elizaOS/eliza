@@ -2643,6 +2643,40 @@ function eachCheck() {
     assert.match(proof.summary, /all 1 obligations proved/);
   });
 
+  test("owner generation mirrors the same artifact as the whole tree and checks its dependency closure", async () => {
+    const script = path.join(project, "vibestack/spec.ts");
+    const root = scratch({
+      "package.json": PACKAGE["package.json"],
+      "packages/target/package.json": JSON.stringify({ name: "@repo/target" }),
+      "packages/other/package.json": JSON.stringify({ name: "@repo/other" }),
+      "spec/index.md": "# Project",
+      "spec/target/index.md": ruleSpec('import lib.* from "../lib"\npure val targetValue = baseValue'),
+      "spec/lib.md": ruleSpec("pure val baseValue = 1"),
+      "spec/other/index.md": ruleSpec("pure val otherValue = 2"),
+    });
+    const all = await runCli(script, root, "gen");
+    assert.equal(all.status, 0, all.stdout + all.stderr);
+    const target = path.join(root, "packages/target/gen");
+    const file = (name: string) => fs.readFileSync(path.join(target, name), "utf8");
+    const expected = fs.readdirSync(target).sort().map((name) => [name, file(name)]);
+    const unrelated = path.join(root, "packages/other/gen/other.ts");
+    const before = fs.readFileSync(unrelated, "utf8");
+    fs.rmSync(target, { recursive: true });
+    fs.appendFileSync(path.join(root, "spec/other/index.md"), "\n[Missing](./missing.md)\n");
+    const scoped = await runCli(script, root, "gen", "--owner", "target");
+    assert.equal(scoped.status, 0, scoped.stdout + scoped.stderr);
+    assert.deepEqual(fs.readdirSync(target).sort().map((name) => [name, file(name)]), expected);
+    assert.equal(fs.readFileSync(unrelated, "utf8"), before);
+    const fullCheck = await runCli(script, root, "check");
+    assert.equal(fullCheck.status, 1, fullCheck.stdout + fullCheck.stderr);
+    assert.match(fullCheck.stdout, /spec\/other\/index\.md.*no spec at this path/);
+    fs.appendFileSync(path.join(root, "spec/lib.md"), "\n[Missing](./missing.md)\n");
+    const broken = await runCli(script, root, "gen", "--owner", "target");
+    assert.equal(broken.status, 1, broken.stdout + broken.stderr);
+    assert.match(broken.stderr, /spec\/lib\.md.*no spec at this path/);
+    assert.deepEqual(fs.readdirSync(target).sort().map((name) => [name, file(name)]), expected);
+  });
+
   test("the command line checks, generates and watches a project directory from its parent", async () => {
     const script = path.join(project, "vibestack/spec.ts");
     const cli = (root: string, ...args: string[]) => runCli(script, root, ...args);

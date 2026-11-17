@@ -1,0 +1,103 @@
+// spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"
+import {
+  type Action, type AgentRuntime, type GenerateTextParams, type HandlerCallback, type IMessageService,
+  type Memory, type MessageProcessingOptions, type MessageProcessingResult, type RoleGateRole,
+  executePlannedToolCall, ModelType, RunTerminalOwner, withActionGatePolicy, withRoomDeliverySettlement,
+} from "@elizaos/core"
+
+type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
+
+const reply: Action = {
+  name: "REPLY",
+  description: "Send a written response to the person who initiated this conversation.",
+  parameters: [{ name: "text", required: true, description: "What to say to the person.", schema: { type: "string" } }],
+  validate: async () => true,
+  handler: async (_runtime, _message, _state, options, callback) => {
+    const parameters = options?.parameters
+    const text = typeof parameters === "object" && parameters !== null && "text" in parameters ? parameters.text : undefined
+    if (typeof text !== "string" || !text.trim()) return { success: false }
+    await callback?.({ text, actions: ["REPLY"] })
+    return { success: true, text }
+  },
+}
+
+const ignore: Action = {
+  name: "IGNORE",
+  description: "Close this turn without responding.",
+  validate: async () => true,
+  handler: async () => ({ success: true }),
+}
+
+const none: Action = {
+  name: "NONE",
+  description: "Request no action.",
+  validate: async () => true,
+  handler: async () => ({ success: true }),
+}
+
+export function ownerMessageService(runtime: AgentRuntime, roles: readonly RoleGateRole[], actionGate: (action: { name: string }) => string | undefined): IMessageService {
+  for (const action of [reply, ignore, none])
+    runtime.registerAction(action)
+  return {
+    shouldRespond: (_runtime, message) => ({ shouldRespond: Boolean(message.content.text?.trim()), skipEvaluation: true, reason: "direct_message" }),
+    handleMessage: (_runtime, message, callback, options) => respond(runtime, message, roles, actionGate, callback, options),
+    deleteMessage: (_runtime, message) => message.id ? runtime.deleteMemory(message.id) : Promise.resolve(),
+    clearChannel: async () => { throw new Error("This host does not expose conversation clearing") },
+  }
+}
+
+async function respond(
+  runtime: AgentRuntime,
+  message: Memory,
+  roles: readonly RoleGateRole[],
+  actionGate: (action: { name: string }) => string | undefined,
+  callback?: HandlerCallback,
+  options?: MessageProcessingOptions,
+): Promise<MessageProcessingResult> {
+  if (!message.content.text?.trim()) return { didRespond: false, responseMessages: [], outcome: { status: "denied", reason: "empty_message", effects: [] } }
+  return runtime.roomHandlerQueue.withLease(message.roomId, (lease) => runtime.turnControllers.runWith(message.roomId, (turnSignal) =>
+    withActionGatePolicy(actionGate, async () => {
+      const signal = options?.abortSignal === undefined ? turnSignal : AbortSignal.any([turnSignal, options.abortSignal])
+      const terminal = new RunTerminalOwner(runtime, runtime.startRun(message.roomId), message, Date.now(), lease)
+      const responseMessages: Memory[] = []
+      try {
+        signal.throwIfAborted()
+        const recent = await runtime.getMemories({ tableName: "messages", roomId: message.roomId, count: 24, orderBy: "createdAt", orderDirection: "desc" })
+        const history: ChatMessage[] = recent.slice().reverse().flatMap((previous): ChatMessage[] => {
+          const content = previous.content.text
+          if (!content || previous.id === message.id) return []
+          return [{ role: previous.entityId === runtime.agentId ? "assistant" : "user", content }]
+        })
+        const messages: ChatMessage[] = [...history, { role: "user", content: message.content.text }]
+        const text = await runtime.useModel(ModelType.TEXT_LARGE, {
+          system: runtime.character.system, messages, maxTokens: 1024, signal,
+        })
+        signal.throwIfAborted()
+        const replyText = typeof text === "string" ? text : ""
+        const state = await runtime.composeState(message, [], true, true)
+        const result = await withRoomDeliverySettlement(runtime, message.roomId, lease, () =>
+          executePlannedToolCall(runtime, {
+            message, state, activeContexts: ["general"], userRoles: roles,
+            callback: async (content, actionName) => {
+              const delivered = await callback?.(content, actionName) ?? []
+              responseMessages.push(...delivered)
+              return delivered
+            },
+          }, { name: "REPLY", params: { text: replyText } }, { abortSignal: signal }))
+        terminal.recordActionResult(result)
+        const outcome = result.success
+          ? { status: "completed" as const, effects: terminal.effects }
+          : { status: "denied" as const, reason: "reply_not_admitted", effects: terminal.effects }
+        await terminal.request(outcome)
+        return { didRespond: result.success, responseContent: result.success ? { text: replyText } : null, responseMessages, outcome }
+      } catch {
+        const outcome = signal.aborted
+          ? { status: "cancelled" as const, reason: "aborted", effects: terminal.effects }
+          : { status: "failed" as const, error: {kind: "generation", transient: true, message: "The reply could not be generated"}, effects: terminal.effects }
+        await terminal.request(outcome)
+        return { didRespond: false, responseMessages, outcome }
+      } finally {
+        runtime.endRun()
+      }
+    })), { signal: options?.abortSignal, lease: options?.roomHandlerLease })
+}

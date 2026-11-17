@@ -33,6 +33,18 @@
       "types": "./dist/src/profile/profile.d.ts",
       "import": "./dist/src/profile/profile.js",
       "default": "./dist/src/profile/profile.js"
+    },
+    "./worker": {
+      "eliza-source": "./src/worker.vibe",
+      "types": "./dist/src/worker.d.ts",
+      "import": "./dist/src/worker.js",
+      "default": "./dist/src/worker.js"
+    },
+    "./store": {
+      "eliza-source": "./src/store/store.vibe",
+      "types": "./dist/src/store/store.d.ts",
+      "import": "./dist/src/store/store.js",
+      "default": "./dist/src/store/store.js"
     }
   },
   "scripts": {
@@ -40,22 +52,17 @@
     "typecheck": "vibelang --noEmit -p .",
     "test": "vitest run",
     "test:browser": "vitest run --project browser",
-    "start": "node --import vibelang/register src/main.vibe serve --profile test/fixtures/profile.json --environment staging --store pglite:.cache/cloud.pglite --seed test/fixtures/seed.json"
+    "start": "node --import vibelang/register src/main.vibe serve --profile test/fixtures/profile.json --environment staging --store pglite:.cache/cloud.pglite --seed test/fixtures/seed.json",
+    "build:worker": "vibelang -p tsconfig.worker.json && node -e \"require('node:fs').cpSync('src/store/migrations','dist/src/store/migrations',{recursive:true})\""
   },
   "dependencies": {
     "@effect/platform-node": "4.1.1",
     "@effect/platform-node-shared": "4.1.1",
     "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
-    "vibelang-runtime": "0.0.13"
-  },
-  "peerDependencies": {
-    "pg": "^8.23.1"
-  },
-  "peerDependenciesMeta": {
-    "pg": {
-      "optional": true
-    }
+    "vibelang-runtime": "0.0.13",
+    "pg": "8.23.1",
+    "stripe": "23.1.0"
   },
   "devDependencies": {
     "@antithesishq/bombadil": "0.7.10",
