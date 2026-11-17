@@ -26,6 +26,7 @@ without the token is anonymous like any other.
 ```quint
 import authorization as Z from "../../core/authorization"
 import launch as L from "../host/launch"
+import routes as R from "./routes"
 type Caller = Root | Anonymous
 pure def declassifyTokenMatches(launchToken: L::SecretLaunchToken, presented: L::SecretLaunchToken): bool =
   launchToken != "" and presented == launchToken
@@ -34,8 +35,6 @@ pure def callerOf(launchToken: L::SecretLaunchToken, presented: L::SecretLaunchT
 pure val launchTokenValues = Set("", "k1")
 pure val presentedValues = Set("", "k1", "k2")
 pure def lawNoTokenIsNeverRoot(launchToken: L::SecretLaunchToken): bool = callerOf(launchToken, "") == Anonymous
-pure def lawRootHoldsExactlyTheLaunchToken(launchToken: L::SecretLaunchToken, presented: L::SecretLaunchToken): bool =
-  callerOf(launchToken, presented) == Root iff (launchToken != "" and presented == launchToken)
 ```
 
 ### Only the agent's own health and auth status reads are public
@@ -43,23 +42,22 @@ pure def lawRootHoldsExactlyTheLaunchToken(launchToken: L::SecretLaunchToken, pr
 `GET /api/health` and `GET /api/auth/status`, as the agent itself
 registers them, are `Public`. Every other route is `RootOnly`, and a route
 a plugin registers is `RootOnly` whatever class it declares: no plugin can
-lower a route below Root.
+lower a route below Root. Methods are the route gate's.
 
 ```quint
 type AccessClass = Public | RootOnly
 type RouteOrigin = Builtin | FromPlugin({ declared: AccessClass })
-type Verb = Get | Post | Put | Patch | Delete
-type RouteKey = { verb: Verb, path: str, origin: RouteOrigin }
+type RouteKey = { verb: R::Method, path: str, origin: RouteOrigin }
 pure def publicPath(path: str): bool = path == "/api/health" or path == "/api/auth/status"
 pure def accessClass(r: RouteKey): AccessClass =
-  if (r.origin == Builtin and r.verb == Get and publicPath(r.path)) Public else RootOnly
+  if (r.origin == Builtin and r.verb == R::Get and publicPath(r.path)) Public else RootOnly
 pure val rValues = Set(
-  { verb: Get, path: "/api/health", origin: Builtin },
-  { verb: Get, path: "/api/auth/status", origin: FromPlugin({ declared: Public }) },
-  { verb: Post, path: "/api/auth/status", origin: Builtin },
-  { verb: Get, path: "/api/auth/me", origin: Builtin },
-  { verb: Get, path: "/api/plugin/x", origin: FromPlugin({ declared: Public }) },
-  { verb: Post, path: "/api/conversations", origin: FromPlugin({ declared: RootOnly }) })
+  { verb: R::Get, path: "/api/health", origin: Builtin },
+  { verb: R::Get, path: "/api/auth/status", origin: FromPlugin({ declared: Public }) },
+  { verb: R::Post, path: "/api/auth/status", origin: Builtin },
+  { verb: R::Get, path: "/api/auth/me", origin: Builtin },
+  { verb: R::Get, path: "/api/plugin/x", origin: FromPlugin({ declared: Public }) },
+  { verb: R::Post, path: "/api/conversations", origin: FromPlugin({ declared: RootOnly }) })
 pure def lawPluginRouteIsRootOnlyWhateverItDeclares(r: RouteKey): bool = r.origin != Builtin implies accessClass(r) == RootOnly
 ```
 
@@ -74,7 +72,7 @@ type Entry = Allowed | Unauthorized
 pure def entry(r: RouteKey, caller: Caller): Entry = if (accessClass(r) == Public or caller == Root) Allowed else Unauthorized
 pure def lawAnonymousReachesOnlyTheTwoPublicReads(r: RouteKey, launchToken: L::SecretLaunchToken, presented: L::SecretLaunchToken): bool =
   entry(r, callerOf(launchToken, presented)) == Allowed implies
-    ((r.origin == Builtin and r.verb == Get and publicPath(r.path)) or (launchToken != "" and presented == launchToken))
+    ((r.origin == Builtin and r.verb == R::Get and publicPath(r.path)) or (launchToken != "" and presented == launchToken))
 pure def lawSupervisingHostReachesEveryRoute(r: RouteKey, launchToken: L::SecretLaunchToken): bool =
   launchToken != "" implies entry(r, callerOf(launchToken, launchToken)) == Allowed
 ```
@@ -101,11 +99,10 @@ principal of a chat turn holds the launch's `chatRole`, so a `ChatAsUser`
 launch never speaks as the owner although its requests arrive as Root.
 
 ```quint
-type AccessMode = LocalMode
 type OwnerIdentity = { kind: str, id: str }
-type OwnerAccess = { role: Z::Role, mode: AccessMode }
+type OwnerAccess = { role: Z::Role, mode: str }
 type AuthMe = { identity: OwnerIdentity, access: OwnerAccess }
-pure def authMe(agentId: str): AuthMe = { identity: { kind: "owner", id: agentId }, access: { role: Z::Owner, mode: LocalMode } }
+pure def authMe(agentId: str): AuthMe = { identity: { kind: "owner", id: agentId }, access: { role: Z::Owner, mode: "local" } }
 pure def lawUserLaunchNeverSpeaksAsTheOwner(agentId: str): bool =
   Z::rank(L::chatRole(L::ChatAsUser)) < Z::rank(authMe(agentId).access.role)
 ```

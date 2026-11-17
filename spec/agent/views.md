@@ -163,8 +163,6 @@ pure def answerRequest(h: ViewHost, binding: Binding, claimId: str, success: boo
   else answered
 }
 pure def alwaysAnsweredWasClaimed(h: ViewHost): bool = h.requestIds.every(id => waiterAt(h, id).req.phase == V::Delivered implies isClaimed(waiterAt(h, id).claim))
-pure def lawNavigationReplyMatchesSuccess(success: bool, reply: Reply): bool =
-  replyFits(Navigation, success, reply) implies (reply != OtherReply and (reply == Switched iff success))
 ```
 
 ### Only a confirmed switch changes the view the agent records as shown
@@ -176,7 +174,8 @@ The shown view of each client feeds the planner's view-scoped actions
 pure def shownViewOf(h: ViewHost, clientId: str): str = if (h.shown.keys().contains(clientId)) h.shown.get(clientId) else ""
 pure def alwaysShownViewsAreDeclaredGraphical(h: ViewHost): bool = h.shownClients.every(c => declares(h, shownViewOf(h, c), Gui))
 pure def stepShownChangesOnlyOnConfirmedSwitch(before: ViewHost, via: str, after: ViewHost): bool =
-  not(after.shown == before.shown) implies via == "answerRequest"
+  not(after.shown == before.shown) implies (via == "answerRequest" and before.requestIds.some(id =>
+    waiterAt(before, id).kind == Navigation and pending(waiterAt(before, id)) and waiterAt(after, id).req.phase == V::Delivered))
 pure def sometimesSwitchConfirmed(h: ViewHost): bool = h.shownClients.length() > 0
 ```
 

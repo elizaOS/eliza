@@ -2,11 +2,12 @@
 
 The request client a screen uses to call the agent of the account signed in
 now. The device bridge is preferred; plain HTTP serves only when no bridge is
-available. Each account refresh starts a new generation, and a request
-belongs to the generation in which it was submitted. The client adds no
-credentials, retries or replays: the shell sends each request at most once,
-over the route this machine names in its output, and keeps the path, body,
-timers and messages.
+available (a browser page has none). Each account refresh starts a new
+generation, and a request belongs to the generation in which it was
+submitted. The client adds no credentials, retries or replays: the shell
+sends each request at most once, over the route this machine names in its
+output, and keeps the path, body, timers and messages. The shell numbers a
+request with `nextId` before it submits it.
 
 ## Story: Call the runtime for my current account
 
@@ -18,7 +19,8 @@ timers and messages.
 A refresh asks the bridge for its status. With no bridge available it is
 done. Otherwise it restarts the runtime and, if the restart does not report
 it running, waits for its startup. A bridge error or the refresh deadline
-breaks the refresh. A newer refresh abandons an older one and its startup.
+`startupTimeoutMs` breaks the refresh. A newer refresh abandons an older one
+and its startup.
 
 ```quint
 type Route = Bridge | Http
@@ -31,20 +33,21 @@ type Stage = AwaitRefresh | Probing | AwaitStartup | Sent({ route: Route }) | Re
 type Request = { id: int, gen: int, stage: Stage }
 type Refresh = Current | ProbingAccount | Restarting | AwaitRestart | RefreshBroken
 type Startup = NoStartup | StartingUp
-type RuntimeClient = { gen: int, refresh: Refresh, startup: Startup, limit: BodyLimit, requests: List[Request] }
+type RuntimeClient = { gen: int, nextId: int, refresh: Refresh, startup: Startup, limit: BodyLimit, requests: List[Request] }
 type BridgeCall = CallStart | CallRestart | Send({ request: int, over: Route })
 type ClientStep = { state: RuntimeClient, out: List[BridgeCall] }
-pure val initial: RuntimeClient = { gen: 0, refresh: Current, startup: NoStartup, limit: LimitUnknown, requests: List() }
+pure val initial: RuntimeClient = { gen: 0, nextId: 0, refresh: Current, startup: NoStartup, limit: LimitUnknown, requests: List() }
 pure val reportValues = Set(Unavailable, Available({ phase: Stopped, requestBodyLimit: 65536 }), Available({ phase: Starting, requestBodyLimit: 65536 }), Available({ phase: Running, requestBodyLimit: 65536 }), Available({ phase: Running, requestBodyLimit: 0 }))
-pure val idValues = Set(1, 2)
+pure val idValues = Set(0, 1, 2)
 pure def emit(out: List[BridgeCall], c: RuntimeClient): ClientStep = { state: c, out: out }
 pure def limitOf(report: StatusReport, gen: int): BodyLimit = match report {
   | Available(a) => if (a.requestBodyLimit > 0) Limit({ units: a.requestBodyLimit, ofGen: gen }) else LimitUnknown
   | Unavailable => LimitUnknown
 }
 pure def ensureCalls(phase: RuntimePhase, c: RuntimeClient): List[BridgeCall] = if (c.startup == NoStartup and phase == Stopped) List(CallStart) else List()
+pure def refreshing(r: Refresh): bool = r == ProbingAccount or r == Restarting or r == AwaitRestart
 pure def refreshAccount(c: RuntimeClient): RuntimeClient = { ...c, gen: c.gen + 1, refresh: ProbingAccount, startup: NoStartup, limit: LimitUnknown }
-pure def canRefreshStatus(c: RuntimeClient, report: StatusReport): bool = c.refresh == ProbingAccount
+pure def canRefreshStatus(c: RuntimeClient): bool = c.refresh == ProbingAccount
 pure def refreshStatus(c: RuntimeClient, report: StatusReport): ClientStep = {
   val seen = { ...c, limit: limitOf(report, c.gen) }
   match report {
@@ -52,11 +55,11 @@ pure def refreshStatus(c: RuntimeClient, report: StatusReport): ClientStep = {
     | Unavailable => emit(List(), { ...seen, refresh: Current })
   }
 }
-pure def canRestarted(c: RuntimeClient, phase: RuntimePhase): bool = c.refresh == Restarting
+pure def canRestarted(c: RuntimeClient): bool = c.refresh == Restarting
 pure def restarted(c: RuntimeClient, phase: RuntimePhase): ClientStep =
   if (phase == Running) emit(List(), { ...c, refresh: Current })
   else emit(ensureCalls(phase, c), { ...c, refresh: AwaitRestart, startup: StartingUp })
-pure def canRefreshError(c: RuntimeClient): bool = c.refresh == ProbingAccount or c.refresh == Restarting
+pure def canRefreshError(c: RuntimeClient): bool = refreshing(c.refresh)
 pure def refreshError(c: RuntimeClient): RuntimeClient = { ...c, refresh: RefreshBroken }
 pure def stepGenerationsAdvanceOnlyByRefresh(before: RuntimeClient, via: str, after: RuntimeClient): bool =
   after.gen == (if (via == "refreshAccount") before.gen + 1 else before.gen)
@@ -69,7 +72,8 @@ pure def sometimesRefreshWaitsForStartup(c: RuntimeClient): bool = c.gen >= 1 an
 
 A request submitted while its generation's refresh runs waits for it, and
 every waiter resumes when it ends; when the refresh is broken, every request
-of that generation fails until the next refresh.
+of that generation fails until the next refresh. Each request gets a number
+no earlier request had.
 
 ```quint
 pure def isWaiting(s: Stage): bool = match s {
@@ -83,22 +87,20 @@ pure def isSent(s: Stage): bool = match s {
   | Sent(x) => true
   | _ => false
 }
-pure def refreshing(r: Refresh): bool = r == ProbingAccount or r == Restarting or r == AwaitRestart
 pure def stageOf(c: RuntimeClient, id: int): Stage = c.requests.select(r => r.id == id).nthOr(0, { id: id, gen: -1, stage: Failed({ why: AccountChanged }) }).stage
 pure def own(c: RuntimeClient, id: int): bool = c.requests.some(r => r.id == id and r.gen == c.gen)
 pure def setStage(c: RuntimeClient, id: int, s: Stage): List[Request] = c.requests.listMap(r => if (r.id == id) { ...r, stage: s } else r)
-pure def canSubmit(c: RuntimeClient, id: int): bool = not(isWaiting(stageOf(c, id)))
-pure def submit(c: RuntimeClient, id: int): RuntimeClient = {
+pure def submit(c: RuntimeClient): RuntimeClient = {
   val first = if (refreshing(c.refresh)) AwaitRefresh else if (c.refresh == RefreshBroken) Failed({ why: RefreshFailed }) else Probing
-  { ...c, requests: c.requests.select(r => r.id != id).append({ id: id, gen: c.gen, stage: first }) }
+  { ...c, nextId: c.nextId + 1, requests: c.requests.append({ id: c.nextId, gen: c.gen, stage: first }) }
 }
 pure def canResume(c: RuntimeClient): bool = not(refreshing(c.refresh)) and c.requests.some(r => r.gen == c.gen and r.stage == AwaitRefresh)
 pure def resume(c: RuntimeClient): RuntimeClient = {
   val resumed = if (c.refresh == RefreshBroken) Failed({ why: RefreshFailed }) else Probing
   { ...c, requests: c.requests.listMap(r => if (r.gen == c.gen and r.stage == AwaitRefresh) { ...r, stage: resumed } else r) }
 }
-pure def alwaysOneRequestPerId(c: RuntimeClient): bool =
-  c.requests.every(r => c.requests.select(q => q.id == r.id).length() == 1)
+pure def alwaysRequestNumbersAreUnique(c: RuntimeClient): bool =
+  c.requests.every(r => r.id < c.nextId and c.requests.select(q => q.id == r.id).length() == 1)
 pure def stepProbeOnlyAfterACurrentRefresh(before: RuntimeClient, after: RuntimeClient): bool =
   after.requests.every(r => (r.stage == Probing and stageOf(before, r.id) != Probing) implies after.refresh == Current)
 pure def sometimesBrokenRefreshRefused(c: RuntimeClient): bool = c.requests.some(r => r.stage == Failed({ why: RefreshFailed }))
@@ -134,6 +136,18 @@ pure def sometimesReplyAfterRefresh(c: RuntimeClient): bool =
   c.gen >= 1 and c.requests.some(r => r.gen == c.gen and r.stage == Replied({ servedBy: Bridge }))
 ```
 
+### A settled request is released only after it settles
+
+The screen releases a request once it has read its outcome; a waiting
+request cannot be released.
+
+```quint
+pure def canRelease(c: RuntimeClient, id: int): bool = c.requests.some(r => r.id == id and not(isWaiting(r.stage)))
+pure def release(c: RuntimeClient, id: int): RuntimeClient = { ...c, requests: c.requests.select(r => r.id != id) }
+pure def stepWaitingIsNeverDropped(before: RuntimeClient, after: RuntimeClient): bool =
+  before.requests.every(r => isWaiting(r.stage) implies after.requests.some(q => q.id == r.id))
+```
+
 ## Story: Reach a runtime that is not running yet
 
 > As a user, I want my request to wait while the agent starts, so that I do
@@ -149,7 +163,7 @@ startup runs.
 ```quint
 pure def dispatch(id: int, route: Route, c: RuntimeClient): ClientStep =
   emit(List(Send({ request: id, over: route })), { ...c, requests: setStage(c, id, Sent({ route: route })) })
-pure def canRequestStatus(c: RuntimeClient, id: int, report: StatusReport): bool = own(c, id) and stageOf(c, id) == Probing
+pure def canRequestStatus(c: RuntimeClient, id: int): bool = own(c, id) and stageOf(c, id) == Probing
 pure def requestStatus(c: RuntimeClient, id: int, report: StatusReport): ClientStep = {
   val seen = { ...c, limit: limitOf(report, c.gen) }
   match report {
@@ -170,8 +184,8 @@ pure def sometimesSharedStartup(c: RuntimeClient): bool = c.requests.select(r =>
 ### A startup ends when the runtime reports running or stopped, or its deadline passes
 
 Running sends each waiting request of the generation over the bridge and
-completes a waiting refresh. A stopped report, or the deadline
-`startupTimeoutMs` after the startup began, fails them all.
+completes a waiting refresh. A stopped report, a bridge error, or the
+deadline `startupTimeoutMs` after the startup began fails them all.
 
 ```quint
 pure def settleStartup(ok: bool, c: RuntimeClient): ClientStep = {
@@ -190,17 +204,13 @@ pure def sometimesStartupFailed(c: RuntimeClient): bool = c.requests.some(r => r
 
 HTTP serves a request only when its own status probe found no bridge; a
 request that waited for the bridge's startup goes over the bridge or fails.
-A sent request only settles: no reply, failure or refusal sends it again.
-A call that fails, or the oldest call whose `requestTimeoutMs` passes, fails
-its request.
+A sent request only settles: no reply, failure or refusal sends it again. A
+probe or call that fails, or whose `requestTimeoutMs` passes, fails its
+request.
 
 ```quint
 pure def canTransportFailed(c: RuntimeClient, id: int): bool = own(c, id) and (stageOf(c, id) == Probing or isSent(stageOf(c, id)))
 pure def transportFailed(c: RuntimeClient, id: int): RuntimeClient = { ...c, requests: setStage(c, id, Failed({ why: TransportFailed })) }
-pure def inCall(c: RuntimeClient, r: Request): bool = r.gen == c.gen and (r.stage == Probing or isSent(r.stage))
-pure def canRequestExpired(c: RuntimeClient): bool = c.requests.some(r => inCall(c, r))
-pure def requestExpired(c: RuntimeClient): RuntimeClient =
-  transportFailed(c, c.requests.select(r => inCall(c, r)).nthOr(0, { id: -1, gen: -1, stage: Probing }).id)
 pure def httpAfterProbe(before: RuntimeClient, call: BridgeCall): bool = match call {
   | Send(x) => x.over == Http implies stageOf(before, x.request) == Probing
   | _ => true
@@ -222,7 +232,7 @@ Assuming each deadline passes and each refresh, startup and stale request
 is followed up, a request never waits for ever.
 
 ```quint
-pure val fair_requestExpired = "weak"
+pure val fair_transportFailed = "weak"
 pure val fair_startupExpired = "weak"
 pure val fair_refreshError = "weak"
 pure val fair_resume = "weak"
@@ -251,19 +261,15 @@ pure def routeOf(s: Stage): Route = match s {
   | Sent(x) => x.route
   | _ => Http
 }
-pure def canReply(c: RuntimeClient, id: int, httpStatus: int, retry: RetryAdvice): bool = own(c, id) and isSent(stageOf(c, id))
+pure def canReply(c: RuntimeClient, id: int): bool = own(c, id) and isSent(stageOf(c, id))
 pure def reply(c: RuntimeClient, id: int, httpStatus: int, retry: RetryAdvice): RuntimeClient = {
   val answer = if (httpStatus >= 200 and httpStatus < 300) Replied({ servedBy: routeOf(stageOf(c, id)) }) else Refused({ httpStatus: httpStatus, retry: admitAdvice(httpStatus, retry) })
   { ...c, requests: setStage(c, id, answer) }
 }
 pure val httpStatusValues = Set(200, 409, 429, 503)
 pure val retryValues = Set(NoAdvice, RetryAfter({ seconds: -1 }), RetryAfter({ seconds: 0 }), RetryAfter({ seconds: 30 }))
-pure def adviceAdmitted(httpStatus: int, retry: RetryAdvice): bool = match retry {
-  | RetryAfter(r) => httpStatus == 429 and r.seconds >= 0
-  | NoAdvice => true
-}
 pure def adviceFits(s: Stage): bool = match s {
-  | Refused(x) => (x.httpStatus < 200 or x.httpStatus >= 300) and adviceAdmitted(x.httpStatus, x.retry)
+  | Refused(x) => (x.httpStatus < 200 or x.httpStatus >= 300) and admitAdvice(x.httpStatus, x.retry) == x.retry
   | _ => true
 }
 pure def alwaysRefusalAdviceOnlyOn429(c: RuntimeClient): bool = c.requests.every(r => adviceFits(r.stage))

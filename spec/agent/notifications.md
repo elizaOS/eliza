@@ -21,8 +21,9 @@ read-all route, and no owner session: the only caller is Root.
 ### A list query is refused unless each parameter is given once and well formed
 
 The shell decodes each repeated query parameter into a list, a decimal
-digit string into a number and a UUID-shaped `nativeEpoch` into the inbox
-epoch it names. A query is refused (400) when any parameter is repeated,
+digit string into a number and a UUID-shaped `nativeEpoch` into an
+epoch: the current one for the current inbox's UUID, any other for every
+other UUID, so core's cursor answers that the epoch changed (409). A query is refused (400) when any parameter is repeated,
 `nativeTransport` is not `true` or `false`, `unreadOnly` is not empty,
 `true` or `false`, a number is not decimal, a category is not one of the
 nine known ones, or an owner limit is outside 1 to 100. An absent owner
@@ -97,9 +98,9 @@ epoch that changed.
 pure def lawNativePageTakesNoFilter(asked: ListParams, epoch: int, sequence: int): bool =
   (asked.nativeTransport.includes("true") and (asked.category.length() > 0 or asked.unreadOnly.length() > 0)) implies listRequest(asked, epoch, sequence) == BadQuery
 pure def lawCursorNeedsNativeTransport(asked: ListParams, epoch: int, sequence: int): bool =
-  (not(asked.nativeTransport.includes("true")) and asked.afterSequence.length() > 0) implies listRequest(asked, epoch, sequence) == BadQuery
+  (not(asked.nativeTransport.includes("true")) and (asked.nativeEpoch.length() > 0 or asked.afterSequence.length() > 0 or asked.throughSequence.length() > 0)) implies listRequest(asked, epoch, sequence) == BadQuery
 pure def lawContinuationNamesItsEpoch(asked: ListParams, epoch: int, sequence: int): bool =
-  (asked.nativeEpoch.length() == 0 and decimalOr(asked.afterSequence, 0) > 0) implies listRequest(asked, epoch, sequence) == BadQuery
+  (asked.nativeEpoch.length() == 0 and (decimalOr(asked.afterSequence, 0) > 0 or asked.throughSequence.length() > 0)) implies listRequest(asked, epoch, sequence) == BadQuery
 pure def lawFirstNativePageBeginsCoreScan(asked: ListParams, epoch: int, sequence: int): bool = {
   val r = listRequest(asked, epoch, sequence)
   match r { | NativePage(n) => asked.nativeEpoch.length() > 0 or n.query == NC::begin(NC::initial, List(), epoch, sequence, 0, n.limit).pageQuery | _ => true }
@@ -108,7 +109,8 @@ pure def lawFirstNativePageBeginsCoreScan(asked: ListParams, epoch: int, sequenc
 
 ### An owner list holds only visible notices that match its filter, newest first
 
-The list holds the notices core still shows (not past their expiry), only
+Core hands the inbox over oldest first, in sequence order. The list holds
+the notices core still shows (not past their expiry), only
 unread ones with `unreadOnly=true`, only the asked category, and at most
 the limit, the newest first. Its `unreadCount` is core's badge count over
 the whole inbox, whatever the filter. The reply is

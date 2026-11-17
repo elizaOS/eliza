@@ -86,6 +86,7 @@ export async function buildBrowserProtection(
     bundle: true,
     format: "esm",
     platform: "browser",
+    charset: "utf8",
     outfile: join(output, "advisory.mjs"),
     logLevel: "silent",
   });
@@ -159,10 +160,10 @@ export async function buildBrowserProtection(
 if (
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-)
-  console.log(
-    await buildBrowserProtection(resolve(process.argv[2])),
-  );
+) {
+  if (!process.argv[2]) throw Error("Usage: build.mjs <output directory>");
+  console.log(await buildBrowserProtection(resolve(process.argv[2])));
+}
 
 /** Add the complete optional protection resource set without expanding other capabilities.
  * @param {Record<string, Buffer>} assets

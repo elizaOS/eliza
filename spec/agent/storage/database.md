@@ -46,6 +46,7 @@ pure val owner1: StoreAccount = OwnerAccount({ userId: "user1", organizationId: 
 pure val prune: LogRetention = Prune({ ageMs: 86400, maxRowsPerRoom: 1 })
 pure val launchValues = Set(
   { persist: false, account: NoAccount, embeddingDimensions: 0, retention: prune },
+  { persist: false, account: NoAccount, embeddingDimensions: 0, retention: Prune({ ageMs: 86400, maxRowsPerRoom: 0 }) },
   { persist: true, account: owner1, embeddingDimensions: 384, retention: prune },
   { persist: true, account: owner1, embeddingDimensions: 384, retention: KeepAll })
 pure val bundleValues = Set({ migrations: List(Additive, Additive), snapshotVersion: 2 }, { migrations: List(Additive, Additive), snapshotVersion: 1 }, { migrations: List(Additive, Destructive), snapshotVersion: 0 })
@@ -55,12 +56,14 @@ pure def latest(b: Bundle): int = b.migrations.length()
 pure def launchOwner(agentId: str, launch: StoreLaunch): DataOwner = { agentId: agentId, account: launch.account, embeddingDimensions: launch.embeddingDimensions }
 pure def failed(fault: StoreFault, s: Store): Store = { ...s, phase: Failed, fault: fault, locked: false }
 pure def seedable(b: Bundle): bool = b.snapshotVersion > 0 and b.snapshotVersion == latest(b)
-pure def enterSchema(version: int, seeded: bool, s: Store): Store = { ...s, phase: Migrating, version: version, seeded: seeded, recorded: launchOwner(s.agentId, s.launch) }
+pure def enterSchema(version: int, seeded: bool, owner: DataOwner, s: Store): Store = { ...s, phase: Migrating, version: version, seeded: seeded, recorded: owner }
+pure def startEmpty(s: Store): Store = enterSchema(if (seedable(s.bundle)) latest(s.bundle) else 0, seedable(s.bundle), launchOwner(s.agentId, s.launch), s)
 pure def identified(agentId: str, s: Store): Store = {
   val known = { ...s, agentId: agentId, candidate: "" }
-  if (s.launch.persist) { ...known, phase: Locking } else enterSchema(if (seedable(s.bundle)) latest(s.bundle) else 0, seedable(s.bundle), known)
+  if (s.launch.persist) { ...known, phase: Locking } else startEmpty(known)
 }
-pure def canOpen(s: Store, launch: StoreLaunch, bundle: Bundle): bool = s.phase == Unopened and bundle.snapshotVersion >= 0
+pure def validRetention(r: LogRetention): bool = match r { | Prune(x) => x.ageMs >= 0 and x.maxRowsPerRoom >= 0 and (x.ageMs > 0 or x.maxRowsPerRoom > 0) | KeepAll => true }
+pure def canOpen(s: Store, launch: StoreLaunch, bundle: Bundle): bool = s.phase == Unopened and bundle.snapshotVersion >= 0 and validRetention(launch.retention)
 pure def open(s: Store, launch: StoreLaunch, bundle: Bundle): Store = { ...s, phase: ReadingIdentity, launch: launch, bundle: bundle }
 pure def canReadIdentity(s: Store, entry: IdentityEntry, freshId: str): bool = s.phase == ReadingIdentity and freshId != ""
 pure def readIdentity(s: Store, entry: IdentityEntry, freshId: str): Store = match entry {
@@ -105,7 +108,8 @@ pure def sometimesUnusableIdentityFails(s: Store): bool = s.fault == IdentityUnu
 ### A data directory serves only the agent, account and embedding size it was created for
 
 A new directory records `{agentId, account, embeddingDimensions}` from this
-start. An existing one whose record differs in any of them is refused, so a
+start, and a memory store holds the same. An existing directory keeps its
+record, and one that differs from this start in any field is refused, so a
 store never serves another owner's conversations and never mixes vector
 sizes. Which `--state` directory a launch uses is the host's choice.
 
@@ -117,9 +121,9 @@ pure val foundValues = Set(DirEmpty, DirCorrupt,
   DirStore({ owner: { agentId: "agent1", account: OwnerAccount({ userId: "user2", organizationId: "org1" }), embeddingDimensions: 384 }, version: 1 }))
 pure def canReadDirectory(s: Store, found: Directory): bool = s.phase == ReadingDirectory
 pure def readDirectory(s: Store, found: Directory): Store = match found {
-  | DirEmpty => enterSchema(if (seedable(s.bundle)) latest(s.bundle) else 0, seedable(s.bundle), s)
+  | DirEmpty => startEmpty(s)
   | DirCorrupt => failed(Corrupt, s)
-  | DirStore(d) => if (d.owner != launchOwner(s.agentId, s.launch)) failed(OtherOwner, s) else if (d.version < 0 or d.version > latest(s.bundle)) failed(NewerSchema, s) else enterSchema(d.version, false, s)
+  | DirStore(d) => if (d.owner != launchOwner(s.agentId, s.launch)) failed(OtherOwner, s) else if (d.version < 0 or d.version > latest(s.bundle)) failed(NewerSchema, s) else enterSchema(d.version, false, d.owner, s)
 }
 pure def alwaysStoreBelongsToItsLaunch(s: Store): bool =
   (s.phase == Migrating or s.phase == Open or s.phase == Closing or s.phase == Closed) implies s.recorded == launchOwner(s.agentId, s.launch)
@@ -237,9 +241,10 @@ pure def sometimesClosedWithRecords(s: Store): bool = s.phase == Closed and s.lo
 With `retention` set, a sweep runs every `intervalMinutes` as a core
 exclusive scheduled task, so two sweeps never overlap. It deletes every log
 row older than `days` and, in each room, every row beyond the newest
-`maxRowsPerRoom` (newer means a later time, then a higher id). It reads only
-ids, rooms and times. Rows written while it runs stay unless already
-targeted. The shell turns the launch's `retention` into `Prune` with
+`maxRowsPerRoom` (newer means a later time, then a higher id). A bound of 0
+is off, and a `Prune` with both off is refused at open. It reads only ids,
+rooms and times. Rows written while it runs stay unless already targeted.
+The shell turns the launch's `retention` into `Prune` with
 `ageMs = days × 86,400,000`; `KeepLogs` becomes `KeepAll`, which never sweeps.
 
 ```quint
@@ -248,7 +253,7 @@ pure def ageLimitMs(r: LogRetention): int = match r { | Prune(x) => x.ageMs | Ke
 pure def roomLimit(r: LogRetention): int = match r { | Prune(x) => x.maxRowsPerRoom | KeepAll => 0 }
 pure def newerInRoom(logs: List[LogRow], row: LogRow): int = logs.select(o => o.room == row.room and (o.at > row.at or (o.at == row.at and o.id > row.id))).length()
 pure def expired(logs: List[LogRow], row: LogRow, r: LogRetention, now: int): bool =
-  r != KeepAll and (row.at < now - ageLimitMs(r) or newerInRoom(logs, row) >= roomLimit(r))
+  (ageLimitMs(r) > 0 and row.at < now - ageLimitMs(r)) or (roomLimit(r) > 0 and newerInRoom(logs, row) >= roomLimit(r))
 pure def canBeginSweep(s: Store, now: int): bool = s.phase == Open and s.sweep == SweepIdle and s.launch.retention != KeepAll
 pure def beginSweep(s: Store, now: int): Store = { ...s, sweep: SweepRunning({ targets: s.logs.select(r => expired(s.logs, r, s.launch.retention, now)), now: now }) }
 pure def canFinishSweep(s: Store): bool = s.sweep != SweepIdle

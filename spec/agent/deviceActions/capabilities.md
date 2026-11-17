@@ -9,11 +9,11 @@ proposes, and later lets the device decide or claim, an operation only when
 that request negotiated what the operation needs. The device also keeps an
 enabled-view profile: the views the agent may open on it.
 
-The device request (`deviceActions/index.md`) owns enrollment and the request itself, and
-the operations (`deviceActions/operations.md`) give each operation its need. The bounds of
+The [device request](./index.md) owns enrollment and the request itself, and
+the [operations](./operations.md) give each operation its need. The bounds of
 each review are owned where the data is:
-`spec/calendar/availability.md`,
-`spec/notes/read.md` and the `spec/workflow`
+[calendar availability](../../calendar/availability.md),
+[note reads](../../notes/read.md) and the [workflow](../../workflow/index.md)
 device protocol. Neither the header nor the profile grants review or proves
 an effect.
 
@@ -154,7 +154,7 @@ pure def revisionOf(p: ViewProfile): RevisionRead = match p { | Profile(x) => Re
 pure def sameViews(a: Set[DeviceView], b: Set[DeviceView]): bool = a.subseteq(b) and b.subseteq(a)
 pure def unchangedViews(p: ViewProfile, views: Set[DeviceView]): bool = match p { | Profile(x) => sameViews(x.views, views) | NoProfile => false }
 pure def canSetViewProfile(p: ViewProfile, read: RevisionRead, fresh: ProfileRevision): bool = read == revisionOf(p) and ReadAt({ revision: fresh }) != revisionOf(p)
-pure def setViewProfile(p: ViewProfile, read: RevisionRead, views: Set[DeviceView], fresh: ProfileRevision): ViewProfile =
+pure def setViewProfile(p: ViewProfile, views: Set[DeviceView], fresh: ProfileRevision): ViewProfile =
   if (unchangedViews(p, views)) p else Profile({ revision: fresh, views: views })
 pure val pValues: Set[ViewProfile] = Set(NoProfile, Profile({ revision: "r1", views: Set() }), Profile({ revision: "r1", views: Set(HomeView, NotesView) }))
 pure val readValues: Set[RevisionRead] = Set(NoRevisionRead, ReadAt({ revision: "r1" }), ReadAt({ revision: "r2" }))
@@ -162,9 +162,9 @@ pure val viewsValues: Set[Set[DeviceView]] = Set(Set(), Set(HomeView, NotesView)
 pure val freshValues = Set("r1", "r2")
 pure def lawAStaleRevisionIsRefused(p: ViewProfile, read: RevisionRead, fresh: ProfileRevision): bool = read != revisionOf(p) implies not(canSetViewProfile(p, read, fresh))
 pure def lawChangedViewsGetAFreshRevision(p: ViewProfile, read: RevisionRead, views: Set[DeviceView], fresh: ProfileRevision): bool =
-  (canSetViewProfile(p, read, fresh) and not(unchangedViews(p, views))) implies revisionOf(setViewProfile(p, read, views, fresh)) == ReadAt({ revision: fresh })
-pure def lawSameViewsKeepTheRevision(p: ViewProfile, read: RevisionRead, views: Set[DeviceView], fresh: ProfileRevision): bool =
-  unchangedViews(p, views) implies revisionOf(setViewProfile(p, read, views, fresh)) == revisionOf(p)
+  (canSetViewProfile(p, read, fresh) and not(unchangedViews(p, views))) implies revisionOf(setViewProfile(p, views, fresh)) == ReadAt({ revision: fresh })
+pure def lawSameViewsKeepTheRevision(p: ViewProfile, views: Set[DeviceView], fresh: ProfileRevision): bool =
+  unchangedViews(p, views) implies revisionOf(setViewProfile(p, views, fresh)) == revisionOf(p)
 ```
 
 ### An open-view proposal runs only on the profile revision it bound and a view the profile enables
