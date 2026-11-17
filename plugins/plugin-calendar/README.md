@@ -31,6 +31,35 @@ Calendar components install the client methods when used.
 The app renderer resolves the package to `src/browser.ts`, which keeps views and
 client registration separate from runtime actions and provider storage.
 
+## Calendar changes from chat
+
+The `CALENDAR` action writes to one calendar per request and needs a fresh read
+of that calendar only. Another source that is stale or unreachable does not
+block the write; the reply then says overlaps there were not checked. A lookup
+that finds no event while any source is unread is refused, not reported as "not
+found".
+
+- All-day: `details.allDay` on `create_event` is a hint. The dates come from
+  the owner's words. An update can make an event all-day, move its days, or
+  give an all-day event a clock time (one hour by default).
+- Repeating: the built-in calendar holds single events. A repeating create goes
+  to the owner's one connected Google calendar, where it still needs their
+  review. With several connected the action asks which; with none it names the
+  limit.
+- Guests: an update adds guests only with an address the owner wrote, and
+  removes a guest named by email or display name. The built-in calendar sends
+  no invitations.
+- Contradictory times (an end not after the start, a last day before the first
+  day) are asked about, never repaired.
+- Deleting a built-in event has no review. It runs at once only when the
+  owner's words hold the event's whole title, the event is the one open in
+  Calendar, or the owner said yes to the action's question (`targetKind:
+  "eventId"` with `details.confirmed: true`). Otherwise the action asks. The
+  result carries `data.values.calendarEventUndo = { deletedEventId, request }`;
+  a host offers Undo by sending `request` to `POST /api/lifeops/calendar/events`.
+  The request carries its own `idempotencyKey`, so a repeated Undo restores one
+  event. The restored event has a new id.
+
 ## Managed Google Calendar writes
 
 A host that sets `ELIZA_MANAGED_CALENDAR_READ_BROKER` to its private loopback
