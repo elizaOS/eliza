@@ -305,6 +305,26 @@
           "denied": null
         }
       }
+    },
+    {
+      "policy": {
+        "actions": {
+          "allowed": {
+            "REPLY": ""
+          },
+          "refused": []
+        }
+      }
+    },
+    {
+      "policy": {
+        "actions": {
+          "allowed": {
+            "length": ""
+          },
+          "refused": "REPLY"
+        }
+      }
     }
   ]
 }
