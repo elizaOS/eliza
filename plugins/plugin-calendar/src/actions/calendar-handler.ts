@@ -18,6 +18,7 @@ import {
   parseStatedClockTimes,
   STATED_CLOCK_MENTION_SOURCE,
   WEEKDAY_NAME_PATTERN,
+  wholeWordSource,
 } from "../internal/request-time.js";
 import { calendarSearchFiltersAreBound } from "../search-filter-evidence.js";
 import {
@@ -2524,14 +2525,14 @@ export function ownerNamedCalendarEvent(
     )
       return false;
   }
+  const named = title.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const namedPattern = new RegExp(wholeWordSource(named), "u");
   return (
-    title.length > 0 &&
+    named.length > 0 &&
     userTexts.some(
       (text) =>
         typeof text === "string" &&
-        ` ${normalizeText(text).replace(/[^\p{L}\p{N}]+/gu, " ")} `.includes(
-          ` ${title.replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `,
-        ),
+        namedPattern.test(normalizeText(text).replace(/[^\p{L}\p{N}]+/gu, " ")),
     )
   );
 }

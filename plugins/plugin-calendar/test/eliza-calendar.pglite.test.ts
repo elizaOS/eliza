@@ -3333,6 +3333,34 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     expect(named?.success, JSON.stringify(named)).toBe(true);
     expect(await augustEvents()).toHaveLength(0);
   });
+
+  // Chinese and Japanese put no space between words, and Korean joins a
+  // particle to the word, so a whole title there has no space around it. A
+  // title in a script that spaces its words still needs a word edge.
+  it.each([
+    ["25", "歯医者", "歯医者を削除して", "歯医者", 0],
+    ["26", "牙医预约", "删除牙医预约", "牙医预约", 0],
+    ["27", "치과", "치과를 삭제해줘", "치과", 0],
+    ["28", "Dentist", "Delete the dentistry booking", "Dentist", 1],
+  ])(
+    "reads a whole title written without spaces as the event named (%s: %s)",
+    async (id, title, text, query, left) => {
+      await service.createCalendarEventMutation(INTERNAL_URL, {
+        ...originalEvent,
+        title,
+        idempotencyKey: `unspaced-title-${id}`,
+      });
+      const result = await runChat(id, text, {
+        subaction: "delete_event",
+        query,
+        details: { timeZone: "UTC", ...WINDOW },
+      });
+      expect(result?.data?.missing ?? [], text).toEqual(
+        left === 0 ? [] : ["delete confirmation"],
+      );
+      expect(await augustEvents()).toHaveLength(left);
+    },
+  );
 });
 
 // Live QA 2026-10-29 (trajectory tj-4eb0d496f71caa): at 10:35 PM PDT the owner
