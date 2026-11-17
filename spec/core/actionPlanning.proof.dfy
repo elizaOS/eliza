@@ -188,9 +188,21 @@ lemma validateCall_ensures(s: Planning, id: int, argsValid: bool)
     CallAt(s, id);
     assert forall i :: 0 <= i < |s.calls| && i != k ==> s.calls[i].id != id;
     Remap(s, t, k);
+    ValidateOnlyPermitted(s, id, argsValid, k);
     assert forall q :: q in s.calls && q.parent != 0 ==> q.parent != id;
     assert forall i :: 0 <= i < |t.calls| ==> t.calls[i] in t.calls && s.calls[i] in s.calls;
   }
+}
+
+// The validated call is permitted exactly when its verdict is NotRejected,
+// and every other call keeps its phase and its permission.
+lemma ValidateOnlyPermitted(s: Planning, id: int, argsValid: bool, k: int)
+  requires inv(s) && 0 <= k < |s.calls| && s.calls[k].id == id
+  requires forall i :: 0 <= i < |s.calls| && i != k ==> s.calls[i].id != id
+  requires callAt(s, id) == s.calls[k]
+  requires forall c :: permitted(validateCall(s, id, argsValid), c) == permitted(s, c)
+  ensures alwaysOnlyPermittedCallsRun(validateCall(s, id, argsValid))
+{
 }
 
 lemma invokeCall_ensures(s: Planning, id: int)

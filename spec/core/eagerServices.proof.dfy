@@ -10,9 +10,7 @@ lemma startEager_ensures(s: EagerServices, jobId: int, serviceType: string)
     var n := after.jobs[|s.jobs|];
     forall r | r in after.jobs ensures r.id > 0 && |ProofLib.Filter((other: EagerRequest) => (other.id == r.id), after.jobs)| == 1 {
       ProofLib.FilterAppend((other: EagerRequest) => (other.id == r.id), s.jobs, n);
-      if r in s.jobs {
-        assert r.id != jobId;
-      } else {
+      if r !in s.jobs {
         ProofLib.FilterNone((other: EagerRequest) => (other.id == r.id), s.jobs);
       }
     }
@@ -26,18 +24,11 @@ lemma wakeEager_ensures(s: EagerServices, jobId: int)
   ensures (inv(s) ==> canWakeEager(s, jobId) ==> alwaysEagerCallIdentitiesFresh(wakeEager(s, jobId)))
   ensures (inv(s) ==> canWakeEager(s, jobId) ==> stepNoEarlyWake(s, "wakeEager", wakeEager(s, jobId)))
 {
+  core__serviceInstances_acquireServices_ensures(s.services, s.nextCall, eagerJob(s, jobId).serviceType);
   if inv(s) && canWakeEager(s, jobId) {
     var after := wakeEager(s, jobId);
     TheJobs(s, jobId);
     SameIdsKeepJobsUnique(s, after);
-    forall r | r in after.jobs ensures (((((((r.attempts >= 0) && (r.attempts <= 4)) && (r.failures >= 0)) && (r.failures <= r.attempts)) && (!(r.phase.EagerBackoff?) || ((r.attempts > 0) && (r.attempts < 4)))) && (!(r.phase.EagerReady?) || (r.attempts < 4))) && (!(r.phase.EagerWaiting?) || (r.failures < r.attempts))) {
-      var k :| 0 <= k < |after.jobs| && after.jobs[k] == r;
-      assert s.jobs[k] in s.jobs;
-    }
-    forall r | r in s.jobs && r.phase.EagerBackoff? && s.now < r.wakeAt ensures r in after.jobs {
-      var k :| 0 <= k < |s.jobs| && s.jobs[k] == r;
-      assert after.jobs[k] == r;
-    }
   }
 }
 
@@ -63,10 +54,6 @@ lemma acquireEager_ensures(s: EagerServices, jobId: int)
     var after := acquireEager(s, jobId);
     TheJobs(s, jobId);
     SameIdsKeepJobsUnique(s, after);
-    forall r | r in after.jobs ensures (((((((r.attempts >= 0) && (r.attempts <= 4)) && (r.failures >= 0)) && (r.failures <= r.attempts)) && (!(r.phase.EagerBackoff?) || ((r.attempts > 0) && (r.attempts < 4)))) && (!(r.phase.EagerReady?) || (r.attempts < 4))) && (!(r.phase.EagerWaiting?) || (r.failures < r.attempts))) {
-      var k :| 0 <= k < |after.jobs| && after.jobs[k] == r;
-      assert s.jobs[k] in s.jobs;
-    }
   }
 }
 
@@ -81,10 +68,6 @@ lemma observeAcquire_ensures(s: EagerServices, jobId: int)
     var after := observeAcquire(s, jobId);
     TheJobs(s, jobId);
     SameIdsKeepJobsUnique(s, after);
-    forall r | r in after.jobs ensures (((((((r.attempts >= 0) && (r.attempts <= 4)) && (r.failures >= 0)) && (r.failures <= r.attempts)) && (!(r.phase.EagerBackoff?) || ((r.attempts > 0) && (r.attempts < 4)))) && (!(r.phase.EagerReady?) || (r.attempts < 4))) && (!(r.phase.EagerWaiting?) || (r.failures < r.attempts))) {
-      var k :| 0 <= k < |after.jobs| && after.jobs[k] == r;
-      assert s.jobs[k] in s.jobs;
-    }
   }
 }
 
@@ -204,12 +187,10 @@ lemma TheJobs(s: EagerServices, jobId: int)
 {
   forall k | 0 <= k < |s.jobs| && s.jobs[k].id == jobId ensures s.jobs[k] == eagerJob(s, jobId) {
     var r := s.jobs[k];
-    assert r in s.jobs;
     ProofLib.FilterSamePredicate((other: EagerRequest) => (other.id == r.id), (j: EagerRequest) => (j.id == jobId), s.jobs);
     ProofLib.FilterCountOneIffUnique((j: EagerRequest) => (j.id == jobId), s.jobs, (x: EagerRequest) => x.id, k);
     var f := ProofLib.Filter((j: EagerRequest) => (j.id == jobId), s.jobs);
     ProofLib.FilterMember((j: EagerRequest) => (j.id == jobId), s.jobs, f[0]);
-    var m :| 0 <= m < |s.jobs| && s.jobs[m] == f[0];
   }
 }
 
@@ -221,7 +202,6 @@ lemma SameIdsKeepJobsUnique(s: EagerServices, t: EagerServices)
   forall r | r in t.jobs ensures r.id > 0 && |ProofLib.Filter((other: EagerRequest) => (other.id == r.id), t.jobs)| == 1 {
     var k :| 0 <= k < |t.jobs| && t.jobs[k] == r;
     var q := s.jobs[k];
-    assert q in s.jobs;
     ProofLib.FilterLengthPointwise((other: EagerRequest) => (other.id == q.id), (other: EagerRequest) => (other.id == r.id), s.jobs, t.jobs);
   }
 }

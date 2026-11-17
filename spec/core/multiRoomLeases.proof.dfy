@@ -727,6 +727,7 @@ lemma RoomBatchGrantedCalls(u: MultiRoomLeases, t: MultiRoomLeases, c: BatchLeas
   requires c in u.calls && c.phase.BatchWaiting? && wantedRoom(c) == room && c.id !in u.queue.cancelled
   requires next == c.(position := (c.position + 1), phase := (if ((c.position + 1) == |c.wanted|) then BatchLeasePhase.BatchInvoking else BatchLeasePhase.BatchAcquiring))
   requires forall d :: d in t.calls ==> d == next || (d in u.calls && d.id != c.id)
+  requires forall d :: d in u.calls && d.id != c.id ==> d in t.calls
   requires forall y :: heldRooms(t, y) == heldRooms(u, y) + (if c.id == y then [room] else [])
   requires forall w :: w in t.queue.waiting ==> w in u.queue.waiting
   requires t.queue.cancelled == u.queue.cancelled && t.queue.sealedCallers == u.queue.sealedCallers && t.queue.finishedCallers == u.queue.finishedCallers

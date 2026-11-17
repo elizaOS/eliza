@@ -445,3 +445,23 @@ lemma resolveCreate_ensures(s: Handoff, value: core__connectorStorage_FlowValue,
     Copied(resolveCreate(s, value, succeeded));
   }
 }
+
+lemma replay_ensures(s: Handoff)
+  ensures (inv(s) ==> canReplay(s) ==> alwaysDurableOperationSeesNoBootAccounts(replay(s)))
+  ensures (inv(s) ==> canReplay(s) ==> alwaysCopiedAccountsReachTheTarget(replay(s)))
+  ensures (inv(s) ==> canReplay(s) ==> alwaysAllocatedIdentitiesAreValid(replay(s)))
+  ensures (inv(s) ==> canReplay(s) ==> alwaysQueueSerializesHandoff(replay(s)))
+  ensures (inv(s) ==> canReplay(s) ==> alwaysSnapshotCursorsBounded(replay(s)))
+  ensures (inv(s) ==> canReplay(s) ==> stepFacadeNeverChanges(s, replay(s)))
+  ensures (inv(s) ==> canReplay(s) ==> stepFallbackNeverChanges(s, replay(s)))
+  ensures (inv(s) ==> canReplay(s) ==> stepWarningIsSticky(s, replay(s)))
+  ensures (inv(s) ==> canReplay(s) ==> stepOperationUsesResolvedBackend(s, "replay", replay(s)))
+  ensures (inv(s) ==> canReplay(s) ==> stepFailureRetainsFallback(s, "replay", replay(s)))
+  ensures (inv(s) ==> canReplay(s) ==> stepMirrorOnlyConsumePreservesDurableTarget(s, "replay", replay(s)))
+  ensures (inv(s) ==> canReplay(s) ==> stepClearRetainsEveryCopiedAccount(s, "replay", replay(s)))
+{
+  if inv(s) && canReplay(s) {
+    Copied(s);
+    Copied(replay(s));
+  }
+}
