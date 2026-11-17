@@ -635,12 +635,12 @@ module edge {
 import { validateDocumentListQueryResultOrThrow } from edge
 export { validateDocumentListQueryResultOrThrow }
 
-export effect function documentCreatedAt(memory: Memory): number!(ElizaError | Foreign) {
+effect function documentCreatedAt(memory: Memory): number!(ElizaError | Foreign) {
   return try Effect.try({ try: () => storedCreatedAt(memory), catch: elizaErrorOrForeign })
 }
 export const documentCreatedAtOrThrow = thrown(documentCreatedAt)
 
-export effect function compareDocumentOrder(left: Memory, right: Memory): number!(ElizaError | Foreign) {
+effect function compareDocumentOrder(left: Memory, right: Memory): number!(ElizaError | Foreign) {
   return try Effect.try({ try: () => documentOrder(left, right), catch: elizaErrorOrForeign })
 }
 export const compareDocumentOrderOrThrow = thrown(compareDocumentOrder)
@@ -679,7 +679,7 @@ function readDirectGrantEntityIds(
   return grants
 }
 
-export effect function validateDocumentDirectGrantEntityIds(value: unknown): UUID[]!ElizaError {
+effect function validateDocumentDirectGrantEntityIds(value: unknown): UUID[]!ElizaError {
   if (!Array.isArray(value) || value.length > DOCUMENT_DIRECT_GRANT_LIMIT) {
     throw new ElizaError(
       "Document direct grants must be a bounded UUID array",
@@ -769,7 +769,7 @@ function isRuntimeRequester(
   return role === "AGENT" || role === "RUNTIME"
 }
 
-export effect function validateDocumentRevisionReplacement(
+effect function validateDocumentRevisionReplacement(
   params: DocumentRevisionReplaceParams,
 ): void!ElizaError {
   try validateDocumentRequesterContext(params)
@@ -1009,7 +1009,7 @@ export function documentSearchText(memory: Memory): string {
     .join("\n")
 }
 
-export effect function validateDocumentRequesterContext(
+effect function validateDocumentRequesterContext(
   params: DocumentRequesterContext,
 ): void!ElizaError {
   if (!isUuid(params.agentId) || !isUuid(params.requesterEntityId)) {
@@ -1035,7 +1035,7 @@ export effect function validateDocumentRequesterContext(
 }
 export const validateDocumentRequesterContextOrThrow = thrown(validateDocumentRequesterContext)
 
-export effect function validateDocumentFragmentQueryParams(
+effect function validateDocumentFragmentQueryParams(
   params: DocumentFragmentQueryParams,
   expectedEmbeddingDimension?: number,
 ): void!ElizaError {
@@ -1112,7 +1112,7 @@ export effect function validateDocumentFragmentQueryParams(
 }
 export const validateDocumentFragmentQueryParamsOrThrow = thrown(validateDocumentFragmentQueryParams)
 
-export effect function validateDocumentListQueryParams(
+effect function validateDocumentListQueryParams(
   params: DocumentListQueryParams,
 ): void!ElizaError {
   try validateDocumentRequesterContext(params)
@@ -1211,7 +1211,7 @@ export effect function validateDocumentListQueryParams(
 }
 export const validateDocumentListQueryParamsOrThrow = thrown(validateDocumentListQueryParams)
 
-export effect function queryDocumentsInMemory(
+effect function queryDocumentsInMemory(
   memories: Memory[],
   params: DocumentListQueryParams,
 ): DocumentListQueryResult!(ElizaError | Foreign) {
@@ -1220,7 +1220,7 @@ export effect function queryDocumentsInMemory(
 }
 export const queryDocumentsInMemoryOrThrow = thrown(queryDocumentsInMemory)
 
-export effect function queryDocumentFragmentsInMemory(
+effect function queryDocumentFragmentsInMemory(
   memories: Memory[],
   params: DocumentFragmentQueryParams,
   expectedEmbeddingDimension?: number,
@@ -1279,7 +1279,7 @@ effect function requireDocumentListQueryCapability(adapter: IDatabaseAdapter): v
   )
 }
 
-export effect function queryDocumentsWithCapability(
+effect function queryDocumentsWithCapability(
   adapter: IDatabaseAdapter,
   params: DocumentListQueryParams,
 ): DocumentListQueryResult!(ElizaError | Foreign) {

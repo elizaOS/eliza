@@ -63,7 +63,7 @@ module node {
 }
 import { makeParent, makeParentSync, processId, publishSync, readUtf8, remove, removeSync, rename, resolvePath, writeTemporary } from node
 
-export interface WriteJsonAtomicOptions {
+interface WriteJsonAtomicOptions {
   mode?: number
 
   dirMode?: number
@@ -83,7 +83,7 @@ interface NormalizedWriteOptions {
   skipMkdir: boolean
 }
 
-export error InvalidFilePath { message: string }
+error InvalidFilePath { message: string }
 
 function normalizeOptions(opts: WriteJsonAtomicOptions | undefined): NormalizedWriteOptions {
   return {
@@ -156,7 +156,7 @@ effect function publishAsync(filePath: string, body: string, o: NormalizedWriteO
   )
 }
 
-export effect function writeJsonAtomic(filePath: string, value: unknown, opts?: WriteJsonAtomicOptions) {
+effect function writeJsonAtomic(filePath: string, value: unknown, opts?: WriteJsonAtomicOptions) {
   try assertFilePath(filePath)
   const o = normalizeOptions(opts)
   const body = try serialize(value, o)
@@ -165,7 +165,7 @@ export effect function writeJsonAtomic(filePath: string, value: unknown, opts?: 
 
 export const writeJsonAtomicPromise = promised(failingAs(TypeError, writeJsonAtomic))
 
-export effect function writeJsonAtomicSync(filePath: string, value: unknown, opts?: WriteJsonAtomicOptions) {
+effect function writeJsonAtomicSync(filePath: string, value: unknown, opts?: WriteJsonAtomicOptions) {
   try assertFilePath(filePath)
   const o = normalizeOptions(opts)
   const body = try serialize(value, o)

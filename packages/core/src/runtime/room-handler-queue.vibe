@@ -246,37 +246,48 @@ function drainRoom(queue: RoomQueue): void {
   runFork(runActive(queue, next))
 }
 
+type SignalAdmission =
+  | { readonly kind: "open"; readonly signal?: AbortSignal }
+  | { readonly kind: "aborted"; readonly reason: unknown }
+
+function signalAdmission(signal: AbortSignal | undefined): SignalAdmission {
+  return signal?.aborted ? { kind: "aborted", reason: signal.reason } : { kind: "open", signal }
+}
+
 function enqueueRoomWork(
   queue: RoomQueue,
   run: unknown!Foreign,
-  signal?: AbortSignal,
+  admission: SignalAdmission,
 ): Deferred.Deferred<unknown, RoomWorkFailure> {
-  const item: QueuedItem = { run, done: Deferred.makeUnsafe(), signal }
+  const done = Deferred.makeUnsafe<unknown, RoomWorkFailure>()
+  if (admission.kind === "aborted") {
+    Deferred.doneUnsafe(done, fail(new RoomHandlerQueueAbortedError(queue.roomId, { cause: admission.reason })))
+    return done
+  }
+  const { signal } = admission
+  const item: QueuedItem = { run, done, signal }
   if (signal) {
-    const cancel = () => Deferred.doneUnsafe(item.done, fail(new RoomHandlerQueueAbortedError(queue.roomId, {
-      cause: signal.reason,
-    })))
-    if (signal.aborted) {
-      cancel()
-      return item.done
-    }
     const onAbort = () => {
       const index = queue.queue.indexOf(item)
       if (index < 0) return
       queue.queue.splice(index, 1)
-      cancel()
+      Deferred.doneUnsafe(done, fail(new RoomHandlerQueueAbortedError(queue.roomId, { cause: signal.reason })))
     }
     item.onAbort = onAbort
     try {
       signal.addEventListener("abort", onAbort, { once: true })
     } catch (cause) {
-      Deferred.doneUnsafe(item.done, fail(new Foreign({ cause })))
-      return item.done
+      Deferred.doneUnsafe(done, fail(new Foreign({ cause })))
+      return done
     }
   }
   queue.queue.push(item)
-  drainRoom(queue)
-  return item.done
+  try {
+    drainRoom(queue)
+  } catch (cause) {
+    Deferred.doneUnsafe(done, fail(new Foreign({ cause })))
+  }
+  return done
 }
 
 effect function admitRoomWork(
@@ -332,13 +343,13 @@ effect function admitRoomWork(
     })
     throw error
   }
-  const signal = try exit(foreignSync(() => options?.signal))
-  if (Exit.isFailure(signal)) {
+  const admission = try exit(foreignSync(() => signalAdmission(options?.signal)))
+  if (Exit.isFailure(admission)) {
     const failed = Deferred.makeUnsafe<unknown, RoomWorkFailure>()
-    Deferred.doneUnsafe(failed, signal)
+    Deferred.doneUnsafe(failed, admission)
     return failed
   }
-  const done = enqueueRoomWork(queue, run, signal.value)
+  const done = enqueueRoomWork(queue, run, admission.value)
   emit(table, { type: "enqueued", roomId, queueDepth: queuePosition + 1 })
   return done
 }

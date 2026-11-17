@@ -1,13 +1,8 @@
 // spec/core/protocols.md, "Story: Share canonical values across hosts and plugins"
 import { normalizeCharacterLanguage } from "../character-language.vibe"
 import { failingAs, thrown } from "../edge.vibe"
-import { VALIDATION_KEYWORD_DOCS } from "./keywords.vibe"
+import { VALIDATION_KEYWORD_DOCS, type ValidationKeywordDoc } from "./keywords.vibe"
 import { escapeRegExp } from "../utils/string-boundaries.vibe"
-
-type ValidationKeywordDoc = {
-  base?: string
-  locales?: Partial<Record<string, string>>
-}
 
 function isValidationKeywordDoc(value: unknown): value is ValidationKeywordDoc {
   if (!value || typeof value !== "object") {
@@ -149,8 +144,9 @@ effect function getCatalogValidationKeywordTerms(
     )
   }
 
+  const locales: Partial<Record<string, string>> | undefined = doc.locales
   return splitKeywordDoc(
-    `${doc.base ?? ""}\n${options?.locale ? (doc.locales?.[options.locale] ?? "") : ""}`,
+    `${doc.base ?? ""}\n${options?.locale ? (locales?.[options.locale] ?? "") : ""}`,
   )
 }
 

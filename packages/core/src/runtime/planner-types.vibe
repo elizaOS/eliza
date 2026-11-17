@@ -45,21 +45,20 @@ export type EvaluatorModelResult =
   | string
   | (Partial<GenerateTextResult> & { object?: unknown })
 
-export interface EvaluatorRuntime {
+interface ModelCallRuntime {
   restoreProviderContext?(context: ContextObject): Promise<ContextObject>
-
   supportsModelAttemptPreparation?: boolean
-
   getModelRegistrations?(): ModelRegistrationInfo[]
-
   getSetting?(key: string): string | boolean | number | null
   reportError?(
     scope: string,
     error: unknown,
     context?: Record<string, unknown>,
   ): void
-
   redactSecrets?(text: string): string
+}
+
+export interface EvaluatorRuntime extends ModelCallRuntime {
   useModel(
     modelType: TextGenerationModelType,
     params: {
@@ -124,22 +123,8 @@ export type EvaluatorOutput = EvaluationResult & {
   raw?: Record<string, unknown>
 }
 
-export interface PlannerRuntime {
+export interface PlannerRuntime extends ModelCallRuntime {
   getService?(service: string): unknown
-
-  getModelRegistrations?(): ModelRegistrationInfo[]
-  supportsModelAttemptPreparation?: boolean
-
-  restoreProviderContext?(context: ContextObject): Promise<ContextObject>
-
-  getSetting?(key: string): string | boolean | number | null
-  reportError?(
-    scope: string,
-    error: unknown,
-    context?: Record<string, unknown>,
-  ): void
-
-  redactSecrets?(text: string): string
   useModel(
     modelType: TextGenerationModelType,
     params: {

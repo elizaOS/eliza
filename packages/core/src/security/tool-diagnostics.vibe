@@ -105,20 +105,48 @@ module walk {
   }
 
   /** @throws {ElizaError} */
+  function guarded(
+    value: object,
+    walk: Walk,
+    depth: number,
+    cycle: (value: object) => ElizaError,
+    project: () => unknown,
+  ): unknown {
+    if (!enter(value, walk, depth, cycle)) return TOOL_DIAGNOSTIC_MASK
+    try {
+      return project()
+    } finally {
+      walk.seen.delete(value)
+    }
+  }
+
+  function projectItems(value: unknown[], project: (item: unknown) => unknown): unknown[] {
+    let changed = false
+    const projected = value.map((item) => {
+      const next = project(item)
+      if (next !== item) changed = true
+      return next
+    })
+    return changed ? projected : value
+  }
+
+  function projectEntries(value: object, project: (key: string, entry: unknown) => unknown): unknown {
+    let changed = false
+    const projected: Record<string, unknown> = {}
+    for (const [key, entry] of Object.entries(value)) {
+      const next = project(key, entry)
+      if (next !== entry) changed = true
+      projected[key] = next
+    }
+    return changed ? projected : value
+  }
+
+  /** @throws {ElizaError} */
   export function projectData(value: unknown, walk: Walk, depth: number): unknown {
     if (typeof value === "string") return walk.redactText(value)
     if (value === null || typeof value !== "object" || value instanceof Date) return value
-    if (!enter(value, walk, depth, dataCycle)) return TOOL_DIAGNOSTIC_MASK
-    try {
-      if (Array.isArray(value)) {
-        let changed = false
-        const projected = value.map((item) => {
-          const next = projectData(item, walk, depth + 1)
-          if (next !== item) changed = true
-          return next
-        })
-        return changed ? projected : value
-      }
+    return guarded(value, walk, depth, dataCycle, () => {
+      if (Array.isArray(value)) return projectItems(value, (item) => projectData(item, walk, depth + 1))
       if (value instanceof Error) return projectError(value, walk.redactText)
       let changed = false
       const projected: Record<string, unknown> = {}
@@ -133,26 +161,13 @@ module walk {
         projected[key] = next
       }
       return changed || Object.getPrototypeOf(value) !== Object.prototype ? projected : value
-    } finally {
-      walk.seen.delete(value)
-    }
+    })
   }
 
   function projectDefinitionMap(value: unknown, walk: Walk, depth: number): unknown {
     if (!value || typeof value !== "object" || Array.isArray(value)) return projectData(value, walk, depth)
-    if (!enter(value, walk, depth, schemaCycle)) return TOOL_DIAGNOSTIC_MASK
-    try {
-      let changed = false
-      const projected: Record<string, unknown> = {}
-      for (const [name, schema] of Object.entries(value)) {
-        const next = isNameList(schema) ? schema : projectSchemaNode(schema, walk, depth + 1)
-        if (next !== schema) changed = true
-        projected[name] = next
-      }
-      return changed ? projected : value
-    } finally {
-      walk.seen.delete(value)
-    }
+    return guarded(value, walk, depth, schemaCycle, () =>
+      projectEntries(value, (_name, schema) => isNameList(schema) ? schema : projectSchemaNode(schema, walk, depth + 1)))
   }
 
   function isNameListMap(value: unknown): boolean {
@@ -162,12 +177,9 @@ module walk {
   /** @throws {ElizaError} */
   export function projectSchemaNode(value: unknown, walk: Walk, depth: number): unknown {
     if (!value || typeof value !== "object" || Array.isArray(value)) return projectData(value, walk, depth)
-    if (!enter(value, walk, depth, schemaCycle)) return TOOL_DIAGNOSTIC_MASK
-    try {
-      let changed = false
-      const projected: Record<string, unknown> = {}
-      for (const [key, entry] of Object.entries(value)) {
-        const next = JSON_SCHEMA_DEFINITION_MAP_KEYS.has(key)
+    return guarded(value, walk, depth, schemaCycle, () =>
+      projectEntries(value, (key, entry) =>
+        JSON_SCHEMA_DEFINITION_MAP_KEYS.has(key)
           ? projectDefinitionMap(entry, walk, depth + 1)
           : (key === "items" || JSON_SCHEMA_SCHEMA_ARRAY_KEYS.has(key)) && Array.isArray(entry)
           ? entry.map((item) => projectSchemaNode(item, walk, depth + 1))
@@ -177,46 +189,23 @@ module walk {
           ? entry
           : isPrivateToolField(key)
           ? TOOL_DIAGNOSTIC_MASK
-          : projectData(entry, walk, depth + 1)
-        if (next !== entry) changed = true
-        projected[key] = next
-      }
-      return changed ? projected : value
-    } finally {
-      walk.seen.delete(value)
-    }
+          : projectData(entry, walk, depth + 1)))
   }
 
   /** @throws {ElizaError} */
   export function projectToolDefinition(value: unknown, walk: Walk, depth: number): unknown {
     if (!value || typeof value !== "object") return projectData(value, walk, depth)
-    if (!enter(value, walk, depth, toolSchemaCycle)) return TOOL_DIAGNOSTIC_MASK
-    try {
-      let changed = false
-      if (Array.isArray(value)) {
-        const projected = value.map((entry) => {
-          const next = projectToolDefinition(entry, walk, depth + 1)
-          if (next !== entry) changed = true
-          return next
-        })
-        return changed ? projected : value
-      }
-      const projected: Record<string, unknown> = {}
-      for (const [key, entry] of Object.entries(value)) {
-        const next = TOOL_DEFINITION_SCHEMA_KEYS.has(key)
-          ? projectSchemaNode(entry, walk, depth + 1)
-          : key === "function"
-          ? projectToolDefinition(entry, walk, depth + 1)
-          : isPrivateToolField(key)
-          ? TOOL_DIAGNOSTIC_MASK
-          : projectData(entry, walk, depth + 1)
-        if (next !== entry) changed = true
-        projected[key] = next
-      }
-      return changed ? projected : value
-    } finally {
-      walk.seen.delete(value)
-    }
+    return guarded(value, walk, depth, toolSchemaCycle, () =>
+      Array.isArray(value)
+        ? projectItems(value, (entry) => projectToolDefinition(entry, walk, depth + 1))
+        : projectEntries(value, (key, entry) =>
+          TOOL_DEFINITION_SCHEMA_KEYS.has(key)
+            ? projectSchemaNode(entry, walk, depth + 1)
+            : key === "function"
+            ? projectToolDefinition(entry, walk, depth + 1)
+            : isPrivateToolField(key)
+            ? TOOL_DIAGNOSTIC_MASK
+            : projectData(entry, walk, depth + 1)))
   }
 
   /** @throws {never} */
@@ -302,7 +291,7 @@ effect function projectModelCallSchemas(
   }
 }
 
-export effect function projectModelCallDiagnosticValue(
+effect function projectModelCallDiagnosticValue(
   value: Record<string, unknown>,
   redactText: ToolDiagnosticTextRedactor,
 ) {
@@ -312,7 +301,7 @@ export effect function projectModelCallDiagnosticValue(
 }
 export const projectModelCallDiagnosticValueOrThrow = thrown(projectModelCallDiagnosticValue)
 
-export effect function projectProtectedModelCallValue(
+effect function projectProtectedModelCallValue(
   value: Record<string, unknown>,
   redactText: ToolDiagnosticTextRedactor,
 ) {

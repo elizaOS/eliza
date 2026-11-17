@@ -94,11 +94,11 @@ export class NotificationNativeError extends Data.TaggedError("NotificationNativ
   }
 }
 
-export error WriteRejected { message: string }
-export error TitleRequired { message: string }
-export error PersistRejected { message: string }
-export error UnexpectedRecovery { message: string }
-export error PersistenceUnreconciled { errors: unknown[] }
+error WriteRejected { message: string }
+error TitleRequired { message: string }
+error PersistRejected { message: string }
+error UnexpectedRecovery { message: string }
+error PersistenceUnreconciled { errors: unknown[] }
 
 const recoveryByRuntime = new WeakMap<
   NotificationServiceLifecycleRuntime,
@@ -881,5 +881,3 @@ export class NotificationService extends Service {
     return settled(enqueueWrite(this.inbox, clear(this.inbox)))
   }
 }
-
-export default NotificationService

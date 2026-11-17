@@ -12,10 +12,14 @@ import {
   registryEntrySchema,
 } from "./schema.vibe"
 
-export class RegistryValidationError extends Data.TaggedError("RegistryValidationError")<{ readonly file: string; readonly cause: unknown }> {
+export class RegistryValidationError extends Data.TaggedError("RegistryValidationError")<{ readonly file: string }> {
+  override readonly cause: unknown
+
   constructor(file: string, cause: unknown) {
-    super({ file, cause })
+    super({ file })
     this.message = `Registry entry at ${file} failed validation: ${String(cause)}`
+    this.name = "RegistryValidationError"
+    this.cause = cause
   }
 }
 

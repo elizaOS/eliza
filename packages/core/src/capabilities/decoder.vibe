@@ -12,7 +12,6 @@ import {
   type PluginResponseHandlerFieldEvaluatorHandleResult,
   type RemotePluginActionManifest,
   type RemotePluginAppBridgeHook,
-  type RemotePluginAppBridgeManifest,
   type RemotePluginAppManifest,
   type RemotePluginAppNavTabManifest,
   type RemotePluginAppSessionManifest,
@@ -23,7 +22,6 @@ import {
   type RemotePluginEventManifest,
   type RemotePluginJsonSchemaDefinition,
   type RemotePluginLifecycleHook,
-  type RemotePluginLifecycleManifest,
   type RemotePluginModelManifest,
   type RemotePluginModuleManifest,
   type RemotePluginModuleProvenance,
@@ -204,16 +202,37 @@ export effect function requireObjectArray(
   throw decodeError(method, `${key} must be an object array.`)
 }
 
+effect function decodeEntries<T>(
+  value: JsonValue[],
+  method: string,
+  decode: (value: JsonValue, method: string) => T!CapabilityError,
+): T[]!CapabilityError {
+  const decoded = new Array<T>(value.length)
+  for (let index = 0; index < value.length; index += 1) {
+    if (index in value) decoded[index] = try decode(value[index], method)
+  }
+  return decoded
+}
+
+effect function requireArray<T>(
+  object: JsonObject,
+  key: string,
+  method: string,
+  decode: (value: JsonValue, method: string) => T!CapabilityError,
+): T[]!CapabilityError {
+  const value = object[key]
+  if (!Array.isArray(value)) {
+    throw decodeError(method, `${key} must be an array.`)
+  }
+  return try decodeEntries(value, `${method}.${key}`, decode)
+}
+
 export effect function requireFileStatArray(
   object: JsonObject,
   key: string,
   method: string,
 ): FileStat[]!CapabilityError {
-  const value = object[key]
-  if (!Array.isArray(value)) {
-    throw decodeError(method, `${key} must be an array.`)
-  }
-  return try forEach(value, (entry) => requireFileStat(entry, `${method}.${key}`))
+  return try requireArray(object, key, method, requireFileStat)
 }
 
 effect function requireFileStat(value: JsonValue, method: string): FileStat!CapabilityError {
@@ -579,11 +598,7 @@ export effect function requireRemotePluginModuleArray(
   key: string,
   method: string,
 ): RemotePluginModuleManifest[]!CapabilityError {
-  const value = object[key]
-  if (!Array.isArray(value)) {
-    throw decodeError(method, `${key} must be an array.`)
-  }
-  return try forEach(value, (entry) => requireRemotePluginModule(entry, `${method}.${key}`))
+  return try requireArray(object, key, method, requireRemotePluginModule)
 }
 
 effect function requireRemotePluginModule(
@@ -667,10 +682,10 @@ effect function requireRemotePluginModule(
     : try requireRemotePluginApp(object.app, `${method}.app`)
   const appBridge = object.appBridge === undefined
     ? undefined
-    : try requireRemotePluginAppBridge(object.appBridge, `${method}.appBridge`)
+    : try requireHooks(object.appBridge, `${method}.appBridge`, isRemotePluginAppBridgeHook, "plugin app bridge")
   const lifecycle = object.lifecycle === undefined
     ? undefined
-    : try requireRemotePluginLifecycle(object.lifecycle, `${method}.lifecycle`)
+    : try requireHooks(object.lifecycle, `${method}.lifecycle`, isRemotePluginLifecycleHook, "plugin lifecycle")
   const routes = try optionalArray(
     object,
     "routes",
@@ -752,7 +767,7 @@ effect function optionalArray<T>(
   if (!Array.isArray(value)) {
     throw decodeError(method, `${key} must be an array when present.`)
   }
-  return try forEach(value, (entry) => decode(entry, `${method}.${key}`))
+  return try decodeEntries(value, `${method}.${key}`, decode)
 }
 
 effect function requireRemotePluginAction(
@@ -1256,20 +1271,22 @@ effect function requireRemotePluginAppNavTab(
   }
 }
 
-effect function requireRemotePluginAppBridge(
+effect function requireHooks<Hook extends string>(
   value: JsonValue,
   method: string,
-): RemotePluginAppBridgeManifest!CapabilityError {
+  isHook: (hook: string) => hook is Hook,
+  kind: string,
+): { hooks: Hook[] }!CapabilityError {
   const object = try requireObject(value, method)
   const hooks = try requireStringArray(object, "hooks", method)
   if (hooks.length === 0) {
     throw decodeError(method, "hooks must not be empty.")
   }
-  if (hooks.some((hook) => !isRemotePluginAppBridgeHook(hook))) {
-    throw decodeError(method, "hooks must be valid plugin app bridge hooks.")
+  if (hooks.some((hook) => !isHook(hook))) {
+    throw decodeError(method, `hooks must be valid ${kind} hooks.`)
   }
   return {
-    hooks: hooks as RemotePluginAppBridgeHook[],
+    hooks: hooks as Hook[],
   }
 }
 
@@ -1286,23 +1303,6 @@ export function isRemotePluginAppBridgeHook(
     || value === "stopRun"
     || value === "handleAppRoutes"
   )
-}
-
-effect function requireRemotePluginLifecycle(
-  value: JsonValue,
-  method: string,
-): RemotePluginLifecycleManifest!CapabilityError {
-  const object = try requireObject(value, method)
-  const hooks = try requireStringArray(object, "hooks", method)
-  if (hooks.length === 0) {
-    throw decodeError(method, "hooks must not be empty.")
-  }
-  if (hooks.some((hook) => !isRemotePluginLifecycleHook(hook))) {
-    throw decodeError(method, "hooks must be valid plugin lifecycle hooks.")
-  }
-  return {
-    hooks: hooks as RemotePluginLifecycleHook[],
-  }
 }
 
 export function isRemotePluginLifecycleHook(
@@ -1565,11 +1565,20 @@ export effect function requirePluginActionResult(
   const object = try requireObject(value, method)
   const text = try optionalString(object, "text", method)
   const actions = try optionalStringArray(object, "actions", method)
-  const values = try optionalJsonObject(object, "values", method)
-  const data = try optionalJsonObject(object, "data", method)
   return {
     ...(text === undefined ? {} : { text }),
     ...(actions === undefined ? {} : { actions }),
+    ...try optionalValuesAndData(object, method),
+  }
+}
+
+effect function optionalValuesAndData(
+  object: JsonObject,
+  method: string,
+): { values?: JsonObject; data?: JsonObject }!CapabilityError {
+  const values = try optionalJsonObject(object, "values", method)
+  const data = try optionalJsonObject(object, "data", method)
+  return {
     ...(values === undefined ? {} : { values }),
     ...(data === undefined ? {} : { data }),
   }
@@ -1581,12 +1590,9 @@ export effect function requirePluginProviderResult(
 ): PluginGetProviderResult!CapabilityError {
   const object = try requireObject(value, method)
   const text = try optionalString(object, "text", method)
-  const values = try optionalJsonObject(object, "values", method)
-  const data = try optionalJsonObject(object, "data", method)
   return {
     ...(text === undefined ? {} : { text }),
-    ...(values === undefined ? {} : { values }),
-    ...(data === undefined ? {} : { data }),
+    ...try optionalValuesAndData(object, method),
   }
 }
 

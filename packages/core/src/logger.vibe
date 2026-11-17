@@ -1,7 +1,7 @@
 // spec/core/logFiles.md, "Story: Open optional log files lazily and close their descriptors"; spec/core/logFiles.md, "A single initialization attempt opens output prompt and chat sinks in order"; spec/core/logFiles.md, "Pending initialization owns no descriptor"; spec/core/logListeners.md, "Story: Retain recent diagnostics and notify current listeners"; spec/core/logListeners.md, "Retention preserves the newest entries under a positive configured cap"; spec/core/logListeners.md, "Listener registration is idempotent and reregistration resets its warning"; spec/core/diagnostics.md, "Story: Redact untrusted diagnostic fields at the sink"
 import type { Logger, LoggerBindings } from "./logging.vibe"
 
-export type { Logger, LoggerBindings } from "./logging.vibe"
+export type { Logger } from "./logging.vibe"
 
 import { Machine, machine, type Rejected } from "../gen/core__logFiles.effect.vibe"
 import { own } from "./owned.vibe"

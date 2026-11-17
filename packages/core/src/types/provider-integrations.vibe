@@ -2,7 +2,8 @@
 import { type Foreign, foreign, foreignSync, promised, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { sha256Hex } from "../runtime/trajectory-provider-attribution.vibe"
-import { type EffectReceipt, normalizeEffectReceipt } from "./effects.vibe"
+import { mapPresent } from "./content-manifest.vibe"
+import { type EffectReceipt, normalizeEffectReceipt, parseIsoInstant } from "./effects.vibe"
 
 export const PROVIDER_INTEGRATION_CONTRACT_VERSION = 2 as const
 
@@ -221,8 +222,6 @@ const RISK_RANK: Readonly<Record<CapabilityRiskLevel, number>> = Object.freeze({
   R3: 3,
 })
 
-const ISO_TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-](\d{2}):(\d{2}))$/
-
 function invalid(
   message: string,
   context: Record<string, unknown> = {},
@@ -276,24 +275,10 @@ effect function digest(value: unknown, field: string): string!ElizaError {
 
 effect function isoTimestamp(value: unknown, field: string): string!ElizaError {
   const normalized = try nonEmptyString(value, field)
-  const match = ISO_TIMESTAMP.exec(normalized)
-  if (!match) throw invalid(`${field} must be an ISO-8601 timestamp with a timezone.`, { field })
-  const year = Number(match[1])
-  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
-  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][Number(match[2]) - 1]
-  const day = Number(match[3])
-  const parsed = Date.parse(normalized)
-  const outOfRange = daysInMonth === undefined
-    || day < 1
-    || day > daysInMonth
-    || Number(match[4]) > 23
-    || Number(match[5]) > 59
-    || Number(match[6]) > 59
-    || Number(match[9] ?? 0) > 23
-    || Number(match[10] ?? 0) > 59
-    || !Number.isFinite(parsed)
-  if (outOfRange) throw invalid(`${field} must be a valid ISO-8601 timestamp.`, { field })
-  return new Date(parsed).toISOString()
+  const parsed = parseIsoInstant(normalized)
+  if (parsed === "malformed") throw invalid(`${field} must be an ISO-8601 timestamp with a timezone.`, { field })
+  if (parsed === "out-of-range") throw invalid(`${field} must be a valid ISO-8601 timestamp.`, { field })
+  return parsed.instant
 }
 
 effect function nullableTimestamp(value: unknown, field: string): (string | null)!ElizaError {
@@ -310,10 +295,7 @@ effect function stableJson(value: unknown): string!ElizaError {
     return JSON.stringify(value)
   }
   if (Array.isArray(value)) {
-    const entries = new Array<string>(value.length)
-    for (let index = 0; index < value.length; index++) {
-      if (index in value) entries[index] = try stableJson(value[index])
-    }
+    const entries = try mapPresent(value, (entry) => stableJson(entry))
     return `[${entries.join(",")}]`
   }
   const raw = try record(value, "digest input")
@@ -326,7 +308,7 @@ effect function domainDigest(domain: string, value: unknown): string!ElizaError 
   return sha256Hex(new TextEncoder().encode(`${domain}\n${try stableJson(value)}`))
 }
 
-export effect function normalizeConnectedAccount(value: unknown): ConnectedAccount!ElizaError {
+effect function normalizeConnectedAccount(value: unknown): ConnectedAccount!ElizaError {
   const raw = try record(value, "ConnectedAccount")
   try exactKeys(
     raw,
@@ -335,20 +317,17 @@ export effect function normalizeConnectedAccount(value: unknown): ConnectedAccou
   )
   try version(raw, "ConnectedAccount")
   if (!Array.isArray(raw.capabilities)) throw invalid("ConnectedAccount.capabilities must be an array.")
-  const entries: unknown[] = raw.capabilities
-  const capabilities = new Array<ConnectedAccountCapability>(entries.length)
-  for (let index = 0; index < entries.length; index++) {
-    if (!(index in entries)) continue
-    const capability = try record(entries[index], "ConnectedAccountCapability")
+  const capabilities = try mapPresent(raw.capabilities, effect (entry, index) => {
+    const capability = try record(entry, "ConnectedAccountCapability")
     try exactKeys(capability, ["capabilityId", "riskLevel", "status"], "ConnectedAccountCapability")
-    capabilities[index] = Object.freeze({
+    return Object.freeze({
       capabilityId: try nonEmptyString(capability.capabilityId, `capabilities[${index}].capabilityId`),
       riskLevel: try enumValue(capability.riskLevel, CAPABILITY_RISK_LEVELS, `capabilities[${index}].riskLevel`),
       status: capability.status === "available"
         ? "available"
         : try enumValue(capability.status, CAPABILITY_UNAVAILABLE_CODES, `capabilities[${index}].status`),
     } satisfies ConnectedAccountCapability)
-  }
+  })
   if (new Set(capabilities.map(({ capabilityId }) => capabilityId)).size !== capabilities.length) {
     throw invalid("ConnectedAccount capability IDs must be unique.")
   }
@@ -366,7 +345,7 @@ export effect function normalizeConnectedAccount(value: unknown): ConnectedAccou
 
 export const normalizeConnectedAccountOrThrow = thrown(normalizeConnectedAccount)
 
-export effect function normalizeCapabilityRequest(value: unknown): CapabilityRequest!ElizaError {
+effect function normalizeCapabilityRequest(value: unknown): CapabilityRequest!ElizaError {
   const raw = try record(value, "CapabilityRequest")
   try exactKeys(
     raw,
@@ -387,7 +366,7 @@ export effect function normalizeCapabilityRequest(value: unknown): CapabilityReq
 
 export const normalizeCapabilityRequestOrThrow = thrown(normalizeCapabilityRequest)
 
-export effect function computeBoundCapabilityRequestDigest(request: Omit<BoundCapabilityRequest, "requestDigest">): string!ElizaError {
+effect function computeBoundCapabilityRequestDigest(request: Omit<BoundCapabilityRequest, "requestDigest">): string!ElizaError {
   return try domainDigest("elizaos:provider-capability-request:v2", {
     contractVersion: request.contractVersion,
     requestId: request.requestId,
@@ -405,7 +384,7 @@ export effect function computeBoundCapabilityRequestDigest(request: Omit<BoundCa
 
 export const computeBoundCapabilityRequestDigestOrThrow = thrown(computeBoundCapabilityRequestDigest)
 
-export effect function bindCapabilityRequest(requestValue: unknown, accountValue: unknown, boundAt: string): BoundCapabilityRequest!ElizaError {
+effect function bindCapabilityRequest(requestValue: unknown, accountValue: unknown, boundAt: string): BoundCapabilityRequest!ElizaError {
   const request = try normalizeCapabilityRequest(requestValue)
   const account = try normalizeConnectedAccount(accountValue)
   const normalizedBoundAt = try isoTimestamp(boundAt, "boundAt")
@@ -447,7 +426,7 @@ export effect function bindCapabilityRequest(requestValue: unknown, accountValue
 
 export const bindCapabilityRequestOrThrow = thrown(bindCapabilityRequest)
 
-export effect function normalizeBoundCapabilityRequest(value: unknown): BoundCapabilityRequest!ElizaError {
+effect function normalizeBoundCapabilityRequest(value: unknown): BoundCapabilityRequest!ElizaError {
   const raw = try record(value, "BoundCapabilityRequest")
   try exactKeys(
     raw,
@@ -495,7 +474,7 @@ export const normalizeBoundCapabilityRequestOrThrow = thrown(normalizeBoundCapab
 
 const POLICY_DECISION_BASE_KEYS = ["contractVersion", "decisionId", "requestDigest", "riskLevel", "issuedAt", "expiresAt", "outcome"]
 
-export effect function normalizeCapabilityPolicyDecision(value: unknown): CapabilityPolicyDecision!ElizaError {
+effect function normalizeCapabilityPolicyDecision(value: unknown): CapabilityPolicyDecision!ElizaError {
   const raw = try record(value, "CapabilityPolicyDecision")
   try version(raw, "CapabilityPolicyDecision")
   const base = {
@@ -541,13 +520,13 @@ export effect function normalizeCapabilityPolicyDecision(value: unknown): Capabi
 
 export const normalizeCapabilityPolicyDecisionOrThrow = thrown(normalizeCapabilityPolicyDecision)
 
-export effect function computeCapabilityPolicyDecisionDigest(decision: CapabilityPolicyDecision): string!ElizaError {
+effect function computeCapabilityPolicyDecisionDigest(decision: CapabilityPolicyDecision): string!ElizaError {
   return try domainDigest("elizaos:provider-policy-decision:v2", decision)
 }
 
 export const computeCapabilityPolicyDecisionDigestOrThrow = thrown(computeCapabilityPolicyDecisionDigest)
 
-export effect function normalizeCapabilityConfirmationGrant(value: unknown): CapabilityConfirmationGrant!ElizaError {
+effect function normalizeCapabilityConfirmationGrant(value: unknown): CapabilityConfirmationGrant!ElizaError {
   const raw = try record(value, "CapabilityConfirmationGrant")
   try exactKeys(
     raw,
@@ -569,7 +548,7 @@ export effect function normalizeCapabilityConfirmationGrant(value: unknown): Cap
 
 export const normalizeCapabilityConfirmationGrantOrThrow = thrown(normalizeCapabilityConfirmationGrant)
 
-export effect function computeCapabilityConfirmationGrantDigest(grant: CapabilityConfirmationGrant): string!ElizaError {
+effect function computeCapabilityConfirmationGrantDigest(grant: CapabilityConfirmationGrant): string!ElizaError {
   return try domainDigest("elizaos:provider-confirmation-grant:v2", grant)
 }
 
@@ -636,6 +615,19 @@ export effect function registerCapabilityAuthorization(
   return decision
 }
 
+function bindingMatches(
+  registered: RegisteredCapabilityAuthorization,
+  decisionDigest: string,
+  decision: CapabilityPolicyDecision,
+  request: BoundCapabilityRequest,
+): boolean {
+  return registered.decisionDigest === decisionDigest
+    && registered.requestDigest === request.requestDigest
+    && registered.requestBoundAt === request.boundAt
+    && decision.requestDigest === request.requestDigest
+    && decision.riskLevel === request.riskLevel
+}
+
 export effect function issueCapabilityConfirmation(
   state: CapabilityAuthorizationState,
   confirmationId: string,
@@ -656,11 +648,7 @@ export effect function issueCapabilityConfirmation(
     || decision.confirmationId !== id
     || registered.confirmationId !== id
     || registered.confirmationGrantDigest !== null
-    || registered.decisionDigest !== decisionDigest
-    || registered.requestDigest !== request.requestDigest
-    || registered.requestBoundAt !== request.boundAt
-    || decision.requestDigest !== request.requestDigest
-    || decision.riskLevel !== request.riskLevel
+    || !bindingMatches(registered, decisionDigest, decision, request)
   ) {
     throw invalid("Capability confirmation is not pending for this request.")
   }
@@ -726,11 +714,7 @@ export effect function consumeCapabilityAuthorization(
         && Date.parse(grant.expiresAt) > trustedNow
     if (
       !registered
-      || registered.decisionDigest !== decisionDigest
-      || registered.requestDigest !== request.requestDigest
-      || registered.requestBoundAt !== request.boundAt
-      || decision.requestDigest !== request.requestDigest
-      || decision.riskLevel !== request.riskLevel
+      || !bindingMatches(registered, decisionDigest, decision, request)
       || Date.parse(decision.issuedAt) < Date.parse(request.boundAt)
       || Date.parse(decision.issuedAt) > trustedNow
       || Date.parse(registered.expiresAt) <= trustedNow
@@ -841,7 +825,7 @@ export interface AuthorizeCapabilityDispatchOptions {
   clock?: () => number
 }
 
-export effect function authorizeCapabilityDispatch(
+effect function authorizeCapabilityDispatch(
   requestValue: unknown,
   decisionValue: unknown,
   options: AuthorizeCapabilityDispatchOptions,
@@ -948,7 +932,7 @@ function outsideChronology(at: string, authorizedAt: string, observedAt: string)
   return Date.parse(at) < Date.parse(authorizedAt) || Date.parse(at) > Date.parse(observedAt)
 }
 
-export effect function normalizeCapabilityActionReceipt(
+effect function normalizeCapabilityActionReceipt(
   value: unknown,
   options: NormalizeCapabilityActionReceiptOptions,
 ): CapabilityActionReceipt!ElizaError {

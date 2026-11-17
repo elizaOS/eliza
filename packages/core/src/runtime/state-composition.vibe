@@ -49,7 +49,7 @@ module node {
 }
 import { monotonicNow } from node
 
-export const STATE_CACHE_LIMIT = 512
+const STATE_CACHE_LIMIT = 512
 
 type TrajectoryLogger = Service & TrajectoryProviderAccessLogger
 
@@ -504,6 +504,20 @@ function recordProviderAccesses(log: ProviderAccessLog, includeText: boolean): v
   }
   const trajCtx = log.trajectory
   const providerTraceId = log.runtime.getActiveTrace(log.runtime.getCurrentRunId())?.id
+  const attributedAccess = (providerName: string) => {
+    const attribution = log.attributionByName.get(providerName)
+    return {
+      sha256: attribution?.sha256,
+      tokenCount: attribution?.tokenCount,
+      position: attribution?.position,
+      purpose: "compose_state" as const,
+      query,
+      runId: trajCtx?.runId,
+      roomId: trajCtx?.roomId,
+      messageId: trajCtx?.messageId,
+      executionTraceId: providerTraceId,
+    }
+  }
   const providerOverlaps = calculateProviderOverlaps(log.providerData)
   for (const [providerIndex, r] of log.providerData.entries()) {
     const context = "AgentRuntime.composeState.providerTrajectory"
@@ -517,7 +531,6 @@ function recordProviderAccesses(log: ProviderAccessLog, includeText: boolean): v
         return
       }
       const redactedText = log.currentProviderResults[r.providerName]?.text ?? ""
-      const attribution = log.attributionByName.get(r.providerName)
       log.logger.logProviderAccess({
         stepId: log.stepId,
         providerName: r.providerName,
@@ -533,22 +546,13 @@ function recordProviderAccesses(log: ProviderAccessLog, includeText: boolean): v
           cacheHit: false,
           ...(r.providerError ? { errorCode: r.providerError.code } : {}),
         },
-        sha256: attribution?.sha256,
-        tokenCount: attribution?.tokenCount,
-        position: attribution?.position,
-        purpose: "compose_state",
-        query,
-        runId: trajCtx?.runId,
-        roomId: trajCtx?.roomId,
-        messageId: trajCtx?.messageId,
-        executionTraceId: providerTraceId,
+        ...attributedAccess(r.providerName),
       })
     })
   }
   for (const provider of log.reusedProviders) {
     logProviderAccess(log, "AgentRuntime.composeState.cachedProviderTrajectory", provider.name, () => {
       const cached = log.currentProviderResults[provider.name]
-      const attribution = log.attributionByName.get(provider.name)
       log.logger.logProviderAccess({
         stepId: log.stepId,
         providerName: provider.name,
@@ -566,15 +570,7 @@ function recordProviderAccesses(log: ProviderAccessLog, includeText: boolean): v
             ? { sourceDurationMs: cached.providerDurationMs }
             : {}),
         },
-        sha256: attribution?.sha256,
-        tokenCount: attribution?.tokenCount,
-        position: attribution?.position,
-        purpose: "compose_state",
-        query,
-        runId: trajCtx?.runId,
-        roomId: trajCtx?.roomId,
-        messageId: trajCtx?.messageId,
-        executionTraceId: providerTraceId,
+        ...attributedAccess(provider.name),
       })
     })
   }
@@ -654,7 +650,7 @@ function aggregateStateValues(
   return aggregatedStateValues
 }
 
-export effect function composeState(
+effect function composeState(
   composer: ProviderStateComposer,
   message: Memory,
   includeList: string[] | null = null,

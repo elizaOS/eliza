@@ -190,7 +190,6 @@ export effect function generateFirstPartyRegistry() {
   return try render(try collectFirstPartyEntries())
 }
 
-/** The original threw a plain `Error` for each declared failure; a platform failure keeps its Node error. */
 function plainly<Args extends readonly unknown[], A>(run: (...args: Args) => A!Error):(...args: Args) => A {
   return thrown((...args: Args) => Effect.mapError(run(...args), (error): Error => (error instanceof Foreign ? error : new Error(error.message))))
 }

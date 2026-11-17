@@ -84,5 +84,3 @@ export const BufferUtils = {
   byteLength,
   randomBytes,
 }
-
-export type { BufferLike as Buffer }

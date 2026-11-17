@@ -429,5 +429,3 @@ effect function decryptObjectValues(
 }
 
 export const decryptObjectValuesOrThrow = thrown(decryptObjectValues)
-
-export { decryptStringValue as decryptSecret }

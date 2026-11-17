@@ -64,7 +64,7 @@ const positive = (n: number) => Number.isSafeInteger(n) && n > 0
 
 const allowanceEnded = () => new ElizaError("Model allowance ended", { code: "MODEL_ATTEMPT_POLICY_CLOSED" })
 
-export effect function createModelAttemptAllowance(options: {
+effect function createModelAttemptAllowance(options: {
   signal: AbortSignal
   budgetMicroUsd: number
   maxAttempts: number
@@ -327,7 +327,7 @@ function inheritedAbortSignal(
   return own ? AbortSignal.any([parentSignal, own]) : parentSignal
 }
 
-export effect function setTurnActionConstraint(
+effect function setTurnActionConstraint(
   constraint: TurnActionConstraint,
 ): void!(ElizaError | Foreign) {
   const context = getStreamingContext()

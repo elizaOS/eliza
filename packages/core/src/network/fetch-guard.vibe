@@ -44,11 +44,11 @@ export type GuardedFetchResult = {
   release: () => Promise<void>
 }
 
-export error FetchUnavailable { message: string }
-export error UnpinnedLookup { message: string }
-export error PinnedTransportUnavailable { message: string; cause: unknown }
-export error InvalidUrl { message: string; cause?: unknown }
-export error MissingRedirectLocation { message: string }
+error FetchUnavailable { message: string }
+error UnpinnedLookup { message: string }
+error PinnedTransportUnavailable { message: string; cause: unknown }
+error InvalidUrl { message: string; cause?: unknown }
+error MissingRedirectLocation { message: string }
 
 module node {
   import { Effect } from "effect"

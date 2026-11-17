@@ -612,7 +612,7 @@ interface Report {
 
 interface PreparedReport {
   readonly normalized: ElizaError
-  readonly entry: ReportedError
+  readonly merged: Record<string, unknown> | undefined
   readonly runId: UUID | undefined
   readonly roomId: UUID | undefined
 }
@@ -622,15 +622,7 @@ function prepareReport(scope: string, error: unknown, context: Record<string, un
   const merged: Record<string, unknown> | undefined = context || normalized.context ? { ...normalized.context, ...context } : undefined
   const runId = typeof merged?.runId === "string" ? merged.runId as UUID : undefined
   const roomId = typeof merged?.roomId === "string" ? merged.roomId as UUID : undefined
-  const entry: ReportedError = {
-    scope,
-    code: normalized.code,
-    message: normalized.message,
-    ...(normalized.severity ? { severity: normalized.severity } : {}),
-    context: merged,
-    at: Date.now(),
-  }
-  return { normalized, entry, runId, roomId }
+  return { normalized, merged, runId, roomId }
 }
 
 effect function publishReport(report: Report): void!Foreign {
@@ -656,11 +648,19 @@ effect function publishReport(report: Report): void!Foreign {
 }
 
 effect function recordReport(runtime: AgentRuntime, diagnostics: DiagnosticsOwner, scope: string, error: unknown, context?: Record<string, unknown>): void!(DiagnosticsRejected | Foreign) {
-  const { normalized, entry, runId, roomId } = try foreignSync(() => prepareReport(scope, error, context))
+  const { normalized, merged, runId, roomId } = try foreignSync(() => prepareReport(scope, error, context))
   try foreignSync(() => runtime.logger.error(
-    { src: "agent", scope, code: normalized.code, severity: normalized.severity, context: entry.context, err: normalized },
+    { src: "agent", scope, code: normalized.code, severity: normalized.severity, context: merged, err: normalized },
     `[${scope}] ${normalized.message}`,
   ))
+  const entry: ReportedError = try foreignSync(() => ({
+    scope,
+    code: normalized.code,
+    message: normalized.message,
+    ...(normalized.severity ? { severity: normalized.severity } : {}),
+    context: merged,
+    at: Date.now(),
+  }))
   const scopes = errorReportScopes.active()
   const subscriber = scopes?.has(runtime) === true
   const severity = reportSeverity(entry.severity)

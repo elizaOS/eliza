@@ -15,7 +15,7 @@ function normalizeProjectId(projectId: string | undefined): string | undefined {
   return trimmed && trimmed.length > 0 ? trimmed : undefined
 }
 
-export effect function projectWorldId(agentId: UUID, projectId: string) {
+effect function projectWorldId(agentId: UUID, projectId: string) {
   const normalizedProjectId = normalizeProjectId(projectId)
   if (!normalizedProjectId) {
     throw projectMemoryScopeError(

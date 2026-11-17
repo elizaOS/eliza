@@ -65,7 +65,7 @@ module jsonb {
 }
 import { encodeJsonb } from jsonb
 
-export effect function encodeCacheCasValue(value: unknown): string!ElizaError {
+effect function encodeCacheCasValue(value: unknown): string!ElizaError {
   return try Effect.try({
     try: () => encodeJsonb(value),
     catch: (cause) =>

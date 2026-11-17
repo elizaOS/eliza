@@ -120,7 +120,7 @@ export effect function validateTaskChoiceWidget(value: unknown): void!ElizaError
   }
 }
 
-export effect function admitTaskChoiceResponse(
+effect function admitTaskChoiceResponse(
   value: unknown,
   task: { taskId: string; epoch: number } | undefined,
   maxWidgets: number,

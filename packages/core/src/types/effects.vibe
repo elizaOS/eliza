@@ -107,6 +107,31 @@ const ISO_TIMESTAMP_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(
 
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const
 
+export function parseIsoInstant(text: string): { readonly instant: string } | "malformed" | "out-of-range" {
+  const match = ISO_TIMESTAMP_PATTERN.exec(text)
+  if (!match) return "malformed"
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+  const daysInMonth = month === 2 && leapYear ? 29 : DAYS_IN_MONTH[month - 1]
+  const parsed = Date.parse(text)
+  if (
+    daysInMonth === undefined
+    || day < 1
+    || day > daysInMonth
+    || Number(match[4]) > 23
+    || Number(match[5]) > 59
+    || Number(match[6]) > 59
+    || Number(match[9] ?? 0) > 23
+    || Number(match[10] ?? 0) > 59
+    || !Number.isFinite(parsed)
+  ) {
+    return "out-of-range"
+  }
+  return { instant: new Date(parsed).toISOString() }
+}
+
 module checked {
   import { Effect, Exit, type Cause } from "effect"
   import type { ElizaError } from "../errors.vibe"
@@ -158,37 +183,14 @@ effect function isoTimestamp(
   context: Record<string, unknown>,
 ): string!ElizaError {
   const timestamp = try nonEmptyString(value, field, context)
-  const match = ISO_TIMESTAMP_PATTERN.exec(timestamp)
-  if (!match) {
+  const parsed = parseIsoInstant(timestamp)
+  if (parsed === "malformed") {
     throw invalid(`Effect receipt field '${field}' must be an ISO timestamp with a timezone.`, { ...context, field })
   }
-  const year = Number(match[1])
-  const month = Number(match[2])
-  const day = Number(match[3])
-  const hour = Number(match[4])
-  const minute = Number(match[5])
-  const second = Number(match[6])
-  const offsetHour = match[9] === undefined ? 0 : Number(match[9])
-  const offsetMinute = match[10] === undefined ? 0 : Number(match[10])
-  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
-  const daysInMonth = month === 2 && leapYear ? 29 : DAYS_IN_MONTH[month - 1]
-  const parsed = Date.parse(timestamp)
-  if (
-    month < 1
-    || month > 12
-    || daysInMonth === undefined
-    || day < 1
-    || day > daysInMonth
-    || hour > 23
-    || minute > 59
-    || second > 59
-    || offsetHour > 23
-    || offsetMinute > 59
-    || !Number.isFinite(parsed)
-  ) {
+  if (parsed === "out-of-range") {
     throw invalid(`Effect receipt field '${field}' must be a valid ISO timestamp.`, { ...context, field })
   }
-  return new Date(parsed).toISOString()
+  return parsed.instant
 }
 
 effect function normalizeResourceRef(
@@ -492,7 +494,7 @@ function isCommittedEffectReceipt(
   )
 }
 
-export effect function activeCommittedEffectReceipts(
+effect function activeCommittedEffectReceipts(
   receipts: readonly EffectReceipt[],
 ): readonly CommittedEffectReceipt[]!ElizaError {
   const normalized = try normalizeEffectReceipts(receipts)
@@ -528,7 +530,7 @@ export effect function resolveAppliedUserFacingEffectReceipts(
 
 export const resolveAppliedUserFacingEffectReceiptsOrThrow = thrown(resolveAppliedUserFacingEffectReceipts)
 
-export effect function hasAppliedUserFacingEffectProof(
+effect function hasAppliedUserFacingEffectProof(
   result: EffectBearingResult,
   allTurnReceipts?: readonly EffectReceipt[],
 ): boolean!ElizaError {

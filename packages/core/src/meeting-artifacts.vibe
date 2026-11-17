@@ -422,8 +422,7 @@ export function validateMeetingArtifact(
     errors.push("artifactId is required")
   }
 
-  const meeting = value.meeting
-  validateMeetingMetadata(meeting, errors)
+  validateMeetingMetadata(value.meeting, errors)
 
   const media = Array.isArray(value.media) ? value.media : []
   const streams = Array.isArray(value.sourceStreams) ? value.sourceStreams : []

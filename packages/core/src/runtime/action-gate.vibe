@@ -31,13 +31,13 @@ export interface ActionGateContext {
   skipPrivateGate?: boolean
 }
 
-export type ActionGateRejectionKind =
+type ActionGateRejectionKind =
   | "private"
   | "disclosure"
   | "role"
   | "context"
 
-export interface ActionGateRejection {
+interface ActionGateRejection {
   kind: ActionGateRejectionKind
   reason: string
 }
@@ -71,7 +71,7 @@ let cachedActionAllowlist:
   | { raw: string; names: ReadonlySet<string> }
   | undefined
 
-export effect function readActionAllowlist(
+effect function readActionAllowlist(
   env: NodeJS.ProcessEnv = processEnv(),
 ): (ReadonlySet<string> | null)!ElizaError {
   const raw = env.ELIZA_ACTION_ALLOWLIST
@@ -106,7 +106,7 @@ export effect function readActionAllowlist(
 
 export const readActionAllowlistOrThrow = thrown(readActionAllowlist)
 
-export effect function assertActionAllowlistMatchesActions(
+effect function assertActionAllowlistMatchesActions(
   actions: readonly Pick<Action, "name">[],
 ): void!ElizaError {
   const allowlist = try readActionAllowlist()
@@ -130,7 +130,7 @@ function roleRejection(action: GateableAction): ActionGateRejection {
   }
 }
 
-export effect function actionGateRejection(
+effect function actionGateRejection(
   action: GateableAction,
   ctx: ActionGateContext,
 ): (ActionGateRejection | undefined)!(ElizaError | Foreign) {
@@ -207,7 +207,7 @@ export effect function actionGateFailure(
 
 export const actionGateFailureOrThrow = thrown(actionGateFailure)
 
-export effect function canActionRun(
+effect function canActionRun(
   action: GateableAction,
   ctx: ActionGateContext,
 ): boolean!(ElizaError | Foreign) {

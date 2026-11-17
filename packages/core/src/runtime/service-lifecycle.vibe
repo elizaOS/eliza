@@ -27,9 +27,9 @@ const EAGER_SERVICE_START_RETRY_DELAYS_MS: readonly number[] = [
 const DEFAULT_SERVICE_START_SHUTDOWN_TIMEOUT_MS = 1_000
 const DEFAULT_FAST_SERVICE_STOP_TIMEOUT_MS = 500
 
-export error ServiceImplementationDidNotStart { message: string }
-export error ServiceStartAfterStop { message: string }
-export error ServiceUnregisteredDuringStart { message: string }
+error ServiceImplementationDidNotStart { message: string }
+error ServiceStartAfterStop { message: string }
+error ServiceUnregisteredDuringStart { message: string }
 
 export error ServiceUnavailable { message: string }
 

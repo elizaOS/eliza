@@ -10,7 +10,7 @@ export const VALIDATION_KEYWORD_LOCALES = [
 
 export type ValidationKeywordLocale = (typeof VALIDATION_KEYWORD_LOCALES)[number]
 
-type ValidationKeywordDoc = {
+export type ValidationKeywordDoc = {
   base?: string
   locales?: Partial<Record<ValidationKeywordLocale, string>>
 }

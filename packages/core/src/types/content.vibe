@@ -112,23 +112,28 @@ function invalid(message: string): InvalidContentContract {
   return new InvalidContentContract({ message: `Invalid progressive content contract: ${message}` })
 }
 
-effect function record(value: unknown, label: string): Record<string, unknown>!InvalidContentContract {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) throw invalid(`${label} must be an object`)
+export effect function requireRecord<E>(value: unknown, label: string, fail: (message: string) => E): Record<string, unknown>!E {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) throw fail(`${label} must be an object`)
   return value as Record<string, unknown>
 }
 
-effect function rejectUnknownKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>, label: string): void!InvalidContentContract {
+export effect function rejectUnknownKeys<E>(
+  value: Record<string, unknown>,
+  allowed: ReadonlySet<string>,
+  label: string,
+  fail: (message: string) => E,
+): void!E {
   const unknown = Object.keys(value).filter((key) => !allowed.has(key))
-  if (unknown.length > 0) throw invalid(`${label} contains unsupported field(s): ${unknown.join(", ")}`)
+  if (unknown.length > 0) throw fail(`${label} contains unsupported field(s): ${unknown.join(", ")}`)
 }
 
-effect function safeOffset(value: unknown, label: string): number!InvalidContentContract {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw invalid(`${label} must be a nonnegative safe integer`)
+export effect function safeOffset<E>(value: unknown, label: string, fail: (message: string) => E): number!E {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw fail(`${label} must be a nonnegative safe integer`)
   return value
 }
 
 effect function optionalSafeOffset(value: unknown, label: string): (number | undefined)!InvalidContentContract {
-  return value === undefined ? undefined : try safeOffset(value, label)
+  return value === undefined ? undefined : try safeOffset(value, label, invalid)
 }
 
 effect function optionalNonEmptyString(value: unknown, label: string): (string | undefined)!InvalidContentContract {
@@ -151,8 +156,8 @@ effect function optionalTimestamp(value: unknown, label: string): (string | unde
 }
 
 export effect function validateContentReference(value: unknown): ContentReference!InvalidContentContract {
-  const input = try record(value, "reference")
-  try rejectUnknownKeys(input, CONTENT_REFERENCE_KEYS, "reference")
+  const input = try requireRecord(value, "reference", invalid)
+  try rejectUnknownKeys(input, CONTENT_REFERENCE_KEYS, "reference", invalid)
   if (typeof input.kind !== "string" || !CONTENT_REFERENCE_KIND_SET.has(input.kind)) throw invalid("reference.kind is unsupported")
   if (typeof input.ref !== "string" || !OPAQUE_REFERENCE_PATTERN.test(input.ref)) {
     throw invalid("reference.ref must be an opaque token without paths, addresses, or whitespace")
@@ -177,13 +182,13 @@ export function isContentReference(value: unknown): value is ContentReference {
 }
 
 effect function validateReadSlice(value: unknown): ReadSlice!InvalidContentContract {
-  const input = try record(value, "slice")
-  try rejectUnknownKeys(input, READ_SLICE_KEYS, "slice")
-  const rawRange = try record(input.range, "slice.range")
-  try rejectUnknownKeys(rawRange, READ_RANGE_KEYS, "slice.range")
+  const input = try requireRecord(value, "slice", invalid)
+  try rejectUnknownKeys(input, READ_SLICE_KEYS, "slice", invalid)
+  const rawRange = try requireRecord(input.range, "slice.range", invalid)
+  try rejectUnknownKeys(rawRange, READ_RANGE_KEYS, "slice.range", invalid)
   if (typeof rawRange.unit !== "string" || !READ_RANGE_UNIT_SET.has(rawRange.unit)) throw invalid("slice.range.unit is unsupported")
-  const start = try safeOffset(rawRange.start, "slice.range.start")
-  const end = try safeOffset(rawRange.end, "slice.range.end")
+  const start = try safeOffset(rawRange.start, "slice.range.start", invalid)
+  const end = try safeOffset(rawRange.end, "slice.range.end", invalid)
   const total = try optionalSafeOffset(rawRange.total, "slice.range.total")
   if (start > end) throw invalid("slice.range.start must not exceed end")
   if (total !== undefined && end > total) throw invalid("slice.range.end must not exceed total")
@@ -217,8 +222,8 @@ effect function validateReadSlice(value: unknown): ReadSlice!InvalidContentContr
 export const validateReadSliceOrThrow = thrown(failingAs(TypeError, validateReadSlice))
 
 effect function validateReadView(value: unknown): ReadView!InvalidContentContract {
-  const input = try record(value, "readView")
-  try rejectUnknownKeys(input, READ_VIEW_KEYS, "readView")
+  const input = try requireRecord(value, "readView", invalid)
+  try rejectUnknownKeys(input, READ_VIEW_KEYS, "readView", invalid)
   const reference = try validateContentReference(input.reference)
   const slice = try validateReadSlice(input.slice)
   if (reference.revision !== undefined && slice.revision !== undefined && reference.revision !== slice.revision) {

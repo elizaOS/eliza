@@ -69,7 +69,7 @@ export interface OpenPermissionSettingsDeps {
   platform?: Platform
 }
 
-export effect function openPermissionSettings(id: PermissionId, deps: OpenPermissionSettingsDeps = {}) {
+effect function openPermissionSettings(id: PermissionId, deps: OpenPermissionSettingsDeps = {}) {
   const platform = deps.platform ?? detectPlatform()
   if (platform !== "darwin") {
     const hostConsole = try Console.Console

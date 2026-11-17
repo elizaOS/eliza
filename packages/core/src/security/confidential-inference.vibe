@@ -85,7 +85,7 @@ export interface ConfidentialInferenceAuthorityOptions {
   readonly redispatchPolicy?: "deny-after-authorization"
 }
 
-export error RedirectRefused { message: string }
+error RedirectRefused { message: string }
 
 function rejection(code: string): ElizaError {
   return new ElizaError(
@@ -336,7 +336,7 @@ effect function transmit(
   return response
 }
 
-export effect function fetchWithConfidentialInference(
+effect function fetchWithConfidentialInference(
   input: Parameters<typeof fetch>[0],
   init: Parameters<typeof fetch>[1],
   transport: typeof fetch,

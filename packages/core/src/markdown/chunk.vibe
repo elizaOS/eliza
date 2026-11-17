@@ -26,7 +26,11 @@ effect function assertValidMarkdownChunkLimit(limit: number) {
 
 export const assertValidMarkdownChunkLimitOrThrow = thrown(assertValidMarkdownChunkLimit)
 
-effect function chunkText(text: string, limit: number) {
+effect function chunkLongText(
+  text: string,
+  limit: number,
+  split: (text: string, limit: number) => string[],
+): string[]!ElizaError {
   try assertValidMarkdownChunkLimit(limit)
   if (!text) {
     return []
@@ -34,7 +38,14 @@ effect function chunkText(text: string, limit: number) {
   if (text.length <= limit) {
     return [text]
   }
+  return split(text, limit)
+}
 
+effect function chunkText(text: string, limit: number) {
+  return try chunkLongText(text, limit, splitPlainText)
+}
+
+function splitPlainText(text: string, limit: number): string[] {
   const chunks: string[] = []
   let remaining = text
 
@@ -136,14 +147,12 @@ effect function chunkByParagraph(
 export const chunkByParagraphOrThrow = thrown(chunkByParagraph)
 
 effect function chunkMarkdownText(text: string, limit: number) {
-  try assertValidMarkdownChunkLimit(limit)
-  if (!text) {
-    return []
-  }
-  if (text.length <= limit) {
-    return [text]
-  }
+  return try chunkLongText(text, limit, splitMarkdownText)
+}
 
+export const chunkMarkdownTextOrThrow = thrown(chunkMarkdownText)
+
+function splitMarkdownText(text: string, limit: number): string[] {
   const chunks: string[] = []
   let remaining = text
 
@@ -283,8 +292,6 @@ effect function chunkMarkdownText(text: string, limit: number) {
   }
   return chunks
 }
-
-export const chunkMarkdownTextOrThrow = thrown(chunkMarkdownText)
 
 const GraphemeSegmenter = (
   Intl as unknown as {

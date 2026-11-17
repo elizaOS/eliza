@@ -175,10 +175,12 @@ function maskSensitiveToken(token: string): string {
   return `${start}…${end}`
 }
 
-function redactSensitiveLogMatch(match: string, groups: string[]): string {
-  if (match.includes("PRIVATE KEY-----")) {
-    return "***"
-  }
+export function redactSensitiveMatch(
+  match: string,
+  groups: string[],
+  mask: (token: string) => string,
+  keepHead: (match: string, tailIndex: number) => string,
+): string {
   const filteredGroups = groups.filter(
     (value) => typeof value === "string" && value.length > 0,
   )
@@ -187,31 +189,43 @@ function redactSensitiveLogMatch(match: string, groups: string[]): string {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(match) && match.endsWith("@")) {
     return match.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@$/i, "$1***@")
   }
-  const masked = maskSensitiveToken(token)
+  const masked = mask(token)
   if (token === match) {
     return masked
   }
 
   const tailIndex = match.length - token.length
   if (tailIndex > 0 && match.startsWith(token, tailIndex)) {
-    return `${match.slice(0, tailIndex)}${masked}`
+    return `${keepHead(match, tailIndex)}${masked}`
   }
 
   return match.replace(token, () => masked)
+}
+
+export function replaceSensitiveMatches(
+  text: string,
+  patterns: readonly RegExp[],
+  redactMatch: (match: string, groups: string[]) => string,
+): string {
+  let next = text
+  for (const pattern of patterns) {
+    next = next.replace(pattern, (...args: string[]) => redactMatch(args[0], args.slice(1, args.length - 2)))
+  }
+  return next
+}
+
+function redactSensitiveLogMatch(match: string, groups: string[]): string {
+  if (match.includes("PRIVATE KEY-----")) {
+    return "***"
+  }
+  return redactSensitiveMatch(match, groups, maskSensitiveToken, (text, tailIndex) => text.slice(0, tailIndex))
 }
 
 export function redactSensitiveLogText(text: string): string {
   if (!text) {
     return text
   }
-  let next = text
-  for (const pattern of SENSITIVE_TEXT_REGEXPS) {
-    next = next.replace(
-      pattern,
-      (...args: string[]) => redactSensitiveLogMatch(args[0], args.slice(1, args.length - 2)),
-    )
-  }
-  return next
+  return replaceSensitiveMatches(text, SENSITIVE_TEXT_REGEXPS, redactSensitiveLogMatch)
 }
 
 function protectCloneCoercion(clone: object, text: string): void {

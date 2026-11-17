@@ -267,15 +267,41 @@ export function isPiiPseudonymUnbounded(error: unknown): boolean {
   return error instanceof ElizaError && error.code === PII_PSEUDONYM_UNBOUNDED
 }
 
+export function validArrayLength(descriptor: PropertyDescriptor | undefined): number | undefined {
+  return descriptor
+      && "value" in descriptor
+      && typeof descriptor.value === "number"
+      && Number.isSafeInteger(descriptor.value)
+      && descriptor.value >= 0
+    ? descriptor.value
+    : undefined
+}
+
+export function mapOwnArray(
+  size: number,
+  readElement: (index: number) => PropertyDescriptor | undefined,
+  mapElement: (value: unknown) => unknown,
+): unknown[] {
+  const next = new Array<unknown>(size)
+  for (let index = 0; index < size; index += 1) {
+    const descriptor = readElement(index)
+    if (!descriptor) continue
+    next[index] = mapElement(descriptor.value)
+  }
+  return next
+}
+
 module walk {
   import { ElizaError } from "../errors.vibe"
   import {
     isPiiPseudonymUnbounded,
+    mapOwnArray,
     MAX_PII_PSEUDONYM_KEY_BYTES,
     MAX_PII_PSEUDONYM_WALK_BYTES,
     MAX_PII_PSEUDONYM_WALK_DEPTH,
     MAX_PII_PSEUDONYM_WALK_NODES,
     PII_PSEUDONYM_UNBOUNDED,
+    validArrayLength,
   } from "./pii-pseudonymizer.vibe"
   import { isRuntimeAbortSignal } from "./runtime-abort-signal.vibe"
 
@@ -349,17 +375,11 @@ module walk {
   }
 
   function ownArrayLength(value: object): number {
-    const descriptor = inspectPiiWalk("getOwnPropertyDescriptor", () => Object.getOwnPropertyDescriptor(value, "length"))
-    if (
-      !descriptor
-      || !("value" in descriptor)
-      || typeof descriptor.value !== "number"
-      || !Number.isSafeInteger(descriptor.value)
-      || descriptor.value < 0
-    ) {
-      failPiiPseudonymUnbounded({ invalidArrayLength: true })
-    }
-    return descriptor.value
+    const length = validArrayLength(
+      inspectPiiWalk("getOwnPropertyDescriptor", () => Object.getOwnPropertyDescriptor(value, "length")),
+    )
+    if (length === undefined) failPiiPseudonymUnbounded({ invalidArrayLength: true })
+    return length
   }
 
   function ownValueDescriptor(
@@ -405,18 +425,11 @@ module walk {
       if (inspectPiiWalk("isArray", () => Array.isArray(value))) {
         const size = ownArrayLength(value)
         reservePiiPseudonymVisits(ctx, size)
-        const next = new Array<unknown>(size)
-        for (let index = 0; index < size; index += 1) {
-          const descriptor = ownValueDescriptor(value, index)
-          if (!descriptor) continue
-          next[index] = walkPiiPseudonymValue(
-            descriptor.value,
-            depth + 1,
-            ctx,
-            mapString,
-          )
-        }
-        return next
+        return mapOwnArray(
+          size,
+          (index) => ownValueDescriptor(value, index),
+          (item) => walkPiiPseudonymValue(item, depth + 1, ctx, mapString),
+        )
       }
 
       const next: Record<string, unknown> = {}

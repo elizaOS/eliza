@@ -328,86 +328,28 @@ module walk {
     ctx.visiting.add(value)
     try {
       if (Array.isArray(value)) {
-        let changed = false
-        const next = new Array<unknown>(value.length)
-
         reserveVisits(ctx, value.length)
-        for (let index = 0; index < value.length; index += 1) {
-          const descriptor = Object.getOwnPropertyDescriptor(value, index)
-
-          if (!descriptor) continue
-          if (!("value" in descriptor)) {
-            failUnsafeValue("accessor", undefined, String(index))
-          }
-          const walked = walkSchemaStrings(
-            descriptor.value,
-            depth + 1,
-            ctx,
-            true,
-          )
-          if (walked !== descriptor.value) changed = true
-          next[index] = walked
-        }
-        return (changed ? next : value) as unknown as T
+        return walkSchemaItems(value, depth, ctx) as unknown as T
       }
-      let changed = false
-
-      const sourceProto = Object.getPrototypeOf(value)
-      const next = Object.create(null) as Record<string, unknown>
-      for (const key of Reflect.ownKeys(value)) {
-        if (typeof key !== "string") continue
-        const descriptor = Object.getOwnPropertyDescriptor(value, key)
-        if (!descriptor?.enumerable) continue
-        if (!("value" in descriptor)) {
-          failUnsafeValue("accessor", undefined, key)
-        }
-        const sanitizedKey = toWellFormedUnicode(key)
-
-        if (isAnnotationKey(sanitizedKey)) {
-          if (sanitizedKey !== key) changed = true
-          if (!(sanitizedKey in next)) {
-            Object.defineProperty(next, sanitizedKey, {
-              value: descriptor.value,
-              writable: true,
-              enumerable: true,
-              configurable: true,
-            })
-          }
-          continue
-        }
-
-        let walked: unknown
+      return walkSchemaEntries(value, isAnnotationKey, (key, entry) => {
         if (
-          SCHEMA_MAP_KEYWORDS.has(sanitizedKey)
-          && descriptor.value
-          && typeof descriptor.value === "object"
-          && !Array.isArray(descriptor.value)
+          SCHEMA_MAP_KEYWORDS.has(key)
+          && entry
+          && typeof entry === "object"
+          && !Array.isArray(entry)
         ) {
-          walked = walkSchemaMapEntry(descriptor.value as object, depth, ctx)
-        } else if (
-          (SCHEMA_ARRAY_WRAPPER_KEYWORDS.has(sanitizedKey)
-            || sanitizedKey === "items"
-            || sanitizedKey === "prefixItems")
-          && Array.isArray(descriptor.value)
+          return walkSchemaMapEntry(entry, depth, ctx)
+        }
+        if (
+          (SCHEMA_ARRAY_WRAPPER_KEYWORDS.has(key)
+            || key === "items"
+            || key === "prefixItems")
+          && Array.isArray(entry)
         ) {
-          walked = walkSchemaArrayEntry(descriptor.value, depth, ctx)
-        } else {
-          walked = walkSchemaStrings(descriptor.value, depth + 1, ctx)
+          return walkSchemaArrayEntry(entry, depth, ctx)
         }
-        if (sanitizedKey !== key || walked !== descriptor.value) changed = true
-
-        if (!(sanitizedKey in next)) {
-          Object.defineProperty(next, sanitizedKey, {
-            value: walked,
-            writable: true,
-            enumerable: true,
-            configurable: true,
-          })
-        }
-      }
-
-      Object.setPrototypeOf(next, sourceProto)
-      return (changed ? next : value) as unknown as T
+        return walkSchemaStrings(entry, depth + 1, ctx)
+      }) as unknown as T
     } finally {
       ctx.visiting.delete(value)
     }
@@ -502,22 +444,28 @@ module walk {
   ): Record<string, unknown> {
     if (depth > ctx.maxDepth) failSchemaDepth(depth, ctx)
     reserveVisits(ctx, 1)
+    return walkSchemaEntries(map, () => false, (_key, entry) => walkSchemaStrings(entry, depth + 1, ctx)) as Record<string, unknown>
+  }
+
+  function walkSchemaEntries(
+    source: object,
+    keepsEntry: (sanitizedKey: string) => boolean,
+    walkEntry: (sanitizedKey: string, entry: unknown) => unknown,
+  ): object {
     let changed = false
-
-    const sourceProto = Object.getPrototypeOf(map)
+    const sourceProto = Object.getPrototypeOf(source)
     const next = Object.create(null) as Record<string, unknown>
-    for (const key of Reflect.ownKeys(map)) {
+    for (const key of Reflect.ownKeys(source)) {
       if (typeof key !== "string") continue
-      const descriptor = Object.getOwnPropertyDescriptor(map, key)
+      const descriptor = Object.getOwnPropertyDescriptor(source, key)
       if (!descriptor?.enumerable) continue
-
       if (!("value" in descriptor)) {
         failUnsafeValue("accessor", undefined, key)
       }
       const sanitizedKey = toWellFormedUnicode(key)
-      const walked = walkSchemaStrings(descriptor.value, depth + 1, ctx)
-      if (sanitizedKey !== key || walked !== descriptor.value) changed = true
-
+      const kept = keepsEntry(sanitizedKey)
+      const walked = kept ? descriptor.value : walkEntry(sanitizedKey, descriptor.value)
+      if (sanitizedKey !== key || (!kept && walked !== descriptor.value)) changed = true
       if (!(sanitizedKey in next)) {
         Object.defineProperty(next, sanitizedKey, {
           value: walked,
@@ -528,7 +476,7 @@ module walk {
       }
     }
     Object.setPrototypeOf(next, sourceProto)
-    return (changed ? next : map) as Record<string, unknown>
+    return changed ? next : source
   }
 
   function walkSchemaArrayEntry(
@@ -538,16 +486,18 @@ module walk {
   ): unknown[] {
     if (depth > ctx.maxDepth) failSchemaDepth(depth, ctx)
     reserveVisits(ctx, arr.length || 1)
+    return walkSchemaItems(arr, depth, ctx)
+  }
+
+  function walkSchemaItems(arr: unknown[], depth: number, ctx: SchemaWalkCtx): unknown[] {
     let changed = false
     const next = new Array<unknown>(arr.length)
     for (let index = 0; index < arr.length; index += 1) {
       const descriptor = Object.getOwnPropertyDescriptor(arr, index)
-
       if (!descriptor) continue
       if (!("value" in descriptor)) {
         failUnsafeValue("accessor", undefined, String(index))
       }
-
       const walked = walkSchemaStrings(descriptor.value, depth + 1, ctx, true)
       if (walked !== descriptor.value) changed = true
       next[index] = walked
@@ -565,7 +515,7 @@ export effect function wellFormedUnicodeSchemaStructure<T>(value: T, options: { 
   return try Effect.try({ try: () => walkSchemaFromRoot(value, options), catch: elizaErrorOrForeign })
 }
 
-export effect function assertSchemaAnnotationsSerializable(value: unknown, options: { maxDepth?: number } = {}) {
+effect function assertSchemaAnnotationsSerializable(value: unknown, options: { maxDepth?: number } = {}) {
   try Effect.try({ try: () => assertAnnotationsFromRoot(value, options), catch: elizaErrorOrForeign })
 }
 

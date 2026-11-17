@@ -1,7 +1,16 @@
 // spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
 import { failingAs, thrown } from "../edge.vibe"
 import { utf8ByteLength } from "../utils/unicode.vibe"
-import { type ContentReference, type InvalidContentContract, READ_RANGE_UNITS, type ReadRangeUnit, validateContentReference } from "./content.vibe"
+import {
+  type ContentReference,
+  type InvalidContentContract,
+  READ_RANGE_UNITS,
+  type ReadRangeUnit,
+  rejectUnknownKeys,
+  requireRecord,
+  safeOffset,
+  validateContentReference,
+} from "./content.vibe"
 
 export const COMPACTION_CONTENT_MANIFEST_SCHEMA_VERSION = 1 as const
 export const COMPACTION_CONTENT_MANIFEST_MAX_BYTES = 256 * 1024
@@ -55,21 +64,6 @@ function invalid(message: string): InvalidContentManifest {
   return new InvalidContentManifest({ message })
 }
 
-effect function record(value: unknown, label: string): Record<string, unknown>!InvalidContentManifest {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) throw invalid(`${label} must be an object`)
-  return value as Record<string, unknown>
-}
-
-effect function exactKeys(value: Record<string, unknown>, allowed: ReadonlySet<string>, label: string): void!InvalidContentManifest {
-  const unknown = Object.keys(value).filter((key) => !allowed.has(key))
-  if (unknown.length > 0) throw invalid(`${label} contains unsupported field(s): ${unknown.join(", ")}`)
-}
-
-effect function nonnegative(value: unknown, label: string): number!InvalidContentManifest {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw invalid(`${label} must be a nonnegative safe integer`)
-  return value
-}
-
 effect function nonempty(value: unknown, label: string): string!InvalidContentManifest {
   if (typeof value !== "string" || value.trim().length === 0) throw invalid(`${label} must be a nonempty string`)
   return value
@@ -88,7 +82,7 @@ effect function list(value: unknown, label: string, max: number, tooMany: string
   return value
 }
 
-effect function mapPresent<A, E>(values: unknown[], each: (value: unknown, index: number) => A!E): A[]!E {
+export effect function mapPresent<T, A, E>(values: readonly T[], each: (value: T, index: number) => A!E): A[]!E {
   const mapped = new Array<A>(values.length)
   for (let index = 0; index < values.length; index++) {
     if (index in values) mapped[index] = try each(values[index], index)
@@ -114,11 +108,11 @@ effect function revisionOf(
 }
 
 effect function contentRange(rawRange: unknown, label: string): CompactionContentRange!InvalidContentManifest {
-  const range = try record(rawRange, label)
-  try exactKeys(range, RANGE_KEYS, "content manifest range")
+  const range = try requireRecord(rawRange, label, invalid)
+  try rejectUnknownKeys(range, RANGE_KEYS, "content manifest range", invalid)
   if (typeof range.unit !== "string" || !RANGE_UNITS.has(range.unit)) throw invalid("content manifest range unit is unsupported")
-  const start = try nonnegative(range.start, "content manifest range.start")
-  const end = try nonnegative(range.end, "content manifest range.end")
+  const start = try safeOffset(range.start, "content manifest range.start", invalid)
+  const end = try safeOffset(range.end, "content manifest range.end", invalid)
   if (start > end) throw invalid("content manifest range start exceeds end")
   return { unit: range.unit as ReadRangeUnit, start, end }
 }
@@ -129,8 +123,8 @@ effect function contentEntry(
   seen: Map<string, string | undefined>,
 ): CompactionContentEntry!ManifestFailure {
   const label = `contentRefs[${entryIndex}]`
-  const entry = try record(rawEntry, label)
-  try exactKeys(entry, ENTRY_KEYS, label)
+  const entry = try requireRecord(rawEntry, label, invalid)
+  try rejectUnknownKeys(entry, ENTRY_KEYS, label, invalid)
   const reference = try validateContentReference(entry.reference)
   if (reference.resumability !== "restart-safe") throw invalid("content manifest references must declare restart-safe resumability")
   const revision = try revisionOf(
@@ -159,8 +153,8 @@ effect function contentEntry(
 }
 
 effect function modifiedFile(raw: unknown, index: number, seen: Map<string, string | undefined>): CompactionContentManifest["modifiedFiles"][number]!ManifestFailure {
-  const item = try record(raw, `modifiedFiles[${index}]`)
-  try exactKeys(item, MODIFIED_FILE_KEYS, `modifiedFiles[${index}]`)
+  const item = try requireRecord(raw, `modifiedFiles[${index}]`, invalid)
+  try rejectUnknownKeys(item, MODIFIED_FILE_KEYS, `modifiedFiles[${index}]`, invalid)
   const reference = try validateContentReference(item.reference)
   if (reference.kind !== "file") throw invalid("modifiedFiles references must have kind=file")
   const revision = try revisionOf(
@@ -176,20 +170,20 @@ effect function modifiedFile(raw: unknown, index: number, seen: Map<string, stri
 }
 
 effect function pendingProcess(raw: unknown, index: number): CompactionContentManifest["pendingProcesses"][number]!ManifestFailure {
-  const item = try record(raw, `pendingProcesses[${index}]`)
-  try exactKeys(item, PENDING_PROCESS_KEYS, `pendingProcesses[${index}]`)
+  const item = try requireRecord(raw, `pendingProcesses[${index}]`, invalid)
+  try rejectUnknownKeys(item, PENDING_PROCESS_KEYS, `pendingProcesses[${index}]`, invalid)
   const id = try nonempty(item.id, `pendingProcesses[${index}].id`)
   if (!SAFE_ID.test(id)) throw invalid("pending process id is not opaque")
   return {
     id,
     ...(item.outputReference === undefined ? {} : { outputReference: try validateContentReference(item.outputReference) }),
-    ...(item.offset === undefined ? {} : { offset: try nonnegative(item.offset, "pending process offset") }),
+    ...(item.offset === undefined ? {} : { offset: try safeOffset(item.offset, "pending process offset", invalid) }),
   }
 }
 
 export effect function validateCompactionContentManifest(value: unknown): CompactionContentManifest!ManifestFailure {
-  const input = try record(value, "content manifest")
-  try exactKeys(input, MANIFEST_KEYS, "content manifest")
+  const input = try requireRecord(value, "content manifest", invalid)
+  try rejectUnknownKeys(input, MANIFEST_KEYS, "content manifest", invalid)
   if (input.schemaVersion !== COMPACTION_CONTENT_MANIFEST_SCHEMA_VERSION) throw invalid("content manifest schemaVersion is unsupported")
   const rawRefs = try list(input.contentRefs, "content manifest contentRefs", COMPACTION_CONTENT_MANIFEST_MAX_REFERENCES, "content manifest has too many references")
   const seenReferences = new Map<string, string | undefined>()

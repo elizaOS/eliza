@@ -6,7 +6,7 @@ import {
   normalizeConnectorSource,
 } from "./connectors.vibe"
 import { worldMetadataValueEquals } from "./database/world-metadata-cas.vibe"
-import { failingAs, type Foreign, foreign, foreignSync, promised, settle, thrown } from "./edge.vibe"
+import { failingAs, type Foreign, foreign, foreignSync, promised, thrown, thrownValue } from "./edge.vibe"
 import { createUniqueUuid } from "./entities.vibe"
 import { ElizaError } from "./errors.vibe"
 import { logger } from "./logger.vibe"
@@ -438,14 +438,6 @@ effect function readConfirmedLinkedEntityIds(runtime: IAgentRuntime, entityId: s
   return try foreignSync(() => confirmedLinkedEntityIds(relationships, entityId))
 }
 
-function thrownBy(cause: Cause.Cause<unknown>): unknown {
-  try {
-    return settle(Exit.failCause(cause))
-  } catch (thrown) {
-    return thrown
-  }
-}
-
 effect function getConfirmedLinkedEntityIds(
   runtime: IAgentRuntime,
   entityId: string,
@@ -469,7 +461,7 @@ effect function resolveIdentityOwnerBinding(
   const service = runtime.getService<PrincipalService>(ServiceType.PRINCIPAL)
   if (!service) return null
   return try Effect.catchCause(verifyOwnerBinding(runtime, service, entityId, ownerIds), (cause) => sync(() => {
-    runtime.reportError("Roles.evaluateOwnerBinding", thrownBy(cause), { entityId })
+    runtime.reportError("Roles.evaluateOwnerBinding", thrownValue(Cause.squash(cause)), { entityId })
     return false
   }))
 }
@@ -1078,7 +1070,7 @@ effect function isCanonicalOwner(
     ? foreign(() => resolveFn(runtime, message))
     : resolveCanonicalOwnerIdForMessage(runtime, message)
   return (try Effect.catchCause(ownerId, (cause) => sync(() => {
-    runtime.reportError("RoleAccess.resolveCanonicalOwner", thrownBy(cause), {
+    runtime.reportError("RoleAccess.resolveCanonicalOwner", thrownValue(Cause.squash(cause)), {
       entityId: message.entityId,
       roomId: message.roomId,
     })
@@ -1113,7 +1105,7 @@ effect function hasRoleAccess(
     return true
   }
   return try Effect.catchCause(senderMeetsRole(context, requiredRole, deps), (cause) => sync(() => {
-    context.runtime.reportError("RoleAccess.checkSenderRole", thrownBy(cause), {
+    context.runtime.reportError("RoleAccess.checkSenderRole", thrownValue(Cause.squash(cause)), {
       entityId: context.message.entityId,
       roomId: context.message.roomId,
       requiredRole,
