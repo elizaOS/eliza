@@ -248,6 +248,37 @@ function charge(org: string, requestId: string, amountUsd: number) {
 }
 
 describe("deferred subscriber inference funding", () => {
+  test("unconfirmed subscription authority cannot fall back to purchased credits", async () => {
+    const now = await databaseNow();
+    const { org } = await seedSubscriber({
+      periodStart: new Date(now.getTime() - 24 * HOUR),
+      periodEnd: new Date(now.getTime() + 24 * HOUR),
+      allowance: "2.000000",
+      credits: "3.000000",
+    });
+    // A stale entitlement projection must not turn an active subscriber into a cash customer.
+    await fixture.query(
+      "UPDATE organization_entitlements SET source_digest = $2 WHERE organization_id = $1",
+      [org, "d".repeat(64)],
+    );
+    const before = await readState(org);
+    await expect(
+      allowanceFirst.reserveAllowanceEligibleCredits("ai_inference", {
+        organizationId: org,
+        amount: 0.5,
+        description: "Unconfirmed subscriber funding",
+        operationKey: { prefix: "qa:", identity: "subscriber-unconfirmed-policy" },
+      }),
+    ).rejects.toMatchObject({ code: "ORGANIZATION_POLICY_UNAVAILABLE" });
+    expect(await readState(org)).toEqual(before);
+    await expect(
+      helpers.writeTransaction((tx) =>
+        allowanceFirst.isAllowanceFirstOrganizationInTransaction(tx, org),
+      ),
+    ).rejects.toMatchObject({ code: "ORGANIZATION_POLICY_UNAVAILABLE" });
+    expect(await readState(org)).toEqual(before);
+  });
+
   test("capacity is purchased credit plus spendable allowance at the balance revision", async () => {
     const now = await databaseNow();
     const { org } = await seedSubscriber({
