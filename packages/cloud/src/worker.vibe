@@ -1,0 +1,85 @@
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"; spec/cloud/index.md, "Story: Sign in to the Cloud"
+import { WorkerResponse, WorkerHeaders, withRequestBody, workerFetch } from "./worker-platform.ts"
+import type { Client } from "pg"
+import { withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
+import { sweepUsage } from "./worker-metering.vibe"
+import { identityRequest, inferenceAccount, sessionAccount, type IdentityEnv } from "./identity.vibe"
+import { nativeAssetLinks } from "./native-registry.vibe"
+export { nativeAssetLinks }
+export { SpeechRelayCoordinator } from "./speech-relay.vibe"
+import { speechRequest, speechRoute, speechWebSocket, type SpeechEnv } from "./speech.vibe"
+import { googleRequest, type GoogleEnv } from "./google.vibe"
+import { billingRequest, stripeWebhook, stripeWebhookRoute, type BillingEnv } from "./billing.vibe"
+import { inferenceRequest, limitedBody, type InferenceEnv } from "./inference.vibe"
+
+export type CloudBindings = IdentityEnv & GoogleEnv & InferenceEnv & SpeechEnv & BillingEnv & WorkerDatabase
+type DeploymentExtension<E extends CloudBindings> = (request: Request, env: E, db: Client, account: string) => Promise<Response>
+
+async function route<E extends CloudBindings>(request: Request, env: E, db: Client, extension?: DeploymentExtension<E>) {
+  const path = new URL(request.url).pathname
+  if (path === stripeWebhookRoute && request.method === "POST") {
+    const bytes = await limitedBody(request, 256 * 1024)
+    return bytes ? stripeWebhook(request, bytes, env, db) : WorkerResponse.json({ error: "request_too_large" }, { status: 413 })
+  }
+  if (path === "/health" && request.method === "GET") {
+    await db.query("SELECT 1 FROM accounts, sessions, device_grants, subscriptions, holds, usage_records LIMIT 0")
+    return WorkerResponse.json({ status: "ready" })
+  }
+  if (path.startsWith("/api/auth/") || path === "/api/v1/app-auth/mobile/config") {
+    if (request.method === "POST") {
+      const bytes = await limitedBody(request, 8192)
+      if (!bytes) return WorkerResponse.json({ error: "request_too_large" }, { status: 413 })
+      request = withRequestBody(request, bytes)
+    }
+    return identityRequest(request, env, db)
+  }
+  const inference = path === "/api/v1/chat/completions" || path === "/api/v1/embeddings"
+  if (path === speechRoute + "/ws") return speechWebSocket(request, env, db)
+  const speech = path.startsWith(speechRoute + "/")
+  const billing = path.startsWith("/api/v1/billing/")
+  const google = path.startsWith("/api/v1/eliza/google/")
+  if (!inference && !speech && !billing && !google && !(extension && path.startsWith("/api/product/"))) return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
+  const account = inference || speech ? await inferenceAccount(request, db, env) : await sessionAccount(request, db)
+  if (!account) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+  if (speech) return speechRequest(request, env, db, account)
+  if (inference) return inferenceRequest(request, env, db, account, workerFetch)
+  if (google) return googleRequest(request, env, db, account)
+  if (billing) return billingRequest(request, env, db, account)
+  if (extension) return extension(request, env, db, account)
+  return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
+}
+
+export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExtension<E>) {
+  return {
+    scheduled(_event: unknown, env: E) { return withCloudDatabase(env, sweepUsage) },
+    async fetch(request: Request, env: E): Promise<Response> {
+      if (new URL(request.url).origin === env.PUBLIC_API_ORIGIN && new URL(request.url).pathname === "/.well-known/assetlinks.json" && request.method === "GET") return nativeAssetLinks(env)
+      const origin = request.headers.get("origin")
+      if (origin && origin !== env.WEB_ORIGIN && origin !== env.PUBLIC_API_ORIGIN) {
+        return WorkerResponse.json({ error: "forbidden_origin" }, { status: 403 })
+      }
+      const cors = new WorkerHeaders({ Vary: "Origin", "Cache-Control": "no-store" })
+      if (origin) {
+        cors.set("Access-Control-Allow-Origin", origin)
+        cors.set("Access-Control-Allow-Credentials", "true")
+      }
+      if (request.method === "OPTIONS") {
+        cors.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        cors.set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key")
+        return new WorkerResponse(null, { status: 204, headers: cors })
+      }
+      if (request.method !== "GET" && !origin && !request.headers.has("authorization") && new URL(request.url).pathname !== stripeWebhookRoute && new URL(request.url).pathname !== "/api/auth/device/exchange") {
+        return WorkerResponse.json({ error: "origin_required" }, { status: 403, headers: cors })
+      }
+      try {
+        const result = await withCloudDatabase(env, (db) => route(request, env, db, extension))
+        if (result.status === 101) return result
+        const headers = new WorkerHeaders(result.headers)
+        for (const [key, value] of cors) headers.set(key, value)
+        return new WorkerResponse(result.body, { status: result.status, headers })
+      } catch {
+        return WorkerResponse.json({ error: "service_unavailable" }, { status: 503, headers: cors })
+      }
+    }
+  }
+}

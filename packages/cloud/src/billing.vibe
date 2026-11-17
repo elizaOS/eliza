@@ -1,0 +1,187 @@
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"
+import { WorkerResponse } from "./worker-platform.ts"
+import type { Client } from "pg"
+import Stripe from "stripe"
+import { projectSubscription, type Payment, type SubscriptionObservation } from "./billing/stripe-ledger.vibe"
+import { amountCentsOf } from "../gen/cloud__billing__plans.effect.vibe"
+
+export type BillingEnv = {
+  STRIPE_SECRET_KEY: string
+  STRIPE_WEBHOOK_SECRET: string
+  STRIPE_PRICE_ID: string
+  STRIPE_PRODUCT_ID: string
+  STRIPE_PLAN: "plus_monthly" | "pro_monthly"
+  CLOUD_ENVIRONMENT: "staging" | "production"
+  WEB_ORIGIN: string
+}
+type Customer = { customer_id: string; checkout_id: string | null }
+
+export async function billingTransaction<T>(db: Client, account: string, work: () => Promise<T>): Promise<T> {
+  await db.query("BEGIN")
+  try {
+    await db.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [account])
+    const result = await work()
+    await db.query("COMMIT")
+    return result
+  } catch (failure) {
+    await db.query("ROLLBACK")
+    throw failure
+  }
+}
+
+async function customerFor(db: Client, account: string) {
+  return (await db.query<Customer>("SELECT customer_id, checkout_id FROM cloud_checkout_customers WHERE organization_id = $1", [account])).rows[0]
+}
+
+function provider(env: BillingEnv) {
+  return new Stripe(env.STRIPE_SECRET_KEY, { httpClient: Stripe.createFetchHttpClient(), maxNetworkRetries: 1, timeout: 6000 })
+}
+
+function resourceId(value: string | { id: string } | null | undefined) {
+  return typeof value === "string" ? value : value?.id
+}
+
+async function paidWindow(stripe: Stripe, env: BillingEnv, customer: string, subscription: Stripe.Subscription, item: Stripe.SubscriptionItem): Promise<Payment | undefined> {
+  const invoiceId = resourceId(subscription.latest_invoice)
+  if (!invoiceId) return undefined
+  const invoice = await stripe.invoices.retrieve(invoiceId)
+  if (resourceId(invoice.customer) !== customer || resourceId(invoice.parent?.subscription_details?.subscription) !== subscription.id ||
+      invoice.status !== "paid" || invoice.amount_paid <= 0 || invoice.currency !== "usd" ||
+      (invoice.billing_reason !== "subscription_create" && invoice.billing_reason !== "subscription_cycle")) return undefined
+  const line = invoice.lines.data.find((line) => resourceId(line.pricing?.price_details?.price) === env.STRIPE_PRICE_ID &&
+    line.parent?.subscription_item_details?.subscription_item === item.id && !line.parent.subscription_item_details.proration && line.quantity === 1)
+  if (!line || line.period.end !== item.current_period_end || line.period.start !== item.current_period_start) return undefined
+  let condition: Payment["condition"] = "paid"
+  let received = 0
+  for await (const payment of stripe.invoicePayments.list({invoice: invoiceId, status:"paid", limit:100})) {
+    if (!payment.amount_paid || payment.amount_paid < 1) continue
+    const detail = payment.payment
+    let chargeId = resourceId(detail.charge)
+    if (detail.type === "payment_intent" && detail.payment_intent) {
+      const intentId = resourceId(detail.payment_intent)
+      if (!intentId) continue
+      const intent = await stripe.paymentIntents.retrieve(intentId)
+      chargeId = resourceId(intent.latest_charge)
+    }
+    if (!chargeId) continue
+    const charge = await stripe.charges.retrieve(chargeId)
+    if (resourceId(charge.customer) !== customer || !charge.paid || !charge.captured || charge.currency !== "usd") continue
+    received += payment.amount_paid
+    if (charge.amount_refunded > 0) condition = "refunded"
+    else if (charge.disputed && condition !== "refunded") {
+      for await (const dispute of stripe.disputes.list({charge: charge.id, limit:100})) {
+        if (dispute.status !== "won" && dispute.status !== "warning_closed") condition = "disputed"
+      }
+    }
+  }
+  if (received < invoice.amount_paid) return undefined
+  return {id: invoice.id, startsAt: line.period.start * 1000, endsAt:line.period.end * 1000, condition}
+}
+
+async function reconcile(stripe: Stripe, env: BillingEnv, db: Client, organization: string, customer: string) {
+  let last: Stripe.Subscription | undefined
+  let current: Stripe.Subscription | undefined
+  for await (const subscription of stripe.subscriptions.list({ customer, price:env.STRIPE_PRICE_ID, status:"all", limit:100 })) {
+    if (resourceId(subscription.customer) !== customer || subscription.livemode !== (env.CLOUD_ENVIRONMENT === "production")) throw new Error("Unexpected subscription owner or environment")
+    if (!last || last.created < subscription.created) last = subscription
+    if (subscription.status === "canceled" || subscription.status === "incomplete_expired") continue
+    if (current) throw new Error("Multiple current subscriptions for this customer")
+    current = subscription
+  }
+  const subscription = current ?? last
+  const item = subscription?.items.data.find((item) => item.price.id === env.STRIPE_PRICE_ID && item.quantity === 1)
+  if (subscription && (!item || subscription.items.has_more || subscription.items.data.length !== 1)) throw new Error("Unexpected subscription items")
+  let observation: SubscriptionObservation = {customerId:customer, subscriptionId:null, plan:"free", status:"none", endsAt:0}
+  if (subscription && item) {
+    const states = {active:"active", canceled:"canceled", incomplete:"incomplete", incomplete_expired:"incomplete_expired", past_due:"past_due", unpaid:"unpaid", trialing:"incomplete", paused:"incomplete"} as const
+    const status = Object.entries(states).find(([name]) => name === subscription.status)?.[1]
+    if (!status) throw new Error("Unknown subscription status")
+    observation = { customerId:customer, subscriptionId:subscription.id, plan:env.STRIPE_PLAN, status, endsAt:item.current_period_end * 1000,
+      payment:status === "active" ? await paidWindow(stripe,env,customer,subscription,item) : undefined }
+  }
+  await projectSubscription(db, organization, observation, Date.now())
+  return { active:observation.status === "active", ongoing: Boolean(current) }
+}
+
+export const stripeWebhookRoute = "/api/v1/billing/webhook"
+
+export async function stripeWebhook(request: Request, raw: Uint8Array, env: BillingEnv, db: Client) {
+  const signature = request.headers.get("stripe-signature")
+  if (!signature || !env.STRIPE_WEBHOOK_SECRET) return WorkerResponse.json({error:"invalid_signature"},{status:400})
+  const stripe = provider(env)
+  let event: Stripe.Event
+  try {
+    event = await stripe.webhooks.constructEventAsync(new TextDecoder().decode(raw),signature,env.STRIPE_WEBHOOK_SECRET,undefined,Stripe.createSubtleCryptoProvider())
+  } catch { return WorkerResponse.json({error:"invalid_signature"},{status:400}) }
+  if (event.livemode !== (env.CLOUD_ENVIRONMENT === "production")) return WorkerResponse.json({error:"invalid_environment"},{status:400})
+  const obj = event.data.object
+  let customerId: string | undefined
+  if (obj.object === "subscription" || obj.object === "invoice" || obj.object === "checkout.session" || obj.object === "charge") customerId = resourceId(obj.customer)
+  if (obj.object === "dispute" || obj.object === "refund") {
+    const chargeId = resourceId(obj.charge)
+    if (chargeId) customerId = resourceId((await stripe.charges.retrieve(chargeId)).customer)
+  }
+  if (customerId) {
+    const binding = (await db.query<{organization_id:string;customer_id:string}>("SELECT organization_id,customer_id FROM cloud_checkout_customers WHERE customer_id=$1",[customerId])).rows[0]
+    if (binding) await billingTransaction(db,binding.organization_id,() => reconcile(stripe,env,db,binding.organization_id,binding.customer_id))
+  }
+  return new WorkerResponse(null,{status:204})
+}
+
+async function priceForCheckout(stripe: Stripe, env: BillingEnv) {
+  if (env.STRIPE_PLAN !== "plus_monthly" && env.STRIPE_PLAN !== "pro_monthly") return false
+  const plan = env.STRIPE_PLAN === "plus_monthly" ? "PlusMonthly" : "ProMonthly"
+  const price = await stripe.prices.retrieve(env.STRIPE_PRICE_ID, { expand: ["product"] })
+  const product = price.product
+  return typeof product === "object" && !product.deleted && product.id === env.STRIPE_PRODUCT_ID &&
+    product.active && price.active && price.livemode === (env.CLOUD_ENVIRONMENT === "production") &&
+    product.livemode === price.livemode && price.type === "recurring" && price.currency === "usd" &&
+    price.unit_amount === amountCentsOf(plan) && price.billing_scheme === "per_unit" && price.transform_quantity === null &&
+    price.recurring?.interval === "month" && price.recurring.interval_count === 1 && price.recurring.usage_type === "licensed" &&
+    price.recurring.trial_period_days === null
+}
+
+export async function billingRequest(request: Request, env: BillingEnv, db: Client, user: string) {
+  const account = (await db.query<{ organization_id: string }>("SELECT organization_id FROM accounts WHERE key = $1 AND status = 'active'", [user])).rows[0]?.organization_id
+  if (!account) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+  const route = new URL(request.url).pathname
+  if (route === "/api/v1/billing/subscription" && request.method === "GET") {
+    const customer = await customerFor(db, account)
+    const state = customer ? await billingTransaction(db, account, () => reconcile(provider(env), env, db, account, customer.customer_id)) : { active: false, ongoing: false }
+    return WorkerResponse.json({ status: state.active ? "active" : "inactive", canManage: Boolean(customer), canCheckout: !state.ongoing })
+  }
+  if (request.method !== "POST" || (route !== "/api/v1/billing/checkout" && route !== "/api/v1/billing/portal")) {
+    return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
+  }
+  const stripe = provider(env)
+  const returnUrl = new URL("/#account", env.WEB_ORIGIN).href
+  return billingTransaction(db, account, async () => {
+    let customer = await customerFor(db, account)
+    if (route.endsWith("/portal")) {
+      if (!customer) return WorkerResponse.json({ error: "no_customer" }, { status: 409 })
+      const session = await stripe.billingPortal.sessions.create({ customer: customer.customer_id, return_url: returnUrl })
+      return WorkerResponse.json({ url: session.url })
+    }
+    if (!await priceForCheckout(stripe, env)) return WorkerResponse.json({ error: "billing_catalog_mismatch" }, { status: 503 })
+    if (!customer) {
+      const created = await stripe.customers.create({ metadata: { organization_id: account } }, { idempotencyKey: "cloud-customer-" + account })
+      customer = { customer_id: created.id, checkout_id: null }
+      await db.query("INSERT INTO cloud_checkout_customers (organization_id, customer_id) VALUES ($1, $2)", [account, created.id])
+    }
+    if ((await reconcile(stripe, env, db, account, customer.customer_id)).ongoing) {
+      return WorkerResponse.json({ error: "manage_existing_subscription" }, { status: 409 })
+    }
+    if (customer.checkout_id) {
+      const existing = await stripe.checkout.sessions.retrieve(customer.checkout_id)
+      if (existing.status === "open" && existing.url) return WorkerResponse.json({ url: existing.url })
+      if (existing.status === "complete" && existing.payment_status === "unpaid") return WorkerResponse.json({ error: "payment_pending" }, { status: 409 })
+    }
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription", customer: customer.customer_id, client_reference_id: account,
+      line_items: [{ price: env.STRIPE_PRICE_ID, quantity: 1 }], success_url: returnUrl, cancel_url: returnUrl
+    }, { idempotencyKey: ["cloud-checkout", account, env.STRIPE_PRICE_ID, customer.checkout_id ?? "first"].join("-") })
+    if (!session.url) throw new Error("Checkout did not return a hosted session")
+    await db.query("UPDATE cloud_checkout_customers SET checkout_id = $2 WHERE organization_id = $1", [account, session.id])
+    return WorkerResponse.json({ url: session.url })
+  })
+}

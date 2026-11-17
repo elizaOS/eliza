@@ -1,0 +1,64 @@
+// spec/cloud/billing/allowance.md, "Story: Spend my plan's allowance before my credits, and never carry it over"
+import type { Client } from "pg"
+import {
+  apply, decodeState, initial, canClawBack, canRestore, canClose,
+  type Event, type Period
+} from "../../gen/cloud__billing__allowance.effect.vibe"
+import type { PlanKey } from "../../gen/cloud__billing__plans.ts"
+
+export type Payment = { id: string; startsAt: number; endsAt: number; condition: "paid" | "refunded" | "disputed" }
+export type SubscriptionObservation = {
+  customerId: string
+  subscriptionId: string | null
+  plan: "free" | "plus_monthly" | "pro_monthly"
+  status: "none" | "active" | "incomplete" | "incomplete_expired" | "past_due" | "unpaid" | "canceled"
+  endsAt: number
+  payment?: Payment
+}
+
+const phases = {PeriodOpen:"open", PeriodExpired:"expired", PeriodClosed:"closed", PeriodClawedBack:"clawed_back"} as const
+
+async function savePeriod(db: Client, org: string, key: string, period: Period, event: Event, now: number) {
+  const next = await Effect.runPromise(apply(period, event))
+  if (next.phase === "PeriodUnopened") throw new Error("An unopened period cannot be stored")
+  await db.query(`INSERT INTO allowance_periods (key, state, revision, organization_id, status, period_start, period_end, updated_at)
+    VALUES ($1,$2,1,$3,$4,$5,$6,$7) ON CONFLICT (key) DO UPDATE SET state=excluded.state, revision=allowance_periods.revision+1, status=excluded.status, updated_at=excluded.updated_at WHERE allowance_periods.organization_id=excluded.organization_id`,
+    [key, JSON.stringify(next), org, phases[next.phase], next.startsAt, next.endsAt, now])
+}
+
+export async function projectSubscription(db: Client, org: string, subscription: SubscriptionObservation, now: number) {
+  await db.query("SELECT id FROM organizations WHERE id=$1 FOR UPDATE", [org])
+  const prior = (await db.query<{ status: string; provider_subscription_id: string | null }>(
+    "SELECT status,provider_subscription_id FROM subscriptions WHERE key=$1 FOR UPDATE", [org])).rows[0]
+  const state = { customerId: subscription.customerId, subscriptionId: subscription.subscriptionId,
+    planKey: subscription.plan, status: subscription.status, periodEnd: subscription.endsAt }
+  await db.query(`INSERT INTO subscriptions (key,state,revision,status,plan_key,customer_id,provider_subscription_id,period_end,stale_after,updated_at)
+    VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (key) DO UPDATE SET state=excluded.state,revision=subscriptions.revision+(subscriptions.state IS DISTINCT FROM excluded.state)::int,
+      status=excluded.status,plan_key=excluded.plan_key,customer_id=excluded.customer_id,provider_subscription_id=excluded.provider_subscription_id,
+      period_end=excluded.period_end,stale_after=excluded.stale_after,updated_at=excluded.updated_at`,
+    [org,JSON.stringify(state),state.status,state.planKey,state.customerId,state.subscriptionId,state.periodEnd,now+300000,now])
+  if (prior?.status === "active" && (subscription.status !== "active" || prior.provider_subscription_id !== subscription.subscriptionId)) {
+    const open = await db.query<{ key: string; state: unknown }>("SELECT key,state FROM allowance_periods WHERE organization_id=$1 AND status='open' FOR UPDATE", [org])
+    for (const row of open.rows) {
+      const period = await Effect.runPromise(decodeState(row.state))
+      if (canClose(period, "SubscriptionEnded")) await savePeriod(db, org, row.key, period, {type:"close",closeReason:"SubscriptionEnded"}, now)
+    }
+  }
+  if (!subscription.payment || subscription.plan === "free") return
+  const payment = subscription.payment
+  const key = "invoice/" + payment.id
+  const plan: PlanKey = subscription.plan === "plus_monthly" ? "PlusMonthly" : "ProMonthly"
+  const row = (await db.query<{ state: unknown }>("SELECT state FROM allowance_periods WHERE key=$1 AND organization_id=$2 FOR UPDATE", [key,org])).rows[0]
+  if (!row) {
+    if (payment.condition === "paid" && subscription.status === "active" && payment.startsAt <= now && now < payment.endsAt) {
+      await savePeriod(db,org,key,initial,{type:"openRenewal",invoiceId:payment.id,planKey:plan,startsAt:payment.startsAt,endsAt:payment.endsAt},now)
+    }
+    return
+  }
+  const period = await Effect.runPromise(decodeState(row.state))
+  if (payment.condition === "paid" && canRestore(period, now)) await savePeriod(db,org,key,period,{type:"restore",now},now)
+  if (payment.condition !== "paid") {
+    const cause = payment.condition === "refunded" ? "RefundClawback" : "DisputeClawback"
+    if (canClawBack(period, cause)) await savePeriod(db,org,key,period,{type:"clawBack",cause},now)
+  }
+}

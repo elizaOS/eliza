@@ -1,0 +1,197 @@
+// spec/cloud/index.md, "Story: Use inference on my subscription or funded pilot account"
+import { WorkerResponse, WorkerStream, newRequestId } from "./worker-platform.ts"
+import type { Client } from "pg"
+import { inferenceAccount } from "./identity.vibe"
+import type { NativeRegistryEnv } from "./native-registry.vibe"
+import { reserveUsage, dispatchUsage, releaseUsage, settleUsage } from "./worker-metering.vibe"
+import { withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
+import { billedUsage, sideCost, isValidPrice, sideInBound } from "../gen/cloud__services__models.effect.vibe"
+
+export type InferenceEnv = WorkerDatabase & NativeRegistryEnv & {
+  WEB_ORIGIN: string
+  INFERENCE_BASE_URL: string
+  INFERENCE_API_KEY: string
+  CHAT_MODEL: string
+  EMBEDDING_MODEL: string
+  CHAT_INPUT_MICROS_PER_1K: string
+  CHAT_OUTPUT_MICROS_PER_1K: string
+  EMBEDDING_INPUT_MICROS_PER_1K: string
+  MAX_COMPLETION_TOKENS: string
+}
+
+const jsonError = (status: number, error: string) => WorkerResponse.json({ error }, { status })
+const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i
+
+export async function limitedBody(request: Pick<Request, "body">, limit: number) {
+  const reader = request.body?.getReader()
+  if (!reader) return new Uint8Array()
+  const chunks: Uint8Array[] = []
+  let length = 0
+  try {
+    for (;;) {
+      const part = await reader.read()
+      if (part.done) break
+      length += part.value.byteLength
+      if (length > limit) {
+        await reader.cancel()
+        return null
+      }
+      chunks.push(part.value)
+    }
+    const body = new Uint8Array(length)
+    let offset = 0
+    for (const chunk of chunks) {
+      body.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return body
+  } finally {
+    reader.releaseLock()
+  }
+}
+
+function record(input: unknown): input is Record<string, unknown> {
+  return typeof input === "object" && input !== null && !Array.isArray(input)
+}
+
+export async function inferenceRequest(request: Request, env: InferenceEnv, db: Client, account: string, send: typeof fetch) {
+  const path = new URL(request.url).pathname
+  const embedding = path === "/api/v1/embeddings"
+  if (request.method !== "POST" || (!embedding && path !== "/api/v1/chat/completions")) return jsonError(404, "route_not_found")
+  const root = new URL(env.INFERENCE_BASE_URL)
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(root.hostname) && new URL(env.WEB_ORIGIN).protocol === "http:"
+  const inputPrice = Number(embedding ? env.EMBEDDING_INPUT_MICROS_PER_1K : env.CHAT_INPUT_MICROS_PER_1K)
+  const outputPrice = embedding ? 0 : Number(env.CHAT_OUTPUT_MICROS_PER_1K)
+  const maxTokens = Number(env.MAX_COMPLETION_TOKENS)
+  const model = embedding ? env.EMBEDDING_MODEL : env.CHAT_MODEL
+  if ((!local && root.protocol !== "https:") || root.username || root.password || root.search || root.hash || !model || !env.INFERENCE_API_KEY ||
+      !Number.isSafeInteger(inputPrice) || !isValidPrice(inputPrice) || (!embedding && (!Number.isSafeInteger(outputPrice) || !isValidPrice(outputPrice))) || !Number.isSafeInteger(maxTokens) || !sideInBound(maxTokens) || maxTokens < 1) return jsonError(503, "inference_unconfigured")
+
+  const id = request.headers.get("idempotency-key") ?? newRequestId()
+  if (!uuid.test(id)) return jsonError(400, "invalid_request_id")
+  if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) return jsonError(415, "json_required")
+  const bytes = await limitedBody(request, 256 * 1024)
+  if (!bytes) return jsonError(413, "request_too_large")
+  let input: unknown
+  try { input = JSON.parse(new TextDecoder().decode(bytes)) } catch { return jsonError(400, "invalid_json") }
+  if (!record(input) || (input.model !== undefined && input.model !== model)) return jsonError(400, "unsupported_model")
+  const body: Record<string, unknown> = { model }
+  if (embedding) {
+    const value = input.input
+    if (typeof value !== "string" && !(Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === "string"))) return jsonError(400, "invalid_input")
+    body.input = value
+    if (input.dimensions !== undefined) body.dimensions = input.dimensions
+    if (input.encoding_format !== undefined) body.encoding_format = input.encoding_format
+  } else {
+    if (!Array.isArray(input.messages) || !input.messages.length || input.messages.some((message) => !record(message) ||
+      !["system", "developer", "user", "assistant", "tool"].includes(String(message.role)) ||
+      (typeof message.content !== "string" && !(message.role === "assistant" && Array.isArray(message.tool_calls) && message.content == null)))) return jsonError(400, "invalid_messages")
+    body.messages = input.messages
+    const tokens = input.max_completion_tokens ?? input.max_tokens ?? maxTokens
+    if (typeof tokens !== "number" || !Number.isInteger(tokens) || tokens < 1) return jsonError(400, "invalid_max_tokens")
+    body.max_tokens = Math.min(tokens, maxTokens)
+    for (const key of ["temperature", "top_p", "stream", "stream_options", "stop", "response_format", "tools", "tool_choice"]) {
+      if (input[key] !== undefined) body[key] = input[key]
+    }
+  }
+  const streaming = !embedding && body.stream === true
+  if (streaming) body.stream_options = { include_usage: true }
+  const estimatedInput = bytes.byteLength
+  const quote = Math.max(1, sideCost(estimatedInput, inputPrice) + sideCost(Number(body.max_tokens ?? 0), outputPrice))
+  const admission = await reserveUsage(db, { account, service: "inference", requestId: id, quoteMicros: quote })
+  if (admission.kind === "duplicate") return jsonError(409, "already_dispatched")
+  if (admission.kind === "unfunded") return jsonError(402, "insufficient_credits")
+  if (admission.kind !== "reserved") return jsonError(401, "authentication_required")
+  if (request.signal.aborted || await inferenceAccount(request, db, env) !== account) {
+    await releaseUsage(db, admission.key)
+    return jsonError(401, "authentication_required")
+  }
+  root.pathname = root.pathname.replace(/\/$/, "") + (embedding ? "/embeddings" : "/chat/completions")
+  if (!await dispatchUsage(db, admission.key)) return jsonError(409, "already_dispatched")
+  let response: Response
+  try {
+    response = await send(root, {
+      method: "POST", headers: { Authorization: "Bearer " + env.INFERENCE_API_KEY, "Content-Type": "application/json", "Idempotency-Key": id },
+      body: JSON.stringify(body), signal: request.signal, redirect: "manual"
+    })
+  } catch {
+    await settleUsage(db, admission.key, null)
+    return jsonError(502, "inference_provider_unavailable")
+  }
+  if (!response.ok || !response.body) {
+    await settleUsage(db, admission.key, response.ok ? null : 0)
+    await response.body?.cancel()
+    return jsonError(502, "inference_provider_unavailable")
+  }
+  const type = response.headers.get("content-type") ?? ""
+  const headers = { "content-type": type, "cache-control": "no-store", "x-request-id": id }
+  if (streaming && type.startsWith("text/event-stream")) {
+    const settle = (cost: number | null) => withCloudDatabase(env, (connection) => settleUsage(connection, admission.key, cost))
+    return new WorkerResponse(meteredStream(response.body, inputPrice, outputPrice, settle), { headers })
+  }
+  const reply = await limitedBody(response, 16 * 1024 * 1024).catch(() => null)
+  if (!reply || !type.toLowerCase().includes("application/json")) {
+    await settleUsage(db, admission.key, null)
+    return jsonError(502, "invalid_provider_response")
+  }
+  await settleUsage(db, admission.key, costOf(new TextDecoder().decode(reply), inputPrice, outputPrice, embedding))
+  return new WorkerResponse(Uint8Array.from(reply), { headers })
+}
+
+function count(value: unknown) {
+  return typeof value === "number" && Number.isSafeInteger(value) ? value : -1
+}
+
+function costOf(json: string, inputPrice: number, outputPrice: number, embedding: boolean) {
+  let parsed: unknown
+  try { parsed = JSON.parse(json) } catch { return null }
+  if (!record(parsed) || !record(parsed.usage)) return null
+  const usage = parsed.usage
+  const prompt = record(usage.prompt_tokens_details) ? usage.prompt_tokens_details : {}
+  const completion = record(usage.completion_tokens_details) ? usage.completion_tokens_details : {}
+  const billed = billedUsage({ promptTokens: count(usage.prompt_tokens), cachedTokens: count(prompt.cached_tokens ?? 0),
+    completionTokens: embedding ? 0 : count(usage.completion_tokens), reasoningTokens: count(completion.reasoning_tokens ?? 0) })
+  if (billed.tag !== "Reported") return null
+  return sideCost(billed.counts.inputTokens, inputPrice) + sideCost(billed.counts.outputTokens, outputPrice)
+}
+
+function meteredStream(body: ReadableStream<Uint8Array>, inputPrice: number, outputPrice: number, settle: (cost: number | null) => Promise<void>) {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let pending = ""
+  let skipLine = false
+  let measured: number | null = null
+  let settlement: Promise<void> | undefined
+  const finish = () => settlement ??= settle(measured)
+  function consume(text: string) {
+    const lines = (pending + text).split("\n")
+    pending = lines.pop() ?? ""
+    for (const line of lines) {
+      if (!skipLine && line.startsWith("data:")) {
+        measured = costOf(line.slice(5).trim(), inputPrice, outputPrice, false) ?? measured
+      }
+      skipLine = false
+    }
+    if (pending.length > 262144) { skipLine = true; pending = "" }
+  }
+  return new WorkerStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const chunk = await reader.read()
+        if (chunk.done) {
+          consume(decoder.decode() + "\n")
+          await finish()
+          controller.close()
+        } else {
+          consume(decoder.decode(chunk.value, { stream: true }))
+          controller.enqueue(chunk.value)
+        }
+      } catch (failure) {
+        try { await finish() } finally { controller.error(failure) }
+      }
+    },
+    async cancel(reason) {
+      try { await reader.cancel(reason) } finally { await finish() }
+    }
+  })
+}

@@ -4,6 +4,29 @@ Identity and sessions, native clients and device keys, billing and
 entitlements, metered inference, speech and maps, and managed Google. The
 cloud hosts no agent. Its specifications are being written.
 
+## Story: Use inference on my subscription or funded pilot account
+
+> As a subscriber or funded pilot, I can send a request to the deployment's model.
+> My account shows the subscription the billing provider currently recognizes.
+
+### A request needs an active account and sufficient funding for its quote
+
+The deployment uses the [shared hold](./shared/metering.md) to reserve the
+quote before contacting a provider. A paid period supplies its remaining
+[allowance](./billing/allowance.md) first. Other readable plans use the
+account's [funded credits](./billing/funds.md). A repeated hold key reuses
+the existing outcome. Model prices and reported token counts follow the
+[model catalog](./services/models.md).
+
+```quint
+pure def mayDispatchFundedRequest(authenticated: bool, freshHold: bool, dispatchCommitted: bool): bool =
+  authenticated and freshHold and dispatchCommitted
+pure def lawPaidAccessRequiresIdentity(freshHold: bool, dispatched: bool): bool =
+  not(mayDispatchFundedRequest(false, freshHold, dispatched))
+pure def lawDuplicateCannotSpendAgain(authenticated: bool, dispatched: bool): bool =
+  not(mayDispatchFundedRequest(authenticated, false, dispatched))
+```
+
 ## Story: Sign in to the Cloud
 
 > As a person using a product’s Cloud, I can sign in with Google or a code
