@@ -29,7 +29,10 @@ export interface CloudStreamPort {
     echoCancelled: boolean;
   }>;
   stopCloudSpeech(input: { sessionId: string }): Promise<unknown>;
-  setCloudSpeechOutputMuted?(input: { sessionId: string; muted: boolean }): Promise<unknown>;
+  setCloudSpeechOutputMuted?(input: {
+    sessionId: string;
+    muted: boolean;
+  }): Promise<unknown>;
   setCloudSpeechMuted(input: {
     sessionId: string;
     muted: boolean;
