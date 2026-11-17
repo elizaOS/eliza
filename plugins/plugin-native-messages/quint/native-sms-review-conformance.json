@@ -12,7 +12,11 @@
       "ownerApprovedSmsUsesTheSameReceiptWithoutDialogOrReplay",
       "ownerApprovedMmsUsesTheSameReceiptWithoutDialogOrReplay",
       "withdrawnComposerApprovalCannotDispatchOrBeReplayed",
-      "mmsRetiredAfterStagingRollsBackOnlyItsOwnRow"
+      "mmsRetiredAfterStagingRollsBackOnlyItsOwnRow",
+      "deleteRequiresImageForegroundUnlockedDefaultSmsAndReadAuthority",
+      "deleteRefusesANonForegroundAndroidUserProfile",
+      "deleteRechecksRoleAndReadPermissionDuringIdentityLookup",
+      "deleteRechecksLifecycleBeforeEffectAndKeepsKnownContentFreeOutcomeAfterwards"
     ]
   },
   {
