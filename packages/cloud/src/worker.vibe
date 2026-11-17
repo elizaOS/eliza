@@ -5,6 +5,7 @@ import { withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
 import { sweepUsage } from "./worker-metering.vibe"
 import { identityRequest, inferenceAccount, sessionAccount, type IdentityEnv } from "./identity.vibe"
 import { nativeAssetLinks } from "./native-registry.vibe"
+import { ownsPasswordBackupPath } from "./password-backup.vibe"
 export { nativeAssetLinks }
 export { SpeechRelayCoordinator } from "./speech-relay.vibe"
 import { speechRequest, speechRoute, speechWebSocket, type SpeechEnv } from "./speech.vibe"
@@ -25,6 +26,7 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
     await db.query("SELECT 1 FROM accounts, sessions, device_grants, subscriptions, holds, usage_records LIMIT 0")
     return WorkerResponse.json({ status: "ready" })
   }
+  if (ownsPasswordBackupPath(path)) return identityRequest(request, env, db)
   if (path.startsWith("/api/auth/") || path === "/api/v1/app-auth/mobile/config") {
     if (request.method === "POST") {
       const bytes = await limitedBody(request, 8192)
