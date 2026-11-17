@@ -1143,6 +1143,46 @@ const readReplyControllers = new WeakMap<
     }
   >
 >();
+/**
+ * Every capability a phone may advertise and this agent may offer. Enrollment,
+ * the request header allow-list and the Cloud capability route all read it, so
+ * they cannot drift apart.
+ */
+export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
+  "gmail.request-policy.v1",
+  CAMERA_CAPTURE_CAPABILITY,
+  "calendar.local-event.v1",
+  CALENDAR_CREATE_CAPABILITY,
+  CALENDAR_NEXT_CAPABILITY,
+  CALENDAR_AGENDA_CAPABILITY,
+  "notes.local-record.v1",
+  NOTES_QUERY_CAPABILITY,
+  NOTES_ORGANIZE_CAPABILITY,
+  NOTES_LIST_FILTER_CAPABILITY,
+  NOTES_SEARCH_CAPABILITY,
+  CALENDAR_AVAILABILITY_CAPABILITY,
+  FILES_CAPABILITY,
+  NAMED_TARGET_CAPABILITY,
+  CALENDAR_NAMED_READ_CAPABILITY,
+  REMINDER_CAPABILITY,
+  REMINDER_TIMING_CAPABILITY,
+  REMINDER_CREATE_CAPABILITY,
+  CLOCK_CAPABILITY,
+  CLOCK_REPEAT_CAPABILITY,
+  CLOCK_ALARMS_CAPABILITY,
+  MAPS_CAPABILITY,
+  SMS_SEND_CAPABILITY,
+  PHONE_DIAL_CAPABILITY,
+  CONTACT_LOOKUP_CAPABILITY,
+  PHONE_CALL_CAPABILITY,
+  CONTACT_WRITE_CAPABILITY,
+  SMS_COMPOSE_CAPABILITY,
+  MESSAGES_READ_CAPABILITY,
+  VOICEMAIL_READ_CAPABILITY,
+  VOICEMAIL_DELETE_CAPABILITY,
+  PHOTO_LIBRARY_CAPABILITY,
+  PHOTOS_VIEW_CAPABILITY,
+];
 export class DeviceActionService {
   constructor(private readonly runtime: IAgentRuntime) {}
   private database(): TransactionDatabase {
@@ -1933,41 +1973,7 @@ export class DeviceActionService {
         enrollmentId: String(row.enrollment_id),
         viewProfileVersion: 1 as const,
         userTextFormatVersion: 1 as const,
-        capabilities: [
-          "gmail.request-policy.v1",
-          CAMERA_CAPTURE_CAPABILITY,
-          "calendar.local-event.v1",
-          CALENDAR_CREATE_CAPABILITY,
-          CALENDAR_NEXT_CAPABILITY,
-          CALENDAR_AGENDA_CAPABILITY,
-          "notes.local-record.v1",
-          NOTES_QUERY_CAPABILITY,
-          NOTES_ORGANIZE_CAPABILITY,
-          NOTES_LIST_FILTER_CAPABILITY,
-          NOTES_SEARCH_CAPABILITY,
-          CALENDAR_AVAILABILITY_CAPABILITY,
-          FILES_CAPABILITY,
-          NAMED_TARGET_CAPABILITY,
-          CALENDAR_NAMED_READ_CAPABILITY,
-          REMINDER_CAPABILITY,
-          REMINDER_TIMING_CAPABILITY,
-          REMINDER_CREATE_CAPABILITY,
-          CLOCK_CAPABILITY,
-          CLOCK_REPEAT_CAPABILITY,
-          CLOCK_ALARMS_CAPABILITY,
-          MAPS_CAPABILITY,
-          SMS_SEND_CAPABILITY,
-          PHONE_DIAL_CAPABILITY,
-          CONTACT_LOOKUP_CAPABILITY,
-          PHONE_CALL_CAPABILITY,
-          CONTACT_WRITE_CAPABILITY,
-          SMS_COMPOSE_CAPABILITY,
-          MESSAGES_READ_CAPABILITY,
-          VOICEMAIL_READ_CAPABILITY,
-          VOICEMAIL_DELETE_CAPABILITY,
-          PHOTO_LIBRARY_CAPABILITY,
-          PHOTOS_VIEW_CAPABILITY,
-        ],
+        capabilities: [...DEVICE_ACTION_CAPABILITIES],
       };
     });
     // Idempotent registration preserves the same lease. A committed replacement

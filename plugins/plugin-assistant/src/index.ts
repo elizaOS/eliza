@@ -303,6 +303,7 @@ export {
   bindDeviceRequestedActionPolicy,
   currentAppRecordSource,
   currentRequestedActionOrigin,
+  DEVICE_ACTION_CAPABILITIES,
   DeviceActionService,
   type DeviceCredential,
   deviceProposalDigest,
