@@ -1,6 +1,6 @@
 # Connector account and OAuth record ownership
 
-`connectors/account-manager.ts` uses a per-instance account map, a dual-alias OAuth map and consumed-alias set, plus owner bindings. This canonical store is embedded by the [database bridge](./oauth/bridge.md) and the [storage handoff](./connectorHandoff.md), which moves it from the boot-time store to durable storage; it is not a second copy of their data. Account normalization, status and policy are [account values](./accountValues.md); which manager answers for a provider is [connector managers](./connectorManagers.md); OAuth completion is [OAuth](./oauth/) and its verifiers [OAuth verifiers](./oauth/verifiers.md). Credentials themselves stay in the agent's vault ([agent connectors](../agent/connectors.md)).
+`connectors/account-manager.ts` uses a per-instance account map, a dual-alias OAuth map and consumed-alias set, plus owner bindings. This canonical store is embedded by the [database bridge](./oauth/bridge.md) and the [storage handoff](./connectorHandoff.md), which moves it from the boot-time store to durable storage; it is not a second copy of their data. Account normalization, status and policy are [account values](./accountValues.md); which manager answers for a provider is [connector managers](./connectorManagers.md); OAuth completion is [OAuth](./oauth/) and its verifiers [OAuth verifiers](./oauth/verifiers.md). Credentials themselves stay in the agent's vault (the agent package's connector specs).
 
 ## Story: Retain full account and flow values under exact identities
 
