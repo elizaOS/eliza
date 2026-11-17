@@ -509,7 +509,11 @@ import {
   type ResolvedSlackAccount,
   resolveDefaultSlackAccountId,
 } from "./accounts";
-import { markdownToSlackMrkdwn, splitSlackText } from "./formatting";
+import {
+  decodeSlackEntities,
+  markdownToSlackMrkdwn,
+  splitSlackText,
+} from "./formatting";
 import {
   fetchSlackFileBytes,
   normalizeSlackFiles,
@@ -2550,7 +2554,7 @@ export class SlackService extends Service implements ISlackService {
       roomId,
       entityId,
       content: {
-        text: message.text || "",
+        text: decodeSlackEntities(message.text || ""),
         source: "slack",
         name: displayName,
         metadata: { accountId },
@@ -2614,9 +2618,11 @@ export class SlackService extends Service implements ISlackService {
     const displayName = user ? getSlackUserDisplayName(user) : event.user;
 
     // Remove the bot mention from the text
-    const cleanText = event.text
-      .replace(`<@${this.getBotUserIdForAccount(accountId)}>`, "")
-      .trim();
+    const cleanText = decodeSlackEntities(
+      event.text
+        .replace(`<@${this.getBotUserIdForAccount(accountId)}>`, "")
+        .trim(),
+    );
 
     const media: Media[] = await this.rehostInboundFiles(
       normalizeSlackFiles(event.files),
@@ -4499,24 +4505,7 @@ export class SlackService extends Service implements ISlackService {
         (item): item is { type: "message"; message: Record<string, unknown> } =>
           item.type === "message" && "message" in item && !!item.message,
       )
-      .map((item) => ({
-        type: item.message.type as string,
-        subtype: item.message.subtype as string | undefined,
-        ts: item.message.ts as string,
-        user: item.message.user as string | undefined,
-        botId: item.message.bot_id as string | undefined,
-        text: item.message.text as string,
-        threadTs: item.message.thread_ts as string | undefined,
-        replyCount: item.message.reply_count as number | undefined,
-        replyUsersCount: item.message.reply_users_count as number | undefined,
-        latestReply: item.message.latest_reply as string | undefined,
-        reactions: item.message.reactions as
-          | { name: string; count: number; users: string[] }[]
-          | undefined,
-        files: normalizeSlackFiles(item.message.files),
-        attachments: item.message.attachments as SlackAttachment[] | undefined,
-        blocks: item.message.blocks as SlackBlock[] | undefined,
-      }));
+      .map((item) => this.wireMessageToSlackMessage(item.message));
   }
 
   async readHistory(
@@ -4576,7 +4565,7 @@ export class SlackService extends Service implements ISlackService {
       ts: msg.ts as string,
       user: msg.user as string | undefined,
       botId: msg.bot_id as string | undefined,
-      text: msg.text as string,
+      text: decodeSlackEntities(String(msg.text ?? "")),
       threadTs: msg.thread_ts as string | undefined,
       replyCount: msg.reply_count as number | undefined,
       replyUsersCount: msg.reply_users_count as number | undefined,
