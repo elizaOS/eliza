@@ -30,3 +30,4 @@ test-results/
 **/test/__traces__/bombadil/
 test/__traces__/
 .DS_Store
+/packages/os/android/passwords/test/fixture/.gradle/
