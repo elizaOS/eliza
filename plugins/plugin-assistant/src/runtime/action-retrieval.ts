@@ -824,6 +824,7 @@ export function preferredOperationNames(
     ],
     rename: ["rename"],
     delete: ["delete", "remove", "erase"],
+    restore: ["restore", "undelete", "recover"],
     get: ["get", "read", "retrieve", "query"],
     next: ["next", "upcoming"],
     open: ["open", "navigate"],

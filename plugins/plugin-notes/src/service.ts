@@ -820,7 +820,7 @@ export class NotesService extends Service {
     idValue: unknown,
     expectedRevision: unknown,
   ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
-    assertNotesServiceMutation(this.runtime, "update");
+    assertNotesServiceMutation(this.runtime, "restore");
     const id = parseEntityId(idValue);
     const revision = parseNoteEditRevision(expectedRevision, true);
     const transaction = await this.store.transact((draft) => {

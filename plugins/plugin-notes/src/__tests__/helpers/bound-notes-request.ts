@@ -40,6 +40,8 @@ export const notesFixtureText: Record<NotesRequestOperation, string> = {
   update: "Edit the requested saved note.",
   patch: "Apply the requested patch to the saved note.",
   delete: "Delete the requested saved note.",
+  restore: "Restore the requested deleted note.",
+  move: "Move the requested saved note to the named folder.",
 };
 
 export async function boundNotesRequest(
