@@ -291,9 +291,8 @@ import { normalizeValue, parseParams } from walk
 export effect function toActionParameterValue(value: unknown): ActionParameters[string]!(ElizaError | Foreign) {
   return try Effect.try({ try: () => normalizeValue(value), catch: elizaErrorOrForeign })
 }
-export const toActionParameterValueOrThrow = thrown(toActionParameterValue)
 
-export effect function parseActionParams(paramsInput: unknown): Map<string, ActionParameters>!(ElizaError | Foreign) {
+effect function parseActionParams(paramsInput: unknown): Map<string, ActionParameters>!(ElizaError | Foreign) {
   return try Effect.try({ try: () => parseParams(paramsInput), catch: elizaErrorOrForeign })
 }
 export const parseActionParamsOrThrow = thrown(parseActionParams)

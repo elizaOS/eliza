@@ -289,6 +289,23 @@ export function shouldSuppressActionResultClipboard(
   )
 }
 
+function resultControlFlags(result: ActionResult) {
+  return {
+    ...(result.data?.outcomeUnknown === true ? { outcomeUnknown: true } : {}),
+    ...(result.data?.retryable === false ? { retryable: false } : {}),
+    ...(result.data?.reconciliationRequired === true ? { reconciliationRequired: true } : {}),
+    ...(result.data?.suppressPlannerReply === true ? { suppressPlannerReply: true } : {}),
+  }
+}
+
+function messageTraceIds(runId: UUID | undefined, message: Memory) {
+  return {
+    ...(runId ? { runId } : {}),
+    ...(message.roomId ? { roomId: message.roomId } : {}),
+    ...(message.id ? { messageId: message.id } : {}),
+  }
+}
+
 effect function projectActionResultForClipboard(
   action: Pick<Action, "name" | "suppressActionResultClipboard"> | undefined,
   result: ActionResult,
@@ -311,14 +328,7 @@ effect function projectActionResultForClipboard(
       }
       : {}),
     ...(safeActionName ? { actionName: safeActionName } : {}),
-    ...(result.data?.outcomeUnknown === true ? { outcomeUnknown: true } : {}),
-    ...(result.data?.retryable === false ? { retryable: false } : {}),
-    ...(result.data?.reconciliationRequired === true
-      ? { reconciliationRequired: true }
-      : {}),
-    ...(result.data?.suppressPlannerReply === true
-      ? { suppressPlannerReply: true }
-      : {}),
+    ...resultControlFlags(result),
   }
   const projected: ActionResult = {
     success: result.success,
@@ -380,14 +390,7 @@ effect function projectSettledResultForObserver(
   if (action.disclosureGate?.require !== "owner_exclusive") return projected
   const controlData = {
     actionName: action.name,
-    ...(result.data?.outcomeUnknown === true ? { outcomeUnknown: true } : {}),
-    ...(result.data?.retryable === false ? { retryable: false } : {}),
-    ...(result.data?.reconciliationRequired === true
-      ? { reconciliationRequired: true }
-      : {}),
-    ...(result.data?.suppressPlannerReply === true
-      ? { suppressPlannerReply: true }
-      : {}),
+    ...resultControlFlags(result),
   }
 
   return {
@@ -481,9 +484,7 @@ function runWithMessageTrajectoryContext<T>(
         {
           ...activeContext,
           trajectoryId,
-          ...(runId ? { runId } : {}),
-          ...(message.roomId ? { roomId: message.roomId } : {}),
-          ...(message.id ? { messageId: message.id } : {}),
+          ...messageTraceIds(runId, message),
         },
         fn,
       )
@@ -501,9 +502,7 @@ function runWithMessageTrajectoryContext<T>(
       ...activeContext,
       ...(trajectoryId ? { trajectoryId } : {}),
       trajectoryStepId,
-      ...(runId ? { runId } : {}),
-      ...(message.roomId ? { roomId: message.roomId } : {}),
-      ...(message.id ? { messageId: message.id } : {}),
+      ...messageTraceIds(runId, message),
     },
     fn,
   )

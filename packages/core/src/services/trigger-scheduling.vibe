@@ -353,9 +353,9 @@ export function computeNextCronRunAtMs(
 
 const OFFSETLESS_ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/
 
-export error InvalidTimeZone { message: string }
+error InvalidTimeZone { message: string }
 
-export effect function resolveScheduledAtIsoInTimeZone(
+effect function resolveScheduledAtIsoInTimeZone(
   scheduledAtIso: string,
   timezone: string,
 ): string!InvalidTimeZone {
@@ -401,9 +401,9 @@ function timingEvery(nowMs: number, interval: number): TriggerTiming {
   return { updatedAt: nowMs, updateIntervalMs: interval, nextRunAtMs: nowMs + interval }
 }
 
-export error UnsupportedTriggerType { message: string }
+error UnsupportedTriggerType { message: string }
 
-export effect function resolveTriggerTiming(
+effect function resolveTriggerTiming(
   trigger: TriggerConfig,
   nowMs: number,
 ): (TriggerTiming | null)!UnsupportedTriggerType {

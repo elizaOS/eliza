@@ -5,7 +5,9 @@ import {
   SENSITIVE_TEXT_PATTERNS as DEFAULT_REDACT_PATTERNS,
   SENSITIVE_TEXT_REGEXPS as DEFAULT_REDACT_REGEXPS,
   isSensitiveLogKey,
+  redactSensitiveMatch,
   redactTrailingArgs,
+  replaceSensitiveMatches,
   SENSITIVE_ASSIGNMENT_PATTERNS,
 } from "./log-redaction.vibe"
 import { escapeRegExp } from "../utils/string-boundaries.vibe"
@@ -84,34 +86,12 @@ function redactMatch(match: string, groups: string[]): string {
   if (match.includes("PRIVATE KEY-----")) {
     return redactPemBlock(match)
   }
-  const filteredGroups = groups.filter(
-    (value) => typeof value === "string" && value.length > 0,
+  return redactSensitiveMatch(
+    match,
+    groups,
+    maskToken,
+    (text, tailIndex) => truncateWellFormed(toWellFormedUnicode(text), tailIndex),
   )
-  const token = filteredGroups[filteredGroups.length - 1] ?? match
-
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(match) && match.endsWith("@")) {
-    return match.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@$/i, "$1***@")
-  }
-  const masked = maskToken(token)
-  if (token === match) {
-    return masked
-  }
-
-  const tailIndex = match.length - token.length
-  if (tailIndex > 0 && match.startsWith(token, tailIndex)) {
-    const head = truncateWellFormed(toWellFormedUnicode(match), tailIndex)
-    return `${head}${masked}`
-  }
-
-  return match.replace(token, () => masked)
-}
-
-function redactText(text: string, patterns: readonly RegExp[]): string {
-  let next = text
-  for (const pattern of patterns) {
-    next = next.replace(pattern, (...args: string[]) => redactMatch(args[0], args.slice(1, args.length - 2)))
-  }
-  return next
 }
 
 export function redactSensitiveText(
@@ -129,7 +109,7 @@ export function redactSensitiveText(
   if (!patterns.length) {
     return text
   }
-  return redactText(text, patterns)
+  return replaceSensitiveMatches(text, patterns, redactMatch)
 }
 
 export function getDefaultRedactPatterns(

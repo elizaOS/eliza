@@ -6,27 +6,6 @@
 // The MIT License
 
 // Copyright (c) 2024 eilvelia <hi@eilvelia.cat>
-
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-
-// MIT License
-
 // Copyright (c) 2024 Vivek Patel <me@patelvivek.dev>.
 
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -45,6 +24,7 @@
 // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
 import { compareMemoryIds } from "./database.vibe"
 
@@ -228,65 +208,10 @@ const prepareStem = (word: string): StemWord & { yFound: boolean } => {
   return { w, l, rv, r1, r2, yFound }
 }
 
-const isUnchangedAfterStep1a = ({ w, l }: StemWord): boolean => {
-  return (
-    (l === 6
-      && ((w[0] === 105
-        && w[1] === 110
-        && w[2] === 110
-        && w[3] === 105
-        && w[4] === 110
-        && w[5] === 103)
-        || (w[0] === 111
-          && w[1] === 117
-          && w[2] === 116
-          && w[3] === 105
-          && w[4] === 110
-          && w[5] === 103)
-        || (w[0] === 101
-          && w[1] === 120
-          && w[2] === 99
-          && w[3] === 101
-          && w[4] === 101
-          && w[5] === 100)))
-    || (l === 7
-      && ((w[0] === 99
-        && w[1] === 97
-        && w[2] === 110
-        && w[3] === 110
-        && w[4] === 105
-        && w[5] === 110
-        && w[6] === 103)
-        || (w[0] === 104
-          && w[1] === 101
-          && w[2] === 114
-          && w[3] === 114
-          && w[4] === 105
-          && w[5] === 110
-          && w[6] === 103)
-        || (w[0] === 101
-          && w[1] === 97
-          && w[2] === 114
-          && w[3] === 114
-          && w[4] === 105
-          && w[5] === 110
-          && w[6] === 103)
-        || (w[0] === 112
-          && w[1] === 114
-          && w[2] === 111
-          && w[3] === 99
-          && w[4] === 101
-          && w[5] === 101
-          && w[6] === 100)
-        || (w[0] === 115
-          && w[1] === 117
-          && w[2] === 99
-          && w[3] === 99
-          && w[4] === 101
-          && w[5] === 101
-          && w[6] === 100)))
-  )
-}
+const UNCHANGED_AFTER_STEP1A = new Set(["inning", "outing", "exceed", "canning", "herring", "earring", "proceed", "succeed"])
+
+const isUnchangedAfterStep1a = ({ w, l }: StemWord): boolean =>
+  (l === 6 || l === 7) && UNCHANGED_AFTER_STEP1A.has(String.fromCharCode(...w.slice(0, l)))
 
 const step1a = (s: StemWord): void => {
   const { w, rv } = s
@@ -347,29 +272,30 @@ const step1bc = (s: StemWord): void => {
   s.l = l
 }
 
+const stemTional = (w: number[], l: number, r1: number): number => {
+  if (
+    !(l >= r1 + 6
+      && w[l - 2] === 97
+      && w[l - 3] === 110
+      && w[l - 4] === 111
+      && w[l - 5] === 105
+      && w[l - 6] === 116)
+  ) return l
+  if (l >= 7 && w[l - 7] === 97) {
+    if (l < r1 + 7) return l
+    w[l - 5] = 101
+    return l - 4
+  }
+  return l - 2
+}
+
 const step2 = (s: StemWord): void => {
   const { w, r1 } = s
   let l = s.l
   if (l >= r1 + 2) {
     switch (w[l - 1]) {
       case 108:
-        if (
-          l >= r1 + 6
-          && w[l - 2] === 97
-          && w[l - 3] === 110
-          && w[l - 4] === 111
-          && w[l - 5] === 105
-          && w[l - 6] === 116
-        ) {
-          if (l >= 7 && w[l - 7] === 97) {
-            if (l >= r1 + 7) {
-              l -= 4
-              w[l - 1] = 101
-            }
-          } else {
-            l -= 2
-          }
-        }
+        l = stemTional(w, l, r1)
         break
       case 110:
         if (
@@ -515,22 +441,7 @@ const step3 = (s: StemWord): void => {
         } else if (w[l - 3] === 102) {
           if (w[l - 2] === 117) l -= 3
         } else if (w[l - 3] === 110) {
-          if (
-            l >= r1 + 6
-            && w[l - 2] === 97
-            && w[l - 4] === 111
-            && w[l - 5] === 105
-            && w[l - 6] === 116
-          ) {
-            if (l >= 7 && w[l - 7] === 97) {
-              if (l >= r1 + 7) {
-                l -= 4
-                w[l - 1] = 101
-              }
-            } else {
-              l -= 2
-            }
-          }
+          l = stemTional(w, l, r1)
         }
         break
       case 101:
@@ -866,7 +777,7 @@ export class Tokenizer {
   }
 }
 
-export error DocumentIndexOutOfBounds { message: string }
+error DocumentIndexOutOfBounds { message: string }
 
 export effect function documentAt(documents: Array<Record<string, unknown>>, index: number) {
   if (index < 0 || index >= documents.length) {
@@ -961,23 +872,10 @@ module edge {
       const documentLengths = new Uint32Array(docs.length)
       let totalDocLength = 0
       docs.forEach((doc, docIndex) => {
-        const { length, frequencies } = this.weighDocument(doc, (term) => {
-          const known = this.termToIndex.get(term)
-          if (known !== undefined) return known
-          const added = this.termToIndex.size
-          this.termToIndex.set(term, added)
-          return added
-        })
+        const { length, frequencies } = this.weighDocument(doc)
         documentLengths[docIndex] = length
         totalDocLength += length
-        frequencies.forEach((freq, termIndexVal) => {
-          let docsForTerm = this.termFrequencies.get(termIndexVal)
-          if (!docsForTerm) {
-            docsForTerm = new Map<number, number>()
-            this.termFrequencies.set(termIndexVal, docsForTerm)
-          }
-          docsForTerm.set(docIndex, freq)
-        })
+        this.recordTermFrequencies(docIndex, frequencies)
       })
       this.documentLengths = documentLengths
       this.documentFrequency = new Uint32Array(this.termToIndex.size)
@@ -988,10 +886,7 @@ module edge {
     }
 
     /** @throws {never} */
-    private weighDocument(
-      doc: Record<string, unknown>,
-      termIndexOf: (term: string) => number,
-    ): { length: number; frequencies: Map<number, number> } {
+    private weighDocument(doc: Record<string, unknown>): { length: number; frequencies: Map<number, number> } {
       let length = 0
       const frequencies = new Map<number, number>()
       for (const field in doc) {
@@ -1001,11 +896,38 @@ module edge {
         const { tokens } = this.tokenizer.tokenize(content)
         length += tokens.length * fieldBoost
         for (const term of tokens) {
-          const termIndexVal = termIndexOf(term)
+          const termIndexVal = this.termIndexFor(term)
           frequencies.set(termIndexVal, (frequencies.get(termIndexVal) || 0) + fieldBoost)
         }
       }
       return { length, frequencies }
+    }
+
+    /** @throws {never} */
+    private termIndexFor(term: string): number {
+      const known = this.termToIndex.get(term)
+      if (known !== undefined) return known
+      const added = this.termToIndex.size
+      this.termToIndex.set(term, added)
+      if (this.documentFrequency.length <= added) {
+        const oldDf = this.documentFrequency
+        this.documentFrequency = new Uint32Array(Math.max(added + 1, oldDf.length * 2 || 1))
+        this.documentFrequency.set(oldDf, 0)
+      }
+      this.documentFrequency[added] = 0
+      return added
+    }
+
+    /** @throws {never} */
+    private recordTermFrequencies(docIndex: number, frequencies: Map<number, number>): void {
+      frequencies.forEach((freq, termIndexVal) => {
+        let docsForTerm = this.termFrequencies.get(termIndexVal)
+        if (!docsForTerm) {
+          docsForTerm = new Map<number, number>()
+          this.termFrequencies.set(termIndexVal, docsForTerm)
+        }
+        docsForTerm.set(docIndex, freq)
+      })
     }
 
     /** @throws {never} */
@@ -1124,27 +1046,10 @@ module edge {
       const newDocLengths = new Uint32Array(docIndex + 1)
       newDocLengths.set(this.documentLengths, 0)
       this.documentLengths = newDocLengths
-      const { length, frequencies } = this.weighDocument(doc, (term) => {
-        const known = this.termToIndex.get(term)
-        if (known !== undefined) return known
-        const added = this.termToIndex.size
-        this.termToIndex.set(term, added)
-        if (this.documentFrequency.length <= added) {
-          const oldDf = this.documentFrequency
-          this.documentFrequency = new Uint32Array(Math.max(added + 1, oldDf.length * 2 || 1))
-          this.documentFrequency.set(oldDf, 0)
-        }
-        this.documentFrequency[added] = 0
-        return added
-      })
+      const { length, frequencies } = this.weighDocument(doc)
       this.documentLengths[docIndex] = length
-      frequencies.forEach((freq, termIndexVal) => {
-        let docsForTerm = this.termFrequencies.get(termIndexVal)
-        if (!docsForTerm) {
-          docsForTerm = new Map<number, number>()
-          this.termFrequencies.set(termIndexVal, docsForTerm)
-        }
-        docsForTerm.set(docIndex, freq)
+      this.recordTermFrequencies(docIndex, frequencies)
+      frequencies.forEach((_, termIndexVal) => {
         if (termIndexVal < this.documentFrequency.length) this.documentFrequency[termIndexVal]++
       })
       this.recalculateAverageLength()

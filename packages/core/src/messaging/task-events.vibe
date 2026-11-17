@@ -179,7 +179,7 @@ export effect function validateTaskEvent(value: unknown): void!ElizaError {
   }
 }
 
-export effect function mergeTaskEvents(
+effect function mergeTaskEvents(
   taskId: string,
   previous: readonly TaskEvent[],
   incoming: readonly unknown[],
@@ -233,7 +233,7 @@ export interface TaskEventPage {
   }
 }
 
-export effect function mergeTaskEventPage(
+effect function mergeTaskEventPage(
   taskId: string,
   previous: TaskEventPage | null,
   value: unknown,

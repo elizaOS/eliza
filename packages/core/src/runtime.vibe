@@ -1,12 +1,4 @@
 // spec/core/runtime.md, "Story: Initialize an explicit host composition"; spec/core/runtime.md, "Story: Retire every owned operation"; spec/core/contracts.md, "Required fields and discriminants survive a compatibility projection"
-export {
-  EMBEDDING_STORE_ACCEPT_MODEL_SETTING,
-  EMBEDDING_STORE_IDENTITY_CACHE_KEY,
-  EmbeddingDimensionProbeError,
-  type EmbeddingProbeAttempt,
-  type EmbeddingStoreIdentity,
-} from "./runtime/embeddings.vibe"
-export { NoModelProviderConfiguredError } from "./runtime/model-policy.vibe"
 
 module edge {
   import type { ReportedError } from "./errors.vibe"
@@ -58,7 +50,7 @@ module edge {
   import { CONNECTOR_FORWARDS, PIPELINE_FORWARDS } from "./runtime/components.vibe"
   import { EMBEDDING_FORWARDS, MODEL_FORWARDS, TRACE_FORWARDS } from "./runtime/dispatch.vibe"
   import * as lifecycle from "./runtime/lifecycle.vibe"
-  import * as agentSettings from "./runtime/agent-settings.vibe"
+  import { getConversationLength, getLLMMode, getOptimizationDir, getSetting, isActionPlanningEnabled, isCheckShouldRespondEnabled, locateConfiguredSecretFragmentTaint, redactSecrets, replaceRuntimeSettings, runtimeSettings, setSetting } from "./runtime/agent-settings.vibe"
   import * as store from "./runtime/store.vibe"
   import * as services from "./runtime/service-lifecycle.vibe"
   import * as components from "./runtime/components.vibe"
@@ -219,47 +211,47 @@ module edge {
 
     /** @throws {never} */
     setSetting(key: string, value: string | boolean | null, secret = false) {
-      return this.#kernel.runSync(agentSettings.setSetting(key, value, secret))
+      return this.#kernel.runSync(setSetting(key, value, secret))
     }
 
     /** @throws {unknown} */
     getSetting(key: string): string | boolean | number | null {
-      return this.#kernel.runSync(legacy(agentSettings.getSetting(key)))
+      return this.#kernel.runSync(legacy(getSetting(key)))
     }
 
     /** @throws {never} */
     get settings(): RuntimeSettings {
-      return this.#kernel.runSync(agentSettings.runtimeSettings())
+      return this.#kernel.runSync(runtimeSettings())
     }
 
     /** @throws {never} */
     set settings(value: RuntimeSettings) {
-      this.#kernel.runSync(agentSettings.replaceRuntimeSettings(value))
+      this.#kernel.runSync(replaceRuntimeSettings(value))
     }
 
     /** @throws {never} */
     getConversationLength() {
-      return this.#kernel.runSync(agentSettings.getConversationLength())
+      return this.#kernel.runSync(getConversationLength())
     }
 
     /** @throws {unknown} */
     isActionPlanningEnabled(): boolean {
-      return this.#kernel.runSync(legacy(agentSettings.isActionPlanningEnabled()))
+      return this.#kernel.runSync(legacy(isActionPlanningEnabled()))
     }
 
     /** @throws {unknown} */
     getLLMMode(): LLMModeType {
-      return this.#kernel.runSync(legacy(agentSettings.getLLMMode()))
+      return this.#kernel.runSync(legacy(getLLMMode()))
     }
 
     /** @throws {unknown} */
     isCheckShouldRespondEnabled(): boolean {
-      return this.#kernel.runSync(legacy(agentSettings.isCheckShouldRespondEnabled()))
+      return this.#kernel.runSync(legacy(isCheckShouldRespondEnabled()))
     }
 
     /** @throws {unknown} */
     getOptimizationDir(): string {
-      return this.#kernel.runSync(legacy(agentSettings.getOptimizationDir()))
+      return this.#kernel.runSync(legacy(getOptimizationDir()))
     }
 
     /** @throws {never} */
@@ -648,12 +640,12 @@ module edge {
 
     /** @throws {never} */
     redactSecrets(text: string): string {
-      return this.#kernel.runSync(agentSettings.redactSecrets(text))
+      return this.#kernel.runSync(redactSecrets(text))
     }
 
     /** @throws {never} */
     locateConfiguredSecretFragmentTaint(fragments: readonly SecretFragment[]): SecretFragmentTaintProfile {
-      return this.#kernel.runSync(agentSettings.locateConfiguredSecretFragmentTaint(fragments))
+      return this.#kernel.runSync(locateConfiguredSecretFragmentTaint(fragments))
     }
 
     /** @throws {never} */

@@ -47,9 +47,9 @@ type ConnectorWithHook<K extends keyof MessageConnector> =
   & MessageConnector
   & Required<Pick<MessageConnector, K>>
 
-export error MissingConnectorSource { message: string }
-export error ConnectorNotRegistered { message: string }
-export error ConnectorCapabilityUnsupported { message: string }
+error MissingConnectorSource { message: string }
+error ConnectorNotRegistered { message: string }
+error ConnectorCapabilityUnsupported { message: string }
 
 function compareConnectors(
   a: { source: string; accountId?: string },
@@ -159,18 +159,23 @@ function removeRoutes<V>(
   return removed
 }
 
-function unregistrationRoute(
+function unregisterRoutes(
+  tables: ConnectorTables,
   source: string,
   accountId: string | undefined,
   options: ConnectorUnregisterOptions | undefined,
-) {
+  remove: (exactRoute: string | undefined, normalized: string) => boolean,
+  message: string,
+): boolean {
   const normalized = asTrimmedString(source)
-  if (!normalized) return undefined
+  if (!normalized) return false
   const normalizedAccountId = normalizeConnectorAccountId(accountId)
   const exactRoute = normalizedAccountId || options?.exactAccount
     ? connectorRouteKey(normalized, normalizedAccountId)
     : undefined
-  return { normalized, normalizedAccountId, exactRoute }
+  const removed = remove(exactRoute, normalized)
+  if (removed) logConnector(tables, "debug", normalized, normalizedAccountId, message)
+  return removed
 }
 
 export function unregisterMessageConnector(
@@ -179,14 +184,11 @@ export function unregisterMessageConnector(
   accountId?: string,
   options?: ConnectorUnregisterOptions,
 ): boolean {
-  const route = unregistrationRoute(source, accountId, options)
-  if (!route) return false
-  const { normalized, normalizedAccountId, exactRoute } = route
-  const removedConnector = removeRoutes(tables.messageConnectors, exactRoute, (_, connector) => connector.source === normalized)
-  const removedHandler = removeRoutes(tables.sendHandlers, exactRoute, (routeKey) => connectorKeySource(routeKey) === normalized)
-  const removed = removedConnector || removedHandler
-  if (removed) logConnector(tables, "debug", normalized, normalizedAccountId, "Message connector unregistered")
-  return removed
+  return unregisterRoutes(tables, source, accountId, options, (exactRoute, normalized) => {
+    const removedConnector = removeRoutes(tables.messageConnectors, exactRoute, (_, connector) => connector.source === normalized)
+    const removedHandler = removeRoutes(tables.sendHandlers, exactRoute, (routeKey) => connectorKeySource(routeKey) === normalized)
+    return removedConnector || removedHandler
+  }, "Message connector unregistered")
 }
 
 export function getMessageConnectors(tables: ConnectorTables): MessageConnector[] {
@@ -213,12 +215,8 @@ export function unregisterPostConnector(
   accountId?: string,
   options?: ConnectorUnregisterOptions,
 ): boolean {
-  const route = unregistrationRoute(source, accountId, options)
-  if (!route) return false
-  const { normalized, normalizedAccountId, exactRoute } = route
-  const removed = removeRoutes(tables.postConnectors, exactRoute, (_, connector) => connector.source === normalized)
-  if (removed) logConnector(tables, "debug", normalized, normalizedAccountId, "Post connector unregistered")
-  return removed
+  return unregisterRoutes(tables, source, accountId, options, (exactRoute, normalized) =>
+    removeRoutes(tables.postConnectors, exactRoute, (_, connector) => connector.source === normalized), "Post connector unregistered")
 }
 
 export function getPostConnectors(tables: ConnectorTables): PostConnector[] {
@@ -272,7 +270,7 @@ export effect function sendMessageToTarget(
   return try foreign(() => handler(tables.runtime, target, outboundContent))
 }
 
-export effect function requireConnectorHook<K extends keyof MessageConnector>(
+effect function requireConnectorHook<K extends keyof MessageConnector>(
   tables: ConnectorTables,
   target: TargetInfo,
   hook: K,
@@ -350,17 +348,7 @@ module edge {
   import type { Memory } from "../types/memory.vibe"
   import type { SendHandlerFunction, SendHandlerResult, TargetInfo } from "../types/messaging.vibe"
   import type { Content } from "../types/primitives.vibe"
-  import type {
-    ConnectorPostIdentity,
-    ConnectorUnregisterOptions,
-    IAgentRuntime,
-    MessageConnector,
-    MessageConnectorCreateThreadParams,
-    MessageConnectorRegistration,
-    PostConnector,
-    PostConnectorRegistration,
-    ThreadHandle,
-  } from "../types/runtime.vibe"
+  import type * as Runtime from "../types/runtime.vibe"
   import {
     addReactionOnTarget,
     type ConnectorTables,
@@ -393,7 +381,7 @@ module edge {
     readonly #tables: ConnectorTables
 
     /** @throws {never} */
-    constructor(runtime: IAgentRuntime, sendHandlers: Map<string, SendHandlerFunction>) {
+    constructor(runtime: Runtime.IAgentRuntime, sendHandlers: Map<string, SendHandlerFunction>) {
       this.#tables = { runtime, sendHandlers, messageConnectors: new Map(), postConnectors: new Map() }
     }
 
@@ -408,32 +396,32 @@ module edge {
     }
 
     /** @throws {Error} */
-    registerMessageConnector(registration: MessageConnectorRegistration): void {
+    registerMessageConnector(registration: Runtime.MessageConnectorRegistration): void {
       now(registerMessageConnector(this.#tables, registration))
     }
 
     /** @throws {never} */
-    unregisterMessageConnector(source: string, accountId?: string, options?: ConnectorUnregisterOptions): boolean {
+    unregisterMessageConnector(source: string, accountId?: string, options?: Runtime.ConnectorUnregisterOptions): boolean {
       return unregisterMessageConnector(this.#tables, source, accountId, options)
     }
 
     /** @throws {never} */
-    getMessageConnectors(): MessageConnector[] {
+    getMessageConnectors(): Runtime.MessageConnector[] {
       return getMessageConnectors(this.#tables)
     }
 
     /** @throws {Error} */
-    registerPostConnector(registration: PostConnectorRegistration): void {
+    registerPostConnector(registration: Runtime.PostConnectorRegistration): void {
       now(registerPostConnector(this.#tables, registration))
     }
 
     /** @throws {never} */
-    unregisterPostConnector(source: string, accountId?: string, options?: ConnectorUnregisterOptions): boolean {
+    unregisterPostConnector(source: string, accountId?: string, options?: Runtime.ConnectorUnregisterOptions): boolean {
       return unregisterPostConnector(this.#tables, source, accountId, options)
     }
 
     /** @throws {never} */
-    getPostConnectors(): PostConnector[] {
+    getPostConnectors(): Runtime.PostConnector[] {
       return getPostConnectors(this.#tables)
     }
 
@@ -460,17 +448,17 @@ module edge {
     /** @throws {never} */
     createThreadOnTarget(
       target: TargetInfo,
-      params: Omit<MessageConnectorCreateThreadParams, "target"> = {},
-    ): Promise<ThreadHandle> {
+      params: Omit<Runtime.MessageConnectorCreateThreadParams, "target"> = {},
+    ): Promise<Runtime.ThreadHandle> {
       return later(createThreadOnTarget(this.#tables, target, params))
     }
 
     /** @throws {never} */
     postToThreadOnTarget(
       target: TargetInfo,
-      thread: ThreadHandle,
+      thread: Runtime.ThreadHandle,
       content: Content,
-      identity?: ConnectorPostIdentity,
+      identity?: Runtime.ConnectorPostIdentity,
     ): Promise<Memory | undefined> {
       return later(postToThreadOnTarget(this.#tables, target, thread, content, identity))
     }

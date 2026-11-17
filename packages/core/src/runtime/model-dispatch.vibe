@@ -179,6 +179,7 @@ export interface DispatchCore {
   readonly host: RuntimeModelDispatchHost
   readonly resolvedProviders: Context.Service.Shape<typeof Machine>
   readonly diagnostics: FiberSet.FiberSet<void, never>
+  readonly writes: Set<PromiseLike<void>>
 }
 
 export interface UseModelTrajectory {
@@ -203,7 +204,7 @@ export interface FailedModelTrajectory {
   elapsedTime: number
 }
 
-export error NoModelHandler { message: string }
+error NoModelHandler { message: string }
 
 function abortCheck(signal: AbortSignal | undefined) {
   return foreignSync(() => signal?.throwIfAborted())
@@ -221,7 +222,7 @@ function trajectoryRoomId(core: DispatchCore): UUID {
 
 export effect function makeDispatchCore(runtime: IAgentRuntime, host: RuntimeModelDispatchHost, resolvedProviders: Context.Service.Shape<typeof Machine>): DispatchCore!! {
   const diagnostics = try Scope.provide(FiberSet.make<void, never>(), Scope.makeUnsafe())
-  return { runtime, host, resolvedProviders, diagnostics }
+  return { runtime, host, resolvedProviders, diagnostics, writes: new Set() }
 }
 
 export effect function standaloneDispatchCore(runtime: IAgentRuntime, host: RuntimeModelDispatchHost): DispatchCore!! {
@@ -234,8 +235,22 @@ function trackDiagnostic(core: DispatchCore, write: void!!): void {
   FiberSet.addUnsafe(core.diagnostics, runFork(write))
 }
 
+function trackWrite(core: DispatchCore, write: PromiseLike<void>): void {
+  core.writes.add(write)
+  write.then(() => core.writes.delete(write), () => core.writes.delete(write))
+}
+
 export effect function drainDiagnostics(core: DispatchCore) {
-  try FiberSet.awaitEmpty(core.diagnostics)
+  while (core.writes.size > 0 || (try FiberSet.size(core.diagnostics)) > 0) {
+    try all([
+      FiberSet.awaitEmpty(core.diagnostics),
+      ...Array.from<PromiseLike<void>, void!!>(core.writes, settledWrite),
+    ], { concurrency: "unbounded", discard: true })
+  }
+}
+
+effect function settledWrite(write: PromiseLike<void>): void!! {
+  foreign(() => write) catch () => undefined
 }
 
 function reboundProviderAttributions(
@@ -261,17 +276,9 @@ function getFirstUserPromptFromMessages(messages: unknown): string | undefined {
     return undefined
   }
   for (const message of messages) {
-    if (!message || typeof message !== "object" || Array.isArray(message)) {
-      continue
-    }
-    const record = message as { role?: unknown; content?: unknown }
-    if (record.role !== "user") {
-      continue
-    }
-    const content = textFromChatMessageContent(record.content)
-    if (content) {
-      return content
-    }
+    if (message === null || typeof message !== "object" || Array.isArray(message) || (message as { role?: unknown }).role !== "user") continue
+    const content = textFromChatMessageContent((message as { content?: unknown }).content)
+    if (content) return content
   }
   return undefined
 }
@@ -414,25 +421,20 @@ export function registerModel(
       (b.priority || 0) - (a.priority || 0)
       || (a.registrationOrder || 0) - (b.registrationOrder || 0),
   )
-  const pending = core.runtime.emitEvent(EventType.MODEL_REGISTERED, {
+  void core.runtime.emitEvent(EventType.MODEL_REGISTERED, {
     runtime: core.runtime,
     source: "runtime",
     modelType: modelKey,
     metadata,
     provider,
     priority: priority || 0,
-  })
-  runFork(announceModel(core, pending, modelKey, provider))
-}
-
-effect function announceModel(core: DispatchCore, pending: Promise<void>, modelKey: string, provider: string) {
-  foreign(() => pending) catch (failure) => {
-    core.runtime.reportError("AgentRuntime.registerModel", failure.cause, {
+  }).catch((error: unknown) => {
+    core.runtime.reportError("AgentRuntime.registerModel", error, {
       agentId: core.runtime.agentId,
       modelType: modelKey,
       provider,
     })
-  }
+  })
 }
 
 export function getModelRegistrations(core: DispatchCore): ModelRegistrationInfo[] {
@@ -854,7 +856,7 @@ export function logModelCall(
     ? response
     : undefined
   const logRoomId = trajectoryRoomId(core)
-  const pending = core.runtime.adapter.createLogs([
+  const write = core.runtime.adapter.createLogs([
     {
       entityId: core.runtime.agentId,
       roomId: logRoomId,
@@ -871,26 +873,22 @@ export function logModelCall(
       },
       type: `useModel:${modelKey}`,
     },
-  ])
-  trackDiagnostic(core, writeModelCallLog(core, modelKey, pending))
-}
-
-effect function writeModelCallLog(core: DispatchCore, modelKey: string, pending: Promise<void>) {
-  foreign(() => pending) catch (failure) => {
+  ]).catch((error: unknown) => {
     core.runtime.logger.debug(
       {
         src: "agent",
         agentId: core.runtime.agentId,
         model: modelKey,
-        error: errorText(failure.cause),
+        error: errorText(error),
       },
       "Model call log write failed",
     )
-    core.runtime.reportError("AgentRuntime.modelCallLog", failure.cause, {
+    core.runtime.reportError("AgentRuntime.modelCallLog", error, {
       model: modelKey,
       diagnosticOnly: true,
     })
-  }
+  })
+  trackWrite(core, write)
 }
 
 effect function resolveDispatchRegistrations(

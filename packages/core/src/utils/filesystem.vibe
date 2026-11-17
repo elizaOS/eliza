@@ -5,7 +5,7 @@ export type SymlinkType = "dir" | "file" | "junction"
 
 export error UnserializableJson { message: string }
 
-export effect function pathExists(target: string) {
+effect function pathExists(target: string) {
   return as((try FileSystem.FileSystem).access(target), true) catch () => false
 }
 
@@ -14,25 +14,25 @@ export effect function readJson<T = unknown>(file: string) {
   return try Effect.try({ try: () => JSON.parse(contents.replace(/^\uFEFF/, "")) as T, catch: (cause) => new Foreign({ cause }) })
 }
 
-export effect function writeJson(file: string, value: unknown, options?: { spaces?: number }) {
+effect function writeJson(file: string, value: unknown, options?: { spaces?: number }) {
   const serialized = JSON.stringify(value, null, options?.spaces) as string | undefined
   if (serialized === undefined) throw new UnserializableJson({ message: `Converting ${typeof value} value to JSON is not supported` })
   try (try FileSystem.FileSystem).writeFileString(file, `${serialized}\n`)
 }
 
-export effect function ensureDir(dir: string) {
+effect function ensureDir(dir: string) {
   try (try FileSystem.FileSystem).makeDirectory(dir, { recursive: true })
 }
 
-export effect function remove(target: string) {
+effect function remove(target: string) {
   try (try FileSystem.FileSystem).remove(target, { recursive: true, force: true })
 }
 
-export effect function copy(src: string, dest: string) {
+effect function copy(src: string, dest: string) {
   try (try FileSystem.FileSystem).copy(src, dest, { overwrite: true })
 }
 
-export effect function ensureSymlink(target: string, linkPath: string, type?: SymlinkType) {
+effect function ensureSymlink(target: string, linkPath: string, type?: SymlinkType) {
   const fs = try FileSystem.FileSystem
   const path = try Path.Path
   try fs.makeDirectory(path.dirname(linkPath), { recursive: true })
@@ -59,7 +59,7 @@ module edge {
   }
 }
 import { onNode, readJsonPromise } from edge
-export { onNode, readJsonPromise }
+export { readJsonPromise }
 
 export const pathExistsPromise = promised((target: string) => onNode(pathExists(target)))
 export const writeJsonPromise = promised(failingAs(TypeError, (file: string, value: unknown, options?: { spaces?: number }) => onNode(writeJson(file, value, options))))

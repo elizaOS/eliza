@@ -113,13 +113,13 @@ function serializationFailure(cause: unknown): UnstableJson | Foreign {
   return cause instanceof UnstableJsonFault ? new UnstableJson({ message: cause.message }) : new Foreign({ cause })
 }
 
-export effect function hashString(value: string): string!! {
+effect function hashString(value: string): string!! {
   return sha256Hex(value)
 }
 
 export const hashStringOrThrow = thrown(hashString)
 
-export effect function stableJsonStringify(value: unknown): string!(UnstableJson | Foreign) {
+effect function stableJsonStringify(value: unknown): string!(UnstableJson | Foreign) {
   return try Effect.try({ try: () => stableJson(value), catch: serializationFailure })
 }
 
@@ -131,7 +131,7 @@ export effect function hashStableJson(value: unknown): string!(UnstableJson | Fo
 
 export const hashStableJsonOrThrow = thrown(failingAs(TypeError, hashStableJson))
 
-export effect function computePrefixHashes(segments: readonly HashablePromptSegment[]): PrefixHash[]!(UnstableJson | Foreign) {
+effect function computePrefixHashes(segments: readonly HashablePromptSegment[]): PrefixHash[]!(UnstableJson | Foreign) {
   return try Effect.try({ try: () => prefixHashes(segments), catch: serializationFailure })
 }
 

@@ -151,7 +151,7 @@ effect function fetchLocalMediaStoreBytes(
   } satisfies ResolvedAttachmentBytes
 }
 
-export effect function resolveOutboundAttachmentBytes(
+effect function resolveOutboundAttachmentBytes(
   url: string,
   opts: ResolveOutboundAttachmentOptions = {},
 ) {

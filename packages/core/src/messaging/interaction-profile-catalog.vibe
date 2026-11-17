@@ -2,26 +2,28 @@
 import { thrown } from "../edge.vibe"
 import {
   createConnectorInteractionCapabilityProfile,
+  type InteractionBlockCapability,
   type InteractionProfileTemplate,
   renderInteractionCapabilityMatrix,
 } from "./interaction-profiles.vibe"
 
 const TTL = 15 * 60 * 1_000
 
+function block(
+  modes: InteractionBlockCapability["modes"],
+  maxSessionTtlMs = TTL,
+): InteractionBlockCapability {
+  return { modes, maxSessionTtlMs }
+}
+
 export const CONVERSATIONAL_INTERACTION_PROFILE: InteractionProfileTemplate = {
   templateId: "conversational-v1",
   blocks: {
-    choice: {
-      modes: ["conversational", "signed-hosted"],
-      maxSessionTtlMs: TTL,
-    },
-    form: { modes: ["conversational", "signed-hosted"], maxSessionTtlMs: TTL },
-    followups: { modes: ["conversational"], maxSessionTtlMs: TTL },
-    task: {
-      modes: ["signed-hosted", "conversational"],
-      maxSessionTtlMs: 24 * TTL,
-    },
-    secret: { modes: ["sensitive-request"], maxSessionTtlMs: TTL },
+    choice: block(["conversational", "signed-hosted"]),
+    form: block(["conversational", "signed-hosted"]),
+    followups: block(["conversational"]),
+    task: block(["signed-hosted", "conversational"], 24 * TTL),
+    secret: block(["sensitive-request"]),
   },
   limits: {
     buttons: {
@@ -58,15 +60,9 @@ export const BUTTON_INTERACTION_PROFILE: InteractionProfileTemplate = {
   templateId: "button-native-v1",
   blocks: {
     ...CONVERSATIONAL_INTERACTION_PROFILE.blocks,
-    choice: {
-      modes: ["native", "conversational", "signed-hosted"],
-      maxSessionTtlMs: TTL,
-    },
-    followups: { modes: ["native", "conversational"], maxSessionTtlMs: TTL },
-    task: {
-      modes: ["native", "signed-hosted", "conversational"],
-      maxSessionTtlMs: 24 * TTL,
-    },
+    choice: block(["native", "conversational", "signed-hosted"]),
+    followups: block(["native", "conversational"]),
+    task: block(["native", "signed-hosted", "conversational"], 24 * TTL),
   },
   limits: {
     ...CONVERSATIONAL_INTERACTION_PROFILE.limits,
@@ -87,20 +83,11 @@ export const RICH_INTERACTION_PROFILE: InteractionProfileTemplate = {
   ...BUTTON_INTERACTION_PROFILE,
   templateId: "rich-native-v1",
   blocks: {
-    choice: {
-      modes: ["native", "signed-hosted", "conversational"],
-      maxSessionTtlMs: TTL,
-    },
-    form: {
-      modes: ["native", "signed-hosted", "conversational"],
-      maxSessionTtlMs: TTL,
-    },
-    followups: { modes: ["native", "conversational"], maxSessionTtlMs: TTL },
-    task: {
-      modes: ["native", "signed-hosted", "conversational"],
-      maxSessionTtlMs: 24 * TTL,
-    },
-    secret: { modes: ["sensitive-request"], maxSessionTtlMs: TTL },
+    choice: block(["native", "signed-hosted", "conversational"]),
+    form: block(["native", "signed-hosted", "conversational"]),
+    followups: block(["native", "conversational"]),
+    task: block(["native", "signed-hosted", "conversational"], 24 * TTL),
+    secret: block(["sensitive-request"]),
   },
   limits: {
     buttons: {
@@ -146,6 +133,17 @@ export interface FirstPartyInteractionConnectorAuditEntry {
   note: string
 }
 
+function telegramAccountHistory<const TargetKind extends string>(targetKind: TargetKind) {
+  return {
+    plugin: "plugin-telegram",
+    registrationSite: "plugin-telegram/src/account-client-service.ts",
+    source: "telegram",
+    targetKind,
+    profileFamily: "read-only",
+    note: "personal account history and search; no outbound interaction transport",
+  } as const
+}
+
 export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
   {
     plugin: "plugin-discord",
@@ -187,30 +185,9 @@ export const FIRST_PARTY_INTERACTION_CONNECTOR_AUDIT = [
     profileFamily: "conversational",
     note: "channels, threads, users",
   },
-  {
-    plugin: "plugin-telegram",
-    registrationSite: "plugin-telegram/src/account-client-service.ts",
-    source: "telegram",
-    targetKind: "user",
-    profileFamily: "read-only",
-    note: "personal account history and search; no outbound interaction transport",
-  },
-  {
-    plugin: "plugin-telegram",
-    registrationSite: "plugin-telegram/src/account-client-service.ts",
-    source: "telegram",
-    targetKind: "channel",
-    profileFamily: "read-only",
-    note: "personal account history and search; no outbound interaction transport",
-  },
-  {
-    plugin: "plugin-telegram",
-    registrationSite: "plugin-telegram/src/account-client-service.ts",
-    source: "telegram",
-    targetKind: "thread",
-    profileFamily: "read-only",
-    note: "personal account history and search; no outbound interaction transport",
-  },
+  telegramAccountHistory("user"),
+  telegramAccountHistory("channel"),
+  telegramAccountHistory("thread"),
   {
     plugin: "plugin-telegram",
     registrationSite: "plugin-telegram/src/service.ts",

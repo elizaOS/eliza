@@ -171,19 +171,3 @@ export effect function executeChainWithFallback<TResult>(
   const terminal = chain[chain.length - 1]
   return try foreign(() => invoke(terminal))
 }
-
-module edge {
-  import { asLegacy, runDetached } from "../edge.vibe"
-  import { executeChainWithFallback, type ResolvedActionModel } from "./action-model-routing.vibe"
-
-  /** @throws {never} */
-  export function executeChainWithFallbackPromise<TResult>(
-    chain: readonly ResolvedActionModel[],
-    threshold: number | undefined,
-    invoke: (resolved: ResolvedActionModel) => Promise<TResult>,
-  ): Promise<TResult> {
-    return runDetached(asLegacy(Error, executeChainWithFallback(chain, threshold, invoke)))
-  }
-}
-import { executeChainWithFallbackPromise } from edge
-export { executeChainWithFallbackPromise }

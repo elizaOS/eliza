@@ -161,16 +161,14 @@ module walk {
 }
 import { flattenFromRoot } from walk
 
-export effect function flattenTextValues(value: unknown) {
+effect function flattenTextValues(value: unknown) {
   return try Effect.try({
     try: () => flattenFromRoot(value),
     catch: elizaErrorOrForeign,
   })
 }
 
-export const flattenTextValuesOrThrow = thrown(flattenTextValues)
-
-export effect function toMultilineText(value: unknown) {
+effect function toMultilineText(value: unknown) {
   return (try flattenTextValues(value)).join("\n")
 }
 

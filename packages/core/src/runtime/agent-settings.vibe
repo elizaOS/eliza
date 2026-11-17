@@ -9,7 +9,7 @@ import { DEFAULT_PSEUDONYM_BLOCKLIST, PII_SWAP_DISABLED_KINDS_SETTING, PII_SWAP_
 import { redactWithSecrets } from "../security/redact.vibe"
 import { parseSecretSwapExemptValues, SECRET_SWAP_ENABLED_SETTING, SECRET_SWAP_EXEMPT_VALUES_SETTING, SecretSwapSession } from "../security/secret-swap.vibe"
 import { deriveKnownSecrets } from "../security/secrets.vibe"
-import { decryptSecret, getSalt, type UnsafeProductionSalt } from "../settings.vibe"
+import { decryptStringValue, getSalt, type UnsafeProductionSalt } from "../settings.vibe"
 import type { Agent, Character } from "../types/agent.vibe"
 import type { LLMModeType } from "../types/model.vibe"
 import type { Service } from "../types/service.vibe"
@@ -132,7 +132,7 @@ export effect function getSetting(key: string): (string | boolean | number | nul
   const value = resolveSetting(runtime.character, try runtimeSettings(), key)
   if (typeof value === "number" || typeof value === "boolean") return value
   if (typeof value !== "string") return null
-  const decrypted = try decryptSecret(value, try getSalt())
+  const decrypted = try decryptStringValue(value, try getSalt())
   if (decrypted === "true") return true
   if (decrypted === "false") return false
   return decrypted

@@ -162,17 +162,3 @@ pure val fair_finishTransfer = "weak"
 pure def sometimesMirrorOnlyConsumeJoins(s: Handoff): bool = s.phase == AwaitBridgeConsume and s.bridge.phase == B::BridgeReturned and not(s.bridge.methods.consume) and s.bridge.hasResult
 pure def stepMirrorOnlyConsumePreservesDurableTarget(before: Handoff, via: str, after: Handoff): bool = via == "finishBridgeConsumption" and before.bridge.phase == B::BridgeReturned and not(before.bridge.methods.consume) implies before.targets == after.targets and after.flowIndex == before.flowIndex + 1
 ```
-
-### Transfers retain their current flow and acknowledged account prefix
-
-Discovered by the proof: without these source-maintained facts, a continuation could point beyond its captured flow array, or a completed cursor could claim accounts that had never been copied. The fallback account map and the captured account snapshot keep one value per provider and account ID. A flow awaiting create, replay or consumption still owns a current snapshot entry. During transfer, every account before the acknowledged cursor remains in the selected target's modeled account records. The source awaits each write before advancing its loop and clears fallback only after those acknowledged writes finish.
-
-The prefix describes writes acknowledged under this modeled facade operation and its fixed backend snapshot. It does not assert exclusive control of an arbitrary external storage service or database. Custom storage effects, normalization, clock observations and writes by other durable actors require separate adapter/refinement evidence.
-
-```quint
-pure def transferInProgress(s: Handoff): bool = s.phase == CopyAccounts or s.phase == CopyFlows or s.phase == AwaitBridgeCreate or s.phase == ReplayConsumption or s.phase == AwaitBridgeConsume
-pure def acknowledgedAccounts(s: Handoff): List[A::AccountValue] = s.accountSnapshot.foldl(List(), (prefix, account) => if (prefix.length() < s.accountIndex) prefix.append(account) else prefix)
-pure def alwaysAwaitingFlowHasCurrentSnapshot(s: Handoff): bool = (s.phase == AwaitBridgeCreate or s.phase == ReplayConsumption or s.phase == AwaitBridgeConsume) implies s.flowIndex < s.flowSnapshot.length()
-pure def alwaysAccountSnapshotIdentityUnique(s: Handoff): bool = D::alwaysAccountIdentityUnique(s.fallback) and D::alwaysAccountIdentityUnique({ ...D::initial, accounts: s.accountSnapshot })
-pure def alwaysCopiedAccountPrefixRetained(s: Handoff): bool = transferInProgress(s) implies acknowledgedAccounts(s).every(account => targetStore(s).accounts.includes(account))
-```

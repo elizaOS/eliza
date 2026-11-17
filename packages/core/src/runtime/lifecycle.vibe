@@ -47,7 +47,7 @@ export type LifecycleFailure =
 
 export type LifecycleState = "initializing" | "running" | "failed" | "stopping" | "stopped"
 
-export interface LifecyclePayload {
+interface LifecyclePayload {
   readonly released: Deferred.Deferred<void>
   readonly stopController: AbortController
   readonly retirement: RuntimeRetirement

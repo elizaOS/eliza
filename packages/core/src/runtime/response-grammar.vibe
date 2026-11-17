@@ -387,51 +387,11 @@ function parseSimpleRegexAtom(
 function parseSimpleRegexEscape(
   state: SimpleRegexParserState,
 ): SimpleRegexAtom | null {
-  state.index += 1
-  const escaped = state.source[state.index]
-  if (escaped === undefined || state.index >= state.end) return null
-  state.index += 1
-
-  switch (escaped) {
-    case "d":
-      return { kind: "class", value: "0-9", jsonEscaped: false }
-    case "w":
-      return { kind: "class", value: "A-Za-z0-9_", jsonEscaped: false }
-    case "s":
-      return { kind: "class", value: " \\t\\n\\r", jsonEscaped: true }
-    case "t":
-      return { kind: "literal", value: "\t" }
-    case "n":
-      return { kind: "literal", value: "\n" }
-    case "r":
-      return { kind: "literal", value: "\r" }
-    case "f":
-      return { kind: "literal", value: "\f" }
-    case "v":
-      return { kind: "literal", value: "\v" }
-    case "x":
-      return parseSimpleRegexHexEscape(state, 2)
-    case "u":
-      return parseSimpleRegexHexEscape(state, 4)
-    default:
-      if (!/[A-Za-z0-9]/.test(escaped)) {
-        return { kind: "literal", value: escaped }
-      }
-      return null
-  }
-}
-
-function parseSimpleRegexHexEscape(
-  state: SimpleRegexParserState,
-  digits: number,
-): SimpleRegexAtom | null {
-  if (state.index + digits > state.end) return null
-  const raw = state.source.slice(state.index, state.index + digits)
-  if (!/^[0-9A-Fa-f]+$/.test(raw)) return null
-  const code = Number.parseInt(raw, 16)
-  if (!Number.isFinite(code)) return null
-  state.index += digits
-  return { kind: "literal", value: String.fromCodePoint(code) }
+  const unit = parseSimpleRegexEscapeUnit(state)
+  if (unit === null) return null
+  return unit.single
+    ? { kind: "literal", value: unit.value }
+    : { kind: "class", value: unit.value, jsonEscaped: unit.jsonEscaped }
 }
 
 function parseSimpleRegexClass(
@@ -496,42 +456,46 @@ function parseSimpleRegexClassUnit(
   const ch = state.source[state.index]
   if (ch === undefined || ch === "]") return null
 
-  if (ch === "\\") {
-    state.index += 1
-    const escaped = state.source[state.index]
-    if (escaped === undefined || state.index >= state.end) return null
-    state.index += 1
-    switch (escaped) {
-      case "d":
-        return { value: "0-9", single: false, jsonEscaped: false }
-      case "w":
-        return { value: "A-Za-z0-9_", single: false, jsonEscaped: false }
-      case "s":
-        return { value: " \\t\\n\\r", single: false, jsonEscaped: true }
-      case "t":
-        return { value: "\t", single: true }
-      case "n":
-        return { value: "\n", single: true }
-      case "r":
-        return { value: "\r", single: true }
-      case "f":
-        return { value: "\f", single: true }
-      case "v":
-        return { value: "\v", single: true }
-      case "x":
-        return parseSimpleRegexHexUnit(state, 2)
-      case "u":
-        return parseSimpleRegexHexUnit(state, 4)
-      default:
-        if (!/[A-Za-z0-9]/.test(escaped)) {
-          return { value: escaped, single: true }
-        }
-        return null
-    }
-  }
+  if (ch === "\\") return parseSimpleRegexEscapeUnit(state)
 
   state.index += 1
   return { value: ch, single: true }
+}
+
+function parseSimpleRegexEscapeUnit(
+  state: SimpleRegexParserState,
+): SimpleRegexClassUnit | null {
+  state.index += 1
+  const escaped = state.source[state.index]
+  if (escaped === undefined || state.index >= state.end) return null
+  state.index += 1
+  switch (escaped) {
+    case "d":
+      return { value: "0-9", single: false, jsonEscaped: false }
+    case "w":
+      return { value: "A-Za-z0-9_", single: false, jsonEscaped: false }
+    case "s":
+      return { value: " \\t\\n\\r", single: false, jsonEscaped: true }
+    case "t":
+      return { value: "\t", single: true }
+    case "n":
+      return { value: "\n", single: true }
+    case "r":
+      return { value: "\r", single: true }
+    case "f":
+      return { value: "\f", single: true }
+    case "v":
+      return { value: "\v", single: true }
+    case "x":
+      return parseSimpleRegexHexUnit(state, 2)
+    case "u":
+      return parseSimpleRegexHexUnit(state, 4)
+    default:
+      if (!/[A-Za-z0-9]/.test(escaped)) {
+        return { value: escaped, single: true }
+      }
+      return null
+  }
 }
 
 function parseSimpleRegexHexUnit(

@@ -108,6 +108,8 @@
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && node -e \"const fs=require('node:fs');const path=require('node:path');const source=JSON.parse(fs.readFileSync('package.json','utf8'));const target=value=>value.startsWith('./dist/')?'./'+value.slice(7):value;for(const conditions of Object.values(source.exports)){const output=conditions.default;if(typeof output==='string'&&output.endsWith('.json')){fs.mkdirSync(path.dirname(output),{recursive:true});fs.copyFileSync(target(output),output);}}const publishedExports=Object.fromEntries(Object.entries(source.exports).map(([name,conditions])=>[name,Object.fromEntries(Object.entries(conditions).map(([condition,value])=>[condition,target(condition==='eliza-source'?(conditions.import??conditions.default):value)]))]));const publication={...source,main:target(source.main),types:target(source.types),files:['src','gen'],exports:publishedExports};delete publication.scripts;delete publication.publishConfig;fs.writeFileSync('dist/package.json',JSON.stringify(publication,null,2)+'\\n');\"",
+    "generate:first-party": "node --import vibelang/register src/catalog/generate.vibe",
+    "generate:first-party:check": "node --import vibelang/register src/catalog/generate.vibe --check",
     "typecheck": "vibelang --noEmit -p .",
     "test": "vitest run"
   },

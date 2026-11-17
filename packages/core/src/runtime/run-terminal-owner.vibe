@@ -125,11 +125,7 @@ module edge {
   import { foreign, runDetached, runDetachedSync } from "../edge.vibe"
   import type { ActionResult } from "../types/components.vibe"
   import type { EffectReceipt } from "../types/effects.vibe"
-  import type { Memory } from "../types/memory.vibe"
   import type { TurnOutcome } from "../types/message-service.vibe"
-  import type { UUID } from "../types/primitives.vibe"
-  import type { IAgentRuntime } from "../types/runtime.vibe"
-  import type { RoomHandlerLease } from "./room-handler-queue.vibe"
   import {
     recordRunActionResult,
     requestRunTerminal,
@@ -144,11 +140,11 @@ module edge {
 
     /** @throws {never} */
     constructor(
-      runtime: IAgentRuntime,
-      runId: UUID,
-      message: Memory,
+      runtime: RunTerminalState["runtime"],
+      runId: RunTerminalState["runId"],
+      message: RunTerminalState["message"],
       startTime: number,
-      roomHandlerLease?: RoomHandlerLease,
+      roomHandlerLease?: RunTerminalState["roomHandlerLease"],
     ) {
       this.#state = { runtime, runId, message, startTime, roomHandlerLease, pending: new Set(), settledEffects: [] }
     }

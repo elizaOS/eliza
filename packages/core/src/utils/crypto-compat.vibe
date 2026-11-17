@@ -66,7 +66,9 @@ module node {
 }
 import { cbcDecipher, gcmDecrypt, gcmEncrypt, hashBuilder } from node
 
+/** @public */
 export error UnsupportedAlgorithm { message: string }
+/** @public */
 export error InvalidKeyMaterial { message: string }
 
 const HASH_ALGORITHMS = new Set(["md5", "ripemd160", "sha1", "sha224", "sha256", "sha384", "sha512"])
@@ -108,14 +110,10 @@ export effect function createDecipheriv(algorithm: string, key: Uint8Array, iv: 
   return cbcDecipher(key, iv)
 }
 
-export const createDecipherivOrThrow = thrown(failingAs(Error, createDecipheriv))
-
 export effect function encryptAes256Gcm(key: Uint8Array, iv: Uint8Array, plaintext: Uint8Array, aad?: Uint8Array) {
   try validateKeyAndGcmIv(key, iv)
   return gcmEncrypt(key, iv, plaintext, aad)
 }
-
-export const encryptAes256GcmOrThrow = thrown(failingAs(Error, encryptAes256Gcm))
 
 export effect function decryptAes256Gcm(key: Uint8Array, iv: Uint8Array, ciphertext: Uint8Array, tag: Uint8Array, aad?: Uint8Array) {
   try validateKeyAndGcmIv(key, iv)
@@ -125,4 +123,3 @@ export effect function decryptAes256Gcm(key: Uint8Array, iv: Uint8Array, ciphert
   return try Effect.try({ try: () => gcmDecrypt(key, iv, ciphertext, tag, aad), catch: (cause) => new Foreign({ cause }) })
 }
 
-export const decryptAes256GcmOrThrow = thrown(failingAs(Error, decryptAes256Gcm))

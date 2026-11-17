@@ -43,10 +43,9 @@ effect function resolveOwnerEntityId(runtime: IAgentRuntime) {
   }
   const worldOwnerId = try Effect.catchCause(scan, (cause): never!(Foreign | ElizaError)! => {
     if (Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause)
-    const thrown = Cause.squash(cause)
     return Effect.fail(new ElizaError("Owner identity lookup failed; restore storage access and retry.", {
       code: "OWNER_ENTITY_LOOKUP_FAILED",
-      cause: thrownValue(thrown),
+      cause: thrownValue(Cause.squash(cause)),
       context: { agentId: runtime.agentId, phase, roomId, worldId },
       severity: "ephemeral",
     }))

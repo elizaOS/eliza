@@ -362,7 +362,7 @@ import { isRecord, normalizeSnapshot } from contract
 const contractFailure = (cause: unknown) =>
   cause instanceof TodoCutoverContractError ? cause : new Foreign({ cause })
 
-export effect function createSharedTodoCutoverSnapshot(input: {
+effect function createSharedTodoCutoverSnapshot(input: {
   sourceAgentId: string
   todos: readonly unknown[]
   mutations: readonly unknown[]
@@ -383,7 +383,7 @@ export effect function createSharedTodoCutoverSnapshot(input: {
 
 export const createSharedTodoCutoverSnapshotPromise = promised(createSharedTodoCutoverSnapshot)
 
-export effect function parseSharedTodoCutoverSnapshot(value: unknown) {
+effect function parseSharedTodoCutoverSnapshot(value: unknown) {
   if (!isRecord(value) || value.version !== SHARED_TODO_CUTOVER_VERSION) {
     throw new TodoCutoverContractError("TODO_CUTOVER_INVALID_VERSION", "Todo snapshot version is invalid")
   }

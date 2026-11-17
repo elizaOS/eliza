@@ -2,6 +2,7 @@
 import { thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import type { RecordedStage } from "../runtime/trajectory-recorder.vibe"
+import { mapPresent } from "../types/content-manifest.vibe"
 import type { JsonValue } from "../types/primitives.vibe"
 import { asRecord } from "../utils/type-guards.vibe"
 import { sanitizeTrajectoryJsonObject } from "./trajectory-json.vibe"
@@ -205,18 +206,6 @@ effect function recordedStagesToSemanticStages(
   return converted
 }
 export const recordedStagesToSemanticStagesOrThrow = thrown(recordedStagesToSemanticStages)
-
-export effect function mapPresent<A, B, E>(
-  items: readonly A[],
-  convert: (item: A) => B!E,
-): B[]!E {
-  const out: B[] = new Array(items.length)
-  for (let index = 0; index < out.length; index++) {
-    if (!(index in items)) continue
-    out[index] = try convert(items[index])
-  }
-  return out
-}
 
 effect function assertUniqueStageIds(
   stages: readonly TrajectorySemanticStageRecord[],

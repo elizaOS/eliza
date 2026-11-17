@@ -163,7 +163,7 @@ function segmentId(args: SegmentLocator): UUID {
   ].join(":")) as UUID
 }
 
-export effect function messageContentSegmentId(args: SegmentLocator): UUID!! {
+effect function messageContentSegmentId(args: SegmentLocator): UUID!! {
   return segmentId(args)
 }
 export const messageContentSegmentIdOrThrow = thrown(messageContentSegmentId)
@@ -336,7 +336,7 @@ export function attachmentTextSourceDescriptor(
     : null
 }
 
-export effect function resolveMessageContentSourceDescriptor(
+effect function resolveMessageContentSourceDescriptor(
   content: Content,
   selector: MessageContentSourceSelector,
 ): (MessageContentSourceDescriptor | null)!ElizaError {
@@ -363,7 +363,7 @@ export effect function resolveMessageContentSourceDescriptor(
 }
 export const resolveMessageContentSourceDescriptorOrThrow = thrown(resolveMessageContentSourceDescriptor)
 
-export effect function authorizeMessageContentRead(args: {
+effect function authorizeMessageContentRead(args: {
   parent: Memory
   authorizedRoomId: UUID
   requester: AccessContext
@@ -434,7 +434,7 @@ export function collectMessageContentSegmentIds(
   )
 }
 
-export effect function readMessageContentProjection(args: {
+effect function readMessageContentProjection(args: {
   descriptor: MessageContentSourceDescriptor
   segments: Memory[]
   messageId: UUID

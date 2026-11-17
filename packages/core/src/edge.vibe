@@ -26,7 +26,7 @@ module edge {
   }
 
   /** @throws {unknown} */
-  export function settle<A, E>(exit: Exit.Exit<A, E>, signal?: AbortSignal): A {
+  function settle<A, E>(exit: Exit.Exit<A, E>, signal?: AbortSignal): A {
     if (Exit.isSuccess(exit)) return exit.value
     if (publicOutcome(outcomeOf(exit)) === "Aborted") throw signal?.aborted ? signal.reason : new TurnAbortedError("interrupted")
     throw thrownValue(Cause.squash(exit.cause))
@@ -95,5 +95,5 @@ module edge {
     return (...args) => runDetachedSync(run(...args))
   }
 }
-import { Kernel, asLegacy, failingAs, promised, runDetached, runDetachedSync, settle, thrown } from edge
-export { Kernel, asLegacy, failingAs, promised, runDetached, runDetachedSync, settle, thrown }
+import { Kernel, asLegacy, failingAs, promised, runDetached, runDetachedSync, thrown } from edge
+export { Kernel, asLegacy, failingAs, promised, runDetached, runDetachedSync, thrown }

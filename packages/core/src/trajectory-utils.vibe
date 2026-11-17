@@ -470,7 +470,7 @@ type TrajectoryContextWithLlmGuard = {
 }
 
 export error LlmCallOutsideTrajectory { message: string }
-export error UnrecordedLlmCall { message: string }
+error UnrecordedLlmCall { message: string }
 
 module node {
   /** @throws {never} */
@@ -557,7 +557,7 @@ function modelInputSurfaces(details: RecordLlmCallDetails): string[] {
   return surfaces
 }
 
-export effect function attestLlmInputSubstring(details: RecordLlmCallDetails) {
+effect function attestLlmInputSubstring(details: RecordLlmCallDetails) {
   const store = getLlmInputSubstringAttestationContextManager().active()
   if (!store) return
 
@@ -708,7 +708,7 @@ function formatLlmGuardContext(context?: TrajectoryLlmGuardContext): string {
   return parts.length > 0 ? ` (${parts.join(", ")})` : ""
 }
 
-export effect function assertActiveTrajectoryForLlmCall(context?: TrajectoryLlmGuardContext) {
+effect function assertActiveTrajectoryForLlmCall(context?: TrajectoryLlmGuardContext) {
   const stepId = getActiveTrajectoryStepId()
   if (stepId || !isTrajectoryStrictModeEnabled()) {
     return stepId
@@ -754,7 +754,7 @@ effect function runInsideRecordedLlmCall<T>(fn: () => Promise<T> | T): T!Foreign
   )
 }
 
-export effect function assertRecordedLlmCall(context?: TrajectoryLlmGuardContext) {
+effect function assertRecordedLlmCall(context?: TrajectoryLlmGuardContext) {
   try assertActiveTrajectoryForLlmCall(context)
   if (!isTrajectoryStrictModeEnabled() || recordedLlmCallDepth(guardedTrajectoryContext()) > 0) {
     return
@@ -1001,7 +1001,7 @@ export effect function withStandaloneTrajectory<T>(
   return try closingAfter(foreign(() => runWithTrajectoryContext(context, () => callback())), close)
 }
 
-export effect function annotateActiveTrajectoryStep(
+effect function annotateActiveTrajectoryStep(
   runtime: IAgentRuntime | null | undefined,
   params: TrajectoryAnnotateParams,
 ) {
@@ -1019,7 +1019,7 @@ export effect function annotateActiveTrajectoryStep(
 
 export const annotateActiveTrajectoryStepPromise = promised(annotateActiveTrajectoryStep)
 
-export effect function logActiveTrajectoryLlmCall(
+effect function logActiveTrajectoryLlmCall(
   runtime: IAgentRuntime | null | undefined,
   details: TrajectoryLlmCallDetails,
 ) {
@@ -1380,14 +1380,16 @@ function completeActionTrajectoryStep<T extends ActionResult>(
   }
 }
 
+export type ActionStepOptions<T extends ActionResult> = {
+  parameters?: Record<string, unknown>
+  projectResult?: (result: T) => ActionResult
+}
+
 export effect function withActionStep<T extends ActionResult>(
   runtime: IAgentRuntime | null | undefined,
   actionName: string,
   fn: () => Promise<T> | T,
-  options: {
-    parameters?: Record<string, unknown>
-    projectResult?: (result: T) => ActionResult
-  } = {},
+  options: ActionStepOptions<T> = {},
 ) {
   return try withChildTrajectoryStep(
     runtime,
@@ -1476,6 +1478,7 @@ module edge {
     withEvaluatorStep,
     withProviderStep,
     withStandaloneTrajectory,
+    type ActionStepOptions,
     type LlmInputSubstringAttestation,
     type ModelCallRecordingState,
     type RecordLlmCallDetails,
@@ -1520,10 +1523,7 @@ module edge {
     runtime: IAgentRuntime | null | undefined,
     actionName: string,
     fn: () => Promise<T> | T,
-    options: {
-      parameters?: Record<string, unknown>
-      projectResult?: (result: T) => ActionResult
-    } = {},
+    options: ActionStepOptions<T> = {},
   ): Promise<T> {
     return runDetached(withActionStep<T>(runtime, actionName, fn, options))
   }

@@ -260,11 +260,29 @@ module edge {
     }
   }
 
-  function findJsonStringEnd(value: string): number | null {
-    if (!value.startsWith("\"")) {
+  function isSettled(state: ExtractorState): boolean {
+    return state === "complete" || state === "failed"
+  }
+
+  function stoppedFlush(state: ExtractorState, signal: AbortSignal | undefined, extractor: IStreamExtractor): string | undefined {
+    if (state === "failed") {
+      return ""
+    }
+    return signal?.aborted ? extractor.push("") : undefined
+  }
+
+  function skipJsonWhitespace(source: string, cursor: number): number {
+    while (cursor < source.length && /\s/.test(source[cursor] ?? "")) {
+      cursor++
+    }
+    return cursor
+  }
+
+  function findJsonStringEnd(value: string, start = 0): number | null {
+    if (value[start] !== "\"") {
       return null
     }
-    for (let index = 1; index < value.length; index++) {
+    for (let index = start + 1; index < value.length; index++) {
       const char = value[index]
       if (char === "\\") {
         const next = value[index + 1]
@@ -321,33 +339,14 @@ module edge {
 
   function findBalancedJsonEnd(value: string): number | null {
     const stack: string[] = []
-    let inString = false
     for (let index = 0; index < value.length; index++) {
       const char = value[index]
-      if (inString) {
-        if (char === "\\") {
-          const next = value[index + 1]
-          if (next === undefined) {
-            return null
-          }
-          if (next === "u") {
-            if (index + 5 >= value.length) {
-              return null
-            }
-            index += 5
-          } else {
-            index += 1
-          }
-          continue
-        }
-        if (char === "\"") {
-          inString = false
-        }
-        continue
-      }
-
       if (char === "\"") {
-        inString = true
+        const end = findJsonStringEnd(value, index)
+        if (end === null) {
+          return null
+        }
+        index = end - 1
         continue
       }
       if (char === "{" || char === "[") {
@@ -435,12 +434,12 @@ module edge {
     }
 
     get done(): boolean {
-      return this.state === "complete" || this.state === "failed"
+      return isSettled(this.state)
     }
 
     push(chunk: string): string {
       if (this.config.abortSignal?.aborted) {
-        if (this.state !== "complete" && this.state !== "failed") {
+        if (!isSettled(this.state)) {
           this.state = "failed"
           this.emitEvent({
             eventType: "error",
@@ -460,11 +459,9 @@ module edge {
     }
 
     flush(): string {
-      if (this.state === "failed") {
-        return ""
-      }
-      if (this.config.abortSignal?.aborted) {
-        return this.push("")
+      const stopped = stoppedFlush(this.state, this.config.abortSignal, this)
+      if (stopped !== undefined) {
+        return stopped
       }
 
       this.processAvailableLines(true)
@@ -796,7 +793,7 @@ module edge {
     }
 
     get done(): boolean {
-      return this.state === "complete" || this.state === "failed"
+      return isSettled(this.state)
     }
 
     push(chunk: string): string {
@@ -831,11 +828,9 @@ module edge {
     }
 
     flush(): string {
-      if (this.state === "failed") {
-        return ""
-      }
-      if (this.config.abortSignal?.aborted) {
-        return this.push("")
+      const stopped = stoppedFlush(this.state, this.config.abortSignal, this)
+      if (stopped !== undefined) {
+        return stopped
       }
       if (!this.formatDecided) {
         this.decideFormat()
@@ -1131,24 +1126,12 @@ module edge {
         return false
       }
       const keyEnd = findJsonStringEnd(this.buffer)
-      let cursor = keyEnd ?? this.buffer.length
-      while (
-        cursor < this.buffer.length
-        && /\s/.test(this.buffer[cursor] ?? "")
-      ) {
-        cursor++
-      }
+      let cursor = skipJsonWhitespace(this.buffer, keyEnd ?? this.buffer.length)
       if (cursor < this.buffer.length && this.buffer[cursor] !== ":") {
         this.hold()
         return false
       }
-      cursor++
-      while (
-        cursor < this.buffer.length
-        && /\s/.test(this.buffer[cursor] ?? "")
-      ) {
-        cursor++
-      }
+      cursor = skipJsonWhitespace(this.buffer, cursor + 1)
       if (keyEnd === null || cursor >= this.buffer.length) {
         if (final) this.partsField = null
         return final
@@ -1222,39 +1205,17 @@ module edge {
           return null
         }
 
-        let cursor = earliest.keyEnd
-        while (
-          cursor < this.buffer.length
-          && /\s/.test(this.buffer[cursor] ?? "")
-        ) {
-          cursor++
-        }
+        let cursor = skipJsonWhitespace(this.buffer, earliest.keyEnd)
         if (cursor >= this.buffer.length) {
-          if (final) {
-            this.buffer = ""
-          } else {
-            this.buffer = this.buffer.slice(earliest.keyStart)
-          }
-          return null
+          return this.awaitKeyValue(final, earliest.keyStart)
         }
         if (this.buffer[cursor] !== ":") {
           this.buffer = this.buffer.slice(earliest.keyEnd)
           continue
         }
-        cursor++
-        while (
-          cursor < this.buffer.length
-          && /\s/.test(this.buffer[cursor] ?? "")
-        ) {
-          cursor++
-        }
+        cursor = skipJsonWhitespace(this.buffer, cursor + 1)
         if (cursor >= this.buffer.length) {
-          if (final) {
-            this.buffer = ""
-          } else {
-            this.buffer = this.buffer.slice(earliest.keyStart)
-          }
-          return null
+          return this.awaitKeyValue(final, earliest.keyStart)
         }
 
         const partsField = this.config.streamParts?.[earliest.field] !== undefined
@@ -1283,6 +1244,11 @@ module edge {
         this.state = "complete"
         this.emitEvent({ eventType: "complete", timestamp: Date.now() })
       }
+      return null
+    }
+
+    private awaitKeyValue(final: boolean, keyStart: number): null {
+      this.buffer = final ? "" : this.buffer.slice(keyStart)
       return null
     }
 

@@ -339,7 +339,7 @@ export function createOpaqueMessageInteractionReference(
   return hex(random(16))
 }
 
-export effect function encodeMessageInteractionCallback(reference: string): string!ElizaError {
+effect function encodeMessageInteractionCallback(reference: string): string!ElizaError {
   if (!/^[a-f0-9]{32}$/.test(reference)) {
     throw sessionError(
       "INVALID_MESSAGE_INTERACTION_REFERENCE",
@@ -386,7 +386,7 @@ function schemaField(
   }
 }
 
-export effect function responseSchemaForInteraction(
+effect function responseSchemaForInteraction(
   block: InteractionBlock,
   options: { maxTextResponseBytes?: number } = {},
 ): MessageInteractionResponseSchema!ElizaError {
@@ -487,7 +487,7 @@ effect function validateAttachment(
   }
 }
 
-export effect function validateMessageInteractionResponse(
+effect function validateMessageInteractionResponse(
   value: MessageInteractionResponse,
   schema: MessageInteractionResponseSchema,
 ): MessageInteractionResponse!ElizaError {
@@ -608,7 +608,7 @@ effect function assertCurrentContext(
   return try validateMessageInteractionResponse(response, session.responseSchema)
 }
 
-export effect function applyMessageInteractionClaim(
+effect function applyMessageInteractionClaim(
   sessionValue: MessageInteractionSession,
   context: MessageInteractionClaimContext,
 ): MessageInteractionClaimResult!ElizaError {
@@ -703,7 +703,7 @@ export effect function applyMessageInteractionClaim(
 
 export const applyMessageInteractionClaimOrThrow = thrown(applyMessageInteractionClaim)
 
-export effect function applyMessageInteractionCompletion(
+effect function applyMessageInteractionCompletion(
   sessionValue: MessageInteractionSession,
   context: MessageInteractionCompleteContext,
 ): MessageInteractionSession!ElizaError {
@@ -777,7 +777,7 @@ export effect function applyMessageInteractionCompletion(
 
 export const applyMessageInteractionCompletionOrThrow = thrown(applyMessageInteractionCompletion)
 
-export effect function applyMessageInteractionReconciliation(
+effect function applyMessageInteractionReconciliation(
   sessionValue: MessageInteractionSession,
   context: MessageInteractionReconcileContext,
 ): MessageInteractionSession!ElizaError {
@@ -802,7 +802,7 @@ export effect function applyMessageInteractionReconciliation(
 
 export const applyMessageInteractionReconciliationOrThrow = thrown(applyMessageInteractionReconciliation)
 
-export effect function applyMessageInteractionCommit(
+effect function applyMessageInteractionCommit(
   sessionValue: MessageInteractionSession,
   context: MessageInteractionCommitContext,
 ): MessageInteractionSession!ElizaError {
@@ -851,7 +851,7 @@ export effect function applyMessageInteractionCommit(
 
 export const applyMessageInteractionCommitOrThrow = thrown(applyMessageInteractionCommit)
 
-export effect function applyMessageInteractionRevocation(
+effect function applyMessageInteractionRevocation(
   sessionValue: MessageInteractionSession,
   decisionId: string,
   now: number,

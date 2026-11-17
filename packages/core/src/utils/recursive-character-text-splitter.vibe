@@ -140,28 +140,3 @@ export effect function splitWithSettings(settings: SplitterSettings, text: strin
   return try splitRecursively(settings, toWellFormedUnicode(text), settings.separators)
 }
 
-module edge {
-  import { asLegacy, runDetached, runDetachedSync } from "../edge.vibe"
-  import {
-    splitterSettings,
-    splitWithSettings,
-    type RecursiveCharacterTextSplitterParams,
-    type SplitterSettings,
-  } from "./recursive-character-text-splitter.vibe"
-
-  export class RecursiveCharacterTextSplitter {
-    private readonly settings: SplitterSettings
-
-    /** @throws {Error} */
-    constructor(fields?: RecursiveCharacterTextSplitterParams) {
-      this.settings = runDetachedSync(asLegacy(Error, splitterSettings(fields)))
-    }
-
-    /** @throws {never} */
-    async splitText(text: string): Promise<string[]> {
-      return runDetached(splitWithSettings(this.settings, text))
-    }
-  }
-}
-import { RecursiveCharacterTextSplitter } from edge
-export { RecursiveCharacterTextSplitter }

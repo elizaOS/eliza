@@ -465,8 +465,6 @@ module edge {
 import { InferenceTurnTimer, timeInferenceSpanPromise } from edge
 export { InferenceTurnTimer, timeInferenceSpanPromise }
 
-export { INFERENCE_TRACE_ID_PATTERN, isInferenceTraceId, mintInferenceTraceId } from "./inference-trace.vibe"
-
 let manager: AsyncContextManager<InferenceTurnTimer | undefined> | null = null
 function getManager(): AsyncContextManager<InferenceTurnTimer | undefined> {
   if (!manager) manager = new AsyncContextManager<InferenceTurnTimer | undefined>()

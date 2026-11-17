@@ -25,30 +25,29 @@ export { deepEqual }
 
 const ingressPersistenceSnapshots = new WeakMap<Memory, Memory>()
 
-export effect function bindIncomingMessagePersistence(
-  message: Memory,
-  persisted: Memory,
-): void!ElizaError {
-  if (
-    !message.id
-    || message.id !== persisted.id
+function snapshotIdentityDiffers(message: Memory, persisted: Memory): boolean {
+  return message.id !== persisted.id
     || message.agentId !== persisted.agentId
     || message.roomId !== persisted.roomId
     || message.entityId !== persisted.entityId
-  ) {
-    throw new ElizaError(
-      "Ingress persistence snapshot identity differs from its routed message",
-      {
-        code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
-        context: { messageId: message.id ?? null },
-      },
-    )
+}
+
+function publicationConflict(text: string, messageId: UUID | null): ElizaError {
+  return new ElizaError(text, { code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT", context: { messageId } })
+}
+
+effect function bindIncomingMessagePersistence(
+  message: Memory,
+  persisted: Memory,
+): void!ElizaError {
+  if (!message.id || snapshotIdentityDiffers(message, persisted)) {
+    throw publicationConflict("Ingress persistence snapshot identity differs from its routed message", message.id ?? null)
   }
   ingressPersistenceSnapshots.set(message, structuredClone(persisted))
 }
 export const bindIncomingMessagePersistenceOrThrow = thrown(bindIncomingMessagePersistence)
 
-export effect function inheritIncomingMessagePersistence(
+effect function inheritIncomingMessagePersistence(
   source: Memory,
   augmented: Memory,
 ): void!ElizaError {
@@ -57,21 +56,13 @@ export effect function inheritIncomingMessagePersistence(
 }
 export const inheritIncomingMessagePersistenceOrThrow = thrown(inheritIncomingMessagePersistence)
 
-export effect function incomingMessagePersistenceSnapshot(
+effect function incomingMessagePersistenceSnapshot(
   message: Memory,
 ): (Memory | undefined)!ElizaError {
   const persisted = ingressPersistenceSnapshots.get(message)
   if (!persisted) return undefined
-  if (
-    message.id !== persisted.id
-    || message.agentId !== persisted.agentId
-    || message.roomId !== persisted.roomId
-    || message.entityId !== persisted.entityId
-  ) {
-    throw new ElizaError("Ingress persistence snapshot identity changed", {
-      code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
-      context: { messageId: message.id ?? null },
-    })
+  if (snapshotIdentityDiffers(message, persisted)) {
+    throw publicationConflict("Ingress persistence snapshot identity changed", message.id ?? null)
   }
   return structuredClone(persisted)
 }
@@ -91,7 +82,7 @@ function contentNeedsNativeSegments(content: Content): boolean {
   )
 }
 
-export effect function persistMessageMemory(
+effect function persistMessageMemory(
   runtime: IAgentRuntime,
   memory: Memory,
 ): UUID!(ElizaError | Foreign) {
@@ -112,20 +103,13 @@ export effect function persistMessageMemory(
 }
 export const persistMessageMemoryPromise = promised(persistMessageMemory)
 
-export effect function persistIncomingMessageMemory(
+effect function persistIncomingMessageMemory(
   runtime: IAgentRuntime,
   memory: Memory,
 ): UUID!(ElizaError | Foreign) {
   if (!memory.id) return try persistMessageMemory(runtime, memory)
   const id = memory.id
-  const conflict = () =>
-    new ElizaError(
-      "Incoming message id is bound to different or incomplete content",
-      {
-        code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
-        context: { messageId: id },
-      },
-    )
+  const conflict = () => publicationConflict("Incoming message id is bound to different or incomplete content", id)
   const assertExisting = effect (existing: Memory): UUID!(ElizaError | Foreign) => {
     if (
       existing.id !== id
@@ -214,7 +198,7 @@ export effect function persistIncomingMessageMemory(
 }
 export const persistIncomingMessageMemoryPromise = promised(persistIncomingMessageMemory)
 
-export effect function replaceStoredMessageContent(
+effect function replaceStoredMessageContent(
   runtime: IAgentRuntime,
   messageId: UUID,
   content: Content,

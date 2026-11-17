@@ -232,21 +232,8 @@ interface ConnectorAccountDatabaseAdapter {
     provider?: string
     accountKey?: string
   }): Promise<ConnectorAccountDatabaseRecord | null>
-  upsertConnectorAccount(params: {
+  upsertConnectorAccount(params: ConnectorAccountDatabaseFields & {
     id?: string
-    provider: string
-    accountKey: string
-    externalId?: string | null
-    displayName?: string | null
-    username?: string | null
-    email?: string | null
-    ownerBindingId?: string | null
-    ownerIdentityId?: string | null
-    role?: string
-    purpose?: string[]
-    accessGate?: string
-    status?: string
-    metadata?: Metadata
     connectedAt?: number
   }): Promise<ConnectorAccountDatabaseRecord>
   deleteConnectorAccount(params: {
@@ -305,8 +292,7 @@ interface ConnectorAccountDatabaseAdapter {
   }): Promise<boolean>
 }
 
-interface ConnectorAccountDatabaseRecord {
-  id: string
+interface ConnectorAccountDatabaseFields {
   provider: string
   accountKey: string
   externalId?: string | null
@@ -320,6 +306,10 @@ interface ConnectorAccountDatabaseRecord {
   accessGate?: string
   status?: string
   metadata?: Metadata
+}
+
+interface ConnectorAccountDatabaseRecord extends ConnectorAccountDatabaseFields {
+  id: string
   createdAt?: number
   updatedAt?: number
 }
@@ -371,12 +361,12 @@ export interface ConnectorAccountManagerState {
   warnedFallback: boolean
 }
 
-export error MissingAccountId { message: string }
-export error MissingAccountProvider { message: string }
+error MissingAccountId { message: string }
+error MissingAccountProvider { message: string }
 export error MissingProviderId { message: string }
-export error OAuthUnsupported { message: string }
-export error UnknownOAuthFlow { message: string }
-export error OAuthFlowNotPending { message: string }
+error OAuthUnsupported { message: string }
+error UnknownOAuthFlow { message: string }
+error OAuthFlowNotPending { message: string }
 
 const runtimeManagers = new WeakMap<IAgentRuntime, ConnectorAccountManager>()
 let standaloneManager: ConnectorAccountManager | null = null
@@ -1755,7 +1745,6 @@ effect function finishOAuthCompletion(
       cause: thrownValue(failure),
       context: { provider: providerId, flowId: flow.id },
     })
-    // A null record and a nullish thrown value both mean the consumed flow was never marked failed.
     const write: { persisted: ConnectorOAuthFlow | null; error: unknown } = Effect.map(
       markFlowFailed(state, providerId, flow.id, publicFailureMessage),
       (persisted) => ({ persisted, error: undefined }),

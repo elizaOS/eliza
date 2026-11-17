@@ -2,14 +2,6 @@
 import type { AgentContext, ContextDefinition } from "../types/contexts.vibe"
 import { normalizeContextId, normalizeContextList } from "./context-normalization.vibe"
 
-export {
-  CONTEXT_ALIASES,
-  expandContextAliases,
-  FIRST_PARTY_CONTEXT_IDS,
-  normalizeContextId,
-  normalizeContextList,
-} from "./context-normalization.vibe"
-
 const EMPTY_CONTEXTS: readonly AgentContext[] = []
 
 type ContextDefinitions = ReadonlyMap<AgentContext, ContextDefinition>

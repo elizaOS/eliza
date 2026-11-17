@@ -51,11 +51,11 @@ const ORPHAN_GRACE_MS = 60_000
 
 const LOG_SOURCE = "plugin:basic-capabilities:service:task"
 
-export const TASK_TICK_MAX_MS_SETTING = "TASK_TICK_MAX_MS"
+const TASK_TICK_MAX_MS_SETTING = "TASK_TICK_MAX_MS"
 
-export const WALL_CLOCK_CHECK_MS = 1000
+const WALL_CLOCK_CHECK_MS = 1000
 
-export error TaskNotFound { message: string }
+error TaskNotFound { message: string }
 
 effect function readMaxTickMs(runtime: IAgentRuntime) {
   const raw = try foreignSync(() => runtime.getSetting(TASK_TICK_MAX_MS_SETTING))
@@ -236,10 +236,12 @@ effect function onTimer(runner: TaskRunner) {
   if (runner.stopped) return
   const active = runner.activeTick
   if (active) {
-    fork.detached effect {
-      try Deferred.await(active)
-      armTimer(runner, (try clockNow(runner)) + MIN_TICK_MS)
-    }
+    try sync(() => {
+      void runDetached(effect {
+        try Deferred.await(active)
+        armTimer(runner, (try clockNow(runner)) + MIN_TICK_MS)
+      })
+    })
     return
   }
   const wake: { at: number | null } = { at: (try clockNow(runner)) + MIN_TICK_MS }

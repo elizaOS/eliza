@@ -128,7 +128,7 @@ function parseContentDispositionFileName(
   return undefined
 }
 
-export effect function readErrorBodySnippet(
+effect function readErrorBodySnippet(
   res: Response,
   maxChars = 200,
 ) {

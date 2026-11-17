@@ -410,14 +410,14 @@ function unbounded(cause: unknown): ConnectorJsonUnboundedError | Foreign {
   return cause instanceof ConnectorJsonUnboundedError ? cause : new Foreign({ cause })
 }
 
-export effect function cloneConnectorJsonObject(
+effect function cloneConnectorJsonObject(
   value: ConnectorAccountJsonObject | undefined,
 ): ConnectorAccountJsonObject!(ConnectorJsonUnboundedError | Foreign) {
   return try Effect.try({ try: () => cloneObject(value), catch: unbounded })
 }
 export const cloneConnectorJsonObjectOrThrow = thrown(cloneConnectorJsonObject)
 
-export effect function redactConnectorJsonAudit(
+effect function redactConnectorJsonAudit(
   value: Record<string, unknown> | undefined,
   redactKey: (key: string) => boolean,
 ): ConnectorAccountJsonObject!Foreign {
@@ -425,7 +425,7 @@ export effect function redactConnectorJsonAudit(
 }
 export const redactConnectorJsonAuditOrThrow = thrown(redactConnectorJsonAudit)
 
-export effect function cloneConnectorJsonValue(value: unknown): JsonValue!(ConnectorJsonUnboundedError | Foreign) {
+effect function cloneConnectorJsonValue(value: unknown): JsonValue!(ConnectorJsonUnboundedError | Foreign) {
   return try Effect.try({ try: () => cloneValue(value), catch: unbounded })
 }
 export const cloneConnectorJsonValueOrThrow = thrown(cloneConnectorJsonValue)

@@ -44,6 +44,7 @@ export class CapabilityError extends Data.TaggedError("CapabilityError")<Omit<Ca
   constructor({ message, code, capability, method, details }: CapabilityErrorPayload) {
     super({ code, capability, method, details })
     this.message = message
+    this.name = "CapabilityError"
   }
 
   toJSON(): CapabilityErrorPayload {

@@ -594,6 +594,19 @@ function setStatus(
   replaceOperation(task, operation, { proposal: operation.proposal, status })
 }
 
+function interruptUnresolved(
+  task: InteractiveTask,
+  unresolved: UnresolvedOperation | undefined,
+): boolean {
+  if (unresolved?.status === "prepared") {
+    setStatus(task, unresolved, "cancelled")
+  } else if (unresolved?.status === "dispatched") {
+    setStatus(task, unresolved, "unknown")
+    return true
+  }
+  return false
+}
+
 function unknownTransition(_transition: never): ElizaError {
   return taskError("Unknown task transition")
 }
@@ -738,12 +751,7 @@ effect function transitionInteractiveTask(
       )
       if (!grant) throw taskError("Origin was not granted to this task")
       task.epoch++
-      if (unresolved?.status === "prepared") {
-        setStatus(task, unresolved, "cancelled")
-      } else if (unresolved?.status === "dispatched") {
-        setStatus(task, unresolved, "unknown")
-        task.status = "paused"
-      }
+      if (interruptUnresolved(task, unresolved)) task.status = "paused"
       grant.retractedAt = now
       task.allowedOrigins = task.allowedOrigins.filter(
         (item) => item !== transition.origin,
@@ -773,11 +781,7 @@ effect function transitionInteractiveTask(
     case "recover":
     case "revoke": {
       task.epoch++
-      if (unresolved?.status === "prepared") {
-        setStatus(task, unresolved, "cancelled")
-      } else if (unresolved?.status === "dispatched") {
-        setStatus(task, unresolved, "unknown")
-      }
+      interruptUnresolved(task, unresolved)
       if (transition.type === "revoke") {
         task.authorization.state = "revoked"
         task.authorization.revokedAt = new Date(now).toISOString()

@@ -13,7 +13,7 @@ import {
 } from "./loader.vibe"
 import { type RegistryEntry, registryEntrySchema } from "./schema.vibe"
 
-export error InvalidRegistryEntry { message: string }
+error InvalidRegistryEntry { message: string }
 
 module node {
   import { existsSync, readFileSync } from "node:fs"
@@ -74,7 +74,7 @@ function catalog(): CatalogOwned {
 }
 catalog.slot = undefined as CatalogOwned | undefined
 
-export effect function registerRegistryEntry(entry: RegistryEntry) {
+effect function registerRegistryEntry(entry: RegistryEntry) {
   const parsed = try Effect.try({ try: () => registryEntrySchema.safeParse(entry), catch: (cause) => new Foreign({ cause }) })
   if (!parsed.success) {
     throw new InvalidRegistryEntry({
@@ -118,7 +118,7 @@ effect function readEntriesFromDisk() {
   return (try loadRegistryFromRawEntries(raws)).all
 }
 
-export effect function loadRegistry() {
+effect function loadRegistry() {
   const cached = try catalog().read((state, registry) => state.cached ? registry : null)
   if (cached) return cached
   const fileEntries = try readEntriesFromDisk()

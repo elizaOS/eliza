@@ -2,8 +2,9 @@
 import { failingAs, thrown } from "../edge.vibe"
 import { ElizaError } from "../errors.vibe"
 import { textFromChatMessageContent } from "../runtime/system-prompt.vibe"
+import { mapPresent } from "../types/content-manifest.vibe"
 import { asNonEmptyString, asObjectRecord, readNonEmptyString } from "../utils/type-guards.vibe"
-import { mapPresent, parseTrajectorySemanticStages } from "./trajectory-semantic-stage.vibe"
+import { parseTrajectorySemanticStages } from "./trajectory-semantic-stage.vibe"
 import type {
   ElizaNativeModelBoundary,
   ElizaNativeModelRequestRecord,

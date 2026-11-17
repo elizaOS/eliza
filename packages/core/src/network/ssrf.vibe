@@ -25,11 +25,15 @@ export class SsrfBlockedError extends Data.TaggedError("SsrfBlockedError") {
   constructor(message: string) {
     super()
     this.message = message
+    this.name = "SsrfBlockedError"
   }
 }
 
+/** @public */
 export error InvalidHostname { message: string }
+/** @public */
 export error MissingLookup { message: string }
+/** @public */
 export error UnresolvedHostname { message: string }
 
 export type SsrfPolicy = {
@@ -451,7 +455,7 @@ export effect function resolvePinnedHostnameWithPolicy(
 
 export const resolvePinnedHostnameWithPolicyPromise = promised(failingAs(Error, resolvePinnedHostnameWithPolicy, SsrfBlockedError))
 
-export effect function resolvePinnedHostname(hostname: string, lookupFn?: LookupFn) {
+effect function resolvePinnedHostname(hostname: string, lookupFn?: LookupFn) {
   return try resolvePinnedHostnameWithPolicy(hostname, { lookupFn })
 }
 

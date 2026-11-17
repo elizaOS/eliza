@@ -55,7 +55,7 @@ export function estimateTokensFromChars(chars: number): number {
   return Math.ceil(chars / 3.5)
 }
 
-effect function estimateModelInputTokens(args: {
+interface ModelInput {
   completeRequest?: unknown
   messages?: readonly ChatMessage[]
   promptSegments?: readonly PromptSegment[]
@@ -69,7 +69,9 @@ effect function estimateModelInputTokens(args: {
   responseSkeleton?: unknown
   prefill?: unknown
   estimationMode?: EstimationMode
-}): number!ElizaError {
+}
+
+effect function estimateModelInputTokens(args: ModelInput): number!ElizaError {
   const estimationMode = args.estimationMode ?? "heuristic"
   const upperBound = estimationMode === "utf8-upper-bound"
   if (Object.hasOwn(args, "completeRequest")) {
@@ -101,26 +103,9 @@ effect function estimateModelInputTokens(args: {
   return upperBound ? measured : estimateTokensFromChars(measured)
 }
 
-export effect function buildModelInputBudget(args: {
-  completeRequest?: unknown
-  messages?: readonly ChatMessage[]
-  promptSegments?: readonly PromptSegment[]
-  tools?: readonly ToolDefinition[]
-  system?: unknown
-  prompt?: unknown
-  input?: unknown
-  responseSchema?: unknown
-  responseFormat?: unknown
-  grammar?: unknown
-  responseSkeleton?: unknown
-  prefill?: unknown
-
-  estimationMode?: EstimationMode
-
+export effect function buildModelInputBudget(args: ModelInput & {
   contextWindowTokens?: number
-
   reserveTokens?: number
-
   modelName?: string
 }): ModelInputBudget!ElizaError {
   const explicitWindow = Number.isFinite(args.contextWindowTokens) && args.contextWindowTokens
