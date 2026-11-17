@@ -783,6 +783,11 @@ export class GoogleMapsProvider implements MapsProviderAdapter {
           mapType: "roadmap",
           language: this.language ?? "en-US",
           region: this.region ?? "US",
+          // Two image pixels per map pixel on the same 256-unit grid. Without it
+          // a phone screen (2.6 device pixels per unit) stretches each tile.
+          // `highDpi` doubles the image; `scaleFactor2x` keeps labels readable at that size.
+          scale: "scaleFactor2x",
+          highDpi: true,
         }),
       },
       signal,
