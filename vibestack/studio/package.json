@@ -12,7 +12,8 @@
     "accept": "node ../spec.ts accept",
     "typecheck": "vibelang --noEmit -p .",
     "test": "vitest run",
-    "build": "vite build"
+    "build": "vite build",
+    "dev": "node --watch node_modules/vite/bin/vite.js build --watch --configLoader native"
   },
   "dependencies": {
     "@effect/platform-node": "4.1.1",
