@@ -78,10 +78,7 @@ function errorResponse(c: AppContext, error: unknown) {
   return c.json({ error: "password_backup_unavailable" }, 503);
 }
 
-async function redeem(
-  c: AppContext,
-  purpose: Purpose,
-): Promise<PasswordBackupScope | null> {
+function presentedProof(c: AppContext) {
   const code = c.req.header("authorization")?.match(/^Bearer (\S+)$/)?.[1];
   const verifier = c.req.header("X-Backup-Verifier");
   const state = c.req.header("X-Backup-State");
@@ -95,23 +92,38 @@ async function redeem(
   ) {
     return null;
   }
+  return { code, verifier, state };
+}
+
+async function redeem(
+  c: AppContext,
+  purpose: Purpose,
+  proof = presentedProof(c),
+): Promise<Approval | null> {
+  if (!proof) return null;
+  const { code, verifier, state } = proof;
   const approval = await takeSingleUseRecord<Approval>(
     cacheKey(code, deriveMobileAppAuthS256Challenge(verifier), state, purpose),
   );
-  if (!approval || approval.expiresAt <= Date.now()) return null;
+  return approval && (await approvalIsCurrent(c, approval)) ? approval : null;
+}
+
+async function approvalIsCurrent(
+  c: AppContext,
+  approval: Approval,
+): Promise<boolean> {
+  if (approval.expiresAt <= Date.now()) return false;
   const { registration } = await requireRegisteredMobileApp(
     c,
     approval.clientId,
   );
-  if (
-    registration.appId !== approval.appId ||
-    registration.environment !== approval.environment ||
-    registration.redirectUri !== approval.redirectUri ||
-    !(await readPrivateOwnerAccountAuthority(approval))
-  ) {
-    return null;
-  }
-  return approval;
+  return (
+    registration.appId === approval.appId &&
+    registration.environment === approval.environment &&
+    registration.redirectUri === approval.redirectUri &&
+    Boolean(await readPrivateOwnerAccountAuthority(approval)) &&
+    approval.expiresAt > Date.now()
+  );
 }
 
 function expectedRevision(c: AppContext): number | null | undefined {
@@ -198,7 +210,10 @@ app.post("/", bodyLimit({ maxSize: 8192 }), async (c) => {
       ) {
         return c.json({ error: "password_backup_unavailable" }, 503);
       }
-      const observed = input.purpose === "verify" ? null : await readPasswordBackupState(approval);
+      const observed =
+        input.purpose === "verify"
+          ? null
+          : await readPasswordBackupState(approval);
       return c.json({
         code,
         ownerId: approval.userId,
@@ -248,8 +263,8 @@ app.get("/", async (c) => {
 
 app.put("/", async (c) => {
   try {
-    const scope = await redeem(c, "save");
-    if (!scope) return c.json({ error: "backup_approval_required" }, 401);
+    const proof = presentedProof(c);
+    if (!proof) return c.json({ error: "backup_approval_required" }, 401);
     const revision = expectedRevision(c);
     if (revision === undefined)
       return c.json({ error: "backup_revision_required" }, 428);
@@ -257,6 +272,8 @@ app.put("/", async (c) => {
       return c.json({ error: "invalid_content_type" }, 415);
     const snapshot = await readSnapshot(c.req.raw);
     if (!snapshot) return c.json({ error: "invalid_snapshot_size" }, 413);
+    const scope = await redeem(c, "save", proof);
+    if (!scope) return c.json({ error: "backup_approval_required" }, 401);
     const change = await changePasswordBackup(scope, {
       kind: "save",
       expectedRevision: revision,

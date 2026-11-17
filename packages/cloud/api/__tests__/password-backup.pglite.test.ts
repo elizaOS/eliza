@@ -147,7 +147,7 @@ function use(
   code: string,
   method: string,
   extra: Record<string, string> = {},
-  body?: Buffer,
+  body?: Buffer | ReadableStream<Uint8Array>,
 ) {
   return app.request(
     "/",
@@ -183,8 +183,11 @@ test("proof-bound approvals protect encrypted snapshot round-trip, replay, delet
   const create = await grant("save");
   expect((await use(create.code, "GET")).status).toBe(401);
   expect(
-    (await use(create.code, "PUT", { "X-Backup-Verifier": "w".repeat(44) }))
-      .status,
+    (await use(create.code, "PUT", {
+      "X-Backup-Verifier": "w".repeat(44),
+      "If-None-Match": "*",
+      "Content-Type": "application/octet-stream",
+    }, bytes)).status,
   ).toBe(401);
   const stored = await use(
     create.code,
@@ -227,6 +230,16 @@ test("proof-bound approvals protect encrypted snapshot round-trip, replay, delet
       )
     ).status,
   ).toBe(413);
+  const interrupted = await grant("save");
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(writer) {
+      await dbWrite.execute(sql`UPDATE mobile_app_auth_clients SET enabled = false WHERE client_id = ${clientId}`);
+      writer.enqueue(new Uint8Array(bytes));
+      writer.close();
+    },
+  }, { highWaterMark: 0 });
+  expect((await use(interrupted.code, "PUT", { "If-Match": '"1"', "Content-Type": "application/octet-stream" }, stream)).status).toBe(401);
+  await dbWrite.execute(sql`UPDATE mobile_app_auth_clients SET enabled = true WHERE client_id = ${clientId}`);
   const remove = await grant("delete");
   expect((await use(remove.code, "DELETE", { "If-Match": '"1"' })).status).toBe(
     204,
