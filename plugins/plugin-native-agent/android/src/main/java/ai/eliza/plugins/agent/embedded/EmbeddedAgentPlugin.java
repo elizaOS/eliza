@@ -63,9 +63,9 @@ public final class EmbeddedAgentPlugin extends Plugin {
   }
 
   @PluginMethod public void request(PluginCall call) {
-    String method = call.getString("method", "GET"), path = call.getString("path", "");
+    String method = call.getString("method"), path = call.getString("path");
     JSObject body = call.getObject("body");
-    if (!admitted(call, method, path, false)) return;
+    if (malformed(call, body) || !admitted(call, method, path, false)) return;
     String text = body == null ? null : body.toString();
     dispatch(call, path, text, () -> {
       try { call.resolve(JSObject.fromJSONObject(EmbeddedAgentService.request(service, method, path, text))); }
@@ -74,11 +74,11 @@ public final class EmbeddedAgentPlugin extends Plugin {
   }
 
   @PluginMethod public void requestStream(PluginCall call) {
-    String method = call.getString("method", "POST"), path = call.getString("path", "");
+    String method = call.getString("method"), path = call.getString("path");
     JSObject body = call.getObject("body");
     String id = call.getString("id", "");
     if (!id.matches("[A-Za-z0-9-]{8,64}") || streams.containsKey(id)) { call.reject("A new stream id is required", "INVALID_STREAM_ID"); return; }
-    if (!admitted(call, method, path, true)) return;
+    if (malformed(call, body) || !admitted(call, method, path, true)) return;
     String text = body == null ? null : body.toString();
     Socket socket = new Socket();
     streams.put(id, socket);
@@ -95,7 +95,7 @@ public final class EmbeddedAgentPlugin extends Plugin {
         if (result.has("data")) end.put("data", result.get("data"));
       } catch (Exception failure) {
         if (socket.isClosed() && !streams.containsKey(id)) end.put("aborted", true);
-        else end.put("error", failure instanceof IOException ? failure.getMessage() : "The agent request failed");
+        else end.put("error", message(failure));
         if (failure instanceof NativeRuntimeSession.NotReadyException) end.put("code", NativeRuntimeSession.NotReadyException.CODE);
       } finally {
         streams.remove(id);
@@ -117,6 +117,11 @@ public final class EmbeddedAgentPlugin extends Plugin {
     call.resolve(result);
   }
 
+  private static boolean malformed(PluginCall call, JSObject body) {
+    if (body != null || !call.getData().has("body")) return false;
+    call.reject("The agent request failed", "INVALID_REQUEST");
+    return true;
+  }
   private boolean admitted(PluginCall call, String method, String path, boolean stream) {
     EmbeddedAgentConfig.Route route;
     try { route = service == null ? null : EmbeddedAgentService.config(getContext()).admit(method, path); }
@@ -132,7 +137,11 @@ public final class EmbeddedAgentPlugin extends Plugin {
   }
   private static void reject(PluginCall call, Exception failure) {
     if (failure instanceof NativeRuntimeSession.NotReadyException) call.reject(failure.getMessage(), NativeRuntimeSession.NotReadyException.CODE);
-    else call.reject(failure instanceof IOException ? failure.getMessage() : "The agent request failed");
+    else call.reject(message(failure));
+  }
+  private static String message(Exception failure) {
+    String message = failure instanceof IOException ? failure.getMessage() : null;
+    return message == null || message.isEmpty() ? "The agent request failed" : message;
   }
 
   @Override protected void handleOnDestroy() {
