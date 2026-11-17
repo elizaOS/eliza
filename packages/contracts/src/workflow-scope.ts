@@ -37,10 +37,7 @@ export const WORKFLOW_OPERATION_LABELS: Readonly<Record<string, string>> = {
   read_aloud: "Read aloud",
 };
 
-/** What each refused category would do, as a phrase that follows "can’t". */
-export const WORKFLOW_SCOPE_REASONS: Readonly<
-  Record<WorkflowScopeCategory, string>
-> = {
+const reasons: Record<WorkflowScopeCategory, string> = {
   calls: "place or answer phone calls",
   sms: "send text messages",
   payments: "make payments or move money",
@@ -328,6 +325,6 @@ export function checkWorkflowScope(
   return {
     refused: true,
     categories,
-    message: `Workflows can’t ${list(categories.map((c) => WORKFLOW_SCOPE_REASONS[c]))}. Nothing was sent to the agent.${offer} Rephrase the request using these steps.`,
+    message: `Workflows can’t ${list(categories.map((c) => reasons[c]))}. Nothing was sent to the agent.${offer} Rephrase the request using these steps.`,
   };
 }

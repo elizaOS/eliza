@@ -34,9 +34,8 @@ function normalizeName(value: string): string {
     .trim();
 }
 
-/** "the digest workflow" names "Morning digest": filler words are not part of a name. */
-function nameQuery(value: string): string {
-  const name = normalizeName(value);
+/** "the digest workflow" names "Digest": these filler words may be left out of a name. */
+function withoutFiller(name: string): string {
   const bare = name
     .replace(/(?<![\p{L}\p{N}])(?:the|my|workflows?|automations?)(?![\p{L}\p{N}])/gu, ' ')
     .replace(/\s+/g, ' ')
@@ -44,17 +43,20 @@ function nameQuery(value: string): string {
   return bare || name;
 }
 
-function containsWholePhrase(text: string, phrase: string): boolean {
-  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'u').test(text);
-}
-
-/** 0 = exact name, 1 = whole word or phrase either way, 2 = substring, undefined = no match. */
-function nameMatchTier(name: string, query: string): 0 | 1 | 2 | undefined {
-  if (!name || !query) return undefined;
-  if (name === query) return 0;
-  if (containsWholePhrase(name, query) || containsWholePhrase(query, name)) return 1;
-  return name.includes(query) ? 2 : undefined;
+/**
+ * How a stored name answers the owner's reference. 0 = the name as given.
+ * 1 = the same name once filler words are set aside on both sides. 2 = the
+ * reference is part of the name. A name that is only part of the reference is
+ * no match: "the weekly digest" does not name a workflow called "Digest".
+ */
+function nameMatchTier(name: string, reference: string): 0 | 1 | 2 | undefined {
+  const stored = normalizeName(name);
+  const given = normalizeName(reference);
+  if (!stored || !given) return undefined;
+  if (stored === given) return 0;
+  const query = withoutFiller(given);
+  if (withoutFiller(stored) === query) return 1;
+  return stored.includes(query) ? 2 : undefined;
 }
 
 const quoted = (workflows: WorkflowDefinitionResponse[]) =>
@@ -83,10 +85,7 @@ export async function resolveWorkflowRef(
       if (!(error instanceof WorkflowApiError) || error.statusCode !== 404) throw error;
     }
     if (loaded) {
-      if (
-        workflowName &&
-        nameMatchTier(normalizeName(loaded.name), nameQuery(workflowName)) === undefined
-      )
+      if (workflowName && nameMatchTier(loaded.name, workflowName) === undefined)
         return notApplied(
           'WORKFLOW_REF_MISMATCH',
           `workflowId resolves to “${loaded.name}”, not “${workflowName}”. Nothing was changed. Re-check the id or pass workflowName only.`,
@@ -108,11 +107,11 @@ export async function resolveWorkflowRef(
       true,
       { workflows: identities(all) }
     );
-  const query = nameQuery(source);
-  // The first tier with a hit wins, so "Digest" is not ambiguous with "Digest notes".
+  // The first tier with a hit wins, so "Digest" is not ambiguous with "Digest notes",
+  // and "Backup workflow" names that workflow, not one called "Backup".
   const tiers: WorkflowDefinitionResponse[][] = [[], [], []];
   for (const workflow of all) {
-    const tier = nameMatchTier(normalizeName(workflow.name), query);
+    const tier = nameMatchTier(workflow.name, source);
     if (tier !== undefined) tiers[tier].push(workflow);
   }
   const matches = tiers.find((tier) => tier.length > 0) ?? [];
