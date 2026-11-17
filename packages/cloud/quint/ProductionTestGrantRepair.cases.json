@@ -11,9 +11,12 @@
       "main": "ProductionTestGrantRepair",
       "init": "init",
       "step": "step",
-      "invariants": ["safety"],
+      "invariants": [
+        "safety"
+      ],
       "maxSteps": 12,
-      "samples": 100
+      "samples": 100,
+      "temporal": []
     }
   ]
 }
