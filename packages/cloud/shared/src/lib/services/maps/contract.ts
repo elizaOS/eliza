@@ -139,6 +139,7 @@ export interface MapsTilesDescriptor {
   mapType: "roadmap";
   minZoom: number;
   maxZoom: number;
+  /** Width of one tile on the map grid. An image may hold more pixels than this (high-DPI tiles). */
   tileSize: number;
   attribution: string;
 }
