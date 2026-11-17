@@ -145,7 +145,7 @@ it("forks before an edited user message and preserves the original after restart
     const ids = [
       randomUUID(),
       randomUUID(),
-      randomUUID(),
+      "77756d04-7407-0a15-9d28-be5782d10f5c",
       randomUUID(),
     ] as UUID[];
     const text = "Long original message\n".repeat(5000);

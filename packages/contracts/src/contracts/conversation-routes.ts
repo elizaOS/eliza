@@ -74,7 +74,9 @@ export const PostConversationRequestSchema = z
 
 export const PostConversationForkRequestSchema = z
   .object({
-    messageId: z.string().uuid(),
+    messageId: z
+      .string()
+      .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
     requestId: z.string().uuid(),
   })
   .strict();
