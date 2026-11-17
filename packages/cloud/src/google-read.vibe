@@ -21,7 +21,7 @@ schema EventOrganizer { email?: string; displayName?: string; self?: boolean }
 schema CalendarEvent {
   id: string; summary?: string; description?: string; location?: string; status?: string
   htmlLink?: string; hangoutLink?: string; etag?: string; start?: EventTime; end?: EventTime
-  organizer?: EventOrganizer; attendees?: Attendee[]
+  organizer?: EventOrganizer; attendees?: Attendee[]; eventType?: string; recurrence?: string[]
 }
 schema CalendarList { items?: CalendarEvent[]; timeZone?: string; nextPageToken?: string }
 
@@ -147,6 +147,7 @@ function eventCard(event: CalendarEvent, timezone: string | null) {
     externalId: event.id, calendarId: "primary", title: event.summary ?? "", description: event.description ?? "",
     location: event.location ?? "", status: event.status ?? "", startAt: start, endAt: end, isAllDay: allDay,
     timezone: event.start?.timeZone ?? timezone, htmlLink: event.htmlLink ?? null, conferenceLink: event.hangoutLink ?? null,
+    editable: event.organizer?.self === true && event.eventType === "default" && !event.recurrence?.length && !attendees.length && event.status !== "cancelled",
     etag: event.etag ?? null, organizer: event.organizer ?? null, attendees, metadata: {}
   }
 }

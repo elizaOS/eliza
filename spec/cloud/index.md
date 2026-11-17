@@ -84,9 +84,8 @@ pure def cloudDeviceAllows(deviceEndsAt: int, nowAt: int, acknowledged: bool, in
 ### Google sign-in and read access require separate permission
 
 Mailbox and calendar access requires a separate consent prompt where the
-person approves each requested scope. A deployment can use its sign-in OAuth
-client for this separate exchange. The exchange requests only the selected read
-scopes and identity needed to link the right account. The verified Google subject
+person approves each requested capability. A deployment can use its sign-in OAuth
+client for this separate exchange. The exchange requests only the selected scopes and identity needed to link the right account. The verified Google subject
 must match a Google sign-in account. For email or SMS sign-in the verified
 Google email must match the email chosen for the connection.
 
@@ -107,6 +106,37 @@ have separate permissions.
 ```quint
 pure def canReadCloudGoogle(ownerSessionActive: bool, connectionPresent: bool, grantOwnerMatches: bool, selected: Set[CloudGoogleReadScope], requested: CloudGoogleReadScope): bool =
   ownerSessionActive and connectionPresent and grantOwnerMatches and selected.contains(requested)
+```
+
+### Managed mail dispatch requires separate consent and explicit approval
+
+The owner may separately grant permission to send email. A browser request
+dispatches one reviewed plain-text draft to one exact address through the
+current Gmail connection. The device inference key cannot dispatch a draft.
+Cloud reserves the operation ID before calling Gmail and records provider
+acceptance by message ID. An unknown outcome cannot cause the operation to be
+dispatched again.
+
+```quint
+pure def canSendCloudGoogle(ownerSessionActive: bool, grantMatches: bool, sendConsent: bool, confirmedDraft: bool, reserved: bool): bool =
+  ownerSessionActive and grantMatches and sendConsent and confirmedDraft and not(reserved)
+```
+
+### Trash and calendar changes require their own permissions
+
+Moving a message to Trash and undoing that change requires Gmail modify
+permission. Google requires Gmail modify scope for Trash. Undo names the successful Trash receipt and checks the current
+provider revision. Grace exposes no permanent deletion here.
+
+Creating, changing or removing an appointment requires Calendar event
+permission for calendars their account owns. Changes target the primary
+calendar and appointments without guests. Updates and removals name the
+reviewed event version, and Google must accept that version. Grace displays
+success only after provider evidence matches the selected event.
+
+```quint
+pure def canChangeCloudGoogle(ownerSessionActive: bool, grantMatches: bool, allowed: bool, reviewedTarget: bool, versionMatches: bool): bool =
+  ownerSessionActive and grantMatches and allowed and reviewedTarget and versionMatches
 ```
 
 ## Story: Use a cloud speech session
