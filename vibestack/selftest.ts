@@ -141,6 +141,7 @@ async function run(root: string, accept: false | "reviews" | "unproved" = false,
   return {
     text,
     next,
+    results,
     failed: [...new Set(results.filter((r) => !r.ok).map((r) => r.stage))],
     said: (stage: Result["stage"], pattern: RegExp) => results.find((r) => r.stage === stage && pattern.test(`${r.summary}\n${r.detail}`)),
   };
@@ -370,8 +371,13 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
 
   test("a missing guard is found by simulation, as a trace that the same seed gives again and that is remembered, and the later stages say they were skipped", async () => {
     const root = copyOfProject("spec/index.md", unguarded);
+    fs.writeFileSync(path.join(root, "spec/index.proof.dfy"), "lemma overlapsTheSimulation()\n  ensures true\n{\n}\n");
+    fs.rmSync(path.join(root, "gen/proof"), { recursive: true, force: true });
     const first = await run(root);
     assert.ok(fs.existsSync(path.join(root, "gen/traces")), "a simulation that ran leaves its traces until the next check");
+    assert.deepEqual(first.results.filter((r) => r.stage === "proof" || r.stage === "types"), [], first.text);
+    assert.match(read("gen/proof/index/index.dfy", root), /lemma overlapsTheSimulation/, "the proofs that ran beside the failing simulation finished before the check returned");
+    assert.ok(fs.existsSync(path.join(root, "gen/proof/index.log")), first.text);
     fs.rmSync(path.join(root, ".spec-cache"), { recursive: true });
     const [again, remembered] = [await run(root), await run(root)];
     const trace = first.said("always", /./);
