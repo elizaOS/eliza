@@ -40,7 +40,7 @@ import org.json.JSONObject;
  * removed rows are deleted, new rows are added to the contact's first raw contact, and name or note values change in place only when the owner edits them.
  * Structured name edits retain middle names, prefixes, suffixes and phonetic/style columns;
  * a legacy display-name edit lets the provider re-derive the name parts from the new label, keeping phonetic/style columns,
- * without deleting other raw names. A new contact is stored in the device-local account.
+ * without deleting other raw names. On a linked contact the edited name row becomes super-primary so the aggregate shows it. A new contact is stored in the device-local account.
  * Nothing is retried. Call every method off the main thread.
  */
 public final class ContactsEditor {
@@ -108,10 +108,10 @@ public final class ContactsEditor {
       this.givenName = givenName; this.familyName = familyName; this.notes = notes;
     }
     boolean structured() { return givenName != null || familyName != null; }
-    boolean newContactHasContent() {
-      return (structured() ? (givenName != null && !givenName.isEmpty()) || (familyName != null && !familyName.isEmpty()) : !displayName.isEmpty())
-        || !phones.isEmpty() || !emails.isEmpty() || (notes != null && !notes.trim().isEmpty());
-    }
+    /** The name a new contact stores: the structured components when supplied, otherwise the legacy label. */
+    boolean named() { return structured() ? (givenName != null && !givenName.isEmpty()) || (familyName != null && !familyName.isEmpty()) : !displayName.isEmpty(); }
+    /** contactDraftProblem(draft, { create: true }) in the renderer contract applies this same rule. */
+    boolean newContactHasContent() { return named() || !phones.isEmpty() || !emails.isEmpty() || (notes != null && !notes.trim().isEmpty()); }
   }
   /** The source-compatible full-name API used by existing native hosts. */
   public static Draft draft(String displayName, JSONArray phones, JSONArray emails) {
@@ -124,6 +124,7 @@ public final class ContactsEditor {
       if (part != null && !part.isEmpty() && !clean(part, MAX_NAME)) throw new IllegalArgumentException("Invalid structured name");
     if (notes != null && !notesText(notes)) throw new IllegalArgumentException("Invalid contact notes");
     List<Field> numbers = fields(phones, "number", MAX_NUMBER, PHONE_TYPES), addresses = fields(emails, "address", MAX_ADDRESS, EMAIL_TYPES);
+    // An edit's omitted structured component keeps its stored value, so only a new contact can judge its name from the draft.
     if (displayName.isEmpty() && (givenName == null || givenName.isEmpty()) && (familyName == null || familyName.isEmpty())
         && (notes == null || notes.trim().isEmpty()) && numbers.isEmpty() && addresses.isEmpty()) throw new IllegalArgumentException("Empty contact");
     return new Draft(displayName, numbers, addresses, givenName, familyName, notes);
@@ -296,6 +297,16 @@ public final class ContactsEditor {
     if (!value.isEmpty() && !clean(value, MAX_NAME)) throw new Incomplete(FIELD_NOT_EDITABLE);
     return value;
   }
+  /**
+   * The contact's one note row, or null when it has none. Several note rows (each linked raw contact
+   * can carry one) or a note this class would refuse to write back are Incomplete: only the notes
+   * field is then unavailable; the rest of the contact stays editable.
+   */
+  private ScalarRow noteRow(long contact, CancellationSignal cancel) throws Incomplete {
+    ScalarRow note = scalar(contact, Note.CONTENT_ITEM_TYPE, new String[] { Note.NOTE }, 0, cancel);
+    if (note != null && !notesText(note.text(Note.NOTE))) throw new Incomplete(FIELD_NOT_EDITABLE);
+    return note;
+  }
   /** The contact's display name, or null when the contact is gone. */
   private String[] summary(long contact, CancellationSignal cancel) {
     try (Cursor row = resolver.query(ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, contact),
@@ -306,7 +317,10 @@ public final class ContactsEditor {
     }
   }
 
-  /** Editing details include provider given/family names and owner notes, typed phones/emails and an opaque version. */
+  /**
+   * Editing details include provider given/family names and owner notes, typed phones/emails and an
+   * opaque version. {@code notes} is omitted when the stored notes cannot be edited as one value.
+   */
   public JSObject get(String id, CancellationSignal cancel) throws NotFound, Incomplete {
     offMain();
     long contact = row(id);
@@ -322,13 +336,14 @@ public final class ContactsEditor {
     out.put("displayName", summary[1]);
     out.put("starred", summary[2].equals("1"));
     ScalarRow name = scalar(contact, StructuredName.CONTENT_ITEM_TYPE, NAME_COLUMNS, nameRaw(summary, raws), cancel);
-    ScalarRow note = scalar(contact, Note.CONTENT_ITEM_TYPE, new String[] { Note.NOTE }, 0, cancel);
-    String notes = note == null ? "" : note.text(Note.NOTE);
-    if (notes.length() > MAX_NOTES) throw new Incomplete(ContactsCatalog.FIELD_TOO_LONG);
-    if (!notesText(notes)) throw new Incomplete(FIELD_NOT_EDITABLE);
     out.put("givenName", part(name, StructuredName.GIVEN_NAME));
     out.put("familyName", part(name, StructuredName.FAMILY_NAME));
-    out.put("notes", notes);
+    try {
+      ScalarRow note = noteRow(contact, cancel);
+      out.put("notes", note == null ? "" : note.text(Note.NOTE));
+    } catch (Incomplete unavailable) {
+      // Omitted, as from older hosts: the owner can still edit the name, numbers and addresses.
+    }
     out.put("phoneNumbers", json(stored(contact, Phone.CONTENT_ITEM_TYPE, PHONE_TYPES, MAX_NUMBER, cancel), "number"));
     out.put("emailAddresses", json(stored(contact, Email.CONTENT_ITEM_TYPE, EMAIL_TYPES, MAX_ADDRESS, cancel), "address"));
     out.put("version", version(raws));
@@ -438,7 +453,8 @@ public final class ContactsEditor {
    * Creates the contact when {@code id} is null, otherwise applies the draft to the contact read at
    * {@code version}. Answers {@code {status: "saved", id, version}}, {@code {status: "stale"}} (the
    * contact changed; nothing written), {@code {status: "not-found"}} or {@code {status: "failed"}}
-   * (the provider refused the batch; nothing written), or {@code {status: "unknown"}} when the
+   * (the provider refused the batch, or the draft supplies notes for a contact whose notes {@link #get}
+   * omitted; nothing written), or {@code {status: "unknown"}} when the
    * dispatched batch's reply was lost. An unknown write may have committed and must not be retried
    * without reading the provider again.
    */
@@ -449,7 +465,7 @@ public final class ContactsEditor {
       if (!draft.newContactHasContent()) throw new IllegalArgumentException("Empty contact");
       ops.add(ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
         .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null).withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null).build());
-      if (draft.structured() ? (draft.givenName != null && !draft.givenName.isEmpty()) || (draft.familyName != null && !draft.familyName.isEmpty()) : !draft.displayName.isEmpty())
+      if (draft.named())
         ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI).withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
           .withValue(ContactsContract.Data.MIMETYPE, StructuredName.CONTENT_ITEM_TYPE).withValues(nameValues(draft, null)).build());
       if (draft.notes != null && !draft.notes.isEmpty()) ops.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
@@ -468,7 +484,7 @@ public final class ContactsEditor {
     }
     long contact = row(id);
     if (contact < 0 || !versionShape(version)) throw new IllegalArgumentException("Selected contact and version required");
-    final List<long[]> raws; final String[] summary; final List<Stored> phones, emails; final ScalarRow name, note;
+    final List<long[]> raws; final String[] summary; final List<Stored> phones, emails; final ScalarRow name; ScalarRow note = null;
     try {
       raws = rawContacts(contact, null);
       summary = summary(contact, null);
@@ -478,12 +494,21 @@ public final class ContactsEditor {
       emails = stored(contact, Email.CONTENT_ITEM_TYPE, EMAIL_TYPES, MAX_ADDRESS, null);
       name = draft.structured() || !draft.displayName.equals(summary[1])
         ? scalar(contact, StructuredName.CONTENT_ITEM_TYPE, NAME_COLUMNS, nameRaw(summary, raws), null) : null;
-      note = draft.notes == null ? null : scalar(contact, Note.CONTENT_ITEM_TYPE, new String[] { Note.NOTE }, 0, null);
     } catch (Incomplete partial) {
       // get() never offered this contact for editing, so no version of it can be current.
       return status("stale");
     } catch (RuntimeException unreadable) {
       return status("failed");
+    }
+    if (draft.notes != null) {
+      try {
+        note = noteRow(contact, null);
+      } catch (Incomplete unavailable) {
+        // get() omitted these notes; a single value must not flatten or overwrite them.
+        return status("failed");
+      } catch (RuntimeException unreadable) {
+        return status("failed");
+      }
     }
     assertUnchanged(ops, contact, raws);
     long target = raws.get(0)[0];
@@ -491,7 +516,14 @@ public final class ContactsEditor {
       ? (draft.givenName != null && !draft.givenName.equals(name == null ? "" : name.text(StructuredName.GIVEN_NAME)))
         || (draft.familyName != null && !draft.familyName.equals(name == null ? "" : name.text(StructuredName.FAMILY_NAME)))
       : !draft.displayName.equals(summary[1]);
-    if (nameChanged) scalarWrite(ops, name, nameRaw(summary, raws), StructuredName.CONTENT_ITEM_TYPE, nameValues(draft, name));
+    if (nameChanged) {
+      ContentValues values = nameValues(draft, name);
+      // Other linked raw contacts keep their names. Android shows a super-primary name before any
+      // other (AbstractContactAggregator.processDisplayNameCandidate); without it a more complex
+      // unchanged name on another raw contact could win and the saved rename would not show.
+      if (raws.size() > 1) { values.put(ContactsContract.Data.IS_PRIMARY, 1); values.put(ContactsContract.Data.IS_SUPER_PRIMARY, 1); }
+      scalarWrite(ops, name, nameRaw(summary, raws), StructuredName.CONTENT_ITEM_TYPE, values);
+    }
     if (draft.notes != null && !draft.notes.equals(note == null ? "" : note.text(Note.NOTE))) {
       ContentValues values = new ContentValues(); values.put(Note.NOTE, draft.notes);
       scalarWrite(ops, note, target, Note.CONTENT_ITEM_TYPE, values);
