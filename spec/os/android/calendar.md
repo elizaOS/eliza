@@ -1,17 +1,12 @@
 # Device calendar
 
-The Android calendar bridge: bounded reads of the Calendar provider, Android's
-own editor as a handoff, and guarded changes to one event the owner
-reviewed: an update, or a deletion of the event, of one occurrence or of the
-whole series, delayed by the [deletion window](./deletionWindow.md). Every
-call is admitted by [the bridge](./bridge.md); its provider writes report
-through the bridge's write outcome and write gate. The provider queries, the
-row digests behind a revision, the dialog text and the `ContentProviderOperation`
-batches stay in the shell (`android/calendar/`, from develop's
-`plugin-native-calendar` `CalendarPlugin`, `CalendarEventGuard` and
-`CalendarEventEdits`). The durable deletion row and its replay belong to the
-deletion journal; this spec decides what may be staged and what its dispatch
-may claim.
+Bounded reads of the Android Calendar provider, Android's editor as a
+handoff, and guarded changes to one reviewed event: an update, or a deletion
+of the event, one occurrence or the whole series, delayed by the
+[deletion window](./deletionWindow.md). [The bridge](./bridge.md) admits
+every call and reports every write. Provider queries, row digests, dialogs
+and provider batches stay in the shell (`android/calendar/`); the deletion
+journal keeps the durable row.
 
 ## Story: Read my calendar and open Android's editor
 
@@ -19,17 +14,16 @@ may claim.
 > and Android's own editor opened when I ask, so that opening the editor is
 > never taken for a saved change.
 
-### A read covers a range of at most 370 days inside the safe integer range
+### A read covers a non-empty range of at most 370 days inside the safe integer range
 
-Every millisecond value the bridge reads or passes on is a whole number from
-zero up to the last safe integer; a range that is empty, reversed, longer
-than 370 days or past that bound is refused before the provider is queried.
+An empty, reversed, negative or over-long range, or one past the last safe
+integer, is refused before the provider is queried.
 
 ```quint
 import bridge.* from "./bridge"
 import deletionWindow as W from "./deletionWindow"
 import numbers as Num from "../../core/numbers"
-pure val maxReadSpanMs = 31968000000
+pure val maxReadSpanMs = 370 * 86400000
 type ReadDecision = ReadAllowed | InvalidRange
 pure def readRange(rangeStart: int, rangeEnd: int): ReadDecision =
   if (rangeStart < 0 or rangeEnd <= rangeStart or rangeEnd - rangeStart > maxReadSpanMs or rangeEnd > Num::maxSafeInteger) InvalidRange else ReadAllowed
@@ -38,25 +32,24 @@ pure val rangeEndValues = Set(0, 1000, 31968000000, 31968001000, 900719925474099
 pure val instantValues = Set(-1, 0, 500, 31968000000, 9007199254740991)
 pure def lawEveryInstantOfAnAllowedRangeIsSafe(rangeStart: int, rangeEnd: int, instant: int): bool =
   (readRange(rangeStart, rangeEnd) == ReadAllowed and instant >= rangeStart and instant <= rangeEnd) implies
-    (instant >= 0 and instant <= Num::maxSafeInteger and rangeEnd - rangeStart <= 370 * 86400000)
+    (instant >= 0 and instant <= Num::maxSafeInteger)
 ```
 
 ### Opening Android's editor reports Opened at most and changes nothing
 
-The editor handoff is a bridge handoff: `Opened` is a preview receipt, never
-a write. It leaves the provider row, the review, the staged deletion and the
-write gate as they were.
+`Opened` is a bridge handoff, a preview receipt and never a write: the row,
+the review, the staged deletion and the write gate stay as they were.
 
 ```quint
 type ProviderChange = UpdateFields | DeleteRow | ExcludeOccurrence | CancelOccurrence | InsertCancelledOccurrence
 type Recurrence = OneOff | RuleSeries | DateListSeries
-type ProviderRow = RowGone | RowLive({ revision: int, writable: bool, recurrence: Recurrence })
+type ProviderRow = RowGone | RowLive({ revision: int, writable: bool, recurrence: Recurrence, plainLocal: bool })
 type Review = NoReview | Reviewed({ ticket: int, revision: int, change: ProviderChange })
 type StagedDeletion = NoStagedDeletion | Staged({ pending: W::PendingDeletion, revision: int, change: ProviderChange })
 type CalendarResult = NoResult | ReviewReady | ReviewConflict | EditorNeeded | EditorShown | EditorUnavailable
   | DeletionQueued | DeletionUndone | WriteSettled({ settledAs: WriteOutcome, change: ProviderChange })
 type CalendarEdit = { row: ProviderRow, nextTicket: int, review: Review, deletion: StagedDeletion, gate: WriteGate, lastResult: CalendarResult }
-pure val initial: CalendarEdit = { row: RowLive({ revision: 1, writable: true, recurrence: OneOff }), nextTicket: 1,
+pure val initial: CalendarEdit = { row: RowLive({ revision: 1, writable: true, recurrence: OneOff, plainLocal: true }), nextTicket: 1,
   review: NoReview, deletion: NoStagedDeletion, gate: WriteIdle, lastResult: NoResult }
 pure def openEditor(s: CalendarEdit, handoff: HandoffOutcome): CalendarEdit =
   { ...s, lastResult: if (handoff == Opened) EditorShown else EditorUnavailable }
@@ -73,32 +66,34 @@ pure def sometimesEditorShown(s: CalendarEdit): bool = s.lastResult == EditorSho
 
 ### Only the current inspection ticket supplies the native confirmation
 
-An inspection reads the row and issues a new ticket holding its revision and
-the change it allows; the previous ticket is retired. A confirmation names
-its ticket and is admitted only for the current one, with the app focused,
-unlocked and both calendar grants held. Pausing the Activity retires the
-ticket. A confirmation consumes its ticket, so a retired or stale ticket
-publishes nothing. An event that repeats is never updated here: its edit is
-Android's editor.
+An inspection issues a new ticket holding the row's revision and the change
+it allows, retiring the previous one. A confirmation is admitted only for the
+current ticket, with the app focused, unlocked and both calendar grants held;
+it consumes the ticket, and pausing the Activity retires it. Only a plain
+one-off event on the host's own local calendar (no guests, alarms or all-day
+span) is updated here; any other live event goes to Android's editor.
 
 ```quint
 pure def rowLive(row: ProviderRow): bool = match row { | RowLive(r) => true | _ => false }
 pure def rowRevision(row: ProviderRow): int = match row { | RowLive(r) => r.revision | _ => 0 }
 pure def rowWritable(row: ProviderRow): bool = match row { | RowLive(r) => r.writable | _ => false }
 pure def rowRecurrence(row: ProviderRow): Recurrence = match row { | RowLive(r) => r.recurrence | _ => OneOff }
+pure def directlyEditable(row: ProviderRow): bool = match row { | RowLive(r) => r.writable and r.recurrence == OneOff and r.plainLocal | _ => false }
 pure def reviewTicket(review: Review): int = match review { | Reviewed(r) => r.ticket | _ => 0 }
 pure def reviewRevision(review: Review): int = match review { | Reviewed(r) => r.revision | _ => 0 }
 pure def reviewChange(review: Review): ProviderChange = match review { | Reviewed(r) => r.change | _ => UpdateFields }
 pure val confirmCall: BridgeCall = { need: WithFocus, needsGrant: true, needsFeature: false }
 pure def currentTicket(s: CalendarEdit, ticket: int): bool = s.review != NoReview and ticket > 0 and reviewTicket(s.review) == ticket
 pure def confirmed(facts: HostFacts): bool = admitCall(PluginRegistered, confirmCall, facts) == CallAdmitted
+pure def issueTicket(change: ProviderChange, s: CalendarEdit): CalendarEdit =
+  { ...s, review: Reviewed({ ticket: s.nextTicket, revision: rowRevision(s.row), change: change }), nextTicket: s.nextTicket + 1, lastResult: ReviewReady }
 pure def inspectUpdate(s: CalendarEdit): CalendarEdit =
-  if (rowWritable(s.row) and rowRecurrence(s.row) == OneOff)
-    { ...s, review: Reviewed({ ticket: s.nextTicket, revision: rowRevision(s.row), change: UpdateFields }), nextTicket: s.nextTicket + 1, lastResult: ReviewReady }
-  else if (rowLive(s.row) and rowRecurrence(s.row) != OneOff) { ...s, review: NoReview, lastResult: EditorNeeded }
-  else { ...s, review: NoReview, lastResult: ReviewConflict }
+  if (directlyEditable(s.row)) issueTicket(UpdateFields, s)
+  else { ...s, review: NoReview, lastResult: if (rowLive(s.row)) EditorNeeded else ReviewConflict }
 pure def pause(s: CalendarEdit): CalendarEdit = { ...s, review: NoReview }
 pure val ticketValues = Set(0, 1, 2, 3)
+pure def alwaysOnlyTheNewestTicketCanBeCurrent(s: CalendarEdit): bool =
+  s.nextTicket >= 1 and (s.review != NoReview implies reviewTicket(s.review) == s.nextTicket - 1)
 pure def stepConfirmationConsumesTheCurrentTicket(before: CalendarEdit, via: str, after: CalendarEdit): bool =
   ((via == "saveReviewed" or via == "stageDeletion") implies (before.review != NoReview and after.review == NoReview)) and
   (via == "pause" implies after.review == NoReview)
@@ -106,13 +101,11 @@ pure def stepConfirmationConsumesTheCurrentTicket(before: CalendarEdit, via: str
 
 ### An edit compares the reviewed revision and changes the row in one provider batch
 
-The batch asserts the calendar row and the event row as reviewed, then
-updates the event, so a row that changed, went or became read-only or
-repeating after review refuses with nothing written (`Conflict`). An update
-keeps its calendar, sets the end and clears the duration. The bridge's write
-gate admits one write at a time, and an `Uncertain` outcome (no answer, or a
-committed batch whose readback did not confirm it) blocks the next write
-until an explicit read. A lost answer is never retried.
+The batch asserts the calendar and event rows as reviewed, so a row that
+changed, went or stopped being directly editable refuses with nothing written
+(`Conflict`). The bridge's write gate admits one write at a time; an
+`Uncertain` outcome (no answer, or a commit the readback did not confirm)
+blocks the next write until an explicit read, and is never retried.
 
 ```quint
 type ParentAfter = ParentGone | ParentLive
@@ -120,7 +113,7 @@ type Readback = { parentAfter: ParentAfter, fieldsMatch: bool, exclusionExact: b
 pure def isOccurrenceChange(change: ProviderChange): bool =
   change == ExcludeOccurrence or change == CancelOccurrence or change == InsertCancelledOccurrence
 pure def exactRow(row: ProviderRow, revision: int, change: ProviderChange): bool =
-  rowWritable(row) and rowRevision(row) == revision and (change == UpdateFields implies rowRecurrence(row) == OneOff)
+  rowWritable(row) and rowRevision(row) == revision and (change == UpdateFields implies directlyEditable(row))
 pure def readbackConfirms(change: ProviderChange, readback: Readback): bool =
   if (change == UpdateFields) readback.parentAfter == ParentLive and readback.fieldsMatch
   else if (change == DeleteRow) readback.parentAfter == ParentGone
@@ -146,22 +139,20 @@ pure def canSaveReviewed(s: CalendarEdit, ticket: int, facts: HostFacts): bool =
 pure def saveReviewed(s: CalendarEdit, ticket: int, facts: HostFacts, answered: bool, readback: Readback): CalendarEdit =
   applyBatch(UpdateFields, { ...s, review: NoReview }, reviewRevision(s.review), answered, readback)
 pure def canChangeProvider(s: CalendarEdit): bool = rowLive(s.row)
-pure def changeProvider(s: CalendarEdit, kept: bool, writable: bool, recurrence: Recurrence): CalendarEdit =
-  { ...s, row: if (kept) RowLive({ revision: rowRevision(s.row) + 1, writable: writable, recurrence: recurrence }) else RowGone }
+pure def changeProvider(s: CalendarEdit, kept: bool, writable: bool, recurrence: Recurrence, plainLocal: bool): CalendarEdit =
+  { ...s, row: if (kept) RowLive({ revision: rowRevision(s.row) + 1, writable: writable, recurrence: recurrence, plainLocal: plainLocal }) else RowGone }
 pure def observeRead(s: CalendarEdit, read: ReadEvidence): CalendarEdit = { ...s, gate: gateOnRead(s.gate, read) }
-pure val readbackValues = Set(
-  { parentAfter: ParentLive, fieldsMatch: true, exclusionExact: false, cancelledAtStart: 0, instanceRemains: true },
+pure val readbackValues = Set({ parentAfter: ParentLive, fieldsMatch: true, exclusionExact: false, cancelledAtStart: 0, instanceRemains: true },
   { parentAfter: ParentGone, fieldsMatch: false, exclusionExact: false, cancelledAtStart: 0, instanceRemains: false },
   { parentAfter: ParentLive, fieldsMatch: false, exclusionExact: true, cancelledAtStart: 0, instanceRemains: false },
   { parentAfter: ParentLive, fieldsMatch: false, exclusionExact: false, cancelledAtStart: 1, instanceRemains: false })
 pure def lawAppliedNeedsTheReviewedRowAndItsReadback(row: ProviderRow, revision: int, change: ProviderChange, answered: bool, readback: Readback): bool =
   writeOutcome(batchReply(row, revision, change, answered, readback)) == Applied implies
     (rowRevision(row) == revision and rowWritable(row) and answered and readbackConfirms(change, readback))
-pure val rowValues: Set[ProviderRow] = List(RowGone, RowLive({ revision: 1, writable: true, recurrence: OneOff }),
-  RowLive({ revision: 2, writable: false, recurrence: OneOff }), RowLive({ revision: 1, writable: true, recurrence: RuleSeries })
+pure val rowValues: Set[ProviderRow] = List(RowGone, RowLive({ revision: 1, writable: true, recurrence: OneOff, plainLocal: true }),
+  RowLive({ revision: 2, writable: false, recurrence: OneOff, plainLocal: true }), RowLive({ revision: 1, writable: true, recurrence: RuleSeries, plainLocal: false })
 ).foldl(Set(), (acc, r) => acc.union(Set(r)))
 pure val revisionValues = Set(0, 1, 2)
-pure def alwaysNoBatchIsLeftInFlight(s: CalendarEdit): bool = s.gate != WriteInFlight
 pure def stagedRevision(deletion: StagedDeletion): int = match deletion { | Staged(d) => d.revision | _ => 0 }
 pure def stagedChange(deletion: StagedDeletion): ProviderChange = match deletion { | Staged(d) => d.change | _ => UpdateFields }
 pure def appliedResult(result: CalendarResult): bool = match result { | WriteSettled(w) => w.settledAs == Applied | _ => false }
@@ -175,7 +166,7 @@ pure def stepAppliedOnlyAfterTheProviderChanged(before: CalendarEdit, via: str, 
 pure def sometimesUpdateApplied(s: CalendarEdit): bool = s.lastResult == WriteSettled({ settledAs: Applied, change: UpdateFields })
 pure def sometimesStaleReviewRefused(s: CalendarEdit): bool = s.lastResult == WriteSettled({ settledAs: Conflict, change: UpdateFields })
 pure def sometimesUncertainWriteBlocks(s: CalendarEdit): bool = s.gate == WriteUnsettled
-pure def sometimesRepeatingEventNeedsTheEditor(s: CalendarEdit): bool = s.lastResult == EditorNeeded
+pure def sometimesUpdateNeedsTheEditor(s: CalendarEdit): bool = s.lastResult == EditorNeeded
 ```
 
 ## Story: Delete the event, one occurrence or the whole series as I chose
@@ -186,18 +177,16 @@ pure def sometimesRepeatingEventNeedsTheEditor(s: CalendarEdit): bool = s.lastRe
 
 ### The provider resolves the selected instance and decides the permitted scope
 
-The renderer names a row and, at most, a scope; everything else comes from
-the provider. A row of a series, or a moved exception, defaults to one
-occurrence; a single row to the event. An explicit scope must match the
-parent's recurrence. An occurrence is identified by its original start: the
-selected begin for a row of the parent, the exception's original instance
-time for a moved exception. A writing plan needs a writable current source
-and parent, families of at most 2,048 event, attendee and reminder rows and
-at most 2 Mi units of revision input (`bounded`), and exactly one provider
-instance at the selected row and times. An occurrence needs a rule
-(`RRULE`); on a synced calendar it cancels its existing exception or inserts
-a cancelled one, and on a local unsynced calendar it excludes its whole-second
-original start from an unmodified parent. Anything else is Android's editor.
+The renderer names a row and at most a scope; the rest comes from the
+provider. A series row or a moved exception defaults to one occurrence, a
+single row to the event, and an explicit scope must match the parent's
+recurrence. An occurrence is its original start: the selected begin on the
+parent, or the exception's original instance time. A write needs a writable
+current source, families of at most 2,048 event, attendee and reminder rows
+and 2 MiB of revision input (`bounded`), and exactly one provider instance at
+the selected times. An occurrence needs an `RRULE`: a synced series cancels
+or inserts a cancelled exception; a local unsynced one excludes the
+whole-second start from an unmodified parent. Anything else is the editor.
 
 ```quint
 type CalendarScope = SingleEvent | OneOccurrence | WholeSeries
@@ -255,26 +244,22 @@ pure def lawExplicitScopeMustMatchTheRecurrence(shape: Recurrence, writable: boo
 
 ### A confirmed deletion is staged on the review clock and dispatched only through its claim
 
-Inspecting a deletion asks the provider for the plan and issues a ticket for
-it; a plan that needs Android's editor or does not hold issues none.
-Confirming the current ticket stages one deletion, with a deadline taken on a
-usable review clock; the owner can undo it while `W::claimDeletion` lets
-Undo win, and the provider batch runs only when the dispatch claim wins,
-with the calendar grant still held. The batch asserts the source row and every
-event-family, attendee and reminder row with their counts, then makes the
-one planned change: delete the parent, append the exact UTC `EXDATE`, or
-cancel the occurrence's exception. Its readback is the plan's own: the
-parent gone; or the parent live, the instance gone and the exclusion exact or
-exactly one cancelled exception at the original start. Local readback says
-nothing about remote sync or guests.
+Inspecting a deletion issues a ticket only for a plan that writes.
+Confirming the current ticket stages one deletion with a deadline on a usable
+review clock; Undo works while `W::claimDeletion` lets it win, and the batch
+runs only when the dispatch claim wins, with the grant still held. The batch
+asserts the source and every family, attendee and reminder row with their
+counts, then makes the one planned change. Its readback is the plan's own:
+the parent gone; or the parent live, the instance gone, and the exclusion
+exact or one cancelled exception at the original start. It says nothing about
+remote sync or guests.
 
 ```quint
 pure val deletionOwner = "calendar"
 pure val dispatchCall: BridgeCall = { need: Anytime, needsGrant: true, needsFeature: false }
 pure def inspectDeletion(s: CalendarEdit, evidence: ScopeEvidence, requested: RequestedScope): CalendarEdit = {
   val plan = scopePlan(rowRecurrence(s.row), rowWritable(s.row), evidence, requested)
-  if (planWrites(plan))
-    { ...s, review: Reviewed({ ticket: s.nextTicket, revision: rowRevision(s.row), change: plannedChange(plan) }), nextTicket: s.nextTicket + 1, lastResult: ReviewReady }
+  if (planWrites(plan)) issueTicket(plannedChange(plan), s)
   else { ...s, review: NoReview, lastResult: if (plan == EditorRequired) EditorNeeded else ReviewConflict }
 }
 pure def canStageDeletion(s: CalendarEdit, ticket: int, facts: HostFacts, clock: W::DeletionClock): bool =
@@ -308,10 +293,10 @@ pure def stagedOnARealWindow(deletion: StagedDeletion): bool = match deletion {
 pure def alwaysStagedDeletionIsQueuedOnARealWindow(s: CalendarEdit): bool = stagedOnARealWindow(s.deletion)
 pure def stepOccurrenceDeletionKeepsTheSeries(before: CalendarEdit, via: str, after: CalendarEdit): bool =
   (via == "dispatchDeletion" and isOccurrenceChange(stagedChange(before.deletion)) and rowLive(before.row)) implies rowLive(after.row)
+pure def settledChange(result: CalendarResult): ProviderChange = match result { | WriteSettled(w) => w.change | _ => UpdateFields }
 pure def sometimesDeletionQueued(s: CalendarEdit): bool = s.deletion != NoStagedDeletion
 pure def sometimesDeletionUndone(s: CalendarEdit): bool = s.lastResult == DeletionUndone
-pure def sometimesSeriesDeleted(s: CalendarEdit): bool = s.row == RowGone and s.lastResult == WriteSettled({ settledAs: Applied, change: DeleteRow })
-pure def settledChange(result: CalendarResult): ProviderChange = match result { | WriteSettled(w) => w.change | _ => UpdateFields }
+pure def sometimesWholeEventDeleted(s: CalendarEdit): bool = s.row == RowGone and s.lastResult == WriteSettled({ settledAs: Applied, change: DeleteRow })
 pure def sometimesOccurrenceRemovedSeriesKept(s: CalendarEdit): bool =
   rowLive(s.row) and appliedResult(s.lastResult) and isOccurrenceChange(settledChange(s.lastResult))
 ```

@@ -34,8 +34,9 @@ exactly when the backend needs one.
 ```quint
 import launch.* from "../host/launch"
 type BindPhase = Unbound | Bound
-type AccountState = Usable | CredentialInvalid({ version: int }) | InsufficientCredits | LimitReached({ retryAt: int }) | ProviderIssue
-type LastCloudFailure = NoCloudFailure | CloudFailedAt({ kind: AccountState, at: int })
+type AccountFailure = CredentialInvalid({ version: int }) | InsufficientCredits | LimitReached({ retryAt: int }) | ProviderIssue
+type AccountState = Usable | Failing({ failure: AccountFailure })
+type LastCloudFailure = NoCloudFailure | CloudFailedAt({ failure: AccountFailure, at: int })
 type Call = { id: int, credentialVersion: int }
 type ModelBinding = { phase: BindPhase, backend: Backend, account: OwnerAccount, embeddings: Embeddings, google: GoogleConsent,
   credentialVersion: int, accountState: AccountState, lastCloudFailure: LastCloudFailure, calls: List[Call], nextCall: int, clock: int }
@@ -100,7 +101,7 @@ pure def canStartCall(s: ModelBinding, handler: ModelHandler, now: int): bool =
 pure def startCall(s: ModelBinding, handler: ModelHandler, now: int): ModelBinding =
   { ...s, calls: s.calls.append({ id: s.nextCall, credentialVersion: s.credentialVersion }), nextCall: s.nextCall + 1, clock: clockAt(s, now) }
 pure def alwaysCallsUseAHeldCredential(s: ModelBinding): bool =
-  s.calls.every(c => c.id >= 0 and c.id < s.nextCall and c.credentialVersion >= 1 and c.credentialVersion <= s.credentialVersion and s.calls.select(d => d.id == c.id).length() == 1)
+  s.calls.every(c => c.id >= 0 and c.id < s.nextCall and c.credentialVersion >= 1 and c.credentialVersion <= s.credentialVersion)
 pure def alwaysNoBackendNeverCalls(s: ModelBinding): bool = s.backend == NoBackend implies
   (s.nextCall == 0 and s.accountState == Usable and s.lastCloudFailure == NoCloudFailure)
 pure def stepClockNeverGoesBack(before: ModelBinding, after: ModelBinding): bool = after.clock >= before.clock
@@ -147,37 +148,35 @@ them on the reply and status reports them. `lastCloudFailure` is
 `{kind, at, retryAt?}`; it never holds message text or a credential.
 
 ```quint
-type CallResult = CallAnswered | CallRefused({ error: CloudError })
-pure def accountStateOf(e: CloudError, version: int): AccountState = match e {
+pure def failureOf(e: CloudError, version: int): AccountFailure = match e {
   | CloudCredentialInvalid => CredentialInvalid({ version: version })
   | CloudInsufficientCredits => InsufficientCredits
   | CloudAllowanceExhausted(_) => InsufficientCredits
   | CloudRateLimited(x) => LimitReached({ retryAt: x.retryAt })
   | _ => ProviderIssue
 }
-pure def resultKind(result: CallResult, version: int): AccountState = match result { | CallAnswered => Usable | CallRefused(r) => accountStateOf(r.error, version) }
-pure def accountStateName(st: AccountState): str = match st {
-  | Usable => "usable" | CredentialInvalid(_) => "credential_invalid" | InsufficientCredits => "insufficient_credits" | LimitReached(_) => "limit_reached" | ProviderIssue => "provider_issue"
+pure def failureName(f: AccountFailure): str = match f {
+  | CredentialInvalid(_) => "credential_invalid" | InsufficientCredits => "insufficient_credits" | LimitReached(_) => "limit_reached" | ProviderIssue => "provider_issue"
 }
-pure def retryAtOf(st: AccountState): int = match st { | LimitReached(x) => x.retryAt | _ => -1 }
+pure def accountStateName(st: AccountState): str = match st { | Usable => "usable" | Failing(x) => failureName(x.failure) }
+pure def retryAtOf(f: AccountFailure): int = match f { | LimitReached(x) => x.retryAt | _ => -1 }
+pure def lastFailureKind(f: LastCloudFailure): str = match f { | CloudFailedAt(x) => failureName(x.failure) | NoCloudFailure => "" }
 pure def callVersion(calls: List[Call], id: int): int = calls.select(c => c.id == id).nthOr(0, { id: -1, credentialVersion: 0 }).credentialVersion
-pure val resultValues = Set(CallAnswered, CallRefused({ error: CloudCredentialInvalid }), CallRefused({ error: CloudInsufficientCredits }),
-  CallRefused({ error: CloudRateLimited({ retryAt: 5 }) }), CallRefused({ error: CloudRateLimited({ retryAt: 10 }) }), CallRefused({ error: CloudProviderIssue }), CallRefused({ error: CloudNetwork }))
-pure def canFinishCall(s: ModelBinding, id: int): bool = s.calls.some(c => c.id == id)
-pure def finishCall(s: ModelBinding, id: int, now: int, result: CallResult): ModelBinding = {
+pure def canRefuseCall(s: ModelBinding, id: int): bool = s.calls.some(c => c.id == id)
+pure def refuseCall(s: ModelBinding, id: int, now: int, e: CloudError): ModelBinding = {
   val t = clockAt(s, now)
-  val kind = resultKind(result, callVersion(s.calls, id))
-  val ignored = staleRefusal(kind, s.credentialVersion)
+  val failure = failureOf(e, callVersion(s.calls, id))
+  val ignored = staleRefusal(failure, s.credentialVersion)
   { ...s, calls: s.calls.select(c => c.id != id), clock: t,
-    accountState: if (kind == Usable) afterSuccess(s.accountState, t) else if (ignored) s.accountState else afterFailure(s.accountState, kind, t),
-    lastCloudFailure: if (kind == Usable or ignored) s.lastCloudFailure else CloudFailedAt({ kind: kind, at: t }) }
+    accountState: if (ignored) s.accountState else afterFailure(s.accountState, failure, t),
+    lastCloudFailure: if (ignored) s.lastCloudFailure else CloudFailedAt({ failure: failure, at: t }) }
 }
-pure def lawEveryRefusalIsAnAccountFailure(e: CloudError, version: int): bool = accountStateOf(e, version) != Usable
 pure def alwaysFailingAccountHasALastFailure(s: ModelBinding): bool = s.accountState != Usable implies s.lastCloudFailure != NoCloudFailure
-pure def lastFailureKind(f: LastCloudFailure): str = match f { | CloudFailedAt(x) => accountStateName(x.kind) | NoCloudFailure => "" }
-pure def lastFailureAt(f: LastCloudFailure): int = match f { | CloudFailedAt(x) => x.at | NoCloudFailure => 0 }
-pure def alwaysLastFailureNamesAFailure(s: ModelBinding): bool = lastFailureKind(s.lastCloudFailure) != "usable" and lastFailureAt(s.lastCloudFailure) <= s.clock
-pure def sometimesInsufficientCredits(s: ModelBinding): bool = s.accountState == InsufficientCredits
+pure def failedAt(f: LastCloudFailure): int = match f { | CloudFailedAt(x) => x.at | NoCloudFailure => 0 }
+pure def alwaysLastFailureIsNotInTheFuture(s: ModelBinding): bool = failedAt(s.lastCloudFailure) <= s.clock
+pure def sometimesInsufficientCredits(s: ModelBinding): bool = s.accountState == Failing({ failure: InsufficientCredits })
+pure def sometimesCredentialInvalid(s: ModelBinding): bool = accountStateName(s.accountState) == "credential_invalid"
+pure def sometimesProviderIssue(s: ModelBinding): bool = s.accountState == Failing({ failure: ProviderIssue })
 ```
 
 ### No call starts before a rate limit's retry time, and a provider issue does not lift a limit still in force
@@ -185,8 +184,10 @@ pure def sometimesInsufficientCredits(s: ModelBinding): bool = s.accountState ==
 A refused credential, spent credits or a newer limit replace a limit.
 
 ```quint
-pure def limitedAt(st: AccountState, t: int): bool = match st { | LimitReached(x) => t < x.retryAt | _ => false }
-pure def afterFailure(st: AccountState, kind: AccountState, t: int): AccountState = if (kind == ProviderIssue and limitedAt(st, t)) st else kind
+pure def limitedBy(f: AccountFailure, t: int): bool = match f { | LimitReached(x) => t < x.retryAt | _ => false }
+pure def limitedAt(st: AccountState, t: int): bool = match st { | Failing(x) => limitedBy(x.failure, t) | Usable => false }
+pure def afterFailure(st: AccountState, failure: AccountFailure, t: int): AccountState =
+  if (failure == ProviderIssue and limitedAt(st, t)) st else Failing({ failure: failure })
 pure def stepNoCallBeforeRetryAt(before: ModelBinding, via: str, after: ModelBinding): bool = via == "startCall" implies not(limitedAt(before.accountState, after.clock))
 pure def sometimesLimitReached(s: ModelBinding): bool = limitedAt(s.accountState, s.clock)
 pure def sometimesProviderIssueKeepsTheLimit(s: ModelBinding): bool =
@@ -195,8 +196,15 @@ pure def sometimesProviderIssueKeepsTheLimit(s: ModelBinding): bool =
 
 ### An answer clears the account state, except a limit not yet over
 
+An answer records no failure: the last failure stays for status to report.
+
 ```quint
 pure def afterSuccess(st: AccountState, t: int): AccountState = if (limitedAt(st, t)) st else Usable
+pure def canAnswerCall(s: ModelBinding, id: int): bool = s.calls.some(c => c.id == id)
+pure def answerCall(s: ModelBinding, id: int, now: int): ModelBinding = {
+  val t = clockAt(s, now)
+  { ...s, calls: s.calls.select(c => c.id != id), clock: t, accountState: afterSuccess(s.accountState, t) }
+}
 pure def lawAnswerLeavesOnlyALimitInForce(st: AccountState, t: int): bool =
   afterSuccess(st, t) == Usable or (afterSuccess(st, t) == st and limitedAt(st, t))
 pure def sometimesLimitClearedByAnAnswer(s: ModelBinding): bool =
@@ -223,10 +231,11 @@ pure val versionValues = Set(1, 2, 3)
 pure val accountValues = Set(SignedIn({ userId: "user1", organizationId: "org1" }), SignedIn({ userId: "user2", organizationId: "org1" }), NoAccount)
 pure def canPushCredential(s: ModelBinding, version: int, account: OwnerAccount): bool = pushVerdict(s, version, account) == PushAccepted
 pure def pushCredential(s: ModelBinding, version: int, account: OwnerAccount): ModelBinding =
-  { ...s, credentialVersion: version, accountState: if (accountStateName(s.accountState) == "credential_invalid") Usable else s.accountState }
+  { ...s, credentialVersion: version, accountState: if (credentialRefused(s.accountState)) Usable else s.accountState }
+pure def credentialRefused(st: AccountState): bool = accountStateName(st) == "credential_invalid"
 pure def stepPushKeepsCallsAndOtherStates(before: ModelBinding, via: str, after: ModelBinding): bool = via == "pushCredential" implies
-  (after.calls == before.calls and after.credentialVersion > before.credentialVersion and accountStateName(after.accountState) != "credential_invalid"
-    and (accountStateName(before.accountState) != "credential_invalid" implies after.accountState == before.accountState))
+  (after.calls == before.calls and after.credentialVersion > before.credentialVersion and not(credentialRefused(after.accountState))
+    and (not(credentialRefused(before.accountState)) implies after.accountState == before.accountState))
 pure def sometimesCredentialInvalidClearedByPush(s: ModelBinding): bool =
   s.credentialVersion >= 2 and s.accountState == Usable and lastFailureKind(s.lastCloudFailure) == "credential_invalid"
 ```
@@ -237,8 +246,9 @@ A call sent with an older version that comes back `credentialInvalid`
 changes neither the account state nor the last failure.
 
 ```quint
-pure def staleRefusal(kind: AccountState, held: int): bool = match kind { | CredentialInvalid(x) => x.version != held | _ => false }
-pure def alwaysCredentialRefusalNamesTheHeldKey(s: ModelBinding): bool = not(staleRefusal(s.accountState, s.credentialVersion))
+pure def staleRefusal(f: AccountFailure, held: int): bool = match f { | CredentialInvalid(x) => x.version != held | _ => false }
+pure def staleState(st: AccountState, held: int): bool = match st { | Failing(x) => staleRefusal(x.failure, held) | Usable => false }
+pure def alwaysCredentialRefusalNamesTheHeldKey(s: ModelBinding): bool = not(staleState(s.accountState, s.credentialVersion))
 ```
 
 ### Warm answers from the binding state and never reaches the cloud
@@ -249,9 +259,13 @@ credits, or a limit still in force; status reports it as `blocked`.
 
 ```quint
 type WarmAnswer = WarmReady | WarmBlocked | WarmNoCloud
-pure def blocked(st: AccountState, t: int): bool = match st { | CredentialInvalid(_) => true | InsufficientCredits => true | LimitReached(x) => t < x.retryAt | _ => false }
+pure def failureBlocks(f: AccountFailure, t: int): bool = match f {
+  | CredentialInvalid(_) => true | InsufficientCredits => true | LimitReached(x) => t < x.retryAt | ProviderIssue => false
+}
+pure def blocked(st: AccountState, t: int): bool = match st { | Failing(x) => failureBlocks(x.failure, t) | Usable => false }
 pure def warmAnswer(backend: Backend, st: AccountState, t: int): WarmAnswer = if (not(isCloud(backend))) WarmNoCloud else if (blocked(st, t)) WarmBlocked else WarmReady
-pure val stValues = Set(Usable, CredentialInvalid({ version: 1 }), InsufficientCredits, LimitReached({ retryAt: 5 }), ProviderIssue)
+pure val stValues = Set(Usable, Failing({ failure: CredentialInvalid({ version: 1 }) }), Failing({ failure: InsufficientCredits }),
+  Failing({ failure: LimitReached({ retryAt: 5 }) }), Failing({ failure: ProviderIssue }))
 pure val tValues = Set(0, 5, 10)
 pure def lawWarmReadyOnlyWhenATextCallWouldStart(backend: Backend, st: AccountState, t: int): bool =
   warmAnswer(backend, st, t) == WarmReady implies (servedByBackend(backend, TextSmall) and not(limitedAt(st, t)))

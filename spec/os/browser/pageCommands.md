@@ -23,8 +23,9 @@ selected page and its origin, and passes the facts below.
 
 A page command is a snapshot, click, fill, select, scroll or follow, with
 its request identity, the page it names and its task context. The shell
-maps anything else, a protected-value fill and a caller-supplied page
-policy to an unlisted action, which is refused by policy and spends
+maps anything else, a protected-value fill other than a task's
+verification-code fill, and a caller-supplied page policy to an unlisted
+action, which is refused by policy and spends
 nothing. Admission also needs a live binding for the page and its scope:
 the exact task context, a deadline (the earlier of the command's and the
 binding's) still ahead, an allowed origin for the page and a reviewed
@@ -50,7 +51,7 @@ pure def observedAs(o: Observation, selectorRef: str): bool = match o { | Observ
 pure def reportsStatus(r: Reply, status: T::OperationStatus): bool = match r { | Reported(x) => x.status == status | _ => false }
 pure def refusedWith(r: Reply, refusal: Refusal): bool = match r { | Refused(x) => x.refusal == refusal | _ => false }
 pure def holdsLiveRevision(s: SurfaceReceiver): bool = s.binding.status == Live and s.binding.revision == s.admittedRevision
-pure def canAdmitRequest(s: SurfaceReceiver, message: PageRequest, inScope: bool): bool = not(s.retired) and s.phase == ReceiverIdle and message.requestId != ""
+pure def canAdmitRequest(s: SurfaceReceiver, message: PageRequest): bool = not(s.retired) and s.phase == ReceiverIdle and message.requestId != ""
 pure def admitRequest(s: SurfaceReceiver, message: PageRequest, inScope: bool): SurfaceReceiver = {
   val refused = { ...s, request: message }
   if (message.pageAction == UnlistedAction) { ...refused, reply: Refused({ refusal: RefusedPolicy }) }

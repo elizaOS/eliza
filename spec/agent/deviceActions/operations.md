@@ -173,27 +173,40 @@ pure val propValues: Set[Proposal] = Set(
   { opType: NotesQuery, versionTwo: false, binding: AgendaBinding, shapeValid: true },
   { opType: NotesQuery, versionTwo: false, binding: NoBinding, shapeValid: true },
   { opType: NotesQuery, versionTwo: false, binding: NoBinding, shapeValid: false },
-  { opType: ClockHandoff, versionTwo: true, binding: NoBinding, shapeValid: true })
+  { opType: ClockHandoff, versionTwo: true, binding: NoBinding, shapeValid: true },
+  { opType: FilesOpen, versionTwo: false, binding: NoBinding, shapeValid: true },
+  { opType: SmsReplySelected, versionTwo: false, binding: WorkflowBinding, shapeValid: true },
+  { opType: SmsSend, versionTwo: false, binding: NoBinding, shapeValid: true })
 pure def lawAWorkflowOperationIsBound(prop: Proposal, neg: Negotiation): bool =
   (validate(prop, neg) and family(prop.opType) == WorkflowFamily) implies (prop.binding == WorkflowBinding or (prop.opType == ReadCalendarRange and prop.binding == AgendaBinding))
 pure def lawAStandaloneAgendaReadNegotiatedTheAgenda(prop: Proposal, neg: Negotiation): bool =
   (validate(prop, neg) and prop.binding == AgendaBinding) implies (prop.opType == ReadCalendarRange and negotiatedHas(neg, CalendarAgendaReadV1))
 ```
 
-### Only filtering or opening an item, or starting a voice note, may run without a review
+### Only a reversible local operation bound to the owner's current message may run without a review
 
-Filtering or opening files, filtering or listing notes, starting or stopping
-a voice note in the open Notes view, and filtering or opening photos may run
-without a review when bound to the owner's own current message. Every other operation is reviewed on the
-device first; no phone, clock, photo library or sharing operation ever runs
-directly.
+Filtering or opening files, notes and photos, starting or stopping a voice
+note in the open Notes view, creating a note, opening a view or a web page,
+taking a photo, selecting library photos and placing a reply draft in the
+open conversation may skip the separate review, and only when the host bound
+the proposal to the owner's own current message and no workflow bound it.
+Every other operation is reviewed on the device first: nothing that sends,
+calls, writes a contact, shares, deletes or hands off to the Clock ever runs
+directly. Whether the owner allows direct runs at all is the
+[device attempt's](./execution.md) rule.
 
 ```quint
-pure def mayRunDirectly(t: OperationType): bool =
+pure def directEligible(t: OperationType): bool =
   t == FilesFilter or t == FilesOpen or t == NotesFilter or t == NotesListFilter or t == NotesRecord or t == PhotosFilter or t == PhotosOpen
-pure def lawNoPhoneClockOrLibraryOperationRunsDirectly(t: OperationType): bool =
-  mayRunDirectly(t) implies (family(t) != TelephonyFamily and family(t) != ClockFamily and family(t) != PhotoLibraryFamily and t != FilesShare and t != PhotosShare)
-```
+  or t == CreateNote or t == OpenView or t == BrowserNavigate or t == CameraCapturePhoto or t == PhotoLibrarySelect or t == SmsReplySelected
+pure def mayRunDirectly(prop: Proposal, boundToCurrentMessage: bool): bool =
+  directEligible(prop.opType) and prop.binding == NoBinding and boundToCurrentMessage
+pure def sendsSharesOrDeletes(t: OperationType): bool =
+  (family(t) == TelephonyFamily and t != SmsReplySelected and t != MessagesReadSelected and t != VoicemailReadSelected)
+  or family(t) == ClockFamily or t == FilesShare or t == FilesTrash or t == PhotosShare or t == PhotoLibraryReview
+  or t == NotesDelete or t == CalendarDelete or t == ReminderCancel
+pure def lawNothingThatSendsSharesOrDeletesRunsDirectly(prop: Proposal, boundToCurrentMessage: bool): bool =
+  mayRunDirectly(prop, boundToCurrentMessage) implies not(sendsSharesOrDeletes(prop.opType))```
 
 ## Story: Learn exactly what the device did
 
@@ -261,18 +274,22 @@ pure def lawASimSendNamesItsClaim(t: OperationType, r: DeviceReceipt, claimKey: 
 ### Only an applied receipt settles applied, and only a trusted refusal settles that nothing ran
 
 An admitted receipt settles the request: applied when it reports applied;
-nothing ran when the device never dispatched, or when phone evidence shows
-the owner cancelled or was denied a send, dismissed a contact SMS, or had
-no conversation open for a reply draft (`nothingSubmitted`); otherwise the
-request stays uncertain, because the device may have acted. The
+nothing ran when the device never dispatched, or when the failed result of
+an SMS or MMS send, a contact SMS or a reply draft shows nothing was
+submitted (`nothingSubmitted`: the owner cancelled or was denied the send,
+dismissed the contact SMS, or had no conversation open for the draft);
+otherwise the request stays uncertain, because the device may have acted. A
+failed dial, call, contact write or Clock handoff is reconciled, never
+trusted as a refusal. The
 [device request](./index.md) records these as `ReportedApplied`,
 `ReportedNothingRan` and `ReportedUnknown`.
 
 ```quint
 type Settlement = SettlesApplied | SettlesNothingRan | StaysUncertain
 type ReceiptAdmission = ReceiptRefused | ReceiptAdmitted({ settles: Settlement })
+pure def refusalIsTrusted(t: OperationType): bool = sharesSimJournal(t) or t == SmsReplySelected
 pure def trustedRefusal(t: OperationType, r: DeviceReceipt): bool =
-  evidenceOf(t) == OutcomeEvidence and r.result == ValidResult({ shows: ReportsFailed, nothingSubmitted: true })
+  refusalIsTrusted(t) and r.result == ValidResult({ shows: ReportsFailed, nothingSubmitted: true })
 pure def settlementOf(t: OperationType, r: DeviceReceipt): Settlement =
   if (r.reported == ReportsApplied) SettlesApplied
   else if (notDispatchedFailure(r) or trustedRefusal(t, r)) SettlesNothingRan
@@ -283,7 +300,10 @@ pure def lawOnlyAnAppliedReceiptSettlesApplied(t: OperationType, r: DeviceReceip
   receiptOutcome(t, r, claimKey) == ReceiptAdmitted({ settles: SettlesApplied }) implies (r.reported == ReportsApplied and r.operationId != "")
 pure def lawNothingRanNeedsATrustedRefusal(t: OperationType, r: DeviceReceipt, claimKey: str): bool =
   receiptOutcome(t, r, claimKey) == ReceiptAdmitted({ settles: SettlesNothingRan }) implies
-    (notDispatchedFailure(r) or ((family(t) == TelephonyFamily or family(t) == ClockFamily) and r.result == ValidResult({ shows: ReportsFailed, nothingSubmitted: true })))
+    (notDispatchedFailure(r) or ((t == SmsSend or t == MmsSend or t == SmsCompose or t == SmsReplySelected) and r.reported == ReportsFailed))
+pure def lawAFailedDialOrHandoffIsReconciled(t: OperationType, r: DeviceReceipt, claimKey: str): bool =
+  ((t == PhoneDial or t == PhoneCall or t == ClockHandoff) and receiptAdmitted(t, r, claimKey) and not(notDispatchedFailure(r)) and r.reported != ReportsApplied)
+    implies receiptOutcome(t, r, claimKey) == ReceiptAdmitted({ settles: StaysUncertain })
 pure def lawAnUnknownReceiptStaysUncertain(t: OperationType, r: DeviceReceipt, claimKey: str): bool =
   (r.reported == ReportsUnknown and receiptAdmitted(t, r, claimKey)) implies receiptOutcome(t, r, claimKey) == ReceiptAdmitted({ settles: StaysUncertain })
 ```

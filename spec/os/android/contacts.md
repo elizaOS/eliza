@@ -36,7 +36,7 @@ type ContactGrants = { readGranted: bool, writeGranted: bool }
 type PageAsk = { queryLength: int, hasNul: bool, limit: int }
 type ContactRead = NoRead | Reading({ ticket: int, kind: ReadKind, afterSettle: bool })
 type CallerSlot = NoCall | InCall({ callId: int, nameCached: bool, nameShown: bool })
-type LastWrite = NoWriteYet | Wrote({ outcome: WriteOutcome })
+type LastWrite = NoWriteYet | Wrote({ settled: WriteOutcome })
 type ContactsState = { viewOpen: bool, generation: int, grants: ContactGrants, read: ContactRead, rowsShown: bool,
   gate: WriteGate, lastWrite: LastWrite, callServiceLive: bool, call: CallerSlot }
 pure val initial: ContactsState = { viewOpen: false, generation: 0, grants: { readGranted: false, writeGranted: false }, read: NoRead,
@@ -121,7 +121,7 @@ pure def writeAdmission(install: ContactsInstall, grants: ContactGrants, facts: 
   if (install != WritingInstall) BridgeUnavailable
   else if (readAdmission(grants, facts) != CallAdmitted) readAdmission(grants, facts)
   else admitCall(PluginRegistered, writeCall, { ...facts, granted: grants.writeGranted })
-pure val grantsValues = Set({ readGranted: true, writeGranted: true }, { readGranted: true, writeGranted: false }, { readGranted: false, writeGranted: true })
+pure val grantsValues = Set({ readGranted: true, writeGranted: true }, { readGranted: true, writeGranted: false }, { readGranted: false, writeGranted: true }, { readGranted: false, writeGranted: false })
 pure def lawAWriteRunsOnlyWhereTheCapabilityIsAdvertised(install: ContactsInstall, grants: ContactGrants, facts: HostFacts): bool =
   writeAdmission(install, grants, facts) == CallAdmitted implies (advertisesContactWrite(install, PluginRegistered, grants) and facts.focused)
 ```
@@ -193,14 +193,14 @@ pure def dispatchWrite(s: ContactsState, install: ContactsInstall, facts: HostFa
 }
 pure def canSettleWrite(s: ContactsState): bool = s.gate == WriteInFlight
 pure def settleWrite(s: ContactsState, reply: ProviderReply): ContactsState =
-  { ...s, gate: gateOnOutcome(s.gate, writeOutcome(reply)), lastWrite: Wrote({ outcome: writeOutcome(reply) }) }
+  { ...s, gate: gateOnOutcome(s.gate, writeOutcome(reply)), lastWrite: Wrote({ settled: writeOutcome(reply) }) }
 pure def alwaysAnUnsettledGateFollowsAnUncertainWrite(s: ContactsState): bool =
-  s.gate == WriteUnsettled implies s.lastWrite == Wrote({ outcome: Uncertain })
+  s.gate == WriteUnsettled implies s.lastWrite == Wrote({ settled: Uncertain })
 pure def stepOnlyACompletedReadSettlesAnUncertainWrite(before: ContactsState, via: str, after: ContactsState): bool =
   (before.gate == WriteUnsettled and after.gate != WriteUnsettled) implies (via == "completeRead" and after.gate == WriteIdle)
-pure def sometimesAppliedWrite(s: ContactsState): bool = s.lastWrite == Wrote({ outcome: Applied })
+pure def sometimesAppliedWrite(s: ContactsState): bool = s.lastWrite == Wrote({ settled: Applied })
 pure def sometimesUncertainWriteOutlivesTheView(s: ContactsState): bool = s.gate == WriteUnsettled and not(s.viewOpen)
-pure def sometimesUncertainWriteSettledByAnExplicitRead(s: ContactsState): bool = s.lastWrite == Wrote({ outcome: Uncertain }) and s.gate == WriteIdle
+pure def sometimesUncertainWriteSettledByAnExplicitRead(s: ContactsState): bool = s.lastWrite == Wrote({ settled: Uncertain }) and s.gate == WriteIdle
 ```
 
 ## Story: See who is calling from my contacts

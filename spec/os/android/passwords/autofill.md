@@ -10,8 +10,13 @@ opens a review the owner must accept and unlock. Activity intents carry only
 an unguessable one-shot token; targets and values never enter an intent, a
 log, disk or the page. The host's admission rule (for example its account
 owner) is asked first at every entry, and a refused entry does nothing.
-Matching, unlock and the vault page itself are in the passwords bridge;
-this spec follows one fill offer, one save capture and one open save review.
+Matching, the unlock prompt and the vault frame stay in the Java shell
+(`PasswordFormPolicy`, `PasswordRequests`, `PasswordFillActivity`,
+`PasswordSaveActivity`, whose rules a framework-free `PasswordAutofillPolicy`
+carries); the page is [the vault page](./vault.md). This machine follows one
+fill offer, one save capture and one open save review. The service is a
+native Android entry, not a renderer call, so the
+[bridge vocabulary](../bridge.md) has nothing to admit here.
 
 ## Story: Fill a form only for its site, from my choice
 
@@ -138,7 +143,7 @@ pure val bindingValues = Set({ kind: WebTarget, facet: "https://first.test", sig
 pure val tokenValues = Set(1, 2, 3)
 pure val nowValues = Set(60000, 119999, 120000, 300000, 420000)
 pure def alwaysOfferHoldsItsTarget(s: NativeAutofill): bool =
-  s.fill.phase != NoFill implies (s.fill.token > 0 and s.fill.site != NoTarget and s.fill.facet != "")
+  s.nextToken >= 0 and (s.fill.phase != NoFill implies (s.fill.token > 0 and s.fill.site != NoTarget and s.fill.facet != ""))
 pure def alwaysTicketsAreIssuedAndDistinct(s: NativeAutofill): bool =
   s.fill.ticket <= s.grant.generation and s.review.ticket <= s.grant.generation and s.fill.ticket >= 0 and s.review.ticket >= 0 and
     ((s.fill.ticket > 0) iff (s.fill.phase == FillPicking)) and

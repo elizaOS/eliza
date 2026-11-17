@@ -17,11 +17,10 @@ client may believe.
 | `POST /api/tasks/:id/acknowledge-unreadable` | accept unreadable records | `{}` |
 | `GET /api/tasks/storage` | storage probe | none |
 
-`:id` matches core's `TASK_ID_PATTERN`; `current` and `storage` are route
-names, never ids. A task reply is `{task: view}` or `{task: null}`, where a
-view is `{schemaVersion: 1, id, revision, epoch, status, hasUnknownOutcome}`;
-accepting an unknown outcome replies `{revision, status}`; the record routes
-reply the task store's `{records}`; the event page is core's.
+`:id` matches core's `TASK_ID_PATTERN`; `current` and `storage` are never
+ids. A task reply is `{task: view}` or `{task: null}`; accepting an unknown
+outcome replies `{revision, status}`; the record routes reply the task
+store's `{records}`; the event page is core's.
 
 ## Story: Admit only the documented task commands
 
@@ -41,9 +40,11 @@ import interactiveTask as I from "../../core/interactiveTask"
 import index as TH from "./index"
 type TaskError = TaskInvalid | TaskUnauthorized | TaskActionDenied | TaskNotFound | TaskMethodNotAllowed | TaskAccountChanged | TaskStateConflict | TaskUnavailable | TaskHelperUnavailable | TaskCleanupUnconfirmed | TaskStorageFailure
 pure def httpStatus(e: TaskError): int = if (e == TaskInvalid) 400 else if (e == TaskUnauthorized) 401 else if (e == TaskActionDenied) 403 else if (e == TaskNotFound) 404 else if (e == TaskMethodNotAllowed) 405 else if (e == TaskAccountChanged or e == TaskStateConflict) 409 else 503
+type HostFailure = ListedCode({ code: TaskError }) | StorageCode | OtherTaskCode | NotATaskError
+pure def refusalOf(f: HostFailure): TaskError = match f { | ListedCode(x) => x.code | StorageCode => TaskStorageFailure | OtherTaskCode => TaskStateConflict | NotATaskError => TaskUnavailable }
 ```
 
-### Each route names one command, and only a POST changes a task
+### Each route names one command and the one method it answers
 
 A path no route matches is `TASK_NOT_FOUND`; a known path with another
 method is `TASK_METHOD_NOT_ALLOWED`.
@@ -53,8 +54,6 @@ type TaskCommand = StartCommand | CurrentCommand | UnreadableCommand | PauseCurr
 type Method = GetMethod | PostMethod | OtherMethod
 type RouteMatch = NoRoute | RouteFor({ command: TaskCommand, method: Method })
 pure def methodOf(c: TaskCommand): Method = if (c == CurrentCommand or c == UnreadableCommand or c == ViewCommand or c == EventsCommand or c == StorageCommand) GetMethod else PostMethod
-pure def changesTask(c: TaskCommand): bool = c == StartCommand or c == PauseCurrentCommand or c == PauseCommand or c == CancelCommand or c == ResumeCommand or c == AcknowledgeUnknownCommand or c == AcknowledgeUnreadableCommand
-pure def lawOnlyAPostChangesATask(c: TaskCommand): bool = changesTask(c) iff methodOf(c) == PostMethod
 ```
 
 ### A command body has exactly the fields its command names
@@ -96,11 +95,10 @@ pure val qValues = Set(NoQuery, OtherQuery, AfterQuery({ canonical: true, after:
 
 ### Only the launch account reaches a serving host, and the storage probe needs neither
 
-Checked in order: the sender (`TASK_UNAUTHORIZED`), a started, unpoisoned
-host (`TASK_UNAVAILABLE`), the route, the query, for a start an actuator and
-goal authorizer (`TASK_HELPER_UNAVAILABLE`: no cosmetic task), the body. A
-refused request reads and writes nothing. The storage probe answers anyone
-the agent's access gate admitted, even on a poisoned host.
+In order: the sender (`TASK_UNAUTHORIZED`), a started, unpoisoned host
+(`TASK_UNAVAILABLE`), the route, the query, an actuator and goal authorizer
+for a start (`TASK_HELPER_UNAVAILABLE`), the body. A refused request reads
+and writes nothing. The probe answers anyone the access gate admitted.
 
 ```quint
 type Admission = Admitted({ command: TaskCommand }) | Refused({ error: TaskError })
@@ -128,28 +126,31 @@ pure def lawAnAdmittedCommandIsWellFormed(owner: bool, serving: bool, route: Rou
 
 ### A repeated start of the running task's goal returns that task
 
-A start whose first reply was lost gets the task already running for the
-same goal (200) while its authority stands; otherwise a free slot creates a
-task (201) under the host's `canCreate`, with the goal authorizer's origins
-and capabilities, never the client's; anything else is a conflict (409,
-with the host's own code). The authorizer must return the same `goalRef`, else
+A start whose reply was lost gets the running task for the same goal
+(200); otherwise a free slot creates one (201) under the host's `canCreate`
+with the goal authorizer's origins and capabilities, never the client's;
+anything else is 409. An authorizer that returns another `goalRef` is
 `TASK_ACTION_DENIED`.
 
 ```quint
 type StartReply = ExistingTask | NewTask | StartRefused({ error: TaskError })
 pure def runningTask(h: TH::TaskHost): bool = TH::unfinished(h.task) and h.task.authorized
 pure def startReply(goalConfirmed: bool, running: bool, sameGoal: bool, slotFree: bool): StartReply = if (not(goalConfirmed)) StartRefused({ error: TaskActionDenied }) else if (running and sameGoal) ExistingTask else if (not(running) and slotFree) NewTask else StartRefused({ error: TaskStateConflict })
+pure def lawAStartNeverCreatesBesideARunningTask(goalConfirmed: bool, running: bool, sameGoal: bool, slotFree: bool): bool = running implies startReply(goalConfirmed, running, sameGoal, slotFree) != NewTask
 ```
 
 ### A reply after the host stopped serving says whether a change was saved
 
 A request rechecks its sender after it writes: if the host stopped serving
 meanwhile, it answers `TASK_ACCOUNT_CHANGED` when it saved a change and
-`TASK_UNAUTHORIZED` only when it saved nothing. Unconfirmed cleanup after a
-saved change answers `TASK_CLEANUP_UNCONFIRMED`.
+`TASK_UNAUTHORIZED` only when it saved nothing. A saved stop whose cleanup
+the actuator did not confirm answers `TASK_CLEANUP_UNCONFIRMED`; a later
+read retries the cleanup.
 
 ```quint
-pure def lateRefusal(committed: bool): TaskError = if (committed) TaskAccountChanged else TaskUnauthorized
+type WriteReply = WriteAnswered | WriteRefused({ error: TaskError })
+pure def afterWrite(saved: bool, stillServing: bool, cleanupConfirmed: bool): WriteReply = if (not(stillServing)) WriteRefused({ error: if (saved) TaskAccountChanged else TaskUnauthorized }) else if (saved and not(cleanupConfirmed)) WriteRefused({ error: TaskCleanupUnconfirmed }) else WriteAnswered
+pure def lawASavedChangeIsNeverReportedAsUnsent(saved: bool, stillServing: bool, cleanupConfirmed: bool): bool = saved implies afterWrite(saved, stillServing, cleanupConfirmed) != WriteRefused({ error: TaskUnauthorized })
 ```
 
 ### The storage probe reports unavailable for a poisoned host
@@ -187,15 +188,13 @@ pure def lawMalformedViewIsNeverNoTask(hasMember: bool, isNull: bool, wellFormed
 
 ### A chat turn names a task only while the host presents it at that epoch
 
-A turn body may carry `task {taskId, expectedEpoch}`. Before the turn runs,
-the host's `presentationForConversation` for the launch account must
-present it: no presenter is 503 `TASK_UNAVAILABLE`, a refusal a conflict
-(409), and nothing is stored. The product plugin's
+A turn body may carry `task {taskId, expectedEpoch}`. Before the turn the
+host's `presentationForConversation` must present it (no presenter 503
+`TASK_UNAVAILABLE`, a refusal 409; nothing stored), and the product plugin's
 `formatTaskContext(presentation)` is appended to the text. After the reply
-the presentation is read again: a different one is 409 and shows nothing;
-the same one returns `taskChoices` in the buffered reply and in `done`,
-holding the task's offered choice when it belongs to that task and epoch.
-Only the host supplies a choice, never the model's output.
+a changed presentation is 409; the same one returns `taskChoices` in the
+buffered reply and `done`: the host's offered choice when it belongs to that
+task and epoch, never the model's output.
 
 ```quint
 type TaskChoice = { taskId: str, epoch: int, widgetValid: bool }
@@ -236,12 +235,12 @@ pure def lawChatShowsOnlyTheNamedTasksChoices(taskId: str, expectedEpoch: int, p
 
 ### The first pause goes out at once and a second follows when creation settles
 
-Pause and Close post to `/api/tasks/current/pause` at once, under a ten
-second timeout; the host pauses whatever task it holds. When a start is
-still waiting for its reply, the same pause is sent again once that reply
-arrives or fails. Each user command takes a new ticket; a reply to an
-older ticket changes nothing but may release its own creation slot, and a
-background refresh never replaces a user command or the follow-up.
+Pause and Close post to `/api/tasks/current/pause` at once (ten second
+timeout). While a start awaits its reply, the same pause is sent again once
+that reply arrives or fails. Each user command takes a new ticket; a reply
+to an older ticket changes nothing but may release its creation slot; a
+background refresh never replaces a command or the follow-up. A failed
+start shows the task it found holding the slot, never as its own.
 
 ```quint
 type ClientCommand = NoCommand | StartCmd | PauseCmd | CloseCmd | ResumeCmd | CancelCmd
@@ -254,7 +253,7 @@ pure def pauseSettled(reply: TaskViewResult): bool = reply == NoTaskView or (isS
 pure def canBeginStart(c: TaskClient): bool = c.creating == 0 and not(c.pending) and c.followUp == 0
 pure def beginStart(c: TaskClient): TaskClient = { ...c, generation: c.generation + 1, creating: c.generation + 1, command: StartCmd, pending: true, problem: false }
 pure def canFinishStart(c: TaskClient, ticket: int): bool = c.creating > 0 and c.creating == ticket
-pure def finishStart(c: TaskClient, ticket: int, reply: TaskViewResult): TaskClient = if (ticket != c.generation) { ...c, creating: 0 } else if (isShown(reply)) { ...c, creating: 0, pending: false, shown: reply, problem: false } else { ...c, creating: 0, pending: false, problem: true }
+pure def finishStart(c: TaskClient, ticket: int, found: TaskViewResult, reply: TaskViewResult): TaskClient = if (ticket != c.generation) { ...c, creating: 0 } else if (isShown(reply)) { ...c, creating: 0, pending: false, shown: reply, problem: false } else { ...c, creating: 0, pending: false, problem: true, shown: if (isShown(found)) found else c.shown }
 pure def beginPause(c: TaskClient, closing: bool): TaskClient = { ...c, generation: c.generation + 1, command: if (closing) CloseCmd else PauseCmd, pending: true, problem: false, followUp: if (c.creating > 0) c.generation + 1 else 0 }
 pure def canFinishPause(c: TaskClient, ticket: int): bool = c.pending and isPause(c.command) and c.generation == ticket
 pure def finishPause(c: TaskClient, ticket: int, reply: TaskViewResult): TaskClient = { ...c, pending: false, problem: not(pauseSettled(reply)), shown: if (pauseSettled(reply)) reply else c.shown }
@@ -264,8 +263,6 @@ pure def canRefresh(c: TaskClient): bool = not(c.pending) and c.creating == 0 an
 pure def refresh(c: TaskClient, reply: TaskViewResult): TaskClient = if (reply == TaskViewInvalid) c else { ...c, shown: reply }
 pure val ticketValues = Set(1, 2, 3, 4, 5)
 pure val replyValues = Set(TaskViewInvalid, NoTaskView, TaskViewShown({ id: "task1", revision: 1, epoch: 0, status: ShownActive, hasUnknownOutcome: false }), TaskViewShown({ id: "task1", revision: 2, epoch: 1, status: ShownPaused, hasUnknownOutcome: false }), TaskViewShown({ id: "task1", revision: 3, epoch: 1, status: ShownActive, hasUnknownOutcome: false }), TaskViewShown({ id: "task1", revision: 3, epoch: 2, status: ShownCancelled, hasUnknownOutcome: false }), TaskViewShown({ id: "task2", revision: 3, epoch: 2, status: ShownCancelled, hasUnknownOutcome: false }))
-pure val weight_beginPause = 3
-pure val weight_finishStart = 3
 pure def alwaysTicketsAreIssued(c: TaskClient): bool = c.generation >= 0 and c.creating >= 0 and c.creating <= c.generation and c.followUp >= 0 and c.followUp <= c.generation
 pure def alwaysFollowUpBelongsToTheCurrentPause(c: TaskClient): bool = c.followUp != 0 implies (c.followUp == c.generation and isPause(c.command) and c.creating < c.followUp)
 pure def alwaysShownIsNeverInvalid(c: TaskClient): bool = c.shown != TaskViewInvalid and c.base != TaskViewInvalid
@@ -276,25 +273,29 @@ pure def sometimesPauseConfirmedAfterStart(c: TaskClient): bool = c.followUp == 
 
 ### A changed identity or stale revision never becomes a successful Resume or Cancel
 
-Resume and Cancel carry the revision of the task the client shows. The
-reply must name the same task at a higher revision: Resume an active task
-at the same or a later epoch, Cancel a cancelled one at a later epoch. With
-no task shown nothing is sent and no task is shown.
+Both wait for a pending start and replace a pause follow-up; Resume is
+refused while a command is pending. Resume reads the current task, Cancel
+first pauses it; no task is success showing none. Otherwise the command
+carries that task's revision and the reply must name the same task at a
+higher revision: Resume active at the same or a later epoch, Cancel
+cancelled at a later epoch. Anything else is a problem.
 
 ```quint
 pure def controlAdmitted(command: ClientCommand, base: TaskViewResult, reply: TaskViewResult): bool = {
   val b = shownOr(base)
   val r = shownOr(reply)
-  base == NoTaskView or (isShown(base) and isShown(reply) and r.id == b.id and r.revision > b.revision and ((command == ResumeCmd and r.status == ShownActive and r.epoch >= b.epoch) or (command == CancelCmd and r.status == ShownCancelled and r.epoch > b.epoch)))
+  isShown(base) and isShown(reply) and r.id == b.id and r.revision > b.revision and ((command == ResumeCmd and r.status == ShownActive and r.epoch >= b.epoch) or (command == CancelCmd and r.status == ShownCancelled and r.epoch > b.epoch))
 }
-pure def canBeginControl(c: TaskClient, cancelling: bool): bool = not(c.pending) and c.creating == 0 and c.followUp == 0
-pure def beginControl(c: TaskClient, cancelling: bool): TaskClient = { ...c, generation: c.generation + 1, command: if (cancelling) CancelCmd else ResumeCmd, pending: true, problem: false, base: c.shown }
+pure def canBeginControl(c: TaskClient, cancelling: bool): bool = c.creating == 0 and (cancelling or not(c.pending))
+pure def beginControl(c: TaskClient, cancelling: bool): TaskClient = { ...c, generation: c.generation + 1, command: if (cancelling) CancelCmd else ResumeCmd, pending: true, problem: false, followUp: 0 }
 pure def canFinishControl(c: TaskClient, ticket: int): bool = c.pending and c.generation == ticket and (c.command == ResumeCmd or c.command == CancelCmd)
-pure def finishControl(c: TaskClient, ticket: int, reply: TaskViewResult): TaskClient = if (controlAdmitted(c.command, c.base, reply)) { ...c, pending: false, problem: false, shown: if (isShown(c.base)) reply else NoTaskView } else { ...c, pending: false, problem: true }
+pure def finishControl(c: TaskClient, ticket: int, latest: TaskViewResult, reply: TaskViewResult): TaskClient = if (latest == TaskViewInvalid) { ...c, pending: false, problem: true } else if (latest == NoTaskView) { ...c, pending: false, problem: false, base: NoTaskView, shown: NoTaskView } else if (controlAdmitted(c.command, latest, reply)) { ...c, pending: false, problem: false, base: latest, shown: reply } else { ...c, pending: false, problem: true, base: latest }
+pure val latestValues = replyValues
+pure val foundValues = Set(NoTaskView, TaskViewShown({ id: "task2", revision: 3, epoch: 2, status: ShownActive, hasUnknownOutcome: false }))
 pure val baseValues = replyValues
-pure def lawControlNeverAdoptsAnotherTask(command: ClientCommand, base: TaskViewResult, reply: TaskViewResult): bool = (isShown(base) and shownOr(reply).id != shownOr(base).id) implies not(controlAdmitted(command, base, reply))
-pure def lawCancelNeedsANewEpoch(base: TaskViewResult, reply: TaskViewResult): bool = (isShown(base) and controlAdmitted(CancelCmd, base, reply)) implies shownOr(reply).epoch > shownOr(base).epoch
-pure def stepControlSuccessShowsTheSameTaskLater(before: TaskClient, via: str, after: TaskClient): bool = (via == "finishControl" and not(after.problem) and isShown(before.base)) implies (shownOr(after.shown).id == shownOr(before.base).id and shownOr(after.shown).revision > shownOr(before.base).revision)
+pure def lawControlNeverAdoptsAnotherTask(command: ClientCommand, base: TaskViewResult, reply: TaskViewResult): bool = shownOr(reply).id != shownOr(base).id implies not(controlAdmitted(command, base, reply))
+pure def lawCancelNeedsANewEpoch(base: TaskViewResult, reply: TaskViewResult): bool = controlAdmitted(CancelCmd, base, reply) implies shownOr(reply).epoch > shownOr(base).epoch
+pure def stepControlSuccessShowsTheSameTaskLater(before: TaskClient, via: str, after: TaskClient): bool = (via == "finishControl" and not(after.problem) and isShown(after.base)) implies (shownOr(after.shown).id == shownOr(after.base).id and shownOr(after.shown).revision > shownOr(after.base).revision)
 pure def sometimesResumeConfirmed(c: TaskClient): bool = c.command == ResumeCmd and not(c.pending) and not(c.problem) and isShown(c.base) and shownOr(c.shown).status == ShownActive
 pure def sometimesStaleCancelReported(c: TaskClient): bool = c.command == CancelCmd and not(c.pending) and c.problem and isShown(c.base)
 ```
