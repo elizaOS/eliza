@@ -3083,13 +3083,13 @@ describe("the documents name what exists", () => {
     };
     const studio = (ids: string[]) => ids.filter((id) => /^(vibestack-studio#(?!check)|@repo\/(ui#(build|typecheck)|design-system#build)|\/\/#lint:css)/.test(id));
     const append = (file: string, text = "\nMore words.\n") => () => fs.appendFileSync(path.join(root, file), text);
-    const vibeDeclared = ["apps/app", "packages/ui", "vibestack/studio"].filter((dir) => read(`${dir}/tsconfig.json`, root).includes(".vibe/declarations")).map((dir) => `${JSON.parse(read(`${dir}/package.json`, root)).name}#typecheck`);
-    const [prose, selftest, fixture] = [await changedBy(append("spec/app/index.md")), await changedBy(append("vibestack/selftest.ts", "\n")), await changedBy(append("vibestack/fixtures/door.md"))];
+    const vibeDeclared = [...["packages", "apps"].flatMap(within), "vibestack/studio"].filter((dir) => fs.existsSync(path.join(root, dir, "tsconfig.json")) && read(`${dir}/tsconfig.json`, root).includes(".vibe/declarations")).map((dir) => `${JSON.parse(read(`${dir}/package.json`, root)).name}#typecheck`);
+    const [prose, selftest, fixture] = [await changedBy(append("spec/agent/index.md")), await changedBy(append("vibestack/selftest.ts", "\n")), await changedBy(append("vibestack/fixtures/door.md"))];
     assert.deepEqual({
       notWaiting: real.filter((id) => !reach(id).has("//#gen")).sort(),
       lintWaitsFor: vibeDeclared.filter((id) => tasks.get("//#lint:js")!.dependencies.includes(id)),
       devWaitsFor: tasks.get("vibestack-studio#dev")!.dependencies.toSorted(),
-      prose: [studio(prose), prose.includes("@repo/app#test")],
+      prose: [studio(prose), prose.includes("@elizaos/agent#test")],
       selftest: [studio(selftest), ["a", "b", "rest"].every((shard) => selftest.includes(`//#selftest:tools:${shard}`))],
       fixture: studio(fixture),
       leftovers: await changedBy(async () => {
