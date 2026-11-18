@@ -102,4 +102,3 @@ export effect function respond(routes: ReadonlyArray<Route>, fallback?: Route): 
       )
   return HttpServerResponse.setHeader(response, "x-request-id", requestId)
 }
-
