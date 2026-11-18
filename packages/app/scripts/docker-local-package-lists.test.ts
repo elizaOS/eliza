@@ -2,9 +2,12 @@
 
 import { execFileSync } from "node:child_process";
 import {
+  copyFileSync,
+  globSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -78,13 +81,34 @@ describe("Docker runtime dependency closure", () => {
     expect(output.replace(/<[^>]+>/g, "")).toBe("const answer = 42;");
   });
 
-  it("emits the JavaScript dependencies required by shipped plugins and UI exports", () => {
+  it("emits the shipped runtime dependencies from Docker's manifest-only stage", () => {
+    const repo = fileURLToPath(new URL("../../..", import.meta.url));
+    const dockerfile = readFileSync(
+      new URL("../deploy/Dockerfile.ci", import.meta.url),
+      "utf8",
+    );
+    const copy = dockerfile.match(/^COPY --parents ([\s\S]*?)\n  \.\/$/m)?.[1];
+    expect(copy).toBeDefined();
+
+    const root = realpathSync(
+      mkdtempSync(path.join(os.tmpdir(), "docker-manifest-stage-")),
+    );
+    roots.push(root);
+    const patterns = (copy ?? "")
+      .replaceAll("\\", " ")
+      .replaceAll("${APP_CORE_DIR}", "packages/app")
+      .trim()
+      .split(/\s+/);
+    for (const input of globSync(patterns, { cwd: repo })) {
+      const target = path.join(root, input);
+      mkdirSync(path.dirname(target), { recursive: true });
+      copyFileSync(path.join(repo, input), target);
+    }
+
     const names = execFileSync(
       process.execPath,
       [
-        fileURLToPath(
-          new URL("./collect-docker-runtime-deps.ts", import.meta.url),
-        ),
+        path.join(root, "packages/app/scripts/collect-docker-runtime-deps.ts"),
         "--names",
       ],
       { encoding: "utf8" },
@@ -95,7 +119,7 @@ describe("Docker runtime dependency closure", () => {
     expect(names).toContain("@capacitor/core");
     expect(names).toContain("@radix-ui/react-tooltip");
     expect(names).not.toContain("@capacitor/cli");
-  });
+  }, 30_000);
 
   it("includes transitive and cyclic runtime dependencies once, without development or optional dependencies", () => {
     const root = workspace({

@@ -972,7 +972,7 @@ describe("TASKS cancel on the native transport", () => {
     let service: AcpService | undefined;
     const values: Record<string, string> = {
       ELIZA_ACP_TRANSPORT: "native",
-      ELIZA_ACP_NO_TERMINAL: "true",
+      ACPX_NO_TERMINAL: "true",
       ELIZA_ELIZAOS_ACP_COMMAND: `node ${agentPath}`,
     };
     const runtime = {
