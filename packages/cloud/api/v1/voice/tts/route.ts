@@ -525,11 +525,15 @@ async function __hono_POST(c: AppContext) {
     // still populate the cache in the background — concat-with-remainder is
     // a follow-up.
     // ---------------------------------------------------------------------
+    const operatorElevenLabsVoiceId =
+      providerSelection.provider === "elevenlabs" && !isCustomVoice
+        ? (env.ELEVENLABS_VOICE_ID ?? process.env.ELEVENLABS_VOICE_ID)
+        : undefined;
     const resolvedVoiceId =
       providerSelection.provider === "cartesia"
         ? cartesiaVoiceId
         : (isCustomVoice && voiceId) ||
-          (env.ELEVENLABS_VOICE_ID ?? process.env.ELEVENLABS_VOICE_ID) ||
+          operatorElevenLabsVoiceId ||
           DEFAULT_ELEVENLABS_VOICE_ID;
     const resolvedModelId = modelId || "eleven_flash_v2_5";
     const snipResult = firstSentenceSnip(text);
@@ -695,7 +699,9 @@ async function __hono_POST(c: AppContext) {
       ? `${clientIdempotencyKey}:${settlementDigest({
           text,
           voiceId:
-            providerSelection.provider === "elevenlabs" && !isCustomVoice
+            providerSelection.provider === "elevenlabs" &&
+            !isCustomVoice &&
+            !operatorElevenLabsVoiceId
               ? LEGACY_DEFAULT_ELEVENLABS_VOICE_ID
               : resolvedVoiceId,
           modelId: resolvedModelId,
