@@ -170,10 +170,7 @@ export class ConfigurationManager {
   }
 
   private getSetting(key: string): string | undefined {
-    const visionKey = `VISION_${key}`;
-    const value =
-      this.runtime.getSetting(visionKey) || this.runtime.getSetting(key);
-    return value || undefined;
+    return this.runtime.getSetting(key) || undefined;
   }
 
   private getBooleanSetting(key: string, defaultValue: boolean): boolean {
