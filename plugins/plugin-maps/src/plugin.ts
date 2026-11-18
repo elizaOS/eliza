@@ -169,6 +169,11 @@ export function mapsTravelDestination(text: string): string | undefined {
 }
 
 /**
+ * "nearest neighbor", "round to the nearest dollar", "the closest integer":
+ * a nearest or closest that is not a kind of place.
+ */
+const NOT_A_PLACE_KIND = String.raw`(?!(?:neighbou?rs?|integers?|whole|numbers?|dollars?|cents?|penn(?:y|ies)|hundreds?|thousands?|millions?|tens?|tenths?|hundredths?|thousandths?|decimals?|minutes?|hours?|seconds?|days?|weeks?|months?|years?|multiples?|powers?|points?|values?|match(?:es)?|percent|degrees?|units?|digits?|fractions?|primes?|pairs?|stars?|planets?|galax(?:y|ies)|matches|relatives?|synonyms?|words?|colou?rs?|versions?|results?)\b)`;
+/**
  * "go to X" names an app, a document or a conversation far more often than a
  * place ("go to the top", "go to page 3", "go to sleep", "go to my inbox"), so
  * only a named place or a street address counts: "go to Coit Tower", "go to
@@ -194,6 +199,42 @@ const STREET_NAME =
 const STREET_ADDRESS =
   /^\d+[a-z]?\s+(?:\p{Lu}|\S+.*?\b(?:drive|dr|way|place|pl|court|ct|terrace|square|plaza|circle)\.?(?:,|$))/u;
 
+/**
+ * Speech-to-text often writes a place in lowercase ("go to coit tower"), so a
+ * lowercase destination may still be a place, but only a conservative one: two
+ * or more words after "the", none a pronoun, time, conjunction or app word.
+ */
+const SPOKEN_NOT_A_PLACE_IDIOM =
+  /^(?:sleep|bed|work|school|church|war|waste|town|pieces|great\s+lengths)\b/u;
+/** "go to the right place", "go to see a movie", "go to the second floor". */
+const SPOKEN_NOT_A_PLACE_FIRST_WORD =
+  /^(?:right|wrong|left|new|old|main|current|latest|original|default|following|above|below|more|less|all|any|some|every|each|no|one|two|three|second|third|fourth|fifth|see|watch|pick|check|look|find|buy|grab|eat|drink|meet|visit|help|talk|ask|tell|say|take|bring|go|come|stay|lunch|dinner|breakfast|brunch|class|practice|rehearsal|apple|microsoft|app|apps|play|android|iphone|ios|windows|mac|phone|device|system|control|bing|yahoo|duckduckgo)\b/u;
+/** A word that makes the phrase about someone, something, a time or more work. */
+const SPOKEN_NOT_A_PLACE_WORD =
+  /\b(?:i|me|my|mine|you|your|yours|we|us|our|he|him|his|she|her|they|them|their|it|its|this|that|these|those|today|tomorrow|tonight|yesterday|now|later|soon|morning|afternoon|evening|weekend|with|for|and|or|but|so|to|about|after|before|without|because|until|while)\b/u;
+/** "go to the main branch", "go to the error log": software or content, not a place. */
+const SPOKEN_NOT_A_PLACE_LAST_WORD =
+  /\b(?:branch|commit|function|method|class|error|warning|bug|issue|test|log|result|answer|question|topic|point|problem|one|ones|side|way|thing|things|list|table|chart|graph|image|picture|photo|video|song|track|playlist|album|episode|verse|note|notes|reminder|event|meeting|call|comment|post|story|profile|account|app|game|room|channel|server|repo|repository|directory|dashboard)$/u;
+/** "go to the nearest gas station", but not "go to the nearest integer". */
+const SPOKEN_NEAREST = /^(?:nearest|closest)\b/u;
+const SPOKEN_NEAREST_PLACE = new RegExp(
+  String.raw`^(?:nearest|closest)\s+${NOT_A_PLACE_KIND}`,
+  "u",
+);
+
+/** A lowercase destination that still reads as a place: "coit tower", "the ferry building". */
+function spokenPlaceName(destination: string, name: string): boolean {
+  return (
+    /^\p{Ll}/u.test(name) &&
+    name.split(/\s+/u).length >= 2 &&
+    !SPOKEN_NOT_A_PLACE_IDIOM.test(destination) &&
+    !SPOKEN_NOT_A_PLACE_FIRST_WORD.test(name) &&
+    !SPOKEN_NOT_A_PLACE_WORD.test(name) &&
+    !SPOKEN_NOT_A_PLACE_LAST_WORD.test(name) &&
+    (!SPOKEN_NEAREST.test(name) || SPOKEN_NEAREST_PLACE.test(name))
+  );
+}
+
 /** The place a "go to X" request names, if it names a place or a street address. */
 export function mapsGoToDestination(text: string): string | undefined {
   if (text.length > MAX_TRAVEL_REQUEST_LENGTH) return;
@@ -208,18 +249,14 @@ export function mapsGoToDestination(text: string): string | undefined {
     !(
       PROPER_NAME.test(name) ||
       STREET_ADDRESS.test(name) ||
-      STREET_NAME.test(name)
+      STREET_NAME.test(name) ||
+      spokenPlaceName(destination, name)
     )
   )
     return;
   return destination;
 }
 
-/**
- * "nearest neighbor", "round to the nearest dollar", "the closest integer":
- * a nearest or closest that is not a kind of place.
- */
-const NOT_A_PLACE_KIND = String.raw`(?!(?:neighbou?rs?|integers?|whole|numbers?|dollars?|cents?|penn(?:y|ies)|hundreds?|thousands?|millions?|tens?|tenths?|hundredths?|thousandths?|decimals?|minutes?|hours?|seconds?|days?|weeks?|months?|years?|multiples?|powers?|points?|values?|match(?:es)?|percent|degrees?|units?|digits?|fractions?|primes?|pairs?|stars?|planets?|galax(?:y|ies)|matches|relatives?|synonyms?|words?|colou?rs?|versions?|results?)\b)`;
 const FIND_VERB = String.raw`(?:(?:find|show|locate|get|search\s+for|look\s+(?:for|up))\s+(?:me\s+)?|where(?:'s|’s|\s+is|\s+are)\s+|what(?:'s|’s|\s+is)\s+)`;
 /** "find the nearest pharmacy", "nearest coffee shop", "where is the closest gas station?" */
 const NEAREST_PLACE_REQUEST = new RegExp(

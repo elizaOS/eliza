@@ -394,6 +394,14 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
       "Are there any coffee shops close by?",
       ["MAPS_PLACE", "MAPS_NAVIGATION_START"],
     ],
+    // Speech-to-text writes places in lowercase.
+    ["go to coit tower", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to the ferry building", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to golden gate park", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to the grocery store", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to the nearest gas station", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["take me to coit tower", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["navigate to golden gate park", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
   ])("promotes %s", async (text, expected) => {
     const handler = await evaluate(text);
     expect(handler.plan.requiresTool).toBe(true);
@@ -415,6 +423,8 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     "go to the Calendar",
     "Can you go to Workflows?",
     "go home",
+    "go to cloud apps",
+    "take me to cloud apps",
   ])("leaves a view destination to navigation: %s", async (text) => {
     const handler = await evaluate(text);
     expect(mapsCandidates(handler)).toEqual([]);
@@ -458,6 +468,39 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     "go to Coit Tower, then text Sam",
     "go to Coit Tower, Sam",
     "don't go to Coit Tower",
+    // Lowercase speech that is not a place: an idiom, a pronoun, one word,
+    // a time, more work, or an app, page or software word.
+    "go to work",
+    "go to school",
+    "go to church",
+    "go to war",
+    "go to waste",
+    "go to town",
+    "go to pieces",
+    "go to great lengths",
+    "go to bed early",
+    "go to work tomorrow",
+    "go to my house",
+    "go to your settings",
+    "go to this page",
+    "go to that place",
+    "go to it now",
+    "go to the store",
+    "go to the main branch",
+    "go to the error log",
+    "go to lunch with sam",
+    "go to the store and buy milk",
+    "go to see a movie",
+    "go to the gas station tomorrow",
+    "go to the second floor",
+    "go to the nearest integer",
+    "go to the app store",
+    "go to apple music",
+    "go to the home screen",
+    "go to coit tower then text sam",
+    "go to coit tower if it's open",
+    "go to coit tower.com",
+    "go to the settings tab",
     "is there anything near me in my calendar",
     "where can I get help with this bug",
     "find a nearby value in the array",
@@ -500,6 +543,14 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     ["go to my inbox", undefined],
     ["go to settings", undefined],
     ["go to 40", undefined],
+    ["go to coit tower", "coit tower"],
+    ["go to the ferry building", "the ferry building"],
+    ["go to the museum of modern art", "the museum of modern art"],
+    ["go to pier 39", "pier 39"],
+    ["go to the nearest gas station", "the nearest gas station"],
+    ["go to the right place", undefined],
+    ["go to great lengths", undefined],
+    ["go to the bottom of the list", undefined],
   ])("reads the go-to place in %s", (text, expected) => {
     expect(mapsGoToDestination(text)).toBe(expected);
   });
