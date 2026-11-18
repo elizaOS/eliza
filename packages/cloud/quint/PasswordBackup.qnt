@@ -1,12 +1,17 @@
 module PasswordBackup {
-  type Scope = { deployment: int, account: int }
+  type Scope = { deployment: int, organization: int, account: int }
   type Slot = { revision: int, bytes: int }
   type Change = Save(int) | Remove
   type Access = Inference | Backup
   type Outcome = Rejected | Read(int) | Changed
   type State = { slots: Scope -> Slot, outcome: Outcome }
 
-  val scopes = Set({ deployment: 1, account: 1 }, { deployment: 1, account: 2 }, { deployment: 2, account: 1 })
+  val scopes = Set(
+    { deployment: 1, organization: 1, account: 1 },
+    { deployment: 1, organization: 1, account: 2 },
+    { deployment: 1, organization: 2, account: 1 },
+    { deployment: 2, organization: 1, account: 1 }
+  )
   val vacant = { revision: 0, bytes: 0 }
   var state: State
 
