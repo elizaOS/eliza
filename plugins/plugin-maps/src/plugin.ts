@@ -192,6 +192,12 @@ const GO_TO_NOT_A_PLACE =
   /^(?:(?:my|your|our|his|her|their|its|this|that|these|those)\b|(?:next|previous|prev|last|first|top|bottom|end|beginning|start|middle|same|other|point|sleep|bed|definition|declaration|implementation|references?|symbol|usages?|line|page|slide|chapter|section|step|level|tab|item|row|column|cell|sheet|folder|file|message|email|thread|inbox|chat|settings?|preferences|google|gmail|youtube|facebook|instagram|twitter|reddit|wikipedia|amazon|netflix|spotify|github|slack|discord|whatsapp|tiktok|linkedin|chrome|safari|firefox|outlook|today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b)/iu;
 /** "Coit Tower", "McDonald's", "O'Hare": a capitalised word, not an acronym or code ("Q3"). */
 const PROPER_NAME = /^\p{Lu}[\p{Ll}'’]/u;
+/**
+ * "SFO", "JFK Terminal 4", "UCSF Medical Center": an all-caps code of two to
+ * five letters, unless it is a common file, software or time abbreviation.
+ */
+const PLACE_CODE =
+  /^(?!(?:PDF|FAQ|URL|API|TODO|HTML|CSS|JSON|XML|SQL|CSV|USB|TV|AM|PM|OK|ASAP|FYI|AI|ML|UI|UX|IT|HR|PR|CI|QA|SDK|CLI|GUI|OS|AWS|VPN|DNS|SSH|IDE|DM|DMS|SMS|MMS|BIOS)\b)\p{Lu}{2,5}\b(?!['’.-])/u;
 /** "market street", "1600 pennsylvania avenue": an unambiguous street suffix. */
 const STREET_NAME =
   /\p{L}\s+(?:street|st|avenue|ave|boulevard|blvd|road|rd|lane|ln|parkway|pkwy|highway|hwy)\.?(?:,|$)/iu;
@@ -248,6 +254,7 @@ export function mapsGoToDestination(text: string): string | undefined {
     containsResourceAddress(destination) ||
     !(
       PROPER_NAME.test(name) ||
+      PLACE_CODE.test(name) ||
       STREET_ADDRESS.test(name) ||
       STREET_NAME.test(name) ||
       spokenPlaceName(destination, name)

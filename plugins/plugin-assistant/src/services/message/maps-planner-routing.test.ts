@@ -402,6 +402,11 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     ["go to the nearest gas station", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
     ["take me to coit tower", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
     ["navigate to golden gate park", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    // An all-caps place code.
+    ["go to SFO", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to JFK Terminal 4", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["take me to JFK", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["directions to LAX", ["MAPS_ROUTE", "MAPS_NAVIGATION_START"]],
   ])("promotes %s", async (text, expected) => {
     const handler = await evaluate(text);
     expect(handler.plan.requiresTool).toBe(true);
@@ -501,6 +506,14 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     "go to coit tower if it's open",
     "go to coit tower.com",
     "go to the settings tab",
+    // All-caps words that are a file, a format, a time or one letter.
+    "go to PDF",
+    "go to the FAQ",
+    "go to HTML",
+    "go to PM",
+    "go to Q3",
+    "go to A",
+    "go to SFOOBAR",
     "is there anything near me in my calendar",
     "where can I get help with this bug",
     "find a nearby value in the array",
@@ -548,6 +561,9 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     ["go to the museum of modern art", "the museum of modern art"],
     ["go to pier 39", "pier 39"],
     ["go to the nearest gas station", "the nearest gas station"],
+    ["go to SFO", "SFO"],
+    ["go to UCSF Medical Center", "UCSF Medical Center"],
+    ["go to the FAQ", undefined],
     ["go to the right place", undefined],
     ["go to great lengths", undefined],
     ["go to the bottom of the list", undefined],
