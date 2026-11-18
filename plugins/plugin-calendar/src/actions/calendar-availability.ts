@@ -16,6 +16,7 @@ import {
   stringToUuid,
   unwrapUserMessageText,
 } from "@elizaos/core";
+import { parseExplicitLocalDate } from "../internal/request-time.js";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,
@@ -40,23 +41,39 @@ function unavailable(code: string, text: string): ActionResult {
   };
 }
 
-/** Compute availability from the standalone Calendar's exact owner-bound feed. */
 /**
  * True when the owner's request names tomorrow morning and no other period
  * or afternoon/evening clock time, whatever the phrasing ("Am I free tomorrow
  * morning?", "Do I have 20 minutes tomorrow morning?"). A request that also
  * names another period ("tomorrow morning or afternoon") is not clamped.
  */
-export function asksOnlyAboutTomorrowMorning(request: string): boolean {
+export function asksOnlyAboutTomorrowMorning(
+  request: string,
+  timeZone = "UTC",
+  requestTime?: Date,
+): boolean {
+  const morning = /\btomorrow\s+morning\b/i;
+  const remainder = request.replace(morning, "");
+  if (
+    request === remainder ||
+    /\b(?:after|before|except|not)\s+tomorrow\s+morning\b/i.test(request)
+  )
+    return false;
+  // A noon end bound is still inside the morning. A separate noon option is not.
+  const otherPeriods = remainder.replace(
+    /\b(?:until|through|to|by|before)\s+(?:noon|midday|12(?::00)?\s*p\.?\s*m)\b/gi,
+    "",
+  );
   return (
-    /\btomorrow\s+morning\b/i.test(request) &&
-    !/\b(?:afternoon|evening|tonight|night|noon|midday|lunch(?:time)?|all\s+day|whole\s+day|full\s+day|rest\s+of\s+the\s+day|week)\b/i.test(
-      request,
+    !parseExplicitLocalDate(remainder, timeZone, requestTime) &&
+    !/\b(?:morning|afternoon|evening|tonight|night|noon|midday|lunch(?:time)?|all\s+day|whole\s+day|full\s+day|rest\s+of\s+the\s+day|week)\b/i.test(
+      otherPeriods,
     ) &&
-    !/\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*p\.?\s*m\b/i.test(request)
+    !/\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*p\.?\s*m\b/i.test(otherPeriods)
   );
 }
 
+/** Compute availability from the standalone Calendar's exact owner-bound feed. */
 export function calendarAvailabilityActions(
   calendar: Action,
   resolveSource: (
@@ -198,13 +215,16 @@ export function calendarAvailabilityActions(
           start: new Date(windowStart).toISOString(),
           end: new Date(windowEnd).toISOString(),
         };
+        const requestTime = new Date(message.createdAt);
         if (
           asksOnlyAboutTomorrowMorning(
             extractUserText(unwrapUserMessageText(message)),
+            timeZone,
+            requestTime,
           )
         ) {
           const tomorrow = addDaysToLocalDate(
-            getZonedDateParts(new Date(message.createdAt), timeZone),
+            getZonedDateParts(requestTime, timeZone),
             1,
           );
           const midnight = buildUtcDateFromLocalParts(timeZone, {
