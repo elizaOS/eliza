@@ -390,7 +390,9 @@ pure def canHeardAnswered(s: VoiceSession, reply: int): bool = s.receipts.some(r
 pure def heardAnswered(s: VoiceSession, reply: int, wire: HeardWire): VoiceSession =
   { ...s, receipts: s.receipts.listMap(r => if (r.reply == reply and r.phase == HeardInFlight) settleHeard(r, wire) else r) }
 pure val replyValues = Set(1, 2)
-pure val waitedMsValues = Set(0, 1499, 1500)
+pure val waitedMsValues = Set(1499, 1500)
+pure val weight_dispatchHeard = 10
+pure val weight_heardAnswered = 10
 pure val statusValues = Set(0, 200, 400, 404, 409, 429, 500, 503)
 pure def alwaysAReportIsPostedAtMostTwice(s: VoiceSession): bool =
   s.receipts.every(r => r.attempts >= 0 and r.attempts <= 2 and

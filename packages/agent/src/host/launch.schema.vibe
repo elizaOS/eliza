@@ -36,13 +36,14 @@ const Character = Schema.Struct({
 
 const Model = Schema.Union([
   Schema.Struct({ backend: Schema.Literal("cloud"), cloudBaseUrl: Origin, smallModel: Schema.String, largeModel: Schema.String, imageModel: Schema.String }),
-  Schema.Struct({ backend: Schema.Literal("own-key"), ownKeyBaseUrl: HttpsUrl, ownKeySmall: Nonblank, ownKeyLarge: Nonblank }),
+  Schema.Struct({ backend: Schema.Literal("ownKey"), ownKeyBaseUrl: HttpsUrl, ownKeySmall: Nonblank, ownKeyLarge: Nonblank }),
   Schema.Struct({ backend: Schema.Literal("none") }),
 ])
 const Policy = Schema.Struct({
   actions: Schema.Struct({ allowed: UniqueNames.check(Schema.isMinLength(1)) }),
-  plugins: Schema.Struct({ load: UniqueNames, product: Schema.optionalKey(Nonblank) }),
-}).check(Schema.makeFilter(({ plugins }) => plugins.product === undefined || !plugins.load.includes(plugins.product)))
+  plugins: Schema.Struct({ load: UniqueNames }),
+  productPlugin: Schema.optionalKey(Nonblank),
+}).check(Schema.makeFilter(({ plugins, productPlugin }) => productPlugin === undefined || !plugins.load.includes(productPlugin)))
 
 export const LaunchDocument = Schema.Struct({
   schema: Schema.Literal(1),
@@ -53,7 +54,7 @@ export const LaunchDocument = Schema.Struct({
   embeddings: Schema.Literals(["local", "none"]),
   embeddingDimensions: Schema.optionalKey(PositiveInteger),
   persistMemory: Schema.optionalKey(Schema.Boolean),
-  callerRole: Schema.Literals(["owner", "user"]),
+  callerRole: Schema.Literals(["Owner", "User"]),
   views: Schema.optionalKey(Views),
   timeZone: Schema.optionalKey(Zone),
   privacy: Schema.optionalKey(Schema.Struct({ secretSwap: Schema.Boolean, piiSwap: Schema.Boolean })),
@@ -64,7 +65,7 @@ export const LaunchDocument = Schema.Struct({
   retention: Schema.optionalKey(Schema.Struct({
     days: Schema.Number.check(Schema.isGreaterThan(0)), maxRowsPerRoom: PositiveInteger, intervalMinutes: PositiveInteger,
   })),
-  hostContextRevision: Schema.optionalKey(PositiveInteger),
+  hostContextRevision: Schema.optionalKey(Nonblank),
   environment: Schema.optionalKey(Schema.Record(EnvironmentName, EnvironmentValue)),
 }).check(Schema.makeFilter((launch) =>
   (launch.model.backend !== "cloud" || launch.account !== undefined)
