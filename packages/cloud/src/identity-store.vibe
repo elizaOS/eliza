@@ -12,6 +12,7 @@ type SessionRow = AccountRow & { key: string; state: unknown; access_digest: str
 export type BrowserSession = { account: Account; access: string; refresh: string; accessSeconds: number; refreshSeconds: number }
 
 export error StorageUnavailable
+export error RateLimited
 export error IdentityConflict
 
 export const accessCookie = "__Host-eliza-session"
@@ -22,6 +23,20 @@ export const devicePattern = /^eliza_mobile_[0-9a-f]{64}$/
 
 export effect function authQuery<Row extends Record<string, unknown>>(db: Client, sql: string, params: readonly unknown[] = []) {
   return try tryPromise({ try: () => db.query<Row>(sql, [...params]), catch: () => new StorageUnavailable() })
+}
+
+export effect function rateLimit(db: Client, scope: string, key: string, maximum: number, seconds: number) {
+  const hash = try digestCredential(key)
+  const { rows } = try authQuery<{ hits: number }>(db, `
+    INSERT INTO cloud_auth_limits (scope, subject_hash, expires_at, hits)
+    VALUES ($1, $2, now() + $3 * interval '1 second', 1)
+    ON CONFLICT (scope, subject_hash) DO UPDATE
+    SET hits = CASE WHEN cloud_auth_limits.expires_at <= now() THEN 1 ELSE cloud_auth_limits.hits + 1 END,
+        expires_at = CASE WHEN cloud_auth_limits.expires_at <= now() THEN EXCLUDED.expires_at ELSE cloud_auth_limits.expires_at END
+    WHERE cloud_auth_limits.expires_at <= now() OR cloud_auth_limits.hits < $4
+    RETURNING hits
+  `, [scope, hash, seconds, maximum])
+  if (rows.length === 0) throw new RateLimited()
 }
 
 export effect function accountTransaction<A, E, R>(db: Client, body: A!E!R) {
@@ -191,7 +206,7 @@ export effect function browserAccount(request: Request, db: Client) {
   const row = rows[0]
   if (!row) return null
   const state = try advance(row.state, try Clock.currentTimeMillis)
-  return accepts(state, state.generation, Number(row.sessions_revoked_before)) ? { id: row.id, email: row.email, sessionKey: row.key } : null
+  return accepts(state, state.generation, Number(row.sessions_revoked_before)) ? { id: row.id, email: row.email, sessionKey: row.key, organizationId: row.organization_id, authAt: state.authAt } : null
 }
 
 export effect function renewBrowserSession(request: Request, db: Client) {
