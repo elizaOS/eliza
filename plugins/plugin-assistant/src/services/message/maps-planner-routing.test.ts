@@ -26,6 +26,7 @@ import {
   isMapsNearbyPlaceRequest,
   isMapsPlaceOnMapRequest,
   MAPS_CONTEXT,
+  mapsGoToDestination,
   mapsPlugin,
   mapsTravelDestination,
 } from "../../../../plugin-maps/src/plugin.ts";
@@ -367,6 +368,20 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
       ["MAPS_PLACE", "MAPS_NAVIGATION_START"],
     ],
     ["coffee shops near me", ["MAPS_PLACE", "MAPS_NAVIGATION_START"]],
+    ["go to Coit Tower", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to the Ferry Building", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    [
+      "go to 1 Market St, San Francisco",
+      ["MAPS_NAVIGATION_START", "MAPS_ROUTE"],
+    ],
+    [
+      "Okay, go to Golden Gate Park, please.",
+      ["MAPS_NAVIGATION_START", "MAPS_ROUTE"],
+    ],
+    [
+      "take me to 1 Market St, San Francisco, CA 94105",
+      ["MAPS_NAVIGATION_START", "MAPS_ROUTE"],
+    ],
   ])("promotes %s", async (text, expected) => {
     const handler = await evaluate(text);
     expect(handler.plan.requiresTool).toBe(true);
@@ -382,6 +397,12 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     "how do I get to my notes?",
     "navigate to workflows",
     "take me home",
+    "go to settings",
+    "go to Settings",
+    "go to Notes",
+    "go to the Calendar",
+    "Can you go to Workflows?",
+    "go home",
   ])("leaves a view destination to navigation: %s", async (text) => {
     const handler = await evaluate(text);
     expect(mapsCandidates(handler)).toEqual([]);
@@ -403,6 +424,28 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     "take me to example.com",
     "take me to Coit Tower, then text Sam",
     "don't take me to Coit Tower",
+    "go to the top",
+    "go to page 3",
+    "Go to Page 3",
+    "go to the next slide",
+    "go to the Next Slide",
+    "go to example.com",
+    "go to sleep",
+    "go to bed",
+    "go to my inbox",
+    "go to the previous one",
+    "go to line 40",
+    "Go to Line 40",
+    "go to definition",
+    "Go To Definition",
+    "go to Google Drive",
+    "go to Monday",
+    "go to Q3",
+    "go to 10 percent",
+    "go to the right place",
+    "go to Coit Tower, then text Sam",
+    "go to Coit Tower, Sam",
+    "don't go to Coit Tower",
   ])("keeps the simple answer for %s", async (text) => {
     expect(isMapsNearbyPlaceRequest(text)).toBe(false);
     const handler = await evaluate(text);
@@ -425,23 +468,44 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     },
   );
 
-  it("stays out when no host view registry can tell a view from a place", async () => {
-    if (!evaluator) throw new Error("Expected capability evaluator");
-    expect(mapsTravelDestination("take me to Coit Tower")).toBe("Coit Tower");
-    const { runtime, message } = await fixture("take me to Coit Tower", {
-      viewNames: false,
-    });
-    const handler = simplePlan();
-    await runResponseHandlerEvaluators({
-      runtime,
-      message,
-      state: { text: "", values: {}, data: {} },
-      messageHandler: handler,
-      availableContexts: [...DEFAULT_CONTEXT_DEFINITIONS, MAPS_CONTEXT],
-      userRoles: ["OWNER"],
-      evaluators: [evaluator],
-    } as never);
-    expect(handler.plan.requiresTool).toBe(false);
-    expect(handler.plan.candidateActions).toEqual([]);
+  it.each([
+    ["go to Coit Tower", "Coit Tower"],
+    ["go to the Ferry Building", "the Ferry Building"],
+    ["go to 1 Market St, San Francisco", "1 Market St, San Francisco"],
+    ["go to 500 howard street", "500 howard street"],
+    ["go to market street", "market street"],
+    ["let's go to McDonald's", "McDonald's"],
+    ["go to Home Depot", "Home Depot"],
+    ["go to the top", undefined],
+    ["go to my inbox", undefined],
+    ["go to settings", undefined],
+    ["go to 40", undefined],
+  ])("reads the go-to place in %s", (text, expected) => {
+    expect(mapsGoToDestination(text)).toBe(expected);
   });
+
+  it.each(["take me to Coit Tower", "go to Coit Tower"])(
+    "stays out of %s when no host view registry can tell a view from a place",
+    async (text) => {
+      if (!evaluator) throw new Error("Expected capability evaluator");
+      expect(mapsTravelDestination(text) ?? mapsGoToDestination(text)).toBe(
+        "Coit Tower",
+      );
+      const { runtime, message } = await fixture(text, {
+        viewNames: false,
+      });
+      const handler = simplePlan();
+      await runResponseHandlerEvaluators({
+        runtime,
+        message,
+        state: { text: "", values: {}, data: {} },
+        messageHandler: handler,
+        availableContexts: [...DEFAULT_CONTEXT_DEFINITIONS, MAPS_CONTEXT],
+        userRoles: ["OWNER"],
+        evaluators: [evaluator],
+      } as never);
+      expect(handler.plan.requiresTool).toBe(false);
+      expect(handler.plan.candidateActions).toEqual([]);
+    },
+  );
 });

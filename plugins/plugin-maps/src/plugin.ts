@@ -141,7 +141,18 @@ const TRAVEL_TO_REQUEST = new RegExp(
 const NOT_A_PLACE_DESTINATION =
   /\b(?:page|screen|tab|menu|view|section|step|level|folder|file|settings?|options?|line|slide|chapter|stage|part|item|message|email|thread|inbox|chat|conversation|document|doc|link|website|site)$/iu;
 /** "then text Sam", "if it's open": further work or a condition keeps the planner path. */
-const COMPOUND_REQUEST = /,|\b(?:then|if|unless|when|once)\b/iu;
+const COMPOUND_REQUEST = /\b(?:then|if|unless|when|once)\b/iu;
+/** "1 Market St, San Francisco, CA 94105": the only commas a destination keeps. */
+const STREET_ADDRESS_WITH_LOCALITY =
+  /^\d+[a-z]?\s+[^,]+(?:,\s*[\p{Lu}\d][\p{L}\d.'’ -]*)+$/u;
+
+function compoundDestination(destination: string): boolean {
+  return (
+    COMPOUND_REQUEST.test(destination) ||
+    (destination.includes(",") &&
+      !STREET_ADDRESS_WITH_LOCALITY.test(destination))
+  );
+}
 
 /** The destination of a travel request from the user's position, if it is one. */
 export function mapsTravelDestination(text: string): string | undefined {
@@ -150,8 +161,55 @@ export function mapsTravelDestination(text: string): string | undefined {
   if (
     !destination ||
     NOT_A_PLACE_DESTINATION.test(destination) ||
-    COMPOUND_REQUEST.test(destination) ||
+    compoundDestination(destination) ||
     containsResourceAddress(destination)
+  )
+    return;
+  return destination;
+}
+
+/**
+ * "go to X" names an app, a document or a conversation far more often than a
+ * place ("go to the top", "go to page 3", "go to sleep", "go to my inbox"), so
+ * only a named place or a street address counts: "go to Coit Tower", "go to
+ * the Ferry Building", "go to 1 Market St, San Francisco".
+ */
+const GO_TO_REQUEST = new RegExp(
+  String.raw`^\s*${COURTESY}(?:let(?:'s|’s|\s+us)\s+)?go\s+to\s+(\S.{0,79}?)${END}`,
+  "iu",
+);
+/**
+ * A first word that is an app, document or calendar position, or a well-known
+ * site or app rather than a place: "go to Line 40", "go to Definition", "go to
+ * the Next Slide", "go to Google Drive", "go to Monday".
+ */
+const GO_TO_NOT_A_PLACE =
+  /^(?:(?:my|your|our|his|her|their|its|this|that|these|those)\b|(?:next|previous|prev|last|first|top|bottom|end|beginning|start|middle|same|other|point|sleep|bed|definition|declaration|implementation|references?|symbol|usages?|line|page|slide|chapter|section|step|level|tab|item|row|column|cell|sheet|folder|file|message|email|thread|inbox|chat|settings?|preferences|google|gmail|youtube|facebook|instagram|twitter|reddit|wikipedia|amazon|netflix|spotify|github|slack|discord|whatsapp|tiktok|linkedin|chrome|safari|firefox|outlook|today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b)/iu;
+/** "Coit Tower", "McDonald's", "O'Hare": a capitalised word, not an acronym or code ("Q3"). */
+const PROPER_NAME = /^\p{Lu}[\p{Ll}'’]/u;
+/** "market street", "1600 pennsylvania avenue": an unambiguous street suffix. */
+const STREET_NAME =
+  /\p{L}\s+(?:street|st|avenue|ave|boulevard|blvd|road|rd|lane|ln|parkway|pkwy|highway|hwy)\.?(?:,|$)/iu;
+/** "1 Market St", "221b Baker Street", "500 howard street". */
+const STREET_ADDRESS =
+  /^\d+[a-z]?\s+(?:\p{Lu}|\S+.*?\b(?:drive|dr|way|place|pl|court|ct|terrace|square|plaza|circle)\.?(?:,|$))/u;
+
+/** The place a "go to X" request names, if it names a place or a street address. */
+export function mapsGoToDestination(text: string): string | undefined {
+  if (text.length > MAX_TRAVEL_REQUEST_LENGTH) return;
+  const destination = GO_TO_REQUEST.exec(text)?.[1]?.trim();
+  if (!destination) return;
+  const name = destination.replace(/^the\s+/iu, "");
+  if (
+    GO_TO_NOT_A_PLACE.test(name) ||
+    NOT_A_PLACE_DESTINATION.test(destination) ||
+    compoundDestination(destination) ||
+    containsResourceAddress(destination) ||
+    !(
+      PROPER_NAME.test(name) ||
+      STREET_ADDRESS.test(name) ||
+      STREET_NAME.test(name)
+    )
   )
     return;
   return destination;
@@ -216,8 +274,9 @@ function travelToPlace(
   runtime: Parameters<NonNullable<Plugin["init"]>>[1],
   text: string,
   message: Memory | undefined,
+  destinationOf: (text: string) => string | undefined = mapsTravelDestination,
 ): boolean {
-  const destination = mapsTravelDestination(text);
+  const destination = destinationOf(text);
   return (
     destination !== undefined &&
     namesViewNavigationTarget(runtime, destination, message) === false
@@ -267,6 +326,20 @@ export const mapsPlugin: Plugin = {
       contexts: ["maps"],
       matches: (text, message) =>
         ownerChatTurn(message) && travelToPlace(runtime, text, message),
+    });
+    // "go to Coit Tower", "go to 1 Market St, San Francisco": the same travel,
+    // for a named place or street address only. "go to settings", "go to
+    // Photos" stay view navigation, and "go to the top" or "go to sleep" keep
+    // the planner's answer.
+    registerDirectActionRoutingRule(runtime, {
+      id: "maps.go-to-place",
+      actionNames: ["MAPS_NAVIGATION_START", "MAPS_ROUTE"],
+      replacesActionNames: ["VIEWS", "VIEWS_SHOW"],
+      requiredActionTags: ["domain:maps"],
+      contexts: ["maps"],
+      matches: (text, message) =>
+        ownerChatTurn(message) &&
+        travelToPlace(runtime, text, message, mapsGoToDestination),
     });
     // "find the nearest pharmacy": the place search around the phone's own
     // position (a locate card), or directions to it.
