@@ -153,12 +153,17 @@ output classes only: no inference session, JNI bridge, native library or model a
   `receivedMs`. A last `progress` event can arrive just after `audio-end`; the `audio-end` value
   is final.
 - The session holds transient, duckable audio focus while it speaks or its microphone is open,
-  and releases it when it does neither. A transient or permanent focus loss, or a call, ends
-  the session even while it only listens. A ducking loss lowers the speech for as long as the
-  session holds focus, so a listening session's next utterance starts lowered; a session that
-  only speaks releases focus after each utterance and asks again for the next. Speech plays with the assistant usage, which AOSP maps to the media volume by
-  default (not yet checked on a device); an OEM build can give the assistant stream its own
-  volume.
+  and releases it when it does neither. A transient focus loss pauses the session instead of
+  ending it: the utterance stops and its `audio-end` carries `interrupted: "audio-focus-lost"`,
+  the microphone closes after a silence tail, a `focus-paused` event is sent, and
+  `speakCloudSpeech` rejects with `audio-focus-paused` until the regain. The regain sends
+  `focus-resumed` and reopens the microphone unless the host muted meanwhile; a mute while
+  paused gives focus up. Only a permanent loss, or a call, ends the session (`audio-focus-lost`,
+  `call-active`). A ducking loss lowers the speech for as long as the session holds focus, so a
+  listening session's next utterance starts lowered; a session that only speaks releases focus
+  after each utterance and asks again for the next. Speech plays with the assistant usage,
+  which AOSP maps to the media volume by default (not yet checked on a device); an OEM build can
+  give the assistant stream its own volume.
 - The host declares `RECORD_AUDIO` and `INTERNET`, registers its `@CapacitorPlugin` subclass
   with a `microphone` permission alias for `RECORD_AUDIO`, and implements `cloudOrigin`,
   `readCredential` and `authorityEpoch` there.

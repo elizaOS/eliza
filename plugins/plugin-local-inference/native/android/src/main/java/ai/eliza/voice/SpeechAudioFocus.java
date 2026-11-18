@@ -17,11 +17,14 @@ public final class SpeechAudioFocus {
  public interface Changes { void apply(SpeechAudioFocusPolicy.Action action,boolean callActive); }
  public static final AudioAttributes ATTRIBUTES=new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build();
  private final AudioManager audio;
- private final SpeechAudioFocusPolicy policy=new SpeechAudioFocusPolicy();
+ private final SpeechAudioFocusPolicy policy;
  private final AudioFocusRequest request;
  private AudioManager.OnModeChangedListener modeListener;
 
- public SpeechAudioFocus(Context context,Handler main,Changes changes){
+ public SpeechAudioFocus(Context context,Handler main,Changes changes){this(context,main,false,changes);}
+ /** With {@code pauseOnTransientLoss}, a transient loss reports PAUSE and its regain RESUME instead of STOP. */
+ public SpeechAudioFocus(Context context,Handler main,boolean pauseOnTransientLoss,Changes changes){
+  policy=new SpeechAudioFocusPolicy(pauseOnTransientLoss);
   audio=context.getSystemService(AudioManager.class);
   // Speech content is not auto-ducked by the platform; the duck callback lowers it here instead.
   request=new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
@@ -57,6 +60,8 @@ public final class SpeechAudioFocus {
  public boolean callActive(){return SpeechAudioFocusPolicy.callActive(mode());}
  /** Another app holds a duckable loss: new speech starts lowered. */
  public boolean ducked(){return policy.ducked();}
+ /** A transient loss paused the owner: {@link #acquire} still reports focus held, so callers check this first. */
+ public boolean paused(){return policy.paused();}
  /** Null once focus is held (requested now or already held); otherwise the refusal code. Main thread. */
  public String acquire(){
   String refusal=SpeechAudioFocusPolicy.admission(mode());

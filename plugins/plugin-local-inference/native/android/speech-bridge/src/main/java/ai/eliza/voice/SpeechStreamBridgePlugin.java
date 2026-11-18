@@ -71,10 +71,13 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
  @PluginMethod public synchronized void cloudStreamTiming(PluginCall call){JSArray rows=new JSArray();for(JSObject row:timings)rows.put(row);call.resolve(new JSObject().put("format",diagnosticFormat()).put("records",rows));}
 
  @Override public void load(){
-  focus=new SpeechAudioFocus(getContext(),main,(action,call)->{
+  // A transient loss pauses listening and stops the utterance; only a permanent loss or a call ends the session.
+  focus=new SpeechAudioFocus(getContext(),main,true,(action,call)->{
    Session own=session;if(own==null)return;
-   if(action==SpeechAudioFocusPolicy.Action.DUCK||action==SpeechAudioFocusPolicy.Action.RESTORE){Utterance spoken=own.spoken;if(spoken!=null&&spoken.playback!=null)spoken.playback.duck(action==SpeechAudioFocusPolicy.Action.DUCK);}
-   else if(action==SpeechAudioFocusPolicy.Action.STOP)retire(own,call?"call-active":"audio-focus-lost");
+   if(action==SpeechAudioFocusPolicy.Action.DUCK||action==SpeechAudioFocusPolicy.Action.RESTORE){Utterance spoken=own.spoken;if(spoken!=null)synchronized(spoken){if(spoken.playback!=null)spoken.playback.duck(action==SpeechAudioFocusPolicy.Action.DUCK);}}
+   else if(action==SpeechAudioFocusPolicy.Action.STOP||call&&action==SpeechAudioFocusPolicy.Action.PAUSE)retire(own,call?"call-active":"audio-focus-lost");
+   else if(action==SpeechAudioFocusPolicy.Action.PAUSE)pauseForFocus(own);
+   else if(action==SpeechAudioFocusPolicy.Action.RESUME)resumeAfterFocus(own);
   });
   focus.watchCalls(main::post,()->{Session own=session;if(own!=null)retire(own,"call-active");});
  }
@@ -172,16 +175,39 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
  }
  private void listen(Session own,long generation,PluginCall call){
   if(own.closed.get()||session!=own){if(call!=null)call.reject("Speech session changed");return;}
+  // Paused by a transient focus loss: the regain opens capture, so a start still settles now.
+  if(own.focusPaused){if(call!=null)call.resolve();else submit(media,()->{try{own.settleStart(false);main.removeCallbacks(own.deadline);}catch(Exception closed){/* Retired meanwhile. */}},()->fail(own,"closed"));return;}
   String refused=focus.acquire();
-  if(refused!=null){if(generation==own.muteGeneration)own.muted=true;if(call!=null)call.reject("Microphone could not change state",refused);else fail(own,refused);return;}
+  // A refusal leaves the session muted, so close a microphone that an overtaken mute left open.
+  if(refused!=null){if(generation==own.muteGeneration){own.muted=true;submit(media,()->{if(generation==own.muteGeneration)stopCapture(own);},()->{});}if(call!=null)call.reject("Microphone could not change state",refused);else fail(own,refused);return;}
   submit(media,()->{try{own.check();if(generation==own.muteGeneration&&own.recorder==null)own.startCapture();else if(call==null&&own.muted)own.settleStart(false);main.removeCallbacks(own.deadline);if(call!=null)call.resolve();}catch(Exception failure){if(call!=null)call.reject("Microphone could not change state");fail(own,"capture");}finally{main.post(SpeechStreamBridgePlugin.this::settleFocus);}},()->{if(call!=null)call.reject("Voice is closed");fail(own,"closed");});
  }
- private void settleFocus(){Session current=session;if(current==null||current.spoken==null&&current.muted)focus.release();}
+ private void settleFocus(){Session current=session;if(current==null||current.spoken==null&&current.muted){if(current!=null)current.focusPaused=false;focus.release();}}
+ /** A transient focus loss: stop the utterance (its audio-end says interrupted), close the microphone with a silence tail, keep the session. Main thread. */
+ private void pauseForFocus(Session own){
+  if(own.closed.get()||session!=own||own.focusPaused)return;
+  own.focusPaused=true;
+  Utterance spoken=own.spoken;Utterance retired=spoken==null?null:cancelSpeech(own,spoken.id);
+  if(retired!=null){
+   emit(own,"audio-end",new JSObject().put("utteranceId",retired.id).put("silent",false).put("playedMs",retired.playedMs).put("interrupted","audio-focus-lost"));
+   submit(media,()->{try{if(retired.playback!=null&&!retired.playback.join(1500)){fail(own,"playback");return;}own.speakerDraining=false;}catch(InterruptedException interrupted){Thread.currentThread().interrupt();}},()->{});
+  }
+  long generation=++own.muteGeneration;
+  if(own.captured)silence(own,generation,30);
+  submit(media,()->{if(generation==own.muteGeneration)stopCapture(own);},()->{});
+  emit(own,"focus-paused",new JSObject());
+ }
+ /** The regain after a transient loss: reopen capture unless the host muted meanwhile. Main thread. */
+ private void resumeAfterFocus(Session own){
+  if(own.closed.get()||session!=own||!own.focusPaused)return;
+  own.focusPaused=false;emit(own,"focus-resumed",new JSObject());
+  if(!own.muted&&own.providerReady)listen(own,own.muteGeneration,null);else settleFocus();
+ }
  @PluginMethod public void speakCloudSpeech(PluginCall call){
   Session own=owned(call);String id=call.getString("utteranceId"),text=call.getString("text");Double pace=call.getDouble("pace",1.0);
   if(own==null||own.speakerDraining||!own.providerReady||!CloudSpeechWire.id(id)||text==null||text.trim().isEmpty()||text.length()>4096||pace==null||!(pace>=SLOWEST_PACE&&pace<=FASTEST_PACE)){call.reject("Invalid speech request");return;}
   main.post(()->{try{
-   own.check();if(own.spoken!=null||own.speakerDraining)throw new IllegalStateException("Speaker is already active");String refused=focus.acquire();if(refused!=null)throw new IllegalStateException(refused);
+   own.check();if(own.focusPaused){call.reject("Speech is paused while another app holds audio focus","audio-focus-paused");return;}if(own.spoken!=null||own.speakerDraining)throw new IllegalStateException("Speaker is already active");String refused=focus.acquire();if(refused!=null)throw new IllegalStateException(refused);
    java.util.List<String> phrases=CloudSpeechWire.phrases(text);Utterance utterance=new Utterance(id,pace.floatValue());own.spoken=utterance;mark(own,"tts-request");
    for(String phrase:phrases)own.send(new JSONObject().put("t","tts").put("id",id).put("text",phrase).put("flush",true));
    own.send(new JSONObject().put("t","finish").put("id",id));call.resolve();
@@ -272,7 +298,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
  private void arm(Session own){main.removeCallbacks(own.expiry);if(!own.closed.get())main.postDelayed(own.expiry,Math.max(1,own.expiresAt-System.currentTimeMillis()));}
  private final class Session {
   final String id,environment,credential;final long epoch,started=System.nanoTime(),diagnosticId=++timingSequence;final PluginCall startCall;final AtomicBoolean closed=new AtomicBoolean(),startSettled=new AtomicBoolean();
-  volatile String origin,token,wireToken,serverId;volatile long expiresAt,sentFrames,sentBytes,receivedFrames,receivedBytes;volatile int httpStatus;volatile boolean ready,providerReady,muted,outputMuted,captured,speakerDraining,extendOffered;volatile long muteGeneration;volatile Call pending;volatile WebSocket socket;volatile AudioRecord recorder;volatile AcousticEchoCanceler echo;volatile Thread capture;volatile Utterance spoken;
+  volatile String origin,token,wireToken,serverId;volatile long expiresAt,sentFrames,sentBytes,receivedFrames,receivedBytes;volatile int httpStatus;volatile boolean ready,providerReady,muted,outputMuted,captured,focusPaused,speakerDraining,extendOffered;volatile long muteGeneration;volatile Call pending;volatile WebSocket socket;volatile AudioRecord recorder;volatile AcousticEchoCanceler echo;volatile Thread capture;volatile Utterance spoken;
   final long startupStartedMs=SystemClock.elapsedRealtime();
   volatile long startupEndsMs=startupStartedMs+HTTP_STARTUP_MS;
   final Runnable deadline=this::expireStartup;
@@ -306,7 +332,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
    check();next.startRecording();if(next.getRecordingState()!=AudioRecord.RECORDSTATE_RECORDING)throw new IOException("Capture unavailable");captured=true;
    // Only stopCapture ends this reader: a mute that a quick unmute overtakes skips its stop, and a
    // reader that left on the brief mute would strand an open microphone that sends nothing.
-   capture=new Thread(()->{byte[] frame=new byte[1024];long levelAt=0;try{while(!closed.get()&&recorder==next){check();int count=next.read(frame,0,frame.length,AudioRecord.READ_BLOCKING);if(count<=0||count%2!=0)throw new IOException("Microphone stopped");long now=System.nanoTime();if(now-levelAt>50_000_000L){levelAt=now;emit(this,"level",new JSObject().put("peak",muted?0:CloudSpeechWire.peak(frame,count)));}if(!muted){check();WebSocket peer=socket;if(peer==null||peer.queueSize()>64000||!peer.send(ByteString.of(frame,0,count)))throw new IOException("Speech upload stalled");sentFrames++;sentBytes+=count;}}}catch(Exception error){if(!closed.get()&&!muted&&recorder==next)fail(this,"capture");}finally{Arrays.fill(frame,(byte)0);}},"eliza-cloud-speech-microphone");capture.setDaemon(true);capture.start();
+   capture=new Thread(()->{byte[] frame=new byte[1024];long levelAt=0;try{while(!closed.get()&&recorder==next){check();int count=next.read(frame,0,frame.length,AudioRecord.READ_BLOCKING);if(count<=0||count%2!=0)throw new IOException("Microphone stopped");long now=System.nanoTime();if(now-levelAt>50_000_000L){levelAt=now;emit(this,"level",new JSObject().put("peak",muted||focusPaused?0:CloudSpeechWire.peak(frame,count)));}if(!muted&&!focusPaused){check();WebSocket peer=socket;if(peer==null||peer.queueSize()>64000||!peer.send(ByteString.of(frame,0,count)))throw new IOException("Speech upload stalled");sentFrames++;sentBytes+=count;}}}catch(Exception error){if(!closed.get()&&!muted&&!focusPaused&&recorder==next)fail(this,"capture");}finally{Arrays.fill(frame,(byte)0);}},"eliza-cloud-speech-microphone");capture.setDaemon(true);capture.start();
    settleStart(echoEnabled);
   }
   synchronized void settleStart(boolean echoEnabled)throws IOException{check();emit(this,"ready",new JSObject().put("sampleRate",16000).put("echoCancelled",echoEnabled).put("muted",muted));if(startSettled.compareAndSet(false,true))startCall.resolve(new JSObject().put("sessionId",id).put("sampleRate",16000).put("echoCancelled",echoEnabled).put("muted",muted));}
@@ -321,9 +347,9 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
  private void fail(Session own,String code,JSObject data){if(own.closed.get())return;mark(own,"error");JSObject event=new JSObject().put("code",code).put("status",own.httpStatus);if(data!=null)event.put("data",data);emit(own,"error",event);if(own.startSettled.compareAndSet(false,true))own.startCall.reject("Cloud streaming speech is unavailable",code,data);retire(own,null);}
  private void retire(Session own,String reason){if(reason!=null)emit(own,"error",new JSObject().put("code",reason));detach(own);queueCleanup(own,()->{});}
  private void detach(Session own){if(!own.closed.compareAndSet(false,true))return;mark(own,"stop");synchronized(this){if(session==own)session=null;}main.removeCallbacks(own.deadline);main.removeCallbacks(own.expiry);Call call=own.pending;if(call!=null)call.cancel();WebSocket socket=own.socket;if(socket!=null)socket.cancel();if(own.startSettled.compareAndSet(false,true))own.startCall.reject("Cloud streaming speech stopped","cancelled");Utterance u=own.spoken;if(u!=null){synchronized(u){u.cancelled=true;}if(u.playback!=null)u.playback.stop();}own.feeder.shutdown();main.post(SpeechStreamBridgePlugin.this::settleFocus);}
- /** Each mute after the microphone first opened sends a bounded silence tail that closes Ink's current turn; a session that never captured sends none. */
+ /** Each mute (or focus pause) after the microphone first opened sends a bounded silence tail that closes Ink's current turn; a session that never captured sends none. */
  private void silence(Session own,long generation,int remaining){
-  if(remaining<=0||!own.muted||own.muteGeneration!=generation||own.closed.get())return;
+  if(remaining<=0||!own.muted&&!own.focusPaused||own.muteGeneration!=generation||own.closed.get())return;
   try{own.check();WebSocket socket=own.socket;if(socket==null||socket.queueSize()>64000||!socket.send(ByteString.of(new byte[1024])))throw new IOException();own.sentFrames++;own.sentBytes+=1024;}catch(Exception ignored){return;}
   main.postDelayed(()->silence(own,generation,remaining-1),32);
  }
