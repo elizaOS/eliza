@@ -35,7 +35,6 @@ import {
   extractUserText,
   getStreamingContext,
   getTurnActionConstraint,
-  incomingMessagePersistenceSnapshot,
   readDurableConversationChatMarker,
   registerDirectActionRoutingRule,
   stableStringify,
@@ -57,6 +56,7 @@ import type {
   ApprovalEnqueueResult,
   ApprovalRequest,
 } from "../approval/types.ts";
+import { hostAuthoredText } from "./authored-text.ts";
 import {
   BROWSER_CONTROL_TYPES,
   BROWSER_FIND_CAPABILITY,
@@ -937,26 +937,6 @@ export function setDeviceReadReplyContext(
   if (current.replyContext && current.replyContext.message.id !== message.id)
     throw new DeviceActionError("Device read origin changed");
   current.replyContext = { message, context };
-}
-/** The text the owner sent for this in-flight message. A host-bound
- * prompt-only augmentation keeps the persisted words; any other change, or a
- * copy whose unwrapped request differs from them, has no authored text. */
-function hostAuthoredText(original: Memory): string | undefined {
-  let persisted: Memory | undefined;
-  try {
-    persisted = incomingMessagePersistenceSnapshot(original);
-  } catch {
-    return undefined;
-  }
-  const routed = original.content.text;
-  if (typeof routed !== "string") return undefined;
-  if (!persisted) return routed;
-  const authored = persisted.content.text;
-  if (typeof authored !== "string") return undefined;
-  if (routed === authored) return authored;
-  return extractUserText(routed) === extractUserText(authored)
-    ? authored
-    : undefined;
 }
 async function freshRequestedMessageId(
   runtime: IAgentRuntime,

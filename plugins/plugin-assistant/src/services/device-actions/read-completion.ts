@@ -51,6 +51,7 @@ import {
 import type { ApprovalRequest } from "../approval/types.ts";
 import { evaluatePlannedReplyEgress } from "../message/egress-policy.ts";
 import { getSourceReplyBinding } from "../message/source-reply.ts";
+import { hostAuthoredText } from "./authored-text.ts";
 import { validateCalendarResult } from "./calendar-contract.ts";
 import { DeviceActionError, validateDevicePayload } from "./contract.ts";
 import { formatDeviceRecordDateTime } from "./device-record-presentation.ts";
@@ -186,8 +187,11 @@ export function captureDeviceReadReplyOrigin(
   // A host without a stable protected account/provider revision retains ordinary
   // typed receipts, but cannot bind a model continuation across restart.
   if (hostContextRevision === null) return undefined;
+  // The owner's stored words, not a prompt-only document envelope around
+  // them: the completion is later matched against the stored message.
+  const text = hostAuthoredText(message) ?? message.content.text;
   const content = {
-    text: runtime.redactSecrets(message.content.text),
+    text: runtime.redactSecrets(text),
     ...(message.content.inReplyTo
       ? { inReplyTo: message.content.inReplyTo }
       : {}),

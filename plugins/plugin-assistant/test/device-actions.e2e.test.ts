@@ -4676,6 +4676,17 @@ test.each([
     request: "take a picture",
     augmented: true,
   },
+  // The augmented copy still carries the lens the owner named.
+  {
+    stage1: "document-augmented selfie camera tool plan",
+    contexts: ["media", "general"],
+    intents: ["take a selfie"],
+    candidateActionNames: ["DEVICE_CAMERA_CAPTURE"],
+    replyText: "Let me take that for you.",
+    request: "take a selfie",
+    augmented: true,
+    operation: { type: "camera_capture_photo", lens: "front" },
+  },
 ])(
   "direct-request photo binds the owner's message on the real route ($stage1)",
   async ({
@@ -4685,6 +4696,16 @@ test.each([
     replyText,
     request,
     augmented,
+    operation = { type: "camera_capture_photo" },
+  }: {
+    stage1: string;
+    contexts: string[];
+    intents: string[];
+    candidateActionNames: string[];
+    replyText: string;
+    request: string;
+    augmented: boolean;
+    operation?: { type: string; lens?: string };
   }) => {
     const fixture = await createRealTestRuntime({
       characterName: "Eliza",
@@ -4853,7 +4874,7 @@ test.each([
       // The owner's whole-message command owns the lens, not the model.
       expect(
         (proposals[0].payload as { operation: unknown }).operation,
-      ).toEqual({ type: "camera_capture_photo" });
+      ).toEqual(operation);
       useModel.mockRestore();
     } finally {
       await fixture.cleanup();
