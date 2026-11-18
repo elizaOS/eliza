@@ -6661,7 +6661,8 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "worldIds",
-    description: "Account/server scopes for inbox ops.",
+    description:
+      "Account/server scopes for inbox ops on connectors that support them. Omit for managed Gmail, which uses the active owner mailbox.",
     required: false,
     subactions: ["triage", "list_inbox", "search_inbox"],
     schema: { type: "array", items: { type: "string" } },
@@ -6669,7 +6670,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "channelIds",
     description:
-      "Channel, conversation, label or folder ids that scope inbox ops.",
+      "Channel or conversation IDs for connectors that support them. For managed Gmail use the native query (for example in:sent or label:work) and omit channelIds.",
     required: false,
     subactions: ["triage", "list_inbox", "search_inbox"],
     schema: { type: "array", items: { type: "string" } },
@@ -6904,7 +6905,7 @@ export const messageAction: Action = {
   description: MESSAGE_DESCRIPTION,
   descriptionCompressed: MESSAGE_COMPRESSED,
   routingHint:
-    "send/read/search/triage messages on a connector or channel, discover authorized worlds/rooms, or manage the inbox/drafts -> MESSAGE; do NOT use to reply in the CURRENT chat/thread -> REPLY, to join/mute/follow a channel -> ROOM, or to publish to a public feed/timeline -> POST",
+    'send/read/search/triage messages on a connector or channel, discover authorized worlds/rooms, or manage the inbox/drafts -> MESSAGE; do NOT use to reply in the CURRENT chat/thread -> REPLY, to join/mute/follow a channel -> ROOM, or to publish to a public feed/timeline -> POST. The list_inbox operation lists unread incoming mail. For mail the owner already sent, use MESSAGE_SEARCH_INBOX with sources=["gmail"] and query="in:sent"; limit=1 for the latest sent email.',
   contexts: MESSAGE_CONTEXTS,
   roleGate: { minRole: "ADMIN" },
   parameters: MESSAGE_PARAMETERS,
@@ -7021,9 +7022,9 @@ export function promoteMessageActions(): readonly Action[] {
     overrides: {
       search_inbox: {
         description:
-          "Search using exactly the user's requested filters and result limit. For Gmail, use sources=['gmail'] and one complete native Gmail query: combine requested sender/from and subject constraints in that same query, preserving an explicit user-supplied query verbatim. Keep subject text in subject: operators; never drop it or replace the requested limit after an error. Structured sender/date filters are additional constraints, never replacements for query terms. Tags are only explicitly requested labels, never sender/company names. Check returned appliedFilters before answering. If a search fails, correct the original filters or report the error; never broaden the search silently.",
+          "Search using exactly the user's requested filters and result limit. For sent Gmail, put in:sent in query and request limit=1 when asked for the latest single email. Omit channelIds and worldIds for managed Gmail. For Gmail, use sources=['gmail'] and one complete native Gmail query: combine requested sender/from and subject constraints in that same query, preserving an explicit user-supplied query verbatim. Keep subject text in subject: operators; never drop it or replace the requested limit after an error. Structured sender/date filters are additional constraints, never replacements for query terms. Tags are only explicitly requested labels, never sender/company names. Check returned appliedFilters before answering. If a search fails, correct the original filters or report the error; never broaden the search silently.",
         descriptionCompressed:
-          "Gmail: sources=['gmail']; complete native query with ALL requested from: AND subject: constraints; preserve explicit query and exact limit. Omit unrequested tags. Check appliedFilters. Never drop subject/sender/limit or broaden on error. Other sources keep their connector filters.",
+          "Gmail: sources=['gmail']; query=in:sent for sent mail (limit=1 for the latest); complete native query with ALL requested from: AND subject: constraints; preserve explicit query and exact limit. Omit unrequested tags. Check appliedFilters. Never drop subject/sender/limit or broaden on error. Other sources keep their connector filters.",
       },
       read_message: {
         description:

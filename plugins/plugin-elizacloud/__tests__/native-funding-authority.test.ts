@@ -15,8 +15,8 @@ import {
 } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, test, vi } from "vitest";
+import { createTrajectoryRecorder } from "../../plugin-assistant/src/features/trajectories/recorded-trajectories";
 import { runEvaluator } from "../../plugin-assistant/src/runtime/evaluator";
-import { createJsonFileTrajectoryRecorder } from "../../plugin-assistant/src/runtime/trajectory-recorder";
 import { handleTextLarge } from "../src/models/text";
 import { handleCloudStatusRoutes } from "../src/routes/cloud-status-routes";
 import { handleCloudStatusRoutes as handleAutonomousCloudStatusRoutes } from "../src/routes/cloud-status-routes-autonomous";
@@ -388,7 +388,7 @@ test.each([
           ? { logLlmCall: (call: TrajectoryRuntimeLlmCallParams) => llmCalls.push(call) }
           : ensureService(type)
       );
-      const recorder = createJsonFileTrajectoryRecorder({ rootDir: directory, enabled: true });
+      const recorder = createTrajectoryRecorder({ rootDir: directory, enabled: true });
       const trajectoryId = recorder.startTrajectory({
         agentId: runtime.agentId,
         rootMessage: { id: "incomplete-message", text: "Review actual evidence" },

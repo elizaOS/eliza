@@ -209,6 +209,7 @@ export interface Bindings {
 
   // ---- ElevenLabs ----
   ELEVENLABS_API_KEY?: string;
+  ELEVENLABS_VOICE_ID?: string;
 
   // ---- Cartesia ----
   /**

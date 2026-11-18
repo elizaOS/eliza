@@ -278,9 +278,7 @@ export class VisionRuntimeTestSuite {
         }
 
         // Check if OCR is enabled
-        const ocrEnabled =
-          runtime.getSetting("OCR_ENABLED") === "true" ||
-          runtime.getSetting("VISION_OCR_ENABLED") === "true";
+        const ocrEnabled = runtime.getSetting("OCR_ENABLED") === "true";
 
         if (!ocrEnabled) {
           logger.info("[Test] OCR is disabled, skipping test");
