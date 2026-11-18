@@ -80,6 +80,100 @@ pure def alwaysUsageIsTheSumOfSteps(s: Trajectories): bool =
   s.trajectories.every(t => t.promptTokens == promptSum(t.steps) and t.completionTokens == completionSum(t.steps))
 ```
 
+### A recorded stage is one of exactly eight kinds
+
+A decision stage recorded inside a turn names its kind from one shared vocabulary of exactly eight: messageHandler, planner, tool, toolSearch, evaluation, subPlanner, compaction and factsAndRelationships. Producers and readers of semantic stages use this one list; no second stage vocabulary exists.
+
+```quint
+pure val recordedStageKinds: Set[str] = Set("messageHandler", "planner", "tool", "toolSearch", "evaluation", "subPlanner", "compaction", "factsAndRelationships")
+pure val stageKindValues = Set("messageHandler", "planner", "tool", "toolSearch", "evaluation", "subPlanner", "compaction", "factsAndRelationships", "reply", "")
+pure def lawRecordedStageKindsAreExactlyEight(stageKind: str): bool =
+  recordedStageKinds.contains(stageKind) iff (stageKind == "messageHandler" or stageKind == "planner" or stageKind == "tool" or stageKind == "toolSearch" or stageKind == "evaluation" or stageKind == "subPlanner" or stageKind == "compaction" or stageKind == "factsAndRelationships")
+```
+
+### A semantic stage record is accepted only when it is a valid schema version 1 stage
+
+A semantic stage is the transport-safe copy of one recorded stage, attached to a trajectory step. Converting a recorded stage first normalizes its payload into plain JSON (a non-finite number becomes null; dates, big integers, functions and cyclic references become text; an absent value is left out) and leaves out an empty parent identity. The result of the conversion, and every stage read back from storage, then goes through one parser, which accepts a record only when it holds no unknown top-level key, carries schema version 1, has a present stage identity, names one of the eight recorded kinds, starts at a non-negative time, ends no earlier than it starts, reports its latency as exactly its end minus its start, has its optional iteration and retry index absent or non-negative integers, has its optional parent stage present and different from the stage itself, and has a payload holding only the model, tool, toolSearch, evaluation, cache and factsAndRelationships keys whose content is plain JSON (finite numbers, plain objects, no cycle). Every identity must also be trimmed and at most 256 characters; the model takes that text check, the counter check and the JSON check as given facts of the input. The parser refuses anything else with a typed invalid-stage error and never repairs it.
+
+```quint
+type SemanticStageInput = { onlyKnownKeys: bool, schemaVersion: int, stageId: str, kind: str, startedAt: int, endedAt: int, latencyMs: int, countersWellFormed: bool, hasParent: bool, parentStageId: str, identitiesWellFormed: bool, payloadKeys: List[str], payloadIsJson: bool }
+pure val semanticStageSchemaVersion = 1
+pure val semanticStagePayloadKeys: Set[str] = Set("model", "tool", "toolSearch", "evaluation", "cache", "factsAndRelationships")
+pure val semanticStageValues = Set(
+  { onlyKnownKeys: true, schemaVersion: 1, stageId: "stage-a", kind: "planner", startedAt: 1, endedAt: 4, latencyMs: 3, countersWellFormed: true, hasParent: false, parentStageId: "", identitiesWellFormed: true, payloadKeys: List("model"), payloadIsJson: true },
+  { onlyKnownKeys: true, schemaVersion: 1, stageId: "stage-b", kind: "tool", startedAt: 0, endedAt: 0, latencyMs: 0, countersWellFormed: true, hasParent: true, parentStageId: "stage-a", identitiesWellFormed: true, payloadKeys: List("tool", "cache"), payloadIsJson: true },
+  { onlyKnownKeys: true, schemaVersion: 2, stageId: "stage-a", kind: "planner", startedAt: 1, endedAt: 4, latencyMs: 3, countersWellFormed: true, hasParent: false, parentStageId: "", identitiesWellFormed: true, payloadKeys: List("model"), payloadIsJson: true },
+  { onlyKnownKeys: true, schemaVersion: 1, stageId: "stage-a", kind: "reply", startedAt: 1, endedAt: 4, latencyMs: 3, countersWellFormed: true, hasParent: false, parentStageId: "", identitiesWellFormed: true, payloadKeys: List("model"), payloadIsJson: true },
+  { onlyKnownKeys: true, schemaVersion: 1, stageId: "stage-a", kind: "planner", startedAt: 1, endedAt: 4, latencyMs: 2, countersWellFormed: true, hasParent: false, parentStageId: "", identitiesWellFormed: true, payloadKeys: List("model"), payloadIsJson: true },
+  { onlyKnownKeys: true, schemaVersion: 1, stageId: "stage-a", kind: "planner", startedAt: 1, endedAt: 4, latencyMs: 3, countersWellFormed: true, hasParent: true, parentStageId: "stage-a", identitiesWellFormed: true, payloadKeys: List("model"), payloadIsJson: true },
+  { onlyKnownKeys: true, schemaVersion: 1, stageId: "stage-a", kind: "planner", startedAt: 1, endedAt: 4, latencyMs: 3, countersWellFormed: true, hasParent: false, parentStageId: "", identitiesWellFormed: true, payloadKeys: List("prompt"), payloadIsJson: true },
+  { onlyKnownKeys: true, schemaVersion: 1, stageId: "stage-a", kind: "tool", startedAt: 0, endedAt: 2, latencyMs: 2, countersWellFormed: true, hasParent: false, parentStageId: "", identitiesWellFormed: true, payloadKeys: List("tool"), payloadIsJson: true }
+)
+pure def acceptsSemanticStage(semanticStage: SemanticStageInput): bool =
+  semanticStage.onlyKnownKeys
+    and semanticStage.schemaVersion == semanticStageSchemaVersion
+    and semanticStage.stageId != ""
+    and recordedStageKinds.contains(semanticStage.kind)
+    and semanticStage.startedAt >= 0
+    and semanticStage.endedAt >= semanticStage.startedAt
+    and semanticStage.latencyMs == semanticStage.endedAt - semanticStage.startedAt
+    and semanticStage.countersWellFormed
+    and (not(semanticStage.hasParent) or (semanticStage.parentStageId != "" and semanticStage.parentStageId != semanticStage.stageId))
+    and semanticStage.identitiesWellFormed
+    and semanticStage.payloadKeys.every(key => semanticStagePayloadKeys.contains(key))
+    and semanticStage.payloadIsJson
+pure def lawAcceptedStageHasSchemaVersionOne(semanticStage: SemanticStageInput): bool =
+  acceptsSemanticStage(semanticStage) implies semanticStage.schemaVersion == 1
+pure def lawAcceptedStageNamesARecordedKind(semanticStage: SemanticStageInput): bool =
+  acceptsSemanticStage(semanticStage) implies recordedStageKinds.contains(semanticStage.kind)
+pure def lawAcceptedLatencyIsTheElapsedTime(semanticStage: SemanticStageInput): bool =
+  acceptsSemanticStage(semanticStage) implies (semanticStage.latencyMs >= 0 and semanticStage.latencyMs == semanticStage.endedAt - semanticStage.startedAt)
+pure def lawAcceptedStageIsNotItsOwnParent(semanticStage: SemanticStageInput): bool =
+  (acceptsSemanticStage(semanticStage) and semanticStage.hasParent) implies semanticStage.parentStageId != semanticStage.stageId
+pure def lawAcceptedPayloadHoldsOnlyStageKeys(semanticStage: SemanticStageInput): bool =
+  acceptsSemanticStage(semanticStage) implies semanticStage.payloadKeys.every(key => semanticStagePayloadKeys.contains(key))
+```
+
+### A list of semantic stages is accepted only when every stage is valid and no two share an identity
+
+A step's stage list, read back from storage or converted from the recorder in recorded order, is accepted only when every stage in it is accepted alone and each stage identity occurs once. Two stages with the same identity refuse the whole list, whatever their other fields hold.
+
+```quint
+pure val semanticStagesValues = Set(
+  List(),
+  List({ onlyKnownKeys: true, schemaVersion: 1, stageId: "stage-a", kind: "planner", startedAt: 1, endedAt: 4, latencyMs: 3, countersWellFormed: true, hasParent: false, parentStageId: "", identitiesWellFormed: true, payloadKeys: List("model"), payloadIsJson: true }),
+  List({ onlyKnownKeys: true, schemaVersion: 1, stageId: "stage-a", kind: "planner", startedAt: 1, endedAt: 4, latencyMs: 3, countersWellFormed: true, hasParent: false, parentStageId: "", identitiesWellFormed: true, payloadKeys: List("model"), payloadIsJson: true }, { onlyKnownKeys: true, schemaVersion: 1, stageId: "stage-b", kind: "tool", startedAt: 0, endedAt: 0, latencyMs: 0, countersWellFormed: true, hasParent: true, parentStageId: "stage-a", identitiesWellFormed: true, payloadKeys: List("tool", "cache"), payloadIsJson: true })
+)
+pure def acceptsSemanticStages(semanticStages: List[SemanticStageInput]): bool =
+  semanticStages.every(entry => acceptsSemanticStage(entry))
+    and semanticStages.every(entry => semanticStages.select(other => other.stageId == entry.stageId).length() == 1)
+pure def lawAcceptedStagesAreEachAccepted(semanticStages: List[SemanticStageInput], semanticStage: SemanticStageInput): bool =
+  (acceptsSemanticStages(semanticStages) and semanticStages.includes(semanticStage)) implies acceptsSemanticStage(semanticStage)
+pure val otherStageValues = semanticStageValues
+pure def lawRepeatedStageIdentityIsRefused(semanticStages: List[SemanticStageInput], semanticStage: SemanticStageInput, otherStage: SemanticStageInput): bool =
+  otherStage.stageId == semanticStage.stageId implies not(acceptsSemanticStages(semanticStages.append(semanticStage).append(otherStage)))
+```
+
+### Every recorded stage starts a trajectory file write and is mirrored only into an open step of a running trajectories service
+
+The recorder wrapped by the semantic-stage fan-out starts the trajectory file write of every recorded stage without waiting for it. It also mirrors the stage into the turn's database trajectory step, but only when the turn has a current step identity and a running trajectories service that accepts semantic stages. A file write that later fails, or a mirror that fails, is warned and reported as diagnostic only; neither fails the turn.
+
+```quint
+type StageFanOut = { fileWriteStarted: bool, mirrored: bool, reportedFailures: int, turnFails: bool }
+pure def fanOutStage(hasStepId: bool, hasStageLogger: bool, fileFails: bool, mirrorFails: bool): StageFanOut = {
+  val mirrorAttempted = hasStepId and hasStageLogger
+  { fileWriteStarted: true, mirrored: mirrorAttempted and not(mirrorFails), reportedFailures: (if (fileFails) 1 else 0) + (if (mirrorAttempted and mirrorFails) 1 else 0), turnFails: false }
+}
+pure def lawFileWriteAlwaysStarts(hasStepId: bool, hasStageLogger: bool, fileFails: bool, mirrorFails: bool): bool =
+  fanOutStage(hasStepId, hasStageLogger, fileFails, mirrorFails).fileWriteStarted
+pure def lawMirrorOnlyIntoAnOpenStep(hasStepId: bool, hasStageLogger: bool, fileFails: bool, mirrorFails: bool): bool =
+  fanOutStage(hasStepId, hasStageLogger, fileFails, mirrorFails).mirrored iff (hasStepId and hasStageLogger and not(mirrorFails))
+pure def lawStageFailuresAreReportedNotThrown(hasStepId: bool, hasStageLogger: bool, fileFails: bool, mirrorFails: bool): bool = {
+  val fanOut = fanOutStage(hasStepId, hasStageLogger, fileFails, mirrorFails)
+  not(fanOut.turnFails) and (fileFails implies fanOut.reportedFailures >= 1) and ((hasStepId and hasStageLogger and mirrorFails) implies fanOut.reportedFailures >= 1)
+}
+```
+
 ### The latest copied metadata record determines exclusion
 
 One process-wide map, shared by every runtime and module copy in the process (`trajectory-utils.ts`), holds each source's export exclusion. Registering a nonempty trimmed name replaces its earlier record and applies to later reads from any runtime; restarting one runtime does not reset it, and there is no unregister. A source is known exactly when the map holds its name; an unknown or empty name is not excluded.
