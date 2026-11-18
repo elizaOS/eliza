@@ -61,8 +61,8 @@ pure val requestValues = {
     { ...base, signingVariablesSet: 3 }, { ...base, sourceAtPin: false }, { ...base, pin: "" }, { ...base, payload: AgentPayload({ inventory: A::NotADigest }) })
     .foldl(Set(), (acc, r) => acc.union(Set(r)))
 }
-pure def lawAdmittedRequestIsBuildableFromThePin(r: BuildRequest): bool = requestFinding(r) == RequestAdmitted implies
-  (r.variants.length() > 0 and r.wellFormed and r.pin != "" and r.sourceAtPin and (r.wantsArchive implies r.release) and (r.release implies not(partialSigning(r))))
+pure def lawAdmittedRequestIsBuildableFromThePin(request: BuildRequest): bool = requestFinding(request) == RequestAdmitted implies (request.variants.length() > 0 and request.wellFormed
+  and request.pin != "" and request.sourceAtPin and (request.wantsArchive implies request.release) and (request.release implies not(partialSigning(request))))
 ```
 
 ### Every selected APK must come out of Gradle, and a release signed as configured, before anything is written
