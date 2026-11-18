@@ -1,12 +1,15 @@
 #!/usr/bin/env node
-// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/resources.md, "Story: Release everything I acquired, once"
+// spec/agent/host/process.md, "The exit code is the boot failure's code, else 0 after a clean release and 1 after a failed one"; spec/agent/host/process.md, "The first signal stops the runtime at once, and a repeated signal joins that stop"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { AGENT_EXIT_CODES, readLaunch, LaunchCredentialMissing } from "./host/launch.vibe"
+import { AGENT_EXIT_CODES, exitCode, readLaunch, LaunchCredentialMissing } from "./host/launch.vibe"
 import { startAgent, AgentBootFailed } from "./host/process.vibe"
+
+const crashed = 2
 
 module node {
   import { lstat, readFile } from "node:fs/promises"
+  import { logger } from "@elizaos/core"
   import { readManifest } from "./bundle/manifest.schema.vibe"
   import type { DeviceStorageSnapshot } from "./storage/index.vibe"
 
@@ -23,8 +26,19 @@ module node {
     const bytes = await readFile(file)
     return { schemaVersion: manifest.schemaVersion, bytes }
   }
+
+  export function exitOnUncaught(code: number): void {
+    for (const event of ["uncaughtException", "unhandledRejection"] as const) {
+      process.on(event, (error: unknown) => {
+        logger.error({ src: "agent", event, error: String(error) }, "The agent crashed")
+        process.exit(code)
+      })
+    }
+  }
 }
-import { bundledSnapshot } from node
+import { bundledSnapshot, exitOnUncaught } from node
+
+let released: number | undefined
 
 effect function serve() {
   const input = try readLaunch()
@@ -34,29 +48,23 @@ effect function serve() {
   })
   try acquireRelease(
     startAgent({ ...input, ...(snapshot === undefined ? {} : { snapshot }) }),
-    (agent) => orDie(tryPromise(() => agent.stop())),
+    (agent) => map(promise(() => agent.stop()), (code) => { released = code }),
   )
   try never
 }
 
-function exitCode(gone: Exit.Exit<unknown, unknown>): number {
-  if (Exit.isSuccess(gone) || Cause.hasInterruptsOnly(gone.cause)) return AGENT_EXIT_CODES.clean
+function exitWith(gone: Exit.Exit<unknown, unknown>): number {
+  if (Exit.isSuccess(gone) || Cause.hasInterruptsOnly(gone.cause)) return released ?? AGENT_EXIT_CODES.clean
   const error = Cause.squash(gone.cause)
   if (error instanceof LaunchCredentialMissing) return AGENT_EXIT_CODES.credential
-  if (error instanceof AgentBootFailed) {
-    switch (error.phase) {
-      case "Config": return AGENT_EXIT_CODES.config
-      case "Credential": return AGENT_EXIT_CODES.credential
-      case "Storage": return AGENT_EXIT_CODES.storage
-      case "Agent": return AGENT_EXIT_CODES.agent
-    }
-  }
+  if (error instanceof AgentBootFailed) return exitCode(error.phase)
   if (typeof error === "object" && error !== null && "_tag" in error
       && (error._tag === "LaunchDocumentRejected" || error._tag === "LaunchFrameRejected")) return AGENT_EXIT_CODES.config
-  return AGENT_EXIT_CODES.release
+  return crashed
 }
 
+exitOnUncaught(crashed)
 NodeRuntime.runMain(Effect.provide(Effect.scoped(serve()), NodeServices.layer), {
   disableErrorReporting: true,
-  teardown: (result, settle) => settle(exitCode(result)),
+  teardown: (result, settle) => settle(exitWith(result)),
 })

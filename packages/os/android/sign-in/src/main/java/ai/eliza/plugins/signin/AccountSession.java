@@ -45,21 +45,29 @@ public final class AccountSession {
   }
 
   public String accessToken() {
-    CompletableFuture<Void> mine = null, theirs = null;
+    CompletableFuture<Void> mine;
     Tokens refreshing;
     synchronized (this) {
       SessionRead read = store.readSession();
       switch (read) {
         case USABLE -> { return bound(); }
         case NONE -> { tokens = null; return null; }
-        case START_REFRESH -> mine = inFlight = new CompletableFuture<>();
-        case AWAIT_REFRESH -> theirs = inFlight;
+        case AWAIT_REFRESH -> {
+          CompletableFuture<Void> theirs = inFlight;
+          if (theirs == null) return null;
+          mine = null;
+          refreshing = null;
+          return awaitOutside(theirs);
+        }
+        case START_REFRESH -> {
+          mine = inFlight = new CompletableFuture<>();
+          refreshing = tokens;
+        }
+        default -> throw new IllegalStateException(read.name());
       }
-      refreshing = tokens;
     }
-    if (theirs != null) return await(theirs);
-    if (mine == null || refreshing == null) {
-      if (mine != null) finish(mine, new RefreshAnswer.Refused(), null);
+    if (refreshing == null) {
+      finish(mine, new RefreshAnswer.Refused(), null);
       return null;
     }
     Answer<Rotated> answer = client.ask("POST", REFRESH, null, "{\"refreshToken\":" + CredentialJson.quote(refreshing.refresh()) + "}", 200,

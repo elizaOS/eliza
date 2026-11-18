@@ -114,7 +114,7 @@ it.effect("Generate my app's Android host from data: a complete schema-2 profile
 })
 
 it.effect("Each broken rule refuses the profile by name (spec/os/build/androidHost.md, \"A profile is admitted only when every rule holds, and a refusal names the first one broken\"; spec/os/build/androidHost.md, \"Release signing names all four environment variables or none, and a partial set is refused\"; spec/os/build/androidHost.md, \"A schema-1 field that has no successor is refused when it is set\")", () => effect {
-  const cases: Record<HostRefusal, { readonly profile: unknown; readonly setting?: Partial<HostSetting> }> = {
+  const cases: Record<HostRefusal, { readonly profile: Readonly<Record<string, unknown>>; readonly setting?: Partial<HostSetting> }> = {
     ProfileMalformed: { profile: { ...PROFILE, embeddedAgent: AGENT } },
     FieldDropped: { profile: { ...PROFILE, schema: 1, agent: undefined, agentService: undefined, osModules: undefined, modules: [], generationInputs: [consumer("app.json")] } },
     UpstreamUnmapped: { profile: { ...PROFILE, schema: 1, agent: undefined, agentService: undefined, osModules: undefined, modules: [{ name: "eliza-network-policy", source: upstream("plugins/plugin-native-network-policy/android") }] } },

@@ -98,8 +98,9 @@ pure def filesAdmitted(d: AgentData): bool =
 
 ### A refused file is a configuration error whoever is signed in, and a cloud launch without an active key is a credential error
 
-The files are judged first. Then a cloud backend needs the account of the
-active device key (`../signIn/credential.md`); an expired key, a sign-out or
+The files are judged first. Then a backend that the agent refuses without a
+signed-in account (the cloud backend) needs the account of the active device
+key (`../signIn/credential.md`); an expired key, a sign-out or
 a key whose sign-in answer named no user or organization withholds the
 launch as `Credential`. The service reports `Failed(Config)` or
 `Failed(Credential)` and spawns nothing; an own-key or keyless launch needs
@@ -108,17 +109,18 @@ no signed-in account.
 ```quint
 type AgentLaunch = { document: Launch::LaunchDocument, worker: RP::LaunchWorker }
 type StartVerdict = LaunchReady({ launch: AgentLaunch }) | LaunchWithheld({ cause: Launch::BootFailure })
-pure def isCloud(b: Launch::Backend): bool = not(Launch::backendAdmitted(b, Launch::NoAccount)) and backendShapeAdmitted(b)
+pure def needsAccount(b: Launch::Backend): bool = backendShapeAdmitted(b) and not(Launch::backendAdmitted(b, Launch::NoAccount))
+pure def withheldAs(v: StartVerdict, cause: Launch::BootFailure): bool = match v { | LaunchWithheld(w) => w.cause == cause | _ => false }
 pure def startVerdict(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker): StartVerdict =
   if (not(filesAdmitted(d))) LaunchWithheld({ cause: Launch::Config })
-  else if (isCloud(d.host.launch.backend) and signedInAccount(cred) == Launch::NoAccount) LaunchWithheld({ cause: Launch::Credential })
+  else if (needsAccount(d.host.launch.backend) and signedInAccount(cred) == Launch::NoAccount) LaunchWithheld({ cause: Launch::Credential })
   else LaunchReady({ launch: { document: launchDocument(d, signedInAccount(cred)), worker: worker } })
 pure def lawRefusedFilesAreAConfigErrorWhoeverIsSignedIn(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker): bool =
-  not(filesAdmitted(d)) implies startVerdict(d, cred, worker) == LaunchWithheld({ cause: Launch::Config })
+  not(filesAdmitted(d)) implies withheldAs(startVerdict(d, cred, worker), Launch::Config)
 pure def lawCloudLaunchWithoutActiveKeyIsACredentialError(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker): bool =
-  (filesAdmitted(d) and isCloud(d.host.launch.backend) and C::activeVersion(cred) == 0) implies startVerdict(d, cred, worker) == LaunchWithheld({ cause: Launch::Credential })
+  (filesAdmitted(d) and needsAccount(d.host.launch.backend) and C::activeVersion(cred) == 0) implies withheldAs(startVerdict(d, cred, worker), Launch::Credential)
 pure def lawLaunchWithoutCloudIgnoresTheSignIn(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker): bool =
-  (filesAdmitted(d) and not(isCloud(d.host.launch.backend))) implies startVerdict(d, cred, worker) != LaunchWithheld({ cause: Launch::Credential })
+  (filesAdmitted(d) and not(needsAccount(d.host.launch.backend))) implies not(withheldAs(startVerdict(d, cred, worker), Launch::Credential))
 ```
 
 ### The launch carries the active key's account and the staged worker, and never an agent id
