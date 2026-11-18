@@ -227,13 +227,22 @@ const NEAREST_PLACE_REQUEST = new RegExp(
   "iu",
 );
 const PLACE_KIND = String.raw`(?:(?:a|an|some|any)\s+)?[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,3}`;
+const NEARBY = String.raw`(?:near\s+(?:me|here|by)|nearby|around\s+here|close\s+by)`;
+/** "is there anyone nearby", "is there a way around here": not a kind of place. */
+const NOT_A_PLACE_THERE = String.raw`(?!(?:anyone|anybody|someone|somebody|no\s?one|nobody|one|(?:a|any)\s+(?:way|chance|reason|problem|issue|bug|error|difference|need|point))\b)`;
 /**
- * "find a pharmacy nearby", "coffee shops near me". Without a search verb only
- * "near me" counts, and not after a verb or pronoun ("stay near me", "I'm nearby").
+ * "find a pharmacy nearby", "coffee shops near me", "is there a pharmacy near
+ * me?", "where can I get coffee nearby?", "any good tacos around here?".
+ * Without a search verb or question only "near me" counts, and not after a
+ * verb or pronoun ("stay near me", "I'm nearby"). Nothing may follow the
+ * nearness ("is there anything near me in my calendar").
  */
 const PLACE_NEAR_ME_REQUEST = new RegExp(
   [
-    String.raw`^\s*${COURTESY}${FIND_VERB}${PLACE_KIND}\s+(?:near\s+(?:me|here|by)|nearby|around\s+here|close\s+by)${END}`,
+    String.raw`^\s*${COURTESY}${FIND_VERB}${PLACE_KIND}\s+${NEARBY}${END}`,
+    String.raw`^\s*${COURTESY}(?:is|are)\s+there\s+${NOT_A_PLACE_THERE}${PLACE_KIND}\s+${NEARBY}${END}`,
+    String.raw`^\s*${COURTESY}where\s+(?:can|could|should|do)\s+(?:i|we)\s+(?:get|find|buy|grab)\s+${PLACE_KIND}\s+${NEARBY}${END}`,
+    String.raw`^\s*${COURTESY}(?:any|some)\s+[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,3}\s+${NEARBY}${END}`,
     String.raw`^\s*${COURTESY}(?!(?:stay|sit|come|be|keep|stand|get|move|go|walk|park|i|i'm|i’m|im|you|he|she|they|we|it|is|are|was|were)\b)${PLACE_KIND}\s+near\s+me${END}`,
   ].join("|"),
   "iu",

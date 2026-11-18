@@ -382,6 +382,18 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
       "take me to 1 Market St, San Francisco, CA 94105",
       ["MAPS_NAVIGATION_START", "MAPS_ROUTE"],
     ],
+    ["is there a pharmacy near me?", ["MAPS_PLACE", "MAPS_NAVIGATION_START"]],
+    [
+      "where's the closest gas station?",
+      ["MAPS_PLACE", "MAPS_NAVIGATION_START"],
+    ],
+    ["where can I get coffee nearby?", ["MAPS_PLACE", "MAPS_NAVIGATION_START"]],
+    ["any good tacos around here?", ["MAPS_PLACE", "MAPS_NAVIGATION_START"]],
+    ["find a pharmacy nearby", ["MAPS_PLACE", "MAPS_NAVIGATION_START"]],
+    [
+      "Are there any coffee shops close by?",
+      ["MAPS_PLACE", "MAPS_NAVIGATION_START"],
+    ],
   ])("promotes %s", async (text, expected) => {
     const handler = await evaluate(text);
     expect(handler.plan.requiresTool).toBe(true);
@@ -446,6 +458,14 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     "go to Coit Tower, then text Sam",
     "go to Coit Tower, Sam",
     "don't go to Coit Tower",
+    "is there anything near me in my calendar",
+    "where can I get help with this bug",
+    "find a nearby value in the array",
+    "near me in the list",
+    "is there anyone nearby",
+    "is there a way around here",
+    "is there a bug near me in this code",
+    "any errors near me in the log",
   ])("keeps the simple answer for %s", async (text) => {
     expect(isMapsNearbyPlaceRequest(text)).toBe(false);
     const handler = await evaluate(text);
