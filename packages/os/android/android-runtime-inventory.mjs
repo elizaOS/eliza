@@ -16,8 +16,8 @@ function regular(file) {
   return fs.readFileSync(file);
 }
 
-function isAndroidNode(bytes, abi) {
-  if (bytes.length < 64 || bytes.readUInt32BE(0) !== 0x7f454c46
+export function isAndroidExecutableForAbi(bytes, abi) {
+  if (!Object.hasOwn(machine, abi) || bytes.length < 64 || bytes.readUInt32BE(0) !== 0x7f454c46
     || bytes[4] !== 2 || bytes[5] !== 1 || bytes.readUInt16LE(16) !== 3
     || bytes.readUInt16LE(18) !== machine[abi]) return false;
   const offset = bytes.readBigUInt64LE(32);
@@ -44,7 +44,7 @@ export function stageRuntimePayload({ runtime, nodeLock, bundle, bundleManifest,
     || nodeLock.version !== runtime.version || nodeLock.ndk !== runtime.ndk || nodeLock.apiLevel !== runtime.apiLevel
     || pinned[0].sha256 !== digest(executable) || (runtime.url !== undefined && pinned[0].url !== runtime.url))
     fail("Android Node does not match the ABI's runtime lock");
-  if (!isAndroidNode(executable, targetAbi)) fail("Node runtime is not an Android executable for the target ABI");
+  if (!isAndroidExecutableForAbi(executable, targetAbi)) fail("Node runtime is not an Android executable for the target ABI");
 
   const agent = regular(bundle);
   const manifestBytes = regular(bundleManifest);

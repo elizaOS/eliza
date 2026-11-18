@@ -45,3 +45,97 @@ it.effect('An owner starts the agent and receives a complete streamed reply (spe
     fault: undefined, upstream: [{ path: "/api/v1/chat/completions", authorization: "Bearer " + deviceKey }],
   }))
 }, 180_000)
+
+module node {
+  import { createRuntimeJsonClient, RuntimeRequestError, type RuntimeJsonBridge } from "../src/client/index.vibe"
+
+  export async function changeRuntimeAccount() {
+    const first = Promise.withResolvers<void>()
+    const oldReply = Promise.withResolvers<{ status: number; data: unknown }>()
+    const status = { available: true, state: "running", requestBodyLimit: 8192 } as const
+    let requests = 0
+    let account = "previous"
+    const bridge: RuntimeJsonBridge = {
+      status: () => Promise.resolve(status),
+      start: () => Promise.reject(new Error("An already-running bridge was started")),
+      restart: () => { account = "current"; return Promise.resolve(status) },
+      request({ path }) {
+        requests += 1
+        if (account === "previous") {
+          first.resolve()
+          return oldReply.promise
+        }
+        return Promise.resolve(path === "/busy"
+          ? { status: 429, data: { error: "Try again", code: "busy", retryAfter: 5 } }
+          : { status: 200, data: { account } })
+      },
+    }
+    const client = createRuntimeJsonClient({ bridge: () => bridge, startupTimeoutMs: 1000, pollMs: 5, requestTimeoutMs: 1000 })
+    const previous = client.request("/account").then(
+      (result) => result,
+      (error: unknown) => error instanceof Error ? error.message : "unknown",
+    )
+    await first.promise
+    const changed = client.refreshNativeAccount()
+    const current = client.request("/account")
+    await changed
+    oldReply.resolve({ status: 200, data: { account: "previous" } })
+    const busy = await client.request("/busy").catch((error: unknown) => error instanceof RuntimeRequestError
+      ? { status: error.status, code: error.code, retryAfter: error.retryAfter } : error)
+    return { previous: await previous, current: await current, busy, requests, limit: client.requestBodyLimit }
+  }
+
+  export async function supersedeRestart() {
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const running = { available: true, state: "running" } as const
+    let account = "original"
+    const order: string[] = []
+    let selected = "older"
+    const client = createRuntimeJsonClient({
+      startupTimeoutMs: 1000, pollMs: 5, requestTimeoutMs: 1000,
+      bridge: () => {
+        const target = selected
+        return {
+          status: () => Promise.resolve(running),
+          start: () => Promise.reject(new Error("already running")),
+          async restart() {
+            order.push(target + ":start")
+            if (target === "older") { entered.resolve(); await release.promise }
+            account = target
+            order.push(target + ":done")
+            return running
+          },
+          request: () => Promise.resolve({ status: 200, data: account }),
+        }
+      },
+    })
+    const older = client.refreshNativeAccount().catch((error: unknown) => error instanceof Error ? error.message : "unknown")
+    await entered.promise
+    selected = "newer"
+    const newer = client.refreshNativeAccount()
+    const current = client.request("/account")
+    const result = await older
+    release.resolve()
+    await newer
+    return { older: result, current: await current, order }
+  }
+}
+
+import { changeRuntimeAccount, supersedeRestart } from node
+
+it.effect('A pending request cannot publish the previous account and the current account receives its refusal (spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account")', effect () => {
+  const observed = try tryPromise(() => changeRuntimeAccount())
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    previous: "AccountChanged", current: { account: "current" },
+    busy: { status: 429, code: "busy", retryAfter: 5 }, requests: 3, limit: 8192,
+  }))
+})
+
+it.effect('A newer account becomes current after the in-flight native restart (spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account")', effect () => {
+  const observed = try tryPromise(() => supersedeRestart())
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    older: "AccountChanged", current: "newer",
+    order: ["older:start", "older:done", "newer:start", "newer:done"],
+  }))
+})

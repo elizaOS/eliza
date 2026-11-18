@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/resources.md, "Story: Release everything I acquired, once"
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
 import * as NodeServices from "@effect/platform-node/NodeServices"
