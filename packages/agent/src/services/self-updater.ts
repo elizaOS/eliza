@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ReleaseChannel } from "@elizaos/contracts";
+import { isWindowsNpmGlobalShim } from "./install-method.ts";
 import { CHANNEL_DIST_TAGS } from "./update-checker.ts";
 
 const NPM_PACKAGE_NAME = "elizaos";
@@ -122,6 +123,7 @@ export function detectInstallMethod(): InstallMethod {
   if (p.includes("/flatpak/") || p.includes("ai.eliza.Eliza")) return "flatpak";
   if (p.startsWith("/usr/") && !p.includes("node_modules")) return "apt";
   if (p.includes("/.bun/")) return "bun-global";
+  if (isWindowsNpmGlobalShim(p, process.platform)) return "npm-global";
   if (p.includes("node_modules")) return "npm-global";
 
   return "unknown";
