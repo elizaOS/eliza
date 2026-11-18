@@ -692,35 +692,6 @@
 			"subtype": "agents"
 		},
 		{
-			"id": "database-viewer",
-			"name": "Database Viewer",
-			"description": "Inspect tables, media, vectors, and ad-hoc SQL.",
-			"npmName": "@elizaos/app-database-viewer",
-			"source": "bundled",
-			"tags": ["database", "sql", "viewer"],
-			"config": {},
-			"render": {
-				"visible": true,
-				"pinTo": [],
-				"style": "card",
-				"icon": "Server",
-				"group": "Apps",
-				"groupOrder": 7,
-				"actions": ["launch"]
-			},
-			"resources": {},
-			"dependsOn": [],
-			"channels": [],
-			"shortIds": [],
-			"kind": "app",
-			"subtype": "tool",
-			"launch": {
-				"type": "internal-tab",
-				"target": "database",
-				"capabilities": ["database", "sql", "viewer"]
-			}
-		},
-		{
 			"id": "directives",
 			"name": "Directives",
 			"description": "Inline directive parsing for Eliza agents (@think, @model, @verbose, etc.)",
@@ -2012,35 +1983,6 @@
 			}
 		},
 		{
-			"id": "log-viewer",
-			"name": "Log Viewer",
-			"description": "Search runtime and service logs.",
-			"npmName": "@elizaos/app-log-viewer",
-			"source": "bundled",
-			"tags": ["logs", "debug", "viewer"],
-			"config": {},
-			"render": {
-				"visible": true,
-				"pinTo": [],
-				"style": "card",
-				"icon": "FileText",
-				"group": "Apps",
-				"groupOrder": 8,
-				"actions": ["launch"]
-			},
-			"resources": {},
-			"dependsOn": [],
-			"channels": [],
-			"shortIds": [],
-			"kind": "app",
-			"subtype": "tool",
-			"launch": {
-				"type": "internal-tab",
-				"target": "logs",
-				"capabilities": ["logs", "debug", "viewer"]
-			}
-		},
-		{
 			"id": "mattermost",
 			"name": "Mattermost",
 			"description": "Mattermost integration plugin for elizaOS agents - TypeScript implementation",
@@ -2323,35 +2265,6 @@
 			"shortIds": [],
 			"kind": "plugin",
 			"subtype": "documents"
-		},
-		{
-			"id": "memory-viewer",
-			"name": "Memory Viewer",
-			"description": "Browse memory, fact, and extraction activity.",
-			"npmName": "@elizaos/app-memory-viewer",
-			"source": "bundled",
-			"tags": ["memory", "facts", "viewer"],
-			"config": {},
-			"render": {
-				"visible": true,
-				"pinTo": [],
-				"style": "card",
-				"icon": "Dna",
-				"group": "Apps",
-				"groupOrder": 5,
-				"actions": ["launch"]
-			},
-			"resources": {},
-			"dependsOn": [],
-			"channels": [],
-			"shortIds": [],
-			"kind": "app",
-			"subtype": "tool",
-			"launch": {
-				"type": "internal-tab",
-				"target": "memories",
-				"capabilities": ["memory", "facts", "viewer"]
-			}
 		},
 		{
 			"id": "moltbook",
@@ -3022,35 +2935,6 @@
 			"subtype": "agents"
 		},
 		{
-			"id": "plugin-viewer",
-			"name": "Plugin Viewer",
-			"description": "Inspect installed plugins, connectors, and runtime feature flags.",
-			"npmName": "@elizaos/app-plugin-viewer",
-			"source": "bundled",
-			"tags": ["plugins", "connectors", "viewer"],
-			"config": {},
-			"render": {
-				"visible": true,
-				"pinTo": [],
-				"style": "card",
-				"icon": "Package",
-				"group": "Apps",
-				"groupOrder": 1,
-				"actions": ["launch"]
-			},
-			"resources": {},
-			"dependsOn": [],
-			"channels": [],
-			"shortIds": [],
-			"kind": "app",
-			"subtype": "tool",
-			"launch": {
-				"type": "internal-tab",
-				"target": "plugins",
-				"capabilities": ["plugins", "connectors", "viewer"]
-			}
-		},
-		{
 			"id": "prose",
 			"name": "Prose",
 			"description": "OpenProse VM integration for ElizaOS - a programming language for AI sessions",
@@ -3099,35 +2983,6 @@
 			"shortIds": [],
 			"kind": "plugin",
 			"subtype": "media"
-		},
-		{
-			"id": "relationship-viewer",
-			"name": "Relationship Viewer",
-			"description": "Explore cross-channel people, identities, and relationship graphs.",
-			"npmName": "@elizaos/app-relationship-viewer",
-			"source": "bundled",
-			"tags": ["relationships", "graph", "viewer"],
-			"config": {},
-			"render": {
-				"visible": true,
-				"pinTo": [],
-				"style": "card",
-				"icon": "Link",
-				"group": "Apps",
-				"groupOrder": 4,
-				"actions": ["launch"]
-			},
-			"resources": {},
-			"dependsOn": [],
-			"channels": [],
-			"shortIds": [],
-			"kind": "app",
-			"subtype": "tool",
-			"launch": {
-				"type": "internal-tab",
-				"target": "relationships",
-				"capabilities": ["relationships", "graph", "viewer"]
-			}
 		},
 		{
 			"id": "rss",
@@ -3194,35 +3049,6 @@
 			"shortIds": [],
 			"kind": "plugin",
 			"subtype": "media"
-		},
-		{
-			"id": "runtime-debugger",
-			"name": "Runtime Debugger",
-			"description": "Inspect runtime objects, plugin order, providers, and services.",
-			"npmName": "@elizaos/app-runtime-debugger",
-			"source": "bundled",
-			"tags": ["runtime", "debug", "viewer"],
-			"config": {},
-			"render": {
-				"visible": true,
-				"pinTo": [],
-				"style": "card",
-				"icon": "Settings",
-				"group": "Apps",
-				"groupOrder": 6,
-				"actions": ["launch"]
-			},
-			"resources": {},
-			"dependsOn": [],
-			"channels": [],
-			"shortIds": [],
-			"kind": "app",
-			"subtype": "tool",
-			"launch": {
-				"type": "internal-tab",
-				"target": "runtime",
-				"capabilities": ["runtime", "debug", "viewer"]
-			}
 		},
 		{
 			"id": "s3-storage",
@@ -3353,35 +3179,6 @@
 			"shortIds": [],
 			"kind": "plugin",
 			"subtype": "automation"
-		},
-		{
-			"id": "skills-viewer",
-			"name": "Skills Viewer",
-			"description": "Create, enable, review, and install custom agent skills.",
-			"npmName": "@elizaos/app-skills-viewer",
-			"source": "bundled",
-			"tags": ["skills", "viewer"],
-			"config": {},
-			"render": {
-				"visible": true,
-				"pinTo": [],
-				"style": "card",
-				"icon": "Wrench",
-				"group": "Apps",
-				"groupOrder": 2,
-				"actions": ["launch"]
-			},
-			"resources": {},
-			"dependsOn": [],
-			"channels": [],
-			"shortIds": [],
-			"kind": "app",
-			"subtype": "tool",
-			"launch": {
-				"type": "internal-tab",
-				"target": "skills",
-				"capabilities": ["skills", "viewer"]
-			}
 		},
 		{
 			"id": "slack",
@@ -3762,35 +3559,6 @@
 			},
 			"kind": "plugin",
 			"subtype": "storage"
-		},
-		{
-			"id": "trajectory-viewer",
-			"name": "Trajectory Viewer",
-			"description": "Inspect LLM call history, prompts, and execution traces.",
-			"npmName": "@elizaos/app-trajectory-viewer",
-			"source": "bundled",
-			"tags": ["trajectories", "debug", "viewer"],
-			"config": {},
-			"render": {
-				"visible": true,
-				"pinTo": [],
-				"style": "card",
-				"icon": "TrendingDown",
-				"group": "Apps",
-				"groupOrder": 3,
-				"actions": ["launch"]
-			},
-			"resources": {},
-			"dependsOn": [],
-			"channels": [],
-			"shortIds": [],
-			"kind": "app",
-			"subtype": "tool",
-			"launch": {
-				"type": "internal-tab",
-				"target": "trajectories",
-				"capabilities": ["trajectories", "debug", "viewer"]
-			}
 		},
 		{
 			"id": "trust",
