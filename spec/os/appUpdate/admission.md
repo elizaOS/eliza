@@ -1,24 +1,17 @@
 # App update trust and publication authorization
 
-The decisions of the app-update trust engine (`native/ota-trust`, Go) and of
-the publisher (`src/app-update/publication.vibe`): which signed release a
-device may prepare, what its update lane remembers, whether a prepared
-release may still be committed, and whether a release host may publish a
-signed metadata graph. The sources are develop's
-`native/ota-trust/{admission,admission_state,recovery_authorization,channel_roles,host_policy,publication_graph}.go`,
-`native/ota-publisher/{publication-authorizer,publisher-policy}.mjs`,
-`quint/OtaFreshAdmission.qnt` and the updater's `CommitFreshness.java`.
+The decisions of the app-update trust engine (`native/ota-trust`) and of the
+publisher (`src/app-update/publication.vibe`): which signed release a device
+may prepare, what its update lane remembers, whether a prepared release may
+still be committed or recovered, and whether a release host may publish a
+signed metadata graph.
 
 The shell verifies TUF signatures, hashes and lengths, decodes strict JSON,
-computes the content digests of a descriptor without its rollout (`core`)
-and of its rollout, reads qualified time as an interval, and checks the
-device's fit for an artifact (upgrade origins, SDK, ABI, model, build
-fingerprint, installer capabilities, supervisor, agent, browser and database
-protocols, free storage, health and activation profiles, cohort bucket) in
-that order. It holds the lane floors and the publisher floors under a lock
-and writes them atomically. The host policy is compiled into the reviewed
-build and has no runtime setter: metadata, remote callers and pages cannot
-choose it.
+digests a descriptor without its rollout (`core`) and its rollout, reads
+qualified time as an interval, and checks the device's fit (upgrade origins,
+platform, installer, protocols, storage, safety profiles, cohort) in that
+order. It writes the lane and publisher floors atomically under a lock. The
+host policy is compiled into the reviewed build with no runtime setter.
 
 ## Story: Install an app update only when every authority allows it
 
@@ -51,19 +44,17 @@ pure val rootKeysValues = Set(List(9), List())
 pure val approverValues = Set(1, 2, 3, 9)
 pure def lawOneKeyNeverApprovesStable(roles: ChannelRoles, rootKeys: List[int], approver: int): bool =
   channelRolesValid(roles, rootKeys) implies not(channelApproved(roles.stableKeys, List(approver, approver)))
+pure def lawOtherKeysNeverApproveStable(roles: ChannelRoles, rootKeys: List[int]): bool =
+  channelRolesValid(roles, rootKeys) implies not(channelApproved(roles.stableKeys, roles.betaKeys.members.concat(rootKeys)))
 ```
 
 ### Admission defers for the first failing check, in a fixed order
 
 The order is: host policy, product, release shape, repository, channel,
-distribution, metadata rollback, paused, rollout window, revoked artifact,
-security floor, quarantine, signer, already installed, forward version,
-device fit. The lane's remembered floors raise the configured minimums.
-A release is well formed when both artifacts have real, different digests,
-one signer, a recovery version above the candidate's and security epochs
-at the release's floor, and its window starts before it expires. The whole
-trusted interval must lie in the window. Eligibility is not permission to
-install.
+distribution, metadata rollback (the lane's floors raise the configured
+minimums), paused, rollout window (the whole trusted interval inside it),
+revoked artifact, security floor, quarantine, signer, already installed,
+forward version, device fit. Eligibility is not permission to install.
 
 ```quint
 type Distribution = Launcher | Standalone
@@ -126,13 +117,13 @@ pure def lawAlreadyInstalledIsTheInstalledBuild(host: HostPolicy, r: Release, de
 
 ### A lane remembers an authenticated release only forward, and never one that equivocates
 
-An authenticated release of this repository, channel and distribution at
-or above the lane's sequence, rollout revision and security is remembered
-even when it is not eligible, so a later sequence still withdraws an older
-prepared release. A release that drops a remembered revocation, or that
-reuses the remembered sequence with another core, or the remembered
-revision with another rollout, is refused and changes nothing. Only a
-fetch advances the refresh time; evaluating stored bytes never does.
+A well-formed release of the configured product, repository, channel and
+distribution at or above the lane's sequence, rollout revision and security
+is remembered even when it is not eligible, so a later sequence still
+withdraws an older prepared release. A release that drops a remembered
+revocation, or reuses the remembered sequence with another core or the
+remembered revision with another rollout, is refused and changes nothing.
+Only a fetch advances the refresh time; stored bytes never do.
 
 ```quint
 type Fetch = StoredBytes | Fetched({ fetchedLower: int })
@@ -141,10 +132,10 @@ type RememberCheck = Remembered | Unchanged | RevocationRegression | SequenceEqu
 type Memory = { lanes: Lanes, check: RememberCheck }
 pure def laneFor(lanes: Lanes, channel: Channel): LaneFloor = if (channel == Stable) lanes.stable else lanes.beta
 pure def refreshAfter(fetch: Fetch, refreshed: int): int = match fetch { | Fetched(f) => larger(refreshed, f.fetchedLower) | _ => refreshed }
-pure def rememberRelease(lanes: Lanes, r: Release, device: Device, repository: str, fetch: Fetch): Memory = {
+pure def rememberRelease(host: HostPolicy, lanes: Lanes, r: Release, device: Device, repository: str, fetch: Fetch): Memory = {
   val floor = laneFor(lanes, device.channel)
   val remembered = { sequence: r.sequence, revision: r.rollout.revision, security: r.securityFloor, core: r.core, rollout: r.rollout.digest, revoked: r.rollout.revoked, refreshed: refreshAfter(fetch, floor.refreshed) }
-  if (not(wellFormed(r)) or r.repository != repository or r.channel != device.channel or r.distribution != device.distribution) { lanes: lanes, check: Unchanged }
+  if (not(hostAdmits(host, r.product)) or not(wellFormed(r)) or r.repository != repository or r.channel != device.channel or r.distribution != device.distribution) { lanes: lanes, check: Unchanged }
   else if (r.sequence < floor.sequence or r.rollout.revision < floor.revision or r.securityFloor < floor.security) { lanes: lanes, check: Unchanged }
   else if (floor.revoked.some(d => not(listed(r.rollout.revoked, d)))) { lanes: lanes, check: RevocationRegression }
   else if (floor.sequence == r.sequence and floor.core != r.core) { lanes: lanes, check: SequenceEquivocation }
@@ -154,42 +145,40 @@ pure def rememberRelease(lanes: Lanes, r: Release, device: Device, repository: s
 pure val lanesValues = Set({ stable: unseenLane, beta: unseenLane }, { stable: laneA, beta: unseenLane }, { stable: { ...laneA, revoked: List(Sha256({ hex: "a9" })) }, beta: laneA })
 pure val repositoryValues = Set("org/app", "org/other")
 pure val fetchValues = Set(StoredBytes, Fetched({ fetchedLower: 25 }), Fetched({ fetchedLower: 5 }))
-pure def lawRememberingOnlyRatchets(lanes: Lanes, r: Release, device: Device, repository: str, fetch: Fetch): bool = {
+pure def lawRememberingOnlyRatchets(host: HostPolicy, lanes: Lanes, r: Release, device: Device, repository: str, fetch: Fetch): bool = {
   val before = laneFor(lanes, device.channel)
-  val after = laneFor(rememberRelease(lanes, r, device, repository, fetch).lanes, device.channel)
+  val after = laneFor(rememberRelease(host, lanes, r, device, repository, fetch).lanes, device.channel)
   after.sequence >= before.sequence and after.revision >= before.revision and after.security >= before.security and before.revoked.every(d => listed(after.revoked, d) or not(isDigest(d))) and after.refreshed >= before.refreshed
 }
-pure def lawEquivocationIsNeverRemembered(lanes: Lanes, r: Release, device: Device, repository: str, fetch: Fetch): bool = {
+pure def lawEquivocationIsNeverRemembered(host: HostPolicy, lanes: Lanes, r: Release, device: Device, repository: str, fetch: Fetch): bool = {
   val before = laneFor(lanes, device.channel)
-  rememberRelease(lanes, r, device, repository, fetch).check == Remembered implies
+  rememberRelease(host, lanes, r, device, repository, fetch).check == Remembered implies
     ((before.sequence == r.sequence implies before.core == r.core) and ((before.sequence == r.sequence and before.revision == r.rollout.revision) implies before.rollout == r.rollout.digest))
 }
-pure def lawRefusedReleaseChangesNothing(lanes: Lanes, r: Release, device: Device, repository: str, fetch: Fetch): bool =
-  rememberRelease(lanes, r, device, repository, fetch).check != Remembered implies rememberRelease(lanes, r, device, repository, fetch).lanes == lanes
-pure def lawStoredBytesNeverRefresh(lanes: Lanes, r: Release, device: Device, repository: str): bool =
-  laneFor(rememberRelease(lanes, r, device, repository, StoredBytes).lanes, device.channel).refreshed == laneFor(lanes, device.channel).refreshed
+pure def lawRefusedReleaseChangesNothing(host: HostPolicy, lanes: Lanes, r: Release, device: Device, repository: str, fetch: Fetch): bool =
+  rememberRelease(host, lanes, r, device, repository, fetch).check != Remembered implies rememberRelease(host, lanes, r, device, repository, fetch).lanes == lanes
+pure def lawStoredBytesNeverRefresh(host: HostPolicy, lanes: Lanes, r: Release, device: Device, repository: str): bool =
+  laneFor(rememberRelease(host, lanes, r, device, repository, StoredBytes).lanes, device.channel).refreshed == laneFor(lanes, device.channel).refreshed
 ```
 
 ### Remembering a release on one channel never changes the other channel's lane
 
 ```quint
 pure def otherChannel(channel: Channel): Channel = if (channel == Stable) Beta else Stable
-pure def lawLanesAreIsolated(lanes: Lanes, r: Release, device: Device, repository: str, fetch: Fetch): bool =
-  laneFor(rememberRelease(lanes, r, device, repository, fetch).lanes, otherChannel(device.channel)) == laneFor(lanes, otherChannel(device.channel))
+pure def lawLanesAreIsolated(host: HostPolicy, lanes: Lanes, r: Release, device: Device, repository: str, fetch: Fetch): bool =
+  laneFor(rememberRelease(host, lanes, r, device, repository, fetch).lanes, otherChannel(device.channel)) == laneFor(lanes, otherChannel(device.channel))
 ```
 
 ### A prepared release commits only under current lane authority and a refresh at most ten minutes older than the commit
 
-Just before the install session is written, under the journal lock and
-with no network call, the prepared release is checked against the lane as
-it is now: lost authority, expiry, the start of its window, revocation of
-either artifact, the security floor, a later sequence, then freshness. The
-window is the prepared descriptor's, so a newer rollout at the same
-sequence neither pauses nor shortens it. An activation run accepts a
-refresh no older than its own start and must commit within ten minutes of
-it, so a revocation published before the commit is missed only when it is
-newer than the run. The periodic recheck of a verified plan has no
-freshness bound.
+Just before the install session is written, with no network call, the
+prepared release is checked against the lane as it is now, in this order:
+lost authority, expiry, window start, revocation of either artifact,
+security floor, a later sequence, freshness. The window is the prepared
+descriptor's, so a newer rollout at the same sequence neither pauses nor
+shortens it. An activation run accepts only a refresh made since it started
+and commits within ten minutes of its start; the periodic recheck of a
+verified plan has no freshness bound.
 
 ```quint
 type CommitFreshness = AnyRefresh | RefreshedFor({ refreshedAfter: int, commitBy: int })
@@ -213,8 +202,7 @@ pure def commitDecision(r: Release, floor: LaneFloor, commitTerms: CommitTerms):
 pure val trustedValues = Set({ lower: 20, upper: 30 }, { lower: 5, upper: 6 }, { lower: 20, upper: 99 })
 pure val securityFloorValues = Set(1, 2)
 pure val activationStartedValues = Set(15, 20, 25)
-pure val commitTermsValues = Set({ trusted: { lower: 20, upper: 30 }, securityFloor: 1, freshness: AnyRefresh }, { trusted: { lower: 20, upper: 30 }, securityFloor: 1, freshness: activationFreshness(20) },
-  { trusted: { lower: 20, upper: 30 }, securityFloor: 1, freshness: activationFreshness(25) })
+pure val commitTermsValues = Set({ trusted: { lower: 20, upper: 30 }, securityFloor: 1, freshness: AnyRefresh }, { trusted: { lower: 20, upper: 30 }, securityFloor: 1, freshness: activationFreshness(20) }, { trusted: { lower: 20, upper: 30 }, securityFloor: 1, freshness: activationFreshness(25) })
 pure def lawCommitNeedsCurrentAuthority(r: Release, floor: LaneFloor, commitTerms: CommitTerms): bool =
   commitDecision(r, floor, commitTerms) == CommitEligible implies (floor.sequence == r.sequence and floor.revision >= r.rollout.revision and inWindow(r.rollout, commitTerms.trusted) and not(pairListed(floor.revoked, r)) and releaseSecurity(r) >= larger(commitTerms.securityFloor, floor.security))
 pure def lawActivationCommitIsBoundedAfterRefresh(r: Release, floor: LaneFloor, trusted: Interval, securityFloor: int, activationStarted: int): bool =
@@ -235,8 +223,7 @@ pure def recoveryDecision(r: Release, floor: LaneFloor, globalSecurityFloor: int
   else RecoveryLoadable
 pure val globalSecurityFloorValues = Set(1, 2)
 pure def lawRevokedCandidateStillRecovers(r: Release, floor: LaneFloor, globalSecurityFloor: int): bool =
-  not(digestsMatch(r.candidate.sha256, r.recovery.sha256)) implies
-    recoveryDecision(r, { ...floor, revoked: floor.revoked.append(r.candidate.sha256) }, globalSecurityFloor) == recoveryDecision(r, floor, globalSecurityFloor)
+  not(digestsMatch(r.candidate.sha256, r.recovery.sha256)) implies recoveryDecision(r, { ...floor, revoked: floor.revoked.append(r.candidate.sha256) }, globalSecurityFloor) == recoveryDecision(r, floor, globalSecurityFloor)
 pure def lawRevokedRecoveryNeverLoads(r: Release, floor: LaneFloor, globalSecurityFloor: int): bool =
   isDigest(r.recovery.sha256) implies recoveryDecision(r, { ...floor, revoked: floor.revoked.append(r.recovery.sha256) }, globalSecurityFloor) != RecoveryLoadable
 ```
@@ -250,11 +237,10 @@ pure def lawRevokedRecoveryNeverLoads(r: Release, floor: LaneFloor, globalSecuri
 
 ### Publisher role floors only ratchet
 
-The six role versions (root, timestamp, snapshot, targets, stable, beta)
-are provisioned explicitly; a missing or corrupt record is never reset.
-Floors advance to a freshly verified graph's versions before the timestamp
-is published; retrying the same versions is allowed, and a concurrent
-lower authorization is refused.
+The six role versions are provisioned explicitly; a missing or corrupt
+record is never reset. Floors advance to a verified graph's versions before
+the timestamp is published; a retry at the floors is accepted and a
+concurrent lower authorization is refused.
 
 ```quint
 type RoleVersions = { root: int, timestamp: int, snapshot: int, targets: int, stable: int, beta: int }
@@ -272,12 +258,11 @@ pure def lawRetryAtTheFloorsIsAccepted(floors: RoleVersions): bool = completeVer
 
 ### A publication is authorized only when one approved graph at the floors binds the plan and every descriptor is approved and preflighted
 
-The graph is verified twice: first, then again under freshly read floors
-after the slow source approvals and artifact preflights, and it must not
-change in between. Both channel roles must be signed by their thresholds
-of distinct approvers. The plan's timestamp and its descriptors, one per
-channel and distribution, must be exactly the graph's. A saved approval or
-preflight is never reused. The authorized versions then become the floors.
+Both channel roles are signed by their thresholds of distinct approvers.
+The plan's timestamp and descriptors, one per channel and distribution, are
+exactly the graph's. After the fresh source approvals and preflights the
+graph is verified again under freshly read floors and must not have changed.
+The authorized versions then become the floors.
 
 ```quint
 type TargetPath = { channel: Channel, distribution: Distribution }
@@ -300,21 +285,16 @@ pure def authorizePublication(plan: PublicationPlan, rootKeys: List[int], floors
   else if (not(plan.planDescriptors.every(d => evidence.preflighted.includes(d)))) PublicationRefused({ why: PreflightMismatch })
   else if (not(graphApproved(recheck, rootKeys) and recheck.timestamp == graph.timestamp and recheck.versions == graph.versions and sameDescriptors(recheck.descriptors, graph.descriptors) and atOrAbove(recheck.versions, recheckFloors))) PublicationRefused({ why: GraphChanged })
   else PublicationAuthorized({ versions: graph.versions })
-pure def authorizedVersions(publication: Publication): RoleVersions = match publication { | PublicationAuthorized(p) => p.versions | _ => { ...versionsA, root: 0 } }
 pure val descriptorA: SignedDescriptor = { path: { channel: Stable, distribution: Launcher }, sha256: Sha256({ hex: "d1" }) }
 pure val graphA: PublicationGraph = { timestamp: Sha256({ hex: "t1" }), versions: { ...versionsA, timestamp: 2, snapshot: 2 }, roles: validRoles, stableApprovers: List(1, 2), betaApprovers: List(3), descriptors: List(descriptorA) }
 pure val graphValues = Set(graphA, { ...graphA, stableApprovers: List(1, 1) }, { ...graphA, versions: versionsA }, { ...graphA, timestamp: Sha256({ hex: "t2" }) }, { ...graphA, descriptors: List() }, { ...graphA, roles: { ...validRoles, stableKeys: { threshold: 1, members: List(1, 2) } }, stableApprovers: List(1) })
 pure val recheckValues = graphValues
-pure val planValues = Set({ planTimestamp: Sha256({ hex: "t1" }), planDescriptors: List(descriptorA) }, { planTimestamp: Sha256({ hex: "t1" }), planDescriptors: List() },
-  { planTimestamp: Sha256({ hex: "t1" }), planDescriptors: List(descriptorA, { ...descriptorA, sha256: Sha256({ hex: "d2" }) }) })
-pure val evidenceValues = Set({ approved: List(Sha256({ hex: "d1" })), preflighted: List(descriptorA) }, { approved: List(), preflighted: List(descriptorA) },
-  { approved: List(Sha256({ hex: "d1" })), preflighted: List({ ...descriptorA, path: { channel: Beta, distribution: Launcher } }) })
+pure val planValues = Set({ planTimestamp: Sha256({ hex: "t1" }), planDescriptors: List(descriptorA) }, { planTimestamp: Sha256({ hex: "t1" }), planDescriptors: List() }, { planTimestamp: Sha256({ hex: "t1" }), planDescriptors: List(descriptorA, { ...descriptorA, sha256: Sha256({ hex: "d2" }) }) })
+pure val evidenceValues = Set({ approved: List(Sha256({ hex: "d1" })), preflighted: List(descriptorA) }, { approved: List(), preflighted: List(descriptorA) }, { approved: List(Sha256({ hex: "d1" })), preflighted: List({ ...descriptorA, path: { channel: Beta, distribution: Launcher } }) })
 pure val recheckFloorsValues = floorsValues
 pure def lawAuthorizedPublicationIsApprovedAtTheFloors(plan: PublicationPlan, rootKeys: List[int], floors: RoleVersions, graph: PublicationGraph, evidence: SourceEvidence, recheckFloors: RoleVersions, recheck: PublicationGraph): bool =
   authorizePublication(plan, rootKeys, floors, graph, evidence, recheckFloors, recheck) == PublicationAuthorized({ versions: graph.versions }) implies
     (graphApproved(graph, rootKeys) and graphApproved(recheck, rootKeys) and atOrAbove(graph.versions, floors) and atOrAbove(graph.versions, recheckFloors) and plan.planDescriptors.every(d => listed(evidence.approved, d.sha256) and evidence.preflighted.includes(d) and graph.descriptors.includes(d)))
-pure def lawAuthorizedVersionsBecomeTheFloors(plan: PublicationPlan, rootKeys: List[int], floors: RoleVersions, graph: PublicationGraph, evidence: SourceEvidence, recheckFloors: RoleVersions, recheck: PublicationGraph): bool = {
-  val publication = authorizePublication(plan, rootKeys, floors, graph, evidence, recheckFloors, recheck)
-  publication == PublicationAuthorized({ versions: graph.versions }) implies advancePublisherFloors(recheckFloors, authorizedVersions(publication)) == FloorsAdvanced({ floors: graph.versions })
-}
+pure def lawAuthorizedVersionsBecomeTheFloors(plan: PublicationPlan, rootKeys: List[int], floors: RoleVersions, graph: PublicationGraph, evidence: SourceEvidence, recheckFloors: RoleVersions, recheck: PublicationGraph): bool =
+  authorizePublication(plan, rootKeys, floors, graph, evidence, recheckFloors, recheck) == PublicationAuthorized({ versions: graph.versions }) implies advancePublisherFloors(recheckFloors, graph.versions) == FloorsAdvanced({ floors: graph.versions })
 ```

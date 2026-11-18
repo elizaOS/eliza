@@ -511,9 +511,8 @@ export effect function getConnection(): object!(AdapterNotRegistered | Foreign)!
 
 export effect function runMigrations(migrationsPaths?: string[]): void!Foreign!RuntimeKernel {
   const { runtime } = try Host
-  const adapter = runtime.adapter
-  if (adapter.runMigrations) {
-    try foreign(() => adapter.runMigrations?.(migrationsPaths))
+  if (runtime.adapter.runMigrations) {
+    try foreign(() => runtime.adapter.runMigrations!(migrationsPaths))
     return
   }
   runtime.logger.warn({ src: "agent", agentId: runtime.agentId }, "Database adapter does not support migrations")

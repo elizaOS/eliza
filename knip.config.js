@@ -1,6 +1,5 @@
 // Knip reads .vibe files through VibeLang's own compiler, which gives it a module's imports and exports without bodies.
 // Each exception below names something Knip cannot follow:
-//   compilers vibe strips module-block imports  `import { x } from node` is not TypeScript, and one such line makes Knip read no exports of the file
 //   ignore vibestack/examples/**            standalone projects with their own install, outside the workspace
 //   ignore **/test/fixtures/**              inputs the tools' tests read as text, never imported
 //   ignoreIssues server.vibe exports        AGENTS is used in its own file, in a body ignoreExportsUsedInFile cannot see
@@ -13,10 +12,8 @@
 //   os esbuild, punycode, tldts             used by browser/protection, which ships as files outside the package's project
 import vibelang from "vibelang/knip"
 
-const vibe = (text, path) => vibelang(text, path).replace(/^import\s+(?:type\s+)?\{[^}"']*\}\s+from\s+[A-Za-z_$][\w$]*\s*$/gm, "")
-
 export default {
-  compilers: { vibe, vibex: vibe },
+  compilers: { vibe: vibelang, vibex: vibelang },
   "ignore": [
     "vibestack/examples/**",
     "**/test/fixtures/**"

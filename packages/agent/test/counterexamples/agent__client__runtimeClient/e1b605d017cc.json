@@ -1,0 +1,31 @@
+{
+  "origin": "journey \"s\" / \"unloaded\"",
+  "seed": 1,
+  "trace": [
+    [
+      "a",
+      {
+        "type": "admit",
+        "request": {
+          "method": "Get",
+          "delivery": "Buffered",
+          "segments": [
+            {
+              "text": "api",
+              "fits": []
+            },
+            {
+              "text": "status",
+              "fits": []
+            }
+          ],
+          "query": [],
+          "flaws": [],
+          "body": {
+            "tag": "NoBody"
+          }
+        }
+      }
+    ]
+  ]
+}

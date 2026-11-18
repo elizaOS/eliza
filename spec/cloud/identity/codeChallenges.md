@@ -19,10 +19,9 @@ machine. The shell draws the code at random, stores only its keyed digest and
 the S256 challenge, and passes the comparisons in as observations:
 `codeMatches` (the code's digest equals the stored one) and `verifierMatches`
 (the verifier hashes to the stored challenge). The code itself never enters
-the model. A Blooio deployment sends the SMS through its registered channel
-and verifies the keyed digest locally. A Twilio Verify deployment records
-the browser challenge and asks Twilio to verify its own code. A pending SMS
-challenge keeps the verification method that issued it.
+the model. Where the SMS provider verifies its own codes, `codeMatches` is
+that provider's answer; a pending SMS challenge keeps the provider that
+issued it.
 
 One machine instance is one challenge row. A destination and purpose hold at
 most one Open challenge: an admitted send supersedes the Open one and opens
@@ -34,7 +33,7 @@ the new one in the same transaction, backed by a unique partial index.
 > phone, so that I need no password, while nobody can guess, replay or
 > intercept my code into a session.
 
-### A code goes only to an email address, or to a phone in a country the deployment allows
+### A challenge sends one code, only to an email address or to a phone in a country the deployment allows
 
 A sign-in code goes to either; a link code goes only to a phone and names
 the user who asked for it. Any other send is refused `400 invalid_request`
@@ -198,7 +197,7 @@ pure def sometimesExpired(c: Challenge): bool = c.phase == Expired
 ```quint
 pure def isEnded(p: ChallengePhase): bool = p == Locked or p == Superseded or p == Expired or isConsumed(p)
 pure def stepEndedStaysEnded(before: Challenge, after: Challenge): bool =
-  isEnded(before.phase) implies (after.phase == before.phase and after.failures == before.failures and after.expiresAt == before.expiresAt)
+  isEnded(before.phase) implies { ...after, now: before.now } == before
 ```
 
 ### A refused verify says the challenge is locked, expired or unknown, or the code is wrong, and never which check failed

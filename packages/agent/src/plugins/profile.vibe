@@ -1,0 +1,24 @@
+// spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/plugins/profile.md, "The product plugin must be in the bundle"
+import type { AgentPlugin, ModuleFactory } from "../host/module.vibe"
+import { isAgentPlugin } from "./product.vibe"
+
+export const builtinModuleFactories: ReadonlyMap<string, ModuleFactory<never>> = new Map<string, ModuleFactory<never>>([
+])
+
+export interface BundledEntry {
+  readonly packageName: string
+  readonly plugin: unknown
+}
+
+export error BundleEntryRefused { packageName: string; reason: string }
+
+export effect function bundledPluginMap(entries: readonly BundledEntry[]) {
+  const plugins = new Map<string, AgentPlugin>()
+  for (const { packageName, plugin } of entries) {
+    if (!isAgentPlugin(plugin)) throw new BundleEntryRefused({ packageName, reason: "The package does not export an agent plugin" })
+    if (plugin.name !== packageName) throw new BundleEntryRefused({ packageName, reason: `The plugin is named ${plugin.name}` })
+    if (plugins.has(packageName)) throw new BundleEntryRefused({ packageName, reason: "The package is bundled twice" })
+    plugins.set(packageName, plugin)
+  }
+  return plugins as ReadonlyMap<string, AgentPlugin>
+}
