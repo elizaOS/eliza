@@ -14,6 +14,7 @@ import type {
   PlannerTrajectory,
 } from '@elizaos/core';
 import {
+  bindIncomingMessagePersistence,
   effectDeliveryBindingProvesApplication,
   settleActionHandler,
   validateToolArgs,
@@ -137,8 +138,15 @@ export default smithers(()=><Workflow name="receipt-proof"><Task id="calculate" 
       createdAt: 0,
     } as Memory;
     const delivered: Content[] = [];
-    const invoke = async (parameters: Record<string, unknown>, request = message.content.text) => {
+    const invoke = async (
+      parameters: Record<string, unknown>,
+      request = message.content.text,
+      rendered = request
+    ) => {
       delivered.length = 0;
+      const original = { ...message, content: { ...message.content, text: request } };
+      const routed = { ...original, content: { ...original.content, text: rendered } };
+      if (rendered !== request) bindIncomingMessagePersistence(routed, original);
       return settleActionHandler({
         runtime,
         action: workflowAction,
@@ -147,13 +155,7 @@ export default smithers(()=><Workflow name="receipt-proof"><Task id="calculate" 
           return [];
         },
         invoke: (callback) =>
-          workflowAction.handler(
-            runtime,
-            { ...message, content: { ...message.content, text: request } },
-            undefined,
-            { parameters },
-            callback
-          ),
+          workflowAction.handler(runtime, routed, undefined, { parameters }, callback),
       });
     };
     const created = await invoke(
@@ -350,7 +352,8 @@ export default smithers(()=><Workflow name="receipt-proof"><Task id="calculate" 
     });
     const renamed = await invoke(
       { action: 'rename', workflowId: row.id, workflowName: row.name, name: 'Planner suggestion' },
-      'Rename the workflow Synthetic spare definition to Spare'
+      'Rename the workflow Synthetic spare definition to Spare',
+      'Conversation context was added while preparing this request.'
     );
     expect((await facade.getWorkflow(row.id, owner)).name).toEqual(row.name);
     expect(renamed.text).toBe('Renamed “Synthetic spare definition” to “Spare”.');

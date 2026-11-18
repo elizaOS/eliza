@@ -6,10 +6,10 @@ import { randomUUID } from 'node:crypto';
 import {
   type Action,
   type ActionResult,
-  extractUserText,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  incomingMessagePersistenceSnapshot,
   type Memory,
   resolveCanonicalOwnerIdForMessage,
   type State,
@@ -259,7 +259,9 @@ export const workflowAction: Action = {
       return { success: false, text: `action is required (${WORKFLOW_OPS.join(', ')})` };
     }
     if (!READ_OPS.includes(op)) {
-      const userText = extractUserText(unwrapUserMessageText(message));
+      const userText = unwrapUserMessageText(
+        incomingMessagePersistenceSnapshot(message) ?? message
+      );
       const authored = authoredWorkflowRequest(userText);
       if (authored) {
         if (authored.op !== op)
