@@ -113,6 +113,8 @@ public abstract class CloudSignInPlugin extends Plugin {
   /** A code attempt holds a credential intent only once its code is sent (startEmail/startPhone). */
   volatile Runnable credentialGuard;
   NativePasswordBackup passwordBackup;
+  /** Guarded by lock: the backup host has been given its answer (approved, or refused by a takeover). */
+  boolean backupAnswered;
   /** A parameterless return arrived: only a hint, since any app can send one. */
   volatile boolean cancelled, callbackReceived, browserLaunched, browserPaused, returnHint;
   /** Guarded by lock. The browser page was opened in the host's own task (any host that is not the Home app). */
@@ -695,7 +697,9 @@ public abstract class CloudSignInPlugin extends Plugin {
 
  /** A password-backup confirmation that sign-out or cancel took over still answers its host, as cancelled. */
  private void backupAbandoned(Attempt current) {
-  if (current.passwordBackup != null) main.post(() -> current.passwordBackup.callback().refused("cancelled"));
+  if (current.passwordBackup == null) return;
+  synchronized (lock) { if (current.backupAnswered) return; current.backupAnswered = true; }
+  main.post(() -> current.passwordBackup.callback().refused("cancelled"));
  }
 
  private boolean backupDeviceReady() {
@@ -1352,6 +1356,8 @@ public abstract class CloudSignInPlugin extends Plugin {
    CloudPasswordBackup.Approval approval = CloudPasswordBackup.approve(
      config(), current.environment, token, current.passwordBackup.purpose(),
      () -> { synchronized (lock) { return !destroyed && !current.cancelled && attempt == current && backupDeviceReady(); } });
+   // Claimed before the host is told, so a sign-out or cancel arriving now never also refuses it.
+   synchronized (lock) { if (attempt != current || current.cancelled || current.backupAnswered) throw new SignInFailure("cancelled"); current.backupAnswered = true; }
    current.passwordBackup.callback().approved(approval);
    synchronized (lock) { if (attempt == current) attempt = null; }
   } finally {
