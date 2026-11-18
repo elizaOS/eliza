@@ -43,6 +43,9 @@ module NativeGoogleGmail {
   action cloud(answer: str, connected: bool): bool = all {
     s.phase == "cloud",
     s' = if (answer == "refused") { ...failed(s), code: if (s.code == "held") "sent" else s.code, codeUses: s.codeUses + (if (s.code == "held") 1 else 0) }
+      else if (answer == "mfa" and s.code == "held" and not(connected)) {
+        ...s, phase: "mfa", code: "dropped", google: "refused"
+      }
       else if (answer == "mfa") { ...s, phase: "mfa" }
       else if (s.code == "held") { ...s, phase: "ack", code: "sent", codeUses: s.codeUses + 1, google: if (connected) "connected" else "refused" }
       else { ...s, phase: "ack" },
@@ -98,12 +101,17 @@ module NativeGoogleGmail {
     .expect(s.result == "authenticated" and s.google == "refused" and s.codeUses == 0)
 
   run secondFactorConnectsAfterConfirmationTest = start(true).then(config(true)).then(picker(true))
-    .then(sheet(true)).then(authorize(true)).then(cloud("mfa", false)).then(mfa(true)).then(ack("confirmed", true))
+    .then(sheet(true)).then(authorize(true)).then(cloud("mfa", true)).then(mfa(true)).then(ack("confirmed", true))
     .expect(s.result == "authenticated" and s.google == "connected" and s.connectSent and s.codeUses == 1)
 
   run unconfirmedKeyDropsCodeTest = start(true).then(config(true)).then(picker(true)).then(sheet(true))
-    .then(authorize(true)).then(cloud("mfa", false)).then(mfa(true)).then(ack("refused", false))
+    .then(authorize(true)).then(cloud("mfa", true)).then(mfa(true)).then(ack("refused", false))
     .expect(s.result == "activation-expired" and s.code == "dropped" and s.google == "refused" and s.codeUses == 0)
+
+  // For an MFA answer, connected records whether Cloud supplied the account for the deferred exchange.
+  run missingAccountStillSignsInTest = start(true).then(config(true)).then(picker(true))
+    .then(sheet(true)).then(authorize(true)).then(cloud("mfa", false)).then(mfa(true)).then(ack("confirmed", false))
+    .expect(s.result == "authenticated" and s.code == "dropped" and s.google == "refused" and not(s.connectSent))
 
   run noScopesSignsInOnlyTest = start(false).then(picker(true)).then(authorize(true))
     .then(cloud("signed-in", true)).then(ack("confirmed", true))

@@ -78,7 +78,7 @@ public class CloudSignInChainTest {
  static class Attempt {
   final CloudSignInEnvironment environment=TestRegistration.PRODUCTION;
   final String id=UUID.randomUUID().toString();final String requestId;Runnable credentialGuard=()->{};Attempt(){this(null);}Attempt(String requestId){this.requestId=requestId;}Attempt(CloudSignInEnvironment environment,boolean google,String requestId,Runnable guard){this(requestId);this.google=google;credentialGuard=guard;expiresAt=0;}String email="owner@example.invalid",emailVerifier=CloudSignInFlow.newVerifier(),mfaType,mfaChallenge,phone;
-  long expiresAt=System.currentTimeMillis()+60000,resendAt;boolean google,busy,cancelled,callbackReceived,browserLaunched,browserPaused,returnClaimed,returnHint,returnHintElapsed,adopted;String browserState,pendingRecord,googleVerifier,googleChallengeId,gmailCode;Object googleCancellation;JSObject gmail;int failedVerifies;PluginCall waiting;
+  long expiresAt=System.currentTimeMillis()+60000,resendAt;boolean google,busy,cancelled,callbackReceived,browserLaunched,browserPaused,returnClaimed,returnHint,returnHintElapsed,adopted;String browserState,pendingRecord,googleVerifier,googleChallengeId,gmailCode,gmailSubject;Object googleCancellation;JSObject gmail;int failedVerifies;PluginCall waiting;
   void cancel(){cancelled=true;}
  }
  static class Response { final int status;final JSONObject data;String retryAfter;Response(int s,JSONObject d){status=s;data=d;} }
@@ -356,7 +356,7 @@ public class CloudSignInChainTest {
    check(!body.has("serverAuthCode")||SERVER_AUTH_CODE.equals(body.getString("serverAuthCode")),"the Google code goes with the sign-in");
    issuedState=body.getString("state");issuedChallenge=CloudSignInFlow.s256(body.getString("codeVerifier"));
    if(mode.equals("google-refused"))return new Response(401,new JSONObject().put("success",false).put("error","google_identity_rejected"));
-   if(mode.equals("google-mfa"))return new Response(200,new JSONObject().put("success",true).put("status","mfa_required").put("mfa",new JSONObject().put("type","totp").put("challengeId","fixture").put("expiresAt",System.currentTimeMillis()+60000)));
+   if(mode.startsWith("google-mfa"))return new Response(200,new JSONObject().put("success",true).put("status","mfa_required").put("googleSubject",mode.equals("google-mfa")?"109876543210":"").put("mfa",new JSONObject().put("type","totp").put("challengeId","fixture").put("expiresAt",System.currentTimeMillis()+60000)));
    JSONObject signedIn=new JSONObject().put("success",true).put("status","signed_in").put("secret",NEW).put("credentialId",ID).put("tokenType","Bearer").put("expiresAt",System.currentTimeMillis()+mintedLife)
     .put("acknowledgeBy",System.currentTimeMillis()+ackWindow).put("acknowledgementRequired",true).put("code","emac_"+"a".repeat(64)).put("accountCreated",true);
    if(body.has("serverAuthCode"))signedIn.put("google",mode.equals("google-mismatch")?new JSONObject().put("connected",false).put("code","google_account_mismatch")
@@ -365,7 +365,7 @@ public class CloudSignInChainTest {
   }
   if(path.equals("/api/v1/eliza/google/connect/native")){
    events.add("connect-gmail");
-   check(NEW.equals(bearer)&&body.length()==1&&SERVER_AUTH_CODE.equals(body.getString("serverAuthCode")),"Gmail connects with the acknowledged key and the Google code the sign-in did not use");
+   check(NEW.equals(bearer)&&body.length()==2&&"109876543210".equals(body.getString("expectedGoogleSubject"))&&SERVER_AUTH_CODE.equals(body.getString("serverAuthCode")),"Gmail connects with the acknowledged key and the Google code the sign-in did not use");
    return new Response(200,new JSONObject().put("connected",true).put("connectionId","synthetic-connection").put("email","owner@example.invalid").put("scopes",new JSONArray().put(GMAIL)).put("refreshTokenIssued",true));
   }
   throw new AssertionError("unexpected route");
@@ -1356,6 +1356,9 @@ public class CloudSignInChainTest {
   PluginCall verified=new PluginCall();verified.input.put("attemptId",mfa.id);verified.input.put("code","123456");host.verify(verified,true);
   check("authenticated".equals(verified.result.getString("status"))&&verified.result.getJSONObject("google").getBoolean("connected")&&mfa.gmailCode==null,"after the second factor Gmail connects with the new key");
   check(events.indexOf("ack")<events.indexOf("connect-gmail")&&events.contains("logout"),"Gmail connects only once Cloud confirmed the key");
+  call=new PluginCall();host=googleAttempt("google-mfa-no-subject",SERVER_AUTH_CODE,call);mfa=host.attempt;host.signInWithGoogle(mfa,ID_TOKEN);
+  verified=new PluginCall();verified.input.put("attemptId",mfa.id);verified.input.put("code","123456");host.verify(verified,true);
+  check("authenticated".equals(verified.result.getString("status"))&&"google_account_unknown".equals(verified.result.getJSONObject("google").getString("reason"))&&mfa.gmailCode==null&&!events.contains("connect-gmail"),"a missing pre-MFA account keeps sign-in and declines Gmail before exchange");
 
   CloudSignInChainTest unscoped=googleAttempt("valid",null,new PluginCall());
   check(unscoped.gmailClientId(unscoped.attempt)==null&&unscoped.requests==0&&unscoped.attempt.gmail==null,"a host that names no Google scope reads nothing before the picker");
@@ -1459,6 +1462,6 @@ public class CloudSignInChainTest {
   renewalScenarios();retirementScenarios();sessionScenarios();
   System.out.println("PASS silent key renewal (20 scenario groups)");
   googleScenarios();googleActivationPending();signOutScenarios();
-  System.out.println("PASS native Google sign-in with Gmail and sign-out (14 scenarios)");
+  System.out.println("PASS native Google sign-in with Gmail and sign-out (15 scenarios)");
  }
 }

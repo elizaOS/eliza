@@ -127,7 +127,7 @@ public abstract class CloudSignInPlugin extends Plugin {
   volatile HttpURLConnection connection;
   volatile android.os.CancellationSignal googleCancellation;
   String googleVerifier, googleChallengeId;
-  volatile String gmailCode;
+  volatile String gmailCode, gmailSubject;
   volatile JSObject gmail;
   PluginCall waiting;
   volatile CountDownLatch authorizationDecision;
@@ -139,7 +139,7 @@ public abstract class CloudSignInPlugin extends Plugin {
   Attempt(CloudSignInEnvironment environment, boolean google, String requestId, Runnable credentialGuard) {
    this.environment = environment; this.google = google; this.requestId = requestId; this.credentialGuard = credentialGuard;
   }
-  void cancel() { cancelled = true; CountDownLatch decision = authorizationDecision; if (decision != null) decision.countDown(); android.os.CancellationSignal picker = googleCancellation; if (picker != null) picker.cancel(); googleVerifier = null; googleChallengeId = null; gmailCode = null; HttpURLConnection current = connection; if (current != null) current.disconnect(); }
+  void cancel() { cancelled = true; CountDownLatch decision = authorizationDecision; if (decision != null) decision.countDown(); android.os.CancellationSignal picker = googleCancellation; if (picker != null) picker.cancel(); googleVerifier = null; googleChallengeId = null; gmailCode = null; gmailSubject = null; HttpURLConnection current = connection; if (current != null) current.disconnect(); }
  }
  private static final class Response {
   final int status; final JSONObject data; final String location, retryAfter;
@@ -806,6 +806,11 @@ public abstract class CloudSignInPlugin extends Plugin {
    CloudSignInFlow.GoogleFailure outcome = observeGoogleResponse(next, CloudSignInFlow.GoogleStage.VERIFY, signedIn);
    if (signedIn.status != 200) throw new SignInFailure(outcome.code);
    if ("mfa_required".equals(signedIn.data.optString("status"))) {
+    if (gmailCode != null) {
+     Object subject = signedIn.data.opt("googleSubject");
+     if (subject instanceof String && ((String) subject).matches("[0-9]{1,64}")) next.gmailSubject = (String) subject;
+     else { next.gmailCode = null; next.gmail = gmailRefused("google_account_unknown"); }
+    }
     completeOrRequireMfa(next, new JSONObject().put("mfaRequired", true).put("mfa", signedIn.data.optJSONObject("mfa")));
     return;
    }
@@ -1459,7 +1464,7 @@ public abstract class CloudSignInPlugin extends Plugin {
   CloudSignInFlow.Ack acknowledged = acknowledge(current, proof, credentialId, secret);
   if (acknowledged == CloudSignInFlow.Ack.ACKNOWLEDGED) try { receipts.remove(config().receiptSlot(environment)); } catch (Exception kept) { /* Retried on next start. */ }
   if (acknowledged == CloudSignInFlow.Ack.ACKNOWLEDGED && current.gmailCode != null) connectGmail(current, secret);
-  else if (current.gmailCode != null) { current.gmailCode = null; current.gmail = gmailRefused("google_unavailable"); }
+  else if (current.gmailCode != null) { current.gmailCode = null; current.gmailSubject = null; current.gmail = gmailRefused("google_unavailable"); }
   JSObject outcome = new JSObject().put("status", "authenticated").put("environment", environment.name).put("expiresAt", expiresAt)
    .put("attemptId", current.id).put("credentialId", saved.getString("credentialId"))
    .put("accountCreated", created instanceof Boolean ? created : JSONObject.NULL);
@@ -1486,10 +1491,11 @@ public abstract class CloudSignInPlugin extends Plugin {
   finish(current, outcome);
  }
  private void connectGmail(Attempt current, String secret) {
-  String code = current.gmailCode;
-  current.gmailCode = null;
+  String code = current.gmailCode, subject = current.gmailSubject;
+  current.gmailCode = null; current.gmailSubject = null;
+  if (subject == null) { current.gmail = gmailRefused("google_account_unknown"); return; }
   try {
-   Response connected = post(current, "/api/v1/eliza/google/connect/native", new JSONObject().put("serverAuthCode", code), secret);
+   Response connected = post(current, "/api/v1/eliza/google/connect/native", new JSONObject().put("serverAuthCode", code).put("expectedGoogleSubject", subject), secret);
    current.gmail = connected.status == 200 ? gmailOutcome(connected.data) : gmailRefused(connected.data.optString("code", null));
   } catch (Exception unavailable) { current.gmail = gmailRefused("google_unavailable"); }
  }
