@@ -174,7 +174,7 @@ type SendStatus = StatusCancelled | StatusDenied | StatusFailed | StatusUnknown 
 pure def partConsistent(p: PartEvidence): bool = p.deliveryState == PartSucceeded implies p.sentState == PartSucceeded
 pure def recipientsCovered(evidence: List[PartEvidence], recipients: int): bool = {
   val seen = evidence.foldl(Set(), (acc, p) => acc.union(Set(p.recipientIndex)))
-  seen.size() == recipients and seen.forall(i => i >= 0 and i < recipients)
+  recipients >= 1 and evidence.length() > 0 and seen.size() == recipients and seen.forall(i => i >= 0 and i < recipients)
 }
 pure def statusSupported(status: SendStatus, evidence: List[PartEvidence], recipients: int): bool =
   evidence.every(p => partConsistent(p)) and
@@ -190,7 +190,7 @@ pure val evidenceValues = Set(
   List({ recipientIndex: 0, sentState: PartSucceeded, deliveryState: PartUnknown }, { recipientIndex: 1, sentState: PartFailed, deliveryState: PartUnknown }),
   List({ recipientIndex: 0, sentState: PartUnknown, deliveryState: PartSucceeded })
 )
-pure val recipientsValues = Set(1, 2)
+pure val recipientsValues = Set(0, 1, 2)
 pure def lawDeliveredNeedsEveryPartDelivered(evidence: List[PartEvidence], recipients: int): bool =
   statusSupported(StatusDelivered, evidence, recipients) implies
     (evidence.length() > 0 and evidence.every(p => p.sentState == PartSucceeded and p.deliveryState == PartSucceeded))

@@ -78,9 +78,12 @@ pure def sometimesSmsCodeSent(c: Challenge): bool = c.phase == Open and c.method
 ### Sending is limited per client address and per destination, and SMS by a deployment-wide hourly budget
 
 The shell checks these with `shared/rateLimit` before `send` or `verify`,
-all of one request in one transaction, and answers `429 rate_limited` with
-the latest window end. The per-destination subject is a keyed digest of the
-address or phone; the budget's subject is fixed for the deployment.
+all of one request in one transaction. A caller's limit answers
+`429 rate_limited` with the latest window end. A spent SMS budget is no
+fault of the caller: it answers `503 service_unavailable` with the budget
+window's end, and nothing is sent. The per-destination subject is a keyed
+digest of the address or phone; the budget's subject is fixed for the
+deployment.
 
 ```quint
 pure val emailSendPerIp: R::RateLimit = R::perMinute("codeEmailSendPerIp", 30)
@@ -90,8 +93,13 @@ pure val smsSendBudget: R::RateLimit = R::perWindow("codeSmsSendBudget", 300, mi
 pure val verifyPerIp: R::RateLimit = R::perMinute("codeVerifyPerIp", 10)
 pure val verifyPerDestination: R::RateLimit = R::perWindow("codeVerifyPerDestination", 5, 10 * millisPerMinute)
 pure def sendLimits(method: SignInMethod): List[R::RateLimit] =
-  if (method == PhoneSignIn) List(smsSendPerIp, sendPerDestination, smsSendBudget) else List(emailSendPerIp, sendPerDestination)
+  if (method == PhoneSignIn) List(smsSendPerIp, sendPerDestination) else List(emailSendPerIp, sendPerDestination)
 pure val verifyLimits: List[R::RateLimit] = List(verifyPerIp, verifyPerDestination)
+pure def smsBudgetRefusal(budgetEndsAt: Millis): Refusal = refuseUntil(ServiceUnavailable, budgetEndsAt)
+pure def lawASpentBudgetIsAnOutage(budgetEndsAt: Millis): bool = {
+  val r = smsBudgetRefusal(budgetEndsAt)
+  wellFormed(r) and isRetryable(r.code) and r.code != RateLimited
+}
 ```
 
 ### A new code for the same destination and purpose supersedes the open one
@@ -130,10 +138,15 @@ pure def verify(c: Challenge, clientId: str, codeMatches: bool, verifierMatches:
   else { state: { ...c, failures: c.failures + 1, phase: if (c.failures + 1 >= maxFailures) Locked else Open }, out: List() }
 }
 pure val weight_verify = 4
-pure def stepConsumedOnlyByARightCodeWhileLive(before: Challenge, via: str, after: Challenge, out: List[ChallengeEffect]): bool = {
+pure def stepConsumedOnlyByAVerifyWhileLive(before: Challenge, via: str, after: Challenge, out: List[ChallengeEffect]): bool = {
   val consumes = not(isConsumed(before.phase)) and isConsumed(after.phase)
-  consumes implies (via == "verify" and isLive(before) and after.clientId == before.clientId)
+  consumes implies (via == "verify" and isLive(before))
 }
+pure def lawOnlyAllThreeTogetherConsume(live: Challenge, clientId: str, codeMatches: bool, verifierMatches: bool, factorOutcome: F::FirstFactorOutcome): bool =
+  isLive(live) implies (isConsumed(verify(live, clientId, codeMatches, verifierMatches, factorOutcome).state.phase) iff (codeMatches and verifierMatches and clientId == live.clientId))
+pure val liveValues = Set(
+  { method: EmailSignIn, purpose: SignInCode, clientId: "app.one", phase: Open, failures: 0, sentAt: 0, expiresAt: 600000, now: 0 },
+  { method: PhoneSignIn, purpose: SignInCode, clientId: "app.two", phase: Open, failures: 4, sentAt: 0, expiresAt: 300000, now: 60000 })
 pure def stepAWrongCodeCountsOneFailure(before: Challenge, via: str, after: Challenge, out: List[ChallengeEffect]): bool =
   (via == "verify" and not(isConsumed(after.phase))) implies (after.failures == before.failures + 1 and out == List())
 ```

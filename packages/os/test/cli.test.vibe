@@ -1,7 +1,7 @@
 // spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/update/operator.md, "Story: Update a device by cable and get back if it fails"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
-import { androidTools, buildApk, testSigner } from "./support/android-tools.ts"
+import { androidTools, buildApk, testSigner, type AndroidTools } from "./support/android-tools.ts"
 import { device, fakeAdb } from "./support/fake-adb.ts"
 import { scratch, scratchRepo, writeTree, type Tree } from "./support/scratch.vibe"
 
@@ -186,10 +186,7 @@ it.live("Generate test release keys and decrypt them again (spec/os/image/signin
   assert.strictEqual(again.stdout, "")
 }))
 
-it.live("Check a launcher for admission without writing an overlay (spec/os/image/staging.md, \"Story: Stage my launcher into an image exactly once\")", (context) => {
-  const tools = androidTools()
-  if (tools.kind === "missing") return context.skip(tools.reason)
-  return journey(effect {
+effect function admission(tools: Extract<AndroidTools, { kind: "present" }>) {
   const root = try scratch("cli-stage")
   const signer = try sync("make the signer", () => testSigner(tools, root, "launcher"))
   const manifest = [
@@ -221,7 +218,12 @@ it.live("Check a launcher for admission without writing an overlay (spec/os/imag
   assert.notStrictEqual(refused.status, 2)
   assert.strictEqual(refused.stdout, "")
   assert.isFalse(try sync("look for the overlay", () => present(output)))
-  }))
+}
+
+it.live("Check a launcher for admission without writing an overlay (spec/os/image/staging.md, \"Story: Stage my launcher into an image exactly once\")", (context) => {
+  const tools = androidTools()
+  if (tools.kind === "missing") return context.skip(tools.reason)
+  return journey(admission(tools))
 })
 
 it.live("Read an update's status from the device by cable (spec/os/update/operator.md, \"Story: Update a device by cable and get back if it fails\")", () => journey(effect {

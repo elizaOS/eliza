@@ -90,8 +90,6 @@ public final class CloudRequests {
       return new Failed(Failure.TOO_LARGE);
     } catch (IOException unanswered) {
       return new Failed(Failure.NETWORK);
-    } catch (Oversized declared) {
-      return new Failed(Failure.TOO_LARGE);
     } finally {
       if (connection != null) connection.disconnect();
     }
@@ -99,7 +97,7 @@ public final class CloudRequests {
 
   private Answered answer(HttpURLConnection connection, int status) throws IOException {
     String etag = connection.getHeaderField("ETag"), contentType = connection.getContentType();
-    if (CloudRequestPolicy.deliveryOf(connection.getContentLengthLong()) == CloudRequestPolicy.Delivery.TOO_LARGE) throw new Oversized();
+    if (CloudRequestPolicy.deliveryOf(connection.getContentLengthLong()) == CloudRequestPolicy.Delivery.TOO_LARGE) throw new LargeBodyGrant.Oversize();
     InputStream stream = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
     if (stream == null) return new Answered(status, etag, contentType, new byte[0], null);
     try (InputStream in = stream) {
@@ -114,6 +112,4 @@ public final class CloudRequests {
   }
 
   private static String text(byte[] body) { return body == null ? null : new String(body, StandardCharsets.UTF_8); }
-
-  private static final class Oversized extends RuntimeException {}
 }

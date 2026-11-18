@@ -98,10 +98,6 @@ a lowercase letter followed by at most 31 lowercase letters or digits.
 type WakeName = WakeWord({ word: str }) | MalformedWakeName
 pure def wakeNamesAdmitted(names: List[WakeName]): bool =
   names.length() >= 1 and names.length() <= 8 and names.every(n => n != MalformedWakeName and names.select(m => m == n).length() == 1)
-pure val namesValues = Set(List(WakeWord({ word: "hey" })), List(), List(WakeWord({ word: "hey" }), WakeWord({ word: "hey" })), List(WakeWord({ word: "hey" }), MalformedWakeName),
-  List(WakeWord({ word: "a" }), WakeWord({ word: "b" }), WakeWord({ word: "c" }), WakeWord({ word: "d" }), WakeWord({ word: "e" }), WakeWord({ word: "f" }), WakeWord({ word: "g" }), WakeWord({ word: "h" }), WakeWord({ word: "i" })))
-pure def lawAdmittedWakeNamesAreDistinctWords(names: List[WakeName]): bool =
-  wakeNamesAdmitted(names) implies (names.length() <= 8 and not(names.includes(MalformedWakeName)) and names.every(a => names.select(b => b == a).length() == 1))
 ```
 
 ### A listener is staged only from a matched source that carries the chip and ops SystemUI patches
@@ -129,13 +125,13 @@ pure val listenerSelinuxDomain = "eliza_sense_app"
 pure def policyBoundToSigner(policyCertificate: Digest, launcherSigner: Digest): bool = digestsMatch(policyCertificate, launcherSigner)
 ```
 
-### Production stages only a release listener that matches its reviewed descriptor and packages its pinned speech bundle
+### A production or activated listener is a release build that matches its reviewed descriptor and packages its pinned speech bundle
 
 The reviewed descriptor pins the listener's package, APK bytes and signer;
-it is needed in production, on an activated image, and checked whenever
-one is given. A listener without the pinned speech bundle could never
-recognise a wake name: development may stage it and records that speech is
-not included. The ZIP layout check (entries safe and unique, native
+it is checked whenever one is given. A listener without the pinned speech
+bundle could never recognise a wake name: an inert development listener
+may be staged without it, and staging records that speech is not
+included. The ZIP layout check (entries safe and unique, native
 libraries and DEX stored and aligned) applies to every staging.
 
 ```quint
@@ -153,7 +149,7 @@ pure def descriptorMatches(descriptor: ListenerDescriptor, listener: ListenerApk
 
 ```quint
 type ListenerProblem = SourceNotAdmitted | NotTheLaunchersListener | SignerNotTheLaunchers | PermissionsUnreviewed | OverlayNotAdmitted | WakeNamesInvalid
-  | ZipLayoutRefused | PolicyCertificateDiffers | DescriptorMismatch | DebuggableInProduction | SpeechNotPinnedInProduction | QualificationMissing | QualificationMismatch | QualificationNotPassed
+  | ZipLayoutRefused | PolicyCertificateDiffers | DescriptorMismatch | NotAReleaseBuild | SpeechNotPinned | QualificationMissing | QualificationMismatch | QualificationNotPassed
 type ListenerReach = ListenerInert | ListenerActivated
 type ListenerStaging = ListenerStaged({ reach: ListenerReach, speechIncluded: bool }) | ListenerRefused({ problem: ListenerProblem })
 type ListenerRequest = { launcherPackage: str, launcherSigner: Digest, launcherApk: Digest, launcherDescriptor: Digest, listener: ListenerApk, descriptor: ListenerDescriptor,
@@ -163,6 +159,7 @@ pure def listenerStaging(request: ListenerRequest, source: V::SourceVerdict, mod
   val listener = request.listener
   val production = mode == StageProduction
   val activating = request.qualification != NoQualification
+  val strict = production or activating
   if (not(sourceAdmitsListener(source))) refuse(SourceNotAdmitted)
   else if (not(isListenerOf(listener.packageName, request.launcherPackage))) refuse(NotTheLaunchersListener)
   else if (not(sameSigner(listener.signer, request.launcherSigner))) refuse(SignerNotTheLaunchers)
@@ -171,9 +168,9 @@ pure def listenerStaging(request: ListenerRequest, source: V::SourceVerdict, mod
   else if (not(wakeNamesAdmitted(request.wakeNames))) refuse(WakeNamesInvalid)
   else if (listener.layout != ZipAligned) refuse(ZipLayoutRefused)
   else if (not(policyBoundToSigner(request.policyCertificate, request.launcherSigner))) refuse(PolicyCertificateDiffers)
-  else if ((production or activating or request.descriptor != NoListenerDescriptor) and not(descriptorMatches(request.descriptor, listener))) refuse(DescriptorMismatch)
-  else if (production and listener.buildType != ReleaseBuild) refuse(DebuggableInProduction)
-  else if (production and listener.speech != SpeechPinned) refuse(SpeechNotPinnedInProduction)
+  else if ((strict or request.descriptor != NoListenerDescriptor) and not(descriptorMatches(request.descriptor, listener))) refuse(DescriptorMismatch)
+  else if (strict and listener.buildType != ReleaseBuild) refuse(NotAReleaseBuild)
+  else if (strict and listener.speech != SpeechPinned) refuse(SpeechNotPinned)
   else if (production and not(activating)) refuse(QualificationMissing)
   else if (activating and not(qualificationMatches(request, source))) refuse(QualificationMismatch)
   else if (activating and not(qualificationPassed(request.qualification, production))) refuse(QualificationNotPassed)
@@ -185,16 +182,16 @@ pure def lawStagedListenerIsTheLaunchersAndReviewed(request: ListenerRequest, so
   isStaged(listenerStaging(request, source, mode)) implies (sourceAdmitsListener(source) and isListenerOf(request.listener.packageName, request.launcherPackage)
     and isDigest(request.launcherSigner) and request.listener.signer == OneSigner({ certificate: request.launcherSigner }) and permissionsReviewed(request.listener.requested)
     and overlayAdmitted(request.overlay) and wakeNamesAdmitted(request.wakeNames) and policyBoundToSigner(request.policyCertificate, request.launcherSigner))
-pure def lawProductionStagesOnlyAnActivatedReleaseListener(request: ListenerRequest, source: V::SourceVerdict): bool = {
-  val staging = listenerStaging(request, source, StageProduction)
-  isStaged(staging) implies (isActivated(staging) and staging == ListenerStaged({ reach: ListenerActivated, speechIncluded: true })
-    and request.listener.buildType == ReleaseBuild and descriptorMatches(request.descriptor, request.listener) and qualificationPassed(request.qualification, true))
+pure def lawActivatedListenerIsAReviewedRelease(request: ListenerRequest, source: V::SourceVerdict, mode: StagingMode): bool = {
+  val staging = listenerStaging(request, source, mode)
+  (isActivated(staging) or (mode == StageProduction and isStaged(staging))) implies (staging == ListenerStaged({ reach: ListenerActivated, speechIncluded: true })
+    and request.listener.buildType == ReleaseBuild and descriptorMatches(request.descriptor, request.listener))
 }
 pure def lawGivenDescriptorAlwaysMatches(request: ListenerRequest, source: V::SourceVerdict, mode: StagingMode): bool =
   (isStaged(listenerStaging(request, source, mode)) and request.descriptor != NoListenerDescriptor) implies descriptorMatches(request.descriptor, request.listener)
 ```
 
-### A fully reviewed listener stages and activates in both modes, and development stages it inert without a record
+### A fully reviewed listener stages activated in both modes, and without a record only development stages it, inert
 
 This is the request every refusal above is a variation of.
 
@@ -221,13 +218,14 @@ pure val requestValues = {
   val otherLock = QualificationRecord({ bytes: Sha256({ hex: "q1" }), inputs: { ...reviewedInputs, sourceLock: "lockB" }, qualified: true, gates: reviewedGates })
   List(r, { ...r, qualification: NoQualification }, { ...r, qualification: NoQualification, descriptor: NoListenerDescriptor }, { ...r, qualification: unqualified }, { ...r, qualification: otherLock },
     { ...r, enrolledQualification: Sha256({ hex: "q2" }) }, { ...r, launcherSigner: Sha256({ hex: "c2" }) }, { ...r, launcherPackage: "com.other" },
-    { ...r, listener: { ...r.listener, buildType: DebuggableBuild }, qualification: unqualified }, { ...r, listener: { ...r.listener, speech: SpeechNotPinned } },
+    { ...r, listener: { ...r.listener, buildType: DebuggableBuild }, qualification: unqualified }, { ...r, listener: { ...r.listener, speech: SpeechNotPinned } }, { ...r, listener: { ...r.listener, speech: SpeechNotPinned, buildType: DebuggableBuild }, qualification: NoQualification },
     { ...r, listener: { ...r.listener, requested: r.listener.requested.append("android.permission.INTERNET") } }, { ...r, overlay: { ...r.overlay, roles: List() } },
     { ...r, wakeNames: List() }, { ...r, policyCertificate: Sha256({ hex: "c2" }) }, { ...r, listener: { ...r.listener, layout: ZipRefused } }).foldl(Set(), (acc, x) => acc.union(Set(x)))
 }
 pure def lawAReviewedListenerStagesActivated(mode: StagingMode): bool = isActivated(listenerStaging(reviewedRequest, reviewedSource, mode))
-pure def lawDevelopmentStagesAnInertListenerWithoutARecord(mode: StagingMode): bool =
-  listenerStaging({ ...reviewedRequest, descriptor: NoListenerDescriptor, qualification: NoQualification }, reviewedSource, StageDevelopment) == ListenerStaged({ reach: ListenerInert, speechIncluded: true })
+pure def lawWithoutARecordOnlyDevelopmentStagesInert(mode: StagingMode): bool =
+  listenerStaging({ ...reviewedRequest, qualification: NoQualification }, reviewedSource, mode)
+    == (if (mode == StageDevelopment) ListenerStaged({ reach: ListenerInert, speechIncluded: true }) else refuse(QualificationMissing))
 ```
 
 ## Story: Activate the listener only on a qualified image
