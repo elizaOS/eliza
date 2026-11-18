@@ -89,6 +89,34 @@ public class RuntimeBundleStore {
         }
       }
     }
+    /** Removes every other release and its seal, keeping this one. Call it only when no runtime
+     * still runs from an older release. Each old release is first renamed to a staging name, so a
+     * removal cut short leaves only a tree the next extraction deletes, never a partial release. */
+    public void retainOnly() throws IOException {
+      synchronized (ROOT_LOCKS.computeIfAbsent(root, key -> new Object())) {
+        try (FileChannel channel = FileChannel.open(root.resolve(".lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE, NOFOLLOW);
+             FileLock lock = channel.lock()) {
+          List<Path> old = new ArrayList<>();
+          try (DirectoryStream<Path> children = Files.newDirectoryStream(root)) {
+            for (Path child : children) {
+              String name = child.getFileName().toString();
+              if ((name.matches("[a-f0-9]{64}") && !name.equals(identity)) || name.matches("\\.staging-[a-f0-9-]{36}")) old.add(child);
+            }
+          }
+          for (Path child : old) {
+            String name = child.getFileName().toString();
+            Path doomed = child;
+            if (!name.startsWith(".staging-")) {
+              dropSeal(root, name);
+              doomed = root.resolve(".staging-" + UUID.randomUUID());
+              Files.move(child, doomed, StandardCopyOption.ATOMIC_MOVE);
+            }
+            removeTree(doomed);
+          }
+          if (!old.isEmpty()) durability.syncDirectory(root);
+        }
+      }
+    }
   }
 
   /** Bound inventory loading before allocation, then use the existing verification path. */

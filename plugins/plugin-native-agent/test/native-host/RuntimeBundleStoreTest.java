@@ -149,6 +149,28 @@ public final class RuntimeBundleStoreTest {
     Files.delete(seal); launch(root, next, t + 20);
     check(!Files.exists(versions.resolve(".seals").resolve(stale)), "Seals of removed releases are dropped");
   }
+  /** retainOnly removes older releases, their seals and abandoned staging trees, and keeps the current release usable. */
+  private static void retainedRelease(Path suite, Map<String, byte[]> old, Map<String, byte[]> next) throws Exception {
+    Path root = Files.createDirectory(suite.resolve("retained")); libraries(root);
+    Path versions = root.resolve("versions");
+    launch(root, old, 1_000_000_000L);
+    String oldIdentity = hash(manifest(old)), identity = hash(manifest(next));
+    check(Files.isRegularFile(versions.resolve(".seals").resolve(oldIdentity)), "The old release is sealed");
+    launch(root, next, 1_000_000_001L);
+    Path abandoned = versions.resolve(".staging-" + UUID.randomUUID());
+    Files.createDirectories(abandoned.resolve("bundle")); Files.writeString(abandoned.resolve("bundle/partial.js"), "partial");
+    Files.writeString(versions.resolve("unrelated"), "kept");
+    last.retainOnly();
+    check(!Files.exists(versions.resolve(oldIdentity), LinkOption.NOFOLLOW_LINKS), "The old release is removed");
+    check(!Files.exists(versions.resolve(".seals").resolve(oldIdentity)), "The old release's seal is removed");
+    check(!Files.exists(abandoned, LinkOption.NOFOLLOW_LINKS), "An abandoned staging tree is removed");
+    check(Files.readString(versions.resolve("unrelated")).equals("kept"), "Names that are not releases are left alone");
+    check(Files.isRegularFile(versions.resolve(".seals").resolve(identity)), "The current release keeps its seal");
+    check(launch(root, next, 1_000_000_002L).equals(List.of("release-sealed")), "The current release still launches sealed");
+    last.verify();
+    last.retainOnly();
+    check(Files.readString(last.bundle.resolve("agent-bundle.js")).startsWith("new"), "Retaining twice keeps the current release");
+  }
   /** Writes a seal the way any same-uid process could, from public metadata. */
   private static void forgeSeal(Path root, Map<String, byte[]> assets, long now) throws Exception {
     Path versions = root.resolve("versions"); String identity = hash(manifest(assets));
@@ -193,6 +215,7 @@ public final class RuntimeBundleStoreTest {
 
     check(!Files.exists(normal.resolve("versions/.seals")), "Strict prepare never writes seals");
     sealedRelease(suite, next);
+    retainedRelease(suite, old, next);
 
     for (String boundary : new String[]{"staging-created", "file-chunk", "file-synced", "before-marker", "before-publish", "published"}) {
       Path root = Files.createDirectory(suite.resolve(boundary)); libraries(root); Path prior = prepare(root, old);

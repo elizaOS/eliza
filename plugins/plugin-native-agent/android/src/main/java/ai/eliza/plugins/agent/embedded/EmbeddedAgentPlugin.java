@@ -104,7 +104,11 @@ public final class EmbeddedAgentPlugin extends Plugin {
         notifyListeners("streamEnd", end);
       }
     });
-    if (!accepted) { streams.remove(id, socket); return; }
+    if (!accepted) {
+      streams.remove(id, socket);
+      try { socket.close(); } catch (IOException ignored) { }
+      return;
+    }
     JSObject started = new JSObject();
     started.put("id", id);
     call.resolve(started);

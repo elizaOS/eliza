@@ -161,6 +161,10 @@ public class EmbeddedAgentService extends EmbeddedRuntimeService {
       if (!root.isDirectory() && !root.mkdirs()) throw new IOException("Cannot create the private runtime directory");
       RuntimeBundleStore.Prepared prepared = RuntimeBundleStore.prepareSealedFromAsset(root.toPath().resolve("releases"), "agent-runtime.inventory",
         name -> getAssets().open(name), new File(getApplicationInfo().nativeLibraryDir).toPath(), AndroidRuntimeDirectories::syncRuntimeDirectory, "eliza-runtime-v1");
+      // The installed APK names only this release, and an update ends the process that ran an
+      // older one, so earlier releases are dead weight. A removal that fails is retried next launch.
+      try { prepared.retainOnly(); }
+      catch (IOException kept) { /* error-policy:J4 old releases only cost space; extraction checks space itself. */ }
       if (prepared.deferred) verification.execute(() -> {
         try { prepared.verify(); }
         catch (IOException changed) { stopSelf(); }

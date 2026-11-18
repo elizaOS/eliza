@@ -143,6 +143,11 @@ unfunded account then ends the turn with a `done` event whose `failureKind` is
 `provider_issue` or `insufficient_credits`, and any other failure with an `error`
 event (`type`, `message`, optional `code`).
 
+Each start unpacks the payload into a release named by its inventory digest and then
+removes every other release, its seal and any abandoned staging tree
+(`RuntimeBundleStore.Prepared.retainOnly()`), so an app update does not leave the
+previous runtime on the device.
+
 The service returns `START_STICKY` so that Android may restart it after its
 process is killed; that has not been observed on a device, and a restart Android
 refuses to bring to the foreground stops the service.
