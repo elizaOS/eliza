@@ -452,14 +452,14 @@ public final class ContactsEditorTest {
     writes = 0;
     JSObject kept = off(() -> editor.save("101", current.getString("version"), unchanged));
     require(kept.getString("status").equals("saved") && writes == 0 && data.get(note).get("data1").equals("private"), "omission writes no name or note");
-    ContactsEditor.Draft edited = structured(current.getString("displayName"), "Grace", null, null, list("number", "5550100", "custom:Boat"), list("address", "ada@example.test", "work"));
+    ContactsEditor.Draft edited = structured(current.getString("displayName"), "Augusta", null, null, list("number", "5550100", "custom:Boat"), list("address", "ada@example.test", "work"));
     JSObject changed = off(() -> editor.save("101", current.getString("version"), edited));
     require(changed.getString("status").equals("saved") && writes == 1, "one selected row updated");
-    beforeName.put("data2", "Grace"); beforeName.put("is_primary", 1); beforeName.put("is_super_primary", 1);
+    beforeName.put("data2", "Augusta"); beforeName.put("is_primary", 1); beforeName.put("is_super_primary", 1);
     require(data.get(name).equals(beforeName), "middle, prefix, suffix, phonetic, styles and unknown columns kept; the linked edit is the shown name");
     require(data.get(otherName).equals(beforeOther) && data.get(photo).equals(beforePhoto), "other raw name and photo untouched");
     require(data.containsKey(phone) && data.containsKey(email) && data.get(phone).get("data3").equals("Boat"), "number and email row identity and label kept");
-    require(get("101").getString("familyName").equals("Lovelace") && get("101").getString("givenName").equals("Grace"), "only requested component changes");
+    require(get("101").getString("familyName").equals("Lovelace") && get("101").getString("givenName").equals("Augusta"), "only requested component changes");
   }
   @Test public void explicitClearsChangeOnlyTheirValueAndStaleNotesNeverOverwriteAnotherWriter() throws Exception {
     long raw = addRaw(0), name = addData(raw, NAME, "Ada Lovelace", null, null), note = addData(raw, NOTE, "private", null, null);
