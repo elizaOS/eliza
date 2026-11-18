@@ -41,6 +41,22 @@ function unavailable(code: string, text: string): ActionResult {
 }
 
 /** Compute availability from the standalone Calendar's exact owner-bound feed. */
+/**
+ * True when the owner's request names tomorrow morning and no other period
+ * or afternoon/evening clock time, whatever the phrasing ("Am I free tomorrow
+ * morning?", "Do I have 20 minutes tomorrow morning?"). A request that also
+ * names another period ("tomorrow morning or afternoon") is not clamped.
+ */
+export function asksOnlyAboutTomorrowMorning(request: string): boolean {
+  return (
+    /\btomorrow\s+morning\b/i.test(request) &&
+    !/\b(?:afternoon|evening|tonight|night|noon|midday|lunch(?:time)?|all\s+day|whole\s+day|full\s+day|rest\s+of\s+the\s+day|week)\b/i.test(
+      request,
+    ) &&
+    !/\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*p\.?\s*m\b/i.test(request)
+  );
+}
+
 export function calendarAvailabilityActions(
   calendar: Action,
   resolveSource: (
@@ -182,10 +198,9 @@ export function calendarAvailabilityActions(
           start: new Date(windowStart).toISOString(),
           end: new Date(windowEnd).toISOString(),
         };
-        const request = extractUserText(unwrapUserMessageText(message));
         if (
-          /^(?:(?:when\s+)?am\s+i)\s+free\s+for\b[^.!?]*\btomorrow\s+morning\s*(?:[.!?]|$)/i.test(
-            request.trim(),
+          asksOnlyAboutTomorrowMorning(
+            extractUserText(unwrapUserMessageText(message)),
           )
         ) {
           const tomorrow = addDaysToLocalDate(
