@@ -1,0 +1,125 @@
+// spec/agent/voice/session.md, "Filler, sound annotations and the assistant's own echo are never a turn"; spec/agent/voice/session.md, "The end-of-turn query scores 1 to 4,096 units and only a finished answer submits early"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or busy answer, and its outcomes stay distinct"
+import { assert, it } from "@effect/vitest"
+import { turnAccepted } from "../gen/agent__voice__session.effect.vibe"
+import {
+  buildVoiceTurnSignal, decodeEndOfTurnReply, decodeHeardReply, endOfTurnAnswer, endOfTurnText, heardBody, heardPath,
+  heardTurnFor, isFillerOnly, isNonSpeechVoiceTranscript, mayBecomeNonSpeechVoiceTranscript, scoreEndOfTurnHeuristic,
+  shouldRespondToVoiceTurn, wordsOf, type ReplyWindow,
+} from "../src/voice/heuristics.vibe"
+
+const reply = "Should I call Alex or Sam tomorrow morning?"
+const quiet: ReplyWindow = { agentSpeaking: false, startKnown: true, startedAfterReplyEndMs: 5000, replyAgeMs: 9000, echoCancelled: false }
+const accepted = (text: string, window: ReplyWindow) => turnAccepted(heardTurnFor(text, reply, window))
+
+it.effect("Send only what I meant: filler, sound annotations and echo are never a turn", () => effect {
+  const cases: Array<[string, ReplyWindow, boolean]> = [
+    ["", quiet, false],
+    ["um uh hmm", quiet, false],
+    ["*music*", quiet, false],
+    ["[Dramatic  Music] (applause)", quiet, false],
+    ["call alex or sam", { ...quiet, agentSpeaking: true }, false],
+    ["call alex or sam", { ...quiet, startedAfterReplyEndMs: 1500 }, false],
+    ["call alex or sam", { ...quiet, startedAfterReplyEndMs: 1501 }, true],
+    ["call alex or sam", { ...quiet, startedAfterReplyEndMs: 1000, echoCancelled: true }, true],
+    ["call alex or sam", { ...quiet, agentSpeaking: true, echoCancelled: true }, false],
+    ["call alex or sam", { ...quiet, startKnown: false, replyAgeMs: 3000 }, false],
+    ["call alex or sam", { ...quiet, startKnown: false, replyAgeMs: 3001 }, true],
+    ["Alex", { ...quiet, agentSpeaking: true }, true],
+    ["um", { ...quiet, agentSpeaking: true }, false],
+    ["call my sister instead", { ...quiet, agentSpeaking: true }, true],
+    ["*music* call alex or sam", { ...quiet, agentSpeaking: true }, false],
+    ["¿Llamo a Álex?", quiet, true],
+  ]
+  const got = cases.map(([text, window]) => accepted(text, window))
+  const notSpoken = ["*music*", "hello", "*Dramatic Mus", "(wait stop talking", "[laugh"].map((text) =>
+    [isNonSpeechVoiceTranscript(text), mayBecomeNonSpeechVoiceTranscript(text)])
+  const asked = [
+    shouldRespondToVoiceTurn("uh huh"), shouldRespondToVoiceTurn("hmm"), shouldRespondToVoiceTurn("yes please"),
+    shouldRespondToVoiceTurn("call alex or sam", { recentAgentReply: reply, agentSpeaking: true }),
+    shouldRespondToVoiceTurn("call alex or sam", { recentAgentReply: reply, replyAgeMs: 9000 }),
+    shouldRespondToVoiceTurn("call alex or sam", { recentAgentReply: reply, turnStartedAfterReplyEndMs: 200 }),
+  ]
+  try Effect.try(() => {
+    assert.deepStrictEqual(got, cases.map(([, , expected]) => expected))
+    assert.deepStrictEqual(wordsOf("It's twenty-three, OK?"), ["it's", "twenty-three", "ok"])
+    assert.deepStrictEqual([isFillerOnly([]), isFillerOnly(["um", "uh"]), isFillerOnly(["um", "yes"])], [false, true, false])
+    assert.deepStrictEqual(notSpoken, [[true, true], [false, false], [false, true], [false, false], [false, true]])
+    assert.deepStrictEqual(asked, [true, false, true, false, true, false])
+    assert.deepStrictEqual(heardTurnFor("call alex or sam", reply, quiet),
+      { ...quiet, words: 4, onlyFiller: false, overlapPercent: 75 })
+  })
+})
+
+it.effect("Send only what I meant: the turn signal keeps the gate and the self-voice check uses the echo window", () => effect {
+  const signals = [
+    buildVoiceTurnSignal("What time is it?"),
+    buildVoiceTurnSignal("I want to go to the"),
+    buildVoiceTurnSignal("um"),
+    buildVoiceTurnSignal("turn the lights on", { speaker: { entityId: "stranger", confidence: 0.9 } }),
+    buildVoiceTurnSignal("turn the lights on", { speaker: { entityId: "stranger", confidence: 0.9 }, wakeWordActive: true }),
+    buildVoiceTurnSignal("turn the lights on", { speaker: { entityId: "friend", confidence: 0.9 }, knownSpeakerEntityIds: ["friend"] }),
+    buildVoiceTurnSignal("turn the lights on", { selfVoiceSimilarity: 0.3, selfVoiceThreshold: 0.28, agentSpeaking: true }),
+    buildVoiceTurnSignal("turn the lights on", { selfVoiceSimilarity: 0.9, replyAgeMs: 9000 }),
+  ]
+  try Effect.try(() => assert.deepStrictEqual(signals.map((s) => [s.agentShouldSpeak, s.nextSpeaker, s.source]), [
+    [true, "agent", "client-ambient"],
+    [true, "user", "client-ambient"],
+    [false, "user", "client-ambient"],
+    [false, "user", "client-ambient+diarization"],
+    [true, "agent", "client-ambient+wakeword"],
+    [true, "agent", "client-ambient+diarization"],
+    [false, "user", "client-ambient+self-voice"],
+    [true, "agent", "client-ambient"],
+  ]))
+})
+
+it.effect("Send my words once I finish speaking: the end-of-turn heuristic scores trail-offs low", () => effect {
+  const scored = ["", "and so...", "Is it done?", "it's fine, right", "pay $", "forty five point", "at one point.",
+    "twenty one point.", "I think so.", "I want to pay the.", "I went and", "I was going to", "um", "we could", "go home",
+    "the cat sat down"].map(scoreEndOfTurnHeuristic)
+  try Effect.try(() => assert.deepStrictEqual(scored,
+    [0.5, 0.2, 0.95, 0.85, 0.2, 0.2, 0.95, 0.2, 0.95, 0.2, 0.15, 0.2, 0.2, 0.2, 0.7, 0.5]))
+})
+
+it.effect("Send my words once I finish speaking: the query scores 1 to 4,096 units and only a complete score finishes", () => effect {
+  const sizes = ["", "  ", "a".repeat(4096), `${"a".repeat(4094)}   b`, "a".repeat(4097)].map(endOfTurnText)
+  const replies: Array<[number, unknown]> = [
+    [200, { available: true, complete: true, latencyMs: 40 }],
+    [200, { available: true, complete: false }],
+    [200, { available: false, reason: "ram-pressure" }],
+    [200, { available: true }],
+    [200, "complete"],
+    [502, { error: "scorer failed" }],
+    [0, undefined],
+  ]
+  const decoded = replies.map(([status, body]) => decodeEndOfTurnReply(status, body))
+  const complete = replies[0]?.[1]
+  const incomplete = replies[1]?.[1]
+  try Effect.try(() => {
+    assert.deepStrictEqual(endOfTurnText("  hello \n\t there  "), { text: "hello there", units: 11, sendable: true })
+    assert.deepStrictEqual(sizes.map((s) => [s.units, s.sendable]), [[0, false], [0, false], [4096, true], [4096, true], [4097, false]])
+    assert.deepStrictEqual(decoded,
+      ["ScoredComplete", "ScoredIncomplete", "ScorerUnavailable", "ReplyMalformed", "ReplyMalformed", "ScoringFailed", "ScoringFailed"])
+    assert.deepStrictEqual([endOfTurnAnswer(4096, 200, complete), endOfTurnAnswer(4097, 200, complete),
+      endOfTurnAnswer(5, 200, incomplete), endOfTurnAnswer(5, 502, null), endOfTurnAnswer(0, 200, complete)],
+      ["DecisionFinished", "DecisionUnavailable", "DecisionContinue", "DecisionError", "DecisionUnavailable"])
+  })
+})
+
+it.effect("Report what of an interrupted reply I heard: the route, the body and each status keep their own outcome", () => effect {
+  const id = "4f1c2b7e-8a3d-4c61-9f0e-2d5b6a7c8e91"
+  const recorded = { ok: true, messageId: id, changed: true }
+  const statuses: Array<[number, unknown]> = [
+    [200, recorded], [200, { ...recorded, changed: false }], [200, { ...recorded, messageId: "other" }], [200, { ok: true }],
+    [409, null], [404, null], [0, undefined], [429, null], [500, null], [503, null], [400, null], [401, null],
+  ]
+  try Effect.try(() => {
+    assert.strictEqual(heardPath("room/1", id), `/api/conversations/room%2F1/messages/${id}/heard`)
+    assert.deepStrictEqual([heardBody(" The first \n sentence. "), heardBody("  ")],
+      [{ heardText: "The first sentence." }, { nothingHeard: true }])
+    assert.deepStrictEqual(statuses.map(([status, body]) => decodeHeardReply(status, id, body)), [
+      "WireRecorded", "WireUnchanged", "WireRejected", "WireRejected", "WireConflict", "WireMissing",
+      "WireTransient", "WireTransient", "WireTransient", "WireTransient", "WireRejected", "WireRejected",
+    ])
+  })
+})
