@@ -36,7 +36,7 @@ function jsonObject(text: string): ChatBody | undefined {
 }
 
 effect function released(response: HttpClientResponse.HttpClientResponse): void!! {
-  try (Stream.runHead(response.stream) catch () => undefined)
+  Stream.runHead(response.stream) catch () => undefined
 }
 
 effect function accepted(provider: LlmProvider, body: ChatBody): HttpClientResponse.HttpClientResponse!(ProviderRefused | ProviderUnreachable)!LlmContext {

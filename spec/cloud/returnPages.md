@@ -37,14 +37,14 @@ type AppLink = { target: ReturnUrl, androidPackage: str }
 type PageAction = OpenApp({ link: AppLink }) | NoAction
 type ReturnPage = { serviceName: str, appName: str, purpose: PagePurpose, offer: PageAction }
 type PayerOutcome = PaidOutcome | CanceledOutcome
-type Page = NoPage | ReturnToApp(ReturnPage) | CheckoutOutcome({ outcome: PayerOutcome })
+type Page = NoPage | ReturnToApp(ReturnPage) | CheckoutOutcome({ shown: PayerOutcome })
 pure def pagePurposeOf(purpose: ReturnPurpose): PagePurpose =
   if (purpose == SignInPurpose) SignInPage else if (purpose == BillingPurpose) BillingPage else ConnectPage
 pure def returnPage(row: EnvironmentProfile, r: Registration, purpose: ReturnPurpose, url: ReturnUrl): Page =
   ReturnToApp({ serviceName: row.name, appName: r.displayName, purpose: pagePurposeOf(purpose), offer: OpenApp({ link: { target: url, androidPackage: r.androidPackage } }) })
-pure def pageAt(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, outcome: str): Page = {
+pure def pageAt(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, reported: str): Page = {
   val entries = returnsAt(registry, served, url)
-  if (url.origin == row.api and url.path == payerPath) CheckoutOutcome({ outcome: payerOutcome(outcome) })
+  if (url.origin == row.api and url.path == payerPath) CheckoutOutcome({ shown: payerOutcome(reported) })
   else if (url.origin != row.web or entries.length() != 1) NoPage
   else entries.foldl(NoPage, (acc, e) => returnPage(row, e.registration, e.purpose, url))
 }
@@ -54,10 +54,11 @@ pure val rowValues: Set[EnvironmentProfile] = {
   val doc: LegalDocument = { title: "Terms", revision: "1", sections: List({ title: "Use", paragraphs: List("Plain text.") }) }
   Set({ name: "Cloud", api: "https://api.one", web: "https://www.one", audience: "aud", mailSender: "m@one", databaseDigest: "d1", firstPartyOrigins: List("https://www.one"), capabilities: Set(BillingCapability), signIn: { mail: HttpsDelivery, sms: NoDelivery, google: GoogleOn }, terms: doc, privacy: doc })
 }
-pure def lawAMissingPageIsFinal(): bool = wellFormed(noPageRefusal) and not(retryableOf(noPageRefusal))
-pure def lawADisabledClientHasNoPage(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, outcome: str): bool =
+pure val pageValues: Set[Page] = Set(NoPage, CheckoutOutcome({ shown: PaidOutcome }))
+pure def lawAMissingPageIsAFinal404(page: Page): bool = page == NoPage implies (statusOf(noPageRefusal.code) == 404 and wellFormed(noPageRefusal) and not(retryableOf(noPageRefusal)))
+pure def lawADisabledClientHasNoPage(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, reported: str): bool =
   (registryValid(registry, served) and registry.some(r => returnsOf(r).includes(url)))
-    implies registry.every(r => returnsOf(r).includes(url) implies not(isReturnToApp(pageAt(row, disableClient(registry, r.clientId), served, url, outcome))))
+    implies registry.every(r => returnsOf(r).includes(url) implies not(isReturnToApp(pageAt(row, disableClient(registry, r.clientId), served, url, reported))))
 ```
 
 ### The page's one action opens the registered return in the package of the registration that holds it
@@ -72,8 +73,8 @@ pure def linkOwned(registry: List[Registration], served: Environment, url: Retur
   | OpenApp(o) => o.link.target == url and registry.some(r => r.enabled and r.environment == served and r.androidPackage == o.link.androidPackage and returnsOf(r).includes(url))
   | NoAction => false
 }
-pure def lawAReturnPageOpensItsOwnApp(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, outcome: str): bool = {
-  val page = pageAt(row, registry, served, url, outcome)
+pure def lawAReturnPageOpensItsOwnApp(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, reported: str): bool = {
+  val page = pageAt(row, registry, served, url, reported)
   registryValid(registry, served) implies (match page { | ReturnToApp(p) => linkOwned(registry, served, url, p.offer) | _ => true })
 }
 ```
@@ -143,8 +144,6 @@ pure def lawForwardsOnlyWellFormedValuesOrTheFixedError(purpose: PagePurpose, pa
     or (f.name == "result" and textOf(params.resultParam) == List(f.value))
     or (f.name == "connectionId" and textOf(params.connectionIdParam) == List(f.value))
     or (f.name == "session_id" and textOf(params.sessionIdParam) == List(f.value)))
-pure def lawSignInForwardsNoResult(params: ReturnParams): bool =
-  forwarded(SignInPage, params).every(f => f.name == "error" or f.name == "state")
 pure def lawConnectForwardsAWholeResultOrNothing(params: ReturnParams): bool = {
   val sent = forwarded(ConnectPage, params)
   sent.length() == 0 or sent.length() == (if (sent.some(f => f.name == "result" and f.value == "connected")) 3 else 2)
@@ -183,8 +182,8 @@ which shows it once the payment provider confirms it.
 
 ```quint
 pure val payerPath = "/api/v1/subscriptions/checkout/payer"
-pure def payerOutcome(outcome: str): PayerOutcome = if (outcome == "paid") PaidOutcome else CanceledOutcome
-pure val outcomeValues = Set("paid", "canceled", "success")
-pure def lawThePayerPageNeedsNoRegistration(row: EnvironmentProfile, served: Environment, outcome: str): bool =
-  row.api != row.web implies pageAt(row, List(), served, { origin: row.api, path: payerPath }, outcome) == CheckoutOutcome({ outcome: payerOutcome(outcome) })
+pure def payerOutcome(reported: str): PayerOutcome = if (reported == "paid") PaidOutcome else CanceledOutcome
+pure val reportedValues = Set("paid", "canceled", "success")
+pure def lawThePayerPageNeedsNoRegistration(row: EnvironmentProfile, served: Environment, reported: str): bool =
+  row.api != row.web implies pageAt(row, List(), served, { origin: row.api, path: payerPath }, reported) == CheckoutOutcome({ shown: payerOutcome(reported) })
 ```

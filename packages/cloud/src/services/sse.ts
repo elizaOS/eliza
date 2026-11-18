@@ -92,6 +92,7 @@ export function feed(s: Segmenter, chunk: number[]): Fed {
     //@ invariant 0 <= i && i <= chunk.length
     //@ invariant fed(s, chunk.slice(0, i)).segmenter === { line: line, cr: cr, data: data, hasData: hasData, terminal: s.terminal }
     //@ invariant fed(s, chunk.slice(0, i)).events === events
+    //@ assert chunk.slice(0, i + 1).slice(0, i) === chunk.slice(0, i)
     const b = chunk[i]
     if (!s.terminal && (b === 10 || b === 13)) {
       const r = pushByte({ line: line, cr: cr, data: data, hasData: hasData, terminal: false }, b)
@@ -106,6 +107,7 @@ export function feed(s: Segmenter, chunk: number[]): Fed {
     }
     i = i + 1
   }
+  //@ assert chunk.slice(0, chunk.length) === chunk
   return { segmenter: { line: line, cr: cr, data: data, hasData: hasData, terminal: s.terminal }, events: events }
 }
 

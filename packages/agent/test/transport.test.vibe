@@ -169,7 +169,7 @@ module node {
 
   export async function feeds(bench: Bench) {
     const first = subscribe(bench.path, { streams: ["conversation"], token })
-    const second = subscribe(bench.path, { streams: ["voice-transcript"], clientId: "screen-1", token })
+    const second = subscribe(bench.path, { streams: ["conversation"], clientId: "screen-1", token })
     const subscribed = [await first.next(), await second.next()]
     const third = await sendRaw(bench.path, JSON.stringify({ id: "feed-3", method: "events_subscribe", payload: { streams: ["conversation"], headers: { authorization: `Bearer ${token}` } } }))
     const event = { stream: "conversation", runId: "run-1", seq: 1, payload: { kind: "conversation-updated" } }

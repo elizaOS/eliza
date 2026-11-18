@@ -28,7 +28,7 @@ function signInSetup(settings: EnvironmentProfile): SignInSetup {
   }
 }
 
-function rowOf(name: string, settings: EnvironmentProfile): ProfileRow {
+export function rowOf(name: string, settings: EnvironmentProfile): ProfileRow {
   const document = (doc: LegalDocument) => ({ ...doc, sections: doc.sections.map((section) => ({ ...section, paragraphs: [...section.paragraphs] })) })
   return {
     name, api: settings.api, web: settings.web, audience: settings.entitlementAudience,

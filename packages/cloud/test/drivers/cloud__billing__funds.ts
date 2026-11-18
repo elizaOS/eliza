@@ -3,16 +3,13 @@ import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/cloud__billing__funds.conformance.ts";
 import type { Event, Funds } from "../../gen/cloud__billing__funds.ts";
 import { addCredits, readFunds, stepFunds } from "../../src/billing/funds.vibe";
-import { Store } from "../../src/store/store.vibe";
-import type { Tx } from "../../src/store/connection.vibe";
-import { ledger, type Settled } from "../support/ledger.ts";
+import { ledger, within, type Settled } from "../support/ledger.ts";
 
 const cloud = ledger();
 const lastAdd = new Map<string, string>();
 let requests = 0;
 
 const organization = (key: string) => `org-${key}`;
-const within = <A, E>(body: (tx: Tx) => Effect.Effect<A, E, never>) => Effect.flatMap(Store.asEffect(), (store) => store.transaction(body));
 
 const outcome = (done: Settled<unknown>, refusals: ReadonlyArray<string>): "accepted" | "refused" => {
   if (done.kind === "done") return "accepted";

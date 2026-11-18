@@ -298,6 +298,10 @@ export interface TaskRecords {
   close(): void!!
 }
 
+export interface TaskStoreHandle extends TaskRecords {
+  custody(): TaskStore!!
+}
+
 interface Writer {
   readonly db: Database
   readonly lock: LockIdentity
@@ -561,5 +565,7 @@ export effect function createTaskStore(options: TaskStoreOptions) {
       if (held !== undefined) host(() => releaseLock(held.lock), "The task store lock could not be released") catch () => undefined
       try drop()
     },
-  } satisfies TaskRecords
+
+    custody: machine.get,
+  } satisfies TaskStoreHandle
 }

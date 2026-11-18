@@ -253,7 +253,7 @@ effect function ack(context: RouteContext) {
     const secretMatches = sameText(tokenDigest(body.secret), toText(row.secret_digest) ?? "")
     const before = decodeState(row.state) catch effect () => { throw refused("ServiceUnavailable", "NoReason", context.now + 5000) }
     if (before.phase.tag === "Active" && secretMatches) return before.keyExpiresAt
-    const stepped = try step(tx, toText(row.key) ?? "", { type: "ack", secretMatches, now: context.now }, (grant) => ({
+    const stepped = step(tx, toText(row.key) ?? "", { type: "ack", secretMatches, now: context.now }, (grant) => ({
       phase: phaseColumn(grant),
       sealed_copy: null,
       key_expires_at: grant.keyExpiresAt,

@@ -224,9 +224,9 @@ function columns(scope: Scope, kind: OperationKind, now: number, result: Provide
   })
 }
 
-effect function storedResult(stored: unknown): ProviderResult | null {
+effect function storedResult(stored: unknown) {
   if (typeof stored !== "string") return stored !== null && typeof stored === "object" ? stored as ProviderResult : null
-  return try Effect.try(() => JSON.parse(stored) as ProviderResult) catch () => null
+  return Effect.try(() => JSON.parse(stored) as ProviderResult | null) catch () => null
 }
 
 effect function readOperation(tx: Tx, scope: Scope) {
@@ -290,24 +290,24 @@ function messageResult(message: GmailMessage, readState: boolean) {
 }
 
 effect function message(grant: Grant, id: string) {
-  const found = decoded(MessageReply, try (google(grant, "GET", `/messages/${id}?format=minimal`) catch () => undefined))
+  const found = decoded(MessageReply, google(grant, "GET", `/messages/${id}?format=minimal`) catch () => undefined)
   return found?.id === id ? found : undefined
 }
 
-effect function draftRaw(grant: Grant, draftId: string): string {
-  const answer = try (google(grant, "GET", `/drafts/${draftId}?format=raw`) catch effect (failure) => { throw googleRefusal(failure) })
+effect function draftRaw(grant: Grant, draftId: string) {
+  const answer = google(grant, "GET", `/drafts/${draftId}?format=raw`) catch effect (failure) => { throw googleRefusal(failure) }
   const draft = decoded(DraftReply, answer)
   if (draft === undefined || draft.id !== draftId || draft.message?.raw === undefined) throw refused("ProviderInvalidResponse")
   return draft.message.raw
 }
 
-effect function draftAt(grant: Grant, draftId: string | undefined, expectedDigest: string | undefined): string {
+effect function draftAt(grant: Grant, draftId: string | undefined, expectedDigest: string | undefined) {
   if (draftId === undefined || expectedDigest === undefined || !providerId.test(draftId) || !digestPattern.test(expectedDigest)) throw refused("InvalidRequest")
   if (sha256Hex(try draftRaw(grant, draftId)) !== expectedDigest) throw refused("StaleRevision")
   return draftId
 }
 
-effect function labelOperation(grant: Grant, raw: unknown): Reviewed {
+effect function labelOperation(grant: Grant, raw: unknown) {
   const proposal = try strict(LabelProposal, raw)
   if (!providerId.test(proposal.messageId) || !historyId.test(proposal.expectedHistoryId)) throw refused("InvalidRequest")
   try readAtHistory(grant, proposal.messageId, proposal.expectedHistoryId)
@@ -326,10 +326,10 @@ effect function labelOperation(grant: Grant, raw: unknown): Reviewed {
     review,
     target: { kind: "message", id: proposal.messageId },
     perform: Effect.map(google(grant, "POST", `/messages/${proposal.messageId}/${change.path}`, body), judged) catch (failure) => failedReply(failure)
-  }
+  } satisfies Reviewed
 }
 
-effect function deleteDraftOperation(grant: Grant, raw: unknown): Reviewed {
+effect function deleteDraftOperation(grant: Grant, raw: unknown) {
   const proposal = try strict(DraftDeleteProposal, raw)
   const draftId = try draftAt(grant, proposal.draftId, proposal.expectedDigest)
   const review = { kind: "draft-delete", draftId, expectedDigest: proposal.expectedDigest, from: grant.email, permanent: true }
@@ -340,7 +340,7 @@ effect function deleteDraftOperation(grant: Grant, raw: unknown): Reviewed {
     review,
     target: { kind: "draft", id: draftId },
     perform: Effect.as(google(grant, "DELETE", `/drafts/${draftId}`), deleted) catch (failure) => failedReply(failure)
-  }
+  } satisfies Reviewed
 }
 
 effect function forwardedParts(grant: Grant, raw: unknown) {
@@ -359,7 +359,7 @@ export function rfc822Id(requestId: string): string {
   return `eliza-${requestId.toLowerCase()}@message.invalid`
 }
 
-effect function composeOperation(grant: Grant, kind: ComposeKind, raw: unknown, requestId: string): Reviewed {
+effect function composeOperation(grant: Grant, kind: ComposeKind, raw: unknown, requestId: string) {
   const extras = decoded(ComposeExtras, raw)
   if (kind !== "draft-replace" && (extras?.draftId !== undefined || extras?.expectedDigest !== undefined)) throw refused("InvalidRequest")
   const replacing = kind === "draft-replace" ? try draftAt(grant, extras?.draftId, extras?.expectedDigest) : undefined
@@ -374,7 +374,7 @@ effect function composeOperation(grant: Grant, kind: ComposeKind, raw: unknown, 
   const draftJudged = effect (answer: unknown) => {
     const draft = decoded(DraftReply, answer)
     if (draft === undefined || !providerId.test(draft.id) || (replacing !== undefined && draft.id !== replacing)) return unclear
-    const stored = try (draftRaw(grant, draft.id) catch () => undefined)
+    const stored = draftRaw(grant, draft.id) catch () => undefined
     if (stored === undefined || stored !== composed.raw) return unclear
     return { reply: { tag: "ShowsEffect" }, result: { draftId: draft.id, messageId: draft.message?.id ?? null, providerDigest: sha256Hex(stored) } } satisfies Outcome
   }
@@ -387,7 +387,7 @@ effect function composeOperation(grant: Grant, kind: ComposeKind, raw: unknown, 
     review: composed.review,
     target: replacing === undefined ? { kind: "rfc822", id: rfc822Id(requestId) } : { kind: "draft", id: replacing },
     perform
-  }
+  } satisfies Reviewed
 }
 
 function kindOf(raw: unknown): OperationKind | undefined {
@@ -395,7 +395,7 @@ function kindOf(raw: unknown): OperationKind | undefined {
   return typeof kind === "string" && kind in capabilityOf ? kind as OperationKind : undefined
 }
 
-effect function reviewProposal(owner: Owner, grantId: string, raw: unknown, requestId: string): Reviewed {
+effect function reviewProposal(owner: Owner, grantId: string, raw: unknown, requestId: string) {
   const kind = kindOf(raw)
   if (kind === undefined) throw refused("InvalidRequest")
   const grant: Grant = try useGrant(owner, grantId, capabilityOf[kind])
@@ -419,8 +419,8 @@ effect function reviewProposal(owner: Owner, grantId: string, raw: unknown, requ
   }
 }
 
-effect function lookupSeen(scope: Scope, kind: OperationKind, target: Target): Seen {
-  const grant: Grant | undefined = try (useGrant(scope.owner, scope.grantId, capabilityOf[kind]) catch () => undefined)
+effect function lookupSeen(scope: Scope, kind: OperationKind, target: Target) {
+  const grant: Grant | undefined = useGrant(scope.owner, scope.grantId, capabilityOf[kind]) catch () => undefined
   if (grant === undefined) return nothingSeen
   switch (target.kind) {
     case "message": {
@@ -431,13 +431,13 @@ effect function lookupSeen(scope: Scope, kind: OperationKind, target: Target): S
     }
     case "draft": {
       if (kind !== "draft-delete") return nothingSeen
-      const gone = try (Effect.as(google(grant, "GET", `/drafts/${target.id}?format=minimal`), false) catch (failure) => failure._tag === "NotFound")
+      const gone = Effect.as(google(grant, "GET", `/drafts/${target.id}?format=minimal`), false) catch (failure) => failure._tag === "NotFound"
       return gone ? { lookup: { tag: "EffectSeen" }, result: { draftId: target.id, deleted: true } } : nothingSeen
     }
     case "rfc822": {
       const label = kind === "send" ? "SENT" : "DRAFT"
       const query = new URLSearchParams({ q: `rfc822msgid:${target.id}`, includeSpamTrash: "true" })
-      const list = decoded(MessageList, try (google(grant, "GET", `/messages?${query}`) catch () => undefined))
+      const list = decoded(MessageList, google(grant, "GET", `/messages?${query}`) catch () => undefined)
       for (const { id } of list?.messages ?? []) {
         const found = try message(grant, id)
         if (found !== undefined && (found.labelIds ?? []).includes(label)) return { lookup: { tag: "EffectSeen" }, result: messageResult(found, false) }
@@ -552,7 +552,7 @@ const sweepBatch = 100
 export effect function sweepStaleOperations(): number!!Store {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  const stale = try (store.transaction((tx) => tx.query(
+  const stale = store.transaction((tx) => tx.query(
     "SELECT organization_id, user_id, grant_id, request_id FROM mail_operations WHERE phase = 'dispatched' AND dispatched_at <= $1 ORDER BY dispatched_at LIMIT $2",
     [now - staleAfter, sweepBatch]
   )) catch () => [])

@@ -1,0 +1,49 @@
+// spec/cloud/operator.md, "Credits go only to an active account"; spec/cloud/operator.md, "The operator sees a device only as its name and dates"; spec/cloud/billing/funds.md, "The operator adds credits once per request"
+import type { DeviceRow } from "../../gen/cloud__operator.effect.vibe"
+import { addCreditsIn } from "../billing/funds.vibe"
+import { toInt, toText, type Tx } from "../store/store.vibe"
+import type { AccountNamed, OperatorCommandHandler, OperatorFlags } from "./admin.vibe"
+
+const liveKeys = "FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.user_id = $1 AND g.phase = 'active' AND g.key_expires_at > $2 AND g.issued_at >= a.devices_revoked_before"
+const wholeMicros = /^\d{1,16}$/
+
+effect function organizationNamed(flags: OperatorFlags) {
+  const named: AccountNamed = { kind: "organization", organizationId: try flags.required("organization") }
+  return named
+}
+
+effect function userNamed(flags: OperatorFlags) {
+  const named: AccountNamed = { kind: "user", userId: try flags.required("user") }
+  return named
+}
+
+effect function addCreditsFromFlags(tx: Tx, flags: OperatorFlags, now: number) {
+  const amount = try flags.required("amount")
+  const added = try addCreditsIn(tx, {
+    organizationId: try flags.required("organization"),
+    amount: wholeMicros.test(amount) ? Number(amount) : Number.NaN,
+    requestKey: try flags.required("request")
+  }, now)
+  return [`organization ${added.organizationId}: ${added.replayed ? "credits already added by this request" : `${amount} µUSD added`}, balance ${added.balance} µUSD`]
+}
+
+effect function listDevices(tx: Tx, flags: OperatorFlags, now: number) {
+  const rows = try tx.query(`SELECT COALESCE(g.device_name, '') AS device_name, g.issued_at, g.key_expires_at ${liveKeys} ORDER BY g.issued_at, g.key`, [try flags.required("user"), now])
+  return rows.map((row) => JSON.stringify({ deviceName: toText(row.device_name) ?? "", createdAt: toInt(row.issued_at), expiresAt: toInt(row.key_expires_at) } satisfies DeviceRow))
+}
+
+effect function revokeDevices(tx: Tx, flags: OperatorFlags, now: number) {
+  const userId = try flags.required("user")
+  const ended = toInt((try tx.query(`SELECT count(*) AS ended ${liveKeys}`, [userId, now]))[0]?.ended)
+  try tx.query(
+    "UPDATE accounts SET devices_revoked_before = GREATEST(devices_revoked_before, $2::bigint + 1), sessions_revoked_before = sessions_revoked_before + 1, updated_at = $2 WHERE key = $1",
+    [userId, now]
+  )
+  return [`user ${userId}: ${ended} device keys ended, every session ended`]
+}
+
+export const commands: ReadonlyArray<OperatorCommandHandler> = [
+  { words: ["credits", "add"], operatorCommand: "AddCredits", valued: ["organization", "amount", "request"], repeated: [], switches: [], account: organizationNamed, run: addCreditsFromFlags },
+  { words: ["account", "devices"], operatorCommand: "ListDevices", valued: ["user"], repeated: [], switches: [], account: userNamed, run: listDevices },
+  { words: ["account", "revoke-devices"], operatorCommand: "RevokeDevices", valued: ["user"], repeated: [], switches: [], account: userNamed, run: revokeDevices }
+]

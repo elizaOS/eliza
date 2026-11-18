@@ -6,9 +6,7 @@ import type { HoldKey } from "../../gen/cloud__shared__types.ts";
 import { addCredits, readFunds, stepFunds } from "../../src/billing/funds.vibe";
 import { holdRows, markDispatched, periodRows, renderHoldKey, reserve, settle, sweepHolds, type Settlement } from "../../src/shared/metering.vibe";
 import { loadRow, stepRow } from "../../src/store/rows.vibe";
-import { Store } from "../../src/store/store.vibe";
-import type { Tx } from "../../src/store/connection.vibe";
-import { ledger, type Settled } from "../support/ledger.ts";
+import { ledger, within, type Settled } from "../support/ledger.ts";
 
 const cloud = ledger();
 const periodEnd = 10 ** 13;
@@ -17,7 +15,6 @@ let requests = 0;
 
 const owner = (key: string) => ({ organizationId: `org-${key}`, userId: `user-${key}` });
 const rendered = (key: string) => holds.get(key)?.rendered ?? `org-${key}/no-hold`;
-const within = <A, E>(body: (tx: Tx) => Effect.Effect<A, E, never>) => Effect.flatMap(Store.asEffect(), (store) => store.transaction(body));
 
 const must = <A>(what: string, done: Settled<A>): A => {
   if (done.kind === "failed") throw new Error(`${what} failed with ${done.tag}`, { cause: done.error });

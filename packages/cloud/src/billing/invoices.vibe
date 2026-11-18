@@ -1,7 +1,7 @@
 // spec/cloud/billing/subscriptions.md, "Story: Read my invoices and open the billing portal"
 import { decodeState, initial, invoiceVisible, portalAllowed, customerIdOf, NotAState, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import { json, owner, type Route } from "../http/routes.vibe"
-import { refused } from "../http/refusal.vibe"
+import { refused, Refused } from "../http/refusal.vibe"
 import { Deployment } from "../profile/profile.vibe"
 import { Store, StoreFailure, type Tx } from "../store/connection.vibe"
 
@@ -205,7 +205,7 @@ effect function remainingLines(invoiceId: string, after: string): ReadonlyArray<
   let cursor = after
   let more = true
   while (more) {
-    const page = try provider({ method: "GET", path: `/v1/invoices/${invoiceId}/lines`, params: [["limit", "100"], ["starting_after", cursor]] }, ProviderLines)
+    const page: typeof ProviderLines.Type = try provider({ method: "GET", path: `/v1/invoices/${invoiceId}/lines`, params: [["limit", "100"], ["starting_after", cursor]] }, ProviderLines)
     lines.push(...page.data)
     const last = page.data.at(-1)
     more = page.has_more && last !== undefined
@@ -218,9 +218,8 @@ export effect function readInvoice(organizationId: string, invoiceId: string): I
   if (!invoiceIdPattern.test(invoiceId)) throw refused("NotFound")
   const subscription = try pinned(organizationId)
   if (!invoiceVisible(subscription, customerIdOf(subscription))) throw refused("NotFound")
-  const missing = effect () => { throw refused("NotFound") }
   const invoice = provider({ method: "GET", path: `/v1/invoices/${invoiceId}` }, ProviderInvoice) catch effect (failure) => match (failure) {
-    when ProviderMissing: try missing();
+    when ProviderMissing: throw refused("NotFound");
     default: throw failure;
   }
   const status = issued(invoice)
@@ -229,7 +228,7 @@ export effect function readInvoice(organizationId: string, invoiceId: string): I
   const last = embedded.at(-1)
   const rest = invoice.lines.has_more && last !== undefined
     ? remainingLines(invoice.id, last.id) catch effect (failure) => match (failure) {
-        when ProviderMissing: try missing();
+        when ProviderMissing: throw refused("NotFound");
         default: throw failure;
       }
     : []
@@ -259,16 +258,16 @@ export function portalLocked(configuration: PortalConfigurationRead, livemode: b
     !features.subscription_update.enabled && features.subscription_pause?.enabled !== true
 }
 
-effect function ownedConfiguration(): PortalConfigurationRead | undefined!(ProviderMissing | ProviderFailed)!(Deployment | HttpClient.HttpClient) {
+effect function ownedConfiguration(): (PortalConfigurationRead | undefined)!(ProviderMissing | ProviderFailed)!(Deployment | HttpClient.HttpClient) {
   let cursor: string | undefined = undefined
   let more = true
   while (more) {
-    const page = try provider({
+    const page: typeof PortalConfigurations.Type = try provider({
       method: "GET",
       path: "/v1/billing_portal/configurations",
       params: [["active", "true"], ["limit", "100"], ...(cursor === undefined ? [] : [["starting_after", cursor] as const])]
     }, PortalConfigurations)
-    const owned = page.data.find((configuration) => configuration.metadata?.[portalConfigurationKey] === portalConfigurationVersion)
+    const owned = page.data.find((configuration: PortalConfigurationRead) => configuration.metadata?.[portalConfigurationKey] === portalConfigurationVersion)
     if (owned !== undefined) return owned
     const last = page.data.at(-1)
     more = page.has_more && last !== undefined

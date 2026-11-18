@@ -16,7 +16,7 @@ const time = manualClock();
 async function store() {
   if (runtime === undefined) {
     runtime = ManagedRuntime.make(storeLayer({ kind: "pglite", file: undefined }));
-    await runtime.runPromise(migrate({ digest: "conformance", environment: "staging", now: 0 }));
+    await runtime.runPromise(migrate({ digest: "0".repeat(64), environment: "staging", now: 0 }));
   }
   return runtime;
 }

@@ -14,6 +14,7 @@ import { admitAll } from "../shared/rate-limit.vibe"
 import { keyedDigest, newId, sameText, seal, unseal } from "../shared/sealing.vibe"
 import { loadRow, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
 import { Store, toInt, toText, type Tx } from "../store/store.vibe"
+import type { Landed } from "./accounts.vibe"
 import { clientAddress } from "./code-challenges.vibe"
 import { issueSession, recordStepUp } from "./sessions.vibe"
 
@@ -64,13 +65,6 @@ module node {
   }
 }
 import { newTotpSeed, smsCode, totpCode } from node
-
-export interface Landed {
-  readonly userId: string
-  readonly organizationId: string
-  readonly email: string | null
-  readonly created: boolean
-}
 
 export type WireMethod = "totp" | "sms"
 

@@ -306,13 +306,14 @@ public final class AutofillReplay {
         Target target = evaluate(evidence, form, true);
         if (target == null) return;
         String signer = (Boolean) evidence.get("appSignerKnown") ? certificate(form.expected()) : null;
-        String proved;
+        String proved, expected;
         try {
             proved = target.web() ? target.webOrigin : PasswordFacets.android(target.appPackage, signer);
+            expected = target.web() ? form.expected() : PasswordFacets.android(form.expected(), certificate(form.expected()));
         } catch (IOException unknownSigner) {
             return;
         }
-        specFacets.put(target.web() ? form.expected() : PasswordFacets.android(form.expected(), certificate(form.expected())), facet);
+        specFacets.put(expected, facet);
         issue(requests.offerSave(target, proved), false);
     }
 

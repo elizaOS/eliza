@@ -62,9 +62,8 @@ pure def sometimesListening(s: ListenerService): bool = decide(s) == Listening a
 
 ### The microphone is held only while listening, and the service runs only while listening or paused
 
-The first condition that fails names the state. A silenced recording keeps
-the microphone open only so Android reports its release; its frames are
-never read. Device observations reach the listener as `observeDevice`.
+The first condition that fails names the state. A silenced recording stays
+open only so Android reports its release; its frames are never read.
 
 ```quint
 type ListenerState = Off | PermissionRequired | NotificationsRequired | StoppedAfterErrors | StoppedIndicatorLost
@@ -100,7 +99,6 @@ pure def observeDevice(s: ListenerService, d: Device): ListenerService = {
 pure val readyDevice: Device = { ...unknownDevice, recordAudio: true, notificationsVisible: true, userForeground: true, unlocked: true, keyguardLocked: false }
 pure val dValues = Set(readyDevice, { ...readyDevice, inCall: true }, { ...readyDevice, keyguardLocked: true },
   { ...readyDevice, micSilenced: true }, { ...readyDevice, speechPlaying: true }, unknownDevice)
-pure def sometimesPausedForCallWithServiceRunning(s: ListenerService): bool = decide(s) == PausedCall and s.foreground and not(s.capturing)
 ```
 
 ### The status chip and the host can pause or turn off listening but never start it
@@ -124,11 +122,9 @@ pure def sometimesPausedWithServiceRunning(s: ListenerService): bool = decide(s)
 
 ### Capture needs the foreground service, and a refused promotion is diagnosed and holds nothing
 
-Each start Android delivers is owed one promotion attempt, even when
-listening was turned off meanwhile; a convergence of the running service is
-not. Capture opens only when the promotion succeeded and the state holds the
-microphone. A refusal stops the service, ends any capture and emits a
-diagnostic.
+Each delivered start is owed one promotion attempt, even if listening was
+turned off meanwhile; a convergence of the running service is not. A refusal
+stops the service, ends any capture and emits a diagnostic.
 
 ```quint
 type ListenerEffect = OpenAssistant | ForegroundRefused
@@ -172,10 +168,9 @@ pure def leadsToEveryStartApplied(s: ListenerService, later: ListenerService): b
 
 ### A stop is confirmed only by a timely OFF reply with the microphone closed
 
-At startup the host asks the installed listener to turn off and reads its
-reply. A timed-out or failed call never confirms, whatever arrives later,
-and neither does a reply that is not `Off` or still reports the microphone
-open. The host bridge treats a listener that is not installed as stopped.
+At startup the host turns the installed listener off and reads its reply. A
+timed-out or failed call never confirms, whatever arrives later; the host
+bridge treats a listener that is not installed as stopped.
 
 ```quint
 type StopSettlement = ReplyInTime | TimedOut | BridgeFailed
