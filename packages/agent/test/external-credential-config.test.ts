@@ -124,8 +124,13 @@ it.each([
       "OPENAI_BASE_URL",
     ]))
       vi.stubEnv(key, "");
-    const { applyAccountPoolApiCredentials, selectionForProvider } =
-      await import("@elizaos/auth/accounts");
+    const {
+      applyAccountPoolApiCredentials,
+      resetDefaultAccountPoolAfterCredentialReset,
+      selectionForProvider,
+    } = await import("@elizaos/auth/accounts");
+    // The default pool caches its storage root; each case has its own state dir.
+    resetDefaultAccountPoolAfterCredentialReset();
     const { AgentRuntime } = await import("@elizaos/core");
     const { SQLiteDatabaseAdapter } = await import("@elizaos/testing/runtime");
     const { getAgentHostBridge, setAgentHostBridge } = await import(

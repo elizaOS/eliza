@@ -34,7 +34,7 @@ const predicates = sourceBetween(
 );
 const publication = sourceBetween(
   " protected final void publishPreparedAudio(",
-  " @PluginMethod public void play(",
+  " @PluginMethod public void setSpeechOutputMuted(",
 );
 const fixture = readFileSync(
   relative("./PreparedSpeechPublicationProbe.java.in"),

@@ -653,7 +653,12 @@ export interface ViewDeclaration {
 		params?: Record<string, unknown>,
 		context?: { runtime?: IAgentRuntime },
 	) => Promise<unknown>;
-	/** Allow this view to be pinned as a desktop tab. Default true. */
+	/**
+	 * @deprecated No longer read. It controlled native desktop tabs in the
+	 * removed Electrobun desktop shell; no supported host changes behavior when
+	 * it is set. Deprecated in v2.0.6 and removed in v2.0.7: delete the property
+	 * from your view declarations.
+	 */
 	desktopTabEnabled?: boolean;
 	/** Show this view in the view manager grid. Default true. */
 	visibleInManager?: boolean;

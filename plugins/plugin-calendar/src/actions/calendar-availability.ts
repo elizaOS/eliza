@@ -6,6 +6,7 @@ import {
 import {
   type Action,
   type ActionResult,
+  extractUserText,
   getStreamingContext,
   hasRoleAccess,
   type IAgentRuntime,
@@ -13,8 +14,14 @@ import {
   type Memory,
   normalizeEffectReceipt,
   stringToUuid,
+  unwrapUserMessageText,
 } from "@elizaos/core";
-import { calendarRangeFitsLocalDays } from "../internal/time.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  calendarRangeFitsLocalDays,
+  getZonedDateParts,
+} from "../internal/time.js";
 import { evaluateCalendarAvailability } from "../service/availability.js";
 import {
   feedSourcesForAvailability,
@@ -34,6 +41,22 @@ function unavailable(code: string, text: string): ActionResult {
 }
 
 /** Compute availability from the standalone Calendar's exact owner-bound feed. */
+/**
+ * True when the owner's request names tomorrow morning and no other period
+ * or afternoon/evening clock time, whatever the phrasing ("Am I free tomorrow
+ * morning?", "Do I have 20 minutes tomorrow morning?"). A request that also
+ * names another period ("tomorrow morning or afternoon") is not clamped.
+ */
+export function asksOnlyAboutTomorrowMorning(request: string): boolean {
+  return (
+    /\btomorrow\s+morning\b/i.test(request) &&
+    !/\b(?:afternoon|evening|tonight|night|noon|midday|lunch(?:time)?|all\s+day|whole\s+day|full\s+day|rest\s+of\s+the\s+day|week)\b/i.test(
+      request,
+    ) &&
+    !/\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*p\.?\s*m\b/i.test(request)
+  );
+}
+
 export function calendarAvailabilityActions(
   calendar: Action,
   resolveSource: (
@@ -50,8 +73,8 @@ export function calendarAvailabilityActions(
       name: CALENDAR_READ_ACTIONS[operation],
       similes: [],
       description: propose
-        ? "Find concrete slots of the requested duration in the exact Calendar window. Use for a request for free time or suggested times. Does not book or edit anything."
-        : "Check whether the entire specified Calendar interval is free. Does not book or edit anything.",
+        ? "Find concrete slots of the requested duration in the exact Calendar window. Use when the owner asks if there is time for a duration within a longer period, such as 20 minutes tomorrow morning. Keep the search within the requested period and give an actual returned slot. Does not book or edit anything."
+        : "Check whether the entire specified Calendar interval is free. Use CALENDAR_PROPOSE_TIMES when the owner asks for a shorter slot within that interval. Does not book or edit anything.",
       contexts: ["calendar", "scheduling"],
       tags: ["domain:calendar", "capability:read", "effect:receipt-required"],
       roleGate: { minRole: "OWNER" },
@@ -65,7 +88,8 @@ export function calendarAvailabilityActions(
         },
         {
           name: "windowEnd",
-          description: "Requested end, RFC 3339 with explicit offset.",
+          description:
+            "Requested end, RFC 3339 with explicit offset. A morning-only request ends no later than noon in the requested timezone.",
           required: true,
           schema: { type: "string" },
         },
@@ -161,6 +185,7 @@ export function calendarAvailabilityActions(
           );
         if (
           !message.id ||
+          typeof message.createdAt !== "number" ||
           !Number.isFinite(message.createdAt) ||
           !calendar.handler
         )
@@ -173,6 +198,36 @@ export function calendarAvailabilityActions(
           start: new Date(windowStart).toISOString(),
           end: new Date(windowEnd).toISOString(),
         };
+        if (
+          asksOnlyAboutTomorrowMorning(
+            extractUserText(unwrapUserMessageText(message)),
+          )
+        ) {
+          const tomorrow = addDaysToLocalDate(
+            getZonedDateParts(new Date(message.createdAt), timeZone),
+            1,
+          );
+          const midnight = buildUtcDateFromLocalParts(timeZone, {
+            ...tomorrow,
+            hour: 0,
+            minute: 0,
+            second: 0,
+          });
+          const noon = buildUtcDateFromLocalParts(timeZone, {
+            ...tomorrow,
+            hour: 12,
+            minute: 0,
+            second: 0,
+          });
+          if (
+            Date.parse(range.start) < midnight.getTime() ||
+            Date.parse(range.end) > noon.getTime()
+          )
+            return unavailable(
+              "CALENDAR_AVAILABILITY_OUTSIDE_REQUESTED_PERIOD",
+              "The owner asked about tomorrow morning. Keep the search on tomorrow's date and end it by noon in the requested timezone. For a shorter slot within the morning, use CALENDAR_PROPOSE_TIMES.",
+            );
+        }
         signal?.throwIfAborted();
         const read = await calendar.handler(runtime, message, state, {
           ...options,
