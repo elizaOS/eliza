@@ -992,3 +992,148 @@ it("records a renderer-reported manual switch as the user's after settlement", a
   ).toContain("(you navigated here)");
   expect(await settle("notes", "someone-else")).toBe(409);
 });
+
+describe("foreground page history and Maps place requests", () => {
+  const scopeFor = (f: Awaited<ReturnType<typeof fixture>>) => ({
+    hostKey: f.hostKey,
+    clientId: "page-client",
+    request: {
+      runtime: f.runtime,
+      authorization: {
+        ok: true,
+        role: "OWNER" as const,
+        identityId: principal,
+      },
+      signal: new AbortController().signal,
+    },
+  });
+  const message = (text: string, uiView: string): Memory => ({
+    ...clientMessage(),
+    content: {
+      source: "client_chat",
+      channelType: "DM",
+      text,
+      metadata: {
+        viewClientId: "page-client",
+        viewDelivery: "completed-action",
+        uiView,
+      },
+    },
+  });
+  async function judge(
+    f: Awaited<ReturnType<typeof fixture>>,
+    text: string,
+    uiView: string,
+    value: { disposition: string; viewId: string; reason: string },
+  ) {
+    const current = message(text, uiView);
+    const plan = {
+      contexts: ["general"],
+      intents: [text],
+      candidateActions: ["VIEWS_SHOW"],
+      parentActionHints: [],
+      requiresTool: true,
+      reply: "Opening it.",
+      replyEffectStatus: "pending",
+    };
+    return runWithViewClient(scopeFor(f), () =>
+      runWithStreamingContext(
+        {
+          messageId: current.id,
+          onStreamChunk: async () => undefined,
+        } as never,
+        async () => {
+          viewNavigationField.handle!({
+            runtime: f.runtime,
+            message: current,
+            senderRole: "OWNER",
+            value,
+            turnSignal: new AbortController().signal,
+          } as never);
+          return viewNavigationEvaluator.evaluate({
+            runtime: f.runtime,
+            message: current,
+            state: { data: { providers: {} } },
+            userRoles: ["OWNER"],
+            messageHandler: { processMessage: "RESPOND", plan },
+          } as never);
+        },
+      ),
+    );
+  }
+
+  it.each([
+    "go forward",
+    "Forward",
+    "reload the page",
+    "refresh",
+    "Please reload.",
+  ])("hands %s with Browser in front to the Browser context", async (text) => {
+    const f = await fixture();
+    const result = await judge(f, text, "browser", {
+      disposition: "direct",
+      viewId: "notes",
+      reason: "page",
+    });
+    expect(result?.deterministicToolCall).toBeUndefined();
+    expect(result).toMatchObject({
+      requiresTool: true,
+      addContexts: ["browser"],
+    });
+  });
+
+  it("still offers Browser's context when Stage 1 judged no navigation", async () => {
+    const f = await fixture();
+    const result = await judge(f, "go back", "browser", {
+      disposition: "none",
+      viewId: "",
+      reason: "not navigation",
+    });
+    expect(result).toMatchObject({ addContexts: ["browser"] });
+    expect(result?.requiresTool).toBeUndefined();
+  });
+
+  it("declines the Maps view shortcut for a place or route request", async () => {
+    const f = await fixture();
+    const maps = await registerPluginViews(
+      f.runtime,
+      {
+        name: "test-maps-view",
+        description: "Fixture Maps view",
+        views: [
+          { id: "maps", label: "Maps", path: "/maps", bundleUrl: "/maps.js" },
+        ],
+      },
+      { pluginDir: process.cwd(), indexEmbeddings: false },
+    );
+    cleanup.push(async () => unregisterPluginViews(f.runtime, maps));
+    for (const text of [
+      "take me to Coit Tower",
+      "navigate to the Ferry Building",
+      "how do I get to Coit Tower?",
+      "find the nearest pharmacy",
+    ]) {
+      const result = await judge(f, text, "chat", {
+        disposition: "direct",
+        viewId: "maps",
+        reason: "maps",
+      });
+      expect(result?.deterministicToolCall, text).toBeUndefined();
+      expect(result, text).toMatchObject({ requiresTool: true });
+      expect(JSON.stringify(result?.addContextSlices), text).toContain(
+        "MAPS_ROUTE",
+      );
+    }
+    for (const text of ["open maps", "go to maps", "show me the maps"]) {
+      const result = await judge(f, text, "chat", {
+        disposition: "direct",
+        viewId: "maps",
+        reason: "maps",
+      });
+      expect(result?.deterministicToolCall, text).toEqual({
+        name: "VIEWS",
+        params: { action: "show", view: "maps" },
+      });
+    }
+  });
+});

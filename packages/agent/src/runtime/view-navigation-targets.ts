@@ -125,3 +125,14 @@ export function resolveExplicitRegisteredViewRequest<
 export function isExplicitBackViewRequest(text: string): boolean {
   return /^(?:please\s+)?(?:go\s+)?back$/iu.test(explicitCommandText(text));
 }
+
+/**
+ * A complete request for the foreground page's own history or load state:
+ * Back, Forward, reload or stop. Where the foreground view keeps page history
+ * (Browser), these act on its tab, never on app view navigation.
+ */
+export function isForegroundPageHistoryRequest(text: string): boolean {
+  return /^(?:please\s+)?(?:(?:go\s+)?(?:back|forward)|(?:reload|refresh)(?:\s+(?:the|this)\s+page)?|stop\s+loading(?:\s+(?:the|this)\s+page)?)$/iu.test(
+    explicitCommandText(text),
+  );
+}

@@ -22,6 +22,7 @@ import { getCurrentViewState } from "../api/views-routes.ts";
 import { getViewClientScope } from "./view-client-context.ts";
 import {
   isExplicitBackViewRequest,
+  isForegroundPageHistoryRequest,
   resolveExplicitRegisteredViewRequest,
   resolveViewNavigationTargets,
   viewEnabledByProfile,
@@ -38,6 +39,20 @@ function foregroundPageHistoryView(
   const metadata = message?.content.metadata;
   const currentView = isObjectRecord(metadata) ? metadata.uiView : undefined;
   return views.find((entry) => entry.id === currentView && entry.pageHistory);
+}
+
+/** Travel or place wording beyond naming Maps itself ("go to maps" stays a view switch). */
+const MAPS_PLACE_WORDING =
+  /\b(?:to|from|near|nearest|closest|nearby|around|directions?|route)\b/iu;
+function isMapsPlaceRequest(
+  viewId: string,
+  text: string,
+  views: ReturnType<typeof listViews>,
+): boolean {
+  if (viewId !== "maps") return false;
+  if (resolveExplicitRegisteredViewRequest(views, text)) return false;
+  const stripped = text.replace(/\bto\s+(?:the\s+|my\s+)?maps?\b/giu, "");
+  return MAPS_PLACE_WORDING.test(stripped);
 }
 
 /** Read only acknowledged history from this active transport owner and renderer. */
@@ -353,11 +368,11 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
       },
     };
     const value = staged.value;
-    // A bare Back while a view with its own page history is showing (Browser)
-    // asks for that tab's previous page, never the previous app view, whatever
+    // A bare Back, Forward or reload while a view with its own page history is
+    // showing (Browser) acts on that tab's page, never the app view, whatever
     // the model judged: hold view navigation and hand the turn to that view's
     // own context.
-    const pageHistory = isExplicitBackViewRequest(staged.text)
+    const pageHistory = isForegroundPageHistoryRequest(staged.text)
       ? foregroundPageHistoryView(
           message,
           views.filter((view) =>
@@ -373,19 +388,26 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
         action: "VIEWS",
         operations: ["show"],
         disposition: "deny",
-        reason: `Back while ${pageHistory.label} is showing acts on its page history`,
+        reason: `Page history while ${pageHistory.label} is showing acts on its tab`,
       });
-      if (value.disposition === "forbidden" || value.disposition === "none")
-        return;
+      if (value.disposition === "forbidden") return;
+      const pageContext =
+        pageHistory.responseContext?.primaryContext ?? "general";
+      const pageSlice = `This request (${JSON.stringify(staged.text.trim())}) is Back, Forward or reload while ${pageHistory.label} is showing: it acts on the page in the tab that is showing there (for Back, the previous page in the tab), not on the app view. Use the ${pageHistory.label} page history operation; do not change the app view. No navigation has executed.`;
+      // Stage 1 judged no view navigation: still make the page's own
+      // operations available rather than leaving the turn to a bare reply.
+      if (value.disposition === "none")
+        return {
+          addContexts: [pageContext],
+          addContextSlices: [pageSlice],
+        };
       return {
         requiresTool: true,
         clearReply: true,
-        addContexts: [pageHistory.responseContext?.primaryContext ?? "general"],
+        addContexts: [pageContext],
         clearCandidateActions: true,
         clearParentActionHints: true,
-        addContextSlices: [
-          `This request is Back while ${pageHistory.label} is showing: it asks for the previous page in the tab that is showing there, not the previous app view. Use the ${pageHistory.label} page history operation; do not change the app view. No navigation has executed.`,
-        ],
+        addContextSlices: [pageSlice],
       };
     }
     if (value.disposition === "forbidden" || value.disposition === "none") {
@@ -466,11 +488,17 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
         ],
       };
     }
+    // "take me to Coit Tower", "nearest pharmacy": Stage 1 may judge a place or
+    // route request direct navigation to Maps, which opens Maps with no route.
+    const mapsPlace =
+      matches.length === 1 &&
+      isMapsPlaceRequest(matches[0].view.id, staged.text, availableViews);
     const direct =
       value.disposition === "direct" &&
       // An explicit resource address cannot be fulfilled by view selection.
       // This only declines the shortcut; the normal planner retains authority.
       !containsResourceAddress(staged.text) &&
+      !mapsPlace &&
       matches.length === 1 &&
       plan.replyEffectStatus === "pending" &&
       plan.intents?.length === 1 &&
@@ -492,10 +520,18 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
       return {
         requiresTool: true,
         clearReply: true,
-        addContexts: ["general"],
+        addContexts:
+          mapsPlace && runtime.contexts?.get("maps")
+            ? ["general", "maps"]
+            : ["general"],
         addCandidateActions: [showCandidate ?? "VIEWS"],
         addContextSlices: [
           `Current-request navigation judgment: ${JSON.stringify(value)}. No navigation has executed.`,
+          ...(mapsPlace
+            ? [
+                "This request names a place, a destination or a nearby search. Opening the Maps view alone shows no place or route: find the place or plan the route with the Maps operations (MAPS_PLACE, MAPS_ROUTE, MAPS_NAVIGATION_START).",
+              ]
+            : []),
           "Preserve every requested read/write and navigation intent. Use VIEWS action=show for an exact registered destination; use action=list for unknown targets. A domain read/write receipt does not satisfy navigation, and navigation does not satisfy domain work. VIEWS only selects an app view; loading a requested URL requires the authorized Browser operation and cannot be reported complete from a view-selection receipt. Preserve ordering, conditions and restrictions: evaluate prerequisite reads before conditional navigation; do not navigate when the condition is false. Do not report the complete request finished while required navigation remains undelivered or unexplained.",
         ],
       };
