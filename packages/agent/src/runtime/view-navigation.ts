@@ -46,6 +46,8 @@ function foregroundPageHistoryView(
 /** Travel or place wording beyond naming Maps itself ("go to maps" stays a view switch). */
 const MAPS_PLACE_WORDING =
   /\b(?:to|from|near|nearest|closest|nearby|around|directions?|route)\b/iu;
+/** "I want to open Maps", "I'd like to see the map": a "to" before a verb names no destination. */
+const INFINITIVE_TO = /\b(?:want|like|love|need|have|try)\s+to\b/giu;
 function isMapsPlaceRequest(
   viewId: string,
   text: string,
@@ -53,7 +55,9 @@ function isMapsPlaceRequest(
 ): boolean {
   if (viewId !== "maps") return false;
   if (resolveExplicitRegisteredViewRequest(views, text)) return false;
-  const stripped = text.replace(/\bto\s+(?:the\s+|my\s+)?maps?\b/giu, "");
+  const stripped = text
+    .replace(/\bto\s+(?:the\s+|my\s+)?maps?\b/giu, "")
+    .replace(INFINITIVE_TO, "");
   return MAPS_PLACE_WORDING.test(stripped);
 }
 
