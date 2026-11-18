@@ -2,7 +2,7 @@
 
 `messaging/task-events.ts` owns a reusable read-only polling reader. It never dispatches or replays task actions. Events enter this model after the schema decoder, a lexical boundary, has checked field names, opaque reference grammar and canonical HTTPS origins; event kind, status and operation relationships, history merging, cursors and reader state are modeled here.
 
-The immutable polling interval defaults to 2,000 ms. The constructor, a shell boundary, accepts only a safe integer from 1 through 2,147,483,647 inclusive and rejects any other interval before a reader exists, so the model below starts from a constructed reader.
+The immutable polling interval is checked when the reader is constructed (see the polling interval rule below), so the model below starts from a constructed reader.
 
 ## Story: Observe complete task history without stale page replacement
 
@@ -39,6 +39,18 @@ pure def acceptsPage(task: str, previous: TaskPage, incoming: TaskPage): bool = 
   incoming.task == task and incoming.events.length() <= 128 and incoming.cursor >= -1 and incoming.cursor <= Num::maxSafeInteger and safeCounter(incoming.revision) and safeCounter(incoming.epoch) and incoming.revision >= previous.revision and incoming.epoch >= previous.epoch and merged.valid and incoming.cursor == cursor and cursor <= incoming.revision and (if (incoming.hasMore) cursor > previous.cursor else cursor == incoming.revision)
 }
 pure def combinePage(task: str, previous: TaskPage, incoming: TaskPage): TaskPage = { ...incoming, events: mergedEvents(task, previous.events, incoming.events).events }
+```
+
+### Only an integer from 1 through 2,147,483,647 ms is a valid polling interval, and the 2,000 ms default is one
+
+The interval defaults to 2,000 ms, which is valid. Only an integer from 1 through 2,147,483,647 inclusive is a valid interval; zero, a negative value and a value above the timer limit are not. The constructor, a shell boundary, rejects any interval that validPollingInterval refuses, or that is not a safe integer, before a reader exists.
+
+```quint
+pure val defaultPollingInterval: int = 2000
+pure val maxPollingInterval: int = 2147483647
+pure def validPollingInterval(value: int): bool = value >= 1 and value <= maxPollingInterval
+pure def lawInvalidPollingIntervalRejected(value: int): bool = ((value < 1 or value > maxPollingInterval) implies not(validPollingInterval(value))) and validPollingInterval(defaultPollingInterval)
+pure val valueValues = Set(-1, 0, 1, 2000, 2147483647, 2147483648)
 ```
 
 ### A generation owns its pending read and every publish boundary rechecks it
