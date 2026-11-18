@@ -11,7 +11,6 @@ import {
   contactWriteReceiptOutcome,
   contactWriteResultText,
   directSmsRequest,
-  isPreviousSmsSenderDraft,
   isTelephonyAction,
   MESSAGES_READ_CAPABILITY,
   MESSAGES_READ_MAX,
@@ -20,6 +19,7 @@ import {
   phoneCallReceiptOutcome,
   phoneCallResultText,
   phoneKeypadResultText,
+  requestedSmsDraftRecipient,
   SMS_COMPOSE_CAPABILITY,
   SMS_COMPOSE_TARGET_CAPABILITY,
   SMS_LATEST_SENDER_CAPABILITY,
@@ -846,11 +846,11 @@ test("address lookup and a reply draft use the complete negotiated address", () 
   assert.ok(!directSmsRequest({ type: "sms_latest_sender" }, request));
   const followUp =
     "Draft a quick text asking them to bring the tripod tomorrow. Show me the draft here.";
-  assert.ok(isPreviousSmsSenderDraft(followUp));
+  assert.equal(requestedSmsDraftRecipient(followUp)?.kind, "previous-sender");
   assert.ok(
-    !isPreviousSmsSenderDraft(
+    requestedSmsDraftRecipient(
       "Draft a text to Ada asking them to bring the tripod.",
-    ),
+    )?.kind === "contact",
   );
   assert.ok(
     directSmsRequest(
@@ -860,6 +860,39 @@ test("address lookup and a reply draft use the complete negotiated address", () 
   );
   assert.ok(!directSmsRequest({ type: "sms_compose" }, followUp));
   assert.ok(!directSmsRequest({ type: "sms_send" }, followUp));
+  const typedRequest =
+    "Draft a text to +1 (415) 555-0124 saying call +14155550199.";
+  const typed = {
+    type: "sms_compose",
+    draft: true,
+    target: { kind: "number", number: "+14155550124" },
+  };
+  assert.ok(directSmsRequest(typed, typedRequest));
+  assert.ok(
+    !directSmsRequest(
+      { ...typed, target: { kind: "number", number: "+14155550199" } },
+      typedRequest,
+    ),
+  );
+  assert.ok(
+    !directSmsRequest(
+      typed,
+      "Draft a text to Ada asking them to call +14155550124.",
+    ),
+  );
+  for (const request of [
+    "Draft a text to them; actually send it to Ada instead.",
+    "Draft a text to +14155550124 or +14155550199 asking about the tripod.",
+  ]) {
+    assert.equal(requestedSmsDraftRecipient(request)?.kind, "ambiguous");
+    assert.ok(!directSmsRequest(bound, request));
+  }
+  for (const request of [
+    "Look up the sender of my newest incoming SMS, last four digits only.",
+    "Who texted me last? Don't show the full number.",
+  ]) {
+    assert.ok(!directSmsRequest(operation, request));
+  }
 });
 test("each operation type has one capability and one validator", () => {
   assert.deepEqual(

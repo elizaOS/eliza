@@ -222,13 +222,13 @@ import {
   CONTACT_SHOW_CAPABILITY,
   CONTACT_UPDATE_VALUES_CAPABILITY,
   CONTACT_WRITE_CAPABILITY,
-  isPreviousSmsSenderDraft,
   isSmsCompose,
   isSmsReply,
   isTelephonyAction,
   MESSAGES_READ_CAPABILITY,
   PHONE_CALL_CAPABILITY,
   PHONE_KEYPAD_CAPABILITY,
+  requestedSmsDraftRecipient,
   SMS_COMPOSE_CAPABILITY,
   SMS_COMPOSE_TARGET_CAPABILITY,
   SMS_LATEST_SENDER_CAPABILITY,
@@ -242,6 +242,7 @@ import {
   VOICEMAIL_DELETE_CAPABILITY,
   VOICEMAIL_READ_CAPABILITY,
   validateTelephonyActionResult,
+  wantsSmsSenderAddress,
 } from "./telephony-actions-contract.ts";
 import { requireTurnObservation, turnObservation } from "./turn-observation.ts";
 import {
@@ -2333,14 +2334,13 @@ export class DeviceActionService {
         !isObjectRecord(result) ||
         result.kind !== "sms-latest-sender" ||
         result.status !== "found" ||
-        typeof result.address !== "string"
+        typeof result.address !== "string" ||
+        typeof result.threadId !== "string"
       )
         throw unavailable();
       return {
         number: result.address,
-        ...(typeof result.threadId === "string"
-          ? { threadId: result.threadId }
-          : {}),
+        threadId: result.threadId,
       };
     });
   }
@@ -2389,11 +2389,6 @@ export class DeviceActionService {
       throw new DeviceActionError(
         "Reply threads are resolved from the original sender lookup.",
       );
-    if (
-      validated.type === "sms_latest_sender" &&
-      c.capabilities?.includes(SMS_SENDER_ADDRESS_CAPABILITY)
-    )
-      validated = { type: "sms_latest_sender", includeAddress: true };
     // "Open wikipedia.org in a new tab" asks for that address, not an empty
     // tab. The model still proposed browser_tab_new for it (v610, Pixel: the
     // phone showed a blank New tab and "Opened a new tab."), so the owner's own
@@ -2577,41 +2572,67 @@ export class DeviceActionService {
         validated.type === "browser_tab_switch" ||
         validated.type === "browser_find",
     });
-    if (
-      validated.type === "sms_latest_sender" &&
-      validated.includeAddress &&
-      !requestOrigin
-    )
-      throw new DeviceActionError(
-        "A current owner message is required to read the SMS sender address.",
-      );
+    if (validated.type === "sms_latest_sender") {
+      const full =
+        c.capabilities?.includes(SMS_SENDER_ADDRESS_CAPABILITY) &&
+        requestOrigin &&
+        wantsSmsSenderAddress(requestOrigin.requestText);
+      validated = full
+        ? { type: "sms_latest_sender", includeAddress: true }
+        : { type: "sms_latest_sender" };
+    }
     if (
       requestOrigin &&
-      c.capabilities?.includes(SMS_SENDER_ADDRESS_CAPABILITY) &&
       (validated.type === "sms_compose" ||
         validated.type === "sms_send" ||
-        validated.type === "sms_reply_selected") &&
-      isPreviousSmsSenderDraft(requestOrigin.requestText)
+        validated.type === "sms_reply_selected")
     ) {
-      requestOrigin.assertCurrent();
-      const original = getDeviceActionTurn()?.replyContext?.message;
+      const recipient = requestedSmsDraftRecipient(requestOrigin.requestText);
       if (
-        !original ||
-        !c.capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY) ||
-        !c.capabilities.includes(SMS_COMPOSE_CAPABILITY)
+        recipient?.kind === "ambiguous" ||
+        (recipient?.kind === "unaddressed" &&
+          validated.type !== "sms_reply_selected")
       )
         throw new DeviceActionError(
-          "An addressed Messages draft is unavailable on this phone.",
+          "Which person should receive this draft? Give one recipient.",
         );
-      const sender = await this.previousSmsSender(c, original);
-      requestOrigin.assertCurrent();
-      validated = validateDeviceOperation({
-        type: "sms_compose",
-        target: { kind: "number", number: sender.number },
-        ...(sender.threadId ? { replyThreadId: sender.threadId } : {}),
-        body: validated.body,
-        draft: true,
-      });
+      if (recipient && recipient.kind !== "unaddressed") {
+        if (
+          !c.capabilities?.includes(SMS_COMPOSE_TARGET_CAPABILITY) ||
+          !c.capabilities.includes(SMS_COMPOSE_CAPABILITY)
+        )
+          throw new DeviceActionError(
+            "An addressed Messages draft is unavailable on this phone.",
+          );
+        const body = validated.body;
+        if (recipient.kind === "previous-sender") {
+          requestOrigin.assertCurrent();
+          const original = getDeviceActionTurn()?.replyContext?.message;
+          if (
+            !original ||
+            !c.capabilities.includes(SMS_SENDER_ADDRESS_CAPABILITY)
+          )
+            throw new DeviceActionError(
+              "No current SMS sender. Ask who last texted you or give one recipient.",
+            );
+          const sender = await this.previousSmsSender(c, original);
+          requestOrigin.assertCurrent();
+          validated = validateDeviceOperation({
+            type: "sms_compose",
+            target: { kind: "number", number: sender.number },
+            replyThreadId: sender.threadId,
+            body,
+            draft: true,
+          });
+        } else {
+          validated = validateDeviceOperation({
+            type: "sms_compose",
+            target: recipient,
+            body,
+            draft: true,
+          });
+        }
+      }
     }
     // Reviewed Photos and Files proposals retain their foreground owner
     // even without a direct-request message binding.
