@@ -17,9 +17,12 @@ effect function attempt(origin: string, google: { gmailChanges: boolean; calenda
 }
 
 it.effect("u3 scratch: cloud link service and Google consent", effect () => {
-  const fake = try Effect.promise(() => startCloudFake({ deviceKey: "device-key" }))
-  fake.route("GET", "/api/v1/eliza/google/gmail/triage", answerJson({ threads: [] }))
-  fake.route("POST", "/api/v1/eliza/google/calendar/events", answerJson({ id: "e1" }, 201))
+  const fake = try Effect.promise(async () => {
+    const started = await startCloudFake({ deviceKey: "device-key" })
+    started.route("GET", "/api/v1/eliza/google/gmail/triage", answerJson({ threads: [] }))
+    started.route("POST", "/api/v1/eliza/google/calendar/events", answerJson({ id: "e1" }, 201))
+    return started
+  })
   const off = try attempt(fake.origin, undefined, "cloud")
   assert.strictEqual(off.classes, 1)
   assert.deepStrictEqual(off.data.attempts.gmailChange, { kind: "changes-off", operation: "gmail_change" })

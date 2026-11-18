@@ -86,7 +86,7 @@ effect function applyAt(attempt: GoogleAttempt, timed: Timed): AttemptStep!Rejec
   return try apply(current, timed.event)
 }
 
-const attemptRows: MachineRows<GoogleAttempt, Timed, AttemptStep, Rejected, NotAState> = { table: "oauth_attempts", initial, decodeState, apply: applyAt, next: (stepped) => stepped.state }
+export const attemptRows: MachineRows<GoogleAttempt, Timed, AttemptStep, Rejected, NotAState> = { table: "oauth_attempts", initial, decodeState, apply: applyAt, next: (stepped) => stepped.state }
 
 function advanced(attempt: GoogleAttempt, now: number): GoogleAttempt {
   return now > attempt.now ? elapse(attempt, now - attempt.now) : attempt
