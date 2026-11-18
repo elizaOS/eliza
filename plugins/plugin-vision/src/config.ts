@@ -75,8 +75,7 @@ export class ConfigurationManager {
 
   private loadConfiguration(): VisionConfigOutput {
     const rawConfig: Partial<VisionConfigInput> = {
-      cameraName:
-        this.getSetting("CAMERA_NAME") || this.getSetting("VISION_CAMERA_NAME"),
+      cameraName: this.getSetting("CAMERA_NAME"),
       enableCamera: this.getBooleanSetting("ENABLE_CAMERA", true),
       pixelChangeThreshold: this.getNumberSetting("PIXEL_CHANGE_THRESHOLD", 50),
       updateInterval: this.getNumberSetting("UPDATE_INTERVAL", 100),
