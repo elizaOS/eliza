@@ -72,6 +72,10 @@ const { referralCodes, referralSignups } = await import(
 const { earningsSourceEnum, ledgerEntryTypeEnum, redeemableEarningsLedger } =
   await import("@elizaos/cloud-shared/db/schemas/redeemable-earnings");
 const { invoices } = await import("@elizaos/cloud-shared/db/schemas/invoices");
+const { webhookEvents } = await import("@elizaos/cloud-shared/db/schemas");
+const { drainStripeDeliveries } = await import(
+  "@elizaos/cloud-shared/lib/services/stripe-delivery-outbox"
+);
 const { processStripeEvent } = await import("../src/queue/stripe-event");
 const { processPaymentProviderEvent } = await import(
   "@elizaos/cloud-shared/lib/services/payment-request-settlement"
@@ -98,6 +102,7 @@ beforeAll(async () => {
         ledgerEntryTypeEnum,
         redeemableEarningsLedger,
         invoices,
+        webhookEvents,
       },
       empty.id,
     ),
@@ -429,4 +434,51 @@ test("a refund for a payment request settled by another payment intent is acknow
       refundEvent(`ch_${randomUUID()}`, 2500, request.paymentIntentId),
     ),
   ).toBe("ack");
+});
+
+test("a refund dead-lettered before a Stripe payment-request settlement still claws the grant back", async () => {
+  const request = await pendingPaymentRequest(2500);
+  const refund = refundEvent(
+    `ch_${randomUUID()}`,
+    2500,
+    request.paymentIntentId,
+  );
+  // The webhook route stores the verified event in its outbox row.
+  await dbWrite.insert(webhookEvents).values({
+    event_id: refund.body.eventId,
+    provider: "stripe",
+    event_type: refund.body.eventType,
+    payload_hash: "b".repeat(64),
+    delivery_payload: {
+      ...refund.body,
+      paymentIntentId: request.paymentIntentId,
+    },
+  });
+  const drain = () =>
+    drainStripeDeliveries(processStripeEvent, {
+      maxAttempts: 8,
+      retryBaseDelayMs: 0,
+      retryMaxDelayMs: 0,
+    });
+  const outbox = async () =>
+    (
+      await pg().query<{ attempts: number; dead: boolean; done: boolean }>(
+        `SELECT delivery_attempts AS attempts, delivery_dead_lettered_at IS NOT NULL AS dead,
+                delivery_completed_at IS NOT NULL AS done
+         FROM webhook_events WHERE event_id=$1`,
+        [refund.body.eventId],
+      )
+    ).rows[0];
+
+  // The settlement stays late for the whole retry budget: the refund is dead-lettered.
+  for (let run = 0; run < 8; run++) await drain();
+  expect(await outbox()).toEqual({ attempts: 8, dead: true, done: false });
+
+  await request.settle();
+  expect(await balance(request.org)).toBe(25);
+
+  await drain();
+  expect((await outbox())?.done).toBe(true);
+  expect(await balance(request.org)).toBe(0);
+  expect(await ledger(request.org)).toEqual(["credit", "clawback"]);
 });
