@@ -35,15 +35,15 @@ import types.* from "../../cloud/shared/types"
 import credential as C from "./credential"
 import routes as Routes from "../../agent/access/routes"
 import client.* from "../../cloud/client"
-pure def sameMethod(m: Routes::Method, deviceMethod: HttpMethod): bool =
-  (m == Routes::Get and deviceMethod == Get) or (m == Routes::Post and deviceMethod == Post) or (m == Routes::Patch and deviceMethod == Patch) or (m == Routes::Delete and deviceMethod == Delete)
+pure def sameMethod(m: Routes::Method, sent: HttpMethod): bool =
+  (m == Routes::Get and sent == Get) or (m == Routes::Post and sent == Post) or (m == Routes::Patch and sent == Patch) or (m == Routes::Delete and sent == Delete)
 pure def samePiece(p: Routes::Piece, seg: Segment): bool = match seg {
   | Literal(l) => p == Routes::Literal({ text: l.text })
   | Param(x) => p == Routes::Param
 }
 pure def samePath(t: Routes::Route, d: DeviceRoute): bool =
   t.path.length() == d.path.length() and
-    t.path.foldl({ at: 0, ok: true }, (c, p) => { at: c.at + 1, ok: c.ok and samePiece(p, d.path.nthOr(c.at, Param({ name: "" }))) }).ok
+    t.path.foldl(0, (matched, p) => if (matched >= 0 and samePiece(p, d.path.nthOr(matched, Param({ name: "" })))) matched + 1 else -1) == t.path.length()
 pure def deviceRouteOf(t: Routes::Route): List[DeviceRoute] = deviceRoutes.select(d => sameMethod(t.method, d.method) and samePath(t, d))
 pure def under(d: DeviceRoute, names: List[str]): bool =
   names.foldl({ at: 0, ok: true }, (c, n) => { at: c.at + 1, ok: c.ok and d.path.nthOr(c.at, Literal({ text: "" })) == Literal({ text: n }) }).ok
@@ -125,9 +125,9 @@ pure def lawASentRequestIsAdmittedOnTheOrigin(routes: Routes::RouteList, h: Hold
     (originAccepted(origin) and Routes::admittedRoute(Routes::admission(routes, request)).length() == 1 and not(headers.includes("Authorization")))
 pure val originValues = Set({ scheme: Https, loopback: false, hasPath: false, hasQueryOrFragment: false }, { scheme: Https, loopback: false, hasPath: true, hasQueryOrFragment: false })
 pure val headersValues = Set(List(), List("Idempotency-Key"), List("If-Match"), List("Authorization"), List("Accept", "If-None-Match"))
+pure def at(names: List[str]): List[Routes::Piece] = List("api", "v1").concat(names).listMap(n => Routes::Literal({ text: n }))
+pure def seg(text: str): Routes::Segment = { text: text, fits: List() }
 pure val routesValues = {
-  val v1 = List(Routes::Literal({ text: "api" }), Routes::Literal({ text: "v1" }))
-  def at(names: List[str]): List[Routes::Piece] = v1.concat(names.listMap(n => Routes::Literal({ text: n })))
   val read = { method: Routes::Get, delivery: Routes::Buffered, path: at(List("user")), query: List(), limit: Routes::AnySize }
   val table = { prefixes: List(List("api", "v1")), id: "id", routes: List(read,
     { ...read, path: at(List("subscriptions", "plans")) },
@@ -138,7 +138,6 @@ pure val routesValues = {
     List({ ...table, routes: table.routes.append({ ...read, method: Routes::Post, path: at(List("auth", "refresh")) }) }))
 }
 pure val requestValues: Set[Routes::Request] = {
-  def seg(text: str): Routes::Segment = { text: text, fits: List() }
   val user = { method: Routes::Get, delivery: Routes::Buffered, segments: List(seg("api"), seg("v1"), seg("user")), query: List(), flaws: List(), body: Routes::NoBody }
   val cancel = { ...user, method: Routes::Post, segments: List(seg("api"), seg("v1"), seg("subscriptions"), seg("cancel")), body: Routes::JsonObject({ size: 5 }) }
   val calendar = List(seg("api"), seg("v1"), seg("eliza"), seg("google"), seg("calendar"))

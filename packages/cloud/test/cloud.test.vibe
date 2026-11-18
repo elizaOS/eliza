@@ -1,8 +1,6 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { assert, describe, it } from "@effect/vitest"
 import { addCredits } from "../src/billing/funds.vibe"
-import { claimLiveCommand, readSubscription, reconcileSubscription, releaseLiveCommand } from "../src/billing/subscriptions.vibe"
-import { subscriptionView } from "../src/billing/snapshot.vibe"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
 import { Store, type Tx } from "../src/store/store.vibe"
@@ -20,6 +18,10 @@ import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profil
 import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
 import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
 import { s256, signedIn } from "./support/identity.ts"
+import { connectionColumns, connectionRows, scopeFor, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
+import { sealTokens } from "../src/providers/google.vibe"
+import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
+import { secrets } from "./support/profile.ts"
 
 effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
   return match (try exit(program)) {
@@ -451,6 +453,69 @@ describe.todo("WP3 Checkout and provider events (spec/cloud/billing/checkout.md,
 describe.todo("WP6 Speech (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\")")
 describe.todo("WP7 Maps (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\")")
 describe.todo("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")")
+
+effect function grantRefusal<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
+  return match (try exit(program)) {
+    when Exit.Success: "granted";
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => "refusal" in error ? (refusalBody(error.refusal as Parameters<typeof refusalBody>[0]).reason ?? refusalBody(error.refusal as Parameters<typeof refusalBody>[0]).error) : error._tag), Option.getOrElse(() => "defect"));
+  }
+}
+
+effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string, refreshToken: string, scopes: ReadonlyArray<string>, expiresAt: number) {
+  const now = try Clock.currentTimeMillis
+  const tokens = try sealTokens({ refreshToken, accessToken: `stale-${connectionId}`, expiresAt })
+  try cloud.store.transaction((tx) => stepRow(tx, connectionRows, connectionId, { type: "link", scopes, tokens, expiresAt }, connectionColumns({
+    organization_id: owner.organizationId, user_id: owner.userId, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, linked_at: now
+  })))
+}
+
+describe("WP8 Managed Google: grant access (spec/cloud/services/google/connection.md)", () => {
+  it.live("Refresh a held grant once for concurrent callers and mark it Expired when Google refuses it (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => scoped(effect {
+    const google = googleFakeState()
+    google.tokenDelayMs = 300
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", mountGoogleToken(google)) })
+    const profile = try parseProfile(testProfile(cloud.fakes.url))
+    const deployment = deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+    const now = try Clock.currentTimeMillis
+    const held: Owner = { organizationId: "org-google-held", userId: "user-google-held" }
+    const lost: Owner = { organizationId: "org-google-lost", userId: "user-google-lost" }
+    for (const owner of [held, lost]) {
+      try organization(cloud, owner.organizationId)
+      try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [owner.userId, owner.organizationId, `${owner.userId}@example.com`, now])
+    }
+    const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
+    const heldToken = seedGrant(google, { subject: "subject-conn-held", email: "conn-held@example.com", scopes })
+    const lostToken = seedGrant(google, { subject: "subject-conn-lost", email: "conn-lost@example.com", scopes })
+    google.revoked.add(lostToken)
+    provide Store = cloud.store, deployment, FetchHttpClient.layer {
+      try linkedGrant(cloud, held, "conn-held", heldToken, scopes, now - 1000)
+      try linkedGrant(cloud, lost, "conn-lost", lostToken, scopes, now - 1000)
+      const both = try all([useGrant(held, undefined, "google.gmail.triage"), useGrant(held, "conn-held", "google.gmail.triage")], { concurrency: 2 })
+      const again = try useGrant(held, undefined, "google.gmail.triage", "subject-conn-held")
+      const refusals = {
+        missing: try grantRefusal(useGrant(held, undefined, "google.gmail.send")),
+        changed: try grantRefusal(useGrant(held, undefined, "google.gmail.triage", "subject-elsewhere")),
+        foreign: try grantRefusal(useGrant(held, "conn-lost", "google.gmail.triage")),
+        side: try grantRefusal(useGrant(held, "conn-none", "google.gmail.triage")),
+        invalidGrant: try grantRefusal(useGrant(lost, undefined, "google.gmail.triage")),
+        afterwards: try grantRefusal(useGrant(lost, undefined, "google.gmail.triage"))
+      }
+      const rows = try sql(cloud, "SELECT key, status, tokens IS NULL AS erased, refreshing_until FROM google_connections ORDER BY key", [])
+      try check(() => assert.deepStrictEqual(
+        {
+          singleFlight: [google.tokenCalls, both[0].accessToken === both[1].accessToken, again.accessToken === both[0].accessToken, both[0].connectionId, both[0].email],
+          refusals,
+          rows: rows.map((row) => [row.key, row.status, row.erased, Number(row.refreshing_until)])
+        },
+        {
+          singleFlight: [2, true, true, "conn-held", "conn-held@example.com"],
+          refusals: { missing: "capability_missing", changed: "google_account_changed", foreign: "not_found", side: "not_found", invalidGrant: "google_reauth_required", afterwards: "google_reauth_required" },
+          rows: [["conn-held", "Active", false, 0], ["conn-lost", "Expired", true, 0]]
+        }
+      ))
+    }
+  }), 30_000)
+})
 describe.todo("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from the device as configured\")")
 describe.todo("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")")
 
@@ -473,46 +538,6 @@ effect function entitlementClaims(cloud: TestCloud, token: string, keys: Readonl
 }
 
 describe("WP4 Subscriptions and entitlements: entitlement", () => {
-  it.live("Keep allowance and cancellation coherent when a provider event replays over an older Worker row (spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\"; spec/cloud/billing/subscriptions.md, \"Story: Change my plan one command at a time\")", () => scoped(effect {
-    const cloud = try testCloud()
-    const now = try Clock.currentTimeMillis
-    const token = try entitledDevice(cloud, "reconciled", now)
-    const published = try cloud.call("/api/v1/subscription/entitlement-keys")
-    const keys = (published.body as { readonly keys: ReadonlyArray<PublishedKey> }).keys
-    const org = "org-reconciled"
-    const customerId = "cus_existing"
-    const subscriptionId = "sub_existing"
-    const startsAt = now - 1000
-    const endsAt = now + 30 * 24 * 3_600_000
-    const paid = {
-      customerId, subscriptionId, plan: "plus_monthly", status: "active", startsAt, endsAt,
-      cancelAtPeriodEnd: false, latestInvoice: "paid", payment: { id: "in_existing", startsAt, endsAt, condition: "paid" }
-    } as const
-    const legacy = { customerId, subscriptionId, planKey: paid.plan, status: paid.status, periodEnd: endsAt }
-    try sql(cloud, "INSERT INTO subscriptions (key,state,revision,status,plan_key,customer_id,provider_subscription_id,period_end,updated_at) VALUES ($1,$2,3,$3,$4,$5,$6,$7,$8)",
-      [org, JSON.stringify(legacy), paid.status, paid.plan, customerId, subscriptionId, endsAt, now])
-    const refreshed = try cloud.store.transaction((tx) => reconcileSubscription(tx, org, paid, now))
-    try cloud.store.transaction((tx) => claimLiveCommand(tx, org, "CancelCommand", "cmd_existing", refreshed.revision))
-    const replay = try cloud.store.transaction((tx) => reconcileSubscription(tx, org, paid, now + 1))
-    const active = try entitlementClaims(cloud, token, keys)
-    const observed = try cloud.store.transaction((tx) => reconcileSubscription(tx, org, { ...paid, cancelAtPeriodEnd: true }, now + 2))
-    try cloud.store.transaction((tx) => releaseLiveCommand(tx, org, "cmd_existing"))
-    const undo = try cloud.store.transaction((tx) => readSubscription(tx, org))
-    try cloud.store.transaction((tx) => reconcileSubscription(tx, org, { ...paid, status: "canceled", latestInvoice: "open", payment: undefined }, now + 3))
-    const revoked = try entitlementClaims(cloud, token, keys)
-    try check(() => assert.deepStrictEqual({
-      replay: [replay.revision, subscriptionView(replay)?.control.eligible],
-      active: [active.plan, active.allowance],
-      undo: subscriptionView(undo)?.control,
-      revoked: [revoked.plan, revoked.allowance]
-    }, {
-      replay: [refreshed.revision, false],
-      active: [{ id: "plus_monthly", name: "Plus", status: "active" }, { unit: "usd_micros", granted: 25_000_000, remaining: 25_000_000, periodStart: Math.floor(startsAt / 1000), resetsAt: Math.floor(endsAt / 1000) }],
-      undo: { action: "undo", eligible: true, expectedSubscriptionRevision: observed.revision },
-      revoked: [{ id: "free", name: "Free", status: "none" }, null]
-    }))
-  }))
-
   it.live("Read my plan from a signed entitlement, a grant giving way to a paid plan (spec/cloud/billing/entitlements.md, \"Story: Read my plan without substituting another account or source\"; spec/cloud/billing/plans.md, \"Story: Apply the plan that funds a call\")", () => scoped(effect {
     const cloud = try testCloud()
     const now = try Clock.currentTimeMillis

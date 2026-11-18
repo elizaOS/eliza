@@ -31,7 +31,13 @@ public final class ReminderEngine {
   else if(c.decisionAction.equals(action))try{store.decide(context,intent.getStringExtra(c.idExtra),intent.getStringExtra(c.occurrenceExtra),intent.getStringExtra(c.decisionExtra));}catch(RuntimeException|JSONException ignored){/* Persisted occurrence remains visible; no fabricated receipt. */}
  }
  public void restore(){store.restore(context);}
+ public void deliverDue(String id) throws JSONException {
+  JSONObject row=store.read(context,id);
+  if(row!=null) store.deliver(context,id,row.optString("occurrenceId",null));
+ }
+ public boolean cancel(String id)throws JSONException{return store.cancel(context,id);}
  public JSONArray list()throws JSONException{return store.list(context);}
+ public int capacity(){return ReminderStore.LIMIT;}
  public JSONObject read(String id)throws JSONException{return store.read(context,id);}
  public JSONObject selected(String id)throws JSONException{return store.selected(context,id);}
  public JSONObject schedule(String id,String title,String body,long at,JSONObject recurrence,JSONObject timing)throws JSONException{return store.schedule(context,id,title,body,at,recurrence,timing);}

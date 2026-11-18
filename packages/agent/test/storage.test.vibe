@@ -48,7 +48,8 @@ interface Owner {
   readonly embeddingDimensions?: number
 }
 
-schema Status { agentId: string }
+schema Agent { id: string }
+schema Agents { agents: [Agent] }
 schema Listing { id: string; updatedAt: number }
 schema Created { conversation: Listing }
 schema Listed { conversations: Listing[] }
@@ -74,7 +75,7 @@ effect function served(agent: Started, path: string, body?: object) {
 }
 
 effect function agentId(agent: Started) {
-  return (try Schema.decodeUnknownEffect(Status)((try served(agent, "/api/status")).json)).agentId
+  return (try Schema.decodeUnknownEffect(Agents)((try served(agent, "/api/agents")).json)).agents[0].id
 }
 
 effect function exitCode(agent: Started) {
@@ -135,7 +136,7 @@ it.effect('A second process is refused while the first holds the store, and a ki
 }, 240_000)
 
 for (const persistMemory of [true, false]) {
-  it.effect(`A conversation written before a restart is ${persistMemory ? "still listed" : "gone"} with persistMemory ${persistMemory} (spec/agent/storage/database.md, "Story: Keep the agent's records in one store that never loses a committed write")`, effect () => {
+  it.live(`A conversation written before a restart is ${persistMemory ? "still listed" : "gone"} with persistMemory ${persistMemory} (spec/agent/storage/database.md, "Story: Keep the agent's records in one store that never loses a committed write")`, effect () => {
     const state = try scratch("agent-records")
     const first = try start(state, "first", { persistMemory })
     const { conversation } = try Schema.decodeUnknownEffect(Created)((try served(first, "/api/conversations", {})).json)

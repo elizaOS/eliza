@@ -2497,7 +2497,7 @@ export const VALIDATION_KEYWORD_DOCS = {
     trade: {
       request: {
         base:
-          "accepts\naccount\naccount inspect\naccounts\naccounts sessions\nconfirmation\nconfirmed\nconfirmed order\ncredentials\ncrypto trade\nfinance trade\ngoverned\nhyperliquid\nhyperliquid trade\nhyperliquid_trade\ninspect\ninspect account\nintent\nnever\noperation\noperation inspect\norder\norder intent\norder order\norder steward\norder submission\npayloads\npolymarket\npolymarket operation\npolymarket trade\npolymarket_trade\nrequires\nseparate\nseparate user\nsession\nsessions\nsteward\nsteward trade\nsteward_trade\nsubmission\nsubmit\nsubmit order\ntrade\ntrade order\ntrade_order\ntrading\ntrading account\ntrading accounts\ntrading_account\nuser\nuser confirmation\nvenue\nwallet trade",
+          "accepts\naccount\naccount inspect\naccounts\naccounts sessions\nconfirmation\nconfirmed\nconfirmed order\ncredentials\ncrypto trade\nfinance trade\ngoverned\nhyperliquid\nhyperliquid trade\nhyperliquid_trade\ninspect\ninspect account\nintent\nnever\noperation\noperation inspect\norder\norder intent\norder order\norder submission\npayloads\npolymarket\npolymarket operation\npolymarket trade\npolymarket_trade\nrequires\nseparate\nseparate user\nsession\nsessions\nsubmission\nsubmit\nsubmit order\ntrade\ntrade order\ntrade_order\ntrading\ntrading account\ntrading accounts\ntrading_account\nuser\nuser confirmation\nvenue\nwallet trade",
         locales: {
           es:
             "accion\nbilletera\ncadena\ncripto\ncuenta\ndefi\ndinero\ndireccion\nfactura\nfinanzas\nfirmar transaccion\nherramienta\nintercambio\nliquidez\noperacion\norden\npedido\npedido pedido\nportafolio\nsaldo\nsolicitud\ntoken\ntransferir\nusuario\nwallet",

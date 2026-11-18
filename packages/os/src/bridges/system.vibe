@@ -39,10 +39,8 @@ import { nativeCall, nativeReply, rejectionCode, settled, type BridgeFailure } f
 import type {
   AndroidRoleName,
   AndroidRoleStatus,
-  AppInfoHandoff,
   AppInfoRefusal,
   BuiltinView,
-  ClockHandoff,
   ClockRequest,
   ClockStatus,
   ControlReading,
@@ -73,7 +71,6 @@ import type {
   SystemLauncherPlugin,
   SystemPlugin,
   SystemSettingsPage,
-  SystemStatus,
   SystemSwitch,
   SystemSwitchStates,
   SystemVolumeStream,
@@ -152,9 +149,8 @@ const JS_CLASS = /^[A-Za-z][A-Za-z0-9]{0,63}$/
 const PROCESS_LABEL = /^(main|other|:[A-Za-z0-9_]{1,40})$/
 const USER_SERIAL = /^\d{1,19}$/
 const ICON = /^data:image\/png;base64,[A-Za-z0-9+/=]+$/
-const LABEL_CONTROL = /[\u0000-\u001f\u007f]/
+const isControl = (unit: number) => unit < 0x20 || unit === 0x7f
 
-schema Plain {}
 schema PageOpened { status: "opened"; page: string; specific: boolean }
 schema Shade { status: "opened" | "standalone" | "permission-missing" | "unsupported" | "not-in-front" }
 schema Volume { stream: "music" | "ring" | "alarm" | "notification" | "system" | "voiceCall"; current: number; max: number }
@@ -424,7 +420,7 @@ effect function appInfo(plugin: string, system: SystemHostPlugin, target: Launch
 
 function clockAsk(request: ClockRequest): ClockAsk {
   return match (request) {
-    when { action: "set" }: { tag: "ClockSet", hour: request.hour, minute: request.minute, labelLength: request.label.length, labelPlain: !LABEL_CONTROL.test(request.label), days: request.days ?? [] };
+    when { action: "set" }: { tag: "ClockSet", hour: request.hour, minute: request.minute, labelLength: request.label.length, labelPlain: ![...request.label].some((c) => isControl(c.charCodeAt(0))), days: request.days ?? [] };
     when { action: "show" }: { tag: "ClockShow" };
     when { action: "dismiss" }: { tag: "ClockDismiss" };
     when { action: "snooze" }: { tag: "ClockSnooze", minutes: request.minutes };

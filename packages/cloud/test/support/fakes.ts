@@ -1,6 +1,7 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { Duplex } from "node:stream";
 
 export interface FakeRequest {
   readonly method: string;
@@ -8,6 +9,7 @@ export interface FakeRequest {
   readonly query: URLSearchParams;
   readonly headers: IncomingMessage["headers"];
   readonly body: string;
+  readonly raw: Uint8Array;
 }
 
 export interface FakeAnswer {
@@ -21,17 +23,20 @@ export interface FakeAnswer {
 
 export type FakeHandler = (request: FakeRequest) => FakeAnswer | undefined | Promise<FakeAnswer | undefined>;
 
+export type FakeUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => void;
+
 export interface FakeServer {
   readonly url: string;
   readonly seen: FakeRequest[];
   mount(prefix: `/${string}`, handler: FakeHandler): void;
+  upgrade(prefix: `/${string}`, handler: FakeUpgrade): void;
   close(): Promise<void>;
 }
 
-async function bodyOf(request: IncomingMessage): Promise<string> {
+async function bodyOf(request: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks).toString("utf8");
+  return Buffer.concat(chunks);
 }
 
 function send(response: ServerResponse, answer: FakeAnswer): void {
@@ -60,7 +65,8 @@ export async function startFakeServer(): Promise<FakeServer> {
   const server = createServer((request, response) => {
     void (async () => {
       const url = new URL(request.url ?? "/", "http://fake.invalid");
-      const fake: FakeRequest = { method: request.method ?? "GET", path: url.pathname, query: url.searchParams, headers: request.headers, body: await bodyOf(request) };
+      const raw = await bodyOf(request);
+      const fake: FakeRequest = { method: request.method ?? "GET", path: url.pathname, query: url.searchParams, headers: request.headers, body: raw.toString("utf8"), raw };
       seen.push(fake);
       for (const { prefix, handler } of mounts) {
         if (!fake.path.startsWith(prefix)) continue;
@@ -70,13 +76,27 @@ export async function startFakeServer(): Promise<FakeServer> {
       send(response, { status: 404, body: { error: { type: "invalid_request_error", message: `no fake for ${fake.method} ${fake.path}` } } });
     })().catch((cause: unknown) => send(response, { status: 500, body: { error: String(cause) } }));
   });
+  const upgrades: Array<{ prefix: string; handler: FakeUpgrade }> = [];
+  const upgraded = new Set<Duplex>();
+  server.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+    upgraded.add(socket);
+    socket.once("close", () => upgraded.delete(socket));
+    const path = new URL(request.url ?? "/", "http://fake.invalid").pathname;
+    const found = upgrades.find(({ prefix }) => path.startsWith(prefix));
+    if (found === undefined) socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n");
+    else found.handler(request, socket, head);
+  });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}`,
     seen,
     mount: (prefix, handler) => { mounts.push({ prefix, handler }); },
-    close: () => new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))),
+    upgrade: (prefix, handler) => { upgrades.push({ prefix, handler }); },
+    close: () => {
+      for (const socket of upgraded) socket.destroy();
+      return new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    },
   };
 }
 

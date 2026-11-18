@@ -1,40 +1,31 @@
 # Google sign-in
 
 Signing in with Google, the server half: in the browser with an
-authorization code, or on the device with its own Google account and a
-one-time challenge. Sources are develop
-`packages/auth/src/server/api/routes/auth.ts` (`/oauth/:provider/authorize`,
-`/oauth/:provider/callback`, `/oauth/exchange`, `/oauth/google/native/:operation`),
-`oauth-app-error-return.ts`, the Quint models `OAuthAppLinkRedemption.qnt` and
-`NativeGoogleAdmission.qnt`, the error list of
-`android/.../cloud/CloudSignInFlow.java`, and the service half of the old
-`spec/auth/googleSignIn.md`. The device half (the account picker, the held
-state and verifier, the browser return) is `spec/os/signIn/flow.md` and
-`spec/os/signIn/browserReturn.md`.
+authorization code, or on the phone with its own Google account and a
+one-time challenge. Sources: develop `packages/auth/src/server/api/routes/auth.ts`
+(`/oauth/*`), `oauth-app-error-return.ts`, the Quint models
+`OAuthAppLinkRedemption.qnt` and `NativeGoogleAdmission.qnt`, and the
+service half of the old `spec/auth/googleSignIn.md`. The device half is
+`spec/os/signIn/flow.md` and `spec/os/signIn/browserReturn.md`.
 
-Routes, all public except the link challenge:
-`GET /api/v1/auth/google/authorize?response_type=code&client_id&environment&redirect_uri&code_challenge&code_challenge_method=S256&state`
-answers a redirect to Google; Google returns to `GET /api/v1/auth/google/callback`,
-which redirects to `<redirect_uri>#code=<code>&state=<state>` or
-`#error=<error>&state=<state>`; `POST /api/v1/auth/google/exchange`
-carries `{code, redirectUri, clientId, codeVerifier}` and answers as a code
-sign-in does (`codeChallenges`): `{status: "signed_in", …}` or
-`{status: "mfa_required", challengeId, methods, expiresAt}`.
-`POST /api/v1/auth/google/native/challenge` carries `{clientId, environment,
-redirectUri, codeChallenge, codeChallengeMethod: "S256"}` and answers
-`{challengeId, nonce, serverClientId, expiresAt}`; the session route
-`POST /api/v1/user/methods/google/challenge` opens a link challenge the same
-way. The challenge is answered inside `POST /api/v1/app-auth/mobile/google`
-(`nativeClients/deviceKeys`) or `POST /api/v1/user/methods/google/link`
-(`signInMethods`).
+Routes under `/api/v1/auth/google/`: `GET authorize` (query `response_type,
+client_id, environment, redirect_uri, code_challenge, code_challenge_method,
+state`) redirects to Google; `GET callback` redirects to
+`<redirect_uri>#code=<code>&state=<state>` or `#error=<error>&state=<state>`;
+`POST exchange` `{code, redirectUri, clientId, codeVerifier}` answers as a
+code sign-in does (`codeChallenges`); `POST native/challenge` `{clientId,
+environment, redirectUri, codeChallenge, codeChallengeMethod}` answers
+`{challengeId, nonce, serverClientId, expiresAt}`. The session route `POST
+/api/v1/user/methods/google/challenge` opens a link challenge. A challenge is
+answered inside `POST /api/v1/app-auth/mobile/google` (`nativeClients/deviceKeys`)
+or `POST /api/v1/user/methods/google/link` (`signInMethods`).
 
-One machine instance is one attempt row: a browser attempt or a native
-challenge, never both. The shell draws the state, the code, the challenge id
-and the nonce at random, stores only digests of the code and of the device's
-S256 challenge, keeps Google's own PKCE verifier on the row, and passes every
-check in as an observation; Google's `email_verified` goes to `accounts`'
-`firstSight` unchanged. A row whose state, code or challenge id is unknown
-answers before this machine.
+One machine instance is one attempt row, a browser attempt or a native
+challenge, never both. The shell draws state, code, challenge id and nonce at
+random, stores only digests of the code and of the device's S256 challenge,
+and passes every check in as an observation; Google's `email_verified` goes
+to `accounts`' first sight unchanged. An unknown state, code or challenge id
+is answered before this machine.
 
 ## Story: Sign in with Google in the browser
 
@@ -130,6 +121,10 @@ an expired attempt `oauth_state_expired`, Google switched off since
 `app_link_unverified`; a second factor travels in the code, never in the
 return.
 
+A return withdrawn since authorize (the registration was disabled or
+changed) is never visited: `oauth_redirect_invalid` is shown on a page of
+the cloud.
+
 ```quint
 type GoogleCallback = GoogleCode | GoogleDenied | GoogleIncomplete | ReturnWithdrawn
 type GoogleAnswer = IdentityVerified | IdentityIncomplete | TokenExchangeFailed
@@ -175,15 +170,6 @@ pure def sometimesCodeReturned(a: GoogleAttempt): bool = a.returned == ReturnsCo
 pure def sometimesDeniedByThePerson(a: GoogleAttempt): bool = a.returned == ReturnsError({ error: ErrAccessDenied })
 pure def sometimesAttemptExpired(a: GoogleAttempt): bool = a.returned == ReturnsError({ error: ErrStateExpired })
 pure def sometimesTokenExchangeFailed(a: GoogleAttempt): bool = a.returned == ReturnsError({ error: ErrTokenExchangeFailed })
-```
-
-### A return withdrawn since authorize is never visited, and its error is shown on a cloud page
-
-When the registration was disabled or changed after authorize, the callback
-answers `oauth_redirect_invalid` on a page of the cloud and redirects
-nowhere.
-
-```quint
 pure def sometimesWithdrawnReturnShownOnTheCloud(a: GoogleAttempt): bool = a.target == CloudPage and a.returned == ReturnsError({ error: ErrRedirectInvalid })
 ```
 
@@ -215,15 +201,6 @@ pure def stepACodeIsRedeemedOnceWhileLive(before: GoogleAttempt, via: str, after
   and ((via == "exchange" and out == List()) implies after == before)
 pure def sometimesSignedInWithGoogle(a: GoogleAttempt): bool = a.code == CodeRedeemed({ redeemedAs: SessionYield })
 pure def sometimesBrowserSecondFactor(a: GoogleAttempt): bool = a.code == CodeRedeemed({ redeemedAs: SecondFactorYield })
-```
-
-### An issued code past its minute is closed as expired
-
-```quint
-pure def isIssued(c: CodePhase): bool = match c { | CodeIssued(x) => true | _ => false }
-pure def canExpireCode(a: GoogleAttempt): bool = isIssued(a.code) and not(codeLive(a.code, a.now))
-pure def expireCode(a: GoogleAttempt): GoogleAttempt = { ...a, code: CodeExpired }
-pure def sometimesCodeExpired(a: GoogleAttempt): bool = a.code == CodeExpired
 ```
 
 ## Story: Sign in with the device's Google account
@@ -311,14 +288,6 @@ pure def sometimesNativeSecondFactor(a: GoogleAttempt): bool = a.native == Chall
 pure def sometimesGoogleProven(a: GoogleAttempt): bool = provesGoogleFor(a, "user1")
 ```
 
-### An open challenge past its five minutes is closed as expired
-
-```quint
-pure def canExpireNative(a: GoogleAttempt): bool = isOpen(a.native) and not(nativeLive(a.native, a.now))
-pure def expireNative(a: GoogleAttempt): GoogleAttempt = { ...a, native: ChallengeExpired }
-pure def sometimesNativeExpired(a: GoogleAttempt): bool = a.native == ChallengeExpired
-```
-
 ## Story: Tell the app exactly why Google sign-in was refused
 
 > As the developer of an app, I want each refusal to say whether the request,
@@ -345,4 +314,16 @@ pure val codeValues = Set(NoCode, CodeIssued({ redeemBy: 60000 }), CodeRedeemed(
 pure val nowValues = Set(0, 60000)
 pure def lawEveryRefusalIsFinal(authorize: AuthorizeRequest, code: CodePhase, now: Millis, v: NativeVerdict): bool =
   List(authorizeRefusal(authorize), codeRefusal(code, now), nativeRefusal(v)).every(x => wellFormed(x) and not(retryableOf(x)))
+```
+
+### A code past its minute or a challenge past its five minutes is closed as expired
+
+```quint
+pure def isIssued(c: CodePhase): bool = match c { | CodeIssued(x) => true | _ => false }
+pure def canExpireCode(a: GoogleAttempt): bool = isIssued(a.code) and not(codeLive(a.code, a.now))
+pure def expireCode(a: GoogleAttempt): GoogleAttempt = { ...a, code: CodeExpired }
+pure def sometimesCodeExpired(a: GoogleAttempt): bool = a.code == CodeExpired
+pure def canExpireNative(a: GoogleAttempt): bool = isOpen(a.native) and not(nativeLive(a.native, a.now))
+pure def expireNative(a: GoogleAttempt): GoogleAttempt = { ...a, native: ChallengeExpired }
+pure def sometimesNativeExpired(a: GoogleAttempt): bool = a.native == ChallengeExpired
 ```

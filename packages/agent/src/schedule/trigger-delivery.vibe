@@ -22,6 +22,7 @@ module node {
     deliver(conversationId: string, prompt: string, triggerId: string, signal: AbortSignal): Promise<Delivery>
   }
 
+  /** @throws {never} */
   export function finishFacts(delivery: Delivery): { readonly roomExists: boolean; readonly turn: TurnOutcome } {
     switch (delivery.kind) {
       case "RoomGone": return { roomExists: false, turn: "Failed" }
@@ -31,6 +32,7 @@ module node {
 
   const refusedWord = { Failed: "failed", Cancelled: "cancelled", Denied: "denied" } as const
 
+  /** @throws {never} */
   export function runError(result: RunResult): string | undefined {
     switch (result.kind) {
       case "Missed": return MISSED_SCHEDULED_OCCURRENCE_TEXT

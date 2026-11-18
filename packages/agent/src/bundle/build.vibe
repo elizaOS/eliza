@@ -27,7 +27,7 @@ module node {
     version: Schema.Trimmed.check(Schema.isMinLength(1)),
   })
   const decodePackage = Schema.decodeUnknownOption(Schema.fromJsonString(PackageSource))
-  const decodeStatus = Schema.decodeUnknownSync(Schema.Struct({
+  const decodeHealth = Schema.decodeUnknownSync(Schema.Struct({
     id: Schema.Literal("build"),
     ok: Schema.Literal(true),
     result: Schema.Struct({
@@ -35,9 +35,13 @@ module node {
       body: Schema.fromJsonString(Schema.Struct({
         ready: Schema.Literal(true),
         epoch: Schema.Literal(1),
-        actions: Schema.Array(Schema.String),
+        runtime: Schema.Literal("ok"),
+        agentState: Schema.Literal("running"),
       })),
     }),
+  }))
+  const decodeRegistry = Schema.decodeUnknownSync(Schema.Struct({
+    kind: Schema.Literal("bundleActionRegistry"), actions: Schema.Array(Schema.NonEmptyString),
   }))
   const assets = ["pglite.wasm", "initdb.wasm", "pglite.data"]
   const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
@@ -71,21 +75,21 @@ module node {
     throw new Error(`Agent bundle input has no named package: ${file}`)
   }
 
-  async function smokeCall(path: string, token: string): Promise<readonly string[]> {
+  async function smokeHealth(path: string, token: string): Promise<void> {
     const socket = connect(path)
     try {
       const signal = AbortSignal.timeout(2000)
       signal.addEventListener("abort", () => socket.destroy(), { once: true })
       await once(socket, "connect", { signal })
       socket.write(JSON.stringify({ id: "build", method: "http_request", payload: {
-        path: "/api/status", method: "GET", headers: { authorization: `Bearer ${token}` },
+        path: "/api/health", method: "GET", headers: { authorization: `Bearer ${token}` },
       } }) + "\n")
       let line = ""
       for await (const chunk of socket) {
         line += String(chunk)
-        if (line.length > 65536) throw new Error("The bundle's status is too large")
+        if (line.length > 65536) throw new Error("The bundle's health response is too large")
       }
-      return decodeStatus(JSON.parse(line)).result.body.actions
+      decodeHealth(JSON.parse(line))
     } finally { socket.destroy() }
   }
 
@@ -100,21 +104,24 @@ module node {
       model: { backend: "none" }, embeddings: "none", callerRole: "owner",
     }), { mode: 0o600 })
     const child = spawn(process.execPath, [bundle, "serve", "--launch", launch, "--state", root, "--socket", socket], {
-      stdio: ["pipe", "inherit", "inherit"],
+      stdio: ["pipe", "inherit", "inherit", "ipc"],
     })
     const stopped = once(child, "exit")
-    child.stdin.end(JSON.stringify({ version: 1, token, epoch: 1 }) + "\n")
+    let registry: unknown
+    child.once("message", (message: unknown) => { registry = message })
+    child.stdin?.end(JSON.stringify({ version: 1, token, epoch: 1 }) + "\n")
     const expires = Date.now() + 180_000
-    let answer: readonly string[] | undefined
-    while (answer === undefined && child.exitCode === null && child.signalCode === null && Date.now() < expires) {
-      answer = await smokeCall(socket, token).catch(() => delay(100).then(() => undefined))
+    let healthy = false
+    while (!healthy && child.exitCode === null && child.signalCode === null && Date.now() < expires) {
+      if (registry !== undefined) healthy = await smokeHealth(socket, token).then(() => true, () => false)
+      if (!healthy) await delay(100)
     }
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM")
     const [code] = await stopped
     await rm(root, { recursive: true, force: true })
-    if (answer === undefined) throw new Error(`The built agent did not become ready (exit ${code ?? "pending"})`)
+    if (!healthy || registry === undefined) throw new Error(`The built agent did not become ready (exit ${code ?? "pending"})`)
     if (code !== 0) throw new Error(`The built agent did not close cleanly (exit ${code})`)
-    return answer
+    return decodeRegistry(registry).actions
   }
 
   export async function buildFrom(options: BuildAgentBundle, moduleUrl: string): Promise<BundleManifest> {

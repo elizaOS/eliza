@@ -30,7 +30,7 @@ import {
   type SourceConfiguration,
   type VoicemailWrite,
 } from "../../gen/os__android__voicemail.effect.vibe"
-import { BridgeUnavailable, MalformedReply, NativeRejection, nativeCall, rejectionCode, settled } from "./bridge.vibe"
+import { BridgeUnavailable, MalformedReply, NativeRejection, nativeCall, settled } from "./bridge.vibe"
 import {
   TELEPHONY_DEFAULT_PAGE,
   VOICEMAIL_AUDIO_MAX_BYTES,
@@ -264,7 +264,7 @@ effect function placeCall(plugin: PhoneNativePlugin, number: string) {
     if (code === "role-required" || code === "permission-required") return { status: code }
     throw failure
   }
-  return placeReport(facts, true, placeEvidence((try answer).status))
+  return placeReport(facts, true, placeEvidence(answer.status))
 }
 
 effect function parseCallLog(raw: unknown, limit: number) {
@@ -296,7 +296,7 @@ effect function recentCalls(plugin: PhoneNativePlugin, ask: RecentCallsAsk) {
     }
     throw failure
   }
-  const calls = try parseCallLog(try raw, limit)
+  const calls = try parseCallLog(raw, limit)
   const keys = calls.map((call) => callLogKey(call.date, Number(call.id)))
   if (!keys.every((key) => isAfterStart(start, key))) try malformed("listRecentCalls", "A row does not follow the cursor")
   const answer = readCallLog(declared, "PluginRegistered", facts, request, filter, limit, keys, true)
@@ -455,7 +455,7 @@ effect function write(store: Voicemails, plugin: PhoneNativePlugin, id: Voicemai
   if (!canWriteRow(try store.book.get(), facts, row, change, "NoReply")) try refusal(store, id, "write-blocked")
   const method = change === "MarkHeard" ? "markVoicemailHeard" : "deleteVoicemail"
   const answer = reply(method, Written, () => change === "MarkHeard" ? plugin.markVoicemailHeard({ id }) : plugin.deleteVoicemail({ id }))
-  const providerReply: ProviderReply = try (effect { return writtenReply((try answer).status, change) } catch (failure) => failure instanceof BridgeUnavailable ? "NothingWritten" : "NoReply")
+  const providerReply: ProviderReply = effect { return writtenReply((try answer).status, change) } catch (failure) => failure instanceof BridgeUnavailable ? "NothingWritten" : "NoReply"
   const step = try orDie(store.book.send({ type: "writeRow", facts, id: row, change, reply: providerReply }))
   const out = step.out[0]
   const written = out?.tag === "Wrote" ? out.written : "Uncertain"
@@ -466,10 +466,10 @@ effect function observe(store: Voicemails, plugin: PhoneNativePlugin, onChange: 
   const serial = store.lock.withPermits(1)
   const handle = try nativeCall(PLUGIN, "addListener", () => plugin.addListener("voicemailChanged", () => onChange(settled(serial(refresh(store, plugin, "AutomaticRead"))))))
   const listener = handle as { remove(): Promise<void> }
-  try (nativeCall(PLUGIN, "observeVoicemail", () => plugin.observeVoicemail({ enabled: true })) catch effect (failure) => {
+  nativeCall(PLUGIN, "observeVoicemail", () => plugin.observeVoicemail({ enabled: true })) catch effect (failure) => {
     try promise(() => listener.remove())
     throw failure
-  })
+  }
   return async () => {
     await listener.remove()
     await settled(nativeCall(PLUGIN, "observeVoicemail", () => plugin.observeVoicemail({ enabled: false })))
