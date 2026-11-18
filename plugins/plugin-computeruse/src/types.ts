@@ -422,7 +422,7 @@ export interface ComputerUseConfig {
 
 /**
  * Top-level execution mode. Picked exactly once at plugin init by reading
- * `ELIZA_COMPUTERUSE_MODE`. There is no per-call override.
+ * `COMPUTER_USE_MODE`. There is no per-call override.
  *
  * - `yolo`    — operate the host machine (existing behaviour).
  * - `sandbox` — operate an isolated VM/container; the host is never touched.
