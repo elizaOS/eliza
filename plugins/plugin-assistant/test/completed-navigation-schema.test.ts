@@ -302,6 +302,7 @@ it("offers each telephony action only with its own capability and states its lim
     "contacts.read.v1": ["contact_read_selected"],
     "sms.compose.v1": ["sms_compose", "sms_reply_selected"],
     "messages.read.v1": ["messages_read_selected"],
+    "sms.latest-sender.v1": ["sms_latest_sender"],
     "voicemail.read.v1": ["voicemail_read_selected"],
     "voicemail.delete.v1": ["voicemail_delete_selected"],
   };
@@ -351,6 +352,7 @@ it("offers each telephony action only with its own capability and states its lim
     "you receive only shown or not-found, never a name, number or count",
     "returns only the one contact the owner has open in Contacts",
     "This phone cannot add one number or email address to a contact",
+    "It proposes a reviewed read of one sender number suffix only.",
   ])
     expect(text).toContain(required);
   expect(text).not.toContain("contacts.write.v2");
