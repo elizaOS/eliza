@@ -59,7 +59,7 @@ export function TranslationProvider({
   const [hadStoredLanguage] = useState(hasStoredUiLanguage);
   // Bumped after async locale loads complete so consumers re-render with the
   // freshly populated MESSAGES dictionary.
-  const [, setLocaleRevision] = useState(0);
+  const [localeRevision, setLocaleRevision] = useState(0);
 
   // Eagerly load the persisted locale (other than `en`) on mount.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only effect; language changes flow through setUiLanguage
@@ -130,11 +130,20 @@ export function TranslationProvider({
     () => ({ ...DEFAULT_BRANDING, ...branding }),
     [branding],
   );
-  const t = createTranslator(
-    uiLanguage,
-    appNameInterpolationVars(mergedBranding),
+  // `localeRevision` is not read inside the factory, but it must invalidate the
+  // memo: a lazily loaded dictionary lands after `uiLanguage` already changed,
+  // and consumers only re-render with the new strings when `t` and the context
+  // value change identity.
+  const t = useMemo(
+    () =>
+      createTranslator(uiLanguage, appNameInterpolationVars(mergedBranding)),
+    [uiLanguage, mergedBranding, localeRevision],
   );
-  const value: TranslationContextValue = { t, uiLanguage, setUiLanguage };
+
+  const value = useMemo<TranslationContextValue>(
+    () => ({ t, uiLanguage, setUiLanguage }),
+    [t, uiLanguage, setUiLanguage],
+  );
 
   return (
     <TranslationCtx.Provider value={value}>{children}</TranslationCtx.Provider>
