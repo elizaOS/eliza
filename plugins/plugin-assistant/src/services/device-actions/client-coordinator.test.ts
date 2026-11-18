@@ -2185,12 +2185,41 @@ describe("shared phone and reminder-read parity", () => {
         ),
       ).toEqual([]);
       expect(ran).toEqual([]);
+      const proof = (text: string): CurrentDeviceActionRequest => ({
+        messageId: "message",
+        text,
+        current() {},
+      });
+      if (keypad.number) {
+        // A number the owner did not type in this message (one read from an
+        // email or a page earlier in the turn) keeps its review card.
+        for (const current of [
+          undefined,
+          proof("open the keypad with the number from that email"),
+          proof("open the keypad with 415-555-0199"),
+        ])
+          expect(
+            await actions.performRequested(
+              "message",
+              home,
+              signal(),
+              async () => true,
+              undefined,
+              current,
+            ),
+          ).toEqual([]);
+        expect(ran).toEqual([]);
+      }
       expect(
         await actions.performRequested(
           "message",
           home,
           signal(),
           async () => true,
+          undefined,
+          keypad.number
+            ? proof("open the keypad with (415) 555-0100")
+            : undefined,
         ),
       ).toMatchObject([{ status: "succeeded" }]);
       expect(ran).toEqual([keypad]);
