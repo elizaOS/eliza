@@ -214,11 +214,10 @@ effect function finish(spec: CommandSpec, organizationId: string, commandId: str
   if (row === undefined) return
   const status = statusAt(row.receipt, now)
   if (status !== "StatusSucceeded" && status !== "StatusRejected") return
-  const observed = status === "StatusSucceeded" ? try observeSubscription(organizationId) : undefined
   try store.transaction(effect (tx: Tx) => {
     try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId])
     if (!holdsCommand(try readSubscription(tx, organizationId), spec.kind, commandId)) return
-    const result = observed === undefined ? undefined : try reconcileSubscription(tx, organizationId, observed, now)
+    const result = status === "StatusSucceeded" ? try reconcileSubscription(tx, organizationId, try observeSubscription(tx, organizationId), now) : undefined
     try releaseLiveCommand(tx, organizationId, commandId)
     if (result !== undefined) try tx.query("UPDATE subscription_commands SET result_revision = $2, updated_at = $3 WHERE key = $1", [commandId, result.revision, now])
   })

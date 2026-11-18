@@ -1,7 +1,8 @@
 // spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"
 import type { Area } from "../routes.vibe"
 import { routes as entitlements } from "../../billing/entitlements.vibe"
+import { routes as commands, sweeps as commandSweeps } from "../../billing/commands.vibe"
 import { routes as snapshot } from "../../billing/snapshot.vibe"
 import { routes as invoices } from "../../billing/invoices.vibe"
 
-export const area: Area = { routes: [...entitlements, ...snapshot, ...invoices], sweeps: [] }
+export const area: Area = { routes: [...entitlements, ...snapshot, ...invoices, ...commands], sweeps: commandSweeps }
