@@ -1,7 +1,8 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+import { formatInet } from "effect/net/NetAddress"
 import { checkCatalog, CatalogMismatch } from "./billing/plans.vibe"
 import { cloudServer, listening, sweepsLayer } from "./http/server.vibe"
-import { deploymentLayer, Deployment, parseEnvironment, parseProfile, ProfileInvalid, requireSecrets, SecretMissing, type CloudEnvironment, type CloudProfile } from "./profile/profile.vibe"
+import { capabilityEnabled, deploymentLayer, Deployment, parseEnvironment, parseProfile, ProfileInvalid, requireSecrets, SecretMissing, type CloudEnvironment, type CloudProfile } from "./profile/profile.vibe"
 import { DatabaseIdentityMismatch, migrate, parseStoreLocation, storeLayer, StoreFailure, StoreLocationInvalid, type StoreLocation } from "./store/store.vibe"
 
 export { parseProfile }
@@ -20,7 +21,7 @@ export interface CloudLayerOptions {
 const startupChecks = Layer.effectDiscard(effect {
   const deployment = try Deployment
   try requireSecrets()
-  try checkCatalog()
+  if (capabilityEnabled(deployment.settings, "billing")) try checkCatalog()
   const now = try Clock.currentTimeMillis
   const report = try migrate({ digest: deployment.settings.databaseIdentity, environment: deployment.environment, now })
   if (report.applied.length > 0) try annotateLogs(logInfo("migrations applied"), { applied: report.applied.join(", ") })
@@ -50,24 +51,26 @@ export interface RunningCloud {
 }
 
 export effect function prepare(options: StartOptions): CloudLayerOptions!(ProfileInvalid | StoreLocationInvalid) {
-  return {
-    profile: try parseProfile(options.profile),
-    environment: try parseEnvironment(options.environment),
-    store: try parseStoreLocation(options.store),
-    port: options.port ?? 0,
-    host: options.host ?? "127.0.0.1"
+  const profile = try parseProfile(options.profile)
+  const environment = try parseEnvironment(options.environment)
+  const store = try parseStoreLocation(options.store)
+  const settings = profile.environments[environment]
+  if (store.kind !== "pglite" && (settings.mail.kind === "loopback" || settings.sms.kind === "loopback")) {
+    throw new ProfileInvalid({ problem: "loopback delivery requires a PGlite store" })
   }
+  return { profile, environment, store, port: options.port ?? 0, host: options.host ?? "127.0.0.1" }
 }
 
 export error NotTcp { address: string }
 
 export async function startCloud(options: StartOptions): Promise<RunningCloud> {
   const runtime = ManagedRuntime.make(cloudLayer(await runPromise(prepare(options))))
-  const address = await runtime.runPromise(effect { return (try HttpServer.HttpServer).address })
-  if (!("port" in address)) {
+  try {
+    const address = await runtime.runPromise(effect { return (try HttpServer.HttpServer).address })
+    if (!("port" in address)) throw new NotTcp({ address: JSON.stringify(address) })
+    return { url: `http://${formatInet(address)}`, close: () => runtime.dispose() }
+  } catch (error) {
     await runtime.dispose()
-    throw new NotTcp({ address: JSON.stringify(address) })
+    throw error
   }
-  const host = address.hostname.includes(":") ? `[${address.hostname}]` : address.hostname
-  return { url: `http://${host}:${address.port}`, close: () => runtime.dispose() }
 }

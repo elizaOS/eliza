@@ -48,7 +48,7 @@ function inline(s: string, file: string): ReactNode[] {
   for (const m of s.matchAll(/`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+)\*\*|\*([^*]+)\*/g)) {
     out.push(s.slice(end, m.index));
     const k = m.index;
-    if (m[1]) out.push(<code key={k} className="rounded-sm bg-muted px-1 font-mono text-[0.9em]">{m[1]}</code>);
+    if (m[1]) out.push(<code key={k} className="rounded-sm bg-muted px-1 font-mono">{m[1]}</code>);
     else if (m[2]) {
       let link: URL | undefined;
       try { link = new URL(m[3], new URL(file, "https://spec.invalid/")); } catch { link = undefined; }

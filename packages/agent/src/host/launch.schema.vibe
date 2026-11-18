@@ -1,6 +1,6 @@
 // spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"
 const Name = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(50), Schema.isTrimmed())
-const Nonblank = Schema.String.check(Schema.makeFilter((value) => value.trim().length > 0))
+const Nonblank = Schema.String.check(Schema.isPattern(/\S/))
 const PositiveInteger = Schema.Int.check(Schema.isGreaterThan(0))
 const UniqueNames = Schema.Array(Nonblank).check(Schema.makeFilter((names) => new Set(names).size === names.length))
 const Origin = Schema.String.check(Schema.isPattern(/^https:\/\/([a-zA-Z0-9-]+\.)*[a-zA-Z0-9-]+(:[0-9]{1,5})?$/), Schema.makeFilter((url) => URL.canParse(url)))

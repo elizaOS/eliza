@@ -5,16 +5,15 @@ The phone module (`packages/os/android/phone/`, from
 the telephony plugin of `plugins/plugin-native-messages/android`). A host
 that holds the dialer role subclasses `TelecomCallService`, Android's
 `InCallService`, which keeps the calls Android reports and their ongoing-call
-notices; the call screen answers, rejects, holds and ends only the current
-Telecom call it names, never a number it rebuilt. A caller's contact name is
-[contacts](./contacts.md)'s; voicemail is [voicemail](./voicemail.md)'s. The
-operation `phone-dial`, its number validation and the telephony capability
-names are the agent's
-([device action operations](../../agent/deviceActions/operations.md),
+notices; the call screen acts only on the Telecom call it names, never on a
+number it rebuilt. A caller's name is [contacts](./contacts.md)'s; voicemail
+is [voicemail](./voicemail.md)'s. The operations `PhoneDial` and `PhoneCall`,
+their shape checks and the capabilities `phone.dial.v1` and `phone.call.v1`
+are the agent's ([operations](../../agent/deviceActions/operations.md),
 [capabilities](../../agent/deviceActions/capabilities.md)); this spec keeps
-the Android device check, what the handoff and a placement may report, and
-the call-log read. Calls are admitted as [the bridge vocabulary](./bridge.md)
-says and pages follow [keyset paging](./paging.md).
+the Android device check, what a handoff and a placement may report, and the
+call-log read. Calls are admitted as [the bridge](./bridge.md) says and pages
+follow [keyset paging](./paging.md).
 
 ## Story: Show my calls truthfully
 
@@ -22,10 +21,9 @@ says and pages follow [keyset paging](./paging.md).
 > reports now, so that it never shows or comes back for a call that ended.
 
 Android calls the service on its main thread. Each added call gets a fresh
-ID and its own callback. A state change queues that callback; Android does
-not revoke a callback already queued when the call is removed or the service
-is destroyed, so the callback checks, when it runs, that its call is still
-registered.
+ID and its own callback; a state change queues an update, and Android does
+not revoke one already queued when the call is removed or the service is
+destroyed, so the update checks, when it runs, that its call is registered.
 
 ### A queued call update changes a notice only while its call is still registered
 
@@ -43,7 +41,7 @@ pure val initial: CallService = { live: true, issued: Set(), calls: Set(), ended
 pure def canAddCall(s: CallService, callId: str): bool = s.live and not(s.issued.contains(callId))
 pure def addCall(s: CallService, callId: str): CallService =
   { ...s, issued: s.issued.union(Set(callId)), calls: s.calls.union(Set(callId)), notices: s.notices.union(Set(callId)) }
-pure def canReportCallState(s: CallService, callId: str): bool = s.calls.contains(callId) and not(s.queued.contains(callId))
+pure def canReportCallState(s: CallService, callId: str): bool = s.calls.contains(callId)
 pure def reportCallState(s: CallService, callId: str, disconnected: bool): CallService =
   { ...s, ended: if (disconnected) s.ended.union(Set(callId)) else s.ended, queued: s.queued.union(Set(callId)) }
 pure def canDeliverCallUpdate(s: CallService, callId: str): bool = s.queued.contains(callId) and s.calls.contains(callId)
@@ -66,11 +64,12 @@ pure def sometimesUpdateOutlivesItsCall(s: CallService): bool = s.queued.exists(
 
 ### A disconnected call keeps its notice only until its queued update is delivered
 
-A disconnected call stays registered until Telecom removes it, without a
-notice.
+A disconnected call stays registered, without a notice, until Telecom
+removes it; a later report never makes it active again.
 
 ```quint
 pure def alwaysEndedNoticeAwaitsItsUpdate(s: CallService): bool = s.notices.forall(c => s.ended.contains(c) implies s.queued.contains(c))
+pure def stepDisconnectedCallStaysEnded(before: CallService, after: CallService): bool = before.ended.subseteq(after.ended)
 pure def sometimesDisconnectedCallStaysRegistered(s: CallService): bool = s.calls.exists(c => s.ended.contains(c) and not(s.notices.contains(c)))
 ```
 
@@ -101,11 +100,11 @@ pure def leadsToRetiredUpdateDropped(s: CallService, later: CallService): bool =
 
 ### A dial opens the system dial screen only on an unlocked phone with telephony, and never commits
 
-The shell checks the number with the agent's dial-number validation
-(`dialable`) and asks Android, at the time of the call, for the telephony
-feature. The dial screen, which also keeps emergency numbers, belongs to the
-person: an opened screen is a `Preview` receipt and names the app that
-opened, unless Android's own chooser did.
+`dialable` is the shell's check of the number against the dial pattern;
+the telephony feature is asked of Android at the time of the call. The dial
+screen, which also keeps emergency numbers, belongs to the person: an opened
+screen is a `Preview` receipt and names the app that opened, unless
+Android's own chooser did.
 
 ```quint
 import receipts as R from "../../core/receipts"
@@ -182,21 +181,24 @@ pure def lawEmergencyNumberOnlyOpensTheDialScreen(presence: PluginPresence, fact
 ### A call-log page is published only to a host that declares the call log, on an unlocked phone with the grant, and only if access still holds at publication
 
 A host that does not declare call-log access answers unavailable, never an
-empty page. The read runs off the main thread, is cancelled on background,
-lock, screen-off and grant change, and is fenced again before it is
-published (`fenceHolds`). A page holds 1 to 50 calls.
+empty page; a refused admission carries its reason, so only
+`PermissionRequired` raises Android's prompt. The read runs off the main
+thread, is cancelled on background, lock, screen-off and grant change, and is
+fenced again before it is published (`fenceHolds`). A page holds 1 to 50
+calls.
 
 ```quint
 import paging as Pg from "./paging"
-type CallLogAnswer = CallLogPage({ rows: List[Pg::RowKey], more: Pg::PageEnd }) | CallLogUnavailable | CallLogNotAdmitted | CallLogLimitRefused | CallLogCursorRefused | CallLogUnreadable | CallLogStale
+type CallLogAnswer = CallLogPage({ rows: List[Pg::RowKey], more: Pg::PageEnd }) | CallLogUnavailable | CallLogNotAdmitted({ admission: Admission }) | CallLogLimitRefused | CallLogCursorRefused | CallLogUnreadable | CallLogStale
 pure val maxCallLogPage = 50
 pure val callLogCall: BridgeCall = { need: WhileUnlocked, needsGrant: true, needsFeature: true }
 pure def callLogKey(date: int, rowId: int): Pg::RowKey = { major: 0 - date, minor: 0 - rowId, rowId: rowId }
 pure def readCallLog(declared: bool, presence: PluginPresence, facts: HostFacts, request: Pg::PageRequest, numberFilter: str, pageLimit: int, providerRows: List[Pg::RowKey], fenceHolds: bool): CallLogAnswer = {
   val start = Pg::startOf(request, numberFilter, true)
   val startRefused = start == Pg::Refused({ reason: Pg::OtherQuery }) or start == Pg::Refused({ reason: Pg::MovedBoundary })
+  val admission = admitCall(presence, callLogCall, facts)
   if (not(declared)) CallLogUnavailable
-  else if (admitCall(presence, callLogCall, facts) != CallAdmitted) CallLogNotAdmitted
+  else if (admission != CallAdmitted) CallLogNotAdmitted({ admission: admission })
   else if (pageLimit < 1 or pageLimit > maxCallLogPage) CallLogLimitRefused
   else if (startRefused) CallLogCursorRefused
   else if (not(Pg::inPageOrder(providerRows))) CallLogUnreadable

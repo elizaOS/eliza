@@ -1,8 +1,8 @@
 # Visual voicemail
 
 What the phone app reads from and changes in Android's voicemail provider:
-the carrier state, a page of voicemail rows, a voicemail's audio and its
-speech-ready PCM, and the owner's "heard" and delete. The sources are
+the carrier state, a page of voicemail rows, a request for a voicemail's
+audio, its speech-ready PCM, and the owner's "heard" and delete. The sources are
 `VoicemailStore.java` and `VoicemailPcm.java` of the native messages plugin.
 Each operation passes the device check of [the bridge](./bridge.md); the
 capability names it serves, `voicemail.read.v1` (list, audio, PCM, heard) and
@@ -74,8 +74,11 @@ pure def refresh(s: Voicemail, facts: HostFacts, read: ReadEvidence, sources: Li
 pure val listedValues = Set(List(), List({ id: 1, heard: false, hasAudio: false }), List({ id: 1, heard: false, hasAudio: true }, { id: 2, heard: true, hasAudio: false }),
   List({ id: 2, heard: false, hasAudio: true }), List({ id: 2, heard: false, hasAudio: false }, { id: 2, heard: true, hasAudio: false }))
 pure val rowsValues = Set(List(), List({ id: 1, heard: false, audio: AudioAsked }), List({ id: 2, heard: true, audio: AudioOnPhone }, { id: 3, heard: false, audio: AudioNotAsked }))
-pure def lawRefreshKeepsOnlyListedRows(rows: List[VoicemailRow], listed: List[ListedRow]): bool =
-  listingRows(rows, listed).listMap(r => r.id) == listed.listMap(r => r.id)
+pure def lawRefreshShowsExactlyTheListing(rows: List[VoicemailRow], read: ReadEvidence, sources: List[SourceConfiguration], listed: List[ListedRow]): bool = {
+  val after = refresh({ carrier: CarrierReady, rows: rows, gate: WriteIdle }, { foreground: true, unlocked: true, focused: true, granted: true, featurePresent: true }, read, sources, listed)
+  after.rows.listMap(r => r.id) == (if (carrierOf(sources) == CarrierUnsupported) List() else listed.listMap(r => r.id)) and
+  after.rows.every(r => listed.includes({ id: r.id, heard: r.heard, hasAudio: r.audio == AudioOnPhone }))
+}
 pure def alwaysRowsKeyedByProviderId(s: Voicemail): bool = s.rows.length() <= maxVoicemails and s.rows.every(r => r.id > 0 and s.rows.select(q => q.id == r.id).length() == 1)
 pure def alwaysNoRowsWithoutACarrierThatHasThem(s: Voicemail): bool = (s.carrier == CarrierUnread or s.carrier == CarrierUnsupported) implies s.rows.length() == 0
 pure def sometimesUnsupportedCarrierRead(s: Voicemail): bool = s.carrier == CarrierUnsupported
@@ -90,18 +93,22 @@ pure def sometimesUnconfiguredCarrierListsRows(s: Voicemail): bool = s.carrier =
 ### A voicemail's audio is asked of its source at most once
 
 A row whose audio is not on the phone asks its own source to download it;
-the answer proves only that the request was sent. A row once asked, or once
-holding audio, is never asked again; the next refresh shows the audio.
+the answer proves only that the request was sent. A row that names no
+source, or whose request could not be sent, stays unasked. A row once
+asked, or once holding audio, is never asked again; the next refresh shows
+the audio.
 
 ```quint
 type PcmRefusal = PcmTooLong | PcmUndecodable
 type VoicemailWrite = MarkHeard | DeleteRow
-type VoicemailReply = FetchRequested({ id: int }) | Wrote({ id: int, change: VoicemailWrite, written: WriteOutcome }) | PcmReturned({ id: int, samples: int }) | PcmRefused({ id: int, reason: PcmRefusal })
+type FetchSend = SentToSource | NoSourceToAsk
+type VoicemailReply = FetchRequested({ id: int }) | FetchFailed({ id: int }) | Wrote({ id: int, change: VoicemailWrite, written: WriteOutcome }) | PcmReturned({ id: int, samples: int }) | PcmRefused({ id: int, reason: PcmRefusal })
 type VoicemailStep = { state: Voicemail, out: List[VoicemailReply] }
 pure val idValues = Set(1, 2, 3)
 pure def canRequestAudio(s: Voicemail, facts: HostFacts, id: int): bool = deviceAllows(facts) and hasRow(s.rows, id) and rowAt(s.rows, id).audio == AudioNotAsked
-pure def requestAudio(s: Voicemail, facts: HostFacts, id: int): VoicemailStep =
-  { state: { ...s, rows: s.rows.listMap(r => if (r.id == id) { ...r, audio: AudioAsked } else r) }, out: List(FetchRequested({ id: id })) }
+pure def requestAudio(s: Voicemail, facts: HostFacts, id: int, sent: FetchSend): VoicemailStep =
+  if (sent == NoSourceToAsk) { state: s, out: List(FetchFailed({ id: id })) }
+  else { state: { ...s, rows: s.rows.listMap(r => if (r.id == id) { ...r, audio: AudioAsked } else r) }, out: List(FetchRequested({ id: id })) }
 pure def stepAskedAudioIsNeverForgotten(before: Voicemail, after: Voicemail): bool =
   after.rows.every(r => (hasRow(before.rows, r.id) and rowAt(before.rows, r.id).audio != AudioNotAsked) implies r.audio != AudioNotAsked)
 pure def stepFetchOnlyForAnUnaskedRow(before: Voicemail, via: str, after: Voicemail, out: List[VoicemailReply]): bool =
@@ -150,7 +157,7 @@ that source.
 
 ```quint
 pure def canWriteRow(s: Voicemail, facts: HostFacts, id: int, change: VoicemailWrite, reply: ProviderReply): bool =
-  deviceAllows(facts) and gateAllowsWrite(s.gate) and hasRow(s.rows, id) and (change == MarkHeard implies not(rowAt(s.rows, id).heard))
+  deviceAllows(facts) and gateAllowsWrite(s.gate) and hasRow(s.rows, id)
 pure def writeRow(s: Voicemail, facts: HostFacts, id: int, change: VoicemailWrite, reply: ProviderReply): VoicemailStep = {
   val written = writeOutcome(reply)
   val rows = if (written != Applied) s.rows else if (change == DeleteRow) s.rows.select(r => r.id != id) else s.rows.listMap(r => if (r.id == id) { ...r, heard: true } else r)

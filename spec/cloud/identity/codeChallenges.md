@@ -19,7 +19,10 @@ machine. The shell draws the code at random, stores only its keyed digest and
 the S256 challenge, and passes the comparisons in as observations:
 `codeMatches` (the code's digest equals the stored one) and `verifierMatches`
 (the verifier hashes to the stored challenge). The code itself never enters
-the model.
+the model. A Blooio deployment sends the SMS through its registered channel
+and verifies the keyed digest locally. A Twilio Verify deployment records
+the browser challenge and asks Twilio to verify its own code. A pending SMS
+challenge keeps the verification method that issued it.
 
 One machine instance is one challenge row. A destination and purpose hold at
 most one Open challenge: an admitted send supersedes the Open one and opens

@@ -132,7 +132,10 @@ provider revision. Grace exposes no permanent deletion here.
 
 Creating, changing or removing an appointment requires Calendar event
 permission for calendars their account owns. Changes target the primary
-calendar and appointments without guests. A series change must name the
+calendar and appointments without guests. A new series can repeat weekly or
+monthly. Timed series retain the reviewed local time in the named time zone.
+Cloud verifies the recurrence and time zone on the saved series before
+returning its receipt. A series change must name the
 current parent of the occurrence and the reviewed parent version. Updates and removals name the
 reviewed event version, and Google must accept that version. Grace displays
 success only after provider evidence matches the selected event.

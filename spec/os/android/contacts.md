@@ -36,7 +36,7 @@ type ContactGrants = { readGranted: bool, writeGranted: bool }
 type PageAsk = { queryLength: int, hasNul: bool, limit: int }
 type ContactRead = NoRead | Reading({ ticket: int, kind: ReadKind, afterSettle: bool })
 type CallerSlot = NoCall | InCall({ callId: int, nameCached: bool, nameShown: bool })
-type LastWrite = NoWriteYet | Wrote({ outcome: WriteOutcome })
+type LastWrite = NoWriteYet | Wrote({ result: WriteOutcome })
 type ContactsState = { viewOpen: bool, generation: int, grants: ContactGrants, read: ContactRead, rowsShown: bool,
   gate: WriteGate, lastWrite: LastWrite, callServiceLive: bool, call: CallerSlot }
 pure val initial: ContactsState = { viewOpen: false, generation: 0, grants: { readGranted: false, writeGranted: false }, read: NoRead,
@@ -66,19 +66,22 @@ an incomplete placeholder with no contact data, in its place in the page.
 
 ```quint
 pure def readTicketIs(read: ContactRead, ticket: int): bool = match read { | Reading(r) => r.ticket == ticket | NoRead => false }
-pure def pagePublishes(start: Pg::PageStart, providerOk: bool): bool = match start { | Pg::Refused(_) => false | _ => providerOk }
+pure def pagePublishes(start: Pg::PageStart, providerOk: bool): bool = match start { | Refused(_) => false | _ => providerOk }
 pure val startValues = Set(Pg::FromFirst, Pg::AfterRow({ last: { major: 0, minor: 0, rowId: 1 } }), Pg::Refused({ reason: Pg::MovedBoundary }))
 pure def canCompleteRead(s: ContactsState, ticket: int): bool = readTicketIs(s.read, ticket)
 pure def completeRead(s: ContactsState, ticket: int, facts: HostFacts, start: Pg::PageStart, providerOk: bool): ContactsState = {
   val published = readAdmission(s.grants, facts) == CallAdmitted and pagePublishes(start, providerOk)
-  val evidence = match s.read {
+  val pending = s.read
+  val evidence = match pending {
     | Reading(r) => { kind: r.kind, startedAfterSettle: r.afterSettle, succeeded: published }
     | NoRead => { kind: AutomaticRead, startedAfterSettle: false, succeeded: false }
   }
   { ...s, read: NoRead, rowsShown: published, gate: gateOnRead(s.gate, evidence) }
 }
-pure def alwaysAReadBelongsToTheCurrentGenerationOfTheOpenView(s: ContactsState): bool =
-  match s.read { | Reading(r) => s.viewOpen and r.ticket == s.generation | NoRead => true }
+pure def alwaysAReadBelongsToTheCurrentGenerationOfTheOpenView(s: ContactsState): bool = {
+  val pending = s.read
+  match pending { | Reading(r) => s.viewOpen and r.ticket == s.generation | NoRead => true }
+}
 pure def alwaysRowsOnlyInTheOpenViewWithTheReadGrant(s: ContactsState): bool = s.rowsShown implies (s.viewOpen and s.grants.readGranted)
 pure def stepRowsAppearOnlyFromTheCurrentRead(before: ContactsState, via: str, after: ContactsState): bool =
   (after.rowsShown and not(before.rowsShown)) implies via == "completeRead"
@@ -121,7 +124,7 @@ pure def writeAdmission(install: ContactsInstall, grants: ContactGrants, facts: 
   if (install != WritingInstall) BridgeUnavailable
   else if (readAdmission(grants, facts) != CallAdmitted) readAdmission(grants, facts)
   else admitCall(PluginRegistered, writeCall, { ...facts, granted: grants.writeGranted })
-pure val grantsValues = Set({ readGranted: true, writeGranted: true }, { readGranted: true, writeGranted: false }, { readGranted: false, writeGranted: true })
+pure val grantsValues = Set({ readGranted: true, writeGranted: true }, { readGranted: true, writeGranted: false }, { readGranted: false, writeGranted: true }, { readGranted: false, writeGranted: false })
 pure def lawAWriteRunsOnlyWhereTheCapabilityIsAdvertised(install: ContactsInstall, grants: ContactGrants, facts: HostFacts): bool =
   writeAdmission(install, grants, facts) == CallAdmitted implies (advertisesContactWrite(install, PluginRegistered, grants) and facts.focused)
 ```
@@ -193,14 +196,14 @@ pure def dispatchWrite(s: ContactsState, install: ContactsInstall, facts: HostFa
 }
 pure def canSettleWrite(s: ContactsState): bool = s.gate == WriteInFlight
 pure def settleWrite(s: ContactsState, reply: ProviderReply): ContactsState =
-  { ...s, gate: gateOnOutcome(s.gate, writeOutcome(reply)), lastWrite: Wrote({ outcome: writeOutcome(reply) }) }
+  { ...s, gate: gateOnOutcome(s.gate, writeOutcome(reply)), lastWrite: Wrote({ result: writeOutcome(reply) }) }
 pure def alwaysAnUnsettledGateFollowsAnUncertainWrite(s: ContactsState): bool =
-  s.gate == WriteUnsettled implies s.lastWrite == Wrote({ outcome: Uncertain })
+  s.gate == WriteUnsettled implies s.lastWrite == Wrote({ result: Uncertain })
 pure def stepOnlyACompletedReadSettlesAnUncertainWrite(before: ContactsState, via: str, after: ContactsState): bool =
   (before.gate == WriteUnsettled and after.gate != WriteUnsettled) implies (via == "completeRead" and after.gate == WriteIdle)
-pure def sometimesAppliedWrite(s: ContactsState): bool = s.lastWrite == Wrote({ outcome: Applied })
+pure def sometimesAppliedWrite(s: ContactsState): bool = s.lastWrite == Wrote({ result: Applied })
 pure def sometimesUncertainWriteOutlivesTheView(s: ContactsState): bool = s.gate == WriteUnsettled and not(s.viewOpen)
-pure def sometimesUncertainWriteSettledByAnExplicitRead(s: ContactsState): bool = s.lastWrite == Wrote({ outcome: Uncertain }) and s.gate == WriteIdle
+pure def sometimesUncertainWriteSettledByAnExplicitRead(s: ContactsState): bool = s.lastWrite == Wrote({ result: Uncertain }) and s.gate == WriteIdle
 ```
 
 ## Story: See who is calling from my contacts
@@ -234,9 +237,11 @@ pure def refreshCaller(s: ContactsState): ContactsState = {
   { ...s, call: match slot { | InCall(c) => InCall({ callId: c.callId, nameCached: c.nameCached, nameShown: c.nameCached and s.grants.readGranted }) | NoCall => NoCall } }
 }
 pure val callIdValues = Set(1, 2)
-pure def alwaysACallBelongsToTheLiveCallService(s: ContactsState): bool = match s.call { | InCall(_) => s.callServiceLive | NoCall => true }
+pure def nameCachedIn(slot: CallerSlot): bool = match slot { | InCall(c) => c.nameCached | NoCall => false }
+pure def nameShownIn(slot: CallerSlot): bool = match slot { | InCall(c) => c.nameShown | NoCall => false }
+pure def alwaysACallBelongsToTheLiveCallService(s: ContactsState): bool = s.call != NoCall implies s.callServiceLive
 pure def alwaysAShownCallerNameIsCachedAndGranted(s: ContactsState): bool =
-  match s.call { | InCall(c) => c.nameShown implies (c.nameCached and s.grants.readGranted) | NoCall => true }
-pure def sometimesCallerNamed(s: ContactsState): bool = match s.call { | InCall(c) => c.nameShown | NoCall => false }
-pure def sometimesCachedNameHiddenWithoutGrant(s: ContactsState): bool = match s.call { | InCall(c) => c.nameCached and not(c.nameShown) | NoCall => false }
+  nameShownIn(s.call) implies (nameCachedIn(s.call) and s.grants.readGranted)
+pure def sometimesCallerNamed(s: ContactsState): bool = nameShownIn(s.call)
+pure def sometimesCachedNameHiddenWithoutGrant(s: ContactsState): bool = nameCachedIn(s.call) and not(nameShownIn(s.call))
 ```

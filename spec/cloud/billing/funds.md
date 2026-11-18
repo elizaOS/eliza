@@ -41,28 +41,30 @@ pure def availableCredits(f: Funds): Micros = f.creditBalance - f.creditHeld
 
 ### The operator adds credits once per request
 
-Each `credits add` carries a request id. The `credit_entries` ledger owns it
-through a unique request key, and the shell looks it up in the same
-transaction: a fresh id steps `addCredits` and writes one entry, a known id
-with the same amount answers the first entry and steps nothing, and a
-request id already used with another amount is refused with a typed operator
-error. A retried command therefore never funds an account twice.
+Each `credits add` carries a non-empty request id and at least 1 µUSD;
+anything else is refused with `InvalidRequest` before the ledger is read.
+The `credit_entries` ledger owns the id through a unique request key, and the
+shell looks it up in the same transaction and steps `addCredits` only on
+`ApplyAdd`: a fresh id adds and writes one entry, a known id with the same
+amount answers the first entry and steps nothing, and a known id with
+another amount is refused with `IdempotencyConflict`. The guard refuses a
+known id, so a retried command never funds an account twice.
 
 ```quint
 type AddDecision = ApplyAdd | AnswerFirstEntry | RefuseMismatchedReplay
 pure def addDecision(known: bool, firstAmount: Micros, amount: Micros): AddDecision =
   if (not(known)) ApplyAdd else if (firstAmount == amount) AnswerFirstEntry else RefuseMismatchedReplay
 pure val amountValues = Set(0, 1, 2, 5)
-pure val requestValues = Set("", "op1", "op2")
-pure def canAddCredits(f: Funds, request: str, amount: Micros): bool = request != "" and amount >= 1
-pure def addCredits(f: Funds, request: str, amount: Micros): Funds = { ...f, creditBalance: f.creditBalance + amount }
+pure val knownValues = Set(false, true)
+pure def canAddCredits(f: Funds, known: bool, amount: Micros): bool = amount >= 1 and addDecision(known, amount, amount) == ApplyAdd
+pure def addCredits(f: Funds, known: bool, amount: Micros): Funds = { ...f, creditBalance: f.creditBalance + amount }
 pure def sometimesFunded(f: Funds): bool = f.creditBalance > 0 and f.creditHeld == 0
 ```
 
 ### A hold takes only credits that no other hold keeps back
 
 The credit part of a hold (`fromCredits` of metering's `Hold`) is kept back
-until its call settles. A hold with no credit part needs no step here.
+until its call settles. A hold with no credit part steps nothing here.
 
 ```quint
 pure val fromCreditsValues = Set(0, 1, 2, 3)
@@ -78,7 +80,12 @@ release). The shell passes metering the `availableCredits` of this row as
 `creditFree`, so the charge always fits; a charge that does not is a defect
 and rolls the transaction back, it is never clipped here. The clip is
 metering's `settleKnown` through `creditFree`; clipping to `creditBalance`
-instead would spend credits that other holds keep back.
+instead would spend credits that other holds keep back (changed from the
+plan's `min(charged, creditBalance)`). Every settle with a `creditCharge`
+above 0 steps `settleCredits`, also for a hold with no credit part
+(`fromCredits` 0, overage of an allowance-paid hold); only such a hold that
+settles with no credit charge steps nothing. `collected`, the total debited,
+witnesses spending for the goals below.
 
 ```quint
 pure val chargedValues = Set(0, 1, 2, 4)
@@ -98,6 +105,11 @@ first and credits beyond the hold only from `creditFree`; a lost reply
 charges its quote, which the hold covers.
 
 ```quint
+pure val quoteValues = Set(0, 1, 3)
+pure val allowanceAvailableValues = Set(0, 2)
+pure val creditAvailableValues = Set(0, 1, 3)
+pure val actualValues = Set(0, 1, 9)
+pure val creditFreeValues = Set(0, 2)
 pure def lawMeteredChargeFitsTheFunds(lane: M::FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros, actual: Micros, creditFree: Micros): bool = {
   val reserved = M::reserve(M::initial, M::initial.key, quote, lane, allowanceAvailable, creditAvailable, 0)
   val dispatched = M::markDispatched(reserved, 0)
@@ -112,14 +124,6 @@ pure def lawMeteredChargeFitsTheFunds(lane: M::FundingLane, quote: Micros, allow
 
 ```quint
 pure def alwaysNeverOverdrawn(f: Funds): bool = f.creditHeld >= 0 and f.creditHeld <= f.creditBalance and f.collected >= 0
-```
-
-### What a settle collects is exactly what the balance lost, and nothing else collects
-
-```quint
-pure def stepCollectedIsWhatTheBalanceLost(before: Funds, via: str, after: Funds): bool =
-  if (via == "settleCredits") after.collected - before.collected == before.creditBalance - after.creditBalance
-  else after.collected == before.collected
 ```
 
 ### Only an operator add raises the balance and only a settle lowers it

@@ -7,9 +7,11 @@ the enrollment of the device it is offered to. The request holds a core
 [interaction session](../../core/sessions.md), whose claim, commit, single
 invocation and ambiguity it reuses; dispatch to a device that declared the
 capability is the core [device bridge](../../core/deviceBridge.md). What the
-device does with a claimed request is `execution.md`; the capability
-vocabulary and header negotiation are `capabilities.md`; the
-operation shapes are `operations.md`.
+device does with a claimed request, its execution journal and the reviewed
+operation wire shapes belong to the [Android device](../../os/index.md) and
+are still being rebuilt there. This request model does not prove those device
+operations. The capability vocabulary and header negotiation are
+[capabilities](./capabilities.md).
 
 The routes are `POST /api/client-devices/{register,revoke}`,
 `GET /api/client-devices/context`, `GET /api/client-devices/proposals` and

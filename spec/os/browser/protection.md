@@ -6,11 +6,9 @@ actually loaded. A site no list names is never blocked, and a list that
 failed to load is never read as "safe". Only the fixed public list
 addresses are fetched; a visited address is never sent, saved or logged.
 
-The shell downloads and parses the lists, writes the browser's network
-rules, matches a host and its whole-label ancestors (`a.example.test`
-matches a listed `example.test`, `notexample.test` does not) and reads
-registrable domains; this file decides what those facts mean, over the
-addresses of [Browser address](./address.md).
+The shell fetches and parses lists, writes network rules, matches a host
+and its whole-label ancestors and reads registrable domains; this file
+decides what those facts mean, over [Browser address](./address.md).
 
 ## Story: Block known-bad sites without blocking unknown ones
 
@@ -75,9 +73,8 @@ pure val ruleIndexValues = Set(-1, 0, 1, 2, 3, 1199, 1200)
 
 ### A temporary exception is granted only to the warning page of a tab, for one plain web address of at most 800 units
 
-Only the browser's own warning page, in the top frame of a tab, can ask.
-A website, a frame or a content script cannot grant itself an exception.
-The shell clears the fragment before it builds the address.
+Only the browser's own warning page, in a tab's top frame, can ask; a
+website, frame or content script cannot. The fragment is cleared first.
 
 ```quint
 type ExceptionAsker = OwnWarningPage({ tab: int }) | OtherAsker
@@ -168,16 +165,15 @@ pure def feedsConfigured(feedIds: List[str]): bool =
 pure def lawRepeatedListIsRefused(id: str): bool = not(feedsConfigured(List(id, id)))
 ```
 
-### A loaded list counts at any age, and its age only makes a refresh due
+### A failed refresh keeps the loaded list, and no refresh of a list starts within a minute of its last one ending
 
-A refresh is due when no list is loaded, or the loaded one is six hours
-old or has a time more than five minutes ahead. One refresh per list runs
-at a time. Any refresh that ends, failed or not, waits a minute before the
-next; a failed one keeps the list already loaded.
+A loaded list counts at any age; a refresh is due when none is loaded or
+it is six hours old or dated over five minutes ahead. One refresh per list
+runs at a time, and a stopped service starts none.
 
 ```quint
 type FeedSnapshot = NoList | LoadedList({ downloadedAt: int })
-type FeedRefresh = RefreshIdle({ retryAfter: int }) | RefreshRunning | RefreshStopped
+type FeedRefresh = RefreshIdle({ retryAfter: int }) | RefreshRunning
 type FeedTrack = { snapshot: FeedSnapshot, refresh: FeedRefresh }
 type DownloadResult = Downloaded({ downloadedAt: int }) | DownloadFailed
 pure val clockSkewMs = 300000
@@ -200,13 +196,14 @@ pure def refreshEnded(result: DownloadResult, track: FeedTrack, now: int): FeedT
     | _ => { ...track, refresh: waiting }
   }
 }
-pure def lawFailedRefreshKeepsListAndWaits(track: FeedTrack, now: int): bool = {
-  val after = refreshEnded(DownloadFailed, track, now)
-  after.snapshot == track.snapshot and not(refreshDue(after, now + retryAfterMs - 1))
+pure def lawFailedRefreshKeepsListAndAllWait(result: DownloadResult, track: FeedTrack, now: int): bool = {
+  val after = refreshEnded(result, track, now)
+  (result == DownloadFailed implies after.snapshot == track.snapshot) and not(refreshDue(after, now + retryAfterMs - 1))
 }
 pure val trackValues: Set[FeedTrack] = Set({ snapshot: NoList, refresh: RefreshIdle({ retryAfter: 0 }) },
   { snapshot: LoadedList({ downloadedAt: 0 }), refresh: RefreshIdle({ retryAfter: 0 }) },
-  { snapshot: LoadedList({ downloadedAt: 0 }), refresh: RefreshRunning }, { snapshot: NoList, refresh: RefreshStopped })
+  { snapshot: LoadedList({ downloadedAt: 0 }), refresh: RefreshRunning })
+pure val resultValues: Set[DownloadResult] = Set(Downloaded({ downloadedAt: 60000 }), Downloaded({ downloadedAt: 22000000 }), DownloadFailed)
 pure val nowValues = Set(0, 60000, 21600000, 21700000)
 ```
 
@@ -244,21 +241,24 @@ pure val queryValues: Set[ReputationQuery] = Set({ site: secureAddress, localHos
   { site: { ...secureAddress, href: "http://example.test/", units: 20, scheme: HttpScheme }, localHost: false })
 ```
 
-### A look-alike is advice about a registrable domain that is not itself a reference site, and the site verdict never reads it
+### A look-alike suggests a reference site other than the visited registrable domain, and the site verdict never reads it
 
-`resemblesSite` is the shell's suspicion signal: the host holds the
-reference as whole labels, or the domain spelled after folding common
-Greek, Cyrillic and Latin confusables equals it, or a registrable label of
-at least five letters equals the reference's or is one edit or swap away.
+`resemblesSite(host, reference)` holds when the host holds the reference as
+whole labels, the registrable domain with Greek, Cyrillic and Latin
+confusables folded equals it, or a registrable label of five or more
+letters equals the reference's or is one edit or swap away.
 
 ```quint
 const resemblesSite: (str, str) => bool
 type Lookalike = NotLookalike | LooksLike({ suggested: str })
-pure def lawNoSiteResemblesItself(reference: str): bool = not(resemblesSite(reference, reference))
 pure def lookalikeOf(host: str, domain: str, references: List[str]): Lookalike =
-  if (references.includes(domain)) NotLookalike
+  if (domain == "" or references.includes(domain)) NotLookalike
   else references.foldl(NotLookalike, (found, reference) =>
     if (found == NotLookalike and resemblesSite(host, reference)) LooksLike({ suggested: reference }) else found)
+pure def lawSuggestionIsAnotherReferenceSite(host: str, domain: str, references: List[str]): bool = {
+  val similar = lookalikeOf(host, domain, references)
+  match similar { | LooksLike(l) => references.includes(l.suggested) and l.suggested != domain and domain != "" | _ => true }
+}
 ```
 
 ### A page shows look-alike advice always, unscanned advice only as the build chose, and a mark only for the same finding and a bound owner

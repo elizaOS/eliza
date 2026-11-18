@@ -24,6 +24,12 @@ are checked by the plugin plan, which owns them. Source: the pinned `EmbeddedAge
 origin, environment, allow list, in-memory default) and the launch settings
 of the device hosts it replaces.
 
+Schema 1 sends `callerRole` as `owner` or `user` and uses `own-key` for
+the supplied-key model backend. The optional product plugin sits at
+`policy.plugins.product` and an optional `hostContextRevision` is a
+positive integer. Host and executable use this representation for both
+new installs and existing launch documents.
+
 ## Story: Start the agent from one launch document
 
 > As the host that starts my agent, I want to hand it one launch document

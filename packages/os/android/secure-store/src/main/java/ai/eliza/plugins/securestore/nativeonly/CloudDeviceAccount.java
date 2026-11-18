@@ -99,14 +99,88 @@ public final class CloudDeviceAccount {
   return credential;
  }
 
+ public record NativeGoogleAttempt(String clientId, String environment, String serverClientId, String challengeId,
+    String nonce, String state, long expiresAt) {
+  @Override public String toString() { return "CloudDeviceAccount.NativeGoogleAttempt"; }
+ }
+
+ private JSONObject mobileClient(String clientId, String environment) throws Exception {
+  if (!clientId.matches("[A-Za-z0-9_.-]{1,140}") || !environment.matches("[A-Za-z0-9_-]{1,32}"))
+   throw new IllegalArgumentException("Invalid native client");
+  return new JSONObject().put("clientId", clientId).put("environment", environment).put("redirectUri", callback.toString());
+ }
+
+ public NativeGoogleAttempt prepareNativeGoogle(String clientId, String environment) throws Exception {
+  JSONObject client = mobileClient(clientId, environment);
+  String query = new Uri.Builder().appendQueryParameter("clientId", clientId).appendQueryParameter("environment", environment)
+      .appendQueryParameter("redirectUri", callback.toString()).build().getEncodedQuery();
+  JSONObject config = new JSONObject(send("GET", "/api/v1/app-auth/mobile/config?" + query, null, null, 200).body());
+  JSONObject google = config.optJSONObject("google");
+  if (google == null || !google.optBoolean("nativeSignIn")) return null;
+  String serverClientId = google.getString("serverClientId");
+  if (!serverClientId.matches("[A-Za-z0-9-]{1,100}\\.apps\\.googleusercontent\\.com"))
+   throw new IOException("Invalid Google client configuration");
+  JSONObject pending = beginPending("google", 120_000L);
+  String state = pending.getString("state");
+  try {
+   JSONObject response = new JSONObject(post("/api/v1/app-auth/mobile/google/challenge",
+       client.put("challenge", challenge(pending)).put("state", state), null, 200).body());
+   String challengeId = identifier(response, "challengeId"), nonce = response.getString("nonce");
+   long seconds = response.getLong("expiresIn");
+   if (!opaque(nonce) || seconds < 1 || seconds > 120)
+    throw new IOException("Invalid Google challenge");
+   long expiry = Math.min(pending.getLong("expiresAt"), System.currentTimeMillis() + seconds * 1000);
+   return new NativeGoogleAttempt(clientId, environment, serverClientId, challengeId, nonce, state, expiry);
+  } catch (Exception failure) {
+   clearNativeGoogle(state);
+   throw failure;
+  }
+ }
+
+ public boolean finishNativeGoogle(NativeGoogleAttempt attempt, String idToken) throws Exception {
+  if (idToken == null || idToken.length() > 7500 || !idToken.matches("[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+"))
+   throw new IOException("Invalid Google result");
+  String snapshot = pendingSnapshot(attempt.state(), "google");
+  if (snapshot == null || attempt.expiresAt() <= System.currentTimeMillis()) return false;
+  JSONObject request = mobileClient(attempt.clientId(), attempt.environment())
+      .put("challengeId", attempt.challengeId()).put("idToken", idToken);
+  JSONObject response = new JSONObject(post("/api/v1/app-auth/mobile/google", request, null, 200).body());
+  String code = response.getString("code");
+  return opaque(code) && attempt.state().equals(response.getString("state")) && exchangeCode(code, snapshot);
+ }
+
+ public void cancelNativeGoogle(NativeGoogleAttempt attempt) throws Exception {
+  clearNativeGoogle(attempt.state());
+ }
+
+ private void clearNativeGoogle(String state) throws Exception {
+  synchronized (LOCK) {
+   String saved = slots.read(PENDING);
+   if (saved == null) return;
+   JSONObject pending = new JSONObject(saved);
+   if ("google".equals(pending.optString("method")) && state.equals(pending.getString("state"))) slots.remove(PENDING);
+  }
+ }
+
  public Uri begin() throws Exception {
+  JSONObject pending = beginPending("browser", PENDING_MS);
+  return manageAccount().buildUpon().appendQueryParameter("device_challenge", challenge(pending))
+      .appendQueryParameter("device_state", pending.getString("state")).build();
+ }
+
+ private JSONObject beginPending(String method, long duration) throws Exception {
   synchronized (LOCK) {
    if (credential() != null) throw new IllegalStateException("Sign out before adding another device account");
-   String verifier = randomValue(), state = randomValue();
-   byte[] digest = MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII));
-   slots.write(PENDING, new JSONObject().put("verifier", verifier).put("state", state).put("expiresAt", System.currentTimeMillis() + PENDING_MS).toString());
-   return manageAccount().buildUpon().appendQueryParameter("device_challenge", base64Url(digest)).appendQueryParameter("device_state", state).build();
+   JSONObject pending = new JSONObject().put("method", method).put("verifier", randomValue()).put("state", randomValue())
+       .put("expiresAt", System.currentTimeMillis() + duration);
+   slots.write(PENDING, pending.toString());
+   return pending;
   }
+ }
+
+ private static String challenge(JSONObject pending) throws Exception {
+  byte[] verifier = pending.getString("verifier").getBytes(StandardCharsets.US_ASCII);
+  return base64Url(MessageDigest.getInstance("SHA-256").digest(verifier));
  }
 
  public boolean handles(Uri data) {
@@ -118,13 +192,21 @@ public final class CloudDeviceAccount {
   if (!handles(data) || data.getQueryParameters("code").size() != 1 || data.getQueryParameters("state").size() != 1) return false;
   String code = data.getQueryParameter("code"), state = data.getQueryParameter("state");
   if (!opaque(code) || !opaque(state)) return false;
-  String snapshot;
+  String snapshot = pendingSnapshot(state, "browser");
+  return snapshot != null && exchangeCode(code, snapshot);
+ }
+
+ private String pendingSnapshot(String state, String method) throws Exception {
   synchronized (LOCK) {
-   snapshot = slots.read(PENDING);
-   if (snapshot == null) return false;
+   String snapshot = slots.read(PENDING);
+   if (snapshot == null) return null;
    JSONObject pending = new JSONObject(snapshot);
-   if (!state.equals(pending.getString("state")) || pending.getLong("expiresAt") <= System.currentTimeMillis()) return false;
+   return method.equals(pending.optString("method", "browser")) && state.equals(pending.getString("state"))
+       && pending.getLong("expiresAt") > System.currentTimeMillis() ? snapshot : null;
   }
+ }
+
+ private boolean exchangeCode(String code, String snapshot) throws Exception {
   String verifier = new JSONObject(snapshot).getString("verifier");
   JSONObject request = new JSONObject().put("code", code).put("verifier", verifier);
   JSONObject response = new JSONObject(post("/api/auth/device/exchange", request, null, 200).body());
@@ -204,11 +286,15 @@ public final class CloudDeviceAccount {
  }
 
  private Exchange post(String path, JSONObject body, String bearer, int expected, int... retires) throws Exception {
+  return send("POST", path, body, bearer, expected, retires);
+ }
+
+ private Exchange send(String method, String path, JSONObject body, String bearer, int expected, int... retires) throws Exception {
   HttpURLConnection connection = (HttpURLConnection) cloud.resolve(path).toURL().openConnection();
   connection.setInstanceFollowRedirects(false);
   connection.setConnectTimeout(8000);
   connection.setReadTimeout(10000);
-  connection.setRequestMethod("POST");
+  connection.setRequestMethod(method);
   connection.setRequestProperty("Accept", "application/json");
   if (bearer != null) connection.setRequestProperty("Authorization", "Bearer " + bearer);
   try {
