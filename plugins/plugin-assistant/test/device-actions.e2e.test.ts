@@ -4771,6 +4771,21 @@ test("Clock-only enrollment scopes actual planner discovery and preserves pendin
     expect(proposals).toHaveLength(1);
     expect(proposals[0].state).toBe("pending");
     expect(proposals[0].execution).toBeNull();
+    // A paused review turn names the proposal it created in its own action
+    // results: the requesting phone tells this turn's reviews apart from
+    // pending reviews of earlier turns by this receipt (it is no approval).
+    if (pending.kind === "planned_reply")
+      expect(
+        (pending.result.actionResults ?? []).flatMap(
+          (result) => result.effectReceipts ?? [],
+        ),
+      ).toContainEqual(
+        expect.objectContaining({
+          operation: "device.clock_handoff",
+          outcome: "preview",
+          resource: { kind: "device.approval", id: proposals[0].id },
+        }),
+      );
     const plannerCalls = calls.filter(
       ({ type }) => type === ModelType.ACTION_PLANNER,
     );
