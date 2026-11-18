@@ -58,15 +58,16 @@ pure def start(s: VoiceSession, mode: InputMode, duplex: Duplex): VoiceSession =
   { ...s, running: true, ready: false, failed: false, mode: mode, duplex: duplex, capture: CaptureOpening, utterance: NoUtterance,
     hasText: false, turn: NoTurn, cause: NoSubmit, closeConfirmed: false, bargeIn: false, segments: 0, played: 0 }
 pure def canCaptureOpened(s: VoiceSession): bool = s.capture == CaptureOpening
-pure def captureOpened(s: VoiceSession, ok: bool): VoiceSession =
-  if (not(s.running)) { ...s, capture: if (ok) CaptureClosing else CaptureClosed }
-  else if (ok) { ...s, capture: CaptureOpen, ready: true }
-  else { ...halted(true, s), capture: CaptureClosed }
+pure def captureOpened(s: VoiceSession): VoiceSession =
+  if (s.running) { ...s, capture: CaptureOpen, ready: true } else { ...s, capture: CaptureClosing }
 pure def canCaptureClosed(s: VoiceSession): bool = s.capture == CaptureClosing
-pure def captureClosed(s: VoiceSession, ok: bool): VoiceSession =
-  if (not(ok)) { ...halted(s.running, s), capture: CaptureClosed }
-  else { ...s, capture: CaptureClosed, closeConfirmed: s.closeConfirmed or s.turn == AwaitingClose,
+pure def captureClosed(s: VoiceSession): VoiceSession =
+  { ...s, capture: CaptureClosed, closeConfirmed: s.closeConfirmed or s.turn == AwaitingClose,
     turn: if (s.turn == AwaitingClose) ReadyToSend else s.turn }
+pure def canCaptureFailed(s: VoiceSession): bool = s.capture == CaptureOpening or s.capture == CaptureClosing
+pure def captureFailed(s: VoiceSession): VoiceSession = { ...halted(s.running, s), capture: CaptureClosed }
+pure val weight_captureOpened = 4
+pure val weight_captureClosed = 4
 pure def canReopenCapture(s: VoiceSession): bool = s.running and s.turn == NoTurn and s.capture == CaptureClosed
 pure def reopenCapture(s: VoiceSession): VoiceSession = { ...s, capture: CaptureOpening }
 pure def canStop(s: VoiceSession): bool = s.running
@@ -147,6 +148,13 @@ pure def endOfTurnAnswered(s: VoiceSession, epoch: int, verdict: EndpointVerdict
 pure val unitsValues = Set(0, 1, 4096, 4097)
 pure val answerMsValues = Set(0, 600, 601)
 pure val epochValues = Set(0, 1, 2, 3)
+pure val weight_speechStarted = 3
+pure val weight_speechEnded = 3
+pure val weight_finalTranscript = 3
+pure val weight_longGapElapsed = 3
+pure val weight_sendTurn = 3
+pure val weight_replyStarted = 3
+pure val weight_segmentPlayed = 2
 pure val askingSession: VoiceSession = { ...initial, running: true, ready: true, capture: CaptureOpen, utterance: AskingEndOfTurn, hasText: true }
 pure def lawOverlongTextIsNeverScored(units: int, answer: EndOfTurnReply): bool =
   units > endOfTurnMaxUnits implies endOfTurnVerdict(units, answer) == DecisionUnavailable
@@ -257,7 +265,7 @@ pure def lawEchoInTheTailIsDropped(heard: HeardTurn): bool =
   (not(heard.echoCancelled) and heard.startKnown and heard.startedAfterReplyEndMs <= echoTailMs and heard.words >= 2 and heard.overlapPercent >= echoOverlapPercent)
     implies not(turnAccepted(heard))
 pure def lawAOneWordAnswerIsKept(heard: HeardTurn): bool = (heard.words == 1 and not(heard.onlyFiller)) implies turnAccepted(heard)
-pure def sometimesAnUtteranceWaitsForItsGap(s: VoiceSession): bool = s.utterance == GapWaiting and s.sent > 0
+pure def sometimesAnUtteranceWaitsForItsGap(s: VoiceSession): bool = s.utterance == GapWaiting and s.hasText
 ```
 
 ### Dictation never submits by itself
@@ -391,8 +399,8 @@ pure def heardAnswered(s: VoiceSession, reply: int, wire: HeardWire): VoiceSessi
   { ...s, receipts: s.receipts.listMap(r => if (r.reply == reply and r.phase == HeardInFlight) settleHeard(r, wire) else r) }
 pure val replyValues = Set(1, 2)
 pure val waitedMsValues = Set(1499, 1500)
-pure val weight_dispatchHeard = 10
-pure val weight_heardAnswered = 10
+pure val weight_dispatchHeard = 6
+pure val weight_heardAnswered = 6
 pure val statusValues = Set(0, 200, 400, 404, 409, 429, 500, 503)
 pure def alwaysAReportIsPostedAtMostTwice(s: VoiceSession): bool =
   s.receipts.every(r => r.attempts >= 0 and r.attempts <= 2 and
