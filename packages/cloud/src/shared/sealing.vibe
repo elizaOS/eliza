@@ -1,5 +1,5 @@
 // spec/cloud/shared/types.md, "Story: Speak one refusal language"
-import { Deployment, SecretMissing } from "../profile/profile.vibe"
+import { Deployment, type SecretMissing } from "../profile/profile.vibe"
 
 module node {
   import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto"

@@ -1,0 +1,23 @@
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"
+import { ModelType, type IAgentRuntime } from "@elizaos/core"
+import { Refused, generateText, listModels, registerTwice, type Binding } from "./chat.vibe"
+
+export interface OwnKeyModels {
+  readonly baseUrl: string
+  readonly small: string
+  readonly large: string
+}
+
+export function registerOwnKeyModels(runtime: IAgentRuntime, binding: Binding, own: OwnKeyModels): void {
+  const endpoint = { url: own.baseUrl + "/chat/completions", models: { TextSmall: own.small, TextLarge: own.large } }
+  registerTwice(runtime, "@elizaos/agent/own-key", {
+    [ModelType.TEXT_SMALL]: generateText(binding, endpoint, "TextSmall"),
+    [ModelType.TEXT_LARGE]: generateText(binding, endpoint, "TextLarge"),
+  }, { streamable: true })
+}
+
+export effect function probeOwnKey(own: OwnKeyModels, key: Redacted.Redacted<string>) {
+  const listed = try listModels(own.baseUrl, key)
+  if (!listed.includes(own.small) || !listed.includes(own.large)) throw new Refused({ cloud: { tag: "CloudProviderIssue" } })
+  return listed
+}

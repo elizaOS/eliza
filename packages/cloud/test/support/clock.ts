@@ -1,5 +1,5 @@
 // spec/cloud/shared/metering.md, "Story: Settle every call once"
-import { Clock, Duration, Effect } from "effect";
+import { type Clock, Duration, Effect } from "effect";
 
 export interface ShiftedClock {
   readonly clock: Clock.Clock;
@@ -23,4 +23,23 @@ export function shiftedClock(): ShiftedClock {
       }),
   };
   return { clock, advance: (milliseconds) => { offset += milliseconds; } };
+}
+
+export interface ManualClock {
+  readonly clock: Clock.Clock;
+  set(milliseconds: number): void;
+}
+
+export function manualClock(): ManualClock {
+  let now = 0;
+  const nanos = () => BigInt(now) * 1_000_000n;
+  const { clock: shifted } = shiftedClock();
+  const clock: Clock.Clock = {
+    ...shifted,
+    currentTimeMillisUnsafe: () => now,
+    currentTimeMillis: Effect.sync(() => now),
+    currentTimeNanosUnsafe: nanos,
+    currentTimeNanos: Effect.sync(nanos),
+  };
+  return { clock, set: (milliseconds) => { now = milliseconds; } };
 }

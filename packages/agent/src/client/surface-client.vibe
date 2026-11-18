@@ -1,0 +1,151 @@
+// spec/agent/surfaceChannel.md, "Story: Retire delivered page commands without repeating a possible effect"; spec/agent/surfaceChannel.md, "A pull hands over the oldest command not yet handed over, once, and only one pull waits at a time"; spec/agent/surfaceChannel.md, "A command the agent gives up on is settled once, uncertain only if it was handed over and can have an effect"
+import { commandTimeoutMs, maxPending } from "../../gen/agent__surfaceChannel.effect.vibe"
+
+export type SurfaceRequest = (path: string, body: unknown, signal: AbortSignal) => Promise<unknown>
+
+export interface SurfaceCommandContext {
+  readonly signal: AbortSignal
+  readonly expiresAt: number
+}
+
+export interface SurfaceClientOptions {
+  readonly request: SurfaceRequest
+  readonly clientId: string
+  readonly epoch: number
+  readonly handleCommand: (input: unknown, context: SurfaceCommandContext) => Promise<unknown>
+  readonly signal?: AbortSignal
+}
+
+export interface SurfaceClient {
+  readonly connectionId: string
+  readonly completion: Promise<void>
+  close(): Promise<void>
+}
+
+export error SurfaceTransport { path: string; cause: unknown }
+export error SurfaceProtocol { reason: string }
+export type SurfaceFailure = SurfaceTransport | SurfaceProtocol
+
+type Reply = { readonly result: unknown } | { readonly error: { readonly code: string; readonly message: string } }
+schema Connection { readonly connectionId: Schema.NonEmptyString }
+schema Command { readonly id: string; readonly sequence: Schema.Int; readonly effect: boolean; readonly expiresAt: Schema.Int; readonly input: Schema.Unknown }
+error HandlerRefused { cause: unknown }
+
+const Pulled = Schema.Struct({ command: Schema.NullOr(Command), cancellations: Schema.Array(Schema.String) })
+const closeTimeoutMs = 3_000
+const errorCode = /^[A-Z_]{1,64}$/
+const maxMessageLength = 1024
+
+function field(cause: unknown, name: "code" | "message"): string | undefined {
+  if (typeof cause !== "object" || cause === null || !(name in cause)) return undefined
+  const value: unknown = Reflect.get(cause, name)
+  return typeof value === "string" ? value : undefined
+}
+
+function failed(code: string, message: string): Reply {
+  return { error: { code, message } }
+}
+
+function refused(cause: unknown, canAffect: boolean): Reply {
+  const code = field(cause, "code")
+  const message = field(cause, "message")
+  return failed(
+    code !== undefined && errorCode.test(code) ? code : canAffect ? "UNCERTAIN_OUTCOME" : "STALE_REF",
+    message !== undefined && message.length <= maxMessageLength ? message : "Surface command failed",
+  )
+}
+
+effect function call(request: SurfaceRequest, path: string, body: unknown): unknown!SurfaceTransport {
+  return try tryPromise({ try: (signal) => request(path, body, signal), catch: (cause) => new SurfaceTransport({ path, cause }) })
+}
+
+effect function callTolerant(request: SurfaceRequest, path: string, body: unknown): void!SurfaceTransport {
+  call(request, path, body) catch effect (error) => {
+    if (field(error.cause, "code") !== "STALE_REF") throw error
+  }
+}
+
+effect function decode<A>(schema: Schema.Decoder<A>, raw: unknown, reason: string): A!SurfaceProtocol {
+  return Schema.decodeUnknownEffect(schema)(raw) catch effect () => {
+    throw new SurfaceProtocol({ reason })
+  }
+}
+
+effect function perform(options: SurfaceClientOptions, command: Command, remaining: number): Reply!! {
+  const attempt = Effect.catch(
+    map(tryPromise({
+      try: (signal) => options.handleCommand(command.input, { signal, expiresAt: command.expiresAt }),
+      catch: (cause) => new HandlerRefused({ cause }),
+    }), (result): Reply => ({ result })),
+    (refusal) => succeed(refused(refusal.cause, command.effect)),
+  )
+  const answered = try timeoutOption(attempt, Duration.millis(remaining))
+  return Option.getOrElse(answered, () => failed(command.effect ? "UNCERTAIN_OUTCOME" : "STALE_REF", "Surface command context ended"))
+}
+
+effect function execute(options: SurfaceClientOptions, connection: Connection, command: Command): void!SurfaceTransport {
+  const remaining = command.expiresAt - (try Clock.currentTimeMillis)
+  const reply = remaining <= 0 ? failed("STALE_REF", "Surface command expired before dispatch") : try perform(options, command, remaining)
+  try callTolerant(options.request, "/api/surface/reply", { ...connection, id: command.id, ...reply })
+}
+
+effect function pullLoop(
+  options: SurfaceClientOptions, connection: Connection, ended: Deferred.Deferred<void, SurfaceFailure>,
+): void!SurfaceFailure {
+  const active = new Map<string, Deferred.Deferred<void>>()
+  let sequence = 0
+  while (true) {
+    const pulled = try decode(Pulled, try call(options.request, "/api/surface/pull", connection), "Invalid surface pull reply")
+    for (const id of pulled.cancellations) {
+      const cancel = active.get(id)
+      if (cancel !== undefined) try Deferred.succeed(cancel, undefined)
+    }
+    const command = pulled.command
+    if (command === null) continue
+    const now = try Clock.currentTimeMillis
+    if (command.sequence <= sequence || command.expiresAt > now + commandTimeoutMs || active.size >= maxPending) {
+      throw new SurfaceProtocol({ reason: "Invalid or repeated surface command" })
+    }
+    sequence = command.sequence
+    const cancel = Deferred.makeUnsafe<void>()
+    active.set(command.id, cancel)
+    const run = Effect.catch(raceFirst(execute(options, connection, command), Deferred.await(cancel)), (error) => Deferred.fail(ended, error))
+    fork ensuring(run, sync(() => active.delete(command.id)))
+  }
+}
+
+effect function session(options: SurfaceClientOptions, connection: Connection, ended: Deferred.Deferred<void, SurfaceFailure>): void!SurfaceFailure {
+  const outcome = try exit(raceFirst(pullLoop(options, connection, ended), Deferred.await(ended)))
+  const closing = timeoutOption(callTolerant(options.request, "/api/surface/close", connection), Duration.millis(closeTimeoutMs))
+  const closed = try exit(flatMap(closing, (done) => Option.isSome(done)
+    ? Effect.void
+    : fail(new SurfaceTransport({ path: "/api/surface/close", cause: "Surface close timed out" }))))
+  try outcome
+  try closed
+}
+
+effect function open(options: SurfaceClientOptions): Connection!SurfaceFailure {
+  const raw = try call(options.request, "/api/surface/connect", { clientId: options.clientId, epoch: options.epoch })
+  return try decode(Connection, raw, "Invalid surface connection reply")
+}
+
+export async function createSurfaceClient(options: SurfaceClientOptions): Promise<SurfaceClient> {
+  const connection = await runPromise(open(options), { signal: options.signal })
+  const ended = Deferred.makeUnsafe<void, SurfaceFailure>()
+  const stop = () => {
+    runFork(Deferred.succeed(ended, undefined))
+  }
+  options.signal?.addEventListener("abort", stop, { once: true })
+  if (options.signal?.aborted === true) stop()
+  const completion = runPromise(session(options, connection, ended))
+    .finally(() => options.signal?.removeEventListener("abort", stop))
+  completion.catch(() => undefined)
+  return {
+    connectionId: connection.connectionId,
+    completion,
+    async close() {
+      stop()
+      await completion
+    },
+  }
+}

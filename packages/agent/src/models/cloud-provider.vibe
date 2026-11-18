@@ -1,0 +1,19 @@
+// spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"
+import { ModelType, type IAgentRuntime } from "@elizaos/core"
+import { describeImage, generateText, registerTwice, type Binding } from "./chat.vibe"
+
+export interface CloudModels {
+  readonly baseUrl: string
+  readonly small: string
+  readonly large: string
+  readonly image: string
+}
+
+export function registerCloudModels(runtime: IAgentRuntime, binding: Binding, cloud: CloudModels): void {
+  const endpoint = { url: cloud.baseUrl + "/api/v1/chat/completions", models: { TextSmall: cloud.small, TextLarge: cloud.large, ImageDescription: cloud.image } }
+  registerTwice(runtime, "@elizaos/agent/cloud", {
+    [ModelType.TEXT_SMALL]: generateText(binding, endpoint, "TextSmall"),
+    [ModelType.TEXT_LARGE]: generateText(binding, endpoint, "TextLarge"),
+    [ModelType.IMAGE_DESCRIPTION]: describeImage(binding, endpoint),
+  }, { streamable: true })
+}

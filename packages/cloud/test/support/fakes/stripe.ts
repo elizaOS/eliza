@@ -386,7 +386,8 @@ export function createStripeFake(options: StripeFakeOptions = {}): StripeFake {
   let sequence = 0;
   const nextId = (kind: keyof typeof prefixes) => `${prefixes[kind]}_fake${String(++sequence).padStart(6, "0")}`;
 
-  for (const price of options.prices ?? catalogPrices) {
+  const prices: ReadonlyArray<CatalogPrice> = options.prices ?? catalogPrices;
+  for (const price of prices) {
     objects.set(price.productId, { id: price.productId, object: "product", active: true, livemode: price.livemode ?? false });
     objects.set(price.priceId, {
       id: price.priceId,

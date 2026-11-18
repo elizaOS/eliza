@@ -1,11 +1,14 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
-import { randomBytes } from "node:crypto";
+import { generateKeyPairSync, randomBytes } from "node:crypto";
 
 const document = (title: string) => ({
   title,
   revision: "2026-11-01",
   sections: [{ title: "Scope", paragraphs: [`${title} of the test deployment.`] }],
 });
+
+const entitlementKeys = generateKeyPairSync("ec", { namedCurve: "P-256" });
+const entitlementPoint = entitlementKeys.publicKey.export({ format: "jwk" });
 
 export const testDatabaseIdentity = "a".repeat(64);
 
@@ -17,7 +20,7 @@ export const catalogPrices = [
 export const secrets: Readonly<Record<string, string>> = {
   CLOUD_DIGEST_KEY: randomBytes(32).toString("base64"),
   CLOUD_SEALING_KEY: randomBytes(32).toString("base64"),
-  CLOUD_ENTITLEMENT_KEY: "test-entitlement-signing-key",
+  CLOUD_ENTITLEMENT_KEY: entitlementKeys.privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
   STRIPE_SECRET_KEY: "sk_test_fake",
   STRIPE_WEBHOOK_SECRET: "whsec_fake",
   GOOGLE_CLIENT_SECRET: "google-secret",
@@ -44,7 +47,7 @@ export function environmentProfile(fakeUrl: string, api: string, web: string) {
     entitlement: {
       keyId: "entitlement-1",
       signingKeyEnv: "CLOUD_ENTITLEMENT_KEY",
-      publicKeys: [{ kid: "entitlement-1", kty: "EC", crv: "P-256", x: "A".repeat(43), y: "B".repeat(43) }],
+      publicKeys: [{ kid: "entitlement-1", kty: "EC", crv: "P-256", x: entitlementPoint.x, y: entitlementPoint.y }],
     },
     google: {
       clientId: "google-web-client",

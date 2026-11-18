@@ -1,0 +1,217 @@
+// spec/agent/tasks/store.md, "Storage opens only with a private path, the exclusive lock, a 32-byte key and the launch account"; spec/agent/tasks/store.md, "A sealed record reads as a task only under the launch account's task-record key"
+module node {
+  import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto"
+  import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
+  import { mkdir, open, rename, rm } from "node:fs/promises"
+  import { dirname } from "node:path"
+  import { ElizaError } from "@elizaos/core"
+  import type { Purpose } from "../../gen/agent__tasks__store.ts"
+
+  export type TaskPurpose = Purpose
+
+  export const taskPurposes: readonly TaskPurpose[] = ["TaskRecord", "TaskEvidence", "OutcomeJournal"]
+
+  const NAMESPACE = /^[a-z][a-z0-9-]{0,31}$/
+  const KEY_BYTES = 32
+  const IV_BYTES = 12
+  const TAG_BYTES = 16
+
+  export function storageUnavailable(message: string): ElizaError {
+    return new ElizaError(message, { code: "TASK_STORAGE_UNAVAILABLE" })
+  }
+
+  export function storageCorrupt(message: string): ElizaError {
+    return new ElizaError(message, { code: "TASK_STORAGE_CORRUPT" })
+  }
+
+  function checkNamespace(namespace: string): string {
+    if (!NAMESPACE.test(namespace)) throw storageUnavailable("Invalid task storage namespace")
+    return namespace
+  }
+
+  function context(account: string, namespace: string, purpose: TaskPurpose): Buffer {
+    return Buffer.from(JSON.stringify([checkNamespace(namespace), account, purpose, "v1"]))
+  }
+
+  export function sealedPrefix(namespace: string): string {
+    return `${checkNamespace(namespace)}-sealed-v1.`
+  }
+
+  export interface TaskKeys {
+    readonly account: string
+    readonly namespace: string
+    key(purpose: TaskPurpose): Uint8Array
+    wipe(): void
+  }
+
+  export function deriveTaskKeys(master: Uint8Array, scope: { readonly account: string; readonly namespace: string }): TaskKeys {
+    try {
+      if (master.length !== KEY_BYTES) throw storageUnavailable("The task storage key must be 32 bytes")
+      if (scope.account === "") throw storageUnavailable("Task keys need the launch account")
+      const keys = new Map(taskPurposes.map((purpose) =>
+        [purpose, Buffer.from(hkdfSync("sha256", master, Buffer.alloc(0), context(scope.account, scope.namespace, purpose), KEY_BYTES))]))
+      let wiped = false
+      return Object.freeze({
+        account: scope.account,
+        namespace: scope.namespace,
+        key(purpose: TaskPurpose) {
+          const found = keys.get(purpose)
+          if (wiped || found === undefined) throw storageUnavailable("The task keys were retired")
+          return found
+        },
+        wipe() {
+          wiped = true
+          for (const key of keys.values()) key.fill(0)
+        },
+      })
+    } finally {
+      master.fill(0)
+    }
+  }
+
+  export interface TaskSealer {
+    seal(text: string, purpose: TaskPurpose): string
+    open(value: string, purpose: TaskPurpose): string
+    isSealed(value: string): boolean
+    wipe(): void
+  }
+
+  export function createTaskSealer(keys: TaskKeys): TaskSealer {
+    const prefix = sealedPrefix(keys.namespace)
+    const aad = (purpose: TaskPurpose) => Buffer.concat([Buffer.from("sealed/"), context(keys.account, keys.namespace, purpose)])
+    return Object.freeze({
+      seal(text: string, purpose: TaskPurpose) {
+        const iv = randomBytes(IV_BYTES)
+        const cipher = createCipheriv("aes-256-gcm", keys.key(purpose), iv)
+        cipher.setAAD(aad(purpose))
+        const body = Buffer.concat([cipher.update(text, "utf8"), cipher.final()])
+        return prefix + Buffer.concat([iv, body, cipher.getAuthTag()]).toString("base64url")
+      },
+      open(value: string, purpose: TaskPurpose) {
+        const key = keys.key(purpose)
+        if (!value.startsWith(prefix)) throw storageCorrupt("Not a sealed task value")
+        const encoded = value.slice(prefix.length)
+        const bytes = Buffer.from(encoded, "base64url")
+        if (bytes.length < IV_BYTES + TAG_BYTES || bytes.toString("base64url") !== encoded) throw storageCorrupt("A sealed task value is torn")
+        try {
+          const decipher = createDecipheriv("aes-256-gcm", key, bytes.subarray(0, IV_BYTES))
+          decipher.setAAD(aad(purpose))
+          decipher.setAuthTag(bytes.subarray(bytes.length - TAG_BYTES))
+          return Buffer.concat([decipher.update(bytes.subarray(IV_BYTES, bytes.length - TAG_BYTES)), decipher.final()]).toString("utf8")
+        } catch {
+          throw storageCorrupt("A sealed task value did not authenticate")
+        }
+      },
+      isSealed: (value: string) => value.startsWith(prefix),
+      wipe: () => keys.wipe(),
+    })
+  }
+
+  export function sealedTextCodec(sealer: TaskSealer, purpose: TaskPurpose) {
+    return Object.freeze({
+      encode: (text: string) => sealer.seal(text, purpose),
+      decode: (value: string) => sealer.open(value, purpose),
+    })
+  }
+
+  export function sealedEvidenceCodec(sealer: TaskSealer, purpose: TaskPurpose = "TaskEvidence") {
+    return Object.freeze({ extension: ".sealed", encode: (text: string) => sealer.seal(text, purpose) })
+  }
+
+  const DIRECTORY_SYNC_UNSUPPORTED = new Set(["EINVAL", "ENOTSUP", "EOPNOTSUPP", "EISDIR"])
+
+  function errorCode(error: unknown): unknown {
+    return typeof error === "object" && error !== null && "code" in error ? error.code : undefined
+  }
+
+  export function syncDirectory(directory: string): void {
+    let fd: number | undefined
+    try {
+      fd = openSync(directory, "r")
+      fsyncSync(fd)
+    } catch (error) {
+      if (!DIRECTORY_SYNC_UNSUPPORTED.has(String(errorCode(error)))) throw error
+    } finally {
+      if (fd !== undefined) closeSync(fd)
+    }
+  }
+
+  export function privateDirectory(directory: string): void {
+    mkdirSync(directory, { recursive: true, mode: 0o700 })
+    const status = lstatSync(directory)
+    if (!status.isDirectory() || (status.mode & 0o077) !== 0 || status.uid !== process.getuid?.()) {
+      throw storageUnavailable("The task storage directory is not private to this process owner")
+    }
+  }
+
+  export function isPrivateFile(path: string): boolean {
+    const status = lstatSync(path, { throwIfNoEntry: false })
+    return status === undefined || (status.isFile() && status.nlink === 1 && (status.mode & 0o077) === 0 && status.uid === process.getuid?.())
+  }
+
+  const temporaryPath = (path: string) => `${path}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`
+
+  export function writePrivateFileSync(path: string, data: string, verify?: (text: string) => void): void {
+    const directory = dirname(path)
+    privateDirectory(directory)
+    const temporary = temporaryPath(path)
+    const fd = openSync(temporary, "wx", 0o600)
+    try {
+      writeFileSync(fd, data)
+      fsyncSync(fd)
+    } catch (error) {
+      closeSync(fd)
+      rmSync(temporary, { force: true })
+      throw error
+    }
+    closeSync(fd)
+    try {
+      verify?.(readFileSync(temporary, "utf8"))
+      renameSync(temporary, path)
+    } catch (error) {
+      rmSync(temporary, { force: true })
+      throw error
+    }
+    syncDirectory(directory)
+  }
+
+  export async function writePrivateFile(path: string, data: string): Promise<void> {
+    const directory = dirname(path)
+    await mkdir(directory, { recursive: true, mode: 0o700 })
+    privateDirectory(directory)
+    const temporary = temporaryPath(path)
+    const handle = await open(temporary, "wx", 0o600)
+    try {
+      try {
+        await handle.writeFile(data)
+        await handle.sync()
+      } finally {
+        await handle.close()
+      }
+      await rename(temporary, path)
+    } catch (error) {
+      await rm(temporary, { force: true })
+      throw error
+    }
+    syncDirectory(directory)
+  }
+
+  export function sealedFilePorts(sealer: TaskSealer, purpose: TaskPurpose) {
+    return Object.freeze({
+      writeFile: (path: string, text: string) => writePrivateFileSync(path, `${sealer.seal(text, purpose)}\n`),
+      readFile: (path: string) => {
+        if (!isPrivateFile(path)) throw storageUnavailable("A sealed task file is not private")
+        return sealer.open(readFileSync(path, "utf8").trimEnd(), purpose)
+      },
+      removeFile: (path: string) => {
+        rmSync(path, { force: true })
+        if (existsSync(dirname(path))) syncDirectory(dirname(path))
+      },
+    })
+  }
+}
+export {
+  createTaskSealer, deriveTaskKeys, isPrivateFile, privateDirectory, sealedEvidenceCodec, sealedFilePorts, sealedPrefix,
+  sealedTextCodec, storageCorrupt, storageUnavailable, syncDirectory, taskPurposes, writePrivateFile, writePrivateFileSync,
+  type TaskKeys, type TaskPurpose, type TaskSealer,
+} from node

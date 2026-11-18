@@ -1,0 +1,237 @@
+// spec/cloud/identity/signInMethods.md, "Story: Review, link and remove my sign-in methods"
+import { Rejected, apply, decodeState, initial, isFreshReview, isRemovable, reviewExpiresAt, reviewRefusal, type Attempt, type Event, type LinkProof, type Methods, type MethodsEffect, type MethodsStep, type SubjectHolder } from "../../gen/cloud__identity__signInMethods.effect.vibe"
+import { refused, Refused } from "../http/refusal.vibe"
+import type { Signed } from "../http/request-auth.vibe"
+import { json, jsonBody, type Route, type RouteContext } from "../http/routes.vibe"
+import { newId } from "../shared/sealing.vibe"
+import { loadRow, outputRows, stepRow } from "../store/rows.vibe"
+import { Store, toText, type Tx } from "../store/connection.vibe"
+import { linkIdentity, unlinkIdentity, type Identity } from "./accounts.vibe"
+import { clientAddress, sendLinkCode, verifyLinkCode } from "./code-challenges.vibe"
+import { googleLinkChallenge, googleLinkProof } from "./federated.vibe"
+import { revokeOthers } from "./sessions.vibe"
+
+export type MethodKind = "email" | "phone" | "google"
+
+export type MethodsCaller = Pick<Extract<Signed, { readonly kind: "session" }>, "userId" | "sessionKey">
+
+export interface Entry {
+  readonly kind: MethodKind
+  readonly subject: string
+}
+
+const methodsOf = {
+  email: { provider: "email", method: "EmailSignIn" },
+  phone: { provider: "sms", method: "PhoneSignIn" },
+  google: { provider: "google", method: "GoogleSignIn" }
+} as const satisfies Record<MethodKind, { readonly provider: string; readonly method: Identity["method"] }>
+
+const reviews = outputRows<Methods, Event, MethodsEffect[], Rejected, unknown>("method_reviews", { initial, decodeState, apply })
+
+const PhoneSend = Schema.Struct({ phone: Schema.String, clientId: Schema.String, codeChallenge: Schema.String, codeChallengeMethod: Schema.Literal("S256") })
+const PhoneVerify = Schema.Struct({ reviewId: Schema.String, phone: Schema.String, code: Schema.String, clientId: Schema.String, codeVerifier: Schema.String })
+const GoogleChallenge = Schema.Struct({ clientId: Schema.String })
+const GoogleLink = Schema.Struct({ reviewId: Schema.String, challengeId: Schema.String, idToken: Schema.String })
+
+export function kindOf(text: string | undefined): MethodKind | undefined {
+  return text === "email" || text === "phone" || text === "google" ? text : text === "sms" ? "phone" : undefined
+}
+
+function identityOf(entry: Entry): Identity {
+  return { method: methodsOf[entry.kind].method, subject: entry.subject }
+}
+
+function labelOf(entry: Entry): string {
+  switch (entry.kind) {
+    case "email": return entry.subject
+    case "phone": return `•••${entry.subject.slice(-4)}`
+    case "google": return "Google"
+    default: {
+      const _exhaustive: never = entry.kind
+      return _exhaustive
+    }
+  }
+}
+
+function moment(at: number): number | null {
+  return at > 0 ? at : null
+}
+
+effect function sessionOf(context: RouteContext) {
+  if (context.caller.kind !== "session") throw refused("AuthenticationRequired", "CredentialUnknown")
+  return context.caller
+}
+
+effect function entriesOf(tx: Tx, userId: string, lock: boolean): ReadonlyArray<Entry> {
+  const rows = try tx.query(`SELECT provider, provider_subject FROM cloud_sign_in_identities WHERE account_id = $1 ORDER BY provider${lock ? " FOR UPDATE" : ""}`, [userId])
+  return rows.flatMap((row) => {
+    const kind = kindOf(toText(row.provider))
+    const subject = toText(row.provider_subject)
+    return kind === undefined || subject === undefined ? [] : [{ kind, subject }]
+  })
+}
+
+effect function stepReview(tx: Tx, userId: string, event: Event): MethodsStep {
+  return try stepRow(tx, reviews, userId, event, () => ({ updated_at: event.now })) catch effect (failure) => match (failure) {
+    when Rejected: throw new Refused({ refusal: reviewRefusal });
+    default: throw failure;
+  }
+}
+
+effect function requireFreshReview(userId: string, reviewId: string, now: number) {
+  const store = try Store
+  const loaded = try store.transaction((tx) => loadRow(tx, reviews, userId, false))
+  if (!isFreshReview(loaded.state, reviewId, now)) throw new Refused({ refusal: reviewRefusal })
+}
+
+effect function proven<A, E, R>(attempt: A!E!R) {
+  return try effect {
+    const value: A | undefined = try attempt
+    return { proof: { tag: "ProvenThisAttempt" } as LinkProof, value }
+  } catch effect (failure) => match (failure) {
+    when Refused: { proof: { tag: "Unproven", refusal: failure.refusal } as LinkProof, value: undefined };
+    default: throw failure;
+  }
+}
+
+effect function perform(tx: Tx, action: MethodsEffect, caller: MethodsCaller, identity: Identity, now: number) {
+  switch (action) {
+    case "LinkIdentity": return try linkIdentity(tx, caller.userId, identity, now)
+    case "UnlinkIdentity": return try unlinkIdentity(tx, caller.userId, identity, now)
+    case "RevokeOtherSessions": return try revokeOthers(tx, caller.sessionKey, caller.userId, now)
+    default: {
+      const _exhaustive: never = action
+      return _exhaustive
+    }
+  }
+}
+
+effect function answered(outcome: Attempt, method: string) {
+  switch (outcome.tag) {
+    case "MethodLinked": return json({ status: "linked", method })
+    case "AlreadyLinked": return json({ status: "already_linked", method })
+    case "MethodUnlinked": return json({ status: "removed", method })
+    case "AttemptRefused": throw new Refused({ refusal: outcome.refusal })
+    case "NoAttempt": throw new Refused({ refusal: reviewRefusal })
+    default: {
+      const _exhaustive: never = outcome
+      return _exhaustive
+    }
+  }
+}
+
+export effect function openReview(caller: MethodsCaller, reviewId: string, now: number) {
+  const store = try Store
+  return try store.transaction(effect (tx) => {
+    const stepped = try stepReview(tx, caller.userId, { type: "review", reviewId, now })
+    return { state: stepped.state, entries: try entriesOf(tx, caller.userId, false) }
+  })
+}
+
+effect function holderOf(tx: Tx, caller: MethodsCaller, entry: Entry) {
+  const row = (try tx.query("SELECT account_id FROM cloud_sign_in_identities WHERE provider = $1 AND provider_subject = $2", [methodsOf[entry.kind].provider, entry.subject]))[0]
+  const holder: SubjectHolder = row === undefined ? "NobodyHolds" : toText(row.account_id) === caller.userId ? "CallerHolds" : "OtherHolds"
+  const kindHeld = (try entriesOf(tx, caller.userId, true)).some((held) => held.kind === entry.kind && held.subject !== entry.subject)
+  return { holder, kindHeld }
+}
+
+export effect function attemptLink(caller: MethodsCaller, reviewId: string, entry: Entry, proof: LinkProof, now: number): Attempt {
+  const store = try Store
+  return try store.transaction(effect (tx) => {
+    const observed = proof.tag === "ProvenThisAttempt" ? try holderOf(tx, caller, entry) : { holder: "NobodyHolds" as SubjectHolder, kindHeld: false }
+    const stepped = try stepReview(tx, caller.userId, { type: "link", reviewId, now, proof, holder: observed.holder, kindHeld: observed.kindHeld })
+    for (const action of stepped.out) try perform(tx, action, caller, identityOf(entry), now)
+    return stepped.state.outcome
+  })
+}
+
+export effect function attemptUnlink(caller: MethodsCaller, kind: MethodKind | undefined, reviewId: string, now: number): Attempt {
+  const store = try Store
+  return try store.transaction(effect (tx) => {
+    const entries = try entriesOf(tx, caller.userId, true)
+    const target = entries.find((entry) => entry.kind === kind)
+    const stepped = try stepReview(tx, caller.userId, { type: "unlink", reviewId, now, held: target !== undefined, others: entries.filter((entry) => entry !== target).length })
+    if (target !== undefined) for (const action of stepped.out) try perform(tx, action, caller, identityOf(target), now)
+    return stepped.state.outcome
+  })
+}
+
+export effect function readMethodReview(userId: string): Methods {
+  const store = try Store
+  return (try store.transaction((tx) => loadRow(tx, reviews, userId, false))).state
+}
+
+export const routes: ReadonlyArray<Route> = [
+  {
+    method: "GET",
+    path: "/api/v1/user/methods",
+    auth: "SignedSession",
+    handler: (context) => effect {
+      const caller = try sessionOf(context)
+      const { state, entries } = try openReview(caller, newId(), context.now)
+      return json({
+        reviewId: state.reviewId,
+        expiresAt: reviewExpiresAt(state),
+        methods: entries.map((entry) => ({ id: entry.kind, kind: entry.kind, label: labelOf(entry), removable: isRemovable(entries.length - 1) })),
+        stepUpAt: moment(caller.stepUpAt),
+        mfaAt: moment(caller.mfaAt)
+      })
+    }
+  },
+  {
+    method: "POST",
+    path: "/api/v1/user/methods/phone/code/send",
+    auth: "SignedSession",
+    handler: (context) => effect {
+      const caller = try sessionOf(context)
+      const body = try jsonBody(context, PhoneSend)
+      return json(try sendLinkCode({ userId: caller.userId, phone: body.phone, clientId: body.clientId, codeChallenge: body.codeChallenge, address: clientAddress(context), now: context.now }))
+    }
+  },
+  {
+    method: "POST",
+    path: "/api/v1/user/methods/phone/code/verify",
+    auth: "SignedSession",
+    handler: (context) => effect {
+      const caller = try sessionOf(context)
+      const body = try jsonBody(context, PhoneVerify)
+      try requireFreshReview(caller.userId, body.reviewId, context.now)
+      const { proof, value } = try proven(verifyLinkCode({ userId: caller.userId, phone: body.phone, code: body.code, clientId: body.clientId, codeVerifier: body.codeVerifier, address: clientAddress(context), now: context.now }))
+      const entry: Entry = { kind: "phone", subject: value?.phone ?? body.phone }
+      return try answered(try attemptLink(caller, body.reviewId, entry, proof, context.now), entry.kind)
+    }
+  },
+  {
+    method: "POST",
+    path: "/api/v1/user/methods/google/challenge",
+    auth: "SignedSession",
+    handler: (context) => effect {
+      const caller = try sessionOf(context)
+      const body = try jsonBody(context, GoogleChallenge)
+      return json(try googleLinkChallenge({ userId: caller.userId, clientId: body.clientId, now: context.now }))
+    }
+  },
+  {
+    method: "POST",
+    path: "/api/v1/user/methods/google/link",
+    auth: "SignedSession",
+    handler: (context) => effect {
+      const caller = try sessionOf(context)
+      const body = try jsonBody(context, GoogleLink)
+      try requireFreshReview(caller.userId, body.reviewId, context.now)
+      const { proof, value } = try proven(googleLinkProof({ userId: caller.userId, challengeId: body.challengeId, idToken: body.idToken, now: context.now }))
+      const entry: Entry = { kind: "google", subject: value?.subject ?? "" }
+      return try answered(try attemptLink(caller, body.reviewId, entry, proof, context.now), entry.kind)
+    }
+  },
+  {
+    method: "DELETE",
+    path: "/api/v1/user/methods/:methodId",
+    auth: "StepUp",
+    handler: (context) => effect {
+      const caller = try sessionOf(context)
+      const methodId = context.params.methodId ?? ""
+      return try answered(try attemptUnlink(caller, kindOf(methodId), context.query.get("reviewId") ?? "", context.now), methodId)
+    }
+  }
+]

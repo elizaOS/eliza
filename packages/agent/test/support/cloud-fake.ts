@@ -11,7 +11,9 @@ import { promisify } from "node:util";
 
 export type CloudReply =
   | { readonly kind: "text"; readonly chunks: readonly string[] }
-  | { readonly kind: "refusal"; readonly status: number; readonly error: string; readonly retryable: boolean; readonly reason?: string; readonly retryAt?: string }
+  | { readonly kind: "refusal"; readonly status: number; readonly error: string; readonly retryable: boolean; readonly reason?: string; readonly retryAt?: number | string; readonly resetsAt?: number; readonly retryAfterSeconds?: number }
+  | { readonly kind: "images" }
+  | { readonly kind: "drop" }
   | { readonly kind: "hang" };
 
 export interface CloudCall {
@@ -33,8 +35,21 @@ export interface CloudFake {
 
 export const text = (...chunks: string[]): CloudReply => ({ kind: "text", chunks });
 
-export const refusal = (status: number, error: string, more: { retryable?: boolean; reason?: string; retryAt?: string } = {}): CloudReply =>
-  ({ kind: "refusal", status, error, retryable: more.retryable ?? false, ...(more.reason === undefined ? {} : { reason: more.reason }), ...(more.retryAt === undefined ? {} : { retryAt: more.retryAt }) });
+export const refusal = (status: number, error: string, more: { retryable?: boolean; reason?: string; retryAt?: number | string; resetsAt?: number; retryAfterSeconds?: number } = {}): CloudReply =>
+  ({
+    kind: "refusal", status, error, retryable: more.retryable ?? false,
+    ...(more.reason === undefined ? {} : { reason: more.reason }),
+    ...(more.retryAt === undefined ? {} : { retryAt: more.retryAt }),
+    ...(more.resetsAt === undefined ? {} : { resetsAt: more.resetsAt }),
+    ...(more.retryAfterSeconds === undefined ? {} : { retryAfterSeconds: more.retryAfterSeconds }),
+  });
+
+export const insufficientCredits = (): CloudReply => refusal(402, "insufficient_credits");
+export const allowanceExhausted = (resetsAt: number): CloudReply => refusal(402, "allowance_exhausted", { resetsAt });
+export const rateLimited = (retryAt: number): CloudReply => refusal(429, "rate_limited", { retryable: true, retryAt });
+export const unavailable = (retryAfterSeconds: number): CloudReply => refusal(503, "service_unavailable", { retryable: true, retryAfterSeconds });
+export const dropped = (): CloudReply => ({ kind: "drop" });
+export const echoImages = (): CloudReply => ({ kind: "images" });
 
 const execute = promisify(execFile);
 
@@ -82,17 +97,35 @@ function modelOf(body: unknown): string {
   return typeof model === "string" ? model : "unknown";
 }
 
+type ContentPart = { type?: unknown; image_url?: { url?: unknown } };
+const contentOf = (message: { content?: unknown }): readonly unknown[] => Array.isArray(message.content) ? message.content : [];
+const isContentPart = (part: unknown): part is ContentPart => typeof part === "object" && part !== null;
+
+function imageUrls(body: unknown): string[] {
+  const messages = typeof body === "object" && body !== null ? (body as { messages?: unknown }).messages : undefined;
+  if (!Array.isArray(messages)) return [];
+  return messages.flatMap(contentOf).filter(isContentPart)
+    .flatMap((part) => part.type === "image_url" && typeof part.image_url?.url === "string" ? [part.image_url.url] : []);
+}
+
 function answerCompletion(response: ServerResponse, reply: CloudReply, body: unknown): void {
   switch (reply.kind) {
     case "hang":
       return;
+    case "drop":
+      response.destroy();
+      return;
+    case "images":
+      return answerCompletion(response, text(`images:${imageUrls(body).join(",")}`), body);
     case "refusal":
+      if (reply.retryAfterSeconds !== undefined) response.setHeader("retry-after", String(reply.retryAfterSeconds));
       return json(response, reply.status, {
         error: reply.error,
         errorDescription: reply.error,
         retryable: reply.retryable,
         ...(reply.reason === undefined ? {} : { reason: reply.reason }),
         ...(reply.retryAt === undefined ? {} : { retryAt: reply.retryAt }),
+        ...(reply.resetsAt === undefined ? {} : { resetsAt: reply.resetsAt }),
       });
     case "text": {
       const model = modelOf(body);
@@ -134,10 +167,11 @@ export async function startCloudFake(options: { deviceKey: string; models?: read
     if (authorization === undefined || !keys.has(authorization.replace(/^Bearer /, ""))) {
       return json(response, 401, { error: "authentication_required", errorDescription: "authentication_required", retryable: false, reason: "credential_unknown" });
     }
-    if (request.method === "GET" && request.url === "/api/v1/models") {
+    const route = (request.url ?? "").replace(/^\/api(?=\/v1\/)/, "");
+    if (request.method === "GET" && route === "/v1/models") {
       return json(response, 200, { object: "list", data: (options.models ?? ["small", "large"]).map((id) => ({ id, object: "model" })) });
     }
-    if (request.method === "POST" && request.url === "/api/v1/chat/completions") {
+    if (request.method === "POST" && route === "/v1/chat/completions") {
       return answerCompletion(response, queue.shift() ?? text("ok"), body);
     }
     return json(response, 404, { error: "not_found", errorDescription: "not_found", retryable: false });
