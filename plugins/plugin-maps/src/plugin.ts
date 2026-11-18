@@ -110,7 +110,6 @@ export const mapsPlugin: Plugin = {
         "MAPS_NAVIGATION_STOP",
       ],
       visibleInManager: true,
-      desktopTabEnabled: true,
     },
   ],
 };

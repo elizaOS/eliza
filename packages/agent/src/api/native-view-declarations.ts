@@ -93,7 +93,6 @@ export function nativeViewDeclarations(
       nativeOs: true,
       roleGate: { minRole: "OWNER" },
       visibleInManager: false,
-      desktopTabEnabled: false,
     };
   });
   // Aliases are extra names only: none may shadow a destination's id or label
