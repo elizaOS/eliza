@@ -1,6 +1,6 @@
 # Structural values and boolean configuration
 
-Source `utils/type-guards.ts` defines strict plain records and loose non-array objects. Source `utils/boolean.ts` preserves existing truthy/falsy vocabulary and optional absence. Input kind and prototype are observations made before model transitions, preserving real JavaScript descriptor and prototype semantics.
+Source `utils/type-guards.ts` defines strict plain records and loose non-array objects. Source `utils/boolean.ts` preserves existing truthy/falsy vocabulary and optional absence. Source `utils.ts` defines `parseBooleanFromText`, the stricter affirmative-text parser that never returns absence. Input kind and prototype are observations made before model transitions, preserving real JavaScript descriptor and prototype semantics.
 
 ## Story: Narrow untrusted values without changing their meaning
 
@@ -34,4 +34,20 @@ pure def parseNormalizedBoolean(text: str, truthy: Set[str], falsy: Set[str]): B
 pure def lawTruthyWinsOverlap(text: str, truthy: Set[str], falsy: Set[str]): bool = (text != "" and truthy.contains(text)) implies parseNormalizedBoolean(text, truthy, falsy) == BooleanTrue
 pure def lawDefaultYes(text: str): bool = text == "yes" implies parseNormalizedBoolean(text, defaultTruthy, defaultFalsy) == BooleanTrue
 pure def lawDefaultOff(text: str): bool = text == "off" implies parseNormalizedBoolean(text, defaultTruthy, defaultFalsy) == BooleanFalse
+```
+
+### Text parses as true only when its trimmed uppercase form is an affirmative word
+
+`parseBooleanFromText` returns false for absent input (undefined or null) and passes a boolean input through unchanged. It trims a string and uppercases it, and the result is true exactly when that normalized text is one of YES, Y, TRUE, T, 1, ON or ENABLE; every other string, the empty string included, is false. Trimming and uppercasing are observations made before the model: `normalizedText` is the trimmed, uppercased input.
+
+```quint
+type BooleanTextKind = AbsentText | FlagText | StringText
+pure val affirmativeBooleanText = Set("YES", "Y", "TRUE", "T", "1", "ON", "ENABLE")
+pure val normalizedTextValues = Set("YES", "Y", "TRUE", "T", "1", "ON", "ENABLE", "NO", "N", "OFF", "FALSE", "F", "0", "DISABLE", "")
+pure def booleanFromText(kind: BooleanTextKind, flag: bool, normalizedText: str): bool = if (kind == AbsentText) false else if (kind == FlagText) flag else affirmativeBooleanText.contains(normalizedText)
+pure def lawAbsentTextIsFalse(flag: bool, normalizedText: str): bool = not(booleanFromText(AbsentText, flag, normalizedText))
+pure def lawFlagTextPassesThrough(flag: bool, normalizedText: str): bool = booleanFromText(FlagText, flag, normalizedText) == flag
+pure def lawStringTrueOnlyWhenAffirmative(normalizedText: str, flag: bool): bool = booleanFromText(StringText, flag, normalizedText) iff affirmativeBooleanText.contains(normalizedText)
+pure def lawNegativeWordsAreFalse(normalizedText: str, flag: bool): bool = Set("NO", "OFF", "FALSE", "0", "").contains(normalizedText) implies not(booleanFromText(StringText, flag, normalizedText))
+pure def lawEnableIsTrue(flag: bool): bool = booleanFromText(StringText, flag, "ENABLE")
 ```
