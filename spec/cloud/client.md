@@ -234,13 +234,9 @@ sent.
 ```quint
 type RouteLookup = Unlisted | Listed({ route: DeviceRoute })
 pure def segmentMatches(seg: Segment, part: str): bool = match seg { | Literal(l) => l.text == part | Param(p) => part != "" }
-type MatchProgress = { at: int, ok: bool }
-pure val matchStart: MatchProgress = { at: 0, ok: true }
-pure def matchNext(r: DeviceRoute, acc: MatchProgress, part: str): MatchProgress =
-  { at: acc.at + 1, ok: acc.ok and segmentMatches(r.path.nthOr(acc.at, Literal({ text: "" })), part) }
 pure def routeMatches(r: DeviceRoute, method: HttpMethod, parts: List[str]): bool = {
-  val progress = parts.foldl(matchStart, (acc, part) => matchNext(r, acc, part))
-  r.method == method and r.path.length() == parts.length() and progress.ok
+  val matched = parts.foldl(0, (n, part) => if (n >= 0 and segmentMatches(r.path.nthOr(n, Literal({ text: "" })), part)) n + 1 else -1)
+  r.method == method and r.path.length() == parts.length() and matched == parts.length()
 }
 pure def literalCount(r: DeviceRoute): int = r.path.select(seg => match seg { | Literal(l) => true | Param(p) => false }).length()
 pure def routeFor(method: HttpMethod, parts: List[str]): RouteLookup =
