@@ -48,6 +48,8 @@ import { pageTemplate, type Template } from node
 
 export error PageTemplateMissing { file: string }
 
+const packageRoot = new URL("../../", import.meta.url)
+
 const returnPurpose: Readonly<Record<Exclude<PagePurpose, "ConnectedPage">, ReturnPurpose>> = {
   SignInPage: "SignInPurpose",
   BillingPage: "BillingPurpose",
@@ -88,8 +90,7 @@ effect function pageResponse(page: Page) {
   if (page.tag === "NoPage") throw refused("NotFound")
   const { template, slots } = shown(page)
   const file = try sync(() => pageFile(template))
-  const root = new URL("../../", import.meta.url)
-  const loaded = try tryPromise({ try: () => pageTemplate(root, file), catch: () => new PageTemplateMissing({ file }) })
+  const loaded = try tryPromise({ try: () => pageTemplate(packageRoot, file), catch: () => new PageTemplateMissing({ file }) })
   if (loaded === undefined) throw new PageTemplateMissing({ file })
   const html = Object.entries(slots).reduce((text, [slot, value]) => text.replaceAll(pageSlots[slot as PageSlot], escaped(value)), loaded.source)
   const headers = pageHeaders(page)

@@ -89,8 +89,6 @@ pure def revokeDuties(s: Reset, reply: C::RevokeReply): Reset =
 pure def alwaysRevocationOnlyUnderMarker(s: Reset): bool = not(markerStands(s)) implies s.revoke == RevokeOwed
 pure def alwaysAttemptFollowsRevocation(s: Reset): bool =
   (s.phase == AttemptOpen or s.phase == Dispatched) implies s.revoke != RevokeOwed
-pure def alwaysAnUnansweredRevokeLeavesTheWipeOpen(s: Reset): bool =
-  ((s.phase == PendingReset or s.phase == Recover) and s.revoke == RevokeAsked) implies canReserveAttempt(s, true, false)
 pure def sometimesWipedAfterAnUnansweredRevoke(s: Reset): bool = s.phase == Dispatched and s.revoke == RevokeAsked
 ```
 

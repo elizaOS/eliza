@@ -134,26 +134,15 @@ pure val unauthorizedClose = 4401
 pure val fundingClose = 4402
 pure val sessionClosedClose = 4410
 type EndCause = CauseUnauthorized | CauseProtocol | CauseOutage | CauseFunding({ funding: Shortfall }) | CauseSessionOver
-pure def errorCodeOf(cause: EndCause): RelayErrorCode = match cause {
-  | CauseUnauthorized => RelayUnauthorized | CauseProtocol => RelayProtocol | CauseSessionOver => RelayClosed | _ => RelayUnavailable
-}
-pure def closeCodeOf(cause: EndCause): int = match cause {
-  | CauseUnauthorized => unauthorizedClose | CauseFunding(f) => fundingClose | CauseSessionOver => sessionClosedClose | _ => violationClose
-}
-pure def reasonShown(r: Relay, cause: EndCause): RelayReason = match cause {
-  | CauseFunding(f) => if (r.errorReasons) FundingReason({ funding: f.funding }) else NoRelayReason
-  | _ => NoRelayReason
-}
+pure def errorCodeOf(cause: EndCause): RelayErrorCode = match cause { | CauseUnauthorized => RelayUnauthorized | CauseProtocol => RelayProtocol | CauseSessionOver => RelayClosed | _ => RelayUnavailable }
+pure def closeCodeOf(cause: EndCause): int = match cause { | CauseUnauthorized => unauthorizedClose | CauseFunding(f) => fundingClose | CauseSessionOver => sessionClosedClose | _ => violationClose }
+pure def reasonShown(r: Relay, cause: EndCause): RelayReason =
+  match cause { | CauseFunding(f) => if (r.errorReasons) FundingReason({ funding: f.funding }) else NoRelayReason | _ => NoRelayReason }
 pure def endWith(r: Relay, cause: EndCause): RelayAnswer =
   { relay: { ...r, phase: RelayEnded, pending: List() }, frames: List(ErrorFrame({ code: errorCodeOf(cause), reason: reasonShown(r, cause) }), CloseFrame({ closeCode: closeCodeOf(cause) })) }
 pure def isServerEnding(input: RelayInput): bool = match input { | FundingRefused(f) => true | CredentialRefused => true | SessionOver => true | ProviderFailed => true | _ => false }
-pure def serverEnding(r: Relay, input: RelayInput): RelayAnswer = match input {
-  | FundingRefused(f) => endWith(r, CauseFunding({ funding: f.funding }))
-  | CredentialRefused => endWith(r, CauseUnauthorized)
-  | SessionOver => endWith(r, CauseSessionOver)
-  | ProviderFailed => endWith(r, CauseOutage)
-  | _ => quiet(r)
-}
+pure def serverEnding(r: Relay, input: RelayInput): RelayAnswer = match input { | FundingRefused(f) => endWith(r, CauseFunding({ funding: f.funding }))
+  | CredentialRefused => endWith(r, CauseUnauthorized) | SessionOver => endWith(r, CauseSessionOver) | ProviderFailed => endWith(r, CauseOutage) | _ => quiet(r) }
 pure def isClientFrame(input: RelayInput): bool = match input { | ClientHello(h) => true | ClientPrepare(p) => true | ClientSpeak(p) => true
   | ClientFinish(p) => true | ClientCancel(p) => true | ClientStop => true | ClientAudio => true | ClientViolation => true | _ => false }
 pure def isErrorFrame(f: ServerFrame): bool = match f { | ErrorFrame(e) => true | _ => false }

@@ -85,16 +85,10 @@ export function capabilitiesOf(scopes: ReadonlyArray<string>): ReadonlyArray<Goo
 
 export const initialConnection: Connection = { status: "Pending", scopes: [], tokens: "", expiresAt: 0, refreshingUntil: 0 }
 
-const ConnectionState = Schema.Struct({
-  status: Schema.Literals(["Pending", "Active", "Expired", "Revoked", "Error"]),
-  scopes: Schema.Array(Schema.String),
-  tokens: Schema.String,
-  expiresAt: Schema.Number,
-  refreshingUntil: Schema.Number
-})
+schema ConnectionState { status: ConnectionStatus; scopes: ReadonlyArray<string>; tokens: string; expiresAt: number; refreshingUntil: number }
 
 export effect function decodeConnection(input: unknown): Connection!ConnectionCorrupt {
-  return try (Schema.decodeUnknownEffect(ConnectionState)(input) catch effect () => { throw new ConnectionCorrupt({ input }) })
+  return Schema.decodeUnknownEffect(ConnectionState)(input) catch effect () => { throw new ConnectionCorrupt({ input }) }
 }
 
 export effect function applyConnection(state: Connection, event: ConnectionEvent): Connection!ConnectionRejected {
@@ -211,7 +205,7 @@ function refusalOf(failure: GoogleFailure): Refused {
   }
 }
 
-effect function settleRefresh(connectionId: string, event: ConnectionEvent, now: number): Connection!!Store {
+effect function settleRefresh(connectionId: string, event: ConnectionEvent, now: number) {
   const store = try Store
   const stepped = store.transaction((tx) => stepRow(tx, connectionRows, connectionId, event, connectionColumns(event.type === "refreshed" ? { last_used_at: now } : {}))) catch effect (failure) => {
     if (failure._tag === "ConnectionRejected") throw refused("GoogleReauthRequired")

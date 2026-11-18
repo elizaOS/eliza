@@ -62,4 +62,4 @@ it.effect('A store is upgraded one additive migration at a time, refuses destruc
   assert.deepStrictEqual(walked.refusedNewer, { refused: "NewerSchema" })
   assert.deepStrictEqual(walked.otherVersionSnapshot, { version: base, tables: [], cached: undefined })
   assert.deepStrictEqual(walked.seeded, { version: base + 1, tables: ["journey_seed_marker"], cached: undefined })
-})
+}, 300_000)

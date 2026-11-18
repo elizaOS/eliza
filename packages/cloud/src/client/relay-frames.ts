@@ -1,6 +1,6 @@
 //@ backend dafny
 // spec/cloud/services/speechRelay.md, "The wire is version 1 with 16 kHz mono PCM16 and bounded frames"
-import { type RelayErrorCode, type RelayReason, type SttEventKind, downlinkFrameFits, encodeDownlinkAudio, maxControlBytes, maxDownlinkPcmBytes, maxTranscriptChars, maxUtteranceIdChars, relayChannels, relaySampleRate, relayVersion, validHelloToken, validPcm, validTtsText, validUplinkChunk, validUtteranceId } from "../../gen/cloud__services__speechRelay.ts"
+import { type RelayErrorCode, type RelayReason, type SttEventKind, downlinkFrameFits, encodeDownlinkAudio, maxControlBytes, maxDownlinkPcmBytes, maxTranscriptChars, maxTtsTextChars, maxUtteranceIdChars, relayChannels, relaySampleRate, relayVersion, validHelloToken, validPcm, validTtsText, validUplinkChunk, validUtteranceId } from "../../gen/cloud__services__speechRelay.ts"
 
 export type DeviceWire =
   | { kind: "Hello"; token: number[]; errorReasons: boolean; extend: boolean }
@@ -416,7 +416,7 @@ export function readDevice(b: number[], binary: boolean): DeviceWire {
   const flush = fieldOf(f, "flush")
   if (text.kind !== "JsonText" || !optionalFlag(flush)) return { kind: "DeviceRefused" }
   const units = utf16Units(text.bytes)
-  if (units < 1 || units > 1024 || !validTtsText(units, blankText(text.bytes))) return { kind: "DeviceRefused" }
+  if (units < 1 || units > maxTtsTextChars || !validTtsText(units, blankText(text.bytes))) return { kind: "DeviceRefused" }
   return { kind: "Tts", id: id, text: text.bytes, flush: flagOn(flush) }
 }
 
@@ -599,7 +599,7 @@ export function writeDevice(f: DeviceWire): Written {
   if (f.kind === "Finish") return control(typed("finish", [member("id", quoted(f.id))]))
   if (f.kind === "Cancel") return control(typed("cancel", [member("id", quoted(f.id))]))
   const units = utf16Units(f.text)
-  if (units < 1 || units > 1024 || !validTtsText(units, blankText(f.text)) || !utf8Valid(f.text)) return { kind: "Unwritable" }
+  if (units < 1 || units > maxTtsTextChars || !validTtsText(units, blankText(f.text)) || !utf8Valid(f.text)) return { kind: "Unwritable" }
   const flush: number[][] = f.flush ? [member("flush", ascii("true"))] : []
   return control(typed("tts", [member("id", quoted(f.id)), member("text", quoted(f.text))].concat(flush)))
 }

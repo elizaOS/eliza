@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
@@ -62,7 +62,7 @@ public final class CloudRequests {
     }
     HttpURLConnection connection = null;
     try {
-      connection = (HttpURLConnection) new URL(apiOrigin + target).openConnection();
+      connection = (HttpURLConnection) URI.create(apiOrigin + target).toURL().openConnection();
       connection.setInstanceFollowRedirects(false);
       connection.setUseCaches(false);
       connection.setConnectTimeout(TIMEOUT_MS);
