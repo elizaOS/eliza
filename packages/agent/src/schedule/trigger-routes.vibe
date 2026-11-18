@@ -1,21 +1,46 @@
 // spec/agent/schedule/triggers.md, "Story: Run a trigger now or on schedule without losing my edits"; spec/agent/schedule/triggers.md, "A new trigger is saved disabled, for a conversation that can take it, with a future first instant or an event name"; spec/agent/schedule/triggers.md, "An edit, enable or removal is refused only when it names a revision that has moved on"; spec/agent/schedule/triggers.md, "Enabling is refused past 100 active triggers, and for a one-time trigger whose time has passed"; spec/agent/schedule/triggers.md, "Run now starts one run of the saved trigger, even a disabled one, after any run in progress"; spec/agent/schedule/triggers.md, "The run history keeps the last 100 records"; spec/agent/access/routes.md, "A request matches a route by method, delivery, every segment and every query key"
 import { parseCronExpression } from "@elizaos/core"
-import type { RevisionCheck, RunSource, RunStatus } from "../../gen/agent__schedule__triggers.effect.vibe"
+import { runStatus, type RevisionCheck, type RunRecord, type RunSource, type RunStatus } from "../../gen/agent__schedule__triggers.effect.vibe"
 import type { LocalRoute } from "../access/routes.vibe"
 import type { AgentModule, AgentPlugin, ModuleContext, ModuleFactory, ModuleRefused } from "../host/module.vibe"
-import type { StoredTrigger, TriggerDetails, TriggerRun } from "./store.vibe"
 
 export const triggersModuleName = "@elizaos/agent/triggers"
 
+export type TriggerTiming =
+  | { readonly kind: "once"; readonly at: number }
+  | { readonly kind: "cron"; readonly expression: string }
+  | { readonly kind: "event"; readonly eventKind: string }
+
 export interface TriggerDraft {
-  readonly details: TriggerDetails
+  readonly displayName: string
+  readonly instructions: string
+  readonly timezone: string
+  readonly timing: TriggerTiming
   readonly deliveryConversationId: string | undefined
+}
+
+export interface SavedTrigger {
+  readonly id: string
+  readonly displayName: string
+  readonly instructions: string
+  readonly timezone: string
+  readonly timing: TriggerTiming
+  readonly enabled: boolean
+  readonly revision: number
+  readonly deliveryConversationId: string
+}
+
+export interface TriggerRun {
+  readonly startedAt: number
+  readonly finishedAt: number
+  readonly record: RunRecord
+  readonly error: string | undefined
 }
 
 export type TriggerRefusal = "Invalid" | "StaleRevision" | "ConversationMissing" | "ActiveLimit" | "RoomUnavailable"
 
-export type TriggerChange =
-  | { readonly kind: "saved"; readonly trigger: StoredTrigger }
+export type TriggerWrite =
+  | { readonly kind: "saved"; readonly trigger: SavedTrigger }
   | { readonly kind: "refused"; readonly reason: TriggerRefusal }
   | { readonly kind: "notFound" }
 
@@ -29,11 +54,11 @@ export type TriggerRunNow =
   | { readonly kind: "notFound" }
 
 export interface TriggerPort {
-  list(): (readonly StoredTrigger[])!!
-  get(id: string): (StoredTrigger | undefined)!!
-  create(draft: TriggerDraft): TriggerChange!!
-  edit(id: string, draft: TriggerDraft, expected: RevisionCheck): TriggerChange!!
-  setEnabled(id: string, on: boolean, expected: RevisionCheck): TriggerChange!!
+  list(): (readonly SavedTrigger[])!!
+  get(id: string): (SavedTrigger | undefined)!!
+  create(draft: TriggerDraft): TriggerWrite!!
+  edit(id: string, draft: TriggerDraft, expected: RevisionCheck): TriggerWrite!!
+  setEnabled(id: string, on: boolean, expected: RevisionCheck): TriggerWrite!!
   remove(id: string, expected: RevisionCheck): TriggerRemoval!!
   runs(id: string): (readonly TriggerRun[] | undefined)!!
   runNow(id: string): TriggerRunNow!!
@@ -94,12 +119,13 @@ const executeBody = Schema.decodeUnknownOption(Schema.Record(Schema.String, Sche
 type SentDraft = typeof CreateDraft.Type | typeof EditDraft.Type
 
 function draftOf(sent: SentDraft): TriggerDraft {
-  const named = { displayName: sent.displayName.trim(), instructions: sent.instructions.trim(), timezone: sent.timezone }
-  const details: TriggerDetails = "scheduledAtIso" in sent
-    ? { ...named, triggerType: "once", scheduledAtIso: new Date(Date.parse(sent.scheduledAtIso)).toISOString() }
-    : "cronExpression" in sent ? { ...named, triggerType: "cron", cronExpression: sent.cronExpression.trim() }
-    : { ...named, triggerType: "event", eventKind: sent.eventKind.trim() }
-  return { details, deliveryConversationId: sent.deliveryConversationId }
+  const timing: TriggerTiming = "scheduledAtIso" in sent ? { kind: "once", at: Date.parse(sent.scheduledAtIso) }
+    : "cronExpression" in sent ? { kind: "cron", expression: sent.cronExpression.trim() }
+    : { kind: "event", eventKind: sent.eventKind.trim() }
+  return {
+    displayName: sent.displayName.trim(), instructions: sent.instructions.trim(), timezone: sent.timezone, timing,
+    deliveryConversationId: sent.deliveryConversationId,
+  }
 }
 
 const expectedOf = (revision: number | undefined): RevisionCheck =>
@@ -109,32 +135,36 @@ const failure = (status: number, error: string) => ({ status, body: { error } })
 const malformed = failure(refusal.Invalid.status, refusal.Invalid.error)
 const notFound = failure(404, "not_found")
 
-export function wireTrigger(trigger: StoredTrigger) {
-  const { details, state } = trigger
+function wireTiming(timing: TriggerTiming) {
+  switch (timing.kind) {
+    case "once": return { triggerType: "once", scheduledAtIso: new Date(timing.at).toISOString() }
+    case "cron": return { triggerType: "cron", cronExpression: timing.expression }
+    case "event": return { triggerType: "event", eventKind: timing.eventKind }
+  }
+}
+
+export function wireTrigger(trigger: SavedTrigger) {
   return {
-    id: trigger.id, displayName: details.displayName, instructions: details.instructions, triggerType: details.triggerType,
-    timezone: details.timezone,
-    ...(details.scheduledAtIso === undefined ? {} : { scheduledAtIso: details.scheduledAtIso }),
-    ...(details.cronExpression === undefined ? {} : { cronExpression: details.cronExpression }),
-    ...(details.eventKind === undefined ? {} : { eventKind: details.eventKind }),
-    enabled: state.enabled, revision: state.revision,
+    id: trigger.id, displayName: trigger.displayName, instructions: trigger.instructions,
+    ...wireTiming(trigger.timing), timezone: trigger.timezone, enabled: trigger.enabled, revision: trigger.revision,
   }
 }
 
 export function wireRun(run: TriggerRun) {
+  const record = run.record
   return {
-    startedAt: run.startedAt, finishedAt: run.finishedAt, status: wireStatus[run.status],
+    startedAt: run.startedAt, finishedAt: run.finishedAt, status: wireStatus[runStatus(record)],
     ...(run.error === undefined ? {} : { error: run.error }),
-    source: wireSource[run.source],
-    ...(run.missedOccurrenceAt === undefined ? {} : { missedOccurrenceAt: run.missedOccurrenceAt }),
+    source: record.tag === "Ran" ? wireSource[record.source] : wireSource.Scheduled,
+    ...(record.tag === "Missed" ? { missedOccurrenceAt: record.scheduledAt } : {}),
   }
 }
 
-function writeAnswer(result: TriggerChange, created: boolean) {
+function writeAnswer(result: TriggerWrite, created: boolean) {
   switch (result.kind) {
     case "saved": return {
       status: created ? 201 : 200,
-      body: { trigger: wireTrigger(result.trigger), deliveryConversationId: result.trigger.state.room },
+      body: { trigger: wireTrigger(result.trigger), deliveryConversationId: result.trigger.deliveryConversationId },
     }
     case "refused": return failure(refusal[result.reason].status, refusal[result.reason].error)
     case "notFound": return notFound

@@ -1,14 +1,20 @@
 // spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
 import { assert, describe, it } from "@effect/vitest"
-import { listening, respond } from "../src/http/server.vibe"
+import { area as billing } from "../src/http/routes/billing.vibe"
+import { reconcileSubscription } from "../src/billing/subscriptions.vibe"
+import { readStripeSubscription, stripeClient } from "../src/billing/stripe-observation.vibe"
+import type { BillingSnapshot } from "../src/billing/snapshot.vibe"
+import type { CommandView } from "../src/billing/commands.vibe"
+import { listening, respond } from "../src/http/transport.vibe"
 import { json, type Route, type RouteContext } from "../src/http/routes.vibe"
 import type { RouteClass } from "../src/http/request-auth.vibe"
 import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
 import { tokenDigest } from "../src/shared/sealing.vibe"
-import { Store } from "../src/store/store.vibe"
-import { organization, testCloud, type TestCloud } from "./support/cloud.vibe"
-import { callCloud } from "./support/http.ts"
-import { testProfile } from "./support/profile.ts"
+import { migrate, Store, storeLayer } from "../src/store/store.vibe"
+import { startFakeServer, type FakeServer, type FakeHandler } from "./support/fakes.ts"
+import { callCloud, type CallInit } from "./support/http.ts"
+import { createStripeFake, fakeSecretKey } from "./support/fakes/stripe.ts"
+import { catalogPrices, secrets, testProfile } from "./support/profile.ts"
 
 const minuteMs = 60_000
 
@@ -16,7 +22,7 @@ effect function check(run: () => void) {
   try Effect.try(run)
 }
 
-effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
+effect function sql(cloud: HttpFixture, text: string, params: ReadonlyArray<unknown>) {
   return try cloud.store.transaction((tx) => tx.query(text, params))
 }
 
@@ -41,25 +47,42 @@ function probes(reached: Array<string>): ReadonlyArray<Route> {
   return [probe("/probe/service", "ServiceAccess"), probe("/probe/session", "SignedSession"), probe("/probe/fresh", "FreshSession"), probe("/probe/step-up", "StepUp")]
 }
 
-effect function probeServer(cloud: TestCloud, routes: ReadonlyArray<Route>) {
-  const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
+interface HttpFixture {
+  readonly fakes: FakeServer
+  readonly store: Store.Shape
+  readonly call: (path: string, token?: string, init?: CallInit) => ReturnType<typeof callHttp>
+}
+
+function callHttp(url: string, path: string, token?: string, init: CallInit = {}) {
+  return promise(() => callCloud(url, path, { ...init, headers: { ...init.headers, ...(token === undefined ? {} : { authorization: `Bearer ${token}` }) } }))
+}
+
+effect function testHttp(routes: ReadonlyArray<Route>, stripe?: FakeHandler) {
+  const fakes = try acquireRelease(promise(() => startFakeServer()), (server) => promise(() => server.close()))
+  if (stripe !== undefined) try sync(() => fakes.mount("/stripe/", stripe))
+  const profile = try parseProfile(try sync(() => testProfile(fakes.url)))
+  const storage = try Layer.build(storeLayer({ kind: "pglite", file: undefined }))
+  const store = Context.get(storage, Store)
+  const now = try Clock.currentTimeMillis
+  try Effect.provideContext(migrate({ digest: profile.environments.staging.databaseIdentity, environment: "staging", now }), storage)
+  const deployment = deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
   const built = try Layer.build(HttpServer.serve(respond(routes)).pipe(
     Layer.provideMerge(listening(0, "127.0.0.1")),
-    Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer))
+    Layer.provide(Layer.mergeAll(deployment, Layer.succeed(Store, store), FetchHttpClient.layer))
   ))
   const { address } = Context.get(built, HttpServer.HttpServer)
   const url = "port" in address ? `http://127.0.0.1:${address.port}` : ""
-  return (path: string, token?: string) => promise(() => callCloud(url, path, token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } }))
+  return { fakes, store, call: (path: string, token?: string, init?: CallInit) => callHttp(url, path, token, init) } satisfies HttpFixture
 }
 
-effect function account(cloud: TestCloud, key: string, status: "active" | "deleting", revokedBefore: { sessions: number; devices: number }, now: number) {
-  try organization(cloud, `org-${key}`)
+effect function account(cloud: HttpFixture, key: string, status: "active" | "deleting", revokedBefore: { sessions: number; devices: number }, now: number) {
+  try sql(cloud, "INSERT INTO organizations (id, name, created_at) VALUES ($1, $1, $2)", [`org-${key}`, now])
   try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, sessions_revoked_before, devices_revoked_before, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, $3, $4, $5, $6, $7, $7)", [
     key, `org-${key}`, status, `${key}@example.com`, revokedBefore.sessions, revokedBefore.devices, now
   ])
 }
 
-effect function grant(cloud: TestCloud, user: string, token: string, phase: string, issuedAt: number, keyExpiresAt: number) {
+effect function grant(cloud: HttpFixture, user: string, token: string, phase: string, issuedAt: number, keyExpiresAt: number) {
   try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'test-client', $3, $4, $5, $6, $7, $8, $8)", [
     `grant-${token.slice(-8)}`, user, phase, `cred-${token.slice(-8)}`, tokenDigest(token), issuedAt + minuteMs, keyExpiresAt, issuedAt
   ])
@@ -75,7 +98,7 @@ interface SessionRow {
   readonly mfaAt: number
 }
 
-effect function session(cloud: TestCloud, user: string, token: string, row: SessionRow, now: number) {
+effect function session(cloud: HttpFixture, user: string, token: string, row: SessionRow, now: number) {
   try sql(cloud, "INSERT INTO sessions (key, state, revision, user_id, access_digest, refresh_digest, live, access_expires_at, refresh_expires_at, auth_at, step_up_at, mfa_at, updated_at) VALUES ($1, $2::jsonb, 1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)", [
     `session-${token.slice(-8)}`, JSON.stringify({ epoch: row.epoch }), user, tokenDigest(token), tokenDigest(`refresh-${token}`), row.live, row.accessExpiresAt, row.refreshExpiresAt, row.authAt, row.stepUpAt, row.mfaAt, now
   ])
@@ -88,9 +111,9 @@ function outcome(answer: { readonly status: number; readonly body: unknown }): s
 
 describe("WP0 Foundation: request authentication", () => {
   it.live("Admit a request only for a live credential of an active account (spec/cloud/identity/sessions.md, \"Story: Admit a request only for a live credential of an active account\")", () => scoped(effect {
-    const cloud = try testCloud()
     const reached: Array<string> = []
-    const call = try probeServer(cloud, probes(reached))
+    const cloud = try testHttp(probes(reached))
+    const call = cloud.call
     const now = try Clock.currentTimeMillis
     const day = 24 * 60 * minuteMs
     try account(cloud, "owner", "active", { sessions: 0, devices: now - day }, now)
@@ -178,9 +201,9 @@ describe("WP0 Foundation: request authentication", () => {
   }))
 
   it.live("Limit a device key to 120 requests a minute before it is looked up (spec/cloud/shared/rateLimit.md, \"Story: Refuse excess requests with a usable retry time\")", () => scoped(effect {
-    const cloud = try testCloud()
     const reached: Array<string> = []
-    const call = try probeServer(cloud, probes(reached))
+    const cloud = try testHttp(probes(reached))
+    const call = cloud.call
     const now = try Clock.currentTimeMillis
     const windowEnd = Math.floor(now / minuteMs) * minuteMs + minuteMs
     if (windowEnd - now < 20_000) try Effect.sleep(Duration.millis(windowEnd - now + 50))
@@ -205,5 +228,71 @@ describe("WP0 Foundation: request authentication", () => {
       [statuses.every((status) => status === 200), over.status, overBody.error, typeof overBody.retryAt, over.headers["retry-after"] !== undefined, reached.length, unknownStatuses.slice(0, 120).every((status) => status === 401), unknownStatuses[120]],
       [true, 429, "rate_limited", "number", true, 120, true, 429]
     ))
+  }))
+})
+
+describe("Node subscriptions", () => {
+  it.live("Keep allowance and cancellation coherent when a provider event replays over an older Worker row (spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\"; spec/cloud/billing/subscriptions.md, \"Story: Change my plan one command at a time\")", () => scoped(effect {
+    const now = try Clock.currentTimeMillis
+    const fake = try sync(() => createStripeFake({ now: () => now }))
+    const cloud = try testHttp(billing.routes, fake.handler)
+    const owner = "subscriber"
+    const organizationId = "org-subscriber"
+    const token = sessionToken("s")
+    const oldToken = sessionToken("t")
+    try account(cloud, owner, "active", { sessions: 0, devices: 0 }, now)
+    const currentSession = { live: true, epoch: 0, authAt: now - minuteMs, accessExpiresAt: now + 10 * minuteMs, refreshExpiresAt: now + 60 * minuteMs, stepUpAt: 0, mfaAt: 0 }
+    try session(cloud, owner, token, currentSession, now)
+    try session(cloud, owner, oldToken, { ...currentSession, authAt: now - 2 * 60 * minuteMs }, now)
+    const price = catalogPrices[0]
+    const stripe = try Effect.try(() => stripeClient(fakeSecretKey, `${cloud.fakes.url}/stripe`))
+    const customer = try promise(() => stripe.customers.create({ metadata: { organization_id: organizationId } }))
+    const checkout = try promise(() => stripe.checkout.sessions.create({
+      customer: customer.id, mode: "subscription", line_items: [{ price: price.priceId, quantity: 1 }],
+      success_url: "https://example.com/return", cancel_url: "https://example.com/cancel"
+    }))
+    const paid = try Effect.try(() => fake.completeSession(checkout.id))
+    try check(() => assert.equal(paid.kind, "paid"))
+    const subscriptionId = paid.subscription.id
+    const readProvider = promise(() => readStripeSubscription(stripe, {
+      STRIPE_PLAN: "plus_monthly", STRIPE_PRICE_ID: price.priceId, STRIPE_PRODUCT_ID: price.productId, CLOUD_ENVIRONMENT: "staging"
+    }, customer.id))
+    const { observation } = try readProvider
+    const legacy = { customerId: customer.id, subscriptionId, planKey: observation.plan, status: observation.status, periodEnd: observation.endsAt }
+    try sql(cloud, "INSERT INTO subscriptions (key,state,revision,status,plan_key,customer_id,provider_subscription_id,period_end,updated_at) VALUES ($1,$2,3,$3,$4,$5,$6,$7,$8)",
+      [organizationId, JSON.stringify(legacy), legacy.status, legacy.planKey, legacy.customerId, subscriptionId, legacy.periodEnd, now])
+    const opened = try cloud.store.transaction((tx) => reconcileSubscription(tx, organizationId, observation, now))
+    const before = try cloud.call("/api/v1/billing/limits", token)
+    const beforeSnapshot = (before.body as { data: BillingSnapshot }).data
+    const cancel = "/api/v1/subscriptions/cancel"
+    const json = { subscriptionId, expectedSubscriptionRevision: opened.revision, idempotencyKey: "cancel-after-legacy" }
+    const staleProof = try cloud.call(cancel, oldToken, { json })
+    const canceled = try cloud.call(cancel, token, { json })
+    const again = try cloud.call(cancel, token, { json })
+    const receipt = canceled.body as CommandView
+    const observed = try readProvider
+    const current = try cloud.store.transaction((tx) => reconcileSubscription(tx, organizationId, observed.observation, now + 1000))
+    const after = try cloud.call("/api/v1/billing/limits", token)
+    const afterSnapshot = (after.body as { data: BillingSnapshot }).data
+    const staleRevision = try cloud.call(cancel, token, { json: { ...json, idempotencyKey: "stale-after-cancel" } })
+    const ended = try promise(() => stripe.subscriptions.cancel(subscriptionId))
+    const terminal = try readProvider
+    try cloud.store.transaction((tx) => reconcileSubscription(tx, organizationId, terminal.observation, now + 2000))
+    const revoked = try cloud.call("/api/v1/billing/limits", token)
+    const revokedSnapshot = (revoked.body as { data: BillingSnapshot }).data
+    const dispatches = try sync(() => cloud.fakes.seen.filter((request) => request.method === "POST" && request.path.endsWith(`/subscriptions/${subscriptionId}`)).length)
+    try check(() => assert.deepStrictEqual({
+      before: [before.status, beforeSnapshot.plan.key, beforeSnapshot.subscription?.control.action, beforeSnapshot.allowance?.granted],
+      staleProof: staleProof.status, mutations: [canceled.status, again.status, receipt.status, again.body, dispatches],
+      after: [after.status, afterSnapshot.subscription?.control, afterSnapshot.allowance, current.revision],
+      staleRevision: staleRevision.status,
+      revoked: [ended.status, revoked.status, revokedSnapshot.plan.key, revokedSnapshot.allowance?.state, revokedSnapshot.allowance?.available]
+    }, {
+      before: [200, "plus_monthly", "cancel", 25_000_000],
+      staleProof: 428, mutations: [200, 200, "succeeded", canceled.body, 1],
+      after: [200, { action: "undo", eligible: true, expectedSubscriptionRevision: receipt.resultRevision }, beforeSnapshot.allowance, receipt.resultRevision],
+      staleRevision: 409,
+      revoked: ["canceled", 200, "free", "closed", 0]
+    }))
   }))
 })

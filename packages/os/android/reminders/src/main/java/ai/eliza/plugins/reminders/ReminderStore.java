@@ -27,7 +27,7 @@ final class ReminderStore {
  private final String OPEN_ID;
  private final String OCCURRENCE;
 
- private final int LIMIT = 250;
+ static final int LIMIT = 250;
  final ReminderConfiguration configuration;
  final SecureStringStore secure;
  final ReminderEnvelope.State persistence = new ReminderEnvelope.State();
