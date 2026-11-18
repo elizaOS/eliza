@@ -41,6 +41,7 @@ The provider returns rows in page order. A refused start reads no row.
 ```quint
 type CursorRefusal = OtherQuery | MovedBoundary
 type PageStart = FromFirst | AfterRow({ last: RowKey }) | Refused({ reason: CursorRefusal })
+pure def refusedStart(start: PageStart): bool = match start { | Refused(_) => true | _ => false }
 type OrderScan = { ordered: bool, seen: bool, previous: RowKey }
 type PagePrefix = { count: int, kept: List[RowKey] }
 pure def inPageOrder(rows: List[RowKey]): bool =
