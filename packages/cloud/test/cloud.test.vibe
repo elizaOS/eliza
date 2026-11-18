@@ -437,6 +437,55 @@ describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/regis
     ))
   }))
 
+  it.live('Link Google only from the reviewed account with the registered return and matching verifier (spec/cloud/identity/signInMethods.md, "Story: Review, link and remove my sign-in methods"; spec/cloud/identity/federatedSignIn.md, "An ID token spends a live challenge once, only with the client, verifier, signature, issuer, audience and nonce all right, and a refused one spends nothing")', () => scoped(effect {
+    const google = try tryPromise(() => nativeGoogleFixture())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", () => ({ status: 200, body: { keys: google.keys } })) })
+    try registered(cloud, undefined, effect (tx: Tx, now: number) => { try registerClient(tx, try decodeRegistration(one), now) })
+    const owner = try signedIn(cloud, "link-owner@example.com")
+    const other = try signedIn(cloud, "link-other@example.com")
+    const ownerHeaders = { authorization: `Bearer ${owner.accessToken}` }
+    const otherHeaders = { authorization: `Bearer ${other.accessToken}` }
+    const methods = "/api/v1/user/methods"
+    const challenge = methods + "/google/challenge"
+    const link = methods + "/google/link"
+    const verifier = "v".repeat(43)
+    const fields = { clientId: one.clientId, environment: "staging", redirectUri: signInOne, codeChallenge: s256(verifier), codeChallengeMethod: "S256" }
+    const wrongReturn = try cloud.call(challenge, { headers: ownerHeaders, json: { ...fields, redirectUri: one.billingReturn } })
+    const wrongEnvironment = try cloud.call(challenge, { headers: ownerHeaders, json: { ...fields, environment: "production" } })
+    const opened = try cloud.call(challenge, { headers: ownerHeaders, json: fields })
+    const { challengeId, nonce } = try Schema.decodeUnknownEffect(Schema.Struct({ challengeId: Schema.String, nonce: Schema.String }))(opened.body)
+    const token = try tryPromise(() => google.issue(nonce))
+    const wrongNonceToken = try tryPromise(() => google.issue("different-challenge-nonce"))
+    const reviewSchema = Schema.Struct({ reviewId: Schema.String })
+    const firstReview = try cloud.call(methods, { headers: ownerHeaders })
+    const otherReview = try cloud.call(methods, { headers: otherHeaders })
+    const firstId = (try Schema.decodeUnknownEffect(reviewSchema)(firstReview.body)).reviewId
+    const otherId = (try Schema.decodeUnknownEffect(reviewSchema)(otherReview.body)).reviewId
+    const wrongOwner = try cloud.call(link, { headers: otherHeaders, json: { reviewId: otherId, challengeId, idToken: token, codeVerifier: verifier } })
+    const wrongVerifier = try cloud.call(link, { headers: ownerHeaders, json: { reviewId: firstId, challengeId, idToken: token, codeVerifier: "w".repeat(43) } })
+    const nonceReview = try cloud.call(methods, { headers: ownerHeaders })
+    const nonceId = (try Schema.decodeUnknownEffect(reviewSchema)(nonceReview.body)).reviewId
+    const wrongNonce = try cloud.call(link, { headers: ownerHeaders, json: { reviewId: nonceId, challengeId, idToken: wrongNonceToken, codeVerifier: verifier } })
+    const validReview = try cloud.call(methods, { headers: ownerHeaders })
+    const validId = (try Schema.decodeUnknownEffect(reviewSchema)(validReview.body)).reviewId
+    const linked = try cloud.call(link, { headers: ownerHeaders, json: { reviewId: validId, challengeId, idToken: token, codeVerifier: verifier } })
+    const after = try cloud.call(methods, { headers: ownerHeaders })
+    const account = try Schema.decodeUnknownEffect(Schema.Struct({ reviewId: Schema.String, methods: Schema.Array(Schema.Struct({ kind: Schema.String })) }))(after.body)
+    const replayed = try cloud.call(link, { headers: ownerHeaders, json: { reviewId: account.reviewId, challengeId, idToken: token, codeVerifier: verifier } })
+    try check(() => assert.deepStrictEqual(
+      {
+        admitted: opened.status, invalidChallenge: [wrongReturn, wrongEnvironment].map((answer) => [answer.status, code(answer.body)]),
+        rejectedProof: [wrongOwner.status, wrongVerifier.status, wrongNonce.status], linked: [linked.status, linked.body],
+        methods: account.methods.map(({ kind }) => kind), replayed: replayed.status,
+      },
+      {
+        admitted: 200, invalidChallenge: [[400, "redirect_mismatch"], [400, "invalid_client"]],
+        rejectedProof: [401, 401, 401], linked: [200, { status: "linked", method: "google" }],
+        methods: ["email", "google"], replayed: 401,
+      }
+    ))
+  }), 60_000)
+
   it.live("Tell an app that Google sign-in is off (spec/cloud/nativeClients/registry.md, \"Story: Tell a client exactly why it was refused\")", () => scoped(effect {
     const googleOff: ProfileEdit = (profile) => {
       const { google, ...staging } = profile.environments.staging
@@ -471,10 +520,11 @@ effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string
 
 describe("WP8 Managed Google: grant access (spec/cloud/services/google/connection.md)", () => {
   it.live("Refresh a held grant once for concurrent callers and mark it Expired when Google refuses it (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => scoped(effect {
-    const google = googleFakeState()
+    const google = try Effect.try(() => googleFakeState())
     google.tokenDelayMs = 300
     const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", mountGoogleToken(google)) })
-    const profile = try parseProfile(testProfile(cloud.fakes.url))
+    const profileInput = try Effect.try(() => testProfile(cloud.fakes.url))
+    const profile = try parseProfile(profileInput)
     const deployment = deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
     const now = try Clock.currentTimeMillis
     const held: Owner = { organizationId: "org-google-held", userId: "user-google-held" }
@@ -484,8 +534,8 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
       try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [owner.userId, owner.organizationId, `${owner.userId}@example.com`, now])
     }
     const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
-    const heldToken = seedGrant(google, { subject: "subject-conn-held", email: "conn-held@example.com", scopes })
-    const lostToken = seedGrant(google, { subject: "subject-conn-lost", email: "conn-lost@example.com", scopes })
+    const heldToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-held", email: "conn-held@example.com", scopes }))
+    const lostToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-lost", email: "conn-lost@example.com", scopes }))
     google.revoked.add(lostToken)
     provide Store = cloud.store, deployment, FetchHttpClient.layer {
       try linkedGrant(cloud, held, "conn-held", heldToken, scopes, now - 1000)
@@ -590,10 +640,26 @@ describe("WP4 Subscriptions and entitlements: entitlement", () => {
 module node {
   import { Effect } from "effect"
   import { SecureRandom } from "effect/crypto"
+  import { exportJWK, generateKeyPair, SignJWT } from "jose"
   import { CLEF_DECISIONS_PATH, createClefDecisionsClient, type ClefDecisionRequest } from "../src/clef-decisions.vibe"
   import { signInWithProof } from "../src/identity-store.vibe"
   import { cloudWorker, type CloudBindings } from "../src/worker.vibe"
   import { openBackupDatabase } from "./support/password-backup.ts"
+
+  export async function nativeGoogleFixture() {
+    const { privateKey, publicKey } = await generateKeyPair("RS256", { extractable: true })
+    const key = { ...await exportJWK(publicKey), kid: "google-test", alg: "RS256" }
+    return {
+      keys: [key],
+      issue: (nonce: string) => new SignJWT({ nonce, email: "linked@example.test", email_verified: true })
+        .setProtectedHeader({ alg: "RS256", kid: "google-test" })
+        .setIssuer("https://accounts.google.com")
+        .setAudience("google-server-client")
+        .setSubject("linked-google-subject")
+        .setExpirationTime("5m")
+        .sign(privateKey),
+    }
+  }
 
   export async function decideForSignedInAccount() {
     const fixture = await openBackupDatabase()
@@ -650,7 +716,7 @@ module node {
     } finally { await fixture.close() }
   }
 }
-import { decideForSignedInAccount } from node
+import { decideForSignedInAccount, nativeGoogleFixture } from node
 
 it.live('A reviewed link decision stays within the current account and candidates (spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page")', () => effect {
   const result = try tryPromise(() => decideForSignedInAccount())

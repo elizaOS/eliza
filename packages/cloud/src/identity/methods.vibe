@@ -30,7 +30,7 @@ export const reviewRows = outputRows<Methods, Event, MethodsEffect[], Rejected, 
 
 schema PhoneSend { phone: string; clientId: string; codeChallenge: string; codeChallengeMethod: "S256" }
 schema PhoneVerify { reviewId: string; phone: string; code: string; clientId: string; codeVerifier: string }
-schema GoogleChallenge { clientId: string; environment: string; redirectUri: string; codeChallenge: string; codeChallengeMethod: "S256" }
+schema GoogleChallenge { clientId: string; environment: "production" | "staging"; redirectUri: string; codeChallenge: string; codeChallengeMethod: "S256" }
 schema GoogleLink { reviewId: string; challengeId: string; idToken: string; codeVerifier: string }
 
 export function kindOf(text: string | undefined): MethodKind | undefined {
@@ -80,11 +80,11 @@ effect function requireFreshReview(userId: string, reviewId: string, now: number
   if (!isFreshReview(loaded.state, reviewId, now)) throw new Refused({ refusal: reviewRefusal })
 }
 
-function provenWith<A>(value: A): { readonly proof: LinkProof; readonly value: A | undefined } {
+function provenWith<A>(value: A): { readonly proof: LinkProof; readonly value: A } {
   return { proof: { tag: "ProvenThisAttempt" }, value }
 }
 
-function unproven<A>(failure: Refused): { readonly proof: LinkProof; readonly value: A | undefined } {
+function unproven(failure: Refused): { readonly proof: LinkProof; readonly value: undefined } {
   return { proof: { tag: "Unproven", refusal: failure.refusal }, value: undefined }
 }
 
@@ -212,7 +212,7 @@ export const routes: ReadonlyArray<Route> = [
     handler: (context) => effect {
       const caller = try sessionOf(context)
       const body = try jsonBody(context, GoogleChallenge)
-      return json(try googleLinkChallenge({ userId: caller.userId, clientId: body.clientId, environment: body.environment, redirectUri: body.redirectUri, codeChallenge: body.codeChallenge, now: context.now }))
+      return json(try googleLinkChallenge(caller.userId, body, context.now))
     }
   },
   {
