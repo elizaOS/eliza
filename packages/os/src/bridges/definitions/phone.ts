@@ -299,17 +299,20 @@ function subscriptions(value: unknown, phoneState: TelephonyPermissionState): Te
   return parsed.every((sim) => sim !== undefined) && ids.size === parsed.length ? (parsed as TelephonySubscription[]) : undefined;
 }
 
+/** @throws {never} */
 export function detectTelephonyProfile(platform: string, headers: unknown, pluginName: string): boolean {
   if (platform !== "android" || !Array.isArray(headers)) return false;
   const methods = headers.map(fields).find((entry) => entry?.name === pluginName)?.methods;
   return Array.isArray(methods) && methods.some((method) => fields(method)?.name === TELEPHONY_PROFILE_METHOD);
 }
 
+/** @throws {never} */
 export function parseImageCapability(value: unknown): ImageCapability | undefined {
   const data = fields(value);
   return data?.version === 1 && data.image === true && text(data.feature) ? { version: 1, image: true, feature: data.feature } : undefined;
 }
 
+/** @throws {never} */
 export function parseTelephonyStatus(value: unknown): TelephonyStatus | undefined {
   const data = fields(value);
   const granted = fields(data?.permissions);
@@ -349,6 +352,7 @@ export function parseTelephonyStatus(value: unknown): TelephonyStatus | undefine
   };
 }
 
+/** @throws {never} */
 export function normalizePhoneNumber(value: unknown): PhoneNumber | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();

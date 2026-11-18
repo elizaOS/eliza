@@ -1,0 +1,26 @@
+{
+  "id": "todos",
+  "name": "Todos",
+  "description": "User-scoped persistent todos with CRUD. Single TODO umbrella action with op-based dispatch (write/create/update/complete/cancel/delete/list/clear). The currentTodosProvider surfaces the user's pending + in-progress todos to the planner each turn. Backed by drizzle pgSchema('todos'); requires plugin-sql.",
+  "npmName": "@elizaos/plugin-todos",
+  "version": "0.2.0",
+  "source": "bundled",
+  "tags": ["todos", "tasks", "agent", "claude-code", "crud"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "ListChecks",
+    "group": "devtools",
+    "groupOrder": 6,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": ["sql"],
+  "kind": "plugin",
+  "subtype": "devtools"
+}
