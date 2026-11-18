@@ -24,7 +24,7 @@ import { BUILTINS, LIST_HELPERS, OPERATORS } from "./gen/print.ts";
 import { mirrorGen } from "./units.ts";
 import { conformance as checkTraces, conformanceFound } from "./conform.ts";
 import { explore, explored, pageInputs } from "./explore.ts";
-import { harnessFiles, search } from "./simulate.ts";
+import { harnessFiles, search, simulate } from "./simulate.ts";
 import { acceptContracts, acceptReviews, NODE, check, checkVerifiedSource, danglingCitations, expandListHelpers, generated, init, parseSpec, pending, pendingContracts, readSpecs, replay, show, typecheckAll, type Result, type Spec } from "./pipeline.ts";
 
 const project = path.join(import.meta.dirname, "..");
@@ -593,8 +593,43 @@ pure def stepHasOneEffect(before: State, after: State, out: List[int]): bool = o
     assert.match(departure(gen, { sender: true } as never, [{ event: { type: "open" }, by: "Mallory", state: gen.initial }])?.why ?? "", /valid sender/);
     assert.equal(gen.step(gen.initial, { type: "relabel", label: "a" }, "Owner").label, "a");
     // A counterexample shows each event with only what it changed.
-    assert.ok(broken.said("always", /a step breaks[\s\S]*\n\s+close\s+-> open = true\n/), broken.text);
+    // `close` takes no sender, but is still sent by someone, and the counterexample says by whom.
+    assert.ok(broken.said("always", /a step breaks[\s\S]*\n\s+close\{"by":"(Owner|Guest)"\}\s+-> open = true\n/), broken.text);
     assert.ok(stray.said("model", /canRelabel: `who` must be a parameter of relabel/), stray.text);
+  });
+
+  test("once any transition takes a sender, every simulated event has one, the same seed gives the same senders, and the journeys and walks pass conformance", async () => {
+    // The vault's `open` takes `by` and its `close` and `tick` do not (SPEC.md: then every event takes a sender).
+    const root = fixtures(["vault"]);
+    const spec = parseSpec(root, "spec/vault.md");
+    const model = await gen(root, spec);
+    const domain = await import(path.join(root, "gen/vault.ts"));
+    const harness = () => ({ memory: { root, fresh: true, used: new Set<string>() }, model, files: harnessFiles(spec, [spec], model) });
+    // One after the other: both write the same directory of gen/traces.
+    const { traces } = await simulate(harness(), "inv", 20, 200);
+    const again = await simulate(harness(), "inv", 20, 200);
+    const events = (ts: typeof traces) => ts.flat().flatMap((s) => (s.event ? [s.event as Record<string, unknown>] : []));
+    assert.ok(["open", "close", "tick"].every((type) => events(traces).some((e) => e.type === type)), JSON.stringify(events(traces)));
+    for (const e of events(traces)) assert.notEqual(domain.parseSender(e.by), undefined, `${JSON.stringify(e)} has no valid sender`);
+    assert.deepEqual(events(again.traces), events(traces), "the same seed gives the same events and senders");
+    // A journey to the vault opened, taken from a trace, and the same events in walks, against a driver that does what the spec does.
+    const trace = traces.find((t) => t.some((s) => (s.state as { open: boolean } | undefined)?.open))!;
+    const journey = trace.slice(0, trace.findIndex((s) => (s.state as { open: boolean } | undefined)?.open) + 1);
+    const found = conformanceFound(model, spec, traces, [{ w: "sometimesOpen", trace: journey }]);
+    assert.ok(found.sender && found.journeys[0].events.length && found.journeys[0].events.every((e) => domain.parseSender(e.by) !== undefined), JSON.stringify(found.journeys));
+    const held = new Map<string, unknown>();
+    const following = {
+      reset: () => held.clear(),
+      dispatch: (key: string, event: unknown, by: unknown) => {
+        const state = held.get(key) ?? domain.initial;
+        if (!domain.enabled(state, event, by)) return "refused" as const;
+        held.set(key, domain.step(state, event, by));
+        return "accepted" as const;
+      },
+      observe: (key: string) => held.get(key) ?? domain.initial,
+    };
+    const result = await conformanceCheck(domain, found, following, { walks: 3, steps: 10 });
+    assert.equal(result.journeys, 1);
   });
 
   test("a secret reaches no place whose type is not secret, but through a declassify function that review names", async () => {

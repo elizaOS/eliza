@@ -1,6 +1,6 @@
 // The Quint module that drives a spec for simulation: one action per transition, per law, and per definition
 // whose arguments the simulator can supply.
-import { VIA, type Law, type Opaque, type Param, type Roles, type Transition } from "./classify.ts";
+import { SENDER, VIA, type Law, type Opaque, type Param, type Roles, type Transition } from "./classify.ts";
 import { fail, type Json, type Types } from "./types.ts";
 
 /** A definition the simulator evaluates so that its result can be compared with TypeScript's. */
@@ -19,7 +19,7 @@ const TRIED: Record<string, string> = { int: "(-1).to(6)", bool: "Set(true, fals
 
 export function harness(
   module: string, source: string, imports: string[], funs: Json[], sig: (d: Json) => { params: Param[]; result: Json },
-  samples: Map<string, { elem: Json; ref: string; line: number | undefined }>, { stateType, transitions, always, sometimes, steps, laws, opaques, output, refines }: Roles,
+  samples: Map<string, { elem: Json; ref: string; line: number | undefined }>, { stateType, transitions, always, sometimes, steps, laws, opaques, output, refines, sender }: Roles,
   { fields, typedef, resolve, shape, tagged, named, qType }: Types,
   { weights, fair }: { weights: Map<string, number>; fair: Map<string, Fairness> },
 ): { text: string; evals: Eval[]; uncompared: string[] } {
@@ -123,10 +123,15 @@ export function harness(
     const guard = u?.guard ? `${A}::${u.guard}(${[from, ...u.guardParams].join(", ")}) and ` : "";
     return `(${to} == ${from}${u ? ` or (${guard}${to} == ${A}::${u.name}(${[from, ...u.params.map((p) => p.name)].join(", ")})${u.emits ? ".state" : ""})` : ""})`;
   };
+  /**
+   * Once any transition takes `by`, every event has a sender (SPEC.md): one that does not take it is still sent by
+   * someone, picked as for those that do, and recorded beside the event without being passed to the transition.
+   */
+  const sentBy = (t: Transition): Param[] => (sender && !t.params.some((p) => p.name === SENDER) ? [...t.params, { name: SENDER, type: sender }] : t.params);
   const action = (t: Transition) => {
     const result = call(t.name, t.params.map((p) => p.name));
     const after = t.emits ? `${result}.state` : result;
-    return `  action ${t.name} = ${braces(t.params, t.name, frame(t.guard ? [call(t.guard, t.guardParams)] : [],
+    return `  action ${t.name} = ${braces(sentBy(t), t.name, frame(t.guard ? [call(t.guard, t.guardParams)] : [],
       { state: after, emitted: t.emits ? `${result}.out` : "List()", refined: refines ? refined(t, after) : "", prev: "state", moved: "true", last: JSON.stringify(t.name), fairEnabled: `fairOn(${after})` }))}`;
   };
 

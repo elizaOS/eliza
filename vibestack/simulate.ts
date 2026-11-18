@@ -54,7 +54,8 @@ function readTrace(itf: string, model: Model): Step[] {
     const v = model.evals.find((v) => `eval_${v.name}` === taken);
     const l = model.laws.find((l) => l.name === taken);
     return {
-      event: t && { type: t.name, ...picked(t.params) },
+      // Once any transition takes a sender, every event has one: the harness picks it for those that do not take it too (gen/harness.ts).
+      event: t && { type: t.name, ...picked(model.sender && !t.params.some((p) => p.name === SENDER) ? [...t.params, { name: SENDER, type: model.sender }] : t.params) },
       evaluated: v && { name: v.name, picks: picked(v.params.filter((p) => p.from === "pick")), result: read(v.result, st.outcome.value) },
       law: l && { name: l.name, args: picked(l.params) },
       state: model.stateType ? read(model.stateType, st.state) : undefined,
