@@ -163,6 +163,8 @@ export interface MapsCoverage {
     reverseGeocode: true;
     /** Map taps can ask for the nearest named place before address lookup. */
     placeLookup?: boolean;
+    /** True when `search` accepts `rank: "distance"`; send it only then. */
+    distanceRank?: boolean;
     modes: MapsTravelMode[];
     alternatives: boolean;
     traffic: MapsTraffic;
@@ -238,9 +240,12 @@ export const mapsTextSearchRequestSchema = z
   .object({
     query: queryText,
     near: coordinateSchema.optional(),
+    /** With `near`: the closest places first, instead of the most relevant. */
+    rank: z.literal("distance").optional(),
     limit: z.number().int().min(1).max(20).optional(),
   })
-  .strict();
+  .strict()
+  .refine(({ near, rank }) => !rank || near, "Ranking by distance needs a near point");
 
 export const mapsReverseRequestSchema = z
   .object({

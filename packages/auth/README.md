@@ -221,6 +221,9 @@ same outcomes as the in-process retries (below).
   `signInReadinessChanged` event, so a sign-in screen must listen for it. A call
   waits for a measurement only when there is no fresh answer, or on an explicit
   retry (`refreshNegative`) of an incomplete one.
+- In browser mode, Google also requires a compatible external Android browser.
+  The AOSP WebView Shell cannot complete Google authorization. A full browser
+  can open the authorization URL even if it has no Custom Tabs service.
 - A method is measured not ready only by an answer that says so. A request that
   gets no usable answer (no connection, a timeout, a 5xx, 408 or 429 from the
   registration, providers or browser Google reads, a 5xx from the email route)

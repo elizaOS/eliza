@@ -231,6 +231,23 @@ describe("parseExplicitLocalDate Intl names", () => {
       month: 10,
       day: 23,
     });
+    for (const [text, year] of [
+      ["2027년 1월 5일", 2027],
+      ["내년 1월 5일", 2027],
+      ["올해 1월 5일", 2026],
+      ["请安排明年 1月 5日", 2027],
+      ["2027年 1月 5日", 2027],
+      ["今年 1月 5日", 2026],
+      ["12027년 1월 5일", 2026],
+      ["국내년 1월 5일", 2026],
+      ["내년 January 5, 2028", 2028],
+    ] as const) {
+      expect(parseExplicitLocalDate(text, ZONE, NOW), text).toEqual({
+        year,
+        month: 1,
+        day: 5,
+      });
+    }
   });
 
   it("resolves Korean and Chinese weekday names, including before particles", () => {

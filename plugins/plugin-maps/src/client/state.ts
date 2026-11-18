@@ -322,6 +322,7 @@ export class MapsController {
     }
   }
   clearOrigin() {
+    this.retireLocate();
     this.cancelOriginSearch();
     this.invalidateRoute();
     this.update({ origin: null, originLabel: null });

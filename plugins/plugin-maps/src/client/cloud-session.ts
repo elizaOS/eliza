@@ -17,20 +17,18 @@ export function captureMapsSession(
       !owner ||
       !value ||
       value.sessionId !== owner.sessionId ||
-      value.credentialId !== owner.credentialId ||
-      value.client !== owner.client
+      value.credentialId !== owner.credentialId
     )
       throw new MapsFailure(
         "unauthorized",
         "The Maps account changed. Search again after signing in.",
       );
+    return value;
   };
   return async (route, signal, body) => {
-    assertOwner();
+    const active = assertOwner();
     signal.throwIfAborted();
-    if (!owner)
-      throw new MapsFailure("unauthorized", "Sign in to Cloud to use Maps.");
-    const result = await owner.client.mapsRequest(route, signal, body);
+    const result = await active.client.mapsRequest(route, signal, body);
     assertOwner();
     signal.throwIfAborted();
     return result;

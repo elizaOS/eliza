@@ -11,9 +11,10 @@ const { calendarPlugin } = await import(
 const { calendarAction, calendarActionPromotionOptions } = await import(
   "../../../../plugin-personal-assistant/src/actions/calendar.ts"
 );
-const { promoteSubactionsToActions, AgentRuntime } = await import(
-  "@elizaos/core"
-);
+const { promoteSubactionsToActions, promotedSubactionParent, AgentRuntime } =
+  await import("@elizaos/core");
+const { buildActionCatalog } = await import("../../runtime/action-catalog.ts");
+const { retrieveActions } = await import("../../runtime/action-retrieval.ts");
 const { retrieveContextualPlannerActions } = await import(
   "./action-surface.ts"
 );
@@ -116,6 +117,61 @@ for (const [query, wanted] of [
     assert.ok(result.actions.some((a) => a.name === wanted));
     assert.ok(!result.actions.some((a) => a.name === "CALENDAR"));
   });
+test("Calendar umbrella hints its promoted family without overriding a precise operation", () => {
+  const standalone = calendarPlugin.actions ?? [];
+  const others = standalone.filter(
+    (action) => action.name !== "CALENDAR" && !promotedSubactionParent(action),
+  );
+  for (const actions of [
+    standalone,
+    promoteSubactionsToActions(calendarAction, calendarActionPromotionOptions),
+  ]) {
+    const children = actions.filter(
+      (action) => promotedSubactionParent(action) === "CALENDAR",
+    );
+    const familyNames = children.map((action) => action.name).sort();
+    const catalog = buildActionCatalog([...children, ...others]);
+    const catalogNames = new Set(catalog.parents.map((parent) => parent.name));
+    for (const [text, simile, wanted] of [
+      ["Delete my calendar event", "DELETE_EVENT", "CALENDAR_DELETE_EVENT"],
+      ["Create a calendar event", "CREATE_EVENT", "CALENDAR_CREATE_EVENT"],
+    ]) {
+      const hinted = (candidateActions: string[]) => {
+        const { results, query } = retrieveActions({
+          catalog,
+          messageText: text,
+          candidateActions,
+        });
+        return {
+          results: results.map((result) => result.name),
+          hints: query.parentActionHints
+            .filter((name) => catalogNames.has(name))
+            .sort(),
+        };
+      };
+      const umbrella = hinted(["CALENDAR"]);
+      assert.deepEqual(umbrella.hints, familyNames);
+      assert.deepEqual(
+        umbrella.results.slice(0, familyNames.length).sort(),
+        familyNames,
+      );
+      const precise = hinted(["CALENDAR", simile]);
+      assert.deepEqual(precise.hints, [wanted]);
+      assert.equal(precise.results[0], wanted);
+    }
+    const { query } = retrieveActions({
+      catalog: buildActionCatalog([
+        ...children,
+        ...others,
+        { name: "MEETING_NOTES", description: "Notes.", similes: ["CALENDAR"] },
+      ]),
+      messageText: "Delete my calendar event",
+      candidateActions: ["CALENDAR"],
+    });
+    assert.deepEqual(query.parentActionHints, []);
+  }
+});
+
 test("standalone Calendar also keeps complete agenda contract for generic plural event wording", () => {
   const result = retrieveContextualPlannerActions({
     actions: calendarPlugin.actions,

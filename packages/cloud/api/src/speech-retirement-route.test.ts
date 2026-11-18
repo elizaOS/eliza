@@ -24,6 +24,11 @@ mock.module("@elizaos/cloud-shared/auth", () => ({
   },
 }));
 mock.module("./lib/generative-route-auth", () => ({
+  timeSpeechPhase: (
+    _context: unknown,
+    _phase: string,
+    run: () => Promise<unknown>,
+  ) => run(),
   requireGenerativeRouteCaller: async () => {
     data.generated++;
     if (data.authStatus) throw new HTTPException(data.authStatus);
@@ -47,7 +52,7 @@ mock.module("@elizaos/cloud-shared/lib/voice-session/consent-nonce", () => ({
     return true;
   },
 }));
-const coordinator = await import("./speech-relay-coordinator");
+const coordinator = { ...(await import("./speech-relay-coordinator")) };
 mock.module("./speech-relay-coordinator", () => ({
   ...coordinator,
   speechTokenDigest: () => "a".repeat(64),

@@ -1,0 +1,64 @@
+{
+  "sources": [
+    "packages/host/src/voice/cloud-speech-relay-client.ts",
+    "packages/host/src/voice/session.ts",
+    "packages/host/src/voice/ws-handler.ts",
+    "packages/host/src/voice/protocol.ts",
+    "packages/host/src/voice/speech-relay-session.ts",
+    "packages/host/src/voice/speech-retirement-session.test.ts",
+    "packages/host/src/voice/cloud-speech-relay-client.test.ts",
+    "packages/host/src/voice/cloud-speech-relay-phase-deadline.test.ts",
+    "packages/host/src/voice/cloud-speech-retirement-recovery.test.ts",
+    "packages/ui/src/voice/voice-session-client-core.ts",
+    "packages/ui/src/voice/voice-session-protocol.ts",
+    "packages/ui/src/voice/voice-session-cloud-budget-rotation.test.ts",
+    "packages/app/src/api/self-hosted-voice.ts",
+    "packages/app/src/api/self-hosted-voice.test.ts",
+    "packages/app/test/app/voice-renewal.real.e2e.test.ts",
+    "packages/app/test/fixtures/voice-renewal-relay.ts",
+    "packages/host/quint/check-cloud-speech-lease-bridge.mjs",
+    "packages/cloud/quint/speech_continuity.qnt",
+    "packages/cloud/quint/speech_continuity.cases.json",
+    "packages/cloud/api/src/speech-retirement-state.ts",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/run-with-deadline.ts",
+    "packages/app/vitest.voice-renewal.config.ts"
+  ],
+  "bounds": {
+    "domain": "One renderer, one local host session, one account replacement, two consent attempts, one Cloud session and three independently funded windows. Integer window boundaries abstract at most 60-second acknowledged expiry increments. Missing, stale, foreign, unnegotiated and post-Stop acknowledgements cannot create a window.",
+    "mapping": "reset maps to the bounded pre-admission ECONNRESET retry. mint/allocated map to the prepared recovery journal and paid ledger; hostAck maps to cloud-speech-relay-client and VoiceSession.renewLease; clientAck maps to the current socket generation and negotiated session ID. Closed retains every allocated settlement receipt, including stopped reservations.",
+    "conformance": "Mandatory strict replay runs actual host, renderer, SQLite/HTTP/WS app and real Chromium fake-device flow checks. The browser runs longer than a real 60-second window and crosses the production relay kernel with synthetic STT/TTS, independently recorded zero-price per-window receipts and canonical retirement transitions.",
+    "limitations": "Finite boundary abstraction, not whole-program refinement or production qualification. It does not establish real provider recognition, audio quality, billing infrastructure, persistence across process death, mobile hardware or service latency. Existing speech_continuity separately models the detailed per-window backend settlement and unknown acknowledgements. Conditional progress is limited to explicitly fair terminal receipt availability; no real-time deadline is proved."
+  },
+  "cases": [
+    {
+      "name": "lease-bridge",
+      "main": "CloudSpeechLeaseBridge",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["FairClosedRetires", "ClosedEventuallyRetires"],
+      "temporalChecks": [
+        {
+          "property": "FairClosedRetires",
+          "expect": "holds",
+          "assumptions": [
+            "Each allocated window eventually supplies its terminal STT and TTS settlement receipt; each continuously enabled settlement and confirmation continuation is weakly fair. No network or provider success is assumed for safety."
+          ]
+        },
+        {
+          "property": "ClosedEventuallyRetires",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without external settlement and continuation fairness, closed sessions may remain unconfirmed indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 35,
+      "samples": 1000,
+      "deadlock": false
+    }
+  ],
+  "conformance": "packages/host/quint/check-cloud-speech-lease-bridge.mjs"
+}

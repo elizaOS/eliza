@@ -224,10 +224,11 @@ test.each([403, 429, 503])(
       ).rejects.toBeInstanceOf(Error);
       await expect(retirement.close()).resolves.toBeUndefined();
     } finally {
-      server.closeAllConnections();
-      await new Promise<void>((resolve, reject) =>
+      const closed = new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
       );
+      server.closeAllConnections();
+      await closed;
     }
   },
 );
@@ -341,6 +342,7 @@ test.each(["admit", "cancel", "owner-change", "retirement-unknown", "expired"])(
     const prepared = "55555555-5555-5555-8555-555555555555";
     const pending = new Set([previous]);
     const events: string[] = [];
+    const diagnostics: Record<string, unknown>[] = [];
     const controller = new AbortController();
     let current = true;
     let release!: () => void;
@@ -356,6 +358,11 @@ test.each(["admit", "cancel", "owner-change", "retirement-unknown", "expired"])(
       origin: "https://api.eliza.app",
       credential: async () => "current-owner-key",
       signal: controller.signal,
+      logger: {
+        warn(fields) {
+          diagnostics.push(fields as Record<string, unknown>);
+        },
+      },
       assertCurrent() {
         if (!current) throw Error("owner changed");
       },
@@ -434,12 +441,36 @@ test.each(["admit", "cancel", "owner-change", "retirement-unknown", "expired"])(
     expect(pending.has(previous)).toBe(
       ["cancel", "owner-change", "retirement-unknown"].includes(outcome),
     );
-    if (outcome === "admit")
+    if (outcome === "admit") {
+      const phases = diagnostics.filter(({ stage }) =>
+        [
+          "recovery_journal_write",
+          "provider_admission_wait",
+          "prior_session_retirement",
+        ].includes(String(stage)),
+      );
+      expect(phases.map(({ stage }) => stage)).toEqual([
+        "recovery_journal_write",
+        "provider_admission_wait",
+        "prior_session_retirement",
+      ]);
+      expect(
+        phases.every(
+          ({ durationMs, outcome }) =>
+            typeof durationMs === "number" &&
+            durationMs >= 0 &&
+            outcome === "returned",
+        ),
+      ).toBe(true);
+      const recorded = JSON.stringify(phases);
+      for (const value of [previous, prepared, nonce, "current-owner-key"])
+        expect(recorded).not.toContain(value);
       expect(events).toEqual([
         "consent",
         `revoke:${previous}`,
         "mint",
         `revoke:${prepared}`,
       ]);
+    }
   },
 );

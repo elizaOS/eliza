@@ -52,7 +52,6 @@ beforeAll(async () => {
   for (const [key, value] of Object.entries({
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: path.join(directory, "eliza.json"),
-    ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: token,
     ELIZA_REQUIRE_LOCAL_AUTH: "1",
     ELIZA_PLUGIN_SET: "lean-chat",

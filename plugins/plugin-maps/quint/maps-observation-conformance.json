@@ -15,7 +15,14 @@
     "a retired location cleanup failure cannot overwrite a newer accepted fix",
     "an unsupported provider phone remains visible without a fabricated Call target",
     "a host chooses where a worldwide basemap opens; a regional map keeps its coverage",
-    "new result pins are brought into view once; selection, routes and following keep the camera"
+    "new result pins are brought into view once; selection, routes and following keep the camera",
+    "an early search continues once the first provider becomes available",
+    "editing the automatic origin fences a late device location",
+    "tile failures and cancelled requests retain a loaded map",
+    "a query changed during initial provider discovery does not resume the old search",
+    "leaving during initial provider discovery does not resume the pending search",
+    "initial provider discovery never submits text that the user only typed",
+    "a rejected discovery reports its failure without resuming a search"
   ],
   "viewFile": "plugins/plugin-maps/test/maps-screen-view.test.tsx",
   "viewRequired": [

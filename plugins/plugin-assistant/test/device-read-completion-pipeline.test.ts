@@ -37,7 +37,6 @@ it.each(["bound", "string", "missing"] as const)(
     vi.stubEnv("ELIZA_STATE_DIR", stateDir);
     vi.stubEnv("ELIZA_CONFIG_PATH", path.join(stateDir, "eliza.json"));
     vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", path.join(stateDir, "eliza.json"));
-    vi.stubEnv("ELIZA_API_BIND_HOST", "127.0.0.1");
     vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0");
     vi.stubEnv(
       "ELIZA_HOST_CONTEXT_REVISION",

@@ -1,0 +1,72 @@
+import java.io.FileInputStream;
+import java.security.KeyStore;
+import java.security.cert.CertificateFactory;
+import java.util.Arrays;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
+import okhttp3.*;
+
+/** The injected initializer is read from the production speech bridge. */
+public final class SpeechHttpReuseTest {
+    private final OkHttpClient http = __PRODUCTION_CLIENT__;
+
+    private static X509TrustManager trust(String certificate) throws Exception {
+        KeyStore store = KeyStore.getInstance(KeyStore.getDefaultType());
+        store.load(null);
+        try (FileInputStream input = new FileInputStream(certificate)) {
+            store.setCertificateEntry("local-test", CertificateFactory.getInstance("X.509").generateCertificate(input));
+        }
+        TrustManagerFactory factory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        factory.init(store);
+        return (X509TrustManager) factory.getTrustManagers()[0];
+    }
+
+    public static void main(String[] args) throws Exception {
+        SpeechHttpReuseTest test = new SpeechHttpReuseTest();
+        X509TrustManager trust = trust(args[1]);
+        SSLContext tls = SSLContext.getInstance("TLS");
+        tls.init(null, new javax.net.ssl.TrustManager[] { trust }, null);
+        OkHttpClient.Builder builder = test.http.newBuilder().sslSocketFactory(tls.getSocketFactory(), trust);
+        if (args[2].equals("before")) builder.protocols(Arrays.asList(Protocol.HTTP_2, Protocol.HTTP_1_1));
+        OkHttpClient client = builder.build();
+        String origin = args[0];
+        try {
+            for (String route : new String[] { "consent", "session" }) {
+                Request request = new Request.Builder().url(origin + "/api/v1/voice/speech/" + route)
+                    .header("Authorization", "Bearer synthetic-owner")
+                    .post(RequestBody.create("{}", MediaType.get("application/json"))).build();
+                try (Response response = client.newCall(request).execute()) {
+                    if (response.code() != 200 || !"{}".equals(response.body().string())) {
+                        throw new AssertionError("Bootstrap did not finish");
+                    }
+                }
+            }
+            CountDownLatch message = new CountDownLatch(1);
+            AtomicReference<Throwable> failure = new AtomicReference<>();
+            WebSocket socket = client.newWebSocket(new Request.Builder()
+                .url(origin.replaceFirst("^https:", "wss:") + "/api/v1/voice/speech/ws?sessionId=synthetic").build(),
+                new WebSocketListener() {
+                    @Override public void onMessage(WebSocket webSocket, String text) {
+                        if (!text.equals("ready")) failure.set(new AssertionError("Unexpected WebSocket message"));
+                        message.countDown();
+                    }
+                    @Override public void onFailure(WebSocket webSocket, Throwable error, Response response) {
+                        failure.set(error);
+                        message.countDown();
+                    }
+                });
+            if (!message.await(10, TimeUnit.SECONDS)) throw new AssertionError("WebSocket did not return");
+            socket.cancel();
+            if (failure.get() != null) throw new AssertionError("WebSocket failed", failure.get());
+            System.out.println("PASS bootstrap and WebSocket on " + args[2]);
+        } finally {
+            client.connectionPool().evictAll();
+            client.dispatcher().executorService().shutdownNow();
+            test.http.dispatcher().executorService().shutdownNow();
+        }
+    }
+}

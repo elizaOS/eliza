@@ -1,0 +1,33 @@
+[
+  {
+    "id": "NativeMessageDeletion",
+    "model": "plugins/plugin-native-messages/quint/NativeMessageDeletion.qnt",
+    "sources": [
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MessageDeletion.java",
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/TelephonyPlugin.java",
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/SmsRecords.java",
+      "plugins/plugin-native-messages/android/src/main/java/ai/eliza/plugins/messages/MmsStore.java",
+      "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/MessageDeletionTest.java",
+      "plugins/plugin-native-messages/android/src/test/java/ai/eliza/plugins/messages/TelephonyPluginReviewTest.java",
+      "packages/contracts/src/native-telephony.ts",
+      "packages/contracts/src/native-telephony.test.ts",
+      "plugins/plugin-native-messages/android/build.gradle",
+      "packages/scripts/quint/check-native-android.ts",
+      "packages/app/scripts/android-native-plugins-gradle/build.gradle",
+      "packages/app/scripts/android-native-plugins-gradle/settings.gradle"
+    ],
+    "invariants": [
+      "TypeOK",
+      "AtMostOneDispatch",
+      "DispatchNeedsLiveAuthority",
+      "OnlySettledRowsDeleted",
+      "ConfirmedMeansApplied",
+      "ForeignTransportPreserved",
+      "RefusalMeansNoDispatch"
+    ],
+    "status": "partial",
+    "limitations": [
+      "One owner-confirmed SMS or MMS reference, one identity read and at most one conditional delete. The other transport holds a same-id row with the same thread and date, so a delete sent to the wrong table would remove it. The row's box can move into or out of a send (draft, outbox, queued or failed) at any time before the effect; only inbox and sent rows are settled. Two thread/date equality classes and two raw-date representations cover replacement and normalization races. Witness runs remove the authority recheck, the collection selection or the settled-box selection and must break their invariant. Owner confirmation and trustworthy platform affected-row counts are assumptions. Actual SQLite predicates and bridge guards are exercised by JVM cases; real Telephony permission/AppOp/role enforcement, Binder reliability, process death, carrier behavior and physical-device acceptance remain separate. Lost or invalid replies are unknown and grant no retry."
+    ]
+  }
+]

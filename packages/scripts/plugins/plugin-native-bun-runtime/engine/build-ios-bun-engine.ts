@@ -620,9 +620,7 @@ function applyPatchIfNeeded(root, patchFile, label) {
 
 function applyBundledSourcePatches() {
   applyPatchIfNeeded(sourceDir, bunIosPatch, "Bun iOS/no-JIT");
-  const webKitSourceDir =
-    process.env.ELIZA_BUN_IOS_WEBKIT_SOURCE_DIR ||
-    process.env.ELIZA_WEBKIT_SOURCE_DIR;
+  const webKitSourceDir = process.env.ELIZA_BUN_IOS_WEBKIT_SOURCE_DIR;
   if (webKitSourceDir) {
     applyPatchIfNeeded(
       path.resolve(webKitSourceDir),

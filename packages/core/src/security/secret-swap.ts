@@ -554,6 +554,17 @@ export class SecretSwapSession {
 		return [...this.valueToEntry.values()];
 	}
 
+	/** Hide only this session's protocol references from local NER, preserving offsets.
+	 * The model input is unchanged. Unknown current-session references stay opaque
+	 * too, so strict execution restoration can reject them rather than a PII alias.
+	 */
+	maskReferencesForPiiRecognition(text: string): string {
+		this.placeholderPattern.lastIndex = 0;
+		return text.replace(this.placeholderPattern, (reference) =>
+			" ".repeat(reference.length),
+		);
+	}
+
 	/** Length of the longest value/placeholder held (0 when empty). */
 	get maxTokenLength(): number {
 		return this.maxToken;

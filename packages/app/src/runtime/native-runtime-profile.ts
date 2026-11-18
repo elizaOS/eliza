@@ -9,8 +9,8 @@
  *   speech stay on the device through libelizainference. Missing local
  *   embedding inputs surface as unavailable, never as a silent Cloud fallback.
  * - `cloud`: an explicit QA profile without local model payloads; embeddings
- *   use authenticated Eliza Cloud. Its speech is a separately disclosed host
- *   upload, so the agent's own speech routing stays local-only in both.
+ *   and image descriptions use authenticated Eliza Cloud. Its speech is a
+ *   separately disclosed host upload, so agent speech stays local-only in both.
  *
  * On Android the process environment's embedding route is applied by
  * plugin-native-agent `NativeRuntimeEmbeddings`, the native mirror of the
@@ -97,8 +97,13 @@ export const LOCAL_EMBEDDING_ROUTE: ServiceRouteConfig = Object.freeze({
 export function nativeCloudServiceRouting(
   profile: NativeRuntimeProfile,
   models: { small: string; large: string },
-): { embeddings: ServiceRouteConfig; llmText: ServiceRouteConfig } {
+): {
+  embeddings: ServiceRouteConfig;
+  llmText: ServiceRouteConfig;
+  media?: ServiceRouteConfig;
+} {
   return {
+    ...(profile.id === "cloud" ? { media: buildElizaCloudServiceRoute() } : {}),
     embeddings:
       profile.embeddings === "elizacloud"
         ? buildElizaCloudServiceRoute()
@@ -115,7 +120,7 @@ export function nativeCloudServiceRouting(
   };
 }
 
-/** Pins text slots to Cloud and agent speech to the device; other slots keep the owner's choice. */
+/** Pins admitted Cloud slots and keeps agent speech on the device. */
 export function nativeRuntimeRoutingPreferences(
   profile: NativeRuntimeProfile,
   current: RoutingPreferences,
@@ -298,7 +303,7 @@ export async function applyNativeDirectRuntimeProfile(
   env: NodeJS.ProcessEnv,
   stores?: NativeRuntimeProfileStores,
 ): Promise<void> {
-  resolveNativeRuntimeProfile(env.ELIZA_RUNTIME_PROFILE);
+  const profile = resolveNativeRuntimeProfile(env.ELIZA_RUNTIME_PROFILE);
   const model = "qwen-3.8-27b";
   if (
     env.ELIZA_PROVIDER !== "cerebras" ||
@@ -308,6 +313,9 @@ export async function applyNativeDirectRuntimeProfile(
     env.ELIZAOS_CLOUD_USE_INFERENCE !== "false"
   )
     throw new Error("Native direct inference binding is incomplete");
+  // The compatible vision handler otherwise defaults to an OpenAI model.
+  // The explicit model-free profile uses the selected Cerebras payer and model.
+  if (profile.id === "cloud") env.OPENAI_IMAGE_DESCRIPTION_MODEL = model;
   const store = stores ?? (await defaultStores());
   const config = store.loadConfig();
   const { apiKey: _desktopKey, ...cloud } = config.cloud ?? {};
@@ -315,6 +323,9 @@ export async function applyNativeDirectRuntimeProfile(
   config.serviceRouting = {
     ...config.serviceRouting,
     embeddings: { ...LOCAL_EMBEDDING_ROUTE },
+    ...(profile.id === "cloud"
+      ? { media: { backend: "cerebras", transport: "direct" } }
+      : {}),
     llmText: {
       backend: "cerebras",
       transport: "direct",

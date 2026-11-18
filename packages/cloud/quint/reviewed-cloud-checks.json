@@ -1,4 +1,17 @@
 {
+  "CloudFreshMigrationResume.qnt": [
+    {
+      "file": "packages/cloud/scripts/admin/migrate-with-diagnostics.postgres.test.ts",
+      "requiredOnly": true,
+      "required": [
+        "resumes fresh provisioning after PostgreSQL rolls back the guarded pair",
+        "rolls back the fresh marker when the first migration fails before commit",
+        "requires exact fresh history and preserves quota rows and unmarked deployments",
+        "keeps the guarded table continuously available to a concurrent PostgreSQL session",
+        "rejects a wiped empty ledger without changing a nonempty live schema"
+      ]
+    }
+  ],
   "DomainHealthRotation.qnt": [
     {
       "file": "packages/cloud/shared/src/lib/services/__tests__/domain-health-batch-rotation.pglite.test.ts",

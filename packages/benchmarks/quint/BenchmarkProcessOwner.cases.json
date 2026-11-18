@@ -2,7 +2,10 @@
   "sources": [
     "packages/benchmarks/orchestrator/runner.py",
     "packages/benchmarks/orchestrator/tests/test_runner_deadlines.py",
-    "packages/benchmarks/quint/check-process-owner.mjs"
+    "packages/benchmarks/quint/check-process-owner.mjs",
+    "packages/benchmarks/requirements-ci-constraints.txt",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/run-with-deadline.ts"
   ],
   "bounds": {
     "domain": "One direct benchmark child, two observed output changes, four successful progress receipts, one monitor failure and up to two existing termination-helper calls.",

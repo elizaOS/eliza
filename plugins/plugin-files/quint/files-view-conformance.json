@@ -43,6 +43,11 @@
     {
       "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
       "classname": "test",
+      "name": "selected chat bytes keep the mail bound, exact content and revision fence"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-share.test.mjs",
+      "classname": "test",
       "name": "bulk share hands one actual ZIP File to Web Share with exact nested Unicode bytes and empty folders"
     },
     {
@@ -138,7 +143,12 @@
     {
       "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
       "classname": "test",
-      "name": "a filter is restored after both short and long visits away"
+      "name": "leaving Files clears a filter and its displayed positions"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "a filter query retired on leave cannot publish into the next visit"
     },
     {
       "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
@@ -334,6 +344,21 @@
       "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
       "classname": "test",
       "name": "unreadable secondary Trash keeps the visible list incomplete until it is read"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "Downloads lists folders beside files from the actual Download directory"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "an empty Downloads directory is readable and creates a folder in Downloads"
+    },
+    {
+      "file": "plugins/plugin-files/test/browser-files-view.test.mjs",
+      "classname": "test",
+      "name": "leaving Downloads during the parent read retires folder creation"
     }
   ],
   "assistant": {

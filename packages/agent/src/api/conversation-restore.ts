@@ -54,7 +54,11 @@ export async function restoreConversationsFromDb(
   for (const room of rooms) {
     // channelId is "web-conv-{uuid}" — extract the conversation id
     const channelId = typeof room.channelId === "string" ? room.channelId : "";
-    if (!channelId.startsWith(WEB_CONVERSATION_CHANNEL_PREFIX)) continue;
+    if (
+      !channelId.startsWith(WEB_CONVERSATION_CHANNEL_PREFIX) ||
+      room.metadata?.conversationForkPending === true
+    )
+      continue;
     const convId = channelId.replace(WEB_CONVERSATION_CHANNEL_PREFIX, "");
     if (!convId || conversations.has(convId)) continue;
     if (deletedConversationIds.has(convId)) continue;
@@ -116,6 +120,7 @@ export async function restoreConversationFromDb(
   );
   if (
     !room ||
+    room.metadata?.conversationForkPending === true ||
     room.source !== MESSAGE_SOURCE_CLIENT_CHAT ||
     room.channelId !== `${WEB_CONVERSATION_CHANNEL_PREFIX}${convId}`
   ) {

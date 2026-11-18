@@ -21,7 +21,7 @@ export const LISTENER_STATES = [
 ] as const;
 export type ListenerState = (typeof LISTENER_STATES)[number];
 export type ListenerStatus =
-  | { available: false }
+  | { available: false; reason?: "not-installed" }
   | {
       available: true;
       state: ListenerState;
@@ -94,9 +94,22 @@ export interface SensePlugin {
 }
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+function absentListener(value: Record<string, unknown>): boolean {
+  return (
+    value.available === false &&
+    value.reason === "not-installed" &&
+    value.state === undefined &&
+    (value.listening === undefined || value.listening === false) &&
+    (value.microphoneOpen === undefined || value.microphoneOpen === false)
+  );
+}
 export function parseListenerStatus(raw: unknown): ListenerStatus {
   const value = record(raw);
-  if (value.available !== true) return { available: false };
+  if (value.available !== true) {
+    return absentListener(value)
+      ? { available: false, reason: "not-installed" }
+      : { available: false };
+  }
   const state = LISTENER_STATES.find((candidate) => candidate === value.state);
   if (!state) return { available: false };
   return {
@@ -278,7 +291,10 @@ export async function stopSenseListenerForChatOnly(
         );
       }),
     ]);
-    return parseListenerStopReceipt(reply, "turnOff").available;
+    return (
+      absentListener(record(reply)) ||
+      parseListenerStopReceipt(reply, "turnOff").available
+    );
   } catch {
     return false;
   } finally {

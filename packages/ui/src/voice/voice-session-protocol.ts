@@ -35,6 +35,7 @@ export const VOICE_SESSION_SAMPLE_RATE = 16000 as const;
 // ── Client -> server control frames ────────────────────────────────────
 export interface ClientHelloFrame {
   turnTerminal?: true;
+  leaseRenewal?: true;
   t: "hello";
   token: string;
   protocol: number;
@@ -83,6 +84,7 @@ export type ClientControlFrame =
 // ── Server -> client control / state events ────────────────────────────
 export interface ServerReadyEvent {
   turnTerminal?: true;
+  leaseExpiresAt?: number;
   t: "ready";
   uiContext?: boolean;
   playbackCompletion?: boolean;
@@ -180,6 +182,7 @@ export interface ServerUsageEvent {
   traceId: string;
 }
 export type ServerControlFrame =
+  | { t: "lease_extended"; sessionId: string; expiresAt: number }
   | {
       t: "turn_terminal";
       traceId: string;
@@ -215,6 +218,7 @@ export interface VoiceSessionCodecOffer {
 }
 export interface VoiceSessionMintResponse {
   turnTerminal?: true;
+  leaseRenewal?: true;
   sessionId: string;
   wsUrl: string;
   token: string;
@@ -253,6 +257,31 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
   ).t;
   if (typeof t !== "string") return null;
   if (!isKnownServerType(t)) return null;
+  if (t === "ready") {
+    const frame = parsed as Record<string, unknown>;
+    if (
+      frame.leaseExpiresAt !== undefined &&
+      !Number.isSafeInteger(frame.leaseExpiresAt)
+    )
+      return null;
+  }
+  if (t === "lease_extended") {
+    const frame = parsed as Record<string, unknown>;
+    if (
+      typeof frame.sessionId !== "string" ||
+      !frame.sessionId ||
+      !Number.isSafeInteger(frame.expiresAt) ||
+      Object.keys(frame).some(
+        (key) => !["t", "sessionId", "expiresAt"].includes(key),
+      )
+    )
+      return null;
+    return {
+      t,
+      sessionId: frame.sessionId,
+      expiresAt: frame.expiresAt as number,
+    };
+  }
   if (t === "turn_terminal") {
     const frame = parsed as Record<string, unknown>;
     if (
@@ -408,6 +437,7 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
   return parsed as ServerControlFrame;
 }
 const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
+  "lease_extended",
   "ready",
   "stt_partial",
   "stt_eager_eot",

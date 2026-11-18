@@ -67,7 +67,6 @@ it("uses HTTP to its own listener when one is bound", async () => {
   setSelfApiTcpListenerBound(true);
   vi.stubEnv("ELIZA_API_PORT", "");
   vi.stubEnv("ELIZA_PORT", "2140");
-  vi.stubEnv("ELIZA_API_BIND_HOST", "127.0.0.1");
   vi.stubEnv("ELIZA_API_TOKEN", "self-token");
   const fetchSpy = vi.fn(
     async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),

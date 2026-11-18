@@ -136,13 +136,14 @@ class SurfaceBridgeInstrumentedTest {
         }
     }
 
-    private fun create(layer: String, intercept: Boolean = false) = call("createSurface") {
+    private fun create(layer: String, intercept: Boolean = false, answers: Boolean = false) = call("createSurface") {
         put("id", SURFACE)
         put("url", "$origin/page")
         put("process", "shared")
         put("storage", "shared")
         put("layer", layer)
         put("interceptNavigation", intercept)
+        put("answersRequests", answers)
     }
 
     private fun onMain(block: () -> Unit) = instrumentation.runOnMainSync(block)
@@ -249,7 +250,7 @@ class SurfaceBridgeInstrumentedTest {
     fun aPausedPageCancelsItsDialogAndTakesNoTaps() {
         val loaded = listen("navigationChanged")
         val dialogs = listen("dialogRequested")
-        create("below-host", intercept = true)
+        create("below-host", answers = true)
         val outerClip = JSObject().put("x", 0).put("y", 0).put("width", 200).put("height", 200)
             .put("cornerRadii", JSObject().put("topLeft", 0).put("topRight", 0).put("bottomRight", 0).put("bottomLeft", 0))
         call("setBounds") {

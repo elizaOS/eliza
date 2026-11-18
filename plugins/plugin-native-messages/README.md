@@ -84,6 +84,27 @@ newest shown message); its receipt labels never claim more than a result proves.
   "sent" is the carrier's send confirmation (M-Send.conf Ok); MMS delivery is
   never claimed. `status().mmsSend` reports whether the path is available.
 
+## Single-message deletion
+
+`createTelephonyClient().deleteMessage({ id, kind, threadId, date })` removes
+one listed local SMS or MMS after the host confirms the owner's choice. Pass
+its exact `listMessages` identity and millisecond date. This does not cancel a
+send or delete a conversation. Older native hosts omit this method.
+
+The native bridge rechecks image admission, foreground user, unlocked foreground
+access, SMS read permission and default SMS role before its conditional provider
+write. It binds the collection delete to the observed row, thread and raw date
+and to a settled box (received or sent); SMS and MMS stay separate. A draft,
+queued, outbox or failed row belongs to a send and is answered `not-settled`
+with nothing deleted. The content-free receipt is `deleted`, `not-found`,
+`stale`, `not-settled` or `unknown`. Only `deleted` confirms this operation
+removed the row.
+A lost or invalid reply is unknown; never retry it automatically. No message
+body or address is included, and no automatic agent mutation is exposed.
+
+SQLite-backed JVM provider tests and entry/lifecycle tests cover this path.
+Platform role/AppOp enforcement and real-device acceptance remain separate.
+
 ## Host-native reviewed send (`ReviewedSmsSend`)
 
 A host's own native components (a review screen for a drafted reply, a
@@ -98,12 +119,19 @@ a redelivered intent never sends twice. Sent receipts are package-private
 one-shot PendingIntents held in process (`SmsSendRequest`). "sent" needs every
 part's RESULT_OK receipt, and a receipt missing after
 `RECEIPT_TIMEOUT_MS`, or lost with the process, reads "unknown" and is never
-retried. Delivery is not requested. While the host is the default SMS app it
-stores each recipient's outbox row before the platform call and the receipts
-settle it; hosts never write sent-box rows themselves. `ReviewedSmsSend.Host`
+retried. Delivery is not requested. The default SMS app saves every recipient's
+outbox row before sending. A provider refusal ends the operation as denied
+without contacting the radio. Sent receipts settle the outbox rows. `ReviewedSmsSend.Host`
 names the host's encrypted journal slot and retired-ID namespace; keep them once
 shipped, and do not share the slot with a `SmsTelephonyConfiguration`. No AOSP
 admission or manifest receiver is needed.
+
+An admitted host with its own trusted composer can use the protected
+`TelephonyPlugin.sendOwnerApprovedSms` and `sendOwnerApprovedMms` methods after
+the owner chooses Send for the exact operation. The host supplies a guard that
+rechecks that authorization on the send worker. The methods use the standard
+telephony journal and receipts. The public bridge methods still show their
+native confirmation dialog.
 
 `android/src/test` holds JVM tests for the journal (SMS and MMS records), cursor,
 provider mapping, the host-native reviewed send (`ReviewedSmsSendCoreTest`,
@@ -149,12 +177,12 @@ A host that can hold the SMS role declares thin subclasses of
 - Quick replies from call screens open the compose review; nothing is sent from
   the service. The compose screen is the review: its Send press uses the same
   journal and operation-ID rules as `TelephonyPlugin.sendSms`.
-- Android writes sent texts to the provider for every app except the default
-  SMS app. While the host holds the role, each reviewed send stores its
-  recipient's message in the outbox just before the SmsManager call, and that
-  recipient's sent callbacks move it to sent or failed. A refused write never
-  blocks or repeats the send. Delivery is not claimed for these rows: an
-  immutable delivery callback carries no status report.
+- While the host holds the SMS role, a reviewed send saves all recipient
+  messages in the outbox before any SmsManager calls. If Android refuses an
+  outbox write, the operation is denied and never replayed. The recipient's
+  sent callbacks move its row to sent or failed. Delivery remains unconfirmed
+  for these rows because an immutable delivery callback carries no status
+  report.
 
 Recent calls are optional. A host that declares the `callLog` permission alias
 (and `READ_CALL_LOG` in its own manifest; this library does not declare it)

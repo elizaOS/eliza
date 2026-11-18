@@ -53,6 +53,7 @@ export interface VoiceSessionDownlink {
  * while the orchestrator lives next to the merged provider adapters in api.
  */
 export interface VoiceSessionLike {
+  renewLease?(expiresAt: number): void;
   setTurnTerminalSupport?(supported: true): void;
   setUiContext?(context: VoiceUiContext): void;
   start(): void;
@@ -105,6 +106,7 @@ export interface VoiceWsHandlerDeps {
     tokenExpSeconds: number;
     downlink: VoiceSessionDownlink;
     initialUsageAdmissionMinutes?: number;
+    leaseRenewal?: true;
   }) => VoiceSessionLike | Promise<VoiceSessionLike>;
   /** Verify override for tests; defaults to the real verifier. */
   verifyToken: VoiceTokenVerifier;
@@ -277,7 +279,12 @@ export function attachVoiceWsHandler(
         return;
       }
       helloReceived = true;
-      void handleHello(frame.token, frame.protocol, frame.turnTerminal);
+      void handleHello(
+        frame.token,
+        frame.protocol,
+        frame.turnTerminal,
+        frame.leaseRenewal,
+      );
       return;
     }
 
@@ -355,6 +362,7 @@ export function attachVoiceWsHandler(
     token: string,
     protocol: number,
     turnTerminal?: true,
+    leaseRenewal?: true,
   ): Promise<void> {
     // Refuse incompatible clients before token claim or paid provider admission.
     // Version 1 is unchanged; this is an explicit required capability.
@@ -440,6 +448,7 @@ export function attachVoiceWsHandler(
         tokenExpSeconds: verified.expSeconds,
         downlink,
         initialUsageAdmissionMinutes: providerAdmission?.admittedMinutes,
+        ...(leaseRenewal === true ? { leaseRenewal: true as const } : {}),
       });
       // Cloud speech ports can finish admission after the local socket closes.
       // Retire that exact late acquisition; never start capture or a new turn.

@@ -138,6 +138,8 @@ export function applyServerEvent(
   event: ServerControlFrame,
 ): VoiceSessionMachineState {
   switch (event.t) {
+    case "lease_extended":
+      return state;
     case "ready":
       return {
         ...state,

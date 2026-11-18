@@ -15,12 +15,28 @@
  * phone finds the row, shows the owner the before and after, and writes only
  * after approval and only if the row is unchanged since it was shown
  * (`stale` otherwise). The agent receives the outcome, never the address book.
+ * A phone that also negotiates `contacts.write.v2` accepts `contact_update`
+ * with `add` and `remove`: single numbers or email addresses to add or take
+ * away while every other value of the contact stays.
+ *
+ * `contacts.show.v1` opens Contacts on the phone filtered by the agent's
+ * search text. The matches are shown to the owner only; the agent learns
+ * `shown` or `not-found`.
+ *
+ * `contacts.read.v1` returns the one contact the owner has open in Contacts,
+ * after the owner approves sharing it, like `messages_read_selected`. It never
+ * searches or lists the address book.
  *
  * `sms.compose.v1` is a reviewed SMS whose recipient is a contact name. The
  * phone resolves the name, then runs the same native review and journalled
  * send as `sms.send.v1`. Under the same capability, `sms_reply_selected` puts
  * a draft into the text field of the conversation the owner has open. It names
  * no recipient and never sends: the owner edits it and taps Send.
+ * A phone that also negotiates `sms.compose.v2` accepts `sms_compose` with a
+ * `target`, like `phone_call`: a contact name or an exact number. The phone
+ * chooses the SIM, so a number can be texted from any view. With `draft: true`
+ * the phone only puts the body into that recipient's conversation text field;
+ * it never sends.
  *
  * `messages.read.v1` and `voicemail.read.v1` return what the owner has open in
  * front: the visible tail of one thread, or one voicemail's transcript. They
@@ -37,7 +53,13 @@ import {
 
 export const PHONE_CALL_CAPABILITY = "phone.call.v1";
 export const CONTACT_WRITE_CAPABILITY = "contacts.write.v1";
+/** `contact_update` with `add` or `remove`. */
+export const CONTACT_UPDATE_VALUES_CAPABILITY = "contacts.write.v2";
+export const CONTACT_SHOW_CAPABILITY = "contacts.show.v1";
+export const CONTACT_READ_CAPABILITY = "contacts.read.v1";
 export const SMS_COMPOSE_CAPABILITY = "sms.compose.v1";
+/** `sms_compose` with a `target` (a contact or a number) and the draft-only form. */
+export const SMS_COMPOSE_TARGET_CAPABILITY = "sms.compose.v2";
 export const MESSAGES_READ_CAPABILITY = "messages.read.v1";
 export const VOICEMAIL_READ_CAPABILITY = "voicemail.read.v1";
 export const VOICEMAIL_DELETE_CAPABILITY = "voicemail.delete.v1";
@@ -45,6 +67,10 @@ export const VOICEMAIL_DELETE_CAPABILITY = "voicemail.delete.v1";
 export const CONTACT_NAME_MAX = 128;
 export const CONTACT_FIELD_MAX = 8;
 export const CONTACT_EMAIL_MAX = 254;
+/** A shared contact holds at most this many numbers and this many email addresses. */
+export const CONTACT_READ_FIELD_MAX = 32;
+/** A shared number is the text the phone stores, so it may hold separators. */
+export const CONTACT_READ_NUMBER_MAX = 64;
 export const SMS_COMPOSE_BODY_MAX = 1600;
 export const MESSAGES_READ_MAX = 20;
 export const MESSAGES_READ_BODY_MAX = 1600;
@@ -233,11 +259,25 @@ export type ContactCreateOperation = {
   type: "contact_create";
   contact: ContactFields;
 };
-/** `set` replaces the named fields whole; a field left out is unchanged. */
+/** Single values of a contact. A field left out is not touched. */
+export type ContactValues = {
+  phoneNumbers?: string[];
+  emailAddresses?: string[];
+};
+/**
+ * At least one of `set`, `add` and `remove`. `set` replaces the named fields
+ * whole; a field left out is unchanged. `add` and `remove` need
+ * `contacts.write.v2`: the phone takes the `remove` values away, then adds the
+ * `add` values, and keeps every other value. A value to add that the contact
+ * already has, or a value to remove that it does not have, changes nothing.
+ * A field in `set` cannot also be in `add` or `remove`.
+ */
 export type ContactUpdateOperation = {
   type: "contact_update";
   query: string;
-  set: Partial<ContactFields>;
+  set?: Partial<ContactFields>;
+  add?: ContactValues;
+  remove?: ContactValues;
 };
 export type ContactDeleteOperation = { type: "contact_delete"; query: string };
 export type ContactWriteOperation =
@@ -273,6 +313,7 @@ const CONTACT_STATUS: readonly ContactWriteStatus[] = [
   "unknown",
 ];
 const CONTACT_FIELD_KEYS = ["displayName", "phoneNumbers", "emailAddresses"];
+const CONTACT_VALUE_KEYS = ["phoneNumbers", "emailAddresses"] as const;
 
 export function isContactWrite(value: {
   type?: unknown;
@@ -290,6 +331,23 @@ function fields(value: unknown): ContactFields {
     emailAddresses: emails(c.emailAddresses),
   };
 }
+function values(value: unknown): ContactValues {
+  const raw = record(value, "contact change");
+  const keys = Object.keys(raw);
+  if (
+    !keys.length ||
+    keys.some((k) => !(CONTACT_VALUE_KEYS as readonly string[]).includes(k))
+  )
+    throw Error("Invalid contact change");
+  const out: ContactValues = {};
+  if (Object.hasOwn(raw, "phoneNumbers"))
+    out.phoneNumbers = numbers(raw.phoneNumbers);
+  if (Object.hasOwn(raw, "emailAddresses"))
+    out.emailAddresses = emails(raw.emailAddresses);
+  if (CONTACT_VALUE_KEYS.some((k) => out[k]?.length === 0))
+    throw Error("Invalid contact change");
+  return out;
+}
 export function validateContactWrite(value: unknown): ContactWriteOperation {
   const v = record(value, "contact change");
   if (v.type === "contact_create") {
@@ -297,22 +355,38 @@ export function validateContactWrite(value: unknown): ContactWriteOperation {
     return { type: "contact_create", contact: fields(v.contact) };
   }
   if (v.type === "contact_update") {
-    exact(v, ["type", "query", "set"], "contact change");
-    const raw = record(v.set, "contact change");
-    const keys = Object.keys(raw);
-    if (!keys.length || keys.some((k) => !CONTACT_FIELD_KEYS.includes(k)))
-      throw Error("Invalid contact change");
-    const set: Partial<ContactFields> = {};
-    if (Object.hasOwn(raw, "displayName"))
-      set.displayName = name(raw.displayName);
-    if (Object.hasOwn(raw, "phoneNumbers"))
-      set.phoneNumbers = numbers(raw.phoneNumbers);
-    if (Object.hasOwn(raw, "emailAddresses"))
-      set.emailAddresses = emails(raw.emailAddresses);
+    const parts = ["set", "add", "remove"].filter((k) => Object.hasOwn(v, k));
+    exact(v, ["type", "query", ...parts], "contact change");
+    if (!parts.length) throw Error("Invalid contact change");
+    let set: Partial<ContactFields> | undefined;
+    if (Object.hasOwn(v, "set")) {
+      const raw = record(v.set, "contact change");
+      const keys = Object.keys(raw);
+      if (!keys.length || keys.some((k) => !CONTACT_FIELD_KEYS.includes(k)))
+        throw Error("Invalid contact change");
+      set = {};
+      if (Object.hasOwn(raw, "displayName"))
+        set.displayName = name(raw.displayName);
+      if (Object.hasOwn(raw, "phoneNumbers"))
+        set.phoneNumbers = numbers(raw.phoneNumbers);
+      if (Object.hasOwn(raw, "emailAddresses"))
+        set.emailAddresses = emails(raw.emailAddresses);
+    }
+    const add = Object.hasOwn(v, "add") ? values(v.add) : undefined;
+    const remove = Object.hasOwn(v, "remove") ? values(v.remove) : undefined;
+    // One field has one meaning in a review: replaced whole, or changed by value.
+    for (const k of CONTACT_VALUE_KEYS)
+      if (
+        (set?.[k] && (add?.[k] || remove?.[k])) ||
+        add?.[k]?.some((item) => remove?.[k]?.includes(item))
+      )
+        throw Error("Invalid contact change");
     return {
       type: "contact_update",
       query: validateContactLookupQuery(v.query),
-      set,
+      ...(set ? { set } : {}),
+      ...(add ? { add } : {}),
+      ...(remove ? { remove } : {}),
     };
   }
   if (v.type === "contact_delete") {
@@ -323,6 +397,18 @@ export function validateContactWrite(value: unknown): ContactWriteOperation {
     };
   }
   throw Error("Invalid contact change");
+}
+/** `add` and `remove` are never sent to a phone that did not negotiate `contacts.write.v2`. */
+export function contactWriteCapabilityAvailable(
+  operation: ContactWriteOperation,
+  capabilities: readonly string[] | undefined,
+): boolean {
+  return (
+    capabilities?.includes(CONTACT_WRITE_CAPABILITY) === true &&
+    (operation.type !== "contact_update" ||
+      (!operation.add && !operation.remove) ||
+      capabilities.includes(CONTACT_UPDATE_VALUES_CAPABILITY))
+  );
 }
 export function validateContactWriteResult(
   operation: ContactWriteOperation,
@@ -373,14 +459,136 @@ export function contactWriteResultText(result: ContactWriteResult): string {
   }
 }
 
+// ---- contacts.show.v1 ------------------------------------------------------
+
+/** Opens Contacts on the phone filtered by `query`. Nothing is returned but the status. */
+export type ContactShowOperation = { type: "contact_show"; query: string };
+/**
+ * `shown`: Contacts is in front with at least one match listed. `not-found`:
+ * no contact matched. No name, number or count is included.
+ */
+export type ContactShowResult = {
+  kind: "contact-show";
+  status: "shown" | "not-found" | "unavailable";
+};
+export function isContactShow(value: {
+  type?: unknown;
+}): value is ContactShowOperation {
+  return value.type === "contact_show";
+}
+export function validateContactShow(value: unknown): ContactShowOperation {
+  const v = record(value, "contact search");
+  exact(v, ["type", "query"], "contact search");
+  if (v.type !== "contact_show") throw Error("Invalid contact search");
+  return { type: "contact_show", query: validateContactLookupQuery(v.query) };
+}
+export function validateContactShowResult(value: unknown): ContactShowResult {
+  const v = record(value, "contact search result");
+  exact(v, ["kind", "status"], "contact search result");
+  if (v.kind !== "contact-show") throw Error("Invalid contact search result");
+  return {
+    kind: "contact-show",
+    status: oneOf(
+      v.status,
+      ["shown", "not-found", "unavailable"] as const,
+      "contact search result",
+    ),
+  };
+}
+export function contactShowResultText(result: ContactShowResult): string {
+  switch (result.status) {
+    case "shown":
+      return "Contacts is open on the phone and shows the matching contacts to the owner. No contact detail was shared with you.";
+    case "not-found":
+      return "No matching contact was found on the phone.";
+    case "unavailable":
+      return "Contacts cannot be shown on this phone right now.";
+  }
+}
+
+// ---- contacts.read.v1 ------------------------------------------------------
+
+export type ContactReadOperation = { type: "contact_read_selected" };
+/**
+ * The contact the owner has open. `displayName` is null for a contact with no
+ * name. Numbers are the text the phone stores. Nothing else of the contact,
+ * and no other contact, is included.
+ */
+export type ReadContact = {
+  displayName: string | null;
+  phoneNumbers: string[];
+  emailAddresses: string[];
+};
+/** `unavailable` also covers an open contact too large to share whole. */
+export type ContactReadResult =
+  | { kind: "contact-read"; status: "read"; contact: ReadContact }
+  | { kind: "contact-read"; status: "none-selected" | "unavailable" };
+
+export function isContactRead(value: {
+  type?: unknown;
+}): value is ContactReadOperation {
+  return value.type === "contact_read_selected";
+}
+export function validateContactRead(value: unknown): ContactReadOperation {
+  const v = record(value, "contact read");
+  exact(v, ["type"], "contact read");
+  if (v.type !== "contact_read_selected") throw Error("Invalid contact read");
+  return { type: "contact_read_selected" };
+}
+function readValues(value: unknown, max: number): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length > CONTACT_READ_FIELD_MAX ||
+    value.some(
+      (item) =>
+        typeof item !== "string" ||
+        !item ||
+        item !== item.trim() ||
+        item.length > max ||
+        UNSAFE_TEXT.test(item),
+    )
+  )
+    throw Error("Invalid contact read result");
+  return [...(value as string[])];
+}
+export function validateContactReadResult(value: unknown): ContactReadResult {
+  const v = record(value, "contact read result");
+  if (v.kind !== "contact-read") throw Error("Invalid contact read result");
+  if (v.status === "none-selected" || v.status === "unavailable") {
+    exact(v, ["kind", "status"], "contact read result");
+    return { kind: "contact-read", status: v.status };
+  }
+  exact(v, ["kind", "status", "contact"], "contact read result");
+  if (v.status !== "read") throw Error("Invalid contact read result");
+  const c = record(v.contact, "contact read result");
+  exact(c, CONTACT_FIELD_KEYS, "contact read result");
+  return {
+    kind: "contact-read",
+    status: "read",
+    contact: {
+      displayName: c.displayName === null ? null : name(c.displayName),
+      phoneNumbers: readValues(c.phoneNumbers, CONTACT_READ_NUMBER_MAX),
+      emailAddresses: readValues(c.emailAddresses, CONTACT_EMAIL_MAX),
+    },
+  };
+}
+
 // ---- sms.compose.v1 --------------------------------------------------------
 
-/** A reviewed SMS to one contact named by search text. A known number uses `sms_send`. */
-export type SmsComposeOperation = {
-  type: "sms_compose";
-  query: string;
-  body: string;
-};
+/**
+ * A reviewed SMS to one recipient. The `query` form names a contact by search
+ * text and needs only `sms.compose.v1`. The `target` form names a contact or
+ * an exact number and needs `sms.compose.v2` as well. `draft: true` asks the
+ * phone to put the body into that recipient's conversation and send nothing.
+ */
+export type SmsComposeOperation =
+  | { type: "sms_compose"; query: string; body: string }
+  | {
+      type: "sms_compose";
+      target: PhoneDialTarget;
+      body: string;
+      draft?: true;
+    };
 export type SmsComposeStatus =
   | "drafted"
   | "submitted"
@@ -423,28 +631,77 @@ function body(value: unknown): string {
 }
 export function validateSmsCompose(value: unknown): SmsComposeOperation {
   const v = record(value, "message");
-  exact(v, ["type", "query", "body"], "message");
   if (v.type !== "sms_compose") throw Error("Invalid message");
+  if (!Object.hasOwn(v, "target")) {
+    exact(v, ["type", "query", "body"], "message");
+    const text = body(v.body);
+    return {
+      type: "sms_compose",
+      query: validateContactLookupQuery(v.query),
+      body: text,
+    };
+  }
+  exact(
+    v,
+    ["type", "target", "body", ...(Object.hasOwn(v, "draft") ? ["draft"] : [])],
+    "message",
+  );
+  if (Object.hasOwn(v, "draft") && typeof v.draft !== "boolean")
+    throw Error("Invalid message");
   const text = body(v.body);
   return {
     type: "sms_compose",
-    query: validateContactLookupQuery(v.query),
+    target: target(v.target, "message"),
     body: text,
+    ...(v.draft === true ? { draft: true as const } : {}),
   };
 }
-export function validateSmsComposeResult(value: unknown): SmsComposeResult {
+/** The recipient of either form; a `query` is a contact target. */
+export function smsComposeTarget(
+  operation: SmsComposeOperation,
+): PhoneDialTarget {
+  return "target" in operation
+    ? operation.target
+    : { kind: "contact", query: operation.query };
+}
+/** The `target` form is never sent to a phone that did not negotiate `sms.compose.v2`. */
+export function smsComposeCapabilityAvailable(
+  operation: SmsComposeOperation,
+  capabilities: readonly string[] | undefined,
+): boolean {
+  return (
+    capabilities?.includes(SMS_COMPOSE_CAPABILITY) === true &&
+    (!("target" in operation) ||
+      capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY))
+  );
+}
+/**
+ * Validates a device result for the reviewed message. A draft cannot report
+ * a send, and a number target cannot report that no contact matched.
+ */
+export function validateSmsComposeResult(
+  operation: SmsComposeOperation,
+  value: unknown,
+): SmsComposeResult {
   const v = record(value, "message result");
   exact(v, ["kind", "status"], "message result");
   if (v.kind !== "sms-compose") throw Error("Invalid message result");
-  return {
-    kind: "sms-compose",
-    status: oneOf(v.status, COMPOSE_STATUS, "message result"),
-  };
+  const status = oneOf(v.status, COMPOSE_STATUS, "message result");
+  if (
+    "draft" in operation &&
+    operation.draft &&
+    ["submitted", "sent", "delivered", "unknown"].includes(status)
+  )
+    throw Error("A draft message cannot report a send");
+  if (status === "not-found" && smsComposeTarget(operation).kind !== "contact")
+    throw Error("Only a contact message can find no contact");
+  return { kind: "sms-compose", status };
 }
 /**
  * `unknown` is not a failure and is never retried: the radio may have taken the
- * message. `drafted`: the contact's conversation was already open, so the body
- * went into its text field instead of a review; nothing was sent.
+ * message. `drafted`: the body went into the recipient's conversation text
+ * field, because that conversation was already open or the request was
+ * `draft: true`; nothing was sent.
  */
 export function smsComposeReceiptOutcome(
   result: SmsComposeResult,
@@ -789,6 +1046,8 @@ export function voicemailDeleteResultText(
 export type TelephonyActionOperation =
   | PhoneCallOperation
   | ContactWriteOperation
+  | ContactShowOperation
+  | ContactReadOperation
   | SmsComposeOperation
   | SmsReplyOperation
   | MessagesReadOperation
@@ -797,6 +1056,8 @@ export type TelephonyActionOperation =
 export const TELEPHONY_ACTION_OPERATION_TYPES = [
   "phone_call",
   ...CONTACT_WRITE_OPERATION_TYPES,
+  "contact_show",
+  "contact_read_selected",
   "sms_compose",
   "sms_reply_selected",
   "messages_read_selected",
@@ -815,6 +1076,10 @@ export function telephonyActionCapability(type: TelephonyActionType): string {
     case "contact_update":
     case "contact_delete":
       return CONTACT_WRITE_CAPABILITY;
+    case "contact_show":
+      return CONTACT_SHOW_CAPABILITY;
+    case "contact_read_selected":
+      return CONTACT_READ_CAPABILITY;
     case "sms_compose":
     case "sms_reply_selected":
       return SMS_COMPOSE_CAPABILITY;
@@ -838,6 +1103,8 @@ export function validateTelephonyAction(
 ): TelephonyActionOperation {
   const type = record(value, "telephony action").type;
   if (type === "phone_call") return validatePhoneCall(value);
+  if (type === "contact_show") return validateContactShow(value);
+  if (type === "contact_read_selected") return validateContactRead(value);
   if (type === "sms_compose") return validateSmsCompose(value);
   if (type === "sms_reply_selected") return validateSmsReply(value);
   if (type === "messages_read_selected") return validateMessagesRead(value);
@@ -850,6 +1117,9 @@ export function validateTelephonyAction(
  * Capabilities a telephony host may advertise for these actions. Without the
  * native profile the answer is empty. Reads and SMS need the SMS role's
  * provider access; voicemail needs a carrier that offers visual voicemail.
+ * `contactValues`, `contactsShow` and `contactsRead` are for a host that
+ * applies `add` and `remove`, filters its Contacts view, and shares the open
+ * contact; a host that leaves them out advertises none of the three.
  */
 export function telephonyActionCapabilities(profile: {
   present: boolean;
@@ -857,11 +1127,19 @@ export function telephonyActionCapabilities(profile: {
   contactsWrite: boolean;
   sms: boolean;
   voicemail: boolean;
+  contactValues?: boolean;
+  contactsShow?: boolean;
+  contactsRead?: boolean;
 }): string[] {
   if (!profile.present) return [];
   return [
     ...(profile.call ? [PHONE_CALL_CAPABILITY] : []),
     ...(profile.contactsWrite ? [CONTACT_WRITE_CAPABILITY] : []),
+    ...(profile.contactsWrite && profile.contactValues
+      ? [CONTACT_UPDATE_VALUES_CAPABILITY]
+      : []),
+    ...(profile.contactsShow ? [CONTACT_SHOW_CAPABILITY] : []),
+    ...(profile.contactsRead ? [CONTACT_READ_CAPABILITY] : []),
     ...(profile.sms ? [SMS_COMPOSE_CAPABILITY, MESSAGES_READ_CAPABILITY] : []),
     ...(profile.voicemail
       ? [VOICEMAIL_READ_CAPABILITY, VOICEMAIL_DELETE_CAPABILITY]

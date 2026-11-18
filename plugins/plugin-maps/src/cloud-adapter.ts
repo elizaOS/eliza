@@ -143,6 +143,7 @@ const capabilitiesResponse = z
           .min(1)
           .max(4),
         reverseGeocode: z.boolean().optional(),
+        distanceRank: z.boolean().optional().catch(undefined),
         alternatives: z.boolean().optional().catch(undefined),
         traffic: z.string().max(40).optional().catch(undefined),
         transit: z.string().max(40).optional().catch(undefined),
@@ -427,15 +428,22 @@ export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
         },
       );
     }
-    const { query, near, limit } = parsed.data;
+    const { query, near, rank, limit } = parsed.data;
     if (query.length > 300) {
       throw new MapsError("Cloud Maps supports queries up to 300 characters.", {
         code: "MAPS_INVALID_INPUT",
       });
     }
+    // An older Cloud refuses the unknown field, so it is sent only when
+    // Cloud says it ranks by distance.
+    const ranked =
+      near !== undefined &&
+      rank === "distance" &&
+      (await this.capabilities()).capabilities.distanceRank === true;
     const body = await this.post("/api/v1/maps/places/search", placesResponse, {
       query,
       ...(near ? { near } : {}),
+      ...(ranked ? { rank } : {}),
       // Cloud returns at most 20 places; a larger limit asks for that many.
       limit: Math.min(limit ?? 10, 20),
     });

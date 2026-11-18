@@ -42,18 +42,53 @@ const FIELD_LINE = new RegExp(
 const LINE_BREAK = /\r?\n/;
 
 /**
- * A fenced-code-block delimiter line (``` or ~~~, optionally indented). Field
- * lines inside a fence are QUOTED content — e.g. a reply diagnosing a leaked
- * transcript the user pasted — never envelope structure.
+ * CommonMark fence line: 0–3 spaces, then a backtick or tilde run of at least
+ * 3. Same shape as the scanner in `markdown/code.ts`. A tab is not indent.
  */
-const FENCE_LINE = /^\s{0,3}(?:`{3,}|~{3,})/;
+const FENCE_MARKER_LINE = /^( {0,3})(`{3,}|~{3,})(.*)$/;
+
+interface OpenFence {
+	char: "`" | "~";
+	length: number;
+}
+
+function readFenceMarker(
+	line: string,
+): { char: "`" | "~"; length: number; rest: string } | null {
+	const match = FENCE_MARKER_LINE.exec(line);
+	if (!match) return null;
+	const marker = match[2] ?? "";
+	const char = marker[0];
+	if (char !== "`" && char !== "~") return null;
+	return { char, length: marker.length, rest: match[3] ?? "" };
+}
 
 /**
- * A fence opener written inline after a field name (`replyText: ```bash`).
- * A backtick run whose info string holds another backtick is an inline code
- * span (`replyText: ```npm i``` first`), not a fence.
+ * A line opens a fence only when it is a real delimiter. A backtick info
+ * string cannot contain a backtick, so an inline span (` ```npm i``` `) stays
+ * prose. A tilde fence may carry any info string.
  */
-const INLINE_FENCE_OPEN = /^\s{0,3}(?:`{3,}[^`]*|~{3,}.*)$/;
+function openFenceFromLine(line: string): OpenFence | null {
+	const marker = readFenceMarker(line);
+	if (!marker) return null;
+	if (marker.char === "`" && marker.rest.includes("`")) return null;
+	return { char: marker.char, length: marker.length };
+}
+
+/**
+ * A closer must use the same character, be at least as long as the opener,
+ * and have only spaces or tabs after the marker. ` ```js ` inside an open
+ * fence is content, and a 3-backtick line does not close a 4-backtick fence.
+ */
+function closesFence(line: string, open: OpenFence): boolean {
+	const marker = readFenceMarker(line);
+	if (!marker) return false;
+	return (
+		marker.char === open.char &&
+		marker.length >= open.length &&
+		/^[ \t]*$/.test(marker.rest)
+	);
+}
 
 /**
  * Cheap skeleton detector for the fail-closed send-boundary guard. Returns true
@@ -72,14 +107,19 @@ const INLINE_FENCE_OPEN = /^\s{0,3}(?:`{3,}[^`]*|~{3,}.*)$/;
  */
 export function looksLikeRawFieldTranscript(text: unknown): boolean {
 	if (typeof text !== "string" || text.length === 0) return false;
-	let inFence = false;
+	let fence: OpenFence | null = null;
 	let leadsWithFieldLine = false;
 	for (const line of text.split(LINE_BREAK)) {
-		if (FENCE_LINE.test(line)) {
-			inFence = !inFence;
+		if (fence) {
+			if (closesFence(line, fence)) fence = null;
 			continue;
 		}
-		if (inFence || line.trim().length === 0) continue;
+		const opened = openFenceFromLine(line);
+		if (opened) {
+			fence = opened;
+			continue;
+		}
+		if (line.trim().length === 0) continue;
 		const match = FIELD_LINE.exec(line);
 		if (!leadsWithFieldLine) {
 			// The first substantive unfenced line decides authorship: prose means
@@ -91,6 +131,9 @@ export function looksLikeRawFieldTranscript(text: unknown): boolean {
 		if (match && (match[1] === "shouldRespond" || match[1] === "replyText")) {
 			return true;
 		}
+		// `contexts: ``` ` opens quoted mode for the following lines. A later
+		// `replyText:` inside that fence is part of the sample, not the envelope.
+		if (match?.[2]) fence = openFenceFromLine(match[2]);
 	}
 	return false;
 }
@@ -115,6 +158,10 @@ export interface ParsedFieldTranscript {
  * content, never boundaries — a replyText value that quotes an envelope inside
  * a fence (the agent diagnosing a leaked transcript) keeps the whole fenced
  * block instead of being split at the quoted `contexts:`/`replyText:` lines.
+ * A fence follows the Markdown delimiter rules: the closer must be at least
+ * as long as the opener and cannot carry an info string, and a backtick line
+ * whose info string contains a backtick (an inline span such as ```npm i```)
+ * is not a fence.
  *
  * Returns null when no known field line is found (the text is not a transcript
  * — let the caller fall through to its plain-text handling).
@@ -142,25 +189,33 @@ export function parseFieldTranscript(
 		buffer = [];
 	};
 
-	let inFence = false;
+	let fence: OpenFence | null = null;
 	for (const line of lines) {
-		if (FENCE_LINE.test(line)) {
-			// Fence delimiters toggle quoted mode and belong to the current value.
-			inFence = !inFence;
+		if (fence) {
+			// The closing line belongs to the value. A shorter marker, or a
+			// marker with an info string, stays inside the fence.
+			if (closesFence(line, fence)) fence = null;
 			if (currentField !== null) buffer.push(line);
 			continue;
 		}
-		const match = inFence ? null : FIELD_LINE.exec(line);
+		const opened = openFenceFromLine(line);
+		if (opened) {
+			fence = opened;
+			if (currentField !== null) buffer.push(line);
+			continue;
+		}
+		const match = FIELD_LINE.exec(line);
 		if (match) {
 			// New field boundary — close the previous field first.
 			flush();
 			currentField = match[1] as ResponseHandlerFieldName;
 			foundAny = true;
-			const inline = match[2];
+			const inline = match[2] ?? "";
 			buffer = inline ? [inline] : [];
-			// The value opened a fence on the field line itself, so the next
-			// fence line closes it rather than opening quoted mode.
-			if (INLINE_FENCE_OPEN.test(inline)) inFence = true;
+			// The value opened a fence on the field line itself
+			// (`replyText: ```bash`), so the next real closer ends quoted mode
+			// instead of leaving every later field inside the reply.
+			fence = openFenceFromLine(inline);
 		} else if (currentField !== null) {
 			// Continuation line of the current field value (including blank lines
 			// and any fenced quoted content).

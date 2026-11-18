@@ -41,6 +41,7 @@ const cases = requireVitestConformance(
   path.join(auth, suite),
   [
     "surfaces TWO accounts per subscription tier (Claude + Codex) in list + describe",
+    "serves coding credentials from ELIZA_HOME when the state dir is elsewhere",
     "round-robin alternates across the two Claude accounts (distinct tokens each turn)",
     "reordering priority changes which Claude account is served first",
     "priority filters scoped ids before ranking persisted priority and recency",

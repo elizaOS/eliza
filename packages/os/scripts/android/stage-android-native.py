@@ -167,6 +167,15 @@ def verify_runtime(archive, runtime_names, profile='native', target='stallion', 
     if not isinstance(records, list) or not 1 <= len(records) <= limit:
         raise ValueError('Invalid runtime file inventory')
     seen = set()
+    # A release APK may select one ABI from a producer that recorded both. Only
+    # absent runtime libraries of another supported target may be omitted.
+    other_runtime = {
+        'lib/' + runtime_layout(other, admission)['abi'] + '/' + name
+        for other in TARGETS if other != target
+        for name in runtime_layout(other, admission)['modes']
+    }
+    packaged = set(archive.namelist())
+    omitted_abi_files = 0
     for item in records:
         name, expected = item['path'], item['sha256']
         if (name in seen or not re.fullmatch(r'(assets/agent/|lib/)[A-Za-z0-9_.+/-]+', name)
@@ -176,6 +185,9 @@ def verify_runtime(archive, runtime_names, profile='native', target='stallion', 
         seen.add(name)
         if not isinstance(item.get('size_bytes'), int) or isinstance(item['size_bytes'], bool) or not (0 if admission['source'].get('kind') == 'aosp-build' else 1) <= item['size_bytes'] <= 1024 ** 3:
             raise ValueError('Invalid runtime size: ' + name)
+        if name in other_runtime and name not in packaged:
+            omitted_abi_files += 1
+            continue
         if profile == 'cloud' and name == CLOUD_OMITTED_MODEL['path']:
             if expected != CLOUD_OMITTED_MODEL['sha256'] or name in archive.namelist():
                 raise ValueError('Cloud model omission differs from original provenance')
@@ -218,7 +230,7 @@ def verify_runtime(archive, runtime_names, profile='native', target='stallion', 
             raise ValueError('Runtime policy binding differs: ' + entry)
     worker_contract = admission.get('worker')
     if worker_contract is None:
-        return {'runtimeFilesVerified': len(records), 'workerFilesVerified': 0,
+        return {'runtimeFilesVerified': len(records) - omitted_abi_files, 'workerFilesVerified': 0,
                 'sourceCommit': source_commit, 'bunVersion': bun['version'],
                 'runtimeProfile': profile, 'omittedLocalModels': []}
     prefix = worker_contract['prefix']
@@ -257,7 +269,7 @@ def verify_runtime(archive, runtime_names, profile='native', target='stallion', 
     index = archive.read(prefix + 'files.sha256').decode().splitlines()
     if len(index) != len(index_files) or set(index) != {digest + '\t' + name for name, digest in index_files.items()}:
         raise ValueError('Workflow extraction index mismatch')
-    return {'runtimeFilesVerified': len(records), 'workerFilesVerified': len(files),
+    return {'runtimeFilesVerified': len(records) - omitted_abi_files, 'workerFilesVerified': len(files),
             'sourceCommit': source_commit, 'bunVersion': bun['version'],
             'runtimeProfile': profile, 'omittedLocalModels': [CLOUD_OMITTED_MODEL] if profile == 'cloud' else []}
 
@@ -349,8 +361,9 @@ def finalize_soong(output, module, report, remaining_blueprint="", privileged=Fa
     if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*', module) or report.get('moduleName') != module:
         raise ValueError('Native module identity changed')
     arch = TARGETS[report['target']]['arch']
-    # prebuilt_priv_app is build/soong's own rule for files under <partition>/priv-app.
-    directory, rule = ('priv-app', 'prebuilt_priv_app') if privileged else ('app', 'prebuilt_app_native')
+    # Both fixed-directory rules come from the reviewed soong-app-native patch.
+    # AOSP reserves prebuilt_priv_app for generated rules, not Android.bp files.
+    directory, rule = ('priv-app', 'prebuilt_priv_app_native') if privileged else ('app', 'prebuilt_app_native')
     if (output / 'Android.bp').read_text() != '// The launcher is defined in Android.mk for bundled JNI installation.\n' + remaining_blueprint:
         raise ValueError('Unexpected shared launcher blueprint')
     if hashlib.sha256((output / 'Launcher.apk').read_bytes()).hexdigest() != report['apkSha256']:

@@ -1,0 +1,60 @@
+{
+  "sources": [
+    "plugins/plugin-assistant/src/runtime/action-retrieval.ts",
+    "plugins/plugin-assistant/src/runtime/action-catalog.ts",
+    "packages/core/src/actions/promote-subactions.ts",
+    "plugins/plugin-assistant/src/services/message/calendar-discovery-family.contract.test.ts",
+    "plugins/plugin-assistant/quint/check-promoted-family-hints.mjs",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/run-vitest.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "conformance": "plugins/plugin-assistant/quint/check-promoted-family-hints.mjs",
+  "bounds": {
+    "domain": "One synchronous retrieval from a frozen authorized catalog, two promoted children, one optional unrelated claimant, and either the family hint or one precise child hint.",
+    "implementation": "The existing real Calendar catalog suite registers actual plugin actions and exercises family selection, precise operation priority, unrelated alias collisions, omitted catalogs, and a second non-Calendar family. No model provider or domain effect is invoked.",
+    "limits": "Catalog authorization is an input; this model does not prove role checks. Registration changes during a retrieval, arbitrary alias normalization, score ordering beyond explicit hints, model selection, provider execution, and persistent effects are outside this finite projection. Retrieval is synchronous, so cancellation and recovery are owned by the surrounding planner rather than this function."
+  },
+  "cases": [
+    {
+      "name": "authorized-promoted-family-selection",
+      "main": "PromotedFamilyHints",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "HintsStayInAuthorizedCatalog",
+        "FamilyContract",
+        "PreciseOperationWins",
+        "ForeignClaimCannotStealUmbrella"
+      ],
+      "temporal": ["TerminalStable", "FairSettlement", "Settles"],
+      "temporalChecks": [
+        {
+          "property": "TerminalStable",
+          "expect": "holds",
+          "assumptions": [
+            "The catalog and request stay fixed for this synchronous retrieval."
+          ]
+        },
+        {
+          "property": "FairSettlement",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of advance; a requested retrieval is allowed to run."
+          ]
+        },
+        {
+          "property": "Settles",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without fairness the environment may stutter forever before retrieval runs."
+          ]
+        }
+      ],
+      "maxSteps": 8,
+      "samples": 200,
+      "deadlock": false
+    }
+  ]
+}

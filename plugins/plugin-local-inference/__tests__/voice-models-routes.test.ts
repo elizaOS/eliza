@@ -358,6 +358,29 @@ describe("GET /api/local-inference/voice-models/check", () => {
 });
 
 describe("POST /api/local-inference/voice-models/:id/pin", () => {
+	it.each([{}, { pinned: null }, { pinned: "false" }, { pinned: 0 }])(
+		"rejects a nonboolean pin request without changing stored pins: %j",
+		async (body) => {
+			const pinsPath = path.join(tmpRoot, "local-inference", "voice-update-pins.json");
+			const existing = JSON.stringify({ pinned: ["kokoro", "mobile-voice"] });
+			await fsp.mkdir(path.dirname(pinsPath), { recursive: true });
+			await fsp.writeFile(pinsPath, existing);
+			const { res, captured } = makeRes();
+			const handled = await handleVoiceModelsRoutes(
+				makeReq({
+					method: "POST",
+					url: "/api/local-inference/voice-models/kokoro/pin",
+					body: JSON.stringify(body),
+					headers: { "content-type": "application/json" },
+				}),
+				res,
+			);
+			expect(handled).toBe(true);
+			expect(captured.statusCode).toBe(400);
+			expect(await fsp.readFile(pinsPath, "utf8")).toBe(existing);
+		},
+	);
+
 	it("persists the pin to voice-update-pins.json", async () => {
 		const { res, captured } = makeRes();
 		const handled = await handleVoiceModelsRoutes(

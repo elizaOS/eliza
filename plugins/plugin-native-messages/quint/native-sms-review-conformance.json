@@ -2,12 +2,21 @@
   {
     "className": "ai.eliza.plugins.messages.TelephonyPluginReviewTest",
     "required": [
+      "smsEligibilityMatchesTypedMmsReceiverAndEnabledHostComponents",
       "smsCancellationBeforeJournalReplyMustRetireQueuedReview",
       "mmsCancellationBeforeJournalReplyMustRetireQueuedReview",
       "backgroundBeforeJournalReplyMustRetireQueuedReview",
       "cancellationAfterSendTapFencesQueuedDispatch",
       "unrelatedCancellationCannotRetireAnotherReview",
-      "cancellationCannotEraseARecordedSubmission"
+      "cancellationCannotEraseARecordedSubmission",
+      "ownerApprovedSmsUsesTheSameReceiptWithoutDialogOrReplay",
+      "ownerApprovedMmsUsesTheSameReceiptWithoutDialogOrReplay",
+      "withdrawnComposerApprovalCannotDispatchOrBeReplayed",
+      "mmsRetiredAfterStagingRollsBackOnlyItsOwnRow",
+      "deleteRequiresImageForegroundUnlockedDefaultSmsAndReadAuthority",
+      "deleteRefusesANonForegroundAndroidUserProfile",
+      "deleteRechecksRoleAndReadPermissionDuringIdentityLookup",
+      "deleteRechecksLifecycleBeforeEffectAndKeepsKnownContentFreeOutcomeAfterwards"
     ]
   },
   {
@@ -16,6 +25,16 @@
       "journalBindingEvidenceDurabilityAndMapping",
       "ownOutboxRowsSettleFromSentCallbacksOnly",
       "retiredFilterNamespaceIsMigrationSensitive"
+    ]
+  },
+  {
+    "className": "ai.eliza.plugins.messages.SmsOutgoingHistoryTest",
+    "required": [
+      "roleHolderStoresEveryRecipientBeforeSendingAndSettlesFromReceipts",
+      "providerRefusalKeepsAllRecipientsOffRadioAndPersistsDenial",
+      "quickReplyCannotSendOrReplayAfterProviderRefusal",
+      "roleLossAfterStagingStopsTheSendAndDiscardsItsRows",
+      "unreadableOwnershipCannotBypassProviderPreparation"
     ]
   },
   {

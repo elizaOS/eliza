@@ -1,0 +1,39 @@
+{
+  "sources": [
+    "plugins/plugin-scheduling/src/routes/plugin-routes.ts",
+    "plugins/plugin-calendar/src/routes/plugin-routes.ts",
+    "plugins/plugin-scheduling/src/routes/plugin-routes.forwarded-proto.test.ts",
+    "plugins/plugin-calendar/test/google-calendar-watch.pglite.test.ts",
+    "plugins/plugin-scheduling/quint/check-forwarded-proto.mjs"
+  ],
+  "conformance": "plugins/plugin-scheduling/quint/check-forwarded-proto.mjs",
+  "bounds": "Two routes whose URL base requestBaseUrl builds from Host and X-Forwarded-Proto: the scheduled-task list in plugin-scheduling and the Google Calendar push notification in plugin-calendar. Each request carries one of five X-Forwarded-Proto shapes: none, one hop, two hops on one line, two header lines that Node joins, and an empty value. A run sends one or two requests to one route, so a replay stays under the webhook limit of 60 notifications a minute from one address. The conformance script replays every generated request sequence over real HTTP: the scheduled-task list on an initialized runtime with the runner service, and the webhook through the real CalendarService, PGlite channel store and ScheduledTask runner; it requires all ten route and header cases. Served means the same response as the request without the header (200 with the task list, or 204 with the channel synced and its message number recorded). The calendar feed and calendars routes share the calendar requestBaseUrl and are not replayed separately. Forwarded-host handling, TLS sockets and proxy trust are out of scope; the scheme itself is not observable at either route. Under weak fairness of serving a waiting request, every request is eventually served. Explicit stuttering lets the route stay unanswered, so the same claim without fairness must fail. No latency bound is proved.",
+  "cases": [
+    {
+      "name": "proxied-requests-on-two-routes",
+      "main": "ForwardedProtoRouteBase",
+      "init": "init",
+      "step": "step",
+      "invariants": ["ProxiedRequestServed", "TypeOK"],
+      "temporal": ["RequestServed", "RequestServedWithoutFairness"],
+      "maxSteps": 4,
+      "samples": 3000,
+      "temporalChecks": [
+        {
+          "property": "RequestServed",
+          "expect": "holds",
+          "assumptions": [
+            "A route that holds a waiting request eventually runs its handler (weak fairness of serve). This checks that every X-Forwarded-Proto shape is then served, not how long the handler takes."
+          ]
+        },
+        {
+          "property": "RequestServedWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No handler fairness is assumed. The route may leave a request waiting forever, so a temporal loop counterexample is required."
+          ]
+        }
+      ]
+    }
+  ]
+}

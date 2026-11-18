@@ -1,0 +1,139 @@
+{
+  "sources": [
+    "plugins/plugin-calendar/src/service/linked-calendar-control.ts",
+    "plugins/plugin-calendar/src/service/linked-calendar-sync.ts",
+    "plugins/plugin-calendar/src/service/CalendarService.ts",
+    "plugins/plugin-calendar/src/service/migration.ts",
+    "plugins/plugin-calendar/src/service/linked-calendar-control.test.ts",
+    "plugins/plugin-calendar/src/internal/sql.ts",
+    "plugins/plugin-calendar/vitest.config.ts",
+    "plugins/plugin-calendar/quint/check-linked-calendar-control.mjs",
+    "packages/scripts/lib/test-output.ts",
+    "packages/scripts/lib/vitest-conformance.ts",
+    "packages/scripts/run-with-deadline.ts"
+  ],
+  "bounds": {
+    "domain": "One durable owner row, two destinations, six control revision advances and two sequential dispatch tokens. Checks use a current review, a representative mismatched revision and the original receipt revision where applicable. One projection checks a reviewed pause key. The other adds one existing clean mapping and one reviewed mapping key, with exact event review and eligibility as one input. Reopen preserves the durable row and receipt.",
+    "implementation": "Existing real PGlite cases exercise pause receipt commit, rollback and replay, disk reopen, and competing pause and dispatch admission. Repository cases check token settlement, paused recovery and retained pending event operations. Additional PGlite cases cover rebind, retain-local, occupied dispatch refusal, stale event review, transaction rollback and operation-key replay. The conformance selector admits no provider calls.",
+    "limitations": "The control case bounds the pause key to its expected revision. The mapping case holds the local event and original provider snapshot fixed. It abstracts opaque event identity, revision, timestamp and eligible state checks to a matching review. It models only one mapping edit and replay, with a fresh handoff key and a durable post-edit snapshot. Provider readback and writes, cross-owner storage, multiple receipt keys, subsequent mapping or event mutations, shared database concurrency, and elapsed-time progress remain outside the projections. Matching settlement is required for progress. There is no automatic takeover."
+  },
+  "conformance": "plugins/plugin-calendar/quint/check-linked-calendar-control.mjs",
+  "cases": [
+    {
+      "name": "durable-linked-control-and-dispatch",
+      "main": "LinkedCalendarControl",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "DestinationOwnsDispatch",
+        "ExactOwnerIdentity",
+        "ReceiptRevisionCommitted"
+      ],
+      "temporal": [
+        "AdmissionRequiresCurrentControl",
+        "PausePreservesAdmittedOwner",
+        "OwnerReleasePreservesDestination",
+        "PauseReceiptCommitsOnce",
+        "FairDispatchSettles",
+        "DispatchSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "AdmissionRequiresCurrentControl",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Dispatch admission is atomic for one owner row and current revision and destination."
+          ]
+        },
+        {
+          "property": "PausePreservesAdmittedOwner",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. A new review cannot change the destination or retire admitted work unless exact paused recovery settles the owner."
+          ]
+        },
+        {
+          "property": "OwnerReleasePreservesDestination",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. A matching receipt releases the current token and never edits the reviewed destination."
+          ]
+        },
+        {
+          "property": "PauseReceiptCommitsOnce",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The pause revision and receipt update commit together or roll back together."
+          ]
+        },
+        {
+          "property": "FairDispatchSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the caller's matching settlement after a confirmed effect. Recovery may instead clear the exact current token on a paused revision. No automatic settlement or provider acceptance is assumed."
+          ]
+        },
+        {
+          "property": "DispatchSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A caller can retain its current token indefinitely after admission."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 500
+    },
+    {
+      "name": "paused-linked-mapping-and-receipt",
+      "main": "LinkedCalendarMapping",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "DestinationOwnsDispatch",
+        "ExactOwnerIdentity",
+        "MappingHasDurableReceipt",
+        "RetainLocalPreservesProviderIdentity",
+        "RebindStagesFreshCreate"
+      ],
+      "temporal": [
+        "MappingCommitRequiresDrainedPause",
+        "MappingReplayAndRollbackPreserveRows",
+        "FairDispatchSettles",
+        "DispatchSettles"
+      ],
+      "temporalChecks": [
+        {
+          "property": "MappingCommitRequiresDrainedPause",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. The control revision, changed mapping and durable receipt publish atomically under the same locked control row."
+          ]
+        },
+        {
+          "property": "MappingReplayAndRollbackPreserveRows",
+          "expect": "holds",
+          "assumptions": [
+            "No fairness. Failed receipt persistence rolls the whole transaction back. Reopen and replay observe durable state without a new edit."
+          ]
+        },
+        {
+          "property": "FairDispatchSettles",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the caller's matching settlement after a confirmed effect. Recovery may clear the matching token on the current paused revision. The mapping edit never releases an owner."
+          ]
+        },
+        {
+          "property": "DispatchSettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A retained dispatch can remain unresolved and block a mapping edit."
+          ]
+        }
+      ],
+      "maxSteps": 24,
+      "samples": 500
+    }
+  ]
+}

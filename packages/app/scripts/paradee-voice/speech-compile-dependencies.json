@@ -4,6 +4,13 @@
   "consumerDependency": "com.squareup.okhttp3:okhttp:5.3.2",
   "artifacts": [
     {
+      "id": "okhttpJvm",
+      "path": "com/squareup/okhttp3/okhttp-jvm/5.3.2/okhttp-jvm-5.3.2.jar",
+      "file": "okhttp-jvm-5.3.2.jar",
+      "bytes": 868403,
+      "sha256": "c771f48075b763f6c322055e21129a94b7de4c1faf3f8f58ace320b0c9517a30"
+    },
+    {
       "id": "okhttp",
       "path": "com/squareup/okhttp3/okhttp-android/5.3.2/okhttp-android-5.3.2.aar",
       "file": "okhttp-release.aar",

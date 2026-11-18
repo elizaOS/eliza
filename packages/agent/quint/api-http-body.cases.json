@@ -2,12 +2,18 @@
   "sources": [
     "packages/agent/src/api/hono-mount.ts",
     "packages/agent/src/api/hono-adapter.ts",
-    "packages/agent/src/api/hono-adapter.test.ts"
+    "packages/agent/src/api/hono-adapter.test.ts",
+    "packages/agent/src/api/dispatch-route.ts",
+    "packages/agent/src/api/in-process-api.ts",
+    "packages/agent/src/api/in-process-api.test.ts",
+    "plugins/plugin-scheduling/src/routes/scheduled-tasks.ts",
+    "plugins/plugin-scheduling/src/routes/scheduled-tasks.seam.test.ts",
+    "packages/host/src/api/http-helpers.ts"
   ],
   "conformance": "packages/agent/quint/check-http-body.ts",
   "bounds": {
-    "domain": "One request, three abstract accumulated-body increments, retained cap of two, responses 200/413 and a peer-abort flag.",
-    "scope": "Finite safety projection; no progress/fairness claim."
+    "domain": "One request, three abstract accumulated-body increments, retained cap of two, responses 200/413 and a peer-abort flag. IPC framing separately covers zero or positive serialized bytes and absent, explicit length, explicit zero or chunked headers.",
+    "scope": "Finite safety projection; no progress/fairness claim. IPC progress assumes fair preparation and body read; real scheduling receipt checks use string, object and UTF-8 Buffer inputs. Arbitrary transport fragmentation, malformed explicit length and native device execution remain outside this projection."
   },
   "cases": [
     {
@@ -19,6 +25,32 @@
       "temporal": [],
       "maxSteps": 50,
       "samples": 1000
+    },
+    {
+      "name": "ipc_body_framing",
+      "main": "ipc_body_framing",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["FairReadCompletes", "ReadCompletes"],
+      "temporalChecks": [
+        {
+          "property": "FairReadCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of serialization preparation and the legacy body read. Both are local operations; no provider success is assumed."
+          ]
+        },
+        {
+          "property": "ReadCompletes",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. The request can remain unprepared or unread."
+          ]
+        }
+      ],
+      "maxSteps": 12,
+      "samples": 200
     }
   ]
 }

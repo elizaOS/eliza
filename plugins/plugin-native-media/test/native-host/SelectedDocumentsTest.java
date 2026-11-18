@@ -161,6 +161,22 @@ public final class SelectedDocumentsTest {
             -> DocumentBytes.read(new ByteArrayInputStream(new byte[DocumentBytes.MAX_BYTES + 1])),
         "read is refused, never truncated");
     rejects(() -> DocumentBytes.read(null), "missing stream");
+    byte[] chatOnly = new byte[DocumentBytes.MAX_BYTES + 1];
+    check(DocumentBytes.CHAT_MAX_BYTES == 20 * 1024 * 1024, "shared chat intake limit");
+    chatOnly[chatOnly.length - 1] = 91;
+    check(Arrays.equals(
+              DocumentBytes.read(new ByteArrayInputStream(chatOnly), DocumentBytes.CHAT_MAX_BYTES),
+              chatOnly),
+        "chat preserves bytes above the unchanged mail limit");
+    rejects(() -> DocumentBytes.read(new ByteArrayInputStream(chatOnly)), "mail stays at 5 MiB");
+    rejects(() -> DocumentBytes.read(
+                new ByteArrayInputStream(new byte[DocumentBytes.CHAT_MAX_BYTES + 1]),
+                DocumentBytes.CHAT_MAX_BYTES),
+        "chat overflow is rejected, never truncated");
+    rejects(() -> DocumentBytes.read(new ByteArrayInputStream(pdf), 0), "zero read limit");
+    rejects(
+        () -> DocumentBytes.read(new ByteArrayInputStream(pdf), DocumentBytes.CHAT_MAX_BYTES + 1),
+        "oversized read limit");
     String encoded = Base64.getEncoder().encodeToString(pdf);
     check(Arrays.equals(pdf, DocumentBytes.pdf(encoded)), "PDF payload");
     for (String value : new String[] {null, "", "broken", encoded + "!",

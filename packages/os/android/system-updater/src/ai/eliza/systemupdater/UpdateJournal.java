@@ -113,7 +113,7 @@ public final class UpdateJournal {
 
     /** A withdrawn candidate can be replaced only while no apply intent exists. */
     public UpdateJournal cancelUnapplied() {
-        if (!isUnapplied()) {
+        if (!isUnapplied() && !(phase == Phase.FAILED && intentBoot.isEmpty())) {
             throw new IllegalStateException("An applied or uncertain update cannot be discarded");
         }
         return idle();

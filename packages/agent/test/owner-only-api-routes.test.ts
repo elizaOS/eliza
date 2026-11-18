@@ -25,7 +25,6 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: join(directory, "config.json"),
     ELIZA_PERSIST_CONFIG_PATH: join(directory, "config.json"),
-    ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: OWNER_TOKEN,
     ELIZA_REQUIRE_LOCAL_AUTH: "1",
   }))

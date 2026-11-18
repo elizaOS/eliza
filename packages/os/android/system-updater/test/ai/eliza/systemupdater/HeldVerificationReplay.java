@@ -53,7 +53,8 @@ public final class HeldVerificationReplay {
     static final class Log { static void w(String tag, String message, Exception failure) { } }
     static final class PowerManager { int reboots; void reboot(String reason) { reboots++; } }
     static final class SystemUpdateJob {
-        static void schedule(Context context, boolean immediate) { context.schedules++; }
+        static void schedule(Context context, boolean immediate) { schedule(context, immediate, false); }
+        static void schedule(Context context, boolean requested, boolean immediate) { context.schedules++; }
     }
     static final class UpdateChannel {
         Candidate initial, next;
@@ -140,7 +141,11 @@ public final class HeldVerificationReplay {
         Path root = Path.of(args[0]);
         byte[] cert = Files.readAllBytes(Path.of(args[1]));
         Path trust = root.resolve("otacerts.zip");
-        try (var zip = new ZipOutputStream(Files.newOutputStream(trust))) { entry(zip, "fixture.x509", cert); }
+        try (var zip = new ZipOutputStream(Files.newOutputStream(trust))) {
+            entry(zip, "fixture.x509", cert);
+            if (args.length > 3) entry(zip, "rotation.x509", Files.readAllBytes(Path.of(args[3])));
+        }
+        System.setProperty("fixture.enrolled", args[1]);
         System.setProperty("fixture.otacerts", trust.toString());
         android.os.Build.FINGERPRINT = SOURCE;
         android.os.Build.VERSION.SECURITY_PATCH = "2026-01-01";

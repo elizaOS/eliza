@@ -14,15 +14,22 @@ import android.os.UserManager;
 public final class SystemUpdateJob extends JobService {
     static final int PERIODIC = 20851, REQUESTED = 20852;
 
-    static void schedule(Context context, boolean requested) {
+    static boolean requestedPending(Context context) {
+        JobScheduler scheduler = context.getSystemService(JobScheduler.class);
+        JobInfo pending = scheduler == null ? null : scheduler.getPendingJob(REQUESTED);
+        return pending != null && pending.isExpedited();
+    }
+
+    static void schedule(Context context, boolean requested, boolean immediate) {
         UserManager users = context.getSystemService(UserManager.class);
         if (!context.getResources().getBoolean(R.bool.os_update_enabled) || users == null || !users.isSystemUser()) return;
         JobInfo.Builder job = new JobInfo.Builder(requested ? REQUESTED : PERIODIC,
                 new ComponentName(context, SystemUpdateJob.class))
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_UNMETERED)
-                .setRequiresBatteryNotLow(true)
+                .setRequiresBatteryNotLow(!immediate)
                 .setRequiresStorageNotLow(true).setPersisted(true);
-        if (requested) job.setMinimumLatency(60_000);
+        if (immediate) job.setExpedited(true);
+        else if (requested) job.setMinimumLatency(60_000);
         else job.setRequiresDeviceIdle(true).setPeriodic(6 * 60 * 60_000L, 60 * 60_000L);
         JobScheduler scheduler = context.getSystemService(JobScheduler.class);
         if (scheduler == null || scheduler.schedule(job.build()) != JobScheduler.RESULT_SUCCESS) {
@@ -42,7 +49,7 @@ public final class SystemUpdateJob extends JobService {
         @Override public void onReceive(Context context, Intent intent) {
             if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())
                     || Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) {
-                schedule(context, false); schedule(context, true);
+                schedule(context, false, false); schedule(context, true, false);
             }
         }
     }

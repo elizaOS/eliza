@@ -69,11 +69,17 @@ public final class SenseListenerClient {
         this.packageName = context.getPackageName() + ".sense";
     }
 
-    /** The image listener package exists for this user, whatever its signer or control grant. */
-    public boolean installed() {
-        try { context.getPackageManager().getApplicationInfo(packageName, 0); return true; }
-        catch (PackageManager.NameNotFoundException | RuntimeException absent) { return false; }
+    enum Installation { PRESENT, ABSENT, UNKNOWN }
+
+    /** Hosts declare package visibility; failed reads cannot establish absence. */
+    Installation installation() {
+        try { context.getPackageManager().getApplicationInfo(packageName, 0); return Installation.PRESENT; }
+        catch (PackageManager.NameNotFoundException absent) { return Installation.ABSENT; }
+        catch (RuntimeException unavailable) { return Installation.UNKNOWN; }
     }
+
+    /** The image listener package exists for this user, whatever its signer or control grant. */
+    public boolean installed() { return installation() == Installation.PRESENT; }
 
     public boolean available() {
         try {

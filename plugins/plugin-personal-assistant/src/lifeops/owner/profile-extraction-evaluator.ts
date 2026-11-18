@@ -234,8 +234,8 @@ const TRAVEL_UNTIL_PATTERN =
  * Parses a free-text return-date phrase to a bounded ISO end. Returns null when
  * it cannot resolve a real future date within `MAX_TRAVEL_HORIZON_MS`; the
  * caller then falls back to the horizon cap. `Date.parse` handles common forms
- * ("July 20", "2026-07-20", "Aug 3"); the current year is assumed when the
- * parsed date lands in the past (a bare month/day for a future trip).
+ * ("July 20", "2026-07-20", "Aug 3") but rejects an ordinal day ("November 21st").
+ * A bare month/day uses the current year, then the next year if it has passed.
  */
 const HAS_EXPLICIT_YEAR = /\b\d{4}\b/;
 const ISO_DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -276,7 +276,9 @@ function parseLocalDate(value: string): number | null {
 }
 
 function parseTravelReturnIso(phrase: string, now: Date): string | null {
-  const trimmed = phrase.trim().replace(/[.,]+$/u, "");
+  const cleaned = phrase.trim().replace(/[.,]+$/u, "");
+  const ordinal = /\b(\d{1,2})(?:st|nd|rd|th)\b/iu.exec(cleaned);
+  const trimmed = ordinal ? cleaned.replace(ordinal[0], ordinal[1]) : cleaned;
   if (trimmed.length === 0) return null;
 
   // A bare "Month Day" string never fails to parse: absent a year,
@@ -298,7 +300,10 @@ function parseTravelReturnIso(phrase: string, now: Date): string | null {
     parsed = nextYear;
   }
   if (parsed - now.getTime() > MAX_TRAVEL_HORIZON_MS) return null;
-  return new Date(parsed).toISOString();
+  const date = new Date(parsed);
+  // Date.parse can roll "November 31" into December instead of rejecting it.
+  if (ordinal && date.getDate() !== Number(ordinal[1])) return null;
+  return date.toISOString();
 }
 
 function detectTravelSignal(text: string, now: Date): TravelSignal | null {

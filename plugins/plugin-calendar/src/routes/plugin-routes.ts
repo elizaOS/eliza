@@ -100,9 +100,13 @@ function requestBaseUrl(
 ): string {
   const host = headers.host ?? "localhost";
   const protocol = headers["x-forwarded-proto"];
-  const normalizedProtocol = Array.isArray(protocol)
-    ? protocol[0]
-    : (protocol ?? "http");
+  // Proxies append a hop ("https, http") and Node joins repeated header lines
+  // the same way; like the host route layer, use the first value so Google's
+  // relayed notifications and the feed reads still parse.
+  const normalizedProtocol =
+    (Array.isArray(protocol) ? protocol[0] : protocol)
+      ?.split(",", 1)[0]
+      ?.trim() || "http";
   return `${normalizedProtocol}://${Array.isArray(host) ? host[0] : host}`;
 }
 function parseRequestUrl(req: http.IncomingMessage): URL {

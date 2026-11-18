@@ -64,7 +64,6 @@ it("reports failed publication and permits retry without leftover temp files", (
 
 it("retries a failed HTTP tombstone commit and preserves deletion across host restart", async () => {
   const file = setup();
-  vi.stubEnv("ELIZA_API_BIND_HOST", "127.0.0.1");
   vi.stubEnv("ELIZA_API_TOKEN", "");
   vi.stubEnv("ELIZA_REQUIRE_LOCAL_AUTH", "0");
   const runtime = new AgentRuntime({

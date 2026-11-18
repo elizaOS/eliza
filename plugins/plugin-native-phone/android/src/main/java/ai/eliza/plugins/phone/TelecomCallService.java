@@ -62,6 +62,18 @@ public abstract class TelecomCallService extends InCallService {
         // Telecom provides the ringtone; duplicate channel audio would ring twice.
         channel.setSound(null, null);
         getSystemService(NotificationManager.class).createNotificationChannel(channel);
+        // Dialing and connected calls are already on the call screen: their ongoing notice stays in
+        // the shade and status bar without a heads-up banner over the screen the owner is using.
+        NotificationChannel ongoing = new NotificationChannel(ongoingChannelId(config), config.channelName + " in progress", NotificationManager.IMPORTANCE_LOW);
+        ongoing.setSound(null, null);
+        ongoing.enableVibration(false);
+        getSystemService(NotificationManager.class).createNotificationChannel(ongoing);
+    }
+
+    /** Quiet channel for calls that are not ringing; derived from the host channel so it stays installed identity. */
+    static String ongoingChannelId(TelecomCallConfiguration config) {
+        String base = config.channelId.length() > 56 ? config.channelId.substring(0, 56) : config.channelId;
+        return base + "-ongoing";
     }
 
     public static List<String> callIds() { return new ArrayList<>(ACTIVE_CALLS.keySet()); }
@@ -113,7 +125,8 @@ public abstract class TelecomCallService extends InCallService {
         }
         String label = callerLabel(callId, call.getDetails());
         boolean ringing = call.getState() == Call.STATE_RINGING;
-        Notification.Builder builder = new Notification.Builder(this, config.channelId)
+        // Only a ringing call alerts. Outgoing and connected calls use the quiet channel.
+        Notification.Builder builder = new Notification.Builder(this, ringing ? config.channelId : ongoingChannelId(config))
             .setSmallIcon(config.notificationIcon)
             .setContentTitle(label)
             .setContentText(TelecomCallActivity.stateLabel(call.getState()))

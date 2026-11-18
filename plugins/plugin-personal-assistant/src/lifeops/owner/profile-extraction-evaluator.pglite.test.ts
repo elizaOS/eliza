@@ -19,12 +19,16 @@ import {
   runResponseHandlerEvaluators,
   type UUID,
 } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.js";
-import { resolveConfiguredOwnerTimeZone } from "./fact-store.js";
+import {
+  ownerFactsToView,
+  resolveConfiguredOwnerTimeZone,
+  resolveOwnerFactStore,
+} from "./fact-store.js";
 
 let runtimeResult: RealTestRuntimeResult | null = null;
 let runtime: AgentRuntime;
@@ -165,5 +169,62 @@ describe("owner.profile_extraction timezone model cases", () => {
       }
     },
     180_000,
+  );
+});
+
+// Model encoding: end 0 is November 21, 1 is December 3, and 2 is
+// the fallback 30 days after the owner reported travel.
+const travelStatements = [
+  "I'm traveling until November 21st.",
+  "I'm out of town until Dec 3rd.",
+  "I'm traveling until November 21.",
+  "I'm traveling until 2026-11-21.",
+  "I'm traveling.",
+  "I'm traveling until November 31st.",
+];
+const travelCases: Array<{
+  statement: number;
+  end: number;
+  activeAtTick: boolean;
+}> = process.env.ELIZA_OWNER_PROFILE_TRAVEL_MODEL_CASES
+  ? JSON.parse(
+      readFileSync(process.env.ELIZA_OWNER_PROFILE_TRAVEL_MODEL_CASES, "utf8"),
+    )
+  : [
+      { statement: 0, end: 0, activeAtTick: false },
+      { statement: 1, end: 1, activeAtTick: false },
+      { statement: 2, end: 0, activeAtTick: false },
+      { statement: 3, end: 0, activeAtTick: false },
+      { statement: 4, end: 2, activeAtTick: true },
+      { statement: 5, end: 2, activeAtTick: true },
+    ];
+
+describe("owner.profile_extraction travel dates", () => {
+  it.each(travelCases)(
+    "matches the generated owner travel outcome (statement $statement)",
+    async ({ statement, end, activeAtTick }) => {
+      const now = new Date(2026, 10, 14, 15);
+      const expectedEnds = [
+        new Date(2026, 10, 21),
+        new Date(2026, 11, 3),
+        new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
+      ];
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(now);
+      try {
+        await ownerSays(travelStatements[statement]);
+        const facts = await resolveOwnerFactStore(runtime).read();
+        expect(facts.activeTravel?.value).toEqual({
+          startIso: now.toISOString(),
+          endIso: expectedEnds[end].toISOString(),
+        });
+        expect(ownerFactsToView(facts, now).travelActive).toBe(true);
+        expect(
+          ownerFactsToView(facts, new Date(2026, 11, 4)).travelActive,
+        ).toBe(activeAtTick);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
   );
 });

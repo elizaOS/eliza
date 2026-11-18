@@ -327,10 +327,11 @@ test("reviewed privileged permissions move the Pixel 10a launcher and its JNI to
   const blueprint = fs.readFileSync(path.join(f.output, "Android.bp"), "utf8");
   assert.equal(blueprint.match(/privileged: true/g)?.length, 1);
   assert.equal(
-    blueprint.match(/prebuilt_priv_app \{/g)?.length,
+    blueprint.match(/prebuilt_priv_app_native \{/g)?.length,
     final.libraries.length,
   );
   assert.doesNotMatch(blueprint, /prebuilt_app_native/);
+  assert.doesNotMatch(blueprint, /prebuilt_priv_app \{/);
   assert.match(blueprint, /name: "ExamplePhonePrivappPermissions"/);
   assert.ok(
     blueprint.includes('relative_install_path: "ExamplePhone/lib/arm64"'),

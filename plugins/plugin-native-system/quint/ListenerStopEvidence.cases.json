@@ -1,0 +1,47 @@
+{
+  "sources": [
+    "plugins/plugin-native-system/src/sense.ts",
+    "plugins/plugin-native-system/android/src/main/AndroidManifest.xml",
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SenseListenerClient.java",
+    "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/SensePlugin.java",
+    "plugins/plugin-native-system/test/sense.test.mjs",
+    "plugins/plugin-native-system/test/sense-client-stubs.json",
+    "plugins/plugin-native-system/test/SensePluginStopReceiptTest.java",
+    "plugins/plugin-native-system/quint/check-listener-stop.mjs"
+  ],
+  "conformance": "plugins/plugin-native-system/quint/check-listener-stop.mjs",
+  "bounds": "One native stop request, five reply classes, timeout/failure and late callbacks. The linked Node suite exercises the actual TypeScript parser/controller and compiles/runs the actual Java client/plugin over controlled Android API substitutes. It checks the five-second timer with a fake clock. It is concrete source conformance, not generated trace equivalence. Android package visibility is declared by the plugin manifest; package-manager behavior, APK installation/uninstallation races and hardware microphone release require installed-device acceptance. No action enables capture.",
+  "cases": [
+    {
+      "name": "single-stop-evidence",
+      "main": "ListenerStopEvidence",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "OneNativeRequest",
+        "OnlySafeEvidenceConfirms",
+        "NoCaptureStarted"
+      ],
+      "temporal": ["StopFinishes", "StopFinishesWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "StopFinishes",
+          "expect": "holds",
+          "assumptions": [
+            "An enabled reply, failure or timer settlement eventually executes (weak fairness). The model proves eventual settlement, not a wall-clock scheduling guarantee."
+          ]
+        },
+        {
+          "property": "StopFinishesWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "Without fairness the environment may postpone the reply and timer indefinitely."
+          ]
+        }
+      ],
+      "maxSteps": 5,
+      "samples": 100
+    }
+  ]
+}

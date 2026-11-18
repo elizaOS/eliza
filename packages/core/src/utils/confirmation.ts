@@ -92,14 +92,64 @@ const NEGATIVE_WORDS = new Set([
 	"stop",
 	"wait",
 	"non",
+	"pas",
 	"nein",
+	"nicht",
 	"いいえ",
 	"不",
 	"不要",
 	"取消",
 	"아니",
 	"아니요",
+	"아뇨",
+	"마",
+	"마요",
+	"마세요",
+	"말아",
+	"말아요",
+	"말고",
 ]);
+
+/**
+ * Chinese and Japanese put no space between words, so a no word there sits
+ * inside a longer run of text ("确认，先不要" is "确认" and "先不要").
+ */
+const UNSPACED_SCRIPT =
+	/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+const UNSPACED_NEGATIVE_WORDS = [...NEGATIVE_WORDS].filter((word) =>
+	UNSPACED_SCRIPT.test(word),
+);
+
+/**
+ * Korean joins an ending to its word stem ("취소할게요" is "취소" and
+ * "할게요"), and often writes 안 and 못 ("not") joined to the verb
+ * ("안해요", "못하겠어요"). A Korean word that starts with one of these
+ * stems is a no, except the ordinary words below.
+ */
+const KOREAN_NEGATIVE_STEMS = ["아니", "않", "안", "못", "취소", "그만"];
+// These ordinary words are not refusals. Keep their noun particles with the
+// compound, without exempting other words that start with a no stem.
+const KOREAN_NONNEGATIVE_COMPOUND =
+	/^(?:그만큼(?:만|은|의)?|취소선(?:[은는이가을를도만]|으로|로)?|안녕(?:하세요|하십니까|히)?)$/u;
+/** A verb that ends in "-지 마", "-지 말", "-지 않" or "-지 못" ("하지마"). */
+const KOREAN_NEGATED_VERB = /지[마말않못]/u;
+
+function isKoreanNegativeWord(word: string): boolean {
+	return (
+		(KOREAN_NEGATIVE_STEMS.some((stem) => word.startsWith(stem)) &&
+			!KOREAN_NONNEGATIVE_COMPOUND.test(word)) ||
+		KOREAN_NEGATED_VERB.test(word)
+	);
+}
+
+function isNegativeWord(word: string): boolean {
+	return (
+		NEGATIVE_WORDS.has(word) ||
+		(UNSPACED_SCRIPT.test(word) &&
+			UNSPACED_NEGATIVE_WORDS.some((negative) => word.includes(negative))) ||
+		isKoreanNegativeWord(word)
+	);
+}
 
 /** A thumbs-down or cross mark in a reply makes it a no too. */
 const NEGATIVE_SYMBOLS = /[\u{1F44E}\u274C\u274E\u{1F6AB}\u2716]/u;
@@ -123,10 +173,7 @@ function classifyConfirmationReply(message: Memory): ConfirmationReply {
 	const words = (text.match(/[\p{L}\p{N}']+/gu) ?? [])
 		.map((word) => word.replace(/^'+|'+$/g, ""))
 		.filter(Boolean);
-	if (
-		NEGATIVE_SYMBOLS.test(text) ||
-		words.some((word) => NEGATIVE_WORDS.has(word))
-	)
+	if (NEGATIVE_SYMBOLS.test(text) || words.some(isNegativeWord))
 		return "negative";
 	if (/[?？¿]/u.test(text)) return "unclear";
 	// Skip leading politeness ("please, yes"), then require a yes.

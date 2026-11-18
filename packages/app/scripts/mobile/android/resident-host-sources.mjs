@@ -111,7 +111,7 @@ export const RESIDENT_NOTIFICATION_STRINGS = Object.freeze([
   ["title", '"Eliza agent"', 2],
   ["running", '"Eliza agent · Running"', 1],
   ["starting", '"Eliza agent · Starting"', 1],
-  ["stopped", '"Eliza agent · Stopped"', 2],
+  ["stopped", '"Eliza agent · Stopped"', 1],
   ["assetError", '"Eliza agent · Asset error"', 1],
   ["missingFiles", '"Eliza agent · Missing files"', 1],
   ["spawnFailed", '"Eliza agent · Spawn failed"', 1],
@@ -119,7 +119,6 @@ export const RESIDENT_NOTIFICATION_STRINGS = Object.freeze([
   ["runningDetail", '"On-device agent ready"', 1],
   ["startingDetail", '"Preparing on-device runtime…"', 1],
   ["bootstrapDetail", '"Starting…"', 1],
-  ["crashedDetail", '"Agent crashed repeatedly; tap to investigate"', 2],
   ["extractFailedDetail", '"Could not unpack runtime"', 1],
   ["spawnFailedDetail", '"Could not start runtime process"', 1],
   ["stopFailedDetail", '"The running runtime could not be stopped safely"', 1],
@@ -143,9 +142,9 @@ const CHANNEL_LABELS = Object.freeze([
 const PROJECTOR_ICON = "android.R.drawable.ic_dialog_info";
 // ElizaAgentService publishes a rotated local-agent root here, once.
 const ROOT_PUBLICATION_ANCHOR = "            currentLocalAgentToken = token;";
-// Every path that reaches the running state: the startup/adoption probe and the watchdog.
+// Shared readiness transition for the startup/adoption probe and the watchdog.
 const READY_ANCHOR = 'currentStatus = "running";';
-const READY_OCCURRENCES = 2;
+const READY_OCCURRENCES = 1;
 const ENVIRONMENT_ANCHOR =
   'agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET_PATH",privateSocketPath);';
 const SOCKET_ANCHORS = Object.freeze({

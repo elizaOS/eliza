@@ -55,3 +55,42 @@ module OwnerProfileTimezone {
   val CalendarReadsStoredZone =
     phase != 2 or (not(readFailed) and readZone == (if (stored == -1) 8 else stored))
 }
+
+// A parsed return date ends an owner's travel window at the stated local day.
+module OwnerTravelReturn {
+  // Statements 0 and 1 name ordinal days, 2 and 3 name plain and ISO dates,
+  // 4 omits the date, and 5 names an impossible ordinal calendar date.
+  // End 0 is November 21, 1 is December 3, and 2 is the 30-day fallback.
+  var statement: int
+  var phase: int
+  var end: int
+  var activeAtTick: bool
+
+  action init = {
+    nondet chosen = 0.to(5).oneOf()
+    all { statement' = chosen, phase' = 0, end' = -1, activeAtTick' = false }
+  }
+  action extract = all {
+    phase == 0, statement' = statement, phase' = 1,
+    end' = if (statement == 1) 1 else if (statement < 4) 0 else 2,
+    activeAtTick' = activeAtTick
+  }
+  // The schedule reads its owner facts on December 4.
+  action tick = all {
+    phase == 1, statement' = statement, phase' = 2,
+    end' = end, activeAtTick' = end == 2
+  }
+  action stay = all {
+    statement' = statement, phase' = phase,
+    end' = end, activeAtTick' = activeAtTick
+  }
+  action step = any { extract, tick, stay }
+
+  val ExplicitReturnStored = phase == 0 or statement >= 4 or
+    end == (if (statement == 1) 1 else 0)
+  val UnresolvedReturnIsBounded = phase == 0 or statement < 4 or end == 2
+  val ScheduleSeesExpiry = phase != 2 or activeAtTick == (statement >= 4)
+  temporal TickObserved = eventually(phase == 2)
+  temporal FairTickObserved =
+    (extract.weakFair(phase) and tick.weakFair(phase)) implies TickObserved
+}

@@ -48,8 +48,34 @@ public final class SensePluginStopReceiptTest {
             && "Stopped".equals(result.get("label")), method + " lost its complete saved receipt");
     }
 
+    private static void unavailable(SensePlugin plugin, String method, String reason) {
+        PluginCall call = new PluginCall();
+        switch (method) {
+            case "pause": plugin.pause(call); break;
+            case "turnOff": plugin.turnOff(call); break;
+            case "status": plugin.status(call); break;
+            default: throw new AssertionError("unexpected method");
+        }
+        JSObject result = call.result;
+        check(Boolean.FALSE.equals(result.get("available")), method + " fabricated availability");
+        check(reason == null ? result.size() == 1
+            : result.size() == 2 && reason.equals(result.get("reason")),
+            method + " did not preserve package absence/unknown: " + result);
+    }
+
     public static void main(String[] args) {
         SensePlugin plugin = new SensePlugin();
+        for (String method : new String[]{"status", "pause", "turnOff"}) {
+            plugin.getActivity().packages.installed = false;
+            unavailable(plugin, method, "not-installed");
+            plugin.getActivity().packages.readFailure = true;
+            unavailable(plugin, method, null);
+            plugin.getActivity().packages.readFailure = false;
+            plugin.getActivity().packages.installed = true;
+            plugin.getActivity().packages.signer = -1;
+            unavailable(plugin, method, null);
+            plugin.getActivity().packages.signer = 0;
+        }
         refused(plugin, "turnOff", new Bundle());
         refused(plugin, "pause", new Bundle());
         for (String method : new String[]{"turnOff", "pause"}) {

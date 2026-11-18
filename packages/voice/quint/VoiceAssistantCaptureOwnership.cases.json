@@ -5,13 +5,23 @@
     "packages/voice/src/voice-assistant-session.test.ts",
     "packages/voice/vitest.config.ts",
     "packages/scripts/lib/junit-summary.ts",
-    "packages/scripts/lib/test-output.ts"
+    "packages/scripts/lib/test-output.ts",
+    "packages/voice/src/native-live-voice.ts",
+    "packages/voice/src/native-live-voice.test.ts",
+    "packages/voice/src/live-voice-session.ts",
+    "packages/voice/src/live-voice-session.test.ts",
+    "packages/ui/src/voice/voice-session-client-core.ts",
+    "packages/ui/src/voice/voice-session-mic-capture.ts",
+    "packages/ui/src/voice/__e2e__/voice-session-mic-capture.test.ts",
+    "packages/ui/src/voice/voice-session-cloud-budget-rotation.test.ts",
+    "packages/ui/src/hooks/useRealtimeVoiceSession.ts",
+    "packages/ui/src/hooks/useRealtimeVoiceSession.refusal.test.tsx"
   ],
   "conformance": "packages/voice/quint/check-voice-assistant-capture-ownership.mjs",
   "bounds": {
-    "domain": "One active half-duplex owner, one initial capture, one submitted turn, one replacement capture and one Stop. A replacement can open after the turn drains or after idle Unmute. Mute and Unmute can change while an operation is pending.",
-    "assumptions": "A reply's send, reply and playback drain are abstracted to a single owned turn. The case starts with its first capture admitted. The current capture's direct cancel is synchronous in this case. A capture acquired after retirement joins the old acquisition until its asynchronous cancel settles. Close and reopen can succeed or reject.",
-    "limitations": "The maintained tests drive the actual controller with controlled clock, capture, reply and playback ports. The model excludes physical audio, cancellation failure recovery, multiple Stop callers, owner replacement, open-microphone mode and overlapping submission during Unmute acquisition. Stop settlement concerns the owned promises, with native cleanup outside the model."
+    "domain": "One active owner, one initial capture, one replacement acquisition per generation, and one restart after confirmed Stop. Close and cancel receipts can overlap. Mute, cancellation failure, retry and retirement may occur while acquisition or close is pending.",
+    "assumptions": "Send/reply/playback are abstracted to one owned turn. Capture cancellation is asynchronous and may fail arbitrarily often. Progress assumes fair close/acquisition/Stop acknowledgement and strongly fair successful cancellation across retries; no wall-clock bound or unconditional device success is asserted.",
+    "limitations": "Finite protocol projection with maintained implementation scenarios. It does not prove physical device release, native hardware correctness, all owner replacement interleavings, unlimited generations, or open-microphone speech timing. Browser/native ports and the React owner are exercised with injected failures; this is scenario correspondence, not a full implementation refinement proof."
   },
   "cases": [
     {
@@ -22,7 +32,8 @@
       "invariants": [
         "SendNeedsConfirmedClose",
         "CaptureAdoptionRequiresLiveUnmutedOwner",
-        "StopWaitsForLateCancellation"
+        "StopWaitsForLateCancellation",
+        "FailedReleaseRetainsOwnership"
       ],
       "temporal": [
         "RetiredOwnerCannotSendOrReopen",
@@ -34,14 +45,14 @@
           "property": "RetiredOwnerCannotSendOrReopen",
           "expect": "holds",
           "assumptions": [
-            "No fairness. A retired generation can only settle its prior work. It cannot send another turn or adopt or request capture."
+            "No fairness. A retired generation cannot send or adopt capture; a new generation starts only after all old close/cancel receipts confirm release."
           ]
         },
         {
           "property": "UnderFairCaptureReceipts",
           "expect": "holds",
           "assumptions": [
-            "Weak fairness of eligible reopen admission, host close and reopen settlement, late cancellation settlement and Stop acknowledgement. Mute or Stop can remove reopen eligibility. No wall-clock bound is assumed."
+            "Weak fairness of close, acquisition, cancellation request and Stop acknowledgement; strong fairness of a successful cancel receipt when retried infinitely. The environment can refuse release forever without these assumptions, so unconditional release is not proved."
           ]
         },
         {
@@ -52,7 +63,7 @@
           ]
         }
       ],
-      "maxSteps": 24,
+      "maxSteps": 40,
       "samples": 1000
     }
   ]

@@ -576,7 +576,7 @@ it("persists and reads complete planner stages with the canonical native proposa
   const messages = [
     {
       role: "user" as const,
-      content: "Complete input " + "x".repeat(120_000) + " FINAL-INPUT",
+      content: `Complete input ${"x".repeat(120_000)} FINAL-INPUT`,
     },
   ];
   const providerOptions = {
