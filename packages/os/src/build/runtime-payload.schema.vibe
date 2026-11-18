@@ -1,0 +1,39 @@
+// spec/os/build/runtimePayload.md, "A Node runtime file is used only when it matches its ABI's lock entry"; spec/os/build/runtimePayload.md, "The workflow worker is staged only under the digest the bundle manifest pins"
+const Digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const NonBlank = Schema.Trimmed.check(Schema.isMinLength(1))
+const NodeVersion = Schema.String.check(Schema.isPattern(/^26\.\d+\.\d+$/))
+const NdkRevision = Schema.String.check(Schema.isPattern(/^\d+\.\d+\.\d+$/))
+const ApiLevel = Schema.Int.check(Schema.isBetween({ minimum: 29, maximum: 99 }))
+const ReleaseUrl = Schema.String.check(Schema.isPattern(/^https?:\/\/[^\s]+$/))
+
+export schema AndroidAbi = "arm64-v8a" | "x86_64"
+
+export const NodeLockFile = Schema.Struct({
+  schema: Schema.Literal(1),
+  version: NodeVersion,
+  ndk: NdkRevision,
+  apiLevel: ApiLevel,
+  entries: Schema.Array(Schema.Struct({ abi: AndroidAbi, sha256: Digest, url: ReleaseUrl })),
+})
+
+export const NodeRuntimeBuild = Schema.Struct({
+  schema: Schema.Literal(1),
+  abi: AndroidAbi,
+  version: NodeVersion,
+  ndk: NdkRevision,
+  apiLevel: ApiLevel,
+  sha256: Digest,
+})
+
+export const BundleFacts = Schema.Struct({
+  schema: Schema.Literal(1),
+  node: Schema.Literal("26"),
+  bundleSha256: Digest,
+  localInference: Schema.Boolean,
+  workflowWorkerSha256: Schema.optionalKey(Digest),
+})
+
+export const PayloadInventory = Schema.Struct({
+  schema: Schema.Literal(1),
+  files: Schema.Array(Schema.Struct({ path: NonBlank, sha256: Digest, size: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)) })),
+})

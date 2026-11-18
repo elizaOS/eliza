@@ -1,0 +1,354 @@
+// spec/os/build/sourceIntegrity.md, "Story: Build only from the committed tree I pinned"; spec/os/build/sourceIntegrity.md, "Story: Export pinned files without my local edits"
+import { ChildProcess } from "effect/process"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+import {
+  Machine,
+  executeBits,
+  explicitPath,
+  exportOutcome,
+  machine,
+  trackedEntryAdmitted,
+  workspaceFinding,
+  type EntryMode,
+  type FileKind,
+  type PreparedSource,
+  type SeedFinding,
+  type WorkspaceFinding,
+} from "../../gen/os__build__sourceIntegrity.effect.vibe"
+
+module node {
+  import { Buffer } from "node:buffer"
+  import { createHash } from "node:crypto"
+  import { matchesGlob } from "node:path"
+
+  /** @throws {never} */
+  export function gitBlobId(content: Uint8Array | string): string {
+    const bytes = typeof content === "string" ? Buffer.from(content) : content
+    return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function globMatches(file: string, pattern: string): boolean {
+    try {
+      return matchesGlob(file, pattern)
+    } catch {
+      return false
+    }
+  }
+}
+import { gitBlobId, globMatches } from node
+
+export type Commit = string & { readonly __brand: "Commit" }
+
+export interface WorkspaceAllowances {
+  readonly generatedFiles?: readonly string[]
+  readonly generatedDirectories?: readonly string[]
+}
+
+export interface PrepareRequest<A, E, R> {
+  readonly repository: string
+  readonly cache?: string
+  readonly destination: string
+  readonly pin: string
+  readonly allowances?: WorkspaceAllowances
+  readonly stage: (directory: string) => A!E!R
+}
+
+export interface PreparedCommit<A> {
+  readonly commit: Commit
+  readonly origin: Exclude<PreparedSource["origin"], "NotChosen">
+  readonly staged: A
+}
+
+export error NotACommit { value: string }
+export error SourceUnreadable { directory: string; message: string }
+export error DestinationOccupied { destination: string }
+export error CacheRefused { cache: string; message: string }
+export error WorkspaceRefused { directory: string; finding: WorkspaceFinding; headCommit: string; path: string | undefined; message: string }
+export error ExportRefused { source: string; message: string }
+
+interface TrackedEntry {
+  readonly mode: EntryMode | undefined
+  readonly oid: string
+  readonly name: string
+}
+
+interface Observation {
+  readonly kind: FileKind
+  readonly mode: number
+  readonly digest: string
+}
+
+interface Inspection {
+  readonly headCommit: Commit
+  readonly finding: WorkspaceFinding
+  readonly path: string | undefined
+}
+
+const GIT_ENVIRONMENT = { GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" }
+const ENTRY_MODES: Readonly<Record<string, EntryMode>> = { "100644": "RegularEntry", "100755": "ExecutableEntry", "120000": "LinkEntry", "160000": "SubmoduleEntry" }
+const LITERAL_OUTPUT = /^(?:[A-Za-z0-9_.-]+\/)+\*\*$/
+const TASK_NAME = /^[A-Za-z0-9:_-]+$/
+
+function isCommit(value: string): value is Commit {
+  return /^[0-9a-f]{40}$/.test(value)
+}
+
+export effect function parseCommit(value: string) {
+  if (!isCommit(value)) throw new NotACommit({ value })
+  return value
+}
+
+effect function run(tool: string, args: readonly string[], cwd: string) {
+  const spawner = try ChildProcessSpawner
+  return try mapError(scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make(tool, [...args], { cwd, extendEnv: true, env: GIT_ENVIRONMENT, stdin: "ignore" }))
+    const [stdout, stderr] = try.all [Stream.mkString(Stream.decodeText(child.stdout)), Stream.mkString(Stream.decodeText(child.stderr))]
+    const code: number = try child.exitCode
+    return { code, stdout, stderr }
+  }), (cause) => new SourceUnreadable({ directory: cwd, message: `${tool} ${args.join(" ")} could not run: ${cause.message}` }))
+}
+
+effect function git(cwd: string, args: readonly string[]) {
+  const result = try run("git", args, cwd)
+  if (result.code !== 0) throw new SourceUnreadable({ directory: cwd, message: `git ${args.join(" ")} exited with ${result.code}: ${result.stderr.trim()}` })
+  return result.stdout
+}
+
+effect function readable<A, E extends { readonly message: string }, R>(directory: string, read: A!E!R) {
+  return try mapError(read, (cause) => new SourceUnreadable({ directory, message: cause.message }))
+}
+
+effect function isCheckoutRoot(directory: string) {
+  const files = try FileSystem.FileSystem
+  const top = try run("git", ["rev-parse", "--show-toplevel"], directory)
+  if (top.code !== 0) return false
+  return (try readable(directory, files.realPath(top.stdout.trim()))) === (try readable(directory, files.realPath(directory)))
+}
+
+effect function headOf(directory: string) {
+  return try parseCommit((try git(directory, ["rev-parse", "HEAD"])).trim())
+}
+
+effect function trackedEntries(directory: string, pin: Commit) {
+  const listing = try git(directory, ["ls-tree", "-r", "-z", "--full-tree", pin])
+  return listing.split("\0").filter((record) => record !== "").map((record): TrackedEntry => {
+    const tab = record.indexOf("\t")
+    const [mode = "", , oid = ""] = record.slice(0, tab).split(" ")
+    return { mode: ENTRY_MODES[mode], oid, name: record.slice(tab + 1) }
+  })
+}
+
+effect function observe(file: string) {
+  const files = try FileSystem.FileSystem
+  const info = (files.lstat(file) catch () => undefined)
+  const observed = (kind: FileKind, content: Uint8Array | string | undefined): Observation => ({ kind, mode: info?.mode ?? 0, digest: content === undefined ? "" : gitBlobId(content) })
+  if (info === undefined) return observed("MissingFile", undefined)
+  if (info.type === "SymbolicLink") return observed("LinkFile", (files.readLink(file) catch () => undefined))
+  if (info.type === "File") return observed("RegularFile", (files.readFile(file) catch () => undefined))
+  return observed("OtherFile", undefined)
+}
+
+effect function entryAdmitted(file: string, entry: TrackedEntry) {
+  if (entry.mode === undefined) return false
+  const seen = try observe(file)
+  return trackedEntryAdmitted(entry.mode, seen.kind, seen.digest === entry.oid, seen.mode & executeBits)
+}
+
+effect function firstChangedEntry(directory: string, entries: readonly TrackedEntry[]) {
+  const path = try Path.Path
+  for (const entry of entries) {
+    if (!(try entryAdmitted(path.join(directory, entry.name), entry))) return entry.name
+  }
+  return undefined
+}
+
+effect function readJson(directory: string, file: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const text = try readable(directory, files.readFileString(path.join(directory, file)))
+  return try Effect.try({ try: (): unknown => JSON.parse(text), catch: () => new SourceUnreadable({ directory, message: `${file} is not JSON` }) })
+}
+
+function field(value: unknown, key: string): unknown {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>)[key] : undefined
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []
+}
+
+function pnpmPackages(text: string): string[] {
+  const patterns: string[] = []
+  let inside = false
+  for (const line of text.split(/\r?\n/)) {
+    if (/^packages:\s*$/.test(line)) {
+      inside = true
+    } else if (inside) {
+      const item = /^\s+-\s*(["']?)([^"'#\s]+)\1\s*(?:#.*)?$/.exec(line)
+      if (item?.[2] !== undefined) patterns.push(item[2])
+      else if (/^\S/.test(line)) inside = false
+    }
+  }
+  return patterns
+}
+
+function inWorkspace(directory: string, patterns: readonly string[]): boolean {
+  const included = patterns.filter((pattern) => !pattern.startsWith("!"))
+  const excluded = patterns.filter((pattern) => pattern.startsWith("!")).map((pattern) => pattern.slice(1))
+  return included.some((pattern) => globMatches(directory, pattern)) && !excluded.some((pattern) => globMatches(directory, pattern))
+}
+
+effect function generatedLocations(directory: string, tracked: ReadonlySet<string>, allowances: WorkspaceAllowances) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const rootPackage = tracked.has("package.json") ? try readJson(directory, "package.json") : undefined
+  const declared = field(rootPackage, "workspaces")
+  const pnpm = tracked.has("pnpm-workspace.yaml") ? pnpmPackages(try readable(directory, files.readFileString(path.join(directory, "pnpm-workspace.yaml")))) : []
+  const patterns = [...strings(declared), ...strings(field(declared, "packages")), ...pnpm]
+  const tasks = field(tracked.has("turbo.json") ? try readJson(directory, "turbo.json") : undefined, "tasks")
+  const taskEntries = typeof tasks === "object" && tasks !== null ? Object.entries(tasks) : []
+  const roots = ["node_modules/", ".turbo/cache/", ...(allowances.generatedDirectories ?? []).map((value) => `${value}/`)]
+  const logs = new Set<string>()
+  const workspaces = [...tracked].filter((file) => file.endsWith("/package.json")).map((file) => file.slice(0, -"/package.json".length)).filter((workspace) => inWorkspace(workspace, patterns))
+  for (const workspace of workspaces) {
+    roots.push(`${workspace}/node_modules/`)
+    const name = field(try readJson(directory, `${workspace}/package.json`), "name")
+    for (const [task, definition] of taskEntries) {
+      if (task.includes("#") && !(typeof name === "string" && task.startsWith(`${name}#`))) continue
+      for (const output of strings(field(definition, "outputs"))) {
+        if (LITERAL_OUTPUT.test(output) && explicitPath(output.slice(0, -3).split("/"))) roots.push(`${workspace}/${output.slice(0, -2)}`)
+      }
+      const taskName = task.includes("#") ? task.slice(task.indexOf("#") + 1) : task
+      if (TASK_NAME.test(taskName)) logs.add(`${workspace}/.turbo/turbo-${taskName.replaceAll(":", "$colon$")}.log`)
+    }
+  }
+  const named = new Set(allowances.generatedFiles ?? [])
+  return (file: string) => named.has(file) || logs.has(file) || roots.some((root) => file.startsWith(root))
+}
+
+effect function firstUnexpectedExtra(directory: string, tracked: ReadonlySet<string>, allowances: WorkspaceAllowances) {
+  const allowed = try generatedLocations(directory, tracked, allowances)
+  return (try git(directory, ["ls-files", "--others", "-z"])).split("\0").find((file) => file !== "" && !allowed(file))
+}
+
+effect function inspectWorkspace(directory: string, pin: Commit, allowances: WorkspaceAllowances) {
+  const headCommit = try headOf(directory)
+  const segments = [...(allowances.generatedFiles ?? []), ...(allowances.generatedDirectories ?? [])].map((value) => value.split("/"))
+  const rootExact = try isCheckoutRoot(directory)
+  const checked = segments.every(explicitPath) && rootExact
+  const entries = checked ? try trackedEntries(directory, pin) : []
+  const changed = checked ? try firstChangedEntry(directory, entries) : undefined
+  const diff = checked && changed === undefined ? (try git(directory, ["diff", "--name-only", "-z", pin, "--"])).split("\0").find((file) => file !== "") : undefined
+  const extra = checked && changed === undefined && diff === undefined ? try firstUnexpectedExtra(directory, new Set(entries.map((entry) => entry.name)), allowances) : undefined
+  const inspection: Inspection = { headCommit, finding: workspaceFinding(segments, rootExact, changed === undefined, diff === undefined, extra === undefined), path: changed ?? diff ?? extra }
+  return inspection
+}
+
+effect function admit(sources: Machine.Shape, directory: string, pin: Commit, allowances: WorkspaceAllowances) {
+  const seen = try inspectWorkspace(directory, pin, allowances)
+  const state = try orDie(sources.send({ type: "verify", headCommit: seen.headCommit, finding: seen.finding }))
+  if (state.phase === "Refused") {
+    const reason = seen.finding === "Exact" ? `HEAD is ${seen.headCommit}, not the pinned ${pin}` : `${seen.finding}${seen.path === undefined ? "" : `: ${seen.path}`}`
+    throw new WorkspaceRefused({ directory, finding: seen.finding, headCommit: seen.headCommit, path: seen.path, message: `Prepared source ${directory} is not the pinned tree (${reason})` })
+  }
+  return state
+}
+
+export effect function verifyCommittedWorkspace(directory: string, commit: string, allowances: WorkspaceAllowances = {}) {
+  const pin = try parseCommit(commit)
+  provide machine() {
+    const sources = try Machine
+    try orDie(sources.send({ type: "choose", pin, seed: "NoUsableCache" }))
+    try admit(sources, directory, pin, allowances)
+  }
+  return { commit: pin }
+}
+
+effect function cacheAtPin(cache: string, pin: Commit) {
+  const files = try FileSystem.FileSystem
+  const info = (files.stat(cache) catch () => undefined)
+  if (info?.type !== "Directory" || !(try isCheckoutRoot(cache))) return false
+  const head = try run("git", ["rev-parse", "HEAD"], cache)
+  const sparse = try run("git", ["config", "--bool", "--get", "core.sparseCheckout"], cache)
+  return head.code === 0 && head.stdout.trim() === pin && sparse.stdout.trim() !== "true"
+}
+
+effect function cacheClean(cache: string, pin: Commit) {
+  return (try git(cache, ["rev-parse", "HEAD"])).trim() === pin && (try git(cache, ["status", "--porcelain", "--untracked-files=no"])) === ""
+}
+
+effect function copyCommittedEntries(cache: string, destination: string, pin: Commit) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const entries = try trackedEntries(cache, pin)
+  const links: { readonly target: string; readonly file: string }[] = []
+  for (const entry of entries) {
+    const source = path.join(cache, entry.name)
+    const target = path.join(destination, entry.name)
+    if (entry.name.split("/").some((part) => part.toLowerCase() === ".git") || !(try entryAdmitted(source, entry))) return false
+    try readable(destination, files.makeDirectory(path.dirname(target), { recursive: true }))
+    if (entry.mode === "SubmoduleEntry") try readable(destination, files.makeDirectory(target))
+    else if (entry.mode === "LinkEntry") links.push({ target: try readable(cache, files.readLink(source)), file: target })
+    else {
+      try readable(destination, files.copyFile(source, target))
+      try readable(destination, files.chmod(target, entry.mode === "ExecutableEntry" ? 0o755 : 0o644))
+    }
+  }
+  for (const link of links) try readable(destination, files.symlink(link.target, link.file))
+  return true
+}
+
+effect function fetchPinned(request: { readonly repository: string; readonly cache: string | undefined; readonly destination: string }, pin: Commit) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const { repository, cache, destination } = request
+  if (try readable(destination, files.exists(destination))) throw new DestinationOccupied({ destination })
+  const seedFrom = cache !== undefined && (try cacheAtPin(cache, pin)) ? cache : undefined
+  try readable(destination, files.makeDirectory(path.dirname(destination), { recursive: true }))
+  try git(path.dirname(destination), ["init", "--quiet", path.basename(destination)])
+  try git(destination, ["fetch", "--quiet", "--depth=1", "--no-tags", seedFrom ?? repository, pin])
+  if (seedFrom === undefined) {
+    try git(destination, ["checkout", "--quiet", "--detach", pin])
+    return "NoUsableCache" satisfies SeedFinding
+  }
+  if (!(try cacheClean(seedFrom, pin)) || !(try copyCommittedEntries(seedFrom, destination, pin)) || !(try cacheClean(seedFrom, pin))) return "CacheDrifted" satisfies SeedFinding
+  try git(destination, ["update-ref", "--no-deref", "HEAD", pin])
+  try git(destination, ["reset", "--quiet"])
+  return "CacheCopied" satisfies SeedFinding
+}
+
+export effect function prepareCommittedSource<A, E, R>(request: PrepareRequest<A, E, R>) {
+  const pin = try parseCommit(request.pin)
+  const allowances = request.allowances ?? {}
+  provide machine() {
+    const sources = try Machine
+    const chosen = try orDie(sources.send({ type: "choose", pin, seed: try fetchPinned({ repository: request.repository, cache: request.cache, destination: request.destination }, pin) }))
+    if (chosen.phase === "Refused") throw new CacheRefused({ cache: request.cache ?? "", message: `Cache ${request.cache ?? ""} changed from the pinned ${pin}; review its tracked edits before reusing it` })
+    try admit(sources, request.destination, pin, allowances)
+    try orDie(sources.send({ type: "beginStaging" }))
+    const staged = try request.stage(request.destination)
+    const ready = try admit(sources, request.destination, pin, allowances)
+    const prepared: PreparedCommit<A> = { commit: pin, origin: ready.origin === "FromCache" ? "FromCache" : "FromCheckout", staged }
+    return prepared
+  }
+}
+
+export effect function exportCommittedSources(source: string, commit: string, into: string, paths: readonly string[]) {
+  const files = try FileSystem.FileSystem
+  const destination = (try Path.Path).resolve(into)
+  const pin = try parseCommit(commit)
+  const rootExact = try isCheckoutRoot(source)
+  const segments = paths.map((value) => value.split("/"))
+  if (exportOutcome(pin, rootExact, segments, true).tag === "ExportRefused")
+    throw new ExportRefused({ source, message: rootExact ? "Export needs at least one explicit repository path" : `${source} is not the root of a Git checkout` })
+  const extracted = try scoped(effect {
+    const archive = try readable(source, files.makeTempFileScoped({ prefix: "eliza-export-", suffix: ".tar" }))
+    if ((try run("git", ["--literal-pathspecs", "archive", "--format=tar", `--output=${archive}`, pin, "--", ...paths], source)).code !== 0) return false
+    try readable(destination, files.makeDirectory(destination, { recursive: true }))
+    return (try run("tar", ["-xf", archive, "-C", destination], destination)).code === 0
+  })
+  const outcome = exportOutcome(pin, rootExact, segments, extracted)
+  if (outcome.tag === "ExportRefused") throw new ExportRefused({ source, message: `Could not extract ${paths.join(", ")} from ${pin}` })
+  return { commit: pin }
+}
