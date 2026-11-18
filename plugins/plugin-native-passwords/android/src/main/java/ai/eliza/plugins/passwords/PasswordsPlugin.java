@@ -217,7 +217,7 @@ public class PasswordsPlugin extends Plugin {
     if (id == null) { call.reject("Choose a saved password", "invalid"); return; }
     try {
       Long revision = expectedRevision(call);
-      access.use(store -> { store.removeExisting(id, revision); return true; });
+      access.useForOwner(getContext(), access.ticket(), store -> { store.removeExisting(id, revision); return true; });
       JSObject result = new JSObject(); result.put("removed", true); call.resolve(result);
     } catch (IllegalArgumentException invalid) { call.reject("Invalid revision", "invalid"); }
     catch (Exception failure) { fail(call, failure); }
@@ -247,7 +247,7 @@ public class PasswordsPlugin extends Plugin {
         try {
           if (activity.isFinishing() || activity.isDestroyed() || !activity.hasWindowFocus()) throw new PasswordVaultAccess.Locked();
           JSObject result = new JSObject();
-          access.deliverSecret(activity, ticket, store -> store.useRecord(id, revision, record -> {
+          access.useForOwner(activity, ticket, store -> store.useRecord(id, revision, record -> {
             String value = record.getString("password");
             if (reveal) {
               String label = record.optString("label", record.optString("origin", ""));
