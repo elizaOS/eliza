@@ -31,10 +31,10 @@
       "kind": "internal-failure-recovery",
       "source": "packages/core/src/messaging/task-events.ts",
       "sourceBehavior": "A throw from the first changed observer occurs before try/finally and retains pending=true until stop/start.",
-      "targetBehavior": "Release pending ownership, preserve the accepted page and report TASK_EVENT_OBSERVER_FAILED. Permit an explicit refresh or stop/start; do not automatically retry.",
+      "targetBehavior": "Release pending ownership, preserve the accepted page and record internal ObserverFailure. Rejecting publication boundaries rethrow the original observed value unchanged. Permit an explicit refresh or stop/start; do not automatically retry.",
       "specification": "spec/core/taskEventReader.md",
-      "publicResult": "Successful polling retains its existing pages and notifications. An observer failure becomes an explicit recoverable failure rather than permanently suppressing refresh.",
-      "approval": "Proposed specification change for user review; implementation has not been written.",
+      "publicResult": "Successful polling retains its existing pages and notifications. Observer failure preserves the original thrown value at rejecting publication boundaries and leaves explicit refresh available instead of permanently suppressing it.",
+      "approval": "Implementation releases pending ownership and preserves original thrown values; specification awaits user review and root acceptance. Source filesystem recovery controls pass; packed qualification remains pending.",
       "verification": {
         "pinnedSourceSha256": "2f3dea209d7b518a1fe34c66a77b80e8585ec8b64562ebeba76aafa1f7bb18b1",
         "modelRevision": "afdb27e31373a1a66374a9eb1cf9145f08dbb473",

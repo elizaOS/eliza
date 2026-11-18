@@ -608,7 +608,7 @@ effect function stopOwnedServices(
     for (const ownedClass of ownedClasses) {
       runtime.failedServiceClasses.delete(ownedClass)
       if (typeof ownedClass.stopRuntime === "function") {
-        try foreign(() => ownedClass.stopRuntime?.(runtime))
+        try foreign(() => ownedClass.stopRuntime!(runtime))
       }
       if (classOwners.get(ownedClass) === ownership) {
         classOwners.delete(ownedClass)
@@ -752,9 +752,9 @@ effect function restoreAdapterIfNeeded(
       stop?: () => Promise<void>
     }
     if (typeof currentAdapter.close === "function") {
-      try foreign(() => currentAdapter.close?.())
+      try foreign(() => currentAdapter.close!())
     } else if (typeof currentAdapter.stop === "function") {
-      try foreign(() => currentAdapter.stop?.())
+      try foreign(() => currentAdapter.stop!())
     }
   }
 
@@ -1000,7 +1000,7 @@ effect function applyOwnedPluginConfig(
   if (typeof pluginWithHooks.applyConfig !== "function") {
     return false
   }
-  try foreign(() => pluginWithHooks.applyConfig?.(config, runtime))
+  try foreign(() => pluginWithHooks.applyConfig!(config, runtime))
   return true
 }
 

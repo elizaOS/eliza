@@ -8,9 +8,6 @@ to a consumer-named device database. The editor runs on the native and
 browser surfaces. The native surface enables autosave and native save
 pickers.
 
-The linked OS contracts are being rebuilt. Their detailed models and execution
-evidence remain pending.
-
 ## Story: Assemble a document and retain a reviewable draft
 
 > As the person, I want the pages I scan kept as a draft I can review and
