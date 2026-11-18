@@ -87,9 +87,6 @@
       },
       "devStack": {
         "harnessBuild": true
-      },
-      "contentContextEvidence": {
-        "role": "sql"
       }
     }
   },
