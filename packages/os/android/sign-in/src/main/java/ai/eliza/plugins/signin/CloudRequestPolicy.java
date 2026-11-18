@@ -1,139 +1,215 @@
-// spec/os/signIn/cloudRequests.md, "Story: Reach my account's cloud services without holding my key"; spec/agent/access/routes.md, "The first matching route of the claiming group admits a request, or finds its body too large"; spec/cloud/client.md, "A device sends only the routes of one table, each with its own headers"
+// spec/os/signIn/cloudRequests.md, "A cloud table is loaded only when every route is a device route the page may use"; spec/os/signIn/cloudRequests.md, "A session-only route is sent only with a live account session, never with the device key"; spec/os/signIn/cloudRequests.md, "A request is sent only to the deployment origin, admitted by the gate, with headers its route admits"; spec/os/signIn/cloudRequests.md, "A 401 goes to the credential with its reason and is not retried"; spec/os/signIn/cloudRequests.md, "A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused"; spec/os/signIn/cloudRequests.md, "Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser"
 package ai.eliza.plugins.signin;
 
 import ai.eliza.os.agent.RouteGate;
+import ai.eliza.os.agent.RouteGate.Method;
+import ai.eliza.plugins.signin.CredentialPolicy.Reason;
+import ai.eliza.plugins.signin.CredentialPolicy.RejectedOn;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class CloudRequestPolicy {
-  public static final long INLINE_LIMIT = 8L << 20;
-  public static final long BODY_LIMIT = 64L << 20;
-  public static final Set<String> EXTERNAL_HOSTS = Set.of("billing.stripe.com", "checkout.stripe.com", "accounts.google.com");
-  public static final String IF_MATCH = "If-Match", IF_NONE_MATCH = "If-None-Match", IDEMPOTENCY_KEY = "Idempotency-Key";
+  public static final long INLINE_LIMIT = 8_388_608L;
+  public static final long REPLY_LIMIT = 67_108_864L;
+  public static final List<String> PROVIDER_HOSTS = List.of("checkout.stripe.com", "billing.stripe.com", "accounts.google.com");
+  public static final String IDEMPOTENCY_KEY = "Idempotency-Key", IF_MATCH = "If-Match", IF_NONE_MATCH = "If-None-Match", ACCEPT = "Accept", AUTHORIZATION = "Authorization";
+  public static final List<String> BASE_HEADERS = List.of(AUTHORIZATION, "Content-Type", "X-Request-ID", "Traceparent", "Tracestate");
 
   public enum Auth { PUBLIC, KEY_OR_SESSION, SESSION, FRESH_SESSION, STEP_UP }
-  public enum Credential { NONE, DEVICE_KEY, ACCOUNT_SESSION }
-  public enum Delivery { INLINE, GRANT, TOO_LARGE }
-  public enum Failure { TABLE_REFUSED, UNKNOWN_ENVIRONMENT, ROUTE_REFUSED, TOO_LARGE, SIGNED_OUT, REAUTH_REQUIRED, NETWORK, GRANT_UNKNOWN, HOST_REFUSED }
+  public enum Refusal { NO_ORIGIN, NOT_LISTED, BODY_TOO_LARGE, HEADER_REFUSED, SIGN_IN_REQUIRED, REAUTH_REQUIRED }
+  public enum Handoff { INLINE_BODY, CACHED_BODY, REPLY_TOO_LARGE }
+  public enum Scheme { HTTPS, HTTP, OTHER_SCHEME }
 
-  public record DeviceRoute(RouteGate.Method method, List<String> path, Auth auth, Set<String> headers) {
-    public DeviceRoute { path = List.copyOf(path); headers = Set.copyOf(headers); }
-    boolean serves(RouteGate.Route route) {
-      if (route.method() != method || route.delivery() != RouteGate.Delivery.BUFFERED || route.path().size() != path.size()) return false;
-      for (int at = 0; at < path.size(); at++) {
-        RouteGate.Piece piece = route.path().get(at);
-        String segment = path.get(at);
-        if (piece.isParam() != segment.startsWith(":") || !piece.isParam() && !segment.equals(piece.literal())) return false;
-      }
-      return true;
-    }
-    public boolean admitsHeader(String name) { return IF_NONE_MATCH.equals(name) ? method == RouteGate.Method.GET : headers.contains(name); }
+  public record DeviceRoute(Method method, List<String> path, Auth auth, List<String> headers) {
+    public DeviceRoute { path = List.copyOf(path); headers = List.copyOf(headers); }
   }
 
-  public sealed interface Decision permits Admitted, Refused {}
-  public record Admitted(DeviceRoute route, Credential credential, Map<String, String> headers) implements Decision {}
-  public record Refused(Failure failure) implements Decision {}
+  public record Holding(int key, boolean sessionHeld, boolean sessionLive) {}
 
+  public sealed interface Attach permits Bare, WithKey, WithSession {}
+  public record Bare() implements Attach {}
+  public record WithKey(int version) implements Attach {}
+  public record WithSession(int version) implements Attach {}
+
+  public sealed interface CallPlan permits Send, RefreshSessionFirst, Refuse {}
+  public record Send(Attach attach) implements CallPlan {}
+  public record RefreshSessionFirst() implements CallPlan {}
+  public record Refuse(Refusal why) implements CallPlan {}
+
+  public sealed interface Report permits NoReport, KeyRejected, SessionRejected {}
+  public record NoReport() implements Report {}
+  public record KeyRejected(int version, Reason reason, RejectedOn on) implements Report {}
+  public record SessionRejected() implements Report {}
+
+  public record Origin(Scheme scheme, boolean loopback, boolean hasPath, boolean hasQueryOrFragment) {}
+  public record ExternalLink(boolean https, String host, boolean defaultPort, boolean userInfo) {}
+
+  public record Planned(CallPlan plan, DeviceRoute route, Map<String, String> headers) {}
+
+  public static final DeviceRoute NO_DEVICE_ROUTE = new DeviceRoute(Method.GET, List.of(), Auth.PUBLIC, List.of());
   public static final List<DeviceRoute> DEVICE_ROUTES = deviceRoutes();
 
-  private static final Pattern CREDENTIAL_REASON = Pattern.compile("\"reason\"\\s*:\\s*\"(credential_expired|credential_revoked|credential_unknown)\"");
-  private static final Set<String> SIGN_IN_PREFIXES = Set.of("auth", "app-auth");
-  private static final Pattern HEADER_VALUE = Pattern.compile("[\\x21-\\x7e]([\\x20-\\x7e]{0,510}[\\x21-\\x7e])?");
+  private static final List<String> KNOWN_HEADERS = List.of(AUTHORIZATION, "Content-Type", "X-Request-ID", "Traceparent", "Tracestate", ACCEPT, IF_NONE_MATCH, IF_MATCH, IDEMPOTENCY_KEY);
+  private static final Pattern HEADER_VALUE = Pattern.compile("[\\x20-\\x7e\\t]*");
+  private static final Pattern REASON = Pattern.compile("[a-z_]{1,64}");
 
-  private final RouteGate gate;
-  private final Map<RouteGate.Route, DeviceRoute> served;
+  private final RouteGate gate = new RouteGate();
 
-  private CloudRequestPolicy(RouteGate gate, Map<RouteGate.Route, DeviceRoute> served) {
-    this.gate = gate;
-    this.served = served;
-  }
-
-  public static CloudRequestPolicy load(String consumerTable) {
-    RouteGate gate = new RouteGate();
-    Map<RouteGate.Route, DeviceRoute> served = new LinkedHashMap<>();
-    if (consumerTable != null && gate.loadWire(consumerTable)) {
-      for (RouteGate.Group group : gate.served())
-        for (RouteGate.Route route : group.routes()) {
-          DeviceRoute device = deviceRouteOf(route);
-          if (device == null || SIGN_IN_PREFIXES.contains(device.path().get(2))) { gate.load(List.of()); return new CloudRequestPolicy(gate, Map.of()); }
-          served.put(route, device);
-        }
-    }
-    return new CloudRequestPolicy(gate, Map.copyOf(served));
+  public CloudRequestPolicy(String consumerTable) {
+    RouteGate parsed = new RouteGate();
+    boolean accepted = consumerTable != null && parsed.loadWire(consumerTable) && cloudTableAccepted(parsed.served());
+    gate.load(accepted ? parsed.served() : List.of());
   }
 
   public boolean loaded() { return gate.table() == RouteGate.Table.LOADED; }
 
-  public List<RouteGate.Group> routes() { return gate.served(); }
-
-  public RouteGate.Request request(String method, String target, byte[] body) { return gate.request(method, target, false, body); }
-
-  public Decision admit(String method, String target, Map<String, String> callerHeaders, byte[] body) {
-    if (!loaded()) return new Refused(Failure.TABLE_REFUSED);
-    RouteGate.Admission admission = gate.admit(request(method, target, body));
-    switch (admission.verdict()) {
-      case TOO_LARGE: return new Refused(Failure.TOO_LARGE);
-      case ROUTE_REFUSED: return new Refused(Failure.ROUTE_REFUSED);
-      default: break;
-    }
-    DeviceRoute device = served.get(admission.route());
+  public Planned plan(Holding holding, Origin origin, String method, String target, Map<String, String> callerHeaders, byte[] body) {
+    RouteGate.Request request = gate.request(method, target, false, body);
+    if (request == null) return new Planned(new Refuse(Refusal.NOT_LISTED), NO_DEVICE_ROUTE, Map.of());
     Map<String, String> headers = new LinkedHashMap<>();
+    boolean malformed = false;
     for (Map.Entry<String, String> header : callerHeaders.entrySet()) {
       String name = canonicalHeader(header.getKey());
-      if (name == null || !device.admitsHeader(name) || header.getValue() == null || !HEADER_VALUE.matcher(header.getValue()).matches() || headers.containsKey(name))
-        return new Refused(Failure.ROUTE_REFUSED);
-      headers.put(name, header.getValue());
+      String value = header.getValue();
+      malformed |= value == null || !HEADER_VALUE.matcher(value).matches() || headers.put(name, value) != null;
     }
-    return new Admitted(device, credentialFor(device.auth()), Map.copyOf(headers));
+    CallPlan plan = planRequest(gate.served(), holding, origin, request, List.copyOf(headers.keySet()));
+    if (malformed && !(plan instanceof Refuse)) plan = new Refuse(Refusal.HEADER_REFUSED);
+    RouteGate.Admission admission = RouteGate.admission(gate.served(), request);
+    List<DeviceRoute> found = admission.route() == null ? List.of() : deviceRouteOf(admission.route());
+    return new Planned(plan, found.size() == 1 ? found.get(0) : NO_DEVICE_ROUTE, Map.copyOf(headers));
   }
 
-  public static Credential credentialFor(Auth auth) {
-    return switch (auth) {
-      case PUBLIC -> Credential.NONE;
-      case KEY_OR_SESSION -> Credential.DEVICE_KEY;
-      case SESSION, FRESH_SESSION, STEP_UP -> Credential.ACCOUNT_SESSION;
+  public static List<DeviceRoute> deviceRouteOf(RouteGate.Route t) {
+    List<DeviceRoute> found = new ArrayList<>();
+    for (DeviceRoute d : DEVICE_ROUTES) if (t.method() == d.method() && samePath(t, d)) found.add(d);
+    return found;
+  }
+
+  private static boolean samePath(RouteGate.Route t, DeviceRoute d) {
+    if (t.path().size() != d.path().size()) return false;
+    for (int at = 0; at < d.path().size(); at++) {
+      RouteGate.Piece piece = t.path().get(at);
+      String segment = d.path().get(at);
+      boolean param = segment.startsWith(":");
+      if (param ? !piece.isParam() : piece.isParam() || !segment.equals(piece.literal())) return false;
+    }
+    return true;
+  }
+
+  private static boolean under(DeviceRoute d, String... names) {
+    if (d.path().size() < names.length) return false;
+    for (int at = 0; at < names.length; at++) if (!d.path().get(at).equals(names[at])) return false;
+    return true;
+  }
+
+  public static boolean signInOwned(DeviceRoute d) {
+    return under(d, "api", "v1", "auth") || under(d, "api", "v1", "app-auth") || under(d, "api", "v1", "api-keys")
+      || under(d, "api", "public") || under(d, "api", "v1", "voice", "speech");
+  }
+
+  public static boolean pageRoute(RouteGate.Route t) {
+    List<DeviceRoute> found = deviceRouteOf(t);
+    return t.delivery() == RouteGate.Delivery.BUFFERED && found.size() == 1 && !signInOwned(found.get(0));
+  }
+
+  public static boolean cloudTableAccepted(List<RouteGate.Group> routes) {
+    for (RouteGate.Group group : routes) for (RouteGate.Route t : group.routes()) if (!pageRoute(t)) return false;
+    return true;
+  }
+
+  public static boolean sessionOnly(Auth auth) { return auth == Auth.SESSION || auth == Auth.FRESH_SESSION || auth == Auth.STEP_UP; }
+
+  public static CallPlan attachFor(Holding h, Auth auth) {
+    if (auth == Auth.PUBLIC) return new Send(new Bare());
+    if (sessionOnly(auth)) return h.sessionLive() ? new Send(new WithSession(h.key())) : h.sessionHeld() ? new RefreshSessionFirst() : new Refuse(Refusal.REAUTH_REQUIRED);
+    return h.key() >= 1 ? new Send(new WithKey(h.key())) : new Refuse(Refusal.SIGN_IN_REQUIRED);
+  }
+
+  public static boolean admitsHeader(DeviceRoute d, String header) { return BASE_HEADERS.contains(header) || d.headers().contains(header); }
+
+  public static boolean headerAllowed(DeviceRoute d, String header) {
+    return !AUTHORIZATION.equals(header) && (admitsHeader(d, header) || ACCEPT.equals(header) || IF_NONE_MATCH.equals(header) && d.method() == Method.GET);
+  }
+
+  public static boolean originAccepted(Origin u) {
+    return !u.hasPath() && !u.hasQueryOrFragment() && (u.scheme() == Scheme.HTTPS || u.scheme() == Scheme.HTTP && u.loopback());
+  }
+
+  public static Origin originOf(String apiOrigin) {
+    URI uri;
+    try { uri = new URI(apiOrigin); }
+    catch (URISyntaxException | NullPointerException malformed) { return new Origin(Scheme.OTHER_SCHEME, false, false, false); }
+    String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT), host = uri.getHost() == null ? "" : uri.getHost();
+    Scheme kind = scheme.equals("https") ? Scheme.HTTPS : scheme.equals("http") ? Scheme.HTTP : Scheme.OTHER_SCHEME;
+    boolean loopback = host.equals("localhost") || host.equals("[::1]") || host.matches("127(\\.\\d{1,3}){3}");
+    String path = uri.getRawPath();
+    return new Origin(host.isEmpty() || uri.getRawUserInfo() != null ? Scheme.OTHER_SCHEME : kind, loopback,
+      path != null && !path.isEmpty(), uri.getRawQuery() != null || uri.getRawFragment() != null);
+  }
+
+  public static CallPlan planRequest(List<RouteGate.Group> routes, Holding h, Origin origin, RouteGate.Request request, List<String> headers) {
+    RouteGate.Admission a = RouteGate.admission(routes, request);
+    List<DeviceRoute> found = a.route() == null ? List.of() : deviceRouteOf(a.route());
+    DeviceRoute d = found.isEmpty() ? NO_DEVICE_ROUTE : found.get(0);
+    if (!originAccepted(origin)) return new Refuse(Refusal.NO_ORIGIN);
+    if (a.verdict() == RouteGate.Verdict.TOO_LARGE) return new Refuse(Refusal.BODY_TOO_LARGE);
+    if (a.verdict() != RouteGate.Verdict.ADMITTED || found.size() != 1) return new Refuse(Refusal.NOT_LISTED);
+    for (String header : headers) if (!headerAllowed(d, header)) return new Refuse(Refusal.HEADER_REFUSED);
+    return attachFor(h, d.auth());
+  }
+
+  public static boolean isAccountRead(DeviceRoute d) { return d.method() == Method.GET && d.path().equals(List.of("api", "v1", "user")); }
+
+  public static Reason credentialReasonOf(Reason reason) { return reason.credential() ? reason : Reason.CREDENTIAL_UNKNOWN; }
+
+  public static Report reportOf(Attach attach, DeviceRoute d, int status, Reason reason) {
+    if (status != 401) return new NoReport();
+    return switch (attach) {
+      case WithKey k -> new KeyRejected(k.version(), credentialReasonOf(reason), isAccountRead(d) ? RejectedOn.ACCOUNT_READ : RejectedOn.OTHER_REQUEST);
+      case WithSession s -> new SessionRejected();
+      case Bare b -> new NoReport();
     };
   }
 
-  public static Delivery deliveryOf(long size) {
-    return size > BODY_LIMIT ? Delivery.TOO_LARGE : size > INLINE_LIMIT ? Delivery.GRANT : Delivery.INLINE;
+  public static Reason reasonOf(String body) {
+    if (body == null) return Reason.NO_REASON;
+    try {
+      return CredentialJson.parse(body) instanceof Map<?, ?> reply && reply.get("reason") instanceof String wire && REASON.matcher(wire).matches()
+        ? Reason.ofWire(wire) : Reason.NO_REASON;
+    } catch (IllegalArgumentException notJson) {
+      return Reason.NO_REASON;
+    }
   }
 
-  public static boolean externalHost(String url) {
-    URI uri;
-    try { uri = new URI(url); }
-    catch (Exception malformed) { return false; }
-    String host = uri.getHost();
-    return "https".equals(uri.getScheme()) && uri.getRawUserInfo() == null && (uri.getPort() == -1 || uri.getPort() == 443)
-      && host != null && EXTERNAL_HOSTS.contains(host.toLowerCase(Locale.ROOT));
+  public static Handoff handoffOf(long bytes) {
+    return bytes > REPLY_LIMIT ? Handoff.REPLY_TOO_LARGE : bytes > INLINE_LIMIT ? Handoff.CACHED_BODY : Handoff.INLINE_BODY;
   }
 
-  public static String credentialReason(String body) {
-    if (body == null) return "credential_unknown";
-    Matcher reason = CREDENTIAL_REASON.matcher(body);
-    return reason.find() ? reason.group(1) : "credential_unknown";
+  public static ExternalLink linkOf(String url) {
+    try {
+      URI uri = new URI(url);
+      String host = uri.getHost();
+      if (host == null) return null;
+      return new ExternalLink("https".equalsIgnoreCase(uri.getScheme()), host.toLowerCase(Locale.ROOT), uri.getPort() == -1 || uri.getPort() == 443, uri.getRawUserInfo() != null);
+    } catch (URISyntaxException | NullPointerException malformed) {
+      return null;
+    }
+  }
+
+  public static boolean opensExternally(String webHost, ExternalLink link) {
+    return link.https() && link.defaultPort() && !link.userInfo() && (link.host().equals(webHost) || PROVIDER_HOSTS.contains(link.host()));
   }
 
   private static String canonicalHeader(String name) {
-    if (name == null) return null;
-    return switch (name.toLowerCase(Locale.ROOT)) {
-      case "if-match" -> IF_MATCH;
-      case "if-none-match" -> IF_NONE_MATCH;
-      case "idempotency-key" -> IDEMPOTENCY_KEY;
-      default -> null;
-    };
-  }
-
-  private static DeviceRoute deviceRouteOf(RouteGate.Route route) {
-    for (DeviceRoute device : DEVICE_ROUTES) if (device.serves(route)) return device;
-    return null;
+    for (String known : KNOWN_HEADERS) if (known.equalsIgnoreCase(name)) return known;
+    return name;
   }
 
   private static List<String> api(String... names) {
@@ -148,12 +224,12 @@ public final class CloudRequestPolicy {
     return path;
   }
 
-  private static DeviceRoute route(RouteGate.Method method, List<String> path, Auth auth) { return new DeviceRoute(method, path, auth, Set.of()); }
+  private static DeviceRoute route(Method method, List<String> path, Auth auth) { return new DeviceRoute(method, path, auth, List.of()); }
 
-  private static DeviceRoute keyed(RouteGate.Method method, List<String> path, String header) { return new DeviceRoute(method, path, Auth.KEY_OR_SESSION, Set.of(header)); }
+  private static DeviceRoute keyed(Method method, List<String> path, String header) { return new DeviceRoute(method, path, Auth.KEY_OR_SESSION, List.of(header)); }
 
   private static List<DeviceRoute> deviceRoutes() {
-    RouteGate.Method get = RouteGate.Method.GET, post = RouteGate.Method.POST, patch = RouteGate.Method.PATCH, delete = RouteGate.Method.DELETE;
+    Method get = Method.GET, post = Method.POST, patch = Method.PATCH, delete = Method.DELETE;
     Auth pub = Auth.PUBLIC, key = Auth.KEY_OR_SESSION, session = Auth.SESSION, fresh = Auth.FRESH_SESSION, stepUp = Auth.STEP_UP;
     return List.of(
       route(get, List.of("api", "public", "service"), pub),

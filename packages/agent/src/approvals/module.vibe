@@ -1,0 +1,31 @@
+// spec/agent/approvals.md, "Story: Resolve what I reviewed, only on the screen"; spec/agent/approvals.md, "Story: See the requests waiting for me"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"
+import type { AgentModule, ModuleContext, ModuleFactory } from "../host/module.vibe"
+import { OwnerApprovalsService, ownerApprovalsServiceType, type OwnerApprovals } from "./queue.vibe"
+import { approvalRoutes, type ApprovalsPort } from "./routes.vibe"
+
+export const approvalsModuleName = "@elizaos/agent/approvals"
+
+export error ApprovalsNotStarted { serviceType: string }
+
+function servicePort(context: ModuleContext): ApprovalsPort {
+  const service = async (): Promise<OwnerApprovals> => {
+    const started = await context.runtime.getServiceLoadPromise(ownerApprovalsServiceType)
+    return started as unknown as OwnerApprovals
+  }
+  return {
+    list: async (query) => (await service()).list(query),
+    resolve: async (id, decision, revision) => (await service()).resolve(id, decision, revision),
+  }
+}
+
+export const approvalsModule: ModuleFactory<never> = effect (context) => {
+  return {
+    name: approvalsModuleName,
+    plugin: {
+      name: approvalsModuleName,
+      description: "The owner's approval queue: list requests and resolve the one the owner reviewed",
+      services: [OwnerApprovalsService],
+      routes: approvalRoutes(servicePort(context), context.ownerEntityId),
+    },
+  } satisfies AgentModule
+}

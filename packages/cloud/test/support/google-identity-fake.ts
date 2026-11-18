@@ -1,0 +1,119 @@
+// spec/cloud/identity/federatedSignIn.md, "Story: Sign in with Google in the browser"; spec/cloud/identity/federatedSignIn.md, "Story: Sign in with the device's Google account"
+import { createHash, generateKeyPairSync, randomBytes } from "node:crypto";
+import { exportJWK, SignJWT } from "jose";
+import type { FakeAnswer, FakeHandler, FakeRequest } from "./fakes.ts";
+
+export interface GooglePerson {
+  readonly subject: string;
+  readonly email: string;
+  readonly emailVerified: boolean;
+  readonly givenName?: string;
+}
+
+export interface IdTokenClaims {
+  readonly audience: string;
+  readonly nonce?: string;
+  readonly issuer?: string;
+  readonly expiresInSeconds?: number;
+}
+
+interface Grant {
+  readonly person: GooglePerson;
+  readonly clientId: string;
+  readonly redirectUri: string;
+  readonly challenge: string;
+}
+
+export interface GoogleIdentityFake {
+  readonly handler: FakeHandler;
+  readonly tokenRequests: URLSearchParams[];
+  signInAs(person: GooglePerson): void;
+  denyNext(): void;
+  idToken(person: GooglePerson, claims: IdTokenClaims): Promise<string>;
+}
+
+const keyId = "google-identity-test";
+
+function s256(verifier: string): string {
+  return createHash("sha256").update(verifier, "ascii").digest("base64url");
+}
+
+function back(redirectUri: string, fields: Readonly<Record<string, string>>): FakeAnswer {
+  return { status: 302, headers: { location: `${redirectUri}?${new URLSearchParams(fields)}` } };
+}
+
+export function googleIdentityFake(clientSecret: string): GoogleIdentityFake {
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const jwk = exportJWK(publicKey).then((key) => ({ ...key, kid: keyId, alg: "RS256", use: "sig" }));
+  const grants = new Map<string, Grant>();
+  const tokenRequests: URLSearchParams[] = [];
+  let person: GooglePerson = { subject: "google-subject-1", email: "Person@Example.com", emailVerified: true, givenName: "Person" };
+  let deny = false;
+
+  const idToken = (who: GooglePerson, claims: IdTokenClaims) =>
+    new SignJWT({ email: who.email, email_verified: who.emailVerified, ...(who.givenName === undefined ? {} : { given_name: who.givenName }), ...(claims.nonce === undefined ? {} : { nonce: claims.nonce }) })
+      .setProtectedHeader({ alg: "RS256", kid: keyId })
+      .setIssuer(claims.issuer ?? "https://accounts.google.com")
+      .setAudience(claims.audience)
+      .setSubject(who.subject)
+      .setIssuedAt()
+      .setExpirationTime(Math.floor(Date.now() / 1000) + (claims.expiresInSeconds ?? 300))
+      .sign(privateKey);
+
+  const accounts = (request: FakeRequest): FakeAnswer => {
+    const query = request.query;
+    const redirectUri = query.get("redirect_uri") ?? "";
+    const state = query.get("state") ?? "";
+    if (deny) {
+      deny = false;
+      return back(redirectUri, { error: "access_denied", state });
+    }
+    const code = randomBytes(16).toString("base64url");
+    grants.set(code, { person, clientId: query.get("client_id") ?? "", redirectUri, challenge: query.get("code_challenge") ?? "" });
+    return back(redirectUri, { code, state });
+  };
+
+  const token = async (request: FakeRequest): Promise<FakeAnswer> => {
+    const form = new URLSearchParams(request.body);
+    tokenRequests.push(form);
+    const grant = grants.get(form.get("code") ?? "");
+    grants.delete(form.get("code") ?? "");
+    if (form.get("client_secret") !== clientSecret) return { status: 401, body: { error: "invalid_client" } };
+    if (grant === undefined || grant.clientId !== form.get("client_id") || grant.redirectUri !== form.get("redirect_uri") || grant.challenge !== s256(form.get("code_verifier") ?? "")) {
+      return { status: 400, body: { error: "invalid_grant" } };
+    }
+    return { status: 200, body: { access_token: "unused", token_type: "Bearer", expires_in: 3600, id_token: await idToken(grant.person, { audience: grant.clientId }) } };
+  };
+
+  const handler: FakeHandler = async (request) => {
+    if (request.method === "GET" && request.path === "/accounts") return accounts(request);
+    if (request.method === "GET" && request.path === "/jwks") return { status: 200, body: { keys: [await jwk] } };
+    if (request.method === "POST" && request.path === "/token" && new URLSearchParams(request.body).get("grant_type") === "authorization_code") return token(request);
+    return undefined;
+  };
+
+  return {
+    handler,
+    tokenRequests,
+    signInAs: (next) => { person = next; },
+    denyNext: () => { deny = true; },
+    idToken,
+  };
+}
+
+export interface Redirect {
+  readonly status: number;
+  readonly location: string;
+  readonly body: string;
+}
+
+/** @throws {TypeError} when the request cannot be sent */
+export async function visit(url: string): Promise<Redirect> {
+  const response = await fetch(url, { redirect: "manual" });
+  return { status: response.status, location: response.headers.get("location") ?? "", body: await response.text() };
+}
+
+/** @throws {never} */
+export function fragment(location: string): URLSearchParams {
+  return new URLSearchParams(location.slice(location.indexOf("#") + 1));
+}

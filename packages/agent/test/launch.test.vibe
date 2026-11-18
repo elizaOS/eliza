@@ -64,6 +64,30 @@ it.effect('Admitted documents include a path-less cloud origin, own key and loca
   try Effect.try(() => assert.strictEqual(accepted.length, 4))
 })
 
+it.effect('View declarations are exactly {id, label, path, aliases?} within their limits (spec/agent/views.md, "Views are declared once at boot with distinct ids, paths and names, and never change after")', effect () => {
+  const frame = JSON.stringify(launchFrame(keyed))
+  const view = { id: "notes", label: "Notes", path: "/apps/notes", aliases: ["memo", "jot pad"] }
+  const withViews = (views: unknown) => mutate({}, (d) => ({ ...d, views }))
+  const accepted = try parseLaunch(JSON.stringify(withViews([view, { id: "chat", label: "Chat", path: "/chat" }])), frame)
+  const refused = try Effect.forEach([
+    [{ ...view, id: "Notes" }], [{ ...view, id: "1notes" }], [{ ...view, label: " Notes" }], [{ ...view, label: "" }],
+    [{ ...view, label: "x".repeat(81) }], [{ ...view, label: "No\u0007tes" }], [{ ...view, path: "notes" }], [{ ...view, path: "/notes/" }],
+    [{ ...view, path: `/${"p".repeat(256)}` }], [{ ...view, aliases: [] }], [{ ...view, aliases: ["a", "b", "c", "d", "e"] }],
+    [{ ...view, aliases: ["Memo"] }], [{ ...view, aliases: ["memo "] }], [{ ...view, viewType: "gui" }],
+    Array.from({ length: 33 }, (_, at) => ({ id: `v${at}`, label: `V${at}`, path: `/v${at}` })),
+    Array.from({ length: 32 }, (_, at) => ({ id: `v${at}`, label: "l".repeat(80), path: `/${"p".repeat(255)}`, aliases: ["a", "b", "c", "d"] })),
+  ].map(withViews), (document) => refusal(document))
+  try Effect.try(() => assert.deepStrictEqual([accepted.launch.views?.map((declared) => declared.id), refused],
+    [["notes", "chat"], refused.map(() => "LaunchDocumentRejected")]))
+})
+
+it.effect('A launch that declares views boots and serves (spec/agent/views.md, "Views are declared once at boot with distinct ids, paths and names, and never change after")', effect () => {
+  const booted = try boot({ launch: { views: [{ id: "notes", label: "Notes", path: "/notes" }] } })
+  const health = try ready(booted)
+  try host("stop", () => booted.child.stop())
+  try Effect.try(() => assert.strictEqual(health.status, 200))
+}, 180_000)
+
 it.effect('A malformed frame, version 2 or epoch 0 is a Config refusal whatever the document (spec/agent/host/launch.md, "A refused document is a configuration error, and a cloud or own-key launch without a credential is a credential error")', effect () => {
   const document = JSON.stringify(launchDocument({ backend: cloudBackend }))
   const frames = ["not json", JSON.stringify({ ...launchFrame(keyed), version: 2 }), JSON.stringify({ ...launchFrame(keyed), epoch: 0 }),

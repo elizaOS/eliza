@@ -92,39 +92,23 @@ pure val subscriptionIdValues = Set("sub1", "sub2")
 pure def sometimesAwaitingReconciliation(s: Subscription): bool = s.status == Pending
 ```
 
-### The transport can recover a provider subscription under the existing pinned customer
-
-The hosted Worker can find a subscription for the organization's pinned
-customer before this database has its canonical subscription record. It
-checks the provider environment, configured product and price, exact customer
-and single current subscription. Recovery records the verified subscription
-as Pending before reconciling it in the same transaction. A live subscription
-or command prevents adoption of another identity. The ended subscription's
-identity cannot be reused. Recovery itself grants no entitlement or allowance.
-
-```quint
-pure def canAdoptVerified(s: Subscription, subscriptionId: str, planKey: PlanKey, customerId: str): bool =
-  s.liveCommand == NoLiveCommand and not(isLive(s.status)) and subscriptionId != "" and subscriptionId != s.subscriptionId
-  and isPaid(planKey) and s.customer != NoCustomer and customerIdOf(s) == customerId
-pure def adoptVerified(s: Subscription, subscriptionId: str, planKey: PlanKey, customerId: str): SubscriptionStep =
-  { state: { ...s, status: Pending, subscriptionId: subscriptionId, planKey: planKey, periodStart: 0, periodEnd: 0,
-    cancelAtPeriodEnd: false, planned: NoPlannedChange, dunning: NotDunning, lastRenewalInvoice: "", revision: s.revision + 1 },
-    out: List(PolicyChanged) }
-```
-
 ### Reconciling sets the status, plan, period and cancellation the provider reports for the subscription the organization holds
 
-The provider's `incomplete` is Incomplete; `active` with a paid or open
-latest invoice is Active; `past_due`, or `active` with a failed latest
+The provider's `incomplete` is Incomplete; `active` is Active unless the
+latest period invoice failed; `past_due`, or `active` with a failed period
 invoice, is Dunning until the dunning window ends and PastDue after;
 `unpaid` is Unpaid; `canceled` (the subscription was deleted) is Canceled and
-`incomplete_expired` is IncompleteExpired. An observation of another
-subscription id, or of one that has ended, changes nothing; the drain retries
-or drops it (`spec/cloud/billing/providerEvents.md`).
+`incomplete_expired` is IncompleteExpired. A period invoice is one the
+provider bills for a period (billing reason `subscription_create` or
+`subscription_cycle`); a plan change invoice (`subscription_update`) never
+moves the status, since the provider keeps an unpaid upgrade pending. An
+observation of another subscription id, or of one that has ended, changes
+nothing; the drain retries or drops it
+(`spec/cloud/billing/providerEvents.md`).
 
 ```quint
 type ProviderStatus = ProviderIncomplete | ProviderActive | ProviderPastDue | ProviderUnpaid | ProviderCanceled | ProviderIncompleteExpired
-type LatestInvoice = InvoicePaid | InvoiceOpen | InvoiceFailed
+type LatestInvoice = PeriodInvoicePaid | PeriodInvoiceOpen | PeriodInvoiceFailed | PlanChangeInvoice
 pure val dunningGrace: Millis = 3 * millisPerDay
 pure def dunningEndsAt(w: DunningWindow): Millis = match w { | DunningSince(x) => x.endsAt | NotDunning => 0 }
 pure def dunningStart(s: Subscription, now: Millis): Millis = if (s.periodEnd > 0 and s.periodEnd <= now) s.periodEnd else now
@@ -135,8 +119,8 @@ pure def observedStatus(s: Subscription, providerStatus: ProviderStatus, latestI
   else if (providerStatus == ProviderCanceled) Canceled
   else if (providerStatus == ProviderIncompleteExpired) IncompleteExpired
   else if (providerStatus == ProviderUnpaid) Unpaid
-  else if (providerStatus == ProviderActive and latestInvoice != InvoiceFailed) Active
-  else if (s.status == PastDue or now >= dunningEndsAt(windowFrom(s, now))) PastDue
+  else if (providerStatus == ProviderActive and latestInvoice != PeriodInvoiceFailed) Active
+  else if (s.status == PastDue or s.status == Unpaid or now >= dunningEndsAt(windowFrom(s, now))) PastDue
   else Dunning
 pure def keepPlanned(planned: PlannedChange, status: SubscriptionStatus, planKey: PlanKey): PlannedChange = match planned {
   | DowngradeAtRenewal(x) => if (isLive(status) and isDowngrade(planKey, x.planKey)) planned else NoPlannedChange
@@ -146,7 +130,7 @@ pure def canReconcile(s: Subscription, subscriptionId: str, planKey: PlanKey, pe
   isLive(s.status) and subscriptionId == s.subscriptionId and isPaid(planKey) and A::validWindow(periodStart, periodEnd) and now >= 0
 pure def reconcile(s: Subscription, subscriptionId: str, providerStatus: ProviderStatus, latestInvoice: LatestInvoice, invoiceId: str, planKey: PlanKey, periodStart: Millis, periodEnd: Millis, cancelAtPeriodEnd: bool, now: Millis): SubscriptionStep = {
   val status = observedStatus(s, providerStatus, latestInvoice, now)
-  val renewal = status == Active and latestInvoice == InvoicePaid and invoiceId != "" and invoiceId != s.lastRenewalInvoice and periodStart >= s.periodEnd
+  val renewal = status == Active and latestInvoice == PeriodInvoicePaid and invoiceId != "" and invoiceId != s.lastRenewalInvoice
   val observed = { ...s, status: status, planKey: planKey, periodStart: periodStart, periodEnd: periodEnd, cancelAtPeriodEnd: cancelAtPeriodEnd,
     planned: keepPlanned(s.planned, status, planKey), dunning: if (inDunning(status)) windowFrom(s, now) else NotDunning,
     lastRenewalInvoice: if (renewal) invoiceId else s.lastRenewalInvoice }
@@ -169,9 +153,10 @@ pure def sometimesSetToCancelAtPeriodEnd(s: Subscription): bool = s.status == Ac
 
 The window starts at the period end when that has passed, else at the
 observation, and both times are kept until a paid invoice makes the
-subscription Active again; an unpaid subscription keeps them too. Past due
-never returns to dunning within the same window. The shell's schedule moves a dunning subscription whose window
-has ended.
+subscription Active again; an unpaid subscription keeps them too. A past due
+or unpaid subscription never returns to dunning, so only a paid invoice
+makes it entitled again. The shell's schedule moves a dunning subscription
+whose window has ended.
 
 ```quint
 pure def canExpireDunning(s: Subscription, now: Millis): bool = s.status == Dunning and now >= dunningEndsAt(s.dunning)
@@ -179,7 +164,7 @@ pure def expireDunning(s: Subscription, now: Millis): SubscriptionStep = { state
 pure def windowIsThreeDays(w: DunningWindow): bool = match w { | DunningSince(x) => x.startedAt >= 0 and x.endsAt == x.startedAt + dunningGrace | NotDunning => true }
 pure def alwaysDunningWindowOnlyWhileDunning(s: Subscription): bool = ((s.dunning != NotDunning) iff inDunning(s.status)) and windowIsThreeDays(s.dunning)
 pure def stepDunningWindowSetOnce(before: Subscription, after: Subscription): bool = (before.dunning != NotDunning and after.dunning != NotDunning) implies after.dunning == before.dunning
-pure def stepPastDueNeverReturnsToDunning(before: Subscription, after: Subscription): bool = before.status == PastDue implies after.status != Dunning
+pure def stepLapsedNeverReturnsToDunning(before: Subscription, after: Subscription): bool = (before.status == PastDue or before.status == Unpaid) implies after.status != Dunning
 pure def sometimesDunning(s: Subscription): bool = s.status == Dunning
 pure def sometimesPastDue(s: Subscription): bool = s.status == PastDue
 ```
@@ -195,12 +180,13 @@ pure def sometimesCanceled(s: Subscription): bool = s.status == Canceled
 pure def sometimesExpiredBeforePayment(s: Subscription): bool = s.status == IncompleteExpired
 ```
 
-### A paid invoice for a new period opens that period's allowance once, by invoice id
+### A paid period invoice opens its period's allowance once, by invoice id
 
-The period is keyed by the environment and the invoice id
-(`spec/cloud/billing/allowance.md`), so a second reconcile of the same
-invoice opens nothing. A paid upgrade invoice keeps the period and adjusts
-its allowance instead (`spec/cloud/billing/subscriptionCommands.md`).
+The first paid invoice and each paid renewal open one; so does a renewal
+paid late, after dunning. The period is keyed by the environment and the
+invoice id (`spec/cloud/billing/allowance.md`), so a second reconcile of the
+same invoice opens nothing. A paid plan change invoice keeps the period and
+adjusts its allowance instead (`spec/cloud/billing/subscriptionCommands.md`).
 
 ```quint
 pure def renewalOpens(before: Subscription, after: Subscription, e: SubscriptionEffect): bool = match e {
@@ -212,7 +198,7 @@ pure def isRenewalOpening(e: SubscriptionEffect): bool = match e { | OpenRenewal
 pure def stepRenewalOpensOncePerInvoice(before: Subscription, after: Subscription, out: List[SubscriptionEffect]): bool =
   out.every(e => renewalOpens(before, after, e))
   and ((after.lastRenewalInvoice != before.lastRenewalInvoice and after.lastRenewalInvoice != "") implies out.some(e => isRenewalOpening(e)))
-pure def sometimesSecondPeriodOpened(s: Subscription): bool = s.status == Active and s.lastRenewalInvoice != "" and s.periodStart > 0
+pure def sometimesRenewalAllowanceOpened(s: Subscription): bool = s.status == Active and s.lastRenewalInvoice != "" and s.periodStart > 0
 ```
 
 ### A pending downgrade waits for the provider to bill the lower plan, and is dropped when the subscription ends
@@ -254,7 +240,7 @@ pure def stepPolicyFollowsTheSubscription(before: Subscription, after: Subscript
 
 ### A command starts only when no other command is live and the subscription allows it
 
-A checkout needs no live subscription. Every other command needs an Active
+A checkout needs the pinned customer and no live subscription. Every other command needs an Active
 subscription at the revision its review read, with no pending downgrade; a
 cancel needs one not already set to cancel, an undo one that is, and an
 upgrade or a downgrade one that is not. The command's own spec adds its
@@ -262,7 +248,7 @@ remaining checks and frees the slot when it finishes.
 
 ```quint
 pure def commandEligible(s: Subscription, kind: CommandKind, expectedRevision: int): bool =
-  if (kind == CheckoutCommand) not(isLive(s.status))
+  if (kind == CheckoutCommand) not(isLive(s.status)) and s.customer != NoCustomer
   else s.status == Active and s.revision == expectedRevision and s.planned == NoPlannedChange and (if (kind == UndoCommand) s.cancelAtPeriodEnd else not(s.cancelAtPeriodEnd))
 pure def canClaimCommand(s: Subscription, kind: CommandKind, commandId: str, expectedRevision: int): bool = s.liveCommand == NoLiveCommand and commandId != "" and commandEligible(s, kind, expectedRevision)
 pure def claimCommand(s: Subscription, kind: CommandKind, commandId: str, expectedRevision: int): Subscription = { ...s, liveCommand: Live({ kind: kind, commandId: commandId }) }
@@ -272,11 +258,11 @@ pure def releaseCommand(s: Subscription, commandId: str): Subscription = { ...s,
 pure val commandIdValues = Set("cmd1", "cmd2")
 pure val expectedRevisionValues = Set(1, 2, 3)
 pure def alwaysLiveCommandFitsTheSubscription(s: Subscription): bool = { val c = s.liveCommand
-  match c { | Live(x) => x.commandId != "" and (if (x.kind == CheckoutCommand) not(isLive(s.status)) else s.status != NoSubscription) | NoLiveCommand => true } }
+  match c { | Live(x) => x.commandId != "" and (if (x.kind == CheckoutCommand) not(isLive(s.status)) and s.customer != NoCustomer else s.status != NoSubscription) | NoLiveCommand => true } }
 pure def sometimesCancelRunning(s: Subscription): bool = holdsCommand(s, CancelCommand, "cmd1")
 ```
 
-### The cancel control offers cancel or undo exactly when that command could start now
+### The cancel control is eligible exactly when the cancel or undo it offers could start now
 
 The billing snapshot's `subscription.control`
 (`spec/cloud/billing/entitlements.md`) is this value: `offer` is rendered as
@@ -288,8 +274,12 @@ type ControlAction = CancelAction | UndoAction | NoAction
 type CancelControl = { offer: ControlAction, eligible: bool, expectedRevision: int }
 pure def controlOf(s: Subscription): CancelControl = {
   val offer = if (s.status != Active or s.planned != NoPlannedChange) NoAction else if (s.cancelAtPeriodEnd) UndoAction else CancelAction
-  { offer: offer, eligible: offer != NoAction and s.liveCommand == NoLiveCommand and commandEligible(s, if (offer == UndoAction) UndoCommand else CancelCommand, s.revision), expectedRevision: s.revision }
+  { offer: offer, eligible: offer != NoAction and s.liveCommand == NoLiveCommand, expectedRevision: s.revision }
 }
+pure def offeredKind(c: CancelControl): CommandKind = if (c.offer == UndoAction) UndoCommand else CancelCommand
+pure def alwaysControlMatchesTheCommand(s: Subscription): bool = { val c = controlOf(s)
+  (c.eligible iff (c.offer != NoAction and canClaimCommand(s, offeredKind(c), "control", c.expectedRevision)))
+  and ((c.offer == NoAction) iff not(canClaimCommand(s, CancelCommand, "control", s.revision) or canClaimCommand(s, UndoCommand, "control", s.revision) or s.status != Active or s.planned != NoPlannedChange or s.liveCommand != NoLiveCommand)) }
 pure def sometimesUndoOffered(s: Subscription): bool = controlOf(s).offer == UndoAction and controlOf(s).eligible
 ```
 

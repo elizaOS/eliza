@@ -115,24 +115,15 @@ const labelChanges: Readonly<Record<LabelKind, { readonly path: "modify" | "tras
 
 const rejectionCodes: Readonly<Record<RefusalCause, string>> = { NoRefusal: "refused", NotFoundAtProvider: "not_found", AuthorizationLost: "reauth_required", OtherRefusal: "refused" }
 
-const LabelProposal = Schema.Struct({
-  kind: Schema.Literals(["archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"]),
-  messageId: Schema.String,
-  expectedHistoryId: Schema.String
-})
-const DraftDeleteProposal = Schema.Struct({
-  kind: Schema.Literal("draft-delete"),
-  draftId: Schema.String,
-  expectedDigest: Schema.String,
-  confirmPermanentDelete: Schema.Literal(true)
-})
+schema LabelProposal { kind: LabelKind; messageId: string; expectedHistoryId: string }
+schema DraftDeleteProposal { kind: "draft-delete"; draftId: string; expectedDigest: string; confirmPermanentDelete: true }
 const ComposeExtras = Schema.Struct({
   draftId: Schema.optionalKey(Schema.String),
   expectedDigest: Schema.optionalKey(Schema.String),
   forwardAttachments: Schema.optionalKey(Schema.Struct({ messageId: Schema.String, historyId: Schema.String, partIds: Schema.Array(Schema.String) }))
 })
-const PrepareBody = Schema.Struct({ grantId: Schema.String, requestId: Schema.String, proposal: Schema.Unknown })
-const DispatchBody = Schema.Struct({ grantId: Schema.String, reviewDigest: Schema.String, proposal: Schema.Unknown })
+schema PrepareBody { grantId: string; requestId: string; proposal: unknown }
+schema DispatchBody { grantId: string; reviewDigest: string; proposal: unknown }
 const MessageReply = Schema.Struct({ id: Schema.String, threadId: Schema.optionalKey(Schema.String), labelIds: Schema.optionalKey(Schema.Array(Schema.String)), historyId: Schema.optionalKey(Schema.String) })
 const MessageList = Schema.Struct({ messages: Schema.optionalKey(Schema.Array(Schema.Struct({ id: Schema.String }))) })
 const DraftReply = Schema.Struct({ id: Schema.String, message: Schema.optionalKey(Schema.Struct({ id: Schema.optionalKey(Schema.String), raw: Schema.optionalKey(Schema.String) })) })
@@ -145,11 +136,15 @@ function senderOf(owner: Owner): SessionOwner {
   return { agentId: owner.organizationId, actorId: owner.userId, connector: "gmail_operation" }
 }
 
-function rowsFor(owner: Owner) {
-  return machineRows<Receipt, Event, Rejected, NotAState>("mail_operations", { initial, decodeState, apply: (state, event) => apply(state, event, senderOf(owner)) })
+export function operationRows(by: SessionOwner) {
+  return machineRows<Receipt, Event, Rejected, NotAState>("mail_operations", { initial, decodeState, apply: (state, event) => apply(state, event, by) })
 }
 
-function rowKey(scope: Scope): string {
+function rowsFor(owner: Owner) {
+  return operationRows(senderOf(owner))
+}
+
+export function rowKey(scope: Scope): string {
   return [scope.owner.organizationId, scope.owner.userId, scope.grantId, scope.requestId].map(encodeURIComponent).join("/")
 }
 
@@ -210,7 +205,7 @@ export function wireReceipt(scope: Scope, operation: Operation, now: number) {
   }
 }
 
-function columns(scope: Scope, kind: OperationKind, now: number, result: ProviderResult | null) {
+export function operationColumns(scope: Scope, kind: OperationKind, now: number, result: ProviderResult | null) {
   return (receipt: Receipt): Columns => ({
     organization_id: scope.owner.organizationId,
     user_id: scope.owner.userId,
@@ -244,7 +239,7 @@ effect function advance(tx: Tx, scope: Scope, kind: OperationKind, events: Reado
   let receipt = (try loadRow(tx, rows, rowKey(scope))).state
   for (const next of events) {
     const event = next(receipt)
-    if (event !== undefined) receipt = (try stepRow(tx, rows, rowKey(scope), event, columns(scope, kind, now, result))).state
+    if (event !== undefined) receipt = (try stepRow(tx, rows, rowKey(scope), event, operationColumns(scope, kind, now, result))).state
   }
   return { receipt, kind, reviewDigest: receipt.digest, providerResult: receipt.settlement === "Succeeded" ? result : null } satisfies Operation
 }

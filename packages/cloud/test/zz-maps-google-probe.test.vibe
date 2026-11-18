@@ -11,8 +11,8 @@ describe("probe google maps", () => {
   it.live("google adapter against fake", () => scoped(effect {
     const fake = googleMapsFake()
     const fakes = try fakeServer()
-    const profile = try sync(() => { fakes.mount("/maps/", fake.handler); return testProfile(fakes.url) as never })
-    const layer = Layer.mergeAll(deploymentLayer(profile, "staging"), FetchHttpClient.layer).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+    const profile = try sync(() => { fakes.mount("/maps/", fake.handler); return testProfile(fakes.url) })
+    const layer = Layer.mergeAll(deploymentLayer(profile as unknown as Parameters<typeof deploymentLayer>[0], "staging"), FetchHttpClient.layer).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
     const results = try Effect.provide(effect {
       const deployment = try Deployment
       const settings = deployment.settings.maps

@@ -416,7 +416,7 @@ function idValue(v: JsonValue): number[] {
 }
 
 export function readDevice(b: number[], binary: boolean): DeviceWire {
-  //@ ensures (binary && validUplink(b.length)) ==> \result === { kind: "Uplink", pcm: b }
+  //@ ensures (binary && validUplink(b.length)) ==> (\result.kind === "Uplink" && \result.pcm === b)
   //@ ensures \result.kind === "Uplink" ==> binary && validUplink(\result.pcm.length)
   //@ ensures (!binary && b.length > maxControlBytes) ==> \result.kind === "DeviceRefused"
   //@ ensures \result.kind === "Hello" ==> validHelloToken(utf16Units(\result.token))
@@ -465,7 +465,7 @@ export function readAudio(frame: number[]): RelayWire {
 
 //@ pure
 export function lawAudioRoundTrips(id: number[], pcm: number[]): boolean {
-  //@ ensures (idBytesValid(id) && validPcm(pcm.length, maxDownlinkPcmBytes)) ==> readAudio(encodeAudio(id, pcm)) === { kind: "Audio", id: id, pcm: pcm }
+  //@ ensures (idBytesValid(id) && validPcm(pcm.length, maxDownlinkPcmBytes)) ==> (readAudio(encodeAudio(id, pcm)).kind === "Audio" && readAudio(encodeAudio(id, pcm)).id === id && readAudio(encodeAudio(id, pcm)).pcm === pcm)
   return true
 }
 
@@ -475,7 +475,6 @@ export function lawReadAudioIsCanonical(frame: number[]): boolean {
   return true
 }
 
-//@ pure
 function sttKindOf(v: JsonValue): number {
   if (textIs(v, "connected")) return 0
   if (textIs(v, "start-of-turn")) return 1
@@ -616,7 +615,7 @@ function control(bytes: number[]): Written {
 
 export function writeDevice(f: DeviceWire): Written {
   //@ ensures (\result.kind === "Written" && f.kind !== "Uplink") ==> \result.bytes.length <= maxControlBytes
-  //@ ensures (f.kind === "Uplink" && validUplink(f.pcm.length)) ==> \result === { kind: "Written", bytes: f.pcm }
+  //@ ensures (f.kind === "Uplink" && validUplink(f.pcm.length)) ==> (\result.kind === "Written" && \result.bytes === f.pcm)
   if (f.kind === "Uplink") return validUplink(f.pcm.length) ? { kind: "Written", bytes: f.pcm } : { kind: "Unwritable" }
   if (f.kind === "DeviceRefused") return { kind: "Unwritable" }
   if (f.kind === "Stop") return control(typed("stop", []))

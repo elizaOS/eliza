@@ -20,10 +20,10 @@ billing snapshot; another vendors the call and keeps it switched off.
 The shell redeems in one store transaction: it locks the organization, then
 the code row, reads `now` from the store's clock, and passes in what other
 rows say (account status, idempotency keys of the organization's other
-grants, the family index, an open or unknown paid subscription). The plan the
-grant gives, below a paid plan, is `fundedPlan` of
-`spec/cloud/billing/plans.md`, published by `spec/cloud/billing/entitlements.md`;
-the allowance months it opens are `spec/cloud/billing/allowance.md`.
+grants, the family index, an open or unknown paid subscription). The
+effective plan, where a paid subscription always comes before an unrevoked
+grant whose window holds `now`, is `spec/cloud/billing/entitlements.md`; the
+allowance months a grant opens are `spec/cloud/billing/allowance.md`.
 
 ## Story: Redeem a membership code once
 
@@ -240,8 +240,9 @@ pure def sometimesDisabledCodeStillReplays(c: Code): bool = c.status == Disabled
 
 Revoking a revoked grant changes nothing. The revoked grant stays in the
 code's row, so the organization keeps its place in the family and a replay
-still answers it. Its effective plan falls back to its next grant or the
-free plan (`spec/cloud/billing/entitlements.md`).
+still answers it. The organization's effective plan falls back to another
+grant in force or the free plan (`spec/cloud/billing/entitlements.md`). The
+operator's `grants revoke --code` revokes each grant and disables the code.
 
 ```quint
 pure def isInForce(g: Grant): bool = g.standing == InForce

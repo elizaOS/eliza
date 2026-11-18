@@ -79,6 +79,7 @@ public final class JsonCredentialSlots {
   return new AtomicFile(new File(directory, hash));
  }
  private SecretKey key() throws Exception { return key(true); }
+ public void ensureKey() throws Exception { synchronized (LOCK) { key(); } }
  private SecretKey key(boolean create) throws Exception {
   KeyStore store = KeyStore.getInstance("AndroidKeyStore"); store.load(null);
   if (!store.containsAlias(alias)) {

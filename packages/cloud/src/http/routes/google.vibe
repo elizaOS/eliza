@@ -1,10 +1,14 @@
 // spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"
 import type { Area } from "../routes.vibe"
 import { mailReadRoutes } from "../../services/google/mail-read.vibe"
+import { calendarRoutes, calendarSweeps } from "../../services/google/calendar.vibe"
 
 export const area: Area = {
   routes: [
-    ...mailReadRoutes
+    ...mailReadRoutes,
+    ...calendarRoutes
   ],
-  sweeps: []
+  sweeps: [
+    ...calendarSweeps
+  ]
 }

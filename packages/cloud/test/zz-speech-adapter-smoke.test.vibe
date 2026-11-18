@@ -2,6 +2,7 @@
 import { assert, describe, it } from "@effect/vitest"
 import { openStt, openTts, synthesize, synthesizeTimed, transcribe } from "../src/providers/speech.vibe"
 import { testCloud } from "./support/cloud.vibe"
+import { Deployment } from "../src/profile/profile.vibe"
 import { speechFake, spokenTranscript, synthesizedAudio, pcmChunkBytes } from "./support/fake-speech.ts"
 
 effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
@@ -13,7 +14,7 @@ effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A
 
 describe("speech adapter smoke", () => {
   it.live("adapter against fake", () => scoped(effect {
-    const fake = speechFake()
+    const fake = try sync(() => speechFake())
     const cloud = try testCloud({ mount: (fakes) => fake.install(fakes) })
     const result = try cloud.inside(scoped(effect {
       const deployment = try Deployment
@@ -23,7 +24,7 @@ describe("speech adapter smoke", () => {
       const audio = try synthesize(settings, synthesis)
       const timed = try synthesizeTimed(settings, synthesis)
       const heard = try transcribe(settings, { audio: new Uint8Array([1, 2, 3, 4]), mimeType: "audio/wav", languageCode: "en-US" })
-      fake.script({ kind: "refuse", status: 429, retryAfterSeconds: 3 }, { kind: "refuse", status: 503 }, { kind: "garbled" })
+      try sync(() => fake.script({ kind: "refuse", status: 429, retryAfterSeconds: 3 }, { kind: "refuse", status: 503 }, { kind: "garbled" }))
       const refused = try failureTag(synthesize(settings, synthesis))
       const outage = try failureTag(synthesize(settings, synthesis))
       const garbled = try failureTag(transcribe(settings, { audio: new Uint8Array([1, 2]), mimeType: "audio/wav" }))
@@ -35,11 +36,11 @@ describe("speech adapter smoke", () => {
       try tts.speak("u1", "Hi", true)
       try tts.finish("u1")
       const ttsEdges = try Stream.runCollect(Stream.take(tts.edges, 3))
-      fake.scriptRealtime({ kind: "refuse", status: 401 })
+      try sync(() => fake.scriptRealtime({ kind: "refuse", status: 401 }))
       const badOpen = try failureTag(openStt())
       return { audio: audio.audio.length, timed: timed.length, heard, refused, outage, garbled, edges: Array.from(edges).map((edge) => edge.kind), last: Array.from(edges)[3]?.transcript, drained, ttsEdges: Array.from(ttsEdges).map((edge) => edge.kind === "audio" ? `audio:${edge.pcm.length}` : edge.kind), badOpen }
     }))
-    console.error(JSON.stringify(result), fake.transcribed.map((entry) => [entry.mimeType, entry.model, entry.language, entry.audio.length]), fake.sttPcmBytes, fake.drained, fake.connections.map((c) => c.path))
+    try Console.error(JSON.stringify(result), fake.transcribed.map((entry) => [entry.mimeType, entry.model, entry.language, entry.audio.length]), fake.sttPcmBytes, fake.drained, fake.connections.map((c) => c.path))
     assert.deepStrictEqual(typeof result === "string" ? result : [result.audio, result.heard.transcript, result.edges, result.last, result.drained, result.ttsEdges], [synthesizedAudio.length, spokenTranscript, ["SttConnected", "StartOfTurn", "TranscriptUpdate", "EndOfTurn"], spokenTranscript, true, [`audio:${pcmChunkBytes}`, "flushed", "completed"]])
   }))
 })
