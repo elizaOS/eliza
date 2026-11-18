@@ -85,8 +85,9 @@ effect function reply<A>(call: AgentCall, shape: Schema.Codec<A>, run: () => Pro
 }
 
 function heard<Name extends keyof AgentEvents>(name: Name, listener: (event: AgentEvents[Name]) => void) {
+  const shape: Schema.Codec<AgentEvents[Name]> = events[name]
   return (event: unknown) =>
-    runFork(matchEffect(Schema.decodeUnknownEffect(events[name])(event), {
+    runFork(matchEffect(Schema.decodeUnknownEffect(shape)(event), {
       onSuccess: (parsed) => sync(() => listener(parsed)),
       onFailure: (refusal) => logError("A native agent event did not match its shape", { event: name, issue: refusal.message }),
     }))

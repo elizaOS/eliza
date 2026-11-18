@@ -364,7 +364,7 @@ export function printer({ types, inferred, ref, helper, bind, variants, definiti
       const distinct = [...new Set(at(within(), () => a.map((x) => ex(x, TERNARY))))];
       const literal = (x: Json) => ["int", "str", "bool"].includes(x.kind) || !!negative(x) || (x.kind === "name" && variants.has(x.name));
       if (a.length > 1 && !a.every(literal)) fail("Set(…) with several members that are not literals could hold the same value twice; write Set(a).union(Set(b))");
-      return [distinct.length ? `[${distinct.join(", ")}]` : `([] as ${tsType(t.elem)}[])`, ATOM];
+      return [distinct.length && nesting <= 1 ? `[${distinct.join(", ")}]` : `([${distinct.join(", ")}] as ${tsType(t.elem)}[])`, ATOM];
     }
     return [`${reference(op)}(${at("typed", () => a.map((x) => ex(x, TERNARY))).join(", ")})`, ATOM];
   };
