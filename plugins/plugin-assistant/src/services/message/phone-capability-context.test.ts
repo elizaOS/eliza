@@ -103,6 +103,100 @@ async function guidance(options: Record<string, unknown> = {}) {
   return { text: String(event.content), context, args };
 }
 
+// The X-Eliza-Device-Capabilities a v609 Alpha image sent (captured on the
+// phone), plus phone.keypad.v1 for the keypad handoff.
+const ALPHA_IMAGE_CAPABILITIES = [
+  "calendar.local-event.v1",
+  "notes.local-record.v1",
+  "camera.capture-photo.v1",
+  "camera.capture-lens.v1",
+  "reminders.local-record.v2",
+  "notes.list-filter.v1",
+  "reminders.create.v1",
+  "calendar.create.v1",
+  "calendar.next-read.v1",
+  "maps.selected-read.v1",
+  "files.browser.v1",
+  "browser.search.v1",
+  "browser.tabs.v1",
+  "browser.history.v1",
+  "browser.find.v1",
+  "calendar.availability-read.v1",
+  "photos.library.v1",
+  "calendar.named-read.v1",
+  "clock.handoff.v1",
+  "clock.handoff.v2",
+  "views.telephony.v1",
+  "sms.send.v1",
+  "phone.dial.v1",
+  "phone.call.v1",
+  "contacts.write.v1",
+  "contacts.show.v1",
+  "contacts.read.v1",
+  "sms.compose.v1",
+  "messages.read.v1",
+  "voicemail.read.v1",
+  "voicemail.delete.v1",
+  "sms.compose.v2",
+  "contacts.write.v2",
+  "phone.keypad.v1",
+];
+
+describe("phone telephony routing on the Alpha image", () => {
+  async function withImage(options: Record<string, unknown>) {
+    const args = fixture();
+    const turn = binding.turn as {
+      credential: { capabilities: string[] };
+      isCurrent?: () => boolean;
+    };
+    turn.credential.capabilities = ALPHA_IMAGE_CAPABILITIES;
+    turn.isCurrent = () => true;
+    const context = await createV5MessageContextObject({
+      ...args,
+      ...options,
+    });
+    const event = context.events.find(
+      (event) => event.id === "authenticated-phone-capability",
+    );
+    return event && "content" in event ? String(event.content) : "";
+  }
+  it("names the device operation for a call, a text, showing contacts and the dialer while routing", async () => {
+    // v609: the call went to Twilio VOICE_CALL, the text to PAGE_DELEGATE,
+    // "show my contacts" to the relationship store, "open the dialer" was refused.
+    const routing = await withImage({ providerPhase: "response" });
+    for (const route of [
+      "call a number or contact: phone_call",
+      "text or draft a text to a number or contact: sms_compose with target",
+      "show, find or look up the owner's contacts: contact_show",
+      "open the dialer or keypad, with or without a number: phone_keypad, which fills in the keypad and never calls",
+      "in the general, phone, messaging or contacts context",
+      "only a plain request to open the Phone, Messages or Contacts app is navigation",
+      "VOICE_CALL (a Twilio call from the agent's number)",
+    ])
+      expect(routing).toContain(route);
+    expect(routing).not.toContain("PROPOSE_DEVICE_ACTION cannot");
+  });
+  it("keeps the device routes when the planner selected the phone or messaging context", async () => {
+    for (const context of ["phone", "messaging"]) {
+      const planning = await withImage({
+        includeTools: true,
+        providerPhase: "planning",
+        selectedContexts: [context],
+      });
+      // The detailed native instructions follow a selected context that carries the device tool.
+      expect(planning).toContain("phone_keypad");
+      expect(planning).toContain(
+        "The authenticated installation enabled-view profile",
+      );
+    }
+  });
+  it("names no phone route for a phone without telephony", async () => {
+    const routing = (await guidance({ providerPhase: "response" })).text;
+    expect(routing).not.toContain("phone_call");
+    expect(routing).not.toContain("phone_keypad");
+  });
+});
+
 describe("selected phone capability guidance", () => {
   it("keeps compact authenticated availability and permission boundaries during routing", async () => {
     const { text } = await guidance({ providerPhase: "response" });

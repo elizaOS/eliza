@@ -411,6 +411,14 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
           "Invalid call operation. Use target {kind: number, number: digits with optional leading +} or {kind: contact, query: the contact name}.",
         );
       }
+    case "phone_keypad":
+      try {
+        return validateTelephonyAction(p);
+      } catch {
+        throw new DeviceActionError(
+          "Invalid keypad operation. Use only number (digits with an optional leading +), or no fields to open an empty keypad.",
+        );
+      }
     case "contact_create":
     case "contact_update":
     case "contact_delete":

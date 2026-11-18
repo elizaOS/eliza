@@ -807,17 +807,56 @@ const contactQuerySchema = {
   description:
     "The contact's name as search text, exactly as the owner said it. Never an ID or a number.",
 };
-/** A number target written with separators is reviewed in its exact dial form. */
-function withDialNumber(operation: unknown): unknown {
-  const target = (operation as { target?: unknown } | null)?.target as
-    | { kind?: unknown; number?: unknown }
-    | undefined;
-  return target?.kind === "number"
-    ? {
-        ...(operation as object),
-        target: { ...target, number: phoneDialNumber(target.number) },
-      }
-    : operation;
+/**
+ * A number written with separators ("415-555-0100") is reviewed in its exact
+ * dial form: a target number, a keypad number, and the numbers a contact
+ * change names. The owner's own words reach a tool through a contact
+ * reference that restores them exactly as typed, so the model cannot remove
+ * the separators itself. A value that is not one number is left for
+ * validation to refuse.
+ */
+function dialForm(value: unknown): unknown {
+  try {
+    return phoneDialNumber(value);
+  } catch {
+    return value;
+  }
+}
+function dialFormList(value: unknown): unknown {
+  return Array.isArray(value) ? value.map(dialForm) : value;
+}
+function withDialNumbers(fields: unknown): unknown {
+  if (!fields || typeof fields !== "object" || Array.isArray(fields))
+    return fields;
+  const record = fields as Record<string, unknown>;
+  return Object.hasOwn(record, "phoneNumbers")
+    ? { ...record, phoneNumbers: dialFormList(record.phoneNumbers) }
+    : fields;
+}
+export function withDialNumber(operation: unknown): unknown {
+  if (!operation || typeof operation !== "object" || Array.isArray(operation))
+    return operation;
+  const op = operation as Record<string, unknown>;
+  const target = op.target as { kind?: unknown; number?: unknown } | undefined;
+  if (target?.kind === "number")
+    return {
+      ...op,
+      target: { ...target, number: phoneDialNumber(target.number) },
+    };
+  if (op.type === "phone_keypad" && Object.hasOwn(op, "number"))
+    return { ...op, number: phoneDialNumber(op.number) };
+  if (op.type === "contact_create")
+    return { ...op, contact: withDialNumbers(op.contact) };
+  if (op.type === "contact_update")
+    return {
+      ...op,
+      ...(Object.hasOwn(op, "set") ? { set: withDialNumbers(op.set) } : {}),
+      ...(Object.hasOwn(op, "add") ? { add: withDialNumbers(op.add) } : {}),
+      ...(Object.hasOwn(op, "remove")
+        ? { remove: withDialNumbers(op.remove) }
+        : {}),
+    };
+  return operation;
 }
 /** Disjoint by type; service validation enforces the exact closed shapes. */
 const telephonyActionSchemas: ActionParameterSchema[] = [
@@ -926,6 +965,19 @@ const telephonyActionSchemas: ActionParameterSchema[] = [
     properties: {
       type: { type: "string", enum: ["sms_reply_selected"] },
       body: { type: "string" },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type"],
+    properties: {
+      type: { type: "string", enum: ["phone_keypad"] },
+      number: {
+        ...phoneNumberSchema,
+        description:
+          "Optional number to fill in. 2 to 20 digits with an optional leading +. Leave out for an empty keypad.",
+      },
     },
   },
   ...[
@@ -1059,6 +1111,10 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   {
     types: ["phone_dial"],
     text: "A reviewed dial uses phone_dial with target {kind: number, number: digits with optional leading +} (requires phone.dial.v1) or {kind: contact, query: the contact name} (also requires contacts.lookup.v1; the phone looks the contact up locally and the owner picks the number, which is never returned). After the owner's approval the phone opens its dial screen with the number; the owner places the call there. handed-off proves only that the dial screen opened, never a placed, connected or completed call. Never retry automatically.",
+  },
+  {
+    types: ["phone_keypad"],
+    text: "phone_keypad {number?} (phone.keypad.v1) opens the Phone keypad on the phone, with number filled in when the owner gave one (digits with an optional leading +). Use it for open the dialer, open the keypad, or open the dialer with a number. It never dials or calls: the owner taps Call there. opened proves only that the keypad is showing; never report a call. To call for the owner use phone_call instead, which the owner reviews.",
   },
   {
     types: ["phone_call"],
@@ -1196,11 +1252,17 @@ export const proposeDeviceAction: Action = {
   name: "PROPOSE_DEVICE_ACTION",
   egress: ["owner-device"],
   description: PROPOSAL_GUIDANCE.map((fragment) => fragment.text).join(" "),
+  // The discovery catalog and query search read this summary. Without it the
+  // index row was empty and a search for "SMS" or "call" never matched it.
+  descriptionCompressed:
+    "Phone owner-reviewed device operations: call (phone_call), text or draft SMS (sms_compose, sms_send), dialer keypad (phone_keypad), show/add/change/delete phone contacts, camera photo, notes, reminders, calendar, browser, files, clock, maps.",
   // The phone's address book is written only through this tool
   // (contact_create/update/delete). A request routed as a contacts task must
   // still reach it, or only the assistant's own relationship records are
-  // offered and the phone contact is never proposed.
-  contexts: ["general", "contacts"],
+  // offered and the phone contact is never proposed. Calls and texts on the
+  // phone are routed as phone and messaging tasks, so those contexts carry it
+  // too; otherwise only Twilio VOICE_CALL or connector messaging is offered.
+  contexts: ["general", "contacts", "phone", "messaging"],
   parameters: [
     {
       name: "operation",

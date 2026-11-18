@@ -186,9 +186,39 @@ export async function createV5MessageContextObject(args: {
     )
       ? "With camera.capture-photo.v1, taking a picture, photo or selfie on this phone is the device operation camera_capture_photo (DEVICE_CAMERA_CAPTURE), reached through the media or general context. It is requested device work with pending effect status, never navigation alone: opening the Camera view takes no photo, and the owner is never told to press the shutter themselves. The phone opens Camera itself before it takes the photo. "
       : "";
+    // Which tool owns each phone request. Without this the planner saw only
+    // the capability names: a call routed to Twilio VOICE_CALL, a text to
+    // connector messaging, "show my contacts" to the assistant's own
+    // relationship records, and "open the dialer" was refused.
+    const phoneRoutes = [
+      ...(phoneCapabilities.includes("phone.call.v1")
+        ? ["call a number or contact: phone_call"]
+        : []),
+      ...(phoneCapabilities.includes("sms.compose.v1")
+        ? [
+            phoneCapabilities.includes("sms.compose.v2")
+              ? "text or draft a text to a number or contact: sms_compose with target"
+              : "text a contact: sms_compose",
+          ]
+        : phoneCapabilities.includes("sms.send.v1")
+          ? ["text a number: sms_send"]
+          : []),
+      ...(phoneCapabilities.includes("contacts.show.v1")
+        ? ["show, find or look up the owner's contacts: contact_show"]
+        : []),
+      ...(phoneCapabilities.includes("phone.keypad.v1")
+        ? [
+            "open the dialer or keypad, with or without a number: phone_keypad, which fills in the keypad and never calls",
+          ]
+        : []),
+    ];
+    const phoneRouteGuidance = phoneRoutes.length
+      ? `Calls, texts and contact lookups through this phone's own Phone, Messages and Contacts apps go through PROPOSE_DEVICE_ACTION, in the general, phone, messaging or contacts context: ${phoneRoutes.join("; ")}. The owner reviews each call, text and contact change on the phone. A request to call, text, show contacts or open the dialer is that device operation, not a view change; only a plain request to open the Phone, Messages or Contacts app is navigation. VOICE_CALL (a Twilio call from the agent's number), MESSAGE_SEND, PAGE_DELEGATE and connector messaging are not this phone's apps; use them only when the owner asks for that service by name. ENTITY and CONTACT are the assistant's own relationship records, never the phone's address book. `
+      : "";
     const compactCapabilityGuidance =
       `Authenticated phone capabilities: ${JSON.stringify(phoneCapabilities)}. ` +
       telephonyGuidance +
+      phoneRouteGuidance +
       addressBookGuidance +
       cameraCaptureGuidance +
       (authenticatedDeviceTurn.viewProfile
@@ -208,6 +238,7 @@ export async function createV5MessageContextObject(args: {
             ? `The authenticated installation enabled-view profile allows open_view only for ${JSON.stringify(authenticatedDeviceTurn.viewProfile.views)}. Do not offer or propose another view. This subset is not approval to execute. `
             : "") +
           telephonyGuidance +
+          phoneRouteGuidance +
           (getDeviceActionTurn()?.credential.capabilities?.some(
             (capability) =>
               capability === "reminders.local-record.v1" ||

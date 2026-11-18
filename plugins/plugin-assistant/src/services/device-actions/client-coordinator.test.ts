@@ -2151,6 +2151,55 @@ describe("shared phone and reminder-read parity", () => {
       expect(server.state).toBe("pending");
     }
   });
+  it("opens the keypad without a review only for the requesting message and never calls", async () => {
+    for (const keypad of [
+      { type: "phone_keypad" },
+      { type: "phone_keypad", number: "4155550100" },
+    ]) {
+      const fixture = fixtureServer(keypad);
+      const request = async (path: string, body: unknown, s: AbortSignal) => {
+        const response = await fixture.request(path, body, s);
+        for (const item of response.proposals ?? [response.proposal])
+          if (item)
+            Object.assign(item.payload, { requestMessageId: "message" });
+        return response;
+      };
+      const ran: unknown[] = [];
+      const telephonyResult = { kind: "phone-keypad", status: "opened" };
+      const actions = make(
+        request,
+        memoryJournal().journal,
+        async (operation: unknown) => {
+          ran.push(operation);
+          return { status: "succeeded", summary: "Opened", telephonyResult };
+        },
+        ["phone.keypad.v1"],
+      );
+      await actions.pending(home, signal());
+      expect(
+        await actions.performRequested(
+          "other-message",
+          home,
+          signal(),
+          async () => true,
+        ),
+      ).toEqual([]);
+      expect(ran).toEqual([]);
+      expect(
+        await actions.performRequested(
+          "message",
+          home,
+          signal(),
+          async () => true,
+        ),
+      ).toMatchObject([{ status: "succeeded" }]);
+      expect(ran).toEqual([keypad]);
+      expect(fixture.server.receipts[0].receipt).toMatchObject({
+        outcome: "applied",
+        result: telephonyResult,
+      });
+    }
+  });
   it("leaves a contact SMS with an unknown outcome unresolved and never sends it again", async () => {
     const { server, request } = fixtureServer({
       type: "sms_compose",
