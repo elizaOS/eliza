@@ -1,0 +1,54 @@
+// spec/os/build/sourceIntegrity.md, "Story: Build and register only the plugins my host selected"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { scratch, writeTree } from "./support/scratch.vibe"
+
+interface ConsumerHost {
+  readonly generateAndroidConsumerHost: (options: Readonly<Record<string, unknown>>) => void
+}
+
+const CAPACITOR = { name: "capacitor-android", source: { root: "dependencies", path: "@capacitor/android/capacitor" } }
+const IDENTITY = { appId: "example.consumer", appName: "Consumer", version: "1.0", versionCode: 1 }
+const PROFILE = {
+  schema: 1,
+  sdk: { min: 29, target: 36, compile: 36 },
+  releaseMinify: false,
+  modules: [CAPACITOR],
+  dependencies: [],
+  manifest: { root: "consumer", path: "main.xml" },
+  flavors: [{ name: "standalone" }],
+}
+
+effect function generateFor(consumerRoot: string, dependencyRoot: string) {
+  const path = try Path.Path
+  const host: ConsumerHost = try Effect.promise(() => import(path.join(import.meta.dirname, "../android/consumer-host.mjs")))
+  try writeTree(consumerRoot, { "main.xml": '<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application/></manifest>' })
+  const options = { consumerRoot, upstreamRoot: path.resolve(import.meta.dirname, "../../.."), dependencyRoot, output: path.join(consumerRoot, "android"), identity: IDENTITY, profile: PROFILE }
+  return (effect {
+    try Effect.try({ try: () => host.generateAndroidConsumerHost(options), catch: (cause) => (cause instanceof Error ? cause.message : String(cause)) })
+    return "generated"
+  } catch (message) => message)
+}
+
+it.effect('Build and register only the plugins my host selected: a parent pnpm workspace admits its packages only when it holds the consumer (spec/os/build/sourceIntegrity.md, "The host profile chooses native modules and names their source roots")', effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const workspace = try scratch("workspace")
+    const outsider = try scratch("outsider")
+    try writeTree(workspace, {
+      "pnpm-workspace.yaml": "packages: []\n",
+      "packages/capacitor-android/package.json": JSON.stringify({ name: "@capacitor/android" }),
+      "packages/capacitor-android/capacitor/build.gradle": "",
+      "apps/host/node_modules/@capacitor/android": { kind: "symlink", target: path.join(workspace, "packages/capacitor-android") },
+    })
+    const dependencyRoot = path.join(workspace, "apps/host/node_modules")
+
+    assert.strictEqual(try generateFor(outsider, dependencyRoot), "Android host dependency link escapes the consumer, upstream and workspace roots")
+    assert.isFalse(try files.exists(path.join(outsider, "android")))
+
+    const member = path.join(workspace, "apps/consumer")
+    assert.strictEqual(try generateFor(member, dependencyRoot), "generated")
+    assert.isTrue(try files.exists(path.join(member, "android/.eliza-consumer-host.json")))
+  }
+})
