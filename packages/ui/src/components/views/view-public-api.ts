@@ -106,7 +106,6 @@ export { StartupFailureView } from "../../components/shell/StartupFailureView.js
 export { StartupScreen } from "../../components/shell/StartupScreen.js";
 export { StartupShell } from "../../components/shell/StartupShell.js";
 export { SystemWarningBanner } from "../../components/shell/SystemWarningBanner.js";
-export { TrayLauncher } from "../../components/shell/TrayLauncher.js";
 export { useBarSurfaceWindows } from "../../components/shell/useBarSurfaceWindows.js";
 export { useKioskViewSurfaces } from "../../components/shell/useKioskViewSurfaces.js";
 export { VoiceCaptureHud } from "../../components/shell/VoiceCaptureHud.js";

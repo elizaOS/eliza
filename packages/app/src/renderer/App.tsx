@@ -167,7 +167,6 @@ import {
   subscribeAuthStatus,
   subscribeDesktopBridgeEvent,
   TAB_PATHS,
-  TrayLauncher,
   tabFromPath,
   topLevelAuthGateOwnsSurface,
   useActiveAgentAuthority,
@@ -226,7 +225,6 @@ import {
   LazyCharacterSkillsView,
   LazyClockView,
   LazyDatabasePageView,
-  LazyDesktopWorkspaceSection,
   LazyFilesView,
   LazyLiveMeetingPageView,
   LazyLogsView,
@@ -357,12 +355,11 @@ function ChatOverlayShell({
   );
 }
 /**
- * Native tray popover surface (#9953 Phase 4 / #12184). Renders the compact
- * launcher (the `DESKTOP_VIEW_WINDOWS` catalog + "Open Eliza", registered by
- * the desktop host) above the shell widget registry's "home" slot inside the
- * frameless, transparent, always-on-top window the native tray anchors near its
- * icon — no app chrome. Each widget self-hides when it has nothing to show, so
- * the popover is a compact at-a-glance panel + one-click launcher.
+ * Native tray popover surface (#9953 Phase 4). Renders the shell widget
+ * registry's "home" slot inside the frameless, transparent, always-on-top
+ * window the native tray anchors near its icon — no app chrome. Each widget
+ * self-hides when it has nothing to show, so the popover is a compact
+ * at-a-glance panel.
  */
 function TrayPopoverShell() {
   return (
@@ -370,7 +367,6 @@ function TrayPopoverShell() {
       data-testid="tray-popover-shell"
       className="fixed inset-0 flex flex-col gap-3 overflow-y-auto bg-transparent p-3"
     >
-      <TrayLauncher />
       <WidgetHost slot="home" layout="stack" surface="tray" />
     </div>
   );
@@ -1462,7 +1458,6 @@ function buildStaticTabRenderers(): Record<
     runtime: wrap(<LazyRuntimeView />),
     database: wrapOverlayAware(<LazyDatabasePageView />),
     logs: wrap(<LazyLogsView />),
-    desktop: wrap(<LazyDesktopWorkspaceSection />),
     settings: ({
       settingsInitialSection,
       settingsNavigatePayload,

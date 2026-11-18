@@ -43,7 +43,6 @@ export const VIEW_ROUTES: readonly ViewRoute[] = [
   { id: "voice", path: "/settings/voice" },
   { id: "runtime", path: "/apps/runtime" },
   { id: "database", path: "/apps/database" },
-  { id: "desktop", path: "/desktop" },
   { id: "settings", path: "/settings" },
   { id: "vault", path: "/vault" },
   { id: "logs", path: "/apps/logs" },

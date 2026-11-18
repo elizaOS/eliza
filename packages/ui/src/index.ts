@@ -411,7 +411,6 @@ export { StartupFailureView } from "./components/shell/StartupFailureView.js";
 export { StartupScreen } from "./components/shell/StartupScreen.js";
 export { StartupShell } from "./components/shell/StartupShell.js";
 export { SystemWarningBanner } from "./components/shell/SystemWarningBanner.js";
-export { TrayLauncher } from "./components/shell/TrayLauncher.js";
 export { useBarSurfaceWindows } from "./components/shell/useBarSurfaceWindows.js";
 export { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces.js";
 export { VoiceCaptureHud } from "./components/shell/VoiceCaptureHud.js";
@@ -1182,11 +1181,6 @@ export {
   isTerminalDedicatedCloudAgentErrorState,
 } from "./state/dedicated-cloud-agent-error.js";
 export {
-  type DesktopLauncherEntry,
-  type DesktopLauncherIconId,
-  setDesktopLauncherEntries,
-} from "./state/desktop-tray-launcher.js";
-export {
   browserDocumentDraftSlot,
   compareExchangeDraftStore,
   DURABLE_DRAFT_TEXT_LIMIT,
@@ -1328,7 +1322,6 @@ export {
 export { useAppShellState } from "./state/useAppShellState.js";
 export { useCharacterState } from "./state/useCharacterState.js";
 export { useChatCallbacks } from "./state/useChatCallbacks.js";
-export { getChatOverlayHotkey } from "./state/useChatOverlayHotkey.js";
 export { useChatState } from "./state/useChatState.js";
 export { useCloudState } from "./state/useCloudState.js";
 export { useDataLoaders } from "./state/useDataLoaders.js";
@@ -1448,7 +1441,6 @@ export {
   loadContextInspectorView,
   loadConversationsSidebar,
   loadDatabasePageView,
-  loadDesktopWorkspaceSection,
   loadDeveloperWorkspace,
   loadFilesView,
   loadLiveMeetingPage,
