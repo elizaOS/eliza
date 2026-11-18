@@ -60,8 +60,9 @@ interface Browser {
 type Outcome<A> = { readonly kind: "done"; readonly value: A } | { readonly kind: "refused"; readonly refusal: Refusal }
 
 type Callback =
-  | { readonly kind: "settled"; readonly attempt: GoogleAttempt; readonly withdrawn: boolean }
-  | { readonly kind: "exchange"; readonly withdrawn: boolean }
+  | { readonly kind: "late"; readonly error: ReturnError; readonly withdrawn: boolean }
+  | { readonly kind: "settled"; readonly attempt: GoogleAttempt }
+  | { readonly kind: "exchange" }
 
 const Text = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048))
 const ExchangeBody = Schema.Struct({ code: Text, redirectUri: Text, clientId: Text, codeVerifier: Text })
@@ -113,10 +114,20 @@ function cloudPage(error: ReturnError) {
   return json({ error: errorName(error) }, { status: 400, headers: { "referrer-policy": "no-referrer" } })
 }
 
-function returned(browser: Browser, attempt: GoogleAttempt, withdrawn: boolean, code: string | undefined) {
-  if (attempt.returned.tag === "ReturnsCode" && code !== undefined) return backToApp(browser, { code })
-  const error = attempt.returned.tag === "ReturnsError" ? attempt.returned.error : lateCallbackError(attempt)
-  return withdrawn || attempt.target === "CloudPage" ? cloudPage(error) : backToApp(browser, { error: errorName(error) })
+function failedReturn(browser: Browser, error: ReturnError, onCloud: boolean) {
+  return onCloud ? cloudPage(error) : backToApp(browser, { error: errorName(error) })
+}
+
+function returned(browser: Browser, attempt: GoogleAttempt, code: string) {
+  switch (attempt.returned.tag) {
+    case "ReturnsCode": return backToApp(browser, { code })
+    case "ReturnsError": return failedReturn(browser, attempt.returned.error, attempt.target === "CloudPage")
+    case "NotReturned": return failedReturn(browser, lateCallbackError(attempt), attempt.target === "CloudPage")
+    default: {
+      const _exhaustive: never = attempt.returned
+      return _exhaustive
+    }
+  }
 }
 
 effect function step(tx: Tx, key: string, event: Event, now: number, more: Columns = {}) {
@@ -214,7 +225,7 @@ effect function returnWithdrawn(tx: Tx, browser: Browser) {
 effect function consumeCallback(tx: Tx, browser: Browser, query: URLSearchParams, now: number): Callback {
   const withdrawn = try returnWithdrawn(tx, browser)
   const before = try current(tx, browser.key, now)
-  if (before.flow.phase !== "AwaitingCallback") return { kind: "settled", attempt: before, withdrawn }
+  if (before.flow.phase !== "AwaitingCallback") return { kind: "late", error: lateCallbackError(before), withdrawn }
   const callback = callbackOf(query, withdrawn)
   try step(tx, browser.key, { type: "beginCallback", verifierPresent: browser.verifier !== undefined, verifierRequired: true }, now)
   const consumed = (try step(tx, browser.key, {
@@ -224,9 +235,9 @@ effect function consumeCallback(tx: Tx, browser: Browser, query: URLSearchParams
     providerInstalled: (try Deployment).settings.google !== undefined,
     callback
   }, now)).state
-  if (consumed.flow.phase === "ProviderPending") return { kind: "exchange", withdrawn }
-  if (consumed.flow.phase !== "FailureWritePending") return { kind: "settled", attempt: consumed, withdrawn }
-  return { kind: "settled", attempt: (try step(tx, browser.key, { type: "writeFailure", write: "WriteAcknowledged" }, now, { google_verifier: null })).state, withdrawn }
+  if (consumed.flow.phase === "ProviderPending") return { kind: "exchange" }
+  if (consumed.flow.phase !== "FailureWritePending") return { kind: "settled", attempt: consumed }
+  return { kind: "settled", attempt: (try step(tx, browser.key, { type: "writeFailure", write: "WriteAcknowledged" }, now, { google_verifier: null })).state }
 }
 
 effect function finishCallback(browser: Browser, code: string) {
@@ -244,7 +255,7 @@ effect function finishCallback(browser: Browser, code: string) {
     try step(tx, browser.key, { type: "accountResult", success: true }, now, { google_subject: identity.subject, verified_email: identity.verifiedEmail ?? null, given_name: identity.givenName ?? null })
     return (try step(tx, browser.key, { type: "writeSuccess", write: "WriteAcknowledged", selectedStatus: "CompletedState" }, now, { code_digest: tokenDigest(issued) })).state
   })
-  return returned(browser, attempt, false, issued)
+  return returned(browser, attempt, issued)
 }
 
 effect function callback(context: RouteContext) {
@@ -254,8 +265,15 @@ effect function callback(context: RouteContext) {
   if (found === undefined) return cloudPage("ErrStateInvalid")
   const browser = browserOf(found)
   const consumed = try inTransaction((tx: Tx) => consumeCallback(tx, browser, context.query, context.now))
-  if (consumed.kind === "settled") return returned(browser, consumed.attempt, consumed.withdrawn, undefined)
-  return try finishCallback(browser, context.query.get("code") ?? "")
+  switch (consumed.kind) {
+    case "late": return failedReturn(browser, consumed.error, consumed.withdrawn)
+    case "settled": return returned(browser, consumed.attempt, "")
+    case "exchange": return try finishCallback(browser, context.query.get("code") ?? "")
+    default: {
+      const _exhaustive: never = consumed
+      return _exhaustive
+    }
+  }
 }
 
 function bindingOf(row: Row, body: typeof ExchangeBody.Type): CodeBinding {

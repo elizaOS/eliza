@@ -189,11 +189,11 @@ it.live("See the live view I opened (spec/os/android/camera.md, \"Story: See the
   try promise(() => session.stop())
   phone.holdPreviews = true
   phone.calls.length = 0
-  const pending = session.start()
+  const pending = fork promise(() => session.start())
   try promise(() => previewHeld(phone))
   try promise(() => session.stop())
   answerHeld(phone)
-  const late = try promise(() => pending)
+  const late = join pending
   const afterLate = { phase: session.phase, previewing: phone.previewing, calls: [...phone.calls] }
 
   phone.holdPreviews = false

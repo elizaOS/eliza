@@ -56,6 +56,7 @@ import {
   type VoicemailId,
   type VoicemailListing,
   type VoicemailRefusalReason,
+  type VoicemailPcm,
   type VoicemailWriteStatus,
 } from "./definitions/phone.ts"
 
@@ -260,7 +261,7 @@ effect function placeCall(plugin: PhoneNativePlugin, number: string) {
   if (dialable === null || refused.placeStatus === "CallRefused") return refused
   const answer = reply("placeCall", Placed, () => plugin.placeCall({ number: dialable })) catch effect (failure) => {
     const code = failure instanceof NativeRejection ? failure.code : undefined
-    if (code === "role-required" || code === "permission-required") return { status: code, message: failure.reason }
+    if (code === "role-required" || code === "permission-required") return { status: code }
     throw failure
   }
   return placeReport(facts, true, placeEvidence((try answer).status))
@@ -332,11 +333,10 @@ effect function parseVoicemails(raw: unknown) {
   return { state: list.state, voicemails: list.voicemails.map((row): VoicemailEntry => ({ ...row, id: row.id as VoicemailId })) }
 }
 
-effect function parsePcm(raw: unknown): PcmDecode!MalformedReply {
-  const pcm = try parsed("voicemailPcm", Pcm, raw)
-  const bytes = base64Bytes(pcm.data, maxWavBytes)
+effect function decodeOf(wav: VoicemailPcm): PcmDecode!MalformedReply {
+  const bytes = base64Bytes(wav.data, maxWavBytes)
   const samples = bytes === undefined ? 0 : (bytes - WAV_HEADER_BYTES) / 2
-  if (bytes === undefined || !Number.isSafeInteger(samples) || Math.abs(pcm.durationSeconds - samples / VOICEMAIL_PCM_RATE_HZ) > 0.001) {
+  if (bytes === undefined || !Number.isSafeInteger(samples) || Math.abs(wav.durationSeconds - samples / VOICEMAIL_PCM_RATE_HZ) > 0.001) {
     try malformed("voicemailPcm", "The WAV does not match its stated duration")
   }
   return { tag: "DecodedSamples", samples }
@@ -355,7 +355,7 @@ function writtenReply(status: VoicemailWriteStatus, change: VoicemailWrite): Pro
   }
 }
 
-effect function held() {
+effect function held(): Voicemails!! {
   provide machine() {
     const book = try Machine
     const entries = try Ref.make(new Map<number, VoicemailEntry>())
@@ -363,7 +363,11 @@ effect function held() {
   }
 }
 
-type Voicemails = Effect.Success<ReturnType<typeof held>>
+interface Voicemails {
+  readonly book: Machine.Shape
+  readonly entries: Ref.Ref<Map<number, VoicemailEntry>>
+  readonly lock: Semaphore.Semaphore
+}
 
 effect function listing(store: Voicemails): VoicemailListing!! {
   const state = try store.book.get()
@@ -434,19 +438,16 @@ effect function audio(store: Voicemails, plugin: PhoneNativePlugin, id: Voicemai
 effect function pcm(store: Voicemails, plugin: PhoneNativePlugin, id: VoicemailId) {
   const { row, facts } = try stored(store, plugin, id)
   if (!canDecodePcm(try store.book.get(), facts, row, { tag: "Undecodable" })) try refusal(store, id, "audio-not-on-phone")
-  const raw = try nativeCall(PLUGIN, "voicemailPcm", () => plugin.voicemailPcm({ id })) catch effect (failure) => {
-    if (failure instanceof NativeRejection && pcmRejection(failure.code) !== undefined) return undefined
-    throw failure
-  }
-  const failed = raw === undefined
-  const rejected = yieldRejection(raw)
-  const decode = rejected ?? try parsePcm(raw)
-  const step = try orDie(store.book.send({ type: "decodePcm", facts, id: row, decode }))
-  const out = step.out[0]
+  const answer = try exit(reply("voicemailPcm", Pcm, () => plugin.voicemailPcm({ id })))
+  const failure = Exit.isFailure(answer) ? Cause.squash(answer.cause) : undefined
+  const rejected = failure instanceof NativeRejection ? pcmRejection(failure.code) : undefined
+  if (Exit.isFailure(answer) && rejected === undefined) return try failCause(answer.cause)
+  const wav = Exit.isSuccess(answer) ? answer.value : undefined
+  const decode = wav === undefined ? rejected ?? { tag: "Undecodable" } : try decodeOf(wav)
+  const out = (try orDie(store.book.send({ type: "decodePcm", facts, id: row, decode }))).out[0]
   if (out?.tag === "PcmRefused") throw new VoicemailPcmRefused({ id, reason: out.reason })
-  if (failed || raw === undefined) try malformed("voicemailPcm", "No PCM was returned")
-  const pcm = try parsed("voicemailPcm", Pcm, raw)
-  return { ...pcm }
+  if (wav === undefined) return try malformed("voicemailPcm", "No PCM was returned")
+  return { ...wav }
 }
 
 effect function write(store: Voicemails, plugin: PhoneNativePlugin, id: VoicemailId, change: VoicemailWrite) {

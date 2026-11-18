@@ -1,7 +1,8 @@
 // spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"
 import { Effect, Redacted } from "effect";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { isModelProviderFallbackError, isModelFundingAuthorityError } from "@elizaos/core";
+import { isModelProviderFallbackError } from "@elizaos/core";
+const isModelFundingAuthorityError = (e: unknown) => (e as { code?: string }).code === "MODEL_FUNDING_AUTHORITY_FAILED";
 import { registerCloudModels } from "../src/models/cloud-provider.vibe";
 import { probeOwnKeyModels } from "./zz-wp3u2-probe.vibe";
 import { registerOwnKeyModels } from "../src/models/own-key-provider.vibe";

@@ -42,6 +42,11 @@ interface WindowHolds {
   readonly synthesize: string
 }
 
+interface RecordedWindow extends WindowHolds {
+  readonly settled: boolean
+  readonly expiresAt: number
+}
+
 interface Rates {
   readonly microsPerSecond: number
   readonly microsPerCharacter: number
@@ -168,7 +173,7 @@ effect function closeIfSettled(tx: Tx, id: string, now: number): Session!(StoreF
   }
 }
 
-effect function windowHolds(tx: Tx, id: string, window: number): (WindowHolds & { readonly settled: boolean; readonly expiresAt: number }) | undefined !StoreFailure {
+effect function windowHolds(tx: Tx, id: string, window: number): (RecordedWindow | undefined)!StoreFailure {
   const row = (try tx.query("SELECT transcribe_hold, synthesize_hold, settled_at, expires_at FROM speech_windows WHERE session_id = $1 AND number = $2", [id, window]))[0]
   if (row === undefined) return undefined
   return {

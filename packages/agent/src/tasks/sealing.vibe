@@ -1,5 +1,6 @@
 // spec/agent/tasks/store.md, "Storage opens only with a private path, the exclusive lock, a 32-byte key and the launch account"; spec/agent/tasks/store.md, "A sealed record reads as a task only under the launch account's task-record key"
 module node {
+  import { processOwnerUid } from "../host/process-owner.vibe"
   import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from "node:crypto"
   import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
   import { mkdir, open, rename, rm } from "node:fs/promises"
@@ -139,14 +140,14 @@ module node {
   export function privateDirectory(directory: string): void {
     mkdirSync(directory, { recursive: true, mode: 0o700 })
     const status = lstatSync(directory)
-    if (!status.isDirectory() || (status.mode & 0o077) !== 0 || status.uid !== process.getuid?.()) {
+    if (!status.isDirectory() || (status.mode & 0o077) !== 0 || status.uid !== processOwnerUid()) {
       throw storageUnavailable("The task storage directory is not private to this process owner")
     }
   }
 
   export function isPrivateFile(path: string): boolean {
     const status = lstatSync(path, { throwIfNoEntry: false })
-    return status === undefined || (status.isFile() && status.nlink === 1 && (status.mode & 0o077) === 0 && status.uid === process.getuid?.())
+    return status === undefined || (status.isFile() && status.nlink === 1 && (status.mode & 0o077) === 0 && status.uid === processOwnerUid())
   }
 
   const temporaryPath = (path: string) => `${path}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`

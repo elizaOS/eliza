@@ -34,22 +34,21 @@ admitting nothing (the route gate's own rule).
 import types.* from "../../cloud/shared/types"
 import credential as C from "./credential"
 import routes as Routes from "../../agent/access/routes"
-import client as Cc from "../../cloud/client"
-pure def sameMethod(m: Routes::Method, d: Cc::HttpMethod): bool =
-  (m == Routes::Get and d == Cc::Get) or (m == Routes::Post and d == Cc::Post) or (m == Routes::Patch and d == Cc::Patch) or (m == Routes::Delete and d == Cc::Delete)
-pure def samePiece(p: Routes::Piece, seg: Cc::Segment): bool = match seg {
-  | Cc::Literal(l) => p == Routes::Literal({ text: l.text })
-  | Cc::Param(x) => p == Routes::Param
+import client.* from "../../cloud/client"
+pure def sameMethod(m: Routes::Method, d: HttpMethod): bool =
+  (m == Routes::Get and d == Get) or (m == Routes::Post and d == Post) or (m == Routes::Patch and d == Patch) or (m == Routes::Delete and d == Delete)
+pure def samePiece(p: Routes::Piece, seg: Segment): bool = match seg {
+  | Literal(l) => p == Routes::Literal({ text: l.text })
+  | Param(x) => p == Routes::Param
 }
 type PathProgress = { at: int, ok: bool }
-pure def samePath(t: Routes::Route, d: Cc::DeviceRoute): bool =
+pure def samePath(t: Routes::Route, d: DeviceRoute): bool =
   t.path.length() == d.path.length() and
-    t.path.foldl({ at: 0, ok: true }, (c, p) => { at: c.at + 1, ok: c.ok and samePiece(p, d.path.nthOr(c.at, Cc::Param({ name: "" }))) }).ok
-pure def deviceRouteOf(t: Routes::Route): List[Cc::DeviceRoute] = Cc::deviceRoutes.select(d => sameMethod(t.method, d.method) and samePath(t, d))
-pure def lit(text: str): Cc::Segment = Cc::Literal({ text: text })
-pure def under(d: Cc::DeviceRoute, names: List[str]): bool =
-  names.foldl({ at: 0, ok: true }, (c, n) => { at: c.at + 1, ok: c.ok and d.path.nthOr(c.at, lit("")) == lit(n) }).ok
-pure def signInOwned(d: Cc::DeviceRoute): bool =
+    t.path.foldl({ at: 0, ok: true }, (c, p) => { at: c.at + 1, ok: c.ok and samePiece(p, d.path.nthOr(c.at, Param({ name: "" }))) }).ok
+pure def deviceRouteOf(t: Routes::Route): List[DeviceRoute] = deviceRoutes.select(d => sameMethod(t.method, d.method) and samePath(t, d))
+pure def under(d: DeviceRoute, names: List[str]): bool =
+  names.foldl({ at: 0, ok: true }, (c, n) => { at: c.at + 1, ok: c.ok and d.path.nthOr(c.at, Literal({ text: "" })) == Literal({ text: n }) }).ok
+pure def signInOwned(d: DeviceRoute): bool =
   under(d, List("api", "v1", "auth")) or under(d, List("api", "v1", "app-auth")) or under(d, List("api", "v1", "api-keys"))
     or under(d, List("api", "public")) or under(d, List("api", "v1", "voice", "speech"))
 pure def pageRoute(t: Routes::Route): bool =
@@ -81,18 +80,18 @@ type CallRefusal = NoOrigin | NotListed | BodyTooLarge | HeaderRefused | SignInR
 type CallPlan = Send({ attach: Attach }) | RefreshSessionFirst | Refuse({ why: CallRefusal })
 pure def holdingOf(c: C::DeviceCredential): Holding =
   { key: C::activeVersion(c), sessionHeld: c.session != C::NoSession, sessionLive: C::sessionUsable(c) }
-pure def sessionOnly(auth: Cc::AuthClass): bool = auth == Cc::Session or auth == Cc::FreshSession or auth == Cc::StepUp
-pure def attachFor(h: Holding, auth: Cc::AuthClass): CallPlan =
-  if (auth == Cc::Public) Send({ attach: Bare })
+pure def sessionOnly(auth: AuthClass): bool = auth == Session or auth == FreshSession or auth == StepUp
+pure def attachFor(h: Holding, auth: AuthClass): CallPlan =
+  if (auth == Public) Send({ attach: Bare })
   else if (sessionOnly(auth)) (if (h.sessionLive) Send({ attach: WithSession({ version: h.key }) }) else if (h.sessionHeld) RefreshSessionFirst else Refuse({ why: ReauthRequired }))
   else if (h.key >= 1) Send({ attach: WithKey({ version: h.key }) })
   else Refuse({ why: SignInRequired })
 pure val hValues = Set({ key: 0, sessionHeld: false, sessionLive: false }, { key: 1, sessionHeld: false, sessionLive: false },
   { key: 2, sessionHeld: true, sessionLive: false }, { key: 2, sessionHeld: true, sessionLive: true })
-pure val authValues = Set(Cc::Public, Cc::KeyOrSession, Cc::Session, Cc::FreshSession, Cc::StepUp)
+pure val authValues = Set(Public, KeyOrSession, Session, FreshSession, StepUp)
 pure def keyOf(a: Attach): int = match a { | WithKey(k) => k.version | _ => 0 }
 pure def sentKey(p: CallPlan): int = match p { | Send(s) => keyOf(s.attach) | _ => 0 }
-pure def lawASessionRouteNeverCarriesTheKey(h: Holding, auth: Cc::AuthClass): bool = sessionOnly(auth) implies sentKey(attachFor(h, auth)) == 0
-pure def lawAKeyRouteWithoutAKeyIsNotSent(h: Holding, auth: Cc::AuthClass): bool =
-  (auth == Cc::KeyOrSession and h.key < 1) implies attachFor(h, auth) == Refuse({ why: SignInRequired })
+pure def lawASessionRouteNeverCarriesTheKey(h: Holding, auth: AuthClass): bool = sessionOnly(auth) implies sentKey(attachFor(h, auth)) == 0
+pure def lawAKeyRouteWithoutAKeyIsNotSent(h: Holding, auth: AuthClass): bool =
+  (auth == KeyOrSession and h.key < 1) implies attachFor(h, auth) == Refuse({ why: SignInRequired })
 ```

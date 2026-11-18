@@ -40,6 +40,7 @@ export interface BoundModels {
   answerCall(id: number, now: number): void!!
   refuseCall(id: number, now: number, error: CloudError): void!!
   read(): BindingView!!
+  state(): ModelBinding!!
 }
 
 export error BindRefused
@@ -176,5 +177,6 @@ export effect function bindModels(launch: LaunchDocument, frame: LaunchFrame) {
       try orDie(models.send({ type: "refuseCall", id, now, e: error }))
     },
     read,
+    state: () => models.get(),
   } satisfies BoundModels
 }

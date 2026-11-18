@@ -3,18 +3,18 @@
 The messages module (`packages/os/android/messages/`, from
 `plugins/plugin-native-messages/android`). A host that declares telephony
 subclasses the abstract `TelephonyPlugin` under its own plugin name and
-registers it only on a verified system image ([the bridge](./bridge.md));
-the client's default name is `ElizaTelephony`. The owner and Android role
-policy stay the host's. The operations `sms-send` and `mms-send`, their
-shape checks and the capabilities `sms.send.v1`, `mms.send.v1` and
+registers it only on a verified system image; calls are admitted as
+[the bridge](./bridge.md) says. The operations `sms-send` and `mms-send`,
+their shape checks and the capabilities `sms.send.v1`, `mms.send.v1` and
 `messages.read.v1` are the agent's
 ([operations](../../agent/deviceActions/operations.md),
 [capabilities](../../agent/deviceActions/capabilities.md)); this spec keeps
 what Android must confirm before a send, what the send journal answers, what
-a receipt may claim, what is written to Android's providers, what a notice
-action may do and what a deletion may report. Carrier delivery is never
-inferred. Calls and voicemail are [phone](./phone.md)'s and
-[voicemail](./voicemail.md)'s.
+a receipt may claim, what is written to Android's providers, what a
+new-message notice action may do and what a deletion may report. Carrier
+delivery is never inferred. Calls and voicemail are [phone](./phone.md)'s
+and [voicemail](./voicemail.md)'s; the agent's own notices are
+[notice routes](./noticeRoutes.md)'.
 
 ## Story: Send only what I reviewed, once
 
@@ -29,39 +29,44 @@ inferred. Calls and voicemail are [phone](./phone.md)'s and
 A send is admitted only from the unlocked phone in front, with the send
 grant and a phone that can send texts. The send captures its operation ID
 before its journal lookup. A usable journal answer queues the native review
-dialog, which the visible owner can approve once. A cancel for the exact
-operation retires it before it is acknowledged; a background or destroyed
-owner also retires it; a cancel for another ID changes nothing. Retirement
-before dispatch settles as cancelled with no platform call. Once Android has
-accepted the dispatch, a cancel is refused, and the real or unknown result
-stays reportable even if the owner goes away.
+dialog, which the visible owner approves once; a send the owner composed
+and tapped Send on in the host's own composer is its own review. A cancel
+for the exact operation retires it until it is acknowledged; a background or
+destroyed owner also retires it; a cancel for another ID changes nothing.
+Retirement before dispatch settles as cancelled, and a provider row the
+default SMS app could not prepare settles as refused, both with no platform
+call. Once Android has accepted the dispatch, a cancel is refused, and the
+real or unknown result stays reportable even if the owner goes away.
 
 ```quint
 import bridge.* from "./bridge"
+type ReviewSource = NativeDialog | OwnerComposer
 type ReviewPhase = NoReview | ReadingJournal | MainQueued | Reviewing | ApprovedForDispatch | NativeDispatched | ReviewSettled
 type ReviewResult = NoReviewResult | ReviewCancelled | ReviewRefused | ReviewSubmitted | ReviewFailed | ReviewUnknown
 type SmsReview = {
-  phase: ReviewPhase, operationId: str, retired: bool, cancelAcknowledged: bool,
+  phase: ReviewPhase, source: ReviewSource, operationId: str, retired: bool, cancelAcknowledged: bool,
   dispatched: bool, result: ReviewResult
 }
 pure val initial: SmsReview = {
-  phase: NoReview, operationId: "", retired: false, cancelAcknowledged: false,
+  phase: NoReview, source: NativeDialog, operationId: "", retired: false, cancelAcknowledged: false,
   dispatched: false, result: NoReviewResult
 }
 pure val sendCall: BridgeCall = { need: WhileUnlocked, needsGrant: true, needsFeature: true }
-pure def canBeginReview(s: SmsReview, operationId: str, admission: Admission): bool =
+pure def canBeginReview(s: SmsReview, operationId: str, source: ReviewSource, admission: Admission): bool =
   s.phase == NoReview and operationId != "" and admission == CallAdmitted
-pure def beginReview(s: SmsReview, operationId: str, admission: Admission): SmsReview =
-  { ...s, phase: ReadingJournal, operationId: operationId }
+pure def beginReview(s: SmsReview, operationId: str, source: ReviewSource, admission: Admission): SmsReview =
+  { ...s, phase: ReadingJournal, source: source, operationId: operationId }
 pure def canFinishLookup(s: SmsReview): bool = s.phase == ReadingJournal
 pure def finishLookup(s: SmsReview, journalAllowsReview: bool): SmsReview =
   if (s.retired) { ...s, phase: ReviewSettled, result: ReviewCancelled }
   else if (journalAllowsReview) { ...s, phase: MainQueued }
   else { ...s, phase: ReviewSettled, result: ReviewRefused }
-pure def canShowReview(s: SmsReview): bool = s.phase == MainQueued and not(s.retired)
+pure def canShowReview(s: SmsReview): bool = s.phase == MainQueued and s.source == NativeDialog and not(s.retired)
 pure def showReview(s: SmsReview): SmsReview = { ...s, phase: Reviewing }
 pure def canApproveReview(s: SmsReview): bool = s.phase == Reviewing and not(s.retired)
 pure def approveReview(s: SmsReview): SmsReview = { ...s, phase: ApprovedForDispatch }
+pure def canAcceptComposerSend(s: SmsReview): bool = s.phase == MainQueued and s.source == OwnerComposer and not(s.retired)
+pure def acceptComposerSend(s: SmsReview): SmsReview = { ...s, phase: ApprovedForDispatch }
 pure def canRejectReview(s: SmsReview): bool = s.phase == Reviewing and not(s.retired)
 pure def rejectReview(s: SmsReview): SmsReview = { ...s, phase: ReviewSettled, result: ReviewCancelled }
 pure def pendingReview(s: SmsReview): bool = s.phase != NoReview and s.phase != ReviewSettled
@@ -73,6 +78,8 @@ pure def retireReview(s: SmsReview): SmsReview = { ...s, retired: true }
 pure def canSettleRetiredReview(s: SmsReview): bool =
   s.retired and (s.phase == MainQueued or s.phase == Reviewing or s.phase == ApprovedForDispatch)
 pure def settleRetiredReview(s: SmsReview): SmsReview = { ...s, phase: ReviewSettled, result: ReviewCancelled }
+pure def canRefuseOutbox(s: SmsReview): bool = s.phase == ApprovedForDispatch and not(s.retired)
+pure def refuseOutbox(s: SmsReview): SmsReview = { ...s, phase: ReviewSettled, result: ReviewRefused }
 pure def canDispatchApproved(s: SmsReview): bool = s.phase == ApprovedForDispatch and not(s.retired) and not(s.dispatched)
 pure def dispatchApproved(s: SmsReview): SmsReview = { ...s, phase: NativeDispatched, dispatched: true }
 pure def canReportDispatch(s: SmsReview, receipt: ReviewResult): bool =
@@ -90,8 +97,12 @@ pure def stepKnownResultPersists(before: SmsReview, after: SmsReview): bool =
   before.result != NoReviewResult implies after.result == before.result
 pure def stepOperationNeverChanges(before: SmsReview, after: SmsReview): bool =
   before.operationId != "" implies after.operationId == before.operationId
+pure def stepDispatchNeedsApproval(before: SmsReview, after: SmsReview): bool =
+  (after.dispatched and not(before.dispatched)) implies before.phase == ApprovedForDispatch
 pure def sometimesCancelledBeforeInvoke(s: SmsReview): bool = s.result == ReviewCancelled and s.cancelAcknowledged
 pure def sometimesResultSurvivesRetirement(s: SmsReview): bool = s.result == ReviewSubmitted and s.retired
+pure def sometimesComposerSendDispatched(s: SmsReview): bool = s.source == OwnerComposer and s.phase == NativeDispatched
+pure def sometimesSendRefusedWithoutDispatch(s: SmsReview): bool = s.result == ReviewRefused and not(s.dispatched)
 ```
 
 ### A repeated operation ID reads its journal record and never sends again
@@ -145,17 +156,17 @@ more evidence is awaited for a record.
 pure val evidenceWindowDays = 7
 pure def recoverAfterRestart(r: JournalRecord): JournalRecord =
   if (r == JournalDispatching or r == JournalSubmitted) JournalUnknown else r
-pure def settleEvidence(r: JournalRecord, groupMessage: bool, allSent: bool, allDelivered: bool): JournalRecord =
+pure def settleEvidence(r: JournalRecord, mms: bool, allSent: bool, allDelivered: bool): JournalRecord =
   if (r == JournalSubmitted and allSent) JournalSent
-  else if (r == JournalSent and allDelivered and not(groupMessage)) JournalDelivered
+  else if (r == JournalSent and allDelivered and not(mms)) JournalDelivered
   else r
 pure def lawInterruptedDispatchIsUnknownAndNotResent(sameContent: bool, permitted: bool, parts: int): bool =
   recoverAfterRestart(JournalDispatching) == JournalUnknown and
     not(planSend(recoverAfterRestart(JournalDispatching), sameContent, permitted, parts).dispatch)
-pure def lawGroupMessageNeverDelivered(r: JournalRecord, allSent: bool, allDelivered: bool): bool =
+pure def lawMmsIsNeverDelivered(r: JournalRecord, allSent: bool, allDelivered: bool): bool =
   settleEvidence(r, true, allSent, allDelivered) == JournalDelivered implies r == JournalDelivered
-pure def lawSentNeedsEveryReceipt(r: JournalRecord, groupMessage: bool, allDelivered: bool): bool =
-  settleEvidence(r, groupMessage, false, allDelivered) != JournalSent or r == JournalSent
+pure def lawSentNeedsEveryReceipt(r: JournalRecord, mms: bool, allDelivered: bool): bool =
+  settleEvidence(r, mms, false, allDelivered) != JournalSent or r == JournalSent
 ```
 
 ### A message's reported status is supported by the evidence of every part
@@ -165,7 +176,6 @@ delivery evidence; a part is delivered only after it was sent. A cancelled
 or denied send has no evidence. Submitted, sent and delivered need at least one
 part for every recipient and nothing else; submitted needs no part to have
 failed; sent needs every part sent; delivered needs every part delivered.
-An MMS result carries no parts and is never delivered.
 
 ```quint
 type PartState = PartUnknown | PartSucceeded | PartFailed
@@ -183,7 +193,6 @@ pure def statusSupported(status: SendStatus, evidence: List[PartEvidence], recip
    else if (status == StatusSent) recipientsCovered(evidence, recipients) and evidence.every(p => p.sentState == PartSucceeded)
    else if (status == StatusDelivered) recipientsCovered(evidence, recipients) and evidence.every(p => p.deliveryState == PartSucceeded)
    else true)
-pure def mmsStatusAllowed(status: SendStatus): bool = status != StatusDelivered
 pure val evidenceValues = Set(
   List(),
   List({ recipientIndex: 0, sentState: PartSucceeded, deliveryState: PartSucceeded }),
@@ -198,31 +207,6 @@ pure def lawSentNeedsEveryPartSent(evidence: List[PartEvidence], recipients: int
   statusSupported(StatusSent, evidence, recipients) implies (evidence.length() > 0 and evidence.every(p => p.sentState == PartSucceeded))
 pure def lawRefusedSendHasNoParts(evidence: List[PartEvidence], recipients: int): bool =
   (statusSupported(StatusCancelled, evidence, recipients) or statusSupported(StatusDenied, evidence, recipients)) implies evidence.length() == 0
-pure def lawMmsIsNeverDelivered(status: SendStatus): bool = mmsStatusAllowed(status) iff status != StatusDelivered
-```
-
-### An outgoing message only moves forward, and only a review that never left the app or a refused send may be reviewed again
-
-A handoff ends the app's part; a direct send records what the radio
-reports. Handed off, delivered, failed and unknown are final. A message that
-may exist is never offered again: only a review that never left the app, or
-a send the radio refused, may be offered again, and then only as a new
-review with a new operation ID. No result permits an automatic repeat.
-
-```quint
-type OutgoingState = OutReviewed | OutHandedOff | OutDispatched | OutSent | OutDelivered | OutFailed | OutcomeUnknown
-pure def outgoingMayMove(origin: OutgoingState, target: OutgoingState): bool =
-  if (origin == OutReviewed) target == OutHandedOff or target == OutDispatched or target == OutFailed
-  else if (origin == OutDispatched) target == OutSent or target == OutFailed or target == OutcomeUnknown
-  else if (origin == OutSent) target == OutDelivered
-  else false
-pure def mayBeReviewedAgain(outgoing: OutgoingState): bool = outgoing == OutReviewed or outgoing == OutFailed
-pure def outgoingFinal(outgoing: OutgoingState): bool =
-  outgoing == OutHandedOff or outgoing == OutDelivered or outgoing == OutFailed or outgoing == OutcomeUnknown
-pure def lawFinalStatesNeverMove(origin: OutgoingState, target: OutgoingState): bool = outgoingFinal(origin) implies not(outgoingMayMove(origin, target))
-pure def lawNothingReturnsToReview(origin: OutgoingState): bool = not(outgoingMayMove(origin, OutReviewed))
-pure def lawPossiblySentIsNeverReviewedAgain(outgoing: OutgoingState): bool =
-  (outgoing == OutHandedOff or outgoing == OutDispatched or outgoing == OutSent or outgoing == OutDelivered or outgoing == OutcomeUnknown) implies not(mayBeReviewedAgain(outgoing))
 ```
 
 ### Only the owner's reviewed sends and incoming messages are written to the Android providers
@@ -295,18 +279,6 @@ pure def lawPartialProviderFailureKeepsNotice(work: NoticeWork): bool =
   work == MarkConversationRead implies (not(noticeDismissed(work, true, false)) and not(noticeDismissed(work, false, true)))
 ```
 
-### Marking a conversation read from the app changes nothing unless the app is the default SMS app
-
-The owner marks a conversation read up to the newest message shown. Only
-the default SMS app may keep read state, so elsewhere the answer says the
-app is not the default and that no row changed.
-
-```quint
-pure def readMarkerConsistent(defaultSmsApp: bool, updated: int): bool = updated >= 0 and (defaultSmsApp or updated == 0)
-pure val updatedValues = Set(-1, 0, 2)
-pure def lawNoReadStateWithoutTheRole(updated: int): bool = readMarkerConsistent(false, updated) iff updated == 0
-```
-
 ## Story: Delete one message I chose
 
 > As the person, I want to delete exactly the message I selected and
@@ -320,8 +292,7 @@ that is gone answers not-found, one whose identity changed answers stale,
 and a draft, queued, outbox or failed row belongs to a send and answers
 not-settled; none of these is deleted. Only a removal Android reported is
 `Deleted`; a delete that removed nothing is explained by a second read, and
-a lost reply or an unexplained count is unknown, which never grants a retry
-or hides the message. A deletion never sends, cancels a send or retries.
+a lost reply or an unexplained count is unknown, never deleted.
 
 ```quint
 type RowSeen = RowMissing | RowMoved | RowInSend | RowSettled
