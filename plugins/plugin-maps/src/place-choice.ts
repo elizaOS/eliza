@@ -83,15 +83,14 @@ export function dominantPlace(
   const pool = local.length > 0 ? local : places;
   const [first, ...rest] = pool;
   if (!first) return undefined;
-  if (rest.length === 0) return first;
   const away = (place: PlaceRef) =>
     metersBetween(first.coordinates, place.coordinates);
-  if (rest.every((place) => away(place) <= SAME_SITE_METERS)) return first;
   const keys = queryKeys(query);
   const exact = (place: PlaceRef) => keys.includes(placeNameKey(place.name));
   const matches = (place: PlaceRef) =>
     keys.some((key) => contains(placeNameKey(place.name), key));
   if (!matches(first)) return undefined;
+  if (rest.every((place) => away(place) <= SAME_SITE_METERS)) return first;
   const firstName = placeNameKey(first.name);
   // Another branch of the same name in the same area: "Starbucks".
   if (
@@ -178,11 +177,6 @@ export function choiceIndex(
     : undefined;
 }
 
-/** A short reply that reads as choosing one of several numbered options. */
-export function isChoiceReply(reply: string | undefined): boolean {
-  return choiceIndex(reply, 10) !== undefined;
-}
-
 export type PlaceChoiceField =
   | "originQuery"
   | "destinationQuery"
@@ -218,10 +212,7 @@ export interface PendingPlaceChoice {
   places: PlaceRef[];
   /** Every field's request words, so a continuation needs none restated. */
   queries: Partial<Record<PlaceChoiceField, string>>;
-  /** Fields already settled, with the words that settled them. */
-  resolved: Partial<
-    Record<PlaceChoiceField, { query: string; place: PlaceRef }>
-  >;
+  resolved: Partial<Record<PlaceChoiceField, PlaceRef>>;
   travelMode?: TravelMode;
   expiresAt: number;
 }
@@ -305,23 +296,20 @@ export function placeLabel(place: PlaceRef): string {
 }
 
 /**
- * The option a reply or a restated query picks from an open question: an
+ * The option the owner picks from an open question: an
  * ordinal ("the first one"), the option's own label or name, or its id.
  */
 export function chosenPlace(
   choice: PendingPlaceChoice,
   reply: string | undefined,
-  query: string | undefined,
 ): PlaceRef | undefined {
-  const index =
-    choiceIndex(reply, choice.places.length) ??
-    choiceIndex(query, choice.places.length);
+  const index = choiceIndex(reply, choice.places.length);
   if (index !== undefined) return choice.places[index];
-  if (!query) return undefined;
-  const key = placeNameKey(query);
+  if (!reply) return undefined;
+  const key = placeNameKey(reply);
   const byLabel = choice.places.filter(
     (place) =>
-      place.providerPlaceId === query ||
+      place.providerPlaceId === reply ||
       placeNameKey(placeLabel(place)) === key,
   );
   if (byLabel.length === 1) return byLabel[0];
@@ -329,11 +317,4 @@ export function chosenPlace(
     (place) => placeNameKey(place.name) === key,
   );
   return byName.length === 1 ? byName[0] : undefined;
-}
-
-/** True when two request phrasings name the same thing ("the Ferry Building"). */
-export function sameQuery(a: string | undefined, b: string | undefined) {
-  return (
-    a !== undefined && b !== undefined && placeNameKey(a) === placeNameKey(b)
-  );
 }

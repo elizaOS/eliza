@@ -409,6 +409,38 @@ describe("a reply binds to the question just asked", () => {
     ).toBeUndefined();
   });
 
+  it("keeps the supplied destination coordinates and routes from the origin the owner chose", async () => {
+    const { service, requests } = cloud();
+    const ask = await say(
+      service,
+      "walking directions from Starbucks to my pin",
+      {
+        originQuery: "Starbucks",
+        destinationName: "My pin",
+        destinationLatitude: GOLDEN_GATE_PARK.latitude,
+        destinationLongitude: GOLDEN_GATE_PARK.longitude,
+        travelMode: "walk",
+      },
+    );
+    expect(ask.data).toMatchObject({ missingFields: ["originQuery"] });
+    const answer = await say(service, "the second one", {
+      originName: "First match",
+      originLatitude: FERRY_BUILDING.latitude,
+      originLongitude: FERRY_BUILDING.longitude,
+      travelMode: "drive",
+    });
+    expect(answer).toMatchObject({
+      success: true,
+      data: {
+        route: {
+          origin: { providerPlaceId: "ChIJ_starbucks_union_sq_01" },
+          destination: { name: "My pin", coordinates: GOLDEN_GATE_PARK },
+        },
+      },
+    });
+    expect(routes(requests)[0]?.body.mode).toBe("walk");
+  });
+
   it("does not carry a question into another conversation", async () => {
     const { service } = cloud();
     await say(service, "directions from Starbucks to Golden Gate Park", {
@@ -516,6 +548,16 @@ describe("dominantPlace", () => {
         { latitude: 37.7955, longitude: -122.3937 },
       ),
     ).toBe(local);
+    expect(
+      dominantPlace(
+        "Union Square",
+        [
+          ref("Union Square", 40.7359, -73.9911),
+          ref("Ferry Terminal", 37.792, -122.398),
+        ],
+        { latitude: 37.7955, longitude: -122.3937 },
+      ),
+    ).toBeUndefined();
   });
 });
 

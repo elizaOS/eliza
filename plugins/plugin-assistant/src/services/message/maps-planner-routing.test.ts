@@ -333,7 +333,14 @@ describe("a reply to a Maps place question continues the operation that asked", 
           operation: open,
           field: open === "route" ? "originQuery" : "placeQuery",
           query: "Starbucks",
-          places: [],
+          places: ["Market St", "Powell St"].map((street, index) => ({
+            provider: "maps",
+            providerPlaceId: street,
+            name: "Starbucks",
+            formattedAddress: street,
+            coordinates: { latitude: 37.79, longitude: -122.4 - index / 100 },
+            categories: [],
+          })),
           queries: {},
           resolved: {},
         },
@@ -408,6 +415,10 @@ describe("a reply to a Maps place question continues the operation that asked", 
       },
     );
     expect(handler.plan.requiresTool).toBe(false);
+    expect(handler.plan.candidateActions).toEqual([]);
+  });
+  it("leaves an ordinal outside the choices offered to the planner", async () => {
+    const handler = await evaluate("the third one", "route");
     expect(handler.plan.candidateActions).toEqual([]);
   });
   it("leaves the reply alone when no Maps question is open", async () => {
@@ -547,6 +558,13 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     ["directions to LAX", ["MAPS_ROUTE", "MAPS_NAVIGATION_START"]],
     // One capitalised word: a well-known place, or an explicit travel verb.
     ["go to Starbucks", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to starbucks", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to mcdonald’s", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to 7-Eleven", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    [
+      "go to new york botanical garden",
+      ["MAPS_NAVIGATION_START", "MAPS_ROUTE"],
+    ],
     ["go to Walgreens", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
     ["let's go to Safeway", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
     ["go to the Presidio", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],

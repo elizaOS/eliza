@@ -15,7 +15,7 @@ import {
 import { MAPS_VIEW_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
 import {
-  isChoiceReply,
+  chosenPlace,
   PLACE_CHOICE_ACTIONS,
   type PlaceChoiceOperation,
 } from "./place-choice.js";
@@ -202,8 +202,63 @@ const PROPER_NAME = /^\p{Lu}[\p{Ll}'’]/u;
  * retail, hospitality and fuel chains with physical locations. Other names
  * stay with the planner unless the user says "take me to" or "navigate to".
  */
-const SINGLE_WORD_CHAINS =
-  /^(?:Starbucks|Peet['’]?s|Dunkin['’]?|McDonald['’]?s|Wendy['’]?s|Denny['’]?s|Applebee['’]?s|Chili['’]?s|Arby['’]?s|Popeyes|Chipotle|Panera|Walgreens|Safeway|Walmart|Costco|Target|Kroger|Albertsons|Publix|Wegmans|Meijer|Aldi|Lidl|Ikea|Lowe['’]?s|Macy['’]?s|Kohl['’]?s|Nordstrom|Sephora|Ulta|Petco|PetSmart|Staples|Kmart|Hilton|Marriott|Hyatt|Sheraton|Westin|Chevron|Exxon|Texaco|Valero|Arco)$/u;
+const SINGLE_TOKEN_BUSINESS_NAMES = new Set([
+  "7-eleven",
+  "albertsons",
+  "aldi",
+  "applebees",
+  "arbys",
+  "arco",
+  "carrefour",
+  "chevron",
+  "chilis",
+  "chipotle",
+  "costco",
+  "dennys",
+  "dunkin",
+  "exxon",
+  "familymart",
+  "h&m",
+  "hilton",
+  "hyatt",
+  "ikea",
+  "in-n-out",
+  "kmart",
+  "kohls",
+  "kroger",
+  "lawson",
+  "lidl",
+  "lowes",
+  "macys",
+  "marriott",
+  "mcdonalds",
+  "meijer",
+  "nordstrom",
+  "panera",
+  "peets",
+  "petco",
+  "petsmart",
+  "popeyes",
+  "publix",
+  "safeway",
+  "sephora",
+  "sheraton",
+  "staples",
+  "starbucks",
+  "target",
+  "tesco",
+  "texaco",
+  "ulta",
+  "uniqlo",
+  "valero",
+  "walgreens",
+  "walmart",
+  "wegmans",
+  "wendys",
+  "westin",
+  "yodobashi",
+  "zara",
+]);
 /**
  * "SFO", "JFK Terminal 4", "UCSF Medical Center": an all-caps code of two to
  * five letters, unless it is a common file, software or time abbreviation.
@@ -228,7 +283,7 @@ const SPOKEN_NOT_A_PLACE_IDIOM =
   /^(?:sleep|bed|work|school|church|war|waste|town|pieces|great\s+lengths)\b/u;
 /** "go to the right place", "go to see a movie", "go to the second floor". */
 const SPOKEN_NOT_A_PLACE_FIRST_WORD =
-  /^(?:right|wrong|left|new|old|main|current|latest|original|default|following|above|below|more|less|all|any|some|every|each|no|one|two|three|second|third|fourth|fifth|see|watch|pick|check|look|find|buy|grab|eat|drink|meet|visit|help|talk|ask|tell|say|take|bring|go|come|stay|lunch|dinner|breakfast|brunch|class|practice|rehearsal|apple|microsoft|app|apps|play|android|iphone|ios|windows|mac|phone|device|system|control|bing|yahoo|duckduckgo)\b/u;
+  /^(?:right|wrong|left|main|current|latest|original|default|following|above|below|more|less|all|any|some|every|each|no|one|two|three|second|third|fourth|fifth|see|watch|pick|check|look|find|buy|grab|eat|drink|meet|visit|help|talk|ask|tell|say|take|bring|go|come|stay|lunch|dinner|breakfast|brunch|class|practice|rehearsal|apple|microsoft|app|apps|play|android|iphone|ios|windows|mac|phone|device|system|control|bing|yahoo|duckduckgo)\b/u;
 /** A word that makes the phrase about someone, something, a time or more work. */
 const SPOKEN_NOT_A_PLACE_WORD =
   /\b(?:i|me|my|mine|you|your|yours|we|us|our|he|him|his|she|her|they|them|their|it|its|this|that|these|those|today|tomorrow|tonight|yesterday|now|later|soon|morning|afternoon|evening|weekend|with|for|and|or|but|so|to|about|after|before|without|because|until|while)\b/u;
@@ -269,10 +324,10 @@ export function mapsGoToDestination(text: string): string | undefined {
     compoundDestination(destination) ||
     containsResourceAddress(destination) ||
     !(
-      (PROPER_NAME.test(name) &&
-        (name !== destination ||
-          /\s/u.test(name) ||
-          SINGLE_WORD_CHAINS.test(name))) ||
+      SINGLE_TOKEN_BUSINESS_NAMES.has(
+        name.toLowerCase().replace(/['’]/gu, ""),
+      ) ||
+      (PROPER_NAME.test(name) && (name !== destination || /\s/u.test(name))) ||
       (code !== undefined &&
         (code === name ||
           (PLACE_NAME_CUE.test(name) &&
@@ -355,8 +410,8 @@ function answeredPlaceChoice(
   if (!(service instanceof MapsService)) return undefined;
   // Looked up for every owner turn, so a turn that moves on closes the
   // question and a later "the first one" is left to whatever asked it.
-  const operation = service.placeChoices.get(message)?.operation;
-  return operation && isChoiceReply(text) ? operation : undefined;
+  const choice = service.placeChoices.get(message);
+  return choice && chosenPlace(choice, text) ? choice.operation : undefined;
 }
 
 /**
