@@ -125,7 +125,7 @@ public final class CloudPasswordBackup {
 
   public synchronized Uri begin(Purpose purpose) throws Exception {
     CloudDeviceAccount.Session account = accounts.session();
-    if (account == null) throw new IOException("Sign in to Grace first");
+    if (account == null) throw new IOException("Sign in on this device first");
     String verifier = randomValue(), state = randomValue();
     String challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(
       MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));
