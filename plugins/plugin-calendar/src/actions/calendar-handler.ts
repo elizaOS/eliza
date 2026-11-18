@@ -4567,24 +4567,32 @@ async function inferCreateEventDetails(
     "Return the creation fields for this final request. Earlier completed tasks and greetings are not the current request.",
   ].join("\n");
 
-  const result = await runLifeOpsJsonModel<Record<string, unknown>>(
-    {
-      runtime,
-      prompt,
-      actionType: "lifeops.calendar.extract_create_event",
-      temperature: 0,
-      responseSchema: createExtractionSchema(
-        userSources[userSources.length - 1],
-      ),
-      // Schema-bound extraction on the reply's critical path; default provider
-      // reasoning was ~80% of its completion tokens on qwen-3.8-27b.
-      thinking: "off",
-      failureMessage: "Calendar create-event extraction model call failed",
-      source: "action:calendar",
-    },
-    hostDeps,
-  );
-  const extracted = result?.parsed ?? {};
+  const extraction: CalendarModelCallArgs = {
+    runtime,
+    prompt,
+    actionType: "lifeops.calendar.extract_create_event",
+    temperature: 0,
+    responseSchema: createExtractionSchema(userSources[userSources.length - 1]),
+    // Schema-bound extraction on the reply's critical path; default provider
+    // reasoning was ~80% of its completion tokens on qwen-3.8-27b.
+    thinking: "off",
+    failureMessage: "Calendar create-event extraction model call failed",
+    source: "action:calendar",
+  };
+  const result = await runLifeOpsJsonModel(extraction, hostDeps);
+  let extracted = result?.parsed ?? {};
+  if (result && Object.keys(extracted).length === 0) {
+    // A provider can accept the structured request and return no fields. Recover
+    // once from the original conversation, before any write or authority checks.
+    const retry = await runLifeOpsJsonModel(
+      {
+        ...extraction,
+        prompt: `${prompt}\nThe last extraction returned no fields. Resolve the final request with its relevant previous turns and output one complete object matching the response schema. Preserve the original evidence quotes. If a required detail is still missing, return a clarification object.`,
+      },
+      hostDeps,
+    );
+    extracted = retry?.parsed ?? {};
+  }
   if (Object.keys(extracted).length === 0) {
     throw new CalendarServiceError(
       400,
