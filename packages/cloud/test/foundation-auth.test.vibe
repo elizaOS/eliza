@@ -6,10 +6,14 @@ import { readStripeSubscription, stripeClient } from "../src/billing/stripe-obse
 import type { BillingSnapshot } from "../src/billing/snapshot.vibe"
 import type { CommandView } from "../src/billing/commands.vibe"
 import { listening, respond } from "../src/http/transport.vibe"
-import { json, type Route, type RouteContext } from "../src/http/routes.vibe"
+import { json, type Route, type RouteContext, type CloudContext } from "../src/http/routes.vibe"
 import type { RouteClass } from "../src/http/request-auth.vibe"
 import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
 import { tokenDigest } from "../src/shared/sealing.vibe"
+import { Refused } from "../src/http/refusal.vibe"
+import { addCredits } from "../src/billing/funds.vibe"
+import { admitWindow, openSocket, retire, settleWindow, sessionSpeechRoutes } from "../src/services/speech-session.vibe"
+import { manualClock } from "./support/clock.ts"
 import { migrate, Store, storeLayer } from "../src/store/store.vibe"
 import { startFakeServer, type FakeServer, type FakeHandler } from "./support/fakes.ts"
 import { callCloud, type CallInit } from "./support/http.ts"
@@ -51,6 +55,7 @@ interface HttpFixture {
   readonly fakes: FakeServer
   readonly store: Store.Shape
   readonly call: (path: string, token?: string, init?: CallInit) => ReturnType<typeof callHttp>
+  inside<A, E>(body: A!E!CloudContext): A!E
 }
 
 function callHttp(url: string, path: string, token?: string, init: CallInit = {}) {
@@ -66,13 +71,14 @@ effect function testHttp(routes: ReadonlyArray<Route>, stripe?: FakeHandler) {
   const now = try Clock.currentTimeMillis
   try Effect.provideContext(migrate({ digest: profile.environments.staging.databaseIdentity, environment: "staging", now }), storage)
   const deployment = deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+  const clock = try Clock.Clock
   const built = try Layer.build(HttpServer.serve(respond(routes)).pipe(
     Layer.provideMerge(listening(0, "127.0.0.1")),
-    Layer.provide(Layer.mergeAll(deployment, Layer.succeed(Store, store), FetchHttpClient.layer))
+    Layer.provideMerge(Layer.mergeAll(deployment, Layer.succeed(Store, store), FetchHttpClient.layer, Layer.succeed(Clock.Clock, clock)))
   ))
   const { address } = Context.get(built, HttpServer.HttpServer)
   const url = "port" in address ? `http://127.0.0.1:${address.port}` : ""
-  return { fakes, store, call: (path: string, token?: string, init?: CallInit) => callHttp(url, path, token, init) } satisfies HttpFixture
+  return { fakes, store, call: (path: string, token?: string, init?: CallInit) => callHttp(url, path, token, init), inside: <A, E>(body: A!E!CloudContext) => Effect.provideContext(body, built) } satisfies HttpFixture
 }
 
 effect function account(cloud: HttpFixture, key: string, status: "active" | "deleting", revokedBefore: { sessions: number; devices: number }, now: number) {
@@ -294,5 +300,60 @@ describe("Node subscriptions", () => {
       staleRevision: 409,
       revoked: ["canceled", 200, "free", "closed", 0]
     }))
+  }))
+})
+
+
+describe("Speech session funding (spec/cloud/services/speechRelay.md, \"Story: Start speech only from a consent I gave\"; spec/cloud/services/speechRelay.md, \"Story: Keep a live session funded and close it with receipts\")", () => {
+  it.live("Fund each admitted speech window once across concurrent retries, roll back partial funding, and settle before closing", () => scoped(effect {
+    const now = 1_800_000_000_000
+    const clock = try sync(() => manualClock())
+    try sync(() => clock.set(now))
+    provide Clock.Clock = clock.clock {
+      const cloud = try testHttp(sessionSpeechRoutes)
+      const owners = ["speech-rich", "speech-poor"]
+      const tokens = [sessionToken("r"), sessionToken("p")]
+      for (const [index, owner] of owners.entries()) {
+        try account(cloud, owner, "active", { sessions: 0, devices: 0 }, now)
+        try session(cloud, owner, tokens[index] ?? "", { live: true, epoch: 0, authAt: now, accessExpiresAt: now + 30 * minuteMs, refreshExpiresAt: now + 30 * 24 * 60 * minuteMs, stepUpAt: now, mfaAt: now }, now)
+        try cloud.inside(addCredits({ organizationId: `org-${owner}`, amount: index === 0 ? 10_000_000 : 10_000, requestKey: `speech-credit-${owner}` }))
+      }
+      const Consent = Schema.Struct({ consentNonce: Schema.String, expiresAt: Schema.String })
+      const Minted = Schema.Struct({ sessionId: Schema.String, token: Schema.String, expiresAt: Schema.String })
+      const mint = (token: string) => effect {
+        const consentAnswer = try cloud.call("/api/v1/voice/speech/consent", token, { json: {} })
+        const consent = try Schema.decodeUnknownEffect(Consent)(consentAnswer.body)
+        const answer = try cloud.call("/api/v1/voice/speech/session", token, { json: { consentNonce: consent.consentNonce } })
+        const minted = try Schema.decodeUnknownEffect(Minted)(answer.body)
+        const replay = try cloud.call("/api/v1/voice/speech/session", token, { json: { consentNonce: consent.consentNonce } })
+        try check(() => assert.deepStrictEqual([consentAnswer.status, Date.parse(consent.expiresAt), answer.status, Date.parse(minted.expiresAt), replay.status], [200, now + 5 * minuteMs, 200, now + minuteMs, 403]))
+        return minted
+      }
+      const first = try mint(tokens[0] ?? "")
+      const second = try mint(tokens[0] ?? "")
+      const poor = try mint(tokens[1] ?? "")
+      for (const sessionId of [first.sessionId, second.sessionId, poor.sessionId]) try cloud.inside(openSocket(sessionId))
+      const duplicate = try Effect.all([cloud.inside(admitWindow(first.sessionId, 1)), cloud.inside(admitWindow(first.sessionId, 1))], { concurrency: "unbounded" })
+      const held = try sql(cloud, "SELECT phase FROM holds WHERE organization_id = $1 ORDER BY key", ["org-speech-rich"])
+      const firstUsage = try sql(cloud, "SELECT used_ms FROM speech_usage_days WHERE user_id = $1", ["speech-rich"])
+      const firstWindows = try sql(cloud, "SELECT number FROM speech_windows WHERE session_id = $1", [first.sessionId])
+      try check(() => assert.deepStrictEqual({ admission: duplicate.map((answer) => answer.kind), holds: held.map((row) => row.phase), usage: firstUsage.map((row) => Number(row.used_ms)), windows: firstWindows.map((row) => Number(row.number)) }, { admission: ["admitted", "admitted"], holds: ["reserved", "reserved"], usage: [minuteMs], windows: [1] }))
+      try sql(cloud, "UPDATE speech_usage_days SET used_ms = $2 WHERE user_id = $1", ["speech-rich", 119 * minuteMs])
+      const capped = try Effect.all([cloud.inside(admitWindow(first.sessionId, 2)), cloud.inside(admitWindow(second.sessionId, 1))], { concurrency: "unbounded" })
+      const cappedUsage = try sql(cloud, "SELECT used_ms FROM speech_usage_days WHERE user_id = $1", ["speech-rich"])
+      const unfunded = try cloud.inside(admitWindow(poor.sessionId, 1))
+      const poorHolds = try sql(cloud, "SELECT key FROM holds WHERE organization_id = $1", ["org-speech-poor"])
+      const poorWindows = try sql(cloud, "SELECT number FROM speech_windows WHERE session_id = $1", [poor.sessionId])
+      const poorUsage = try sql(cloud, "SELECT used_ms FROM speech_usage_days WHERE user_id = $1", ["speech-poor"])
+      const poorFunds = try sql(cloud, "SELECT state->>'creditHeld' AS held FROM funds WHERE key = $1", ["org-speech-poor"])
+      try check(() => assert.deepStrictEqual({ capped: capped.map((answer) => answer.kind).sort(), usage: cappedUsage.map((row) => Number(row.used_ms)), unfunded, poorHolds, poorWindows, poorUsage, poorFunds }, { capped: ["admitted", "short"], usage: [120 * minuteMs], unfunded: { kind: "short", shortfall: "CreditsShort" }, poorHolds: [], poorWindows: [], poorUsage: [], poorFunds: [{ held: "0" }] }))
+      for (const sessionId of [first.sessionId, second.sessionId]) try cloud.inside(retire(sessionId, "Stopped"))
+      const reopening = cloud.inside(admitWindow(first.sessionId, 1)) catch effect (failure) => match (failure) { when Refused: failure.refusal.code; default: throw failure; }
+      const windows = try Schema.decodeUnknownEffect(Schema.Array(Schema.Struct({ session_id: Schema.String, number: Schema.Number })))(try sql(cloud, "SELECT session_id, number FROM speech_windows WHERE user_id = $1 ORDER BY session_id, number", ["speech-rich"]))
+      for (const window of windows) try cloud.inside(settleWindow(window.session_id, window.number, { pcmBytes: 0, ttsChars: 0, sttDrained: true, ttsConfirmed: true, dispatched: false }))
+      const closed = try sql(cloud, "SELECT phase, (state->>'admittedWindows')::int AS admitted, jsonb_array_length(state->'settledWindows') AS settled FROM speech_sessions WHERE key = $1", [first.sessionId])
+      const released = try sql(cloud, "SELECT phase FROM holds WHERE organization_id = $1", ["org-speech-rich"])
+      try check(() => assert.deepStrictEqual({ reopening, closed: closed.map((row) => [row.phase, Number(row.admitted) === Number(row.settled)]), released: released.every((row) => row.phase === "released") }, { reopening: "SessionClosed", closed: [["closed", true]], released: true }))
+    }
   }))
 })
