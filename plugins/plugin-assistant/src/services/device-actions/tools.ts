@@ -4,7 +4,12 @@ import type {
   ActionParameterSchema,
   HandlerOptions,
 } from "@elizaos/core";
-import { ElizaError, registerDirectActionRoutingRule } from "@elizaos/core";
+import {
+  ElizaError,
+  extractUserText,
+  registerDirectActionRoutingRule,
+  unwrapUserMessageText,
+} from "@elizaos/core";
 import { proposeDeviceAction } from "./action.ts";
 import { authoredBrowserDestination } from "./browser-request-grounding.ts";
 import {
@@ -12,6 +17,12 @@ import {
   CALENDAR_CREATE_CAPABILITY,
   CALENDAR_NEXT_CAPABILITY,
 } from "./calendar-contract.ts";
+import {
+  CAMERA_CAPTURE_CAPABILITY,
+  CAMERA_LENS_CAPABILITY,
+  DEVICE_CAMERA_CAPTURE_ACTION,
+} from "./camera-contract.ts";
+import { authoredCameraCapture } from "./camera-request.ts";
 import { deviceOperationSupportedByCapabilities } from "./contract.ts";
 import { MAPS_CAPABILITY } from "./maps-contract.ts";
 import { NOTES_CAPABILITY, notesSelectionTarget } from "./notes-contract.ts";
@@ -34,6 +45,10 @@ import {
   requestLocalCalendarUpdate,
   requestLocalNotesUpdate,
 } from "./service.ts";
+import {
+  authoredKeypadRequest,
+  authoredTelephonyRequest,
+} from "./telephony-request.ts";
 import { turnObservation } from "./turn-observation.ts";
 
 function capabilityAvailable(
@@ -57,6 +72,10 @@ function capabilityAvailable(
     );
   if (isNotesOrganizeType(type))
     return deviceOperationSupportedByCapabilities(type, caps);
+  if (type === "camera_capture_photo")
+    return (
+      turn.isCurrent() && caps?.includes(CAMERA_CAPTURE_CAPABILITY) === true
+    );
   if (isPhotosViewType(type))
     return (
       turn.isCurrent() && deviceOperationSupportedByCapabilities(type, caps)
@@ -82,6 +101,7 @@ function capabilityAvailable(
               : false;
 }
 const capabilityBoundTypes = new Set([
+  "camera_capture_photo",
   "notes_update",
   "calendar_create_local",
   "calendar_create",
@@ -132,7 +152,12 @@ const declarations = [
   [
     "DEVICE_BROWSER_OPEN",
     "browser_navigate",
-    "Open a web address the user typed in this message in this requesting app Browser, only when they ask to open, visit or go to it now. Pass the address exactly as typed. Use this app-owned operation instead of the server Browser workspace when the user asks to open a site in this app. Navigation only; do not claim page content or successful loading.",
+    'Open a web address the user typed in this message in this requesting app Browser, only when they ask to open, visit or go to it now, including "in the browser" or "in a new tab". Pass the address exactly as typed; set newTab true when they ask for a new tab (browser.open-new-tab.v1). Opening the Browser view does not load an address: use this operation for the address. Use this app-owned operation instead of the server Browser workspace when the user asks to open a site in this app. Navigation only; do not claim page content or successful loading.',
+  ],
+  [
+    DEVICE_CAMERA_CAPTURE_ACTION,
+    "camera_capture_photo",
+    "Take a photo with this phone's camera and save it in Photos, when the owner asks to take a picture, photo or selfie now. Opening the Camera view does not take a photo; this does. The phone opens Camera itself first when another view is showing. With a lens field: front for a selfie or a photo of the owner, back for the rear camera; leave it out otherwise. Sends no pixels to the model; only the saved-photo receipt proves the capture. Never repeat an uncertain capture.",
   ],
   [
     "DEVICE_NOTE_UPDATE",
@@ -267,7 +292,7 @@ const declarations = [
   [
     "DEVICE_MAPS_READ_SELECTED",
     "maps_read_selected",
-    "Share only the current explicitly selected map place or route after device review. This does not request location or search for places.",
+    "Share only the current explicitly selected map place or route after device review. This does not request location, search for places or plan routes: place search, nearby places and directions are the MAPS_PLACE, MAPS_ROUTE and MAPS_NAVIGATION_START operations.",
   ],
 ] as const satisfies readonly (readonly [
   name: string,
@@ -305,7 +330,7 @@ function operationSchema(type: string): ActionParameterSchema {
       (branch.properties as Record<string, { enum?: readonly string[] }>).type
         ?.enum?.[0] === type,
   );
-  if (selected.length !== 1)
+  if (selected.length !== (type === "camera_capture_photo" ? 2 : 1))
     throw Error("Canonical device operation is not uniquely declared: " + type);
   return readableReminderOperationSchema(type, { anyOf: selected });
 }
@@ -314,10 +339,21 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
     ...proposeDeviceAction,
     name,
     description,
+    // The parent's catalog summary describes the whole device surface; a
+    // single-operation tool indexes by its own description instead.
+    descriptionCompressed: undefined,
+    ...(type === "camera_capture_photo"
+      ? {
+          descriptionCompressed:
+            "take a photo/picture/selfie now on this phone camera; saves to Photos; lens front|back",
+          routingHint:
+            "the user asks to take, snap or capture a picture, photo or selfie now -> DEVICE_CAMERA_CAPTURE (not VIEWS: opening Camera takes no photo); NOT for a deferred, hypothetical, question-about or reported mention, nor for opening Camera only",
+        }
+      : {}),
     ...(type === "browser_navigate"
       ? {
           routingHint:
-            'the user asks to open, visit or go to a web address they typed, now -> DEVICE_BROWSER_OPEN with that address as typed; NOT for a deferred ("at 5pm", "in five minutes", "tomorrow"), hypothetical, question-about ("is there a way to open...", "do I need to go to..."), past ("I used to visit") or reported ("my mom wants me to") mention, nor for a site name with no address, or one the user says not to open',
+            'the user asks to open, visit or go to a web address they typed, now, also "in the browser" or "in a new tab" -> DEVICE_BROWSER_OPEN with that address as typed (newTab true for a new tab), not VIEWS_SHOW browser or browser_tab_new; NOT for a deferred ("at 5pm", "in five minutes", "tomorrow"), hypothetical, question-about ("is there a way to open...", "do I need to go to..."), past ("I used to visit") or reported ("my mom wants me to") mention, nor for a site name with no address, or one the user says not to open',
         }
       : {}),
     selectionIdentity:
@@ -331,63 +367,79 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
           }
         : undefined,
     tags:
-      type === "browser_navigate"
+      type === "camera_capture_photo"
         ? [
-            "domain:browser",
-            "capability:navigate",
+            "domain:camera",
+            "capability:capture",
             "effect:receipt-required",
             "target:selected-device",
           ]
-        : type === "notes_update"
+        : type === "browser_navigate"
           ? [
-              ...(proposeDeviceAction.tags || []),
-              "domain:notes",
-              "capability:write",
+              "domain:browser",
+              "capability:navigate",
               "effect:receipt-required",
               "target:selected-device",
-              "selection-kind:note",
             ]
-          : type === "notes_read_selected"
+          : type === "notes_update"
             ? [
                 ...(proposeDeviceAction.tags || []),
                 "domain:notes",
+                "capability:write",
+                "effect:receipt-required",
+                "target:selected-device",
                 "selection-kind:note",
               ]
-            : type === "calendar_update"
+            : type === "notes_read_selected"
               ? [
                   ...(proposeDeviceAction.tags || []),
-                  "domain:calendar",
-                  "capability:write",
-                  "effect:receipt-required",
-                  "target:selected-device",
-                  "selection-kind:calendar-event",
+                  "domain:notes",
+                  "selection-kind:note",
                 ]
-              : proposeDeviceAction.tags,
+              : type === "calendar_update"
+                ? [
+                    ...(proposeDeviceAction.tags || []),
+                    "domain:calendar",
+                    "capability:write",
+                    "effect:receipt-required",
+                    "target:selected-device",
+                    "selection-kind:calendar-event",
+                  ]
+                : proposeDeviceAction.tags,
     roleGate:
       type === "calendar_update" || type === "notes_update"
         ? { minRole: "OWNER" as const }
         : proposeDeviceAction.roleGate,
     similes:
-      type === "browser_navigate"
-        ? ["DEVICE_BROWSER_NAVIGATE"]
-        : type === "reminder_read_selected"
-          ? ["DEVICE_REMINDER_READ_SELECTED"]
-          : type === "notes_query"
-            ? [
-                "find note by title",
-                "look up saved note",
-                "search notes before reading",
-                "read a named note",
-              ]
-            : type === "notes_read_selected"
+      type === "camera_capture_photo"
+        ? [
+            "CAMERA_CAPTURE_PHOTO",
+            "TAKE_PHOTO",
+            "take a picture",
+            "take a selfie",
+          ]
+        : type === "browser_navigate"
+          ? ["DEVICE_BROWSER_NAVIGATE"]
+          : type === "reminder_read_selected"
+            ? ["DEVICE_REMINDER_READ_SELECTED"]
+            : type === "notes_query"
               ? [
-                  "read selected note",
-                  "read note by returned identity and revision",
+                  "find note by title",
+                  "look up saved note",
+                  "search notes before reading",
+                  "read a named note",
                 ]
-              : [],
+              : type === "notes_read_selected"
+                ? [
+                    "read selected note",
+                    "read note by returned identity and revision",
+                  ]
+                : [],
+    // "phone" is the telephony context: its call/text/dial keyword signals
+    // ranked this Maps read above the dialer for "open the phone keypad".
     contexts:
       type === "maps_read_selected"
-        ? ["phone", "maps", "general"]
+        ? ["maps", "general"]
         : type.startsWith("calendar_read") || type === "calendar_update"
           ? ["calendar", "general"]
           : type === "reminder_create_after"
@@ -396,11 +448,13 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
               ? ["tasks", "reminders", "general"]
               : type === "browser_navigate"
                 ? ["browser", "web", "general"]
-                : isPhotosViewType(type)
+                : type === "camera_capture_photo"
                   ? ["media", "general"]
-                  : type.startsWith("calendar_create")
-                    ? ["calendar", "general"]
-                    : ["notes", "general"],
+                  : isPhotosViewType(type)
+                    ? ["media", "general"]
+                    : type.startsWith("calendar_create")
+                      ? ["calendar", "general"]
+                      : ["notes", "general"],
     validate: async (
       runtime: Parameters<NonNullable<Action["validate"]>>[0],
       message: Parameters<NonNullable<Action["validate"]>>[1],
@@ -446,7 +500,14 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
         : [
             ...(proposeDeviceAction.parameters?.map((parameter) =>
               parameter.name === "operation"
-                ? { ...parameter, schema: operationSchema(type) }
+                ? {
+                    ...parameter,
+                    // Not "phone": a single-operation tool must not match
+                    // call/text/dialer queries by the parent's wording.
+                    description:
+                      "Exact typed device operation to show for approval",
+                    schema: operationSchema(type),
+                  }
                 : parameter,
             ) || []),
             ...(type === "notes_query"
@@ -587,10 +648,93 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
         throw new ElizaError("Device action handler is unavailable", {
           code: "DEVICE_ACTION_HANDLER_UNAVAILABLE",
         });
+      if (type === "camera_capture_photo") {
+        // A whole-message photo command owns its lens: the camera the owner
+        // named, or the one showing. The model's lens choice never overrides it.
+        // The owner's words, not a prompt-only document envelope around them.
+        const authored = authoredCameraCapture(
+          args[1] ? extractUserText(unwrapUserMessageText(args[1])) : "",
+          args[0].character?.name,
+        );
+        if (
+          authored &&
+          getDeviceActionTurn()?.credential.capabilities?.includes(
+            CAMERA_LENS_CAPABILITY,
+          )
+        ) {
+          const next = [...args] as Parameters<NonNullable<Action["handler"]>>;
+          next[3] = {
+            ...(args[3] as HandlerOptions | undefined),
+            parameters: {
+              ...(raw as Record<string, unknown>),
+              operation: {
+                type,
+                ...(authored.lens ? { lens: authored.lens } : {}),
+              },
+            } as HandlerOptions["parameters"],
+          };
+          return proposeDeviceAction.handler(...next);
+        }
+      }
       return proposeDeviceAction.handler(...args);
     },
   })),
 );
+
+/** Availability for a whole-message photo command ("take a picture"). The
+ * first-stage view judgment may read it as opening Camera, which takes no
+ * photo; this route replaces that view-only plan with the capture tool. The
+ * tool creates a durable proposal that the requesting phone runs on its
+ * Camera viewfinder; the phone's saved-photo receipt owns completion.
+ */
+export function registerDeviceCameraCaptureRouting(
+  runtime: Parameters<typeof registerDirectActionRoutingRule>[0],
+): void {
+  const matches = (
+    text: string,
+    message?: Parameters<NonNullable<Action["validate"]>>[1],
+  ): boolean => {
+    const current = getDeviceActionTurn();
+    const caller = current?.requestCaller;
+    if (
+      !message ||
+      current?.runtime !== runtime ||
+      !current.isCurrent() ||
+      current.requestMessage?.message !== message ||
+      caller?.role !== "OWNER" ||
+      caller.entityId !== message.entityId ||
+      caller.subjectUserId !== current.credential.subjectUserId ||
+      message.content.source !== "client_chat" ||
+      !["DM", "VOICE_DM"].includes(String(message.content.channelType)) ||
+      !deviceOperationSupportedByCapabilities(
+        "camera_capture_photo",
+        current.credential.capabilities,
+      )
+    )
+      return false;
+    // Only the strict whole-message command skips the model's judgment.
+    return authoredCameraCapture(text, runtime.character.name) !== undefined;
+  };
+  registerDirectActionRoutingRule(runtime, {
+    id: "device.camera-capture",
+    actionNames: [DEVICE_CAMERA_CAPTURE_ACTION],
+    replacesActionNames: [
+      "VIEWS",
+      "VIEWS_SHOW",
+      "VISION_CAPTURE",
+      "VISION_ENABLE_CAMERA",
+    ],
+    requiredActionTags: [
+      "domain:camera",
+      "capability:capture",
+      "effect:receipt-required",
+      "target:selected-device",
+    ],
+    contexts: ["media", "general"],
+    matches,
+    wholeRequest: { matches, invalidateFields: ["visualContinuation"] },
+  });
+}
 
 /** Availability for a complete URL-open request. The tool creates a durable
  * proposal that the requesting phone runs directly in direct-request mode
@@ -645,6 +789,109 @@ export function registerDeviceBrowserOpenRouting(
       "target:selected-device",
     ],
     contexts: ["browser", "web", "general"],
+    matches,
+    wholeRequest: { matches, invalidateFields: ["visualContinuation"] },
+  });
+}
+
+/**
+ * The phone's negotiated capabilities when this is the owner's own current
+ * phone chat request (client_chat DM or VOICE_DM) on the bound device turn.
+ */
+function ownerPhoneChatCapabilities(
+  runtime: Parameters<typeof registerDirectActionRoutingRule>[0],
+  message?: Parameters<NonNullable<Action["validate"]>>[1],
+): readonly string[] | undefined {
+  const current = getDeviceActionTurn();
+  const caller = current?.requestCaller;
+  if (
+    !message ||
+    current?.runtime !== runtime ||
+    !current.isCurrent() ||
+    current.requestMessage?.message !== message ||
+    caller?.role !== "OWNER" ||
+    caller.entityId !== message.entityId ||
+    caller.subjectUserId !== current.credential.subjectUserId ||
+    message.content.source !== "client_chat" ||
+    !["DM", "VOICE_DM"].includes(String(message.content.channelType))
+  )
+    return;
+  return current.credential.capabilities ?? [];
+}
+
+/**
+ * Availability for a whole-message call or text command ("call 415-555-0100",
+ * "text Sam saying ..."). Stage 1 answered such turns with a simple reply that
+ * repeated an earlier "no SMS connector" refusal from history (v609 peer
+ * evidence), so the planner never saw the phone's own operations. This route
+ * only promotes the turn to PROPOSE_DEVICE_ACTION; the call or text is still
+ * an owner-reviewed proposal on the phone.
+ */
+export function registerDeviceTelephonyRouting(
+  runtime: Parameters<typeof registerDirectActionRoutingRule>[0],
+): void {
+  const matches = (
+    text: string,
+    message?: Parameters<NonNullable<Action["validate"]>>[1],
+  ): boolean => {
+    const capabilities = ownerPhoneChatCapabilities(runtime, message);
+    if (!capabilities) return false;
+    const request = authoredTelephonyRequest(text);
+    if (request === "call")
+      return deviceOperationSupportedByCapabilities("phone_call", capabilities);
+    if (request === "text")
+      return (
+        deviceOperationSupportedByCapabilities("sms_compose", capabilities) ||
+        deviceOperationSupportedByCapabilities("sms_send", capabilities)
+      );
+    return false;
+  };
+  registerDirectActionRoutingRule(runtime, {
+    id: "device.telephony",
+    actionNames: ["PROPOSE_DEVICE_ACTION"],
+    replacesActionNames: [
+      "VIEWS",
+      "VIEWS_SHOW",
+      "VOICE_CALL",
+      "MESSAGE_SEND",
+      "PAGE_DELEGATE",
+    ],
+    requiredActionTags: [],
+    contexts: ["phone", "messaging", "general"],
+    matches,
+  });
+}
+
+/**
+ * Availability for a whole-message keypad command ("open the dialer", "open
+ * the keypad and type 415 302 4399"). "Dialer" and "keypad" also name the
+ * Phone view, so Stage 1 judged these direct navigation and the phone opened
+ * on Recents with no keypad (v610 device evidence). This route owns the whole
+ * request: it drops that view-only plan and the staged navigation judgment and
+ * leaves PROPOSE_DEVICE_ACTION, whose phone_keypad operation takes the number
+ * written here. Opening the keypad never dials; "call X" stays with the
+ * telephony route and "open the phone app" with view navigation.
+ */
+export function registerDeviceKeypadRouting(
+  runtime: Parameters<typeof registerDirectActionRoutingRule>[0],
+): void {
+  const matches = (
+    text: string,
+    message?: Parameters<NonNullable<Action["validate"]>>[1],
+  ): boolean => {
+    const capabilities = ownerPhoneChatCapabilities(runtime, message);
+    return (
+      capabilities !== undefined &&
+      deviceOperationSupportedByCapabilities("phone_keypad", capabilities) &&
+      authoredKeypadRequest(text) !== undefined
+    );
+  };
+  registerDirectActionRoutingRule(runtime, {
+    id: "device.phone-keypad",
+    actionNames: ["PROPOSE_DEVICE_ACTION"],
+    replacesActionNames: ["VIEWS", "VIEWS_SHOW", "REPLY"],
+    requiredActionTags: [],
+    contexts: ["phone", "general"],
     matches,
     wholeRequest: { matches, invalidateFields: ["visualContinuation"] },
   });

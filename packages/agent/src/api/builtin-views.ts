@@ -110,6 +110,8 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
     tags: ["browser", "web", "internet", "research", "tabs"],
     responseContext: { primaryContext: "browser" },
     relatedActions: ["BROWSER"],
+    // "Go back" while a page shows means that tab's previous page.
+    pageHistory: true,
     // The shell owns this destination on every host. The mobile browser plugin
     // drives it through browser-command and declares no view of its own, so
     // the owner boundary for that control lives here.

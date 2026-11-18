@@ -47,7 +47,17 @@ public final class SmsProviderReaderTest {
   @Override public Cursor query(Uri uri, String[] projection, String selection, String[] args, String order) {
    List<String> path = uri.getPathSegments();
    String table; String match = null, key = null;
-   if ("mms-sms".equals(uri.getAuthority())) {
+   if ("sms".equals(uri.getAuthority()) && path.equals(List.of("inbox"))) {
+    require(Arrays.equals(projection, new String[] { "address" }), "sender read requests no body");
+    require("date DESC, _id DESC".equals(order), "sender read requests newest first and breaks ties");
+    MatrixCursor cursor = new MatrixCursor(projection);
+    tables.getOrDefault("sms", List.of()).stream()
+     .filter(r -> Integer.valueOf(SmsRecords.INBOX).equals(r.get("type")))
+     .sorted(java.util.Comparator.<Map<String, Object>>comparingLong(r -> (Long) r.get("date"))
+      .thenComparingLong(r -> (Long) r.get("_id")).reversed())
+     .forEach(r -> cursor.addRow(new Object[] { r.get("address") }));
+    return cursor;
+   } else if ("mms-sms".equals(uri.getAuthority())) {
     table = path.get(0).equals("conversations") ? "conversations" : "canonical";
     if (table.equals("canonical")) key = "_id";
    } else if ("sms".equals(uri.getAuthority())) { table = "sms"; key = "thread_id"; match = args[0]; }
@@ -90,6 +100,24 @@ public final class SmsProviderReaderTest {
   require(row.optString("id").equals(id), id + " in page order");
   require(row.optBoolean("incomplete") && row.optString("reason").equals(reason), id + " is " + reason);
   require(row.length() == keys && !row.has("body") && !row.has("addresses") && !row.has("snippet"), id + " carries no content");
+ }
+
+ @Test public void latestIncomingSenderIgnoresOutgoingAndDoesNotReadBodies() {
+  add("sms", row("_id", 1L, "date", 2000L, "address", "+15555550111", "type", SmsRecords.INBOX));
+  add("sms", row("_id", 3L, "date", 3000L, "address", "+1 (555) 555-0123", "type", SmsRecords.INBOX));
+  add("sms", row("_id", 2L, "date", 3000L, "address", "+15555550234", "type", SmsRecords.INBOX));
+  add("sms", row("_id", 4L, "date", 4000L, "address", "+15555550345", "type", 2));
+  JSObject result = SmsProviderReader.latestIncomingSender(RuntimeEnvironment.getApplication(), new CancellationSignal());
+  require(result.length() == 2 && "found".equals(result.optString("status")), "one limited result");
+  require("0123".equals(result.optString("numberEnding")), "newest inbound sender suffix");
+ }
+
+ @Test public void latestIncomingSenderDistinguishesEmptyFromMissingSender() {
+  JSObject empty = SmsProviderReader.latestIncomingSender(RuntimeEnvironment.getApplication(), new CancellationSignal());
+  require(empty.length() == 1 && "empty".equals(empty.optString("status")), "empty inbox is explicit");
+  add("sms", row("_id", 1L, "date", 1000L, "type", SmsRecords.INBOX));
+  JSObject missing = SmsProviderReader.latestIncomingSender(RuntimeEnvironment.getApplication(), new CancellationSignal());
+  require(missing.length() == 1 && "sender-unavailable".equals(missing.optString("status")), "missing sender is explicit");
  }
 
  @Test public void oneLongSmsLeavesTheRestOfTheConversationReadable() throws Exception {

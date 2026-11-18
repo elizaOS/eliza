@@ -61,6 +61,7 @@ function fixture() {
     character: { name: "Alpha", bio: [], system: "Answer." },
     contexts: new ContextRegistry([
       { id: "general", description: "General tasks" },
+      { id: "messaging", description: "Messages" },
       { id: "notes", description: "Saved notes" },
     ]),
     actions: [notes, native],
@@ -103,6 +104,106 @@ async function guidance(options: Record<string, unknown> = {}) {
   return { text: String(event.content), context, args };
 }
 
+// The X-Eliza-Device-Capabilities a v609 Alpha image sent (captured on the
+// phone), plus phone.keypad.v1 for the keypad handoff.
+const ALPHA_IMAGE_CAPABILITIES = [
+  "calendar.local-event.v1",
+  "notes.local-record.v1",
+  "camera.capture-photo.v1",
+  "camera.capture-lens.v1",
+  "reminders.local-record.v2",
+  "notes.list-filter.v1",
+  "reminders.create.v1",
+  "calendar.create.v1",
+  "calendar.next-read.v1",
+  "maps.selected-read.v1",
+  "files.browser.v1",
+  "browser.search.v1",
+  "browser.tabs.v1",
+  "browser.history.v1",
+  "browser.find.v1",
+  "calendar.availability-read.v1",
+  "photos.library.v1",
+  "calendar.named-read.v1",
+  "clock.handoff.v1",
+  "clock.handoff.v2",
+  "views.telephony.v1",
+  "sms.send.v1",
+  "phone.dial.v1",
+  "phone.call.v1",
+  "contacts.write.v1",
+  "contacts.show.v1",
+  "contacts.read.v1",
+  "sms.compose.v1",
+  "messages.read.v1",
+  "voicemail.read.v1",
+  "voicemail.delete.v1",
+  "sms.compose.v2",
+  "contacts.write.v2",
+  "phone.keypad.v1",
+];
+
+describe("phone telephony routing on the Alpha image", () => {
+  async function withImage(options: Record<string, unknown>) {
+    const args = fixture();
+    const turn = binding.turn as {
+      credential: { capabilities: string[] };
+      isCurrent?: () => boolean;
+    };
+    turn.credential.capabilities = ALPHA_IMAGE_CAPABILITIES;
+    turn.isCurrent = () => true;
+    const context = await createV5MessageContextObject({
+      ...args,
+      ...options,
+    });
+    const event = context.events.find(
+      (event) => event.id === "authenticated-phone-capability",
+    );
+    return event && "content" in event ? String(event.content) : "";
+  }
+  it("names the device operation for a call, a text, showing contacts and the dialer while routing", async () => {
+    // v609: the call went to Twilio VOICE_CALL, the text to PAGE_DELEGATE,
+    // "show my contacts" to the relationship store, "open the dialer" was refused.
+    const routing = await withImage({ providerPhase: "response" });
+    for (const route of [
+      "call a number or contact: phone_call",
+      "text or draft a text to a number or contact: sms_compose with target",
+      "find or show a named contact, or a named contact's number: contact_show with the name as the query",
+      "open the dialer or keypad, with or without a number: phone_keypad, which fills in the keypad and never calls",
+      "in the general, phone, messaging or contacts context",
+      'a plain request to open or show the Phone, Messages or Contacts app, including "show my contacts" with no name, is navigation to that view',
+      // v609 peer evidence: an earlier "no SMS connector" reply was repeated.
+      "an earlier reply in this conversation saying calls, texts or contacts were unavailable is outdated",
+      "VOICE_CALL (a Twilio call from the agent's number)",
+    ])
+      expect(routing).toContain(route);
+    expect(routing).not.toContain("PROPOSE_DEVICE_ACTION cannot");
+    // contact_show needs a non-empty name; an unfiltered "show my contacts"
+    // is the Contacts view, which views.explicit-navigation also resolves.
+    expect(routing).not.toContain("show contacts or open the dialer");
+    expect(routing).not.toMatch(/show[^.;]*the owner's contacts: contact_show/);
+  });
+  it("keeps the device routes when the planner selected the phone or messaging context", async () => {
+    for (const context of ["phone", "messaging"]) {
+      const planning = await withImage({
+        includeTools: true,
+        providerPhase: "planning",
+        selectedContexts: [context],
+      });
+      // The detailed native instructions follow a selected context that carries the device tool.
+      expect(planning).toContain("phone_keypad");
+      expect(planning).toContain(
+        "The authenticated installation enabled-view profile",
+      );
+    }
+  });
+  it("names no phone route for a phone without telephony", async () => {
+    const routing = (await guidance({ providerPhase: "response" })).text;
+    expect(routing).not.toContain("phone_call");
+    expect(routing).not.toContain("phone_keypad");
+  });
+});
+
 describe("selected phone capability guidance", () => {
   it("keeps compact authenticated availability and permission boundaries during routing", async () => {
     const { text } = await guidance({ providerPhase: "response" });
@@ -134,6 +235,32 @@ describe("selected phone capability guidance", () => {
       expect(await routing()).not.toContain("PROPOSE_DEVICE_ACTION cannot");
     } finally {
       capabilities.splice(capabilities.indexOf("phone.call.v1"));
+    }
+  });
+  it("routes the latest SMS sender read only when the phone offers it", async () => {
+    const routing = async () =>
+      (await guidance({ providerPhase: "response" })).text;
+    expect(await routing()).not.toContain("pending phone lookup");
+    capabilities.push("sms.latest-sender.v1");
+    try {
+      const text = await routing();
+      expect(text).toContain("pending phone lookup");
+      expect(text).toContain("PROPOSE_DEVICE_ACTION sms_latest_sender");
+      expect(text).toContain("approved sender suffix");
+      const planning = await guidance({
+        includeTools: true,
+        providerPhase: "planning",
+        selectedContexts: ["messaging"],
+      });
+      expect(planning.text).toContain("phone owner must separately approve");
+      const tool = planning.context.events.find(
+        (event) => event.type === "tool" && event.tool.name === native.name,
+      );
+      expect(tool?.type === "tool" && tool.tool.description).toContain(
+        "Use sms_latest_sender with no fields",
+      );
+    } finally {
+      capabilities.pop();
     }
   });
   it("names the phone's own calendar create only on a turn that offers it", async () => {
@@ -212,6 +339,43 @@ describe("selected phone capability guidance", () => {
     // A phone without the capability is told nothing about its address book.
     const { text } = await guidance({ providerPhase: "response" });
     expect(text).not.toContain("contact_create");
+  });
+  it("names photo capture as device work, not Camera navigation, on a phone that negotiated it", async () => {
+    // v609 real turn: "take a picture" was judged navigation to Camera and the
+    // planner finished on VIEWS_SHOW; nothing it always saw named the capture.
+    const withCamera = async (options: Record<string, unknown>) => {
+      const args = fixture();
+      (
+        binding.turn as { credential: { capabilities: string[] } }
+      ).credential.capabilities = [
+        ...capabilities,
+        "camera.capture-photo.v1",
+        "camera.capture-lens.v1",
+      ];
+      const context = await createV5MessageContextObject({
+        ...args,
+        ...options,
+      });
+      const event = context.events.find(
+        (event) => event.id === "authenticated-phone-capability",
+      );
+      return event && "content" in event ? String(event.content) : "";
+    };
+    for (const text of [
+      await withCamera({ providerPhase: "response" }),
+      await withCamera({
+        includeTools: true,
+        providerPhase: "planning",
+        selectedContexts: ["general"],
+        preselectedActions: [native],
+      }),
+    ]) {
+      expect(text).toContain("camera_capture_photo (DEVICE_CAMERA_CAPTURE)");
+      expect(text).toContain("opening the Camera view takes no photo");
+      expect(text).toContain("never navigation alone");
+    }
+    const { text } = await guidance({ providerPhase: "response" });
+    expect(text).not.toContain("camera_capture_photo");
   });
   it("retains Android Clock handoff constraints on a Clock-only installation", async () => {
     const args = fixture();

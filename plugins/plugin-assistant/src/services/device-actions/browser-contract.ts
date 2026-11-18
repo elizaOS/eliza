@@ -19,6 +19,9 @@ export const BROWSER_SEARCH_CAPABILITY = "browser.search.v1";
 export const BROWSER_TABS_CAPABILITY = "browser.tabs.v1";
 export const BROWSER_FIND_CAPABILITY = "browser.find.v1";
 export const BROWSER_HISTORY_CAPABILITY = "browser.history.v1";
+/** A typed address opened in a tab of its own: browser_navigate {url, newTab: true}.
+ * Without it the phone may open the address in its own earlier tab, replacing that page. */
+export const BROWSER_OPEN_NEW_TAB_CAPABILITY = "browser.open-new-tab.v1";
 
 export const BROWSER_TAB_TARGET_MAX = 128;
 export const BROWSER_FIND_TEXT_MAX = 256;
@@ -170,7 +173,8 @@ export function describeBrowserControl(op: BrowserControlOperation): {
     case "browser_tab_new":
       return {
         title: op.private ? "Open a private tab" : "Open a new tab",
-        description: "Opens an empty tab in Browser.",
+        description:
+          "Opens an empty tab in Browser. An address opens in a new tab with browser_navigate and newTab.",
       };
     case "browser_tab_switch":
       return {

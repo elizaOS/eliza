@@ -11,6 +11,7 @@ vi.mock("../src/services/device-actions/service.ts", () => ({
 import {
   deviceActionForCapabilities,
   proposeDeviceAction,
+  withDialNumber,
 } from "../src/services/device-actions/action";
 import {
   deviceOperationFormSupported,
@@ -156,8 +157,12 @@ it("offers a camera lens and an SMS target only to a phone that negotiated them"
   ).not.toHaveProperty("lens");
   expect(branches(base, "sms_compose")).toHaveLength(1);
   expect(branches(base, "sms_compose")[0].properties).toHaveProperty("query");
+  // Opening Camera is not the capture, and the phone opens Camera itself.
   expect(older.description).toContain(
-    "first show the camera view with VIEWS in this same turn",
+    "Opening the Camera view with VIEWS never takes a photo",
+  );
+  expect(older.description).toContain(
+    "the requesting phone opens Camera itself",
   );
   expect(older.description).not.toContain("camera.capture-lens.v1");
   expect(older.description).not.toContain("sms.compose.v2");
@@ -302,8 +307,10 @@ it("offers each telephony action only with its own capability and states its lim
     "contacts.read.v1": ["contact_read_selected"],
     "sms.compose.v1": ["sms_compose", "sms_reply_selected"],
     "messages.read.v1": ["messages_read_selected"],
+    "sms.latest-sender.v1": ["sms_latest_sender"],
     "voicemail.read.v1": ["voicemail_read_selected"],
     "voicemail.delete.v1": ["voicemail_delete_selected"],
+    "phone.keypad.v1": ["phone_keypad"],
   };
   const all = Object.values(telephony).flat();
   for (const capabilities of [
@@ -351,6 +358,9 @@ it("offers each telephony action only with its own capability and states its lim
     "you receive only shown or not-found, never a name, number or count",
     "returns only the one contact the owner has open in Contacts",
     "This phone cannot add one number or email address to a contact",
+    "phone_keypad {number?} (phone.keypad.v1) opens the Phone keypad",
+    "It never dials or calls: the owner taps Call there.",
+    "It proposes a reviewed read of one sender number suffix only.",
   ])
     expect(text).toContain(required);
   expect(text).not.toContain("contacts.write.v2");
@@ -364,6 +374,8 @@ it("offers each telephony action only with its own capability and states its lim
     { type: "messages_read_selected" },
     { type: "voicemail_read_selected" },
     { type: "voicemail_delete_selected" },
+    { type: "phone_keypad" },
+    { type: "phone_keypad", number: "+14155550100" },
   ])
     expect(
       validateDevicePayload({
@@ -387,6 +399,10 @@ it("offers each telephony action only with its own capability and states its lim
     { type: "contact_update", query: "Ada", add: { phoneNumbers: [] } },
     { type: "contact_show", query: "Ada", limit: 5 },
     { type: "contact_read_selected", query: "Ada" },
+    { type: "phone_keypad", number: "415-555-0100" },
+    { type: "phone_keypad", number: "" },
+    { type: "phone_keypad", number: "4155550100", call: true },
+    { type: "phone_keypad", target: { kind: "number", number: "4155550100" } },
   ])
     expect(() =>
       validateDevicePayload({
@@ -480,4 +496,96 @@ it("offers each Browser control only with its own capability and validates its e
   expect(() =>
     operation({ type: "browser_navigate", url: "http://example.com:8080/a" }),
   ).toThrow("Only HTTPS browser destinations are supported");
+});
+
+it("offers PROPOSE_DEVICE_ACTION to phone and messaging turns and summarizes it for discovery", () => {
+  // v609: a text routed as messaging and a call routed as phone never saw the
+  // device tool, and its discovery index row had an empty summary.
+  for (const context of ["general", "contacts", "phone", "messaging"])
+    expect(proposeDeviceAction.contexts).toContain(context);
+  const summary = proposeDeviceAction.descriptionCompressed ?? "";
+  for (const word of ["call", "SMS", "keypad", "contacts"])
+    expect(summary).toContain(word);
+  expect(
+    deviceActionForCapabilities(proposeDeviceAction, ["phone.call.v1"])
+      .descriptionCompressed,
+  ).toBe(summary);
+});
+
+it("reviews a number the owner wrote with separators in its exact dial form", () => {
+  // The owner's "415-555-0100" reaches the tool through a contact reference
+  // that restores it exactly as typed; contact numbers were refused before.
+  expect(
+    withDialNumber({
+      type: "contact_create",
+      contact: {
+        displayName: "Alpha Device Test",
+        phoneNumbers: ["415-555-0100"],
+        emailAddresses: [],
+      },
+    }),
+  ).toEqual({
+    type: "contact_create",
+    contact: {
+      displayName: "Alpha Device Test",
+      phoneNumbers: ["4155550100"],
+      emailAddresses: [],
+    },
+  });
+  expect(
+    withDialNumber({
+      type: "contact_update",
+      query: "Ada",
+      add: { phoneNumbers: ["(415) 555-0100"] },
+      remove: { phoneNumbers: ["+1 415.555.0199"] },
+    }),
+  ).toEqual({
+    type: "contact_update",
+    query: "Ada",
+    add: { phoneNumbers: ["4155550100"] },
+    remove: { phoneNumbers: ["+14155550199"] },
+  });
+  expect(
+    withDialNumber({ type: "phone_keypad", number: "415-555-0100" }),
+  ).toEqual({
+    type: "phone_keypad",
+    number: "4155550100",
+  });
+  expect(withDialNumber({ type: "phone_keypad" })).toEqual({
+    type: "phone_keypad",
+  });
+  expect(
+    withDialNumber({
+      type: "phone_call",
+      target: { kind: "number", number: "415 555 0100" },
+    }),
+  ).toEqual({
+    type: "phone_call",
+    target: { kind: "number", number: "4155550100" },
+  });
+  // Text that is not one number is left for validation to refuse.
+  const refused = withDialNumber({
+    type: "contact_create",
+    contact: {
+      displayName: "A",
+      phoneNumbers: ["call me"],
+      emailAddresses: [],
+    },
+  }) as { contact: { phoneNumbers: string[] } };
+  expect(refused.contact.phoneNumbers).toEqual(["call me"]);
+  const created = validateDevicePayload({
+    action: "device_action",
+    version: 1,
+    installationId: "device",
+    enrollmentId: "enrollment",
+    operation: withDialNumber({
+      type: "contact_create",
+      contact: {
+        displayName: "Alpha Device Test",
+        phoneNumbers: ["415-555-0100"],
+        emailAddresses: [],
+      },
+    }),
+  }).operation;
+  expect(created).toMatchObject({ contact: { phoneNumbers: ["4155550100"] } });
 });

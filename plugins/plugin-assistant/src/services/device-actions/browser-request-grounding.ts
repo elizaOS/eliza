@@ -1,9 +1,11 @@
 export {
   authoredBrowserDestination,
+  authoredBrowserOpen,
   browserDestinationMatches,
   browserSearchQueryMatches,
   containsWebAddress,
   directBrowserDestination,
+  directBrowserOpen,
   directBrowserSearchQuery,
   groundBrowserDestination,
   groundBrowserSearchQuery,

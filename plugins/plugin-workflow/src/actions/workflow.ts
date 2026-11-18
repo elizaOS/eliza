@@ -15,7 +15,11 @@ import {
 } from '@elizaos/core';
 import { HOSTED_SPEC } from '../services/hosted-digest';
 import { PHONE_SPEC_KEY, storedPhoneTimeTrigger } from '../services/phone-workflow-spec';
-import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
+import {
+  WORKFLOW_DRAFT_NOT_APPLIED,
+  WORKFLOW_SERVICE_TYPE,
+  type WorkflowService,
+} from '../services/workflow-service';
 import { WorkflowApiError } from '../types/index';
 import {
   workflowCancellationEffect,
@@ -132,6 +136,17 @@ async function respond(
   return settled;
 }
 
+/**
+ * Generated workflow modules get only the agent adapter, not the device
+ * notification bridge, so a chat-created "reminder" never reaches the owner.
+ * The create result says so whenever the request asked to be told.
+ */
+const NOTIFY_REQUEST =
+  /\b(?:remind(?:er|ers|s)?|notif(?:y|ies|ication|ications)|alerts?|ping\s+me|tell\s+me|let\s+me\s+know)\b/i;
+function asksToNotify(...texts: Array<string | undefined>): boolean {
+  return texts.some((value) => typeof value === 'string' && NOTIFY_REQUEST.test(value));
+}
+
 export const workflowAction: Action = {
   name: 'WORKFLOW',
   contexts: ['general', 'automation', 'tasks', 'agent_internal'],
@@ -157,7 +172,7 @@ export const workflowAction: Action = {
     'WORKFLOW_EXECUTIONS',
   ],
   description:
-    'Create, edit, rename, inspect, activate, run, cancel, remove and restore workflows. modify changes what a workflow does and turns it off until the owner reviews the change. rename changes only the name. remove takes a workflow out of the list and stops its schedule; restore_removed brings a removed workflow back, turned off. restore returns a workflow to an earlier revision. A workflow built in the Workflows view is edited there, and its schedule is turned on there. For an explicit on-demand current-day dossier or briefing from the owner’s reviewed phone Calendar and due/overdue reminders, use dossier. This reads only already reviewed native sources, creates no schedule and uses one existing summary pass. If no source has been reviewed, ask the owner to select it in digest settings; do not invent other sources. ' +
+    'Create, edit, rename, inspect, activate, run, cancel, remove and restore workflows. modify changes what a workflow does and turns it off until the owner reviews the change. rename changes only the name. remove takes a workflow out of the list and stops its schedule; restore_removed brings a removed workflow back, turned off. restore returns a workflow to an earlier revision. A workflow built in the Workflows view is edited there, and its schedule is turned on there. For an explicit on-demand current-day dossier or briefing from the owner’s reviewed phone Calendar and due/overdue reminders, use dossier. This reads only already reviewed native sources, creates no schedule and uses one existing summary pass. If no source has been reviewed, ask the owner to select it in digest settings; do not invent other sources. A chat-created workflow cannot message, notify or remind the owner: its output appears only in its run history, so never say it will remind or notify them; for "remind me at <time>" use the phone reminder (reminders.create) when it is available. ' +
     `Provide action=${WORKFLOW_OPS.join('|')}.`,
   parameters: [
     {
@@ -182,7 +197,8 @@ export const workflowAction: Action = {
     {
       name: 'name',
       required: false,
-      description: 'New workflow name. Required for rename.',
+      description:
+        'Workflow name. For create, the name the owner gave the workflow, if any. For rename, the new name (required).',
       schema: { type: 'string' },
     },
     {
@@ -270,10 +286,15 @@ export const workflowAction: Action = {
         const instruction =
           text(params.seedPrompt) ?? text(params.instruction) ?? message.content.text;
         if (!instruction) return { success: false, text: 'A workflow description is required.' };
-        const draft = await service.generateWorkflowDraft(instruction, {
+        // The owner's name for the workflow is how chat finds it again later.
+        const requestedName = text(params.name);
+        if (requestedName && requestedName.length > 200)
+          return { success: false, text: 'name must be 1 to 200 characters.' };
+        const authored = await service.generateWorkflowDraft(instruction, {
           userId: ownerId,
           timeZone,
         });
+        const draft = requestedName ? { ...authored, name: requestedName } : authored;
         if (draft.id !== undefined)
           throw new Error('Create requires a new definition without an existing workflow id');
         const workflow = await service.deployWorkflowDefinition(draft, ownerId, {
@@ -284,7 +305,7 @@ export const workflowAction: Action = {
           callback,
           {
             success: true,
-            text: `Created “${workflow.name}”. It is off until you turn it on.`,
+            text: `Created “${workflow.name}”. It is off until you turn it on.${asksToNotify(instruction, message.content.text) ? ' It can’t send you a notification: when it is on, each run’s reminder text appears only in its run history. For a reminder that notifies you, use a phone reminder instead.' : ''}`,
             effectReceipts: [workflowDefinitionEffect('create', workflow)],
             data: { workflow, widget: { type: 'workflow', workflowId: workflow.id } },
           },
@@ -590,7 +611,8 @@ export const workflowAction: Action = {
         ? 'WORKFLOW_READ_FAILED'
         : status === 404
           ? 'WORKFLOW_NOT_FOUND'
-          : status === 409 && refusal?.endsWith('_NOT_APPLIED')
+          : (status === 409 && refusal?.endsWith('_NOT_APPLIED')) ||
+              refusal === WORKFLOW_DRAFT_NOT_APPLIED
             ? refusal
             : undefined;
       // error-policy:J1 action boundary returns the failure to the planner.

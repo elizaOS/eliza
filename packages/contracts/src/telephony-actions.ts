@@ -44,6 +44,12 @@
  * list threads, enumerate voicemail or run while the phone is locked.
  *
  * `voicemail.delete.v1` deletes the open voicemail after the owner confirms.
+ *
+ * `phone.keypad.v1` opens the phone's own keypad, optionally with a number
+ * filled in. It never dials or places a call: the owner taps Call there, and a
+ * call from chat stays the reviewed `phone_call`. Like a reply draft it is a
+ * visible, editable local change, so it may run directly for the owner's own
+ * request.
  */
 import {
   PHONE_DIAL_NUMBER,
@@ -61,8 +67,10 @@ export const SMS_COMPOSE_CAPABILITY = "sms.compose.v1";
 /** `sms_compose` with a `target` (a contact or a number) and the draft-only form. */
 export const SMS_COMPOSE_TARGET_CAPABILITY = "sms.compose.v2";
 export const MESSAGES_READ_CAPABILITY = "messages.read.v1";
+export const SMS_LATEST_SENDER_CAPABILITY = "sms.latest-sender.v1";
 export const VOICEMAIL_READ_CAPABILITY = "voicemail.read.v1";
 export const VOICEMAIL_DELETE_CAPABILITY = "voicemail.delete.v1";
+export const PHONE_KEYPAD_CAPABILITY = "phone.keypad.v1";
 
 export const CONTACT_NAME_MAX = 128;
 export const CONTACT_FIELD_MAX = 8;
@@ -793,9 +801,114 @@ export function smsReplyResultText(result: SmsReplyResult): string {
   }
 }
 
+// ---- phone.keypad.v1 -------------------------------------------------------
+
+/** The phone keypad in front, with `number` filled in when given. Nothing is dialed. */
+export type PhoneKeypadOperation = { type: "phone_keypad"; number?: string };
+export type PhoneKeypadStatus = "opened" | "unavailable";
+/** `opened`: the keypad is showing (with the number, when one was given). Never a call. */
+export type PhoneKeypadResult = {
+  kind: "phone-keypad";
+  status: PhoneKeypadStatus;
+};
+export function isPhoneKeypad(value: {
+  type?: unknown;
+}): value is PhoneKeypadOperation {
+  return value.type === "phone_keypad";
+}
+export function validatePhoneKeypad(value: unknown): PhoneKeypadOperation {
+  const v = record(value, "keypad");
+  if (v.type !== "phone_keypad") throw Error("Invalid keypad");
+  if (!Object.hasOwn(v, "number")) {
+    exact(v, ["type"], "keypad");
+    return { type: "phone_keypad" };
+  }
+  exact(v, ["type", "number"], "keypad");
+  if (typeof v.number !== "string" || !PHONE_DIAL_NUMBER.test(v.number))
+    throw Error("Invalid keypad number");
+  return { type: "phone_keypad", number: v.number };
+}
+export function validatePhoneKeypadResult(value: unknown): PhoneKeypadResult {
+  const v = record(value, "keypad result");
+  exact(v, ["kind", "status"], "keypad result");
+  if (v.kind !== "phone-keypad") throw Error("Invalid keypad result");
+  return {
+    kind: "phone-keypad",
+    status: oneOf(
+      v.status,
+      ["opened", "unavailable"] as const,
+      "keypad result",
+    ),
+  };
+}
+export function phoneKeypadResultText(result: PhoneKeypadResult): string {
+  return result.status === "opened"
+    ? "The phone keypad is open on the phone. Nothing was dialed or called; only the owner's Call tap places a call."
+    : "The phone keypad could not be opened. Nothing was dialed or called.";
+}
+
 // ---- messages.read.v1 ------------------------------------------------------
 
 export type MessagesReadOperation = { type: "messages_read_selected" };
+export type SmsLatestSenderOperation = { type: "sms_latest_sender" };
+export type SmsLatestSenderMetadata =
+  | { status: "found"; numberEnding: string }
+  | { status: "empty" | "sender-unavailable" };
+export type SmsLatestSenderResult = {
+  kind: "sms-latest-sender";
+} & (SmsLatestSenderMetadata | { status: "unavailable" });
+
+export function isSmsLatestSender(value: {
+  type?: unknown;
+}): value is SmsLatestSenderOperation {
+  return value.type === "sms_latest_sender";
+}
+
+export function parseSmsLatestSenderMetadata(
+  value: unknown,
+): SmsLatestSenderMetadata {
+  const data = record(value, "latest SMS sender");
+  if (data.status === "found") {
+    exact(data, ["status", "numberEnding"], "latest SMS sender");
+    if (
+      typeof data.numberEnding !== "string" ||
+      !/^[0-9]{4}$/.test(data.numberEnding)
+    )
+      throw Error("Invalid latest SMS sender suffix");
+    return { status: "found", numberEnding: data.numberEnding };
+  }
+  exact(data, ["status"], "latest SMS sender");
+  return {
+    status: oneOf(
+      data.status,
+      ["empty", "sender-unavailable"] as const,
+      "latest SMS sender",
+    ),
+  };
+}
+
+export function validateSmsLatestSenderResult(
+  value: unknown,
+): SmsLatestSenderResult {
+  const { kind, ...metadata } = record(value, "latest SMS sender result");
+  if (kind !== "sms-latest-sender")
+    throw Error("Invalid latest SMS sender result");
+  if (metadata.status === "unavailable") {
+    exact(metadata, ["status"], "latest SMS sender result");
+    return { kind, status: "unavailable" };
+  }
+  return { kind, ...parseSmsLatestSenderMetadata(metadata) };
+}
+
+export function smsLatestSenderReply(value: SmsLatestSenderResult): string {
+  if (value.status === "found")
+    return `Your latest incoming SMS came from the number ending in ${value.numberEnding}.`;
+  if (value.status === "empty")
+    return "There are no incoming SMS messages on this phone.";
+  if (value.status === "unavailable")
+    return "I couldn’t read the latest incoming SMS right now.";
+  return "The latest incoming SMS has no readable phone number.";
+}
 export type ReadMessage = {
   /** `in`: received; `out`: sent from this phone. */
   direction: "in" | "out";
@@ -1050,7 +1163,9 @@ export type TelephonyActionOperation =
   | ContactReadOperation
   | SmsComposeOperation
   | SmsReplyOperation
+  | PhoneKeypadOperation
   | MessagesReadOperation
+  | SmsLatestSenderOperation
   | VoicemailReadOperation
   | VoicemailDeleteOperation;
 export const TELEPHONY_ACTION_OPERATION_TYPES = [
@@ -1060,7 +1175,9 @@ export const TELEPHONY_ACTION_OPERATION_TYPES = [
   "contact_read_selected",
   "sms_compose",
   "sms_reply_selected",
+  "phone_keypad",
   "messages_read_selected",
+  "sms_latest_sender",
   "voicemail_read_selected",
   "voicemail_delete_selected",
 ] as const;
@@ -1083,8 +1200,12 @@ export function telephonyActionCapability(type: TelephonyActionType): string {
     case "sms_compose":
     case "sms_reply_selected":
       return SMS_COMPOSE_CAPABILITY;
+    case "phone_keypad":
+      return PHONE_KEYPAD_CAPABILITY;
     case "messages_read_selected":
       return MESSAGES_READ_CAPABILITY;
+    case "sms_latest_sender":
+      return SMS_LATEST_SENDER_CAPABILITY;
     case "voicemail_read_selected":
       return VOICEMAIL_READ_CAPABILITY;
     case "voicemail_delete_selected":
@@ -1107,7 +1228,12 @@ export function validateTelephonyAction(
   if (type === "contact_read_selected") return validateContactRead(value);
   if (type === "sms_compose") return validateSmsCompose(value);
   if (type === "sms_reply_selected") return validateSmsReply(value);
+  if (type === "phone_keypad") return validatePhoneKeypad(value);
   if (type === "messages_read_selected") return validateMessagesRead(value);
+  if (type === "sms_latest_sender") {
+    exact(record(value, "latest SMS sender"), ["type"], "latest SMS sender");
+    return { type };
+  }
   if (type === "voicemail_read_selected") return validateVoicemailRead(value);
   if (type === "voicemail_delete_selected")
     return validateVoicemailDelete(value);
@@ -1120,6 +1246,7 @@ export function validateTelephonyAction(
  * `contactValues`, `contactsShow` and `contactsRead` are for a host that
  * applies `add` and `remove`, filters its Contacts view, and shares the open
  * contact; a host that leaves them out advertises none of the three.
+ * `keypad` is for a host that draws its own keypad and fills it in.
  */
 export function telephonyActionCapabilities(profile: {
   present: boolean;
@@ -1130,6 +1257,7 @@ export function telephonyActionCapabilities(profile: {
   contactValues?: boolean;
   contactsShow?: boolean;
   contactsRead?: boolean;
+  keypad?: boolean;
 }): string[] {
   if (!profile.present) return [];
   return [
@@ -1144,5 +1272,6 @@ export function telephonyActionCapabilities(profile: {
     ...(profile.voicemail
       ? [VOICEMAIL_READ_CAPABILITY, VOICEMAIL_DELETE_CAPABILITY]
       : []),
+    ...(profile.keypad ? [PHONE_KEYPAD_CAPABILITY] : []),
   ];
 }

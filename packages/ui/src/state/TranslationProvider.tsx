@@ -59,7 +59,7 @@ export function TranslationProvider({
   const [hadStoredLanguage] = useState(hasStoredUiLanguage);
   // Bumped after async locale loads complete so consumers re-render with the
   // freshly populated MESSAGES dictionary.
-  const [, setLocaleRevision] = useState(0);
+  const [localeRevision, setLocaleRevision] = useState(0);
 
   // Eagerly load the persisted locale (other than `en`) on mount.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only effect; language changes flow through setUiLanguage
@@ -130,10 +130,11 @@ export function TranslationProvider({
     () => ({ ...DEFAULT_BRANDING, ...branding }),
     [branding],
   );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: publish the new catalog when its lazy load completes
   const t = useMemo(
     () =>
       createTranslator(uiLanguage, appNameInterpolationVars(mergedBranding)),
-    [uiLanguage, mergedBranding],
+    [uiLanguage, mergedBranding, localeRevision],
   );
 
   const value = useMemo<TranslationContextValue>(

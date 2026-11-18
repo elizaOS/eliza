@@ -2,9 +2,11 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
   getDirectActionRoutingRules,
+  getTurnActionConstraint,
   type IAgentRuntime,
   isObjectRecord,
   type Memory,
+  runWithStreamingContext,
   type UUID,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -559,6 +561,193 @@ describe("confirmed previous navigation", () => {
   });
 });
 
+it("reads a bare Back while Browser is showing as the tab's page history, not the previous view", async () => {
+  // The owner's v609 turn: "go back" with Browser in front went to Maps
+  // ("Taking you back to Maps.") instead of the previous page.
+  const f = await fixture();
+  const scope = { hostKey: f.hostKey, clientId: "browser-client" };
+  const post = (path: string, body: unknown) =>
+    fetch(f.url + path, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer local-navigation-test",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  let sequence = 0;
+  const show = async (viewId: string) => {
+    const response = await post(`/api/views/${viewId}/navigate`, {
+      clientId: scope.clientId,
+      delivery: "completed-action",
+      prepareOnly: true,
+      viewType: "gui",
+      completedActionHandoffId: `browser-${++sequence}`,
+    });
+    expect(response.status).toBe(200);
+    const { navigationBinding } = await response.json();
+    const claim = await post("/api/views/interact-claim", navigationBinding);
+    expect(claim.status).toBe(200);
+    expect(
+      await (
+        await post("/api/views/interact-result", {
+          ...navigationBinding,
+          claimId: (await claim.json()).claimId,
+          success: true,
+          result: { switched: true },
+        })
+      ).json(),
+    ).toMatchObject({ accepted: true });
+    await vi.waitFor(() =>
+      expect(getCurrentViewState(f.runtime, scope)?.viewId).toBe(viewId),
+    );
+  };
+  await show("notes");
+  await show("browser");
+  const routeScope = {
+    ...scope,
+    request: {
+      runtime: f.runtime,
+      authorization: {
+        ok: true,
+        role: "OWNER" as const,
+        identityId: principal,
+      },
+      signal: new AbortController().signal,
+    },
+  };
+  const message = (text: string, uiView = "browser"): Memory => ({
+    ...clientMessage(),
+    content: {
+      source: "client_chat",
+      channelType: "DM",
+      text,
+      metadata: {
+        viewClientId: scope.clientId,
+        viewDelivery: "completed-action",
+        uiView,
+      },
+    },
+  });
+  const prompt = await runWithViewClient(routeScope, () =>
+    viewNavigationField.getContext!({
+      runtime: f.runtime,
+      message: message("go back"),
+      senderRole: "OWNER",
+      turnSignal: new AbortController().signal,
+    } as never),
+  );
+  expect(prompt).toContain("Browser keeps its own page history");
+  expect(prompt).toContain("route the request to the browser context");
+  // The view-back route no longer claims a bare Back over Browser's page.
+  const backRoute = getDirectActionRoutingRules(f.runtime).find(
+    (rule) => rule.id === "views.explicit-navigation",
+  )!;
+  for (const text of ["go back", "Back", "Please go back!"])
+    expect(
+      runWithViewClient(routeScope, () =>
+        backRoute.matches(text, message(text)),
+      ),
+    ).toBe(false);
+  // Even when the model judges it a direct view Back, the view is held and
+  // the turn goes to Browser's own context.
+  const plan = {
+    contexts: ["general"],
+    intents: ["Go back to the confirmed previous view"],
+    candidateActions: ["VIEWS_SHOW"],
+    parentActionHints: [],
+    requiresTool: true,
+    reply: "Taking you back to Notes.",
+    replyEffectStatus: "pending",
+  };
+  const back = message("go back");
+  let held: unknown;
+  const result = await runWithViewClient(routeScope, () =>
+    runWithStreamingContext(
+      { messageId: back.id, onStreamChunk: async () => undefined } as never,
+      async () => {
+        viewNavigationField.handle!({
+          runtime: f.runtime,
+          message: back,
+          senderRole: "OWNER",
+          value: { disposition: "direct", viewId: "notes", reason: "Back" },
+          turnSignal: new AbortController().signal,
+        } as never);
+        const selected = await viewNavigationEvaluator.evaluate({
+          runtime: f.runtime,
+          message: back,
+          state: { data: { providers: {} } },
+          userRoles: ["OWNER"],
+          messageHandler: { processMessage: "RESPOND", plan },
+        } as never);
+        held = getTurnActionConstraint(
+          {
+            messageId: back.id!,
+            roomId: back.roomId,
+            actorId: back.entityId,
+            action: "VIEWS",
+          },
+          "show",
+        );
+        return selected;
+      },
+    ),
+  );
+  expect(held).toMatchObject({ disposition: "deny" });
+  expect(result?.deterministicToolCall).toBeUndefined();
+  expect(result).toMatchObject({
+    requiresTool: true,
+    clearReply: true,
+    addContexts: ["browser"],
+    clearCandidateActions: true,
+  });
+  expect(JSON.stringify(result?.addContextSlices)).toContain(
+    "previous page in the tab",
+  );
+  // A named view still navigates from Browser, and Back from another view
+  // keeps the confirmed previous view.
+  const named = message("open notes");
+  const namedResult = await runWithViewClient(routeScope, async () => {
+    viewNavigationField.handle!({
+      runtime: f.runtime,
+      message: named,
+      senderRole: "OWNER",
+      value: { disposition: "direct", viewId: "notes", reason: "Named" },
+      turnSignal: new AbortController().signal,
+    } as never);
+    return viewNavigationEvaluator.evaluate({
+      runtime: f.runtime,
+      message: named,
+      state: { data: { providers: {} } },
+      userRoles: ["OWNER"],
+      messageHandler: {
+        processMessage: "RESPOND",
+        plan: { ...plan, intents: ["open notes"] },
+      },
+    } as never);
+  });
+  expect(namedResult?.deterministicToolCall).toEqual({
+    name: "VIEWS",
+    params: { action: "show", view: "notes" },
+  });
+  await show("notes");
+  expect(
+    runWithViewClient(routeScope, () =>
+      backRoute.matches("go back", message("go back", "notes")),
+    ),
+  ).toBe(true);
+  expect(
+    await runWithViewClient(routeScope, () =>
+      viewNavigationField.getContext!({
+        runtime: f.runtime,
+        message: message("go back", "notes"),
+        senderRole: "OWNER",
+        turnSignal: new AbortController().signal,
+      } as never),
+    ),
+  ).not.toContain("keeps its own page history");
+});
+
 it("retains only the prepared destination's verified alias through the real acknowledgement", async () => {
   const f = await fixture();
   const scope = {
@@ -802,4 +991,149 @@ it("records a renderer-reported manual switch as the user's after settlement", a
     ),
   ).toContain("(you navigated here)");
   expect(await settle("notes", "someone-else")).toBe(409);
+});
+
+describe("foreground page history and Maps place requests", () => {
+  const scopeFor = (f: Awaited<ReturnType<typeof fixture>>) => ({
+    hostKey: f.hostKey,
+    clientId: "page-client",
+    request: {
+      runtime: f.runtime,
+      authorization: {
+        ok: true,
+        role: "OWNER" as const,
+        identityId: principal,
+      },
+      signal: new AbortController().signal,
+    },
+  });
+  const message = (text: string, uiView: string): Memory => ({
+    ...clientMessage(),
+    content: {
+      source: "client_chat",
+      channelType: "DM",
+      text,
+      metadata: {
+        viewClientId: "page-client",
+        viewDelivery: "completed-action",
+        uiView,
+      },
+    },
+  });
+  async function judge(
+    f: Awaited<ReturnType<typeof fixture>>,
+    text: string,
+    uiView: string,
+    value: { disposition: string; viewId: string; reason: string },
+  ) {
+    const current = message(text, uiView);
+    const plan = {
+      contexts: ["general"],
+      intents: [text],
+      candidateActions: ["VIEWS_SHOW"],
+      parentActionHints: [],
+      requiresTool: true,
+      reply: "Opening it.",
+      replyEffectStatus: "pending",
+    };
+    return runWithViewClient(scopeFor(f), () =>
+      runWithStreamingContext(
+        {
+          messageId: current.id,
+          onStreamChunk: async () => undefined,
+        } as never,
+        async () => {
+          viewNavigationField.handle!({
+            runtime: f.runtime,
+            message: current,
+            senderRole: "OWNER",
+            value,
+            turnSignal: new AbortController().signal,
+          } as never);
+          return viewNavigationEvaluator.evaluate({
+            runtime: f.runtime,
+            message: current,
+            state: { data: { providers: {} } },
+            userRoles: ["OWNER"],
+            messageHandler: { processMessage: "RESPOND", plan },
+          } as never);
+        },
+      ),
+    );
+  }
+
+  it.each([
+    "go forward",
+    "Forward",
+    "reload the page",
+    "refresh",
+    "Please reload.",
+  ])("hands %s with Browser in front to the Browser context", async (text) => {
+    const f = await fixture();
+    const result = await judge(f, text, "browser", {
+      disposition: "direct",
+      viewId: "notes",
+      reason: "page",
+    });
+    expect(result?.deterministicToolCall).toBeUndefined();
+    expect(result).toMatchObject({
+      requiresTool: true,
+      addContexts: ["browser"],
+    });
+  });
+
+  it("still offers Browser's context when Stage 1 judged no navigation", async () => {
+    const f = await fixture();
+    const result = await judge(f, "go back", "browser", {
+      disposition: "none",
+      viewId: "",
+      reason: "not navigation",
+    });
+    expect(result).toMatchObject({ addContexts: ["browser"] });
+    expect(result?.requiresTool).toBeUndefined();
+  });
+
+  it("declines the Maps view shortcut for a place or route request", async () => {
+    const f = await fixture();
+    const maps = await registerPluginViews(
+      f.runtime,
+      {
+        name: "test-maps-view",
+        description: "Fixture Maps view",
+        views: [
+          { id: "maps", label: "Maps", path: "/maps", bundleUrl: "/maps.js" },
+        ],
+      },
+      { pluginDir: process.cwd(), indexEmbeddings: false },
+    );
+    cleanup.push(async () => unregisterPluginViews(f.runtime, maps));
+    for (const text of [
+      "take me to Coit Tower",
+      "navigate to the Ferry Building",
+      "how do I get to Coit Tower?",
+      "find the nearest pharmacy",
+    ]) {
+      const result = await judge(f, text, "chat", {
+        disposition: "direct",
+        viewId: "maps",
+        reason: "maps",
+      });
+      expect(result?.deterministicToolCall, text).toBeUndefined();
+      expect(result, text).toMatchObject({ requiresTool: true });
+      expect(JSON.stringify(result?.addContextSlices), text).toContain(
+        "MAPS_ROUTE",
+      );
+    }
+    for (const text of ["open maps", "go to maps", "show me the maps"]) {
+      const result = await judge(f, text, "chat", {
+        disposition: "direct",
+        viewId: "maps",
+        reason: "maps",
+      });
+      expect(result?.deterministicToolCall, text).toEqual({
+        name: "VIEWS",
+        params: { action: "show", view: "maps" },
+      });
+    }
+  });
 });

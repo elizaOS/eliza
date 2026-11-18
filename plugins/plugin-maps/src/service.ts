@@ -6,6 +6,7 @@ import type { MapsProviderAdapter } from "./adapter.js";
 import { ElizaCloudMapsAdapter } from "./cloud-adapter.js";
 import { MapsError } from "./errors.js";
 import type { MapsDeviceNavigation } from "./navigation.js";
+import { PlaceChoices } from "./place-choice.js";
 import {
   assertSavedPlacesNamespace,
   type MapsSavedPlacesHost,
@@ -160,6 +161,8 @@ export class MapsService extends Service {
   private providerGeneration = 0;
   private defaultAdapterId: string | null = null;
   private readonly store: SavedPlaceStore;
+  /** Open "which one did you mean?" questions, so a reply binds to the one asked. */
+  readonly placeChoices = new PlaceChoices();
 
   constructor(runtime?: IAgentRuntime, store?: SavedPlaceStore) {
     super(runtime);

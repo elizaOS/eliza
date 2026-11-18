@@ -6,6 +6,7 @@ import {
 } from "@elizaos/contracts/browser-request-grounding";
 import {
   AgentRuntime,
+  bindIncomingMessagePersistence,
   conversationClientUserMemoryId,
   type IDatabaseAdapter,
   type Memory,
@@ -158,6 +159,25 @@ async function fixture() {
           return id === original.id ? stored : null;
         });
         setDeviceReadReplyConversation(runtime, randomUUID(), room);
+        if (custody.startsWith("augmented")) {
+          // The chat host's prompt-only document envelope, bound to the
+          // persisted message as generateChatResponse binds it.
+          bindIncomingMessagePersistence(original, structuredClone(original));
+          original.content.text = [
+            "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+            "",
+            "<contextual_documents>",
+            '<source title="Getting started" similarity="1.000">',
+            "Q: I just opened Eliza — what do I do first?",
+            "A: Take the interactive tutorial.",
+            "</source>",
+            "</contextual_documents>",
+            "",
+            "<user_request>",
+            custody === "augmented" ? request : "open example.com/changed",
+            "</user_request>",
+          ].join("\n");
+        }
         setDeviceReadReplyContext(runtime, original, {
           id: original.id!,
           events: [],
@@ -183,6 +203,26 @@ async function fixture() {
             () => action.handler!(runtime, original, undefined, options),
           );
         if (custody === "replay") await invoke();
+        // The planner also calls the routed open for the same address in the
+        // same turn, with its own operation key.
+        if (custody === "double") {
+          const first = await invoke();
+          const open = runtime.actions.find(
+            (a) => a.name === "DEVICE_BROWSER_OPEN",
+          )!;
+          const second = await open.handler!(runtime, original, undefined, {
+            parameters: {
+              operation: {
+                type: "browser_navigate",
+                url: "wikipedia.org",
+                newTab: true,
+              },
+              operationKey: randomUUID(),
+              reason: "Open the address the owner typed",
+            },
+          });
+          return { first, second };
+        }
         return invoke();
       },
       { isCurrent: () => current },
@@ -387,6 +427,78 @@ it.each([false, true])(
     }
   },
 );
+// v610: "take a photo" matched a bundled FAQ line, so the planner's copy of
+// the message was the document envelope. The owner's words still bind it.
+it.each(["augmented", "augmented-other"] as const)(
+  "binds a requested photo through a host-bound document envelope only to the owner's words (%s)",
+  async (custody) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, {
+        capabilities: ["camera.capture-photo.v1", "camera.capture-lens.v1"],
+      });
+      const result = await f.run(
+        "take a photo",
+        false,
+        true,
+        undefined,
+        custody,
+        { type: "camera_capture_photo" },
+      );
+      const rows = (
+        await f.pg.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows).toHaveLength(1);
+      if (custody === "augmented") {
+        expect(result).toMatchObject({
+          userFacingText: "Opening Camera to take the photo.",
+          data: { directRequest: true, approvalRequired: false },
+        });
+        expect(rows[0].payload.requestMessageId).toEqual(expect.any(String));
+      } else {
+        // An envelope around other words is not the owner's message.
+        expect(result).toMatchObject({
+          userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+          data: { approvalRequired: true },
+        });
+        expect(rows[0].payload).not.toHaveProperty("requestMessageId");
+      }
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+// v610: a Files review that lapsed at 04:21 was still pending in the phone's
+// list and in approval_requests hours later.
+it("lists a lapsed device review as expired, never as pending", async () => {
+  const f = await fixture();
+  try {
+    Object.assign(f.credential, { capabilities: ["camera.capture-photo.v1"] });
+    await f.run("take a photo", false, false, undefined, "current", {
+      type: "camera_capture_photo",
+    });
+    const [proposal] = await f.service.list(f.credential);
+    expect(proposal).toMatchObject({ state: "pending" });
+    await f.pg.query(
+      "UPDATE approval_requests SET expires_at = now() - interval '1 minute'",
+    );
+    const listed = await f.service.list(f.credential);
+    expect(listed.map((request) => [request.id, request.state])).toEqual([
+      [proposal.id, "expired"],
+    ]);
+    expect(
+      (
+        await f.pg.query<{ state: string }>(
+          "SELECT state FROM approval_requests",
+        )
+      ).rows,
+    ).toEqual([{ state: "expired" }]);
+  } finally {
+    await f.pg.close();
+  }
+});
 it.each([false, true])(
   "opens a model proposal grounded in the typed address directly, in the user's spelling, for specialized=%s",
   async (specialized) => {
@@ -570,7 +682,9 @@ it("refuses an unbound service caller without creating a review", async () => {
   }
 });
 it.each([
-  "Open example.com/dashboard in the browser",
+  // "in the browser" and "in a new tab" are now part of the strict command
+  // (the opens test above); a private tab is still the model's call.
+  "Open example.com/dashboard in a private tab",
   "please open example.com/dashboard now",
   "I want to see example.com/dashboard",
   "Alpha, open example.com/dashboard",
@@ -634,6 +748,70 @@ it("opens a typed http:// address over HTTPS", async () => {
     await f.pg.close();
   }
 });
+it.each([
+  // [request, model operation, negotiated, stored operation]
+  // The owner's v609 turn: "open wikipedia.org in a new tab" became an empty
+  // browser_tab_new. The owner's own words now place the address in a new tab
+  // even when the model leaves newTab out.
+  [
+    "open wikipedia.org in a new tab",
+    { type: "browser_navigate", url: "wikipedia.org" },
+    true,
+    { type: "browser_navigate", url: "https://wikipedia.org/", newTab: true },
+  ],
+  [
+    "open wikipedia.org in a new tab",
+    { type: "browser_navigate", url: "wikipedia.org", newTab: true },
+    true,
+    { type: "browser_navigate", url: "https://wikipedia.org/", newTab: true },
+  ],
+  // "In the browser" is the strict open itself, in whatever tab the phone picks.
+  [
+    "open example.com in the browser",
+    { type: "browser_navigate", url: "example.com" },
+    true,
+    { type: "browser_navigate", url: "https://example.com/" },
+  ],
+  // The polite question keeps the owner's placement too.
+  [
+    "can you open wikipedia.org in a new tab?",
+    { type: "browser_navigate", url: "wikipedia.org" },
+    true,
+    { type: "browser_navigate", url: "https://wikipedia.org/", newTab: true },
+  ],
+  // A phone that did not negotiate a new tab opens the address as before.
+  [
+    "open wikipedia.org in a new tab",
+    { type: "browser_navigate", url: "wikipedia.org", newTab: true },
+    false,
+    { type: "browser_navigate", url: "https://wikipedia.org/" },
+  ],
+] as const)(
+  "opens %s directly with the owner's placement (%o, negotiated=%s)",
+  async (request, operation, negotiated, stored) => {
+    const f = await fixture();
+    try {
+      if (negotiated)
+        Object.assign(f.credential, {
+          capabilities: ["browser.open-new-tab.v1"],
+        });
+      expect(
+        await f.run(request, true, true, undefined, "current", operation),
+      ).toMatchObject({
+        userFacingText: `Opening ${new URL(stored.url).host}.`,
+        data: { directRequest: true, approvalRequired: false },
+      });
+      const rows = (
+        await f.pg.query<{ payload: { operation: unknown } }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows.map((row) => row.payload.operation)).toEqual([stored]);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
 it.each([
   // [request, model query, direct mode, runs without a review]
   ["search for best pizza near me", "Best pizza near me", true, true],
@@ -779,3 +957,193 @@ it.each([
     }
   },
 );
+it.each([
+  // [request, model operation, capabilities, stored operation, reply]
+  // The owner's v610 turn (Pixel): the model still proposed an empty
+  // browser_tab_new for "open wikipedia.org in a new tab", and the phone showed
+  // a blank New tab with "Opened a new tab.". The owner's words open the address.
+  [
+    "open wikipedia.org in a new tab",
+    { type: "browser_tab_new" },
+    ["browser.tabs.v1", "browser.open-new-tab.v1"],
+    { type: "browser_navigate", url: "https://wikipedia.org/", newTab: true },
+    "Opening wikipedia.org.",
+  ],
+  [
+    "open wikipedia.org in a new tab",
+    { type: "browser_tab_new", private: false },
+    ["browser.tabs.v1", "browser.open-new-tab.v1"],
+    { type: "browser_navigate", url: "https://wikipedia.org/", newTab: true },
+    "Opening wikipedia.org.",
+  ],
+  [
+    "can you open wikipedia.org in a new tab?",
+    { type: "browser_tab_new" },
+    ["browser.tabs.v1", "browser.open-new-tab.v1"],
+    { type: "browser_navigate", url: "https://wikipedia.org/", newTab: true },
+    "Opening wikipedia.org.",
+  ],
+  // A phone that did not negotiate a new tab still opens the address.
+  [
+    "open wikipedia.org in a new tab",
+    { type: "browser_tab_new" },
+    ["browser.tabs.v1"],
+    { type: "browser_navigate", url: "https://wikipedia.org/" },
+    "Opening wikipedia.org.",
+  ],
+  // No address, or a private tab, is still the empty tab the model proposed.
+  [
+    "open a new tab",
+    { type: "browser_tab_new" },
+    ["browser.tabs.v1", "browser.open-new-tab.v1"],
+    { type: "browser_tab_new" },
+    "Doing that in Browser.",
+  ],
+  [
+    "open wikipedia.org in a new tab",
+    { type: "browser_tab_new", private: true },
+    ["browser.tabs.v1", "browser.open-new-tab.v1"],
+    { type: "browser_tab_new", private: true },
+    "Doing that in Browser.",
+  ],
+] as const)(
+  "opens the typed address for an empty tab proposed for %s (%o)",
+  async (request, operation, capabilities, stored, reply) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: [...capabilities] });
+      expect(
+        await f.run(request, false, true, undefined, "current", operation),
+      ).toMatchObject({
+        success: true,
+        userFacingText: reply,
+        data: { directRequest: true, approvalRequired: false },
+      });
+      const rows = (
+        await f.pg.query<{ payload: { operation: unknown } }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows.map((row) => row.payload.operation)).toEqual([stored]);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+
+it.each([
+  // [request, custody, direct, stored operations]
+  // Not a direct turn: the address still opens, after the owner's review,
+  // never as an empty tab.
+  [
+    "open wikipedia.org in a new tab",
+    "current",
+    false,
+    [{ type: "browser_navigate", url: "https://wikipedia.org/", newTab: true }],
+  ],
+  // Spoken, the same words open the same address.
+  [
+    "open wikipedia.org in a new tab",
+    "voice",
+    true,
+    [{ type: "browser_navigate", url: "https://wikipedia.org/", newTab: true }],
+  ],
+  // A private tab and a negated or prose request keep the model's empty tab:
+  // only the owner's whole-message open of an address becomes that open.
+  [
+    "open wikipedia.org in a new private tab",
+    "current",
+    true,
+    [{ type: "browser_tab_new" }],
+  ],
+  [
+    "don't open wikipedia.org in a new tab",
+    "current",
+    true,
+    [{ type: "browser_tab_new" }],
+  ],
+  [
+    "open a new tab, I'll go to wikipedia.org later",
+    "current",
+    true,
+    [{ type: "browser_tab_new" }],
+  ],
+] as const)(
+  "turns an empty tab for %s (%s, direct=%s) into an open only for the owner's own address",
+  async (request, custody, direct, stored) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, {
+        capabilities: ["browser.tabs.v1", "browser.open-new-tab.v1"],
+      });
+      const result = await f.run(request, false, direct, undefined, custody, {
+        type: "browser_tab_new",
+      });
+      expect(result).toMatchObject({ success: true });
+      const rows = (
+        await f.pg.query<{ payload: { operation: unknown } }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows.map((row) => row.payload.operation)).toEqual(stored);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it("a stale turn never turns an empty tab into an open", async () => {
+  const f = await fixture();
+  try {
+    Object.assign(f.credential, {
+      capabilities: ["browser.tabs.v1", "browser.open-new-tab.v1"],
+    });
+    await f
+      .run("open wikipedia.org in a new tab", false, true, undefined, "stale", {
+        type: "browser_tab_new",
+      })
+      .catch(() => undefined);
+    const rows = (
+      await f.pg.query<{ payload: { operation: { type: string } } }>(
+        "SELECT payload FROM approval_requests",
+      )
+    ).rows;
+    expect(
+      rows.filter((row) => row.payload.operation.type === "browser_navigate"),
+    ).toEqual([]);
+  } finally {
+    await f.pg.close();
+  }
+});
+it("opens the address once when the model proposes an empty tab and the routed open in one turn", async () => {
+  const f = await fixture();
+  try {
+    Object.assign(f.credential, {
+      capabilities: ["browser.tabs.v1", "browser.open-new-tab.v1"],
+    });
+    const { first, second } = (await f.run(
+      "open wikipedia.org in a new tab",
+      false,
+      true,
+      undefined,
+      "double",
+      { type: "browser_tab_new" },
+    )) as unknown as {
+      first: { userFacingText?: string; data?: { proposalId?: string } };
+      second: { userFacingText?: string; data?: { proposalId?: string } };
+    };
+    expect(first.userFacingText).toBe("Opening wikipedia.org.");
+    expect(second.userFacingText).toBe("Opening wikipedia.org.");
+    expect(second.data?.proposalId).toBe(first.data?.proposalId);
+    const rows = (
+      await f.pg.query<{ payload: { operation: unknown } }>(
+        "SELECT payload FROM approval_requests",
+      )
+    ).rows;
+    // One owner request, one new tab with that address.
+    expect(rows.map((r) => r.payload.operation)).toEqual([
+      { type: "browser_navigate", url: "https://wikipedia.org/", newTab: true },
+    ]);
+  } finally {
+    await f.pg.close();
+  }
+});

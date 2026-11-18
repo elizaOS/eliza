@@ -14,14 +14,18 @@ import {
   MESSAGES_READ_CAPABILITY,
   MESSAGES_READ_MAX,
   PHONE_CALL_CAPABILITY,
+  PHONE_KEYPAD_CAPABILITY,
   phoneCallReceiptOutcome,
   phoneCallResultText,
+  phoneKeypadResultText,
   SMS_COMPOSE_CAPABILITY,
   SMS_COMPOSE_TARGET_CAPABILITY,
+  SMS_LATEST_SENDER_CAPABILITY,
   smsComposeCapabilityAvailable,
   smsComposeReceiptOutcome,
   smsComposeResultText,
   smsComposeTarget,
+  smsLatestSenderReply,
   smsReplyReceiptOutcome,
   smsReplyResultText,
   TELEPHONY_ACTION_OPERATION_TYPES,
@@ -39,8 +43,11 @@ import {
   validateMessagesReadResult,
   validatePhoneCall,
   validatePhoneCallResult,
+  validatePhoneKeypad,
+  validatePhoneKeypadResult,
   validateSmsCompose,
   validateSmsComposeResult,
+  validateSmsLatestSenderResult,
   validateSmsReply,
   validateSmsReplyResult,
   validateTelephonyAction,
@@ -755,6 +762,32 @@ test("a voicemail delete targets only the open voicemail", () => {
     assert.throws(() => validateVoicemailDeleteResult(bad), REJECTED);
 });
 
+test("latest SMS sender exposes only the reviewed suffix", () => {
+  const result = {
+    kind: "sms-latest-sender",
+    status: "found",
+    numberEnding: "0123",
+  };
+  assert.deepEqual(validateSmsLatestSenderResult(result), result);
+  assert.match(
+    smsLatestSenderReply(validateSmsLatestSenderResult(result)),
+    /ending in 0123/,
+  );
+  assert.throws(
+    () =>
+      validateSmsLatestSenderResult({ ...result, numberEnding: "5555550123" }),
+    REJECTED,
+  );
+  assert.throws(
+    () => validateSmsLatestSenderResult({ ...result, body: "private" }),
+    REJECTED,
+  );
+  assert.throws(
+    () => validateTelephonyAction({ type: "sms_latest_sender", since: 1 }),
+    REJECTED,
+  );
+});
+
 test("each operation type has one capability and one validator", () => {
   assert.deepEqual(
     TELEPHONY_ACTION_OPERATION_TYPES.map((type) => [
@@ -770,7 +803,9 @@ test("each operation type has one capability and one validator", () => {
       ["contact_read_selected", CONTACT_READ_CAPABILITY],
       ["sms_compose", SMS_COMPOSE_CAPABILITY],
       ["sms_reply_selected", SMS_COMPOSE_CAPABILITY],
+      ["phone_keypad", PHONE_KEYPAD_CAPABILITY],
       ["messages_read_selected", MESSAGES_READ_CAPABILITY],
+      ["sms_latest_sender", SMS_LATEST_SENDER_CAPABILITY],
       ["voicemail_read_selected", VOICEMAIL_READ_CAPABILITY],
       ["voicemail_delete_selected", VOICEMAIL_DELETE_CAPABILITY],
     ],
@@ -785,6 +820,7 @@ test("each operation type has one capability and one validator", () => {
     { type: "sms_compose", query: "Ada", body: "hi" },
     { type: "sms_reply_selected", body: "hi" },
     { type: "messages_read_selected" },
+    { type: "sms_latest_sender" },
     { type: "voicemail_read_selected" },
     { type: "voicemail_delete_selected" },
   ]) {
@@ -858,6 +894,64 @@ test("capabilities follow the native profile and its parts", () => {
       sms: false,
       voicemail: false,
       contactValues: true,
+    }),
+    [],
+  );
+});
+
+test("phone_keypad opens the keypad, filled in at most, and never calls", () => {
+  assert.equal(isTelephonyAction({ type: "phone_keypad" }), true);
+  assert.equal(
+    telephonyActionCapability("phone_keypad"),
+    PHONE_KEYPAD_CAPABILITY,
+  );
+  assert.deepEqual(validatePhoneKeypad({ type: "phone_keypad" }), {
+    type: "phone_keypad",
+  });
+  assert.deepEqual(
+    validateTelephonyAction({ type: "phone_keypad", number: "+14155550100" }),
+    { type: "phone_keypad", number: "+14155550100" },
+  );
+  for (const refused of [
+    { type: "phone_keypad", number: "415-555-0100" },
+    { type: "phone_keypad", number: "" },
+    { type: "phone_keypad", number: 4155550100 },
+    { type: "phone_keypad", number: "4155550100", call: true },
+    { type: "phone_keypad", target: { kind: "number", number: "4155550100" } },
+  ])
+    assert.throws(() => validateTelephonyAction(refused), REJECTED);
+  assert.deepEqual(
+    validatePhoneKeypadResult({ kind: "phone-keypad", status: "opened" }),
+    { kind: "phone-keypad", status: "opened" },
+  );
+  for (const refused of [
+    { kind: "phone-keypad", status: "placed" },
+    { kind: "phone-keypad", status: "opened", number: "1" },
+  ])
+    assert.throws(() => validatePhoneKeypadResult(refused), REJECTED);
+  assert.match(
+    phoneKeypadResultText({ kind: "phone-keypad", status: "opened" }),
+    /Nothing was dialed or called/,
+  );
+  assert.deepEqual(
+    telephonyActionCapabilities({
+      present: true,
+      call: false,
+      contactsWrite: false,
+      sms: false,
+      voicemail: false,
+      keypad: true,
+    }),
+    [PHONE_KEYPAD_CAPABILITY],
+  );
+  assert.deepEqual(
+    telephonyActionCapabilities({
+      present: false,
+      call: true,
+      contactsWrite: true,
+      sms: true,
+      voicemail: true,
+      keypad: true,
     }),
     [],
   );
