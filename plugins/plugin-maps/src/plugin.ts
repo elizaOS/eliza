@@ -193,18 +193,18 @@ const GO_TO_NOT_A_PLACE =
 /** "Coit Tower", "McDonald's", "O'Hare": a capitalised word, not an acronym or code ("Q3"). */
 const PROPER_NAME = /^\p{Lu}[\p{Ll}'’]/u;
 /**
- * A lone capitalised word after "go to" is as often a person or an app as a
- * place ("go to Sam", "go to Notion"), so it counts only as a well-known
- * chain: "go to Starbucks", "go to Walgreens", "go to Safeway".
+ * A lone capitalised word can name a person or app. Recognise a small set of
+ * retail, hospitality and fuel chains with physical locations. Other names
+ * stay with the planner unless the user says "take me to" or "navigate to".
  */
-const WELL_KNOWN_PLACE =
+const SINGLE_WORD_CHAINS =
   /^(?:Starbucks|Peet['’]?s|Dunkin['’]?|McDonald['’]?s|Wendy['’]?s|Denny['’]?s|Applebee['’]?s|Chili['’]?s|Arby['’]?s|Popeyes|Chipotle|Panera|Walgreens|Safeway|Walmart|Costco|Target|Kroger|Albertsons|Publix|Wegmans|Meijer|Aldi|Lidl|Ikea|Lowe['’]?s|Macy['’]?s|Kohl['’]?s|Nordstrom|Sephora|Ulta|Petco|PetSmart|Staples|Kmart|Hilton|Marriott|Hyatt|Sheraton|Westin|Chevron|Exxon|Texaco|Valero|Arco)$/u;
 /**
  * "SFO", "JFK Terminal 4", "UCSF Medical Center": an all-caps code of two to
  * five letters, unless it is a common file, software or time abbreviation.
  */
 const PLACE_CODE =
-  /^(?!(?:PDF|FAQ|URL|API|TODO|HTML|CSS|JSON|XML|SQL|CSV|USB|TV|AM|PM|OK|ASAP|FYI|AI|ML|UI|UX|IT|HR|PR|CI|QA|SDK|CLI|GUI|OS|AWS|VPN|DNS|SSH|IDE|DM|DMS|SMS|MMS|BIOS)\b)\p{Lu}{2,5}\b(?!['’.-])/u;
+  /^(?!(?:PDF|FAQ|URL|API|TODO|HTML|CSS|JSON|XML|SQL|CSV|USB|TV|AM|PM|OK|ASAP|FYI|AI|ML|UI|UX|IT|HR|PR|CI|QA|SDK|CLI|GUI|OS|AWS|VPN|DNS|SSH|IDE|DM|DMS|SMS|MMS|BIOS)\b)\p{Lu}{2,5}(?=\s|$)/u;
 /** "market street", "1600 pennsylvania avenue": an unambiguous street suffix. */
 const STREET_NAME =
   /\p{L}\s+(?:street|st|avenue|ave|boulevard|blvd|road|rd|lane|ln|parkway|pkwy|highway|hwy)\.?(?:,|$)/iu;
@@ -213,10 +213,12 @@ const STREET_ADDRESS =
   /^\d+[a-z]?\s+(?:\p{Lu}|\S+.*?\b(?:drive|dr|way|place|pl|court|ct|terrace|square|plaza|circle)\.?(?:,|$))/u;
 
 /**
- * Speech-to-text often writes a place in lowercase ("go to coit tower"), so a
- * lowercase destination may still be a place, but only a conservative one: two
- * or more words after "the", none a pronoun, time, conjunction or app word.
+ * A venue in a spoken place name ("coit tower", "museum of modern art") or
+ * following a code ("JFK Terminal 4") is affirmative evidence of travel.
  */
+const PLACE_NAME_CUE =
+  /^(?:cathedral|college|museum|university)\s+of\s+\p{L}|\b(?:airport|aquarium|beach|bridge|building|caf[eé]|cathedral|center|centre|cinema|clinic|college|court|garden|hospital|hotel|library|market|museum|park|pharmacy|pier|plaza|restaurant|shop|square|stadium|station|store|terminal|theat(?:er|re)|tower|trail|university|zoo)(?:\s+\d+[a-z]?)?$/iu;
+
 const SPOKEN_NOT_A_PLACE_IDIOM =
   /^(?:sleep|bed|work|school|church|war|waste|town|pieces|great\s+lengths)\b/u;
 /** "go to the right place", "go to see a movie", "go to the second floor". */
@@ -225,9 +227,6 @@ const SPOKEN_NOT_A_PLACE_FIRST_WORD =
 /** A word that makes the phrase about someone, something, a time or more work. */
 const SPOKEN_NOT_A_PLACE_WORD =
   /\b(?:i|me|my|mine|you|your|yours|we|us|our|he|him|his|she|her|they|them|their|it|its|this|that|these|those|today|tomorrow|tonight|yesterday|now|later|soon|morning|afternoon|evening|weekend|with|for|and|or|but|so|to|about|after|before|without|because|until|while)\b/u;
-/** "go to the main branch", "go to the error log": software or content, not a place. */
-const SPOKEN_NOT_A_PLACE_LAST_WORD =
-  /\b(?:branch|commit|function|method|class|error|warning|bug|issue|test|log|result|answer|question|topic|point|problem|one|ones|side|way|thing|things|list|table|chart|graph|image|picture|photo|video|song|track|playlist|album|episode|verse|note|notes|reminder|event|meeting|call|comment|post|story|profile|account|app|game|room|channel|server|repo|repository|directory|dashboard)$/u;
 /** "go to the nearest gas station", but not "go to the nearest integer". */
 const SPOKEN_NEAREST = /^(?:nearest|closest)\b/u;
 const SPOKEN_NEAREST_PLACE = new RegExp(
@@ -236,14 +235,14 @@ const SPOKEN_NEAREST_PLACE = new RegExp(
 );
 
 /** A lowercase destination that still reads as a place: "coit tower", "the ferry building". */
-function spokenPlaceName(destination: string, name: string): boolean {
+function spokenPlaceName(name: string): boolean {
   return (
     /^\p{Ll}/u.test(name) &&
-    name.split(/\s+/u).length >= 2 &&
-    !SPOKEN_NOT_A_PLACE_IDIOM.test(destination) &&
+    /\s/u.test(name) &&
+    PLACE_NAME_CUE.test(name) &&
+    !SPOKEN_NOT_A_PLACE_IDIOM.test(name) &&
     !SPOKEN_NOT_A_PLACE_FIRST_WORD.test(name) &&
     !SPOKEN_NOT_A_PLACE_WORD.test(name) &&
-    !SPOKEN_NOT_A_PLACE_LAST_WORD.test(name) &&
     (!SPOKEN_NEAREST.test(name) || SPOKEN_NEAREST_PLACE.test(name))
   );
 }
@@ -258,6 +257,7 @@ export function mapsGoToDestination(text: string): string | undefined {
   const destination = GO_TO_REQUEST.exec(text)?.[1]?.trim();
   if (!destination) return;
   const name = destination.replace(/^the\s+/iu, "");
+  const code = PLACE_CODE.exec(name)?.[0];
   if (
     GO_TO_NOT_A_PLACE.test(name) ||
     NOT_A_PLACE_DESTINATION.test(destination) ||
@@ -267,11 +267,14 @@ export function mapsGoToDestination(text: string): string | undefined {
       (PROPER_NAME.test(name) &&
         (name !== destination ||
           /\s/u.test(name) ||
-          WELL_KNOWN_PLACE.test(name))) ||
-      PLACE_CODE.test(name) ||
+          SINGLE_WORD_CHAINS.test(name))) ||
+      (code !== undefined &&
+        (code === name ||
+          (PLACE_NAME_CUE.test(name) &&
+            !SPOKEN_NOT_A_PLACE_WORD.test(name.toLowerCase())))) ||
       STREET_ADDRESS.test(name) ||
       STREET_NAME.test(name) ||
-      spokenPlaceName(destination, name)
+      spokenPlaceName(name)
     )
   )
     return;

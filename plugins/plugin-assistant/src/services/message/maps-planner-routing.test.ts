@@ -351,6 +351,24 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     );
 
   it.each([
+    ["go to coit tower", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to the museum of modern art", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to JFK Terminal 4", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to cloud apps", []],
+    ["go to privacy policy", []],
+    ["go to account history", []],
+    ["go to the terminal output", []],
+    ["go to SFO and pick up Alex", []],
+    ["go to SFO with Sam tomorrow", []],
+  ])(
+    "only promotes a clear destination from the voice transcript %s",
+    async (text, expected) => {
+      const handler = await evaluate(text, { channelType: "VOICE_DM" });
+      expect(mapsCandidates(handler)).toEqual(expected);
+    },
+  );
+
+  it.each([
     ["take me to Coit Tower", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
     ["navigate to the Ferry Building", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
     [
