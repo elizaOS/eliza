@@ -39,6 +39,9 @@ const QUOTE_PAIRS: Record<string, string> = {
 // "(please) open|visit|go to|navigate to <address>", then an optional polite
 // suffix and closing punctuation. A closed allow-list; nothing else matches.
 const OPEN_COMMAND = String.raw`(?:open|visit|go\s+to|navigate\s+to)`;
+// A speech transcript may leave the dots between hostname labels as words.
+// Keep each label explicit and let the same address validator check the result.
+const OPEN_TARGET = String.raw`(\S+(?: +dot +\S+)*)`;
 // Everyday verbs that ask for a site. Direct requests only: the router never
 // claims them without the model.
 const EVERYDAY_COMMAND = String.raw`(?:take\s+me\s+to|pull\s+up|bring\s+up|show\s+me|head\s+to|browse\s+to)`;
@@ -140,14 +143,14 @@ function patterns(assistantName: string): NamePatterns {
   const questionOpener = String.raw`(?:^|[.!?:,])\s*(?:(?:hey|hi|ok|okay|${name}|please|so|well|then|but|and|oh|hmm)[\s,.!]*)*`;
   const built: NamePatterns = {
     command: new RegExp(
-      String.raw`${lead}(?:please,?\s+)?${OPEN_COMMAND}\s+(\S+)(\s.*)?$`,
+      String.raw`${lead}(?:please,?\s+)?${OPEN_COMMAND}\s+${OPEN_TARGET}(\s.*)?$`,
       "i",
     ),
     // Explicit polite questions and whole-message everyday commands are
     // direct requests too, but file-like bare names still need a website
     // signal rather than acquiring authority from the verb.
     directRequest: new RegExp(
-      String.raw`${lead}(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${OPEN_COMMAND}|${EVERYDAY_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+(?:the\s+)?(\S+)(\s+(?:web\s?)?site\b)?(\s.*)?$`,
+      String.raw`${lead}(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${OPEN_COMMAND}|${EVERYDAY_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+(?:the\s+)?${OPEN_TARGET}(\s+(?:web\s?)?site\b)?(\s.*)?$`,
       "i",
     ),
     search: new RegExp(
@@ -228,7 +231,11 @@ export function authoredBrowserOpen(
     const bare = stripTrailingPunctuation(target, ".,!?");
     if (!/[/?#]/.test(bare.replace(/^https?:\/\//i, ""))) target = bare;
   }
-  const href = webAddress(target)?.href;
+  const href = webAddress(
+    /^[a-z\d-]+(?: +dot +[a-z\d-]+)+$/i.test(target)
+      ? target.replace(/ +dot +/gi, ".")
+      : target,
+  )?.href;
   return href ? { href, newTab } : undefined;
 }
 
@@ -313,6 +320,12 @@ export function groundBrowserDestination(
     )
   )
     return;
+  // A whole utterance with spoken dots may have no literal URL token. Exact
+  // confirmation of the normalized hostname still comes from the owner text.
+  if (typed.length === 0) {
+    const spoken = directBrowserDestination(userText, assistantName);
+    if (spoken === proposed.href) return spoken;
+  }
   const strict = authoredBrowserDestination(userText, assistantName);
   const strictHost = strict && new URL(strict).host;
   const candidates = typed.filter(

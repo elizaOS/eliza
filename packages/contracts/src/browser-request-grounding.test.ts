@@ -876,6 +876,24 @@ describe("strict open command with where the address opens", () => {
     // A direct request too, so the phone opens it without a review.
     expect(directBrowserDestination(text)).toBe(href);
   });
+  it("grounds the spoken hostname without substituting a different destination", () => {
+    const text = "Open alphacompute dot ai in the browser.";
+    const url = "https://alphacompute.ai/";
+    expect(authoredBrowserOpen(text)).toEqual({ href: url, newTab: false });
+    expect(groundBrowserDestination(text, url)).toBe(url);
+    expect(
+      groundBrowserDestination(text, "https://alphacompute.com/"),
+    ).toBeUndefined();
+    expect(
+      groundBrowserDestination(text, "https://alphacompute.ai/login"),
+    ).toBeUndefined();
+    expect(
+      groundBrowserDestination(`Don't ${text.toLowerCase()}`, url),
+    ).toBeUndefined();
+    expect(
+      groundBrowserDestination(`${text} Don't open alphacompute.ai.`, url),
+    ).toBeUndefined();
+  });
   it.each([
     // A private tab, another app, a time or more work stays the model's call.
     "open youtube.com in a private tab",

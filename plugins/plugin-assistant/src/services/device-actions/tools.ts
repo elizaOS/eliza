@@ -152,7 +152,7 @@ const declarations = [
   [
     "DEVICE_BROWSER_OPEN",
     "browser_navigate",
-    'Open a web address the user typed in this message in this requesting app Browser, only when they ask to open, visit or go to it now, including "in the browser" or "in a new tab". Pass the address exactly as typed; set newTab true when they ask for a new tab (browser.open-new-tab.v1). Opening the Browser view does not load an address: use this operation for the address. Use this app-owned operation instead of the server Browser workspace when the user asks to open a site in this app. Navigation only; do not claim page content or successful loading.',
+    'Open a web address the user supplied in this message in the requesting app Browser, only when they ask to open, visit or go to it now, including "in the browser" or "in a new tab". Use the supplied address, writing any spoken hostname dots as periods, for example "example dot com" as "example.com". Set newTab true when they ask for a new tab (browser.open-new-tab.v1). Opening the Browser view does not load an address: use this operation for the address. Use this app-owned operation instead of the server Browser workspace when the user asks to open a site in this app. Navigation only; do not claim page content or successful loading.',
   ],
   [
     DEVICE_CAMERA_CAPTURE_ACTION,
@@ -353,7 +353,7 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
     ...(type === "browser_navigate"
       ? {
           routingHint:
-            'the user asks to open, visit or go to a web address they typed, now, also "in the browser" or "in a new tab" -> DEVICE_BROWSER_OPEN with that address as typed (newTab true for a new tab), not VIEWS_SHOW browser or browser_tab_new; NOT for a deferred ("at 5pm", "in five minutes", "tomorrow"), hypothetical, question-about ("is there a way to open...", "do I need to go to..."), past ("I used to visit") or reported ("my mom wants me to") mention, nor for a site name with no address, or one the user says not to open',
+            'the user asks to open, visit or go to a web address they supplied, now, also "in the browser" or "in a new tab" -> DEVICE_BROWSER_OPEN with that address (example dot com is example.com, newTab true for a new tab), not VIEWS_SHOW browser or browser_tab_new; NOT for a deferred ("at 5pm", "in five minutes", "tomorrow"), hypothetical, question-about ("is there a way to open...", "do I need to go to..."), past ("I used to visit") or reported ("my mom wants me to") mention, nor for a site name with no address, or one the user says not to open',
         }
       : {}),
     selectionIdentity:
