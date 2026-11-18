@@ -232,7 +232,21 @@ const normalTextSize = await page
 await page.evaluate(() => {
   document.documentElement.style.fontSize = "32px";
 });
-await page.evaluate(() => new Promise(requestAnimationFrame));
+// One animation frame is not always enough for the scaled computed size to
+// settle in Chromium (observed intermittently as "14px -> 14px"). Wait for it
+// to settle; a size that never scales still fails the assertion below.
+await page
+  .waitForFunction(
+    (minimum) =>
+      Number.parseFloat(
+        getComputedStyle(
+          document.querySelector('[data-testid="devices-runtimes"] button'),
+        ).fontSize,
+      ) >= minimum,
+    normalTextSize * 1.95,
+    { timeout: 2_000 },
+  )
+  .catch(() => undefined);
 const scaled = await page.evaluate(() => {
   const root = document.documentElement;
   const controls = [...document.querySelectorAll("button,input,summary")];
