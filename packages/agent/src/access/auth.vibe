@@ -24,5 +24,7 @@ export function authStatusAnswer(caller: Caller, serverInstanceId: string) {
 }
 
 export function authRoutes(agentId: string): LocalRoute[] {
-  return [{ method: "GET", path: "/api/auth/me", handler: () => ({ status: 200, body: authMe(agentId) }) }]
+  const owner = authMe(agentId)
+  const body = { ...owner, access: { ...owner.access, role: "OWNER" } }
+  return [{ method: "GET", path: "/api/auth/me", handler: () => ({ status: 200, body }) }]
 }

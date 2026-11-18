@@ -26,6 +26,9 @@ it.effect('An owner starts the agent and receives a complete streamed reply (spe
   const started = try host("agent health", () => request(socket, { method: "GET", path: "/api/health" }))
   try Effect.sync(() => cloud.script(text("Hello", " from the device agent.")))
   const stale = try host("stale launch token", () => request(socket, { method: "GET", path: "/api/status", token: "stale" }))
+  const publicAuth = try host("anonymous authorization status", () => request(socket, { method: "GET", path: "/api/auth/status" }))
+  const noIdentity = try host("anonymous identity refused", () => request(socket, { method: "GET", path: "/api/auth/me" }))
+  const owner = try host("authenticated owner identity", () => request(socket, { method: "GET", path: "/api/auth/me", token }))
   const opened = try host("create conversation", () => request(socket, { method: "POST", path: "/api/conversations", token, body: {} }))
   if (!("json" in opened)) return try die("The owner conversation was refused")
   const { conversation } = try Schema.decodeUnknownEffect(Conversation)(opened.json)
@@ -37,10 +40,15 @@ it.effect('An owner starts the agent and receives a complete streamed reply (spe
   try host("clean retirement", () => running.stop())
   try Effect.try(() => assert.deepStrictEqual({
     healthy: "status" in started ? started.status : undefined, stale: "status" in stale ? stale.status : undefined, created: opened.status,
+    auth: "json" in publicAuth ? publicAuth.json : undefined,
+    anonymousIdentity: "status" in noIdentity ? noIdentity.status : undefined,
+    owner: "json" in owner ? owner.json : undefined,
     stream: turn.status, terminal: frames.at(-1), containsTokens: frames.some(({type}) => type === "token"),
     fault: turn.error, upstream: cloud.calls.map(({path,authorization}) => ({path,authorization})),
   }, {
     healthy: 200, stale: 401, created: 201, stream: 200,
+    auth: { authenticated: false, serverInstanceId: running.status.serverInstanceId }, anonymousIdentity: 401,
+    owner: { identity: { kind: "owner", id: running.status.agentId }, access: { role: "OWNER", mode: "local" } },
     terminal: { type: "done", fullText: "Hello from the device agent." }, containsTokens: true,
     fault: undefined, upstream: [{ path: "/api/v1/chat/completions", authorization: "Bearer " + deviceKey }],
   }))

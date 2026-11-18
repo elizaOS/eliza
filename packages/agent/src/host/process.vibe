@@ -36,6 +36,7 @@ module node {
   import { acquire, close, initial, releaseNext } from "../../gen/agent__host__resources.ts"
   import { cloudLinkPlugin, storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
   import { plainBodyLimitBytes, messageBodyLimitBytes } from "../../gen/agent__access__transport.ts"
+  import { authRoutes } from "../access/auth.vibe"
   import { createRouter } from "../access/router.vibe"
   import { listenOnSocket } from "../access/socket.vibe"
   import { listenOnHttp } from "../access/http.vibe"
@@ -166,12 +167,7 @@ module node {
             path: "/api/status", method: "GET",
             handler: () => ({ status: 200, body: { ...status, plainBodyLimitBytes, messageBodyLimitBytes } }),
           },
-          {
-            path: "/api/auth/me", method: "GET", handler: () => ({
-              status: 200,
-              body: { identity: { kind: "owner", id: agentId }, access: { role: "OWNER", mode: "local" } },
-            }),
-          },
+          ...authRoutes(agentId),
           ...conversationRoutes(runtime, { user, world }),
           ...composed.routes,
         ],
