@@ -16,11 +16,15 @@ import {
   type JsonValue,
   ModelType,
   normalizeEffectReceipts,
+  parseJsonModelRecord,
   TaskService,
   type UUID,
 } from "@elizaos/core";
 import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 import { ApprovalService } from "../../../plugins/plugin-assistant/src/services/approval/service.ts";
+import { createCalendarActionRunner } from "../../../plugins/plugin-calendar/src/actions/calendar-handler.ts";
+import type { CalendarModelCallArgs } from "../../../plugins/plugin-calendar/src/actions/deps.ts";
+import { standaloneCalendarDeps } from "../../../plugins/plugin-calendar/src/actions/standalone-calendar-deps.ts";
 import {
   executeRawSql,
   sqlQuote,
@@ -30,7 +34,6 @@ import { CalendarRepository } from "../../../plugins/plugin-calendar/src/service
 import { CalendarService } from "../../../plugins/plugin-calendar/src/service/CalendarService.ts";
 import notesPlugin from "../../../plugins/plugin-notes/src/index.ts";
 import type { NotesDocument } from "../../../plugins/plugin-notes/src/types.ts";
-import { createCalendarMutationApprovalGateway } from "../../../plugins/plugin-personal-assistant/src/actions/calendar.ts";
 import { resolveExplicitOwnerApproval } from "../../../plugins/plugin-personal-assistant/src/actions/resolve-request.ts";
 import { createApprovalQueue } from "../../../plugins/plugin-personal-assistant/src/lifeops/approval-queue.ts";
 import { lifeOpsSchema } from "../../../plugins/plugin-personal-assistant/src/lifeops/schema.ts";
@@ -627,6 +630,7 @@ function extraction(
     grantId: "eliza-calendar",
     calendarId: "primary",
     requiresInput: startAt === null,
+    reviewBeforeCreate: false,
     clarification: startAt === null ? "What exact time should I use?" : null,
     title,
     description,
@@ -931,66 +935,89 @@ test("NOTE-15 runtime: missing time and real conflict pause until the user suppl
   s.harness.assertFixturesConsumed();
 }, 180_000);
 
-// This crosses the actual delayed-approval boundary explicitly. Conversational
-// CALENDAR bypasses approval for built-in events; this test does not pretend
-// that ordinary built-in scheduling exercises the pending queue.
-test.each([false, true])(
-  "NOTE-14 delayed approval retains source and rejects stale content (edit=%s)",
-  async (editSource) => {
+test.each([
+  { editSource: false, reviewBeforeCreate: true },
+  { editSource: true, reviewBeforeCreate: undefined },
+  { editSource: false, reviewBeforeCreate: "false" },
+])(
+  "NOTE-14 requested Calendar review retains source and rejects stale content (edit=$editSource, extracted review=$reviewBeforeCreate)",
+  async ({ editSource, reviewBeforeCreate }) => {
     const s = await scenario(`NOTE-14-approval-${editSource}`, true);
     const note = await s.createNote(
       "Approval review\nRead the original notebook.",
     );
     const sourceNote = await s.readNote(note);
-    const calendar = s.runtime.getService<CalendarService>(
-      CalendarService.serviceType,
-    );
-    if (!calendar) throw new Error("Real CalendarService did not start");
     expect(s.runtime.getService(ApprovalService.serviceType)).toBeInstanceOf(
       ApprovalService,
     );
-    const request = await calendar.prepareCalendarEventCreate(
-      new URL("http://internal.local/api/calendar"),
-      {
-        title: "Approval review",
-        startAt: `${date}T13:00:00-07:00`,
-        endAt: `${date}T13:30:00-07:00`,
-        timeZone: zone,
-        grantId: "eliza-calendar",
-        calendarId: "primary",
-        description: note.body,
-        sourceNote,
-      },
-    );
+    const start = `${date}T13:00:00-07:00`;
+    const end = `${date}T13:30:00-07:00`;
+    const input = `Prepare Approval review from note ${note.id} for ${date}, 13:00–13:30 America/Los_Angeles. Keep its description and wait for my approval before saving.`;
     const message = createMessageMemory({
       id: randomUUID() as UUID,
+      agentId: s.runtime.agentId,
       entityId: s.userId,
       roomId: s.roomId,
       createdAt: Date.now(),
       content: {
-        text: `Prepare Approval review from note ${note.id} for ${date}, 13:00–13:30 America/Los_Angeles; wait for my approval.`,
+        text: input,
         source: "client_chat",
         channelType: ChannelType.DM,
       },
     });
-    const pending = await createCalendarMutationApprovalGateway().schedule({
-      runtime: s.runtime,
-      message,
-      request,
+    const evidence = [{ sourceId: `current:${message.id}`, quote: input }];
+    const action = createCalendarActionRunner({
+      ...standaloneCalendarDeps,
+      async runJsonModel<T extends Record<string, unknown>>(
+        args: CalendarModelCallArgs,
+      ) {
+        expect(args.actionType).toBe("lifeops.calendar.extract_create_event");
+        expect(args.prompt).toContain(input);
+        const rawResponse = JSON.stringify({
+          ...extraction("Approval review", note.body, start, end),
+          guestIntent: { state: "none", evidence, guests: [] },
+          noteIntent: {
+            state: "requested",
+            evidence,
+            sourceNote,
+            descriptionMode: "extracted",
+          },
+          reviewBeforeCreate,
+        });
+        return { rawResponse, parsed: parseJsonModelRecord<T>(rawResponse) };
+      },
     });
-    expect(pending.state).toBe("pending");
+    const pending = await action.handler(s.runtime, message, undefined, {
+      parameters: {
+        ...calendarArgs("Approval review", note.body, start, end, sourceNote),
+        subaction: "create_event",
+      },
+    });
+    expect(pending?.data).toMatchObject({
+      approvalRequired: true,
+      approvalState: "pending",
+    });
+    const approvalId = pending?.data?.approvalRequestId;
+    if (typeof approvalId !== "string")
+      throw new Error("Calendar did not return a pending approval ID");
     const queue = createApprovalQueue(s.runtime, {
       agentId: s.runtime.agentId,
     });
-    const stored = await queue.byId(pending.requestId, s.userId);
+    const stored = await queue.byId(approvalId, s.userId);
     expect(stored?.state).toBe("pending");
     expect(stored?.payload).toMatchObject({
       sourceNote,
       title: "Approval review",
+      grantId: "eliza-calendar",
+      calendarId: "primary",
+      startsAtMs: Date.parse(start),
+      endsAtMs: Date.parse(end),
+      timeZone: zone,
+      attendees: [],
     });
     const approvalRows = await executeRawSql(
       s.runtime,
-      `SELECT payload, state FROM approval_requests WHERE agent_id = ${sqlQuote(s.runtime.agentId)} AND id = ${sqlQuote(pending.requestId)}`,
+      `SELECT payload, state FROM approval_requests WHERE agent_id = ${sqlQuote(s.runtime.agentId)} AND id = ${sqlQuote(approvalId)}`,
     );
     expect(approvalRows).toHaveLength(1);
     expect(approvalRows[0].state).toBe("pending");
@@ -1017,22 +1044,22 @@ test.each([false, true])(
       if (!updated) throw new Error("Edited source note disappeared");
       const freshReference = await s.readNote(updated);
       expect(freshReference.contentHash).not.toBe(sourceNote.contentHash);
-      expect(
-        (await queue.byId(pending.requestId, s.userId))?.payload,
-      ).toMatchObject({ sourceNote });
+      expect((await queue.byId(approvalId, s.userId))?.payload).toMatchObject({
+        sourceNote,
+      });
     }
     const beforeApproval = await s.notes();
     // The identity comes from this runtime's authenticated owner setup, never
     // from a fabricated role resolver or overridden approval implementation.
     const result = await resolveExplicitOwnerApproval(s.runtime, {
       subjectUserId: s.userId,
-      requestId: pending.requestId,
+      requestId: approvalId,
       decision: "approve",
       reason: "Approve the exact pending draft.",
     });
     const attempts = await executeRawSql(
       s.runtime,
-      `SELECT state, receipt_json, last_failure_json FROM app_lifeops.life_calendar_mutation_attempts WHERE agent_id = ${sqlQuote(s.runtime.agentId)} AND approval_request_id = ${sqlQuote(pending.requestId)}`,
+      `SELECT state, receipt_json, last_failure_json FROM app_lifeops.life_calendar_mutation_attempts WHERE agent_id = ${sqlQuote(s.runtime.agentId)} AND approval_request_id = ${sqlQuote(approvalId)}`,
     );
     expect(attempts).toHaveLength(1);
     if (editSource) {
@@ -1075,7 +1102,7 @@ test.each([false, true])(
       expect(receipt.sourceId).toBe("eliza-calendar");
       const replay = await resolveExplicitOwnerApproval(s.runtime, {
         subjectUserId: s.userId,
-        requestId: pending.requestId,
+        requestId: approvalId,
         decision: "approve",
         reason: "Repeat the same explicit decision.",
       });

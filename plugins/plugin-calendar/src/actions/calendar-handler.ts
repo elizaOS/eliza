@@ -4501,6 +4501,7 @@ async function inferCreateEventDetails(
     "The user may speak in any language.",
     "Use the full recent conversation below, not just the latest message.",
     "Treat the latest user request as authoritative, but recover missing event subject, date, or location from earlier turns when needed.",
+    "Set reviewBeforeCreate:true when the owner asks to preview, review, or confirm this event before it is saved, including a request to prepare it without saving yet. Keep this choice when the owner supplies missing details for the same event. Set it to false for ordinary creation or a request to show the result after saving.",
     "If the current request is a follow-up, recover the event subject from recent conversation and apply new timing or location constraints from the current request.",
     'A follow-up that asks for another event ("make another one", "also add", "one more") and states only a clock time keeps the day the user stated for the event just discussed; that day is user-stated timing, not borrowed timing.',
     "Set requiresInput:true and ask for the missing detail in clarification when the user has not supplied or accepted an exact time and has not explicitly asked you to choose one. Morning, afternoon, and evening alone require a clock-time question. Set requiresInput:false only when the creation request is sufficiently specified.",
@@ -4661,6 +4662,7 @@ const createExtractionProperties = {
       "True when a necessary detail is missing. A morning/afternoon/evening window without explicit permission to choose a slot requires clarification.",
   },
   clarification: nullableExtractionText,
+  reviewBeforeCreate: { type: "boolean" },
   grantId: nullableExtractionText,
   calendarId: nullableExtractionText,
   title: nullableExtractionText,
@@ -5701,6 +5703,7 @@ export function createCalendarActionRunner(
       "USE this action for: viewing today's or this week's schedule; checking the next upcoming event; " +
       "searching events by title, attendee, location, or date range; creating new calendar events; " +
       "requests like 'what's my next meeting?', 'show me my calendar for today', 'what does my week look like?', or 'schedule a dentist appointment next Tuesday at 3pm'; " +
+      "Use create_event to prepare a real approval when the owner asks to review an event before it is saved. Do not substitute a chat summary for the approval. " +
       "querying travel itineraries, flights, hotel stays, trip windows, reserving recurring time blocks, and rebooking or moving calendar-backed commitments. " +
       "These are live calendar reads and writes, so do not answer them from provider context alone and do not fall back to NONE or REPLY when this action is available. " +
       "DO NOT use this action when the user is only making an observation like 'my calendar has been crazy this quarter' unless they actually ask you to inspect or change calendar state. " +
@@ -6705,7 +6708,10 @@ export function createCalendarActionRunner(
               throw error;
             }
           }
-          if (requestToApprove.grantId === ELIZA_CALENDAR_GRANT_ID) {
+          if (
+            requestToApprove.grantId === ELIZA_CALENDAR_GRANT_ID &&
+            extractedDetails.reviewBeforeCreate === false
+          ) {
             const idempotencyKey = localCalendarOperationKey({
               message,
               operation: "create",
