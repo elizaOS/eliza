@@ -134,7 +134,7 @@ return.
 type GoogleCallback = GoogleCode | GoogleDenied | GoogleIncomplete | ReturnWithdrawn
 type GoogleAnswer = IdentityVerified | IdentityIncomplete | TokenExchangeFailed
 pure val codeLifetime: Millis = 60 * millisPerSecond
-pure def callbackError(c: GoogleCallback): ReturnError = if (c == GoogleDenied) ErrAccessDenied else if (c == GoogleIncomplete) ErrCallbackIncomplete else if (c == ReturnWithdrawn) ErrRedirectInvalid else ErrStateInvalid
+pure def callbackError(callback: GoogleCallback): ReturnError = if (callback == GoogleDenied) ErrAccessDenied else if (callback == GoogleIncomplete) ErrCallbackIncomplete else if (callback == ReturnWithdrawn) ErrRedirectInvalid else ErrStateInvalid
 pure def causeOf(f: Failure): ReturnError = match f { | FailedWith(x) => x.cause | NoFailure => ErrAuthenticationFailed }
 pure def canConsume(a: GoogleAttempt, pendingAndUnexpired: bool, inputError: bool, callback: GoogleCallback): bool =
   O::canConsume(a.flow) and pendingAndUnexpired == (a.now < a.stateExpiresAt) and inputError == (callback != GoogleCode)

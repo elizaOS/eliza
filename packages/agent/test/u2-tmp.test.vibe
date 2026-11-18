@@ -1,27 +1,72 @@
 // spec/agent/models/binding.md, "No text handler is ever served by a model on the device"
 import { assert, it } from "@effect/vitest"
-import { allowanceExhausted, dropped, echoImages, insufficientCredits, rateLimited, refusal, text, unavailable } from "./support/cloud-fake.ts"
+import { allowanceExhausted, dropped, echoImages, insufficientCredits, rateLimited, text, unavailable } from "./support/cloud-fake.ts"
 import { cloudFake, deviceKey, host } from "./support/kernel.vibe"
 import { registerCloudModels } from "../src/models/cloud-provider.vibe"
 import { probeOwnKey, registerOwnKeyModels } from "../src/models/own-key-provider.vibe"
 
+it.effect("U2", effect () => {
+  const cloud = try cloudFake(deviceKey)
+  const out = try host("scenario", () => scenario(cloud, registerCloudModels, registerOwnKeyModels, probeOwnKey))
+  try Effect.sync(() => console.log(JSON.stringify(out, null, 1)))
+}, 120_000)
+
 module node {
-  export interface Ledger { events: string[] }
-  export function ledger(key: string): { binding: any; events: string[] } {
+  import { Effect, Redacted } from "effect"
+  import type { CloudFake } from "./support/cloud-fake.ts"
+
+  async function attempt(f: () => Promise<unknown>): Promise<unknown> {
+    try { return await f() } catch (e) { return { code: (e as any).code, status: (e as any).status, name: (e as any).name, message: (e as any).message } }
+  }
+
+  export async function scenario(cloud: CloudFake, regCloud: any, regOwn: any, probe: any) {
     const events: string[] = []
     let next = 0
-    return { events, binding: {
-      credential: () => Redacted.make(key),
+    const binding = {
+      credential: () => Redacted.make(deviceKey1),
       startCall: (handler: string) => Effect.sync(() => { events.push("start " + handler); return next++ }),
       answerCall: (id: number) => Effect.sync(() => { events.push("answer " + id) }),
       refuseCall: (id: number, _now: number, e: { tag: string }) => Effect.sync(() => { events.push("refuse " + e.tag) }),
-    } }
-  }
-  export function runtime() {
+    }
     const handlers = new Map<string, any[]>()
-    return { handlers, runtime: { registerModel: (type: string, handler: any, provider: string) => { handlers.set(type, [...(handlers.get(type) ?? []), handler]); void provider } } as any }
+    const runtime: any = { registerModel: (type: string, handler: any) => { handlers.set(type, [...(handlers.get(type) ?? []), handler]) } }
+    regCloud(runtime, binding, { baseUrl: cloud.origin, small: "s", large: "l", image: "i" })
+    const small = handlers.get("TEXT_SMALL")![0]
+    const image = handlers.get("IMAGE_DESCRIPTION")![0]
+    const results: Record<string, unknown> = { registrations: [...handlers].map(([k, v]) => [k, v.length]) }
+    cloud.script(text("Hello", " world"))
+    results.whole = await small(runtime, { prompt: "hi" })
+    cloud.script(text("Hel", "lo"))
+    const chunks: string[] = []
+    results.stream = await small(runtime, { prompt: "hi", stream: true, onStreamChunk: (c: string) => { chunks.push(c) } })
+    results.chunks = chunks
+    cloud.script(echoImages())
+    results.image = await image(runtime, { imageUrl: "https://x/y.png", prompt: "look" })
+    cloud.script(echoImages())
+    results.parts = await small(runtime, { messages: [{ role: "user", content: [{ type: "text", text: "t" }, { type: "image", image: new Uint8Array([1, 2]), mediaType: "image/png" }] }] })
+    cloud.script(unavailable(2)); results.unavailable = await attempt(() => small(runtime, { prompt: "x" }))
+    cloud.script(dropped()); results.dropped = await attempt(() => small(runtime, { prompt: "x" }))
+    cloud.script(rateLimited(999)); results.rate = await attempt(() => small(runtime, { prompt: "x" }))
+    cloud.script(insufficientCredits()); results.credits = await attempt(() => small(runtime, { prompt: "x" }))
+    cloud.script(allowanceExhausted(77)); results.allow = await attempt(() => small(runtime, { prompt: "x" }))
+    cloud.acceptKey("other")
+    results.invalid = await attempt(() => small(runtime, { prompt: "x" }))
+    cloud.acceptKey(deviceKey1)
+    const abort = new AbortController()
+    cloud.script({ kind: "hang" })
+    const pending = attempt(() => small(runtime, { prompt: "x", signal: abort.signal }))
+    setTimeout(() => abort.abort(), 200)
+    results.aborted = await pending
+    results.events = events
+    results.paths = cloud.calls.map((c) => c.path)
+    handlers.clear()
+    regOwn(runtime, binding, { baseUrl: cloud.origin + "/v1", small: "s", large: "l" })
+    results.ownRegs = [...handlers].map(([k, v]) => [k, v.length])
+    cloud.script(text("own ok"))
+    results.own = await handlers.get("TEXT_LARGE")![0](runtime, { prompt: "hi" })
+    results.probe = await Effect.runPromise(probe({ baseUrl: cloud.origin + "/v1", small: "small", large: "large" }, Redacted.make(deviceKey1))).catch((e: unknown) => String(e))
+    results.lastPaths = cloud.calls.slice(-2).map((c) => c.path)
+    return results
   }
-  export async function attempt(f: () => Promise<unknown>): Promise<unknown> {
-    try { return await f() } catch (e) { return { code: (e as any).code, status: (e as any).status, name: (e as any).name } }
-  }
+  const deviceKey1 = "device-key-1"
 }

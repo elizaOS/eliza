@@ -88,6 +88,7 @@ public abstract class PackageInstallCoordinator {
   private int install(File file,UpdateJournal.Identity identity,String plan,long generation,UpdateJournal.FreshnessCheck fresh) throws Exception {
     DevicePolicyManager policy=context.getSystemService(DevicePolicyManager.class);
     if(policy==null||!policy.isDeviceOwnerApp(context.getPackageName()))throw new IOException("Device-owner installation authority unavailable");
+    holdAgent(plan,identity);
     PackageInstaller installer=context.getPackageManager().getPackageInstaller();
     PackageInstaller.SessionParams params=new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
     params.setAppPackageName(target);params.setSize(file.length());
@@ -119,6 +120,14 @@ public abstract class PackageInstallCoordinator {
       try{reconcilePending(context,target,journal,observationBudgetMs);}catch(Exception reconciliation){failure.addSuppressed(reconciliation);}
       throw failure;
     }
+  }
+  private void holdAgent(String plan,UpdateJournal.Identity target)throws Exception {
+    UpdateJournal.Snapshot state=journal.read();
+    if(state.hold==UpdateJournal.Hold.HOLD_GRANTED)return;
+    if(state.hold==UpdateJournal.Hold.UNHELD)journal.requestHold(plan);
+    else journal.holds().hold(target);
+    if(!journal.holds().awaitHeld(target,UpdateJournal.HOLD_ACKNOWLEDGE_WAIT_MS))throw new IOException("The agent service did not hold the agent for the update");
+    journal.acknowledgeHold(plan,target);
   }
   private void verify(File file,UpdateJournal.Identity expected,String distribution,byte[] runtime)throws Exception {
     Path privateRoot=context.getNoBackupFilesDir().toPath().toRealPath();Path resolved=file.toPath().toRealPath();
