@@ -18,7 +18,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { deviceEmailDraft } from "./device-email-draft.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { ALL_MESSAGE_SOURCES } from "../types.ts";
 import {
@@ -27,13 +26,14 @@ import {
   SUPPORTED_MESSAGE_SOURCES_TEXT,
   validateMessageAction,
 } from "./_shared.ts";
+import { deviceEmailDraft } from "./device-email-draft.ts";
 
 export const draftFollowupAction: Action = {
   name: "MESSAGE",
   contexts: ["messaging", "email", "contacts", "tasks"],
   roleGate: { minRole: "ADMIN" },
   description:
-    "Compose a draft follow-up / check-in message to a contact on a chosen platform. Never sends — produces a preview that must be confirmed via MESSAGE.",
+    "Compose a new outbound draft or recreate a previous unsent draft from this chat. No inbox message is needed. On a phone with a Gmail composer, hand the draft to the local editor. Otherwise return a preview. This action never sends.",
   similes: ["COMPOSE_FOLLOWUP", "FOLLOWUP_DRAFT", "CHECK_IN_DRAFT"],
   parameters: [
     {
