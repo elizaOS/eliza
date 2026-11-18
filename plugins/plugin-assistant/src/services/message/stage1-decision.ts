@@ -111,6 +111,7 @@ import {
   stage1HitCompletionLimit,
   synthesizeStage1CompletionLimitReply,
 } from "./stage1-completion.js";
+import { resolveEligibleDirectActionRoutes } from "./stage1-evaluators.ts";
 import {
   getStage1DirectIgnoreReview,
   getStage1RetryReason,
@@ -1660,7 +1661,7 @@ export async function generateStage1Decision(
   const messageHandlerProvider = args.codingMode
     ? undefined
     : args.runtime.getLastResolvedModelProvider?.(ModelType.RESPONSE_HANDLER);
-  const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
+  let rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
   if (sourceReplySnapshot && Array.isArray(rawFieldParsed?.replyText)) {
     throw new ElizaError(
       "Source reply selection remains unresolved; no response fields were processed",
@@ -1678,14 +1679,30 @@ export async function generateStage1Decision(
   ) {
     // A repeated preview/pending-work or unclaimed-navigation conflict cannot authorize effects or a
     // terminal reply, and silence the terminal review already rejected cannot
-    // end the addressed turn. Keep the recorded model attempts and reject before fields.
-    throw new ElizaError(
-      "Stage-1 decision still conflicts after repair; retry with a consistent routing decision",
-      {
-        code: "STAGE1_ROUTING_CONFLICT",
-        context: { messageId: args.message.id },
-      },
+    // end the addressed turn. Keep the recorded model attempts and reject before fields,
+    // unless the user's own words have exactly one admitted whole-request owner.
+    const owned = await wholeRequestOwnerDecision(
+      args,
+      senderRole,
+      rawFieldParsed,
     );
+    if (!owned)
+      throw new ElizaError(
+        "Stage-1 decision still conflicts after repair; retry with a consistent routing decision",
+        {
+          code: "STAGE1_ROUTING_CONFLICT",
+          context: { messageId: args.message.id },
+        },
+      );
+    args.runtime.logger.warn(
+      {
+        src: "service:message",
+        route: owned.route,
+        messageId: args.message.id,
+      },
+      "[message] Stage-1 decision still conflicted after repair; routing the request through its admitted whole-request owner",
+    );
+    rawFieldParsed = owned.decision;
   }
   // An explicit continuation turn ("finish my request", "that is good")
   // carries no inferable intent of its own, so candidate inference runs on
@@ -1946,4 +1963,62 @@ export async function generateStage1Decision(
     parsedResponseHandlerReply,
     messageHandlerEndedAt,
   };
+}
+
+/**
+ * A plugin route that owns the complete current request ("create a workflow
+ * called X") decides routing from the user's own words, never the model's
+ * declarations. When Stage 1 repeats a contradictory decision after its one
+ * repair, that owner still knows where the request goes: hand the turn to the
+ * planner with only that owner's actions. Nothing the conflicting draft
+ * declared survives: no reply, extraction, navigation or effect claim. With
+ * no owner, or more than one, the conflict still fails closed.
+ */
+async function wholeRequestOwnerDecision(
+  args: Parameters<typeof generateStage1Decision>[0],
+  senderRole: NonNullable<
+    Parameters<typeof resolveEligibleDirectActionRoutes>[0]["userRoles"]
+  >[number],
+  conflicting: Record<string, unknown> | null,
+): Promise<{ route: string; decision: Record<string, unknown> } | undefined> {
+  if (!conflicting) return undefined;
+  const text = getActionInferenceMessageText(args.message);
+  if (!text.trim()) return undefined;
+  const routes = await resolveEligibleDirectActionRoutes({
+    runtime: args.runtime,
+    message: args.message,
+    state: args.state,
+    userRoles: [senderRole],
+  });
+  const owners = [
+    ...new Set(
+      routes
+        .filter(({ rule }) => rule.wholeRequest?.matches(text, args.message))
+        .map(({ rule }) => rule),
+    ),
+  ];
+  if (owners.length !== 1) return undefined;
+  const owner = owners[0];
+  const actions = routes
+    .filter(({ rule }) => rule === owner)
+    .map(({ action }) => action.name);
+  const decision: Record<string, unknown> = {
+    ...conflicting,
+    shouldRespond: "RESPOND",
+    contexts: [...owner.contexts],
+    intents: [text],
+    candidateActionNames: [...new Set(actions)],
+    replyText: "",
+    replyEffectStatus: "pending",
+    requiresTool: true,
+  };
+  for (const field of ["facts", "relationships"] as const)
+    if (Array.isArray(decision[field])) decision[field] = [];
+  if (decision.visualContinuation !== undefined)
+    decision.visualContinuation = {
+      disposition: "none",
+      viewId: "",
+      reason: `The complete request is owned by ${owner.id}.`,
+    };
+  return { route: owner.id, decision };
 }
