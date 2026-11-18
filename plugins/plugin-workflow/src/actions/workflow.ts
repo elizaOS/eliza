@@ -305,11 +305,7 @@ export const workflowAction: Action = {
           callback,
           {
             success: true,
-            text:
-              `Created “${workflow.name}”. It is off until you turn it on.` +
-              (asksToNotify(instruction, message.content.text)
-                ? ' It can’t send you a notification: when it is on, each run’s reminder text appears only in its run history. For a reminder that notifies you, use a phone reminder instead.'
-                : ''),
+            text: `Created “${workflow.name}”. It is off until you turn it on.${asksToNotify(instruction, message.content.text) ? ' It can’t send you a notification: when it is on, each run’s reminder text appears only in its run history. For a reminder that notifies you, use a phone reminder instead.' : ''}`,
             effectReceipts: [workflowDefinitionEffect('create', workflow)],
             data: { workflow, widget: { type: 'workflow', workflowId: workflow.id } },
           },
