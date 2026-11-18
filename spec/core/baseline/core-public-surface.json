@@ -3937,18 +3937,6 @@
           ]
         },
         {
-          "name": "appEntrySchema",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/catalog/schema.ts",
-              "line": 368,
-              "kind": "VariableDeclaration",
-              "signature": "appEntrySchema = z.object({ ...commonFields, kind: z.literal(\"app\"), subtype: z.enum([\"game\", \"tool\", \"shell\", \"marketplace\", \"trading\", \"other\"]), launch: appLaunchSchema, })"
-            }
-          ]
-        },
-        {
           "name": "AppEventName",
           "typeOnly": true,
           "declarations": [
@@ -3957,18 +3945,6 @@
               "line": 332,
               "kind": "TypeAliasDeclaration",
               "signature": "export type AppEventName = ElizaEventName;"
-            }
-          ]
-        },
-        {
-          "name": "appLaunchSchema",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/catalog/schema.ts",
-              "line": 212,
-              "kind": "VariableDeclaration",
-              "signature": "appLaunchSchema = z.object({ type: z.enum([\"internal-tab\", \"overlay\", \"server-launch\"]), target: z.string().optional(), url: z.string().nullable().optional(), viewer: appViewerSchema.optional(), session: appSessionSchema.optional(), supports: appSupportsSchema.optional(), npm: appNpmSchema.optional(), capabilities: z.array(z.string()).default([]), uiExtension: z.object({ detailPanelId: z.string() }).optional(), routePlugin: appRoutePluginSchema.optional(), runtimeHook: appRuntimeHookSchema.optional(), bootHook: appBootHookSchema.optional(), /** * If true, the app declares itself as the default landing tab. * Mirrors `package.json#elizaos.app.mainTab`. Consumed by * `getMainTabApp()` in `@elizaos/ui` to compute the shell's landing * tab. Exactly one installed app should set this; multiple declarers * are resolved deterministically by alphabetic id. */ mainTab: z.boolean().optional(), })"
             }
           ]
         },
@@ -12367,18 +12343,6 @@
           ]
         },
         {
-          "name": "DecodeRuntimeRegistryOptions",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/catalog/runtime-kernel.ts",
-              "line": 140,
-              "kind": "InterfaceDeclaration",
-              "signature": "export interface DecodeRuntimeRegistryOptions { sanitizeSandbox?: (value?: string) => string; }"
-            }
-          ]
-        },
-        {
           "name": "decodeUrlPathComponent",
           "typeOnly": false,
           "declarations": [
@@ -16915,18 +16879,6 @@
               "line": 54,
               "kind": "FunctionDeclaration",
               "signature": "(): AnthropicAccountPoolBridge | null"
-            }
-          ]
-        },
-        {
-          "name": "getApps",
-          "typeOnly": false,
-          "declarations": [
-            {
-              "path": "packages/core/src/catalog/loader.ts",
-              "line": 146,
-              "kind": "FunctionDeclaration",
-              "signature": "(registry: LoadedRegistry): AppEntry[]"
             }
           ]
         },
@@ -55490,18 +55442,6 @@
               "line": 201,
               "kind": "FunctionDeclaration",
               "signature": "(input: unknown, options?: DecodeRuntimeRegistryOptions): Map<string, NormalizedRegistryEntry>"
-            }
-          ]
-        },
-        {
-          "name": "DecodeRuntimeRegistryOptions",
-          "typeOnly": true,
-          "declarations": [
-            {
-              "path": "packages/core/src/catalog/runtime-kernel.ts",
-              "line": 140,
-              "kind": "InterfaceDeclaration",
-              "signature": "export interface DecodeRuntimeRegistryOptions { sanitizeSandbox?: (value?: string) => string; }"
             }
           ]
         },
@@ -222635,5 +222575,88 @@
         }
       ]
     }
-  ]
+  ],
+  "v4CatalogRetirement": {
+    "specification": "spec/core/catalog.md",
+    "decision": "v4-catalog-plugin-connector-boundary",
+    "reason": "The current v4 catalog excludes app entries and app-session/app-launch contracts. These are retired name occurrences, not missing implementations.",
+    "historicalExports": [
+      {
+        "entry": ".",
+        "export": {
+          "name": "appEntrySchema",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/catalog/schema.ts",
+              "line": 368,
+              "kind": "VariableDeclaration",
+              "signature": "appEntrySchema = z.object({ ...commonFields, kind: z.literal(\"app\"), subtype: z.enum([\"game\", \"tool\", \"shell\", \"marketplace\", \"trading\", \"other\"]), launch: appLaunchSchema, })"
+            }
+          ]
+        }
+      },
+      {
+        "entry": ".",
+        "export": {
+          "name": "appLaunchSchema",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/catalog/schema.ts",
+              "line": 212,
+              "kind": "VariableDeclaration",
+              "signature": "appLaunchSchema = z.object({ type: z.enum([\"internal-tab\", \"overlay\", \"server-launch\"]), target: z.string().optional(), url: z.string().nullable().optional(), viewer: appViewerSchema.optional(), session: appSessionSchema.optional(), supports: appSupportsSchema.optional(), npm: appNpmSchema.optional(), capabilities: z.array(z.string()).default([]), uiExtension: z.object({ detailPanelId: z.string() }).optional(), routePlugin: appRoutePluginSchema.optional(), runtimeHook: appRuntimeHookSchema.optional(), bootHook: appBootHookSchema.optional(), /** * If true, the app declares itself as the default landing tab. * Mirrors `package.json#elizaos.app.mainTab`. Consumed by * `getMainTabApp()` in `@elizaos/ui` to compute the shell's landing * tab. Exactly one installed app should set this; multiple declarers * are resolved deterministically by alphabetic id. */ mainTab: z.boolean().optional(), })"
+            }
+          ]
+        }
+      },
+      {
+        "entry": ".",
+        "export": {
+          "name": "DecodeRuntimeRegistryOptions",
+          "typeOnly": true,
+          "declarations": [
+            {
+              "path": "packages/core/src/catalog/runtime-kernel.ts",
+              "line": 140,
+              "kind": "InterfaceDeclaration",
+              "signature": "export interface DecodeRuntimeRegistryOptions { sanitizeSandbox?: (value?: string) => string; }"
+            }
+          ]
+        }
+      },
+      {
+        "entry": ".",
+        "export": {
+          "name": "getApps",
+          "typeOnly": false,
+          "declarations": [
+            {
+              "path": "packages/core/src/catalog/loader.ts",
+              "line": 146,
+              "kind": "FunctionDeclaration",
+              "signature": "(registry: LoadedRegistry): AppEntry[]"
+            }
+          ]
+        }
+      },
+      {
+        "entry": "./protocol",
+        "export": {
+          "name": "DecodeRuntimeRegistryOptions",
+          "typeOnly": true,
+          "declarations": [
+            {
+              "path": "packages/core/src/catalog/runtime-kernel.ts",
+              "line": 140,
+              "kind": "InterfaceDeclaration",
+              "signature": "export interface DecodeRuntimeRegistryOptions { sanitizeSandbox?: (value?: string) => string; }"
+            }
+          ]
+        }
+      }
+    ],
+    "assetPins": "Catalog asset records still identify the historical source bytes until the normal canonical generator is run after integration. Update only those pins from actual generated outputs; no new digest is asserted here."
+  }
 }

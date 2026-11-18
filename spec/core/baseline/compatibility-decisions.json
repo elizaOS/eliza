@@ -57,13 +57,13 @@
     },
     {
       "id": "trace-owner-conflict",
-      "kind": "cross-owner-identity-validation",
+      "kind": "cross-owner-identity-transfer",
       "source": "packages/core/src/runtime/active-prompt-traces.ts",
       "sourceBehavior": "A trace ID may be overwritten by another run while the earlier run index retains that ID; deleting the earlier run can remove the newer run trace.",
-      "targetBehavior": "Reject cross-run trace ID reuse with TraceIdentityConflict carrying the trace ID and both run identities. Preserve trace rows, run indexes and purge count on rejection. Permit same-run overwrite.",
+      "targetBehavior": "Transfer a captured trace key to the receiving run while preserving its global insertion slot and existing destination admission position, or appending new destination membership. Remove prior run membership so deleting the old run cannot erase the transferred trace. Record remains void and adds no public rejection.",
       "specification": "spec/core/traces.md",
-      "publicResult": "A trace identity conflict is an explicit failure instead of silently transferring ownership across runs.",
-      "approval": "Proposed specification change for user review; implementation has not been written.",
+      "publicResult": "Existing trace methods preserve their synchronous void/reference interface. Same-run replacement publishes the original replacement object; cross-run reuse corrects stale index aliasing without TraceIdentityConflict.",
+      "approval": "Superseding compatible-transfer proposal; user acceptance remains pending. Current v4 implementation and verification are recorded separately from the historical rejecting model.",
       "verification": {
         "pinnedSourceSha256": "cba59c217657a8a8107772461fc07063532e3f51103a07d2505646a5a766dced",
         "modelRevision": "afdb27e31373a1a66374a9eb1cf9145f08dbb473",
@@ -87,6 +87,487 @@
         },
         "pinnedObservation": "Cross-run reuse made the original run resolve the replacement. Deleting the original run then erased the newer run's trace.",
         "modelReplay": "Cross-run reuse produces TraceIdentityConflict, retains the existing run's trace and purge counter, and preserves same-run replacement."
+      },
+      "currentContract": {
+        "implementationSource": "packages/core/src/runtime/active-prompt-traces.vibe",
+        "implementationSourceSha256": "0612a35de0fc77b1d0f633bb702d721e90369619945164ada254a9a0d6cb9964",
+        "specification": "spec/core/traces.md",
+        "specificationSha256": "d29977993d50a36cdfafc004223a68167bb4511b6ac3ca13de241596fdaeb4c1",
+        "qualification": "Fresh isolated current-tool canonical verification of these exact model/proof inputs passed 12,000 safety traces, all five reachability goals, 405 replays and all 85 obligations, with zero normal audit findings. Source/test lint passed. Root generation, source types, J03 and same-artifact package qualification remain pending; the private scope did not check application source. No root acceptance was run.",
+        "owner": "Generated TraceState with global key order, independently ordered run memberships and cadence; native original Map/Set references mechanically interpret emitted effects.",
+        "compatibility": "Void record API transfers a captured key across runs; no new public TraceIdentityConflict. Admitted id captured once rather than the historical two reads.",
+        "nativeBoundaries": "Current inline compositeScore/ScoreCardData, raw live Map/Set iteration, original trace/score-card/signal references, native NaN/infinity/fractional TTL comparisons and original thrown values remain conformance boundaries."
+      }
+    },
+    {
+      "id": "v4-catalog-plugin-connector-boundary",
+      "kind": "intentional-v4-surface-retirement-and-source-input-reconciliation",
+      "source": "packages/core/src/catalog/{schema,loader,runtime-kernel,generate}.ts",
+      "sourceBehavior": "The pinned source admitted app entries and app launch/session metadata. The current v4 implementation still exposes app schemas/getApps and the wire apps overlay despite the explicit v4 catalog retirement. Retained generated data includes ten stale app entries and cannot be reproduced from the current 24 maintained inputs.",
+      "targetBehavior": "One plugin/connector schema validates first-party and runtime entries. App entry schemas/getApps/app-only decoder options and wire app normalization retire. Restore 31 exact non-app input snapshots and define two explicit current plugin(feature) inputs for knowledge and personal-assistant, preserving npm identities and selfcontrol without launch/session/route metadata. Preserve valid registration overrides/cache invalidation, connector auth, display order, lookup, search and freshness behavior.",
+      "specification": "spec/core/catalog.md",
+      "publicResult": "Retire getApps, appEntrySchema and appLaunchSchema from the root and DecodeRuntimeRegistryOptions from root/protocol (five name occurrences). Keep all sixteen package export leaves and the independent restart asset. Historical imports and export declarations remain recorded with explicit retirement disposition.",
+      "approval": "Reconciles the existing v4 catalog contract; implementation/provenance candidate prepared for review. No root acceptance or package qualification is implied.",
+      "verification": {
+        "originalSourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+        "earnedInputRepairCommit": "5147548ba4c8ce987208a7275a445518e24d4a2e",
+        "contractIntroductionCommit": "1af155aa79d60fe30ed30547b532e8855033ffa5",
+        "v4ImplementationRetirementCommit": "ff049c30d5d7c0236f8e4ae5c35aa16d1b649dd8",
+        "currentSourceQualification": "Pending normal canonical generation, types/lint, J14 and packed J15 qualification after integration. No generated asset digests are invented.",
+        "modelBoundary": "The existing runtime-registration/cache and connector-auth Quint blocks are byte-identical. Schema/JSON validation, filesystem discovery and package publication remain native integration boundaries.",
+        "canonicalAssets": [
+          "packages/core/src/catalog/generated.json",
+          "packages/core/src/catalog/channel-plugin-map.json",
+          "packages/core/src/catalog/provider-plugin-map.json",
+          "packages/core/src/catalog/short-id-plugin-map.json"
+        ],
+        "independentAsset": "packages/core/src/restart-exit-code.json"
+      },
+      "currentContract": {
+        "exactPinnedInputs": [
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-agent-orchestrator/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-agent-orchestrator/registry-entry.json",
+            "sourceBlob": "95d3a9c370edb2a21d4aaf09f2cde1f4cd2cd918",
+            "sha256": "40538b397334eb9cc01b4aaeeadd1a2b3a1d254df3f986725ef232706f35947d",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-anthropic/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-anthropic/registry-entry.json",
+            "sourceBlob": "388772f57dee96d150d01be30627b9b0c961b9b9",
+            "sha256": "9376aacebeeb000b3e9804b005825adbd238f7a2575981a986eec2eb1ceb4288",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-browser/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-browser/registry-entry.json",
+            "sourceBlob": "acd731d414f425a658a8126344249772844c2f20",
+            "sha256": "afb478746061588151a4fe75408fea125a8fd54ee83a289dd6b894906db8dbce",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-coding-tools/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-coding-tools/registry-entry.json",
+            "sourceBlob": "d3fd26ff3a3fdffd22f03e5b04ed919451435144",
+            "sha256": "c7d403152b74b24dffad5dbb2aee231757c479dad168831a17103c373ca16807",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-computeruse/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-computeruse/registry-entry.json",
+            "sourceBlob": "db0909adccfd1a6e1ff12297e0931cdecb87b714",
+            "sha256": "38409af1fa361b5e8cd7eb56b0a0e39128aaf19f5fb6cd7b9f49dde7129e68b3",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-discord/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-discord/registry-entry.json",
+            "sourceBlob": "24d4a5a16544d110083578aa104757798c796949",
+            "sha256": "03c4fb19d8295ebfcd050be3a1e63dfecc077ae5c7090a6f8e74b4990063630b",
+            "kind": "connector"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-elizacloud/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-elizacloud/registry-entry.json",
+            "sourceBlob": "f39da12db1544b42f0c7edd8517e180c87faeade",
+            "sha256": "21b23fdd1670ac59787a138cbbbd53de47fa84a740f1e6db6b9dd9df5bb39647",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-embeddings/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-embeddings/registry-entry.json",
+            "sourceBlob": "f5671b0d997f6703a4a83d5bfd4a133239889dcf",
+            "sha256": "322c4d4e0d9b77524b07ecb4304083485b093e19de4a6e77664116b3322f3166",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-form/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-form/registry-entry.json",
+            "sourceBlob": "35cf7c5a5f5e65336456cffe0810368551b4c824",
+            "sha256": "eb54fe811d6912d7769baa9c64decbd9913261984b760a424e14bc0b7e4cf1d8",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-github/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-github/registry-entry.json",
+            "sourceBlob": "799a01ab0abf2aaf698a45ceda65eb76a2a43bb1",
+            "sha256": "19ee5243f1f2284425009a6f3f116bdce13fe0527ce607f4c38dcb053225fcd7",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-goals/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-goals/registry-entry.json",
+            "sourceBlob": "0406ede4f33ca5d609ffeacd07244f11b12d8418",
+            "sha256": "d037463625ef06e0519caace3bc6f5bef5e4692b9488f2ec0d02c46a05f79da0",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-google-workspace/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-google-workspace/registry-entry.json",
+            "sourceBlob": "85c4da247573e0a51131f2a13e8b5fe3d5a3e4bc",
+            "sha256": "17b4b8fc0993946f6e496a1deb309a6c95abc179658e255bf173cd72d214e3bb",
+            "kind": "connector"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-imessage/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-imessage/registry-entry.json",
+            "sourceBlob": "6828104d02316611e1f88b7d68621f2bd78f78cf",
+            "sha256": "84425f54bae8054723de433f63ce2c88e557a7947e2699376c7a216a2e7998ec",
+            "kind": "connector"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-local-inference/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-local-inference/registry-entry.json",
+            "sourceBlob": "a8fe7f4d2cc891e3a8cd2010c560df8094e963b1",
+            "sha256": "c97ec717c9046d4c8831e54d7ed05e20f6be7d9fb6a1437ec2728d1e1780aff9",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-mcp/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-mcp/registry-entry.json",
+            "sourceBlob": "a24d773460a93be4b624adc0ec48828e64ac8752",
+            "sha256": "b65d9a70a12186fa9a9ac4eb6ee7ef0563e15d211d22a95656ed7b4e36f5e6a5",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-native-contacts/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-native-contacts/registry-entry.json",
+            "sourceBlob": "043a61f65b306f50db5d31b6c4b46ca54e4f4cbd",
+            "sha256": "def1e5f4e6f1d9b34763546ec90ec963b5e74ab3b9d6bfd8958559231339c0e3",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-native-phone/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-native-phone/registry-entry.json",
+            "sourceBlob": "04f8536b9a4ff825a404ccc204ed9a179d4967e2",
+            "sha256": "42604d6e070073749145155978f432789c0f72d38832040626e98cbe68bd5bcd",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-native-wifi/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-native-wifi/registry-entry.json",
+            "sourceBlob": "b63ba489777d9ab0d7c25990b0776c3f879ba21b",
+            "sha256": "0e301d8623930a87f9b8dd10eacad51068ddf80a516a2be774f2a4842b672369",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-openai/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-openai/registry-entry.json",
+            "sourceBlob": "213623aa4f9fb66f7f90017b7f499ef1874f81fc",
+            "sha256": "5e1c44a627d39fc5e441de1443cdaa6cfce8f75b27905673ca507d53d53c96ce",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-pdf/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-pdf/registry-entry.json",
+            "sourceBlob": "9e95137585b57bf8bc047ceadaaecb5ee0c5458c",
+            "sha256": "ae445baa34ff25fff616d5ac194f3145a358283e3ee8126d15529210c2a9c40c",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-scheduling/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-scheduling/registry-entry.json",
+            "sourceBlob": "83c015053a0f956cc3c60c2b7346b9e7daee8ebf",
+            "sha256": "aab46406fcd35b5e5abda05df6e29c0926534a4b68001acb464e160f7f542c6d",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-slack/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-slack/registry-entry.json",
+            "sourceBlob": "5fd4a8a8b9b119b7dce76178a29e9ddb6db66e53",
+            "sha256": "e3eea4d4fa3a8e45fcb1356fc1355d650866147a51ade0668bc365e286e10e3a",
+            "kind": "connector"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-sqlite/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-sqlite/registry-entry.json",
+            "sourceBlob": "038df5fc88a1c18cd4170ae1f34854d2a914465f",
+            "sha256": "23d6e8286862a65d381925e7e76f5b0d9462b2e4bb41cb529c4a1e67ca8b2842",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-telegram/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-telegram/registry-entry.json",
+            "sourceBlob": "ec96dad37667fa32362413685667b803daa90b2e",
+            "sha256": "d44cfc16c8be95c6d0aeece6920ebaba345aaefbfecd3ade76a7e518508ff3aa",
+            "kind": "connector"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-todos/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-todos/registry-entry.json",
+            "sourceBlob": "e2bd231fc07f1804044e5533b24e05b863b503e1",
+            "sha256": "4608b345c549c2e3650dda2d56ba48ea413157462889b740a6b1efb7014cb1e3",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-trajectory-logger/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-trajectory-logger/registry-entry.json",
+            "sourceBlob": "c3a16723e7f1d28bcff19631348f1737fbdd3104",
+            "sha256": "713389d6f97a707fb3cd12cc7ec63e5866bd8cd17bc5ba2001d87555689c057d",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-video/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-video/registry-entry.json",
+            "sourceBlob": "d0e8e19e8d7d844d252ab2b61f39cb0e4f402055",
+            "sha256": "7453749c2f779cef38bd0ec6cb6cdaacd98f69795018d94b6b1770bb7ea95156",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-vision/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-vision/registry-entry.json",
+            "sourceBlob": "b89b3c27ccb74bb20e3dfcdca9de4c5a0a7a69dd",
+            "sha256": "ab6fbd38a69f582fcfe5e6247bda1395742f593202a7fe5c8f1e3dd9e2131971",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-wallet/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-wallet/registry-entry.json",
+            "sourceBlob": "97158252e0abddbefd1dc66cc34c1e5ab2a771a8",
+            "sha256": "b8e94e8067540469061345871f3312d0b08ff39ada359bfa8a754b93b30ecb10",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-workflow/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-workflow/registry-entry.json",
+            "sourceBlob": "58a235a363c43ff493730dfacc814bc278111659",
+            "sha256": "6d8f61d91991c00d8ba929eb48132baf1e6688635b47cd338b86cc93d1dfadd5",
+            "kind": "plugin"
+          },
+          {
+            "input": "packages/core/src/catalog/curated/pinned-72fed/plugins/plugin-x/registry-entry.json",
+            "sourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+            "sourcePath": "plugins/plugin-x/registry-entry.json",
+            "sourceBlob": "5cfd00ab4be23a7e688860da38ee47126183c014",
+            "sha256": "11d4dfcaca16ff156adc745b1d0f9b9e190ed17ed796ef96f4bd69c7e56e3485",
+            "kind": "connector"
+          }
+        ],
+        "authoredFeatureInputs": [
+          {
+            "input": "packages/core/src/catalog/curated/plugins/documents.json",
+            "sha256": "1db11701d321628f5bd460338224c27eea4510c430d8e6fcab4619ed39fccbf1",
+            "id": "documents",
+            "source": {
+              "commit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+              "path": "plugins/plugin-knowledge/registry-entry.json",
+              "sha256": "6fafb4a4b6237cf1d147abaac942816ca6afbeb88eeeebed03152090c42b759d",
+              "rawKind": "app",
+              "rawSubtype": "tool",
+              "rawLaunch": {
+                "type": "server-launch",
+                "capabilities": [
+                  "documents"
+                ],
+                "routePlugin": {
+                  "specifier": "@elizaos/plugin-knowledge",
+                  "exportName": "knowledgePlugin"
+                }
+              }
+            },
+            "intentionalDecisions": [
+              "kind plugin and subtype feature are NEW current catalog ownership decisions, not fields proven byte-identical to the pin",
+              "Retire launch/routePlugin/capability-launch data instead of hiding it behind a runtime adapter",
+              "Preserve stable id/npmName, original optional version, tags, config, hidden render metadata, resources, dependsOn and shortIds"
+            ],
+            "capabilityOwner": {
+              "packageName": "@elizaos/plugin-knowledge",
+              "packageSha256": "6bd7ab4fb096a060d4bc5e34114d297c975a97d7ff834a291e36435a69134543",
+              "pluginSourceSha256": "b912991e17464fbab40c1630f8009214e5cfc73932a6d85149e327f61c82c09a",
+              "entrySourceSha256": "6d11c74181a9f65880bb6b4e3e3e56fad478d5a28621a9b176c22c5b11d9e638",
+              "pluginSymbol": "knowledgePlugin",
+              "pluginDefinitionKind": "Actual pinned host HTTP Plugin object with document routes and empty actions",
+              "defaultOrNamedExport": "knowledgePlugin is re-exported as default"
+            },
+            "qualification": "Retains discovery/lookup of a real plugin capability. It does not establish current v4 package installation, route registration, UI launch, permission grants or live service acceptance."
+          },
+          {
+            "input": "packages/core/src/catalog/curated/plugins/personal-assistant.json",
+            "sha256": "92033c54b5ee485f637b1344d61d0d7c1901d00b339763b4f5234ac62ea8dabf",
+            "id": "personal-assistant",
+            "source": {
+              "commit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+              "path": "plugins/plugin-personal-assistant/registry-entry.json",
+              "sha256": "70c2c2da27f6c07454d896adf245b12681826082e362d8511ac213978ff4dc88",
+              "rawKind": "app",
+              "rawSubtype": "tool",
+              "rawLaunch": {
+                "type": "server-launch",
+                "capabilities": [
+                  "lifeops",
+                  "goals",
+                  "todos"
+                ],
+                "routePlugin": {
+                  "specifier": "@elizaos/plugin-personal-assistant/routes/plugin",
+                  "exportName": "personalAssistantRoutesPlugin"
+                }
+              }
+            },
+            "intentionalDecisions": [
+              "kind plugin and subtype feature are NEW current catalog ownership decisions, not fields proven byte-identical to the pin",
+              "Retire launch/routePlugin/capability-launch data instead of hiding it behind a runtime adapter",
+              "Preserve stable id/npmName, original optional version, tags, config, hidden render metadata, resources, dependsOn and shortIds"
+            ],
+            "capabilityOwner": {
+              "packageName": "@elizaos/plugin-personal-assistant",
+              "packageSha256": "2b18408d996f663477e49e709ffdbb94e67b440ee6c553666e8133f8db525fc4",
+              "pluginSourceSha256": "584b99cf8456e5dcec9c6ba1cb44bc1cad90ef40400107652f2ba9362b693100",
+              "entrySourceSha256": "21c50739f0e55b7f57a8fcc60f3b55016c8053e5ed012338e8be8a7294cf3488",
+              "pluginSymbol": "personalAssistantPlugin",
+              "pluginDefinitionKind": "Actual pinned Plugin object with orchestration actions/providers/services and route composition",
+              "defaultOrNamedExport": "personalAssistantPlugin is a named public export; catalog metadata does not invent an export-selection or launch contract"
+            },
+            "qualification": "Retains discovery/lookup of a real plugin capability. It does not establish current v4 package installation, route registration, UI launch, permission grants or live service acceptance."
+          }
+        ],
+        "existingMaintainedInputs": {
+          "count": 24,
+          "disposition": "All current bytes preserved; no eight viewer-app restoration and no raw app-kind pin activation."
+        },
+        "retiredRawFacets": [
+          {
+            "id": "local-inference",
+            "sourceSha256": "c97ec717c9046d4c8831e54d7ed05e20f6be7d9fb6a1437ec2728d1e1780aff9",
+            "retiredLaunch": {
+              "type": "server-launch",
+              "capabilities": [],
+              "bootHook": {
+                "specifier": "@elizaos/plugin-local-inference/runtime",
+                "exportName": "registerLocalInferenceBoot"
+              }
+            },
+            "retiredCuratedApp": null
+          },
+          {
+            "id": "contacts",
+            "sourceSha256": "def1e5f4e6f1d9b34763546ec90ec963b5e74ab3b9d6bfd8958559231339c0e3",
+            "retiredLaunch": null,
+            "retiredCuratedApp": {
+              "slug": "contacts",
+              "order": 1,
+              "aliases": []
+            }
+          },
+          {
+            "id": "phone",
+            "sourceSha256": "42604d6e070073749145155978f432789c0f72d38832040626e98cbe68bd5bcd",
+            "retiredLaunch": null,
+            "retiredCuratedApp": {
+              "slug": "phone",
+              "order": 2,
+              "aliases": []
+            }
+          },
+          {
+            "id": "wifi",
+            "sourceSha256": "0e301d8623930a87f9b8dd10eacad51068ddf80a516a2be774f2a4842b672369",
+            "retiredLaunch": null,
+            "retiredCuratedApp": {
+              "slug": "wifi",
+              "order": 3,
+              "aliases": []
+            }
+          },
+          {
+            "id": "trajectory-logger",
+            "sourceSha256": "713389d6f97a707fb3cd12cc7ec63e5866bd8cd17bc5ba2001d87555689c057d",
+            "retiredLaunch": null,
+            "retiredCuratedApp": {
+              "slug": "trajectory-logger",
+              "order": 10,
+              "aliases": []
+            }
+          }
+        ],
+        "nativeQualification": "The31 raw plugin/connector pins include one app-style local-inference bootHook and four curatedApp hints. Their raw provenance stays exact; their retirement from canonical outputs must be explicit. Schema stripping alone is not proof of unchanged startup/UI behavior. The historical boot-hook consumer file is retired in current v4; any new native inference startup owner is a separate contract, not a catalog launch adapter.",
+        "retiredExportOccurrences": [
+          {
+            "entry": ".",
+            "name": "appEntrySchema",
+            "typeOnly": false
+          },
+          {
+            "entry": ".",
+            "name": "appLaunchSchema",
+            "typeOnly": false
+          },
+          {
+            "entry": ".",
+            "name": "DecodeRuntimeRegistryOptions",
+            "typeOnly": true
+          },
+          {
+            "entry": ".",
+            "name": "getApps",
+            "typeOnly": false
+          },
+          {
+            "entry": "./protocol",
+            "name": "DecodeRuntimeRegistryOptions",
+            "typeOnly": true
+          }
+        ],
+        "retiredConsumerNames": [
+          {
+            "file": "packages/agent/src/runtime/boot-hooks.ts",
+            "line": 17,
+            "module": "@elizaos/core",
+            "names": [
+              "getApps"
+            ],
+            "reason": "Retired v4 app/boot contributor surface; current source has no getApps caller. Original import facts remain in this row; every other name remains required."
+          },
+          {
+            "file": "packages/app/src/api/catalog-routes.ts",
+            "line": 13,
+            "module": "@elizaos/core",
+            "names": [
+              "getApps"
+            ],
+            "reason": "Retired v4 app/boot contributor surface; current source has no getApps caller. Original import facts remain in this row; every other name remains required."
+          },
+          {
+            "file": "packages/app/src/runtime/startup/app-contributors.ts",
+            "line": 13,
+            "module": "@elizaos/core",
+            "names": [
+              "getApps"
+            ],
+            "reason": "Retired v4 app/boot contributor surface; current source has no getApps caller. Original import facts remain in this row; every other name remains required."
+          }
+        ]
       }
     }
   ],

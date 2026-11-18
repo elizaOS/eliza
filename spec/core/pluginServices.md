@@ -135,12 +135,21 @@ registered. Only a registered class holds a live instance. Until the runtime
 stops, a start still being invoked is its class's pending attempt and that
 class holds no live instance yet.
 
+Repeated declarations remain separate receipts. Retirement derives one class
+slot per constructor identity and service type, in first-registration order.
+Receipts retain no static-hook availability snapshot: the optional mutable
+`stopRuntime` property is observed only when teardown reaches that class.
+The class/type equalities above describe a stable-constructor-`serviceType`
+projection. The public source and replacement permit mutation into multiple
+type buckets; those schedules remain outside this identity projection.
+
 ```quint
 type RetirementGroupPhase = GroupWaiting | GroupStoppingInstances | GroupStoppingClasses | GroupFinished | GroupSkipped | GroupFailed
 type ClassHookPhase = HookReady | HookPending | HookFinished | HookFailed
-type RetireClass = {id: int, hasStopHook: bool}
+type ClassHookObservation = Callable | Missing | ReadFailed({errorId: str})
+type RetireClass = {id: int}
 type CapturedInstances = {seen: Set[int], instances: List[int]}
-type OwnedClass = {epochId: int, classId: int, serviceType: str, hasStopHook: bool}
+type OwnedClass = {epochId: int, classId: int, serviceType: str}
 type InstanceStopObservation = UncheckedStopSlot | AwaitedStopSlot | MissingStopSlot
 type InstanceSlot = {instanceId: int, observed: InstanceStopObservation}
 type RetirementGroup = {serviceType: str, classes: List[RetireClass], starts: List[int], aggregate: int, instances: List[int], observedStops: List[InstanceSlot], phase: RetirementGroupPhase, instanceCursor: int, classCursor: int, hook: ClassHookPhase}
@@ -148,9 +157,10 @@ type SequenceValidation = {index: int, valid: bool}
 type ServiceRetirement = {epochId: int, plan: List[str], groups: List[RetirementGroup], cursor: int, failures: List[str], exited: bool, hookError: str}
 type PluginServices = {epochs: List[PluginEpoch], nextEpoch: int, services: I::ServiceInstances, ownership: List[OwnedClass], liveOwners: List[OwnedClass], retirements: List[ServiceRetirement], requestsClosed: bool}
 pure val initial: PluginServices = {epochs: List(), nextEpoch: 1, services: I::initial, ownership: List(), liveOwners: List(), retirements: List(), requestsClosed: false}
-pure def canRegisterOwnedClass(s: PluginServices, epochId: int, classId: int, serviceType: str, hasStopHook: bool): bool = not(s.requestsClosed) and epochAdmitsClass(s, epochId) and I::canRegisterClass(s.services, classId, serviceType)
-pure def registerOwnedClass(s: PluginServices, epochId: int, classId: int, serviceType: str, hasStopHook: bool): PluginServices = {
-  val captured: OwnedClass = {epochId: epochId, classId: classId, serviceType: serviceType, hasStopHook: hasStopHook}
+pure val hookObservationValues = Set(Callable, Missing, ReadFailed({errorId: "stop-failed"}))
+pure def canRegisterOwnedClass(s: PluginServices, epochId: int, classId: int, serviceType: str): bool = not(s.requestsClosed) and epochAdmitsClass(s, epochId) and I::canRegisterClass(s.services, classId, serviceType)
+pure def registerOwnedClass(s: PluginServices, epochId: int, classId: int, serviceType: str): PluginServices = {
+  val captured: OwnedClass = {epochId: epochId, classId: classId, serviceType: serviceType}
   { ...s, services: I::registerClass(s.services, classId, serviceType), ownership: s.ownership.append(captured), liveOwners: s.liveOwners.select(o => o.classId != classId).append(captured) }
 }
 pure def canFinishInitialization(s: PluginServices, ok: bool): bool = I::canFinishInitialization(s.services, ok)
@@ -197,9 +207,10 @@ Different classes can return the same object. An unrelated class keeps
 its instance reference even when the object drops out of the type array.
 A subsequent successful start rebuilds the array from the class map and
 may publish that identity again before the captured teardown finishes.
-Repeated declarations of one class produce one captured stop slot because
-the first lookup deletes the per-class instance. Distinct classes can
-produce separate slots with the same object and share one stop promise.
+Repeated declarations of one class produce one captured stop slot through
+the deduplicated ownership projection; capture removes its per-class lookup.
+Distinct classes can produce separate slots with the same object and share
+one stop promise.
 
 A retirement visits its planned types in order, one group per type. Every
 group before the cursor is finished or skipped, the group at the cursor is
@@ -211,7 +222,7 @@ instances has one left, and every other group has passed them all.
 ```quint
 pure val noRetirement: ServiceRetirement = {epochId: 0, plan: List(), groups: List(), cursor: 0, failures: List(), exited: false, hookError: ""}
 pure val noGroup: RetirementGroup = {serviceType: "", classes: List(), starts: List(), aggregate: 0, instances: List(), observedStops: List(), phase: GroupFinished, instanceCursor: 0, classCursor: 0, hook: HookReady}
-pure val noRetireClass: RetireClass = {id: 0, hasStopHook: false}
+pure val noRetireClass: RetireClass = {id: 0}
 pure def retirement(s: PluginServices, epochId: int): ServiceRetirement = s.retirements.select(r => r.epochId == epochId).nthOr(0, noRetirement)
 pure def currentGroup(s: PluginServices, epochId: int): RetirementGroup = retirement(s, epochId).groups.nthOr(retirement(s, epochId).cursor, noGroup)
 pure def plannedTypes(s: PluginServices, epochId: int): List[str] = s.ownership.select(o => o.epochId == epochId).foldl(List(), (types, owner) => if (types.includes(owner.serviceType)) types else types.append(owner.serviceType))
@@ -233,8 +244,14 @@ pure def captureOwnedInstances(classes: List[RetireClass], services: I::ServiceI
   val result = classes.foldl(noCapturedInstances, (capture, c) => captureClassInstance(capture, c.id, services))
   result.instances
 }
+pure def appendRetirementClass(classes: List[RetireClass], captured: RetireClass): List[RetireClass] =
+  if (classes.includes(captured)) classes else classes.append(captured)
 pure def retirementClassesForType(s: PluginServices, epochId: int, serviceType: str): List[RetireClass] =
-  s.ownership.select(o => o.epochId == epochId and o.serviceType == serviceType).listMap(o => {id: o.classId, hasStopHook: o.hasStopHook})
+  s.ownership.select(o => o.epochId == epochId and o.serviceType == serviceType).listMap(o => {id: o.classId}).foldl(List(), (classes, captured) => appendRetirementClass(classes, captured))
+pure def lawRetirementClassIdentitiesUnique(s: PluginServices, epochId: int, serviceType: str): bool = {
+  val classes = retirementClassesForType(s, epochId, serviceType)
+  classes.every(c => classes.select(other => other.id == c.id).length() == 1)
+}
 pure def withdrawRetiringClasses(classes: List[RetireClass], s: I::ServiceInstances): I::ServiceInstances =
   classes.foldl(s, (acc, c) => I::withdrawClass(c.id, acc))
 pure def withdrawNextType(s: PluginServices, epochId: int): PluginServices = {
@@ -273,8 +290,8 @@ pure def requestOwnedStops(s: PluginServices, epochId: int): PluginServices = {
 ### Captured instance stops and class hooks settle in source order
 
 A class's old failure flag is removed immediately before its hook. The class
-owner mapping is deleted after a fulfilled hook only if it still names the
-retiring epoch. A successor registration retains its mapping. The ownership
+owner mapping is deleted after a fulfilled or absent hook only if it still
+names the retiring epoch. A successor registration retains its mapping. The ownership
 history remains available independently of the live class-owner map.
 
 An instance stop uses the shared runtime stop-once owner, so plugin unload
@@ -288,6 +305,16 @@ The observation is scoped to that slot because a plugin object may expose
 a different method when another slot reads the property. Runtime shutdown
 and late-start retirement have a distinct malformed-object reporting path.
 Those paths in the shared service owner currently project callable instances.
+The host observes the current static hook after earlier awaits. `Missing`
+completes its class slot atomically; `Callable` enters the existing pending
+hook phase. `ReadFailed` clears the old class failure flag, preserves that
+property-read failure and exits the group without removing its class owner.
+No registration-time callability value chooses the branch.
+
+The native boundary reads `stopRuntime` once for `typeof` and again for the
+call when the first read is callable. The second read, invocation and awaited
+result keep their original failures through hook completion. Named model
+observations do not claim arbitrary getter or reentrant trace equivalence.
 A missing static class hook completes its slot immediately. An invoked hook
 awaits its own outcome. That hook's rejection ends the service loop before
 advancing the class or any later service type, preserves its original failure,
@@ -342,9 +369,9 @@ pure def observeInstanceStop(s: PluginServices, epochId: int): PluginServices = 
   putCurrentGroup(advanceInstanceSlot(g), epochId, counted)
 }
 pure def currentClassHook(s: PluginServices, epochId: int): RetireClass = currentGroup(s, epochId).classes.nthOr(currentGroup(s, epochId).classCursor, noRetireClass)
-pure def canInvokeClassHook(s: PluginServices, epochId: int): bool = currentGroup(s, epochId).phase == GroupStoppingClasses and currentGroup(s, epochId).hook == HookReady and currentClassHook(s, epochId).hasStopHook
+
 pure def clearRetiredClassFailure(classId: int, s: PluginServices): PluginServices = { ...s, services: { ...s.services, classes: s.services.classes.listMap(c => if (c.id == classId) { ...c, failed: false } else c) } }
-pure def invokeClassHook(s: PluginServices, epochId: int): PluginServices = putCurrentGroup({ ...currentGroup(s, epochId), hook: HookPending }, epochId, clearRetiredClassFailure(currentClassHook(s, epochId).id, s))
+
 pure def canFinishClassHook(s: PluginServices, epochId: int, ok: bool, errorId: str): bool = currentGroup(s, epochId).phase == GroupStoppingClasses and currentGroup(s, epochId).hook == HookPending
 pure def finishClassHook(s: PluginServices, epochId: int, ok: bool, errorId: str): PluginServices = {
   val g = currentGroup(s, epochId)
@@ -354,7 +381,7 @@ pure def finishClassHook(s: PluginServices, epochId: int, ok: bool, errorId: str
 pure def canFinishClassSlot(s: PluginServices, epochId: int): bool = {
   val g = currentGroup(s, epochId)
   val c = currentClassHook(s, epochId)
-  g.phase == GroupStoppingClasses and c.id != 0 and (g.hook == HookFinished or (g.hook == HookReady and not(c.hasStopHook)))
+  g.phase == GroupStoppingClasses and c.id != 0 and g.hook == HookFinished
 }
 pure def finishClassSlot(s: PluginServices, epochId: int): PluginServices = {
   val g = currentGroup(s, epochId)
@@ -362,6 +389,15 @@ pure def finishClassSlot(s: PluginServices, epochId: int): PluginServices = {
   val cleared = if (g.hook == HookReady) clearRetiredClassFailure(c.id, s) else s
   val updated = { ...cleared, liveOwners: cleared.liveOwners.select(o => o.classId != c.id or o.epochId != epochId) }
   putCurrentGroup({ ...g, classCursor: g.classCursor + 1, hook: HookReady }, epochId, updated)
+}
+pure def canObserveClassHook(s: PluginServices, epochId: int, hookObservation: ClassHookObservation): bool = currentGroup(s, epochId).phase == GroupStoppingClasses and currentGroup(s, epochId).hook == HookReady and currentClassHook(s, epochId).id != 0
+pure def observeClassHook(s: PluginServices, epochId: int, hookObservation: ClassHookObservation): PluginServices = {
+  val cleared = clearRetiredClassFailure(currentClassHook(s, epochId).id, s)
+  match hookObservation {
+    | Callable => putCurrentGroup({ ...currentGroup(cleared, epochId), hook: HookPending }, epochId, cleared)
+    | Missing => finishClassSlot(cleared, epochId)
+    | ReadFailed(failure) => finishClassHook(cleared, epochId, false, failure.errorId)
+  }
 }
 pure def canFinishRetirementGroup(s: PluginServices, epochId: int): bool = currentGroup(s, epochId).phase == GroupStoppingClasses and currentGroup(s, epochId).classCursor == currentGroup(s, epochId).classes.length()
 pure def finishRetirementGroup(s: PluginServices, epochId: int): PluginServices = {
@@ -412,6 +448,8 @@ Each scheduler step selects one already-enabled retirement transition. The
 transition's identity-specific entry point remains available. Class hook
 settlement likewise selects a pending captured hook only, with its original
 success or rejection supplied by the host.
+Hook-property observation has a separate fair selector for an actual ready
+class slot. Automatic retirement never chooses callability or reads a hook.
 
 Completion scheduler witnesses choose one actual pending registration or
 disposal, keeping the guards of the identity-specific callbacks and
@@ -422,7 +460,7 @@ pure def canSealRequests(s: PluginServices): bool = not(s.requestsClosed)
 pure def sealRequests(s: PluginServices): PluginServices = { ...s, requestsClosed: true }
 pure def allOperationsSettled(s: PluginServices): bool = s.epochs.every(p => epochOperationSettled(s, p.id)) and s.services.attempts.every(a => a.phase == I::StartSucceeded or a.phase == I::StartFailed) and s.services.objects.every(o => o.stopPhase != I::StopWaiting) and s.services.calls.every(c => c.status != I::AcquireWaiting and c.status != I::AcquireWaitingInit)
 pure def alwaysSealedOwnedClassesStable(s: PluginServices): bool = s.requestsClosed implies alwaysServiceOwnerEpochExists(s)
-pure def nextRetirementStage(s: PluginServices, epochId: int): bool = canWithdrawNextType(s, epochId) or canRequestOwnedStops(s, epochId) or canClaimInstanceStop(s, epochId) or canObserveInstanceStop(s, epochId) or canInvokeClassHook(s, epochId) or canFinishClassSlot(s, epochId) or canFinishRetirementGroup(s, epochId) or canCleanPlugin(s, epochId)
+pure def nextRetirementStage(s: PluginServices, epochId: int): bool = canWithdrawNextType(s, epochId) or canRequestOwnedStops(s, epochId) or canClaimInstanceStop(s, epochId) or canObserveInstanceStop(s, epochId) or canFinishClassSlot(s, epochId) or canFinishRetirementGroup(s, epochId) or canCleanPlugin(s, epochId)
 pure def automaticRetirement(s: PluginServices): int = s.retirements.select(r => nextRetirementStage(s, r.epochId)).listMap(r => r.epochId).nthOr(0, 0)
 pure def canAdvanceRetirement(s: PluginServices): bool = automaticRetirement(s) > 0 and nextRetirementStage(s, automaticRetirement(s))
 pure def advanceRetirement(s: PluginServices): PluginServices = {
@@ -431,12 +469,14 @@ pure def advanceRetirement(s: PluginServices): PluginServices = {
   else if (canRequestOwnedStops(s, epochId)) requestOwnedStops(s, epochId)
   else if (canClaimInstanceStop(s, epochId)) claimInstanceStop(s, epochId)
   else if (canObserveInstanceStop(s, epochId)) observeInstanceStop(s, epochId)
-  else if (canInvokeClassHook(s, epochId)) invokeClassHook(s, epochId)
   else if (canFinishClassSlot(s, epochId)) finishClassSlot(s, epochId)
   else if (canFinishRetirementGroup(s, epochId)) finishRetirementGroup(s, epochId)
   else if (canCleanPlugin(s, epochId)) cleanPlugin(s, epochId)
   else s
 }
+pure def readyClassHookEpoch(s: PluginServices, hookObservation: ClassHookObservation): int = s.retirements.select(r => canObserveClassHook(s, r.epochId, hookObservation)).listMap(r => r.epochId).nthOr(0, 0)
+pure def canObserveNextClassHook(s: PluginServices, hookObservation: ClassHookObservation): bool = readyClassHookEpoch(s, hookObservation) > 0 and canObserveClassHook(s, readyClassHookEpoch(s, hookObservation), hookObservation)
+pure def observeNextClassHook(s: PluginServices, hookObservation: ClassHookObservation): PluginServices = observeClassHook(s, readyClassHookEpoch(s, hookObservation), hookObservation)
 pure def pendingClassHookEpoch(s: PluginServices): int = s.retirements.select(r => canFinishClassHook(s, r.epochId, true, "")).listMap(r => r.epochId).nthOr(0, 0)
 pure def canFinishNextClassHook(s: PluginServices, ok: bool, errorId: str): bool = pendingClassHookEpoch(s) > 0 and canFinishClassHook(s, pendingClassHookEpoch(s), ok, errorId)
 pure def finishNextClassHook(s: PluginServices, ok: bool, errorId: str): PluginServices = finishClassHook(s, pendingClassHookEpoch(s), ok, errorId)
@@ -453,6 +493,7 @@ pure val fair_resolveNextStart = "strong"
 pure val fair_finishNextObserver = "strong"
 pure val fair_advanceRetirement = "weak"
 pure val fair_skipMissingStop = "strong"
+pure val fair_observeNextClassHook = "weak"
 pure val fair_finishNextClassHook = "weak"
 pure val fair_invokeClassStop = "strong"
 pure val fair_finishClassStop = "strong"
@@ -478,6 +519,6 @@ pure val weight_invokeClassStop = 10
 pure val weight_finishClassStop = 10
 pure val weight_claimInstanceStop = 20
 pure val weight_observeInstanceStop = 20
-pure val weight_beginPlugin = 4
-pure val weight_finishClassStart = 6
+pure val weight_beginPlugin = 8
+pure val weight_finishClassStart = 12
 ```

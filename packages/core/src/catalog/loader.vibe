@@ -2,7 +2,6 @@
 import { thrown } from "../edge.vibe"
 import {
   type AccountAuthKind,
-  type AppEntry,
   type ConnectorEntry,
   type PluginEntry,
   type RegistryEntry,
@@ -96,7 +95,6 @@ function mapLegacyAuthKindToAccountAuthKind(
 export function indexEntries(entries: RegistryEntry[]): LoadedRegistry {
   const byId = new Map<string, RegistryEntry>()
   const byKind = new Map<RegistryKind, RegistryEntry[]>([
-    ["app", []],
     ["plugin", []],
     ["connector", []],
   ])
@@ -131,10 +129,6 @@ function compareEntriesForDisplay(a: RegistryEntry, b: RegistryEntry): number {
   const bOrder = b.render.groupOrder ?? Number.MAX_SAFE_INTEGER
   if (aOrder !== bOrder) return aOrder - bOrder
   return a.name.localeCompare(b.name)
-}
-
-export function getApps(registry: LoadedRegistry): AppEntry[] {
-  return (registry.byKind.get("app") ?? []) as AppEntry[]
 }
 
 export function getPlugins(registry: LoadedRegistry): PluginEntry[] {

@@ -150,9 +150,9 @@ pure def nativeAcknowledged(op: Ro::FilesOp, result: WriteResult): bool =
 pure def nativeRowOutcome(op: Ro::FilesOp, row: Ro::FilesRowCheck, result: WriteResult, to: str): Ro::FileOutcome =
   Ro::receiptOutcome(op, nativeRowAdmission(op, row), nativeAcknowledged(op, result), to)
 pure def lawWrittenRowMatchesItsReceipt(op: Ro::FilesOp, row: Ro::FilesRowCheck, result: WriteResult, to: str): bool = {
-  val outcome = nativeRowOutcome(op, row, result, to)
-  (outcome == Ro::Copied implies (result == WriteCopied and nativeRowAdmission(op, row) == Ro::Admitted)) and
-    ((outcome == Ro::Moved or outcome == Ro::Trashed) implies (result == WriteMoved and nativeRowAdmission(op, row) == Ro::Admitted))
+  val rowOutcome = nativeRowOutcome(op, row, result, to)
+  (rowOutcome == Ro::Copied implies (result == WriteCopied and nativeRowAdmission(op, row) == Ro::Admitted)) and
+    ((rowOutcome == Ro::Moved or rowOutcome == Ro::Trashed) implies (result == WriteMoved and nativeRowAdmission(op, row) == Ro::Admitted))
 }
 ```
 
@@ -255,8 +255,8 @@ a removal that fails leaves the entry shown for this scan.
 type TrashCleanup = { payloadLeft: EntryPresence, recordRemoved: bool }
 pure val trashRetentionMs = 2592000000
 pure def recordedAt(record: OriginRecord): int = match record { | Recorded(r) => r.deletedAt | NoRecord => 0 }
-pure def remainingPayload(current: EntryPresence, left: EntryPresence): EntryPresence =
-  if (current == EntryMissing or left == EntryMissing) EntryMissing else if (left == EntryIncomplete) EntryIncomplete else current
+pure def remainingPayload(held: EntryPresence, left: EntryPresence): EntryPresence =
+  if (held == EntryMissing or left == EntryMissing) EntryMissing else if (left == EntryIncomplete) EntryIncomplete else held
 pure def removeEntry(cleanup: TrashCleanup, s: NativeTrashCustody, removed: TrashAnswer, kept: TrashAnswer): NativeTrashCustody = {
   val left = remainingPayload(s.payload, cleanup.payloadLeft)
   val gone = left == EntryMissing and cleanup.recordRemoved

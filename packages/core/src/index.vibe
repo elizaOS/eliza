@@ -45,7 +45,6 @@ export {
   SHOULD_RESPOND_SCHEMA_DESCRIPTION,
 } from "./actions/to-tool.vibe"
 export {
-  getApps,
   getConnectors,
   getEntry,
   getEntryByNpmName,
@@ -64,8 +63,6 @@ export {
   type AccountAuthKind,
   type AccountConfig,
   accountConfigSchema,
-  appEntrySchema,
-  appLaunchSchema,
   type ConfigField,
   configFieldSchema,
   type ConnectorEntry,

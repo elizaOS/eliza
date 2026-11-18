@@ -9,6 +9,14 @@ import { scriptedOAuthProvider } from "./support/oauth.ts"
 import { type Handler, loopback, loopbackTls, pinnedLookup } from "./support/servers.ts"
 import { SqliteAdapter, SqliteStore } from "./support/sqlite-adapter.ts"
 
+module traceBoundary {
+  /** @throws {never} */
+  export function throwOnRead({ failure }: { failure: Error }): () => never {
+    return () => { throw failure }
+  }
+}
+import { throwOnRead } from traceBoundary
+
 effect function storeAt(prefix: string) {
   const directory = try scratch(prefix)
   return try host(async () => new SqliteStore(`${directory}/core.sqlite`))
@@ -1086,6 +1094,183 @@ it.live("Dispatch a model request through failover, swaps, streams, cancellation
       [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
       [true, { reads: 2, totalReads: 2, cachedCalls: 0 }],
     ]))
+    // spec/core/traces.md, "Story: Retain enrich and retire active trace records"; spec/core/traces.md, "Recording preserves the insertion position of a replacement in its run"
+    try Effect.try(() => {
+      type ExecutionTrace = Parameters<AgentRuntime["recordPromptTrace"]>[0]
+      type ScoreSignal = Parameters<AgentRuntime["enrichTrace"]>[1]
+      const runA = stringToUuid("j03-trace-a")
+      const runB = stringToUuid("j03-trace-b")
+      const nativeNow = Date.now
+      let clock = 1_000_000
+      const ttl = 300_000
+      const trace = ({ id, runId, createdAt = clock }: Pick<ExecutionTrace, "id" | "runId"> & Partial<Pick<ExecutionTrace, "createdAt">>): ExecutionTrace => ({
+        id, runId, createdAt, traceVersion: 1, type: "trace", promptKey: "j03.trace", modelSlot: ModelType.TEXT_LARGE, modelId: "synthetic-model", templateHash: "synthetic-template", schemaFingerprint: "synthetic-schema", variant: "baseline", parseSuccess: true, schemaValid: true, validationCodesMatched: true, retriesUsed: 0, tokenEstimate: 1, latencyMs: 1, scoreCard: { signals: [], compositeScore: 0 },
+      })
+      const clear = () => { runtime.deleteActiveTrace(runA); runtime.deleteActiveTrace(runB) }
+      Date.now = () => clock
+      try {
+        const expired = trace({ id: "cadence", runId: runA, createdAt: clock - ttl - 1 })
+        runtime.recordPromptTrace(expired)
+        const ignored = trace({ id: "ignored", runId: undefined })
+        let ignoredIdReads = 0
+        Object.defineProperty(ignored, "id", { get: () => { ignoredIdReads += 1; return "ignored" } })
+        for (let attempt = 0; attempt < 98; attempt += 1) runtime.recordPromptTrace(ignored)
+        const replacement = trace({ id: "cadence", runId: runB })
+        const purgeBeforeIdentity: boolean[] = []
+        Object.defineProperty(replacement, "runId", { get: () => { purgeBeforeIdentity.push(runtime.getActiveTrace(runA) === undefined); return runB } })
+        runtime.recordPromptTrace(replacement)
+        assert.deepStrictEqual({ ignoredIdReads, purgeBeforeIdentity }, { ignoredIdReads: 0, purgeBeforeIdentity: [true] })
+        assert.strictEqual(runtime.getActiveTrace(runB), replacement)
+        clear()
+
+        const first = trace({ id: "x", runId: runA })
+        const second = trace({ id: "y", runId: runB })
+        const transferred = trace({ id: "x", runId: runB })
+        runtime.recordPromptTrace(first)
+        runtime.recordPromptTrace(second)
+        runtime.recordPromptTrace(transferred)
+        assert.deepStrictEqual(runtime.getActiveTracesForRun(runA), [])
+        assert.deepStrictEqual(runtime.getActiveTracesForRun(runB), [second, transferred])
+        const rerecorded = trace({ id: "x", runId: runB })
+        runtime.recordPromptTrace(rerecorded)
+        assert.deepStrictEqual(runtime.getActiveTracesForRun(runB), [second, rerecorded])
+        const purgeOrder: string[] = []
+        Object.defineProperty(rerecorded, "createdAt", { get: () => { purgeOrder.push("x"); return clock } })
+        Object.defineProperty(second, "createdAt", { get: () => { purgeOrder.push("y"); return clock } })
+        runtime.purgePromptTraces()
+        assert.deepStrictEqual(purgeOrder, ["x", "y"])
+        runtime.deleteActiveTrace(runA)
+        assert.strictEqual(runtime.getActiveTrace(runB), rerecorded)
+        const emptyId = trace({ id: "", runId: runA })
+        runtime.recordPromptTrace(emptyId)
+        assert.strictEqual(runtime.getActiveTrace(runA), emptyId)
+        runtime.deleteActiveTraceById("")
+        assert.strictEqual(runtime.getActiveTrace(runA), undefined)
+        clear()
+
+        const changingId = trace({ id: "initial-id", runId: runA })
+        let admissionIdReads = 0
+        Object.defineProperty(changingId, "id", { get: () => { admissionIdReads += 1; return admissionIdReads === 1 ? "captured-id" : "unadmitted-alias" } })
+        runtime.recordPromptTrace(changingId)
+        assert.strictEqual(admissionIdReads, 1)
+        assert.strictEqual(runtime.getActiveTrace(runA), changingId)
+        runtime.deleteActiveTraceById("unadmitted-alias")
+        assert.strictEqual(runtime.getActiveTrace(runA), changingId)
+        runtime.deleteActiveTraceById("captured-id")
+        assert.strictEqual(runtime.getActiveTrace(runA), undefined)
+        assert.strictEqual(admissionIdReads, 1)
+
+        const numeric = {
+          nan: trace({ id: "numeric-nan", runId: runA, createdAt: Number.NaN }),
+          infinity: trace({ id: "numeric-infinity", runId: runA, createdAt: Number.POSITIVE_INFINITY }),
+          negativeInfinity: trace({ id: "numeric-negative-infinity", runId: runA, createdAt: Number.NEGATIVE_INFINITY }),
+          boundary: trace({ id: "numeric-boundary", runId: runA, createdAt: clock - ttl }),
+          expiredFraction: trace({ id: "numeric-expired-fraction", runId: runA, createdAt: clock - ttl - 0.5 }),
+          freshFraction: trace({ id: "numeric-fresh-fraction", runId: runA, createdAt: clock - ttl + 0.5 }),
+        }
+        for (const entry of Object.values(numeric)) runtime.recordPromptTrace(entry)
+        runtime.purgePromptTraces()
+        assert.deepStrictEqual(runtime.getActiveTracesForRun(runA), [numeric.infinity, numeric.boundary, numeric.freshFraction])
+        numeric.infinity.createdAt = clock - ttl - 1
+        runtime.purgePromptTraces()
+        assert.deepStrictEqual(runtime.getActiveTracesForRun(runA), [numeric.boundary, numeric.freshFraction])
+        const mutable = numeric.boundary
+        const card: ExecutionTrace["scoreCard"] = { signals: [], compositeScore: 0 }
+        mutable.scoreCard = card
+        mutable.id = "caller-mutated-id"
+        mutable.runId = runB
+        const signal: ScoreSignal = { source: "fixture", kind: "quality", value: 0.5, traceId: "numeric-boundary" }
+        runtime.enrichTrace(runA, signal)
+        assert.strictEqual(mutable.scoreCard, card)
+        assert.strictEqual(card.signals[0], signal)
+        assert.strictEqual(card.compositeScore, 0.5)
+        assert.strictEqual(runtime.getActiveTracesForRun(runA)[0], mutable)
+        runtime.deleteActiveTraceById("caller-mutated-id")
+        assert.strictEqual(runtime.getActiveTracesForRun(runA)[0], mutable)
+        clock += 1
+        runtime.purgePromptTraces()
+        assert.deepStrictEqual(runtime.getActiveTracesForRun(runA), [])
+        clear()
+
+        const sharedCard: ExecutionTrace["scoreCard"] = { signals: [], compositeScore: 0 }
+        const sharedA = trace({ id: "shared-a", runId: runA })
+        const sharedB = trace({ id: "shared-b", runId: runB })
+        sharedA.scoreCard = sharedCard
+        sharedB.scoreCard = sharedCard
+        runtime.recordPromptTrace(sharedA)
+        runtime.recordPromptTrace(sharedB)
+        const sharedSignal: ScoreSignal = { source: "fixture", kind: "quality", value: 0.5 }
+        runtime.enrichTrace(runA, sharedSignal)
+        assert.strictEqual(sharedA.scoreCard, sharedCard)
+        assert.strictEqual(sharedB.scoreCard, sharedCard)
+        assert.strictEqual(sharedB.scoreCard.signals[0], sharedSignal)
+        clear()
+
+        const beforeThrow = trace({ id: "before-throw", runId: runA, createdAt: clock - ttl - 1 })
+        const hostile = trace({ id: "hostile", runId: runA })
+        const afterThrow = trace({ id: "after-throw", runId: runA, createdAt: clock - ttl - 1 })
+        const failure = new Error("createdAt observer failed")
+        Object.defineProperty(hostile, "createdAt", { get: throwOnRead({ failure }) })
+        for (const entry of [beforeThrow, hostile, afterThrow]) runtime.recordPromptTrace(entry)
+        let caught: unknown
+        try { runtime.purgePromptTraces() } catch (error) { caught = error }
+        assert.strictEqual(caught, failure)
+        const retained = runtime.getActiveTracesForRun(runA)
+        assert.strictEqual(retained.length, 2)
+        assert.strictEqual(retained[0], hostile)
+        assert.strictEqual(retained[1], afterThrow)
+        clear()
+
+        const appended = trace({ id: "append-c", runId: runA })
+        const appendFirst = trace({ id: "append-a", runId: runA })
+        const appendSecond = trace({ id: "append-b", runId: runA })
+        const appendCard = appendFirst.scoreCard
+        let append = true
+        Object.defineProperty(appendFirst, "scoreCard", { get: () => { if (append) { append = false; runtime.recordPromptTrace(appended) } return appendCard } })
+        runtime.recordPromptTrace(appendFirst)
+        runtime.recordPromptTrace(appendSecond)
+        assert.strictEqual(runtime.getActiveTracesForRun(runA).length, 2)
+        const appendedSignal: ScoreSignal = { source: "fixture", kind: "quality", value: 0.25 }
+        runtime.enrichTrace(runA, appendedSignal)
+        for (const entry of [appendFirst, appendSecond, appended]) assert.strictEqual(entry.scoreCard.signals[0], appendedSignal)
+        clear()
+
+        const retiredFirst = trace({ id: "retired-a", runId: runA })
+        const retiredSecond = trace({ id: "retired-b", runId: runA })
+        const newSecond = trace({ id: "retired-b", runId: runA })
+        const unvisited = trace({ id: "retired-c", runId: runA })
+        const retiredCard = retiredFirst.scoreCard
+        let replace = true
+        Object.defineProperty(retiredFirst, "scoreCard", { get: () => { if (replace) { replace = false; runtime.deleteActiveTrace(runA); runtime.recordPromptTrace(newSecond); runtime.recordPromptTrace(unvisited) } return retiredCard } })
+        runtime.recordPromptTrace(retiredFirst)
+        runtime.recordPromptTrace(retiredSecond)
+        const retiredSignal: ScoreSignal = { source: "fixture", kind: "quality", value: 0.75 }
+        runtime.enrichTrace(runA, retiredSignal)
+        assert.strictEqual(retiredCard.signals[0], retiredSignal)
+        assert.strictEqual(newSecond.scoreCard.signals[0], retiredSignal)
+        assert.strictEqual(retiredSecond.scoreCard.signals.length, 0)
+        assert.strictEqual(unvisited.scoreCard.signals.length, 0)
+        assert.deepStrictEqual(runtime.getActiveTracesForRun(runA), [newSecond, unvisited])
+        clear()
+
+        const selectedFirst = trace({ id: "selected-a", runId: runA })
+        const selectedSecond = trace({ id: "selected-b", runId: runA })
+        const foreignSecond = trace({ id: "selected-b", runId: runB })
+        const foreignUnvisited = trace({ id: "selected-c", runId: runA })
+        runtime.recordPromptTrace(selectedFirst)
+        runtime.recordPromptTrace(selectedSecond)
+        const capturedSignal: ScoreSignal = { source: "fixture", kind: "quality", value: 1 }
+        Object.defineProperty(capturedSignal, "traceId", { get: () => { runtime.deleteActiveTrace(runA); runtime.recordPromptTrace(foreignSecond); runtime.recordPromptTrace(foreignUnvisited); return undefined } })
+        runtime.enrichTrace(runA, capturedSignal)
+        assert.strictEqual(foreignSecond.scoreCard.signals[0], capturedSignal)
+        assert.strictEqual(foreignUnvisited.scoreCard.signals.length, 0)
+        assert.strictEqual(selectedSecond.scoreCard.signals.length, 0)
+        assert.strictEqual(runtime.getActiveTrace(runB), foreignSecond)
+      } finally {
+        Date.now = nativeNow
+        clear()
+      }
+    })
     try Effect.try(() => alphaBackup.register(runtime))
     const large = (params: Record<string, unknown>, provider?: string) =>
       outcome(runtime.useModel(ModelType.TEXT_LARGE, params as never, provider).then((value) => {
@@ -4419,9 +4604,10 @@ it.live("Generate the first-party catalog from plugin-owned and curated manifest
   const work = try scratch("eliza-core-catalog")
   const { root: dir, sourceDir } = try host(() => freezeCore(coreDir, work))
   const catalog = `${sourceDir}/src/catalog`
+  const authoredFeatures = try host(async () => Promise.all(["documents", "personal-assistant"].map(async (id) => ({ id, entry: await readJsonFile(`${catalog}/curated/plugins/${id}.json`) }))))
   try host(() => removeScratch(`${catalog}/curated`))
   const write = (path: string, value: unknown) => host(() => writeJsonAtomic(`${dir}/${path}`, value))
-  const app = (id: string, launch: string, extra: object) => ({ id, name: id, kind: "app", subtype: "tool", launch: { type: launch }, render: { group: "apps" }, ...extra })
+  const feature = (id: string, extra: object) => ({ id, name: id, kind: "plugin", subtype: "feature", render: { group: "feature" }, ...extra })
   try write("plugins/beta/registry-entry.json", [
     { id: "bravo", name: "Bravo", npmName: "@fx/plugin-bravo", kind: "plugin", subtype: "ai-provider", render: { group: "ai" }, channels: ["discord"], shortIds: ["bee", "b"], config: { BRAVO_MODEL: { type: "string", required: false }, BRAVO_API_KEY: { type: "secret", required: true, autoEnableProvider: true } } },
     { id: "alpha-two", name: "Alpha Two", npmName: "@fx/plugin-alpha", kind: "connector", subtype: "messaging", render: { group: "connector" }, channels: ["Slack"] },
@@ -4429,9 +4615,9 @@ it.live("Generate the first-party catalog from plugin-owned and curated manifest
   try write("plugins/alphaone/registry-entry.json", { id: "alphaone", name: "Alpha One", npmName: "@fx/plugin-alpha", kind: "connector", subtype: "social", render: { group: "connector" }, channels: ["Slack"], config: { ALPHA_TOKEN: { type: "secret", required: true, autoEnableProvider: false } } })
   try write("plugins/empty/notes.json", { id: "ignored" })
   try write("plugins/stray.json", { id: "ignored" })
-  try write("packages/delta/registry-entry.json", app("delta", "internal-tab", { npmName: "@fx/app-delta", curatedApp: { slug: "delta", order: 2, aliases: ["d"] } }))
-  try write("packages/core/src/catalog/curated/apps/echo.json", app("echo", "overlay", { curatedApp: { slug: "echo", order: 1 } }))
-  try write("packages/core/src/catalog/curated/apps/nested/foxtrot.json", app("foxtrot", "overlay", { npmName: "@fx/app-foxtrot", curatedApp: { slug: "charlie-app", order: 2 } }))
+  try write("packages/delta/registry-entry.json", feature("delta", { npmName: "@fx/plugin-delta", launch: { type: "server-launch" }, curatedApp: { slug: "delta", order: 2, aliases: ["d"] } }))
+  try write("packages/core/src/catalog/curated/plugins/echo.json", feature("echo", {}))
+  try write("packages/core/src/catalog/curated/plugins/nested/foxtrot.json", feature("foxtrot", { npmName: "@fx/plugin-foxtrot" }))
   try write("packages/core/src/catalog/curated/connectors/charlie.json", { id: "charlie", name: "Charlie", kind: "connector", subtype: "email", render: { group: "connector" }, channels: ["telegram"] })
   try write("packages/core/src/catalog/curated/notes.txt", { id: "ignored" })
 
@@ -4441,21 +4627,33 @@ it.live("Generate the first-party catalog from plugin-owned and curated manifest
   }
   const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
   const bundled = (head: object, config: object, group: string, tail: object) => ({ ...head, source: "bundled", tags: [], config, render: { visible: true, pinTo: [], style: "card", group, actions: [] }, resources: {}, dependsOn: [], ...tail })
-  const appTail = (curatedApp: object, launch: string) => ({ channels: [], shortIds: [], curatedApp, kind: "app", subtype: "tool", launch: { type: launch, capabilities: [] } })
+  const featureTail = { channels: [], shortIds: [], kind: "plugin", subtype: "feature" }
   assert.deepStrictEqual(try generated, { ids: ["alpha-two", "alphaone", "bravo", "charlie", "delta", "echo", "foxtrot"], registry: {
     full: json({ entries: [
       bundled({ id: "alpha-two", name: "Alpha Two", npmName: "@fx/plugin-alpha" }, {}, "connector", { channels: ["Slack"], shortIds: [], kind: "connector", subtype: "messaging" }),
       bundled({ id: "alphaone", name: "Alpha One", npmName: "@fx/plugin-alpha" }, { ALPHA_TOKEN: { type: "secret", required: true, autoEnableProvider: false } }, "connector", { channels: ["Slack"], shortIds: [], kind: "connector", subtype: "social" }),
       bundled({ id: "bravo", name: "Bravo", npmName: "@fx/plugin-bravo" }, { BRAVO_MODEL: { type: "string", required: false }, BRAVO_API_KEY: { type: "secret", required: true, autoEnableProvider: true } }, "ai", { channels: ["discord"], shortIds: ["bee", "b"], kind: "plugin", subtype: "ai-provider" }),
       bundled({ id: "charlie", name: "Charlie" }, {}, "connector", { channels: ["telegram"], shortIds: [], kind: "connector", subtype: "email" }),
-      bundled({ id: "delta", name: "delta", npmName: "@fx/app-delta" }, {}, "apps", appTail({ slug: "delta", order: 2, aliases: ["d"] }, "internal-tab")),
-      bundled({ id: "echo", name: "echo" }, {}, "apps", appTail({ slug: "echo", order: 1, aliases: [] }, "overlay")),
-      bundled({ id: "foxtrot", name: "foxtrot", npmName: "@fx/app-foxtrot" }, {}, "apps", appTail({ slug: "charlie-app", order: 2, aliases: [] }, "overlay")),
+      bundled({ id: "delta", name: "delta", npmName: "@fx/plugin-delta" }, {}, "feature", featureTail),
+      bundled({ id: "echo", name: "echo" }, {}, "feature", featureTail),
+      bundled({ id: "foxtrot", name: "foxtrot", npmName: "@fx/plugin-foxtrot" }, {}, "feature", featureTail),
     ] }),
     channels: json({ Slack: "@fx/plugin-alpha", discord: "@fx/plugin-bravo" }),
     providers: json({ BRAVO_API_KEY: "@fx/plugin-bravo" }),
     shortIds: json({ b: "@fx/plugin-bravo", bee: "@fx/plugin-bravo" }),
   } })
+
+  for (const { id, entry } of authoredFeatures) try write(`packages/core/src/catalog/curated/plugins/${id}.json`, entry)
+  const featureRun = try host(() => runNode({ script: `const { Effect } = await import("effect");
+const { collectFirstPartyEntries, collectShortIdPluginMap } = await import("./src/catalog/generate.vibe");
+const entries = await Effect.runPromise(collectFirstPartyEntries());
+console.log(JSON.stringify({ features: entries.filter((entry) => entry.id === "documents" || entry.id === "personal-assistant").map((entry) => [entry.id, entry.kind, entry.subtype, entry.npmName, entry.shortIds, "launch" in entry, "curatedApp" in entry]), shortIds: await Effect.runPromise(collectShortIdPluginMap(entries)) }));`, cwd: sourceDir, vibe: true, timeoutMs: 120_000 }))
+  const featureProjection = try Effect.try({ try: () => JSON.parse(featureRun.status === 0 ? featureRun.stdout : "") as unknown, catch: () => featureRun })
+  assert.deepStrictEqual(featureProjection, { features: [
+    ["documents", "plugin", "feature", "@elizaos/plugin-knowledge", [], false, false],
+    ["personal-assistant", "plugin", "feature", "@elizaos/plugin-personal-assistant", ["selfcontrol"], false, false],
+  ], shortIds: { b: "@fx/plugin-bravo", bee: "@fx/plugin-bravo", selfcontrol: "@elizaos/plugin-personal-assistant" } })
+  for (const { id } of authoredFeatures) try host(() => removeScratch(`${catalog}/curated/plugins/${id}.json`))
 
   const failing = (failure: { _tag: string; message: string }) => ({ ids: failure, registry: failure })
   try write("packages/core/src/catalog/curated/plugins/bravo.json", { id: "bravo", name: "Bravo again", kind: "plugin", subtype: "other", render: { group: "ai" } })
@@ -4467,6 +4665,11 @@ it.live("Generate the first-party catalog from plugin-owned and curated manifest
     { expected: "string", code: "invalid_type", path: ["render", "group"], message: "Invalid input: expected string, received undefined" },
   ], null, 2)}` }))
   try host(() => removeScratch(`${catalog}/curated/plugins/broken.json`))
+  try write("packages/core/src/catalog/curated/plugins/retired-app.json", { id: "retired-app", name: "Retired app", kind: "app", subtype: "tool", launch: { type: "internal-tab" }, render: { group: "apps" } })
+  const refusedApp = try generated
+  assert.nestedPropertyVal(refusedApp, "ids._tag", "InvalidRegistryEntryFile")
+  assert.nestedPropertyVal(refusedApp, "registry._tag", "InvalidRegistryEntryFile")
+  try host(() => removeScratch(`${catalog}/curated/plugins/retired-app.json`))
   try write("plugins/gamma/registry-entry.json", { id: "gamma", name: "Gamma", npmName: "@fx/plugin-gamma", kind: "plugin", subtype: "feature", render: { group: "ai" }, channels: ["discord"] })
   assert.deepStrictEqual(try generated, { ids: ["alpha-two", "alphaone", "bravo", "charlie", "delta", "echo", "foxtrot", "gamma"], registry: { _tag: "RegistryClaimConflict", message: "[registry/generate] channel \"discord\" claimed by both @fx/plugin-bravo and @fx/plugin-gamma" } })
 }), 300_000)
@@ -4480,7 +4683,7 @@ console.log(JSON.stringify({
   closures: graph.entrypoints.map(({ entry, externalRuntimeImports }) => ({ entry, externalRuntimeImports })),
   entrypoints: surface.entrypoints.map(({ entry, conditions, exports }) => ({ entry, conditions, exports: exports.map(({ name, typeOnly }) => ({ name, typeOnly })) })),
   files: surface.files.map(({ path, sha256 }) => ({ path, sha256 })),
-  imports: consumers.imports.map(({ file, line, module, kind, names, text }) => ({ file, line, module, kind, names: names.map(({ name, typeOnly }) => ({ name, typeOnly })), text })),
+  imports: consumers.imports.map(({ file, line, module, kind, names, text, v4RetiredNames = [] }) => ({ file, line, module, kind, names: names.filter(({ name }) => !v4RetiredNames.includes(name)).map(({ name, typeOnly }) => ({ name, typeOnly })), text })),
 }));`
   const NAMES = `const entries = JSON.parse(process.argv[1]); const names = {};
 for (const entry of entries) names[entry] = Object.keys(await import("@elizaos/core" + entry.slice(1), entry.endsWith(".json") ? { with: { type: "json" } } : undefined)).sort();
@@ -4731,11 +4934,24 @@ A.setAnthropicAccountPoolBridge(null);
 A.setTrajectoryContextManager(manager);
 const bundled = attempt(() => A.loadRegistry().byId.get("agent-orchestrator") ?? null);
 const registered = attempt(() => { A.registerRegistryEntry({ ...bundled, description: "registered at runtime" }); return "registered"; });
+const cached = A.loadRegistry();
+let rejectedApp = false;
+try { A.registerRegistryEntry({ ...bundled, kind: "app", subtype: "tool", launch: { type: "internal-tab" } }); } catch { rejectedApp = true; }
+const appBoundary = [rejectedApp, A.loadRegistry() === cached, B.loadRegistry().byId.get("agent-orchestrator")?.description === "registered at runtime"];
+const wire = { git: { repo: "fx/plugin", v0: {}, v1: {}, v2: {} }, npm: { repo: "@fx/plugin" }, supports: { v0: false, v1: false, v2: true }, kind: "plugin", extension: "retained" };
+const wireRefused = (input) => { try { A.decodeRuntimeRegistry(input); return false; } catch { return true; } };
+const { kind: _kind, ...unspecifiedKind } = wire;
+const wireBoundary = [A.decodeRuntimeRegistry({ registry: { plugin: wire } }).get("plugin").kind, A.runtimeRegistryEntrySchema.parse(wire).extension,
+  wireRefused({ registry: { app: { ...wire, kind: "app" } } }), wireRefused({ registry: { app: { ...wire, registryKind: "app" } } }),
+  wireRefused({ registry: { app: { ...wire, app: { launchType: "internal-tab" } } } }), wireRefused({ registry: {}, apps: { app: wire } }),
+  A.decodeRuntimeRegistry({ registry: { plugin: unspecifiedKind } }).get("plugin").kind === undefined];
 console.log(JSON.stringify({
   errors: [new A.ElizaError("journey", { code: "JOURNEY" }) instanceof B.ElizaError, A.ElizaError === (await load(a.protocol)).ElizaError, A.ElizaError === (await load(a.speech)).ElizaError],
   bridges: [...installed, B.getAnthropicAccountPoolBridge(), B.getCodingAgentSelectorBridge() === coding],
   ambient: [before !== manager, B.getTrajectoryContextManager() === manager],
   registry: [typeof bundled === "object" && bundled !== null ? bundled.description : bundled, registered, attempt(() => A.loadRegistry().byId.get("agent-orchestrator")?.description ?? null), attempt(() => B.loadRegistry().byId.get("agent-orchestrator")?.description ?? null)],
+  appBoundary,
+  wireBoundary,
 }));`
   const node = (cwd: string, script: string, input: unknown, conditions: string[] = []) => effect {
     const result = try host(() => runNode({ script, args: [JSON.stringify(input)], cwd, conditions, timeoutMs: 300_000 }))
@@ -4863,6 +5079,8 @@ console.log(JSON.stringify({
     bridges: [true, true, null, true],
     ambient: [true, true],
     registry: ["Task-agent orchestration plugin - spawn and manage open-ended CLI task agents via PTY", "registered", "registered at runtime", "registered at runtime"],
+    appBoundary: [true, true, true],
+    wireBoundary: ["plugin", "retained", true, true, true, true, true],
   }
   const copies = try record("PackedImports", "two copies", [
     ...sameKeys(shared, expectedShared),

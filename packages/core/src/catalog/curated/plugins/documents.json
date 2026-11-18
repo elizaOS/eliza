@@ -1,0 +1,25 @@
+{
+  "id": "documents",
+  "name": "Knowledge",
+  "description": "Character Knowledge documents, fragments, and search routes for the agent.",
+  "npmName": "@elizaos/plugin-knowledge",
+  "source": "bundled",
+  "tags": [
+    "knowledge",
+    "documents"
+  ],
+  "config": {},
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "card",
+    "icon": "BookOpen",
+    "group": "Curated",
+    "groupOrder": 100,
+    "actions": []
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "feature"
+}

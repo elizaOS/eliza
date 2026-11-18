@@ -2411,8 +2411,18 @@
         }
       ],
       "status": "state-modeled",
-      "closureEvidence": "Fixed300000ms TTL, every admitted record counter, every100th pre-insert purge and same-run overwrite are explicit. Root-authorized compatibility correction rejects cross-run ID reuse with TraceIdentityConflict preserving trace/index/counter, restoring owner-index agreement. Original source alias divergence remains in baseline.",
-      "initialModelGap": "Active TTL purge counter exact cadence is omitted from abstract trace store; purge semantics retained on explicit purge events."
+      "closureEvidence": "The current transfer target has one generated identity/index/cadence owner and emitted-effect projection contracts. The older conflict-rejection proposal is superseded. Native expiry observations, captured Set reentrancy, original references and current inline composite scoring remain explicit conformance boundaries. Fresh current-tool isolated canonical verification proves all 85 obligations for the exact current model/proof inputs; application and packed runtime qualification remain pending. Historical source alias evidence and model snapshots are retained.",
+      "initialModelGap": "Active TTL purge counter exact cadence is omitted from abstract trace store; purge semantics retained on explicit purge events.",
+      "currentContract": {
+        "implementationSource": "packages/core/src/runtime/active-prompt-traces.vibe",
+        "implementationSourceSha256": "0612a35de0fc77b1d0f633bb702d721e90369619945164ada254a9a0d6cb9964",
+        "specification": "spec/core/traces.md",
+        "specificationSha256": "d29977993d50a36cdfafc004223a68167bb4511b6ac3ca13de241596fdaeb4c1",
+        "qualification": "Fresh isolated current-tool canonical verification of these exact model/proof inputs passed 12,000 safety traces, all five reachability goals, 405 replays and all 85 obligations, with zero normal audit findings. Source/test lint passed. Root generation, source types, J03 and same-artifact package qualification remain pending; the private scope did not check application source. No root acceptance was run.",
+        "owner": "Generated TraceState with global key order, independently ordered run memberships and cadence; native original Map/Set references mechanically interpret emitted effects.",
+        "compatibility": "Void record API transfers a captured key across runs; no new public TraceIdentityConflict. Admitted id captured once rather than the historical two reads.",
+        "nativeBoundaries": "Current inline compositeScore/ScoreCardData, raw live Map/Set iteration, original trace/score-card/signal references, native NaN/infinity/fractional TTL comparisons and original thrown values remain conformance boundaries."
+      }
     },
     {
       "id": "surface-14",

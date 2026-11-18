@@ -236,7 +236,8 @@ the renderer's own fences order its applies.
 
 ```quint
 pure def shownAt(h: ViewHost, clientId: str): Shown = if (h.shown.keys().contains(clientId)) h.shown.get(clientId) else ShownUnknown
-pure def shownViewOf(h: ViewHost, clientId: str): str = match shownAt(h, clientId) { | ShownView(x) => x.viewId | ShownUnknown => "" }
+pure def shownViewOf(h: ViewHost, clientId: str): str = { val matchedValue1 = shownAt(h, clientId)
+  match matchedValue1 { | ShownView(x) => x.viewId | ShownUnknown => "" } }
 pure def alwaysShownViewsAreDeclaredGraphical(h: ViewHost): bool =
   h.shownClients.every(c => shownViewOf(h, c) == "" or declares(h, shownViewOf(h, c)))
 pure def shownChangedBy(id: str, before: ViewHost, via: str, after: ViewHost): bool = {

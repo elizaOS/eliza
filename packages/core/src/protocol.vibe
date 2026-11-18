@@ -628,7 +628,6 @@ export {
 } from "./capability-catalog.vibe"
 export {
   decodeRuntimeRegistryOrThrow as decodeRuntimeRegistry,
-  type DecodeRuntimeRegistryOptions,
   isRegistryCacheFresh,
   isValidRegistryPackageName,
   type NormalizedRegistryEntry,

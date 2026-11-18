@@ -1,0 +1,35 @@
+{
+  "id": "scheduling",
+  "name": "Scheduling",
+  "description": "Scheduling and calendar coordination plugin for ElizaOS agents",
+  "npmName": "@elizaos/plugin-scheduling",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["scheduling", "calendar"],
+  "config": {
+    "DEFAULT_TIMEZONE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Timezone",
+      "help": "Default timezone (e.g. America/New_York)",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Calendar",
+    "group": "automation",
+    "groupOrder": 9,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "automation"
+}

@@ -121,11 +121,9 @@ pure def effectsOf(method: SignInMethod, y: CodeYield): List[ChallengeEffect] =
   else List()
 pure val maxFailures: int = 5
 pure def canVerify(c: Challenge): bool = isLive(c)
+pure def completionForYield(y: CodeYield, c: Challenge): ChallengeStep = { state: { ...c, phase: Consumed({ yields: y }) }, out: effectsOf(c.method, y) }
 pure def verify(c: Challenge, clientId: str, codeMatches: bool, verifierMatches: bool, factorOutcome: F::FirstFactorOutcome): ChallengeStep =
-  if (codeMatches and verifierMatches and clientId == c.clientId) {
-    val y = yieldOf(c.purpose, factorOutcome)
-    { state: { ...c, phase: Consumed({ yields: y }) }, out: effectsOf(c.method, y) }
-  } else { state: { ...c, failures: c.failures + 1, phase: if (c.failures + 1 >= maxFailures) Locked else Open }, out: List() }
+  if (codeMatches and verifierMatches and clientId == c.clientId) completionForYield(yieldOf(c.purpose, factorOutcome), c) else { state: { ...c, failures: c.failures + 1, phase: if (c.failures + 1 >= maxFailures) Locked else Open }, out: List() }
 pure val weight_verify = 4
 pure def stepConsumedOnlyByARightCodeWhileLive(before: Challenge, via: str, after: Challenge, out: List[ChallengeEffect]): bool = {
   val consumes = not(isConsumed(before.phase)) and isConsumed(after.phase)
