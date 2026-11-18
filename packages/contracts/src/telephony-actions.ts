@@ -80,7 +80,7 @@ export const CONTACT_EMAIL_MAX = 254;
 export const CONTACT_READ_FIELD_MAX = 32;
 /** A shared number is the text the phone stores, so it may hold separators. */
 export const CONTACT_READ_NUMBER_MAX = 64;
-const SMS_THREAD_ID = /^[1-9][0-9]{0,18}$/;
+export const SMS_THREAD_ID = /^thread:[1-9]\d{0,17}$/;
 export const SMS_COMPOSE_BODY_MAX = 1600;
 export const MESSAGES_READ_MAX = 20;
 export const MESSAGES_READ_BODY_MAX = 1600;

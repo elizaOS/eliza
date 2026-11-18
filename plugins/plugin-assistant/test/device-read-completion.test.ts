@@ -425,7 +425,7 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
         kind: "sms-latest-sender",
         status: "found",
         address: "+14155550123",
-        threadId: "42",
+        threadId: "thread:42",
       },
     });
     const hint = (await f.service.readCompletionHint(
@@ -474,7 +474,7 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
       ...proposed,
       target: { kind: "number", number: "+14155550123" },
       draft: true,
-      replyThreadId: "42",
+      replyThreadId: "thread:42",
     });
     expect(draft.request.state).toBe("pending");
     preceding = {
