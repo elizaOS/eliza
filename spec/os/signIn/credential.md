@@ -150,9 +150,6 @@ pure def rejected(s: DeviceCredential, version: int, reason: RefusalReason, from
 pure val versionValues = Set(1, 2)
 pure val reasonValues = Set(CredentialExpired, CredentialRevoked, CredentialUnknown, NoReason)
 pure def sometimesExpired(s: DeviceCredential): bool = s.custody == Expired({ account: accountOf(s) }) and accountOf(s).userId != ""
-  val held = s.custody
-  match held { | Expired(e) => e.account.userId != "" | _ => false }
-}
 pure def sometimesSignedOutByCloud(s: DeviceCredential): bool = s.custody == SignedOut and s.lastVersion >= 1 and s.generation == 1 and s.duties == List()
 ```
 
