@@ -2,7 +2,6 @@
 import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import {
-  CacheRefused,
   ExportRefused,
   WorkspaceRefused,
   exportCommittedSources,

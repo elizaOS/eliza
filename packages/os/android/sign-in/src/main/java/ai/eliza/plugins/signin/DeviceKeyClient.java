@@ -187,11 +187,11 @@ public final class DeviceKeyClient {
     }
   }
 
-  private interface Reading<T> {
+  interface Reading<T> {
     T read(Map<String, Object> answer);
   }
 
-  private <T> Answer<T> ask(String method, String path, String bearer, String body, int expected, Reading<T> reading) {
+  <T> Answer<T> ask(String method, String path, String bearer, String body, int expected, Reading<T> reading) {
     Reply reply;
     try {
       reply = send(method, path, bearer, body);

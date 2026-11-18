@@ -38,22 +38,16 @@ export const FailureCode = Schema.Literals([
   "storage",
 ])
 
-const Receipt = Schema.Struct({
-  requestId: RequestId,
-  attemptId: AttemptId,
-  credentialId: CredentialId,
-  google: Schema.Literals(["connected", "refused", "not-requested"]),
-})
+schema Receipt {
+  requestId: RequestId
+  attemptId: AttemptId
+  credentialId: CredentialId
+  google: "connected" | "refused" | "not-requested"
+}
 
-const SignedIn = Schema.Struct({ kind: Schema.Literal("signedIn"), environment: Environment, receipt: Receipt })
-const Reauthenticated = Schema.Struct({
-  kind: Schema.Literal("reauthenticated"),
-  environment: Environment,
-  requestId: RequestId,
-  attemptId: AttemptId,
-  sessionExpiresAt: Instant,
-})
-const Failed = Schema.Struct({ kind: Schema.Literal("failed"), environment: Environment, requestId: RequestId, code: FailureCode })
+schema SignedIn { kind: "signedIn"; environment: Environment; receipt: Receipt }
+schema Reauthenticated { kind: "reauthenticated"; environment: Environment; requestId: RequestId; attemptId: AttemptId; sessionExpiresAt: Instant }
+schema Failed { kind: "failed"; environment: Environment; requestId: RequestId; code: FailureCode }
 
 export const Settled = Schema.Union([SignedIn, Reauthenticated, Failed])
 

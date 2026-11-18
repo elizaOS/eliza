@@ -1,6 +1,6 @@
 // spec/os/build/androidHost.md, "Story: Generate my app's Android host from data"; spec/os/build/androidHost.md, "Story: Keep my schema-1 profile readable through one fixed map"
 import { assert, it } from "@effect/vitest"
-import { admitHostProfile, type AndroidHostProfile, type HostRefusal, type HostSetting } from "../src/build/android-host-profile.vibe"
+import { admitHostProfile, type AndroidHostProfile, type HostRefusal, type HostSetting, type HostSource } from "../src/build/android-host-profile.vibe"
 
 const OS = "/work/app/vendor/eliza/packages/os"
 const SETTING: HostSetting = {
@@ -55,7 +55,8 @@ effect function refusalDetail(raw: unknown) {
   return (effect { try admitHostProfile(raw, SETTING); return "admitted" } catch (error) => error.detail)
 }
 
-const place = (path: string) => ({ root: "consumer", segments: path.split("/"), place: `/work/app/${path}` })
+const place = (path: string): HostSource => ({ root: "consumer", segments: path.split("/"), place: `/work/app/${path}` })
+const defined = (profile: Readonly<Record<string, unknown>>) => Object.fromEntries(Object.entries(profile).filter(([, value]) => value !== undefined))
 
 it.effect("Generate my app's Android host from data: a complete schema-2 profile is admitted with everything the generator writes (spec/os/build/androidHost.md, \"Story: Generate my app's Android host from data\"; spec/os/build/androidHost.md, \"A profile is admitted only when every rule holds, and a refusal names the first one broken\")", () => effect {
   const admitted = try admitHostProfile(PROFILE, SETTING)
@@ -108,7 +109,7 @@ it.effect("Generate my app's Android host from data: a complete schema-2 profile
     agentService: { notification: NOTIFICATION, launchHook: { class: "example.fixture.host.Launch", method: "configure" } },
   }
   try Effect.try(() => assert.deepStrictEqual(admitted, expected))
-  const appUpdate = try admitHostProfile({ ...PROFILE, agent: undefined, agentService: undefined, nativeLibraries: undefined, osModules: [{ module: "app-update" }, { module: "runtime-files" }] }, { ...SETTING, runtimeStaged: false })
+  const appUpdate = try admitHostProfile(defined({ ...PROFILE, agent: undefined, agentService: undefined, nativeLibraries: undefined, osModules: [{ module: "app-update" }, { module: "runtime-files" }] }), { ...SETTING, runtimeStaged: false })
   try Effect.try(() => assert.deepStrictEqual(appUpdate.osModules.map((entry) => entry.project), ["eliza-app-update", "eliza-runtime-files"], "app-update builds without the agent service"))
 })
 
@@ -141,11 +142,11 @@ it.effect("Each broken rule refuses the profile by name (spec/os/build/androidHo
     AgentInvalid: { profile: PROFILE, setting: { runtimeStaged: false } },
   }
   const seen: Record<string, string> = {}
-  for (const [refusal, { profile, setting }] of Object.entries(cases)) seen[refusal] = try outcome(JSON.parse(JSON.stringify(profile)), { ...SETTING, ...setting })
+  for (const [refusal, { profile, setting }] of Object.entries(cases)) seen[refusal] = try outcome(defined(profile), { ...SETTING, ...setting })
   try Effect.try(() => assert.deepStrictEqual(seen, Object.fromEntries(Object.keys(cases).map((refusal) => [refusal, refusal]))))
   const partial = try refusalDetail({ ...PROFILE, signing: { storeFile: "APP_STORE", keyAlias: "APP_KEY_ALIAS" } })
   try Effect.try(() => assert.match(partial, /missing storePassword, keyPassword$/))
-  const serviceWithoutModule = try outcome(JSON.parse(JSON.stringify({ ...PROFILE, agent: undefined, nativeLibraries: undefined, osModules: [] })), { ...SETTING, runtimeStaged: false })
+  const serviceWithoutModule = try outcome(defined({ ...PROFILE, agent: undefined, nativeLibraries: undefined, osModules: [] }), { ...SETTING, runtimeStaged: false })
   try Effect.try(() => assert.strictEqual(serviceWithoutModule, "AgentInvalid", "agent service settings need the agent-service module"))
 })
 

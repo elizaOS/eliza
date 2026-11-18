@@ -180,23 +180,23 @@ all it holds; a download already saving finishes but reports nothing.
 
 ```quint
 pure def endsOn(host: L::SurfaceHost, r: PageRequest): bool = active(r.status) and not(mayHold(host, r))
-pure def settle(host: L::SurfaceHost, s: PageRequests): PageChange =
+pure def endUnheld(host: L::SurfaceHost, s: PageRequests): PageChange =
   { state: { ...s, host: host, requests: s.requests.listMap(r => if (endsOn(host, r)) { ...r, status: ended(r.kind) } else r) },
     out: withdrawn(s.requests.select(r => endsOn(host, r))) }
 pure def canLearnSupport(s: PageRequests): bool = L::canLearnSupport(s.host)
-pure def learnSupport(s: PageRequests, isolatedRenderer: bool, multiProfile: bool): PageChange = settle(L::learnSupport(s.host, isolatedRenderer, multiProfile), s)
+pure def learnSupport(s: PageRequests, isolatedRenderer: bool, multiProfile: bool): PageChange = endUnheld(L::learnSupport(s.host, isolatedRenderer, multiProfile), s)
 pure def canReconcileOwner(s: PageRequests, realm: L::Realm, desiredIds: Set[str]): bool = L::canReconcileOwner(s.host, realm, desiredIds)
-pure def reconcileOwner(s: PageRequests, realm: L::Realm, desiredIds: Set[str]): PageChange = settle(L::reconcileOwner(s.host, realm, desiredIds), s)
+pure def reconcileOwner(s: PageRequests, realm: L::Realm, desiredIds: Set[str]): PageChange = endUnheld(L::reconcileOwner(s.host, realm, desiredIds), s)
 pure def canCreateSurface(s: PageRequests, realm: L::Realm, id: str, policy: L::SurfacePolicy, url: str): bool = L::canCreateSurface(s.host, realm, id, policy, url)
-pure def createSurface(s: PageRequests, realm: L::Realm, id: str, policy: L::SurfacePolicy, url: str): PageChange = settle(L::createSurface(s.host, realm, id, policy, url), s)
+pure def createSurface(s: PageRequests, realm: L::Realm, id: str, policy: L::SurfacePolicy, url: str): PageChange = endUnheld(L::createSurface(s.host, realm, id, policy, url), s)
 pure def canPresentSurface(s: PageRequests, realm: L::Realm, id: str): bool = L::canPresentSurface(s.host, realm, id)
-pure def presentSurface(s: PageRequests, realm: L::Realm, id: str): PageChange = settle(L::presentSurface(s.host, realm, id), s)
+pure def presentSurface(s: PageRequests, realm: L::Realm, id: str): PageChange = endUnheld(L::presentSurface(s.host, realm, id), s)
 pure def canPauseSurface(s: PageRequests, realm: L::Realm, id: str): bool = L::canPauseSurface(s.host, realm, id)
-pure def pauseSurface(s: PageRequests, realm: L::Realm, id: str): PageChange = settle(L::pauseSurface(s.host, realm, id), s)
+pure def pauseSurface(s: PageRequests, realm: L::Realm, id: str): PageChange = endUnheld(L::pauseSurface(s.host, realm, id), s)
 pure def canResumeSurface(s: PageRequests, realm: L::Realm, id: str): bool = L::canResumeSurface(s.host, realm, id)
-pure def resumeSurface(s: PageRequests, realm: L::Realm, id: str): PageChange = settle(L::resumeSurface(s.host, realm, id), s)
+pure def resumeSurface(s: PageRequests, realm: L::Realm, id: str): PageChange = endUnheld(L::resumeSurface(s.host, realm, id), s)
 pure def canDestroySurface(s: PageRequests, realm: L::Realm, id: str): bool = L::canDestroySurface(s.host, realm, id)
-pure def destroySurface(s: PageRequests, realm: L::Realm, id: str): PageChange = settle(L::destroySurface(s.host, realm, id), s)
+pure def destroySurface(s: PageRequests, realm: L::Realm, id: str): PageChange = endUnheld(L::destroySurface(s.host, realm, id), s)
 pure def sometimesSignInKeptWhileHidden(s: PageRequests): bool =
   s.requests.some(r => r.kind == BlockedSignIn and r.status == Waiting and s.host.surfaces.some(x => x.gen == r.gen and not(x.presented)))
 pure def sometimesPermissionKeptWhilePaused(s: PageRequests): bool =

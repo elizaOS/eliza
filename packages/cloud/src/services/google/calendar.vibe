@@ -9,7 +9,7 @@ import { sha256Hex } from "../../shared/sealing.vibe"
 import { loadRow, machineRows, stepRow, type Columns } from "../../store/rows.vibe"
 import { Store, toText, type Row, type Tx } from "../../store/connection.vibe"
 import { googleJson } from "../../providers/google.vibe"
-import { useGrant } from "./grant-access.vibe"
+import { holds, useGrant } from "./grant-access.vibe"
 
 export type WriteKind = "create" | "change" | "delete"
 export type WritePhase = "prepared" | "dispatched" | "succeeded" | "rejected" | "outcome-unknown"
@@ -52,6 +52,7 @@ export interface EventBody {
 export interface Planned {
   readonly kind: WriteKind
   readonly key: string
+  readonly idempotencyKey: string
   readonly calendarId: string
   readonly eventId: string
   readonly ifMatch: string | null
@@ -355,7 +356,7 @@ effect function calendarsRoute(context: RouteContext) {
   const owner = try ownerFrom(context)
   const query = try queryOf(context)
   const grant = try useGrant(owner, query.grantId, "google.calendar.read")
-  const writable = Effect.as(useGrant(owner, grant.connectionId, "google.calendar.write"), true) catch () => false
+  const writable = holds(grant.scopes, "google.calendar.write")
   const rows: Array<unknown> = []
   try readPages(grant, "/users/me/calendarList", { minAccessRole: "reader", showHidden: "false", maxResults: "250" }, effect (items) => {
     for (const item of items) {
@@ -442,7 +443,7 @@ function refusedBy(failure: { readonly _tag: string }): Sent {
     case "NotFound": return { reply: { tag: "DefiniteRefusal", cause: "NotFoundAtProvider" }, event: null, rejection: "NotFound" }
     case "InvalidGrant": return { reply: { tag: "DefiniteRefusal", cause: "AuthorizationLost" }, event: null, rejection: "GoogleReauthRequired" }
     case "PreconditionFailed": return { reply: { tag: "DefiniteRefusal", cause: "OtherRefusal" }, event: null, rejection: "PreconditionFailed" }
-    case "ContentTooLarge": return { reply: { tag: "DefiniteRefusal", cause: "OtherRefusal" }, event: null, rejection: "ContentTooLarge" }
+    case "Rejected": return { reply: { tag: "DefiniteRefusal", cause: "OtherRefusal" }, event: null, rejection: "status" in failure && failure.status === 403 ? "AccessDenied" : "InvalidRequest" }
     case "Duplicate": return { reply: { tag: "DefiniteRefusal", cause: "OtherRefusal" }, event: null, rejection: "IdempotencyConflict" }
     default: return unclear
   }
@@ -477,6 +478,8 @@ function columns(write: Omit<Write, "receipt">, now: number) {
     organization_id: write.owner.organizationId,
     user_id: write.owner.userId,
     grant_id: write.grantId,
+    idempotency_key: write.planned.idempotencyKey,
+    request_digest: receipt.digest,
     kind: write.planned.kind,
     calendar_id: write.planned.calendarId,
     event_id: write.planned.eventId,
@@ -485,7 +488,7 @@ function columns(write: Omit<Write, "receipt">, now: number) {
     etag: write.etag,
     rejection: write.rejection,
     phase: phaseOf(receipt),
-    dispatched_at: receipt.claimedAt > 0 ? receipt.claimedAt : null,
+    stale_after: receipt.claimedAt > 0 && receipt.settlement === "Unsettled" ? Math.max(now, receipt.claimedAt) + receipt.staleAfter : null,
     updated_at: now
   })
 }
@@ -497,12 +500,12 @@ effect function storedBody(stored: unknown) {
 }
 
 effect function readWrite(tx: Tx, key: string) {
-  const row: Row | undefined = (try tx.query("SELECT organization_id, user_id, grant_id, kind, calendar_id, event_id, if_match, request, etag, rejection FROM calendar_writes WHERE key = $1 FOR UPDATE", [key]))[0]
+  const row: Row | undefined = (try tx.query("SELECT organization_id, user_id, grant_id, idempotency_key, kind, calendar_id, event_id, if_match, request, etag, rejection FROM calendar_writes WHERE key = $1 FOR UPDATE", [key]))[0]
   if (row === undefined) return undefined
   const owner: Owner = { organizationId: toText(row.organization_id) ?? "", userId: toText(row.user_id) ?? "" }
   const loaded = try loadRow(tx, writeRows(senderOf(owner)), key)
   const kind = toText(row.kind) as WriteKind
-  const planned: Planned = { kind, key, calendarId: toText(row.calendar_id) ?? "", eventId: toText(row.event_id) ?? "", ifMatch: toText(row.if_match) ?? null, body: try storedBody(row.request) }
+  const planned: Planned = { kind, key, idempotencyKey: toText(row.idempotency_key) ?? "", calendarId: toText(row.calendar_id) ?? "", eventId: toText(row.event_id) ?? "", ifMatch: toText(row.if_match) ?? null, body: try storedBody(row.request) }
   return { receipt: loaded.state, owner, grantId: toText(row.grant_id) ?? "", planned, etag: toText(row.etag) ?? null, rejection: (toText(row.rejection) ?? null) as RefusalCode | null } satisfies Write
 }
 
@@ -602,7 +605,7 @@ effect function createRoute(context: RouteContext) {
   const event = try eventBody(body)
   const grant = try useGrant(owner, body.grantId, "google.calendar.write", body.expectedAccountId)
   const eventId = sha256Hex(`${owner.organizationId}/${owner.userId}/${key}`)
-  const planned: Planned = { kind: "create", key: rowKey("create", owner, key), calendarId, eventId, ifMatch: null, body: { id: eventId, ...event } }
+  const planned: Planned = { kind: "create", key: rowKey("create", owner, key), idempotencyKey: key, calendarId, eventId, ifMatch: null, body: { id: eventId, ...event } }
   return try performWrite(owner, grant, planned, requestDigest({ kind: "create", grant: grant.connectionId, calendarId, event }))
 }
 
@@ -614,7 +617,7 @@ effect function changeRoute(context: RouteContext) {
   const calendarId = try calendarOf(body.calendarId)
   const event = try eventBody(body)
   const grant = try useGrant(owner, body.grantId, "google.calendar.write", body.expectedAccountId)
-  const planned: Planned = { kind: "change", key: rowKey("change", owner, context.requestId), calendarId, eventId, ifMatch, body: event }
+  const planned: Planned = { kind: "change", key: rowKey("change", owner, context.requestId), idempotencyKey: `change:${context.requestId}`, calendarId, eventId, ifMatch, body: event }
   return try performWrite(owner, grant, planned, requestDigest({ kind: "change", grant: grant.connectionId, calendarId, eventId, ifMatch, event }))
 }
 
@@ -624,7 +627,7 @@ effect function deleteRoute(context: RouteContext) {
   const ifMatch = try ifMatchOf(context)
   const query = try queryOf(context)
   const grant = try useGrant(owner, query.grantId, "google.calendar.write", query.expectedAccountId)
-  const planned: Planned = { kind: "delete", key: rowKey("delete", owner, context.requestId), calendarId: query.calendarId, eventId, ifMatch, body: null }
+  const planned: Planned = { kind: "delete", key: rowKey("delete", owner, context.requestId), idempotencyKey: `delete:${context.requestId}`, calendarId: query.calendarId, eventId, ifMatch, body: null }
   return try performWrite(owner, grant, planned, requestDigest({ kind: "delete", grant: grant.connectionId, calendarId: query.calendarId, eventId, ifMatch }))
 }
 
@@ -645,8 +648,8 @@ export effect function sweepStaleWrites(): number!!CloudContext {
   const store = try Store
   const now = try Clock.currentTimeMillis
   const stale = try (store.transaction((tx) => tx.query(
-    "SELECT key FROM calendar_writes WHERE phase IN ('dispatched', 'outcome-unknown') AND updated_at <= $1 ORDER BY updated_at LIMIT $2",
-    [now - staleAfter, sweepBatch]
+    "SELECT key FROM calendar_writes WHERE phase IN ('dispatched', 'outcome-unknown') AND stale_after <= $1 ORDER BY stale_after LIMIT $2",
+    [now, sweepBatch]
   )) catch () => [])
   let settled = 0
   for (const row of stale) {

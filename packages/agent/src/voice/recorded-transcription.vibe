@@ -217,15 +217,25 @@ effect function conclude<S extends RecordingStream, C extends RecordingChunk>(co
   }
 }
 
+effect function settle<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>, s: Recording<S, C>, mimeType: string): void!! {
+  const settled = conclude(core, s, mimeType) catch (failure) => fail(core, s, failure.cause)
+  try ensuring(settled, sync(() => {
+    s.chunks = []
+  }))
+}
+
+effect function limit<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>, s: Recording<S, C>): void!! {
+  try sleep(Duration.millis(core.options.maximumMs))
+  if (core.current === s) finish(core)
+}
+
 function stopped<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>, s: Recording<S, C>): void {
   if (core.current !== s || s.ended) return
   s.ended = true
   const mimeType = s.recorder?.mimeType() ?? ""
   release(s, core.options.finalTranscript !== undefined)
   publish(core, "RecordingTranscribing")
-  runFork(ensuring(conclude(core, s, mimeType) catch (failure) => fail(core, s, failure.cause), sync(() => {
-    s.chunks = []
-  })))
+  runFork(settle(core, s, mimeType))
 }
 
 function received<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>, s: Recording<S, C>, chunk: C): void {
@@ -251,9 +261,7 @@ effect function record<S extends RecordingStream, C extends RecordingChunk>(core
   const recorder = s.recorder
   try host(() => recorder.start(core.options.timesliceMs))
   if (!active() || s.ended) return
-  s.timer = runFork(andThen(sleep(Duration.millis(core.options.maximumMs)), sync(() => {
-    if (active()) finish(core)
-  })))
+  s.timer = fork.detached limit(core, s)
   const endpoint = try host(() => observePause(stream, () => {
     if (active()) finish(core)
   }))

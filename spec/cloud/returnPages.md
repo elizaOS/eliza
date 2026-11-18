@@ -44,21 +44,21 @@ pure def returnPage(row: EnvironmentProfile, r: Registration, purpose: ReturnPur
   ReturnToApp({ serviceName: row.name, appName: r.displayName, purpose: pagePurposeOf(purpose), offer: OpenApp({ link: { target: url, androidPackage: r.androidPackage } }) })
 pure def pageAt(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, reported: str): Page = {
   val entries = returnsAt(registry, served, url)
-  if (url.origin == row.api and url.path == payerPath) CheckoutOutcome({ shown: payerOutcome(reported) })
+  if (isPayerUrl(row, url)) CheckoutOutcome({ shown: payerOutcome(reported) })
   else if (url.origin != row.web or entries.length() != 1) NoPage
   else entries.foldl(NoPage, (acc, e) => returnPage(row, e.registration, e.purpose, url))
 }
 pure def isReturnToApp(page: Page): bool = match page { | ReturnToApp(p) => true | _ => false }
+pure def isPayerUrl(row: EnvironmentProfile, url: ReturnUrl): bool = url.origin == row.api and url.path == payerPath
 pure val noPageRefusal: Refusal = refuse(NotFound)
 pure val rowValues: Set[EnvironmentProfile] = {
   val doc: LegalDocument = { title: "Terms", revision: "1", sections: List({ title: "Use", paragraphs: List("Plain text.") }) }
   Set({ name: "Cloud", api: "https://api.one", web: "https://www.one", audience: "aud", mailSender: "m@one", databaseDigest: "d1", firstPartyOrigins: List("https://www.one"), capabilities: Set(BillingCapability), signIn: { mail: HttpsDelivery, sms: NoDelivery, google: GoogleOn }, terms: doc, privacy: doc })
 }
-pure val pageValues: Set[Page] = Set(NoPage, CheckoutOutcome({ shown: PaidOutcome }))
-pure def lawAMissingPageIsAFinal404(page: Page): bool = page == NoPage implies (statusOf(noPageRefusal.code) == 404 and wellFormed(noPageRefusal) and not(retryableOf(noPageRefusal)))
-pure def lawADisabledClientHasNoPage(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, reported: str): bool =
-  (registryValid(registry, served) and registry.some(r => returnsOf(r).includes(url)))
-    implies registry.every(r => returnsOf(r).includes(url) implies not(isReturnToApp(pageAt(row, disableClient(registry, r.clientId), served, url, reported))))
+pure def lawReturnToAppExactlyForAnEnabledWebReturn(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, reported: str): bool =
+  (registryValid(registry, served) and not(isPayerUrl(row, url)))
+    implies (isReturnToApp(pageAt(row, registry, served, url, reported)) iff (url.origin == row.web and registry.some(r => r.enabled and returnsOf(r).includes(url))))
+pure def lawNoPageIsAFinal404(row: EnvironmentProfile): bool = statusOf(noPageRefusal.code) == 404 and wellFormed(noPageRefusal) and not(retryableOf(noPageRefusal))
 ```
 
 ### The page's one action opens the registered return in the package of the registration that holds it
@@ -75,7 +75,7 @@ pure def linkOwned(registry: List[Registration], served: Environment, url: Retur
 }
 pure def lawAReturnPageOpensItsOwnApp(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, reported: str): bool = {
   val page = pageAt(row, registry, served, url, reported)
-  registryValid(registry, served) implies (match page { | ReturnToApp(p) => linkOwned(registry, served, url, p.offer) | _ => true })
+  match page { | ReturnToApp(p) => linkOwned(registry, served, url, p.offer) | _ => true }
 }
 ```
 
@@ -93,7 +93,7 @@ pure def lawAConnectReturnIsNeverShadowed(row: EnvironmentProfile, r: Registrati
   connectUrls(r.connectReturn).length() > 0 implies connectedPage(row, r) == NoPage
 ```
 
-### The pinned script forwards into the app link only the purpose's well-formed results, then clears them from the address bar
+### The pinned script forwards into the app link only the purpose's well-formed results
 
 Results arrive in the fragment (sign-in, connect) or the query (billing).
 The shell's schema reads the first value of each name and checks its
@@ -104,6 +104,8 @@ query. Sign-in forwards `error=app_link_unverified` with a well-formed
 `state`, never a code; connect forwards `state`, `result` and, only for
 `connected`, `connectionId`, all or nothing; billing forwards a well-formed
 `session_id` and `result`, which are identifiers, not proof of payment.
+The script then clears the query and fragment from the address bar; the
+page's Bombadil property checks that, and that no element shows a value.
 
 ```quint
 type ParamValue = MissingValue | MalformedValue | WellFormed({ text: str })
@@ -184,6 +186,6 @@ which shows it once the payment provider confirms it.
 pure val payerPath = "/api/v1/subscriptions/checkout/payer"
 pure def payerOutcome(reported: str): PayerOutcome = if (reported == "paid") PaidOutcome else CanceledOutcome
 pure val reportedValues = Set("paid", "canceled", "success")
-pure def lawThePayerPageNeedsNoRegistration(row: EnvironmentProfile, served: Environment, reported: str): bool =
-  row.api != row.web implies pageAt(row, List(), served, { origin: row.api, path: payerPath }, reported) == CheckoutOutcome({ shown: payerOutcome(reported) })
+pure def lawThePayerPageReadsOnlyTheOutcome(row: EnvironmentProfile, registry: List[Registration], served: Environment, reported: str): bool =
+  pageAt(row, registry, served, { origin: row.api, path: payerPath }, reported) == CheckoutOutcome({ shown: payerOutcome(reported) })
 ```

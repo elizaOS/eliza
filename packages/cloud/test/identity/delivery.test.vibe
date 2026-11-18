@@ -6,7 +6,7 @@ import { deliverSms } from "../../src/providers/sms.vibe"
 import { testCloud, type Answer, type ProfileEdit } from "../support/cloud.vibe"
 import type { FakeRequest } from "../support/fakes.ts"
 import { callCloud } from "../support/http.ts"
-import { deliveryProviders, externalAddress, latestCode } from "../support/inbox.ts"
+import { mountDeliveryProviders, externalAddress, latestCode } from "../support/inbox.ts"
 
 effect function check(run: () => void) {
   try Effect.try(run)
@@ -54,7 +54,7 @@ describe("WP1 Identity: mail and SMS delivery", () => {
 
   it.live("HTTPS adapters post to the profile's providers and a refusal is provider_unavailable (spec/cloud/identity/codeChallenges.md, \"Story: Sign in with a code sent to my email or phone\")", () => scoped(effect {
     const seen: FakeRequest[] = []
-    const cloud = try testCloud({ edit: httpsAdapters, mount: deliveryProviders(seen) })
+    const cloud = try testCloud({ edit: httpsAdapters, mount: (fakes) => mountDeliveryProviders(fakes, seen) })
     try cloud.inside(deliverMail({ to: "ada@example.com", subject: "Your sign-in code", text: "Your sign-in code is 111222." }))
     try cloud.inside(deliverSms({ to: "+15551234567", text: "Your code is 654321." }))
     const refusedMail = try refusalOf(cloud.inside(deliverMail({ to: "refused@example.com", subject: "s", text: "t" })))
@@ -75,7 +75,7 @@ describe("WP1 Identity: mail and SMS delivery", () => {
   }))
 
   it.effect("A provider that does not answer within 10 s is provider_unavailable (spec/cloud/identity/codeChallenges.md, \"Story: Sign in with a code sent to my email or phone\")", () => scoped(effect {
-    const cloud = try testCloud({ edit: httpsAdapters, mount: deliveryProviders([], "+15559990000") })
+    const cloud = try testCloud({ edit: httpsAdapters, mount: (fakes) => mountDeliveryProviders(fakes, [], "+15559990000") })
     const sending = fork refusalOf(cloud.inside(deliverSms({ to: "+15559990000", text: "Your code is 654321." })))
     try TestClock.withLive(sleep(Duration.millis(200)))
     try TestClock.adjust(Duration.seconds(10))

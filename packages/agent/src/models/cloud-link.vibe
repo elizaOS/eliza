@@ -1,5 +1,5 @@
 // spec/agent/models/binding.md, "Plugins reach the cloud only through the cloud service of a cloud backend, and a managed Google change needs the owner's consent"
-import { Service, type ServiceClass } from "@elizaos/core"
+import { Service, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/http"
 import type { Backend, GoogleConsent } from "../../gen/agent__host__launch.ts"
 import { googleAdmitted, type GoogleOperation } from "../../gen/agent__models__binding.effect.vibe"
@@ -97,40 +97,39 @@ module edge {
 }
 import { run, targetOf } from edge
 
-export class CloudLinkService extends Service {
-  static override serviceType = cloudServiceType
-  override capabilityDescription = "The owner's authenticated cloud link, with managed Gmail and calendar changes only where the owner consented"
-  readonly #link: Link
-
-  constructor(link: Link) {
-    super()
-    this.#link = link
-  }
-
-  admitGoogle(operation: GoogleChange): GoogleAdmission {
-    return googleAdmitted(this.#link.backend, this.#link.google, operationOf[operation]) ? { kind: "admitted" } : { kind: "refused", reason: "changes-off" }
-  }
-
-  request(request: CloudLinkRequest): Promise<CloudLinkReply> {
-    const target = targetOf(this.#link.origin, request.path)
-    if (target === undefined) return Promise.reject(new CloudLinkRequestRefused({ path: request.path, reason: "path" }))
-    const change = googleChangeOf(request.method, target.pathname)
-    if (change !== undefined && this.admitGoogle(change).kind === "refused") return Promise.resolve({ kind: "changes-off", operation: change })
-    return run(Effect.provide(send(this.#link, request, target), FetchHttpClient.layer), request.signal)
-  }
-
-  override stop(): Promise<void> {
-    return Promise.resolve()
-  }
+export interface CloudLinkService extends Service {
+  admitGoogle(operation: GoogleChange): GoogleAdmission
+  request(request: CloudLinkRequest): Promise<CloudLinkReply>
 }
 
 export function cloudLinkServices(launch: LaunchDocument, credential: () => Redacted.Redacted<string>): ServiceClass[] {
   const backend = backendOf(launch.model)
   if (backend.tag !== "CloudBackend") return []
   const link: Link = { backend, origin: new URL(backend.baseUrl).origin, google: launch.google ?? { gmailChanges: false, calendarEdits: false }, credential }
-  return [class extends CloudLinkService {
-    static override start(): Promise<Service> {
-      return Promise.resolve(new CloudLinkService(link))
+  const admitGoogle = (operation: GoogleChange): GoogleAdmission =>
+    googleAdmitted(link.backend, link.google, operationOf[operation]) ? { kind: "admitted" } : { kind: "refused", reason: "changes-off" }
+  return [class CloudLink extends Service implements CloudLinkService {
+    static override serviceType = cloudServiceType
+    override capabilityDescription = "The owner's authenticated cloud link, with managed Gmail and calendar changes only where the owner consented"
+
+    static override start(runtime: IAgentRuntime): Promise<Service> {
+      return Promise.resolve(new CloudLink(runtime))
+    }
+
+    admitGoogle(operation: GoogleChange): GoogleAdmission {
+      return admitGoogle(operation)
+    }
+
+    request(request: CloudLinkRequest): Promise<CloudLinkReply> {
+      const target = targetOf(link.origin, request.path)
+      if (target === undefined) return Promise.reject(new CloudLinkRequestRefused({ path: request.path, reason: "path" }))
+      const change = googleChangeOf(request.method, target.pathname)
+      if (change !== undefined && admitGoogle(change).kind === "refused") return Promise.resolve({ kind: "changes-off", operation: change })
+      return run(Effect.provide(send(link, request, target), FetchHttpClient.layer), request.signal)
+    }
+
+    override stop(): Promise<void> {
+      return Promise.resolve()
     }
   }]
 }

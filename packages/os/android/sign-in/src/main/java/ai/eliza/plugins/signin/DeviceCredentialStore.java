@@ -242,6 +242,10 @@ public final class DeviceCredentialStore implements CredentialReader {
     synchronized (lock) { advance(); return state.session(); }
   }
 
+  public boolean sessionUsable() {
+    synchronized (lock) { advance(); return CredentialPolicy.sessionUsable(state); }
+  }
+
   public SessionRead readSession() {
     synchronized (lock) {
       advance();
