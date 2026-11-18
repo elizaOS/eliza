@@ -9,7 +9,7 @@ import {
   countEnabledTriggers, getTrigger, listTriggerRuns, listTriggers, triggerKeeping,
   type StoredTrigger, type TriggerDetails, type TriggerRun as StoredRun,
 } from "./store.vibe"
-import { finishFacts, runError, triggerDelivery, type Delivery, type TriggerDelivery } from "./trigger-delivery.vibe"
+import { finishFacts, runError, triggerDelivery, type Delivery, type ResolvedRoom, type TriggerDelivery } from "./trigger-delivery.vibe"
 import { startTriggerEvents, type TriggerEventName, type TriggerEventTarget, type TriggerEvents } from "./trigger-events.vibe"
 import type {
   SavedTrigger, TriggerDraft, TriggerPort, TriggerRefusal, TriggerRemoval, TriggerRun, TriggerRunNow, TriggerService, TriggerTiming, TriggerWrite,
@@ -121,6 +121,16 @@ function runOf(stored: StoredRun): TriggerRun {
   return { startedAt: stored.startedAt, finishedAt: stored.finishedAt, record, error: stored.error }
 }
 
+const refusal = (reason: TriggerRefusal): TriggerWrite => ({ kind: "refused", reason })
+
+function roomRefusal(resolved: ResolvedRoom): TriggerWrite {
+  switch (resolved.kind) {
+    case "Missing": return refusal("ConversationMissing")
+    case "Unavailable": return refusal("RoomUnavailable")
+    case "Resolved": return refusal("Invalid")
+  }
+}
+
 export function promptTriggers(deps: TriggerDeps): PromptTriggers {
   const { host, delivery, facts } = deps
   const lock = Semaphore.makeUnsafe(1)
@@ -225,12 +235,6 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
     return (try begin(id, { type: "fire", nextInstant, processStartedAt: facts.processStartedAt })).kind
   }
 
-  const refusal = (reason: TriggerRefusal): TriggerWrite => ({ kind: "refused", reason })
-
-  effect function roomFor(requested: string | undefined) {
-    return try promise(() => delivery.resolveRoom(requested))
-  }
-
   function atOf(timing: TriggerTiming, timezone: string, now: number): number {
     switch (timing.kind) {
       case "once": return timing.at
@@ -241,7 +245,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
 
   effect function create(draft: TriggerDraft): TriggerWrite!! {
     return try serial(effect {
-      const resolved = try roomFor(draft.deliveryConversationId)
+      const resolved = try promise(() => delivery.resolveRoom(draft.deliveryConversationId))
       const now = try Clock.currentTimeMillis
       const id = newTriggerId()
       const details = detailsOf(draft)
@@ -252,11 +256,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
         roomExists: resolved.kind === "Resolved",
       }, details)
       if (moved.after !== undefined) return { kind: "saved", trigger: savedOf(id, moved.after, details) } satisfies TriggerWrite
-      switch (resolved.kind) {
-        case "Missing": return refusal("ConversationMissing")
-        case "Unavailable": return refusal("RoomUnavailable")
-        case "Resolved": return refusal("Invalid")
-      }
+      return roomRefusal(resolved)
     })
   }
 
@@ -264,7 +264,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
     return try serial(effect {
       const row = try orDie(getTrigger(host.adapter, id))
       if (row === undefined) return { kind: "notFound" } satisfies TriggerWrite
-      const resolved = try roomFor(draft.deliveryConversationId ?? row.state.room)
+      const resolved = try promise(() => delivery.resolveRoom(draft.deliveryConversationId ?? row.state.room))
       const now = try Clock.currentTimeMillis
       const details = detailsOf(draft)
       const moved = try transition(id, {
@@ -279,11 +279,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
       }
       if (moved.before.life !== "Saved") return { kind: "notFound" } satisfies TriggerWrite
       if (!revisionMatches(expected, moved.before.revision)) return refusal("StaleRevision")
-      switch (resolved.kind) {
-        case "Missing": return refusal("ConversationMissing")
-        case "Unavailable": return refusal("RoomUnavailable")
-        case "Resolved": return refusal("Invalid")
-      }
+      return roomRefusal(resolved)
     })
   }
 
