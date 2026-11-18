@@ -55,6 +55,7 @@
     "@electric-sql/pglite": "catalog:",
     "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
+    "jose": "6.2.17",
     "pg": "8.23.1",
     "stripe": "23.1.0",
     "vibelang-runtime": "0.0.13"

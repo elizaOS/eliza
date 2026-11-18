@@ -169,23 +169,28 @@ function browserSession(account: AccountRow, access: string, refresh: string, se
   }
 }
 
+export effect function openSignInFamily(db: Client, identity: Identity) {
+  const now = try Clock.currentTimeMillis
+  const account = try accountForIdentity(db, identity, now)
+  const epoch = Number(account.sessions_revoked_before)
+  if (!Number.isSafeInteger(epoch) || epoch < 0) throw new StorageUnavailable()
+  const opened = apply({ ...initial, now }, { type: "signIn", assurance: "SingleFactor", personEpoch: epoch }) catch effect () => { throw new StorageUnavailable() }
+  const state = opened.state
+  const key = try (try SecureRandom.SecureRandom).uuidV4()
+  const access = try newSecret("session")
+  const refresh = try newSecret("refresh")
+  const accessHash = try digestCredential(access)
+  const refreshHash = try digestCredential(refresh)
+  try authQuery(db, `
+    INSERT INTO sessions (key, user_id, state, revision, access_digest, refresh_digest, live, access_expires_at, refresh_expires_at, auth_at, updated_at)
+    VALUES ($1, $2, $3, 1, $4, $5, true, $6, $7, $8, $8)
+  `, [key, account.id, state, accessHash, refreshHash, state.accessExpiresAt, state.refreshExpiresAt, state.authAt])
+  return { account, key, access, refresh, state }
+}
+
 export effect function signInWithProof(db: Client, identity: Identity) {
   return try accountTransaction(db, effect {
-    const now = try Clock.currentTimeMillis
-    const account = try accountForIdentity(db, identity, now)
-    const epoch = Number(account.sessions_revoked_before)
-    if (!Number.isSafeInteger(epoch) || epoch < 0) throw new StorageUnavailable()
-    const opened = apply({ ...initial, now }, { type: "signIn", assurance: "SingleFactor", personEpoch: epoch }) catch effect () => { throw new StorageUnavailable() }
-    const state = opened.state
-    const key = try (try SecureRandom.SecureRandom).uuidV4()
-    const access = try newSecret("session")
-    const refresh = try newSecret("refresh")
-    const accessHash = try digestCredential(access)
-    const refreshHash = try digestCredential(refresh)
-    try authQuery(db, `
-      INSERT INTO sessions (key, user_id, state, revision, access_digest, refresh_digest, live, access_expires_at, refresh_expires_at, auth_at, updated_at)
-      VALUES ($1, $2, $3, 1, $4, $5, true, $6, $7, $8, $8)
-    `, [key, account.id, state, accessHash, refreshHash, state.accessExpiresAt, state.refreshExpiresAt, state.authAt])
+    const { account, access, refresh, state } = try openSignInFamily(db, identity)
     return browserSession(account, access, refresh, state)
   })
 }

@@ -10,7 +10,7 @@ export async function openBackupDatabase() {
   const socket = new PGLiteSocketServer({ db: database, host: "127.0.0.1", port: 0, maxConnections: 5 })
   try {
     await socket.start()
-    for (const name of ["0001_foundation", "0101_identity_transport", "0107_password_backups", "0108_password_backup_device_binding"]) {
+    for (const name of ["0001_foundation", "0101_identity_transport", "0109_password_backups", "0110_password_backup_device_binding"]) {
       await database.exec(await readFile(new URL(`../../src/store/migrations/${name}.sql`, import.meta.url), "utf8"))
     }
     const databaseUrl = "postgresql://postgres:postgres@" + socket.getServerConn() + "/postgres"
