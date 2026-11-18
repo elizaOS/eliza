@@ -237,8 +237,8 @@ export function createNavigateViewHandler({
         availableViewsForDesktopTabs,
         detail.viewId,
       );
-      if (entry && (detail.action === "pin-tab" || entry.desktopTabEnabled)) {
-        openDesktopTab(entry, { pinned: detail.action === "pin-tab" });
+      if (entry && detail.action === "pin-tab") {
+        openDesktopTab(entry, { pinned: true });
         setActiveDesktopTabId(entry.id);
       }
     }

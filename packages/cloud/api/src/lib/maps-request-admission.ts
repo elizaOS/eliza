@@ -81,6 +81,8 @@ export async function authenticateMapsCaller(
 }
 export type MapsCompletion = ((outcome: MapsUsageOutcome) => Promise<void>) & {
   recordProviderPrice?: MapsPriceObserver;
+  /** Milliseconds this admission spent in the allowance gate call. */
+  gateMs?: number;
 };
 export async function admitMapsRequest(
   c: AppContext,
@@ -117,13 +119,14 @@ export async function admitMapsRequest(
   // is not a revocation fence. This is deliberately not a cache-only latency claim.
   let creditFunded = false;
   let price: MapsProviderPrice | undefined;
+  let gateMs: number | undefined;
   const request = await withOrganizationPolicyReadAdmission(
     caller.organization_id,
     undefined,
     async (policy, transaction) => {
       const summary = await readOrganizationEntitlementSummary(
         caller.organization_id,
-        { transaction },
+        { transaction, policy },
       );
       const activePlan = ["active", "trialing"].includes(summary.plan.status);
       if (activePlan !== policy.subscriptionFunded)
@@ -189,6 +192,7 @@ export async function admitMapsRequest(
         },
       };
       let response: Response;
+      const gateStarted = performance.now();
       try {
         response = await callMapsRequestAllowance(namespace, admission);
       } catch {
@@ -198,6 +202,8 @@ export async function admitMapsRequest(
           "maps_admission_unknown",
           "Maps admission could not be confirmed. Do not replay this request ID.",
         );
+      } finally {
+        gateMs = performance.now() - gateStarted;
       }
       if (!response.ok) {
         // The allowance authority answers JSON, but a crashed gate surfaces a
@@ -361,5 +367,6 @@ export async function admitMapsRequest(
       unresolvedRequest = false;
     };
   }
+  complete.gateMs = gateMs;
   return complete;
 }

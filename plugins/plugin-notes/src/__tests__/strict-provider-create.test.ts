@@ -105,7 +105,7 @@ test.each([
 
     const removed = await invoke("delete", "NOTES", {
       action: "delete",
-      content: "Buy milk",
+      noteId: replay.value.id,
     });
     expect(removed).toMatchObject({ success: true, data: { removedCount: 1 } });
     expect(await persisted()).toEqual([]);

@@ -327,9 +327,7 @@ public abstract class AddressBookPlugin extends Plugin {
     String id = call.getString("id"), version = call.getString("version");
     final ContactsEditor.Draft draft;
     try {
-      if (call.getData().length() != (id == null ? 3 : 5) || (id != null && (ContactsEditor.row(id) < 0 || !ContactsEditor.versionShape(version))))
-        throw new IllegalArgumentException("Unknown or missing field");
-      draft = ContactsEditor.draft(call.getString("displayName"), call.getArray("phoneNumbers"), call.getArray("emailAddresses"));
+      draft = ContactsEditor.draft(call.getData());
     } catch (IllegalArgumentException invalid) {
       call.reject("Invalid contact", "invalid");
       return;

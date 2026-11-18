@@ -18,6 +18,12 @@ bun run --cwd plugins/plugin-notes test   # tests
 
 Service create/update inputs using `title`/`body` treat a nonempty body as lines after the title: one separator is added, including when the supplied body already starts with a newline. An empty body clears it; omitted fields remain unchanged. Use `{ content }` for a complete verbatim note and `textEdit` for a literal edit of stored fields. Do not mix complete content with structured fields. Stored schema-2 `body` includes its separator and is not a structured input body.
 
+## Deleting, restoring and folders from chat
+
+`NOTES_DELETE` by text deletes only a note whose title is in the owner's message. Any other match returns `NOTES_DELETE_NAME_MISMATCH` with the candidate and deletes nothing. No match and several matches also return a result (`NOTES_NOT_FOUND`, `NOTES_AMBIGUOUS_NOTE` with candidates) and do not throw. `NOTES_RESTORE` brings a note back from Recently deleted by `noteId` or by its text; its receipt is `notes.note.restore`.
+
+The device owns the folder list. A host with folders sends the current list with each chat message as `content.metadata.notesFolders`, an array of `{ id, name }` (`readNoteFolders` in `src/note-folders.ts`). The agent keeps no copy. `NOTES_MOVE` is offered only on such a message. It takes a folder name, sets the note's `format.data.folderId`, and returns a `notes.note.update` receipt; `folder: null` takes the note out of its folder. Chat cannot create or rename a folder.
+
 The app renderer resolves the package to `src/browser.ts`, which keeps views and
 client registration separate from runtime actions and provider storage.
 

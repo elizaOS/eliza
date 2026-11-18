@@ -32,6 +32,11 @@ public final class PasswordSurfaces {
     }
   }
 
+  public static Runnable protect() {
+    Hold hold = open();
+    return hold::close;
+  }
+
   static Hold open() {
     if (Looper.myLooper() != Looper.getMainLooper()) throw new IllegalStateException("Secret surfaces open on the main thread");
     if (open++ == 0) changed(true);
