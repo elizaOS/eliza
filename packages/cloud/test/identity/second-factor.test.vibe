@@ -98,7 +98,7 @@ describe("WP1 Identity: second factor", () => {
 
   it.live("Confirm it is me before a sensitive change (spec/cloud/identity/secondFactor.md, \"Story: Confirm it is me before a sensitive change\"; spec/cloud/identity/sessions.md, \"Story: Confirm it is me before a sensitive change\")", () => scoped(effect {
     const cloud = try testCloud()
-    const first = try signedIn(cloud, "grace@example.com")
+    const first = try signedIn(cloud, "ada@example.com")
     const token = first.accessToken
     const unprotected = try asOwner(cloud, token, "/api/v1/auth/mfa/sms", undefined, "DELETE")
     const { enrolled, confirmedAt } = try enrollTotp(cloud, token)
@@ -109,7 +109,7 @@ describe("WP1 Identity: second factor", () => {
     const read = try asOwner(cloud, token, "/api/v1/auth/mfa")
     const secondSetup = try asOwner(cloud, token, "/api/v1/auth/mfa/totp/enroll", {})
     const removed = try asOwner(cloud, token, "/api/v1/auth/mfa/totp", undefined, "DELETE")
-    const afterRemoval = (try signInAgain(cloud, "grace@example.com")) as { status: string }
+    const afterRemoval = (try signInAgain(cloud, "ada@example.com")) as { status: string }
     try check(() => assert.deepStrictEqual(
       {
         unprotected: refusal(unprotected),
