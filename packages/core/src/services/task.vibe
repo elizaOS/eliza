@@ -341,7 +341,7 @@ effect function validateTasks(runner: TaskRunner, tasks: Task[]) {
     }
 
     if (worker.shouldRun) {
-      const preflight = try Effect.result(foreign<unknown>(() => worker.shouldRun?.(runtime, task)))
+      const preflight = try Effect.result(foreign<unknown>(() => worker.shouldRun!(runtime, task)))
       if (Result.isFailure(preflight)) {
         errors.push(
           new ElizaError(`Task ${task.name} preflight failed`, {

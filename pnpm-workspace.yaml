@@ -66,3 +66,6 @@ peerDependencyRules:
 allowBuilds:
   esbuild: true
   protobufjs: false
+
+patchedDependencies:
+  vibelang@0.0.13: vibestack/patches/vibelang@0.0.13.patch
