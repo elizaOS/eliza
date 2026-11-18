@@ -15,7 +15,11 @@ import {
 } from '@elizaos/core';
 import { HOSTED_SPEC } from '../services/hosted-digest';
 import { PHONE_SPEC_KEY, storedPhoneTimeTrigger } from '../services/phone-workflow-spec';
-import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
+import {
+  WORKFLOW_DRAFT_NOT_APPLIED,
+  WORKFLOW_SERVICE_TYPE,
+  type WorkflowService,
+} from '../services/workflow-service';
 import { WorkflowApiError } from '../types/index';
 import {
   workflowCancellationEffect,
@@ -182,7 +186,8 @@ export const workflowAction: Action = {
     {
       name: 'name',
       required: false,
-      description: 'New workflow name. Required for rename.',
+      description:
+        'Workflow name. For create, the name the owner gave the workflow, if any. For rename, the new name (required).',
       schema: { type: 'string' },
     },
     {
@@ -270,10 +275,15 @@ export const workflowAction: Action = {
         const instruction =
           text(params.seedPrompt) ?? text(params.instruction) ?? message.content.text;
         if (!instruction) return { success: false, text: 'A workflow description is required.' };
-        const draft = await service.generateWorkflowDraft(instruction, {
+        // The owner's name for the workflow is how chat finds it again later.
+        const requestedName = text(params.name);
+        if (requestedName && requestedName.length > 200)
+          return { success: false, text: 'name must be 1 to 200 characters.' };
+        const authored = await service.generateWorkflowDraft(instruction, {
           userId: ownerId,
           timeZone,
         });
+        const draft = requestedName ? { ...authored, name: requestedName } : authored;
         if (draft.id !== undefined)
           throw new Error('Create requires a new definition without an existing workflow id');
         const workflow = await service.deployWorkflowDefinition(draft, ownerId, {
@@ -590,7 +600,8 @@ export const workflowAction: Action = {
         ? 'WORKFLOW_READ_FAILED'
         : status === 404
           ? 'WORKFLOW_NOT_FOUND'
-          : status === 409 && refusal?.endsWith('_NOT_APPLIED')
+          : (status === 409 && refusal?.endsWith('_NOT_APPLIED')) ||
+              refusal === WORKFLOW_DRAFT_NOT_APPLIED
             ? refusal
             : undefined;
       // error-policy:J1 action boundary returns the failure to the planner.
