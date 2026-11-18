@@ -7,6 +7,7 @@ import { request, type LocalAnswer, type Refusal } from "./socket-client.ts";
 import type { LaunchFrame } from "./scratch.ts";
 
 export const agentDir = resolve(import.meta.dirname, "../..");
+const compileCache = join(agentDir, ".cache", "vibelang");
 
 export type Transport =
   | { readonly kind: "socket"; readonly path: string }
@@ -85,7 +86,7 @@ export function startAgentChild(run: AgentRun): AgentChild {
     ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", join(agentDir, "src/bin.vibe"), "serve", "--launch", run.launchFile, "--state", run.stateDir, ...transportArgs(run.transport)],
     {
       cwd: agentDir,
-      env: { HOME: run.stateDir, TMPDIR: run.stateDir, TZ: "UTC", ...run.env },
+      env: { HOME: run.stateDir, TMPDIR: run.stateDir, TZ: "UTC", VIBELANG_CACHE_DIR: compileCache, ...run.env },
       stdio: ["pipe", "pipe", "pipe"],
       timeout: run.timeoutMs ?? 120_000,
       killSignal: "SIGKILL",

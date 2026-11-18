@@ -211,7 +211,7 @@ module node {
 
     getAgents(): Promise<Agent[]> { return this.values("agents") }
     getAgentsByIds(keys: UUID[]): Promise<Agent[]> { return this.values("agents", { keys }) }
-    createAgents(agents: Partial<Agent>[]): Promise<UUID[]> { return this.write("agents", agents.map((agent) => this.keepAgent(agent)), "create") }
+    async createAgents(agents: Partial<Agent>[]): Promise<UUID[]> { return await this.write("agents", agents.map((agent) => this.keepAgent(agent)), "create") }
     async upsertAgents(agents: Partial<Agent>[]): Promise<void> { await this.write("agents", agents.map((agent) => this.keepAgent(agent)), "put") }
     async countAgents(): Promise<number> { return (await this.getAgents()).length }
     deleteAgents(keys: UUID[]): Promise<boolean> { return this.remove("agents", keys) }
@@ -223,7 +223,7 @@ module node {
     }
 
     getEntitiesByIds(keys: UUID[]): Promise<Entity[]> { return this.values("entities", { keys }) }
-    createEntities(entities: Entity[]): Promise<UUID[]> { return this.write("entities", entities.map((entity) => this.entity(entity)), "create") }
+    async createEntities(entities: Entity[]): Promise<UUID[]> { return await this.write("entities", entities.map((entity) => this.entity(entity)), "create") }
     async upsertEntities(entities: Entity[]): Promise<void> { await this.write("entities", entities.map((entity) => this.entity(entity)), "put") }
     async updateEntities(entities: Entity[]): Promise<void> { await this.write("entities", entities.map((entity) => this.entity(entity)), "update") }
     async deleteEntities(keys: UUID[]): Promise<void> { await this.remove("entities", keys) }
@@ -241,7 +241,7 @@ module node {
 
     getAllWorlds(): Promise<World[]> { return this.values("worlds") }
     getWorldsByIds(keys: UUID[]): Promise<World[]> { return this.values("worlds", { keys }) }
-    createWorlds(worlds: World[]): Promise<UUID[]> { return this.write("worlds", worlds.map((world) => this.world(world)), "create") }
+    async createWorlds(worlds: World[]): Promise<UUID[]> { return await this.write("worlds", worlds.map((world) => this.world(world)), "create") }
     async upsertWorlds(worlds: World[]): Promise<void> { await this.write("worlds", worlds.map((world) => this.world(world)), "put") }
     async updateWorlds(worlds: World[]): Promise<void> { await this.write("worlds", worlds.map((world) => this.world(world)), "update") }
     async deleteWorlds(keys: UUID[]): Promise<void> { await this.remove("worlds", keys) }
@@ -252,7 +252,7 @@ module node {
     }
 
     getRoomsByIds(keys: UUID[]): Promise<Room[]> { return this.values("rooms", { keys }) }
-    createRooms(rooms: Room[]): Promise<UUID[]> { return this.write("rooms", rooms.map((room) => this.room(room)), "create") }
+    async createRooms(rooms: Room[]): Promise<UUID[]> { return await this.write("rooms", rooms.map((room) => this.room(room)), "create") }
     async upsertRooms(rooms: Room[]): Promise<void> { await this.write("rooms", rooms.map((room) => this.room(room)), "put") }
     async updateRooms(rooms: Room[]): Promise<void> { await this.write("rooms", rooms.map((room) => this.room(room)), "update") }
     async deleteRooms(keys: UUID[]): Promise<void> { await this.remove("rooms", keys) }
@@ -320,8 +320,8 @@ module node {
       return record(id, { ...input, id, agentId: this.agentId, createdAt, unique: unique ?? input.unique }, createdAt, tableName)
     }
 
-    createMemories(inputs: Parameters<IDatabaseAdapter["createMemories"]>[0]): Promise<UUID[]> {
-      return this.write("memories", inputs.map(({ memory, tableName, unique }) => this.memory(memory, tableName, unique)), "create")
+    async createMemories(inputs: Parameters<IDatabaseAdapter["createMemories"]>[0]): Promise<UUID[]> {
+      return await this.write("memories", inputs.map(({ memory, tableName, unique }) => this.memory(memory, tableName, unique)), "create")
     }
 
     async upsertMemories(inputs: Parameters<IDatabaseAdapter["upsertMemories"]>[0]): Promise<void> {
@@ -541,8 +541,8 @@ module node {
       }, createdAt)
     }
 
-    createTasks(tasks: Task[]): Promise<UUID[]> {
-      return this.write("tasks", tasks.map((task) => this.task(task)), "create")
+    async createTasks(tasks: Task[]): Promise<UUID[]> {
+      return await this.write("tasks", tasks.map((task) => this.task(task)), "create")
     }
 
     getTasksByIds(keys: UUID[]): Promise<Task[]> { return this.values("tasks", { keys }) }
