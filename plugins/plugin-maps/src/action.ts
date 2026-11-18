@@ -1358,7 +1358,9 @@ export const mapsAction: Action = {
     "Look up places, plan routes, save places, list saved places, create shareable geo links, hand a destination to navigation, or report which regions and travel modes Maps covers. Use the specific promoted MAPS_* action when the requested operation is known. Saving a place runs only through MAPS_SAVE.",
   descriptionCompressed:
     "Place search, routes, saved places, sharing, navigation, and coverage.",
-  contexts: ["location", "travel", "productivity"],
+  // "maps" is the registered Stage-1 context (plugin.ts); the others are
+  // kept for callers that scope by them.
+  contexts: ["maps", "location", "travel", "productivity"],
   routingHint:
     "Use MAPS_PLACE for place/address lookup and for what is nearby or nearest (set useCurrentLocation when the user says near me or nearest and gave no place), MAPS_SELECT to show a place on the phone map, MAPS_ROUTE for distance, travel time and directions between two named places, MAPS_NAVIGATION_START for directions from where the user is now (the phone plans from its own location; set useCurrentLocation when the destination is the nearest or a nearby kind of place), MAPS_SAVE to persist a place, MAPS_SAVED to list places saved with the assistant, MAPS_SHARE for a geo share link after the user confirms, MAPS_NAVIGATE to start phone navigation when the phone is connected and otherwise return a directions link, and MAPS_COVERAGE for the regions, travel modes and location recipients of the connected provider. Use MAPS_NAVIGATION_START, MAPS_NAVIGATION_REROUTE and MAPS_NAVIGATION_STOP for in-app phone navigation.",
   // Direct umbrella execution is read-only. The promoted MAPS_SAVE virtual
@@ -1694,7 +1696,7 @@ export const mapsNavigationAction: Action = {
   description:
     "Directions from where the user is now: start, reroute or stop in-app navigation on the phone. The phone plans the route from its own location, shows it on the map and asks the user before guidance starts.",
   descriptionCompressed: "Phone navigation start, reroute and stop.",
-  contexts: ["location", "travel"],
+  contexts: ["maps", "location", "travel"],
   tags: ["domain:maps", "capability:device"],
   parameters: [
     {

@@ -267,7 +267,7 @@ const declarations = [
   [
     "DEVICE_MAPS_READ_SELECTED",
     "maps_read_selected",
-    "Share only the current explicitly selected map place or route after device review. This does not request location or search for places.",
+    "Share only the current explicitly selected map place or route after device review. This does not request location, search for places or plan routes: place search, nearby places and directions are the MAPS_PLACE, MAPS_ROUTE and MAPS_NAVIGATION_START operations.",
   ],
 ] as const satisfies readonly (readonly [
   name: string,

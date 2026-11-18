@@ -1,7 +1,10 @@
 /** Registers the maps service and discoverable maps action family. */
 
-import type { Plugin } from "@elizaos/core";
-import { promoteSubactionsToActions } from "@elizaos/core";
+import type { ContextDefinition, Plugin } from "@elizaos/core";
+import {
+  promoteSubactionsToActions,
+  registerDirectActionRoutingRule,
+} from "@elizaos/core";
 import {
   bindPromotedMapsSaveHandler,
   mapsAction,
@@ -65,11 +68,85 @@ for (const action of promotedNavigationActions) {
     action.tags = ["domain:maps", "capability:device"];
 }
 
+/**
+ * Stage 1 classifies a turn into registered contexts. The Maps families used
+ * to declare only "location" and "travel", which no plugin registers, so Stage
+ * 1 could never name a context that exposes MAPS_*: on the phone "directions
+ * to Coit Tower" became `general` + VIEWS_SHOW (Maps opened with no route), and
+ * a discovery query naming "maps" was scoped to the only action declaring that
+ * word, DEVICE_MAPS_READ_SELECTED (2026-11-18). The context id is the word
+ * users and the view registry already use.
+ */
+export const MAPS_CONTEXT: ContextDefinition = {
+  id: "maps",
+  aliases: ["map", "location", "travel", "directions"],
+  label: "Maps",
+  description:
+    "Places, addresses, nearby search, directions, routes, travel time and navigation.",
+  descriptionCompressed: "Places, nearby search, directions and routes.",
+  sensitivity: "personal",
+  cacheScope: "agent",
+  roleGate: { minRole: "OWNER" },
+};
+
+const COURTESY = String.raw`(?:(?:please|hey|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?`;
+const DIRECTIONS_NOUN = String.raw`(?:(?:(?:driving|walking|cycling|bike|transit)\s+)?directions|(?:a\s+)?route|the\s+way)`;
+/**
+ * "directions to X", "get me directions from A to B". "Take me to", "navigate
+ * to" and "how do I get to" are left to the planner: they also name views.
+ */
+const DIRECTIONS_REQUEST = new RegExp(
+  [
+    // A bare request: "directions to X", "route from A to B".
+    String.raw`^\s*${COURTESY}${DIRECTIONS_NOUN}\s+(?:to|from)\s+\S`,
+    // An asked-for one: "get me (the) directions to X".
+    String.raw`^\s*${COURTESY}(?:get|give|show|find|pull\s+up)\s+(?:me\s+)?(?:(?:the|some)\s+)?${DIRECTIONS_NOUN}\s+(?:to|from)\s+\S`,
+  ].join("|"),
+  "iu",
+);
+/** "show the Ferry Building on the map", "find Coit Tower on maps". */
+const PLACE_ON_MAP_REQUEST = new RegExp(
+  String.raw`^\s*${COURTESY}(?:show|find|locate|pin|put)\s+(?:me\s+)?\S.*?\s+on\s+(?:the\s+|a\s+)?maps?\s*[.!]?\s*$`,
+  "iu",
+);
+
+export function isMapsDirectionsRequest(text: string): boolean {
+  return DIRECTIONS_REQUEST.test(text);
+}
+export function isMapsPlaceOnMapRequest(text: string): boolean {
+  return PLACE_ON_MAP_REQUEST.test(text);
+}
+
 export const mapsPlugin: Plugin = {
   name: "maps",
   packageName: "@elizaos/plugin-maps",
   description:
     "Provider-neutral place search, routes, saved places, sharing, and navigation handoffs.",
+  contexts: ["maps"],
+  async init(_config, runtime) {
+    runtime.contexts.tryRegister(MAPS_CONTEXT);
+    // A directions request is Maps work, not a view switch. Stage 1 judged
+    // "directions to Coit Tower" as direct navigation, so only VIEWS_SHOW ran
+    // and the map showed no route. These owners replace a VIEWS-only
+    // candidate; the view-navigation evaluator still adds VIEWS back when the
+    // user also asked for a view, and the planner keeps full authority.
+    registerDirectActionRoutingRule(runtime, {
+      id: "maps.directions",
+      actionNames: ["MAPS_ROUTE", "MAPS_NAVIGATION_START"],
+      replacesActionNames: ["VIEWS", "VIEWS_SHOW"],
+      requiredActionTags: ["domain:maps"],
+      contexts: ["maps"],
+      matches: isMapsDirectionsRequest,
+    });
+    registerDirectActionRoutingRule(runtime, {
+      id: "maps.place-on-map",
+      actionNames: ["MAPS_SELECT", "MAPS_PLACE"],
+      replacesActionNames: ["VIEWS", "VIEWS_SHOW"],
+      requiredActionTags: ["domain:maps"],
+      contexts: ["maps"],
+      matches: isMapsPlaceOnMapRequest,
+    });
+  },
   services: [MapsService],
   actions: [...promotedMapsActions, ...promotedNavigationActions],
   views: [
