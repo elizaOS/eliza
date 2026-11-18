@@ -2792,10 +2792,16 @@ function feedReadCoversRequestedWindow(
       return false;
     }
   }
-  // The canonical handler may resolve the owner's stated day when the model
-  // omits details entirely. Only that current request's bound producer window
-  // can replace absent arguments; malformed or explicit bounds never fall back.
-  if (details === undefined && binding) {
+  // An empty object or a matching zone alone supplies no window. Only the
+  // current request's bound producer window can replace those absent bounds.
+  const omittedWindow =
+    details === undefined ||
+    (isObjectRecord(details) &&
+      Object.keys(details).every((key) => key === "timeZone") &&
+      (!Object.hasOwn(details, "timeZone") ||
+        (typeof readTimeZone === "string" &&
+          details.timeZone === readTimeZone)));
+  if (omittedWindow && binding) {
     const proof = data.requestWindow;
     if (
       !isObjectRecord(proof) ||
