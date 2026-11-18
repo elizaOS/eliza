@@ -23,9 +23,8 @@ export async function openBackupDatabase(existingStandalone = false) {
   try {
     await socket.start()
     const migrations = new URL("../../src/store/migrations/", import.meta.url)
-    const names = existingStandalone
-      ? standaloneMigrations
-      : (await readdir(migrations)).filter((name) => name.endsWith(".sql")).sort()
+    const available = (await readdir(migrations)).filter((name) => name.endsWith(".sql")).sort()
+    const names = existingStandalone ? standaloneMigrations : available
     await database.exec("CREATE TABLE schema_migrations (name text PRIMARY KEY, applied_at bigint NOT NULL)")
     for (const name of names) {
       await database.exec(await readFile(new URL(name, migrations), "utf8"))
@@ -35,7 +34,7 @@ export async function openBackupDatabase(existingStandalone = false) {
     const db = new Client({ connectionString: databaseUrl, connectionTimeoutMillis: 5000 })
     await db.connect()
     return {
-      db, databaseUrl,
+      db, databaseUrl, pendingMigrations: available.filter((name) => !names.includes(name)),
       async close() {
         try {
           await db.end()
