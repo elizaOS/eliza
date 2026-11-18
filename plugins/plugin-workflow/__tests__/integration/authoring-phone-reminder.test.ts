@@ -168,6 +168,46 @@ test('WORKFLOW create saves the name the owner gave, so chat can find it again',
   expect(result?.text).toContain('Alpha device test');
   expect(result?.success).toBe(true);
   expect(saved?.name).toBe('Alpha device test');
+  // W1: the workflow cannot notify, so the planner must not be left to claim
+  // "I'll remind you at 3pm".
+  expect(result?.text).toContain('It can’t send you a notification');
+  expect(result?.text).toContain('appears only in its run history');
+});
+
+test('WORKFLOW create adds no notification caveat to a request that asks for none', async () => {
+  const service = {
+    generateWorkflowDraft: async () => JSON.parse(reply(manifestOnly)),
+    deployWorkflowDefinition: async (draft: { name: string }) => ({
+      ...draft,
+      id: 'wf-2',
+      active: false,
+      versionId: 'v1',
+      updatedAt: '2026-11-18T04:30:26.000Z',
+    }),
+  };
+  const result = await workflowAction.handler(
+    handlerRuntime(service),
+    {
+      ...message,
+      content: { text: 'create a workflow that summarizes my notes every evening' },
+    } as Memory,
+    undefined,
+    {
+      parameters: {
+        action: 'create',
+        name: 'Evening notes',
+        seedPrompt: 'Summarize my notes every evening',
+      },
+    } as never
+  );
+  expect(result?.success).toBe(true);
+  expect(result?.text).not.toContain('notification');
+});
+
+test('the WORKFLOW description says a chat-created workflow cannot remind the owner', () => {
+  expect(workflowAction.description).toContain(
+    'A chat-created workflow cannot message, notify or remind the owner'
+  );
 });
 
 test('a rejected draft is reported as not applied, so the planner may author again', async () => {
