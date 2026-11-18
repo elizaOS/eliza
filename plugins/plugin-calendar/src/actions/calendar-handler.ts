@@ -4501,7 +4501,7 @@ async function inferCreateEventDetails(
     "The user may speak in any language.",
     "Use the full recent conversation below, not just the latest message.",
     "Treat the latest user request as authoritative, but recover missing event subject, date, or location from earlier turns when needed.",
-    "Set reviewBeforeCreate:true when the owner asks to preview, review, or confirm this event before it is saved, including a request to prepare it without saving yet. A request to show the result after saving does not ask for review first.",
+    "Set reviewBeforeCreate:true when the owner asks to preview, review, or confirm this event before it is saved, including a request to prepare it without saving yet. Keep this choice when the owner supplies missing details for the same event. Set it to false for ordinary creation or a request to show the result after saving.",
     "If the current request is a follow-up, recover the event subject from recent conversation and apply new timing or location constraints from the current request.",
     'A follow-up that asks for another event ("make another one", "also add", "one more") and states only a clock time keeps the day the user stated for the event just discussed; that day is user-stated timing, not borrowed timing.',
     "Set requiresInput:true and ask for the missing detail in clarification when the user has not supplied or accepted an exact time and has not explicitly asked you to choose one. Morning, afternoon, and evening alone require a clock-time question. Set requiresInput:false only when the creation request is sufficiently specified.",
@@ -6710,7 +6710,7 @@ export function createCalendarActionRunner(
           }
           if (
             requestToApprove.grantId === ELIZA_CALENDAR_GRANT_ID &&
-            extractedDetails.reviewBeforeCreate !== true
+            extractedDetails.reviewBeforeCreate === false
           ) {
             const idempotencyKey = localCalendarOperationKey({
               message,
