@@ -407,6 +407,13 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     ["go to JFK Terminal 4", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
     ["take me to JFK", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
     ["directions to LAX", ["MAPS_ROUTE", "MAPS_NAVIGATION_START"]],
+    // One capitalised word: a well-known place, or an explicit travel verb.
+    ["go to Starbucks", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to Walgreens", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["let's go to Safeway", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to the Presidio", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["take me to Starbucks", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["navigate to Alcatraz", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
   ])("promotes %s", async (text, expected) => {
     const handler = await evaluate(text);
     expect(handler.plan.requiresTool).toBe(true);
@@ -506,6 +513,12 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     "go to coit tower if it's open",
     "go to coit tower.com",
     "go to the settings tab",
+    // One capitalised word after "go to" may be a person or an app.
+    "go to Sam",
+    "go to Notion",
+    "go to Figma",
+    "go to Alcatraz",
+    "Okay, go to Sam, please.",
     // All-caps words that are a file, a format, a time or one letter.
     "go to PDF",
     "go to the FAQ",
@@ -561,6 +574,10 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     ["go to the museum of modern art", "the museum of modern art"],
     ["go to pier 39", "pier 39"],
     ["go to the nearest gas station", "the nearest gas station"],
+    ["go to Sam", undefined],
+    ["go to Notion", undefined],
+    ["go to Starbucks", "Starbucks"],
+    ["go to the Presidio", "the Presidio"],
     ["go to SFO", "SFO"],
     ["go to UCSF Medical Center", "UCSF Medical Center"],
     ["go to the FAQ", undefined],

@@ -193,6 +193,13 @@ const GO_TO_NOT_A_PLACE =
 /** "Coit Tower", "McDonald's", "O'Hare": a capitalised word, not an acronym or code ("Q3"). */
 const PROPER_NAME = /^\p{Lu}[\p{Ll}'’]/u;
 /**
+ * A lone capitalised word after "go to" is as often a person or an app as a
+ * place ("go to Sam", "go to Notion"), so it counts only as a well-known
+ * chain: "go to Starbucks", "go to Walgreens", "go to Safeway".
+ */
+const WELL_KNOWN_PLACE =
+  /^(?:Starbucks|Peet['’]?s|Dunkin['’]?|McDonald['’]?s|Wendy['’]?s|Denny['’]?s|Applebee['’]?s|Chili['’]?s|Arby['’]?s|Popeyes|Chipotle|Panera|Walgreens|Safeway|Walmart|Costco|Target|Kroger|Albertsons|Publix|Wegmans|Meijer|Aldi|Lidl|Ikea|Lowe['’]?s|Macy['’]?s|Kohl['’]?s|Nordstrom|Sephora|Ulta|Petco|PetSmart|Staples|Kmart|Hilton|Marriott|Hyatt|Sheraton|Westin|Chevron|Exxon|Texaco|Valero|Arco)$/u;
+/**
  * "SFO", "JFK Terminal 4", "UCSF Medical Center": an all-caps code of two to
  * five letters, unless it is a common file, software or time abbreviation.
  */
@@ -241,7 +248,11 @@ function spokenPlaceName(destination: string, name: string): boolean {
   );
 }
 
-/** The place a "go to X" request names, if it names a place or a street address. */
+/**
+ * The place a "go to X" request names, if it names a place or a street
+ * address. A capitalised name needs two words, "the" ("the Presidio") or a
+ * well-known chain; a lone "Sam" or "Notion" is left to the planner.
+ */
 export function mapsGoToDestination(text: string): string | undefined {
   if (text.length > MAX_TRAVEL_REQUEST_LENGTH) return;
   const destination = GO_TO_REQUEST.exec(text)?.[1]?.trim();
@@ -253,7 +264,10 @@ export function mapsGoToDestination(text: string): string | undefined {
     compoundDestination(destination) ||
     containsResourceAddress(destination) ||
     !(
-      PROPER_NAME.test(name) ||
+      (PROPER_NAME.test(name) &&
+        (name !== destination ||
+          /\s/u.test(name) ||
+          WELL_KNOWN_PLACE.test(name))) ||
       PLACE_CODE.test(name) ||
       STREET_ADDRESS.test(name) ||
       STREET_NAME.test(name) ||
