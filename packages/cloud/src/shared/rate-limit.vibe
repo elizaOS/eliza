@@ -1,5 +1,5 @@
 // spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"; spec/cloud/shared/rateLimit.md, "Story: Refuse rather than guess when the limiter cannot count"
-import { Rejected, admitsAll, apply, decodeState, groupRefusal, initial, perWindow, refusalOfDecision, unavailableRefusal, type Check, type Event, type RateLimit, type Window } from "../../gen/cloud__shared__rateLimit.effect.vibe"
+import { type Rejected, admitsAll, apply, decodeState, groupRefusal, initial, perWindow, refusalOfDecision, unavailableRefusal, type Check, type Event, type RateLimit, type Window } from "../../gen/cloud__shared__rateLimit.effect.vibe"
 import { Refused } from "../http/refusal.vibe"
 import { loadRow, machineRows, stepRow } from "../store/rows.vibe"
 import { Store, type Tx } from "../store/connection.vibe"

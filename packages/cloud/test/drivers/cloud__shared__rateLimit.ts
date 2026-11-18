@@ -5,39 +5,29 @@ import type { Window } from "../../gen/cloud__shared__rateLimit.ts";
 import { Refused } from "../../src/http/refusal.vibe";
 import { admitCheck, readWindow, type RateLimit } from "../../src/shared/rate-limit.vibe";
 import { Store, migrate, storeLayer } from "../../src/store/store.vibe";
+import { manualClock } from "../support/clock.ts";
 
 const initialWindow: Window = { start: 0, end: 0, count: 0, ceiling: 0, clock: 0, last: { tag: "NoDecision" } };
 
-function fixedClock(at: number): Clock.Clock {
-  return {
-    currentTimeMillisUnsafe: () => at,
-    currentTimeMillis: Effect.succeed(at),
-    currentTimeNanosUnsafe: () => BigInt(at) * 1_000_000n,
-    currentTimeNanos: Effect.succeed(BigInt(at) * 1_000_000n),
-    monotonicTimeNanosUnsafe: () => process.hrtime.bigint(),
-    monotonicTimeNanos: Effect.sync(() => process.hrtime.bigint()),
-    sleep: () => Effect.void,
-  };
-}
-
 let runtime: ManagedRuntime.ManagedRuntime<Store, unknown> | undefined;
-const names = new Map<string, string>();
+const seen = new Set<string>();
+const time = manualClock();
 
 async function store() {
   if (runtime === undefined) {
     runtime = ManagedRuntime.make(storeLayer({ kind: "pglite", file: undefined }));
-    await runtime.runPromise(migrate({ digest: "conformance", environment: "staging", now: 0 }));
+    await runtime.runPromise(migrate({ digest: "0".repeat(64), environment: "staging", now: 0 }));
   }
   return runtime;
 }
 
 function check(subject: string, rule: RateLimit) {
-  return { subject, rule };
+  return { subject, rule: { ...rule, name: "conformance" } };
 }
 
 export const driver: Driver = {
   async reset() {
-    names.clear();
+    seen.clear();
     const opened = await store();
     await opened.runPromise(Effect.gen(function* () {
       const kept = yield* Store;
@@ -45,9 +35,10 @@ export const driver: Driver = {
     }));
   },
   async dispatch(key, event) {
-    names.set(key, event.rule.name);
+    seen.add(key);
     const opened = await store();
-    const exit = await opened.runPromise(Effect.exit(Effect.provideService(admitCheck(check(key, event.rule)), Clock.Clock, fixedClock(event.now))));
+    time.set(event.now);
+    const exit = await opened.runPromise(Effect.exit(Effect.provideService(admitCheck(check(key, event.rule)), Clock.Clock, time.clock)));
     if (Exit.isSuccess(exit)) return "accepted";
     const failure = Exit.findErrorOption(exit);
     if (failure._tag === "Some" && failure.value instanceof Refused) {
@@ -57,10 +48,9 @@ export const driver: Driver = {
     throw new Error(`the limiter failed: ${String(exit)}`);
   },
   async observe(key) {
-    const name = names.get(key);
-    if (name === undefined) return initialWindow;
+    if (!seen.has(key)) return initialWindow;
     const opened = await store();
-    return await opened.runPromise(readWindow(check(key, { name, limit: 1, windowMs: 1 })));
+    return await opened.runPromise(readWindow(check(key, { name: "conformance", limit: 1, windowMs: 1 })));
   },
 };
 

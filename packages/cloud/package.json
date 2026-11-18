@@ -34,6 +34,12 @@
       "import": "./dist/src/worker.js",
       "default": "./dist/src/worker.js"
     },
+    "./clef-decisions": {
+      "eliza-source": "./src/clef-decisions.vibe",
+      "types": "./dist/src/clef-decisions.d.ts",
+      "import": "./dist/src/clef-decisions.js",
+      "default": "./dist/src/clef-decisions.js"
+    },
     "./store": {
       "eliza-source": "./src/store/store.vibe",
       "types": "./dist/src/store/store.d.ts",
@@ -42,7 +48,7 @@
     }
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && node -e \"const fs=require('node:fs');const path=require('node:path');const source=JSON.parse(fs.readFileSync('package.json','utf8'));const target=value=>value.startsWith('./dist/')?'./'+value.slice(7):value;for(const file of fs.globSync('src/**/*.sql')){fs.mkdirSync(path.dirname('dist/'+file),{recursive:true});fs.copyFileSync(file,'dist/'+file);}const publishedExports=Object.fromEntries(Object.entries(source.exports).map(([name,conditions])=>[name,Object.fromEntries(Object.entries(conditions).map(([condition,value])=>[condition,target(condition==='eliza-source'?(conditions.import??conditions.default):value)]))]));const publication={...source,main:target(source.main),types:target(source.types),bin:Object.fromEntries(Object.entries(source.bin).map(([name,value])=>[name,target(value)])),files:['src','gen'],exports:publishedExports};delete publication.scripts;delete publication.publishConfig;fs.writeFileSync('dist/package.json',JSON.stringify(publication,null,2)+'\\n');\"",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && node -e \"const fs=require('node:fs');const path=require('node:path');const source=JSON.parse(fs.readFileSync('package.json','utf8'));const target=value=>value.startsWith('./dist/')?'./'+value.slice(7):value;for(const file of fs.globSync('src/**/*.sql')){fs.mkdirSync(path.dirname('dist/'+file),{recursive:true});fs.copyFileSync(file,'dist/'+file);}const publishedExports=Object.fromEntries(Object.entries(source.exports).map(([name,conditions])=>[name,Object.fromEntries(Object.entries(conditions).map(([condition,value])=>[condition,target(condition==='eliza-source'?(conditions.import??conditions.default):value)]))]));const publication={...source,main:target(source.main),types:target(source.types),bin:Object.fromEntries(Object.entries(source.bin).map(([name,value])=>[name,target(value)])),files:['src','gen','pages'],exports:publishedExports};delete publication.scripts;delete publication.publishConfig;fs.writeFileSync('dist/package.json',JSON.stringify(publication,null,2)+'\\n');\" && vite build",
     "typecheck": "vibelang --noEmit -p .",
     "test": "vitest run",
     "test:browser": "vitest run --project browser",
@@ -63,6 +69,7 @@
   "devDependencies": {
     "@antithesishq/bombadil": "0.7.10",
     "@effect/vitest": "4.1.1",
+    "@electric-sql/pglite-socket": "0.1.6",
     "@repo/design-system": "workspace:*",
     "@repo/ui": "workspace:*",
     "@tailwindcss/vite": "catalog:",

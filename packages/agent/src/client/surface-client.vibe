@@ -28,7 +28,7 @@ export type SurfaceFailure = SurfaceTransport | SurfaceProtocol
 
 type Reply = { readonly result: unknown } | { readonly error: { readonly code: string; readonly message: string } }
 schema Connection { readonly connectionId: Schema.NonEmptyString }
-schema Command { readonly id: string; readonly sequence: Schema.Int; readonly effect: boolean; readonly expiresAt: Schema.Int; readonly input: unknown }
+schema Command { readonly id: string; readonly sequence: Schema.Int; readonly effect: boolean; readonly expiresAt: Schema.Int; readonly input: Schema.Unknown }
 error HandlerRefused { cause: unknown }
 
 const Pulled = Schema.Struct({ command: Schema.NullOr(Command), cancellations: Schema.Array(Schema.String) })

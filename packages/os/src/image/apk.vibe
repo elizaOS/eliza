@@ -1,0 +1,856 @@
+// spec/os/image/apk.md, "Story: Put only a reviewed release APK into an image"; spec/os/image/apk.md, "Story: Update my installed app without losing its data"
+import { ChildProcess } from "effect/process"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+import {
+  apkUpdateProblems,
+  cloudSpeechChecks,
+  dataEvidence,
+  filesOf,
+  hexOf,
+  imageApkAdmission,
+  isDigest,
+  readbackOf,
+  releaseBlockers,
+  signerCertificate,
+  signerForApi,
+  updateReceipt,
+  type ApkBuildType,
+  type ApkFacts,
+  type ApkLocation,
+  type ApkRow,
+  type BundleFlags,
+  type DataEvidence,
+  type Digest,
+  type FileDigest,
+  type ImageRefusal,
+  type Inventory,
+  type PackageIdentity,
+  type QaReceipt,
+  type ReleaseBlocker,
+  type ReleasePolicy,
+  type SignerObservation,
+  type SignerReport,
+  type SpeechProfile,
+  type StagingMode,
+  type UpdateProblem,
+  type UpdateReceipt,
+  type VoiceRecord,
+} from "../../gen/os__image__apk.effect.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+  import { homedir } from "node:os"
+  import { crc32, inflateRawSync } from "node:zlib"
+
+  export interface ArchiveEntry {
+    readonly entry: string
+    readonly method: number
+    readonly crc32: number
+    readonly compressedSize: number
+    readonly size: number
+    readonly dataOffset: number
+  }
+
+  export type ArchiveDirectory =
+    | { readonly kind: "entries"; readonly entries: readonly ArchiveEntry[] }
+    | { readonly kind: "invalid"; readonly entry: string | undefined; readonly message: string }
+
+  export type ArchivePayload =
+    | { readonly kind: "bytes"; readonly bytes: Buffer }
+    | { readonly kind: "invalid"; readonly message: string }
+
+  const END = 0x06054b50
+  const ZIP64_LOCATOR = 0x07064b50
+  const ZIP64_END = 0x06064b50
+  const CENTRAL = 0x02014b50
+  const LOCAL = 0x04034b50
+  const ZIP64_EXTRA = 0x0001
+  const UNSET16 = 0xffff
+  const UNSET32 = 0xffffffff
+
+  class InvalidArchive extends Error {
+    readonly entry: string | undefined
+    constructor(message: string, entry?: string) {
+      super(message)
+      this.entry = entry
+    }
+  }
+
+  /** @throws {never} */
+  export function processEnvironment(): Readonly<Record<string, string | undefined>> {
+    return process.env
+  }
+
+  /** @throws {never} */
+  export function homeDirectory(): string {
+    return homedir()
+  }
+
+  /** @throws {never} */
+  export function sha256Hex(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function safeArchiveEntry(entry: string): boolean {
+    const file = entry.endsWith("/") ? entry.slice(0, -1) : entry
+    return file !== "" && !entry.includes("\\") && !entry.includes("\0") && !file.split("/").some((segment) => segment === "" || segment === "." || segment === "..")
+  }
+
+  function wide(view: DataView, offset: number): number {
+    const value = view.getBigUint64(offset, true)
+    if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new InvalidArchive("a 64-bit field is out of range")
+    return Number(value)
+  }
+
+  function endOfDirectory(view: DataView): number {
+    for (let end = view.byteLength - 22; end >= Math.max(0, view.byteLength - 22 - UNSET16); end--)
+      if (view.getUint32(end, true) === END && end + 22 + view.getUint16(end + 20, true) === view.byteLength) return end
+    throw new InvalidArchive("no end of central directory record")
+  }
+
+  function centralDirectory(view: DataView): { readonly count: number; readonly offset: number } {
+    const end = endOfDirectory(view)
+    const narrow = { disk: view.getUint16(end + 4, true), directoryDisk: view.getUint16(end + 6, true), count: view.getUint16(end + 10, true), size: view.getUint32(end + 12, true), offset: view.getUint32(end + 16, true) }
+    if (narrow.count !== UNSET16 && narrow.size !== UNSET32 && narrow.offset !== UNSET32) {
+      if (narrow.disk !== 0 || narrow.directoryDisk !== 0) throw new InvalidArchive("multi-disk archives are not supported")
+      return narrow
+    }
+    const locator = end - 20
+    if (locator < 0 || view.getUint32(locator, true) !== ZIP64_LOCATOR || view.getUint32(locator + 4, true) !== 0 || view.getUint32(locator + 16, true) !== 1)
+      throw new InvalidArchive("the ZIP64 end of central directory locator is missing or names another disk")
+    const record = wide(view, locator + 8)
+    if (view.getUint32(record, true) !== ZIP64_END || view.getUint32(record + 16, true) !== 0 || view.getUint32(record + 20, true) !== 0)
+      throw new InvalidArchive("the ZIP64 end of central directory record is missing or names another disk")
+    return { count: wide(view, record + 32), offset: wide(view, record + 48) }
+  }
+
+  function wideFields(view: DataView, start: number, length: number, narrow: { size: number; compressedSize: number; localOffset: number; disk: number }): typeof narrow {
+    const fields = { ...narrow }
+    for (let at = start; at + 4 <= start + length; at += 4 + view.getUint16(at + 2, true)) {
+      if (view.getUint16(at, true) !== ZIP64_EXTRA) continue
+      let field = at + 4
+      if (fields.size === UNSET32) [fields.size, field] = [wide(view, field), field + 8]
+      if (fields.compressedSize === UNSET32) [fields.compressedSize, field] = [wide(view, field), field + 8]
+      if (fields.localOffset === UNSET32) [fields.localOffset, field] = [wide(view, field), field + 8]
+      if (fields.disk === UNSET16) fields.disk = view.getUint32(field, true)
+      return fields
+    }
+    if (fields.size === UNSET32 || fields.compressedSize === UNSET32 || fields.localOffset === UNSET32 || fields.disk === UNSET16) throw new InvalidArchive("a ZIP64 entry has no ZIP64 extra field")
+    return fields
+  }
+
+  function readDirectory(bytes: Uint8Array, maxEntries: number): ArchiveEntry[] {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+    const names = new TextDecoder("utf-8", { fatal: true })
+    const directory = centralDirectory(view)
+    if (directory.count === 0) throw new InvalidArchive("the archive has no entries")
+    if (directory.count > maxEntries) throw new InvalidArchive(`the archive has ${directory.count} entries, more than the limit of ${maxEntries}`)
+    const seen = new Set<string>()
+    const entries: ArchiveEntry[] = []
+    let at = directory.offset
+    for (let index = 0; index < directory.count; index++) {
+      if (view.getUint32(at, true) !== CENTRAL) throw new InvalidArchive("a central directory entry is missing")
+      const flags = view.getUint16(at + 8, true)
+      const method = view.getUint16(at + 10, true)
+      const checksum = view.getUint32(at + 16, true)
+      const nameLength = view.getUint16(at + 28, true)
+      const extraLength = view.getUint16(at + 30, true)
+      const rawName = bytes.subarray(at + 46, at + 46 + nameLength)
+      if (rawName.byteLength !== nameLength) throw new InvalidArchive("a central directory entry is truncated")
+      const entry = names.decode(rawName)
+      if (!safeArchiveEntry(entry)) throw new InvalidArchive(`unsafe archive path ${JSON.stringify(entry)}`, entry)
+      if (seen.has(entry)) throw new InvalidArchive(`duplicate archive entry ${entry}`, entry)
+      seen.add(entry)
+      const { size, compressedSize, localOffset, disk } = wideFields(view, at + 46 + nameLength, extraLength, {
+        size: view.getUint32(at + 24, true),
+        compressedSize: view.getUint32(at + 20, true),
+        localOffset: view.getUint32(at + 42, true),
+        disk: view.getUint16(at + 34, true),
+      })
+      if (disk !== 0) throw new InvalidArchive(`entry ${entry} is on another disk`, entry)
+      if ((flags & 1) !== 0) throw new InvalidArchive(`entry ${entry} is encrypted`, entry)
+      if (view.getUint32(localOffset, true) !== LOCAL) throw new InvalidArchive(`entry ${entry} has no local header`, entry)
+      const localNameLength = view.getUint16(localOffset + 26, true)
+      const localName = bytes.subarray(localOffset + 30, localOffset + 30 + localNameLength)
+      if (view.getUint16(localOffset + 6, true) !== flags || view.getUint16(localOffset + 8, true) !== method)
+        throw new InvalidArchive(`entry ${entry} has inconsistent local and central headers`, entry)
+      if (localName.byteLength !== rawName.byteLength || localName.some((byte, position) => byte !== rawName[position]))
+        throw new InvalidArchive(`entry ${entry} has a different local file name`, entry)
+      const localSize = view.getUint32(localOffset + 22, true)
+      const localCompressedSize = view.getUint32(localOffset + 18, true)
+      const described = (flags & 8) !== 0
+      if (!described && (view.getUint32(localOffset + 14, true) !== checksum || (localSize !== size && localSize !== UNSET32) || (localCompressedSize !== compressedSize && localCompressedSize !== UNSET32)))
+        throw new InvalidArchive(`entry ${entry} has inconsistent local integrity fields`, entry)
+      const dataOffset = localOffset + 30 + localNameLength + view.getUint16(localOffset + 28, true)
+      if (dataOffset + compressedSize > directory.offset) throw new InvalidArchive(`entry ${entry} runs into the central directory`, entry)
+      entries.push({ entry, method, crc32: checksum, compressedSize, size, dataOffset })
+      at += 46 + nameLength + extraLength + view.getUint16(at + 32, true)
+    }
+    return entries
+  }
+
+  /** @throws {never} */
+  export function readArchiveDirectory(bytes: Uint8Array, maxEntries: number): ArchiveDirectory {
+    try {
+      return { kind: "entries", entries: readDirectory(bytes, maxEntries) }
+    } catch (cause) {
+      return {
+        kind: "invalid",
+        entry: cause instanceof InvalidArchive ? cause.entry : undefined,
+        message: cause instanceof InvalidArchive ? cause.message : cause instanceof RangeError ? "the archive is truncated" : cause instanceof TypeError ? "an entry name is not UTF-8" : String(cause),
+      }
+    }
+  }
+
+  /** @throws {never} */
+  export function expandArchiveEntry(bytes: Uint8Array, entry: ArchiveEntry): ArchivePayload {
+    const stored = bytes.subarray(entry.dataOffset, entry.dataOffset + entry.compressedSize)
+    try {
+      if (entry.method !== 0 && entry.method !== 8) return { kind: "invalid", message: `unsupported ZIP compression method ${entry.method}` }
+      const payload = entry.method === 0 ? Buffer.from(stored) : inflateRawSync(stored, { maxOutputLength: Math.max(1, entry.size) })
+      if (payload.byteLength !== entry.size) return { kind: "invalid", message: `it expanded to ${payload.byteLength} bytes; the archive declares ${entry.size}` }
+      if (crc32(payload) >>> 0 !== entry.crc32) return { kind: "invalid", message: "it failed CRC32 verification" }
+      return { kind: "bytes", bytes: payload }
+    } catch (cause) {
+      return { kind: "invalid", message: cause instanceof Error ? cause.message : String(cause) }
+    }
+  }
+
+  /** @throws {never} */
+  export function parseJson(bytes: Uint8Array): unknown {
+    try {
+      return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+    } catch {
+      return undefined
+    }
+  }
+}
+import { expandArchiveEntry, homeDirectory, parseJson, processEnvironment, readArchiveDirectory, safeArchiveEntry, sha256Hex, type ArchiveEntry } from node
+
+export type Environment = Readonly<Record<string, string | undefined>>
+export type RawRecord = Readonly<Record<string, unknown>>
+
+export const ANDROID_BUILD_TOOLS = "36.0.0"
+export const MAX_ANDROID_ARTIFACT_BYTES = 512 * 1024 * 1024
+export const MAX_ANDROID_ARCHIVE_ENTRIES = 100_000
+export const MAX_ANDROID_EXTRACTED_ENTRY_BYTES = 256 * 1024 * 1024
+export const MAX_ANDROID_EXTRACTED_TOTAL_BYTES = 512 * 1024 * 1024
+export const BUILD_FLAGS_ENTRY = "assets/public/build-flags.json"
+export const QA_EVIDENCE_FORMAT = "cloud-voice-qualification-v1"
+export const DOMAIN_SCRIPT = 'find . -type f ! -path "./cache/*" ! -path "./code_cache/*" -exec sha256sum {} + ; echo "READBACK_EXIT=$?"'
+
+const HEX64 = /^[0-9a-f]{64}$/
+const JAVA_MAJOR = 21
+const JAVA_HOMES = ["/opt/homebrew/opt/openjdk@21", "/usr/local/opt/openjdk@21", "/usr/lib/jvm/temurin-21-jdk-amd64", "/usr/lib/jvm/java-21-openjdk-amd64", "/usr/lib/jvm/java-21-openjdk"]
+const JVM_ROOT = "/usr/lib/jvm"
+const COMPONENT_TAGS = new Set(["activity", "activity-alias", "service", "receiver", "provider"])
+const AAPT_TRUE = "0xffffffff"
+const UNAVAILABLE: Inventory = { tag: "InventoryUnavailable" }
+const FAILED: Inventory = { tag: "InventoryFailed" }
+const UNRECORDED: ApkRow = {
+  recorded: "Unrecorded",
+  sha256: { tag: "NotADigest" },
+  testMocks: false,
+  bundleAudited: false,
+  signer: { tag: "NoSigner" },
+  runtime: "RuntimeUnpackaged",
+  profile: "UnknownSpeech",
+  voice: { tag: "VoiceUnrecorded" },
+  qa: { tag: "QaAbsent" },
+  licenceRecorded: false,
+  licenceBlocking: false,
+  distributable: false,
+}
+
+export interface AndroidBuildTools {
+  readonly sdk: string
+  readonly aapt: string
+  readonly apksigner: string
+  readonly zipalign: string
+}
+
+export interface ArtifactSnapshot {
+  readonly bytes: Uint8Array
+  readonly sha256: string
+  readonly sizeBytes: number
+}
+
+export type ArtifactIdentity = Pick<ArtifactSnapshot, "sha256" | "sizeBytes">
+
+export interface ArtifactReadOptions {
+  readonly artifactBytes?: Uint8Array
+  readonly maxEntries?: number
+  readonly label?: string
+  readonly maxEntryBytes?: number
+  readonly maxTotalBytes?: number
+}
+
+export interface AaptOptions {
+  readonly aapt?: string
+  readonly env?: Environment
+}
+
+export interface SignerOptions {
+  readonly apksigner?: string
+  readonly apiLevel?: number
+  readonly env?: Environment
+}
+
+export interface ManifestNode {
+  readonly name: string
+  readonly attrs: Record<string, string>
+  readonly children: ManifestNode[]
+  readonly indent: number
+}
+
+export interface ManifestComponent {
+  readonly tag: string
+  readonly name: string
+  readonly exported: boolean
+  readonly permission: string | null
+}
+
+export interface ManifestFacts {
+  readonly packageName: string | null
+  readonly versionCodeText: string | null
+  readonly versionCode: number | null
+  readonly versionName: string | null
+  readonly permissions: readonly string[]
+  readonly components: readonly ManifestComponent[]
+  readonly exported: readonly ManifestComponent[]
+  readonly queriedPackages: readonly string[]
+  readonly application: {
+    readonly declared: boolean
+    readonly allowBackup: string | null
+    readonly usesCleartextTraffic: string | null
+    readonly networkSecurityConfig: string | null
+    readonly debuggable: string | null
+  }
+}
+
+export interface ReleaseReview {
+  readonly reviewedSigner?: unknown
+  readonly qaProvider?: string
+  readonly image?: { readonly platformCertificateSha256?: unknown }
+  readonly manifestTestMocks?: unknown
+  readonly licenceBlocks?: (item: string) => boolean
+}
+
+export interface ImageApkRequest extends AaptOptions, SignerOptions {
+  readonly apk: string
+  readonly testMocksDir: string
+  readonly development?: boolean
+  readonly manifest?: unknown
+  readonly review?: ReleaseReview
+}
+
+export interface ImageApkAdmitted {
+  readonly sha256: string
+  readonly facts: ApkFacts
+  readonly row: ApkRow
+  readonly entry: RawRecord | undefined
+  readonly blockers: readonly ReleaseBlocker[]
+}
+
+export interface ApkUpdate {
+  readonly installedVersionCode: number | null
+  readonly installedSigner: unknown
+  readonly newVersionCode: number | null
+  readonly newSigner: unknown
+}
+
+export interface ApkUpdateReadback {
+  readonly candidate: { readonly sha256: unknown; readonly versionCode: number | null }
+  readonly installed: { readonly sha256: unknown; readonly versionCode: number | null }
+  readonly before: PackageIdentity
+  readonly after: PackageIdentity
+  readonly dataBefore: Inventory
+  readonly dataAfter: Inventory
+}
+
+export interface DomainComparison {
+  readonly evidence: DataEvidence
+  readonly differences: readonly string[]
+}
+
+export error ToolchainMissing { message: string }
+export error ToolFailed { tool: string; args: readonly string[]; code: number | undefined; message: string }
+export error ArtifactUnreadable { artifact: string; message: string }
+export error ArtifactTooLarge { artifact: string; sizeBytes: number; maxBytes: number; message: string }
+export error ArtifactChanged { artifact: string; message: string }
+export error ArchiveInvalid { artifact: string; entry: string | undefined; message: string }
+export error ArchiveEntryTooLarge { artifact: string; entry: string | undefined; sizeBytes: number; maxBytes: number; message: string }
+export error ApkSignerUnread { apk: string; signer: SignerObservation; message: string }
+export error ImageApkRefused { apk: string; refusal: ImageRefusal; blockers: readonly ReleaseBlocker[]; facts: ApkFacts; message: string }
+export error IntegrityQueryRefused { message: string }
+
+function isRecord(value: unknown): value is RawRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function text(value: unknown): string | null {
+  return typeof value === "string" ? value : null
+}
+
+export function parseDigest(value: unknown): Digest {
+  const hex = isRecord(value) && value.tag === "Sha256" ? value.hex : value
+  return typeof hex === "string" && HEX64.test(hex) ? { tag: "Sha256", hex } : { tag: "NotADigest" }
+}
+
+effect function present(file: string) {
+  const files = try FileSystem.FileSystem
+  return (files.exists(file) catch () => false)
+}
+
+effect function runTool(tool: string, args: readonly string[], env: Environment | undefined) {
+  const spawner = try ChildProcessSpawner
+  return try mapError(scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make(tool, [...args], { stdin: "ignore", ...(env === undefined ? {} : { env, extendEnv: false }) }))
+    const [stdout, stderr] = try.all [Stream.mkString(Stream.decodeText(child.stdout)), Stream.mkString(Stream.decodeText(child.stderr))]
+    const code: number = try child.exitCode
+    return { code, stdout, stderr }
+  }), (cause) => new ToolFailed({ tool, args, code: undefined, message: `${tool} could not run: ${cause.message}` }))
+}
+
+effect function toolOutput(tool: string, args: readonly string[], env: Environment | undefined) {
+  const result = try runTool(tool, args, env)
+  if (result.code !== 0) throw new ToolFailed({ tool, args, code: result.code, message: `${tool} ${args.join(" ")} exited with ${result.code}: ${(result.stderr || result.stdout).trim()}` })
+  return result.stdout
+}
+
+export effect function resolveAndroidSdkRoot(environment: Environment = processEnvironment()) {
+  const path = try Path.Path
+  const home = homeDirectory()
+  for (const candidate of [environment.ANDROID_SDK_ROOT, environment.ANDROID_HOME, path.join(home, "Library", "Android", "sdk"), path.join(home, "Android", "Sdk")]) {
+    if (candidate !== undefined && candidate !== "" && (try present(candidate))) return candidate
+  }
+  return undefined
+}
+
+export effect function resolveAndroidBuildTools(environment: Environment = processEnvironment()) {
+  const path = try Path.Path
+  const sdk = try resolveAndroidSdkRoot(environment)
+  if (sdk === undefined) throw new ToolchainMissing({ message: "No Android SDK in ANDROID_SDK_ROOT, ANDROID_HOME or the default locations" })
+  const directory = path.join(sdk, "build-tools", ANDROID_BUILD_TOOLS)
+  const tools: AndroidBuildTools = { sdk, aapt: path.join(directory, "aapt"), apksigner: path.join(directory, "apksigner"), zipalign: path.join(directory, "zipalign") }
+  const missing: string[] = []
+  for (const tool of [tools.aapt, tools.apksigner, tools.zipalign]) {
+    if (!(try present(tool))) missing.push(tool)
+  }
+  if (missing.length) throw new ToolchainMissing({ message: `Android build-tools ${ANDROID_BUILD_TOOLS} are required; missing ${missing.join(", ")}` })
+  return tools
+}
+
+export effect function javaMajorVersion(javaHome: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const release = (files.readFileString(path.join(javaHome, "release")) catch () => "")
+  const reported = /JAVA_VERSION="?(\d+)/.exec(release)?.[1] ?? /version "?(\d+)/.exec((effect {
+    const result = try runTool(path.join(javaHome, "bin", "java"), ["-version"], undefined)
+    return `${result.stderr}${result.stdout}`
+  } catch () => ""))?.[1]
+  return reported === undefined ? undefined : Number(reported)
+}
+
+export effect function resolveJavaHome(environment: Environment = processEnvironment()) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const installed = (files.readDirectory(JVM_ROOT) catch (): string[] => [])
+  for (const candidate of [environment.JAVA_HOME, ...JAVA_HOMES, ...installed.map((name) => path.join(JVM_ROOT, name))]) {
+    if (candidate !== undefined && candidate !== "" && ((try javaMajorVersion(candidate)) ?? 0) >= JAVA_MAJOR) return candidate
+  }
+  return undefined
+}
+
+export effect function snapshotAndroidArtifact(artifact: string, options: { readonly maxArtifactBytes?: number } = {}) {
+  const files = try FileSystem.FileSystem
+  const maxBytes = options.maxArtifactBytes ?? MAX_ANDROID_ARTIFACT_BYTES
+  const unreadable = (cause: { readonly message: string }) => new ArtifactUnreadable({ artifact, message: `Could not snapshot Android artifact ${artifact}: ${cause.message}` })
+  const before = try mapError(files.stat(artifact), unreadable)
+  if (before.type !== "File") throw new ArtifactUnreadable({ artifact, message: `Could not snapshot Android artifact ${artifact}: it is not a regular file` })
+  const sizeBytes = Number(before.size)
+  if (sizeBytes > maxBytes) throw new ArtifactTooLarge({ artifact, sizeBytes, maxBytes, message: `Android artifact exceeds the ${maxBytes}-byte audit limit: ${artifact}` })
+  const bytes = try mapError(files.readFile(artifact), unreadable)
+  const after = try mapError(files.stat(artifact), unreadable)
+  if (bytes.byteLength !== sizeBytes || Number(after.size) !== sizeBytes) throw new ArtifactChanged({ artifact, message: `Android artifact changed while it was being snapshotted: ${artifact}` })
+  const snapshot: ArtifactSnapshot = { bytes, sha256: sha256Hex(bytes), sizeBytes }
+  return snapshot
+}
+
+export effect function assertAndroidArtifactSnapshotUnchanged(artifact: string, before: ArtifactIdentity, after: ArtifactIdentity) {
+  if (before.sha256 !== after.sha256 || before.sizeBytes !== after.sizeBytes)
+    throw new ArtifactChanged({ artifact, message: `Android artifact changed during audit; refusing evidence for unstable bytes: ${artifact}` })
+}
+
+effect function archiveOf(artifact: string, options: ArtifactReadOptions) {
+  const bytes = options.artifactBytes ?? (try snapshotAndroidArtifact(artifact)).bytes
+  const directory = readArchiveDirectory(bytes, options.maxEntries ?? MAX_ANDROID_ARCHIVE_ENTRIES)
+  if (directory.kind === "invalid") throw new ArchiveInvalid({ artifact, entry: directory.entry, message: `Could not inspect Android artifact archive ${artifact}: ${directory.message}` })
+  return { bytes, entries: directory.entries }
+}
+
+export effect function listAndroidArtifactEntries(artifact: string, options: ArtifactReadOptions = {}) {
+  return (try archiveOf(artifact, options)).entries.map(({ entry }) => entry)
+}
+
+export effect function readAndroidArtifactEntryBuffers(artifact: string, entries: readonly string[], options: ArtifactReadOptions = {}) {
+  const label = options.label ?? "artifact policy"
+  const maxEntryBytes = options.maxEntryBytes ?? MAX_ANDROID_EXTRACTED_ENTRY_BYTES
+  const maxTotalBytes = options.maxTotalBytes ?? MAX_ANDROID_EXTRACTED_TOTAL_BYTES
+  const unsafe = entries.find((entry) => !safeArchiveEntry(entry))
+  if (unsafe !== undefined) throw new ArchiveInvalid({ artifact, entry: unsafe, message: `Refusing unsafe archive path for ${label}: ${unsafe}` })
+  const archive = try archiveOf(artifact, options)
+  const packaged = new Map(archive.entries.map((entry) => [entry.entry, entry]))
+  const selected: ArchiveEntry[] = []
+  let sizeBytes = 0
+  let compressedBytes = 0
+  for (const entry of entries) {
+    const found = packaged.get(entry)
+    if (found === undefined) throw new ArchiveInvalid({ artifact, entry, message: `Android artifact is missing requested ${label} entry: ${entry}` })
+    const largest = Math.max(found.size, found.compressedSize)
+    if (largest > maxEntryBytes) throw new ArchiveEntryTooLarge({ artifact, entry, sizeBytes: largest, maxBytes: maxEntryBytes, message: `${label} entry exceeds the ${maxEntryBytes}-byte audit limit: ${entry}` })
+    sizeBytes += found.size
+    compressedBytes += found.compressedSize
+    const total = Math.max(sizeBytes, compressedBytes)
+    if (total > maxTotalBytes) throw new ArchiveEntryTooLarge({ artifact, entry: undefined, sizeBytes: total, maxBytes: maxTotalBytes, message: `${label} entries exceed the ${maxTotalBytes}-byte total audit limit` })
+    selected.push(found)
+  }
+  const buffers = []
+  for (const entry of selected) {
+    const payload = expandArchiveEntry(archive.bytes, entry)
+    if (payload.kind === "invalid") throw new ArchiveInvalid({ artifact, entry: entry.entry, message: `Could not decode ${label} entry ${entry.entry}: ${payload.message}` })
+    buffers.push(payload.bytes)
+  }
+  return buffers
+}
+
+export effect function aaptManifestTree(apk: string, options: AaptOptions = {}) {
+  const aapt = options.aapt ?? (try resolveAndroidBuildTools(options.env)).aapt
+  return try toolOutput(aapt, ["dump", "xmltree", apk, "AndroidManifest.xml"], options.env)
+}
+
+export effect function dumpAndroidArtifactManifest(aapt: string, artifact: string) {
+  return try aaptManifestTree(artifact, { aapt })
+}
+
+export effect function dumpAndroidArtifactBadging(aapt: string, artifact: string) {
+  return try toolOutput(aapt, ["dump", "badging", artifact], undefined)
+}
+
+function rawAttributeValue(encoded: string): string {
+  const value = encoded.trim()
+  return /^"((?:[^"\\]|\\.)*)"/.exec(value)?.[1] ?? /^\(type 0x[0-9a-f]+\)(0x[0-9a-f]+)$/.exec(value)?.[1] ?? value
+}
+
+export function parseXmlTree(tree: string, options: { readonly decodeAttribute?: (encoded: string) => string } = {}): ManifestNode {
+  const decode = options.decodeAttribute ?? rawAttributeValue
+  const root: ManifestNode = { name: "#root", attrs: {}, children: [], indent: -1 }
+  const open = [root]
+  for (const line of tree.split(/\r?\n/)) {
+    const match = /^(\s*)([EA]): (.*)$/.exec(line)
+    if (match === null) continue
+    const indent = (match[1] ?? "").length
+    const rest = match[3] ?? ""
+    while (open.length > 1 && (open.at(-1)?.indent ?? -1) >= indent) open.pop()
+    const parent = open.at(-1) ?? root
+    if (match[2] === "E") {
+      const node: ManifestNode = { name: /^(\S+)/.exec(rest)?.[1] ?? "", attrs: {}, children: [], indent }
+      parent.children.push(node)
+      open.push(node)
+    } else {
+      const attribute = /^(?:[^\s(]*:)?([A-Za-z_][\w.-]*)(?:\(0x[0-9a-f]+\))?=(.*)$/i.exec(rest)
+      if (attribute?.[1] !== undefined) parent.attrs[attribute[1]] = decode(attribute[2] ?? "")
+    }
+  }
+  return root
+}
+
+function descendants(node: ManifestNode): ManifestNode[] {
+  return node.children.flatMap((child) => [child, ...descendants(child)])
+}
+
+export function manifestFacts(xml: string, badging = ""): ManifestFacts {
+  const elements = descendants(parseXmlTree(xml))
+  const manifest = elements.find((node) => node.name === "manifest")
+  const application = elements.find((node) => node.name === "application")
+  const packageName = manifest?.attrs.package ?? /package: name='([^']+)'/.exec(badging)?.[1] ?? null
+  const named = (tags: readonly string[]) => elements.filter((node) => tags.includes(node.name)).flatMap((node) => node.attrs.name ?? [])
+  const qualify = (name: string | undefined) => name === undefined ? "" : name.startsWith(".") ? `${packageName ?? ""}${name}` : name.includes(".") ? name : `${packageName ?? ""}.${name}`
+  const components = elements.filter((node) => COMPONENT_TAGS.has(node.name)).map((node): ManifestComponent => ({
+    tag: node.name,
+    name: qualify(node.attrs.name),
+    exported: node.attrs.exported === AAPT_TRUE,
+    permission: node.attrs.permission ?? null,
+  }))
+  const versionCodeText = /versionCode='([^']*)'/.exec(badging)?.[1] ?? manifest?.attrs.versionCode ?? null
+  return {
+    packageName,
+    versionCodeText,
+    versionCode: /^[1-9]\d*$/.test(versionCodeText ?? "") ? Number(versionCodeText) : /^0x[0-9a-f]+$/.test(versionCodeText ?? "") ? Number.parseInt(versionCodeText ?? "", 16) || null : null,
+    versionName: /versionName='([^']*)'/.exec(badging)?.[1] ?? manifest?.attrs.versionName ?? null,
+    permissions: named(["uses-permission", "uses-permission-sdk-23"]),
+    components,
+    exported: components.filter((component) => component.exported),
+    queriedPackages: named(["package"]),
+    application: {
+      declared: application !== undefined,
+      allowBackup: application?.attrs.allowBackup ?? null,
+      usesCleartextTraffic: application?.attrs.usesCleartextTraffic ?? null,
+      networkSecurityConfig: application?.attrs.networkSecurityConfig ?? null,
+      debuggable: application?.attrs.debuggable ?? null,
+    },
+  }
+}
+
+function buildTypeOf(tree: string): ApkBuildType {
+  const { application } = manifestFacts(tree)
+  return !application.declared ? "BuildTypeUnread" : application.debuggable === AAPT_TRUE ? "DebuggableBuild" : "ReleaseBuild"
+}
+
+function signerReport(output: string): SignerReport {
+  return {
+    legacy: [...output.matchAll(/Signer #([0-9]+) certificate SHA-256 digest:\s*([a-fA-F0-9]{64})/g)].map((row) => ({ number: Number(row[1]), certificate: parseDigest(row[2]?.toLowerCase()) })),
+    ranged: [...output.matchAll(/Signer \(minSdkVersion=([0-9]+), maxSdkVersion=([0-9]+)\) certificate SHA-256 digest:\s*([a-fA-F0-9]{64})/g)].map((row) => ({
+      minApi: Number(row[1]),
+      maxApi: Number(row[2]),
+      certificate: parseDigest(row[3]?.toLowerCase()),
+    })),
+  }
+}
+
+export effect function readApkSigner(apk: string, options: SignerOptions = {}) {
+  const apksigner = options.apksigner ?? (try resolveAndroidBuildTools(options.env)).apksigner
+  const api = options.apiLevel !== undefined && Number.isInteger(options.apiLevel) && options.apiLevel >= 1 ? options.apiLevel : 0
+  const args = ["verify", "--print-certs", ...(api === 0 ? [] : ["--min-sdk-version", String(api), "--max-sdk-version", String(api)]), apk]
+  const result = try runTool(apksigner, args, options.env)
+  const unverified = result.code !== 0 && `${result.stdout}${result.stderr}`.includes("DOES NOT VERIFY")
+  if (result.code !== 0 && !unverified) throw new ToolFailed({ tool: apksigner, args, code: result.code, message: `${apksigner} ${args.join(" ")} exited with ${result.code}: ${(result.stderr || result.stdout).trim()}` })
+  return signerForApi(signerReport(unverified ? "" : result.stdout), api)
+}
+
+export effect function readApkSignerDigest(apk: string, options: SignerOptions = {}) {
+  const signer = try readApkSigner(apk, options)
+  const certificate = signerCertificate(signer)
+  if (!isDigest(certificate)) {
+    throw new ApkSignerUnread({
+      apk,
+      signer,
+      message: signer.tag === "NoSigner" ? `apksigner reported no SHA-256 signer digest for ${apk}` : `${apk} has no single signer for the requested Android API level`,
+    })
+  }
+  return hexOf(certificate)
+}
+
+export effect function readApkBuildFlags(apk: string, options: ArtifactReadOptions = {}) {
+  const artifactBytes = options.artifactBytes ?? (try snapshotAndroidArtifact(apk)).bytes
+  const flags: BundleFlags = (effect {
+    const [packaged] = try readAndroidArtifactEntryBuffers(apk, [BUILD_FLAGS_ENTRY], { artifactBytes, label: "build flags", maxEntryBytes: 1024 * 1024 })
+    const recorded = packaged === undefined ? undefined : parseJson(packaged)
+    const read: BundleFlags = !isRecord(recorded) ? "FlagsMissing" : recorded.testMocks === false ? "MocksOff" : "MocksOn"
+    return read
+  } catch (): BundleFlags => "FlagsMissing")
+  return flags
+}
+
+effect function apkLocation(apk: string, testMocksDir: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const mocks = path.resolve(testMocksDir)
+  const file = path.resolve(apk)
+  const directories = [mocks, (files.realPath(mocks) catch () => mocks)]
+  const candidates = [file, (files.realPath(file) catch () => file)]
+  const inside = (directory: string, candidate: string) => {
+    const relative = path.relative(directory, candidate)
+    return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+  }
+  const location: ApkLocation = candidates.some((candidate) => directories.some((directory) => inside(directory, candidate))) ? "TestMocksOutput" : "StagingInput"
+  return location
+}
+
+function voiceRecord(value: unknown): VoiceRecord {
+  if (!isRecord(value) || typeof value.packaged !== "boolean") return { tag: "VoiceUnrecorded" }
+  const assetsVerified = Array.isArray(value.differences) && value.differences.length === 0
+  return value.packaged ? { tag: "VoicePackaged", assetsVerified, qualified: value.qualified === true } : { tag: "VoiceNotPackaged", assetsVerified }
+}
+
+function recordedQa(value: unknown): QaReceipt {
+  if (!isRecord(value) || value.tag !== "QaRecorded") return { tag: "QaAbsent" }
+  return {
+    tag: "QaRecorded",
+    evidence: parseDigest(value.evidence),
+    apk: parseDigest(value.apk),
+    provider: text(value.provider) ?? "",
+    outcome: value.outcome === "QaPassed" ? "QaPassed" : "QaNotPassed",
+    passedChecks: Array.isArray(value.passedChecks) ? value.passedChecks.filter((check): check is string => typeof check === "string") : [],
+  }
+}
+
+function speechProfile(value: unknown): SpeechProfile {
+  return value === undefined || value === null || value === "native" ? "OnDeviceSpeech" : value === "cloud" ? "CloudSpeech" : "UnknownSpeech"
+}
+
+function apkRow(row: RawRecord, review: ReleaseReview): ApkRow {
+  const release = row.mode === "release"
+  const manifestMocks = review.manifestTestMocks
+  const licence = Array.isArray(row.licenceBlockers) ? row.licenceBlockers.filter((item): item is string => typeof item === "string") : undefined
+  return {
+    recorded: release ? "RecordedRelease" : "RecordedDebug",
+    sha256: parseDigest(row.sha256),
+    testMocks: release ? (manifestMocks !== undefined && manifestMocks !== false) || row.testMocks !== false : manifestMocks === true || row.testMocks === true,
+    bundleAudited: row.bundleAudit === "passed",
+    signer: row.signed === true ? { tag: "OneSigner", certificate: parseDigest(row.signerSha256) } : { tag: "NoSigner" },
+    runtime: row.runtime !== "PACKAGED" ? "RuntimeUnpackaged" : row.runtimeNotices === true ? "RuntimeWithNotices" : "RuntimeWithoutNotices",
+    profile: speechProfile(row.runtimeProfile),
+    voice: voiceRecord(row.voiceHost),
+    qa: recordedQa(row.cloudVoice),
+    licenceRecorded: licence !== undefined,
+    licenceBlocking: (licence ?? []).some(review.licenceBlocks ?? (() => false)),
+    distributable: row.distributable === true,
+  }
+}
+
+function releasePolicy(review: ReleaseReview): ReleasePolicy {
+  return {
+    reviewedSigner: parseDigest(review.reviewedSigner),
+    qaProvider: review.qaProvider ?? "",
+    image: review.image === undefined ? { tag: "NotForImage" } : { tag: "ForImage", platformCertificate: parseDigest(review.image.platformCertificateSha256) },
+  }
+}
+
+export function apkReleaseBlockers(row: unknown, review: ReleaseReview = {}): ReleaseBlocker[] {
+  return releaseBlockers(isRecord(row) ? apkRow(row, review) : UNRECORDED, releasePolicy(review))
+}
+
+export function qaEvidenceAdmission(apkSha256: string, evidence: unknown, evidenceSha256: unknown): QaReceipt {
+  const rows = isRecord(evidence) && evidence.format === QA_EVIDENCE_FORMAT && Array.isArray(evidence.results) ? evidence.results.filter(isRecord).filter((row) => row.apkSha256 === apkSha256) : []
+  const [row] = rows
+  if (row === undefined || rows.length !== 1) return { tag: "QaAbsent" }
+  const checks = isRecord(row.checks) ? row.checks : {}
+  return {
+    tag: "QaRecorded",
+    evidence: parseDigest(evidenceSha256),
+    apk: parseDigest(row.apkSha256),
+    provider: text(row.provider) ?? "",
+    outcome: row.outcome === "passed" ? "QaPassed" : "QaNotPassed",
+    passedChecks: cloudSpeechChecks.filter((check) => checks[check] === true),
+  }
+}
+
+export const cloudVoiceAdmission = qaEvidenceAdmission
+
+function refusalMessage(request: ImageApkRequest, refusal: ImageRefusal, blockers: readonly ReleaseBlocker[]): string {
+  const { apk } = request
+  return match (refusal) {
+    when "InTestMocksOutput": `Refusing ${apk}: ${request.testMocksDir}/ builds are never staged into an image.`;
+    when "BundleFlagsUnread": `Refusing ${apk}: its web bundle has no readable ${BUILD_FLAGS_ENTRY}, so its test-mocks flag is unverified.`;
+    when "BundleBuiltWithMocks": `Refusing ${apk}: its web bundle was built with test mocks enabled.`;
+    when "RowRecordsMocks": `Refusing ${apk}: its APK manifest row records a test-mocks build.`;
+    when "RowNotDistributable": `Refusing ${apk}: its release row is not distributable. Unresolved blockers: ${blockers.join(", ")}`;
+    when "NeedsReleaseRow": `Refusing ${apk}: production staging requires a release row recorded for this APK's digest.`;
+    when "NotAReleaseApk": `Refusing ${apk}: production stages only a non-debuggable build with mocks off, signed by exactly the reviewed signer.`;
+    when "BuildTypeUnknown": `Refusing ${apk}: development stages debug builds only, and this APK's build type could not be read.`;
+    when "NotADebugBuild": `Refusing ${apk}: development stages debug builds only. This is a release build with no distributable release row.`;
+  }
+}
+
+export effect function admitImageApk(request: ImageApkRequest) {
+  const { apk } = request
+  const snapshot = try snapshotAndroidArtifact(apk)
+  const facts: ApkFacts = {
+    sha256: parseDigest(snapshot.sha256),
+    location: try apkLocation(apk, request.testMocksDir),
+    bundle: try readApkBuildFlags(apk, { artifactBytes: snapshot.bytes }),
+    buildType: buildTypeOf((aaptManifestTree(apk, request) catch () => "")),
+    signer: (readApkSigner(apk, request) catch (): SignerObservation => ({ tag: "SignerRefused" })),
+  }
+  const recorded = isRecord(request.manifest) ? request.manifest : {}
+  const entry = (Array.isArray(recorded.results) ? recorded.results : []).filter(isRecord).find((row) => row.sha256 === snapshot.sha256)
+  const review: ReleaseReview = { ...request.review, manifestTestMocks: recorded.testMocks }
+  const row = entry === undefined ? UNRECORDED : apkRow(entry, review)
+  const policy = releasePolicy(review)
+  const mode: StagingMode = request.development === true ? "StageDevelopment" : "StageProduction"
+  const blockers = row.recorded === "RecordedRelease" ? releaseBlockers(row, policy) : []
+  const admission = imageApkAdmission(facts, row, policy, mode)
+  if (admission.tag === "ApkRefused") throw new ImageApkRefused({ apk, refusal: admission.refusal, blockers, facts, message: refusalMessage(request, admission.refusal, blockers) })
+  const admitted: ImageApkAdmitted = { sha256: snapshot.sha256, facts, row, entry, blockers }
+  return admitted
+}
+
+export function apkUpdateAdmission(update: ApkUpdate): UpdateProblem[] {
+  return apkUpdateProblems(
+    { versionCode: update.installedVersionCode ?? Number.NaN, signer: parseDigest(update.installedSigner) },
+    { versionCode: update.newVersionCode ?? Number.NaN, signer: parseDigest(update.newSigner) },
+  )
+}
+
+function walkInventory(output: string): Inventory {
+  if (/run-as: package not debuggable|is not debuggable|Package .* is unknown/.test(output)) return UNAVAILABLE
+  if (/^READBACK_EXIT=(\d+)\s*$/m.exec(output)?.[1] !== "0") return FAILED
+  return {
+    tag: "InventoryRead",
+    files: output.split(/\r?\n/).flatMap((line): FileDigest[] => {
+      const match = /^([0-9a-f]{64})\s+\.\/(\S.*)$/.exec(line.trim())
+      const digest = match?.[1]
+      const file = match?.[2]
+      return digest === undefined || file === undefined ? [] : [{ domain: file.includes("/") ? file.slice(0, file.indexOf("/")) : ".", file, digest }]
+    }),
+  }
+}
+
+function exportInventory(output: string): Inventory {
+  if (/Could not find provider|Unknown authority|No content provider found/i.test(output)) return UNAVAILABLE
+  if (/Permission Denial|SecurityException|Exception|Error while accessing provider/.test(output)) return FAILED
+  const files: FileDigest[] = []
+  let end: number | undefined
+  for (const line of output.split(/\r?\n/)) {
+    const match = /^Row: \d+ domain=(.+?), key=([0-9a-f]{64}|\d+), digest=([0-9a-f]{64})$/.exec(line.trim())
+    if (match === null) continue
+    const [, domain = "", key = "", digest = ""] = match
+    if (domain === "#end") {
+      end = Number(key)
+    } else if (!HEX64.test(key) || /[/,=]/.test(domain)) {
+      return FAILED
+    } else {
+      files.push({ domain, file: `${domain}/${key}`, digest })
+    }
+  }
+  return end === files.length ? { tag: "InventoryRead", files } : FAILED
+}
+
+export effect function integrityQuery(authority: string, nonce: string) {
+  if (!/^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/i.test(authority)) throw new IntegrityQueryRefused({ message: "Integrity authority must be a content-provider authority" })
+  if (!/^[0-9a-f]{32,128}$/.test(nonce)) throw new IntegrityQueryRefused({ message: "Integrity nonce must be 32 to 128 hex characters" })
+  return ["shell", "content", "query", "--uri", `'content://${authority}/domains?nonce=${nonce}'`]
+}
+
+export function readbackInventory(privateWalk: string, integrityExport?: string): Inventory {
+  return readbackOf(walkInventory(privateWalk), integrityExport === undefined ? UNAVAILABLE : exportInventory(integrityExport))
+}
+
+export function compareDomains(before: Inventory, after: Inventory): DomainComparison {
+  const was = new Map(filesOf(before).map((row) => [row.file, row.digest]))
+  const now = new Map(filesOf(after).map((row) => [row.file, row.digest]))
+  return {
+    evidence: dataEvidence(before, after),
+    differences: [
+      ...[...was].flatMap(([file, digest]) => !now.has(file) ? [`${file} was lost`] : now.get(file) === digest ? [] : [`${file} changed`]),
+      ...[...now.keys()].filter((file) => !was.has(file)).map((file) => `${file} appeared`),
+    ].sort(),
+  }
+}
+
+export function apkUpdateReceipt(readback: ApkUpdateReadback): UpdateReceipt {
+  return updateReceipt(
+    {
+      candidate: parseDigest(readback.candidate.sha256),
+      candidateVersion: readback.candidate.versionCode ?? Number.NaN,
+      installed: parseDigest(readback.installed.sha256),
+      installedVersion: readback.installed.versionCode ?? Number.NaN,
+      before: readback.before,
+      after: readback.after,
+    },
+    readback.dataBefore,
+    readback.dataAfter,
+  )
+}

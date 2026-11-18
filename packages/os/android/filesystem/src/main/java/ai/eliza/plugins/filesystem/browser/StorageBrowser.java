@@ -411,21 +411,30 @@ public final class StorageBrowser {
    return new String(out.toByteArray(),StandardCharsets.UTF_8);
   }
  }
- /** Serializes registration with unwatch and rejects superseded queued requests. */
+ // spec/os/android/files/storageWatch.md, "Story: Watch a folder with one live observer"
  public static final class WatchSlot {
   public interface Watch { void stop(); }
-  private long generation;
+  private long generation,watching,refused;
   private Watch current;
   public synchronized long request(){return ++generation;}
+  public synchronized long generation(){return generation;}
+  public synchronized long watchedTicket(){return watching;}
+  public synchronized long refusedTicket(){return refused;}
+  private boolean settled(long ticket){return watching==ticket||refused==ticket;}
   public synchronized boolean install(long ticket,java.util.function.Supplier<Watch> start){
-   if(ticket!=generation)return false;
-   stopCurrent();current=start.get();return true;
+   if(ticket<=0||ticket!=generation||settled(ticket))return false;
+   Watch started=start.get(),previous=current;
+   current=started;watching=ticket;refused=0;
+   if(previous!=null)previous.stop();
+   return true;
   }
-  public synchronized boolean isCurrent(long ticket){return ticket==generation&&current!=null;}
-  public synchronized void clear(){generation++;stopCurrent();}
-  /** A refused latest request releases the previous folder's watch; a newer request is untouched. */
-  public synchronized void fail(long ticket){if(ticket==generation)stopCurrent();}
-  public synchronized boolean active(){return current!=null;}
+  public synchronized boolean refuse(long ticket){
+   if(ticket<=0||ticket>generation||settled(ticket))return false;
+   if(ticket==generation){refused=ticket;watching=0;stopCurrent();}
+   return true;
+  }
+  public synchronized void unwatch(){generation++;watching=0;refused=0;stopCurrent();}
+  public synchronized boolean observe(long ticket){return ticket>0&&ticket==generation&&watching==ticket;}
   private void stopCurrent(){Watch old=current;current=null;if(old!=null)old.stop();}
  }
 }

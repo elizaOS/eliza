@@ -1,0 +1,219 @@
+// spec/os/android/system.md, "Story: Approve a Wi-Fi join and see whether that network connected"
+import { assert, it } from "@effect/vitest"
+import { MalformedWiFiReply, wifiClient, wifiPlugin } from "../src/bridges/wifi.vibe"
+
+module android {
+  import { CapacitorException } from "@capacitor/core"
+  import type { ConnectOptions, ConnectivityResult, WiFiNetwork, WiFiPermissionStatus, WiFiPlugin, WiFiSecurity } from "../src/bridges/definitions/wifi.ts"
+
+  interface Nearby {
+    readonly rssi: number
+    readonly security: WiFiSecurity
+    readonly password?: string
+    readonly portal?: true
+  }
+
+  export interface Device {
+    sdk: number
+    bridge: boolean
+    location: WiFiPermissionStatus["location"]
+    nearby: Readonly<Record<string, Nearby>>
+    active: string | null
+    acceptsDisconnect: boolean
+    connectivityReply: unknown
+    panelOpens: number
+    joins: ConnectOptions[]
+  }
+
+  /** @throws {never} */
+  export function device(changes: Partial<Device> = {}): Device {
+    return {
+      sdk: 34,
+      bridge: true,
+      location: "prompt",
+      nearby: {
+        home: { rssi: -41, security: "wpa2", password: "correct horse battery" },
+        cafe: { rssi: -60, security: "open", portal: true },
+        office: { rssi: -70, security: "eap" },
+      },
+      active: null,
+      acceptsDisconnect: true,
+      connectivityReply: undefined,
+      panelOpens: 0,
+      joins: [],
+      ...changes,
+    }
+  }
+
+  /** @throws {never} */
+  export function androidWifi(phone: Device): WiFiPlugin {
+    const rejection = (message: string, code: string) => Object.assign(new CapacitorException(message), { code })
+    const admit = async () => {
+      if (!phone.bridge) throw rejection("Wi-Fi controls are turned off in this app", "DISABLED")
+    }
+    const row = (ssid: string, network: Nearby): WiFiNetwork => ({
+      ssid,
+      bssid: "02:00:00:00:00:01",
+      rssi: network.rssi,
+      frequency: 5180,
+      capabilities: `[${network.security.toUpperCase()}][ESS]`,
+      secured: network.password !== undefined,
+      security: network.security,
+    })
+    const active = () => (phone.active === null ? undefined : phone.nearby[phone.active])
+    const connectivity = (): ConnectivityResult => {
+      const network = active()
+      return { online: network !== undefined, validated: network !== undefined && network.portal !== true, captivePortal: network?.portal === true, ssid: phone.active }
+    }
+    const join = (options: ConnectOptions) => {
+      const network = phone.nearby[options.ssid]
+      if (network === undefined) return "notConnected"
+      if (network.password !== options.password) return "wrongPassword"
+      phone.active = options.ssid
+      return network.portal === true ? "captivePortal" : "connected"
+    }
+    return {
+      checkPermissions: async () => {
+        await admit()
+        return { location: phone.location }
+      },
+      requestPermissions: async () => {
+        await admit()
+        phone.location = "granted"
+        return { location: phone.location }
+      },
+      getCapabilities: async () => {
+        await admit()
+        return { sdk: phone.sdk, approvedJoin: phone.sdk >= 30, internetPanel: phone.sdk >= 29 }
+      },
+      openInternetPanel: async () => {
+        await admit()
+        if (phone.sdk < 29) throw rejection("The internet panel requires Android 10 or later", "UNSUPPORTED")
+        phone.panelOpens += 1
+      },
+      getWifiState: async () => {
+        await admit()
+        return { enabled: true, connected: phone.active !== null, rssi: active()?.rssi ?? null }
+      },
+      getConnectedNetwork: async () => {
+        await admit()
+        const network = active()
+        return { network: phone.active === null || network === undefined ? null : { ...row(phone.active, network), capabilities: "" } }
+      },
+      listAvailableNetworks: async (options) => {
+        await admit()
+        if (phone.location !== "granted") throw rejection("ACCESS_FINE_LOCATION required for Wi-Fi scans on API 26+", "LOCATION_PERMISSION_REQUIRED")
+        const found = Object.entries(phone.nearby).filter(([, network]) => options?.joinable !== true || (network.security !== "eap" && network.security !== "wep"))
+        return { networks: found.map(([ssid, network]) => row(ssid, network)) }
+      },
+      connectToNetwork: async (options) => {
+        await admit()
+        return join(options) === "notConnected" ? { success: false, message: `Failed to request connection to ${options.ssid}` } : { success: true }
+      },
+      disconnectFromNetwork: async () => {
+        await admit()
+        if (!phone.acceptsDisconnect) return { success: false, message: "WifiManager.disconnect() returned false" }
+        phone.active = null
+        return { success: true }
+      },
+      getConnectivity: async () => {
+        await admit()
+        return (phone.connectivityReply ?? connectivity()) as ConnectivityResult
+      },
+      addNetworkWithApproval: async (options) => {
+        await admit()
+        if (phone.sdk < 30) throw rejection("User-approved Wi-Fi join requires Android 11 or later", "UNSUPPORTED")
+        phone.joins.push(options)
+        return { status: join(options) }
+      },
+    }
+  }
+}
+import { androidWifi, device } from android
+
+effect function refusal(call: () => Promise<unknown>) {
+  const { cause } = try flip(tryPromise(() => call()))
+  if (cause instanceof MalformedWiFiReply) return `malformed ${cause.method}`
+  return typeof cause === "object" && cause !== null && "code" in cause ? cause.code : cause
+}
+
+it.live("Join the network I chose, see whether it is online, hand off to Android's panel and disconnect (spec/os/android/system.md, \"Story: Approve a Wi-Fi join and see whether that network connected\"; spec/os/android/system.md, \"A Settings page opens its specific page first and a broader page only where one is listed\"; spec/os/android/system.md, \"A fact is reported only as Android answered it, and unknown is never off\")", () => effect {
+  const phone = device()
+  const wifi = wifiClient(androidWifi(phone))
+  const capabilities = try promise(() => wifi.getCapabilities())
+  const asked = try promise(() => wifi.checkPermissions())
+  const ungranted = try refusal(() => wifi.listAvailableNetworks({ joinable: true, maxAge: 0 }))
+  const granted = try promise(() => wifi.requestPermissions({ permissions: ["location"] }))
+  const offers = try promise(() => wifi.listAvailableNetworks({ joinable: true, maxAge: 0 }))
+  const mistyped = try promise(() => wifi.addNetworkWithApproval({ ssid: "home", security: "wpa2", password: "wrong horse" }))
+  const idle = try promise(() => wifi.getConnectivity())
+  const joined = try promise(() => wifi.addNetworkWithApproval({ ssid: "home", security: "wpa2", password: "correct horse battery" }))
+  const online = try promise(() => wifi.getConnectivity())
+  const radio = try promise(() => wifi.getWifiState())
+  const connected = try promise(() => wifi.getConnectedNetwork())
+  const panel = try promise(() => wifi.openInternetPanel())
+  const afterPanel = try promise(() => wifi.getConnectivity())
+  phone.acceptsDisconnect = false
+  const held = try promise(() => wifi.disconnectFromNetwork())
+  const afterHeld = try promise(() => wifi.getConnectivity())
+  phone.acceptsDisconnect = true
+  const left = try promise(() => wifi.disconnectFromNetwork())
+  const afterLeft = try promise(() => wifi.getConnectivity())
+  const portal = try promise(() => wifi.addNetworkWithApproval({ ssid: "cafe", security: "open" }))
+  const signIn = try promise(() => wifi.getConnectivity())
+  const suggested = try promise(() => wifi.connectToNetwork({ ssid: "nowhere" }))
+  phone.connectivityReply = { online: true, ssid: "cafe" }
+  const unknownValidation = try refusal(() => wifi.getConnectivity())
+
+  const older = wifiClient(androidWifi(device({ sdk: 28 })))
+  const turnedOff = wifiClient(androidWifi(device({ bridge: false })))
+  const absent = wifiClient(wifiPlugin("DeviceWifi"))
+  const refused = {
+    olderPanel: try promise(() => older.openInternetPanel()),
+    olderJoin: try refusal(() => older.addNetworkWithApproval({ ssid: "home", password: "correct horse battery" })),
+    turnedOffPanel: try promise(() => turnedOff.openInternetPanel()),
+    turnedOffRead: try refusal(() => turnedOff.getConnectivity()),
+    absentPanel: try promise(() => absent.openInternetPanel()),
+    absentRead: try refusal(() => absent.getConnectivity()),
+  }
+
+  const home = { ssid: "home", bssid: "02:00:00:00:00:01", rssi: -41, frequency: 5180, secured: true, security: "wpa2" }
+  const onHome = { online: true, validated: true, captivePortal: false, ssid: "home" }
+  const offline = { online: false, validated: false, captivePortal: false, ssid: null }
+  try Effect.try(() => assert.deepStrictEqual(
+    { capabilities, asked, ungranted, granted, offers, mistyped, idle, joined, online, radio, connected, panel, afterPanel, held, afterHeld, left, afterLeft, portal, signIn, suggested, unknownValidation, refused, panelOpens: phone.panelOpens, joins: phone.joins },
+    {
+      capabilities: { sdk: 34, approvedJoin: true, internetPanel: true },
+      asked: { location: "prompt" },
+      ungranted: "LOCATION_PERMISSION_REQUIRED",
+      granted: { location: "granted" },
+      offers: { networks: [
+        { ...home, capabilities: "[WPA2][ESS]" },
+        { ssid: "cafe", bssid: "02:00:00:00:00:01", rssi: -60, frequency: 5180, capabilities: "[OPEN][ESS]", secured: false, security: "open" },
+      ] },
+      mistyped: { status: "wrongPassword" },
+      idle: offline,
+      joined: { status: "connected" },
+      online: onHome,
+      radio: { enabled: true, connected: true, rssi: -41 },
+      connected: { network: { ...home, capabilities: "" } },
+      panel: "Opened",
+      afterPanel: onHome,
+      held: { success: false, message: "WifiManager.disconnect() returned false" },
+      afterHeld: onHome,
+      left: { success: true },
+      afterLeft: offline,
+      portal: { status: "captivePortal" },
+      signIn: { online: true, validated: false, captivePortal: true, ssid: "cafe" },
+      suggested: { success: false, message: "Failed to request connection to nowhere" },
+      unknownValidation: "malformed getConnectivity",
+      refused: { olderPanel: "Refused", olderJoin: "UNSUPPORTED", turnedOffPanel: "Refused", turnedOffRead: "DISABLED", absentPanel: "Refused", absentRead: "UNIMPLEMENTED" },
+      panelOpens: 1,
+      joins: [
+        { ssid: "home", security: "wpa2", password: "wrong horse" },
+        { ssid: "home", security: "wpa2", password: "correct horse battery" },
+        { ssid: "cafe", security: "open" },
+      ],
+    },
+  ))
+})

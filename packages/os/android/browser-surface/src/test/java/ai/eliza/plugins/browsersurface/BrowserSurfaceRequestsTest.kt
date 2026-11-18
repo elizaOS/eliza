@@ -68,7 +68,7 @@ class BrowserSurfaceRequestsTest {
 
     @Test
     fun aSignInPageOpensInABrowserOtherThanThisApp() {
-        val own = "technology.graceful.grace"
+        val own = "com.example.consumer"
         assertEquals("com.android.chrome",
             BrowserSurfaceRequests.identityBrowser(own, "com.android.chrome", listOf(own, "org.mozilla.firefox", "com.android.chrome")))
         // This app as the default, or the system resolver, falls back to another browser.

@@ -1,10 +1,13 @@
+// spec/os/android/system.md, "Story: Approve a Wi-Fi join and see whether that network connected"; spec/os/android/system.md, "A fact is reported only as Android answered it, and unknown is never off"
 /**
- * Type definitions for the @elizaos/plugin-native-wifi/bridge bridge.
+ * Type definitions for the Wi-Fi bridge of @elizaos/os
+ * (`@elizaos/os/bridges/definitions/wifi`).
  *
  * The native side is implemented in Kotlin under
- * android/src/main/java/ai/eliza/plugins/wifi/WiFiPlugin.kt and is registered
- * with Capacitor as `ElizaWiFi`. The web fallback in `./web.ts` resolves
- * with empty data and a warning so type-only consumers compile cleanly.
+ * android/wifi/src/main/java/ai/eliza/plugins/wifi/WiFiPlugin.kt and is registered
+ * with Capacitor as `ElizaWiFi`, or under the host's own name where the host
+ * subclasses it. There is no web implementation: the client in `../wifi.vibe`
+ * parses each native reply, and a call without the native plugin rejects.
  */
 
 /**
@@ -155,7 +158,7 @@ export interface ApprovedJoinResult {
 }
 
 /**
- * Public Capacitor plugin contract — implemented natively on Android with an empty-data web fallback.
+ * Public Capacitor plugin contract, implemented natively on Android only.
  *
  * A host can register a subclass that turns the bridge off; every method then
  * rejects with `DISABLED`.

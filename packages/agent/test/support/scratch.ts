@@ -55,6 +55,7 @@ function model(backend: Backend): Record<string, string> {
   }
 }
 
+/** @throws {never} */
 export function launchDocument(options: LaunchOptions = {}): Record<string, unknown> {
   const backend = options.backend ?? { kind: "none" };
   return {

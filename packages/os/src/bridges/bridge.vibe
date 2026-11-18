@@ -1,0 +1,59 @@
+// spec/os/android/bridge.md, "Story: Admit a bridge call only with current evidence"; spec/os/android/bridge.md, "Story: Report a device change only as Android confirmed it"
+import type { Receipt } from "../../gen/core__receipts.ts"
+import { receiptOfHandoff, receiptOfWrite, type HandoffOutcome, type WriteOutcome } from "../../gen/os__android__bridge.effect.vibe"
+
+export type { Admission, HandoffOutcome, ProviderReply, ReadEvidence, WriteGate, WriteOutcome } from "../../gen/os__android__bridge.ts"
+export { gateAllowsWrite, gateOnDispatch, gateOnOutcome, gateOnRead, writeOutcome } from "../../gen/os__android__bridge.effect.vibe"
+
+export error BridgeUnavailable { plugin: string; method: string }
+
+export error NativeRejection { plugin: string; method: string; code: string | undefined; reason: string; cause: unknown }
+
+export error MalformedReply { plugin: string; method: string; issue: string }
+
+export type BridgeFailure = BridgeUnavailable | NativeRejection | MalformedReply
+
+export interface HandoffReport<Reply> {
+  readonly outcome: HandoffOutcome
+  readonly reply: Reply
+}
+
+const UNIMPLEMENTED = "UNIMPLEMENTED"
+
+export function receiptOf(outcome: HandoffOutcome | WriteOutcome): Receipt {
+  return outcome === "Opened" || outcome === "Refused" ? receiptOfHandoff(outcome) : receiptOfWrite(outcome)
+}
+
+export function rejectionCode(cause: unknown): string | undefined {
+  const code = typeof cause === "object" && cause !== null && "code" in cause ? cause.code : undefined
+  return typeof code === "string" ? code : undefined
+}
+
+function rejectionReason(cause: unknown): string {
+  const reason = typeof cause === "object" && cause !== null && "message" in cause ? cause.message : cause
+  return typeof reason === "string" ? reason : ""
+}
+
+export effect function nativeCall(plugin: string, method: string, call: () => Promise<unknown>): unknown!(BridgeUnavailable | NativeRejection) {
+  return try tryPromise({
+    try: () => call(),
+    catch: (cause) => rejectionCode(cause) === UNIMPLEMENTED
+      ? new BridgeUnavailable({ plugin, method })
+      : new NativeRejection({ plugin, method, code: rejectionCode(cause), reason: rejectionReason(cause), cause }),
+  })
+}
+
+export effect function decoded<A>(plugin: string, method: string, shape: Schema.Codec<A>, raw: unknown): A!MalformedReply {
+  return try mapError(Schema.decodeUnknownEffect(shape)(raw), (refusal) => new MalformedReply({ plugin, method, issue: refusal.message }))
+}
+
+export effect function nativeReply<A>(plugin: string, method: string, shape: Schema.Codec<A>, call: () => Promise<unknown>): A!BridgeFailure {
+  return try decoded(plugin, method, shape, try nativeCall(plugin, method, call))
+}
+
+export async function settled<A, E>(program: A!E): Promise<A> {
+  const done = await runPromiseExit(program)
+  if (Exit.isSuccess(done)) return done.value
+  const failure = Cause.squash(done.cause)
+  throw failure instanceof NativeRejection ? failure.cause : failure
+}

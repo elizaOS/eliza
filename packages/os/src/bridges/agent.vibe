@@ -1,0 +1,118 @@
+// spec/os/agentService/channel.md, "Story: Ask the agent only on the routes my app allows"; spec/os/agentService/channel.md, "Story: Stream a reply and stop it"; spec/os/agentService/channel.md, "Story: Receive the agent's live events for my screen"
+import type { AgentEvents, AgentFailCode, AgentStatus, ElizaAgentPlugin } from "./definitions/agent.ts"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import { Cause, Effect, Exit } from "effect"
+  import type { ElizaAgentPlugin } from "./definitions/agent.ts"
+
+  /** @throws {never} */
+  export function agentPlugin(name = "ElizaAgent"): ElizaAgentPlugin {
+    return registerPlugin<ElizaAgentPlugin>(name)
+  }
+
+  /** @throws {never} */
+  export async function answered<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
+    const exit = await Effect.runPromiseExit(effect)
+    if (Exit.isSuccess(exit)) return exit.value
+    throw Cause.squash(exit.cause)
+  }
+}
+import { agentPlugin, answered } from capacitor
+export { agentPlugin }
+
+export type AgentCall = keyof ElizaAgentPlugin
+
+export error AgentRefused { call: AgentCall; code: AgentFailCode; message: string }
+
+export error AgentCallFailed { call: AgentCall; cause: unknown }
+
+export error MalformedAgentReply { call: AgentCall; issue: string }
+
+const FailCode = Schema.Literals(["NotReady", "RouteRefused", "TooLarge", "IdInUse", "TopicInUse", "Busy", "Restarted", "Broken"])
+schema Refusal { code: "NotReady" | "RouteRefused" | "TooLarge" | "IdInUse" | "TopicInUse" | "Busy" | "Restarted" | "Broken"; message: string }
+const statusFacts = { available: Schema.Boolean, epoch: Schema.Int, requestBodyLimit: Schema.Int }
+const Status = Schema.Union([
+  Schema.Struct({ ...statusFacts, state: Schema.Literals(["unavailable", "stopped", "starting", "running"]) }),
+  Schema.Struct({
+    ...statusFacts,
+    state: Schema.Literal("failed"),
+    failure: Schema.Literals(["payload", "storage", "config", "credential", "agent", "crashed", "runtime"]),
+    error: Schema.optionalKey(Schema.String),
+  }),
+])
+const Response = Schema.Struct({ status: Schema.Int, data: Schema.Unknown })
+schema CallId { id: string }
+schema Abort { aborted: boolean }
+const delivered = { id: Schema.String, index: Schema.Int }
+const failed = { id: Schema.String, kind: Schema.Literal("failed"), code: FailCode }
+const StreamData = Schema.Union([
+  Schema.Struct({ ...delivered, kind: Schema.Literal("head"), status: Schema.Int, headers: Schema.Record(Schema.String, Schema.String) }),
+  Schema.Struct({ ...delivered, kind: Schema.Literal("chunk"), dataBase64: Schema.String }),
+])
+const StreamEnd = Schema.Union([
+  Schema.Struct({ id: Schema.String, kind: Schema.Literals(["end", "error", "aborted"]) }),
+  Schema.Struct(failed),
+])
+const AgentEvent = Schema.Union([
+  Schema.Struct({ ...delivered, kind: Schema.Literal("event"), event: Schema.Record(Schema.String, Schema.Unknown) }),
+  Schema.Struct({ id: Schema.String, kind: Schema.Literal("end") }),
+  Schema.Struct(failed),
+])
+schema Unavailable { kind: "unavailable" }
+schema Unimplemented { code: "UNIMPLEMENTED" }
+const noPlugin: AgentStatus = { available: false, state: "unavailable", epoch: 0, requestBodyLimit: 0 }
+const Review = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("reviewable"), reviewToken: Schema.String, retainedCount: Schema.Int }),
+  Unavailable,
+])
+const Archive = Schema.Union([Schema.Struct({ kind: Schema.Literal("archived"), archivedCount: Schema.Int }), Unavailable])
+const events: { [Name in keyof AgentEvents]: Schema.Codec<AgentEvents[Name]> } = {
+  status: Status,
+  streamData: StreamData,
+  streamEnd: StreamEnd,
+  agentEvent: AgentEvent,
+}
+
+function rejection(call: AgentCall, cause: unknown) {
+  return match (Schema.decodeUnknownOption(Refusal)(cause)) {
+    when Option.Some(let refusal): new AgentRefused({ call, ...refusal });
+    default: new AgentCallFailed({ call, cause });
+  }
+}
+
+effect function reply<A>(call: AgentCall, shape: Schema.Codec<A>, run: () => Promise<unknown>) {
+  const raw = try tryPromise({ try: () => run(), catch: (cause) => rejection(call, cause) })
+  return try mapError(Schema.decodeUnknownEffect(shape)(raw), (refusal) => new MalformedAgentReply({ call, issue: refusal.message }))
+}
+
+function unimplemented(failure: AgentRefused | AgentCallFailed | MalformedAgentReply) {
+  return failure._tag === "AgentCallFailed" && Schema.is(Unimplemented)(failure.cause)
+}
+
+function heard<Name extends keyof AgentEvents>(name: Name, listener: (event: AgentEvents[Name]) => void) {
+  const shape: Schema.Codec<AgentEvents[Name]> = events[name]
+  return (event: unknown) =>
+    runFork(matchEffect(Schema.decodeUnknownEffect(shape)(event), {
+      onSuccess: (parsed) => sync(() => listener(parsed)),
+      onFailure: (refusal) => logError("A native agent event did not match its shape", { event: name, issue: refusal.message }),
+    }))
+}
+
+export function agentClient(plugin: ElizaAgentPlugin = agentPlugin()): ElizaAgentPlugin {
+  return {
+    getStatus: () => answered(Effect.catchIf(reply("getStatus", Status, () => plugin.getStatus()), unimplemented, () => Effect.succeed(noPlugin))),
+    start: () => answered(reply("start", Status, () => plugin.start())),
+    stop: () => answered(reply("stop", Status, () => plugin.stop())),
+    restart: () => answered(reply("restart", Status, () => plugin.restart())),
+    request: (options) => answered(reply("request", Response, () => plugin.request(options))),
+    requestStream: (options) => answered(reply("requestStream", CallId, () => plugin.requestStream(options))),
+    abort: (options) => answered(reply("abort", Abort, () => plugin.abort(options))),
+    subscribeEvents: (options) => answered(reply("subscribeEvents", CallId, () => plugin.subscribeEvents(options))),
+    unsubscribeEvents: (options) => answered(reply("unsubscribeEvents", Abort, () => plugin.unsubscribeEvents(options))),
+    reviewRecovery: () => answered(reply("reviewRecovery", Review, () => plugin.reviewRecovery())),
+    archiveRecovery: (options) => answered(reply("archiveRecovery", Archive, () => plugin.archiveRecovery(options))),
+    addListener: (eventName, listener) =>
+      answered(tryPromise({ try: () => plugin.addListener(eventName, heard(eventName, listener)), catch: (cause) => rejection("addListener", cause) })),
+  }
+}

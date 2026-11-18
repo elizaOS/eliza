@@ -1,0 +1,97 @@
+// spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"; spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"
+import { assert, describe, it } from "@effect/vitest"
+import { FetchHttpClient } from "effect/http"
+import { deploymentLayer, parseProfile } from "../../src/profile/profile.vibe"
+import { complete, stream, type LlmFailure, type LlmProvider } from "../../src/providers/llm.vibe"
+import { startFakeServer } from "../support/fakes.ts"
+import { llmFake, replyText, streamText, upstreamModel, usage, wholeAnswer } from "../support/llm-fake.ts"
+import { secrets, testProfile } from "../support/profile.ts"
+
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+
+effect function outcome<A, R>(program: A!LlmFailure!R): unknown!!R {
+  return match (try exit(program)) {
+    when Exit.Success(let value): value;
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).map((error) => error._tag === "ProviderRefused" ? [error._tag, error.status, error.retryAfter] : [error._tag]).getOrElse(() => Cause.hasInterruptsOnly(cause) ? "interrupted" : "defect");
+  }
+}
+
+effect function adapter() {
+  const fakes = try acquireRelease(promise(() => startFakeServer()), (server) => promise(() => server.close()))
+  const llm = try sync(() => {
+    const fake = llmFake()
+    fakes.mount("/llm/", fake.handler)
+    return fake
+  })
+  const profile = try parseProfile(try sync(() => testProfile(fakes.url)))
+  const provider: LlmProvider = { id: "llm", baseUrl: `${fakes.url}/llm`, apiKeyEnv: "LLM_API_KEY" }
+  const layer = Layer.mergeAll(deploymentLayer(profile, "staging"), FetchHttpClient.layer).pipe(
+    Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))
+  )
+  return { llm, provider, layer }
+}
+
+const request = { model: upstreamModel, messages: [{ role: "user", content: "Say hello" }], max_tokens: 16 }
+
+effect function text(bytes: Stream.Stream<Uint8Array, LlmFailure>): string!LlmFailure {
+  const decoder = new TextDecoder()
+  const chunks = try Stream.runCollect(bytes)
+  return Array.from(chunks, (chunk) => decoder.decode(chunk, { stream: true })).join("") + decoder.decode()
+}
+
+describe("WP5 Inference: provider adapter", () => {
+  it.live("Send one call per request to the provider and pass its answer through (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\")", () => scoped(effect {
+    const { llm, provider, layer } = try adapter()
+    provide layer {
+      try sync(() => llm.script({ kind: "whole" }, { kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "refuse" }))
+      const whole = try complete(provider, request)
+      const refused = try outcome(complete(provider, request))
+      const invalid = try outcome(complete(provider, request))
+      const refusedStream = try outcome(stream(provider, request))
+      try check(() => assert.deepStrictEqual(
+        {
+          whole: [whole.json, whole.usage],
+          refused,
+          invalid,
+          refusedStream,
+          sent: llm.bodies,
+          authorization: llm.headers.map((headers) => [headers.authorization, headers["idempotency-key"]])
+        },
+        {
+          whole: [wholeAnswer, usage],
+          refused: ["ProviderRefused", 429, 7_000],
+          invalid: ["ProviderInvalidResponse"],
+          refusedStream: ["ProviderRefused", 429, undefined],
+          sent: [request, request, request, { ...request, stream: true, stream_options: { include_usage: true } }],
+          authorization: Array.from({ length: 4 }, () => [`Bearer ${secrets.LLM_API_KEY}`, undefined])
+        }
+      ))
+    }
+  }))
+
+  it.live("Pass the provider's stream through and cancel it when the caller goes away (spec/cloud/services/inference.md, \"Story: Stream a reply in the shape clients read\")", () => scoped(effect {
+    const { llm, provider, layer } = try adapter()
+    provide layer {
+      try sync(() => llm.script({ kind: "stream" }, { kind: "hang", after: 2 }))
+      const whole = try text(try stream(provider, { ...request, stream_options: { include_usage: false } }))
+      const hanging = try stream(provider, request)
+      const firstBytes = try Deferred.make<void>()
+      const decoder = new TextDecoder()
+      const seen = try Ref.make("")
+      const reading = try forkChild(Stream.runForEach(hanging, effect (bytes) => {
+        const sofar = try Ref.updateAndGet(seen, (before) => before + decoder.decode(bytes, { stream: true }))
+        if (sofar.includes(replyText.slice(0, 2))) try Deferred.succeed(firstBytes, undefined)
+      }))
+      try Deferred.await(firstBytes)
+      try Fiber.interrupt(reading)
+      const ended = try outcome(Fiber.join(reading))
+      try promise(() => llm.untilAborted(1))
+      try check(() => assert.deepStrictEqual(
+        { whole, ended, aborted: llm.aborted, forced: llm.bodies.map((body) => body.stream_options) },
+        { whole: streamText, ended: "interrupted", aborted: 1, forced: [{ include_usage: true }, { include_usage: true }] }
+      ))
+    }
+  }))
+})

@@ -60,7 +60,7 @@ module node {
   }
 }
 import { migrationFiles, openPg, openPglite, type Migration } from node
-import { Store, StoreFailure, foreign, storeOver, toText, type StoreLocation, type Tx } from "./connection.vibe"
+import { Store, type StoreFailure, foreign, storeOver, toText, type StoreLocation, type Tx } from "./connection.vibe"
 export { Store, StoreFailure, toInt, toText, type Row, type StoreLocation, type Tx } from "./connection.vibe"
 export error DatabaseIdentityMismatch { expected: string; found: string }
 export error StoreLocationInvalid { input: string }
@@ -82,7 +82,7 @@ export function storeLayer(location: StoreLocation): Layer.Layer<Store, StoreFai
   })
 }
 
-effect function identityDigest(tx: Tx): (string | undefined)!StoreFailure {
+export effect function identityDigest(tx: Tx): (string | undefined)!StoreFailure {
   const table = try tx.query("SELECT to_regclass('cloud_identity') IS NOT NULL AS present")
   if (table[0]?.present !== true) return undefined
   return toText((try tx.query("SELECT digest FROM cloud_identity"))[0]?.digest)

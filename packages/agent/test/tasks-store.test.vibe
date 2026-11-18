@@ -1,0 +1,208 @@
+// spec/agent/tasks/store.md, "Story: Refuse task storage when custody cannot be verified"; spec/agent/tasks/store.md, "Story: Keep records a build cannot read"
+import { assert, it } from "@effect/vitest"
+import { createTaskStore, type TaskDatabaseOpener, type TaskRecord } from "../src/tasks/store.vibe"
+import { scratch, SupportFailed } from "./support/kernel.vibe"
+
+module node {
+  import { randomBytes } from "node:crypto"
+  import { spawnSync } from "node:child_process"
+  import { chmodSync, existsSync, readdirSync, renameSync, writeFileSync } from "node:fs"
+  import { join } from "node:path"
+  import { DatabaseSync } from "node:sqlite"
+  import { Redacted } from "effect"
+  import { createInteractiveTask, transitionInteractiveTask, type InteractiveTask } from "@elizaos/core"
+  import { createTaskSealer, deriveTaskKeys, type TaskPurpose } from "../src/tasks/sealing.vibe"
+  import { openNodeTaskDatabase, storageKeySource, type TaskDatabaseOpener, type TaskRecord } from "../src/tasks/store.vibe"
+
+  export const account = "owner-account"
+  const owner = { agentId: "agent-1", actorId: "owner-1", connector: { source: "device", accountId: "device" } }
+
+  export function newKey(bytes = 32): string {
+    return randomBytes(bytes).toString("base64")
+  }
+
+  export function keyFor(key: string | undefined) {
+    return storageKeySource(key === undefined ? undefined : Redacted.make(key))
+  }
+
+  export function task(id: string): TaskRecord {
+    const created = createInteractiveTask({
+      id, owner, goalRef: `goal-${id}`, now: 1_000,
+      authorization: { decisionId: `decision-${id}`, policyRevision: "1", decidedAt: "2026-01-01T00:00:00.000Z", state: "active", revokedAt: null },
+      allowedCapabilities: ["read"], allowedOrigins: ["https://example.com"],
+    })
+    return { task: created, events: [] }
+  }
+
+  export function cancelled(record: TaskRecord): TaskRecord {
+    const next = transitionInteractiveTask(record.task as InteractiveTask, { owner, expectedRevision: record.task.revision, now: 2_000 }, { type: "cancel" })
+    return { task: next.task, events: [...record.events, next.event] }
+  }
+
+  export function sealedFor(key: string, sealedAccount: string, purpose: TaskPurpose, record: unknown): string {
+    const sealer = createTaskSealer(deriveTaskKeys(Buffer.from(key, "base64"), { account: sealedAccount, namespace: "agent" }))
+    try {
+      return sealer.seal(JSON.stringify(record), purpose)
+    } finally {
+      sealer.wipe()
+    }
+  }
+
+  export function copyIn(directory: string, id: string, payload: string, unfinished = true): void {
+    const db = new DatabaseSync(join(directory, "tasks.sqlite"))
+    try {
+      db.prepare("INSERT INTO task_records_v1 (id, revision, unfinished, hold, updated_at, payload) VALUES (?, 0, ?, 'readable', 1, ?)").run(id, unfinished ? 1 : 0, payload)
+    } finally {
+      db.close()
+    }
+  }
+
+  export function storedIds(directory: string): string[] {
+    const db = new DatabaseSync(join(directory, "tasks.sqlite"))
+    try {
+      return db.prepare("SELECT id FROM task_records_v1 ORDER BY id").all().map((row) => String(row.id))
+    } finally {
+      db.close()
+    }
+  }
+
+  export function exists(path: string): boolean {
+    return existsSync(path) && readdirSync(path).length > 0
+  }
+
+  export function openPermissions(directory: string): void {
+    chmodSync(directory, 0o755)
+  }
+
+  export function closePermissions(directory: string): void {
+    chmodSync(directory, 0o700)
+  }
+
+  export function replaceLock(directory: string): void {
+    const pid = spawnSync(process.execPath, ["-e", ""]).pid
+    const staged = join(directory, "replacement.lock")
+    writeFileSync(staged, JSON.stringify({ pid, owner: "replacement" }), { mode: 0o600 })
+    renameSync(staged, join(directory, "tasks.sqlite.lock"))
+  }
+
+  export function stealingDatabase(directory: string) {
+    let armed: "run" | "all" | undefined
+    const steal = (during: "run" | "all") => {
+      if (armed !== during) return
+      armed = undefined
+      replaceLock(directory)
+    }
+    const open: TaskDatabaseOpener = (path) => {
+      const db = openNodeTaskDatabase(path)
+      return {
+        exec: (sql) => db.exec(sql),
+        close: () => db.close(),
+        prepare(sql) {
+          const statement = db.prepare(sql)
+          return {
+            all: (...parameters) => (steal("all"), statement.all(...parameters)),
+            run: (...parameters) => (steal("run"), statement.run(...parameters)),
+          }
+        },
+      }
+    }
+    return { open, arm: (during: "run" | "all") => { armed = during } }
+  }
+}
+
+import {
+  account, cancelled, closePermissions, copyIn, exists, keyFor, newKey, openPermissions, replaceLock, sealedFor, stealingDatabase, task,
+} from node
+
+effect function support<A>(step: string, call: () => A) {
+  return try Effect.try({ try: call, catch: (cause) => new SupportFailed({ step, cause }) })
+}
+
+effect function outcome<A, E extends { readonly _tag: string }>(run: A!E) {
+  return run catch (error) => error._tag
+}
+
+effect function storeIn(directory: string, key: string | undefined, decode?: (text: string) => TaskRecord, database?: TaskDatabaseOpener) {
+  return try createTaskStore({
+    directory, keys: try support("key", () => keyFor(key)),
+    ...(decode === undefined ? {} : { decode }), ...(database === undefined ? {} : { database }),
+  })
+}
+
+it.effect('Task storage opens only under verified custody and serves only authentic records (spec/agent/tasks/store.md, "Story: Refuse task storage when custody cannot be verified")', effect () => {
+  const state = try scratch("task-store")
+  const directory = state.file("tasks")
+  const key = try support("key", () => newKey())
+  const first = try support("task", () => task("task-1"))
+
+  const shortKey = try storeIn(directory, try support("short key", () => newKey(16)))
+  const before = try shortKey.storageStatus()
+  const wrongLength = try outcome(shortKey.open(account))
+  const afterRefusal = { status: try shortKey.storageStatus(), wroteNothing: !(try support("refused files", () => exists(directory))) }
+  const missing = try outcome((try storeIn(directory, undefined)).open(account))
+
+  const store = try storeIn(directory, key)
+  try store.open(account)
+  const second = try storeIn(directory, key)
+  const lockHeld = try outcome(second.open(account))
+  try store.create(first)
+  const read = try store.get("task-1")
+  const current = try store.current()
+  const taken = try outcome(store.create(try support("task", () => task("task-2"))))
+  try store.close()
+  const closedStatus = try store.storageStatus()
+
+  try support("non-private directory", () => openPermissions(directory))
+  const notPrivate = try outcome((try storeIn(directory, key)).open(account))
+  try support("private directory", () => closePermissions(directory))
+
+  try support("copy foreign records", () => {
+    copyIn(directory, "foreign", sealedFor(key, "other-account", "TaskRecord", task("foreign")), false)
+    copyIn(directory, "evidence", sealedFor(key, account, "TaskEvidence", task("evidence")), false)
+    copyIn(directory, "torn", sealedFor(key, account, "TaskRecord", task("torn")).slice(0, -6), true)
+  })
+  const reopened = try storeIn(directory, key)
+  try reopened.open(account)
+  const copied = {
+    foreign: try outcome(reopened.get("foreign")),
+    evidence: try outcome(reopened.get("evidence")),
+    torn: try outcome(reopened.get("torn")),
+    current: try outcome(reopened.current()),
+    slot: try outcome(reopened.create(try support("task", () => task("task-3")))),
+    own: (try reopened.get("task-1"))?.task.id,
+  }
+  const otherAccount = try outcome(reopened.open("other-account"))
+
+  try support("replace the writer lock", () => replaceLock(directory))
+  const fenced = { status: try reopened.storageStatus(), read: try outcome(reopened.get("task-1")) }
+  const replacement = try storeIn(directory, key)
+  try replacement.open(account)
+  const replacementRead = (try replacement.get("task-1"))?.task.id
+  try replacement.close()
+
+  const thief = try support("lock thief", () => stealingDatabase(directory))
+  const writing = try storeIn(directory, key, undefined, thief.open)
+  try writing.open(account)
+  const live = try writing.get("task-1")
+  const cancel = try support("cancel", () => cancelled(live ?? first))
+  try support("arm", () => thief.arm("run"))
+  const lost = { write: try outcome(writing.save(cancel)), next: try outcome(writing.get("task-1")) }
+  try writing.close()
+  const reading = try storeIn(directory, key, undefined, thief.open)
+  try reading.open(account)
+  try support("arm", () => thief.arm("all"))
+  const refusedRead = try outcome(reading.get("task-1"))
+  try reading.close()
+
+  try Effect.try(() => assert.deepStrictEqual({
+    before, wrongLength, afterRefusal, missing, lockHeld, read: read?.task, current: current?.task.id, taken, closedStatus,
+    notPrivate, copied, otherAccount, fenced, replacementRead, lost, refusedRead,
+  }, {
+    before: "deferred", wrongLength: "StorageUnavailable", afterRefusal: { status: "unavailable", wroteNothing: true },
+    missing: "StorageUnavailable", lockHeld: "StorageUnavailable", read: first.task, current: "task-1", taken: "SlotTaken",
+    closedStatus: "unavailable", notPrivate: "StorageUnavailable",
+    copied: { foreign: "Corrupt", evidence: "Corrupt", torn: "Corrupt", current: "Corrupt", slot: "Corrupt", own: "task-1" },
+    otherAccount: "StorageUnavailable", fenced: { status: "unavailable", read: "StorageUnavailable" }, replacementRead: "task-1",
+    lost: { write: "OutcomeUnknown", next: "StorageUnavailable" }, refusedRead: "ReadRefused",
+  }))
+})

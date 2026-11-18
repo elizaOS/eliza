@@ -32,11 +32,12 @@ import types.* from "./shared/types"
 import accounts as A from "./identity/accounts"
 import plans as P from "./billing/plans"
 import subscriptions as Sub from "./billing/subscriptions"
+import metering as M from "./shared/metering"
 type Scheme = Https | Http | OtherScheme
 type BaseUrl = { scheme: Scheme, loopback: bool, hasPath: bool, hasQueryOrFragment: bool }
 pure def originAccepted(u: BaseUrl): bool =
   not(u.hasPath) and not(u.hasQueryOrFragment) and (u.scheme == Https or (u.scheme == Http and u.loopback))
-pure val baseUrlValues = Set(
+pure val uValues = Set(
   { scheme: Https, loopback: false, hasPath: false, hasQueryOrFragment: false },
   { scheme: Https, loopback: false, hasPath: true, hasQueryOrFragment: false },
   { scheme: Http, loopback: true, hasPath: false, hasQueryOrFragment: false },
@@ -53,14 +54,14 @@ that os replaced is sent on the next call by the same client.
 
 ```quint
 type HttpMethod = Get | Post | Patch | Delete
-type Segment = Literal(str) | Param(str)
+type Segment = Literal({ text: str }) | Param({ name: str })
 type AuthClass = Public | KeyOrSession | Session | FreshSession | StepUp
 type DeviceRoute = { method: HttpMethod, path: List[Segment], auth: AuthClass, headers: Set[str] }
 type DeviceCall = { route: DeviceRoute, bearer: str }
 pure def callOf(route: DeviceRoute, credentialNow: str): DeviceCall = { route: route, bearer: credentialNow }
 pure def lawACallCarriesTheCredentialReadForIt(route: DeviceRoute, credentialNow: str): bool =
   callOf(route, credentialNow).bearer == credentialNow
-pure val routeValues = Set({ method: Get, path: List(Literal("api"), Literal("v1"), Literal("models")), auth: KeyOrSession, headers: Set() })
+pure val routeValues: Set[DeviceRoute] = Set({ method: Get, path: List(Literal({ text: "api" }), Literal({ text: "v1" }), Literal({ text: "models" })), auth: KeyOrSession, headers: Set("If-Match") })
 ```
 
 ### Text needs only a credential and the origin, and nothing needs managed Google
@@ -105,11 +106,11 @@ webhook and the loopback test inbox are not device routes.
 pure val idempotencyKey = "Idempotency-Key"
 pure val ifMatch = "If-Match"
 pure val baseHeaders = Set("Authorization", "Content-Type", "X-Request-ID", "Traceparent", "Tracestate")
-pure def lits(names: List[str]): List[Segment] = names.listMap(n => Literal(n))
-pure def api(names: List[str]): List[Segment] = List(Literal("api"), Literal("v1")).concat(lits(names))
+pure def lits(names: List[str]): List[Segment] = names.listMap(n => Literal({ text: n }))
+pure def api(names: List[str]): List[Segment] = List(Literal({ text: "api" }), Literal({ text: "v1" })).concat(lits(names))
 pure def apiWith(names: List[str], rest: List[Segment]): List[Segment] = api(names).concat(rest)
 pure def route(method: HttpMethod, path: List[Segment], auth: AuthClass): DeviceRoute = { method: method, path: path, auth: auth, headers: Set() }
-pure def keyed(method: HttpMethod, path: List[Segment], header: str): DeviceRoute = { method: method, path: path, auth: KeyOrSession, headers: Set(header) }
+pure def keyed(method: HttpMethod, path: List[Segment], headers: Set[str]): DeviceRoute = { method: method, path: path, auth: KeyOrSession, headers: headers }
 pure def google(names: List[str]): List[Segment] = api(List("eliza", "google").concat(names))
 pure val signInRoutes: List[DeviceRoute] = List(
   route(Get, lits(List("api", "public", "service")), Public),
@@ -131,13 +132,13 @@ pure val signInRoutes: List[DeviceRoute] = List(
   route(Post, api(List("auth", "mfa", "totp", "confirm")), StepUp),
   route(Post, api(List("auth", "mfa", "sms", "enroll")), StepUp),
   route(Post, api(List("auth", "mfa", "sms", "confirm")), StepUp),
-  route(Delete, apiWith(List("auth", "mfa"), List(Param("factorId"))), StepUp),
+  route(Delete, apiWith(List("auth", "mfa"), List(Param({ name: "factorId" }))), StepUp),
   route(Get, api(List("user", "methods")), Session),
   route(Post, api(List("user", "methods", "phone", "code", "send")), Session),
   route(Post, api(List("user", "methods", "phone", "code", "verify")), Session),
   route(Post, api(List("user", "methods", "google", "challenge")), Session),
   route(Post, api(List("user", "methods", "google", "link")), Session),
-  route(Delete, apiWith(List("user", "methods"), List(Param("methodId"))), StepUp),
+  route(Delete, apiWith(List("user", "methods"), List(Param({ name: "methodId" }))), StepUp),
   route(Get, api(List("user")), KeyOrSession),
   route(Get, api(List("referrals")), KeyOrSession),
   route(Post, api(List("referrals", "apply")), KeyOrSession),
@@ -152,25 +153,25 @@ pure val billingRoutes: List[DeviceRoute] = List(
   route(Get, api(List("subscription", "entitlement-keys")), Public),
   route(Get, api(List("billing", "limits")), KeyOrSession),
   route(Get, api(List("subscription", "entitlement")), KeyOrSession),
-  keyed(Post, api(List("subscription", "redeem")), idempotencyKey),
-  keyed(Post, api(List("subscriptions", "checkout")), idempotencyKey),
+  keyed(Post, api(List("subscription", "redeem")), Set("Idempotency-Key")),
+  keyed(Post, api(List("subscriptions", "checkout")), Set("Idempotency-Key")),
   route(Post, api(List("subscriptions", "checkout", "confirm")), KeyOrSession),
   route(Post, api(List("subscriptions", "cancel")), FreshSession),
   route(Post, api(List("subscriptions", "cancel", "undo")), FreshSession),
-  route(Get, apiWith(List("subscriptions", "cancel"), List(Param("commandId"))), FreshSession),
-  route(Get, apiWith(List("subscriptions", "cancel", "undo"), List(Param("commandId"))), FreshSession),
+  route(Get, apiWith(List("subscriptions", "cancel"), List(Param({ name: "commandId" }))), FreshSession),
+  route(Get, apiWith(List("subscriptions", "cancel", "undo"), List(Param({ name: "commandId" }))), FreshSession),
   route(Get, api(List("subscriptions", "cancel", "undo", "review")), FreshSession),
   route(Post, api(List("subscriptions", "upgrade", "review")), FreshSession),
   route(Post, api(List("subscriptions", "upgrade", "confirm")), FreshSession),
   route(Post, api(List("subscriptions", "downgrade", "review")), FreshSession),
   route(Post, api(List("subscriptions", "downgrade", "confirm")), FreshSession),
-  route(Get, apiWith(List("subscriptions", "upgrade"), List(Param("commandId"))), FreshSession),
-  route(Get, apiWith(List("subscriptions", "downgrade"), List(Param("commandId"))), FreshSession),
-  route(Post, apiWith(List("subscriptions", "upgrade"), List(Param("commandId"), Literal("payment"))), FreshSession),
+  route(Get, apiWith(List("subscriptions", "upgrade"), List(Param({ name: "commandId" }))), FreshSession),
+  route(Get, apiWith(List("subscriptions", "downgrade"), List(Param({ name: "commandId" }))), FreshSession),
+  route(Post, apiWith(List("subscriptions", "upgrade"), List(Param({ name: "commandId" }), Literal({ text: "payment" }))), FreshSession),
   route(Get, api(List("subscriptions", "commands")), KeyOrSession),
   route(Post, api(List("subscriptions", "portal")), FreshSession),
   route(Get, api(List("billing", "invoices")), KeyOrSession),
-  route(Get, apiWith(List("billing", "invoices"), List(Param("invoiceId"))), KeyOrSession))
+  route(Get, apiWith(List("billing", "invoices"), List(Param({ name: "invoiceId" }))), KeyOrSession))
 pure val serviceRoutes: List[DeviceRoute] = List(
   route(Get, api(List("models")), KeyOrSession),
   route(Post, api(List("chat", "completions")), KeyOrSession),
@@ -179,15 +180,15 @@ pure val serviceRoutes: List[DeviceRoute] = List(
   route(Post, api(List("voice", "speech", "consent")), KeyOrSession),
   route(Post, api(List("voice", "speech", "session")), KeyOrSession),
   route(Get, api(List("voice", "speech", "ws")), Public),
-  route(Post, apiWith(List("voice", "speech", "session"), List(Param("sessionId"), Literal("revoke"))), KeyOrSession),
+  route(Post, apiWith(List("voice", "speech", "session"), List(Param({ name: "sessionId" }), Literal({ text: "revoke" }))), KeyOrSession),
   route(Get, api(List("maps", "capabilities")), KeyOrSession),
-  keyed(Post, api(List("maps", "geocode")), idempotencyKey),
-  keyed(Post, api(List("maps", "reverse")), idempotencyKey),
-  keyed(Post, api(List("maps", "places", "search")), idempotencyKey),
-  keyed(Post, api(List("maps", "places", "details")), idempotencyKey),
-  keyed(Post, api(List("maps", "routes")), idempotencyKey),
+  keyed(Post, api(List("maps", "geocode")), Set("Idempotency-Key")),
+  keyed(Post, api(List("maps", "reverse")), Set("Idempotency-Key")),
+  keyed(Post, api(List("maps", "places", "search")), Set("Idempotency-Key")),
+  keyed(Post, api(List("maps", "places", "details")), Set("Idempotency-Key")),
+  keyed(Post, api(List("maps", "routes")), Set("Idempotency-Key")),
   route(Post, api(List("maps", "tiles", "viewport")), KeyOrSession),
-  keyed(Get, apiWith(List("maps", "tiles"), List(Param("z"), Param("x"), Param("y"))), idempotencyKey))
+  keyed(Get, apiWith(List("maps", "tiles"), List(Param({ name: "z" }), Param({ name: "x" }), Param({ name: "y" }))), Set("Idempotency-Key")))
 pure val googleRoutes: List[DeviceRoute] = List(
   route(Get, google(List("status")), KeyOrSession),
   route(Get, google(List("accounts")), KeyOrSession),
@@ -203,22 +204,23 @@ pure val googleRoutes: List[DeviceRoute] = List(
   route(Get, google(List("gmail", "inbox-v1", "drafts")), KeyOrSession),
   route(Get, google(List("gmail", "inbox-v1", "draft")), KeyOrSession),
   route(Post, google(List("gmail", "inbox-v1", "operations")), KeyOrSession),
-  route(Post, google(List("gmail", "inbox-v1", "operations")).concat(List(Param("requestId"), Literal("dispatch"))), KeyOrSession),
-  route(Get, google(List("gmail", "inbox-v1", "operations")).concat(List(Param("requestId"))), KeyOrSession),
+  route(Post, google(List("gmail", "inbox-v1", "operations")).concat(List(Param({ name: "requestId" }), Literal({ text: "dispatch" }))), KeyOrSession),
+  route(Get, google(List("gmail", "inbox-v1", "operations")).concat(List(Param({ name: "requestId" }))), KeyOrSession),
   route(Get, google(List("calendar", "calendars")), KeyOrSession),
   route(Get, google(List("calendar", "feed")), KeyOrSession),
-  route(Get, google(List("calendar", "events")).concat(List(Param("eventId"))), KeyOrSession),
-  keyed(Post, google(List("calendar", "events")), idempotencyKey),
-  keyed(Patch, google(List("calendar", "events")).concat(List(Param("eventId"))), ifMatch),
-  keyed(Delete, google(List("calendar", "events")).concat(List(Param("eventId"))), ifMatch))
+  route(Get, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), KeyOrSession),
+  keyed(Post, google(List("calendar", "events")), Set("Idempotency-Key")),
+  keyed(Patch, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")),
+  keyed(Delete, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")))
 pure val deviceRoutes: List[DeviceRoute] = signInRoutes.concat(billingRoutes).concat(serviceRoutes).concat(googleRoutes)
 pure def admitsHeader(r: DeviceRoute, header: str): bool = baseHeaders.contains(header) or r.headers.contains(header)
-pure def lawEveryRouteIsUnderApi(r: DeviceRoute): bool =
-  deviceRoutes.foldl(true, (ok, d) => ok and d.path.nthOr(0, Param("")) == Literal("api"))
-pure def lawNoRouteIsListedTwice(r: DeviceRoute): bool =
-  deviceRoutes.foldl(true, (ok, d) => ok and deviceRoutes.select(e => e.method == d.method and e.path == d.path).length() == 1)
-pure def lawIfMatchOnlyOnChangeAndDelete(r: DeviceRoute): bool =
-  deviceRoutes.foldl(true, (ok, d) => ok and (d.headers.contains(ifMatch) implies (d.method == Patch or d.method == Delete)))
+pure def routesOf(method: HttpMethod): List[DeviceRoute] = deviceRoutes.select(d => d.method == method)
+pure def lawEveryRouteIsUnderApi(method: HttpMethod): bool =
+  routesOf(method).every(d => d.path.nthOr(0, Param({ name: "" })) == Literal({ text: "api" }))
+pure def lawNoRouteIsListedTwice(method: HttpMethod): bool =
+  routesOf(method).every(d => routesOf(method).select(other => other.path == d.path).length() == 1)
+pure def lawIfMatchOnlyOnChangeAndDelete(method: HttpMethod): bool =
+  (method == Get or method == Post) implies routesOf(method).every(d => not(d.headers.contains(ifMatch)))
 ```
 
 ### A request path matches the listed route with the most literal segments
@@ -231,10 +233,16 @@ sent.
 
 ```quint
 type RouteLookup = Unlisted | Listed({ route: DeviceRoute })
-pure def segmentMatches(s: Segment, part: str): bool = match s { | Literal(t) => t == part | Param(n) => part != "" }
-pure def routeMatches(r: DeviceRoute, method: HttpMethod, parts: List[str]): bool =
-  r.method == method and r.path.length() == parts.length() and r.path.indices().forall(i => segmentMatches(r.path.nth(i), parts.nth(i)))
-pure def literalCount(r: DeviceRoute): int = r.path.select(s => match s { | Literal(t) => true | Param(n) => false }).length()
+pure def segmentMatches(seg: Segment, part: str): bool = match seg { | Literal(l) => l.text == part | Param(p) => part != "" }
+type MatchProgress = { at: int, ok: bool }
+pure val matchStart: MatchProgress = { at: 0, ok: true }
+pure def matchNext(r: DeviceRoute, acc: MatchProgress, part: str): MatchProgress =
+  { at: acc.at + 1, ok: acc.ok and segmentMatches(r.path.nthOr(acc.at, Literal({ text: "" })), part) }
+pure def routeMatches(r: DeviceRoute, method: HttpMethod, parts: List[str]): bool = {
+  val progress = parts.foldl(matchStart, (acc, part) => matchNext(r, acc, part))
+  r.method == method and r.path.length() == parts.length() and progress.ok
+}
+pure def literalCount(r: DeviceRoute): int = r.path.select(seg => match seg { | Literal(l) => true | Param(p) => false }).length()
 pure def routeFor(method: HttpMethod, parts: List[str]): RouteLookup =
   deviceRoutes.foldl(Unlisted, (best, r) =>
     if (not(routeMatches(r, method, parts))) best
@@ -242,9 +250,12 @@ pure def routeFor(method: HttpMethod, parts: List[str]): RouteLookup =
 pure val partsValues = Set(
   List("api", "v1", "subscriptions", "cancel", "undo", "review"), List("api", "v1", "subscriptions", "cancel", "undo", "cmd_1"),
   List("api", "v1", "models"), List("api", "v1", "agents"), List("api", "v1", "billing", "invoices", ""))
-pure def lawAMatchedRouteMatches(method: HttpMethod, parts: List[str]): bool = match routeFor(method, parts) {
-  | Listed(found) => routeMatches(found.route, method, parts)
-  | Unlisted => deviceRoutes.select(r => routeMatches(r, method, parts)).length() == 0
+pure def lawAMatchedRouteMatches(method: HttpMethod, parts: List[str]): bool = {
+  val found = routeFor(method, parts)
+  match found {
+    | Listed(x) => routeMatches(x.route, method, parts)
+    | Unlisted => deviceRoutes.select(r => routeMatches(r, method, parts)).length() == 0
+  }
 }
 ```
 
@@ -302,8 +313,9 @@ pure def lawEvery401IsCredentialInvalid(status: int, code: RefusalCode, reason: 
   status == 401 implies cloudErrorOf(status, code, reason, retryAt, resetsAt) == CloudCredentialInvalid({ reason: credentialReasonOf(reason) })
 pure def lawACredentialReasonIsKept(reason: RefusalReason): bool = isCredentialReason(reason) implies credentialReasonOf(reason) == reason
 pure def lawNothingClearsCustody(e: CloudError): bool = custodyAfter(e) == KeepsCredential
+pure def namesTheCredential(e: CloudError): bool = match e { | CloudCredentialInvalid(c) => true | _ => false }
 pure def lawOnlyA401NamesTheCredential(status: int, code: RefusalCode, reason: RefusalReason, retryAt: Millis, resetsAt: Millis): bool =
-  (match cloudErrorOf(status, code, reason, retryAt, resetsAt) { | CloudCredentialInvalid(c) => true | _ => false }) iff status == 401
+  namesTheCredential(cloudErrorOf(status, code, reason, retryAt, resetsAt)) iff status == 401
 pure def lawAWellFormedRefusalKeepsItsWait(code: RefusalCode, at: Millis): bool =
   (code == AllowanceExhausted implies cloudErrorOf(statusOf(code), code, NoReason, 0, at) == CloudAllowanceExhausted({ resetsAt: at }))
   and (code == RateLimited implies cloudErrorOf(statusOf(code), code, NoReason, at, 0) == CloudRateLimited({ retryAt: at }))
@@ -335,20 +347,19 @@ pure def lawRefreshLeadsExpiry(untilExpiry: Millis): bool =
 
 The device reads the billing snapshot (`GET /api/v1/billing/limits`) as this
 view. The account is usable for inference when it is Active, its inference
-lane is not refused and its allowance plus its balance is above zero. A
+funding lane (`./shared/metering`) is not refused and its allowance plus its balance is above zero. A
 free plan with credits is billed per request; a paid plan from a
 subscription or a grant shows its key, with a warning while payment is
 late; a free plan with no credits needs a plan. An unread or unreadable
 snapshot admits nothing yet.
 
 ```quint
-type FundingLane = LaneAllowanceThenCredits | LaneCreditsOnly | LaneRefused
 type PlanSource = FromSubscription | FromGrant | FromFree
-type SnapshotView = { accountStatus: A::AccountStatus, balance: Micros, planKey: P::PlanKey, source: PlanSource, subscription: Sub::SubscriptionStatus, allowanceAvailable: Micros, inference: FundingLane, observedAt: Millis }
+type SnapshotView = { accountStatus: A::AccountStatus, balance: Micros, planKey: P::PlanKey, source: PlanSource, subscription: Sub::SubscriptionStatus, allowanceAvailable: Micros, inference: M::FundingLane, observedAt: Millis }
 type PlanView = PlanChecking | PlanUnavailable | PlanOnCredits | PlanPaid({ planKey: P::PlanKey, warning: bool }) | PlanNone
 type PlanAdmission = Admit | AdmitWithWarning | NeedsPlan | AdmissionUnknown
-pure def accountUsable(s: SnapshotView): bool = s.accountStatus == A::Active and s.inference != LaneRefused and s.allowanceAvailable + s.balance > 0
-pure def paymentLate(status: Sub::SubscriptionStatus): bool = Set(Sub::Dunning, Sub::PastDue, Sub::Unpaid).contains(status)
+pure def accountUsable(s: SnapshotView): bool = s.accountStatus == A::Active and s.inference != M::Refused and s.allowanceAvailable + s.balance > 0
+pure def paymentLate(subscription: Sub::SubscriptionStatus): bool = Set(Sub::Dunning, Sub::PastDue, Sub::Unpaid).contains(subscription)
 pure def planFromSnapshot(s: SnapshotView): PlanView =
   if (s.source == FromFree) (if (s.balance > 0) PlanOnCredits else PlanNone)
   else PlanPaid({ planKey: s.planKey, warning: s.source == FromSubscription and paymentLate(s.subscription) })
@@ -360,11 +371,11 @@ pure def planAdmission(v: PlanView): PlanAdmission = match v {
   | PlanNone => NeedsPlan
 }
 pure val sValues = Set(
-  { accountStatus: A::Active, balance: 0, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: LaneCreditsOnly, observedAt: 1 },
-  { accountStatus: A::Active, balance: 5, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: LaneCreditsOnly, observedAt: 1 },
-  { accountStatus: A::Active, balance: 0, planKey: P::PlusMonthly, source: FromSubscription, subscription: Sub::PastDue, allowanceAvailable: 10, inference: LaneAllowanceThenCredits, observedAt: 1 },
-  { accountStatus: A::Deleting, balance: 9, planKey: P::ProMonthly, source: FromGrant, subscription: Sub::NoSubscription, allowanceAvailable: 10, inference: LaneAllowanceThenCredits, observedAt: 1 },
-  { accountStatus: A::Active, balance: 9, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: LaneRefused, observedAt: 1 })
+  { accountStatus: A::Active, balance: 0, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: M::CreditsOnly, observedAt: 1 },
+  { accountStatus: A::Active, balance: 5, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: M::CreditsOnly, observedAt: 1 },
+  { accountStatus: A::Active, balance: 0, planKey: P::PlusMonthly, source: FromSubscription, subscription: Sub::PastDue, allowanceAvailable: 10, inference: M::AllowanceThenCredits, observedAt: 1 },
+  { accountStatus: A::Deleting, balance: 9, planKey: P::ProMonthly, source: FromGrant, subscription: Sub::NoSubscription, allowanceAvailable: 10, inference: M::AllowanceThenCredits, observedAt: 1 },
+  { accountStatus: A::Active, balance: 9, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: M::Refused, observedAt: 1 })
 pure val vValues = Set(PlanChecking, PlanUnavailable, PlanOnCredits, PlanPaid({ planKey: P::PlusMonthly, warning: true }), PlanPaid({ planKey: P::ProMonthly, warning: false }), PlanNone)
 pure def lawAnUnfundedAccountIsNotUsable(s: SnapshotView): bool = s.allowanceAvailable + s.balance <= 0 implies not(accountUsable(s))
 pure def lawOnlyAnActiveAccountIsUsable(s: SnapshotView): bool = accountUsable(s) implies s.accountStatus == A::Active

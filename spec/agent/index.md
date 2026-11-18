@@ -12,8 +12,8 @@ durable store, actuator and wire implementation before the package can
 provide `@elizaos/agent/tasks`. The [voice client](voice/clientAudio.md)
 still needs the session, capture, transcription and playback modules before
 the package can provide `@elizaos/agent/voice`. The host's conversation
-routes serve Grace's device turn and Grace uses its own interface to the
-Cloud speech relay. Those launch paths use neither pending module.
+routes serve a consumer's device turn, and a consumer reaches the Cloud
+speech relay through its own interface. Those launch paths use neither pending module.
 
 The agent host binds its Cloud inference model during launch. The pending
 [event publisher](conversation/events.md) and

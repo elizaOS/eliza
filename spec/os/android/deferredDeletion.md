@@ -61,8 +61,9 @@ pure def stage(s: DeletionJournal, by: str, id: str, kind: DeletionKind, target:
   val row = { id: id, kind: kind, target: target, entry: { owner: by, deadline: W::deletionDeadline(clock), deletionPhase: W::Queued }, hold: NotHeld, providerCalls: 0, dismissed: false }
   { state: if (hasRow(s.rows, id)) s else { rows: s.rows.append(row) }, out: List() }
 }
-pure def lawReplayNeedsTheExactIdentity(row: DeletionRow, by: str, kind: DeletionKind, target: str): bool =
-  (stageDecision(List(row), by, row.id, kind, target) == ReplayRow) iff (by == row.entry.owner and kind == row.kind and target == row.target)
+pure def lawAKnownIdStagesOnlyAsItsExactReplay(row: DeletionRow, by: str, kind: DeletionKind, target: str, clock: W::DeletionClock): bool =
+  canStage({ rows: List(row) }, by, row.id, kind, target, clock, FenceCurrent) implies
+    (by == row.entry.owner and kind == row.kind and target == row.target)
 pure def stepStagingNeverChangesAStagedRow(before: DeletionJournal, via: str, after: DeletionJournal): bool =
   via == "stage" implies before.rows.every(r => after.rows.includes(r))
 pure def alwaysEachIdNamesOneRow(s: DeletionJournal): bool =

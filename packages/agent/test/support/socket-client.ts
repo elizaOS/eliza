@@ -128,7 +128,7 @@ export async function requestStream(socketPath: string, call: LocalRequest, abor
     if (terminal !== undefined) throw new TypeError(`frame after the terminal frame ${JSON.stringify(frame)}`);
     if (frame.stream === "response") head = frame;
     else if (frame.stream === "chunk") {
-      chunks.push(typeof frame.dataBase64 === "string" ? Buffer.from(frame.dataBase64, "base64").toString("utf8") : String(frame.data ?? ""));
+      chunks.push(typeof frame.dataBase64 === "string" ? Buffer.from(frame.dataBase64, "base64").toString("utf8") : (typeof frame.data === "string" ? frame.data : ""));
       if (abortAfterChunks !== undefined && chunks.length >= abortAfterChunks) socket.destroy();
     } else if (frame.stream === "complete") terminal = frame;
     else throw new TypeError(`unknown stream frame ${JSON.stringify(frame)}`);
@@ -144,7 +144,7 @@ export async function requestStream(socketPath: string, call: LocalRequest, abor
   };
 }
 
-export function subscribe(socketPath: string, options: { streams: readonly string[]; clientId?: string }): Subscription {
+export function subscribe(socketPath: string, options: { streams: readonly string[]; clientId?: string; token?: string }): Subscription {
   const id = randomUUID();
   const received: unknown[] = [];
   const waiters: Array<{ predicate: (frame: unknown) => boolean; resolve: (frame: unknown) => void; reject: (error: Error) => void }> = [];
@@ -152,7 +152,11 @@ export function subscribe(socketPath: string, options: { streams: readonly strin
   const socket = open(socketPath, JSON.stringify({
     id,
     method: "events_subscribe",
-    payload: { streams: options.streams, ...(options.clientId === undefined ? {} : { clientId: options.clientId }) },
+    payload: {
+      streams: options.streams,
+      ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
+      ...(options.token === undefined ? {} : { headers: { authorization: `Bearer ${options.token}` } }),
+    },
   }));
   const settle = () => {
     for (const waiter of [...waiters]) {

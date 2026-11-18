@@ -5,8 +5,8 @@ the device, for the task host (`index.md`). The engine is the `TaskDatabase`
 port (default `node:sqlite`, built into Node; no native addon). Every record
 payload is sealed with AES-256-GCM under a key that `TaskKeySource` derives
 with HKDF-SHA256 from the launch frame's `storageKey` for the launch account,
-the host's namespace and one purpose; ids, revisions and timestamps stay in
-clear beside the payload. The os keeps `storageKey` in the Keystore and
+the host's namespace and one purpose; ids, the unfinished flag, revisions
+and timestamps stay in clear beside the payload. The os keeps `storageKey` in the Keystore and
 releases it only for the current account, so an account change is a new
 launch. This spec models who may open the store, how a writer is fenced, what
 an operation may report and which records are held aside. SQL, file modes,
@@ -81,6 +81,7 @@ pure def canCloseStore(s: TaskStore): bool = isOpened(s.writer)
 pure def closeStore(s: TaskStore): TaskStore = { ...s, writer: WriterClosed }
 pure def stepFencedWriterWritesNothing(before: TaskStore, via: str, after: TaskStore): bool = (not(holdsLock(before)) and via != "foundRecord") implies after.records == before.records
 pure def sometimesReplacementOpened(s: TaskStore): bool = holdsLock(s) and s.lockGeneration > 0
+pure def sometimesClosedKeepsRecords(s: TaskStore): bool = s.writer == WriterClosed and s.records.length() > 0
 ```
 
 ### An operation returns its result only while ownership holds before and after it
@@ -99,7 +100,7 @@ type StoreStep = { state: TaskStore, out: List[Receipt] }
 pure def receiptFor(writes: bool, succeeded: bool, ownerAfter: bool): Receipt = if (succeeded and ownerAfter) Returned else if (writes) OutcomeUnknown else ReadRefused
 pure def canOperate(s: TaskStore): bool = holdsLock(s)
 pure def operate(s: TaskStore, writes: bool, succeeded: bool, ownerAfter: bool): StoreStep = { state: if (ownerAfter) s else { ...s, lockGeneration: s.lockGeneration + 1 }, out: List(receiptFor(writes, succeeded, ownerAfter)) }
-pure def lawLostWriteIsUnknown(succeeded: bool): bool = receiptFor(true, succeeded, false) == OutcomeUnknown
+pure def lawUnreturnedWriteIsUnknown(succeeded: bool, ownerAfter: bool): bool = not(succeeded and ownerAfter) implies receiptFor(true, succeeded, ownerAfter) == OutcomeUnknown
 pure def stepReturnedOnlyUnderOwnership(before: TaskStore, via: str, after: TaskStore, out: List[Receipt]): bool = out.includes(Returned) implies (holdsLock(before) and holdsLock(after))
 pure def sometimesFencedWriterStillOpen(s: TaskStore): bool = isOpened(s.writer) and not(holdsLock(s))
 ```

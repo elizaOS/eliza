@@ -1,0 +1,154 @@
+{
+  "version": 1,
+  "name": "Fixture Cloud",
+  "environments": {
+    "production": {
+      "api": "https://api.example.com",
+      "web": "https://www.example.com",
+      "entitlementAudience": "cloud-subscription",
+      "mailSender": "sign-in@mail.example.com",
+      "databaseIdentity": "bafe25bf61354fea0d01f7581401b5a2b9f9fc1fa646558f714c6676bd75e269",
+      "firstPartyOrigins": [
+        "https://www.example.com"
+      ],
+      "capabilities": [],
+      "documents": {
+        "terms": {
+          "title": "Terms",
+          "revision": "2026-11-01",
+          "sections": [
+            {
+              "title": "Scope",
+              "paragraphs": [
+                "Terms of the fixture deployment."
+              ]
+            }
+          ]
+        },
+        "privacy": {
+          "title": "Privacy",
+          "revision": "2026-11-01",
+          "sections": [
+            {
+              "title": "Scope",
+              "paragraphs": [
+                "Privacy of the fixture deployment."
+              ]
+            }
+          ]
+        }
+      },
+      "signIn": {
+        "smsCountries": [
+          "+1"
+        ],
+        "smsHourlyBudget": 100
+      },
+      "mail": {
+        "kind": "https",
+        "url": "https://mail.example.com/deliver",
+        "apiKeyEnv": "CLOUD_MAIL_TOKEN"
+      },
+      "sms": {
+        "kind": "none"
+      },
+      "digestKeyEnv": "CLOUD_DIGEST_KEY",
+      "sealing": {
+        "currentKeyId": "seal-1",
+        "keys": [
+          {
+            "keyId": "seal-1",
+            "env": "CLOUD_SEALING_KEY"
+          }
+        ]
+      },
+      "entitlement": {
+        "keyId": "entitlement-1",
+        "signingKeyEnv": "CLOUD_ENTITLEMENT_KEY",
+        "publicKeys": [
+          {
+            "kid": "entitlement-1",
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "RwIpsg2vaG6Q8pJcPP8rnReb71VKZqTlEMeF14ahp-E",
+            "y": "rzJhMHg6SUtsGH4dntUcMgkpnt8qM_ITn_REryydY5U"
+          }
+        ]
+      }
+    },
+    "staging": {
+      "api": "https://api.staging.example.com",
+      "web": "https://www.staging.example.com",
+      "entitlementAudience": "cloud-subscription",
+      "mailSender": "sign-in@mail.example.com",
+      "databaseIdentity": "af35e4df4de2394c3c8ea0d7015b690a5e5b492723d39ae5bbffdada8c0f7c5b",
+      "firstPartyOrigins": [
+        "https://www.staging.example.com",
+        "http://localhost:8080",
+        "http://127.0.0.1:8080"
+      ],
+      "capabilities": [],
+      "documents": {
+        "terms": {
+          "title": "Terms",
+          "revision": "2026-11-01",
+          "sections": [
+            {
+              "title": "Scope",
+              "paragraphs": [
+                "Terms of the fixture deployment."
+              ]
+            }
+          ]
+        },
+        "privacy": {
+          "title": "Privacy",
+          "revision": "2026-11-01",
+          "sections": [
+            {
+              "title": "Scope",
+              "paragraphs": [
+                "Privacy of the fixture deployment."
+              ]
+            }
+          ]
+        }
+      },
+      "signIn": {
+        "smsCountries": [
+          "+1"
+        ],
+        "smsHourlyBudget": 100
+      },
+      "mail": {
+        "kind": "loopback"
+      },
+      "sms": {
+        "kind": "loopback"
+      },
+      "digestKeyEnv": "CLOUD_DIGEST_KEY",
+      "sealing": {
+        "currentKeyId": "seal-1",
+        "keys": [
+          {
+            "keyId": "seal-1",
+            "env": "CLOUD_SEALING_KEY"
+          }
+        ]
+      },
+      "entitlement": {
+        "keyId": "entitlement-1",
+        "signingKeyEnv": "CLOUD_ENTITLEMENT_KEY",
+        "publicKeys": [
+          {
+            "kid": "entitlement-1",
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "RwIpsg2vaG6Q8pJcPP8rnReb71VKZqTlEMeF14ahp-E",
+            "y": "rzJhMHg6SUtsGH4dntUcMgkpnt8qM_ITn_REryydY5U"
+          }
+        ]
+      }
+    }
+  }
+}

@@ -25,18 +25,19 @@ owns what happens after a Replace grant.
 ### A review admits only one valid selection at a time
 
 A selection names one change and 1 to its entry's limit of distinct items,
-each with a nonempty key and the revision the person saw listed, each fit
-for the change: favoriting and unfavoriting need an item not in Recently
-deleted, a permanent deletion needs one that is, and Replace needs one
-untrashed still photo. A single Photos flag call and the editor's Replace
-take one item; the agent's request takes up to 20 and may only favorite,
-unfavorite or move to Recently deleted; a Photos batch takes up to 500, or
-20 for a permanent deletion. No entry takes an empty selection as
-authority over the whole trash. A second review while one is open, or any
-review after the launcher closed, is refused as busy or closed. The shell
-then reads every row at its listed revision (`rowsCurrent`); a changed or
-unreadable row ends the review as stale. Each admitted review gets a fresh
-id and lives `tokenLifetimeMs` (two minutes) on the monotonic clock.
+each with a nonempty key and the revision the person saw listed. A single
+Photos flag call and the editor's Replace take one item; the agent's
+request takes up to 20 and may only favorite, unfavorite or move to
+Recently deleted; a Photos batch takes up to 500, or 20 for a permanent
+deletion. No entry takes an empty selection as authority over the whole
+trash. A second review while one is open, or any review after the launcher
+closed, is refused as busy or closed. The shell then reads every row at its
+listed revision (`rowsCurrent`) and records whether it is trashed; a
+changed or unreadable row, or one unfit for the change, ends the review as
+stale. Favoriting and unfavoriting need an item not in Recently deleted, a
+permanent deletion needs one that is, and Replace needs one untrashed still
+photo. Each admitted review gets a fresh id and lives `tokenLifetimeMs`
+(two minutes) on the monotonic clock.
 
 ```quint
 import rows.* from "./rows"
@@ -62,15 +63,15 @@ pure def entryLimit(entry: ReviewEntry, change: MediaChange): int =
   if (entry == SinglePhoto or entry == EditorReplace) 1
   else if (entry == AgentRequest or change == DeleteForever) 20 else 500
 pure def itemFits(change: MediaChange, candidate: ReviewItem): bool =
-  candidate.key != "" and candidate.revision != "" and
-    (if (change == Favorite or change == Unfavorite) not(candidate.trashed)
-     else if (change == DeleteForever) candidate.trashed
-     else if (change == ReplaceOriginal) not(candidate.trashed or candidate.video) else true)
+  if (change == Favorite or change == Unfavorite) not(candidate.trashed)
+  else if (change == DeleteForever) candidate.trashed
+  else if (change == ReplaceOriginal) not(candidate.trashed or candidate.video) else true
 pure def validSelection(selection: Selection): bool =
   entryAllows(selection.entry, selection.change) and selection.items.length() >= 1 and
     selection.items.length() <= entryLimit(selection.entry, selection.change) and
-    selection.items.every(i => itemFits(selection.change, i)) and
+    selection.items.every(i => i.key != "" and i.revision != "") and
     selection.items.every(i => selection.items.select(o => o.key == i.key).length() == 1)
+pure def selectionFits(selection: Selection): bool = selection.items.every(i => itemFits(selection.change, i))
 pure def canBeginReview(s: PermittedReview, selection: Selection): bool =
   not(s.closed) and s.phase == Idle and validSelection(selection)
 pure val gardenPhoto: ReviewItem = { key: "m:external_primary:i:7", revision: "r1", trashed: false, video: false }
@@ -80,6 +81,7 @@ pure val selectionValues = Set(favoritePair, { ...favoritePair, change: MoveToTr
   { ...favoritePair, change: DeleteForever, items: List({ ...gardenPhoto, trashed: true }) },
   { ...favoritePair, change: ReplaceOriginal, entry: EditorReplace, items: List(porchPhoto) },
   { ...favoritePair, change: Restore, entry: AgentRequest }, { ...favoritePair, items: List() },
+  { ...favoritePair, items: List({ ...gardenPhoto, trashed: true }) },
   { ...favoritePair, items: List(gardenPhoto, gardenPhoto) })
 ```
 
@@ -96,7 +98,7 @@ the review without a grant.
 pure def beginReview(s: PermittedReview, selection: Selection, rowsCurrent: bool, focused: bool, launched: bool): PermittedReview = {
   val token: OneShotToken = { id: s.nextId, until: s.now + tokenLifetimeMs }
   val issued = { ...s, nextId: s.nextId + 1 }
-  if (not(rowsCurrent)) { ...issued, reply: ReplyStale }
+  if (not(rowsCurrent and selectionFits(selection))) { ...issued, reply: ReplyStale }
   else if (not(focused)) { ...issued, reply: ReplyDeclined }
   else if (selection.change != ReplaceOriginal) { ...issued, phase: OwnerConfirming({ token: token, selection: selection }), reply: ReplyNone }
   else if (launched) { ...issued, phase: AndroidConfirming({ token: token, selection: selection }), reply: ReplyNone }
@@ -165,14 +167,15 @@ pure def stepWorkIsQueuedOnlyForALiveGrant(before: PermittedReview, via: str, af
   after.workQueue.length() > before.workQueue.length() implies
     ((via == "receiveAndroidResult" or via == "settleResume") and not(before.closed) and
       ticketLive(after.workQueue.nthOr(after.workQueue.length() - 1, unusedTicket), before.now))
-pure def phaseSelectionValid(phase: ReviewPhase): bool = match phase {
-  | OwnerConfirming(t) => validSelection(t.selection)
-  | AndroidConfirming(t) => validSelection(t.selection)
+pure def admitted(selection: Selection): bool = validSelection(selection) and selectionFits(selection)
+pure def phaseSelectionAdmitted(phase: ReviewPhase): bool = match phase {
+  | OwnerConfirming(t) => admitted(t.selection)
+  | AndroidConfirming(t) => admitted(t.selection)
   | _ => true
 }
 pure def alwaysHeldSelectionsWereAdmitted(s: PermittedReview): bool =
-  phaseSelectionValid(s.phase) and s.awaitingResume.every(t => validSelection(t.selection)) and
-    s.workQueue.every(t => validSelection(t.selection))
+  phaseSelectionAdmitted(s.phase) and s.awaitingResume.every(t => admitted(t.selection)) and
+    s.workQueue.every(t => admitted(t.selection))
 pure val reviewIdValues = Set(1, 2, 3)
 pure val observedClockValues = Set(1, 120000, 120001, 240002)
 pure val weight_beginReview = 8

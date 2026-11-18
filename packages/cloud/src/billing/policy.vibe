@@ -1,16 +1,26 @@
-// spec/cloud/billing/plans.md, "Story: Apply the plan that funds a call"; spec/cloud/billing/subscriptions.md, "A subscription is pending, live or ended, and only an active or dunning one is entitled"
-import { fundedPlan, hasAllowance, type FundingGrant, type PlanKey } from "../../gen/cloud__billing__plans.effect.vibe"
+// spec/cloud/billing/plans.md, "Story: Apply the plan that funds a call"; spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"
+import { fundedPlan, hasAllowance, isPaid, type FundingGrant, type PlanKey } from "../../gen/cloud__billing__plans.effect.vibe"
 import { hasPaidLimits, type SubscriptionStatus } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import type { FundingLane } from "../../gen/cloud__shared__metering.effect.vibe"
 import type { MeteredService } from "../../gen/cloud__shared__types.ts"
 import { parsePlanKey } from "./plans.vibe"
-import { StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
+import { type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 
-export type { FundingLane, MeteredService }
-export interface Policy { readonly planKey: PlanKey }
+export type { FundingLane, MeteredService, SubscriptionStatus }
+
+export type PlanSource = "subscription" | "grant" | "free"
+export type FundingClass = "inference" | "speech" | "maps"
+
+export interface Policy {
+  readonly planKey: PlanKey
+  readonly source: PlanSource
+  readonly effectiveUntil: number | null
+  readonly status: SubscriptionStatus
+}
+
 export error PolicyUnreadable { organizationId: string; problem: string }
 
-const statuses: Readonly<Record<string, SubscriptionStatus>> = {
+const statusOf: Readonly<Record<string, SubscriptionStatus>> = {
   none: "NoSubscription",
   pending: "Pending",
   incomplete: "Incomplete",
@@ -22,20 +32,41 @@ const statuses: Readonly<Record<string, SubscriptionStatus>> = {
   incomplete_expired: "IncompleteExpired"
 }
 
+const lifetime = Number.MAX_SAFE_INTEGER
+
 export effect function readPolicy(tx: Tx, organizationId: string, now: number): Policy!(StoreFailure | PolicyUnreadable) {
-  const row = (try tx.query("SELECT status, plan_key FROM subscriptions WHERE key = $1", [organizationId]))[0]
-  const wire = row ? toText(row.status) ?? "" : "none"
-  const status = Object.hasOwn(statuses, wire) ? statuses[wire] : undefined
-  const plan = row ? parsePlanKey(row.plan_key) : "Free"
-  if (status === undefined || plan === undefined) throw new PolicyUnreadable({ organizationId, problem: "subscription row" })
-  const rows = try tx.query("SELECT plan_key, effective_from, effective_until, revoked FROM grants WHERE organization_id = $1 AND effective_from <= $2 AND effective_until > $2", [organizationId, now])
+  const row = (try tx.query("SELECT status, plan_key, period_end FROM subscriptions WHERE key = $1", [organizationId]))[0]
+  const status = row ? statusOf[toText(row.status) ?? ""] : "NoSubscription"
+  const subscribed = row ? parsePlanKey(row.plan_key) : "Free"
+  if (status === undefined || subscribed === undefined) throw new PolicyUnreadable({ organizationId, problem: "subscription row" })
+  const rows = try tx.query(
+    "SELECT plan_key, effective_from, effective_until, revoked FROM grants WHERE organization_id = $1 AND NOT revoked AND effective_from <= $2 AND (effective_until IS NULL OR effective_until > $2)",
+    [organizationId, now]
+  )
   const grants: FundingGrant[] = []
   for (const grant of rows) {
     const planKey = parsePlanKey(grant.plan_key)
     if (planKey === undefined) throw new PolicyUnreadable({ organizationId, problem: "grant row" })
-    grants.push({ planKey, effectiveFrom: toInt(grant.effective_from), effectiveUntil: toInt(grant.effective_until), revoked: grant.revoked === true })
+    grants.push({ planKey, effectiveFrom: toInt(grant.effective_from), effectiveUntil: grant.effective_until === null ? lifetime : toInt(grant.effective_until), revoked: grant.revoked === true })
   }
-  return { planKey: fundedPlan(hasPaidLimits(status), plan, grants, now) }
+  const paid = hasPaidLimits(status)
+  const planKey = fundedPlan(paid, subscribed, grants, now)
+  if (paid && isPaid(subscribed)) return { planKey, source: "subscription", effectiveUntil: toInt(row?.period_end), status }
+  if (isPaid(planKey)) {
+    const until = Math.max(...grants.filter((grant) => grant.planKey === planKey).map((grant) => grant.effectiveUntil))
+    return { planKey, source: "grant", effectiveUntil: until === lifetime ? null : until, status }
+  }
+  return { planKey, source: "free", effectiveUntil: null, status }
+}
+
+export function laneOf(policy: Policy | undefined): FundingLane {
+  if (policy === undefined) return "Refused"
+  return hasAllowance(policy.planKey) ? "AllowanceThenCredits" : "CreditsOnly"
+}
+
+export function fundingOf(policy: Policy | undefined): Readonly<Record<FundingClass, FundingLane>> {
+  const lane = laneOf(policy)
+  return { inference: lane, speech: lane, maps: lane }
 }
 
 export effect function laneFor(tx: Tx, organizationId: string, _service: MeteredService, now: number): FundingLane!StoreFailure {
@@ -43,6 +74,5 @@ export effect function laneFor(tx: Tx, organizationId: string, _service: Metered
     when PolicyUnreadable: undefined;
     default: throw failure;
   }
-  if (policy === undefined) return "Refused"
-  return hasAllowance(policy.planKey) ? "AllowanceThenCredits" : "CreditsOnly"
+  return laneOf(policy)
 }

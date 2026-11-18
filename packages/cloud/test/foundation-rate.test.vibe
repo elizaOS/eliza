@@ -3,8 +3,18 @@ import { assert, describe, it } from "@effect/vitest"
 import { refusalBody, refusalResponse, type Refusal } from "../src/http/refusal.vibe"
 import { admit, admitAll, minute, perWindow, readWindow, windowEndOf } from "../src/shared/rate-limit.vibe"
 import { Store, StoreFailure, type Tx } from "../src/store/store.vibe"
-import { shiftedClock } from "./support/clock.ts"
+import { manualClock, type ManualClock } from "./support/clock.ts"
 import { testCloud } from "./support/cloud.vibe"
+
+effect function clockAt(at: number) {
+  const time = try Effect.orDie(Effect.try(() => manualClock()))
+  try setClock(time, at)
+  return time
+}
+
+effect function setClock(time: ManualClock, at: number) {
+  try Effect.orDie(Effect.try(() => time.set(at)))
+}
 
 effect function check(run: () => void) {
   try Effect.try(run)
@@ -25,19 +35,18 @@ describe("WP0 Foundation: rate limits", () => {
   it.live("Refuse excess requests with a usable retry time (spec/cloud/shared/rateLimit.md, \"Story: Refuse excess requests with a usable retry time\")", () => scoped(effect {
     const cloud = try testCloud()
     const hour = 60 * minute
-    const clock = shiftedClock()
-    const real = try Clock.currentTimeMillis
-    clock.advance(windowEndOf(real, 2 * hour) + 1_000 - real)
-    const start = real + windowEndOf(real, 2 * hour) + 1_000 - real
+    const start = 1_000 * 2 * hour + 1_000
+    const clock = try clockAt(start)
     const end = windowEndOf(start, hour)
     provide Store = cloud.store, Clock.Clock = clock.clock {
       const limit = { subject: "203.0.113.7", scope: "journeyPerIp", limit: 2, widthMs: hour }
       const first = admit(limit) catch (failure) => failure.refusal
       const second = admit(limit) catch (failure) => failure.refusal
+      const refusedAt = start + 30 * minute
+      try setClock(clock, refusedAt)
       const third = admit(limit) catch (failure) => failure.refusal
-      const refusedAt = try Clock.currentTimeMillis
       const held = try readWindow({ subject: limit.subject, rule: perWindow(limit.scope, limit.limit, limit.widthMs) })
-      clock.advance(end - refusedAt)
+      try setClock(clock, end)
       const retried = admit(limit) catch (failure) => failure.refusal
       const opened = try readWindow({ subject: limit.subject, rule: perWindow(limit.scope, limit.limit, limit.widthMs) })
       try check(() => assert.deepStrictEqual(
@@ -82,8 +91,9 @@ describe("WP0 Foundation: rate limits", () => {
   }))
 
   it.live("Refuse rather than guess when the limiter cannot count (spec/cloud/shared/rateLimit.md, \"Story: Refuse rather than guess when the limiter cannot count\")", () => effect {
-    const now = try Clock.currentTimeMillis
-    provide Store = brokenStore, Clock.Clock = { ...Clock.make(), currentTimeMillis: Effect.succeed(now), currentTimeMillisUnsafe: () => now } {
+    const now = 1_000 * 2 * minute + 500
+    const clock = try clockAt(now)
+    provide Store = brokenStore, Clock.Clock = clock.clock {
       const single = admit({ subject: "203.0.113.7", scope: "journeyPerIp", limit: 2, widthMs: minute }) catch (failure) => failure.refusal
       const group = admitAll([{ subject: "203.0.113.7", rule: perWindow("journeyCodePerIp", 3, minute) }]) catch (failure) => failure.refusal
       const unavailable = { status: 503, retryAfter: "1", body: { error: "rate_limit_unavailable", errorDescription: "Rate limit unavailable.", retryable: true, retryAt: now + 1000 } }

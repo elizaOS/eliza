@@ -104,7 +104,7 @@ module node {
       try {
         const text = await infer(record, claimed, await originalMessage(hint),
           AbortSignal.any([turn, AbortSignal.timeout(Math.max(0, completionDeadline(claimed) - Date.now()))]))
-        await runtime.setCache(cacheKey(hint), { text })
+        if (!await runtime.setCache(cacheKey(hint), { text })) throw new CompletionFailed("The reply was not kept")
         await catchUp(record.machine, by)
         const prepared = await send(record.machine, { type: "prepareCompletion" }, by)
         return prepared === undefined ? failure(409, "completion_closed") : deliver(record, hint, by, prepared)
@@ -124,6 +124,7 @@ module node {
         const record = await Effect.runPromise(open(input.parameters.get("id") ?? ""))
         return record === undefined ? failure(404, "unknown_proposal") : await work(record, by)
       } catch (cause) {
+        if (cause instanceof CompletionFailed) return failure(409, "original_request_gone")
         runtime.logger.error({ src: "device-actions", cause: cause instanceof Error ? cause.message : String(cause) }, "Device request store unavailable")
         return failure(503, "store_unavailable")
       }

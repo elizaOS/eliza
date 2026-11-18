@@ -14,6 +14,9 @@ export interface FakeAnswer {
   readonly status: number;
   readonly body?: unknown;
   readonly headers?: Readonly<Record<string, string>>;
+  readonly chunks?: ReadonlyArray<string | Uint8Array>;
+  readonly hangAfter?: number;
+  readonly onClose?: (finished: boolean) => void;
 }
 
 export type FakeHandler = (request: FakeRequest) => FakeAnswer | undefined | Promise<FakeAnswer | undefined>;
@@ -37,6 +40,20 @@ function send(response: ServerResponse, answer: FakeAnswer): void {
   response.end(text);
 }
 
+async function sendChunks(response: ServerResponse, answer: FakeAnswer, chunks: ReadonlyArray<string | Uint8Array>): Promise<void> {
+  const closed = new Promise<void>((resolve) => response.once("close", () => {
+    answer.onClose?.(response.writableFinished);
+    resolve();
+  }));
+  response.writeHead(answer.status, { "content-type": "text/event-stream", "cache-control": "no-store", ...answer.headers });
+  response.flushHeaders();
+  for (const chunk of chunks.slice(0, answer.hangAfter ?? chunks.length)) {
+    await new Promise<void>((resolve) => response.write(chunk, () => resolve()));
+  }
+  if (answer.hangAfter === undefined) response.end();
+  await closed;
+}
+
 export async function startFakeServer(): Promise<FakeServer> {
   const mounts: Array<{ prefix: string; handler: FakeHandler }> = [];
   const seen: FakeRequest[] = [];
@@ -48,7 +65,7 @@ export async function startFakeServer(): Promise<FakeServer> {
       for (const { prefix, handler } of mounts) {
         if (!fake.path.startsWith(prefix)) continue;
         const answer = await handler({ ...fake, path: fake.path.slice(prefix.length - 1) });
-        if (answer !== undefined) return send(response, answer);
+        if (answer !== undefined) return answer.chunks === undefined ? send(response, answer) : await sendChunks(response, answer, answer.chunks);
       }
       send(response, { status: 404, body: { error: { type: "invalid_request_error", message: `no fake for ${fake.method} ${fake.path}` } } });
     })().catch((cause: unknown) => send(response, { status: 500, body: { error: String(cause) } }));
