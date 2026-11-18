@@ -315,7 +315,7 @@ export interface TelephonyNativePlugin {
     before?: number;
     cursor?: string;
   }): Promise<unknown>;
-  latestIncomingSender?(): Promise<unknown>;
+  latestIncomingSender?(options?: { includeAddress: true }): Promise<unknown>;
   observeMessages(options: { enabled: boolean }): Promise<unknown>;
   /** One owner-confirmed local deletion, not cancellation of a send. Older hosts omit it. */
   deleteMessage?(options: MessageDeleteReference): Promise<unknown>;
@@ -1748,11 +1748,16 @@ export function createTelephonyClient(
         "sms",
       );
     },
-    async latestIncomingSender() {
+    async latestIncomingSender(includeAddress = false) {
       const bridge = native();
       if (!bridge.latestIncomingSender)
         throw new TelephonyUnavailable(options.unavailableMessage);
-      return parseSmsLatestSenderMetadata(await bridge.latestIncomingSender());
+      return parseSmsLatestSenderMetadata(
+        await bridge.latestIncomingSender(
+          includeAddress ? { includeAddress: true } : undefined,
+        ),
+        includeAddress,
+      );
     },
     async listThreads(limit = 20, before?: number) {
       const bridge = native();

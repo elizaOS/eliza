@@ -2073,6 +2073,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "sms.compose.v1",
           "sms.compose.v2",
           "sms.latest-sender.v1",
+          "sms.latest-sender.v2",
           "contacts.write.v2",
           "contacts.show.v1",
           "contacts.read.v1",

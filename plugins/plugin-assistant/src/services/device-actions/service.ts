@@ -35,6 +35,7 @@ import {
   extractUserText,
   getStreamingContext,
   getTurnActionConstraint,
+  isObjectRecord,
   readDurableConversationChatMarker,
   registerDirectActionRoutingRule,
   stableStringify,
@@ -221,6 +222,7 @@ import {
   CONTACT_SHOW_CAPABILITY,
   CONTACT_UPDATE_VALUES_CAPABILITY,
   CONTACT_WRITE_CAPABILITY,
+  isPreviousSmsSenderDraft,
   isSmsCompose,
   isSmsReply,
   isTelephonyAction,
@@ -230,6 +232,7 @@ import {
   SMS_COMPOSE_CAPABILITY,
   SMS_COMPOSE_TARGET_CAPABILITY,
   SMS_LATEST_SENDER_CAPABILITY,
+  SMS_SENDER_ADDRESS_CAPABILITY,
   selectedTelephonyView,
   smsComposeNotSubmitted,
   smsReplyNotDrafted,
@@ -1240,6 +1243,7 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   SMS_COMPOSE_CAPABILITY,
   MESSAGES_READ_CAPABILITY,
   SMS_LATEST_SENDER_CAPABILITY,
+  SMS_SENDER_ADDRESS_CAPABILITY,
   VOICEMAIL_READ_CAPABILITY,
   VOICEMAIL_DELETE_CAPABILITY,
   PHOTO_LIBRARY_CAPABILITY,
@@ -2208,6 +2212,103 @@ export class DeviceActionService {
         held.controller.abort(new Error("Original read enrollment revoked"));
     }
   }
+  /** Resolve "them" from the preceding host-persisted reply and its delivered device read,
+   * not the model's proposed number or a second lookup after a newer SMS arrives. */
+  private async previousSmsSender(
+    c: DeviceCredential,
+    original: Memory,
+  ): Promise<{ number: string; threadId?: string }> {
+    const unavailable = () =>
+      new DeviceActionError(
+        "No current SMS sender for this reply. Ask who texted you or choose a recipient.",
+      );
+    const requestedAt = original.createdAt;
+    if (!original.id || !requestedAt) throw unavailable();
+    const messages = await this.runtime.getMemories({
+      tableName: "messages",
+      roomId: original.roomId,
+      agentId: this.runtime.agentId,
+      end: requestedAt,
+      count: 3,
+    });
+    const prior = messages
+      .filter(
+        (message) =>
+          message.id !== original.id &&
+          message.roomId === original.roomId &&
+          typeof message.createdAt === "number" &&
+          message.createdAt <= requestedAt,
+      )
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    const reply = prior[0];
+    if (
+      !reply?.id ||
+      reply.entityId !== this.runtime.agentId ||
+      reply.agentId !== this.runtime.agentId ||
+      prior[1]?.createdAt === reply.createdAt
+    )
+      throw unavailable();
+    const marker = (
+      reply.content.metadata as
+        | {
+            deviceReadCompletion?: {
+              proposalId?: unknown;
+              attemptId?: unknown;
+            };
+          }
+        | undefined
+    )?.deviceReadCompletion;
+    if (
+      typeof marker?.proposalId !== "string" ||
+      typeof marker.attemptId !== "string"
+    )
+      throw unavailable();
+    const { proposalId, attemptId } = marker;
+    return this.access(c, async (queue, row, tx) => {
+      const stored = await readDeviceCompletion(
+        tx,
+        this.runtime.agentId,
+        c.subjectUserId,
+        proposalId,
+      );
+      if (
+        !stored ||
+        stored.state !== "delivered" ||
+        stored.attemptId !== attemptId ||
+        !stored.reply ||
+        stored.reply.messageId !== reply.id ||
+        stored.origin.original.roomId !== original.roomId ||
+        stored.origin.original.entityId !== original.entityId ||
+        stored.reply.text !== reply.content.text ||
+        Date.parse(stored.expiresAt) <= Date.now()
+      )
+        throw unavailable();
+      const bound = await this.boundReadCompletion(
+        queue,
+        row,
+        tx,
+        c,
+        proposalId,
+        stored.digest,
+        attemptId,
+      );
+      if (!bound) throw unavailable();
+      const result = deviceReadResult(bound.request);
+      if (
+        !isObjectRecord(result) ||
+        result.kind !== "sms-latest-sender" ||
+        result.status !== "found" ||
+        typeof result.address !== "string"
+      )
+        throw unavailable();
+      return {
+        number: result.address,
+        ...(typeof result.threadId === "string"
+          ? { threadId: result.threadId }
+          : {}),
+      };
+    });
+  }
   async propose(
     c: DeviceCredential,
     operation: unknown,
@@ -2249,6 +2350,15 @@ export class DeviceActionService {
     },
   ): Promise<ApprovalEnqueueResult> {
     let validated = validateDeviceOperation(operation);
+    if (validated.type === "sms_compose" && "replyThreadId" in validated)
+      throw new DeviceActionError(
+        "Reply threads are resolved from the original sender lookup.",
+      );
+    if (
+      validated.type === "sms_latest_sender" &&
+      c.capabilities?.includes(SMS_SENDER_ADDRESS_CAPABILITY)
+    )
+      validated = { type: "sms_latest_sender", includeAddress: true };
     // "Open wikipedia.org in a new tab" asks for that address, not an empty
     // tab. The model still proposed browser_tab_new for it (v610, Pixel: the
     // phone showed a blank New tab and "Opened a new tab."), so the owner's own
@@ -2412,19 +2522,62 @@ export class DeviceActionService {
       validated.type === "browser_navigate" ||
       validated.type === "browser_search";
     const selectedTelephony = selectedTelephonyView(validated) !== undefined;
+    const smsDraftOrRead = [
+      "sms_compose",
+      "sms_send",
+      "sms_reply_selected",
+      "sms_latest_sender",
+    ].includes(validated.type);
     const foregroundTurn =
       isPhotosViewOperation(validated) || isFilesOperation(validated)
         ? getDeviceActionTurn()
         : undefined;
     const signal = foregroundTurn && getStreamingContext()?.abortSignal;
     const requestOrigin = await freshRequestedMessageId(this.runtime, c, {
-      allowReviewed: browserRequest || selectedTelephony,
+      allowReviewed: browserRequest || selectedTelephony || smsDraftOrRead,
       // A tab word and find text are compared with the owner's words too.
       readText:
+        smsDraftOrRead ||
         browserRequest ||
         validated.type === "browser_tab_switch" ||
         validated.type === "browser_find",
     });
+    if (
+      validated.type === "sms_latest_sender" &&
+      validated.includeAddress &&
+      !requestOrigin
+    )
+      throw new DeviceActionError(
+        "A current owner message is required to read the SMS sender address.",
+      );
+    if (
+      requestOrigin &&
+      c.capabilities?.includes(SMS_SENDER_ADDRESS_CAPABILITY) &&
+      (validated.type === "sms_compose" ||
+        validated.type === "sms_send" ||
+        validated.type === "sms_reply_selected") &&
+      isPreviousSmsSenderDraft(requestOrigin.requestText)
+    ) {
+      requestOrigin.assertCurrent();
+      const original = getDeviceActionTurn()?.replyContext?.message;
+      if (
+        !original ||
+        !c.capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY) ||
+        !c.capabilities.includes(SMS_COMPOSE_CAPABILITY)
+      )
+        throw new DeviceActionError(
+          "An addressed Messages draft is unavailable on this phone.",
+        );
+      const sender = await this.previousSmsSender(c, original);
+      requestOrigin.assertCurrent();
+      validated = validateDeviceOperation({
+        type: "sms_compose",
+        target: { kind: "number", number: sender.number },
+        ...(sender.threadId ? { replyThreadId: sender.threadId } : {}),
+        body: validated.body,
+        draft: true,
+      });
+    }
     // Reviewed Photos and Files proposals retain their foreground owner
     // even without a direct-request message binding.
     const assertCurrent =

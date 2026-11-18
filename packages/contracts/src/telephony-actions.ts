@@ -68,6 +68,7 @@ export const SMS_COMPOSE_CAPABILITY = "sms.compose.v1";
 export const SMS_COMPOSE_TARGET_CAPABILITY = "sms.compose.v2";
 export const MESSAGES_READ_CAPABILITY = "messages.read.v1";
 export const SMS_LATEST_SENDER_CAPABILITY = "sms.latest-sender.v1";
+export const SMS_SENDER_ADDRESS_CAPABILITY = "sms.latest-sender.v2";
 export const VOICEMAIL_READ_CAPABILITY = "voicemail.read.v1";
 export const VOICEMAIL_DELETE_CAPABILITY = "voicemail.delete.v1";
 export const PHONE_KEYPAD_CAPABILITY = "phone.keypad.v1";
@@ -79,6 +80,7 @@ export const CONTACT_EMAIL_MAX = 254;
 export const CONTACT_READ_FIELD_MAX = 32;
 /** A shared number is the text the phone stores, so it may hold separators. */
 export const CONTACT_READ_NUMBER_MAX = 64;
+const SMS_THREAD_ID = /^[1-9][0-9]{0,18}$/;
 export const SMS_COMPOSE_BODY_MAX = 1600;
 export const MESSAGES_READ_MAX = 20;
 export const MESSAGES_READ_BODY_MAX = 1600;
@@ -596,6 +598,7 @@ export type SmsComposeOperation =
       target: PhoneDialTarget;
       body: string;
       draft?: true;
+      replyThreadId?: string;
     };
 export type SmsComposeStatus =
   | "drafted"
@@ -651,15 +654,33 @@ export function validateSmsCompose(value: unknown): SmsComposeOperation {
   }
   exact(
     v,
-    ["type", "target", "body", ...(Object.hasOwn(v, "draft") ? ["draft"] : [])],
+    [
+      "type",
+      "target",
+      "body",
+      ...(Object.hasOwn(v, "draft") ? ["draft"] : []),
+      ...(Object.hasOwn(v, "replyThreadId") ? ["replyThreadId"] : []),
+    ],
     "message",
   );
   if (Object.hasOwn(v, "draft") && typeof v.draft !== "boolean")
     throw Error("Invalid message");
+  const recipient = target(v.target, "message");
+  if (
+    "replyThreadId" in v &&
+    (v.draft !== true ||
+      recipient.kind !== "number" ||
+      typeof v.replyThreadId !== "string" ||
+      !SMS_THREAD_ID.test(v.replyThreadId))
+  )
+    throw Error("Invalid reply draft thread");
   const text = body(v.body);
   return {
     type: "sms_compose",
-    target: target(v.target, "message"),
+    target: recipient,
+    ...(typeof v.replyThreadId === "string"
+      ? { replyThreadId: v.replyThreadId }
+      : {}),
     body: text,
     ...(v.draft === true ? { draft: true as const } : {}),
   };
@@ -679,6 +700,8 @@ export function smsComposeCapabilityAvailable(
 ): boolean {
   return (
     capabilities?.includes(SMS_COMPOSE_CAPABILITY) === true &&
+    (!("replyThreadId" in operation) ||
+      capabilities.includes(SMS_SENDER_ADDRESS_CAPABILITY)) &&
     (!("target" in operation) ||
       capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY))
   );
@@ -850,9 +873,13 @@ export function phoneKeypadResultText(result: PhoneKeypadResult): string {
 // ---- messages.read.v1 ------------------------------------------------------
 
 export type MessagesReadOperation = { type: "messages_read_selected" };
-export type SmsLatestSenderOperation = { type: "sms_latest_sender" };
+export type SmsLatestSenderOperation = {
+  type: "sms_latest_sender";
+  includeAddress?: true;
+};
 export type SmsLatestSenderMetadata =
   | { status: "found"; numberEnding: string }
+  | { status: "found"; address: string; threadId?: string }
   | { status: "empty" | "sender-unavailable" };
 export type SmsLatestSenderResult = {
   kind: "sms-latest-sender";
@@ -864,11 +891,106 @@ export function isSmsLatestSender(value: {
   return value.type === "sms_latest_sender";
 }
 
+/** A draft addressing only the sender just identified in this conversation. An explicitly named recipient stays with the normal contact/number flow. */
+export function isPreviousSmsSenderDraft(text: string): boolean {
+  return /^(?:(?:please|can you|could you|would you)\s+)?(?:(?:draft|write|prepare|compose)\s+(?:me\s+)?(?:(?:a|the)\s+)?(?:(?:short|quick|brief)\s+)?(?:sms|text(?: message)?|message|reply)\s+(?:to|for|asking|telling|reminding)\s+|reply\s+to\s+)(?:them|him|her|that sender|the (?:last|latest|newest) sender)\b/i.test(
+    text.trim(),
+  );
+}
+
+export function isSmsSenderLookup(text: string): boolean {
+  const request = text.trim();
+  return (
+    /^(?:(?:please|can you|could you)\s+)?(?:who\b|what(?:'s| is| was)\b|show\b|look up\b|find\b|check\b|tell me\b)/i.test(
+      request,
+    ) &&
+    /\b(?:sms|text(?:ed|s)?|messag(?:e|es|ed))\b/i.test(request) &&
+    /\b(?:who|whose|sender|number|from)\b/i.test(request) &&
+    /\b(?:last|latest|newest|recent|just)\b|\bwho (?:texted|messaged) me\b/i.test(
+      request,
+    )
+  );
+}
+
+/** Direct preference applies to the owner's current request. Explicit review, old lookups and ordinary sends still take their normal routes. */
+export function directSmsRequest(
+  operation: {
+    type: string;
+    includeAddress?: unknown;
+    draft?: unknown;
+    target?: unknown;
+    replyThreadId?: unknown;
+  },
+  text: string,
+): boolean {
+  const request = text.trim();
+  if (
+    /\b(?:show|open|present) (?:me )?(?:an? |the )?(?:review|approval)|\b(?:ask|check with) me (?:first|before|to approve)|\b(?:require|wait for|after) (?:my |me to )?(?:approval|confirmation|approve)|\b(?:review|approve) (?:the |this )?(?:lookup|read|action|request)\b/i.test(
+      request,
+    )
+  )
+    return false;
+  if (operation.type === "sms_compose" && operation.draft === true) {
+    if (isPreviousSmsSenderDraft(request))
+      return (
+        typeof operation.replyThreadId === "string" &&
+        SMS_THREAD_ID.test(operation.replyThreadId)
+      );
+    const target = operation.target as Partial<PhoneDialTarget> | null;
+    if (target?.kind !== "number" || typeof target.number !== "string")
+      return false;
+    return (
+      /^(?:(?:please|can you|could you)\s+)?(?:draft|compose|prepare|write)\b/i.test(
+        request,
+      ) &&
+      /\b(?:text|sms|message|reply)\b/i.test(request) &&
+      [...request.matchAll(/\+?\d[\d ().-]*\d/g)].some(
+        ([number]) => number.replace(/[ ().-]/g, "") === target.number,
+      )
+    );
+  }
+  return (
+    operation.type === "sms_latest_sender" &&
+    operation.includeAddress === true &&
+    isSmsSenderLookup(request)
+  );
+}
+
 export function parseSmsLatestSenderMetadata(
   value: unknown,
+  includeAddress = false,
 ): SmsLatestSenderMetadata {
   const data = record(value, "latest SMS sender");
   if (data.status === "found") {
+    if (includeAddress) {
+      exact(
+        data,
+        [
+          "status",
+          "address",
+          ...(Object.hasOwn(data, "threadId") ? ["threadId"] : []),
+        ],
+        "latest SMS sender",
+      );
+      if (
+        "threadId" in data &&
+        (typeof data.threadId !== "string" ||
+          !SMS_THREAD_ID.test(data.threadId))
+      )
+        throw Error("Invalid latest SMS sender thread");
+      if (
+        typeof data.address !== "string" ||
+        !PHONE_DIAL_NUMBER.test(data.address)
+      )
+        throw Error("Invalid latest SMS sender address");
+      return {
+        status: "found",
+        address: data.address,
+        ...(typeof data.threadId === "string"
+          ? { threadId: data.threadId }
+          : {}),
+      };
+    }
     exact(data, ["status", "numberEnding"], "latest SMS sender");
     if (
       typeof data.numberEnding !== "string" ||
@@ -889,6 +1011,7 @@ export function parseSmsLatestSenderMetadata(
 
 export function validateSmsLatestSenderResult(
   value: unknown,
+  includeAddress = false,
 ): SmsLatestSenderResult {
   const { kind, ...metadata } = record(value, "latest SMS sender result");
   if (kind !== "sms-latest-sender")
@@ -897,12 +1020,15 @@ export function validateSmsLatestSenderResult(
     exact(metadata, ["status"], "latest SMS sender result");
     return { kind, status: "unavailable" };
   }
-  return { kind, ...parseSmsLatestSenderMetadata(metadata) };
+  return { kind, ...parseSmsLatestSenderMetadata(metadata, includeAddress) };
 }
 
 export function smsLatestSenderReply(value: SmsLatestSenderResult): string {
-  if (value.status === "found")
-    return `Your latest incoming SMS came from the number ending in ${value.numberEnding}.`;
+  if (value.status === "found") {
+    return "address" in value
+      ? `Your latest incoming SMS came from ${value.address}.`
+      : `Your latest incoming SMS came from the number ending in ${value.numberEnding}.`;
+  }
   if (value.status === "empty")
     return "There are no incoming SMS messages on this phone.";
   if (value.status === "unavailable")
@@ -1231,7 +1357,14 @@ export function validateTelephonyAction(
   if (type === "phone_keypad") return validatePhoneKeypad(value);
   if (type === "messages_read_selected") return validateMessagesRead(value);
   if (type === "sms_latest_sender") {
-    exact(record(value, "latest SMS sender"), ["type"], "latest SMS sender");
+    const data = record(value, "latest SMS sender");
+    if (Object.hasOwn(data, "includeAddress")) {
+      exact(data, ["type", "includeAddress"], "latest SMS sender");
+      if (data.includeAddress !== true)
+        throw Error("Invalid latest SMS sender form");
+      return { type, includeAddress: true };
+    }
+    exact(data, ["type"], "latest SMS sender");
     return { type };
   }
   if (type === "voicemail_read_selected") return validateVoicemailRead(value);

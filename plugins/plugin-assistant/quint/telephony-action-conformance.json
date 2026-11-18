@@ -102,7 +102,10 @@
       "a voicemail read carries a transcript and its engine only when ready",
       "a voicemail delete targets only the open voicemail",
       "each operation type has one capability and one validator",
-      "capabilities follow the native profile and its parts"
+      "capabilities follow the native profile and its parts",
+      "latest SMS sender exposes only the reviewed suffix",
+      "address lookup and a reply draft use the complete negotiated address",
+      "phone_keypad opens the keypad, filled in at most, and never calls"
     ]
   }
 }
