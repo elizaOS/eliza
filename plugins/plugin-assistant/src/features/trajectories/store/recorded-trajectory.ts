@@ -248,7 +248,7 @@ export function readRecordedTrajectoryHeaders(
   return headers;
 }
 
-/** Row metadata with one recorded-trajectory header set (stage ids kept). */
+/** Set a recorded-trajectory header and keep only persisted stage references. */
 export function withRecordedTrajectoryHeader(
   metadata: Record<string, unknown>,
   header: RecordedTrajectoryHeader,
@@ -263,7 +263,7 @@ export function withRecordedTrajectoryHeader(
     | undefined;
   const stageIds = Array.isArray(existing?.stageIds)
     ? (existing.stageIds as string[])
-    : header.stageIds;
+    : [];
   return {
     ...metadata,
     [RECORDED_TRAJECTORIES_METADATA_KEY]: {

@@ -338,6 +338,53 @@ describe("recorded trajectories on the trajectory store", () => {
     });
   });
 
+  it("recovers a readable turn row after a transient header write failure", async () => {
+    const { runtime, service, rows } = await createSqlRuntime();
+    const turnId = await service.startTrajectory(AGENT_ID);
+    await service.flushWriteQueue(turnId);
+    await rows("CREATE SEQUENCE recorded_header_attempt");
+    await rows(`
+      CREATE FUNCTION fail_first_recorded_header() RETURNS trigger
+      LANGUAGE plpgsql AS $$
+      BEGIN
+        IF nextval('recorded_header_attempt') = 1 THEN
+          RAISE EXCEPTION 'temporary header write failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$
+    `);
+    await rows(`
+      CREATE TRIGGER fail_first_recorded_header BEFORE UPDATE OF metadata_json
+      ON trajectories FOR EACH ROW EXECUTE FUNCTION fail_first_recorded_header()
+    `);
+    const recorder = createTrajectoryRecorder({ runtime, rootDir });
+
+    const id = await runWithTrajectoryContext(
+      { trajectoryStepId: turnId },
+      async () => {
+        const recorded = recorder.startTrajectory({
+          agentId: AGENT_ID,
+          rootMessage: { id: "message-6", text: "recover the header" },
+        });
+        await recorder.recordStage(recorded, plannerStage("file-planner"));
+        await recorder.endTrajectory(recorded, "finished");
+        return recorded;
+      },
+    );
+    await service.endTrajectory(turnId, "completed");
+
+    expect(await service.getRecordedTrajectories(turnId)).toMatchObject([
+      { trajectoryId: id, status: "finished", stages: [] },
+    ]);
+    const file = await readExport(rootDir, {
+      agentId: AGENT_ID,
+      trajectoryId: id,
+    });
+    expect(file.stages.map((stage) => stage.stageId)).toEqual(["file-planner"]);
+    await service.stop();
+  });
+
   it("exports the complete record when the runtime has no SQL adapter", async () => {
     const runtime = {
       agentId: AGENT_ID,
