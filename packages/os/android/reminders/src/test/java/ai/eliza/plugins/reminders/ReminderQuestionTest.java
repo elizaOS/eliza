@@ -62,6 +62,34 @@ public class ReminderQuestionTest {
    assertEquals("scheduled",engine.decide("daily",occurrence,"done").getString("status"));assertFalse(noticed(context,config,"daily"));
   }
  }
+ @Test public void retainedForegroundAlarmPostsOnceOnBackgroundAndCancellationRemovesIt() throws Exception {
+  Context context = RuntimeEnvironment.getApplication();
+  String name = "foreground" + UUID.randomUUID().toString().replace("-", "");
+  Memory memory = new Memory(name);
+  ReminderConfiguration config = configuration(name, false);
+  ReminderEngine engine = ReminderEngine.get(context, config, c -> memory);
+  String id = "owned-reminder";
+  long later = System.currentTimeMillis() + java.time.Duration.ofDays(180).toMillis();
+  assertEquals("scheduled", engine.schedule(id, "Owned appointment", "", later, null, null).getString("status"));
+  assertEquals(later, engine.read(id).getLong("at"));
+  dueNow(context, engine, id);
+  assertFalse(noticed(context, config, id));
+  engine.deliverDue(id);
+  assertEquals("posted", engine.read(id).getString("status"));
+  assertTrue(noticed(context, config, id));
+  JSONObject first = new JSONObject(memory.read(config.tapSlot));
+  engine.deliverDue(id);
+  assertEquals(first.toString(), new JSONObject(memory.read(config.tapSlot)).toString());
+  String tap = first.keys().next();
+  engine.captureTap(tap);
+  assertTrue(engine.pendingTap().getBoolean("retained"));
+  assertEquals(id, engine.consumeTap(tap).getString("reminderId"));
+  assertFalse(noticed(context, config, id));
+  assertTrue(engine.cancel(id));
+  engine.deliverDue(id);
+  assertEquals("cancelled", engine.read(id).getString("status"));
+  assertFalse(noticed(context, config, id));
+ }
  @Test public void olderPendingTapIsNotReclaimed()throws Exception{
   Context context=RuntimeEnvironment.getApplication();String name="pending"+UUID.randomUUID().toString().replace("-","");Memory memory=new Memory(name);ReminderConfiguration config=configuration(name,true);ReminderEngine engine=ReminderEngine.get(context,config,c->memory);
   engine.schedule("older","Synthetic reminder","Owned fixture",System.currentTimeMillis()+60000,null,null);deliver(context,engine,config,"older");
