@@ -37,18 +37,18 @@ channel.
 ```quint
 import apk.* from "../image/apk"
 type Channel = Stable | Beta
-type RoleKeys = { threshold: int, keys: List[int] }
+type RoleKeys = { threshold: int, members: List[int] }
 type ChannelRoles = { stableKeys: RoleKeys, betaKeys: RoleKeys }
 pure def minimumApprovals(channel: Channel): int = if (channel == Stable) 2 else 1
-pure def distinctKeys(keys: List[int]): bool = keys.every(k => keys.select(x => x == k).length() == 1)
+pure def distinctKeys(members: List[int]): bool = keys.every(k => keys.select(x => x == k).length() == 1)
 pure def roleValid(role: RoleKeys, channel: Channel): bool = distinctKeys(role.keys) and minimumApprovals(channel) <= role.threshold and role.threshold <= role.keys.length()
 pure def channelRolesValid(roles: ChannelRoles, rootKeys: List[int]): bool =
   roleValid(roles.stableKeys, Stable) and roleValid(roles.betaKeys, Beta) and roles.betaKeys.keys.every(k => not(rootKeys.includes(k)))
   and roles.stableKeys.keys.every(k => not(roles.betaKeys.keys.includes(k)) and not(rootKeys.includes(k)))
 pure def channelApproved(role: RoleKeys, approvers: List[int]): bool = role.keys.select(k => approvers.includes(k)).length() >= role.threshold
-pure val validRoles: ChannelRoles = { stableKeys: { threshold: 2, keys: List(1, 2) }, betaKeys: { threshold: 1, keys: List(3) } }
-pure val rolesValues = Set(validRoles, { ...validRoles, stableKeys: { threshold: 1, keys: List(1, 2) } }, { ...validRoles, stableKeys: { threshold: 2, keys: List(1, 1) } },
-  { ...validRoles, betaKeys: { threshold: 1, keys: List(1) } }, { ...validRoles, betaKeys: { threshold: 1, keys: List(9) } })
+pure val validRoles: ChannelRoles = { stableKeys: { threshold: 2, members: List(1, 2) }, betaKeys: { threshold: 1, members: List(3) } }
+pure val rolesValues = Set(validRoles, { ...validRoles, stableKeys: { threshold: 1, members: List(1, 2) } }, { ...validRoles, stableKeys: { threshold: 2, members: List(1, 1) } },
+  { ...validRoles, betaKeys: { threshold: 1, members: List(1) } }, { ...validRoles, betaKeys: { threshold: 1, members: List(9) } })
 pure val rootKeysValues = Set(List(9), List())
 pure val approverValues = Set(1, 2, 3, 9)
 pure def lawOneKeyNeverApprovesStable(roles: ChannelRoles, rootKeys: List[int], approver: int): bool =
@@ -161,13 +161,13 @@ pure def laneFor(lanes: Lanes, channel: Channel): LaneFloor = if (channel == Sta
 pure def fetchedAt(fetch: Fetch): int = match fetch { | Fetched(f) => f.fetchedLower | _ => 0 }
 pure def rememberRelease(lanes: Lanes, r: Release, device: Device, repository: str, fetch: Fetch): Memory = {
   val floor = laneFor(lanes, device.channel)
-  val next = { sequence: r.sequence, revision: r.rollout.revision, security: r.securityFloor, core: r.core, rollout: r.rollout.digest, revoked: r.rollout.revoked, refreshed: larger(floor.refreshed, fetchedAt(fetch)) }
+  val remembered = { sequence: r.sequence, revision: r.rollout.revision, security: r.securityFloor, core: r.core, rollout: r.rollout.digest, revoked: r.rollout.revoked, refreshed: larger(floor.refreshed, fetchedAt(fetch)) }
   if (not(wellFormed(r)) or r.repository != repository or r.channel != device.channel or r.distribution != device.distribution) { lanes: lanes, check: Unchanged }
   else if (r.sequence < floor.sequence or r.rollout.revision < floor.revision or r.securityFloor < floor.security) { lanes: lanes, check: Unchanged }
   else if (floor.revoked.some(d => not(listed(r.rollout.revoked, d)))) { lanes: lanes, check: RevocationRegression }
   else if (floor.sequence == r.sequence and floor.core != r.core) { lanes: lanes, check: SequenceEquivocation }
   else if (floor.sequence == r.sequence and floor.revision == r.rollout.revision and floor.rollout != r.rollout.digest) { lanes: lanes, check: RolloutEquivocation }
-  else { lanes: if (device.channel == Stable) { ...lanes, stable: next } else { ...lanes, beta: next }, check: Remembered }
+  else { lanes: if (device.channel == Stable) { ...lanes, stable: remembered } else { ...lanes, beta: remembered }, check: Remembered }
 }
 pure val lanesValues = Set({ stable: unseenLane, beta: unseenLane }, { stable: laneA, beta: unseenLane }, { stable: { ...laneA, revoked: List(Sha256({ hex: "a9" })) }, beta: laneA })
 pure val repositoryValues = Set("org/app", "org/other")
@@ -328,7 +328,7 @@ pure def authorizedVersions(publication: Publication): RoleVersions = match publ
 pure val descriptorA: SignedDescriptor = { path: { channel: Stable, distribution: Launcher }, sha256: Sha256({ hex: "d1" }) }
 pure val graphA: PublicationGraph = { timestamp: Sha256({ hex: "t1" }), versions: { ...versionsA, timestamp: 2, snapshot: 2 }, roles: validRoles, stableApprovers: List(1, 2), betaApprovers: List(3), descriptors: List(descriptorA) }
 pure val graphValues = Set(graphA, { ...graphA, stableApprovers: List(1, 1) }, { ...graphA, versions: versionsA }, { ...graphA, timestamp: Sha256({ hex: "t2" }) }, { ...graphA, descriptors: List() },
-  { ...graphA, roles: { ...validRoles, stableKeys: { threshold: 1, keys: List(1, 2) } }, stableApprovers: List(1) })
+  { ...graphA, roles: { ...validRoles, stableKeys: { threshold: 1, members: List(1, 2) } }, stableApprovers: List(1) })
 pure val recheckValues = graphValues
 pure val planValues = Set({ planTimestamp: Sha256({ hex: "t1" }), planDescriptors: List(descriptorA) }, { planTimestamp: Sha256({ hex: "t1" }), planDescriptors: List() },
   { planTimestamp: Sha256({ hex: "t1" }), planDescriptors: List(descriptorA, { ...descriptorA, sha256: Sha256({ hex: "d2" }) }) })
