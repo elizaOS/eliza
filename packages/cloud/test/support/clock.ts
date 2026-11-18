@@ -1,5 +1,5 @@
 // spec/cloud/shared/metering.md, "Story: Settle every call once"
-import { Clock, Duration, Effect } from "effect";
+import { type Clock, Duration, Effect } from "effect";
 
 export interface ShiftedClock {
   readonly clock: Clock.Clock;

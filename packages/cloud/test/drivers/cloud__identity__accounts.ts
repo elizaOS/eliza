@@ -1,17 +1,13 @@
 // spec/cloud/identity/accounts.md, "Story: Get one account on first sign-in"; spec/cloud/identity/accounts.md, "Story: Attribute a referral without paying for it"
-import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/cloud__identity__accounts.conformance.ts";
 import type { Account, Event } from "../../gen/cloud__identity__accounts.ts";
 import { readAccount, stepAccount } from "../../src/identity/accounts.vibe";
-import type { Tx } from "../../src/store/connection.vibe";
-import { Store } from "../../src/store/store.vibe";
-import { ledger } from "../support/ledger.ts";
+import { ledger, within } from "../support/ledger.ts";
 
 const cloud = ledger();
 const emitted = new Map<string, unknown>();
 const account = (key: string) => `account-${key}`;
 const scoped = (key: string, organizationId: string) => `${key}/${organizationId}`;
-const within = <A, E>(body: (tx: Tx) => Effect.Effect<A, E, never>) => Effect.flatMap(Store.asEffect(), (store) => store.transaction(body));
 
 async function dispatch(key: string, event: Event) {
   const sent = event.type === "openAccount" ? { ...event, organizationId: scoped(key, event.organizationId) } : event;

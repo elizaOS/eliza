@@ -60,7 +60,7 @@ module node {
   }
 }
 import { migrationFiles, openPg, openPglite, type Migration } from node
-import { Store, StoreFailure, foreign, storeOver, toText, type StoreLocation, type Tx } from "./connection.vibe"
+import { Store, type StoreFailure, foreign, storeOver, toText, type StoreLocation, type Tx } from "./connection.vibe"
 export { Store, StoreFailure, toInt, toText, type Row, type StoreLocation, type Tx } from "./connection.vibe"
 export error DatabaseIdentityMismatch { expected: string; found: string }
 export error StoreLocationInvalid { input: string }

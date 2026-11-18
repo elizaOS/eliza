@@ -4,7 +4,7 @@ import { hasPaidLimits, type SubscriptionStatus } from "../../gen/cloud__billing
 import type { FundingLane } from "../../gen/cloud__shared__metering.effect.vibe"
 import type { MeteredService } from "../../gen/cloud__shared__types.ts"
 import { parsePlanKey } from "./plans.vibe"
-import { StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
+import { type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 
 export type { FundingLane, MeteredService, SubscriptionStatus }
 

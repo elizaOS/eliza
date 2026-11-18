@@ -20,9 +20,7 @@ export function parseBrowserAddressInput(
 ): BrowserAddressInput {
   const value = input.trim();
   if (!value) return { kind: "rejected", reason: "empty" };
-  // Reject ambiguous separators before URL normalization can erase them.
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: Reject controls before WHATWG URL normalization.
-  if (/[\u0000-\u001f\u007f\\]/.test(value))
+  if ([...value].some((char) => char <= "\u001f" || char === "\u007f" || char === "\\"))
     return { kind: "rejected", reason: "invalid-input" };
   // Search operators name query text even when their operand looks like a
   // host or port. Keep the explicit // scheme form on the protocol path.

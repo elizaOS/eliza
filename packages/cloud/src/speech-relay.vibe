@@ -47,6 +47,33 @@ schema InkEvent { type: string; transcript?: string }
 schema SonicEvent { type: string; context_id?: string; data?: string; flush_id?: number }
 
 type Usage = { pcmBytes: number; ttsCharacters: number }
+type ContextPhase = "prepared" | "speaking" | "finishing" | "closed"
+type ContextControl = Exclude<typeof controlShape.Type, { t: "stop" }>
+type ControlStep = {
+  readonly protocol?: true
+  readonly cancel?: boolean
+  readonly phase?: ContextPhase
+  readonly announce?: "tts_prepared" | "complete"
+  readonly speak?: { readonly text: string; readonly continuation: boolean; readonly flush?: boolean }
+}
+
+function controlStep(message: ContextControl, phase: ContextPhase | undefined, spoken: number): ControlStep {
+  switch (message.t) {
+    case "prepare":
+      return phase && phase !== "prepared" ? {} : { phase: "prepared", announce: "tts_prepared" }
+    case "cancel":
+      return { cancel: phase === "speaking" || phase === "finishing", phase: "closed", announce: "complete" }
+    case "finish":
+      if (phase === "prepared") return { phase: "closed", announce: "complete" }
+      if (phase === "speaking") return { phase: "finishing", speak: { text: "", continuation: false } }
+      return phase === "closed" ? {} : { protocol: true }
+    case "tts":
+      if (phase === "closed") return {}
+      if (phase === "finishing" || !message.text.trim() || message.text.length > speechPhraseCharacters || spoken + message.text.length > speechCharacters) return { protocol: true }
+      return { phase: "speaking", announce: phase ? undefined : "tts_prepared", speak: { text: message.text, continuation: true, flush: message.flush } }
+  }
+}
+
 type EndState = { closed: true }
 type Window = { expires_at: Date; stt_hold_key: string; tts_hold_key: string; stt_micros_per_second: string; tts_micros_per_character: string }
 type Directions<A> = { input: A; output: A }
@@ -193,9 +220,7 @@ function bindRelay(life: Lifetime, env: SpeechEnv, id: string, downstream: Cloud
   const helloDeadline = speechDeadline(5000)
   void helloDeadline.elapsed.then((expired) => expired ? close("unauthorized") : undefined).catch(() => undefined)
 
-  function fail() {
-    void close("unavailable").catch(() => undefined)
-  }
+  const fail = () => void close("unavailable").catch(() => undefined)
 
   function active() {
     if (ended || !expiresAt) return false
@@ -289,24 +314,18 @@ function bindRelay(life: Lifetime, env: SpeechEnv, id: string, downstream: Cloud
     if (!active()) return
     windowDeadline = speechDeadline(expiresAt - voiceNow())
     void windowDeadline.elapsed.then((expired) => expired ? close("closed") : undefined).catch(() => undefined)
-    const ink = openSpeechProvider(inkUrl, key, inkVersion, abort.signal).then((socket) => {
-      if (ended) closeSocket(socket, "speech expired")
-      else {
-        stt = socket
-        stt.addEventListener("message", listenInk)
-        stt.addEventListener("error", fail)
-        stt.addEventListener("close", fail)
+    const attach = (url: URL, version: string, listen: (event: MessageEvent) => void) => openSpeechProvider(url, key, version, abort.signal).then((socket) => {
+      if (ended) {
+        closeSocket(socket, "speech expired")
+        return null
       }
+      socket.addEventListener("message", listen)
+      socket.addEventListener("error", fail)
+      socket.addEventListener("close", fail)
+      return socket
     })
-    const sonic = openSpeechProvider(sonicUrl, key, sonicVersion, abort.signal).then((socket) => {
-      if (ended) closeSocket(socket, "speech expired")
-      else {
-        tts = socket
-        tts.addEventListener("message", listenSonic)
-        tts.addEventListener("error", fail)
-        tts.addEventListener("close", fail)
-      }
-    })
+    const ink = attach(inkUrl, inkVersion, listenInk).then((socket) => { stt = socket })
+    const sonic = attach(sonicUrl, sonicVersion, listenSonic).then((socket) => { tts = socket })
     await Promise.all([ink, sonic])
     if (!active()) return
     readyAt = voiceNow()
@@ -362,40 +381,18 @@ function bindRelay(life: Lifetime, env: SpeechEnv, id: string, downstream: Cloud
       await close("protocol")
       return
     }
-    switch (message.t) {
-      case "prepare":
-        if (!phase) contexts.set(context, "prepared")
-        if (!phase || phase === "prepared") sendJson(downstream, { t: "tts_prepared", id: context })
-        return
-      case "cancel":
-        if (tts && phase && phase !== "prepared" && phase !== "closed") {
-          ttsUncertain = true
-          sendJson(tts, { context_id: context, cancel: true })
-        }
-        contexts.set(context, "closed")
-        sendJson(downstream, { t: "complete", id: context })
-        return
-      case "finish":
-        if (phase === "prepared") {
-          contexts.set(context, "closed")
-          sendJson(downstream, { t: "complete", id: context })
-        } else if (phase === "speaking") {
-          contexts.set(context, "finishing")
-          phrase(context, "", false)
-        } else if (phase !== "closed") {
-          await close("protocol")
-        }
-        return
-      case "tts":
-        if (phase === "closed") return
-        if (phase === "finishing" || !message.text.trim() || message.text.length > speechPhraseCharacters || usage.ttsCharacters + message.text.length > speechCharacters) {
-          await close("protocol")
-        } else {
-          if (!phase) sendJson(downstream, { t: "tts_prepared", id: context })
-          contexts.set(context, "speaking")
-          phrase(context, message.text, true, message.flush)
-        }
+    const step = controlStep(message, phase, usage.ttsCharacters)
+    if (step.protocol) {
+      await close("protocol")
+      return
     }
+    if (step.cancel && tts) {
+      ttsUncertain = true
+      sendJson(tts, { context_id: context, cancel: true })
+    }
+    if (step.phase) contexts.set(context, step.phase)
+    if (step.announce) sendJson(downstream, { t: step.announce, id: context })
+    if (step.speak) phrase(context, step.speak.text, step.speak.continuation, step.speak.flush)
   }
 
   downstream.addEventListener("message", (event: MessageEvent) => {

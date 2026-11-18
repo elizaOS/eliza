@@ -1,7 +1,7 @@
 // spec/cloud/identity/secondFactor.md, "Story: Set up and change my second factor"; spec/cloud/identity/secondFactor.md, "Story: Finish sign-in with my second factor"; spec/cloud/identity/secondFactor.md, "Story: Confirm it is me before a sensitive change"; spec/cloud/identity/sessions.md, "Story: Confirm it is me before a sensitive change"
 import {
   apply, challengeRefusal, decodeState, enrollmentOf, factorCodeAccepted, hasFactor, initial, isConfirmed, mayChangeFactors, noTotpStep, setupLive, totpStepAt, totpWindow,
-  NotAState, Rejected, type Event, type FactorMethod, type FactorStep, type SecondFactor
+  type NotAState, Rejected, type Event, type FactorMethod, type FactorStep, type SecondFactor
 } from "../../gen/cloud__identity__secondFactor.effect.vibe"
 import { decodeState as decodeFamily, elapse, initial as noFamily, signIn, type Family } from "../../gen/cloud__identity__sessions.effect.vibe"
 import { sendLimits, verifyPerDestination, verifyPerIp } from "../../gen/cloud__identity__codeChallenges.effect.vibe"

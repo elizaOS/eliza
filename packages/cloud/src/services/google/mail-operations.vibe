@@ -1,5 +1,5 @@
 // spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once, as I reviewed it"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
-import { Rejected, NotAState, apply, decodeState, elapse, initial, isUnknown, canReceiveReply, canResolve, receiptStatus, type Event, type LookupResult, type ProviderReply, type Receipt, type RefusalCause } from "../../../gen/cloud__shared__dispatchOnce.effect.vibe"
+import { type Rejected, type NotAState, apply, decodeState, elapse, initial, isUnknown, canReceiveReply, canResolve, receiptStatus, type Event, type LookupResult, type ProviderReply, type Receipt, type RefusalCause } from "../../../gen/cloud__shared__dispatchOnce.effect.vibe"
 import { millisPerDay, millisPerSecond } from "../../../gen/cloud__shared__types.effect.vibe"
 import type { SessionOwner } from "../../../gen/core__sessions.ts"
 import { refused, type Refused } from "../../http/refusal.vibe"
@@ -552,10 +552,10 @@ const sweepBatch = 100
 export effect function sweepStaleOperations(): number!!Store {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  const stale = store.transaction((tx) => tx.query(
+  const stale = try store.transaction((tx) => tx.query(
     "SELECT organization_id, user_id, grant_id, request_id FROM mail_operations WHERE phase = 'dispatched' AND dispatched_at <= $1 ORDER BY dispatched_at LIMIT $2",
     [now - staleAfter, sweepBatch]
-  )) catch () => [])
+  )) catch () => []
   let swept = 0
   for (const row of stale) {
     const scope: Scope = { owner: { organizationId: toText(row.organization_id) ?? "", userId: toText(row.user_id) ?? "" }, grantId: toText(row.grant_id) ?? "", requestId: toText(row.request_id) ?? "" }

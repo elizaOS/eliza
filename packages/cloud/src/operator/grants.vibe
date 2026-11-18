@@ -7,7 +7,7 @@ import { OperatorUsageInvalid, type OperatorCommandHandler, type OperatorFlags }
 
 const wholeNumber = /^\d{1,9}$/
 
-effect function wholeFlag(flags: OperatorFlags, name: string): number | undefined!OperatorUsageInvalid {
+effect function wholeFlag(flags: OperatorFlags, name: string): (number | undefined)!OperatorUsageInvalid {
   const text = flags.values(name)[0]
   if (text === undefined) return undefined
   if (!wholeNumber.test(text)) throw new OperatorUsageInvalid({ problem: `--${name} must be a whole number` })
@@ -28,7 +28,7 @@ effect function termOf(flags: OperatorFlags): Term!OperatorUsageInvalid {
   return days === undefined ? defaultTerm : { tag: "TermDays", days }
 }
 
-effect function expiryOf(flags: OperatorFlags): number | undefined!OperatorUsageInvalid {
+effect function expiryOf(flags: OperatorFlags): (number | undefined)!OperatorUsageInvalid {
   const text = flags.values("expires-at")[0]
   if (text === undefined) return undefined
   const at = Date.parse(text)

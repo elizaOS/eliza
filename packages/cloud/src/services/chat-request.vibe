@@ -1,6 +1,6 @@
 // spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"; spec/cloud/services/models.md, "A side has at most 2,000,000 tokens, so every side's price arithmetic stays a safe integer"
 import { callCost, countsInBound, type Model, type TokenCounts } from "../../gen/cloud__services__models.effect.vibe"
-import { refused, Refused } from "../http/refusal.vibe"
+import { refused, type Refused } from "../http/refusal.vibe"
 import type { RouteContext } from "../http/routes.vibe"
 import { acceptedFields, ChatRequest, type ChatMessage, type ResponseFormat } from "./chat-request.schema.ts"
 
