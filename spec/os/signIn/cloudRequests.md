@@ -41,7 +41,6 @@ pure def samePiece(p: Routes::Piece, seg: Segment): bool = match seg {
   | Literal(l) => p == Routes::Literal({ text: l.text })
   | Param(x) => p == Routes::Param
 }
-type PathProgress = { at: int, ok: bool }
 pure def samePath(t: Routes::Route, d: DeviceRoute): bool =
   t.path.length() == d.path.length() and
     t.path.foldl({ at: 0, ok: true }, (c, p) => { at: c.at + 1, ok: c.ok and samePiece(p, d.path.nthOr(c.at, Param({ name: "" }))) }).ok
