@@ -1,9 +1,10 @@
 // spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"
-import type { ChatMessage, GenerateTextParams, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback } from "@elizaos/core"
+import type { GenerateTextParams, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import { outcomeOf, type CloudError, type ModelHandler } from "../../gen/agent__models__binding.effect.vibe"
 
 export type Started = number | "limited"
+export type ChatHandler = Exclude<ModelHandler, "TextEmbedding">
 
 export interface Binding {
   credential(): Redacted.Redacted<string>
@@ -14,7 +15,7 @@ export interface Binding {
 
 export interface Endpoint {
   readonly url: string
-  readonly models: Readonly<Record<ModelHandler, string>>
+  readonly models: Readonly<Partial<Record<ChatHandler, string>>>
 }
 
 export interface Sink {
@@ -195,7 +196,7 @@ effect function send(url: string, credential: Redacted.Redacted<string>, body: o
   return first
 }
 
-effect function serve(binding: Binding, handler: ModelHandler, endpoint: Endpoint, messages: object[], max: number | undefined, sink: Sink) {
+effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint, messages: object[], max: number | undefined, sink: Sink) {
   const began = try Clock.currentTimeMillis
   const started = try binding.startCall(handler, began)
   if (started === "limited") throw refusalOf({ tag: "CloudRateLimited", retryAt: 0 })
@@ -210,7 +211,7 @@ effect function serve(binding: Binding, handler: ModelHandler, endpoint: Endpoin
   return text
 }
 
-export function generateText(binding: Binding, endpoint: Endpoint, handler: ModelHandler) {
+export function generateText(binding: Binding, endpoint: Endpoint, handler: ChatHandler) {
   return (_runtime: IAgentRuntime, params: GenerateTextParams): Promise<string> => run(
     Effect.provide(serve(binding, handler, endpoint, conversation(params.system, params.prompt, params.messages),
       params.omitMaxTokens ? undefined : params.maxTokens ?? 1024, params), FetchHttpClient.layer),
@@ -250,5 +251,3 @@ export function registerTwice(runtime: IAgentRuntime, provider: string, handlers
     }
   }
 }
-
-export type { ChatMessage }

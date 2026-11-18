@@ -115,24 +115,32 @@ public class UpdateJournal {
     /** The candidate digest whose installs ended released, and how many times in a row. */
     public final String releasedCandidate;
     public final int releases;
-    Snapshot(State s) {
+    public final Hold hold;
+    /** False when the call named another attempt or a phase it does not apply to, and nothing changed. */
+    public final boolean applied;
+    Snapshot(State s) { this(s,true); }
+    Snapshot(State s,boolean applied) {
       probation=s.probation; pendingMillis=s.pendingMillis; revision=s.revision; channelGeneration=s.generation; channel=s.channel; reason=s.reason; phase=s.phase; plan=s.plan;
       sessionId=s.session; recoveryAttempts=s.attempts; quarantine=Collections.unmodifiableSet(new HashSet<>(s.quarantine));
-      reportedFailure=s.reported; releasedCandidate=s.releasedDigest; releases=s.releases;
+      reportedFailure=s.reported; releasedCandidate=s.releasedDigest; releases=s.releases; hold=s.hold; this.applied=applied;
     }
   }
+  private enum Effect { COUNTED, QUIET, IGNORED }
   private static final class State {
     ProbationWindow probation;
     long pendingMillis=0, observedBoot=-1, observedElapsed=-1;
     long revision=0, generation=0; String channel="stable", reason=""; Phase phase=Phase.IDLE;
     Plan plan; int session=-1, attempts=0; Set<String> quarantine=new TreeSet<>();
-    InstallerFailure reported; String releasedDigest=""; int releases=0;
+    InstallerFailure reported; String releasedDigest=""; int releases=0; Hold hold=Hold.UNHELD;
+    Effect effect=Effect.COUNTED; final List<Announcement> out=new ArrayList<>();
     State copy() {
       State c=new State();c.probation=probation;c.pendingMillis=pendingMillis;c.observedBoot=observedBoot;c.observedElapsed=observedElapsed;
       c.revision=revision;c.generation=generation;c.channel=channel;c.reason=reason;c.phase=phase;c.plan=plan;c.session=session;c.attempts=attempts;c.quarantine=new TreeSet<>(quarantine);
-      c.reported=reported;c.releasedDigest=releasedDigest;c.releases=releases;
+      c.reported=reported;c.releasedDigest=releasedDigest;c.releases=releases;c.hold=hold;
       return c;
     }
+    void ignore(){effect=Effect.IGNORED;}
+    void quiet(){if(effect==Effect.COUNTED)effect=Effect.QUIET;}
   }
   private interface Mutation { void apply(State state) throws IOException; }
   private interface Locked<T> { T apply(State current) throws IOException; }
