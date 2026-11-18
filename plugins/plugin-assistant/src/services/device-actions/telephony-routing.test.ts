@@ -14,7 +14,10 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../message/stage1-evaluators.ts";
-import { proposeDeviceAction } from "./action.ts";
+import {
+  deviceActionForCapabilities,
+  proposeDeviceAction,
+} from "./action.ts";
 import {
   DeviceActionService,
   setDeviceActionRequestMessage,
@@ -178,5 +181,21 @@ describe("a whole-message call or text reaches the phone's own operation", () =>
         false,
       );
     });
+  });
+});
+
+// v610: "change Test Alpha's number" and "delete the contact Test Alpha" were
+// proposed for a name nobody in Contacts has. The phone checks the name before
+// it offers a review; the agent, which cannot see the address book, must not
+// claim the contact exists or that its change is ready.
+describe("contact changes and deletions name a contact the agent cannot see", () => {
+  it("tells the agent the phone looks the name up first", () => {
+    const { description } = deviceActionForCapabilities(proposeDeviceAction, [
+      "contacts.write.v1",
+    ]);
+    expect(description).toContain(
+      "The phone looks up a change's or deletion's name before it offers the review, and when no contact matches it tells the owner instead",
+    );
+    expect(description).toContain("never say the contact exists");
   });
 });

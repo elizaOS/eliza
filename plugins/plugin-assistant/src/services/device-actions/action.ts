@@ -1123,7 +1123,7 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   },
   {
     types: ["contact_create", "contact_update", "contact_delete"],
-    text: "Address-book changes require contacts.write.v1: contact_create {contact: {displayName, phoneNumbers, emailAddresses}}, contact_update {query, set} where set holds any of displayName, phoneNumbers, emailAddresses (a field in set replaces that field whole; a field left out is unchanged), or contact_delete {query}. query names the contact by search text exactly as the owner said it, never an ID. The phone finds the contact, shows the owner the before and after, and writes only after approval. You receive only the outcome and never the address book or any contact detail; never use these to look a contact up. not-found and stale mean nothing was changed.",
+    text: "Address-book changes require contacts.write.v1: contact_create {contact: {displayName, phoneNumbers, emailAddresses}}, contact_update {query, set} where set holds any of displayName, phoneNumbers, emailAddresses (a field in set replaces that field whole; a field left out is unchanged), or contact_delete {query}. query names the contact by search text exactly as the owner said it, never an ID. The phone finds the contact, shows the owner the before and after, and writes only after approval. You receive only the outcome and never the address book or any contact detail; never use these to look a contact up. The phone looks up a change's or deletion's name before it offers the review, and when no contact matches it tells the owner instead; so never say the contact exists or that its change is ready, only that the phone will show the matching contact to approve. not-found and stale mean nothing was changed.",
   },
   {
     types: ["contact_update"],
