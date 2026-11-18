@@ -20,6 +20,7 @@ import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { collectV5PlannerCandidateActions } from "../message/action-surface.ts";
 import { inferDirectCurrentRequestCandidateInference } from "../message/direct-action-heuristics.ts";
 import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../message/stage1-evaluators.ts";
+import { deviceActionForCapabilities, proposeDeviceAction } from "./action.ts";
 import {
   DeviceActionService,
   setDeviceActionRequestMessage,
@@ -419,5 +420,66 @@ it.each([
         "Open the browser view",
       ).names,
     ).toContain("VIEWS");
+  },
+);
+
+const operationTypes = (action: { parameters?: readonly unknown[] }) =>
+  (
+    action.parameters as
+      | {
+          name: string;
+          schema: {
+            anyOf?: { properties?: { type?: { enum?: string[] } } }[];
+          };
+        }[]
+      | undefined
+  )
+    ?.find((p) => p.name === "operation")
+    ?.schema.anyOf?.flatMap((branch) => branch.properties?.type?.enum ?? []);
+it.each([
+  // The owner's v610 turn (Pixel): the planner still had browser_tab_new for
+  // "open wikipedia.org in a new tab" and the phone opened a blank tab.
+  ["open wikipedia.org in a new tab", false],
+  ["can you open wikipedia.org in a new tab?", false],
+  ["open a new tab", true],
+  ["open wikipedia.org in a private tab", true],
+  ["open example.com in the browser", true],
+] as const)(
+  "offers the planner an empty tab for %s only when no address opens in a new tab",
+  async (request, emptyTab) => {
+    const f = await fixture(request);
+    const capabilities = ["browser.tabs.v1", "browser.open-new-tab.v1"];
+    await withDeviceActionTurn(
+      f.runtime,
+      { ...f.credential, capabilities },
+      async () => {
+        setDeviceActionRequestMessage(f.runtime, f.message);
+        const scoped = deviceActionForCapabilities(
+          proposeDeviceAction,
+          capabilities,
+          f.message.content.metadata,
+          { runtime: f.runtime, message: f.message },
+        );
+        const types = operationTypes(scoped);
+        expect(types).toContain("browser_navigate");
+        expect(types).toContain("browser_tab_switch");
+        expect(types?.includes("browser_tab_new")).toBe(emptyTab);
+        // The routed tool carries the new-tab placement for the address.
+        const open = deviceActionForCapabilities(
+          f.browser,
+          capabilities,
+          f.message.content.metadata,
+          { runtime: f.runtime, message: f.message },
+        );
+        expect(JSON.stringify(open.parameters)).toContain('"newTab"');
+      },
+      {
+        requestCaller: {
+          subjectUserId: f.credential.subjectUserId,
+          entityId: owner,
+          role: "OWNER",
+        },
+      },
+    );
   },
 );

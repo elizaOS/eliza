@@ -16,6 +16,7 @@ import {
 import {
   containsWebAddress,
   DeviceBrowserNotRequestedError,
+  directBrowserOpen,
 } from "./browser-request-grounding.ts";
 import {
   isCalendarOperation,
@@ -2021,6 +2022,15 @@ export function deviceActionForCapabilities(
   const files =
     capabilities?.includes(FILES_CAPABILITY) === true &&
     (!current || current.isCurrent());
+  // "Open x.com in a new tab" is an open of x.com: an empty tab is never
+  // offered for it (the service also turns one into that open).
+  const request = binding?.message ?? current?.replyContext?.message;
+  const addressInNewTab =
+    request !== undefined &&
+    directBrowserOpen(
+      extractUserText(unwrapUserMessageText(request)),
+      (binding?.runtime ?? current?.runtime)?.character.name,
+    )?.newTab === true;
   const offered = (branch: ActionParameterSchema): boolean => {
     if (
       branch.properties?.days &&
@@ -2075,6 +2085,7 @@ export function deviceActionForCapabilities(
       return false;
 
     if (navigation && types?.includes("open_view")) return false;
+    if (addressInNewTab && types?.includes("browser_tab_new")) return false;
     if (
       (types?.includes("calendar_create_local") ||
         types?.includes("calendar_read_next")) &&
