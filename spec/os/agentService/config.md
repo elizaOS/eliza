@@ -115,8 +115,9 @@ pure def startVerdict(d: AgentData, cred: C::DeviceCredential, worker: RP::Launc
   if (not(filesAdmitted(d))) LaunchWithheld({ cause: Launch::Config })
   else if (needsAccount(d.host.launch.backend) and signedInAccount(cred) == Launch::NoAccount) LaunchWithheld({ cause: Launch::Credential })
   else LaunchReady({ launch: { document: launchDocument(d, signedInAccount(cred)), worker: worker } })
-pure def lawRefusedFilesAreAConfigErrorWhoeverIsSignedIn(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker): bool =
-  not(filesAdmitted(d)) implies withheldAs(startVerdict(d, cred, worker), Launch::Config)
+pure def lawRefusedFilesAreAConfigErrorWhoeverIsSignedIn(d: AgentData, cred: C::DeviceCredential, otherCred: C::DeviceCredential, worker: RP::LaunchWorker): bool =
+  (not(filesAdmitted(d)) implies withheldAs(startVerdict(d, cred, worker), Launch::Config))
+    and (withheldAs(startVerdict(d, cred, worker), Launch::Config) iff withheldAs(startVerdict(d, otherCred, worker), Launch::Config))
 pure def lawCloudLaunchWithoutActiveKeyIsACredentialError(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker): bool =
   (filesAdmitted(d) and needsAccount(d.host.launch.backend) and C::activeVersion(cred) == 0) implies withheldAs(startVerdict(d, cred, worker), Launch::Credential)
 pure def lawLaunchWithoutCloudIgnoresTheSignIn(d: AgentData, cred: C::DeviceCredential, worker: RP::LaunchWorker): bool =
@@ -168,6 +169,7 @@ pure val credValues = {
   Set(C::initial, active, { ...active, custody: C::Expired({ account: { userId: "user1", organizationId: "org1" } }) },
     { ...active, custody: C::Active({ version: 1, credentialId: "c1", account: { userId: "", organizationId: "org1" }, keyExpiresAt: 1000 }) })
 }
+pure val otherCredValues = credValues
 pure val dValues = {
   val words: Words = { words: "Agent", units: 5 }
   val status: Routes::Route = { method: Routes::Get, delivery: Routes::Buffered, path: List(Routes::Literal({ text: "api" }), Routes::Literal({ text: "status" })), query: List(), limit: Routes::AnySize }

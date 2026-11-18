@@ -16,10 +16,12 @@ import type { FireResult, ScheduledTaskPort, ScheduledTaskRow, TaskEdit, TaskTri
 module node {
   import { randomUUID } from "node:crypto"
 
+  /** @throws {never} */
   export function newTaskId(): string {
     return randomUUID()
   }
 
+  /** @throws {never} */
   export function knownTimeZone(zone: string): boolean {
     try {
       new Intl.DateTimeFormat("en-US", { timeZone: zone })
@@ -185,7 +187,7 @@ export function scheduledTaskService(host: ScheduledTaskHost) {
   const deliveries = new Map<string, DeliveryPort>()
   const locks = new Map<string, Semaphore.Semaphore>()
 
-  function locked<A, E, R>(taskId: string, work: Effect.Effect<A, E, R>) {
+  function locked<A, E, R>(taskId: string, work: A!E!R): A!E!R {
     const known = locks.get(taskId)
     const lock = known ?? Semaphore.makeUnsafe(1)
     if (known === undefined) locks.set(taskId, lock)
@@ -205,7 +207,7 @@ export function scheduledTaskService(host: ScheduledTaskHost) {
 
   effect function deliver(task: ScheduledTaskView, now: number) {
     const port = deliveries.get(task.kind) ?? host.defaultDelivery
-    const result = try (tryPromise({ try: () => port(task), catch: (cause) => cause }) catch (cause) => undeliverable(cause))
+    const result = tryPromise({ try: () => port(task), catch: (cause) => cause }) catch (cause) => undeliverable(cause)
     switch (result.kind) {
       case "delivered": return { delivery: delivered, note: {} }
       case "retry": return { delivery: { tag: "RetryAt", retryAt: now + Math.max(1, Math.ceil(result.afterMs)) } as Delivery, note: { reason: result.reason } }
@@ -213,9 +215,9 @@ export function scheduledTaskService(host: ScheduledTaskHost) {
     }
   }
 
-  effect function fireRow(taskId: string, seenRevision: number | undefined, manual: boolean): FireResult {
+  effect function fireRow(taskId: string, seenRevision: number | undefined, manual: boolean) {
     const row = try getScheduledTask(adapter, taskId)
-    if (row === undefined) return { kind: "notFound" }
+    if (row === undefined) return { kind: "notFound" } satisfies FireResult
     const task = row.state
     const seen = seenRevision ?? task.revision
     const trigger = row.details.trigger
@@ -224,15 +226,15 @@ export function scheduledTaskService(host: ScheduledTaskHost) {
     const ready = manual ? fireReply(task, seen, now, processStart, following, delivered)
       : canFire(task, seen, false, now, processStart, following, delivered) ? claimOutcome(task, false, now, processStart, following, delivered)
       : "FireRaced"
-    if (ready === "FireRaced") return { kind: "answered", outcome: "FireRaced", task: view(row) }
+    if (ready === "FireRaced") return { kind: "answered", outcome: "FireRaced", task: view(row) } satisfies FireResult
     if (ready === "FireSkipped" && ownerFireEnded(task)) {
-      return { kind: "answered", outcome: "FireSkipped", task: view(row), reason: notWaiting(task) }
+      return { kind: "answered", outcome: "FireSkipped", task: view(row), reason: notWaiting(task) } satisfies FireResult
     }
     if (ready === "FireSkipped") {
       const skipped: Delivery = { tag: "Undeliverable" }
       const event: Event = { type: "fire", seenRevision: seen, manual, now, processStart, following: nextDue(trigger, processStart - 1), delivery: skipped }
       const after = try commit(taskId, event, fireLog("FireSkipped", now, skipped, {}))
-      return { kind: "answered", outcome: "FireSkipped", task: after, reason: missedOccurrenceLog }
+      return { kind: "answered", outcome: "FireSkipped", task: after, reason: missedOccurrenceLog } satisfies FireResult
     }
     const { delivery, note } = try deliver(view(row), now)
     const outcome = claimOutcome(task, manual, now, processStart, following, delivery)
@@ -242,31 +244,31 @@ export function scheduledTaskService(host: ScheduledTaskHost) {
       kind: "answered", outcome, task: after,
       ...(outcome === "FireDeferred" && delivery.tag === "RetryAt" ? { reason: note.reason ?? "retry", nextAttemptAt: delivery.retryAt } : {}),
       ...(failed === undefined ? {} : { error: failed }),
-    }
+    } satisfies FireResult
   }
 
-  effect function verbRow(taskId: string, request: VerbRequest, key: RequestKey, seenRevision: number | undefined): VerbResult {
+  effect function verbRow(taskId: string, request: VerbRequest, key: RequestKey, seenRevision: number | undefined) {
     const row = try getScheduledTask(adapter, taskId)
-    if (row === undefined) return { kind: "notFound" }
+    if (row === undefined) return { kind: "notFound" } satisfies VerbResult
     const task = row.state
     const seen = seenRevision ?? task.revision
     const now = try Clock.currentTimeMillis
     const edit = request.kind === "edit" ? request.edit : undefined
     const verb = request.kind === "verb" ? request.verb : editVerb(request.edit)
-    if (edit?.trigger !== undefined && usable(edit.trigger) !== undefined) return { kind: "refused", reason: "Malformed" }
+    if (edit?.trigger !== undefined && usable(edit.trigger) !== undefined) return { kind: "refused", reason: "Malformed" } satisfies VerbResult
     const following = edit?.trigger !== undefined ? firstDue(edit.trigger, now) : nextDue(row.details.trigger, dueInstant(task.due))
     const reply = verbReply(task, seen, key, verb, now, following)
     switch (reply.tag) {
-      case "NotFound": return { kind: "notFound" }
-      case "Refused": return { kind: "refused", reason: reply.reason }
+      case "NotFound": return { kind: "notFound" } satisfies VerbResult
+      case "Refused": return { kind: "refused", reason: reply.reason } satisfies VerbResult
       case "Applied": {
-        if (isReplay(task, key, verb)) return { kind: "applied", task: view(row) }
+        if (isReplay(task, key, verb)) return { kind: "applied", task: view(row) } satisfies VerbResult
         const after = try commit(taskId, { type: "applyVerb", seenRevision: seen, key, verb, now, following }, (_, next) => ({
           ...(edit?.promptInstructions === undefined ? {} : { promptInstructions: edit.promptInstructions }),
           ...(edit?.trigger === undefined ? {} : { trigger: edit.trigger }),
           ...verbLog(verb, next),
         }))
-        return { kind: "applied", task: after }
+        return { kind: "applied", task: after } satisfies VerbResult
       }
     }
   }
@@ -346,6 +348,10 @@ effect function bootWrite(runtime: IAgentRuntime) {
   }
 }
 
+effect function bootQuietly(runtime: IAgentRuntime) {
+  bootWrite(runtime) catch (failure) => runtime.reportError("ScheduledTasks.boot", failure, { task: scheduledTasksTick })
+}
+
 export effect function startScheduledTaskTicks(runtime: IAgentRuntime, tasks: ScheduledTasks) {
   const worker: TaskWorker = {
     name: scheduledTasksTick,
@@ -356,7 +362,7 @@ export effect function startScheduledTaskTicks(runtime: IAgentRuntime, tasks: Sc
     }),
   }
   try Effect.try(() => runtime.registerTaskWorker(worker))
-  const boot = fork.detached (bootWrite(runtime) catch (failure) => runtime.reportError("ScheduledTasks.boot", failure, { task: scheduledTasksTick }))
+  const boot = fork.detached bootQuietly(runtime)
   return {
     stop: effect function () {
       try join boot
