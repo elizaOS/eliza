@@ -12,7 +12,11 @@ import android.os.SystemClock;
 import java.io.File;
 import java.io.IOException;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -25,6 +29,8 @@ public abstract class EmbeddedRuntimeService extends Service {
       int logBytes,int logLineBytes,long agentReadyMs,long gatewayReadyMs,long pollMs,int maxBodyBytes) {}
   @FunctionalInterface public interface EndpointRequest { JSONObject execute(int port,String token)throws Exception; }
   private static final ConcurrentHashMap<Class<?>,EmbeddedRuntimeService> current=new ConcurrentHashMap<>();
+  private static final ConcurrentHashMap<Class<?>,Set<Runnable>> observers=new ConcurrentHashMap<>();
+  private static final ExecutorService changes=Executors.newSingleThreadExecutor(r->{Thread t=new Thread(r,"ElizaRuntimeStatus");t.setDaemon(true);return t;});
   private final Policy policy;
   private final NativeRuntimeSession supervisor;
   protected File root;
@@ -34,6 +40,7 @@ public abstract class EmbeddedRuntimeService extends Service {
     if(policy==null || policy.maxBodyBytes()<=0)throw new IllegalArgumentException("Runtime service policy is required");
     this.policy=policy;
     supervisor=new NativeRuntimeSession(this::launch,policy.monitorMs(),policy.restartDelayMs(),policy.maxRestarts());
+    supervisor.observe(()->changed(getClass()));
   }
   protected abstract File runtimeRootDirectory();
   protected abstract NotificationChannel runtimeNotificationChannel();
@@ -48,16 +55,30 @@ public abstract class EmbeddedRuntimeService extends Service {
     JSONObject result=new JSONObject().put("available",available).put("onDevice",true)
       .put("state",available?(state==null?"stopped":state.state.name().toLowerCase(Locale.ROOT)):"unavailable");
     if(available)result.put("requestBodyLimit",RuntimeRequestDispatcher.MAX_BODY_TEXT_UNITS);
-    if(state!=null && state.failure!=null)result.put("error",state.failure instanceof IOException?state.failure.getMessage():startupFailure);
+    else result.put("failure","payload");
+    if(state!=null && state.failure!=null){
+      result.put("error",state.failure instanceof IOException?state.failure.getMessage():startupFailure);
+      if(available)result.put("failure",RuntimeStartFailure.name(state.failure));
+    }
     if(service!=null)result.put("epoch",state.epoch);
     return result;
   }
   protected static JSONObject requestFor(Class<? extends EmbeddedRuntimeService> type,EndpointRequest request,String unavailable,String cancelled)throws Exception {
     EmbeddedRuntimeService service=current.get(type);
     NativeRuntimeSession.Snapshot binding=service==null?null:service.supervisor.snapshot();
-    EmbeddedRuntimeGroup.Endpoint endpoint=service==null||service.group==null?null:service.group.gateway();
+    EmbeddedRuntimeGroup.Endpoint endpoint=service==null||service.group==null?null:service.group.served();
     if(endpoint==null)throw new NativeRuntimeSession.NotReadyException(unavailable);
     return service.supervisor.request(binding,()->current.get(type)==service,()->request.execute(endpoint.port,endpoint.token),unavailable,cancelled);
+  }
+  /** Runs the observer on a status thread after each lifecycle change of the host's service,
+   * including its creation and destruction, until the returned handle is closed. */
+  protected static AutoCloseable observeFor(Class<? extends EmbeddedRuntimeService> type,Runnable observer) {
+    if(observer==null)throw new IllegalArgumentException("Runtime status observer is required");
+    observers.computeIfAbsent(type,key->new CopyOnWriteArraySet<>()).add(observer);
+    return ()->observers.getOrDefault(type,Set.of()).remove(observer);
+  }
+  private static void changed(Class<?> type) {
+    for(Runnable observer:observers.getOrDefault(type,Set.of()))changes.execute(observer);
   }
   protected static void prepareRestartFor(Class<? extends EmbeddedRuntimeService> type) {
     EmbeddedRuntimeService service=current.get(type);
@@ -96,6 +117,7 @@ public abstract class EmbeddedRuntimeService extends Service {
       policy.agentReadyMs(),policy.gatewayReadyMs(),policy.pollMs());
     getSystemService(NotificationManager.class).createNotificationChannel(runtimeNotificationChannel());
     current.put(getClass(),this);
+    changed(getClass());
   }
   @Override public synchronized int onStartCommand(Intent intent,int flags,int startId) {
     String action=intent==null?null:intent.getAction();
@@ -121,7 +143,7 @@ public abstract class EmbeddedRuntimeService extends Service {
   }
   @Override public synchronized void onDestroy() {
     try{supervisor.close();}
-    finally{current.remove(getClass(),this);stopForeground(STOP_FOREGROUND_REMOVE);super.onDestroy();}
+    finally{current.remove(getClass(),this);changed(getClass());stopForeground(STOP_FOREGROUND_REMOVE);super.onDestroy();}
   }
   @Override public void onTimeout(int startId,int foregroundServiceType){stopSelf();}
   @Override public IBinder onBind(Intent intent){return null;}
