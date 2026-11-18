@@ -1,0 +1,14 @@
+// spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"
+lemma lawEventsDoNotDependOnChunking_ensures(s: Segmenter, a: seq<int>, b: seq<int>)
+  ensures (fed(s, (a + b)).segmenter == fed(fed(s, a).segmenter, b).segmenter)
+  ensures (fed(s, (a + b)).events == (fed(s, a).events + fed(fed(s, a).segmenter, b).events))
+{
+  if |b| == 0 {
+    assert a + b == a;
+  } else {
+    var front := b[0..(|b| - 1)];
+    assert (a + b)[0..(|a + b| - 1)] == a + front;
+    assert (a + b)[(|a + b| - 1)] == b[(|b| - 1)];
+    lawEventsDoNotDependOnChunking_ensures(s, a, front);
+  }
+}

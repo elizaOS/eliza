@@ -321,13 +321,13 @@ public class UpdateJournal {
   public Snapshot observeOutcomeUnknown(String planId,int sessionId,long boot,long elapsed,long waitMillis)throws IOException {
     require(boot>=0&&elapsed>=0&&waitMillis>0,"Invalid monotonic observation");
     return transact(s->{
-      if(s.phase!=Phase.SUPPORT||!OUTCOME_UNKNOWN.equals(s.reason)||s.plan==null||!s.plan.id.equals(planId)||s.session!=sessionId)return;
+      if(s.phase!=Phase.SUPPORT||!OUTCOME_UNKNOWN.equals(s.reason)||s.plan==null||!s.plan.id.equals(planId)||s.session!=sessionId){s.ignore();return;}
       boolean regressed=s.observedBoot>boot||(s.observedBoot==boot&&s.observedElapsed>elapsed);
       long delta=regressed?0:s.observedBoot==boot?elapsed-s.observedElapsed:(s.observedBoot>=0?elapsed:0);
       if(regressed)s.pendingMillis=0;
       s.pendingMillis=delta>Long.MAX_VALUE-s.pendingMillis?Long.MAX_VALUE:s.pendingMillis+delta;
       s.observedBoot=boot;s.observedElapsed=elapsed;
-      if(s.pendingMillis>=waitMillis)release(s);
+      if(s.pendingMillis>=waitMillis)release(s);else s.quiet();
     });
   }
   private static void resetPending(State s){s.pendingMillis=0;s.observedBoot=-1;s.observedElapsed=-1;}
@@ -335,6 +335,7 @@ public class UpdateJournal {
    * retry budget; quarantine and the channel generation stay. */
   private static void release(State s) throws IOException {
     String candidate=s.plan.candidate.digest;
+    conclude(s,s.plan.baseline);
     s.releases=candidate.equals(s.releasedDigest)?s.releases+1:1;s.releasedDigest=candidate;s.reported=null;resetPending(s);
     if(s.releases>=MAX_INSTALL_ATTEMPTS_PER_CANDIDATE){s.phase=Phase.QUARANTINED;quarantine(s,false);s.reason=RETRY_BUDGET_SPENT;return;}
     s.phase=Phase.IDLE;s.plan=null;s.session=-1;s.reason=INSTALL_RELEASED;
@@ -346,8 +347,13 @@ public class UpdateJournal {
   private static void requireHealthObservation(State current, Snapshot observed) throws IOException {
     require(observed!=null && observed.plan!=null && current.revision==observed.revision
       && current.generation==observed.channelGeneration && current.phase==observed.phase
-      && current.channel.equals(observed.channel) && samePlan(current.plan,observed.plan),
+      && current.channel.equals(observed.channel) && samePlan(current.plan,observed.plan) && sameWindow(current.probation,observed.probation),
       "Stale health observation");
+  }
+  private static boolean sameWindow(ProbationWindow a,ProbationWindow b){
+    if(a==null||b==null)return a==b;
+    return a.policy.same(b.policy)&&a.readyMillis==b.readyMillis&&a.failureMillis==b.failureMillis&&a.last.boot==b.last.boot&&a.last.elapsed==b.last.elapsed
+      &&a.last.kind==b.last.kind&&a.last.process.equals(b.last.process)&&a.last.runtime.equals(b.last.runtime);
   }
   /** Capture observed BEFORE collecting this sample. Persisted timing is fenced
    * by the same revision/plan/channel lock as verdicts. No phase transition. */

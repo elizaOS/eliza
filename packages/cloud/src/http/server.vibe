@@ -75,6 +75,7 @@ effect function dispatch(routes: ReadonlyArray<Route>, requestId: string, now: n
   const limit = route.maxBodyBytes ?? defaultMaxBodyBytes
   const declared = Number(request.headers["content-length"] ?? "0")
   if (!Number.isSafeInteger(declared) || declared > limit) throw refused("ContentTooLarge")
+  if (route.ingressPerMinute !== undefined) try admit({ subject: Option.getOrElse(request.remoteAddress, () => "unknown"), scope: `ingress-${route.path}`, limit: route.ingressPerMinute, widthMs: minute })
   const caller = authenticate(request.headers.authorization, route.auth) catch effect (failure) => match (failure) {
     when Refused: throw failure;
     default: throw refused("ServiceUnavailable", "NoReason", now + 5000);

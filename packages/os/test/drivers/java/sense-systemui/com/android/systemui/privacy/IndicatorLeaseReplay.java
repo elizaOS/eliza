@@ -65,7 +65,7 @@ public final class IndicatorLeaseReplay {
         };
     }
 
-    private boolean acquire(String body, boolean replied) {
+    private boolean acquire(boolean replied) {
         long generation = lease.acquire(BOOT);
         linked = generation;
         held = replied ? generation : -1;
@@ -92,7 +92,7 @@ public final class IndicatorLeaseReplay {
 
     private boolean apply(String type, String body, String line) {
         return switch (type) {
-            case "acquire" -> controller(line) && held < 0 && admitted(body) && acquire(body, flag(body, "replied"));
+            case "acquire" -> controller(line) && held < 0 && admitted(body) && acquire(flag(body, "replied"));
             case "renew" -> controller(line) && held >= 0 && admitted(body) && renew(body, flag(body, "replied"));
             case "revoke" -> controller(line) && held >= 0 && revoke();
             case "advance" -> {

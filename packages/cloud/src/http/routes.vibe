@@ -27,6 +27,7 @@ export interface Route {
   readonly capability?: Capability
   readonly rateClass?: RateClass
   readonly maxBodyBytes?: number
+  readonly ingressPerMinute?: number
   readonly handler: Handler
 }
 

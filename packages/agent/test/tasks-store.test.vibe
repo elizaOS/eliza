@@ -85,44 +85,41 @@ module node {
     renameSync(staged, join(directory, "tasks.sqlite.lock"))
   }
 
-  export function stealingDatabase(directory: string, during: "run" | "all"): TaskDatabaseOpener {
-    return (path) => {
+  export function stealingDatabase(directory: string) {
+    let armed: "run" | "all" | undefined
+    const steal = (during: "run" | "all") => {
+      if (armed !== during) return
+      armed = undefined
+      replaceLock(directory)
+    }
+    const open: TaskDatabaseOpener = (path) => {
       const db = openNodeTaskDatabase(path)
-      let armed = false
       return {
         exec: (sql) => db.exec(sql),
         close: () => db.close(),
-        arm: () => { armed = true },
         prepare(sql) {
           const statement = db.prepare(sql)
-          const steal = () => {
-            if (armed) {
-              armed = false
-              replaceLock(directory)
-            }
-          }
           return {
-            all: (...parameters) => {
-              if (during === "all") steal()
-              return statement.all(...parameters)
-            },
-            run: (...parameters) => {
-              if (during === "run") steal()
-              return statement.run(...parameters)
-            },
+            all: (...parameters) => (steal("all"), statement.all(...parameters)),
+            run: (...parameters) => (steal("run"), statement.run(...parameters)),
           }
         },
-      } as ReturnType<TaskDatabaseOpener> & { arm(): void }
+      }
     }
+    return { open, arm: (during: "run" | "all") => { armed = during } }
   }
 }
+
+export {
+  account, cancelled, closePermissions, copyIn, exists, keyFor, newKey, openPermissions, replaceLock, sealedFor, stealingDatabase, storedIds, task,
+} from node
 
 effect function support<A>(step: string, call: () => A) {
   return try Effect.try({ try: call, catch: (cause) => new SupportFailed({ step, cause }) })
 }
 
 effect function outcome<A, E extends { readonly _tag: string }>(run: A!E) {
-  return try (run catch (error) => error._tag)
+  return run catch (error) => error._tag
 }
 
 effect function storeIn(directory: string, key: string | undefined, decode?: (text: string) => TaskRecord, database?: TaskDatabaseOpener) {
@@ -183,21 +180,29 @@ it.effect('Task storage opens only under verified custody and serves only authen
   const replacementRead = (try replacement.get("task-1"))?.task.id
   try replacement.close()
 
-  const writeLost = stealingDatabase(directory, "run")
-  const writing = try storeIn(directory, key, undefined, writeLost)
+  const thief = try support("lock thief", () => stealingDatabase(directory))
+  const writing = try storeIn(directory, key, undefined, thief.open)
   try writing.open(account)
-  const unknown = try support("arm", () => ((writing as unknown as { custody: unknown }) && undefined))
+  const live = try writing.get("task-1")
+  const cancel = try support("cancel", () => cancelled(live ?? first))
+  try support("arm", () => thief.arm("run"))
+  const lost = { write: try outcome(writing.save(cancel)), next: try outcome(writing.get("task-1")) }
   try writing.close()
+  const reading = try storeIn(directory, key, undefined, thief.open)
+  try reading.open(account)
+  try support("arm", () => thief.arm("all"))
+  const refusedRead = try outcome(reading.get("task-1"))
+  try reading.close()
 
   try Effect.try(() => assert.deepStrictEqual({
     before, wrongLength, afterRefusal, missing, lockHeld, read: read?.task, current: current?.task.id, taken, closedStatus,
-    notPrivate, copied, otherAccount, fenced, replacementRead, unknown,
+    notPrivate, copied, otherAccount, fenced, replacementRead, lost, refusedRead,
   }, {
     before: "deferred", wrongLength: "StorageUnavailable", afterRefusal: { status: "unavailable", wroteNothing: true },
     missing: "StorageUnavailable", lockHeld: "StorageUnavailable", read: first.task, current: "task-1", taken: "SlotTaken",
     closedStatus: "unavailable", notPrivate: "StorageUnavailable",
     copied: { foreign: "Corrupt", evidence: "Corrupt", torn: "Corrupt", current: "Corrupt", slot: "Corrupt", own: "task-1" },
     otherAccount: "StorageUnavailable", fenced: { status: "unavailable", read: "StorageUnavailable" }, replacementRead: "task-1",
-    unknown: undefined,
+    lost: { write: "OutcomeUnknown", next: "StorageUnavailable" }, refusedRead: "ReadRefused",
   }))
 })

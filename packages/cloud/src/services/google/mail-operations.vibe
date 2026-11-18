@@ -326,7 +326,7 @@ effect function labelOperation(grant: Grant, raw: unknown) {
     review,
     target: { kind: "message", id: proposal.messageId },
     perform: Effect.map(google(grant, "POST", `/messages/${proposal.messageId}/${change.path}`, body), judged) catch (failure) => failedReply(failure)
-  }
+  } satisfies Reviewed
 }
 
 effect function deleteDraftOperation(grant: Grant, raw: unknown) {
@@ -340,7 +340,7 @@ effect function deleteDraftOperation(grant: Grant, raw: unknown) {
     review,
     target: { kind: "draft", id: draftId },
     perform: Effect.as(google(grant, "DELETE", `/drafts/${draftId}`), deleted) catch (failure) => failedReply(failure)
-  }
+  } satisfies Reviewed
 }
 
 effect function forwardedParts(grant: Grant, raw: unknown) {
@@ -387,7 +387,7 @@ effect function composeOperation(grant: Grant, kind: ComposeKind, raw: unknown, 
     review: composed.review,
     target: replacing === undefined ? { kind: "rfc822", id: rfc822Id(requestId) } : { kind: "draft", id: replacing },
     perform
-  }
+  } satisfies Reviewed
 }
 
 function kindOf(raw: unknown): OperationKind | undefined {

@@ -14,15 +14,18 @@ effect function check(run: () => void) {
 effect function outcome<A, R>(program: A!LlmFailure!R): unknown!!R {
   return match (try exit(program)) {
     when Exit.Success(let value): value;
-    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => error._tag === "ProviderRefused" ? [error._tag, error.status, error.retryAfter] : [error._tag]), Option.getOrElse(() => Cause.hasInterruptsOnly(cause) ? "interrupted" : "defect"));
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).map((error) => error._tag === "ProviderRefused" ? [error._tag, error.status, error.retryAfter] : [error._tag]).getOrElse(() => Cause.hasInterruptsOnly(cause) ? "interrupted" : "defect");
   }
 }
 
 effect function adapter() {
   const fakes = try acquireRelease(promise(() => startFakeServer()), (server) => promise(() => server.close()))
-  const llm = llmFake()
-  fakes.mount("/llm/", llm.handler)
-  const profile = try parseProfile(testProfile(fakes.url))
+  const llm = try sync(() => {
+    const fake = llmFake()
+    fakes.mount("/llm/", fake.handler)
+    return fake
+  })
+  const profile = try parseProfile(try sync(() => testProfile(fakes.url)))
   const provider: LlmProvider = { id: "llm", baseUrl: `${fakes.url}/llm`, apiKeyEnv: "LLM_API_KEY" }
   const layer = Layer.mergeAll(deploymentLayer(profile, "staging"), FetchHttpClient.layer).pipe(
     Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))
@@ -42,7 +45,7 @@ describe("WP5 Inference: provider adapter", () => {
   it.live("Send one call per request to the provider and pass its answer through (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\")", () => scoped(effect {
     const { llm, provider, layer } = try adapter()
     provide layer {
-      llm.script({ kind: "whole" }, { kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "refuse" })
+      try sync(() => llm.script({ kind: "whole" }, { kind: "refuse", retryAfterSeconds: 7 }, { kind: "notJson" }, { kind: "refuse" }))
       const whole = try complete(provider, request)
       const refused = try outcome(complete(provider, request))
       const invalid = try outcome(complete(provider, request))
@@ -71,7 +74,7 @@ describe("WP5 Inference: provider adapter", () => {
   it.live("Pass the provider's stream through and cancel it when the caller goes away (spec/cloud/services/inference.md, \"Story: Stream a reply in the shape clients read\")", () => scoped(effect {
     const { llm, provider, layer } = try adapter()
     provide layer {
-      llm.script({ kind: "stream" }, { kind: "hang", after: 2 })
+      try sync(() => llm.script({ kind: "stream" }, { kind: "hang", after: 2 }))
       const whole = try text(try stream(provider, { ...request, stream_options: { include_usage: false } }))
       const hanging = try stream(provider, request)
       const firstBytes = try Deferred.make<void>()

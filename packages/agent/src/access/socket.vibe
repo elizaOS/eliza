@@ -82,6 +82,10 @@ module node {
     return "PlainRoute"
   }
 
+  export function inboundOf(call: LocalCall): Inbound {
+    return { tag: call.streamed ? "HttpRequestStream" : "HttpRequest", route: localRouteClass(call.target), bodyBytes: call.body?.byteLength ?? 0 }
+  }
+
   export async function runUntilAbort<Result>(signal: AbortSignal, action: () => Promise<Result>): Promise<Result> {
     signal.throwIfAborted()
     let cancel: () => void = () => undefined
@@ -218,8 +222,10 @@ module node {
     drop(conn: number): boolean { return this.#send({ type: "drop", conn }) }
     releaseNext(ok: boolean): boolean { return this.#send({ type: "releaseNext", ok }) }
 
-    close(): void {
-      this.#send({ type: "close" })
+    close(): boolean { return this.#send({ type: "close" }) }
+
+    stop(): void {
+      this.close()
       for (const { conn } of this.#state.exchanges) this.drop(conn)
     }
   }
@@ -292,12 +298,8 @@ module node {
       }
       case "request": {
         const { call } = frame
-        const inbound: Inbound = {
-          tag: call.streamed ? "HttpRequestStream" : "HttpRequest",
-          route: localRouteClass(call.target), bodyBytes: call.body?.byteLength ?? 0,
-        }
         let dispatched = false
-        exchanges.receive(conn, frame.id, inbound, { dispatch: (deadlineMs) => {
+        exchanges.receive(conn, frame.id, inboundOf(call), { dispatch: (deadlineMs) => {
           dispatched = true
           const timer = setTimeout(() => exchanges.expire(conn), deadlineMs)
           handler.signal.addEventListener("abort", () => clearTimeout(timer), { once: true })
@@ -381,7 +383,7 @@ module node {
     await once(server, "listening")
     let closing: Promise<void> | undefined
     const close = () => closing ??= new Promise<void>((resolve, reject) => {
-      exchanges.close()
+      exchanges.stop()
       for (const socket of sockets) socket.destroy()
       server.close((failure) => {
         exchanges.releaseNext(failure === undefined)
@@ -399,4 +401,4 @@ module node {
   }
 }
 
-export { Exchanges, listenOnSocket, localRouteClass, parseFrame, runUntilAbort, type Answer, type FeedAccess, type Head, type Parsed, type Wiring } from node
+export { Exchanges, inboundOf, listenOnSocket, localRouteClass, parseFrame, runUntilAbort, type Answer, type FeedAccess, type Head, type Parsed, type Wiring } from node

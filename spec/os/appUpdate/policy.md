@@ -177,7 +177,7 @@ pure def blockerRank(b: Blocker): int =
   else if (b == CriticalTaskUnknown or b == CriticalTaskActive) 12 else if (b == OutsideWindow) 13 else if (b == AlarmUnknown or b == AlarmSoon) 14
   else if (b == NoQualifiedRebootRoute) 15 else if (b == NetworkMetered or b == NetworkNone or b == NetworkUnknown) 16 else 17
 pure val outOfOrder = 99
-pure def inOrder(bs: List[Blocker]): bool = bs.foldl(-1, (last, b) => if (last < blockerRank(b)) blockerRank(b) else outOfOrder) < outOfOrder
+pure def inOrder(bs: List[Blocker]): bool = bs.foldl(-1, (previous, b) => if (previous < blockerRank(b)) blockerRank(b) else outOfOrder) < outOfOrder
 pure def decisionInOrder(d: Decision): bool = match d { | Decided(x) => inOrder(x.blockers) | _ => true }
 pure def someSignalUnknown(s: Signals): bool =
   s.charging == FlagUnknown or not(gaugeWithin(s.battery, 0, 100)) or not(gaugeWithin(s.thermal, 0, thermalCeiling)) or not(gaugeFrom(s.idle, 0)) or

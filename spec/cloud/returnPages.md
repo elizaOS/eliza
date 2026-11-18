@@ -54,6 +54,7 @@ pure val rowValues: Set[EnvironmentProfile] = {
   val doc: LegalDocument = { title: "Terms", revision: "1", sections: List({ title: "Use", paragraphs: List("Plain text.") }) }
   Set({ name: "Cloud", api: "https://api.one", web: "https://www.one", audience: "aud", mailSender: "m@one", databaseDigest: "d1", firstPartyOrigins: List("https://www.one"), capabilities: Set(BillingCapability), signIn: { mail: HttpsDelivery, sms: NoDelivery, google: GoogleOn }, terms: doc, privacy: doc })
 }
+pure val pageValues: Set[Page] = Set(NoPage, CheckoutOutcome({ shown: PaidOutcome }))
 pure def lawAMissingPageIsAFinal404(page: Page): bool = page == NoPage implies (statusOf(noPageRefusal.code) == 404 and wellFormed(noPageRefusal) and not(retryableOf(noPageRefusal)))
 pure def lawADisabledClientHasNoPage(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, reported: str): bool =
   (registryValid(registry, served) and registry.some(r => returnsOf(r).includes(url)))
