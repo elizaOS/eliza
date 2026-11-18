@@ -41,7 +41,14 @@ const QUOTE_PAIRS: Record<string, string> = {
 const OPEN_COMMAND = String.raw`(?:open|visit|go\s+to|navigate\s+to)`;
 // A speech transcript may leave the dots between hostname labels as words.
 // Keep each label explicit and let the same address validator check the result.
-const OPEN_TARGET = String.raw`(\S+(?: +dot +\S+)*)`;
+const ADDRESS_TOKEN = String.raw`\S+(?: +dot +\S+)*`;
+const ADDRESS_WORD = new RegExp(ADDRESS_TOKEN, "gi");
+const SPOKEN_DOT = / +dot +/gi;
+const HOST_LABEL_GROUP = String.raw`[a-z\d-]+(?:\.[a-z\d-]+)*`;
+const SPOKEN_HOSTNAME = new RegExp(
+  String.raw`^${HOST_LABEL_GROUP}(?: +dot +${HOST_LABEL_GROUP})+$`,
+  "i",
+);
 // Everyday verbs that ask for a site. Direct requests only: the router never
 // claims them without the model.
 const EVERYDAY_COMMAND = String.raw`(?:take\s+me\s+to|pull\s+up|bring\s+up|show\s+me|head\s+to|browse\s+to)`;
@@ -143,14 +150,14 @@ function patterns(assistantName: string): NamePatterns {
   const questionOpener = String.raw`(?:^|[.!?:,])\s*(?:(?:hey|hi|ok|okay|${name}|please|so|well|then|but|and|oh|hmm)[\s,.!]*)*`;
   const built: NamePatterns = {
     command: new RegExp(
-      String.raw`${lead}(?:please,?\s+)?${OPEN_COMMAND}\s+${OPEN_TARGET}(\s.*)?$`,
+      String.raw`${lead}(?:please,?\s+)?${OPEN_COMMAND}\s+(${ADDRESS_TOKEN})(\s.*)?$`,
       "i",
     ),
     // Explicit polite questions and whole-message everyday commands are
     // direct requests too, but file-like bare names still need a website
     // signal rather than acquiring authority from the verb.
     directRequest: new RegExp(
-      String.raw`${lead}(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${OPEN_COMMAND}|${EVERYDAY_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+(?:the\s+)?${OPEN_TARGET}(\s+(?:web\s?)?site\b)?(\s.*)?$`,
+      String.raw`${lead}(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${OPEN_COMMAND}|${EVERYDAY_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+(?:the\s+)?(${ADDRESS_TOKEN})(\s+(?:web\s?)?site\b)?(\s.*)?$`,
       "i",
     ),
     search: new RegExp(
@@ -232,9 +239,7 @@ export function authoredBrowserOpen(
     if (!/[/?#]/.test(bare.replace(/^https?:\/\//i, ""))) target = bare;
   }
   const href = webAddress(
-    /^[a-z\d-]+(?: +dot +[a-z\d-]+)+$/i.test(target)
-      ? target.replace(/ +dot +/gi, ".")
-      : target,
+    SPOKEN_HOSTNAME.test(target) ? target.replace(SPOKEN_DOT, ".") : target,
   )?.href;
   return href ? { href, newTab } : undefined;
 }
@@ -497,7 +502,9 @@ function typedAddresses(
   assistantName: string,
 ): { url: URL; webSignal: boolean; negated: boolean }[] {
   const found: { url: URL; webSignal: boolean; negated: boolean }[] = [];
-  for (const word of text.matchAll(/\S+/g)) {
+  // A literal piece of a mixed spoken hostname is not a separate address.
+  // The whole spoken destination needs its direct request proof above.
+  for (const word of text.matchAll(ADDRESS_WORD)) {
     const lead = word[0].replace(/^[("'“‘«<[]+/u, "");
     const tokens = new Set([
       lead,
@@ -545,8 +552,8 @@ function hostWords(text: string, host: string): RegExpExecArray[] {
     }
     return false;
   };
-  return [...text.matchAll(/\S+/g)].filter((word) => {
-    const read = plain(word[0].replace(DOTS, "."));
+  return [...text.matchAll(ADDRESS_WORD)].filter((word) => {
+    const read = plain(word[0].replace(DOTS, ".").replace(SPOKEN_DOT, "."));
     return (
       names(read.toLowerCase()) ||
       (/[^\p{ASCII}]/u.test(read) &&

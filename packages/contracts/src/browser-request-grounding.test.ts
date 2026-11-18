@@ -893,6 +893,27 @@ describe("strict open command with where the address opens", () => {
     expect(
       groundBrowserDestination(`${text} Don't open alphacompute.ai.`, url),
     ).toBeUndefined();
+    expect(
+      groundBrowserDestination(
+        "Open alphacompute.ai. Actually, do not open alphacompute dot ai.",
+        url,
+      ),
+    ).toBeUndefined();
+  });
+  it.each([
+    ["maps dot example.com", "maps.example.com"],
+    ["example.com dot ai", "example.com.ai"],
+  ])("keeps %s as one complete destination", (spoken, host) => {
+    const text = `Open ${spoken} in a new tab.`;
+    const href = `https://${host}/`;
+    expect(authoredBrowserOpen(text)).toEqual({ href, newTab: true });
+    expect(groundBrowserDestination(text, href)).toBe(href);
+    expect(
+      groundBrowserDestination(text, "https://example.com/"),
+    ).toBeUndefined();
+    expect(
+      groundBrowserDestination(`Open ${host}. Don't open ${spoken}.`, href),
+    ).toBeUndefined();
   });
   it.each([
     // A private tab, another app, a time or more work stays the model's call.
