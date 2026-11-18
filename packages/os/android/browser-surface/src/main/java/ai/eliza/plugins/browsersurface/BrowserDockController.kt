@@ -26,8 +26,17 @@ internal object BrowserDockController {
 
     /** Resize the existing split only. Never launch, reload, or recreate a website. */
     suspend fun setVisible(activity: Activity, visible: Boolean) {
-        if (Build.VERSION.SDK_INT < 33 || WindowSdkExtensions.getInstance().extensionVersion < 3)
+        if (Build.VERSION.SDK_INT < 33)
             throw BrowserLaunchException("BROWSER_DOCK_RESIZE_UNAVAILABLE", "This device cannot resize the existing browser split.")
+        if (WindowSdkExtensions.getInstance().extensionVersion >= 3) {
+            resizeExistingSplit(activity, visible)
+        } else {
+            throw BrowserLaunchException("BROWSER_DOCK_RESIZE_UNAVAILABLE", "This device cannot resize the existing browser split.")
+        }
+    }
+
+    @androidx.window.RequiresWindowSdkExtension(3)
+    private suspend fun resizeExistingSplit(activity: Activity, visible: Boolean) {
         val session = sessions[activity]
             ?: throw BrowserLaunchException("BROWSER_DOCK_SESSION_UNAVAILABLE", "No browser split was opened by this host session.")
         val controller = SplitController.getInstance(activity)

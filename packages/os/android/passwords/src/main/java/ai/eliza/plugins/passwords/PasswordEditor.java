@@ -11,6 +11,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
+import androidx.appcompat.widget.AppCompatEditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -227,7 +228,7 @@ final class PasswordEditor {
 
   private static EditText field(Activity activity, LinearLayout parent, int title, int inputType, int max) {
     TextView caption = new TextView(activity); caption.setText(title); parent.addView(caption);
-    EditText value = new EditText(activity) {
+    EditText value = new AppCompatEditText(activity) {
       @Override public boolean onTextContextMenuItem(int action) {
         if (title == R.string.eliza_passwords_editor_password && action != android.R.id.paste && action != android.R.id.pasteAsPlainText && action != android.R.id.selectAll) return false;
         return super.onTextContextMenuItem(action);

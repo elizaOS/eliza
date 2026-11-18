@@ -10,7 +10,6 @@ import ai.eliza.plugins.agent.runtime.RuntimeAssets;
 import ai.eliza.plugins.agent.runtime.RuntimeBundleStore;
 import ai.eliza.plugins.agent.runtime.RuntimeStartFailure;
 import ai.eliza.plugins.agent.runtime.RuntimeStartFailure.Cause;
-import android.app.ForegroundServiceStartNotAllowedException;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -96,9 +95,11 @@ public class EmbeddedAgentService extends EmbeddedRuntimeService {
     return Build.VERSION.SDK_INT >= 34 ? ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : ServiceInfo.FOREGROUND_SERVICE_TYPE_MANIFEST;
   }
   private String[] words() {
-    String label = getApplicationInfo().loadLabel(getPackageManager()).toString();
     try { EmbeddedAgentConfig.Notification words = config(this).notification; return new String[]{words.channel, words.title, words.text}; }
-    catch (IOException unreadable) { return new String[]{label, label, ""}; }
+    catch (IOException unreadable) {
+      String label = getApplicationInfo().loadLabel(getPackageManager()).toString();
+      return new String[]{label, label, ""};
+    }
   }
   @Override protected NotificationChannel runtimeNotificationChannel() {
     return new NotificationChannel(CHANNEL, words()[0], NotificationManager.IMPORTANCE_LOW);
@@ -114,13 +115,8 @@ public class EmbeddedAgentService extends EmbeddedRuntimeService {
 
   @Override public synchronized int onStartCommand(Intent intent, int flags, int startId) {
     boolean stop = intent != null && "stop".equals(intent.getAction());
-    try { super.onStartCommand(intent, flags, startId); }
-    catch (IllegalStateException refused) {
-      if (Build.VERSION.SDK_INT < 31 || !(refused instanceof ForegroundServiceStartNotAllowedException)) throw refused;
-      stopSelf();
-      return START_NOT_STICKY;
-    }
-    return stop ? START_NOT_STICKY : START_STICKY;
+    super.onStartCommand(intent, flags, startId);
+    return group == null || stop ? START_NOT_STICKY : START_STICKY;
   }
 
   @Override protected void launch(NativeRuntimeSession.Scope scope) throws Exception {

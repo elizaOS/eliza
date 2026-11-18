@@ -129,6 +129,7 @@ android {
  }
 }
 dependencies {
+ androidTestImplementation "androidx.test:runner:${rootProject.ext.androidxTestRunnerVersion}"
  profile.modules.findAll { it.appDependency }.each { module -> implementation project(":${module.name}") }
  profile.dependencies.each { dependency -> add(dependency.configuration, dependency.coordinate) }
 }

@@ -4,10 +4,17 @@ def profile = new groovy.json.JsonSlurper().parse(rootProject.file('.eliza-consu
 android {
  namespace 'ai.eliza.plugins.agent.embedded'
  compileSdk rootProject.ext.compileSdkVersion
- defaultConfig { minSdk rootProject.ext.minSdkVersion }
+ defaultConfig {
+  minSdk rootProject.ext.minSdkVersion
+  testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+  manifestPlaceholders = [elizaEmbeddedAgentService: 'ai.eliza.plugins.agent.embedded.EmbeddedAgentService']
+ }
  compileOptions {
   sourceCompatibility JavaVersion.toVersion(profile.toolchain.java)
   targetCompatibility JavaVersion.toVersion(profile.toolchain.java)
  }
 }
-dependencies { implementation project(':capacitor-android') }
+dependencies {
+ implementation project(':capacitor-android')
+ androidTestImplementation "androidx.test:runner:${rootProject.ext.androidxTestRunnerVersion}"
+}

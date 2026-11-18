@@ -14,7 +14,7 @@ import static org.junit.Assert.*;
 
 /** Real engine/store/notification builders under Android shadows; no provider or model. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk=28,manifest=Config.NONE)
+@Config(sdk=Config.OLDEST_SDK,manifest=Config.NONE)
 public class ReminderQuestionTest {
  public static class Receiver extends BroadcastReceiver {public void onReceive(Context c,Intent i){}}
  static final class Memory implements SecureStringStore {
