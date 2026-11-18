@@ -177,10 +177,17 @@ export async function createV5MessageContextObject(args: {
     )
       ? "With contacts.write.v1, adding, changing or deleting a contact on this phone is a phone address-book operation: PROPOSE_DEVICE_ACTION contact_create, contact_update or contact_delete, reached through the contacts or general context. A name with a phone number or an email address is complete; never ask for a handle, username or platform. ENTITY and CONTACT keep the assistant's own relationship records and never write the phone's address book. "
       : "";
+    const smsSenderGuidance = deviceOperationSupportedByCapabilities(
+      "sms_latest_sender",
+      phoneCapabilities,
+    )
+      ? "When the owner asks who sent the latest incoming SMS, keep the pending phone lookup in the general context for PROPOSE_DEVICE_ACTION sms_latest_sender. The phone reviews the read and shares only the approved sender suffix. Do not infer the sender or look in the cloud inbox. "
+      : "";
     const compactCapabilityGuidance =
       `Authenticated phone capabilities: ${JSON.stringify(phoneCapabilities)}. ` +
       telephonyGuidance +
       addressBookGuidance +
+      smsSenderGuidance +
       (authenticatedDeviceTurn.viewProfile
         ? `Enabled phone views: ${JSON.stringify(authenticatedDeviceTurn.viewProfile.views)}. `
         : "") +

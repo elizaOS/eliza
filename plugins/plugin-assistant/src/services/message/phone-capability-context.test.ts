@@ -136,6 +136,20 @@ describe("selected phone capability guidance", () => {
       capabilities.splice(capabilities.indexOf("phone.call.v1"));
     }
   });
+  it("routes the latest SMS sender read only when the phone offers it", async () => {
+    const routing = async () =>
+      (await guidance({ providerPhase: "response" })).text;
+    expect(await routing()).not.toContain("pending phone lookup");
+    capabilities.push("sms.latest-sender.v1");
+    try {
+      const text = await routing();
+      expect(text).toContain("pending phone lookup");
+      expect(text).toContain("PROPOSE_DEVICE_ACTION sms_latest_sender");
+      expect(text).toContain("approved sender suffix");
+    } finally {
+      capabilities.pop();
+    }
+  });
   it("names the phone's own calendar create only on a turn that offers it", async () => {
     const planning = async () =>
       (
