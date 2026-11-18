@@ -14,10 +14,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../message/stage1-evaluators.ts";
-import {
-  deviceActionForCapabilities,
-  proposeDeviceAction,
-} from "./action.ts";
+import { deviceActionForCapabilities, proposeDeviceAction } from "./action.ts";
 import {
   DeviceActionService,
   setDeviceActionRequestMessage,

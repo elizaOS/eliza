@@ -156,12 +156,35 @@ const PHILZ_RESULTS = [
   ),
 ];
 
+const CHICAGO = { latitude: 41.8819, longitude: -87.6278 };
+const CHICAGO_UNION_STATION = place(
+  "union-station-chicago",
+  "Union Station",
+  "225 S Canal St, Chicago, IL 60606, USA",
+  { latitude: 41.8787, longitude: -87.6403 },
+);
+const WASHINGTON_UNION_STATION = place(
+  "union-station-washington",
+  "Union Station",
+  "50 Massachusetts Ave NE, Washington, DC 20002, USA",
+  { latitude: 38.8971, longitude: -77.0064 },
+);
+
 const SEARCHES: Record<string, ReturnType<typeof place>[]> = {
   "the ferry building": FERRY_RESULTS,
   "ferry building": FERRY_RESULTS,
   "golden gate park": PARK_RESULTS,
   starbucks: STARBUCKS_RESULTS,
   "philz coffee": PHILZ_RESULTS,
+  "union station, washington, dc": [
+    WASHINGTON_UNION_STATION,
+    CHICAGO_UNION_STATION,
+  ],
+  "union station in washington, dc": [
+    CHICAGO_UNION_STATION,
+    WASHINGTON_UNION_STATION,
+  ],
+  "union station in washington": [CHICAGO_UNION_STATION],
 };
 
 type Request = { path: string; body: Record<string, unknown> };
@@ -257,6 +280,39 @@ const routes = (requests: Request[]) =>
   requests.filter(({ path }) => path === "/api/v1/maps/routes");
 
 describe("directions between two landmarks", () => {
+  it.each(["Union Station, Washington, DC", "Union Station in Washington, DC"])(
+    "routes to %s when the other endpoint is near a namesake",
+    async (destinationQuery) => {
+      const { service, requests } = cloud();
+      const result = await say(service, `directions to ${destinationQuery}`, {
+        originLatitude: CHICAGO.latitude,
+        originLongitude: CHICAGO.longitude,
+        originName: "Downtown Chicago",
+        destinationQuery,
+      });
+      expect(result.success).toBe(true);
+      expect(routes(requests).map(({ body }) => body.to)).toEqual([
+        WASHINGTON_UNION_STATION.coordinate,
+      ]);
+    },
+  );
+
+  it("asks before routing when the only result is in a different city", async () => {
+    const { service, requests } = cloud();
+    const destinationQuery = "Union Station in Washington";
+    const result = await say(service, `directions to ${destinationQuery}`, {
+      originLatitude: CHICAGO.latitude,
+      originLongitude: CHICAGO.longitude,
+      originName: "Downtown Chicago",
+      destinationQuery,
+    });
+    expect(result).toMatchObject({
+      success: false,
+      data: { choice: { field: "destinationQuery", query: destinationQuery } },
+    });
+    expect(routes(requests)).toHaveLength(0);
+  });
+
   it("plans the Ferry Building to Golden Gate Park route without asking", async () => {
     const { service, requests } = cloud();
     const result = await say(

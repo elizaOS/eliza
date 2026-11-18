@@ -64,23 +64,57 @@ function contains(name: string, key: string): boolean {
   return ` ${name} `.includes(` ${key} `);
 }
 
+function qualifiedPlaces(
+  query: string,
+  places: readonly PlaceRef[],
+): PlaceRef[] | undefined {
+  const qualifiers = [
+    /^([^,]+),\s*(.+)$/u.exec(query),
+    /^(.+)\s+in\s+(.+)$/iu.exec(query),
+  ].flatMap((match) => {
+    const name = placeNameKey(match?.[1] ?? "");
+    const locality = placeNameKey(match?.[2] ?? "");
+    return name && locality ? [{ name, locality }] : [];
+  });
+  if (qualifiers.length === 0) return undefined;
+
+  const fullQuery = placeNameKey(query);
+  return places.filter((place) => {
+    const name = placeNameKey(place.name);
+    const address = place.formattedAddress ?? "";
+    const locality = placeNameKey(address.replace(/^\s*\d[^,]*,\s*/u, ""));
+    return (
+      name === fullQuery ||
+      contains(placeNameKey(address), fullQuery) ||
+      qualifiers.some(
+        (qualifier) =>
+          contains(name, qualifier.name) &&
+          contains(locality, qualifier.locality),
+      )
+    );
+  });
+}
+
 /**
  * The one place a query means when the provider's answer leaves no real
  * choice, else `undefined` (ask). `anchor` is the other route endpoint: a
- * destination is looked for around the origin first.
+ * destination without an explicit locality is looked for around the origin first.
  */
 export function dominantPlace(
   query: string,
   places: readonly PlaceRef[],
   anchor?: { latitude: number; longitude: number },
 ): PlaceRef | undefined {
-  if (places.length === 1) return places[0];
-  const local = anchor
-    ? places.filter(
-        (place) => metersBetween(anchor, place.coordinates) <= LOCAL_METERS,
-      )
-    : [];
-  const pool = local.length > 0 ? local : places;
+  const qualified = qualifiedPlaces(query, places);
+  const candidates = qualified ?? places;
+  if (candidates.length <= 1) return candidates[0];
+  const local =
+    qualified === undefined && anchor
+      ? candidates.filter(
+          (place) => metersBetween(anchor, place.coordinates) <= LOCAL_METERS,
+        )
+      : [];
+  const pool = local.length > 0 ? local : candidates;
   const [first, ...rest] = pool;
   if (!first) return undefined;
   const away = (place: PlaceRef) =>
