@@ -65,6 +65,7 @@ import {
   isKokoroFirstLineCacheEnabled,
 } from "./kokoro-first-line-cache";
 import {
+  LEGACY_DEFAULT_ELEVENLABS_VOICE_ID,
   resolveCartesiaVoiceId,
   selectTtsProvider,
   type TtsProvider,
@@ -527,7 +528,7 @@ async function __hono_POST(c: AppContext) {
     const resolvedVoiceId =
       providerSelection.provider === "cartesia"
         ? cartesiaVoiceId
-        : voiceId ||
+        : (isCustomVoice && voiceId) ||
           (env.ELEVENLABS_VOICE_ID ?? process.env.ELEVENLABS_VOICE_ID) ||
           DEFAULT_ELEVENLABS_VOICE_ID;
     const resolvedModelId = modelId || "eleven_flash_v2_5";
@@ -686,13 +687,17 @@ async function __hono_POST(c: AppContext) {
     // instead of charging the utterance twice. Org-scoped inside reserve().
     // The key is bound to the utterance it names: the same key with another
     // text, voice, model or format is a new paid request, never a replay.
-    // Hash resolved defaults because the proxy fallback fills the legacy
-    // default voice and model that the direct request is allowed to omit.
+    // Keep the historical billing identity for the ElevenLabs default. Older
+    // proxies send this marker explicitly, and a retry may cross a rollout
+    // that changed the voice used to synthesize the default.
     const clientIdempotencyKey = request.headers.get("Idempotency-Key");
     const ttsIdempotencyKey = clientIdempotencyKey
       ? `${clientIdempotencyKey}:${settlementDigest({
           text,
-          voiceId: resolvedVoiceId,
+          voiceId:
+            providerSelection.provider === "elevenlabs" && !isCustomVoice
+              ? LEGACY_DEFAULT_ELEVENLABS_VOICE_ID
+              : resolvedVoiceId,
           modelId: resolvedModelId,
           format: body.format ?? "mp3",
           withTimestamps: body.withTimestamps === true,
