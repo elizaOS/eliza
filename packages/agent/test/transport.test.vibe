@@ -134,9 +134,13 @@ module node {
     const echo = await request(bench.path, { method: "GET", path: "/api/echo", token })
     const garbage = await sendRaw(bench.path, "not json")
     const bogus = await sendRaw(bench.path, JSON.stringify({ id: "bogus-1", method: "http_get", payload: {} }))
+    const contradicted = await sendRaw(bench.path, JSON.stringify({ id: "flag-1", method: "http_request", stream: true, payload: { path: "/api/echo", method: "GET", headers: { authorization: `Bearer ${token}` } } }))
+    const flagged = raw(bench.path, JSON.stringify({ id: "flag-2", method: "http_request_stream", stream: true, payload: { path: "/api/pieces", method: "GET", headers: { authorization: `Bearer ${token}` } } }) + "\n")
+    await flagged.closed
     const doubled = raw(bench.path, frame("first", "/api/echo") + frame("second", "/api/echo"))
     await doubled.closed
-    return { echo, garbage, bogus, doubled: doubled.frames, calls: [...bench.calls] }
+    const streamed = flagged.frames.map((line) => (line as { stream?: string }).stream)
+    return { echo, garbage, bogus, contradicted, streamed, doubled: doubled.frames, calls: [...bench.calls] }
   }
 
   export async function limits(bench: Bench) {
@@ -211,8 +215,10 @@ it.effect('Each request gets one answer, a malformed frame one refusal and a sec
     echo: { status: 200, headers: { "content-type": "application/json" }, text: "{\"ok\":true}", json: { ok: true } },
     garbage: [{ ok: false, error: "unreadable" }],
     bogus: [{ id: "bogus-1", ok: false, error: "unreadable" }],
+    contradicted: [{ id: "flag-1", ok: false, error: "unreadable" }],
+    streamed: ["response", "chunk", "chunk", "chunk", "complete"],
     doubled: [],
-    calls: ["echo"],
+    calls: ["echo", "pieces"],
   }))
 }, 30_000)
 

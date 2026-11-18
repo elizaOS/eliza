@@ -62,7 +62,7 @@ interface Grant {
 interface Reviewed {
   readonly kind: OperationKind
   readonly digest: string
-  readonly review: ProviderResult
+  readonly review: unknown
   readonly target: Target
   readonly perform: Outcome!!CloudContext
 }
@@ -459,7 +459,7 @@ effect function scopeOf(context: RouteContext, grantId: string, requestId: strin
   return { owner, grantId, requestId: requestId.toLowerCase() }
 }
 
-function answer(scope: Scope, operation: Operation, now: number, review?: ProviderResult) {
+function answer(scope: Scope, operation: Operation, now: number, review?: unknown) {
   return json({ version: 1, receipt: wireReceipt(scope, operation, now), ...(review === undefined ? {} : { review }), providerExactlyOnce: false })
 }
 
@@ -570,7 +570,7 @@ export effect function sweepStaleOperations(): number!!Store {
     }) catch effect (failure) => {
       try annotateLogs(logError("a mail operation sweep could not mark a stale dispatch"), { requestId: scope.requestId, failure: failure._tag })
       return false
-    })
+    }
     if (done) swept += 1
   }
   return swept

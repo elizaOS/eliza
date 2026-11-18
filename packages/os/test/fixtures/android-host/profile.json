@@ -1,0 +1,23 @@
+{
+  "schema": 2,
+  "sdk": { "min": 29, "target": 36, "compile": 36 },
+  "releaseMinify": false,
+  "kotlin": false,
+  "nativeLibraries": "extract-16k",
+  "agent": {
+    "host": { "root": "consumer", "path": "agent/host.json" },
+    "character": { "root": "consumer", "path": "agent/character.json" },
+    "policy": { "root": "consumer", "path": "agent/policy.json" }
+  },
+  "osModules": [{ "module": "agent-service" }, { "module": "runtime-files" }],
+  "modules": [],
+  "signing": { "storeFile": "FIXTURE_STORE", "storePassword": "FIXTURE_STORE_PASSWORD", "keyAlias": "FIXTURE_KEY_ALIAS", "keyPassword": "FIXTURE_KEY_PASSWORD" },
+  "manifest": { "root": "consumer", "path": "android/AndroidManifest.xml" },
+  "flavors": [
+    { "name": "store", "buildConfigFields": [{ "name": "IS_STORE", "type": "boolean", "value": true }] },
+    { "name": "sideload", "buildConfigFields": [{ "name": "IS_STORE", "type": "boolean", "value": false }] }
+  ],
+  "buildTypes": { "debug": { "abiFilters": ["x86_64"] }, "release": { "abiFilters": ["x86_64"] } },
+  "sourceSets": { "main": { "java": [{ "root": "consumer", "path": "android/java" }] } },
+  "dependencies": []
+}

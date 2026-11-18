@@ -1,7 +1,7 @@
 // spec/agent/access/transport.md, "Story: Answer each local request exactly once"; spec/agent/access/transport.md, "Story: Stream a response and end it once"; spec/agent/access/transport.md, "Story: Close the listeners once"; spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"
 module node {
   import { Schema, type Redacted } from "effect"
-  import { once } from "node:events"
+  import { once, type EventEmitter } from "node:events"
   import { chmod, lstat } from "node:fs/promises"
   import { createServer, type Socket } from "node:net"
   import { dirname } from "node:path"
@@ -237,13 +237,18 @@ module node {
     readonly events: EventSubscriptions
   }
 
-  interface Connection {
+  export interface Peer extends EventEmitter {
+    readonly writableNeedDrain: boolean
+    destroy(): void
+  }
+
+  export interface Connection {
     readonly conn: number
-    readonly socket: Socket
+    readonly socket: Peer
     readonly handler: AbortController
   }
 
-  async function drained(socket: Socket, signal: AbortSignal): Promise<void> {
+  async function drained(socket: Peer, signal: AbortSignal): Promise<void> {
     if (socket.writableNeedDrain) await once(socket, "drain", { signal })
   }
 
@@ -291,7 +296,7 @@ module node {
     socket.destroy()
   }
 
-  function receive(exchanges: Exchanges, connection: Connection, frame: Parsed, route: LocalRouter, feeds: FeedAccess): void {
+  export function receive(exchanges: Exchanges, connection: Connection, frame: Parsed, route: LocalRouter, feeds: FeedAccess): void {
     const { conn, handler } = connection
     switch (frame.kind) {
       case "unreadable": {
@@ -403,4 +408,4 @@ module node {
   }
 }
 
-export { Exchanges, inboundOf, listenOnSocket, localRouteClass, parseFrame, runUntilAbort, type Answer, type Detail, type FeedAccess, type Head, type Parsed, type Wiring } from node
+export { Exchanges, inboundOf, listenOnSocket, localRouteClass, parseFrame, receive, runUntilAbort, type Answer, type Connection, type Peer, type Detail, type FeedAccess, type Head, type Parsed, type Wiring } from node

@@ -53,14 +53,12 @@ type HandlerChoice = PreferredHandler | OnlyHandler | AndroidChooser | NoHandler
 type LaunchReply = LaunchStarted | LaunchNotFound | LaunchDenied | LaunchFailed
 pure def chooseHandler(preferredEligible: bool, eligibleCount: int): HandlerChoice =
   if (eligibleCount <= 0) NoHandler else if (preferredEligible) PreferredHandler else if (eligibleCount == 1) OnlyHandler else AndroidChooser
-pure def defaultAppHandoff(choice: HandlerChoice, launch: LaunchReply): HandoffOutcome =
-  if (choice != NoHandler and launch == LaunchStarted) Opened else Refused
-pure def triesImageViewer(gallery: LaunchReply): bool = gallery == LaunchNotFound
+pure def defaultAppHandoff(choice: HandlerChoice, launch: LaunchReply): HandoffOutcome = if (choice != NoHandler and launch == LaunchStarted) Opened else Refused
 pure def photosHandoff(gallery: LaunchReply, viewer: LaunchReply): HandoffOutcome =
-  if (gallery == LaunchStarted or (triesImageViewer(gallery) and viewer == LaunchStarted)) Opened else Refused
+  if (gallery == LaunchStarted or (gallery == LaunchNotFound and viewer == LaunchStarted)) Opened else Refused
 pure def lawChooserOnlyForSeveralHandlers(preferredEligible: bool, eligibleCount: int, launch: LaunchReply): bool = (eligibleCount <= 0 implies defaultAppHandoff(chooseHandler(preferredEligible, eligibleCount), launch) == Refused)
   and (chooseHandler(preferredEligible, eligibleCount) == AndroidChooser implies (eligibleCount >= 2 and not(preferredEligible)))
-pure def lawDeniedGalleryIsNotReplaced(viewer: LaunchReply): bool = not(triesImageViewer(LaunchDenied)) and photosHandoff(LaunchDenied, viewer) == Refused
+pure def lawDeniedGalleryIsNotReplaced(viewer: LaunchReply): bool = photosHandoff(LaunchDenied, viewer) == Refused
 ```
 
 ### App info opens Android's details page for exactly the entry the owner chose
@@ -110,8 +108,7 @@ type ClockRequest = ClockSet(AlarmSetting) | ClockShow | ClockDismiss | ClockSno
 type ClockReply = ClockOpened | ClockUnavailable | ClockDenied | ClockFailed | ClockUnknown
 type DayScan = { previous: int, ordered: bool }
 pure def scanDay(scan: DayScan, day: int): DayScan = { previous: day, ordered: scan.ordered and day > scan.previous and day <= 7 }
-pure val weekdayStart: DayScan = { previous: 0, ordered: true }
-pure def daysAscending(days: List[int]): bool = days.foldl(weekdayStart, scanDay).ordered
+pure def daysAscending(days: List[int]): bool = days.foldl({ previous: 0, ordered: true }, scanDay).ordered
 pure def clockRequestAdmitted(clockRequest: ClockRequest): bool = match clockRequest {
   | ClockSet(x) => x.hour >= 0 and x.hour <= 23 and x.minute >= 0 and x.minute <= 59 and x.labelLength >= 0 and x.labelLength <= 200 and x.labelPlain and daysAscending(x.days)
   | ClockSnooze(x) => x.minutes >= 1 and x.minutes <= 60
@@ -166,8 +163,7 @@ missing, refused or unrecognized answer is unknown. Wi-Fi is on for 1 and 2, off
 
 ```quint
 type SwitchFact = FactOn | FactOff | FactUnknown
-pure def wifiSwitchFact(reading: int): SwitchFact =
-  if (reading == 1 or reading == 2) FactOn else if (reading == 0 or reading == 3) FactOff else FactUnknown
+pure def wifiSwitchFact(reading: int): SwitchFact = if (reading == 1 or reading == 2) FactOn else if (reading == 0 or reading == 3) FactOff else FactUnknown
 pure def binarySwitchFact(reading: int): SwitchFact = if (reading == 1) FactOn else if (reading == 0) FactOff else FactUnknown
 pure def answeredFact(answered: bool, value: bool): SwitchFact = if (not(answered)) FactUnknown else if (value) FactOn else FactOff
 pure def lawOffNeedsAnOffReading(reading: int, answered: bool, value: bool): bool =
@@ -184,8 +180,7 @@ join; the [Wi-Fi bridge](./wifi.md) waits for its deadline instead.
 type WifiJoinEvidence = WifiNotObserved | OtherWifi | NamedWifiValidated | NamedWifiPortal | WithheldWifiValidated
 pure def approvedWifiJoinConnected(approved: bool, observed: WifiJoinEvidence): bool = approved and observed == NamedWifiValidated
 pure def approvedWifiJoinNeedsPortal(approved: bool, observed: WifiJoinEvidence): bool = approved and observed == NamedWifiPortal
-pure def settlesJoin(approved: bool, observed: WifiJoinEvidence): bool =
-  approvedWifiJoinConnected(approved, observed) or approvedWifiJoinNeedsPortal(approved, observed)
+pure def settlesJoin(approved: bool, observed: WifiJoinEvidence): bool = approvedWifiJoinConnected(approved, observed) or approvedWifiJoinNeedsPortal(approved, observed)
 pure def lawOnlyTheRequestedNetworkSettlesAJoin(approved: bool, observed: WifiJoinEvidence): bool = not(settlesJoin(false, observed))
   and not(settlesJoin(approved, WifiNotObserved) or settlesJoin(approved, OtherWifi) or settlesJoin(approved, WithheldWifiValidated))
 ```
@@ -209,8 +204,7 @@ pure val askValues = Set({ maxAgeMs: 0, timeoutMs: 10000, wantsPrecise: true }, 
 pure val fixValues = Set({ access: PreciseAccess, hasCached: true, cachedAgeMs: 30000, fixAvailable: true, fixWithinMs: 2000 }, { access: NoAccess, hasCached: true, cachedAgeMs: 0, fixAvailable: true, fixWithinMs: 0 },
   { access: ApproximateAccess, hasCached: true, cachedAgeMs: 90000, fixAvailable: true, fixWithinMs: 20000 }, { access: PreciseAccess, hasCached: false, cachedAgeMs: 0, fixAvailable: false, fixWithinMs: 0 })
 pure def lawNoReadWithoutGrant(ask: LocationAsk, fix: FixFacts): bool = (fix.access == NoAccess) iff (readLocation(ask, fix) == PermissionDenied)
-pure def lawCachedIsNeverTooOld(ask: LocationAsk, fix: FixFacts): bool =
-  readLocation(ask, fix) == PositionCached implies (ask.maxAgeMs > 0 and fix.cachedAgeMs >= 0 and fix.cachedAgeMs <= ask.maxAgeMs)
+pure def lawCachedIsNeverTooOld(ask: LocationAsk, fix: FixFacts): bool = readLocation(ask, fix) == PositionCached implies (ask.maxAgeMs > 0 and fix.cachedAgeMs >= 0 and fix.cachedAgeMs <= ask.maxAgeMs)
 pure def lawApproximateIsNeverReportedPrecise(ask: LocationAsk, fix: FixFacts): bool = fix.access != PreciseAccess implies not(reportedPrecise(ask, fix))
 ```
 
@@ -229,8 +223,7 @@ pure def problemFieldAllowed(source: ProblemSource, entryField: ProblemField): b
     (source == RendererFailure and (entryField == Kind or entryField == FailureClass or entryField == ProcessLabel)) or
     (source == NativeUncaught and (entryField == FailureClass or entryField == RootClass or entryField == ProcessLabel or entryField == Thread)) or
     (source == AndroidExit and (entryField == ExitReason or entryField == ProcessLabel)) or (source == InferenceDiagnostic and entryField == InferenceFacts)
-pure def problemRetained(source: ProblemSource, at: int, now: int): bool =
-  at > now - problemRetentionMs and at <= now + (if (source == InferenceDiagnostic) 60000 else problemRetentionMs)
+pure def problemRetained(source: ProblemSource, at: int, now: int): bool = at > now - problemRetentionMs and at <= now + (if (source == InferenceDiagnostic) 60000 else problemRetentionMs)
 pure def lawNoPersonalContentInAProblem(source: ProblemSource, entryField: ProblemField): bool =
   (entryField == Message or entryField == Stack or entryField == Address or entryField == UserContent) implies not(problemFieldAllowed(source, entryField))
 pure def lawOldProblemIsDropped(source: ProblemSource, now: int): bool = not(problemRetained(source, now - problemRetentionMs, now))
@@ -275,8 +268,7 @@ The owner grants `WRITE_SETTINGS` on `PageWriteSettings`; a system change sets 0
 
 ```quint
 type BrightnessScope = SystemBrightness | WindowBrightness
-pure def brightnessAllowed(scope: BrightnessScope, writeSettingsGranted: bool, focused: bool): bool =
-  if (scope == SystemBrightness) writeSettingsGranted else focused
+pure def brightnessAllowed(scope: BrightnessScope, writeSettingsGranted: bool, focused: bool): bool = if (scope == SystemBrightness) writeSettingsGranted else focused
 pure def brightnessTarget(level: int): int = clampLevel(level, 255)
 pure def lawSystemBrightnessNeedsTheGrant(focused: bool, writeThrew: bool, readback: LevelReadback): bool =
   controlReport(brightnessAllowed(SystemBrightness, false, focused), writeThrew, readback) == ChangeNotAllowed

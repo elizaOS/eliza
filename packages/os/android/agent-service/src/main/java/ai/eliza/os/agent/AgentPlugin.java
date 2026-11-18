@@ -9,6 +9,7 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
@@ -30,11 +31,11 @@ public class AgentPlugin extends Plugin {
 
   @PluginMethod public void getStatus(PluginCall call) { call.resolve(status()); }
 
-  @PluginMethod public void start(PluginCall call) { AgentService.start(getContext()); call.resolve(status()); }
+  @PluginMethod public void start(PluginCall call) { command(call, () -> AgentService.start(getContext())); }
 
-  @PluginMethod public void stop(PluginCall call) { AgentService.stop(getContext()); call.resolve(status()); }
+  @PluginMethod public void stop(PluginCall call) { command(call, () -> AgentService.stop(getContext())); }
 
-  @PluginMethod public void restart(PluginCall call) { AgentService.restart(getContext()); call.resolve(status()); }
+  @PluginMethod public void restart(PluginCall call) { command(call, () -> AgentService.restart(getContext())); }
 
   @PluginMethod public void request(PluginCall call) {
     String id = call.getString("id", "");
@@ -53,7 +54,9 @@ public class AgentPlugin extends Plugin {
       @Override public void head(String callId, long index, int status, Map<String, String> headers) {
         JSObject head = frame(callId, "head", index);
         head.put("status", status);
-        head.put("headers", new JSObject(new JSONObject(headers).toString(), null));
+        JSObject named = new JSObject();
+        headers.forEach(named::put);
+        head.put("headers", named);
         notifyListeners("streamData", head);
       }
       @Override public void chunk(String callId, long index, byte[] data) {
@@ -110,14 +113,25 @@ public class AgentPlugin extends Plugin {
   }
 
   private JSObject status() {
-    try { return JSObject.fromJSONObject(AgentService.status(getContext())); }
-    catch (JSONException malformed) { return new JSObject().put("available", false).put("state", "failed").put("failure", "runtime").put("epoch", 0).put("requestBodyLimit", 0); }
+    JSONObject status = AgentService.status(getContext());
+    JSObject projected = new JSObject();
+    for (java.util.Iterator<String> keys = status.keys(); keys.hasNext(); ) {
+      String key = keys.next();
+      projected.put(key, status.opt(key));
+    }
+    return projected;
+  }
+
+  private void command(PluginCall call, Runnable action) {
+    try { action.run(); }
+    catch (IllegalStateException refused) { call.reject(refused.getMessage()); return; }
+    call.resolve(status());
   }
 
   private FailCode ask(PluginCall call, String id, boolean streamed, AgentChannel.Listener listener) {
     Object body = call.getData().opt("body");
-    if (body != null && body != JSONObject.NULL && !(body instanceof JSONObject)) return FailCode.ROUTE_REFUSED;
-    byte[] bytes = body instanceof JSONObject ? body.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8) : null;
+    String text = body == null || body == JSONObject.NULL ? null : body instanceof String plain ? JSONObject.quote(plain) : body.toString();
+    byte[] bytes = text == null ? null : text.getBytes(StandardCharsets.UTF_8);
     return AgentService.channel().ask(owner, id, call.getString("method", ""), call.getString("path", ""), streamed, bytes, listener);
   }
 
@@ -150,7 +164,7 @@ public class AgentPlugin extends Plugin {
 
   private static JSObject response(long status, byte[] body) {
     JSObject answer = new JSObject().put("status", status);
-    String text = body == null ? "" : new String(body, java.nio.charset.StandardCharsets.UTF_8);
+    String text = body == null ? "" : new String(body, StandardCharsets.UTF_8);
     Object data = JSONObject.NULL;
     if (!text.isEmpty()) {
       try { data = new JSONTokener(text).nextValue(); } catch (JSONException notJson) { data = text; }

@@ -1,17 +1,16 @@
 # App update trust and publication authorization
 
-The decisions of the app-update trust engine (`native/ota-trust`) and of the
+The decisions of the app-update trust engine (`native/ota-trust`) and the
 publisher (`src/app-update/publication.vibe`): which signed release a device
-may prepare, what its update lane remembers, whether a prepared release may
-still be committed or recovered, and whether a release host may publish a
-signed metadata graph.
+may prepare, what its lane remembers, whether a prepared release may still
+commit or recover, and whether a signed metadata graph may be published.
 
 The shell verifies TUF signatures, hashes and lengths, decodes strict JSON,
-digests a descriptor without its rollout (`core`) and its rollout, reads
-qualified time as an interval, and checks the device's fit (upgrade origins,
-platform, installer, protocols, storage, safety profiles, cohort) in that
-order. It writes the lane and publisher floors atomically under a lock. The
-host policy is compiled into the reviewed build with no runtime setter.
+digests a descriptor's `core` (without its rollout) and its rollout, reads
+qualified time as an interval, checks device fit (upgrade origins, platform,
+installer, protocols, storage, safety profiles, cohort) in that order, and
+writes lane and publisher floors atomically under a lock. The host policy is
+compiled into the reviewed build with no runtime setter.
 
 ## Story: Install an app update only when every authority allows it
 

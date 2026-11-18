@@ -192,11 +192,7 @@ const Listed = Schema.Struct({
   phones: Listing,
   emails: Listing,
 })
-const Unlisted = Schema.Struct({
-  id: Id,
-  incomplete: Schema.Literal(true),
-  reason: Schema.Literals(["field-too-long", "too-many-fields"]),
-})
+schema Unlisted { id: Id; incomplete: true; reason: "field-too-long" | "too-many-fields" }
 const Page = Schema.Struct({
   contacts: Schema.Array(Schema.Union([Unlisted, Listed])),
   more: Schema.Boolean,
@@ -223,9 +219,9 @@ const Saved = Schema.Union([
   Schema.Struct({ status: Schema.Literal("saved"), id: Schema.Null, version: Schema.Null }),
   Schema.Struct({ status: Schema.Literals(["stale", "not-found", "failed", "unknown"]) }),
 ])
-const Removed = Schema.Struct({ status: Schema.Literals(["deleted", "stale", "not-found", "failed", "unknown"]) })
-const Returned = Schema.Struct({ status: Schema.Literal("returned") })
-const Permission = Schema.Struct({ contacts: Schema.Literals(["granted", "denied", "prompt", "prompt-with-rationale"]) })
+schema Removed { status: "deleted" | "stale" | "not-found" | "failed" | "unknown" }
+schema Returned { status: "returned" }
+schema Permission { contacts: "granted" | "denied" | "prompt" | "prompt-with-rationale" }
 const Summaries = Schema.Struct({
   contacts: Schema.mutable(
     Schema.Array(

@@ -1,4 +1,4 @@
-// spec/os/android/system.md, "Story: Approve a Wi-Fi join and see whether that network connected"; spec/os/android/system.md, "A fact is reported only as Android answered it, and unknown is never off"
+// spec/os/android/wifi.md, "Story: Find the networks around a device that manages its own Wi-Fi"; spec/os/android/wifi.md, "Story: Join the network I chose through Android's approval"; spec/os/android/wifi.md, "Story: Disconnect, or go to Android's Internet panel"; spec/os/android/wifi.md, "Story: See whether the device is online or behind a sign-in page"
 /**
  * Type definitions for the Wi-Fi bridge of @elizaos/os
  * (`@elizaos/os/bridges/definitions/wifi`).

@@ -37,7 +37,7 @@ module node {
   import { AgentRuntime, TaskService, createCharacter, logger, stringToUuid, validateUuid } from "@elizaos/core"
   import { acquire, close, initial, releaseNext } from "../../gen/agent__host__resources.ts"
   import { cloudLinkPlugin, storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
-  import { plainBodyLimitBytes, messageBodyLimitBytes } from "../../gen/agent__access__transport.ts"
+  import { agentStateOf, backendOf, statusRoutes, usableBinding } from "./status.vibe"
   import { authRoutes } from "../access/auth.vibe"
   import { createRouter } from "../access/router.vibe"
   import { listenOnSocket } from "../access/socket.vibe"
@@ -176,17 +176,14 @@ module node {
       const router = createRouter({
         token: authority.token, epoch: authority.epoch, instanceId: status.serverInstanceId,
         routes: [
-          {
-            path: "/api/status", method: "GET",
-            handler: () => ({ status: 200, body: { ...status, plainBodyLimitBytes, messageBodyLimitBytes } }),
-          },
+          ...statusRoutes({ agentId, name: character.name, serverInstanceId: status.serverInstanceId, backend: backendOf(launch.model), embeddings: launch.embeddings, state: () => agentStateOf(runtime.getLifecycleState()), binding: usableBinding, now: Date.now }),
           ...authRoutes(agentId),
           ...conversationRoutes(runtime, { user, world }),
           ...composed.routes,
         ],
       })
       if (binding.kind === "socket") resourcesOwned.acquire("socket", await listenOnSocket(binding.path, router, { token: authority.token, events: noEvents }))
-      else resourcesOwned.acquire("loopback", await listenOnHttp(binding.port, router))
+      else resourcesOwned.acquire("loopback", await listenOnHttp(binding.port, router, { token: authority.token, events: noEvents }))
       const workflowWorker = launch.workflowWorker === undefined || pinned === undefined ? undefined
         : workerHost(launch.workflowWorker, pinned.worker, launch.environment ?? {},
           { token: authority.token, credential: authority.credential?.value, storageKey: authority.storageKey },

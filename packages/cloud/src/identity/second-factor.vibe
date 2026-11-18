@@ -217,7 +217,7 @@ effect function sessionOf(caller: Caller): SessionCaller!Refused {
 }
 
 effect function sendSms(to: string, code: string) {
-  deliverSms({ to, text: `Your verification code is ${code}. It expires in 5 minutes.` }) catch effect () => { throw refused("ProviderUnavailable") }
+  try deliverSms({ to, text: `Your verification code is ${code}. It expires in 5 minutes.` })
 }
 
 effect function sendLimited(context: RouteContext, phone: string) {

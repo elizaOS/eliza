@@ -1,0 +1,95 @@
+// spec/agent/storage/database.md, "Story: Forget old logs on schedule"; spec/agent/storage/database.md, "A sweep deletes only log rows past the age bound or beyond the newest rows of their room"
+import { assert, it } from "@effect/vitest"
+import { parseLaunch } from "../src/host/launch.vibe"
+import { startAgent } from "../src/host/process.vibe"
+import { host, scratch } from "./support/kernel.vibe"
+import { launchDocument, launchFrame, type Scratch } from "./support/scratch.ts"
+
+module node {
+  import { stringToUuid, type TaskService } from "@elizaos/core"
+  import type { RunningAgent } from "../src/host/process.vibe"
+  import { retentionTask } from "../src/storage/retention.vibe"
+
+  const hourMs = 3_600_000
+  const rooms = { a: stringToUuid("retention-room-a"), b: stringToUuid("retention-room-b") }
+
+  function rows(room: keyof typeof rooms, age: "young" | "old", count: number, now: number, entityId: RunningAgent["runtime"]["agentId"]) {
+    return Array.from({ length: count }, (_, index) => ({
+      body: { label: `${room}-${age}-${index}` }, entityId, roomId: rooms[room], type: "retention-journey",
+      createdAt: new Date(age === "young" ? now - 60_000 - index * 1_000 : now - 7 * hourMs - index * 1_000),
+    }))
+  }
+
+  export async function writeRows(running: RunningAgent) {
+    const { runtime } = running
+    const now = Date.now()
+    await runtime.adapter.createLogs([
+      ...rows("a", "young", 210, now, runtime.agentId), ...rows("a", "old", 5, now, runtime.agentId),
+      ...rows("b", "young", 3, now, runtime.agentId), ...rows("b", "old", 4, now, runtime.agentId),
+    ])
+    await runtime.setCache("retention-journey", { kept: true })
+  }
+
+  export async function labels(running: RunningAgent) {
+    const logs = await running.runtime.adapter.getLogs({})
+    return logs.map(({ body }) => String((body as { label?: unknown }).label)).sort()
+  }
+
+  export async function sweepOnce(running: RunningAgent) {
+    const { runtime } = running
+    const scheduled = await runtime.getTasksByName(retentionTask)
+    const service = runtime.getService<TaskService>("task")
+    const [task] = scheduled
+    if (service === null || task?.id === undefined) throw new Error("The retention task is not scheduled")
+    const worlds = (await runtime.getAllWorlds()).length
+    await service.executeTaskById(task.id)
+    return {
+      tasks: scheduled.map(({ tags, metadata }) => ({ tags, updateInterval: metadata?.updateInterval })),
+      kept: await labels(running),
+      cache: await runtime.getCache("retention-journey"),
+      worldsKept: (await runtime.getAllWorlds()).length === worlds,
+    }
+  }
+
+  export async function retentionTasks(running: RunningAgent) {
+    return (await running.runtime.getTasksByName(retentionTask)).length
+  }
+
+  export const expectedKept = [
+    ...Array.from({ length: 200 }, (_, index) => `a-young-${index}`),
+    ...Array.from({ length: 3 }, (_, index) => `b-young-${index}`),
+  ].sort()
+}
+import { expectedKept, labels, retentionTasks, sweepOnce, writeRows } from node
+
+const retention = { days: 0.25, maxRowsPerRoom: 200, intervalMinutes: 30 }
+
+effect function launched(state: Scratch, persistMemory: boolean) {
+  const frame = launchFrame()
+  const parsed = try parseLaunch(JSON.stringify(launchDocument({ persistMemory, retention })), JSON.stringify(frame))
+  return try acquireRelease(
+    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: state.file(`agent-${String(persistMemory)}.sock`) } }),
+    (agent) => orDie(host("retire agent", () => agent.stop())),
+  )
+}
+
+const swept = { tasks: [{ tags: ["queue", "repeat"], updateInterval: 1_800_000 }], kept: expectedKept, cache: { kept: true }, worldsKept: true }
+
+it.effect('One sweep of an in-memory store deletes only rows past 6 hours or beyond the newest 200 of their room (spec/agent/storage/database.md, "A sweep deletes only log rows past the age bound or beyond the newest rows of their room")', effect () => {
+  const state = try scratch("retention-memory")
+  const running = try launched(state, false)
+  try host("write log rows", () => writeRows(running))
+  const observed = try host("sweep once", () => sweepOnce(running))
+  try Effect.try(() => assert.deepStrictEqual(observed, swept))
+}, 120_000)
+
+it.effect('A persisted store sweeps the same rows, keeps them across a restart and never gains a second sweep task (spec/agent/storage/database.md, "Story: Forget old logs on schedule")', effect () => {
+  const state = try scratch("retention-disk")
+  const first = try launched(state, true)
+  try host("write log rows", () => writeRows(first))
+  const observed = try host("sweep once", () => sweepOnce(first))
+  try host("stop the first agent", () => first.stop())
+  const second = try launched(state, true)
+  const restarted = { tasks: try host("count sweep tasks", () => retentionTasks(second)), kept: try host("read kept rows", () => labels(second)) }
+  try Effect.try(() => assert.deepStrictEqual({ observed, restarted }, { observed: swept, restarted: { tasks: 1, kept: expectedKept } }))
+}, 120_000)

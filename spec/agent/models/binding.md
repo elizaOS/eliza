@@ -144,8 +144,8 @@ pure def lawRateLimitExhaustsTheProvider(e: CloudError): bool = rateLimited(e) i
 ### Each refusal is one account state, and the last failure records its kind and time without text
 
 `credential_invalid`, `insufficient_credits` (credits or a spent allowance),
-`limit_reached` with its retry time, and `provider_issue` (outage, provider
-issue, network, or anything else) are the one failure vocabulary: turns put
+`limit_reached` with its retry time, and `provider_issue` (an outage, a
+provider issue, a network failure, or a refused request or consent) are the one failure vocabulary: turns put
 them on the reply and status reports them. `lastCloudFailure` is
 `{kind, at, retryAt?}`; it never holds message text or a credential.
 
