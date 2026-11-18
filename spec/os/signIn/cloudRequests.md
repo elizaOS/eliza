@@ -137,7 +137,7 @@ pure val routesValues = {
   Set(List(table), List({ ...table, routes: table.routes.append({ ...read, path: at(List("agents")) }) }),
     List({ ...table, routes: table.routes.append({ ...read, method: Routes::Post, path: at(List("auth", "refresh")) }) }))
 }
-pure val requestValues = {
+pure val requestValues: Set[Routes::Request] = {
   def seg(text: str): Routes::Segment = { text: text, fits: List() }
   val user = { method: Routes::Get, delivery: Routes::Buffered, segments: List(seg("api"), seg("v1"), seg("user")), query: List(), flaws: List(), body: Routes::NoBody }
   val cancel = { ...user, method: Routes::Post, segments: List(seg("api"), seg("v1"), seg("subscriptions"), seg("cancel")), body: Routes::JsonObject({ size: 5 }) }
