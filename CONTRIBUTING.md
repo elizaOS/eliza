@@ -123,6 +123,50 @@ authorizer solely because hosted CI is unavailable. This includes repairs in
 GitHub temporary private security forks, where hosted checks do not run. Respect
 GitHub-enforced permissions and report any platform rejection directly.
 
+## Evidence
+
+Include an `## Evidence` section in every PR. Start each field on its own line
+with the exact name below. A Markdown bullet before the name is optional.
+Use `Change types:` with `docs` alone for documentation-only changes. For
+other work, list all applicable types from `non-ui`, `ui`, `performance`,
+and `hardware`, separated by commas.
+
+- `Test results:` Give the tested commit, environment, exact commands and
+  outcomes. Link the run or attach the relevant output. Identify failed,
+  skipped or blocked checks. For docs-only work, report the links and
+  instructions you checked.
+- `Proof of change:` Identify the affected supported workflow, why it matters
+  and how to reproduce it. For fixes, show the failure on the base and success
+  with the PR using the same inputs. For other changes, demonstrate the
+  approved outcome and link the supporting evidence.
+- `Runtime logs:` For runtime, CLI, cloud, plugin, API, and other non-UI
+  changes, attach redacted logs from the real caller and affected service.
+  Include a request or run ID and the observed failure and recovery. Include
+  the provider and exact model ID when inference affects the result.
+- `UI video:` Upload the MP4 walkthrough of the changed flow. Include the app
+  visual audit, desktop and mobile screenshots, and reviewer test steps as
+  described above.
+- `Benchmarks:` For a performance claim, attach comparable base and PR runs
+  from the affected suite or a reproducible workload. Record hardware, input,
+  provider and model if applicable, iteration count, metric and units, and
+  the spread across runs. Include failures and quality changes.
+- `On-device testing:` For native, device, or hardware integration changes,
+  run the affected flow on each changed supported hardware target. Record
+  model, OS/build, app build, peripherals as applicable, steps, results and
+  device logs. Report simulator runs separately.
+
+Give exact commands and observed results inline or link to attachments,
+job runs, or repository permalinks that reviewers can open. Each applicable
+field requires substantive evidence. Blank fields, placeholders, and `N/A`
+do not count. Redact credentials and private data from every attachment.
+Update the evidence when changes to the PR head affect the result. Include
+the signature supplied by the Slop.cash workflow on its submissions.
+
+We close PRs that lack evidence of a useful change, including added complexity
+for a highly unlikely path without evidence that it occurs in supported use
+or threatens an existing requirement. For Slop.cash contributions, this also
+costs the contributor points under the applicable points policy.
+
 ## Contribution Provenance
 
 Provider, model, and agent-tooling disclosure is optional. Contributors must
