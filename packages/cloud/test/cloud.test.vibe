@@ -232,6 +232,7 @@ module node {
       async function run(id: string, input: unknown, options?: unknown): Promise<unknown> {
         if (options) return Response.json({ error: "unexpected inference request" }, { status: 500 })
         providerInputs.push(JSON.stringify({ id, input }))
+        if (providerInputs.length === 1) await Effect.runPromise(Effect.sleep(4_250))
         return { model: "clef-flash", answers: { target: {
           type: "choice", choice: chosen, confidence: .95, probabilities: { hours: .95, none: .05 },
         } } }

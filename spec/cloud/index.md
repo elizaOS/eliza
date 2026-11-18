@@ -277,7 +277,8 @@ Cloud accepts only the typed decision fields. For browser guidance, the
 app sends selected display labels and a goal, with no form contents or raw
 URLs. Cloud removes common credential and address patterns from outbound
 text and keeps no request or response text in its records. The request
-body and provider wait are bounded.
+body is bounded. The client allows thirty seconds for a call, including
+a twenty-five-second Worker AI wait and time for transport.
 
 The deployment's Workers AI binding enables Clef decisions with
 `@cf/cloudflare/clef-flash`. An unavailable binding or invalid

@@ -2,6 +2,7 @@
 import { Schema } from "effect"
 
 export const CLEF_DECISIONS_PATH = "/api/v1/decisions"
+export const CLEF_DECISION_TIMEOUT_MS = 30_000
 export const CLEF_DECISION_LIMITS = Object.freeze({
   goal: 2000, page: 16000, candidates: 16, candidateId: 64, candidateLabel: 300,
   action: 1000, context: 4000, transcript: 2000, recentTurns: 6,
@@ -82,7 +83,7 @@ export function decodeClefResult(request: ClefDecisionRequest, raw: unknown): Cl
 }
 
 module node {
-  import { CLEF_DECISIONS_PATH, decodeClefResult, clefDecisionRequestProblem, clefUnavailability,
+  import { CLEF_DECISIONS_PATH, CLEF_DECISION_TIMEOUT_MS, decodeClefResult, clefDecisionRequestProblem, clefUnavailability,
     type ClefDecisionRequest, type ClefDecisionResponse } from "./clef-decisions.vibe"
 
   export interface ClefDecisionsClientOptions {
@@ -113,7 +114,7 @@ module node {
   }
 
   export function createClefDecisionsClient(options: ClefDecisionsClientOptions) {
-    const duration = options.timeoutMs ?? 6000
+    const duration = options.timeoutMs ?? CLEF_DECISION_TIMEOUT_MS
     if (!Number.isSafeInteger(duration) || duration < 1 || duration > 2147483647) throw new RangeError("Invalid Clef deadline")
     const url = new URL(CLEF_DECISIONS_PATH, options.baseUrl)
     const send = options.fetch ?? globalThis.fetch.bind(globalThis)

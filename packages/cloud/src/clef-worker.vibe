@@ -5,7 +5,7 @@ import { WorkerResponse } from "./worker-platform.ts"
 import { limitedBody } from "./inference.vibe"
 import { accountTransaction, authQuery, rateLimit, RateLimited } from "./identity-store.vibe"
 import {
-  CLEF_NO_CHOICE, CLEF_ASK_THRESHOLD, CLEF_TURN_COMPLETE_THRESHOLD,
+  CLEF_DECISION_TIMEOUT_MS, CLEF_NO_CHOICE, CLEF_ASK_THRESHOLD, CLEF_TURN_COMPLETE_THRESHOLD,
   decodeClefRequest, decodeClefResult, type ClefDecisionRequest,
 } from "./clef-decisions.vibe"
 
@@ -29,6 +29,7 @@ const choiceAnswer = Schema.decodeUnknownOption(Schema.Struct({
   probabilities: Schema.Record(Schema.String, probability),
 }))
 const maxBytes = 160 * 1024
+const providerDeadlineMs = CLEF_DECISION_TIMEOUT_MS - 5_000
 
 function publicText(text: string) {
   return text.replace(/https?:\/\/\S+|[\w.+-]+@[\w.-]+\.[\w-]+|\bBearer\s+[^\s]+|\b\d{6}\b|\b(?:\d[ -]?){12,19}\b/giu, "…")
@@ -117,7 +118,7 @@ export async function clefRequest(request: Request, env: ClefEnv, db: Client, ac
   }
   try {
     const answer = await Effect.runPromise(Effect.timeout(Effect.tryPromise(() =>
-      binding.run(modelId, { model, ...question(decoded.value) })), "4 seconds"))
+      binding.run(modelId, { model, ...question(decoded.value) })), providerDeadlineMs), { signal: request.signal })
     const found = decision(decoded.value, answer)
     return found ? WorkerResponse.json(found) : unavailable("provider_error")
   } catch {
