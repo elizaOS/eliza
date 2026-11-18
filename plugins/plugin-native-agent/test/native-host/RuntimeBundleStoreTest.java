@@ -150,7 +150,7 @@ public final class RuntimeBundleStoreTest {
     Files.delete(seal); launch(root, next, t + 20);
     check(!Files.exists(versions.resolve(".seals").resolve(stale)), "Seals of removed releases are dropped");
   }
-  /** retainOnly removes older releases, their seals and abandoned staging trees, and keeps the current release usable. */
+  /** Preparing the installed APK removes older releases, their seals and abandoned staging trees before its space check, and keeps the current release usable. */
   private static void retainedRelease(Path suite, Map<String, byte[]> old, Map<String, byte[]> next) throws Exception {
     Path root = Files.createDirectory(suite.resolve("retained")); libraries(root);
     Path versions = root.resolve("versions");
