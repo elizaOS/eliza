@@ -684,7 +684,9 @@ function deviceResult(
         : status.state === "awaiting-confirmation"
           ? `Confirm on the phone to start navigation to ${place}.`
           : status.state === "awaiting-location"
-            ? "The phone needs location access before navigation can start."
+            ? // No fix, no permission or a fix too coarse to start from: the route sheet is
+              // open on the phone, and a starting place from the owner plans it instead.
+              `The phone's location isn't available, so the route to ${place} isn't planned yet. Where are you starting from? You can also enter a starting point in Maps on the phone.`
             : "Navigation stopped.";
   const waitingReason =
     status.state === "awaiting-confirmation"
