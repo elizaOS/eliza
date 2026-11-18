@@ -43,8 +43,6 @@ module node {
 }
 import { base64Text, base64urlText, inspectBase64, utf8Length } from node
 
-export type ComposeMode = "compose" | "reply" | "reply-all" | "forward"
-
 export interface ForwardedPart {
   readonly partId: string
   readonly name: string

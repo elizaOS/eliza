@@ -1,0 +1,488 @@
+// spec/os/android/calendar.md, "Story: Read my calendar and open Android's editor"; spec/os/android/calendar.md, "Story: Change exactly the event I reviewed"; spec/os/android/calendar.md, "Story: Delete the event, one occurrence or the whole series as I chose"; spec/os/android/bridge.md, "Story: Report a device change only as Android confirmed it"
+import type { Admission, HandoffOutcome, HostFacts, WriteOutcome } from "../../gen/os__android__bridge.ts"
+import { admitCall } from "../../gen/os__android__bridge.effect.vibe"
+import {
+  Machine,
+  canDispatchDeletion,
+  canSaveReviewed,
+  canStageDeletion,
+  confirmCall,
+  dispatchCall,
+  exactRow,
+  initial,
+  machine,
+  maxReadSpanMs,
+  originalStart,
+  readRange,
+  resolvedScope,
+  reviewChange,
+  reviewRevision,
+  stagedClaim,
+  type CalendarEdit,
+  type Readback,
+  type Recurrence,
+  type RequestedScope,
+  type ScopeEvidence,
+} from "../../gen/os__android__calendar.effect.vibe"
+import type { DeletionClock } from "../../gen/os__android__deletionWindow.ts"
+import { nativeReply, settled } from "./bridge.vibe"
+import { rendererDeletionClock } from "./deletion-window.vibe"
+import type {
+  AndroidCalendarDeletionScope,
+  AndroidCalendarDeletionTarget,
+  AndroidCalendarEditorFields,
+  AndroidCalendarExpected,
+  AndroidCalendarPlugin,
+  AndroidCalendarRecurrence,
+  CalendarClient,
+  CalendarClientOptions,
+  CalendarFieldsProblem,
+  CalendarInspectionResult,
+  CalendarPick,
+  CalendarRange,
+  CalendarReview,
+  CalendarTicket,
+} from "./definitions/calendar.ts"
+
+export type * from "./definitions/calendar.ts"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { AndroidCalendarPlugin } from "./definitions/calendar.ts"
+
+  /** @throws {never} */
+  export function calendarPlugin(name = "ElizaCalendar"): AndroidCalendarPlugin {
+    return registerPlugin<AndroidCalendarPlugin>(name)
+  }
+}
+import { calendarPlugin } from capacitor
+export { calendarPlugin }
+
+export const CALENDAR_TITLE_MAX = 500
+export const CALENDAR_BODY_MAX = 16000
+export const CALENDAR_LOCATION_MAX = 2000
+
+export error InvalidCalendarRange { begin: number; end: number }
+export error InvalidCalendarFields { problem: CalendarFieldsProblem }
+export error CalendarRefused { method: string; admission: Admission }
+export error CalendarNotAllowed { action: "save" | "stageDeletion" | "undoDeletion" | "dispatchDeletion"; state: CalendarEdit }
+
+const Instant = Schema.Number.check(Schema.makeFilter((value: number) => Number.isSafeInteger(value) && value >= 0))
+const Access = Schema.Struct({ status: Schema.Literals(["granted", "denied"]) })
+const Permissions = Schema.Struct({ calendar: Schema.Literals(["granted", "denied", "prompt", "prompt-with-rationale"]) })
+const Listing = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("ready"),
+    calendars: Schema.mutable(Schema.Array(Schema.Struct({
+      id: Schema.String,
+      name: Schema.optionalKey(Schema.String),
+      account: Schema.optionalKey(Schema.String),
+      writable: Schema.Boolean,
+      local: Schema.Boolean,
+    }))),
+    events: Schema.mutable(Schema.Array(Schema.Struct({
+      id: Schema.String,
+      calendarId: Schema.String,
+      title: Schema.optionalKey(Schema.String),
+      body: Schema.optionalKey(Schema.String),
+      location: Schema.optionalKey(Schema.String),
+      begin: Instant,
+      end: Instant,
+      allDay: Schema.Boolean,
+      recurring: Schema.Boolean,
+      creationId: Schema.optionalKey(Schema.String),
+    }))),
+    truncated: Schema.Boolean,
+  }),
+  Schema.Struct({ status: Schema.Literal("permission-required") }),
+])
+const Opened = Schema.Struct({ status: Schema.Literal("opened") })
+const Inserted = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("opened"), alertsPrefilled: Schema.Boolean }),
+  Schema.Struct({ status: Schema.Literals(["unavailable", "invalid", "unknown"]) }),
+])
+const Inspected = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("ready"), revision: Schema.String, sourceRevision: Schema.String }),
+  Schema.Struct({ status: Schema.Literals(["permission-required", "unavailable", "conflict", "external"]) }),
+])
+const Saved = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("saved"), id: Schema.String, calendarId: Schema.String }),
+  Schema.Struct({ status: Schema.Literals(["permission-required", "conflict"]) }),
+])
+const Evidence = Schema.Struct({
+  selectedRow: Schema.Literals(["ParentRow", "ExceptionRow"]),
+  sync: Schema.Literals(["LocalUnsynced", "SyncedSeries", "RemoteUnsynced"]),
+  sourceCurrent: Schema.Boolean,
+  bounded: Schema.Boolean,
+  otherExceptions: Schema.Boolean,
+  liveException: Schema.Literals(["NoLiveException", "SelectedException", "OtherException", "CancelledSelection"]),
+  instances: Schema.Int,
+  begin: Schema.Int,
+  finish: Schema.Int,
+  exceptionOriginal: Schema.Int,
+})
+const DeletionInspected = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("ready"),
+    recurrence: Schema.Literals(["one-off", "rule", "date-list"]),
+    writable: Schema.Boolean,
+    revision: Schema.String,
+    sourceRevision: Schema.String,
+    evidence: Evidence,
+  }),
+  Schema.Struct({ status: Schema.Literals(["permission-required", "unavailable", "conflict"]) }),
+])
+const Dispatched = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("committed"),
+    readback: Schema.Struct({
+      parentAfter: Schema.Literals(["ParentGone", "ParentLive"]),
+      fieldsMatch: Schema.Boolean,
+      exclusionExact: Schema.Boolean,
+      cancelledAtStart: Schema.Int,
+      instanceRemains: Schema.Boolean,
+    }),
+  }),
+  Schema.Struct({ status: Schema.Literals(["permission-required", "conflict", "unknown"]) }),
+])
+
+const HELD: HostFacts = { foreground: true, unlocked: true, focused: true, granted: true, featurePresent: true }
+const UNANSWERED: Readback = { parentAfter: "ParentLive", fieldsMatch: false, exclusionExact: false, cancelledAtStart: 0, instanceRemains: true }
+const FIELDS_READ_BACK: Readback = { parentAfter: "ParentLive", fieldsMatch: true, exclusionExact: false, cancelledAtStart: 0, instanceRemains: false }
+const NOTHING_SELECTED: ScopeEvidence = {
+  selectedRow: "ParentRow",
+  sync: "RemoteUnsynced",
+  sourceCurrent: false,
+  bounded: false,
+  otherExceptions: false,
+  liveException: "NoLiveException",
+  instances: 0,
+  begin: -1,
+  finish: -1,
+  exceptionOriginal: -1,
+}
+const RECURRENCES: Readonly<Record<AndroidCalendarRecurrence, Recurrence>> = { "one-off": "OneOff", rule: "RuleSeries", "date-list": "DateListSeries" }
+const SCOPES: Readonly<Record<AndroidCalendarDeletionScope, RequestedScope>> = { event: "AskEvent", occurrence: "AskOccurrence", series: "AskSeries" }
+
+interface TicketEvidence {
+  readonly revision: string
+  readonly sourceRevision: string
+  readonly scope: AndroidCalendarDeletionScope | undefined
+  readonly originalStart: number
+}
+
+interface Session {
+  readonly edit: Machine.Shape
+  readonly plugin: AndroidCalendarPlugin
+  readonly name: string
+  readonly id: string
+  readonly calendarId: string
+  readonly clock: () => DeletionClock
+  readonly tickets: Map<number, TicketEvidence>
+  expected: AndroidCalendarExpected
+  revision: string | undefined
+  staged: AndroidCalendarDeletionTarget | undefined
+}
+
+interface RowFacts {
+  readonly kept: boolean
+  readonly writable: boolean
+  readonly recurrence: Recurrence
+  readonly plainLocal: boolean
+}
+
+export function calendarFieldsProblem(fields: AndroidCalendarEditorFields): CalendarFieldsProblem | null {
+  if (fields.title.trim() === "") return "empty-title"
+  if (fields.title.length > CALENDAR_TITLE_MAX) return "title-too-long"
+  if ((fields.body ?? "").length > CALENDAR_BODY_MAX) return "body-too-long"
+  if ((fields.location ?? "").length > CALENDAR_LOCATION_MAX) return "location-too-long"
+  return rangeAllowed(fields) ? null : "invalid-range"
+}
+
+function rangeAllowed(range: CalendarRange): boolean {
+  return Number.isSafeInteger(range.begin) && Number.isSafeInteger(range.end) && readRange(range.begin, range.end) === "ReadAllowed"
+}
+
+function factsOf(status: "permission-required" | "unavailable"): HostFacts {
+  return status === "permission-required" ? { ...HELD, granted: false } : { ...HELD, unlocked: false, focused: false }
+}
+
+function refusal(method: string, status: "permission-required" | "unavailable"): CalendarRefused {
+  return new CalendarRefused({ method, admission: admitCall("PluginRegistered", confirmCall, factsOf(status)) })
+}
+
+function selection(session: Session) {
+  return { id: session.id, calendarId: session.calendarId, expected: session.expected }
+}
+
+function revised(session: Session, revision: string): boolean {
+  const moved = session.revision !== undefined && session.revision !== revision
+  session.revision = revision
+  return moved
+}
+
+function inspectionOf(state: CalendarEdit): CalendarInspectionResult {
+  if (state.review.tag === "Reviewed") return { kind: "ready", ticket: state.review.ticket as CalendarTicket, change: state.review.change }
+  return state.lastResult.tag === "EditorNeeded" ? { kind: "editor" } : { kind: "conflict" }
+}
+
+effect function settledAs(state: CalendarEdit): WriteOutcome!! {
+  if (state.lastResult.tag !== "WriteSettled") return try die(new Error("A provider write left no settled outcome"))
+  return state.lastResult.settledAs
+}
+
+effect function keepRow(session: Session, changed: boolean, update: Partial<RowFacts>) {
+  const { row } = try session.edit.get()
+  if (row.tag === "RowGone") return
+  const next: RowFacts = { kept: true, writable: row.writable, recurrence: row.recurrence, plainLocal: row.plainLocal, ...update }
+  if (changed || !next.kept || next.writable !== row.writable || next.recurrence !== row.recurrence || next.plainLocal !== row.plainLocal) {
+    try orDie(session.edit.send({ type: "changeProvider", ...next }))
+  }
+}
+
+effect function inspectUpdate(session: Session) {
+  const reply = try nativeReply(session.name, "inspect", Inspected, () => session.plugin.inspect(selection(session)))
+  if (reply.status === "permission-required" || reply.status === "unavailable") throw refusal("inspect", reply.status)
+  if (reply.status === "ready") try keepRow(session, revised(session, reply.revision), { writable: true, recurrence: "OneOff", plainLocal: true })
+  if (reply.status === "external") try keepRow(session, false, { plainLocal: false })
+  if (reply.status === "conflict") try keepRow(session, false, { kept: false })
+  const after = try orDie(session.edit.send({ type: "inspectUpdate" }))
+  if (reply.status === "ready" && after.review.tag === "Reviewed") {
+    session.tickets.set(after.review.ticket, { revision: reply.revision, sourceRevision: reply.sourceRevision, scope: undefined, originalStart: -1 })
+  }
+  return inspectionOf(after)
+}
+
+effect function confirmUpdate(session: Session, evidence: TicketEvidence) {
+  const reply = try nativeReply(session.name, "inspect", Inspected, () => session.plugin.inspect(selection(session)))
+  if (reply.status === "permission-required" || reply.status === "unavailable") return factsOf(reply.status)
+  if (reply.status === "ready") try keepRow(session, revised(session, reply.revision) || reply.revision !== evidence.revision, {})
+  if (reply.status === "external") try keepRow(session, false, { plainLocal: false })
+  if (reply.status === "conflict") try keepRow(session, false, { kept: false })
+  return HELD
+}
+
+effect function save(session: Session, ticket: CalendarTicket, fields: AndroidCalendarEditorFields) {
+  const problem = calendarFieldsProblem(fields)
+  if (problem !== null) throw new InvalidCalendarFields({ problem })
+  const before = try session.edit.get()
+  const evidence = session.tickets.get(ticket)
+  if (evidence === undefined || !canSaveReviewed(before, ticket, HELD)) throw new CalendarNotAllowed({ action: "save", state: before })
+  const facts = try confirmUpdate(session, evidence)
+  const current = try session.edit.get()
+  if (!canSaveReviewed(current, ticket, facts)) throw new CalendarRefused({ method: "save", admission: admitCall("PluginRegistered", confirmCall, facts) })
+  const written = { title: fields.title.trim(), body: fields.body ?? "", location: fields.location ?? "", begin: fields.begin, end: fields.end }
+  uninterruptible {
+    const answer = exactRow(current.row, reviewRevision(current.review), "UpdateFields")
+      ? try exit(nativeReply(session.name, "save", Saved, () =>
+          session.plugin.save({ ...written, id: session.id, calendarId: session.calendarId, expected: { ...session.expected, revision: evidence.revision } })))
+      : undefined
+    const reply = answer !== undefined && Exit.isSuccess(answer) ? answer.value : undefined
+    if (reply?.status === "permission-required") {
+      try orDie(session.edit.send({ type: "pause" }))
+      throw new CalendarRefused({ method: "save", admission: "PermissionRequired" })
+    }
+    if (reply?.status === "conflict") try keepRow(session, true, {})
+    const answered = reply?.status === "saved"
+    if (answered) {
+      session.revision = undefined
+      session.expected = written
+    }
+    const after = try orDie(session.edit.send({ type: "saveReviewed", ticket, facts, answered, readback: answered ? FIELDS_READ_BACK : UNANSWERED }))
+    session.tickets.delete(ticket)
+    return try settledAs(after)
+  }
+}
+
+effect function inspectDeletion(session: Session, scope: AndroidCalendarDeletionScope | undefined) {
+  const reply = try nativeReply(session.name, "inspectDeletion", DeletionInspected, () =>
+    session.plugin.inspectDeletion({ ...selection(session), ...(scope === undefined ? {} : { scope }) }))
+  if (reply.status === "permission-required" || reply.status === "unavailable") throw refusal("inspectDeletion", reply.status)
+  if (reply.status === "conflict") try keepRow(session, false, { kept: false })
+  if (reply.status === "ready") {
+    try keepRow(session, revised(session, reply.revision), { writable: reply.writable, recurrence: RECURRENCES[reply.recurrence] })
+  }
+  const requested = scope === undefined ? "DefaultScope" : SCOPES[scope]
+  const evidence = reply.status === "ready" ? reply.evidence : NOTHING_SELECTED
+  const after = try orDie(session.edit.send({ type: "inspectDeletion", evidence, requested }))
+  if (reply.status === "ready" && after.review.tag === "Reviewed") {
+    const scoped = resolvedScope(RECURRENCES[reply.recurrence], evidence, requested)
+    session.tickets.set(after.review.ticket, {
+      revision: reply.revision,
+      sourceRevision: reply.sourceRevision,
+      scope,
+      originalStart: originalStart(evidence, scoped),
+    })
+  }
+  return inspectionOf(after)
+}
+
+effect function confirmDeletion(session: Session, evidence: TicketEvidence) {
+  const reply = try nativeReply(session.name, "inspectDeletion", DeletionInspected, () =>
+    session.plugin.inspectDeletion({ ...selection(session), ...(evidence.scope === undefined ? {} : { scope: evidence.scope }) }))
+  if (reply.status === "permission-required" || reply.status === "unavailable") return { facts: factsOf(reply.status), current: true }
+  if (reply.status === "conflict") {
+    try keepRow(session, false, { kept: false })
+    return { facts: HELD, current: false }
+  }
+  const moved = revised(session, reply.revision) || reply.revision !== evidence.revision
+  try keepRow(session, moved, { writable: reply.writable, recurrence: RECURRENCES[reply.recurrence] })
+  return { facts: HELD, current: !moved }
+}
+
+effect function stageDeletion(session: Session, ticket: CalendarTicket) {
+  const clock = session.clock()
+  const before = try session.edit.get()
+  const evidence = session.tickets.get(ticket)
+  const change = reviewChange(before.review)
+  if (evidence === undefined || change === "UpdateFields" || !canStageDeletion(before, ticket, HELD, clock)) {
+    throw new CalendarNotAllowed({ action: "stageDeletion", state: before })
+  }
+  const confirmation = try confirmDeletion(session, evidence)
+  if (!confirmation.current) {
+    session.tickets.delete(ticket)
+    throw new CalendarNotAllowed({ action: "stageDeletion", state: try orDie(session.edit.send({ type: "pause" })) })
+  }
+  const current = try session.edit.get()
+  if (!canStageDeletion(current, ticket, confirmation.facts, clock)) {
+    throw new CalendarRefused({ method: "stageDeletion", admission: admitCall("PluginRegistered", confirmCall, confirmation.facts) })
+  }
+  const after = try orDie(session.edit.send({ type: "stageDeletion", ticket, facts: confirmation.facts, clock }))
+  session.tickets.delete(ticket)
+  if (after.deletion.tag !== "Staged") return try die(new Error("A confirmed deletion was not staged"))
+  session.staged = {
+    id: session.id,
+    calendarId: session.calendarId,
+    revision: evidence.revision,
+    sourceRevision: evidence.sourceRevision,
+    change,
+    originalStart: evidence.originalStart,
+  }
+  return after.deletion.pending.deadline
+}
+
+effect function undoDeletion(session: Session) {
+  session.edit.send({ type: "undoDeletion", later: session.clock() }) catch effect (rejected) => {
+    throw new CalendarNotAllowed({ action: "undoDeletion", state: rejected.state })
+  }
+  session.staged = undefined
+}
+
+effect function dispatchDeletion(session: Session) {
+  const later = session.clock()
+  const before = try session.edit.get()
+  const target = session.staged
+  if (target === undefined || !stagedClaim(before.deletion, later, "ClaimDispatch")) {
+    throw new CalendarNotAllowed({ action: "dispatchDeletion", state: before })
+  }
+  const permission = try nativeReply(session.name, "checkPermissions", Permissions, () => session.plugin.checkPermissions())
+  const facts: HostFacts = { foreground: false, unlocked: false, focused: false, granted: permission.calendar === "granted", featurePresent: true }
+  const admission = admitCall("PluginRegistered", dispatchCall, facts)
+  if (admission !== "CallAdmitted") throw new CalendarRefused({ method: "dispatchDeletion", admission })
+  if (!canDispatchDeletion(before, later, facts)) throw new CalendarNotAllowed({ action: "dispatchDeletion", state: before })
+  uninterruptible {
+    const answer = try exit(nativeReply(session.name, "dispatchDeletion", Dispatched, () => session.plugin.dispatchDeletion(target)))
+    const reply = Exit.isSuccess(answer) ? answer.value : undefined
+    if (reply?.status === "permission-required") throw new CalendarRefused({ method: "dispatchDeletion", admission: "PermissionRequired" })
+    if (reply?.status === "conflict") try keepRow(session, true, {})
+    const readback = reply?.status === "committed" ? reply.readback : undefined
+    if (readback !== undefined) session.revision = undefined
+    const after = try orDie(session.edit.send({
+      type: "dispatchDeletion",
+      later,
+      facts,
+      answered: readback !== undefined,
+      readback: readback ?? UNANSWERED,
+    }))
+    session.staged = undefined
+    return try settledAs(after)
+  }
+}
+
+effect function openEditor(session: Session) {
+  const { begin, end } = session.expected
+  const opened = try isSuccess(nativeReply(session.name, "open", Opened, () => session.plugin.open({ id: session.id, begin, end })))
+  const handoff: HandoffOutcome = opened ? "Opened" : "Refused"
+  try orDie(session.edit.send({ type: "openEditor", handoff }))
+  return handoff
+}
+
+effect function refresh(session: Session) {
+  const { begin } = session.expected
+  const end = Math.min(Math.max(session.expected.end, begin + 1), begin + maxReadSpanMs)
+  const answer = try exit(nativeReply(session.name, "list", Listing, () => session.plugin.list({ begin, end })))
+  const listing = Exit.isSuccess(answer) && answer.value.status === "ready" ? answer.value : undefined
+  if (listing !== undefined && !listing.events.some((event) => event.id === session.id)) try keepRow(session, false, { kept: false })
+  const after = try orDie(session.edit.send({
+    type: "observeRead",
+    read: { kind: "ExplicitRead", startedAfterSettle: true, succeeded: listing !== undefined },
+  }))
+  return after.gate
+}
+
+effect function held(start: CalendarEdit) {
+  provide machine(start) {
+    return try Machine
+  }
+}
+
+function startOf(pick: CalendarPick): CalendarEdit {
+  return {
+    ...initial,
+    row: {
+      tag: "RowLive",
+      revision: 1,
+      writable: pick.calendar.writable,
+      recurrence: pick.event.recurring ? "RuleSeries" : "OneOff",
+      plainLocal: pick.calendar.local && !pick.event.allDay,
+    },
+  }
+}
+
+function reviewOf(plugin: AndroidCalendarPlugin, name: string, clock: () => DeletionClock, pick: CalendarPick): CalendarReview {
+  const { event } = pick
+  const session: Session = {
+    edit: Effect.runSync(held(startOf(pick))),
+    plugin,
+    name,
+    id: event.id,
+    calendarId: event.calendarId,
+    clock,
+    tickets: new Map(),
+    expected: { title: event.title ?? "", body: event.body ?? "", location: event.location ?? "", begin: event.begin, end: event.end },
+    revision: undefined,
+    staged: undefined,
+  }
+  const lock = Semaphore.makeUnsafe(1)
+  return {
+    state: () => settled(session.edit.get()),
+    openEditor: () => settled(lock.withPermits(1)(openEditor(session))),
+    inspectUpdate: () => settled(lock.withPermits(1)(inspectUpdate(session))),
+    save: (ticket, fields) => settled(lock.withPermits(1)(save(session, ticket, fields))),
+    inspectDeletion: (scope) => settled(lock.withPermits(1)(inspectDeletion(session, scope))),
+    stageDeletion: (ticket) => settled(lock.withPermits(1)(stageDeletion(session, ticket))),
+    undoDeletion: () => settled(lock.withPermits(1)(undoDeletion(session))),
+    dispatchDeletion: () => settled(lock.withPermits(1)(dispatchDeletion(session))),
+    pause: () => settled(lock.withPermits(1)(effect { try orDie(session.edit.send({ type: "pause" })) })),
+    refresh: () => settled(lock.withPermits(1)(refresh(session))),
+  }
+}
+
+effect function list(plugin: AndroidCalendarPlugin, name: string, range: CalendarRange) {
+  if (!rangeAllowed(range)) throw new InvalidCalendarRange({ begin: range.begin, end: range.end })
+  return try nativeReply(name, "list", Listing, () => plugin.list({ begin: range.begin, end: range.end }))
+}
+
+export function calendarClient(options: CalendarClientOptions = {}): CalendarClient {
+  const { name = "ElizaCalendar", plugin = calendarPlugin(name), clock = rendererDeletionClock } = options
+  return {
+    requestAccess: () => settled(nativeReply(name, "requestAccess", Access, () => plugin.requestAccess())),
+    list: (range) => settled(list(plugin, name, range)),
+    insertHandoff: (event) =>
+      settled(effect {
+        const reply = try nativeReply(name, "insertHandoff", Inserted, () => plugin.insertHandoff({ event }))
+        return { outcome: reply.status === "opened" ? "Opened" : "Refused", reply }
+      }),
+    review: (pick) => reviewOf(plugin, name, clock, pick),
+  }
+}

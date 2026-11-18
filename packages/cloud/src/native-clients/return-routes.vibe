@@ -20,9 +20,9 @@ module node {
   const templates = new Map<string, Promise<Template | undefined>>()
 
   /** @throws {unknown} */
-  async function source(file: string): Promise<string | undefined> {
-    for (const base of ["../../pages/", "../../dist/pages/"]) {
-      const text = await readFile(new URL(base + file, import.meta.url), "utf8").catch(() => undefined)
+  async function source(root: URL, file: string): Promise<string | undefined> {
+    for (const base of ["pages/", "dist/pages/"]) {
+      const text = await readFile(new URL(base + file, root), "utf8").catch(() => undefined)
       if (text !== undefined) return text
     }
     const { renderPages } = await import("../pages/render.tsx")
@@ -30,16 +30,16 @@ module node {
   }
 
   /** @throws {unknown} */
-  async function load(file: string): Promise<Template | undefined> {
-    const text = await source(file)
+  async function load(root: URL, file: string): Promise<Template | undefined> {
+    const text = await source(root, file)
     if (text === undefined) return undefined
     const styles = [...text.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((found) => `'sha256-${createHash("sha256").update(found[1] ?? "").digest("base64")}'`)
     return { source: text, styleHashes: styles }
   }
 
   /** @throws {unknown} */
-  export function pageTemplate(file: string): Promise<Template | undefined> {
-    const known = templates.get(file) ?? load(file)
+  export function pageTemplate(root: URL, file: string): Promise<Template | undefined> {
+    const known = templates.get(file) ?? load(root, file)
     templates.set(file, known)
     return known
   }
@@ -87,8 +87,9 @@ function contentPolicy(page: Page, template: Template): string {
 effect function pageResponse(page: Page) {
   if (page.tag === "NoPage") throw refused("NotFound")
   const { template, slots } = shown(page)
-  const file = pageFile(template)
-  const loaded = try tryPromise({ try: () => pageTemplate(file), catch: () => new PageTemplateMissing({ file }) })
+  const file = try sync(() => pageFile(template))
+  const root = new URL("../../", import.meta.url)
+  const loaded = try tryPromise({ try: () => pageTemplate(root, file), catch: () => new PageTemplateMissing({ file }) })
   if (loaded === undefined) throw new PageTemplateMissing({ file })
   const html = Object.entries(slots).reduce((text, [slot, value]) => text.replaceAll(pageSlots[slot as PageSlot], escaped(value)), loaded.source)
   const headers = pageHeaders(page)

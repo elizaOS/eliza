@@ -13,7 +13,7 @@ import type {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const NAME = /^[a-z][a-z0-9-]{0,31}$/
 const CODE = /^[0-9]{6}$/
-const strict = { onExcessProperty: "error" } as const
+export const strict = { onExcessProperty: "error" } as const
 
 const uuid = Schema.String.check(Schema.isPattern(UUID))
 export const RequestId = uuid.pipe(Schema.brand("SignInRequestId"))
@@ -123,8 +123,6 @@ export const events: { [Name in keyof SignInEvents]: Schema.Codec<SignInEvents[N
   signInSettled: Settled,
   signInReadinessChanged: Readiness,
 }
-
-export const exactly = strict
 
 export function requestIdOf(text: string): Option.Option<SignInRequestId> {
   return Schema.decodeUnknownOption(RequestId)(text)

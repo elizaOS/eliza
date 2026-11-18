@@ -1,42 +1,18 @@
 # App update policy
 
-When the updater looks for an app update, downloads it, activates a
-prepared one, and tells the owner that updates fall behind. One policy run
-serves one scheduled job and returns the plan for the scheduler: the next
-discovery, the download job, the next activation check, the gate decision,
-the outcome and the alert. The ledger is what the runs remember between
-jobs. Source: develop's
-`updater/policy/{PolicyEngine,OtaGates,DeviceSignals,ComfortWindow,PolicyLedger,PolicyStore,OtaPolicy}.java`,
-kept as the framework-free policy classes of `android/app-update`. The
-constants are the defaults of `OtaPolicy`: metered downloads and the
-unattended reboot route are off.
+When the updater looks for an app update, downloads it, activates a prepared one, and tells the owner that updates fall behind. One policy run serves one scheduled job and returns the plan for the scheduler: the next discovery, the download job, the next activation check, the gate decision, the outcome and the alert. The ledger is what the runs remember between jobs. Source: develop's `updater/policy/{PolicyEngine,OtaGates,DeviceSignals,ComfortWindow,PolicyLedger,PolicyStore,OtaPolicy}.java`, kept as the framework-free policy classes of `android/app-update`. The constants are the defaults of `OtaPolicy`: metered downloads and the unattended reboot route are off.
 
-Signed time is the lower bound of the updater's qualified time interval
-(the `Interval` of `appUpdate/admission.md`); zero or less means none. It
-alone decides alert ages. The local wall clock is for comfort only (the
-02:00-05:00 window, idle and the alarm horizon) and never authorizes an
-activation. Times are whole minutes; the local clock is minutes since the
-epoch, which the shell resolves in the device's zone.
+Signed time is the lower bound of the updater's qualified time interval (the `Interval` of `appUpdate/admission.md`); zero or less means none. It alone decides alert ages. The local wall clock is for comfort only (the 02:00-05:00 window, idle and the alarm horizon) and never authorizes an activation. Times are whole minutes; the local clock is minutes since the epoch, which the shell resolves in the device's zone.
 
-The shell binds the ports: both clocks, the device signals (an unreadable
-signal is unknown), discovery, the installation journal's pending plan
-(`appUpdate/install.md`), the activation hand-off, the jitter and the job's
-cancellation. It shares one engine per ledger and keeps the ledger in one
-private file, replaced atomically; unreadable state becomes a reset ledger.
+The shell binds the ports: both clocks, the device signals (an unreadable signal is unknown), discovery, the installation journal's pending plan (`appUpdate/install.md`), the activation hand-off, the jitter and the job's cancellation. It shares one engine per ledger and keeps the ledger in one private file, replaced atomically; unreadable state becomes a reset ledger.
 
 ## Story: Update my apps only when it is safe and on time
 
-> As a device owner, I want my apps checked for updates regularly, updates
-> downloaded only on a network I allow, and installed only while my phone is
-> charging, cool, idle and unused, preferably overnight, and I want to be
-> told when updates fall behind, so that updating never disturbs me and
-> never silently stops.
+> As a device owner, I want my apps checked for updates regularly, updates downloaded only on a network I allow, and installed only while my phone is charging, cool, idle and unused, preferably overnight, and I want to be told when updates fall behind, so that updating never disturbs me and never silently stops.
 
 ### Discovery runs every 6 hours, within its jitter, and checks only with signed time
 
-Without signed time a discovery run defers and checks nothing. A check that
-reached the source records its signed time; a queued transfer schedules the
-download job one minute later.
+Without signed time a discovery run defers and checks nothing. A check that reached the source records its signed time; a queued transfer schedules the download job one minute later.
 
 ```quint
 import install as I from "./install"
@@ -100,9 +76,7 @@ pure def sometimesTransferQueued(l: Ledger): bool = l.lastOutcome == Discovered(
 
 ### A download proceeds only with signed time on an unmetered network
 
-A blocked download looks again in 15 minutes. A download that ran keeps its
-job while a transfer is still queued or the source was unavailable, and
-cancels it once the source reports nothing more.
+A blocked download looks again in 15 minutes. A download that ran keeps its job while a transfer is still queued or the source was unavailable, and cancels it once the source reports nothing more.
 
 ```quint
 pure def downloadGate(n: NetworkKind): List[Blocker] =
@@ -124,12 +98,7 @@ pure def sometimesDownloadDeferred(l: Ledger): bool = l.lastOutcome == DownloadD
 
 ### The activation and reboot gates return every blocker in a fixed order, and an unknown signal blocks
 
-Both gates need charging, a battery level at their minimum (40 % to
-activate, 60 % to reboot), a thermal status no higher than light, the
-screen off for 15 minutes and no call, media, camera, recording, cast,
-navigation or critical task. Activation also needs a comfort window that is
-not closed; a reboot needs no alarm within 60 minutes and the qualified
-recovery route. An unknown pending plan and missing signed time come first.
+Both gates need charging, a battery level at their minimum (40 % to activate, 60 % to reboot), a thermal status no higher than light, the screen off for 15 minutes and no call, media, camera, recording, cast, navigation or critical task. Activation also needs a comfort window that is not closed; a reboot needs no alarm within 60 minutes and the qualified recovery route. An unknown pending plan and missing signed time come first.
 
 ```quint
 pure val activationMinBattery = 40
@@ -183,12 +152,7 @@ pure def stepDecisionsListBlockersInOrder(before: Ledger, after: Ledger, out: Li
 
 ### The comfort window never authorizes by itself, and missed windows are counted
 
-Inside 02:00-05:00 local time the window is open; outside it, it opens for
-the day only after two windows ended with the same activation pending.
-Window ends are counted on the local clock from when the plan became
-pending; a clock set back counts nothing and never uncounts, and the count
-stops at 1000. A closed window looks again when it next opens, at least a
-minute later; an open one every 15 minutes.
+Inside 02:00-05:00 local time the window is open; outside it, it opens for the day only after two windows ended with the same activation pending. Window ends are counted on the local clock from when the plan became pending; a clock set back counts nothing and never uncounts, and the count stops at 1000. A closed window looks again when it next opens, at least a minute later; an open one every 15 minutes.
 
 ```quint
 pure val windowStart = 120
@@ -225,12 +189,7 @@ pure def sometimesDaytimeFallback(l: Ledger): bool = l.missedWindows >= missedBe
 
 ### Activation is handed to the installation journal only when every gate holds
 
-The pending plan is the installation journal's verified plan; an
-unreadable reading, or a plan id that is not positive, is unknown, keeps
-the remembered plan and blocks. Activation is tried only on the activation
-job; a host that has not enabled installation answers `NotEnabled`, which
-blocks. With nothing pending the activation check is cancelled, unless the
-reading was unknown: then it looks again in 15 minutes.
+The pending plan is the installation journal's verified plan; an unreadable reading, or a plan id that is not positive, is unknown, keeps the remembered plan and blocks. Activation is tried only on the activation job; a host that has not enabled installation answers `NotEnabled`, which blocks. With nothing pending the activation check is cancelled, unless the reading was unknown: then it looks again in 15 minutes.
 
 ```quint
 pure def pendingFrom(j: I::Journal): PendingReading = if (j.phase == I::Verified) Prepared({ preparedPlan: j.plan.id }) else NothingPending
@@ -271,11 +230,7 @@ pure def sometimesPendingUnknownBlocks(l: Ledger): bool = l.pending != 0 and l.l
 
 ### The ledger keeps the pending activation and the check ages in signed time
 
-An activation pending for 72 hours of signed time raises an alert and for 7
-days escalates; so does the time since the last check that reached the
-source, counted from when tracking began if there was none. A reset ledger
-raises an alert for 7 days. Without signed time the last level stands,
-marked not current, and says signed time is missing.
+An activation pending for 72 hours of signed time raises an alert and for 7 days escalates; so does the time since the last check that reached the source, counted from when tracking began if there was none. A reset ledger raises an alert for 7 days. Without signed time the last level stands, marked not current, and says signed time is missing.
 
 ```quint
 pure val alertAfter = 4320
@@ -309,10 +264,7 @@ pure def sometimesActivationLate(l: Ledger): bool = l.alertReasons.includes(Acti
 
 ### An unsaved ledger still returns the plan, with an alert
 
-A run whose ledger could not be saved leaves the stored ledger as it was
-and returns its plan with the unsaved alert. A job cancelled before its
-first effect saves nothing and returns no plan; one cancelled with no
-effect left to run completes. The jitter is uniform in its span.
+A run whose ledger could not be saved leaves the stored ledger as it was and returns its plan with the unsaved alert. A job cancelled before its first effect saves nothing and returns no plan; one cancelled with no effect left to run completes. The jitter is uniform in its span.
 
 ```quint
 pure def unsavedAlert(a: Alert): Alert = { ...a, level: if (a.level == AlertNone) AlertRaised else a.level, reasons: a.reasons.append(StateUnsaved) }

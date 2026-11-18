@@ -154,7 +154,11 @@ pure def stepAWrongCodeCountsOneFailure(before: Challenge, via: str, after: Chal
 ### A sign-in code yields a session, or a second-factor challenge for a person who has a factor, never both
 
 `factorOutcome` is `secondFactor`'s `afterFirstFactor` of the factors of the
-person `FirstSightOf` lands on (a new account has none). A session answers
+person `FirstSightOf` lands on (a new account has none). The shell lands it
+with `accounts`' `firstSight` in the same transaction and runs
+`BeginSession` or `BeginSecondFactor` only when that admits the sign-in; on
+a closed account it answers `accounts`' refusal and the code stays spent.
+A session answers
 `{status: "signed_in", user, organizationId, accessToken, accessExpiresAt,
 refreshToken, refreshExpiresAt, mfaAt, accountCreated}`; a second factor
 answers `{status: "mfa_required", challengeId, methods, expiresAt}`. A link

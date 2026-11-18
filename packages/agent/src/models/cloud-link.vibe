@@ -30,7 +30,7 @@ export type CloudLinkReply =
 
 export error CloudLinkUnreachable { path: string }
 
-export error CloudLinkPathRefused { path: string }
+export error CloudLinkRequestRefused { path: string; reason: "path" | "body" }
 
 interface Link {
   readonly backend: Backend
@@ -60,7 +60,11 @@ effect function send(link: Link, request: CloudLinkRequest, target: URL) {
     ...(request.ifMatch === undefined ? {} : { "if-match": request.ifMatch }),
   }
   const bare = HttpClientRequest.make(request.method)(target, { headers })
-  const prepared = request.body === undefined ? bare : HttpClientRequest.bodyText(bare, JSON.stringify(request.body), "application/json")
+  const encoded = request.body === undefined ? undefined : try Effect.try({
+    try: () => JSON.stringify(request.body),
+    catch: () => new CloudLinkRequestRefused({ path: target.pathname, reason: "body" }),
+  })
+  const prepared = encoded === undefined ? bare : HttpClientRequest.bodyText(bare, encoded, "application/json")
   const response = Effect.provideService(HttpClient.execute(prepared), FetchHttpClient.RequestInit, { redirect: "error" })
   const unreachable = new CloudLinkUnreachable({ path: target.pathname })
   const result = timeout(response, "60 seconds") catch effect () => { throw unreachable }
@@ -109,7 +113,7 @@ export class CloudLinkService extends Service {
 
   request(request: CloudLinkRequest): Promise<CloudLinkReply> {
     const target = targetOf(this.#link.origin, request.path)
-    if (target === undefined) return Promise.reject(new CloudLinkPathRefused({ path: request.path }))
+    if (target === undefined) return Promise.reject(new CloudLinkRequestRefused({ path: request.path, reason: "path" }))
     const change = googleChangeOf(request.method, target.pathname)
     if (change !== undefined && this.admitGoogle(change).kind === "refused") return Promise.resolve({ kind: "changes-off", operation: change })
     return run(Effect.provide(send(this.#link, request, target), FetchHttpClient.layer), request.signal)

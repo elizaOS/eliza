@@ -2,10 +2,6 @@
 package ai.eliza.plugins.signin;
 
 public final class DeepLinkCapture {
-  public interface Slot {
-    String read() throws Exception;
-    boolean compareExchange(String expected, String value) throws Exception;
-  }
 
   public record Pending(long receipt, String url) {}
 
@@ -23,13 +19,13 @@ public final class DeepLinkCapture {
     }
   }
 
-  private final Slot slot;
+  private final SecureSlot slot;
   private final Object lock = new Object();
   private long coldLaunch;
 
-  private DeepLinkCapture(Slot slot) { this.slot = slot; }
+  private DeepLinkCapture(SecureSlot slot) { this.slot = slot; }
 
-  public static DeepLinkCapture launch(Slot slot, String coldLaunchUrl) throws Exception {
+  public static DeepLinkCapture launch(SecureSlot slot, String coldLaunchUrl) throws Exception {
     DeepLinkCapture capture = new DeepLinkCapture(slot);
     if (coldLaunchUrl != null) capture.coldLaunch = capture.capture(coldLaunchUrl);
     return capture;

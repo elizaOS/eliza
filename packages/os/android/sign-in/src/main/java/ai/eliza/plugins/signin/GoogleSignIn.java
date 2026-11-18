@@ -44,9 +44,9 @@ public final class GoogleSignIn {
   public static final class SecretServerCode {
     private String value;
     SecretServerCode(String value) { this.value = value; }
+    synchronized String peek() { return value; }
     synchronized String take() { String once = value; value = null; return once; }
-    synchronized void drop() { value = null; }
-    synchronized boolean held() { return value != null; }
+    public synchronized void drop() { value = null; }
   }
 
   public record Challenge(String challengeId, String nonce, String serverClientId, long expiresAt, String verifier) {}
@@ -101,12 +101,15 @@ public final class GoogleSignIn {
     JSONObject body = CodeSignIn.json("clientId", registration.clientId, "environment", environment.name, "redirectUri", environment.redirectUri,
       "state", state, "codeVerifier", verifier, "identity", CodeSignIn.json("challengeId", challenge.challengeId(), "idToken", idToken,
         "codeVerifier", challenge.verifier()));
-    String code = serverCode == null ? null : serverCode.take();
+    String code = serverCode == null ? null : serverCode.peek();
     if (code != null) copy(body, "serverAuthCode", code);
-    Answer answer = post(environment, MOBILE_GOOGLE, body, null);
-    if (answer.status() != 200) throw new Refused(SignInPolicy.failureFor(Stage.GOOGLE, answer.status(), answer.error(), answer.reason()));
-    Verified verified = CodeSignIn.verified(answer, now);
+    Answer answer;
+    try { answer = post(environment, MOBILE_GOOGLE, body, null); }
+    catch (Refused unanswered) { if (code != null) serverCode.drop(); throw unanswered; }
+    Verified verified = answer.status() == 200 ? CodeSignIn.verified(answer, now) : null;
     if (verified instanceof Verified.FactorRequired factor) return new SignedIn.FactorRequired(factor.challengeId(), factor.methods(), factor.expiresAt());
+    if (code != null) serverCode.drop();
+    if (answer.status() != 200) throw new Refused(SignInPolicy.failureFor(Stage.GOOGLE, answer.status(), answer.error(), answer.reason()));
     String oneTime = answer.body().optString("code", "");
     if (!"signed_in".equals(answer.body().optString("status")) || oneTime.isEmpty()) throw new Refused(Failure.UNAVAILABLE);
     JSONObject google = answer.body().optJSONObject("google");
