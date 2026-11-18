@@ -20,7 +20,7 @@ import { afterFirstFactor } from "./second-factor.vibe"
 
 export type Presenter =
   | { readonly kind: "signIn"; readonly clientId: string; readonly redirectUri: string; readonly codeVerifier: string }
-  | { readonly kind: "link"; readonly userId: string }
+  | { readonly kind: "link"; readonly userId: string; readonly codeVerifier: string }
 
 export interface NativePresentation {
   readonly challengeId: string
@@ -222,10 +222,10 @@ effect function returnWithdrawn(tx: Tx, browser: Browser) {
   return clientCheck(try readRegistry(tx), served, { clientId: browser.clientId, environment: served, redirect: { tag: "ClaimsReturn", purpose: "SignInPurpose", url } }).tag !== "ClientAdmitted"
 }
 
-effect function consumeCallback(tx: Tx, browser: Browser, query: URLSearchParams, now: number): Callback {
+effect function consumeCallback(tx: Tx, browser: Browser, query: URLSearchParams, now: number) {
   const withdrawn = try returnWithdrawn(tx, browser)
   const before = try current(tx, browser.key, now)
-  if (before.flow.phase !== "AwaitingCallback") return { kind: "late", error: lateCallbackError(before), withdrawn }
+  if (before.flow.phase !== "AwaitingCallback") return { kind: "late", error: lateCallbackError(before), withdrawn } satisfies Callback
   const callback = callbackOf(query, withdrawn)
   try step(tx, browser.key, { type: "beginCallback", verifierPresent: browser.verifier !== undefined, verifierRequired: true }, now)
   const consumed = (try step(tx, browser.key, {
@@ -235,9 +235,9 @@ effect function consumeCallback(tx: Tx, browser: Browser, query: URLSearchParams
     providerInstalled: (try Deployment).settings.google !== undefined,
     callback
   }, now)).state
-  if (consumed.flow.phase === "ProviderPending") return { kind: "exchange" }
-  if (consumed.flow.phase !== "FailureWritePending") return { kind: "settled", attempt: consumed }
-  return { kind: "settled", attempt: (try step(tx, browser.key, { type: "writeFailure", write: "WriteAcknowledged" }, now, { google_verifier: null })).state }
+  if (consumed.flow.phase === "ProviderPending") return { kind: "exchange" } satisfies Callback
+  if (consumed.flow.phase !== "FailureWritePending") return { kind: "settled", attempt: consumed } satisfies Callback
+  return { kind: "settled", attempt: (try step(tx, browser.key, { type: "writeFailure", write: "WriteAcknowledged" }, now, { google_verifier: null })).state } satisfies Callback
 }
 
 effect function finishCallback(browser: Browser, code: string) {
@@ -299,37 +299,46 @@ effect function redeem(tx: Tx, body: typeof ExchangeBody.Type, now: number) {
   return { kind: "done", value: answer } as const
 }
 
-effect function openNative(input: { readonly purpose: NativePurpose; readonly client: ClientRequest; readonly challenge: string | undefined; readonly method: PkceMethod; readonly now: number }): NativeChallenge {
+effect function openNative(purpose: NativePurpose, request: typeof NativeBody.Type, now: number) {
+  const url = parseReturn(request.redirectUri)
+  if (url === undefined) throw refused("RedirectMismatch")
+  const client: ClientRequest = {
+    clientId: request.clientId,
+    environment: request.environment === "production" ? "Production" : "Staging",
+    redirect: { tag: "ClaimsReturn", purpose: "SignInPurpose", url },
+  }
+  const method: PkceMethod = request.codeChallengeMethod === "S256" ? "S256" : "PlainMethod"
   const deployment = try Deployment
   const google = deployment.settings.google
   if (google === undefined) throw new Refused({ refusal: nativeGoogleRefusal("GoogleNotOffered") })
-  if (input.challenge !== undefined && !challengePattern.test(input.challenge)) throw refused("InvalidRequest")
+  if (!challengePattern.test(request.codeChallenge)) throw refused("InvalidRequest")
   const key = newId()
   const nonce = secretText("", 32, "hex")
   return try inTransaction(effect (tx: Tx) => {
-    const registration = try admitClient(tx, input.client)
+    const registration = try admitClient(tx, client)
     const native = nativeGoogleCheck(rowOf(deployment.profile.name, deployment.settings).signIn, registration)
     if (native !== "NativeGoogleOpen") throw new Refused({ refusal: nativeGoogleRefusal(native) })
-    if (!canIssueNative(initial, input.purpose, input.method)) throw refused("InvalidRequest")
-    const issued = try step(tx, key, { type: "issueNative", purpose: input.purpose, method: input.method }, input.now, {
+    if (!canIssueNative(initial, purpose, method)) throw refused("InvalidRequest")
+    const issued = try step(tx, key, { type: "issueNative", purpose, method }, now, {
       route: "native",
       client_id: registration.clientId,
-      redirect_uri: input.client.redirect.tag === "ClaimsReturn" ? returnText(input.client.redirect.url) : null,
-      challenge_digest: input.challenge === undefined ? null : tokenDigest(input.challenge),
+      redirect_uri: returnText(url),
+      challenge_digest: tokenDigest(request.codeChallenge),
       nonce_digest: tokenDigest(nonce),
-      link_user_id: input.purpose.tag === "NativeLink" ? input.purpose.userId : null
+      link_user_id: purpose.tag === "NativeLink" ? purpose.userId : null
     })
-    return { challengeId: key, nonce, serverClientId: google.serverClientId, expiresAt: dueAt(issued.state) }
+    return { challengeId: key, nonce, serverClientId: google.serverClientId, expiresAt: dueAt(issued.state) } satisfies NativeChallenge
   })
 }
 
 function presenterMatches(row: Row, presenter: Presenter): Pick<NativeProof, "clientMatches" | "verifierMatches"> {
+  const verifierMatches = verifierPattern.test(presenter.codeVerifier) && sameText(tokenDigest(s256(presenter.codeVerifier)), toText(row.challenge_digest) ?? "")
   switch (presenter.kind) {
     case "signIn": return {
       clientMatches: toText(row.link_user_id) === undefined && toText(row.client_id) === presenter.clientId && toText(row.redirect_uri) === presenter.redirectUri,
-      verifierMatches: verifierPattern.test(presenter.codeVerifier) && sameText(tokenDigest(s256(presenter.codeVerifier)), toText(row.challenge_digest) ?? "")
+      verifierMatches
     }
-    case "link": return { clientMatches: toText(row.link_user_id) === presenter.userId, verifierMatches: toText(row.challenge_digest) === undefined }
+    case "link": return { clientMatches: toText(row.link_user_id) === presenter.userId, verifierMatches }
     default: {
       const _exhaustive: never = presenter
       return _exhaustive
@@ -337,7 +346,7 @@ function presenterMatches(row: Row, presenter: Presenter): Pick<NativeProof, "cl
   }
 }
 
-export effect function verifyNativeGoogle(tx: Tx, presented: NativePresentation): VerifiedGoogle {
+export effect function verifyNativeGoogle(tx: Tx, presented: NativePresentation) {
   const google = (try Deployment).settings.google
   if (google === undefined) throw new Refused({ refusal: nativeGoogleRefusal("GoogleNotOffered") })
   const row = (try tx.query("SELECT client_id, redirect_uri, challenge_digest, nonce_digest, link_user_id FROM oauth_attempts WHERE key = $1 AND route = 'native'", [presented.challengeId]))[0]
@@ -359,27 +368,20 @@ export effect function verifyNativeGoogle(tx: Tx, presented: NativePresentation)
     identity: { method: "GoogleSignIn", subject: token.subject },
     verifiedEmail: token.verifiedEmail,
     givenName: token.givenName
-  }
+  } satisfies VerifiedGoogle
 }
 
-export effect function spendNativeGoogle(tx: Tx, verified: VerifiedGoogle, factorOutcome: FirstFactorOutcome, now: number): ReadonlyArray<SignInEffect> {
-  return (try step(tx, verified.challengeId, { type: "presentIdToken", proof: verified.proof, factorOutcome }, now)).out.out
+export effect function spendNativeGoogle(tx: Tx, verified: VerifiedGoogle, factorOutcome: FirstFactorOutcome, now: number) {
+  return (try step(tx, verified.challengeId, { type: "presentIdToken", proof: verified.proof, factorOutcome }, now)).out.out satisfies ReadonlyArray<SignInEffect>
 }
 
-export effect function googleLinkChallenge(input: { readonly userId: string; readonly clientId: string; readonly now: number }): NativeChallenge {
-  const served = try servedEnvironment()
-  return try openNative({
-    purpose: { tag: "NativeLink", userId: input.userId },
-    client: { clientId: input.clientId, environment: served, redirect: { tag: "NoRedirect" } },
-    challenge: undefined,
-    method: "S256",
-    now: input.now
-  })
+export effect function googleLinkChallenge(userId: string, request: typeof NativeBody.Type, now: number) {
+  return try openNative({ tag: "NativeLink", userId }, request, now)
 }
 
-export effect function googleLinkProof(input: { readonly userId: string; readonly challengeId: string; readonly idToken: string; readonly now: number }) {
+export effect function googleLinkProof(input: { readonly userId: string; readonly challengeId: string; readonly idToken: string; readonly codeVerifier: string; readonly now: number }) {
   return try inTransaction(effect (tx: Tx) => {
-    const verified = try verifyNativeGoogle(tx, { challengeId: input.challengeId, idToken: input.idToken, presenter: { kind: "link", userId: input.userId }, now: input.now })
+    const verified = try verifyNativeGoogle(tx, { challengeId: input.challengeId, idToken: input.idToken, presenter: { kind: "link", userId: input.userId, codeVerifier: input.codeVerifier }, now: input.now })
     try spendNativeGoogle(tx, verified, "SessionStarts", input.now)
     return { subject: verified.identity.subject, provenEmail: verified.verifiedEmail }
   })
@@ -417,15 +419,7 @@ export const routes: ReadonlyArray<Route> = [
     auth: "Public",
     handler: (context) => effect {
       const body = try jsonBody(context, NativeBody)
-      const url = parseReturn(body.redirectUri)
-      if (url === undefined) throw refused("RedirectMismatch")
-      return json(try openNative({
-        purpose: { tag: "NativeSignIn" },
-        client: { clientId: body.clientId, environment: body.environment === "production" ? "Production" : "Staging", redirect: { tag: "ClaimsReturn", purpose: "SignInPurpose", url } },
-        challenge: body.codeChallenge,
-        method: body.codeChallengeMethod === "S256" ? "S256" : "PlainMethod",
-        now: context.now
-      }))
+      return json(try openNative({ tag: "NativeSignIn" }, body, context.now))
     }
   }
 ]
