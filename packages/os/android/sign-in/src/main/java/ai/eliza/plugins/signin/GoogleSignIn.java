@@ -40,7 +40,6 @@ public final class GoogleSignIn {
   public static final String CHALLENGE = "/api/v1/auth/google/native/challenge";
   public static final String MOBILE_GOOGLE = "/api/v1/app-auth/mobile/google";
   public static final String CONNECT_NATIVE = "/api/v1/eliza/google/connect/native";
-  private static final int MAX_ID_TOKEN = 32_768;
 
   public static final class SecretServerCode {
     private String value;
@@ -103,7 +102,7 @@ public final class GoogleSignIn {
       "state", state, "codeVerifier", verifier, "identity", CodeSignIn.json("challengeId", challenge.challengeId(), "idToken", idToken,
         "codeVerifier", challenge.verifier()));
     String code = serverCode == null ? null : serverCode.take();
-    if (code != null) CodeSignIn.json("serverAuthCode", code).keys().forEachRemaining(key -> copy(body, key, code));
+    if (code != null) copy(body, "serverAuthCode", code);
     Answer answer = post(environment, MOBILE_GOOGLE, body, null);
     if (answer.status() != 200) throw new Refused(SignInPolicy.failureFor(Stage.GOOGLE, answer.status(), answer.error(), answer.reason()));
     Verified verified = CodeSignIn.verified(answer, now);
@@ -153,7 +152,7 @@ public final class GoogleSignIn {
             try { google = GoogleIdTokenCredential.createFrom(credential.getData()); }
             catch (RuntimeException malformed) { done.accept(new Picked.NotPicked(Failure.REFUSED)); return; }
             String token = google.getIdToken();
-            done.accept(token == null || token.isEmpty() || token.length() > MAX_ID_TOKEN || google.getId().isEmpty()
+            done.accept(!SignInPolicy.validIdToken(token) || google.getId().isEmpty()
               ? new Picked.NotPicked(Failure.REFUSED) : new Picked.Token(token, google.getId()));
           }
 

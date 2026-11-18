@@ -167,7 +167,8 @@ pure def sometimesPrivatePageNotSaved(s: BrowserTab): bool = boundPage(s) and is
 A `target=_blank` link or `window.open` opens a tab in the opener's profile
 only while the host runs, the opener is selected, committed without an
 error, and the tap is a native gesture; otherwise the opener hears a notice.
-The renderer accepts it only for its own bound session and an unknown tab.
+The renderer accepts it, already created, only for its own bound session
+and an unknown tab.
 
 ```quint
 type PopupRequest = { openerSettled: bool, openerSelected: bool, gesture: bool, openerPrivacy: TabPrivacy }
@@ -182,6 +183,7 @@ pure val requestValues: Set[PopupRequest] = List(
   { openerSettled: true, openerSelected: true, gesture: true, openerPrivacy: PrivateTab },
   { openerSettled: true, openerSelected: true, gesture: false, openerPrivacy: NormalTab }
 ).foldl(Set(), (acc, r) => acc.union(Set(r)))
+pure def alwaysAPopupIsOwned(s: BrowserTab): bool = s.opening != OpenedByRenderer implies s.custody == Owned
 pure def sometimesPrivatePopup(s: BrowserTab): bool = s.opening == FreshPopup and isPrivate(s)
 ```
 

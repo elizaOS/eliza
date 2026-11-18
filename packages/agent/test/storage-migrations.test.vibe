@@ -11,7 +11,8 @@ module node {
   const v2: readonly Migration[] = [...v1, { kind: "Additive", sql: "CREATE TABLE journey_notes (id integer PRIMARY KEY)" }]
   const destructive: readonly Migration[] = [...v2, { kind: "Destructive", sql: "DROP TABLE journey_notes" }]
   const failing: readonly Migration[] = [...v2, { kind: "Additive", sql: "CREATE TABLE journey_half (id integer); SELECT * FROM journey_missing" }]
-  const marked: readonly Migration[] = [{ kind: "Additive", sql: `${v1[0]!.sql}; CREATE TABLE journey_seed_marker (id integer)` }]
+  const marked: readonly Migration[] = [...v1, { kind: "Additive", sql: "CREATE TABLE journey_seed_marker (id integer)" }]
+  const unmarked: readonly Migration[] = [...v1, { kind: "Additive", sql: "CREATE TABLE journey_unseeded (id integer)" }]
 
   type Outcome = { version: number; tables: string[]; cached: unknown } | { refused: string }
 
@@ -41,8 +42,8 @@ module node {
     const afterFailing = await visit(home, v2)
     const refusedNewer = await visit(home, v1)
     const otherVersionSnapshot = await visit(state("other-snapshot"), v1, await createDeviceStorageSnapshot(v2))
-    const seeded = await visit(state("seeded"), v1, await createDeviceStorageSnapshot(marked))
-    return { created, upgraded, refusedDestructive, afterDestructive, refusedFailing, afterFailing, refusedNewer, otherVersionSnapshot, seeded }
+    const seeded = await visit(state("seeded"), unmarked, await createDeviceStorageSnapshot(marked))
+    return { shipped: v1.length, created, upgraded, refusedDestructive, afterDestructive, refusedFailing, afterFailing, refusedNewer, otherVersionSnapshot, seeded }
   }
 }
 import { upgradeJourney } from node
@@ -51,13 +52,14 @@ it.effect('A store is upgraded one additive migration at a time, refuses destruc
   const state = try scratch("storage-migrations")
   const walked = try host("migration journey", () => upgradeJourney((name) => state.file(name)))
   const kept = { kept: true }
-  assert.deepStrictEqual(walked.created, { version: 1, tables: [], cached: kept })
-  assert.deepStrictEqual(walked.upgraded, { version: 2, tables: ["journey_notes"], cached: kept })
+  const base = walked.shipped
+  assert.deepStrictEqual(walked.created, { version: base, tables: [], cached: kept })
+  assert.deepStrictEqual(walked.upgraded, { version: base + 1, tables: ["journey_notes"], cached: kept })
   assert.deepStrictEqual(walked.refusedDestructive, { refused: "DestructiveMigration" })
-  assert.deepStrictEqual(walked.afterDestructive, { version: 2, tables: ["journey_notes"], cached: kept })
+  assert.deepStrictEqual(walked.afterDestructive, { version: base + 1, tables: ["journey_notes"], cached: kept })
   assert.deepStrictEqual(walked.refusedFailing, { refused: "MigrationFailed" })
-  assert.deepStrictEqual(walked.afterFailing, { version: 2, tables: ["journey_notes"], cached: kept })
+  assert.deepStrictEqual(walked.afterFailing, { version: base + 1, tables: ["journey_notes"], cached: kept })
   assert.deepStrictEqual(walked.refusedNewer, { refused: "NewerSchema" })
-  assert.deepStrictEqual(walked.otherVersionSnapshot, { version: 1, tables: [], cached: undefined })
-  assert.deepStrictEqual(walked.seeded, { version: 1, tables: ["journey_seed_marker"], cached: undefined })
+  assert.deepStrictEqual(walked.otherVersionSnapshot, { version: base, tables: [], cached: undefined })
+  assert.deepStrictEqual(walked.seeded, { version: base + 1, tables: ["journey_seed_marker"], cached: undefined })
 })

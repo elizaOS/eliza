@@ -1,18 +1,15 @@
 # Speech relay protocol
 
 The wire on the one socket of a minted speech session: develop's wire (plan
-decision D41), from `packages/host/src/voice/speech-relay-{wire,session}.ts`
-on the pinned branch and `packages/cloud/api/src/speech-relay-coordinator.ts`.
-The Android speech bridge is its client.
-
-This library has no state. `relayStep` is the relay's answer to one input: a
-device frame, or an edge the session or a provider reports; the shell sends
-an answer's frames before it reads the next input. The session machine
-(`./speechSession`) holds one `Relay` per socket and owns consent, windows,
-budgets and settlement: a frame that breaks a budget reaches the relay as
-`ClientViolation`. The device client (`spec/os/voice/cloudSpeech.md`) speaks
-the same frames. JSON, bytes, token digests, string lengths, the id pattern
-and provider calls stay in the codec (`src/client/relay-frames.ts`).
+decision D41, `packages/host/src/voice/speech-relay-{wire,session}.ts` on the
+pinned branch). This library has no state: `relayStep` is the relay's answer
+to one device frame or one edge the session or a provider reports, and the
+shell sends an answer's frames before it reads the next input. The session
+machine (`./speechSession`) holds one `Relay` per socket and owns consent,
+windows, budgets and settlement; a frame that breaks a budget reaches the
+relay as `ClientViolation`. The device client (`spec/os/voice/cloudSpeech.md`)
+speaks the same frames. JSON, bytes, token digests, string lengths, the id
+pattern and provider calls stay in the codec (`src/client/relay-frames.ts`).
 
 ## Story: Speak the relay protocol on one socket
 
@@ -186,23 +183,6 @@ pure def lawRefusedFundingClosesAsFundingNeverUnauthorized(r: Relay, funding: Sh
     ErrorFrame({ code: RelayUnavailable, reason: if (r.errorReasons) FundingReason({ funding: funding }) else NoRelayReason }),
     CloseFrame({ closeCode: fundingClose })))
 }
-pure val idValues = Set("u1", "u2")
-pure val rValues = Set(
-  { phase: RelayAwaitingHello, errorReasons: false, extend: false, sttConnected: false, windows: 0, pending: List(), utterances: List() },
-  { phase: RelayOpening, errorReasons: true, extend: true, sttConnected: false, windows: 0, pending: List(), utterances: List() },
-  { phase: RelayOpening, errorReasons: false, extend: false, sttConnected: true, windows: 0, pending: List(SttFrame({ kind: SttConnected }), SttFrame({ kind: StartOfTurn })), utterances: List() },
-  { phase: RelayLive, errorReasons: false, extend: false, sttConnected: false, windows: 1, pending: List(), utterances: List() },
-  { phase: RelayLive, errorReasons: true, extend: true, sttConnected: true, windows: 1, pending: List(), utterances: List({ id: "u1", stage: UtteranceOpen, heard: true }, { id: "u2", stage: UtteranceFinishing, heard: false }) },
-  { phase: RelayLive, errorReasons: true, extend: false, sttConnected: true, windows: 2, pending: List(), utterances: List({ id: "u1", stage: UtteranceCancelled, heard: false }, { id: "u2", stage: UtteranceDone, heard: false }) },
-  { phase: RelayEnded, errorReasons: true, extend: true, sttConnected: true, windows: 1, pending: List(), utterances: List({ id: "u1", stage: UtteranceFinishing, heard: true }) })
-pure val inputValues = Set(
-  ClientHello({ tokenMatches: true, errorReasons: true, extend: true }), ClientHello({ tokenMatches: false, errorReasons: true, extend: false }),
-  ClientPrepare({ id: "u1" }), ClientPrepare({ id: "u3" }), ClientSpeak({ id: "u1", flush: true }), ClientSpeak({ id: "u2", flush: false }),
-  ClientFinish({ id: "u1" }), ClientFinish({ id: "u2" }), ClientCancel({ id: "u1" }), ClientCancel({ id: "u4" }), ClientStop, ClientAudio, ClientViolation,
-  HelloTimedOut, Admitted, WindowRenewed, ProviderStt({ kind: SttConnected, transcriptChars: 0 }), ProviderStt({ kind: EndOfTurn, transcriptChars: 12 }),
-  ProviderStt({ kind: TranscriptUpdate, transcriptChars: 20000 }), ProviderAudio({ id: "u1" }), ProviderAudio({ id: "u2" }), ProviderFlushed({ id: "u1" }),
-  ProviderFlushed({ id: "u2" }), ProviderCompleted({ id: "u1" }), ProviderCompleted({ id: "u2" }),
-  ProviderFailed, FundingRefused({ funding: AllowanceShort }), FundingRefused({ funding: CreditsShort }), CredentialRefused, SessionOver)
 ```
 
 ### Only a hello carrying the session token opens the relay, and ready, then the held edges, is sent once the first window is admitted
@@ -257,9 +237,9 @@ A `tts` for an open utterance adds text (its `flush` goes to the provider).
 `finish` moves an open utterance to finishing. `cancel` cancels any id, and
 nothing more is sent for it. A frame for a cancelled id, and `finish` for a
 done one, is ignored (a cancel or the provider's end may overtake queued
-phrases); `prepare` or `tts` for a finishing or done id, and `finish` twice
-or for an unseen id, break the protocol. Provider audio is forwarded for an open or
-finishing utterance; a flush is acknowledged only when audio was forwarded
+phrases); `prepare` or `tts` for a finishing or done id, and `finish`
+twice or for an unseen id, break the protocol. Provider audio is forwarded
+for an open or finishing utterance; a flush is acknowledged only when audio was forwarded
 since the last acknowledgement; the provider's completion of an open or
 finishing utterance is answered with `complete` and ends it. As in develop,
 completion may come before `finish`; the session then marks that TTS
@@ -311,9 +291,8 @@ pure def lawNothingIsSentForACancelledUtterance(r: Relay, input: RelayInput, id:
 
 ### Turn events and accepted uplink audio follow connected, and extended goes only to a hello that asked
 
-`connected` is sent once, and a turn event before it is never sent. A
-transcript over 16384 chars is a provider failure and is never sent. The
-shell forwards uplink audio to the provider only while `acceptsAudio` holds,
+`connected` is sent once, and a turn event before it is never sent (a
+transcript over 16384 chars is a provider failure). The shell forwards uplink audio to the provider only while `acceptsAudio` holds,
 and drops it otherwise (the device starts capture on `connected`).
 
 ```quint
@@ -326,10 +305,23 @@ pure def lawConnectedPrecedesTurnsAndAcceptedAudio(r: Relay, input: RelayInput):
     and (a.frames.includes(SttFrame({ kind: SttConnected })) implies (not(r.sttConnected) or r.pending.includes(SttFrame({ kind: SttConnected }))))
     and ((a.relay.sttConnected and not(r.sttConnected) and a.relay.phase != RelayEnded) implies sent.includes(SttFrame({ kind: SttConnected }))))
 }
-pure def lawNoTranscriptOverTheLimitIsSent(r: Relay, kind: SttEventKind, transcriptChars: CharCount): bool = {
-  val a = relayStep(r, ProviderStt({ kind: kind, transcriptChars: transcriptChars }))
-  (kind != SttConnected and transcriptChars > maxTranscriptChars) implies (not(a.frames.some(f => isSttFrame(f))) and a.relay.pending.length() <= r.pending.length())
-}
 pure def lawExtendedOnlyForAHelloThatAsked(r: Relay, input: RelayInput): bool =
   relayWellFormed(r) implies (relayStep(r, input).frames.includes(ExtendedFrame) implies r.extend)
+pure val idValues = Set("u1", "u2")
+pure val rValues = Set(
+  { phase: RelayAwaitingHello, errorReasons: false, extend: false, sttConnected: false, windows: 0, pending: List(), utterances: List() },
+  { phase: RelayOpening, errorReasons: true, extend: true, sttConnected: false, windows: 0, pending: List(), utterances: List() },
+  { phase: RelayOpening, errorReasons: false, extend: false, sttConnected: true, windows: 0, pending: List(SttFrame({ kind: SttConnected }), SttFrame({ kind: StartOfTurn })), utterances: List() },
+  { phase: RelayLive, errorReasons: false, extend: false, sttConnected: false, windows: 1, pending: List(), utterances: List() },
+  { phase: RelayLive, errorReasons: true, extend: true, sttConnected: true, windows: 1, pending: List(), utterances: List({ id: "u1", stage: UtteranceOpen, heard: true }, { id: "u2", stage: UtteranceFinishing, heard: false }) },
+  { phase: RelayLive, errorReasons: true, extend: false, sttConnected: true, windows: 2, pending: List(), utterances: List({ id: "u1", stage: UtteranceCancelled, heard: false }, { id: "u2", stage: UtteranceDone, heard: false }) },
+  { phase: RelayEnded, errorReasons: true, extend: true, sttConnected: true, windows: 1, pending: List(), utterances: List({ id: "u1", stage: UtteranceFinishing, heard: true }) })
+pure val inputValues = Set(
+  ClientHello({ tokenMatches: true, errorReasons: true, extend: true }), ClientHello({ tokenMatches: false, errorReasons: true, extend: false }),
+  ClientPrepare({ id: "u1" }), ClientPrepare({ id: "u3" }), ClientSpeak({ id: "u1", flush: true }), ClientSpeak({ id: "u2", flush: false }),
+  ClientFinish({ id: "u1" }), ClientFinish({ id: "u2" }), ClientCancel({ id: "u1" }), ClientCancel({ id: "u4" }), ClientStop, ClientAudio, ClientViolation,
+  HelloTimedOut, Admitted, WindowRenewed, ProviderStt({ kind: SttConnected, transcriptChars: 0 }), ProviderStt({ kind: EndOfTurn, transcriptChars: 12 }),
+  ProviderStt({ kind: TranscriptUpdate, transcriptChars: 20000 }), ProviderAudio({ id: "u1" }), ProviderAudio({ id: "u2" }), ProviderFlushed({ id: "u1" }),
+  ProviderFlushed({ id: "u2" }), ProviderCompleted({ id: "u1" }), ProviderCompleted({ id: "u2" }),
+  ProviderFailed, FundingRefused({ funding: AllowanceShort }), FundingRefused({ funding: CreditsShort }), CredentialRefused, SessionOver)
 ```

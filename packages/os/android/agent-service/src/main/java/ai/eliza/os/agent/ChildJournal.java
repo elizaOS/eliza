@@ -20,7 +20,7 @@ public final class ChildJournal {
     void kill(int pid) throws IOException;
   }
 
-  public static final Processes ANDROID = new Processes() {
+  public static final class AndroidProcesses implements Processes {
     @Override public OptionalLong startTime(int pid) throws IOException {
       String stat;
       try { stat = new String(Files.readAllBytes(Paths.get("/proc", Integer.toString(pid), "stat")), StandardCharsets.US_ASCII); }
@@ -37,7 +37,7 @@ public final class ChildJournal {
         if (error.errno != android.system.OsConstants.ESRCH) throw new IOException("Cannot end agent child " + pid, error);
       }
     }
-  };
+  }
 
   public record Entry(long epoch, int pid, long startTime) {}
 

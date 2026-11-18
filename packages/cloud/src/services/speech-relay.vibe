@@ -257,7 +257,7 @@ effect function untilAt(at: number) {
   try sleep(Duration.millis(Math.max(0, at - now)))
 }
 
-effect function renew(shell: Shell, ports: RelayPorts, sessionId: string, window: Window): Arrival!Failure!CloudContext {
+effect function renew(ports: RelayPorts, sessionId: string, window: Window): Arrival!Failure!CloudContext {
   const admission = try ports.session.admitWindow(sessionId, window.number + 1)
   return match (admission) {
     when { kind: "admitted", let expiresAt }: { kind: "renewed", window: openWindow(window.number + 1, expiresAt) };
@@ -268,7 +268,7 @@ effect function renew(shell: Shell, ports: RelayPorts, sessionId: string, window
 effect function watchWindow(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals, window: Window) {
   try untilAt(window.expiresAt - windowBudget.renewLeadMs)
   if (shell.relay.extend && shell.relay.phase === "RelayLive") {
-    const outcome = renew(shell, ports, sessionId, window) catch () => providerFailed
+    const outcome = renew(ports, sessionId, window) catch () => providerFailed
     try Queue.offer(arrivals, outcome)
   }
   try untilAt(window.expiresAt)

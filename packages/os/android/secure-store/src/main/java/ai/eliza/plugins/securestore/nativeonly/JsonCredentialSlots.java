@@ -36,6 +36,11 @@ public final class JsonCredentialSlots {
   private static final long serialVersionUID = 1L;
   CapacityException(){super("Credential slot is full");}
  }
+ /** The new frame was published but did not read back exactly: the caller rereads before it retries. */
+ public static final class UnconfirmedException extends IllegalStateException {
+  private static final long serialVersionUID = 1L;
+  UnconfirmedException(Throwable cause){super("Credential slot write is unconfirmed",cause);}
+ }
  private final File directory;
  private final String alias;
  private final Limits limits,retained;
@@ -74,9 +79,12 @@ public final class JsonCredentialSlots {
   if (!directory.isDirectory() && !directory.mkdirs()) throw new IllegalStateException();
   return new AtomicFile(new File(directory, hash));
  }
- private SecretKey key() throws Exception {
+ private SecretKey key() throws Exception { return key(true); }
+ /** Reads never create a key: a frame whose key is gone stays unreadable instead of being re-keyed. */
+ private SecretKey key(boolean create) throws Exception {
   KeyStore store = KeyStore.getInstance("AndroidKeyStore"); store.load(null);
   if (!store.containsAlias(alias)) {
+   if (!create) throw new IllegalStateException("Credential slot key is missing");
    KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
    generator.init(new KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
      .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).setKeySize(256).build());
@@ -84,7 +92,7 @@ public final class JsonCredentialSlots {
   }
   return (SecretKey) store.getKey(alias, null);
  }
- private static Object parseJson(String value) throws Exception {
+ static Object parseJson(String value) throws Exception {
   JSONTokener parser = new JSONTokener(value);
   Object parsed = parser.nextValue();
   if (parser.nextClean() != 0) throw new IllegalArgumentException();
@@ -118,7 +126,7 @@ public final class JsonCredentialSlots {
        if(input.read()!=1||input.read()!=iv.length)throw new IllegalStateException();
        verifyBytes(input,iv);verifyBytes(input,encrypted);
        if(input.read()!=-1)throw new IllegalStateException();
-      }
+      } catch (Exception unread) { throw new UnconfirmedException(unread); }
      } catch (Exception error) { if (out != null) file.failWrite(out); throw error; }
     }
     } finally { Arrays.fill(plain, (byte) 0); }
@@ -155,7 +163,7 @@ public final class JsonCredentialSlots {
     if(input.read()!=-1)throw new IllegalArgumentException("Credential slot changed while reading");
    }
    Cipher cipher=Cipher.getInstance("AES/GCM/NoPadding");
-   cipher.init(Cipher.DECRYPT_MODE,key(),new GCMParameterSpec(128,iv));
+   cipher.init(Cipher.DECRYPT_MODE,key(false),new GCMParameterSpec(128,iv));
    cipher.updateAAD(slot.getBytes(StandardCharsets.US_ASCII));
    // One exact input avoids a provider's growing update buffer and its final full copy.
    // doFinal authenticates the complete frame before any plaintext leaves this helper.

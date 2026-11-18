@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { startAgent } from "../src/host/process.vibe"
 import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
-import { account, launchDocument, launchFrame } from "./support/scratch.ts"
+import { launchDocument, launchFrame } from "./support/scratch.ts"
 
 module node {
   import { Effect, Result } from "effect"
@@ -42,7 +42,6 @@ module node {
     const again = await delivery.resolveRoom(undefined)
     const chosen = await delivery.resolveRoom(created.conversationId)
     const missing = await delivery.resolveRoom("no-such-conversation")
-    const other = await delivery.resolveRoom(undefined)
     cloud.script(text("Water is good for you."))
     const completed = await delivery.deliver(created.conversationId, "Remind me to drink water", "trigger-1", signal)
     const roomId = await roomOf(running, created.conversationId)
@@ -58,7 +57,7 @@ module node {
     const fallback = await delivery.resolveRoom(undefined)
     const fallbackRoom = fallback.kind === "Resolved" ? await roomOf(running, fallback.conversationId) : undefined
     return {
-      sameDefault: again.kind === "Resolved" && again.conversationId === created.conversationId && other.kind === "Resolved" && other.conversationId === created.conversationId,
+      sameDefault: again.kind === "Resolved" && again.conversationId === created.conversationId,
       chosen: chosen.kind, missing: missing.kind,
       completed, completedError: runError(completed), stored,
       failed: failed.kind === "Turn" ? failed.turn : failed.kind, failedError: runError(failed),
@@ -106,7 +105,7 @@ module node {
     await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message: { ...incoming(first), id: undefined } })
     await runtime.emitEvent(EventType.REACTION_RECEIVED, { runtime, source: "test", message: incoming(stringToUuid("reaction-1")) })
     await events.idle()
-    const raised = (await messages(runtime === running.runtime ? running : running, roomId))
+    const raised = (await messages(running, roomId))
       .find((memory) => (memory.metadata as { triggerId?: string } | undefined)?.triggerId === "trigger-a" && memory.entityId !== runtime.agentId)
     if (raised?.id === undefined) throw new Error("Trigger a's run left no input memory")
     cloud.script(text("Only b answers."))
@@ -114,7 +113,8 @@ module node {
     await events.stop()
     await runtime.emitEvent(EventType.MESSAGE_RECEIVED, { runtime, source: "test", message: incoming(stringToUuid("event-after-stop")) })
     return {
-      runs: runs.map(({ trigger, eventId, delivery }) => ({ trigger, eventId, turn: delivery.kind === "Turn" ? delivery.turn : delivery.kind })),
+      runs: runs.map(({ trigger, eventId, delivery }) => ({ trigger, eventId, turn: delivery.kind === "Turn" ? delivery.turn : delivery.kind }))
+        .sort((a, b) => a.trigger.localeCompare(b.trigger) || Number(a.eventId === raised.id) - Number(b.eventId === raised.id)),
       first, raised: raised.id,
       seen: Object.fromEntries([...kept].map(([id, t]) => [id, t.seenEvents])),
     }

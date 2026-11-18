@@ -316,8 +316,8 @@ effect left to run completes. The jitter is uniform in its span.
 
 ```quint
 pure def unsavedAlert(a: Alert): Alert = { ...a, level: if (a.level == AlertNone) AlertRaised else a.level, reasons: a.reasons.append(StateUnsaved) }
-pure def canRun(l: Ledger, wall: int, jitter: int): bool = wall >= 0 and 0 <= jitter and jitter <= 2 * discoveryJitter
-pure def run(l: Ledger, job: Job, signedLower: int, wall: int, signals: Signals, found: DiscoveryResult, pending: PendingReading, activated: ActivationResult, jitter: int, ending: RunEnd): LedgerStep = {
+pure def canRunJob(l: Ledger, wall: int, jitter: int): bool = wall >= 0 and 0 <= jitter and jitter <= 2 * discoveryJitter
+pure def runJob(l: Ledger, job: Job, signedLower: int, wall: int, signals: Signals, found: DiscoveryResult, pending: PendingReading, activated: ActivationResult, jitter: int, ending: RunEnd): LedgerStep = {
   val signedNow = if (signedLower > 0) signedLower else 0
   val cancelled = ending == Cancelled
   val seen = signedSeen(signedNow, l)
@@ -329,7 +329,7 @@ pure def run(l: Ledger, job: Job, signedLower: int, wall: int, signals: Signals,
   val plan = { job: job, discovery: finished.discovery, download: finished.download, activation: finished.activation, alert: if (ending == Unsaved) unsavedAlert(alert) else alert, decision: finished.decision, runOutcome: finished.runOutcome }
   if (finished.aborted) { state: l, out: List() } else if (ending == Unsaved) { state: l, out: List(plan) } else { state: recorded, out: List(plan) }
 }
-pure val weight_run = 8
+pure val weight_runJob = 8
 pure def stepUnsavedRunKeepsTheLedgerAndAlerts(before: Ledger, after: Ledger, out: List[RunPlan]): bool =
   out.length() <= 1 and out.every(p => p.alert.reasons.includes(StateUnsaved) implies (after == before and p.alert.level != AlertNone))
 ```

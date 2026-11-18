@@ -102,6 +102,10 @@ function purposeKey(purpose: CodePurpose): string {
   return purpose.tag === "SignInCode" ? "sign-in" : `link:${purpose.userId}`
 }
 
+function refusedBy(refusal: Refusal): Outcome<never> {
+  return { kind: "refused", refusal }
+}
+
 function phaseOf(state: Challenge): Columns {
   return { phase: phaseColumn[state.phase.tag] }
 }
@@ -184,7 +188,7 @@ effect function attempt<A, E, R>(tx: Tx, request: VerifyRequest, digest: string,
   }
   const matched = rows.find((row) => sameText(toText(row.code_digest) ?? "", digests.get(toText(row.key) ?? "") ?? ""))
   const target = matched ?? rows.find((row) => row.phase === "open") ?? rows[0]
-  if (target === undefined) return { kind: "refused", refusal: verifyRefusal(initial) }
+  if (target === undefined) return refusedBy(verifyRefusal(initial))
   const key = toText(target.key) ?? ""
   const verifying = (factorOutcome: FirstFactorOutcome): Event => ({
     type: "verify",
@@ -200,15 +204,15 @@ effect function attempt<A, E, R>(tx: Tx, request: VerifyRequest, digest: string,
   }
   if (probe instanceof Rejected) {
     if (canExpire(probe.state)) try step(tx, key, { type: "expire" }, request.now)
-    return { kind: "refused", refusal: verifyRefusal(probe.state) } satisfies Outcome<A>
+    return refusedBy(verifyRefusal(probe.state))
   }
   if (!isConsumed(probe.state.phase)) {
     const failed = try step(tx, key, verifying("SessionStarts"), request.now)
-    return { kind: "refused", refusal: verifyRefusal(failed.state) }
+    return refusedBy(verifyRefusal(failed.state))
   }
   const finished = try finish(tx, probe.state)
   try step(tx, key, verifying(finished.factorOutcome), request.now)
-  return { kind: "done", value: finished.value }
+  return { kind: "done", value: finished.value } as const
 }
 
 effect function verifyCode<A, E, R>(request: VerifyRequest, finish: (tx: Tx, consumed: Challenge) => Finished<A>!E!R) {

@@ -61,7 +61,7 @@ effect function readRows(adapter: IDatabaseAdapter) {
 
 const expected = {
   enabled: true, details, listed: ["trigger-1"], active: 1, activeOthers: 0, runs: 100, oldest: 2,
-  status: "Dismissed", receipts: 1, log: "dismissed", byKey: "task-1", visible: ["task-1"], all: ["hidden", "task-1"],
+  status: "Dismissed" as const, receipts: 1, log: "dismissed", byKey: "task-1", visible: ["task-1"], all: ["hidden", "task-1"],
 }
 
 it.effect('Trigger rows, their last 100 runs and keyed scheduled tasks are kept in a memory store (spec/agent/schedule/triggers.md, "The run history keeps the last 100 records")', effect () => {

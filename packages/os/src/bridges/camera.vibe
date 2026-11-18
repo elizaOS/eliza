@@ -168,10 +168,10 @@ function admissionOf(rejection: BridgeUnavailable | NativeRejection): Admission 
 type Attempt = { kind: "answered"; reply: unknown } | { kind: "rejected"; rejection: BridgeUnavailable | NativeRejection }
 
 effect function attempt(method: string, call: () => Promise<unknown>): Attempt!! {
-  return try (effect {
+  return effect {
     const reply = try nativeCall(PLUGIN, method, call)
     return { kind: "answered", reply } as Attempt
-  } catch (rejection) => ({ kind: "rejected", rejection }) as Attempt)
+  } catch (rejection) => ({ kind: "rejected", rejection }) as Attempt
 }
 
 function answerOfAttempt(seen: Attempt): CameraAnswer {
@@ -226,10 +226,6 @@ async function run<A, E>(program: A!E): Promise<A> {
   throw failure instanceof HostTaskFailed ? failure.cause : failure
 }
 
-effect function notify(hook: (() => void) | undefined) {
-  try ignore(Effect.try(() => hook?.()))
-}
-
 export function createCameraSession<Preview, Recording, Video extends CameraRecordingReceipt>(
   options: CameraSessionOptions<Preview, Recording, Video>,
 ): CameraSession {
@@ -242,9 +238,17 @@ export function createCameraSession<Preview, Recording, Video extends CameraReco
     view = next
   })))
 
+  effect function notify(hook: "changed" | "recordingFinishing" | "recordingFailed") {
+    try ignore(Effect.try(() => hooks[hook]?.()))
+  }
+
+  effect function present() {
+    return Effect.try(() => registered()) catch () => false
+  }
+
   effect function send(event: Event): CameraView!! {
     const next = try orDie(machine.send(event))
-    try notify(hooks.changed)
+    try notify("changed")
     return next
   }
 
@@ -255,18 +259,18 @@ export function createCameraSession<Preview, Recording, Video extends CameraReco
   effect function releaseQueued() {
     if (!canReleasePreview(view)) return
     try send({ type: "releasePreview" })
-    if (registered()) try ignore(tryPromise(() => camera.stopPreview()))
+    if (try present()) try ignore(tryPromise(() => camera.stopPreview()))
   }
 
   effect function finalizeNow(): CameraRecordingOutcome!! {
-    try notify(hooks.recordingFinishing)
+    try notify("recordingFinishing")
     const answer = try attempt("stopRecording", () => camera.stopRecording())
     const video = answer.kind === "answered" ? answer.reply : undefined
     const facts = receiptFacts(video)
     const hostReadBack = completeRecording(video) && (try isSuccess(tryPromise(async () => hooks.recordingSaved(video as Video))))
     const after = try send({ type: "observeVideoFinish", receipt: { ...facts, hostReadBack } })
     if (after.finished === "RecordingConfirmed") return "saved"
-    try notify(hooks.recordingFailed)
+    try notify("recordingFailed")
     return "failed"
   }
 
@@ -292,7 +296,7 @@ export function createCameraSession<Preview, Recording, Video extends CameraReco
   effect function start(retry: boolean): CameraStartOutcome!! {
     if (canEnterView(view)) try send({ type: "enterView" })
     if (!canStartView(view, retry)) return { status: "skipped" }
-    const begun = try send({ type: "startView", retry, presence: registered() ? "PluginRegistered" : "PluginNotBuilt" })
+    const begun = try send({ type: "startView", retry, presence: (try present()) ? "PluginRegistered" : "PluginNotBuilt" })
     if (begun.phase === "PreviewError") return { status: "unavailable", reason: "missing" }
     const ticket = begun.epoch
     const dispatched = try releases.withPermit(effect {
@@ -352,9 +356,9 @@ export function createCameraSession<Preview, Recording, Video extends CameraReco
 
   effect function rearm(): boolean!! {
     if (!canRearmView(view)) return false
-    const grant = try (effect {
+    const grant = effect {
       return grantOf(try nativeCall(PLUGIN, "checkCameraPermission", () => camera.checkCameraPermission()))
-    } catch () => "AccessUnreadable" as GrantRead)
+    } catch () => "AccessUnreadable" as GrantRead
     if (!canRearmView(view)) return false
     return (try send({ type: "rearmView", grant })).phase === "PreviewOff"
   }
@@ -415,11 +419,11 @@ export function createCameraSession<Preview, Recording, Video extends CameraReco
 
 effect function kept<Item>(port: CameraKeepPort<Item>, item: Item, operationId: string, noun: "photo" | "video"): CameraKeepOutcome!! {
   const lost: CameraKeepOutcome = { status: "unknown", message: `Keeping this ${noun} could not be confirmed. Check the library before trying again.` }
-  return try (effect {
+  return effect {
     const answer = try Schema.decodeUnknownEffect(KeepAnswer)(try tryPromise(() => port.run(item, operationId)))
     if (answer.status === "saved") return answer
     return { status: answer.status, message: answer.message || `The ${noun} was not kept.` }
-  } catch () => lost)
+  } catch () => lost
 }
 
 export function keepCapture<Item>(port: CameraKeepPort<Item>, item: Item, operationId: string, noun: "photo" | "video" = "photo"): Promise<CameraKeepOutcome> {

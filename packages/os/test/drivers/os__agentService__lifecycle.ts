@@ -30,7 +30,6 @@ export interface LifecycleView {
   readonly phase: LifecyclePhase;
   readonly epoch: number;
   readonly attempt: number;
-  readonly child: boolean;
   readonly held: boolean;
   readonly credentialHeld: boolean;
   readonly delivered: number;
@@ -44,7 +43,6 @@ const viewOf = (state: AdapterState): LifecycleView => ({
   phase: state.phase,
   epoch: state.epoch,
   attempt: state.attempt,
-  child: state.child,
   held: state.hold.tag === "Held",
   credentialHeld: state.credentialHeld,
   delivered: state.delivered,
@@ -53,12 +51,8 @@ const viewOf = (state: AdapterState): LifecycleView => ({
 const adapter = jvmDriver<LifecycleEvent, AdapterState>("ai.eliza.os.agent.LifecycleAdapter", { receives: true });
 
 export const driver: Driver<LifecycleEvent, LifecycleView> & AsyncDisposable = {
-  reset: () => adapter.reset(),
-  dispatch: (key, event, by) => adapter.dispatch(key, event, by),
-  receive: (key, raw, by) => adapter.receive!(key, raw, by),
+  ...adapter,
   observe: async (key) => viewOf(await adapter.observe(key)),
-  observeOutput: (key) => adapter.observeOutput!(key),
-  [Symbol.asyncDispose]: () => adapter[Symbol.asyncDispose](),
 };
 
 export const options: Options<AdapterState, LifecycleView> = { keys: [KEY], view: viewOf };

@@ -3,7 +3,7 @@ import { assert, describe, it } from "@effect/vitest"
 import { NotAState, conflictRefusal, decodeState, initial } from "../gen/cloud__shared__dispatchOnce.effect.vibe"
 import { Refused, refusalBody } from "../src/http/refusal.vibe"
 import { dispatchReceipt, loadReceipt, mayFollowWith, prepareReceipt, receiptOwner, receiptStatusAt, renderProviderKey, requestDigest, resolveReceipt, type LookupResult, type ProviderKey, type ProviderReply, type Receipt, type ReceiptRows } from "../src/shared/dispatch-once.vibe"
-import { Store } from "../src/store/store.vibe"
+import { Store, StoreFailure } from "../src/store/store.vibe"
 import { shiftedClock } from "./support/clock.ts"
 import { testCloud, type FakeServer, type TestCloud } from "./support/cloud.vibe"
 
@@ -39,10 +39,7 @@ function mountProvider(fakes: FakeServer, modes: Map<string, Mode>, applied: Set
     if (request.method === "POST" && request.path === "/changes") {
       const key = String(request.headers["idempotency-key"])
       const mode = modes.get(key) ?? "apply"
-      if (mode === "hang") {
-        await new Promise((resolve) => setTimeout(resolve, 1_500))
-        return { status: 503 }
-      }
+      if (mode === "hang") return { status: 503, chunks: [], hangAfter: 0 }
       applied.add(key)
       return mode === "lose-reply" ? { status: 500 } : { status: 200, body: { id: key } }
     }
@@ -56,11 +53,14 @@ effect function scratchTable(cloud: TestCloud) {
 }
 
 effect function call(url: string, method: "GET" | "POST", headers: Readonly<Record<string, string>> = {}) {
-  return tryPromise({ try: (signal: AbortSignal) => fetch(url, { method, headers, signal }).then((response) => response.status), catch: (cause) => String(cause) }) catch () => 0
+  return tryPromise({ try: (signal: AbortSignal) => fetch(url, { method, headers, signal }).then(async (response) => {
+    await response.text()
+    return response.status
+  }), catch: (cause) => String(cause) }) catch () => 0
 }
 
-effect function sendChange(cloud: TestCloud, rowKey: string, durable: string[], providerKey: string): ProviderReply<number>!! {
-  const row = (try cloud.store.transaction((tx) => tx.query("SELECT state->'receipt'->'session'->>'phase' AS phase, state->'receipt'->'session'->>'effects' AS effects FROM scratch_changes WHERE key = $1", [rowKey]))) catch () => []
+effect function sendChange(cloud: TestCloud, rowKey: string, durable: string[], providerKey: string): ProviderReply<number>!StoreFailure {
+  const row = try cloud.store.transaction((tx) => tx.query("SELECT state->'receipt'->'session'->>'phase' AS phase, state->'receipt'->'session'->>'effects' AS effects FROM scratch_changes WHERE key = $1", [rowKey]))
   durable.push(`${String(row[0]?.phase)}:${String(row[0]?.effects)}`)
   const status = try call(`${cloud.fakes.url}/receipts/changes`, "POST", { "idempotency-key": providerKey })
   if (status >= 200 && status < 300) return { kind: "applied", value: status }
@@ -110,6 +110,7 @@ describe("WP0 Foundation: dispatch once (spec/cloud/shared/dispatchOnce.md, \"St
         default: failure._tag;
       }
       const kept = try cloud.store.transaction((tx) => loadReceipt(tx, rows, "req-1", false))
+      const row = try stored(cloud, "req-1")
       try check(() => assert.deepStrictEqual({
         prepared: [prepared.replayed, receiptStatusAt(prepared.state.receipt, now)],
         durable,
@@ -119,7 +120,7 @@ describe("WP0 Foundation: dispatch once (spec/cloud/shared/dispatchOnce.md, \"St
         conflict,
         kept: [kept.state.receipt.settlement, kept.state.receipt.digest === prepared.state.receipt.digest],
         sent: cloud.fakes.seen.filter((request) => request.method === "POST" && request.path === "/receipts/changes").length,
-        row: try stored(cloud, "req-1")
+        row
       }, {
         prepared: [false, "StatusPrepared"],
         durable: ["Committed:1"],
@@ -158,6 +159,7 @@ describe("WP0 Foundation: dispatch once (spec/cloud/shared/dispatchOnce.md, \"St
       const at = try Clock.currentTimeMillis
       try cloud.store.transaction((tx) => prepareReceipt(tx, rows, "req-2#2", owner, terms("req-2", second, staleAfter, at), at))
       const retried = try dispatchReceipt(rows, "req-2#2", owner, (key: string) => sendChange(cloud, "req-2#2", durable, key))
+      const kept = [try stored(cloud, "req-2#1"), try stored(cloud, "req-2#2")].map((found) => found.map(([status]) => status))
       try check(() => assert.deepStrictEqual({
         durable,
         first: [dispatched.reply.kind, early.receipt.settlement, receiptStatusAt(early.receipt, earlyAt)],
@@ -165,7 +167,7 @@ describe("WP0 Foundation: dispatch once (spec/cloud/shared/dispatchOnce.md, \"St
         retryAllowed,
         retried: [retried.reply.kind, retried.state.receipt.settlement],
         applied: [...applied],
-        rows: [try stored(cloud, "req-2#1"), try stored(cloud, "req-2#2")].map((found) => found.map(([status]) => status))
+        rows: kept
       }, {
         durable: ["Committed:1", "Committed:1"],
         first: ["unknown", "Unsettled", "StatusUnknown"],
