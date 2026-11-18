@@ -359,6 +359,29 @@ describe("ElizaCloudMapsAdapter", () => {
     }
   });
 
+  it("names an unreachable Cloud in plain words, not the transport's message", async () => {
+    const adapter = new ElizaCloudMapsAdapter({
+      apiKey: "eliza_test_key",
+      baseUrl: "https://api.example.test",
+      testTransport: {
+        fetchImpl: async () => Response.json(COVERAGE),
+        pinnedFetchImpl: async () => {
+          throw new TypeError("fetch failed: ECONNRESET 10.0.0.1:443");
+        },
+        lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+      },
+    });
+    const error = await adapter
+      .searchPlaces({ query: "Casino" })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(MapsError);
+    expect(error).toMatchObject({
+      code: "MAPS_PROVIDER_NETWORK",
+      message:
+        "Eliza Cloud Maps could not be reached from this device. Try again.",
+    });
+  });
+
   it("refuses a 401 whose code is not a string with a typed error", async () => {
     const { adapter } = cloud(() =>
       Response.json({ code: { toString: 1 } }, { status: 401 }),
