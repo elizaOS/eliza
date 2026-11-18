@@ -159,7 +159,12 @@ Check each point before you write, and again after.
   indirection. Shorter, if it reads as well.
 - **No code comments.** Use clear names and structure to make the code readable.
   Use comment syntax only for required tool directives that need it, such as
-  `//@` contracts and Vitest environment directives.
+  `//@` contracts, spec citations and Vitest environment directives, and a doc
+  comment only where a generator reads it: on a `@repo/ui` component and its
+  props. This holds for the project's own code, tests, scripts and proof files;
+  `vibestack/` and vendored checkouts are upstream's. In `apps/` and
+  `packages/`, `pnpm lint:js` enforces it, with no effect hooks, timers or
+  `console`, and an `eslint-disable` there names its rule and says why.
 - **Scripts and tests.** Extend existing ones before adding; no new scripts.
   Delete code that becomes unused. Tests follow "Tests" below.
 - **Speed.** Keep checks and CI fast: a small change reruns only what it
