@@ -45,7 +45,6 @@ module node {
     cloud.script(text("Water is good for you."))
     const completed = await delivery.deliver(created.conversationId, "Remind me to drink water", "trigger-1", signal)
     const roomId = await roomOf(running, created.conversationId)
-    running.runtime.logger.error({ debugDelivery: completed, all: (await messages(running, roomId)).map((m) => [m.entityId === running.runtime.agentId, m.content.text, m.metadata]), calls: cloud.calls.map((c) => c.path) }, "DEBUG-DELIVERY")
     const stored = (await messages(running, roomId)).map((memory) => ({
       text: memory.content.text, fromAgent: memory.entityId === running.runtime.agentId,
       triggerId: (memory.metadata as { triggerId?: string } | undefined)?.triggerId,
