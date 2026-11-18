@@ -2,6 +2,8 @@
 
 import type { ContextDefinition, Memory, Plugin } from "@elizaos/core";
 import {
+  containsResourceAddress,
+  namesViewNavigationTarget,
   promoteSubactionsToActions,
   registerDirectActionRoutingRule,
 } from "@elizaos/core";
@@ -106,8 +108,7 @@ const NOT_A_PLACE = String.raw`(?!(?:assemble|fix|set\s*up|make|bake|cook|instal
 const DESTINATION = String.raw`(?:to\s+${NOT_A_PLACE}\S|from\s+${NOT_A_PLACE}\S.*?\s+to\s+${NOT_A_PLACE}\S)`;
 /**
  * "directions to X", "get me directions from A to B". "Take me to", "navigate
- * to" and "how do I get to" are left to the planner: they also name views
- * (view-navigation declines its Maps-view shortcut for them).
+ * to" and "how do I get to" also name views; they are the travel route below.
  */
 const DIRECTIONS_REQUEST = new RegExp(
   [
@@ -123,6 +124,70 @@ const PLACE_ON_MAP_REQUEST = new RegExp(
   String.raw`^\s*${COURTESY}(?:show|find|locate|pin|put)\s+(?:me\s+)?\S.*?\s+on\s+(?:the\s+|a\s+)?maps?\s*[.!?]?\s*$`,
   "iu",
 );
+
+/** A spoken travel or nearby request is short; longer text keeps the planner path. */
+const MAX_TRAVEL_REQUEST_LENGTH = 160;
+/** Trailing courtesy and punctuation: "..., please?", "... for me." */
+const END = String.raw`(?:,?\s+(?:please|for\s+me))*\s*[.!?]*\s*$`;
+/**
+ * "take me to X", "navigate to X", "how do I get to X". X may still be a view
+ * ("take me to settings"), which the caller checks against the view registry.
+ */
+const TRAVEL_TO_REQUEST = new RegExp(
+  String.raw`^\s*${COURTESY}(?:(?:take|bring|get)\s+me|navigate(?:\s+me)?|how\s+(?:do|can|would|should)\s+(?:i|we)\s+get|how\s+to\s+get|what(?:'s|’s|\s+is)\s+the\s+(?:best|fastest|quickest)\s+way\s+to\s+get)\s+to\s+${NOT_A_PLACE}(?!(?:the\s+)?(?:next|previous|last|first|top|bottom|end|beginning|start|middle|same|other|point|know|sleep)\b)(\S.{0,79}?)${END}`,
+  "iu",
+);
+/** A destination that is part of an app, a document or a conversation. */
+const NOT_A_PLACE_DESTINATION =
+  /\b(?:page|screen|tab|menu|view|section|step|level|folder|file|settings?|options?|line|slide|chapter|stage|part|item|message|email|thread|inbox|chat|conversation|document|doc|link|website|site)$/iu;
+/** "then text Sam", "if it's open": further work or a condition keeps the planner path. */
+const COMPOUND_REQUEST = /,|\b(?:then|if|unless|when|once)\b/iu;
+
+/** The destination of a travel request from the user's position, if it is one. */
+export function mapsTravelDestination(text: string): string | undefined {
+  if (text.length > MAX_TRAVEL_REQUEST_LENGTH) return;
+  const destination = TRAVEL_TO_REQUEST.exec(text)?.[1]?.trim();
+  if (
+    !destination ||
+    NOT_A_PLACE_DESTINATION.test(destination) ||
+    COMPOUND_REQUEST.test(destination) ||
+    containsResourceAddress(destination)
+  )
+    return;
+  return destination;
+}
+
+/**
+ * "nearest neighbor", "round to the nearest dollar", "the closest integer":
+ * a nearest or closest that is not a kind of place.
+ */
+const NOT_A_PLACE_KIND = String.raw`(?!(?:neighbou?rs?|integers?|whole|numbers?|dollars?|cents?|penn(?:y|ies)|hundreds?|thousands?|millions?|tens?|tenths?|hundredths?|thousandths?|decimals?|minutes?|hours?|seconds?|days?|weeks?|months?|years?|multiples?|powers?|points?|values?|match(?:es)?|percent|degrees?|units?|digits?|fractions?|primes?|pairs?|stars?|planets?|galax(?:y|ies)|matches|relatives?|synonyms?|words?|colou?rs?|versions?|results?)\b)`;
+const FIND_VERB = String.raw`(?:(?:find|show|locate|get|search\s+for|look\s+(?:for|up))\s+(?:me\s+)?|where(?:'s|’s|\s+is|\s+are)\s+|what(?:'s|’s|\s+is)\s+)`;
+/** "find the nearest pharmacy", "nearest coffee shop", "where is the closest gas station?" */
+const NEAREST_PLACE_REQUEST = new RegExp(
+  String.raw`^\s*${COURTESY}${FIND_VERB}?(?:(?:the|a|my)\s+)?(?:nearest|closest)\s+${NOT_A_PLACE_KIND}[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,4}${END}`,
+  "iu",
+);
+const PLACE_KIND = String.raw`(?:(?:a|an|some|any)\s+)?[\p{L}'’&-]+(?:\s+[\p{L}'’&-]+){0,3}`;
+/**
+ * "find a pharmacy nearby", "coffee shops near me". Without a search verb only
+ * "near me" counts, and not after a verb or pronoun ("stay near me", "I'm nearby").
+ */
+const PLACE_NEAR_ME_REQUEST = new RegExp(
+  [
+    String.raw`^\s*${COURTESY}${FIND_VERB}${PLACE_KIND}\s+(?:near\s+(?:me|here|by)|nearby|around\s+here|close\s+by)${END}`,
+    String.raw`^\s*${COURTESY}(?!(?:stay|sit|come|be|keep|stand|get|move|go|walk|park|i|i'm|i’m|im|you|he|she|they|we|it|is|are|was|were)\b)${PLACE_KIND}\s+near\s+me${END}`,
+  ].join("|"),
+  "iu",
+);
+
+/** A search for the nearest or a nearby kind of place, from the user's position. */
+export function isMapsNearbyPlaceRequest(text: string): boolean {
+  return (
+    text.length <= MAX_TRAVEL_REQUEST_LENGTH &&
+    (NEAREST_PLACE_REQUEST.test(text) || PLACE_NEAR_ME_REQUEST.test(text))
+  );
+}
 
 export function isMapsDirectionsRequest(text: string): boolean {
   return DIRECTIONS_REQUEST.test(text);
@@ -140,6 +205,22 @@ function ownerChatTurn(message: Memory | undefined): boolean {
   return (
     message?.content.source === "client_chat" &&
     ["DM", "VOICE_DM"].includes(String(message.content.channelType))
+  );
+}
+
+/**
+ * A travel destination that names no registered view. Without a host view
+ * registry a view cannot be told from a place, so the route stays out.
+ */
+function travelToPlace(
+  runtime: Parameters<NonNullable<Plugin["init"]>>[1],
+  text: string,
+  message: Memory | undefined,
+): boolean {
+  const destination = mapsTravelDestination(text);
+  return (
+    destination !== undefined &&
+    namesViewNavigationTarget(runtime, destination, message) === false
   );
 }
 
@@ -173,6 +254,30 @@ export const mapsPlugin: Plugin = {
       contexts: ["maps"],
       matches: (text, message) =>
         ownerChatTurn(message) && isMapsPlaceOnMapRequest(text),
+    });
+    // "take me to Coit Tower", "how do I get to Golden Gate Park": travel from
+    // here. Stage 1 often answers these with a simple reply, so nothing reached
+    // Maps; a destination that names a view ("take me to settings") stays view
+    // navigation.
+    registerDirectActionRoutingRule(runtime, {
+      id: "maps.travel-to",
+      actionNames: ["MAPS_NAVIGATION_START", "MAPS_ROUTE"],
+      replacesActionNames: ["VIEWS", "VIEWS_SHOW"],
+      requiredActionTags: ["domain:maps"],
+      contexts: ["maps"],
+      matches: (text, message) =>
+        ownerChatTurn(message) && travelToPlace(runtime, text, message),
+    });
+    // "find the nearest pharmacy": the place search around the phone's own
+    // position (a locate card), or directions to it.
+    registerDirectActionRoutingRule(runtime, {
+      id: "maps.nearby-place",
+      actionNames: ["MAPS_PLACE", "MAPS_NAVIGATION_START"],
+      replacesActionNames: ["VIEWS", "VIEWS_SHOW"],
+      requiredActionTags: ["domain:maps"],
+      contexts: ["maps"],
+      matches: (text, message) =>
+        ownerChatTurn(message) && isMapsNearbyPlaceRequest(text),
     });
   },
   services: [MapsService],

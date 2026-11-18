@@ -18,12 +18,16 @@ import { viewsAction } from "../../../../../packages/agent/src/actions/views.ts"
 import {
   closeRuntimeViewRegistry,
   registerBuiltinViews,
+  registerPluginViews,
 } from "../../../../../packages/agent/src/api/views-registry.ts";
+import { registerViewNavigationRoutingRule } from "../../../../../packages/agent/src/runtime/view-navigation.ts";
 import {
   isMapsDirectionsRequest,
+  isMapsNearbyPlaceRequest,
   isMapsPlaceOnMapRequest,
   MAPS_CONTEXT,
   mapsPlugin,
+  mapsTravelDestination,
 } from "../../../../plugin-maps/src/plugin.ts";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { deviceActionTools } from "../device-actions/tools.ts";
@@ -43,7 +47,7 @@ const deviceMapsRead = deviceActionTools.find(
 );
 const mapsActions = mapsPlugin.actions ?? [];
 
-async function fixture(text: string) {
+async function fixture(text: string, { viewNames = true } = {}) {
   const runtime = new AgentRuntime({
     character: {
       name: "Eliza",
@@ -72,6 +76,26 @@ async function fixture(text: string) {
   ])
     runtime.registerAction(action);
   registerBuiltinViews(runtime);
+  // The phone's own views, so "navigate to notes" names a registered view.
+  await registerPluginViews(
+    runtime,
+    {
+      name: "test-phone-views",
+      description: "Fixture phone views",
+      views: [
+        { id: "notes", label: "Notes", path: "/notes", bundleUrl: "/notes.js" },
+        {
+          id: "calendar",
+          label: "Calendar",
+          path: "/calendar",
+          bundleUrl: "/calendar.js",
+        },
+      ],
+    },
+    { pluginDir: process.cwd(), indexEmbeddings: false },
+  );
+  // The host registers the view-name resolver the Maps travel route consults.
+  if (viewNames) registerViewNavigationRoutingRule(runtime);
   await mapsPlugin.init?.({}, runtime);
   const message = {
     id: "33333333-3333-4333-8333-333333333333",
@@ -280,5 +304,144 @@ describe("the Maps routes claim only the owner's phone chat", () => {
       "MAPS_ROUTE",
       "MAPS_NAVIGATION_START",
     ]);
+  });
+});
+
+describe("travel and nearby requests reach Maps from a simple Stage-1 answer", () => {
+  const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+    (entry) => entry.name === "core.direct_registered_capability_request",
+  );
+  // Stage 1 answered "take me to Coit Tower" with a simple reply, so nothing
+  // reached Maps and no route was planned.
+  const simplePlan = () => ({
+    processMessage: "RESPOND",
+    plan: {
+      contexts: ["simple"],
+      intents: [],
+      candidateActions: [] as string[],
+      parentActionHints: [],
+      requiresTool: false,
+      replyEffectStatus: "none",
+      reply: "Sure.",
+    },
+  });
+  async function evaluate(
+    text: string,
+    content: Partial<Memory["content"]> = {},
+  ) {
+    if (!evaluator) throw new Error("Expected capability evaluator");
+    const { runtime, message } = await fixture(text);
+    Object.assign(message.content, content);
+    const handler = simplePlan();
+    await runResponseHandlerEvaluators({
+      runtime,
+      message,
+      state: { text: "", values: {}, data: {} },
+      messageHandler: handler,
+      availableContexts: [...DEFAULT_CONTEXT_DEFINITIONS, MAPS_CONTEXT],
+      userRoles: ["OWNER"],
+      evaluators: [evaluator],
+    } as never);
+    return handler;
+  }
+  const mapsCandidates = (handler: ReturnType<typeof simplePlan>) =>
+    (handler.plan.candidateActions ?? []).filter((name) =>
+      name.startsWith("MAPS_"),
+    );
+
+  it.each([
+    ["take me to Coit Tower", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["navigate to the Ferry Building", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    [
+      "how do I get to Golden Gate Park",
+      ["MAPS_NAVIGATION_START", "MAPS_ROUTE"],
+    ],
+    [
+      "Can you take me to Coit Tower, please?",
+      ["MAPS_NAVIGATION_START", "MAPS_ROUTE"],
+    ],
+    ["find the nearest pharmacy", ["MAPS_PLACE", "MAPS_NAVIGATION_START"]],
+    ["nearest coffee shop", ["MAPS_PLACE", "MAPS_NAVIGATION_START"]],
+    [
+      "Where is the closest gas station?",
+      ["MAPS_PLACE", "MAPS_NAVIGATION_START"],
+    ],
+    ["coffee shops near me", ["MAPS_PLACE", "MAPS_NAVIGATION_START"]],
+  ])("promotes %s", async (text, expected) => {
+    const handler = await evaluate(text);
+    expect(handler.plan.requiresTool).toBe(true);
+    expect(handler.plan.candidateActions).toEqual(expected);
+    expect(handler.plan.contexts).toContain("maps");
+  });
+
+  it.each([
+    "take me to settings",
+    "navigate to notes",
+    "go to the calendar",
+    "take me to the calendar",
+    "how do I get to my notes?",
+    "navigate to workflows",
+    "take me home",
+  ])("leaves a view destination to navigation: %s", async (text) => {
+    const handler = await evaluate(text);
+    expect(mapsCandidates(handler)).toEqual([]);
+    expect(handler.plan.contexts).not.toContain("maps");
+  });
+
+  it.each([
+    "nearest neighbor algorithm",
+    "explain the nearest neighbor algorithm",
+    "round to the nearest dollar",
+    "what is the nearest integer to 3.7",
+    "closest pair of points",
+    "stay near me",
+    "keep your phone nearby",
+    "how do I get to know her",
+    "how do I get to sleep",
+    "navigate to the next page",
+    "take me to the top",
+    "take me to example.com",
+    "take me to Coit Tower, then text Sam",
+    "don't take me to Coit Tower",
+  ])("keeps the simple answer for %s", async (text) => {
+    expect(isMapsNearbyPlaceRequest(text)).toBe(false);
+    const handler = await evaluate(text);
+    expect(mapsCandidates(handler)).toEqual([]);
+    expect(handler.plan.reply).toBe("Sure.");
+  });
+
+  it.each(["take me to Coit Tower", "find the nearest pharmacy"])(
+    "does not take %s on another channel",
+    async (text) => {
+      for (const content of [
+        { source: "discord", channelType: "GROUP" },
+        { source: "client_chat", channelType: "GROUP" },
+        { source: "telegram", channelType: "DM" },
+      ]) {
+        const handler = await evaluate(text, content);
+        expect(handler.plan.requiresTool, JSON.stringify(content)).toBe(false);
+        expect(handler.plan.candidateActions).toEqual([]);
+      }
+    },
+  );
+
+  it("stays out when no host view registry can tell a view from a place", async () => {
+    if (!evaluator) throw new Error("Expected capability evaluator");
+    expect(mapsTravelDestination("take me to Coit Tower")).toBe("Coit Tower");
+    const { runtime, message } = await fixture("take me to Coit Tower", {
+      viewNames: false,
+    });
+    const handler = simplePlan();
+    await runResponseHandlerEvaluators({
+      runtime,
+      message,
+      state: { text: "", values: {}, data: {} },
+      messageHandler: handler,
+      availableContexts: [...DEFAULT_CONTEXT_DEFINITIONS, MAPS_CONTEXT],
+      userRoles: ["OWNER"],
+      evaluators: [evaluator],
+    } as never);
+    expect(handler.plan.requiresTool).toBe(false);
+    expect(handler.plan.candidateActions).toEqual([]);
   });
 });
