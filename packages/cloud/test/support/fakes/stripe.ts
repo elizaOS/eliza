@@ -125,9 +125,12 @@ export interface StripeInvoiceLine {
   readonly tax_amounts: [];
   readonly period: { readonly start: number; readonly end: number };
   readonly price: { readonly id: string; readonly product: string };
+  readonly pricing: { readonly price_details: { readonly price: string } };
+  readonly parent: { readonly subscription_item_details: { readonly subscription_item: string; readonly proration: false } };
 }
 
 export interface StripeInvoicePayment {
+  readonly amount_paid: number;
   readonly object: "invoice_payment";
   readonly payment: { readonly type: "payment_intent"; readonly payment_intent: string; readonly charge: string };
 }
@@ -605,14 +608,14 @@ export function createStripeFake(options: StripeFakeOptions = {}): StripeFake {
       issuer: { type: "self" },
       payment_intent: paymentIntentId,
       charge: chargeId,
-      payments: { object: "list", has_more: false, url: `/v1/invoice_payments?invoice=${invoiceId}`, data: paymentIntentId === null || chargeId === null ? [] : [{ object: "invoice_payment", payment: { type: "payment_intent", payment_intent: paymentIntentId, charge: chargeId } }] },
+      payments: { object: "list", has_more: false, url: `/v1/invoice_payments?invoice=${invoiceId}`, data: paymentIntentId === null || chargeId === null ? [] : [{ object: "invoice_payment", amount_paid: amount, payment: { type: "payment_intent", payment_intent: paymentIntentId, charge: chargeId } }] },
       status_transitions: { paid_at: paid ? at : null },
       period_start: at,
       period_end: at,
       hosted_invoice_url: `https://invoice.stripe.com/i/${invoiceId}`,
       invoice_pdf: `https://pay.stripe.com/invoice/${invoiceId}/pdf`,
       created: at,
-      lines: { object: "list", has_more: false, url: `/v1/invoices/${invoiceId}/lines`, data: [{ id: nextId("line_item"), object: "line_item", type: "subscription", subscription: subscriptionId, subscription_item: itemId, quantity: 1, proration: false, currency: "usd", amount, discounts: [], discount_amounts: [], tax_amounts: [], period: { start: at, end }, price: { id: price.id, product: price.product } }] },
+      lines: { object: "list", has_more: false, url: `/v1/invoices/${invoiceId}/lines`, data: [{ id: nextId("line_item"), object: "line_item", type: "subscription", subscription: subscriptionId, subscription_item: itemId, quantity: 1, proration: false, currency: "usd", amount, discounts: [], discount_amounts: [], tax_amounts: [], period: { start: at, end }, price: { id: price.id, product: price.product }, pricing: { price_details: { price: price.id } }, parent: { subscription_item_details: { subscription_item: itemId, proration: false } } }] },
     });
     session.status = "complete";
     session.payment_status = paid ? "paid" : "unpaid";
@@ -678,6 +681,10 @@ export function createStripeFake(options: StripeFakeOptions = {}): StripeFake {
         return { status: 200, body: expanded(list("invoice", form, url, (invoice) => equalsQuery(form, "customer", invoice.customer) && equalsQuery(form, "subscription", invoice.subscription) && equalsQuery(form, "status", invoice.status)), form) };
       case "GET invoices/:id":
         return read(find("invoice", id), "invoice");
+      case "GET invoice_payments": {
+        const invoice = find("invoice", text(form, "invoice") ?? "");
+        return invoice === undefined ? noSuch("invoice", text(form, "invoice") ?? "") : { status: 200, body: invoice.payments };
+      }
       case "GET payment_intents/:id":
         return read(find("payment_intent", id), "payment_intent");
       case "GET charges/:id":
