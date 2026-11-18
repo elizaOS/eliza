@@ -471,10 +471,11 @@ effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string
 
 describe("WP8 Managed Google: grant access (spec/cloud/services/google/connection.md)", () => {
   it.live("Refresh a held grant once for concurrent callers and mark it Expired when Google refuses it (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => scoped(effect {
-    const google = googleFakeState()
+    const google = try Effect.try(() => googleFakeState())
     google.tokenDelayMs = 300
     const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", mountGoogleToken(google)) })
-    const profile = try parseProfile(testProfile(cloud.fakes.url))
+    const profileInput = try Effect.try(() => testProfile(cloud.fakes.url))
+    const profile = try parseProfile(profileInput)
     const deployment = deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
     const now = try Clock.currentTimeMillis
     const held: Owner = { organizationId: "org-google-held", userId: "user-google-held" }
@@ -484,8 +485,8 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
       try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [owner.userId, owner.organizationId, `${owner.userId}@example.com`, now])
     }
     const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
-    const heldToken = seedGrant(google, { subject: "subject-conn-held", email: "conn-held@example.com", scopes })
-    const lostToken = seedGrant(google, { subject: "subject-conn-lost", email: "conn-lost@example.com", scopes })
+    const heldToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-held", email: "conn-held@example.com", scopes }))
+    const lostToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-lost", email: "conn-lost@example.com", scopes }))
     google.revoked.add(lostToken)
     provide Store = cloud.store, deployment, FetchHttpClient.layer {
       try linkedGrant(cloud, held, "conn-held", heldToken, scopes, now - 1000)
