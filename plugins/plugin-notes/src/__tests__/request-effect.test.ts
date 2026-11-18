@@ -2145,6 +2145,29 @@ describe("request-bound Notes negative constraints", () => {
     }
   });
 
+  it("preserves the checklist when an unresolved voice fragment reaches a planned append", async () => {
+    const f = await fixture(
+      { classification: "unresolved", operations: [] },
+      "Once in my filming checklist.",
+    );
+    try {
+      const result = await f.execute("NOTES_PATCH", {
+        target: { kind: "id", value: f.historical.value.id },
+        changes: [],
+        textEdit: { action: "append", field: "item", text: "once" },
+        expectedRevision: f.before.revision,
+      });
+      expect(result.data).toMatchObject({
+        code: "REQUEST_OPERATION_UNRESOLVED",
+        executionStatus: "not_started",
+      });
+      expect(f.writes).not.toHaveBeenCalled();
+      expect(f.service.snapshot()).toEqual(f.before);
+    } finally {
+      await f.service.stop();
+    }
+  });
+
   it("checks the owner policy before an agent view create can be delivered", async () => {
     const f = await fixture("read_only", "what did I write about ideas?");
     const delivery = vi.fn();
