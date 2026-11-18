@@ -17,6 +17,7 @@ import org.json.JSONObject;
 public final class SharedPasswordBackupCheck {
   private static final String HOST = "cloud.example.test";
   private static final String OWNER = "c434cf76-4f5b-40b1-86ce-105d3e0a8737";
+  private static final String ORGANIZATION = "b1289533-686e-4125-8276-e89296ebf089";
   private static final String TOKEN = "transient-steward-session-token";
   private static final String PROOF = "pbackup_" + "t".repeat(43);
   private static final byte[] SNAPSHOT = { 7, 8, 9 };
@@ -25,6 +26,8 @@ public final class SharedPasswordBackupCheck {
   private static int writes;
   private static int reads;
   private static boolean retireOnDownload;
+  private static String readinessVersion;
+  private static String approvalOrganization = ORGANIZATION;
   private static JSONObject authorization;
 
   public static void main(String[] args) throws Exception {
@@ -40,9 +43,19 @@ public final class SharedPasswordBackupCheck {
     rejects(() -> CloudPasswordBackup.approve(config, production, "eliza_mobile_durable-device-key", CloudPasswordBackup.Purpose.SAVE, CURRENT::get));
     require(approvals == 0);
     require(OWNER.equals(CloudPasswordBackup.currentAccount(production, "eliza_mobile_durable-device-key")));
+    require(!CloudPasswordBackup.available(config, production));
+    readinessVersion = "2";
+    require(CloudPasswordBackup.available(config, production));
+
+    approvalOrganization = null;
+    rejects(() -> CloudPasswordBackup.approve(config, production, TOKEN, CloudPasswordBackup.Purpose.SAVE, CURRENT::get));
+    approvalOrganization = "invalid-organization";
+    rejects(() -> CloudPasswordBackup.approve(config, production, TOKEN, CloudPasswordBackup.Purpose.SAVE, CURRENT::get));
+    require(writes == 0);
+    approvalOrganization = ORGANIZATION;
 
     var stale = CloudPasswordBackup.approve(config, production, TOKEN, CloudPasswordBackup.Purpose.SAVE, CURRENT::get);
-    require(OWNER.equals(stale.ownerId()) && stale.present() && stale.current());
+    require(OWNER.equals(stale.ownerId()) && ORGANIZATION.equals(stale.organizationId()) && stale.present() && stale.current());
     CURRENT.set(false);
     rejects(() -> stale.run(stale.revision(), SNAPSHOT));
     require(writes == 0);
@@ -73,6 +86,10 @@ public final class SharedPasswordBackupCheck {
         answer = json(new JSONObject().put("user", new JSONObject().put("id", OWNER)));
         return 200;
       }
+      if (url.getPath().equals("/api/v1/app-auth/mobile/password-backup/readiness")) {
+        require("GET".equals(method) && "clientId=test.eliza.consumer".equals(url.getQuery()));
+        return 204;
+      }
       require(url.getPath().equals("/api/v1/app-auth/mobile/password-backup"));
       if ("POST".equals(method)) {
         require(("Bearer " + TOKEN).equals(getRequestProperty("Authorization")));
@@ -82,8 +99,10 @@ public final class SharedPasswordBackupCheck {
             && ("https://" + HOST + "/auth/account/callback").equals(authorization.getString("redirectUri"))
             && "S256".equals(authorization.getString("codeChallengeMethod")));
         approvals++;
-        answer = json(new JSONObject().put("code", PROOF).put("scope", "a".repeat(64))
-            .put("ownerId", OWNER).put("revision", "\"1\"").put("present", true));
+        var approved = new JSONObject().put("code", PROOF).put("scope", "a".repeat(64))
+            .put("ownerId", OWNER).put("revision", "\"1\"").put("present", true);
+        if (approvalOrganization != null) approved.put("organizationId", approvalOrganization);
+        answer = json(approved);
         return 200;
       }
       require(("Bearer " + PROOF).equals(getRequestProperty("Authorization"))
@@ -102,7 +121,13 @@ public final class SharedPasswordBackupCheck {
     }
 
     @Override public OutputStream getOutputStream() { return request; }
-    @Override public String getHeaderField(String name) { return name.equals("ETag") ? "\"1\"" : null; }
+    @Override public String getHeaderField(String name) {
+      return switch (name) {
+        case "ETag" -> "\"1\"";
+        case "X-Password-Backup-Version" -> readinessVersion;
+        default -> null;
+      };
+    }
     @Override public String getContentType() { return "application/octet-stream"; }
     @Override public InputStream getInputStream() {
       return new ByteArrayInputStream(answer) {

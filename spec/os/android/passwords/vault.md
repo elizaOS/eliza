@@ -257,29 +257,34 @@ pure def lawMissingRecordRefusesRowAction(selection: RowSelection): bool =
 A trusted Android host selects one registered issuer, tenant, and signed app.
 The acknowledged device credential identifies the current cloud account. Each
 backup action requires a fresh native Google confirmation with that issuer.
-The approval is delivered only if the returned account and the active account
-generation still match the request. An account change, closed request, or
+Recovery is available only when the cloud advertises approval with an
+organization identifier. The approval is delivered only if the returned
+account and organization and the active account generation still match the
+request. An account change, closed request, or
 locked device ends the attempt. The temporary Steward session is used to
 obtain the approval and is then discarded. The host requests its revocation
 even when the approval fails.
 
 ```quint
 type SharedBackupPurpose = SharedBackupRead | SharedBackupSave | SharedBackupDelete | SharedBackupVerify
-type SharedBackupBinding = { issuer: str, owner: str, ownerGeneration: str, requestId: str, purpose: SharedBackupPurpose }
+type SharedBackupBinding = { issuer: str, owner: str, organization: str, ownerGeneration: str, requestId: str, purpose: SharedBackupPurpose }
 pure val requestValues = Set(
-  { issuer: "production", owner: "owner", ownerGeneration: "renewed", requestId: "backup", purpose: SharedBackupSave },
-  { issuer: "staging", owner: "owner", ownerGeneration: "renewed", requestId: "backup", purpose: SharedBackupSave },
-  { issuer: "production", owner: "owner", ownerGeneration: "retired", requestId: "backup", purpose: SharedBackupSave },
-  { issuer: "production", owner: "other", ownerGeneration: "renewed", requestId: "backup", purpose: SharedBackupSave },
-  { issuer: "production", owner: "owner", ownerGeneration: "renewed", requestId: "other-request", purpose: SharedBackupSave },
-  { issuer: "production", owner: "owner", ownerGeneration: "renewed", requestId: "backup", purpose: SharedBackupVerify })
+  { issuer: "production", owner: "owner", organization: "organization", ownerGeneration: "renewed", requestId: "backup", purpose: SharedBackupSave },
+  { issuer: "staging", owner: "owner", organization: "organization", ownerGeneration: "renewed", requestId: "backup", purpose: SharedBackupSave },
+  { issuer: "production", owner: "owner", organization: "organization", ownerGeneration: "retired", requestId: "backup", purpose: SharedBackupSave },
+  { issuer: "production", owner: "other", organization: "organization", ownerGeneration: "renewed", requestId: "backup", purpose: SharedBackupSave },
+  { issuer: "production", owner: "owner", organization: "other", ownerGeneration: "renewed", requestId: "backup", purpose: SharedBackupSave },
+  { issuer: "production", owner: "owner", organization: "organization", ownerGeneration: "renewed", requestId: "other-request", purpose: SharedBackupSave },
+  { issuer: "production", owner: "owner", organization: "organization", ownerGeneration: "renewed", requestId: "backup", purpose: SharedBackupVerify })
 pure val activeValues = requestValues
 pure val approvedValues = requestValues
-pure def sharedBackupApprovalMatches(request: SharedBackupBinding, active: SharedBackupBinding, freshNativeSignIn: bool, registeredApp: bool, deviceReady: bool): bool =
-  request.issuer != "" and request.owner != "" and request.ownerGeneration != "" and request.requestId != "" and
-  request == active and freshNativeSignIn and registeredApp and deviceReady
+pure def sharedBackupApprovalMatches(request: SharedBackupBinding, active: SharedBackupBinding, freshNativeSignIn: bool, registeredApp: bool, organizationEcho: bool, deviceReady: bool): bool =
+  request.issuer != "" and request.owner != "" and request.organization != "" and request.ownerGeneration != "" and request.requestId != "" and
+  request == active and freshNativeSignIn and registeredApp and organizationEcho and deviceReady
 pure def lawSharedBackupRefusesAnotherBinding(request: SharedBackupBinding, active: SharedBackupBinding): bool =
-  request != active implies not(sharedBackupApprovalMatches(request, active, true, true, true))
+  request != active implies not(sharedBackupApprovalMatches(request, active, true, true, true, true))
+pure def lawSharedBackupNeedsAnOrganizationEcho(request: SharedBackupBinding): bool =
+  not(sharedBackupApprovalMatches(request, request, true, true, false, true))
 ```
 
 ### One native proof authorizes one backup action
@@ -294,7 +299,7 @@ vault.
 
 ```quint
 pure def sharedBackupCanSend(approved: SharedBackupBinding, active: SharedBackupBinding, deviceReady: bool, spent: bool): bool =
-  sharedBackupApprovalMatches(approved, active, true, true, deviceReady) and not(spent) and approved.purpose != SharedBackupVerify
+  sharedBackupApprovalMatches(approved, active, true, true, true, deviceReady) and not(spent) and approved.purpose != SharedBackupVerify
 pure def lawSharedBackupVerificationTransfersNothing(approved: SharedBackupBinding): bool =
   approved.purpose == SharedBackupVerify implies not(sharedBackupCanSend(approved, approved, true, false))
 pure def lawSharedBackupProofIsSingleUse(approved: SharedBackupBinding, active: SharedBackupBinding): bool =

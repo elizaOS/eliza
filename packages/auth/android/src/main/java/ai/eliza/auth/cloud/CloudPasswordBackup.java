@@ -32,12 +32,13 @@ public final class CloudPasswordBackup {
     private final String verifier;
     private final String scope;
     private final String ownerId;
+    private final String organizationId;
     private final String revision;
     private final boolean present;
     private final BooleanSupplier current;
     private boolean spent;
 
-    private Approval(URI endpoint, Purpose purpose, String code, String state, String verifier, String scope, String ownerId, String revision, boolean present, BooleanSupplier current) {
+    private Approval(URI endpoint, Purpose purpose, String code, String state, String verifier, String scope, String ownerId, String organizationId, String revision, boolean present, BooleanSupplier current) {
       this.endpoint = endpoint;
       this.purpose = purpose;
       this.code = code;
@@ -45,6 +46,7 @@ public final class CloudPasswordBackup {
       this.verifier = verifier;
       this.scope = scope;
       this.ownerId = ownerId;
+      this.organizationId = organizationId;
       this.revision = revision;
       this.present = present;
       this.current = current;
@@ -52,6 +54,7 @@ public final class CloudPasswordBackup {
 
     public String scope() { return scope; }
     public String ownerId() { return ownerId; }
+    public String organizationId() { return organizationId; }
     public String revision() { return revision; }
     public boolean present() { return present; }
     public boolean current() { return current.getAsBoolean(); }
@@ -124,18 +127,20 @@ public final class CloudPasswordBackup {
       JSONObject output = new JSONObject(new String(body(request, 8192), StandardCharsets.UTF_8));
       String code = output.getString("code"), scope = output.getString("scope");
       String owner = output.getString("ownerId");
+      String organization = output.optString("organizationId", null);
       Object revisionValue = output.opt("revision");
       String revision = revisionValue instanceof String ? (String) revisionValue : null;
       Object present = output.opt("present");
       if (!code.matches("pbackup_[A-Za-z0-9_-]{43}") || !scope.matches("[a-f0-9]{64}")
-          || !CloudSignInFlow.validUuid(owner) || !(present instanceof Boolean) || !output.has("revision")
+          || !CloudSignInFlow.validUuid(owner) || !CloudSignInFlow.validUuid(organization)
+          || !(present instanceof Boolean) || !output.has("revision")
           || (revision == null && revisionValue != JSONObject.NULL)
           || (revision != null && !revision.matches("\"[1-9][0-9]{0,9}\""))
           || (Boolean.TRUE.equals(present) && revision == null)) {
         throw new IOException("Invalid password backup approval");
       }
       if (!current.getAsBoolean()) throw new IOException("Password backup closed");
-      return new Approval(endpoint, purpose, code, state, verifier, scope, owner, revision, Boolean.TRUE.equals(present), current);
+      return new Approval(endpoint, purpose, code, state, verifier, scope, owner, organization, revision, Boolean.TRUE.equals(present), current);
     } finally {
       request.disconnect();
     }
@@ -147,7 +152,7 @@ public final class CloudPasswordBackup {
       URI url = URI.create(environment.api() + PATH + "/readiness?clientId=" + config.clientId);
       HttpsURLConnection request = connect(url, "GET", null);
       try {
-        return request.getResponseCode() == 204;
+        return request.getResponseCode() == 204 && "2".equals(request.getHeaderField("X-Password-Backup-Version"));
       } finally {
         request.disconnect();
       }
