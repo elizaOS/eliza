@@ -6,10 +6,4 @@ export {
   runIosFullBunSmokeIfRequested,
 } from "./platform/ios-runtime-bridge";
 export type { DetachedShellRootProps } from "./runtime/desktop";
-export {
-  buildLocalizedTrayMenu,
-  DESKTOP_TRAY_MENU_ITEMS,
-  DesktopSurfaceNavigationRuntime,
-  DesktopTrayRuntime,
-  DetachedShellRoot,
-} from "./runtime/desktop";
+export { DetachedShellRoot } from "./runtime/desktop";

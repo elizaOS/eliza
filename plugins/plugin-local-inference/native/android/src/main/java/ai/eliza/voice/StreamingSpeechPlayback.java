@@ -118,6 +118,7 @@ public final class StreamingSpeechPlayback {
  private void closeSegment(){synchronized(lock){if(open>0&&--open==0)queue.complete();}}
  /** Reports, on the writer, when the next frame to be offered is handed to the output. */
  public void mark(Mark mark){synchronized(lock){marks.addLast(new Object[]{produced,mark});}}
+ public long playedFrames(){synchronized(lock){return output==null?0:output.playedFrames();}}
  /** Offered frames the output has not played yet. */
  public long pendingFrames(){synchronized(lock){return Math.max(0,produced-(output==null?0:output.playedFrames()));}}
  /** Speech is coming out now: the first audible sample has played and offered audio remains. */
