@@ -4,7 +4,7 @@ import {
   type IAgentRuntime, type IDatabaseAdapter, type NotificationService, type TaskWorker,
 } from "@elizaos/core"
 import {
-  Rejected, canFire, claimOutcome, dueInstant, fireReply, initial, isReplay, machineOver, ownerFireEnded, verbReply,
+  canFire, claimOutcome, dueInstant, fireReply, fireable, initial, isReplay, machineOver, ownerFireEnded, verbReply,
   type Delivery, type Due, type Event, type FireOutcome, type RequestKey, type ScheduledTask, type Verb,
 } from "../../gen/agent__schedule__scheduledTasks.effect.vibe"
 import {
@@ -154,6 +154,10 @@ function eventLog(event: Event, before: ScheduledTask, next: ScheduledTask): Par
     : fireLog(claimOutcome(before, event.manual, event.now, event.processStart, event.following, event.delivery), event.now, event.delivery, {})
 }
 
+function undeliverable(cause: unknown): DeliveryResult {
+  return { kind: "undeliverable", error: cause instanceof Error ? cause.message : String(cause) }
+}
+
 function notWaiting(task: ScheduledTask): string {
   if (task.status === "Dismissed") return "dismissed"
   return task.due.tag === "Manual" ? "not_waiting" : "no_more_occurrences"
@@ -201,9 +205,7 @@ export function scheduledTaskService(host: ScheduledTaskHost) {
 
   effect function deliver(task: ScheduledTaskView, now: number) {
     const port = deliveries.get(task.kind) ?? host.defaultDelivery
-    const result = try (tryPromise(() => port(task)) catch (failure): DeliveryResult => ({
-      kind: "undeliverable", error: failure.cause instanceof Error ? failure.cause.message : String(failure.cause),
-    }))
+    const result = try (tryPromise({ try: () => port(task), catch: (cause) => cause }) catch (cause) => undeliverable(cause))
     switch (result.kind) {
       case "delivered": return { delivery: delivered, note: {} }
       case "retry": return { delivery: { tag: "RetryAt", retryAt: now + Math.max(1, Math.ceil(result.afterMs)) } as Delivery, note: { reason: result.reason } }
@@ -235,11 +237,11 @@ export function scheduledTaskService(host: ScheduledTaskHost) {
     const { delivery, note } = try deliver(view(row), now)
     const outcome = claimOutcome(task, manual, now, processStart, following, delivery)
     const after = try commit(taskId, { type: "fire", seenRevision: seen, manual, now, processStart, following, delivery }, fireLog(outcome, now, delivery, note))
+    const failed = outcome === "FireFailed" ? note.error ?? note.reason : undefined
     return {
       kind: "answered", outcome, task: after,
-      ...(note.reason === undefined ? {} : { reason: note.reason }),
-      ...(note.error === undefined ? {} : { error: note.error }),
-      ...(outcome === "FireDeferred" && delivery.tag === "RetryAt" ? { nextAttemptAt: delivery.retryAt } : {}),
+      ...(outcome === "FireDeferred" && delivery.tag === "RetryAt" ? { reason: note.reason ?? "retry", nextAttemptAt: delivery.retryAt } : {}),
+      ...(failed === undefined ? {} : { error: failed }),
     }
   }
 
@@ -270,17 +272,18 @@ export function scheduledTaskService(host: ScheduledTaskHost) {
   }
 
   return {
-    effect create(task: NewTask): Created!TaskRefused {
+    effect create(task: NewTask) {
       const refusal = usable(task.trigger)
       if (refusal !== undefined) throw new TaskRefused({ reason: refusal })
       if (task.delivery !== undefined) deliveries.set(task.kind, task.delivery)
       const now = try Clock.currentTimeMillis
-      const made = try (createScheduledTask(adapter, {
+      const made = try createScheduledTask(adapter, {
         taskId: newTaskId(), ownerVisible: task.ownerVisible, state: { ...initial, due: firstDue(task.trigger, now) },
         details: { kind: task.kind, promptInstructions: task.promptInstructions, trigger: task.trigger, metadata: task.metadata ?? {} },
         ...(task.idempotencyKey === undefined ? {} : { idempotencyKey: task.idempotencyKey }),
-      }) |> orDie(%))
-      return { kind: made.kind, task: view(made.task) }
+      })
+      const created: Created = { kind: made.kind, task: view(made.task) }
+      return created
     },
     deliverKind(kind: string, port: DeliveryPort): void {
       deliveries.set(kind, port)
@@ -304,7 +307,7 @@ export function scheduledTaskService(host: ScheduledTaskHost) {
     effect tick() {
       const now = try Clock.currentTimeMillis
       const due = (try listScheduledTasks(adapter, { ownerVisibleOnly: false }))
-        .filter(({ state }) => state.due.tag === "DueAt" && state.due.at <= now && state.status !== "Dismissed")
+        .filter(({ state }) => fireable(state, false, now))
       const fired: FireOutcome[] = []
       for (const row of due) {
         const result = try locked(row.taskId, fireRow(row.taskId, undefined, false))

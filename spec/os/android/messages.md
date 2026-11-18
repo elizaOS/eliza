@@ -3,18 +3,18 @@
 The messages module (`packages/os/android/messages/`, from
 `plugins/plugin-native-messages/android`). A host that declares telephony
 subclasses the abstract `TelephonyPlugin` under its own plugin name and
-registers it only on a verified system image ([the bridge](./bridge.md));
-the client's default name is `ElizaTelephony`. The owner and Android role
-policy stay the host's. The operations `sms-send` and `mms-send`, their
-shape checks and the capabilities `sms.send.v1`, `mms.send.v1` and
+registers it only on a verified system image; calls are admitted as
+[the bridge](./bridge.md) says. The operations `sms-send` and `mms-send`,
+their shape checks and the capabilities `sms.send.v1`, `mms.send.v1` and
 `messages.read.v1` are the agent's
 ([operations](../../agent/deviceActions/operations.md),
 [capabilities](../../agent/deviceActions/capabilities.md)); this spec keeps
 what Android must confirm before a send, what the send journal answers, what
-a receipt may claim, what is written to Android's providers, what a notice
-action may do and what a deletion may report. Carrier delivery is never
-inferred. Calls and voicemail are [phone](./phone.md)'s and
-[voicemail](./voicemail.md)'s.
+a receipt may claim, what is written to Android's providers, what a
+new-message notice action may do and what a deletion may report. Carrier
+delivery is never inferred. Calls and voicemail are [phone](./phone.md)'s
+and [voicemail](./voicemail.md)'s; the agent's own notices are
+[notice routes](./noticeRoutes.md)'.
 
 ## Story: Send only what I reviewed, once
 

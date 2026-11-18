@@ -225,7 +225,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
     return (try begin(id, { type: "fire", nextInstant, processStartedAt: facts.processStartedAt })).kind
   }
 
-  effect function refusal(reason: TriggerRefusal): TriggerWrite { return { kind: "refused", reason } }
+  const refusal = (reason: TriggerRefusal): TriggerWrite => ({ kind: "refused", reason })
 
   effect function roomFor(requested: string | undefined) {
     return try promise(() => delivery.resolveRoom(requested))
@@ -253,9 +253,9 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
       }, details)
       if (moved.after !== undefined) return { kind: "saved", trigger: savedOf(id, moved.after, details) } satisfies TriggerWrite
       switch (resolved.kind) {
-        case "Missing": return try refusal("ConversationMissing")
-        case "Unavailable": return try refusal("RoomUnavailable")
-        case "Resolved": return try refusal("Invalid")
+        case "Missing": return refusal("ConversationMissing")
+        case "Unavailable": return refusal("RoomUnavailable")
+        case "Resolved": return refusal("Invalid")
       }
     })
   }
@@ -278,11 +278,11 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
         return { kind: "saved", trigger: savedOf(id, after, details) } satisfies TriggerWrite
       }
       if (moved.before.life !== "Saved") return { kind: "notFound" } satisfies TriggerWrite
-      if (!revisionMatches(expected, moved.before.revision)) return try refusal("StaleRevision")
+      if (!revisionMatches(expected, moved.before.revision)) return refusal("StaleRevision")
       switch (resolved.kind) {
-        case "Missing": return try refusal("ConversationMissing")
-        case "Unavailable": return try refusal("RoomUnavailable")
-        case "Resolved": return try refusal("Invalid")
+        case "Missing": return refusal("ConversationMissing")
+        case "Unavailable": return refusal("RoomUnavailable")
+        case "Resolved": return refusal("Invalid")
       }
     })
   }
@@ -301,8 +301,8 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
         return { kind: "saved", trigger: savedOf(id, after, row.details) } satisfies TriggerWrite
       }
       if (moved.before.life !== "Saved") return { kind: "notFound" } satisfies TriggerWrite
-      if (!revisionMatches(expected, moved.before.revision)) return try refusal("StaleRevision")
-      return try refusal(on && !moved.before.enabled && activeOthers >= maxActiveTriggers ? "ActiveLimit" : "Invalid")
+      if (!revisionMatches(expected, moved.before.revision)) return refusal("StaleRevision")
+      return refusal(on && !moved.before.enabled && activeOthers >= maxActiveTriggers ? "ActiveLimit" : "Invalid")
     })
   }
 
