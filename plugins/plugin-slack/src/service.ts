@@ -583,7 +583,7 @@ type SlackAccountRuntime = {
    * accounts ignore it and keep using the bot client.
    */
   userClient: WebClient | null;
-  /** Bot-token client for posting, with `OUTBOUND_RETRY_CONFIG`. Reads stay on `client`. */
+  /** Bot-token client for posts and file uploads, with `OUTBOUND_RETRY_CONFIG`. Reads stay on `client`. */
   outboundClient: WebClient;
   botUserId: string | null;
   teamId: string | null;
@@ -4767,7 +4767,12 @@ export class SlackService extends Service implements ISlackService {
     options?: { title?: string; initialComment?: string; threadTs?: string },
     accountId?: string | null,
   ): Promise<{ fileId: string; permalink: string }> {
-    const client = this.getClientForAccount(accountId);
+    // files.uploadV2 ends with files.completeUploadExternal, which Slack
+    // completes only once. Use the bot client with OUTBOUND_RETRY_CONFIG so
+    // a lost answer after Slack shared the file is not sent again.
+    const client =
+      this.getAccountState(accountId)?.outboundClient ??
+      this.getClientForAccount(accountId);
     if (!client) {
       throw new Error("Slack client not initialized");
     }

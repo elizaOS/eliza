@@ -6,9 +6,14 @@
  * explicit failure when the completion response carries no file data.
  */
 import http from "node:http";
-import { WebClient } from "@slack/web-api";
+import { retryPolicies, WebClient } from "@slack/web-api";
 import { afterEach, describe, expect, it } from "vitest";
-import { extractUploadReceipt, OUTBOUND_RETRY_CONFIG } from "./service";
+import { normalizeAccountId } from "./accounts";
+import {
+  extractUploadReceipt,
+  OUTBOUND_RETRY_CONFIG,
+  SlackService,
+} from "./service";
 
 const servers: http.Server[] = [];
 
@@ -184,4 +189,127 @@ describe("outbound client retry policy", () => {
     expect(result.ts).toBe("1.000001");
     expect(posts).toEqual(["(rate limited, not stored)", "agent reply"]);
   });
+});
+
+/**
+ * files.uploadV2 ends with files.completeUploadExternal, which Slack completes
+ * only once. The local API records each completion, then loses its first
+ * answer (502 or a reset connection), as when Slack shared the file but the
+ * answer did not arrive. SlackService.uploadFile must not complete it again.
+ */
+describe("file upload completion is sent once", () => {
+  const ACCOUNT_ID = "acct-upload";
+
+  function startUploadServer(
+    firstCompletionAnswer: "502" | "reset",
+  ): Promise<{ apiUrl: string; completions: number[] }> {
+    const completions: number[] = [];
+    return new Promise((resolve) => {
+      const server = http.createServer((req, res) => {
+        req.on("data", () => {});
+        req.on("end", () => {
+          if (req.url?.includes("/files.getUploadURLExternal")) {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                ok: true,
+                upload_url: `http://${req.headers.host}/external-upload`,
+                file_id: "F06A5F9PQ0Z",
+              }),
+            );
+            return;
+          }
+          if (req.url === "/external-upload") {
+            res.writeHead(200);
+            res.end("OK");
+            return;
+          }
+          if (req.url?.includes("/files.completeUploadExternal")) {
+            completions.push(completions.length + 1);
+            if (completions.length === 1) {
+              if (firstCompletionAnswer === "502") {
+                res.writeHead(502);
+                res.end("Bad Gateway");
+              } else {
+                req.socket.destroy();
+              }
+              return;
+            }
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                ok: true,
+                files: [
+                  {
+                    id: "F06A5F9PQ0Z",
+                    permalink:
+                      "https://example.slack.com/files/F06A5F9PQ0Z/cat.png",
+                  },
+                ],
+              }),
+            );
+            return;
+          }
+          res.writeHead(404);
+          res.end("{}");
+        });
+      });
+      servers.push(server);
+      server.listen(0, "127.0.0.1", () => {
+        const { port } = server.address() as { port: number };
+        resolve({ apiUrl: `http://127.0.0.1:${port}/api/`, completions });
+      });
+    });
+  }
+
+  // The account state as the service builds it: `client` keeps the library's
+  // default retries (no backoff wait here, so a retry is immediate) and
+  // `outboundClient` has OUTBOUND_RETRY_CONFIG. Both talk to the local API.
+  function serviceFor(apiUrl: string): SlackService {
+    return Object.assign(
+      Object.create(SlackService.prototype) as SlackService,
+      {
+        defaultAccountId: ACCOUNT_ID,
+        accountStates: new Map([
+          [
+            normalizeAccountId(ACCOUNT_ID),
+            {
+              accountId: ACCOUNT_ID,
+              account: { accountId: ACCOUNT_ID, name: "A" },
+              client: new WebClient("xoxb-test", {
+                slackApiUrl: apiUrl,
+                retryConfig: {
+                  ...retryPolicies.tenRetriesInAboutThirtyMinutes,
+                  minTimeout: 0,
+                  maxTimeout: 0,
+                },
+              }),
+              outboundClient: new WebClient("xoxb-test", {
+                slackApiUrl: apiUrl,
+                retryConfig: OUTBOUND_RETRY_CONFIG,
+              }),
+              userClient: null,
+            },
+          ],
+        ]),
+      },
+    );
+  }
+
+  for (const answer of ["502", "reset"] as const) {
+    it(`completes once when the first completion answer is ${answer === "502" ? "a 502" : "a reset connection"}`, async () => {
+      const { apiUrl, completions } = await startUploadServer(answer);
+
+      await expect(
+        serviceFor(apiUrl).uploadFile(
+          "C0614G0B5LY",
+          "fake-png-bytes",
+          "cat.png",
+          undefined,
+          ACCOUNT_ID,
+        ),
+      ).rejects.toThrow();
+      expect(completions).toEqual([1]);
+    });
+  }
 });
