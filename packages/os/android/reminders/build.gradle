@@ -2,7 +2,7 @@ apply plugin: 'com.android.library'
 android {
  namespace 'ai.eliza.plugins.reminders'
  compileSdk rootProject.ext.compileSdkVersion
- defaultConfig { minSdk 26; targetSdk rootProject.ext.targetSdkVersion; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+ defaultConfig { minSdk Math.max(26, rootProject.ext.minSdkVersion as int); targetSdk rootProject.ext.targetSdkVersion; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
  testOptions { unitTests.includeAndroidResources = true }
  compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
 }

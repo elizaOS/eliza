@@ -128,7 +128,11 @@ android {
   sourceSets.main.jniLibs.srcDir(new File(profile.runtimeMain, 'jniLibs'))
  }
 }
+if (profile.embeddedServiceManifest) androidComponents.onVariants(androidComponents.selector().all()) { variant ->
+ variant.sources.manifests.addStaticManifestFile(profile.embeddedServiceManifest)
+}
 dependencies {
+ androidTestImplementation "androidx.test:runner:${rootProject.ext.androidxTestRunnerVersion}"
  profile.modules.findAll { it.appDependency }.each { module -> implementation project(":${module.name}") }
  profile.dependencies.each { dependency -> add(dependency.configuration, dependency.coordinate) }
 }
