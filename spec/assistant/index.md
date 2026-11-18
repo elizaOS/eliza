@@ -9,7 +9,7 @@ device, and it stores the owner's records in the agent's database.
 The scheduled-task runner, the agent's approvals and the device's native
 reminders are owned elsewhere ([agent scheduled tasks](../agent/schedule/scheduledTasks.md),
 [device action custody](../agent/deviceActions/execution.md),
-[device reminder alarms](../os/android/reminderAlarms.md)); the specs here say what
+[device reminder alarms](../os/android/deepLinks.md)); the specs here say what
 the assistant asks of them and what it keeps itself. Household, family,
 travel, health, bill and blocking services are not part of this package.
 
