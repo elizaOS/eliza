@@ -61,8 +61,8 @@ import { validateNotesResult } from "./notes-contract.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import { validateReminderResult } from "./reminder-contract.ts";
 import {
-  validateContactReadResult,
   smsLatestSenderReply,
+  validateContactReadResult,
   validateMessagesReadResult,
   validateSmsLatestSenderResult,
   validateVoicemailReadResult,
