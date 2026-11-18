@@ -204,7 +204,11 @@ test("proof-bound approvals protect encrypted snapshot round-trip, replay, delet
     readiness.status,
     readiness.headers.get("X-Password-Backup-Version"),
   ]).toEqual([204, "2"]);
-  const unregistered = await app.request(`${backupPath}/readiness`, undefined, env);
+  const unregistered = await app.request(
+    `${backupPath}/readiness`,
+    undefined,
+    env,
+  );
   expect([
     unregistered.status,
     unregistered.headers.get("X-Password-Backup-Version"),
