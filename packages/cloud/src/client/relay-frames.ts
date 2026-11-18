@@ -416,14 +416,15 @@ function idValue(v: JsonValue): number[] {
 }
 
 export function readDevice(b: number[], binary: boolean): DeviceWire {
-  //@ ensures binary ==> \result === { kind: "Uplink", pcm: b }
+  //@ ensures (binary && validUplink(b.length)) ==> \result === { kind: "Uplink", pcm: b }
+  //@ ensures \result.kind === "Uplink" ==> binary && validUplink(\result.pcm.length)
   //@ ensures (!binary && b.length > maxControlBytes) ==> \result.kind === "DeviceRefused"
   //@ ensures \result.kind === "Hello" ==> validHelloToken(utf16Units(\result.token))
   //@ ensures \result.kind === "Tts" ==> idBytesValid(\result.id) && validTtsText(utf16Units(\result.text), blankText(\result.text))
   //@ ensures \result.kind === "Prepare" ==> idBytesValid(\result.id)
   //@ ensures \result.kind === "Finish" ==> idBytesValid(\result.id)
   //@ ensures \result.kind === "Cancel" ==> idBytesValid(\result.id)
-  if (binary) return { kind: "Uplink", pcm: b }
+  if (binary) return validUplink(b.length) ? { kind: "Uplink", pcm: b } : { kind: "DeviceRefused" }
   if (b.length > maxControlBytes || !utf8Valid(b)) return { kind: "DeviceRefused" }
   const json = readJson(b, 0)
   if (!json.ok) return { kind: "DeviceRefused" }

@@ -85,11 +85,9 @@ const Listed = Schema.Struct({ entries: Schema.Array(Entry) })
 const Acknowledged = Schema.Struct({ status: Schema.Literal("acknowledged") })
 
 export function nextStep(entry: ActionJournalEntry): JournalNextStep {
-  return match (entry) {
-    when { phase: "reserved" }: { kind: "dispatch" };
-    when { phase: "applying", let applyingAt }: { kind: "reconcile", since: applyingAt ?? null };
-    when { phase: "terminal", let status, let finishedAt }: status === "unknown" ? { kind: "reconcile", since: finishedAt ?? null } : { kind: "settled", entry };
-  }
+  if (entry.phase === "reserved") return { kind: "dispatch" }
+  if (entry.phase === "applying") return { kind: "reconcile", since: entry.applyingAt ?? null }
+  return entry.status === "unknown" ? { kind: "reconcile", since: entry.finishedAt ?? null } : { kind: "settled", entry }
 }
 
 effect function checkTarget(target: ActionJournalTarget) {

@@ -62,7 +62,7 @@ public final class GoogleSignIn {
   }
 
   public sealed interface SignedIn {
-    record Minted(Proof proof, String answer, Boolean googleConnected) implements SignedIn {}
+    record Minted(Proof proof, Boolean googleConnected) implements SignedIn {}
     record FactorRequired(String challengeId, List<String> methods, long expiresAt) implements SignedIn {}
   }
 
@@ -114,7 +114,7 @@ public final class GoogleSignIn {
     if (!"signed_in".equals(answer.body().optString("status")) || oneTime.isEmpty()) throw new Refused(Failure.UNAVAILABLE);
     JSONObject google = answer.body().optJSONObject("google");
     Boolean connected = code == null ? null : google != null && google.optBoolean("connected", false);
-    return new SignedIn.Minted(new Proof(oneTime, state, verifier), answer.body().toString(), connected);
+    return new SignedIn.Minted(new Proof(oneTime, state, verifier), connected);
   }
 
   public boolean connectNative(SignInRegistration.Environment environment, String key, SecretServerCode serverCode) {

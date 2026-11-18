@@ -320,7 +320,10 @@ export effect function composeMessage(raw: unknown, context: ComposeContext) {
   const proposal: Proposal = decoded.value
   const replying = proposal.mode === "reply" || proposal.mode === "reply-all"
   if (headerUnsafe.test(proposal.subject) || replying !== (proposal.replyMessageId !== undefined)) throw refused("InvalidRequest")
-  if (proposal.forwardAttachments !== undefined && (proposal.mode !== "forward" || context.forwarded === undefined)) throw refused("InvalidRequest")
+  const source = proposal.forwardAttachments
+  const held = context.forwarded
+  if ((source === undefined) !== (held === undefined) || (source !== undefined && proposal.mode !== "forward")) throw refused("InvalidRequest")
+  if (source !== undefined && held !== undefined && (source.messageId !== held.messageId || source.historyId !== held.historyId || source.partIds.join("\n") !== held.parts.map((part) => part.partId).join("\n"))) throw refused("InvalidRequest")
   const binding = replying ? try replyBinding(context, proposal.replyMessageId ?? "", proposal.subject) : undefined
   const to = binding === undefined ? proposal.to ?? [] : proposal.to ?? [binding.target]
   const cc = binding !== undefined && proposal.mode === "reply-all" && proposal.cc === undefined

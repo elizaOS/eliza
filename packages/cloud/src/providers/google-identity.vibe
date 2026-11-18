@@ -57,7 +57,7 @@ const Claims = Schema.Struct({
   given_name: Schema.optionalKey(Schema.String),
   name: Schema.optionalKey(Schema.String)
 })
-const TokenReply = Schema.Struct({ id_token: Schema.String })
+schema TokenReply { id_token: string }
 
 function parsedJson(text: string): unknown {
   try {

@@ -1,0 +1,95 @@
+// spec/os/android/system.md, "A location fix needs a grant at the time of the read, and a cached fix is never older than asked"
+import { readLocation, reportedPrecise, type FixFacts, type LocationAccess, type LocationAsk, type LocationRead } from "../../gen/os__android__system.effect.vibe"
+import { nativeCall, nativeReply, settled } from "./bridge.vibe"
+import type { LocationClient, LocationErrorEvent, LocationOptions, LocationPermissionStatus, LocationPlugin, LocationReading, LocationResult } from "./definitions/location.ts"
+
+export type * from "./definitions/location.ts"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { LocationPlugin } from "./definitions/location.ts"
+
+  /** @throws {never} */
+  export function locationPlugin(name = "ElizaLocation"): LocationPlugin {
+    return registerPlugin<LocationPlugin>(name)
+  }
+}
+import { locationPlugin } from capacitor
+export { locationPlugin }
+
+export const LOCATION_TIMEOUT_MS = 10000
+
+const LOCATION_ERRORS = new Set(["PERMISSION_DENIED", "POSITION_UNAVAILABLE", "TIMEOUT"])
+
+schema Coords {
+  latitude: number
+  longitude: number
+  altitude?: number
+  accuracy: number
+  altitudeAccuracy?: number
+  speed?: number
+  heading?: number
+  timestamp: number
+}
+schema Position { coords: Coords; cached: boolean }
+schema Grant { location: "granted" | "denied" | "prompt"; accuracy?: "precise" | "approximate" | "none"; background?: "granted" | "denied" | "prompt" }
+schema Failure { code: "PERMISSION_DENIED" | "POSITION_UNAVAILABLE" | "TIMEOUT" | "UNKNOWN"; message: string }
+
+export function accessOf(grant: LocationPermissionStatus): LocationAccess {
+  if (grant.location !== "granted" || grant.accuracy === "none") return "NoAccess"
+  return grant.accuracy === "precise" ? "PreciseAccess" : "ApproximateAccess"
+}
+
+export function locationAsk(options: LocationOptions | undefined): LocationAsk {
+  const accuracy = options?.accuracy ?? "high"
+  return { maxAgeMs: options?.maxAge ?? 0, timeoutMs: options?.timeout ?? LOCATION_TIMEOUT_MS, wantsPrecise: accuracy === "best" || accuracy === "high" }
+}
+
+function refused(read: LocationRead): LocationReading {
+  return read === "PermissionDenied" ? { kind: "permission-denied" } : read === "PositionTimeout" ? { kind: "timeout" } : { kind: "unavailable" }
+}
+
+effect function currentPosition(name: string, plugin: LocationPlugin, options: LocationOptions | undefined) {
+  const ask = locationAsk(options)
+  const answered = try result(nativeReply(name, "getCurrentPosition", Position, () => plugin.getCurrentPosition(options)))
+  if (Result.isFailure(answered) && answered.failure._tag !== "NativeRejection") throw answered.failure
+  const code = Result.isFailure(answered) && answered.failure._tag === "NativeRejection" ? answered.failure.code : undefined
+  const grant = try nativeReply(name, "checkPermissions", Grant, () => plugin.checkPermissions())
+  const access = accessOf(grant)
+  if (Result.isFailure(answered)) {
+    if (access !== "NoAccess" && (code === undefined || !LOCATION_ERRORS.has(code))) throw answered.failure
+    const fix: FixFacts = { access, hasCached: false, cachedAgeMs: 0, fixAvailable: code !== "POSITION_UNAVAILABLE", fixWithinMs: code === "TIMEOUT" ? ask.timeoutMs + 1 : 0 }
+    return refused(readLocation(ask, fix))
+  }
+  const position = answered.success
+  const now = try Clock.currentTimeMillis
+  const fix: FixFacts = {
+    access,
+    hasCached: position.cached,
+    cachedAgeMs: position.cached ? Math.max(0, now - position.coords.timestamp) : 0,
+    fixAvailable: !position.cached,
+    fixWithinMs: 0,
+  }
+  const read = readLocation(ask, fix)
+  if (read !== "PositionFresh" && read !== "PositionCached") return refused(read)
+  return { kind: "fix" as const, source: read === "PositionCached" ? "cached" as const : "fresh" as const, coords: position.coords, precise: reportedPrecise(ask, fix) }
+}
+
+function parsedListener<A>(shape: Schema.Codec<A>, listener: (value: A) => void): (raw: unknown) => void {
+  return (raw) => {
+    const decoded = Schema.decodeUnknownOption(shape)(raw)
+    if (Option.isSome(decoded)) listener(decoded.value)
+  }
+}
+
+export function locationClient(plugin: LocationPlugin = locationPlugin(), name = "ElizaLocation"): LocationClient {
+  return {
+    checkPermissions: () => settled(nativeReply(name, "checkPermissions", Grant, () => plugin.checkPermissions())),
+    requestPermissions: () => settled(nativeReply(name, "requestPermissions", Grant, () => plugin.requestPermissions())),
+    getCurrentPosition: (options) => settled(currentPosition(name, plugin, options)),
+    watchPosition: (options) => settled(nativeReply(name, "watchPosition", Schema.Struct({ watchId: Schema.String }), () => plugin.watchPosition(options))),
+    clearWatch: ({ watchId }) => settled(nativeCall(name, "clearWatch", () => plugin.clearWatch({ watchId }))).then(() => undefined),
+    onLocation: (listener: (location: LocationResult) => void) => plugin.addListener("locationChange", parsedListener(Position, listener)),
+    onError: (listener: (error: LocationErrorEvent) => void) => plugin.addListener("error", parsedListener(Failure, listener)),
+  }
+}

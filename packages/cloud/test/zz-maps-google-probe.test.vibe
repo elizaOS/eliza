@@ -1,0 +1,50 @@
+// spec/cloud/services/maps.md, "Story: Answer a maps request once and pay for it once"
+import { assert, describe, it } from "@effect/vitest"
+import { FetchHttpClient } from "effect/http"
+import { describeMaps, mapsProvider } from "../src/providers/maps.vibe"
+import { Deployment, deploymentLayer } from "../src/profile/profile.vibe"
+import { fakeServer } from "./support/cloud.vibe"
+import { secrets, testProfile } from "./support/profile.ts"
+import { googleMapsFake, googlePlace } from "./support/maps-fake.ts"
+
+describe("probe google maps", () => {
+  it.live("google adapter against fake", () => scoped(effect {
+    const fake = googleMapsFake()
+    const fakes = try fakeServer()
+    const profile = try sync(() => { fakes.mount("/maps/", fake.handler); return testProfile(fakes.url) as never })
+    const layer = Layer.mergeAll(deploymentLayer(profile, "staging"), FetchHttpClient.layer).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+    const results = try Effect.provide(effect {
+      const deployment = try Deployment
+      const settings = deployment.settings.maps
+      const provider = mapsProvider(settings)
+      if (provider === undefined) throw new Error("no provider")
+      const search = try provider.search({ query: "tor" })
+      const geocode = try provider.geocode({ query: "Pariser Platz" })
+      const reverse = try provider.reverse({ coordinate: { latitude: 52.5162, longitude: 13.3777 }, preferPlace: true })
+      const countsAfterNearby = [fake.count("searchNearby"), fake.count("geocode")]
+      fake.script({ kind: "empty" })
+      const reverseEmpty = try provider.reverse({ coordinate: { latitude: 52.5162, longitude: 13.3777 }, preferPlace: true })
+      const countsAfterEmpty = [fake.count("searchNearby"), fake.count("geocode")]
+      const details = try provider.details({ id: googlePlace.id })
+      const drive = try provider.routes({ from: { latitude: 52.517, longitude: 13.3888 }, to: { latitude: 52.5163, longitude: 13.3777 }, mode: "drive" })
+      const driveMask = String(fake.calls[fake.calls.length - 1].request.headers["x-goog-fieldmask"])
+      const walk = try provider.routes({ from: { latitude: 52.517, longitude: 13.3888 }, to: { latitude: 52.5163, longitude: 13.3777 }, mode: "walk" })
+      const walkMask = String(fake.calls[fake.calls.length - 1].request.headers["x-goog-fieldmask"])
+      fake.script({ kind: "empty" })
+      const noRoute = try provider.routes({ from: { latitude: 52.517, longitude: 13.3888 }, to: { latitude: 52.5163, longitude: 13.3777 }, mode: "drive" })
+      fake.script({ kind: "empty" })
+      const zero = try provider.geocode({ query: "nowhere" })
+      fake.script({ kind: "notJson" })
+      const malformed = try provider.search({ query: "tor" })
+      fake.script({ kind: "oversized" })
+      const oversized = try provider.search({ query: "tor" })
+      const tile = provider.tile === undefined ? undefined : try provider.tile({ z: 3, x: 1, y: 2 })
+      const viewport = provider.viewport === undefined ? undefined : try provider.viewport({ zoom: 3, north: 53, south: 52, east: 14, west: 13 })
+      fake.script({ kind: "slow", delayMs: 10_500 })
+      const slow = try provider.search({ query: "tor" })
+      return { search, geocode, reverse, countsAfterNearby, reverseEmpty, countsAfterEmpty, details, drive, driveMask, walk, walkMask, noRoute, zero, malformed, oversized, tile, viewport, slow, described: describeMaps(settings, "Test Cloud") }
+    }, layer)
+    try Console.log(JSON.stringify(results, (_, value) => value instanceof Uint8Array ? Array.from(value) : value, 1).slice(0, 12000))
+    assert.strictEqual(results.search.kind, "answered")
+  }), 30_000)
+})

@@ -1,6 +1,6 @@
 // spec/cloud/identity/codeChallenges.md, "Story: Sign in with a code sent to my email or phone"; spec/cloud/identity/codeChallenges.md, "Story: Stop guessing at my code"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
 import {
-  apply, canExpire, codeLength, decodeState, initial, isConsumed, provesPhoneFor, sendAllowed, sendLimits, sendPerDestination, smsSendBudget, verifyPerDestination, verifyPerIp, verifyRefusal,
+  apply, canExpire, codeLength, decodeState, initial, isConsumed, provesPhoneFor, sendAllowed, sendLimits, sendPerDestination, smsBudgetRefusal, smsSendBudget, verifyPerDestination, verifyPerIp, verifyRefusal,
   Rejected, type Challenge, type ChallengeEffect, type ChallengePhase, type ChallengeStep, type CodePurpose, type Event, type NotAState
 } from "../../gen/cloud__identity__codeChallenges.effect.vibe"
 import type { FirstFactorOutcome } from "../../gen/cloud__identity__secondFactor.effect.vibe"
@@ -10,7 +10,7 @@ import { Deployment } from "../profile/profile.vibe"
 import { deliverMail } from "../providers/mail.vibe"
 import { deliverSms } from "../providers/sms.vibe"
 import { s256 } from "../shared/credential-crypto.vibe"
-import { admitAll, perWindow, type LimitCheck } from "../shared/rate-limit.vibe"
+import { admitAll, admitCheck, perWindow, type LimitCheck } from "../shared/rate-limit.vibe"
 import { keyedDigest, newId, sameText } from "../shared/sealing.vibe"
 import { loadRow, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
 import { Store, toText, type Tx } from "../store/connection.vibe"
@@ -130,11 +130,15 @@ effect function challengesOf(tx: Tx, request: CodeRequest, digest: string) {
   )
 }
 
-function sendChecks(request: SendRequest, digest: string, hourlyBudget: number): ReadonlyArray<LimitCheck> {
-  return sendLimits(request.method).map((rule) => {
-    if (rule.name === smsSendBudget.name) return { subject: "deployment", rule: perWindow(rule.name, hourlyBudget, rule.windowMs) }
-    return { subject: rule.name === sendPerDestination.name ? digest : request.address, rule }
-  })
+function sendChecks(request: SendRequest, digest: string): ReadonlyArray<LimitCheck> {
+  return sendLimits(request.method).map((rule) => ({ subject: rule.name === sendPerDestination.name ? digest : request.address, rule }))
+}
+
+effect function admitSmsBudget(hourlyBudget: number): void!Refused!Store {
+  admitCheck({ subject: "deployment", rule: perWindow(smsSendBudget.name, hourlyBudget, smsSendBudget.windowMs) }) catch effect (failure) => {
+    const wait = failure.refusal.wait
+    throw failure.refusal.code === "RateLimited" && wait.tag === "RetryAt" ? new Refused({ refusal: smsBudgetRefusal(wait.retryAtMs) }) : failure
+  }
 }
 
 effect function deliverCode(destination: string, code: string, due: ChallengeEffect, now: number) {
@@ -150,7 +154,8 @@ effect function sendCode(request: SendRequest) {
   const countryAllowed = smsCountries.some((prefix) => request.destination.startsWith(prefix))
   if (!sendAllowed(request.method, request.purpose, countryAllowed)) throw refused("InvalidRequest")
   const digest = try keyedDigest(request.destination)
-  try admitAll(sendChecks(request, digest, smsHourlyBudget))
+  try admitAll(sendChecks(request, digest))
+  if (request.method === "PhoneSignIn") try admitSmsBudget(smsHourlyBudget)
   const key = newId()
   const code = newCode()
   const codeDigest = try keyedDigest(`${key}:${code}`)

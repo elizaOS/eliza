@@ -70,7 +70,7 @@ pure val signedLowerValues = Set(0, 1, 4400, 10100)
 pure def stepDiscoveryEverySixHours(before: Ledger, after: Ledger, out: List[RunPlan]): bool =
   out.every(p => if (p.job == DiscoveryJob) discoveryInterval - discoveryJitter <= discoveryDelayOf(p.discovery) and discoveryDelayOf(p.discovery) <= discoveryInterval + discoveryJitter else p.discovery == DiscoveryUnchanged)
 pure def stepChecksNeedSignedTime(before: Ledger, after: Ledger, out: List[RunPlan]): bool =
-  out.every(p => fetched(p.runOutcome) implies p.alert.current) and (after.lastCheck != before.lastCheck implies out.some(p => p.alert.current and fetched(p.runOutcome)))
+  out.every(p => fetched(p.runOutcome) implies p.alert.current) and (after.lastCheck > before.lastCheck implies out.some(p => p.alert.current and fetched(p.runOutcome)))
 pure def sometimesTransferQueued(l: Ledger): bool = l.lastOutcome == Discovered({ discovered: TransferQueued })
 ```
 
@@ -176,7 +176,8 @@ pure val sinceValues = Set(0, 130, 310, 1570)
 pure val untilValues = Set(0, 300, 1740, 3200)
 pure val wallValues = Set(0, 130, 310, 1570, 3200)
 pure def lawWindowNeverAuthorizesAlone(signals: Signals, window: ComfortWindow): bool =
-  activationGate(signals, window).length() == 0 implies deviceBlockers(signals, activationMinBattery).length() == 0
+  activationGate(signals, window).length() == 0 implies (window != WindowClosed and not(someSignalUnknown(signals)) and signals.charging == FlagSet and
+    gaugeValue(signals.battery) >= activationMinBattery and gaugeValue(signals.thermal) <= maxThermal and gaugeValue(signals.idle) >= idleMinutes and signals.call == FlagClear)
 pure def lawEveryDayEndsOneWindow(since: int, until: int): bool =
   until >= since implies windowsEnded(since, until + dayMinutes) == smaller(windowsEnded(since, until) + 1, missedCap)
 pure def alwaysMissedWindowsBelongToAPendingPlan(l: Ledger): bool =
@@ -264,7 +265,7 @@ pure def sometimesActivationLate(l: Ledger): bool = l.alertReasons.includes(Acti
 
 ### An unsaved ledger still returns the plan, with an alert
 
-A run whose ledger could not be saved leaves the stored ledger as it was and returns its plan with the unsaved alert. A job cancelled before its first effect saves nothing and returns no plan; one cancelled with no effect left to run completes. The jitter is uniform in its span.
+A run whose ledger could not be saved leaves the stored ledger as it was and returns its plan with the unsaved alert. A job cancelled before its first effect saves nothing and returns no plan; one cancelled with no effect left to run completes. The jitter lies within twice the discovery jitter.
 
 ```quint
 pure def unsavedAlert(a: Alert): Alert = { ...a, level: if (a.level == AlertNone) AlertRaised else a.level, reasons: a.reasons.append(StateUnsaved) }

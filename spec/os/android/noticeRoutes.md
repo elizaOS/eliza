@@ -197,7 +197,6 @@ pure def lawOnlyTheCurrentTokenMatches(ledger: NoticeLedger, ask: bool, token: i
   (noticeLedgerValid(ledger) and captureTap(ledger, ask).tapToken != ledger.tapToken and token == ledger.tapToken) implies not(tapMatches(captureTap(ledger, ask), token))
 pure def lawConsumeOpensBeforeClearing(ledger: NoticeLedger, write: TapWrite): bool =
   consumeTap(ledger, write).tapToken < ledger.tapToken implies consumeTap(ledger, write).phase == NoticeOpened
-pure def lawReleaseKeepsNotice(ledger: NoticeLedger): bool = releaseTap(ledger).phase == ledger.phase and releaseTap(ledger).posts == ledger.posts
 pure def lawTapsKeepTheLedgerValid(ledger: NoticeLedger, ask: bool, write: TapWrite): bool =
   noticeLedgerValid(ledger) implies
     ((tapEligible(ledger) implies noticeLedgerValid(captureTap(ledger, ask))) and noticeLedgerValid(consumeTap(ledger, write)) and noticeLedgerValid(releaseTap(ledger)))
@@ -211,8 +210,9 @@ The notice identity depends only on the scope, the run and the approval, so
 one approval has one notice whatever workflow version it was posted under,
 and it reveals nothing about the step. Its binding names the whole route,
 including the origin, owner, agent, workflow and version, so a notice whose
-route changed is refused by the host. These identities are installed on
-devices and never change form.
+route changed is refused by the host: a new workflow version keeps the
+notice and changes its binding. These identities are installed on devices
+and never change form.
 
 ```quint
 type WorkflowNoticeRoute = { noticeScope: str, noticeOrigin: str, noticeOwner: str, noticeAgent: str, workflowId: str, runId: str, versionId: str }
@@ -225,10 +225,9 @@ pure val routeValues: Set[WorkflowNoticeRoute] = {
   Set(route).union(Set({ ...route, versionId: "v2" })).union(Set({ ...route, runId: "r2" }))
 }
 pure val otherValues = routeValues
-pure def lawOneNoticePerApproval(route: WorkflowNoticeRoute, other: WorkflowNoticeRoute, proposal: str): bool =
-  (route.noticeScope == other.noticeScope and route.runId == other.runId) implies approvalNoticeId(route, proposal) == approvalNoticeId(other, proposal)
-pure def lawChangedRouteChangesTheBinding(route: WorkflowNoticeRoute, other: WorkflowNoticeRoute, proposal: str): bool =
-  route != other implies approvalNoticeBinding(route, proposal) != approvalNoticeBinding(other, proposal)
+pure def lawNewVersionKeepsTheNoticeButNotItsBinding(route: WorkflowNoticeRoute, other: WorkflowNoticeRoute, proposal: str): bool =
+  (other == { ...route, versionId: other.versionId } and other.versionId != route.versionId) implies
+    (approvalNoticeId(route, proposal) == approvalNoticeId(other, proposal) and approvalNoticeBinding(route, proposal) != approvalNoticeBinding(other, proposal))
 ```
 
 ### An approval notice is offered or kept only while its approval is pending

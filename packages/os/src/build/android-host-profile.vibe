@@ -1,0 +1,625 @@
+// spec/os/build/androidHost.md, "Story: Generate my app's Android host from data"; spec/os/build/androidHost.md, "Story: Keep my schema-1 profile readable through one fixed map"
+import {
+  builtAsProject,
+  hostVerdict,
+  moduleNeeds,
+  osModuleNames,
+  schemaOneDropped,
+  schemaOneRefusal,
+  upstreamSource,
+  type AdmissionCommand,
+  type AgentEntry,
+  type BuildConfigField,
+  type FieldValue,
+  type HostFacts,
+  type HostRefusal,
+  type ModuleRoot,
+  type OsModuleEntry,
+  type SourcePath,
+  type SourceRef,
+  type SourceSetUse,
+} from "../../gen/os__build__androidHost.effect.vibe"
+
+export type { HostRefusal }
+
+export error HostProfileRefused { refusal: HostRefusal; detail: string }
+
+const NAME = /^[a-zA-Z][a-zA-Z0-9_-]*$/
+const ENVIRONMENT_NAME = /^[A-Z][A-Z0-9_]*$/
+const CONSTANT = /^[A-Z][A-Z0-9_]*$/
+const TASK = /^[a-z][A-Za-z0-9]*$/
+const APP_ID = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/
+const VERSION_NAME = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/
+const ARTIFACT = /^[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+$/
+const ASSET_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+const EXTENSION = /^[a-z0-9]+$/
+const RESOURCE = /^[a-z][a-z0-9_]*$/
+const STRING_KEY = /^[a-z][A-Za-z0-9]*$/
+const COLOR = /^0x[0-9a-fA-F]{8}$/
+const JAVA_CLASS = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/
+const JAVA_METHOD = /^[a-z][A-Za-z0-9_]*$/
+const GENERATOR_TASK_PREFIX = "eliza"
+const UPSTREAM = "upstream"
+
+schema Ref { root: string; path: string }
+const Fields = Schema.optionalKey(Schema.Array(Schema.Struct({ name: Schema.String, type: Schema.String, value: Schema.Unknown })))
+const Abis = Schema.optionalKey(Schema.Array(Schema.String))
+const Command = Schema.Array(Schema.String)
+schema Step { name: string; command: readonly string[]; directory: Ref }
+const Dependency = Schema.Struct({
+  configuration: Schema.String,
+  module: Schema.optionalKey(Schema.String),
+  toolchainVersion: Schema.optionalKey(Schema.String),
+  coordinate: Schema.optionalKey(Schema.String),
+})
+schema AgentFiles { host: Ref; character: Ref; policy: Ref }
+const Strings = Schema.Record(Schema.String, Schema.String)
+
+const kept = {
+  sdk: Schema.Struct({ min: Schema.Int, target: Schema.Int, compile: Schema.Int }),
+  releaseMinify: Schema.Boolean,
+  kotlin: Schema.optionalKey(Schema.Boolean),
+  nativeLibraries: Schema.optionalKey(Schema.Literal("extract-16k")),
+  manifest: Ref,
+  manifestPlaceholders: Schema.optionalKey(Strings),
+  flavors: Schema.Array(Schema.Struct({ name: Schema.String, buildConfigFields: Fields, manifest: Schema.optionalKey(Ref) })),
+  buildConfigFields: Fields,
+  buildTypes: Schema.optionalKey(Schema.Struct({
+    debug: Schema.optionalKey(Schema.Struct({ abiFilters: Abis, buildConfigFields: Fields })),
+    release: Schema.optionalKey(Schema.Struct({ abiFilters: Abis, buildConfigFields: Fields, shrinkResources: Schema.optionalKey(Schema.Boolean), proguardFiles: Schema.optionalKey(Schema.Array(Ref)) })),
+  })),
+  versionOverride: Schema.optionalKey(Schema.Struct({ versionCode: Schema.optionalKey(Schema.String), versionName: Schema.optionalKey(Schema.String) })),
+  signing: Schema.optionalKey(Schema.Struct({
+    storeFile: Schema.optionalKey(Schema.String),
+    storePassword: Schema.optionalKey(Schema.String),
+    keyAlias: Schema.optionalKey(Schema.String),
+    keyPassword: Schema.optionalKey(Schema.String),
+  })),
+  sourceSets: Schema.optionalKey(Schema.Record(Schema.String, Schema.Record(Schema.String, Schema.Array(Ref)))),
+  generatedSources: Schema.optionalKey(Schema.Array(Schema.Struct({ sourceSet: Schema.String, kind: Schema.String, path: Schema.String }))),
+  dependencies: Schema.optionalKey(Schema.Array(Dependency)),
+  androidResources: Schema.optionalKey(Schema.Struct({ noCompress: Schema.Array(Schema.String) })),
+  assetFiles: Schema.optionalKey(Schema.Array(Schema.Struct({ source: Ref, name: Schema.String }))),
+  appScripts: Schema.optionalKey(Schema.Array(Ref)),
+  admission: Schema.optionalKey(Schema.Array(Step)),
+}
+
+const ProfileTwo = Schema.Struct({
+  ...kept,
+  schema: Schema.Literal(2),
+  companion: Schema.optionalKey(Schema.Unknown),
+  osModules: Schema.Array(Schema.Struct({ module: Schema.String, sources: Schema.optionalKey(Schema.Array(Schema.String)) })),
+  modules: Schema.optionalKey(Schema.Array(Schema.Struct({ name: Schema.String, source: Ref, appDependency: Schema.optionalKey(Schema.Boolean) }))),
+  agent: Schema.optionalKey(AgentFiles),
+  agentService: Schema.optionalKey(Schema.Struct({
+    notification: Schema.optionalKey(Schema.Struct({ smallIcon: Schema.String, color: Schema.String, channel: Schema.String, strings: Strings, stopAction: Schema.Boolean })),
+    launchHook: Schema.optionalKey(Schema.Struct({ class: Schema.String, method: Schema.String })),
+  })),
+})
+
+const ProfileOne = Schema.Struct({
+  ...kept,
+  schema: Schema.Literal(1),
+  modules: Schema.Array(Schema.Struct({ name: Schema.String, source: Ref, appDependency: Schema.optionalKey(Schema.Boolean), relocateBuild: Schema.optionalKey(Schema.Boolean) })),
+  sourceFiles: Schema.optionalKey(Schema.Array(Schema.Struct({ source: Ref, sourceSet: Schema.String, language: Schema.String }))),
+  settingsAdmission: Schema.optionalKey(Schema.Array(Schema.Struct({ command: Command, directory: Ref }))),
+  embeddedAgent: Schema.optionalKey(AgentFiles),
+  residentHost: Schema.optionalKey(Schema.Struct({
+    notification: Schema.optionalKey(Schema.Struct({ smallIcon: Schema.String, primaryAction: Schema.Literals(["stop", "none"]), color: Schema.String, channelLabel: Schema.String, strings: Strings })),
+    environmentHook: Schema.optionalKey(Schema.Struct({ className: Schema.String, method: Schema.String, unavailableStatus: Schema.optionalKey(Schema.String) })),
+    lifecycleHooks: Schema.optionalKey(Schema.Unknown),
+    classes: Schema.optionalKey(Schema.Unknown),
+    sockets: Schema.optionalKey(Schema.Unknown),
+    helpers: Schema.optionalKey(Schema.Unknown),
+  })),
+  preserveRuntimeBytes: Schema.optionalKey(Schema.Unknown),
+  generationInputs: Schema.optionalKey(Schema.Unknown),
+  testMocks: Schema.optionalKey(Schema.Unknown),
+})
+
+const Identity = Schema.Struct({ appId: Schema.String, appName: Schema.String, version: Schema.String, versionCode: Schema.Number })
+
+type ProfileTwo = typeof ProfileTwo.Type
+type ProfileOne = typeof ProfileOne.Type
+type RawField = { readonly name: string; readonly type: string; readonly value: unknown }
+
+export type OsModuleName = "agent-service" | "runtime-files" | "sign-in" | "secure-store" | "system" | "camera" | "browser-surface" | "calendar" | "contacts" | "reminders"
+  | "action-journal" | "notifications" | "messages" | "phone" | "passwords" | "media" | "filesystem" | "location" | "wifi" | "voice-io" | "app-update"
+export type SourceKind = "java" | "kotlin" | "assets" | "res" | "jniLibs"
+export type HostRootName = "consumer" | "dependencies"
+
+export interface HostSetting {
+  readonly identity: unknown
+  readonly consumerRoot: string
+  readonly osRoot: string
+  readonly dependencyRoot?: string
+  readonly output: string
+  readonly toolchainVersions: Readonly<Record<string, string>>
+}
+
+export interface HostSource {
+  readonly root: HostRootName
+  readonly segments: readonly string[]
+  readonly place: string
+}
+
+export type ConfigField =
+  | { readonly kind: "boolean"; readonly name: string; readonly value: boolean }
+  | { readonly kind: "int"; readonly name: string; readonly value: number }
+  | { readonly kind: "String"; readonly name: string; readonly value: string }
+
+export interface HostOsModule {
+  readonly module: OsModuleName
+  readonly directory: string
+  readonly project: string | undefined
+  readonly sources: readonly string[]
+}
+
+export interface AndroidHostProfile {
+  readonly schema: 2
+  readonly identity: { readonly appId: string; readonly appName: string; readonly version: string; readonly versionCode: number }
+  readonly roots: { readonly consumer: string; readonly os: string; readonly dependencies: string | undefined }
+  readonly output: string
+  readonly sdk: { readonly min: number; readonly target: number; readonly compile: number }
+  readonly releaseMinify: boolean
+  readonly kotlin: boolean
+  readonly nativeLibraries: "extract-16k" | "default"
+  readonly manifest: HostSource
+  readonly manifestPlaceholders: Readonly<Record<string, string>>
+  readonly flavors: readonly { readonly name: string; readonly buildConfigFields: readonly ConfigField[]; readonly manifest: HostSource | undefined }[]
+  readonly buildConfigFields: readonly ConfigField[]
+  readonly buildTypes: {
+    readonly debug: { readonly abiFilters: readonly string[]; readonly buildConfigFields: readonly ConfigField[] }
+    readonly release: { readonly abiFilters: readonly string[]; readonly buildConfigFields: readonly ConfigField[]; readonly shrinkResources: boolean; readonly proguardFiles: readonly HostSource[] }
+  }
+  readonly versionOverride: { readonly versionCode: string; readonly versionName: string } | undefined
+  readonly signing: { readonly storeFile: string; readonly storePassword: string; readonly keyAlias: string; readonly keyPassword: string } | undefined
+  readonly sourceSets: readonly { readonly sourceSet: string; readonly kind: SourceKind; readonly source: HostSource }[]
+  readonly generatedSources: readonly { readonly sourceSet: string; readonly kind: SourceKind; readonly path: string }[]
+  readonly osModules: readonly HostOsModule[]
+  readonly modules: readonly { readonly name: string; readonly source: HostSource; readonly appDependency: boolean; readonly relocateBuild: boolean }[]
+  readonly dependencies: readonly { readonly configuration: string; readonly coordinate: string }[]
+  readonly noCompress: readonly string[]
+  readonly assetFiles: readonly { readonly source: HostSource; readonly name: string }[]
+  readonly appScripts: readonly HostSource[]
+  readonly admission: readonly { readonly task: string; readonly argv: readonly string[]; readonly directory: HostSource }[]
+  readonly agent: { readonly host: HostSource; readonly character: HostSource; readonly policy: HostSource } | undefined
+  readonly agentService: {
+    readonly notification: { readonly smallIcon: string; readonly color: string; readonly channel: string; readonly strings: Readonly<Record<string, string>>; readonly stopAction: boolean } | undefined
+    readonly launchHook: { readonly class: string; readonly method: string } | undefined
+  }
+}
+
+const REASONS: Record<HostRefusal, string> = {
+  ProfileMalformed: "The Android host profile does not have the schema-2 shape",
+  FieldDropped: "The schema-1 profile sets a field that has no schema-2 successor",
+  UpstreamUnmapped: "The schema-1 upstream source lies in no os module",
+  SchemaUnsupported: "The Android host profile schema must be 2, or 1 through the schema-1 map",
+  CompanionDeclared: "The agent service runs exactly one Node child, so a profile names no companion",
+  IdentityInvalid: "The application identity needs a dotted package name, a visible label, a plain version and a version code from 1 to 2100000000",
+  SdkInvalid: "The SDK levels must start at 29 and never decrease from minimum to target to compile",
+  FlavorsInvalid: "The profile lists distinct named flavors, none a build type or a fixed source set",
+  BuildConfigInvalid: "Build configuration fields need distinct constant names and values that fit their Java types",
+  BuildTypesInvalid: "Resource shrinking and proguard files need release minification, and ABI filters name distinct supported ABIs",
+  VersionOverrideInvalid: "A version override names two distinct environment variables or none",
+  SigningPartial: "Release signing names all four environment variables or none",
+  SigningInvalid: "Release signing names four distinct environment variables",
+  OutputMisplaced: "The roots are absolute, and the generated host is a directory inside the consumer, below its root and outside the os package",
+  SourceRefused: "Every source names the consumer or a declared dependency root, the innermost root that holds it, by an explicit path",
+  SourceSetInvalid: "Every source and generated source belongs to a declared source set and kind, and generated sources lie below generated/",
+  OsModulesInvalid: "Each os module comes from the closed list once with the os modules it needs, and its distinct sources lie below src/main or src/androidTest",
+  ProjectsInvalid: "Gradle project names are plain, distinct and never app",
+  DependencyNotPinned: "A Maven dependency names a configuration, a group:artifact and a toolchain version key",
+  ExtrasInvalid: "Asset names, uncompressed extensions, placeholders and admission tasks are plain and distinct, agent is not an asset name, app scripts are Gradle files and admission argv has no empty argument",
+  AgentInvalid: "The agent entry and agent service settings need agent-service, valid names and nativeLibraries extract-16k",
+}
+
+function refused(refusal: HostRefusal, detail?: string) {
+  return new HostProfileRefused({ refusal, detail: detail === undefined ? REASONS[refusal] : `${REASONS[refusal]}: ${detail}` })
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function visibleLabel(value: string): boolean {
+  return value.trim() !== "" && [...value].every((character) => (character.codePointAt(0) ?? 0) >= 32 && character.codePointAt(0) !== 127)
+}
+
+function absoluteSegments(place: string): string[] {
+  return place.startsWith("/") ? place.slice(1).split("/") : []
+}
+
+function pathOf(path: string): SourcePath {
+  if (path === ".") return { tag: "RootItself" }
+  if (path.includes("\\") || path.includes("\0") || path.startsWith("/")) return { tag: "NotAPath" }
+  return { tag: "Below", segments: path.split("/") }
+}
+
+function rootOf(root: string): SourceRef["root"] {
+  return root === "consumer" ? "ConsumerRoot" : root === "dependencies" ? "DependencyRoot" : "UndeclaredRoot"
+}
+
+function moduleSourceSegments(path: string): string[] {
+  return path.includes("\\") || path.includes("\0") ? [] : path.split("/")
+}
+
+function fieldValue(field: RawField): FieldValue {
+  if (field.type === "boolean" && typeof field.value === "boolean") return { tag: "BooleanValue" }
+  if (field.type === "int" && typeof field.value === "number" && Number.isSafeInteger(field.value)) return { tag: "IntValue", number: field.value }
+  if (field.type === "String" && typeof field.value === "string") return { tag: "StringValue" }
+  return { tag: "MismatchedValue" }
+}
+
+function fieldFacts(fields: readonly RawField[] | undefined): BuildConfigField[] {
+  return (fields ?? []).map((field) => ({ constant: field.name, constantValid: CONSTANT.test(field.name), javaValue: fieldValue(field) }))
+}
+
+function environmentFacts(names: readonly string[]) {
+  return { names: [...names], namesValid: names.every((name) => ENVIRONMENT_NAME.test(name)) }
+}
+
+function present(record: Readonly<Record<string, string | undefined>> | undefined, keys: readonly string[]): string[] {
+  return keys.flatMap((key) => (record?.[key] === undefined ? [] : [record[key]]))
+}
+
+const SIGNING_KEYS = ["storeFile", "storePassword", "keyAlias", "keyPassword"] as const
+const VERSION_KEYS = ["versionCode", "versionName"] as const
+
+function agentFacts(profile: ProfileTwo): AgentEntry {
+  const notification = profile.agentService?.notification
+  const hook = profile.agentService?.launchHook
+  if (profile.agent === undefined && notification === undefined && hook === undefined) return { tag: "NoAgent" }
+  return {
+    tag: "AgentDeclared",
+    notificationValid: notification === undefined || (
+      RESOURCE.test(notification.smallIcon) && COLOR.test(notification.color) && visibleLabel(notification.channel)
+      && Object.entries(notification.strings).every(([key, resource]) => STRING_KEY.test(key) && RESOURCE.test(resource))),
+    hookValid: hook === undefined || (JAVA_CLASS.test(hook.class) && JAVA_METHOD.test(hook.method)),
+  }
+}
+
+function sourceRefs(profile: ProfileTwo): SourceRef[] {
+  const file = (ref: Ref): SourceRef => ({ root: rootOf(ref.root), path: pathOf(ref.path), wanted: "WantsFile" })
+  const directory = (ref: Ref): SourceRef => ({ root: rootOf(ref.root), path: pathOf(ref.path), wanted: "WantsDirectory" })
+  const agent = profile.agent
+  return [
+    file(profile.manifest),
+    ...profile.flavors.flatMap((flavor) => (flavor.manifest === undefined ? [] : [file(flavor.manifest)])),
+    ...Object.values(profile.sourceSets ?? {}).flatMap((kinds) => Object.values(kinds).flatMap((refs) => refs.map(directory))),
+    ...(profile.buildTypes?.release?.proguardFiles ?? []).map(file),
+    ...(profile.modules ?? []).map((module) => directory(module.source)),
+    ...(profile.assetFiles ?? []).map((asset) => file(asset.source)),
+    ...(profile.appScripts ?? []).map(file),
+    ...(profile.admission ?? []).map((step) => directory(step.directory)),
+    ...(agent === undefined ? [] : [file(agent.host), file(agent.character), file(agent.policy)]),
+  ]
+}
+
+function sourceSetUses(profile: ProfileTwo): SourceSetUse[] {
+  return [
+    ...Object.entries(profile.sourceSets ?? {}).flatMap(([sourceSet, kinds]) => Object.keys(kinds).map((sourceKind) => ({ sourceSet, sourceKind, generatedPath: [] }))),
+    ...(profile.generatedSources ?? []).map((entry) => ({ sourceSet: entry.sourceSet, sourceKind: entry.kind, generatedPath: entry.path.split("/") })),
+  ]
+}
+
+function verdictOf(facts: HostFacts, debugAbis: readonly string[]) {
+  const release = hostVerdict(facts)
+  const debug = hostVerdict({ ...facts, abis: [...debugAbis] })
+  return debug.tag === "HostRefused" && debug.refusal === "BuildTypesInvalid" ? debug : release
+}
+
+function osModuleEntries(profile: ProfileTwo): OsModuleEntry[] {
+  return profile.osModules.map((entry) => ({ osModule: entry.module, sources: (entry.sources ?? []).map(moduleSourceSegments) }))
+}
+
+function hostFacts(profile: ProfileTwo, identity: typeof Identity.Type, setting: HostSetting): HostFacts {
+  const osModules = osModuleEntries(profile)
+  const debug = profile.buildTypes?.debug
+  const release = profile.buildTypes?.release
+  const commands: AdmissionCommand[] = (profile.admission ?? []).map((step) => ({
+    task: step.name,
+    taskValid: TASK.test(step.name) && !step.name.startsWith(GENERATOR_TASK_PREFIX),
+    argv: [...step.command],
+  }))
+  return {
+    schema: profile.schema,
+    companionDeclared: profile.companion !== undefined,
+    appIdValid: APP_ID.test(identity.appId),
+    appNameValid: visibleLabel(identity.appName),
+    versionValid: VERSION_NAME.test(identity.version),
+    versionCode: Number.isSafeInteger(identity.versionCode) ? identity.versionCode : 0,
+    minSdk: profile.sdk.min,
+    targetSdk: profile.sdk.target,
+    compileSdk: profile.sdk.compile,
+    flavors: profile.flavors.map((flavor) => flavor.name),
+    flavorNamesValid: profile.flavors.every((flavor) => NAME.test(flavor.name)),
+    fieldGroups: [profile.buildConfigFields, ...profile.flavors.map((flavor) => flavor.buildConfigFields), debug?.buildConfigFields, release?.buildConfigFields].map(fieldFacts),
+    releaseMinify: profile.releaseMinify,
+    shrinkResources: release?.shrinkResources ?? false,
+    proguardFiles: release?.proguardFiles?.length ?? 0,
+    abis: [...(release?.abiFilters ?? [])],
+    versionOverride: environmentFacts(present(profile.versionOverride, VERSION_KEYS)),
+    signing: environmentFacts(present(profile.signing, SIGNING_KEYS)),
+    roots: {
+      consumer: absoluteSegments(setting.consumerRoot),
+      os: absoluteSegments(setting.osRoot),
+      dependencies: setting.dependencyRoot === undefined ? [] : absoluteSegments(setting.dependencyRoot),
+      dependenciesDeclared: setting.dependencyRoot !== undefined,
+    },
+    output: absoluteSegments(setting.output),
+    sources: sourceRefs(profile),
+    uses: sourceSetUses(profile),
+    osModules,
+    projects: [...(profile.modules ?? []).map((module) => module.name), ...osModules.filter(builtAsProject).map((entry) => `eliza-${entry.osModule}`)],
+    projectNamesValid: (profile.modules ?? []).every((module) => NAME.test(module.name)),
+    toolchainKeys: Object.keys(setting.toolchainVersions),
+    dependencies: (profile.dependencies ?? []).map((dependency) => ({
+      configuration: dependency.configuration,
+      artifactValid: dependency.coordinate === undefined && ARTIFACT.test(dependency.module ?? ""),
+      versionKey: dependency.toolchainVersion ?? "",
+    })),
+    assetNames: (profile.assetFiles ?? []).map((asset) => asset.name),
+    noCompress: [...(profile.androidResources?.noCompress ?? [])],
+    namesValid: (profile.assetFiles ?? []).every((asset) => ASSET_NAME.test(asset.name))
+      && (profile.androidResources?.noCompress ?? []).every((extension) => EXTENSION.test(extension))
+      && (profile.appScripts ?? []).every((script) => script.path.endsWith(".gradle"))
+      && Object.keys(profile.manifestPlaceholders ?? {}).every((name) => NAME.test(name)),
+    commands,
+    packaging: profile.nativeLibraries === "extract-16k" ? "Extract16k" : "DefaultPackaging",
+    agent: agentFacts(profile),
+  }
+}
+
+function signingDetail(profile: ProfileTwo): string {
+  const missing = SIGNING_KEYS.filter((key) => profile.signing?.[key] === undefined)
+  const named = present(profile.signing, SIGNING_KEYS)
+  return `named ${named.join(", ")}; missing ${missing.join(", ")}`
+}
+
+const UPSTREAM_TABLE: readonly ModuleRoot[] = [
+  ...([
+    ["plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/health", "app-update", false],
+    ["plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/updater", "app-update", false],
+    ["plugins/plugin-native-agent/android/src/androidTest/java/ai/eliza/plugins/agent/health", "app-update", false],
+    ["plugins/plugin-native-agent/android/src/androidTest/java/ai/eliza/plugins/agent/contract", "app-update", false],
+    ["plugins/plugin-native-agent/android", "agent-service", false],
+    ["packages/auth/android", "sign-in", false],
+    ["packages/host/native-host", "secure-store", false],
+    ["plugins/plugin-native-secure-store/android-nativeonly", "secure-store", false],
+    ["plugins/plugin-native-secure-store/android", "secure-store", true],
+  ] as const).map(([prefix, movedTo, keepsPath]) => ({ prefix: prefix.split("/"), movedTo, keepsPath })),
+  ...["action-journal", "browser-surface", "calendar", "camera", "contacts", "filesystem", "location", "media", "messages", "notifications", "passwords", "phone", "reminders", "system", "wifi"]
+    .map((module) => ({ prefix: ["plugins", `plugin-native-${module}`, "android"], movedTo: module, keepsPath: true })),
+  ...osModuleNames.map((module) => ({ prefix: ["packages", "os", "android", module], movedTo: module, keepsPath: true })),
+]
+
+interface Selection { whole: boolean; rests: string[] }
+
+effect function selectUpstream(selections: Map<string, Selection>, path: string) {
+  const found = upstreamSource([...UPSTREAM_TABLE], path.split("/"))
+  if (found.tag === "NoOsModule") throw refused("UpstreamUnmapped", path)
+  const selection = selections.get(found.movedTo) ?? { whole: false, rests: [] }
+  const rest = found.rest.join("/")
+  selections.set(found.movedTo, {
+    whole: selection.whole || rest === "",
+    rests: rest === "" || selection.rests.includes(rest) ? selection.rests : [...selection.rests, rest],
+  })
+}
+
+function selectNeeded(selections: Map<string, Selection>, module: string) {
+  if (selections.has(module)) return
+  selections.set(module, { whole: true, rests: [] })
+  for (const needed of moduleNeeds(module)) selectNeeded(selections, needed)
+}
+
+effect function readSchemaOne(one: ProfileOne) {
+  const resident = one.residentHost
+  const fieldsSet = [
+    ...(["preserveRuntimeBytes", "generationInputs", "testMocks"] as const).filter((field) => one[field] !== undefined),
+    ...(["classes", "sockets", "helpers"] as const).filter((field) => resident?.[field] !== undefined).map((field) => `residentHost.${field}`),
+    ...((one.dependencies ?? []).some((dependency) => dependency.coordinate !== undefined) ? ["dependencies.coordinate"] : []),
+  ]
+  const upstreamPaths = [
+    ...one.modules.map((module) => module.source),
+    ...Object.values(one.sourceSets ?? {}).flatMap((kinds) => Object.values(kinds).flat()),
+    ...(one.sourceFiles ?? []).map((file) => file.source),
+  ].flatMap((ref) => (ref.root === UPSTREAM ? [ref.path] : []))
+  const verdict = schemaOneRefusal(fieldsSet, [...UPSTREAM_TABLE], upstreamPaths.map((path) => path.split("/")))
+  if (verdict.tag === "HostRefused") {
+    throw verdict.refusal === "FieldDropped"
+      ? refused("FieldDropped", fieldsSet.filter((field) => schemaOneDropped.includes(field)).join(", "))
+      : refused(verdict.refusal, upstreamPaths.find((path) => upstreamSource([...UPSTREAM_TABLE], path.split("/")).tag === "NoOsModule"))
+  }
+  const selections = new Map<string, Selection>()
+  for (const module of one.modules) {
+    if (module.source.root === UPSTREAM) try selectUpstream(selections, module.source.path)
+  }
+  const sourceSets: Record<string, Record<string, Ref[]>> = {}
+  for (const [sourceSet, kinds] of Object.entries(one.sourceSets ?? {})) {
+    for (const [kind, refs] of Object.entries(kinds)) {
+      for (const ref of refs) {
+        if (ref.root === UPSTREAM) try selectUpstream(selections, ref.path)
+        else (sourceSets[sourceSet] ??= {})[kind] = [...(sourceSets[sourceSet]?.[kind] ?? []), ref]
+      }
+    }
+  }
+  for (const file of one.sourceFiles ?? []) {
+    if (file.source.root !== UPSTREAM) throw refused("FieldDropped", `sourceFiles ${file.source.root}:${file.source.path}`)
+    try selectUpstream(selections, file.source.path)
+  }
+  const agent = one.embeddedAgent
+  const notification = resident?.notification
+  const hook = resident?.environmentHook
+  if (agent !== undefined || notification !== undefined || hook !== undefined) selectNeeded(selections, "agent-service")
+  for (const module of [...selections.keys()]) for (const needed of moduleNeeds(module)) selectNeeded(selections, needed)
+  const two: ProfileTwo = {
+    schema: 2,
+    sdk: one.sdk,
+    releaseMinify: one.releaseMinify,
+    manifest: one.manifest,
+    flavors: one.flavors,
+    ...(one.kotlin === undefined ? {} : { kotlin: one.kotlin }),
+    ...(one.nativeLibraries === undefined ? {} : { nativeLibraries: one.nativeLibraries }),
+    ...(one.manifestPlaceholders === undefined ? {} : { manifestPlaceholders: one.manifestPlaceholders }),
+    ...(one.buildConfigFields === undefined ? {} : { buildConfigFields: one.buildConfigFields }),
+    ...(one.buildTypes === undefined ? {} : { buildTypes: one.buildTypes }),
+    ...(one.versionOverride === undefined ? {} : { versionOverride: one.versionOverride }),
+    ...(one.signing === undefined ? {} : { signing: one.signing }),
+    ...(one.generatedSources === undefined ? {} : { generatedSources: one.generatedSources }),
+    ...(one.dependencies === undefined ? {} : { dependencies: one.dependencies }),
+    ...(one.androidResources === undefined ? {} : { androidResources: one.androidResources }),
+    ...(one.assetFiles === undefined ? {} : { assetFiles: one.assetFiles }),
+    ...(one.appScripts === undefined ? {} : { appScripts: one.appScripts }),
+    sourceSets,
+    admission: [
+      ...(one.settingsAdmission ?? []).map((step, index) => ({ name: `settingsAdmission${index + 1}`, ...step })),
+      ...(one.admission ?? []),
+    ],
+    osModules: [...selections].map(([module, selection]) => {
+      const sources = selection.whole ? selection.rests.filter((rest) => rest.startsWith("src/androidTest/")) : selection.rests
+      return sources.length === 0 ? { module } : { module, sources }
+    }),
+    modules: one.modules.filter((module) => module.source.root !== UPSTREAM).map((module) => ({
+      name: module.name,
+      source: module.source,
+      ...(module.appDependency === undefined ? {} : { appDependency: module.appDependency }),
+    })),
+    ...(agent === undefined ? {} : { agent }),
+    ...(notification === undefined && hook === undefined ? {} : {
+      agentService: {
+        ...(notification === undefined ? {} : {
+          notification: { smallIcon: notification.smallIcon, color: notification.color, channel: notification.channelLabel, strings: notification.strings, stopAction: notification.primaryAction === "stop" },
+        }),
+        ...(hook === undefined ? {} : { launchHook: { class: hook.className, method: hook.method } }),
+      },
+    }),
+  }
+  return two
+}
+
+effect function decodeProfile(raw: unknown) {
+  if (!isRecord(raw) || typeof raw.schema !== "number") throw refused("ProfileMalformed", "the profile is not an object with a numeric schema")
+  const malformed = (issue: { readonly message: string }) => refused("ProfileMalformed", issue.message)
+  if (raw.schema === 2) return try mapError(Schema.decodeUnknownEffect(ProfileTwo)(raw, { onExcessProperty: "error" }), malformed)
+  if (raw.schema === 1) return try readSchemaOne(try mapError(Schema.decodeUnknownEffect(ProfileOne)(raw, { onExcessProperty: "error" }), malformed))
+  throw refused("SchemaUnsupported", `schema ${raw.schema}`)
+}
+
+effect function typedFields(fields: readonly RawField[] | undefined) {
+  const typed: ConfigField[] = []
+  for (const field of fields ?? []) {
+    if (field.type === "boolean" && typeof field.value === "boolean") typed.push({ kind: "boolean", name: field.name, value: field.value })
+    else if (field.type === "int" && typeof field.value === "number") typed.push({ kind: "int", name: field.name, value: field.value })
+    else if (field.type === "String" && typeof field.value === "string") typed.push({ kind: "String", name: field.name, value: field.value })
+    else throw refused("BuildConfigInvalid", field.name)
+  }
+  return typed
+}
+
+function sourceKind(kind: string): SourceKind | undefined {
+  return kind === "java" || kind === "kotlin" || kind === "assets" || kind === "res" || kind === "jniLibs" ? kind : undefined
+}
+
+function osModuleName(module: string): OsModuleName | undefined {
+  return osModuleNames.includes(module) ? (module as OsModuleName) : undefined
+}
+
+effect function admitted(profile: ProfileTwo, identity: typeof Identity.Type, setting: HostSetting, facts: HostFacts) {
+  const rootPlace = (root: HostRootName) => (root === "consumer" ? setting.consumerRoot : setting.dependencyRoot ?? setting.consumerRoot)
+  const source = (ref: Ref): HostSource => {
+    const root: HostRootName = ref.root === "dependencies" ? "dependencies" : "consumer"
+    const segments = ref.path === "." ? [] : ref.path.split("/")
+    return { root, segments, place: segments.length === 0 ? rootPlace(root) : `${rootPlace(root)}/${segments.join("/")}` }
+  }
+  const sourceSets = []
+  for (const [sourceSet, kinds] of Object.entries(profile.sourceSets ?? {})) {
+    for (const [name, refs] of Object.entries(kinds)) {
+      const kind = sourceKind(name)
+      if (kind === undefined) throw refused("SourceSetInvalid", `${sourceSet}.${name}`)
+      sourceSets.push(...refs.map((ref) => ({ sourceSet, kind, source: source(ref) })))
+    }
+  }
+  const generatedSources = []
+  for (const entry of profile.generatedSources ?? []) {
+    const kind = sourceKind(entry.kind)
+    if (kind === undefined) throw refused("SourceSetInvalid", `${entry.sourceSet}.${entry.kind}`)
+    generatedSources.push({ sourceSet: entry.sourceSet, kind, path: entry.path })
+  }
+  const osModules: HostOsModule[] = []
+  for (const entry of facts.osModules) {
+    const module = osModuleName(entry.osModule)
+    if (module === undefined) throw refused("OsModulesInvalid", entry.osModule)
+    osModules.push({
+      module,
+      directory: `${setting.osRoot}/android/${module}`,
+      project: builtAsProject(entry) ? `eliza-${module}` : undefined,
+      sources: entry.sources.map((segments) => segments.join("/")),
+    })
+  }
+  const flavors = []
+  for (const flavor of profile.flavors) {
+    flavors.push({ name: flavor.name, buildConfigFields: try typedFields(flavor.buildConfigFields), manifest: flavor.manifest === undefined ? undefined : source(flavor.manifest) })
+  }
+  const signing = profile.signing
+  const versionOverride = profile.versionOverride
+  const notification = profile.agentService?.notification
+  const launchHook = profile.agentService?.launchHook
+  const agent = profile.agent
+  const result: AndroidHostProfile = {
+    schema: 2,
+    identity: { appId: identity.appId, appName: identity.appName, version: identity.version, versionCode: identity.versionCode },
+    roots: { consumer: setting.consumerRoot, os: setting.osRoot, dependencies: setting.dependencyRoot },
+    output: setting.output,
+    sdk: profile.sdk,
+    releaseMinify: profile.releaseMinify,
+    kotlin: profile.kotlin ?? true,
+    nativeLibraries: profile.nativeLibraries ?? "default",
+    manifest: source(profile.manifest),
+    manifestPlaceholders: profile.manifestPlaceholders ?? {},
+    flavors,
+    buildConfigFields: try typedFields(profile.buildConfigFields),
+    buildTypes: {
+      debug: { abiFilters: profile.buildTypes?.debug?.abiFilters ?? [], buildConfigFields: try typedFields(profile.buildTypes?.debug?.buildConfigFields) },
+      release: {
+        abiFilters: profile.buildTypes?.release?.abiFilters ?? [],
+        buildConfigFields: try typedFields(profile.buildTypes?.release?.buildConfigFields),
+        shrinkResources: profile.buildTypes?.release?.shrinkResources ?? false,
+        proguardFiles: (profile.buildTypes?.release?.proguardFiles ?? []).map(source),
+      },
+    },
+    versionOverride: versionOverride?.versionCode === undefined || versionOverride.versionName === undefined ? undefined : { versionCode: versionOverride.versionCode, versionName: versionOverride.versionName },
+    signing: signing?.storeFile === undefined || signing.storePassword === undefined || signing.keyAlias === undefined || signing.keyPassword === undefined
+      ? undefined
+      : { storeFile: signing.storeFile, storePassword: signing.storePassword, keyAlias: signing.keyAlias, keyPassword: signing.keyPassword },
+    sourceSets,
+    generatedSources,
+    osModules,
+    modules: (profile.modules ?? []).map((module) => ({
+      name: module.name,
+      source: source(module.source),
+      appDependency: module.appDependency ?? true,
+      relocateBuild: module.source.root !== "consumer",
+    })),
+    dependencies: (profile.dependencies ?? []).map((dependency) => ({
+      configuration: dependency.configuration,
+      coordinate: `${dependency.module}:${setting.toolchainVersions[dependency.toolchainVersion ?? ""]}`,
+    })),
+    noCompress: profile.androidResources?.noCompress ?? [],
+    assetFiles: (profile.assetFiles ?? []).map((asset) => ({ source: source(asset.source), name: asset.name })),
+    appScripts: (profile.appScripts ?? []).map(source),
+    admission: (profile.admission ?? []).map((step) => ({ task: step.name, argv: step.command, directory: source(step.directory) })),
+    agent: agent === undefined ? undefined : { host: source(agent.host), character: source(agent.character), policy: source(agent.policy) },
+    agentService: { notification, launchHook },
+  }
+  return result
+}
+
+export effect function admitHostProfile(raw: unknown, setting: HostSetting) {
+  const profile = try decodeProfile(raw)
+  const identity = try mapError(Schema.decodeUnknownEffect(Identity)(setting.identity, { onExcessProperty: "error" }), (issue) => refused("IdentityInvalid", issue.message))
+  const facts = hostFacts(profile, identity, setting)
+  const verdict = verdictOf(facts, profile.buildTypes?.debug?.abiFilters ?? [])
+  if (verdict.tag === "HostRefused") throw refused(verdict.refusal, verdict.refusal === "SigningPartial" ? signingDetail(profile) : undefined)
+  return try admitted(profile, identity, setting, facts)
+}

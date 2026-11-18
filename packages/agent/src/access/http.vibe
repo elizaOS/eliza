@@ -99,7 +99,8 @@ module node {
     })
     request.once("end", () => {
       if (over) return
-      const call = { target, method, authorization, body: size === 0 ? undefined : Buffer.concat(chunks, size) }
+      const headers = new Map(Object.entries(request.headers).flatMap(([key, header]) => typeof header === "string" ? [[key, header] as const] : []))
+      const call = { target, method, authorization, headers, body: size === 0 ? undefined : Buffer.concat(chunks, size) }
       const streamed = route.delivery(call) === "Streamed"
       receive(exchanges, connection, { kind: "request", id: "http", call: { ...call, streamed } }, route, feeds)
     })

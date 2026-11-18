@@ -194,14 +194,38 @@ export interface StripePaymentIntent {
   readonly created: number;
 }
 
+export interface StripeRefund {
+  readonly id: string;
+  readonly object: "refund";
+  readonly amount: number;
+  readonly charge: string;
+  readonly payment_intent: string;
+  readonly currency: "usd";
+  readonly status: "succeeded";
+  readonly created: number;
+}
+
+export interface StripeDispute {
+  readonly id: string;
+  readonly object: "dispute";
+  readonly amount: number;
+  readonly charge: string;
+  readonly payment_intent: string;
+  readonly currency: "usd";
+  status: "needs_response" | "won" | "lost";
+  readonly reason: "fraudulent";
+  readonly livemode: boolean;
+  readonly created: number;
+}
+
 export interface StripeCharge {
   readonly id: string;
   readonly object: "charge";
   readonly amount: number;
   readonly amount_captured: number;
-  readonly amount_refunded: number;
-  readonly refunded: boolean;
-  readonly disputed: boolean;
+  amount_refunded: number;
+  refunded: boolean;
+  disputed: boolean;
   readonly paid: true;
   readonly captured: true;
   readonly status: "succeeded";
@@ -211,7 +235,7 @@ export interface StripeCharge {
   readonly payment_intent: string;
   readonly livemode: boolean;
   readonly created: number;
-  readonly refunds: List<never>;
+  readonly refunds: List<StripeRefund>;
 }
 
 export interface StripePortalSession {
@@ -233,6 +257,8 @@ export type StripeObject =
   | StripeInvoice
   | StripePaymentIntent
   | StripeCharge
+  | StripeRefund
+  | StripeDispute
   | StripePortalSession;
 
 type Kind = StripeObject["object"];
@@ -285,6 +311,9 @@ export interface StripeFake {
   failNext(path: string, answer: StripeFailureAnswer): void;
   completeSession(id: string, payment?: "paid" | "unpaid"): CompletedSession;
   expireSession(id: string): StripeCheckoutSession;
+  refundCharge(id: string, amount?: number): StripeCharge;
+  disputeCharge(id: string): StripeDispute;
+  resolveDispute(id: string, outcome: "won" | "lost"): StripeDispute;
   signedEvent(type: string, object: unknown, options?: SignedEventOptions): SignedEvent;
   tamper(raw: string): string;
 }
@@ -298,6 +327,8 @@ const prefixes = {
   line_item: "il",
   payment_intent: "pi",
   charge: "ch",
+  refund: "re",
+  dispute: "dp",
   "billing_portal.session": "bps",
   event: "evt",
   request: "req",
@@ -630,6 +661,38 @@ export function createStripeFake(options: StripeFakeOptions = {}): StripeFake {
     return { kind: "paid", session: clone(session), subscription: clone(subscription), invoice: clone(invoice), paymentIntent: clone(paymentIntent), charge: clone(charge) };
   }
 
+  function charged(id: string): StripeCharge {
+    const charge = find("charge", id);
+    if (charge === undefined) throw new Error(`the Stripe fake holds no charge ${id}`);
+    return charge;
+  }
+
+  function refundCharge(id: string, amount?: number): StripeCharge {
+    const charge = charged(id);
+    const refundable = charge.amount - charge.amount_refunded;
+    const refunded = amount ?? refundable;
+    if (!Number.isInteger(refunded) || refunded <= 0 || refunded > refundable) throw new Error(`charge ${id} has ${refundable} cents left to refund, not ${refunded}`);
+    const refund = keep<StripeRefund>({ id: nextId("refund"), object: "refund", amount: refunded, charge: id, payment_intent: charge.payment_intent, currency: "usd", status: "succeeded", created: now() });
+    charge.amount_refunded += refunded;
+    charge.refunded = charge.amount_refunded === charge.amount;
+    charge.refunds.data.unshift(refund);
+    return clone(charge);
+  }
+
+  function disputeCharge(id: string): StripeDispute {
+    const charge = charged(id);
+    if (charge.disputed) throw new Error(`charge ${id} is already disputed`);
+    charge.disputed = true;
+    return clone(keep<StripeDispute>({ id: nextId("dispute"), object: "dispute", amount: charge.amount - charge.amount_refunded, charge: id, payment_intent: charge.payment_intent, currency: "usd", status: "needs_response", reason: "fraudulent", livemode, created: now() }));
+  }
+
+  function resolveDispute(id: string, outcome: "won" | "lost"): StripeDispute {
+    const dispute = find("dispute", id);
+    if (dispute === undefined || dispute.status !== "needs_response") throw new Error(`dispute ${id} is not open`);
+    dispute.status = outcome;
+    return clone(dispute);
+  }
+
   function route(request: FakeRequest): FakeAnswer | undefined {
     const form = parseForm(request.method === "GET" ? request.query.toString() : request.body);
     const [, version, resource, id, action] = request.path.split("/");
@@ -689,6 +752,10 @@ export function createStripeFake(options: StripeFakeOptions = {}): StripeFake {
         return read(find("payment_intent", id), "payment_intent");
       case "GET charges/:id":
         return read(find("charge", id), "charge");
+      case "GET refunds/:id":
+        return read(find("refund", id), "refund");
+      case "GET disputes/:id":
+        return read(find("dispute", id), "dispute");
       case "POST billing_portal/:id": {
         if (id !== "sessions") return undefined;
         const customer = text(form, "customer") ?? "";
@@ -752,6 +819,9 @@ export function createStripeFake(options: StripeFakeOptions = {}): StripeFake {
     },
     completeSession,
     expireSession,
+    refundCharge,
+    disputeCharge,
+    resolveDispute,
     signedEvent(type, object, eventOptions = {}) {
       const id = eventOptions.id ?? nextId("event");
       const timestamp = eventOptions.timestamp ?? now();

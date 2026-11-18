@@ -76,7 +76,7 @@ pure def alwaysNoBudgetSpentWithoutMarker(s: Reset): bool = not(markerStands(s))
 The shell runs the credential's `reset` duties once (`C::resetAttempts`),
 bounded by eight seconds after a confirmation or a retry from the recovery
 screen and four at a start the owner is looking at; a background start gives
-it no time. A settled answer (`2xx` or `401`) is remembered for this reset;
+it no time and reports it unanswered. A settled answer (`2xx` or `401`) is remembered for this reset;
 no answer in time lets the attempt go ahead, and a later attempt asks again.
 
 ```quint

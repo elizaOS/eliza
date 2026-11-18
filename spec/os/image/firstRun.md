@@ -29,17 +29,19 @@ machine is done or retired.
 
 ### First run requires Home, the assistant the image declares, and the dialer and SMS app only where the image declares them and the device has telephony
 
-The declared roles are the image's default roles of
-[image provisioning](./provisioning.md); telephony is Android's
+Product composition stages the overlay with exactly the image's default
+roles of [image provisioning](./provisioning.md); telephony is Android's
 `FEATURE_TELEPHONY`.
 
 ```quint
 import provisioning as P from "./provisioning"
+type Descriptor = { active: bool, roles: Set[P::DefaultRole] }
+pure def stagedDescriptor(request: P::ProvisioningRequest, firstRunEnabled: bool): Descriptor = { active: firstRunEnabled, roles: P::imageRoles(request) }
 pure def requiredRoles(declared: Set[P::DefaultRole], telephony: bool): Set[P::DefaultRole] =
   Set(P::HomeRole).union(declared.filter(r => r == P::AssistantRole or (telephony and (r == P::DialerRole or r == P::SmsRole))))
 pure def lawRequiredRolesAreTheImageRolesNarrowedByTelephony(request: P::ProvisioningRequest, telephony: bool): bool = {
   val image = P::imageRoles(request)
-  val required = requiredRoles(image, telephony)
+  val required = requiredRoles(stagedDescriptor(request, true).roles, telephony)
   required.subseteq(image) and required.contains(P::HomeRole) and (required.contains(P::AssistantRole) iff P::takesAssistant(request.assistant))
     and (required.contains(P::DialerRole) iff (request.telephonyRoles and telephony)) and (required.contains(P::SmsRole) iff required.contains(P::DialerRole))
 }
@@ -97,7 +99,6 @@ already the product's is done at once. An attempt interrupted while
 assigning begins again from a fresh reading.
 
 ```quint
-type Descriptor = { active: bool, roles: Set[P::DefaultRole] }
 type Device = { systemUser: bool, mainUser: bool, managed: bool, profile: bool, telephony: bool }
 pure def eligible(device: Device): bool = device.systemUser and device.mainUser and not(device.managed) and not(device.profile)
 pure def canBegin(s: FirstRun, descriptor: Descriptor, device: Device, reading: Reading): bool =

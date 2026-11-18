@@ -117,7 +117,7 @@ function settlementFor(direction: SpeechDirection, dispatched: boolean, usage: W
   return usage.ttsConfirmed ? { kind: "known", actual: usage.ttsChars * rates.microsPerCharacter } : { kind: "unknown" }
 }
 
-function sessionColumns(now: number) {
+export function sessionColumns(now: number) {
   return (session: Session) => ({ phase: wireName(session.phase), expires_at: session.expiresAt, updated_at: now })
 }
 

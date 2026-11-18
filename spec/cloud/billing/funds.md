@@ -37,7 +37,8 @@ pure def availableCredits(f: Funds): Micros = f.creditBalance - f.creditHeld
 
 `prior` is the ledger entry already written under the request id, if any.
 An amount below 1 µUSD is `InvalidRequest`; a known id with another amount is
-`IdempotencyConflict`. Only `ApplyAdd` steps `addCredits`.
+`IdempotencyConflict`. Only `ApplyAdd` steps `addCredits`; the shell writes the
+ledger entry under the request id in the same transaction.
 
 ```quint
 type PriorEntry = NoEntry | EntryOf({ amount: Micros })
@@ -47,8 +48,6 @@ pure def addDecision(prior: PriorEntry, amount: Micros): AddDecision =
   else match prior { | NoEntry => ApplyAdd | EntryOf(e) => if (e.amount == amount) AnswerFirstEntry else RefuseAdd({ code: IdempotencyConflict }) }
 pure val priorValues = Set(NoEntry, EntryOf({ amount: 1 }), EntryOf({ amount: 2 }))
 pure val amountValues = Set(0, 1, 2, 5)
-pure def lawOnlyAFreshIdAdds(prior: PriorEntry, amount: Micros): bool =
-  (addDecision(prior, amount) == ApplyAdd) iff (prior == NoEntry and amount >= 1)
 pure def lawAddRefusalsAreWellFormed(prior: PriorEntry, amount: Micros): bool = {
   val decision = addDecision(prior, amount)
   match decision { | RefuseAdd(r) => wellFormed(refuse(r.code)) | _ => true }

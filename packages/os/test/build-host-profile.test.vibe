@@ -10,7 +10,6 @@ const SETTING: HostSetting = {
   dependencyRoot: "/work/app/node_modules",
   output: "/work/app/android/host",
   toolchainVersions: { androidxAppCompatVersion: "1.7.1", androidxWebkitVersion: "1.16.0" },
-  runtimeStaged: true,
 }
 const consumer = (path: string) => ({ root: "consumer", path })
 const upstream = (path: string) => ({ root: "upstream", path })
@@ -109,11 +108,11 @@ it.effect("Generate my app's Android host from data: a complete schema-2 profile
     agentService: { notification: NOTIFICATION, launchHook: { class: "example.fixture.host.Launch", method: "configure" } },
   }
   try Effect.try(() => assert.deepStrictEqual(admitted, expected))
-  const appUpdate = try admitHostProfile(defined({ ...PROFILE, agent: undefined, agentService: undefined, nativeLibraries: undefined, osModules: [{ module: "app-update" }, { module: "runtime-files" }] }), { ...SETTING, runtimeStaged: false })
+  const appUpdate = try admitHostProfile(defined({ ...PROFILE, agent: undefined, agentService: undefined, nativeLibraries: undefined, osModules: [{ module: "app-update" }, { module: "runtime-files" }] }), SETTING)
   try Effect.try(() => assert.deepStrictEqual(appUpdate.osModules.map((entry) => entry.project), ["eliza-app-update", "eliza-runtime-files"], "app-update builds without the agent service"))
 })
 
-it.effect("Each broken rule refuses the profile by name (spec/os/build/androidHost.md, \"A profile is admitted only when every rule holds, and a refusal names the first one broken\"; spec/os/build/androidHost.md, \"Release signing names all four environment variables or none, and a partial set is refused\"; spec/os/build/androidHost.md, \"A schema-1 field that has no successor is refused when it is set\")", () => effect {
+it.effect("Each broken rule refuses the profile by name (spec/os/build/androidHost.md, \"A profile is admitted only when every rule holds, and a refusal names the first one broken\"; spec/os/build/androidHost.md, \"Version override and release signing each name all of their distinct environment variables or none\"; spec/os/build/androidHost.md, \"A schema-1 field without a successor is refused when it is set, and an upstream source becomes the os module its path lies in\")", () => effect {
   const cases: Record<HostRefusal, { readonly profile: Readonly<Record<string, unknown>>; readonly setting?: Partial<HostSetting> }> = {
     ProfileMalformed: { profile: { ...PROFILE, embeddedAgent: AGENT } },
     FieldDropped: { profile: { ...PROFILE, schema: 1, agent: undefined, agentService: undefined, osModules: undefined, modules: [], generationInputs: [consumer("app.json")] } },
@@ -128,26 +127,38 @@ it.effect("Each broken rule refuses the profile by name (spec/os/build/androidHo
     VersionOverrideInvalid: { profile: { ...PROFILE, versionOverride: { versionCode: "APP_VERSION_CODE" } } },
     SigningPartial: { profile: { ...PROFILE, signing: { storeFile: "APP_STORE", keyAlias: "APP_KEY_ALIAS" } } },
     SigningInvalid: { profile: { ...PROFILE, signing: { ...SIGNING, keyPassword: "APP_STORE_PASSWORD" } } },
-    RootsInvalid: { profile: PROFILE, setting: { osRoot: "vendor/eliza/packages/os" } },
     OutputMisplaced: { profile: PROFILE, setting: { output: `${OS}/out` } },
     SourceRefused: { profile: { ...PROFILE, sourceSets: { main: { java: [consumer("vendor/eliza/packages/os/android/wifi/src/main/java")] } } } },
     SourceSetInvalid: { profile: { ...PROFILE, sourceSets: { beta: { java: [consumer("android/java")] } } } },
     OsModulesInvalid: { profile: { ...PROFILE, osModules: [...PROFILE.osModules, { module: "sense" }] } },
-    OsModulesNotClosed: { profile: { ...PROFILE, osModules: [{ module: "agent-service" }] } },
     ProjectsInvalid: { profile: { ...PROFILE, modules: [{ name: "eliza-agent-service", source: consumer("android/agent") }] } },
     DependencyNotPinned: { profile: { ...PROFILE, dependencies: [{ configuration: "implementation", coordinate: "androidx.appcompat:appcompat:1.7.1" }] } },
-    AssetsInvalid: { profile: { ...PROFILE, assetFiles: [{ source: consumer("artifacts/routes.json"), name: "agent" }] } },
-    AdmissionInvalid: { profile: { ...PROFILE, admission: [{ name: "elizaStage", command: ["node", "stage.mjs"], directory: consumer(".") }] } },
-    NativeLibrariesInvalid: { profile: { ...PROFILE, nativeLibraries: undefined } },
-    AgentInvalid: { profile: PROFILE, setting: { runtimeStaged: false } },
+    ExtrasInvalid: { profile: { ...PROFILE, assetFiles: [{ source: consumer("artifacts/routes.json"), name: "agent" }] } },
+    AgentInvalid: { profile: { ...PROFILE, nativeLibraries: undefined } },
   }
   const seen: Record<string, string> = {}
   for (const [refusal, { profile, setting }] of Object.entries(cases)) seen[refusal] = try outcome(defined(profile), { ...SETTING, ...setting })
   try Effect.try(() => assert.deepStrictEqual(seen, Object.fromEntries(Object.keys(cases).map((refusal) => [refusal, refusal]))))
   const partial = try refusalDetail({ ...PROFILE, signing: { storeFile: "APP_STORE", keyAlias: "APP_KEY_ALIAS" } })
   try Effect.try(() => assert.match(partial, /missing storePassword, keyPassword$/))
-  const serviceWithoutModule = try outcome(defined({ ...PROFILE, agent: undefined, nativeLibraries: undefined, osModules: [] }), { ...SETTING, runtimeStaged: false })
-  try Effect.try(() => assert.strictEqual(serviceWithoutModule, "AgentInvalid", "agent service settings need the agent-service module"))
+  const more = {
+    relativeRoot: try outcome(PROFILE, { ...SETTING, osRoot: "vendor/eliza/packages/os" }),
+    moduleWithoutNeeds: try outcome({ ...PROFILE, osModules: [{ module: "agent-service" }] }),
+    emptyArgument: try outcome({ ...PROFILE, admission: [{ name: "verifyDeployment", command: ["node", ""], directory: consumer(".") }] }),
+    generatorTask: try outcome({ ...PROFILE, admission: [{ name: "preBuild", command: ["node", "stage.mjs"], directory: consumer(".") }] }),
+    debugAbi: try outcome({ ...PROFILE, buildTypes: { ...PROFILE.buildTypes, debug: { abiFilters: ["mips"] } } }),
+    serviceWithoutModule: try outcome(defined({ ...PROFILE, agent: undefined, nativeLibraries: undefined, osModules: [] })),
+    badLaunchHook: try outcome({ ...PROFILE, agentService: { launchHook: { class: "example..Launch", method: "configure" } } }),
+  }
+  try Effect.try(() => assert.deepStrictEqual(more, {
+    relativeRoot: "OutputMisplaced",
+    moduleWithoutNeeds: "OsModulesInvalid",
+    emptyArgument: "ExtrasInvalid",
+    generatorTask: "ExtrasInvalid",
+    debugAbi: "BuildTypesInvalid",
+    serviceWithoutModule: "AgentInvalid",
+    badLaunchHook: "AgentInvalid",
+  }))
 })
 
 const SCHEMA_ONE = {
@@ -174,7 +185,7 @@ const shape = (profile: AndroidHostProfile) => ({
   admission: profile.admission.map((step) => `${step.task}: ${step.argv.join(" ")}`),
 })
 
-it.effect("Keep my schema-1 profile readable through one fixed map: profiles shaped like each consumer's map onto schema 2 (spec/os/build/androidHost.md, \"Story: Keep my schema-1 profile readable through one fixed map\"; spec/os/build/androidHost.md, \"A schema-1 upstream source becomes the os module its path lies in\"; spec/os/build/androidHost.md, \"Schema-1 settings admission runs first among the admission commands\"; spec/os/build/androidHost.md, \"A schema-1 field that has no successor is refused when it is set\")", () => effect {
+it.effect("Keep my schema-1 profile readable through one fixed map: profiles shaped like each consumer's map onto schema 2 (spec/os/build/androidHost.md, \"Story: Keep my schema-1 profile readable through one fixed map\"; spec/os/build/androidHost.md, \"A schema-1 field without a successor is refused when it is set, and an upstream source becomes the os module its path lies in\")", () => effect {
   const embedded = try admitHostProfile({
     ...SCHEMA_ONE,
     embeddedAgent: AGENT,

@@ -1,18 +1,13 @@
 # Browser surface page requests
 
-A website shown on a native surface can ask the person for something: a
+A website on a native surface can ask the person for something: a
 JavaScript dialog, a file, a site permission (camera, microphone,
 location), a download, another app for a link, or a full browser for a
 sign-in page that refuses embedded WebViews. The surface holds each request
-under a request id, reports it to the app's renderer and waits for the
-renderer's answer. [Surface lifecycle](./lifecycle.md) owns which surfaces
-exist, which realm may command them and whether a page is shown or paused;
-this spec wraps those commands so that each one also ends what it no longer
-lets a page ask. The shell keeps the WebView's callbacks under the
-request ids and names an other-app link by its address on the wire.
-Sources: `BrowserSurfacePlugin.kt`, `BrowserSurfaceRequests.kt`,
-`BrowserPageHandoffs.java` and `definitions.ts` of the native browser
-surface plugin.
+under an id, reports it to the app's renderer and waits for the answer.
+[Surface lifecycle](./lifecycle.md) owns the surfaces; this spec wraps its
+commands so that each also ends what it no longer lets a page ask. The
+shell keeps the WebView's callbacks under the request ids.
 
 ## Story: Answer what a page asks, once, only while it is mine
 
@@ -21,18 +16,17 @@ surface plugin.
 
 ### A request is held only on a surface created to answer requests, and only while the page may ask it
 
-On a surface created without `answersRequests` the platform default
-applies at once: nothing is held. A dialog, a file request
-and a site permission need the page shown and running; a download needs it
-shown; an other-app link and a refused sign-in page need neither. At most
+Without `answersRequests` the platform default applies at once: nothing is
+held. A dialog, a file request and a site permission need the page shown
+and running; a download needs it shown; a tapped other-app link and a
+refused sign-in page need neither. At most
 `maxWaiting` dialogs and `maxWaiting` site permissions wait per page; more
 are dismissed. A file request, a download, a link and a sign-in page wait
 one at a time per page: a newer one ends the older. Request ids come from
 one counter, so a stale or repeated answer finds nothing. Only a held
 request is reported (`dialogRequested`, `fileChooserRequested`,
 `sitePermissionRequested`, `downloadRequested`, `externalLinkRequested`,
-`identityProviderRequested`). The shell raises a link only when the
-person tapped it and it may open another app.
+`identityProviderRequested`).
 
 ```quint
 import lifecycle as L from "./lifecycle"
@@ -93,12 +87,10 @@ pure def sometimesNewerSignInReplacedOlder(s: PageRequests): bool =
 
 ### Each request is answered once, by its id, while it is held, and every outcome is its own answer or an ending that gives the page nothing
 
-An answer names the owner's live realm, the surface and the request id,
-and applies only to a held request of that kind; anything else is refused
-and changes nothing. A request leaves `Waiting` once. An ending (a page
-start, hiding, pausing, closing, the page withdrawing, a newer request)
-always cancels: a dialog is cancelled, a file request gets no file, a
-permission ends unanswered, anything else is dismissed.
+An answer names the owner's live realm, the surface and a held request of
+that kind; anything else is refused and changes nothing. An ending (page
+start, hiding, pausing, closing, withdrawal, a newer request) cancels: no
+dialog result, no file, no permission, nothing dispatched.
 
 ```quint
 pure def waitingOn(s: PageRequests, realm: L::Realm, id: str, request: int, kind: RequestKind): bool =
@@ -159,14 +151,14 @@ pure def stepEndedPermissionsAreWithdrawnBeforeTheStart(before: PageRequests, vi
     (via == "pageStarted" implies out.length() > 0 and isStarted(final))
 }
 pure def sometimesStartEndedAHandoff(s: PageRequests): bool =
-  s.requests.some(r => r.kind == OtherApp and r.status == Dismissed and s.host.surfaces.some(x => x.gen == r.gen) and
+  s.requests.some(r => r.kind == OtherApp and r.status == Dismissed and s.host.surfaces.some(x => x.gen == r.gen and x.policy.answersRequests) and
     not(s.requests.some(b => b.kind == OtherApp and b.gen == r.gen and b.id > r.id)))
 ```
 
 ### Hiding ends what only the shown page may ask, pausing ends its dialogs, and closing ends everything
 
-The wrapped lifecycle commands apply as `lifecycle.md` defines them, then
-end every held request the surface may no longer hold. Presenting one
+Each wrapped lifecycle command applies, then ends every held request the
+surface may no longer hold. Presenting one
 surface hides its owner's others, and reconciling hides every surface of
 the owner: their dialogs, file requests, site permissions and downloads
 end, while a held other-app link or sign-in page stays until a page start,
@@ -207,15 +199,12 @@ pure def sometimesPermissionKeptWhilePaused(s: PageRequests): bool =
 
 ### A site permission is never remembered, and is granted only by my grant and then Android's
 
-`answerSitePermission` with a deny answers `Denied` at once. A grant asks
-Android for any runtime permission the app still lacks, and then
-`androidAnswered` settles it: `Granted` when Android allows every kind
-(or the app already held them), `AndroidRefused` when Android's dialog
-left one missing, `Ended` when Android could not ask. The answer is one of
-`Granted`, `Denied`, `AndroidRefused` and `Ended`, and only `Granted`
-gives the page anything. Nothing is kept between requests: each new
-request waits for its own answer. A page start, hiding or closing while
-Android asks ends the request, and no later reply can grant it.
+A deny answers `Denied` at once. A grant asks Android for any runtime
+permission the app still lacks; `androidAnswered` then settles `Granted`
+when Android allows every kind (or the app held them), `AndroidRefused`
+when one is missing, `Ended` when Android could not ask. Only `Granted`
+gives the page anything, and nothing is kept between requests. A page
+start, hiding or closing while Android asks ends the request for good.
 
 ```quint
 type AndroidReply = AndroidAllows | AndroidRefuses | AndroidCannotAsk
@@ -242,13 +231,10 @@ pure def sometimesAndroidRefused(s: PageRequests): bool = s.requests.some(r => r
 
 ### A file request opens the system picker only when I choose, the page gets only files I pick, and a busy picker keeps the request
 
-`answerFileChooser` with open shows Android's document picker for that
-request; without it the page gets no file. One picker serves the whole
-app: while it is open, opening another is refused (`FILE_CHOOSER_BUSY`)
-and that request stays held, so the renderer can answer it again. The
-picker's return gives the page the picked files only if the request is
-still held; a request ended meanwhile stays ended. When no picker can be
-shown the shell answers no file, so the page is never left waiting.
+`answerFileChooser` with open shows Android's document picker; without
+it the page gets no file. One picker serves the app: while it is open,
+opening another is refused (`FILE_CHOOSER_BUSY`) and that request stays
+held. The picked files reach the page only if its request is still held.
 
 ```quint
 pure def pickerRequest(p: Picker): int = match p { | PickerFor(f) => f.request | PickerIdle => 0 }
@@ -273,8 +259,7 @@ Nothing is fetched when the page asks. `saveDownload` on a held download
 starts the host's copy into Downloads with the surface's own cookie for
 the page's origin; it is no longer held, so a page start or hiding does
 not stop it. `downloadFinished` reports `saved` only after the file was
-published, else `failed`, and only while the surface still exists. The
-download address may carry access tokens and stays out of logs (shell).
+published, else `failed`, and only while the surface still exists.
 
 ```quint
 pure def canSaveDownload(s: PageRequests, realm: L::Realm, id: str, request: int): bool = waitingOn(s, realm, id, request, Download)
@@ -295,14 +280,12 @@ pure def sometimesDownloadSaved(s: PageRequests): bool = s.requests.some(r => r.
 
 ### Another app opens only for the held link I tapped, and a refused sign-in page opens in a full browser only when I choose
 
-`openExternalLink` opens the held link of that page with a fresh intent
-that only reviews: dial for a phone link, compose for mail or text, view
-for anything else; it never calls or sends by itself. `openIdentityProvider`
-opens the held sign-in page in the person's other browser, with that
-browser's own storage, never in this app. Either answer settles the request
-`Dispatched`, or `NoHandler` when nothing on the device can open it
-(`EXTERNAL_APP_UNAVAILABLE`, `IDENTITY_BROWSER_UNAVAILABLE`), and the page
-stays where it is.
+`openExternalLink` opens the held link with a fresh intent that only
+reviews (dial, compose or view; it never calls or sends by itself).
+`openIdentityProvider` opens the held sign-in page in the person's other
+browser, with its own storage. Either settles `Dispatched`, or `NoHandler`
+when nothing can open it (`EXTERNAL_APP_UNAVAILABLE`,
+`IDENTITY_BROWSER_UNAVAILABLE`); the page stays where it is.
 
 ```quint
 pure def canOpenExternalLink(s: PageRequests, realm: L::Realm, id: str, request: int, found: bool): bool = waitingOn(s, realm, id, request, OtherApp)

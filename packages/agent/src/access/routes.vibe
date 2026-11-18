@@ -52,11 +52,13 @@ export interface RouteRequest {
 
 export interface LocalCall extends RouteRequest {
   readonly authorization: string | undefined
+  readonly headers?: ReadonlyMap<string, string>
 }
 
 export interface RouteInput {
   readonly parameters: ReadonlyMap<string, string>
   readonly query: ReadonlyMap<string, string>
+  readonly headers: ReadonlyMap<string, string>
   readonly body: unknown
   readonly signal: AbortSignal
 }
