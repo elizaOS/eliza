@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs"
+import { relative } from "node:path"
 import js from "@eslint/js"
 import react from "@eslint-react/eslint-plugin"
 import tailwind from "eslint-plugin-better-tailwindcss"
@@ -37,32 +38,50 @@ const citation = String.raw`spec\/\S+\.md, "[^"]+"`
 const suppressible = String.raw`(?!code\/|no-console\b)[\w@/-]+`
 const cited = new RegExp(String.raw`^\s*${citation}(?:; ${citation})*\s*$`)
 const suppression = new RegExp(String.raw`^ eslint-disable(?:-next-line|-line)? ${suppressible}(?:, ${suppressible})* -- \S`)
+const configs = [suppression, /^ eslint-enable\b/]
 const directives = {
   Line: [cited, suppression, /^@ (?:backend|requires|ensures|invariant|decreases|assert|pure|type|ghost)(?: |$)/, /^\/ <reference /, /^ @vitest-environment [\w-]+$/],
-  Block: [cited, suppression, /^ eslint-enable\b/],
+  Block: [cited, ...configs, /^\*(?:[\s*]*@(?:model|design) \S+)+[\s*]*$/],
   Shebang: [/^/],
 }
+const inline = /^\s*(?:eslint(?:-[a-z]+)*|exported|globals?)(?:\s|$)/
+const guarded = (parser) => ({
+  meta: { name: `${parser.meta.name} with code/inline`, version: parser.meta.version },
+  parseForESLint: (text, options) => {
+    const parsed = parser.parseForESLint(text, options)
+    const loose = parsed.ast.comments.find((comment) => inline.test(comment.value) && !configs.some((form) => form.test(comment.value)))
+    if (loose) throw Object.assign(new SyntaxError(`Inline config here is only "eslint-disable[-next-line|-line] <rule>, … -- <reason>", never for code/* or no-console, and "eslint-enable" (${writing}).`), { lineNumber: loose.loc.start.line, column: loose.loc.start.column + 1 })
+    return parsed
+  },
+})
+const within = (node) => Boolean(node) && (/Function/.test(node.type) || within(node.parent))
+const documented = (context, comment) => context.options[0]?.jsdoc && comment.type === "Block" && comment.value.startsWith("*") && !within(context.sourceCode.getNodeByRangeIndex(comment.range[0]))
+const left = { type: "object", additionalProperties: { type: "integer", minimum: 1 } }
+const excess = (context, found) => found.length > (context.options[0]?.left?.[relative(context.cwd, context.filename)] ?? 0) && found.forEach((problem) => context.report(problem))
 const comments = {
-  meta: { type: "problem", schema: [{ type: "object", properties: { jsdoc: { type: "boolean" } }, additionalProperties: false }] },
+  meta: { type: "problem", schema: [{ type: "object", properties: { jsdoc: { type: "boolean" }, left }, additionalProperties: false }] },
   create: (context) => ({
-    Program: () => context.sourceCode.getAllComments()
-      .filter((comment) => !directives[comment.type].some((directive) => directive.test(comment.value)) && !(context.options[0]?.jsdoc && comment.type === "Block" && comment.value.startsWith("*")))
-      .forEach((comment) => context.report({ loc: comment.loc, message: `No code comments: only spec citations and tool directives (${writing}).` })),
+    Program: () => excess(context, context.sourceCode.getAllComments()
+      .filter((comment) => !directives[comment.type].some((directive) => directive.test(comment.value)) && !documented(context, comment))
+      .map((comment) => ({ loc: comment.loc, message: `No code comments: only spec citations and tool directives (${writing}).` }))),
   }),
 }
-const uses = (names) => `:matches(CallExpression[callee.name=${names}], CallExpression[callee.property.name=${names}], ImportSpecifier[imported.name=${names}])`
+const uses = (names) => `:matches(Identifier[name=${names}]:not(ImportSpecifier[imported.name=${names}] > Identifier.local), MemberExpression[computed=true] > Literal.property[value=${names}])`
 const scheduling = {
   [uses(/^use(?:Layout|Insertion)?Effect$/)]: `No effect hooks: shared state lives in the spec-backed Machine (${writing}).`,
-  [uses(/^(?:setTimeout|setInterval|requestAnimationFrame|requestIdleCallback)$/)]: `No timers: wait with Effect in VibeLang, or let the Machine say when (${writing}).`,
+  [uses(/^(?:setTimeout|setInterval|setImmediate|queueMicrotask|requestAnimationFrame|requestIdleCallback)$/)]: `No timers: wait with Effect in VibeLang, or let the Machine say when (${writing}).`,
 }
 const effects = {
-  meta: { type: "problem", schema: [] },
-  create: (context) => Object.fromEntries(Object.entries(scheduling).map(([selector, message]) => [selector, (node) => context.report({ node, message })])),
+  meta: { type: "problem", schema: [{ type: "object", properties: { left }, additionalProperties: false }] },
+  create: (context) => {
+    const found = []
+    return { ...Object.fromEntries(Object.entries(scheduling).map(([selector, message]) => [selector, (node) => found.push({ node, message })])), "Program:exit": () => excess(context, found) }
+  },
 }
 const code = { rules: { comments, effects } }
 const own = ["apps/**", "packages/**"]
-const commented = ["apps/app/src/{App.tsx,greeter.vibe,greeting.ts,link.contract.ts,link.ts}", "apps/app/test/{app.browser.test.tsx,app.test.vibe,bombadil.ts,drivers/app.ts}", "packages/ui/.storybook/preview.ts", "packages/ui/src/components/{Button,Button.meta,Card.meta,Dialog.meta,Progress}.tsx", "packages/ui/src/lib/cn.ts", "packages/ui/{vite,vitest}.config.ts"]
-const scheduled = ["apps/app/src/App.tsx"]
+const commented = { "apps/app/src/App.tsx": 5, "apps/app/src/greeter.vibe": 5, "apps/app/src/greeting.ts": 1, "apps/app/src/link.contract.ts": 2, "apps/app/src/link.ts": 3, "apps/app/test/app.browser.test.tsx": 5, "apps/app/test/app.test.vibe": 4, "apps/app/test/bombadil.ts": 4, "apps/app/test/drivers/app.ts": 5, "packages/ui/.storybook/preview.ts": 1, "packages/ui/src/components/Button.meta.tsx": 4, "packages/ui/src/components/Button.tsx": 1, "packages/ui/src/components/Card.meta.tsx": 1, "packages/ui/src/components/Dialog.meta.tsx": 2, "packages/ui/src/components/Progress.tsx": 1, "packages/ui/src/lib/cn.ts": 2, "packages/ui/vite.config.ts": 1, "packages/ui/vitest.config.ts": 1 }
+const scheduled = { "apps/app/src/App.tsx": 2 }
 
 // The tool reads Quint's JSON and the TypeScript compiler API as `any` at its boundaries; packages and apps stay strict.
 const loose = Object.fromEntries(["no-explicit-any", "no-unsafe-argument", "no-unsafe-assignment", "no-unsafe-call", "no-unsafe-member-access", "no-unsafe-return"].map((rule) => [`@typescript-eslint/${rule}`, "off"]))
@@ -158,8 +177,8 @@ export default defineConfig(
       "no-restricted-syntax": ["error", { selector: "JSXOpeningElement[name.name=/^(input|textarea)$/]", message: "Use Input, Textarea or Checkbox from @repo/ui." }],
     },
   },
-  { files: own, plugins: { code }, rules: { "no-console": "error" } },
-  { files: own, ignores: commented, rules: { "code/comments": "error" } },
-  { files: ["packages/ui/src/components/**"], ignores: ["**/*.meta.tsx", ...commented], rules: { "code/comments": ["error", { jsdoc: true }] } },
-  { files: own, ignores: scheduled, rules: { "code/effects": "error" } },
+  { files: own, ignores: ["**/*.{vibe,vibex}"], languageOptions: { parser: guarded(tseslint.parser) } },
+  { files: ["{apps,packages}/**/*.{vibe,vibex}"], languageOptions: { parser: guarded(vibelang) } },
+  { files: own, plugins: { code }, rules: { "no-console": "error", "code/comments": ["error", { left: commented }], "code/effects": ["error", { left: scheduled }] } },
+  { files: ["packages/ui/src/components/**"], ignores: ["**/*.meta.tsx"], rules: { "code/comments": ["error", { jsdoc: true, left: commented }] } },
 )

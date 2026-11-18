@@ -3687,15 +3687,16 @@ test("a trace integer of 16 or more digits that Quint wrote as a BigNumber decod
   assert.equal(bigNumberInteger({ s: n(1), e: n(15), c: [n(10)], d: n(0) }), undefined, "a record with other fields is not a BigNumber");
 });
 
-test("the lint refuses, in a project's own code, a comment that is neither a citation nor a tool directive, an effect hook, a timer and a console call", async () => {
+test("the lint refuses, in a project's own code, a comment that is neither a citation nor a tool directive, an effect hook, a timer, a console call, inline config that would hide one, and one more than a listed file keeps", async () => {
   const { ESLint } = await import("eslint");
   const eslint = new ESLint({ cwd: project });
   const found = async (file: string, lines: string[]) => (await eslint.lintText(lines.join("\n"), { filePath: path.join(project, file) }))[0]!.messages
-    .filter((m) => m.ruleId === "no-console" || m.ruleId?.startsWith("code/")).map((m) => `${m.line} ${m.ruleId}`);
+    .filter((m) => m.fatal || m.ruleId === "no-console" || m.ruleId?.startsWith("code/")).map((m) => `${m.line} ${m.ruleId ?? "inline config"}`);
   assert.deepEqual(await found("apps/app/src/probe.vibe", [
     `// spec/app/index.md, "Story: Say hello"; spec/app/index.md, "A rule"`,
     `/* spec/app/index.md, "Story: Say hello" */`,
     "//@ ghost",
+    "/** @model spec/app/index.md */",
     "// a note",
     "/** What it is. */",
     "//@ pure-ish",
@@ -3703,8 +3704,15 @@ test("the lint refuses, in a project's own code, a comment that is neither a cit
     "window.setTimeout(() => {}, 1);",
     "requestAnimationFrame(() => {});",
     `console.log("seen");`,
-    "// eslint-disable-next-line code/effects -- it must",
-    "// eslint-disable-next-line no-console",
-  ]), ["4 code/comments", "5 code/comments", "6 code/comments", "7 code/effects", "8 code/effects", "9 code/effects", "10 no-console", "11 code/comments", "12 code/comments"]);
-  assert.deepEqual(await found("packages/ui/src/components/probe.vibe", ["/** What a component takes, which the stories generator reads. */", "// a note"]), ["2 code/comments"]);
+    "const later = React.useLayoutEffect;",
+    `globalThis["queueMicrotask"](later);`,
+    "// eslint-disable-next-line no-undef -- a global the page defines",
+  ]), ["5 code/comments", "6 code/comments", "7 code/comments", "8 code/effects", "9 code/effects", "10 code/effects", "11 no-console", "12 code/effects", "13 code/effects"]);
+  const hiding = [["useEffect(() => {}, []); // eslint-disable-line"], ["/* eslint-disable */", "// a note"], ["/* eslint-disable code/comments, code/effects -- it must */", "setTimeout(() => {}, 1);"], ["/* eslint code/comments: off, no-console: off */", `console.log("seen");`], ["// eslint-disable-next-line no-console -- it must", `console.log("seen");`]];
+  assert.deepEqual(await Promise.all(hiding.map((lines) => found("apps/app/src/probe.vibe", lines))), hiding.map(() => ["1 inline config"]));
+  assert.deepEqual(await found("packages/ui/src/components/probe.vibe", ["/** What a component takes, which the stories generator reads. */", "export function Probe() {", "  /** inside it */", "  return 1;", "}", "// a note"]), ["3 code/comments", "6 code/comments"]);
+  const { default: config } = await import(path.join(project, "eslint.config.js"));
+  const [file, left] = Object.entries(config.find((block: { rules?: Record<string, unknown> }) => block.rules?.["code/comments"]).rules["code/comments"][1].left as Record<string, number>).find(([file]) => file.endsWith(".vibe"))!;
+  const notes = (n: number) => Array.from({ length: n }, () => "// a note");
+  assert.deepEqual([(await found(file, notes(left))).length, (await found(file, notes(left + 1))).length], [0, left + 1]);
 });
