@@ -1,0 +1,20 @@
+--- a/tools/v8_gypfiles/v8.gyp
++++ b/tools/v8_gypfiles/v8.gyp
+@@ -1137,6 +1137,17 @@
+         '<@(inspector_all_sources)',
+       ],
+       'conditions': [
++        ['OS=="android" and _toolset=="host" and host_os=="linux" and host_arch=="x64" and v8_enable_webassembly==1', {
++          'sources': [
++            '<(V8_ROOT)/src/trap-handler/handler-inside-posix.cc',
++            '<(V8_ROOT)/src/trap-handler/handler-outside-posix.cc',
++          ],
++          'conditions': [
++            ['v8_target_arch=="arm64"', {
++              'sources': ['<(V8_ROOT)/src/trap-handler/handler-outside-simulator.cc'],
++            }],
++          ],
++        }],
+         ['v8_use_perfetto==1', {
+           'sources': [
+             '<!@pymod_do_main(GN-scraper "<(V8_ROOT)/BUILD.gn"  "\\"v8_base_without_compiler.*?v8_use_perfetto.*?sources \\+= ")',
