@@ -40,6 +40,7 @@ import {
   requestLocalCalendarUpdate,
   requestLocalNotesUpdate,
 } from "./service.ts";
+import { authoredTelephonyRequest } from "./telephony-request.ts";
 import { turnObservation } from "./turn-observation.ts";
 
 function capabilityAvailable(
@@ -781,5 +782,61 @@ export function registerDeviceBrowserOpenRouting(
     contexts: ["browser", "web", "general"],
     matches,
     wholeRequest: { matches, invalidateFields: ["visualContinuation"] },
+  });
+}
+
+/**
+ * Availability for a whole-message call or text command ("call 415-555-0100",
+ * "text Sam saying ..."). Stage 1 answered such turns with a simple reply that
+ * repeated an earlier "no SMS connector" refusal from history (v609 peer
+ * evidence), so the planner never saw the phone's own operations. This route
+ * only promotes the turn to PROPOSE_DEVICE_ACTION; the call or text is still
+ * an owner-reviewed proposal on the phone.
+ */
+export function registerDeviceTelephonyRouting(
+  runtime: Parameters<typeof registerDirectActionRoutingRule>[0],
+): void {
+  const matches = (
+    text: string,
+    message?: Parameters<NonNullable<Action["validate"]>>[1],
+  ): boolean => {
+    const current = getDeviceActionTurn();
+    const caller = current?.requestCaller;
+    if (
+      !message ||
+      current?.runtime !== runtime ||
+      !current.isCurrent() ||
+      current.requestMessage?.message !== message ||
+      caller?.role !== "OWNER" ||
+      caller.entityId !== message.entityId ||
+      caller.subjectUserId !== current.credential.subjectUserId ||
+      message.content.source !== "client_chat" ||
+      !["DM", "VOICE_DM"].includes(String(message.content.channelType))
+    )
+      return false;
+    const request = authoredTelephonyRequest(text);
+    const capabilities = current.credential.capabilities;
+    if (request === "call")
+      return deviceOperationSupportedByCapabilities("phone_call", capabilities);
+    if (request === "text")
+      return (
+        deviceOperationSupportedByCapabilities("sms_compose", capabilities) ||
+        deviceOperationSupportedByCapabilities("sms_send", capabilities)
+      );
+    return false;
+  };
+  registerDirectActionRoutingRule(runtime, {
+    id: "device.telephony",
+    actionNames: ["PROPOSE_DEVICE_ACTION"],
+    replacesActionNames: [
+      "VIEWS",
+      "VIEWS_SHOW",
+      "VOICE_CALL",
+      "MESSAGE_SEND",
+      "PAGE_DELEGATE",
+    ],
+    requiredActionTags: [],
+    contexts: ["phone", "messaging", "general"],
+    matches,
   });
 }

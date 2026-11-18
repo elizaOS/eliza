@@ -11,6 +11,7 @@ import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts.ts";
 import {
   registerDeviceBrowserOpenRouting,
   registerDeviceCameraCaptureRouting,
+  registerDeviceTelephonyRouting,
 } from "./services/device-actions/tools.ts";
 import {
   PLANNER_CONTINUATION_TASK,
@@ -37,6 +38,7 @@ export function createAssistantPlugin(): Plugin {
       registerCoreShouldRespondRiskHook(runtime);
       registerDeviceBrowserOpenRouting(runtime);
       registerDeviceCameraCaptureRouting(runtime);
+      registerDeviceTelephonyRouting(runtime);
       // Registered once per runtime, after storage is ready: recovery reads the
       // persisted continuation tasks left by a previous process.
       void runtime.initPromise
