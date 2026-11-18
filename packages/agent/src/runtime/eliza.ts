@@ -109,6 +109,7 @@ import {
 import { ensurePrivateDir } from "../config/paths.ts";
 import {
   assertNoRetiredCharacterToolRestrictions,
+  assertNoRetiredSettingNames,
   assertNoRetiredToolRestrictions,
 } from "../config/retired-tool-policy.ts";
 import { type LoadHooksOptions, loadHooks } from "../hooks/loader.ts";
@@ -3969,6 +3970,7 @@ export async function startEliza(
 ): Promise<AgentRuntime | undefined> {
   const restoredGeneration = opts?.restoredGeneration;
   opts?.abortSignal?.throwIfAborted();
+  assertNoRetiredSettingNames(process.env);
   if (opts?.configOverride)
     assertNoRetiredToolRestrictions(opts.configOverride);
   if (restoredGeneration !== undefined) {
@@ -4447,6 +4449,7 @@ export async function startEliza(
     character = buildProductCharacterFromConfig(config, productCharacter);
   }
   assertNoRetiredCharacterToolRestrictions(character.settings);
+  assertNoRetiredSettingNames(character.secrets);
   // Pin the runtime agent id to the platform character_id so the gateways can
   // resolve `agent:<id>:server` and address `/agents/<id>/message` against
   // this container. Without this the runtime would derive an id from the
@@ -4513,6 +4516,7 @@ export async function startEliza(
       );
     }
   }
+  assertNoRetiredSettingNames(process.env);
   // Finder/LaunchServices does not inherit a repository dotenv file. Project
   // only the selected provider's protected credential into AgentRuntime
   // settings; never expose a Vault-only value through global process.env.
