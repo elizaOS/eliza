@@ -15,7 +15,8 @@ public abstract class ReminderPlugin extends Plugin {
  private volatile boolean reminderDestroyed;
  private interface ReminderWork { void run() throws Exception; }
  @Override protected void handleOnDestroy() { reminderDestroyed = true; super.handleOnDestroy(); }
- private void reminderChanged() { reminderMain.post(() -> { if (!reminderDestroyed) notifyListeners("pendingReminderTap", new JSObject(), true); }); }
+ private void reminderChanged() { reminderMain.post(() -> { if (!reminderDestroyed) { notifyListeners("pendingReminderTap", new JSObject(), true); onReminderTapReady(); } }); }
+ protected void onReminderTapReady() {}
  private void clearReminderIntent(Intent intent, String token) { reminderMain.post(() -> { if ((configuration.tapUriPrefix + token).equals(intent.getDataString())) intent.setData(null); }); }
  private void requireReminderForeground() throws Exception {
   if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) throw new IllegalStateException("Storage must not run on main thread");

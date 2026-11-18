@@ -1,5 +1,6 @@
 // spec/cloud/index.md, "Story: Connect Google mail and calendar"
 import type { Client } from "pg"
+import { canReadCloudCalendarReminder } from "../gen/cloud.effect.vibe"
 import { Aead, Digest, SecureRandom } from "effect/crypto"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse, HttpServerRequest, HttpIncomingMessage } from "effect/http"
 import { googleCalendarFeed, googleCalendarItem, googleGmailMessage, googleGmailTriage, googleReplyTarget, hasControlCharacter, mailAddress, GoogleReadInput, type GoogleReadApi } from "./google-read.vibe"
@@ -399,6 +400,13 @@ function calendarZone(name: string | undefined) {
   catch { return undefined }
 }
 
+effect function cancelChangedReminders(db: Client, account: string, grant: string, event: string, version: string | null, series: boolean) {
+  try query(db, `DELETE FROM cloud_google_calendar_reminders
+    WHERE account_id = $1 AND grant_id = $2 AND
+      (occurrence_id = $3 AND provider_version IS DISTINCT FROM $4 OR $5 AND series_id = $3)`,
+    [account, grant, event, version, series])
+}
+
 effect function changeCalendar(request: Request, env: GoogleEnv, db: Client, account: string) {
   const action = try readAction(request, CalendarChange)
   if (account !== action.accountId || !uuid.test(action.grantId) || !uuid.test(action.operationId)) throw new BadRequest()
@@ -461,6 +469,7 @@ effect function changeCalendar(request: Request, env: GoogleEnv, db: Client, acc
       const deleted = Schema.decodeUnknownOption(CalendarTombstone)(try timeout(readback.json, "10 seconds"))
       if (Option.isNone(deleted) || deleted.value.id !== eventId) throw new OperationUncertain()
     }
+    try cancelChangedReminders(db, account, action.grantId, eventId, null, Boolean(action.seriesFor))
     return try finish(db, account, action.operationId, eventId)
   }
   if (!ok(readback.status)) throw new OperationUncertain()
@@ -472,6 +481,7 @@ effect function changeCalendar(request: Request, env: GoogleEnv, db: Client, acc
       (allDay ? (saved.value.start?.date !== draft.startAt || saved.value.end?.date !== draft.endAt)
         : (Date.parse(saved.value.start?.dateTime ?? "") !== Date.parse(draft.startAt) ||
           Date.parse(saved.value.end?.dateTime ?? "") !== Date.parse(draft.endAt)))) throw new OperationUncertain()
+  if (!creating) try cancelChangedReminders(db, account, action.grantId, saved.value.id, saved.value.etag, Boolean(action.seriesFor))
   return try finish(db, account, action.operationId, saved.value.id, saved.value.etag)
 }
 
@@ -532,6 +542,92 @@ effect function sentMailReceipt(url: URL, db: Client, account: string) {
   return body(200, { accountId: account, operationId: operation, messageId: result.rows[0].provider_id })
 }
 
+schema ReminderChoice { accountId: string; grantId: string; occurrenceId: string; version: string; minutes: 0 | 60 | 1440 }
+type ReminderRow = { grant_id: string; occurrence_id: string; provider_version: string; lead_minutes: number; fire_at: string; display_title: string }
+
+effect function chooseReminder(request: Request, env: GoogleEnv, db: Client, account: string) {
+  const selected = try readAction(request, ReminderChoice)
+  const { grantId, occurrenceId, version, minutes } = selected
+  if (selected.accountId !== account || !uuid.test(grantId) || !providerId.test(occurrenceId) || !version || version.length > 255) throw new BadRequest()
+  if (minutes === 0) {
+    const removed = try query(db, `DELETE FROM cloud_google_calendar_reminders
+      WHERE account_id = $1 AND grant_id = $2 AND occurrence_id = $3 AND provider_version = $4`, [account, grantId, occurrenceId, version])
+    if (!removed.rowCount) throw new ItemChanged()
+    return body(200, { status: "cancelled", accountId: account, grantId, occurrenceId, version })
+  }
+  const api = googleReadApi(try accessFor(env, db, account, "calendar", grantId))
+  const { item } = try googleCalendarItem(api, occurrenceId)
+  if (item.isAllDay || !item.editable || item.etag !== version) throw new ItemChanged()
+  const fireAt = Date.parse(item.startAt) - minutes * 60_000
+  const now = try Clock.currentTimeMillis
+  if (!Number.isSafeInteger(fireAt) || fireAt <= now) throw new BadRequest()
+  const saved = try query(db, `INSERT INTO cloud_google_calendar_reminders(account_id, grant_id, occurrence_id, provider_version, lead_minutes, fire_at, series_id, display_title)
+    SELECT account_id, id, $3, $4, $5, $6, $7, $8 FROM cloud_google_connections WHERE account_id = $1 AND id = $2 AND calendar
+    ON CONFLICT (account_id, grant_id, occurrence_id) DO UPDATE
+      SET provider_version = EXCLUDED.provider_version, lead_minutes = EXCLUDED.lead_minutes, fire_at = EXCLUDED.fire_at, series_id = EXCLUDED.series_id, display_title = EXCLUDED.display_title`,
+    [account, grantId, occurrenceId, version, minutes, fireAt, item.seriesId, item.title.replace(/[\p{Cc}\p{Cf}]/gu, " ").trim().slice(0, 160) || "Appointment"])
+  if (!saved.rowCount) throw new ConnectionUnavailable()
+  return body(200, { status: "saved", accountId: account, grantId, occurrenceId, version, minutes, fireAt })
+}
+
+export function reminderSchedule(request: Request, env: GoogleEnv, db: Client, account: string): Promise<Response> {
+  return runPromise(Effect.provide(effect {
+    const url = try Effect.try(() => new URL(request.url))
+    const target = url.searchParams.get("verify")
+    const page = url.searchParams.get("page")
+    const cursor = page === null ? null : /^([a-f0-9]{64}):([1-9][0-9]{0,8})$/.exec(page)
+    const now = try Clock.currentTimeMillis
+    const read = effect {
+      if (request.method !== "GET" || (page !== null && cursor === null) || (target !== null && (page !== null || !providerId.test(target))))
+        return body(400, { error: "invalid_request" })
+      const project = ({ grant_id, occurrence_id, provider_version, lead_minutes, fire_at, display_title }: ReminderRow) => ({
+        grantId: grant_id, occurrenceId: occurrence_id, version: provider_version, minutes: lead_minutes, fireAt: Number(fire_at), title: display_title,
+      })
+      if (target === null) {
+        const offset = cursor === null ? 0 : Number(cursor[2])
+        const current = try query<{ stamp: string; reminders: Array<ReminderRow> }>(db, `
+          WITH eligible AS MATERIALIZED (
+            SELECT r.grant_id, r.occurrence_id, r.provider_version, r.lead_minutes, r.fire_at, r.display_title
+            FROM cloud_google_calendar_reminders r JOIN cloud_google_connections c ON c.id = r.grant_id
+            WHERE r.account_id = $1 AND c.account_id = $1 AND c.calendar AND r.fire_at > $2
+          ), page AS (
+            SELECT * FROM eligible ORDER BY fire_at, grant_id, occurrence_id COLLATE "C" LIMIT 65 OFFSET $3
+          )
+          SELECT (SELECT encode(sha256(convert_to($1::text || COALESCE(string_agg(row_to_json(eligible)::text, ''
+              ORDER BY fire_at, grant_id, occurrence_id COLLATE "C"), ''), 'UTF8')), 'hex') FROM eligible) AS stamp,
+            COALESCE(json_agg(page ORDER BY fire_at, grant_id, occurrence_id COLLATE "C"), '[]'::json) AS reminders FROM page`,
+          [account, now - 86400000, offset])
+        const snapshot = current.rows[0]
+        if (!snapshot || (cursor !== null && cursor[1] !== snapshot.stamp)) return body(409, { error: "schedule_changed" })
+        const nextPage = snapshot.reminders.length > 64 ? `${snapshot.stamp}:${offset + 64}` : null
+        return body(200, { reminders: snapshot.reminders.slice(0, 64).map(project), nextPage })
+      }
+      const { rows } = try query<ReminderRow>(db, `
+        SELECT r.grant_id, r.occurrence_id, r.provider_version, r.lead_minutes, r.fire_at, r.display_title
+        FROM cloud_google_calendar_reminders r JOIN cloud_google_connections c ON c.id = r.grant_id
+        WHERE r.account_id = $1 AND c.account_id = $1 AND c.calendar
+          AND r.fire_at > $2 AND ($3::text IS NULL OR r.occurrence_id = $3)
+        ORDER BY r.fire_at LIMIT 1`, [account, now - 86400000, target])
+      const selected = rows[0] ? project(rows[0]) : null
+      if (!selected) return body(404, { error: "reminder_unavailable" })
+      const api = googleReadApi(try accessFor(env, db, account, "calendar", selected.grantId))
+      const { item } = try googleCalendarItem(api, target)
+      const current = try query(db, `SELECT 1 FROM cloud_google_calendar_reminders
+        WHERE account_id = $1 AND grant_id = $2 AND occurrence_id = $3 AND provider_version = $4 AND fire_at = $5`,
+        [account, selected.grantId, selected.occurrenceId, selected.version, selected.fireAt])
+      if (!canReadCloudCalendarReminder(true, Boolean(current.rowCount), true,
+          item.editable && !item.isAllDay && item.externalId === selected.occurrenceId,
+          item.etag === selected.version && Date.parse(item.startAt) - selected.minutes * 60_000 === selected.fireAt))
+        return body(409, { error: "reminder_changed" })
+      return body(200, selected)
+    } catch (failure) => match (failure) {
+      when GoogleNotFound: body(404, { error: "reminder_unavailable" });
+      default: body(503, { error: "reminder_unavailable" });
+    }
+    return HttpServerResponse.toWeb(read)
+  }, providerLayer)).catch(() => HttpServerResponse.toWeb(body(503, { error: "reminder_unavailable" })))
+}
+
 effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, account: string) {
   const url = try Effect.try({ try: () => new URL(request.url), catch: () => new BadRequest() })
   const path = url.pathname.slice(route.length)
@@ -541,6 +637,7 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
     if (path === "/connect/initiate") return try authorize(request, env, db, account)
     if (path === "/disconnect") return try disconnect(db, account)
     if (path === "/gmail/trash") return try changeTrash(request, env, db, account)
+    if (path === "/calendar/reminder") return try chooseReminder(request, env, db, account)
     if (path === "/calendar/change") return try changeCalendar(request, env, db, account)
     if (path === "/gmail/send") return try sendMail(request, env, db, account)
   }
@@ -562,6 +659,16 @@ effect function routeGoogle(request: Request, env: GoogleEnv, db: Client, accoun
       const api = googleReadApi(try accessFor(env, db, account, "mail", selected))
       const result = path === "/gmail/triage" ? try googleGmailTriage(api, url, now) : try googleGmailMessage(api, url)
       return body(200, { accountId: account, ...result })
+    }
+    if (path === "/calendar/reminder/event") {
+      const occurrence = url.searchParams.get("occurrenceId") ?? ""
+      if (!selected || !uuid.test(selected) || !providerId.test(occurrence)) throw new BadRequest()
+      const row = (try query<ReminderRow>(db, `SELECT provider_version FROM cloud_google_calendar_reminders
+         WHERE account_id = $1 AND grant_id = $2 AND occurrence_id = $3`, [account, selected, occurrence])).rows[0]
+      if (!row) throw new GoogleNotFound()
+      const result = try googleCalendarItem(googleReadApi(try accessFor(env, db, account, "calendar", selected)), occurrence)
+      if (!result.item.editable || result.item.isAllDay || result.item.etag !== row.provider_version) throw new ItemChanged()
+      return body(200, { accountId: account, event: result.item })
     }
     if (path === "/calendar/series") {
       const id = url.searchParams.get("occurrenceId") ?? ""
