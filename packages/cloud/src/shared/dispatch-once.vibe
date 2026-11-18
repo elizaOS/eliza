@@ -3,8 +3,8 @@ import { NotAState, Rejected, apply, initial, canReceiveReply, canResolve, confl
 import type { ProviderKey, ProviderKind } from "../../gen/cloud__shared__types.ts"
 import type { SessionOwner } from "../../gen/core__sessions.ts"
 import { Refused, wireName } from "../http/refusal.vibe"
-import { Store, type Tx } from "../store/connection.vibe"
-import { loadRow, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
+import { Store, type StoreFailure, type Tx } from "../store/connection.vibe"
+import { loadRow, stepRow, type Columns, type MachineRows, type RowConflict, type RowCorrupt } from "../store/rows.vibe"
 import { sha256Hex } from "./sealing.vibe"
 
 export type { LookupResult, ProviderKey, Receipt, ReceiptStatus, RefusalCause, SessionOwner }
@@ -93,6 +93,8 @@ export interface ReceiptRows<S, Corrupt> {
   readonly withReceipt: (state: S, receipt: Receipt) => S
   readonly columns: (state: S, now: number) => Columns
 }
+
+export type ReceiptFailure = StoreFailure | RowCorrupt | RowConflict | Rejected
 
 export interface ReceiptSent {
   readonly event: Event
@@ -183,7 +185,7 @@ export effect function dispatchReceipt<S, Corrupt, A, E, R>(rows: ReceiptRows<S,
   const receipt = rows.receiptOf(claimed)
   const deadline = staleAt(receipt)
   let state = claimed
-  const reply = try dispatchOnce({
+  const reply = try dispatchOnce<A, E | ReceiptFailure, R>({
     claim: Effect.void,
     send: bounded(send(renderProviderKey(receipt.providerKey), deadline), deadline - now),
     record: effect (seen: ProviderReply<A>, at: number) => {
@@ -201,7 +203,7 @@ export effect function resolveReceipt<S, Corrupt, E, R>(rows: ReceiptRows<S, Cor
   if (!isUnknown(receipt)) return loaded.state
   if (receipt.session.effects === 0) return try store.transaction((tx) => recordLookup(tx, rows, key, { tag: "NothingSeen" }, now))
   let state = loaded.state
-  try resolveUnknown({
+  try resolveUnknown<LookupResult, E | ReceiptFailure, R>({
     lookup: bounded(lookup(renderProviderKey(receipt.providerKey), now + receipt.staleAfter), receipt.staleAfter),
     record: effect (seen: ProviderReply<LookupResult>, at: number) => {
       if (seen.kind === "applied") state = try store.transaction((tx) => recordLookup(tx, rows, key, seen.value, at))

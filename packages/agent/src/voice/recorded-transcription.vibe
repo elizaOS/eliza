@@ -1,0 +1,362 @@
+// spec/agent/voice/clientAudio.md, "Story: Dictate into my draft without losing my own words"; spec/agent/voice/clientAudio.md, "A recording becomes review text through the host's result or the recording, never a send"; spec/agent/voice/clientAudio.md, "A stale transcription never replaces a newer draft"
+import {
+  beginDraft, draftOutcome, invalidateDraft, observeDraft, previewPublishable, recordedResult, recordingBoundAccepted, recordingUploaded, ticketFor,
+  type DraftGuard, type HostTranscript, type RecordingPhase, type RecordingText,
+} from "../../gen/agent__voice__clientAudio.effect.vibe"
+
+export type { RecordingPhase }
+
+export type RecordedTranscriptionCode = "unavailable" | "recording" | "too-large" | "empty-audio" | "empty-transcript"
+export error RecordedTranscriptionError { code: RecordedTranscriptionCode }
+export error RecordingBoundRefused { bound: "maximumBytes" | "maximumMs" | "timesliceMs"; value: number }
+
+export interface RecordedTranscriptionState {
+  readonly phase: RecordingPhase
+  readonly error: unknown
+}
+
+export interface RecordingStream {
+  getTracks(): ReadonlyArray<{ stop(): void }>
+}
+
+export interface RecordingChunk {
+  readonly size: number
+  readonly type: string
+}
+
+export interface RecorderEvents<Chunk extends RecordingChunk> {
+  readonly data: (chunk: Chunk) => void
+  readonly stopped: () => void
+  readonly failed: () => void
+}
+
+export interface RecorderPort {
+  readonly state: () => "inactive" | "recording" | "paused"
+  readonly mimeType: () => string
+  readonly start: (timesliceMs: number) => void
+  readonly stop: () => void
+}
+
+export interface RecordedTranscriptionOptions<Stream extends RecordingStream, Chunk extends RecordingChunk> {
+  readonly authorize: () => Promise<void>
+  readonly acquire: () => Promise<Stream>
+  readonly recorder: (stream: Stream, events: RecorderEvents<Chunk>) => RecorderPort
+  readonly encode: (chunks: readonly Chunk[], mimeType: string) => Promise<string>
+  readonly transcribe: (audioBase64: string, mimeType: string) => Promise<unknown>
+  readonly finalTranscript?: () => Promise<unknown>
+  readonly preview: (stream: Stream, receive: (chunk: Chunk) => Promise<void>, active: () => boolean) => Promise<(() => void) | undefined>
+  readonly changed: (state: RecordedTranscriptionState) => void
+  readonly maximumBytes: number
+  readonly maximumMs: number
+  readonly timesliceMs: number
+}
+
+export type TranscriptReceiver = (text: string, final: boolean) => void
+export type PauseObserver<Stream> = (stream: Stream, finish: () => void) => () => void
+
+interface Recording<Stream extends RecordingStream, Chunk extends RecordingChunk> {
+  readonly transcript: TranscriptReceiver
+  stream: Stream | undefined
+  recorder: RecorderPort | undefined
+  timer: Fiber.Fiber<void> | undefined
+  endpoint: (() => void) | undefined
+  live: (() => void) | undefined
+  chunks: Chunk[]
+  bytes: number
+  previews: boolean
+  ended: boolean
+}
+
+interface Core<Stream extends RecordingStream, Chunk extends RecordingChunk> {
+  readonly options: RecordedTranscriptionOptions<Stream, Chunk>
+  current: Recording<Stream, Chunk> | undefined
+  phase: RecordingPhase
+}
+
+type Heard = { readonly kind: "none" } | { readonly kind: "words"; readonly text: string } | { readonly kind: "blank" } | { readonly kind: "rejected"; readonly cause: unknown }
+
+error PortFailure { cause: unknown }
+
+const hostVerdict = { none: "HostUndefined", words: "HostText", blank: "HostBlank", rejected: "HostRejected" } as const satisfies Record<Heard["kind"], HostTranscript>
+const recordingVerdict = { none: "TranscribedBlank", words: "TranscribedText", blank: "TranscribedBlank", rejected: "TranscribeRejected" } as const satisfies Record<Heard["kind"], RecordingText>
+const unheard: Heard = { kind: "none" }
+const previewMimeType = "audio/wav"
+
+function textOf(result: unknown): string {
+  return typeof result === "object" && result !== null && "text" in result && typeof result.text === "string" ? result.text : ""
+}
+
+function heardOf(result: unknown): Heard {
+  if (result === undefined) return unheard
+  const text = textOf(result)
+  return text.trim() === "" ? { kind: "blank" } : { kind: "words", text }
+}
+
+function safely(close: () => void): void {
+  try {
+    close()
+  } catch {
+    return
+  }
+}
+
+function stopTracks(stream: RecordingStream): void {
+  for (const track of stream.getTracks()) safely(() => track.stop())
+}
+
+function publish<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>, phase: RecordingPhase, error: unknown = null): void {
+  core.phase = phase
+  core.options.changed({ phase, error })
+}
+
+function closePreviews<S extends RecordingStream, C extends RecordingChunk>(s: Recording<S, C>): void {
+  s.previews = false
+  const live = s.live
+  s.live = undefined
+  if (live !== undefined) safely(live)
+}
+
+function release<S extends RecordingStream, C extends RecordingChunk>(s: Recording<S, C>, keepLive: boolean): void {
+  if (!keepLive) closePreviews(s)
+  const { timer, endpoint, recorder, stream } = s
+  s.timer = undefined
+  s.endpoint = undefined
+  s.recorder = undefined
+  s.stream = undefined
+  timer?.interruptUnsafe()
+  if (endpoint !== undefined) safely(endpoint)
+  if (recorder !== undefined && recorder.state() !== "inactive") safely(recorder.stop)
+  if (stream !== undefined) stopTracks(stream)
+}
+
+function fail<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>, s: Recording<S, C>, error: unknown): void {
+  if (core.current !== s) return
+  core.current = undefined
+  release(s, false)
+  s.chunks = []
+  publish(core, "RecordingIdle", error)
+}
+
+function finish<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>): void {
+  const s = core.current
+  const recorder = s?.recorder
+  if (s === undefined || recorder === undefined || recorder.state() !== "recording") return
+  if (core.options.finalTranscript === undefined) s.previews = false
+  try {
+    recorder.stop()
+  } catch (error) {
+    fail(core, s, error)
+  }
+}
+
+function cancel<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>): void {
+  const s = core.current
+  core.current = undefined
+  if (s !== undefined) {
+    release(s, false)
+    s.chunks = []
+  }
+  publish(core, "RecordingIdle")
+}
+
+effect function port<A>(call: () => Promise<A>): A!PortFailure {
+  return try tryPromise({ try: () => call(), catch: (cause) => new PortFailure({ cause }) })
+}
+
+effect function host<A>(call: () => A): A!PortFailure {
+  return try Effect.try({ try: call, catch: (cause) => new PortFailure({ cause }) })
+}
+
+effect function hear(call: () => Promise<unknown>): Heard!! {
+  return map(port(call), heardOf) catch (failure): Heard => ({ kind: "rejected", cause: failure.cause })
+}
+
+effect function offer<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>, s: Recording<S, C>, chunk: C): void!PortFailure {
+  const previews = () => core.current === s && s.previews
+  if (!previews()) return
+  const mimeType = chunk.type === "" ? previewMimeType : chunk.type
+  const encoded = try port(() => core.options.encode([chunk], mimeType))
+  if (!previews()) return
+  const text = textOf(try port(() => core.options.transcribe(encoded, mimeType)))
+  if (previewPublishable(core.current === s, s.previews, text.trim() !== "")) try host(() => s.transcript(text, false))
+}
+
+effect function conclude<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>, s: Recording<S, C>, mimeType: string): void!PortFailure {
+  const final = core.options.finalTranscript
+  const fromHost = final === undefined ? unheard : try ensuring(hear(final), sync(() => closePreviews(s)))
+  if (core.current !== s) return
+  const { maximumBytes } = core.options
+  const chunks = s.chunks
+  s.chunks = []
+  const fromRecording = recordingUploaded(hostVerdict[fromHost.kind], s.bytes, maximumBytes)
+    ? try hear(async () => {
+      const encoded = await core.options.encode(chunks, mimeType)
+      return core.current === s ? core.options.transcribe(encoded, mimeType) : undefined
+    })
+    : unheard
+  if (core.current !== s) return
+  const outcome = recordedResult(hostVerdict[fromHost.kind], s.bytes, maximumBytes, recordingVerdict[fromRecording.kind])
+  switch (outcome) {
+    case "ReviewText": {
+      const text = fromHost.kind === "words" ? fromHost.text : fromRecording.kind === "words" ? fromRecording.text : ""
+      try host(() => s.transcript(text, true))
+      if (core.current === s) {
+        core.current = undefined
+        publish(core, "RecordingIdle")
+      }
+      return
+    }
+    case "EmptyAudio":
+      return fail(core, s, new RecordedTranscriptionError({ code: "empty-audio" }))
+    case "TooLarge":
+      return fail(core, s, new RecordedTranscriptionError({ code: "too-large" }))
+    case "EmptyTranscript":
+      return fail(core, s, new RecordedTranscriptionError({ code: "empty-transcript" }))
+    case "PortFailed":
+      return fail(core, s, fromHost.kind === "rejected" ? fromHost.cause : fromRecording.kind === "rejected" ? fromRecording.cause : null)
+  }
+}
+
+function stopped<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>, s: Recording<S, C>): void {
+  if (core.current !== s || s.ended) return
+  s.ended = true
+  const mimeType = s.recorder?.mimeType() ?? ""
+  release(s, core.options.finalTranscript !== undefined)
+  publish(core, "RecordingTranscribing")
+  runFork(ensuring(conclude(core, s, mimeType) catch (failure) => fail(core, s, failure.cause), sync(() => {
+    s.chunks = []
+  })))
+}
+
+function received<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>, s: Recording<S, C>, chunk: C): void {
+  if (core.current !== s || s.ended) return
+  s.bytes += chunk.size
+  s.chunks.push(chunk)
+  if (s.bytes > core.options.maximumBytes) finish(core)
+}
+
+effect function record<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>, s: Recording<S, C>, observePause: PauseObserver<S>): void!PortFailure {
+  const active = () => core.current === s
+  const previews = () => active() && s.previews
+  try port(core.options.authorize)
+  if (!active()) return
+  const stream = try port(core.options.acquire)
+  if (!active()) return stopTracks(stream)
+  s.stream = stream
+  s.recorder = try host(() => core.options.recorder(stream, {
+    data: (chunk) => received(core, s, chunk),
+    stopped: () => stopped(core, s),
+    failed: () => fail(core, s, new RecordedTranscriptionError({ code: "recording" })),
+  }))
+  const recorder = s.recorder
+  try host(() => recorder.start(core.options.timesliceMs))
+  if (!active() || s.ended) return
+  s.timer = runFork(andThen(sleep(Duration.millis(core.options.maximumMs)), sync(() => {
+    if (active()) finish(core)
+  })))
+  const endpoint = try host(() => observePause(stream, () => {
+    if (active()) finish(core)
+  }))
+  if (!active() || s.ended) return safely(endpoint)
+  s.endpoint = endpoint
+  publish(core, "RecordingActive")
+  if (!previews()) return
+  const receive = (chunk: C) => runPromise(Effect.catch(offer(core, s, chunk), (failure) => die(failure.cause)))
+  const live = try port(() => core.options.preview(stream, receive, previews))
+  if (previews()) s.live = live
+  else if (live !== undefined) safely(live)
+}
+
+effect function begin<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>, transcript: TranscriptReceiver, observePause: PauseObserver<S>): void!! {
+  if (core.current !== undefined) return
+  const s: Recording<S, C> = {
+    transcript, stream: undefined, recorder: undefined, timer: undefined, endpoint: undefined, live: undefined,
+    chunks: [], bytes: 0, previews: true, ended: false,
+  }
+  core.current = s
+  publish(core, "RecordingConnecting")
+  record(core, s, observePause) catch (failure) => {
+    if (!s.ended) fail(core, s, failure.cause)
+  }
+}
+
+export class RecordedTranscriptionController<Stream extends RecordingStream, Chunk extends RecordingChunk> {
+  #core: Core<Stream, Chunk>
+
+  private constructor(options: RecordedTranscriptionOptions<Stream, Chunk>) {
+    this.#core = { options: { ...options }, current: undefined, phase: "RecordingIdle" }
+  }
+
+  static effect open<Stream extends RecordingStream, Chunk extends RecordingChunk>(
+    options: RecordedTranscriptionOptions<Stream, Chunk>,
+  ): RecordedTranscriptionController<Stream, Chunk>!RecordingBoundRefused {
+    for (const bound of ["maximumBytes", "maximumMs", "timesliceMs"] as const) {
+      const value = options[bound]
+      if (!Number.isSafeInteger(value) || !recordingBoundAccepted(value)) throw new RecordingBoundRefused({ bound, value })
+    }
+    return new RecordedTranscriptionController(options)
+  }
+
+  get pending(): boolean {
+    return this.#core.current !== undefined
+  }
+
+  get phase(): RecordingPhase {
+    return this.#core.phase
+  }
+
+  start(transcript: TranscriptReceiver, observePause: PauseObserver<Stream>): Promise<void> {
+    return runPromise(begin(this.#core, transcript, observePause))
+  }
+
+  finish(): void {
+    finish(this.#core)
+  }
+
+  cancel(): void {
+    cancel(this.#core)
+  }
+}
+
+export type DraftTranscriptResult =
+  | { readonly kind: "applied"; readonly value: string }
+  | { readonly kind: "conflict"; readonly value: string }
+  | { readonly kind: "ignored" }
+
+export class DraftTranscriptGuard {
+  #current = ""
+  #guard: DraftGuard = { revision: 0, generation: 0 }
+
+  get value(): string {
+    return this.#current
+  }
+
+  observe(value: string): void {
+    this.#guard = observeDraft(this.#guard, value !== this.#current)
+    this.#current = value
+  }
+
+  invalidate(): void {
+    this.#guard = invalidateDraft(this.#guard)
+  }
+
+  begin(compose: (original: string, transcript: string) => string): (text: string, final: boolean) => DraftTranscriptResult {
+    const ticket = ticketFor(this.#guard)
+    const original = this.#current
+    this.#guard = beginDraft(this.#guard)
+    return (text, final) => {
+      const outcome = draftOutcome(this.#guard, ticket, final)
+      switch (outcome) {
+        case "DraftIgnored":
+          return { kind: "ignored" }
+        case "DraftConflict":
+          return { kind: "conflict", value: text }
+        case "DraftApplied": {
+          const value = compose(original, text)
+          this.#current = value
+          return { kind: "applied", value }
+        }
+      }
+    }
+  }
+}

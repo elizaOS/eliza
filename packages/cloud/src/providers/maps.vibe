@@ -102,7 +102,7 @@ effect function send(meter: Meter, request: HttpClientRequest.HttpClientRequest,
     const billing = billingOf(response.status)
     if (billing === "CallBilled") meter.observed += price
     if (billing !== "CallBilled") {
-      try Stream.runHead(response.stream) catch () => undefined
+      Stream.runHead(response.stream) catch () => undefined
       if (billing === "CallNotBilled") throw new Rejected({ status: response.status })
       throw new Lost({ cause: `status ${response.status}` })
     }
@@ -120,45 +120,41 @@ effect function decoded<A>(got: Got, schema: Schema.Decoder<A>): A!Refused {
 
 effect function metered<A>(work: (meter: Meter) => A!Stop!MapsContext): MapsReply<A>!!MapsContext {
   const meter: Meter = { observed: 0 }
-  return work(meter).pipe(Effect.map((value): MapsReply<A> => ({ kind: "answered", value, observedMicros: meter.observed }))) catch (stop): MapsReply<A> => match (stop) {
+  const answered = effect {
+    const value = try work(meter)
+    return { kind: "answered", value, observedMicros: meter.observed } satisfies MapsReply<A>
+  }
+  return answered catch (stop): MapsReply<A> => match (stop) {
     when Refused: { kind: "refused", code: stop.code, observedMicros: meter.observed };
     when Rejected: { kind: "refused", code: "ProviderUnavailable", observedMicros: meter.observed };
     when Lost: { kind: "unknown", cause: stop.cause };
   }
 }
 
-const LatLng = Schema.Struct({ latitude: Schema.Finite, longitude: Schema.Finite })
-const optionalText = Schema.optionalKey(Schema.String)
-const GooglePlace = Schema.Struct({
-  id: Schema.String, displayName: Schema.optionalKey(Schema.Struct({ text: Schema.String })), formattedAddress: optionalText, location: LatLng,
-  websiteUri: optionalText, internationalPhoneNumber: optionalText,
-  regularOpeningHours: Schema.optionalKey(Schema.Struct({ weekdayDescriptions: Schema.optionalKey(Schema.Array(Schema.String)) })),
-})
-type GooglePlace = typeof GooglePlace.Type
-const PlacesReply = Schema.Struct({ places: Schema.optionalKey(Schema.Array(GooglePlace)) })
-const GeocodeReply = Schema.Struct({
-  status: Schema.String,
-  results: Schema.optionalKey(Schema.Array(Schema.Struct({ place_id: Schema.String, formatted_address: Schema.String, geometry: Schema.Struct({ location: Schema.Struct({ lat: Schema.Finite, lng: Schema.Finite }) }) }))),
-})
-const StopName = Schema.optionalKey(Schema.Struct({ name: optionalText }))
-const TransitReply = Schema.Struct({
-  headsign: optionalText, stopCount: Schema.optionalKey(Schema.Finite),
-  stopDetails: Schema.optionalKey(Schema.Struct({ departureStop: StopName, arrivalStop: StopName, departureTime: optionalText, arrivalTime: optionalText })),
-  transitLine: Schema.optionalKey(Schema.Struct({ name: optionalText, nameShort: optionalText, color: optionalText, vehicle: Schema.optionalKey(Schema.Struct({ type: optionalText })) })),
-})
-const StepReply = Schema.Struct({
-  distanceMeters: Schema.optionalKey(Schema.Finite), startLocation: Schema.optionalKey(Schema.Struct({ latLng: LatLng })),
-  navigationInstruction: Schema.optionalKey(Schema.Struct({ maneuver: optionalText, instructions: optionalText })), transitDetails: Schema.optionalKey(TransitReply),
-})
-const RoutesReply = Schema.Struct({
-  routes: Schema.optionalKey(Schema.Array(Schema.Struct({
-    distanceMeters: Schema.optionalKey(Schema.Finite), duration: Schema.String, staticDuration: optionalText,
-    polyline: Schema.Struct({ encodedPolyline: Schema.String }), legs: Schema.optionalKey(Schema.Array(Schema.Struct({ steps: Schema.optionalKey(Schema.Array(StepReply)) }))),
-  }))),
-})
-type RouteReply = NonNullable<typeof RoutesReply.Type["routes"]>[number]
-const SessionReply = Schema.Struct({ session: Schema.String, expiry: Schema.Union([Schema.String, Schema.Finite]), imageFormat: optionalText })
-const ViewportReply = Schema.Struct({ copyright: Schema.String, maxZoomRects: Schema.optionalKey(Schema.Array(Schema.Struct({ maxZoom: Schema.Finite }))) })
+schema LatLng { latitude: number; longitude: number }
+schema DisplayName { text: string }
+schema OpeningHours { weekdayDescriptions?: Array<string> }
+schema GooglePlace { id: string; displayName?: DisplayName; formattedAddress?: string; location: LatLng; websiteUri?: string; internationalPhoneNumber?: string; regularOpeningHours?: OpeningHours }
+schema PlacesReply { places?: Array<GooglePlace> }
+schema GeoLocation { lat: number; lng: number }
+schema GeoGeometry { location: GeoLocation }
+schema GeocodeResult { place_id: string; formatted_address: string; geometry: GeoGeometry }
+schema GeocodeReply { status: string; results?: Array<GeocodeResult> }
+schema StopName { name?: string }
+schema StopDetails { departureStop?: StopName; arrivalStop?: StopName; departureTime?: string; arrivalTime?: string }
+schema Vehicle { type?: string }
+schema TransitLine { name?: string; nameShort?: string; color?: string; vehicle?: Vehicle }
+schema TransitReply { headsign?: string; stopCount?: number; stopDetails?: StopDetails; transitLine?: TransitLine }
+schema StartLocation { latLng: LatLng }
+schema Navigation { maneuver?: string; instructions?: string }
+schema StepReply { distanceMeters?: number; startLocation?: StartLocation; navigationInstruction?: Navigation; transitDetails?: TransitReply }
+schema LegReply { steps?: Array<StepReply> }
+schema Polyline { encodedPolyline: string }
+schema RouteReply { distanceMeters?: number; duration: string; staticDuration?: string; polyline: Polyline; legs?: Array<LegReply> }
+schema RoutesReply { routes?: Array<RouteReply> }
+schema SessionReply { session: string; expiry: string | number; imageFormat?: string }
+schema ZoomRect { maxZoom: number }
+schema ViewportReply { copyright: string; maxZoomRects?: Array<ZoomRect> }
 
 const placeId = /^[A-Za-z0-9_-]{10,255}$/
 const placeFields = "places.id,places.displayName,places.formattedAddress,places.location"
@@ -245,12 +241,16 @@ function simplified(geometry: ReadonlyArray<Coordinate>, steps: ReadonlyArray<Ma
 }
 
 function routeId(parts: string): string {
-  let hash = 0xcbf29ce484222325n
-  for (let index = 0; index < parts.length; index += 1) hash = BigInt.asUintN(64, (hash ^ BigInt(parts.charCodeAt(index))) * 0x100000001b3n)
-  return `route_${hash.toString(16).padStart(16, "0")}`
+  let low = 0x811c9dc5
+  let high = 0x01000193
+  for (let index = 0; index < parts.length; index += 1) {
+    low = Math.imul(low ^ parts.charCodeAt(index), 0x01000193) >>> 0
+    high = Math.imul(high ^ parts.charCodeAt(parts.length - 1 - index), 0x01000193) >>> 0
+  }
+  return `route_${low.toString(16).padStart(8, "0")}${high.toString(16).padStart(8, "0")}`
 }
 
-function transitOf(reply: typeof TransitReply.Type | undefined): MapsTransitDetails | undefined {
+function transitOf(reply: TransitReply | undefined): MapsTransitDetails | undefined {
   const line = reply?.transitLine?.nameShort ?? reply?.transitLine?.name
   const departureStop = reply?.stopDetails?.departureStop?.name
   const arrivalStop = reply?.stopDetails?.arrivalStop?.name
@@ -362,7 +362,7 @@ export function googleMapsProvider(settings: GoogleSettings): MapsProvider {
     geocode: (request) => metered(effect (meter) => {
       const point = request.near
       if (point !== undefined && !covered(point)) throw new Refused({ code: "UnsupportedRegion" })
-      const bounds = point === undefined ? {} : { bounds: `${Math.max(-90, point.latitude - 0.25)},${Math.max(-180, point.longitude - 0.25)}|${Math.min(90, point.latitude + 0.25)},${Math.min(180, point.longitude + 0.25)}` }
+      const bounds: Readonly<Record<string, string>> = point === undefined ? {} : { bounds: `${Math.max(-90, point.latitude - 0.25)},${Math.max(-180, point.longitude - 0.25)}|${Math.min(90, point.latitude + 0.25)},${Math.min(180, point.longitude + 0.25)}` }
       return answer((try geocoding(meter, { address: request.query, ...bounds })).slice(0, request.limit ?? 10))
     }),
     reverse: (request) => metered(effect (meter) => {

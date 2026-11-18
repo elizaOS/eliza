@@ -4,7 +4,7 @@ import { codeChallengeMethod, type ClientRequest, type Registration } from "../.
 import type { RateLimit } from "../../gen/cloud__shared__rateLimit.effect.vibe"
 import { refused, type Refused } from "../http/refusal.vibe"
 import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
-import { admit } from "../shared/rate-limit.vibe"
+import { admitCheck } from "../shared/rate-limit.vibe"
 import { newId, sameText, seal, secretText, tokenDigest, unseal } from "../shared/sealing.vibe"
 import { Store, toInt, toText, type Row, type Tx } from "../store/connection.vibe"
 import { outputRows, stepRow, type Columns } from "../store/rows.vibe"
@@ -204,7 +204,7 @@ export effect function revokeAll(tx: Tx, userId: string, now: number) {
 }
 
 effect function perIp(context: RouteContext, limit: RateLimit) {
-  try admit({ subject: Option.getOrElse(context.request.remoteAddress, () => "unknown"), scope: limit.name, limit: limit.limit, widthMs: limit.windowMs })
+  try admitCheck({ subject: Option.getOrElse(context.request.remoteAddress, () => "unknown"), rule: limit })
 }
 
 effect function connect(context: RouteContext) {

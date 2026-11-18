@@ -1,0 +1,76 @@
+// spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"; spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; spec/os/signIn/readiness.md, "Story: Read the service's own terms"
+import type { ElizaSignInPlugin, SignInEvents, SignInFailureCode } from "./definitions/sign-in.ts"
+import { Cancelled, Progress, Readiness, Refusal, Service, SignOut, Status, events, requestIdOf, signInCode, strict } from "./sign-in.schema.vibe"
+
+export type * from "./definitions/sign-in.ts"
+export { requestIdOf, signInCode }
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import { Cause, Effect, Exit } from "effect"
+  import type { ElizaSignInPlugin } from "./definitions/sign-in.ts"
+
+  /** @throws {never} */
+  export function signInPlugin(name = "ElizaSignIn"): ElizaSignInPlugin {
+    return registerPlugin<ElizaSignInPlugin>(name)
+  }
+
+  /** @throws {never} */
+  export async function answered<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
+    const exit = await Effect.runPromiseExit(effect)
+    if (Exit.isSuccess(exit)) return exit.value
+    throw Cause.squash(exit.cause)
+  }
+}
+import { answered, signInPlugin } from capacitor
+export { signInPlugin }
+
+export type SignInCall = keyof ElizaSignInPlugin
+
+export error SignInRefused { call: SignInCall; code: SignInFailureCode; attemptKept: boolean; resendAt: number | undefined }
+
+export error SignInCallFailed { call: SignInCall; cause: unknown }
+
+export error MalformedSignInReply { call: SignInCall; issue: string }
+
+function rejection(call: SignInCall, cause: unknown) {
+  return match (Schema.decodeUnknownOption(Refusal)(cause)) {
+    when Option.Some(let refusal): new SignInRefused({
+      call,
+      code: refusal.code,
+      attemptKept: refusal.data?.attemptKept === true,
+      resendAt: refusal.data?.resendAt,
+    });
+    default: new SignInCallFailed({ call, cause });
+  }
+}
+
+effect function reply<A>(call: SignInCall, shape: Schema.Codec<A, unknown>, run: () => Promise<unknown>) {
+  const raw = try tryPromise({ try: () => run(), catch: (cause) => rejection(call, cause) })
+  return try mapError(Schema.decodeUnknownEffect(shape)(raw, strict), (refusal) => new MalformedSignInReply({ call, issue: refusal.message }))
+}
+
+function heard<Name extends keyof SignInEvents>(name: Name, listener: (event: SignInEvents[Name]) => void) {
+  const shape: Schema.Codec<SignInEvents[Name], unknown> = events[name]
+  return (event: unknown) =>
+    runFork(matchEffect(Schema.decodeUnknownEffect(shape)(event, strict), {
+      onSuccess: (parsed) => sync(() => listener(parsed)),
+      onFailure: (refusal) => logError("A native sign-in event did not match its shape", { event: name, issue: refusal.message }),
+    }))
+}
+
+export function signInClient(plugin: ElizaSignInPlugin = signInPlugin()): ElizaSignInPlugin {
+  return {
+    start: (options) => answered(reply("start", Progress, () => plugin.start(options))),
+    verify: (options) => answered(reply("verify", Progress, () => plugin.verify(options))),
+    resend: (options) => answered(reply("resend", Progress, () => plugin.resend(options))),
+    cancel: (options) => answered(reply("cancel", Cancelled, () => plugin.cancel(options))),
+    reauthenticate: (options) => answered(reply("reauthenticate", Progress, () => plugin.reauthenticate(options))),
+    signOut: (options) => answered(reply("signOut", SignOut, () => plugin.signOut(options))),
+    status: (options) => answered(reply("status", Status, () => plugin.status(options))),
+    readiness: (options) => answered(reply("readiness", Readiness, () => plugin.readiness(options))),
+    serviceDocument: (options) => answered(reply("serviceDocument", Service, () => plugin.serviceDocument(options))),
+    addListener: (eventName, listener) =>
+      answered(tryPromise({ try: () => plugin.addListener(eventName, heard(eventName, listener)), catch: (cause) => rejection("addListener", cause) })),
+  }
+}

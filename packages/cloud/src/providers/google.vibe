@@ -42,14 +42,9 @@ export const providerTimeout = 10 * millisPerSecond
 export const defaultMaxBytes = 16 * 1024 * 1024
 const tokenMaxBytes = 64 * 1024
 
-const TokenReply = Schema.Struct({
-  access_token: Schema.String,
-  expires_in: Schema.Number,
-  refresh_token: Schema.optionalKey(Schema.String),
-  scope: Schema.optionalKey(Schema.String)
-})
-const SealedTokens = Schema.Struct({ refreshToken: Schema.String, accessToken: Schema.String, expiresAt: Schema.Number })
-const OAuthError = Schema.Struct({ error: Schema.String })
+schema TokenReply { access_token: string; expires_in: number; refresh_token?: string; scope?: string }
+schema SealedTokens { refreshToken: string; accessToken: string; expiresAt: number }
+schema OAuthError { error: string }
 
 function decoded<A>(schema: Schema.Codec<A>, raw: unknown): A | undefined {
   return Option.getOrUndefined(Schema.decodeUnknownOption(schema)(raw))
@@ -152,10 +147,10 @@ function oauthError(body: unknown): string | undefined {
 }
 
 effect function sealingOnly<A>(program: A!(SecretMissing | SealingFailed)!Deployment): A!SealingFailed!Deployment {
-  return try (program catch effect (failure) => {
+  return program catch effect (failure) => {
     if (failure._tag === "SecretMissing") return try die(failure)
     throw failure
-  })
+  }
 }
 
 export effect function sealTokens(tokens: GoogleTokens): string!SealingFailed!Deployment {

@@ -1,0 +1,51 @@
+// spec/agent/host/resources.md, "Story: Release everything I acquired, once"
+module node {
+  import { acquire, canAcquire, close, initial, releaseNext, type Resources } from "../../gen/agent__host__resources.ts"
+
+  export type ResourceName = "store" | "runtime" | "plugins" | "socket" | "loopback"
+
+  export class ResourcesClosed extends Error {
+    constructor(readonly resource: string) {
+      super(`Cannot acquire ${resource} after release began`)
+      this.name = "ResourcesClosed"
+    }
+  }
+
+  export interface HeldResources {
+    acquire(name: ResourceName, release: () => Promise<void>): void
+    close(): Promise<void>
+    state(): Resources
+  }
+
+  export function resources(): HeldResources {
+    let state = initial
+    const releases: (() => Promise<void>)[] = []
+    let closing: Promise<void> | undefined
+    return {
+      acquire(name, release) {
+        if (!canAcquire(state)) throw new ResourcesClosed(name)
+        state = acquire(state, name)
+        releases.push(release)
+      },
+      close: () => closing ??= (async () => {
+        state = close(state)
+        const failures: unknown[] = []
+        while (state.phase === "Closing") {
+          const release = releases.pop()
+          try {
+            if (release === undefined) throw new Error(`No release for ${state.pending[0]}`)
+            await release()
+            state = releaseNext(state, true)
+          } catch (error) {
+            failures.push(error)
+            state = releaseNext(state, false)
+          }
+        }
+        if (failures.length > 0) throw new AggregateError(failures, "Resources could not be released")
+      })(),
+      state: () => structuredClone(state),
+    }
+  }
+}
+
+export { resources, ResourcesClosed, type HeldResources, type ResourceName } from node

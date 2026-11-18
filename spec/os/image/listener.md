@@ -149,7 +149,7 @@ pure def descriptorMatches(descriptor: ListenerDescriptor, listener: ListenerApk
 
 ```quint
 type ListenerProblem = SourceNotAdmitted | NotTheLaunchersListener | SignerNotTheLaunchers | PermissionsUnreviewed | OverlayNotAdmitted | WakeNamesInvalid
-  | ZipLayoutRefused | PolicyCertificateDiffers | DescriptorMismatch | NotAReleaseBuild | SpeechNotPinned | QualificationMissing | QualificationMismatch | QualificationNotPassed
+  | ZipLayoutRefused | PolicyCertificateDiffers | DescriptorMismatch | NotAReleaseBuild | SpeechBundleMissing | QualificationMissing | QualificationMismatch | QualificationNotPassed
 type ListenerReach = ListenerInert | ListenerActivated
 type ListenerStaging = ListenerStaged({ reach: ListenerReach, speechIncluded: bool }) | ListenerRefused({ problem: ListenerProblem })
 type ListenerRequest = { launcherPackage: str, launcherSigner: Digest, launcherApk: Digest, launcherDescriptor: Digest, listener: ListenerApk, descriptor: ListenerDescriptor,
@@ -170,7 +170,7 @@ pure def listenerStaging(request: ListenerRequest, source: V::SourceVerdict, mod
   else if (not(policyBoundToSigner(request.policyCertificate, request.launcherSigner))) refuse(PolicyCertificateDiffers)
   else if ((strict or request.descriptor != NoListenerDescriptor) and not(descriptorMatches(request.descriptor, listener))) refuse(DescriptorMismatch)
   else if (strict and listener.buildType != ReleaseBuild) refuse(NotAReleaseBuild)
-  else if (strict and listener.speech != SpeechPinned) refuse(SpeechNotPinned)
+  else if (strict and listener.speech != SpeechPinned) refuse(SpeechBundleMissing)
   else if (production and not(activating)) refuse(QualificationMissing)
   else if (activating and not(qualificationMatches(request, source))) refuse(QualificationMismatch)
   else if (activating and not(qualificationPassed(request.qualification, production))) refuse(QualificationNotPassed)

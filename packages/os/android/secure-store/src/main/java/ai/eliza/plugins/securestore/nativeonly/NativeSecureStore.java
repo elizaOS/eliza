@@ -34,7 +34,7 @@ import javax.crypto.spec.GCMParameterSpec;
 public final class NativeSecureStore {
     private static final String KEY_ALIAS = "ai.elizaos.secure-store.v1";
     private static final Object LOCK = new Object();
-    private static final String CLOCK_DEVICE_SLOT = "native.clock_device";
+    private static final String CLOCK_DEVICE_SLOT = SecureSlotPolicy.CLOCK_DEVICE_SLOT;
     private static long generation;
     private static final Set<String> ALLOWED_KEYS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
         "session.device_auth", "session.steward_token", "session.cloud_mobile_pending",

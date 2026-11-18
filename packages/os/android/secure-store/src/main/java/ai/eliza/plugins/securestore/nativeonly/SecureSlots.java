@@ -12,8 +12,8 @@ import ai.eliza.plugins.securestore.nativeonly.SecureSlotPolicy.SlotRead;
 import ai.eliza.plugins.securestore.nativeonly.SecureSlotPolicy.SlotRequest;
 import ai.eliza.plugins.securestore.nativeonly.SecureSlotPolicy.SlotRule;
 import android.content.Context;
-import com.getcapacitor.CapConfig;
 import java.io.File;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -27,6 +27,7 @@ public final class SecureSlots {
   public static final String PLUGIN = "ElizaSecureStore";
   public static final String DIRECTORY = "eliza-secure-slots";
   public static final String KEY_ALIAS = "ai.eliza.secure-slots.v1";
+  private static final String CAPACITOR_CONFIG = "capacitor.config.json";
 
   public sealed interface Reading permits Refused, Absent, Unreadable, Present {}
   public record Refused() implements Reading {}
@@ -49,7 +50,7 @@ public final class SecureSlots {
     if (current != null) return current;
     synchronized (SecureSlots.class) {
       if (host == null) {
-        JSONObject config = CapConfig.loadDefault(context).getPluginConfiguration(PLUGIN).getConfigJSON();
+        JSONObject config = hostConfig(context);
         host = new SecureSlots(new File(context.getApplicationContext().getNoBackupFilesDir(), DIRECTORY), KEY_ALIAS,
             SecureSlotPolicy.parse(config == null ? null : plain(config)));
       }
@@ -58,6 +59,17 @@ public final class SecureSlots {
   }
 
   public SecureSlotPolicy policy() { return policy; }
+
+  private static JSONObject hostConfig(Context context) {
+    try (InputStream input = context.getAssets().open(CAPACITOR_CONFIG)) {
+      JSONObject plugins = new JSONObject(new String(input.readAllBytes(), StandardCharsets.UTF_8)).optJSONObject("plugins");
+      return plugins == null ? null : plugins.optJSONObject(PLUGIN);
+    } catch (java.io.FileNotFoundException absent) {
+      return null;
+    } catch (java.io.IOException | org.json.JSONException unreadable) {
+      throw new IllegalArgumentException("The host's Capacitor configuration is unreadable", unreadable);
+    }
+  }
 
   public Reading read(Caller by, String name) {
     synchronized (JsonCredentialSlots.LOCK) {

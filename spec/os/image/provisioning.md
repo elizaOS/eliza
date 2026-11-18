@@ -15,12 +15,12 @@ once into the staged product; only a boot of the built image
 > the assistant when my product takes that role, so that the person starts
 > in my product while the stock launcher stays as a way back.
 
-### First-boot defaults name only components the APK declares once and exports, and the assistant only when the product takes it
+### First-boot defaults name only components the APK declares once and exports, the assistant only when the product takes it, and only once the product's requirements hold
 
-Home is a preferred-activity entry read on first boot, the assistant
-`config_defaultAssistant`, Autofill `config_defaultAutofillService`. A
-product without the assistant role gets no assistant default, and its APK
-may declare only disabled assist activities. Nothing removes the stock
+Home is a preferred-activity entry, the assistant `config_defaultAssistant`,
+Autofill `config_defaultAutofillService`. Without the assistant role the APK
+may declare only disabled assist activities. A product may require Autofill
+and all-files access (`MANAGE_EXTERNAL_STORAGE`). Nothing removes the stock
 launcher. Refusals come in the order of `ProvisioningProblem`.
 
 ```quint
@@ -79,30 +79,14 @@ pure def lawDefaultsAreDeclaredExportedComponents(manifest: LauncherManifest, re
   val defaults = provisioningDefaults(manifest, request)
   match defaults {
     | ProvisioningAdmitted(d) => activitiesHandling(manifest, HomeIntent).length() == 1 and activitiesHandling(manifest, HomeIntent).every(c => c.name == d.home and c.exported)
-      and autofillServices(manifest).every(c => c.exported and c.permission == autofillPermission)
-      and (d.assistant == NoDefault iff not(takesAssistant(request.assistant)))
+      and autofillServices(manifest).every(c => c.exported and c.permission == autofillPermission) and (d.assistant == NoDefault iff not(takesAssistant(request.assistant)))
       and (takesAssistant(request.assistant) implies activitiesHandling(manifest, AssistIntent).every(c => c.exported and d.assistant == DefaultOf({ name: c.name })))
+      and (request.requires.autofill implies d.autofill != NoDefault) and (request.requires.allFilesAccess implies manifest.requestedPermissions.includes(allFilesAccessPermission))
     | _ => true
   }
 }
 pure def lawWithoutTheRoleAnEnabledAssistIsRefused(manifest: LauncherManifest, request: ProvisioningRequest): bool =
   (request.assistant == NoAssistant and activitiesHandling(manifest, AssistIntent).some(c => c.enabledByDefault)) implies not(provisioningAdmitted(provisioningDefaults(manifest, request)))
-```
-
-### A product's declared requirements hold of the APK before any default is written
-
-A product may require the Autofill service and all-files access
-(`MANAGE_EXTERNAL_STORAGE`, app-op left at its default).
-
-```quint
-pure def lawRequirementsHoldWhenAdmitted(manifest: LauncherManifest, request: ProvisioningRequest): bool = {
-  val defaults = provisioningDefaults(manifest, request)
-  match defaults {
-    | ProvisioningAdmitted(d) => (request.requires.autofill implies d.autofill != NoDefault)
-      and (request.requires.allFilesAccess implies manifest.requestedPermissions.includes(allFilesAccessPermission))
-    | _ => true
-  }
-}
 ```
 
 ## Story: Keep my launcher eligible for the phone and messages roles without assigning them
@@ -113,12 +97,10 @@ pure def lawRequirementsHoldWhenAdmitted(manifest: LauncherManifest, request: Pr
 
 ### Role overrides enable each required handler, found once and disabled in the APK with its exact protection, and assign no role
 
-On an image that declares telephony roles, the override is a sysconfig
-`<component-override>` that Android applies at package scan, so it survives
-APK updates. It only enables components; it has no way to name a role
-holder. The in-call service declares the in-call UI and no car-mode UI; the
-MMS provider is private, for the authority `<package>.mms`, and grants URI
-permissions; the dial activity handles `DIAL` with and without `tel`.
+The override is a sysconfig `<component-override>`, applied at package scan
+so it survives APK updates; it can only enable components. The in-call
+service declares the in-call UI and no car-mode UI; the MMS provider is
+private, for `<package>.mms`, and grants URI permissions.
 
 ```quint
 type DefaultRole = HomeRole | AssistantRole | DialerRole | SmsRole
@@ -156,12 +138,8 @@ pure val manifestValues = {
 }
 pure def lawOverridesEnableOnlyDisabledHandlers(manifest: LauncherManifest, request: ProvisioningRequest): bool = {
   val defaults = provisioningDefaults(manifest, request)
-  match defaults {
-    | ProvisioningAdmitted(d) => (request.telephonyRoles implies d.overrides.length() == telephonyHandlers.length())
-      and (not(request.telephonyRoles) implies d.overrides.length() == 0)
-      and d.overrides.every(n => manifest.components.some(c => c.name == n and not(c.enabledByDefault)))
-    | _ => true
-  }
+  match defaults { | ProvisioningAdmitted(d) => d.overrides.length() == (if (request.telephonyRoles) telephonyHandlers.length() else 0)
+    and d.overrides.every(n => manifest.components.some(c => c.name == n and not(c.enabledByDefault))) | _ => true }
 }
 pure def lawEnabledHandlerIsRefused(manifest: LauncherManifest, request: ProvisioningRequest): bool =
   (request.telephonyRoles and telephonyHandlers.some(h => handlerMatches(manifest, h).some(c => c.enabledByDefault))) implies not(provisioningAdmitted(provisioningDefaults(manifest, request)))
@@ -169,8 +147,7 @@ pure def lawEnabledHandlerIsRefused(manifest: LauncherManifest, request: Provisi
 
 ### An image declares Home, the assistant when the product takes it, and the dialer and SMS app when it declares telephony roles, each backed by an admitted component
 
-[First run](./firstRun.md) assigns exactly these on the device, the dialer
-and SMS app only on a device that also has telephony.
+[First run](./firstRun.md) assigns these, dialer and SMS only with telephony.
 
 ```quint
 pure def imageRoles(request: ProvisioningRequest): Set[DefaultRole] =
@@ -191,8 +168,7 @@ pure def lawDeclaredRolesHaveAdmittedHandlers(manifest: LauncherManifest, reques
 ### An image-only surface answers only from a system install that sees the image feature at the current version
 
 Only an image puts `<package>.aosp_image` (version 1) in the product
-partition. A sideloaded install refuses the surface even if a feature of
-that name were present.
+partition; a sideloaded install refuses even if such a feature were present.
 
 ```quint
 type HostInstall = SystemInstall | UserInstall
@@ -207,9 +183,8 @@ pure def lawSideloadedOrStaleHostHasNoImageSurface(install: HostInstall, feature
 
 ### The capability overlay for a presigned host is written only in production, for a resource that defaults false and only system or product may overlay
 
-A presigned host cannot be rebuilt with an image-only resource, so the
-image sets its boolean with a static product-partition runtime resource
-overlay. The host still needs a system install.
+A presigned host cannot be rebuilt, so the image sets its boolean with a
+static product-partition resource overlay; the host still needs a system install.
 
 ```quint
 type OverlayPolicy = SystemOrProductPolicy | OtherPolicy
@@ -234,14 +209,15 @@ pure def lawOverlayOnlyForAProtectedFalseDefault(mode: StagingMode, resource: Ho
 > voice only on an image staged for it, so that no other app or image can
 > trigger my assistant's protected voice entry.
 
-### Listener activation enables exactly the launcher's disabled plain assist activity and, with power voice, its protected power child
+### Listener activation enables exactly the launcher's disabled plain assist activity and, for power voice, its protected power child, given the power bundle without the assist bundle and the long-press overlay
 
-The APK ships both disabled; the image writes `<package>.feature.LISTENER`
-(version 1) beside the image feature and one component override enabling
-them. The assist activity is exported with only the plain assist filter and
-no permission. The power child is the activity the assistant's
-`ai.eliza.os.POWER_VOICE_ACTIVITY` meta-data names: exported, disabled,
-protected by `STATUS_BAR_SERVICE`, with no intent filter.
+The image writes `<package>.feature.LISTENER` (version 1) and one component
+override. The assist activity is exported, with only the plain assist filter
+and no permission. The power child is the activity named by the meta-data
+`ai.eliza.os.POWER_VOICE_ACTIVITY`: exported, disabled, protected by
+`STATUS_BAR_SERVICE`, with no intent filter. `power` and `assist` change the
+same SystemUI source, so naming both is refused; the overlay is the
+listener's `config_longPressOnPowerBehavior`.
 
 ```quint
 type SystemuiPatch = ChipPatch | OpsPatch | AssistPatch | PowerPatch
@@ -275,22 +251,11 @@ pure val stagingValues = Set({ patches: Set(ChipPatch, OpsPatch, PowerPatch), lo
   { patches: Set(ChipPatch, OpsPatch, PowerPatch, AssistPatch), longPressAssistant: true }, { patches: Set(ChipPatch, OpsPatch, PowerPatch), longPressAssistant: false })
 pure def lawActivationEnablesOnlyDisabledExportedActivities(manifest: LauncherManifest, request: ProvisioningRequest, staging: ListenerStaging): bool = {
   val activation = listenerActivation(manifest, request, staging)
-  match activation {
-    | ActivationWritten(a) => listenerImage(request.assistant) and imageFeatures(activation).contains(ListenerFeature)
-      and manifest.components.some(c => c.name == a.assistant and disabledExported(c) and c.handles == List(AssistIntent))
-      and (a.power != NoDefault implies (a.power == DefaultOf({ name: manifest.powerVoiceActivity }) and powerChildAdmitted(manifest)))
-    | _ => not(imageFeatures(activation).contains(ListenerFeature))
-  }
+  match activation { | ActivationWritten(a) => listenerImage(request.assistant) and imageFeatures(activation).contains(ListenerFeature)
+    and manifest.components.some(c => c.name == a.assistant and disabledExported(c) and c.handles == List(AssistIntent))
+    and (a.power != NoDefault implies (a.power == DefaultOf({ name: manifest.powerVoiceActivity }) and powerChildAdmitted(manifest)))
+    | _ => not(imageFeatures(activation).contains(ListenerFeature)) }
 }
-```
-
-### Power voice needs the power bundle, no assist bundle and the long-press assistant overlay
-
-The `power` and `assist` SystemUI bundles change the same source, so a
-staging that names both is refused whatever it asks for. The overlay is
-the listener's `config_longPressOnPowerBehavior` assistant setting.
-
-```quint
 pure def lawPowerVoiceNeedsItsBundleAlone(manifest: LauncherManifest, request: ProvisioningRequest, staging: ListenerStaging): bool = {
   val activation = listenerActivation(manifest, request, staging)
   match activation { | ActivationWritten(a) => not(staging.patches.contains(AssistPatch) and staging.patches.contains(PowerPatch))
@@ -310,16 +275,13 @@ pure def lawPowerVoiceNeedsItsBundleAlone(manifest: LauncherManifest, request: P
 pure def lockScreenSurfaces(manifest: LauncherManifest): List[ManifestComponent] = manifest.components.select(c => c.kind == ActivityKind
   and (c.marks.includes(ShowWhenLocked) or c.marks.includes(TurnScreenOn) or c.handles.includes(SecureCaptureIntent)))
 pure def lawSystemLockScreenAdmitsNoLauncherSurface(manifest: LauncherManifest, request: ProvisioningRequest): bool =
-  (request.lockScreen == SystemOwnsLockScreen and provisioningAdmitted(provisioningDefaults(manifest, request)))
-    implies manifest.components.every(c => c.kind != ActivityKind or not(c.marks.includes(ShowWhenLocked) or c.marks.includes(TurnScreenOn) or c.handles.includes(SecureCaptureIntent)))
+  (request.lockScreen == SystemOwnsLockScreen and provisioningAdmitted(provisioningDefaults(manifest, request))) implies lockScreenSurfaces(manifest).length() == 0
 ```
 
 ### The product requires DeskClock exactly once
 
-Adding the requirement to a makefile that has it leaves it unchanged; a
-makefile that names it twice is refused. The booted image must resolve the
-alarm actions to DeskClock ([verification](./verification.md)); that does
-not prove an alarm rings.
+A makefile that has it is left unchanged; one that names it twice is
+refused. [Verification](./verification.md) checks the alarm handlers.
 
 ```quint
 type ClockRequirement = ClockAdded | ClockKept | ClockNamedTwice
@@ -333,10 +295,9 @@ pure def lawAdmittedClockIsRequiredOnce(clockLines: int): bool =
 
 ### The secure camera overlay is staged only from verified Camera2 source and points the power gesture at Camera2
 
-The overlay adds `Camera2`, enables the double-press power camera gesture
-and names Camera2 as the gesture's package. The shell verifies the Camera2
-modules at their reviewed commits and bytes and passes the contract digest;
-staging is not locked-capture or device evidence.
+The overlay adds `Camera2` and enables the double-press power gesture for
+it. The shell verifies the Camera2 modules at their reviewed commits and
+bytes and passes the contract digest; staging is not device evidence.
 
 ```quint
 type CameraSource = CameraSourceVerified({ contract: Digest }) | CameraSourceUnverified
@@ -349,9 +310,6 @@ pure def secureCameraStaging(source: CameraSource): CameraStaging = match source
 pure val sourceValues = Set(CameraSourceVerified({ contract: Sha256({ hex: "a1" }) }), CameraSourceVerified({ contract: NotADigest }), CameraSourceUnverified)
 pure def lawCameraStagedOnlyFromAReviewedContract(source: CameraSource): bool = {
   val staged = secureCameraStaging(source)
-  match staged {
-    | CameraStaged(s) => isDigest(s.contract) and s.gesturePackage == secureCameraPackage and source == CameraSourceVerified({ contract: s.contract })
-    | _ => true
-  }
+  match staged { | CameraStaged(s) => isDigest(s.contract) and s.gesturePackage == secureCameraPackage and source == CameraSourceVerified({ contract: s.contract }) | _ => true }
 }
 ```

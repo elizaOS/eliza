@@ -4,6 +4,9 @@ import {
   type FireOutcome, type RefusalReason, type RequestKey, type TaskStatus, type Verb,
 } from "../../gen/agent__schedule__scheduledTasks.effect.vibe"
 import type { LocalRoute } from "../access/routes.vibe"
+import type { AgentModule, AgentPlugin, ModuleContext, ModuleFactory, ModuleRefused } from "../host/module.vibe"
+
+export const scheduledTasksModuleName = "@elizaos/agent/scheduled-tasks"
 
 export type TaskTrigger =
   | { readonly kind: "once"; readonly atIso: string }
@@ -52,6 +55,11 @@ export interface ScheduledTaskPort {
   get(taskId: string): (ScheduledTaskRow | undefined)!!
   applyVerb(taskId: string, request: VerbRequest, key: RequestKey): VerbResult!!
   fire(taskId: string): FireResult!!
+}
+
+export interface ScheduledTaskService {
+  readonly port: ScheduledTaskPort
+  readonly plugin: Omit<AgentPlugin, "name" | "description" | "routes">
 }
 
 const verbNames = ["snooze", "skip", "complete", "dismiss", "escalate", "acknowledge", "edit", "reopen"] as const
@@ -188,4 +196,19 @@ export function scheduledTaskRoutes(tasks: ScheduledTaskPort): LocalRoute[] {
         : runPromise(fireAnswer(tasks, parameters.get("id") ?? "")),
     },
   ]
+}
+
+export function scheduledTasksModule<R>(open: (context: ModuleContext) => ScheduledTaskService!ModuleRefused!R): ModuleFactory<R> {
+  return effect (context) => {
+    const service = try open(context)
+    return {
+      name: scheduledTasksModuleName,
+      plugin: {
+        ...service.plugin,
+        name: scheduledTasksModuleName,
+        description: "Scheduled tasks the owner answers from a list: reminders, check-ins and follow-ups",
+        routes: scheduledTaskRoutes(service.port),
+      },
+    } satisfies AgentModule
+  }
 }
