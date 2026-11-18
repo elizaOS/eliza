@@ -118,6 +118,7 @@ import {
   telephonyActionResultText,
   validateTelephonyActionResult,
 } from "./telephony-actions-contract.ts";
+import { authoredKeypadRequest } from "./telephony-request.ts";
 
 const reminderSchemas: ActionParameterSchema[] = [
   "reminder_read_selected",
@@ -1248,6 +1249,27 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   { types: ["clock_handoff"], text: CLOCK_PROPOSAL_GUIDANCE },
 ];
 
+/**
+ * A whole-message keypad command ("open the dialer and type 415 302 4399")
+ * owns its number: the one the owner wrote in this current request, or an
+ * empty keypad when none was written. The model's number never replaces it.
+ */
+function authoredKeypadOperation(
+  context: NonNullable<ReturnType<typeof getDeviceActionTurn>>,
+  message: Memory,
+): { type: "phone_keypad"; number?: string } | undefined {
+  if (!context.isCurrent() || context.requestMessage?.message !== message)
+    return;
+  const authored = authoredKeypadRequest(
+    extractUserText(unwrapUserMessageText(message)),
+  );
+  if (!authored) return;
+  return {
+    type: "phone_keypad",
+    ...(authored.number ? { number: authored.number } : {}),
+  };
+}
+
 export const proposeDeviceAction: Action = {
   name: "PROPOSE_DEVICE_ACTION",
   egress: ["owner-device"],
@@ -1580,7 +1602,11 @@ export const proposeDeviceAction: Action = {
       outcome = await new DeviceActionService(runtime).proposeWithOutcome(
         context.credential,
         resolveReminderCreateInput(
-          withDialNumber(p.operation),
+          withDialNumber(
+            operationType === "phone_keypad"
+              ? (authoredKeypadOperation(context, _message) ?? p.operation)
+              : p.operation,
+          ),
           context.startedAt,
         ),
         operationKey,
