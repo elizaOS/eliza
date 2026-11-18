@@ -117,12 +117,12 @@ it.effect('A matched body over its route limit is too large and answered 413 (sp
   const body = JSON.stringify({ text: "a longer message" })
   assert.strictEqual(tag(flat, call("POST", "/api/conversations/c1/messages", body)), "TooLarge")
   assert.strictEqual(tag(flat, call("POST", "/api/conversations/c1/messages", JSON.stringify({ text: "short" }))), "Admitted")
-  const router = createRouter({
+  const router = try Effect.try(() => createRouter({
     token: Redacted.make("launch-token"),
     epoch: 1,
     instanceId: "instance-1",
     routes: flat.map((route) => ({ ...route, method: route.method as "POST" | "GET", handler: () => ({ status: 200, body: {} }) })),
-  })
+  }))
   const answer = try host("route over its limit", () => router({ ...call("POST", "/api/conversations/c1/messages", body), authorization: "Bearer launch-token" }, new AbortController().signal))
   assert.strictEqual(answer.status, 413)
 })

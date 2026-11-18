@@ -41,6 +41,7 @@ module node {
   import { authRoutes } from "../access/auth.vibe"
   import { createRouter } from "../access/router.vibe"
   import { listenOnSocket } from "../access/socket.vibe"
+  import { noEvents } from "../access/events-port.vibe"
   import { listenOnHttp } from "../access/http.vibe"
   import { conversationRoutes } from "../conversation/turns.vibe"
   import { ownerMessageService } from "../conversation/message-service.vibe"
@@ -177,7 +178,7 @@ module node {
           ...composed.routes,
         ],
       })
-      if (binding.kind === "socket") resourcesOwned.acquire("socket", await listenOnSocket(binding.path, router))
+      if (binding.kind === "socket") resourcesOwned.acquire("socket", await listenOnSocket(binding.path, router, { token: authority.token, events: noEvents }))
       else resourcesOwned.acquire("loopback", await listenOnHttp(binding.port, router))
       const workflowWorker = launch.workflowWorker === undefined || pinned === undefined ? undefined
         : workerHost(launch.workflowWorker, pinned.worker, launch.environment ?? {},

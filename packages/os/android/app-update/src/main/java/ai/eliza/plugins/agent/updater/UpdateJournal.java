@@ -11,6 +11,11 @@ import java.util.*;
  * publish through fsync + same-filesystem rename. This is not a trust verifier. */
 public class UpdateJournal {
   public enum Phase { IDLE, STAGING, VERIFIED, COMMITTING, PROBATION, HEALTHY, RECOVERY_READY, RECOVERING, RECOVERY_PROBATION, RECOVERED, QUARANTINED, SUPPORT }
+  public enum Hold { UNHELD, HOLD_REQUESTED, HOLD_GRANTED }
+  private static final class Announcement {
+    final boolean hold; final Identity artifact;
+    Announcement(boolean hold,Identity artifact){this.hold=hold;this.artifact=artifact;}
+  }
   public interface Durability { void syncDirectory(Path path) throws IOException; }
   public interface Faults { void boundary(String name) throws IOException; }
   public interface CommitAction { void commit() throws IOException; }
@@ -29,7 +34,8 @@ public class UpdateJournal {
   /** The same candidate was released too often and is quarantined. */
   public static final String RETRY_BUDGET_SPENT="install_retry_budget_spent";
   /** Reasons a stalled install waits in SUPPORT for platform readback. */
-  public static final Set<String> AWAITING_REASONS=Set.of("user_action_required","policy_blocked","install_timeout","install_clock_invalid",OUTCOME_UNKNOWN);
+  public static final Set<String> AWAITING_REASONS=Set.of("user_action_required","policy_blocked","verification_failed","install_timeout","install_clock_invalid",OUTCOME_UNKNOWN,"unexpected_installed_identity");
+  public static final long HOLD_ACKNOWLEDGE_WAIT_MS=60*1000L;
   /** Owner-overridable default: the observed uptime a gone session with no
    * report waits for a late installer callback before the plan is released.
    * One periodic reconciliation job interval. */

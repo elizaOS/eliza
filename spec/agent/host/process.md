@@ -48,23 +48,28 @@ pure def phaseOrder(b: BootPhase): int = match b {
   | ReadLaunch => 0 | OpenStore => 1 | Migrate => 2 | LoadPlugins => 3 | InitializeRuntime => 4 | BindTransport => 5 | Ready => 6
 }
 pure def booting(s: AgentProcess): bool = s.failure == NoFailure and s.runtime.stopPhase == R::Open
-pure def failAt(s: AgentProcess, cause: L::BootFailure): AgentProcess = { ...s, failure: FailedWith({ cause: cause }) }
+pure def failedWith(cause: L::BootFailure, s: AgentProcess): AgentProcess = { ...s, failure: FailedWith({ cause: cause }) }
 pure def canOpenStore(s: AgentProcess, ok: bool): bool = booting(s) and s.phase == OpenStore
 pure def openStore(s: AgentProcess, ok: bool): AgentProcess =
-  if (ok) { ...s, phase: Migrate, resources: RS::acquire(s.resources, "store") } else failAt(s, L::Storage)
+  if (ok) { ...s, phase: Migrate, resources: RS::acquire(s.resources, "store") } else failedWith(L::Storage, s)
 pure def canMigrate(s: AgentProcess, ok: bool): bool = booting(s) and s.phase == Migrate
-pure def migrate(s: AgentProcess, ok: bool): AgentProcess = if (ok) { ...s, phase: LoadPlugins } else failAt(s, L::Storage)
+pure def migrate(s: AgentProcess, ok: bool): AgentProcess = if (ok) { ...s, phase: LoadPlugins } else failedWith(L::Storage, s)
 pure def canLoadPlugins(s: AgentProcess, ok: bool): bool = booting(s) and s.phase == LoadPlugins
-pure def loadPlugins(s: AgentProcess, ok: bool): AgentProcess = if (ok) { ...s, phase: InitializeRuntime } else failAt(s, L::Config)
+pure def loadPlugins(s: AgentProcess, ok: bool): AgentProcess = if (ok) { ...s, phase: InitializeRuntime } else failedWith(L::Config, s)
 pure def canBindTransport(s: AgentProcess, ok: bool): bool = booting(s) and s.phase == BindTransport
 pure def bindTransport(s: AgentProcess, ok: bool): AgentProcess =
-  if (ok) { ...s, phase: Ready, resources: RS::acquire(s.resources, "transport") } else failAt(s, L::Agent)
+  if (ok) { ...s, phase: Ready, resources: RS::acquire(s.resources, "transport") } else failedWith(L::Agent, s)
 pure def stepBootAdvancesOnePhaseAtATime(before: AgentProcess, after: AgentProcess): bool =
   phaseOrder(after.phase) == phaseOrder(before.phase) or phaseOrder(after.phase) == phaseOrder(before.phase) + 1
 pure def stepFailureIsFinal(before: AgentProcess, after: AgentProcess): bool =
   before.failure != NoFailure implies (after.failure == before.failure and after.phase == before.phase)
 pure def sometimesReady(s: AgentProcess): bool = s.phase == Ready and booting(s)
 pure def sometimesStorageFailed(s: AgentProcess): bool = s.failure == FailedWith({ cause: L::Storage })
+pure val weight_readLaunch = 4
+pure val weight_openStore = 4
+pure val weight_migrate = 4
+pure val weight_loadPlugins = 4
+pure val weight_bindTransport = 4
 ```
 
 ### A refused launch fails before the store opens, as a configuration or credential error
@@ -80,7 +85,7 @@ pure def refusalCause(v: L::LaunchVerdict): L::BootFailure = match v { | LaunchR
 pure def readLaunch(s: AgentProcess, doc: L::LaunchDocument, f: L::LaunchFrame): AgentProcess = {
   val verdict = L::launchVerdict(doc, f)
   if (verdict == L::LaunchAdmitted) { ...s, phase: OpenStore, epoch: f.epoch, backend: doc.backend, plugins: doc.policy.pluginsLoad }
-  else failAt(s, refusalCause(verdict))
+  else failedWith(refusalCause(verdict), s)
 }
 pure def alwaysLaunchRefusalHoldsNothing(s: AgentProcess): bool =
   (s.failure == FailedWith({ cause: L::Credential }) implies s.phase == ReadLaunch)
@@ -103,7 +108,7 @@ pure def beginInitialization(s: AgentProcess): AgentProcess =
 pure def canCompleteInitialization(s: AgentProcess, ok: bool): bool = R::canCompleteInitialization(s.runtime, ok)
 pure def completeInitialization(s: AgentProcess, ok: bool): AgentProcess = {
   val started = { ...s, runtime: R::completeInitialization(s.runtime, ok) }
-  if (not(ok)) failAt(started, L::Agent)
+  if (not(ok)) failedWith(L::Agent, started)
   else if (s.runtime.stopPhase != R::Open) { ...started, resources: RS::acquire(s.resources, "plugins") }
   else { ...started, phase: BindTransport, resources: RS::acquire(s.resources, "plugins") }
 }
@@ -271,5 +276,11 @@ pure val fair_finishStop = "weak"
 pure val fair_releaseNext = "weak"
 pure val fair_closeAdapter = "weak"
 pure val fair_exitProcess = "weak"
+pure val weight_beginInitialization = 4
+pure val weight_completeInitialization = 4
+pure val weight_finishStop = 4
+pure val weight_releaseNext = 4
+pure val weight_closeAdapter = 4
+pure val weight_exitProcess = 4
 pure def leadsToExit(s: AgentProcess, later: AgentProcess): bool = s.runtime.stopPhase != R::Open implies later.outcome != StillRunning
 ```

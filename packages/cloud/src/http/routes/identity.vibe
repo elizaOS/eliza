@@ -1,4 +1,9 @@
-// spec/cloud/identity/accounts.md, "Story: Get one account on first sign-in"
+// spec/cloud/identity/accounts.md, "Story: Get one account on first sign-in"; spec/cloud/identity/sessions.md, "Story: Stay signed in"
 import type { Area } from "../routes.vibe"
+import { routes as accounts } from "../../identity/accounts.vibe"
+import { routes as sessions, sweeps as sessionSweeps } from "../../identity/sessions.vibe"
 
-export const area: Area = { routes: [], sweeps: [] }
+export const area: Area = {
+  routes: [...accounts, ...sessions],
+  sweeps: [...sessionSweeps]
+}

@@ -60,7 +60,7 @@ type DeviceCall = { route: DeviceRoute, bearer: str }
 pure def callOf(route: DeviceRoute, credentialNow: str): DeviceCall = { route: route, bearer: credentialNow }
 pure def lawACallCarriesTheCredentialReadForIt(route: DeviceRoute, credentialNow: str): bool =
   callOf(route, credentialNow).bearer == credentialNow
-pure val routeValues = Set({ method: Get, path: List(Literal({ text: "api" }), Literal({ text: "v1" }), Literal({ text: "models" })), auth: KeyOrSession, headers: Set() })
+pure val routeValues: Set[DeviceRoute] = Set({ method: Get, path: List(Literal({ text: "api" }), Literal({ text: "v1" }), Literal({ text: "models" })), auth: KeyOrSession, headers: Set("If-Match") })
 ```
 
 ### Text needs only a credential and the origin, and nothing needs managed Google
@@ -231,7 +231,7 @@ sent.
 
 ```quint
 type RouteLookup = Unlisted | Listed({ route: DeviceRoute })
-pure def segmentMatches(s: Segment, part: str): bool = match s { | Literal(l) => l.text == part | Param(p) => part != "" }
+pure def segmentMatches(seg: Segment, part: str): bool = match seg { | Literal(l) => l.text == part | Param(p) => part != "" }
 type MatchProgress = { at: int, ok: bool }
 pure val matchStart: MatchProgress = { at: 0, ok: true }
 pure def matchNext(r: DeviceRoute, acc: MatchProgress, part: str): MatchProgress =
@@ -240,7 +240,7 @@ pure def routeMatches(r: DeviceRoute, method: HttpMethod, parts: List[str]): boo
   val progress = parts.foldl(matchStart, (acc, part) => matchNext(r, acc, part))
   r.method == method and r.path.length() == parts.length() and progress.ok
 }
-pure def literalCount(r: DeviceRoute): int = r.path.select(s => match s { | Literal(l) => true | Param(p) => false }).length()
+pure def literalCount(r: DeviceRoute): int = r.path.select(seg => match seg { | Literal(l) => true | Param(p) => false }).length()
 pure def routeFor(method: HttpMethod, parts: List[str]): RouteLookup =
   deviceRoutes.foldl(Unlisted, (best, r) =>
     if (not(routeMatches(r, method, parts))) best

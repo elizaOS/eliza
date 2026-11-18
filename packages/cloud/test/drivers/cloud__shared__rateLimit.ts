@@ -5,12 +5,13 @@ import type { Window } from "../../gen/cloud__shared__rateLimit.ts";
 import { Refused } from "../../src/http/refusal.vibe";
 import { admitCheck, readWindow, type RateLimit } from "../../src/shared/rate-limit.vibe";
 import { Store, migrate, storeLayer } from "../../src/store/store.vibe";
-import { stoppedClock } from "../support/clock.ts";
+import { manualClock } from "../support/clock.ts";
 
 const initialWindow: Window = { start: 0, end: 0, count: 0, ceiling: 0, clock: 0, last: { tag: "NoDecision" } };
 
 let runtime: ManagedRuntime.ManagedRuntime<Store, unknown> | undefined;
 const names = new Map<string, string>();
+const time = manualClock();
 
 async function store() {
   if (runtime === undefined) {
@@ -36,7 +37,8 @@ export const driver: Driver = {
   async dispatch(key, event) {
     names.set(key, event.rule.name);
     const opened = await store();
-    const exit = await opened.runPromise(Effect.exit(Effect.provideService(admitCheck(check(key, event.rule)), Clock.Clock, stoppedClock(event.now))));
+    time.set(event.now);
+    const exit = await opened.runPromise(Effect.exit(Effect.provideService(admitCheck(check(key, event.rule)), Clock.Clock, time.clock)));
     if (Exit.isSuccess(exit)) return "accepted";
     const failure = Exit.findErrorOption(exit);
     if (failure._tag === "Some" && failure.value instanceof Refused) {

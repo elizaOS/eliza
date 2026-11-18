@@ -144,7 +144,7 @@ export async function requestStream(socketPath: string, call: LocalRequest, abor
   };
 }
 
-export function subscribe(socketPath: string, options: { streams: readonly string[]; clientId?: string }): Subscription {
+export function subscribe(socketPath: string, options: { streams: readonly string[]; clientId?: string; token?: string }): Subscription {
   const id = randomUUID();
   const received: unknown[] = [];
   const waiters: Array<{ predicate: (frame: unknown) => boolean; resolve: (frame: unknown) => void; reject: (error: Error) => void }> = [];
@@ -152,7 +152,11 @@ export function subscribe(socketPath: string, options: { streams: readonly strin
   const socket = open(socketPath, JSON.stringify({
     id,
     method: "events_subscribe",
-    payload: { streams: options.streams, ...(options.clientId === undefined ? {} : { clientId: options.clientId }) },
+    payload: {
+      streams: options.streams,
+      ...(options.clientId === undefined ? {} : { clientId: options.clientId }),
+      ...(options.token === undefined ? {} : { headers: { authorization: `Bearer ${options.token}` } }),
+    },
   }));
   const settle = () => {
     for (const waiter of [...waiters]) {

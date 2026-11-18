@@ -1,28 +1,22 @@
 // spec/agent/tasks/store.md, "Story: Refuse task storage when custody cannot be verified"; spec/agent/tasks/store.md, "Story: Keep records a build cannot read"
-import { Redacted, Result } from "effect"
-import type { InteractiveTask, TaskEvent } from "@elizaos/core"
+import type { InteractiveTask } from "@elizaos/core"
 import {
-  admitsAccount, admitsOpen, authentic, canAcknowledgeUnreadable, canOperate, holdsLock, initial, machineOver, readTask,
+  admitsAccount, admitsOpen, authentic, canAcknowledgeUnreadable, canOperate, holdsLock, initial, machineOver, noRecord, readTask,
   slotAdmission, storageStatus as modelStatus,
   type Event, type KeyRead, type OpenEvidence, type Seal, type StoredTask, type TaskStore,
 } from "../../gen/agent__tasks__store.effect.vibe"
 import { createTaskSealer, type TaskKeys, type TaskSealer } from "./sealing.vibe"
 
-export error StorageUnavailable { reason: string } { get code() { return "TASK_STORAGE_UNAVAILABLE" } }
-export error OutcomeUnknown { taskId: string } { get code() { return "TASK_STORAGE_UNAVAILABLE" } }
-export error ReadRefused { taskId: string } { get code() { return "TASK_STORAGE_UNAVAILABLE" } }
-export error Corrupt { taskId: string } { get code() { return "TASK_STORAGE_CORRUPT" } }
-export error Unreadable { taskId: string; reason: string } { get code() { return "TASK_UNREADABLE" } }
-export error SlotTaken { taskId: string } { get code() { return "TASK_CONFLICT" } }
-export error NoTask { taskId: string } { get code() { return "TASK_NOT_FOUND" } }
-export error NotOwner { taskId: string } { get code() { return "TASK_ACTION_DENIED" } }
+export error StorageUnavailable { reason: string; get code() { return "TASK_STORAGE_UNAVAILABLE" } }
+export error OutcomeUnknown { taskId: string; get code() { return "TASK_STORAGE_UNAVAILABLE" } }
+export error ReadRefused { taskId: string; get code() { return "TASK_STORAGE_UNAVAILABLE" } }
+export error Corrupt { taskId: string; get code() { return "TASK_STORAGE_CORRUPT" } }
+export error Unreadable { taskId: string; reason: string; get code() { return "TASK_UNREADABLE" } }
+export error SlotTaken { taskId: string; get code() { return "TASK_CONFLICT" } }
+export error NoTask { taskId: string; get code() { return "TASK_NOT_FOUND" } }
+export error NotOwner { taskId: string; get code() { return "TASK_ACTION_DENIED" } }
 
 export type StorageFailure = StorageUnavailable | OutcomeUnknown | ReadRefused
-
-export interface TaskRecord {
-  readonly task: InteractiveTask
-  readonly events: readonly TaskEvent[]
-}
 
 export interface UnreadableTaskRecord {
   readonly taskId: string
@@ -36,13 +30,16 @@ export type TaskStorageStatus = "ok" | "deferred" | "unavailable"
 module node {
   import { randomUUID } from "node:crypto"
   import { closeSync, fstatSync, fsyncSync, linkSync, lstatSync, openSync, readFileSync, renameSync, rmSync, unlinkSync, writeSync } from "node:fs"
-  import { join } from "node:path"
   import { DatabaseSync } from "node:sqlite"
   import { Redacted } from "effect"
-  import { ElizaError, validateInteractiveTask, validateTaskEvent } from "@elizaos/core"
-  import { deriveTaskKeys, isPrivateFile, privateDirectory, storageCorrupt, storageUnavailable, type TaskKeys } from "./sealing.vibe"
+  import { ElizaError, validateInteractiveTask, validateTaskEvent, type InteractiveTask, type TaskEvent } from "@elizaos/core"
+  import { deriveTaskKeys, isPrivateFile, privateDirectory, storageCorrupt, type TaskKeys } from "./sealing.vibe"
   import type { KeyRead } from "../../gen/agent__tasks__store.ts"
-  import type { TaskRecord } from "./store.vibe"
+
+  export interface TaskRecord {
+    readonly task: InteractiveTask
+    readonly events: readonly TaskEvent[]
+  }
 
   export interface TaskStatement {
     all(...parameters: (string | number | null)[]): unknown[]
@@ -240,10 +237,6 @@ module node {
     db.prepare("UPDATE task_records_v1 SET hold = 'released', unfinished = 0, released_at = ? WHERE id = ? AND hold = 'held'").run(at, id)
   }
 
-  export function databasePath(directory: string): string {
-    return join(directory, "tasks.sqlite")
-  }
-
   export function decodeTaskRecord(text: string): TaskRecord {
     const value: unknown = JSON.parse(text)
     if (typeof value !== "object" || value === null || !("task" in value) || !("events" in value) || !Array.isArray(value.events)) {
@@ -264,18 +257,25 @@ module node {
 
   export function retire(keys: TaskKeys, db: TaskDatabase | undefined): void {
     keys.wipe()
-    try { db?.close() } catch { storageUnavailable("The task database did not close") }
+    try {
+      db?.close()
+    } catch {
+      return
+    }
   }
 }
 export {
   decodeTaskRecord, openNodeTaskDatabase, storageKeySource,
-  type KeyReading, type TaskDatabase, type TaskDatabaseOpener, type TaskKeySource, type TaskStatement,
+  type KeyReading, type TaskRecord, type TaskDatabase, type TaskDatabaseOpener, type TaskKeySource, type TaskStatement,
 } from node
 import {
-  databasePath, decodeTaskRecord as decodeRecord, failureReason, holdRecord, insertRecord, lockIntact, openNodeTaskDatabase as nodeDatabase,
+  decodeTaskRecord as decodeRecord, failureReason, holdRecord, insertRecord, lockIntact, openNodeTaskDatabase as nodeDatabase,
   openTaskRows, privatePath, readPayload, releaseLock, releaseRecord, retire, takeLock, updateRecord,
-  type LockIdentity, type TaskDatabase as Database, type TaskDatabaseOpener as Opener, type TaskKeySource as KeySource, type TaskRow,
+  type KeyReading as Reading, type LockIdentity, type TaskDatabase as Database, type TaskDatabaseOpener as Opener, type TaskKeySource as KeySource,
+  type TaskRecord as TaskRecordShape, type TaskRow,
 } from node
+
+type TaskRecord = TaskRecordShape
 
 export interface TaskStoreOptions {
   readonly directory: string
@@ -288,7 +288,7 @@ export interface TaskStoreOptions {
 
 export interface TaskRecords {
   storageStatus(): TaskStorageStatus!!
-  open(account: string): void!StorageUnavailable
+  open(account: string): void!StorageFailure
   current(): (TaskRecord | null)!(StorageFailure | Corrupt)
   get(taskId: string): (TaskRecord | null)!(StorageFailure | Corrupt | Unreadable)
   create(record: TaskRecord): void!(StorageFailure | Corrupt | Unreadable | SlotTaken)
@@ -319,7 +319,7 @@ function persistedHold(record: StoredTask): "readable" | "held" | "released" {
 export effect function createTaskStore(options: TaskStoreOptions) {
   const namespace = options.namespace ?? "agent"
   const directory = options.directory
-  const file = databasePath(directory)
+  const file = `${directory}/tasks.sqlite`
   const lockFile = `${file}.lock`
   const open = options.database ?? nodeDatabase
   const decode = options.decode ?? decodeRecord
@@ -334,17 +334,25 @@ export effect function createTaskStore(options: TaskStoreOptions) {
     return try orDie(machine.send(event, owner))
   }
 
-  function drop() {
+  effect function host<A>(call: () => A, reason: string): A!StorageUnavailable {
+    return try Effect.try({ try: call, catch: () => new StorageUnavailable({ reason }) })
+  }
+
+  effect function intact(lock: LockIdentity) {
+    return host(() => lockIntact(lock), "The task store lock could not be read") catch () => false
+  }
+
+  effect function drop() {
     const held = writer
     writer = undefined
-    if (held !== undefined) retire(held.keys, held.db)
+    if (held !== undefined) try orDie(host(() => retire(held.keys, held.db), "The task keys could not be retired"))
   }
 
   effect function fence() {
     const held = writer
-    if (held !== undefined && holdsLock(try machine.get()) && !(try Effect.try(() => lockIntact(held.lock)) catch () => false)) {
+    if (held !== undefined && holdsLock(try machine.get()) && !(try intact(held.lock))) {
       try send({ type: "replaceLock" })
-      drop()
+      try drop()
     }
     if (writer === undefined || !canOperate(try machine.get())) throw new StorageUnavailable({ reason: "This process does not hold the task store" })
     return writer
@@ -353,9 +361,9 @@ export effect function createTaskStore(options: TaskStoreOptions) {
   effect function statement<A>(taskId: string, writes: boolean, run: (held: Writer) => A): A!(StorageFailure) {
     const held = try fence()
     const ran = try Effect.result(Effect.try(() => run(held)))
-    const ownerAfter = try Effect.try(() => lockIntact(held.lock)) catch () => false
+    const ownerAfter = try intact(held.lock)
     const step = try send({ type: "operate", writes, succeeded: Result.isSuccess(ran), ownerAfter })
-    if (!ownerAfter) drop()
+    if (!ownerAfter) try drop()
     const receipt = step.out[0]
     if (receipt === "Returned" && Result.isSuccess(ran)) return ran.success
     if (receipt === "ReadRefused") throw new ReadRefused({ taskId })
@@ -378,7 +386,10 @@ export effect function createTaskStore(options: TaskStoreOptions) {
   }
 
   effect function load(taskId: string) {
-    if (!(try readable(taskId))) return null
+    return (try readable(taskId)) ? try loadReadable(taskId) : null
+  }
+
+  effect function loadReadable(taskId: string) {
     const sealed = try statement(taskId, false, (held) => ({ text: readPayload(held.db, taskId), sealer: held.sealer }))
     return try Effect.try({ try: () => decode(sealed.sealer.open(sealed.text, "TaskRecord")), catch: () => new Corrupt({ taskId }) })
   }
@@ -396,8 +407,8 @@ export effect function createTaskStore(options: TaskStoreOptions) {
   }
 
   effect function refuse(account: string, evidence: OpenEvidence, keys: TaskKeys | undefined, lock: LockIdentity | undefined, reason: string) {
-    keys?.wipe()
-    if (lock !== undefined) try Effect.try(() => releaseLock(lock)) catch () => undefined
+    if (keys !== undefined) try orDie(host(() => keys.wipe(), "The task keys could not be wiped"))
+    if (lock !== undefined) host(() => releaseLock(lock), "The task store lock could not be released") catch () => undefined
     try orDie(machine.send({ type: "openStore", account, evidence }, account))
     throw new StorageUnavailable({ reason })
   }
@@ -409,12 +420,12 @@ export effect function createTaskStore(options: TaskStoreOptions) {
       aside.set(row.id, { taskId: row.id, reason: row.reason ?? "", heldAt: row.heldAt ?? 0, releasedAt: row.releasedAt })
       return
     }
-    const decoded = Effect.runSync(Effect.result(Effect.try(() => decode(text))))
-    const decodes = Result.isSuccess(decoded)
-    const state = (try send({ type: "scan", taskId: row.id, decodes })).state
-    const hold = persistedHold(state.records.find((record) => record.taskId === row.id && authentic(record, account)) ?? { taskId: row.id, seal: { account, purpose: "TaskRecord" }, unfinished: row.unfinished, hold: "Readable" })
+    const decoded = try Effect.result(Effect.try(() => decode(text)))
+    const state = (try send({ type: "scan", taskId: row.id, decodes: Result.isSuccess(decoded) })).state
+    const hold = persistedHold(state.records.find((record) => record.taskId === row.id && authentic(record, account)) ?? noRecord)
     if (hold === "held") {
-      const entry = { taskId: row.id, reason: Result.isFailure(decoded) ? failureReason(decoded.failure) : "", heldAt: row.heldAt ?? now(), releasedAt: null }
+      const reason = Result.isFailure(decoded) ? host(() => failureReason(decoded.failure), "") catch () => "The task record could not be decoded" : ""
+      const entry = { taskId: row.id, reason, heldAt: row.heldAt ?? now(), releasedAt: null }
       aside.set(row.id, entry)
       if (row.hold !== "held" || row.reason !== entry.reason) {
         try statement(row.id, true, (held) => holdRecord(held.db, { id: row.id, hold, reason: entry.reason, heldAt: entry.heldAt }))
@@ -427,7 +438,7 @@ export effect function createTaskStore(options: TaskStoreOptions) {
 
   return {
     effect storageStatus() {
-      if (writer !== undefined) try fence() catch () => undefined
+      if (writer !== undefined) fence() catch () => undefined
       const status = modelStatus(try machine.get())
       switch (status) {
         case "StorageOk": return "ok"
@@ -442,19 +453,22 @@ export effect function createTaskStore(options: TaskStoreOptions) {
 
     effect open(account: string) {
       const state = try machine.get()
-      if (holdsLock(state) && writer !== undefined && state.account === account) return
-      const reading = options.keys.take({ account, namespace })
+      if (holdsLock(state)) {
+        if (state.account === account) return
+        throw new StorageUnavailable({ reason: "The task store is open for another account" })
+      }
+      const reading = host(() => options.keys.take({ account, namespace }), "") catch (): Reading => ({ kind: "KeyMissing" })
       const keys = reading.kind === "KeyOk" ? reading.keys : undefined
       const key: KeyRead = reading.kind
-      const custody = keys !== undefined && account !== unauthenticated && privatePath(directory, file)
-      const lock = custody ? try Effect.try(() => takeLock(lockFile)) catch () => undefined : undefined
+      const custody = keys !== undefined && account !== unauthenticated && (host(() => privatePath(directory, file), "") catch () => false)
+      const lock = custody ? host(() => takeLock(lockFile), "") catch () => undefined : undefined
       const evidence = { privatePath: custody, exclusiveLock: lock !== undefined, key }
       if (keys === undefined || lock === undefined || !admitsOpen(evidence) || !admitsAccount(state, account)) {
         return try refuse(account, evidence, keys, lock, "Task storage custody could not be verified")
       }
-      const sealer = createTaskSealer(keys)
-      const opened = try Effect.try(() => openTaskRows(open, file)) catch () => undefined
-      if (opened === undefined) return try refuse(account, { ...evidence, privatePath: false }, keys, lock, "The task database could not be opened")
+      const sealer = host(() => createTaskSealer(keys), "") catch () => undefined
+      const opened = sealer === undefined ? undefined : host(() => openTaskRows(open, file), "") catch () => undefined
+      if (sealer === undefined || opened === undefined) return try refuse(account, { ...evidence, privatePath: false }, keys, lock, "The task database could not be opened")
       owner = account
       const found = opened.rows.map((row) => ({ row, ...classify(row, sealer, account) }))
       for (const { row, seal } of found) {
@@ -462,10 +476,10 @@ export effect function createTaskStore(options: TaskStoreOptions) {
           try send({ type: "foundRecord", taskId: row.id, account: seal.account, purpose: seal.purpose, unfinished: row.unfinished })
         }
       }
-      const exclusiveLock = try Effect.try(() => lockIntact(lock)) catch () => false
+      const exclusiveLock = try intact(lock)
       try orDie(machine.send({ type: "openStore", account, evidence: { ...evidence, exclusiveLock } }, account))
       if (!holdsLock(try machine.get())) {
-        retire(keys, opened.db)
+        try orDie(host(() => retire(keys, opened.db), "The task keys could not be retired"))
         throw new StorageUnavailable({ reason: "The task store lock was replaced while it opened" })
       }
       writer = { db: opened.db, lock, sealer, keys }
@@ -477,10 +491,7 @@ export effect function createTaskStore(options: TaskStoreOptions) {
       const corrupt = state.records.find((record) => record.unfinished && !authentic(record, state.account))
       if (corrupt !== undefined) throw new Corrupt({ taskId: corrupt.taskId })
       const live = state.records.find((record) => record.unfinished && record.hold === "Readable")
-      return live === undefined ? null : try load(live.taskId) catch effect (error) => match (error) {
-        when Unreadable: throw new Corrupt({ taskId: error.taskId })
-        default: throw error
-      }
+      return live === undefined ? null : try loadReadable(live.taskId)
     },
 
     get: load,
@@ -547,15 +558,8 @@ export effect function createTaskStore(options: TaskStoreOptions) {
       const held = writer
       const state = try machine.get()
       if (state.writer.tag === "Opened") try send({ type: "closeStore" })
-      writer = undefined
-      if (held !== undefined) {
-        try Effect.try(() => releaseLock(held.lock)) catch () => undefined
-        retire(held.keys, held.db)
-      }
+      if (held !== undefined) host(() => releaseLock(held.lock), "The task store lock could not be released") catch () => undefined
+      try drop()
     },
   } satisfies TaskRecords
-}
-
-export function taskStorageKey(storageKey: Redacted.Redacted<string> | undefined): KeySource {
-  return storageKeySource(storageKey)
 }

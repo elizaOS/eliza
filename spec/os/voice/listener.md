@@ -63,12 +63,12 @@ pure def canTurnOn(s: ListenerService, by: Caller, grant: ListenerGrant): bool =
   by == Owner and admitted(grant) and not(s.device.keyguardLocked)
 pure def turnOn(s: ListenerService, by: Caller, grant: ListenerGrant): ListenerService = {
   val t = { ...s, enabled: true, userPaused: false, tripped: false, recentExits: List(), indicatorLost: false, stopConfirmed: false }
-  { ...t, indicatorLost: latches(t) }
+  { ...t, indicatorLost: lossLatches(t, t) }
 }
 pure def canResume(s: ListenerService, by: Caller): bool = by == Owner and not(s.device.keyguardLocked)
 pure def resume(s: ListenerService, by: Caller): ListenerService = {
   val t = { ...s, userPaused: false, tripped: false, recentExits: List(), indicatorLost: false }
-  { ...t, indicatorLost: latches(t) }
+  { ...t, indicatorLost: lossLatches(t, t) }
 }
 pure def sometimesListening(s: ListenerService): bool = decide(s) == Listening and s.capturing
 ```
@@ -107,7 +107,8 @@ pure def runsInForeground(st: ListenerState): bool =
   st == Listening or st == PausedUser or st == PausedCall or st == PausedMicInUse or st == PausedIndicatorHidden or st == PausedMicUnavailable
 pure def observeDevice(s: ListenerService, d: Device): ListenerService = {
   val since = if (not(s.capturing) or d.micSilenced) -1 else if (s.unsilencedSince >= 0) s.unsilencedSince else s.lease.now
-  withLease(s.lease, { ...s, device: d, unsilencedSince: since })
+  val after = { ...s, device: d, unsilencedSince: since }
+  { ...after, indicatorLost: s.indicatorLost or lossLatches(s, after) }
 }
 pure val readyDevice: Device = { ...unknownDevice, recordAudio: true, notificationsVisible: true, userForeground: true, unlocked: true, keyguardLocked: false }
 pure val dValues = Set(readyDevice, { ...readyDevice, inCall: true }, { ...readyDevice, keyguardLocked: true },
@@ -221,15 +222,21 @@ service.
 type ProcessEnd = Crash | Shutdown | PackageUpdate
 pure val crashLimit = 3
 pure val crashWindowMs = 600000
+pure def exitsAfter(exits: List[int], unclean: bool, now: int): List[int] = {
+  val kept = exits.select(t => t <= now and now - t < crashWindowMs)
+  if (unclean) kept.append(now) else kept
+}
 pure def restartProcess(s: ListenerService, cause: ProcessEnd, now: int): ListenerService = {
-  val kept = s.recentExits.select(t => t <= now and now - t < crashWindowMs)
-  val exits = if (cause == Crash and s.capturing and s.device.recordAudio) kept.append(now) else kept
+  val exits = exitsAfter(s.recentExits, cause == Crash and s.capturing and s.device.recordAudio, now)
   val t = { ...s, recentExits: exits, tripped: s.tripped or exits.length() >= crashLimit, lease: { ...I::initial, now: s.lease.now },
     foreground: false, capturing: false, unsilencedSince: -1 }
   val queued = if (runsInForeground(decide(t))) t.queued + 1 else t.queued
   { ...t, queued: queued, stopped: t.delivered == queued }
 }
 pure val nowValues = Set(0, 1000, 700000)
+pure def lawThirdUncleanExitWithinTheWindowTrips(now: int): bool =
+  exitsAfter(exitsAfter(exitsAfter(List(), true, now), true, now), true, now).length() >= crashLimit
+pure def lawExitsTenMinutesOldNoLongerCount(now: int): bool = exitsAfter(List(now - crashWindowMs, now + 1), false, now) == List()
 pure def alwaysTrippedListenerHoldsNoMicrophone(s: ListenerService): bool = s.tripped implies not(s.capturing)
 pure def sometimesUncleanExitCounted(s: ListenerService): bool = s.recentExits.length() >= 1 and not(s.tripped)
 pure def sometimesCrashLoopTripped(s: ListenerService): bool = s.tripped and decide(s) == StoppedAfterErrors
@@ -267,15 +274,24 @@ pure def sometimesPausedBySpeech(s: ListenerService): bool = s.lastWake == Pause
 
 SystemUI's lease events reach the listener through `I`. Attribution is
 required once capture has run unsilenced for 2,500 ms. A loss while the
-microphone is held latches `StoppedIndicatorLost` at once, before the
-service converges and closes the microphone; a lease that returns never
-resumes it.
+microphone is held, or while an explained pause keeps it released, latches
+`StoppedIndicatorLost` at once, before the service converges and closes the
+microphone; a lease that returns never resumes it. A lease lapsing while the
+screen sleeps through a display-off pause is not a loss.
 
 ```quint
 pure def leaseVerdict(s: ListenerService): I::Verdict =
   I::verdict(s.lease, I::requiresAttribution(s.capturing and s.unsilencedSince >= 0, s.unsilencedSince, s.lease.now), s.device.screenInteractive)
-pure def latches(s: ListenerService): bool = s.indicatorLost or (s.capturing and leaseVerdict(s) != I::Permits and not(I::isPause(leaseVerdict(s))))
-pure def withLease(l: I::IndicatorLease, s: ListenerService): ListenerService = { ...s, lease: l, indicatorLost: latches({ ...s, lease: l }) }
+pure def lossLatches(before: ListenerService, after: ListenerService): bool = {
+  val was = leaseVerdict(before)
+  val v = leaseVerdict(after)
+  val asleep = not(after.capturing) and was == I::PausedDisplayOff and (v == I::LostExpired or v == I::LostPending)
+  (after.capturing or I::isPause(was)) and v != I::Permits and not(I::isPause(v)) and not(asleep)
+}
+pure def withLease(l: I::IndicatorLease, s: ListenerService): ListenerService = {
+  val after = { ...s, lease: l }
+  { ...after, indicatorLost: s.indicatorLost or lossLatches(s, after) }
+}
 pure def canAcquireLease(s: ListenerService, by: Caller, listener: I::ListenerIdentity): bool =
   by == SystemUiLease and I::canAcquire(s.lease, I::SystemUi, listener)
 pure def acquireLease(s: ListenerService, by: Caller, listener: I::ListenerIdentity, replied: bool): ListenerService =
@@ -306,9 +322,11 @@ pure def sometimesExplainedPauseKeepsServiceRunning(s: ListenerService): bool =
 pure val fair_converge = "weak"
 pure def leadsToLostIndicatorClosesMicrophone(s: ListenerService, later: ListenerService): bool =
   (s.capturing and s.indicatorLost) implies not(later.capturing)
-pure val weight_acquireLease = 4
-pure val weight_renewLease = 4
-pure val weight_requestStart = 4
-pure val weight_deliverStart = 4
+pure val weight_turnOn = 10
+pure val weight_acquireLease = 10
+pure val weight_renewLease = 10
+pure val weight_requestStart = 10
+pure val weight_deliverStart = 10
+pure val weight_hearPhrase = 10
 pure val weight_restartProcess = 3
 ```

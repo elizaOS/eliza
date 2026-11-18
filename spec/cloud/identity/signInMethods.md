@@ -28,7 +28,7 @@ One machine instance is one account's review row. The account's identities
 are `accounts`' to keep; they enter here as observations the shell reads in
 the transaction that applies the step: who holds the subject being linked,
 whether the account already holds a method of that kind, whether it holds the
-method being removed and how many it holds. The shell draws the review id at
+method being removed and how many others it holds. The shell draws the review id at
 random.
 
 ## Story: Review, link and remove my sign-in methods
@@ -48,7 +48,7 @@ the same review: the device reads the list again first.
 ```quint
 import types.* from "../shared/types"
 import accounts as A from "./accounts"
-type LinkProof = Unproven | ProvenThisAttempt
+type LinkProof = Unproven({ refusal: Refusal }) | ProvenThisAttempt
 type SubjectHolder = NobodyHolds | CallerHolds | OtherHolds
 type MethodsEffect = LinkIdentity | UnlinkIdentity | RevokeOtherSessions
 type Attempt = NoAttempt | MethodLinked | AlreadyLinked | MethodUnlinked | AttemptRefused({ refusal: Refusal })
@@ -78,17 +78,23 @@ pure def sometimesReviewOpen(m: Methods): bool = not(m.used)
 The proof is the link code consumed for this user (`codeChallenges`,
 `provesPhoneFor`) or the Google identity verified for this attempt
 (`federatedSignIn`). The shell obtains it before it reads who holds the
-subject, so a caller without it never learns whether the identity is taken.
+subject, so a caller without it never learns whether the identity is taken:
+a refused proof (a wrong, expired or locked code, a Google answer that does
+not verify) enters as `Unproven` with that refusal, uses the review up and is
+answered as it was refused.
 An identity held by another account, or a second identity of a kind the
 account already holds, answers `409 identity_in_use`; one this account holds
 answers success and changes nothing. `LinkIdentity` is `accounts`' `link`,
 applied in the same transaction.
 
 ```quint
-pure val proofRefusal: Refusal = refuse(CredentialProofInvalid)
 pure def linkAttempt(proof: LinkProof, holder: SubjectHolder, kindHeld: bool): Attempt =
-  if (proof != ProvenThisAttempt) AttemptRefused({ refusal: proofRefusal })
-  else if (holder == CallerHolds) AlreadyLinked
+  match proof {
+    | Unproven(p) => AttemptRefused({ refusal: p.refusal })
+    | ProvenThisAttempt => linkProven(holder, kindHeld)
+  }
+pure def linkProven(holder: SubjectHolder, kindHeld: bool): Attempt =
+  if (holder == CallerHolds) AlreadyLinked
   else if (holder == OtherHolds or kindHeld) AttemptRefused({ refusal: A::inUseRefusal })
   else MethodLinked
 pure def canLink(m: Methods, reviewId: str, now: Millis): bool = isFreshReview(m, reviewId, now)
@@ -96,10 +102,10 @@ pure def link(m: Methods, reviewId: str, now: Millis, proof: LinkProof, holder: 
   val decided = linkAttempt(proof, holder, kindHeld)
   { state: { ...m, used: true, outcome: decided }, out: if (decided == MethodLinked) List(LinkIdentity) else List() }
 }
-pure def lawUnprovenLinkRevealsNoHolder(holder: SubjectHolder, kindHeld: bool): bool =
-  linkAttempt(Unproven, holder, kindHeld) == linkAttempt(Unproven, NobodyHolds, false)
-pure def lawForeignIdentityNeverLinked(proof: LinkProof, kindHeld: bool): bool =
-  linkAttempt(proof, OtherHolds, kindHeld) == AttemptRefused({ refusal: A::inUseRefusal }) or linkAttempt(proof, OtherHolds, kindHeld) == AttemptRefused({ refusal: proofRefusal })
+pure val proofValues = Set(Unproven({ refusal: refuse(CredentialProofInvalid) }), Unproven({ refusal: refuseFor(AccessDenied, ChallengeLocked) }), ProvenThisAttempt)
+pure def lawUnprovenLinkRevealsNoHolder(proof: LinkProof, holder: SubjectHolder, kindHeld: bool): bool =
+  proof != ProvenThisAttempt implies linkAttempt(proof, holder, kindHeld) == linkAttempt(proof, NobodyHolds, false)
+pure def lawForeignIdentityNeverLinked(proof: LinkProof, kindHeld: bool): bool = linkAttempt(proof, OtherHolds, kindHeld) != MethodLinked
 pure def stepLinkOnlyWhenProvenAndFree(before: Methods, via: str, after: Methods, out: List[MethodsEffect]): bool =
   out.includes(LinkIdentity) iff (via == "link" and after.outcome == MethodLinked)
 pure def sometimesLinked(m: Methods): bool = m.outcome == MethodLinked
@@ -116,19 +122,19 @@ live and every other session of the person ends.
 
 ```quint
 pure val absentRefusal: Refusal = refuse(NotFound)
-pure def unlinkAttempt(held: bool, entries: int): Attempt =
+pure def unlinkAttempt(held: bool, others: int): Attempt =
   if (not(held)) AttemptRefused({ refusal: absentRefusal })
-  else if (entries <= 1) AttemptRefused({ refusal: A::lastMethodRefusal })
+  else if (others < 1) AttemptRefused({ refusal: A::lastMethodRefusal })
   else MethodUnlinked
 pure def canUnlink(m: Methods, reviewId: str, now: Millis): bool = isFreshReview(m, reviewId, now)
-pure def unlink(m: Methods, reviewId: str, now: Millis, held: bool, entries: int): MethodsStep = {
-  val decided = unlinkAttempt(held, entries)
+pure def unlink(m: Methods, reviewId: str, now: Millis, held: bool, others: int): MethodsStep = {
+  val decided = unlinkAttempt(held, others)
   { state: { ...m, used: true, outcome: decided }, out: if (decided == MethodUnlinked) List(UnlinkIdentity, RevokeOtherSessions) else List() }
 }
-pure val entriesValues = Set(0, 1, 2, 3)
-pure def isRemovable(entries: int): bool = entries >= 2
-pure def lawLastMethodNeverRemoved(held: bool, entries: int): bool =
-  unlinkAttempt(held, entries) == MethodUnlinked implies (held and isRemovable(entries))
+pure val othersValues = Set(0, 1, 2)
+pure def isRemovable(others: int): bool = others >= 1
+pure def lawLastMethodNeverRemoved(held: bool, others: int): bool =
+  unlinkAttempt(held, others) == MethodUnlinked implies (held and isRemovable(others))
 pure def stepRemovalEndsOtherSessions(before: Methods, via: str, after: Methods, out: List[MethodsEffect]): bool =
   out.includes(UnlinkIdentity) iff (out.includes(RevokeOtherSessions) and via == "unlink" and after.outcome == MethodUnlinked)
 pure def sometimesUnlinked(m: Methods): bool = m.outcome == MethodUnlinked
@@ -138,6 +144,10 @@ pure def sometimesLastMethodRefused(m: Methods): bool = m.outcome == AttemptRefu
 ### Every refusal this record builds is well formed
 
 ```quint
-pure def lawEveryRefusalIsWellFormed(held: bool, entries: int): bool =
-  wellFormed(reviewRefusal) and wellFormed(proofRefusal) and wellFormed(absentRefusal) and wellFormed(A::inUseRefusal) and wellFormed(A::lastMethodRefusal)
+pure def attemptWellFormed(attempt: Attempt): bool = match attempt { | AttemptRefused(r) => wellFormed(r.refusal) | _ => true }
+pure def lawEveryRefusalIsWellFormed(proof: LinkProof, holder: SubjectHolder, kindHeld: bool, held: bool, others: int): bool = {
+  val linkAnswer = linkAttempt(proof, holder, kindHeld)
+  val unlinkAnswer = unlinkAttempt(held, others)
+  wellFormed(reviewRefusal) and attemptWellFormed(linkAnswer) and attemptWellFormed(unlinkAnswer)
+}
 ```
