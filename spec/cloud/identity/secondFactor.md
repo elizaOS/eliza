@@ -8,7 +8,9 @@ develop `packages/auth/src/server/api/routes/auth.ts` (`/mfa/*`) and
 (submitting a code, cancel, the saved receipt) is os.
 
 One machine follows one person's factors, their current login challenge and
-the session that calls the factor routes. Its clock is that session's. Codes
+the session that calls the factor routes. Its clock is that session's. The shell
+reads the person's current session epoch before authorizing a factor change
+or step-up. Codes
 enter as observations: `codeMatches` says the presented code matched, and for
 TOTP `matchedStep` is the 30-second step it matched at. The shell keeps the
 sealed TOTP seed (`Sealed {purpose: TotpSeed}`) and the phone number, sends
@@ -37,11 +39,11 @@ type Factors = { totp: Enrollment, sms: Enrollment, lastTotpStep: int }
 type SmsCode = NoCode | CodeSent({ codeExpiresAt: Millis })
 type ChallengePhase = Unopened | Open | Completed({ method: FactorMethod }) | Expired | Locked
 type LoginChallenge = { phase: ChallengePhase, failures: int, expiresAt: Millis, smsCode: SmsCode }
-type SecondFactor = { factors: Factors, challenge: LoginChallenge, stepUpCode: SmsCode, caller: S::Family }
+type SecondFactor = { factors: Factors, challenge: LoginChallenge, stepUpCode: SmsCode, caller: S::Family, personEpoch: int }
 pure val noTotpStep: int = -1
 pure val totpSetupLifetime: Millis = 10 * millisPerMinute
 pure val smsCodeLifetime: Millis = 5 * millisPerMinute
-pure val initial: SecondFactor = { factors: { totp: Absent, sms: Absent, lastTotpStep: noTotpStep }, challenge: { phase: Unopened, failures: 0, expiresAt: 0, smsCode: NoCode }, stepUpCode: NoCode, caller: S::signIn(S::initial, S::SingleFactor, 0) }
+pure val initial: SecondFactor = { factors: { totp: Absent, sms: Absent, lastTotpStep: noTotpStep }, challenge: { phase: Unopened, failures: 0, expiresAt: 0, smsCode: NoCode }, stepUpCode: NoCode, caller: S::signIn(S::initial, S::SingleFactor, 0), personEpoch: 0 }
 pure def clock(s: SecondFactor): Millis = s.caller.now
 pure def earlier(a: Millis, b: Millis): Millis = if (a <= b) a else b
 pure def enrollmentOf(f: Factors, method: FactorMethod): Enrollment = if (method == Totp) f.totp else f.sms
@@ -49,17 +51,19 @@ pure def withEnrollment(f: Factors, method: FactorMethod, e: Enrollment): Factor
 pure def isConfirmed(f: Factors, method: FactorMethod): bool = enrollmentOf(f, method) == Confirmed
 pure def hasFactor(f: Factors): bool = isConfirmed(f, Totp) or isConfirmed(f, Sms)
 pure def setupLive(e: Enrollment, now: Millis): bool = match e { | Pending(p) => now < p.setupExpiresAt | _ => false }
-pure def canEnroll(s: SecondFactor, method: FactorMethod, personEpoch: int): bool = mayChangeFactors(s, personEpoch) and not(isConfirmed(s.factors, method))
-pure def enroll(s: SecondFactor, method: FactorMethod, personEpoch: int): SecondFactor = { ...s, factors: withEnrollment(s.factors, method, Pending({ setupExpiresAt: clock(s) + (if (method == Totp) totpSetupLifetime else smsCodeLifetime) })) }
-pure def canConfirmEnrollment(s: SecondFactor, method: FactorMethod, personEpoch: int): bool = mayChangeFactors(s, personEpoch) and setupLive(enrollmentOf(s.factors, method), clock(s))
-pure def confirmEnrollment(s: SecondFactor, method: FactorMethod, codeMatches: bool, matchedStep: int, personEpoch: int): SecondFactor =
+pure def canEnroll(s: SecondFactor, method: FactorMethod): bool = mayChangeFactors(s) and not(isConfirmed(s.factors, method))
+pure def enroll(s: SecondFactor, method: FactorMethod): SecondFactor = { ...s, factors: withEnrollment(s.factors, method, Pending({ setupExpiresAt: clock(s) + (if (method == Totp) totpSetupLifetime else smsCodeLifetime) })) }
+pure def canConfirmEnrollment(s: SecondFactor, method: FactorMethod): bool = mayChangeFactors(s) and setupLive(enrollmentOf(s.factors, method), clock(s))
+pure def confirmEnrollment(s: SecondFactor, method: FactorMethod, codeMatches: bool, matchedStep: int): SecondFactor =
   if (factorCodeAccepted(s.factors, method, clock(s), codeMatches, matchedStep)) { ...s, factors: withEnrollment(advanceTotpStep(s.factors, method, matchedStep), method, Confirmed) }
   else s
 pure def canElapse(s: SecondFactor, elapsed: Millis): bool = elapsed > 0
 pure def elapse(s: SecondFactor, elapsed: Millis): SecondFactor = { ...s, caller: S::elapse(s.caller, elapsed) }
 pure val elapsedValues = Set(1, 30000, 300000, 600001)
-pure val personEpochValues = S::personEpochValues
-pure def alwaysCallerIsASession(s: SecondFactor): bool = S::alwaysFamilyEndsThirtyDaysAfterSignIn(s.caller) and S::alwaysAccessWithinLifetimes(s.caller)
+pure def canObserveEpoch(s: SecondFactor, personEpoch: int): bool = personEpoch > s.personEpoch
+pure def observeEpoch(s: SecondFactor, personEpoch: int): SecondFactor = { ...s, personEpoch: personEpoch }
+pure val personEpochValues = Set(0, 1)
+pure def alwaysCallerIsASession(s: SecondFactor): bool = s.caller.phase == S::Live and S::alwaysFamilyEndsThirtyDaysAfterSignIn(s.caller) and S::alwaysAccessWithinLifetimes(s.caller) and s.caller.epoch <= s.personEpoch
 pure def sometimesBothFactorsConfirmed(s: SecondFactor): bool = isConfirmed(s.factors, Totp) and isConfirmed(s.factors, Sms)
 ```
 
@@ -68,13 +72,12 @@ pure def sometimesBothFactorsConfirmed(s: SecondFactor): bool = isConfirmed(s.fa
 Removing a factor ends any SMS code sent for it.
 
 ```quint
-pure def recentFactorAuthority(s: SecondFactor): bool = S::isSteppedUp(s.caller) or (not(hasFactor(s.factors)) and S::isNewlySignedIn(s.caller))
-pure def mayChangeFactors(s: SecondFactor, personEpoch: int): bool = S::isActive(s.caller, personEpoch) and recentFactorAuthority(s)
-pure def canRemoveFactor(s: SecondFactor, method: FactorMethod, personEpoch: int): bool = S::isActive(s.caller, personEpoch) and S::isSteppedUp(s.caller) and enrollmentOf(s.factors, method) != Absent
-pure def removeFactor(s: SecondFactor, method: FactorMethod, personEpoch: int): SecondFactor =
+pure def mayChangeFactors(s: SecondFactor): bool = S::isActive(s.caller, s.personEpoch) and (S::isSteppedUp(s.caller) or (not(hasFactor(s.factors)) and S::isNewlySignedIn(s.caller)))
+pure def canRemoveFactor(s: SecondFactor, method: FactorMethod): bool = S::isActive(s.caller, s.personEpoch) and S::isSteppedUp(s.caller) and enrollmentOf(s.factors, method) != Absent
+pure def removeFactor(s: SecondFactor, method: FactorMethod): SecondFactor =
   if (method == Totp) { ...s, factors: withEnrollment(s.factors, Totp, Absent) }
   else { ...s, factors: withEnrollment(s.factors, Sms, Absent), stepUpCode: NoCode, challenge: { ...s.challenge, smsCode: NoCode } }
-pure def stepFactorsChangeOnlyWithRecentAuthority(before: SecondFactor, after: SecondFactor): bool = (after.factors.totp != before.factors.totp or after.factors.sms != before.factors.sms) implies recentFactorAuthority(before)
+pure def stepFactorsChangeOnlyWithRecentAuthority(before: SecondFactor, after: SecondFactor): bool = (after.factors.totp != before.factors.totp or after.factors.sms != before.factors.sms) implies mayChangeFactors(before)
 pure def sometimesFactorRemovedAfterStepUp(s: SecondFactor): bool = s.factors.totp == Absent and s.factors.lastTotpStep > noTotpStep
 ```
 
@@ -84,19 +87,23 @@ pure def sometimesFactorRemovedAfterStepUp(s: SecondFactor): bool = s.factors.to
 > get a session, and to give up on a challenge after a few wrong codes, so
 > that a stolen password, email or phone code alone never signs anyone in.
 
-### A first factor for a person with a confirmed factor opens a challenge of 5 minutes instead of a session
+### A first factor for a person with a confirmed factor opens a challenge of at most 5 minutes instead of a session
 
 `codeChallenges` and `federatedSignIn` answer `afterFirstFactor` of the
 person's factors: a session, or this challenge, never both. A new sign-in
-replaces a challenge that is no longer live.
+while one is live replaces it with the same deadline and failures, so a
+replacement never extends a challenge or forgives a wrong code.
 
 ```quint
 type FirstFactorOutcome = SessionStarts | SecondFactorRequired
 pure def afterFirstFactor(f: Factors): FirstFactorOutcome = if (hasFactor(f)) SecondFactorRequired else SessionStarts
 pure val challengeLifetime: Millis = 5 * millisPerMinute
 pure def isLive(c: LoginChallenge, now: Millis): bool = c.phase == Open and now < c.expiresAt
-pure def canOpenChallenge(s: SecondFactor): bool = hasFactor(s.factors) and not(isLive(s.challenge, clock(s)))
-pure def openChallenge(s: SecondFactor): SecondFactor = { ...s, challenge: { phase: Open, failures: 0, expiresAt: clock(s) + challengeLifetime, smsCode: NoCode } }
+pure def canOpenChallenge(s: SecondFactor): bool = hasFactor(s.factors)
+pure def openChallenge(s: SecondFactor): SecondFactor =
+  if (isLive(s.challenge, clock(s))) { ...s, challenge: { ...s.challenge, smsCode: NoCode } }
+  else { ...s, challenge: { phase: Open, failures: 0, expiresAt: clock(s) + challengeLifetime, smsCode: NoCode } }
+pure def stepReplacementNeverExtends(before: SecondFactor, via: str, after: SecondFactor): bool = (via == "openChallenge" and isLive(before.challenge, clock(before))) implies (after.challenge.expiresAt == before.challenge.expiresAt and after.challenge.failures == before.challenge.failures)
 pure def alwaysChallengeEndsWithinFiveMinutes(s: SecondFactor): bool = s.challenge.expiresAt <= clock(s) + challengeLifetime and (s.challenge.phase == Unopened implies (s.challenge.failures == 0 and s.challenge.smsCode == NoCode))
 pure def sometimesChallengeOpen(s: SecondFactor): bool = isLive(s.challenge, clock(s))
 ```
@@ -126,8 +133,8 @@ pure def codeLive(c: SmsCode, now: Millis): bool = match c { | CodeSent(x) => no
 pure def codeEndsBy(c: SmsCode, deadline: Millis): bool = match c { | CodeSent(x) => x.codeExpiresAt <= deadline | NoCode => true }
 pure def canSendChallengeSms(s: SecondFactor): bool = isLive(s.challenge, clock(s)) and isConfirmed(s.factors, Sms)
 pure def sendChallengeSms(s: SecondFactor): SecondFactor = { ...s, challenge: { ...s.challenge, smsCode: CodeSent({ codeExpiresAt: earlier(s.challenge.expiresAt, clock(s) + smsCodeLifetime) }) } }
-pure def canSendStepUpSms(s: SecondFactor, personEpoch: int): bool = S::isActive(s.caller, personEpoch) and isConfirmed(s.factors, Sms)
-pure def sendStepUpSms(s: SecondFactor, personEpoch: int): SecondFactor = { ...s, stepUpCode: CodeSent({ codeExpiresAt: clock(s) + smsCodeLifetime }) }
+pure def canSendStepUpSms(s: SecondFactor): bool = S::isActive(s.caller, s.personEpoch) and isConfirmed(s.factors, Sms)
+pure def sendStepUpSms(s: SecondFactor): SecondFactor = { ...s, stepUpCode: CodeSent({ codeExpiresAt: clock(s) + smsCodeLifetime }) }
 pure def alwaysSmsCodesBelongToAConfirmedPhone(s: SecondFactor): bool = ((s.challenge.smsCode != NoCode or s.stepUpCode != NoCode) implies isConfirmed(s.factors, Sms)) and codeEndsBy(s.challenge.smsCode, s.challenge.expiresAt) and codeEndsBy(s.stepUpCode, clock(s) + smsCodeLifetime)
 pure def sometimesChallengeCodeSent(s: SecondFactor): bool = codeLive(s.challenge.smsCode, clock(s))
 ```
@@ -178,7 +185,7 @@ pure def expireChallenge(s: SecondFactor): SecondFactor = { ...s, challenge: { .
 pure def sometimesExpired(s: SecondFactor): bool = s.challenge.phase == Expired
 ```
 
-### A refused completion says the challenge is locked, expired or unknown, the method is not set up, or the code is wrong
+### A refused completion says the challenge is locked, expired or unknown, the method is not set up, the SMS code is gone, or the code is wrong
 
 The shell answers this of the state after the attempt.
 
@@ -188,6 +195,7 @@ pure def challengeRefusal(s: SecondFactor, method: FactorMethod): Refusal =
   else if (s.challenge.phase == Expired or (s.challenge.phase == Open and clock(s) >= s.challenge.expiresAt)) refuseFor(AuthenticationRequired, CredentialExpired)
   else if (s.challenge.phase != Open) refuseFor(AuthenticationRequired, CredentialUnknown)
   else if (not(isConfirmed(s.factors, method))) refuse(InvalidRequest)
+  else if (method == Sms and not(codeLive(s.challenge.smsCode, clock(s)))) refuseFor(AuthenticationRequired, CredentialExpired)
   else refuse(CredentialProofInvalid)
 ```
 
@@ -200,13 +208,14 @@ pure def challengeRefusal(s: SecondFactor, method: FactorMethod): Refusal =
 ### A step-up with a confirmed factor and its code marks the calling session and keeps its token
 
 The session records `stepUpAt` and `mfaAt` as now and answers
-`{stepUpAt, mfaAt}`; an SMS step-up code is used once.
+`{stepUpAt, mfaAt}`; an SMS step-up code is used once. Wrong step-up
+codes are limited by `shared/rateLimit`, not counted here.
 
 ```quint
-pure def canVerifyStepUp(s: SecondFactor, method: FactorMethod, personEpoch: int): bool = S::isActive(s.caller, personEpoch) and isConfirmed(s.factors, method) and (method == Totp or codeLive(s.stepUpCode, clock(s)))
-pure def verifyStepUp(s: SecondFactor, method: FactorMethod, codeMatches: bool, matchedStep: int, personEpoch: int): SecondFactor =
+pure def canVerifyStepUp(s: SecondFactor, method: FactorMethod): bool = S::isActive(s.caller, s.personEpoch) and isConfirmed(s.factors, method) and (method == Totp or codeLive(s.stepUpCode, clock(s)))
+pure def verifyStepUp(s: SecondFactor, method: FactorMethod, codeMatches: bool, matchedStep: int): SecondFactor =
   if (factorCodeAccepted(s.factors, method, clock(s), codeMatches, matchedStep))
-    { ...s, factors: advanceTotpStep(s.factors, method, matchedStep), stepUpCode: if (method == Sms) NoCode else s.stepUpCode, caller: S::recordStepUp(s.caller, personEpoch) }
+    { ...s, factors: advanceTotpStep(s.factors, method, matchedStep), stepUpCode: if (method == Sms) NoCode else s.stepUpCode, caller: S::recordStepUp(s.caller, s.personEpoch) }
   else s
 pure def stepOnlyAFactorMarksTheSession(before: SecondFactor, via: str, after: SecondFactor): bool = after.caller.stepUpAt != before.caller.stepUpAt implies (via == "verifyStepUp" and hasFactor(before.factors) and after.caller.generation == before.caller.generation and after.caller.mfaAt == S::At({ ms: clock(before) }))
 pure def sometimesSteppedUpBySms(s: SecondFactor): bool = S::isSteppedUp(s.caller) and s.factors.lastTotpStep == noTotpStep
@@ -215,24 +224,17 @@ pure def sometimesSteppedUpByTotp(s: SecondFactor): bool = S::isSteppedUp(s.call
 
 ### A revoked or expired calling session cannot use factor-management or step-up routes
 
-Each authenticated factor route reads the person's current session epoch
-from the user row in the same transaction as its operation and supplies it
-as `personEpoch`. The caller must still be accepted for that epoch before
-enrollment, confirmation, removal, a step-up SMS or a step-up can proceed.
-The epoch is an observation, never state owned by this machine. A login
-challenge uses its first-factor authority; its `StartSession` effect asks
-the issuer to use the person's current epoch when it starts the session.
-
-`alwaysCallerIsASession` describes the calling family's own issuance and
-lifetime fields. It uses the current session lifecycle invariants in place
-of the old `alwaysEpochNeverAhead` predicate: a family alone cannot state
-an invariant about authority that now lives on the user row. Acceptance
-against that authority is required at each authenticated route boundary.
+Before an authenticated factor route, the shell reads the person's current
+session epoch in the same transaction as its operation. The machine records
+a newer observation through `observeEpoch`. Enrollment, confirmation,
+removal, a step-up SMS and a step-up all require the calling session to be
+accepted for that observation. Login challenges use their first-factor
+authority separately.
 
 ```quint
-pure def lawInactiveCallerCannotUseFactorRoutes(s: SecondFactor, method: FactorMethod, personEpoch: int): bool =
-  not(S::isActive(s.caller, personEpoch)) implies
-    (not(canEnroll(s, method, personEpoch)) and not(canConfirmEnrollment(s, method, personEpoch)) and
-     not(canRemoveFactor(s, method, personEpoch)) and not(canSendStepUpSms(s, personEpoch)) and
-     not(canVerifyStepUp(s, method, personEpoch)))
+pure def lawInactiveCallerCannotUseFactorRoutes(s: SecondFactor, method: FactorMethod): bool =
+  not(S::isActive(s.caller, s.personEpoch)) implies
+    (not(canEnroll(s, method)) and not(canConfirmEnrollment(s, method)) and
+     not(canRemoveFactor(s, method)) and not(canSendStepUpSms(s)) and
+     not(canVerifyStepUp(s, method)))
 ```

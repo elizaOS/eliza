@@ -1,10 +1,10 @@
 // spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
-import { Rejected, apply, decodeState, initial, windowEnd, windowStart, type Window } from "../../gen/cloud__shared__rateLimit.effect.vibe"
+import { Rejected, apply, decodeState, initial, perWindow, windowEndOf, windowStartOf, type Event, type Window } from "../../gen/cloud__shared__rateLimit.effect.vibe"
 import { refused, Refused } from "../http/refusal.vibe"
 import { machineRows, stepRow } from "../store/rows.vibe"
-import { Store } from "../store/store.vibe"
+import { Store } from "../store/connection.vibe"
 
-const windows = machineRows<Window, { readonly type: "admit"; readonly limit: number }, Rejected, unknown>("rate_windows", { initial, decodeState, apply })
+const windows = machineRows<Window, Event, Rejected, unknown>("rate_windows", { initial, decodeState, apply })
 
 export interface Limit {
   readonly subject: string
@@ -17,20 +17,24 @@ export const minute = 60_000
 
 export effect function admit(limit: Limit): void!Refused!Store {
   const now = try Clock.currentTimeMillis
-  const start = windowStart(now, limit.widthMs)
-  const end = windowEnd(now, limit.widthMs)
+  const start = windowStartOf(now, limit.widthMs)
+  const end = windowEndOf(now, limit.widthMs)
   const store = try Store
-  try store.transaction((tx) => stepRow(tx, windows, `${limit.scope}|${limit.subject}|${start}`, { type: "admit", limit: limit.limit }, () => ({ window_end: end })))
-    catch effect (failure) => match (failure) {
-      when Rejected: throw refused("RateLimited", "NoReason", end);
-      default: throw refused("RateLimitUnavailable", "NoReason", now + 1000);
-    }
+  store.transaction(effect (tx) => {
+    const { state } = try stepRow(tx, windows, `${limit.scope}|${limit.subject}|${start}`, {
+      type: "request", rule: perWindow(limit.scope, limit.limit, limit.widthMs), now
+    }, () => ({ window_end: end }))
+    if (state.last.tag === "Refused") throw refused("RateLimited", "NoReason", state.last.retryAt)
+  }) catch effect (failure) => match (failure) {
+    when Refused: throw failure;
+    default: throw refused("RateLimitUnavailable", "NoReason", now + 1000);
+  }
 }
 
 export effect function sweepWindows(): void!!Store {
   const now = try Clock.currentTimeMillis
   const store = try Store
-  try store.transaction((tx) => tx.query("DELETE FROM rate_windows WHERE window_end < $1", [now - 60 * minute])) catch effect (failure) => {
+  store.transaction((tx) => tx.query("DELETE FROM rate_windows WHERE window_end < $1", [now - 60 * minute])) catch effect (failure) => {
     try annotateLogs(logWarning("rate window sweep failed"), { cause: failure._tag })
   }
 }

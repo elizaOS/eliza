@@ -85,11 +85,18 @@ export function environmentProfile(fakeUrl: string, api: string, web: string) {
 }
 
 export function testProfile(fakeUrl: string) {
+  const production = environmentProfile(fakeUrl, "https://api.example.com", "https://www.example.com");
   return {
     version: 1,
     name: "Test Cloud",
     environments: {
-      production: environmentProfile(fakeUrl, "https://api.example.com", "https://www.example.com"),
+      production: {
+        ...production,
+        databaseIdentity: "b".repeat(64),
+        firstPartyOrigins: [production.web],
+        mail: { kind: "https", url: "https://mail.example.com/deliver", apiKeyEnv: "CLOUD_TEST_MAIL_TOKEN" },
+        sms: { kind: "none" },
+      },
       staging: environmentProfile(fakeUrl, "https://api.staging.example.com", "https://www.staging.example.com"),
     },
   };

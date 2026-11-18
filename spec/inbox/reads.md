@@ -4,7 +4,7 @@ The inbox package reads the owner's mailbox page by page and keeps recent
 lists and bodies in memory and on disk so a reopened inbox can show them
 at once. A cached read never grants provider access and never authorizes
 sending a draft. The connection owns the current credential and the
-managed account route ([managed Gmail](../cloud/index.md)).
+managed account route ([managed Gmail](../cloud/index.md#an-approved-connection-grants-the-owner-only-the-selected-reads)).
 [Drafts](./drafts.md) and reviewed sending are separate from cached state,
 and the [managed inbox read](./managedRead.md) is always fresh.
 

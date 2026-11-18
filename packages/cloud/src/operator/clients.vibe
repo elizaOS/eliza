@@ -1,0 +1,163 @@
+// spec/cloud/operator.md, "Story: Operate the deployment without reading secrets"; spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"
+import { defaultCredentialTtl, type Registration, type ReturnUrl } from "../../gen/cloud__nativeClients__registry.effect.vibe"
+import { millisPerDay } from "../../gen/cloud__shared__types.effect.vibe"
+import { decodeRegistration, disableClient, readClient, registerClient, updateClient } from "../native-clients/registry.vibe"
+import { Deployment } from "../profile/profile.vibe"
+import type { Tx } from "../store/store.vibe"
+import type { OperatorCommandHandler, OperatorFlags } from "./admin.vibe"
+
+export error ClientFlagsInvalid { problem: string }
+export error ClientUnknown { clientId: string }
+
+export interface RegistrationInput {
+  readonly clientId: string
+  readonly environment: "production" | "staging"
+  readonly displayName: string
+  readonly androidPackage: string
+  readonly certFingerprints: ReadonlyArray<string>
+  readonly signInReturn: string
+  readonly billingReturn: string
+  readonly connectReturn?: string
+  readonly credentialTtlMs: number
+  readonly nativeGoogle: boolean
+  readonly enabled: boolean
+}
+
+const SeedClients = Schema.Array(Schema.Struct({
+  clientId: Schema.String,
+  displayName: Schema.String,
+  androidPackage: Schema.String,
+  certFingerprints: Schema.Array(Schema.String),
+  signInReturn: Schema.String,
+  billingReturn: Schema.String,
+  connectReturn: Schema.optionalKey(Schema.String),
+  credentialTtlDays: Schema.optionalKey(Schema.Int),
+  nativeGoogle: Schema.optionalKey(Schema.Boolean)
+}))
+
+const valued = ["client-id", "display-name", "android-package", "sign-in-return", "billing-return", "connect-return", "credential-ttl-days"] as const
+const repeated = ["cert"] as const
+const switches = ["native-google"] as const
+
+function urlText(url: ReturnUrl): string {
+  return url.origin + url.path
+}
+
+function inputOf(registration: Registration): RegistrationInput {
+  return {
+    clientId: registration.clientId,
+    environment: registration.environment === "Production" ? "production" : "staging",
+    displayName: registration.displayName,
+    androidPackage: registration.androidPackage,
+    certFingerprints: registration.certFingerprints,
+    signInReturn: urlText(registration.signInReturn),
+    billingReturn: urlText(registration.billingReturn),
+    ...(registration.connectReturn.tag === "ConnectsTo" ? { connectReturn: urlText(registration.connectReturn.url) } : {}),
+    credentialTtlMs: registration.credentialTtl,
+    nativeGoogle: registration.nativeGoogle,
+    enabled: registration.enabled
+  }
+}
+
+effect function ttlMs(days: string | number | undefined): number!ClientFlagsInvalid {
+  if (days === undefined) return defaultCredentialTtl
+  const count = typeof days === "number" ? days : /^\d{1,3}$/.test(days) ? Number(days) : Number.NaN
+  if (!Number.isSafeInteger(count)) throw new ClientFlagsInvalid({ problem: "--credential-ttl-days must be a whole number of days" })
+  return count * millisPerDay
+}
+
+effect function certs(given: ReadonlyArray<string>): ReadonlyArray<string>!ClientFlagsInvalid {
+  if (given.length < 1 || given.length > 4) throw new ClientFlagsInvalid({ problem: "--cert is given 1 to 4 times" })
+  return given
+}
+
+function single(flags: OperatorFlags, name: string): string | undefined {
+  return flags.values(name)[0]
+}
+
+effect function needed(flags: OperatorFlags, name: string): string!ClientFlagsInvalid {
+  const value = single(flags, name)
+  if (value === undefined) throw new ClientFlagsInvalid({ problem: `--${name} is required` })
+  return value
+}
+
+effect function served() {
+  return (try Deployment).environment
+}
+
+effect function registerFromFlags(tx: Tx, flags: OperatorFlags, now: number) {
+  const connectReturn = single(flags, "connect-return")
+  const input: RegistrationInput = {
+    clientId: try needed(flags, "client-id"),
+    environment: try served(),
+    displayName: try needed(flags, "display-name"),
+    androidPackage: try needed(flags, "android-package"),
+    certFingerprints: try certs(flags.values("cert")),
+    signInReturn: try needed(flags, "sign-in-return"),
+    billingReturn: try needed(flags, "billing-return"),
+    ...(connectReturn === undefined ? {} : { connectReturn }),
+    credentialTtlMs: try ttlMs(single(flags, "credential-ttl-days")),
+    nativeGoogle: flags.has("native-google"),
+    enabled: true
+  }
+  const registration = try registerClient(tx, try decodeRegistration(input), now)
+  return [`registered ${registration.clientId} (${input.environment})`]
+}
+
+effect function updateFromFlags(tx: Tx, flags: OperatorFlags, now: number) {
+  const clientId = try needed(flags, "client-id")
+  const current = try readClient(tx, clientId)
+  if (current === undefined) throw new ClientUnknown({ clientId })
+  const before = inputOf(current)
+  const connectReturn = single(flags, "connect-return") ?? before.connectReturn
+  const days = single(flags, "credential-ttl-days")
+  const given = flags.values("cert")
+  const input: RegistrationInput = {
+    ...before,
+    displayName: single(flags, "display-name") ?? before.displayName,
+    androidPackage: single(flags, "android-package") ?? before.androidPackage,
+    certFingerprints: given.length === 0 ? before.certFingerprints : try certs(given),
+    signInReturn: single(flags, "sign-in-return") ?? before.signInReturn,
+    billingReturn: single(flags, "billing-return") ?? before.billingReturn,
+    ...(connectReturn === undefined ? {} : { connectReturn }),
+    credentialTtlMs: days === undefined ? before.credentialTtlMs : try ttlMs(days),
+    nativeGoogle: flags.has("native-google") || before.nativeGoogle
+  }
+  const registration = try updateClient(tx, try decodeRegistration(input), now)
+  return [`updated ${registration.clientId} (${input.environment})`]
+}
+
+effect function disableFromFlags(tx: Tx, flags: OperatorFlags, now: number) {
+  const clientId = try needed(flags, "client-id")
+  try disableClient(tx, clientId, now)
+  return [`disabled ${clientId}`]
+}
+
+export effect function seedClients(tx: Tx, entries: unknown, now: number) {
+  const parsed = try Effect.mapError(
+    Schema.decodeUnknownEffect(SeedClients, { onExcessProperty: "error" })(entries),
+    (error) => new ClientFlagsInvalid({ problem: `seed clients: ${error.message}` })
+  )
+  const environment = try served()
+  const registered: string[] = []
+  for (const entry of parsed) {
+    const { credentialTtlDays, nativeGoogle, ...rest } = entry
+    const input: RegistrationInput = {
+      ...rest,
+      environment,
+      certFingerprints: try certs(entry.certFingerprints),
+      credentialTtlMs: try ttlMs(credentialTtlDays),
+      nativeGoogle: nativeGoogle ?? false,
+      enabled: true
+    }
+    const registration = try registerClient(tx, try decodeRegistration(input), now)
+    registered.push(registration.clientId)
+  }
+  return registered
+}
+
+export const commands: ReadonlyArray<OperatorCommandHandler> = [
+  { words: ["client", "register"], operatorCommand: "RegisterClient", valued, repeated, switches, run: registerFromFlags },
+  { words: ["client", "update"], operatorCommand: "UpdateClient", valued, repeated, switches, run: updateFromFlags },
+  { words: ["client", "disable"], operatorCommand: "DisableClient", valued: ["client-id"], repeated: [], switches: [], run: disableFromFlags }
+]

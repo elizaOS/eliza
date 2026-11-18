@@ -4,7 +4,7 @@ The resident calendar reads a managed account's calendar through the
 device's private broker, caches what it read under its exact source, and
 pulls provider edits of mapped events. [Linked control](./linkedSync.md)
 owns user commands and control receipts, the Cloud side of the read is
-[managed Google calendar](../cloud/index.md), and
+[managed Google calendar](../cloud/index.md#an-approved-connection-grants-the-owner-only-the-selected-reads), and
 [reconciliation](./linkedReconcile.md) owns the per-link merge.
 
 ## Story: Read the connected Calendar and keep its source information intact

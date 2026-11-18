@@ -14,6 +14,26 @@ codes), the dialogs and the timers; it reports what they saw as the facts
 below. The two-minute review lease and the twenty-minute playback lease
 are timers the shell fires as `endReading`.
 
+## Story: Show only the current browser document
+
+> As the person browsing, I want the document shown in a tab to be the one
+> that committed in the tab's current renderer.
+
+### A visible commit must come from the current tab
+
+The tab host begins loading at a public web address. A commit applies only
+when its address is the WebView's current address, no fatal error was
+reported, and Android still attests an isolated renderer. A load finishing
+early does not substitute for a visible commit. A TLS refusal cancels the
+load. An HTTP error response may still commit as a visible document.
+
+```quint
+pure def visibleBrowserCommit(currentAddress: bool, fatalError: bool, isolatedRenderer: bool): bool =
+  currentAddress and not(fatalError) and isolatedRenderer
+pure def lawAStaleAddressCannotCommit(fatalError: bool, isolatedRenderer: bool): bool =
+  not(visibleBrowserCommit(false, fatalError, isolatedRenderer))
+```
+
 ## Story: Read only the page I am looking at
 
 > As the person, I want a page read to me or asked about only from the
@@ -74,9 +94,15 @@ pure def canAnnounceReady(s: ReadingLease, message: ReadyMessage): bool = admits
 pure def announceReady(s: ReadingLease, message: ReadyMessage): ReadingLease = { ...s, world: DocumentReady }
 pure def canIsolatedWorldLost(s: ReadingLease): bool = s.world != NoIsolatedWorld
 pure def isolatedWorldLost(s: ReadingLease): ReadingLease = { ...s, world: NoIsolatedWorld, phase: endedPhase(s.phase) }
-pure def alwaysReadingStaysOnReadyDocument(s: ReadingLease): bool = inProgress(s.phase) implies s.world == DocumentReady
+pure def stepOnlyAnnouncementMakesReady(before: ReadingLease, via: str, after: ReadingLease): bool =
+  (after.world == DocumentReady and before.world != DocumentReady) implies
+    (via == "announceReady" and (before.world == AwaitingPreparedLoad or before.world == AwaitingDocument))
 pure def stepIsolatedWorldNeverReturns(before: ReadingLease, after: ReadingLease): bool =
   before.world == NoIsolatedWorld implies after.world == NoIsolatedWorld
+pure def lawPreparedLoadNeedsItsNonce(message: ReadyMessage): bool =
+  (admitsReadiness(AwaitingPreparedLoad, message) implies message.announcement == PreparedNonce) and
+    (admitsReadiness(AwaitingDocument, message) implies message.announcement == SharedReady)
+pure def alwaysReadingStaysOnReadyDocument(s: ReadingLease): bool = inProgress(s.phase) implies s.world == DocumentReady
 pure def sometimesDocumentReady(s: ReadingLease): bool = s.world == DocumentReady
 ```
 
@@ -197,8 +223,8 @@ pure def sometimesSpeakingThroughRoute(s: ReadingLease): bool = s.phase == Speak
 
 Stop reading, the review lease (two minutes from admission), the playback
 lease (twenty minutes from the spent token), the host pausing or hiding
-the page, and the reading tab closing or crashing each end the reading;
-another tab's events leave it alone.
+the page, and the reading tab closing or crashing each end the reading.
+The shell forwards only the reading tab's events as `endReading`.
 
 ```quint
 pure val reviewLeaseMs = 120000

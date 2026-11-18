@@ -19,21 +19,24 @@ and the files plugin's `storageOpen`, `storageShare` and `storageSelect`.
 
 ### The provider serves only a read with no hidden path segment
 
-Every mode but `r` is refused, and so is any path with a segment that starts
-with a dot. The trash folder's name always starts with a dot, so nothing in
-the trash is ever served.
+The provider checks the mode first, then each decoded path segment, and
+only then opens the file. Every mode but `r` is refused, and so is any path
+with a segment that starts with a dot. The trash folder's name always starts
+with a dot, so nothing in the trash is ever served, whatever the mode.
 
 ```quint
 import bridge.* from "../bridge"
 type OpenMode = ReadMode | WriteMode | ReadWriteMode
 type PathSegment = PlainSegment | DotSegment | TrashFolderSegment
-pure def hiddenSegment(segment: PathSegment): bool = segment != PlainSegment
-pure def providerServes(mode: OpenMode, segments: List[PathSegment]): bool =
-  mode == ReadMode and not(segments.some(segment => hiddenSegment(segment)))
+type ProviderAnswer = ServeFile | RefuseNotReadOnly | RefuseHiddenPath
+pure def providerOpen(mode: OpenMode, segments: List[PathSegment]): ProviderAnswer =
+  if (mode != ReadMode) RefuseNotReadOnly
+  else if (segments.some(segment => segment != PlainSegment)) RefuseHiddenPath
+  else ServeFile
 pure def lawProviderServesOnlyVisibleReads(mode: OpenMode, segments: List[PathSegment]): bool =
-  providerServes(mode, segments) implies (mode == ReadMode and segments.every(segment => segment == PlainSegment))
+  (providerOpen(mode, segments) == ServeFile) iff (mode == ReadMode and segments.every(segment => segment == PlainSegment))
 pure def lawTrashIsNeverServed(mode: OpenMode, segments: List[PathSegment]): bool =
-  segments.includes(TrashFolderSegment) implies not(providerServes(mode, segments))
+  segments.includes(TrashFolderSegment) implies providerOpen(mode, segments) != ServeFile
 ```
 
 ### A chooser is posted only for one regular file, or for one to 100 regular files to share

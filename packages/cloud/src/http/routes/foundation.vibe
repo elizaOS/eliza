@@ -1,9 +1,14 @@
-// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"; spec/cloud/billing/plans.md, "Story: Offer the paid plans as the provider sells them"; spec/cloud/shared/metering.md, "Story: Never overdraw an account, and settle every call once"
+// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"; spec/cloud/billing/plans.md, "Story: Offer the paid plans as the provider sells them"; spec/cloud/shared/metering.md, "Story: Settle every call once"
 import { plansAnswer } from "../../billing/plans.vibe"
 import { Deployment, serviceDocument, signInMethods } from "../../profile/profile.vibe"
 import { sweepHolds } from "../../shared/metering.vibe"
 import { sweepWindows } from "../../shared/rate-limit.vibe"
-import { json, type Area } from "../routes.vibe"
+import { json, type Area, type Method } from "../routes.vibe"
+import { area as identity } from "./identity.vibe"
+
+function servesSignIn(method: Method, path: string): boolean {
+  return identity.routes.some((route) => route.method === method && route.path === path)
+}
 
 export const area: Area = {
   routes: [
@@ -22,8 +27,11 @@ export const area: Area = {
       path: "/api/v1/auth/methods",
       auth: "Public",
       handler: () => effect {
-        const { email, sms, google } = signInMethods((try Deployment).settings)
-        return json({ email, sms, google })
+        return json(signInMethods((try Deployment).settings, {
+          email: servesSignIn("POST", "/api/v1/auth/email/code/send") && servesSignIn("POST", "/api/v1/auth/email/code/verify"),
+          sms: servesSignIn("POST", "/api/v1/auth/sms/code/send") && servesSignIn("POST", "/api/v1/auth/sms/code/verify"),
+          google: servesSignIn("GET", "/api/v1/auth/google/start") && servesSignIn("GET", "/api/v1/auth/google/callback")
+        }))
       }
     },
     { method: "GET", path: "/api/v1/subscriptions/plans", auth: "Public", capability: "billing", handler: () => effect { return json(plansAnswer()) } }

@@ -21,9 +21,9 @@ The shell redeems in one store transaction: it locks the organization, then
 the code row, reads `now` from the store's clock, and passes in what other
 rows say (account status, idempotency keys of the organization's other
 grants, the family index, an open or unknown paid subscription). The plan the
-grant gives, and its precedence below a paid plan, are
-`spec/cloud/billing/entitlements.md`; the allowance months it opens are
-`spec/cloud/billing/allowance.md`.
+grant gives, below a paid plan, is `fundedPlan` of
+`spec/cloud/billing/plans.md`, published by `spec/cloud/billing/entitlements.md`;
+the allowance months it opens are `spec/cloud/billing/allowance.md`.
 
 ## Story: Redeem a membership code once
 
@@ -44,7 +44,7 @@ at minting.
 ```quint
 import types.* from "../shared/types"
 import plans.* from "./plans"
-import rateLimit as RL from "../shared/rateLimit"
+import rateLimit as R from "../shared/rateLimit"
 pure val grantCodeLength: int = 16
 pure val crockfordAlphabet: str = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 ```
@@ -129,7 +129,7 @@ pure def redeemAnswer(c: Code, organizationId: str, accountActive: bool, idempot
 type CodeEffect = OpenGrantMonths({ grantId: str, planKey: PlanKey, startsAt: Millis, ends: GrantEnd }) | RetireGrantMonths({ grantId: str })
 type CodeStep = { state: Code, out: List[CodeEffect] }
 pure def canRedeem(c: Code, organizationId: str, idempotencyKey: str, grantId: str, now: Millis): bool =
-  organizationId != "" and idempotencyKey != "" and grantId != "" and now >= 0
+  organizationId != "" and idempotencyKey != "" and grantId != "" and now >= 0 and not(c.grants.some(g => g.grantId == grantId))
 pure def redeem(c: Code, organizationId: str, accountActive: bool, idempotencyKey: str, keyUsedForAnotherCode: bool, familyHeld: bool, paidPlanOpen: bool, grantId: str, now: Millis): CodeStep = {
   val answer = redeemAnswer(c, organizationId, accountActive, idempotencyKey, keyUsedForAnotherCode, familyHeld, paidPlanOpen, grantId, now)
   val issued = answer == Answered({ organizationId: organizationId, grantId: grantId, replayed: false })
@@ -139,7 +139,7 @@ pure def redeem(c: Code, organizationId: str, accountActive: bool, idempotencyKe
 }
 pure val organizationIdValues = Set("org1", "org2")
 pure val idempotencyKeyValues = Set("key1", "key2")
-pure val grantIdValues = Set("grant1")
+pure val grantIdValues = Set("grant1", "grant2")
 pure val nowValues = Set(0, 1, 2)
 pure val weight_redeem = 6
 pure def isFreshAnswer(a: RedeemAnswer): bool = match a { | Answered(x) => not(x.replayed) | _ => false }
@@ -165,6 +165,17 @@ pure def alwaysAnswerIsHeldOrWellFormed(c: Code): bool = {
 pure def sometimesReplayed(c: Code): bool = isReplayAnswer(c.last)
 ```
 
+### An organization holds at most one grant of a code, and no two grants share an id
+
+The shell draws a fresh grant id for each redemption; the guard refuses one
+already used, so the store's unique index is never the first to say so.
+
+```quint
+pure def alwaysOneGrantPerOrganizationAndId(c: Code): bool =
+  c.grants.every(g => c.grants.select(h => h.organizationId == g.organizationId or h.grantId == g.grantId).length() == 1)
+pure def sometimesTwoOrganizationsHold(c: Code): bool = c.grants.length() == 2
+```
+
 ### A code never issues more grants than its limit, and only a fresh redemption issues one, opening its allowance months
 
 The shell inserts the grant row and opens each month of the grant with
@@ -174,10 +185,12 @@ the next two, and the allowance sweep opens later months as they come.
 
 ```quint
 pure def alwaysWithinTheRedemptionLimit(c: Code): bool = c.grants.length() <= c.maxRedemptions
-pure def stepOnlyAFreshRedemptionIssuesAGrant(before: Code, via: str, after: Code, out: List[CodeEffect]): bool =
-  (after.grants.length() > before.grants.length()) iff (via == "redeem" and isFreshAnswer(after.last) and after.grants.length() == before.grants.length() + 1
-    and out == List(OpenGrantMonths({ grantId: grantOf(after, after.grants.nthOr(before.grants.length(), noGrant).organizationId).grantId, planKey: after.planKey,
-      startsAt: after.grants.nthOr(before.grants.length(), noGrant).startsAt, ends: after.grants.nthOr(before.grants.length(), noGrant).ends })))
+pure def stepOnlyAFreshRedemptionIssuesAGrant(before: Code, via: str, after: Code, out: List[CodeEffect]): bool = {
+  val n = before.grants.length()
+  val g = after.grants.nthOr(n, noGrant)
+  (after.grants.length() > n) iff (via == "redeem" and isFreshAnswer(after.last) and after.grants.length() == n + 1
+    and out == List(OpenGrantMonths({ grantId: g.grantId, planKey: after.planKey, startsAt: g.startsAt, ends: g.ends })))
+}
 pure def stepGrantsAreNeverTakenBack(before: Code, after: Code): bool =
   after.grants.length() >= before.grants.length() and before.grants.every(g => after.grants.some(h => h.grantId == g.grantId and h.organizationId == g.organizationId and h.startsAt == g.startsAt and h.ends == g.ends))
 pure def sometimesUsedUp(c: Code): bool = c.status == Redeemable and c.grants.length() == c.maxRedemptions and refusedWith(c.last, GrantCodeInvalid)
@@ -197,8 +210,8 @@ Both limits apply to every redeem request, through `requestAll` of
 `spec/cloud/shared/rateLimit.md`, before the code is read.
 
 ```quint
-pure val redeemPerCredential: RL::RateLimit = RL::perWindow("grantRedeemPerCredential", 5, 15 * millisPerMinute)
-pure val redeemPerAddress: RL::RateLimit = RL::perWindow("grantRedeemPerAddress", 60, 15 * millisPerMinute)
+pure val redeemPerCredential: R::RateLimit = R::perWindow("grantRedeemPerCredential", 5, 15 * millisPerMinute)
+pure val redeemPerAddress: R::RateLimit = R::perWindow("grantRedeemPerAddress", 60, 15 * millisPerMinute)
 ```
 
 ## Story: Stop a code or a grant
@@ -217,7 +230,7 @@ pure def sometimesDisabledCodeStillReplays(c: Code): bool = c.status == Disabled
 
 ### Revoking a grant ends it at once and retires its open allowance months, and the organization keeps its place in the family
 
-Revoking twice is refused. The organization's effective plan falls back to
+Revoking a revoked grant changes nothing. The organization's effective plan falls back to
 its next grant or the free plan (`spec/cloud/billing/entitlements.md`); each
 open month closes with `GrantRevoked`.
 

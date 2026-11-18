@@ -39,6 +39,7 @@ pure def authorityOf(check: AuthorityCheck): Authority =
   else if (not(check.forceReview) and check.requestEligible) DirectRequest
   else NoAuthority
 pure def lawForcedReviewNeedsApproval(check: AuthorityCheck): bool = (check.forceReview and not(check.reviewed)) implies authorityOf(check) == NoAuthority
+pure def sometimesApprovedOnReview(s: DeviceAttempt): bool = s.authority == Approval and s.phase == Called
 ```
 
 ### Dispatch needs an exact reservation and the agent's claim
@@ -81,9 +82,9 @@ pure def sometimesExistingEntryGoesToHistory(s: DeviceAttempt): bool = s.phase =
 
 ### The executor is called at most once, for a live claim
 
-Calling the executor needs the applying entry. If the screen retired, the
-proposal was withdrawn or its deadline passed before the call, the attempt
-settles with no effect and the executor is never called. The call is the
+Calling the executor needs the applying entry. An attempt retires when its
+screen closes or its proposal is withdrawn or lapses; one retired before
+the call settles with no effect and the executor is never called. The call is the
 `CallExecutor` effect, emitted once, for the claimed attempt.
 
 ```quint

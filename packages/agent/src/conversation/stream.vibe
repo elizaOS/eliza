@@ -1,0 +1,30 @@
+// spec/agent/access/transport.md, "Story: Answer each local request exactly once"; spec/agent/conversation/conversations.md, "Messages and model-call log rows arrive only in a published conversation"
+module node {
+  export type ReplyFrame =
+    | { readonly type: "token"; readonly text: string; readonly fullText: string }
+    | { readonly type: "done"; readonly fullText: string }
+    | { readonly type: "error"; readonly message: string }
+
+  function writeReplyStream(run: (emit: (frame: ReplyFrame) => void, signal: AbortSignal) => Promise<void>, incoming: AbortSignal): Response {
+    const cancelled = new AbortController()
+    const signal = AbortSignal.any([incoming, cancelled.signal])
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        function emit(frame: ReplyFrame) {
+          if (!signal.aborted) controller.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`))
+        }
+        void run(emit, signal)
+          .catch(() => emit({ type: "error", message: "The turn did not complete" }))
+          .finally(() => { if (!cancelled.signal.aborted) controller.close() })
+      },
+      cancel() { cancelled.abort() },
+    })
+    return new Response(stream, {
+      headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store" },
+    })
+  }
+
+  export { writeReplyStream }
+}
+export { writeReplyStream, type ReplyFrame } from node

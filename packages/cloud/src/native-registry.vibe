@@ -22,7 +22,7 @@ const Entry = Schema.Struct({
   clientId: Nonempty, environment: Schema.Literals(["production", "staging"]),
   displayName: Nonempty, androidPackage: PackageName, certFingerprints: Schema.Array(Fingerprint),
   signInReturn: Schema.String, billingReturn: Schema.String, connectReturn: Schema.optionalKey(Schema.String),
-  credentialTtlMs: Schema.optionalKey(Schema.Int), enabled: Schema.Boolean
+  credentialTtlMs: Schema.optionalKey(Schema.Int), nativeGoogle: Schema.optionalKey(Schema.Boolean), enabled: Schema.Boolean
 })
 const Registry = Schema.Array(Entry)
 
@@ -58,7 +58,7 @@ function registry(env: NativeRegistryEnv) {
       clientId: item.clientId, environment: item.environment === "production" ? "Production" : "Staging",
       displayName: item.displayName, androidPackage: item.androidPackage, certFingerprints: [...item.certFingerprints],
       signInReturn, billingReturn, connectReturn: optionalConnect ? { tag: "ConnectsTo", url: optionalConnect } : { tag: "NoConnectReturn" },
-      credentialTtl: item.credentialTtlMs ?? defaultCredentialTtl, nativeGoogle: false, enabled: item.enabled
+      credentialTtl: item.credentialTtlMs ?? defaultCredentialTtl, nativeGoogle: item.nativeGoogle === true, enabled: item.enabled
     })
   }
   const served: Registration["environment"] = env.CLOUD_ENVIRONMENT === "production" ? "Production" : "Staging"

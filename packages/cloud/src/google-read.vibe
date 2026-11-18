@@ -21,18 +21,20 @@ schema EventOrganizer { email?: string; displayName?: string; self?: boolean }
 schema CalendarEvent {
   id: string; summary?: string; description?: string; location?: string; status?: string
   htmlLink?: string; hangoutLink?: string; etag?: string; start?: EventTime; end?: EventTime
-  organizer?: EventOrganizer; attendees?: Attendee[]
+  organizer?: EventOrganizer; attendees?: Attendee[]; eventType?: string; recurrence?: string[]; recurringEventId?: string
 }
 schema CalendarList { items?: CalendarEvent[]; timeZone?: string; nextPageToken?: string }
 
 const gmail = "https://gmail.googleapis.com/gmail/v1/users/me"
 const calendar = "https://www.googleapis.com/calendar/v3/calendars"
 const attachments = /^[a-zA-Z0-9_-]{1,1024}$/
+export const mailAddress = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/
+const rfcMessageId = /^<[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9.-]+>$/
 const history = /^[0-9]+$/
 const isoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/
 const isoDate = /^\d{4}-\d{2}-\d{2}$/
 const safeContent = "Content-Type"
-const headerNames = ["From", "To", "Cc", "Subject", "Reply-To", safeContent]
+const headerNames = ["From", "To", "Cc", "Subject", "Reply-To", "Message-ID", safeContent]
 
 function headerMap(payload: MailPart | undefined) {
   return new Map((payload?.headers ?? []).map((header) => [header.name.toLowerCase(), header.value]))
@@ -76,6 +78,30 @@ effect function readMessage<E, R>(api: GoogleReadApi<E, R>, id: string, format: 
   const result = Schema.decodeUnknownOption(MailMessage)(raw)
   if (Option.isNone(result) || result.value.id !== id) throw new GoogleReadResponse()
   return result.value
+}
+
+function replyTarget(message: MailMessage) {
+  if (message.labelIds?.includes("TRASH")) return null
+  const fields = message.payload?.headers ?? []
+  const all = (name: string) => fields.filter((field) => field.name.toLowerCase() === name).map((field) => field.value.trim())
+  const replyTo = all("reply-to")
+  const addressFields = replyTo.length ? replyTo : all("from")
+  const messageIds = all("message-id")
+  const subjects = all("subject")
+  if (addressFields.length !== 1 || messageIds.length !== 1 || subjects.length > 1) return null
+  const source = addressFields[0]
+  const mailbox = /^(?:"(?:[^"\\]|\\.)*"|[^<>,@]*)\s*<([^<>]+)>$/.exec(source)
+  const recipient = mailbox?.[1].trim() ?? source
+  const messageId = messageIds[0]
+  const subject = subjects[0] ?? ""
+  if (!recipient || recipient.length > 254 || !mailAddress.test(recipient) || !rfcMessageId.test(messageId) ||
+      messageId.length > 250 || subject.length > 120 || /[\u0000-\u001f\u007f]/.test(subject) ||
+      !attachments.test(message.threadId)) return null
+  return { recipient, subject, messageId, threadId: message.threadId }
+}
+
+export effect function googleReplyTarget<E, R>(api: GoogleReadApi<E, R>, id: string) {
+  return replyTarget(try readMessage(api, id, "metadata"))
 }
 
 function plainPart(root: MailPart | undefined) {
@@ -129,7 +155,9 @@ export effect function googleGmailMessage<E, R>(api: GoogleReadApi<E, R>, url: U
   if (!id) throw new GoogleReadInput()
   const message = try readMessage(api, id, "full")
   const text = try bodyText(api, message)
-  return { message: try mailCard(message), bodyText: text ?? "", bodyTextAvailable: text !== null, bodyHtml: null, bodyHtmlStatus: "none" }
+  const target = replyTarget(message)
+  const reply = target && { recipient: target.recipient, subject: target.subject }
+  return { message: try mailCard(message), reply, bodyText: text ?? "", bodyTextAvailable: text !== null, bodyHtml: null, bodyHtmlStatus: "none" }
 }
 
 function eventCard(event: CalendarEvent, timezone: string | null) {
@@ -143,12 +171,24 @@ function eventCard(event: CalendarEvent, timezone: string | null) {
     email: who.email ?? null, displayName: who.displayName ?? null, responseStatus: who.responseStatus ?? null,
     self: who.self ?? false, organizer: who.organizer ?? false, optional: who.optional ?? false
   }))
+  const ownerEditable = event.organizer?.self === true && event.eventType === "default" && !attendees.length && event.status === "confirmed"
   return {
     externalId: event.id, calendarId: "primary", title: event.summary ?? "", description: event.description ?? "",
     location: event.location ?? "", status: event.status ?? "", startAt: start, endAt: end, isAllDay: allDay,
     timezone: event.start?.timeZone ?? timezone, htmlLink: event.htmlLink ?? null, conferenceLink: event.hangoutLink ?? null,
+    editable: ownerEditable && !event.recurrence?.length, seriesEditable: ownerEditable && Boolean(event.recurrence?.length),
+    seriesId: event.recurringEventId ?? null,
     etag: event.etag ?? null, organizer: event.organizer ?? null, attendees, metadata: {}
   }
+}
+
+export effect function googleCalendarItem<E, R>(api: GoogleReadApi<E, R>, id: string) {
+  if (!attachments.test(id)) throw new GoogleReadInput()
+  const decoded = Schema.decodeUnknownOption(CalendarEvent)(try api(calendar + "/primary/events/" + id))
+  if (Option.isNone(decoded) || decoded.value.id !== id) throw new GoogleReadResponse()
+  const item = eventCard(decoded.value, null)
+  if (!item) throw new GoogleReadResponse()
+  return { item, recurrence: decoded.value.recurrence ?? [] }
 }
 
 export effect function googleCalendarFeed<E, R>(api: GoogleReadApi<E, R>, url: URL, syncedAt: string) {

@@ -1,6 +1,8 @@
 // spec/agent/storage/database.md, "Story: Keep the agent's records in one store that never loses a committed write"; spec/agent/storage/database.md, "A data directory serves only the agent, account and embedding size it was created for"; spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"
 module node {
   import { randomUUID } from "node:crypto"
+  import { mkdtemp, open, readdir, rename, rm } from "node:fs/promises"
+  import { dirname, join } from "node:path"
   import { PGlite, type Transaction } from "@electric-sql/pglite"
   import {
     DatabaseAdapter, filterMemoryReadByAccessContext,
@@ -15,6 +17,12 @@ module node {
     persistMemory: boolean
     account: { userId: string; organizationId: string } | null
     embeddingDimensions: number
+    snapshot?: DeviceStorageSnapshot
+  }
+
+  export interface DeviceStorageSnapshot {
+    readonly schemaVersion: number
+    readonly bytes: Uint8Array
   }
 
   type DB = PGlite | Transaction
@@ -33,18 +41,28 @@ module node {
     return (..._args: unknown[]): Promise<never> => Promise.reject(new UnsupportedStorageOperation(operation))
   }
 
-  async function migrate(db: PGlite, agentId: UUID, options: DeviceStorageOptions): Promise<void> {
+  async function migrate(db: PGlite, agentId: UUID, options: DeviceStorageOptions, seeded = false): Promise<void> {
     const user = options.account?.userId ?? null
     const organization = options.account?.organizationId ?? null
     await db.transaction(async (transaction) => {
       const result = await transaction.query<{ exists: boolean }>("SELECT to_regclass('public.device_owner') IS NOT NULL AS exists")
-      if (!result.rows[0]?.exists) {
-        const previous = await transaction.query("SELECT 1 FROM pg_tables WHERE schemaname = 'public' LIMIT 1")
-        if (previous.rows.length > 0) throw new Error("The device store has no ownership metadata")
-        await transaction.exec(migrations[0])
+      if (seeded || !result.rows[0]?.exists) {
+        if (seeded) {
+          const confirmed = await transaction.query<{ version: number; empty: boolean }>(
+            "SELECT version, NOT EXISTS (SELECT 1 FROM device_owner) AND NOT EXISTS (SELECT 1 FROM device_records) AS empty FROM device_snapshot",
+          )
+          if (confirmed.rows.length !== 1 || confirmed.rows[0]?.version !== migrations.length || !confirmed.rows[0]?.empty) {
+            throw new Error("The bundle's store snapshot is not a current empty database")
+          }
+          await transaction.exec("DROP TABLE device_snapshot")
+        } else {
+          const previous = await transaction.query("SELECT 1 FROM pg_tables WHERE schemaname = 'public' LIMIT 1")
+          if (previous.rows.length > 0) throw new Error("The device store has no ownership metadata")
+          for (const migration of migrations) await transaction.exec(migration)
+        }
         await transaction.query(
-          "INSERT INTO device_owner VALUES (true, $1, $2, $3, $4, 1)",
-          [agentId, user, organization, options.embeddingDimensions],
+          "INSERT INTO device_owner VALUES (true, $1, $2, $3, $4, $5)",
+          [agentId, user, organization, options.embeddingDimensions, migrations.length],
         )
         return
       }
@@ -307,8 +325,13 @@ module node {
       await this.write("memories", writes, "update")
     }
 
-    getMemoriesByIds(keys: UUID[], tableName?: string): Promise<Memory[]> {
-      return this.values("memories", { keys, tableName })
+    async getMemoriesByIds(keys: UUID[], tableName?: string): Promise<Memory[]> {
+      const rows = await this.records<Memory>("memories", { keys, tableName })
+      const byId = new Map(rows.map((row) => [row.key, row.data]))
+      return keys.flatMap((key) => {
+        const memory = byId.get(key)
+        return memory === undefined ? [] : [memory]
+      })
     }
 
     async getMemories(input: Parameters<IDatabaseAdapter["getMemories"]>[0]): Promise<Memory[]> {
@@ -332,7 +355,7 @@ module node {
           && (memberRooms === undefined || memberRooms.has(memory.roomId))
           && (input.authorEntityIds === undefined || input.authorEntityIds.includes(memory.entityId))
           && !(input.excludeRoomIds?.includes(memory.roomId))
-          && (input.unique === undefined || memory.unique === input.unique)
+          && (!input.unique || memory.unique === true)
           && (input.start === undefined || recorded >= input.start)
           && (input.end === undefined || recorded <= input.end)
           && (!text || memory.content.text?.toLowerCase().includes(text))
@@ -347,7 +370,7 @@ module node {
       const offset = input.offset ?? 0
       const limit = input.limit ?? input.count
       return readable.slice(offset, limit === undefined ? undefined : offset + limit)
-        .map((memory) => input.includeEmbedding ? memory : { ...memory, embedding: undefined })
+        .map((memory) => input.includeEmbedding === false ? { ...memory, embedding: undefined } : memory)
     }
 
     async getMemoriesByRoomIds(input: Parameters<IDatabaseAdapter["getMemoriesByRoomIds"]>[0]): Promise<Memory[]> {
@@ -363,7 +386,7 @@ module node {
     async countMemories(params: Parameters<IDatabaseAdapter["countMemories"]>[0]): Promise<number> {
       if (params.agentId !== undefined) this.own(params.agentId)
       const rows = await this.values<Memory>("memories", { rooms: params.roomIds, tableName: params.tableName })
-      return rows.filter((memory) => (params.unique === undefined || memory.unique === params.unique)
+      return rows.filter((memory) => (!params.unique || memory.unique === true)
         && (params.entityId === undefined || memory.entityId === params.entityId)
         && Object.entries(params.metadata ?? {}).every(([key, value]) =>
           JSON.stringify(Reflect.get(memory.metadata ?? {}, key)) === JSON.stringify(value))).length
@@ -545,6 +568,32 @@ module node {
     readonly deletePairingAllowlistEntries = unsupported("deletePairingAllowlistEntries")
   }
 
+  export async function createDeviceStorageSnapshot(): Promise<DeviceStorageSnapshot> {
+    const db = await PGlite.create()
+    try {
+      await db.transaction(async (tx) => {
+        for (const migration of migrations) await tx.exec(migration)
+        await tx.exec("CREATE TABLE device_snapshot (version integer NOT NULL)")
+        await tx.query("INSERT INTO device_snapshot VALUES ($1)", [migrations.length])
+      })
+      return { schemaVersion: migrations.length, bytes: new Uint8Array(await (await db.dumpDataDir("none")).arrayBuffer()) }
+    } finally { await db.close() }
+  }
+
+  async function seedDurableStore(directory: string, agentId: UUID, options: DeviceStorageOptions, bytes: Blob): Promise<void> {
+    const parent = dirname(directory)
+    const scratch = await mkdtemp(join(parent, ".store-seed-"))
+    try {
+      const staged = await PGlite.create(scratch, { loadDataDir: bytes })
+      try { await migrate(staged, agentId, options, true) }
+      finally { await staged.close() }
+      await rename(scratch, directory)
+      const handle = await open(parent, "r")
+      try { await handle.sync() }
+      finally { await handle.close() }
+    } finally { await rm(scratch, { recursive: true, force: true }) }
+  }
+
   export async function openDeviceStorage(options: DeviceStorageOptions): Promise<{ agentId: UUID; adapter: IDatabaseAdapter }> {
     if (!Number.isSafeInteger(options.embeddingDimensions) || options.embeddingDimensions < 0 ||
       (options.account !== null && (!options.account.userId.trim() || !options.account.organizationId.trim()))) {
@@ -553,8 +602,15 @@ module node {
     const state = await claimDeviceState(options.stateDirectory, options.persistMemory)
     let db: PGlite | undefined
     try {
-      db = await PGlite.create(state.dataDirectory)
-      await migrate(db, state.agentId, options)
+      const snapshot = options.snapshot?.schemaVersion === migrations.length
+        ? new Blob([Uint8Array.from(options.snapshot.bytes)]) : undefined
+      const directory = state.dataDirectory
+      const seeded = snapshot !== undefined && directory === undefined
+      if (snapshot !== undefined && directory !== undefined && (await readdir(directory)).length === 0) {
+        await seedDurableStore(directory, state.agentId, options, snapshot)
+      }
+      db = await PGlite.create(seeded ? { loadDataDir: snapshot } : { dataDir: directory })
+      await migrate(db, state.agentId, options, seeded)
       return { agentId: state.agentId, adapter: new DeviceAdapter(db, state.agentId, options.embeddingDimensions, state.release) }
     } catch (error) {
       await db?.close()
@@ -563,4 +619,4 @@ module node {
     }
   }
 }
-export { openDeviceStorage, type DeviceStorageOptions } from node
+export { createDeviceStorageSnapshot, openDeviceStorage, type DeviceStorageOptions, type DeviceStorageSnapshot } from node

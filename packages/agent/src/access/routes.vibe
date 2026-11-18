@@ -1,0 +1,183 @@
+// spec/agent/access/routes.md, "Story: Admit only the routes a product lists"
+import { admission, flatParam, pathLimit, validList, type Accept, type Admission, type Flaw, type Group, type Method as ModelMethod, type Piece, type Request as ModelRequest } from "../../gen/agent__access__routes.ts"
+
+const methods = { GET: "Get", POST: "Post", PUT: "Put", PATCH: "Patch", DELETE: "Delete" } as const
+const literal = /^[A-Za-z0-9._-]+$/
+const dots = /^\.+$/
+const placeholder = /^\{[a-z][A-Za-z]*\}$/
+const unsafe = /[\u0000-\u0020\u007f\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]/
+const isLiteral = (text: string) => literal.test(text) && !dots.test(text)
+const Path = Schema.String.check(Schema.makeFilter((path) =>
+  path.startsWith("/") && path.slice(1).split("/").every((piece) => isLiteral(piece) || placeholder.test(piece))))
+const Prefix = Schema.String.check(Schema.makeFilter((path) =>
+  path === "" || (path.startsWith("/") && path.slice(1).split("/").every(isLiteral))))
+const Pattern = Schema.String.check(Schema.makeFilter((pattern) => {
+  if (pattern === "") return false
+  try { new RegExp(`^(?:${pattern})$`, "u"); return true }
+  catch { return false }
+}))
+const Method = Schema.Literals(["GET", "POST", "PUT", "PATCH", "DELETE"])
+const Query = Schema.Struct({
+  key: Schema.String,
+  accepts: Schema.Union([
+    Schema.Struct({ kind: Schema.Literal("any") }),
+    Schema.Struct({ kind: Schema.Literal("pattern"), pattern: Pattern }),
+    Schema.Struct({ kind: Schema.Literal("pinned"), value: Schema.String }),
+  ]),
+})
+const Route = Schema.Struct({
+  method: Method,
+  path: Path,
+  stream: Schema.optionalKey(Schema.Boolean),
+  query: Schema.optionalKey(Schema.Array(Query)),
+  maxBodyBytes: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
+})
+const RouteGroup = Schema.Struct({
+  prefixes: Schema.Array(Prefix),
+  id: Schema.optionalKey(Pattern),
+  routes: Schema.Array(Route),
+})
+const RouteList = Schema.Union([Schema.Array(Route), Schema.Array(RouteGroup)])
+
+export type Route = typeof Route.Type
+export type RouteGroup = typeof RouteGroup.Type
+export type RouteList = typeof RouteList.Type
+
+export interface RouteRequest {
+  readonly method: string
+  readonly target: string
+  readonly streamed: boolean
+  readonly body: Uint8Array | undefined
+}
+
+export interface LocalCall extends RouteRequest {
+  readonly authorization: string | undefined
+}
+
+export interface RouteInput {
+  readonly parameters: ReadonlyMap<string, string>
+  readonly query: ReadonlyMap<string, string>
+  readonly body: unknown
+  readonly signal: AbortSignal
+}
+
+export type LocalRoute = Route & {
+  readonly handler: (input: RouteInput) => Response | { readonly status: number; readonly body: object } | Promise<Response | { readonly status: number; readonly body: object }>
+}
+
+export type LocalRouter = (request: LocalCall, signal: AbortSignal) => Promise<Response>
+
+interface Routes {
+  readonly admit: (request: RouteRequest) => Admission
+}
+
+const parseList = Schema.decodeUnknownOption(RouteList, { onExcessProperty: "error" })
+const modelMethod = (method: string): ModelMethod | undefined =>
+  Object.hasOwn(methods, method) ? methods[method as keyof typeof methods] : undefined
+
+function modelAccept(accepts: typeof Query.Type["accepts"]): Accept {
+  switch (accepts.kind) {
+    case "any": return { tag: "AnyValue" }
+    case "pattern": return { tag: "Matching", pattern: accepts.pattern }
+    case "pinned": return { tag: "Pinned", value: accepts.value }
+  }
+}
+
+function pieces(path: string): Piece[] {
+  return path.slice(1).split("/").map((text) => placeholder.test(text)
+    ? { tag: "Param" }
+    : { tag: "Literal", text })
+}
+
+export function modelRoute(route: Route): Group["routes"][number] {
+  return {
+    method: methods[route.method],
+    delivery: route.stream ? "Streamed" : "Buffered",
+    path: pieces(route.path),
+    query: (route.query ?? []).map((rule) => ({ key: rule.key, accepts: modelAccept(rule.accepts) })),
+    limit: route.maxBodyBytes === undefined
+      ? { tag: "AnySize" }
+      : { tag: "AtMost", bytes: route.maxBodyBytes },
+  }
+}
+
+function modelGroup(group: RouteGroup): Group {
+  return {
+    prefixes: group.prefixes.map((prefix) => prefix === "" ? [] : prefix.slice(1).split("/")),
+    id: group.id ?? "",
+    routes: group.routes.map(modelRoute),
+  }
+}
+
+function grouped(routes: RouteList): Group[] {
+  if (routes.length === 0) return []
+  const first = routes[0]
+  if ("method" in first) {
+    return [modelGroup({ prefixes: [""], id: flatParam, routes: routes.filter((route) => "method" in route) })]
+  }
+  return routes.filter((route) => "routes" in route).map(modelGroup)
+}
+
+function requestBody(bytes: Uint8Array | undefined): ModelRequest["body"] {
+  if (bytes === undefined) return { tag: "NoBody" }
+  try {
+    const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes))
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      return { tag: "JsonObject", size: bytes.byteLength }
+    }
+  } catch {}
+  return { tag: "NotAnObject" }
+}
+
+function matchPatterns(patterns: readonly string[]) {
+  const compiled = [...new Set(patterns.filter(Boolean))].map((key) =>
+    ({ key, re: new RegExp(`^(?:${key})$`, "u") }))
+  return (value: string) => compiled.filter(({ re }) => re.exec(value)?.[0] === value).map(({ key }) => key)
+}
+
+function wireRequest(request: RouteRequest, method: ModelMethod, ids: ReturnType<typeof matchPatterns>, values: ReturnType<typeof matchPatterns>): ModelRequest {
+  const { target } = request
+  const flaws: Flaw[] = []
+  const split = target.indexOf("?")
+  const path = split < 0 ? target : target.slice(0, split)
+  const query = split < 0 ? "" : target.slice(split + 1)
+  if (target.includes("\\")) flaws.push("Backslash")
+  if (target.includes("#")) flaws.push("Fragment")
+  if (unsafe.test(target)) flaws.push("UnsafeCharacter")
+  if (target.length > pathLimit) flaws.push("PathTooLong")
+  if (path.includes("%")) flaws.push("PercentInPath")
+  const decode = (part: string): string => {
+    try { return decodeURIComponent(part) }
+    catch { flaws.push("MalformedEscape"); return "" }
+  }
+  const queryPairs = query === "" || flaws.length > 0 ? [] : query.split("&").map((part) => {
+    const at = part.indexOf("=")
+    const key = decode(at < 0 ? part : part.slice(0, at))
+    const value = decode(at < 0 ? "" : part.slice(at + 1))
+    return { key, value, fits: values(value) }
+  })
+  return {
+    method,
+    delivery: request.streamed ? "Streamed" : "Buffered",
+    segments: flaws.length === 0 && path.startsWith("/") ? path.slice(1).split("/").map((text) =>
+      ({ text, fits: ids(text) })) : [{ text: "", fits: [] }],
+    query: queryPairs,
+    flaws,
+    body: flaws.length === 0 ? requestBody(request.body) : { tag: "NoBody" },
+  }
+}
+
+export function defineRoutes(input: unknown): Routes {
+  const parsed = parseList(input)
+  const list = parsed._tag === "Some" ? grouped(parsed.value) : []
+  const groups = validList(list) ? list : []
+  const ids = matchPatterns(groups.map((group) => group.id))
+  const values = matchPatterns(groups.flatMap((group) => group.routes.flatMap((route) =>
+    route.query.flatMap(({ accepts }) => accepts.tag === "Matching" ? [accepts.pattern] : []))))
+  return {
+    admit: (request) => {
+      const method = modelMethod(request.method)
+      return method === undefined ? { tag: "RouteRefused" } : admission(groups, wireRequest(request, method, ids, values))
+    },
+  }
+}

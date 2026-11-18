@@ -1,38 +1,9 @@
 // spec/agent/plugins/profile.md, "Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last"; spec/agent/plugins/profile.md, "A refused plan loads nothing more"; spec/agent/plugins/profile.md, "The product plugin must be in the bundle"; spec/agent/plugins/profile.md, "A product route never claims a route prefix an agent module owns"; spec/agent/plugins/profile.md, "The agent is ready only when every allowed action is registered"; spec/agent/plugins/profile.md, "The worker is installed only after its executable digest matches the launch"; spec/agent/plugins/profile.md, "The worker never receives the credential, the launch token or the storage key"
-import { AgentRuntime, type Character, type IMessageService, type Plugin, type RuntimeSettings, type UUID } from "@elizaos/core"
+import { AgentRuntime, type Character, type IMessageService, type RuntimeSettings, type UUID } from "@elizaos/core"
 import type { BootFailure, LaunchPolicy } from "../../gen/agent__host__launch.ts"
 import { Machine, cloudLinkPlugin, machine, overlaps, privacyPlugin, storagePlugin, type PlanFailure, type PlanPhase, type ProcessValue, type WorkerLaunch } from "../../gen/agent__plugins__profile.effect.vibe"
-import { type Route } from "../access/routes.vibe"
-import { approvalsModule } from "../approvals/routes.vibe"
-import { deviceActionsModule } from "../device-actions/routes.vibe"
-import { replyDraftModule } from "../device-actions/reply-draft.vibe"
-import { notificationsModule } from "../notifications/routes.vibe"
-import { basicActionsModule } from "../plugins/basic-actions.vibe"
-import { scheduledTasksModule } from "../schedule/scheduled-task-routes.vibe"
-import { triggersModule } from "../schedule/trigger-routes.vibe"
-import { tasksModule } from "../tasks/index.vibe"
-import { surfaceModule } from "../tasks/surface-channel.vibe"
-import { viewsModule } from "../views/routes.vibe"
-import { ModuleRefused, actionNames, routePrefixes, type AgentPlugin } from "./module.vibe"
-
-const builtins = {
-  "@elizaos/agent/basic-actions": basicActionsModule,
-  "@elizaos/agent/approvals": approvalsModule,
-  "@elizaos/agent/notifications": notificationsModule,
-  "@elizaos/agent/views": viewsModule,
-  "@elizaos/agent/device-actions": deviceActionsModule,
-  "@elizaos/agent/reply-draft": replyDraftModule,
-  "@elizaos/agent/triggers": triggersModule,
-  "@elizaos/agent/scheduled-tasks": scheduledTasksModule,
-  "@elizaos/agent/tasks": tasksModule,
-  "@elizaos/agent/surface": surfaceModule,
-}
-
-type BuiltinFactory = (typeof builtins)[keyof typeof builtins]
-
-function builtinFactory(name: string): BuiltinFactory | undefined {
-  return Object.hasOwn(builtins, name) ? builtins[name as keyof typeof builtins] : undefined
-}
+import type { LocalRoute } from "../access/routes.vibe"
+import { ModuleRefused, actionNames, routePrefixes, type AgentPlugin, type ModuleFactory } from "./module.vibe"
 
 export type WorkerPin =
   | { readonly kind: "none" }
@@ -40,7 +11,7 @@ export type WorkerPin =
 
 export type Privacy =
   | { readonly kind: "off" }
-  | { readonly kind: "on"; readonly plugin: Plugin }
+  | { readonly kind: "on"; readonly plugin: AgentPlugin }
 
 export interface ComposeInput {
   readonly agentId: UUID
@@ -48,6 +19,7 @@ export interface ComposeInput {
   readonly settings: RuntimeSettings
   readonly policy: LaunchPolicy
   readonly bundled: ReadonlyMap<string, AgentPlugin>
+  readonly modules?: ReadonlyMap<string, ModuleFactory<never>>
   readonly storage: AgentPlugin
   readonly cloudLink: AgentPlugin
   readonly privacy: Privacy
@@ -57,7 +29,7 @@ export interface ComposeInput {
 
 export interface ComposedAgent {
   readonly runtime: AgentRuntime
-  readonly routes: readonly Route[]
+  readonly routes: readonly LocalRoute[]
   readonly allowed: ReadonlySet<string>
   actionGate(action: { readonly name: string }): string | undefined
   workerEnvironment(offered: readonly ProcessValue[]): ProcessValue[]!WorkerNotVerified
@@ -105,14 +77,14 @@ effect function planned(name: string, input: ComposeInput, runtime: AgentRuntime
   if (name === storagePlugin) return input.storage
   if (name === cloudLinkPlugin) return input.cloudLink
   if (name === privacyPlugin && input.privacy.kind === "on") return input.privacy.plugin
-  const factory = builtinFactory(name)
+  const factory = input.modules?.get(name)
   if (factory !== undefined) {
     const made = try factory(runtime)
-    if (made.name !== name) return try die(new TypeError(`module ${name} answered as ${made.name}`))
+    if (made.name !== name) throw new ModuleRefused({ module: name, reason: "Returned a different module name" })
     return made.plugin
   }
   const bundled = input.bundled.get(name)
-  if (bundled === undefined) return try die(new TypeError(`the plan named ${name}, which the bundle does not carry`))
+  if (bundled === undefined) throw new ModuleRefused({ module: name, reason: "The bundle does not contain this module" })
   return bundled
 }
 
@@ -131,7 +103,7 @@ effect function loadPlan(runtime: AgentRuntime, input: ComposeInput) {
   }) catch effect (rejected) => {
     throw new PlanNotAdmitted({ phase: rejected.state.phase })
   }
-  const routes: Route[] = []
+  const routes: LocalRoute[] = []
   let state = try settled(plan, "load list")
   while (state.next < state.order.length) {
     const name = state.order[state.next]

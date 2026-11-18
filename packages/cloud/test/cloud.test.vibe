@@ -38,7 +38,7 @@ describe("WP0 Foundation", () => {
     const plans = try cloud.call("/api/v1/subscriptions/plans")
     try check(() => assert.deepStrictEqual(
       [health.status, health.headers["x-request-id"], service.headers["cache-control"], methods.body, plans.body],
-      [200, "journey-request-0001", "no-store", { email: true, sms: true, google: true }, {
+      [200, "journey-request-0001", "no-store", { email: false, sms: false, google: false }, {
         plans: [
           { key: "plus_monthly", name: "Plus", amountCents: 3000, currency: "usd", interval: "month", allowance: { amountUsd: "25.000000" } },
           { key: "pro_monthly", name: "Pro", amountCents: 10000, currency: "usd", interval: "month", allowance: { amountUsd: "90.000000" } }
@@ -86,15 +86,17 @@ describe("WP0 Foundation", () => {
     ))
   }))
 
-  it.live("Hold a call against the account's credits and settle it once (spec/cloud/shared/metering.md, \"Story: Never overdraw an account, and settle every call once\"; spec/cloud/billing/funds.md, \"Story: Spend only money the account has\")", () => scoped(effect {
+  it.live("Hold a call against the account's credits and settle it once (spec/cloud/shared/metering.md, \"Story: Settle every call once\"; spec/cloud/billing/funds.md, \"Story: Spend only money the account has\")", () => scoped(effect {
     const cloud = try testCloud()
     try organization(cloud, "org-funded")
     try organization(cloud, "org-empty")
     provide Store = cloud.store {
       const added = try addCredits({ organizationId: "org-funded", amount: 1_000_000, requestKey: "pilot-1" })
       const again = try addCredits({ organizationId: "org-funded", amount: 1_000_000, requestKey: "pilot-1" })
+      const conflicting = try failureTag(addCredits({ organizationId: "org-funded", amount: 500_000, requestKey: "pilot-1" }))
+      assert.strictEqual(conflicting, "IdempotencyConflict")
       const owner = { organizationId: "org-funded", userId: "user-1" }
-      const key = { service: "Inference" as const, requestId: "request-1", part: "chat" }
+      const key = { service: "MeteredInference", caller: owner.userId, requestId: "request-1", part: { tag: "WholeRequest" } } as const
       const first = try reserve(owner, key, 100_000)
       const replay = try reserve(owner, key, 100_000)
       const held = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = $1", ["org-funded"])

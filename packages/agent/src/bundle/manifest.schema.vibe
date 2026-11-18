@@ -1,0 +1,27 @@
+// spec/agent/plugins/bundle.md, "A built bundle's manifest is readable for its own bytes"; spec/agent/plugins/bundle.md, "A manifest is never read for other bundle bytes"
+const Digest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const NonBlank = Schema.Trimmed.check(Schema.isMinLength(1))
+const Package = Schema.Struct({ name: NonBlank, version: NonBlank, sha256: Digest })
+const Action = Schema.Struct({ name: NonBlank, umbrella: Schema.optionalKey(NonBlank) })
+
+export const BundleManifest = Schema.Struct({
+  schema: Schema.Literal(1),
+  bundleSha256: Digest,
+  sourceCommit: Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/)),
+  node: Schema.Literal("26"),
+  schemaVersion: Schema.Int.check(Schema.isGreaterThan(0)),
+  packages: Schema.Array(Package).check(Schema.isMinLength(1)),
+  plugins: Schema.Array(NonBlank),
+  productPlugin: Schema.optionalKey(NonBlank),
+  localInference: Schema.Boolean,
+  workflowWorkerSha256: Schema.optionalKey(Digest),
+  actions: Schema.Array(Action),
+}).check(Schema.makeFilter((manifest) =>
+  new Set(manifest.packages.map(({name,version,sha256}) => JSON.stringify([name,version,sha256]))).size === manifest.packages.length
+  && new Set(manifest.plugins).size === manifest.plugins.length
+  && !manifest.plugins.includes(manifest.productPlugin ?? "")
+  && new Set(manifest.actions.map(({ name }) => name)).size === manifest.actions.length
+  && manifest.actions.every(({ umbrella }) => umbrella === undefined || manifest.actions.some((entry) => entry.name === umbrella && entry.umbrella === undefined))))
+
+export type BundleManifest = typeof BundleManifest.Type
+export const readManifest = Schema.decodeUnknownSync(Schema.fromJsonString(BundleManifest), { onExcessProperty: "error" })

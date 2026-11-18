@@ -81,12 +81,12 @@ pure val registryValues: Set[List[Registration]] = {
 }
 ```
 
-### Only the operator registers, updates or disables a registration, and doing so never changes another client
+### A registration is accepted only when the registry stays valid and no return lies on the API origin, and it never changes how another client is admitted
 
-Registering or updating replaces the registration with the same client id; it
-is accepted only when the result is a valid registry and no return lies on
-the environment's API origin, which serves no page. Disabling keeps the
-registration so that its client id and returns stay reserved.
+Only the operator's commands register, update or disable. Registering or
+updating replaces the registration with the same client id; the API origin
+serves no page, so no return may lie on it. Disabling keeps the registration
+so that its client id and returns stay reserved.
 
 ```quint
 pure def withRegistration(registry: List[Registration], r: Registration): List[Registration] = registry.select(x => x.clientId != r.clientId).append(r)
@@ -219,6 +219,23 @@ pure def lawEachFaultHasItsOwnCode(fault: ClientFault, other: ClientFault): bool
 
 `POST /api/v1/app-auth/mobile/google` first admits the client with its
 sign-in return, then needs both; neither refusal is retryable.
+
+The Worker also checks that this registration is the served application's
+device exchange registration. The same requirement controls
+`google.nativeSignIn` in its config response.
+
+The device first posts `{clientId, environment, redirectUri, challenge, state}`
+to `/api/v1/app-auth/mobile/google/challenge`, where `challenge` is the
+S256 PKCE challenge. The response contains a `challengeId`, a nonce and
+`expiresIn` in seconds. The device gives the nonce to Google Credential
+Manager and posts `{clientId, environment, redirectUri, challengeId, idToken}`
+to the completion route. Cloud verifies the Google signature, issuer,
+audience, expiry, subject and nonce. It consumes the unexpired challenge
+and issues the existing device code in one transaction. The response
+contains `{code, state}`. The device exchanges the code with its original
+verifier and acknowledges the returned device credential. The native
+Google endpoints issue no browser credentials, and the account identity is
+the same Google subject used by browser sign-in.
 
 ```quint
 type NativeGoogleCheck = NativeGoogleOpen | GoogleNotOffered | NativeGoogleNotRegistered

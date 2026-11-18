@@ -747,18 +747,37 @@ lemma wrapDenialError_ensures(s: RequestRegistry, sourceDenial: string, errorId:
   ensures (inv(s) ==> canWrapDenialError(s, sourceDenial, errorId) ==> alwaysViewsHaveOneDataOwner(wrapDenialError(s, sourceDenial, errorId)))
   ensures (inv(s) ==> canWrapDenialError(s, sourceDenial, errorId) ==> stepActivePairIdentityNeverChanges(s, "wrapDenialError", wrapDenialError(s, sourceDenial, errorId)))
 {
-  if inv(s) && canWrapDenialError(s, sourceDenial, errorId) {
-    RequestDenialLookup(s,sourceDenial);
-    var a := denialOwner(s,sourceDenial);
-    assert a in s.owners;
-    core__requestCompletions_wrapDenialError_ensures(refreshedOwner(a,s).completions,sourceDenial,errorId);
-    RequestDenialLookup(s,errorId);
-    var t := wrapDenialError(s, sourceDenial, errorId);
-    var i :| 0 <= i < |s.owners| && s.owners[i] == a;
-    var changed := t.owners[i];
-    RequestCompletionPeers(s,a,changed.completions,"","",errorId);
-    RequestReplacement(s,t,a,changed);
-  }
+  if inv(s) && canWrapDenialError(s, sourceDenial, errorId) { RequestWrapDenialErrorAggregate(s, sourceDenial, errorId); }
+}
+
+lemma RequestLeafWrapDenialError(c: core__requestCompletions_RequestCompletions, sourceDenial: string, errorId: string)
+  requires core__requestCompletions_inv(c) && errorId != ""
+  ensures var t := core__requestCompletions_wrapDenialError(c,sourceDenial,errorId);
+    core__requestCompletions_inv(t) && t.attempts == c.attempts && t.results == c.results &&
+    (forall d :: d in t.denials ==> (d.id == errorId || exists prior :: prior in c.denials && prior.id == d.id))
+{
+  var t := core__requestCompletions_wrapDenialError(c,sourceDenial,errorId);
+  var d := t.denials[|c.denials|];
+  assert d.id == errorId && t.denials == c.denials + [d];
+  RequestDenialKeys(c.denials,t.denials,errorId);
+}
+
+lemma RequestWrapDenialErrorAggregate(s: RequestRegistry, sourceDenial: string, errorId: string)
+  requires inv(s) && canWrapDenialError(s, sourceDenial, errorId)
+  ensures inv(wrapDenialError(s, sourceDenial, errorId)) && stepActivePairIdentityNeverChanges(s, "", wrapDenialError(s, sourceDenial, errorId))
+{
+  RequestDenialLookup(s,sourceDenial);
+  var a := denialOwner(s,sourceDenial);
+  assert a in s.owners;
+  RequestTargetDenialAvailable(s,a,errorId);
+  var owner := refreshedOwner(a,s);
+  var c := owner.completions;
+  RequestLeafWrapDenialError(c,sourceDenial,errorId);
+  var updated := core__requestCompletions_wrapDenialError(c,sourceDenial,errorId);
+  RequestCompletionPeers(s,a,updated,"","",errorId);
+  var changed := owner.(completions := updated);
+  var t := wrapDenialError(s,sourceDenial,errorId);
+  RequestReplacement(s,t,a,changed);
 }
 
 lemma RequestTransferDenialAggregate(s: RequestRegistry, sourceDenial: string, targetResult: string, expectedAttempt: string, targetNotStarted: bool, sourceNotStarted: bool)

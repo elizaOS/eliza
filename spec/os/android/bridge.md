@@ -4,7 +4,7 @@ What every native bridge of an Android host shares: when a renderer call is
 admitted, how the app's main Activity keeps its WebView, and how a device
 change is reported. Each bridge spec in this directory imports it
 (`import bridge.* from "./bridge"`, or `"../bridge"`) and adds its own
-operations; host generation is [the host profile](../index.md).
+operations; host generation is [the host profile](../build/sourceIntegrity.md#story-build-and-register-only-the-plugins-my-host-selected).
 The sources are `ElizaBridgeActivity.java` of the browser surface plugin and
 the provider writes of the calendar and contacts plugins.
 
@@ -171,15 +171,15 @@ Outcomes reach the agent as `R::Receipt`s. `Conflict`, `NotWritten` and
 `Preview`: Android showed its screen, nothing more.
 
 ```quint
-pure def receiptOfWrite(writeState: WriteOutcome): R::Receipt =
-  { receiptKind: if (writeState == Applied) R::Applied else if (writeState == Uncertain) R::Pending else R::Failed, durable: false, providerAccepted: writeState == Applied, hasKey: false, replayed: false, reverted: false }
+pure def receiptOfWrite(writeOutcome: WriteOutcome): R::Receipt =
+  { receiptKind: if (writeOutcome == Applied) R::Applied else if (writeOutcome == Uncertain) R::Pending else R::Failed, durable: false, providerAccepted: writeOutcome == Applied, hasKey: false, replayed: false, reverted: false }
 pure def receiptOfHandoff(handoff: HandoffOutcome): R::Receipt =
   { receiptKind: if (handoff == Opened) R::Preview else R::Failed, durable: false, providerAccepted: false, hasKey: false, replayed: false, reverted: false }
-pure def lawOnlyAppliedWriteCommits(writeState: WriteOutcome): bool =
-  R::committedReceipt(receiptOfWrite(writeState)) iff writeState == Applied
+pure def lawOnlyAppliedWriteCommits(writeOutcome: WriteOutcome): bool =
+  R::committedReceipt(receiptOfWrite(writeOutcome)) iff writeOutcome == Applied
 pure def lawHandoffNeverCommits(handoff: HandoffOutcome): bool = not(R::committedReceipt(receiptOfHandoff(handoff)))
-pure def lawRefusalsAreFailures(writeState: WriteOutcome, handoff: HandoffOutcome): bool =
-  ((receiptOfWrite(writeState).receiptKind == R::Failed) iff (writeState == Conflict or writeState == NotWritten)) and
+pure def lawRefusalsAreFailures(writeOutcome: WriteOutcome, handoff: HandoffOutcome): bool =
+  ((receiptOfWrite(writeOutcome).receiptKind == R::Failed) iff (writeOutcome == Conflict or writeOutcome == NotWritten)) and
   ((receiptOfHandoff(handoff).receiptKind == R::Failed) iff handoff == Refused)
 ```
 
@@ -196,8 +196,8 @@ type ReadKind = AutomaticRead | ExplicitRead
 type ReadEvidence = { kind: ReadKind, startedAfterSettle: bool, succeeded: bool }
 pure def gateAllowsWrite(gate: WriteGate): bool = gate == WriteIdle
 pure def gateOnDispatch(gate: WriteGate): WriteGate = if (gate == WriteIdle) WriteInFlight else gate
-pure def gateOnOutcome(gate: WriteGate, writeState: WriteOutcome): WriteGate =
-  if (gate != WriteInFlight) gate else if (writeState == Uncertain) WriteUnsettled else WriteIdle
+pure def gateOnOutcome(gate: WriteGate, writeOutcome: WriteOutcome): WriteGate =
+  if (gate != WriteInFlight) gate else if (writeOutcome == Uncertain) WriteUnsettled else WriteIdle
 pure def readSettlesUncertainty(read: ReadEvidence): bool = read.kind == ExplicitRead and read.startedAfterSettle and read.succeeded
 pure def gateOnRead(gate: WriteGate, read: ReadEvidence): WriteGate =
   if (gate == WriteUnsettled and readSettlesUncertainty(read)) WriteIdle else gate
@@ -212,6 +212,6 @@ pure def lawUncertainWriteBlocksUntilExplicitRead(read: ReadEvidence): bool = {
   val unsettled = gateOnOutcome(WriteInFlight, Uncertain)
   not(gateAllowsWrite(unsettled)) and (gateAllowsWrite(gateOnRead(unsettled, read)) iff readSettlesUncertainty(read))
 }
-pure def lawSettledWriteFreesTheGate(writeState: WriteOutcome): bool =
-  writeState != Uncertain implies gateAllowsWrite(gateOnOutcome(WriteInFlight, writeState))
+pure def lawSettledWriteFreesTheGate(writeOutcome: WriteOutcome): bool =
+  writeOutcome != Uncertain implies gateAllowsWrite(gateOnOutcome(WriteInFlight, writeOutcome))
 ```

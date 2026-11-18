@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.build.json",
+  "include": [],
+  "files": ["src/bin.vibe", "src/bundle/build.vibe"]
+}

@@ -34,6 +34,7 @@ rounds to nothing opens no period. A free plan opens nothing.
 ```quint
 import types.* from "../shared/types"
 import plans.* from "./plans"
+import metering as M from "../shared/metering"
 type PeriodPhase = PeriodUnopened | PeriodOpen | PeriodExpired | PeriodClosed | PeriodClawedBack
 type PeriodSource = NoSource | RenewalInvoice({ invoiceId: str }) | GrantMonth({ grantId: str, month: int })
 type ClawbackCause = NoClawback | RefundClawback | DisputeClawback
@@ -103,12 +104,14 @@ pure val amountValues = Set(1, 3)
 
 ### A finished hold spends what it used and returns the rest to the period only while it is open and has not ended
 
-`held` is the hold's allowance part and `used` its allowance charge
-(`allowanceCharge` of metering): 0 for a released hold. The rest of a hold
+`held` is the hold's allowance part and `used` its allowance charge, both read
+from the metering hold: `used` is 0 for a released hold. The rest of a hold
 that finishes after the end, or after the period was retired, is forfeited;
 after a clawback it is clawed back.
 
 ```quint
+pure def heldOf(h: M::Hold): Micros = h.fromAllowance
+pure def usedOf(h: M::Hold): Micros = M::allowanceCharge(h)
 pure def canSettleHold(p: Period, held: Micros, used: Micros): bool = p.phase != PeriodUnopened and held >= 1 and held <= p.reserved and used >= 0 and used <= held
 pure def settleHold(p: Period, held: Micros, used: Micros, now: Millis): Period = {
   val rest = held - used
@@ -194,10 +197,13 @@ pure def sometimesUpgradedMidPeriod(p: Period): bool = p.phase == PeriodOpen and
 ### A refund or a dispute of the invoice claws back what is still available, and what its holds return
 
 Only a renewal period is paid by an invoice; a grant month is never clawed
-back. Charges already settled stay settled.
+back. Charges already settled stay settled. A refund after a dispute makes
+the clawback final.
 
 ```quint
-pure def canClawBack(p: Period, cause: ClawbackCause): bool = p.phase == PeriodOpen and isRenewal(p) and cause != NoClawback
+pure def canClawBack(p: Period, cause: ClawbackCause): bool =
+  isRenewal(p) and cause != NoClawback
+  and (p.phase == PeriodOpen or (p.phase == PeriodClawedBack and p.clawbackCause == DisputeClawback and cause == RefundClawback))
 pure def clawBack(p: Period, cause: ClawbackCause): Period = { ...p, phase: PeriodClawedBack, clawbackCause: cause, clawedBack: p.clawedBack + p.available, available: 0 }
 pure def alwaysClawbackHasACause(p: Period): bool =
   ((p.phase == PeriodClawedBack) iff (p.clawbackCause != NoClawback)) and (p.phase == PeriodClawedBack implies isRenewal(p)) and (p.clawedBack > 0 implies p.phase == PeriodClawedBack)

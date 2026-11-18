@@ -91,10 +91,10 @@ pure def claimOutcome(t: ScheduledTask, manual: bool, now: int, processStart: in
   if (missedWhileStopped(t, manual, now, processStart, following)) FireSkipped
   else match delivery { | Delivered => FireDelivered | RetryAt(r) => if (t.retries < maxDispatchRetries) FireDeferred else FireFailed | Undeliverable => FireFailed }
 pure def retryInstant(delivery: Delivery): int = match delivery { | RetryAt(r) => r.retryAt | _ => 0 }
-pure def dueAllowsFire(t: ScheduledTask, manual: bool, now: int): bool = { val matchedValue1 = t.due
-  match matchedValue1 { | DueAt(x) => now >= x.at or (manual and t.status == Scheduled) | Manual => manual and t.status == Scheduled | NoMoreOccurrences => false } }
-pure def fireable(t: ScheduledTask, manual: bool, now: int): bool =
-  t.status != Dismissed and (dueAllowsFire(t, manual, now))
+pure def fireable(t: ScheduledTask, manual: bool, now: int): bool = {
+  val targetDue = t.due
+  t.status != Dismissed and (match targetDue { | DueAt(x) => now >= x.at or (manual and t.status == Scheduled) | Manual => manual and t.status == Scheduled | NoMoreOccurrences => false })
+}
 pure def canFire(t: ScheduledTask, seenRevision: int, manual: bool, now: int, processStart: int, following: Due, delivery: Delivery): bool = {
   val result = claimOutcome(t, manual, now, processStart, following, delivery)
   val dueAt = dueInstant(t.due)
@@ -214,9 +214,9 @@ pure val minuteMs = 60000
 pure val verbValues = Set(SnoozeUntil({ until: 5 }), SnoozeUntil({ until: 99000000 }), SnoozeFor({ minutes: 60 }), SnoozeFor({ minutes: 0 }), Skip, Complete, Dismiss, Escalate, Acknowledge, EditInstructions({ body: "a" }), EditTrigger({ body: "b" }), Reopen)
 pure def wellFormedVerb(verb: Verb): bool = match verb { | SnoozeFor(s) => s.minutes > 0 | _ => true }
 pure def snoozeBase(now: int, t: ScheduledTask): int = if (settlesWaiting(t) and dueInstant(t.due) > now) dueInstant(t.due) else now
-pure def referenceAllowsReopen(t: ScheduledTask, now: int): bool = { val matchedValue1 = t.reopenFrom
-  match matchedValue1 { | Since(r) => now <= r.at + reopenWindowMs | NoReference => true } }
-pure def verbApplies(t: ScheduledTask, verb: Verb, now: int, following: Due): bool = match verb {
+pure def verbApplies(t: ScheduledTask, verb: Verb, now: int, following: Due): bool = {
+  val reopenReference = t.reopenFrom
+  match verb {
   | SnoozeUntil(s) => isOpen(t.status) and s.until > now
   | SnoozeFor(s) => isOpen(t.status)
   | Skip => isOpen(t.status) and (not(settlesWaiting(t)) or comesAfter(following, dueInstant(t.due)))
@@ -226,7 +226,8 @@ pure def verbApplies(t: ScheduledTask, verb: Verb, now: int, following: Due): bo
   | Acknowledge => t.status == Fired
   | EditInstructions(e) => t.status != Dismissed
   | EditTrigger(e) => t.status != Dismissed
-  | Reopen => isSettled(t.status) and (referenceAllowsReopen(t, now))
+  | Reopen => isSettled(t.status) and (match reopenReference { | Since(r) => now <= r.at + reopenWindowMs | NoReference => true })
+}
 }
 pure def canApplyVerb(t: ScheduledTask, seenRevision: int, key: RequestKey, verb: Verb, now: int, following: Due): bool =
   wellFormedVerb(verb) and seenRevision == t.revision and not(keyUsed(t, key)) and verbApplies(t, verb, now, following)
@@ -288,16 +289,16 @@ but `raced` carries the row as it now is. Only `fired` means the occurrence
 was delivered.
 
 ```quint
-pure def dueHasEnded(t: ScheduledTask): bool = { val matchedValue1 = t.due
-  match matchedValue1 { | DueAt(x) => false | Manual => t.status != Scheduled | NoMoreOccurrences => true } }
-pure def ownerFireEnded(t: ScheduledTask): bool =
-  t.status == Dismissed or (dueHasEnded(t))
+pure def ownerFireEnded(t: ScheduledTask): bool = {
+  val targetDue = t.due
+  t.status == Dismissed or (match targetDue { | DueAt(x) => false | Manual => t.status != Scheduled | NoMoreOccurrences => true })
+}
 pure def fireReply(t: ScheduledTask, seenRevision: int, now: int, processStart: int, following: Due, delivery: Delivery): FireOutcome =
   if (seenRevision != t.revision) FireRaced
   else if (ownerFireEnded(t)) FireSkipped
   else if (not(canFire(t, seenRevision, true, now, processStart, following, delivery))) FireRaced
   else claimOutcome(t, true, now, processStart, following, delivery)
-pure def fireReplyCarriesTheRow(firedReply: FireOutcome): bool = firedReply != FireRaced
+pure def fireReplyCarriesTheRow(fireOutcome: FireOutcome): bool = fireOutcome != FireRaced
 pure def lawOnlyAFreshDueDeliveryIsFired(t: ScheduledTask, seenRevision: int, now: int, processStart: int, following: Due, delivery: Delivery): bool =
   fireReply(t, seenRevision, now, processStart, following, delivery) == FireDelivered implies (canFire(t, seenRevision, true, now, processStart, following, delivery) and fire(t, seenRevision, true, now, processStart, following, delivery).lastFired == t.pending)
 ```

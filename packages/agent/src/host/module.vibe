@@ -1,8 +1,8 @@
 // spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/agent/plugins/profile.md, "A product route never claims a route prefix an agent module owns"
 import { type AgentRuntime, type Plugin } from "@elizaos/core"
-import { type Route } from "../access/routes.vibe"
+import { type LocalRoute } from "../access/routes.vibe"
 
-export type AgentPlugin = Plugin & { readonly routes?: readonly Route[] }
+export type AgentPlugin = Plugin & { readonly routes?: readonly LocalRoute[] }
 
 export interface AgentModule {
   readonly name: string

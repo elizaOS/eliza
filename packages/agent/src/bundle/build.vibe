@@ -1,0 +1,212 @@
+// spec/agent/plugins/bundle.md, "Story: Ship one agent bundle whose contents and actions are known"
+module node {
+  import { spawn } from "node:child_process"
+  import { createHash, randomUUID } from "node:crypto"
+  import { once } from "node:events"
+  import { copyFile, mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from "node:fs/promises"
+  import { createRequire, isBuiltin } from "node:module"
+  import { connect } from "node:net"
+  import { tmpdir } from "node:os"
+  import { dirname, isAbsolute, join, relative, resolve } from "node:path"
+  import { setTimeout as delay } from "node:timers/promises"
+  import { Schema } from "effect"
+  import { build, type Plugin } from "vite"
+  import { createDeviceStorageSnapshot } from "../storage/index.vibe"
+  import { readManifest, type BundleManifest } from "./manifest.schema.vibe"
+
+  export interface BuildAgentBundle {
+    readonly plugins: readonly string[]
+    readonly productPlugin?: string
+    readonly outDir: string
+    readonly sourceCommit: string
+    readonly sourceRoot?: string
+  }
+
+  const PackageSource = Schema.Struct({
+    name: Schema.Trimmed.check(Schema.isMinLength(1)),
+    version: Schema.Trimmed.check(Schema.isMinLength(1)),
+  })
+  const decodePackage = Schema.decodeUnknownOption(Schema.fromJsonString(PackageSource))
+  const decodeStatus = Schema.decodeUnknownSync(Schema.Struct({
+    id: Schema.Literal("build"),
+    ok: Schema.Literal(true),
+    result: Schema.Struct({
+      status: Schema.Literal(200),
+      body: Schema.fromJsonString(Schema.Struct({
+        ready: Schema.Literal(true),
+        epoch: Schema.Literal(1),
+        actions: Schema.Array(Schema.String),
+      })),
+    }),
+  }))
+  const assets = ["pglite.wasm", "initdb.wasm", "pglite.data"]
+  const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
+
+  export async function readBundleManifest(dir: string): Promise<BundleManifest> {
+    const manifest = readManifest(await readFile(join(dir, "manifest.json"), "utf8"))
+    if (digest(await readFile(join(dir, "agent.mjs"))) !== manifest.bundleSha256) {
+      throw new Error("The bundle manifest belongs to a different executable")
+    }
+    return manifest
+  }
+
+  function inside(root: string, file: string): boolean {
+    const path = relative(root, file)
+    return !isAbsolute(path) && path !== ".." && !path.startsWith("../")
+  }
+
+  async function sourcePackage(root: string, file: string): Promise<BundleManifest["packages"][number]> {
+    const source = await realpath(file)
+    if (!inside(root, source)) throw new Error(`Agent bundle input is outside its source root: ${file}`)
+    for (let directory = dirname(source); inside(root, directory); directory = dirname(directory)) {
+      try {
+        const bytes = await readFile(join(directory, "package.json"))
+        const metadata = decodePackage(bytes.toString("utf8"))
+        if (metadata._tag === "Some") return { ...metadata.value, sha256: digest(bytes) }
+      } catch (error) {
+        if (typeof error !== "object" || error === null || !("code" in error) || error.code !== "ENOENT") throw error
+      }
+      if (directory === root || directory === dirname(directory)) break
+    }
+    throw new Error(`Agent bundle input has no named package: ${file}`)
+  }
+
+  async function smokeCall(path: string, token: string): Promise<readonly string[]> {
+    const socket = connect(path)
+    try {
+      const signal = AbortSignal.timeout(2000)
+      signal.addEventListener("abort", () => socket.destroy(), { once: true })
+      await once(socket, "connect", { signal })
+      socket.write(JSON.stringify({ id: "build", method: "http_request", payload: {
+        path: "/api/status", method: "GET", headers: { authorization: `Bearer ${token}` },
+      } }) + "\n")
+      let line = ""
+      for await (const chunk of socket) {
+        line += String(chunk)
+        if (line.length > 65536) throw new Error("The bundle's status is too large")
+      }
+      return decodeStatus(JSON.parse(line)).result.body.actions
+    } finally { socket.destroy() }
+  }
+
+  async function smoke(bundle: string): Promise<readonly string[]> {
+    const root = await mkdtemp(join(tmpdir(), "ez-"))
+    const launch = join(root, "launch.json")
+    const socket = join(root, "agent.sock")
+    const token = randomUUID()
+    await writeFile(launch, JSON.stringify({
+      schema: 1, character: { name: "Bundle Smoke", system: "Answer the test." },
+      policy: { actions: { allowed: ["REPLY", "IGNORE", "NONE"] }, plugins: { load: [] } },
+      model: { backend: "none" }, embeddings: "none", callerRole: "owner",
+    }), { mode: 0o600 })
+    const child = spawn(process.execPath, [bundle, "serve", "--launch", launch, "--state", root, "--socket", socket], {
+      stdio: ["pipe", "inherit", "inherit"],
+    })
+    const stopped = once(child, "exit")
+    child.stdin.end(JSON.stringify({ version: 1, token, epoch: 1 }) + "\n")
+    try {
+      const expires = Date.now() + 180_000
+      while (child.exitCode === null && child.signalCode === null && Date.now() < expires) {
+        try { return await smokeCall(socket, token) }
+        catch { await delay(100) }
+      }
+      throw new Error(`The built agent did not become ready (exit ${child.exitCode ?? "pending"})`)
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM")
+      const [code] = await stopped
+      await rm(root, { recursive: true, force: true })
+      if (code !== 0) throw new Error(`The built agent did not close cleanly (exit ${code})`)
+    }
+  }
+
+  export async function buildFrom(options: BuildAgentBundle, moduleUrl: string): Promise<BundleManifest> {
+    const { plugins, productPlugin, sourceCommit } = options
+    if (plugins.length || productPlugin !== undefined) throw new Error("This device bundle profile supports only the built-in device actions")
+    if (!/^[a-f0-9]{40}$/.test(sourceCommit)) throw new Error("The bundle requires a pinned source commit")
+    const sourceRoot = await realpath(options.sourceRoot ?? process.cwd())
+    const outDir = resolve(options.outDir)
+    const parent = dirname(outDir)
+    await mkdir(parent, { recursive: true })
+    const staging = await mkdtemp(join(parent, ".agent-bundle-"))
+    const files = new Set<string>()
+    const inventory: Plugin = {
+      name: "eliza-agent-package-inventory",
+      generateBundle(_options, bundle) {
+        const outputs = Object.values(bundle)
+        if (outputs.length !== 1 || outputs[0]?.type !== "chunk" || outputs[0].fileName !== "agent.mjs") {
+          throw new Error("The device runtime did not emit one ESM entry")
+        }
+        for (const [id, module] of Object.entries(outputs[0].modules)) {
+          if (module.renderedLength > 0) files.add(id)
+        }
+      },
+    }
+    try {
+      await build({
+        configFile: false,
+        root: sourceRoot,
+        publicDir: false,
+        logLevel: "warn",
+        ssr: { noExternal: true },
+        plugins: [inventory],
+        build: {
+          ssr: new URL("../bin.js", moduleUrl).pathname,
+          outDir: staging,
+          emptyOutDir: false,
+          target: "node26",
+          minify: false,
+          reportCompressedSize: false,
+          rollupOptions: {
+            external: isBuiltin,
+            output: { inlineDynamicImports: true, entryFileNames: "agent.mjs" },
+          },
+        },
+      })
+      const packages = new Map<string, BundleManifest["packages"][number]>()
+      const requireFromAgent = createRequire(moduleUrl)
+      const requireFromVite = createRequire(requireFromAgent.resolve("vite/package.json"))
+      for (const file of files) {
+        const source = file === "\u0000rolldown/runtime.js" ? requireFromVite.resolve("rolldown/package.json") : file
+        const entry = await sourcePackage(sourceRoot, source)
+        packages.set(JSON.stringify(entry), entry)
+      }
+      const pglite = dirname(requireFromAgent.resolve("@electric-sql/pglite"))
+      for (const asset of assets) await copyFile(join(pglite, asset), join(staging, asset))
+      const snapshot = await createDeviceStorageSnapshot()
+      await writeFile(join(staging, "pglite-migrated.bin"), snapshot.bytes, { mode: 0o644 })
+      const executable = join(staging, "agent.mjs")
+      const draft: BundleManifest = {
+        schema: 1, bundleSha256: digest(await readFile(executable)), sourceCommit, node: "26",
+        schemaVersion: snapshot.schemaVersion, packages: [...packages.values()].sort((a,b) => a.name.localeCompare(b.name)
+          || a.version.localeCompare(b.version) || a.sha256.localeCompare(b.sha256)),
+        plugins, localInference: false, actions: [],
+      }
+      const manifestPath = join(staging, "manifest.json")
+      await writeFile(manifestPath, JSON.stringify(draft))
+      const actions = (await smoke(executable)).map((name) => ({ name }))
+      await writeFile(manifestPath, JSON.stringify({ ...draft, actions }, null, 2) + "\n")
+      const manifest = await readBundleManifest(staging)
+      const backup = join(parent, `.agent-bundle-old-${randomUUID()}`)
+      let moved = false
+      try {
+        await rename(outDir, backup)
+        moved = true
+      } catch (error) {
+        if (typeof error !== "object" || error === null || !("code" in error) || error.code !== "ENOENT") throw error
+      }
+      try { await rename(staging, outDir) }
+      catch (error) {
+        if (moved) await rename(backup, outDir)
+        throw error
+      }
+      if (moved) await rm(backup, { recursive: true, force: true })
+      return manifest
+    } finally { await rm(staging, { recursive: true, force: true }) }
+  }
+}
+import { buildFrom, type BuildAgentBundle } from node
+export { readBundleManifest, type BuildAgentBundle } from node
+
+export function buildAgentBundle(options: BuildAgentBundle) {
+  return buildFrom(options, import.meta.url)
+}

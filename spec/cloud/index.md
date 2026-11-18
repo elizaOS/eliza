@@ -4,9 +4,28 @@ Identity and sessions, native clients and device keys, billing and
 entitlements, metered inference, speech and maps, and managed Google. The
 cloud hosts no agent. Its specifications are being written.
 
-Managed Maps, Calendar synchronization and Gmail mutation details remain
-unfinished. Sign-in, account binding and consented Google reads follow the
-rules below. Live-provider qualification remains separate.
+## Story: Use inference on my subscription or funded pilot account
+
+> As a subscriber or funded pilot, I can send a request to the deployment's model.
+> My account shows the subscription the billing provider currently recognizes.
+
+### A request needs an active account and sufficient funding for its quote
+
+The deployment uses the [shared hold](./shared/metering.md) to reserve the
+quote before contacting a provider. A paid period supplies its remaining
+[allowance](./billing/allowance.md) first. Other readable plans use the
+account's [funded credits](./billing/funds.md). A repeated hold key reuses
+the existing outcome. Model prices and reported token counts follow the
+[model catalog](./services/models.md).
+
+```quint
+pure def mayDispatchFundedRequest(authenticated: bool, freshHold: bool, dispatchCommitted: bool): bool =
+  authenticated and freshHold and dispatchCommitted
+pure def lawPaidAccessRequiresIdentity(freshHold: bool, dispatched: bool): bool =
+  not(mayDispatchFundedRequest(false, freshHold, dispatched))
+pure def lawDuplicateCannotSpendAgain(authenticated: bool, dispatched: bool): bool =
+  not(mayDispatchFundedRequest(authenticated, false, dispatched))
+```
 
 ## Story: Sign in to the Cloud
 
@@ -65,9 +84,8 @@ pure def cloudDeviceAllows(deviceEndsAt: int, nowAt: int, acknowledged: bool, in
 ### Google sign-in and read access require separate permission
 
 Mailbox and calendar access requires a separate consent prompt where the
-person approves each requested scope. A deployment can use its sign-in OAuth
-client for this separate exchange. The exchange requests only the selected read
-scopes and identity needed to link the right account. The verified Google subject
+person approves each requested capability. A deployment can use its sign-in OAuth
+client for this separate exchange. The exchange requests only the selected scopes and identity needed to link the right account. The verified Google subject
 must match a Google sign-in account. For email or SMS sign-in the verified
 Google email must match the email chosen for the connection.
 
@@ -88,4 +106,76 @@ have separate permissions.
 ```quint
 pure def canReadCloudGoogle(ownerSessionActive: bool, connectionPresent: bool, grantOwnerMatches: bool, selected: Set[CloudGoogleReadScope], requested: CloudGoogleReadScope): bool =
   ownerSessionActive and connectionPresent and grantOwnerMatches and selected.contains(requested)
+```
+
+### Managed mail dispatch requires separate consent and explicit approval
+
+The owner may separately grant permission to send email. A browser request
+dispatches one reviewed plain-text draft to one exact address through the
+current Gmail connection. A reply is threaded only after Cloud re-reads the
+selected message and matches the reviewed recipient and subject. Cloud builds
+the thread headers from that verified message. The device inference key cannot dispatch a draft.
+Cloud reserves the operation ID before calling Gmail and records provider
+acceptance by message ID. An unknown outcome cannot cause the operation to be
+dispatched again.
+
+```quint
+pure def canSendCloudGoogle(ownerSessionActive: bool, grantMatches: bool, sendConsent: bool, confirmedDraft: bool, reserved: bool): bool =
+  ownerSessionActive and grantMatches and sendConsent and confirmedDraft and not(reserved)
+```
+
+### Trash and calendar changes require their own permissions
+
+Moving a message to Trash and undoing that change requires Gmail modify
+permission. Google requires Gmail modify scope for Trash. Undo names the successful Trash receipt and checks the current
+provider revision. Grace exposes no permanent deletion here.
+
+Creating, changing or removing an appointment requires Calendar event
+permission for calendars their account owns. Changes target the primary
+calendar and appointments without guests. A new series can repeat weekly or
+monthly. Timed series retain the reviewed local time in the named time zone.
+Cloud verifies the recurrence and time zone on the saved series before
+returning its receipt. A series change must name the
+current parent of the occurrence and the reviewed parent version. Updates and removals name the
+reviewed event version, and Google must accept that version. Grace displays
+success only after provider evidence matches the selected event.
+
+```quint
+pure def canChangeCloudGoogle(ownerSessionActive: bool, grantMatches: bool, allowed: bool, reviewedTarget: bool, versionMatches: bool): bool =
+  ownerSessionActive and grantMatches and allowed and reviewedTarget and versionMatches
+```
+
+## Story: Use a cloud speech session
+
+> As a signed-in person with a subscription or funded pilot account, I can
+> explicitly allow a bounded microphone and speech playback session. The
+> app can stop the session and never receives the voice provider's keys.
+
+### Consent and an allowance are required before speech is sent
+
+The Cloud binds consent to the signed-in account and its current credential,
+and consumes the consent once to admit a bounded speech window. Signing out or
+revoking that device credential prevents an unopened window from starting. Provider connections open only after the
+relay consumes the window credential. A session reaches its deadline,
+closes on request, and cannot open again.
+
+```quint
+pure def canMintCloudSpeech(ownerMatches: bool, consentUnused: bool, consentLive: bool, accountEntitled: bool, windowAvailable: bool): bool =
+  ownerMatches and consentUnused and consentLive and accountEntitled and windowAvailable
+
+pure def canOpenCloudSpeech(credentialMatches: bool, windowOpen: bool, alreadyOpened: bool, revoked: bool): bool =
+  credentialMatches and windowOpen and not(alreadyOpened) and not(revoked)
+```
+
+### A speech window bounds the audio and text sent to providers
+
+The service reserves funds at the deployment's reviewed provider rate before
+admitting the window. A window allows at most sixty seconds of 16 kHz mono
+PCM16, 4,096 text characters and eight MiB of generated audio. The relay
+records the PCM and text attempted with the providers. The metering owner
+settles a confirmed outcome as measured and an uncertain one at its quote.
+
+```quint
+pure def cloudSpeechUsageFits(pcmBytes: int, textCharacters: int, outputBytes: int): bool =
+  pcmBytes >= 0 and pcmBytes <= 1920000 and textCharacters >= 0 and textCharacters <= 4096 and outputBytes >= 0 and outputBytes <= 8388608
 ```

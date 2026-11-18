@@ -102,14 +102,14 @@ function lockProject(root: string): () => void {
  * Each spec's module written to gen/: its model as it is generated, or why it has none. The owners' gen/ follows once
  * every module is written (units.ts, `mirrorGen`).
  */
-async function* generating(memory: Memory, specs: Spec[]): AsyncGenerator<{ spec: Spec; model: Model; error?: undefined } | { spec: Spec; model?: undefined; error: Error }> {
+async function* generating(memory: Memory, specs: Spec[], output = memory.root): AsyncGenerator<{ spec: Spec; model: Model; error?: undefined } | { spec: Spec; model?: undefined; error: Error }> {
   const models = new Map<string, Model>();
-  const typed = typecheckAll(memory, specs);
+  const typed = typecheckAll(memory, specs, output);
   try {
     for (const spec of specs) {
       const missing = spec.imports.find((i) => !models.has(i));
       yield missing ? { spec, error: new Error(`it imports ${missing}, which is not a valid model`) }
-        : await typed.get(spec.name)!.then((ir) => ({ spec, model: generated(memory.root, spec, ir, models) })).catch((error: Error) => ({ spec, error }));
+        : await typed.get(spec.name)!.then((ir) => ({ spec, model: generated(output, spec, ir, models) })).catch((error: Error) => ({ spec, error }));
     }
   } finally {
     // A caller that stops early must not restore gen/ while a typecheck still writes into it.
@@ -602,7 +602,7 @@ export function newSpec(root: string, name = ""): string {
 const COMMANDS = [
   ["check", "[<directory>] [--json] [--nightly]", "run every stage; --json prints each result as one line of JSON, then { ok, results, next }; --nightly uses the nightly test profile"],
   ["watch", "[<directory>]", "check again whenever spec/, src/, test/ or tsconfig.json changes"],
-  ["gen", "[<directory>] [--if-valid]", "write gen/ from the spec"],
+  ["gen", "[<directory>] [--if-valid] or --owner <name> [<directory>]", "write gen/ from the spec"],
   ["accept", "[<directory>] [unproved]", "record what was reviewed, or the obligations that are simulated only"],
   ["new", "[<path>]", "fill an empty spec/index.md, or write a starter spec/<path>/index.md"],
   ["init", "[<directory>]", "add what a project is missing"],
@@ -691,6 +691,29 @@ async function watch(root: string) {
   await once();
 }
 
+async function generateOwner(root: string, name: string) {
+  const ownerDir = codeDirs(root).find((dir) => path.basename(dir) === name);
+  if (!ownerDir) throw new Error(`${name}: no package owns spec/${name}/`);
+  const release = lockProject(root);
+  try {
+    const specs = readSpecs(root, undefined, name);
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "vibestack-owner-gen-"));
+    try {
+      const errors: string[] = [];
+      for await (const { spec, error } of generating({ root, fresh: false, used: new Set() }, specs, scratch)) {
+        if (error) errors.push(`${spec.file}:
+${error.message}`);
+      }
+      if (errors.length) throw new Error(errors.join("\n"));
+      mirrorGen(root, specs, { scratch, ownerDir });
+    } finally {
+      fs.rmSync(scratch, { recursive: true, force: true });
+    }
+  } finally {
+    release();
+  }
+}
+
 /** The `spec` command, on `process.argv`. */
 export async function main() {
   let root = process.cwd();
@@ -698,6 +721,10 @@ export async function main() {
   const takes = (...allowed: string[][]) => allowed.some((a) => a.length === args.length && a.every((x, i) => x === "*" || x === args[i]));
   try {
     if (Number(process.versions.node.split(".")[0]) < NODE) throw new Error(`spec needs Node ${NODE} or later; this is Node ${process.versions.node}`);
+    if (command === "gen" && args[0] === "--owner" && (args.length === 2 || args.length === 3)) {
+      await generateOwner(args[2] === undefined ? root : projectRoot(args[2]), args[1]);
+      return;
+    }
     const options: Record<string, string[]> = { check: ["--json", "--nightly"], gen: ["--if-valid"], accept: ["unproved"], watch: [], init: [] };
     if (Object.hasOwn(options, command)) {
       const directories = args.filter((arg) => !options[command].includes(arg));

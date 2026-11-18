@@ -120,7 +120,7 @@ effect function accountForIdentity(db: Client, proof: Identity, now: number) {
   if (result.tag === "AttachTo") {
     if (!byEmail) throw new StorageUnavailable()
     const before = decodeAccount(byEmail.state) catch effect () => { throw new StorageUnavailable() }
-    const attached = applyAccount(before, { type: "attach", identity, verifiedEmail, subjectOwner, emailOwner }) catch effect () => { throw new IdentityConflict() }
+    const attached = applyAccount(before, { type: "link", identity, subjectOwner }) catch effect () => { throw new IdentityConflict() }
     const after = attached.state
     try authQuery(db, "INSERT INTO cloud_sign_in_identities (provider, provider_subject, account_id) VALUES ($1, $2, $3)", [proof.provider, proof.subject, byEmail.id])
     try authQuery(db, "UPDATE accounts SET state = $2, revision = revision + 1, updated_at = $3 WHERE key = $1", [byEmail.id, after, now])
@@ -131,7 +131,7 @@ effect function accountForIdentity(db: Client, proof: Identity, now: number) {
   const organization = try random.uuidV4()
   const referralCode = secretText("R", 8, "hex")
   const opened = applyAccount(unopened, {
-    type: "open", userId: id, organizationId: organization, identity, verifiedEmail, subjectOwner, emailOwner, referralCode
+    type: "openAccount", userId: id, organizationId: organization, identity, verifiedEmail, subjectOwner, emailOwner, referralCode
   }) catch effect () => { throw new StorageUnavailable() }
   const state = opened.state
   try authQuery(db, "INSERT INTO organizations (id, name, created_at) VALUES ($1, $2, $3)", [organization, email ?? "Personal", now])
@@ -154,23 +154,28 @@ function browserSession(account: AccountRow, access: string, refresh: string, se
   }
 }
 
+export effect function openSignInFamily(db: Client, identity: Identity) {
+  const now = try Clock.currentTimeMillis
+  const account = try accountForIdentity(db, identity, now)
+  const epoch = Number(account.sessions_revoked_before)
+  if (!Number.isSafeInteger(epoch) || epoch < 0) throw new StorageUnavailable()
+  const opened = apply({ ...initial, now }, { type: "signIn", assurance: "SingleFactor", personEpoch: epoch }) catch effect () => { throw new StorageUnavailable() }
+  const state = opened.state
+  const key = try (try SecureRandom.SecureRandom).uuidV4()
+  const access = try newSecret("session")
+  const refresh = try newSecret("refresh")
+  const accessHash = try digestCredential(access)
+  const refreshHash = try digestCredential(refresh)
+  try authQuery(db, `
+    INSERT INTO sessions (key, user_id, state, revision, access_digest, refresh_digest, live, access_expires_at, refresh_expires_at, auth_at, updated_at)
+    VALUES ($1, $2, $3, 1, $4, $5, true, $6, $7, $8, $8)
+  `, [key, account.id, state, accessHash, refreshHash, state.accessExpiresAt, state.refreshExpiresAt, state.authAt])
+  return { account, key, access, refresh, state }
+}
+
 export effect function signInWithProof(db: Client, identity: Identity) {
   return try accountTransaction(db, effect {
-    const now = try Clock.currentTimeMillis
-    const account = try accountForIdentity(db, identity, now)
-    const epoch = Number(account.sessions_revoked_before)
-    if (!Number.isSafeInteger(epoch) || epoch < 0) throw new StorageUnavailable()
-    const opened = apply({ ...initial, now }, { type: "signIn", assurance: "SingleFactor", personEpoch: epoch }) catch effect () => { throw new StorageUnavailable() }
-    const state = opened.state
-    const key = try (try SecureRandom.SecureRandom).uuidV4()
-    const access = try newSecret("session")
-    const refresh = try newSecret("refresh")
-    const accessHash = try digestCredential(access)
-    const refreshHash = try digestCredential(refresh)
-    try authQuery(db, `
-      INSERT INTO sessions (key, user_id, state, revision, access_digest, refresh_digest, live, access_expires_at, refresh_expires_at, auth_at, updated_at)
-      VALUES ($1, $2, $3, 1, $4, $5, true, $6, $7, $8, $8)
-    `, [key, account.id, state, accessHash, refreshHash, state.accessExpiresAt, state.refreshExpiresAt, state.authAt])
+    const { account, access, refresh, state } = try openSignInFamily(db, identity)
     return browserSession(account, access, refresh, state)
   })
 }

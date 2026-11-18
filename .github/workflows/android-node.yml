@@ -19,14 +19,14 @@ concurrency:
 env:
   NODE_VERSION: "26.13.1"
   NODE_SOURCE_SHA256: a7f6204ff63b6a2cd274d48903285abb86ed53a99070e532d4c2fd787457d9e6
-  NDK_VERSION: "29.0.13113456"
+  NDK_VERSION: "29.0.14206865"
   ANDROID_API_LEVEL: "29"
 
 jobs:
   runtime:
     name: Node 26 for ${{ matrix.abi }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 110
+    timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
@@ -44,13 +44,43 @@ jobs:
       NODE_ARCH: ${{ matrix.node_arch }}
       NDK_TARGET: ${{ matrix.target }}
       ELF_MACHINE: ${{ matrix.machine }}
+      CCACHE_COMPILERCHECK: content
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/workflows/android-node.yml
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Restore compiler objects for this recipe
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/ccache-android-node
+          key: android-node-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('.github/workflows/android-node.yml') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            android-node-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('.github/workflows/android-node.yml') }}-
+
+      - name: Configure compiler cache
+        id: compiler-cache
+        shell: bash
+        run: |
+          if ! command -v ccache >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y ccache
+          fi
+          export CCACHE_DIR="$RUNNER_TEMP/ccache-android-node"
+          printf 'CCACHE_DIR=%s\n' "$CCACHE_DIR" >> "$GITHUB_ENV"
+          ccache --max-size=1250M
+
       - name: Install pinned Android compiler
         shell: bash
         run: |
           sdk=${ANDROID_SDK_ROOT:-${ANDROID_HOME:?Android SDK is required}}
           "$sdk/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION"
-          printf 'NDK_BIN=%s\n' "$sdk/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_ENV"
+          ndk_bin="$sdk/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          "$ndk_bin/$NDK_TARGET$ANDROID_API_LEVEL-clang" --version
+          "$ndk_bin/$NDK_TARGET$ANDROID_API_LEVEL-clang++" --version
+          printf 'NDK_BIN=%s\n' "$ndk_bin" >> "$GITHUB_ENV"
 
       - name: Verify and extract the official Node sources
         shell: bash
@@ -69,7 +99,8 @@ jobs:
           cd "$RUNNER_TEMP/node-v$NODE_VERSION"
           ndk=${NDK_BIN%/toolchains/llvm/prebuilt/linux-x86_64/bin}
           target="$NDK_BIN/$NDK_TARGET$ANDROID_API_LEVEL"
-          export CC="$target-clang" CXX="$target-clang++"
+          export CC="ccache $target-clang" CXX="ccache $target-clang++"
+          export CC_host="ccache /usr/bin/gcc" CXX_host="ccache /usr/bin/g++"
           export GYP_DEFINES="target_arch=$NODE_ARCH v8_target_arch=$NODE_ARCH android_target_arch=$NODE_ARCH host_os=linux OS=android android_ndk_path=$ndk"
           export SOURCE_DATE_EPOCH
           SOURCE_DATE_EPOCH=$(stat -c %Y configure.py)
@@ -77,13 +108,15 @@ jobs:
           ./configure --dest-cpu="$NODE_ARCH" --dest-os=android --cross-compiling \
             --openssl-no-asm --shared-zlib --v8-disable-temporal-support \
             --without-node-snapshot 2>&1 | tee "$log"
-          make -j "$(nproc)" CC.host=/usr/bin/gcc CXX.host=/usr/bin/g++ AR.host=/usr/bin/ar \
+          python3 -c 'import ast; from pathlib import Path; assert ast.literal_eval(Path("config.gypi").read_text())["variables"]["host_arch"] == "x64"'
+          timeout --signal=TERM --kill-after=30s 210m make -j "$(nproc)" CC.host="$CC_host" CXX.host="$CXX_host" AR.host=/usr/bin/ar \
             AR.target="$NDK_BIN/llvm-ar" \
             'LDFLAGS.target=-static-libstdc++ -Wl,-z,max-page-size=16384' \
             2>&1 | tee -a "$log"
           test -x out/Release/node
           "$NDK_BIN/llvm-strip" --strip-debug out/Release/node \
             -o "$RUNNER_TEMP/android-node/libeliza_node.so"
+          cp LICENSE "$RUNNER_TEMP/android-node/LICENSE"
 
       - name: Verify ABI, Android interpreter and dependency closure
         shell: bash
@@ -133,7 +166,15 @@ jobs:
             ${{ runner.temp }}/android-node/manifest.json
             ${{ runner.temp }}/android-node/SHA256SUMS
             ${{ runner.temp }}/android-node/elf.txt
+            ${{ runner.temp }}/android-node/LICENSE
           if-no-files-found: error
+
+      - name: Save compiler objects for a future build
+        if: ${{ always() && github.ref == 'refs/heads/vibestack' && steps.compiler-cache.outcome == 'success' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/ccache-android-node
+          key: android-node-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('.github/workflows/android-node.yml') }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload failed build log
         if: failure()

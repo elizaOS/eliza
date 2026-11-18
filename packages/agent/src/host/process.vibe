@@ -1,0 +1,197 @@
+// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/resources.md, "Story: Release everything I acquired, once"
+
+module node {
+  import type { BootFailure } from "../../gen/agent__host__launch.ts"
+  import type { Endpoint, LaunchDocument, LaunchFrame } from "./launch.vibe"
+  import type { AgentPlugin, ModuleFactory } from "./module.vibe"
+
+  export interface AgentStatus {
+    readonly agentId: string
+    readonly serverInstanceId: string
+    readonly epoch: number
+    readonly credentialVersion: number
+    readonly ready: true
+    readonly actions: readonly string[]
+  }
+
+  export interface RunningAgent {
+    readonly runtime: AgentRuntime
+    readonly status: AgentStatus
+    stop(): Promise<void>
+  }
+
+  export interface StartAgentInput {
+    readonly launch: LaunchDocument
+    readonly authority: LaunchFrame
+    readonly binding: Endpoint
+    readonly stateDirectory: string
+    readonly bundled?: ReadonlyMap<string, AgentPlugin>
+    readonly modules?: ReadonlyMap<string, ModuleFactory<never>>
+    readonly snapshot?: DeviceStorageSnapshot
+  }
+
+  import { randomUUID } from "node:crypto"
+  import { Effect, Result } from "effect"
+  import { AgentRuntime, createCharacter, stringToUuid, validateUuid } from "@elizaos/core"
+  import { acquire, close, initial, releaseNext } from "../../gen/agent__host__resources.ts"
+  import { cloudLinkPlugin, storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
+  import { plainBodyLimitBytes, messageBodyLimitBytes } from "../../gen/agent__access__transport.ts"
+  import { authRoutes } from "../access/auth.vibe"
+  import { createRouter } from "../access/router.vibe"
+  import { listenOnSocket } from "../access/socket.vibe"
+  import { listenOnHttp } from "../access/http.vibe"
+  import { conversationRoutes } from "../conversation/turns.vibe"
+  import { ownerMessageService } from "../conversation/message-service.vibe"
+  import { openDeviceStorage, type DeviceStorageSnapshot } from "../storage/index.vibe"
+  import { bootFailureOf, composeAgent } from "./compose.vibe"
+  import { cloudModel } from "./cloud-model.vibe"
+
+  function resources() {
+    let state = initial
+    const release = new Map<string, () => Promise<void>>()
+    let closing: Promise<void> | undefined
+    return {
+      acquire(name: string, closeResource: () => Promise<void>) {
+        if (state.phase !== "Open" || release.has(name)) throw new Error("Cannot acquire after resource release")
+        state = acquire(state, name)
+        release.set(name, closeResource)
+      },
+      close: () => closing ??= (async () => {
+        state = close(state)
+        const failures: unknown[] = []
+        while (state.phase === "Closing") {
+          const operation = release.get(state.pending[0])
+          try {
+            if (!operation) throw new Error("Resource releaser is unavailable")
+            await operation()
+            state = releaseNext(state, true)
+          } catch (error) {
+            failures.push(error)
+            state = releaseNext(state, false)
+          }
+        }
+        if (failures.length > 0) throw new AggregateError(failures, "Agent resources could not be released")
+      })(),
+    }
+  }
+
+  async function boot(input: StartAgentInput): Promise<Result.Result<RunningAgent, BootFailure>> {
+    const { launch, authority, binding, stateDirectory } = input
+    if (launch.model.backend === "own-key" || launch.embeddings === "local"
+      || launch.privacy?.secretSwap || launch.privacy?.piiSwap || launch.workflowWorker
+      || launch.retention || launch.google?.gmailChanges || launch.google?.calendarEdits
+      || (launch.views?.length ?? 0) > 0) return Result.fail("Config")
+    if (launch.model.backend === "cloud") {
+      const address = URL.parse(launch.model.cloudBaseUrl)
+      if (!launch.account || address === null || address.protocol !== "https:" || address.origin !== launch.model.cloudBaseUrl) return Result.fail("Config")
+      if (authority.credential === undefined) return Result.fail("Credential")
+    }
+    const resourcesOwned = resources()
+    let phase: BootFailure = "Storage"
+    try {
+      const { agentId, adapter } = await openDeviceStorage({
+        stateDirectory, persistMemory: launch.persistMemory ?? false,
+        account: launch.account ?? null, embeddingDimensions: launch.embeddingDimensions ?? 0,
+        ...(input.snapshot === undefined ? {} : { snapshot: input.snapshot }),
+      })
+      let releaseStore = () => adapter.close()
+      resourcesOwned.acquire("store", () => releaseStore())
+      phase = "Agent"
+      const persona = launch.character
+      const examples = (persona.messageExamples ?? []).map((group) => ({
+        examples: ("examples" in group ? group.examples : group).map(({ name, content }) => ({
+          name, content: {
+            ...(content.text === undefined ? {} : { text: content.text }),
+            ...(content.actions === undefined ? {} : { actions: [...content.actions] }),
+          },
+        })),
+      }))
+      const character = createCharacter({
+        name: persona.name, system: persona.system, adjectives: [...(persona.adjectives ?? [])],
+        bio: typeof persona.bio === "string" ? persona.bio : [...(persona.bio ?? [])],
+        style: { all: [...(persona.style?.all ?? [])], chat: [...(persona.style?.chat ?? [])], post: [...(persona.style?.post ?? [])] },
+        messageExamples: examples,
+      })
+      const role = launch.callerRole === "owner" ? "OWNER" : "USER"
+      const permissions = new Set(launch.policy.actions.allowed)
+      const grantAction = (action: { name: string }) => permissions.has(action.name)
+        ? undefined : `Action ${action.name} is unavailable`
+      const cloud = launch.model.backend === "cloud" && authority.credential !== undefined
+        ? cloudModel(launch.model, authority.credential.value)
+        : { name: cloudLinkPlugin, description: "This launch has no model connection" }
+      const formed = await Effect.runPromise(Effect.result(composeAgent({
+        agentId, character, settings: {}, bundled: input.bundled ?? new Map(), modules: input.modules,
+        storage: { name: storagePlugin, description: "Own the device database", init: async (_config, runtime) => {
+          if (!(runtime instanceof AgentRuntime)) throw new Error("The storage plugin requires the device Core runtime")
+          runtime.registerDatabaseAdapter(adapter)
+        } },
+        cloudLink: cloud, privacy: { kind: "off" }, worker: { kind: "none" },
+        messageService: (runtime) => ownerMessageService(runtime, [role], grantAction),
+        policy: {
+          actionsAllowed: [...permissions], pluginsLoad: [...launch.policy.plugins.load],
+          productPlugin: launch.policy.plugins.product === undefined ? { tag: "NoProductPlugin" }
+            : { tag: "NamedProductPlugin", name: launch.policy.plugins.product },
+        },
+      })))
+      if (Result.isFailure(formed)) {
+        phase = bootFailureOf(formed.failure)
+        throw new Error("Agent composition was refused")
+      }
+      const composed = formed.success
+      const { runtime } = composed
+      releaseStore = () => runtime.close()
+      resourcesOwned.acquire("runtime", () => runtime.stop({ requireQuiescence: true }))
+      await runtime.initialize({ skipMigrations: true })
+      for (const allowed of composed.allowed) {
+        if (!runtime.actions.some(({name}) => name === allowed)) {
+          phase = "Config"
+          throw new Error("An allowed action was not registered")
+        }
+      }
+      const account = launch.account
+      const world = stringToUuid(`device:${agentId}`)
+      const user = account ? (validateUuid(account.userId) ?? stringToUuid(`account:${account.userId}`)) : stringToUuid(`device-owner:${agentId}`)
+      const ownerId = role === "OWNER" ? user : agentId
+      await runtime.ensureWorldExists({
+        id: world, agentId, name: "Device",
+        metadata: { ownership: { ownerId }, roles: { [user]: role === "OWNER" ? "OWNER" : "MEMBER" } },
+      })
+      const status: AgentStatus = {
+        agentId, serverInstanceId: randomUUID(), epoch: authority.epoch, credentialVersion: authority.credential?.version ?? 0,
+        ready: true, actions: [...composed.allowed].sort(),
+      }
+      const router = createRouter({
+        token: authority.token, epoch: authority.epoch, instanceId: status.serverInstanceId,
+        routes: [
+          {
+            path: "/api/status", method: "GET",
+            handler: () => ({ status: 200, body: { ...status, plainBodyLimitBytes, messageBodyLimitBytes } }),
+          },
+          ...authRoutes(agentId),
+          ...conversationRoutes(runtime, { user, world }),
+          ...composed.routes,
+        ],
+      })
+      if (binding.kind === "socket") resourcesOwned.acquire("socket", await listenOnSocket(binding.path, router))
+      else resourcesOwned.acquire("loopback", await listenOnHttp(binding.port, router))
+      return Result.succeed({ runtime, status, stop: resourcesOwned.close })
+    } catch {
+      try { await resourcesOwned.close() }
+      catch { return Result.fail("Agent") }
+      return Result.fail(phase)
+    }
+  }
+  export { boot }
+}
+
+import type { BootFailure } from "../../gen/agent__host__launch.ts"
+import { boot, type StartAgentInput } from node
+export { type AgentStatus, type RunningAgent, type StartAgentInput } from node
+
+export error AgentBootFailed { phase: BootFailure }
+
+export effect function startAgent(input: StartAgentInput) {
+  const opened = try tryPromise({ try: () => boot(input), catch: () => new AgentBootFailed({ phase: "Agent" }) })
+  if (Result.isFailure(opened)) throw new AgentBootFailed({ phase: opened.failure })
+  return opened.success
+}

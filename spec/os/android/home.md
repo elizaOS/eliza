@@ -127,8 +127,6 @@ pure def alwaysHandoffBelongsToAShownHome(s: LauncherInventory): bool =
   s.ticket >= 0 and (s.handoff != NoHandoff implies (s.homeShown and s.inventory != InventoryIdle and s.error == NoLaunchError))
 pure def stepOnlyARefusedHandoffReportsAndRefreshes(before: LauncherInventory, via: str, after: LauncherInventory): bool =
   via == "settleHandoff" implies (after.handoff == NoHandoff and ((after.error != NoLaunchError) iff (after.readTicket == before.readTicket + 1)))
-pure def stepDismissingKeepsTheRead(before: LauncherInventory, via: str, after: LauncherInventory): bool =
-  via == "dismissError" implies (after.readTicket == before.readTicket and after.reading == before.reading)
 pure def sometimesAppOpening(s: LauncherInventory): bool = s.handoff == OpeningApp
 pure def sometimesDialOpening(s: LauncherInventory): bool = s.handoff == OpeningDial
 pure def sometimesRefusalRefreshes(s: LauncherInventory): bool = s.error == AppRefused and s.reading

@@ -19,7 +19,10 @@ machine. The shell draws the code at random, stores only its keyed digest and
 the S256 challenge, and passes the comparisons in as observations:
 `codeMatches` (the code's digest equals the stored one) and `verifierMatches`
 (the verifier hashes to the stored challenge). The code itself never enters
-the model.
+the model. A Blooio deployment sends the SMS through its registered channel
+and verifies the keyed digest locally. A Twilio Verify deployment records
+the browser challenge and asks Twilio to verify its own code. A pending SMS
+challenge keeps the verification method that issued it.
 
 One machine instance is one challenge row. A destination and purpose hold at
 most one Open challenge: an admitted send supersedes the Open one and opens
@@ -121,9 +124,12 @@ pure def effectsOf(method: SignInMethod, y: CodeYield): List[ChallengeEffect] =
   else List()
 pure val maxFailures: int = 5
 pure def canVerify(c: Challenge): bool = isLive(c)
-pure def completionForYield(y: CodeYield, c: Challenge): ChallengeStep = { state: { ...c, phase: Consumed({ yields: y }) }, out: effectsOf(c.method, y) }
-pure def verify(c: Challenge, clientId: str, codeMatches: bool, verifierMatches: bool, factorOutcome: F::FirstFactorOutcome): ChallengeStep =
-  if (codeMatches and verifierMatches and clientId == c.clientId) completionForYield(yieldOf(c.purpose, factorOutcome), c) else { state: { ...c, failures: c.failures + 1, phase: if (c.failures + 1 >= maxFailures) Locked else Open }, out: List() }
+pure def verify(c: Challenge, clientId: str, codeMatches: bool, verifierMatches: bool, factorOutcome: F::FirstFactorOutcome): ChallengeStep = {
+  val y = yieldOf(c.purpose, factorOutcome)
+  if (codeMatches and verifierMatches and clientId == c.clientId)
+    { state: { ...c, phase: Consumed({ yields: y }) }, out: effectsOf(c.method, y) }
+  else { state: { ...c, failures: c.failures + 1, phase: if (c.failures + 1 >= maxFailures) Locked else Open }, out: List() }
+}
 pure val weight_verify = 4
 pure def stepConsumedOnlyByARightCodeWhileLive(before: Challenge, via: str, after: Challenge, out: List[ChallengeEffect]): bool = {
   val consumes = not(isConsumed(before.phase)) and isConsumed(after.phase)

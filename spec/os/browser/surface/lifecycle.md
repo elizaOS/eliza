@@ -1,13 +1,12 @@
 # Browser surface lifecycle
 
-The surface manager (`ElizaSurfaceManager`) puts one native web page per
-browser tab beside the app's WebView. This spec owns which surfaces exist,
-which renderer realm may command them, where a page draws and takes input,
-closures, load state and the keyboard; `commands.md`, `pageRequests.md`,
-`profiles.md` and `dock.md` build on it. The shell parses every call,
-runs it on the main thread and converts host CSS pixels. Sources:
-`GI:plugins/plugin-native-browser-surface` (`BrowserSurfacePlugin.kt`,
-`BelowHostLayer.kt`, `definitions.ts`).
+The surface manager puts one native web page per browser tab beside the
+app's WebView. This spec owns which surfaces exist, which renderer realm
+may command them, where a page draws and takes input, closures, load state
+and the keyboard; `commands.md`, `pageRequests.md`, `profiles.md` and
+`dock.md` build on it. The shell parses every call, runs it on the main
+thread and converts host CSS pixels. Sources: `BrowserSurfacePlugin.kt`,
+`BelowHostLayer.kt`, `definitions.ts` of `plugin-native-browser-surface`.
 
 ## Story: Keep each web surface owned by the current screen
 
@@ -132,7 +131,7 @@ pure def stepPresentingNeverResumes(before: SurfaceHost, via: str, after: Surfac
 pure def sometimesPresentedButPaused(s: SurfaceHost): bool = s.surfaces.some(x => x.presented and x.paused)
 ```
 
-### A page draws only inside its outer clip and takes input only while shown, running, told the host's rects, and outside every rounded host rect
+### A page draws only inside its outer clip and takes input only where it draws, while shown, running and told the host's rects, and never on a rounded host rect
 
 `setBounds` places the page and its outer clip, with four corner radii,
 together in host pixels. An above-host page is clipped to the rounded clip
@@ -172,8 +171,9 @@ pure def pageOwnsPoint(x: NativeSurface, p: HostPoint): bool =
 pure def drawsAt(x: NativeSurface, p: HostPoint): bool =
   x.presented and inBox(x.bounds.x, x.bounds.y, x.bounds.width, x.bounds.height, p) and inBox(x.clip.x, x.clip.y, x.clip.width, x.clip.height, p) and
     (x.policy.layer == BelowHost or (inClip(x.clip, p) and not(onChrome(x, p))))
-pure def lawPageStaysInsideItsClip(surface: NativeSurface, point: HostPoint): bool =
-  ((drawsAt(surface, point) or pageOwnsPoint(surface, point)) implies inBox(surface.clip.x, surface.clip.y, surface.clip.width, surface.clip.height, point)) and
+pure def lawInputOnlyWhereThePageDrawsInsideItsClip(surface: NativeSurface, point: HostPoint): bool =
+  (pageOwnsPoint(surface, point) implies drawsAt(surface, point)) and
+  (drawsAt(surface, point) implies inBox(surface.clip.x, surface.clip.y, surface.clip.width, surface.clip.height, point)) and
   ((surface.clip.topLeft > 0 and point == { x: surface.clip.x, y: surface.clip.y }) implies not(pageOwnsPoint(surface, point)))
 pure val shownSurface: NativeSurface = { id: "t1", realm: appRealm, gen: 1, policy: keyedPolicy, presented: true, paused: false, hostRectsSet: true,
   bounds: { x: 0, y: 0, width: 100, height: 100 }, clip: { x: 0, y: 0, width: 100, height: 100, topLeft: 16, topRight: 16, bottomRight: 0, bottomLeft: 0 },
@@ -236,7 +236,8 @@ A certificate error of the page's own HTTPS address is never passed: the
 page becomes a security block, reported at once. A main-frame load error
 makes the page failed; a finished load reports the page. A new page start
 at another address ends the block; the error page of the blocked address,
-which starts at that address, keeps it.
+which starts at that address, keeps it. A navigate or reload the renderer
+asks for (`commands.md`) ends it too.
 
 ```quint
 pure def reported(s: SurfaceHost, id: str): List[SurfaceNotice] = s.surfaces.select(x => x.id == id).listMap(x =>
@@ -296,4 +297,31 @@ pure def stepKeyboardReportedOncePerChange(before: SurfaceHost, via: str, after:
   keyboardNotices(out) == (if (after.keyboard == before.keyboard) List() else List(KeyboardChanged({ visible: after.keyboard.visible, height: after.keyboard.height })))
 pure val heightValues = Set(0, 280)
 pure def sometimesKeyboardShown(s: SurfaceHost): bool = s.keyboard.visible and s.keyboard.height > 0
+```
+
+## Story: Open another app only for the exact link I tapped
+
+> As the person using a web surface, I want another app to open only when
+> I choose the exact link, so that a website cannot launch apps on its own.
+
+### A page can ask to open another app only after a person taps
+
+The surface holds a single main-frame external-link request from a person’s
+tap, after the platform policy accepted its scheme and intent. The host
+opens only the held address from the current owner and surface. Loading a
+new page invalidates that request. A dispatch clears the request before
+asking Android to open it. The new Intent carries only the permitted
+action, data and, for a safe intent link, the explicit target package.
+The host checks that the receiving app is installed and is a different app.
+The receipt reports dispatch to Android.
+
+```quint
+pure def externalLinkOffered(mainFrame: bool, userGesture: bool, supportedIntent: bool): bool =
+  mainFrame and userGesture and supportedIntent
+pure def externalLinkDispatches(s: SurfaceHost, realm: Realm, id: str, pendingAddress: str, requestedAddress: str, resolvedOtherApp: bool): bool =
+  owns(s, realm, id) and pendingAddress != "" and pendingAddress == requestedAddress and resolvedOtherApp
+pure def lawAWebsiteCannotOfferAnExternalLink(mainFrame: bool, supportedIntent: bool): bool =
+  not(externalLinkOffered(mainFrame, false, supportedIntent))
+pure def lawAnExternalLinkNeedsItsExactPendingAddress(s: SurfaceHost, realm: Realm, id: str, pendingAddress: str, requestedAddress: str, resolvedOtherApp: bool): bool =
+  externalLinkDispatches(s, realm, id, pendingAddress, requestedAddress, resolvedOtherApp) implies pendingAddress == requestedAddress
 ```
