@@ -346,12 +346,22 @@ export function deviceActionToolGuidance(
       (parameter) => parameter.name === "operation",
     )?.schema;
     const branches = schema?.anyOf;
-    if (!Array.isArray(branches) || branches.length !== 1) return [];
-    const types = branches[0]?.properties?.type?.enum;
-    return Array.isArray(types) &&
-      types.length === 1 &&
-      typeof types[0] === "string"
-      ? [{ name: action.name, operation: types[0] }]
+    if (!Array.isArray(branches) || branches.length === 0) return [];
+    // One operation, possibly in several capability-gated forms (camera
+    // capture with and without a lens).
+    const operations = new Set(
+      branches.map((branch) => {
+        const types = branch?.properties?.type?.enum;
+        return Array.isArray(types) &&
+          types.length === 1 &&
+          typeof types[0] === "string"
+          ? types[0]
+          : undefined;
+      }),
+    );
+    const [operation] = operations;
+    return operations.size === 1 && typeof operation === "string"
+      ? [{ name: action.name, operation }]
       : [];
   });
   const deviceActionTurn = getDeviceActionTurn();

@@ -156,8 +156,12 @@ it("offers a camera lens and an SMS target only to a phone that negotiated them"
   ).not.toHaveProperty("lens");
   expect(branches(base, "sms_compose")).toHaveLength(1);
   expect(branches(base, "sms_compose")[0].properties).toHaveProperty("query");
+  // Opening Camera is not the capture, and the phone opens Camera itself.
   expect(older.description).toContain(
-    "first show the camera view with VIEWS in this same turn",
+    "Opening the Camera view with VIEWS never takes a photo",
+  );
+  expect(older.description).toContain(
+    "the requesting phone opens Camera itself",
   );
   expect(older.description).not.toContain("camera.capture-lens.v1");
   expect(older.description).not.toContain("sms.compose.v2");

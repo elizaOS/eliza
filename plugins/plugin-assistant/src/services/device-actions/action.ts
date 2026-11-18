@@ -23,6 +23,7 @@ import {
 } from "./calendar-contract.ts";
 import {
   CAMERA_LENS_CAPABILITY,
+  DEVICE_CAMERA_CAPTURE_ACTION,
   isCameraCapture,
   validateCameraCaptureResult,
 } from "./camera-contract.ts";
@@ -1023,7 +1024,7 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
 }> = [
   {
     types: ["camera_capture_photo"],
-    text: "camera_capture_photo takes one still image with the current camera and saves it in Photos. Requires camera.capture-photo.v1 and the visible Camera view. When another view is showing, first show the camera view with VIEWS in this same turn, then propose camera_capture_photo as the last step; the phone takes the photo once Camera is showing. It sends no pixels to the model. A saved-photo receipt proves the capture; never repeat an uncertain capture automatically.",
+    text: "camera_capture_photo takes one still image and saves it in Photos; it is how a request to take a picture, photo or selfie is done. Requires camera.capture-photo.v1. Opening the Camera view with VIEWS never takes a photo, and the owner is never asked to press the shutter instead. The photo is taken on the visible Camera viewfinder: when another view is showing, the requesting phone opens Camera itself before it takes a photo the owner asked for, so no VIEWS step is needed; if you do show Camera with VIEWS in the same turn, propose camera_capture_photo as the last step. It sends no pixels to the model. A saved-photo receipt proves the capture; never repeat an uncertain capture automatically.",
   },
   {
     types: ["camera_capture_photo"],
@@ -1893,12 +1894,33 @@ function usesCompletedActionNavigation(
   );
 }
 
+/** The camera tool offers a phone exactly one capture form, as PROPOSE_DEVICE_ACTION does. */
+function cameraCaptureToolForCapabilities(
+  action: Action,
+  capabilities?: readonly string[],
+): Action {
+  const lens = capabilities?.includes(CAMERA_LENS_CAPABILITY) === true;
+  return {
+    ...action,
+    parameters: action.parameters?.map((parameter) => {
+      if (parameter.name !== "operation") return parameter;
+      const schema = structuredClone(parameter.schema);
+      schema.anyOf = schema.anyOf?.filter(
+        (branch) => Boolean(branch.properties?.lens) === lens,
+      );
+      return { ...parameter, schema };
+    }),
+  };
+}
+
 export function deviceActionForCapabilities(
   action: Action,
   capabilities?: readonly string[],
   messageMetadata?: unknown,
   binding?: { runtime: IAgentRuntime; message: Memory },
 ): Action {
+  if (action.name === DEVICE_CAMERA_CAPTURE_ACTION)
+    return cameraCaptureToolForCapabilities(action, capabilities);
   if (action.name !== "PROPOSE_DEVICE_ACTION") return action;
   const navigation = usesCompletedActionNavigation(messageMetadata);
   const current = getDeviceActionTurn();

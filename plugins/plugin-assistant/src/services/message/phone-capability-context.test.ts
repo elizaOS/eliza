@@ -213,6 +213,43 @@ describe("selected phone capability guidance", () => {
     const { text } = await guidance({ providerPhase: "response" });
     expect(text).not.toContain("contact_create");
   });
+  it("names photo capture as device work, not Camera navigation, on a phone that negotiated it", async () => {
+    // v609 real turn: "take a picture" was judged navigation to Camera and the
+    // planner finished on VIEWS_SHOW; nothing it always saw named the capture.
+    const withCamera = async (options: Record<string, unknown>) => {
+      const args = fixture();
+      (
+        binding.turn as { credential: { capabilities: string[] } }
+      ).credential.capabilities = [
+        ...capabilities,
+        "camera.capture-photo.v1",
+        "camera.capture-lens.v1",
+      ];
+      const context = await createV5MessageContextObject({
+        ...args,
+        ...options,
+      });
+      const event = context.events.find(
+        (event) => event.id === "authenticated-phone-capability",
+      );
+      return event && "content" in event ? String(event.content) : "";
+    };
+    for (const text of [
+      await withCamera({ providerPhase: "response" }),
+      await withCamera({
+        includeTools: true,
+        providerPhase: "planning",
+        selectedContexts: ["general"],
+        preselectedActions: [native],
+      }),
+    ]) {
+      expect(text).toContain("camera_capture_photo (DEVICE_CAMERA_CAPTURE)");
+      expect(text).toContain("opening the Camera view takes no photo");
+      expect(text).toContain("never navigation alone");
+    }
+    const { text } = await guidance({ providerPhase: "response" });
+    expect(text).not.toContain("camera_capture_photo");
+  });
   it("retains Android Clock handoff constraints on a Clock-only installation", async () => {
     const args = fixture();
     (

@@ -12,6 +12,12 @@ import {
   CALENDAR_CREATE_CAPABILITY,
   CALENDAR_NEXT_CAPABILITY,
 } from "./calendar-contract.ts";
+import {
+  CAMERA_CAPTURE_CAPABILITY,
+  CAMERA_LENS_CAPABILITY,
+  DEVICE_CAMERA_CAPTURE_ACTION,
+} from "./camera-contract.ts";
+import { authoredCameraCapture } from "./camera-request.ts";
 import { deviceOperationSupportedByCapabilities } from "./contract.ts";
 import { MAPS_CAPABILITY } from "./maps-contract.ts";
 import { NOTES_CAPABILITY, notesSelectionTarget } from "./notes-contract.ts";
@@ -57,6 +63,10 @@ function capabilityAvailable(
     );
   if (isNotesOrganizeType(type))
     return deviceOperationSupportedByCapabilities(type, caps);
+  if (type === "camera_capture_photo")
+    return (
+      turn.isCurrent() && caps?.includes(CAMERA_CAPTURE_CAPABILITY) === true
+    );
   if (isPhotosViewType(type))
     return (
       turn.isCurrent() && deviceOperationSupportedByCapabilities(type, caps)
@@ -82,6 +92,7 @@ function capabilityAvailable(
               : false;
 }
 const capabilityBoundTypes = new Set([
+  "camera_capture_photo",
   "notes_update",
   "calendar_create_local",
   "calendar_create",
@@ -133,6 +144,11 @@ const declarations = [
     "DEVICE_BROWSER_OPEN",
     "browser_navigate",
     "Open a web address the user typed in this message in this requesting app Browser, only when they ask to open, visit or go to it now. Pass the address exactly as typed. Use this app-owned operation instead of the server Browser workspace when the user asks to open a site in this app. Navigation only; do not claim page content or successful loading.",
+  ],
+  [
+    DEVICE_CAMERA_CAPTURE_ACTION,
+    "camera_capture_photo",
+    "Take a photo with this phone's camera and save it in Photos, when the owner asks to take a picture, photo or selfie now. Opening the Camera view does not take a photo; this does. The phone opens Camera itself first when another view is showing. With a lens field: front for a selfie or a photo of the owner, back for the rear camera; leave it out otherwise. Sends no pixels to the model; only the saved-photo receipt proves the capture. Never repeat an uncertain capture.",
   ],
   [
     "DEVICE_NOTE_UPDATE",
@@ -305,7 +321,7 @@ function operationSchema(type: string): ActionParameterSchema {
       (branch.properties as Record<string, { enum?: readonly string[] }>).type
         ?.enum?.[0] === type,
   );
-  if (selected.length !== 1)
+  if (selected.length !== (type === "camera_capture_photo" ? 2 : 1))
     throw Error("Canonical device operation is not uniquely declared: " + type);
   return readableReminderOperationSchema(type, { anyOf: selected });
 }
@@ -314,6 +330,14 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
     ...proposeDeviceAction,
     name,
     description,
+    ...(type === "camera_capture_photo"
+      ? {
+          descriptionCompressed:
+            "take a photo/picture/selfie now on this phone camera; saves to Photos; lens front|back",
+          routingHint:
+            "the user asks to take, snap or capture a picture, photo or selfie now -> DEVICE_CAMERA_CAPTURE (not VIEWS: opening Camera takes no photo); NOT for a deferred, hypothetical, question-about or reported mention, nor for opening Camera only",
+        }
+      : {}),
     ...(type === "browser_navigate"
       ? {
           routingHint:
@@ -331,60 +355,74 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
           }
         : undefined,
     tags:
-      type === "browser_navigate"
+      type === "camera_capture_photo"
         ? [
-            "domain:browser",
-            "capability:navigate",
+            "domain:camera",
+            "capability:capture",
             "effect:receipt-required",
             "target:selected-device",
           ]
-        : type === "notes_update"
+        : type === "browser_navigate"
           ? [
-              ...(proposeDeviceAction.tags || []),
-              "domain:notes",
-              "capability:write",
+              "domain:browser",
+              "capability:navigate",
               "effect:receipt-required",
               "target:selected-device",
-              "selection-kind:note",
             ]
-          : type === "notes_read_selected"
+          : type === "notes_update"
             ? [
                 ...(proposeDeviceAction.tags || []),
                 "domain:notes",
+                "capability:write",
+                "effect:receipt-required",
+                "target:selected-device",
                 "selection-kind:note",
               ]
-            : type === "calendar_update"
+            : type === "notes_read_selected"
               ? [
                   ...(proposeDeviceAction.tags || []),
-                  "domain:calendar",
-                  "capability:write",
-                  "effect:receipt-required",
-                  "target:selected-device",
-                  "selection-kind:calendar-event",
+                  "domain:notes",
+                  "selection-kind:note",
                 ]
-              : proposeDeviceAction.tags,
+              : type === "calendar_update"
+                ? [
+                    ...(proposeDeviceAction.tags || []),
+                    "domain:calendar",
+                    "capability:write",
+                    "effect:receipt-required",
+                    "target:selected-device",
+                    "selection-kind:calendar-event",
+                  ]
+                : proposeDeviceAction.tags,
     roleGate:
       type === "calendar_update" || type === "notes_update"
         ? { minRole: "OWNER" as const }
         : proposeDeviceAction.roleGate,
     similes:
-      type === "browser_navigate"
-        ? ["DEVICE_BROWSER_NAVIGATE"]
-        : type === "reminder_read_selected"
-          ? ["DEVICE_REMINDER_READ_SELECTED"]
-          : type === "notes_query"
-            ? [
-                "find note by title",
-                "look up saved note",
-                "search notes before reading",
-                "read a named note",
-              ]
-            : type === "notes_read_selected"
+      type === "camera_capture_photo"
+        ? [
+            "CAMERA_CAPTURE_PHOTO",
+            "TAKE_PHOTO",
+            "take a picture",
+            "take a selfie",
+          ]
+        : type === "browser_navigate"
+          ? ["DEVICE_BROWSER_NAVIGATE"]
+          : type === "reminder_read_selected"
+            ? ["DEVICE_REMINDER_READ_SELECTED"]
+            : type === "notes_query"
               ? [
-                  "read selected note",
-                  "read note by returned identity and revision",
+                  "find note by title",
+                  "look up saved note",
+                  "search notes before reading",
+                  "read a named note",
                 ]
-              : [],
+              : type === "notes_read_selected"
+                ? [
+                    "read selected note",
+                    "read note by returned identity and revision",
+                  ]
+                : [],
     contexts:
       type === "maps_read_selected"
         ? ["phone", "maps", "general"]
@@ -396,11 +434,13 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
               ? ["tasks", "reminders", "general"]
               : type === "browser_navigate"
                 ? ["browser", "web", "general"]
-                : isPhotosViewType(type)
+                : type === "camera_capture_photo"
                   ? ["media", "general"]
-                  : type.startsWith("calendar_create")
-                    ? ["calendar", "general"]
-                    : ["notes", "general"],
+                  : isPhotosViewType(type)
+                    ? ["media", "general"]
+                    : type.startsWith("calendar_create")
+                      ? ["calendar", "general"]
+                      : ["notes", "general"],
     validate: async (
       runtime: Parameters<NonNullable<Action["validate"]>>[0],
       message: Parameters<NonNullable<Action["validate"]>>[1],
@@ -587,10 +627,92 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
         throw new ElizaError("Device action handler is unavailable", {
           code: "DEVICE_ACTION_HANDLER_UNAVAILABLE",
         });
+      if (type === "camera_capture_photo") {
+        // A whole-message photo command owns its lens: the camera the owner
+        // named, or the one showing. The model's lens choice never overrides it.
+        const authored = authoredCameraCapture(
+          String(args[1]?.content?.text ?? ""),
+          args[0].character?.name,
+        );
+        if (
+          authored &&
+          getDeviceActionTurn()?.credential.capabilities?.includes(
+            CAMERA_LENS_CAPABILITY,
+          )
+        ) {
+          const next = [...args] as Parameters<NonNullable<Action["handler"]>>;
+          next[3] = {
+            ...(args[3] as HandlerOptions | undefined),
+            parameters: {
+              ...(raw as Record<string, unknown>),
+              operation: {
+                type,
+                ...(authored.lens ? { lens: authored.lens } : {}),
+              },
+            } as HandlerOptions["parameters"],
+          };
+          return proposeDeviceAction.handler(...next);
+        }
+      }
       return proposeDeviceAction.handler(...args);
     },
   })),
 );
+
+/** Availability for a whole-message photo command ("take a picture"). The
+ * first-stage view judgment may read it as opening Camera, which takes no
+ * photo; this route replaces that view-only plan with the capture tool. The
+ * tool creates a durable proposal that the requesting phone runs on its
+ * Camera viewfinder; the phone's saved-photo receipt owns completion.
+ */
+export function registerDeviceCameraCaptureRouting(
+  runtime: Parameters<typeof registerDirectActionRoutingRule>[0],
+): void {
+  const matches = (
+    text: string,
+    message?: Parameters<NonNullable<Action["validate"]>>[1],
+  ): boolean => {
+    const current = getDeviceActionTurn();
+    const caller = current?.requestCaller;
+    if (
+      !message ||
+      current?.runtime !== runtime ||
+      !current.isCurrent() ||
+      current.requestMessage?.message !== message ||
+      caller?.role !== "OWNER" ||
+      caller.entityId !== message.entityId ||
+      caller.subjectUserId !== current.credential.subjectUserId ||
+      message.content.source !== "client_chat" ||
+      !["DM", "VOICE_DM"].includes(String(message.content.channelType)) ||
+      !deviceOperationSupportedByCapabilities(
+        "camera_capture_photo",
+        current.credential.capabilities,
+      )
+    )
+      return false;
+    // Only the strict whole-message command skips the model's judgment.
+    return authoredCameraCapture(text, runtime.character.name) !== undefined;
+  };
+  registerDirectActionRoutingRule(runtime, {
+    id: "device.camera-capture",
+    actionNames: [DEVICE_CAMERA_CAPTURE_ACTION],
+    replacesActionNames: [
+      "VIEWS",
+      "VIEWS_SHOW",
+      "VISION_CAPTURE",
+      "VISION_ENABLE_CAMERA",
+    ],
+    requiredActionTags: [
+      "domain:camera",
+      "capability:capture",
+      "effect:receipt-required",
+      "target:selected-device",
+    ],
+    contexts: ["media", "general"],
+    matches,
+    wholeRequest: { matches, invalidateFields: ["visualContinuation"] },
+  });
+}
 
 /** Availability for a complete URL-open request. The tool creates a durable
  * proposal that the requesting phone runs directly in direct-request mode
