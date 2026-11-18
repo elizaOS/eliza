@@ -59,7 +59,7 @@ pure def lawListenerChecksOnlyForAListenerImage(listener: bool): bool = required
 
 ```quint
 type CheckResult = { check: ImageCheck, outcome: CheckOutcome }
-pure def reportedAs(results: List[CheckResult], check: ImageCheck, expectedResult: CheckOutcome): bool = results.some(r => r.check == check and r.outcome == expectedResult)
+pure def reportedAs(results: List[CheckResult], check: ImageCheck, expectedOutcome: CheckOutcome): bool = results.some(r => r.check == check and r.outcome == expectedOutcome)
 pure def outcomeFor(results: List[CheckResult], check: ImageCheck): CheckOutcome =
   if (reportedAs(results, check, Fail)) Fail else if (reportedAs(results, check, Unknown)) Unknown else if (reportedAs(results, check, Pass)) Pass else Unknown
 pure def imageVerdict(listener: bool, results: List[CheckResult]): CheckOutcome = {
