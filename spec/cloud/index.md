@@ -260,3 +260,27 @@ pure def lawDeletedPasswordBackupRejectsInitialRetry(slot: PasswordBackupSlot, b
     (deleted.bytes == 0 and changePasswordBackup(deleted, true, 0, BackupSave({ bytes: bytes })) == deleted)
 }
 ```
+
+## Story: Ask for a bounded decision about a browser page
+
+> As a signed-in user, I can ask which visible link best fits my current
+> goal, so that the app can point me to it or say it found no match.
+
+`POST /api/v1/decisions` accepts an active Cloud session or a native device
+credential. A browser may name its expected account in `X-Eliza-Account`;
+a mismatch is refused before any provider work. The caller sends a goal and
+at most sixteen labeled candidates. Their IDs are unique and `none` is
+reserved. A provider answer may select one of those IDs or report no match.
+The app owns any follow-up action and its approval rules.
+
+Cloud accepts only the typed decision fields. For browser guidance, the
+app sends selected display labels and a goal, with no form contents or raw
+URLs. Cloud removes common credential and address patterns from outbound
+text and keeps no request or response text in its records. The request
+body and provider wait are bounded.
+
+The deployment's Workers AI binding enables Clef decisions with
+`@cf/cloudflare/clef-flash`. An unavailable binding or invalid
+answer yields a typed unavailable result. Each dispatch counts against
+thirty calls per minute per account and two thousand per day per
+organization. An unavailable limiter blocks dispatch.
