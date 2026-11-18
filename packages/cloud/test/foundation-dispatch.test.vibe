@@ -1,7 +1,7 @@
 // spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
 import { assert, describe, it } from "@effect/vitest"
-import { NotAState, decodeState, initial } from "../gen/cloud__shared__dispatchOnce.effect.vibe"
-import { refusalBody } from "../src/http/refusal.vibe"
+import { NotAState, conflictRefusal, decodeState, initial } from "../gen/cloud__shared__dispatchOnce.effect.vibe"
+import { Refused, refusalBody } from "../src/http/refusal.vibe"
 import { dispatchReceipt, loadReceipt, mayFollowWith, prepareReceipt, receiptOwner, receiptStatusAt, renderProviderKey, requestDigest, resolveReceipt, type LookupResult, type ProviderKey, type ProviderReply, type Receipt, type ReceiptRows } from "../src/shared/dispatch-once.vibe"
 import { Store } from "../src/store/store.vibe"
 import { shiftedClock } from "./support/clock.ts"
@@ -126,10 +126,10 @@ describe("WP0 Foundation: dispatch once (spec/cloud/shared/dispatchOnce.md, \"St
         reply: ["unknown", "StatusUnknown"],
         resolved: ["Succeeded", "StatusSucceeded", "req-1"],
         replay: [true, "Succeeded"],
-        conflict: { error: "idempotency_conflict", errorDescription: refusalBody(conflict === undefined ? { code: "IdempotencyConflict", reason: "NoReason", wait: { tag: "NoWait" } } as never : (conflict as never)).errorDescription, retryable: false },
+        conflict: { ...refusalBody(conflictRefusal), error: "idempotency_conflict" },
         kept: ["Succeeded", true],
         sent: 1,
-        row: [["StatusSucceeded", 6]]
+        row: [["StatusSucceeded", 5]]
       }))
     }
   }))

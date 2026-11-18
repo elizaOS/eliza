@@ -189,11 +189,10 @@ pure def sometimesStopConfirmedAfterRunning(s: ListenerService): bool = s.stopCo
 ### Three crashes while capturing within ten minutes stop listening until I turn it on
 
 Android restarts the persistent listener after every end. Only a crash with
-a capture session open and `RECORD_AUDIO` granted is an unclean exit, stamped
-on the wall clock `now`; exits ten minutes old or in the future stop
-counting, and a trip is sticky. The new process holds no lease and asks for a
-start when its state runs the service. After a reboot a timed pause cannot be
-compared with the restarted monotonic clock, so it lasts until I resume.
+a capture session open and `RECORD_AUDIO` granted counts, stamped on the wall
+clock; exits ten minutes old or in the future drop out, and a trip is sticky.
+The new process holds no lease; after a reboot a timed pause lasts until I
+resume, as the monotonic clock restarted.
 
 ```quint
 type ProcessEnd = Crash | Reboot | PackageUpdate
@@ -221,11 +220,9 @@ pure def sometimesCrashLoopTripped(s: ListenerService): bool = s.tripped and dec
 
 ### Wake audio never leaves the device and opens only the assistant, while unlocked
 
-Audio is analysed in memory only while `Listening`, and not while speech
-plays, so the assistant's own voice never wakes it. Hearing the name opens
-the host's assistant surface with no transcript or audio; behind the keyguard
-it is ignored. The spoken pause is honoured while locked and lasts until I
-resume.
+Audio is analysed in memory only while `Listening` and no speech plays.
+Hearing the name opens the host's assistant surface with no transcript or
+audio, and is ignored behind the keyguard; the spoken pause works while locked.
 
 ```quint
 type Phrase = WakeName | PauseCommand | OtherSpeech

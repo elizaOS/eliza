@@ -118,7 +118,7 @@ effect function lockDestination(tx: Tx, request: CodeRequest, digest: string) {
   try tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`code:${methodColumn[request.method]}:${purposeKey(request.purpose)}:${digest}`])
 }
 
-effect function challengesOf(tx: Tx, request: CodeRequest, digest: string): ReadonlyArray<Row> {
+effect function challengesOf(tx: Tx, request: CodeRequest, digest: string) {
   try lockDestination(tx, request, digest)
   return try tx.query(
     "SELECT key, code_digest, code_challenge, phase FROM code_challenges WHERE method = $1 AND purpose_key = $2 AND destination_digest = $3 ORDER BY sent_at DESC, key FOR UPDATE",
@@ -140,7 +140,7 @@ effect function deliverCode(destination: string, code: string, due: ChallengeEff
   else try deliverMail({ to: destination, subject: "Your sign-in code", text })
 }
 
-effect function sendCode(request: SendRequest): CodeSent {
+effect function sendCode(request: SendRequest) {
   const deployment = try Deployment
   const { smsCountries, smsHourlyBudget } = deployment.settings.signIn
   const countryAllowed = smsCountries.some((prefix) => request.destination.startsWith(prefix))
@@ -175,7 +175,7 @@ effect function sendCode(request: SendRequest): CodeSent {
   return { expiresAt: sent.state.expiresAt, codeLength }
 }
 
-effect function attempt<A, E, R>(tx: Tx, request: VerifyRequest, digest: string, finish: (tx: Tx, consumed: Challenge) => Finished<A>!E!R): Outcome<A> {
+effect function attempt<A, E, R>(tx: Tx, request: VerifyRequest, digest: string, finish: (tx: Tx, consumed: Challenge) => Finished<A>!E!R) {
   const rows = try challengesOf(tx, request, digest)
   const digests = new Map<string, string>()
   for (const row of rows) {
@@ -200,7 +200,7 @@ effect function attempt<A, E, R>(tx: Tx, request: VerifyRequest, digest: string,
   }
   if (probe instanceof Rejected) {
     if (canExpire(probe.state)) try step(tx, key, { type: "expire" }, request.now)
-    return { kind: "refused", refusal: verifyRefusal(probe.state) }
+    return { kind: "refused", refusal: verifyRefusal(probe.state) } satisfies Outcome<A>
   }
   if (!isConsumed(probe.state.phase)) {
     const failed = try step(tx, key, verifying("SessionStarts"), request.now)
@@ -211,7 +211,7 @@ effect function attempt<A, E, R>(tx: Tx, request: VerifyRequest, digest: string,
   return { kind: "done", value: finished.value }
 }
 
-effect function verifyCode<A, E, R>(request: VerifyRequest, finish: (tx: Tx, consumed: Challenge) => Finished<A>!E!R): A {
+effect function verifyCode<A, E, R>(request: VerifyRequest, finish: (tx: Tx, consumed: Challenge) => Finished<A>!E!R) {
   const digest = try keyedDigest(request.destination)
   try admitAll([{ subject: request.address, rule: verifyPerIp }, { subject: digest, rule: verifyPerDestination }])
   const store = try Store
@@ -230,12 +230,12 @@ effect function signIn(request: VerifyRequest) {
   })
 }
 
-export effect function sendLinkCode(input: { readonly userId: string; readonly phone: string; readonly clientId: string; readonly codeChallenge: string; readonly address: string; readonly now: number }): CodeSent {
+export effect function sendLinkCode(input: { readonly userId: string; readonly phone: string; readonly clientId: string; readonly codeChallenge: string; readonly address: string; readonly now: number }) {
   const body = try valid(LinkSend, input)
   return try sendCode({ method: "PhoneSignIn", purpose: { tag: "LinkPhoneCode", userId: input.userId }, destination: body.phone, clientId: body.clientId, codeChallenge: body.codeChallenge, address: input.address, now: input.now })
 }
 
-export effect function verifyLinkCode(input: { readonly userId: string; readonly phone: string; readonly code: string; readonly clientId: string; readonly codeVerifier: string; readonly address: string; readonly now: number }): PhoneProof {
+export effect function verifyLinkCode(input: { readonly userId: string; readonly phone: string; readonly code: string; readonly clientId: string; readonly codeVerifier: string; readonly address: string; readonly now: number }) {
   const body = try valid(LinkVerify, input)
   const request: VerifyRequest = { method: "PhoneSignIn", purpose: { tag: "LinkPhoneCode", userId: input.userId }, destination: body.phone, code: body.code, clientId: body.clientId, codeVerifier: body.codeVerifier, address: input.address, now: input.now }
   return try verifyCode(request, effect (_tx: Tx, consumed: Challenge) => {

@@ -25,23 +25,21 @@ effect function open(directory: string, persistMemory: boolean, list = migration
   return try host("open the store", () => openDeviceStorage({ stateDirectory: directory, persistMemory, account: null, embeddingDimensions: 0, migrations: list }))
 }
 
-function over<P extends { load: unknown; keep: unknown }, A>(pair: P, make: (load: P["load"], keep: P["keep"]) => A): A {
-  return make(pair.load, pair.keep)
-}
-
 effect function closed(adapter: IDatabaseAdapter) {
   try host("close the store", () => adapter.close())
 }
 
 effect function keepRows(adapter: IDatabaseAdapter) {
-  const morning = try over(triggerKeeping(adapter, "trigger-1", { details }), triggerMachine)
+  const kept = triggerKeeping(adapter, "trigger-1", { details })
+  const morning = try triggerMachine(kept.load, kept.keep)
   try morning.send(create)
   try morning.send(enable)
   for (let n = 0; n < 102; n++) try appendTriggerRun(adapter, "trigger-1", run(n))
   const first = try createScheduledTask(adapter, newTask("task-1", "key-1"))
   const again = try createScheduledTask(adapter, newTask("task-2", "key-1"))
   try createScheduledTask(adapter, newTask("hidden"))
-  const answered = try over(scheduledTaskKeeping(adapter, "task-1", (kept) => ({ ...kept, lastDecisionLog: "dismissed" })), taskMachine)
+  const dismissing = scheduledTaskKeeping(adapter, "task-1", (row) => ({ ...row, lastDecisionLog: "dismissed" }))
+  const answered = try taskMachine(dismissing.load, dismissing.keep)
   try answered.send({ type: "applyVerb", seenRevision: 0, key: { tag: "Keyed", key: "verb-1" }, verb: { tag: "Dismiss" }, now: 5, following: { tag: "Manual" } })
   return { first: first.kind, again: again.kind, againId: again.task.taskId }
 }
@@ -88,7 +86,8 @@ it.effect('Trigger rows and scheduled tasks survive a restart of a data-director
 it.effect('A write that read an older revision is refused and changes nothing (spec/agent/schedule/triggers.md, "An edit, enable or removal is refused only when it names a revision that has moved on")', effect () => {
   const state = try scratch("schedule-store-race")
   const { adapter } = try open(state.file("memory"), false)
-  const owner = try over(triggerKeeping(adapter, "trigger-1", { details }), triggerMachine)
+  const saving = triggerKeeping(adapter, "trigger-1", { details })
+  const owner = try triggerMachine(saving.load, saving.keep)
   try owner.send(create)
   const late = triggerKeeping(adapter, "trigger-1")
   const seen = try late.load()

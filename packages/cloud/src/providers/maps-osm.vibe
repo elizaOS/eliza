@@ -193,7 +193,7 @@ function routeId(parts: string): string {
 effect function bodyOf(response: HttpClientResponse.HttpClientResponse): string!(BodyTooLarge | Unreachable) {
   const chunks: Uint8Array[] = []
   let size = 0
-  for try (const chunk of Stream.mapError(response.stream, (cause) => new Unreachable({ cause: cause._tag }))) {
+  for try (const chunk of Stream.mapError(response.stream, () => new Unreachable({ cause: "network" }))) {
     size += chunk.length
     if (size > upstreamBodyCap) break
     chunks.push(chunk)
@@ -211,7 +211,7 @@ effect function bodyOf(response: HttpClientResponse.HttpClientResponse): string!
 effect function call(request: HttpClientRequest.HttpClientRequest): Call!!HttpClient.HttpClient {
   const exchange = effect {
     const sent = HttpClientRequest.setHeaders(request, { accept: "application/json", "user-agent": userAgent })
-    const response = Effect.provideService(HttpClient.execute(sent), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect (cause) => { throw new Unreachable({ cause: cause._tag }) }
+    const response = Effect.provideService(HttpClient.execute(sent), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect () => { throw new Unreachable({ cause: "network" }) }
     const billing = billingOf(response.status)
     if (billing === "CallNotBilled") {
       Stream.runHead(response.stream) catch () => undefined

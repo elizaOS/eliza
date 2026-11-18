@@ -1,6 +1,6 @@
 // spec/os/android/deletionWindow.md, "Story: Undo a reviewed deletion before it is sent"; spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"
 import type { DeletionHold, DeletionKind } from "../../gen/os__android__deferredDeletion.ts"
-import { clockUsable, deletionDeadline, deletionNotice, offersUndo, undoConfirmed as undoReceipt } from "../../gen/os__android__deletionWindow.effect.vibe"
+import { clockUsable, deletionDeadline, deletionNotice, offersUndo } from "../../gen/os__android__deletionWindow.effect.vibe"
 import type { DeletionClock, DeletionDeadline, DeletionNotice, DeletionPhase, WindowState } from "../../gen/os__android__deletionWindow.ts"
 import { decoded, type MalformedReply } from "./bridge.vibe"
 import type {
@@ -31,7 +31,7 @@ export type {
   DismissOutcome,
   UndoOutcome,
 } from "./definitions/action-journal.ts"
-export { claimDeletion, clockUsable, deleteUndoMs, deletionDeadline, deletionWindow, offersUndo } from "../../gen/os__android__deletionWindow.effect.vibe"
+export { claimDeletion, clockUsable, deleteUndoMs, deletionDeadline, deletionWindow, offersUndo, undoConfirmed } from "../../gen/os__android__deletionWindow.effect.vibe"
 
 module renderer {
   import type { DeletionClock } from "../../gen/os__android__deletionWindow.ts"
@@ -141,10 +141,6 @@ export effect function parseDeletionsPending(raw: unknown): DeferredDeletionsPen
 
 export effect function receiptPhase(method: "undo" | "dismiss", raw: unknown): DeletionPhase!MalformedReply {
   return PHASES[(try decoded("ElizaActionJournal", method, WireReceipt, raw)).phase]
-}
-
-export function undoConfirmed(receipt: DeletionPhase): boolean {
-  return undoReceipt(receipt)
 }
 
 export function noticeOf(entry: DeferredDeletionEntry): DeletionNotice {

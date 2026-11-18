@@ -2,10 +2,10 @@
 import { assert, describe, it } from "@effect/vitest"
 import { deliverMail } from "../../src/providers/mail.vibe"
 import { deliverSms } from "../../src/providers/sms.vibe"
-import { testCloud, type Answer, type FakeServer, type ProfileEdit } from "../support/cloud.vibe"
+import { testCloud, type Answer, type ProfileEdit } from "../support/cloud.vibe"
 import type { FakeRequest } from "../support/fakes.ts"
 import { callCloud } from "../support/http.ts"
-import { externalAddress, latestCode } from "../support/inbox.ts"
+import { deliveryProviders, externalAddress, latestCode } from "../support/inbox.ts"
 
 effect function check(run: () => void) {
   try Effect.try(run)
@@ -30,22 +30,6 @@ const httpsAdapters: ProfileEdit = (profile) => {
   }
 }
 
-function providers(seen: FakeRequest[], hang: { readonly to?: string }) {
-  return (fakes: FakeServer) => {
-    fakes.mount("/mail/", (request) => {
-      if (request.path !== "/send") return undefined
-      seen.push(request)
-      return (JSON.parse(request.body) as { readonly to: ReadonlyArray<string> }).to[0] === "refused@example.com" ? { status: 422, body: { message: "refused" } } : { status: 200, body: { id: "mail-1" } }
-    })
-    fakes.mount("/sms/", (request) => {
-      if (request.path !== "/messages") return undefined
-      seen.push(request)
-      if (new URLSearchParams(request.body).get("To") === hang.to) return { status: 200, chunks: ["{"], hangAfter: 1 }
-      return { status: 201, body: { sid: "sms-1" } }
-    })
-  }
-}
-
 describe("WP1 Identity: mail and SMS delivery", () => {
   it.live("Loopback delivery keeps each message and the inbox answers the latest per destination (spec/cloud/identity/codeChallenges.md, \"Story: Sign in with a code sent to my email or phone\")", () => scoped(effect {
     const cloud = try testCloud()
@@ -65,7 +49,7 @@ describe("WP1 Identity: mail and SMS delivery", () => {
 
   it.live("HTTPS adapters post to the profile's providers and a refusal is provider_unavailable (spec/cloud/identity/codeChallenges.md, \"Story: Sign in with a code sent to my email or phone\")", () => scoped(effect {
     const seen: FakeRequest[] = []
-    const cloud = try testCloud({ edit: httpsAdapters, mount: providers(seen, {}) })
+    const cloud = try testCloud({ edit: httpsAdapters, mount: deliveryProviders(seen) })
     try cloud.inside(deliverMail({ to: "ada@example.com", subject: "Your sign-in code", text: "Your sign-in code is 111222." }))
     try cloud.inside(deliverSms({ to: "+15551234567", text: "Your code is 654321." }))
     const refusedMail = try (cloud.inside(deliverMail({ to: "refused@example.com", subject: "s", text: "t" })) catch (failure) => failure.refusal.code)
@@ -73,22 +57,22 @@ describe("WP1 Identity: mail and SMS delivery", () => {
     const [mail, sms] = seen
     try check(() => assert.deepStrictEqual(
       [
-        mail?.headers.authorization, JSON.parse(mail?.body ?? "{}"),
+        mail?.headers.authorization, mail?.body,
         sms?.headers.authorization, sms?.headers["content-type"], Object.fromEntries(new URLSearchParams(sms?.body ?? "")),
         refusedMail, refusal(inbox)
       ],
       [
-        "Bearer mail-token", { from: "sign-in@mail.example.com", to: ["ada@example.com"], subject: "Your sign-in code", text: "Your sign-in code is 111222." },
-        `Basic ${btoa("sms-account:sms-token")}`, "application/x-www-form-urlencoded", { To: "+15551234567", From: "+15550001111", Body: "Your code is 654321." },
+        "Bearer mail-token", JSON.stringify({ from: "sign-in@mail.example.com", to: ["ada@example.com"], subject: "Your sign-in code", text: "Your sign-in code is 111222." }),
+        "Basic c21zLWFjY291bnQ6c21zLXRva2Vu", "application/x-www-form-urlencoded", { To: "+15551234567", From: "+15550001111", Body: "Your code is 654321." },
         "ProviderUnavailable", "404 not_found"
       ]
     ))
   }))
 
   it.effect("A provider that does not answer within 10 s is provider_unavailable (spec/cloud/identity/codeChallenges.md, \"Story: Sign in with a code sent to my email or phone\")", () => scoped(effect {
-    const cloud = try testCloud({ edit: httpsAdapters, mount: providers([], { to: "+15559990000" }) })
-    const sending = fork cloud.inside(deliverSms({ to: "+15559990000", text: "Your code is 654321." }) catch (failure) => failure.refusal.code)
-    try sleep(Duration.millis(50)) |> TestClock.withLive(%)
+    const cloud = try testCloud({ edit: httpsAdapters, mount: deliveryProviders([], "+15559990000") })
+    const sending = fork (cloud.inside(deliverSms({ to: "+15559990000", text: "Your code is 654321." })) catch (failure) => failure.refusal.code)
+    try TestClock.withLive(sleep(Duration.millis(200)))
     try TestClock.adjust(Duration.seconds(10))
     const outcome = join sending
     try check(() => assert.strictEqual(outcome, "ProviderUnavailable"))

@@ -2,6 +2,7 @@
 import { networkInterfaces } from "node:os";
 import { Effect } from "effect";
 import type { TestCloud } from "./cloud.vibe";
+import type { FakeRequest, FakeServer } from "./fakes.ts";
 
 export class InboxEmpty extends Error {}
 
@@ -14,4 +15,21 @@ export const latestCode = (cloud: TestCloud, destination: string) =>
 
 export function externalAddress(): string | undefined {
   return Object.values(networkInterfaces()).flat().find((each) => each !== undefined && each.family === "IPv4" && !each.internal)?.address;
+}
+
+export function deliveryProviders(seen: FakeRequest[], silentFor?: string) {
+  return (fakes: FakeServer) => {
+    fakes.mount("/mail/", (request) => {
+      if (request.path !== "/send") return undefined;
+      seen.push(request);
+      const to = (JSON.parse(request.body) as { readonly to: ReadonlyArray<string> }).to[0];
+      return to === "refused@example.com" ? { status: 422, body: { message: "refused" } } : { status: 200, body: { id: "mail-1" } };
+    });
+    fakes.mount("/sms/", (request) => {
+      if (request.path !== "/messages") return undefined;
+      seen.push(request);
+      if (new URLSearchParams(request.body).get("To") === silentFor) return { status: 200, chunks: ["{"], hangAfter: 1 };
+      return { status: 201, body: { sid: "sms-1" } };
+    });
+  };
 }

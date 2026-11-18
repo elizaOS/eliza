@@ -49,7 +49,7 @@ export function returnText(url: ReturnUrl): string {
 }
 
 export effect function servedEnvironment() {
-  return wireEnvironment.Production === (try Deployment).environment ? "Production" as const : "Staging" as const
+  return (try Deployment).environment === "production" ? "Production" as const : "Staging" as const
 }
 
 export effect function decodeRegistration(input: unknown): Registration!RegistrationInvalid {

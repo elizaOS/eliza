@@ -365,9 +365,12 @@ pure val tableValues = Set(List(), List({ prefix: List("plugins", "wifi", "andro
 pure val segmentsValues = Set(List(), List("plugins", "wifi", "android", "src", "main", "WiFi.kt"), List("plugins", "agent", "android", "src"), List("packages", "app"))
 pure val upstreamValues = Set(List(), List(List("plugins", "wifi", "android", "src")), List(List("packages", "app")))
 pure val fieldsSetValues = Set(List(), List("embeddedAgent"), List("embeddedAgent", "generationInputs"), List("residentHost.sockets"))
-pure def lawMappedSourceKeepsItsPathBelowTheModule(table: List[ModuleRoot], segments: List[str]): bool = match upstreamSource(table, segments) {
-  | InOsModule(m) => table.some(r => r.movedTo == m.movedTo and hasPrefix(segments, r.prefix) and (m.rest.length() == 0 or r.prefix.concat(m.rest) == segments))
-  | NoOsModule => table.every(r => not(hasPrefix(segments, r.prefix))) }
+pure def lawMappedSourceKeepsItsPathBelowTheModule(table: List[ModuleRoot], segments: List[str]): bool = {
+  val mapped = upstreamSource(table, segments)
+  match mapped {
+    | InOsModule(m) => table.some(r => r.movedTo == m.movedTo and hasPrefix(segments, r.prefix) and (m.rest.length() == 0 or r.prefix.concat(m.rest) == segments))
+    | NoOsModule => table.every(r => not(hasPrefix(segments, r.prefix))) }
+}
 pure def lawSchemaOneAdmitsOnlyMappedSources(fieldsSet: List[str], table: List[ModuleRoot], upstream: List[List[str]]): bool =
   schemaOneRefusal(fieldsSet, table, upstream) == HostAdmitted implies upstream.every(s => upstreamSource(table, s) != NoOsModule)
 ```

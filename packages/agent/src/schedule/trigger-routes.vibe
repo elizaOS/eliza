@@ -114,7 +114,7 @@ const createBody = Schema.decodeUnknownOption(CreateDraft, strict)
 const editBody = Schema.decodeUnknownOption(EditDraft, strict)
 const enableBody = Schema.decodeUnknownOption(Schema.Struct({ enabled: Schema.Boolean, ...expectedField }), strict)
 const removeBody = Schema.decodeUnknownOption(Schema.Struct(expectedField), strict)
-const executeBody = Schema.decodeUnknownOption(Schema.Struct({}), strict)
+const executeBody = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Never))
 
 type SentDraft = typeof CreateDraft.Type | typeof EditDraft.Type
 
