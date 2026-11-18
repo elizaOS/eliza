@@ -114,12 +114,14 @@ test("a deferred sign-in constrains the exchange to its pre-MFA account", async 
   expect((await response.json()) as { code: string }).toMatchObject({
     code: "google_account_mismatch",
   });
-  expect(calls).toEqual([{
-    organizationId: "org-1",
-    userId: "owner-1",
-    serverAuthCode: "4/0AeaYSHnative",
-    expectedPlatformUserId: "109876543210",
-  }]);
+  expect(calls).toEqual([
+    {
+      organizationId: "org-1",
+      userId: "owner-1",
+      serverAuthCode: "4/0AeaYSHnative",
+      expectedPlatformUserId: "109876543210",
+    },
+  ]);
   expect(invalidations).toHaveLength(0);
 });
 

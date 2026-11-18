@@ -44,7 +44,10 @@ const requestSchema = z
       .min(10)
       .max(2048)
       .regex(/^[A-Za-z0-9/_.~-]+$/),
-    expectedGoogleSubject: z.string().regex(/^[0-9]{1,64}$/).optional(),
+    expectedGoogleSubject: z
+      .string()
+      .regex(/^[0-9]{1,64}$/)
+      .optional(),
   })
   .strict();
 
