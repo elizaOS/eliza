@@ -167,14 +167,20 @@ describe("phone telephony routing on the Alpha image", () => {
     for (const route of [
       "call a number or contact: phone_call",
       "text or draft a text to a number or contact: sms_compose with target",
-      "show, find or look up the owner's contacts: contact_show",
+      "find or show a named contact, or a named contact's number: contact_show with the name as the query",
       "open the dialer or keypad, with or without a number: phone_keypad, which fills in the keypad and never calls",
       "in the general, phone, messaging or contacts context",
-      "only a plain request to open the Phone, Messages or Contacts app is navigation",
+      'a plain request to open or show the Phone, Messages or Contacts app, including "show my contacts" with no name, is navigation to that view',
+      // v609 peer evidence: an earlier "no SMS connector" reply was repeated.
+      "an earlier reply in this conversation saying calls, texts or contacts were unavailable is outdated",
       "VOICE_CALL (a Twilio call from the agent's number)",
     ])
       expect(routing).toContain(route);
     expect(routing).not.toContain("PROPOSE_DEVICE_ACTION cannot");
+    // contact_show needs a non-empty name; an unfiltered "show my contacts"
+    // is the Contacts view, which views.explicit-navigation also resolves.
+    expect(routing).not.toContain("show contacts or open the dialer");
+    expect(routing).not.toMatch(/show[^.;]*the owner's contacts: contact_show/);
   });
   it("keeps the device routes when the planner selected the phone or messaging context", async () => {
     for (const context of ["phone", "messaging"]) {

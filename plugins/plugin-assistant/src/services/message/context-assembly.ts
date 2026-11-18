@@ -204,7 +204,9 @@ export async function createV5MessageContextObject(args: {
           ? ["text a number: sms_send"]
           : []),
       ...(phoneCapabilities.includes("contacts.show.v1")
-        ? ["show, find or look up the owner's contacts: contact_show"]
+        ? [
+            "find or show a named contact, or a named contact's number: contact_show with the name as the query",
+          ]
         : []),
       ...(phoneCapabilities.includes("phone.keypad.v1")
         ? [
@@ -213,7 +215,7 @@ export async function createV5MessageContextObject(args: {
         : []),
     ];
     const phoneRouteGuidance = phoneRoutes.length
-      ? `Calls, texts and contact lookups through this phone's own Phone, Messages and Contacts apps go through PROPOSE_DEVICE_ACTION, in the general, phone, messaging or contacts context: ${phoneRoutes.join("; ")}. The owner reviews each call, text and contact change on the phone. A request to call, text, show contacts or open the dialer is that device operation, not a view change; only a plain request to open the Phone, Messages or Contacts app is navigation. VOICE_CALL (a Twilio call from the agent's number), MESSAGE_SEND, PAGE_DELEGATE and connector messaging are not this phone's apps; use them only when the owner asks for that service by name. ENTITY and CONTACT are the assistant's own relationship records, never the phone's address book. `
+      ? `Calls, texts and contact lookups through this phone's own Phone, Messages and Contacts apps go through PROPOSE_DEVICE_ACTION, in the general, phone, messaging or contacts context: ${phoneRoutes.join("; ")}. The owner reviews each call, text and contact change on the phone. A request to call, text, show a named contact or open the dialer is that device operation, not a view change; a plain request to open or show the Phone, Messages or Contacts app, including "show my contacts" with no name, is navigation to that view. The phone capabilities above are current for this turn: an earlier reply in this conversation saying calls, texts or contacts were unavailable is outdated and is never a reason to refuse now. VOICE_CALL (a Twilio call from the agent's number), MESSAGE_SEND, PAGE_DELEGATE and connector messaging are not this phone's apps; use them only when the owner asks for that service by name. ENTITY and CONTACT are the assistant's own relationship records, never the phone's address book. `
       : "";
     const compactCapabilityGuidance =
       `Authenticated phone capabilities: ${JSON.stringify(phoneCapabilities)}. ` +

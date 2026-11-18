@@ -1136,7 +1136,7 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   },
   {
     types: ["contact_show"],
-    text: "contact_show {query} (contacts.show.v1) opens Contacts on the phone filtered by the contact's name as the owner said it. Use it when the owner asks for a contact's number, email or details, or asks to find or show a contact: the phone shows the matches to the owner and you receive only shown or not-found, never a name, number or count. Tell the owner the contact is on the screen; never state a contact detail you were not given.",
+    text: "contact_show {query} (contacts.show.v1) opens Contacts on the phone filtered by the contact's name as the owner said it. Use it when the owner asks for a contact's number, email or details, or asks to find or show a named contact; the query is never empty, and “show my contacts” with no name is the Contacts view (VIEWS show contacts), not contact_show. The phone shows the matches to the owner and you receive only shown or not-found, never a name, number or count. Tell the owner the contact is on the screen; never state a contact detail you were not given.",
   },
   {
     types: ["contact_read_selected"],
