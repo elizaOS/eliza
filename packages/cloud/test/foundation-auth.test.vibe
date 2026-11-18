@@ -1,0 +1,207 @@
+// spec/cloud/identity/sessions.md, "Story: Admit a request only for a live credential of an active account"; spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
+import { assert, describe, it } from "@effect/vitest"
+import { listening, respond } from "../src/http/server.vibe"
+import { json, type Route, type RouteContext } from "../src/http/routes.vibe"
+import type { RouteClass } from "../src/http/request-auth.vibe"
+import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
+import { tokenDigest } from "../src/shared/sealing.vibe"
+import { Store } from "../src/store/store.vibe"
+import { organization, testCloud, type TestCloud } from "./support/cloud.vibe"
+import { callCloud } from "./support/http.ts"
+import { testProfile } from "./support/profile.ts"
+
+const minuteMs = 60_000
+
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+
+effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
+  return try cloud.store.transaction((tx) => tx.query(text, params))
+}
+
+function deviceKey(seed: string): string {
+  return `eliza_mobile_${seed.repeat(64).slice(0, 64)}`
+}
+
+function sessionToken(seed: string): string {
+  return `eliza_session_${seed.repeat(43).slice(0, 43)}`
+}
+
+function probes(reached: Array<string>): ReadonlyArray<Route> {
+  const probe = (path: `/${string}`, auth: RouteClass): Route => ({
+    method: "GET",
+    path,
+    auth,
+    handler: (context: RouteContext) => effect {
+      reached.push(path)
+      return json({ caller: context.caller.kind })
+    }
+  })
+  return [probe("/probe/service", "ServiceAccess"), probe("/probe/session", "SignedSession"), probe("/probe/fresh", "FreshSession"), probe("/probe/step-up", "StepUp")]
+}
+
+effect function probeServer(cloud: TestCloud, routes: ReadonlyArray<Route>) {
+  const profile = try parseProfile(testProfile(cloud.fakes.url))
+  const built = try Layer.build(HttpServer.serve(respond(routes)).pipe(
+    Layer.provideMerge(listening(0, "127.0.0.1")),
+    Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer))
+  ))
+  const { address } = Context.get(built, HttpServer.HttpServer)
+  const url = "port" in address ? `http://127.0.0.1:${address.port}` : ""
+  return (path: string, token?: string) => promise(() => callCloud(url, path, token === undefined ? {} : { headers: { authorization: `Bearer ${token}` } }))
+}
+
+effect function account(cloud: TestCloud, key: string, status: "active" | "deleting", revokedBefore: { sessions: number; devices: number }, now: number) {
+  try organization(cloud, `org-${key}`)
+  try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, sessions_revoked_before, devices_revoked_before, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, $3, $4, $5, $6, $7, $7)", [
+    key, `org-${key}`, status, `${key}@example.com`, revokedBefore.sessions, revokedBefore.devices, now
+  ])
+}
+
+effect function grant(cloud: TestCloud, user: string, token: string, phase: string, issuedAt: number, keyExpiresAt: number) {
+  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'test-client', $3, $4, $5, $6, $7, $8, $8)", [
+    `grant-${token.slice(-8)}`, user, phase, `cred-${token.slice(-8)}`, tokenDigest(token), issuedAt + minuteMs, keyExpiresAt, issuedAt
+  ])
+}
+
+interface SessionRow {
+  readonly live: boolean
+  readonly epoch: number
+  readonly authAt: number
+  readonly accessExpiresAt: number
+  readonly refreshExpiresAt: number
+  readonly stepUpAt: number
+  readonly mfaAt: number
+}
+
+effect function session(cloud: TestCloud, user: string, token: string, row: SessionRow, now: number) {
+  try sql(cloud, "INSERT INTO sessions (key, state, revision, user_id, access_digest, refresh_digest, live, access_expires_at, refresh_expires_at, auth_at, step_up_at, mfa_at, updated_at) VALUES ($1, $2::jsonb, 1, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)", [
+    `session-${token.slice(-8)}`, JSON.stringify({ epoch: row.epoch }), user, tokenDigest(token), tokenDigest(`refresh-${token}`), row.live, row.accessExpiresAt, row.refreshExpiresAt, row.authAt, row.stepUpAt, row.mfaAt, now
+  ])
+}
+
+function outcome(answer: { readonly status: number; readonly body: unknown }): string {
+  const body = answer.body as { readonly error?: string; readonly reason?: string; readonly caller?: string }
+  return answer.status === 200 ? `200 ${body.caller}` : `${answer.status} ${body.error}${body.reason === undefined ? "" : ` ${body.reason}`}`
+}
+
+describe("WP0 Foundation: request authentication", () => {
+  it.live("Admit a request only for a live credential of an active account (spec/cloud/identity/sessions.md, \"Story: Admit a request only for a live credential of an active account\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const reached: Array<string> = []
+    const call = try probeServer(cloud, probes(reached))
+    const now = try Clock.currentTimeMillis
+    const day = 24 * 60 * minuteMs
+    try account(cloud, "owner", "active", { sessions: 0, devices: now - day }, now)
+    try account(cloud, "leaving", "deleting", { sessions: 0, devices: 0 }, now)
+    try account(cloud, "rotated", "active", { sessions: 1, devices: 0 }, now)
+
+    const liveKey = deviceKey("1")
+    try grant(cloud, "owner", liveKey, "active", now - minuteMs, now + day)
+    const expiredKey = deviceKey("2")
+    try grant(cloud, "owner", expiredKey, "active", now - minuteMs, now - 1)
+    const endedKey = deviceKey("3")
+    try grant(cloud, "owner", endedKey, "ended", now - minuteMs, now + day)
+    const unacknowledgedKey = deviceKey("4")
+    try grant(cloud, "owner", unacknowledgedKey, "exchanged", now - minuteMs, now + day)
+    const beforeRevocationKey = deviceKey("5")
+    try grant(cloud, "owner", beforeRevocationKey, "active", now - 2 * day, now + day)
+    const deletingKey = deviceKey("6")
+    try grant(cloud, "leaving", deletingKey, "active", now - minuteMs, now + day)
+
+    const fresh = { live: true, epoch: 0, authAt: now - minuteMs, accessExpiresAt: now + 10 * minuteMs, refreshExpiresAt: now + day, stepUpAt: 0, mfaAt: now - minuteMs }
+    const freshToken = sessionToken("a")
+    try session(cloud, "owner", freshToken, fresh, now)
+    const staleToken = sessionToken("b")
+    try session(cloud, "owner", staleToken, { ...fresh, authAt: now - 61 * minuteMs, mfaAt: now - 6 * minuteMs }, now)
+    const steppedToken = sessionToken("c")
+    try session(cloud, "owner", steppedToken, { ...fresh, authAt: now - 2 * 60 * minuteMs, stepUpAt: now - 10 * minuteMs }, now)
+    const expiredToken = sessionToken("d")
+    try session(cloud, "owner", expiredToken, { ...fresh, accessExpiresAt: now - 1 }, now)
+    const loggedOutToken = sessionToken("e")
+    try session(cloud, "owner", loggedOutToken, { ...fresh, live: false }, now)
+    const otherEpochToken = sessionToken("f")
+    try session(cloud, "rotated", otherEpochToken, fresh, now)
+    const endedFamilyToken = sessionToken("g")
+    try session(cloud, "owner", endedFamilyToken, { ...fresh, accessExpiresAt: now - 1, refreshExpiresAt: now - 1 }, now)
+    const leavingToken = sessionToken("h")
+    try session(cloud, "leaving", leavingToken, fresh, now)
+
+    const answers = {
+      missing: outcome(try call("/probe/service")),
+      malformed: outcome(try call("/probe/service", "not-a-credential")),
+      unknownKey: outcome(try call("/probe/service", deviceKey("9"))),
+      liveKey: outcome(try call("/probe/service", liveKey)),
+      keyOnSessionRoute: outcome(try call("/probe/session", liveKey)),
+      expiredKey: outcome(try call("/probe/service", expiredKey)),
+      endedKey: outcome(try call("/probe/service", endedKey)),
+      unacknowledgedKey: outcome(try call("/probe/service", unacknowledgedKey)),
+      beforeRevocationKey: outcome(try call("/probe/service", beforeRevocationKey)),
+      deletingKey: outcome(try call("/probe/service", deletingKey)),
+      freshSession: outcome(try call("/probe/fresh", freshToken)),
+      freshStepUp: outcome(try call("/probe/step-up", freshToken)),
+      staleService: outcome(try call("/probe/service", staleToken)),
+      staleFresh: outcome(try call("/probe/fresh", staleToken)),
+      staleStepUp: outcome(try call("/probe/step-up", staleToken)),
+      steppedFresh: outcome(try call("/probe/fresh", steppedToken)),
+      expiredSession: outcome(try call("/probe/session", expiredToken)),
+      loggedOut: outcome(try call("/probe/session", loggedOutToken)),
+      otherEpoch: outcome(try call("/probe/session", otherEpochToken)),
+      endedFamily: outcome(try call("/probe/session", endedFamilyToken)),
+      deletingSession: outcome(try call("/probe/session", leavingToken))
+    }
+    try check(() => assert.deepStrictEqual(answers, {
+      missing: "401 authentication_required credential_unknown",
+      malformed: "401 authentication_required credential_unknown",
+      unknownKey: "401 authentication_required credential_unknown",
+      liveKey: "200 deviceKey",
+      keyOnSessionRoute: "401 authentication_required credential_unknown",
+      expiredKey: "401 authentication_required credential_expired",
+      endedKey: "401 authentication_required credential_revoked",
+      unacknowledgedKey: "401 authentication_required credential_revoked",
+      beforeRevocationKey: "401 authentication_required credential_revoked",
+      deletingKey: "401 authentication_required credential_revoked",
+      freshSession: "200 session",
+      freshStepUp: "200 session",
+      staleService: "200 session",
+      staleFresh: "428 fresh_session_required",
+      staleStepUp: "428 fresh_session_required",
+      steppedFresh: "200 session",
+      expiredSession: "401 authentication_required credential_expired",
+      loggedOut: "401 authentication_required credential_revoked",
+      otherEpoch: "401 authentication_required credential_revoked",
+      endedFamily: "401 authentication_required credential_unknown",
+      deletingSession: "401 authentication_required credential_revoked"
+    }))
+    try check(() => assert.deepStrictEqual(reached, ["/probe/service", "/probe/fresh", "/probe/step-up", "/probe/service", "/probe/fresh"]))
+  }))
+
+  it.live("Limit a device key to 120 requests a minute before it is looked up (spec/cloud/shared/rateLimit.md, \"Story: Refuse excess requests with a usable retry time\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const reached: Array<string> = []
+    const call = try probeServer(cloud, probes(reached))
+    const now = try Clock.currentTimeMillis
+    const windowEnd = Math.floor(now / minuteMs) * minuteMs + minuteMs
+    if (windowEnd - now < 20_000) try sleep(Duration.millis(windowEnd - now + 50))
+    const start = try Clock.currentTimeMillis
+    try account(cloud, "owner", "active", { sessions: 0, devices: 0 }, start)
+    const key = deviceKey("7")
+    try grant(cloud, "owner", key, "active", start - minuteMs, start + 60 * minuteMs)
+    const unknown = deviceKey("8")
+    const statuses: Array<number> = []
+    for (let index = 0; index < 120; index += 1) {
+      statuses.push((try call("/probe/service", key)).status)
+    }
+    const over = try call("/probe/service", key)
+    const unknownStatuses: Array<number> = []
+    for (let index = 0; index < 121; index += 1) {
+      unknownStatuses.push((try call("/probe/service", unknown)).status)
+    }
+    const overBody = over.body as { readonly error: string; readonly retryAt?: number }
+    try check(() => assert.deepStrictEqual(
+      [statuses.every((status) => status === 200), over.status, overBody.error, typeof overBody.retryAt, over.headers["retry-after"] !== undefined, reached.length, unknownStatuses.slice(0, 120).every((status) => status === 401), unknownStatuses[120]],
+      [true, 429, "rate_limited", "number", true, 120, true, 429]
+    ))
+  }))
+})

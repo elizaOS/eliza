@@ -66,11 +66,6 @@ effect function ttlMs(days: string | number | undefined): number!ClientFlagsInva
   return count * millisPerDay
 }
 
-effect function certs(given: ReadonlyArray<string>): ReadonlyArray<string>!ClientFlagsInvalid {
-  if (given.length < 1 || given.length > 4) throw new ClientFlagsInvalid({ problem: "--cert is given 1 to 4 times" })
-  return given
-}
-
 function single(flags: OperatorFlags, name: string): string | undefined {
   return flags.values(name)[0]
 }
@@ -92,7 +87,7 @@ effect function registerFromFlags(tx: Tx, flags: OperatorFlags, now: number) {
     environment: try served(),
     displayName: try needed(flags, "display-name"),
     androidPackage: try needed(flags, "android-package"),
-    certFingerprints: try certs(flags.values("cert")),
+    certFingerprints: flags.values("cert"),
     signInReturn: try needed(flags, "sign-in-return"),
     billingReturn: try needed(flags, "billing-return"),
     ...(connectReturn === undefined ? {} : { connectReturn }),
@@ -116,7 +111,7 @@ effect function updateFromFlags(tx: Tx, flags: OperatorFlags, now: number) {
     ...before,
     displayName: single(flags, "display-name") ?? before.displayName,
     androidPackage: single(flags, "android-package") ?? before.androidPackage,
-    certFingerprints: given.length === 0 ? before.certFingerprints : try certs(given),
+    certFingerprints: given.length === 0 ? before.certFingerprints : given,
     signInReturn: single(flags, "sign-in-return") ?? before.signInReturn,
     billingReturn: single(flags, "billing-return") ?? before.billingReturn,
     ...(connectReturn === undefined ? {} : { connectReturn }),
@@ -145,7 +140,6 @@ export effect function seedClients(tx: Tx, entries: unknown, now: number) {
     const input: RegistrationInput = {
       ...rest,
       environment,
-      certFingerprints: try certs(entry.certFingerprints),
       credentialTtlMs: try ttlMs(credentialTtlDays),
       nativeGoogle: nativeGoogle ?? false,
       enabled: true
@@ -158,6 +152,6 @@ export effect function seedClients(tx: Tx, entries: unknown, now: number) {
 
 export const commands: ReadonlyArray<OperatorCommandHandler> = [
   { words: ["client", "register"], operatorCommand: "RegisterClient", valued, repeated, switches, run: registerFromFlags },
-  { words: ["client", "update"], operatorCommand: "UpdateClient", valued, repeated, switches, run: updateFromFlags },
+  { words: ["client", "update"], operatorCommand: "RegisterClient", valued, repeated, switches, run: updateFromFlags },
   { words: ["client", "disable"], operatorCommand: "DisableClient", valued: ["client-id"], repeated: [], switches: [], run: disableFromFlags }
 ]

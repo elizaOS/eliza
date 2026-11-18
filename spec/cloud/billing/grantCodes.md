@@ -103,8 +103,7 @@ An account that is not Active is refused `403 access_denied` with reason
 organization that already redeemed this code gets its original grant back
 with `replayed: true`, even after the code was disabled, expired, used up or
 its grant revoked. A disabled, expired or used-up code is then
-`400 grant_code_invalid`, before the checks below, so their answers never
-confirm that such a code exists. An idempotency key the organization used
+`400 grant_code_invalid`. An idempotency key the organization used
 for another code is `409 idempotency_conflict`; a family the organization
 already holds through another code, revoked or not, is
 `409 subscription_grant_already_redeemed`; a code that requires no paid plan,
@@ -196,12 +195,21 @@ pure def stepGrantsAreNeverTakenBack(before: Code, after: Code): bool =
 pure def sometimesUsedUp(c: Code): bool = c.status == Redeemable and c.grants.length() == c.maxRedemptions and refusedWith(c.last, GrantCodeInvalid)
 ```
 
-### A disabled, expired or used-up code answers as an unknown one
+### A disabled, expired or used-up code answers as an unknown one, unless the organization already holds its grant
+
+The check of the code's use comes before the idempotency, family and
+paid-plan checks, so none of their answers, and no fresh grant, can come
+from a code nobody may redeem now.
 
 ```quint
-pure def stepUnusableCodeLooksUnknown(before: Code, via: str, after: Code): bool =
-  (via == "redeem" and (before.status == Disabled or before.grants.length() >= before.maxRedemptions))
-    implies (refusedWith(after.last, GrantCodeInvalid) or refusedWith(after.last, AccessDenied) or isReplayAnswer(after.last))
+pure def lawUnusableCodeLooksUnknown(offered: Code, organizationId: str, accountActive: bool, idempotencyKey: str, keyUsedForAnotherCode: bool, familyHeld: bool, paidPlanOpen: bool, grantId: str, now: Millis): bool = {
+  val a = redeemAnswer(offered, organizationId, accountActive, idempotencyKey, keyUsedForAnotherCode, familyHeld, paidPlanOpen, grantId, now)
+  (not(hasRedeemed(offered, organizationId)) and not(redeemableAt(offered, now))) implies (refusedWith(a, GrantCodeInvalid) or refusedWith(a, AccessDenied))
+}
+pure val mintedForTwo: Code = mint(initial, "founders", PlusMonthly, defaultTerm, true, 2, ExpiresAt({ at: 1 }))
+pure val heldByOrg1: Grant = { grantId: "grant1", organizationId: "org1", idempotencyKey: "key1", startsAt: 0, ends: grantEndOf(defaultTerm, 0), standing: InForce }
+pure val offeredValues: Set[Code] = Set(initial, mintedForTwo, disable(mintedForTwo),
+  { ...mintedForTwo, maxRedemptions: 1, grants: List(heldByOrg1) }, { ...mintedForTwo, expiry: NeverExpires })
 ```
 
 ### A credential may try 5 codes and a client address 60 codes in 15 minutes
@@ -228,20 +236,39 @@ pure def stepDisabledStaysDisabled(before: Code, after: Code): bool = before.sta
 pure def sometimesDisabledCodeStillReplays(c: Code): bool = c.status == Disabled and isReplayAnswer(c.last)
 ```
 
-### Revoking a grant ends it at once and retires its open allowance months, and the organization keeps its place in the family
+### Revoking a grant ends it at once, never before it began, and a revoked grant stays revoked
 
-Revoking a revoked grant changes nothing. The organization's effective plan falls back to
-its next grant or the free plan (`spec/cloud/billing/entitlements.md`); each
-open month closes with `GrantRevoked`.
+Revoking a revoked grant changes nothing. The revoked grant stays in the
+code's row, so the organization keeps its place in the family and a replay
+still answers it. Its effective plan falls back to its next grant or the
+free plan (`spec/cloud/billing/entitlements.md`).
 
 ```quint
 pure def isInForce(g: Grant): bool = g.standing == InForce
+pure def revokedInTime(g: Grant): bool = {
+  val standing = g.standing
+  match standing { | RevokedAt(x) => x.revokedAtMs >= g.startsAt | InForce => true }
+}
 pure def canRevokeGrant(c: Code, organizationId: str, now: Millis): bool =
   hasRedeemed(c, organizationId) and isInForce(grantOf(c, organizationId)) and now >= grantOf(c, organizationId).startsAt
 pure def revokeGrant(c: Code, organizationId: str, now: Millis): CodeStep =
   { state: { ...c, grants: c.grants.listMap(g => if (g.organizationId == organizationId) { ...g, standing: RevokedAt({ revokedAtMs: now }) } else g) },
     out: List(RetireGrantMonths({ grantId: grantOf(c, organizationId).grantId })) }
+pure def alwaysRevokedNoEarlierThanItBegan(c: Code): bool = c.grants.every(g => revokedInTime(g))
 pure def stepRevocationIsFinal(before: Code, after: Code): bool =
   before.grants.every(g => isInForce(g) or after.grants.some(h => h.grantId == g.grantId and h.organizationId == g.organizationId and h.standing == g.standing))
 pure def sometimesGrantRevoked(c: Code): bool = c.grants.some(g => not(isInForce(g)))
+```
+
+### Only revoking a grant in force retires its allowance months
+
+Each open month of the grant closes with `GrantRevoked`
+(`spec/cloud/billing/allowance.md`).
+
+```quint
+pure def retiredGrantId(e: CodeEffect): str = match e { | RetireGrantMonths(x) => x.grantId | OpenGrantMonths(_) => "" }
+pure def stepOnlyRevocationRetiresMonths(before: Code, via: str, after: Code, out: List[CodeEffect]): bool =
+  out.every(e => retiredGrantId(e) == "" or (via == "revokeGrant"
+    and before.grants.some(g => g.grantId == retiredGrantId(e) and isInForce(g))
+    and after.grants.some(g => g.grantId == retiredGrantId(e) and not(isInForce(g)))))
 ```

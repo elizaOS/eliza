@@ -140,11 +140,12 @@ pure def lawNoRequestIsAdmittedInBothEnvironments(registry: List[Registration], 
   not(clientCheck(registry, Production, request) == ClientAdmitted and clientCheck(registry, Staging, request) == ClientAdmitted)
 ```
 
-### A return on the environment's web origin is served by the cloud's return page, and any other by the product's own App Link
+### A return URL names at most one enabled registration and purpose, and the cloud serves it only on the environment's web origin
 
 `spec/cloud/returnPages.md` serves a request only when its URL is the return
-of an enabled registration on the web origin; the product verifies a return
-on its own host with its own App Link and serves it itself.
+of an enabled registration on the web origin (`returnsAt`, `returnHost`); the
+product verifies a return on its own host with its own App Link and serves it
+itself.
 
 ```quint
 type ReturnHost = CloudWebOrigin | ProductHost
@@ -217,25 +218,12 @@ pure def lawEachFaultHasItsOwnCode(fault: ClientFault, other: ClientFault): bool
 
 ### Native Google sign-in is refused as google_not_configured when Google is off, and as invalid_client when the registration does not enable it
 
-`POST /api/v1/app-auth/mobile/google` first admits the client with its
-sign-in return, then needs both; neither refusal is retryable.
-
-The Worker also checks that this registration is the served application's
-device exchange registration. The same requirement controls
-`google.nativeSignIn` in its config response.
-
-The device first posts `{clientId, environment, redirectUri, challenge, state}`
-to `/api/v1/app-auth/mobile/google/challenge`, where `challenge` is the
-S256 PKCE challenge. The response contains a `challengeId`, a nonce and
-`expiresIn` in seconds. The device gives the nonce to Google Credential
-Manager and posts `{clientId, environment, redirectUri, challengeId, idToken}`
-to the completion route. Cloud verifies the Google signature, issuer,
-audience, expiry, subject and nonce. It consumes the unexpired challenge
-and issues the existing device code in one transaction. The response
-contains `{code, state}`. The device exchanges the code with its original
-verifier and acknowledges the returned device credential. The native
-Google endpoints issue no browser credentials, and the account identity is
-the same Google subject used by browser sign-in.
+`POST /api/v1/app-auth/mobile/google` and its challenge route first admit
+the client with its sign-in return, then need both; neither refusal is
+retryable. The same two conditions decide `google.nativeSignIn` in the config
+read, so an app that reads the config never offers a route that refuses it.
+The challenge and the one-call sign-in themselves are
+`identity/federatedSignIn` and `nativeClients/deviceKeys`.
 
 ```quint
 type NativeGoogleCheck = NativeGoogleOpen | GoogleNotOffered | NativeGoogleNotRegistered

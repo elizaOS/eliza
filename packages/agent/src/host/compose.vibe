@@ -3,7 +3,9 @@ import { AgentRuntime, type Character, type IMessageService, type RuntimeSetting
 import type { BootFailure, LaunchPolicy } from "../../gen/agent__host__launch.ts"
 import { Machine, cloudLinkPlugin, machine, overlaps, privacyPlugin, storagePlugin, type PlanFailure, type PlanPhase, type ProcessValue, type WorkerLaunch } from "../../gen/agent__plugins__profile.effect.vibe"
 import type { LocalRoute } from "../access/routes.vibe"
-import { ModuleRefused, actionNames, routePrefixes, type AgentPlugin, type ModuleFactory } from "./module.vibe"
+import { bundledPlugins } from "./bundled.vibe"
+import { ModuleRefused, actionNames, routePrefixes, type AgentPlugin, type ModuleContext, type ModuleFactory } from "./module.vibe"
+import { builtinModuleFactories } from "./modules.vibe"
 
 export type WorkerPin =
   | { readonly kind: "none" }
@@ -18,8 +20,9 @@ export interface ComposeInput {
   readonly character: Character
   readonly settings: RuntimeSettings
   readonly policy: LaunchPolicy
-  readonly bundled: ReadonlyMap<string, AgentPlugin>
-  readonly modules?: ReadonlyMap<string, ModuleFactory<never>>
+  readonly bundled?: ReadonlyMap<string, AgentPlugin> | undefined
+  readonly modules?: ReadonlyMap<string, ModuleFactory<never>> | undefined
+  readonly context: Omit<ModuleContext, "runtime">
   readonly storage: AgentPlugin
   readonly cloudLink: AgentPlugin
   readonly privacy: Privacy
@@ -73,17 +76,23 @@ effect function register(runtime: AgentRuntime, plugin: AgentPlugin) {
   return added
 }
 
-effect function planned(name: string, input: ComposeInput, runtime: AgentRuntime) {
+interface Sources {
+  readonly bundled: ReadonlyMap<string, AgentPlugin>
+  readonly modules: ReadonlyMap<string, ModuleFactory<never>>
+  readonly context: ModuleContext
+}
+
+effect function planned(name: string, input: ComposeInput, sources: Sources) {
   if (name === storagePlugin) return input.storage
   if (name === cloudLinkPlugin) return input.cloudLink
   if (name === privacyPlugin && input.privacy.kind === "on") return input.privacy.plugin
-  const factory = input.modules?.get(name)
+  const factory = sources.modules.get(name)
   if (factory !== undefined) {
-    const made = try factory(runtime)
+    const made = try factory(sources.context)
     if (made.name !== name) throw new ModuleRefused({ module: name, reason: "Returned a different module name" })
     return made.plugin
   }
-  const bundled = input.bundled.get(name)
+  const bundled = sources.bundled.get(name)
   if (bundled === undefined) throw new ModuleRefused({ module: name, reason: "The bundle does not contain this module" })
   return bundled
 }
@@ -93,10 +102,15 @@ function workerLaunch(worker: WorkerPin): WorkerLaunch {
 }
 
 effect function loadPlan(runtime: AgentRuntime, input: ComposeInput) {
+  const sources: Sources = {
+    bundled: input.bundled ?? bundledPlugins,
+    modules: input.modules ?? builtinModuleFactories,
+    context: { ...input.context, runtime },
+  }
   const plan = try planMachine()
   plan.send({
     type: "choosePlan",
-    bundled: [...input.bundled.keys()],
+    bundled: [...sources.bundled.keys()],
     policy: input.policy,
     privacyOn: input.privacy.kind === "on",
     workerLaunch: workerLaunch(input.worker),
@@ -107,7 +121,7 @@ effect function loadPlan(runtime: AgentRuntime, input: ComposeInput) {
   let state = try settled(plan, "load list")
   while (state.next < state.order.length) {
     const name = state.order[state.next]
-    const plugin = try planned(name, input, runtime)
+    const plugin = try planned(name, input, sources)
     const actions = try register(runtime, plugin)
     routes.push(...(plugin.routes ?? []))
     try orDie(plan.send({ type: "registerNext", actions, routes: routePrefixes(plugin) }))
@@ -115,7 +129,7 @@ effect function loadPlan(runtime: AgentRuntime, input: ComposeInput) {
   }
   if (state.product.tag === "ProductPending") {
     const name = state.product.name
-    const product = try planned(name, input, runtime)
+    const product = try planned(name, input, sources)
     const prefixes = routePrefixes(product)
     const claimed = overlaps(prefixes, state.moduleRoutes)
     const actions = claimed ? [] : try register(runtime, product)

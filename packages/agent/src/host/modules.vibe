@@ -1,0 +1,5 @@
+// spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"
+import type { ModuleFactory } from "./module.vibe"
+
+export const builtinModuleFactories: ReadonlyMap<string, ModuleFactory<never>> = new Map<string, ModuleFactory<never>>([
+])

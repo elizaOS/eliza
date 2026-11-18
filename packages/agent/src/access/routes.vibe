@@ -1,5 +1,5 @@
 // spec/agent/access/routes.md, "Story: Admit only the routes a product lists"
-import { admission, flatParam, pathLimit, validList, type Accept, type Admission, type Flaw, type Group, type Method as ModelMethod, type Piece, type Request as ModelRequest } from "../../gen/agent__access__routes.ts"
+import { flatParam, initial, pathLimit, served, step, type Accept, type Admission, type Flaw, type Group, type Method as ModelMethod, type Piece, type Request as ModelRequest, type RouteGate as GateState, type Table } from "../../gen/agent__access__routes.ts"
 
 const methods = { GET: "Get", POST: "Post", PUT: "Put", PATCH: "Patch", DELETE: "Delete" } as const
 const literal = /^[A-Za-z0-9._-]+$/
@@ -69,6 +69,11 @@ export type LocalRouter = (request: LocalCall, signal: AbortSignal) => Promise<R
 
 interface Routes {
   readonly admit: (request: RouteRequest) => Admission
+}
+
+export interface RouteGate extends Routes {
+  readonly load: (input: unknown) => Table
+  readonly state: () => GateState
 }
 
 const parseList = Schema.decodeUnknownOption(RouteList, { onExcessProperty: "error" })
@@ -167,17 +172,35 @@ function wireRequest(request: RouteRequest, method: ModelMethod, ids: ReturnType
   }
 }
 
-export function defineRoutes(input: unknown): Routes {
-  const parsed = parseList(input)
-  const list = parsed._tag === "Some" ? grouped(parsed.value) : []
-  const groups = validList(list) ? list : []
-  const ids = matchPatterns(groups.map((group) => group.id))
-  const values = matchPatterns(groups.flatMap((group) => group.routes.flatMap((route) =>
-    route.query.flatMap(({ accepts }) => accepts.tag === "Matching" ? [accepts.pattern] : []))))
+export function routeGate(): RouteGate {
+  let state: GateState = initial
+  let ids = matchPatterns([])
+  let values = matchPatterns([])
   return {
+    state: () => state,
+    load: (input) => {
+      const parsed = parseList(input)
+      state = step(state, { type: "load", routes: parsed._tag === "Some" ? grouped(parsed.value) : [] }).state
+      const groups = served(state.table)
+      ids = matchPatterns(groups.map((group) => group.id))
+      values = matchPatterns(groups.flatMap((group) => group.routes.flatMap((route) =>
+        route.query.flatMap(({ accepts }) => accepts.tag === "Matching" ? [accepts.pattern] : []))))
+      return state.table
+    },
     admit: (request) => {
       const method = modelMethod(request.method)
-      return method === undefined ? { tag: "RouteRefused" } : admission(groups, wireRequest(request, method, ids, values))
+      if (method === undefined) return { tag: "RouteRefused" }
+      const next = step(state, { type: "admit", request: wireRequest(request, method, ids, values) })
+      state = next.state
+      return next.out[0]
     },
   }
 }
+
+export function defineRoutes(input: unknown): Routes {
+  const gate = routeGate()
+  gate.load(input)
+  return { admit: gate.admit }
+}
+
+export const admitRoute = (list: unknown, request: RouteRequest): Admission => defineRoutes(list).admit(request)

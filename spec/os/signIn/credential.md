@@ -1,22 +1,15 @@
 # Device credential
 
-Custody of the device key the cloud issues to this device, and of the one
-in-memory account session. The cloud side is `spec/cloud/nativeClients/deviceKeys.md`
-(connect, token, ack, self-revoke; 30-day keys, no renewal) and
-`spec/cloud/identity/sessions.md` (the session issuer). The sign-in flow
-(`./flow.md`) obtains the one-time code and calls the token exchange; the
-agent service (`../agentService/lifecycle.md`) acts on this machine's
-notices.
-
-Key values, codes, PKCE verifiers and session tokens stay in the Java
-shell; the model sees versions, accounts, times and outcomes. The shell
-keeps the key in a secure store slot (`../android/secureStore.md`) whose
-name it prefixes with the deployment's authority digest, and stores this
-machine's state (generation, custody, a key awaiting acknowledgement,
-duties) durably in the same store; the account session lives only in
-memory. `generation` counts the owner's credential actions: a sign-in, a
-sign-out, a reset. Times are epoch milliseconds. The shell forwards each
-notice in `out` to the agent service.
+Custody of the device key the cloud issues (`spec/cloud/nativeClients/deviceKeys.md`:
+connect, token, ack, self-revoke; 30-day keys, never renewed) and of the one
+in-memory account session (`spec/cloud/identity/sessions.md`). The sign-in
+flow (`./flow.md`) runs the exchange. Key values, codes, PKCE verifiers and
+session tokens stay in the Java shell; the model sees versions, accounts,
+times and outcomes. The shell keeps keys in secure store slots
+(`../android/secureStore.md`) prefixed with the deployment's authority
+digest, and this machine's state, except the session, durably beside them.
+Times are epoch milliseconds. `Announce`, `SignedOutNotice` and
+`ExpiredNotice` go to the agent service; the shell acts on `VerifyAccount`.
 
 ## Story: Keep me signed in without a second copy of my key
 
@@ -35,8 +28,8 @@ import types.* from "../../cloud/shared/types"
 import sessions as Iss from "../../cloud/identity/sessions"
 import secureStore as S from "../android/secureStore"
 type Account = { userId: str, organizationId: str }
-type Custody = SignedOut | Active({ version: int, account: Account, keyExpiresAt: Millis }) | Expired({ account: Account })
-type Attempt = NoAttempt | Exchanging({ attempt: int }) | Acknowledging({ attempt: int, version: int, account: Account, lapsesAt: Millis })
+type Custody = SignedOut | Active({ version: int, credentialId: str, account: Account, keyExpiresAt: Millis }) | Expired({ account: Account })
+type Attempt = NoAttempt | Exchanging({ attempt: int }) | Acknowledging({ attempt: int, version: int, credentialId: str, account: Account, lapsesAt: Millis })
 type Duty = { version: int, lapsesAt: Millis, tries: int }
 type AccountSession = NoSession | Session({ version: int, until: Millis, accessExpiresAt: Millis, refreshing: bool, waiters: int })
 type DeviceCredential = { now: Millis, generation: int, lastVersion: int, custody: Custody, attempt: Attempt, duties: List[Duty], session: AccountSession }
@@ -48,6 +41,7 @@ pure def attemptOf(s: DeviceCredential): int = { val p = s.attempt  match p { | 
 pure def activeVersion(s: DeviceCredential): int = { val c = s.custody  match c { | Active(a) => a.version | _ => 0 } }
 pure def pendingVersion(s: DeviceCredential): int = { val p = s.attempt  match p { | Acknowledging(k) => k.version | _ => 0 } }
 pure def accountOf(s: DeviceCredential): Account = { val c = s.custody  match c { | Active(a) => a.account | Expired(e) => e.account | SignedOut => noAccount } }
+pure def credentialIdOf(s: DeviceCredential): str = { val c = s.custody  match c { | Active(a) => a.credentialId | _ => "" } }
 pure def isSignedIn(s: DeviceCredential): bool = activeVersion(s) >= 1
 pure def beginSignIn(s: DeviceCredential): DeviceCredential =
   { ...s, generation: s.generation + 1, attempt: Exchanging({ attempt: s.generation + 1 }), duties: s.duties.concat(pendingDuty(s.attempt, signOutAttempts)) }
@@ -61,22 +55,27 @@ pure def stepGenerationCountsOwnerActions(before: DeviceCredential, via: str, af
 
 ### A minted key is kept only after the secure store reads it back, and a lost token reply is asked again with the same code
 
-The token answer carries the account (`user.id`, `organizationId`) and the
-key's expiry. The shell writes the key to its slot and reads it back before
-it reports the answer; only a `Written` outcome gives the key a new
-version and moves on to the acknowledgement. Any other outcome, or no
+The token answer carries the credential id, the account (`user.id`,
+`organizationId`) and the key's expiry. The shell writes the key to a slot
+of its own, never over the active key, and reads it back before it reports
+the answer; only a `Written` outcome gives the key a new version and moves
+on to the acknowledgement. Any other outcome, or no
 answer, leaves the exchange where it was: the shell asks `token` again with
 the same one-time code and PKCE verifier, and the cloud answers the same
 credential from its sealed copy until it is acknowledged. There is no
-device request-id replay.
+device request-id replay. An acknowledgement may come up to the code's
+five-minute deadline later, so a key awaiting it may live that much past
+the expiry the token answer gave.
 
 ```quint
 pure val ackWindow: Millis = 5 * millisPerMinute
-pure def canTokenAnswered(s: DeviceCredential, attempt: int, account: Account, keyExpiresAt: Millis): bool =
-  s.attempt == Exchanging({ attempt: attempt }) and account.userId != "" and account.organizationId != "" and keyExpiresAt > s.now
-pure def tokenAnswered(s: DeviceCredential, attempt: int, account: Account, keyExpiresAt: Millis, stored: S::ExchangeOutcome): DeviceCredential =
-  if (stored == S::Written) { ...s, lastVersion: s.lastVersion + 1, attempt: Acknowledging({ attempt: attempt, version: s.lastVersion + 1, account: account, lapsesAt: keyExpiresAt + ackWindow }) }
+pure def canTokenAnswered(s: DeviceCredential, attempt: int, credentialId: str, account: Account, keyExpiresAt: Millis): bool =
+  s.attempt == Exchanging({ attempt: attempt }) and credentialId != "" and account.userId != "" and account.organizationId != "" and keyExpiresAt > s.now
+pure def tokenAnswered(s: DeviceCredential, attempt: int, credentialId: str, account: Account, keyExpiresAt: Millis, stored: S::ExchangeOutcome): DeviceCredential =
+  if (stored == S::Written) { ...s, lastVersion: s.lastVersion + 1,
+    attempt: Acknowledging({ attempt: attempt, version: s.lastVersion + 1, credentialId: credentialId, account: account, lapsesAt: keyExpiresAt + ackWindow }) }
   else s
+pure val credentialIdValues = Set("c1", "c2")
 pure val accountValues = Set({ userId: "u1", organizationId: "o1" }, { userId: "u2", organizationId: "o2" }, { userId: "", organizationId: "o1" })
 pure val keyExpiresAtValues = Set(120000, 2592000000)
 pure val storedValues = Set(S::Written, S::Unconfirmed, S::Failed)
@@ -90,23 +89,24 @@ pure def sometimesAwaitingAcknowledgement(s: DeviceCredential): bool = pendingVe
 ### A key becomes active only when the cloud acknowledges it, and each new key is announced once
 
 The acknowledgement (`{status: "acknowledged", credentialId, expiresAt}`)
-of the newest sign-in installs its key as the active one, with the
-expiry the answer gives. A key it replaces leaves with a revoke duty, and
+of the newest sign-in, for the credential its token answer named, installs
+that key as the active one with the expiry the answer gives. A key it replaces leaves with a revoke duty, and
 the account session of the old key is discarded. The new key is announced
 once with its account; the agent service pushes it to a running agent of
 the same account, or restarts the agent on the new account's directory.
 
 ```quint
-pure def canAcknowledged(s: DeviceCredential, attempt: int, keyExpiresAt: Millis): bool =
-  attemptOf(s) == attempt and pendingVersion(s) >= 1 and keyExpiresAt > s.now
-pure def acknowledged(s: DeviceCredential, attempt: int, keyExpiresAt: Millis): CredentialStep = {
+pure def canAcknowledged(s: DeviceCredential, attempt: int, credentialId: str, keyExpiresAt: Millis): bool = {
+  val p = s.attempt
+  match p { | Acknowledging(k) => k.attempt == attempt and k.credentialId == credentialId and keyExpiresAt > s.now | _ => false }
+}
+pure def acknowledged(s: DeviceCredential, attempt: int, credentialId: str, keyExpiresAt: Millis): CredentialStep = {
   val p = s.attempt
   match p {
-    | Acknowledging(k) => { state: { ...s, custody: Active({ version: k.version, account: k.account, keyExpiresAt: keyExpiresAt }), attempt: NoAttempt, session: NoSession,
+    | Acknowledging(k) => { state: { ...s, custody: Active({ version: k.version, credentialId: k.credentialId, account: k.account, keyExpiresAt: keyExpiresAt }), attempt: NoAttempt, session: NoSession,
         duties: s.duties.concat(keyDuty(s.custody, signOutAttempts)) }, out: List(Announce({ version: k.version, account: k.account })) }
     | _ => { state: s, out: List() }
-  }
-}
+  } }
 pure val weight_acknowledged = 6
 pure def isAnnounce(n: CredentialNotice): bool = match n { | Announce(a) => true | _ => false }
 pure def stepEachNewKeyIsAnnouncedOnce(before: DeviceCredential, via: str, after: DeviceCredential, out: List[CredentialNotice]): bool =
@@ -143,9 +143,10 @@ revoke; from any other request it only asks the shell to read
 
 ```quint
 pure def canRejected(s: DeviceCredential, version: int, reason: RefusalReason): bool = version >= 1 and activeVersion(s) == version and isCredentialReason(reason)
-pure def rejected(s: DeviceCredential, version: int, reason: RefusalReason, fromAccountRead: bool): CredentialStep =
+type RejectedOn = AccountRead | OtherRequest
+pure def rejected(s: DeviceCredential, version: int, reason: RefusalReason, on: RejectedOn): CredentialStep =
   if (reason == CredentialExpired) { state: { ...s, custody: Expired({ account: accountOf(s) }), session: NoSession }, out: List(ExpiredNotice) }
-  else if (fromAccountRead) { state: { ...s, custody: SignedOut, session: NoSession }, out: List(SignedOutNotice) }
+  else if (on == AccountRead) { state: { ...s, custody: SignedOut, session: NoSession }, out: List(SignedOutNotice) }
   else { state: s, out: List(VerifyAccount) }
 pure val versionValues = Set(1, 2)
 pure val reasonValues = Set(CredentialExpired, CredentialRevoked, CredentialUnknown, NoReason)
@@ -199,8 +200,9 @@ duty is dropped once its key has lapsed.
 ```quint
 pure val startAttempts = 1
 pure def canRevokeAnswered(s: DeviceCredential, version: int): bool = s.duties.some(d => d.version == version and d.tries > 0)
-pure def revokeAnswered(s: DeviceCredential, version: int, cloudAnswered: bool): DeviceCredential =
-  { ...s, duties: if (cloudAnswered) s.duties.select(d => d.version != version)
+type RevokeReply = RevokeSettled | RevokeUnanswered
+pure def revokeAnswered(s: DeviceCredential, version: int, reply: RevokeReply): DeviceCredential =
+  { ...s, duties: if (reply == RevokeSettled) s.duties.select(d => d.version != version)
     else s.duties.listMap(d => if (d.version == version and d.tries > 0) { ...d, tries: d.tries - 1 } else d) }
 pure def canElapse(s: DeviceCredential, ms: Millis): bool = ms > 0
 pure def elapse(s: DeviceCredential, ms: Millis): DeviceCredential =
@@ -247,47 +249,33 @@ pure def grantSession(s: DeviceCredential, account: Account, accessExpiresAt: Mi
 }
 pure def canDropSession(s: DeviceCredential): bool = s.session != NoSession
 pure def dropSession(s: DeviceCredential): DeviceCredential = { ...s, session: NoSession }
-pure def sessionUsable(s: DeviceCredential): bool = {
-  val held = s.session
-  match held { | Session(t) => s.now < t.accessExpiresAt | NoSession => false }
-}
+pure def sessionUsable(s: DeviceCredential): bool = { val held = s.session  match held { | Session(t) => s.now < t.accessExpiresAt | NoSession => false } }
 pure val accessExpiresAtValues = Set(900000, 7200000)
 pure val weight_grantSession = 3
-pure def alwaysSessionBelongsToTheActiveKey(s: DeviceCredential): bool = {
-  val held = s.session
-  match held {
-    | Session(t) => t.version >= 1 and t.version == activeVersion(s) and s.now < t.until and t.until <= s.now + Iss::freshWindow and t.accessExpiresAt <= t.until
-    | NoSession => true
-  }
-}
+pure def alwaysSessionBelongsToTheActiveKey(s: DeviceCredential): bool = { val held = s.session  match held {
+  | Session(t) => t.version >= 1 and t.version == activeVersion(s) and s.now < t.until and t.until <= s.now + Iss::freshWindow and t.accessExpiresAt <= t.until
+  | NoSession => true } }
 pure def sometimesSessionUsable(s: DeviceCredential): bool = sessionUsable(s)
 ```
 
 ### Overlapping readers share one pending refresh
 
 A reader of an expired access token starts the refresh
-(`POST /api/v1/auth/refresh`) or waits for the one in flight: a second
-refresh with the spent refresh token would be taken by the cloud as theft
-and end every session of the person. A refresh is never extended past the
-session's hour. No answer keeps the session for the next reader; a refusal
-discards it.
+(`POST /api/v1/auth/refresh`) or waits for the one in flight: the cloud
+takes a spent refresh token as theft and ends every session of the person.
+A refresh never reaches past the session's hour. No answer keeps the
+session for the next reader; a refusal discards it.
 
 ```quint
 type RefreshAnswer = Refreshed({ accessExpiresAt: Millis }) | RefreshUnanswered | RefreshRefused
-pure def canReadSession(s: DeviceCredential): bool = s.session != NoSession
+pure def canReadSession(s: DeviceCredential): bool = s.session != NoSession and not(sessionUsable(s))
 pure def readSession(s: DeviceCredential): DeviceCredential = {
   val x = s.session
   match x {
-    | Session(t) => if (s.now < t.accessExpiresAt) s
-        else if (t.refreshing) { ...s, session: Session({ ...t, waiters: t.waiters + 1 }) }
-        else { ...s, session: Session({ ...t, refreshing: true }) }
+    | Session(t) => { ...s, session: if (t.refreshing) Session({ ...t, waiters: t.waiters + 1 }) else Session({ ...t, refreshing: true }) }
     | NoSession => s
-  }
-}
-pure def canRefreshAnswered(s: DeviceCredential): bool = {
-  val held = s.session
-  match held { | Session(t) => t.refreshing | NoSession => false }
-}
+  } }
+pure def canRefreshAnswered(s: DeviceCredential): bool = { val held = s.session  match held { | Session(t) => t.refreshing | NoSession => false } }
 pure def refreshAnswered(s: DeviceCredential, answer: RefreshAnswer): DeviceCredential = {
   val x = s.session
   match x {
@@ -297,16 +285,9 @@ pure def refreshAnswered(s: DeviceCredential, answer: RefreshAnswer): DeviceCred
         | RefreshRefused => { ...s, session: NoSession }
       }
     | NoSession => s
-  }
-}
+  } }
 pure val answerValues = Set(Refreshed({ accessExpiresAt: 2000000 }), RefreshUnanswered, RefreshRefused)
 pure val weight_readSession = 3
-pure def alwaysOneRefreshInFlight(s: DeviceCredential): bool = {
-  val held = s.session
-  match held { | Session(t) => t.waiters >= 0 and (t.waiters >= 1 implies t.refreshing) | NoSession => true }
-}
-pure def sometimesReadersShareOneRefresh(s: DeviceCredential): bool = {
-  val held = s.session
-  match held { | Session(t) => t.waiters >= 1 | NoSession => false }
-}
+pure def alwaysOneRefreshInFlight(s: DeviceCredential): bool = { val held = s.session  match held { | Session(t) => t.waiters >= 0 and (t.waiters >= 1 implies t.refreshing) | NoSession => true } }
+pure def sometimesReadersShareOneRefresh(s: DeviceCredential): bool = { val held = s.session  match held { | Session(t) => t.waiters >= 1 | NoSession => false } }
 ```
