@@ -49,7 +49,7 @@ adb -s emulator-5554 install -t packages/os/android/passwords/build/outputs/apk/
 Run the focused journey from the Eliza root after `pnpm gen --owner cloud`:
 
 ```sh
-GRACE_PASSWORD_ANDROID_FIXTURE=emulator-5554 pnpm --filter @elizaos/cloud exec \
+PASSWORD_ANDROID_FIXTURE=emulator-5554 pnpm --filter @elizaos/cloud exec \
   vitest run test/password-backup.test.vibe -t 'Android cold start'
 ```
 

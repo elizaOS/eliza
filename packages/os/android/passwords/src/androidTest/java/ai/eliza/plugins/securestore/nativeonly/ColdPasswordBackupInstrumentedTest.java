@@ -27,7 +27,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 
 public final class ColdPasswordBackupInstrumentedTest {
-  private static final String CLIENT = "technology.graceful.grace";
+  private static final String CLIENT = "com.example.consumer";
   private static final String CLOUD = "https://127.0.0.1";
   private static final String BROWSER = "https://localhost";
   private static final String CALLBACK = "/android/auth/callback";

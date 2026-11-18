@@ -15,13 +15,13 @@ public final class PasswordClipboardTest {
   @Test public void regularBackgroundingPreservesPasteUntilDeadline() {
     PasswordClipboard policy = new PasswordClipboard();
     Clipboard clipboard = new Clipboard();
-    clipboard.label = "grace";
-    var lease = policy.copied(clipboard, "grace", 45_000);
+    clipboard.label = "copy-1";
+    var lease = policy.copied(clipboard, "copy-1", 45_000);
     clipboard.focused = false;
     policy.clearIfDue(lease, 30_000);
     clipboard.focused = true;
     policy.clearIfDue(lease, 44_999);
-    assertEquals("grace", clipboard.label);
+    assertEquals("copy-1", clipboard.label);
     policy.clearIfDue(lease, 45_000);
     assertEquals(1, clipboard.clears);
     assertNull(clipboard.label);
@@ -30,17 +30,17 @@ public final class PasswordClipboardTest {
   @Test public void retirementRetriesAtFocusAndNeverClearsADifferentClip() {
     PasswordClipboard policy = new PasswordClipboard();
     Clipboard clipboard = new Clipboard();
-    clipboard.label = "grace";
-    var retired = policy.copied(clipboard, "grace", 45_000);
+    clipboard.label = "copy-1";
+    var retired = policy.copied(clipboard, "copy-1", 45_000);
     clipboard.focused = false;
     policy.retire(retired, 1);
-    assertEquals("grace", clipboard.label);
+    assertEquals("copy-1", clipboard.label);
     clipboard.focused = true;
     policy.clearIfDue(retired, 2);
     assertEquals(1, clipboard.clears);
 
-    clipboard.label = "grace-2";
-    var replaced = policy.copied(clipboard, "grace-2", 45_000);
+    clipboard.label = "copy-2";
+    var replaced = policy.copied(clipboard, "copy-2", 45_000);
     clipboard.focused = false;
     policy.retire(replaced, 3);
     clipboard.label = "another-app";
@@ -50,7 +50,7 @@ public final class PasswordClipboardTest {
     assertEquals("another-app", clipboard.label);
   }
 
-  @Test public void queuedRetirementAndTimerNeverClearANewerGraceCopy() {
+  @Test public void queuedRetirementAndTimerNeverClearANewerCopy() {
     PasswordClipboard policy = new PasswordClipboard();
     Clipboard clipboard = new Clipboard();
     clipboard.label = "old";
