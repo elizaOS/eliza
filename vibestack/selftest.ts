@@ -3328,3 +3328,25 @@ test("a trace integer of 16 or more digits that Quint wrote as a BigNumber decod
   assert.equal(bigNumberInteger({ s: n(1), e: n(0), c: [n(15)] }), undefined, "1.5 is not an integer");
   assert.equal(bigNumberInteger({ s: n(1), e: n(15), c: [n(10)], d: n(0) }), undefined, "a record with other fields is not a BigNumber");
 });
+
+test("the lint refuses, in a project's own code, a comment that is neither a citation nor a tool directive, an effect hook, a timer and a console call", async () => {
+  const { ESLint } = await import("eslint");
+  const eslint = new ESLint({ cwd: project });
+  const found = async (file: string, lines: string[]) => (await eslint.lintText(lines.join("\n"), { filePath: path.join(project, file) }))[0]!.messages
+    .filter((m) => m.ruleId === "no-console" || m.ruleId?.startsWith("code/")).map((m) => `${m.line} ${m.ruleId}`);
+  assert.deepEqual(await found("apps/app/src/probe.vibe", [
+    `// spec/app/index.md, "Story: Say hello"; spec/app/index.md, "A rule"`,
+    `/* spec/app/index.md, "Story: Say hello" */`,
+    "//@ ghost",
+    "// a note",
+    "/** What it is. */",
+    "//@ pure-ish",
+    "useEffect(() => {}, []);",
+    "window.setTimeout(() => {}, 1);",
+    "requestAnimationFrame(() => {});",
+    `console.log("seen");`,
+    "// eslint-disable-next-line code/effects -- it must",
+    "// eslint-disable-next-line no-console",
+  ]), ["4 code/comments", "5 code/comments", "6 code/comments", "7 code/effects", "8 code/effects", "9 code/effects", "10 no-console", "11 code/comments", "12 code/comments"]);
+  assert.deepEqual(await found("packages/ui/src/components/probe.vibe", ["/** What a component takes, which the stories generator reads. */", "// a note"]), ["2 code/comments"]);
+});
