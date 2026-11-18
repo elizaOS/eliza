@@ -287,19 +287,14 @@ pure def lawActivationEnablesOnlyDisabledExportedActivities(manifest: LauncherMa
 ### Power voice needs the power bundle, no assist bundle and the long-press assistant overlay
 
 The `power` and `assist` SystemUI bundles change the same source, so a
-staging that names both is refused whatever it asks for. The long-press
-overlay is the listener's `config_longPressOnPowerBehavior` assistant
-setting.
+staging that names both is refused whatever it asks for. The overlay is
+the listener's `config_longPressOnPowerBehavior` assistant setting.
 
 ```quint
 pure def lawPowerVoiceNeedsItsBundleAlone(manifest: LauncherManifest, request: ProvisioningRequest, staging: ListenerStaging): bool = {
   val activation = listenerActivation(manifest, request, staging)
-  match activation {
-    | ActivationWritten(a) => not(staging.patches.contains(AssistPatch) and staging.patches.contains(PowerPatch))
-      and (a.power != NoDefault iff listenerPower(request.assistant))
-      and (a.power != NoDefault implies (staging.patches.contains(PowerPatch) and staging.longPressAssistant))
-    | _ => true
-  }
+  match activation { | ActivationWritten(a) => not(staging.patches.contains(AssistPatch) and staging.patches.contains(PowerPatch))
+    and (a.power != NoDefault iff listenerPower(request.assistant)) and (a.power != NoDefault implies (staging.patches.contains(PowerPatch) and staging.longPressAssistant)) | _ => true }
 }
 ```
 
