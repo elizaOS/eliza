@@ -1,4 +1,4 @@
-// The upstream cloud-only embedded agent: its copied Java sources, and the manifest that declares its service.
+// The upstream cloud-only embedded agent and its runtime permissions.
 apply plugin: 'com.android.library'
 def profile = new groovy.json.JsonSlurper().parse(rootProject.file('.eliza-consumer-profile.json'))
 android {
@@ -7,7 +7,6 @@ android {
  defaultConfig {
   minSdk rootProject.ext.minSdkVersion
   testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
-  manifestPlaceholders = [elizaEmbeddedAgentService: 'ai.eliza.plugins.agent.embedded.EmbeddedAgentService']
  }
  compileOptions {
   sourceCompatibility JavaVersion.toVersion(profile.toolchain.java)
