@@ -178,6 +178,9 @@ public final class CloudDeviceAccount {
   }
  }
 
+ URI passwordBackupEndpoint(String path) { return cloud.resolve(path); }
+ Uri passwordBackupCallback() { return callback; }
+
  private static String challenge(JSONObject pending) throws Exception {
   byte[] verifier = pending.getString("verifier").getBytes(StandardCharsets.US_ASCII);
   return base64Url(MessageDigest.getInstance("SHA-256").digest(verifier));
@@ -224,6 +227,10 @@ public final class CloudDeviceAccount {
    }
   }
   return finishAcknowledgment();
+ }
+
+ public boolean awaitingAcknowledgment() throws Exception {
+  synchronized (LOCK) { return slots.read(ACK) != null; }
  }
 
  public boolean finishAcknowledgment() throws Exception {

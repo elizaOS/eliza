@@ -71,8 +71,8 @@ describe("WP1 Identity: sessions and accounts", () => {
 
   it.live("Sign out here only, and a second sign-out changes nothing (spec/cloud/identity/sessions.md, \"Story: Sign out here, or end my other sessions\")", () => scoped(effect {
     const cloud = try testCloud()
-    const here = try signedIn(cloud, "grace@example.com")
-    const there = try signedIn(cloud, "grace@example.com")
+    const here = try signedIn(cloud, "ada@example.com")
+    const there = try signedIn(cloud, "ada@example.com")
     const first = try cloud.call("/api/v1/auth/logout", { method: "POST", headers: bearer(here.accessToken) })
     const again = try cloud.call("/api/v1/auth/logout", { json: { refreshToken: here.refreshToken } })
     const hereAfter = try cloud.call("/api/v1/user", { headers: bearer(here.accessToken) })

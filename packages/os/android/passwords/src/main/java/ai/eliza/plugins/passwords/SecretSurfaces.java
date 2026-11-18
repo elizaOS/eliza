@@ -77,15 +77,10 @@ public final class SecretSurfaces {
     if (surface != null) surface.close();
   }
 
-  private static String clipLabel;
-  private static long clipExpiresAt;
+  private static final PasswordClipboard CLIPBOARD = new PasswordClipboard();
 
-  /** Marks the clip sensitive (hidden from clipboard previews on Android 13+) and clears it after
-   * {@link #CLIPBOARD_MILLIS}. When Android lets this app read the clip description (it has input
-   * focus), a clip that is no longer ours is left alone. If Android hides the description,
-   * defer clearing until resume; unknown ownership never authorizes deleting another clip. */
   static void copy(Activity activity, String secret) {
-    ClipboardManager clipboard = activity.getSystemService(ClipboardManager.class);
+    ClipboardManager clipboard = activity.getApplicationContext().getSystemService(ClipboardManager.class);
     if (clipboard == null) throw new IllegalStateException("Clipboard unavailable");
     String label = "eliza-passwords-" + UUID.randomUUID();
     ClipData clip = ClipData.newPlainText(label, secret);
@@ -93,26 +88,23 @@ public final class SecretSurfaces {
     extras.putBoolean(Build.VERSION.SDK_INT >= 33 ? ClipDescription.EXTRA_IS_SENSITIVE : "android.content.extra.IS_SENSITIVE", true);
     clip.getDescription().setExtras(extras);
     clipboard.setPrimaryClip(clip);
-    clipLabel = label; clipExpiresAt = android.os.SystemClock.elapsedRealtime() + CLIPBOARD_MILLIS;
-    MAIN.postDelayed(() -> clearIfOurs(clipboard, label), CLIPBOARD_MILLIS);
+    PasswordClipboard.Lease lease = CLIPBOARD.copied(new PasswordClipboard.Platform() {
+      @Override public CharSequence currentLabel() {
+        ClipDescription description = clipboard.getPrimaryClipDescription();
+        if (description == null) return null;
+        return description.getLabel() == null ? "" : description.getLabel();
+      }
+      @Override public void clear() { clipboard.clearPrimaryClip(); }
+    }, label, android.os.SystemClock.elapsedRealtime() + CLIPBOARD_MILLIS);
+    MAIN.postDelayed(() -> CLIPBOARD.clearIfDue(lease, android.os.SystemClock.elapsedRealtime()), CLIPBOARD_MILLIS);
   }
 
-  static void clearIfOurs(ClipboardManager clipboard, String label) {
-    if (!label.equals(clipLabel)) return; // Already cleared, or superseded by a newer copy.
-    try {
-      ClipDescription description = clipboard.getPrimaryClipDescription();
-      if (description == null) return;
-      boolean ours = label.contentEquals(description.getLabel() == null ? "" : description.getLabel());
-      if (ours) clipboard.clearPrimaryClip();
-    } catch (RuntimeException unavailable) { /* Retried on the next resume. */ return; }
-    clipLabel = null;
+  static void retireClipboard() {
+    PasswordClipboard.Lease lease = CLIPBOARD.current();
+    if (lease == null) return;
+    Runnable work = () -> CLIPBOARD.retire(lease, android.os.SystemClock.elapsedRealtime());
+    if (Looper.myLooper() == Looper.getMainLooper()) work.run(); else MAIN.post(work);
   }
 
-  /** Called on resume: runs a clear that came due while the timer could not (a frozen process). */
-  static void resume(Activity activity) {
-    String label = clipLabel;
-    if (label == null || android.os.SystemClock.elapsedRealtime() < clipExpiresAt) return;
-    ClipboardManager clipboard = activity.getSystemService(ClipboardManager.class);
-    if (clipboard != null) MAIN.post(() -> clearIfOurs(clipboard, label));
-  }
+  static void focused() { CLIPBOARD.clearIfDue(CLIPBOARD.current(), android.os.SystemClock.elapsedRealtime()); }
 }

@@ -128,7 +128,7 @@ pure def canSendCloudGoogle(ownerSessionActive: bool, grantMatches: bool, sendCo
 
 Moving a message to Trash and undoing that change requires Gmail modify
 permission. Google requires Gmail modify scope for Trash. Undo names the successful Trash receipt and checks the current
-provider revision. Grace exposes no permanent deletion here.
+provider revision. Cloud offers no permanent deletion here.
 
 Creating, changing or removing an appointment requires Calendar event
 permission for calendars their account owns. Changes target the primary
@@ -137,7 +137,7 @@ monthly. Timed series retain the reviewed local time in the named time zone.
 Cloud verifies the recurrence and time zone on the saved series before
 returning its receipt. A series change must name the
 current parent of the occurrence and the reviewed parent version. Updates and removals name the
-reviewed event version, and Google must accept that version. Grace displays
+reviewed event version, and Google must accept that version. Cloud reports
 success only after provider evidence matches the selected event.
 
 ```quint
@@ -178,4 +178,85 @@ settles a confirmed outcome as measured and an uncertain one at its quote.
 ```quint
 pure def cloudSpeechUsageFits(pcmBytes: int, textCharacters: int, outputBytes: int): bool =
   pcmBytes >= 0 and pcmBytes <= 1920000 and textCharacters >= 0 and textCharacters <= 4096 and outputBytes >= 0 and outputBytes <= 8388608
+```
+
+## Story: Back up my passwords for another device
+
+> As a person using Passwords, I can choose to keep an encrypted backup.
+> I can restore it on another device with my recovery key or remove the
+> backup when I no longer want it.
+
+### Only a current, separately approved device grant accesses the owner’s backup
+
+Opting in needs an explicit native request and recent interactive approval.
+The first-party browser shows the purpose and signed-in account before the
+owner approves. Approval returns a single-use code through the exact
+registered app link. The active native enrollment for the same owner
+exchanges that code using the original purpose, state and one-time verifier.
+Owner verification returns the verified owner scope without opening any
+cloud copy. Other purposes return a single-operation proof bound to the
+active enrollment and browser session.
+The backup grant belongs to the current deployment, registered product and
+account. The cloud refuses a grant after expiry or revocation, or if the
+account or registration is no longer eligible. An inference credential
+never authorizes backup access. The native client encrypts the snapshot
+before sending it and holds the recovery key. The owner must have that key
+to restore. The cloud receives only the encrypted snapshot.
+
+```quint
+type BackupAccess = BackupDeviceGrant | BackupInferenceCredential
+pure def canAccessPasswordBackup(access: BackupAccess, active: bool, scopeMatches: bool): bool =
+  access == BackupDeviceGrant and active and scopeMatches
+pure def lawInferenceCannotAccessPasswordBackup(active: bool, scopeMatches: bool): bool =
+  not(canAccessPasswordBackup(BackupInferenceCredential, active, scopeMatches))
+pure def lawOtherAccountsCannotAccessPasswordBackup(access: BackupAccess, active: bool): bool =
+  not(canAccessPasswordBackup(access, active, false))
+type PasswordBackupPurpose = BackupRead | BackupWrite | BackupRemove | BackupVerify
+pure def canApprovePasswordBackup(active: bool, recent: bool, registered: bool): bool =
+  active and recent and registered
+pure def lawStaleSignInCannotApprovePasswordBackup(active: bool, registered: bool): bool =
+  not(canApprovePasswordBackup(active, false, registered))
+pure def mayExchangeBackupCode(approved: PasswordBackupPurpose, requested: PasswordBackupPurpose, exactVerifier: bool, exactState: bool, currentBrowser: bool, enrolledDevice: bool, sameOwner: bool, unspent: bool): bool =
+  approved == requested and exactVerifier and exactState and currentBrowser and enrolledDevice and sameOwner and unspent
+pure def lawDifferentOwnerCannotExchangeBackupCode(approved: PasswordBackupPurpose, requested: PasswordBackupPurpose, exactVerifier: bool, exactState: bool, currentBrowser: bool, enrolledDevice: bool, unspent: bool): bool =
+  not(mayExchangeBackupCode(approved, requested, exactVerifier, exactState, currentBrowser, enrolledDevice, false, unspent))
+pure def canRedeemBackupApproval(approved: PasswordBackupPurpose, requested: PasswordBackupPurpose, exactVerifier: bool, exactState: bool, grantLive: bool, unspent: bool): bool =
+  approved == requested and requested != BackupVerify and exactVerifier and exactState and grantLive and unspent
+pure def lawBackupApprovalCannotBeReplayed(approved: PasswordBackupPurpose, requested: PasswordBackupPurpose, exactVerifier: bool, exactState: bool, grantLive: bool): bool =
+  not(canRedeemBackupApproval(approved, requested, exactVerifier, exactState, grantLive, false))
+```
+
+### Every backup change matches the current revision
+
+The service stores at most one complete snapshot per product and account.
+A write carries the expected revision and one through 2,097,152 encrypted
+bytes. Only an empty slot that has never been used accepts an initial write
+without a revision. Deletion removes the live snapshot while advancing its
+revision. A new backup after deletion must match that revision. A retry with
+an earlier revision has no effect, including an initial write sent before
+deletion.
+
+```quint
+type PasswordBackupSlot = { revision: int, bytes: int }
+type PasswordBackupChange = BackupSave({ bytes: int }) | BackupDelete
+pure val slotValues = Set({ revision: 0, bytes: 0 }, { revision: 1, bytes: 9 }, { revision: 2, bytes: 0 })
+pure val changeValues = Set(BackupDelete, BackupSave({ bytes: 0 }), BackupSave({ bytes: 1 }), BackupSave({ bytes: 2097152 }), BackupSave({ bytes: 2097153 }))
+pure def changePasswordBackup(slot: PasswordBackupSlot, authorized: bool, expected: int, change: PasswordBackupChange): PasswordBackupSlot = {
+  val valid = match change {
+    | BackupSave(snapshot) => snapshot.bytes > 0 and snapshot.bytes <= 2097152
+    | BackupDelete => slot.bytes > 0
+  }
+  if (authorized and expected == slot.revision and expected >= 0 and expected < 2147483647 and valid)
+    { revision: slot.revision + 1, bytes: match change { | BackupSave(snapshot) => snapshot.bytes | BackupDelete => 0 } }
+  else slot
+}
+pure def lawStaleBackupWriteKeepsSnapshot(slot: PasswordBackupSlot, authorized: bool, expected: int, change: PasswordBackupChange): bool =
+  expected != slot.revision implies changePasswordBackup(slot, authorized, expected, change) == slot
+pure def lawUnauthorizedBackupWriteKeepsSnapshot(slot: PasswordBackupSlot, expected: int, change: PasswordBackupChange): bool =
+  changePasswordBackup(slot, false, expected, change) == slot
+pure def lawDeletedPasswordBackupRejectsInitialRetry(slot: PasswordBackupSlot, bytes: int): bool = {
+  val deleted = changePasswordBackup(slot, true, slot.revision, BackupDelete)
+  (slot.revision >= 0 and slot.revision < 2147483647 and slot.bytes > 0) implies
+    (deleted.bytes == 0 and changePasswordBackup(deleted, true, 0, BackupSave({ bytes: bytes })) == deleted)
+}
 ```

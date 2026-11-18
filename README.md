@@ -33,6 +33,32 @@ proves safety obligations, runs available journeys, and lists changes for
 review. `pnpm accept` records the user's review. Each package's shell is
 implemented from its accepted specification.
 
+### Android password recovery fixture
+
+The Passwords instrumentation uses Android Keystore and a disposable PGlite
+Cloud Worker. Use an unlocked Android 15 or later test emulator with a screen
+lock and install the test APK from the portable module:
+
+```sh
+gradle -p packages/os/android/passwords/test/fixture \
+  -PcapacitorAndroidDir=/path/to/installed/@capacitor/android \
+  :elizaos-capacitor-passwords:assembleDebugAndroidTest
+adb -s emulator-5554 install -t packages/os/android/passwords/build/outputs/apk/androidTest/debug/elizaos-capacitor-passwords-debug-androidTest.apk
+```
+
+Run the focused journey from the Eliza root after `pnpm gen --owner cloud`:
+
+```sh
+PASSWORD_ANDROID_FIXTURE=emulator-5554 pnpm --filter @elizaos/cloud exec \
+  vitest run test/password-backup.test.vibe -t 'Android cold start'
+```
+
+The fixture runs a save and a restore in separate Android process launches.
+It installs a temporary HTTPS reverse mapping on the selected emulator and
+removes it after the run. The test process trusts only its disposable cert
+for these calls. The fixture browser approves a synthetic account through
+the same Worker routes that the production app uses.
+
 [The Vibestack toolchain guide](vibestack/README.md) explains Studio,
 commands, examples and generated files. [Contributing](CONTRIBUTING.md)
 describes the repository checks. The MIT license is in [LICENSE](LICENSE).
