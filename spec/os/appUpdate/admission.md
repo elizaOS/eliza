@@ -40,12 +40,12 @@ type Channel = Stable | Beta
 type RoleKeys = { threshold: int, members: List[int] }
 type ChannelRoles = { stableKeys: RoleKeys, betaKeys: RoleKeys }
 pure def minimumApprovals(channel: Channel): int = if (channel == Stable) 2 else 1
-pure def distinctKeys(members: List[int]): bool = keys.every(k => keys.select(x => x == k).length() == 1)
-pure def roleValid(role: RoleKeys, channel: Channel): bool = distinctKeys(role.keys) and minimumApprovals(channel) <= role.threshold and role.threshold <= role.keys.length()
+pure def distinctKeys(members: List[int]): bool = members.every(k => members.select(x => x == k).length() == 1)
+pure def roleValid(role: RoleKeys, channel: Channel): bool = distinctKeys(role.members) and minimumApprovals(channel) <= role.threshold and role.threshold <= role.members.length()
 pure def channelRolesValid(roles: ChannelRoles, rootKeys: List[int]): bool =
-  roleValid(roles.stableKeys, Stable) and roleValid(roles.betaKeys, Beta) and roles.betaKeys.keys.every(k => not(rootKeys.includes(k)))
-  and roles.stableKeys.keys.every(k => not(roles.betaKeys.keys.includes(k)) and not(rootKeys.includes(k)))
-pure def channelApproved(role: RoleKeys, approvers: List[int]): bool = role.keys.select(k => approvers.includes(k)).length() >= role.threshold
+  roleValid(roles.stableKeys, Stable) and roleValid(roles.betaKeys, Beta) and roles.betaKeys.members.every(k => not(rootKeys.includes(k)))
+  and roles.stableKeys.members.every(k => not(roles.betaKeys.members.includes(k)) and not(rootKeys.includes(k)))
+pure def channelApproved(role: RoleKeys, approvers: List[int]): bool = role.members.select(k => approvers.includes(k)).length() >= role.threshold
 pure val validRoles: ChannelRoles = { stableKeys: { threshold: 2, members: List(1, 2) }, betaKeys: { threshold: 1, members: List(3) } }
 pure val rolesValues = Set(validRoles, { ...validRoles, stableKeys: { threshold: 1, members: List(1, 2) } }, { ...validRoles, stableKeys: { threshold: 2, members: List(1, 1) } },
   { ...validRoles, betaKeys: { threshold: 1, members: List(1) } }, { ...validRoles, betaKeys: { threshold: 1, members: List(9) } })
@@ -54,7 +54,7 @@ pure val approverValues = Set(1, 2, 3, 9)
 pure def lawOneKeyNeverApprovesStable(roles: ChannelRoles, rootKeys: List[int], approver: int): bool =
   channelRolesValid(roles, rootKeys) implies not(channelApproved(roles.stableKeys, List(approver, approver)))
 pure def lawChannelKeysAreDisjoint(roles: ChannelRoles, rootKeys: List[int], approver: int): bool =
-  channelRolesValid(roles, rootKeys) implies not(roles.stableKeys.keys.includes(approver) and (roles.betaKeys.keys.includes(approver) or rootKeys.includes(approver)))
+  channelRolesValid(roles, rootKeys) implies not(roles.stableKeys.members.includes(approver) and (roles.betaKeys.members.includes(approver) or rootKeys.includes(approver)))
 ```
 
 ### Admission defers for the first failing check, in a fixed order
