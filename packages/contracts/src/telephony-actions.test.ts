@@ -22,6 +22,8 @@ import {
   smsComposeReceiptOutcome,
   smsComposeResultText,
   smsComposeTarget,
+  SMS_LATEST_SENDER_CAPABILITY,
+  smsLatestSenderReply,
   smsReplyReceiptOutcome,
   smsReplyResultText,
   TELEPHONY_ACTION_OPERATION_TYPES,
@@ -41,6 +43,7 @@ import {
   validatePhoneCallResult,
   validateSmsCompose,
   validateSmsComposeResult,
+  validateSmsLatestSenderResult,
   validateSmsReply,
   validateSmsReplyResult,
   validateTelephonyAction,
@@ -755,6 +758,32 @@ test("a voicemail delete targets only the open voicemail", () => {
     assert.throws(() => validateVoicemailDeleteResult(bad), REJECTED);
 });
 
+test("latest SMS sender exposes only the reviewed suffix", () => {
+  const result = {
+    kind: "sms-latest-sender",
+    status: "found",
+    numberEnding: "0123",
+  };
+  assert.deepEqual(validateSmsLatestSenderResult(result), result);
+  assert.match(
+    smsLatestSenderReply(validateSmsLatestSenderResult(result)),
+    /ending in 0123/,
+  );
+  assert.throws(
+    () =>
+      validateSmsLatestSenderResult({ ...result, numberEnding: "5555550123" }),
+    REJECTED,
+  );
+  assert.throws(
+    () => validateSmsLatestSenderResult({ ...result, body: "private" }),
+    REJECTED,
+  );
+  assert.throws(
+    () => validateTelephonyAction({ type: "sms_latest_sender", since: 1 }),
+    REJECTED,
+  );
+});
+
 test("each operation type has one capability and one validator", () => {
   assert.deepEqual(
     TELEPHONY_ACTION_OPERATION_TYPES.map((type) => [
@@ -771,6 +800,7 @@ test("each operation type has one capability and one validator", () => {
       ["sms_compose", SMS_COMPOSE_CAPABILITY],
       ["sms_reply_selected", SMS_COMPOSE_CAPABILITY],
       ["messages_read_selected", MESSAGES_READ_CAPABILITY],
+      ["sms_latest_sender", SMS_LATEST_SENDER_CAPABILITY],
       ["voicemail_read_selected", VOICEMAIL_READ_CAPABILITY],
       ["voicemail_delete_selected", VOICEMAIL_DELETE_CAPABILITY],
     ],
@@ -785,6 +815,7 @@ test("each operation type has one capability and one validator", () => {
     { type: "sms_compose", query: "Ada", body: "hi" },
     { type: "sms_reply_selected", body: "hi" },
     { type: "messages_read_selected" },
+    { type: "sms_latest_sender" },
     { type: "voicemail_read_selected" },
     { type: "voicemail_delete_selected" },
   ]) {
