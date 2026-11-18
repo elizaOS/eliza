@@ -4298,9 +4298,13 @@
           "category": "safety-invariant",
           "status": "candidate-correspondence-unproved",
           "targetDefinitions": [
-            "spec/core/postDelivery.md#alwaysPostTaskIndexesAgree"
+            "spec/core/postDelivery.md#pendingRuntimeTasks",
+            "spec/core/postDelivery.md#pendingRoomTasks",
+            "spec/core/postDelivery.md#runtimePending",
+            "spec/core/postDelivery.md#roomPending",
+            "spec/core/postDelivery.md#lawRoomIndexBelongsToRuntime"
           ],
-          "reason": "Source definition retained exactly. New state uses dynamic runtime/room/task identities; generated proof and source refinement remain outstanding."
+          "reason": "The current model derives runtime and room views from one retained task collection. pendingRuntimeTasks and pendingRoomTasks select non-settled members under runtime and room scope, and lawRoomIndexBelongsToRuntime proves room membership implies runtime membership. Equivalence to the legacy separately mutable indexes still requires adapter/source refinement."
         },
         {
           "name": "CapturedSettlementRetained",
