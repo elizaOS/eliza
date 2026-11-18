@@ -136,7 +136,7 @@ it.effect('A second process is refused while the first holds the store, and a ki
 }, 240_000)
 
 for (const persistMemory of [true, false]) {
-  it.effect(`A conversation written before a restart is ${persistMemory ? "still listed" : "gone"} with persistMemory ${persistMemory} (spec/agent/storage/database.md, "Story: Keep the agent's records in one store that never loses a committed write")`, effect () => {
+  it.live(`A conversation written before a restart is ${persistMemory ? "still listed" : "gone"} with persistMemory ${persistMemory} (spec/agent/storage/database.md, "Story: Keep the agent's records in one store that never loses a committed write")`, effect () => {
     const state = try scratch("agent-records")
     const first = try start(state, "first", { persistMemory })
     const { conversation } = try Schema.decodeUnknownEffect(Created)((try served(first, "/api/conversations", {})).json)
