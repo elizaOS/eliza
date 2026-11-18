@@ -110,7 +110,7 @@ module node {
   }
 }
 
-export {
+import {
   account, cancelled, closePermissions, copyIn, exists, keyFor, newKey, openPermissions, replaceLock, sealedFor, stealingDatabase, storedIds, task,
 } from node
 

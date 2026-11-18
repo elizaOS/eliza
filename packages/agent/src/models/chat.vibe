@@ -23,16 +23,7 @@ export interface Sink {
   readonly onStreamChunk?: StreamChunkCallback
 }
 
-export class ModelRefusal extends Error {
-  readonly code: string | undefined
-  readonly status: number | undefined
-  constructor(message: string, code?: string, status?: number) {
-    super(message)
-    this.name = "ModelRefusal"
-    this.code = code
-    this.status = status
-  }
-}
+export error ModelRefusal { message: string; code: string | undefined; status: number | undefined }
 
 export error Refused { cloud: CloudError }
 
@@ -49,12 +40,12 @@ const Refusal = Schema.Struct({
   resetsAt: Schema.optionalKey(Schema.Number),
 })
 const decodeRefusal = Schema.decodeUnknownOption(Refusal)
-const Listing = Schema.Struct({ data: Schema.Array(Schema.Struct({ id: Schema.String })) })
+schema Listing { data: { id: string }[] }
 const decodeListing = Schema.decodeUnknownOption(Listing)
 
 const providerIssue = (): Refused => new Refused({ cloud: { tag: "CloudProviderIssue" } })
 
-module wire {
+module wireFormat {
   import type { ChatMessage, ChatMessageContentPart } from "@elizaos/core"
 
   type Source = string | URL | Uint8Array
@@ -103,13 +94,13 @@ module wire {
     return found?.[1]?.replace(/\*\*/g, "").trim() || "Image Analysis"
   }
 }
-import { conversation, description, titleOf } from wire
+import { conversation, description, titleOf } from wireFormat
 export { description, titleOf }
 
 module edge {
   import { Cause, Effect, Exit } from "effect"
 
-  /** @throws {unknown} */
+  /** @throws {never} */
   export async function run<A>(program: Effect.Effect<A, unknown>, signal: AbortSignal | undefined): Promise<A> {
     const exit = await Effect.runPromiseExit(program, { signal })
     if (Exit.isSuccess(exit)) return exit.value
@@ -121,11 +112,11 @@ import { run } from edge
 
 function refusalOf(cloud: CloudError): ModelRefusal {
   const outcome = outcomeOf(cloud)
-  if (outcome === "RefusedConnection") return new ModelRefusal("The model connection failed", "ECONNRESET")
-  if (outcome === "RetryEnvelope") return new ModelRefusal("The model service refused the call", undefined, 503)
-  if (outcome === "ExhaustedBudget") return new ModelRefusal("The model call limit was reached", "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", 429)
-  if (outcome === "FundingDenied") return new ModelRefusal("The model account has no funds", "MODEL_FUNDING_AUTHORITY_FAILED", 402)
-  return new ModelRefusal("The model account refused the call", undefined, cloud.tag === "CloudCredentialInvalid" ? 401 : 403)
+  if (outcome === "RefusedConnection") return new ModelRefusal({ message: "The model connection failed", code: "ECONNRESET", status: undefined })
+  if (outcome === "RetryEnvelope") return new ModelRefusal({ message: "The model service refused the call", code: undefined, status: 503 })
+  if (outcome === "ExhaustedBudget") return new ModelRefusal({ message: "The model call limit was reached", code: "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", status: 429 })
+  if (outcome === "FundingDenied") return new ModelRefusal({ message: "The model account has no funds", code: "MODEL_FUNDING_AUTHORITY_FAILED", status: 402 })
+  return new ModelRefusal({ message: "The model account refused the call", code: undefined, status: cloud.tag === "CloudCredentialInvalid" ? 401 : 403 })
 }
 
 function codeOf(error: unknown): string {

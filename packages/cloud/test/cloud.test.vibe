@@ -131,7 +131,6 @@ describe("WP0 Foundation", () => {
   }))
 })
 
-describe.todo("WP1 Identity (spec/cloud/identity/accounts.md, \"Story: Get one account on first sign-in\")")
 describe.todo("WP2 Native clients and pages (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")")
 describe.todo("WP3 Checkout and provider events (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")")
 describe.todo("WP6 Speech (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\")")

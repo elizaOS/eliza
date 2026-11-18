@@ -1,0 +1,15 @@
+{
+  "clients": [
+    {
+      "clientId": "com.example.fixture",
+      "displayName": "Fixture App",
+      "androidPackage": "com.example.fixture",
+      "certFingerprints": [
+        "E3:DC:37:EF:3F:94:F0:CB:F5:06:F2:6E:CD:F7:99:99:29:C2:B2:D0:53:D1:63:83:56:91:F7:C9:67:F6:7E:A5"
+      ],
+      "signInReturn": "https://www.staging.example.com/apps/fixture/sign-in",
+      "billingReturn": "https://www.staging.example.com/apps/fixture/billing",
+      "connectReturn": "https://www.staging.example.com/apps/fixture/connect"
+    }
+  ]
+}

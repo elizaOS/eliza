@@ -1,0 +1,447 @@
+// spec/cloud/billing/subscriptionCommands.md, "Story: Change or cancel my plan without paying twice"; spec/cloud/billing/subscriptions.md, "Story: Change my plan one command at a time"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
+import { Rejected, apply, connectorOf, decodeState, elapse, initial, receiptStatus, staleAt, type Event, type LookupResult, type ProviderReply as Reply, type Receipt, type ReceiptStatus, type RefusalCause } from "../../gen/cloud__shared__dispatchOnce.effect.vibe"
+import { canClaimCommand, holdsCommand, type CommandKind, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import type { SessionOwner } from "../../gen/core__sessions.ts"
+import type { ProviderKind } from "../../gen/cloud__shared__types.ts"
+import { refused, Refused, wireName } from "../http/refusal.vibe"
+import { json, jsonBody, owner, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
+import { Deployment } from "../profile/profile.vibe"
+import { dispatchOnce, renderProviderKey, requestDigest, resolveUnknown, type ProviderReply } from "../shared/dispatch-once.vibe"
+import { sha256Hex } from "../shared/sealing.vibe"
+import { loadRow, stepRow, type MachineRows } from "../store/rows.vibe"
+import { Store, toInt, toText, type Tx } from "../store/connection.vibe"
+import { wirePlanKey } from "./plans.vibe"
+import { claimLiveCommand, observeSubscription, readSubscription, reconcileSubscription, releaseLiveCommand } from "./subscriptions.vibe"
+
+export type WireCommandKind = "cancel" | "undo" | "upgrade" | "downgrade"
+export type WireCommandStatus = "prepared" | "dispatched" | "unknown" | "succeeded" | "rejected"
+
+export interface CommandView {
+  readonly commandId: string
+  readonly kind: WireCommandKind
+  readonly subscriptionId: string
+  readonly status: WireCommandStatus
+  readonly expectedRevision: number
+  readonly resultRevision: number | null
+  readonly createdAt: number
+}
+
+export interface CommandsPage {
+  readonly observedAt: number
+  readonly items: ReadonlyArray<CommandView>
+  readonly nextCursor: string | null
+}
+
+export interface CommandSpec {
+  readonly kind: Exclude<CommandKind, "CheckoutCommand">
+  readonly providerKind: Extract<ProviderKind, "SubscriptionUpdate" | "SubscriptionSchedule">
+  readonly staleAfter: number
+  readonly send: (subscription: Subscription, idempotencyKey: string, deadline: number) => ProviderReply<unknown>!!(Deployment | HttpClient.HttpClient)
+  readonly lookup: (subscriptionId: string, deadline: number) => ProviderReply<LookupResult>!!(Deployment | HttpClient.HttpClient)
+}
+
+export interface CommandRequest {
+  readonly organizationId: string
+  readonly userId: string
+  readonly idempotencyKey: string
+  readonly subscriptionId: string
+  readonly expectedRevision: number
+  readonly terms?: unknown
+}
+
+interface Sent {
+  readonly event: Event
+  readonly by: SessionOwner
+  readonly now: number
+}
+
+interface CommandRow {
+  readonly commandId: string
+  readonly organizationId: string
+  readonly kind: WireCommandKind
+  readonly expectedRevision: number
+  readonly resultRevision: number | null
+  readonly createdAt: number
+  readonly receipt: Receipt
+}
+
+error CommandReplayed { commandId: string }
+
+effect function applyAt(receipt: Receipt, sent: Sent): Receipt!Rejected {
+  const current = sent.now > receipt.session.now ? try apply(receipt, { type: "elapse", elapsed: sent.now - receipt.session.now }, sent.by) : receipt
+  return try apply(current, sent.event, sent.by)
+}
+
+export const commandRows: MachineRows<Receipt, Sent, Receipt, Rejected, unknown> = { table: "subscription_commands", initial, decodeState, apply: applyAt, next: (receipt) => receipt }
+
+const wireKinds: Readonly<Record<CommandSpec["kind"], WireCommandKind>> = { CancelCommand: "cancel", UndoCommand: "undo", UpgradeCommand: "upgrade", DowngradeCommand: "downgrade" }
+
+const commandIdPattern = /^cmd_[0-9a-f]{32}$/
+const cursorPattern = /^(\d{1,16})\.(cmd_[0-9a-f]{32})$/
+const idempotencyKeyPattern = /^[\x21-\x7e]{1,200}$/
+
+export const providerTimeout = 30_000
+export const commandLifetime = 24 * 60 * 60_000
+
+function statusAt(receipt: Receipt, now: number): ReceiptStatus {
+  return receiptStatus(now > receipt.session.now ? elapse(receipt, now - receipt.session.now) : receipt)
+}
+
+function wireStatus(status: ReceiptStatus): WireCommandStatus {
+  switch (status) {
+    case "StatusPrepared": return "prepared"
+    case "StatusDispatched": return "dispatched"
+    case "StatusUnknown": return "unknown"
+    case "StatusSucceeded": return "succeeded"
+    case "StatusRejected": return "rejected"
+    case "StatusAbsent": return "rejected"
+    default: {
+      const _exhaustive: never = status
+      return _exhaustive
+    }
+  }
+}
+
+function subscriptionIdOf(receipt: Receipt): string {
+  return receipt.providerKey.providerId.slice(0, receipt.providerKey.providerId.lastIndexOf(":"))
+}
+
+function senderOf(organizationId: string, userId: string, providerKind: ProviderKind): SessionOwner {
+  return { agentId: organizationId, actorId: userId, connector: connectorOf(providerKind) }
+}
+
+export function commandIdOf(organizationId: string, userId: string, idempotencyKey: string): string {
+  return `cmd_${sha256Hex(`${organizationId}\n${userId}\n${idempotencyKey}`).slice(0, 32)}`
+}
+
+function viewOf(row: CommandRow, now: number): CommandView {
+  return {
+    commandId: row.commandId,
+    kind: row.kind,
+    subscriptionId: subscriptionIdOf(row.receipt),
+    status: wireStatus(statusAt(row.receipt, now)),
+    expectedRevision: row.expectedRevision,
+    resultRevision: row.resultRevision,
+    createdAt: row.createdAt
+  }
+}
+
+function wireKindOf(input: unknown): WireCommandKind | undefined {
+  return input === "cancel" || input === "undo" || input === "upgrade" || input === "downgrade" ? input : undefined
+}
+
+effect function commandRow(tx: Tx, commandId: string, lock: boolean): (CommandRow | undefined)!(StoreFailure | RowCorrupt) {
+  const row = (try tx.query(`SELECT organization_id, kind, expected_revision, result_revision, created_at FROM subscription_commands WHERE key = $1${lock ? " FOR UPDATE" : ""}`, [commandId]))[0]
+  if (row === undefined) return undefined
+  const kind = wireKindOf(row.kind)
+  const organizationId = toText(row.organization_id)
+  if (kind === undefined || organizationId === undefined) throw new RowCorrupt({ table: "subscription_commands", key: commandId, cause: "columns" })
+  const loaded = try loadRow(tx, commandRows, commandId, lock)
+  return {
+    commandId,
+    organizationId,
+    kind,
+    expectedRevision: toInt(row.expected_revision),
+    resultRevision: row.result_revision === null ? null : toInt(row.result_revision),
+    createdAt: toInt(row.created_at),
+    receipt: loaded.state
+  }
+}
+
+effect function stepCommand(tx: Tx, row: Omit<CommandRow, "receipt" | "resultRevision">, sent: Sent): Receipt!(StoreFailure | RowCorrupt | RowConflict | Rejected) {
+  return (try stepRow(tx, commandRows, row.commandId, sent, (receipt) => ({
+    organization_id: row.organizationId,
+    kind: row.kind,
+    status: wireStatus(statusAt(receipt, sent.now)),
+    expected_revision: row.expectedRevision,
+    created_at: row.createdAt,
+    updated_at: sent.now
+  }))).state
+}
+
+function replyOf(reply: ProviderReply<unknown>): Reply {
+  switch (reply.kind) {
+    case "applied": return { tag: "ShowsEffect" }
+    case "refused": return { tag: "DefiniteRefusal", cause: causeOf(reply.code) }
+    case "unknown": return { tag: "Unclear" }
+    default: {
+      const _exhaustive: never = reply
+      return _exhaustive
+    }
+  }
+}
+
+function causeOf(code: string): RefusalCause {
+  return code === "NotFoundAtProvider" || code === "AuthorizationLost" ? code : "OtherRefusal"
+}
+
+effect function admit(spec: CommandSpec, request: CommandRequest, commandId: string, by: SessionOwner, now: number): void!(StoreFailure | RowCorrupt | RowConflict | Rejected | Refused | CommandReplayed)!Store {
+  const store = try Store
+  const digest = requestDigest({ kind: spec.kind, subscriptionId: request.subscriptionId, expectedRevision: request.expectedRevision, terms: request.terms ?? null })
+  const providerKey = { providerKind: spec.providerKind, providerId: `${request.subscriptionId}:${commandId}` }
+  const prepare: Event = { type: "prepare", digest, providerKey, staleAfter: spec.staleAfter, expiresAt: now + commandLifetime }
+  try store.transaction(effect (tx: Tx) => {
+    try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [request.organizationId])
+    const existing = try commandRow(tx, commandId, true)
+    if (existing !== undefined) {
+      try applyAt(existing.receipt, { event: prepare, by, now }) catch effect () => { throw refused("IdempotencyConflict") }
+      throw new CommandReplayed({ commandId })
+    }
+    const subscription = try readSubscription(tx, request.organizationId)
+    if (subscription.subscriptionId !== request.subscriptionId) throw refused("BillingStateConflict")
+    if (subscription.revision !== request.expectedRevision) throw refused("StaleRevision")
+    if (!canClaimCommand(subscription, spec.kind, commandId, request.expectedRevision)) throw refused("BillingStateConflict")
+    try claimLiveCommand(tx, request.organizationId, spec.kind, commandId, request.expectedRevision)
+    const row = { commandId, organizationId: request.organizationId, kind: wireKinds[spec.kind], expectedRevision: request.expectedRevision, createdAt: now }
+    try stepCommand(tx, row, { event: prepare, by, now })
+    const claimed = try stepCommand(tx, row, { event: { type: "claim" }, by, now })
+    try stepCommand(tx, row, { event: { type: "send", claimToken: claimed.session.currentClaim }, by, now })
+  })
+}
+
+effect function record(row: CommandRow, by: SessionOwner, event: Event, now: number) {
+  const store = try Store
+  try store.transaction((tx) => stepCommand(tx, row, { event, by, now })) catch effect (failure) => match (failure) {
+    when Rejected: undefined;
+    default: throw failure;
+  }
+}
+
+effect function finish(spec: CommandSpec, organizationId: string, commandId: string) {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const row = try store.transaction((tx) => commandRow(tx, commandId, false))
+  if (row === undefined) return
+  const status = statusAt(row.receipt, now)
+  if (status !== "StatusSucceeded" && status !== "StatusRejected") return
+  const observed = status === "StatusSucceeded" ? try observeSubscription(organizationId) : undefined
+  try store.transaction(effect (tx: Tx) => {
+    try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [organizationId])
+    if (!holdsCommand(try readSubscription(tx, organizationId), spec.kind, commandId)) return
+    const result = observed === undefined ? undefined : try reconcileSubscription(tx, organizationId, observed, now)
+    try releaseLiveCommand(tx, organizationId, commandId)
+    if (result !== undefined) try tx.query("UPDATE subscription_commands SET result_revision = $2, updated_at = $3 WHERE key = $1", [commandId, result.revision, now])
+  })
+}
+
+effect function settle(spec: CommandSpec, organizationId: string, commandId: string) {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const row = try store.transaction((tx) => commandRow(tx, commandId, false))
+  if (row === undefined) return
+  if (statusAt(row.receipt, now) === "StatusUnknown") {
+    const by = row.receipt.session.owner
+    try resolveUnknown({
+      lookup: spec.lookup(subscriptionIdOf(row.receipt), now + providerTimeout),
+      record: (seen: ProviderReply<LookupResult>, at: number) => seen.kind === "applied" ? record(row, by, { type: "resolve", lookup: seen.value }, at) : Effect.void
+    })
+  }
+  try finish(spec, organizationId, commandId)
+}
+
+export effect function runCommand(spec: CommandSpec, request: CommandRequest) {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  if (!idempotencyKeyPattern.test(request.idempotencyKey)) throw refused("InvalidRequest")
+  const commandId = commandIdOf(request.organizationId, request.userId, request.idempotencyKey)
+  const by = senderOf(request.organizationId, request.userId, spec.providerKind)
+  const replayed = admit(spec, request, commandId, by, now) catch effect (failure) => match (failure) {
+    when CommandReplayed: true;
+    default: throw failure;
+  }
+  if (replayed !== true) {
+    const row = try store.transaction((tx) => commandRow(tx, commandId, false))
+    if (row !== undefined) {
+      const subscription = try store.transaction((tx) => readSubscription(tx, request.organizationId))
+      try dispatchOnce({
+        claim: Effect.void,
+        send: spec.send(subscription, renderProviderKey(row.receipt.providerKey), staleAt(row.receipt)),
+        record: (reply: ProviderReply<unknown>, at: number) => record(row, by, { type: "receiveReply", reply: replyOf(reply) }, at)
+      })
+    }
+  }
+  try settle(spec, request.organizationId, commandId)
+  return try readCommand(request.organizationId, commandId, wireKinds[spec.kind])
+}
+
+export effect function readCommand(organizationId: string, commandId: string, kind: WireCommandKind) {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const row = commandIdPattern.test(commandId) ? try store.transaction((tx) => commandRow(tx, commandId, false)) : undefined
+  if (row === undefined || row.organizationId !== organizationId || row.kind !== kind) throw refused("NotFound")
+  return viewOf(row, now)
+}
+
+export effect function commandsPage(organizationId: string, limit: number, cursor: string | undefined): CommandsPage!(StoreFailure | RowCorrupt | Refused)!Store {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const after = cursor === undefined ? undefined : cursorPattern.exec(cursor)
+  if (after === null) throw refused("InvalidRequest")
+  const keys = try store.transaction((tx) => tx.query(
+    after === undefined
+      ? "SELECT key FROM subscription_commands WHERE organization_id = $1 ORDER BY created_at DESC, key DESC LIMIT $2"
+      : "SELECT key FROM subscription_commands WHERE organization_id = $1 AND (created_at, key) < ($3::bigint, $4) ORDER BY created_at DESC, key DESC LIMIT $2",
+    after === undefined ? [organizationId, limit + 1] : [organizationId, limit + 1, Number(after[1]), after[2]]
+  ))
+  const items: CommandView[] = []
+  for (const found of keys.slice(0, limit)) {
+    const row = try store.transaction((tx) => commandRow(tx, toText(found.key) ?? "", false))
+    if (row !== undefined) items.push(viewOf(row, now))
+  }
+  const last = items[items.length - 1]
+  return { observedAt: now, items, nextCursor: keys.length > limit && last !== undefined ? `${last.createdAt}.${last.commandId}` : null }
+}
+
+export effect function sweepCommands(specs: ReadonlyArray<CommandSpec>): number!!Store {
+  const store = try Store
+  const kinds = specs.map((spec) => wireKinds[spec.kind])
+  const live = store.transaction((tx) => tx.query(
+    "SELECT c.key, c.organization_id, c.kind FROM subscription_commands c JOIN subscriptions s ON s.key = c.organization_id WHERE s.state->'liveCommand'->>'commandId' = c.key AND c.kind = ANY($1::text[]) ORDER BY c.created_at LIMIT 100",
+    [kinds]
+  )) catch () => []
+  let settled = 0
+  for (const found of live) {
+    const spec = specs.find((candidate) => wireKinds[candidate.kind] === found.kind)
+    if (spec === undefined) continue
+    const commandId = toText(found.key) ?? ""
+    const done = settle(spec, toText(found.organization_id) ?? "", commandId) catch effect (failure) => {
+      try annotateLogs(logWarning("a subscription command could not be settled yet"), { commandId, failure: failure._tag })
+      return false
+    }
+    if (done !== false) settled += 1
+  }
+  return settled
+}
+
+effect function stripe(call: { readonly method: "GET" | "POST"; readonly path: string; readonly params?: ReadonlyArray<readonly [string, string]>; readonly idempotencyKey?: string; readonly deadline: number }): ProviderReply<unknown>!!(Deployment | HttpClient.HttpClient) {
+  const deployment = try Deployment
+  const billing = deployment.settings.billing
+  if (billing === undefined) return { kind: "refused", code: "OtherRefusal" }
+  const key = deployment.secret(billing.secretKeyEnv) catch () => undefined
+  if (key === undefined) return { kind: "unknown", cause: "the provider key is missing" }
+  const client = try HttpClient.HttpClient
+  const now = try Clock.currentTimeMillis
+  const form = new URLSearchParams(call.params === undefined ? [] : call.params.map(([name, value]) => [name, value]))
+  const url = `${billing.apiUrl}${call.path}${call.method === "GET" && call.params !== undefined ? `?${form.toString()}` : ""}`
+  let request = HttpClientRequest.setHeader(HttpClientRequest.make(call.method)(url), "authorization", `Bearer ${key}`)
+  if (call.idempotencyKey !== undefined) request = HttpClientRequest.setHeader(request, "idempotency-key", call.idempotencyKey)
+  if (call.method === "POST") request = HttpClientRequest.bodyText(request, form.toString(), "application/x-www-form-urlencoded")
+  const exchange: ProviderReply<unknown>!!= effect {
+    const response = try client.execute(request)
+    const body: unknown = response.json catch () => null
+    if (response.status >= 200 && response.status < 300) return { kind: "applied", value: body }
+    if (response.status === 404) return { kind: "refused", code: "NotFoundAtProvider" }
+    if (response.status === 401 || response.status === 403) return { kind: "refused", code: "AuthorizationLost" }
+    if (response.status === 409 || response.status === 429 || response.status >= 500) return { kind: "unknown", cause: `the provider answered ${response.status}` }
+    return { kind: "refused", code: "OtherRefusal" }
+  } catch (failure) => ({ kind: "unknown", cause: failure._tag })
+  return try timeout(exchange, Duration.millis(Math.max(1, call.deadline - now))) catch () => ({ kind: "unknown", cause: "the provider did not answer before the stale time" })
+}
+
+const ProviderSubscription = Schema.Struct({ id: Schema.String, customer: Schema.String, cancel_at_period_end: Schema.Boolean })
+const RenewalPreview = Schema.Struct({ amount_due: Schema.Int, currency: Schema.Literal("usd") })
+
+function cancellation(kind: "CancelCommand" | "UndoCommand"): CommandSpec {
+  const target = kind === "CancelCommand"
+  return {
+    kind,
+    providerKind: "SubscriptionUpdate",
+    staleAfter: 5 * 60_000,
+    send: (subscription, idempotencyKey, deadline) => stripe({
+      method: "POST",
+      path: `/v1/subscriptions/${encodeURIComponent(subscription.subscriptionId)}`,
+      params: [["cancel_at_period_end", String(target)]],
+      idempotencyKey,
+      deadline
+    }),
+    lookup: (subscriptionId, deadline) => effect {
+      const reply = try stripe({ method: "GET", path: `/v1/subscriptions/${encodeURIComponent(subscriptionId)}`, deadline })
+      if (reply.kind !== "applied") return reply.kind === "refused" && reply.code === "NotFoundAtProvider" ? { kind: "applied", value: { tag: "RefusalSeen", cause: "NotFoundAtProvider" } } : { kind: "unknown", cause: reply.kind === "unknown" ? reply.cause : reply.code }
+      const seen = Schema.decodeUnknownOption(ProviderSubscription)(reply.value)
+      if (Option.isNone(seen) || seen.value.id !== subscriptionId) return { kind: "unknown", cause: "the provider subscription could not be read" }
+      return { kind: "applied", value: seen.value.cancel_at_period_end === target ? { tag: "EffectSeen" } : { tag: "NothingSeen" } }
+    }
+  }
+}
+
+export const cancelCommand = cancellation("CancelCommand")
+export const undoCommand = cancellation("UndoCommand")
+
+schema CommandBody { subscriptionId: string; expectedSubscriptionRevision: number; idempotencyKey: string }
+
+effect function signedOwner(context: RouteContext) {
+  const signed = owner(context.caller)
+  if (signed === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  return signed
+}
+
+effect function startCommand(spec: CommandSpec, context: RouteContext) {
+  const signed = try signedOwner(context)
+  const body = try jsonBody(context, CommandBody)
+  if (!Number.isSafeInteger(body.expectedSubscriptionRevision) || body.expectedSubscriptionRevision < 1) throw refused("InvalidRequest")
+  return json(try runCommand(spec, { ...signed, idempotencyKey: body.idempotencyKey, subscriptionId: body.subscriptionId, expectedRevision: body.expectedSubscriptionRevision }))
+}
+
+effect function commandStatus(spec: CommandSpec, context: RouteContext) {
+  const signed = try signedOwner(context)
+  const commandId = context.params.commandId ?? ""
+  try readCommand(signed.organizationId, commandId, wireKinds[spec.kind])
+  try settle(spec, signed.organizationId, commandId)
+  return json(try readCommand(signed.organizationId, commandId, wireKinds[spec.kind]))
+}
+
+effect function undoReview(context: RouteContext) {
+  const signed = try signedOwner(context)
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const subscription = try store.transaction((tx) => readSubscription(tx, signed.organizationId))
+  if (subscription.status !== "Active" || !subscription.cancelAtPeriodEnd || subscription.customer.tag !== "PinnedCustomer") throw refused("BillingStateConflict")
+  const reply = try stripe({
+    method: "POST",
+    path: "/v1/invoices/create_preview",
+    params: [["customer", subscription.customer.customerId], ["subscription", subscription.subscriptionId], ["subscription_details[cancel_at_period_end]", "false"]],
+    deadline: now + providerTimeout
+  })
+  const preview = reply.kind === "applied" ? Schema.decodeUnknownOption(RenewalPreview)(reply.value) : Option.none()
+  if (Option.isNone(preview)) throw refused("ProviderUnavailable", "NoReason", now + 5_000)
+  return json({
+    kind: "renewal_estimate",
+    subscriptionId: subscription.subscriptionId,
+    expectedSubscriptionRevision: subscription.revision,
+    planKey: wirePlanKey(subscription.planKey),
+    renewalAt: subscription.periodEnd,
+    amountDueCents: preview.value.amount_due,
+    currency: preview.value.currency,
+    observedAt: now
+  })
+}
+
+function pageLimit(query: URLSearchParams): number | undefined {
+  const given = query.get("limit")
+  if (given === null) return 20
+  const limit = /^\d{1,3}$/.test(given) ? Number(given) : 0
+  return limit >= 1 && limit <= 100 ? limit : undefined
+}
+
+export const routes: ReadonlyArray<Route> = [
+  { method: "POST", path: "/api/v1/subscriptions/cancel", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests", handler: (context) => startCommand(cancelCommand, context) },
+  { method: "POST", path: "/api/v1/subscriptions/cancel/undo", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests", handler: (context) => startCommand(undoCommand, context) },
+  { method: "GET", path: "/api/v1/subscriptions/cancel/undo/review", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests", handler: undoReview },
+  { method: "GET", path: "/api/v1/subscriptions/cancel/undo/:commandId", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests", handler: (context) => commandStatus(undoCommand, context) },
+  { method: "GET", path: "/api/v1/subscriptions/cancel/:commandId", auth: "FreshSession", capability: "billing", rateClass: "StandardRequests", handler: (context) => commandStatus(cancelCommand, context) },
+  {
+    method: "GET",
+    path: "/api/v1/subscriptions/commands",
+    auth: "ServiceAccess",
+    capability: "billing",
+    rateClass: "StandardRequests",
+    handler: (context) => effect {
+      const signed = try signedOwner(context)
+      const limit = pageLimit(context.query)
+      if (limit === undefined) throw refused("InvalidRequest")
+      return json(try commandsPage(signed.organizationId, limit, context.query.get("cursor") ?? undefined))
+    }
+  }
+]
+
+export const sweeps: ReadonlyArray<Sweep> = [{ name: "subscription commands", everyMs: 60_000, run: sweepCommands([cancelCommand, undoCommand]) }]

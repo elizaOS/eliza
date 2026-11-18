@@ -19,6 +19,7 @@ import { area as speech } from "./routes/speech.vibe"
 import { area as maps } from "./routes/maps.vibe"
 import { area as google } from "./routes/google.vibe"
 import { area as operator } from "./routes/operator.vibe"
+import { returnPageRoute } from "../native-clients/return-routes.vibe"
 
 module node {
   import { createServer } from "node:http"
@@ -68,7 +69,8 @@ effect function dispatch(routes: ReadonlyArray<Route>, requestId: string, now: n
   const request = try HttpServerRequest.HttpServerRequest
   const deployment = try Deployment
   const url = new URL(request.url, deployment.settings.api)
-  const matched = matchRoute(routes, request.method, url.pathname)
+  const found = matchRoute(routes, request.method, url.pathname)
+  const matched = found.kind === "none" && (request.method === "GET" || request.method === "HEAD") ? { kind: "route" as const, route: returnPageRoute, params: {} } : found
   if (matched.kind !== "route") throw refused("NotFound")
   const { route, params } = matched
   if (route.capability !== undefined && !capabilityEnabled(deployment.settings, route.capability)) throw refused("CapabilityUnavailable")

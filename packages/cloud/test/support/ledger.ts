@@ -14,6 +14,11 @@ export interface Ledger {
   dispose(): Promise<void>;
 }
 
+export const within = <A, E>(body: (tx: Tx) => Effect.Effect<A, E>) => Effect.gen(function* () {
+  const store = yield* Store;
+  return yield* store.transaction(body);
+});
+
 export function ledger(): Ledger {
   const runtime = ManagedRuntime.make(storeLayer({ kind: "pglite", file: undefined }));
   const time = manualClock();
@@ -26,7 +31,6 @@ export function ledger(): Ledger {
     const tag = typeof error === "object" && error !== null && "_tag" in error ? String(error._tag) : "unknown";
     return { kind: "failed", tag, error };
   };
-  const within = <A>(body: (tx: Tx) => Effect.Effect<A, unknown>) => Effect.flatMap(Store.asEffect(), (store) => store.transaction(body));
   const sql = async (text: string, params: ReadonlyArray<unknown> = []) => {
     const done = await run(within((tx) => tx.query(text, params)));
     if (done.kind === "failed") throw new Error(`${text}: ${done.tag}`, { cause: done.error });
@@ -37,7 +41,7 @@ export function ledger(): Ledger {
     run,
     sql,
     reset: async (organizations) => {
-      migrated ??= run(migrate({ digest: "conformance", environment: "staging", now: 0 }));
+      migrated ??= run(migrate({ digest: "c".repeat(64), environment: "staging", now: 0 }));
       const report = await migrated;
       if ((report as Settled<unknown>).kind === "failed") throw new Error("the conformance database did not migrate", { cause: report });
       time.set(0);

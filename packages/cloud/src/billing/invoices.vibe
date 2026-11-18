@@ -258,7 +258,7 @@ export function portalLocked(configuration: PortalConfigurationRead, livemode: b
     !features.subscription_update.enabled && features.subscription_pause?.enabled !== true
 }
 
-effect function ownedConfiguration(): PortalConfigurationRead | undefined!(ProviderMissing | ProviderFailed)!(Deployment | HttpClient.HttpClient) {
+effect function ownedConfiguration(): (PortalConfigurationRead | undefined)!(ProviderMissing | ProviderFailed)!(Deployment | HttpClient.HttpClient) {
   let cursor: string | undefined = undefined
   let more = true
   while (more) {

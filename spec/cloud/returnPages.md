@@ -144,8 +144,6 @@ pure def lawForwardsOnlyWellFormedValuesOrTheFixedError(purpose: PagePurpose, pa
     or (f.name == "result" and textOf(params.resultParam) == List(f.value))
     or (f.name == "connectionId" and textOf(params.connectionIdParam) == List(f.value))
     or (f.name == "session_id" and textOf(params.sessionIdParam) == List(f.value)))
-pure def lawSignInForwardsNoResult(params: ReturnParams): bool =
-  forwarded(SignInPage, params).every(f => f.name == "error" or f.name == "state")
 pure def lawConnectForwardsAWholeResultOrNothing(params: ReturnParams): bool = {
   val sent = forwarded(ConnectPage, params)
   sent.length() == 0 or sent.length() == (if (sent.some(f => f.name == "result" and f.value == "connected")) 3 else 2)

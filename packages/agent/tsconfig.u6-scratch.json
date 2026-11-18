@@ -1,0 +1,1 @@
+{ "extends": "./tsconfig.json", "include": ["src/access/socket.vibe", "src/access/events-port.vibe", "src/host/process.vibe", "test/transport.test.vibe", "test/drivers/agent__access__transport.ts", "test/support/socket-client.ts", "gen/*.ts", "gen/*.vibe"] }

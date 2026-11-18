@@ -236,10 +236,10 @@ export effect function execute(binary: string, args: readonly string[], timeoutM
     const code: number = try child.exitCode
     return { stdout, stderr, code }
   })
-  const finished = try (timeout(run, timeoutMs) catch effect (failure) => {
+  const finished = timeout(run, timeoutMs) catch effect (failure) => {
     if (failure._tag === "TimeoutError") throw new AdbTimedOut({ args, timeoutMs })
     throw new AdbFailed({ args, code: -1, stderr: failure.message })
-  })
+  }
   if (finished.code !== 0) throw new AdbFailed({ args, code: finished.code, stderr: finished.stderr.trim().slice(0, 1024) })
   return finished.stdout
 }
@@ -288,23 +288,28 @@ effect function snapshot(file: string) {
     const info = try files.stat(file)
     const raw = try files.readFileString(file)
     const identity = `${info.dev}:${Option.getOrElse(info.ino, () => 0n)}:${raw}`
-    const mtime = Option.match(info.mtime, { onNone: () => 0, onSome: (date) => date.getTime() })
+    const mtime = Option.isSome(info.mtime) ? info.mtime.value.getTime() : 0
     const lease = decodeLease(raw)
     const found: Snapshot = Option.isSome(lease) ? { kind: "parsed", lease: lease.value, identity, mtime } : { kind: "unparsable", identity, mtime }
     return found
   }
-  return try (read catch effect (failure) => {
+  const found = read catch effect (failure) => {
     if (failure._tag === "PlatformError" && failure.reason._tag === "NotFound") return missing
     throw failure
-  })
+  }
+  return found
 }
 
 effect function writeExclusive(file: string, content: string) {
   const files = try FileSystem.FileSystem
-  return try (files.writeFileString(file, content, { flag: "wx" }).pipe(Effect.as(true)) catch effect (failure) => {
+  const written = effect {
+    try files.writeFileString(file, content, { flag: "wx" })
+    return true
+  } catch effect (failure) => {
     if (failure.reason._tag === "AlreadyExists") return false
     throw failure
-  })
+  }
+  return written
 }
 
 effect function withMutationLock<A, E, R>(leasePath: string, body: A!E!R) {
@@ -323,14 +328,14 @@ effect function withMutationLock<A, E, R>(leasePath: string, body: A!E!R) {
     try sleep(LOCK_POLL_MS)
   }
   const release = effect {
-    const current = try (files.readFileString(lockPath) catch () => "")
+    const current = files.readFileString(lockPath) catch () => ""
     if (current !== own) throw new LeaseLockConflict({ lockPath })
     try files.remove(lockPath)
   }
-  const result = try (body catch effect (failure) => {
+  const result = body catch effect (failure) => {
     try release
     throw failure
-  })
+  }
   try release
   return result
 }
@@ -361,10 +366,14 @@ effect function claim(deviceKey: string, leasePath: string, options: LeaseOption
     }
     const temporary = `${leasePath}.${processId()}.${uniqueToken()}.tmp`
     try files.writeFileString(temporary, `${JSON.stringify(lease, null, 2)}\n`, { flag: "wx" })
-    const linked = try ensuring(files.link(temporary, leasePath).pipe(Effect.as(true)) catch effect (failure) => {
+    const link = effect {
+      try files.link(temporary, leasePath)
+      return true
+    }
+    const linked = ensuring(link, orDie(files.remove(temporary, { force: true }))) catch effect (failure) => {
       if (failure.reason._tag === "AlreadyExists") return false
       throw failure
-    }, files.remove(temporary, { force: true }).pipe(Effect.orDie))
+    }
     if (linked) {
       const held: DeviceLease = { lease, path: leasePath }
       return held
@@ -796,7 +805,7 @@ export effect function runIsolatedAndroidTest(options: IsolatedTestOptions) {
     return try ensuring(effect {
       try run("pull", (lines[0] ?? "").slice("package:".length), local)
       return try fileSha256(local)
-    }, files.remove(local, { force: true }).pipe(Effect.orDie))
+    }, orDie(files.remove(local, { force: true })))
   }
   const owned = new Map<string, string>()
   const unacknowledged = new Map<string, string>()
@@ -836,10 +845,10 @@ export effect function runIsolatedAndroidTest(options: IsolatedTestOptions) {
       for (const [name, expected] of owned) try refuse((try installedHash(name)) === expected, "Installed APK changed before instrumentation")
       const selection = options.testMethod === undefined ? classes.join(",") : `${classes[0]}#${options.testMethod}`
       const log = path.join(options.directory, `${variant}${label ? `-${label}` : ""}.log`)
-      const output = try (run("shell", "am", "instrument", "--user", user, "-w", "-r", "-e", "class", selection, ...args, `${testPackage}/${runner}`) catch effect (failure) => {
+      const output = run("shell", "am", "instrument", "--user", user, "-w", "-r", "-e", "class", selection, ...args, `${testPackage}/${runner}`) catch effect (failure) => {
         try files.writeFileString(log, failure._tag === "AdbFailed" ? failure.stderr : `timed out after ${failure.timeoutMs} ms`)
         throw failure
-      })
+      }
       try files.writeFileString(log, output)
       const result = try requireInstrumentationSuccess(output, classes)
       try instrumentationCheck(result.totalTests === options.expectedTests, "Unexpected test count")
@@ -881,14 +890,14 @@ export effect function runIsolatedAndroidTest(options: IsolatedTestOptions) {
             phases.add(name)
             const phase: NonNullable<VariantRecord["phases"]>[number] = { name, passed: false }
             record.phases = [...(record.phases ?? []), phase]
-            const result = try (instrument(variant.name, extras, `phase-${name}`) catch effect (failure) => {
+            const result = instrument(variant.name, extras, `phase-${name}`) catch effect (failure) => {
               phase.error = failure._tag === "InstrumentationRefused" ? failure.reason : failure._tag
               throw failure
-            })
+            }
             phase.instrumentation = result
             phase.passed = true
             return result
-          }, (failure) => failure as IsolatedFailure),
+          }, (failure) => failure as IsolatedFailure).pipe(Effect.provideService(FileSystem.FileSystem, files)),
         }
         if (options.preflightVariant) try options.preflightVariant(context)
         try refuse(!(try installed()), "Installation appeared during scenario preflight")

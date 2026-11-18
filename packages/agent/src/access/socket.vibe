@@ -114,7 +114,7 @@ module node {
     readonly cut: () => void
   }
 
-  interface Detail {
+  export interface Detail {
     readonly answer?: Answer
     readonly head?: Head
     readonly chunk?: Uint8Array
@@ -401,4 +401,4 @@ module node {
   }
 }
 
-export { Exchanges, inboundOf, listenOnSocket, localRouteClass, parseFrame, runUntilAbort, type Answer, type FeedAccess, type Head, type Parsed, type Wiring } from node
+export { Exchanges, inboundOf, listenOnSocket, localRouteClass, parseFrame, runUntilAbort, type Answer, type Detail, type FeedAccess, type Head, type Parsed, type Wiring } from node

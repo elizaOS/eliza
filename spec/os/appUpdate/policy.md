@@ -283,7 +283,8 @@ pure def stepActivatesOnlyWhenEveryGateHolds(before: Ledger, after: Ledger, out:
   out.every(p => activationTried(p.runOutcome) implies (p.job == ActivationJob and
     (p.decision == Decided({ blockers: List() }) or (p.decision == Decided({ blockers: List(ActivationNotEnabled) }) and p.runOutcome == Activated({ activation: NotEnabled })))))
 pure def sometimesActivationStarted(l: Ledger): bool = l.lastOutcome == Activated({ activation: ActivationStarted })
-pure def sometimesPendingUnknownBlocks(l: Ledger): bool = l.pending != 0 and l.lastOutcome == ActivationDeferred and match l.lastDecision { | Decided(x) => x.blockers.includes(PendingUnknown) | _ => false }
+pure def decisionBlocks(d: Decision, b: Blocker): bool = match d { | Decided(x) => x.blockers.includes(b) | _ => false }
+pure def sometimesPendingUnknownBlocks(l: Ledger): bool = l.pending != 0 and l.lastOutcome == ActivationDeferred and decisionBlocks(l.lastDecision, PendingUnknown)
 ```
 
 ### The ledger keeps the pending activation and the check ages in signed time

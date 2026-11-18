@@ -71,11 +71,11 @@ type AttemptStep = { state: GoogleAttempt, out: List[SignInEffect] }
 pure val stateLifetime: Millis = 5 * millisPerMinute
 pure val initial: GoogleAttempt = { flow: O::initial, stateExpiresAt: 0, failure: NoFailure, target: AppReturnUrl, returned: NotReturned, code: NoCode, native: NoChallenge, now: 0 }
 pure def authorizeAdmitted(r: AuthorizeRequest): bool = r.responseType == CodeResponse and r.method == S256 and r.hasState and r.client == N::ClientAdmitted
-pure def authorizeRefusal(r: AuthorizeRequest): Refusal = {
-  val client = r.client
-  if (r.responseType != CodeResponse or r.method != S256 or not(r.hasState)) refuse(InvalidRequest)
-  else match client { | N::ClientRefused(c) => N::faultRefusal(c.fault) | _ => refuse(InvalidRequest) }
-}
+pure def clientFault(c: N::ClientCheck): N::ClientFault =
+  if (c == N::ClientRefused({ fault: N::UnknownClient })) N::UnknownClient else if (c == N::ClientRefused({ fault: N::DisabledClient })) N::DisabledClient else N::WrongRedirect
+pure def authorizeRefusal(r: AuthorizeRequest): Refusal =
+  if (r.responseType != CodeResponse or r.method != S256 or not(r.hasState) or r.client == N::ClientAdmitted) refuse(InvalidRequest)
+  else N::faultRefusal(clientFault(r.client))
 pure def canBegin(a: GoogleAttempt, authorize: AuthorizeRequest): bool = a.flow.phase == O::FlowIdle and a.native == NoChallenge and authorizeAdmitted(authorize)
 pure def begin(a: GoogleAttempt, supported: bool, authorize: AuthorizeRequest): GoogleAttempt =
   { ...initial, now: a.now, flow: O::begin(a.flow, supported), stateExpiresAt: a.now + stateLifetime }
@@ -220,7 +220,8 @@ pure def sometimesBrowserSecondFactor(a: GoogleAttempt): bool = a.code == CodeRe
 ### An issued code past its minute is closed as expired
 
 ```quint
-pure def canExpireCode(a: GoogleAttempt): bool = match a.code { | CodeIssued(x) => a.now >= x.redeemBy | _ => false }
+pure def isIssued(c: CodePhase): bool = match c { | CodeIssued(x) => true | _ => false }
+pure def canExpireCode(a: GoogleAttempt): bool = isIssued(a.code) and not(codeLive(a.code, a.now))
 pure def expireCode(a: GoogleAttempt): GoogleAttempt = { ...a, code: CodeExpired }
 pure def sometimesCodeExpired(a: GoogleAttempt): bool = a.code == CodeExpired
 ```
@@ -313,7 +314,7 @@ pure def sometimesGoogleProven(a: GoogleAttempt): bool = provesGoogleFor(a, "use
 ### An open challenge past its five minutes is closed as expired
 
 ```quint
-pure def canExpireNative(a: GoogleAttempt): bool = match a.native { | ChallengeOpen(c) => a.now >= c.openUntil | _ => false }
+pure def canExpireNative(a: GoogleAttempt): bool = isOpen(a.native) and not(nativeLive(a.native, a.now))
 pure def expireNative(a: GoogleAttempt): GoogleAttempt = { ...a, native: ChallengeExpired }
 pure def sometimesNativeExpired(a: GoogleAttempt): bool = a.native == ChallengeExpired
 ```
