@@ -157,9 +157,9 @@ pure def isStarted(n: PageNotice): bool = match n { | Started(x) => true | _ => 
 pure def isWithdrawal(n: PageNotice): bool = match n { | PermissionWithdrawn(x) => true | _ => false }
 pure def stepEndedPermissionsAreWithdrawnBeforeTheStart(before: PageRequests, via: str, after: PageRequests, out: List[PageNotice]): bool = {
   val gone = after.requests.select(r => r.status == PermissionAnswered({ answer: Ended }) and before.requests.some(b => b.id == r.id and active(b.status)))
-  val last = out.nthOr(out.length() - 1, Asked({ surface: "", request: 0, kind: Dialog }))
+  val final = out.nthOr(out.length() - 1, Asked({ surface: "", request: 0, kind: Dialog }))
   out.select(n => isWithdrawal(n)) == (if (via == "androidAnswered") List() else withdrawn(gone)) and
-    (via == "pageStarted" implies out.length() > 0 and isStarted(last))
+    (via == "pageStarted" implies out.length() > 0 and isStarted(final))
 }
 pure def sometimesStartEndedAHandoff(s: PageRequests): bool =
   s.requests.some(r => r.kind == OtherApp and r.status == Dismissed and s.host.surfaces.some(x => x.gen == r.gen) and

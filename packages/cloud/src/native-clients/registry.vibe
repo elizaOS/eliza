@@ -5,7 +5,6 @@ import {
   type ClientRequest, type Registration, type ReturnUrl
 } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import { Refused, refused } from "../http/refusal.vibe"
-import { mountedSignIn } from "../http/routes/foundation.vibe"
 import { json, type Route, type RouteContext } from "../http/routes.vibe"
 import { Deployment, rowOf, signInMethods } from "../profile/profile.vibe"
 import { Store, toInt, toText, type Row, type Tx } from "../store/connection.vibe"
@@ -168,7 +167,7 @@ effect function readConfig(context: RouteContext) {
     redirectUri: returnText(answer.redirectUri),
     codeChallengeMethod: answer.codeChallengeMethod,
     credentialTtlMs: answer.credentialTtlMs,
-    methods: signInMethods(deployment.settings, mountedSignIn()),
+    methods: signInMethods(deployment.settings),
     google: answer.google
   })
 }

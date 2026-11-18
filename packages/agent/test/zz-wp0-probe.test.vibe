@@ -1,0 +1,28 @@
+// spec/agent/host/launch.md, "Story: Start the agent from one launch document"
+import { assert, it } from "@effect/vitest"
+import { call, events, host, startInProcess, stream } from "./support/kernel.vibe"
+import { text } from "./support/cloud-fake.ts"
+import { productPlugin } from "./support/product-plugin/index.ts"
+
+it.effect('probe (spec/agent/host/launch.md, "Story: Start the agent from one launch document")', effect () => {
+  const seen: unknown[] = []
+  for (const http of [false, true]) {
+    const t0 = try Clock.currentTimeMillis
+    const booted = try startInProcess({ http, cloud: true, launch: { callerRole: "owner", productPlugin: "product-fixture" }, bundled: new Map([["product-fixture", productPlugin]]) })
+    const t1 = try Clock.currentTimeMillis
+    const health = try call(booted, { method: "GET", path: "/api/health" })
+    const ping = try call(booted, { method: "GET", path: "/api/product/ping" })
+    const stale = try call(booted, { method: "GET", path: "/api/product/ping", token: "stale" })
+    const opened = try call(booted, { method: "POST", path: "/api/conversations", body: {} })
+    const id = ("json" in opened ? (opened.json as { conversation: { id: string } }).conversation.id : "")
+    try Effect.sync(() => booted.cloud?.script(text("Hello", " there.")))
+    const t2 = try Clock.currentTimeMillis
+    const turn = try stream(booted, { method: "POST", path: `/api/conversations/${id}/messages/stream`, body: { text: "hi" } })
+    const t3 = try Clock.currentTimeMillis
+    const feed = try events(booted, ["conversation"])
+    const first = try host("first", () => feed.next()).pipe(Effect.timeout("2 seconds"), Effect.result)
+    const t4 = try Clock.currentTimeMillis
+    seen.push({ http, times: [t1 - t0, t2 - t1, t3 - t2, t4 - t3], health: "status" in health && health.status, ping: "json" in ping && ping.json, stale: "status" in stale && stale.status, turn: turn.status, ends: turn.text.slice(-160), error: turn.error, first: Result.isSuccess(first) ? first.success : String(first.failure) })
+  }
+  try Effect.try(() => assert.deepStrictEqual(seen, []))
+}, 300_000)

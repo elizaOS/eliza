@@ -21,7 +21,7 @@ public final class CloudRequestPolicy {
   public enum Auth { PUBLIC, KEY_OR_SESSION, SESSION, FRESH_SESSION, STEP_UP }
   public enum Credential { NONE, DEVICE_KEY, ACCOUNT_SESSION }
   public enum Delivery { INLINE, GRANT, TOO_LARGE }
-  public enum Failure { TABLE_REFUSED, ROUTE_REFUSED, TOO_LARGE, SIGNED_OUT, REAUTH_REQUIRED, NETWORK, GRANT_UNKNOWN, HOST_REFUSED }
+  public enum Failure { TABLE_REFUSED, UNKNOWN_ENVIRONMENT, ROUTE_REFUSED, TOO_LARGE, SIGNED_OUT, REAUTH_REQUIRED, NETWORK, GRANT_UNKNOWN, HOST_REFUSED }
 
   public record DeviceRoute(RouteGate.Method method, List<String> path, Auth auth, Set<String> headers) {
     public DeviceRoute { path = List.copyOf(path); headers = Set.copyOf(headers); }
