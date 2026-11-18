@@ -41,13 +41,14 @@ const QUOTE_PAIRS: Record<string, string> = {
 const OPEN_COMMAND = String.raw`(?:open|visit|go\s+to|navigate\s+to)`;
 // A speech transcript may leave the dots between hostname labels as words.
 // Keep each label explicit and let the same address validator check the result.
-const ADDRESS_TOKEN = String.raw`\S+(?: +dot +\S+)*`;
-const ADDRESS_WORD = new RegExp(ADDRESS_TOKEN, "gi");
-const SPOKEN_DOT = / +dot +/gi;
+const SPOKEN_DOT_SOURCE = String.raw`\p{Zs}+dot\p{Zs}+`;
+const SPOKEN_ADDRESS_TOKEN = String.raw`\S+(?:${SPOKEN_DOT_SOURCE}\S+)+`;
+const ADDRESS_TOKEN = String.raw`(?:${SPOKEN_ADDRESS_TOKEN}|\S+)`;
+const SPOKEN_DOT = new RegExp(SPOKEN_DOT_SOURCE, "giu");
 const HOST_LABEL_GROUP = String.raw`[a-z\d-]+(?:\.[a-z\d-]+)*`;
 const SPOKEN_HOSTNAME = new RegExp(
-  String.raw`^${HOST_LABEL_GROUP}(?: +dot +${HOST_LABEL_GROUP})+$`,
-  "i",
+  String.raw`^${HOST_LABEL_GROUP}(?:${SPOKEN_DOT_SOURCE}${HOST_LABEL_GROUP})+$`,
+  "iu",
 );
 // Everyday verbs that ask for a site. Direct requests only: the router never
 // claims them without the model.
@@ -78,6 +79,14 @@ const SITE_AFTER = /^\s+(?:web\s?)?site\b/i;
 // opening") or the address itself ("not youtube.com").
 const OPEN_VERB =
   /\b(?:open(?:s|ed|ing)?|visit(?:s|ed|ing)?|go(?:es|ing)?|went|head(?:s|ed|ing)?|navigat(?:e|es|ed|ing)|tak(?:e|es|en|ing)|took|pull(?:s|ed|ing)?|bring(?:s|ing)?|brought|show(?:s|n|ed|ing)?|load(?:s|ed|ing)?|launch(?:es|ed|ing)?|brows(?:e|es|ed|ing)|access(?:es|ed|ing)?|check(?:s|ed|ing)?)\b/gi;
+// Read a spoken target starting after a known request verb or direct refusal.
+// A raw word scan would mistake "open dot dot" for a host and miss "dot dot com".
+const ADDRESS_INTRO = String.raw`(?:${EVERYDAY_COMMAND}|${OPEN_COMMAND}|${OPEN_VERB.source}|\b(?:not|nor)(?=\p{Zs}+dot\b))[,.:!?]?\p{Zs}+`;
+const SITE_QUALIFIERS = String.raw`(?:(?:the|(?:web\s?)?site|at|called|named)\p{Zs}+)*`;
+const ADDRESS_WORD = new RegExp(
+  String.raw`(?:${ADDRESS_INTRO}${SITE_QUALIFIERS}(${SPOKEN_ADDRESS_TOKEN})|(${ADDRESS_TOKEN}))`,
+  "giu",
+);
 // Open verbs joined by "or", "and", "nor", "/" or "&", with their particles
 // ("go to", "pull up"), are one group, and a negation before its first verb
 // governs them all ("don't open or visit x.com"). A list comma joins only
@@ -151,14 +160,14 @@ function patterns(assistantName: string): NamePatterns {
   const built: NamePatterns = {
     command: new RegExp(
       String.raw`${lead}(?:please,?\s+)?${OPEN_COMMAND}\s+(${ADDRESS_TOKEN})(\s.*)?$`,
-      "i",
+      "iu",
     ),
     // Explicit polite questions and whole-message everyday commands are
     // direct requests too, but file-like bare names still need a website
     // signal rather than acquiring authority from the verb.
     directRequest: new RegExp(
       String.raw`${lead}(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${OPEN_COMMAND}|${EVERYDAY_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+(?:the\s+)?(${ADDRESS_TOKEN})(\s+(?:web\s?)?site\b)?(\s.*)?$`,
-      "i",
+      "iu",
     ),
     search: new RegExp(
       String.raw`${lead}(?:please,?\s+)?${SEARCH_COMMAND}\s+(\S.*)$`,
@@ -504,8 +513,8 @@ function typedAddresses(
   const found: { url: URL; webSignal: boolean; negated: boolean }[] = [];
   // A literal piece of a mixed spoken hostname is not a separate address.
   // The whole spoken destination needs its direct request proof above.
-  for (const word of text.matchAll(ADDRESS_WORD)) {
-    const lead = word[0].replace(/^[("'“‘«<[]+/u, "");
+  for (const word of addressWords(text)) {
+    const lead = word.value.replace(/^[("'“‘«<[]+/u, "");
     const tokens = new Set([
       lead,
       stripTrailingPunctuation(lead, ")]>\"'”’».,!?;:").replace(/['’]s$/u, ""),
@@ -515,7 +524,7 @@ function typedAddresses(
       if (!url) continue;
       // The nearby words only: a governing verb or "website" is close by.
       const before = text.slice(Math.max(0, word.index - 500), word.index);
-      const after = text.slice(word.index + word[0].length);
+      const after = text.slice(word.index + word.value.length);
       found.push({
         url,
         webSignal:
@@ -532,7 +541,7 @@ function typedAddresses(
 // Every word of the message that names the host, read as an address or not:
 // "**x.com**", "http://x.com", "x.com…", "X．COM" and "www.x.com" all name
 // x.com. A "www." label before the host is not part of another host.
-function hostWords(text: string, host: string): RegExpExecArray[] {
+function hostWords(text: string, host: string) {
   // "https://www./" names no host.
   if (!host) return [];
   const names = (form: string) => {
@@ -552,14 +561,21 @@ function hostWords(text: string, host: string): RegExpExecArray[] {
     }
     return false;
   };
-  return [...text.matchAll(ADDRESS_WORD)].filter((word) => {
-    const read = plain(word[0].replace(DOTS, ".").replace(SPOKEN_DOT, "."));
+  return [...addressWords(text)].filter((word) => {
+    const read = plain(word.value.replace(DOTS, ".").replace(SPOKEN_DOT, "."));
     return (
       names(read.toLowerCase()) ||
       (/[^\p{ASCII}]/u.test(read) &&
         names(read.replace(HOST_RUN, asciiHost).toLowerCase()))
     );
   });
+}
+
+function* addressWords(text: string) {
+  for (const match of text.matchAll(ADDRESS_WORD)) {
+    const value = match[1] ?? match[2];
+    yield { value, index: match.index + match[0].length - value.length };
+  }
 }
 
 // A host as a URL reads it, so "münchen.de" names xn--mnchen-3ya.de.
@@ -576,10 +592,10 @@ function asciiHost(run: string): string {
 // a bare "don't" or "never".
 function refused(
   text: string,
-  word: RegExpExecArray,
+  word: { value: string; index: number },
   assistantName: string,
 ): boolean {
-  const end = word.index + word[0].length;
+  const end = word.index + word.value.length;
   return (
     BARE_END.test(plain(text.slice(-200))) ||
     negatesOpen(text, word.index, assistantName) ||

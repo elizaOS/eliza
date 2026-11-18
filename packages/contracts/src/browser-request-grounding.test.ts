@@ -902,6 +902,7 @@ describe("strict open command with where the address opens", () => {
   });
   it.each([
     ["maps dot example.com", "maps.example.com"],
+    ["maps\u00a0dot\u00a0example.com", "maps.example.com"],
     ["example.com dot ai", "example.com.ai"],
   ])("keeps %s as one complete destination", (spoken, host) => {
     const text = `Open ${spoken} in a new tab.`;
@@ -913,6 +914,18 @@ describe("strict open command with where the address opens", () => {
     ).toBeUndefined();
     expect(
       groundBrowserDestination(`Open ${host}. Don't open ${spoken}.`, href),
+    ).toBeUndefined();
+  });
+  it.each([
+    "Don't open dot dot com.",
+    "Don't show me dot dot com.",
+    "Don't open the website dot dot com.",
+    "Not dot dot com.",
+  ])("keeps the opening words outside the spoken hostname in %s", (refusal) => {
+    const href = "https://dot.com/";
+    expect(authoredBrowserDestination("Open dot dot com.")).toBe(href);
+    expect(
+      groundBrowserDestination(`Open dot.com. ${refusal}`, href),
     ).toBeUndefined();
   });
   it.each([
