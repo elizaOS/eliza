@@ -1,0 +1,53 @@
+{
+  "sources": [
+    "packages/cloud/scripts/admin/migrate-with-diagnostics.ts",
+    "packages/cloud/scripts/admin/canonical-migration-ledger.ts",
+    "packages/cloud/scripts/admin/migrate-with-diagnostics.postgres.test.ts",
+    "packages/cloud/quint/check-reviewed-cloud.mjs",
+    "packages/cloud/quint/reviewed-cloud-checks.json",
+    "packages/cloud/shared/src/db/migrations/0282_drop_unused_usage_quotas_table.sql",
+    "packages/cloud/shared/src/db/migrations/0282_01_restore_usage_quotas_compatibility.sql",
+    "packages/cloud/shared/src/db/migrations/0574_native_app_auth_client_registration.sql"
+  ],
+  "conformance": "packages/cloud/quint/check-reviewed-cloud.mjs",
+  "bounds": {
+    "domain": "One database, two migrator sessions, and five ordered ledger phases. The initial database is relation-free, established, or contains application relations with a wiped ledger.",
+    "projection": "Transactions publish the first migration with its fresh provisioning receipt and later publish the complete guarded pair with receipt retirement. A restarted session recognizes an exact durable prefix. Legacy deployments can reach the safe prefix and pause. An altered prefix or quota rows prevent a marked attempt from crossing the drop.",
+    "conformance": "The owning PostgreSQL tests check exact ledger and table state after interruption and retry, first-transaction rollback, refusal of changed history or quota rows committed while the pair waits for its lock, unmarked and wiped ledgers, and the guarded transaction's visibility to concurrent reads.",
+    "limits": "The abstraction compresses the SQL journal to representative phases. It assumes verified database authority, protected DDL ownership, and PostgreSQL transaction and advisory lock semantics. The existing repair after a historically committed drop, provider traffic outside the represented quota table, network failures and SQL shape differences are outside this model."
+  },
+  "cases": [
+    {
+      "name": "fresh-cloud-migration-resume",
+      "main": "CloudFreshMigrationResume",
+      "init": "init",
+      "step": "step",
+      "invariants": [
+        "TypeOK",
+        "ExactReceiptLifecycle",
+        "NoLiveDrop",
+        "WipedLedgerNeverReplays"
+      ],
+      "temporal": ["FairStableRetrySettles", "StableRetrySettles"],
+      "temporalChecks": [
+        {
+          "property": "FairStableRetrySettles",
+          "expect": "holds",
+          "assumptions": [
+            "A valid receipt and empty quota table remain stable. Weak fairness schedules a waiting migrator and advances its continuously enabled SQL commits."
+          ]
+        },
+        {
+          "property": "StableRetrySettles",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A restart can wait indefinitely without another migration attempt."
+          ]
+        }
+      ],
+      "maxSteps": 15,
+      "samples": 500,
+      "deadlock": false
+    }
+  ]
+}

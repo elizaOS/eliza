@@ -18,19 +18,12 @@ import * as React from "react";
 import { client } from "../../api/client";
 import type { DeviceTier } from "../../api/client-local-inference";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
-import { getElectrobunRendererRpc } from "../../bridge/electrobun-rpc";
 import { useBranding } from "../../config/branding-react.hooks";
 import { useViewEvent } from "../../hooks/useViewEvent";
 import {
   loadContinuousChatMode,
   loadOsIntentAutoStartConsent,
-  loadWakeWordEnabled,
-  saveWakeWordEnabled,
 } from "../../state/persistence";
-import {
-  getFusedWakeStatus,
-  subscribeFusedWakeStatus,
-} from "../../voice/fused-wake-bridge";
 import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
@@ -118,27 +111,6 @@ export function VoiceSectionMount(): React.ReactElement {
   const pendingPersistPrefs = React.useRef<VoiceSectionPrefs | null>(null);
   const persistTask = React.useRef<Promise<void> | null>(null);
   const [persistError, setPersistError] = React.useState<string | null>(null);
-  // Wake-word listening is a device-local pref (localStorage mirror the shell
-  // reads synchronously — see useShellController's useWakeListenWindow), not part
-  // of the `messages.voice` config blob. Seed from the persisted value.
-  const [wakeWordEnabled, setWakeWordEnabled] = React.useState<boolean>(() =>
-    loadWakeWordEnabled(),
-  );
-  // The renderer starts no wake detector. On iOS, Android and web the switch
-  // stays unavailable so it does not look like it works.
-  const wakeWordAvailable = getElectrobunRendererRpc() !== undefined;
-  // Desktop only: the native wake detector can fail to start (wake models not
-  // downloaded, microphone refused). Show the host's reason instead of leaving
-  // the switch on with nothing listening.
-  const fusedWake = React.useSyncExternalStore(
-    subscribeFusedWakeStatus,
-    getFusedWakeStatus,
-    getFusedWakeStatus,
-  );
-  const wakeWordInactiveReason =
-    wakeWordEnabled && fusedWake.bridged && !fusedWake.listening
-      ? fusedWake.reason
-      : undefined;
   const [tierError, setTierError] = React.useState(false);
   const [tier, setTier] = React.useState<DeviceTier | null>(null);
   const [tierSummary, setTierSummary] = React.useState<string | undefined>(
@@ -217,12 +189,6 @@ export function VoiceSectionMount(): React.ReactElement {
       cancelled = true;
     };
   }, []);
-  // Persist the wake-word toggle and update local state so the control reflects
-  // it immediately; the shell picks the new value up on its next render.
-  const handleWakeWordToggle = React.useCallback((next: boolean) => {
-    setWakeWordEnabled(next);
-    saveWakeWordEnabled(next);
-  }, []);
   const persistPendingPrefs = React.useCallback(async () => {
     while (pendingPersistPrefs.current) {
       const next = pendingPersistPrefs.current;
@@ -279,9 +245,6 @@ export function VoiceSectionMount(): React.ReactElement {
         onPrefsChange={(next) => void handlePrefsChange(next)}
         profilesClient={profilesClient}
         showModelsPanel={cloudOnly !== true}
-        wakeWordEnabled={wakeWordAvailable && wakeWordEnabled}
-        onWakeWordToggle={wakeWordAvailable ? handleWakeWordToggle : undefined}
-        wakeWordInactiveReason={wakeWordInactiveReason}
         leadingContent={
           <>
             <VoicePresetSettingsContent />

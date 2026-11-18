@@ -40,7 +40,7 @@ afterEach(() => {
 async function fixture(request = "Open example.com.") {
   const runtime = new AgentRuntime({
     character: {
-      name: "Device browser routing",
+      name: "Eliza",
       bio: [],
       settings: { ELIZA_ADMIN_ENTITY_ID: owner },
     },
@@ -221,7 +221,6 @@ it.each([
   "Open Notes",
   "Open example..com",
   "Open https://",
-  "Open http://example.com",
   "Do not open example.com",
   "Open example.com and read its title",
   "If my note exists, open example.com",

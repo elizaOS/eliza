@@ -148,6 +148,17 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
   synchronized(this){PluginCall pending=pendingStart;waiting=pending!=null&&String.valueOf(call.getString("sessionId")).equals(pending.getString("sessionId"))?pending:null;if(waiting!=null)pendingStart=null;own=owned(call);}
   if(waiting!=null)waiting.reject("Cloud streaming speech stopped","cancelled");
   if(own==null){call.resolve();return;}detach(own);queueCleanup(own,call::resolve);}
+ @PluginMethod public void setCloudSpeechOutputMuted(PluginCall call){
+  Session own=owned(call);Boolean muted=call.getBoolean("muted");
+  if(own==null||muted==null){call.reject("Speech session changed or mute was missing");return;}
+  try{
+   own.check();own.outputMuted=muted;
+   Utterance spoken=own.spoken;if(spoken!=null)synchronized(spoken){
+    if(spoken.playback!=null)spoken.playback.setOutputMuted(muted);
+   }
+   call.resolve();
+  }catch(Exception failure){call.reject("Speaker could not change state");}
+ }
  @PluginMethod public void setCloudSpeechMuted(PluginCall call){
   Session own=owned(call);if(own==null){call.reject("Speech session changed");return;}
   boolean muted=Boolean.TRUE.equals(call.getBoolean("muted",false));own.muted=muted;long mute=++own.muteGeneration;if(muted)silence(own,mute,30);
@@ -213,7 +224,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
      public void audible(long nanos,String clock){u.audible=nanos;markAt(own,"first-audible",nanos,clock,u.started);}
      public void ended(boolean silent){if(own.spoken!=u||u.cancelled)return;own.spoken=null;mark(own,"audio-end");main.post(()->{if(session==null||session==own)focus.release();});emit(own,"audio-end",new JSObject().put("utteranceId",u.id).put("silent",silent));}
      public void failed(String reason){if(own.spoken==u&&!u.cancelled)fail(own,"playback");}
-    },System::nanoTime);u.playback.start();}}
+    },System::nanoTime);u.playback.setOutputMuted(own.outputMuted);u.playback.start();}}
     own.receivedFrames++;own.receivedBytes+=frame.pcm.length;u.receivedBytes+=frame.pcm.length;feed(own,u,frame.pcm);
    }catch(Exception error){fail(own,"playback");}
   }
@@ -242,7 +253,7 @@ public abstract class SpeechStreamBridgePlugin extends Plugin {
  private void arm(Session own){main.removeCallbacks(own.expiry);if(!own.closed.get())main.postDelayed(own.expiry,Math.max(1,own.expiresAt-System.currentTimeMillis()));}
  private final class Session {
   final String id,environment,credential;final long epoch,started=System.nanoTime(),diagnosticId=++timingSequence;final PluginCall startCall;final AtomicBoolean closed=new AtomicBoolean(),startSettled=new AtomicBoolean();
-  volatile String origin,token,wireToken,serverId;volatile long expiresAt,sentFrames,sentBytes,receivedFrames,receivedBytes;volatile int httpStatus;volatile boolean ready,providerReady,muted,speakerDraining,extendOffered;volatile long muteGeneration;volatile Call pending;volatile WebSocket socket;volatile AudioRecord recorder;volatile AcousticEchoCanceler echo;volatile Thread capture;volatile Utterance spoken;
+  volatile String origin,token,wireToken,serverId;volatile long expiresAt,sentFrames,sentBytes,receivedFrames,receivedBytes;volatile int httpStatus;volatile boolean ready,providerReady,muted,outputMuted,speakerDraining,extendOffered;volatile long muteGeneration;volatile Call pending;volatile WebSocket socket;volatile AudioRecord recorder;volatile AcousticEchoCanceler echo;volatile Thread capture;volatile Utterance spoken;
   final long startupStartedMs=SystemClock.elapsedRealtime();
   volatile long startupEndsMs=startupStartedMs+HTTP_STARTUP_MS;
   final Runnable deadline=this::expireStartup;

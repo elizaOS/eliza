@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   createMailDraftsController,
   literalMailAddress,
+  type MailDraftConfirmation,
   type MailDraftsProvider,
   type RetainedMailEdits,
   validLocalMailDraft,
@@ -30,6 +31,13 @@ function fixture(
   const prepared: Array<{ proposal: Bag; source?: Bag }> = [];
   let sessionId = "session-1";
   let onPublish = () => {};
+  let answerReview: (
+    review: MailDraftConfirmation,
+  ) => boolean | Promise<boolean> = () => true;
+  let clearStarted = () => {};
+  let clearBarrier: Promise<void> | undefined;
+  let replacements = 0;
+  let conflictVersion: string | undefined;
   const store = {
     async read<T>(slot: string) {
       const raw = slots.get(slot);
@@ -53,7 +61,12 @@ function fixture(
       return retainedCopies.has(owner);
     },
     peek: () => structuredClone(retainedCopies.get(owner) ?? null),
-    conflict: false,
+    get conflict() {
+      return conflictVersion !== undefined;
+    },
+    get conflictVersion() {
+      return conflictVersion;
+    },
     error: false,
     status: "",
     edit(value) {
@@ -65,9 +78,14 @@ function fixture(
       const value = retainedCopies.get(owner);
       if (value) restore(structuredClone(value));
     },
-    replace() {},
+    replace() {
+      replacements++;
+    },
     retry() {},
-    async clear() {
+    async clear(current = () => true) {
+      clearStarted();
+      if (clearBarrier) await clearBarrier;
+      if (!current()) throw Error("Review retired");
       retainedCopies.delete(owner);
     },
     recover() {},
@@ -93,7 +111,7 @@ function fixture(
     }),
     store,
     retained,
-    confirm: () => true,
+    confirm: (_, review) => answerReview(review),
     attachments: {
       select: async () => ({ status: "cancelled" }),
       read: async () => {
@@ -112,6 +130,21 @@ function fixture(
     retainedCopies,
     toasts,
     prepared,
+    get replacements() {
+      return replacements;
+    },
+    conflict(next: string) {
+      conflictVersion = next;
+    },
+    holdClear(started: () => void, barrier: Promise<void>) {
+      clearStarted = started;
+      clearBarrier = barrier;
+    },
+    review(
+      next: (review: MailDraftConfirmation) => boolean | Promise<boolean>,
+    ) {
+      answerReview = next;
+    },
     onPublish(next: () => void) {
       onPublish = next;
     },
@@ -652,5 +685,179 @@ describe("createMailDraftsController", () => {
       subject: "(no subject)",
     });
     expect((f.controller.proposal() as Bag).subject).toBe("Re: (no subject)");
+  });
+});
+
+describe("local draft decisions", () => {
+  const accountOwner = JSON.stringify(["production", "user", "org", "grant-a"]);
+  const review = (f: ReturnType<typeof fixture>) => {
+    const held = Promise.withResolvers<boolean>();
+    const requests: MailDraftConfirmation[] = [];
+    f.review((request) => {
+      requests.push(request);
+      return held.promise;
+    });
+    return { ...held, requests };
+  };
+  const seedSaved = (f: ReturnType<typeof fixture>, earlierThanSent?: true) => {
+    const saved = {
+      version: 1,
+      id: "saved-id",
+      revision: "saved-revision",
+      owner: accountOwner,
+      to: ["friend@example.invalid"],
+      subject: "Saved draft",
+      body: "Saved body",
+      ...(earlierThanSent ? { earlierThanSent } : {}),
+    };
+    f.slots.set(`inbox-drafts:v1:${accountOwner}`, JSON.stringify(saved));
+    return saved;
+  };
+  const pick = (f: ReturnType<typeof fixture>, label: string) => {
+    const row = f.controller
+      .chips((name, action) => ({ label: name, action }))
+      .find((entry) => entry.label === label);
+    expect(row).toBeDefined();
+    row?.action();
+  };
+
+  it("waits for approval before opening an earlier saved copy and preserves its marker", async () => {
+    const f = fixture();
+    seedSaved(f, true);
+    await f.controller.bind("grant-a", "Gmail A");
+    const held = review(f);
+    pick(f, "Earlier version of a sent email");
+    expect(f.controller.render().composing).toBe(false);
+    held.resolve(true);
+    await settle();
+    expect(f.controller.proposal()?.bodyText).toBe("Saved body");
+    expect(f.slots.get(`inbox-drafts:v1:${accountOwner}`)).toContain(
+      '"earlierThanSent":true',
+    );
+    expect(f.prepared).toEqual([]);
+  });
+
+  it("preserves a shelved earlier copy when leaving with its review open", async () => {
+    const f = fixture();
+    const saved = seedSaved(f, true);
+    await f.controller.bind("grant-a", "Gmail A");
+    await f.controller.newEmail();
+    f.controller.close();
+    const held = review(f);
+    pick(f, "Open local draft");
+    expect(held.requests.at(0)?.current()).toBe(true);
+    f.controller.close();
+    expect(held.requests.at(0)?.signal.aborted).toBe(true);
+    held.resolve(true);
+    await settle();
+    expect(f.controller.render().composing).toBe(false);
+    expect(shelfItems(f)[0]?.draft).toEqual(saved);
+    expect(f.prepared).toEqual([]);
+  });
+
+  it("refuses a retained edit replacement after the conflict or composer has changed", async () => {
+    for (const change of ["conflict", "composer", "session", "account"]) {
+      const f = fixture();
+      await f.controller.bind("grant-a", "Gmail A");
+      await f.controller.newEmail();
+      type(f.controller, "onBody", "First text");
+      f.conflict("previous conflict");
+      const held = review(f);
+      const composer = f.controller.render().c as { replaceEdits(): void };
+      composer.replaceEdits();
+      expect(f.replacements).toBe(0);
+      expect(held.requests.at(0)?.current()).toBe(true);
+      if (change === "conflict") f.conflict("different conflict");
+      if (change === "composer") type(f.controller, "onBody", "New text");
+      if (change === "session") f.switchSession("session-2");
+      if (change === "account") await f.controller.bind("grant-b", "Gmail B");
+      expect(held.requests.at(0)?.current()).toBe(false);
+      held.resolve(true);
+      await settle();
+      expect(f.replacements).toBe(0);
+      expect(f.prepared).toEqual([]);
+    }
+  });
+
+  it("replaces one exact current conflict after approval", async () => {
+    const f = fixture();
+    await f.controller.bind("grant-a", "Gmail A");
+    await f.controller.newEmail();
+    f.conflict("previous conflict");
+    const held = review(f);
+    const composer = f.controller.render().c as { replaceEdits(): void };
+    composer.replaceEdits();
+    composer.replaceEdits();
+    expect(held.requests).toHaveLength(1);
+    expect(held.requests.at(0)?.confirmLabel).toBe("Replace edits");
+    expect(f.replacements).toBe(0);
+    held.resolve(true);
+    await settle();
+    expect(f.replacements).toBe(1);
+    expect(f.prepared).toEqual([]);
+  });
+
+  async function staleComposer() {
+    const f = fixture();
+    const saved = seedSaved(f);
+    f.retainedCopies.set(accountOwner, {
+      version: 1,
+      owner: accountOwner,
+      baseRevision: "old-revision",
+      toQ: "",
+      draft: { ...saved, body: "Retained text" },
+    });
+    await f.controller.bind("grant-a", "Gmail A");
+    pick(f, "Resume unsaved email");
+    const composer = f.controller.render().c as {
+      staleBase: boolean;
+      useLatest(): Promise<void>;
+    };
+    expect(composer.staleBase).toBe(true);
+    return { f, composer };
+  }
+
+  it("keeps both copies when a use-latest review is cancelled", async () => {
+    const { f, composer } = await staleComposer();
+    const held = review(f);
+    const completion = composer.useLatest();
+    expect(f.retainedCopies.get(accountOwner)?.draft.body).toBe(
+      "Retained text",
+    );
+    held.resolve(false);
+    await completion;
+    expect(f.controller.proposal()?.bodyText).toBe("Retained text");
+    expect(f.retainedCopies.get(accountOwner)?.draft.body).toBe(
+      "Retained text",
+    );
+    expect(f.prepared).toEqual([]);
+  });
+
+  it("clears only the reviewed retained copy and opens the saved draft", async () => {
+    const { f, composer } = await staleComposer();
+    const held = review(f);
+    const completion = composer.useLatest();
+    held.resolve(true);
+    await completion;
+    expect(f.controller.proposal()?.bodyText).toBe("Saved body");
+    expect(f.retainedCopies.has(accountOwner)).toBe(false);
+    expect(f.prepared).toEqual([]);
+  });
+
+  it("preserves both copies if the mailbox visit retires during the reviewed clear", async () => {
+    const { f, composer } = await staleComposer();
+    const started = Promise.withResolvers<void>();
+    const clear = Promise.withResolvers<void>();
+    f.holdClear(started.resolve, clear.promise);
+    const completion = composer.useLatest();
+    await started.promise;
+    f.controller.close();
+    clear.resolve();
+    await completion;
+    expect(f.controller.proposal()?.bodyText).toBe("Retained text");
+    expect(f.retainedCopies.get(accountOwner)?.draft.body).toBe(
+      "Retained text",
+    );
+    expect(f.prepared).toEqual([]);
   });
 });

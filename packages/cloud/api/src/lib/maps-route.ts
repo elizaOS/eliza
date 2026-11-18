@@ -12,6 +12,10 @@ import {
   RateLimitPresets,
   rateLimit,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  appendServerTiming,
+  type ServerTimingMetric,
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
 import { getCloudAwareEnv } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import {
   admitAllMapsRequests,
@@ -295,9 +299,24 @@ export function createMapsRoute(
   // the shared 60-request API bucket used by interactive data operations.
   if (operation !== "tiles") app.use("*", rateLimit(RateLimitPresets.STANDARD));
   const handler = async (c: AppContext) => {
+    // Where one Maps request spends its time, by phase. Names and durations
+    // only: a tile costs about one second in Cloud and nothing said which part.
+    const phases: ServerTimingMetric[] = [];
+    const phase = async <T>(name: string, work: () => Promise<T>) => {
+      const started = performance.now();
+      try {
+        return await work();
+      } finally {
+        phases.push({ name, durationMs: performance.now() - started });
+      }
+    };
+    const timed = (response: Response) => {
+      appendServerTiming(response.headers, phases);
+      return response;
+    };
     let user: MapsCaller;
     try {
-      user = await dependencies.authenticate(c);
+      user = await phase("maps_auth", () => dependencies.authenticate(c));
     } catch (error) {
       if (error instanceof ApiError)
         return c.json(
@@ -363,12 +382,25 @@ export function createMapsRoute(
       if (error instanceof MapsServiceError) return failure(c, error);
       throw error;
     }
+    // A new isolate has no Google tile session. Start it now, beside admission,
+    // not after it; a failure here is reported by the tile fetch itself. The
+    // Worker keeps the request alive until the shared session settles.
+    if (operation === "tiles") {
+      const warm = provider.prepareTiles?.();
+      if (warm) getGenerativeExecutionContext(c)?.waitUntil(warm);
+    }
     let completion: MapsCompletion | undefined;
     if (dependencies.admitRequest) {
       try {
-        completion = await dependencies.admitRequest(c, user, operation, () =>
-          provider.creditPrice?.(operation, body),
+        const admit = dependencies.admitRequest;
+        completion = await phase("maps_admission", () =>
+          admit(c, user, operation, () =>
+            provider.creditPrice?.(operation, body),
+          ),
         );
+        // The allowance gate call is inside the admission time.
+        if (completion.gateMs !== undefined)
+          phases.push({ name: "maps_gate", durationMs: completion.gateMs });
       } catch (error) {
         if (error instanceof ApiError || error instanceof MapsAdmissionError) {
           const retryAfterSeconds = error.details?.retryAfterSeconds;
@@ -467,11 +499,14 @@ export function createMapsRoute(
       if (operation === "tiles") {
         const tileFor = provider.tile;
         if (!tileFor || !tile) throw new Error("Tile provider disappeared");
-        result = await tileFor.call(
-          provider,
-          tile,
-          c.req.raw.signal,
-          completion?.recordProviderPrice,
+        const wanted = tile;
+        result = await phase("maps_provider", () =>
+          tileFor.call(
+            provider,
+            wanted,
+            c.req.raw.signal,
+            completion?.recordProviderPrice,
+          ),
         );
         if (c.req.header("accept") === "application/json") {
           const image = result as MapsTile;
@@ -494,7 +529,10 @@ export function createMapsRoute(
             data: Buffer.from(image.body).toString("base64"),
           };
         }
-      } else result = await dispatch(operation, provider, c, body, completion);
+      } else
+        result = await phase("maps_provider", () =>
+          dispatch(operation, provider, c, body, completion),
+        );
       if (c.req.raw.signal.aborted) {
         await record("cancelled");
         return c.json(
@@ -507,18 +545,20 @@ export function createMapsRoute(
       if (!getGenerativeExecutionContext(c)) await outcome;
       if (operation === "tiles") {
         if (tileJson)
-          return c.json(tileJson, 200, { ...NO_STORE, Vary: "Accept" });
+          return timed(c.json(tileJson, 200, { ...NO_STORE, Vary: "Accept" }));
         const image = result as MapsTile;
-        return new Response(image.body, {
-          status: 200,
-          headers: {
-            "Content-Type": image.contentType,
-            ...NO_STORE,
-            Vary: "Accept",
-          },
-        });
+        return timed(
+          new Response(image.body, {
+            status: 200,
+            headers: {
+              "Content-Type": image.contentType,
+              ...NO_STORE,
+              Vary: "Accept",
+            },
+          }),
+        );
       }
-      return c.json(result as Record<string, unknown>, 200, NO_STORE);
+      return timed(c.json(result as Record<string, unknown>, 200, NO_STORE));
     } catch (error) {
       // Every admitted request gets an outcome. A failure the provider raises
       // after admission (an id the geocoder cannot use, a misconfigured
