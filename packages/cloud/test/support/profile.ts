@@ -1,5 +1,6 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { generateKeyPairSync, randomBytes } from "node:crypto";
+import { fileURLToPath } from "node:url";
 
 const document = (title: string) => ({
   title,
@@ -9,6 +10,8 @@ const document = (title: string) => ({
 
 const entitlementKeys = generateKeyPairSync("ec", { namedCurve: "P-256" });
 const entitlementPoint = entitlementKeys.publicKey.export({ format: "jwk" });
+
+export const fixtureSeedFile = fileURLToPath(new URL("../fixtures/seed.json", import.meta.url));
 
 export const testDatabaseIdentity = "a".repeat(64);
 

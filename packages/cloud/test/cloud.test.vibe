@@ -6,7 +6,6 @@ import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
 import { Store, type Tx } from "../src/store/store.vibe"
 import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
 import type { FakeRequest } from "./support/fakes.ts"
-import { fileURLToPath } from "node:url"
 import { catalogPrices, testProfile } from "./support/profile.ts"
 import { periodRows } from "../src/shared/metering.vibe"
 import { tokenDigest } from "../src/shared/sealing.vibe"
@@ -139,14 +138,13 @@ describe("WP0 Foundation", () => {
     }
   }))
   it.live("Refuse a start in the spec's order: a seed outside staging, loopback on Postgres, an unreadable or other database before the catalog, then a catalog the provider does not sell (spec/cloud/deployment.md, \"Story: Configure a deployment from one reviewed profile\")", () => scoped(effect {
-    const seed = fileURLToPath(new URL("./fixtures/seed.json", import.meta.url))
     const productionDigest = "b".repeat(64)
     const withoutLoopback: ProfileEdit = (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, mail: profile.environments.production.mail, sms: { kind: "none" } } } })
     const wrongPrices = [{ ...catalogPrices[0], unitAmount: 2_999 }, catalogPrices[1]]
     const catalogReads: Record<string, ReadonlyArray<FakeRequest>> = {}
     const watch = (name: string) => (fakes: FakeServer) => { catalogReads[name] = fakes.seen }
 
-    const seedInProduction = try failureTag(scoped(testCloud({ environment: "production", seed })))
+    const seedInProduction = try failureTag(scoped(testCloud({ environment: "production", seed: fixtureSeedFile })))
     const loopbackOnPostgres = try failureTag(scoped(testCloud({ store: { kind: "pg" } })))
     const unreadable = try failureTag(scoped(testCloud({
       edit: withoutLoopback, prices: wrongPrices, mount: watch("unreadable"),
@@ -181,7 +179,7 @@ describe.todo("WP2 Native clients and pages (spec/cloud/nativeClients/deviceKeys
 describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)", () => {
   it.live("Bring me back to the app on its registered return only, and tell a payer the checkout ended (spec/cloud/returnPages.md, \"Story: Bring me back to the app when its link did not open\"; spec/cloud/returnPages.md, \"Story: Tell a payer the checkout ended\")", () => scoped(effect {
     const cloud = try testCloud()
-    const profile = try parseProfile(testProfile(cloud.fakes.url))
+    const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
     const now = try Clock.currentTimeMillis
     provide deploymentLayer(profile, "staging") {
       try cloud.store.transaction((tx) => seedClients(tx, fixtureSeed.clients, now))

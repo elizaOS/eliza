@@ -103,13 +103,13 @@ function iso(at: number): string {
   return new Date(at).toISOString()
 }
 
-function deviceName(raw: string | undefined): string | null {
+export function deviceName(raw: string | undefined): string | null {
   if (raw === undefined) return null
   const name = raw.trim()
   return name.length >= 1 && name.length <= 80 && !/[\p{Cc}\p{Cf}]/u.test(name) ? name : null
 }
 
-effect function signInClient(tx: Tx, body: { readonly clientId: string; readonly environment: "production" | "staging"; readonly redirectUri: string }) {
+export effect function signInClient(tx: Tx, body: { readonly clientId: string; readonly environment: "production" | "staging"; readonly redirectUri: string }) {
   const url = try Effect.try({ try: () => new URL(body.redirectUri), catch: () => refused("RedirectMismatch") })
   const request: ClientRequest = {
     clientId: body.clientId,
@@ -203,7 +203,7 @@ export effect function revokeAll(tx: Tx, userId: string, now: number) {
   return toInt(live[0]?.live ?? 0)
 }
 
-effect function perIp(context: RouteContext, limit: RateLimit) {
+export effect function perIp(context: RouteContext, limit: RateLimit) {
   try admitCheck({ subject: Option.getOrElse(context.request.remoteAddress, () => "unknown"), rule: limit })
 }
 

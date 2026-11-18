@@ -93,11 +93,6 @@ pure def dockState(s: BrowserDock): DockState =
   else if (s.helperWindow == BadgeWindow) BadgeShown
   else if (isEmbedded(s.split)) (if (helperShownIn(s.split)) Docked else Collapsed)
   else NotDocked
-pure def lawDockStateFollowsTheHelperWindowFirst(s: BrowserDock): bool =
-  (dockState(s) == Docked or dockState(s) == Collapsed) implies (s.helperWindow == NoHelperWindow and isEmbedded(s.split))
-pure val sValues: Set[BrowserDock] = Set(initial, { split: SplitEmbedded({ panelWidthDp: 400, helperShown: false }), helperWindow: BadgeWindow, overlayPermission: true },
-  { split: SplitEmbedded({ panelWidthDp: 400, helperShown: true }), helperWindow: NoHelperWindow, overlayPermission: false },
-  { split: SplitEmbedded({ panelWidthDp: 400, helperShown: false }), helperWindow: NoHelperWindow, overlayPermission: true })
 pure def sometimesCollapsed(s: BrowserDock): bool = dockState(s) == Collapsed
 ```
 

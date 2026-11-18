@@ -128,7 +128,7 @@ it.effect.skipIf(skipped !== null)(`Build release, debug and two-signer APKs, re
 
   const entries = try listAndroidArtifactEntries(release.apk)
   assert.include(entries, "AndroidManifest.xml")
-  assert.include(entries, `assets/${BUILD_FLAGS_ENTRY.slice("assets/".length)}`)
+  assert.include(entries, BUILD_FLAGS_ENTRY)
   const [flags] = try readAndroidArtifactEntryBuffers(release.apk, [BUILD_FLAGS_ENTRY])
   assert.deepStrictEqual(JSON.parse(new TextDecoder().decode(flags)), { testMocks: false })
   const unsafe = (readAndroidArtifactEntryBuffers(release.apk, ["../AndroidManifest.xml"]) catch (error) => error._tag)
@@ -215,7 +215,7 @@ it("Compute release blockers for the cloud-speech and image profiles and check a
   assert.deepStrictEqual(apkReleaseBlockers(cloud(receipt, { voiceHost: { packaged: true, differences: [], qualified: true } }), review), ["CloudPackagesVoice"])
 
   assert.deepStrictEqual(apkReleaseBlockers(releaseRow(apk, signer), { reviewedSigner: signer }), [])
-  assert.deepStrictEqual(apkReleaseBlockers(releaseRow(apk, signer), { reviewedSigner: signer, image: { platformCertificateSha256: "TODO" } }), ["ImageCertificateUnreviewed"])
+  assert.deepStrictEqual(apkReleaseBlockers(releaseRow(apk, signer), { reviewedSigner: signer, image: { platformCertificateSha256: "unreviewed" } }), ["ImageCertificateUnreviewed"])
   assert.deepStrictEqual(apkReleaseBlockers(releaseRow(apk, signer), { reviewedSigner: signer, image: { platformCertificateSha256: HEX("platform") } }), [])
   assert.deepStrictEqual(apkReleaseBlockers(releaseRow(apk, signer, { voiceHost: { packaged: true, differences: ["voice.onnx"], qualified: false } }), { reviewedSigner: signer }).sort(), ["VoiceAssetsUnverified", "VoiceUnqualified"])
   assert.deepStrictEqual(apkReleaseBlockers(releaseRow(apk, signer, { signed: false }), { reviewedSigner: signer }), ["Unsigned"])

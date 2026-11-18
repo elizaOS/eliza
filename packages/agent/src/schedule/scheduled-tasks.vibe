@@ -1,0 +1,363 @@
+// spec/agent/schedule/scheduledTasks.md, "Story: Keep a recurring task exact through retries, races and restarts"; spec/agent/schedule/scheduledTasks.md, "Every change commits against the revision it read"; spec/agent/schedule/scheduledTasks.md, "An occurrence is delivered at most once"; spec/agent/schedule/scheduledTasks.md, "A delivery that cannot happen now is retried at most three times, then the occurrence fails"; spec/agent/schedule/scheduledTasks.md, "An occurrence of a recurring task that came due before the agent started is recorded once as missed and never runs"; spec/agent/schedule/scheduledTasks.md, "A keyed verb applies once per key"; spec/agent/schedule/scheduledTasks.md, "Each verb does only what it names, and only to a row it applies to"; spec/agent/schedule/scheduledTasks.md, "A verb's reply says whether it was applied, refused, or reached no task"; spec/agent/schedule/scheduledTasks.md, "Fire now reports fired, skipped, deferred, failed or raced"; spec/core/taskServiceOwners.md, "Exclusive tasks observe every active invocation of the same task"; spec/core/taskServiceOwners.md, "Stop joins scheduler drain, current tick, and then its pending-operation snapshot"; spec/core/scheduling.md, "Story: Execute due work within its owning agent"; spec/workflow/schedule.md, "Story: An automation runs at its reviewed local time or records why it skipped"
+import {
+  ServiceType, agentProcessStartedAtMs, computeNextCronRunAtMs, parseCronExpression,
+  type IAgentRuntime, type IDatabaseAdapter, type NotificationService, type TaskWorker,
+} from "@elizaos/core"
+import {
+  Rejected, canFire, claimOutcome, dueInstant, fireReply, initial, isReplay, machineOver, ownerFireEnded, verbReply,
+  type Delivery, type Due, type Event, type FireOutcome, type RequestKey, type ScheduledTask, type Verb,
+} from "../../gen/agent__schedule__scheduledTasks.effect.vibe"
+import {
+  createScheduledTask, getScheduledTask, listScheduledTasks, scheduledTaskKeeping,
+  type ScheduledTaskDetails, type StoredTask,
+} from "./store.vibe"
+import type { FireResult, ScheduledTaskPort, ScheduledTaskRow, TaskEdit, TaskTrigger, VerbRequest, VerbResult } from "./scheduled-task-routes.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+
+  export function newTaskId(): string {
+    return randomUUID()
+  }
+
+  export function knownTimeZone(zone: string): boolean {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: zone })
+      return true
+    } catch {
+      return false
+    }
+  }
+}
+import { knownTimeZone, newTaskId } from node
+
+export interface ScheduledTaskView extends ScheduledTaskRow {
+  readonly revision: number
+}
+
+export type DeliveryResult =
+  | { readonly kind: "delivered" }
+  | { readonly kind: "retry"; readonly afterMs: number; readonly reason: string }
+  | { readonly kind: "undeliverable"; readonly error: string }
+
+export type DeliveryPort = (task: ScheduledTaskView) => Promise<DeliveryResult>
+
+export interface NewTask {
+  readonly kind: string
+  readonly ownerVisible: boolean
+  readonly promptInstructions: string
+  readonly trigger: TaskTrigger
+  readonly metadata?: Readonly<Record<string, unknown>>
+  readonly idempotencyKey?: string
+  readonly delivery?: DeliveryPort
+}
+
+export interface ScheduledTaskHost {
+  readonly adapter: IDatabaseAdapter
+  readonly processStart: number
+  readonly defaultDelivery: DeliveryPort
+}
+
+export type Created =
+  | { readonly kind: "created"; readonly task: ScheduledTaskView }
+  | { readonly kind: "existing"; readonly task: ScheduledTaskView }
+
+export error TaskRefused { reason: string }
+
+export const scheduledTasksTick = "AGENT_SCHEDULED_TASKS"
+export const scheduledTasksTickMs = 60_000
+export const missedOccurrenceLog = "missed_occurrence"
+
+const noMore: Due = { tag: "NoMoreOccurrences" }
+const delivered: Delivery = { tag: "Delivered" }
+
+function view(row: StoredTask): ScheduledTaskView {
+  const { details, state } = row
+  return {
+    taskId: row.taskId, revision: state.revision, kind: details.kind, ownerVisible: row.ownerVisible,
+    promptInstructions: details.promptInstructions, trigger: details.trigger, metadata: details.metadata,
+    status: state.status, firedAt: details.firedAt, lastDecisionLog: details.lastDecisionLog,
+  }
+}
+
+function usable(trigger: TaskTrigger): string | undefined {
+  switch (trigger.kind) {
+    case "manual": return undefined
+    case "once": return Number.isSafeInteger(Date.parse(trigger.atIso)) ? undefined : "The one-time trigger has no valid instant"
+    case "cron":
+      if (parseCronExpression(trigger.expression) === null) return "The cron expression is not five valid fields"
+      return knownTimeZone(trigger.tz) ? undefined : "The cron time zone is unknown"
+  }
+}
+
+function cronAfter(trigger: Extract<TaskTrigger, { kind: "cron" }>, after: number): Due {
+  const at = computeNextCronRunAtMs(trigger.expression, after, trigger.tz)
+  return at === null ? noMore : { tag: "DueAt", at }
+}
+
+function firstDue(trigger: TaskTrigger, now: number): Due {
+  switch (trigger.kind) {
+    case "manual": return { tag: "Manual" }
+    case "once": return { tag: "DueAt", at: Date.parse(trigger.atIso) }
+    case "cron": return cronAfter(trigger, now)
+  }
+}
+
+function nextDue(trigger: TaskTrigger, after: number): Due {
+  switch (trigger.kind) {
+    case "manual": return { tag: "Manual" }
+    case "once": return noMore
+    case "cron": return cronAfter(trigger, after)
+  }
+}
+
+function editVerb(edit: TaskEdit): Verb {
+  const body = JSON.stringify({ promptInstructions: edit.promptInstructions, trigger: edit.trigger })
+  return edit.trigger === undefined ? { tag: "EditInstructions", body } : { tag: "EditTrigger", body }
+}
+
+function verbLog(verb: Verb, next: ScheduledTask): Partial<ScheduledTaskDetails> {
+  switch (verb.tag) {
+    case "SnoozeUntil":
+    case "SnoozeFor": {
+      const until = dueInstant(next.due)
+      return { firedAt: until, lastDecisionLog: `snoozed until ${new Date(until).toISOString()} (ladder reset)` }
+    }
+    case "Skip": return { lastDecisionLog: "skipped" }
+    case "Complete": return { lastDecisionLog: "completed" }
+    case "Dismiss": return { lastDecisionLog: "dismissed" }
+    case "Escalate": return { lastDecisionLog: "escalated" }
+    case "Acknowledge": return { lastDecisionLog: "acknowledged" }
+    case "EditInstructions":
+    case "EditTrigger": return { lastDecisionLog: "edited" }
+    case "Reopen": return { lastDecisionLog: "reopened" }
+  }
+}
+
+interface FireNote {
+  readonly reason?: string
+  readonly error?: string
+}
+
+function fireLog(outcome: FireOutcome, now: number, delivery: Delivery, note: FireNote): Partial<ScheduledTaskDetails> {
+  switch (outcome) {
+    case "FireDelivered": return { firedAt: now, lastDecisionLog: "fired" }
+    case "FireDeferred": return { firedAt: delivery.tag === "RetryAt" ? delivery.retryAt : now, lastDecisionLog: `dispatch_deferred: ${note.reason ?? "retry"}` }
+    case "FireFailed": return { lastDecisionLog: `dispatch_failed: ${note.error ?? note.reason ?? "undeliverable"}` }
+    case "FireSkipped": return { lastDecisionLog: missedOccurrenceLog }
+    case "FireRaced": return {}
+  }
+}
+
+function eventLog(event: Event, before: ScheduledTask, next: ScheduledTask): Partial<ScheduledTaskDetails> {
+  return event.type === "applyVerb" ? verbLog(event.verb, next)
+    : fireLog(claimOutcome(before, event.manual, event.now, event.processStart, event.following, event.delivery), event.now, event.delivery, {})
+}
+
+function notWaiting(task: ScheduledTask): string {
+  if (task.status === "Dismissed") return "dismissed"
+  return task.due.tag === "Manual" ? "not_waiting" : "no_more_occurrences"
+}
+
+export function notificationDelivery(runtime: IAgentRuntime): DeliveryPort {
+  return async (task) => {
+    const notifications = runtime.getService<NotificationService>(ServiceType.NOTIFICATION)
+    if (notifications === null) return { kind: "undeliverable", error: "No notification service is registered" }
+    await notifications.notify({
+      title: task.promptInstructions, category: "reminder", source: "scheduled-task", groupKey: task.taskId,
+      data: { taskId: task.taskId, kind: task.kind },
+    })
+    return { kind: "delivered" }
+  }
+}
+
+export effect function runtimeTaskHost(runtime: IAgentRuntime): ScheduledTaskHost!! {
+  const now = try Clock.currentTimeMillis
+  return { adapter: runtime.adapter, processStart: agentProcessStartedAtMs(now), defaultDelivery: notificationDelivery(runtime) }
+}
+
+export function scheduledTaskService(host: ScheduledTaskHost) {
+  const { adapter, processStart } = host
+  const deliveries = new Map<string, DeliveryPort>()
+  const locks = new Map<string, Semaphore.Semaphore>()
+
+  function locked<A, E, R>(taskId: string, work: Effect.Effect<A, E, R>) {
+    const known = locks.get(taskId)
+    const lock = known ?? Semaphore.makeUnsafe(1)
+    if (known === undefined) locks.set(taskId, lock)
+    return Semaphore.withPermit(lock)(work)
+  }
+
+  effect function commit(taskId: string, event: Event, change: Partial<ScheduledTaskDetails> | ((before: ScheduledTask, next: ScheduledTask) => Partial<ScheduledTaskDetails>)) {
+    const before = try orDie(getScheduledTask(adapter, taskId))
+    const keeping = scheduledTaskKeeping(adapter, taskId, (details, next) => ({
+      ...details, ...(typeof change === "function" ? change(before?.state ?? initial, next) : change),
+    }))
+    const row = try machineOver(keeping.load, keeping.keep)
+    try row.send(event)
+    const after = try getScheduledTask(adapter, taskId)
+    return after === undefined ? try die(new Error(`The scheduled task ${taskId} vanished after its write`)) : view(after)
+  }
+
+  effect function deliver(task: ScheduledTaskView, now: number) {
+    const port = deliveries.get(task.kind) ?? host.defaultDelivery
+    const result = try (tryPromise(() => port(task)) catch (failure): DeliveryResult => ({
+      kind: "undeliverable", error: failure.cause instanceof Error ? failure.cause.message : String(failure.cause),
+    }))
+    switch (result.kind) {
+      case "delivered": return { delivery: delivered, note: {} }
+      case "retry": return { delivery: { tag: "RetryAt", retryAt: now + Math.max(1, Math.ceil(result.afterMs)) } as Delivery, note: { reason: result.reason } }
+      case "undeliverable": return { delivery: { tag: "Undeliverable" } as Delivery, note: { error: result.error } }
+    }
+  }
+
+  effect function fireRow(taskId: string, seenRevision: number | undefined, manual: boolean): FireResult {
+    const row = try getScheduledTask(adapter, taskId)
+    if (row === undefined) return { kind: "notFound" }
+    const task = row.state
+    const seen = seenRevision ?? task.revision
+    const trigger = row.details.trigger
+    const now = try Clock.currentTimeMillis
+    const following = nextDue(trigger, Math.max(now, dueInstant(task.due)))
+    const ready = manual ? fireReply(task, seen, now, processStart, following, delivered)
+      : canFire(task, seen, false, now, processStart, following, delivered) ? claimOutcome(task, false, now, processStart, following, delivered)
+      : "FireRaced"
+    if (ready === "FireRaced") return { kind: "answered", outcome: "FireRaced", task: view(row) }
+    if (ready === "FireSkipped" && ownerFireEnded(task)) {
+      return { kind: "answered", outcome: "FireSkipped", task: view(row), reason: notWaiting(task) }
+    }
+    if (ready === "FireSkipped") {
+      const skipped: Delivery = { tag: "Undeliverable" }
+      const event: Event = { type: "fire", seenRevision: seen, manual, now, processStart, following: nextDue(trigger, processStart - 1), delivery: skipped }
+      const after = try commit(taskId, event, fireLog("FireSkipped", now, skipped, {}))
+      return { kind: "answered", outcome: "FireSkipped", task: after, reason: missedOccurrenceLog }
+    }
+    const { delivery, note } = try deliver(view(row), now)
+    const outcome = claimOutcome(task, manual, now, processStart, following, delivery)
+    const after = try commit(taskId, { type: "fire", seenRevision: seen, manual, now, processStart, following, delivery }, fireLog(outcome, now, delivery, note))
+    return {
+      kind: "answered", outcome, task: after,
+      ...(note.reason === undefined ? {} : { reason: note.reason }),
+      ...(note.error === undefined ? {} : { error: note.error }),
+      ...(outcome === "FireDeferred" && delivery.tag === "RetryAt" ? { nextAttemptAt: delivery.retryAt } : {}),
+    }
+  }
+
+  effect function verbRow(taskId: string, request: VerbRequest, key: RequestKey, seenRevision: number | undefined): VerbResult {
+    const row = try getScheduledTask(adapter, taskId)
+    if (row === undefined) return { kind: "notFound" }
+    const task = row.state
+    const seen = seenRevision ?? task.revision
+    const now = try Clock.currentTimeMillis
+    const edit = request.kind === "edit" ? request.edit : undefined
+    const verb = request.kind === "verb" ? request.verb : editVerb(request.edit)
+    if (edit?.trigger !== undefined && usable(edit.trigger) !== undefined) return { kind: "refused", reason: "Malformed" }
+    const following = edit?.trigger !== undefined ? firstDue(edit.trigger, now) : nextDue(row.details.trigger, dueInstant(task.due))
+    const reply = verbReply(task, seen, key, verb, now, following)
+    switch (reply.tag) {
+      case "NotFound": return { kind: "notFound" }
+      case "Refused": return { kind: "refused", reason: reply.reason }
+      case "Applied": {
+        if (isReplay(task, key, verb)) return { kind: "applied", task: view(row) }
+        const after = try commit(taskId, { type: "applyVerb", seenRevision: seen, key, verb, now, following }, (_, next) => ({
+          ...(edit?.promptInstructions === undefined ? {} : { promptInstructions: edit.promptInstructions }),
+          ...(edit?.trigger === undefined ? {} : { trigger: edit.trigger }),
+          ...verbLog(verb, next),
+        }))
+        return { kind: "applied", task: after }
+      }
+    }
+  }
+
+  return {
+    effect create(task: NewTask): Created!TaskRefused {
+      const refusal = usable(task.trigger)
+      if (refusal !== undefined) throw new TaskRefused({ reason: refusal })
+      if (task.delivery !== undefined) deliveries.set(task.kind, task.delivery)
+      const now = try Clock.currentTimeMillis
+      const made = try (createScheduledTask(adapter, {
+        taskId: newTaskId(), ownerVisible: task.ownerVisible, state: { ...initial, due: firstDue(task.trigger, now) },
+        details: { kind: task.kind, promptInstructions: task.promptInstructions, trigger: task.trigger, metadata: task.metadata ?? {} },
+        ...(task.idempotencyKey === undefined ? {} : { idempotencyKey: task.idempotencyKey }),
+      }) |> orDie(%))
+      return { kind: made.kind, task: view(made.task) }
+    },
+    deliverKind(kind: string, port: DeliveryPort): void {
+      deliveries.set(kind, port)
+    },
+    effect get(taskId: string) {
+      const row = try getScheduledTask(adapter, taskId)
+      return row === undefined ? undefined : view(row)
+    },
+    effect list(filter: { readonly ownerVisibleOnly: boolean }) {
+      return (try listScheduledTasks(adapter, filter)).map(view)
+    },
+    applyVerb(taskId: string, request: VerbRequest, key: RequestKey, seenRevision?: number) {
+      return locked(taskId, verbRow(taskId, request, key, seenRevision))
+    },
+    fire(taskId: string, seenRevision?: number) {
+      return locked(taskId, fireRow(taskId, seenRevision, true))
+    },
+    step(taskId: string, event: Event) {
+      return locked(taskId, commit(taskId, event, (before, next) => eventLog(event, before, next)))
+    },
+    effect tick() {
+      const now = try Clock.currentTimeMillis
+      const due = (try listScheduledTasks(adapter, { ownerVisibleOnly: false }))
+        .filter(({ state }) => state.due.tag === "DueAt" && state.due.at <= now && state.status !== "Dismissed")
+      const fired: FireOutcome[] = []
+      for (const row of due) {
+        const result = try locked(row.taskId, fireRow(row.taskId, undefined, false))
+        if (result.kind === "answered" && result.outcome !== "FireRaced") fired.push(result.outcome)
+      }
+      return fired
+    },
+  }
+}
+
+export type ScheduledTasks = ReturnType<typeof scheduledTaskService>
+
+export function scheduledTaskPort(tasks: ScheduledTasks): ScheduledTaskPort {
+  return {
+    list: (filter) => orDie(tasks.list(filter)),
+    get: (taskId) => orDie(tasks.get(taskId)),
+    applyVerb: (taskId, request, key) => orDie(tasks.applyVerb(taskId, request, key)),
+    fire: (taskId) => orDie(tasks.fire(taskId)),
+  }
+}
+
+effect function bootWrite(runtime: IAgentRuntime) {
+  const adapter = runtime.adapter
+  const found = (try tryPromise(() => adapter.getTasksByName(scheduledTasksTick)))
+    .flatMap(({ id }) => id === undefined ? [] : [id])
+  const [kept, ...surplus] = found
+  if (surplus.length > 0) try tryPromise(() => adapter.deleteTasks(surplus))
+  const metadata = { updateInterval: scheduledTasksTickMs, baseInterval: scheduledTasksTickMs, blocking: true }
+  if (kept === undefined) {
+    try tryPromise(() => adapter.createTasks([{
+      name: scheduledTasksTick, description: "Fire the scheduled tasks that have come due", tags: ["queue", "repeat"],
+      agentId: runtime.agentId, metadata: { ...metadata, updatedAt: 0 },
+    }]))
+  } else {
+    try tryPromise(() => adapter.updateTasks([{ id: kept, task: { metadata } }]))
+  }
+}
+
+export effect function startScheduledTaskTicks(runtime: IAgentRuntime, tasks: ScheduledTasks) {
+  const worker: TaskWorker = {
+    name: scheduledTasksTick,
+    execute: () => runPromise(effect {
+      const fired = try tasks.tick()
+      if (fired.length > 0) runtime.logger.info({ src: "agent", agentId: runtime.agentId, fired }, "Scheduled tasks fired")
+      return undefined
+    }),
+  }
+  try Effect.try(() => runtime.registerTaskWorker(worker))
+  const boot = fork.detached (bootWrite(runtime) catch (failure) => runtime.reportError("ScheduledTasks.boot", failure, { task: scheduledTasksTick }))
+  return {
+    stop: effect function () {
+      try join boot
+      runtime.unregisterTaskWorker(scheduledTasksTick)
+    },
+  }
+}

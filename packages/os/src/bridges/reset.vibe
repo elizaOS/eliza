@@ -20,7 +20,7 @@ export { resetPlugin }
 export const DATA_RESET_UNCONFIRMED = "Reset could not be opened. No completed reset is confirmed."
 
 export effect function reviewReset(plugin: DataResetPlugin): DataResetReviewResult!! {
-  const answer = try tryPromise(() => plugin.review()) catch () => undefined
+  const answer = tryPromise(() => plugin.review()) catch () => undefined
   const status = typeof answer?.status === "string" ? answer.status : ""
   const message = typeof answer?.message === "string" ? answer.message : ""
   const blank = message.trim() === ""

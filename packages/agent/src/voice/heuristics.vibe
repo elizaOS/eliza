@@ -115,7 +115,7 @@ export function buildVoiceTurnSignal(transcript: string, context: BuildVoiceTurn
   const bystander = speaker !== undefined && !wakeWord && confidentBystander(speaker, context.knownSpeakerEntityIds ?? [])
   const selfVoice = context.selfVoiceSimilarity !== undefined && echoWindowOpen(heard) &&
     context.selfVoiceSimilarity >= (context.selfVoiceThreshold ?? AGENT_SELF_VOICE_THRESHOLD)
-  const addressed = wakeWord ? !isNonSpeechVoiceTranscript(transcript) || turnAccepted(heard) : turnAccepted(heard) && !bystander
+  const addressed = wakeWord ? !isNonSpeechVoiceTranscript(transcript) :turnAccepted(heard) && !bystander
   const agentShouldSpeak = addressed && !selfVoice
   const nextSpeaker = !agentShouldSpeak || endOfTurnProbability < SERVER_EOT_SUPPRESS_THRESHOLD ? "user" : "agent"
   const source = selfVoice ? "client-ambient+self-voice"

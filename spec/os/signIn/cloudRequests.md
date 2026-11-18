@@ -90,9 +90,9 @@ pure def attachFor(h: Holding, auth: Cc::AuthClass): CallPlan =
 pure val hValues = Set({ key: 0, sessionHeld: false, sessionLive: false }, { key: 1, sessionHeld: false, sessionLive: false },
   { key: 2, sessionHeld: true, sessionLive: false }, { key: 2, sessionHeld: true, sessionLive: true })
 pure val authValues = Set(Cc::Public, Cc::KeyOrSession, Cc::Session, Cc::FreshSession, Cc::StepUp)
-pure def carriesKey(p: CallPlan): bool = match p { | Send(s) => s.attach != Bare and s.attach == WithKey({ version: s.attach_version_unused }) | _ => false }
-pure def lawASessionRouteNeverCarriesTheKey(h: Holding, auth: Cc::AuthClass): bool =
-  sessionOnly(auth) implies not(attachFor(h, auth) == Send({ attach: WithKey({ version: h.key }) }))
+pure def keyOf(a: Attach): int = match a { | WithKey(k) => k.version | _ => 0 }
+pure def sentKey(p: CallPlan): int = match p { | Send(s) => keyOf(s.attach) | _ => 0 }
+pure def lawASessionRouteNeverCarriesTheKey(h: Holding, auth: Cc::AuthClass): bool = sessionOnly(auth) implies sentKey(attachFor(h, auth)) == 0
 pure def lawAKeyRouteWithoutAKeyIsNotSent(h: Holding, auth: Cc::AuthClass): bool =
   (auth == Cc::KeyOrSession and h.key < 1) implies attachFor(h, auth) == Refuse({ why: SignInRequired })
 ```

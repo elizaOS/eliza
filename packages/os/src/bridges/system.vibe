@@ -722,3 +722,4 @@ export function createLauncher(bridge: LauncherBridge, options: { icons?: boolea
   }
 }
 
+const zzCheck: number = "x"

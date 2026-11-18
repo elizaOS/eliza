@@ -377,7 +377,7 @@ export effect function openTts(): TtsLink!SpeechFailure!(Deployment | Scope.Scop
   }))
   return {
     speak: (id: string, text: string, flush: boolean) => phrase(id, text, true, flush),
-    finish: (id: string) => phrase(id, "", false, true),
+    finish: (id: string) => phrase(id, "", false, false),
     cancel: (id: string) => link.write(JSON.stringify({ context_id: id, cancel: true })),
     edges: link.edges
   }

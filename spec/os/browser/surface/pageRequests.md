@@ -65,7 +65,7 @@ pure def canPageAsks(s: PageRequests, id: str, kind: RequestKind): bool = L::has
 pure def pageAsks(s: PageRequests, id: str, kind: RequestKind): PageChange = {
   val gen = s.host.surfaces.foldl(0, (g, x) => if (x.id == id) x.gen else g)
   val waiting = s.requests.select(r => r.gen == gen and r.kind == kind and active(r.status)).length()
-  val held = s.host.surfaces.some(x => x.id == id and allowedOn(x, kind) and not(pauseRefuses(kind) and x.paused)) and
+  val held = s.host.surfaces.some(x => x.id == id and x.gen == gen and allowedOn(x, kind) and not(pauseRefuses(kind) and x.paused)) and
     (oneAtATime(kind) or waiting < maxWaiting)
   val replaced = s.requests.listMap(r => if (held and oneAtATime(kind) and r.gen == gen and r.kind == kind and active(r.status)) { ...r, status: ended(r.kind) } else r)
   { state: { ...s, issued: s.issued + 1, requests: replaced.append({ id: s.issued + 1, surface: id, gen: gen, kind: kind, status: if (held) Waiting else ended(kind) }) },
