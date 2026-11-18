@@ -23,6 +23,7 @@ import * as elevenlabs from "@elizaos/cloud-shared/lib/services/elevenlabs";
 import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
 import * as firstLineCache from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { Bindings } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { DEFAULT_ELEVENLABS_VOICE_ID } from "@elizaos/host/protocol";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { Hono } from "hono";
@@ -198,6 +199,7 @@ async function speak(
   idempotencyKey: string,
   identity: { voiceId?: string; modelId?: string } = {},
   expectedStatus = 200,
+  bindings: Pick<Bindings, "ELEVENLABS_VOICE_ID"> = {},
 ) {
   const response = await app.request(
     "/api/v1/voice/tts",
@@ -209,7 +211,7 @@ async function speak(
       },
       body: JSON.stringify({ text, ...identity }),
     },
-    { NODE_ENV: "test" },
+    { NODE_ENV: "test", ...bindings },
   );
   if (response.status !== expectedStatus)
     throw new Error(`tts ${response.status}: ${await response.text()}`);
@@ -233,6 +235,14 @@ async function balance(): Promise<number> {
     [orgId],
   );
   return Number(rows[0]?.credit_balance);
+}
+
+async function reservationIds(key: string): Promise<string[]> {
+  const { rows } = await pg().query<{ stripe_payment_intent_id: string }>(
+    "SELECT stripe_payment_intent_id FROM credit_transactions WHERE organization_id=$1 AND stripe_payment_intent_id LIKE $2 ORDER BY stripe_payment_intent_id",
+    [orgId, `reserve:${orgId}:${key}:%`],
+  );
+  return rows.map((row) => row.stripe_payment_intent_id);
 }
 
 test("one Idempotency-Key pays for one utterance: a different text is charged, the same text replays", async () => {
@@ -304,6 +314,85 @@ test("one Idempotency-Key pays for one utterance: a different text is charged, t
     voiceId: DEFAULT_ELEVENLABS_VOICE_ID,
   });
   expect(await balance()).toBeCloseTo(afterExplicit, 6);
+
+  const operatorText = "The operator selected this voice for the station.";
+  const operatorKey = `operator-${randomUUID()}`;
+  const operatorVoice = "operator-configured-voice";
+  const processVoice = "process-configured-voice";
+  const historicalReservationId = (key: string, voiceId: string) =>
+    `reserve:${orgId}:${key}:${settlementDigest({
+      text: operatorText,
+      voiceId,
+      modelId: "eleven_flash_v2_5",
+      format: "mp3",
+      withTimestamps: false,
+      synthesis: {},
+    })}`;
+  const previousOperatorVoice = process.env.ELEVENLABS_VOICE_ID;
+  try {
+    process.env.ELEVENLABS_VOICE_ID = processVoice;
+    await speak(operatorText, operatorKey, { voiceId: operatorVoice });
+    const afterOperatorSeed = await balance();
+    expect(await reservationIds(operatorKey)).toEqual([
+      historicalReservationId(operatorKey, operatorVoice),
+    ]);
+    await speak(operatorText, operatorKey, {}, 200, {
+      ELEVENLABS_VOICE_ID: operatorVoice,
+    });
+    expect(await balance()).toBeCloseTo(afterOperatorSeed, 6);
+    await speak(operatorText, operatorKey, {}, 200, {
+      ELEVENLABS_VOICE_ID: DEFAULT_ELEVENLABS_VOICE_ID,
+    });
+    const afterOperatorChange = await balance();
+    expect(afterOperatorChange).toBeCloseTo(
+      afterOperatorSeed - operatorText.length * COST_PER_CHAR,
+      6,
+    );
+    await speak(operatorText, operatorKey, {}, 200, {
+      ELEVENLABS_VOICE_ID: DEFAULT_ELEVENLABS_VOICE_ID,
+    });
+    expect(await balance()).toBeCloseTo(afterOperatorChange, 6);
+    expect(await reservationIds(operatorKey)).toEqual(
+      [
+        historicalReservationId(operatorKey, operatorVoice),
+        historicalReservationId(operatorKey, DEFAULT_ELEVENLABS_VOICE_ID),
+      ].sort(),
+    );
+    expect(providerVoices.slice(-4)).toEqual([
+      operatorVoice,
+      operatorVoice,
+      DEFAULT_ELEVENLABS_VOICE_ID,
+      DEFAULT_ELEVENLABS_VOICE_ID,
+    ]);
+
+    for (const [bindings, voiceId, publishedVoice] of [
+      [{}, processVoice, processVoice],
+      [
+        { ELEVENLABS_VOICE_ID: "" },
+        oldProxyDefault.voiceId,
+        DEFAULT_ELEVENLABS_VOICE_ID,
+      ],
+    ] satisfies Array<
+      [Pick<Bindings, "ELEVENLABS_VOICE_ID">, string, string]
+    >) {
+      const key = `operator-precedence-${randomUUID()}`;
+      await speak(operatorText, key, { voiceId }, 200, bindings);
+      const afterSeed = await balance();
+      await speak(operatorText, key, {}, 200, bindings);
+      expect(await balance()).toBeCloseTo(afterSeed, 6);
+      expect(await reservationIds(key)).toEqual([
+        historicalReservationId(key, voiceId),
+      ]);
+      expect(providerVoices.slice(-2)).toEqual([
+        publishedVoice,
+        publishedVoice,
+      ]);
+    }
+  } finally {
+    if (previousOperatorVoice === undefined)
+      delete process.env.ELEVENLABS_VOICE_ID;
+    else process.env.ELEVENLABS_VOICE_ID = previousOperatorVoice;
+  }
 });
 
 test("an ElevenLabs rejection releases the reservation; a failure without a status stays charged", async () => {
