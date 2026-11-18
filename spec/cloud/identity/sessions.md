@@ -9,16 +9,16 @@ model: the shell mints them, stores only their digests and hands them out
 only in the sign-in and refresh answers. The device half is
 `spec/os/signIn/credential.md`.
 
-One machine instance is one family row. The person's session epoch lives on
-the user row and enters every check as the observation `personEpoch`; a
-family whose epoch differs from it is revoked. The shell reads it under the
-user-row lock (`SELECT … FOR UPDATE`) in the transaction that applies the
-step, and never lowers it; the family keeps the highest epoch it was checked
-against as `seenEpoch`, and a lower observation is refused. Moving the
-person's epoch is the effect `RevokePersonSessions`, which the shell applies
-to the user row in that transaction. A family's digest rows, earlier
-generations included, are kept until `refreshExpiresAt` whatever its phase,
-then dropped; a row past that time counts as absent.
+One machine instance is one family. The person's session epoch lives on the
+account and enters every check as the observation `personEpoch`; a family
+whose epoch differs from it is revoked. The shell reads it under the account
+lock in the transaction that applies the step and never lowers it; the family
+keeps the highest epoch it was checked against as `seenEpoch`, and a lower
+observation is refused. Moving the person's epoch is the effect
+`RevokePersonSessions`, applied to the account in that transaction. A
+family's token digests, earlier generations included, are kept until
+`refreshExpiresAt` whatever its phase, then dropped; a digest past that time
+counts as absent.
 
 ## Story: Stay signed in
 
@@ -43,7 +43,7 @@ type FamilyStep = { state: Family, out: List[SessionEffect] }
 pure val accessLifetime: Millis = 15 * millisPerMinute
 pure val refreshLifetime: Millis = 30 * millisPerDay
 pure val initial: Family = { phase: Unissued, generation: 0, epoch: 0, seenEpoch: 0, authAt: 0, issuedAt: 0, accessExpiresAt: 0, refreshExpiresAt: 0, stepUpAt: Never, mfaAt: Never, now: 0 }
-pure def canSignIn(f: Family): bool = f.phase == Unissued
+pure def canSignIn(f: Family, personEpoch: int): bool = f.phase == Unissued and observes(f, personEpoch)
 pure def signIn(f: Family, assurance: Assurance, personEpoch: int): Family = { ...f, phase: Live, generation: 1, epoch: personEpoch, seenEpoch: personEpoch, authAt: f.now, issuedAt: f.now, accessExpiresAt: f.now + accessLifetime, refreshExpiresAt: f.now + refreshLifetime, mfaAt: if (assurance == MultiFactor) At({ ms: f.now }) else Never }
 pure def canElapse(f: Family, elapsed: Millis): bool = elapsed > 0
 pure def elapse(f: Family, elapsed: Millis): Family = { ...f, now: f.now + elapsed }
@@ -157,13 +157,17 @@ pure def sometimesCallerKeptAfterRevokingOthers(f: Family): bool = isActive(f, f
 
 ### A revoked family stays revoked
 
-No refresh, step-up or later logout revives a signed-out or stolen family,
-and a family left behind by an epoch move stays revoked: only `signIn`, on an
-unissued family, and `revokeOthers`, on an active family, set a family's
-epoch, and the observed epoch never goes back.
+No refresh, step-up or later logout revives a signed-out or stolen family.
+A family left behind by an epoch move stays revoked too: a live family's
+epoch is the highest it has observed, only `signIn` and `revokeOthers` set
+it (the latter only forward, on an active family) and the observed epoch
+never goes back.
 
 ```quint
-pure def stepRevokedStaysRevoked(before: Family, after: Family): bool = isRevoked(before, before.seenEpoch) implies isRevoked(after, after.seenEpoch)
+pure def alwaysLiveFamilyHoldsItsEpoch(f: Family): bool = f.phase == Live implies f.epoch == f.seenEpoch
+pure def stepRevokedStaysRevoked(before: Family, via: str, after: Family): bool =
+  (isEnded(before) implies isEnded(after)) and after.seenEpoch >= before.seenEpoch
+  and (after.epoch != before.epoch implies (via == "signIn" or (via == "revokeOthers" and after.epoch > before.epoch)))
 ```
 
 ## Story: Confirm it is me before a sensitive change
@@ -203,51 +207,4 @@ pure def isNewlySignedIn(f: Family): bool = f.authAt >= f.now - stepUpWindow
 pure def sometimesFreshOnlyThroughStepUp(f: Family): bool = isActive(f, f.seenEpoch) and isFresh(f) and f.authAt < f.now - freshWindow
 pure def sometimesStaleSession(f: Family): bool = isActive(f, f.seenEpoch) and not(isFresh(f))
 pure def sometimesSteppedUpAtSignIn(f: Family): bool = isActive(f, f.seenEpoch) and isSteppedUp(f) and f.stepUpAt == Never
-```
-
-## Story: Admit a request only for a live credential of an active account
-
-> As the account owner, I want protected routes to accept only my current
-> credentials and enforce any recent sign-in or second-factor requirement.
-
-### A protected route checks the account, current credential and required assurance
-
-The transport parses the token, matches its digest in the store and reads the
-account and credential in the same operation. A public route authenticates
-no one. A provider callback verifies its signature at the route. A permitted
-device credential serves device-facing services. Routes that name a browser
-session, fresh session or second factor require a session, with the freshness
-periods defined above. A missing, revoked or expired credential cannot pass.
-
-```quint
-type RequestAccountStatus = RequestAccountActive | RequestAccountInactive
-type RequestCredentialKind = RequestSession | RequestDevice
-type RouteClass = Public | ProviderSignature | ServiceAccess | SignedSession | FreshSession | StepUp
-type CredentialView = { kind: RequestCredentialKind, found: bool, live: bool, expiresAt: Millis, issuedAt: Millis,
-  revokedBefore: Millis, accountStatus: RequestAccountStatus, authAt: Millis, stepUpAt: Millis, mfaAt: Millis }
-pure def credentialRefusal(view: CredentialView, now: Millis): RefusalReason =
-  if (not(view.found)) CredentialUnknown
-  else if (not(view.live) or view.issuedAt < view.revokedBefore or view.accountStatus != RequestAccountActive) CredentialRevoked
-  else if (now >= view.expiresAt) CredentialExpired
-  else NoReason
-pure def routeNeedsSession(route: RouteClass): bool = Set(SignedSession, FreshSession, StepUp).contains(route)
-pure def requestHasAssurance(view: CredentialView, route: RouteClass, now: Millis): bool =
-  if (route == FreshSession) view.authAt >= now - freshWindow or (view.stepUpAt > 0 and view.stepUpAt >= now - freshWindow)
-  else if (route == StepUp) view.mfaAt > 0 and view.mfaAt >= now - stepUpWindow
-  else true
-type RequestAdmission = AnonymousRequest | CredentialAccepted | RequestRefused({ refusal: Refusal })
-pure def admitRequest(view: CredentialView, route: RouteClass, now: Millis): RequestAdmission = {
-  val reason = credentialRefusal(view, now)
-  if (route == Public or route == ProviderSignature) AnonymousRequest
-  else if (reason != NoReason) RequestRefused({ refusal: refuseFor(AuthenticationRequired, reason) })
-  else if (routeNeedsSession(route) and view.kind != RequestSession) RequestRefused({ refusal: refuseFor(AuthenticationRequired, CredentialUnknown) })
-  else if (not(requestHasAssurance(view, route, now))) RequestRefused({ refusal: refuse(FreshSessionRequired) })
-  else CredentialAccepted
-}
-pure val activeRequest: CredentialView = { kind: RequestSession, found: true, live: true, expiresAt: 900000, issuedAt: 1,
-  revokedBefore: 0, accountStatus: RequestAccountActive, authAt: 1, stepUpAt: 1, mfaAt: 1 }
-pure val viewValues = Set(activeRequest, { ...activeRequest, found: false }, { ...activeRequest, live: false },
-  { ...activeRequest, accountStatus: RequestAccountInactive }, { ...activeRequest, kind: RequestDevice })
-pure def lawOnlyAnActiveCredentialReachesProtectedRoutes(view: CredentialView, route: RouteClass, now: Millis): bool =
-  admitRequest(view, route, now) == CredentialAccepted implies credentialRefusal(view, now) == NoReason
 ```

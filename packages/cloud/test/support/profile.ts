@@ -1,5 +1,6 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { generateKeyPairSync, randomBytes } from "node:crypto";
+import { fileURLToPath } from "node:url";
 
 const document = (title: string) => ({
   title,
@@ -9,6 +10,8 @@ const document = (title: string) => ({
 
 const entitlementKeys = generateKeyPairSync("ec", { namedCurve: "P-256" });
 const entitlementPoint = entitlementKeys.publicKey.export({ format: "jwk" });
+
+export const fixtureSeedFile = fileURLToPath(new URL("../fixtures/seed.json", import.meta.url));
 
 export const testDatabaseIdentity = "a".repeat(64);
 
@@ -27,10 +30,14 @@ export const secrets: Readonly<Record<string, string>> = {
   LLM_API_KEY: "llm-key",
   SPEECH_API_KEY: "speech-key",
   MAPS_API_KEY: "maps-key",
+  CLOUD_TEST_MAIL_TOKEN: "mail-token",
+  CLOUD_TEST_SMS_ACCOUNT: "sms-account",
+  CLOUD_TEST_SMS_TOKEN: "sms-token",
 };
 
 export function environmentProfile(fakeUrl: string, api: string, web: string) {
   return {
+    name: "Test Cloud",
     api,
     web,
     entitlementAudience: "cloud-subscription",

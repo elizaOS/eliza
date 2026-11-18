@@ -1,0 +1,290 @@
+// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/update/operator.md, "Story: Update a device by cable and get back if it fails"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { buildApk, testSigner, type AndroidTools } from "./support/android-tools.ts"
+import { device, fakeAdb } from "./support/fake-adb.ts"
+import { scratch, scratchRepo, writeTree, type Tree } from "./support/scratch.vibe"
+
+module node {
+  import { execFile } from "node:child_process"
+  import { createPrivateKey, X509Certificate } from "node:crypto"
+  import path from "node:path"
+  import { androidTools, type AndroidTools } from "./support/android-tools.ts"
+
+  export interface Run {
+    readonly status: number | null
+    readonly stdout: string
+    readonly stderr: string
+  }
+
+  /** @throws {never} */
+  export function eliza(packageDir: string, args: readonly string[]): Promise<Run> {
+    return new Promise((resolve) => {
+      execFile(process.execPath, ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", path.join(packageDir, "src/cli.vibe"), ...args], { cwd: packageDir, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }, (failure, stdout, stderr) => {
+        resolve({ status: failure === null ? 0 : typeof failure.code === "number" ? failure.code : null, stdout, stderr })
+      })
+    })
+  }
+
+  /** @throws {never} */
+  export function sdk(): AndroidTools {
+    try {
+      return androidTools()
+    } catch (cause) {
+      return { kind: "missing", reason: String(cause) }
+    }
+  }
+
+  /** @throws {Error} */
+  export function certificateSha256(pem: string): string {
+    return new X509Certificate(pem).fingerprint256.replaceAll(":", "").toLowerCase()
+  }
+
+  /** @throws {Error} */
+  export function pairsWithCertificate(pk8: Uint8Array, pem: string): boolean {
+    return new X509Certificate(pem).checkPrivateKey(createPrivateKey({ key: Buffer.from(pk8), format: "der", type: "pkcs8" }))
+  }
+
+  /** @throws {Error} */
+  export function extensionAssets(packageDir: string): Promise<readonly string[]> {
+    return import(path.join(packageDir, "browser/chromium/component/chromium-component.mjs")).then((component: { assetNames: readonly string[] }) => component.assetNames)
+  }
+}
+import { certificateSha256, eliza, extensionAssets, pairsWithCertificate, sdk, type Run } from node
+
+export error ChildFailed { step: string; cause: unknown }
+
+const PASSPHRASE = "a passphrase only this test knows"
+const CERTIFICATE = "c".repeat(64)
+const USAGE_LINE = "eliza-os stage-launcher --descriptor FILE"
+const TOOLS = sdk()
+
+const failed = (step: string) => (cause: unknown) => new ChildFailed({ step, cause })
+
+effect function packageDir() {
+  const path = try Path.Path
+  return try path.fromFileUrl(new URL("..", import.meta.url))
+}
+
+effect function run(...args: string[]) {
+  const root = try packageDir()
+  return try tryPromise({ try: () => eliza(root, args), catch: failed(args.slice(0, 2).join(" ")) })
+}
+
+effect function parsed(step: string, result: Run) {
+  const value: Record<string, unknown> = try Effect.try({ try: () => JSON.parse(result.stdout), catch: (cause) => new ChildFailed({ step, cause: { cause, ...result } }) })
+  return value
+}
+
+effect function listed(directory: string) {
+  const files = try FileSystem.FileSystem
+  return (try files.readDirectory(directory)).sort()
+}
+
+effect function readJson(file: string) {
+  const files = try FileSystem.FileSystem
+  const text = try files.readFileString(file)
+  const value: unknown = try Effect.try({ try: () => JSON.parse(text), catch: failed(`read ${file}`) })
+  return value
+}
+
+const journey = <A, E>(body: A!E!(NodeServices.NodeServices | Scope.Scope)) => Effect.provide(Effect.scoped(body), NodeServices.layer)
+
+
+it.live("Refuse a malformed command line with exit 2 and write nothing (spec/os/image/staging.md, \"Story: Stage my launcher into an image exactly once\"; spec/os/image/signing.md, \"Story: Sign a release only with keys I enrolled\"; spec/os/browser/chromium.md, \"Story: Use the owned browser only with its expected identity\")", () => journey(effect {
+  const root = try scratch("cli-usage")
+  const out = `${root}/out`
+  const stage = ["stage-launcher", "--descriptor", `${root}/descriptor.json`, "--apk", `${root}/launcher.apk`, "--output", out]
+  const chromiumBuild = ["chromium", "build", "--source", `${root}/src`, "--extension", `${root}/ext`, "--out", out, "--certificate", CERTIFICATE, "--build", `${root}/build`, "--args-file", `${root}/args.gn`]
+  const refusals: ReadonlyArray<readonly [string, readonly string[], string]> = [
+    ["no command", [], "a command is required"],
+    ["unknown command", ["frobnicate"], "unknown command frobnicate"],
+    ["unknown flag", [...stage, "--bogus", "x"], "unknown argument --bogus"],
+    ["missing value", ["stage-launcher", "--output", out, "--descriptor"], "--descriptor needs a value"],
+    ["value that is a flag", ["stage-launcher", "--descriptor", "--apk", `${root}/launcher.apk`], "--descriptor needs a value"],
+    ["flag given twice", [...stage, "--output", out], "--output is given twice"],
+    ["switch given twice", [...stage, "--development", "--development"], "--development is given twice"],
+    ["missing required flags", ["stage-launcher", "--output", out], "--descriptor, --apk required"],
+    ["defer and admission-only", [...stage, "--defer-soong", "--admission-only"], "choose one of --defer-soong, --admission-only"],
+    ["defer and finalize", ["stage-launcher", "--output", out, "--defer-soong", "--finalize-soong"], "choose one of --defer-soong, --finalize-soong"],
+    ["finalize with a descriptor", ["stage-launcher", "--finalize-soong", "--output", out, "--descriptor", `${root}/descriptor.json`], "--finalize-soong takes only --output"],
+    ["finalize with a switch", ["stage-launcher", "--finalize-soong", "--output", out, "--development"], "--finalize-soong takes only --output"],
+    ["finalize with a companion", ["stage-launcher", "--finalize-soong", "--output", out, "--companion", "Helper=a.apk"], "--finalize-soong takes only --output"],
+    ["companion without a module", [...stage, "--companion", "helper.apk"], "--companion takes MODULE=FILE, not helper.apk"],
+    ["companion with a lower-case module", [...stage, "--companion", "helper=helper.apk"], "--companion takes MODULE=FILE, not helper=helper.apk"],
+    ["companion given twice", [...stage, "--companion", "Helper=a.apk", "--companion", "Helper=b.apk"], "--companion Helper is given twice"],
+    ["native ABI outside the targets", [...stage, "--native-abi", "armeabi-v7a"], "--native-abi must be one of"],
+    ["native install outside the rules", [...stage, "--native-abi", "arm64-v8a", "--native-install", "ninja"], "--native-install must be one of"],
+    ["jobs of zero", [...chromiumBuild, "--jobs", "0"], "--jobs must be a whole number from 1 to 999"],
+    ["jobs above the range", [...chromiumBuild, "--jobs", "1000"], "--jobs must be a whole number from 1 to 999"],
+    ["jobs that are not a number", [...chromiumBuild, "--jobs", "many"], "--jobs must be a whole number from 1 to 999"],
+    ["embed-host that is not a boolean", [...chromiumBuild, "--embed-host", "yes"], "--embed-host must be true or false"],
+    ["keys without a subcommand", ["keys"], "keys takes generate or decrypt, not nothing"],
+    ["keys with an unknown subcommand", ["keys", "rotate"], "keys takes generate or decrypt, not rotate"],
+    ["keys decrypt with an unknown flag", ["keys", "decrypt", "--input", root, "--output", out, "--passphrase-file", `${root}/pass`, "--test-keys"], "unknown argument --test-keys"],
+    ["chromium without a subcommand", ["chromium"], "chromium takes prepare or build, not nothing"],
+    ["chromium with an unknown subcommand", ["chromium", "clean"], "chromium takes prepare or build, not clean"],
+    ["chromium prepare without a certificate", ["chromium", "prepare", "--source", `${root}/src`, "--extension", `${root}/ext`, "--out", out], "--certificate required"],
+  ]
+  const results = try Effect.forEach(refusals, ([, argv]) => run(...argv), { concurrency: 8 })
+  refusals.forEach(([name, , message], index) => {
+    const result = results[index]
+    assert.strictEqual(result?.status, 2, `${name}: ${result?.stderr}`)
+    assert.strictEqual(result?.stdout, "", name)
+    assert.include(result?.stderr, message, name)
+    assert.include(result?.stderr, USAGE_LINE, name)
+  })
+  assert.deepStrictEqual(try listed(root), [])
+}))
+
+it.live("Generate test release keys and decrypt them again (spec/os/image/signing.md, \"Story: Sign a release only with keys I enrolled\")", () => journey(effect {
+  const root = try scratch("cli-keys")
+  const files = try FileSystem.FileSystem
+  const manifest = {
+    schemaVersion: 1,
+    reviewedAt: "2026-10-02",
+    keys: [
+      { name: "releasekey", kind: "x509-pk8", bits: 4096, storage: "offline-encrypted" },
+      { name: "avb", kind: "avb-rsa", bits: 4096, storage: "offline-encrypted" },
+      { name: "release_ed25519", kind: "ed25519", storage: "offline-encrypted" },
+    ],
+  }
+  const tree: Tree = { "key-manifest.json": JSON.stringify(manifest), "secret/passphrase": PASSPHRASE }
+  try writeTree(root, tree)
+  try files.chmod(`${root}/secret/passphrase`, 0o600)
+  try files.chmod(`${root}/secret`, 0o700)
+  const keys = `${root}/keys`
+  const generate = ["keys", "generate", "--output", keys, "--passphrase-file", `${root}/secret/passphrase`, "--manifest", `${root}/key-manifest.json`, "--test-keys"]
+  const generated = try run(...generate)
+  assert.strictEqual(generated.status, 0, generated.stderr)
+  const result = try parsed("keys generate", generated)
+  const fingerprints = result.fingerprints as { testKeys: boolean; keys: Array<{ name: string; kind: string; certificateSha256?: string }> }
+  assert.strictEqual(fingerprints.testKeys, true)
+  assert.deepStrictEqual(fingerprints.keys.map((key) => [key.name, key.kind]), manifest.keys.map((key) => [key.name, key.kind]))
+  const written = try listed(keys)
+  for (const file of ["TEST-KEYS-DO-NOT-SHIP", "fingerprints.json", "releasekey.x509.pem", "releasekey.pk8.enc", "avb.avbpubkey", "avb.pem.enc", "release_ed25519.pem.enc", "release_ed25519.pub.pem"]) assert.include(written, file)
+  assert.notInclude(written, "releasekey.pk8")
+  const certificate = try files.readFileString(`${keys}/releasekey.x509.pem`)
+  assert.strictEqual(fingerprints.keys[0]?.certificateSha256, try Effect.try({ try: () => certificateSha256(certificate), catch: failed("read the certificate") }))
+  assert.include(try files.readFileString(`${keys}/avb.pem.enc`), "ENCRYPTED PRIVATE KEY")
+  assert.strictEqual((try files.stat(`${keys}/releasekey.pk8.enc`)).mode & 0o077, 0)
+
+  const plain = `${root}/plain`
+  const decrypted = try run("keys", "decrypt", "--input", keys, "--output", plain, "--passphrase-file", `${root}/secret/passphrase`, "--only", "releasekey")
+  assert.strictEqual(decrypted.status, 0, decrypted.stderr)
+  assert.deepStrictEqual(try listed(plain), ["releasekey.pk8", "releasekey.x509.pem"])
+  const pk8 = try files.readFile(`${plain}/releasekey.pk8`)
+  assert.isTrue(try Effect.try({ try: () => pairsWithCertificate(pk8, certificate), catch: failed("pair the key") }))
+
+  const again = try run(...generate)
+  assert.notStrictEqual(again.status, 0)
+  assert.notStrictEqual(again.status, 2)
+  assert.strictEqual(again.stdout, "")
+}))
+
+effect function admission(tools: Extract<AndroidTools, { kind: "present" }>) {
+  const root = try scratch("cli-stage")
+  const files = try FileSystem.FileSystem
+  const signer = try Effect.try({ try: () => testSigner(tools, root, "launcher"), catch: failed("make the signer") })
+  const manifest = [
+    "<manifest xmlns:android=\"http://schemas.android.com/apk/res/android\" package=\"org.example.launcher\">",
+    "  <application android:label=\"Launcher\" android:hasCode=\"false\">",
+    "    <activity android:name=\".Home\" android:exported=\"true\">",
+    "      <intent-filter>",
+    "        <action android:name=\"android.intent.action.MAIN\"/>",
+    "        <category android:name=\"android.intent.category.HOME\"/>",
+    "        <category android:name=\"android.intent.category.DEFAULT\"/>",
+    "      </intent-filter>",
+    "    </activity>",
+    "  </application>",
+    "</manifest>",
+  ].join("\n")
+  const built = try Effect.try({ try: () => buildApk(tools, { directory: `${root}/apk`, manifest, signer, name: "launcher" }), catch: failed("build the launcher") })
+  const descriptor = { schemaVersion: 1, brand: "example", moduleName: "ExampleLauncher", packageName: "org.example.launcher", apkSha256: built.sha256, certificateSha256: signer.certificateSha256 }
+  try writeTree(root, { "descriptor.json": JSON.stringify(descriptor) })
+  const output = `${root}/overlay`
+  const stage = ["stage-launcher", "--descriptor", `${root}/descriptor.json`, "--apk", built.apk, "--output", output, "--aapt", tools.aapt, "--apksigner", tools.apksigner]
+  const admitted = try run(...stage, "--admission-only")
+  assert.strictEqual(admitted.status, 0, admitted.stderr)
+  try parsed("stage-launcher --admission-only", admitted)
+  assert.isFalse(try files.exists(output))
+
+  try writeTree(root, { "descriptor.json": JSON.stringify({ ...descriptor, apkSha256: "0".repeat(64) }) })
+  const refused = try run(...stage, "--admission-only")
+  assert.notStrictEqual(refused.status, 0)
+  assert.notStrictEqual(refused.status, 2)
+  assert.strictEqual(refused.stdout, "")
+  assert.isFalse(try files.exists(output))
+}
+
+it.live.skipIf(TOOLS.kind === "missing")(`Check a launcher for admission without writing an overlay (spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once")${TOOLS.kind === "missing" ? `: ${TOOLS.reason}` : ""}`, () => journey(effect {
+  if (TOOLS.kind === "present") try admission(TOOLS)
+}))
+
+it.live("Read an update's status from the device by cable (spec/os/update/operator.md, \"Story: Update a device by cable and get back if it fails\")", () => journey(effect {
+  const root = try scratch("cli-ota")
+  const files = try FileSystem.FileSystem
+  const serial = "FAKE0001"
+  const phone = try Effect.try({ try: () => fakeAdb(root, device(serial, { mode: "sideload" })), catch: failed("start the fake adb") })
+  const journal = {
+    schema: 1,
+    kind: "aosp-ota-update-journal",
+    serial,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    release: { product: "example", device: "example_device", channel: "stable", fingerprint: "example/example_device:16/BP2A.260101.001/2:user/release-keys", securityPatch: "2026-01-05", type: "full", otaFile: "update.zip", otaSha256: "d".repeat(64), recordSha256: "e".repeat(64) },
+    from: { fingerprint: "example/example_device:16/BP2A.251201.001/1:user/release-keys", slot: "a", securityPatch: "2025-12-05", verifiedBootState: "green", flashLocked: true, virtualAb: true, recordSha256: "f".repeat(64) },
+    state: "sideloading",
+    events: [],
+    signedUpdateApplied: false,
+    drillRecorded: false,
+  }
+  try files.writeFileString(`${root}/journal.json`, JSON.stringify(journal), { mode: 0o600 })
+  const before = try files.readFileString(`${root}/journal.json`)
+  const status = try run("ota", "status", "--serial", serial, "--journal", `${root}/journal.json`, "--adb", phone.adb, "--fastboot", phone.fastboot)
+  assert.strictEqual(status.status, 0, status.stderr)
+  const result = try parsed("ota status", status)
+  assert.strictEqual(result.deviceState, "sideload")
+  assert.strictEqual(result.next, "sideload")
+  assert.strictEqual(try files.readFileString(`${root}/journal.json`), before)
+  const calls = try Effect.try({ try: () => phone.calls(), catch: failed("read the adb calls") })
+  assert.deepStrictEqual(calls.filter((call) => ["reboot", "sideload", "set_active"].includes(call.args[2] ?? "")), [])
+}))
+
+it.live("Prepare the owned browser's component against the pinned sources (spec/os/browser/chromium.md, \"Story: Use the owned browser only with its expected identity\")", () => journey(effect {
+  const root = try scratch("cli-chromium")
+  const files = try FileSystem.FileSystem
+  const browser = `${try packageDir()}/browser`
+  const pin = (try readJson(`${browser}/chromium/upstream.json`)) as { revision: string; sha256: Record<string, string> }
+  const sources: Record<string, string> = {}
+  for (const name of Object.keys(pin.sha256)) sources[name] = try files.readFileString(`${browser}/chromium/fixtures/${name}`)
+  const repo = try scratchRepo("chromium-source", sources)
+  try writeTree(repo.root, { ".git/HEAD": `${pin.revision}\n` })
+  const application = "org.example.launcher"
+  const host = { application, androidCertificates: [CERTIFICATE.toUpperCase()] }
+  const identity = (try readJson(`${browser}/identity.json`)) as { chromeDevManifestKey: string }
+  const assets = try tryPromise({ try: () => extensionAssets(`${browser}/..`), catch: failed("read the asset names") })
+  const extension: Record<string, string> = Object.fromEntries(assets.map((name) => [name, "// fixture\n"]))
+  extension["manifest.json"] = JSON.stringify({
+    manifest_version: 3,
+    name: "Test",
+    version: "1.0",
+    key: identity.chromeDevManifestKey,
+    permissions: ["tabs", "scripting", "webNavigation", "webRequest", "storage", "nativeMessaging", "alarms"],
+    host_permissions: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"],
+    background: { service_worker: "background.mjs", type: "module" },
+  })
+  extension["runtime-config.mjs"] = `export const nativeHost = ${JSON.stringify(host)};\n`
+  try writeTree(`${root}/extension`, extension)
+  const prepare = ["chromium", "prepare", "--source", repo.root, "--extension", `${root}/extension`, "--certificate", CERTIFICATE, "--application", application]
+  const prepared = try run(...prepare, "--out", `${root}/component`, "--revision", pin.revision)
+  assert.strictEqual(prepared.status, 0, prepared.stderr)
+  const report = try parsed("chromium prepare", prepared)
+  assert.deepStrictEqual(report.nativeHost, host)
+  assert.strictEqual(report.releaseQualified, false)
+  assert.strictEqual(try files.readFileString(`${repo.root}/chrome/browser/resources/eliza_browser/runtime-config.mjs`), `export const nativeHost = ${JSON.stringify(host)};\n`)
+
+  const stale = try run(...prepare, "--out", `${root}/again`, "--revision", "0".repeat(40))
+  assert.notStrictEqual(stale.status, 0)
+  assert.strictEqual(stale.stdout, "")
+  assert.isFalse(try files.exists(`${root}/again`))
+}))

@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS oauth_attempts (
+  key text PRIMARY KEY,
+  state jsonb NOT NULL,
+  revision bigint NOT NULL,
+  route text NOT NULL CHECK (route IN ('browser', 'native')),
+  client_id text NOT NULL,
+  redirect_uri text,
+  challenge_digest text,
+  app_state text,
+  state_digest text UNIQUE,
+  google_verifier text,
+  nonce_digest text,
+  link_user_id text REFERENCES accounts (key) ON DELETE CASCADE,
+  code_digest text UNIQUE,
+  google_subject text,
+  verified_email text,
+  given_name text,
+  pending boolean NOT NULL,
+  expires_at bigint NOT NULL,
+  updated_at bigint NOT NULL
+);

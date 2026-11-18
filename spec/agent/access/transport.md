@@ -20,12 +20,11 @@ serves the same exchange as an HTTP response, a chunked response for a
 stream, and server-sent events at `GET /api/events?streams=…&clientId=`.
 `Frame` names these in order (`CompleteFailed` is `complete` with `error`).
 Bytes, JSON and route matching stay in `access/socket.vibe` and
-`access/http.vibe`; the effects say what they do: write a frame, dispatch a
-handler with its deadline, abort its signal. After a terminal frame the
-shell ends the connection; after an abort it destroys it. Sources: develop
+`access/http.vibe`; the effects write a frame, dispatch a handler with its
+deadline, or abort its signal. After a terminal frame the shell ends the
+connection; after an abort it destroys it. Sources: develop
 `plugins/plugin-native-inference/src/android/{private-ipc,dispatch,event-subscription}.ts`,
-`packages/agent/src/api/dispatch-route.ts`, and the Quint models
-`api-http-body` and `api-transport`.
+`packages/agent/src/api/dispatch-route.ts`, Quint `api-http-body`, `api-transport`.
 
 ## Story: Answer each local request exactly once
 

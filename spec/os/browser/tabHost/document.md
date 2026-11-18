@@ -84,11 +84,14 @@ pure val committedPage: TabObservation = { session: 1, tab: 1, seq: 1, navId: 1,
 pure val observationValues: Set[TabObservation] = List(
   committedPage,
   { ...committedPage, seq: 2, navId: 2, url: httpAddress, loading: true, committed: false },
-  { ...committedPage, seq: 3, navId: 2, url: httpAddress, externalOnly: true },
-  { ...committedPage, seq: 4, navId: 3, privateTab: true },
-  { ...committedPage, session: 2, seq: 5 }
+  { ...committedPage, seq: 3, navId: 2, url: httpAddress, failed: true, committed: false },
+  { ...committedPage, seq: 4, navId: 2, url: httpAddress, externalOnly: true },
+  { ...committedPage, seq: 5, navId: 3, privateTab: true },
+  { ...committedPage, session: 2, seq: 6 }
 ).foldl(Set(), (acc, o) => acc.union(Set(o)))
 pure def sometimesTabRetired(s: BrowserTab): bool = s.custody == Retired and s.session > 0
+pure def sometimesLoadFailed(s: BrowserTab): bool = held(s) and s.status == PageFailed
+pure def sometimesPageOnlyAnotherBrowserShows(s: BrowserTab): bool = held(s) and s.status == PageExternalOnly
 ```
 
 ### A tab reserves an identity only in the session the host bound
@@ -98,6 +101,8 @@ a failed creation or a close keeps the binding.
 
 ```quint
 pure def alwaysHeldTabHasIdentity(s: BrowserTab): bool = held(s) implies (s.session > 0 and s.tab > 0)
+pure def stepBoundSessionNeverChanges(before: BrowserTab, after: BrowserTab): bool =
+  before.session > 0 implies after.session == before.session
 ```
 
 ### A private tab stays private for as long as it is held
@@ -162,7 +167,8 @@ pure def sometimesPrivatePageNotSaved(s: BrowserTab): bool = boundPage(s) and is
 A `target=_blank` link or `window.open` opens a tab in the opener's profile
 only while the host runs, the opener is selected, committed without an
 error, and the tap is a native gesture; otherwise the opener hears a notice.
-The renderer accepts it only for its own bound session and an unknown tab.
+The renderer accepts it, already created, only for its own bound session
+and an unknown tab.
 
 ```quint
 type PopupRequest = { openerSettled: bool, openerSelected: bool, gesture: bool, openerPrivacy: TabPrivacy }
@@ -177,6 +183,7 @@ pure val requestValues: Set[PopupRequest] = List(
   { openerSettled: true, openerSelected: true, gesture: true, openerPrivacy: PrivateTab },
   { openerSettled: true, openerSelected: true, gesture: false, openerPrivacy: NormalTab }
 ).foldl(Set(), (acc, r) => acc.union(Set(r)))
+pure def alwaysAPopupIsOwned(s: BrowserTab): bool = s.opening != OpenedByRenderer implies s.custody == Owned
 pure def sometimesPrivatePopup(s: BrowserTab): bool = s.opening == FreshPopup and isPrivate(s)
 ```
 
@@ -189,7 +196,9 @@ The shell classifies the link: a `tel:` link only opens the dialer, a
 action, a forbidden data scheme or the host's own package or schemes, is
 unsupported. A tab hands a link off only while selected and with a native
 gesture. A fresh pop-up, not yet committed, carries its opener's tap once:
-it hands off while it or its opener is selected, then closes either way.
+it hands off while it or its opener is selected, and its first handoff,
+refused or not, spends that tap; the host then closes it unless it loads
+the link's fallback address.
 When the host itself handles the link, only a mail, phone, text or map link
 is handed off. When no app resolves the intent, the shell may load the
 link's HTTPS fallback address as a navigation.
@@ -208,21 +217,23 @@ pure def linkHandoff(fresh: bool, tap: LinkTap): Handoff =
 pure def freshPopup(s: BrowserTab): bool = s.custody == Owned and s.opening == FreshPopup
 pure def canHandOff(s: BrowserTab): bool = s.custody == Owned
 pure def handOff(s: BrowserTab, tap: LinkTap): BrowserTab =
-  if (freshPopup(s)) { ...released(s), lastHandoff: linkHandoff(true, tap) }
+  if (freshPopup(s)) { ...s, opening: UsedPopup, lastHandoff: linkHandoff(true, tap) }
   else { ...s, lastHandoff: linkHandoff(false, tap) }
 pure def lawHandoffNeedsMyTap(fresh: bool, tap: LinkTap): bool =
   linkHandoff(fresh, tap) != HandoffRefused implies tapAllowed(fresh, tap)
 pure def lawOwnHandlerTakesOnlySystemLinks(fresh: bool, tap: LinkTap): bool =
   (tap.ownHandler and linkHandoff(fresh, tap) != HandoffRefused) implies systemLink(tap.kind)
-pure def stepFreshPopupHandsOffOnce(before: BrowserTab, via: str, after: BrowserTab): bool =
-  (via == "handOff" and freshPopup(before)) implies after.custody == Unclaimed
+pure def stepOnlyANewPopupCarriesItsOpenersTap(before: BrowserTab, via: str, after: BrowserTab): bool =
+  (freshPopup(after) and not(freshPopup(before))) implies via == "openPopup"
+pure def stepAHandoffSpendsTheOpenersTap(before: BrowserTab, via: str, after: BrowserTab): bool =
+  via == "handOff" implies not(freshPopup(after))
 pure val tapValues: Set[LinkTap] = List(
   { kind: MailLink, gesture: false, tabSelected: false, openerSelected: true, ownHandler: false },
   { kind: PhoneLink, gesture: true, tabSelected: true, openerSelected: false, ownHandler: true },
   { kind: AppIntentLink, gesture: true, tabSelected: true, openerSelected: false, ownHandler: true },
   { kind: MapLink, gesture: false, tabSelected: true, openerSelected: false, ownHandler: false }
 ).foldl(Set(), (acc, t) => acc.union(Set(t)))
-pure def sometimesPopupHandedOff(s: BrowserTab): bool = s.custody == Unclaimed and s.lastHandoff == ComposeHandoff
+pure def sometimesPopupHandedOff(s: BrowserTab): bool = s.opening == UsedPopup and s.status == PageLoading and s.lastHandoff == ComposeHandoff
 pure def sometimesUntappedLinkRefused(s: BrowserTab): bool = s.custody == Owned and s.lastHandoff == HandoffRefused
 pure def sometimesDialerOpened(s: BrowserTab): bool = s.custody == Owned and s.lastHandoff == DialHandoff
 ```

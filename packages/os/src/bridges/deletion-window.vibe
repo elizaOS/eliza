@@ -1,0 +1,196 @@
+// spec/os/android/deletionWindow.md, "Story: Undo a reviewed deletion before it is sent"; spec/os/android/deferredDeletion.md, "Story: Keep one winner between Undo and the provider"
+import type { DeletionHold, DeletionKind } from "../../gen/os__android__deferredDeletion.ts"
+import { clockUsable, deletionDeadline, deletionNotice, offersUndo } from "../../gen/os__android__deletionWindow.effect.vibe"
+import type { DeletionClock, DeletionDeadline, DeletionNotice, DeletionPhase, WindowState } from "../../gen/os__android__deletionWindow.ts"
+import { decoded, type MalformedReply } from "./bridge.vibe"
+import type {
+  DeferredDeletionEntry,
+  DeferredDeletionsPending,
+  DeletionNoticeView,
+  DeletionRecordKind,
+} from "./definitions/action-journal.ts"
+
+export type {
+  DeletionClaim,
+  DeletionClaimAction,
+  DeletionClock,
+  DeletionDeadline,
+  DeletionNotice,
+  DeletionPhase,
+  PendingDeletion,
+  WindowState,
+} from "../../gen/os__android__deletionWindow.ts"
+export type {
+  DeferredDeletionEntry,
+  DeferredDeletionKey,
+  DeferredDeletionsClient,
+  DeferredDeletionsPending,
+  DeletedRecordOrigin,
+  DeletionNoticeView,
+  DeletionRecordKind,
+  DismissOutcome,
+  UndoOutcome,
+} from "./definitions/action-journal.ts"
+export { claimDeletion, clockUsable, deleteUndoMs, deletionDeadline, deletionWindow, offersUndo, undoConfirmed } from "../../gen/os__android__deletionWindow.effect.vibe"
+
+module renderer {
+  import type { DeletionClock } from "../../gen/os__android__deletionWindow.ts"
+
+  let continuity: string | undefined
+
+  /** @throws {never} */
+  export function rendererDeletionClock(): DeletionClock {
+    continuity ??= globalThis.crypto.randomUUID()
+    return { continuity, elapsed: Math.floor(globalThis.performance.now()), wall: Date.now() }
+  }
+}
+import { rendererDeletionClock } from renderer
+export { rendererDeletionClock }
+
+export const UNDO_TOO_LATE = "Undo was too late. The deletion already went ahead; check the item before relying on it."
+
+export const DELETION_NOTICE_TEXT = {
+  paused: "Deletion paused. Undo to keep it, then review again if you still want to delete.",
+  queued: "Deletion queued for 10 seconds.",
+  uncertain: "Deletion outcome needs review. It will not be repeated.",
+  verifying: "Deletion is being verified.",
+  statusUnavailable: "Pending deletion status is unavailable. Refresh before making another change.",
+  undoUnconfirmed: "Undo could not be confirmed. The deletion may already have gone ahead; refresh and inspect the saved item.",
+  refreshing: "Refreshing the saved receipt. This does not repeat the deletion or prove the item was restored.",
+  dismissed: "Outcome dismissed. The receipt is retained; nothing was restored or repeated.",
+  dismissFailed: "The outcome could not be dismissed. Refresh the receipt and try again.",
+} as const
+
+export error DeletionClockUnavailable { clock: DeletionClock }
+
+export effect function reviewDeadline(clock: DeletionClock): DeletionDeadline!DeletionClockUnavailable {
+  if (!Number.isSafeInteger(clock.elapsed) || !Number.isSafeInteger(clock.wall) || !clockUsable(clock)) {
+    throw new DeletionClockUnavailable({ clock })
+  }
+  return deletionDeadline(clock)
+}
+
+const WIRE_PHASES = ["queued", "paused", "dispatching", "undone", "deleted", "conflict", "unknown"] as const
+type WirePhase = (typeof WIRE_PHASES)[number]
+type WireWindow = "open" | "expired" | "clock-changed"
+
+const PHASES: Readonly<Record<WirePhase, DeletionPhase>> = {
+  queued: "Queued",
+  paused: "Paused",
+  dispatching: "Dispatching",
+  undone: "Undone",
+  deleted: "Deleted",
+  conflict: "DeletionConflict",
+  unknown: "UnknownOutcome",
+}
+
+const WINDOWS: Readonly<Record<WireWindow, WindowState>> = { open: "WindowOpen", expired: "WindowExpired", "clock-changed": "ClockChanged" }
+
+const KINDS: Readonly<Record<DeletionRecordKind, DeletionKind>> = { calendar: "CalendarEvent", reminder: "ReminderOccurrence" }
+
+export function recordKindOf(kind: DeletionKind): DeletionRecordKind {
+  return match (kind) {
+    when "CalendarEvent": "calendar";
+    when "ReminderOccurrence": "reminder";
+  }
+}
+
+function holdOf(blocked: string | undefined): DeletionHold {
+  return match (blocked) {
+    when undefined: "NotHeld";
+    when "owner-changed": "HeldOwnerChanged";
+    when "owner-unavailable": "HeldOwnerUnavailable";
+    when "permission-required": "HeldPermissionRefused";
+    default: "HeldProviderDeclined";
+  }
+}
+
+const Titled = Schema.Struct({ title: Schema.optionalKey(Schema.String) })
+const WireEntry = Schema.Struct({
+  id: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9_-]{1,128}$/)),
+  kind: Schema.Literals(["calendar", "reminder"]),
+  phase: Schema.Literals(WIRE_PHASES),
+  window: Schema.optionalKey(Schema.Literals(["open", "expired", "clock-changed"])),
+  blocked: Schema.optionalKey(Schema.String),
+  expiresAt: Schema.optionalKey(Schema.Number),
+  deadline: Schema.optionalKey(Schema.Struct({ expiresAt: Schema.Number })),
+  target: Schema.optionalKey(Schema.Struct({ row: Schema.optionalKey(Titled), fields: Schema.optionalKey(Titled) })),
+  original: Schema.optionalKey(Titled),
+})
+const WireOrigin = Schema.Struct({ kind: Schema.Literals(["event", "reminder"]), id: Schema.String })
+const WirePending = Schema.Struct({ pending: Schema.Array(WireEntry), deletedNoteOrigins: Schema.optionalKey(Schema.Array(WireOrigin)) })
+const WireReceipt = Schema.Struct({ phase: Schema.Literals(WIRE_PHASES) })
+
+function entryOf(row: typeof WireEntry.Type): DeferredDeletionEntry {
+  const phase = PHASES[row.phase]
+  return {
+    id: row.id,
+    kind: KINDS[row.kind],
+    phase,
+    window: row.window === undefined ? "WindowExpired" : WINDOWS[row.window],
+    hold: phase === "Paused" ? holdOf(row.blocked) : "NotHeld",
+    expiresAt: row.expiresAt ?? row.deadline?.expiresAt ?? null,
+    title: row.target?.row?.title || row.target?.fields?.title || row.original?.title || null,
+  }
+}
+
+export effect function parseDeletionsPending(raw: unknown): DeferredDeletionsPending!MalformedReply {
+  const read = try decoded("ElizaActionJournal", "pending", WirePending, raw)
+  return { deletions: read.pending.map(entryOf), deletedOrigins: read.deletedNoteOrigins ?? [] }
+}
+
+export effect function receiptPhase(method: "undo" | "dismiss", raw: unknown): DeletionPhase!MalformedReply {
+  return PHASES[(try decoded("ElizaActionJournal", method, WireReceipt, raw)).phase]
+}
+
+export function noticeOf(entry: DeferredDeletionEntry): DeletionNotice {
+  return deletionNotice(entry.phase, entry.window)
+}
+
+function messageOf(notice: Exclude<DeletionNotice, "NoticeHidden">): string {
+  return match (notice) {
+    when "NoticePaused": DELETION_NOTICE_TEXT.paused;
+    when "NoticeQueued": DELETION_NOTICE_TEXT.queued;
+    when "NoticeVerifying": DELETION_NOTICE_TEXT.verifying;
+    when "NoticeUncertain": DELETION_NOTICE_TEXT.uncertain;
+  }
+}
+
+export function deletionNoticeOf(entry: DeferredDeletionEntry): DeletionNoticeView | null {
+  const notice = noticeOf(entry)
+  if (notice === "NoticeHidden") return null
+  const kind = recordKindOf(entry.kind)
+  return {
+    key: `${kind}:${entry.id}`,
+    title: entry.title ?? `Selected ${kind}`,
+    notice,
+    message: messageOf(notice),
+    canUndo: offersUndo(notice),
+    uncertain: notice === "NoticeUncertain",
+  }
+}
+
+export function pendingDeletionNotices(entries: readonly DeferredDeletionEntry[]): DeferredDeletionEntry[] {
+  return entries.filter((entry) => noticeOf(entry) !== "NoticeHidden")
+}
+
+export function deletionNoticeSignature(entries: readonly DeferredDeletionEntry[]): string {
+  return entries.map((entry) => [recordKindOf(entry.kind), entry.id, entry.phase].join(",")).join("|")
+}
+
+export function deletionReviewRefusal(status: string): string | undefined {
+  return match (status) {
+    when "stale": "This item changed. Review it again before deleting.";
+    when "unavailable": "Deletion review is unavailable. Open the item and try again; nothing changed.";
+    when "not-staged": "Deletion was not queued. Nothing changed; review it again if you still want to delete it.";
+    default: undefined;
+  }
+}
+
+export function reminderDeletionRefusal(status: string): string | undefined {
+  return match (status) {
+    when "stale": "This reminder changed. Review it again before deleting.";
+    when "unavailable": "Deletion review is unavailable. Open the reminder and try again; nothing changed.";
+    default: deletionReviewRefusal(status);
+  }
+}

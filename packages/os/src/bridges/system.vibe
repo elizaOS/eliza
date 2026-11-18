@@ -1,0 +1,723 @@
+// spec/os/android/system.md, "A Settings page opens its specific page first and a broader page only where one is listed"; spec/os/android/system.md, "The shade opens only from a focused launcher build that holds the status bar permission"; spec/os/android/system.md, "A default-app handoff opens one eligible app other than this one, or is refused"; spec/os/android/system.md, "App info opens Android's details page for exactly the entry the owner chose"; spec/os/android/system.md, "A clock handoff sends one reviewed request and never reports an alarm change"; spec/os/android/system.md, "Device setup opens only a listed browser or password manager, or Android's own defaults pages"; spec/os/android/system.md, "A fact is reported only as Android answered it, and unknown is never off"; spec/os/android/system.md, "A problem entry shows only the fields its source allows"; spec/os/android/system.md, "A volume, mute or brightness change reports only the value Android read back"; spec/os/android/system.md, "Brightness changes system-wide only with the write-settings grant, and otherwise only this app's focused window"; spec/os/android/system.md, "A role is asked through Android's role request and reported held only from Android's readback"; spec/os/android/home.md, "An inventory read publishes only after its list and dial-role replies settle"; spec/os/android/home.md, "A launch settles under the ticket it captured, and a late reply cannot set an error on a newer ticket"; spec/os/android/home.md, "Package changes and foreground return refresh until Home retires"; spec/os/android/home.md, "An admitted built-in view opens in the renderer and never reaches Android"
+import type { HandoffOutcome } from "../../gen/os__android__bridge.ts"
+import {
+  answeredFact,
+  appInfoReply,
+  brightnessAllowed,
+  brightnessTarget,
+  clockHandoff,
+  clockRequestAdmitted,
+  controlReport,
+  defaultAppHandoff,
+  mutedFact,
+  pageHandoff,
+  pageReply,
+  problemFieldAllowed,
+  problemRetained,
+  roleResult,
+  asksAndroidForRole,
+  shadeHandoff,
+  volumeTarget,
+  type AppEntry,
+  type AppPresence,
+  type ClockReply as ClockAnswer,
+  type ClockRequest as ClockAsk,
+  type ControlReport,
+  type LaunchReply,
+  type LevelReadback,
+  type ProblemField,
+  type ProblemSource,
+  type ProfilePresence,
+  type RoleResult,
+  type SettingsPage,
+  type SetupReply,
+  type ShadeReply,
+  type SwitchFact,
+} from "../../gen/os__android__system.effect.vibe"
+import { Machine, machine, routeTap, type DialRole, type LauncherInventory } from "../../gen/os__android__home.effect.vibe"
+import { nativeCall, nativeReply, rejectionCode, settled, type BridgeFailure } from "./bridge.vibe"
+import type {
+  AndroidRoleName,
+  AndroidRoleStatus,
+  AppInfoHandoff,
+  AppInfoRefusal,
+  BuiltinView,
+  ClockHandoff,
+  ClockRequest,
+  ClockStatus,
+  ControlReading,
+  CrashExitReason,
+  DefaultAppStatus,
+  DeviceSetup,
+  DeviceSetupHandoff,
+  DeviceSetupOutcome,
+  DeviceSetupReadiness,
+  DeviceSetupTarget,
+  InstalledApp,
+  Launcher,
+  LauncherBridge,
+  LauncherError,
+  LauncherRefusalCode,
+  LauncherSnapshot,
+  LaunchTarget,
+  NativeCrashEntry,
+  NativeCrashSource,
+  NotificationShadeOutcome,
+  RendererFailureKind,
+  RoleAnswer,
+  SettingsHandoff,
+  SwitchState,
+  SystemClient,
+  SystemFacts,
+  SystemHostPlugin,
+  SystemLauncherPlugin,
+  SystemPlugin,
+  SystemSettingsPage,
+  SystemStatus,
+  SystemSwitch,
+  SystemSwitchStates,
+  SystemVolumeStream,
+} from "./definitions/system.ts"
+
+export type * from "./definitions/system.ts"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { DeviceSetup, SystemHostPlugin, SystemPlugin } from "./definitions/system.ts"
+
+  /** @throws {never} */
+  export function systemPlugin(name = "ElizaSystem"): SystemPlugin & SystemHostPlugin {
+    return registerPlugin<SystemPlugin & SystemHostPlugin>(name)
+  }
+
+  /** @throws {never} */
+  export function deviceSetupPlugin(name: string): DeviceSetup {
+    return registerPlugin<DeviceSetup>(name)
+  }
+}
+import { deviceSetupPlugin, systemPlugin } from capacitor
+export { deviceSetupPlugin, systemPlugin }
+
+export const LAUNCHER_REFUSAL_CODES: readonly LauncherRefusalCode[] = ["not-installed", "disabled", "no-launcher", "profile-locked", "profile-unavailable", "failed"]
+export const CRASH_EXIT_REASONS: readonly CrashExitReason[] = ["crash", "native-crash", "anr", "low-memory", "signaled", "initialization-failure", "excessive-resource-usage", "dependency-died", "freezer", "other", "unknown", "exit-self"]
+export const RENDERER_FAILURE_KINDS: readonly RendererFailureKind[] = ["render", "startup", "uncaught"]
+export const CRASH_LOG_MAX_ENTRIES = 50
+
+const SETTINGS_PAGES: Readonly<Record<SystemSettingsPage, SettingsPage>> = {
+  accounts: "PageAccounts",
+  wifi: "PageWifi",
+  bluetooth: "PageBluetooth",
+  mobile: "PageMobile",
+  airplane: "PageAirplane",
+  location: "PageLocation",
+  display: "PageDisplay",
+  sound: "PageSound",
+  battery: "PageBattery",
+  about: "PageAbout",
+  developer: "PageDeveloper",
+  notifications: "PageNotifications",
+  privacy: "PagePrivacy",
+  "default-apps": "PageDefaultApps",
+  dnd: "PageDnd",
+}
+const SHADE: Readonly<Record<NotificationShadeOutcome, ShadeReply>> = {
+  opened: "ShadeOpened",
+  standalone: "ShadeStandalone",
+  "permission-missing": "ShadePermissionMissing",
+  unsupported: "ShadeUnsupported",
+  "not-in-front": "ShadeNotInFront",
+}
+const SWITCH: Readonly<Record<SwitchFact, SwitchState>> = { FactOn: "on", FactOff: "off", FactUnknown: "unknown" }
+const ROLE: Readonly<Record<RoleResult, RoleAnswer>> = { RoleHeld: "held", RoleNotHeld: "not-held", RoleNotOffered: "not-offered", RoleUnavailableHere: "unavailable" }
+const CLOCK: Readonly<Record<ClockStatus, ClockAnswer>> = { opened: "ClockOpened", unavailable: "ClockUnavailable", denied: "ClockDenied", failed: "ClockFailed", unknown: "ClockUnknown" }
+const SETUP_REPLY: Readonly<Record<DeviceSetupOutcome, SetupReply>> = {
+  OPENED: "SetupOpened",
+  UNSUPPORTED_BROWSER: "UnsupportedBrowser",
+  UNSUPPORTED_PASSWORD_MANAGER: "UnsupportedPasswordManager",
+  UNSUPPORTED_PACKAGE: "UnsupportedPackage",
+  UNAVAILABLE: "SetupUnavailable",
+}
+const APP_INFO_REFUSAL: Readonly<Record<string, AppInfoRefusal>> = {
+  InfoInvalid: "invalid",
+  InfoProfileUnavailable: "profile-unavailable",
+  InfoNotInstalled: "not-installed",
+  InfoFailed: "failed",
+}
+const PROBLEM_SOURCE: Readonly<Record<NativeCrashSource, ProblemSource>> = { renderer: "RendererFailure", uncaught: "NativeUncaught", exit: "AndroidExit" }
+const SWITCHES: readonly SystemSwitch[] = ["wifiEnabled", "bluetoothEnabled", "airplaneMode", "locationEnabled", "mobileDataEnabled", "adaptiveBrightness", "wifiActive", "cellularActive", "internetValidated", "charging", "powerSave"]
+const ROLE_NAMES: readonly AndroidRoleName[] = ["home", "dialer", "sms", "assistant"]
+const PROFILES = ["work", "private", "clone", "other"]
+const JAVA_CLASS = /^[A-Za-z_$][A-Za-z0-9_$.]{0,159}$/
+const JS_CLASS = /^[A-Za-z][A-Za-z0-9]{0,63}$/
+const PROCESS_LABEL = /^(main|other|:[A-Za-z0-9_]{1,40})$/
+const USER_SERIAL = /^\d{1,19}$/
+const ICON = /^data:image\/png;base64,[A-Za-z0-9+/=]+$/
+const LABEL_CONTROL = /[\u0000-\u001f\u007f]/
+
+schema Plain {}
+schema PageOpened { status: "opened"; page: string; specific: boolean }
+schema Shade { status: "opened" | "standalone" | "permission-missing" | "unsupported" | "not-in-front" }
+schema Volume { stream: "music" | "ring" | "alarm" | "notification" | "system" | "voiceCall"; current: number; max: number }
+schema DeviceSettings { brightness: number; brightnessMode: "manual" | "automatic" | "unknown"; canWriteSettings: boolean; volumes: Volume[] }
+schema Flashlight { available: boolean; enabled: boolean }
+const Status = Schema.Struct({ packageName: Schema.String, roles: Schema.Array(Schema.Unknown) })
+const RoleRow = Schema.Struct({ role: Schema.Literals(["home", "dialer", "sms", "assistant"]), androidRole: Schema.optionalKey(Schema.Unknown), held: Schema.Boolean, available: Schema.Boolean, holders: Schema.optionalKey(Schema.Unknown) })
+schema BuildInfo { launcher: boolean; version: string }
+schema LaunchInfo { assistant: boolean }
+schema LocaleInfo { locale: string; hour24: boolean }
+schema DefaultApp { role: "dial"; available: boolean; packageName?: string; label?: string; icon?: string }
+schema ClockAnswerReply { action: "set" | "show" | "dismiss" | "snooze"; status: "opened" | "unavailable" | "denied" | "failed" | "unknown"; message: string; receiver?: string }
+schema SetupOpened { outcome: "OPENED" | "UNSUPPORTED_BROWSER" | "UNSUPPORTED_PASSWORD_MANAGER" | "UNSUPPORTED_PACKAGE" | "UNAVAILABLE" }
+schema Readiness {
+  installedBrowsers: string[]
+  configuredBrowserPackage: string
+  browserDispatchStatus: "not-configured" | "not-installed" | "untrusted" | "unavailable" | "ready"
+  browserObservationAvailable: false
+  installedPasswordManagers: string[]
+  preferredBrowserPackage: string | null
+  preferredBrowserIsSupported: boolean
+  autofillProviderPackage: string | null
+  autofillProviderIsSupported: boolean
+  providerVaultReadinessKnown: false
+  canChangeDefaultsSilently: false
+}
+const CrashLogReply = Schema.Struct({ entries: Schema.optionalKey(Schema.Unknown), exitHistory: Schema.optionalKey(Schema.Unknown) })
+const Listed = Schema.Struct({ apps: Schema.Array(Schema.Unknown) })
+
+export function launcherRefusalCode(error: unknown): LauncherRefusalCode | undefined {
+  const code = rejectionCode(error)
+  return LAUNCHER_REFUSAL_CODES.find((known) => known === code)
+}
+
+export function parseSystemFacts(value: unknown): SystemFacts {
+  const input: Readonly<Record<string, unknown>> = typeof value === "object" && value !== null ? { ...value } : {}
+  const facts: SystemFacts = {}
+  for (const key of SWITCHES) {
+    const fact = input[key]
+    if (typeof fact === "boolean") facts[key] = fact
+  }
+  const filter = input.interruptionFilter
+  if (filter === "all" || filter === "priority" || filter === "alarms" || filter === "none") facts.interruptionFilter = filter
+  const battery = input.batteryPercent
+  if (typeof battery === "number" && Number.isInteger(battery) && battery >= 0 && battery <= 100) facts.batteryPercent = battery
+  return facts
+}
+
+export function switchStatesOf(facts: SystemFacts): SystemSwitchStates {
+  const states: Partial<Record<SystemSwitch, SwitchState>> = {}
+  for (const key of SWITCHES) states[key] = SWITCH[answeredFact(typeof facts[key] === "boolean", facts[key] === true)]
+  return { ...Object.fromEntries(SWITCHES.map((key) => [key, "unknown"])), ...states } as SystemSwitchStates
+}
+
+export function parseRoleStatuses(status: unknown): AndroidRoleStatus[] {
+  const rows = typeof status === "object" && status !== null && "roles" in status && Array.isArray(status.roles) ? status.roles : []
+  return rows.flatMap((row: unknown): AndroidRoleStatus[] => {
+    if (!Schema.is(RoleRow)(row)) return []
+    const holders = Array.isArray(row.holders) ? row.holders.filter((holder): holder is string => typeof holder === "string") : []
+    return [{ role: row.role, androidRole: typeof row.androidRole === "string" ? row.androidRole : "", held: row.held, available: row.available, holders }]
+  })
+}
+
+export function appKey(app: LaunchTarget): string {
+  return app.packageName + (app.activityName ? `/${app.activityName}` : "") + (app.user ? `#${app.user}` : "")
+}
+
+const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true })
+
+function fold(value: string): string {
+  return value.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase()
+}
+
+export function filterLauncherApps(apps: readonly InstalledApp[], query: string): InstalledApp[] {
+  const needle = fold(query.trim())
+  const sorted = [...apps].sort((a, b) => collator.compare(a.label, b.label) || a.packageName.localeCompare(b.packageName) || appKey(a).localeCompare(appKey(b)))
+  if (!needle) return sorted
+  const rank = (app: InstalledApp) => {
+    const label = fold(app.label)
+    return label.startsWith(needle) ? 0 : label.includes(needle) ? 1 : fold(app.packageName).includes(needle) ? 2 : -1
+  }
+  return sorted.map((app) => ({ app, at: rank(app) })).filter(({ at }) => at >= 0).sort((a, b) => a.at - b.at).map(({ app }) => app)
+}
+
+const PROFILE_LABEL: Readonly<Record<string, string>> = { work: "Work", private: "Private", clone: "Clone", other: "Other profile" }
+
+function shortActivity(app: InstalledApp): string {
+  return app.activityName ? app.activityName.slice(app.activityName.lastIndexOf(".") + 1) || app.activityName : ""
+}
+
+function groupBy(apps: readonly InstalledApp[], id: (app: InstalledApp) => string): InstalledApp[][] {
+  const groups = new Map<string, InstalledApp[]>()
+  for (const app of apps) groups.set(id(app), [...(groups.get(id(app)) ?? []), app])
+  return [...groups.values()]
+}
+
+export function describeLauncherApps(apps: readonly InstalledApp[], branding: { builtinPrefix?: string; productName?: string } = {}): Map<string, string[]> {
+  const details = new Map<string, string[]>()
+  for (const group of groupBy(apps, (app) => `${fold(app.label)}\n${app.profile ?? ""}`)) {
+    for (const app of group) {
+      const parts: string[] = app.profile ? [PROFILE_LABEL[app.profile] + (app.locked ? " · locked" : "")] : []
+      if (group.length > 1) {
+        const packageLabel = app.packageName.startsWith(branding.builtinPrefix ?? "eliza:") ? (branding.productName ?? "Eliza") : app.packageName
+        const siblings = group.filter((other) => other.packageName === app.packageName)
+        const before = parts.length
+        if (siblings.length < group.length) parts.push(packageLabel)
+        if (siblings.length > 1 && app.activityName) {
+          parts.push(siblings.filter((other) => shortActivity(other) === shortActivity(app)).length === 1 ? shortActivity(app) : app.activityName)
+          if (app.user && siblings.filter((other) => other.activityName === app.activityName).length > 1) parts.push(`profile ${app.user}`)
+        }
+        if (parts.length === before) parts.push(packageLabel)
+      }
+      details.set(appKey(app), parts)
+    }
+  }
+  for (const same of groupBy(apps, (app) => `${fold(app.label)}\n${(details.get(appKey(app)) ?? []).join("\n")}`)) {
+    if (new Set(same.map(appKey)).size < 2) continue
+    for (const app of same) {
+      const parts = details.get(appKey(app)) ?? []
+      for (const part of [app.packageName, app.activityName, app.user ? `profile ${app.user}` : ""]) if (part && !parts.includes(part)) parts.push(part)
+    }
+  }
+  return details
+}
+
+function installedApp(value: unknown): InstalledApp | undefined {
+  if (typeof value !== "object" || value === null) return undefined
+  const app: Readonly<Record<string, unknown>> = { ...value }
+  const { packageName, activityName, label, user, profile, locked, icon } = app
+  if (typeof packageName !== "string" || packageName === "" || typeof label !== "string") return undefined
+  if (activityName !== undefined && (typeof activityName !== "string" || activityName === "")) return undefined
+  if (user !== undefined && (typeof user !== "string" || !USER_SERIAL.test(user))) return undefined
+  if (profile !== undefined && (typeof profile !== "string" || !PROFILES.includes(profile))) return undefined
+  if (locked !== undefined && typeof locked !== "boolean") return undefined
+  if (icon !== undefined && (typeof icon !== "string" || !ICON.test(icon))) return undefined
+  return {
+    packageName,
+    label,
+    ...(activityName === undefined ? {} : { activityName }),
+    ...(user === undefined ? {} : { user }),
+    ...(profile === undefined ? {} : { profile: profile as InstalledApp["profile"] }),
+    ...(locked === undefined ? {} : { locked }),
+    ...(icon === undefined ? {} : { icon }),
+  }
+}
+
+function launchTarget(app: LaunchTarget): LaunchTarget {
+  return { packageName: app.packageName, ...(app.activityName ? { activityName: app.activityName } : {}), ...(app.user ? { user: app.user } : {}) }
+}
+
+export function createSystemLauncherBridge(system: SystemLauncherPlugin): LauncherBridge {
+  return {
+    list: (options) => system.listLauncherApps(options?.icons ? { icons: true } : undefined),
+    launch: (target) => system.launchApp(launchTarget(target)),
+    resolveDefault: (options) => system.resolveDefaultApp(options),
+    openDefault: (options) => system.openDefaultApp(options),
+    addListener: (_event, listener) => system.addListener("launcherAppsChanged", (change) => listener({ ...change })),
+  }
+}
+
+effect function handoff<A>(reply: A!BridgeFailure) {
+  return try result(reply)
+}
+
+function settingsHandoff(page: SettingsHandoff["page"], specific: SettingsPage, opened: boolean): SettingsHandoff {
+  return { outcome: pageHandoff(pageReply(specific, opened, false)), page, specific: opened }
+}
+
+effect function fixedPage(plugin: string, method: keyof SystemPlugin, page: SettingsHandoff["page"], specific: SettingsPage, open: () => Promise<void>) {
+  const opened = try handoff(nativeCall(plugin, method, () => open()))
+  return settingsHandoff(page, specific, Result.isSuccess(opened))
+}
+
+effect function settingsPage(plugin: string, system: SystemPlugin, page: SystemSettingsPage) {
+  const specific = Object.hasOwn(SETTINGS_PAGES, page) ? SETTINGS_PAGES[page] : undefined
+  if (specific === undefined) return { outcome: "Refused" as HandoffOutcome, page, specific: false }
+  const opened = try handoff(nativeReply(plugin, "openSettingsPage", PageOpened, () => system.openSettingsPage({ page })))
+  const narrow = Result.isSuccess(opened) && opened.success.page === page && opened.success.specific
+  const broad = Result.isSuccess(opened) && opened.success.page === page && !opened.success.specific
+  const reply = pageReply(specific, narrow, broad)
+  return { outcome: pageHandoff(reply), page, specific: reply === "SpecificPage" }
+}
+
+effect function notificationShade(plugin: string, system: SystemPlugin) {
+  const answered = try handoff(nativeReply(plugin, "openNotificationShade", Shade, () => system.openNotificationShade()))
+  const status: NotificationShadeOutcome = Result.isSuccess(answered) ? answered.success.status : "unsupported"
+  return { outcome: shadeHandoff(SHADE[status]), status }
+}
+
+function launchReplyOf(failure: BridgeFailure | undefined): LaunchReply {
+  if (failure === undefined) return "LaunchStarted"
+  const code = failure._tag === "NativeRejection" ? failure.code : undefined
+  return code === "not-installed" || code === "no-launcher" || code === "disabled" ? "LaunchNotFound" : code === "profile-locked" ? "LaunchDenied" : "LaunchFailed"
+}
+
+effect function defaultApp(plugin: string, system: SystemPlugin) {
+  const opened = try handoff(nativeCall(plugin, "openDefaultApp", () => system.openDefaultApp({ role: "dial" })))
+  return defaultAppHandoff("PreferredHandler", launchReplyOf(Result.isFailure(opened) ? opened.failure : undefined))
+}
+
+effect function statusOf(plugin: string, system: SystemPlugin) {
+  const status = try nativeReply(plugin, "getStatus", Status, () => system.getStatus())
+  return { packageName: status.packageName, roles: parseRoleStatuses(status) }
+}
+
+effect function askRole(plugin: string, system: SystemPlugin, role: AndroidRoleName) {
+  if (!ROLE_NAMES.includes(role)) return { role, answer: "not-offered" as RoleAnswer }
+  const before = (try statusOf(plugin, system)).roles.find((row) => row.role === role)
+  const offered = before !== undefined
+  const available = before?.available === true
+  const heldBefore = before?.held === true
+  if (!asksAndroidForRole(offered, available, heldBefore)) return { role, answer: ROLE[roleResult(offered, available, heldBefore, offered, heldBefore)] }
+  try result(nativeCall(plugin, "requestRole", () => system.requestRole({ role })))
+  const after = (try statusOf(plugin, system)).roles.find((row) => row.role === role)
+  return { role, answer: ROLE[roleResult(offered, available, heldBefore, after !== undefined, after?.held === true)] }
+}
+
+function reading(report: ControlReport): ControlReading {
+  return match (report) {
+    when { tag: "AndroidReports", let level }: { kind: "reported", level };
+    when { tag: "AndroidUnknown" }: { kind: "unknown" };
+    when { tag: "ChangeFailed" }: { kind: "failed" };
+    when { tag: "ChangeNotAllowed" }: { kind: "not-allowed" };
+  }
+}
+
+effect function changeVolume(plugin: string, system: SystemPlugin, stream: SystemVolumeStream, volume: number, showUi: boolean | undefined) {
+  const written = try result(nativeReply(plugin, "setVolume", Volume, () => system.setVolume({ stream, volume, ...(showUi === undefined ? {} : { showUi }) })))
+  if (Result.isFailure(written) && written.failure._tag === "BridgeUnavailable") throw written.failure
+  const threw = Result.isFailure(written) && written.failure._tag === "NativeRejection"
+  const readback: LevelReadback = Result.isSuccess(written) && written.success.stream === stream && Number.isInteger(written.success.current) && written.success.current >= 0 && written.success.current <= written.success.max
+    ? { tag: "LevelRead", level: written.success.current }
+    : { tag: "LevelUnreadable" }
+  const report = controlReport(true, threw, readback)
+  return { stream, reading: reading(report), muted: SWITCH[mutedFact(report)] }
+}
+
+effect function changeBrightness(plugin: string, system: SystemPlugin, brightness: number) {
+  const settings = try nativeReply(plugin, "getDeviceSettings", DeviceSettings, () => system.getDeviceSettings())
+  const allowed = brightnessAllowed("SystemBrightness", settings.canWriteSettings, true)
+  if (!allowed) return { reading: reading(controlReport(false, false, { tag: "LevelUnreadable" })) }
+  const written = try result(nativeReply(plugin, "setScreenBrightness", DeviceSettings, () => system.setScreenBrightness({ brightness })))
+  if (Result.isFailure(written) && written.failure._tag === "BridgeUnavailable") throw written.failure
+  const threw = Result.isFailure(written) && written.failure._tag === "NativeRejection"
+  const readback: LevelReadback = Result.isSuccess(written) && written.success.brightness >= 0 && written.success.brightness <= 1
+    ? { tag: "LevelRead", level: brightnessTarget(Math.round(written.success.brightness * 255)) }
+    : { tag: "LevelUnreadable" }
+  return { reading: reading(controlReport(true, threw, readback)) }
+}
+
+function entryOf(target: LaunchTarget): AppEntry {
+  const malformed = target.packageName === "" || target.packageName.trim() !== target.packageName || target.activityName === "" || (target.user !== undefined && !USER_SERIAL.test(target.user))
+  return malformed ? "MalformedEntry" : target.user === undefined ? "PersonalEntry" : "WorkEntry"
+}
+
+effect function appInfo(plugin: string, system: SystemHostPlugin, target: LaunchTarget) {
+  const entry = entryOf(target)
+  if (entry === "MalformedEntry") return { outcome: "Refused" as HandoffOutcome, refusal: APP_INFO_REFUSAL[appInfoReply(entry, "ProfileVisible", "AppInstalled", "LaunchFailed")] }
+  const opened = try handoff(nativeCall(plugin, "openAppInfo", () => system.openAppInfo(launchTarget(target))))
+  const code = Result.isFailure(opened) && opened.failure._tag === "NativeRejection" ? opened.failure.code : undefined
+  const profile: ProfilePresence = code === "profile-unavailable" && entry === "WorkEntry" ? "ProfileGone" : "ProfileVisible"
+  const app: AppPresence = code === "not-installed" ? "AppRemoved" : "AppInstalled"
+  const launch: LaunchReply = Result.isSuccess(opened) ? "LaunchStarted" : code === "invalid" ? "LaunchNotFound" : "LaunchFailed"
+  const reply = appInfoReply(entry, profile, app, launch)
+  return reply === "InfoOpened" ? { outcome: "Opened" as HandoffOutcome } : { outcome: "Refused" as HandoffOutcome, refusal: APP_INFO_REFUSAL[reply] }
+}
+
+function clockAsk(request: ClockRequest): ClockAsk {
+  return match (request) {
+    when { action: "set" }: { tag: "ClockSet", hour: request.hour, minute: request.minute, labelLength: request.label.length, labelPlain: !LABEL_CONTROL.test(request.label), days: request.days ?? [] };
+    when { action: "show" }: { tag: "ClockShow" };
+    when { action: "dismiss" }: { tag: "ClockDismiss" };
+    when { action: "snooze" }: { tag: "ClockSnooze", minutes: request.minutes };
+  }
+}
+
+effect function clock(plugin: string, system: SystemHostPlugin, request: ClockRequest) {
+  if (!clockRequestAdmitted(clockAsk(request))) return { outcome: "Refused" as HandoffOutcome, status: "failed" as ClockStatus, message: "This Clock request is not one Android can review." }
+  const reply = try nativeReply(plugin, "openClock", ClockAnswerReply, () => system.openClock(request))
+  return { outcome: clockHandoff(CLOCK[reply.status]), status: reply.status, message: reply.message }
+}
+
+function crashEntry(raw: unknown, now: number): NativeCrashEntry | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return undefined
+  const item: Readonly<Record<string, unknown>> = { ...raw }
+  const { at, source } = item
+  if (typeof at !== "number" || !Number.isSafeInteger(at) || (source !== "uncaught" && source !== "exit" && source !== "renderer")) return undefined
+  const problem = PROBLEM_SOURCE[source]
+  if (!problemRetained(problem, at, now)) return undefined
+  const allowed = (field: ProblemField) => problemFieldAllowed(problem, field)
+  const kind = RENDERER_FAILURE_KINDS.find((value) => value === item.kind)
+  const reason = CRASH_EXIT_REASONS.find((value) => value === item.reason)
+  if ((allowed("Kind") && kind === undefined) || (allowed("ExitReason") && reason === undefined)) return undefined
+  const classPattern = source === "renderer" ? JS_CLASS : JAVA_CLASS
+  const text = (value: unknown, pattern: RegExp) => (typeof value === "string" && pattern.test(value) ? value : undefined)
+  const errorClass = allowed("FailureClass") ? text(item.errorClass, classPattern) : undefined
+  const rootClass = allowed("RootClass") ? text(item.rootClass, JAVA_CLASS) : undefined
+  const process = allowed("ProcessLabel") ? text(item.process, PROCESS_LABEL) : undefined
+  const thread = allowed("Thread") && (item.thread === "main" || item.thread === "background") ? item.thread : undefined
+  return {
+    at,
+    source,
+    ...(allowed("Kind") && kind !== undefined ? { kind } : {}),
+    ...(allowed("ExitReason") && reason !== undefined ? { reason } : {}),
+    ...(errorClass === undefined ? {} : { errorClass }),
+    ...(rootClass === undefined ? {} : { rootClass }),
+    ...(process === undefined ? {} : { process }),
+    ...(thread === undefined ? {} : { thread }),
+  }
+}
+
+export function sanitizeCrashEntries(value: unknown, now: number): NativeCrashEntry[] {
+  const raw: readonly unknown[] = Array.isArray(value) ? value : []
+  return raw.flatMap((item) => crashEntry(item, now) ?? []).sort((a, b) => a.at - b.at).slice(-CRASH_LOG_MAX_ENTRIES)
+}
+
+export function errorClassOf(error: unknown): string {
+  if (error instanceof Error) return JS_CLASS.test(error.name) ? error.name : "Error"
+  return error === null ? "null" : typeof error
+}
+
+effect function crashLog(plugin: string, system: SystemHostPlugin) {
+  const reply = try nativeReply(plugin, "crashLog", CrashLogReply, () => system.crashLog())
+  const now = try Clock.currentTimeMillis
+  return { entries: sanitizeCrashEntries(reply.entries, now), exitHistory: reply.exitHistory === true }
+}
+
+effect function recordRenderer(plugin: string, system: SystemHostPlugin, kind: RendererFailureKind, errorClass: string) {
+  try nativeCall(plugin, "recordRendererFailure", () => system.recordRendererFailure({ kind, errorClass: JS_CLASS.test(errorClass) ? errorClass : "Error" }))
+}
+
+export function systemClient(plugin: SystemPlugin & SystemHostPlugin = systemPlugin(), name = "ElizaSystem"): SystemClient {
+  return {
+    listLauncherApps: async (options) => ({ apps: (await settled(nativeReply(name, "listLauncherApps", Listed, () => plugin.listLauncherApps(options)))).apps.flatMap((app) => {
+      const parsed = installedApp(app)
+      return parsed?.activityName === undefined ? [] : [{ ...parsed, activityName: parsed.activityName }]
+    }) }),
+    launchApp: (options) => settled(nativeCall(name, "launchApp", () => plugin.launchApp(launchTarget(options)))).then(() => undefined),
+    addListener: (eventName, listener) => plugin.addListener(eventName, (change) => listener({ ...change })),
+    resolveDefaultApp: (options) => settled(nativeReply(name, "resolveDefaultApp", DefaultApp, () => plugin.resolveDefaultApp(options))),
+    openDefaultApp: () => settled(defaultApp(name, plugin)),
+    getStatus: () => settled(statusOf(name, plugin)),
+    requestRole: ({ role }) => settled(askRole(name, plugin, role)),
+    openSettings: () => settled(fixedPage(name, "openSettings", "home", "PageHome", () => plugin.openSettings())),
+    openNetworkSettings: () => settled(fixedPage(name, "openNetworkSettings", "wifi", "PageWifi", () => plugin.openNetworkSettings())),
+    openWriteSettings: () => settled(fixedPage(name, "openWriteSettings", "write-settings", "PageWriteSettings", () => plugin.openWriteSettings())),
+    openDisplaySettings: () => settled(fixedPage(name, "openDisplaySettings", "display", "PageDisplay", () => plugin.openDisplaySettings())),
+    openSoundSettings: () => settled(fixedPage(name, "openSoundSettings", "sound", "PageSound", () => plugin.openSoundSettings())),
+    openSettingsPage: ({ page }) => settled(settingsPage(name, plugin, page)),
+    openNotificationShade: () => settled(notificationShade(name, plugin)),
+    getDeviceSettings: () => settled(nativeReply(name, "getDeviceSettings", DeviceSettings, () => plugin.getDeviceSettings())),
+    setVolume: ({ stream, volume, showUi }) => settled(changeVolume(name, plugin, stream, volume, showUi)),
+    mute: ({ stream }) => settled(changeVolume(name, plugin, stream, volumeTarget({ tag: "Mute" }, 0), undefined)),
+    setScreenBrightness: ({ brightness }) => settled(changeBrightness(name, plugin, brightness)),
+    setFlashlight: (options) => settled(nativeReply(name, "setFlashlight", Flashlight, () => plugin.setFlashlight(options))),
+    getSystemFacts: async () => parseSystemFacts(await settled(nativeCall(name, "getSystemFacts", () => plugin.getSystemFacts()))),
+    switchStates: async () => switchStatesOf(parseSystemFacts(await settled(nativeCall(name, "getSystemFacts", () => plugin.getSystemFacts())))),
+    getBuildInfo: () => settled(nativeReply(name, "getBuildInfo", BuildInfo, () => plugin.getBuildInfo())),
+    getLaunchInfo: () => settled(nativeReply(name, "getLaunchInfo", LaunchInfo, () => plugin.getLaunchInfo())),
+    getLocaleInfo: () => settled(nativeReply(name, "getLocaleInfo", LocaleInfo, () => plugin.getLocaleInfo())),
+    openAppInfo: (target) => settled(appInfo(name, plugin, target)),
+    openClock: (request) => settled(clock(name, plugin, request)),
+    crashLog: () => settled(crashLog(name, plugin)),
+    recordRendererFailure: ({ kind, errorClass }) => settled(recordRenderer(name, plugin, kind, errorClass)),
+    clearCrashLog: () => settled(nativeCall(name, "clearCrashLog", () => plugin.clearCrashLog())).then(() => undefined),
+  }
+}
+
+export const System: SystemClient = systemClient()
+
+effect function openSetup(name: string, setup: DeviceSetup, target: DeviceSetupTarget, packageName: string | undefined) {
+  const opened = try nativeReply(name, "open", SetupOpened, () => setup.open({ target, ...(packageName === undefined ? {} : { packageName }) }))
+  return { outcome: SETUP_REPLY[opened.outcome] === "SetupOpened" ? "Opened" as HandoffOutcome : "Refused" as HandoffOutcome, status: opened.outcome }
+}
+
+export function deviceSetupClient(setup: DeviceSetup, name: string): { readiness(): Promise<DeviceSetupReadiness>; open(options: { target: DeviceSetupTarget; packageName?: string }): Promise<DeviceSetupHandoff> } {
+  return {
+    readiness: () => settled(nativeReply(name, "readiness", Readiness, () => setup.readiness())),
+    open: ({ target, packageName }) => settled(openSetup(name, setup, target, packageName)),
+  }
+}
+
+const DIAL_UNKNOWN = "Phone"
+
+interface Pending {
+  readonly ticket: number
+  entries: Map<number, InstalledApp>
+  dial: DefaultAppStatus | null
+}
+
+export function createLauncher(bridge: LauncherBridge, options: { icons?: boolean; views?: readonly BuiltinView[]; openView?: (key: string) => void } = {}): Launcher {
+  const home = runSync(Effect.provide(effect { return try Machine }, machine()))
+  const components = new Map<string, number>()
+  const viewIds = new Map<string, number>()
+  let shown = new Map<number, InstalledApp>()
+  let shownDial: DefaultAppStatus | null = null
+  let pending: Pending | undefined
+  let inFlight: { readonly ticket: number; readonly key: string; readonly label: string } | undefined
+  let detail: LauncherError | null = null
+  let watch: { retired: boolean; handle: Promise<{ remove(): Promise<void> } | undefined> } | undefined
+  const views = options.views ?? []
+
+  const idOf = (table: Map<string, number>, key: string) => {
+    const known = table.get(key)
+    if (known !== undefined) return known
+    table.set(key, table.size + 1)
+    return table.size
+  }
+
+  effect function send(event: Parameters<Machine.Shape["send"]>[0]) {
+    return home.send(event) catch () => undefined
+  }
+
+  function snapshotOf(state: LauncherInventory): LauncherSnapshot {
+    const status = state.inventory === "InventoryIdle" ? "idle" : state.inventory === "InventoryLoading" ? "loading" : state.inventory === "InventoryReady" ? "ready" : "failed"
+    return {
+      status,
+      apps: state.apps.flatMap((id) => shown.get(id) ?? []),
+      views: [...views],
+      dial: state.dial === "DialAvailable" ? shownDial : null,
+      launching: state.handoff === "OpeningDial" ? "dial" : state.handoff === "OpeningApp" ? (inFlight?.key ?? null) : null,
+      launchError: state.error === "NoLaunchError" ? null : detail,
+    }
+  }
+
+  effect function publishIfSettled(ticket: number) {
+    const state = try home.get()
+    if (pending !== undefined && pending.ticket === ticket && !state.reading && state.readTicket === ticket) {
+      shown = pending.entries
+      shownDial = pending.dial
+      pending = undefined
+    }
+  }
+
+  effect function readList(ticket: number) {
+    const listed = try result(tryPromise(() => bridge.list(options.icons ? { icons: true } : undefined)))
+    const decoded = Result.isSuccess(listed) ? Schema.decodeUnknownOption(Listed)(listed.success) : Option.none()
+    if (Option.isNone(decoded)) {
+      try send({ type: "receiveListFailure", ticket })
+      return try publishIfSettled(ticket)
+    }
+    const entries = new Map<number, InstalledApp>()
+    for (const raw of decoded.value.apps) {
+      const app = installedApp(raw)
+      if (app === undefined) continue
+      const id = idOf(components, appKey(app))
+      if (!entries.has(id)) entries.set(id, app)
+    }
+    if (pending?.ticket === ticket) pending.entries = entries
+    try send({ type: "receiveList", ticket, listed: [...entries.keys()] })
+    try publishIfSettled(ticket)
+  }
+
+  effect function readDial(ticket: number) {
+    const resolve = bridge.resolveDefault
+    const answered = resolve === undefined ? undefined : try result(tryPromise(() => resolve({ role: "dial" })))
+    const decoded = answered !== undefined && Result.isSuccess(answered) ? Schema.decodeUnknownOption(DefaultApp)(answered.success) : Option.none()
+    const role: DialRole = Option.isSome(decoded) && decoded.value.available ? "DialAvailable" : "DialUnavailable"
+    if (pending?.ticket === ticket) pending.dial = Option.isSome(decoded) && decoded.value.available ? decoded.value : null
+    try send({ type: "receiveDial", ticket, role })
+    try publishIfSettled(ticket)
+  }
+
+  effect function readIfStarted(before: LauncherInventory) {
+    const state = try home.get()
+    if (!state.reading || state.readTicket === before.readTicket) return
+    const ticket = state.readTicket
+    pending = { ticket, entries: new Map(), dial: null }
+    try.all [readList(ticket), readDial(ticket)]
+  }
+
+  effect function begin(event: Parameters<Machine.Shape["send"]>[0]) {
+    const before = try home.get()
+    try send(event)
+    try readIfStarted(before)
+    return snapshotOf(try home.get())
+  }
+
+  effect function settle(ticket: number, answer: HandoffOutcome, error: LauncherError | null) {
+    const before = try home.get()
+    if (before.ticket !== ticket || before.handoff === "NoHandoff") return snapshotOf(before)
+    if (answer === "Refused") detail = error
+    inFlight = undefined
+    try send({ type: "settleHandoff", ticket, answer })
+    try readIfStarted(before)
+    return snapshotOf(try home.get())
+  }
+
+  effect function launch(app: InstalledApp) {
+    const key = appKey(app)
+    const component = idOf(components, key)
+    const before = try home.get()
+    try send({ type: "openApp", component })
+    const after = try home.get()
+    if (after.handoff !== "OpeningApp" || after.ticket === before.ticket) {
+      if (after.error === "NoLongerInstalled") detail = { kind: "no-longer-installed", label: app.label }
+      return snapshotOf(after)
+    }
+    const ticket = after.ticket
+    const target = shown.get(component) ?? app
+    inFlight = { ticket, key, label: target.label }
+    const opened = try result(tryPromise(() => bridge.launch(launchTarget(target))))
+    const code = Result.isFailure(opened) ? launcherRefusalCode(opened.failure.cause) : undefined
+    return try settle(ticket, Result.isSuccess(opened) ? "Opened" : "Refused", { kind: "app-refused", label: target.label, ...(code === undefined ? {} : { code }) })
+  }
+
+  effect function openDial() {
+    const before = try home.get()
+    const open = bridge.openDefault
+    if (open === undefined) return snapshotOf(before)
+    try send({ type: "openDial" })
+    const after = try home.get()
+    if (after.handoff !== "OpeningDial" || after.ticket === before.ticket) return snapshotOf(after)
+    const opened = try result(tryPromise(() => open({ role: "dial" })))
+    return try settle(after.ticket, Result.isSuccess(opened) ? "Opened" : "Refused", { kind: "dial-refused", label: shownDial?.label ?? DIAL_UNKNOWN })
+  }
+
+  function follow() {
+    const listen = bridge.addListener
+    if (watch !== undefined || listen === undefined) return
+    const current: { retired: boolean; handle: Promise<{ remove(): Promise<void> } | undefined> } = { retired: false, handle: Promise.resolve(undefined) }
+    current.handle = listen("appsChanged", () => void settled(begin({ type: "refreshHome", signal: "PackagesChanged" }))).then(
+      (handle) => (current.retired ? handle.remove().then(() => undefined) : handle),
+      () => undefined,
+    )
+    watch = current
+  }
+
+  effect function show() {
+    try send({ type: "showHome" })
+    try sync(() => follow())
+    return snapshotOf(try home.get())
+  }
+
+  effect function retire() {
+    try send({ type: "retireHome" })
+    inFlight = undefined
+    pending = undefined
+    const current = watch
+    watch = undefined
+    if (current !== undefined) {
+      current.retired = true
+      try promise(() => current.handle.then((handle) => handle?.remove()).catch(() => undefined))
+    }
+  }
+
+  effect function openView(view: BuiltinView) {
+    const state = try home.get()
+    const admitted = views.filter((each) => each.admitted).map((each) => idOf(viewIds, each.key))
+    if (routeTap({ tag: "BuiltinView", viewId: idOf(viewIds, view.key) }, admitted, state.apps) !== "OpenInRenderer") return false
+    options.openView?.(view.key)
+    return true
+  }
+
+  return {
+    snapshot: () => snapshotOf(runSync(home.get())),
+    show: () => settled(show()),
+    load: () => settled(begin({ type: "loadInventory" })),
+    refresh: (signal) => settled(begin({ type: "refreshHome", signal: signal === "packages-changed" ? "PackagesChanged" : signal === "resumed" ? "HomeResumed" : "HomeHidden" })),
+    launch: (app) => settled(launch(app)),
+    openView: (view) => settled(openView(view)),
+    openDial: () => settled(openDial()),
+    clearError: () => settled(begin({ type: "dismissError" })),
+    retire: () => settled(retire()),
+  }
+}

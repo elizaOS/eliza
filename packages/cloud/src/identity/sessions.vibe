@@ -184,7 +184,7 @@ effect function logoutFamily(tx: Tx, token: string, now: number): boolean!Sessio
   ))[0]?.key)
   if (key === undefined) return false
   const family = advanced((try loadRow(tx, familyRows, key)).state, now)
-  if (!canLogout(family) || now >= family.refreshExpiresAt) return false
+  if (!canLogout(family)) return false
   try stepFamily(tx, key, { type: "logout" }, now)
   return true
 }
@@ -193,7 +193,7 @@ function clientAddress(context: RouteContext): string {
   return Option.getOrElse(context.request.remoteAddress, () => "unknown")
 }
 
-const RefreshRequest = Schema.Struct({ refreshToken: Schema.String })
+schema RefreshRequest { refreshToken: string }
 
 export const routes: ReadonlyArray<Route> = [
   {

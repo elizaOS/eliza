@@ -110,28 +110,30 @@ pure def sometimesOwnKeyAnswered(s: ModelBinding): bool = isOwnKey(s.backend) an
 
 ### Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call
 
-Core retries `RefusedConnection` and `RetryEnvelope` on the second
-registration. A rate limit is core's exhausted budget, which removes the
-provider's remaining registration; every other refusal ends the call.
+The handlers read a refusal as the cloud client's `CloudError`; the own-key
+handler classifies its HTTP failures into the same variants. Core retries
+`RefusedConnection` and `RetryEnvelope` on the second registration. A rate
+limit is core's exhausted budget, which removes the provider's remaining
+registration; a refused request is a bad request; every other refusal ends
+the call.
 
 ```quint
 import models as M from "../../core/models"
-type CloudError = CloudCredentialInvalid | CloudInsufficientCredits | CloudAllowanceExhausted({ resetsAt: int }) | CloudRateLimited({ retryAt: int })
-  | CloudConsentRequired | CloudUnavailable({ retryAfter: int }) | CloudProviderIssue | CloudNetwork
-pure def outcomeOf(e: CloudError): M::Outcome = match e {
+import client as C from "../../cloud/client"
+pure def outcomeOf(e: C::CloudError): M::Outcome = match e {
   | CloudNetwork => M::RefusedConnection
   | CloudUnavailable(_) => M::RetryEnvelope
   | CloudProviderIssue => M::RetryEnvelope
   | CloudRateLimited(_) => M::ExhaustedBudget
   | CloudInsufficientCredits => M::FundingDenied
   | CloudAllowanceExhausted(_) => M::FundingDenied
+  | CloudRefused(_) => M::BadRequest
   | _ => M::ProcessingDenied
 }
-pure def transient(e: CloudError): bool = match e { | CloudNetwork => true | CloudUnavailable(_) => true | CloudProviderIssue => true | _ => false }
-pure val eValues = Set(CloudCredentialInvalid, CloudInsufficientCredits, CloudAllowanceExhausted({ resetsAt: 10 }), CloudRateLimited({ retryAt: 5 }),
-  CloudRateLimited({ retryAt: 10 }), CloudConsentRequired, CloudUnavailable({ retryAfter: 5 }), CloudProviderIssue, CloudNetwork)
-pure def lawOnlyTransientRefusalsAreRetried(e: CloudError): bool = (M::retryable(outcomeOf(e)) and outcomeOf(e) != M::ExhaustedBudget) iff transient(e)
-pure def lawRateLimitExhaustsTheProvider(e: CloudError): bool = (match e { | CloudRateLimited(_) => true | _ => false }) iff outcomeOf(e) == M::ExhaustedBudget
+pure def transient(e: C::CloudError): bool = match e { | CloudNetwork => true | CloudUnavailable(_) => true | CloudProviderIssue => true | _ => false }
+pure def rateLimited(e: C::CloudError): bool = match e { | CloudRateLimited(_) => true | _ => false }
+pure def lawOnlyTransientRefusalsAreRetried(e: C::CloudError): bool = (M::retryable(outcomeOf(e)) and outcomeOf(e) != M::ExhaustedBudget) iff transient(e)
+pure def lawRateLimitExhaustsTheProvider(e: C::CloudError): bool = rateLimited(e) iff outcomeOf(e) == M::ExhaustedBudget
 ```
 
 ## Story: Keep the account state honest
@@ -142,14 +144,14 @@ pure def lawRateLimitExhaustsTheProvider(e: CloudError): bool = (match e { | Clo
 ### Each refusal is one account state, and the last failure records its kind and time without text
 
 `credential_invalid`, `insufficient_credits` (credits or a spent allowance),
-`limit_reached` with its retry time, and `provider_issue` (outage, provider
-issue, network, or anything else) are the one failure vocabulary: turns put
+`limit_reached` with its retry time, and `provider_issue` (an outage, a
+provider issue, a network failure, or a refused request or consent) are the one failure vocabulary: turns put
 them on the reply and status reports them. `lastCloudFailure` is
 `{kind, at, retryAt?}`; it never holds message text or a credential.
 
 ```quint
-pure def failureOf(e: CloudError, version: int): AccountFailure = match e {
-  | CloudCredentialInvalid => CredentialInvalid({ version: version })
+pure def failureOf(e: C::CloudError, version: int): AccountFailure = match e {
+  | CloudCredentialInvalid(_) => CredentialInvalid({ version: version })
   | CloudInsufficientCredits => InsufficientCredits
   | CloudAllowanceExhausted(_) => InsufficientCredits
   | CloudRateLimited(x) => LimitReached({ retryAt: x.retryAt })
@@ -163,7 +165,7 @@ pure def retryAtOf(f: AccountFailure): int = match f { | LimitReached(x) => x.re
 pure def lastFailureKind(f: LastCloudFailure): str = match f { | CloudFailedAt(x) => failureName(x.failure) | NoCloudFailure => "" }
 pure def callVersion(calls: List[Call], id: int): int = calls.select(c => c.id == id).nthOr(0, { id: -1, credentialVersion: 0 }).credentialVersion
 pure def canRefuseCall(s: ModelBinding, id: int): bool = s.calls.some(c => c.id == id)
-pure def refuseCall(s: ModelBinding, id: int, now: int, e: CloudError): ModelBinding = {
+pure def refuseCall(s: ModelBinding, id: int, now: int, e: C::CloudError): ModelBinding = {
   val t = clockAt(s, now)
   val failure = failureOf(e, callVersion(s.calls, id))
   val ignored = staleRefusal(failure, s.credentialVersion)

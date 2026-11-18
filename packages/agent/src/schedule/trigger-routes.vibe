@@ -1,0 +1,230 @@
+// spec/agent/schedule/triggers.md, "Story: Run a trigger now or on schedule without losing my edits"; spec/agent/schedule/triggers.md, "A new trigger is saved disabled, for a conversation that can take it, with a future first instant or an event name"; spec/agent/schedule/triggers.md, "An edit, enable or removal is refused only when it names a revision that has moved on"; spec/agent/schedule/triggers.md, "Enabling is refused past 100 active triggers, and for a one-time trigger whose time has passed"; spec/agent/schedule/triggers.md, "Run now starts one run of the saved trigger, even a disabled one, after any run in progress"; spec/agent/schedule/triggers.md, "The run history keeps the last 100 records"; spec/agent/access/routes.md, "A request matches a route by method, delivery, every segment and every query key"
+import { parseCronExpression } from "@elizaos/core"
+import type { RevisionCheck, RunSource, RunStatus } from "../../gen/agent__schedule__triggers.effect.vibe"
+import type { LocalRoute } from "../access/routes.vibe"
+import type { AgentModule, AgentPlugin, ModuleContext, ModuleFactory, ModuleRefused } from "../host/module.vibe"
+import type { StoredTrigger, TriggerDetails, TriggerRun } from "./store.vibe"
+
+export const triggersModuleName = "@elizaos/agent/triggers"
+
+export interface TriggerDraft {
+  readonly details: TriggerDetails
+  readonly deliveryConversationId: string | undefined
+}
+
+export type TriggerRefusal = "Invalid" | "StaleRevision" | "ConversationMissing" | "ActiveLimit" | "RoomUnavailable"
+
+export type TriggerChange =
+  | { readonly kind: "saved"; readonly trigger: StoredTrigger }
+  | { readonly kind: "refused"; readonly reason: TriggerRefusal }
+  | { readonly kind: "notFound" }
+
+export type TriggerRemoval =
+  | { readonly kind: "removed" }
+  | { readonly kind: "refused"; readonly reason: TriggerRefusal }
+  | { readonly kind: "notFound" }
+
+export type TriggerRunNow =
+  | { readonly kind: "ran"; readonly run: TriggerRun }
+  | { readonly kind: "notFound" }
+
+export interface TriggerPort {
+  list(): (readonly StoredTrigger[])!!
+  get(id: string): (StoredTrigger | undefined)!!
+  create(draft: TriggerDraft): TriggerChange!!
+  edit(id: string, draft: TriggerDraft, expected: RevisionCheck): TriggerChange!!
+  setEnabled(id: string, on: boolean, expected: RevisionCheck): TriggerChange!!
+  remove(id: string, expected: RevisionCheck): TriggerRemoval!!
+  runs(id: string): (readonly TriggerRun[] | undefined)!!
+  runNow(id: string): TriggerRunNow!!
+}
+
+export interface TriggerService {
+  readonly port: TriggerPort
+  readonly plugin: Omit<AgentPlugin, "name" | "description" | "routes">
+}
+
+const refusal = {
+  Invalid: { status: 400, error: "invalid_trigger" },
+  StaleRevision: { status: 409, error: "stale_revision" },
+  ConversationMissing: { status: 409, error: "conversation_missing" },
+  ActiveLimit: { status: 429, error: "active_trigger_limit" },
+  RoomUnavailable: { status: 503, error: "conversation_unavailable" },
+} as const satisfies Record<TriggerRefusal, { status: number; error: string }>
+const wireStatus = { RunSuccess: "success", RunError: "error", RunSkipped: "skipped" } as const satisfies Record<RunStatus, string>
+const wireSource = { RunNow: "manual", Scheduled: "scheduler", FromEvent: "event" } as const satisfies Record<RunSource, string>
+
+function knownZone(zone: string): boolean {
+  try { return new Intl.DateTimeFormat("en-US", { timeZone: zone }).resolvedOptions().timeZone !== "" }
+  catch { return false }
+}
+
+const Text = Schema.String.check(Schema.makeFilter((text) => text.trim() !== ""))
+const Zone = Schema.String.check(Schema.makeFilter(knownZone))
+const Instant = Schema.String.check(Schema.makeFilter((iso) => Number.isFinite(Date.parse(iso))))
+const Cron = Schema.String.check(Schema.makeFilter((expression) => parseCronExpression(expression) !== null))
+const Revision = Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
+const shared = {
+  kind: Schema.Literal("prompt"),
+  displayName: Text,
+  instructions: Text,
+  timezone: Zone,
+  deliveryConversationId: Schema.optionalKey(Text),
+}
+const expectedField = { expectedRevision: Schema.optionalKey(Revision) }
+const createdField = { wakeMode: Schema.Literal("inject_now"), enabled: Schema.Literal(false) }
+
+function drafts<F extends Schema.Struct.Fields>(extra: F) {
+  return Schema.Union([
+    Schema.Struct({ ...shared, ...extra, triggerType: Schema.Literal("once"), scheduledAtIso: Instant }),
+    Schema.Struct({ ...shared, ...extra, triggerType: Schema.Literal("cron"), cronExpression: Cron }),
+    Schema.Struct({ ...shared, ...extra, triggerType: Schema.Literal("event"), eventKind: Text }),
+  ])
+}
+
+const CreateDraft = drafts(createdField)
+const EditDraft = drafts(expectedField)
+const strict = { onExcessProperty: "error" } as const
+const createBody = Schema.decodeUnknownOption(CreateDraft, strict)
+const editBody = Schema.decodeUnknownOption(EditDraft, strict)
+const enableBody = Schema.decodeUnknownOption(Schema.Struct({ enabled: Schema.Boolean, ...expectedField }), strict)
+const removeBody = Schema.decodeUnknownOption(Schema.Struct(expectedField), strict)
+const executeBody = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Never))
+
+type SentDraft = typeof CreateDraft.Type | typeof EditDraft.Type
+
+function draftOf(sent: SentDraft): TriggerDraft {
+  const named = { displayName: sent.displayName.trim(), instructions: sent.instructions.trim(), timezone: sent.timezone }
+  const details: TriggerDetails = "scheduledAtIso" in sent
+    ? { ...named, triggerType: "once", scheduledAtIso: new Date(Date.parse(sent.scheduledAtIso)).toISOString() }
+    : "cronExpression" in sent ? { ...named, triggerType: "cron", cronExpression: sent.cronExpression.trim() }
+    : { ...named, triggerType: "event", eventKind: sent.eventKind.trim() }
+  return { details, deliveryConversationId: sent.deliveryConversationId }
+}
+
+const expectedOf = (revision: number | undefined): RevisionCheck =>
+  revision === undefined ? { tag: "AnyRevision" } : { tag: "AtRevision", revision }
+
+const failure = (status: number, error: string) => ({ status, body: { error } })
+const malformed = failure(refusal.Invalid.status, refusal.Invalid.error)
+const notFound = failure(404, "not_found")
+
+export function wireTrigger(trigger: StoredTrigger) {
+  const { details, state } = trigger
+  return {
+    id: trigger.id, displayName: details.displayName, instructions: details.instructions, triggerType: details.triggerType,
+    timezone: details.timezone,
+    ...(details.scheduledAtIso === undefined ? {} : { scheduledAtIso: details.scheduledAtIso }),
+    ...(details.cronExpression === undefined ? {} : { cronExpression: details.cronExpression }),
+    ...(details.eventKind === undefined ? {} : { eventKind: details.eventKind }),
+    enabled: state.enabled, revision: state.revision,
+  }
+}
+
+export function wireRun(run: TriggerRun) {
+  return {
+    startedAt: run.startedAt, finishedAt: run.finishedAt, status: wireStatus[run.status],
+    ...(run.error === undefined ? {} : { error: run.error }),
+    source: wireSource[run.source],
+    ...(run.missedOccurrenceAt === undefined ? {} : { missedOccurrenceAt: run.missedOccurrenceAt }),
+  }
+}
+
+function writeAnswer(result: TriggerChange, created: boolean) {
+  switch (result.kind) {
+    case "saved": return {
+      status: created ? 201 : 200,
+      body: { trigger: wireTrigger(result.trigger), deliveryConversationId: result.trigger.state.room },
+    }
+    case "refused": return failure(refusal[result.reason].status, refusal[result.reason].error)
+    case "notFound": return notFound
+  }
+}
+
+function removeAnswer(result: TriggerRemoval) {
+  switch (result.kind) {
+    case "removed": return { status: 200, body: { ok: true } }
+    case "refused": return failure(refusal[result.reason].status, refusal[result.reason].error)
+    case "notFound": return notFound
+  }
+}
+
+effect function updateAnswer(port: TriggerPort, id: string, body: unknown) {
+  const toggle = Option.getOrUndefined(enableBody(body))
+  if (toggle !== undefined) return writeAnswer(try port.setEnabled(id, toggle.enabled, expectedOf(toggle.expectedRevision)), false)
+  const sent = Option.getOrUndefined(editBody(body))
+  if (sent === undefined) return malformed
+  return writeAnswer(try port.edit(id, draftOf(sent), expectedOf(sent.expectedRevision)), false)
+}
+
+effect function runNowAnswer(port: TriggerPort, id: string) {
+  const result = try port.runNow(id)
+  if (result.kind === "notFound") return notFound
+  const run = wireRun(result.run)
+  return { status: 200, body: { ok: true, result: { status: run.status, ...(run.error === undefined ? {} : { error: run.error }) } } }
+}
+
+export function triggerRoutes(port: TriggerPort): LocalRoute[] {
+  const id = (parameters: ReadonlyMap<string, string>) => parameters.get("id") ?? ""
+  return [
+    {
+      method: "GET", path: "/api/triggers",
+      handler: () => runPromise(effect {
+        return { status: 200, body: { triggers: (try port.list()).map(wireTrigger) } }
+      }),
+    },
+    {
+      method: "POST", path: "/api/triggers",
+      handler: ({ body }) => {
+        const sent = Option.getOrUndefined(createBody(body ?? {}))
+        return sent === undefined ? malformed : runPromise(effect { return writeAnswer(try port.create(draftOf(sent)), true) })
+      },
+    },
+    {
+      method: "GET", path: "/api/triggers/{id}",
+      handler: ({ parameters }) => runPromise(effect {
+        const trigger = try port.get(id(parameters))
+        return trigger === undefined ? notFound : { status: 200, body: { trigger: wireTrigger(trigger) } }
+      }),
+    },
+    {
+      method: "PUT", path: "/api/triggers/{id}",
+      handler: ({ parameters, body }) => runPromise(updateAnswer(port, id(parameters), body ?? {})),
+    },
+    {
+      method: "DELETE", path: "/api/triggers/{id}",
+      handler: ({ parameters, body }) => {
+        const sent = Option.getOrUndefined(removeBody(body ?? {}))
+        return sent === undefined ? malformed
+          : runPromise(effect { return removeAnswer(try port.remove(id(parameters), expectedOf(sent.expectedRevision))) })
+      },
+    },
+    {
+      method: "GET", path: "/api/triggers/{id}/runs",
+      handler: ({ parameters }) => runPromise(effect {
+        const runs = try port.runs(id(parameters))
+        return runs === undefined ? notFound : { status: 200, body: { runs: runs.map(wireRun) } }
+      }),
+    },
+    {
+      method: "POST", path: "/api/triggers/{id}/execute",
+      handler: ({ parameters, body }) => Option.isNone(executeBody(body ?? {})) ? malformed
+        : runPromise(runNowAnswer(port, id(parameters))),
+    },
+  ]
+}
+
+export function triggersModule<R>(open: (context: ModuleContext) => TriggerService!ModuleRefused!R): ModuleFactory<R> {
+  return effect (context) => {
+    const service = try open(context)
+    return {
+      name: triggersModuleName,
+      plugin: {
+        ...service.plugin,
+        name: triggersModuleName,
+        description: "Saved prompts the agent sends once, on a schedule or on a runtime event",
+        routes: triggerRoutes(service.port),
+      },
+    } satisfies AgentModule
+  }
+}

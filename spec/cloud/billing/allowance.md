@@ -15,9 +15,9 @@ migration `0373_subscription_authority.sql`, and the Quint model
 `allowance.amountUsd` and the remaining allowance with its reset time.
 
 The shell keeps the calendar: it computes each grant month's bounds by UTC
-calendar months and passes them in. Develop's app-scoped periods, the payment
-grace for hosted compute and the `import_consumed` entry are gone: the cloud
-hosts nothing.
+calendar months and passes them in. A refused event (a refund of a period
+already expired, say) moves nothing, and the shell answers it as applied.
+Develop's app-scoped periods, trial claims and import entries are gone.
 
 ## Story: Spend my plan's allowance before my credits, and never carry it over
 

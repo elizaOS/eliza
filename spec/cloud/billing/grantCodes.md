@@ -116,7 +116,7 @@ pure def redeemableAt(c: Code, now: Millis): bool = {
   val e = c.expiry
   c.status == Redeemable and c.grants.length() < c.maxRedemptions and match e { | ExpiresAt(x) => now < x.at | NeverExpires => true }
 }
-pure def redeemAnswer(c: Code, organizationId: str, accountActive: bool, idempotencyKey: str, keyUsedForAnotherCode: bool, familyHeld: bool, paidPlanOpen: bool, grantId: str, now: Millis): RedeemAnswer =
+pure def redeemAnswer(c: Code, organizationId: str, accountActive: bool, keyUsedForAnotherCode: bool, familyHeld: bool, paidPlanOpen: bool, grantId: str, now: Millis): RedeemAnswer =
   if (not(accountActive)) RedeemRefused({ refusal: refuseFor(AccessDenied, AccountInactive) })
   else if (c.status == Unminted) RedeemRefused({ refusal: refuse(GrantCodeInvalid) })
   else if (hasRedeemed(c, organizationId)) Answered({ organizationId: organizationId, grantId: grantOf(c, organizationId).grantId, replayed: true })
@@ -130,7 +130,7 @@ type CodeStep = { state: Code, out: List[CodeEffect] }
 pure def canRedeem(c: Code, organizationId: str, idempotencyKey: str, grantId: str, now: Millis): bool =
   organizationId != "" and idempotencyKey != "" and grantId != "" and now >= 0 and not(c.grants.some(g => g.grantId == grantId))
 pure def redeem(c: Code, organizationId: str, accountActive: bool, idempotencyKey: str, keyUsedForAnotherCode: bool, familyHeld: bool, paidPlanOpen: bool, grantId: str, now: Millis): CodeStep = {
-  val answer = redeemAnswer(c, organizationId, accountActive, idempotencyKey, keyUsedForAnotherCode, familyHeld, paidPlanOpen, grantId, now)
+  val answer = redeemAnswer(c, organizationId, accountActive, keyUsedForAnotherCode, familyHeld, paidPlanOpen, grantId, now)
   val issued = answer == Answered({ organizationId: organizationId, grantId: grantId, replayed: false })
   val g = { grantId: grantId, organizationId: organizationId, idempotencyKey: idempotencyKey, startsAt: now, ends: grantEndOf(c.term, now), standing: InForce }
   if (issued) { state: { ...c, grants: c.grants.append(g), last: answer }, out: List(OpenGrantMonths({ grantId: grantId, planKey: c.planKey, startsAt: now, ends: g.ends })) }
@@ -202,8 +202,8 @@ paid-plan checks, so none of their answers, and no fresh grant, can come
 from a code nobody may redeem now.
 
 ```quint
-pure def lawUnusableCodeLooksUnknown(offered: Code, organizationId: str, accountActive: bool, idempotencyKey: str, keyUsedForAnotherCode: bool, familyHeld: bool, paidPlanOpen: bool, grantId: str, now: Millis): bool = {
-  val a = redeemAnswer(offered, organizationId, accountActive, idempotencyKey, keyUsedForAnotherCode, familyHeld, paidPlanOpen, grantId, now)
+pure def lawUnusableCodeLooksUnknown(offered: Code, organizationId: str, accountActive: bool, keyUsedForAnotherCode: bool, familyHeld: bool, paidPlanOpen: bool, grantId: str, now: Millis): bool = {
+  val a = redeemAnswer(offered, organizationId, accountActive, keyUsedForAnotherCode, familyHeld, paidPlanOpen, grantId, now)
   (not(hasRedeemed(offered, organizationId)) and not(redeemableAt(offered, now))) implies (refusedWith(a, GrantCodeInvalid) or refusedWith(a, AccessDenied))
 }
 pure val mintedForTwo: Code = mint(initial, "founders", PlusMonthly, defaultTerm, true, 2, ExpiresAt({ at: 1 }))

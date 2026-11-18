@@ -3,13 +3,12 @@
 //   ignore vibestack/examples/**            standalone projects with their own install, outside the workspace
 //   ignore **/test/fixtures/**              inputs the tools' tests read as text, never imported
 //   ignoreIssues server.vibe exports        AGENTS is used in its own file, in a body ignoreExportsUsedInFile cannot see
-//   root @informalsystems/quint, lemmascript  run as executables by vibestack/units.ts and vibestack/prove.ts
+//   root lemmascript                       run as an executable by vibestack/prove.ts
 //   root @vitest/browser                    loaded by Vitest's browser mode, beside @vitest/browser-playwright
 //   root @repo/design-system                read as files by vibestack/design/test/design.test.ts
-//   tailwindcss (ui, design-system, studio, apps, cloud)  resolved by @tailwindcss/vite and the lint plugin from CSS
+//   tailwindcss (ui, design-system, studio, cloud)  resolved by @tailwindcss/vite and the lint plugin from CSS
 //   entry *.schema, *.contract              imported by the tests vibestack/testing/generate.ts writes under .cache/
 //   design-system eslint, eslint-plugin-better-tailwindcss, typescript-eslint  loaded by name in vibestack/design/test/design.test.ts
-//   os esbuild, punycode, tldts             used by browser/protection, which ships as files outside the package's project
 import vibelang from "vibelang/knip"
 
 export default {
@@ -36,7 +35,6 @@ export default {
         "!vibestack/studio/**"
       ],
       "ignoreDependencies": [
-        "@informalsystems/quint",
         "lemmascript",
         "@vitest/browser",
         "@repo/design-system"
@@ -84,8 +82,8 @@ export default {
         "src/**/*.{schema,contract}.{ts,vibe}"
       ],
       "project": [
-        "src/**/*.{ts,vibe}",
-        "test/**/*.{ts,vibe}"
+        "src/**/*.{ts,vibe,vibex}",
+        "test/**/*.{ts,vibe,vibex}"
       ],
       "ignoreDependencies": [
         "@effect/platform-node-shared"
@@ -94,17 +92,14 @@ export default {
     "packages/cloud": {
       "entry": [
         "src/{index,main}.vibe",
-        "src/client/index.vibe",
-        "src/profile/profile.vibe",
         "src/pages/render.tsx",
         "test/**/*.test.{ts,vibe}",
         "test/drivers/*.ts",
-        "test/bombadil.ts",
         "src/**/*.{schema,contract}.{ts,vibe}"
       ],
       "project": [
-        "src/**/*.{ts,tsx,vibe,css}",
-        "test/**/*.{ts,vibe}"
+        "src/**/*.{ts,tsx,vibe,vibex,css}",
+        "test/**/*.{ts,vibe,vibex}"
       ],
       "ignoreDependencies": [
         "@effect/platform-node-shared",
@@ -115,22 +110,19 @@ export default {
       "entry": [
         "src/{index,bin}.vibe",
         "src/{client,voice,tasks}/index.vibe",
-        "src/access/routes.vibe",
-        "src/bundle/build.vibe",
         "test/**/*.test.{ts,vibe}",
         "test/drivers/*.ts",
         "src/**/*.{schema,contract}.{ts,vibe}"
       ],
       "project": [
-        "src/**/*.{ts,vibe}",
-        "test/**/*.{ts,vibe}"
+        "src/**/*.{ts,vibe,vibex}",
+        "test/**/*.{ts,vibe,vibex}"
       ]
     },
     "packages/os": {
       "entry": [
         "src/{index,cli}.vibe",
         "src/{image,build,browser,app-update}/index.vibe",
-        "src/browser/address.ts",
         "src/bridges/*.vibe",
         "src/bridges/definitions/*.ts",
         "test/**/*.test.{ts,vibe}",
@@ -138,28 +130,11 @@ export default {
         "src/**/*.{schema,contract}.{ts,vibe}"
       ],
       "project": [
-        "src/**/*.{ts,vibe}",
-        "test/**/*.{ts,vibe}"
+        "src/**/*.{ts,vibe,vibex}",
+        "test/**/*.{ts,vibe,vibex}"
       ],
       "ignoreDependencies": [
-        "@effect/platform-node-shared",
-        "esbuild",
-        "punycode",
-        "tldts"
-      ]
-    },
-    "apps/*": {
-      "entry": [
-        "test/**/*.test.{ts,tsx,vibe}",
-        "test/drivers/*.ts",
-        "src/**/*.{schema,contract}.{ts,vibe}"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx,vibe,vibex,css}",
-        "test/**/*.{ts,tsx,vibe,vibex}"
-      ],
-      "ignoreDependencies": [
-        "tailwindcss"
+        "@effect/platform-node-shared"
       ]
     }
   }

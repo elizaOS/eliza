@@ -120,3 +120,17 @@ export interface ElizaPasswordsPlugin {
     destination: "autofill-picker" | "system-settings";
   }>;
 }
+
+export interface PasswordExportResult {
+  exported: number;
+}
+
+export interface PasswordImportResult {
+  imported: number;
+  skipped: number;
+}
+
+export interface ElizaPasswordTransferPlugin {
+  exportVault(): Promise<PasswordExportResult>;
+  importVault(): Promise<PasswordImportResult>;
+}

@@ -1,6 +1,8 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { cloudLayer, prepare } from "../../src/index.vibe"
 import { Store } from "../../src/store/store.vibe"
+import type { CloudContext } from "../../src/http/routes.vibe"
+import { serveDatabase, type DatabaseSetup } from "./database.ts"
 import { startFakeServer, stripeCatalog, type CatalogPrice, type FakeServer } from "./fakes.ts"
 import { callCloud, type Answer, type CallInit } from "./http.ts"
 import { catalogPrices, secrets, testProfile } from "./profile.ts"
@@ -13,7 +15,12 @@ export interface TestCloud {
   readonly fakes: FakeServer
   readonly store: Store.Shape
   call(path: string, init?: CallInit): Answer!!
+  inside<A, E>(body: A!E!CloudContext): A!E
 }
+
+export type StoreChoice =
+  | { readonly kind: "pglite" }
+  | { readonly kind: "pg"; readonly setup?: DatabaseSetup }
 
 export type ProfileEdit = (profile: ReturnType<typeof testProfile>) => unknown
 
@@ -22,6 +29,10 @@ export interface TestCloudOptions {
   readonly prices?: ReadonlyArray<CatalogPrice>
   readonly stripe?: StripeFake
   readonly mount?: (fakes: FakeServer) => void
+  readonly environment?: "production" | "staging"
+  readonly host?: string
+  readonly store?: StoreChoice
+  readonly seed?: string
 }
 
 export effect function fakeServer() {
@@ -36,7 +47,11 @@ export effect function testCloud(options: TestCloudOptions = {}) {
     const base = testProfile(fakes.url)
     return options.edit === undefined ? base : options.edit(base)
   })
-  const prepared = try prepare({ profile, environment: "staging", store: "pglite", port: 0, host: "127.0.0.1" })
+  const choice = options.store ?? { kind: "pglite" }
+  const store = choice.kind === "pg"
+    ? (try acquireRelease(promise(() => serveDatabase(choice.setup)), (database) => promise(() => database.close()))).url
+    : "pglite"
+  const prepared = try prepare({ profile, environment: options.environment ?? "staging", store, seed: options.seed, port: 0, host: options.host ?? "127.0.0.1" })
   const built = try Layer.build(cloudLayer(prepared).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))))
   const { address } = Context.get(built, HttpServer.HttpServer)
   const url = "port" in address ? `http://127.0.0.1:${address.port}` : ""
@@ -44,7 +59,8 @@ export effect function testCloud(options: TestCloudOptions = {}) {
     url,
     fakes,
     store: Context.get(built, Store),
-    call: (path: string, init?: CallInit) => promise(() => callCloud(url, path, init))
+    call: (path: string, init?: CallInit) => promise(() => callCloud(url, path, init)),
+    inside: <A, E>(body: A!E!CloudContext) => Effect.provideContext(body, built)
   } satisfies TestCloud
 }
 

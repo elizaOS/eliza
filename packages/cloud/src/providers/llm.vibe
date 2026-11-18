@@ -22,7 +22,7 @@ export const providerBudget: Millis = 800_000
 
 type LlmContext = Deployment | HttpClient.HttpClient
 
-function retryAfter(header: string | undefined): Millis | undefined {
+export function retryAfter(header: string | undefined): Millis | undefined {
   return header !== undefined && /^\d{1,9}$/.test(header) ? Number(header) * 1000 : undefined
 }
 

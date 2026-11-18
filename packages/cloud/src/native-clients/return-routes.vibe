@@ -1,6 +1,6 @@
 // spec/cloud/returnPages.md, "Story: Bring me back to the app when its link did not open"; spec/cloud/returnPages.md, "Story: Tell a payer the checkout ended"
 import { connectedPage, pageAt, pageHeaders, payerPath, type Page, type PagePurpose } from "../../gen/cloud__returnPages.effect.vibe"
-import type { Registration } from "../../gen/cloud__nativeClients__registry.effect.vibe"
+import type { Registration, ReturnPurpose } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import { refused } from "../http/refusal.vibe"
 import type { Route, RouteContext } from "../http/routes.vibe"
 import { forwardScriptHash, pageFile, pageSlots, type PageSlot, type PageTemplate } from "../pages/forward-script.ts"
@@ -9,14 +9,20 @@ import { Store } from "../store/store.vibe"
 import { readRegistry } from "./registry.vibe"
 
 module node {
+  import { createHash } from "node:crypto"
   import { readFile } from "node:fs/promises"
 
-  const templates = new Map<string, Promise<string | undefined>>()
+  export interface Template {
+    readonly source: string
+    readonly styleHashes: ReadonlyArray<string>
+  }
+
+  const templates = new Map<string, Promise<Template | undefined>>()
 
   /** @throws {unknown} */
-  async function load(file: string): Promise<string | undefined> {
-    for (const base of ["../../pages/", "../../dist/pages/"]) {
-      const text = await readFile(new URL(base + file, import.meta.url), "utf8").catch(() => undefined)
+  async function source(root: URL, file: string): Promise<string | undefined> {
+    for (const base of ["pages/", "dist/pages/"]) {
+      const text = await readFile(new URL(base + file, root), "utf8").catch(() => undefined)
       if (text !== undefined) return text
     }
     const { renderPages } = await import("../pages/render.tsx")
@@ -24,17 +30,27 @@ module node {
   }
 
   /** @throws {unknown} */
-  export function pageTemplate(file: string): Promise<string | undefined> {
-    const known = templates.get(file) ?? load(file)
+  async function load(root: URL, file: string): Promise<Template | undefined> {
+    const text = await source(root, file)
+    if (text === undefined) return undefined
+    const styles = [...text.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((found) => `'sha256-${createHash("sha256").update(found[1] ?? "").digest("base64")}'`)
+    return { source: text, styleHashes: styles }
+  }
+
+  /** @throws {unknown} */
+  export function pageTemplate(root: URL, file: string): Promise<Template | undefined> {
+    const known = templates.get(file) ?? load(root, file)
     templates.set(file, known)
     return known
   }
 }
-import { pageTemplate } from node
+import { pageTemplate, type Template } from node
 
 export error PageTemplateMissing { file: string }
 
-const purposeSlot: Readonly<Record<Exclude<PagePurpose, "ConnectedPage">, string>> = {
+const packageRoot = new URL("../../", import.meta.url)
+
+const returnPurpose: Readonly<Record<Exclude<PagePurpose, "ConnectedPage">, ReturnPurpose>> = {
   SignInPage: "SignInPurpose",
   BillingPage: "BillingPurpose",
   ConnectPage: "ConnectPurpose"
@@ -49,62 +65,67 @@ type Shown = { readonly template: PageTemplate; readonly slots: Readonly<Partial
 function shown(page: Exclude<Page, { tag: "NoPage" }>): Shown {
   switch (page.tag) {
     case "CheckoutOutcome":
-      return { template: { kind: "checkoutOutcome", outcome: page.outcome === "PaidOutcome" ? "paid" : "canceled" }, slots: {} }
+      return { template: { kind: "checkoutOutcome", outcome: page.shown === "PaidOutcome" ? "paid" : "canceled" }, slots: {} }
     case "ReturnToApp": {
       const names = { deploymentName: page.serviceName, displayName: page.appName }
-      if (page.action.tag === "NoAction" || page.purpose === "ConnectedPage") return { template: { kind: "returnToAppConnected" }, slots: names }
-      const { target, androidPackage } = page.action.link
+      if (page.offer.tag === "NoAction" || page.purpose === "ConnectedPage") return { template: { kind: "returnToAppConnected" }, slots: names }
+      const { target, androidPackage } = page.offer.link
+      const purpose = returnPurpose[page.purpose]
       return {
-        template: { kind: "returnToApp", purpose: purposeSlot[page.purpose] },
-        slots: { ...names, purpose: purposeSlot[page.purpose], intentHref: `intent://${new URL(target.origin).host}${target.path}#Intent;scheme=https;package=${androidPackage};end` }
+        template: { kind: "returnToApp", purpose },
+        slots: { ...names, purpose, intentHref: `intent://${new URL(target.origin).host}${target.path}#Intent;scheme=https;package=${androidPackage};end` }
       }
     }
   }
 }
 
-function contentPolicy(page: Page): string {
+function contentPolicy(page: Page, template: Template): string {
   const headers = pageHeaders(page)
   const script = headers.script === "PinnedScript" ? ` script-src '${forwardScriptHash}';` : ""
-  return `default-src 'none';${script} style-src 'unsafe-inline'; base-uri 'none'; form-action ${headers.formAction}; frame-ancestors ${headers.frameAncestors}`
+  const style = template.styleHashes.length === 0 ? "" : ` style-src ${template.styleHashes.join(" ")};`
+  return `default-src 'none';${script}${style} base-uri 'none'; form-action ${headers.formAction}; frame-ancestors ${headers.frameAncestors}`
 }
 
 effect function pageResponse(page: Page) {
   if (page.tag === "NoPage") throw refused("NotFound")
   const { template, slots } = shown(page)
-  const file = pageFile(template)
-  const source = try tryPromise({ try: () => pageTemplate(file), catch: () => new PageTemplateMissing({ file }) })
-  if (source === undefined) throw new PageTemplateMissing({ file })
-  const html = Object.entries(slots).reduce((text, [slot, value]) => text.replaceAll(pageSlots[slot as PageSlot], escaped(value)), source)
+  const file = try sync(() => pageFile(template))
+  const loaded = try tryPromise({ try: () => pageTemplate(packageRoot, file), catch: () => new PageTemplateMissing({ file }) })
+  if (loaded === undefined) throw new PageTemplateMissing({ file })
+  const html = Object.entries(slots).reduce((text, [slot, value]) => text.replaceAll(pageSlots[slot as PageSlot], escaped(value)), loaded.source)
   const headers = pageHeaders(page)
-  return HttpServerResponse.html(html, {
+  return HttpServerResponse.text(html, {
+    contentType: "text/html; charset=utf-8",
     headers: {
       "cache-control": headers.cacheControl,
       "x-robots-tag": headers.robots,
       "referrer-policy": headers.referrerPolicy,
-      "content-security-policy": contentPolicy(page),
+      "content-security-policy": contentPolicy(page, loaded),
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY"
     }
   })
 }
 
-function requestOrigin(context: RouteContext): string {
+function forwardedOrigin(context: RouteContext): string {
   const host = (context.request.headers["x-forwarded-host"] ?? context.request.headers.host ?? "").split(",")[0]?.trim() ?? ""
-  return host === "" ? "" : `https://${host}`
+  return `https://${host}`
 }
 
 effect function servePage(context: RouteContext) {
   const deployment = try Deployment
-  const registry = try (try Store).transaction((tx) => readRegistry(tx))
-  const path = new URL(context.request.url, deployment.settings.api).pathname
+  const { web, api } = deployment.settings
+  const onWeb = forwardedOrigin(context) === web
+  const registry = onWeb ? try (try Store).transaction((tx) => readRegistry(tx)) : []
+  const path = new URL(context.request.url, api).pathname
   const served = deployment.environment === "production" ? "Production" : "Staging"
-  const page = pageAt(rowOf(deployment.profile.name, deployment.settings), [...registry], served, { origin: requestOrigin(context), path }, context.query.get("outcome") ?? "")
+  const page = pageAt(rowOf(deployment.settings.name, deployment.settings), [...registry], served, { origin: onWeb ? web : api, path }, context.query.get("outcome") ?? "")
   return try pageResponse(page)
 }
 
 export effect function connectedReturnPage(registration: Registration) {
   const deployment = try Deployment
-  return try pageResponse(connectedPage(rowOf(deployment.profile.name, deployment.settings), registration))
+  return try pageResponse(connectedPage(rowOf(deployment.settings.name, deployment.settings), registration))
 }
 
 export const returnPageRoute: Route = { method: "GET", path: "/*", auth: "Public", handler: servePage }

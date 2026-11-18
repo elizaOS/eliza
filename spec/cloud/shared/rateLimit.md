@@ -61,7 +61,7 @@ pure def request(w: Window, rule: RateLimit, now: Millis): Window = {
 }
 pure val ruleValues = Set(perWindow("probe", 2, 3), perWindow("probe", 1, 3), perWindow("probe", 0, 3))
 pure val nowValues = Set(0, 1, 2, 3, 5, 7)
-pure def sometimesAdmitted(w: Window): bool = w.last == Admitted
+pure def sometimesALaterWindowAdmits(w: Window): bool = w.last == Admitted and w.start >= 1
 ```
 
 ### A window never counts more requests than the limit it last admitted under
@@ -134,24 +134,20 @@ pure val checksValues = Set(List(), List({ window: initial, rule: perWindow("per
 > As an operator, I want a request refused when the limiter's store cannot be
 > read or written, so that an outage never lifts every limit at once.
 
-### A limiter refusal is retryable: 429 at the end of a full window, or 503 a second later when the limiter could not count
+### A limiter refusal is retryable: 429 at the latest full window's end, or 503 a second later when the limiter could not count
 
-The shell fails closed and counts nothing when the store fails. It sets
-`Retry-After` from the refusal's time as `types` states, rounded up. A group
-is refused at its latest full window's end.
+A single limit is a group of one. The shell fails closed and counts nothing
+when the store fails, or when the guard refuses (an invalid limit, or a store
+clock behind a row). It sets `Retry-After` from the refusal's time as `types`
+states.
 
 ```quint
 pure val unavailableRetryMs: Millis = millisPerSecond
 pure def unavailableRefusal(now: Millis): Refusal = refuseUntil(RateLimitUnavailable, now + unavailableRetryMs)
-pure def refusalOfDecision(d: RateDecision, now: Millis): Refusal = match d {
-  | Refused(x) => refuseUntil(RateLimited, x.retryAt)
-  | _ => unavailableRefusal(now)
-}
 pure def groupRefusal(checks: List[Check], now: Millis): Refusal =
   if (allCountable(checks, now)) refuseUntil(RateLimited, retryAtOfAll(checks, now)) else unavailableRefusal(now)
-pure def lawEveryLimiterRefusalIsRetryable(d: RateDecision, now: Millis): bool = {
-  val answer = refusalOfDecision(d, now)
-  wellFormed(answer) and isRetryable(answer.code) and (statusOf(answer.code) == 503 iff match d { | Refused(x) => false | _ => true })
+pure def lawEveryLimiterRefusalIsRetryable(checks: List[Check], now: Millis): bool = {
+  val answer = groupRefusal(checks, now)
+  wellFormed(answer) and isRetryable(answer.code) and (statusOf(answer.code) == 503 iff not(allCountable(checks, now)))
 }
-pure val dValues = Set(NoDecision, Refused({ limit: 1, retryAt: 3 }))
 ```

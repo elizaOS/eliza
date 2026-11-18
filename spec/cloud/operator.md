@@ -22,9 +22,10 @@ count or by the operator's own identifiers.
 > their account or sign out a lost device from one command line, so that I
 > never need to open a database row, a token or a provider secret to do it.
 
-### Four commands name an account: credits add and the three account commands
+### Thirteen commands exist, and only credits add and the three account commands name an account
 
-`client register` registers a client or replaces its registration
+Each command goes through the spec that owns its record. `client register`
+registers a client or replaces its registration
 (`nativeClients/registry`), so a repeated seed changes nothing. `grants
 revoke --reason <text> (--grant-id <id>… | --code <code>…)` ends each grant
 (`billing/grantCodes` `revokeGrant`), and with `--code` also disables the
@@ -124,7 +125,7 @@ pure def lawMintRunsOnlyForABatchThatFits(accepted: bool, identity: StoreIdentit
   runs(decide(accepted, identity, MintGrantCodes, account, confirmed, count)) implies mintBatchFits(count)
 ```
 
-### The operator sees a device only as its name and dates
+### The device list shows each key only by its name and dates
 
 `account revoke-devices` ends every device key of the user
 (`nativeClients/deviceKeys` `revokeAll`) and every session

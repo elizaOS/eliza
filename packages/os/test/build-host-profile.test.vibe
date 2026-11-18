@@ -1,0 +1,289 @@
+// spec/os/build/androidHost.md, "Story: Generate my app's Android host from data"; spec/os/build/androidHost.md, "Story: Keep my schema-1 profile readable through one fixed map"
+import { assert, it } from "@effect/vitest"
+import { admitHostProfile, type AndroidHostProfile, type HostRefusal, type HostSetting, type HostSource } from "../src/build/android-host-profile.vibe"
+
+const OS = "/work/app/vendor/eliza/packages/os"
+const SETTING: HostSetting = {
+  identity: { appId: "example.fixture.host", appName: "Fixture Host", version: "1.0.0", versionCode: 7 },
+  consumerRoot: "/work/app",
+  osRoot: OS,
+  dependencyRoot: "/work/app/node_modules",
+  output: "/work/app/android/host",
+  toolchainVersions: { androidxAppCompatVersion: "1.7.1", androidxWebkitVersion: "1.16.0" },
+  runtimeStaged: true,
+}
+const consumer = (path: string) => ({ root: "consumer", path })
+const upstream = (path: string) => ({ root: "upstream", path })
+const AGENT = { host: consumer("agent/host.json"), character: consumer("agent/character.json"), policy: consumer("agent/policy.json") }
+const SIGNING = { storeFile: "APP_STORE", storePassword: "APP_STORE_PASSWORD", keyAlias: "APP_KEY_ALIAS", keyPassword: "APP_KEY_PASSWORD" }
+const NOTIFICATION = { smallIcon: "notification_icon", color: "0xff0000ff", channel: "Assistant", strings: { title: "agent_title", running: "agent_running" }, stopAction: true }
+
+const PROFILE = {
+  schema: 2,
+  sdk: { min: 29, target: 36, compile: 36 },
+  releaseMinify: true,
+  kotlin: false,
+  nativeLibraries: "extract-16k",
+  agent: AGENT,
+  agentService: { notification: NOTIFICATION, launchHook: { class: "example.fixture.host.Launch", method: "configure" } },
+  osModules: [{ module: "agent-service" }, { module: "runtime-files" }, { module: "calendar", sources: ["src/main/java/ai/eliza/plugins/calendar/CalendarConfiguration.java"] }, { module: "system", sources: ["src/androidTest/java/ai/eliza/plugins/system/SystemLauncherAppsInstrumentedTest.java"] }],
+  modules: [{ name: "capacitor-android", source: { root: "dependencies", path: "@capacitor/android/capacitor" } }],
+  signing: SIGNING,
+  versionOverride: { versionCode: "APP_VERSION_CODE", versionName: "APP_VERSION_NAME" },
+  manifest: consumer("android/AndroidManifest.xml"),
+  manifestPlaceholders: { hostScheme: "fixture" },
+  flavors: [
+    { name: "store", buildConfigFields: [{ name: "IS_STORE", type: "boolean", value: true }], manifest: consumer("android/store/AndroidManifest.xml") },
+    { name: "sideload", buildConfigFields: [{ name: "IS_STORE", type: "boolean", value: false }] },
+  ],
+  buildConfigFields: [{ name: "CHANNEL", type: "String", value: "stable" }, { name: "RETRIES", type: "int", value: 3 }],
+  buildTypes: { debug: { abiFilters: ["x86_64"] }, release: { abiFilters: ["arm64-v8a"], shrinkResources: true, proguardFiles: [consumer("android/proguard-rules.pro")] } },
+  sourceSets: { main: { java: [consumer("android/java")], res: [consumer("android/res")] }, androidTest: { java: [consumer("android/test/java")] } },
+  generatedSources: [{ sourceSet: "main", kind: "java", path: "generated/routes/java" }],
+  dependencies: [{ configuration: "implementation", module: "androidx.appcompat:appcompat", toolchainVersion: "androidxAppCompatVersion" }],
+  androidResources: { noCompress: ["gguf"] },
+  assetFiles: [{ source: consumer("artifacts/routes.json"), name: "routes.json" }],
+  appScripts: [consumer("android/packaging.gradle")],
+  admission: [{ name: "verifyDeployment", command: ["node", "check.mjs"], directory: consumer(".") }],
+}
+
+effect function outcome(raw: unknown, setting: HostSetting = SETTING) {
+  return (effect { try admitHostProfile(raw, setting); return "HostAdmitted" } catch (error) => error.refusal)
+}
+
+effect function refusalDetail(raw: unknown) {
+  return (effect { try admitHostProfile(raw, SETTING); return "admitted" } catch (error) => error.detail)
+}
+
+const place = (path: string): HostSource => ({ root: "consumer", segments: path.split("/"), place: `/work/app/${path}` })
+const defined = (profile: Readonly<Record<string, unknown>>) => Object.fromEntries(Object.entries(profile).filter(([, value]) => value !== undefined))
+
+it.effect("Generate my app's Android host from data: a complete schema-2 profile is admitted with everything the generator writes (spec/os/build/androidHost.md, \"Story: Generate my app's Android host from data\"; spec/os/build/androidHost.md, \"A profile is admitted only when every rule holds, and a refusal names the first one broken\")", () => effect {
+  const admitted = try admitHostProfile(PROFILE, SETTING)
+  const expected: AndroidHostProfile = {
+    schema: 2,
+    identity: { appId: "example.fixture.host", appName: "Fixture Host", version: "1.0.0", versionCode: 7 },
+    roots: { consumer: "/work/app", os: OS, dependencies: "/work/app/node_modules" },
+    output: "/work/app/android/host",
+    sdk: { min: 29, target: 36, compile: 36 },
+    releaseMinify: true,
+    kotlin: false,
+    nativeLibraries: "extract-16k",
+    manifest: place("android/AndroidManifest.xml"),
+    manifestPlaceholders: { hostScheme: "fixture" },
+    flavors: [
+      { name: "store", buildConfigFields: [{ kind: "boolean", name: "IS_STORE", value: true }], manifest: place("android/store/AndroidManifest.xml") },
+      { name: "sideload", buildConfigFields: [{ kind: "boolean", name: "IS_STORE", value: false }], manifest: undefined },
+    ],
+    buildConfigFields: [{ kind: "String", name: "CHANNEL", value: "stable" }, { kind: "int", name: "RETRIES", value: 3 }],
+    buildTypes: {
+      debug: { abiFilters: ["x86_64"], buildConfigFields: [] },
+      release: { abiFilters: ["arm64-v8a"], buildConfigFields: [], shrinkResources: true, proguardFiles: [place("android/proguard-rules.pro")] },
+    },
+    versionOverride: { versionCode: "APP_VERSION_CODE", versionName: "APP_VERSION_NAME" },
+    signing: SIGNING,
+    sourceSets: [
+      { sourceSet: "main", kind: "java", source: place("android/java") },
+      { sourceSet: "main", kind: "res", source: place("android/res") },
+      { sourceSet: "androidTest", kind: "java", source: place("android/test/java") },
+    ],
+    generatedSources: [{ sourceSet: "main", kind: "java", path: "generated/routes/java" }],
+    osModules: [
+      { module: "agent-service", directory: `${OS}/android/agent-service`, project: "eliza-agent-service", sources: [] },
+      { module: "runtime-files", directory: `${OS}/android/runtime-files`, project: "eliza-runtime-files", sources: [] },
+      { module: "calendar", directory: `${OS}/android/calendar`, project: undefined, sources: ["src/main/java/ai/eliza/plugins/calendar/CalendarConfiguration.java"] },
+      { module: "system", directory: `${OS}/android/system`, project: "eliza-system", sources: ["src/androidTest/java/ai/eliza/plugins/system/SystemLauncherAppsInstrumentedTest.java"] },
+    ],
+    modules: [{
+      name: "capacitor-android",
+      source: { root: "dependencies", segments: ["@capacitor", "android", "capacitor"], place: "/work/app/node_modules/@capacitor/android/capacitor" },
+      appDependency: true,
+      relocateBuild: true,
+    }],
+    dependencies: [{ configuration: "implementation", coordinate: "androidx.appcompat:appcompat:1.7.1" }],
+    noCompress: ["gguf"],
+    assetFiles: [{ source: place("artifacts/routes.json"), name: "routes.json" }],
+    appScripts: [place("android/packaging.gradle")],
+    admission: [{ task: "verifyDeployment", argv: ["node", "check.mjs"], directory: { root: "consumer", segments: [], place: "/work/app" } }],
+    agent: { host: place("agent/host.json"), character: place("agent/character.json"), policy: place("agent/policy.json") },
+    agentService: { notification: NOTIFICATION, launchHook: { class: "example.fixture.host.Launch", method: "configure" } },
+  }
+  try Effect.try(() => assert.deepStrictEqual(admitted, expected))
+  const appUpdate = try admitHostProfile(defined({ ...PROFILE, agent: undefined, agentService: undefined, nativeLibraries: undefined, osModules: [{ module: "app-update" }, { module: "runtime-files" }] }), { ...SETTING, runtimeStaged: false })
+  try Effect.try(() => assert.deepStrictEqual(appUpdate.osModules.map((entry) => entry.project), ["eliza-app-update", "eliza-runtime-files"], "app-update builds without the agent service"))
+})
+
+it.effect("Each broken rule refuses the profile by name (spec/os/build/androidHost.md, \"A profile is admitted only when every rule holds, and a refusal names the first one broken\"; spec/os/build/androidHost.md, \"Release signing names all four environment variables or none, and a partial set is refused\"; spec/os/build/androidHost.md, \"A schema-1 field that has no successor is refused when it is set\")", () => effect {
+  const cases: Record<HostRefusal, { readonly profile: Readonly<Record<string, unknown>>; readonly setting?: Partial<HostSetting> }> = {
+    ProfileMalformed: { profile: { ...PROFILE, embeddedAgent: AGENT } },
+    FieldDropped: { profile: { ...PROFILE, schema: 1, agent: undefined, agentService: undefined, osModules: undefined, modules: [], generationInputs: [consumer("app.json")] } },
+    UpstreamUnmapped: { profile: { ...PROFILE, schema: 1, agent: undefined, agentService: undefined, osModules: undefined, modules: [{ name: "eliza-network-policy", source: upstream("plugins/plugin-native-network-policy/android") }] } },
+    SchemaUnsupported: { profile: { ...PROFILE, schema: 3 } },
+    CompanionDeclared: { profile: { ...PROFILE, companion: { entry: "gateway.mjs" } } },
+    IdentityInvalid: { profile: PROFILE, setting: { identity: { appId: "example.fixture.host", appName: "Fixture Host", version: "1.0.0", versionCode: 2_100_000_001 } } },
+    SdkInvalid: { profile: { ...PROFILE, sdk: { min: 28, target: 36, compile: 36 } } },
+    FlavorsInvalid: { profile: { ...PROFILE, flavors: [{ name: "release" }] } },
+    BuildConfigInvalid: { profile: { ...PROFILE, buildConfigFields: [{ name: "RETRIES", type: "int", value: 2_147_483_648 }] } },
+    BuildTypesInvalid: { profile: { ...PROFILE, releaseMinify: false } },
+    VersionOverrideInvalid: { profile: { ...PROFILE, versionOverride: { versionCode: "APP_VERSION_CODE" } } },
+    SigningPartial: { profile: { ...PROFILE, signing: { storeFile: "APP_STORE", keyAlias: "APP_KEY_ALIAS" } } },
+    SigningInvalid: { profile: { ...PROFILE, signing: { ...SIGNING, keyPassword: "APP_STORE_PASSWORD" } } },
+    RootsInvalid: { profile: PROFILE, setting: { osRoot: "vendor/eliza/packages/os" } },
+    OutputMisplaced: { profile: PROFILE, setting: { output: `${OS}/out` } },
+    SourceRefused: { profile: { ...PROFILE, sourceSets: { main: { java: [consumer("vendor/eliza/packages/os/android/wifi/src/main/java")] } } } },
+    SourceSetInvalid: { profile: { ...PROFILE, sourceSets: { beta: { java: [consumer("android/java")] } } } },
+    OsModulesInvalid: { profile: { ...PROFILE, osModules: [...PROFILE.osModules, { module: "sense" }] } },
+    OsModulesNotClosed: { profile: { ...PROFILE, osModules: [{ module: "agent-service" }] } },
+    ProjectsInvalid: { profile: { ...PROFILE, modules: [{ name: "eliza-agent-service", source: consumer("android/agent") }] } },
+    DependencyNotPinned: { profile: { ...PROFILE, dependencies: [{ configuration: "implementation", coordinate: "androidx.appcompat:appcompat:1.7.1" }] } },
+    AssetsInvalid: { profile: { ...PROFILE, assetFiles: [{ source: consumer("artifacts/routes.json"), name: "agent" }] } },
+    AdmissionInvalid: { profile: { ...PROFILE, admission: [{ name: "elizaStage", command: ["node", "stage.mjs"], directory: consumer(".") }] } },
+    NativeLibrariesInvalid: { profile: { ...PROFILE, nativeLibraries: undefined } },
+    AgentInvalid: { profile: PROFILE, setting: { runtimeStaged: false } },
+  }
+  const seen: Record<string, string> = {}
+  for (const [refusal, { profile, setting }] of Object.entries(cases)) seen[refusal] = try outcome(defined(profile), { ...SETTING, ...setting })
+  try Effect.try(() => assert.deepStrictEqual(seen, Object.fromEntries(Object.keys(cases).map((refusal) => [refusal, refusal]))))
+  const partial = try refusalDetail({ ...PROFILE, signing: { storeFile: "APP_STORE", keyAlias: "APP_KEY_ALIAS" } })
+  try Effect.try(() => assert.match(partial, /missing storePassword, keyPassword$/))
+  const serviceWithoutModule = try outcome(defined({ ...PROFILE, agent: undefined, nativeLibraries: undefined, osModules: [] }), { ...SETTING, runtimeStaged: false })
+  try Effect.try(() => assert.strictEqual(serviceWithoutModule, "AgentInvalid", "agent service settings need the agent-service module"))
+})
+
+const SCHEMA_ONE = {
+  schema: 1,
+  sdk: { min: 29, target: 36, compile: 36 },
+  releaseMinify: false,
+  kotlin: false,
+  nativeLibraries: "extract-16k",
+  manifest: consumer("android/AndroidManifest.xml"),
+  flavors: [
+    { name: "standalone", buildConfigFields: [{ name: "IS_LAUNCHER", type: "boolean", value: false }], manifest: consumer("android/standalone/AndroidManifest.xml") },
+    { name: "launcher", buildConfigFields: [{ name: "IS_LAUNCHER", type: "boolean", value: true }], manifest: consumer("android/launcher/AndroidManifest.xml") },
+  ],
+  signing: { storeFile: "APP_KEYSTORE", storePassword: "APP_KEYSTORE_PASSWORD", keyAlias: "APP_KEY_ALIAS", keyPassword: "APP_KEY_PASSWORD" },
+  dependencies: [{ configuration: "implementation", module: "androidx.appcompat:appcompat", toolchainVersion: "androidxAppCompatVersion" }],
+}
+
+const shape = (profile: AndroidHostProfile) => ({
+  osModules: profile.osModules.map((entry) => [entry.module, entry.project ?? "subset", ...entry.sources]),
+  modules: profile.modules.map((module) => `${module.name} ${module.source.place}${module.appDependency ? "" : " (not an app dependency)"}`),
+  sourceSets: profile.sourceSets.map((entry) => `${entry.sourceSet}.${entry.kind} ${entry.source.place}`),
+  agent: profile.agent?.host.place,
+  agentService: profile.agentService,
+  admission: profile.admission.map((step) => `${step.task}: ${step.argv.join(" ")}`),
+})
+
+it.effect("Keep my schema-1 profile readable through one fixed map: profiles shaped like each consumer's map onto schema 2 (spec/os/build/androidHost.md, \"Story: Keep my schema-1 profile readable through one fixed map\"; spec/os/build/androidHost.md, \"A schema-1 upstream source becomes the os module its path lies in\"; spec/os/build/androidHost.md, \"Schema-1 settings admission runs first among the admission commands\"; spec/os/build/androidHost.md, \"A schema-1 field that has no successor is refused when it is set\")", () => effect {
+  const embedded = try admitHostProfile({
+    ...SCHEMA_ONE,
+    embeddedAgent: AGENT,
+    modules: [
+      { name: "capacitor-android", source: { root: "dependencies", path: "capacitor" } },
+      { name: "eliza-browser-surface", source: upstream("plugins/plugin-native-browser-surface/android") },
+      { name: "eliza-wifi", source: upstream("plugins/plugin-native-wifi/android") },
+    ],
+    sourceSets: { main: { java: [consumer("android/java")], res: [consumer("android/res")] } },
+  }, SETTING)
+  try Effect.try(() => assert.deepStrictEqual(shape(embedded), {
+    osModules: [["browser-surface", "eliza-browser-surface"], ["wifi", "eliza-wifi"], ["agent-service", "eliza-agent-service"], ["runtime-files", "eliza-runtime-files"]],
+    modules: ["capacitor-android /work/app/node_modules/capacitor"],
+    sourceSets: ["main.java /work/app/android/java", "main.res /work/app/android/res"],
+    agent: "/work/app/agent/host.json",
+    agentService: { notification: undefined, launchHook: undefined },
+    admission: [],
+  }))
+
+  const resident = {
+    ...SCHEMA_ONE,
+    releaseMinify: true,
+    flavors: [{ name: "launcher", manifest: consumer("android/app/src/launcher/AndroidManifest.xml") }],
+    modules: [
+      { name: "capacitor-android", source: { root: "dependencies", path: "@capacitor/android/capacitor" } },
+      { name: "eliza-system", source: upstream("plugins/plugin-native-system/android"), relocateBuild: true },
+      { name: "eliza-cloud-auth", source: upstream("packages/auth/android"), relocateBuild: true },
+      { name: "eliza-owned-media", source: upstream("plugins/plugin-native-media/android"), relocateBuild: true },
+      { name: "secure-store-nativeonly", source: upstream("plugins/plugin-native-secure-store/android-nativeonly"), appDependency: false },
+      { name: "sense", source: consumer("android/sense"), appDependency: false },
+    ],
+    dependencies: [{ configuration: "implementation", module: "androidx.webkit:webkit", toolchainVersion: "androidxWebkitVersion" }],
+    buildTypes: { release: { abiFilters: ["arm64-v8a"], shrinkResources: true, proguardFiles: [consumer("android/app/proguard-rules.pro")] } },
+    settingsAdmission: [{ command: ["node", "scripts/android-host.mjs", "--check-identity"], directory: consumer(".") }],
+    admission: [{ name: "stageLocalAgentSources", command: ["node", "scripts/stage-local-agent-sources.mjs"], directory: consumer(".") }],
+    sourceSets: { main: { java: [upstream("plugins/plugin-native-filesystem/android/src/main/java")] } },
+    generatedSources: [{ sourceSet: "main", kind: "java", path: "generated/local-agent/java" }],
+    residentHost: {
+      notification: { smallIcon: "notification_icon", primaryAction: "none", color: "0xff0000ff", channelLabel: "Assistant", strings: { title: "agent_title", running: "agent_running" } },
+      environmentHook: { className: "ProductAgentPlugin", method: "configureEnvironment", unavailableStatus: "provider-unavailable" },
+      lifecycleHooks: { ready: { className: "ProductNotifications", method: "resumeExisting" } },
+    },
+  }
+  const mapped = try admitHostProfile(resident, SETTING)
+  try Effect.try(() => assert.deepStrictEqual(shape(mapped), {
+    osModules: [["system", "eliza-system"], ["sign-in", "eliza-sign-in"], ["media", "eliza-media"], ["secure-store", "eliza-secure-store"], ["filesystem", "subset", "src/main/java"], ["agent-service", "eliza-agent-service"], ["runtime-files", "eliza-runtime-files"]],
+    modules: ["capacitor-android /work/app/node_modules/@capacitor/android/capacitor", "sense /work/app/android/sense (not an app dependency)"],
+    sourceSets: [],
+    agent: undefined,
+    agentService: {
+      notification: { smallIcon: "notification_icon", color: "0xff0000ff", channel: "Assistant", strings: { title: "agent_title", running: "agent_running" }, stopAction: false },
+      launchHook: { class: "ProductAgentPlugin", method: "configureEnvironment" },
+    },
+    admission: ["settingsAdmission1: node scripts/android-host.mjs --check-identity", "stageLocalAgentSources: node scripts/stage-local-agent-sources.mjs"],
+  }))
+  const dropped = try refusalDetail({ ...resident, preserveRuntimeBytes: true, residentHost: { ...resident.residentHost, sockets: { agent: "example.agent.v1" }, classes: ["Inbox"] } })
+  try Effect.try(() => assert.match(dropped, /: preserveRuntimeBytes, residentHost\.classes, residentHost\.sockets$/))
+
+  const files = (prefix: string, names: readonly string[]) => names.map((name) => ({ source: upstream(`${prefix}/${name}`), sourceSet: prefix.includes("/androidTest/") ? "androidTest" : "main", language: name.endsWith(".kt") ? "kotlin" : "java" }))
+  const selected = {
+    ...SCHEMA_ONE,
+    androidResources: { noCompress: ["gguf", "lex"] },
+    modules: [
+      { name: "eliza-camera", source: upstream("plugins/plugin-native-camera/android") },
+      { name: "capacitor-android", source: { root: "dependencies", path: "@capacitor/android/capacitor" } },
+      { name: "eliza-system", source: upstream("plugins/plugin-native-system/android") },
+      { name: "app-voice", source: consumer("apps/app/native/android/voice") },
+      { name: "secure-store-nativeonly", source: upstream("plugins/plugin-native-secure-store/android-nativeonly") },
+      { name: "updater", appDependency: false, source: consumer("apps/updater/android") },
+    ],
+    sourceSets: {
+      main: {
+        java: [consumer("apps/app/native/java"), upstream("plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime"), upstream("plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/health")],
+        assets: [consumer("apps/app/agent/assets")],
+      },
+      androidTest: { java: [consumer("apps/app/test/android/java"), upstream("plugins/plugin-native-agent/android/src/androidTest/java/ai/eliza/plugins/agent/health/contract")] },
+    },
+    sourceFiles: [
+      ...files("packages/host/native-host/android/ai/eliza/host", ["VerifiedTaskCustody.java"]),
+      ...files("plugins/plugin-native-system/android/src/androidTest/java/ai/eliza/plugins/system", ["SystemLauncherAppsInstrumentedTest.java"]),
+      ...files("plugins/plugin-native-contacts/android/src/main/java/ai/eliza/plugins/contacts", ["AddressBookPlugin.java", "ContactsCatalog.java"]),
+      ...files("plugins/plugin-native-wifi/android/src/main/java/ai/eliza/plugins/wifi", ["WiFiPlugin.kt", "WiFiStateReader.kt"]),
+    ],
+    appScripts: [consumer("apps/app/native/android/packaging.gradle")],
+  }
+  const subsets = try admitHostProfile(selected, SETTING)
+  const contacts = "src/main/java/ai/eliza/plugins/contacts"
+  const wifi = "src/main/java/ai/eliza/plugins/wifi"
+  try Effect.try(() => assert.deepStrictEqual(shape(subsets), {
+    osModules: [
+      ["camera", "eliza-camera"],
+      ["system", "eliza-system", "src/androidTest/java/ai/eliza/plugins/system/SystemLauncherAppsInstrumentedTest.java"],
+      ["secure-store", "eliza-secure-store"],
+      ["agent-service", "eliza-agent-service"],
+      ["app-update", "eliza-app-update"],
+      ["contacts", "subset", `${contacts}/AddressBookPlugin.java`, `${contacts}/ContactsCatalog.java`],
+      ["wifi", "subset", `${wifi}/WiFiPlugin.kt`, `${wifi}/WiFiStateReader.kt`],
+      ["runtime-files", "eliza-runtime-files"],
+    ],
+    modules: ["capacitor-android /work/app/node_modules/@capacitor/android/capacitor", "app-voice /work/app/apps/app/native/android/voice", "updater /work/app/apps/updater/android (not an app dependency)"],
+    sourceSets: ["main.java /work/app/apps/app/native/java", "main.assets /work/app/apps/app/agent/assets", "androidTest.java /work/app/apps/app/test/android/java"],
+    agent: undefined,
+    agentService: { notification: undefined, launchHook: undefined },
+    admission: [],
+  }))
+  const versioned = try outcome({ ...selected, dependencies: [{ configuration: "implementation", coordinate: "androidx.webkit:webkit:1.16.0" }] })
+  const unmapped = try refusalDetail({ ...selected, sourceSets: { androidTest: { assets: [upstream("packages/app/scripts/voice/qualify/app/src/androidTest/assets")] } } })
+  try Effect.try(() => assert.deepStrictEqual({ versioned, unmapped }, {
+    versioned: "FieldDropped",
+    unmapped: "The schema-1 upstream source lies in no os module: packages/app/scripts/voice/qualify/app/src/androidTest/assets",
+  }))
+})

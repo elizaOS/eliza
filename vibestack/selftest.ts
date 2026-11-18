@@ -901,7 +901,8 @@ export effect function filled(sku: string, qty: number) {
   return [cart.count, add(initial, sku, qty).count, total([qty])] as const
 }
 ` });
-    assert.deepEqual(await genAll(root), ["_conformance.ts", "package.json", ...names.flatMap((n) => [`${n}.qnt`, `${n}.run.qnt`, `${n}.ts`, `${n}.effect.vibe`, ...(n === "lib" ? [] : [`${n}.conformance.ts`])])].sort());
+    const probed = ["mailer", "shop", "vault"];
+    assert.deepEqual(await genAll(root), ["_conformance.ts", "package.json", ...names.flatMap((n) => [`${n}.qnt`, `${n}.run.qnt`, `${n}.ts`, `${n}.effect.vibe`, ...(n === "lib" ? [] : [`${n}.conformance.ts`]), ...(probed.includes(n) ? [`${n}.guard.run.qnt`] : [])])].sort());
     // gen/package.json names no package, so the compiler has no key to derive for a service: the adapter states its own (EK0903).
     assert.deepEqual(JSON.parse(read("gen/package.json", root)), { type: "module" });
     assert.match(read("gen/vault.effect.vibe", root), new RegExp(`^export service Machine \\{\\n  static readonly key = ${JSON.stringify(`${path.basename(root)}/spec/vault.md#Machine`).replace(/[./]/g, "\\$&")}$`, "m"));
@@ -1070,7 +1071,7 @@ export effect function probe() {
     assert.ok(tooLate.said("always", /within its bound \(`within_leadsToAhead = 21`\)/), tooLate.text);
   });
 
-  test("nested set samples stay bounded, an inner lambda may shadow a match binder, and forall and subseteq keep their meaning as quantifiers", async () => {
+  test("nested set samples stay bounded, an inner lambda may shadow a match binder, forall and subseteq keep their meaning as quantifiers, and a variant names its own module's type before one an import brings", async () => {
     // A set's `forall` and `subseteq` are printed negated (print.ts, SET_OPS): the laws are sampled, compared with Quint and proved.
     const quantifiers = "\npure def positive(x: int): bool = x > 0\npure def lawQuantifiers(xs: Set[int]): bool = xs.subseteq(xs) and (xs.forall(positive) or xs.exists(x => x <= 0)) and not(xs.exists(x => x > 0) and xs.forall(x => x <= 0))";
     const root = oneRule("nested", "Nested values", "type P = A({ xs: List[int] }) | B\npure def sum(p: P): int = match p { | A(x) => x.xs.foldl(0, (n, x) => n + x) | _ => 0 }\npure def lawSum(k: int): bool = sum(A({ xs: List(1, 2) })) == 3\npure def lawCount(xs: List[Set[int]]): bool = xs.length() >= 0\npure def zeros(n: int): Set[int] = Set(n * 0)\npure def lawZeros(n: int): bool = zeros(n).contains(0)" + quantifiers);
@@ -1097,6 +1098,14 @@ pure def lawOwn(own: int): bool = shadowOwn(own) == own`));
     assert.deepEqual(checked.failed, ["review"], checked.text);
     const domain = await import(path.join(scoped, "gen/use.ts"));
     assert.deepEqual([domain.echo(7), domain.echoLocal(8), domain.sum([2, 3]), domain.shadowOwn(9), domain.paramShadow(1), domain.nestedShadow(1)], [7, 8, 5, 9, 7, 8]);
+    const deep = scratch({
+      "spec/codes.md": ruleSpec("type Code = Spent | Fine\npure val code: Code = Spent"),
+      "spec/lib.md": ruleSpec('import codes.* from "./codes"\npure val value = 1'),
+      "spec/use.md": ruleSpec('import lib.* from "./lib"\ntype Failure = Limited({ at: int }) | Spent\npure val spent: Failure = Spent\npure def lawSpent(n: int): bool = spent != Limited({ at: n })'),
+    });
+    const owned = await run(deep);
+    assert.deepEqual(owned.failed, ["review"], owned.text);
+    assert.deepEqual((await import(path.join(deep, "gen/use.ts"))).spent, { tag: "Spent" });
   });
 
   test("local enums and records keep their Quint types in generated code and proof", async () => {
@@ -3089,13 +3098,13 @@ describe("the documents name what exists", () => {
     };
     const studio = (ids: string[]) => ids.filter((id) => /^(vibestack-studio#(?!check)|@repo\/(ui#(build|typecheck)|design-system#build)|\/\/#lint:css)/.test(id));
     const append = (file: string, text = "\nMore words.\n") => () => fs.appendFileSync(path.join(root, file), text);
-    const vibeDeclared = ["apps/app", "packages/ui", "vibestack/studio"].filter((dir) => read(`${dir}/tsconfig.json`, root).includes(".vibe/declarations")).map((dir) => `${JSON.parse(read(`${dir}/package.json`, root)).name}#typecheck`);
-    const [prose, selftest, fixture] = [await changedBy(append("spec/app/index.md")), await changedBy(append("vibestack/selftest.ts", "\n")), await changedBy(append("vibestack/fixtures/door.md"))];
+    const vibeDeclared = [...["packages", "apps"].flatMap(within), "vibestack/studio"].filter((dir) => fs.existsSync(path.join(root, dir, "tsconfig.json")) && read(`${dir}/tsconfig.json`, root).includes(".vibe/declarations")).map((dir) => `${JSON.parse(read(`${dir}/package.json`, root)).name}#typecheck`);
+    const [prose, selftest, fixture] = [await changedBy(append("spec/agent/index.md")), await changedBy(append("vibestack/selftest.ts", "\n")), await changedBy(append("vibestack/fixtures/door.md"))];
     assert.deepEqual({
       notWaiting: real.filter((id) => !reach(id).has("//#gen")).sort(),
       lintWaitsFor: vibeDeclared.filter((id) => tasks.get("//#lint:js")!.dependencies.includes(id)),
       devWaitsFor: tasks.get("vibestack-studio#dev")!.dependencies.toSorted(),
-      prose: [studio(prose), prose.includes("@repo/app#test")],
+      prose: [studio(prose), prose.includes("@elizaos/agent#test")],
       selftest: [studio(selftest), ["a", "b", "rest"].every((shard) => selftest.includes(`//#selftest:tools:${shard}`))],
       fixture: studio(fixture),
       leftovers: await changedBy(async () => {
