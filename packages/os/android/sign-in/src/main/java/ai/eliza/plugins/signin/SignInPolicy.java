@@ -200,9 +200,9 @@ public final class SignInPolicy {
   public static Failure failureFor(Stage stage, int status, String error, String reason) {
     if (status == 429 || "rate_limited".equals(error)) return Failure.TOO_MANY_ATTEMPTS;
     if (status == 403 && "access_denied".equals(error) && "challenge_locked".equals(reason)) return Failure.TOO_MANY_ATTEMPTS;
-    if (status < 200 || status == 408 || status >= 500) {
-      return stage == Stage.GOOGLE && "google_not_configured".equals(error) ? Failure.GOOGLE_UNAVAILABLE : Failure.UNAVAILABLE;
-    }
+    if (stage == Stage.GOOGLE && ("google_not_configured".equals(error) || "google_not_configured".equals(reason))) return Failure.GOOGLE_UNAVAILABLE;
+    if (status < 200 || status == 408 || status >= 500) return Failure.UNAVAILABLE;
+    if (clientRefused(error)) return Failure.REFUSED;
     if (status == 410 || (reason != null && reason.endsWith("_expired")) || "credential_proof_invalid".equals(error)) return Failure.EXPIRED;
     if (status == 403 || status == 404) return Failure.REFUSED;
     if (status == 400 || status == 401) {

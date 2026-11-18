@@ -67,7 +67,8 @@ its windows; a session names at most 64 utterance ids per window. The codec
 maps a checked device frame to its input (the shell compares the token's
 digest; an uplink chunk that is not `validPcm` is `ClientViolation`) and
 each frame below to its wire form. A well-formed relay holds only `stt`
-frames, and turn events only after `connected`, while opening.
+frames, and turn events only after `connected`, while opening; every step
+keeps a relay well formed.
 
 ```quint
 type RelayPhase = RelayAwaitingHello | RelayOpening | RelayLive | RelayEnded
@@ -90,29 +91,18 @@ type RelayInput =
   | ProviderAudio({ id: str }) | ProviderFlushed({ id: str }) | ProviderCompleted({ id: str })
   | ProviderFailed | FundingRefused({ funding: Shortfall }) | CredentialRefused | SessionOver
 type RelayAnswer = { relay: Relay, frames: List[ServerFrame] }
-type UtteranceLookup = Unseen | Seen({ stage: UtteranceStage, heard: bool })
 pure val maxPendingFrames = 64
 pure val maxUtterancesPerWindow = 64
 pure val relayAtUpgrade: Relay = { phase: RelayAwaitingHello, errorReasons: false, extend: false, sttConnected: false, windows: 0, pending: List(), utterances: List() }
-pure def lookupUtterance(r: Relay, id: str): UtteranceLookup = {
-  val found = r.utterances.select(u => u.id == id)
-  val u = found.nthOr(0, { id: id, stage: UtteranceDone, heard: false })
-  if (found.length() == 0) Unseen else Seen({ stage: u.stage, heard: u.heard })
-}
-pure def stageIs(r: Relay, id: str, stage: UtteranceStage): bool = {
-  val found = lookupUtterance(r, id)
-  match found { | Seen(u) => u.stage == stage | Unseen => false }
-}
-pure def heardOf(r: Relay, id: str): bool = {
-  val found = lookupUtterance(r, id)
-  match found { | Seen(u) => u.heard | Unseen => false }
-}
+pure def seen(r: Relay, id: str): bool = r.utterances.some(u => u.id == id)
+pure def stageIs(r: Relay, id: str, stage: UtteranceStage): bool = r.utterances.some(u => u.id == id and u.stage == stage)
+pure def heardOf(r: Relay, id: str): bool = r.utterances.some(u => u.id == id and u.heard)
 pure def speaking(r: Relay, id: str): bool = stageIs(r, id, UtteranceOpen) or stageIs(r, id, UtteranceFinishing)
 pure def withUtterance(r: Relay, id: str, stage: UtteranceStage): Relay =
-  if (lookupUtterance(r, id) == Unseen) { ...r, utterances: r.utterances.append({ id: id, stage: stage, heard: false }) }
+  if (not(seen(r, id))) { ...r, utterances: r.utterances.append({ id: id, stage: stage, heard: false }) }
   else { ...r, utterances: r.utterances.listMap(u => if (u.id == id) { ...u, stage: stage } else u) }
 pure def withHeard(r: Relay, id: str, heard: bool): Relay = { ...r, utterances: r.utterances.listMap(u => if (u.id == id) { ...u, heard: heard } else u) }
-pure def roomFor(r: Relay, id: str): bool = lookupUtterance(r, id) != Unseen or r.utterances.length() < maxUtterancesPerWindow * r.windows
+pure def roomFor(r: Relay, id: str): bool = seen(r, id) or r.utterances.length() < maxUtterancesPerWindow * r.windows
 pure def quiet(r: Relay): RelayAnswer = { relay: r, frames: List() }
 pure def answer(r: Relay, frame: ServerFrame): RelayAnswer = { relay: r, frames: List(frame) }
 pure def isSttFrame(f: ServerFrame): bool = match f { | SttFrame(e) => true | _ => false }
@@ -124,9 +114,11 @@ pure def relayWellFormed(r: Relay): bool =
   and r.pending.every(f => isSttFrame(f)) and (r.pending.some(f => isTurnFrame(f)) implies r.sttConnected)
   and (r.phase != RelayOpening implies r.pending == List())
   and (r.phase == RelayLive implies (r.windows >= 1 and r.utterances.length() <= maxUtterancesPerWindow * r.windows))
+pure def lawStepKeepsTheRelayWellFormed(r: Relay, input: RelayInput): bool =
+  relayWellFormed(relayAtUpgrade) and (relayWellFormed(r) implies relayWellFormed(relayStep(r, input).relay))
 ```
 
-### Every end of a socket is one error and a close code for its cause, except a stop the device asked for
+### Every end of a socket is one error and a close code for its cause, except a stop the device asked for, and only funding carries a reason
 
 A live device's `stop` closes with 1000 and no error. Any other end sends
 one `error`, then closes: `unauthorized` (4401) for a wrong token, no hello
@@ -134,7 +126,12 @@ within 5 s, or a refused credential; `unavailable` (4402) when funding
 refused a window; `closed` (4410) when the session is over (deadline passed
 unrenewed, owner revoked it, account deleting); `protocol` (1008) for a
 frame that breaks the protocol, a budget or the id cap; `unavailable` (1008)
-for a provider or service outage. An ended relay answers nothing.
+for a provider or service outage. An ended relay answers nothing. Funding
+is never `unauthorized`: its `error` is `unavailable` with the reason
+`insufficient_credits` or `allowance_exhausted` only for a hello that sent
+`errorReasons`, and no other end carries a reason. Develop sent only
+`insufficient_credits`; plan decision D19 adds the daily allowance, and the
+device client accepts both.
 
 ```quint
 pure val normalClose = 1000
@@ -179,6 +176,33 @@ pure def lawEveryEndIsOneErrorThenItsCloseOrAStop(r: Relay, input: RelayInput): 
     and (endsNow(r, a) implies (stopped or (a.frames.length() == 2 and isErrorFrame(a.frames.nthOr(0, ReadyFrame))
       and isCloseFrame(a.frames.nthOr(1, ReadyFrame)) and a.frames.nthOr(1, ReadyFrame) != CloseFrame({ closeCode: normalClose })))))
 }
+pure def hasReason(f: ServerFrame): bool = match f { | ErrorFrame(e) => e.reason != NoRelayReason | _ => false }
+pure def isFundingRefusal(input: RelayInput): bool = match input { | FundingRefused(f) => true | _ => false }
+pure def lawAReasonIsShownOnlyForFundingToAHelloThatAsked(r: Relay, input: RelayInput): bool =
+  relayWellFormed(r) implies (relayStep(r, input).frames.some(f => hasReason(f)) implies (r.errorReasons and isFundingRefusal(input)))
+pure def lawRefusedFundingClosesAsFundingNeverUnauthorized(r: Relay, funding: Shortfall): bool = {
+  val a = relayStep(r, FundingRefused({ funding: funding }))
+  r.phase != RelayEnded implies (a.frames == List(
+    ErrorFrame({ code: RelayUnavailable, reason: if (r.errorReasons) FundingReason({ funding: funding }) else NoRelayReason }),
+    CloseFrame({ closeCode: fundingClose })))
+}
+pure val idValues = Set("u1", "u2")
+pure val rValues = Set(
+  { phase: RelayAwaitingHello, errorReasons: false, extend: false, sttConnected: false, windows: 0, pending: List(), utterances: List() },
+  { phase: RelayOpening, errorReasons: true, extend: true, sttConnected: false, windows: 0, pending: List(), utterances: List() },
+  { phase: RelayOpening, errorReasons: false, extend: false, sttConnected: true, windows: 0, pending: List(SttFrame({ kind: SttConnected }), SttFrame({ kind: StartOfTurn })), utterances: List() },
+  { phase: RelayLive, errorReasons: false, extend: false, sttConnected: false, windows: 1, pending: List(), utterances: List() },
+  { phase: RelayLive, errorReasons: true, extend: true, sttConnected: true, windows: 1, pending: List(), utterances: List({ id: "u1", stage: UtteranceOpen, heard: true }, { id: "u2", stage: UtteranceFinishing, heard: false }) },
+  { phase: RelayLive, errorReasons: true, extend: false, sttConnected: true, windows: 2, pending: List(), utterances: List({ id: "u1", stage: UtteranceCancelled, heard: false }, { id: "u2", stage: UtteranceDone, heard: false }) },
+  { phase: RelayEnded, errorReasons: true, extend: true, sttConnected: true, windows: 1, pending: List(), utterances: List({ id: "u1", stage: UtteranceFinishing, heard: true }) })
+pure val inputValues = Set(
+  ClientHello({ tokenMatches: true, errorReasons: true, extend: true }), ClientHello({ tokenMatches: false, errorReasons: true, extend: false }),
+  ClientPrepare({ id: "u1" }), ClientPrepare({ id: "u3" }), ClientSpeak({ id: "u1", flush: true }), ClientSpeak({ id: "u2", flush: false }),
+  ClientFinish({ id: "u1" }), ClientFinish({ id: "u2" }), ClientCancel({ id: "u1" }), ClientCancel({ id: "u4" }), ClientStop, ClientAudio, ClientViolation,
+  HelloTimedOut, Admitted, WindowRenewed, ProviderStt({ kind: SttConnected, transcriptChars: 0 }), ProviderStt({ kind: EndOfTurn, transcriptChars: 12 }),
+  ProviderStt({ kind: TranscriptUpdate, transcriptChars: 20000 }), ProviderAudio({ id: "u1" }), ProviderAudio({ id: "u2" }), ProviderFlushed({ id: "u1" }),
+  ProviderFlushed({ id: "u2" }), ProviderCompleted({ id: "u1" }), ProviderCompleted({ id: "u2" }),
+  ProviderFailed, FundingRefused({ funding: AllowanceShort }), FundingRefused({ funding: CreditsShort }), CredentialRefused, SessionOver)
 ```
 
 ### Only a hello carrying the session token opens the relay, and ready, then the held edges, is sent once the first window is admitted
@@ -233,8 +257,8 @@ A `tts` for an open utterance adds text (its `flush` goes to the provider).
 `finish` moves an open utterance to finishing. `cancel` cancels any id, and
 nothing more is sent for it. A frame for a cancelled id, and `finish` for a
 done one, is ignored (a cancel or the provider's end may overtake queued
-phrases); `prepare` or `tts` for a finishing or done id, and `finish` for an
-unseen id, break the protocol. Provider audio is forwarded for an open or
+phrases); `prepare` or `tts` for a finishing or done id, and `finish` twice
+or for an unseen id, break the protocol. Provider audio is forwarded for an open or
 finishing utterance; a flush is acknowledged only when audio was forwarded
 since the last acknowledgement; the provider's completion of an open or
 finishing utterance is answered with `complete` and ends it. As in develop,
@@ -245,7 +269,7 @@ settlement uncertain. A renewed window is announced only to a hello with
 ```quint
 pure def opens(r: Relay, id: str): RelayAnswer =
   if (not(roomFor(r, id))) endWith(r, CauseProtocol)
-  else if (lookupUtterance(r, id) == Unseen) answer(withUtterance(r, id, UtteranceOpen), PreparedFrame({ id: id }))
+  else if (not(seen(r, id))) answer(withUtterance(r, id, UtteranceOpen), PreparedFrame({ id: id }))
   else if (stageIs(r, id, UtteranceOpen) or stageIs(r, id, UtteranceCancelled)) quiet(r)
   else endWith(r, CauseProtocol)
 pure def whileLive(r: Relay, input: RelayInput): RelayAnswer = match input {
@@ -270,12 +294,10 @@ pure def relayStep(r: Relay, input: RelayInput): RelayAnswer =
   else if (r.phase == RelayAwaitingHello) beforeHello(r, input)
   else if (r.phase == RelayOpening) whileOpening(r, input)
   else whileLive(r, input)
-pure def lawStepKeepsTheRelayWellFormed(r: Relay, input: RelayInput): bool =
-  relayWellFormed(relayAtUpgrade) and (relayWellFormed(r) implies relayWellFormed(relayStep(r, input).relay))
 pure def lawUtteranceFramesFollowItsStage(r: Relay, input: RelayInput, id: str): bool = {
   val a = relayStep(r, input)
   relayWellFormed(r) implies (
-    (a.frames.includes(PreparedFrame({ id: id })) implies (lookupUtterance(r, id) == Unseen and stageIs(a.relay, id, UtteranceOpen)))
+    (a.frames.includes(PreparedFrame({ id: id })) implies (not(seen(r, id)) and stageIs(a.relay, id, UtteranceOpen)))
     and (a.frames.includes(FlushedFrame({ id: id })) implies (heardOf(r, id) and not(heardOf(a.relay, id))))
     and (a.frames.includes(CompleteFrame({ id: id })) implies (speaking(r, id) and stageIs(a.relay, id, UtteranceDone))))
 }
@@ -310,42 +332,4 @@ pure def lawNoTranscriptOverTheLimitIsSent(r: Relay, kind: SttEventKind, transcr
 }
 pure def lawExtendedOnlyForAHelloThatAsked(r: Relay, input: RelayInput): bool =
   relayWellFormed(r) implies (relayStep(r, input).frames.includes(ExtendedFrame) implies r.extend)
-```
-
-### Exhausted funding is never reported as a bad token, and its reason is shown only to a hello that asked
-
-A refused window always closes with 4402. Its `error` is `unavailable`, with
-the reason `insufficient_credits` or `allowance_exhausted` only for a hello
-that sent `errorReasons`; no other end carries a reason. Develop sent only
-`insufficient_credits`; plan decision D19 adds the daily allowance, and the
-device client of `spec/os/voice/cloudSpeech.md` accepts both.
-
-```quint
-pure def hasReason(f: ServerFrame): bool = match f { | ErrorFrame(e) => e.reason != NoRelayReason | _ => false }
-pure def isFundingRefusal(input: RelayInput): bool = match input { | FundingRefused(f) => true | _ => false }
-pure def lawAReasonIsShownOnlyForFundingToAHelloThatAsked(r: Relay, input: RelayInput): bool =
-  relayWellFormed(r) implies (relayStep(r, input).frames.some(f => hasReason(f)) implies (r.errorReasons and isFundingRefusal(input)))
-pure def lawRefusedFundingClosesAsFundingNeverUnauthorized(r: Relay, funding: Shortfall): bool = {
-  val a = relayStep(r, FundingRefused({ funding: funding }))
-  r.phase != RelayEnded implies (a.frames == List(
-    ErrorFrame({ code: RelayUnavailable, reason: if (r.errorReasons) FundingReason({ funding: funding }) else NoRelayReason }),
-    CloseFrame({ closeCode: fundingClose })))
-}
-pure val idValues = Set("u1", "u2")
-pure val rValues = Set(
-  { phase: RelayAwaitingHello, errorReasons: false, extend: false, sttConnected: false, windows: 0, pending: List(), utterances: List() },
-  { phase: RelayOpening, errorReasons: true, extend: true, sttConnected: false, windows: 0, pending: List(), utterances: List() },
-  { phase: RelayOpening, errorReasons: false, extend: false, sttConnected: true, windows: 0, pending: List(SttFrame({ kind: SttConnected }), SttFrame({ kind: StartOfTurn })), utterances: List() },
-  { phase: RelayLive, errorReasons: false, extend: false, sttConnected: false, windows: 1, pending: List(), utterances: List() },
-  { phase: RelayLive, errorReasons: true, extend: true, sttConnected: true, windows: 1, pending: List(), utterances: List({ id: "u1", stage: UtteranceOpen, heard: true }, { id: "u2", stage: UtteranceFinishing, heard: false }) },
-  { phase: RelayLive, errorReasons: true, extend: false, sttConnected: true, windows: 2, pending: List(), utterances: List({ id: "u1", stage: UtteranceCancelled, heard: false }, { id: "u2", stage: UtteranceDone, heard: false }) },
-  { phase: RelayEnded, errorReasons: true, extend: true, sttConnected: true, windows: 1, pending: List(), utterances: List({ id: "u1", stage: UtteranceFinishing, heard: true }) })
-pure val inputValues = Set(
-  ClientHello({ tokenMatches: true, errorReasons: true, extend: true }), ClientHello({ tokenMatches: false, errorReasons: true, extend: false }),
-  ClientPrepare({ id: "u1" }), ClientPrepare({ id: "u3" }), ClientSpeak({ id: "u1", flush: true }), ClientSpeak({ id: "u2", flush: false }),
-  ClientFinish({ id: "u1" }), ClientFinish({ id: "u2" }), ClientCancel({ id: "u1" }), ClientCancel({ id: "u4" }), ClientStop, ClientAudio, ClientViolation,
-  HelloTimedOut, Admitted, WindowRenewed, ProviderStt({ kind: SttConnected, transcriptChars: 0 }), ProviderStt({ kind: EndOfTurn, transcriptChars: 12 }),
-  ProviderStt({ kind: TranscriptUpdate, transcriptChars: 20000 }), ProviderAudio({ id: "u1" }), ProviderAudio({ id: "u2" }), ProviderFlushed({ id: "u1" }),
-  ProviderFlushed({ id: "u2" }), ProviderCompleted({ id: "u1" }), ProviderCompleted({ id: "u2" }),
-  ProviderFailed, FundingRefused({ funding: AllowanceShort }), FundingRefused({ funding: CreditsShort }), CredentialRefused, SessionOver)
 ```

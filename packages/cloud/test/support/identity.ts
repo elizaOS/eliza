@@ -1,4 +1,5 @@
 // spec/cloud/identity/accounts.md, "Story: Get one account on first sign-in"; spec/cloud/identity/sessions.md, "Story: Stay signed in"
+import { createHash } from "node:crypto";
 import { Clock, Effect } from "effect";
 import { landAccount } from "../../src/identity/accounts.vibe";
 import { issueSession } from "../../src/identity/sessions.vibe";
@@ -12,3 +13,5 @@ export const signedIn = (cloud: TestCloud, email: string) =>
       ),
     ),
   );
+
+export const s256 = (verifier: string): string => createHash("sha256").update(verifier, "ascii").digest("base64url");

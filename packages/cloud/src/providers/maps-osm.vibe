@@ -211,10 +211,10 @@ effect function bodyOf(response: HttpClientResponse.HttpClientResponse): string!
 effect function call(request: HttpClientRequest.HttpClientRequest): Call!!HttpClient.HttpClient {
   const exchange = effect {
     const sent = HttpClientRequest.setHeaders(request, { accept: "application/json", "user-agent": userAgent })
-    const response = try Effect.provideService(HttpClient.execute(sent), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect (cause) => { throw new Unreachable({ cause: cause._tag }) }
+    const response = Effect.provideService(HttpClient.execute(sent), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect (cause) => { throw new Unreachable({ cause: cause._tag }) }
     const billing = billingOf(response.status)
     if (billing === "CallNotBilled") {
-      try Stream.runHead(response.stream) catch () => undefined
+      Stream.runHead(response.stream) catch () => undefined
       return { kind: "rejected" } satisfies Call
     }
     const text = try bodyOf(response)
@@ -223,7 +223,7 @@ effect function call(request: HttpClientRequest.HttpClientRequest): Call!!HttpCl
     return parsed.kind === "invalid" ? { kind: "answered", status: response.status, json: undefined } satisfies Call : { kind: "answered", status: response.status, json: parsed.value } satisfies Call
   }
   const bounded = timeoutOrElse(exchange, { duration: upstreamTimeout, orElse: () => fail(new Unreachable({ cause: "timeout" })) })
-  return try bounded catch (failure): Call => match (failure) {
+  return bounded catch (failure): Call => match (failure) {
     when BodyTooLarge: { kind: "rejected" };
     when Unreachable: { kind: "lost", cause: failure.cause };
   }

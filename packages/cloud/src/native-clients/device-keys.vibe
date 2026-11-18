@@ -20,7 +20,7 @@ module node {
 }
 import { s256 } from node
 
-const grants = outputRows("device_grants", { initial, decodeState, apply })
+export const grants = outputRows("device_grants", { initial, decodeState, apply })
 
 const pkceText = /^[A-Za-z0-9._~-]{43,128}$/
 const challengeText = /^[A-Za-z0-9_-]{43}$/

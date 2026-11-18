@@ -119,8 +119,7 @@ pure def admitReading(world: ReadingWorld, purpose: NativePurpose, binding: Spee
   else if (sensitiveRoute or world == NoSecureDocument) ReadingRefused({ reason: SensitivePage })
   else if (world != DocumentReady) ReadingRefused({ reason: ReadingNotReady })
   else Extracting
-pure def canStartReading(s: ReadingLease, purpose: NativePurpose, binding: SpeechBinding, sensitiveRoute: bool): bool =
-  s.probe != SupportUnavailable
+pure def canStartReading(s: ReadingLease): bool = s.probe != SupportUnavailable
 pure def startReading(s: ReadingLease, purpose: NativePurpose, binding: SpeechBinding, sensitiveRoute: bool): ReadingLease =
   { ...s, phase: admitReading(s.world, purpose, binding, sensitiveRoute), purpose: purpose, lease: s.lease + 1, units: 0 }
 pure def lawAdmittedReadingIsOnReadySafePage(world: ReadingWorld, purpose: NativePurpose, binding: SpeechBinding, sensitiveRoute: bool): bool =

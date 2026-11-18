@@ -2,16 +2,14 @@
 
 The page command peer runs beside the page in the host WebView and in the
 owned Chromium (`browser/src/surface-task-handler.mjs`, `task-bindings.mjs`,
-`page-command.mjs`). The agent's surface channel delivers a copied command
-to it; the agent's task host owns the task, its consent and the decision
-whether a step is done. This spec owns what the peer admits, the binding
-that scopes it, the page observation it acts on, and what it reports. The
-report uses the task's own operation states of
-[interactive task](../../core/interactiveTask.md): a page read that came
-back whole is `Succeeded`, an input the page confirmed is only `Dispatched`
-until the task host reads the page back, and anything the peer cannot
-confirm is `Unknown`. The shell parses messages, reads the clock, the
-selected page and its origin, and passes the facts below.
+`page-command.mjs`). The agent's surface channel delivers a copied command;
+the agent's task host owns the task, its consent and whether a step is
+done. This spec owns what the peer admits, the binding that scopes it, the
+observation it acts on and what it reports, in the operation states of
+[interactive task](../../core/interactiveTask.md): a whole page read is
+`Succeeded`, a confirmed input only `Dispatched` until the task host reads
+the page back, anything unconfirmed `Unknown`. The shell parses messages,
+reads the clock, the selected page and its origin, and passes the facts.
 
 ## Story: Run a website task step only on the page it was planned for
 

@@ -140,7 +140,7 @@ export effect function receiptStep<S, Corrupt>(tx: Tx, rows: ReceiptRows<S, Corr
 }
 
 export effect function prepareReceipt<S, Corrupt>(tx: Tx, rows: ReceiptRows<S, Corrupt>, key: string, by: SessionOwner, terms: ReceiptTerms, now: number) {
-  const loaded = try loadRow(tx, receiptMachineRows(rows), key)
+  const loaded = try loadReceipt(tx, rows, key)
   const receipt = rows.receiptOf(loaded.state)
   if (receipt.session.phase !== "Absent") {
     if (isConflict(receipt, by, terms.digest)) throw new Refused({ refusal: conflictRefusal })
@@ -156,14 +156,14 @@ export effect function claimReceipt<S, Corrupt>(tx: Tx, rows: ReceiptRows<S, Cor
 }
 
 export effect function recordReply<S, Corrupt, A>(tx: Tx, rows: ReceiptRows<S, Corrupt>, key: string, by: SessionOwner, reply: ProviderReply<A>, now: number) {
-  const loaded = try loadRow(tx, receiptMachineRows(rows), key)
+  const loaded = try loadReceipt(tx, rows, key)
   const verdict = replyOf(reply)
   if (!canReceiveReply(receiptAt(rows.receiptOf(loaded.state), now), verdict)) return loaded.state
   return try receiptStep(tx, rows, key, { event: { type: "receiveReply", reply: verdict }, by, now })
 }
 
 export effect function recordLookup<S, Corrupt>(tx: Tx, rows: ReceiptRows<S, Corrupt>, key: string, lookup: LookupResult, now: number) {
-  const loaded = try loadRow(tx, receiptMachineRows(rows), key)
+  const loaded = try loadReceipt(tx, rows, key)
   const receipt = rows.receiptOf(loaded.state)
   if (!canResolve(receiptAt(receipt, now), lookup)) return loaded.state
   return try receiptStep(tx, rows, key, { event: { type: "resolve", lookup }, by: receipt.session.owner, now })
@@ -196,7 +196,7 @@ export effect function dispatchReceipt<S, Corrupt, A, E, R>(rows: ReceiptRows<S,
 export effect function resolveReceipt<S, Corrupt, E, R>(rows: ReceiptRows<S, Corrupt>, key: string, lookup: (providerKey: string, deadline: number) => ProviderReply<LookupResult>!E!R) {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  const loaded = try store.transaction((tx) => loadRow(tx, receiptMachineRows(rows), key, false))
+  const loaded = try store.transaction((tx) => loadReceipt(tx, rows, key, false))
   const receipt = receiptAt(rows.receiptOf(loaded.state), now)
   if (!isUnknown(receipt)) return loaded.state
   if (receipt.session.effects === 0) return try store.transaction((tx) => recordLookup(tx, rows, key, { tag: "NothingSeen" }, now))

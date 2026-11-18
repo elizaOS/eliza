@@ -1,17 +1,13 @@
 // spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"
 import type { GenerateTextParams, IAgentRuntime, ModelRegistrationMetadata, StreamChunkCallback } from "@elizaos/core"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
-import { outcomeOf, type CloudError, type ModelHandler } from "../../gen/agent__models__binding.effect.vibe"
+import { outcomeOf, type ModelHandler } from "../../gen/agent__models__binding.effect.vibe"
+import type { BoundModels } from "./binding.vibe"
+import { readCloudError, type CloudFailure } from "./cloud-error.vibe"
 
-export type Started = number | "limited"
 export type ChatHandler = Exclude<ModelHandler, "TextEmbedding">
 
-export interface Binding {
-  credential(): Redacted.Redacted<string>
-  startCall(handler: ModelHandler, now: number): Started!!
-  answerCall(id: number, now: number): void!!
-  refuseCall(id: number, now: number, error: CloudError): void!!
-}
+export type Binding = Pick<BoundModels, "credential" | "startCall" | "answerCall" | "refuseCall">
 
 export interface Endpoint {
   readonly url: string
@@ -25,7 +21,9 @@ export interface Sink {
 
 export error ModelRefusal { message: string; code: string | undefined; status: number | undefined }
 
-export error Refused { cloud: CloudError }
+export error Refused { cloud: CloudFailure }
+
+export error StreamConsumerFailed { cause: unknown }
 
 schema Choice { message: { content: string } }
 const Completion = Schema.Struct({ choices: Schema.Array(Choice).check(Schema.isMinLength(1)) })
@@ -34,12 +32,11 @@ const Delta = Schema.Struct({ choices: Schema.Array(Schema.Struct({ delta: Schem
   content: Schema.optionalKey(Schema.NullOr(Schema.String)),
 }) })) })
 const decodeDelta = Schema.decodeUnknownOption(Schema.fromJsonString(Delta))
-const Refusal = Schema.Struct({
-  error: Schema.optionalKey(Schema.Unknown),
-  retryAt: Schema.optionalKey(Schema.Number),
-  resetsAt: Schema.optionalKey(Schema.Number),
-})
-const decodeRefusal = Schema.decodeUnknownOption(Refusal)
+const Quota = Schema.Struct({ error: Schema.Struct({
+  code: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  type: Schema.optionalKey(Schema.NullOr(Schema.String)),
+}) })
+const decodeQuota = Schema.decodeUnknownOption(Schema.fromJsonString(Quota))
 schema Listing { data: { id: string }[] }
 const decodeListing = Schema.decodeUnknownOption(Listing)
 
@@ -113,40 +110,34 @@ module edge {
 }
 import { run } from edge
 
-function refusalOf(cloud: CloudError): ModelRefusal {
+function refusalOf(cloud: CloudFailure): ModelRefusal {
   const outcome = outcomeOf(cloud)
-  if (outcome === "RefusedConnection") return new ModelRefusal({ message: "The model connection failed", code: "ECONNRESET", status: undefined })
-  if (outcome === "RetryEnvelope") return new ModelRefusal({ message: "The model service refused the call", code: undefined, status: 503 })
-  if (outcome === "ExhaustedBudget") return new ModelRefusal({ message: "The model call limit was reached", code: "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", status: 429 })
-  if (outcome === "FundingDenied") return new ModelRefusal({ message: "The model account has no funds", code: "MODEL_FUNDING_AUTHORITY_FAILED", status: 402 })
-  return new ModelRefusal({ message: "The model account refused the call", code: undefined, status: cloud.tag === "CloudCredentialInvalid" ? 401 : 403 })
+  switch (outcome) {
+    case "RefusedConnection": return new ModelRefusal({ message: "The model connection failed", code: "ECONNRESET", status: undefined })
+    case "RetryEnvelope": return new ModelRefusal({ message: "The model service refused the call", code: undefined, status: 503 })
+    case "ExhaustedBudget": return new ModelRefusal({ message: "The model call limit was reached", code: "MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED", status: 429 })
+    case "FundingDenied": return new ModelRefusal({ message: "The model account has no funds", code: "MODEL_FUNDING_AUTHORITY_FAILED", status: 402 })
+    case "BadRequest": return new ModelRefusal({ message: "The model service rejected the request", code: undefined, status: 400 })
+    case "ProcessingDenied":
+    case "Answer":
+    case "ProviderAbort":
+    case "CallerAbort":
+      return new ModelRefusal({ message: "The model account refused the call", code: undefined, status: cloud.tag === "CloudCredentialInvalid" ? 401 : 403 })
+  }
 }
 
-function codeOf(error: unknown): string {
-  if (typeof error === "string") return error
-  if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "string") return error.code
-  return ""
-}
-
-function cloudErrorOf(status: number, code: string, retryAt: number, resetsAt: number): CloudError {
-  if (status === 401) return { tag: "CloudCredentialInvalid" }
-  if (status === 402) return code === "allowance_exhausted" ? { tag: "CloudAllowanceExhausted", resetsAt } : { tag: "CloudInsufficientCredits" }
-  if (status === 429) return code === "insufficient_quota" ? { tag: "CloudInsufficientCredits" } : { tag: "CloudRateLimited", retryAt }
-  if (status === 403) return { tag: "CloudConsentRequired" }
-  if (status >= 500 && status !== 502) return { tag: "CloudUnavailable", retryAfter: retryAt }
-  return { tag: "CloudProviderIssue" }
+function quotaSpent(raw: string): boolean {
+  const body = decodeQuota(raw)
+  return body._tag === "Some" && (body.value.error.code === "insufficient_quota" || body.value.error.type === "insufficient_quota")
 }
 
 effect function refusalFrom(result: HttpClientResponse.HttpClientResponse) {
   const now = try Clock.currentTimeMillis
-  const raw = timeout(result.json, "20 seconds") catch effect () => undefined
-  const body = decodeRefusal(raw)
-  const seconds = Number(result.headers["retry-after"])
-  const waited = Number.isFinite(seconds) && seconds > 0 ? now + seconds * 1000 : 0
-  const retryAt = body._tag === "Some" ? body.value.retryAt ?? waited : waited
-  const resetsAt = body._tag === "Some" ? body.value.resetsAt ?? 0 : 0
-  const code = body._tag === "Some" ? codeOf(body.value.error) : ""
-  return new Refused({ cloud: cloudErrorOf(result.status, code, retryAt, resetsAt) })
+  const raw = timeout(result.text, "20 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
+  if (result.status === 429 && quotaSpent(raw)) return new Refused({ cloud: { tag: "CloudInsufficientCredits" } })
+  const response = { status: result.status, headers: { get: (name: string) => result.headers[name] ?? null }, text: async () => raw }
+  const read = try tryPromise(() => readCloudError(response, now))
+  return new Refused({ cloud: read.failure })
 }
 
 effect function collectStream(result: HttpClientResponse.HttpClientResponse, sink: Sink) {
@@ -167,9 +158,12 @@ effect function collectStream(result: HttpClientResponse.HttpClientResponse, sin
     if (!delta) return
     text += delta
     if (text.length > 32768) throw providerIssue()
-    if (sink.onStreamChunk) try tryPromise(async () => sink.onStreamChunk?.(delta, undefined, text))
+    if (sink.onStreamChunk) try tryPromise({ try: async () => sink.onStreamChunk?.(delta, undefined, text), catch: (cause) => new StreamConsumerFailed({ cause }) })
   })
-  timeout(collect, "90 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
+  timeout(collect, "90 seconds") catch effect (failure) => {
+    if (failure instanceof Refused || failure instanceof StreamConsumerFailed) throw failure
+    throw new Refused({ cloud: { tag: "CloudNetwork" } })
+  }
   if (!terminal || text.trim() === "") throw providerIssue()
   return text
 }
@@ -196,6 +190,7 @@ effect function serve(binding: Binding, handler: ChatHandler, endpoint: Endpoint
   if (started === "limited") throw refusalOf({ tag: "CloudRateLimited", retryAt: 0 })
   const body = { model: endpoint.models[handler], messages, stream: sink.stream === true, ...(max === undefined ? {} : { max_tokens: max }) }
   const text = send(endpoint.url, binding.credential(), body, sink) catch effect (failure) => {
+    if (!(failure instanceof Refused)) throw failure
     const refused = try Clock.currentTimeMillis
     try binding.refuseCall(started, refused, failure.cloud)
     throw refusalOf(failure.cloud)

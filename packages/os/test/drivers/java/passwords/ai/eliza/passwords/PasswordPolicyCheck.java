@@ -250,7 +250,7 @@ public final class PasswordPolicyCheck {
     check("an open picker ends with its window", !requests.currentFill(aging) && !requests.claimFill(aging));
   }
 
-  private void editor() {
+  private void editor() throws Exception {
     check("nothing creates an entry", !PasswordEditorPolicy.admit(List.<String>of().iterator(), null, null).editing());
     PasswordEditorPolicy.Request edit = PasswordEditorPolicy.admit(List.of("entryId", "expectedRevision").iterator(), "id-1", 3);
     check("an edit names an entry and its revision", edit.editing() && edit.entryId.equals("id-1") && edit.expectedRevision == 3);

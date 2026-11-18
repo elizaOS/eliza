@@ -3,6 +3,7 @@
   "name": "Fixture Cloud",
   "environments": {
     "production": {
+      "name": "Fixture Cloud",
       "api": "https://api.example.com",
       "web": "https://www.example.com",
       "entitlementAudience": "cloud-subscription",
@@ -77,6 +78,7 @@
       }
     },
     "staging": {
+      "name": "Fixture Cloud Staging",
       "api": "https://api.staging.example.com",
       "web": "https://www.staging.example.com",
       "entitlementAudience": "cloud-subscription",

@@ -1,8 +1,7 @@
 // spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/resources.md, "Story: Release everything I acquired, once"; spec/agent/access/transport.md, "Story: Answer each local request exactly once"; spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"
 import type { DeviceStorageSnapshot } from "../../src/storage/index.vibe"
-import { parseLaunch } from "../../src/host/launch.vibe"
 import type { AgentPlugin, ModuleFactory } from "../../src/host/module.vibe"
-import { startAgent, type RunningAgent } from "../../src/host/process.vibe"
+import type { RunningAgent } from "../../src/host/process.vibe"
 import { freePort, startAgentChild, type AgentChild, type AgentRun, type Transport } from "./child.ts"
 import { startCloudFake, type CloudFake } from "./cloud-fake.ts"
 import { httpRequest, httpRequestStream, httpSubscribe } from "./http-client.ts"
@@ -93,6 +92,8 @@ export interface InProcess {
 
 export effect function startInProcess(options: InProcessOptions = {}) {
   const { state, cloud, document, frame, transport } = try prepare(options)
+  const [{ parseLaunch }, { startAgent }] = try host("agent host modules", () =>
+    Promise.all([import("../../src/host/launch.vibe"), import("../../src/host/process.vibe")]))
   const parsed = try parseLaunch(JSON.stringify(document), JSON.stringify(frame))
   const agent = try acquireRelease(
     startAgent({

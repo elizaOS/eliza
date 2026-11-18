@@ -1,0 +1,403 @@
+// spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"; spec/cloud/services/speechSession.md, "Story: Keep a live session funded and close it with receipts"
+import { Socket } from "effect/socket"
+import {
+  acceptsAudio, clientInput, helloDeadline, maxDownlinkPcmBytes, relayAtUpgrade, relayChannels, relaySampleRate, relayStep, relayVersion, speaking, stageIs,
+  type ClientFrame, type Relay, type RelayInput, type ServerFrame, type Shortfall, type SttEventKind, type WireServerFrame
+} from "../../gen/cloud__services__speechRelay.effect.vibe"
+import { refused, type Refused } from "../http/refusal.vibe"
+import type { CloudContext, Route, RouteContext } from "../http/routes.vibe"
+
+export type Failure = { readonly _tag: string }
+
+export type WindowAdmission =
+  | { readonly kind: "admitted"; readonly expiresAt: number }
+  | { readonly kind: "short"; readonly shortfall: Shortfall }
+
+export interface WindowUsage {
+  readonly pcmBytes: number
+  readonly ttsChars: number
+  readonly sttDrained: boolean
+  readonly ttsConfirmed: boolean
+  readonly dispatched: boolean
+}
+
+export type SessionEnd = "SessionOver" | "CredentialRefused"
+
+export interface RelaySession {
+  readonly openSocket: (sessionId: string) => void!Refused!CloudContext
+  readonly tokenMatches: (sessionId: string, token: string) => boolean!Failure!CloudContext
+  readonly admitWindow: (sessionId: string, window: number) => WindowAdmission!Failure!CloudContext
+  readonly dispatchWindow: (sessionId: string, window: number) => void!Failure!CloudContext
+  readonly settleWindow: (sessionId: string, window: number, usage: WindowUsage) => void!Failure!CloudContext
+  readonly retire: (sessionId: string) => void!Failure!CloudContext
+  readonly ended: (sessionId: string) => SessionEnd!!CloudContext
+}
+
+export interface SttEdge {
+  readonly kind: SttEventKind
+  readonly transcript: string
+}
+
+export type TtsEdge =
+  | { readonly kind: "audio"; readonly id: string; readonly pcm: Uint8Array }
+  | { readonly kind: "flushed"; readonly id: string }
+  | { readonly kind: "completed"; readonly id: string }
+
+export interface SttLink {
+  readonly send: (pcm: Uint8Array) => void!Failure
+  readonly drain: () => boolean!Failure
+  readonly edges: Stream.Stream<SttEdge, Failure>
+}
+
+export interface TtsLink {
+  readonly speak: (id: string, text: string, flush: boolean) => void!Failure
+  readonly finish: (id: string) => void!Failure
+  readonly cancel: (id: string) => void!Failure
+  readonly edges: Stream.Stream<TtsEdge, Failure>
+}
+
+export interface SpeechLinks {
+  readonly openStt: () => SttLink!Failure!(Scope.Scope | CloudContext)
+  readonly openTts: () => TtsLink!Failure!(Scope.Scope | CloudContext)
+}
+
+export interface RelayCodec {
+  readonly decodeClientText: (text: string) => ClientFrame | undefined
+  readonly encodeServerFrame: (frame: WireServerFrame) => string | ReadonlyArray<number>
+}
+
+export interface RelayPorts {
+  readonly session: RelaySession
+  readonly links: SpeechLinks
+  readonly codec: RelayCodec
+}
+
+export const windowBudget = { pcmBytes: 1_920_000, ttsChars: 4096, outputBytes: 8 * 1024 * 1024, queuedFrames: 64, renewLeadMs: 10_000 } as const
+
+interface Window {
+  readonly number: number
+  readonly expiresAt: number
+  dispatched: boolean
+  pcmBytes: number
+  ttsChars: number
+  outputBytes: number
+}
+
+interface Shell {
+  relay: Relay
+  readonly windows: Window[]
+  current: number
+  refusal: Shortfall | undefined
+  stt: SttLink | undefined
+  tts: TtsLink | undefined
+  readonly transcripts: string[]
+  readonly spoken: Set<string>
+  ttsUncertain: boolean
+  graceful: boolean
+  queued: number
+  gone: boolean
+}
+
+type Arrival =
+  | { readonly kind: "device"; readonly data: string | Uint8Array }
+  | { readonly kind: "gone" }
+  | { readonly kind: "edge"; readonly input: RelayInput }
+  | { readonly kind: "opened" }
+  | { readonly kind: "stt"; readonly edge: SttEdge }
+  | { readonly kind: "tts"; readonly edge: TtsEdge }
+  | { readonly kind: "renewed"; readonly window: Window }
+  | { readonly kind: "refusedRenewal"; readonly shortfall: Shortfall }
+  | { readonly kind: "deadline"; readonly window: number }
+
+type Arrivals = Queue.Queue<Arrival>
+
+const providerFailed: Arrival = { kind: "edge", input: { tag: "ProviderFailed" } }
+
+function windowOf(shell: Shell, number: number): Window | undefined {
+  return shell.windows.find((window) => window.number === number)
+}
+
+function openWindow(number: number, expiresAt: number): Window {
+  return { number, expiresAt, dispatched: false, pcmBytes: 0, ttsChars: 0, outputBytes: 0 }
+}
+
+function iso(at: number): string {
+  return new Date(at).toISOString()
+}
+
+effect function write(shell: Shell, codec: RelayCodec, writer: Socket.Writer, frame: ServerFrame, pcm: Uint8Array | undefined) {
+  const wire: WireServerFrame | number = match (frame) {
+    when { tag: "CloseFrame", let closeCode }: closeCode;
+    when { tag: "ReadyFrame" }: { tag: "WireReady", version: relayVersion, sampleRate: relaySampleRate, channels: relayChannels, expiresAt: iso(windowOf(shell, shell.current)?.expiresAt ?? 0) };
+    when { tag: "ExtendedFrame" }: { tag: "WireExtended", expiresAt: iso(shell.windows.at(-1)?.expiresAt ?? 0) };
+    when { tag: "SttFrame", let kind }: { tag: "WireStt", kind, transcript: shell.transcripts.shift() ?? "" };
+    when { tag: "PreparedFrame", let id }: { tag: "WirePrepared", id };
+    when { tag: "FlushedFrame", let id }: { tag: "WireFlushed", id };
+    when { tag: "CompleteFrame", let id }: { tag: "WireComplete", id };
+    when { tag: "AudioFrame", let id }: { tag: "WireAudio", id, pcm: Array.from(pcm ?? new Uint8Array()) };
+    when { tag: "ErrorFrame", let code, let reason }: { tag: "WireError", code, reason };
+  }
+  if (typeof wire === "number") {
+    try writer.write(new Socket.CloseEvent(wire))
+    return
+  }
+  const encoded = codec.encodeServerFrame(wire)
+  try writer.write(typeof encoded === "string" ? encoded : Uint8Array.from(encoded))
+}
+
+effect function advance(shell: Shell, codec: RelayCodec, writer: Socket.Writer, input: RelayInput, payload: { readonly transcript?: string; readonly pcm?: Uint8Array } = {}) {
+  const held = shell.relay.pending.length
+  const answer = relayStep(shell.relay, input)
+  shell.relay = answer.relay
+  if (payload.transcript !== undefined && (answer.frames.some((frame) => frame.tag === "SttFrame") || answer.relay.pending.length > held)) {
+    shell.transcripts.push(payload.transcript)
+  }
+  for (const frame of answer.frames) {
+    if (shell.gone) return
+    if (frame.tag === "AudioFrame" && payload.pcm !== undefined) {
+      const window = windowOf(shell, shell.current)
+      if (window !== undefined) window.outputBytes += payload.pcm.length
+    }
+    try write(shell, codec, writer, frame, payload.pcm) catch () => { shell.gone = true }
+  }
+}
+
+effect function deviceFrame(shell: Shell, ports: RelayPorts, sessionId: string, writer: Socket.Writer, data: string | Uint8Array) {
+  const frame: ClientFrame | undefined = typeof data === "string" ? ports.codec.decodeClientText(data) : { tag: "WireUplink", pcm: Array.from(data) }
+  const before = shell.relay
+  if (frame === undefined) {
+    try advance(shell, ports.codec, writer, { tag: "ClientViolation" })
+    return
+  }
+  const matches = frame.tag === "WireHello" && before.phase === "RelayAwaitingHello"
+    ? try ports.session.tokenMatches(sessionId, frame.token) catch () => false
+    : false
+  const window = windowOf(shell, shell.current)
+  const decoded = clientInput(frame, matches)
+  const overBudget = window !== undefined && match (frame) {
+    when { tag: "WireTts", let text }: window.ttsChars + text.length > windowBudget.ttsChars;
+    when { tag: "WireUplink", let pcm }: acceptsAudio(before) && window.pcmBytes + pcm.length > windowBudget.pcmBytes;
+    default: false;
+  }
+  try advance(shell, ports.codec, writer, overBudget ? { tag: "ClientViolation" } : decoded)
+  const live = shell.relay.phase === "RelayLive"
+  const tts = shell.tts
+  const sent = match (frame) {
+    when { tag: "WireUplink", let pcm }: effect {
+      if (!live || decoded.tag !== "ClientAudio" || !acceptsAudio(before) || shell.stt === undefined || window === undefined) return
+      window.pcmBytes += pcm.length
+      try shell.stt.send(data instanceof Uint8Array ? data : Uint8Array.from(pcm))
+    };
+    when { tag: "WireTts", let id, let text, let flush }: effect {
+      if (!stageIs(shell.relay, id, "UtteranceOpen") || tts === undefined || window === undefined) return
+      window.ttsChars += text.length
+      shell.spoken.add(id)
+      try tts.speak(id, text, flush)
+    };
+    when { tag: "WireFinish", let id }: effect {
+      if (stageIs(before, id, "UtteranceOpen") && stageIs(shell.relay, id, "UtteranceFinishing") && tts !== undefined) try tts.finish(id)
+    };
+    when { tag: "WireCancel", let id }: effect {
+      if (!live || !speaking(before, id) || tts === undefined) return
+      shell.ttsUncertain = true
+      try tts.cancel(id)
+    };
+    when { tag: "WireHello" }: effect {
+      if (before.phase === "RelayAwaitingHello" && shell.relay.phase === "RelayOpening") return "open" as const
+    };
+    when { tag: "WireStop" }: effect {
+      if (before.phase === "RelayLive" && shell.relay.phase === "RelayEnded") shell.graceful = true
+    };
+    when { tag: "WirePrepare" }: effect {};
+  }
+  return try sent catch effect () => {
+    try advance(shell, ports.codec, writer, { tag: "ProviderFailed" })
+  }
+}
+
+effect function pump<A>(edges: Stream.Stream<A, Failure>, arrivals: Arrivals, wrap: (edge: A) => Arrival) {
+  const pumped = effect {
+    for try (const edge of edges) {
+      try Queue.offer(arrivals, wrap(edge))
+    }
+  }
+  try pumped catch () => undefined
+  try Queue.offer(arrivals, providerFailed)
+}
+
+effect function openFirstWindow(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals) {
+  const admission = try ports.session.admitWindow(sessionId, 1)
+  if (admission.kind === "short") {
+    try Queue.offer(arrivals, { kind: "edge", input: { tag: "FundingRefused", funding: admission.shortfall } })
+    return
+  }
+  const window = openWindow(1, admission.expiresAt)
+  shell.windows.push(window)
+  shell.current = 1
+  try ports.session.dispatchWindow(sessionId, 1)
+  window.dispatched = true
+  const stt = try ports.links.openStt()
+  shell.stt = stt
+  const tts = try ports.links.openTts()
+  shell.tts = tts
+  fork.scoped pump(stt.edges, arrivals, (edge) => ({ kind: "stt", edge }))
+  fork.scoped pump(tts.edges, arrivals, (edge) => ({ kind: "tts", edge }))
+  try Queue.offer(arrivals, { kind: "opened" })
+}
+
+effect function untilAt(at: number) {
+  const now = try Clock.currentTimeMillis
+  try sleep(Duration.millis(Math.max(0, at - now)))
+}
+
+effect function renew(shell: Shell, ports: RelayPorts, sessionId: string, window: Window): Arrival!Failure!CloudContext {
+  const admission = try ports.session.admitWindow(sessionId, window.number + 1)
+  return match (admission) {
+    when { kind: "admitted", let expiresAt }: { kind: "renewed", window: openWindow(window.number + 1, expiresAt) };
+    when { kind: "short", let shortfall }: { kind: "refusedRenewal", shortfall };
+  }
+}
+
+effect function watchWindow(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals, window: Window) {
+  try untilAt(window.expiresAt - windowBudget.renewLeadMs)
+  if (shell.relay.extend && shell.relay.phase === "RelayLive") {
+    try Queue.offer(arrivals, try renew(shell, ports, sessionId, window) catch () => providerFailed)
+  }
+  try untilAt(window.expiresAt)
+  try Queue.offer(arrivals, { kind: "deadline", window: window.number })
+}
+
+effect function windowEnds(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals, writer: Socket.Writer, number: number) {
+  if (number !== shell.current) return
+  const next = windowOf(shell, number + 1)
+  if (next === undefined) {
+    try advance(shell, ports.codec, writer, shell.refusal === undefined ? { tag: "SessionOver" } : { tag: "FundingRefused", funding: shell.refusal })
+    return
+  }
+  const dispatched = try ports.session.dispatchWindow(sessionId, next.number) catch () => false
+  if (dispatched === false) {
+    try advance(shell, ports.codec, writer, { tag: "ProviderFailed" })
+    return
+  }
+  next.dispatched = true
+  shell.current = next.number
+  fork.scoped watchWindow(shell, ports, sessionId, arrivals, next)
+}
+
+effect function providerAudio(shell: Shell, codec: RelayCodec, writer: Socket.Writer, id: string, pcm: Uint8Array) {
+  for (let offset = 0; offset < pcm.length; offset += maxDownlinkPcmBytes) {
+    const slice = pcm.subarray(offset, offset + maxDownlinkPcmBytes)
+    const window = windowOf(shell, shell.current)
+    const over = window !== undefined && window.outputBytes + slice.length > windowBudget.outputBytes
+    try advance(shell, codec, writer, over ? { tag: "ClientViolation" } : { tag: "ProviderAudio", id }, { pcm: slice })
+  }
+}
+
+effect function arrive(shell: Shell, ports: RelayPorts, sessionId: string, arrivals: Arrivals, writer: Socket.Writer, arrival: Arrival) {
+  const codec = ports.codec
+  match (arrival) {
+    when { kind: "device", let data }: effect {
+      shell.queued -= 1
+      if (try deviceFrame(shell, ports, sessionId, writer, data) === "open") fork.scoped (openFirstWindow(shell, ports, sessionId, arrivals) catch effect () => { try Queue.offer(arrivals, providerFailed) })
+    };
+    when { kind: "gone" }: effect { shell.gone = true };
+    when { kind: "edge", let input }: advance(shell, codec, writer, input);
+    when { kind: "opened" }: effect {
+      const first = windowOf(shell, 1)
+      if (first !== undefined) fork.scoped watchWindow(shell, ports, sessionId, arrivals, first)
+      try advance(shell, codec, writer, { tag: "Admitted" })
+    };
+    when { kind: "stt", let edge }: advance(shell, codec, writer, { tag: "ProviderStt", kind: edge.kind, transcriptChars: edge.transcript.length }, { transcript: edge.transcript });
+    when { kind: "tts", let edge }: match (edge) {
+      when { kind: "audio", let id, let pcm }: providerAudio(shell, codec, writer, id, pcm);
+      when { kind: "flushed", let id }: advance(shell, codec, writer, { tag: "ProviderFlushed", id });
+      when { kind: "completed", let id }: effect {
+        if (stageIs(shell.relay, id, "UtteranceOpen")) shell.ttsUncertain = true
+        try advance(shell, codec, writer, { tag: "ProviderCompleted", id })
+      };
+    };
+    when { kind: "renewed", let window }: effect {
+      shell.windows.push(window)
+      try advance(shell, codec, writer, { tag: "WindowRenewed" })
+    };
+    when { kind: "refusedRenewal", let shortfall }: effect { shell.refusal = shortfall };
+    when { kind: "deadline", let window }: windowEnds(shell, ports, sessionId, arrivals, writer, window);
+  } |> (try %)
+}
+
+effect function readDevice(reader: Socket.Reader, shell: Shell, arrivals: Arrivals) {
+  while (true) {
+    const chunk = try reader.pull catch () => undefined
+    if (chunk === undefined) {
+      try Queue.offer(arrivals, { kind: "gone" })
+      return
+    }
+    for (const data of chunk) {
+      shell.queued += 1
+      if (shell.queued > windowBudget.queuedFrames) {
+        try Queue.offer(arrivals, { kind: "edge", input: { tag: "ClientViolation" } })
+        return
+      }
+      try Queue.offer(arrivals, { kind: "device", data })
+    }
+  }
+}
+
+effect function settleAll(shell: Shell, ports: RelayPorts, sessionId: string) {
+  const stt = shell.stt
+  const drained = shell.graceful && stt !== undefined ? try timeout(stt.drain(), Duration.seconds(5)) catch () => false : false
+  const forwarded = shell.windows.reduce((sum, window) => sum + window.pcmBytes, 0)
+  const sttDrained = shell.graceful && (forwarded === 0 || drained)
+  const ttsConfirmed = shell.graceful && !shell.ttsUncertain && shell.relay.utterances.every((utterance) => utterance.stage === "UtteranceDone" || !shell.spoken.has(utterance.id))
+  for (const window of shell.windows) {
+    const usage: WindowUsage = { pcmBytes: window.pcmBytes, ttsChars: window.ttsChars, sttDrained, ttsConfirmed, dispatched: window.dispatched }
+    try ports.session.settleWindow(sessionId, window.number, usage) catch effect (failure) => {
+      try annotateLogs(logError("a speech window could not be settled"), { sessionId, window: window.number, failure: failure._tag })
+    }
+  }
+  try ports.session.retire(sessionId) catch effect (failure) => {
+    try annotateLogs(logError("a speech session could not be retired"), { sessionId, failure: failure._tag })
+  }
+}
+
+effect function serve(ports: RelayPorts, sessionId: string, socket: Socket.Socket) {
+  const shell: Shell = {
+    relay: relayAtUpgrade, windows: [], current: 0, refusal: undefined, stt: undefined, tts: undefined,
+    transcripts: [], spoken: new Set(), ttsUncertain: false, graceful: false, queued: 0, gone: false
+  }
+  const session = effect {
+    const reader = try socket.reader
+    const writer = try socket.writer
+    const arrivals = try Queue.unbounded<Arrival>()
+    fork.scoped readDevice(reader, shell, arrivals)
+    fork.scoped (effect {
+      try sleep(Duration.millis(helloDeadline))
+      try Queue.offer(arrivals, { kind: "edge", input: { tag: "HelloTimedOut" } })
+    })
+    fork.scoped (effect {
+      const end = try ports.session.ended(sessionId)
+      try Queue.offer(arrivals, { kind: "edge", input: { tag: end } })
+    })
+    while (shell.relay.phase !== "RelayEnded" && !shell.gone) {
+      const arrival = try Queue.take(arrivals)
+      try arrive(shell, ports, sessionId, arrivals, writer, arrival)
+    }
+  }
+  try ensuring(session catch () => undefined, settleAll(shell, ports, sessionId))
+}
+
+effect function relay(ports: RelayPorts, context: RouteContext): HttpServerResponse.HttpServerResponse!Refused!CloudContext {
+  const sessionId = context.query.get("sessionId") ?? ""
+  if (sessionId === "" || (context.request.headers.upgrade ?? "").toLowerCase() !== "websocket") throw refused("InvalidRequest")
+  try ports.session.openSocket(sessionId)
+  const socket = try context.request.upgrade catch effect () => {
+    try ports.session.retire(sessionId) catch () => undefined
+    throw refused("InvalidRequest")
+  }
+  try scoped(serve(ports, sessionId, socket))
+  return HttpServerResponse.empty()
+}
+
+export function relayRoutes(ports: RelayPorts): ReadonlyArray<Route> {
+  return [{ method: "GET", path: "/api/v1/voice/speech/ws", auth: "Public", capability: "speech", handler: (context) => relay(ports, context) }]
+}

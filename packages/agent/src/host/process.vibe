@@ -176,7 +176,7 @@ module node {
       const router = createRouter({
         token: authority.token, epoch: authority.epoch, instanceId: status.serverInstanceId,
         routes: [
-          ...statusRoutes({ agentId, name: character.name, serverInstanceId: status.serverInstanceId, backend: backendOf(launch.model), embeddings: launch.embeddings, state: () => agentStateOf(runtime.getLifecycleState()), binding: usableBinding, now: Date.now }),
+          ...statusRoutes({ agentId, name: launch.character.name, serverInstanceId: status.serverInstanceId, backend: backendOf(launch.model), embeddings: launch.embeddings, state: () => agentStateOf(runtime.getLifecycleState()), binding: usableBinding, now: Date.now }),
           ...authRoutes(agentId),
           ...conversationRoutes(runtime, { user, world }),
           ...composed.routes,

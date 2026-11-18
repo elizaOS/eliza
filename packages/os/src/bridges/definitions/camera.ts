@@ -153,7 +153,9 @@ export interface CameraPlugin {
   removeAllListeners(): Promise<void>;
 }
 
-export type CameraSessionPhase = "off" | "starting" | "ready" | "error";
+export type CameraClient = Omit<CameraPlugin, "addListener" | "removeAllListeners">;
+
+export type CameraSessionPhase ="off" | "starting" | "ready" | "error";
 
 export interface CameraRecordingReceipt {
   path: string;

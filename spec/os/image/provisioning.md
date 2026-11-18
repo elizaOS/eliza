@@ -1,20 +1,13 @@
 # Image provisioning
 
-What an image sets up for the consumer's launcher before its first boot:
-the default Home, assistant and Autofill, the component overrides that keep
-the launcher eligible for the phone and messages roles, the image features
-that image-only surfaces check, power-button voice on a listener image, and
-the system apps that keep the lock screen, alarms and secure capture. The
-writer is `src/image/provisioning.vibe`, exported from `@elizaos/os/image`.
-
-The shell reads the admitted APK's manifest ([APK admission](./apk.md)) with
-`aapt dump xmltree` into `LauncherManifest`: one row per activity,
-activity-alias, service, receiver or provider, its name qualified with the
-package, one `Handles` entry per intent filter it recognises (any other is
-`OtherIntent`) and the marks it read. Every file is written once into the
-staged product and never overwritten. All of this is staging output: only a
-boot of the built image ([verification](./verification.md)) shows that
-Android applied it.
+What an image sets up for the consumer's launcher before first boot:
+defaults, role handler overrides, image features, power-button voice and the
+system apps that keep the lock screen, alarms and secure capture. The shell
+reads the admitted APK's manifest ([APK admission](./apk.md)) into
+`LauncherManifest`: one row per component, its name qualified with the
+package, one `Handles` per intent filter it recognises. Each file is written
+once into the staged product; only a boot of the built image
+([verification](./verification.md)) shows that Android applied it.
 
 ## Story: Make my launcher Home on first boot
 
@@ -39,10 +32,11 @@ type ManifestComponent = { name: str, kind: ComponentKind, exported: bool, enabl
 type LauncherManifest = { components: List[ManifestComponent], requestedPermissions: List[str], powerVoiceActivity: str }
 type AssistantMode = NoAssistant | LauncherAssistant | ListenerAssistant({ power: bool })
 type ProductRequires = { autofill: bool, allFilesAccess: bool }
-type ProvisioningRequest = { assistant: AssistantMode, requires: ProductRequires, telephonyRoles: bool }
+type LockScreenPolicy = LauncherMayUseLockScreen | SystemOwnsLockScreen
+type ProvisioningRequest = { assistant: AssistantMode, requires: ProductRequires, telephonyRoles: bool, lockScreen: LockScreenPolicy }
 type DefaultComponent = DefaultOf({ name: str }) | NoDefault
 type ProvisioningProblem = AutofillUnprotected | EnabledAssistWithoutRole | HomeNotExactlyOne | HomeNotExported | AssistNotExactlyOne | AssistNotExported
-  | AutofillNotExactlyOne | AutofillNotExported | AutofillMissing | AllFilesAccessMissing | RoleHandlerUnfit({ handles: Handles })
+  | AutofillNotExactlyOne | AutofillNotExported | AutofillMissing | AllFilesAccessMissing | RoleHandlerUnfit({ handles: Handles }) | LockScreenSurfaceDeclared
 type ProvisioningDefaults = ProvisioningAdmitted({ home: str, assistant: DefaultComponent, autofill: DefaultComponent, overrides: List[str] })
   | ProvisioningRefused({ problem: ProvisioningProblem })
 pure val autofillPermission = "android.permission.BIND_AUTOFILL_SERVICE"
@@ -70,14 +64,16 @@ pure def provisioningDefaults(manifest: LauncherManifest, request: ProvisioningR
   else if (request.requires.autofill and autofill.length() == 0) ProvisioningRefused({ problem: AutofillMissing })
   else if (request.requires.allFilesAccess and not(manifest.requestedPermissions.includes(allFilesAccessPermission))) ProvisioningRefused({ problem: AllFilesAccessMissing })
   else if (unfit.length() > 0) ProvisioningRefused({ problem: RoleHandlerUnfit({ handles: unfit.nthOr(0, noHandler).handles }) })
+  else if (request.lockScreen == SystemOwnsLockScreen and lockScreenSurfaces(manifest).length() > 0) ProvisioningRefused({ problem: LockScreenSurfaceDeclared })
   else ProvisioningAdmitted({ home: sole(home).name, assistant: defaultFor(assist, takes), autofill: defaultFor(autofill, true),
     overrides: if (request.telephonyRoles) telephonyHandlers.listMap(h => sole(handlerMatches(manifest, h)).name) else List() })
 }
 pure def provisioningAdmitted(defaults: ProvisioningDefaults): bool = match defaults { | ProvisioningAdmitted(d) => true | _ => false }
 pure val requestValues = {
-  val base = { assistant: NoAssistant, requires: { autofill: false, allFilesAccess: false }, telephonyRoles: false }
+  val base = { assistant: NoAssistant, requires: { autofill: false, allFilesAccess: false }, telephonyRoles: false, lockScreen: LauncherMayUseLockScreen }
   Set(base, { ...base, assistant: LauncherAssistant }, { ...base, assistant: ListenerAssistant({ power: false }) }, { ...base, assistant: ListenerAssistant({ power: true }) },
-    { ...base, telephonyRoles: true }, { ...base, assistant: LauncherAssistant, requires: { autofill: true, allFilesAccess: true }, telephonyRoles: true })
+    { ...base, telephonyRoles: true }, { ...base, lockScreen: SystemOwnsLockScreen },
+    { assistant: LauncherAssistant, requires: { autofill: true, allFilesAccess: true }, telephonyRoles: true, lockScreen: SystemOwnsLockScreen })
 }
 pure def lawDefaultsAreDeclaredExportedComponents(manifest: LauncherManifest, request: ProvisioningRequest): bool = {
   val defaults = provisioningDefaults(manifest, request)
@@ -96,8 +92,7 @@ pure def lawWithoutTheRoleAnEnabledAssistIsRefused(manifest: LauncherManifest, r
 ### A product's declared requirements hold of the APK before any default is written
 
 A product may require the Autofill service and all-files access
-(`MANAGE_EXTERNAL_STORAGE`, granted to a preinstalled app with the app-op
-left at its default).
+(`MANAGE_EXTERNAL_STORAGE`, app-op left at its default).
 
 ```quint
 pure def lawRequirementsHoldWhenAdmitted(manifest: LauncherManifest, request: ProvisioningRequest): bool = {
@@ -156,9 +151,8 @@ pure val manifestValues = {
     { ...full, components: List(home, home, assist) }, { ...full, components: List({ ...home, exported: false }, assist) },
     { ...full, components: List(home, assist, { ...autofill, permission: "" }) }, { ...full, components: List(home, assist), requestedPermissions: List() },
     { ...full, components: List({ ...home, marks: List(ShowWhenLocked) }, { ...assist, handles: List(AssistIntent, OtherIntent) }, power) },
-    { ...full, components: List(home, assist, { ...power, handles: List(SecureCaptureIntent) }) }, { ...full, powerVoiceActivity: "" },
-    { ...full, components: launcher.concat(roles.listMap(c => { ...c, enabledByDefault: true })) },
-    { ...full, components: launcher.concat(roles.listMap(c => { ...c, marks: List(CarModeUi) })) })
+    { ...full, components: launcher.concat(roles).concat(List({ ...power, name: "p.Capture", handles: List(SecureCaptureIntent) })) }, { ...full, powerVoiceActivity: "" },
+    { ...full, components: launcher.concat(roles.listMap(c => { ...c, enabledByDefault: true })) }, { ...full, components: launcher.concat(roles.listMap(c => { ...c, marks: List(CarModeUi) })) })
 }
 pure def lawOverridesEnableOnlyDisabledHandlers(manifest: LauncherManifest, request: ProvisioningRequest): bool = {
   val defaults = provisioningDefaults(manifest, request)
@@ -183,11 +177,8 @@ pure def imageRoles(request: ProvisioningRequest): Set[DefaultRole] =
   Set(HomeRole).union(if (takesAssistant(request.assistant)) Set(AssistantRole) else Set()).union(if (request.telephonyRoles) Set(DialerRole, SmsRole) else Set())
 pure def lawDeclaredRolesHaveAdmittedHandlers(manifest: LauncherManifest, request: ProvisioningRequest): bool = {
   val defaults = provisioningDefaults(manifest, request)
-  match defaults {
-    | ProvisioningAdmitted(d) => (imageRoles(request).contains(AssistantRole) implies d.assistant != NoDefault)
-      and (imageRoles(request).contains(DialerRole) implies d.overrides.length() > 0)
-    | _ => true
-  }
+  match defaults { | ProvisioningAdmitted(d) => (imageRoles(request).contains(AssistantRole) implies d.assistant != NoDefault)
+    and (imageRoles(request).contains(DialerRole) implies d.overrides.length() > 0) | _ => true }
 }
 ```
 

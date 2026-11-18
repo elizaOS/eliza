@@ -1,0 +1,170 @@
+// spec/os/agentService/health.md, "The delay before restart attempt n is 1, 2, 4, 8, 16, 32 s and then 60 s"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+package ai.eliza.os.agent;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.PrintStream;
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+public final class LifecycleAdapter {
+  private static final BigDecimal SAFE = BigDecimal.valueOf(9_007_199_254_740_991L);
+  private static final String ACCOUNT = "account-a";
+
+  private AgentPolicy policy = new AgentPolicy(ACCOUNT, null);
+
+  public static void main(String[] args) throws Exception {
+    LifecycleAdapter adapter = new LifecycleAdapter();
+    BufferedReader input = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
+    PrintStream output = new PrintStream(System.out, true, StandardCharsets.UTF_8);
+    for (String line; (line = input.readLine()) != null;) {
+      if (line.isBlank()) continue;
+      try { output.println(adapter.answer(line)); }
+      catch (RuntimeException failure) { output.println("{\"error\":" + quote(String.valueOf(failure)) + "}"); }
+    }
+  }
+
+  private String answer(String line) {
+    Map<String, Object> request = object(RouteGate.Json.parse(line));
+    if (!request.containsKey("event") && !request.containsKey("raw")) {
+      policy = new AgentPolicy(ACCOUNT, null);
+      return "{\"state\":" + state(policy.state()) + ",\"out\":[]}";
+    }
+    Object event = request.containsKey("event") ? request.get("event") : request.get("raw");
+    AgentPolicy.Step step;
+    try { step = policy.step(decode(object(event))); }
+    catch (IllegalArgumentException | ArithmeticException malformed) { step = new AgentPolicy.Step(false, policy.state(), List.of()); }
+    return "{\"outcome\":\"" + (step.accepted() ? "accepted" : "refused") + "\",\"state\":" + state(step.state()) + ",\"out\":" + effects(step.effects()) + "}";
+  }
+
+  private static AgentPolicy.Event decode(Map<String, Object> event) {
+    return switch (text(event.get("type"))) {
+      case "start" -> new AgentPolicy.Start();
+      case "stop" -> new AgentPolicy.Stop();
+      case "reapStale" -> new AgentPolicy.ReapStale();
+      case "launchHook" -> new AgentPolicy.LaunchHook(flag(event.get("refused")), "the launch hook refused");
+      case "refuse" -> new AgentPolicy.Refuse(named(AgentPolicy.Cause.values(), event.get("cause")), "a start check refused");
+      case "spawn" -> new AgentPolicy.Spawned();
+      case "spawnFailed" -> new AgentPolicy.SpawnFailed("the agent could not be spawned");
+      case "observeReady" -> new AgentPolicy.ObserveReady(whole(event.get("epoch")));
+      case "timeout" -> new AgentPolicy.ReadyTimeout();
+      case "observeExit" -> new AgentPolicy.ObserveExit(Math.toIntExact(whole(event.get("code"))));
+      case "failUnclassified" -> new AgentPolicy.FailUnclassified("an unclassified failure");
+      case "restartUnhealthy" -> new AgentPolicy.RestartUnhealthy();
+      case "stableReset" -> new AgentPolicy.StableReset();
+      case "credentialArrived" -> new AgentPolicy.CredentialArrived(whole(event.get("version")));
+      case "credentialReplaced" -> new AgentPolicy.CredentialReplaced(whole(event.get("version")));
+      case "signedOut" -> new AgentPolicy.SignedOut();
+      case "credentialExpired" -> new AgentPolicy.CredentialExpired();
+      case "accountChanged" -> new AgentPolicy.AccountChanged(text(event.get("account")));
+      case "reviewRecovery" -> new AgentPolicy.ReviewRecovery(flag(event.get("focused")), event.containsKey("nonce") ? text(event.get("nonce")) : "review");
+      case "archiveRecovery" -> {
+        Map<String, Object> token = object(event.get("token"));
+        yield new AgentPolicy.ArchiveRecovery(new AgentPolicy.RecoveryToken(whole(token.get("epoch")), text(token.get("nonce"))));
+      }
+      case "holdForUpdate" -> new AgentPolicy.HoldForUpdate(new AgentPolicy.UpdateTarget(whole(event.get("targetCode")), text(event.get("targetDigest"))));
+      case "releaseUpdate" -> new AgentPolicy.ReleaseUpdate(whole(event.get("installedCode")), text(event.get("installedDigest")), flag(event.get("attemptEnded")));
+      default -> throw new IllegalArgumentException("not an event of the agent service");
+    };
+  }
+
+  private static String state(AgentPolicy.State s) {
+    String phase = switch (s.phase()) {
+      case STOPPED -> "{\"tag\":\"Stopped\"}";
+      case CHECKING -> "{\"tag\":\"Starting\",\"stage\":\"Checking\"}";
+      case SPAWNED -> "{\"tag\":\"Starting\",\"stage\":\"Spawned\"}";
+      case RUNNING -> "{\"tag\":\"Running\"}";
+      case STOPPING -> "{\"tag\":\"Stopping\"}";
+      case FAILED -> "{\"tag\":\"Failed\",\"cause\":" + quote(tag(s.failure())) + "}";
+    };
+    String afterExit = s.afterExit() == AgentPolicy.AfterExit.FAIL
+      ? "{\"tag\":\"Fail\",\"cause\":" + quote(tag(s.afterExitCause())) + "}"
+      : "{\"tag\":" + quote(tag(s.afterExit())) + "}";
+    String hold = s.hold() == null ? "{\"tag\":\"NotHeld\"}"
+      : "{\"tag\":\"Held\",\"targetCode\":" + s.hold().code() + ",\"targetDigest\":" + quote(s.hold().digest()) + "}";
+    String recovery = s.recovery() == null ? "{\"tag\":\"NoReview\"}"
+      : "{\"tag\":\"Reviewing\",\"token\":" + token(s.recovery()) + "}";
+    return "{\"phase\":" + phase + ",\"epoch\":" + s.epoch() + ",\"attempt\":" + s.attempt() + ",\"child\":" + s.child()
+      + ",\"reaped\":" + s.reaped() + ",\"hookRan\":" + s.hookRan() + ",\"credentialHeld\":" + s.credentialHeld()
+      + ",\"credentialVersion\":" + s.credentialVersion() + ",\"delivered\":" + s.delivered() + ",\"account\":" + quote(s.account())
+      + ",\"afterExit\":" + afterExit + ",\"hold\":" + hold + ",\"recovery\":" + recovery + "}";
+  }
+
+  private static String effects(List<AgentPolicy.Effect> effects) {
+    List<String> written = new ArrayList<>();
+    for (AgentPolicy.Effect effect : effects) {
+      if (effect instanceof AgentPolicy.Check check)
+        written.add("{\"tag\":\"Check\",\"epoch\":" + check.epoch() + ",\"account\":" + quote(check.account()) + ",\"delayMs\":" + check.delayMs() + "}");
+      else if (effect instanceof AgentPolicy.Kill kill)
+        written.add("{\"tag\":\"Kill\",\"epoch\":" + kill.epoch() + "}");
+      else if (effect instanceof AgentPolicy.PushCredential push)
+        written.add("{\"tag\":\"PushCredential\",\"epoch\":" + push.epoch() + ",\"version\":" + push.version() + "}");
+      else if (effect instanceof AgentPolicy.RecoveryReview review)
+        written.add("{\"tag\":\"RecoveryReview\",\"token\":" + token(review.token()) + "}");
+      else if (effect instanceof AgentPolicy.Archive archive)
+        written.add("{\"tag\":\"Archive\",\"epoch\":" + archive.epoch() + ",\"account\":" + quote(archive.account()) + "}");
+    }
+    return "[" + String.join(",", written) + "]";
+  }
+
+  private static String token(AgentPolicy.RecoveryToken token) {
+    return "{\"epoch\":" + token.epoch() + ",\"nonce\":" + quote(token.nonce()) + "}";
+  }
+
+  private static String tag(Enum<?> value) {
+    StringBuilder out = new StringBuilder();
+    for (String word : value.name().split("_")) out.append(word.charAt(0)).append(word.substring(1).toLowerCase(Locale.ROOT));
+    return out.toString();
+  }
+
+  private static <E extends Enum<E>> E named(E[] values, Object value) {
+    String wanted = text(value);
+    for (E candidate : values) if (tag(candidate).equals(wanted)) return candidate;
+    throw new IllegalArgumentException("unknown name " + wanted);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> object(Object value) {
+    if (value instanceof Map<?, ?> map) return (Map<String, Object>) map;
+    throw new IllegalArgumentException("expected an object");
+  }
+
+  private static String text(Object value) {
+    if (value instanceof String text) return text;
+    throw new IllegalArgumentException("expected text");
+  }
+
+  private static boolean flag(Object value) {
+    if (value instanceof Boolean flag) return flag;
+    throw new IllegalArgumentException("expected a boolean");
+  }
+
+  private static long whole(Object value) {
+    if (!(value instanceof BigDecimal number) || number.stripTrailingZeros().scale() > 0 || number.abs().compareTo(SAFE) > 0)
+      throw new IllegalArgumentException("expected a safe whole number");
+    return number.longValueExact();
+  }
+
+  private static String quote(String text) {
+    StringBuilder out = new StringBuilder("\"");
+    for (int at = 0; at < text.length(); at++) {
+      char c = text.charAt(at);
+      switch (c) {
+        case '"' -> out.append("\\\"");
+        case '\\' -> out.append("\\\\");
+        case '\n' -> out.append("\\n");
+        case '\r' -> out.append("\\r");
+        case '\t' -> out.append("\\t");
+        default -> {
+          if (c < 0x20) out.append(String.format("\\u%04x", (int) c));
+          else out.append(c);
+        }
+      }
+    }
+    return out.append('"').toString();
+  }
+}

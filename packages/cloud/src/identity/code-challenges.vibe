@@ -133,17 +133,11 @@ function sendChecks(request: SendRequest, digest: string, hourlyBudget: number):
   })
 }
 
-effect function deliver(destination: string, code: string, effects: ReadonlyArray<ChallengeEffect>) {
-  for (const effect of effects) {
-    if (effect.tag !== "DeliverCode") continue
-    const minutes = Math.round((effect.expiresAt - Date.now()) / 60_000)
-    const text = `Your code is ${code}. It expires in ${Math.max(1, minutes)} minutes. Do not share it.`
-    const sent = effect.method === "PhoneSignIn" ? deliverSms({ to: destination, text }) : deliverMail({ to: destination, subject: "Your sign-in code", text })
-    sent catch effect (failure) => {
-      try annotateLogs(logWarning("code delivery failed"), { method: effect.method, cause: failure._tag })
-      throw refused("ProviderUnavailable")
-    }
-  }
+effect function deliverCode(destination: string, code: string, due: ChallengeEffect, now: number) {
+  if (due.tag !== "DeliverCode") return
+  const text = `Your code is ${code}. It expires in ${Math.round((due.expiresAt - now) / 60_000)} minutes. Do not share it.`
+  if (due.method === "PhoneSignIn") try deliverSms({ to: destination, text })
+  else try deliverMail({ to: destination, subject: "Your sign-in code", text })
 }
 
 effect function sendCode(request: SendRequest): CodeSent {
@@ -177,7 +171,7 @@ effect function sendCode(request: SendRequest): CodeSent {
     when Rejected: throw refused("InvalidRequest");
     default: throw failure;
   }
-  try deliver(request.destination, code, sent.out.out)
+  for (const due of sent.out.out) try deliverCode(request.destination, code, due, request.now)
   return { expiresAt: sent.state.expiresAt, codeLength }
 }
 

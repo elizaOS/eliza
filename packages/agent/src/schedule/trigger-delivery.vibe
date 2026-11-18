@@ -1,0 +1,97 @@
+// spec/agent/schedule/triggers.md, "A new trigger is saved disabled, for a conversation that can take it, with a future first instant or an event name"; spec/agent/schedule/triggers.md, "A run delivers only to the room it started with and succeeds only when its turn completed"
+module node {
+  import { MISSED_SCHEDULED_OCCURRENCE_TEXT, type AgentRuntime, type MessageProcessingResult, type Room } from "@elizaos/core"
+  import type { RunOutcome } from "../../gen/agent__schedule__triggers.ts"
+  import { conversation, createConversation, processTurn, type ConversationOwner } from "../conversation/turns.vibe"
+
+  export type ResolvedRoom =
+    | { readonly kind: "Resolved"; readonly conversationId: string }
+    | { readonly kind: "Missing" }
+    | { readonly kind: "Unavailable" }
+
+  export type TurnOutcome = Exclude<RunOutcome, "RoomUnavailable">
+
+  export type Delivery =
+    | { readonly kind: "RoomGone" }
+    | { readonly kind: "Turn"; readonly turn: TurnOutcome; readonly reason?: string; readonly truncated?: string }
+
+  export type RunResult = Delivery | { readonly kind: "Missed" }
+
+  export interface TriggerDelivery {
+    resolveRoom(requested: string | undefined): Promise<ResolvedRoom>
+    deliver(conversationId: string, prompt: string, triggerId: string, signal: AbortSignal): Promise<Delivery>
+  }
+
+  export function finishFacts(delivery: Delivery): { readonly roomExists: boolean; readonly turn: TurnOutcome } {
+    switch (delivery.kind) {
+      case "RoomGone": return { roomExists: false, turn: "Failed" }
+      case "Turn": return { roomExists: true, turn: delivery.turn }
+    }
+  }
+
+  const refusedWord = { Failed: "failed", Cancelled: "cancelled", Denied: "denied" } as const
+
+  export function runError(result: RunResult): string | undefined {
+    switch (result.kind) {
+      case "Missed": return MISSED_SCHEDULED_OCCURRENCE_TEXT
+      case "RoomGone": return "Prompt automation delivery conversation is unavailable"
+      case "Turn": {
+        const turn = result.turn
+        if (turn !== "Completed") return `Prompt automation ${refusedWord[turn]}: ${result.reason ?? "unknown"}`
+        return result.truncated === undefined ? undefined : `Trigger reply was not fully delivered: ${result.truncated}`
+      }
+    }
+  }
+
+  function turnOf(result: MessageProcessingResult): Delivery {
+    const outcome = result.outcome
+    switch (outcome.status) {
+      case "completed": {
+        const said = result.responseContent?.text ?? ""
+        const kept = result.responseMessages.map((reply) => reply.content.text ?? "").join("")
+        if (said === "" || kept === said) return { kind: "Turn", turn: "Completed" }
+        return { kind: "Turn", turn: "Completed", truncated: kept === "" ? "the reply was not stored" : "only part of the reply was stored" }
+      }
+      case "failed": return { kind: "Turn", turn: "Failed", reason: outcome.error.message }
+      case "cancelled": return { kind: "Turn", turn: "Cancelled", reason: outcome.reason }
+      case "denied": return { kind: "Turn", turn: "Denied", reason: outcome.reason }
+    }
+  }
+
+  export function triggerDelivery(runtime: AgentRuntime, owner: ConversationOwner): TriggerDelivery {
+    const find = async (id: string): Promise<Room | undefined> =>
+      (await runtime.getRooms(owner.world)).find((room) => conversation(room)?.id === id)
+    const ready = (conversationId: string): ResolvedRoom =>
+      runtime.messageService ? { kind: "Resolved", conversationId } : { kind: "Unavailable" }
+
+    async function latest(): Promise<string | undefined> {
+      const known = (await runtime.getRooms(owner.world)).flatMap((room) => conversation(room) ?? [])
+      known.sort((a, b) => b.updatedAt - a.updatedAt || b.id.localeCompare(a.id))
+      return known[0]?.id
+    }
+
+    return {
+      async resolveRoom(requested) {
+        if (requested !== undefined) return await find(requested) === undefined ? { kind: "Missing" } : ready(requested)
+        const recent = await latest()
+        if (recent !== undefined) return ready(recent)
+        if (!runtime.messageService) return { kind: "Unavailable" }
+        const created = await createConversation(runtime, owner, "")
+        return created === undefined ? { kind: "Unavailable" } : ready(created.id)
+      },
+      async deliver(conversationId, prompt, triggerId, signal) {
+        const room = await find(conversationId)
+        if (room === undefined) return { kind: "RoomGone" }
+        try {
+          return turnOf(await processTurn(runtime, owner, room, prompt, signal, { metadata: { type: "custom", triggerId } }))
+        } catch (cause) {
+          runtime.reportError("triggers.delivery", cause, { triggerId, conversationId })
+          return signal.aborted
+            ? { kind: "Turn", turn: "Cancelled", reason: "aborted" }
+            : { kind: "Turn", turn: "Failed", reason: cause instanceof Error ? cause.message : String(cause) }
+        }
+      },
+    }
+  }
+}
+export { finishFacts, runError, triggerDelivery, type Delivery, type ResolvedRoom, type RunResult, type TriggerDelivery, type TurnOutcome } from node

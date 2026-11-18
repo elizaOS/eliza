@@ -1,0 +1,245 @@
+// spec/agent/access/transport.md, "Story: Answer each local request exactly once"; spec/agent/access/transport.md, "Story: Stream a response and end it once"; spec/agent/access/transport.md, "Story: Close the listeners once"
+import { assert, it } from "@effect/vitest"
+import { host } from "./support/kernel.vibe"
+
+module node {
+  import { Redacted } from "effect"
+  import { createRouter } from "../src/access/router.vibe"
+  import { listenOnHttp } from "../src/access/http.vibe"
+  import type { AgentEvent, EventSubscriptions } from "../src/access/events-port.vibe"
+  import { freePort } from "./support/child.ts"
+
+  const token = "loopback-token"
+  const authorization = `Bearer ${token}`
+
+  export interface Bench {
+    readonly origin: string
+    readonly publish: (event: AgentEvent) => void
+    readonly open: () => number
+    readonly aborts: string[]
+    readonly calls: string[]
+    readonly stop: () => Promise<void>
+  }
+
+  function eventHub() {
+    const feeds = new Set<(event: AgentEvent | undefined) => void>()
+    const subscriptions: EventSubscriptions = {
+      subscribe: (_request, signal) => {
+        const queue: (AgentEvent | undefined)[] = []
+        let wake: (() => void) | undefined
+        const deliver = (event: AgentEvent | undefined) => { queue.push(event); wake?.() }
+        feeds.add(deliver)
+        signal.addEventListener("abort", () => { feeds.delete(deliver); deliver(undefined) }, { once: true })
+        return {
+          [Symbol.asyncIterator]: () => ({
+            next: async (): Promise<IteratorResult<AgentEvent>> => {
+              while (queue.length === 0) await new Promise<void>((resolve) => { wake = resolve })
+              const event = queue.shift()
+              return event === undefined ? { done: true, value: undefined } : { done: false, value: event }
+            },
+          }),
+        }
+      },
+    }
+    return { subscriptions, open: () => feeds.size, publish: (event: AgentEvent) => { for (const deliver of feeds) deliver(event) } }
+  }
+
+  export async function openBench(): Promise<Bench> {
+    const calls: string[] = []
+    const aborts: string[] = []
+    const held = (name: string) => (input: { signal: AbortSignal }) => new Promise<Response>((_resolve, reject) => {
+      calls.push(name)
+      input.signal.addEventListener("abort", () => { aborts.push(name); reject(input.signal.reason) }, { once: true })
+    })
+    const hub = eventHub()
+    const router = createRouter({
+      token: Redacted.make(token), epoch: 1, instanceId: "loopback", routes: [
+        { method: "GET", path: "/api/echo", handler: () => { calls.push("echo"); return { status: 200, body: { ok: true } } } },
+        { method: "POST", path: "/api/plain", handler: () => { calls.push("plain"); return { status: 200, body: {} } } },
+        { method: "GET", path: "/api/slow", handler: held("slow") },
+        { method: "GET", path: "/api/hang", handler: held("hang") },
+        { method: "GET", path: "/api/pieces", stream: true, handler: () => {
+          calls.push("pieces")
+          const encoder = new TextEncoder()
+          return new Response(new ReadableStream({
+            async start(controller) {
+              for (const piece of ["one ", "two ", "three"]) {
+                controller.enqueue(encoder.encode(piece))
+                await new Promise((resolve) => setTimeout(resolve, 20))
+              }
+              controller.close()
+            },
+          }), { status: 200, headers: { "content-type": "text/plain" } })
+        } },
+      ],
+    })
+    const port = await freePort()
+    const stop = await listenOnHttp(port, router, { token: Redacted.make(token), events: hub.subscriptions })
+    return { origin: `http://127.0.0.1:${port}`, publish: hub.publish, open: hub.open, aborts, calls, stop }
+  }
+
+  const settle = async (check: () => boolean) => {
+    for (let tries = 0; tries < 100 && !check(); tries += 1) await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+
+  async function answer(response: Response) {
+    return { status: response.status, type: response.headers.get("content-type"), text: await response.text() }
+  }
+
+  export async function buffered(bench: Bench) {
+    const echo = await fetch(`${bench.origin}/api/echo`, { headers: { authorization } }).then(answer)
+    const anonymous = await fetch(`${bench.origin}/api/echo`).then(answer)
+    const missing = await fetch(`${bench.origin}/api/missing`, { headers: { authorization } }).then(answer)
+    return { echo, anonymous, missing, calls: [...bench.calls] }
+  }
+
+  export async function chunked(bench: Bench) {
+    const response = await fetch(`${bench.origin}/api/pieces`, { headers: { authorization } })
+    const pieces: string[] = []
+    const decoder = new TextDecoder()
+    for await (const piece of response.body ?? []) pieces.push(decoder.decode(piece))
+    return { status: response.status, encoding: response.headers.get("transfer-encoding"), text: pieces.join(""), parts: pieces.length > 1 }
+  }
+
+  export async function tooLarge(bench: Bench) {
+    const large = JSON.stringify({ large: "x".repeat(3_000_000) })
+    const refused = await fetch(`${bench.origin}/api/plain`, { method: "POST", headers: { authorization, "content-type": "application/json" }, body: large }).then(answer)
+    const after = await fetch(`${bench.origin}/api/echo`, { headers: { authorization } }).then(answer)
+    return { refused, after: after.status, calls: [...bench.calls] }
+  }
+
+  export async function deadline(bench: Bench) {
+    const begun = Date.now()
+    const late = await fetch(`${bench.origin}/api/slow`, { headers: { authorization } }).then(answer)
+    await settle(() => bench.aborts.includes("slow"))
+    return { late, waitedMs: Date.now() - begun, aborts: [...bench.aborts] }
+  }
+
+  interface Feed {
+    readonly status: number
+    readonly next: () => Promise<unknown>
+    readonly close: () => void
+  }
+
+  async function subscribe(bench: Bench, query: string, headers: Record<string, string> = { authorization }): Promise<Feed> {
+    const hangUp = new AbortController()
+    const response = await fetch(`${bench.origin}/api/events?${query}`, { headers, signal: hangUp.signal })
+    if (response.body === null) throw new Error("no feed body")
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let pending = ""
+    const next = async (): Promise<unknown> => {
+      for (;;) {
+        const end = pending.indexOf("\n\n")
+        if (end >= 0) {
+          const message = pending.slice(0, end)
+          pending = pending.slice(end + 2)
+          return JSON.parse(message.replace(/^data: /, ""))
+        }
+        const { done, value } = await reader.read()
+        if (done) throw new Error("feed ended")
+        pending += decoder.decode(value, { stream: true })
+      }
+    }
+    return { status: response.status, next, close: () => hangUp.abort() }
+  }
+
+  export async function events(bench: Bench) {
+    const first = await subscribe(bench, "streams=conversation")
+    const second = await subscribe(bench, "streams=conversation,run&clientId=screen-1")
+    const subscribed = [first.status, await first.next(), second.status, await second.next()]
+    const third = await fetch(`${bench.origin}/api/events?streams=conversation`, { headers: { authorization } }).then(answer)
+    const event = { stream: "conversation", runId: "run-1", seq: 1, payload: { kind: "conversation-updated" } }
+    bench.publish(event)
+    const heard = [await first.next(), await second.next()]
+    first.close()
+    second.close()
+    await settle(() => bench.open() === 0)
+    const openAfterClose = bench.open()
+    const anonymous = await fetch(`${bench.origin}/api/events?streams=conversation`).then(answer)
+    const unnamed = await fetch(`${bench.origin}/api/events`, { headers: { authorization } }).then(answer)
+    const doubled = await fetch(`${bench.origin}/api/events?streams=a&streams=b`, { headers: { authorization } }).then(answer)
+    return { subscribed, third, heard, openAfterClose, anonymous: anonymous.status, unnamed: unnamed.status, doubled: doubled.status }
+  }
+
+  export async function stopping(bench: Bench) {
+    const feed = await subscribe(bench, "streams=conversation")
+    await feed.next()
+    const hung = fetch(`${bench.origin}/api/hang`, { headers: { authorization } }).then(() => "answered", () => "cut")
+    await settle(() => bench.calls.includes("hang"))
+    const first = bench.stop()
+    const second = bench.stop()
+    await first
+    const ended = await feed.next().then(() => "frame", () => "cut")
+    const refused = await fetch(`${bench.origin}/api/echo`, { headers: { authorization } }).then(() => "answered", () => "refused")
+    return { once: first === second, hung: await hung, aborts: [...bench.aborts].sort(), ended, refused, open: bench.open() }
+  }
+}
+
+import { buffered, chunked, deadline, events, openBench, stopping, tooLarge, type Bench } from node
+
+effect function bench() {
+  return try acquireRelease(host("loopback listener", () => openBench()), (opened: Bench) => orDie(host("loopback close", () => opened.stop())))
+}
+
+const json = "application/json; charset=utf-8"
+
+it.effect('A buffered call over loopback HTTP gets one answer through the route gate (spec/agent/access/transport.md, "Story: Answer each local request exactly once")', effect () => {
+  const opened = try bench()
+  const seen = try host("buffered", () => buffered(opened))
+  try Effect.try(() => assert.deepStrictEqual(seen, {
+    echo: { status: 200, type: "application/json", text: "{\"ok\":true}" },
+    anonymous: { status: 401, type: "application/json", text: "{\"error\":\"unauthorized\"}" },
+    missing: { status: 404, type: "application/json", text: "{\"error\":\"not_found\"}" },
+    calls: ["echo"],
+  }))
+}, 30_000)
+
+it.effect('A route declared as a stream is answered as a chunked response, head first and pieces in order (spec/agent/access/transport.md, "Story: Stream a response and end it once")', effect () => {
+  const opened = try bench()
+  const seen = try host("chunked", () => chunked(opened))
+  try Effect.try(() => assert.deepStrictEqual(seen, { status: 200, encoding: "chunked", text: "one two three", parts: true }))
+}, 30_000)
+
+it.effect('A body over its route limit is answered 413 before dispatch and the connection drains (spec/agent/access/transport.md, "Story: Answer each local request exactly once")', effect () => {
+  const opened = try bench()
+  const seen = try host("too large", () => tooLarge(opened))
+  try Effect.try(() => assert.deepStrictEqual(seen, {
+    refused: { status: 413, type: "application/json", text: "{\"error\":\"too_large\"}" },
+    after: 200,
+    calls: ["echo"],
+  }))
+}, 30_000)
+
+it.effect('A request past its 10 second deadline is answered 504, then its handler is aborted (spec/agent/access/transport.md, "Story: Answer each local request exactly once")', effect () => {
+  const opened = try bench()
+  const seen = try host("deadline", () => deadline(opened))
+  try Effect.try(() => assert.deepStrictEqual({ late: seen.late, aborts: seen.aborts, inTime: seen.waitedMs >= 9_900 && seen.waitedMs < 12_000 }, {
+    late: { status: 504, type: "application/json", text: "{\"error\":\"deadline\"}" },
+    aborts: ["slow"],
+    inTime: true,
+  }))
+}, 30_000)
+
+it.effect('Server-sent events: two Root feeds are confirmed and carry an event, a third is refused as busy (spec/agent/access/transport.md, "Story: Stream a response and end it once")', effect () => {
+  const opened = try bench()
+  const seen = try host("events", () => events(opened))
+  const event = { type: "event", event: { type: "agent_event", stream: "conversation", runId: "run-1", seq: 1, payload: { kind: "conversation-updated" } } }
+  try Effect.try(() => assert.deepStrictEqual(seen, {
+    subscribed: [200, { type: "subscribed" }, 200, { type: "subscribed" }],
+    third: { status: 429, type: json, text: "{\"error\":\"busy\"}" },
+    heard: [event, event],
+    openAfterClose: 0,
+    anonymous: 401,
+    unnamed: 400,
+    doubled: 400,
+  }))
+}, 30_000)
+
+it.effect('Stopping cuts open requests and feeds short and closes the loopback listener once (spec/agent/access/transport.md, "Story: Close the listeners once")', effect () => {
+  const opened = try bench()
+  const seen = try host("stop", () => stopping(opened))
+  try Effect.try(() => assert.deepStrictEqual(seen, {
+    once: true, hung: "cut", aborts: ["hang"], ended: "cut", refused: "refused", open: 0,
+  }))
+}, 30_000)
