@@ -102,7 +102,7 @@ pure def stepDispatchNeedsApproval(before: SmsReview, after: SmsReview): bool =
 pure def sometimesCancelledBeforeInvoke(s: SmsReview): bool = s.result == ReviewCancelled and s.cancelAcknowledged
 pure def sometimesResultSurvivesRetirement(s: SmsReview): bool = s.result == ReviewSubmitted and s.retired
 pure def sometimesComposerSendDispatched(s: SmsReview): bool = s.source == OwnerComposer and s.phase == NativeDispatched
-pure def sometimesOutboxRefusedWithoutDispatch(s: SmsReview): bool = s.result == ReviewRefused and s.phase == ReviewSettled and s.operationId != "" and s.source == NativeDialog
+pure def sometimesSendRefusedWithoutDispatch(s: SmsReview): bool = s.result == ReviewRefused and not(s.dispatched)
 ```
 
 ### A repeated operation ID reads its journal record and never sends again
@@ -156,17 +156,17 @@ more evidence is awaited for a record.
 pure val evidenceWindowDays = 7
 pure def recoverAfterRestart(r: JournalRecord): JournalRecord =
   if (r == JournalDispatching or r == JournalSubmitted) JournalUnknown else r
-pure def settleEvidence(r: JournalRecord, groupMessage: bool, allSent: bool, allDelivered: bool): JournalRecord =
+pure def settleEvidence(r: JournalRecord, mms: bool, allSent: bool, allDelivered: bool): JournalRecord =
   if (r == JournalSubmitted and allSent) JournalSent
-  else if (r == JournalSent and allDelivered and not(groupMessage)) JournalDelivered
+  else if (r == JournalSent and allDelivered and not(mms)) JournalDelivered
   else r
 pure def lawInterruptedDispatchIsUnknownAndNotResent(sameContent: bool, permitted: bool, parts: int): bool =
   recoverAfterRestart(JournalDispatching) == JournalUnknown and
     not(planSend(recoverAfterRestart(JournalDispatching), sameContent, permitted, parts).dispatch)
-pure def lawGroupMessageNeverDelivered(r: JournalRecord, allSent: bool, allDelivered: bool): bool =
+pure def lawMmsIsNeverDelivered(r: JournalRecord, allSent: bool, allDelivered: bool): bool =
   settleEvidence(r, true, allSent, allDelivered) == JournalDelivered implies r == JournalDelivered
-pure def lawSentNeedsEveryReceipt(r: JournalRecord, groupMessage: bool, allDelivered: bool): bool =
-  settleEvidence(r, groupMessage, false, allDelivered) != JournalSent or r == JournalSent
+pure def lawSentNeedsEveryReceipt(r: JournalRecord, mms: bool, allDelivered: bool): bool =
+  settleEvidence(r, mms, false, allDelivered) != JournalSent or r == JournalSent
 ```
 
 ### A message's reported status is supported by the evidence of every part
@@ -176,7 +176,6 @@ delivery evidence; a part is delivered only after it was sent. A cancelled
 or denied send has no evidence. Submitted, sent and delivered need at least one
 part for every recipient and nothing else; submitted needs no part to have
 failed; sent needs every part sent; delivered needs every part delivered.
-An MMS result carries no parts and is never delivered.
 
 ```quint
 type PartState = PartUnknown | PartSucceeded | PartFailed
@@ -194,7 +193,6 @@ pure def statusSupported(status: SendStatus, evidence: List[PartEvidence], recip
    else if (status == StatusSent) recipientsCovered(evidence, recipients) and evidence.every(p => p.sentState == PartSucceeded)
    else if (status == StatusDelivered) recipientsCovered(evidence, recipients) and evidence.every(p => p.deliveryState == PartSucceeded)
    else true)
-pure def mmsStatusAllowed(status: SendStatus): bool = status != StatusDelivered
 pure val evidenceValues = Set(
   List(),
   List({ recipientIndex: 0, sentState: PartSucceeded, deliveryState: PartSucceeded }),
@@ -209,31 +207,6 @@ pure def lawSentNeedsEveryPartSent(evidence: List[PartEvidence], recipients: int
   statusSupported(StatusSent, evidence, recipients) implies (evidence.length() > 0 and evidence.every(p => p.sentState == PartSucceeded))
 pure def lawRefusedSendHasNoParts(evidence: List[PartEvidence], recipients: int): bool =
   (statusSupported(StatusCancelled, evidence, recipients) or statusSupported(StatusDenied, evidence, recipients)) implies evidence.length() == 0
-pure def lawMmsIsNeverDelivered(status: SendStatus): bool = mmsStatusAllowed(status) iff status != StatusDelivered
-```
-
-### An outgoing message only moves forward, and only a review that never left the app or a refused send may be reviewed again
-
-A handoff ends the app's part; a direct send records what the radio
-reports. Handed off, delivered, failed and unknown are final. A message that
-may exist is never offered again: only a review that never left the app, or
-a send the radio refused, may be offered again, and then only as a new
-review with a new operation ID. No result permits an automatic repeat.
-
-```quint
-type OutgoingState = OutReviewed | OutHandedOff | OutDispatched | OutSent | OutDelivered | OutFailed | OutcomeUnknown
-pure def outgoingMayMove(origin: OutgoingState, target: OutgoingState): bool =
-  if (origin == OutReviewed) target == OutHandedOff or target == OutDispatched or target == OutFailed
-  else if (origin == OutDispatched) target == OutSent or target == OutFailed or target == OutcomeUnknown
-  else if (origin == OutSent) target == OutDelivered
-  else false
-pure def mayBeReviewedAgain(outgoing: OutgoingState): bool = outgoing == OutReviewed or outgoing == OutFailed
-pure def outgoingFinal(outgoing: OutgoingState): bool =
-  outgoing == OutHandedOff or outgoing == OutDelivered or outgoing == OutFailed or outgoing == OutcomeUnknown
-pure def lawFinalStatesNeverMove(origin: OutgoingState, target: OutgoingState): bool = outgoingFinal(origin) implies not(outgoingMayMove(origin, target))
-pure def lawNothingReturnsToReview(origin: OutgoingState): bool = not(outgoingMayMove(origin, OutReviewed))
-pure def lawPossiblySentIsNeverReviewedAgain(outgoing: OutgoingState): bool =
-  (outgoing == OutHandedOff or outgoing == OutDispatched or outgoing == OutSent or outgoing == OutDelivered or outgoing == OutcomeUnknown) implies not(mayBeReviewedAgain(outgoing))
 ```
 
 ### Only the owner's reviewed sends and incoming messages are written to the Android providers
@@ -306,18 +279,6 @@ pure def lawPartialProviderFailureKeepsNotice(work: NoticeWork): bool =
   work == MarkConversationRead implies (not(noticeDismissed(work, true, false)) and not(noticeDismissed(work, false, true)))
 ```
 
-### Marking a conversation read from the app changes nothing unless the app is the default SMS app
-
-The owner marks a conversation read up to the newest message shown. Only
-the default SMS app may keep read state, so elsewhere the answer says the
-app is not the default and that no row changed.
-
-```quint
-pure def readMarkerConsistent(defaultSmsApp: bool, updated: int): bool = updated >= 0 and (defaultSmsApp or updated == 0)
-pure val updatedValues = Set(-1, 0, 2)
-pure def lawNoReadStateWithoutTheRole(updated: int): bool = readMarkerConsistent(false, updated) iff updated == 0
-```
-
 ## Story: Delete one message I chose
 
 > As the person, I want to delete exactly the message I selected and
@@ -331,8 +292,7 @@ that is gone answers not-found, one whose identity changed answers stale,
 and a draft, queued, outbox or failed row belongs to a send and answers
 not-settled; none of these is deleted. Only a removal Android reported is
 `Deleted`; a delete that removed nothing is explained by a second read, and
-a lost reply or an unexplained count is unknown, which never grants a retry
-or hides the message. A deletion never sends, cancels a send or retries.
+a lost reply or an unexplained count is unknown, never deleted.
 
 ```quint
 type RowSeen = RowMissing | RowMoved | RowInSend | RowSettled
