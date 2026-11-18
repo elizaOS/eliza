@@ -33,15 +33,17 @@ pure def providerOpen(mode: OpenMode, segments: List[PathSegment]): ProviderAnsw
   if (mode != ReadMode) RefuseNotReadOnly
   else if (segments.some(segment => segment != PlainSegment)) RefuseHiddenPath
   else ServeFile
-pure def lawProviderServesOnlyVisibleReads(mode: OpenMode, segments: List[PathSegment]): bool =
-  (providerOpen(mode, segments) == ServeFile) iff (mode == ReadMode and segments.every(segment => segment == PlainSegment))
+pure def lawWritesAreRefusedBeforeThePath(mode: OpenMode, segments: List[PathSegment]): bool =
+  mode != ReadMode implies providerOpen(mode, segments) == RefuseNotReadOnly
+pure def lawPlainReadIsServed(segments: List[PathSegment]): bool =
+  segments.every(segment => segment == PlainSegment) implies providerOpen(ReadMode, segments) == ServeFile
 pure def lawTrashIsNeverServed(mode: OpenMode, segments: List[PathSegment]): bool =
   segments.includes(TrashFolderSegment) implies providerOpen(mode, segments) != ServeFile
 ```
 
 ### A chooser is posted only for one regular file, or for one to 100 regular files to share
 
-"Open with" needs a regular file. A share of more than 100 paths, of a
+"Open with" needs a regular file. A share of no paths, of more than 100, of a
 folder, or of a path that is not a file is refused before anything is posted.
 One file goes out with Send, more with Send Multiple, every URI also in the
 intent's clip data.
@@ -67,7 +69,7 @@ pure def lawShareHandsOverEveryChosenFile(request: ChooserRequest): bool = match
 Each visit to Files has a number, and leaving it or changing folder starts the
 next and closes its preview. The bridge takes one call at a time. A tap asks
 for a selection; when the selection returns after its visit ended it is
-forgotten, never shown. A selection that did not come back in the current
+forgotten, never shown. A selection that comes back empty in the current
 visit is reported as a file that could not open.
 
 ```quint

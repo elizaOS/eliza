@@ -100,6 +100,26 @@ pure def lawPageHoldsAtMostTheLimit(candidates: List[Candidate], scopes: List[st
   retrieve(candidates, scopes, limit).length() <= (if (limit < 0) 0 else limit)
 ```
 
+### Capability retrieval rejects a limit that is not a positive integer
+
+An omitted capability retrieval limit is 5, and a positive integer limit is kept as the page bound. Unlike memory retrieval, a given limit of zero or less, or one that is not an integer, does not give an empty page: retrieval fails with the error code `INVALID_CAPABILITY_RETRIEVAL_INPUT`.
+
+```quint
+type CapabilityLimitCheck = { accepted: bool, errorCode: str, pageLimit: int }
+pure val defaultCapabilityRetrievalLimit: int = 5
+pure val invalidCapabilityRetrievalInput: str = "INVALID_CAPABILITY_RETRIEVAL_INPUT"
+pure def checkCapabilityLimit(given: bool, limit: int, integral: bool): CapabilityLimitCheck =
+  if (not(given)) { accepted: true, errorCode: "", pageLimit: defaultCapabilityRetrievalLimit }
+  else if (integral and limit > 0) { accepted: true, errorCode: "", pageLimit: limit }
+  else { accepted: false, errorCode: invalidCapabilityRetrievalInput, pageLimit: 0 }
+pure def lawCapabilityLimitNotPositiveIntegerIsRejected(limit: int, integral: bool): bool =
+  (limit <= 0 or not(integral)) implies (checkCapabilityLimit(true, limit, integral) == { accepted: false, errorCode: invalidCapabilityRetrievalInput, pageLimit: 0 })
+pure def lawCapabilityLimitPositiveIntegerIsKept(limit: int): bool =
+  limit > 0 implies checkCapabilityLimit(true, limit, true) == { accepted: true, errorCode: "", pageLimit: limit }
+pure def lawOmittedCapabilityLimitIsFive(limit: int, integral: bool): bool =
+  checkCapabilityLimit(false, limit, integral) == { accepted: true, errorCode: "", pageLimit: 5 }
+```
+
 ### Nothing outside the caller's memory scope is returned
 
 The caller's scopes are the rooms and worlds whose memory it may read, decided before retrieval. A candidate from any other scope is removed before ranking, so it neither appears nor displaces a readable one.

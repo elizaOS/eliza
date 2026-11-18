@@ -68,7 +68,7 @@ it.effect('A worker whose digest differs from the launch stops the agent with Co
   try host("worker fixture", () => writeWorker(workers.path, "worker"))
   const booted = try boot({ launch: { workflowWorker: { runtimeDir: workers.path, executable: "worker", sha256: "0".repeat(64) } } })
   const exited = try host("agent exit", () => booted.child.exited)
-  try Effect.try(() => assert.strictEqual(exited.code, 78))
+  try Effect.try(() => assert.deepStrictEqual({ code: exited.code, signal: exited.signal }, { code: 78, signal: null }, exited.stderr))
 }, 180_000)
 
 it.effect('A symlinked worker executable is refused before the plan loads (spec/agent/plugins/profile.md, "The worker is installed only after its executable digest matches the launch")', effect () => {

@@ -1,0 +1,18 @@
+// spec/cloud/nativeClients/registry.md, "Story: Admit only a registered native client"
+import { assetStatements } from "../../gen/cloud__nativeClients__registry.effect.vibe"
+import { json, type Route } from "../http/routes.vibe"
+import { Store } from "../store/connection.vibe"
+import { loadRegistry, servedEnvironment } from "./registry.vibe"
+
+effect function assetLinks() {
+  const served = try servedEnvironment()
+  const registry = try (try Store).transaction((tx) => loadRegistry(tx, served))
+  return json(assetStatements(registry, served).map(({ packageName, fingerprints }) => ({
+    relation: ["delegate_permission/common.handle_all_urls"],
+    target: { namespace: "android_app", package_name: packageName, sha256_cert_fingerprints: fingerprints }
+  })))
+}
+
+export const routes: ReadonlyArray<Route> = [
+  { method: "GET", path: "/.well-known/assetlinks.json", auth: "Public", handler: assetLinks }
+]

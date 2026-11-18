@@ -217,8 +217,10 @@ pure def settledPhaseFor(restoring: bool, facts: RecoveryFacts, steps: RestoreSt
   else Interrupted({ restoring: restoring or (plan == RestoreOriginal and steps.markCommitted) })
 }
 pure def restoreMarked(p: ReplacePhase): bool = match p { | Interrupted(i) => i.restoring | _ => false }
-pure def canSettleReplacement(s: ReplaceState, facts: RecoveryFacts, steps: RestoreSteps): bool =
-  holdsWritingRecord(s.phase) and s.phase != Prepared and s.phase != WriteOpen
+pure def canSettleReplacement(s: ReplaceState, facts: RecoveryFacts, steps: RestoreSteps): bool = {
+  val phase = s.phase
+  match phase { | Interrupted(_) => true | _ => false }
+}
 pure def settleReplacement(s: ReplaceState, facts: RecoveryFacts, steps: RestoreSteps): ReplaceState =
   { ...s, phase: settledPhaseFor(restoreMarked(s.phase), facts, steps) }
 pure def lawFailureNeedsOriginalBytes(restoring: bool, facts: RecoveryFacts, steps: RestoreSteps): bool =

@@ -1,21 +1,23 @@
 // spec/agent/plugins/profile.md, "Story: Load only the plugins my product lists"; spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"
 import { assert, it } from "@effect/vitest"
+import { addLogListener, type LogEntry } from "@elizaos/core"
+import { builtinModules, cloudLinkPlugin, storagePlugin } from "../gen/agent__plugins__profile.ts"
 import { parseLaunch } from "../src/host/launch.vibe"
-import type { AgentPlugin, ModuleFactory } from "../src/host/module.vibe"
+import type { AgentPlugin } from "../src/host/module.vibe"
 import { startAgent, type StartAgentInput } from "../src/host/process.vibe"
-import { bundledPluginMap } from "../src/plugins/profile.vibe"
+import { builtinModuleFactories, bundledPluginMap } from "../src/plugins/profile.vibe"
 import { boot, host, ready, scratch } from "./support/kernel.vibe"
 import { claimingProductPlugin, productActionName, productPlugin } from "./support/product-plugin/index.ts"
 import { launchDocument, launchFrame, type LaunchOptions } from "./support/scratch.ts"
 import { request } from "./support/socket-client.ts"
 
-const tasksModule: ModuleFactory<never> = () => Effect.succeed({
-  name: "@elizaos/agent/tasks",
-  plugin: {
-    name: "@elizaos/agent/tasks", description: "A tasks module that owns /api/tasks",
-    routes: [{ method: "GET", path: "/api/tasks", handler: () => ({ status: 200, body: { tasks: [] } }) }],
-  },
-})
+const tasksModule = "@elizaos/agent/tasks"
+const unbuiltModule = builtinModules.find((name) => !builtinModuleFactories.has(name))
+
+const listedPlugin = {
+  name: "listed-fixture",
+  description: "A load-listed plugin fixture with no actions or routes.",
+} satisfies AgentPlugin
 
 const hostClaimingPlugin = {
   ...productPlugin,
@@ -26,7 +28,6 @@ const hostClaimingPlugin = {
 interface Case {
   readonly launch: LaunchOptions
   readonly bundled?: readonly AgentPlugin[]
-  readonly modules?: StartAgentInput["modules"]
 }
 
 effect function launched(state: { readonly path: string; file(name: string): string }, test: Case) {
@@ -39,7 +40,6 @@ effect function launched(state: { readonly path: string; file(name: string): str
     frame, socket,
     input: {
       ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket }, bundled,
-      ...(test.modules === undefined ? {} : { modules: test.modules }),
     } satisfies StartAgentInput,
   }
 }
@@ -57,12 +57,9 @@ const refusals: ReadonlyArray<readonly [string, string, Case]> = [
   ["A listed storage plugin stops boot", "Storage, the cloud link and the privacy service always load and cannot be listed",
     { launch: { load: ["@elizaos/agent/storage"] } }],
   ["A product plugin named like an agent module stops boot", "Storage, the cloud link and the privacy service always load and cannot be listed",
-    { launch: { productPlugin: "@elizaos/agent/tasks" } }],
+    { launch: { productPlugin: tasksModule } }],
   ["A product plugin missing from the bundle stops boot", "The product plugin must be in the bundle",
     { launch: { productPlugin: productPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] } }],
-  ["A product route under a module's prefix stops boot", "A product route never claims a route prefix an agent module owns",
-    { launch: { load: ["@elizaos/agent/tasks"], productPlugin: claimingProductPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] },
-      bundled: [claimingProductPlugin], modules: new Map([["@elizaos/agent/tasks", tasksModule]]) }],
   ["A product route under a host prefix stops boot", "A product route never claims a route prefix an agent module owns",
     { launch: { productPlugin: hostClaimingPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] }, bundled: [hostClaimingPlugin] }],
   ["A stale allowlist stops boot", "The agent is ready only when every allowed action is registered",
@@ -75,6 +72,14 @@ for (const [title, rule, test] of refusals) {
     try Effect.try(() => assert.strictEqual(phase, "Config"))
   }, 60_000)
 }
+
+it.effect.skipIf(!builtinModuleFactories.has(tasksModule))(`A product route under the tasks module's prefix stops boot with Config (spec/agent/plugins/profile.md, "A product route never claims a route prefix an agent module owns")${builtinModuleFactories.has(tasksModule) ? "" : `: skipped while ${tasksModule} has no factory`}`, effect () => {
+  const phase = try refusal({
+    launch: { load: [tasksModule], productPlugin: claimingProductPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] },
+    bundled: [claimingProductPlugin],
+  })
+  try Effect.try(() => assert.strictEqual(phase, "Config"))
+}, 120_000)
 
 it.effect('A bundled package whose plugin has another name is refused (spec/agent/plugins/profile.md, "The product plugin must be in the bundle")', effect () => {
   const failed = try Effect.flip(bundledPluginMap([{ packageName: "@product/plugin", plugin: productPlugin }]))
@@ -107,8 +112,13 @@ const childRefusals: ReadonlyArray<readonly [string, string, LaunchOptions]> = [
   ["An unknown plugin name", "A load list names only plugins the bundle carries or the agent's own modules", { load: ["@elizaos/plugin-wallet"] }],
   ["A load list naming storage", "Storage, the cloud link and the privacy service always load and cannot be listed", { load: ["@elizaos/agent/storage"] }],
   ["A named product that is not in the bundle", "The product plugin must be in the bundle", { productPlugin: "product-fixture", allowed: ["REPLY", "IGNORE", "NONE", productActionName] }],
-  ["A listed built-in module without a factory", "A load list names only plugins the bundle carries or the agent's own modules", { load: ["@elizaos/agent/tasks"] }],
 ]
+
+it.effect.skipIf(unbuiltModule === undefined)(`A listed built-in module without a factory exits 78 (spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules")${unbuiltModule === undefined ? ": skipped, every built-in module has a factory" : `: ${unbuiltModule}`}`, effect () => {
+  const booted = try boot({ launch: { load: [unbuiltModule ?? ""] } })
+  const exited = try host("exit", () => booted.child.exited)
+  try Effect.try(() => assert.strictEqual(exited.code, 78))
+}, 120_000)
 
 for (const [title, rule, launch] of childRefusals) {
   it.effect(`${title} exits 78 (spec/agent/plugins/profile.md, "${rule}")`, effect () => {
@@ -126,6 +136,25 @@ it.effect('An agent with a cloud backend and no plugins is ready and registers s
   const output = `${stopped.stdout}${stopped.stderr}`
   const registered = output.split("\n").filter((line) => line.includes("Plugin registered"))
   try Effect.try(() => assert.deepStrictEqual("json" in answer ? (answer.json as { actions: string[] }).actions : answer, ["IGNORE", "NONE", "REPLY"]))
-  try Effect.try(() => assert.include(registered[0] ?? "", "@elizaos/agent/storage"))
-  try Effect.try(() => assert.include(registered[1] ?? "", "@elizaos/agent/cloud"))
+  try Effect.try(() => assert.include(registered[0] ?? "", storagePlugin))
+  try Effect.try(() => assert.include(registered[1] ?? "", cloudLinkPlugin))
+  try Effect.try(() => assert.strictEqual(registered.length, 2))
 }, 180_000)
+
+it.effect('Plugins register as storage, the cloud link, the listed plugins and the product last (spec/agent/plugins/profile.md, "Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last")', effect () => {
+  const order = [storagePlugin, cloudLinkPlugin, listedPlugin.name, productPlugin.name]
+  const registered: string[] = []
+  const listen = (entry: LogEntry) => {
+    if (!entry.msg.includes("Plugin registered")) return
+    const plugin = order.find((name) => entry.msg.includes(name))
+    registered.push(plugin ?? entry.msg)
+  }
+  try acquireRelease(Effect.sync(() => addLogListener(listen)), (remove) => Effect.sync(() => { remove() }))
+  const state = try scratch("plan-state")
+  const { input } = try launched(state, {
+    launch: { load: [listedPlugin.name], productPlugin: productPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] },
+    bundled: [listedPlugin, productPlugin],
+  })
+  const running = try acquireRelease(startAgent(input), (agent) => orDie(host("retire agent", () => agent.stop())))
+  try Effect.try(() => assert.deepStrictEqual({ ready: running.status.ready, registered }, { ready: true, registered: order }))
+}, 120_000)

@@ -25,8 +25,9 @@ allowanceAvailable)`, `allowanceCharge` and `creditCharge`.
 ### A hold reserves half again the quote, capped at what the funding lane offers
 
 The quote is the service's estimate in µUSD, 0 or more. The hold is 150 % of
-it, at least 1 µUSD, but never more than the lane offers, so a call the
-account can pay at its quote still runs. `billing/entitlements` chooses the
+it and at least 1 µUSD (develop's `COST_BUFFER` and `MIN_RESERVATION`), but
+never more than the lane offers, so a call the account can pay at its quote
+still runs; a free call on an empty lane holds 0. `billing/entitlements` chooses the
 lane and passes it in; `Refused` means the plan could not be read and funds
 nothing.
 

@@ -1,0 +1,127 @@
+// spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; spec/os/signIn/readiness.md, "Story: Read the service's own terms"
+import type {
+  ServiceDocument,
+  SignedOut,
+  SignInCode,
+  SignInEvents,
+  SignInProgress,
+  SignInReadiness,
+  SignInRequestId,
+  SignInStatus,
+} from "./definitions/sign-in.ts"
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const NAME = /^[a-z][a-z0-9-]{0,31}$/
+const CODE = /^[0-9]{6}$/
+export const strict = { onExcessProperty: "error" } as const
+
+const uuid = Schema.String.check(Schema.isPattern(UUID))
+export const RequestId = uuid.pipe(Schema.brand("SignInRequestId"))
+const AttemptId = uuid.pipe(Schema.brand("SignInAttemptId"))
+const CredentialId = uuid.pipe(Schema.brand("CredentialId"))
+export const Environment = Schema.String.check(Schema.isPattern(NAME)).pipe(Schema.brand("EnvironmentName"))
+const Code = Schema.String.check(Schema.isPattern(CODE)).pipe(Schema.brand("SignInCode"))
+const Instant = Schema.Int.check(Schema.isGreaterThan(0))
+const Text = Schema.String.check(Schema.isMinLength(1))
+const GoogleMode = Schema.Literals(["Picker", "Browser"])
+
+export const FailureCode = Schema.Literals([
+  "cancelled",
+  "busy",
+  "invalid-request",
+  "invalid-code",
+  "expired",
+  "too-many-attempts",
+  "unavailable",
+  "refused",
+  "google-unavailable",
+  "storage",
+])
+
+schema Receipt {
+  requestId: RequestId
+  attemptId: AttemptId
+  credentialId: CredentialId
+  google: "connected" | "refused" | "not-requested"
+}
+
+schema SignedIn { kind: "signedIn"; environment: Environment; receipt: Receipt }
+schema Reauthenticated { kind: "reauthenticated"; environment: Environment; requestId: RequestId; attemptId: AttemptId; sessionExpiresAt: Instant }
+schema Failed { kind: "failed"; environment: Environment; requestId: RequestId; code: FailureCode }
+
+export const Settled = Schema.Union([SignedIn, Reauthenticated, Failed])
+
+export const Progress: Schema.Codec<SignInProgress, unknown> = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("codeSent"), requestId: RequestId, attemptId: AttemptId, expiresAt: Instant, resendAt: Instant }),
+  Schema.Struct({
+    kind: Schema.Literal("secondFactor"),
+    requestId: RequestId,
+    attemptId: AttemptId,
+    factor: Schema.Literals(["totp", "sms"]),
+    expiresAt: Instant,
+  }),
+  Schema.Struct({ kind: Schema.Literal("browserOpened"), requestId: RequestId, attemptId: AttemptId }),
+  SignedIn,
+  Reauthenticated,
+])
+
+export schema Cancelled { cancelled: boolean }
+
+const Custody = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("signedOut") }),
+  Schema.Struct({ kind: Schema.Literal("active"), userId: Text, organizationId: Text, credentialId: CredentialId, keyExpiresAt: Instant }),
+  Schema.Struct({ kind: Schema.Literal("expired"), userId: Text, organizationId: Text }),
+])
+
+export const Status: Schema.Codec<SignInStatus, unknown> = Schema.Struct({
+  environment: Environment,
+  custody: Custody,
+  request: Schema.NullOr(Schema.Struct({
+    requestId: RequestId,
+    step: Schema.Literals(["starting", "code-sent", "verifying", "second-factor", "exchanging"]),
+  })),
+})
+
+export const Readiness: Schema.Codec<SignInReadiness, unknown> = Schema.Struct({
+  environment: Environment,
+  methodsKnown: Schema.Boolean,
+  email: Schema.Boolean,
+  sms: Schema.Boolean,
+  google: Schema.Boolean,
+  googleMode: GoogleMode,
+})
+
+export const Service: Schema.Codec<ServiceDocument, unknown> = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("ServiceShown"),
+    environment: Environment,
+    service: Schema.Struct({ name: Text, terms: Text, privacy: Text }),
+  }),
+  Schema.Struct({ kind: Schema.Literals(["ServiceUnavailable", "ServiceUnknownEnvironment"]), environment: Environment }),
+])
+
+export const SignOut: Schema.Codec<SignedOut, unknown> = Schema.Struct({
+  environment: Environment,
+  revoke: Schema.Literals(["RevokeSettled", "RevokeUnanswered"]),
+})
+
+export const Refusal = Schema.Struct({
+  code: FailureCode,
+  data: Schema.optionalKey(Schema.Struct({
+    attemptKept: Schema.optionalKey(Schema.Literal(true)),
+    resendAt: Schema.optionalKey(Instant),
+  })),
+})
+
+export const events: { [Name in keyof SignInEvents]: Schema.Codec<SignInEvents[Name], unknown> } = {
+  signInSettled: Settled,
+  signInReadinessChanged: Readiness,
+}
+
+export function requestIdOf(text: string): Option.Option<SignInRequestId> {
+  return Schema.decodeUnknownOption(RequestId)(text)
+}
+
+export function signInCode(typed: string): Option.Option<SignInCode> {
+  return Schema.decodeUnknownOption(Code)(typed.replace(/[\s-]/g, ""))
+}

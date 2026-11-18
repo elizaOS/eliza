@@ -18,7 +18,7 @@ export interface Refused {
 }
 
 export interface EventSubscriptions {
-  readonly subscribe: (request: FeedRequest, signal: AbortSignal) => AsyncIterable<AgentEvent> | Refused
+  readonly subscribe: (request: FeedRequest, signal: AbortSignal, cut: () => void) => AsyncIterable<AgentEvent> | Refused
 }
 
 export const isRefused = (feed: AsyncIterable<AgentEvent> | Refused): feed is Refused => "kind" in feed

@@ -1,8 +1,7 @@
-// spec/agent/storage/database.md, "Story: Keep the agent's records in one store that never loses a committed write"; spec/agent/storage/database.md, "A data directory serves only the agent, account and embedding size it was created for"; spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"
+// spec/agent/storage/database.md, "Story: Keep the agent's records in one store that never loses a committed write"; spec/agent/storage/database.md, "A data directory serves only the agent, account and embedding size it was created for"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"; spec/core/adapterOwnership.md, "Registration captures object references and rollback preserves close ordering"; spec/core/storage.md, "Story: Preserve storage compatibility without hiding unsupported operations"
 module node {
   import { randomUUID } from "node:crypto"
-  import { mkdtemp, open, readdir, rename, rm } from "node:fs/promises"
-  import { dirname, join } from "node:path"
+  import { readdir } from "node:fs/promises"
   import { PGlite, type Transaction } from "@electric-sql/pglite"
   import { vector } from "@electric-sql/pglite/vector"
   import {
@@ -10,8 +9,10 @@ module node {
     type Agent, type Entity, type IDatabaseAdapter, type Log, type Memory, type MemoryEmbeddingUpdate, type Room, type Task,
     type UUID, type World,
   } from "@elizaos/core"
-  import { migrations } from "./schema.vibe"
+  import { seedable } from "../../gen/agent__storage__database.ts"
+  import { migrations as shipped, type Migration } from "./schema.vibe"
   import { claimDeviceState } from "./identity.vibe"
+  import { migrate, seedDurableStore, startStore, storeBundle, type DeviceStorageSnapshot } from "./migrate.vibe"
 
   export interface DeviceStorageOptions {
     stateDirectory: string
@@ -19,11 +20,7 @@ module node {
     account: { userId: string; organizationId: string } | null
     embeddingDimensions: number
     snapshot?: DeviceStorageSnapshot
-  }
-
-  export interface DeviceStorageSnapshot {
-    readonly schemaVersion: number
-    readonly bytes: Uint8Array
+    migrations?: readonly Migration[]
   }
 
   type DB = PGlite | Transaction
@@ -40,44 +37,6 @@ module node {
 
   function unsupported(operation: string) {
     return (..._args: unknown[]): Promise<never> => Promise.reject(new UnsupportedStorageOperation(operation))
-  }
-
-  async function migrate(db: PGlite, agentId: UUID, options: DeviceStorageOptions, seeded = false): Promise<void> {
-    const user = options.account?.userId ?? null
-    const organization = options.account?.organizationId ?? null
-    await db.transaction(async (transaction) => {
-      const result = await transaction.query<{ exists: boolean }>("SELECT to_regclass('public.device_owner') IS NOT NULL AS exists")
-      if (seeded || !result.rows[0]?.exists) {
-        if (seeded) {
-          const confirmed = await transaction.query<{ version: number; empty: boolean }>(
-            "SELECT version, NOT EXISTS (SELECT 1 FROM device_owner) AND NOT EXISTS (SELECT 1 FROM device_records) AS empty FROM device_snapshot",
-          )
-          if (confirmed.rows.length !== 1 || confirmed.rows[0]?.version !== migrations.length || !confirmed.rows[0]?.empty) {
-            throw new Error("The bundle's store snapshot is not a current empty database")
-          }
-          await transaction.exec("DROP TABLE device_snapshot")
-        } else {
-          const previous = await transaction.query("SELECT 1 FROM pg_tables WHERE schemaname = 'public' LIMIT 1")
-          if (previous.rows.length > 0) throw new Error("The device store has no ownership metadata")
-          for (const migration of migrations) await transaction.exec(migration)
-        }
-        await transaction.query(
-          "INSERT INTO device_owner VALUES (true, $1, $2, $3, $4, $5)",
-          [agentId, user, organization, options.embeddingDimensions, migrations.length],
-        )
-        return
-      }
-      const owners = await transaction.query<{ agent_id: string; user_id: string | null; organization_id: string | null; embedding_dimensions: number; version: number }>(
-        "SELECT agent_id, user_id, organization_id, embedding_dimensions, version FROM device_owner WHERE singleton",
-      )
-      const owner = owners.rows[0]
-      if (!owner || owner.agent_id !== agentId || owner.user_id !== user ||
-        owner.organization_id !== organization || owner.embedding_dimensions !== options.embeddingDimensions) {
-        throw new Error("The device store belongs to a different agent, account or embedding space")
-      }
-      if (owner.version !== migrations.length) throw new Error("The device store schema version is unsupported")
-      await transaction.query("SELECT key, data, table_name FROM device_records LIMIT 0")
-    })
   }
 
   async function sizeVectors(db: PGlite, dimensions: number): Promise<void> {
@@ -211,7 +170,7 @@ module node {
 
     getAgents(): Promise<Agent[]> { return this.values("agents") }
     getAgentsByIds(keys: UUID[]): Promise<Agent[]> { return this.values("agents", { keys }) }
-    createAgents(agents: Partial<Agent>[]): Promise<UUID[]> { return this.write("agents", agents.map((agent) => this.keepAgent(agent)), "create") }
+    async createAgents(agents: Partial<Agent>[]): Promise<UUID[]> { return await this.write("agents", agents.map((agent) => this.keepAgent(agent)), "create") }
     async upsertAgents(agents: Partial<Agent>[]): Promise<void> { await this.write("agents", agents.map((agent) => this.keepAgent(agent)), "put") }
     async countAgents(): Promise<number> { return (await this.getAgents()).length }
     deleteAgents(keys: UUID[]): Promise<boolean> { return this.remove("agents", keys) }
@@ -223,7 +182,7 @@ module node {
     }
 
     getEntitiesByIds(keys: UUID[]): Promise<Entity[]> { return this.values("entities", { keys }) }
-    createEntities(entities: Entity[]): Promise<UUID[]> { return this.write("entities", entities.map((entity) => this.entity(entity)), "create") }
+    async createEntities(entities: Entity[]): Promise<UUID[]> { return await this.write("entities", entities.map((entity) => this.entity(entity)), "create") }
     async upsertEntities(entities: Entity[]): Promise<void> { await this.write("entities", entities.map((entity) => this.entity(entity)), "put") }
     async updateEntities(entities: Entity[]): Promise<void> { await this.write("entities", entities.map((entity) => this.entity(entity)), "update") }
     async deleteEntities(keys: UUID[]): Promise<void> { await this.remove("entities", keys) }
@@ -241,7 +200,7 @@ module node {
 
     getAllWorlds(): Promise<World[]> { return this.values("worlds") }
     getWorldsByIds(keys: UUID[]): Promise<World[]> { return this.values("worlds", { keys }) }
-    createWorlds(worlds: World[]): Promise<UUID[]> { return this.write("worlds", worlds.map((world) => this.world(world)), "create") }
+    async createWorlds(worlds: World[]): Promise<UUID[]> { return await this.write("worlds", worlds.map((world) => this.world(world)), "create") }
     async upsertWorlds(worlds: World[]): Promise<void> { await this.write("worlds", worlds.map((world) => this.world(world)), "put") }
     async updateWorlds(worlds: World[]): Promise<void> { await this.write("worlds", worlds.map((world) => this.world(world)), "update") }
     async deleteWorlds(keys: UUID[]): Promise<void> { await this.remove("worlds", keys) }
@@ -252,7 +211,7 @@ module node {
     }
 
     getRoomsByIds(keys: UUID[]): Promise<Room[]> { return this.values("rooms", { keys }) }
-    createRooms(rooms: Room[]): Promise<UUID[]> { return this.write("rooms", rooms.map((room) => this.room(room)), "create") }
+    async createRooms(rooms: Room[]): Promise<UUID[]> { return await this.write("rooms", rooms.map((room) => this.room(room)), "create") }
     async upsertRooms(rooms: Room[]): Promise<void> { await this.write("rooms", rooms.map((room) => this.room(room)), "put") }
     async updateRooms(rooms: Room[]): Promise<void> { await this.write("rooms", rooms.map((room) => this.room(room)), "update") }
     async deleteRooms(keys: UUID[]): Promise<void> { await this.remove("rooms", keys) }
@@ -320,8 +279,8 @@ module node {
       return record(id, { ...input, id, agentId: this.agentId, createdAt, unique: unique ?? input.unique }, createdAt, tableName)
     }
 
-    createMemories(inputs: Parameters<IDatabaseAdapter["createMemories"]>[0]): Promise<UUID[]> {
-      return this.write("memories", inputs.map(({ memory, tableName, unique }) => this.memory(memory, tableName, unique)), "create")
+    async createMemories(inputs: Parameters<IDatabaseAdapter["createMemories"]>[0]): Promise<UUID[]> {
+      return await this.write("memories", inputs.map(({ memory, tableName, unique }) => this.memory(memory, tableName, unique)), "create")
     }
 
     async upsertMemories(inputs: Parameters<IDatabaseAdapter["upsertMemories"]>[0]): Promise<void> {
@@ -541,8 +500,8 @@ module node {
       }, createdAt)
     }
 
-    createTasks(tasks: Task[]): Promise<UUID[]> {
-      return this.write("tasks", tasks.map((task) => this.task(task)), "create")
+    async createTasks(tasks: Task[]): Promise<UUID[]> {
+      return await this.write("tasks", tasks.map((task) => this.task(task)), "create")
     }
 
     getTasksByIds(keys: UUID[]): Promise<Task[]> { return this.values("tasks", { keys }) }
@@ -620,32 +579,6 @@ module node {
     readonly deletePairingAllowlistEntries = unsupported("deletePairingAllowlistEntries")
   }
 
-  export async function createDeviceStorageSnapshot(): Promise<DeviceStorageSnapshot> {
-    const db = await PGlite.create()
-    try {
-      await db.transaction(async (tx) => {
-        for (const migration of migrations) await tx.exec(migration)
-        await tx.exec("CREATE TABLE device_snapshot (version integer NOT NULL)")
-        await tx.query("INSERT INTO device_snapshot VALUES ($1)", [migrations.length])
-      })
-      return { schemaVersion: migrations.length, bytes: new Uint8Array(await (await db.dumpDataDir("none")).arrayBuffer()) }
-    } finally { await db.close() }
-  }
-
-  async function seedDurableStore(directory: string, agentId: UUID, options: DeviceStorageOptions, bytes: Blob): Promise<void> {
-    const parent = dirname(directory)
-    const scratch = await mkdtemp(join(parent, ".store-seed-"))
-    try {
-      const staged = await PGlite.create(scratch, { loadDataDir: bytes })
-      try { await migrate(staged, agentId, options, true) }
-      finally { await staged.close() }
-      await rename(scratch, directory)
-      const handle = await open(parent, "r")
-      try { await handle.sync() }
-      finally { await handle.close() }
-    } finally { await rm(scratch, { recursive: true, force: true }) }
-  }
-
   export async function openDeviceStorage(options: DeviceStorageOptions): Promise<{ agentId: UUID; adapter: IDatabaseAdapter }> {
     if (!Number.isSafeInteger(options.embeddingDimensions) || options.embeddingDimensions < 0 ||
       (options.account !== null && (!options.account.userId.trim() || !options.account.organizationId.trim()))) {
@@ -654,16 +587,18 @@ module node {
     const state = await claimDeviceState(options.stateDirectory, options.persistMemory)
     let db: PGlite | undefined
     try {
-      const snapshot = options.snapshot?.schemaVersion === migrations.length
+      const list = options.migrations ?? shipped
+      const owner = { agentId: state.agentId, account: options.account, embeddingDimensions: options.embeddingDimensions }
+      const snapshot = options.snapshot !== undefined && seedable(storeBundle(list, options.snapshot))
         ? new Blob([Uint8Array.from(options.snapshot.bytes)]) : undefined
       const directory = state.dataDirectory
       const seeded = snapshot !== undefined && directory === undefined
       if (snapshot !== undefined && directory !== undefined && (await readdir(directory)).length === 0) {
-        await seedDurableStore(directory, state.agentId, options, snapshot)
+        await seedDurableStore(directory, owner, list, snapshot)
       }
       const vectors = options.embeddingDimensions > 0 ? { extensions: { vector } } : {}
-      db = await PGlite.create(seeded ? { loadDataDir: snapshot, ...vectors } : { dataDir: directory, ...vectors })
-      await migrate(db, state.agentId, options, seeded)
+      db = await startStore(seeded ? { loadDataDir: snapshot, ...vectors } : { dataDir: directory, ...vectors })
+      await migrate(db, owner, list, seeded)
       if (options.embeddingDimensions > 0) await sizeVectors(db, options.embeddingDimensions)
       return { agentId: state.agentId, adapter: new DeviceAdapter(db, state.agentId, options.embeddingDimensions, state.release) }
     } catch (error) {
@@ -673,4 +608,5 @@ module node {
     }
   }
 }
-export { createDeviceStorageSnapshot, openDeviceStorage, type DeviceStorageOptions, type DeviceStorageSnapshot } from node
+export { openDeviceStorage, type DeviceStorageOptions } from node
+export { createDeviceStorageSnapshot, type DeviceStorageSnapshot } from "./migrate.vibe"

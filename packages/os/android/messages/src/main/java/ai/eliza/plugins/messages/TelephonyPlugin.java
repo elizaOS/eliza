@@ -353,7 +353,8 @@ public abstract class TelephonyPlugin extends Plugin {
  }
 
  /**
-  * The newest recent calls, at most {@link CallLogRows#MAX_CALLS}, of one dial-shape {@code number} when set,
+  * The newest recent calls, a page of at most {@link CallLogRows#MAX_CALLS} plus one lookahead row, of one
+  * dial-shape {@code number} when set, after the {@code beforeDate}/{@code beforeId} key when set,
   * read only while unlocked and in front,
   * cancelled on background, lock, screen-off and permission change and fenced again before publication.
   * Numbers are reduced to the dial shape (withheld or undialable entries become ""); voicemail
@@ -367,14 +368,24 @@ public abstract class TelephonyPlugin extends Plugin {
   if (limit < 0) { call.reject("Recent-calls limit must be 1 to 50", "invalid"); return; }
   final String number = call.getString("number");
   if (number != null && !CallLogRows.number(number).equals(number)) { call.reject("Not a dialable phone number", "invalid"); return; }
+  final boolean resumed = call.getData().has("beforeDate");
+  final long beforeDate = call.getData().optLong("beforeDate", 0L), beforeId = call.getData().optLong("beforeId", 0L);
+  if (resumed && (beforeDate <= 0 || beforeId <= 0)) { call.reject("Invalid recent-calls cursor", "invalid"); return; }
+  final int read = limit + 1;
   fencedRead(call, CALL_LOG, "Recent calls", cancel -> {
    // The query keeps only rows that can hold the number with any separators; the loop keeps exact
    // dial-shape matches. The provider row limit applies only when every row is published.
    Uri uri = number != null ? android.provider.CallLog.Calls.CONTENT_URI
      : android.provider.CallLog.Calls.CONTENT_URI.buildUpon()
-       .appendQueryParameter(android.provider.CallLog.Calls.LIMIT_PARAM_KEY, String.valueOf(limit)).build();
-   String selection = number == null ? null : android.provider.CallLog.Calls.NUMBER + " LIKE ?";
-   String[] selectionArgs = number == null ? null : new String[] { "%" + String.join("%", number.split("")) + "%" };
+       .appendQueryParameter(android.provider.CallLog.Calls.LIMIT_PARAM_KEY, String.valueOf(read)).build();
+   java.util.List<String> clauses = new java.util.ArrayList<>(), args = new java.util.ArrayList<>();
+   if (number != null) { clauses.add(android.provider.CallLog.Calls.NUMBER + " LIKE ?"); args.add("%" + String.join("%", number.split("")) + "%"); }
+   if (resumed) {
+    clauses.add("(" + android.provider.CallLog.Calls.DATE + " < ? OR (" + android.provider.CallLog.Calls.DATE + " = ? AND " + android.provider.CallLog.Calls._ID + " < ?))");
+    args.add(String.valueOf(beforeDate)); args.add(String.valueOf(beforeDate)); args.add(String.valueOf(beforeId));
+   }
+   String selection = clauses.isEmpty() ? null : String.join(" AND ", clauses);
+   String[] selectionArgs = args.isEmpty() ? null : args.toArray(new String[0]);
    String[] projection = {
     android.provider.CallLog.Calls._ID, android.provider.CallLog.Calls.NUMBER, android.provider.CallLog.Calls.CACHED_NAME,
     android.provider.CallLog.Calls.DATE, android.provider.CallLog.Calls.DURATION, android.provider.CallLog.Calls.TYPE,
@@ -384,7 +395,7 @@ public abstract class TelephonyPlugin extends Plugin {
      android.provider.CallLog.Calls.DATE + " DESC, " + android.provider.CallLog.Calls._ID + " DESC", cancel)) {
     if (cursor == null) throw new IllegalStateException("Call log unavailable");
     long previous = Long.MAX_VALUE; java.util.Set<String> seen = new java.util.HashSet<>();
-    while (rows.length() < limit && cursor.moveToNext()) {
+    while (rows.length() < read && cursor.moveToNext()) {
      cancel.throwIfCanceled();
      String id = cursor.getString(0); long date = cursor.getLong(3);
      // A row the shared parser would refuse (bad ID, repeated, out of order) fails the whole read; it is never skipped or repaired.
@@ -681,19 +692,19 @@ public abstract class TelephonyPlugin extends Plugin {
   if (id < 0) { call.reject("Invalid voicemail", "invalid"); return; }
   fenced(call, this::voicemailReadable, "Voicemail", cancel -> VoicemailStore.pcm(getContext(), id, cancel), true);
  }
- /** Marks one voicemail heard: {@code {status: "marked" | "not-found"}}. Reported even if access changed meanwhile. */
+ /** Marks one voicemail heard: {@code {status: "marked" | "unconfirmed" | "not-found"}}. Reported even if access changed meanwhile. */
  @PluginMethod public void markVoicemailHeard(PluginCall call) {
   if (refused(call)) return;
   final long id = voicemail(call);
   if (id < 0) { call.reject("Invalid voicemail", "invalid"); return; }
-  fenced(call, this::voicemailWritable, "Voicemail", cancel -> { JSObject value = new JSObject(); value.put("status", VoicemailStore.markHeard(getContext(), id) ? "marked" : "not-found"); return value; }, false);
+  fenced(call, this::voicemailWritable, "Voicemail", cancel -> { JSObject value = new JSObject(); value.put("status", VoicemailStore.markHeard(getContext(), id)); return value; }, false);
  }
- /** Deletes one voicemail the owner chose: {@code {status: "deleted" | "not-found"}}. Reported even if access changed meanwhile. */
+ /** Deletes one voicemail the owner chose: {@code {status: "deleted" | "unconfirmed" | "not-found"}}. Reported even if access changed meanwhile. */
  @PluginMethod public void deleteVoicemail(PluginCall call) {
   if (refused(call)) return;
   final long id = voicemail(call);
   if (id < 0) { call.reject("Invalid voicemail", "invalid"); return; }
-  fenced(call, this::voicemailWritable, "Voicemail", cancel -> { JSObject value = new JSObject(); value.put("status", VoicemailStore.delete(getContext(), id) ? "deleted" : "not-found"); return value; }, false);
+  fenced(call, this::voicemailWritable, "Voicemail", cancel -> { JSObject value = new JSObject(); value.put("status", VoicemailStore.delete(getContext(), id)); return value; }, false);
  }
 
  private boolean voicemailWanted, voicemailObserving;

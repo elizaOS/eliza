@@ -1,0 +1,129 @@
+// spec/agent/schedule/triggers.md, "An edit, enable or removal is refused only when it names a revision that has moved on"; spec/agent/schedule/triggers.md, "The run history keeps the last 100 records"; spec/agent/schedule/scheduledTasks.md, "A keyed verb applies once per key"; spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"; spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight"
+import { assert, it } from "@effect/vitest"
+import type { IDatabaseAdapter } from "@elizaos/core"
+import { machineOver as triggerMachine, type Event as TriggerEvent } from "../gen/agent__schedule__triggers.effect.vibe"
+import { initial as waitingTask, machineOver as taskMachine } from "../gen/agent__schedule__scheduledTasks.effect.vibe"
+import {
+  appendTriggerRun, countEnabledTriggers, createScheduledTask, getScheduledTask, getTrigger, listScheduledTasks, listTriggerRuns,
+  listTriggers, scheduledTaskByKey, scheduledTaskKeeping, StaleRevision, triggerKeeping,
+  type NewScheduledTask, type TriggerDetails,
+} from "../src/schedule/store.vibe"
+import { openDeviceStorage } from "../src/storage/index.vibe"
+import { migrations } from "../src/storage/schema.vibe"
+import { host, scratch } from "./support/kernel.vibe"
+
+const details: TriggerDetails = { displayName: "Morning", instructions: "Say good morning", triggerType: "cron", timezone: "UTC", cronExpression: "0 8 * * *" }
+const create: TriggerEvent = { type: "create", schedule: "CronSchedule", requested: "room-1", defaultRoom: "room-1", eventKind: "", at: 10_000, roomExists: true }
+const enable: TriggerEvent = { type: "setEnabled", on: true, at: 10_000, activeOthers: 0, expected: { tag: "AnyRevision" } }
+const run = (n: number) => ({ startedAt: n, finishedAt: n + 1, status: "RunSuccess" as const, source: "RunNow" as const })
+const newTask = (taskId: string, idempotencyKey?: string): NewScheduledTask => ({
+  taskId, ownerVisible: taskId !== "hidden", state: waitingTask, ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+  details: { kind: "reminder", promptInstructions: "Stretch", trigger: { kind: "manual" }, metadata: { source: "test" } },
+})
+
+effect function open(directory: string, persistMemory: boolean, list = migrations) {
+  return try host("open the store", () => openDeviceStorage({ stateDirectory: directory, persistMemory, account: null, embeddingDimensions: 0, migrations: list }))
+}
+
+effect function closed(adapter: IDatabaseAdapter) {
+  try host("close the store", () => adapter.close())
+}
+
+effect function keepRows(adapter: IDatabaseAdapter) {
+  const kept = triggerKeeping(adapter, "trigger-1", { details })
+  const morning = try triggerMachine(kept.load, kept.keep)
+  try morning.send(create)
+  try morning.send(enable)
+  for (let n = 0; n < 102; n++) try appendTriggerRun(adapter, "trigger-1", run(n))
+  const first = try createScheduledTask(adapter, newTask("task-1", "key-1"))
+  const again = try createScheduledTask(adapter, newTask("task-2", "key-1"))
+  try createScheduledTask(adapter, newTask("hidden"))
+  const dismissing = scheduledTaskKeeping(adapter, "task-1", (row) => ({ ...row, lastDecisionLog: "dismissed" }))
+  const answered = try taskMachine(dismissing.load, dismissing.keep)
+  try answered.send({ type: "applyVerb", seenRevision: 0, key: { tag: "Keyed", key: "verb-1" }, verb: { tag: "Dismiss" }, now: 5, following: { tag: "Manual" } })
+  return { first: first.kind, again: again.kind, againId: again.task.taskId }
+}
+
+effect function readRows(adapter: IDatabaseAdapter) {
+  const trigger = try getTrigger(adapter, "trigger-1")
+  const runs = try listTriggerRuns(adapter, "trigger-1")
+  const task = try getScheduledTask(adapter, "task-1")
+  return {
+    enabled: trigger?.state.enabled, details: trigger?.details, listed: (try listTriggers(adapter)).map((row) => row.id),
+    active: try countEnabledTriggers(adapter), activeOthers: try countEnabledTriggers(adapter, "trigger-1"),
+    runs: runs.length, oldest: runs[0]?.startedAt,
+    status: task?.state.status, receipts: task?.state.receipts.length, log: task?.details.lastDecisionLog,
+    byKey: (try scheduledTaskByKey(adapter, "key-1"))?.taskId,
+    visible: (try listScheduledTasks(adapter, { ownerVisibleOnly: true })).map((row) => row.taskId),
+    all: (try listScheduledTasks(adapter, { ownerVisibleOnly: false })).map((row) => row.taskId),
+  }
+}
+
+const expected = {
+  enabled: true, details, listed: ["trigger-1"], active: 1, activeOthers: 0, runs: 100, oldest: 2,
+  status: "Dismissed" as const, receipts: 1, log: "dismissed", byKey: "task-1", visible: ["task-1"], all: ["hidden", "task-1"],
+}
+
+it.effect('Trigger rows, their last 100 runs and keyed scheduled tasks are kept in a memory store (spec/agent/schedule/triggers.md, "The run history keeps the last 100 records")', effect () => {
+  const state = try scratch("schedule-store-memory")
+  const { adapter } = try open(state.file("memory"), false)
+  const kept = try keepRows(adapter)
+  assert.deepStrictEqual(kept, { first: "created", again: "existing", againId: "task-1" })
+  assert.deepStrictEqual(try readRows(adapter), expected)
+  try closed(adapter)
+})
+
+it.effect('Trigger rows and scheduled tasks survive a restart of a data-directory store (spec/agent/schedule/scheduledTasks.md, "A keyed verb applies once per key")', effect () => {
+  const state = try scratch("schedule-store-directory")
+  const first = try open(state.file("state"), true)
+  try keepRows(first.adapter)
+  try closed(first.adapter)
+  const second = try open(state.file("state"), true)
+  assert.deepStrictEqual(try readRows(second.adapter), expected)
+  try closed(second.adapter)
+})
+
+it.effect('A write that read an older revision is refused and changes nothing (spec/agent/schedule/triggers.md, "An edit, enable or removal is refused only when it names a revision that has moved on")', effect () => {
+  const state = try scratch("schedule-store-race")
+  const { adapter } = try open(state.file("memory"), false)
+  const saving = triggerKeeping(adapter, "trigger-1", { details })
+  const owner = try triggerMachine(saving.load, saving.keep)
+  try owner.send(create)
+  const late = triggerKeeping(adapter, "trigger-1")
+  const seen = try late.load()
+  try owner.send(enable)
+  const lost = try exit(late.keep({ ...seen, enabled: false, revision: seen.revision + 5 }))
+  const defect = Exit.isFailure(lost) ? Cause.squash(lost.cause) : undefined
+  assert.isTrue(defect instanceof StaleRevision)
+  const kept = try getTrigger(adapter, "trigger-1")
+  assert.strictEqual(kept?.state.enabled, true)
+  assert.strictEqual(kept?.revision, 2)
+  try closed(adapter)
+})
+
+it.effect('A version 1 store gains the schedule tables, and the newer store is refused by a version 1 bundle (spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused")', effect () => {
+  const state = try scratch("schedule-store-migrate")
+  const older = try open(state.file("state"), true, migrations.slice(0, 1))
+  try closed(older.adapter)
+  const upgraded = try open(state.file("state"), true)
+  const created = try createScheduledTask(upgraded.adapter, newTask("task-1"))
+  assert.strictEqual(created.kind, "created")
+  assert.deepStrictEqual(try listTriggers(upgraded.adapter), [])
+  try closed(upgraded.adapter)
+  const refused = try exit(open(state.file("state"), true, migrations.slice(0, 1)))
+  assert.isTrue(Exit.isFailure(refused))
+})
+
+it.effect('Closing the store waits for a schedule write already in flight (spec/agent/storage/database.md, "Queries run only while the store is open, and close waits for every one in flight")', effect () => {
+  const state = try scratch("schedule-store-close")
+  const first = try open(state.file("state"), true)
+  const settled = try host("write while closing", () => {
+    const writing = runPromise(createScheduledTask(first.adapter, newTask("task-1")))
+    const closing = first.adapter.close()
+    return Promise.all([writing, closing])
+  })
+  assert.strictEqual(settled[0].kind, "created")
+  const second = try open(state.file("state"), true)
+  assert.strictEqual((try getScheduledTask(second.adapter, "task-1"))?.taskId, "task-1")
+  try closed(second.adapter)
+})

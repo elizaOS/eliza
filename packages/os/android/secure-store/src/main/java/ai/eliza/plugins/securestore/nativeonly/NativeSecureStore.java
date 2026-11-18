@@ -32,10 +32,9 @@ import javax.crypto.spec.GCMParameterSpec;
  * The fence covers writers in this Android process; this store must not have cross-process writers.
  */
 public final class NativeSecureStore {
-    public static final int MAXIMUM_VALUE_BYTES = 256 * 1024;
     private static final String KEY_ALIAS = "ai.elizaos.secure-store.v1";
     private static final Object LOCK = new Object();
-    private static final String CLOCK_DEVICE_SLOT = "native.clock_device";
+    private static final String CLOCK_DEVICE_SLOT = SecureSlotPolicy.CLOCK_DEVICE_SLOT;
     private static long generation;
     private static final Set<String> ALLOWED_KEYS = Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
         "session.device_auth", "session.steward_token", "session.cloud_mobile_pending",
@@ -44,9 +43,19 @@ public final class NativeSecureStore {
         "runtime.active_server", "session.device_auth", "session.steward_token", "runtime.agent_profiles", CLOCK_DEVICE_SLOT
     };
     private final File directory;
+    private final SecureSlotPolicy policy;
 
-    public NativeSecureStore(Context context) {
+    public NativeSecureStore(Context context) { this(context, SecureSlotPolicy.DEFAULT); }
+
+    public NativeSecureStore(Context context, SecureSlotPolicy policy) {
         directory = new File(Objects.requireNonNull(context).getNoBackupFilesDir(), "eliza-secure-store");
+        this.policy = Objects.requireNonNull(policy);
+    }
+
+    private SecureSlotPolicy.SlotRule budget(String key) {
+        SecureSlotPolicy.SlotRule rule = policy.rule(key);
+        if (rule == null || !SecureSlotPolicy.budgetValid(rule)) throw new IllegalArgumentException("Secure-store key has no budget");
+        return rule;
     }
 
     /** Native custody only: never serialize or return this object through a renderer bridge. */
@@ -165,7 +174,7 @@ public final class NativeSecureStore {
         if (value == null || value.isEmpty()) throw new IllegalArgumentException("Secure value is empty");
         byte[] plaintext = value.getBytes(StandardCharsets.UTF_8);
         try {
-            if (plaintext.length > MAXIMUM_VALUE_BYTES) throw new IllegalArgumentException("Secure value is oversized");
+            if (plaintext.length > budget(key).limit()) throw new IllegalArgumentException("Secure value is oversized");
             synchronized (LOCK) {
                 generation++;
                 writeValue(key, plaintext);
@@ -222,13 +231,14 @@ public final class NativeSecureStore {
                 throw new IllegalStateException("Native device identity commit is incomplete");
             return null;
         }
+        long retained = budget(key).retained();
         byte[] encoded;
         try (InputStream stream = new AtomicFile(file).openRead()) {
             ByteArrayOutputStream output = new ByteArrayOutputStream();
             byte[] chunk = new byte[8192];
             int read;
             while ((read = stream.read(chunk)) != -1) {
-                if (output.size() + read > MAXIMUM_VALUE_BYTES * 2) throw new IllegalStateException("Secure value is oversized");
+                if (output.size() + read > retained * 2 + 64) throw new IllegalStateException("Secure value is oversized");
                 output.write(chunk, 0, read);
             }
             encoded = output.toByteArray();
@@ -244,7 +254,7 @@ public final class NativeSecureStore {
         cipher.updateAAD(key.getBytes(StandardCharsets.UTF_8));
         byte[] plaintext = cipher.doFinal(ciphertext);
         try {
-            if (plaintext.length > MAXIMUM_VALUE_BYTES) throw new IllegalStateException("Secure value is oversized");
+            if (plaintext.length > retained) throw new IllegalStateException("Secure value is oversized");
             return new String(plaintext, StandardCharsets.UTF_8);
         } finally { Arrays.fill(plaintext, (byte) 0); }
     }

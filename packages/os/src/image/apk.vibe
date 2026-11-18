@@ -400,7 +400,7 @@ export function parseDigest(value: unknown): Digest {
 
 effect function present(file: string) {
   const files = try FileSystem.FileSystem
-  return try (files.exists(file) catch () => false)
+  return (files.exists(file) catch () => false)
 }
 
 effect function runTool(tool: string, args: readonly string[], env: Environment | undefined) {
@@ -445,8 +445,8 @@ export effect function resolveAndroidBuildTools(environment: Environment = proce
 export effect function javaMajorVersion(javaHome: string) {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
-  const release = try (files.readFileString(path.join(javaHome, "release")) catch () => "")
-  const reported = /JAVA_VERSION="?(\d+)/.exec(release)?.[1] ?? /version "?(\d+)/.exec(try (effect {
+  const release = (files.readFileString(path.join(javaHome, "release")) catch () => "")
+  const reported = /JAVA_VERSION="?(\d+)/.exec(release)?.[1] ?? /version "?(\d+)/.exec((effect {
     const result = try runTool(path.join(javaHome, "bin", "java"), ["-version"], undefined)
     return `${result.stderr}${result.stdout}`
   } catch () => ""))?.[1]
@@ -456,7 +456,7 @@ export effect function javaMajorVersion(javaHome: string) {
 export effect function resolveJavaHome(environment: Environment = processEnvironment()) {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
-  const installed = try (files.readDirectory(JVM_ROOT) catch (): string[] => [])
+  const installed = (files.readDirectory(JVM_ROOT) catch (): string[] => [])
   for (const candidate of [environment.JAVA_HOME, ...JAVA_HOMES, ...installed.map((name) => path.join(JVM_ROOT, name))]) {
     if (candidate !== undefined && candidate !== "" && ((try javaMajorVersion(candidate)) ?? 0) >= JAVA_MAJOR) return candidate
   }
@@ -644,7 +644,7 @@ export effect function readApkSignerDigest(apk: string, options: SignerOptions =
 
 export effect function readApkBuildFlags(apk: string, options: ArtifactReadOptions = {}) {
   const artifactBytes = options.artifactBytes ?? (try snapshotAndroidArtifact(apk)).bytes
-  const flags: BundleFlags = try (effect {
+  const flags: BundleFlags = (effect {
     const [packaged] = try readAndroidArtifactEntryBuffers(apk, [BUILD_FLAGS_ENTRY], { artifactBytes, label: "build flags", maxEntryBytes: 1024 * 1024 })
     const recorded = packaged === undefined ? undefined : parseJson(packaged)
     const read: BundleFlags = !isRecord(recorded) ? "FlagsMissing" : recorded.testMocks === false ? "MocksOff" : "MocksOn"
@@ -658,8 +658,8 @@ effect function apkLocation(apk: string, testMocksDir: string) {
   const path = try Path.Path
   const mocks = path.resolve(testMocksDir)
   const file = path.resolve(apk)
-  const directories = [mocks, try (files.realPath(mocks) catch () => mocks)]
-  const candidates = [file, try (files.realPath(file) catch () => file)]
+  const directories = [mocks, (files.realPath(mocks) catch () => mocks)]
+  const candidates = [file, (files.realPath(file) catch () => file)]
   const inside = (directory: string, candidate: string) => {
     const relative = path.relative(directory, candidate)
     return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
@@ -761,8 +761,8 @@ export effect function admitImageApk(request: ImageApkRequest) {
     sha256: parseDigest(snapshot.sha256),
     location: try apkLocation(apk, request.testMocksDir),
     bundle: try readApkBuildFlags(apk, { artifactBytes: snapshot.bytes }),
-    buildType: buildTypeOf(try (aaptManifestTree(apk, request) catch () => "")),
-    signer: try (readApkSigner(apk, request) catch (): SignerObservation => ({ tag: "SignerRefused" })),
+    buildType: buildTypeOf((aaptManifestTree(apk, request) catch () => "")),
+    signer: (readApkSigner(apk, request) catch (): SignerObservation => ({ tag: "SignerRefused" })),
   }
   const recorded = isRecord(request.manifest) ? request.manifest : {}
   const entry = (Array.isArray(recorded.results) ? recorded.results : []).filter(isRecord).find((row) => row.sha256 === snapshot.sha256)

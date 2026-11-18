@@ -1,0 +1,92 @@
+// spec/os/image/staging.md, "Story: Stage my launcher into an image exactly once"; spec/os/update/operator.md, "Story: Update a device by cable and get back if it fails"; spec/os/image/signing.md, "Story: Sign a release only with keys I enrolled"; spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { androidTools, buildApk, testSigner, type AndroidTools } from "./support/android-tools.ts"
+import { device, fakeAdb } from "./support/fake-adb.ts"
+import { scratch, scratchRepo, writeTree, type Tree } from "./support/scratch.vibe"
+
+module node {
+  import { execFile } from "node:child_process"
+  import { createPrivateKey, X509Certificate } from "node:crypto"
+  import path from "node:path"
+  import { androidTools, type AndroidTools } from "./support/android-tools.ts"
+
+  export interface Run {
+    readonly status: number | null
+    readonly stdout: string
+    readonly stderr: string
+  }
+
+  /** @throws {never} */
+  export function eliza(packageDir: string, args: readonly string[]): Promise<Run> {
+    return new Promise((resolve) => {
+      execFile(process.execPath, ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", path.join(packageDir, "src/cli.vibe"), ...args], { cwd: packageDir, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }, (failure, stdout, stderr) => {
+        resolve({ status: failure === null ? 0 : typeof failure.code === "number" ? failure.code : null, stdout, stderr })
+      })
+    })
+  }
+
+  /** @throws {never} */
+  export function sdk(): AndroidTools {
+    try {
+      return androidTools()
+    } catch (cause) {
+      return { kind: "missing", reason: String(cause) }
+    }
+  }
+
+  /** @throws {Error} */
+  export function certificateSha256(pem: string): string {
+    return new X509Certificate(pem).fingerprint256.replaceAll(":", "").toLowerCase()
+  }
+
+  /** @throws {Error} */
+  export function pairsWithCertificate(pk8: Uint8Array, pem: string): boolean {
+    return new X509Certificate(pem).checkPrivateKey(createPrivateKey({ key: Buffer.from(pk8), format: "der", type: "pkcs8" }))
+  }
+
+  /** @throws {Error} */
+  export function extensionAssets(packageDir: string): Promise<readonly string[]> {
+    return import(path.join(packageDir, "browser/chromium/component/chromium-component.mjs")).then((component: { assetNames: readonly string[] }) => component.assetNames)
+  }
+}
+import { certificateSha256, eliza, extensionAssets, pairsWithCertificate, sdk, type Run } from node
+
+export error ChildFailed { step: string; cause: unknown }
+
+const PASSPHRASE = "a passphrase only this test knows"
+const CERTIFICATE = "c".repeat(64)
+const USAGE_LINE = "eliza-os stage-launcher --descriptor FILE"
+const TOOLS = sdk()
+
+const failed = (step: string) => (cause: unknown) => new ChildFailed({ step, cause })
+
+effect function packageDir() {
+  const path = try Path.Path
+  return try path.fromFileUrl(new URL("..", import.meta.url))
+}
+
+effect function run(...args: string[]) {
+  const root = try packageDir()
+  return try tryPromise({ try: () => eliza(root, args), catch: failed(args.slice(0, 2).join(" ")) })
+}
+
+effect function parsed(step: string, result: Run) {
+  const value: Record<string, unknown> = try Effect.try({ try: () => JSON.parse(result.stdout), catch: (cause) => new ChildFailed({ step, cause: { cause, ...result } }) })
+  return value
+}
+
+effect function listed(directory: string) {
+  const files = try FileSystem.FileSystem
+  return (try files.readDirectory(directory)).sort()
+}
+
+effect function readJson(file: string) {
+  const files = try FileSystem.FileSystem
+  const text = try files.readFileString(file)
+  const value: unknown = try Effect.try({ try: () => JSON.parse(text), catch: failed(`read ${file}`) })
+  return value
+}
+
+const journey = <A, E>(body: A!E!(NodeServices.NodeServices | Scope.Scope)) => Effect.provide(Effect.scoped(body), NodeServices.layer)
+

@@ -5,6 +5,8 @@ lemma admit_ensures(s: TopicServiceRooms, id: string, capturedGeneration: int, c
   ensures (inv(s) ==> canAdmit(s, id, capturedGeneration, callId, readOnly, incoming) ==> alwaysCacheOrderOwnsPresentRooms(admit(s, id, capturedGeneration, callId, readOnly, incoming)))
   ensures (inv(s) ==> canAdmit(s, id, capturedGeneration, callId, readOnly, incoming) ==> alwaysStoppedCachesCleared(admit(s, id, capturedGeneration, callId, readOnly, incoming)))
   ensures (inv(s) ==> canAdmit(s, id, capturedGeneration, callId, readOnly, incoming) ==> stepStoppingCannotGrowRoomQueues(s, "admit", admit(s, id, capturedGeneration, callId, readOnly, incoming)))
+  ensures (inv(s) ==> canAdmit(s, id, capturedGeneration, callId, readOnly, incoming) ==> stepCacheOrderKeepsInsertionOrder(s, "admit", admit(s, id, capturedGeneration, callId, readOnly, incoming)))
+  ensures (inv(s) ==> canAdmit(s, id, capturedGeneration, callId, readOnly, incoming) ==> stepRoomIdsKeepFirstAdmissionOrder(s, admit(s, id, capturedGeneration, callId, readOnly, incoming)))
 {
   if inv(s) && canAdmit(s, id, capturedGeneration, callId, readOnly, incoming) {
     var after := admit(s, id, capturedGeneration, callId, readOnly, incoming);
@@ -19,6 +21,7 @@ lemma admit_ensures(s: TopicServiceRooms, id: string, capturedGeneration: int, c
         core__channelTopics_admit_ensures(prior.unit, capturedGeneration, callId, readOnly, incoming);
       }
       TopicCacheMembershipFrame(s, after);
+      TopicSameRoomIds(s, after);
     } else {
       var freshRoom := Room(id, core__channelTopics_admit(core__channelTopics_initial.(generation := s.instance), capturedGeneration, callId, readOnly, incoming));
       assert after.rooms == s.rooms + [freshRoom];
@@ -31,7 +34,19 @@ lemma admit_ensures(s: TopicServiceRooms, id: string, capturedGeneration: int, c
       assert id !in after.cacheOrder by {
         if id in after.cacheOrder { var row :| row in s.rooms && row.id == id && row.unit.cachePresent; }
       }
+      assert roomIds(after) == roomIds(s) + [id] by {
+        assert |roomIds(after)| == |roomIds(s) + [id]|;
+        forall i | 0 <= i < |roomIds(after)| ensures roomIds(after)[i] == (roomIds(s) + [id])[i] {}
+      }
+      assert id !in roomIds(s) by {
+        if id in roomIds(s) {
+          var i :| 0 <= i < |roomIds(s)| && roomIds(s)[i] == id;
+          assert s.rooms[i] in s.rooms;
+        }
+      }
     }
+    TopicRoomIdsAppendOnly(s, after);
+    TopicCacheOrderAppendOnly(s, after);
   }
 }
 
@@ -42,11 +57,16 @@ lemma stop_ensures(s: TopicServiceRooms)
   ensures (inv(s) ==> canStop(s) ==> alwaysCacheOrderOwnsPresentRooms(stop(s)))
   ensures (inv(s) ==> canStop(s) ==> alwaysStoppedCachesCleared(stop(s)))
   ensures (inv(s) ==> canStop(s) ==> stepStoppingCannotGrowRoomQueues(s, "stop", stop(s)))
+  ensures (inv(s) ==> canStop(s) ==> stepCacheOrderKeepsInsertionOrder(s, "stop", stop(s)))
+  ensures (inv(s) ==> canStop(s) ==> stepRoomIdsKeepFirstAdmissionOrder(s, stop(s)))
 {
   if inv(s) && canStop(s) {
     var after := stop(s);
     TopicRoomIdentityFrame(s, after);
     TopicCacheMembershipFrame(s, after);
+    TopicSameRoomIds(s, after);
+    TopicRoomIdsAppendOnly(s, after);
+    TopicCacheOrderAppendOnly(s, after);
   }
 }
 
@@ -57,6 +77,8 @@ lemma finishStop_ensures(s: TopicServiceRooms)
   ensures (inv(s) ==> canFinishStop(s) ==> alwaysCacheOrderOwnsPresentRooms(finishStop(s)))
   ensures (inv(s) ==> canFinishStop(s) ==> alwaysStoppedCachesCleared(finishStop(s)))
   ensures (inv(s) ==> canFinishStop(s) ==> stepStoppingCannotGrowRoomQueues(s, "finishStop", finishStop(s)))
+  ensures (inv(s) ==> canFinishStop(s) ==> stepCacheOrderKeepsInsertionOrder(s, "finishStop", finishStop(s)))
+  ensures (inv(s) ==> canFinishStop(s) ==> stepRoomIdsKeepFirstAdmissionOrder(s, finishStop(s)))
 {
   if inv(s) && canFinishStop(s) {
     var after := finishStop(s);
@@ -67,6 +89,8 @@ lemma finishStop_ensures(s: TopicServiceRooms)
       TopicRoomLookup(s, room.id);
       assert roomAt(s, room.id) == s.rooms[i].unit;
     }
+    TopicSameRoomIds(s, after);
+    TopicRoomIdsAppendOnly(s, after);
   }
 }
 
@@ -77,11 +101,16 @@ lemma replace_ensures(s: TopicServiceRooms)
   ensures (inv(s) ==> canReplace(s) ==> alwaysCacheOrderOwnsPresentRooms(replace(s)))
   ensures (inv(s) ==> canReplace(s) ==> alwaysStoppedCachesCleared(replace(s)))
   ensures (inv(s) ==> canReplace(s) ==> stepStoppingCannotGrowRoomQueues(s, "replace", replace(s)))
+  ensures (inv(s) ==> canReplace(s) ==> stepCacheOrderKeepsInsertionOrder(s, "replace", replace(s)))
+  ensures (inv(s) ==> canReplace(s) ==> stepRoomIdsKeepFirstAdmissionOrder(s, replace(s)))
 {
   if inv(s) && canReplace(s) {
     var after := replace(s);
     TopicRoomIdentityFrame(s, after);
     TopicCacheMembershipFrame(s, after);
+    TopicSameRoomIds(s, after);
+    TopicRoomIdsAppendOnly(s, after);
+    TopicCacheOrderAppendOnly(s, after);
   }
 }
 
@@ -92,6 +121,8 @@ lemma advanceRoom_ensures(s: TopicServiceRooms, id: string, hydration: core__cha
   ensures (inv(s) ==> canAdvanceRoom(s, id, hydration) ==> alwaysCacheOrderOwnsPresentRooms(advanceRoom(s, id, hydration, persistence)))
   ensures (inv(s) ==> canAdvanceRoom(s, id, hydration) ==> alwaysStoppedCachesCleared(advanceRoom(s, id, hydration, persistence)))
   ensures (inv(s) ==> canAdvanceRoom(s, id, hydration) ==> stepStoppingCannotGrowRoomQueues(s, "advanceRoom", advanceRoom(s, id, hydration, persistence)))
+  ensures (inv(s) ==> canAdvanceRoom(s, id, hydration) ==> stepCacheOrderKeepsInsertionOrder(s, "advanceRoom", advanceRoom(s, id, hydration, persistence)))
+  ensures (inv(s) ==> canAdvanceRoom(s, id, hydration) ==> stepRoomIdsKeepFirstAdmissionOrder(s, advanceRoom(s, id, hydration, persistence)))
 {
   if inv(s) && canAdvanceRoom(s, id, hydration) {
     var after := advanceRoom(s, id, hydration, persistence);
@@ -117,6 +148,9 @@ lemma advanceRoom_ensures(s: TopicServiceRooms, id: string, hydration: core__cha
       TopicCacheKeys(after.cacheOrder);
     }
     TopicCacheUpdate(s, after, id, prior, updated);
+    TopicSameRoomIds(s, after);
+    TopicRoomIdsAppendOnly(s, after);
+    TopicCacheOrderAppendOnly(s, after);
   }
 }
 
@@ -136,6 +170,8 @@ lemma advanceNext_ensures(s: TopicServiceRooms, hydration: core__channelTopics_T
   ensures (inv(s) ==> canAdvanceNext(s, hydration) ==> alwaysCacheOrderOwnsPresentRooms(advanceNext(s, hydration, persistence)))
   ensures (inv(s) ==> canAdvanceNext(s, hydration) ==> alwaysStoppedCachesCleared(advanceNext(s, hydration, persistence)))
   ensures (inv(s) ==> canAdvanceNext(s, hydration) ==> stepStoppingCannotGrowRoomQueues(s, "advanceNext", advanceNext(s, hydration, persistence)))
+  ensures (inv(s) ==> canAdvanceNext(s, hydration) ==> stepCacheOrderKeepsInsertionOrder(s, "advanceNext", advanceNext(s, hydration, persistence)))
+  ensures (inv(s) ==> canAdvanceNext(s, hydration) ==> stepRoomIdsKeepFirstAdmissionOrder(s, advanceNext(s, hydration, persistence)))
 {
   if inv(s) && canAdvanceNext(s, hydration) {
     advanceRoom_ensures(s, nextRoom(s), hydration, persistence);
@@ -260,5 +296,52 @@ lemma TopicCacheUpdate(before: TopicServiceRooms, after: TopicServiceRooms, id: 
   forall room | room in after.rooms ensures room.unit.cachePresent == (room.id in after.cacheOrder) {
     var i :| 0 <= i < |after.rooms| && after.rooms[i] == room;
     assert before.rooms[i] in before.rooms;
+  }
+}
+
+// A room id list that keeps every position, or gains one new id at the end, keeps first-admission order.
+lemma TopicRoomIdsAppendOnly(before: TopicServiceRooms, after: TopicServiceRooms)
+  requires roomIds(after) == roomIds(before) || exists x :: x !in roomIds(before) && roomIds(after) == roomIds(before) + [x]
+  ensures stepRoomIdsKeepFirstAdmissionOrder(before, after)
+{
+  var p := (id: string) => !((id in roomIds(before)));
+  ProofLib.FilterNone(p, roomIds(before));
+  if roomIds(after) != roomIds(before) {
+    var x :| x !in roomIds(before) && roomIds(after) == roomIds(before) + [x];
+    ProofLib.FilterAppend(p, roomIds(before), x);
+  }
+}
+
+// A cache order that is unchanged, or gains one new id at the end, keeps insertion order.
+lemma TopicCacheOrderAppendOnly(before: TopicServiceRooms, after: TopicServiceRooms)
+  requires after.cacheOrder == before.cacheOrder || exists x :: x !in before.cacheOrder && after.cacheOrder == before.cacheOrder + [x]
+  ensures forall via :: stepCacheOrderKeepsInsertionOrder(before, via, after)
+{
+  var p := (id: string) => !((id in before.cacheOrder));
+  ProofLib.FilterNone(p, before.cacheOrder);
+  if after.cacheOrder != before.cacheOrder {
+    var x :| x !in before.cacheOrder && after.cacheOrder == before.cacheOrder + [x];
+    ProofLib.FilterAppend(p, before.cacheOrder, x);
+  }
+}
+
+// Rooms that keep their ids position by position keep the same room id list.
+lemma TopicSameRoomIds(before: TopicServiceRooms, after: TopicServiceRooms)
+  requires |after.rooms| == |before.rooms|
+  requires forall i :: 0 <= i < |after.rooms| ==> after.rooms[i].id == before.rooms[i].id
+  ensures roomIds(after) == roomIds(before)
+{
+  assert |roomIds(after)| == |roomIds(before)|;
+  forall i | 0 <= i < |roomIds(after)| ensures roomIds(after)[i] == roomIds(before)[i] {}
+}
+
+lemma lawMissingRoomReadsEmpty_ensures(s: TopicServiceRooms, id: string)
+  ensures (lawMissingRoomReadsEmpty(s, id) == true)
+{
+  if !(exists room :: room in s.rooms && room.id == id) {
+    var p := (room: Room) => (room.id == id);
+    if |ProofLib.Filter(p, s.rooms)| > 0 {
+      ProofLib.FilterMember(p, s.rooms, ProofLib.Filter(p, s.rooms)[0]);
+    }
   }
 }

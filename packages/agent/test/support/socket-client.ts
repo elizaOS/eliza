@@ -128,7 +128,7 @@ export async function requestStream(socketPath: string, call: LocalRequest, abor
     if (terminal !== undefined) throw new TypeError(`frame after the terminal frame ${JSON.stringify(frame)}`);
     if (frame.stream === "response") head = frame;
     else if (frame.stream === "chunk") {
-      chunks.push(typeof frame.dataBase64 === "string" ? Buffer.from(frame.dataBase64, "base64").toString("utf8") : String(frame.data ?? ""));
+      chunks.push(typeof frame.dataBase64 === "string" ? Buffer.from(frame.dataBase64, "base64").toString("utf8") : (typeof frame.data === "string" ? frame.data : ""));
       if (abortAfterChunks !== undefined && chunks.length >= abortAfterChunks) socket.destroy();
     } else if (frame.stream === "complete") terminal = frame;
     else throw new TypeError(`unknown stream frame ${JSON.stringify(frame)}`);
