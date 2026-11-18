@@ -10,6 +10,8 @@ import {
   contactWriteCapabilityAvailable,
   contactWriteReceiptOutcome,
   contactWriteResultText,
+  directSmsRequest,
+  isPreviousSmsSenderDraft,
   isTelephonyAction,
   MESSAGES_READ_CAPABILITY,
   MESSAGES_READ_MAX,
@@ -788,6 +790,77 @@ test("latest SMS sender exposes only the reviewed suffix", () => {
   );
 });
 
+test("address lookup and a reply draft use the complete negotiated address", () => {
+  const operation = {
+    type: "sms_latest_sender",
+    includeAddress: true,
+  } as const;
+  const result = {
+    kind: "sms-latest-sender",
+    status: "found",
+    address: "+14155550123",
+  };
+  assert.deepEqual(validateTelephonyAction(operation), operation);
+  assert.deepEqual(validateSmsLatestSenderResult(result, true), result);
+  assert.match(
+    smsLatestSenderReply(validateSmsLatestSenderResult(result, true)),
+    /\+14155550123/,
+  );
+  assert.throws(() => validateSmsLatestSenderResult(result));
+  assert.throws(() =>
+    validateSmsLatestSenderResult({ ...result, address: "incorrect" }, true),
+  );
+  assert.throws(() =>
+    validateSmsLatestSenderResult({ ...result, body: "private" }, true),
+  );
+  const linked = {
+    kind: "sms-latest-sender",
+    status: "found",
+    address: "+14155550123",
+    threadId: "42",
+  };
+  assert.deepEqual(validateSmsLatestSenderResult(linked, true), linked);
+  assert.throws(() =>
+    validateSmsLatestSenderResult({ ...linked, threadId: "-1" }, true),
+  );
+  const bound = {
+    type: "sms_compose",
+    target: { kind: "number", number: "+14155550123" },
+    body: "Tripod",
+    draft: true,
+    replyThreadId: "42",
+  };
+  assert.deepEqual(validateTelephonyAction(bound), bound);
+  assert.throws(() => validateTelephonyAction({ ...bound, draft: false }));
+  assert.throws(() =>
+    validateTelephonyAction({
+      ...bound,
+      target: { kind: "contact", query: "Ada" },
+    }),
+  );
+  const request = "Look up the sender of my newest incoming SMS on this phone.";
+  assert.ok(directSmsRequest(operation, request));
+  assert.ok(
+    !directSmsRequest(operation, "Show a review card before you " + request),
+  );
+  assert.ok(!directSmsRequest({ type: "sms_latest_sender" }, request));
+  const followUp =
+    "Draft a quick text asking them to bring the tripod tomorrow. Show me the draft here.";
+  assert.ok(isPreviousSmsSenderDraft(followUp));
+  assert.ok(
+    !isPreviousSmsSenderDraft(
+      "Draft a text to Ada asking them to bring the tripod.",
+    ),
+  );
+  assert.ok(
+    directSmsRequest(
+      { type: "sms_compose", draft: true, replyThreadId: "42" },
+      followUp,
+    ),
+  );
+  assert.ok(!directSmsRequest({ type: "sms_compose" }, followUp));
+  assert.ok(!directSmsRequest({ type: "sms_send" }, followUp));
+});
 test("each operation type has one capability and one validator", () => {
   assert.deepEqual(
     TELEPHONY_ACTION_OPERATION_TYPES.map((type) => [

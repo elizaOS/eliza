@@ -263,6 +263,21 @@ describe("selected phone capability guidance", () => {
       capabilities.pop();
     }
   });
+  it("grounds a requested reply draft in the negotiated latest sender address", async () => {
+    capabilities.push(
+      "sms.latest-sender.v1",
+      "sms.latest-sender.v2",
+      "sms.compose.v1",
+      "sms.compose.v2",
+    );
+    try {
+      const routing = await guidance({ providerPhase: "response" });
+      expect(routing.text).toContain("returned recipient, draft:true");
+      expect(routing.text).not.toContain("approved sender suffix");
+    } finally {
+      capabilities.splice(-4);
+    }
+  });
   it("names the phone's own calendar create only on a turn that offers it", async () => {
     const planning = async () =>
       (
