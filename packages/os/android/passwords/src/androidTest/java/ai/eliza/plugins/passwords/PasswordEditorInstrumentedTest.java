@@ -1,12 +1,12 @@
 package ai.eliza.plugins.passwords;
 
+import android.app.Activity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.inspector.WindowInspector;
 import android.widget.EditText;
 import androidx.test.core.app.ActivityScenario;
-import example.passwords.host.TransferActivity;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -15,6 +15,8 @@ import static org.junit.Assert.*;
 
 /** Synthetic UI grants only: exercises real native views/cancellation, never opens a vault key. */
 public final class PasswordEditorInstrumentedTest {
+  public static final class EditorActivity extends Activity {}
+
   private static void fields(View view, List<EditText> found) {
     if (view instanceof EditText) found.add((EditText) view);
     if (view instanceof ViewGroup) {
@@ -25,7 +27,7 @@ public final class PasswordEditorInstrumentedTest {
   @Test public void editorProtectsDraftsRejectsOverlapAndClearsOnStop() throws Exception {
     AtomicInteger cancellations = new AtomicInteger();
     List<EditText> drafts = new ArrayList<>();
-    try (ActivityScenario<TransferActivity> scenario = ActivityScenario.launch(TransferActivity.class)) {
+    try (ActivityScenario<EditorActivity> scenario = ActivityScenario.launch(EditorActivity.class)) {
       scenario.onActivity(activity -> {
         try {
           PasswordVaultAccess access = PasswordVaultAccess.get(activity);
