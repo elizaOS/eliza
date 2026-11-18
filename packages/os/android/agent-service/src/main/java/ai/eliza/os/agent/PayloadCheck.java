@@ -35,8 +35,7 @@ public final class PayloadCheck {
   public static final String INVENTORY = "agent/inventory.json";
   public static final String NODE = "libeliza_node.so";
   public static final String WORKER = "workflow-worker";
-  static final List<String> BUNDLE_FILES = Collections.unmodifiableList(Arrays.asList(
-    "agent.mjs", "manifest.json", "pglite.wasm", "initdb.wasm", "pglite.data", "pglite-migrated.bin"));
+  static final List<String> BUNDLE_FILES = Collections.unmodifiableList(Arrays.asList("agent.mjs", "manifest.json"));
   private static final int INVENTORY_LIMIT = 2 * 1024 * 1024, MANIFEST_LIMIT = 1024 * 1024, ROW_LIMIT = 16384;
   private static final long FILE_LIMIT = 512L * 1024 * 1024;
   private static final Pattern DIGEST = Pattern.compile("[a-f0-9]{64}");

@@ -25,7 +25,7 @@ public final class TaskKeyCustodyInstrumentedTest {
     final String prefix = "eliza.task-key-custody-test." + UUID.randomUUID() + ".";
     final KeyStore keystore = KeyStore.getInstance("AndroidKeyStore");
     final TaskDataKeyStore keys = TaskDataKeyStore.perSlot(root, prefix, false);
-    final TaskKeyCustody custody = new TaskKeyCustody(keys, AUTHORITY);
+    final TaskKeyCustody custody = new TaskKeyCustody(root, keys, AUTHORITY);
 
     Fixture() throws Exception { assertTrue(root.mkdirs()); keystore.load(null); }
 
@@ -84,7 +84,7 @@ public final class TaskKeyCustodyInstrumentedTest {
         assertEquals(value, again.value());
       }
 
-      TaskKeyCustody reopened = new TaskKeyCustody(f.keys, AUTHORITY);
+      TaskKeyCustody reopened = new TaskKeyCustody(f.root, f.keys, AUTHORITY);
       reopened.accountVerified(FIRST);
       try (TaskKeyCustody.StorageKey afterRestart = reopened.releaseForLaunch(FIRST, 1)) {
         assertEquals(value, afterRestart.value());
@@ -127,6 +127,18 @@ public final class TaskKeyCustodyInstrumentedTest {
       f.keystore.deleteEntry(f.alias(SECOND));
       assertEquals(TaskKeyCustody.Refusal.KeyUnavailable, refusal(f.custody, SECOND, 4));
       assertFalse(f.keystore.containsAlias(f.alias(SECOND)));
+
+      TaskKeyCustody restarted = new TaskKeyCustody(f.root, f.keys, AUTHORITY);
+      restarted.accountVerified(SECOND);
+      assertEquals(TaskKeyCustody.Refusal.KeyUnavailable, refusal(restarted, SECOND, 1));
+      assertFalse(f.keystore.containsAlias(f.alias(SECOND)));
+      assertFalse(f.wrapped(SECOND).exists());
+
+      restarted.reset();
+      restarted.accountVerified(SECOND);
+      try (TaskKeyCustody.StorageKey fresh = restarted.releaseForLaunch(SECOND, 1)) {
+        assertEquals(32, Base64.getDecoder().decode(fresh.value()).length);
+      }
     }
   }
 }

@@ -1,26 +1,23 @@
 // spec/os/build/androidHost.md, "Story: Generate my app's Android host from data"; spec/os/build/androidHost.md, "Story: Keep my schema-1 profile readable through one fixed map"
 import {
-  agentPayloadAdmitted,
   builtAsProject,
   hostVerdict,
   moduleNeeds,
   osModuleNames,
-  profileSchema,
   schemaOneDropped,
-  schemaOneFieldsAdmitted,
+  schemaOneRefusal,
   upstreamSource,
   type AdmissionCommand,
+  type AgentEntry,
   type BuildConfigField,
   type FieldValue,
   type HostFacts,
   type HostRefusal,
   type ModuleRoot,
   type OsModuleEntry,
-  type ServiceHook,
-  type ServiceNotification,
   type SourcePath,
   type SourceRef,
-  type SourceWanted,
+  type SourceSetUse,
 } from "../../gen/os__build__androidHost.effect.vibe"
 
 export type { HostRefusal }
@@ -138,7 +135,6 @@ export interface HostSetting {
   readonly dependencyRoot?: string
   readonly output: string
   readonly toolchainVersions: Readonly<Record<string, string>>
-  readonly runtimeStaged: boolean
 }
 
 export interface HostSource {
@@ -208,18 +204,14 @@ const REASONS: Record<HostRefusal, string> = {
   VersionOverrideInvalid: "A version override names two distinct environment variables or none",
   SigningPartial: "Release signing names all four environment variables or none",
   SigningInvalid: "Release signing names four distinct environment variables",
-  RootsInvalid: "The consumer, os and dependency roots must be absolute paths",
-  OutputMisplaced: "The generated host is a directory inside the consumer, below its root and outside the os package",
+  OutputMisplaced: "The roots are absolute, and the generated host is a directory inside the consumer, below its root and outside the os package",
   SourceRefused: "Every source names the consumer or a declared dependency root, the innermost root that holds it, by an explicit path",
   SourceSetInvalid: "Every source and generated source belongs to a declared source set and kind, and generated sources lie below generated/",
-  OsModulesInvalid: "Each os module comes from the closed list once, with distinct sources below src/main or src/androidTest",
-  OsModulesNotClosed: "A selected os module needs its own os modules selected with it",
+  OsModulesInvalid: "Each os module comes from the closed list once with the os modules it needs, and its distinct sources lie below src/main or src/androidTest",
   ProjectsInvalid: "Gradle project names are plain, distinct and never app",
   DependencyNotPinned: "A Maven dependency names a configuration, a group:artifact and a toolchain version key",
-  AssetsInvalid: "Asset names and uncompressed extensions are plain and distinct, agent is not an asset name, app scripts are Gradle files and placeholders have plain names",
-  AdmissionInvalid: "Admission commands need distinct task names of their own and a non-empty argv",
-  NativeLibrariesInvalid: "A profile that selects agent-service needs nativeLibraries extract-16k",
-  AgentInvalid: "The agent entry and agent service settings need agent-service, valid names and the staged runtime payload",
+  ExtrasInvalid: "Asset names, uncompressed extensions, placeholders and admission tasks are plain and distinct, agent is not an asset name, app scripts are Gradle files and admission argv has no empty argument",
+  AgentInvalid: "The agent entry and agent service settings need agent-service, valid names and nativeLibraries extract-16k",
 }
 
 function refused(refusal: HostRefusal, detail?: string) {
@@ -274,21 +266,17 @@ function present(record: Readonly<Record<string, string | undefined>> | undefine
 const SIGNING_KEYS = ["storeFile", "storePassword", "keyAlias", "keyPassword"] as const
 const VERSION_KEYS = ["versionCode", "versionName"] as const
 
-function notificationFacts(profile: ProfileTwo): ServiceNotification {
+function agentFacts(profile: ProfileTwo): AgentEntry {
   const notification = profile.agentService?.notification
-  if (notification === undefined) return { tag: "NoNotification" }
-  return {
-    tag: "NotificationDeclared",
-    smallIconValid: RESOURCE.test(notification.smallIcon),
-    colorValid: COLOR.test(notification.color),
-    channelValid: visibleLabel(notification.channel),
-    stringsValid: Object.entries(notification.strings).every(([key, resource]) => STRING_KEY.test(key) && RESOURCE.test(resource)),
-  }
-}
-
-function hookFacts(profile: ProfileTwo): ServiceHook {
   const hook = profile.agentService?.launchHook
-  return hook === undefined ? { tag: "NoHook" } : { tag: "HookDeclared", classValid: JAVA_CLASS.test(hook.class), methodValid: JAVA_METHOD.test(hook.method) }
+  if (profile.agent === undefined && notification === undefined && hook === undefined) return { tag: "NoAgent" }
+  return {
+    tag: "AgentDeclared",
+    notificationValid: notification === undefined || (
+      RESOURCE.test(notification.smallIcon) && COLOR.test(notification.color) && visibleLabel(notification.channel)
+      && Object.entries(notification.strings).every(([key, resource]) => STRING_KEY.test(key) && RESOURCE.test(resource))),
+    hookValid: hook === undefined || (JAVA_CLASS.test(hook.class) && JAVA_METHOD.test(hook.method)),
+  }
 }
 
 function sourceRefs(profile: ProfileTwo): SourceRef[] {
@@ -306,6 +294,19 @@ function sourceRefs(profile: ProfileTwo): SourceRef[] {
     ...(profile.admission ?? []).map((step) => directory(step.directory)),
     ...(agent === undefined ? [] : [file(agent.host), file(agent.character), file(agent.policy)]),
   ]
+}
+
+function sourceSetUses(profile: ProfileTwo): SourceSetUse[] {
+  return [
+    ...Object.entries(profile.sourceSets ?? {}).flatMap(([sourceSet, kinds]) => Object.keys(kinds).map((sourceKind) => ({ sourceSet, sourceKind, generatedPath: [] }))),
+    ...(profile.generatedSources ?? []).map((entry) => ({ sourceSet: entry.sourceSet, sourceKind: entry.kind, generatedPath: entry.path.split("/") })),
+  ]
+}
+
+function verdictOf(facts: HostFacts, debugAbis: readonly string[]) {
+  const release = hostVerdict(facts)
+  const debug = hostVerdict({ ...facts, abis: [...debugAbis] })
+  return debug.tag === "HostRefused" && debug.refusal === "BuildTypesInvalid" ? debug : release
 }
 
 function osModuleEntries(profile: ProfileTwo): OsModuleEntry[] {
@@ -337,7 +338,7 @@ function hostFacts(profile: ProfileTwo, identity: typeof Identity.Type, setting:
     releaseMinify: profile.releaseMinify,
     shrinkResources: release?.shrinkResources ?? false,
     proguardFiles: release?.proguardFiles?.length ?? 0,
-    abiGroups: [[...(debug?.abiFilters ?? [])], [...(release?.abiFilters ?? [])]],
+    abis: [...(release?.abiFilters ?? [])],
     versionOverride: environmentFacts(present(profile.versionOverride, VERSION_KEYS)),
     signing: environmentFacts(present(profile.signing, SIGNING_KEYS)),
     roots: {
@@ -348,8 +349,7 @@ function hostFacts(profile: ProfileTwo, identity: typeof Identity.Type, setting:
     },
     output: absoluteSegments(setting.output),
     sources: sourceRefs(profile),
-    uses: Object.entries(profile.sourceSets ?? {}).flatMap(([sourceSet, kinds]) => Object.keys(kinds).map((sourceKind) => ({ sourceSet, sourceKind }))),
-    generated: (profile.generatedSources ?? []).map((entry) => ({ generatedSet: entry.sourceSet, generatedKind: entry.kind, buildPath: entry.path.split("/") })),
+    uses: sourceSetUses(profile),
     osModules,
     projects: [...(profile.modules ?? []).map((module) => module.name), ...osModules.filter(builtAsProject).map((entry) => `eliza-${entry.osModule}`)],
     projectNamesValid: (profile.modules ?? []).every((module) => NAME.test(module.name)),
@@ -360,16 +360,14 @@ function hostFacts(profile: ProfileTwo, identity: typeof Identity.Type, setting:
       versionKey: dependency.toolchainVersion ?? "",
     })),
     assetNames: (profile.assetFiles ?? []).map((asset) => asset.name),
-    assetNamesValid: (profile.assetFiles ?? []).every((asset) => ASSET_NAME.test(asset.name)),
-    scriptsAreGradle: (profile.appScripts ?? []).every((script) => script.path.endsWith(".gradle")),
     noCompress: [...(profile.androidResources?.noCompress ?? [])],
-    noCompressValid: (profile.androidResources?.noCompress ?? []).every((extension) => EXTENSION.test(extension)),
-    placeholdersValid: Object.keys(profile.manifestPlaceholders ?? {}).every((name) => NAME.test(name)),
+    namesValid: (profile.assetFiles ?? []).every((asset) => ASSET_NAME.test(asset.name))
+      && (profile.androidResources?.noCompress ?? []).every((extension) => EXTENSION.test(extension))
+      && (profile.appScripts ?? []).every((script) => script.path.endsWith(".gradle"))
+      && Object.keys(profile.manifestPlaceholders ?? {}).every((name) => NAME.test(name)),
     commands,
     packaging: profile.nativeLibraries === "extract-16k" ? "Extract16k" : "DefaultPackaging",
-    agentDeclared: profile.agent !== undefined,
-    notification: notificationFacts(profile),
-    hook: hookFacts(profile),
+    agent: agentFacts(profile),
   }
 }
 
@@ -422,7 +420,17 @@ effect function readSchemaOne(one: ProfileOne) {
     ...(["classes", "sockets", "helpers"] as const).filter((field) => resident?.[field] !== undefined).map((field) => `residentHost.${field}`),
     ...((one.dependencies ?? []).some((dependency) => dependency.coordinate !== undefined) ? ["dependencies.coordinate"] : []),
   ]
-  if (!schemaOneFieldsAdmitted(fieldsSet)) throw refused("FieldDropped", fieldsSet.filter((field) => schemaOneDropped.includes(field)).join(", "))
+  const upstreamPaths = [
+    ...one.modules.map((module) => module.source),
+    ...Object.values(one.sourceSets ?? {}).flatMap((kinds) => Object.values(kinds).flat()),
+    ...(one.sourceFiles ?? []).map((file) => file.source),
+  ].flatMap((ref) => (ref.root === UPSTREAM ? [ref.path] : []))
+  const verdict = schemaOneRefusal(fieldsSet, [...UPSTREAM_TABLE], upstreamPaths.map((path) => path.split("/")))
+  if (verdict.tag === "HostRefused") {
+    throw verdict.refusal === "FieldDropped"
+      ? refused("FieldDropped", fieldsSet.filter((field) => schemaOneDropped.includes(field)).join(", "))
+      : refused(verdict.refusal, upstreamPaths.find((path) => upstreamSource([...UPSTREAM_TABLE], path.split("/")).tag === "NoOsModule"))
+  }
   const selections = new Map<string, Selection>()
   for (const module of one.modules) {
     if (module.source.root === UPSTREAM) try selectUpstream(selections, module.source.path)
@@ -493,19 +501,9 @@ effect function readSchemaOne(one: ProfileOne) {
 effect function decodeProfile(raw: unknown) {
   if (!isRecord(raw) || typeof raw.schema !== "number") throw refused("ProfileMalformed", "the profile is not an object with a numeric schema")
   const malformed = (issue: { readonly message: string }) => refused("ProfileMalformed", issue.message)
-  const schema = profileSchema(raw.schema)
-  switch (schema) {
-    case "SchemaTwo":
-      return try mapError(Schema.decodeUnknownEffect(ProfileTwo)(raw, { onExcessProperty: "error" }), malformed)
-    case "SchemaOne":
-      return try readSchemaOne(try mapError(Schema.decodeUnknownEffect(ProfileOne)(raw, { onExcessProperty: "error" }), malformed))
-    case "SchemaUnknown":
-      throw refused("SchemaUnsupported", `schema ${raw.schema}`)
-    default: {
-      const _exhaustive: never = schema
-      return _exhaustive
-    }
-  }
+  if (raw.schema === 2) return try mapError(Schema.decodeUnknownEffect(ProfileTwo)(raw, { onExcessProperty: "error" }), malformed)
+  if (raw.schema === 1) return try readSchemaOne(try mapError(Schema.decodeUnknownEffect(ProfileOne)(raw, { onExcessProperty: "error" }), malformed))
+  throw refused("SchemaUnsupported", `schema ${raw.schema}`)
 }
 
 effect function typedFields(fields: readonly RawField[] | undefined) {
@@ -621,8 +619,7 @@ export effect function admitHostProfile(raw: unknown, setting: HostSetting) {
   const profile = try decodeProfile(raw)
   const identity = try mapError(Schema.decodeUnknownEffect(Identity)(setting.identity, { onExcessProperty: "error" }), (issue) => refused("IdentityInvalid", issue.message))
   const facts = hostFacts(profile, identity, setting)
-  const verdict = hostVerdict(facts)
+  const verdict = verdictOf(facts, profile.buildTypes?.debug?.abiFilters ?? [])
   if (verdict.tag === "HostRefused") throw refused(verdict.refusal, verdict.refusal === "SigningPartial" ? signingDetail(profile) : undefined)
-  if (!agentPayloadAdmitted(facts.agentDeclared, setting.runtimeStaged)) throw refused("AgentInvalid", "the agent entry needs the staged runtime payload")
   return try admitted(profile, identity, setting, facts)
 }

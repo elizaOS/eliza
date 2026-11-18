@@ -99,7 +99,8 @@ pure def lawAKeyRouteWithoutAKeyIsNotSent(h: Holding, auth: AuthClass): bool =
 
 The page's headers pass unchanged when each is one its device route admits
 (the client's base headers, and `Idempotency-Key` or `If-Match` where the
-route lists it), `Accept`, or `If-None-Match` on a read; `Authorization`
+route lists it), `Accept`, or `If-None-Match` on a read (the shell compares names without
+case); `Authorization`
 from the page, a cookie or any other header refuses the request, and
 nothing is trimmed. A body over the route's limit is `BodyTooLarge`. The
 reply's status, `ETag`, `Content-Type` and `Retry-After` return to the

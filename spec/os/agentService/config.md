@@ -83,12 +83,12 @@ pure def routesAdmitted(d: AgentData): bool = Routes::validList(rendererRoutes(d
 
 The service applies the agent's own checks, so a file it admits is never
 refused by the agent as a configuration error (exit 78). The backend's shape
-is checked here; whether a cloud backend has an account is the sign-in's
-question, below.
+is checked here, as the agent would judge it with some named account signed
+in; whether a cloud backend has an account is the sign-in's question, below.
 
 ```quint
-pure val anyAccount: Launch::OwnerAccount = Launch::SignedIn({ userId: "account", organizationId: "organization" })
-pure def backendShapeAdmitted(b: Launch::Backend): bool = Launch::backendAdmitted(b, anyAccount)
+pure val someNamedAccount: Launch::OwnerAccount = Launch::SignedIn({ userId: "named", organizationId: "named" })
+pure def backendShapeAdmitted(b: Launch::Backend): bool = Launch::backendAdmitted(b, someNamedAccount)
 pure def launchSettingsAdmitted(h: HostLaunch): bool =
   backendShapeAdmitted(h.backend) and Launch::embeddingsAdmitted(h.embeddings) and Launch::retentionAdmitted(h.retention) and Launch::environmentAdmitted(h.environment)
 pure def filesAdmitted(d: AgentData): bool =

@@ -1,7 +1,6 @@
 // spec/agent/host/process.md, "Status says running only when health says ready, and the agent can respond only with a text backend and an unblocked account"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/access/auth.md, "A Root-only route admits only a caller holding the launch token"
-import type { AgentRuntime } from "@elizaos/core"
 import type { Backend } from "../../gen/agent__host__launch.ts"
-import { mayRespond } from "../../gen/agent__host__process.ts"
+import { agentStateOf, mayRespond, type AgentProcess } from "../../gen/agent__host__process.ts"
 import { blocked, failureName, initial, type AccountState, type LastCloudFailure } from "../../gen/agent__models__binding.ts"
 import { messageBodyLimitBytes } from "../../gen/agent__access__transport.ts"
 import type { LocalRoute } from "../access/routes.vibe"
@@ -27,15 +26,9 @@ export interface StatusView {
 
 export const usableBinding = (): BindingState => ({ accountState: initial.accountState, lastCloudFailure: initial.lastCloudFailure })
 
-export function agentStateOf(lifecycle: ReturnType<AgentRuntime["getLifecycleState"]>): AgentState {
-  switch (lifecycle) {
-    case "initializing": return "starting"
-    case "running": return "running"
-    case "failed":
-    case "stopping":
-    case "stopped": return "stopping"
-  }
-}
+const runStates = { Starting: "starting", Running: "running", Stopping: "stopping" } as const
+
+export const runStateOf = (phase: AgentProcess): AgentState => runStates[agentStateOf(phase)]
 
 export function backendOf(model: LaunchDocument["model"]): Backend {
   switch (model.backend) {

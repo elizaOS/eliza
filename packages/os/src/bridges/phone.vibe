@@ -158,10 +158,10 @@ const Listing = Schema.Struct({
     carrierTranscript: Schema.NullOr(text(TRANSCRIPT_MAX)),
   })).check(Schema.isMaxLength(maxVoicemails)),
 })
-const Fetch = Schema.Struct({ status: Schema.Literals(["ready", "fetching", "failed"]) })
+schema Fetch { status: "ready" | "fetching" | "failed" }
 const Audio = Schema.Struct({ id: shaped(VOICEMAIL_ID), mimeType: shaped(AUDIO_TYPE), size: Count, data: Schema.String })
 const Pcm = Schema.Struct({ mimeType: Schema.Literal("audio/wav"), sampleRateHz: Schema.Literal(VOICEMAIL_PCM_RATE_HZ), durationSeconds: Schema.Finite, data: Schema.String })
-const Written = Schema.Struct({ status: Schema.Literals(["marked", "deleted", "unconfirmed", "not-found"]) })
+schema Written { status: "marked" | "deleted" | "unconfirmed" | "not-found" }
 
 effect function parsed<A>(method: string, shape: Schema.Decoder<A>, raw: unknown): A!MalformedReply {
   return try mapError(Schema.decodeUnknownEffect(shape, strict)(raw), (refusal) => new MalformedReply({ plugin: PLUGIN, method, issue: refusal.message }))
