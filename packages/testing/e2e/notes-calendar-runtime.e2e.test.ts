@@ -638,6 +638,8 @@ function extraction(
     travelOriginAddress: null,
     durationMinutes: 30,
     isShortPreparation: false,
+    allDayStartDate: null,
+    allDayEndDate: null,
   };
 }
 function calendarArgs(
@@ -774,7 +776,7 @@ test("NOTE-14 runtime: content-bound note becomes one event and stale source can
   expect(await s.events()).toEqual(rows);
   expect((await s.notes()).bytes).toEqual(revisedNotes.bytes);
   await s.turn(
-    `Delete only the note whose exact body is: ${replacement}`,
+    `Delete only the Ada review note whose exact body is: ${replacement}`,
     "NOTES_DELETE",
     { content: replacement },
     "Deleted the requested NOTE-14 note.",
