@@ -35,13 +35,13 @@ import registry.* from "./nativeClients/registry"
 type PagePurpose = SignInPage | BillingPage | ConnectPage | ConnectedPage
 type AppLink = { target: ReturnUrl, androidPackage: str }
 type PageAction = OpenApp({ link: AppLink }) | NoAction
-type ReturnPage = { serviceName: str, appName: str, purpose: PagePurpose, action: PageAction }
+type ReturnPage = { serviceName: str, appName: str, purpose: PagePurpose, offer: PageAction }
 type PayerOutcome = PaidOutcome | CanceledOutcome
 type Page = NoPage | ReturnToApp(ReturnPage) | CheckoutOutcome({ outcome: PayerOutcome })
 pure def pagePurposeOf(purpose: ReturnPurpose): PagePurpose =
   if (purpose == SignInPurpose) SignInPage else if (purpose == BillingPurpose) BillingPage else ConnectPage
 pure def returnPage(row: EnvironmentProfile, r: Registration, purpose: ReturnPurpose, url: ReturnUrl): Page =
-  ReturnToApp({ serviceName: row.name, appName: r.displayName, purpose: pagePurposeOf(purpose), action: OpenApp({ link: { target: url, androidPackage: r.androidPackage } }) })
+  ReturnToApp({ serviceName: row.name, appName: r.displayName, purpose: pagePurposeOf(purpose), offer: OpenApp({ link: { target: url, androidPackage: r.androidPackage } }) })
 pure def pageAt(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, outcome: str): Page = {
   val entries = returnsAt(registry, served, url)
   if (url.origin == row.api and url.path == payerPath) CheckoutOutcome({ outcome: payerOutcome(outcome) })
@@ -54,7 +54,7 @@ pure val rowValues: Set[EnvironmentProfile] = {
   val doc: LegalDocument = { title: "Terms", revision: "1", sections: List({ title: "Use", paragraphs: List("Plain text.") }) }
   Set({ name: "Cloud", api: "https://api.one", web: "https://www.one", audience: "aud", mailSender: "m@one", databaseDigest: "d1", firstPartyOrigins: List("https://www.one"), capabilities: Set(BillingCapability), signIn: { mail: HttpsDelivery, sms: NoDelivery, google: GoogleOn }, terms: doc, privacy: doc })
 }
-pure def lawAMissingPageIsFinal(code: RefusalCode): bool = code == noPageRefusal.code implies (wellFormed(noPageRefusal) and not(retryableOf(noPageRefusal)))
+pure def lawAMissingPageIsFinal(): bool = wellFormed(noPageRefusal) and not(retryableOf(noPageRefusal))
 pure def lawADisabledClientHasNoPage(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, outcome: str): bool =
   (registryValid(registry, served) and registry.some(r => returnsOf(r).includes(url)))
     implies registry.every(r => returnsOf(r).includes(url) implies not(isReturnToApp(pageAt(row, disableClient(registry, r.clientId), served, url, outcome))))
@@ -68,13 +68,13 @@ browser cannot open it, the page says to allow the app to open its supported
 links in Android settings.
 
 ```quint
-pure def linkOwned(registry: List[Registration], served: Environment, url: ReturnUrl, action: PageAction): bool = match action {
+pure def linkOwned(registry: List[Registration], served: Environment, url: ReturnUrl, offer: PageAction): bool = match offer {
   | OpenApp(o) => o.link.target == url and registry.some(r => r.enabled and r.environment == served and r.androidPackage == o.link.androidPackage and returnsOf(r).includes(url))
   | NoAction => false
 }
 pure def lawAReturnPageOpensItsOwnApp(row: EnvironmentProfile, registry: List[Registration], served: Environment, url: ReturnUrl, outcome: str): bool = {
   val page = pageAt(row, registry, served, url, outcome)
-  registryValid(registry, served) implies (match page { | ReturnToApp(p) => linkOwned(registry, served, url, p.action) | _ => true })
+  registryValid(registry, served) implies (match page { | ReturnToApp(p) => linkOwned(registry, served, url, p.offer) | _ => true })
 }
 ```
 
@@ -86,7 +86,7 @@ there instead, so this page is never shown.
 
 ```quint
 pure def connectedPage(row: EnvironmentProfile, r: Registration): Page =
-  if (r.enabled and r.connectReturn == NoConnectReturn) ReturnToApp({ serviceName: row.name, appName: r.displayName, purpose: ConnectedPage, action: NoAction })
+  if (r.enabled and r.connectReturn == NoConnectReturn) ReturnToApp({ serviceName: row.name, appName: r.displayName, purpose: ConnectedPage, offer: NoAction })
   else NoPage
 pure def lawAConnectReturnIsNeverShadowed(row: EnvironmentProfile, r: Registration): bool =
   connectUrls(r.connectReturn).length() > 0 implies connectedPage(row, r) == NoPage

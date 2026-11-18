@@ -75,8 +75,7 @@ describe("WP0 Foundation: metering and funds", () => {
       const settled = try settle(ticket.key, { kind: "known", actual: 26_000_000 })
       const granted = try reserve({ organizationId: "org-granted", userId: "user-2" }, holdKey("user-2", "request-2"), 1_000_000)
       const broken = try failureOf(reserve({ organizationId: "org-broken", userId: "user-3" }, holdKey("user-3", "request-3"), 1))
-      try check(() => assert.deepStrictEqual(
-        {
+      const observed = {
           reserved,
           settled: [settled.charged, settled.uncollected],
           period: try numbers(cloud, "SELECT state->'available', state->'reserved', state->'settled', status FROM allowance_periods WHERE key = $1", [period]),
@@ -84,8 +83,8 @@ describe("WP0 Foundation: metering and funds", () => {
           usage: try numbers(cloud, "SELECT charged, from_allowance, from_credits, uncollected, outcome FROM usage_records WHERE hold_key = $1", [ticket.key]),
           granted: [granted.hold.fromAllowance, granted.hold.fromCredits],
           broken
-        },
-        {
+        }
+      try check(() => assert.deepStrictEqual(observed, {
           reserved: { hold: [30_000_000, 25_000_000, 5_000_000], period: [[0, 25_000_000]], funds: [[5_000_000, 5_000_000]] },
           settled: [26_000_000, 0],
           period: [[0, 0, 25_000_000, "open"]],
@@ -93,15 +92,14 @@ describe("WP0 Foundation: metering and funds", () => {
           usage: [[26_000_000, 25_000_000, 1_000_000, 0, "known"]],
           granted: [1_500_000, 0],
           broken: { error: "service_unavailable", errorDescription: "Service unavailable.", retryable: true }
-        }
-      ))
+        }))
     }
   }))
 
   it.live("Sweep holds left behind: release one reserved 15 minutes, charge the quote of one dispatched 2 hours (spec/cloud/shared/metering.md, \"Story: Settle every call once\")", () => scoped(effect {
     const cloud = try testCloud()
     try organization(cloud, "org-sweep")
-    const clock = shiftedClock()
+    const clock = try sync(() => shiftedClock())
     provide Store = cloud.store, Clock.Clock = clock.clock {
       try addCredits({ organizationId: "org-sweep", amount: 1_000_000, requestKey: "operator-1" })
       const owner = { organizationId: "org-sweep", userId: "user-1" }
@@ -116,22 +114,20 @@ describe("WP0 Foundation: metering and funds", () => {
       const charged = try sweepHolds()
       const after = try sweepHolds()
       const late = try settle(lost.key, { kind: "known", actual: 50_000 })
-      try check(() => assert.deepStrictEqual(
-        {
+      const observed = {
           swept: [early, released, charged, after],
-          holds: try numbers(cloud, "SELECT phase, state->'charged', state->>'basis' FROM holds WHERE organization_id = $1 ORDER BY created_at", ["org-sweep"]),
+          holds: try numbers(cloud, "SELECT phase, state->'charged', state->>'basis' FROM holds WHERE organization_id = $1 ORDER BY phase", ["org-sweep"]),
           late: [late.phase, late.charged],
-          usage: try numbers(cloud, "SELECT outcome, charged FROM usage_records WHERE organization_id = $1 ORDER BY settled_at", ["org-sweep"]),
+          usage: try numbers(cloud, "SELECT outcome, charged FROM usage_records WHERE organization_id = $1 ORDER BY outcome", ["org-sweep"]),
           funds: try numbers(cloud, "SELECT f.state->'creditBalance', f.state->'creditHeld', o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-sweep"])
-        },
-        {
+        }
+      try check(() => assert.deepStrictEqual(observed, {
           swept: [0, 1, 1, 0],
           holds: [["released", 0, "NotCharged"], ["settled", 200_000, "Quoted"]],
           late: ["Settled", 200_000],
           usage: [["released", 0], ["unknown", 200_000]],
           funds: [[800_000, 0, 800_000]]
-        }
-      ))
+        }))
       assert.notStrictEqual(abandoned.key, lost.key)
     }
   }))
@@ -146,20 +142,18 @@ describe("WP0 Foundation: metering and funds", () => {
       const other = try reserve(owner, holdKey("user-1", "other"), 200_000)
       try markDispatched(first.key)
       const settled = try settle(first.key, { kind: "known", actual: 2_000_000 })
-      try check(() => assert.deepStrictEqual(
-        {
+      const observed = {
           held: [first.hold.fromCredits, other.hold.fromCredits],
           settled: [settled.basis, settled.charged, settled.uncollected],
           usage: try numbers(cloud, "SELECT charged, from_credits, uncollected FROM usage_records WHERE hold_key = $1", [first.key]),
           funds: try numbers(cloud, "SELECT f.state->'creditBalance', f.state->'creditHeld', f.state->'collected', o.credit_balance FROM funds f JOIN organizations o ON o.id = f.key WHERE f.key = $1", ["org-over"])
-        },
-        {
+        }
+      try check(() => assert.deepStrictEqual(observed, {
           held: [150_000, 300_000],
           settled: ["Measured", 700_000, 1_300_000],
           usage: [[700_000, 700_000, 1_300_000]],
           funds: [[300_000, 300_000, 700_000, 0]]
-        }
-      ))
+        }))
     }
   }))
 
@@ -176,20 +170,18 @@ describe("WP0 Foundation: metering and funds", () => {
         try failureOf(addCredits({ organizationId: "org-credits", amount: 0, requestKey: "operator-9" })),
         try failureOf(addCredits({ organizationId: "org-nobody", amount: 1, requestKey: "operator-10" }))
       ]
-      try check(() => assert.deepStrictEqual(
-        {
+      const observed = {
           answers: [first, replayed, second].map((added) => [added.balance, added.replayed]),
           refusals,
           ledger: try numbers(cloud, "SELECT request_key, amount FROM credit_entries WHERE organization_id = $1 ORDER BY request_key", ["org-credits"]),
           balance: try numbers(cloud, "SELECT credit_balance FROM organizations WHERE id = $1", ["org-credits"])
-        },
-        {
+        }
+      try check(() => assert.deepStrictEqual(observed, {
           answers: [[500_000, false], [500_000, true], [750_000, false]],
           refusals: ["IdempotencyConflict", "InvalidCreditRequest", "InvalidCreditRequest", "OrganizationUnknown"],
           ledger: [["operator-7", 500_000], ["operator-8", 250_000]],
           balance: [[750_000]]
-        }
-      ))
+        }))
     }
   }))
 })

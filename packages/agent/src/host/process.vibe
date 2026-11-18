@@ -127,6 +127,7 @@ module node {
         : { name: cloudLinkPlugin, description: "This launch has no model connection" }
       const formed = await Effect.runPromise(Effect.result(composeAgent({
         agentId, character, settings: {}, bundled: input.bundled ?? new Map(), modules: input.modules, hostRoutes: reservedHostPrefixes,
+        context: { launch, stateDirectory, timeZone: launch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, epoch: authority.epoch, ...(authority.storageKey === undefined ? {} : { storageKey: authority.storageKey }) },
         storage: { name: storagePlugin, description: "Own the device database", init: async (_config, runtime) => {
           if (!(runtime instanceof AgentRuntime)) throw new Error("The storage plugin requires the device Core runtime")
           runtime.registerDatabaseAdapter(adapter)

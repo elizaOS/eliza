@@ -104,7 +104,7 @@ module node {
       try {
         const text = await infer(record, claimed, await originalMessage(hint),
           AbortSignal.any([turn, AbortSignal.timeout(Math.max(0, completionDeadline(claimed) - Date.now()))]))
-        await runtime.setCache(cacheKey(hint), { text })
+        if (!await runtime.setCache(cacheKey(hint), { text })) throw new CompletionFailed("The reply was not kept")
         await catchUp(record.machine, by)
         const prepared = await send(record.machine, { type: "prepareCompletion" }, by)
         return prepared === undefined ? failure(409, "completion_closed") : deliver(record, hint, by, prepared)

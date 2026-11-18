@@ -56,6 +56,9 @@ pure def requestAdmitted(req: DraftRequest): bool = match req { | Malformed => f
 pure val incoming: ThreadMessage = { direction: Received, date: 2, bodyUnits: 12, bodySafe: true, blank: false }
 pure val outgoing: ThreadMessage = { direction: Sent, date: 1, bodyUnits: 9, bodySafe: true, blank: false }
 pure val friend: Participant = Named({ units: 5, safe: true, digitsOnly: false })
+pure val pValues: Set[Participant] = Set(NoParticipant, friend, Named({ units: 5, safe: true, digitsOnly: true }), Named({ units: 129, safe: true, digitsOnly: false }), Named({ units: 5, safe: false, digitsOnly: false }))
+pure val mValues: Set[ThreadMessage] = Set(incoming, outgoing, { ...incoming, bodyUnits: 1601 }, { ...incoming, date: -1 }, { ...outgoing, bodySafe: false })
+pure val messagesValues: Set[List[ThreadMessage]] = Set(List(), List(incoming), List(outgoing, incoming), List(incoming, outgoing), List(outgoing, { ...incoming, bodyUnits: 0, blank: true }))
 pure val reqValues: Set[DraftRequest] = Set(Malformed,
   OpenThread({ participant: friend, messages: List(outgoing, incoming) }),
   OpenThread({ participant: NoParticipant, messages: List(incoming) }),
@@ -149,6 +152,7 @@ pure def answerOf(req: DraftRequest, said: ModelResult): DraftAnswer =
   if (decision(req) == RefuseRequest) BadRequest else if (decision(req) == AnswerNoDraft) NoDraft else draftOf(said)
 pure def httpStatus(answer: DraftAnswer): int = match answer { | BadRequest => 400 | Unavailable => 503 | NoDraft => 200 | Draft(d) => 200 }
 pure def draftLength(answer: DraftAnswer): int = match answer { | Draft(d) => d.kept | _ => 0 }
+pure val answerValues: Set[DraftAnswer] = Set(BadRequest, Unavailable, NoDraft, Draft({ kept: 24 }))
 pure val saidValues: Set[ModelResult] = Set(ModelFailed,
   ModelSaid({ units: 24, saysNone: false, keptSafe: true }), ModelSaid({ units: 4, saysNone: true, keptSafe: true }),
   ModelSaid({ units: 0, saysNone: false, keptSafe: true }), ModelSaid({ units: 24, saysNone: false, keptSafe: false }),

@@ -2,7 +2,7 @@
 import { assert, describe, it } from "@effect/vitest"
 import { Refused, refusalBody } from "../../src/http/refusal.vibe"
 import { parseProfile } from "../../src/profile/profile.vibe"
-import { checkPrices, chooseFor, pricesFromSeed, setModelPrice, type InferenceSettings } from "../../src/services/models.vibe"
+import { billedFromUsage, callCostFor, checkPrices, chooseFor, pricesFromSeed, setModelPrice, type InferenceSettings } from "../../src/services/models.vibe"
 import { tokenDigest } from "../../src/shared/sealing.vibe"
 import { organization, testCloud, type ProfileEdit, type TestCloud } from "../support/cloud.vibe"
 import { testProfile } from "../support/profile.ts"
@@ -55,7 +55,7 @@ effect function settingsOf(cloud: TestCloud, edit: ProfileEdit) {
 effect function refusalOf<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
   return match (try exit(program)) {
     when Exit.Success: "accepted";
-    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => error instanceof Refused ? refusalBody(error.refusal).error : error._tag), Option.getOrElse(() => "defect"));
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).map((error) => error instanceof Refused ? refusalBody(error.refusal).error : error._tag).getOrElse(() => "defect");
   }
 }
 
@@ -99,6 +99,16 @@ describe("WP5 Inference: models", () => {
       twin: try refusalOf(cloud.store.transaction((tx) => chooseFor(tx, settings, "twin-chat", false))),
       chosen: [chosen.model.id, chosen.model.upstreamModel, chosen.model.inputPer1K, chosen.model.outputPer1K, chosen.provider.id]
     }
+    const usage = {
+      detailed: try billedFromUsage({ prompt_tokens: 10, completion_tokens: 3, total_tokens: 13, prompt_tokens_details: { cached_tokens: 12 }, completion_tokens_details: { reasoning_tokens: 5 } }),
+      nullDetails: try billedFromUsage({ prompt_tokens: 7, prompt_tokens_details: null, completion_tokens_details: null }),
+      absent: try billedFromUsage(undefined),
+      noTotals: try billedFromUsage({ total_tokens: 9 }),
+      fractional: try billedFromUsage({ prompt_tokens: 1.5, completion_tokens: 1 }),
+      negative: try billedFromUsage({ prompt_tokens: -1, completion_tokens: 1 }),
+      capped: try billedFromUsage({ prompt_tokens: 3_000_000, completion_tokens: 1 })
+    }
+    const costs = [try callCostFor(chosen.model, { inputTokens: 1_000, outputTokens: 500 }), try callCostFor(chosen.model, { inputTokens: 3_000_000, outputTokens: 0 })]
 
     try check(() => assert.deepStrictEqual(
       {
@@ -113,7 +123,9 @@ describe("WP5 Inference: models", () => {
         afterSeed: listed(afterSeed.body),
         report: [report.mismatches, report.listing.map((each) => each.id)],
         stored: stored.map((row) => [row.model_id, Number(row.input_per_1k), Number(row.output_per_1k)]),
-        choices
+        choices,
+        usage,
+        costs
       },
       {
         disabled: [404, "capability_unavailable"],
@@ -127,7 +139,17 @@ describe("WP5 Inference: models", () => {
         afterSeed: ["test-chat", "spare-chat"],
         report: [2, ["test-chat", "spare-chat"]],
         stored: [["spare-chat", 50, 60], ["test-chat", 150, 300]],
-        choices: { imageOnTextModel: "model_unavailable", twin: "model_unavailable", chosen: ["test-chat", "upstream-chat", 150, 300, "llm"] }
+        choices: { imageOnTextModel: "model_unavailable", twin: "model_unavailable", chosen: ["test-chat", "upstream-chat", 150, 300, "llm"] },
+        usage: {
+          detailed: { tag: "Reported", counts: { inputTokens: 12, outputTokens: 5 } },
+          nullDetails: { tag: "Reported", counts: { inputTokens: 7, outputTokens: 0 } },
+          absent: { tag: "Unreadable" },
+          noTotals: { tag: "Unreadable" },
+          fractional: { tag: "Unreadable" },
+          negative: { tag: "Unreadable" },
+          capped: { tag: "Reported", counts: { inputTokens: 2_000_000, outputTokens: 1 } }
+        },
+        costs: [360, 360_000]
       }
     ))
   }))

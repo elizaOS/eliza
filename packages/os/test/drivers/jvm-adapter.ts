@@ -1,7 +1,7 @@
 // spec/os/appUpdate/install.md, "Story: Install an app update without running the agent mid-install"; spec/os/android/secureStore.md, "Story: Persist a value without losing a newer edit"; spec/os/browser/surface/profiles.md, "Story: Keep two sites' storage apart unless I share a profile"
 import { type ChildProcessWithoutNullStreams, execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import type { Driver, Outcome } from "../../gen/_conformance.ts";
@@ -47,7 +47,11 @@ function sourceRoot(file: string, text: string): string {
   const directory = path.dirname(file);
   if (declared === undefined) return directory;
   const suffix = path.join(...declared.split("."));
-  return directory.endsWith(`${path.sep}${suffix}`) ? directory.slice(0, -suffix.length - 1) : directory;
+  if (directory.endsWith(`${path.sep}${suffix}`)) return directory.slice(0, -suffix.length - 1);
+  const placed = path.join(CACHE, "sources", path.relative(PACKAGE, directory).split(path.sep).join("_"));
+  mkdirSync(path.join(placed, suffix), { recursive: true });
+  copyFileSync(file, path.join(placed, suffix, path.basename(file)));
+  return placed;
 }
 
 interface Sources {

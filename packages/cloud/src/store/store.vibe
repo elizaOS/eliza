@@ -82,7 +82,7 @@ export function storeLayer(location: StoreLocation): Layer.Layer<Store, StoreFai
   })
 }
 
-effect function identityDigest(tx: Tx): (string | undefined)!StoreFailure {
+export effect function identityDigest(tx: Tx): (string | undefined)!StoreFailure {
   const table = try tx.query("SELECT to_regclass('cloud_identity') IS NOT NULL AS present")
   if (table[0]?.present !== true) return undefined
   return toText((try tx.query("SELECT digest FROM cloud_identity"))[0]?.digest)

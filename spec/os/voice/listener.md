@@ -20,19 +20,16 @@ which arrival starts a voice turn is `spec/os/voice/invocation.md`.
 
 ### Only I turn listening on, in an admitted listener with my consent and no exemption
 
-The admitted listener matches its image identity, holds exactly the two
-privileged permissions (`CAPTURE_AUDIO_HOTWORD`,
-`START_ACTIVITIES_FROM_BACKGROUND`) and runs in its own SELinux domain. I
-consented in its own screen and granted `RECORD_AUDIO` and notifications; it
-holds no indicator-exempt role and no battery exemption. Turning on, and
-resuming, need the phone unlocked; they clear a pause, a crash stop and a
-lost-indicator stop.
+The image admitted the listener (`spec/os/image/listener.md`: exactly two
+privileged permissions, its own SELinux domain, no indicator-exempt role, no
+battery exemption), and I gave the current consent, `RECORD_AUDIO` and
+notifications in its own screen. Turning on and resuming need the phone
+unlocked and clear a pause, a crash stop and a lost-indicator stop.
 
 ```quint
 import indicatorLease as I from "./indicatorLease"
 type Caller = Owner | HostApp | StatusChip | SystemUiLease | OtherApp
-type ListenerGrant = { identityMatches: bool, onlyTwoPrivileged: bool, confinedDomain: bool, consented: bool,
-  recordAudioGranted: bool, notificationsGranted: bool, indicatorExempt: bool, powerExempt: bool }
+type ListenerGrant = { imageAdmitted: bool, consented: bool, recordAudioGranted: bool, notificationsGranted: bool }
 type Device = { recordAudio: bool, notificationsVisible: bool, userForeground: bool, unlocked: bool, keyguardLocked: bool,
   speechUnavailable: bool, inCall: bool, otherAppRecording: bool, micSilenced: bool, speechPlaying: bool, screenInteractive: bool }
 type Promotion = NoPromotion | Promoted | PromotionRefused
@@ -46,13 +43,9 @@ pure val unknownDevice: Device = { recordAudio: false, notificationsVisible: fal
 pure val initial: ListenerService = { enabled: false, userPaused: false, tripped: false, recentExits: List(), indicatorLost: false,
   device: unknownDevice, lease: I::initial, unsilencedSince: -1, queued: 0, delivered: 0, stopped: true,
   foreground: false, capturing: false, promotion: NoPromotion, stopConfirmed: false, lastWake: NoWake }
-pure def admitted(g: ListenerGrant): bool =
-  g.identityMatches and g.onlyTwoPrivileged and g.confinedDomain and g.consented and g.recordAudioGranted
-  and g.notificationsGranted and not(g.indicatorExempt) and not(g.powerExempt)
-pure val admittedGrant: ListenerGrant = { identityMatches: true, onlyTwoPrivileged: true, confinedDomain: true, consented: true,
-  recordAudioGranted: true, notificationsGranted: true, indicatorExempt: false, powerExempt: false }
-pure val grantValues = Set(admittedGrant, { ...admittedGrant, onlyTwoPrivileged: false },
-  { ...admittedGrant, indicatorExempt: true }, { ...admittedGrant, consented: false })
+pure def admitted(g: ListenerGrant): bool = g.imageAdmitted and g.consented and g.recordAudioGranted and g.notificationsGranted
+pure val admittedGrant: ListenerGrant = { imageAdmitted: true, consented: true, recordAudioGranted: true, notificationsGranted: true }
+pure val grantValues = Set(admittedGrant, { ...admittedGrant, imageAdmitted: false }, { ...admittedGrant, consented: false })
 pure def canTurnOn(s: ListenerService, by: Caller, grant: ListenerGrant): bool =
   by == Owner and admitted(grant) and not(s.device.keyguardLocked)
 pure def turnOn(s: ListenerService, by: Caller, grant: ListenerGrant): ListenerService = {
@@ -199,13 +192,12 @@ pure def sometimesStopConfirmedAfterRunning(s: ListenerService): bool = s.stopCo
 
 ### Three crashes while capturing within ten minutes stop listening until I turn it on
 
-Android restarts the persistent listener after every end. A crash counts as
-an unclean exit only while a capture session was open with `RECORD_AUDIO`
-granted; a shutdown closes the session first, and a reboot or package update
-is another boot or install. Exits ten minutes old no longer count, but a
-tripped breaker stays tripped. The restarted process holds no lease (its
-monotonic clock runs on) and asks for a start when its state runs the
-service.
+Android restarts the persistent listener after every end. Only a crash
+with a capture session open and `RECORD_AUDIO` granted is an unclean exit
+(shutdown closes the session; a reboot or update is another boot or
+install). Exits ten minutes old stop counting; a trip is sticky. The new
+process holds no lease, its monotonic clock runs on, and it asks for a start
+when its state runs the service.
 
 ```quint
 type ProcessEnd = Crash | Shutdown | PackageUpdate
@@ -299,14 +291,9 @@ pure def alwaysLostIndicatorIsLatched(s: ListenerService): bool =
 pure def sometimesIndicatorLossStopsListening(s: ListenerService): bool = decide(s) == StoppedIndicatorLost and not(s.capturing)
 ```
 
-### An explained hidden indicator pauses capture and resumes it on a fresh acknowledgement
-
-The service keeps running with the microphone released, and once the
-converging service sees the lease permit again it captures again.
+### A latched loss closes the microphone when the service converges
 
 ```quint
-pure def sometimesExplainedPauseKeepsServiceRunning(s: ListenerService): bool =
-  decide(s) == PausedIndicatorHidden and s.foreground and not(s.capturing)
 pure val fair_converge = "weak"
 pure def leadsToLostIndicatorClosesMicrophone(s: ListenerService, later: ListenerService): bool =
   (s.capturing and s.indicatorLost) implies not(later.capturing)
@@ -316,5 +303,11 @@ pure val weight_renewLease = 10
 pure val weight_requestStart = 10
 pure val weight_deliverStart = 10
 pure val weight_hearPhrase = 10
-pure val weight_restartProcess = 3
+```
+
+### An explained hidden indicator only pauses capture, with the service still running
+
+```quint
+pure def sometimesExplainedPauseKeepsServiceRunning(s: ListenerService): bool =
+  decide(s) == PausedIndicatorHidden and s.foreground and not(s.capturing)
 ```

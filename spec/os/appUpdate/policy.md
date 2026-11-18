@@ -68,10 +68,10 @@ type Alert = { level: AlertLevel, reasons: List[AlertReason], current: bool }
 type DiscoveryPlan = DiscoveryUnchanged | DiscoveryAfter({ discoveryDelay: int })
 type DownloadPlan = DownloadUnchanged | DownloadCancelled | DownloadAfter({ downloadDelay: int })
 type ActivationPlan = ActivationCancelled | ActivationAfter({ activationDelay: int })
-type RunPlan = { job: Job, discovery: DiscoveryPlan, download: DownloadPlan, activation: ActivationPlan, alert: Alert, decision: Decision, ran: Outcome }
+type RunPlan = { job: Job, discovery: DiscoveryPlan, download: DownloadPlan, activation: ActivationPlan, alert: Alert, decision: Decision, runOutcome: Outcome }
 type Ledger = { trackingSince: int, lastCheck: int, pending: int, pendingSince: int, pendingSinceWall: int, windowsThroughWall: int, missedWindows: int, resetSince: int, resetPending: bool, alertLevel: AlertLevel, alertReasons: List[AlertReason], lastOutcome: Outcome, lastDecision: Decision }
 type LedgerStep = { state: Ledger, out: List[RunPlan] }
-type RunParts = { ledger: Ledger, aborted: bool, discovery: DiscoveryPlan, download: DownloadPlan, activation: ActivationPlan, decision: Decision, ran: Outcome }
+type RunParts = { ledger: Ledger, aborted: bool, discovery: DiscoveryPlan, download: DownloadPlan, activation: ActivationPlan, decision: Decision, runOutcome: Outcome }
 pure val discoveryInterval = 360
 pure val discoveryJitter = 15
 pure val retryDelay = 1
@@ -84,8 +84,8 @@ pure def signedSeen(signedNow: int, l: Ledger): Ledger =
   else { ...l, trackingSince: if (l.trackingSince == 0) signedNow else l.trackingSince, pendingSince: if (l.pending != 0 and l.pendingSince == 0) signedNow else l.pendingSince, resetSince: if (l.resetPending) signedNow else l.resetSince, resetPending: false }
 pure def checkedAt(signedNow: int, found: DiscoveryResult, l: Ledger): Ledger =
   if (found == SourceUnavailable) l else { ...l, lastCheck: greatest(l.lastCheck, signedNow) }
-pure def partsOf(ran: Outcome, l: Ledger): RunParts =
-  { ledger: l, aborted: false, discovery: DiscoveryUnchanged, download: DownloadUnchanged, activation: ActivationCancelled, decision: Undecided, ran: ran }
+pure def partsOf(runOutcome: Outcome, l: Ledger): RunParts =
+  { ledger: l, aborted: false, discovery: DiscoveryUnchanged, download: DownloadUnchanged, activation: ActivationCancelled, decision: Undecided, runOutcome: runOutcome }
 pure def discoveryPart(signedNow: int, found: DiscoveryResult, jitter: int, cancelled: bool, l: Ledger): RunParts = {
   val nextDiscovery = DiscoveryAfter({ discoveryDelay: discoveryInterval - discoveryJitter + jitter })
   val deferred = partsOf(DiscoveryDeferred, l)
@@ -100,7 +100,7 @@ pure val signedLowerValues = Set(0, 1, 4400, 10100)
 pure def stepDiscoveryEverySixHours(before: Ledger, after: Ledger, out: List[RunPlan]): bool =
   out.every(p => if (p.job == DiscoveryJob) discoveryInterval - discoveryJitter <= discoveryDelayOf(p.discovery) and discoveryDelayOf(p.discovery) <= discoveryInterval + discoveryJitter else p.discovery == DiscoveryUnchanged)
 pure def stepChecksNeedSignedTime(before: Ledger, after: Ledger, out: List[RunPlan]): bool =
-  out.every(p => fetched(p.ran) implies p.alert.current) and (after.lastCheck != before.lastCheck implies out.some(p => p.alert.current and fetched(p.ran)))
+  out.every(p => fetched(p.runOutcome) implies p.alert.current) and (after.lastCheck != before.lastCheck implies out.some(p => p.alert.current and fetched(p.runOutcome)))
 pure def sometimesTransferQueued(l: Ledger): bool = l.lastOutcome == Discovered({ discovered: TransferQueued })
 ```
 
@@ -118,15 +118,15 @@ pure def downloadPart(signedNow: int, n: Network, found: DiscoveryResult, cancel
   val unsigned: List[Blocker] = if (signedNow > 0) List() else List(SignedTimeUnavailable)
   val blockers = unsigned.concat(downloadGate(n))
   val deferred = partsOf(DownloadDeferred, l)
-  val ran = partsOf(Downloaded({ downloaded: found }), checkedAt(signedNow, found, l))
+  val fetchedParts = partsOf(Downloaded({ downloaded: found }), checkedAt(signedNow, found, l))
   if (blockers.length() > 0) { ...deferred, download: DownloadAfter({ downloadDelay: recheckDelay }), decision: Decided({ blockers: blockers }) }
-  else { ...ran, aborted: cancelled, decision: Decided({ blockers: List() }),
+  else { ...fetchedParts, aborted: cancelled, decision: Decided({ blockers: List() }),
     download: if (found == DiscoveryChecked) DownloadCancelled else if (found == TransferQueued) DownloadAfter({ downloadDelay: retryDelay }) else DownloadAfter({ downloadDelay: recheckDelay }) }
 }
 pure def downloaded(o: Outcome): bool = match o { | Downloaded(x) => true | _ => false }
 pure def lawDownloadNeedsUnmetered(n: Network): bool = (downloadGate(n).length() == 0) iff (n == NetUnmetered)
 pure def stepDownloadsOnlyWhenAllowed(before: Ledger, after: Ledger, out: List[RunPlan]): bool =
-  out.every(p => downloaded(p.ran) implies p.decision == Decided({ blockers: List() }))
+  out.every(p => downloaded(p.runOutcome) implies p.decision == Decided({ blockers: List() }))
 pure def sometimesDownloadDeferred(l: Ledger): bool = l.lastOutcome == DownloadDeferred
 ```
 
@@ -269,18 +269,18 @@ pure def activationPart(job: Job, signedNow: int, wall: int, s: Signals, activat
     aborted: r.aborted or (evaluated and allowed and cancelled),
     activation: ActivationAfter({ activationDelay: if (window == WindowClosed) greatest(retryDelay, untilOpen(wall)) else recheckDelay }),
     decision: if (not(evaluated)) r.decision else if (not(allowed)) Decided({ blockers: blockers }) else if (activated == NotEnabled) Decided({ blockers: List(ActivationNotEnabled) }) else Decided({ blockers: List() }),
-    ran: if (not(evaluated)) r.ran else if (allowed) Activated({ activation: activated }) else ActivationDeferred }
+    runOutcome: if (not(evaluated)) r.runOutcome else if (allowed) Activated({ activation: activated }) else ActivationDeferred }
   else if (not(known)) { ...r,
     activation: ActivationAfter({ activationDelay: recheckDelay }),
     decision: if (evaluated) Decided({ blockers: List(PendingUnknown) }) else r.decision,
-    ran: if (evaluated) ActivationDeferred else r.ran }
+    runOutcome: if (evaluated) ActivationDeferred else r.runOutcome }
   else r
 }
 pure def activationTried(o: Outcome): bool = match o { | Activated(x) => true | _ => false }
 pure val pendingValues = Set(NothingPending, Prepared({ preparedPlan: 1 }), Prepared({ preparedPlan: 2 }), Prepared({ preparedPlan: 0 }), PendingUnreadable)
 pure def stepActivatesOnlyWhenEveryGateHolds(before: Ledger, after: Ledger, out: List[RunPlan]): bool =
-  out.every(p => activationTried(p.ran) implies (p.job == ActivationJob and
-    (p.decision == Decided({ blockers: List() }) or (p.decision == Decided({ blockers: List(ActivationNotEnabled) }) and p.ran == Activated({ activation: NotEnabled })))))
+  out.every(p => activationTried(p.runOutcome) implies (p.job == ActivationJob and
+    (p.decision == Decided({ blockers: List() }) or (p.decision == Decided({ blockers: List(ActivationNotEnabled) }) and p.runOutcome == Activated({ activation: NotEnabled })))))
 pure def sometimesActivationStarted(l: Ledger): bool = l.lastOutcome == Activated({ activation: ActivationStarted })
 pure def sometimesPendingUnknownBlocks(l: Ledger): bool = l.pending != 0 and l.lastOutcome == ActivationDeferred and match l.lastDecision { | Decided(x) => x.blockers.includes(PendingUnknown) | _ => false }
 ```
@@ -342,8 +342,8 @@ pure def evaluate(job: Job, signedLower: int, wall: int, s: Signals, found: Disc
   val counted = windowsCounted(wall, pendingSeen(pending, signedNow, wall, parts.ledger))
   val finished = activationPart(job, signedNow, wall, s, activated, cancelled, pendingKnown(pending), { ...parts, ledger: counted })
   val alert = if (signedNow > 0) currentAlert(signedNow, finished.ledger) else staleAlert(finished.ledger)
-  val recorded = { ...finished.ledger, alertLevel: alert.level, alertReasons: if (signedNow > 0) alert.reasons else finished.ledger.alertReasons, lastOutcome: finished.ran, lastDecision: finished.decision }
-  val plan = { job: job, discovery: finished.discovery, download: finished.download, activation: finished.activation, alert: if (saved) alert else unsavedAlert(alert), decision: finished.decision, ran: finished.ran }
+  val recorded = { ...finished.ledger, alertLevel: alert.level, alertReasons: if (signedNow > 0) alert.reasons else finished.ledger.alertReasons, lastOutcome: finished.runOutcome, lastDecision: finished.decision }
+  val plan = { job: job, discovery: finished.discovery, download: finished.download, activation: finished.activation, alert: if (saved) alert else unsavedAlert(alert), decision: finished.decision, runOutcome: finished.runOutcome }
   if (finished.aborted) { state: l, out: List() } else if (saved) { state: recorded, out: List(plan) } else { state: l, out: List(plan) }
 }
 pure def runnable(wall: int, jitter: int): bool = wall >= 0 and 0 <= jitter and jitter <= 2 * discoveryJitter
