@@ -61,6 +61,7 @@ function fixture() {
     character: { name: "Alpha", bio: [], system: "Answer." },
     contexts: new ContextRegistry([
       { id: "general", description: "General tasks" },
+      { id: "messaging", description: "Messages" },
       { id: "notes", description: "Saved notes" },
     ]),
     actions: [notes, native],
@@ -234,6 +235,32 @@ describe("selected phone capability guidance", () => {
       expect(await routing()).not.toContain("PROPOSE_DEVICE_ACTION cannot");
     } finally {
       capabilities.splice(capabilities.indexOf("phone.call.v1"));
+    }
+  });
+  it("routes the latest SMS sender read only when the phone offers it", async () => {
+    const routing = async () =>
+      (await guidance({ providerPhase: "response" })).text;
+    expect(await routing()).not.toContain("pending phone lookup");
+    capabilities.push("sms.latest-sender.v1");
+    try {
+      const text = await routing();
+      expect(text).toContain("pending phone lookup");
+      expect(text).toContain("PROPOSE_DEVICE_ACTION sms_latest_sender");
+      expect(text).toContain("approved sender suffix");
+      const planning = await guidance({
+        includeTools: true,
+        providerPhase: "planning",
+        selectedContexts: ["messaging"],
+      });
+      expect(planning.text).toContain("phone owner must separately approve");
+      const tool = planning.context.events.find(
+        (event) => event.type === "tool" && event.tool.name === native.name,
+      );
+      expect(tool?.type === "tool" && tool.tool.description).toContain(
+        "Use sms_latest_sender with no fields",
+      );
+    } finally {
+      capabilities.pop();
     }
   });
   it("names the phone's own calendar create only on a turn that offers it", async () => {

@@ -217,12 +217,19 @@ export async function createV5MessageContextObject(args: {
     const phoneRouteGuidance = phoneRoutes.length
       ? `Calls, texts and contact lookups through this phone's own Phone, Messages and Contacts apps go through PROPOSE_DEVICE_ACTION, in the general, phone, messaging or contacts context: ${phoneRoutes.join("; ")}. The owner reviews each call, text and contact change on the phone. A request to call, text, show a named contact or open the dialer is that device operation, not a view change; a plain request to open or show the Phone, Messages or Contacts app, including "show my contacts" with no name, is navigation to that view. The phone capabilities above are current for this turn: an earlier reply in this conversation saying calls, texts or contacts were unavailable is outdated and is never a reason to refuse now. VOICE_CALL (a Twilio call from the agent's number), MESSAGE_SEND, PAGE_DELEGATE and connector messaging are not this phone's apps; use them only when the owner asks for that service by name. ENTITY and CONTACT are the assistant's own relationship records, never the phone's address book. `
       : "";
+    const smsSenderGuidance = deviceOperationSupportedByCapabilities(
+      "sms_latest_sender",
+      phoneCapabilities,
+    )
+      ? "When the owner asks who sent the latest incoming SMS, keep the pending phone lookup in the messaging context for PROPOSE_DEVICE_ACTION sms_latest_sender. The phone reviews the read and shares only the approved sender suffix. Do not infer the sender or look in the cloud inbox. "
+      : "";
     const compactCapabilityGuidance =
       `Authenticated phone capabilities: ${JSON.stringify(phoneCapabilities)}. ` +
       telephonyGuidance +
       phoneRouteGuidance +
       addressBookGuidance +
       cameraCaptureGuidance +
+      smsSenderGuidance +
       (authenticatedDeviceTurn.viewProfile
         ? `Enabled phone views: ${JSON.stringify(authenticatedDeviceTurn.viewProfile.views)}. `
         : "") +
