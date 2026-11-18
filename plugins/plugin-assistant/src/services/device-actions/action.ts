@@ -1203,7 +1203,8 @@ export const proposeDeviceAction: Action = {
   // (contact_create/update/delete). A request routed as a contacts task must
   // still reach it, or only the assistant's own relationship records are
   // offered and the phone contact is never proposed.
-  contexts: ["general", "contacts"],
+  // Native SMS proposals must also be discoverable in the messaging context.
+  contexts: ["general", "contacts", "messaging"],
   parameters: [
     {
       name: "operation",

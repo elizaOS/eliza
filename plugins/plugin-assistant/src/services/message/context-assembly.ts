@@ -181,7 +181,7 @@ export async function createV5MessageContextObject(args: {
       "sms_latest_sender",
       phoneCapabilities,
     )
-      ? "When the owner asks who sent the latest incoming SMS, keep the pending phone lookup in the general context for PROPOSE_DEVICE_ACTION sms_latest_sender. The phone reviews the read and shares only the approved sender suffix. Do not infer the sender or look in the cloud inbox. "
+      ? "When the owner asks who sent the latest incoming SMS, keep the pending phone lookup in the messaging context for PROPOSE_DEVICE_ACTION sms_latest_sender. The phone reviews the read and shares only the approved sender suffix. Do not infer the sender or look in the cloud inbox. "
       : "";
     const compactCapabilityGuidance =
       `Authenticated phone capabilities: ${JSON.stringify(phoneCapabilities)}. ` +
