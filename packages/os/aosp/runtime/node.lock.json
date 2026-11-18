@@ -1,21 +1,8 @@
 {
-  "version": "26.13.1",
-  "ndk": "29.0.14206865",
+  "schema": 1,
+  "version": "26.13.0",
+  "ndk": "28.2.13676358",
   "apiLevel": 29,
-  "sourceSha256": "a7f6204ff63b6a2cd274d48903285abb86ed53a99070e532d4c2fd787457d9e6",
-  "buildCommit": "cae7b9f52493ef8c2b0e7af87b5f0b81df23f665",
-  "entries": [
-    {
-      "abi": "arm64-v8a",
-      "sha256": "b970a17944fe3d8e85fd4832e7baa417649dac56b6b037d6774cdd669226653a",
-      "archiveSha256": "d7fca8aa23ca08a14dcb68873c1b51f02b61dfab41bf1b2054fbea92bb2b607d",
-      "url": "https://github.com/elizaOS/eliza/releases/download/android-node-v26.13.1-ndk-29.0.14206865/node-v26.13.1-android-arm64-v8a.zip"
-    },
-    {
-      "abi": "x86_64",
-      "sha256": "c4c84c5546d5b855ef9e612481d1cf58ecf61a831850e3602767d49fa50f223c",
-      "archiveSha256": "bda92689e4fb00c9602ac667fa2134e761a42360d8cd6b4dbeca50575875a70a",
-      "url": "https://github.com/elizaOS/eliza/releases/download/android-node-v26.13.1-ndk-29.0.14206865/node-v26.13.1-android-x86_64.zip"
-    }
-  ]
+  "entries": [],
+  "todo": "Per-ABI sha256 and release asset URL for arm64-v8a and x86_64 are written here after the node-android publishing job runs buildNodeRuntime and uploads libeliza_node.so; no job has run, so no digest is pinned and every staging refuses with RuntimeNotPinned."
 }

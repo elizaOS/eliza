@@ -3,11 +3,12 @@ import { FetchHttpClient } from "effect/http"
 import { Refused } from "../src/models/chat.vibe"
 import { probeOwnKey, type OwnKeyModels } from "../src/models/own-key-provider.vibe"
 
+effect function probe(own: OwnKeyModels, key: string) {
+  return try probeOwnKey(own, Redacted.make(key))
+} catch (error) => match (error) {
+  when Refused: error.cloud.tag;
+}
+
 export function probeOwnKeyModels(own: OwnKeyModels, key: string): Promise<readonly string[] | string> {
-  const probe = effect {
-    return try probeOwnKey(own, Redacted.make(key))
-  } catch (error) => match (error) {
-    when Refused: error.cloud.tag;
-  }
-  return runPromise(Effect.provide(probe, FetchHttpClient.layer))
+  return runPromise(Effect.provide(probe(own, key), FetchHttpClient.layer))
 }

@@ -33,7 +33,6 @@ import type {
   CameraRecordingOutcome,
   CameraRecordingReceipt,
   CameraRecordingStart,
-  CameraSession,
   CameraSessionOptions,
   CameraSessionPhase,
   CameraSessionSnapshot,
@@ -215,6 +214,29 @@ function deniedOf(denied: AccessDenial): CameraAccessKind | undefined {
     when "CameraAccessDenied": "camera";
     when "MicrophoneAccessDenied": "microphone";
   }
+}
+
+export interface CameraSession {
+  readonly phase: CameraSessionPhase;
+  readonly denied: CameraAccessKind | undefined;
+  readonly recording: boolean;
+  readonly recordingStarting: boolean;
+  readonly finalizing: boolean;
+  readonly capturing: boolean;
+  readonly controlBusy: boolean;
+  readonly busy: boolean;
+  view(): CameraView;
+  snapshot(): CameraSessionSnapshot;
+  token(): number;
+  current(token: number): boolean;
+  start(retry?: boolean): Promise<CameraStartOutcome>;
+  stop(): Promise<void>;
+  control(task: () => Promise<unknown>): Promise<CameraControlOutcome>;
+  startRecording(): Promise<CameraRecordingStart>;
+  finishRecording(): Promise<CameraRecordingOutcome>;
+  exclusive<T>(task: (token: number) => Promise<T>): Promise<CameraExclusive<T>>;
+  rearm(): Promise<boolean>;
+  clearDenied(kind?: CameraAccessKind): void;
 }
 
 error HostTaskFailed { cause: unknown }

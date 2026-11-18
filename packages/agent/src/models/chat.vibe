@@ -136,7 +136,7 @@ effect function refusalFrom(result: HttpClientResponse.HttpClientResponse) {
   const raw = timeout(result.text, "20 seconds") catch effect () => { throw new Refused({ cloud: { tag: "CloudNetwork" } }) }
   if (result.status === 429 && quotaSpent(raw)) return new Refused({ cloud: { tag: "CloudInsufficientCredits" } })
   const response = { status: result.status, headers: { get: (name: string) => result.headers[name] ?? null }, text: async () => raw }
-  const read = try tryPromise(() => readCloudError(response, now))
+  const read = try Effect.promise(() => readCloudError(response, now))
   return new Refused({ cloud: read.failure })
 }
 
