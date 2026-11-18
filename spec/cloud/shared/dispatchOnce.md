@@ -117,13 +117,13 @@ settles `Refused` with the provider's cause, which owners map (mail answers
 leaves the receipt committed with no sender waiting.
 
 ```quint
-type ProviderReply = ShowsEffect | DefiniteRefusal(RefusalCause) | Unclear
-pure val replyValues = Set(ShowsEffect, DefiniteRefusal(NotFoundAtProvider), DefiniteRefusal(AuthorizationLost), Unclear)
+type ProviderReply = ShowsEffect | DefiniteRefusal({ cause: RefusalCause }) | Unclear
+pure val replyValues = Set(ShowsEffect, DefiniteRefusal({ cause: NotFoundAtProvider }), DefiniteRefusal({ cause: AuthorizationLost }), Unclear)
 pure def settledAs(verdict: Settlement, cause: RefusalCause, r: Receipt): Receipt = { ...r, session: S::complete(S::recordOutcome(r.session)), settlement: verdict, refusal: cause, settledAt: r.session.now }
-pure def canReceiveReply(r: Receipt, reply: ProviderReply): bool = r.settlement == Unsettled and r.session.phase == S::Committed and r.session.effects == 1 and r.session.executorAlive and r.session.now < staleAt(r) and reply != DefiniteRefusal(NoRefusal)
+pure def canReceiveReply(r: Receipt, reply: ProviderReply): bool = r.settlement == Unsettled and r.session.phase == S::Committed and r.session.effects == 1 and r.session.executorAlive and r.session.now < staleAt(r) and reply != DefiniteRefusal({ cause: NoRefusal })
 pure def receiveReply(r: Receipt, reply: ProviderReply): Receipt = match reply {
   | ShowsEffect => settledAs(Succeeded, NoRefusal, r)
-  | DefiniteRefusal(cause) => settledAs(Refused, cause, r)
+  | DefiniteRefusal(refusal) => settledAs(Refused, refusal.cause, r)
   | Unclear => { ...r, session: S::loseExecutor(r.session) }
 }
 pure def canLoseExecutor(r: Receipt): bool = r.settlement == Unsettled and S::canLoseExecutor(r.session)
@@ -145,18 +145,18 @@ after the stale time: each owner picks `staleAfter` at least as long as the
 provider's own deadline for the call, so no request still in flight can land.
 
 ```quint
-type LookupResult = EffectSeen | RefusalSeen(RefusalCause) | NothingSeen
-pure val lookupValues = Set(EffectSeen, RefusalSeen(AuthorizationLost), NothingSeen)
+type LookupResult = EffectSeen | RefusalSeen({ cause: RefusalCause }) | NothingSeen
+pure val lookupValues = Set(EffectSeen, RefusalSeen({ cause: AuthorizationLost }), NothingSeen)
 pure def lookupFindsAbsence(kind: ProviderKind): bool = kind != GmailOperation
 pure def isUnknown(r: Receipt): bool = r.settlement == Unsettled and r.session.phase == S::Committed and (not(r.session.executorAlive) or r.session.now >= staleAt(r))
 pure def canResolve(r: Receipt, lookup: LookupResult): bool = isUnknown(r) and (match lookup {
   | EffectSeen => r.session.effects == 1
-  | RefusalSeen(cause) => r.session.effects == 1 and cause != NoRefusal
+  | RefusalSeen(refusal) => r.session.effects == 1 and refusal.cause != NoRefusal
   | NothingSeen => r.session.effects == 0 or (lookupFindsAbsence(kindOf(r)) and r.session.now >= staleAt(r) + r.staleAfter)
 })
 pure def resolve(r: Receipt, lookup: LookupResult): Receipt = match lookup {
   | EffectSeen => settledAs(Succeeded, NoRefusal, r)
-  | RefusalSeen(cause) => settledAs(Refused, cause, r)
+  | RefusalSeen(refusal) => settledAs(Refused, refusal.cause, r)
   | NothingSeen => if (r.session.effects == 1) settledAs(NotApplied, NoRefusal, r) else { ...r, settlement: NotApplied, settledAt: r.session.now }
 }
 pure def stepUnknownSettlesOnlyByLookup(before: Receipt, via: str, after: Receipt): bool = (isUnknown(before) and after.settlement != Unsettled) implies via == "resolve"

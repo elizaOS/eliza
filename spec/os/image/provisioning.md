@@ -78,11 +78,14 @@ pure val requestValues = {
   Set(base, { ...base, assistant: LauncherAssistant }, { ...base, assistant: ListenerAssistant({ power: false }) }, { ...base, assistant: ListenerAssistant({ power: true }) },
     { ...base, requires: { autofill: true, allFilesAccess: true }, telephonyRoles: true })
 }
-pure def lawDefaultsAreDeclaredExportedComponents(manifest: LauncherManifest, request: ProvisioningRequest): bool = match provisioningDefaults(manifest, request) {
-  | ProvisioningAdmitted(d) => activitiesHandling(manifest, HomeIntent).length() == 1 and activitiesHandling(manifest, HomeIntent).every(c => c.name == d.home and c.exported)
-    and autofillServices(manifest).every(c => c.exported and c.permission == autofillPermission)
-    and (d.assistant == NoDefault iff not(takesAssistant(request.assistant)))
-  | _ => true
+pure def lawDefaultsAreDeclaredExportedComponents(manifest: LauncherManifest, request: ProvisioningRequest): bool = {
+  val defaults = provisioningDefaults(manifest, request)
+  match defaults {
+    | ProvisioningAdmitted(d) => activitiesHandling(manifest, HomeIntent).length() == 1 and activitiesHandling(manifest, HomeIntent).every(c => c.name == d.home and c.exported)
+      and autofillServices(manifest).every(c => c.exported and c.permission == autofillPermission)
+      and (d.assistant == NoDefault iff not(takesAssistant(request.assistant)))
+    | _ => true
+  }
 }
 pure def lawWithoutTheRoleAnEnabledAssistIsRefused(manifest: LauncherManifest, request: ProvisioningRequest): bool =
   (request.assistant == NoAssistant and activitiesHandling(manifest, AssistIntent).some(c => c.enabledByDefault)) implies not(provisioningAdmitted(provisioningDefaults(manifest, request)))
@@ -95,10 +98,13 @@ A product may require the Autofill service and all-files access
 left at its default).
 
 ```quint
-pure def lawRequirementsHoldWhenAdmitted(manifest: LauncherManifest, request: ProvisioningRequest): bool = match provisioningDefaults(manifest, request) {
-  | ProvisioningAdmitted(d) => (request.requires.autofill implies d.autofill != NoDefault)
-    and (request.requires.allFilesAccess implies manifest.requestedPermissions.includes(allFilesAccessPermission))
-  | _ => true
+pure def lawRequirementsHoldWhenAdmitted(manifest: LauncherManifest, request: ProvisioningRequest): bool = {
+  val defaults = provisioningDefaults(manifest, request)
+  match defaults {
+    | ProvisioningAdmitted(d) => (request.requires.autofill implies d.autofill != NoDefault)
+      and (request.requires.allFilesAccess implies manifest.requestedPermissions.includes(allFilesAccessPermission))
+    | _ => true
+  }
 }
 ```
 
@@ -159,13 +165,17 @@ pure val manifestValues = {
     { ...full, components: launcher.concat(roles.listMap(c => { ...c, enabledByDefault: true })) },
     { ...full, components: launcher.concat(roles.listMap(c => { ...c, marks: List() })) }).foldl(Set(), (acc, m) => acc.union(Set(m)))
 }
-pure def lawOverridesEnableOnlyDisabledHandlers(manifest: LauncherManifest): bool = match roleOverrides(manifest) {
-  | OverridesWritten(o) => o.components.length() == telephonyHandlers.length()
-    and o.components.every(n => manifest.components.some(c => c.name == n and not(c.enabledByDefault)))
-  | _ => true
+pure def overridesWritten(overrides: RoleOverrides): bool = match overrides { | OverridesWritten(o) => true | _ => false }
+pure def lawOverridesEnableOnlyDisabledHandlers(manifest: LauncherManifest): bool = {
+  val overrides = roleOverrides(manifest)
+  match overrides {
+    | OverridesWritten(o) => o.components.length() == telephonyHandlers.length()
+      and o.components.every(n => manifest.components.some(c => c.name == n and not(c.enabledByDefault)))
+    | _ => true
+  }
 }
 pure def lawEnabledHandlerIsRefused(manifest: LauncherManifest): bool =
-  telephonyHandlers.some(h => handlerMatches(manifest, h).some(c => c.enabledByDefault)) implies (match roleOverrides(manifest) { | OverridesWritten(o) => false | _ => true })
+  telephonyHandlers.some(h => handlerMatches(manifest, h).some(c => c.enabledByDefault)) implies not(overridesWritten(roleOverrides(manifest)))
 ```
 
 ### An image's default roles are Home, the assistant when the product takes it, and the dialer and SMS app when it declares telephony roles
@@ -271,12 +281,14 @@ pure def imageFeatures(activation: ListenerActivation): Set[FeatureKind] =
   match activation { | ActivationWritten(a) => Set(AospImageFeature, ListenerFeature) | _ => Set(AospImageFeature) }
 pure val stagingValues = Set({ patches: Set(ChipPatch, OpsPatch, PowerPatch), longPressAssistant: true }, { patches: Set(ChipPatch, OpsPatch), longPressAssistant: true },
   { patches: Set(ChipPatch, OpsPatch, PowerPatch, AssistPatch), longPressAssistant: true }, { patches: Set(ChipPatch, OpsPatch, PowerPatch), longPressAssistant: false })
-pure def lawActivationEnablesOnlyDisabledExportedActivities(manifest: LauncherManifest, request: ProvisioningRequest, staging: ListenerStaging): bool =
-  match listenerActivation(manifest, request, staging) {
+pure def lawActivationEnablesOnlyDisabledExportedActivities(manifest: LauncherManifest, request: ProvisioningRequest, staging: ListenerStaging): bool = {
+  val activation = listenerActivation(manifest, request, staging)
+  match activation {
     | ActivationWritten(a) => listenerImage(request.assistant) and manifest.components.some(c => c.name == a.assistant and disabledExported(c) and c.handles == List(AssistIntent))
       and (a.power != NoDefault implies (a.power == DefaultOf({ name: manifest.powerVoiceActivity }) and powerChildAdmitted(manifest)))
     | _ => true
   }
+}
 ```
 
 ### Power voice needs the power bundle, no assist bundle and the long-press assistant overlay
@@ -287,13 +299,15 @@ overlay is the listener's `config_longPressOnPowerBehavior` assistant
 setting.
 
 ```quint
-pure def lawPowerVoiceNeedsItsBundleAlone(manifest: LauncherManifest, request: ProvisioningRequest, staging: ListenerStaging): bool =
-  match listenerActivation(manifest, request, staging) {
+pure def lawPowerVoiceNeedsItsBundleAlone(manifest: LauncherManifest, request: ProvisioningRequest, staging: ListenerStaging): bool = {
+  val activation = listenerActivation(manifest, request, staging)
+  match activation {
     | ActivationWritten(a) => not(staging.patches.contains(AssistPatch) and staging.patches.contains(PowerPatch))
       and (a.power != NoDefault iff listenerPower(request.assistant))
       and (a.power != NoDefault implies (staging.patches.contains(PowerPatch) and staging.longPressAssistant))
     | _ => true
   }
+}
 ```
 
 ## Story: Leave the lock screen, alarms and secure capture to the system
@@ -347,8 +361,11 @@ pure def secureCameraStaging(source: CameraSource): CameraStaging = match source
   | _ => CameraRefused
 }
 pure val sourceValues = Set(CameraSourceVerified({ contract: Sha256({ hex: "a1" }) }), CameraSourceVerified({ contract: NotADigest }), CameraSourceUnverified)
-pure def lawCameraStagedOnlyFromAReviewedContract(source: CameraSource): bool = match secureCameraStaging(source) {
-  | CameraStaged(s) => isDigest(s.contract) and s.gesturePackage == secureCameraPackage and source == CameraSourceVerified({ contract: s.contract })
-  | _ => true
+pure def lawCameraStagedOnlyFromAReviewedContract(source: CameraSource): bool = {
+  val staged = secureCameraStaging(source)
+  match staged {
+    | CameraStaged(s) => isDigest(s.contract) and s.gesturePackage == secureCameraPackage and source == CameraSourceVerified({ contract: s.contract })
+    | _ => true
+  }
 }
 ```
