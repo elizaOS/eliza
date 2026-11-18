@@ -139,6 +139,20 @@ test("voice settings: rapid preference changes persist in user order", async ({
 test("general settings: changing language updates settings and voice hints after reload", async ({
   page,
 }) => {
+  await page.route("**/api/cloud/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        connected: false,
+        enabled: false,
+        cloudVoiceProxyAvailable: true,
+        hasApiKey: false,
+      },
+    });
+  });
   // The app ships a single curated light look (no dark/light/system toggle).
   // General exposes the language picker; selecting an option must update the
   // visible controlled value.
@@ -152,7 +166,7 @@ test("general settings: changing language updates settings and voice hints after
   await language.click();
   await page.getByRole("option", { name: /Español/ }).click();
   await expect(language).toContainText("Español", { timeout: 10_000 });
-  await expect(language).toHaveAttribute("aria-label", "Idioma");
+  await expect(language).toHaveAccessibleName("Idioma");
 
   await page.reload();
   await expect(
