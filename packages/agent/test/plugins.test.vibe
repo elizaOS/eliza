@@ -135,7 +135,7 @@ it.effect('An agent with a cloud backend and no plugins is ready and registers s
   const stopped = try host("stop", () => booted.child.stop())
   const output = `${stopped.stdout}${stopped.stderr}`
   const registered = output.split("\n").filter((line) => line.includes("Plugin registered"))
-  try Effect.try(() => assert.deepStrictEqual("json" in answer ? (answer.json as { actions: string[] }).actions : answer, ["IGNORE", "NONE", "REPLY"]))
+  try Effect.try(() => assert.strictEqual("json" in answer ? (answer.json as { state: string }).state : answer, "running"))
   try Effect.try(() => assert.include(registered[0] ?? "", storagePlugin))
   try Effect.try(() => assert.include(registered[1] ?? "", cloudLinkPlugin))
   try Effect.try(() => assert.strictEqual(registered.length, 2))

@@ -48,7 +48,8 @@ interface Owner {
   readonly embeddingDimensions?: number
 }
 
-schema Status { agentId: string }
+schema Agent { id: string }
+schema Agents { agents: [Agent] }
 schema Listing { id: string; updatedAt: number }
 schema Created { conversation: Listing }
 schema Listed { conversations: Listing[] }
@@ -74,7 +75,7 @@ effect function served(agent: Started, path: string, body?: object) {
 }
 
 effect function agentId(agent: Started) {
-  return (try Schema.decodeUnknownEffect(Status)((try served(agent, "/api/status")).json)).agentId
+  return (try Schema.decodeUnknownEffect(Agents)((try served(agent, "/api/agents")).json)).agents[0].id
 }
 
 effect function exitCode(agent: Started) {
