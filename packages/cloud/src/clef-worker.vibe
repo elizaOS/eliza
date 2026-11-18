@@ -1,6 +1,7 @@
 // spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page"
 import type { Client } from "pg"
 import { SecureRandom } from "effect/crypto"
+import { decisionAccountLimit, decisionOrganizationLimit } from "../gen/cloud.ts"
 import { WorkerResponse } from "./worker-platform.ts"
 import { limitedBody } from "./inference.vibe"
 import { accountTransaction, authQuery, rateLimit, RateLimited } from "./identity-store.vibe"
@@ -86,8 +87,8 @@ effect function admit(db: Client, account: string) {
     const { rows } = try authQuery<{ organization_id: string }>(db, "SELECT organization_id FROM accounts WHERE key = $1 AND status = 'active'", [account])
     const organization = rows[0]?.organization_id
     if (!organization) return false
-    try rateLimit(db, "clef:account", account, 30, 60)
-    try rateLimit(db, "clef:organization", organization, 2000, 86400)
+    try rateLimit(db, decisionAccountLimit.name, account, decisionAccountLimit.limit, decisionAccountLimit.windowMs / 1000)
+    try rateLimit(db, decisionOrganizationLimit.name, organization, decisionOrganizationLimit.limit, decisionOrganizationLimit.windowMs / 1000)
     return true
   })
 }

@@ -285,3 +285,152 @@ The deployment's Workers AI binding enables Clef decisions with
 answer yields a typed unavailable result. Each dispatch counts against
 thirty calls per minute per account and two thousand per day per
 organization. An unavailable limiter blocks dispatch.
+
+
+### A parsed decision request stays within its text and candidate bounds
+
+The exact JSON schema rejects extra fields, whitespace-only required text,
+invalid candidate ID syntax and repeated IDs. The shell measures UTF-16
+code units. The values below are that parsed request's counts; zero for an
+optional text means it was absent. A choice has one through sixteen
+candidates, with no ID reserved for the provider's no-match answer. Mode
+and turn requests use their own text and recent-turn limits.
+
+```quint
+import types.* from "./shared/types"
+import sessions as DecisionSessions from "./identity/sessions"
+import rateLimit as DecisionLimits from "./shared/rateLimit"
+type DecisionCandidate = { id: str, idUnits: CharCount, labelUnits: CharCount }
+type DecisionRequest = DecisionChoice({ goalUnits: CharCount, pageUnits: CharCount, candidates: List[DecisionCandidate] })
+  | DecisionMode({ actionUnits: CharCount, contextUnits: CharCount })
+  | DecisionTurn({ transcriptUnits: CharCount, recentTurnUnits: List[CharCount] })
+pure def decisionTextFits(units: CharCount, maximum: CharCount): bool = units > 0 and units <= maximum
+pure def decisionOptionalTextFits(units: CharCount, maximum: CharCount): bool = units == 0 or decisionTextFits(units, maximum)
+pure def decisionCandidatesFit(candidates: List[DecisionCandidate]): bool =
+  candidates.length() >= 1 and candidates.length() <= 16 and candidates.every(c =>
+    c.id != "" and c.id != "none" and decisionTextFits(c.idUnits, 64) and decisionTextFits(c.labelUnits, 300) and
+    candidates.select(other => other.id == c.id).length() == 1)
+pure def decisionRequestFits(decisionRequest: DecisionRequest): bool = match decisionRequest {
+  | DecisionChoice(r) => decisionTextFits(r.goalUnits, 2000) and decisionOptionalTextFits(r.pageUnits, 16000) and decisionCandidatesFit(r.candidates)
+  | DecisionMode(r) => decisionTextFits(r.actionUnits, 1000) and decisionOptionalTextFits(r.contextUnits, 4000)
+  | DecisionTurn(r) => decisionTextFits(r.transcriptUnits, 2000) and r.recentTurnUnits.length() <= 6 and r.recentTurnUnits.every(units => decisionTextFits(units, 2000))
+}
+pure val candidatesValues = Set(List(), List({ id: "hours", idUnits: 5, labelUnits: 13 }),
+  List({ id: "none", idUnits: 4, labelUnits: 8 }),
+  List({ id: "hours", idUnits: 5, labelUnits: 13 }, { id: "hours", idUnits: 5, labelUnits: 13 }))
+pure val decisionRequestValues = Set(
+  DecisionChoice({ goalUnits: 18, pageUnits: 0, candidates: List({ id: "hours", idUnits: 5, labelUnits: 13 }) }),
+  DecisionChoice({ goalUnits: 2001, pageUnits: 0, candidates: List() }),
+  DecisionMode({ actionUnits: 1000, contextUnits: 4000 }),
+  DecisionTurn({ transcriptUnits: 10, recentTurnUnits: List(10, 20) }))
+pure def lawRepeatedDecisionCandidatesAreRefused(candidates: List[DecisionCandidate]): bool =
+  candidates.some(c => candidates.select(other => other.id == c.id).length() > 1) implies not(decisionCandidatesFit(candidates))
+pure def lawReservedDecisionCandidateIsRefused(candidates: List[DecisionCandidate]): bool =
+  candidates.some(c => c.id == "none") implies not(decisionCandidatesFit(candidates))
+```
+
+### A dispatch uses the current account and two available quota slots
+
+The current shared credential admission supplies the account; a supplied
+decisionExpected account must equal it. A missing provider binding makes no quota
+attempt. With a binding, the transaction admits only an active account and
+increments both the account's thirty-per-minute counter and the
+organization's two-thousand-per-day counter, or neither. An unavailable
+store refuses the dispatch. These observed SQL rows expire from their first
+admission, rather than at a calendar-aligned boundary; expiry opens a new
+row with one hit. No earlier result is authority for another request.
+
+```quint
+type DecisionExpectedAccount = AnyCurrentDecisionAccount | ExpectedDecisionAccount({ id: str })
+type DecisionCounter = { hits: int, expiresAt: Millis }
+type DecisionCounts = { account: DecisionCounter, organization: DecisionCounter }
+type DecisionCounterRead = DecisionStoreUnavailable | DecisionCountersRead({ counts: DecisionCounts })
+type DecisionDispatch = DecisionNotDispatched | DecisionDispatched({ counts: DecisionCounts })
+pure val decisionAccountLimit = DecisionLimits::perMinute("clef:account", 30)
+pure val decisionOrganizationLimit = DecisionLimits::perWindow("clef:organization", 2000, millisPerDay)
+pure def decisionAccountMatches(accountId: str, decisionExpected: DecisionExpectedAccount): bool = match decisionExpected {
+  | AnyCurrentDecisionAccount => true
+  | ExpectedDecisionAccount(wanted) => wanted.id == accountId
+}
+pure def decisionHeldHits(counter: DecisionCounter, decisionNow: Millis): int = if (decisionNow >= counter.expiresAt) 0 else counter.hits
+pure def decisionCounterFits(counter: DecisionCounter, rule: DecisionLimits::RateLimit, decisionNow: Millis): bool =
+  counter.hits >= 0 and counter.expiresAt >= 0 and decisionNow >= 0 and DecisionLimits::admits(decisionHeldHits(counter, decisionNow), rule)
+pure def decisionCounted(counter: DecisionCounter, rule: DecisionLimits::RateLimit, decisionNow: Millis): DecisionCounter =
+  { hits: decisionHeldHits(counter, decisionNow) + 1, expiresAt: if (decisionNow >= counter.expiresAt) decisionNow + rule.windowMs else counter.expiresAt }
+pure def decisionQuotaAdmission(decisionCounters: DecisionCounterRead, decisionNow: Millis): DecisionDispatch = match decisionCounters {
+  | DecisionStoreUnavailable => DecisionNotDispatched
+  | DecisionCountersRead(read) =>
+      if (decisionCounterFits(read.counts.account, decisionAccountLimit, decisionNow) and decisionCounterFits(read.counts.organization, decisionOrganizationLimit, decisionNow))
+        DecisionDispatched({ counts: { account: decisionCounted(read.counts.account, decisionAccountLimit, decisionNow), organization: decisionCounted(read.counts.organization, decisionOrganizationLimit, decisionNow) } })
+      else DecisionNotDispatched
+}
+pure def decisionDispatch(decisionView: DecisionSessions::CredentialView, accountId: str, decisionExpected: DecisionExpectedAccount,
+  decisionRequest: DecisionRequest, decisionCounters: DecisionCounterRead, decisionNow: Millis, bindingPresent: bool): DecisionDispatch =
+  if (bindingPresent and accountId != "" and decisionAccountMatches(accountId, decisionExpected) and decisionRequestFits(decisionRequest) and
+      DecisionSessions::admitRequest(decisionView, DecisionSessions::ServiceAccess, decisionNow) == DecisionSessions::CredentialAccepted)
+    decisionQuotaAdmission(decisionCounters, decisionNow)
+  else DecisionNotDispatched
+pure val decisionCountersValues = Set(DecisionStoreUnavailable,
+  DecisionCountersRead({ counts: { account: { hits: 0, expiresAt: 0 }, organization: { hits: 0, expiresAt: 0 } } }),
+  DecisionCountersRead({ counts: { account: { hits: 30, expiresAt: 60000 }, organization: { hits: 0, expiresAt: 86400000 } } }),
+  DecisionCountersRead({ counts: { account: { hits: 2, expiresAt: 60000 }, organization: { hits: 2000, expiresAt: 86400000 } } }))
+pure val decisionNowValues = Set(0, 1, 59999, 60000, 86400000)
+pure val decisionViewValues = DecisionSessions::viewValues
+pure val decisionExpectedValues = Set(AnyCurrentDecisionAccount, ExpectedDecisionAccount({ id: "owner" }), ExpectedDecisionAccount({ id: "other" }))
+
+pure def lawDifferentExpectedAccountCannotDispatch(decisionView: DecisionSessions::CredentialView, accountId: str, expectedId: str,
+  decisionRequest: DecisionRequest, decisionCounters: DecisionCounterRead, decisionNow: Millis, bindingPresent: bool): bool =
+  expectedId != accountId implies decisionDispatch(decisionView, accountId, ExpectedDecisionAccount({ id: expectedId }), decisionRequest, decisionCounters, decisionNow, bindingPresent) == DecisionNotDispatched
+pure def lawInactiveDecisionCredentialCannotDispatch(decisionView: DecisionSessions::CredentialView, accountId: str, decisionExpected: DecisionExpectedAccount,
+  decisionRequest: DecisionRequest, decisionCounters: DecisionCounterRead, decisionNow: Millis, bindingPresent: bool): bool =
+  DecisionSessions::admitRequest(decisionView, DecisionSessions::ServiceAccess, decisionNow) != DecisionSessions::CredentialAccepted implies
+    decisionDispatch(decisionView, accountId, decisionExpected, decisionRequest, decisionCounters, decisionNow, bindingPresent) == DecisionNotDispatched
+
+pure def lawUnavailableDecisionStoreCannotDispatch(decisionNow: Millis): bool =
+  decisionQuotaAdmission(DecisionStoreUnavailable, decisionNow) == DecisionNotDispatched
+pure def lawDecisionAdmissionCountsBothWithinTheirLimits(decisionCounters: DecisionCounterRead, decisionNow: Millis): bool = {
+  val decisionOutcome = decisionQuotaAdmission(decisionCounters, decisionNow)
+  match decisionOutcome {
+    | DecisionDispatched(admitted) => admitted.counts.account.hits > 0 and admitted.counts.account.hits <= 30 and admitted.counts.organization.hits > 0 and admitted.counts.organization.hits <= 2000
+    | DecisionNotDispatched => true
+  }
+}
+```
+
+### A choice answer names an offered candidate or no match and authorizes no browser action
+
+A successful choice comes from the fixed Clef model and has exactly one
+probability key for every offered candidate plus `none`. The JSON schema
+checks each probability and confidence is finite and between zero and one;
+it makes no promise about their sum or the quality of the selection. An
+unknown candidate, wrong model or incomplete key set becomes unavailable.
+The result carries a choice value only. The browser owns checking that its
+page is still current and approving any action.
+
+```quint
+type DecisionProviderModel = DecisionClefShortName | DecisionClefFullName | DecisionOtherModel
+type DecisionChoiceValue = DecisionNoMatch | DecisionCandidateId({ id: str })
+type DecisionChoiceOutcome = DecisionChoiceUnavailable | DecisionChoiceAvailable({ choice: DecisionChoiceValue })
+pure def decisionProbabilityKeysFit(candidates: List[DecisionCandidate], probabilityIds: List[str]): bool =
+  probabilityIds.length() == candidates.length() + 1 and probabilityIds.includes("none") and
+  candidates.every(c => probabilityIds.includes(c.id)) and
+  probabilityIds.every(id => probabilityIds.select(other => other == id).length() == 1 and (id == "none" or candidates.some(c => c.id == id)))
+pure def decisionChoiceOffered(candidates: List[DecisionCandidate], choice: DecisionChoiceValue): bool = match choice {
+  | DecisionNoMatch => true
+  | DecisionCandidateId(selected) => candidates.some(c => c.id == selected.id)
+}
+pure def decisionChoiceOutcome(candidates: List[DecisionCandidate], providerModel: DecisionProviderModel, choice: DecisionChoiceValue, probabilityIds: List[str]): DecisionChoiceOutcome =
+  if (decisionCandidatesFit(candidates) and providerModel != DecisionOtherModel and decisionProbabilityKeysFit(candidates, probabilityIds) and decisionChoiceOffered(candidates, choice))
+    DecisionChoiceAvailable({ choice: choice })
+  else DecisionChoiceUnavailable
+pure val providerModelValues = Set(DecisionClefShortName, DecisionClefFullName, DecisionOtherModel)
+pure val choiceValues = Set(DecisionNoMatch, DecisionCandidateId({ id: "hours" }), DecisionCandidateId({ id: "older-snapshot" }))
+pure val probabilityIdsValues = Set(List(), List("hours", "none"), List("none", "none"), List("hours", "older-snapshot", "none"))
+pure def lawDecisionChoiceNeverIntroducesAnUnofferedCandidate(candidates: List[DecisionCandidate], providerModel: DecisionProviderModel, choice: DecisionChoiceValue, probabilityIds: List[str]): bool = {
+  val decisionOutcome = decisionChoiceOutcome(candidates, providerModel, choice, probabilityIds)
+  match decisionOutcome {
+    | DecisionChoiceAvailable(result) => decisionChoiceOffered(candidates, result.choice)
+    | DecisionChoiceUnavailable => true
+  }
+}
+```
