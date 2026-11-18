@@ -59,7 +59,7 @@ pure def lawListenerChecksOnlyForAListenerImage(listener: bool): bool = required
 
 ```quint
 type CheckResult = { check: ImageCheck, outcome: CheckOutcome }
-pure def reportedAs(results: List[CheckResult], check: ImageCheck, outcome: CheckOutcome): bool = results.some(r => r.check == check and r.outcome == outcome)
+pure def reportedAs(results: List[CheckResult], check: ImageCheck, reported: CheckOutcome): bool = results.some(r => r.check == check and r.outcome == reported)
 pure def outcomeFor(results: List[CheckResult], check: ImageCheck): CheckOutcome =
   if (reportedAs(results, check, Fail)) Fail else if (reportedAs(results, check, Unknown)) Unknown else if (reportedAs(results, check, Pass)) Pass else Unknown
 pure def imageVerdict(listener: bool, results: List[CheckResult]): CheckOutcome = {
@@ -89,7 +89,7 @@ unlocked device expects `orange`. A state the shell cannot parse is
 
 ```quint
 type BootState = Green | Yellow | Orange | Red
-pure def bootStrength(state: BootState): int = match state { | Green => 3 | Yellow => 2 | Orange => 1 | Red => 0 }
+pure def bootStrength(boot: BootState): int = match boot { | Green => 3 | Yellow => 2 | Orange => 1 | Red => 0 }
 pure def verifiedBootNotWeaker(booted: BootState, expectedBoot: BootState): bool = bootStrength(booted) >= bootStrength(expectedBoot)
 pure def lawUnlockedNeverMeetsALockedImage(expectedBoot: BootState): bool = (expectedBoot == Green or expectedBoot == Yellow) implies not(verifiedBootNotWeaker(Orange, expectedBoot))
 pure def lawRedNeverMeetsAnyExpectation(expectedBoot: BootState): bool = expectedBoot != Red implies not(verifiedBootNotWeaker(Red, expectedBoot))
