@@ -6052,7 +6052,6 @@
   "voicesection.retryListenerStop": "Retry stopping wake listening",
   "voicesection.wakeWord": "Wake word",
   "voicesection.wakeWordDesc": "Listen for a phrase like 'Hey {{appName}}' before opening the mic.",
-  "voicesection.wakeWordInactive": "Wake word detector is not running: {{reason}}",
   "voicesection.wakeWordUnavailable": "Wake word is not available on this device.",
   "voicesection.toggleWakeWord": "Toggle wake word",
   "voicesection.on": "On",

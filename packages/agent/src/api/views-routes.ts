@@ -670,7 +670,7 @@ export async function handleViewsRoutes(
   // path would navigate unrelated browsers and devices.
   //
   // Optional body fields:
-  //   action: "pin-tab"    — tells the shell to add to desktop tab bar
+  //   action: "pin-tab"    — legacy desktop tab-bar hint; the shell navigates normally
   //   action: "open-window" — tells the shell to open in a new Electrobun window
   //   action: "close"      — tells the shell to close/hide the target view
   //   action: "close-all"  — tells the shell to close/hide all open views
