@@ -31,9 +31,10 @@ type Account = { userId: str, organizationId: str }
 type Custody = SignedOut | Active({ version: int, credentialId: str, account: Account, keyExpiresAt: Millis }) | Expired({ account: Account })
 type Attempt = NoAttempt | Exchanging({ attempt: int }) | Acknowledging({ attempt: int, version: int, credentialId: str, account: Account, lapsesAt: Millis })
 type Duty = { version: int, lapsesAt: Millis, tries: int }
-type AccountSession = NoSession | Session({ version: int, until: Millis, accessExpiresAt: Millis, refreshing: bool, waiters: int })
+type Refresh = NotRefreshing | Refreshing({ waiters: int })
+type AccountSession = NoSession | Session({ version: int, until: Millis, accessExpiresAt: Millis, refresh: Refresh })
 type DeviceCredential = { now: Millis, generation: int, lastVersion: int, custody: Custody, attempt: Attempt, duties: List[Duty], session: AccountSession }
-type CredentialNotice = Announce({ version: int, account: Account }) | SignedOutNotice | ExpiredNotice | VerifyAccount
+type CredentialNotice = Announce({ version: int, account: Account }) | SignedOutNotice | ExpiredNotice | VerifyAccount | RefreshAccountSession
 type CredentialStep = { state: DeviceCredential, out: List[CredentialNotice] }
 pure val initial: DeviceCredential = { now: 0, generation: 0, lastVersion: 0, custody: SignedOut, attempt: NoAttempt, duties: List(), session: NoSession }
 pure val noAccount: Account = { userId: "", organizationId: "" }
@@ -245,7 +246,7 @@ pure def sessionAt(now: Millis, x: AccountSession): AccountSession = match x { |
 pure def canGrantSession(s: DeviceCredential, account: Account, accessExpiresAt: Millis): bool = isSignedIn(s) and accountOf(s) == account and accessExpiresAt > s.now
 pure def grantSession(s: DeviceCredential, account: Account, accessExpiresAt: Millis): DeviceCredential = {
   val until = s.now + Iss::freshWindow
-  { ...s, session: Session({ version: activeVersion(s), until: until, accessExpiresAt: if (accessExpiresAt < until) accessExpiresAt else until, refreshing: false, waiters: 0 }) }
+  { ...s, session: Session({ version: activeVersion(s), until: until, accessExpiresAt: if (accessExpiresAt < until) accessExpiresAt else until, refresh: NotRefreshing }) }
 }
 pure def canDropSession(s: DeviceCredential): bool = s.session != NoSession
 pure def dropSession(s: DeviceCredential): DeviceCredential = { ...s, session: NoSession }
@@ -258,36 +259,43 @@ pure def alwaysSessionBelongsToTheActiveKey(s: DeviceCredential): bool = { val h
 pure def sometimesSessionUsable(s: DeviceCredential): bool = sessionUsable(s)
 ```
 
-### Overlapping readers share one pending refresh
+### A reader starts a refresh only when none is in flight, and later readers wait for it
 
-A reader of an expired access token starts the refresh
-(`POST /api/v1/auth/refresh`) or waits for the one in flight: the cloud
-takes a spent refresh token as theft and ends every session of the person.
-A refresh never reaches past the session's hour. No answer keeps the
-session for the next reader; a refusal discards it.
+A reader of an expired access token asks the shell to send
+`POST /api/v1/auth/refresh` (`RefreshAccountSession`) or joins the refresh
+in flight: the cloud takes a spent refresh token as theft and ends every
+session of the person. A refresh never reaches past the session's hour. No
+answer keeps the session for the next reader; a refusal discards it.
 
 ```quint
 type RefreshAnswer = Refreshed({ accessExpiresAt: Millis }) | RefreshUnanswered | RefreshRefused
+pure def refreshOf(x: AccountSession): Refresh = match x { | Session(t) => t.refresh | NoSession => NotRefreshing }
+pure def waitersOf(r: Refresh): int = match r { | Refreshing(w) => w.waiters | NotRefreshing => -1 }
+pure def isRefreshing(s: DeviceCredential): bool = refreshOf(s.session) != NotRefreshing
 pure def canReadSession(s: DeviceCredential): bool = s.session != NoSession and not(sessionUsable(s))
-pure def readSession(s: DeviceCredential): DeviceCredential = {
+pure def readSession(s: DeviceCredential): CredentialStep = {
   val x = s.session
+  val joined = waitersOf(refreshOf(s.session)) + 1
   match x {
-    | Session(t) => { ...s, session: if (t.refreshing) Session({ ...t, waiters: t.waiters + 1 }) else Session({ ...t, refreshing: true }) }
-    | NoSession => s
+    | Session(t) => { state: { ...s, session: Session({ ...t, refresh: Refreshing({ waiters: joined }) }) },
+        out: if (joined == 0) List(RefreshAccountSession) else List() }
+    | NoSession => { state: s, out: List() }
   } }
-pure def canRefreshAnswered(s: DeviceCredential): bool = { val held = s.session  match held { | Session(t) => t.refreshing | NoSession => false } }
+pure def canRefreshAnswered(s: DeviceCredential): bool = isRefreshing(s)
 pure def refreshAnswered(s: DeviceCredential, answer: RefreshAnswer): DeviceCredential = {
   val x = s.session
   match x {
     | Session(t) => match answer {
-        | Refreshed(r) => { ...s, session: Session({ ...t, accessExpiresAt: if (r.accessExpiresAt < t.until) r.accessExpiresAt else t.until, refreshing: false, waiters: 0 }) }
-        | RefreshUnanswered => { ...s, session: Session({ ...t, refreshing: false, waiters: 0 }) }
+        | Refreshed(r) => { ...s, session: Session({ ...t, accessExpiresAt: if (r.accessExpiresAt < t.until) r.accessExpiresAt else t.until, refresh: NotRefreshing }) }
+        | RefreshUnanswered => { ...s, session: Session({ ...t, refresh: NotRefreshing }) }
         | RefreshRefused => { ...s, session: NoSession }
       }
     | NoSession => s
   } }
 pure val answerValues = Set(Refreshed({ accessExpiresAt: 2000000 }), RefreshUnanswered, RefreshRefused)
 pure val weight_readSession = 3
-pure def alwaysOneRefreshInFlight(s: DeviceCredential): bool = { val held = s.session  match held { | Session(t) => t.waiters >= 0 and (t.waiters >= 1 implies t.refreshing) | NoSession => true } }
-pure def sometimesReadersShareOneRefresh(s: DeviceCredential): bool = { val held = s.session  match held { | Session(t) => t.waiters >= 1 | NoSession => false } }
+pure def stepOneRefreshInFlight(before: DeviceCredential, via: str, after: DeviceCredential, out: List[CredentialNotice]): bool =
+  out.includes(RefreshAccountSession) implies (not(isRefreshing(before)) and isRefreshing(after))
+pure def alwaysRefreshWaitersAreCounted(s: DeviceCredential): bool = isRefreshing(s) implies waitersOf(refreshOf(s.session)) >= 0
+pure def sometimesReadersShareOneRefresh(s: DeviceCredential): bool = waitersOf(refreshOf(s.session)) >= 1
 ```

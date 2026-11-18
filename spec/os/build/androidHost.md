@@ -7,7 +7,7 @@ levels, distribution variants, manifests, source sets, the os modules it
 builds, its own Gradle modules, Maven dependencies, assets, pre-build
 commands, signing and version environment names, the agent's data files and
 the agent service's notification and launch hook. The
-[Android build](./androidBuild.md) builds and publishes the generated
+Android build (`build/androidBuild.md`) builds and publishes the generated
 project, the [runtime payload](./runtimePayload.md) is what an agent host
 ships, and the [bridge vocabulary](../android/bridge.md) names what the os
 modules provide. The sources are develop's `consumer-host.mjs` and the
@@ -445,6 +445,7 @@ pure val factsValues = {
     { ...base, signing: { names: List("STORE"), namesValid: true } }, { ...base, output: List("work", "app", "vendor", "os", "out") },
     { ...base, sources: List({ root: ConsumerRoot, path: Below({ segments: List("vendor", "os", "android", "wifi") }), wanted: WantsDirectory }) },
     { ...base, osModules: List({ osModule: "agent-service", sources: List() }) }, { ...base, osModules: List({ osModule: "sense", sources: List() }) },
+    { ...base, osModules: List({ osModule: "calendar", sources: List(List("src", "main", "java", "Calendar.java")) }) },
     { ...base, dependencies: List({ configuration: "implementation", artifactValid: true, versionKey: "1.7.1" }) }, { ...base, packaging: DefaultPackaging },
     { ...base, osModules: List(), agentDeclared: false, notification: NoNotification, hook: NoHook, packaging: DefaultPackaging }).foldl(Set(), (acc, f) => acc.union(Set(f)))
 }
@@ -598,10 +599,10 @@ is published.
 
 ```quint
 type PayloadEntry = OrdinaryEntry | ModelEntry | InferenceLibraryEntry | ModelServerEntry | ModelDirectoryEntry
-pure def hostPayloadAdmitted(localInference: bool, entries: Set[PayloadEntry]): bool = localInference or entries.forall(e => e == OrdinaryEntry)
-pure val entriesValues = Set(Set(), Set(OrdinaryEntry), Set(OrdinaryEntry, ModelEntry), Set(InferenceLibraryEntry), Set(ModelServerEntry), Set(ModelDirectoryEntry))
-pure def lawCloudOnlyHostCarriesNoInference(entries: Set[PayloadEntry]): bool =
-  hostPayloadAdmitted(false, entries) implies entries.forall(e => e == OrdinaryEntry)
+pure def hostPayloadAdmitted(localInference: bool, payload: Set[PayloadEntry]): bool = localInference or payload.forall(e => e == OrdinaryEntry)
+pure val payloadValues = Set(Set(), Set(OrdinaryEntry), Set(OrdinaryEntry, ModelEntry), Set(InferenceLibraryEntry), Set(ModelServerEntry), Set(ModelDirectoryEntry))
+pure def lawCloudOnlyHostCarriesNoInference(payload: Set[PayloadEntry]): bool =
+  hostPayloadAdmitted(false, payload) implies payload.forall(e => e == OrdinaryEntry)
 ```
 
 ### The APK manifest lists every flavor's APK of this build with its digest and one signer

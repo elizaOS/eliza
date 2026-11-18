@@ -1,6 +1,7 @@
-// spec/os/android/system.md, "Story: Approve a Wi-Fi join and see whether that network connected"
+// spec/os/android/wifi.md, "Story: Find the networks around a device that manages its own Wi-Fi"; spec/os/android/wifi.md, "Story: Join the network I chose through Android's approval"; spec/os/android/wifi.md, "Story: Disconnect, or go to Android's Internet panel"; spec/os/android/wifi.md, "Story: See whether the device is online or behind a sign-in page"
 import { assert, it } from "@effect/vitest"
-import { MalformedWiFiReply, wifiClient, wifiPlugin } from "../src/bridges/wifi.vibe"
+import { BridgeUnavailable, MalformedReply } from "../src/bridges/bridge.vibe"
+import { wifiClient, wifiPlugin } from "../src/bridges/wifi.vibe"
 
 module android {
   import { CapacitorException } from "@capacitor/core"
@@ -18,6 +19,7 @@ module android {
     bridge: boolean
     location: WiFiPermissionStatus["location"]
     nearby: Readonly<Record<string, Nearby>>
+    echoes: readonly (readonly [string, Nearby])[]
     active: string | null
     acceptsDisconnect: boolean
     connectivityReply: unknown
@@ -36,6 +38,7 @@ module android {
         cafe: { rssi: -60, security: "open", portal: true },
         office: { rssi: -70, security: "eap" },
       },
+      echoes: [],
       active: null,
       acceptsDisconnect: true,
       connectivityReply: undefined,
@@ -104,7 +107,7 @@ module android {
         await admit()
         if (phone.location !== "granted") throw rejection("ACCESS_FINE_LOCATION required for Wi-Fi scans on API 26+", "LOCATION_PERMISSION_REQUIRED")
         const found = Object.entries(phone.nearby).filter(([, network]) => options?.joinable !== true || (network.security !== "eap" && network.security !== "wep"))
-        return { networks: found.map(([ssid, network]) => row(ssid, network)) }
+        return { networks: [...found, ...phone.echoes].map(([ssid, network]) => row(ssid, network)) }
       },
       connectToNetwork: async (options) => {
         await admit()
@@ -133,18 +136,20 @@ import { androidWifi, device } from android
 
 effect function refusal(call: () => Promise<unknown>) {
   const { cause } = try flip(tryPromise(() => call()))
-  if (cause instanceof MalformedWiFiReply) return `malformed ${cause.method}`
+  if (cause instanceof MalformedReply) return `malformed ${cause.method}`
+  if (cause instanceof BridgeUnavailable) return `unavailable ${cause.plugin}.${cause.method}`
   return typeof cause === "object" && cause !== null && "code" in cause ? cause.code : cause
 }
 
-it.live("Join the network I chose, see whether it is online, hand off to Android's panel and disconnect (spec/os/android/system.md, \"Story: Approve a Wi-Fi join and see whether that network connected\"; spec/os/android/system.md, \"A Settings page opens its specific page first and a broader page only where one is listed\"; spec/os/android/system.md, \"A fact is reported only as Android answered it, and unknown is never off\")", () => effect {
-  const phone = device()
+it.live("Find the networks around me, join one through Android's approval, see whether it is online, hand off to Android's panel and disconnect (spec/os/android/wifi.md, \"Story: Find the networks around a device that manages its own Wi-Fi\"; spec/os/android/wifi.md, \"Story: Join the network I chose through Android's approval\"; spec/os/android/wifi.md, \"Story: Disconnect, or go to Android's Internet panel\"; spec/os/android/wifi.md, \"Story: See whether the device is online or behind a sign-in page\")", () => effect {
+  const phone = device({ echoes: [["home", { rssi: -80, security: "wpa3", password: "other" }], ["", { rssi: -30, security: "open" }], ["lab", { rssi: -35, security: "owe" }], ["corp", { rssi: -20, security: "eap", password: "badge" }]] })
   const wifi = wifiClient(androidWifi(phone))
   const capabilities = try promise(() => wifi.getCapabilities())
   const asked = try promise(() => wifi.checkPermissions())
   const ungranted = try refusal(() => wifi.listAvailableNetworks({ joinable: true, maxAge: 0 }))
   const granted = try promise(() => wifi.requestPermissions({ permissions: ["location"] }))
   const offers = try promise(() => wifi.listAvailableNetworks({ joinable: true, maxAge: 0 }))
+  const strongestTwo = try promise(() => wifi.listAvailableNetworks({ joinable: true, limit: 2 }))
   const mistyped = try promise(() => wifi.addNetworkWithApproval({ ssid: "home", security: "wpa2", password: "wrong horse" }))
   const idle = try promise(() => wifi.getConnectivity())
   const joined = try promise(() => wifi.addNetworkWithApproval({ ssid: "home", security: "wpa2", password: "correct horse battery" }))
@@ -162,12 +167,14 @@ it.live("Join the network I chose, see whether it is online, hand off to Android
   const portal = try promise(() => wifi.addNetworkWithApproval({ ssid: "cafe", security: "open" }))
   const signIn = try promise(() => wifi.getConnectivity())
   const suggested = try promise(() => wifi.connectToNetwork({ ssid: "nowhere" }))
+  phone.connectivityReply = { online: false, validated: true, captivePortal: true, ssid: "cafe" }
+  const flagsWithoutInternet = try promise(() => wifi.getConnectivity())
   phone.connectivityReply = { online: true, ssid: "cafe" }
   const unknownValidation = try refusal(() => wifi.getConnectivity())
 
   const older = wifiClient(androidWifi(device({ sdk: 28 })))
   const turnedOff = wifiClient(androidWifi(device({ bridge: false })))
-  const absent = wifiClient(wifiPlugin("DeviceWifi"))
+  const absent = wifiClient(wifiPlugin("DeviceWifi"), "DeviceWifi")
   const refused = {
     olderPanel: try promise(() => older.openInternetPanel()),
     olderJoin: try refusal(() => older.addNetworkWithApproval({ ssid: "home", password: "correct horse battery" })),
@@ -178,19 +185,19 @@ it.live("Join the network I chose, see whether it is online, hand off to Android
   }
 
   const home = { ssid: "home", bssid: "02:00:00:00:00:01", rssi: -41, frequency: 5180, secured: true, security: "wpa2" }
+  const lab = { ssid: "lab", bssid: "02:00:00:00:00:01", rssi: -35, frequency: 5180, capabilities: "[OWE][ESS]", secured: false, security: "owe" }
+  const cafe = { ssid: "cafe", bssid: "02:00:00:00:00:01", rssi: -60, frequency: 5180, capabilities: "[OPEN][ESS]", secured: false, security: "open" }
   const onHome = { online: true, validated: true, captivePortal: false, ssid: "home" }
   const offline = { online: false, validated: false, captivePortal: false, ssid: null }
   try Effect.try(() => assert.deepStrictEqual(
-    { capabilities, asked, ungranted, granted, offers, mistyped, idle, joined, online, radio, connected, panel, afterPanel, held, afterHeld, left, afterLeft, portal, signIn, suggested, unknownValidation, refused, panelOpens: phone.panelOpens, joins: phone.joins },
+    { capabilities, asked, ungranted, granted, offers, strongestTwo, mistyped, idle, joined, online, radio, connected, panel, afterPanel, held, afterHeld, left, afterLeft, portal, signIn, suggested, flagsWithoutInternet, unknownValidation, refused, panelOpens: phone.panelOpens, joins: phone.joins },
     {
       capabilities: { sdk: 34, approvedJoin: true, internetPanel: true },
       asked: { location: "prompt" },
       ungranted: "LOCATION_PERMISSION_REQUIRED",
       granted: { location: "granted" },
-      offers: { networks: [
-        { ...home, capabilities: "[WPA2][ESS]" },
-        { ssid: "cafe", bssid: "02:00:00:00:00:01", rssi: -60, frequency: 5180, capabilities: "[OPEN][ESS]", secured: false, security: "open" },
-      ] },
+      offers: { networks: [lab, { ...home, capabilities: "[WPA2][ESS]" }, cafe] },
+      strongestTwo: { networks: [lab, { ...home, capabilities: "[WPA2][ESS]" }] },
       mistyped: { status: "wrongPassword" },
       idle: offline,
       joined: { status: "connected" },
@@ -206,8 +213,9 @@ it.live("Join the network I chose, see whether it is online, hand off to Android
       portal: { status: "captivePortal" },
       signIn: { online: true, validated: false, captivePortal: true, ssid: "cafe" },
       suggested: { success: false, message: "Failed to request connection to nowhere" },
+      flagsWithoutInternet: { online: false, validated: false, captivePortal: false, ssid: "cafe" },
       unknownValidation: "malformed getConnectivity",
-      refused: { olderPanel: "Refused", olderJoin: "UNSUPPORTED", turnedOffPanel: "Refused", turnedOffRead: "DISABLED", absentPanel: "Refused", absentRead: "UNIMPLEMENTED" },
+      refused: { olderPanel: "Refused", olderJoin: "UNSUPPORTED", turnedOffPanel: "Refused", turnedOffRead: "DISABLED", absentPanel: "Refused", absentRead: "unavailable DeviceWifi.getConnectivity" },
       panelOpens: 1,
       joins: [
         { ssid: "home", security: "wpa2", password: "wrong horse" },

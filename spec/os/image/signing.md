@@ -12,7 +12,7 @@ The shell (`src/image/signing.vibe`) reads the manifest, the key directory,
 the target files and the signed outputs, runs `openssl` and the platform
 release tools, and hashes what they wrote; this library decides what those
 facts mean. A signed output is not an image boot, an applied update, a drill
-or release qualification: the [operator update](../update/operator.md)
+or release qualification: the operator update (`update/operator.md`)
 consumes the record, and [APK admission](./apk.md) decides what a release APK
 is.
 

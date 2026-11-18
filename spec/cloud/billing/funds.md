@@ -49,8 +49,10 @@ pure val priorValues = Set(NoEntry, EntryOf({ amount: 1 }), EntryOf({ amount: 2 
 pure val amountValues = Set(0, 1, 2, 5)
 pure def lawOnlyAFreshIdAdds(prior: PriorEntry, amount: Micros): bool =
   (addDecision(prior, amount) == ApplyAdd) iff (prior == NoEntry and amount >= 1)
-pure def lawAddRefusalsAreWellFormed(prior: PriorEntry, amount: Micros): bool =
-  match addDecision(prior, amount) { | RefuseAdd(r) => wellFormed(refuse(r.code)) | _ => true }
+pure def lawAddRefusalsAreWellFormed(prior: PriorEntry, amount: Micros): bool = {
+  val decision = addDecision(prior, amount)
+  match decision { | RefuseAdd(r) => wellFormed(refuse(r.code)) | _ => true }
+}
 pure def canAddCredits(f: Funds, amount: Micros): bool = amount >= 1
 pure def addCredits(f: Funds, amount: Micros): Funds = { ...f, creditBalance: f.creditBalance + amount }
 pure def sometimesFunded(f: Funds): bool = f.creditBalance > 0 and f.creditHeld == 0

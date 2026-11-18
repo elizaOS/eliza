@@ -102,7 +102,7 @@ pure val maxPending = 16
 pure def canSend(s: Channel, connection: int): bool = isCurrent(s, connection) and s.pending.length() < maxPending
 pure def send(s: Channel, connection: int, effect: bool): Channel = { ...s, pending: s.pending.append({ id: s.nextId, effect: effect, deadline: s.now + commandTimeoutMs }), nextId: s.nextId + 1 }
 pure def alwaysIdsAreFresh(s: Channel): bool = s.lastSequence >= 0 and s.lastSequence < s.nextId and s.pending.every(c => c.id >= 1 and c.id < s.nextId)
-pure def alwaysPendingInSendOrder(s: Channel): bool = s.pending.foldl(0, (last, c) => if (last >= 0 and c.id > last) c.id else -1) >= 0
+pure def alwaysPendingInSendOrder(s: Channel): bool = s.pending.foldl(0, (prior, c) => if (prior >= 0 and c.id > prior) c.id else -1) >= 0
 ```
 
 ### A pull hands over only the oldest command not yet handed over, and only one pull waits at a time

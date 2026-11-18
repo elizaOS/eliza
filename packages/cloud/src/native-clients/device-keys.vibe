@@ -2,7 +2,7 @@
 import { ackPerIp, apply, decodeState, initial, Rejected, tokenPerIp, type Event, type Grant } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
 import { codeChallengeMethod, type ClientRequest, type Registration } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import type { RateLimit } from "../../gen/cloud__shared__rateLimit.effect.vibe"
-import { refused, Refused } from "../http/refusal.vibe"
+import { refused, type Refused } from "../http/refusal.vibe"
 import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import { admit } from "../shared/rate-limit.vibe"
 import { newId, sameText, seal, secretText, tokenDigest, unseal } from "../shared/sealing.vibe"
@@ -78,6 +78,7 @@ export interface Opening {
   readonly userId: string
   readonly registration: Registration
   readonly codeChallenge: string
+  readonly state?: string
   readonly deviceName?: string
   readonly now: number
 }
@@ -133,6 +134,7 @@ effect function openGrant(tx: Tx, opening: Opening) {
     phase: phaseColumn(grant),
     code_digest: tokenDigest(code),
     code_challenge: opening.codeChallenge,
+    state_digest: opening.state === undefined ? null : tokenDigest(opening.state),
     device_name: opening.deviceName ?? null,
     code_expires_at: grant.codeExpiresAt,
     issued_at: opening.now,
@@ -178,7 +180,7 @@ effect function mint(tx: Tx, row: Row, verifierMatches: boolean, now: number) {
   return credential
 }
 
-const grantColumns = "g.key, g.state, g.client_id, g.user_id, g.code_challenge, g.credential_id, g.secret_digest, g.sealed_copy, g.issued_at, a.organization_id, a.status, a.devices_revoked_before"
+const grantColumns = "g.key, g.state, g.client_id, g.user_id, g.code_challenge, g.state_digest, g.credential_id, g.secret_digest, g.sealed_copy, g.issued_at, a.organization_id, a.status, a.devices_revoked_before"
 
 effect function grantBy(tx: Tx, column: "code_digest" | "credential_id" | "key", value: string) {
   const found: Row | undefined = (try tx.query(`SELECT ${grantColumns} FROM device_grants g JOIN accounts a ON a.key = g.user_id WHERE g.${column} = $1 FOR UPDATE OF g`, [value]))[0]
@@ -211,13 +213,13 @@ effect function connect(context: RouteContext) {
   const caller = context.caller
   if (caller.kind !== "session") throw refused("AuthenticationRequired", "CredentialUnknown")
   const body = try jsonBody(context, ConnectBody)
-  if (body.codeChallengeMethod !== codeChallengeMethod) throw refused("InvalidRequest")
+  if (body.codeChallengeMethod !== codeChallengeMethod || !pkceText.test(body.state)) throw refused("InvalidRequest")
   const name = deviceName(body.deviceName)
   if (body.deviceName !== undefined && name === null) throw refused("InvalidRequest")
   const store = try Store
   const issued = try store.transaction(effect (tx: Tx) => {
     const registration = try signInClient(tx, body)
-    return try openGrant(tx, { userId: caller.userId, registration, codeChallenge: body.codeChallenge, now: context.now, ...(name === null ? {} : { deviceName: name }) })
+    return try openGrant(tx, { userId: caller.userId, registration, codeChallenge: body.codeChallenge, state: body.state, now: context.now, ...(name === null ? {} : { deviceName: name }) })
   })
   return json({
     code: issued.code,
@@ -236,7 +238,9 @@ effect function token(context: RouteContext) {
     const registration = try signInClient(tx, body)
     const row = try grantBy(tx, "code_digest", tokenDigest(body.code))
     if (row === undefined || toText(row.client_id) !== registration.clientId) throw refused("CredentialProofInvalid")
-    return try mint(tx, row, sameText(s256(body.codeVerifier), toText(row.code_challenge) ?? ""), context.now)
+    const boundState = toText(row.state_digest)
+    const verifierMatches = sameText(s256(body.codeVerifier), toText(row.code_challenge) ?? "") && (boundState === undefined || sameText(tokenDigest(body.state), boundState))
+    return try mint(tx, row, verifierMatches, context.now)
   })
   return json(credential)
 }

@@ -104,19 +104,17 @@ module node {
     })
     const stopped = once(child, "exit")
     child.stdin.end(JSON.stringify({ version: 1, token, epoch: 1 }) + "\n")
-    try {
-      const expires = Date.now() + 180_000
-      while (child.exitCode === null && child.signalCode === null && Date.now() < expires) {
-        try { return await smokeCall(socket, token) }
-        catch { await delay(100) }
-      }
-      throw new Error(`The built agent did not become ready (exit ${child.exitCode ?? "pending"})`)
-    } finally {
-      if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM")
-      const [code] = await stopped
-      await rm(root, { recursive: true, force: true })
-      if (code !== 0) throw new Error(`The built agent did not close cleanly (exit ${code})`)
+    const expires = Date.now() + 180_000
+    let answer: readonly string[] | undefined
+    while (answer === undefined && child.exitCode === null && child.signalCode === null && Date.now() < expires) {
+      answer = await smokeCall(socket, token).catch(() => delay(100).then(() => undefined))
     }
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM")
+    const [code] = await stopped
+    await rm(root, { recursive: true, force: true })
+    if (answer === undefined) throw new Error(`The built agent did not become ready (exit ${code ?? "pending"})`)
+    if (code !== 0) throw new Error(`The built agent did not close cleanly (exit ${code})`)
+    return answer
   }
 
   export async function buildFrom(options: BuildAgentBundle, moduleUrl: string): Promise<BundleManifest> {

@@ -37,7 +37,7 @@ export function ledger(): Ledger {
     return done.value;
   };
   return {
-    at: time.set,
+    at: (milliseconds) => time.set(milliseconds),
     run,
     sql,
     reset: async (organizations) => {

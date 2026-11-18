@@ -2,8 +2,7 @@
 
 What the system and location bridges may claim about handoffs, device facts,
 volume, brightness and default roles. A handoff reports the [bridge](./bridge.md)'s
-`HandoffOutcome`: `Opened` means Android showed its screen, never that the owner
-changed anything there. Wi-Fi uses the Internet panel and the facts defined here.
+`HandoffOutcome`: `Opened` means Android showed its screen, never a change.
 
 ## Story: Hand me to Android's own screens and apps
 
@@ -12,9 +11,8 @@ changed anything there. Wi-Fi uses the Internet panel and the facts defined here
 
 ### A Settings page opens its specific page first and a broader page only where one is listed
 
-A name outside the list is refused before Android is asked. Only mobile,
-airplane, do-not-disturb and the Internet panel have a broader page, tried only
-after the specific page failed to start. The reply says which page opened.
+A name outside the list is refused before Android is asked. Only mobile, airplane,
+do-not-disturb and the Internet panel have a broader page. The reply names the page.
 
 ```quint
 import bridge.* from "./bridge"
@@ -47,31 +45,26 @@ pure def lawShadeOpensOnlyWithEveryCondition(focused: bool, launcherBuild: bool,
 
 ### A default-app handoff opens one eligible app other than this one, or is refused
 
-Handoffs carry no data. Eligible handlers are enabled activities of other apps:
-Android's preferred one, else the only one, else Android's chooser. Photos tries
-the image viewer only when no gallery exists, never after a denial.
+Handoffs carry no data. Android's preferred handler, else the only one, else its
+chooser. Photos tries the image viewer only when no gallery exists, never after a denial.
 
 ```quint
-type DefaultApp = DialPad | Messaging | Photos
 type HandlerChoice = PreferredHandler | OnlyHandler | AndroidChooser | NoHandler
 type LaunchReply = LaunchStarted | LaunchNotFound | LaunchDenied | LaunchFailed
 pure def chooseHandler(preferredEligible: bool, eligibleCount: int): HandlerChoice =
   if (eligibleCount <= 0) NoHandler else if (preferredEligible) PreferredHandler else if (eligibleCount == 1) OnlyHandler else AndroidChooser
-pure def defaultAppHandoff(choice: HandlerChoice, launch: LaunchReply): HandoffOutcome =
-  if (choice != NoHandler and launch == LaunchStarted) Opened else Refused
-pure def triesImageViewer(gallery: LaunchReply): bool = gallery == LaunchNotFound
+pure def defaultAppHandoff(choice: HandlerChoice, launch: LaunchReply): HandoffOutcome = if (choice != NoHandler and launch == LaunchStarted) Opened else Refused
 pure def photosHandoff(gallery: LaunchReply, viewer: LaunchReply): HandoffOutcome =
-  if (gallery == LaunchStarted or (triesImageViewer(gallery) and viewer == LaunchStarted)) Opened else Refused
+  if (gallery == LaunchStarted or (gallery == LaunchNotFound and viewer == LaunchStarted)) Opened else Refused
 pure def lawChooserOnlyForSeveralHandlers(preferredEligible: bool, eligibleCount: int, launch: LaunchReply): bool = (eligibleCount <= 0 implies defaultAppHandoff(chooseHandler(preferredEligible, eligibleCount), launch) == Refused)
   and (chooseHandler(preferredEligible, eligibleCount) == AndroidChooser implies (eligibleCount >= 2 and not(preferredEligible)))
-pure def lawDeniedGalleryIsNotReplaced(viewer: LaunchReply): bool = not(triesImageViewer(LaunchDenied)) and photosHandoff(LaunchDenied, viewer) == Refused
+pure def lawDeniedGalleryIsNotReplaced(viewer: LaunchReply): bool = photosHandoff(LaunchDenied, viewer) == Refused
 ```
 
 ### App info opens Android's details page for exactly the entry the owner chose
 
-A malformed entry or a serial of the current profile is refused before any
-lookup. A work entry needs its profile still present and opens that profile's
-details for the chosen component. A removed app or profile launches nothing.
+A malformed entry or a current-profile serial is refused before any lookup; a work
+entry needs its profile still present. A removed app or profile launches nothing.
 
 ```quint
 type AppEntry = PersonalEntry | WorkEntry | MalformedEntry | CurrentProfileSerial
@@ -105,10 +98,9 @@ pure def lawLockedTapWaitsForUnlock(ownerUnlocked: bool): bool = (tileTap(true, 
 
 ### A clock handoff sends one reviewed request and never reports an alarm change
 
-Set has an hour 0-23, a minute 0-59, a plain label of at most 200 characters
-and ascending repeat days 1 (Sunday) to 7; snooze has 1-60 minutes. It starts
-only after review, focused and unlocked, toward a resolved clock that is not
-this app; a set naming a time zone fails if the zone changed since.
+Set: hour 0-23, minute 0-59, a plain label of at most 200 characters, ascending days
+1 (Sunday) to 7; snooze: 1-60 minutes. It starts only reviewed, focused and unlocked,
+toward another app's clock; a set naming a time zone fails if the zone changed since.
 
 ```quint
 type AlarmSetting = { hour: int, minute: int, labelLength: int, labelPlain: bool, days: List[int] }
@@ -116,8 +108,7 @@ type ClockRequest = ClockSet(AlarmSetting) | ClockShow | ClockDismiss | ClockSno
 type ClockReply = ClockOpened | ClockUnavailable | ClockDenied | ClockFailed | ClockUnknown
 type DayScan = { previous: int, ordered: bool }
 pure def scanDay(scan: DayScan, day: int): DayScan = { previous: day, ordered: scan.ordered and day > scan.previous and day <= 7 }
-pure val weekdayStart: DayScan = { previous: 0, ordered: true }
-pure def daysAscending(days: List[int]): bool = days.foldl(weekdayStart, scanDay).ordered
+pure def daysAscending(days: List[int]): bool = days.foldl({ previous: 0, ordered: true }, scanDay).ordered
 pure def clockRequestAdmitted(clockRequest: ClockRequest): bool = match clockRequest {
   | ClockSet(x) => x.hour >= 0 and x.hour <= 23 and x.minute >= 0 and x.minute <= 59 and x.labelLength >= 0 and x.labelLength <= 200 and x.labelPlain and daysAscending(x.days)
   | ClockSnooze(x) => x.minutes >= 1 and x.minutes <= 60
@@ -132,7 +123,6 @@ pure def clockHandoff(reply: ClockReply): HandoffOutcome = if (reply == ClockOpe
 pure val wakeAt: AlarmSetting = { hour: 7, minute: 30, labelLength: 5, labelPlain: true, days: List() }
 pure val clockRequestValues = Set(ClockSet(wakeAt), ClockSet({ ...wakeAt, hour: 24 }), ClockSet({ ...wakeAt, days: List(2, 4, 6) }),
   ClockSet({ ...wakeAt, days: List(3, 3) }), ClockSet({ ...wakeAt, labelLength: 201 }), ClockShow, ClockSnooze({ minutes: 10 }), ClockSnooze({ minutes: 61 }))
-pure val daysValues = Set(List(), List(1), List(1, 7), List(2, 2), List(0, 3), List(5, 4), List(1, 2, 3, 4, 5, 6, 7))
 pure val dayValues = Set(-1, 0, 1, 7, 8)
 pure def lawClockOpensOnlyAReviewedAdmittedRequest(reviewed: bool, clockRequest: ClockRequest, facts: HostFacts, otherReceiver: bool, zoneHolds: bool, launch: LaunchReply): bool =
   clockHandoff(clockReply(reviewed, clockRequest, facts, otherReceiver, zoneHolds, launch)) == Opened implies
@@ -168,14 +158,12 @@ pure def lawSetupOpensOnlyListedApps(target: SetupTarget, listing: PackageListin
 
 ### A fact is reported only as Android answered it, and unknown is never off
 
-Switches, interruption filter, transport, Internet validation, captive portal
-and battery alike: a missing, refused or unrecognized answer is unknown. Wi-Fi
-is on for 1 and 2, off for 0 and 3.
+Switches, interruption filter, transport, validation, captive portal and battery: a
+missing, refused or unrecognized answer is unknown. Wi-Fi is on for 1 and 2, off for 0 and 3.
 
 ```quint
 type SwitchFact = FactOn | FactOff | FactUnknown
-pure def wifiSwitchFact(reading: int): SwitchFact =
-  if (reading == 1 or reading == 2) FactOn else if (reading == 0 or reading == 3) FactOff else FactUnknown
+pure def wifiSwitchFact(reading: int): SwitchFact = if (reading == 1 or reading == 2) FactOn else if (reading == 0 or reading == 3) FactOff else FactUnknown
 pure def binarySwitchFact(reading: int): SwitchFact = if (reading == 1) FactOn else if (reading == 0) FactOff else FactUnknown
 pure def answeredFact(answered: bool, value: bool): SwitchFact = if (not(answered)) FactUnknown else if (value) FactOn else FactOff
 pure def lawOffNeedsAnOffReading(reading: int, answered: bool, value: bool): bool =
@@ -183,11 +171,24 @@ pure def lawOffNeedsAnOffReading(reading: int, answered: bool, value: bool): boo
     and (answeredFact(answered, value) == FactOff iff (answered and not(value)))
 ```
 
+### Only the requested network's own validated or portal observation settles an approved Wi-Fi join
+
+Approval alone connects nothing. A withheld or different network name settles no
+join; the [Wi-Fi bridge](./wifi.md) waits for its deadline instead.
+
+```quint
+type WifiJoinEvidence = WifiNotObserved | OtherWifi | NamedWifiValidated | NamedWifiPortal | WithheldWifiValidated
+pure def approvedWifiJoinConnected(approved: bool, observed: WifiJoinEvidence): bool = approved and observed == NamedWifiValidated
+pure def approvedWifiJoinNeedsPortal(approved: bool, observed: WifiJoinEvidence): bool = approved and observed == NamedWifiPortal
+pure def settlesJoin(approved: bool, observed: WifiJoinEvidence): bool = approvedWifiJoinConnected(approved, observed) or approvedWifiJoinNeedsPortal(approved, observed)
+pure def lawOnlyTheRequestedNetworkSettlesAJoin(approved: bool, observed: WifiJoinEvidence): bool = not(settlesJoin(false, observed))
+  and not(settlesJoin(approved, WifiNotObserved) or settlesJoin(approved, OtherWifi) or settlesJoin(approved, WithheldWifiValidated))
+```
+
 ### A location fix needs a grant at the time of the read, and a cached fix is never older than asked
 
-Without a grant the read fails with `PERMISSION_DENIED`. A cached fix is
-returned only when its monotonic age is at most the requested maximum age (zero
-always reads afresh). Approximate access is never reported precise.
+Without a grant the read fails with `PERMISSION_DENIED`. A cached fix's monotonic age
+is at most the asked maximum (zero reads afresh). Approximate is never reported precise.
 
 ```quint
 type LocationAccess = PreciseAccess | ApproximateAccess | NoAccess
@@ -203,8 +204,7 @@ pure val askValues = Set({ maxAgeMs: 0, timeoutMs: 10000, wantsPrecise: true }, 
 pure val fixValues = Set({ access: PreciseAccess, hasCached: true, cachedAgeMs: 30000, fixAvailable: true, fixWithinMs: 2000 }, { access: NoAccess, hasCached: true, cachedAgeMs: 0, fixAvailable: true, fixWithinMs: 0 },
   { access: ApproximateAccess, hasCached: true, cachedAgeMs: 90000, fixAvailable: true, fixWithinMs: 20000 }, { access: PreciseAccess, hasCached: false, cachedAgeMs: 0, fixAvailable: false, fixWithinMs: 0 })
 pure def lawNoReadWithoutGrant(ask: LocationAsk, fix: FixFacts): bool = (fix.access == NoAccess) iff (readLocation(ask, fix) == PermissionDenied)
-pure def lawCachedIsNeverTooOld(ask: LocationAsk, fix: FixFacts): bool =
-  readLocation(ask, fix) == PositionCached implies (ask.maxAgeMs > 0 and fix.cachedAgeMs >= 0 and fix.cachedAgeMs <= ask.maxAgeMs)
+pure def lawCachedIsNeverTooOld(ask: LocationAsk, fix: FixFacts): bool = readLocation(ask, fix) == PositionCached implies (ask.maxAgeMs > 0 and fix.cachedAgeMs >= 0 and fix.cachedAgeMs <= ask.maxAgeMs)
 pure def lawApproximateIsNeverReportedPrecise(ask: LocationAsk, fix: FixFacts): bool = fix.access != PreciseAccess implies not(reportedPrecise(ask, fix))
 ```
 
@@ -223,8 +223,7 @@ pure def problemFieldAllowed(source: ProblemSource, entryField: ProblemField): b
     (source == RendererFailure and (entryField == Kind or entryField == FailureClass or entryField == ProcessLabel)) or
     (source == NativeUncaught and (entryField == FailureClass or entryField == RootClass or entryField == ProcessLabel or entryField == Thread)) or
     (source == AndroidExit and (entryField == ExitReason or entryField == ProcessLabel)) or (source == InferenceDiagnostic and entryField == InferenceFacts)
-pure def problemRetained(source: ProblemSource, at: int, now: int): bool =
-  at > now - problemRetentionMs and at <= now + (if (source == InferenceDiagnostic) 60000 else problemRetentionMs)
+pure def problemRetained(source: ProblemSource, at: int, now: int): bool = at > now - problemRetentionMs and at <= now + (if (source == InferenceDiagnostic) 60000 else problemRetentionMs)
 pure def lawNoPersonalContentInAProblem(source: ProblemSource, entryField: ProblemField): bool =
   (entryField == Message or entryField == Stack or entryField == Address or entryField == UserContent) implies not(problemFieldAllowed(source, entryField))
 pure def lawOldProblemIsDropped(source: ProblemSource, now: int): bool = not(problemRetained(source, now - problemRetentionMs, now))
@@ -269,8 +268,7 @@ The owner grants `WRITE_SETTINGS` on `PageWriteSettings`; a system change sets 0
 
 ```quint
 type BrightnessScope = SystemBrightness | WindowBrightness
-pure def brightnessAllowed(scope: BrightnessScope, writeSettingsGranted: bool, focused: bool): bool =
-  if (scope == SystemBrightness) writeSettingsGranted else focused
+pure def brightnessAllowed(scope: BrightnessScope, writeSettingsGranted: bool, focused: bool): bool = if (scope == SystemBrightness) writeSettingsGranted else focused
 pure def brightnessTarget(level: int): int = clampLevel(level, 255)
 pure def lawSystemBrightnessNeedsTheGrant(focused: bool, writeThrew: bool, readback: LevelReadback): bool =
   controlReport(brightnessAllowed(SystemBrightness, false, focused), writeThrew, readback) == ChangeNotAllowed
@@ -284,9 +282,8 @@ pure def lawSystemBrightnessNeedsTheGrant(focused: bool, writeThrew: bool, readb
 
 ### A role is asked through Android's role request and reported held only from Android's readback
 
-A role not offered or missing is refused without a prompt. Otherwise the app
-sends `RoleManager.createRequestRoleIntent`, checks the offer again on return,
-and takes held only from `RoleManager.isRoleHeld`, never the result code.
+A role not offered or unavailable is refused without a prompt. Otherwise the app sends
+`RoleManager.createRequestRoleIntent`, rechecks the offer, and reads `isRoleHeld`, never the result code.
 
 ```quint
 type DefaultRole = HomeRole | DialerRole | SmsRole | AssistantRole
@@ -299,37 +296,4 @@ pure def lawHeldOnlyFromAndroid(offered: bool, available: bool, heldBefore: bool
   roleResult(offered, available, heldBefore, offeredAfter, heldAfter) == RoleHeld implies (offered and available and (heldBefore or (offeredAfter and heldAfter)))
 pure def lawPromptedRoleIsDecidedByTheReadback(offered: bool, available: bool, heldBefore: bool, heldAfter: bool): bool =
   asksAndroidForRole(offered, available, heldBefore) implies ((roleResult(offered, available, heldBefore, true, heldAfter) == RoleHeld) iff heldAfter)
-```
-
-## Story: Approve a Wi-Fi join and see whether that network connected
-
-> As the owner, I want Android to review the network I selected and the app
-> to report whether that connection worked.
-
-### Settings approval and the selected network's connectivity are separate
-
-The enabled Wi-Fi bridge asks Android's save-network dialog on Android 11
-or later. It validates the network settings before opening the dialog and
-removes the password from the saved bridge request. A declined request
-reports declined. A failed Android result refuses the request.
-
-An approved request observes only Wi-Fi transport. The requested network
-must be named by the observed connection before a validated connection
-or captive portal can settle the requested join. A validated connection
-whose name Android withholds stays unverified at the deadline. A different
-named network does not settle the request. A wrong-password result comes
-from Android's authentication failure signal for a protected join.
-
-```quint
-type WifiJoinEvidence = WifiNotObserved | OtherWifi | NamedWifiValidated | NamedWifiPortal | WithheldWifiValidated
-pure def approvedWifiJoinConnected(approved: bool, observed: WifiJoinEvidence): bool =
-  approved and observed == NamedWifiValidated
-pure def approvedWifiJoinNeedsPortal(approved: bool, observed: WifiJoinEvidence): bool =
-  approved and observed == NamedWifiPortal
-pure def approvedWifiJoinUnverified(approved: bool, observed: WifiJoinEvidence, expired: bool): bool =
-  approved and observed == WithheldWifiValidated and expired
-pure def lawTheWrongWifiCannotSettleAnApprovedJoin(approved: bool): bool =
-  not(approvedWifiJoinConnected(approved, OtherWifi) or approvedWifiJoinNeedsPortal(approved, OtherWifi))
-pure def lawApprovalAloneDoesNotReportAConnection(approved: bool): bool =
-  not(approvedWifiJoinConnected(approved, WifiNotObserved))
 ```

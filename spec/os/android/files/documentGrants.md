@@ -4,12 +4,12 @@ A document the owner picks in Android's document picker becomes an opaque
 selection: a fresh ID the renderer names on every later call, resolved again
 on each use. The registry is one per process, holds at most 32 selections,
 and records the exact persisted grants it took so that it can give each back
-when nothing needs it any more. A note's source link (owned by the notes
-host) keeps a grant alive through its `retains` callback; here it is the
-`noteKeeps` input. PDF rendering, text reads, share and open are separate
+when nothing needs it any more. A saved item's source link also keeps a
+grant alive: the host reports it through its `referenced` callback, here the
+`noteKeeps` set. PDF rendering, text reads, share and open are separate
 effects that call `resolves` first. Source:
 `plugins/plugin-native-media/android/.../SelectedDocuments.java` and
-`SelectedDocumentCalls.java`; one app binds it as `SelectedDocumentAccess`.
+`SelectedDocumentCalls.java`.
 
 The shell serializes every event under the registry lock, saves the
 registry (retained selections and taken grants) before it performs any
@@ -162,17 +162,15 @@ pure def sometimesRestorePassesOverNewerTransients(s: DocumentGrants): bool = {
 
 ### A rename rebinds the same selection to the provider's returned document only while access allows
 
-The shell admits a rename when the selection resolves, holds a retained
-write grant, Android reports current write access and the provider
-advertises rename; the name, trimmed, is not empty, `.` or `..`, has no
-slash, backslash or control character and is at most 255 UTF-16 units. A
-provider that refuses or returns no document changes nothing and is
-`NothingWritten`; an error after the call is `NoReply`. Otherwise the
-selection keeps its ID, takes the grant again on the returned document
-(dropping to transient if Android refuses), and gives back the old
-document's grant if nothing else holds it. If the returned document is not
-granted, the selection is forgotten and the rename is reported committed
-but not read back, which asks the owner to reselect.
+A rename needs a resolving selection with a retained write grant; the shell
+also checks Android's current write access, the provider's rename flag and
+the name at the boundary. A provider that refuses, returns no document or
+fails changes nothing here (`NothingWritten` or `NoReply`). Otherwise the
+selection keeps its ID, takes its grant again on the returned document
+(becoming transient if Android refuses), and gives back the old document's
+grant if nothing else holds it. If the returned document is not granted,
+the selection is forgotten and the rename is `CommittedNotReadBack`, which
+asks the owner to select the renamed file again.
 
 ```quint
 type Reacquire = GrantTaken | GrantRefused

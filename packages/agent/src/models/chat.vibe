@@ -46,7 +46,10 @@ const decodeListing = Schema.decodeUnknownOption(Listing)
 const providerIssue = (): Refused => new Refused({ cloud: { tag: "CloudProviderIssue" } })
 
 module wireFormat {
-  import type { ChatMessage, ChatMessageContentPart } from "@elizaos/core"
+  import type { GenerateTextParams } from "@elizaos/core"
+
+  type ChatMessage = NonNullable<GenerateTextParams["messages"]>[number]
+  type ChatMessageContentPart = Extract<NonNullable<ChatMessage["content"]>, readonly unknown[]>[number]
 
   type Source = string | URL | Uint8Array
   type Image = { type: "image"; image: Source; mediaType?: string }
@@ -233,7 +236,7 @@ export effect function listModels(baseUrl: string, credential: Redacted.Redacted
   return listing.value.data.map(({ id }) => id)
 }
 
-type Handler = (runtime: IAgentRuntime, params: Record<string, never>) => Promise<never>
+type Handler = Parameters<IAgentRuntime["registerModel"]>[1]
 
 export function registerTwice(runtime: IAgentRuntime, provider: string, handlers: Readonly<Record<string, unknown>>, metadata: ModelRegistrationMetadata): void {
   for (const [modelType, handler] of Object.entries(handlers)) {

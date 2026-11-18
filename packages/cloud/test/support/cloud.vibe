@@ -22,6 +22,8 @@ export interface TestCloudOptions {
   readonly prices?: ReadonlyArray<CatalogPrice>
   readonly stripe?: StripeFake
   readonly mount?: (fakes: FakeServer) => void
+  readonly environment?: "production" | "staging"
+  readonly host?: string
 }
 
 export effect function fakeServer() {
@@ -36,7 +38,7 @@ export effect function testCloud(options: TestCloudOptions = {}) {
     const base = testProfile(fakes.url)
     return options.edit === undefined ? base : options.edit(base)
   })
-  const prepared = try prepare({ profile, environment: "staging", store: "pglite", port: 0, host: "127.0.0.1" })
+  const prepared = try prepare({ profile, environment: options.environment ?? "staging", store: "pglite", port: 0, host: options.host ?? "127.0.0.1" })
   const built = try Layer.build(cloudLayer(prepared).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets })))))
   const { address } = Context.get(built, HttpServer.HttpServer)
   const url = "port" in address ? `http://127.0.0.1:${address.port}` : ""

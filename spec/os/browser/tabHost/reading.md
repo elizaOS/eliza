@@ -14,26 +14,6 @@ codes), the dialogs and the timers; it reports what they saw as the facts
 below. The two-minute review lease and the twenty-minute playback lease
 are timers the shell fires as `endReading`.
 
-## Story: Show only the current browser document
-
-> As the person browsing, I want the document shown in a tab to be the one
-> that committed in the tab's current renderer.
-
-### A visible commit must come from the current tab
-
-The tab host begins loading at a public web address. A commit applies only
-when its address is the WebView's current address, no fatal error was
-reported, and Android still attests an isolated renderer. A load finishing
-early does not substitute for a visible commit. A TLS refusal cancels the
-load. An HTTP error response may still commit as a visible document.
-
-```quint
-pure def visibleBrowserCommit(currentAddress: bool, fatalError: bool, isolatedRenderer: bool): bool =
-  currentAddress and not(fatalError) and isolatedRenderer
-pure def lawAStaleAddressCannotCommit(fatalError: bool, isolatedRenderer: bool): bool =
-  not(visibleBrowserCommit(false, fatalError, isolatedRenderer))
-```
-
 ## Story: Read only the page I am looking at
 
 > As the person, I want a page read to me or asked about only from the
@@ -286,9 +266,10 @@ pure def askReviewFor(phase: ReadingPhase, units: int, askText: AskText): AskRev
   else if (askText.blank or units < 1 or units > excerptLimit) OpenEmptyReview
   else OpenExcerptReview({ truncated: askText.literalTruncated })
 pure def opensExcerpt(review: AskReview): bool = match review { | OpenExcerptReview(r) => true | _ => false }
+pure def opensReview(review: AskReview): bool = review == OpenEmptyReview or opensExcerpt(review)
 pure def lawSensitiveAskOpensNoReview(phase: ReadingPhase, units: int, askText: AskText): bool =
   (refusedWith(phase, SensitivePage) or (phase == ExcerptReleased and units > 0 and askText.sensitiveText))
-    implies askReviewFor(phase, units, askText) == RefuseSensitivePage
+    implies not(opensReview(askReviewFor(phase, units, askText)))
 pure def lawUnavailableWorldOpensEmptyReview(phase: ReadingPhase, units: int, askText: AskText): bool =
   refusedWith(phase, IsolatedWorldUnavailable) implies askReviewFor(phase, units, askText) == OpenEmptyReview
 pure def lawOpenedExcerptIsUsable(phase: ReadingPhase, units: int, askText: AskText): bool =

@@ -1,6 +1,6 @@
 // spec/agent/tasks/store.md, "Story: Refuse task storage when custody cannot be verified"; spec/agent/tasks/store.md, "Story: Keep records a build cannot read"
 import { assert, it } from "@effect/vitest"
-import { createTaskStore, storageKeySource, type TaskDatabaseOpener, type TaskRecord } from "../src/tasks/store.vibe"
+import { createTaskStore, type TaskDatabaseOpener, type TaskRecord } from "../src/tasks/store.vibe"
 import { scratch, SupportFailed } from "./support/kernel.vibe"
 
 module node {
@@ -111,7 +111,7 @@ module node {
 }
 
 import {
-  account, cancelled, closePermissions, copyIn, exists, keyFor, newKey, openPermissions, replaceLock, sealedFor, stealingDatabase, storedIds, task,
+  account, cancelled, closePermissions, copyIn, exists, keyFor, newKey, openPermissions, replaceLock, sealedFor, stealingDatabase, task,
 } from node
 
 effect function support<A>(step: string, call: () => A) {

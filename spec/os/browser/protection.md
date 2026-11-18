@@ -6,9 +6,9 @@ actually loaded. A site no list names is never blocked, and a list that
 failed to load is never read as "safe". Only the fixed public list
 addresses are fetched; a visited address is never sent, saved or logged.
 
-The shell fetches and parses lists, writes network rules, matches a host
-and its whole-label ancestors and reads registrable domains; this file
-decides what those facts mean, over [Browser address](./address.md).
+The shell fetches lists, writes network rules and matches hosts by whole
+labels; this file decides what those facts mean, over
+[Browser address](./address.md).
 
 ## Story: Block known-bad sites without blocking unknown ones
 
@@ -18,10 +18,9 @@ decides what those facts mean, over [Browser address](./address.md).
 
 ### A list is admitted only when it arrived whole, holds at least 1,000 hosts and at most one malformed line per hundred hosts
 
-The shell reads the body as a stream and stops past 24 MiB. Hosts are
-lowercased and deduplicated; blank and `#` lines are skipped. A list is
-never cut down to fit, so more bytes or more malformed lines never turn a
-refusal into an admission.
+The shell stops reading past 24 MiB, lowercases and deduplicates hosts and
+skips blank and `#` lines. A list is never cut down to fit: more bytes or
+malformed lines never turn a refusal into an admission.
 
 ```quint
 import address.* from "./address"
@@ -46,11 +45,10 @@ pure val bodyValues: Set[FeedBody] = Set(wholeList, { ...wholeList, malformedLin
 
 ### A rule set holds 1 to 1,200,000 hosts and at most 100 reviewed never-block hosts, and every rule it writes lies in the browser's owned range
 
-Each chunk of 2,000 hosts writes a pair of rules: an even one that blocks
-the hosts' subresources and an odd one that sends a top-level visit to the
-warning page. The browser replaces only rule IDs in [10000, 12000) and
-keeps every other rule. A never-block host is a reviewed false positive; it
-excludes itself and its whole-label descendants from every rule.
+Each 2,000 hosts write an even rule blocking subresources and an odd one
+sending a top-level visit to the warning page. Only IDs in [10000, 12000)
+are replaced. A never-block host (a reviewed false positive) excludes
+itself and its whole-label descendants from every rule.
 
 ```quint
 type RuleKind = BlockSubresources | WarnTopLevel
@@ -73,8 +71,8 @@ pure val ruleIndexValues = Set(-1, 0, 1, 2, 3, 1199, 1200)
 
 ### A temporary exception is granted only to the warning page of a tab, for one plain web address of at most 800 units
 
-Only the browser's own warning page, in a tab's top frame, can ask; a
-website, frame or content script cannot. The fragment is cleared first.
+Only the browser's own warning page in a tab's top frame can ask, never a
+website, frame or content script. The fragment is cleared first.
 
 ```quint
 type ExceptionAsker = OwnWarningPage({ tab: int }) | OtherAsker
@@ -121,8 +119,7 @@ pure val changeValues: Set[ExceptionChange] = Set(GrantException({ tab: 4, href:
 ### A listed host is warned at the top level and blocked below it, unless never-blocked or opened by the matching exception
 
 The exception matches only its tab, its exact case-sensitive address, a
-top-level request and the GET method. It never allows another tab, address,
-frame, resource or method.
+top-level request and GET; nothing else.
 
 ```quint
 type RequestFrame = TopFrame | SubFrameOrResource
@@ -169,7 +166,7 @@ pure def lawRepeatedListIsRefused(id: str): bool = not(feedsConfigured(List(id, 
 
 A loaded list counts at any age; a refresh is due when none is loaded or
 it is six hours old or dated over five minutes ahead. One refresh per list
-runs at a time, and a stopped service starts none.
+runs at a time.
 
 ```quint
 type FeedSnapshot = NoList | LoadedList({ downloadedAt: int })
@@ -241,15 +238,20 @@ pure val queryValues: Set[ReputationQuery] = Set({ site: secureAddress, localHos
   { site: { ...secureAddress, href: "http://example.test/", units: 20, scheme: HttpScheme }, localHost: false })
 ```
 
-### A look-alike suggests a reference site other than the visited registrable domain, and the site verdict never reads it
+### A host resembles a reference site by whole labels, folded confusables, or one edit to a label of five or more letters
 
-`resemblesSite(host, reference)` holds when the host holds the reference as
-whole labels, the registrable domain with Greek, Cyrillic and Latin
-confusables folded equals it, or a registrable label of five or more
-letters equals the reference's or is one edit or swap away.
+The shell's `resemblesSite(host, reference)` holds when the host holds the
+reference as whole labels, the registrable domain with Greek, Cyrillic and
+Latin confusables folded equals it, or its registrable label equals the
+reference's label of five or more letters or is one edit or swap away.
 
 ```quint
 const resemblesSite: (str, str) => bool
+```
+
+### A look-alike suggests a reference site other than the visited registrable domain, and the site verdict never reads it
+
+```quint
 type Lookalike = NotLookalike | LooksLike({ suggested: str })
 pure def lookalikeOf(host: str, domain: str, references: List[str]): Lookalike =
   if (domain == "" or references.includes(domain)) NotLookalike
@@ -263,10 +265,8 @@ pure def lawSuggestionIsAnotherReferenceSite(host: str, domain: str, references:
 
 ### A page shows look-alike advice always, unscanned advice only as the build chose, and a mark only for the same finding and a bound owner
 
-The build chooses whether a page the lists could not cover shows the
-unscanned bar, and whether it does while the first lists still download.
-"Mark as not suspicious" belongs to the bound owner and to what was found;
-a different finding, or another owner, shows the page unmarked.
+The build chooses whether an uncovered page shows the unscanned bar, also
+while the first lists download. A mark binds the owner and the finding.
 
 ```quint
 type ListsStatus = ListsCurrent | ListsLoading | ListsMissing

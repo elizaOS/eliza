@@ -96,7 +96,7 @@ export type NativePageGuidance =
  */
 export type SurfaceLayer = "above-host" | "below-host";
 
-export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
+interface SurfaceCreateBase extends SurfaceOwnerOptions {
   /** Stable per-surface id (the Browser tab's surface id). */
   id: string;
   /** Initial URL to load, when known. */
@@ -145,6 +145,19 @@ export interface CreateSurfaceOptions extends SurfaceOwnerOptions {
   layer?: SurfaceLayer;
 }
 
+export type CreateSurfaceOptions = SurfaceCreateBase &
+  (
+    | { purpose?: undefined }
+    | {
+        purpose: "manual-sign-in";
+        process: "isolated";
+        storage: "isolated";
+        profileKey?: never;
+        interceptNavigation?: false;
+        answersRequests?: false;
+      }
+  );
+
 /** A cross-origin main-frame navigation an intercepting surface held for the host. */
 export interface NavigationRequestedEvent extends SurfaceIdOptions {
   /** The address the page asked for; nothing has been requested from it yet. */
@@ -171,7 +184,7 @@ export interface NavigationRequestedEvent extends SurfaceIdOptions {
 export interface DialogRequestedEvent extends SurfaceIdOptions {
   dialogId: string;
   kind: "alert" | "confirm" | "prompt" | "beforeunload";
-  /** Website text, plain and bounded. Show it as the website's words, never Grace's. */
+  /** Website text, plain and bounded. Show it as the website's words, never the app's. */
   message: string;
   /** Prompt only: the page's suggested answer. */
   defaultText?: string;
@@ -453,6 +466,7 @@ export interface SurfaceState {
   foregrounded: boolean;
   /** Android: `pauseSurface` paused the page and `resumeSurface` has not run since. */
   paused?: boolean;
+  /** A protected sign-in surface only reports its HTTPS origin. */
   currentUrl: string | null;
   process: SurfaceProcessSharing | null;
   storage: SurfaceStorageSharing | null;
@@ -493,7 +507,7 @@ export interface NativePageRead {
   url: string;
   title: string;
   text: string;
-  /** Legacy-client compatibility flag; consumers reject incomplete reads. */
+  /** Set when the read was cut short; consumers reject incomplete reads. */
   truncated: boolean;
 }
 

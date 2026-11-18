@@ -2,7 +2,7 @@
 module node {
   import { randomUUID } from "node:crypto"
   import { Schema } from "effect"
-  import { ChannelType, type AgentRuntime, type Content, type Memory, type Room, type UUID } from "@elizaos/core"
+  import { ChannelType, type AgentRuntime, type Content, type Memory, type MemoryMetadata, type Room, type UUID } from "@elizaos/core"
   import { canCreate, defaultTitle, initial } from "../../gen/agent__conversation__conversations.ts"
   import type { LocalRoute } from "../access/routes.vibe"
   import { writeReplyStream } from "./stream.vibe"
@@ -24,56 +24,80 @@ module node {
   const failure = (status: number, error: string) => ({ status, body: { error } })
   const okay = (body: object) => ({ status: 200, body })
 
-  function conversation(room: Room) {
+  export function conversation(room: Room) {
     const metadata = stamp(room.metadata?.deviceConversation)
     if (metadata._tag !== "Some") return undefined
     return { ...metadata.value, roomId: room.id, title: room.name ?? defaultTitle }
   }
 
-  interface ConversationOwner {
+  export interface ConversationOwner {
     readonly user: UUID
     readonly world: UUID
-
   }
 
-  function memory(runtime: AgentRuntime, owner: ConversationOwner, room: Room, text: string): Memory {
+  export interface TurnOptions {
+    readonly onStreamChunk?: (chunk: string) => void
+    readonly metadata?: MemoryMetadata
+  }
+
+  function memory(runtime: AgentRuntime, owner: ConversationOwner, room: Room, text: string, metadata?: MemoryMetadata): Memory {
     return {
       id: randomUUID(), entityId: owner.user, agentId: runtime.agentId, roomId: room.id,
       worldId: owner.world, createdAt: Date.now(), content: { text, source: "device" },
+      ...(metadata === undefined ? {} : { metadata }),
     }
   }
 
-  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner): LocalRoute[] {
+  export async function createConversation(runtime: AgentRuntime, owner: ConversationOwner, title: string) {
+    const id = randomUUID()
+    const roomId = randomUUID()
+    const time = Date.now()
+    const created = { id, roomId, title: title || defaultTitle, createdAt: time, updatedAt: time }
+    await runtime.ensureConnection({
+      entityId: owner.user, roomId, roomName: created.title, worldId: owner.world, userName: "person",
+      name: "Person", source: "device", type: ChannelType.DM, channelId: roomId,
+    })
+    const room = await runtime.getRoom(roomId)
+    if (!room) return undefined
+    await runtime.adapter.updateRooms([{ ...room, metadata: {
+      ...room.metadata, deviceConversation: { id, createdAt: time, updatedAt: time },
+    } }])
+    return created
+  }
+
+  export async function processTurn(runtime: AgentRuntime, owner: ConversationOwner, room: Room, text: string, signal: AbortSignal, options: TurnOptions = {}) {
     const adapter = runtime.adapter
     const service = runtime.messageService ?? (() => { throw new Error("A conversation requires the message service") })()
-    const rooms = () => runtime.getRooms(owner.world)
-    const find = async (id: string | undefined): Promise<Room | undefined> =>
-      (await rooms()).find((room) => conversation(room)?.id === id)
-    const storeReply = async (room: Room, content: Content): Promise<Memory[]> => {
+    const storeReply = async (content: Content): Promise<Memory[]> => {
       if (!content.text?.trim()) return []
-      const response = { ...memory(runtime, owner, room, content.text), entityId: runtime.agentId, content }
+      const response = { ...memory(runtime, owner, room, content.text, options.metadata), entityId: runtime.agentId, content }
       await adapter.createMemories([{ memory: response, tableName: "messages" }])
       return [response]
     }
-    async function process(room: Room, text: string, signal: AbortSignal, onStreamChunk?: (chunk: string) => void) {
-      return runtime.roomHandlerQueue.withLease(room.id, async (lease) => {
-        signal.throwIfAborted()
-        const input = memory(runtime, owner, room, text)
-        await adapter.createMemories([{ memory: input, tableName: "messages" }])
-        const [current] = await adapter.getRoomsByIds([room.id])
-        const metadata = stamp(current?.metadata?.deviceConversation)
-        if (metadata._tag === "Some" && current !== undefined) {
-          await adapter.updateRooms([{
-            ...current, metadata: {
-              ...current.metadata, deviceConversation: { ...metadata.value, updatedAt: Math.max(metadata.value.updatedAt, input.createdAt ?? 0) },
-            },
-          }])
-        }
-        return service.handleMessage(runtime, input, (content) => storeReply(room, content), {
-          roomHandlerLease: lease, abortSignal: signal, ...(onStreamChunk === undefined ? {} : { onStreamChunk }),
-        })
-      }, { signal })
-    }
+    return runtime.roomHandlerQueue.withLease(room.id, async (lease) => {
+      signal.throwIfAborted()
+      const input = memory(runtime, owner, room, text, options.metadata)
+      await adapter.createMemories([{ memory: input, tableName: "messages" }])
+      const [current] = await adapter.getRoomsByIds([room.id])
+      const metadata = stamp(current?.metadata?.deviceConversation)
+      if (metadata._tag === "Some" && current !== undefined) {
+        await adapter.updateRooms([{
+          ...current, metadata: {
+            ...current.metadata, deviceConversation: { ...metadata.value, updatedAt: Math.max(metadata.value.updatedAt, input.createdAt ?? 0) },
+          },
+        }])
+      }
+      return service.handleMessage(runtime, input, storeReply, {
+        roomHandlerLease: lease, abortSignal: signal, ...(options.onStreamChunk === undefined ? {} : { onStreamChunk: options.onStreamChunk }),
+      })
+    }, { signal })
+  }
+
+  export function conversationRoutes(runtime: AgentRuntime, owner: ConversationOwner): LocalRoute[] {
+    if (!runtime.messageService) throw new Error("A conversation requires the message service")
+    const rooms = () => runtime.getRooms(owner.world)
+    const find = async (id: string | undefined): Promise<Room | undefined> =>
+      (await rooms()).find((room) => conversation(room)?.id === id)
 
     return [
       {
@@ -83,20 +107,8 @@ module node {
           if (payload._tag !== "Some") return failure(400, "invalid_conversation")
           const title = payload.value.title?.trim() ?? ""
           if (!canCreate(initial, title, title.length)) return failure(400, "invalid_title")
-          const id = randomUUID()
-          const roomId = randomUUID()
-          const time = Date.now()
-          const created = { id, roomId, title: title || defaultTitle, createdAt: time, updatedAt: time }
-          await runtime.ensureConnection({
-            entityId: owner.user, roomId, roomName: created.title, worldId: owner.world, userName: "person",
-            name: "Person", source: "device", type: ChannelType.DM, channelId: roomId,
-          })
-          const room = await runtime.getRoom(roomId)
-          if (!room) return failure(500, "room_unavailable")
-          await adapter.updateRooms([{ ...room, metadata: {
-            ...room.metadata, deviceConversation: { id, createdAt: time, updatedAt: time },
-          } }])
-          return { status: 201, body: { conversation: created } }
+          const created = await createConversation(runtime, owner, title)
+          return created === undefined ? failure(500, "room_unavailable") : { status: 201, body: { conversation: created } }
         },
       },
       {
@@ -111,7 +123,7 @@ module node {
           if (!room) return failure(404, "unknown_conversation")
           const payload = messageBody(body)
           if (payload._tag !== "Some") return failure(400, "invalid_message")
-          const result = await process(room, payload.value.text, signal)
+          const result = await processTurn(runtime, owner, room, payload.value.text, signal)
           return result.didRespond && result.responseContent?.text
             ? okay({ fullText: result.responseContent.text } satisfies TurnReply)
             : failure(502, "turn_failed")
@@ -126,10 +138,10 @@ module node {
           if (payload._tag !== "Some") return failure(400, "invalid_message")
           return writeReplyStream(async (emit, signal) => {
             let fullText = ""
-            const result = await process(room, payload.value.text, signal, (text) => {
+            const result = await processTurn(runtime, owner, room, payload.value.text, signal, { onStreamChunk: (text) => {
               fullText += text
               emit({ type: "token", text, fullText })
-            })
+            } })
             if (!result.didRespond || !result.responseContent?.text) {
               emit({ type: "error", message: "The turn did not complete" })
               return
@@ -150,4 +162,4 @@ module node {
     ]
   }
 }
-export { conversationRoutes, type TurnReply } from node
+export { conversation as deviceConversation, conversationRoutes, createConversation, processTurn, type ConversationOwner, type TurnOptions, type TurnReply } from node

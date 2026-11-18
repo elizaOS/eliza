@@ -28,7 +28,8 @@ the confirmed ones.
 ### A factor counts only once a code from it is confirmed before its setup expires
 
 TOTP setup lives 10 minutes and an SMS setup code 5. A confirmed method is
-refused a second setup until it is removed.
+refused a second setup until it is removed. The calling session stays a
+session of the person: its epoch never passes the person's.
 
 ```quint
 import types.* from "../shared/types"
@@ -64,6 +65,10 @@ pure def canObserveEpoch(s: SecondFactor, personEpoch: int): bool = personEpoch 
 pure def observeEpoch(s: SecondFactor, personEpoch: int): SecondFactor = { ...s, personEpoch: personEpoch }
 pure val personEpochValues = Set(0, 1)
 pure def alwaysCallerIsASession(s: SecondFactor): bool = s.caller.phase == S::Live and S::alwaysFamilyEndsThirtyDaysAfterSignIn(s.caller) and S::alwaysAccessWithinLifetimes(s.caller) and s.caller.epoch <= s.personEpoch
+pure def newlyConfirmed(before: Factors, after: Factors, method: FactorMethod): bool = isConfirmed(after, method) and not(isConfirmed(before, method))
+pure def stepConfirmedOnlyWithALiveSetup(before: SecondFactor, via: str, after: SecondFactor): bool =
+  (newlyConfirmed(before.factors, after.factors, Totp) implies (via == "confirmEnrollment" and setupLive(before.factors.totp, clock(before))))
+  and (newlyConfirmed(before.factors, after.factors, Sms) implies (via == "confirmEnrollment" and setupLive(before.factors.sms, clock(before))))
 pure def sometimesBothFactorsConfirmed(s: SecondFactor): bool = isConfirmed(s.factors, Totp) and isConfirmed(s.factors, Sms)
 ```
 
@@ -119,6 +124,7 @@ pure def totpStepAt(now: Millis): int = now / totpStep
 pure def totpAccepted(f: Factors, now: Millis, codeMatches: bool, matchedStep: int): bool = codeMatches and matchedStep >= totpStepAt(now) - totpWindow and matchedStep <= totpStepAt(now) + totpWindow and matchedStep > f.lastTotpStep
 pure def factorCodeAccepted(f: Factors, method: FactorMethod, now: Millis, codeMatches: bool, matchedStep: int): bool = if (method == Totp) totpAccepted(f, now, codeMatches, matchedStep) else codeMatches
 pure def advanceTotpStep(f: Factors, method: FactorMethod, matchedStep: int): Factors = if (method == Totp) { ...f, lastTotpStep: matchedStep } else f
+pure val matchedStepValues = Set(0, 1, 2, 10, 20)
 pure def alwaysAcceptedTotpStepNotAhead(s: SecondFactor): bool = s.factors.lastTotpStep >= noTotpStep and s.factors.lastTotpStep <= totpStepAt(clock(s)) + totpWindow
 pure def stepAcceptedTotpStepOnlyGrows(before: SecondFactor, after: SecondFactor): bool = after.factors.lastTotpStep != before.factors.lastTotpStep implies after.factors.lastTotpStep > before.factors.lastTotpStep
 ```
@@ -212,7 +218,7 @@ The session records `stepUpAt` and `mfaAt` as now and answers
 codes are limited by `shared/rateLimit`, not counted here.
 
 ```quint
-pure def canVerifyStepUp(s: SecondFactor, method: FactorMethod): bool = S::isActive(s.caller, s.personEpoch) and isConfirmed(s.factors, method) and (method == Totp or codeLive(s.stepUpCode, clock(s)))
+pure def canVerifyStepUp(s: SecondFactor, method: FactorMethod): bool = S::canRecordStepUp(s.caller, s.personEpoch) and isConfirmed(s.factors, method) and (method == Totp or codeLive(s.stepUpCode, clock(s)))
 pure def verifyStepUp(s: SecondFactor, method: FactorMethod, codeMatches: bool, matchedStep: int): SecondFactor =
   if (factorCodeAccepted(s.factors, method, clock(s), codeMatches, matchedStep))
     { ...s, factors: advanceTotpStep(s.factors, method, matchedStep), stepUpCode: if (method == Sms) NoCode else s.stepUpCode, caller: S::recordStepUp(s.caller, s.personEpoch) }

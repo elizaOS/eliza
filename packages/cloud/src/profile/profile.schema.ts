@@ -27,12 +27,12 @@ export const LegalDocument = Schema.Struct({
 export type LegalDocument = typeof LegalDocument.Type;
 
 export const MailDelivery = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("https"), url: HttpsUrl, apiKeyEnv: SecretName }),
+  Schema.Struct({ kind: Schema.Literal("https"), url: ProviderUrl, apiKeyEnv: SecretName }),
   Schema.Struct({ kind: Schema.Literal("loopback") }),
 ]);
 
 export const SmsDelivery = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("https"), url: HttpsUrl, accountEnv: SecretName, tokenEnv: SecretName, from: pattern(/^\+[1-9]\d{6,14}$/) }),
+  Schema.Struct({ kind: Schema.Literal("https"), url: ProviderUrl, accountEnv: SecretName, tokenEnv: SecretName, from: pattern(/^\+[1-9]\d{6,14}$/) }),
   Schema.Struct({ kind: Schema.Literal("loopback") }),
   Schema.Struct({ kind: Schema.Literal("none") }),
 ]);
@@ -106,6 +106,7 @@ export const SealingSettings = Schema.Struct({
 });
 
 export const EnvironmentProfile = Schema.Struct({
+  name: text(80),
   api: HttpsOrigin,
   web: HttpsOrigin,
   entitlementAudience: Audience,

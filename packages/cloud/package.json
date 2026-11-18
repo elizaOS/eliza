@@ -34,6 +34,12 @@
       "import": "./dist/src/worker.js",
       "default": "./dist/src/worker.js"
     },
+    "./clef-decisions": {
+      "eliza-source": "./src/clef-decisions.vibe",
+      "types": "./dist/src/clef-decisions.d.ts",
+      "import": "./dist/src/clef-decisions.js",
+      "default": "./dist/src/clef-decisions.js"
+    },
     "./store": {
       "eliza-source": "./src/store/store.vibe",
       "types": "./dist/src/store/store.d.ts",
@@ -63,6 +69,7 @@
   "devDependencies": {
     "@antithesishq/bombadil": "0.7.10",
     "@effect/vitest": "4.1.1",
+    "@electric-sql/pglite-socket": "0.1.6",
     "@repo/design-system": "workspace:*",
     "@repo/ui": "workspace:*",
     "@tailwindcss/vite": "catalog:",

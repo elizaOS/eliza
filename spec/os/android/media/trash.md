@@ -142,7 +142,7 @@ type PreparedTrash = { id: int, targets: List[TrashTarget] }
 pure val confirmationCapacity = 4
 pure def canObserveClock(s: OwnedTrash, now: int): bool = now > s.clock
 pure def observeClock(s: OwnedTrash, now: int): OwnedTrash = { ...s, clock: now }
-pure def canCancelTrashDelete(s: OwnedTrash, tokenId: int): bool = s.phase != Deleting
+pure def canCancelTrashDelete(s: OwnedTrash): bool = s.phase != Deleting
 pure def cancelTrashDelete(s: OwnedTrash, tokenId: int): OwnedTrash =
   { ...s, confirmations: dropToken(s.confirmations, tokenId), prepared: s.prepared.select(p => p.id != tokenId) }
 pure val nowValues = Set(1, 120000, 120001, 240002)
@@ -159,12 +159,14 @@ A live confirmation starts a deletion over its frozen snapshot; an unknown,
 cancelled or expired one is refused with "Review trash again". Rows run in
 snapshot order, one at a time, and a trashed row absent from the snapshot
 never becomes a target. The result is deleted only when no row was skipped
-or failed (an empty snapshot included), partial otherwise.
+or failed (an empty snapshot included), partial otherwise. The bridge runs
+one call at a time on its worker, so no other trash call starts while a
+deletion is under way.
 
 ```quint
 type RowDelete = RowDeleted | RowSkipped | RowFailed | RowDeletedCleanupFailed
 type DeleteReceipt = { deletedIds: List[int], skippedIds: List[int], failedIds: List[int] }
-type TrashPhase = Idle | Deleting | AllDeleted | PartlyDeleted | ConfirmationExpired
+type TrashPhase = Idle | Deleting | AllDeleted | PartlyDeleted | ConfirmationRefused
 type OwnedTrash = { clock: int, hostClosed: bool, nextConfirmation: int, confirmations: List[OneShotToken],
   prepared: List[PreparedTrash], phase: TrashPhase, targets: List[TrashTarget], position: int,
   receipt: DeleteReceipt, flagOutcomes: List[FlagOutcome] }
@@ -180,7 +182,7 @@ pure def beginTrashDelete(s: OwnedTrash, apiLevel: int, tokenId: int): OwnedTras
   val taken = takeToken(s.confirmations, tokenId, s.clock)
   val snapshot = s.prepared.select(p => p.id == tokenId).nthOr(0, { id: 0, targets: List() })
   { ...s, confirmations: taken.left, prepared: s.prepared.select(p => p.id != tokenId),
-    phase: if (taken.live) Deleting else ConfirmationExpired, targets: if (taken.live) snapshot.targets else List(),
+    phase: if (taken.live) Deleting else ConfirmationRefused, targets: if (taken.live) snapshot.targets else List(),
     position: 0, receipt: noReceipt }
 }
 pure def canFinishTrashDelete(s: OwnedTrash): bool = s.phase == Deleting and s.position == s.targets.length()
@@ -201,7 +203,7 @@ pure def sometimesEveryConfirmedRowDeleted(s: OwnedTrash): bool = s.phase == All
 pure def sometimesEmptyTrashDeletedNothing(s: OwnedTrash): bool = s.phase == AllDeleted and s.targets.length() == 0
 pure def sometimesDeletionPartlySkipped(s: OwnedTrash): bool =
   s.phase == PartlyDeleted and s.receipt.deletedIds.length() > 0 and s.receipt.skippedIds.length() > 0
-pure def sometimesConfirmationExpired(s: OwnedTrash): bool = s.phase == ConfirmationExpired and s.clock > tokenLifetimeMs
+pure def sometimesExpiredConfirmationRefused(s: OwnedTrash): bool = s.phase == ConfirmationRefused and s.clock > tokenLifetimeMs
 ```
 
 ### A row is deleted only while still trashed at its snapshot generation, by one counted delete

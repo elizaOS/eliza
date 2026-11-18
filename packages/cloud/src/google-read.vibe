@@ -29,6 +29,7 @@ const gmail = "https://gmail.googleapis.com/gmail/v1/users/me"
 const calendar = "https://www.googleapis.com/calendar/v3/calendars"
 const attachments = /^[a-zA-Z0-9_-]{1,1024}$/
 export const mailAddress = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/
+export const hasControlCharacter = (text: string) => [...text].some((character) => character.charCodeAt(0) <= 0x1f || character.charCodeAt(0) === 0x7f)
 const rfcMessageId = /^<[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9.-]+>$/
 const history = /^[0-9]+$/
 const isoDateTime = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/
@@ -95,7 +96,7 @@ function replyTarget(message: MailMessage) {
   const messageId = messageIds[0]
   const subject = subjects[0] ?? ""
   if (!recipient || recipient.length > 254 || !mailAddress.test(recipient) || !rfcMessageId.test(messageId) ||
-      messageId.length > 250 || subject.length > 120 || /[\u0000-\u001f\u007f]/.test(subject) ||
+      messageId.length > 250 || subject.length > 120 || hasControlCharacter(subject) ||
       !attachments.test(message.threadId)) return null
   return { recipient, subject, messageId, threadId: message.threadId }
 }

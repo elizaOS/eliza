@@ -1,9 +1,9 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { formatInet } from "effect/net/NetAddress"
-import { checkCatalog, CatalogMismatch } from "./billing/plans.vibe"
+import { checkCatalog, type CatalogMismatch } from "./billing/plans.vibe"
 import { cloudServer, listening, sweepsLayer } from "./http/server.vibe"
-import { capabilityEnabled, deploymentLayer, Deployment, parseEnvironment, parseProfile, ProfileInvalid, requireSecrets, SecretMissing, type CloudEnvironment, type CloudProfile } from "./profile/profile.vibe"
-import { DatabaseIdentityMismatch, migrate, parseStoreLocation, storeLayer, StoreFailure, StoreLocationInvalid, type StoreLocation } from "./store/store.vibe"
+import { capabilityEnabled, deploymentLayer, Deployment, parseEnvironment, parseProfile, ProfileInvalid, requireSecrets, type SecretMissing, type CloudEnvironment, type CloudProfile } from "./profile/profile.vibe"
+import { type DatabaseIdentityMismatch, migrate, parseStoreLocation, storeLayer, type StoreFailure, type StoreLocationInvalid, type StoreLocation } from "./store/store.vibe"
 
 export { parseProfile }
 export type { CloudEnvironment, CloudProfile }

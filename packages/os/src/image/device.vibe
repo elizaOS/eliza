@@ -707,8 +707,7 @@ effect function instrumentationTarget(aapt: string, testApk: string, timeoutMs: 
   return element.map((block) => /A: android:targetPackage\([^)]*\)="([^"]+)"/.exec(block)?.[1] ?? "")
 }
 
-export effect function runIsolatedAndroidTest(options: IsolatedTestOptions) {
-  const files = try FileSystem.FileSystem
+effect function admitIsolatedTest(options: IsolatedTestOptions) {
   const path = try Path.Path
   const serial = try adbSerial(options.serial)
   const cuttlefish = options.expectedCuttlefish
@@ -777,6 +776,13 @@ export effect function runIsolatedAndroidTest(options: IsolatedTestOptions) {
       records.push({ ...record, upgrade: upgraded })
     } else records.push(record)
   }
+  return { serial, cuttlefish, packageName, testPackage, runner, classes, commandTimeoutMs, instrumentationTimeoutMs, runnerArgs, upgradeRunnerArgs, appFiles, companions, packageNames, records }
+}
+
+export effect function runIsolatedAndroidTest(options: IsolatedTestOptions) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const { serial, cuttlefish, packageName, testPackage, runner, classes, commandTimeoutMs, instrumentationTimeoutMs, runnerArgs, upgradeRunnerArgs, appFiles, companions, packageNames, records } = try admitIsolatedTest(options)
   const raw = try adbRunner(options.adb, serial, (args) => (args[0] === "shell" && args[1] === "am" && args[2] === "instrument" ? instrumentationTimeoutMs : commandTimeoutMs))
   let pinnedBootId: string | undefined
   const pinnedInstance = effect () => {
