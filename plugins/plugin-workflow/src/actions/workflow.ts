@@ -9,9 +9,11 @@ import {
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  incomingMessagePersistenceSnapshot,
   type Memory,
   resolveCanonicalOwnerIdForMessage,
   type State,
+  unwrapUserMessageText,
 } from '@elizaos/core';
 import { HOSTED_SPEC } from '../services/hosted-digest';
 import { PHONE_SPEC_KEY, storedPhoneTimeTrigger } from '../services/phone-workflow-spec';
@@ -28,6 +30,7 @@ import {
   workflowSubmissionEffect,
 } from './workflow-effects';
 import { notApplied, resolveWorkflowRef } from './workflow-reference';
+import { authoredWorkflowRequest } from './workflow-request';
 
 const WORKFLOW_OPS = [
   'list',
@@ -250,10 +253,25 @@ export const workflowAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
-    const params = (options?.parameters ?? {}) as WorkflowActionParameters;
+    let params = (options?.parameters ?? {}) as WorkflowActionParameters;
     const op = text(params.action)?.toLowerCase() as WorkflowOp | undefined;
     if (!op || !WORKFLOW_OPS.includes(op)) {
       return { success: false, text: `action is required (${WORKFLOW_OPS.join(', ')})` };
+    }
+    if (!READ_OPS.includes(op)) {
+      const userText = unwrapUserMessageText(
+        incomingMessagePersistenceSnapshot(message) ?? message
+      );
+      const authored = authoredWorkflowRequest(userText);
+      if (authored) {
+        if (authored.op !== op)
+          return notApplied(
+            'WORKFLOW_REQUEST_CONFLICT',
+            'The proposed workflow operation differs from the owner’s request.',
+            'I left your workflows unchanged.'
+          );
+        params = { ...authored, instruction: userText };
+      }
     }
     const service = serviceFor(runtime);
     if (!service) return { success: false, text: 'Workflow service is unavailable.' };
