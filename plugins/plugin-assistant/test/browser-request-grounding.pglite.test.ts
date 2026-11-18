@@ -660,6 +660,13 @@ it.each([
     true,
     { type: "browser_navigate", url: "https://example.com/" },
   ],
+  // The polite question keeps the owner's placement too.
+  [
+    "can you open wikipedia.org in a new tab?",
+    { type: "browser_navigate", url: "wikipedia.org" },
+    true,
+    { type: "browser_navigate", url: "https://wikipedia.org/", newTab: true },
+  ],
   // A phone that did not negotiate a new tab opens the address as before.
   [
     "open wikipedia.org in a new tab",

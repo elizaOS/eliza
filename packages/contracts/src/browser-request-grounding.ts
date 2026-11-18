@@ -239,16 +239,27 @@ export function directBrowserDestination(
   text: string,
   assistantName: string = DEFAULT_ASSISTANT_NAME,
 ): string | undefined {
+  return directBrowserOpen(text, assistantName)?.href;
+}
+
+/** The direct request of directBrowserDestination with where it asks the
+ * address to open: `newTab` is true only when the owner said "in a new tab",
+ * in the strict command or a polite question ("can you open x.com in a new
+ * tab?"). */
+export function directBrowserOpen(
+  text: string,
+  assistantName: string = DEFAULT_ASSISTANT_NAME,
+): { href: string; newTab: boolean } | undefined {
   if (unreadable(text)) return;
-  const strict = authoredBrowserDestination(text, assistantName);
+  const strict = authoredBrowserOpen(text, assistantName);
   if (strict) return strict;
   const question = patterns(assistantName).directRequest.exec(text.trim());
   if (question) {
-    const destination = authoredBrowserDestination(
+    const destination = authoredBrowserOpen(
       `Open ${question[1]}${question[3] ?? ""}`,
     );
     if (!destination) return;
-    const url = new URL(destination),
+    const url = new URL(destination.href),
       tld = url.hostname.slice(url.hostname.lastIndexOf(".") + 1);
     if (
       FILE_TYPE_TLDS.has(tld) &&
@@ -263,7 +274,7 @@ export function directBrowserDestination(
   if (!url) return;
   const tld = url.hostname.slice(url.hostname.lastIndexOf(".") + 1);
   if (FILE_TYPE_TLDS.has(tld) && !/^(?:https?:\/\/|www\.)/i.test(bare)) return;
-  return url.href;
+  return { href: url.href, newTab: false };
 }
 
 /** The destination to open for a model-proposed browser URL, built from the

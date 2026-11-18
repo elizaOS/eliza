@@ -66,11 +66,11 @@ import {
   isBrowserControl,
 } from "./browser-contract.ts";
 import {
-  authoredBrowserOpen,
   browserDestinationMatches,
   browserSearchQueryMatches,
   DeviceBrowserNotRequestedError,
   directBrowserDestination,
+  directBrowserOpen,
   directBrowserSearchQuery,
   groundBrowserDestination,
   groundBrowserSearchQuery,
@@ -2426,11 +2426,12 @@ export class DeviceActionService {
           this.runtime.character.name,
         );
       if (!destination) throw new DeviceBrowserNotRequestedError();
-      // "Open x.com in a new tab" is the owner's own placement, like the
-      // address: the page opens in a tab of its own even when the model left
-      // newTab out, on a phone that negotiated it (newTab was dropped above
-      // for one that did not). Without it the phone may reuse its own tab.
-      const opened = authoredBrowserOpen(
+      // "Open x.com in a new tab" (or "can you open x.com in a new tab?") is
+      // the owner's own placement, like the address: the page opens in a tab
+      // of its own even when the model left newTab out, on a phone that
+      // negotiated it (newTab was dropped above for one that did not). Without
+      // it the phone may reuse its own tab.
+      const opened = directBrowserOpen(
         requestOrigin?.requestText ?? "",
         this.runtime.character.name,
       );

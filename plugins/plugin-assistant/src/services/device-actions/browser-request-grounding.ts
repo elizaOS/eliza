@@ -5,6 +5,7 @@ export {
   browserSearchQueryMatches,
   containsWebAddress,
   directBrowserDestination,
+  directBrowserOpen,
   directBrowserSearchQuery,
   groundBrowserDestination,
   groundBrowserSearchQuery,

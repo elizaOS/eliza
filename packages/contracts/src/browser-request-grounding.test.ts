@@ -7,6 +7,7 @@ import {
   browserSearchQueryMatches,
   containsWebAddress,
   directBrowserDestination,
+  directBrowserOpen,
   directBrowserSearchQuery,
   groundBrowserDestination,
   groundBrowserSearchQuery,
@@ -900,6 +901,21 @@ describe("strict open command with where the address opens", () => {
     expect(
       directBrowserDestination("can you open youtube.com in a new tab"),
     ).toBe("https://youtube.com/");
+    // The owner's placement survives the polite form, so the service can open
+    // it in a tab of its own even when the model leaves newTab out.
+    expect(directBrowserOpen("can you open youtube.com in a new tab?")).toEqual(
+      { href: "https://youtube.com/", newTab: true },
+    );
+    expect(
+      directBrowserOpen("could you please open youtube.com in the browser"),
+    ).toEqual({ href: "https://youtube.com/", newTab: false });
+    expect(directBrowserOpen("youtube.com")).toEqual({
+      href: "https://youtube.com/",
+      newTab: false,
+    });
+    expect(
+      directBrowserOpen("can you open youtube.com in a private tab"),
+    ).toBeUndefined();
   });
 });
 
