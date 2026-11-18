@@ -1,4 +1,4 @@
-CREATE TABLE oauth_attempts (
+CREATE TABLE IF NOT EXISTS oauth_attempts (
   key text PRIMARY KEY,
   state jsonb NOT NULL,
   revision bigint NOT NULL,
@@ -9,4 +9,4 @@ CREATE TABLE oauth_attempts (
   expires_at bigint NOT NULL,
   updated_at bigint NOT NULL
 );
-CREATE INDEX oauth_attempts_expiry ON oauth_attempts (expires_at);
+CREATE INDEX IF NOT EXISTS oauth_attempts_expiry ON oauth_attempts (expires_at);
