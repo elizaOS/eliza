@@ -16,6 +16,10 @@ test.each([
   ['create a workflow called Alpha device test', { op: 'create', name: 'Alpha device test' }],
   ['Create a workflow called Alpha device test.', { op: 'create', name: 'Alpha device test' }],
   ['please make a new workflow named “Morning brief”', { op: 'create', name: 'Morning brief' }],
+  // Single quotes, typed or turned into ‘ ’ by phone keyboards, close the name too.
+  ["create a workflow called 'Morning brief'", { op: 'create', name: 'Morning brief' }],
+  ['Create a workflow called ‘Morning brief’.', { op: 'create', name: 'Morning brief' }],
+  ['create a workflow called Mom’s birthday', { op: 'create', name: 'Mom’s birthday' }],
   ['can you create a workflow titled Q3 review?', { op: 'create', name: 'Q3 review' }],
   [
     'rename the workflow Alpha device test to Alpha check',
@@ -25,7 +29,12 @@ test.each([
     'rename the Alpha device test workflow to Alpha check',
     { op: 'rename', workflowName: 'Alpha device test', name: 'Alpha check' },
   ],
+  [
+    "rename the workflow 'Morning brief' to 'Evening brief'",
+    { op: 'rename', workflowName: 'Morning brief', name: 'Evening brief' },
+  ],
   ['delete the Alpha check workflow', { op: 'remove', workflowName: 'Alpha check' }],
+  ["delete the workflow 'Alpha check'", { op: 'remove', workflowName: 'Alpha check' }],
   ['remove workflow Alpha check', { op: 'remove', workflowName: 'Alpha check' }],
   ['list my workflows', { op: 'list', viewWording: false }],
   ['what workflows do I have?', { op: 'list', viewWording: false }],

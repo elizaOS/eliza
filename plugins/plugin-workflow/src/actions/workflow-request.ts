@@ -23,7 +23,10 @@ const COURTESY = String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:please,?\s+)?(?:
 const END = String.raw`(?:,?\s+(?:please|for\s+me))?[.!?]*$`;
 // A short name, optionally quoted. Clauses after it ("that runs every
 // morning", "and turn it on") are more than a name and keep the planner path.
-const NAME = String.raw`["“'‘]?([\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}'’&+#./-]*){0,5}?)["”'’]?`;
+// An apostrophe belongs to a word only before a letter or digit ("Mom’s"); one
+// at the end of the name closes its quote ("‘Morning brief’").
+const WORD = String.raw`[\p{L}\p{N}](?:[\p{L}\p{N}&+#./-]|['’](?=[\p{L}\p{N}]))*`;
+const NAME = String.raw`["“'‘]?(${WORD}(?:\s+${WORD}){0,5}?)["”'’]?`;
 const NOT_A_NAME =
   /\b(?:that|which|who|to|and|then|also|but|or|if|when|whenever|unless|every|each|daily|weekly|at|on|for|with|from|after|before|until|not|don['’]?t|never)\b/iu;
 
