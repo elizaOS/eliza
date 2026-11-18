@@ -30,6 +30,7 @@ import {
   mapsPlugin,
   mapsTravelDestination,
 } from "../../../../plugin-maps/src/plugin.ts";
+import { MapsService } from "../../../../plugin-maps/src/service.ts";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { deviceActionTools } from "../device-actions/tools.ts";
 import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "./stage1-evaluators.ts";
@@ -305,6 +306,125 @@ describe("the Maps routes claim only the owner's phone chat", () => {
       "MAPS_ROUTE",
       "MAPS_NAVIGATION_START",
     ]);
+  });
+});
+
+describe("a reply to a Maps place question continues the operation that asked", () => {
+  // v610: MAPS_ROUTE asked "Which one did you mean?" and the owner said "the
+  // first one". Stage 1 answered in prose ("I can't load a live route from
+  // here") and no route was planned.
+  const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+    (entry) => entry.name === "core.direct_registered_capability_request",
+  );
+  async function evaluate(
+    text: string,
+    open?: "route" | "navigation-start",
+    content: Partial<Memory["content"]> = {},
+    turns: { askedBy?: string; between?: string } = {},
+  ) {
+    if (!evaluator) throw new Error("Expected capability evaluator");
+    const { runtime, message } = await fixture(text);
+    Object.assign(message.content, content);
+    const service = new MapsService(undefined, {} as never);
+    if (open)
+      service.placeChoices.set(
+        { ...message, id: turns.askedBy ?? message.id },
+        {
+          operation: open,
+          field: open === "route" ? "originQuery" : "placeQuery",
+          query: "Starbucks",
+          places: [],
+          queries: {},
+          resolved: {},
+        },
+      );
+    const getService = runtime.getService.bind(runtime);
+    vi.spyOn(runtime, "getService").mockImplementation(((name: string) =>
+      name === "maps" ? service : getService(name)) as never);
+    const run = async (turn: Memory) => {
+      const handler = {
+        processMessage: "RESPOND",
+        plan: {
+          contexts: ["simple"],
+          intents: [],
+          candidateActions: [] as string[],
+          parentActionHints: [],
+          requiresTool: false,
+          replyEffectStatus: "none",
+          reply: "Locked in the first one.",
+        },
+      };
+      await runResponseHandlerEvaluators({
+        runtime,
+        message: turn,
+        state: { text: "", values: {}, data: {} },
+        messageHandler: handler,
+        availableContexts: [...DEFAULT_CONTEXT_DEFINITIONS, MAPS_CONTEXT],
+        userRoles: ["OWNER"],
+        evaluators: [evaluator],
+      } as never);
+      return handler;
+    };
+    // An owner turn between the question and this reply ("call mom").
+    if (turns.between !== undefined)
+      await run({
+        ...message,
+        id: "44444444-4444-4444-8444-444444444444",
+        content: { ...message.content, text: turns.between },
+      } as Memory);
+    return run(message);
+  }
+  it.each([
+    ["the first one", "route", ["MAPS_ROUTE"]],
+    ["The second one.", "route", ["MAPS_ROUTE"]],
+    ["2", "navigation-start", ["MAPS_NAVIGATION_START"]],
+  ] as const)("%s", async (text, open, expected) => {
+    const handler = await evaluate(text, open);
+    expect(handler.plan.requiresTool).toBe(true);
+    expect(handler.plan.candidateActions).toEqual(expected);
+    expect(handler.plan.contexts).toContain("maps");
+  });
+  it("takes the owner's next turn after the question", async () => {
+    const handler = await evaluate(
+      "the first one",
+      "route",
+      {},
+      {
+        askedBy: "22222222-2222-4222-8222-222222222222",
+      },
+    );
+    expect(handler.plan.candidateActions).toEqual(["MAPS_ROUTE"]);
+  });
+  it("leaves a later reply to whatever asked since the owner moved on", async () => {
+    // The owner left the Maps question for another request; "the first one"
+    // now answers that request's question (a contact, an email), not Maps.
+    const handler = await evaluate(
+      "the first one",
+      "route",
+      {},
+      {
+        askedBy: "22222222-2222-4222-8222-222222222222",
+        between: "call mom",
+      },
+    );
+    expect(handler.plan.requiresTool).toBe(false);
+    expect(handler.plan.candidateActions).toEqual([]);
+  });
+  it("leaves the reply alone when no Maps question is open", async () => {
+    const handler = await evaluate("the first one");
+    expect(handler.plan.requiresTool).toBe(false);
+    expect(handler.plan.candidateActions).toEqual([]);
+  });
+  it("leaves other replies alone while a question is open", async () => {
+    const handler = await evaluate("thanks, that's all", "route");
+    expect(handler.plan.requiresTool).toBe(false);
+  });
+  it("does not take a reply on another channel", async () => {
+    const handler = await evaluate("the first one", "route", {
+      source: "discord",
+      channelType: "GROUP",
+    });
+    expect(handler.plan.requiresTool).toBe(false);
   });
 });
 

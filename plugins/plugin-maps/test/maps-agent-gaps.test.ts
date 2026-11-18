@@ -918,10 +918,12 @@ describe("forms ask for names, not ids", () => {
   });
 
   it("asks which one when several places match", async () => {
-    const result = await run(
-      searching([hit(1, "Casino"), hit(2, "Casino Cafe")]),
-      { action: "share", placeQuery: "Casino" },
-    );
+    // Two places of the same name in one area are a real choice; a top
+    // "Casino" beside a "Casino Cafe" is not (route-disambiguation.test.ts).
+    const result = await run(searching([hit(1, "Casino"), hit(2, "Casino")]), {
+      action: "share",
+      placeQuery: "Casino",
+    });
     expect(result).toMatchObject({
       success: false,
       data: {
@@ -931,7 +933,7 @@ describe("forms ask for names, not ids", () => {
       },
     });
     expect(result?.text).toContain("Which one did you mean?");
-    expect(result?.userFacingText).toContain("Casino Cafe");
+    expect(result?.userFacingText).toContain("2. Casino — 2 Quai, Monaco");
     expect(
       (result?.data as { places?: unknown[] } | undefined)?.places,
     ).toHaveLength(2);
