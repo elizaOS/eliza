@@ -466,6 +466,7 @@ export class InboxOperation {
     proposal: Bag,
     source?: {
       draftId: string;
+      requestId?: string;
       savedRevision?: string;
       providerDraft?: { draftId: string; providerDigest: string };
     },
@@ -483,11 +484,19 @@ export class InboxOperation {
         source && typeof source.draftId === "string" && source.draftId
           ? source.draftId
           : null;
+      if (
+        source?.requestId !== undefined &&
+        (proposal.kind !== "send" ||
+          !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(
+            source.requestId,
+          ))
+      )
+        throw new Error("Invalid source request identity");
       await this.save({
         version: 1,
         owner: this.deps.owner,
         grantId: this.deps.grantId,
-        requestId: crypto.randomUUID(),
+        requestId: source?.requestId ?? crypto.randomUUID(),
         proposal: clean,
         phase: "preparing",
         review: null,
