@@ -14,4 +14,5 @@ export const signedIn = (cloud: TestCloud, email: string) =>
     ),
   );
 
+/** @throws {never} */
 export const s256 = (verifier: string): string => createHash("sha256").update(verifier, "ascii").digest("base64url");

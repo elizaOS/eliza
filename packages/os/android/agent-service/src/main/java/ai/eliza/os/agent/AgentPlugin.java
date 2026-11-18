@@ -77,7 +77,7 @@ public class AgentPlugin extends Plugin {
   @PluginMethod public void subscribeEvents(PluginCall call) {
     String id = call.getString("id", "");
     Topic topic = topic(call.getString("topic", ""));
-    FailCode refused = topic == null ? FailCode.ROUTE_REFUSED : AgentService.channel().subscribe(owner, id, topic, new Listener() {
+    FailCode refused = topic == null ? FailCode.ROUTE_REFUSED : AgentService.channel().subscribe(owner, id, topic, call.getString("clientId", owner), new Listener() {
       @Override public void event(String callId, long index, JSONObject event) {
         JSObject heard = frame(callId, "event", index);
         heard.put("event", event);

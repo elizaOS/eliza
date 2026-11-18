@@ -304,14 +304,14 @@ pure def lawPowerVoiceNeedsItsBundleAlone(manifest: LauncherManifest, request: P
 > camera, so that alarms ring and capture over the lock screen stays the
 > system's, never my launcher's.
 
-### A launcher that refuses lock-screen surfaces declares no activity shown when locked, turning the screen on, or handling secure capture
+### Where the system owns the lock screen, an admitted launcher declares no activity shown when locked, turning the screen on, or handling secure capture
 
 ```quint
 pure def lockScreenSurfaces(manifest: LauncherManifest): List[ManifestComponent] = manifest.components.select(c => c.kind == ActivityKind
   and (c.marks.includes(ShowWhenLocked) or c.marks.includes(TurnScreenOn) or c.handles.includes(SecureCaptureIntent)))
-pure def lockScreenAdmitted(manifest: LauncherManifest, refuseLockScreen: bool): bool = not(refuseLockScreen) or lockScreenSurfaces(manifest).length() == 0
-pure def lawRefusingLauncherHasNoSecureCapture(manifest: LauncherManifest): bool =
-  lockScreenAdmitted(manifest, true) implies activitiesHandling(manifest, SecureCaptureIntent).length() == 0
+pure def lawSystemLockScreenAdmitsNoLauncherSurface(manifest: LauncherManifest, request: ProvisioningRequest): bool =
+  (request.lockScreen == SystemOwnsLockScreen and provisioningAdmitted(provisioningDefaults(manifest, request)))
+    implies manifest.components.every(c => c.kind != ActivityKind or not(c.marks.includes(ShowWhenLocked) or c.marks.includes(TurnScreenOn) or c.handles.includes(SecureCaptureIntent)))
 ```
 
 ### The product requires DeskClock exactly once
@@ -324,7 +324,6 @@ not prove an alarm rings.
 ```quint
 type ClockRequirement = ClockAdded | ClockKept | ClockNamedTwice
 pure val clockPackage = "com.android.deskclock"
-pure val clockAlarmActions: List[str] = List("SET_ALARM", "SHOW_ALARMS", "SNOOZE_ALARM", "DISMISS_ALARM")
 pure def clockRequirement(clockLines: int): ClockRequirement = if (clockLines <= 0) ClockAdded else if (clockLines == 1) ClockKept else ClockNamedTwice
 pure def clockLinesAfter(clockLines: int): int = if (clockLines <= 0) 1 else clockLines
 pure val clockLinesValues = Set(0, 1, 2)
@@ -343,7 +342,6 @@ staging is not locked-capture or device evidence.
 type CameraSource = CameraSourceVerified({ contract: Digest }) | CameraSourceUnverified
 type CameraStaging = CameraStaged({ gesturePackage: str, contract: Digest }) | CameraRefused
 pure val secureCameraPackage = "com.android.camera2"
-pure val secureCaptureActions: List[str] = List("STILL_IMAGE_CAMERA_SECURE", "IMAGE_CAPTURE_SECURE")
 pure def secureCameraStaging(source: CameraSource): CameraStaging = match source {
   | CameraSourceVerified(v) => if (isDigest(v.contract)) CameraStaged({ gesturePackage: secureCameraPackage, contract: v.contract }) else CameraRefused
   | _ => CameraRefused

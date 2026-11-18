@@ -217,7 +217,7 @@ effect function settleRefresh(connectionId: string, event: ConnectionEvent, now:
     if (failure._tag === "ConnectionRejected") throw refused("GoogleReauthRequired")
     throw failure
   }
-  return (try stepped).state
+  return stepped.state
 }
 
 effect function refreshed(claimed: { readonly grant: Omit<GoogleGrant, "accessToken">; readonly tokens: string }, capability: GoogleCapability) {
@@ -241,18 +241,21 @@ effect function refreshed(claimed: { readonly grant: Omit<GoogleGrant, "accessTo
 export effect function useGrant(owner: Owner, grantId: string | undefined, capability: GoogleCapability, expectedAccountId?: string) {
   try profileGoogle()
   const store = try Store
-  const now = try Clock.currentTimeMillis
-  const claimed = try store.transaction((tx) => claim(tx, owner, grantId, capability, expectedAccountId, now))
+  const attempt = effect {
+    const now = try Clock.currentTimeMillis
+    return try store.transaction((tx) => claim(tx, owner, grantId, capability, expectedAccountId, now))
+  }
+  let claimed: Claimed = try attempt
+  while (claimed.kind === "wait") {
+    try sleep(refreshPoll)
+    claimed = try attempt
+  }
   switch (claimed.kind) {
     case "ready": {
       const tokens = openTokens(claimed.tokens) catch effect () => { throw refused("GoogleReauthRequired") }
-      return { ...claimed.grant, accessToken: (try tokens).accessToken } satisfies GoogleGrant
+      return { ...claimed.grant, accessToken: tokens.accessToken } satisfies GoogleGrant
     }
     case "refresh": return try refreshed(claimed, capability)
-    case "wait": {
-      try sleep(refreshPoll)
-      return try useGrant(owner, grantId, capability, expectedAccountId)
-    }
     default: {
       const _exhaustive: never = claimed
       return _exhaustive

@@ -96,7 +96,7 @@ effect function sync<A>(step: string, call: () => A) {
   return try Effect.try({ try: call, catch: (cause) => new ChildFailed({ step, cause }) })
 }
 
-const journey = <A, E>(body: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | ChildProcessSpawner | Scope.Scope>) => Effect.provide(Effect.scoped(body), NodeServices.layer)
+const journey = <A, E>(body: Effect.Effect<A, E, NodeServices.NodeServices | Scope.Scope>) => Effect.provide(Effect.scoped(body), NodeServices.layer)
 
 it.live("Refuse a malformed command line with exit 2 and write nothing (spec/os/image/staging.md, \"Story: Stage my launcher into an image exactly once\"; spec/os/image/signing.md, \"Story: Sign a release only with keys I enrolled\"; spec/os/browser/chromium.md, \"Story: Use the owned browser only with its expected identity\")", () => journey(effect {
   const root = try scratch("cli-usage")
@@ -186,12 +186,10 @@ it.live("Generate test release keys and decrypt them again (spec/os/image/signin
   assert.strictEqual(again.stdout, "")
 }))
 
-it.live("Check a launcher for admission without writing an overlay (spec/os/image/staging.md, \"Story: Stage my launcher into an image exactly once\")", (context) => journey(effect {
+it.live("Check a launcher for admission without writing an overlay (spec/os/image/staging.md, \"Story: Stage my launcher into an image exactly once\")", (context) => {
   const tools = androidTools()
-  if (tools.kind === "missing") {
-    context.skip(tools.reason)
-    return
-  }
+  if (tools.kind === "missing") return context.skip(tools.reason)
+  return journey(effect {
   const root = try scratch("cli-stage")
   const signer = try sync("make the signer", () => testSigner(tools, root, "launcher"))
   const manifest = [
@@ -223,7 +221,8 @@ it.live("Check a launcher for admission without writing an overlay (spec/os/imag
   assert.notStrictEqual(refused.status, 2)
   assert.strictEqual(refused.stdout, "")
   assert.isFalse(try sync("look for the overlay", () => present(output)))
-}))
+  }))
+})
 
 it.live("Read an update's status from the device by cable (spec/os/update/operator.md, \"Story: Update a device by cable and get back if it fails\")", () => journey(effect {
   const root = try scratch("cli-ota")
@@ -250,7 +249,7 @@ it.live("Read an update's status from the device by cable (spec/os/update/operat
   assert.strictEqual(result.deviceState, "sideload")
   assert.strictEqual(result.next, "sideload")
   assert.strictEqual(try files.readFileString(`${root}/journal.json`), before)
-  assert.isTrue(phone.calls().every((call) => !call.args.includes("sideload") || call.args.includes("get-state")))
+  assert.deepStrictEqual(phone.calls().filter((call) => ["reboot", "sideload", "set_active"].includes(call.args[2] ?? "")), [])
 }))
 
 it.live("Prepare the owned browser's component against the pinned sources (spec/os/browser/chromium.md, \"Story: Use the owned browser only with its expected identity\")", () => journey(effect {

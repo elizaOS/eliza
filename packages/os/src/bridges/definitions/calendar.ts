@@ -1,5 +1,7 @@
 // spec/os/android/calendar.md, "Story: Read my calendar and open Android's editor"; spec/os/android/calendar.md, "Story: Change exactly the event I reviewed"; spec/os/android/calendar.md, "Story: Delete the event, one occurrence or the whole series as I chose"
-import type { LiveException, ProviderChange, SelectedRow, SeriesSync } from "../../../gen/os__android__calendar.ts";
+import type { HandoffOutcome, WriteGate, WriteOutcome } from "../../../gen/os__android__bridge.ts";
+import type { CalendarEdit, LiveException, ProviderChange, SelectedRow, SeriesSync } from "../../../gen/os__android__calendar.ts";
+import type { DeletionClock, DeletionDeadline } from "../../../gen/os__android__deletionWindow.ts";
 
 export interface AndroidCalendarExpected {
   title: string;
@@ -99,6 +101,8 @@ export interface AndroidCalendarReadback {
 
 export type AndroidCalendarAccess = { status: "granted" | "denied" };
 
+export type AndroidCalendarPermissionState = "granted" | "denied" | "prompt" | "prompt-with-rationale";
+
 export type AndroidCalendarList =
   | { status: "ready"; calendars: AndroidCalendarRow[]; events: AndroidCalendarEvent[]; truncated: boolean }
   | { status: "permission-required" };
@@ -131,6 +135,7 @@ export type AndroidCalendarInsertHandoff =
   | { status: "unavailable" | "invalid" | "unknown" };
 
 export interface AndroidCalendarPlugin {
+  checkPermissions(): Promise<{ calendar: AndroidCalendarPermissionState }>;
   requestAccess(): Promise<AndroidCalendarAccess>;
   list(input: { begin: number; end: number }): Promise<AndroidCalendarList>;
   open(input: { id: string; begin?: number; end?: number }): Promise<{ status: "opened" }>;
@@ -139,4 +144,54 @@ export interface AndroidCalendarPlugin {
   save(input: AndroidCalendarSave): Promise<AndroidCalendarSaveReply>;
   inspectDeletion(input: AndroidCalendarSelection & { scope?: AndroidCalendarDeletionScope }): Promise<AndroidCalendarDeletionInspection>;
   dispatchDeletion(input: AndroidCalendarDeletionTarget): Promise<AndroidCalendarDeletionReply>;
+}
+
+export type CalendarTicket = number & { readonly __brand: "CalendarTicket" };
+
+export interface CalendarRange {
+  begin: number;
+  end: number;
+}
+
+export interface CalendarPick {
+  event: AndroidCalendarEvent;
+  calendar: AndroidCalendarRow;
+}
+
+export type CalendarInspectionResult =
+  | { kind: "ready"; ticket: CalendarTicket; change: ProviderChange }
+  | { kind: "editor" }
+  | { kind: "conflict" };
+
+export type CalendarFieldsProblem = "empty-title" | "title-too-long" | "body-too-long" | "location-too-long" | "invalid-range";
+
+export interface CalendarHandoffReport {
+  outcome: HandoffOutcome;
+  reply: AndroidCalendarInsertHandoff;
+}
+
+export interface CalendarReview {
+  state(): Promise<CalendarEdit>;
+  openEditor(): Promise<HandoffOutcome>;
+  inspectUpdate(): Promise<CalendarInspectionResult>;
+  save(ticket: CalendarTicket, fields: AndroidCalendarEditorFields): Promise<WriteOutcome>;
+  inspectDeletion(scope?: AndroidCalendarDeletionScope): Promise<CalendarInspectionResult>;
+  stageDeletion(ticket: CalendarTicket): Promise<DeletionDeadline>;
+  undoDeletion(): Promise<void>;
+  dispatchDeletion(): Promise<WriteOutcome>;
+  pause(): Promise<void>;
+  refresh(): Promise<WriteGate>;
+}
+
+export interface CalendarClient {
+  requestAccess(): Promise<AndroidCalendarAccess>;
+  list(range: CalendarRange): Promise<AndroidCalendarList>;
+  insertHandoff(event: AndroidCalendarHandoffEvent): Promise<CalendarHandoffReport>;
+  review(pick: CalendarPick): CalendarReview;
+}
+
+export interface CalendarClientOptions {
+  clock: () => DeletionClock;
+  plugin?: AndroidCalendarPlugin;
+  name?: string;
 }

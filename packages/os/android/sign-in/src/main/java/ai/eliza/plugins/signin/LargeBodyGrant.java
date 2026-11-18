@@ -12,7 +12,6 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HashMap;
-import java.util.HexFormat;
 import java.util.Map;
 
 public final class LargeBodyGrant {
@@ -56,7 +55,7 @@ public final class LargeBodyGrant {
       partial.delete();
       throw failed;
     }
-    String sha = HexFormat.of().formatHex(digest.digest());
+    String sha = hex(digest.digest());
     File named = new File(directory, sha);
     synchronized (this) {
       if (named.exists()) partial.delete();
@@ -94,6 +93,12 @@ public final class LargeBodyGrant {
   private void release(String id) {
     Held gone = held.remove(id);
     if (gone != null && held.values().stream().noneMatch(other -> other.file().equals(gone.file()))) gone.file().delete();
+  }
+
+  private static String hex(byte[] bytes) {
+    StringBuilder text = new StringBuilder(bytes.length * 2);
+    for (byte b : bytes) text.append(Character.forDigit((b >> 4) & 15, 16)).append(Character.forDigit(b & 15, 16));
+    return text.toString();
   }
 
   private static MessageDigest sha256() {

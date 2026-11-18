@@ -3,6 +3,7 @@ package ai.eliza.os.agent;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -54,7 +55,7 @@ public final class LaunchFrame {
   public boolean accepts(Credential pushed) { return pushed != null && pushed.version() > credentialVersion(); }
 
   public boolean holdsToken(String presented) {
-    return presented != null && java.security.MessageDigest.isEqual(token.getBytes(StandardCharsets.UTF_8), presented.getBytes(StandardCharsets.UTF_8));
+    return presented != null && MessageDigest.isEqual(token.getBytes(StandardCharsets.UTF_8), presented.getBytes(StandardCharsets.UTF_8));
   }
 
   public byte[] encode() {

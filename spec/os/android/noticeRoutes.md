@@ -46,20 +46,20 @@ pure def updateFence(fence: NoticeFence, credential: C::DeviceCredential, creden
   else if (account == started.fencedAccount and not(started.retryNeeded)) { fence: started, publish: false }
   else { fence: { ...started, fencedAccount: account, retryNeeded: false, generation: started.generation + 1 }, publish: true }
 }
-pure val accountOne: C::Account = { userId: "u1", organizationId: "o1" }
-pure val accountTwo: C::Account = { userId: "u2", organizationId: "o1" }
-pure val fenceValues: Set[NoticeFence] = List(
-  freshFence,
-  { initialized: true, fencedAccount: accountOne, retryNeeded: false, generation: 1 },
-  { initialized: true, fencedAccount: accountOne, retryNeeded: true, generation: 2 },
-  { initialized: true, fencedAccount: C::noAccount, retryNeeded: false, generation: 3 }
-).foldl(Set(), (acc, f) => acc.union(Set(f)))
-pure val credentialValues: Set[C::DeviceCredential] = List(
-  C::initial,
-  { ...C::initial, generation: 1, lastVersion: 1, custody: C::Active({ version: 1, credentialId: "c1", account: accountOne, keyExpiresAt: 100 }) },
-  { ...C::initial, generation: 2, lastVersion: 1, custody: C::Expired({ account: accountOne }) },
-  { ...C::initial, generation: 3, lastVersion: 2, custody: C::Active({ version: 2, credentialId: "c2", account: accountTwo, keyExpiresAt: 100 }) }
-).foldl(Set(), (acc, c) => acc.union(Set(c)))
+pure val fenceValues: Set[NoticeFence] = {
+  val one = { userId: "u1", organizationId: "o1" }
+  List(freshFence, { initialized: true, fencedAccount: one, retryNeeded: false, generation: 1 },
+    { initialized: true, fencedAccount: one, retryNeeded: true, generation: 2 },
+    { initialized: true, fencedAccount: C::noAccount, retryNeeded: false, generation: 3 }).foldl(Set(), (acc, f) => acc.union(Set(f)))
+}
+pure val credentialValues: Set[C::DeviceCredential] = {
+  val one = { userId: "u1", organizationId: "o1" }
+  List(C::initial,
+    { ...C::initial, generation: 1, lastVersion: 1, custody: C::Active({ version: 1, credentialId: "c1", account: one, keyExpiresAt: 100 }) },
+    { ...C::initial, generation: 2, lastVersion: 1, custody: C::Expired({ account: one }) },
+    { ...C::initial, generation: 3, lastVersion: 2, custody: C::Active({ version: 2, credentialId: "c2", account: { ...one, userId: "u2" }, keyExpiresAt: 100 }) }
+  ).foldl(Set(), (acc, c) => acc.union(Set(c)))
+}
 pure def lawSameAccountIsFencedOnce(fence: NoticeFence, credential: C::DeviceCredential, credentialRead: bool): bool =
   (fence.initialized and not(fence.retryNeeded) and C::accountOf(credential) == fence.fencedAccount) implies not(updateFence(fence, credential, credentialRead).publish)
 pure def lawAccountChangeIsFenced(fence: NoticeFence, credential: C::DeviceCredential, credentialRead: bool): bool =
@@ -76,8 +76,9 @@ pure def lawNothingIsFencedBeforeTheCredentialIsRead(credential: C::DeviceCreden
 pure def fenceFailed(fence: NoticeFence, failedGeneration: int): NoticeFence =
   if (failedGeneration == fence.generation) { ...fence, retryNeeded: true } else fence
 pure val failedGenerationValues = Set(0, 1, 2, 3)
-pure def lawSupersededFailureChangesNothing(fence: NoticeFence, failedGeneration: int): bool =
-  failedGeneration != fence.generation implies fenceFailed(fence, failedGeneration) == fence
+pure def lawSupersededFailureIsForgotten(fence: NoticeFence, credential: C::DeviceCredential, failedGeneration: int): bool =
+  (fence.initialized and not(fence.retryNeeded) and failedGeneration != fence.generation and C::accountOf(credential) == fence.fencedAccount) implies
+    not(updateFence(fenceFailed(fence, failedGeneration), credential, true).publish)
 pure def lawCurrentFailureIsRetried(fence: NoticeFence, credential: C::DeviceCredential): bool =
   fence.initialized implies updateFence(fenceFailed(fence, fence.generation), credential, true).publish
 ```
@@ -131,10 +132,16 @@ pure val ledgerValues: Set[NoticeLedger] = List(
 ).foldl(Set(), (acc, l) => acc.union(Set(l)))
 pure def lawRecoveryNeverPosts(ledger: NoticeLedger, stored: bool): bool =
   settleNotice(ledger, RecoveredExact, stored).posts == ledger.posts and settleNotice(ledger, RecoveredInexact, stored).posts == ledger.posts
-pure def lawOnlyAPendingNoticeIsReserved(ledger: NoticeLedger, permitted: bool): bool =
-  ledger.phase != NoticePending implies reserveNotice(ledger, permitted) == ledger
-pure def lawASettledPostIsNotRepeated(ledger: NoticeLedger, settlement: PostSettlement, stored: bool): bool =
-  (noticeLedgerValid(ledger) and mayPostSettle(ledger, settlement)) implies noticeLedgerValid(settleNotice(ledger, settlement, stored))
+pure def lawNoRowReturnsToPending(ledger: NoticeLedger, permitted: bool, settlement: PostSettlement, stored: bool, tapCleared: bool): bool =
+  (ledger.phase != NoticeNone and ledger.phase != NoticePending) implies
+    (pendNotice(ledger).phase != NoticePending and reserveNotice(ledger, permitted).phase != NoticePending and
+     settleNotice(ledger, settlement, stored).phase != NoticePending and dropPermit(ledger).phase != NoticePending and
+     withdrawNotice(ledger, tapCleared).phase != NoticePending)
+pure def lawPostingKeepsTheLedgerValid(ledger: NoticeLedger, permitted: bool, settlement: PostSettlement, stored: bool, tapCleared: bool): bool =
+  noticeLedgerValid(ledger) implies
+    (noticeLedgerValid(pendNotice(ledger)) and noticeLedgerValid(rearmNotice(ledger)) and noticeLedgerValid(reserveNotice(ledger, permitted)) and
+     noticeLedgerValid(dropPermit(ledger)) and noticeLedgerValid(withdrawNotice(ledger, tapCleared)) and
+     (mayPostSettle(ledger, settlement) implies noticeLedgerValid(settleNotice(ledger, settlement, stored))))
 ```
 
 ### A tap opens only its exact route, in the account it belongs to, and only with the current tap token
@@ -163,14 +170,14 @@ pure def resolveTap(lookupOk: bool, tap: PendingTap, bound: NoticeRoute, connect
   else if (not(tap.retained) or not(tap.identifiersPresent) or not(loaded)) TapUnavailable
   else if (not(stillLive) or latest != tap) TapUnavailable
   else TapReady
-pure val routeA: NoticeRoute = { routeScope: "s1", routeOrigin: "agent:local", routeOwner: "u1", routeAgent: "agent1" }
-pure val boundValues: Set[NoticeRoute] = Set(routeA).union(Set({ ...routeA, routeOwner: "u2" }))
-pure val tapValues: Set[PendingTap] = List(
-  { token: "t1", route: routeA, retained: true, identifiersPresent: true, tapRevision: 1 },
-  { token: "t1", route: routeA, retained: false, identifiersPresent: true, tapRevision: 1 },
-  { token: "", route: routeA, retained: true, identifiersPresent: true, tapRevision: 1 },
-  { token: "t1", route: routeA, retained: true, identifiersPresent: true, tapRevision: 2 }
-).foldl(Set(), (acc, t) => acc.union(Set(t)))
+pure val boundValues: Set[NoticeRoute] = {
+  val route = { routeScope: "s1", routeOrigin: "agent:local", routeOwner: "u1", routeAgent: "agent1" }
+  Set(route).union(Set({ ...route, routeOwner: "u2" }))
+}
+pure val tapValues: Set[PendingTap] = {
+  val tap = { token: "t1", route: { routeScope: "s1", routeOrigin: "agent:local", routeOwner: "u1", routeAgent: "agent1" }, retained: true, identifiersPresent: true, tapRevision: 1 }
+  List(tap, { ...tap, retained: false }, { ...tap, token: "" }, { ...tap, tapRevision: 2 }).foldl(Set(), (acc, t) => acc.union(Set(t)))
+}
 pure val latestValues = tapValues
 pure def lawTapOpensOnlyItsOwnRoute(lookupOk: bool, tap: PendingTap, bound: NoticeRoute, connectionLive: bool, loaded: bool, latest: PendingTap, stillLive: bool): bool =
   resolveTap(lookupOk, tap, bound, connectionLive, loaded, latest, stillLive) == TapReady implies (tap.route == bound and connectionLive and stillLive and tap.retained)
@@ -187,10 +194,13 @@ pure def consumeTap(n: NoticeLedger, write: TapWrite): NoticeLedger =
 pure def releaseTap(n: NoticeLedger): NoticeLedger = { ...n, tapToken: 0, tapAsk: false }
 pure val tokenValues = Set(0, 1, 2)
 pure def lawOnlyTheCurrentTokenMatches(ledger: NoticeLedger, ask: bool, token: int): bool =
-  (captureTap(ledger, ask).tapToken != ledger.tapToken and token == ledger.tapToken) implies not(tapMatches(captureTap(ledger, ask), token))
+  (noticeLedgerValid(ledger) and captureTap(ledger, ask).tapToken != ledger.tapToken and token == ledger.tapToken) implies not(tapMatches(captureTap(ledger, ask), token))
 pure def lawConsumeOpensBeforeClearing(ledger: NoticeLedger, write: TapWrite): bool =
   consumeTap(ledger, write).tapToken < ledger.tapToken implies consumeTap(ledger, write).phase == NoticeOpened
-pure def lawReleaseKeepsNotice(ledger: NoticeLedger): bool = releaseTap(ledger).phase == ledger.phase
+pure def lawReleaseKeepsNotice(ledger: NoticeLedger): bool = releaseTap(ledger).phase == ledger.phase and releaseTap(ledger).posts == ledger.posts
+pure def lawTapsKeepTheLedgerValid(ledger: NoticeLedger, ask: bool, write: TapWrite): bool =
+  noticeLedgerValid(ledger) implies
+    ((tapEligible(ledger) implies noticeLedgerValid(captureTap(ledger, ask))) and noticeLedgerValid(consumeTap(ledger, write)) and noticeLedgerValid(releaseTap(ledger)))
 pure def lawOpeningCountsInFlightPost(ledger: NoticeLedger): bool =
   (noticeLedgerValid(ledger) and ledger.permit) implies (markOpened(ledger).posts == 1 and noticeLedgerValid(markOpened(ledger)))
 ```
@@ -210,8 +220,10 @@ type ApprovalNoticeId = { idScope: str, idRun: str, idProposal: str }
 type ApprovalNoticeBinding = { bindingRoute: WorkflowNoticeRoute, bindingProposal: str }
 pure def approvalNoticeId(route: WorkflowNoticeRoute, proposal: str): ApprovalNoticeId = { idScope: route.noticeScope, idRun: route.runId, idProposal: proposal }
 pure def approvalNoticeBinding(route: WorkflowNoticeRoute, proposal: str): ApprovalNoticeBinding = { bindingRoute: route, bindingProposal: proposal }
-pure val workflowRouteA: WorkflowNoticeRoute = { noticeScope: "s1", noticeOrigin: "agent:local", noticeOwner: "u1", noticeAgent: "agent1", workflowId: "w1", runId: "r1", versionId: "v1" }
-pure val routeValues: Set[WorkflowNoticeRoute] = Set(workflowRouteA).union(Set({ ...workflowRouteA, versionId: "v2" })).union(Set({ ...workflowRouteA, runId: "r2" }))
+pure val routeValues: Set[WorkflowNoticeRoute] = {
+  val route = { noticeScope: "s1", noticeOrigin: "agent:local", noticeOwner: "u1", noticeAgent: "agent1", workflowId: "w1", runId: "r1", versionId: "v1" }
+  Set(route).union(Set({ ...route, versionId: "v2" })).union(Set({ ...route, runId: "r2" }))
+}
 pure val otherValues = routeValues
 pure def lawOneNoticePerApproval(route: WorkflowNoticeRoute, other: WorkflowNoticeRoute, proposal: str): bool =
   (route.noticeScope == other.noticeScope and route.runId == other.runId) implies approvalNoticeId(route, proposal) == approvalNoticeId(other, proposal)
@@ -242,12 +254,12 @@ pure def revalidateNotice(notice: SuspendedNotice, reads: NoticeReads, approval:
   else if (reads.reviewFinished or reads.cancellationRequested) WithdrawNotice
   else if (approvalOffered(approval) and reads.sameBindingAndExpiry) ResumeNotice
   else WithdrawNotice
-pure val currentReads: NoticeReads = { sessionValid: true, workflowRemoved: false, workflowVersion: "v1", runVersion: "v1", runFinished: false, reviewFinished: false, cancellationRequested: false, sameBindingAndExpiry: true, now: 10 }
 pure val noticeValues: Set[SuspendedNotice] = Set({ suspendedVersion: "v1", expiresAt: 20 }, { suspendedVersion: "v1", expiresAt: 10 }, { suspendedVersion: "v2", expiresAt: 20 })
-pure val readsValues: Set[NoticeReads] = List(
-  currentReads, { ...currentReads, sessionValid: false }, { ...currentReads, runFinished: true }, { ...currentReads, workflowVersion: "v2" },
-  { ...currentReads, cancellationRequested: true }, { ...currentReads, sameBindingAndExpiry: false }
-).foldl(Set(), (acc, r) => acc.union(Set(r)))
+pure val readsValues: Set[NoticeReads] = {
+  val current = { sessionValid: true, workflowRemoved: false, workflowVersion: "v1", runVersion: "v1", runFinished: false, reviewFinished: false, cancellationRequested: false, sameBindingAndExpiry: true, now: 10 }
+  List(current, { ...current, sessionValid: false }, { ...current, runFinished: true }, { ...current, workflowVersion: "v2" },
+    { ...current, cancellationRequested: true }, { ...current, sameBindingAndExpiry: false }).foldl(Set(), (acc, r) => acc.union(Set(r)))
+}
 pure val approvalValues: Set[A::Approval] = List(
   A::initial, { ...A::initial, phase: A::Pending, durable: true, callbackPresent: true }, { ...A::initial, phase: A::Claimed, durable: true },
   { ...A::initial, phase: A::Terminal, durable: false, resolution: A::Selected, desired: A::Selected }
