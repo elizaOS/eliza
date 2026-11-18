@@ -1,6 +1,6 @@
 // spec/os/android/phone.md, "Story: Hand an approved number to my phone"; spec/os/android/phone.md, "Story: Read my recent calls"; spec/os/android/voicemail.md, "Story: See my voicemail only when my carrier offers it"; spec/os/android/voicemail.md, "Story: Hear a voicemail"; spec/os/android/voicemail.md, "Story: Change a voicemail only as the provider confirms it"
 import { assert, it } from "@effect/vitest"
-import { MalformedReply } from "../../src/bridges/bridge.vibe"
+import { MalformedReply, rejectionCode } from "../../src/bridges/bridge.vibe"
 import {
   PhoneRequestRefused,
   RecentCallsRefused,
@@ -226,7 +226,7 @@ effect function refusal(call: () => Promise<unknown>) {
   if (cause instanceof VoicemailRefused) return `voicemail refused ${cause.reason} ${cause.gate}`
   if (cause instanceof VoicemailPcmRefused) return `pcm refused ${cause.reason}`
   if (cause instanceof MalformedReply) return `malformed ${cause.method}`
-  return cause
+  return `rejected ${rejectionCode(cause)}`
 }
 
 function rows(listing: VoicemailListing) {
@@ -339,7 +339,7 @@ it.live("Read my recent calls newest first, a page at a time, without repeats or
       unbounded: "calls refused CallLogLimitRefused",
       badNumber: "request refused not-dialable",
       outOfOrder: "malformed listRecentCalls",
-      locked: { code: "unavailable" },
+      locked: "rejected unavailable",
       undeclared: "calls refused CallLogUnavailable",
     },
   ))
@@ -369,7 +369,7 @@ it.live("See and hear my voicemail only when my carrier offers it, with each aud
   const pcm = try promise(() => client.voicemailPcm("11" as VoicemailId))
   const tooLong = try refusal(() => client.voicemailPcm("14" as VoicemailId))
   const notOnPhone = try refusal(() => client.voicemailPcm("12" as VoicemailId))
-  phone.voicemails[1] = { ...phone.voicemails[1], hasAudio: true, samples: 8000 } as typeof phone.voicemails[1]
+  phone.voicemails = phone.voicemails.map((one) => one.id === 12 ? { ...one, hasAudio: true, samples: 8000 } : one)
   const arrived = rows(try promise(() => client.refreshVoicemail()))
   phone.voiceCapable = false
   const noTelephony = try refusal(() => client.voicemailAudio("11" as VoicemailId))
