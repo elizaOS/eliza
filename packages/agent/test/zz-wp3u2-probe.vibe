@@ -12,5 +12,5 @@ effect function probe(own: OwnKeyModels, key: string) {
 }
 
 export function probeOwnKeyModels(own: OwnKeyModels, key: string): Promise<readonly string[] | string> {
-  return runPromise(Effect.provide(Effect.flatten(probe(own, key)), FetchHttpClient.layer))
+  return runPromise(Effect.provide(probe(own, key), FetchHttpClient.layer) as Effect.Effect<readonly string[] | string>)
 }

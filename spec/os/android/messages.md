@@ -29,39 +29,44 @@ and [voicemail](./voicemail.md)'s; the agent's own notices are
 A send is admitted only from the unlocked phone in front, with the send
 grant and a phone that can send texts. The send captures its operation ID
 before its journal lookup. A usable journal answer queues the native review
-dialog, which the visible owner can approve once. A cancel for the exact
-operation retires it before it is acknowledged; a background or destroyed
-owner also retires it; a cancel for another ID changes nothing. Retirement
-before dispatch settles as cancelled with no platform call. Once Android has
-accepted the dispatch, a cancel is refused, and the real or unknown result
-stays reportable even if the owner goes away.
+dialog, which the visible owner approves once; a send the owner composed
+and tapped Send on in the host's own composer is its own review. A cancel
+for the exact operation retires it until it is acknowledged; a background or
+destroyed owner also retires it; a cancel for another ID changes nothing.
+Retirement before dispatch settles as cancelled, and a provider row the
+default SMS app could not prepare settles as refused, both with no platform
+call. Once Android has accepted the dispatch, a cancel is refused, and the
+real or unknown result stays reportable even if the owner goes away.
 
 ```quint
 import bridge.* from "./bridge"
+type ReviewSource = NativeDialog | OwnerComposer
 type ReviewPhase = NoReview | ReadingJournal | MainQueued | Reviewing | ApprovedForDispatch | NativeDispatched | ReviewSettled
 type ReviewResult = NoReviewResult | ReviewCancelled | ReviewRefused | ReviewSubmitted | ReviewFailed | ReviewUnknown
 type SmsReview = {
-  phase: ReviewPhase, operationId: str, retired: bool, cancelAcknowledged: bool,
+  phase: ReviewPhase, source: ReviewSource, operationId: str, retired: bool, cancelAcknowledged: bool,
   dispatched: bool, result: ReviewResult
 }
 pure val initial: SmsReview = {
-  phase: NoReview, operationId: "", retired: false, cancelAcknowledged: false,
+  phase: NoReview, source: NativeDialog, operationId: "", retired: false, cancelAcknowledged: false,
   dispatched: false, result: NoReviewResult
 }
 pure val sendCall: BridgeCall = { need: WhileUnlocked, needsGrant: true, needsFeature: true }
-pure def canBeginReview(s: SmsReview, operationId: str, admission: Admission): bool =
+pure def canBeginReview(s: SmsReview, operationId: str, source: ReviewSource, admission: Admission): bool =
   s.phase == NoReview and operationId != "" and admission == CallAdmitted
-pure def beginReview(s: SmsReview, operationId: str, admission: Admission): SmsReview =
-  { ...s, phase: ReadingJournal, operationId: operationId }
+pure def beginReview(s: SmsReview, operationId: str, source: ReviewSource, admission: Admission): SmsReview =
+  { ...s, phase: ReadingJournal, source: source, operationId: operationId }
 pure def canFinishLookup(s: SmsReview): bool = s.phase == ReadingJournal
 pure def finishLookup(s: SmsReview, journalAllowsReview: bool): SmsReview =
   if (s.retired) { ...s, phase: ReviewSettled, result: ReviewCancelled }
   else if (journalAllowsReview) { ...s, phase: MainQueued }
   else { ...s, phase: ReviewSettled, result: ReviewRefused }
-pure def canShowReview(s: SmsReview): bool = s.phase == MainQueued and not(s.retired)
+pure def canShowReview(s: SmsReview): bool = s.phase == MainQueued and s.source == NativeDialog and not(s.retired)
 pure def showReview(s: SmsReview): SmsReview = { ...s, phase: Reviewing }
 pure def canApproveReview(s: SmsReview): bool = s.phase == Reviewing and not(s.retired)
 pure def approveReview(s: SmsReview): SmsReview = { ...s, phase: ApprovedForDispatch }
+pure def canAcceptComposerSend(s: SmsReview): bool = s.phase == MainQueued and s.source == OwnerComposer and not(s.retired)
+pure def acceptComposerSend(s: SmsReview): SmsReview = { ...s, phase: ApprovedForDispatch }
 pure def canRejectReview(s: SmsReview): bool = s.phase == Reviewing and not(s.retired)
 pure def rejectReview(s: SmsReview): SmsReview = { ...s, phase: ReviewSettled, result: ReviewCancelled }
 pure def pendingReview(s: SmsReview): bool = s.phase != NoReview and s.phase != ReviewSettled
@@ -73,6 +78,8 @@ pure def retireReview(s: SmsReview): SmsReview = { ...s, retired: true }
 pure def canSettleRetiredReview(s: SmsReview): bool =
   s.retired and (s.phase == MainQueued or s.phase == Reviewing or s.phase == ApprovedForDispatch)
 pure def settleRetiredReview(s: SmsReview): SmsReview = { ...s, phase: ReviewSettled, result: ReviewCancelled }
+pure def canRefuseOutbox(s: SmsReview): bool = s.phase == ApprovedForDispatch and not(s.retired)
+pure def refuseOutbox(s: SmsReview): SmsReview = { ...s, phase: ReviewSettled, result: ReviewRefused }
 pure def canDispatchApproved(s: SmsReview): bool = s.phase == ApprovedForDispatch and not(s.retired) and not(s.dispatched)
 pure def dispatchApproved(s: SmsReview): SmsReview = { ...s, phase: NativeDispatched, dispatched: true }
 pure def canReportDispatch(s: SmsReview, receipt: ReviewResult): bool =
@@ -90,8 +97,12 @@ pure def stepKnownResultPersists(before: SmsReview, after: SmsReview): bool =
   before.result != NoReviewResult implies after.result == before.result
 pure def stepOperationNeverChanges(before: SmsReview, after: SmsReview): bool =
   before.operationId != "" implies after.operationId == before.operationId
+pure def stepDispatchNeedsApproval(before: SmsReview, after: SmsReview): bool =
+  (after.dispatched and not(before.dispatched)) implies before.phase == ApprovedForDispatch
 pure def sometimesCancelledBeforeInvoke(s: SmsReview): bool = s.result == ReviewCancelled and s.cancelAcknowledged
 pure def sometimesResultSurvivesRetirement(s: SmsReview): bool = s.result == ReviewSubmitted and s.retired
+pure def sometimesComposerSendDispatched(s: SmsReview): bool = s.source == OwnerComposer and s.phase == NativeDispatched
+pure def sometimesOutboxRefusedWithoutDispatch(s: SmsReview): bool = s.result == ReviewRefused and s.phase == ReviewSettled and s.operationId != "" and s.source == NativeDialog
 ```
 
 ### A repeated operation ID reads its journal record and never sends again

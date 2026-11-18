@@ -61,8 +61,8 @@ type Outcome<A> = { readonly kind: "done"; readonly value: A } | { readonly kind
 
 type Callback =
   | { readonly kind: "late"; readonly error: ReturnError; readonly withdrawn: boolean }
-  | { readonly kind: "settled"; readonly attempt: GoogleAttempt; readonly withdrawn: boolean }
-  | { readonly kind: "exchange"; readonly withdrawn: boolean }
+  | { readonly kind: "settled"; readonly attempt: GoogleAttempt }
+  | { readonly kind: "exchange" }
 
 const Text = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048))
 const ExchangeBody = Schema.Struct({ code: Text, redirectUri: Text, clientId: Text, codeVerifier: Text })
@@ -235,9 +235,9 @@ effect function consumeCallback(tx: Tx, browser: Browser, query: URLSearchParams
     providerInstalled: (try Deployment).settings.google !== undefined,
     callback
   }, now)).state
-  if (consumed.flow.phase === "ProviderPending") return { kind: "exchange", withdrawn }
-  if (consumed.flow.phase !== "FailureWritePending") return { kind: "settled", attempt: consumed, withdrawn }
-  return { kind: "settled", attempt: (try step(tx, browser.key, { type: "writeFailure", write: "WriteAcknowledged" }, now, { google_verifier: null })).state, withdrawn }
+  if (consumed.flow.phase === "ProviderPending") return { kind: "exchange" }
+  if (consumed.flow.phase !== "FailureWritePending") return { kind: "settled", attempt: consumed }
+  return { kind: "settled", attempt: (try step(tx, browser.key, { type: "writeFailure", write: "WriteAcknowledged" }, now, { google_verifier: null })).state }
 }
 
 effect function finishCallback(browser: Browser, code: string) {
