@@ -182,12 +182,11 @@ under its name.
 
 ```quint
 pure def canArchiveSet(b: AndroidBuild): bool = b.phase == Published and b.request.wantsArchive and b.archive == P::initial
-pure def archiveSet(b: AndroidBuild, filesMatch: bool, ok: bool): AndroidBuild =
+pure def archiveSet(b: AndroidBuild, filesMatch: bool, ok: bool): AndroidBuild = {
+  val renamed = P::rename(P::write(P::create(b.archive, true), true), ok)
   if (not(filesMatch)) { ...b, phase: Failed({ failure: ArchiveFilesChanged }) }
-  else {
-    val renamed = P::rename(P::write(P::create(b.archive, true), true), ok)
-    { ...b, archive: renamed, phase: if (renamed.published) Archived else Failed({ failure: ArchiveNotPublished }) }
-  }
+  else { ...b, archive: renamed, phase: if (renamed.published) Archived else Failed({ failure: ArchiveNotPublished }) }
+}
 pure def canCleanArchive(b: AndroidBuild): bool = P::canCleanup(b.archive)
 pure def cleanArchive(b: AndroidBuild, removed: bool): AndroidBuild = { ...b, archive: P::cleanup(b.archive, removed) }
 pure def alwaysArchiveOnlyOfAPublishedReleaseSet(b: AndroidBuild): bool =

@@ -58,7 +58,6 @@ pure def stepRefusedOpeningChangesNothing(before: BrowserDock, via: str, after: 
   out.some(n => isRefusal(n)) implies (after == before and out.length() == 1)
 pure val panelWidthDpValues = Set(400, 200)
 pure val windowWidthDpValues = Set(1280, 700)
-pure val addressValues: Set[WebAddress] = Set(secureAddress).union(Set({ ...secureAddress, userInfo: true }))
 pure def sometimesDispatchedNotYetDocked(s: BrowserDock): bool = s.split != NoSplit and not(isEmbedded(s.split))
 ```
 

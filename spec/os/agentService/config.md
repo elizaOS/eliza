@@ -169,14 +169,14 @@ pure val credValues = {
     { ...active, custody: C::Active({ version: 1, credentialId: "c1", account: { userId: "", organizationId: "org1" }, keyExpiresAt: 1000 }) })
 }
 pure val dValues = {
-  val words = { words: "Agent", units: 5 }
-  val status = { method: Routes::Get, delivery: Routes::Buffered, path: List(Routes::Literal({ text: "api" }), Routes::Literal({ text: "status" })), query: List(), limit: Routes::AnySize }
+  val words: Words = { words: "Agent", units: 5 }
+  val status: Routes::Route = { method: Routes::Get, delivery: Routes::Buffered, path: List(Routes::Literal({ text: "api" }), Routes::Literal({ text: "status" })), query: List(), limit: Routes::AnySize }
   val cloud = Launch::CloudBackend({ baseUrl: "https://cloud.example", baseUrlShape: Launch::HttpsOrigin, smallModel: "", largeModel: "", imageModel: "" })
-  val launch = { backend: cloud, embeddings: Launch::NoEmbeddings, persistMemory: false, callerRole: Launch::ChatAsUser,
+  val launch: HostLaunch = { backend: cloud, embeddings: Launch::NoEmbeddings, persistMemory: false, callerRole: Launch::ChatAsUser,
     google: { gmailChanges: false, calendarEdits: false }, retention: Launch::KeepLogs, environment: List() }
-  val host = { schema: 1, service: QualifiedClass({ className: "app.example.AgentService" }), notification: { channel: words, title: words, text: words },
+  val host: HostFile = { schema: 1, service: QualifiedClass({ className: "app.example.AgentService" }), notification: { channel: words, title: words, text: words },
     routes: List({ prefixes: List(List()), id: Routes::flatParam, routes: List(status) }), launch: launch }
-  val good = { hostBytes: 900, characterBytes: 400, policyBytes: 300, host: host,
+  val good: AgentData = { hostBytes: 900, characterBytes: 400, policyBytes: 300, host: host,
     character: { name: "Agent", nameUnits: 5, systemBlank: false },
     policy: { schema: 1, policy: { actionsAllowed: Set("REPLY"), pluginsLoad: List("inbox"), productPlugin: Launch::NoProductPlugin } } }
   Set(good,
