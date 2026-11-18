@@ -3019,6 +3019,7 @@
         "@biomejs/biome": "2.6.6",
         "@electric-sql/pglite": "^0.4.5",
         "@elizaos/plugin-sqlite": "workspace:*",
+        "@elizaos/testing": "workspace:*",
         "@types/node": "^25.0.6",
         "@types/react": "^19.3.0",
         "@types/react-dom": "^19.3.0",
