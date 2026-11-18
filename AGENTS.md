@@ -40,6 +40,12 @@ nested `AGENTS.md` files.
   implementation. For documentation-only work, check the text and links.
 - Every UI PR must include an uploaded MP4 explainer and walkthrough with video
   evidence of the complete user flow, plus detailed steps to test the change.
+- Before opening any PR, complete the [required PR evidence](CONTRIBUTING.md#evidence).
+  Record tests and proof of the real change. Attach runtime or service logs for
+  non-UI work, a walkthrough for UI, comparable benchmark runs for performance,
+  and physical-device results for native or hardware changes. Maintainers close
+  unproven work and complexity for unsupported speculative paths. Slop.cash
+  submissions closed on those grounds cost the contributor points.
 - Write all issues and PRs in ASD-STE100 Simplified Technical English. Use short,
   direct sentences, explain technical terms, and write for a non-technical reader.
 - Slop bounty work: star and fork the repository first and work from the fork.
