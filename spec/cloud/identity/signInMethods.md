@@ -143,10 +143,12 @@ pure def sometimesLastMethodRefused(m: Methods): bool = m.outcome == AttemptRefu
 
 ### Every refusal this record builds is well formed
 
+A refused proof is answered with the refusal of the spec that refused it.
+
 ```quint
 pure def attemptWellFormed(attempt: Attempt): bool = match attempt { | AttemptRefused(r) => wellFormed(r.refusal) | _ => true }
-pure def lawEveryRefusalIsWellFormed(proof: LinkProof, holder: SubjectHolder, kindHeld: bool, held: bool, others: int): bool = {
-  val linkAnswer = linkAttempt(proof, holder, kindHeld)
+pure def lawEveryRefusalIsWellFormed(holder: SubjectHolder, kindHeld: bool, held: bool, others: int): bool = {
+  val linkAnswer = linkProven(holder, kindHeld)
   val unlinkAnswer = unlinkAttempt(held, others)
   wellFormed(reviewRefusal) and attemptWellFormed(linkAnswer) and attemptWellFormed(unlinkAnswer)
 }

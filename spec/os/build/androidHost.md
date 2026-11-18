@@ -91,8 +91,8 @@ pure def valueFits(javaValue: FieldValue): bool = match javaValue {
   | IntValue(i) => i.number >= javaIntMin and i.number <= javaIntMax
   | MismatchedValue => false
   | _ => true }
-pure def buildConfigAdmitted(fields: List[BuildConfigField]): bool =
-  fields.every(f => f.constantValid and valueFits(f.javaValue)) and distinctNames(fields.listMap(f => f.constant))
+pure def buildConfigAdmitted(constants: List[BuildConfigField]): bool =
+  constants.every(f => f.constantValid and valueFits(f.javaValue)) and distinctNames(constants.listMap(f => f.constant))
 ```
 
 ### Release minification is explicit, and shrinking or proguard rules need it
@@ -480,9 +480,9 @@ profile that sets one of them is refused by name.
 pure val schemaOneDropped = List("residentHost.classes", "residentHost.sockets", "residentHost.helpers", "preserveRuntimeBytes", "generationInputs", "testMocks", "dependencies.coordinate")
 pure def schemaOneFieldsAdmitted(fieldsSet: List[str]): bool = not(fieldsSet.some(f => schemaOneDropped.includes(f)))
 pure val fieldsSetValues = Set(List(), List("embeddedAgent"), List("embeddedAgent", "generationInputs"), List("residentHost.sockets"))
-pure val fieldValues = Set("embeddedAgent", "generationInputs", "residentHost.sockets")
-pure def lawDroppedFieldIsRefused(fieldsSet: List[str], field: str): bool =
-  (fieldsSet.includes(field) and schemaOneDropped.includes(field)) implies not(schemaOneFieldsAdmitted(fieldsSet))
+pure val droppedValues = Set("embeddedAgent", "generationInputs", "residentHost.sockets")
+pure def lawDroppedFieldIsRefused(fieldsSet: List[str], dropped: str): bool =
+  (fieldsSet.includes(dropped) and schemaOneDropped.includes(dropped)) implies not(schemaOneFieldsAdmitted(fieldsSet))
 ```
 
 ### A schema-1 upstream source becomes the os module its path lies in

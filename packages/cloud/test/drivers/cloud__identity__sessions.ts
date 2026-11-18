@@ -12,10 +12,12 @@ const cloud = ledger();
 const keys = ["a", "b"];
 const family = (key: string) => `family-${key}`;
 const person = (key: string) => `person-${key}`;
+const emitted = new Map<string, unknown>();
 const within = <A, E>(body: (tx: Tx) => Effect.Effect<A, E, never>) => Effect.flatMap(Store.asEffect(), (store) => store.transaction(body));
 
 async function dispatch(key: string, event: Event) {
   const done = await cloud.run(within((tx) => stepFamily(tx, family(key), event, 0, () => ({ user_id: person(key), access_digest: `${key}-access`, refresh_digest: `${key}-refresh` }))));
+  emitted.set(key, done.kind === "done" ? done.value.out : []);
   if (done.kind === "done") return "accepted" as const;
   if (done.tag === "Rejected") return "refused" as const;
   throw new Error(`the cloud failed with ${done.tag}`, { cause: done.error });
@@ -29,6 +31,7 @@ async function observe(key: string): Promise<Family> {
 
 export const driver: Driver & AsyncDisposable = {
   reset: async () => {
+    emitted.clear();
     await cloud.reset(keys.map((key) => `org-${key}`));
     for (const key of keys) {
       await cloud.sql("INSERT INTO accounts (key, state, revision, organization_id, status, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', 0, 0)", [person(key), `org-${key}`]);
@@ -36,6 +39,7 @@ export const driver: Driver & AsyncDisposable = {
   },
   dispatch,
   observe,
+  observeOutput: (key) => emitted.get(key) ?? [],
   [Symbol.asyncDispose]: () => cloud.dispose(),
 };
 

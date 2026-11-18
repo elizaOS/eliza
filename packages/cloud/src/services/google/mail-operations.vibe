@@ -224,9 +224,9 @@ function columns(scope: Scope, kind: OperationKind, now: number, result: Provide
   })
 }
 
-effect function storedResult(stored: unknown): ProviderResult | null {
+effect function storedResult(stored: unknown) {
   if (typeof stored !== "string") return stored !== null && typeof stored === "object" ? stored as ProviderResult : null
-  return try Effect.try(() => JSON.parse(stored) as ProviderResult) catch () => null
+  return try (Effect.try(() => JSON.parse(stored) as ProviderResult | null) catch () => null)
 }
 
 effect function readOperation(tx: Tx, scope: Scope) {
@@ -294,20 +294,20 @@ effect function message(grant: Grant, id: string) {
   return found?.id === id ? found : undefined
 }
 
-effect function draftRaw(grant: Grant, draftId: string): string {
+effect function draftRaw(grant: Grant, draftId: string) {
   const answer = try (google(grant, "GET", `/drafts/${draftId}?format=raw`) catch effect (failure) => { throw googleRefusal(failure) })
   const draft = decoded(DraftReply, answer)
   if (draft === undefined || draft.id !== draftId || draft.message?.raw === undefined) throw refused("ProviderInvalidResponse")
   return draft.message.raw
 }
 
-effect function draftAt(grant: Grant, draftId: string | undefined, expectedDigest: string | undefined): string {
+effect function draftAt(grant: Grant, draftId: string | undefined, expectedDigest: string | undefined) {
   if (draftId === undefined || expectedDigest === undefined || !providerId.test(draftId) || !digestPattern.test(expectedDigest)) throw refused("InvalidRequest")
   if (sha256Hex(try draftRaw(grant, draftId)) !== expectedDigest) throw refused("StaleRevision")
   return draftId
 }
 
-effect function labelOperation(grant: Grant, raw: unknown): Reviewed {
+effect function labelOperation(grant: Grant, raw: unknown) {
   const proposal = try strict(LabelProposal, raw)
   if (!providerId.test(proposal.messageId) || !historyId.test(proposal.expectedHistoryId)) throw refused("InvalidRequest")
   try readAtHistory(grant, proposal.messageId, proposal.expectedHistoryId)
@@ -329,7 +329,7 @@ effect function labelOperation(grant: Grant, raw: unknown): Reviewed {
   }
 }
 
-effect function deleteDraftOperation(grant: Grant, raw: unknown): Reviewed {
+effect function deleteDraftOperation(grant: Grant, raw: unknown) {
   const proposal = try strict(DraftDeleteProposal, raw)
   const draftId = try draftAt(grant, proposal.draftId, proposal.expectedDigest)
   const review = { kind: "draft-delete", draftId, expectedDigest: proposal.expectedDigest, from: grant.email, permanent: true }
@@ -359,7 +359,7 @@ export function rfc822Id(requestId: string): string {
   return `eliza-${requestId.toLowerCase()}@message.invalid`
 }
 
-effect function composeOperation(grant: Grant, kind: ComposeKind, raw: unknown, requestId: string): Reviewed {
+effect function composeOperation(grant: Grant, kind: ComposeKind, raw: unknown, requestId: string) {
   const extras = decoded(ComposeExtras, raw)
   if (kind !== "draft-replace" && (extras?.draftId !== undefined || extras?.expectedDigest !== undefined)) throw refused("InvalidRequest")
   const replacing = kind === "draft-replace" ? try draftAt(grant, extras?.draftId, extras?.expectedDigest) : undefined
@@ -395,7 +395,7 @@ function kindOf(raw: unknown): OperationKind | undefined {
   return typeof kind === "string" && kind in capabilityOf ? kind as OperationKind : undefined
 }
 
-effect function reviewProposal(owner: Owner, grantId: string, raw: unknown, requestId: string): Reviewed {
+effect function reviewProposal(owner: Owner, grantId: string, raw: unknown, requestId: string) {
   const kind = kindOf(raw)
   if (kind === undefined) throw refused("InvalidRequest")
   const grant: Grant = try useGrant(owner, grantId, capabilityOf[kind])
@@ -419,7 +419,7 @@ effect function reviewProposal(owner: Owner, grantId: string, raw: unknown, requ
   }
 }
 
-effect function lookupSeen(scope: Scope, kind: OperationKind, target: Target): Seen {
+effect function lookupSeen(scope: Scope, kind: OperationKind, target: Target) {
   const grant: Grant | undefined = try (useGrant(scope.owner, scope.grantId, capabilityOf[kind]) catch () => undefined)
   if (grant === undefined) return nothingSeen
   switch (target.kind) {

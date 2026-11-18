@@ -1,69 +1,102 @@
+// spec/os/appUpdate/health.md, "The agent half is the agent service's verdict for the current launch, and storage counts only from a ready agent"; spec/os/agentService/health.md, "A probe is Ok only for a ready answer of the current launch"
 package ai.eliza.plugins.agent.health;
 
+import ai.eliza.plugins.agent.health.HealthWork.Agent;
+import ai.eliza.plugins.agent.health.HealthWork.Probe;
+import ai.eliza.plugins.agent.health.HealthWork.Storage;
 import java.io.IOException;
 import java.util.Objects;
-import java.util.function.BooleanSupplier;
-import java.util.function.Supplier;
+import org.json.JSONException;
 import org.json.JSONObject;
 
-/** Read-only local runtime observations. Never starts processes or admits an update. */
 public final class LocalRuntimeHealth {
-  public static final class Snapshot {
-    public final Object owner, agent, gateway;
-    public final String instance, state;
+  public static final String HEALTH_ROUTE = "/api/health";
+  public static final String STORAGE_ROUTE = "/api/tasks/storage";
+
+  public interface AgentPort {
+    Launch launch();
+    Reply get(long epoch, String route, int timeoutMillis) throws IOException;
+    boolean childAlive(long epoch);
+    boolean socketAccepts(long epoch);
+  }
+
+  public static final class Launch {
     public final long epoch;
-    public final boolean stopping;
-    private final BooleanSupplier agentAlive, gatewayAlive;
-    public Snapshot(Object owner, String instance, String state, long epoch, boolean stopping,
-        Object agent, BooleanSupplier agentAlive, Object gateway, BooleanSupplier gatewayAlive) {
-      this.owner=owner; this.instance=Objects.requireNonNull(instance); this.state=Objects.requireNonNull(state);
-      this.epoch=epoch; this.stopping=stopping; this.agent=agent; this.gateway=gateway;
-      this.agentAlive=Objects.requireNonNull(agentAlive); this.gatewayAlive=Objects.requireNonNull(gatewayAlive);
+    public final int strikes, busyTicks;
+    public final boolean tasksLoaded;
+    public Launch(long epoch, int strikes, int busyTicks, boolean tasksLoaded) {
+      if (epoch < 1 || strikes < 0 || busyTicks < 0) throw new IllegalArgumentException("Invalid agent launch");
+      this.epoch = epoch; this.strikes = strikes; this.busyTicks = busyTicks; this.tasksLoaded = tasksLoaded;
     }
-    public boolean agentAlive(){return agent!=null&&agentAlive.getAsBoolean();}
-    public boolean gatewayAlive(){return gateway!=null&&gatewayAlive.getAsBoolean();}
   }
-  public interface Probe {
-    JSONObject exchange(Snapshot snapshot, boolean gateway, String route, int timeoutMillis)throws Exception;
+
+  public static final class Reply {
+    public final int status;
+    public final String body;
+    public Reply(int status, String body) {
+      this.status = status; this.body = Objects.requireNonNull(body);
+    }
   }
-  private final String processInstance;
-  private final Supplier<Snapshot> snapshots;
-  private final Probe probe;
+
+  public static final class Reading {
+    public final long epoch;
+    public final Agent agent;
+    public final Storage storage;
+    Reading(long epoch, Agent agent, Storage storage) {
+      this.epoch = epoch; this.agent = agent; this.storage = storage;
+    }
+  }
+
+  private final AgentPort agent;
   private final int timeoutMillis;
-  public LocalRuntimeHealth(String processInstance,Supplier<Snapshot> snapshots,Probe probe,int timeoutMillis) {
-    if(processInstance==null||processInstance.isEmpty()||timeoutMillis<=0)throw new IllegalArgumentException("Process identity and positive probe budget required");
-    this.processInstance=processInstance;this.snapshots=Objects.requireNonNull(snapshots);this.probe=Objects.requireNonNull(probe);this.timeoutMillis=timeoutMillis;
+
+  public LocalRuntimeHealth(AgentPort agent, int timeoutMillis) {
+    if (timeoutMillis <= 0) throw new IllegalArgumentException("Positive probe budget required");
+    this.agent = Objects.requireNonNull(agent); this.timeoutMillis = timeoutMillis;
   }
-  public JSONObject read()throws Exception {
-    Snapshot before=snapshots.get();
-    if(before==null)return evidence("none","stopped",0,"unavailable",false,false);
-    boolean agentReady=false,gatewayReady=false;String storage="unavailable";
-    if("running".equals(before.state)&&!before.stopping){
-      if(before.agentAlive())try{agentReady=probe.exchange(before,false,"/api/status",timeoutMillis).getInt("status")==200;}catch(IOException ignored){}
-      if(before.gatewayAlive())try{
-        JSONObject response=probe.exchange(before,true,"/local-health",timeoutMillis),data=response.getJSONObject("data");
-        gatewayReady=response.getInt("status")==200&&data.optInt("schemaVersion")==1&&data.optBoolean("gatewayResponsive")&&data.optBoolean("ownershipLoaded");
-      }catch(IOException ignored){}
+
+  public Reading read() {
+    Launch launch = agent.launch();
+    if (launch == null) return new Reading(0, Agent.WAITING, Storage.UNAVAILABLE);
+    Agent half = HealthWork.agentHalf(probe(launch), launch.strikes, launch.busyTicks);
+    return new Reading(launch.epoch, half, HealthWork.storage(half, half == Agent.HEALTHY ? tasks(launch) : Storage.UNAVAILABLE));
+  }
+
+  public boolean sameLaunch(Reading reading) {
+    Launch now = agent.launch();
+    return (now == null ? 0 : now.epoch) == reading.epoch;
+  }
+
+  private Probe probe(Launch launch) {
+    try {
+      Reply reply = agent.get(launch.epoch, HEALTH_ROUTE, timeoutMillis);
+      return reply.status >= 200 && reply.status < 300 && ready(reply.body, launch.epoch) ? Probe.OK : Probe.DEAD;
+    } catch (IOException unanswered) {
+      return agent.childAlive(launch.epoch) || agent.socketAccepts(launch.epoch) ? Probe.BUSY : Probe.DEAD;
     }
-    if(gatewayReady)try{
-      JSONObject response=probe.exchange(before,true,"/local-storage",timeoutMillis),data=response.getJSONObject("data");String observed=data.optString("taskStorage");
-      if(response.getInt("status")==200&&data.optInt("schemaVersion")==1&&java.util.Arrays.asList("ok","unavailable","deferred").contains(observed))storage=observed;
-    }catch(IOException ignored){}
-    Snapshot after=snapshots.get();
-    if(after==null||before.owner!=after.owner||!before.instance.equals(after.instance)||before.epoch!=after.epoch||!before.state.equals(after.state)||before.stopping!=after.stopping||before.agent!=after.agent||before.gateway!=after.gateway)throw new IOException("Runtime changed during health observation");
-    boolean gatewayResponsive=gatewayReady&&before.gatewayAlive();
-    if(!gatewayResponsive)storage="unavailable";
-    return evidence(before.instance,before.state,before.epoch,storage,agentReady&&before.agentAlive(),gatewayResponsive);
   }
-  public boolean unchanged(JSONObject observation)throws Exception {
-    if(!processInstance.equals(observation.getString("processInstance")))return false;
-    Snapshot current=snapshots.get();
-    if(current==null)return "none".equals(observation.getString("runtimeInstance"));
-    return current.instance.equals(observation.getString("runtimeInstance"))&&current.epoch==observation.getLong("runtimeEpoch")&&current.state.equals(observation.getString("runtimeState"))
-      &&(!observation.getBoolean("agentResponsive")||(!current.stopping&&current.agentAlive()))
-      &&(!observation.getBoolean("gatewayResponsive")||(!current.stopping&&current.gatewayAlive()));
+
+  private static boolean ready(String body, long epoch) {
+    try {
+      JSONObject value = new JSONObject(body);
+      Object answered = value.opt("epoch");
+      return Boolean.TRUE.equals(value.opt("ready")) && "ok".equals(value.opt("runtime")) && "running".equals(value.opt("agentState"))
+        && (answered instanceof Integer || answered instanceof Long) && ((Number) answered).longValue() == epoch;
+    } catch (JSONException unparsed) {
+      return false;
+    }
   }
-  private JSONObject evidence(String instance,String state,long epoch,String storage,boolean agent,boolean gateway)throws Exception {
-    return new JSONObject().put("processInstance",processInstance).put("runtimeInstance",instance).put("runtimeState",state).put("runtimeEpoch",epoch).put("taskStorage",storage).put("agentResponsive",agent).put("gatewayResponsive",gateway);
+
+  private Storage tasks(Launch launch) {
+    if (!launch.tasksLoaded) return Storage.NOT_LOADED;
+    try {
+      Reply reply = agent.get(launch.epoch, STORAGE_ROUTE, timeoutMillis);
+      JSONObject value = new JSONObject(reply.body);
+      if (reply.status != 200 || !Integer.valueOf(1).equals(value.opt("schemaVersion"))) return Storage.UNAVAILABLE;
+      Object observed = value.opt("taskStorage");
+      return "ok".equals(observed) ? Storage.OK : "deferred".equals(observed) ? Storage.DEFERRED : Storage.UNAVAILABLE;
+    } catch (IOException | JSONException unread) {
+      return Storage.UNAVAILABLE;
+    }
   }
 }

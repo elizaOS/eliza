@@ -568,7 +568,7 @@ export effect function rebootAndroidFixture(
   try call("reboot")
   try call("wait-for-device")
   const deadline = (try Clock.currentTimeMillis) + timeoutMs
-  const waitFor = effect (holds: () => boolean!AdbFailure | FixtureRefused, reason: string) => {
+  const waitFor = effect (holds: () => boolean!(AdbFailure | FixtureRefused | InvalidDeviceInput), reason: string) => {
     while ((try Clock.currentTimeMillis) < deadline) {
       if (try holds()) return
       try sleep(pollMs)

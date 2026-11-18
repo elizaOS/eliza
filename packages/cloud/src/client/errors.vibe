@@ -66,6 +66,12 @@ export function cloudErrorOf(status: number, code: RefusalCode, reason: RefusalR
   return { tag: "CloudRefused", code, reason }
 }
 
+export interface CloudResponse {
+  readonly status: number
+  readonly headers: { get(name: string): string | null }
+  text(): Promise<string>
+}
+
 interface RefusalRead {
   readonly code: RefusalCode
   readonly reason: RefusalReason
@@ -108,7 +114,7 @@ export function networkError(cause: unknown): CloudError {
   return new CloudError({ failure: { tag: "CloudNetwork" }, cause })
 }
 
-export async function readCloudError(response: Response, now: Millis = Date.now()): Promise<CloudError> {
+export async function readCloudError(response: CloudResponse, now: Millis = Date.now()): Promise<CloudError> {
   let text: string
   try {
     text = await response.text()
