@@ -75,10 +75,10 @@ module node {
       const messageId = replyId(hint)
       await runtime.roomHandlerQueue.withLease(original.roomId, async () => {
         if (await runtime.getMemoryById(messageId) !== null) return
-        await runtime.adapter.createMemories([{ tableName: "messages", memory: {
+        await runtime.createMessageMemory({
           id: messageId, entityId: runtime.agentId, agentId: runtime.agentId, roomId: original.roomId,
           worldId: original.worldId, createdAt: Date.now(), content: { text, source: "device", inReplyTo: original.id },
-        } }])
+        })
       })
       return { messageId, requestId: hint.requestId, conversationId: hint.conversationId, inReplyTo: hint.inReplyTo, text }
     }
