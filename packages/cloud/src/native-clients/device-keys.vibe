@@ -2,7 +2,7 @@
 import { ackPerIp, apply, decodeState, initial, Rejected, tokenPerIp, type Event, type Grant } from "../../gen/cloud__nativeClients__deviceKeys.effect.vibe"
 import { codeChallengeMethod, type ClientRequest, type Registration } from "../../gen/cloud__nativeClients__registry.effect.vibe"
 import type { RateLimit } from "../../gen/cloud__shared__rateLimit.effect.vibe"
-import { refused, Refused } from "../http/refusal.vibe"
+import { refused, type Refused } from "../http/refusal.vibe"
 import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import { admit } from "../shared/rate-limit.vibe"
 import { newId, sameText, seal, secretText, tokenDigest, unseal } from "../shared/sealing.vibe"

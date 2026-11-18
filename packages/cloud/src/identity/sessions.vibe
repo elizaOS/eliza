@@ -1,12 +1,12 @@
 // spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/sessions.md, "Story: Sign out here, or end my other sessions"; spec/cloud/identity/sessions.md, "Story: Confirm it is me before a sensitive change"
-import { NotAState, Rejected, apply, canLogout, canRecordStepUp, canRefresh, canRevokeOthers, decodeState, elapse, initial, refreshPerIp, refreshRefusal, revokeAll, sessionRefusal, type Assurance, type Event, type Family, type FamilyStep, type Moment, type SessionEffect } from "../../gen/cloud__identity__sessions.effect.vibe"
-import { refused, Refused, type RefusalReason } from "../http/refusal.vibe"
+import { type NotAState, type Rejected, apply, canLogout, canRecordStepUp, canRefresh, canRevokeOthers, decodeState, elapse, initial, refreshPerIp, refreshRefusal, revokeAll, sessionRefusal, type Assurance, type Event, type Family, type FamilyStep, type Moment, type SessionEffect } from "../../gen/cloud__identity__sessions.effect.vibe"
+import { refused, type Refused, type RefusalReason } from "../http/refusal.vibe"
 import { bearerToken } from "../http/request-auth.vibe"
 import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
 import { admit } from "../shared/rate-limit.vibe"
 import { newId, secretText, tokenDigest } from "../shared/sealing.vibe"
-import { loadRow, stepRow, RowConflict, RowCorrupt, type Columns, type MachineRows } from "../store/rows.vibe"
-import { Store, StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
+import { loadRow, stepRow, type RowConflict, type RowCorrupt, type Columns, type MachineRows } from "../store/rows.vibe"
+import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 
 export interface SignedIn {
   readonly status: "signed_in"

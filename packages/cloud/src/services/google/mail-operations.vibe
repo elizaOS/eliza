@@ -1,5 +1,5 @@
 // spec/cloud/services/google/mailOperations.md, "Story: Change or send from my mailbox once, as I reviewed it"; spec/cloud/shared/dispatchOnce.md, "Story: Send a change once and recover its outcome without sending it again"
-import { Rejected, NotAState, apply, decodeState, elapse, initial, isUnknown, canReceiveReply, canResolve, receiptStatus, type Event, type LookupResult, type ProviderReply, type Receipt, type RefusalCause } from "../../../gen/cloud__shared__dispatchOnce.effect.vibe"
+import { type Rejected, type NotAState, apply, decodeState, elapse, initial, isUnknown, canReceiveReply, canResolve, receiptStatus, type Event, type LookupResult, type ProviderReply, type Receipt, type RefusalCause } from "../../../gen/cloud__shared__dispatchOnce.effect.vibe"
 import { millisPerDay, millisPerSecond } from "../../../gen/cloud__shared__types.effect.vibe"
 import type { SessionOwner } from "../../../gen/core__sessions.ts"
 import { refused, type Refused } from "../../http/refusal.vibe"

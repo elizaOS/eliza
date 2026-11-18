@@ -1,9 +1,9 @@
 // spec/cloud/billing/subscriptions.md, "Story: Read my invoices and open the billing portal"
-import { decodeState, initial, invoiceVisible, portalAllowed, customerIdOf, NotAState, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import { decodeState, initial, invoiceVisible, portalAllowed, customerIdOf, type NotAState, type Subscription } from "../../gen/cloud__billing__subscriptions.effect.vibe"
 import { json, owner, type Route } from "../http/routes.vibe"
-import { refused, Refused } from "../http/refusal.vibe"
+import { refused, type Refused } from "../http/refusal.vibe"
 import { Deployment } from "../profile/profile.vibe"
-import { Store, StoreFailure, type Tx } from "../store/connection.vibe"
+import { Store, type StoreFailure, type Tx } from "../store/connection.vibe"
 
 export error ProviderMissing { path: string }
 export error ProviderFailed { path: string; status: number }

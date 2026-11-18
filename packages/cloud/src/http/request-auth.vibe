@@ -3,7 +3,7 @@ import { admitRequest, type RequestAccountStatus, type CredentialView, type Rout
 import { refused, Refused } from "./refusal.vibe"
 import { admit, minute } from "../shared/rate-limit.vibe"
 import { tokenDigest } from "../shared/sealing.vibe"
-import { Store, StoreFailure, toInt, toText, type Row } from "../store/connection.vibe"
+import { Store, type StoreFailure, toInt, toText, type Row } from "../store/connection.vibe"
 
 export type { RouteClass }
 

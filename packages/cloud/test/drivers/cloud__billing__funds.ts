@@ -1,5 +1,4 @@
 // spec/cloud/billing/funds.md, "Story: Spend only money the account has"
-import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/cloud__billing__funds.conformance.ts";
 import type { Event, Funds } from "../../gen/cloud__billing__funds.ts";
 import { addCredits, readFunds, stepFunds } from "../../src/billing/funds.vibe";
