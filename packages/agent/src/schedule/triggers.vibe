@@ -139,7 +139,7 @@ export function promptTriggers(deps: TriggerDeps): PromptTriggers {
     const before = try machine.get()
     const predicted = enabled(before, event) ? step(before, event) : undefined
     if (predicted !== undefined && record !== undefined) write.run = record(before, predicted)
-    const after = try (machine.send(event) catch () => undefined)
+    const after = machine.send(event) catch () => undefined
     return { before, after }
   }
 
