@@ -102,16 +102,18 @@ describe("WP1 Identity: second factor", () => {
     const token = first.accessToken
     const unprotected = try asOwner(cloud, token, "/api/v1/auth/mfa/sms", undefined, "DELETE")
     const { enrolled, confirmedAt } = try enrollTotp(cloud, token)
-    const secondSetup = try asOwner(cloud, token, "/api/v1/auth/mfa/totp/enroll", {})
+    const unsteppedSetup = try asOwner(cloud, token, "/api/v1/auth/mfa/totp/enroll", {})
     const wrong = try asOwner(cloud, token, "/api/v1/auth/mfa/step-up", { method: "totp", code: "000000" })
     const stepped = try asOwner(cloud, token, "/api/v1/auth/mfa/step-up", { method: "totp", code: authenticatorCode(enrolled.secret, confirmedAt, 1) })
     const marks = stepped.body as { stepUpAt: number; mfaAt: number }
     const read = try asOwner(cloud, token, "/api/v1/auth/mfa")
+    const secondSetup = try asOwner(cloud, token, "/api/v1/auth/mfa/totp/enroll", {})
     const removed = try asOwner(cloud, token, "/api/v1/auth/mfa/totp", undefined, "DELETE")
     const afterRemoval = (try signInAgain(cloud, "grace@example.com")) as { status: string }
     try check(() => assert.deepStrictEqual(
       {
         unprotected: refusal(unprotected),
+        unsteppedSetup: refusal(unsteppedSetup),
         secondSetup: refusal(secondSetup),
         wrong: refusal(wrong),
         stepped: [stepped.status, marks.stepUpAt === marks.mfaAt && marks.stepUpAt >= confirmedAt],
@@ -121,6 +123,7 @@ describe("WP1 Identity: second factor", () => {
       },
       {
         unprotected: "428 fresh_session_required",
+        unsteppedSetup: "428 fresh_session_required",
         secondSetup: "400 invalid_request",
         wrong: "401 credential_proof_invalid",
         stepped: [200, true],
