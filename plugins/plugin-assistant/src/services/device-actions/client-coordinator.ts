@@ -3825,6 +3825,12 @@ function describeTelephonyAction(operation: TelephonyActionOperation): {
         description:
           "Share the messages showing in the open thread with the agent. Other threads and phone numbers stay private.",
       };
+    case "sms_latest_sender":
+      return {
+        title: "Read latest text sender",
+        description:
+          "Read the last four digits of the newest incoming SMS sender. The phone does not read the message body.",
+      };
     case "voicemail_read_selected":
       return {
         title: "Share open voicemail",

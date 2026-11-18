@@ -62,7 +62,9 @@ import { validateNotesQueryResult } from "./notes-query-result.ts";
 import { validateReminderResult } from "./reminder-contract.ts";
 import {
   validateContactReadResult,
+  smsLatestSenderReply,
   validateMessagesReadResult,
+  validateSmsLatestSenderResult,
   validateVoicemailReadResult,
 } from "./telephony-actions-contract.ts";
 import { validateWorkflowReadResult } from "./workflow-contract.ts";
@@ -312,11 +314,13 @@ export function deviceReadResult(request: ApprovalRequest): JsonValue {
                     ? validateMapsResult(op, receipt.result)
                     : op.type === "messages_read_selected"
                       ? validateMessagesReadResult(receipt.result)
-                      : op.type === "voicemail_read_selected"
-                        ? validateVoicemailReadResult(receipt.result)
-                        : op.type === "contact_read_selected"
-                          ? validateContactReadResult(receipt.result)
-                          : fail();
+                      : op.type === "sms_latest_sender"
+                        ? validateSmsLatestSenderResult(receipt.result)
+                        : op.type === "voicemail_read_selected"
+                          ? validateVoicemailReadResult(receipt.result)
+                          : op.type === "contact_read_selected"
+                            ? validateContactReadResult(receipt.result)
+                            : fail();
   // An applied open-item read always carries the item; an empty selection is a failed receipt.
   if (
     (op.type === "messages_read_selected" ||
@@ -604,6 +608,16 @@ export async function synthesizeDeviceReadReply(
 ): Promise<string> {
   signal.throwIfAborted();
   const result = deviceReadResult(request);
+  if (isObjectRecord(result) && result.kind === "sms-latest-sender") {
+    await recheck?.();
+    assertDeviceReadCompletionCurrent(
+      runtime,
+      binding,
+      signal,
+      assertHostCurrent,
+    );
+    return smsLatestSenderReply(validateSmsLatestSenderResult(result));
+  }
   if (
     binding.purpose === "original_calendar_availability_reply" &&
     binding.origin.afterRead?.kind === "calendar_availability"

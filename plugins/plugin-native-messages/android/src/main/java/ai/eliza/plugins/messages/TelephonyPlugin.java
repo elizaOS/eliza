@@ -529,6 +529,12 @@ public abstract class TelephonyPlugin extends Plugin {
   fencedRead(call, "sms", "Messages", cancel -> SmsProviderReader.messages(getContext(), thread, limit, before, cursor, cancel));
  }
 
+ /** Latest incoming SMS sender metadata, without loading or disclosing message content. */
+ @PluginMethod public void latestIncomingSender(PluginCall call) {
+  if (refused(call)) return;
+  fencedRead(call, "sms", "Messages", cancel -> SmsProviderReader.latestIncomingSender(getContext(), cancel));
+ }
+
  /**
   * Marks a conversation's received messages read, up to the newest one the owner has on screen
   * ({@code throughDate}, milliseconds), and removes its notice. Keeping read state is the default SMS
