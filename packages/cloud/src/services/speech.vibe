@@ -1,6 +1,6 @@
 // spec/cloud/services/speech.md, "Story: Speak a reply as audio"; spec/cloud/services/speech.md, "Story: Transcribe a recording"
 import type { HoldKey } from "../../gen/cloud__shared__types.ts"
-import { refused, type Refused } from "../http/refusal.vibe"
+import { refused, Refused } from "../http/refusal.vibe"
 import { jsonBody, owner, type CloudContext, type Route, type RouteContext } from "../http/routes.vibe"
 import { Deployment, type EnvironmentProfile } from "../profile/profile.vibe"
 import { synthesize, synthesizeTimed, transcribe, ProviderInvalidResponse, type SpeechFailure, type Synthesis, type TimedFrame, type Transcription } from "../providers/speech.vibe"
@@ -175,7 +175,7 @@ effect function readUpload(context: RouteContext, settings: SpeechSettings): Upl
       }
     }
   }
-  try parts catch effect (failure) => match (failure) {
+  parts catch effect (failure) => match (failure) {
     when Refused: throw failure;
     default: throw failure.reason._tag === "BodyTooLarge" || failure.reason._tag === "FileTooLarge" ? refused("ContentTooLarge") : refused("InvalidRequest");
   }

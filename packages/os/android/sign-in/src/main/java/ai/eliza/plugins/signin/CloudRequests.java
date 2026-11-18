@@ -88,6 +88,8 @@ public final class CloudRequests {
       return answered;
     } catch (LargeBodyGrant.Oversize oversize) {
       return new Failed(Failure.TOO_LARGE);
+    } catch (IllegalArgumentException unsendable) {
+      return new Failed(Failure.ROUTE_REFUSED);
     } catch (IOException unanswered) {
       return new Failed(Failure.NETWORK);
     } finally {

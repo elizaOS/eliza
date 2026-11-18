@@ -162,7 +162,8 @@ pure def stepEndedPermissionsAreWithdrawnBeforeTheStart(before: PageRequests, vi
     (via == "pageStarted" implies out.length() > 0 and isStarted(last))
 }
 pure def sometimesStartEndedAHandoff(s: PageRequests): bool =
-  s.requests.some(r => r.kind == OtherApp and r.status == Dismissed) and s.host.surfaces.some(x => x.page.result == L::PageLoading)
+  s.requests.some(r => r.kind == OtherApp and r.status == Dismissed and s.host.surfaces.some(x => x.gen == r.gen) and
+    not(s.requests.some(b => b.kind == OtherApp and b.gen == r.gen and b.id > r.id)))
 ```
 
 ### Hiding ends what only the shown page may ask, pausing ends its dialogs, and closing ends everything

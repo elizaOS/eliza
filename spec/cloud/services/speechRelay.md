@@ -169,7 +169,7 @@ pure def lawRefusedFundingClosesAsFundingNeverUnauthorized(r: Relay, funding: Sh
 }
 ```
 
-### Only a hello carrying the session token opens the relay, and ready, then the held edges, is sent once the first window is admitted
+### Only the session token opens the relay, ready and then the held edges follow the first admitted window, and turn events follow connected
 
 The first frame must be a hello whose token matches the session's digest;
 its `errorReasons` and `extend` flags hold for the socket. Binary audio
@@ -177,7 +177,10 @@ first is `unavailable`; anything else first is `unauthorized`. The session
 then admits the first window and starts the providers, and only then is
 `ready` sent, once, followed by the edges held while opening (so an early
 `connected` follows `ready` at once). As in develop, a device frame sent
-while the relay is opening is refused as `unavailable`.
+while the relay is opening is refused as `unavailable`. `connected` is sent
+once, and no turn event before it (a transcript over 16384 chars is a
+provider failure). The shell forwards uplink audio to the provider only
+while `acceptsAudio` holds; the device starts capture on `connected`.
 
 ```quint
 pure def deliver(r: Relay, frame: ServerFrame): RelayAnswer =
@@ -210,6 +213,15 @@ pure def lawReadyThenHeldEdgesOnlyWhenTheOpeningIsAdmitted(r: Relay, input: Rela
     (a.frames.includes(ReadyFrame) iff (r.phase == RelayOpening and input == Admitted))
     and ((r.phase == RelayOpening and input == Admitted) implies a.frames == List(ReadyFrame).concat(r.pending))
     and (r.phase != RelayLive implies a.frames.every(f => f == ReadyFrame or isErrorFrame(f) or isCloseFrame(f) or (input == Admitted and r.pending.includes(f)))))
+}
+pure def acceptsAudio(r: Relay): bool = r.phase == RelayLive and r.sttConnected
+pure def lawConnectedPrecedesTurnsAndAcceptedAudio(r: Relay, input: RelayInput): bool = {
+  val a = relayStep(r, input)
+  val sent = a.frames.concat(a.relay.pending)
+  relayWellFormed(r) implies (
+    (sent.some(f => isTurnFrame(f)) implies (a.relay.sttConnected or a.relay.phase == RelayEnded))
+    and (a.frames.includes(SttFrame({ kind: SttConnected })) implies (not(r.sttConnected) or r.pending.includes(SttFrame({ kind: SttConnected }))))
+    and ((a.relay.sttConnected and not(r.sttConnected) and a.relay.phase != RelayEnded) implies sent.includes(SttFrame({ kind: SttConnected }))))
 }
 ```
 
@@ -269,25 +281,6 @@ pure def lawNothingIsSentForACancelledUtterance(r: Relay, input: RelayInput, id:
   (relayWellFormed(r) and stageIs(r, id, UtteranceCancelled)) implies (stageIs(a.relay, id, UtteranceCancelled)
     and not(a.frames.includes(PreparedFrame({ id: id })) or a.frames.includes(AudioFrame({ id: id }))
       or a.frames.includes(FlushedFrame({ id: id })) or a.frames.includes(CompleteFrame({ id: id }))))
-}
-```
-
-### Turn events and accepted uplink audio follow connected, and extended goes only to a hello that asked
-
-`connected` is sent once, and a turn event before it is never sent (a
-transcript over 16384 chars is a provider failure). The shell forwards
-uplink audio to the provider only while `acceptsAudio` holds, and drops it
-otherwise; the device starts capture on `connected`.
-
-```quint
-pure def acceptsAudio(r: Relay): bool = r.phase == RelayLive and r.sttConnected
-pure def lawConnectedPrecedesTurnsAndAcceptedAudio(r: Relay, input: RelayInput): bool = {
-  val a = relayStep(r, input)
-  val sent = a.frames.concat(a.relay.pending)
-  relayWellFormed(r) implies (
-    (sent.some(f => isTurnFrame(f)) implies (a.relay.sttConnected or a.relay.phase == RelayEnded))
-    and (a.frames.includes(SttFrame({ kind: SttConnected })) implies (not(r.sttConnected) or r.pending.includes(SttFrame({ kind: SttConnected }))))
-    and ((a.relay.sttConnected and not(r.sttConnected) and a.relay.phase != RelayEnded) implies sent.includes(SttFrame({ kind: SttConnected }))))
 }
 pure def lawExtendedOnlyForAHelloThatAsked(r: Relay, input: RelayInput): bool =
   relayWellFormed(r) implies (relayStep(r, input).frames.includes(ExtendedFrame) implies r.extend)

@@ -3,7 +3,7 @@ import { assert, describe, it } from "@effect/vitest"
 import { addCredits } from "../src/billing/funds.vibe"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
-import { Store } from "../src/store/store.vibe"
+import { Store, type Tx } from "../src/store/store.vibe"
 import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
 import type { FakeRequest } from "./support/fakes.ts"
 import { fileURLToPath } from "node:url"
@@ -12,10 +12,10 @@ import { periodRows } from "../src/shared/metering.vibe"
 import { tokenDigest } from "../src/shared/sealing.vibe"
 import { stepRow } from "../src/store/rows.vibe"
 import { verifyEntitlement, type PublishedKey } from "./support/entitlement.ts"
-import { disableClient } from "../src/native-clients/registry.vibe"
+import { decodeRegistration, disableClient, registerClient, updateClient } from "../src/native-clients/registry.vibe"
 import { seedClients } from "../src/operator/clients.vibe"
 import { forwardScriptHash } from "../src/pages/forward-script.ts"
-import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
+import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
 import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
 import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
 import { s256, signedIn } from "./support/identity.ts"
@@ -365,6 +365,88 @@ describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/de
     ))
   }))
 })
+describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/registry.md)", () => {
+  const fingerprint = "E3:DC:37:EF:3F:94:F0:CB:F5:06:F2:6E:CD:F7:99:99:29:C2:B2:D0:53:D1:63:83:56:91:F7:C9:67:F6:7E:A5"
+  const web = "https://www.staging.example.com"
+  const signInOne = `${web}/apps/one/sign-in`
+  const one = {
+    clientId: "com.example.one", environment: "staging", displayName: "One", androidPackage: "com.example.one", certFingerprints: [fingerprint],
+    signInReturn: signInOne, billingReturn: `${web}/apps/one/billing`, credentialTtlMs: 30 * 86_400_000, nativeGoogle: true, enabled: true
+  }
+  const two = { ...one, clientId: "com.example.two", displayName: "Two", androidPackage: "com.example.two", signInReturn: `${web}/apps/two/sign-in`, billingReturn: `${web}/apps/two/billing`, nativeGoogle: false }
+
+  function configPath(clientId: string, environment: string, redirectUri: string): string {
+    return `/api/v1/app-auth/mobile/config?${new URLSearchParams({ clientId, environment, redirectUri }).toString()}`
+  }
+
+  function code(body: unknown): string | undefined {
+    return (body as { readonly error?: string }).error
+  }
+
+  effect function registered(cloud: TestCloud, edit: ProfileEdit | undefined, run: (tx: Tx, now: number) => unknown!{ readonly _tag: string }!(Deployment | Store)) {
+    const base = try sync(() => testProfile(cloud.fakes.url))
+    const profile = try parseProfile(edit === undefined ? base : edit(base))
+    const now = try Clock.currentTimeMillis
+    provide Store = cloud.store, deploymentLayer(profile, "staging") {
+      return try failureTag(cloud.store.transaction((tx) => run(tx, now)))
+    }
+  }
+
+  it.live("Admit only a registered native client on its exact return, and publish its Android association (spec/cloud/nativeClients/registry.md, \"Story: Admit only a registered native client\"; spec/cloud/nativeClients/registry.md, \"Story: Tell a client exactly why it was refused\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const writes = [
+      try registered(cloud, undefined, effect (tx: Tx, now: number) => { return (try registerClient(tx, try decodeRegistration(one), now)).clientId }),
+      try registered(cloud, undefined, effect (tx: Tx, now: number) => { return (try registerClient(tx, try decodeRegistration(two), now)).clientId }),
+      try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try registerClient(tx, try decodeRegistration({ ...two, clientId: "com.example.three", signInReturn: "https://api.staging.example.com/apps/three", billingReturn: `${web}/apps/three/billing`, androidPackage: "com.example.three" }), now) }),
+      try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try registerClient(tx, try decodeRegistration({ ...two, clientId: "com.example.four", androidPackage: "com.example.one", signInReturn: `${web}/apps/four/sign-in`, billingReturn: `${web}/apps/four/billing` }), now) }),
+      try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try decodeRegistration({ ...two, signInReturn: `${web}/apps/two/sign-in?next=1` }) }),
+      try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try updateClient(tx, try decodeRegistration({ ...two, clientId: "com.example.unknown", androidPackage: "com.example.unknown" }), now) })
+    ]
+    const admitted = try cloud.call(configPath("com.example.one", "staging", signInOne))
+    const unknown = try cloud.call(configPath("com.example.nobody", "staging", signInOne))
+    const otherEnvironment = try cloud.call(configPath("com.example.one", "production", signInOne))
+    const wrongReturn = try cloud.call(configPath("com.example.one", "staging", `${web}/apps/one/billing`))
+    const notAUrl = try cloud.call(configPath("com.example.one", "staging", "one-sign-in"))
+    const linksBefore = try cloud.call("/.well-known/assetlinks.json")
+    try registered(cloud, undefined, effect (tx: Tx, now: number) => { try disableClient(tx, "com.example.two", now) })
+    const disabled = try cloud.call(configPath("com.example.two", "staging", `${web}/apps/two/sign-in`))
+    const linksAfter = try cloud.call("/.well-known/assetlinks.json")
+    try check(() => assert.deepStrictEqual(
+      {
+        writes,
+        admitted: [admitted.status, admitted.body],
+        refusals: [unknown, otherEnvironment, wrongReturn, notAUrl, disabled].map((answer) => [answer.status, code(answer.body), (answer.body as { readonly retryable?: boolean }).retryable]),
+        linksBefore: (linksBefore.body as ReadonlyArray<{ readonly target: { readonly package_name: string } }>).map((statement) => statement.target.package_name),
+        linksAfter: linksAfter.body
+      },
+      {
+        writes: [
+          "succeeded with \"com.example.one\"", "succeeded with \"com.example.two\"", "RegistrationRefused", "RegistrationRefused", "RegistrationInvalid", "ClientNotRegistered"
+        ],
+        admitted: [200, {
+          clientId: "com.example.one", environment: "staging", redirectUri: signInOne, codeChallengeMethod: "S256", credentialTtlMs: 30 * 86_400_000,
+          methods: { email: false, sms: false, google: false },
+          google: { configured: true, serverClientId: "google-server-client", nativeSignIn: true }
+        }],
+        refusals: [[400, "invalid_client", false], [400, "invalid_client", false], [400, "redirect_mismatch", false], [400, "redirect_mismatch", false], [403, "client_disabled", false]],
+        linksBefore: ["com.example.one", "com.example.two"],
+        linksAfter: [{ relation: ["delegate_permission/common.handle_all_urls"], target: { namespace: "android_app", package_name: "com.example.one", sha256_cert_fingerprints: [fingerprint] } }]
+      }
+    ))
+  }))
+
+  it.live("Tell an app that Google sign-in is off (spec/cloud/nativeClients/registry.md, \"Story: Tell a client exactly why it was refused\")", () => scoped(effect {
+    const googleOff: ProfileEdit = (profile) => {
+      const { google, ...staging } = profile.environments.staging
+      return { ...profile, environments: { ...profile.environments, staging: { ...staging, capabilities: staging.capabilities.filter((capability) => capability !== "managedGoogle") } } }
+    }
+    const cloud = try testCloud({ edit: googleOff })
+    try registered(cloud, googleOff, effect (tx: Tx, now: number) => { return try registerClient(tx, try decodeRegistration(one), now) })
+    const answer = try cloud.call(configPath("com.example.one", "staging", signInOne))
+    try check(() => assert.deepStrictEqual([answer.status, (answer.body as { readonly google?: unknown }).google], [200, { configured: false, serverClientId: "", nativeSignIn: false }]))
+  }))
+})
+
 describe.todo("WP3 Checkout and provider events (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")")
 describe.todo("WP6 Speech (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\")")
 describe.todo("WP7 Maps (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\")")

@@ -167,7 +167,8 @@ function sessionOn(phone: Device, client: CameraClient, host: Host, registered =
 
 effect function refusal(call: () => Promise<unknown>) {
   const { cause } = try flip(tryPromise(() => call()))
-  return typeof cause === "object" && cause !== null && "_tag" in cause ? cause._tag : typeof cause === "object" && cause !== null && "code" in cause ? cause.code : cause
+  if (typeof cause !== "object" || cause === null) return cause
+  return "_tag" in cause ? cause._tag : "code" in cause ? cause.code : cause instanceof Error ? cause.message : cause
 }
 
 it.live("See the live view I opened (spec/os/android/camera.md, \"Story: See the live view I opened\"; spec/os/android/camera.md, \"Only the answer to the current foreground start can make the viewfinder ready\"; spec/os/android/camera.md, \"Only Android's explicit permission refusal counts as a denial\"; spec/os/android/camera.md, \"Permission recovery rearms the view only on a read of the current grant\")", () => effect {

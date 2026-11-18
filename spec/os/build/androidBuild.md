@@ -161,7 +161,7 @@ pure def alwaysReceiptsAreHonest(b: AndroidBuild): bool = P::alwaysSuccessMeansP
   and P::alwaysPreRenameOwnsPendingPublication(b.apks) and P::alwaysSuccessMeansPublished(b.archive) and P::alwaysPublicationMatchesWrite(b.archive)
 pure def stepSetIsPublishedOnlyFromVerified(before: AndroidBuild, via: str, after: AndroidBuild): bool =
   (after.apks.published and not(before.apks.published)) implies (via == "publishSet" and before.phase == Verified)
-pure def isFailed(phase: BuildPhase): bool = match phase { | Failed(f) => true | _ => false }
+pure def isFailed(phase: BuildPhase): bool = phase != Pending and phase != Building and phase != Staged and phase != Verified and phase != Published and phase != Archived
 pure def stepFinishedBuildStays(before: AndroidBuild, after: AndroidBuild): bool =
   (before.phase == Archived or isFailed(before.phase)) implies (after.phase == before.phase and after.manifest == before.manifest)
 pure def sometimesVerifiedSetPublished(b: AndroidBuild): bool = b.phase == Published and b.apks.receipt == P::SuccessReceipt and carriesAgent(b.request.payload)
