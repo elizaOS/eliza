@@ -6,7 +6,8 @@ pane on the right) or, where the host has no room or no embedding, full
 screen. While the browser is docked, the app can hide its pane behind a
 small return badge drawn over other apps, bring the pane back full screen
 from that badge, and restore the split. This spec owns the dock's states,
-its refusals and the helper events; `lifecycle.md` owns the address check.
+its refusals and the helper events; `../address.md` owns the address
+check, and `lifecycle.md` the in-app surfaces it does not touch.
 The shell resolves Android's split support, the window width in whole dp,
 the browser's trust and the overlay permission, and reports the host's
 embedding as Android sends it. Sources: `BrowserDockController.kt`,
@@ -20,7 +21,7 @@ embedding as Android sends it. Sources: `BrowserDockController.kt`,
 
 ### Opening dispatches the owned browser at a panel width that fits, and refuses with a code the app can fall back from
 
-`openDockedBrowser` takes a web address (`lifecycle.md`), the helper pane
+`openDockedBrowser` takes a web address (`../address.md`), the helper pane
 width (`panelWidthDp`, 400 when absent) and the window's width in whole dp.
 Without activity embedding it is refused `BROWSER_DOCK_UNAVAILABLE`; a pane
 narrower than 320 dp or wider than 640 dp, or a window that leaves the
@@ -32,7 +33,7 @@ replaces the earlier split request, closes any helper window and reports
 `browserHelperWindowClosed` with reason `website-opened`.
 
 ```quint
-import lifecycle as L from "./lifecycle"
+import address.* from "../address"
 type DockSplit = NoSplit | SplitRequested({ panelWidthDp: int }) | SplitEmbedded({ panelWidthDp: int, helperShown: bool })
 type HelperWindow = NoHelperWindow | BadgeWindow | FullScreenWindow
 type BrowserDock = { split: DockSplit, helperWindow: HelperWindow, overlayPermission: bool }
@@ -45,8 +46,8 @@ pure def isEmbedded(split: DockSplit): bool = match split { | SplitEmbedded(e) =
 pure def helperShownIn(split: DockSplit): bool = match split { | SplitEmbedded(e) => e.helperShown | _ => false }
 pure def panelWidthOf(split: DockSplit): int = match split { | SplitRequested(r) => r.panelWidthDp | SplitEmbedded(e) => e.panelWidthDp | _ => 0 }
 pure def panelFits(panelWidthDp: int, windowWidthDp: int): bool = panelWidthDp >= 320 and panelWidthDp <= 640 and windowWidthDp - panelWidthDp >= 480
-pure def canOpenDockedBrowser(s: BrowserDock, address: L::WebAddress): bool = L::isWebAddress(address)
-pure def openDockedBrowser(s: BrowserDock, address: L::WebAddress, panelWidthDp: int, windowWidthDp: int, splitAvailable: bool): DockChange =
+pure def canOpenDockedBrowser(s: BrowserDock, address: WebAddress): bool = isWebAddress(address)
+pure def openDockedBrowser(s: BrowserDock, address: WebAddress, panelWidthDp: int, windowWidthDp: int, splitAvailable: bool): DockChange =
   if (not(splitAvailable)) { state: s, out: List(DockRefused({ reason: DockUnavailable })) }
   else if (not(panelFits(panelWidthDp, windowWidthDp))) { state: s, out: List(DockRefused({ reason: DockSizeUnavailable })) }
   else { state: { ...s, split: SplitRequested({ panelWidthDp: panelWidthDp }), helperWindow: NoHelperWindow },
@@ -57,7 +58,7 @@ pure def stepRefusedOpeningChangesNothing(before: BrowserDock, via: str, after: 
   out.some(n => isRefusal(n)) implies (after == before and out.length() == 1)
 pure val panelWidthDpValues = Set(400, 200)
 pure val windowWidthDpValues = Set(1280, 700)
-pure val addressValues: Set[L::WebAddress] = Set(L::secureAddress).union(Set({ ...L::secureAddress, userInfo: true }))
+pure val addressValues: Set[WebAddress] = Set(secureAddress).union(Set({ ...secureAddress, userInfo: true }))
 pure def sometimesDispatchedNotYetDocked(s: BrowserDock): bool = s.split != NoSplit and not(isEmbedded(s.split))
 ```
 

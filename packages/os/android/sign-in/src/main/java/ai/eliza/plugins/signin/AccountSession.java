@@ -45,20 +45,14 @@ public final class AccountSession {
   }
 
   public String accessToken() {
-    CompletableFuture<Void> mine;
-    Tokens refreshing;
+    CompletableFuture<Void> mine = null, theirs = null;
+    Tokens refreshing = null;
     synchronized (this) {
       SessionRead read = store.readSession();
       switch (read) {
         case USABLE -> { return bound(); }
         case NONE -> { tokens = null; return null; }
-        case AWAIT_REFRESH -> {
-          CompletableFuture<Void> theirs = inFlight;
-          if (theirs == null) return null;
-          mine = null;
-          refreshing = null;
-          return awaitOutside(theirs);
-        }
+        case AWAIT_REFRESH -> theirs = inFlight;
         case START_REFRESH -> {
           mine = inFlight = new CompletableFuture<>();
           refreshing = tokens;
@@ -66,6 +60,7 @@ public final class AccountSession {
         default -> throw new IllegalStateException(read.name());
       }
     }
+    if (mine == null) return theirs == null ? null : await(theirs);
     if (refreshing == null) {
       finish(mine, new RefreshAnswer.Refused(), null);
       return null;
