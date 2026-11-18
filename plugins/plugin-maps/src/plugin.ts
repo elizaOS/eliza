@@ -132,9 +132,11 @@ const END = String.raw`(?:,?\s+(?:please|for\s+me))*\s*[.!?]*\s*$`;
 /**
  * "how do I get to talk to someone", "can I get to see my results": "get to"
  * and a verb is a chance to do it, not a trip. The verb ends in a space, so a
- * place such as "See's Candies" still travels.
+ * place such as "See's Candies" still travels. See, hear and try can still
+ * be a trip ("get to see the Eiffel Tower"), so they stop it only before a
+ * possessive or a person ("see my results", "hear him play").
  */
-const GET_TO_VERB = String.raw`(?:be|become|see|meet|talk|speak|chat|hear|have|try)\s`;
+const GET_TO_VERB = String.raw`(?:be|become|meet|talk|speak|chat|have)\s|(?:see|hear|try)\s+(?:my|your|our|his|her|their|its|me|him|them|it|you|us|someone|somebody|anyone|anybody|everyone|everybody|people)\b`;
 /**
  * "take me to X", "navigate to X", "how do I get to X". X may still be a view
  * ("take me to settings"), which the caller checks against the view registry.
