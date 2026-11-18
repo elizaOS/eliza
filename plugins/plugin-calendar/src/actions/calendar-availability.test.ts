@@ -244,13 +244,24 @@ describe("standalone Calendar availability", () => {
     "Do I have time after tomorrow morning?",
     "Is Friday or tomorrow morning free?",
   ])("reads the window for a wider request: %s", async (text) => {
-    const { call, handler } = fixture();
-    await call(
-      "CALENDAR_CHECK_AVAILABILITY",
-      { windowEnd: "2026-11-07T04:00:00.000Z" },
-      text,
+    const { call, handler, feed } = fixture();
+    const wideEnd = "2026-11-07T04:00:00.000Z";
+    feed.data.timeMax = wideEnd;
+    feed.data.requestWindow.timeMax = wideEnd;
+    expect(
+      await call("CALENDAR_CHECK_AVAILABILITY", { windowEnd: wideEnd }, text),
+    ).toMatchObject({ success: true, data: { isFree: false } });
+    expect(handler).toHaveBeenCalledExactlyOnceWith(
+      runtime,
+      { ...message, content: { text } },
+      undefined,
+      {
+        parameters: {
+          subaction: "feed",
+          details: { timeMin: start, timeMax: wideEnd, timeZone },
+        },
+      },
     );
-    expect(handler).toHaveBeenCalledOnce();
   });
 
   it("recognises only a tomorrow-morning-only request", () => {

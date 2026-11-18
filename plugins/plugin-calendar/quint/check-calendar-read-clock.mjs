@@ -125,7 +125,7 @@ checkReadSuite(
 );
 
 console.log(
-  `Nineteen exact selected Calendar cases passed without skips. Evidence ${directory}`,
+  `Selected Calendar reads and availability cases passed without skips. Evidence ${directory}`,
 );
 
 const creationReport = path.join(directory, "creation-clock.json");
