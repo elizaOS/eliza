@@ -7,7 +7,7 @@ levels, distribution variants, manifests, source sets, the os modules it
 builds, its own Gradle modules, Maven dependencies, assets, pre-build
 commands, signing and version environment names, the agent's data files and
 the agent service's notification and launch hook. The
-Android build (`build/androidBuild.md`) builds and publishes the generated
+release build rules below govern building and publishing the generated
 project, the [runtime payload](./runtimePayload.md) is what an agent host
 ships, and the [bridge vocabulary](../android/bridge.md) names what the os
 modules provide. The sources are develop's `consumer-host.mjs` and the
