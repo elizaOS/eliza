@@ -24,7 +24,7 @@ it. An absent or mismatched source gives no offer.
 
 ```quint
 import numbers as Num from "../core/numbers"
-import schedule as S from "./schedule"
+import occurrenceWindow as S from "../core/occurrenceWindow"
 type SourceFreshness = SourceCurrent | SourceExpired | SourceRevoked
 type DigestOffer = { scheduledAt: int, digestExists: bool, removed: bool, active: bool, enabled: bool, deviceSource: bool, revisionMatches: bool, sourcePresent: bool, revoked: bool, expiresAt: int, digestSourceCurrent: bool, newerResult: bool, validMutation: bool }
 pure def sourceFreshness(revoked: bool, expiresAt: int, now: int): SourceFreshness = if (revoked) SourceRevoked else if (expiresAt <= now) SourceExpired else SourceCurrent

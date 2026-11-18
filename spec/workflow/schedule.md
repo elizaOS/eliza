@@ -16,17 +16,17 @@ The server rejects a version mismatch or an instant more than one second
 ahead. The cron engine must compute that instant from the reviewed trigger
 and zone. A forward clock gap that moves the scheduler wakeup away from
 the selected wall minute is recorded as missed. An occurrence more than
-thirty minutes late is also missed. An earlier unfinished run prevents
+thirty minutes late is also missed: the core [missed occurrence
+window](../core/occurrenceWindow.md) owns that window. An earlier unfinished run prevents
 starting another. A prior execution with the same workflow, version and
 instant supplies the existing result without admission twice. [Hosted
 digests](./hostedDigest.md) use the same miss window.
 
 ```quint
+import occurrenceWindow.* from "../core/occurrenceWindow"
 type OccurrenceFacts = { armVersion: int, definitionVersion: int, clockNow: int, scheduledAt: int, cronMatches: bool, wallMinuteMatches: bool, active: bool, pendingRun: bool, hasPrior: bool }
 type OccurrenceDecision = WrongOccurrence | ExistingOccurrence | InactiveSchedule | NotReviewedInstant | MissedWallTime | MissedWindow | OverlappingRun | QueueOccurrence
-pure val missedWindowMs: int = 1800000
 pure val clockSkewMs: int = 1000
-pure def missedOccurrence(scheduledAt: int, now: int): bool = now - scheduledAt > missedWindowMs
 pure def decideOccurrence(facts: OccurrenceFacts): OccurrenceDecision =
   if (facts.armVersion != facts.definitionVersion or facts.scheduledAt > facts.clockNow + clockSkewMs) WrongOccurrence
   else if (facts.hasPrior) ExistingOccurrence

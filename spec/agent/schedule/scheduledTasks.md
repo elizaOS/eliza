@@ -49,7 +49,7 @@ revision, and every commit moves the revision by one, so of two callers that
 read the same row only the first commits.
 
 ```quint
-import schedule.* from "../../workflow/schedule"
+import occurrenceWindow.* from "../../core/occurrenceWindow"
 type TaskStatus = Scheduled | Fired | Acknowledged | Completed | Skipped | Failed | Dismissed
 type Due = DueAt({ at: int }) | Manual | NoMoreOccurrences
 type ReopenRef = NoReference | Since({ at: int })
