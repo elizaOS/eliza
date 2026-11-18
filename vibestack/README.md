@@ -120,9 +120,8 @@ means are in [CONTRIBUTING.md](../CONTRIBUTING.md#architecture).
 
 3. In `spec/index.md`, say what the product is for. In `spec/app/index.md`,
    the requirements of the application in `apps/app`, replace the hello
-   world story ([apps/app](../apps/app/README.md)) with your first: who it is
-   for, what they need to do, and why. Write it in Studio or in the Markdown
-   file.
+   world story with your first: who it is for, what they need to do, and
+   why. Write it in Studio or in the Markdown file.
 4. Ask your coding agent to sync. It writes the rules and Quint, builds the
    code on them in place of the hello world, runs the checks, and reports
    what needs your review.

@@ -132,11 +132,6 @@ function read(mailbox: GmailMailbox, request: FakeRequest, rest: string): FakeAn
     const message = mailbox.messages.get(messagePath[1] ?? "");
     return message === undefined ? { status: 404, body: { error: { code: 404 } } } : { status: 200, body: shown(message) };
   }
-  const draftPath = /^\/drafts\/([A-Za-z0-9_-]+)$/.exec(rest);
-  if (draftPath !== null) {
-    const draft = mailbox.drafts.get(draftPath[1] ?? "");
-    return draft === undefined ? { status: 404, body: { error: { code: 404 } } } : { status: 200, body: draftShown(mailbox, draft, request.query.get("format")) };
-  }
   return undefined;
 }
 

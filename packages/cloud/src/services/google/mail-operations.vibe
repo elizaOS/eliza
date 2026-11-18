@@ -8,9 +8,9 @@ import { requestDigest } from "../../shared/dispatch-once.vibe"
 import { sha256Hex } from "../../shared/sealing.vibe"
 import { loadRow, machineRows, stepRow, type Columns } from "../../store/rows.vibe"
 import { Store, toText, type Row, type Tx } from "../../store/connection.vibe"
-import { googleJson } from "../../providers/google.vibe"
+import { failureReply, googleJson, type GoogleFailure } from "../../providers/google.vibe"
 import { useGrant, type GoogleCapability } from "./grant-access.vibe"
-import { attachmentBytes, readAtHistory } from "./mail-read.vibe"
+import { attachmentBytes, googleRefused, readAtHistory } from "./mail-read.vibe"
 import { composeMessage } from "./mail-compose.vibe"
 
 export type LabelKind = "archive" | "unarchive" | "trash" | "untrash" | "mark-read" | "mark-unread" | "star" | "unstar"
@@ -259,24 +259,8 @@ function google(grant: Grant, method: "GET" | "POST" | "PUT" | "DELETE", path: s
   return googleJson(grant.accessToken, method, `${gmail}${path}`, body === undefined ? {} : { body })
 }
 
-function failedReply(failure: { readonly _tag: string }): Outcome {
-  switch (failure._tag) {
-    case "NotFound": return { reply: { tag: "DefiniteRefusal", cause: "NotFoundAtProvider" }, result: null }
-    case "InvalidGrant": return { reply: { tag: "DefiniteRefusal", cause: "AuthorizationLost" }, result: null }
-    case "PreconditionFailed":
-    case "Duplicate": return { reply: { tag: "DefiniteRefusal", cause: "OtherRefusal" }, result: null }
-    default: return unclear
-  }
-}
-
-function googleRefusal(failure: { readonly _tag: string }): Refused {
-  switch (failure._tag) {
-    case "NotFound": return refused("NotFound")
-    case "InvalidGrant": return refused("GoogleReauthRequired")
-    case "ContentTooLarge": return refused("ContentTooLarge")
-    case "InvalidResponse": return refused("ProviderInvalidResponse")
-    default: return refused("ProviderUnavailable")
-  }
+function failedReply(failure: GoogleFailure): Outcome {
+  return { reply: failureReply(failure), result: null }
 }
 
 function messageResult(message: GmailMessage, readState: boolean) {
@@ -296,7 +280,7 @@ effect function message(grant: Grant, id: string) {
 }
 
 effect function draftRaw(grant: Grant, draftId: string) {
-  const answer = google(grant, "GET", `/drafts/${draftId}?format=raw`) catch effect (failure) => { throw googleRefusal(failure) }
+  const answer = google(grant, "GET", `/drafts/${draftId}?format=raw`) catch effect (failure) => { throw googleRefused(failure) }
   const draft = decoded(DraftReply, answer)
   if (draft === undefined || draft.id !== draftId || draft.message?.raw === undefined) throw refused("ProviderInvalidResponse")
   return draft.message.raw

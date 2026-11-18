@@ -47,14 +47,14 @@ pure val discoveryJitter = 15
 pure val retryDelay = 1
 pure val recheckDelay = 15
 pure val initial: Ledger = { trackingSince: 0, lastCheck: 0, pending: 0, pendingSince: 0, pendingSinceWall: 0, windowsThroughWall: 0, missedWindows: 0, resetSince: 0, resetPending: false, alertLevel: AlertNone, alertReasons: List(), lastOutcome: NoOutcome, lastDecision: Undecided }
-pure def greatest(a: int, b: int): int = if (a > b) a else b
-pure def least(a: int, b: int): int = if (a < b) a else b
+pure def larger(a: int, b: int): int = if (a > b) a else b
+pure def smaller(a: int, b: int): int = if (a < b) a else b
 pure def signedLowerOf(trusted: A::Interval): int = if (trusted.lower > 0) trusted.lower else 0
 pure def signedSeen(signedNow: int, l: Ledger): Ledger =
   if (signedNow <= 0) l
   else { ...l, trackingSince: if (l.trackingSince == 0) signedNow else l.trackingSince, pendingSince: if (l.pending != 0 and l.pendingSince == 0) signedNow else l.pendingSince, resetSince: if (l.resetPending) signedNow else l.resetSince, resetPending: false }
 pure def checkedAt(signedNow: int, found: DiscoveryResult, l: Ledger): Ledger =
-  if (found == SourceUnavailable) l else { ...l, lastCheck: greatest(l.lastCheck, signedNow) }
+  if (found == SourceUnavailable) l else { ...l, lastCheck: larger(l.lastCheck, signedNow) }
 pure def partsOf(runOutcome: Outcome, l: Ledger): RunParts =
   { ledger: l, aborted: false, discovery: DiscoveryUnchanged, download: DownloadUnchanged, activation: ActivationCancelled, decision: Undecided, runOutcome: runOutcome }
 pure def discoveryPart(signedNow: int, found: DiscoveryResult, jitter: int, cancelled: bool, l: Ledger): RunParts = {
@@ -168,17 +168,17 @@ pure def comfortWindow(wall: int, missed: int): ComfortWindow =
 pure def untilOpen(wall: int): int =
   if (inWindow(wall)) 0 else if (minuteOfDay(wall) < windowStart) windowStart - minuteOfDay(wall) else dayMinutes - minuteOfDay(wall) + windowStart
 pure def windowsEnded(since: int, until: int): int =
-  if (until <= since) 0 else least(floorDiv(until - windowEnd, dayMinutes) - floorDiv(since - windowEnd, dayMinutes), missedCap)
+  if (until <= since) 0 else smaller(floorDiv(until - windowEnd, dayMinutes) - floorDiv(since - windowEnd, dayMinutes), missedCap)
 pure def windowsCounted(wall: int, l: Ledger): Ledger =
   if (l.pending == 0) l
-  else { ...l, missedWindows: least(missedCap, l.missedWindows + windowsEnded(greatest(l.pendingSinceWall, l.windowsThroughWall), wall)), windowsThroughWall: greatest(l.windowsThroughWall, wall) }
+  else { ...l, missedWindows: smaller(missedCap, l.missedWindows + windowsEnded(larger(l.pendingSinceWall, l.windowsThroughWall), wall)), windowsThroughWall: larger(l.windowsThroughWall, wall) }
 pure val sinceValues = Set(0, 130, 310, 1570)
 pure val untilValues = Set(0, 300, 1740, 3200)
 pure val wallValues = Set(0, 130, 310, 1570, 3200)
 pure def lawWindowNeverAuthorizesAlone(signals: Signals, window: ComfortWindow): bool =
   activationGate(signals, window).length() == 0 implies deviceBlockers(signals, activationMinBattery).length() == 0
 pure def lawEveryDayEndsOneWindow(since: int, until: int): bool =
-  until >= since implies windowsEnded(since, until + dayMinutes) == least(windowsEnded(since, until) + 1, missedCap)
+  until >= since implies windowsEnded(since, until + dayMinutes) == smaller(windowsEnded(since, until) + 1, missedCap)
 pure def alwaysMissedWindowsBelongToAPendingPlan(l: Ledger): bool =
   l.pending >= 0 and 0 <= l.missedWindows and l.missedWindows <= missedCap and
   (l.pending == 0 implies (l.pendingSince == 0 and l.pendingSinceWall == 0 and l.windowsThroughWall == 0 and l.missedWindows == 0))
@@ -209,7 +209,7 @@ pure def activationPart(job: Job, signedNow: int, wall: int, s: Signals, activat
   val allowed = blockers.length() == 0
   if (r.ledger.pending != 0) { ...r,
     aborted: r.aborted or (evaluated and allowed and cancelled),
-    activation: ActivationAfter({ activationDelay: if (window == WindowClosed) greatest(retryDelay, untilOpen(wall)) else recheckDelay }),
+    activation: ActivationAfter({ activationDelay: if (window == WindowClosed) larger(retryDelay, untilOpen(wall)) else recheckDelay }),
     decision: if (not(evaluated)) r.decision else if (not(allowed)) Decided({ blockers: blockers }) else if (activated == NotEnabled) Decided({ blockers: List(ActivationNotEnabled) }) else Decided({ blockers: List() }),
     runOutcome: if (not(evaluated)) r.runOutcome else if (allowed) Activated({ activation: activated }) else ActivationDeferred }
   else if (not(known)) { ...r,

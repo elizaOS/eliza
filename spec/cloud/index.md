@@ -145,6 +145,24 @@ pure def canChangeCloudGoogle(ownerSessionActive: bool, grantMatches: bool, allo
   ownerSessionActive and grantMatches and allowed and reviewedTarget and versionMatches
 ```
 
+### A device reminder follows the reviewed event occurrence
+
+A person chooses one hour before or one day before for a confirmed timed
+occurrence on their owned calendar. Cloud derives the alarm time from the exact
+provider revision and accepts a future alarm beyond the current month. A
+registered device may read only reminder schedules for its own account. If the
+schedule spans multiple pages, every page must belong to one unchanged owner
+snapshot before the device cancels alarms missing from that schedule. Reading an
+occurrence to open its details requires a fresh
+match of the grant, occurrence and provider revision. An edited, deleted or
+disconnected occurrence does not authorize an old alarm. The saved schedule
+receipt does not indicate that Android has delivered a notification.
+
+```quint
+pure def canReadCloudCalendarReminder(activeDevice: bool, ownerMatches: bool, grantCurrent: bool, occurrenceCurrent: bool, revisionCurrent: bool): bool =
+  activeDevice and ownerMatches and grantCurrent and occurrenceCurrent and revisionCurrent
+```
+
 ## Story: Use a cloud speech session
 
 > As a signed-in person with a subscription or funded pilot account, I can

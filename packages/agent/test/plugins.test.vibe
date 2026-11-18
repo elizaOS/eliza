@@ -1,6 +1,5 @@
 // spec/agent/plugins/profile.md, "Story: Load only the plugins my product lists"; spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"
 import { assert, it } from "@effect/vitest"
-import { addLogListener, type LogEntry } from "@elizaos/core"
 import { builtinModules, cloudLinkPlugin, storagePlugin } from "../gen/agent__plugins__profile.ts"
 import { parseLaunch } from "../src/host/launch.vibe"
 import type { AgentPlugin } from "../src/host/module.vibe"
@@ -128,33 +127,25 @@ for (const [title, rule, launch] of childRefusals) {
   }, 120_000)
 }
 
-it.effect('An agent with a cloud backend and no plugins is ready and registers storage then the cloud link (spec/agent/plugins/profile.md, "Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last")', effect () => {
+it.effect('An agent with a cloud backend and no plugins is ready and lists only the message service actions (spec/agent/plugins/profile.md, "Story: Load only the plugins my product lists")', effect () => {
   const booted = try boot({ cloud: true })
   try ready(booted)
   const answer = try host("status", () => request((booted.transport as { path: string }).path, { method: "GET", path: "/api/status", token: booted.frame.token }))
-  const stopped = try host("stop", () => booted.child.stop())
-  const output = `${stopped.stdout}${stopped.stderr}`
-  const registered = output.split("\n").filter((line) => line.includes("Plugin registered"))
-  try Effect.try(() => assert.strictEqual("json" in answer ? (answer.json as { state: string }).state : answer, "running"))
-  try Effect.try(() => assert.include(registered[0] ?? "", storagePlugin))
-  try Effect.try(() => assert.include(registered[1] ?? "", cloudLinkPlugin))
-  try Effect.try(() => assert.strictEqual(registered.length, 2))
+  try Effect.try(() => assert.deepStrictEqual(
+    "json" in answer ? { status: answer.status, actions: (answer.json as { actions?: string[] }).actions } : answer,
+    { status: 200, actions: ["IGNORE", "NONE", "REPLY"] },
+  ))
 }, 180_000)
 
 it.effect('Plugins register as storage, the cloud link, the listed plugins and the product last (spec/agent/plugins/profile.md, "Storage loads first, then the cloud link, the privacy service, the listed plugins in order and the product plugin last")', effect () => {
-  const order = [storagePlugin, cloudLinkPlugin, listedPlugin.name, productPlugin.name]
-  const registered: string[] = []
-  const listen = (entry: LogEntry) => {
-    if (!entry.msg.includes("Plugin registered")) return
-    const plugin = order.find((name) => entry.msg.includes(name))
-    registered.push(plugin ?? entry.msg)
-  }
-  try acquireRelease(Effect.sync(() => addLogListener(listen)), (remove) => Effect.sync(() => { remove() }))
   const state = try scratch("plan-state")
   const { input } = try launched(state, {
     launch: { load: [listedPlugin.name], productPlugin: productPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] },
     bundled: [listedPlugin, productPlugin],
   })
   const running = try acquireRelease(startAgent(input), (agent) => orDie(host("retire agent", () => agent.stop())))
-  try Effect.try(() => assert.deepStrictEqual({ ready: running.status.ready, registered }, { ready: true, registered: order }))
+  try Effect.try(() => assert.deepStrictEqual(
+    { ready: running.status.ready, registered: running.runtime.plugins.map((plugin) => plugin.name) },
+    { ready: true, registered: [storagePlugin, cloudLinkPlugin, listedPlugin.name, productPlugin.name] },
+  ))
 }, 120_000)

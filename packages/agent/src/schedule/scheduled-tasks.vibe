@@ -65,6 +65,7 @@ export type Created =
   | { readonly kind: "existing"; readonly task: ScheduledTaskView }
 
 export error TaskRefused { reason: string }
+error DeliveryFailed { cause: unknown }
 
 export const scheduledTasksTick = "AGENT_SCHEDULED_TASKS"
 export const scheduledTasksTickMs = 60_000
@@ -207,7 +208,7 @@ export function scheduledTaskService(host: ScheduledTaskHost) {
 
   effect function deliver(task: ScheduledTaskView, now: number) {
     const port = deliveries.get(task.kind) ?? host.defaultDelivery
-    const result = tryPromise({ try: () => port(task), catch: (cause) => cause }) catch (cause) => undeliverable(cause)
+    const result = tryPromise({ try: () => port(task), catch: (cause) => new DeliveryFailed({ cause }) }) catch (failure) => undeliverable(failure.cause)
     switch (result.kind) {
       case "delivered": return { delivery: delivered, note: {} }
       case "retry": return { delivery: { tag: "RetryAt", retryAt: now + Math.max(1, Math.ceil(result.afterMs)) } as Delivery, note: { reason: result.reason } }

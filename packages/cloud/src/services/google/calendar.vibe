@@ -648,7 +648,7 @@ export effect function sweepStaleWrites(): number!!CloudContext {
   const store = try Store
   const now = try Clock.currentTimeMillis
   const stale = try (store.transaction((tx) => tx.query(
-    "SELECT key FROM calendar_writes WHERE phase IN ('dispatched', 'outcome-unknown') AND stale_after <= $1 ORDER BY stale_after LIMIT $2",
+    "SELECT key FROM calendar_writes WHERE phase IN ('dispatched', 'outcome-unknown') AND stale_after <= $1 AND user_id IS NOT NULL AND kind IS NOT NULL AND calendar_id IS NOT NULL ORDER BY stale_after LIMIT $2",
     [now, sweepBatch]
   )) catch () => [])
   let settled = 0

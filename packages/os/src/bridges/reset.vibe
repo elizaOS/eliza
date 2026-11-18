@@ -1,9 +1,9 @@
 // spec/os/android/reset.md, "Story: Erase the app's data only after I confirm"; spec/os/android/reset.md, "The renderer hears only that nothing was reset"
-import { reviewMessageShown, reviewOutcome } from "../../gen/os__android__reset.effect.vibe"
+import { reviewNotice } from "../../gen/os__android__reset.effect.vibe"
 import type { DataResetPlugin, DataResetReviewResult } from "./definitions/reset.ts"
 
 export type * from "./definitions/reset.ts"
-export type { ReviewOutcome } from "../../gen/os__android__reset.ts"
+export type { ReviewNotice } from "../../gen/os__android__reset.ts"
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
@@ -23,10 +23,8 @@ export effect function reviewReset(plugin: DataResetPlugin): DataResetReviewResu
   const answer = tryPromise(() => plugin.review()) catch () => undefined
   const status = typeof answer?.status === "string" ? answer.status : ""
   const message = typeof answer?.message === "string" ? answer.message : ""
-  const blank = message.trim() === ""
-  return reviewMessageShown(status, message.length, blank)
-    ? { outcome: reviewOutcome(status, message.length, blank), message }
-    : { outcome: "ReviewUnavailable", message: DATA_RESET_UNCONFIRMED }
+  const notice = reviewNotice(status, message.length, message.trim() === "")
+  return { notice, message: notice === "ShellUnavailable" ? DATA_RESET_UNCONFIRMED : message }
 }
 
 export function reviewDataReset(plugin: DataResetPlugin = resetPlugin()): Promise<DataResetReviewResult> {

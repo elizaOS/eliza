@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// spec/agent/host/process.md, "The exit code is the boot failure's code, else 0 after a clean release and 1 after a failed one"; spec/agent/host/process.md, "The first signal stops the runtime at once, and a repeated signal joins that stop"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
+// spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella"; spec/agent/host/process.md, "The exit code is the boot failure's code, else 0 after a clean release and 1 after a failed one"; spec/agent/host/process.md, "The first signal stops the runtime at once, and a repeated signal joins that stop"; spec/agent/host/launch.md, "Each boot failure has one exit code, and every code outside the table is a crash"
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { AGENT_EXIT_CODES, exitCode, readLaunch, LaunchCredentialMissing } from "./host/launch.vibe"
@@ -27,6 +27,10 @@ module node {
     return { schemaVersion: manifest.schemaVersion, bytes }
   }
 
+  export function publishBundleActions(actions: readonly { name: string }[]): void {
+    process.send?.({ kind: "bundleActionRegistry", actions: actions.map(({ name }) => name).sort() })
+  }
+
   export function exitOnUncaught(code: number): void {
     for (const event of ["uncaughtException", "unhandledRejection"] as const) {
       process.on(event, (error: unknown) => {
@@ -36,7 +40,7 @@ module node {
     }
   }
 }
-import { bundledSnapshot, exitOnUncaught } from node
+import { bundledSnapshot, exitOnUncaught, publishBundleActions } from node
 
 let released: number | undefined
 
@@ -46,10 +50,11 @@ effect function serve() {
     try: () => bundledSnapshot(import.meta.url),
     catch: () => new AgentBootFailed({ phase: "Storage" }),
   })
-  try acquireRelease(
+  const agent = try acquireRelease(
     startAgent({ ...input, ...(snapshot === undefined ? {} : { snapshot }) }),
     (agent) => map(promise(() => agent.stop()), (code) => { released = code }),
   )
+  try sync(() => publishBundleActions(agent.runtime.actions))
   try never
 }
 

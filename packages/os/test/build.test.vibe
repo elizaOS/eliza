@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import { buildAndroid, generateAndroidHost } from "../src/build/index.vibe"
 import { aaptManifestTree, listAndroidArtifactEntries, manifestFacts, parseXmlTree, readApkSignerDigest } from "../src/image/apk.vibe"
 import { androidTools, standInElf, testSigner } from "./support/android-tools.ts"
-import { fixture } from "./support/scratch.vibe"
+import { commitTree, fixture, git } from "./support/scratch.vibe"
 
 module node {
   import { createHash } from "node:crypto"
@@ -41,16 +41,17 @@ module node {
     }
   }
 
-  export const PASSES = { command: process.execPath, args: ["-e", ""] }
+  export const PASSES = { command: process.execPath, args: ["verify-apks.mjs"] }
   export const FAILS = { command: process.execPath, args: ["-e", "process.exit(3)"] }
 
   /** @throws {never} */
   export const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
 
-  /** @throws {never} */
-  export function rowsOf(manifest: unknown): readonly Readonly<Record<string, unknown>>[] {
-    const rows = Array.isArray(manifest) ? manifest : Object.values(manifest as Record<string, unknown>).find(Array.isArray) ?? []
-    return rows.filter((row): row is Readonly<Record<string, unknown>> => typeof row === "object" && row !== null)
+  export interface ManifestRow {
+    readonly flavor: string
+    readonly name: string
+    readonly sha256: string
+    readonly signer: string | null
   }
 
   /** @throws {never} */
@@ -59,7 +60,7 @@ module node {
   /** @throws {never} */
   export const releaseName = (flavor: string, signed: boolean) => `${flavor}-release${signed ? "" : "-unsigned"}.apk`
 }
-import { FAILS, FLAVORS, INFERENCE, PASSES, REQUESTED, SPECIAL_USE, absence, environments, message, releaseName, rowsOf, sha256 } from node
+import { FAILS, FLAVORS, INFERENCE, PASSES, REQUESTED, SPECIAL_USE, absence, environments, message, releaseName, sha256, type ManifestRow } from node
 
 const tools = androidTools()
 const skipped = absence(tools)
@@ -95,13 +96,16 @@ it.effect.skipIf(skipped !== null)(`Generate the fixture host, refuse a partial 
   const profileText = try files.readFileString(path.join(consumer, "profile.json"))
   const identity: { readonly appId: string } = try Effect.try(() => JSON.parse(identityText))
   const profile: unknown = try Effect.try(() => JSON.parse(profileText))
+  try git(consumer, ["init", "--quiet", "--initial-branch=main"])
+  const pin = try commitTree(consumer, {}, "Pin the fixture consumer")
   const host = path.join(consumer, "host")
   const output = path.join(consumer, "artifacts")
-  try generateAndroidHost({ consumerRoot: consumer, output: host, identity, profile, runtime: try stageRuntime(consumer) })
+  const runtime = try stageRuntime(consumer)
+  try generateAndroidHost({ consumerRoot: consumer, output: host, identity, profile, runtime })
 
   const signing = environments(tools.sdk, signer)
   const build = (environment: NodeJS.ProcessEnv, verify: typeof PASSES) =>
-    buildAndroid({ root: consumer, project: "host", output: "artifacts", variants: [...FLAVORS], environment, verify, lint: false, androidTest: false })
+    buildAndroid({ root: consumer, project: "host", output: "artifacts", variants: [...FLAVORS], environment, verify, pin, runtime, lint: false, androidTest: false })
 
   const partial = (effect { try build(signing.partial, PASSES); return "built" } catch (error) => message(error))
   assert.match(partial, /FIXTURE_STORE_PASSWORD/)
@@ -112,14 +116,12 @@ it.effect.skipIf(skipped !== null)(`Generate the fixture host, refuse a partial 
   const first = try published(output)
   assert.deepStrictEqual(Object.keys(first).filter((name) => name.includes("-release")).sort(), FLAVORS.map((flavor) => releaseName(flavor, true)).sort())
   const manifestText = try files.readFileString(path.join(output, "apk-manifest.json"))
-  const rows = rowsOf(try Effect.try(() => JSON.parse(manifestText)))
+  const rows: readonly ManifestRow[] = try Effect.try(() => JSON.parse(manifestText))
   for (const flavor of FLAVORS) {
     const apk = path.join(output, releaseName(flavor, true))
     const signerDigest = try readApkSignerDigest(apk, { apksigner: tools.apksigner })
     assert.strictEqual(signerDigest, signer.certificateSha256)
-    const matching = rows.filter((row) => Object.values(row).includes(flavor) && Object.values(row).includes(first[releaseName(flavor, true)]))
-    assert.strictEqual(matching.length, 1, `one manifest row for ${flavor} with its digest`)
-    assert.include(Object.values(matching[0] ?? {}), signerDigest, `the ${flavor} row names its signer`)
+    assert.deepStrictEqual(rows.filter((row) => row.flavor === flavor), [{ flavor, name: releaseName(flavor, true), sha256: first[releaseName(flavor, true)], signer: signerDigest }])
 
     const entries = try listAndroidArtifactEntries(apk)
     assert.include(entries, "lib/x86_64/libeliza_node.so")

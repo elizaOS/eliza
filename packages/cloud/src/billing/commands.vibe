@@ -324,16 +324,19 @@ effect function stripe(call: { readonly method: "GET" | "POST"; readonly path: s
   let request = HttpClientRequest.setHeader(HttpClientRequest.make(call.method)(url), "authorization", `Bearer ${key}`)
   if (call.idempotencyKey !== undefined) request = HttpClientRequest.setHeader(request, "idempotency-key", call.idempotencyKey)
   if (call.method === "POST") request = HttpClientRequest.bodyText(request, form.toString(), "application/x-www-form-urlencoded")
-  const exchange: ProviderReply<unknown>!!= effect {
+  const exchange = effect {
     const response = try client.execute(request)
     const body: unknown = response.json catch () => null
-    if (response.status >= 200 && response.status < 300) return { kind: "applied", value: body }
-    if (response.status === 404) return { kind: "refused", code: "NotFoundAtProvider" }
-    if (response.status === 401 || response.status === 403) return { kind: "refused", code: "AuthorizationLost" }
-    if (response.status === 409 || response.status === 429 || response.status >= 500) return { kind: "unknown", cause: `the provider answered ${response.status}` }
-    return { kind: "refused", code: "OtherRefusal" }
-  } catch (failure) => ({ kind: "unknown", cause: failure._tag })
-  return timeout(exchange, Duration.millis(Math.max(1, call.deadline - now))) catch () => ({ kind: "unknown", cause: "the provider did not answer before the stale time" })
+    if (response.status >= 200 && response.status < 300) return { kind: "applied", value: body } as const
+    if (response.status === 404) return { kind: "refused", code: "NotFoundAtProvider" } as const
+    if (response.status === 401 || response.status === 403) return { kind: "refused", code: "AuthorizationLost" } as const
+    if (response.status === 409 || response.status === 429 || response.status >= 500) return { kind: "unknown", cause: `the provider answered ${response.status}` } as const
+    return { kind: "refused", code: "OtherRefusal" } as const
+  }
+  return Effect.timeoutOrElse(exchange, {
+    duration: Duration.millis(Math.max(1, call.deadline - now)),
+    orElse: () => Effect.succeed<ProviderReply<unknown>>({ kind: "unknown", cause: "the provider did not answer before the stale time" })
+  }) catch (failure) => ({ kind: "unknown", cause: failure._tag })
 }
 
 const ProviderSubscription = Schema.Struct({ id: Schema.String, customer: Schema.String, cancel_at_period_end: Schema.Boolean })
