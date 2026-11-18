@@ -8,7 +8,7 @@ import { requestDigest } from "../../shared/dispatch-once.vibe"
 import { sha256Hex } from "../../shared/sealing.vibe"
 import { loadRow, machineRows, stepRow, type Columns } from "../../store/rows.vibe"
 import { Store, toText, type Row, type Tx } from "../../store/connection.vibe"
-import { googleJson } from "../../providers/google.vibe"
+import { googleJson, type GoogleContext } from "../../providers/google.vibe"
 import { holds, useGrant } from "./grant-access.vibe"
 
 export type WriteKind = "create" | "change" | "delete"
@@ -418,7 +418,7 @@ effect function eventRoute(context: RouteContext) {
   return json({ event: try readEvent(grant, query.calendarId, eventId) })
 }
 
-effect function lookupWrite(grant: Grant, planned: Planned): Seen | undefined {
+effect function lookupWrite(grant: Grant, planned: Planned): (Seen | undefined)!!GoogleContext {
   const read = Effect.map(google(grant, "GET", eventPath(planned.calendarId, planned.eventId)), (raw) => ({ kind: "found" as const, event: decoded(GoogleEvent, raw) }))
     catch (failure) => failure._tag === "NotFound" ? { kind: "gone" as const } : { kind: "failed" as const }
   if (read.kind === "failed") return undefined
@@ -633,7 +633,7 @@ effect function deleteRoute(context: RouteContext) {
 
 effect function settleStale(key: string, now: number): boolean!!CloudContext {
   const store = try Store
-  const write = try (store.transaction((tx) => readWrite(tx, key)) catch () => undefined)
+  const write = (store.transaction((tx) => readWrite(tx, key)) catch () => undefined)
   if (write === undefined) return false
   const grant = useGrant(write.owner, write.grantId, "google.calendar.write") catch () => undefined
   const seen = grant === undefined ? undefined : try lookupWrite(grant, write.planned)
@@ -647,7 +647,7 @@ effect function settleStale(key: string, now: number): boolean!!CloudContext {
 export effect function sweepStaleWrites(): number!!CloudContext {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  const stale = try (store.transaction((tx) => tx.query(
+  const stale = (store.transaction((tx) => tx.query(
     "SELECT key FROM calendar_writes WHERE phase IN ('dispatched', 'outcome-unknown') AND stale_after <= $1 AND user_id IS NOT NULL AND kind IS NOT NULL AND calendar_id IS NOT NULL ORDER BY stale_after LIMIT $2",
     [now, sweepBatch]
   )) catch () => [])
