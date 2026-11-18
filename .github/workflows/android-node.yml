@@ -3,10 +3,10 @@ name: Android Node runtime
 on:
   pull_request:
     branches: [vibestack]
-    paths: [.github/workflows/android-node.yml]
+    paths: [.github/workflows/android-node.yml, .github/patches/node-26.13.1-linux-host-trap-handler.patch]
   push:
     branches: [vibestack]
-    paths: [.github/workflows/android-node.yml]
+    paths: [.github/workflows/android-node.yml, .github/patches/node-26.13.1-linux-host-trap-handler.patch]
   workflow_dispatch:
 
 permissions:
@@ -48,7 +48,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          sparse-checkout: .github/workflows/android-node.yml
+          sparse-checkout: |
+            .github/workflows/android-node.yml
+            .github/patches/node-26.13.1-linux-host-trap-handler.patch
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -56,9 +58,10 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ${{ runner.temp }}/ccache-android-node
-          key: android-node-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('.github/workflows/android-node.yml') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: android-node-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('.github/workflows/android-node.yml', '.github/patches/node-26.13.1-linux-host-trap-handler.patch') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            android-node-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('.github/workflows/android-node.yml') }}-
+            android-node-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('.github/workflows/android-node.yml', '.github/patches/node-26.13.1-linux-host-trap-handler.patch') }}-
+            android-node-${{ runner.os }}-${{ matrix.abi }}-
 
       - name: Configure compiler cache
         id: compiler-cache
@@ -91,6 +94,7 @@ jobs:
             "https://nodejs.org/dist/v$NODE_VERSION/$archive" --output "$archive"
           printf '%s  %s\n' "$NODE_SOURCE_SHA256" "$archive" | sha256sum --check --strict
           tar -xf "$archive"
+          patch --directory "node-v$NODE_VERSION" --strip=1 --fuzz=0 < "$GITHUB_WORKSPACE/.github/patches/node-26.13.1-linux-host-trap-handler.patch"
           mkdir -p android-node
 
       - name: Build the Android executable
@@ -109,6 +113,15 @@ jobs:
             --openssl-no-asm --shared-zlib --v8-disable-temporal-support \
             --without-node-snapshot 2>&1 | tee "$log"
           python3 -c 'import ast; from pathlib import Path; assert ast.literal_eval(Path("config.gypi").read_text())["variables"]["host_arch"] == "x64"'
+          host_graph=out/tools/v8_gypfiles/v8_base_without_compiler.host.mk
+          target_graph=out/tools/v8_gypfiles/v8_base_without_compiler.target.mk
+          handlers=(inside-posix outside-posix)
+          if [[ "$NODE_ARCH" == arm64 ]]; then handlers+=(outside-simulator); fi
+          for handler in "${handlers[@]}"; do
+            object="/trap-handler/handler-$handler.o"
+            grep -Fq "$object" "$host_graph"
+            if grep -Fq "$object" "$target_graph"; then exit 1; fi
+          done
           timeout --signal=TERM --kill-after=30s 210m make -j "$(nproc)" CC.host="$CC_host" CXX.host="$CXX_host" AR.host=/usr/bin/ar \
             AR.target="$NDK_BIN/llvm-ar" \
             'LDFLAGS.target=-static-libstdc++ -Wl,-z,max-page-size=16384' \
@@ -174,7 +187,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: ${{ runner.temp }}/ccache-android-node
-          key: android-node-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('.github/workflows/android-node.yml') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: android-node-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('.github/workflows/android-node.yml', '.github/patches/node-26.13.1-linux-host-trap-handler.patch') }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload failed build log
         if: failure()
