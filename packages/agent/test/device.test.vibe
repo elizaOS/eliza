@@ -1,0 +1,149 @@
+// spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/access/auth.md, "Story: Admit only the supervising host"; spec/agent/access/transport.md, "Story: Answer each local request exactly once"
+import { assert, it } from "@effect/vitest"
+import { text } from "./support/cloud-fake.ts"
+import { parseLaunch } from "../src/host/launch.vibe"
+import { startAgent } from "../src/host/process.vibe"
+import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
+import { launchDocument, launchFrame } from "./support/scratch.ts"
+import { request, requestStream } from "./support/socket-client.ts"
+
+const Conversation = Schema.Struct({ conversation: Schema.Struct({ id: Schema.String, roomId: Schema.String }) })
+const Reply = Schema.Struct({ type: Schema.String, fullText: Schema.optionalKey(Schema.String) })
+const response = Schema.decodeUnknownOption(Schema.fromJsonString(Reply))
+
+it.effect('An owner starts the agent and receives a complete streamed reply (spec/agent/host/launch.md, "Story: Start the agent from one launch document")', effect () => {
+  const state = try scratch("ez-test")
+  const cloud = try cloudFake(deviceKey)
+  const socket = state.file("agent.sock")
+  const frame = launchFrame({ credential: { version: 1, value: deviceKey } })
+  const token = frame.token
+  const config = try Effect.try(() => launchDocument({ callerRole: "owner", backend: { kind: "cloud", origin: cloud.origin } }))
+  const parsed = try parseLaunch(JSON.stringify(config), JSON.stringify(frame))
+  const running = try acquireRelease(
+    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket } }),
+    (agent) => orDie(host("retire agent", () => agent.stop())),
+  )
+  const started = try host("agent health", () => request(socket, { method: "GET", path: "/api/health" }))
+  try Effect.sync(() => cloud.script(text("Hello", " from the device agent.")))
+  const stale = try host("stale launch token", () => request(socket, { method: "GET", path: "/api/status", token: "stale" }))
+  const publicAuth = try host("anonymous authorization status", () => request(socket, { method: "GET", path: "/api/auth/status" }))
+  const noIdentity = try host("anonymous identity refused", () => request(socket, { method: "GET", path: "/api/auth/me" }))
+  const owner = try host("authenticated owner identity", () => request(socket, { method: "GET", path: "/api/auth/me", token }))
+  const opened = try host("create conversation", () => request(socket, { method: "POST", path: "/api/conversations", token, body: {} }))
+  if (!("json" in opened)) return try die("The owner conversation was refused")
+  const { conversation } = try Schema.decodeUnknownEffect(Conversation)(opened.json)
+  const turn = try host("stream response", () => requestStream(socket, {
+    method: "POST", path: `/api/conversations/${conversation.id}/messages/stream`, token, body: { text: "Say hello." },
+  }))
+  const frames = turn.text.split("\n\n").flatMap((line) =>
+    line.startsWith("data: ") ? Option.toArray(response(line.slice(6))) : [])
+  try host("clean retirement", () => running.stop())
+  try Effect.try(() => assert.deepStrictEqual({
+    healthy: "status" in started ? started.status : undefined, stale: "status" in stale ? stale.status : undefined, created: opened.status,
+    auth: "json" in publicAuth ? publicAuth.json : undefined,
+    anonymousIdentity: "status" in noIdentity ? noIdentity.status : undefined,
+    owner: "json" in owner ? owner.json : undefined,
+    stream: turn.status, terminal: frames.at(-1), containsTokens: frames.some(({type}) => type === "token"),
+    fault: turn.error, upstream: cloud.calls.map(({path,authorization}) => ({path,authorization})),
+  }, {
+    healthy: 200, stale: 401, created: 201, stream: 200,
+    auth: { authenticated: false, serverInstanceId: running.status.serverInstanceId }, anonymousIdentity: 401,
+    owner: { identity: { kind: "owner", id: running.status.agentId }, access: { role: "OWNER", mode: "local" } },
+    terminal: { type: "done", fullText: "Hello from the device agent." }, containsTokens: true,
+    fault: undefined, upstream: [{ path: "/api/v1/chat/completions", authorization: "Bearer " + deviceKey }],
+  }))
+}, 180_000)
+
+module node {
+  import { createRuntimeJsonClient, RuntimeRequestError, type RuntimeJsonBridge } from "../src/client/index.vibe"
+
+  export async function changeRuntimeAccount() {
+    const first = Promise.withResolvers<void>()
+    const oldReply = Promise.withResolvers<{ status: number; data: unknown }>()
+    const status = { available: true, state: "running", requestBodyLimit: 8192 } as const
+    let requests = 0
+    let account = "previous"
+    const bridge: RuntimeJsonBridge = {
+      status: () => Promise.resolve(status),
+      start: () => Promise.reject(new Error("An already-running bridge was started")),
+      restart: () => { account = "current"; return Promise.resolve(status) },
+      request({ path }) {
+        requests += 1
+        if (account === "previous") {
+          first.resolve()
+          return oldReply.promise
+        }
+        return Promise.resolve(path === "/busy"
+          ? { status: 429, data: { error: "Try again", code: "busy", retryAfter: 5 } }
+          : { status: 200, data: { account } })
+      },
+    }
+    const client = createRuntimeJsonClient({ bridge: () => bridge, startupTimeoutMs: 1000, pollMs: 5, requestTimeoutMs: 1000 })
+    const previous = client.request("/account").then(
+      (result) => result,
+      (error: unknown) => error instanceof Error ? error.message : "unknown",
+    )
+    await first.promise
+    const changed = client.refreshNativeAccount()
+    const current = client.request("/account")
+    await changed
+    oldReply.resolve({ status: 200, data: { account: "previous" } })
+    const busy = await client.request("/busy").catch((error: unknown) => error instanceof RuntimeRequestError
+      ? { status: error.status, code: error.code, retryAfter: error.retryAfter } : error)
+    return { previous: await previous, current: await current, busy, requests, limit: client.requestBodyLimit }
+  }
+
+  export async function supersedeRestart() {
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const running = { available: true, state: "running" } as const
+    let account = "original"
+    const order: string[] = []
+    let selected = "older"
+    const client = createRuntimeJsonClient({
+      startupTimeoutMs: 1000, pollMs: 5, requestTimeoutMs: 1000,
+      bridge: () => {
+        const target = selected
+        return {
+          status: () => Promise.resolve(running),
+          start: () => Promise.reject(new Error("already running")),
+          async restart() {
+            order.push(target + ":start")
+            if (target === "older") { entered.resolve(); await release.promise }
+            account = target
+            order.push(target + ":done")
+            return running
+          },
+          request: () => Promise.resolve({ status: 200, data: account }),
+        }
+      },
+    })
+    const older = client.refreshNativeAccount().catch((error: unknown) => error instanceof Error ? error.message : "unknown")
+    await entered.promise
+    selected = "newer"
+    const newer = client.refreshNativeAccount()
+    const current = client.request("/account")
+    const result = await older
+    release.resolve()
+    await newer
+    return { older: result, current: await current, order }
+  }
+}
+
+import { changeRuntimeAccount, supersedeRestart } from node
+
+it.effect('A pending request cannot publish the previous account and the current account receives its refusal (spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account")', effect () => {
+  const observed = try tryPromise(() => changeRuntimeAccount())
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    previous: "AccountChanged", current: { account: "current" },
+    busy: { status: 429, code: "busy", retryAfter: 5 }, requests: 3, limit: 8192,
+  }))
+})
+
+it.effect('A newer account becomes current after the in-flight native restart (spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account")', effect () => {
+  const observed = try tryPromise(() => supersedeRestart())
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    older: "AccountChanged", current: "newer",
+    order: ["older:start", "older:done", "newer:start", "newer:done"],
+  }))
+})

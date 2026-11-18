@@ -22,12 +22,6 @@
       "import": "./dist/src/index.js",
       "default": "./dist/src/index.js"
     },
-    "./client": {
-      "eliza-source": "./src/client/index.vibe",
-      "types": "./dist/src/client/index.d.ts",
-      "import": "./dist/src/client/index.js",
-      "default": "./dist/src/client/index.js"
-    },
     "./profile": {
       "eliza-source": "./src/profile/profile.vibe",
       "types": "./dist/src/profile/profile.d.ts",
@@ -48,26 +42,27 @@
     }
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && vite build && node -e \"const fs=require('node:fs');const path=require('node:path');const source=JSON.parse(fs.readFileSync('package.json','utf8'));const target=value=>value.startsWith('./dist/')?'./'+value.slice(7):value;for(const file of fs.globSync('src/**/*.sql')){fs.mkdirSync(path.dirname('dist/'+file),{recursive:true});fs.copyFileSync(file,'dist/'+file);}const publishedExports=Object.fromEntries(Object.entries(source.exports).map(([name,conditions])=>[name,Object.fromEntries(Object.entries(conditions).map(([condition,value])=>[condition,target(condition==='eliza-source'?(conditions.import??conditions.default):value)]))]));const publication={...source,main:target(source.main),types:target(source.types),bin:Object.fromEntries(Object.entries(source.bin).map(([name,value])=>[name,target(value)])),files:['src','gen','pages'],exports:publishedExports};delete publication.scripts;delete publication.publishConfig;fs.writeFileSync('dist/package.json',JSON.stringify(publication,null,2)+'\\n');\"",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json && node -e \"const fs=require('node:fs');const path=require('node:path');const source=JSON.parse(fs.readFileSync('package.json','utf8'));const target=value=>value.startsWith('./dist/')?'./'+value.slice(7):value;for(const file of fs.globSync('src/**/*.sql')){fs.mkdirSync(path.dirname('dist/'+file),{recursive:true});fs.copyFileSync(file,'dist/'+file);}const publishedExports=Object.fromEntries(Object.entries(source.exports).map(([name,conditions])=>[name,Object.fromEntries(Object.entries(conditions).map(([condition,value])=>[condition,target(condition==='eliza-source'?(conditions.import??conditions.default):value)]))]));const publication={...source,main:target(source.main),types:target(source.types),bin:Object.fromEntries(Object.entries(source.bin).map(([name,value])=>[name,target(value)])),files:['src','gen'],exports:publishedExports};delete publication.scripts;delete publication.publishConfig;fs.writeFileSync('dist/package.json',JSON.stringify(publication,null,2)+'\\n');\"",
     "typecheck": "vibelang --noEmit -p .",
     "test": "vitest run",
     "test:browser": "vitest run --project browser",
-    "start": "node --import vibelang/register src/main.vibe serve --profile test/fixtures/profile.json --environment staging --store pglite:.cache/cloud.pglite --seed test/fixtures/seed.json",
+    "start": "node --import vibelang/register src/main.vibe serve",
     "build:worker": "vibelang -p tsconfig.worker.json && node -e \"require('node:fs').cpSync('src/store/migrations','dist/src/store/migrations',{recursive:true})\""
   },
   "dependencies": {
     "@effect/platform-node": "4.1.1",
     "@effect/platform-node-shared": "4.1.1",
+    "@electric-sql/pglite": "catalog:",
     "@elizaos/core": "workspace:*",
     "effect": "4.1.1",
-    "vibelang-runtime": "0.0.13",
+    "jose": "6.2.17",
     "pg": "8.23.1",
-    "stripe": "23.1.0"
+    "stripe": "23.1.0",
+    "vibelang-runtime": "0.0.13"
   },
   "devDependencies": {
     "@antithesishq/bombadil": "0.7.10",
     "@effect/vitest": "4.1.1",
-    "@electric-sql/pglite": "catalog:",
     "@repo/design-system": "workspace:*",
     "@repo/ui": "workspace:*",
     "@tailwindcss/vite": "catalog:",

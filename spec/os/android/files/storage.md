@@ -147,12 +147,12 @@ pure def lawMoveNeverLosesTheFile(path: MovePath, copied: CopyResult, sourceRemo
 ```quint
 pure def nativeAcknowledged(op: Ro::FilesOp, result: WriteResult): bool =
   if (op == Ro::Copy) result == WriteCopied else result == WriteMoved
-pure def nativeRowOutcome(op: Ro::FilesOp, row: Ro::FilesRowCheck, result: WriteResult, destination: str): Ro::FileOutcome =
-  Ro::receiptOutcome(op, nativeRowAdmission(op, row), nativeAcknowledged(op, result), destination)
-pure def lawWrittenRowMatchesItsReceipt(op: Ro::FilesOp, row: Ro::FilesRowCheck, result: WriteResult, destination: str): bool = {
-  val rowOutcome = nativeRowOutcome(op, row, result, destination)
-  (rowOutcome == Ro::Copied implies (result == WriteCopied and nativeRowAdmission(op, row) == Ro::Admitted)) and
-    ((rowOutcome == Ro::Moved or rowOutcome == Ro::Trashed) implies (result == WriteMoved and nativeRowAdmission(op, row) == Ro::Admitted))
+pure def nativeRowOutcome(op: Ro::FilesOp, row: Ro::FilesRowCheck, result: WriteResult, resultingId: str): Ro::FileOutcome =
+  Ro::receiptOutcome(op, nativeRowAdmission(op, row), nativeAcknowledged(op, result), resultingId)
+pure def lawWrittenRowMatchesItsReceipt(op: Ro::FilesOp, row: Ro::FilesRowCheck, result: WriteResult, resultingId: str): bool = {
+  val answer = nativeRowOutcome(op, row, result, resultingId)
+  (answer == Ro::Copied implies (result == WriteCopied and nativeRowAdmission(op, row) == Ro::Admitted)) and
+    ((answer == Ro::Moved or answer == Ro::Trashed) implies (result == WriteMoved and nativeRowAdmission(op, row) == Ro::Admitted))
 }
 ```
 
@@ -162,18 +162,15 @@ pure def lawWrittenRowMatchesItsReceipt(op: Ro::FilesOp, row: Ro::FilesRowCheck,
 > come back there only when it really moved, and be erased only when I
 > confirm it or its 30 days are over.
 
-The machine follows one trashed entry under its one fresh ID: its source, its
-Trash data, its origin record and what a restore put back at the origin.
-
 ### Trash forces the origin record before it moves anything, and Trash data always has its record
 
-The record (name, origin folder, deletion time, directory flag, size, MIME
-type) is forced to storage before the move. A failed move keeps it while any
-data reached the Trash and otherwise tries to remove it; a process death in
-between leaves a record whose data is absent, partial or whole.
+The machine is one entry under its fresh ID. Its record (name, origin, deletion
+time, directory flag, size, MIME type) is forced to storage before the move. A
+failed move keeps it while any data reached the Trash and otherwise tries to
+remove it; a process death between leaves it with data absent, partial or whole.
 
 ```quint
-type TrashStage = Fresh | Moving | Settled | Erased
+type TrashStage = Fresh | Moving | Settled | Erasing
 type OriginRecord = NoRecord | Recorded({ deletedAt: int })
 type Interruption = BeforeMove | DuringCopy | DuringRemoval | AfterRename
 type TrashAnswer = NoAnswer | MovedToTrash | TrashMoveFailed | RestoredToOrigin | RestoreFailed | ShownInList | HiddenFromList | ErasedForever | EraseFailed
@@ -208,11 +205,14 @@ pure def sometimesFailedMoveKeepsACompleteCopy(s: NativeTrashCustody): bool = s.
 pure def sometimesInterruptionLeavesAnOrphanRecord(s: NativeTrashCustody): bool = s.stage == Settled and s.record != NoRecord and s.payload == EntryMissing
 ```
 
-### Until it is erased the file is whole at its source, in the Trash or back at its origin
+### Until its erasure begins the file is whole at its source, in the Trash or back at its origin
+
+Erasure begins when listing past expiry or the owner removes the data; a
+removal that fails part way may leave it partial, and the entry stays listed.
 
 ```quint
-pure def alwaysTheFileSurvivesUntilErased(s: NativeTrashCustody): bool =
-  s.stage != Erased implies (s.source == EntryComplete or s.payload == EntryComplete or s.restored == EntryComplete)
+pure def alwaysTheFileSurvivesUntilErasureBegins(s: NativeTrashCustody): bool =
+  s.stage != Erasing implies (s.source == EntryComplete or s.payload == EntryComplete or s.restored == EntryComplete)
 ```
 
 ### Restore moves the data to its recorded origin and says restored only when that move completed
@@ -228,7 +228,7 @@ pure def betterOf(a: EntryPresence, b: EntryPresence): EntryPresence =
   if (a == EntryComplete or b == EntryComplete) EntryComplete
   else if (a == EntryIncomplete or b == EntryIncomplete) EntryIncomplete else EntryMissing
 pure def canRestoreFromTrash(s: NativeTrashCustody): bool =
-  (s.stage == Settled or s.stage == Erased) and s.record != NoRecord and s.payload != EntryMissing
+  (s.stage == Settled or s.stage == Erasing) and s.record != NoRecord and s.payload != EntryMissing
 pure def restoreFromTrash(s: NativeTrashCustody, path: MovePath, copied: CopyResult, sourceRemoved: bool, recordCleaned: bool): NativeTrashCustody = {
   val receipt = moveReceipt(s.payload, path, copied, sourceRemoved)
   val atOrigin = betterOf(s.restored, receipt.destination)
@@ -255,14 +255,14 @@ a removal that fails leaves the entry shown for this scan.
 type TrashCleanup = { payloadLeft: EntryPresence, recordRemoved: bool }
 pure val trashRetentionMs = 2592000000
 pure def recordedAt(record: OriginRecord): int = match record { | Recorded(r) => r.deletedAt | NoRecord => 0 }
-pure def remainingPayload(present: EntryPresence, left: EntryPresence): EntryPresence =
-  if (present == EntryMissing or left == EntryMissing) EntryMissing else if (left == EntryIncomplete) EntryIncomplete else present
+pure def remainingPayload(held: EntryPresence, left: EntryPresence): EntryPresence =
+  if (held == EntryMissing or left == EntryMissing) EntryMissing else if (left == EntryIncomplete) EntryIncomplete else held
 pure def removeEntry(cleanup: TrashCleanup, s: NativeTrashCustody, removed: TrashAnswer, kept: TrashAnswer): NativeTrashCustody = {
   val left = remainingPayload(s.payload, cleanup.payloadLeft)
   val gone = left == EntryMissing and cleanup.recordRemoved
-  { ...s, stage: Erased, payload: left, record: if (gone) NoRecord else s.record, answer: if (gone) removed else kept }
+  { ...s, stage: Erasing, payload: left, record: if (gone) NoRecord else s.record, answer: if (gone) removed else kept }
 }
-pure def canListTrash(s: NativeTrashCustody): bool = (s.stage == Settled or s.stage == Erased) and s.record != NoRecord
+pure def canListTrash(s: NativeTrashCustody): bool = (s.stage == Settled or s.stage == Erasing) and s.record != NoRecord
 pure def listTrash(s: NativeTrashCustody, at: int, cleanup: TrashCleanup): NativeTrashCustody =
   if (s.payload == EntryMissing) { ...s, record: if (cleanup.recordRemoved) NoRecord else s.record, answer: HiddenFromList }
   else if (at < recordedAt(s.record) + trashRetentionMs) { ...s, answer: ShownInList }
@@ -274,7 +274,7 @@ pure def stepListingShowsOnlyARecordedEntry(before: NativeTrashCustody, via: str
   (via == "listTrash" and after.answer == ShownInList) implies after.record != NoRecord
 pure def sometimesShownWithinRetention(s: NativeTrashCustody): bool = s.answer == ShownInList and s.stage == Settled
 pure def sometimesExpiryWaitsOnRecordCleanup(s: NativeTrashCustody): bool =
-  s.answer == ShownInList and s.stage == Erased and s.payload == EntryMissing and s.record != NoRecord
+  s.answer == ShownInList and s.stage == Erasing and s.payload == EntryMissing and s.record != NoRecord
 ```
 
 ### Erasing forever takes the owner's confirmation and is counted only when both data and record are gone
@@ -288,7 +288,7 @@ type EraseRequest = { confirmed: bool, ids: int, distinctIds: bool, namesThisEnt
 pure def confirmedErase(request: EraseRequest): bool =
   request.confirmed and request.ids >= 1 and request.ids <= batchMax and request.distinctIds and request.namesThisEntry
 pure def canEraseForever(s: NativeTrashCustody, request: EraseRequest): bool =
-  (s.stage == Settled or s.stage == Erased) and s.record != NoRecord and confirmedErase(request)
+  (s.stage == Settled or s.stage == Erasing) and s.record != NoRecord and confirmedErase(request)
 pure def eraseForever(s: NativeTrashCustody, request: EraseRequest, cleanup: TrashCleanup): NativeTrashCustody =
   removeEntry(cleanup, s, ErasedForever, EraseFailed)
 pure val confirmedOne: EraseRequest = { confirmed: true, ids: 1, distinctIds: true, namesThisEntry: true }

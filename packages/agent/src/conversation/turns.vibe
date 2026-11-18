@@ -7,6 +7,10 @@ module node {
   import type { LocalRoute } from "../access/routes.vibe"
   import { writeReplyStream } from "./stream.vibe"
 
+  export interface TurnReply {
+    readonly fullText: string
+  }
+
   const Body = Schema.Struct({ text: Schema.Trimmed.check(Schema.isMinLength(1), Schema.isMaxLength(32768)) })
   const Create = Schema.Struct({ title: Schema.optionalKey(Schema.String) })
   const Stamp = Schema.Struct({
@@ -109,7 +113,7 @@ module node {
           if (payload._tag !== "Some") return failure(400, "invalid_message")
           const result = await process(room, payload.value.text, signal)
           return result.didRespond && result.responseContent?.text
-            ? okay({ fullText: result.responseContent.text })
+            ? okay({ fullText: result.responseContent.text } satisfies TurnReply)
             : failure(502, "turn_failed")
         },
       },
@@ -146,4 +150,4 @@ module node {
     ]
   }
 }
-export { conversationRoutes } from node
+export { conversationRoutes, type TurnReply } from node

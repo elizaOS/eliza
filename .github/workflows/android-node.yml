@@ -26,7 +26,7 @@ jobs:
   runtime:
     name: Node 26 for ${{ matrix.abi }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 110
+    timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
@@ -44,7 +44,34 @@ jobs:
       NODE_ARCH: ${{ matrix.node_arch }}
       NDK_TARGET: ${{ matrix.target }}
       ELF_MACHINE: ${{ matrix.machine }}
+      CCACHE_COMPILERCHECK: content
     steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/workflows/android-node.yml
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Restore compiler objects for this recipe
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/ccache-android-node
+          key: android-node-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('.github/workflows/android-node.yml') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            android-node-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('.github/workflows/android-node.yml') }}-
+
+      - name: Configure compiler cache
+        id: compiler-cache
+        shell: bash
+        run: |
+          if ! command -v ccache >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y ccache
+          fi
+          export CCACHE_DIR="$RUNNER_TEMP/ccache-android-node"
+          printf 'CCACHE_DIR=%s\n' "$CCACHE_DIR" >> "$GITHUB_ENV"
+          ccache --max-size=1250M
+
       - name: Install pinned Android compiler
         shell: bash
         run: |
@@ -72,8 +99,8 @@ jobs:
           cd "$RUNNER_TEMP/node-v$NODE_VERSION"
           ndk=${NDK_BIN%/toolchains/llvm/prebuilt/linux-x86_64/bin}
           target="$NDK_BIN/$NDK_TARGET$ANDROID_API_LEVEL"
-          export CC="$target-clang" CXX="$target-clang++"
-          export CC_host=/usr/bin/gcc CXX_host=/usr/bin/g++
+          export CC="ccache $target-clang" CXX="ccache $target-clang++"
+          export CC_host="ccache /usr/bin/gcc" CXX_host="ccache /usr/bin/g++"
           export GYP_DEFINES="target_arch=$NODE_ARCH v8_target_arch=$NODE_ARCH android_target_arch=$NODE_ARCH host_os=linux OS=android android_ndk_path=$ndk"
           export SOURCE_DATE_EPOCH
           SOURCE_DATE_EPOCH=$(stat -c %Y configure.py)
@@ -82,7 +109,7 @@ jobs:
             --openssl-no-asm --shared-zlib --v8-disable-temporal-support \
             --without-node-snapshot 2>&1 | tee "$log"
           python3 -c 'import ast; from pathlib import Path; assert ast.literal_eval(Path("config.gypi").read_text())["variables"]["host_arch"] == "x64"'
-          make -j "$(nproc)" CC.host="$CC_host" CXX.host="$CXX_host" AR.host=/usr/bin/ar \
+          timeout --signal=TERM --kill-after=30s 210m make -j "$(nproc)" CC.host="$CC_host" CXX.host="$CXX_host" AR.host=/usr/bin/ar \
             AR.target="$NDK_BIN/llvm-ar" \
             'LDFLAGS.target=-static-libstdc++ -Wl,-z,max-page-size=16384' \
             2>&1 | tee -a "$log"
@@ -141,6 +168,13 @@ jobs:
             ${{ runner.temp }}/android-node/elf.txt
             ${{ runner.temp }}/android-node/LICENSE
           if-no-files-found: error
+
+      - name: Save compiler objects for a future build
+        if: ${{ always() && github.ref == 'refs/heads/vibestack' && steps.compiler-cache.outcome == 'success' }}
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/ccache-android-node
+          key: android-node-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('.github/workflows/android-node.yml') }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload failed build log
         if: failure()

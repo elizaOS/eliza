@@ -1,15 +1,17 @@
 // spec/cloud/index.md, "Story: Sign in to the Cloud"
 import type { Client } from "pg"
+import type { JWTVerifyGetKey } from "jose"
 import { Digest, Mac, SecureRandom } from "effect/crypto"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpIncomingMessage, HttpServerRequest, HttpServerResponse } from "effect/http"
 
 import {
   accessCookie, refreshCookie, accessDigest, deviceDigest, digestCredential, readCookie, newSecret,
-  authQuery as query, accountTransaction, browserAccount, signInWithProof, renewBrowserSession, logoutBrowserSession,
+  authQuery as query, accountTransaction, browserAccount, signInWithProof, openSignInFamily, renewBrowserSession, logoutBrowserSession,
   StorageUnavailable, IdentityConflict, type BrowserSession, type Identity
 } from "./identity-store.vibe"
 
 import { browserNativeRegistration, mobileRegistration, type NativeRegistryEnv } from "./native-registry.vibe"
+import { googleServerClientId, verifyNativeGoogle } from "./native-google.vibe"
 
 export type IdentityEnv = NativeRegistryEnv & {
   GOOGLE_CLIENT_SECRET?: string
@@ -17,6 +19,8 @@ export type IdentityEnv = NativeRegistryEnv & {
   RESEND_API_KEY?: string
   EMAIL_FROM?: string
   EMAIL_CODE_SECRET?: string
+  BLOOIO_API_KEY?: string
+  BLOOIO_SMS_CHANNEL_ID?: string
   TWILIO_ACCOUNT_SID?: string
   TWILIO_AUTH_TOKEN?: string
   TWILIO_VERIFY_SERVICE_SID?: string
@@ -36,13 +40,21 @@ schema SmsInput { phone: string; code?: string }
 schema GoogleToken { access_token: string }
 schema GoogleProfile { sub: string; email?: string; email_verified?: boolean }
 schema DeviceAuthorization { challenge: string; state: string }
+schema NativeGoogleChallenge { clientId: string; environment: string; redirectUri: string; challenge: string; state: string }
+schema NativeGoogleCompletion { clientId: string; environment: string; redirectUri: string; challengeId: string; idToken: string }
 schema DeviceExchange { code: string; verifier: string }
 schema SmsReceipt { status: string; to?: string; channel?: string; service_sid?: string }
+schema BlooioReceipt { id: string; channel_id: string; status: string; channel_type?: string; to?: string; direction?: string; dry_run?: boolean }
 
 const flowCookie = "__Host-eliza-google"
 const codeSeconds = 10 * 60
 const smsCodeSeconds = 5 * 60
 const deviceGrantSeconds = 2 * 60
+const nativeGoogleStart = "/api/v1/app-auth/mobile/google/challenge"
+const nativeGoogleFinish = "/api/v1/app-auth/mobile/google"
+const nativeGoogleSeconds = 120
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const s256 = /^[A-Za-z0-9_-]{43}$/
 const callbackPath = "/api/auth/google/callback"
 const encoder = new TextEncoder()
 const opaqueToken = /^[a-f0-9]{64}$/
@@ -64,10 +76,10 @@ effect function pkceChallenge(verifier: string) {
   return try sync(() => btoa(String.fromCharCode(...challenge)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", ""))
 }
 
-effect function makeCodeHash(secret: string, email: string, code: string) {
+effect function makeCodeHash(secret: string, address: string, code: string) {
   const key = Mac.key(Mac.hmacSha256, encoder.encode(secret)) catch effect () => { throw new ProviderUnavailable() }
   const mac = try Mac.Mac
-  const signature = mac.sign(key, encoder.encode(JSON.stringify([email, code]))) catch effect () => { throw new ProviderUnavailable() }
+  const signature = mac.sign(key, encoder.encode(JSON.stringify([address, code]))) catch effect () => { throw new ProviderUnavailable() }
   return hex(signature)
 }
 
@@ -75,7 +87,7 @@ effect function token() {
   return hex(try (try SecureRandom.SecureRandom).randomBytes(32))
 }
 
-effect function emailCode() {
+effect function signInCode() {
   return (try (try SecureRandom.SecureRandom).intBetween(0, 999_999)).toString().padStart(6, "0")
 }
 
@@ -138,9 +150,10 @@ effect function readJson(request: Request) {
   return limited catch effect () => { throw new InvalidRequest() }
 }
 
-effect function external(url: string, input: { authorization?: string; form?: URLSearchParams; body?: string }) {
+effect function external(url: string, input: { authorization?: string; form?: URLSearchParams; body?: string; idempotencyKey?: string }) {
   let request = HttpClientRequest.make(input.form || input.body ? "POST" : "GET")(url)
   if (input.authorization) request = HttpClientRequest.setHeader(request, "authorization", input.authorization)
+  if (input.idempotencyKey) request = HttpClientRequest.setHeader(request, "Idempotency-Key", input.idempotencyKey)
   if (input.body) request = HttpClientRequest.bodyText(request, input.body, "application/json")
   if (input.form) request = HttpClientRequest.bodyText(request, input.form.toString(), "application/x-www-form-urlencoded")
   const result = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" })
@@ -242,8 +255,15 @@ function emailReady(env: IdentityEnv) {
   return Boolean((env.SIGN_IN_EMAIL || env.RESEND_API_KEY) && env.EMAIL_FROM && env.EMAIL_CODE_SECRET && env.EMAIL_CODE_SECRET.length >= 32)
 }
 
+function smsTransport(env: IdentityEnv) {
+  if (env.BLOOIO_API_KEY || env.BLOOIO_SMS_CHANNEL_ID) {
+    return env.BLOOIO_API_KEY && /^ch_[A-Za-z0-9_-]+$/.test(env.BLOOIO_SMS_CHANNEL_ID ?? "") && (env.EMAIL_CODE_SECRET?.length ?? 0) >= 32 ? "blooio" : null
+  }
+  return env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_VERIFY_SERVICE_SID ? "twilio" : null
+}
+
 function smsReady(env: IdentityEnv) {
-  return Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_VERIFY_SERVICE_SID && smsBudget(env))
+  return Boolean(smsTransport(env) && smsBudget(env))
 }
 
 effect function sendEmail(env: IdentityEnv, address: string, code: string) {
@@ -289,11 +309,28 @@ effect function twilio(env: IdentityEnv, address: string, code: string | null) {
 
 const codeCookie = (provider: Destination) => "__Host-eliza-code-" + provider
 
+effect function sendBlooio(env: IdentityEnv, address: string, code: string, challenge: string) {
+  if (!env.BLOOIO_API_KEY || !env.BLOOIO_SMS_CHANNEL_ID) throw new ProviderUnavailable()
+  const response = try external("https://api.blooio.com/v4/messages", {
+    authorization: "Bearer " + env.BLOOIO_API_KEY, idempotencyKey: challenge,
+    body: JSON.stringify({ from: env.BLOOIO_SMS_CHANNEL_ID, to: address, text: `Your sign-in code is ${code}. It expires in five minutes.` })
+  })
+  if (response.status === 429) throw new RateLimited()
+  if (response.status < 200 || response.status >= 300) throw new ProviderUnavailable()
+  const receipt = Schema.decodeUnknownOption(BlooioReceipt)((response.json catch effect () => { throw new ProviderUnavailable() }))
+  if (Option.isNone(receipt)) throw new ProviderUnavailable()
+  const result = receipt.value
+  if (!result.id || result.channel_id !== env.BLOOIO_SMS_CHANNEL_ID || result.dry_run === true ||
+      (result.channel_type !== undefined && result.channel_type !== "sms") ||
+      (result.to !== undefined && result.to !== address) || (result.direction !== undefined && result.direction !== "outbound") ||
+      !["queued", "pending", "sending", "sent", "delivered", "read"].includes(result.status)) throw new ProviderUnavailable()
+}
+
 effect function requestCode(env: IdentityEnv, db: Client, provider: Destination, address: string) {
-  const code = provider === "email" ? try emailCode() : null
+  const code = provider === "email" || smsTransport(env) === "blooio" ? try signInCode() : null
   const secret = env.EMAIL_CODE_SECRET
   if (code !== null && (!secret || secret.length < 32)) throw new ProviderUnavailable()
-  const hash = code !== null && secret ? try makeCodeHash(secret, address, code) : null
+  const hash = code !== null && secret ? try makeCodeHash(secret, provider === "sms" ? "sms:" + address : address, code) : null
   const verifier = try token()
   const challenge = try pkceChallenge(verifier)
   const age = provider === "email" ? codeSeconds : smsCodeSeconds
@@ -307,8 +344,9 @@ effect function requestCode(env: IdentityEnv, db: Client, provider: Destination,
   const pending = rows[0]
   if (!pending) throw new StorageUnavailable()
   effect {
-    if (code !== null) try sendEmail(env, address, code)
-    else try twilio(env, address, null)
+    if (code === null) try twilio(env, address, null)
+    else if (provider === "email") try sendEmail(env, address, code)
+    else try sendBlooio(env, address, code, challenge)
   } catch effect (failure) => {
     try query(db, "DELETE FROM cloud_code_challenges WHERE provider = $1 AND destination = $2 AND challenge = $3", [provider, address, challenge])
     throw failure
@@ -322,16 +360,16 @@ effect function verifyCode(request: Request, env: IdentityEnv, db: Client, provi
   if (!verifier || !opaqueToken.test(verifier)) throw new Unauthorized()
   const challenge = try pkceChallenge(verifier)
   const secret = env.EMAIL_CODE_SECRET
-  const hash = provider === "email" && secret ? try makeCodeHash(secret, address, code) : null
-  const attempt = try query<{ consumed: boolean }>(db, `
+  const hash = secret ? try makeCodeHash(secret, provider === "sms" ? "sms:" + address : address, code) : null
+  const attempt = try query<{ consumed: boolean; requires_twilio: boolean }>(db, `
     UPDATE cloud_code_challenges
-    SET tries = tries + 1, consumed = CASE WHEN provider = 'email' THEN code_hash = $4 ELSE false END
+    SET tries = tries + 1, consumed = COALESCE(code_hash = $4, false)
     WHERE provider = $1 AND destination = $2 AND challenge = $3 AND expires_at > now() AND tries < 5 AND NOT consumed
-    RETURNING consumed
+    RETURNING consumed, (provider = 'sms' AND code_hash IS NULL) AS requires_twilio
   `, [provider, address, challenge, hash])
   const admitted = attempt.rows[0]
-  if (!admitted || (provider === "email" && !admitted.consumed)) throw new Unauthorized()
-  if (provider === "sms") {
+  if (!admitted || (!admitted.requires_twilio && !admitted.consumed)) throw new Unauthorized()
+  if (admitted.requires_twilio) {
     try twilio(env, address, code)
     const finished = try query(db, `
       UPDATE cloud_code_challenges SET consumed = true
@@ -365,16 +403,15 @@ effect function otp(request: Request, env: IdentityEnv, db: Client, provider: De
   return try requestCode(env, db, provider, input.address)
 }
 
-effect function authorizeDevice(request: Request, env: IdentityEnv, db: Client) {
-  const registration = browserNativeRegistration(env)
-  if (!registration) throw new ProviderUnavailable()
-  const callback = try Effect.try({ try: () => new URL(registration.signInReturn.origin + registration.signInReturn.path), catch: () => new ProviderUnavailable() })
-  const browser = try browserAccount(request, db)
-  if (!browser) throw new Unauthorized()
-  const raw = try readJson(request)
-  const parsed = Schema.decodeUnknownOption(DeviceAuthorization, { onExcessProperty: "error" })(raw)
-  if (Option.isNone(parsed) || !/^[A-Za-z0-9_-]{43}$/.test(parsed.value.challenge) || !pkceText.test(parsed.value.state)) throw new InvalidRequest()
-  try rateLimit(db, "device:authorize", browser.sessionKey, 6, 600)
+export function nativeGooglePath(path: string) {
+  return path === nativeGoogleStart || path === nativeGoogleFinish
+}
+
+function nativeGoogleAudience(env: IdentityEnv): string | null {
+  return env.GOOGLE_CLIENT_SECRET && env.GOOGLE_CLIENT_ID && googleServerClientId.test(env.GOOGLE_CLIENT_ID) ? env.GOOGLE_CLIENT_ID : null
+}
+
+effect function issueDeviceCode(db: Client, proof: { accountId: string; sessionKey: string; clientId: string; challenge: string }) {
   const now = try Clock.currentTimeMillis
   const code = try token()
   const codeHash = try digestCredential(code)
@@ -386,7 +423,82 @@ effect function authorizeDevice(request: Request, env: IdentityEnv, db: Client) 
     )
     INSERT INTO cloud_device_proofs (grant_key, session_key, challenge)
     SELECT key,$7,$8 FROM created
-  `, [key, browser.id, registration.clientId, codeHash, now + deviceGrantSeconds * 1000, now, browser.sessionKey, parsed.value.challenge])
+  `, [key, proof.accountId, proof.clientId, codeHash, now + deviceGrantSeconds * 1000, now, proof.sessionKey, proof.challenge])
+  return code
+}
+
+effect function nativeGoogle(request: Request, env: IdentityEnv, db: Client, starting: boolean, keys?: JWTVerifyGetKey) {
+  if (request.headers.has("origin")) return json(403, { error: "forbidden_origin" })
+  const raw = try readJson(request)
+  const input = starting
+    ? Schema.decodeUnknownOption(NativeGoogleChallenge, { onExcessProperty: "error" })(raw)
+    : Schema.decodeUnknownOption(NativeGoogleCompletion, { onExcessProperty: "error" })(raw)
+  if (input._tag === "None") throw new InvalidRequest()
+  const { clientId, environment, redirectUri } = input.value
+  const admitted = mobileRegistration(env, clientId, environment, redirectUri)
+  if (admitted.kind === "refused") return json(admitted.status, { error: admitted.error })
+  const audience = nativeGoogleAudience(env)
+  if (!audience) return json(503, { error: "google_not_configured" })
+  if (!admitted.registration.nativeGoogle || browserNativeRegistration(env)?.clientId !== admitted.registration.clientId) {
+    return json(400, { error: "invalid_client" })
+  }
+  const ip = request.headers.get("cf-connecting-ip") ?? "local"
+  const now = try Clock.currentTimeMillis
+  if ("challenge" in input.value) {
+    const { challenge, state } = input.value
+    if (!s256.test(challenge) || !pkceText.test(state)) throw new InvalidRequest()
+    try rateLimit(db, "google:native:challenge", ip, 10, 60)
+    const challengeId = try (try SecureRandom.SecureRandom).uuidV4()
+    const nonce = try token()
+    const nonceHash = try digestCredential(nonce)
+    try query(db, "DELETE FROM cloud_native_google_challenges WHERE expires_at <= $1", [now])
+    try query(db, `
+      INSERT INTO cloud_native_google_challenges (key,client_id,environment,redirect_uri,audience,nonce_digest,challenge,state,expires_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    `, [challengeId, clientId, environment, redirectUri, audience, nonceHash, challenge, state, now + nativeGoogleSeconds * 1000])
+    return json(200, { challengeId, nonce, expiresIn: nativeGoogleSeconds })
+  }
+  const { challengeId, idToken } = input.value
+  if (!uuid.test(challengeId) || idToken.length > 7500 || idToken.split(".").length !== 3) throw new InvalidRequest()
+  try rateLimit(db, "google:native:verify", ip, 10, 60)
+  const pending = try query(db, `
+    SELECT key FROM cloud_native_google_challenges
+    WHERE key = $1 AND client_id = $2 AND environment = $3 AND redirect_uri = $4 AND audience = $5 AND expires_at > $6
+  `, [challengeId, clientId, environment, redirectUri, audience, now])
+  if (pending.rows.length === 0) throw new Unauthorized()
+  const verified = verifyNativeGoogle(idToken, audience, keys) catch effect () => { throw new Unauthorized() }
+  const nonceHash = try digestCredential(verified.nonce)
+  return try accountTransaction(db, effect {
+    const verifiedAt = try Clock.currentTimeMillis
+    const { rows } = try query<{ challenge: string; state: string }>(db, `
+      DELETE FROM cloud_native_google_challenges
+      WHERE key = $1 AND client_id = $2 AND environment = $3 AND redirect_uri = $4 AND audience = $5
+        AND nonce_digest = $6 AND expires_at > $7
+      RETURNING challenge,state
+    `, [challengeId, clientId, environment, redirectUri, audience, nonceHash, verifiedAt])
+    const proof = rows[0]
+    if (!proof) throw new Unauthorized()
+    const family = try openSignInFamily(db, verified.identity)
+    const code = try issueDeviceCode(db, {
+      accountId: family.account.id, sessionKey: family.key, clientId: admitted.registration.clientId, challenge: proof.challenge
+    })
+    return json(200, { code, state: proof.state })
+  })
+}
+
+effect function authorizeDevice(request: Request, env: IdentityEnv, db: Client) {
+  const registration = browserNativeRegistration(env)
+  if (!registration) throw new ProviderUnavailable()
+  const callback = try Effect.try({ try: () => new URL(registration.signInReturn.origin + registration.signInReturn.path), catch: () => new ProviderUnavailable() })
+  const browser = try browserAccount(request, db)
+  if (!browser) throw new Unauthorized()
+  const raw = try readJson(request)
+  const parsed = Schema.decodeUnknownOption(DeviceAuthorization, { onExcessProperty: "error" })(raw)
+  if (Option.isNone(parsed) || !s256.test(parsed.value.challenge) || !pkceText.test(parsed.value.state)) throw new InvalidRequest()
+  try rateLimit(db, "device:authorize", browser.sessionKey, 6, 600)
+  const code = try issueDeviceCode(db, {
+    accountId: browser.id, sessionKey: browser.sessionKey, clientId: registration.clientId, challenge: parsed.value.challenge
+  })
   callback.searchParams.set("code", code)
   callback.searchParams.set("state", parsed.value.state)
   return json(200, { redirectUrl: callback.href })
@@ -453,7 +565,7 @@ effect function revokeDevice(request: Request, db: Client) {
   return empty()
 }
 
-effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
+effect function handleIdentity(request: Request, env: IdentityEnv, db: Client, keys?: JWTVerifyGetKey) {
   const url = try Effect.try({ try: () => new URL(request.url), catch: () => new InvalidRequest() })
   if (request.method === "GET") {
     switch (url.pathname) {
@@ -468,7 +580,9 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
         return json(200, {
           clientId: registered.clientId, environment, redirectUri: redirect, codeChallengeMethod: "S256",
           credentialTtlMs: registered.credentialTtl, methods: { google: configured, email: emailReady(env), sms: smsReady(env) },
-          google: { configured, serverClientId: configured ? env.GOOGLE_CLIENT_ID : "", nativeSignIn: false }
+          google: { configured, serverClientId: configured ? env.GOOGLE_CLIENT_ID : "",
+            nativeSignIn: registered.nativeGoogle && nativeGoogleAudience(env) !== null &&
+              browserNativeRegistration(env)?.clientId === registered.clientId }
         })
       }
       case "/api/auth/providers":
@@ -490,6 +604,7 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
     }
   }
   if (request.method === "POST") {
+    if (nativeGooglePath(url.pathname)) return try nativeGoogle(request, env, db, url.pathname === nativeGoogleStart, keys)
     if (url.pathname === "/api/auth/device/exchange") return try exchangeDevice(request, env, db)
     if (url.pathname === "/api/auth/device/ack") return try acknowledgeDevice(request, env, db)
     if (url.pathname === "/api/auth/device/revoke") return try revokeDevice(request, db)
@@ -521,9 +636,9 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
   return json(404, { error: "not_found" })
 }
 
-export function identityRequest(request: Request, env: IdentityEnv, db: Client): Promise<Response> {
+export function identityRequest(request: Request, env: IdentityEnv, db: Client, keys?: JWTVerifyGetKey): Promise<Response> {
   return runPromise(Effect.provide(effect {
-    const response = handleIdentity(request, env, db) catch (error) => match (error) {
+    const response = handleIdentity(request, env, db, keys) catch (error) => match (error) {
       when InvalidRequest: json(400, { error: "invalid_request" });
       when Unauthorized: json(401, { error: "verification_failed" });
       when RateLimited: json(429, { error: "rate_limited" });

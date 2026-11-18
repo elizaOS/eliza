@@ -311,12 +311,18 @@ importers:
       '@effect/platform-node-shared':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)
+      '@electric-sql/pglite':
+        specifier: 'catalog:'
+        version: 0.4.6
       '@elizaos/core':
         specifier: workspace:*
         version: link:../core
       effect:
         specifier: 4.1.1
         version: 4.1.1
+      jose:
+        specifier: 6.2.17
+        version: 6.2.17
       pg:
         specifier: 8.23.1
         version: 8.23.1
@@ -333,9 +339,6 @@ importers:
       '@effect/vitest':
         specifier: 4.1.1
         version: 4.1.1(effect@4.1.1)(vitest@5.1.0)
-      '@electric-sql/pglite':
-        specifier: 'catalog:'
-        version: 0.4.6
       '@repo/design-system':
         specifier: workspace:*
         version: link:../design-system
@@ -4047,6 +4050,9 @@ packages:
   jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
+
+  jose@6.2.17:
+    resolution: {integrity: sha512-wOuK9V1yujQFH5S0ZWmLcDZN7+IKh9bUCC2ZPCf2HDlol3WWHy+PPyNjEI75FXRLMp3vDKQcupP59xhVU95hcg==}
 
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
@@ -8856,6 +8862,8 @@ snapshots:
       isarray: 1.0.0
 
   jiti@2.7.0: {}
+
+  jose@6.2.17: {}
 
   js-tokens@4.0.0: {}
 

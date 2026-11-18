@@ -1,8 +1,8 @@
 # Browser request grounding
 
 The browser opens a destination only when the current message grounds it.
-The device's [browser tab document](../os/index.md)
-owns browser visits; this spec owns admission from the current message.
+The device's [browser tab document](../os/browser/tabHost/reading.md#a-visible-commit-must-come-from-the-current-tab)
+owns which visits commit; this spec owns admission from the current message.
 
 ## Story: Open a destination stated in this message
 

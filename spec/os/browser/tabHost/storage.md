@@ -22,7 +22,6 @@ The tab document spec (`tabHost/document`) decides which tab may contribute.
 
 ```quint
 import address.* from "../address"
-import atomicPublication as P from "../../../core/atomicPublication"
 pure val savedAddressUnitsLimit = 4096
 pure def savedAddress(address: WebAddress): bool = isWebAddress(address) and address.units <= savedAddressUnitsLimit
 pure def bookmarkAddress(address: WebAddress): bool = savedAddress(address) and isSecureWebAddress(address)
@@ -111,13 +110,10 @@ type RestoreOutcome = NotRestored | ReplacedNewTab | MergedHistoryOnly
 type NativeBrowserStore = { session: int, clear: ClearState, saved: SavedSession, bookmarks: Bookmarks, lastRestore: RestoreOutcome }
 pure val initial: NativeBrowserStore = { session: 0, clear: NoClear, saved: emptySession, bookmarks: BookmarksUnread, lastRestore: NotRestored }
 pure def owns(s: NativeBrowserStore, ticket: int): bool = ticket > 0 and (s.session == 0 or s.session == ticket)
-pure def committed(receipt: P::PublicationReceipt): bool = receipt == P::SuccessReceipt
-pure def canSaveSession(s: NativeBrowserStore, ticket: int, receipt: P::PublicationReceipt): bool =
-  owns(s, ticket) and s.clear != ClearingSiteData and (receipt == P::SuccessReceipt or receipt == P::FailureReceipt)
-pure def saveSession(s: NativeBrowserStore, ticket: int, record: SavedSession, receipt: P::PublicationReceipt): NativeBrowserStore =
-  { ...s, session: ticket, saved: if (committed(receipt)) normalizeSession(NativeCodec, record) else s.saved }
+pure def canSaveSession(s: NativeBrowserStore, ticket: int): bool = owns(s, ticket) and s.clear != ClearingSiteData
+pure def saveSession(s: NativeBrowserStore, ticket: int, record: SavedSession, committed: bool): NativeBrowserStore =
+  { ...s, session: ticket, saved: if (committed) normalizeSession(NativeCodec, record) else s.saved }
 pure val ticketValues = Set(0, 1, 2)
-pure val receiptValues = Set(P::SuccessReceipt, P::FailureReceipt)
 pure def stepBoundSessionNeverChanges(before: NativeBrowserStore, after: NativeBrowserStore): bool =
   before.session != 0 implies after.session == before.session
 pure def sometimesSessionSaved(s: NativeBrowserStore): bool = s.saved.tabs.length() > 0
@@ -214,12 +210,12 @@ pure def bookmarksIntact(s: NativeBrowserStore): bool = {
   val stored = s.bookmarks
   match stored { | BookmarksIntact(b) => true | _ => false }
 }
-pure def canSetBookmark(s: NativeBrowserStore, ticket: int, address: WebAddress, keep: bool, receipt: P::PublicationReceipt): bool =
-  owns(s, ticket) and bookmarkAddress(address) and (receipt == P::SuccessReceipt or receipt == P::FailureReceipt) and
-    bookmarksIntact(s) and changeBookmarks(bookmarkUrls(s), address.href, keep).length() <= maxBookmarks
-pure def setBookmark(s: NativeBrowserStore, ticket: int, address: WebAddress, keep: bool, receipt: P::PublicationReceipt): NativeBrowserStore =
+pure def canSetBookmark(s: NativeBrowserStore, ticket: int, address: WebAddress, keep: bool): bool =
+  owns(s, ticket) and bookmarkAddress(address) and bookmarksIntact(s) and
+    changeBookmarks(bookmarkUrls(s), address.href, keep).length() <= maxBookmarks
+pure def setBookmark(s: NativeBrowserStore, ticket: int, address: WebAddress, keep: bool, committed: bool): NativeBrowserStore =
   { ...s, session: ticket,
-    bookmarks: if (committed(receipt)) BookmarksIntact({ urls: changeBookmarks(bookmarkUrls(s), address.href, keep) }) else s.bookmarks }
+    bookmarks: if (committed) BookmarksIntact({ urls: changeBookmarks(bookmarkUrls(s), address.href, keep) }) else s.bookmarks }
 pure def alwaysBookmarksWithinLimit(s: NativeBrowserStore): bool = bookmarkUrls(s).length() <= maxBookmarks
 pure def sometimesBookmarkKept(s: NativeBrowserStore): bool = bookmarkUrls(s).length() > 0
 ```

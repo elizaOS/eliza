@@ -1,6 +1,7 @@
 // spec/agent/host/launch.md, "Story: Start the agent from one launch document"; spec/agent/host/launch.md, "The launch frame is one stdin line with the token, the epoch, and the optional credential and storage key"
 export { type LaunchDocument, type LaunchFrame } from "./launch.schema.vibe"
 import { exitCode } from "../../gen/agent__host__launch.effect.vibe"
+export { exitClass, exitCode, type BootFailure, type ExitClass } from "../../gen/agent__host__launch.effect.vibe"
 import { Stdio } from "effect/Stdio"
 import { decodeLaunchDocument, decodeLaunchFrame, LaunchDocumentRejected, LaunchFrameRejected } from "./launch.schema.vibe"
 

@@ -109,8 +109,9 @@ pure def leaveForm(s: VaultUi): VaultUi = { ...s, form: NoForm }
 pure def canExpireUnlock(s: VaultUi): bool = s.view == PageUnlocked
 pure def expireUnlock(s: VaultUi): VaultUi =
   { view: PageLocked, generation: s.generation + 1, listed: false, form: if (s.form == NoForm) NoForm else FormWithoutSecret }
-pure def canLockVault(s: VaultUi): bool = s.view == PageUnlocked
-pure def lockVault(s: VaultUi): VaultUi = { view: PageLocked, generation: s.generation + 1, listed: false, form: NoForm }
+pure def canLockVault(s: VaultUi): bool = s.view == PageUnlocked or s.view == PageResetReviewed
+pure def lockVault(s: VaultUi): VaultUi =
+  { view: if (s.view == PageResetReviewed) PageDamaged else PageLocked, generation: s.generation + 1, listed: false, form: NoForm }
 pure def alwaysTypedSecretOnlyWhileUnlocked(s: VaultUi): bool = s.form == FormWithTypedSecret implies s.view == PageUnlocked
 pure def alwaysFormOnlyOnReadablePage(s: VaultUi): bool = s.form != NoForm implies (s.view == PageUnlocked or s.view == PageLocked)
 pure def sometimesTypedSecretInForm(s: VaultUi): bool = s.form == FormWithTypedSecret
@@ -135,12 +136,13 @@ pure def alwaysAgentPausedWhileVaultDataHeld(s: VaultUi): bool = (s.listed or s.
 
 ### A vault whose key is invalidated forgets everything the page held and offers only a reset
 
-A key-invalidated reply, to an unlock or to a vault call, is final for the
-records: they can never be read again, so the page drops its listing and
-form and is left only with a reset or leaving.
+Only a call that reaches the records while unlocked can learn this (an
+unlock prompt never touches the key). The native side locks the vault, and
+the reply is final for the records: they can never be read again, so the
+page drops its listing and form and is left only with a reset or leaving.
 
 ```quint
-pure def canKeyInvalidated(s: VaultUi, ticket: int): bool = (s.view == PageLocked or s.view == PageUnlocked) and ticket == s.generation
+pure def canKeyInvalidated(s: VaultUi, ticket: int): bool = s.view == PageUnlocked and ticket == s.generation
 pure def keyInvalidated(s: VaultUi, ticket: int): VaultUi = { view: PageDamaged, generation: s.generation + 1, listed: false, form: NoForm }
 pure def damaged(view: VaultView): bool = view == PageDamaged or view == PageResetReviewed
 pure def stepDamagedVaultLeavesOnlyByResetOrLeaving(before: VaultUi, via: str, after: VaultUi): bool =
