@@ -30,6 +30,7 @@ import {
   smsLatestSenderReply,
   smsReplyReceiptOutcome,
   smsReplyResultText,
+  smsSenderDisclosure,
   TELEPHONY_ACTION_OPERATION_TYPES,
   telephonyActionCapabilities,
   telephonyActionCapability,
@@ -844,6 +845,28 @@ test("address lookup and a reply draft use the complete negotiated address", () 
     !directSmsRequest(operation, "Show a review card before you " + request),
   );
   assert.ok(!directSmsRequest({ type: "sms_latest_sender" }, request));
+  assert.equal(smsSenderDisclosure(request), "address");
+  assert.equal(smsSenderDisclosure("Who just texted me?"), "address");
+  assert.equal(
+    smsSenderDisclosure("Who sent my latest SMS? Last four digits only."),
+    "last-four",
+  );
+  assert.equal(
+    smsSenderDisclosure("Who sent my latest SMS? Last two digits only."),
+    "clarify",
+  );
+  assert.equal(
+    smsSenderDisclosure(
+      "Look up my latest SMS sender: ending digits, no full number.",
+    ),
+    "clarify",
+  );
+  assert.equal(
+    smsSenderDisclosure(
+      "Who sent my latest SMS? Don’t show me the last four digits.",
+    ),
+    "clarify",
+  );
   const followUp =
     "Draft a quick text asking them to bring the tripod tomorrow. Show me the draft here.";
   assert.equal(requestedSmsDraftRecipient(followUp)?.kind, "previous-sender");

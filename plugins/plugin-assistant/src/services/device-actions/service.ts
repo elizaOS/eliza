@@ -236,13 +236,13 @@ import {
   selectedTelephonyView,
   smsComposeNotSubmitted,
   smsReplyNotDrafted,
+  smsSenderDisclosure,
   TELEPHONY_ACTION_OPERATION_TYPES,
   telephonyActionCapabilityAvailable,
   telephonyActionReceiptOutcome,
   VOICEMAIL_DELETE_CAPABILITY,
   VOICEMAIL_READ_CAPABILITY,
   validateTelephonyActionResult,
-  wantsSmsSenderAddress,
 } from "./telephony-actions-contract.ts";
 import { requireTurnObservation, turnObservation } from "./turn-observation.ts";
 import {
@@ -2218,7 +2218,7 @@ export class DeviceActionService {
   private async previousSmsSender(
     c: DeviceCredential,
     original: Memory,
-  ): Promise<{ number: string; threadId?: string }> {
+  ): Promise<{ number: string; threadId: string }> {
     const unavailable = () =>
       new DeviceActionError(
         "No current SMS sender for this reply. Ask who texted you or choose a recipient.",
@@ -2538,10 +2538,16 @@ export class DeviceActionService {
         validated.type === "browser_find",
     });
     if (validated.type === "sms_latest_sender") {
+      const scope = requestOrigin
+        ? smsSenderDisclosure(requestOrigin.requestText)
+        : "last-four";
+      if (scope === "clarify")
+        throw new DeviceActionError(
+          "Would you like the last four digits of the SMS sender’s number? Other partial numbers are unavailable.",
+        );
       const full =
-        c.capabilities?.includes(SMS_SENDER_ADDRESS_CAPABILITY) &&
-        requestOrigin &&
-        wantsSmsSenderAddress(requestOrigin.requestText);
+        scope === "address" &&
+        c.capabilities?.includes(SMS_SENDER_ADDRESS_CAPABILITY);
       validated = full
         ? { type: "sms_latest_sender", includeAddress: true }
         : { type: "sms_latest_sender" };

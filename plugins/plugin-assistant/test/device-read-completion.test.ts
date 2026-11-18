@@ -414,6 +414,14 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
     expect(suffix.request.payload.operation).toEqual({
       type: "sms_latest_sender",
     });
+    for (const text of [
+      "Who sent my latest SMS? Last two digits only.",
+      "Look up my latest SMS sender: ending digits, no full number.",
+    ]) {
+      await expect(
+        propose(text, { type: "sms_latest_sender", includeAddress: true }),
+      ).rejects.toThrow("Would you like the last four digits");
+    }
     const read = await propose("Who sent my latest SMS?", {
       type: "sms_latest_sender",
     });
