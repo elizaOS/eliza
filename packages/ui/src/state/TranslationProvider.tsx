@@ -130,16 +130,11 @@ export function TranslationProvider({
     () => ({ ...DEFAULT_BRANDING, ...branding }),
     [branding],
   );
-  const t = useMemo(
-    () =>
-      createTranslator(uiLanguage, appNameInterpolationVars(mergedBranding)),
-    [uiLanguage, mergedBranding],
+  const t = createTranslator(
+    uiLanguage,
+    appNameInterpolationVars(mergedBranding),
   );
-
-  const value = useMemo<TranslationContextValue>(
-    () => ({ t, uiLanguage, setUiLanguage }),
-    [t, uiLanguage, setUiLanguage],
-  );
+  const value: TranslationContextValue = { t, uiLanguage, setUiLanguage };
 
   return (
     <TranslationCtx.Provider value={value}>{children}</TranslationCtx.Provider>
