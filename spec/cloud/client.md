@@ -32,6 +32,7 @@ import types.* from "./shared/types"
 import accounts as A from "./identity/accounts"
 import plans as P from "./billing/plans"
 import subscriptions as Sub from "./billing/subscriptions"
+import metering as M from "./shared/metering"
 type Scheme = Https | Http | OtherScheme
 type BaseUrl = { scheme: Scheme, loopback: bool, hasPath: bool, hasQueryOrFragment: bool }
 pure def originAccepted(u: BaseUrl): bool =
@@ -346,19 +347,18 @@ pure def lawRefreshLeadsExpiry(untilExpiry: Millis): bool =
 
 The device reads the billing snapshot (`GET /api/v1/billing/limits`) as this
 view. The account is usable for inference when it is Active, its inference
-lane is not refused and its allowance plus its balance is above zero. A
+funding lane (`./shared/metering`) is not refused and its allowance plus its balance is above zero. A
 free plan with credits is billed per request; a paid plan from a
 subscription or a grant shows its key, with a warning while payment is
 late; a free plan with no credits needs a plan. An unread or unreadable
 snapshot admits nothing yet.
 
 ```quint
-type FundingLane = LaneAllowanceThenCredits | LaneCreditsOnly | LaneRefused
 type PlanSource = FromSubscription | FromGrant | FromFree
-type SnapshotView = { accountStatus: A::AccountStatus, balance: Micros, planKey: P::PlanKey, source: PlanSource, subscription: Sub::SubscriptionStatus, allowanceAvailable: Micros, inference: FundingLane, observedAt: Millis }
+type SnapshotView = { accountStatus: A::AccountStatus, balance: Micros, planKey: P::PlanKey, source: PlanSource, subscription: Sub::SubscriptionStatus, allowanceAvailable: Micros, inference: M::FundingLane, observedAt: Millis }
 type PlanView = PlanChecking | PlanUnavailable | PlanOnCredits | PlanPaid({ planKey: P::PlanKey, warning: bool }) | PlanNone
 type PlanAdmission = Admit | AdmitWithWarning | NeedsPlan | AdmissionUnknown
-pure def accountUsable(s: SnapshotView): bool = s.accountStatus == A::Active and s.inference != LaneRefused and s.allowanceAvailable + s.balance > 0
+pure def accountUsable(s: SnapshotView): bool = s.accountStatus == A::Active and s.inference != M::Refused and s.allowanceAvailable + s.balance > 0
 pure def paymentLate(subscription: Sub::SubscriptionStatus): bool = Set(Sub::Dunning, Sub::PastDue, Sub::Unpaid).contains(subscription)
 pure def planFromSnapshot(s: SnapshotView): PlanView =
   if (s.source == FromFree) (if (s.balance > 0) PlanOnCredits else PlanNone)
@@ -371,11 +371,11 @@ pure def planAdmission(v: PlanView): PlanAdmission = match v {
   | PlanNone => NeedsPlan
 }
 pure val sValues = Set(
-  { accountStatus: A::Active, balance: 0, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: LaneCreditsOnly, observedAt: 1 },
-  { accountStatus: A::Active, balance: 5, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: LaneCreditsOnly, observedAt: 1 },
-  { accountStatus: A::Active, balance: 0, planKey: P::PlusMonthly, source: FromSubscription, subscription: Sub::PastDue, allowanceAvailable: 10, inference: LaneAllowanceThenCredits, observedAt: 1 },
-  { accountStatus: A::Deleting, balance: 9, planKey: P::ProMonthly, source: FromGrant, subscription: Sub::NoSubscription, allowanceAvailable: 10, inference: LaneAllowanceThenCredits, observedAt: 1 },
-  { accountStatus: A::Active, balance: 9, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: LaneRefused, observedAt: 1 })
+  { accountStatus: A::Active, balance: 0, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: M::CreditsOnly, observedAt: 1 },
+  { accountStatus: A::Active, balance: 5, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: M::CreditsOnly, observedAt: 1 },
+  { accountStatus: A::Active, balance: 0, planKey: P::PlusMonthly, source: FromSubscription, subscription: Sub::PastDue, allowanceAvailable: 10, inference: M::AllowanceThenCredits, observedAt: 1 },
+  { accountStatus: A::Deleting, balance: 9, planKey: P::ProMonthly, source: FromGrant, subscription: Sub::NoSubscription, allowanceAvailable: 10, inference: M::AllowanceThenCredits, observedAt: 1 },
+  { accountStatus: A::Active, balance: 9, planKey: P::Free, source: FromFree, subscription: Sub::NoSubscription, allowanceAvailable: 0, inference: M::Refused, observedAt: 1 })
 pure val vValues = Set(PlanChecking, PlanUnavailable, PlanOnCredits, PlanPaid({ planKey: P::PlusMonthly, warning: true }), PlanPaid({ planKey: P::ProMonthly, warning: false }), PlanNone)
 pure def lawAnUnfundedAccountIsNotUsable(s: SnapshotView): bool = s.allowanceAvailable + s.balance <= 0 implies not(accountUsable(s))
 pure def lawOnlyAnActiveAccountIsUsable(s: SnapshotView): bool = accountUsable(s) implies s.accountStatus == A::Active

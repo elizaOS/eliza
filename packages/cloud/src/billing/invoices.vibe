@@ -205,7 +205,7 @@ effect function remainingLines(invoiceId: string, after: string): ReadonlyArray<
   let cursor = after
   let more = true
   while (more) {
-    const page = try provider({ method: "GET", path: `/v1/invoices/${invoiceId}/lines`, params: [["limit", "100"], ["starting_after", cursor]] }, ProviderLines)
+    const page: typeof ProviderLines.Type = try provider({ method: "GET", path: `/v1/invoices/${invoiceId}/lines`, params: [["limit", "100"], ["starting_after", cursor]] }, ProviderLines)
     lines.push(...page.data)
     const last = page.data.at(-1)
     more = page.has_more && last !== undefined
@@ -262,12 +262,12 @@ effect function ownedConfiguration(): (PortalConfigurationRead | undefined)!(Pro
   let cursor: string | undefined = undefined
   let more = true
   while (more) {
-    const page = try provider({
+    const page: typeof PortalConfigurations.Type = try provider({
       method: "GET",
       path: "/v1/billing_portal/configurations",
       params: [["active", "true"], ["limit", "100"], ...(cursor === undefined ? [] : [["starting_after", cursor] as const])]
     }, PortalConfigurations)
-    const owned = page.data.find((configuration) => configuration.metadata?.[portalConfigurationKey] === portalConfigurationVersion)
+    const owned = page.data.find((configuration: PortalConfigurationRead) => configuration.metadata?.[portalConfigurationKey] === portalConfigurationVersion)
     if (owned !== undefined) return owned
     const last = page.data.at(-1)
     more = page.has_more && last !== undefined
