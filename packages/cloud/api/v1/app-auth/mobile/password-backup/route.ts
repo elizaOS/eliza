@@ -217,6 +217,7 @@ app.post("/", bodyLimit({ maxSize: 8192 }), async (c) => {
       return c.json({
         code,
         ownerId: approval.userId,
+        organizationId: approval.organizationId,
         revision: observed ? `"${observed.revision}"` : null,
         present: observed?.present ?? false,
         scope: sha256Hex(
@@ -240,7 +241,7 @@ app.get("/readiness", async (c) => {
     if (!clientId || clientId.length > 200) return c.body(null, 404);
     await requireRegisteredMobileApp(c, clientId);
     await assertPasswordBackupStorageReady();
-    return c.body(null, 204);
+    return c.body(null, 204, { "X-Password-Backup-Version": "2" });
   } catch (error) {
     return errorResponse(c, error);
   }

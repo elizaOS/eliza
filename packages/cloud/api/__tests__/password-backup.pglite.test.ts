@@ -159,7 +159,17 @@ function issue(purpose: string, bearer = ownerToken) {
 async function grant(purpose: string, user?: string) {
   const response = await issue(purpose, user);
   expect(response.status).toBe(200);
-  return (await response.json()) as { code: string; scope: string };
+  const approval: {
+    code: string;
+    scope: string;
+    ownerId: string;
+    organizationId: string;
+  } = await response.json();
+  expect(approval).toMatchObject({
+    ownerId: user === otherToken ? otherId : ownerId,
+    organizationId,
+  });
+  return approval;
 }
 
 function use(
@@ -185,18 +195,20 @@ function use(
 }
 
 test("proof-bound approvals protect encrypted snapshot round-trip, replay, delete, and revision", async () => {
-  expect(
-    (
-      await app.request(
-        `${backupPath}/readiness?clientId=${clientId}`,
-        undefined,
-        env,
-      )
-    ).status,
-  ).toBe(204);
-  expect(
-    (await app.request(`${backupPath}/readiness`, undefined, env)).status,
-  ).toBe(404);
+  const readiness = await app.request(
+    `${backupPath}/readiness?clientId=${clientId}`,
+    undefined,
+    env,
+  );
+  expect([
+    readiness.status,
+    readiness.headers.get("X-Password-Backup-Version"),
+  ]).toEqual([204, "2"]);
+  const unregistered = await app.request(`${backupPath}/readiness`, undefined, env);
+  expect([
+    unregistered.status,
+    unregistered.headers.get("X-Password-Backup-Version"),
+  ]).toEqual([404, null]);
   expect((await issue("save", "eliza_mobile_inference")).status).toBe(401);
   const staleAuthentication = await issue("save", olderToken);
   expect(staleAuthentication.status).toBe(401);
