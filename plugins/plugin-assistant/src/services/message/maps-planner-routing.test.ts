@@ -357,6 +357,7 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
       "how do I get to Golden Gate Park",
       ["MAPS_NAVIGATION_START", "MAPS_ROUTE"],
     ],
+    ["how do I get to See's Candies?", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
     [
       "Can you take me to Coit Tower, please?",
       ["MAPS_NAVIGATION_START", "MAPS_ROUTE"],
@@ -431,6 +432,12 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     "keep your phone nearby",
     "how do I get to know her",
     "how do I get to sleep",
+    // "get to" + a verb is a chance to do something, not a trip.
+    "how do I get to talk to a real person?",
+    "How can I get to see my test results?",
+    "how do I get to be a morning person",
+    "how do I get to meet the band after the show",
+    "how do I get to speak to someone at my bank?",
     "navigate to the next page",
     "take me to the top",
     "take me to example.com",
