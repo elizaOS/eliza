@@ -42,6 +42,7 @@
       "shared phone and reminder-read parity negotiates the dial handoff and journals/replays the exact result without dialing twice",
       "shared phone and reminder-read parity refuses unnegotiated contact lookup and hides dialing on a locked screen",
       "shared phone and reminder-read parity uses short review copy for dial and SMS",
+      "shared phone and reminder-read parity opens the keypad without a review only for the requesting message and never calls",
       "shared phone and reminder-read parity leaves an SMS with unknown evidence unresolved without calling it sent or not",
       "shared phone and reminder-read parity does not leave a note write unresolved",
       "shared phone and reminder-read parity does not reconcile an unknown dial handoff from the owner's guess",

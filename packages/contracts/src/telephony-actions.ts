@@ -949,13 +949,31 @@ export function isSmsSenderLookup(text: string): boolean {
   );
 }
 
-export function wantsSmsSenderAddress(text: string): boolean {
-  return (
-    isSmsSenderLookup(text) &&
-    !/\b(?:last|final|ending|only)\s+(?:four|4)(?:\s+digits?)?\b|\b(?:suffix|masked|redacted|partial|number ending)\b|\b(?:without|hide|omit|exclude|don['’]t (?:show|share)|do not (?:show|share))\b[^.!?]{0,30}\b(?:number|address)\b/i.test(
+/** v1 returns exactly four final digits. Any narrower or unclear instruction needs a new owner choice before the device reads a sender. */
+export function smsSenderDisclosure(
+  text: string,
+): "address" | "last-four" | "clarify" {
+  const suffix = /\b(?:last|final|trailing|ending)\s+(?:four|4)\b/i.test(text);
+  const otherScope =
+    /\b(?:first|prefix|middle|leading|one|two|three|five|six|seven|eight|nine|ten)\b|\b(?!4\b)\d+\b/i.test(
+      text,
+    );
+  if (
+    /\b(?:don['’]t|do not|never|without|hide|omit|exclude|no)\s+(?:(?:show|give|share|display|reveal)(?:ing)?\s+)?(?:me\s+)?(?:any\s+|the\s+)?(?:last|final|ending|digits?|number|address)\b/i.test(
       text,
     )
-  );
+  )
+    return "clarify";
+  if (suffix && !otherScope) return "last-four";
+  if (
+    suffix ||
+    otherScope ||
+    /\b(?:digits?|ending|ends|suffix|mask(?:ed)?|redact(?:ed)?|partial|hide|omit|exclude|except|only|without|no|not|don['’]t)\b/i.test(
+      text,
+    )
+  )
+    return "clarify";
+  return isSmsSenderLookup(text) ? "address" : "last-four";
 }
 
 export function directSmsRequest(
@@ -976,7 +994,10 @@ export function directSmsRequest(
   )
     return false;
   if (operation.type === "sms_latest_sender")
-    return operation.includeAddress === true && wantsSmsSenderAddress(request);
+    return (
+      operation.includeAddress === true &&
+      smsSenderDisclosure(request) === "address"
+    );
   if (operation.type !== "sms_compose" || operation.draft !== true)
     return false;
   const recipient = requestedSmsDraftRecipient(request);
