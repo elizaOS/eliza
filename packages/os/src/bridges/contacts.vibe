@@ -242,7 +242,7 @@ const Summaries = Schema.Struct({
   ),
 })
 
-effect function decoded<A>(method: ContactsMethod, shape: Schema.Codec<A>, raw: unknown): A!MalformedContactReply {
+effect function decoded<A>(method: ContactsMethod, shape: Schema.Decoder<A>, raw: unknown): A!MalformedContactReply {
   return try mapError(Schema.decodeUnknownEffect(shape, strict)(raw), (refusal) => new MalformedContactReply({ method, issue: refusal.message }))
 }
 
@@ -490,7 +490,7 @@ effect function save(book: Book, plugin: AddressBookNativePlugin, install: Conta
   const options = { ...(reviewed === undefined ? {} : { id: reviewed.id, version: reviewed.version }), ...payloadOf(draft) }
   const lost: ContactSaveResult = { status: "unknown" }
   return try write(book, plugin, install, saveReply, effect () =>
-    parseContactSave(try called("save", () => plugin.save(options)), reviewed?.id) catch () => lost)
+    (effect { return try parseContactSave(try called("save", () => plugin.save(options)), reviewed?.id) } catch () => lost))
 }
 
 effect function remove(book: Book, plugin: AddressBookNativePlugin, install: ContactsInstall, reviewed: ReviewedContact) {
@@ -498,7 +498,7 @@ effect function remove(book: Book, plugin: AddressBookNativePlugin, install: Con
   if (problem !== null) throw new InvalidContactRequest({ problem })
   const lost: ContactRemoveResult = { status: "unknown" }
   return try write(book, plugin, install, removeReply, effect () =>
-    parseContactRemove(try called("remove", () => plugin.remove({ id: reviewed.id, version: reviewed.version }))) catch () => lost)
+    (effect { return try parseContactRemove(try called("remove", () => plugin.remove({ id: reviewed.id, version: reviewed.version }))) } catch () => lost))
 }
 
 export function createAddressBookClient(options: AddressBookClientOptions): AddressBookClient {
