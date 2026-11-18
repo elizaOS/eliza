@@ -127,7 +127,7 @@ lemma EpochsAfterJoinPlugin(s: PluginServices, epochId: int)
     forall item | item in after.epochs
       ensures core__plugins_alwaysRegistrationOutcomeAgrees(item.lifecycle) &&
         core__plugins_alwaysOneDispose(item.lifecycle) && core__plugins_alwaysCleanedHasNoContributions(item.lifecycle) &&
-        core__plugins_alwaysServiceStopsOnce(item.lifecycle)
+        core__plugins_alwaysServiceStopsOnce(item.lifecycle) && core__plugins_alwaysConnectorWithdrawalFollowsDisposal(item.lifecycle)
     {
       var i :| 0 <= i < |after.epochs| && after.epochs[i] == item;
       var prior := s.epochs[i];
@@ -164,7 +164,7 @@ lemma EpochsAfterCommitPlugin(s: PluginServices, epochId: int)
     forall item | item in after.epochs
       ensures core__plugins_alwaysRegistrationOutcomeAgrees(item.lifecycle) &&
         core__plugins_alwaysOneDispose(item.lifecycle) && core__plugins_alwaysCleanedHasNoContributions(item.lifecycle) &&
-        core__plugins_alwaysServiceStopsOnce(item.lifecycle)
+        core__plugins_alwaysServiceStopsOnce(item.lifecycle) && core__plugins_alwaysConnectorWithdrawalFollowsDisposal(item.lifecycle)
     {
       var i :| 0 <= i < |after.epochs| && after.epochs[i] == item;
       var prior := s.epochs[i];
@@ -201,7 +201,7 @@ lemma EpochsAfterFailPlugin(s: PluginServices, epochId: int)
     forall item | item in after.epochs
       ensures core__plugins_alwaysRegistrationOutcomeAgrees(item.lifecycle) &&
         core__plugins_alwaysOneDispose(item.lifecycle) && core__plugins_alwaysCleanedHasNoContributions(item.lifecycle) &&
-        core__plugins_alwaysServiceStopsOnce(item.lifecycle)
+        core__plugins_alwaysServiceStopsOnce(item.lifecycle) && core__plugins_alwaysConnectorWithdrawalFollowsDisposal(item.lifecycle)
     {
       var i :| 0 <= i < |after.epochs| && after.epochs[i] == item;
       var prior := s.epochs[i];
@@ -238,7 +238,7 @@ lemma EpochsAfterUnloadPlugin(s: PluginServices, epochId: int)
     forall item | item in after.epochs
       ensures core__plugins_alwaysRegistrationOutcomeAgrees(item.lifecycle) &&
         core__plugins_alwaysOneDispose(item.lifecycle) && core__plugins_alwaysCleanedHasNoContributions(item.lifecycle) &&
-        core__plugins_alwaysServiceStopsOnce(item.lifecycle)
+        core__plugins_alwaysServiceStopsOnce(item.lifecycle) && core__plugins_alwaysConnectorWithdrawalFollowsDisposal(item.lifecycle)
     {
       var i :| 0 <= i < |after.epochs| && after.epochs[i] == item;
       var prior := s.epochs[i];
@@ -265,7 +265,7 @@ lemma EpochsAfterDisposePlugin(s: PluginServices, epochId: int, ok: bool)
     forall item | item in after.epochs
       ensures core__plugins_alwaysRegistrationOutcomeAgrees(item.lifecycle) &&
         core__plugins_alwaysOneDispose(item.lifecycle) && core__plugins_alwaysCleanedHasNoContributions(item.lifecycle) &&
-        core__plugins_alwaysServiceStopsOnce(item.lifecycle)
+        core__plugins_alwaysServiceStopsOnce(item.lifecycle) && core__plugins_alwaysConnectorWithdrawalFollowsDisposal(item.lifecycle)
     {
       var i :| 0 <= i < |after.epochs| && after.epochs[i] == item;
       var prior := s.epochs[i];
@@ -292,7 +292,7 @@ lemma EpochsAfterCleanPlugin(s: PluginServices, epochId: int)
     forall item | item in after.epochs
       ensures core__plugins_alwaysRegistrationOutcomeAgrees(item.lifecycle) &&
         core__plugins_alwaysOneDispose(item.lifecycle) && core__plugins_alwaysCleanedHasNoContributions(item.lifecycle) &&
-        core__plugins_alwaysServiceStopsOnce(item.lifecycle)
+        core__plugins_alwaysServiceStopsOnce(item.lifecycle) && core__plugins_alwaysConnectorWithdrawalFollowsDisposal(item.lifecycle)
     {
       var i :| 0 <= i < |after.epochs| && after.epochs[i] == item;
       var prior := s.epochs[i];
@@ -724,8 +724,8 @@ lemma SettledKept(sv: core__serviceInstances_ServiceInstances, next: core__servi
 }
 
 lemma StopFold(g: RetirementGroup, services: core__serviceInstances_ServiceInstances, xs: seq<InstanceSlot>, k: int, b: bool)
-  ensures Std.Collections.Seq.FoldLeft((check: StopValidation, slot: InstanceSlot) => validateNextStop(check, g, slot, services), StopValidation(k, b), xs) ==
-    StopValidation(k + |xs|, b && forall i :: 0 <= i < |xs| ==> validStopObservation(g, k + i, xs[i], services))
+  ensures Std.Collections.Seq.FoldLeft((check: SequenceValidation, slot: InstanceSlot) => validateNextStop(check, g, slot, services), SequenceValidation(k, b), xs) ==
+    SequenceValidation(k + |xs|, b && forall i :: 0 <= i < |xs| ==> validStopObservation(g, k + i, xs[i], services))
   decreases |xs|
 {
   if |xs| > 0 {
@@ -915,8 +915,10 @@ lemma CaptureRetirementOnce(s: PluginServices, mid: PluginServices, epochId: int
   var added := ServiceRetirement(epochId, plannedTypes(mid, epochId), [], 0, [], false, "");
   assert after.retirements == s.retirements + [added];
   CapturedRetirementShaped(mid, epochId);
+  EpochIdLookup(s, epochId);
+  PluginEpochIdentityFilters(s);
   forall r | r in after.retirements
-    ensures epoch(after, r.epochId).id == r.epochId && !epochAdmitsClass(after, r.epochId) && |ProofLib.Filter((other: ServiceRetirement) => (other.epochId == r.epochId), after.retirements)| == 1
+    ensures r.epochId > 0 && epoch(after, r.epochId).id == r.epochId && !epochAdmitsClass(after, r.epochId) && |ProofLib.Filter((other: ServiceRetirement) => (other.epochId == r.epochId), after.retirements)| == 1
   {
     var p := (other: ServiceRetirement) => (other.epochId == r.epochId);
     ProofLib.FilterAppend(p, s.retirements, added);
@@ -936,12 +938,19 @@ lemma PlanFold(r: ServiceRetirement, xs: seq<RetirementGroup>, k: int, b: bool)
   decreases |xs|
 {
   if |xs| > 0 {
-    PlanFold(r, xs[1..], k + 1, b && r.plan[k] == xs[0].serviceType);
-    if forall i :: 0 <= i < |xs[1..]| ==> r.plan[k + 1 + i] == xs[1..][i].serviceType {
-      forall i | 1 <= i < |xs| ensures r.plan[k + i] == xs[i].serviceType {
-        assert xs[i] == xs[1..][i - 1];
+    var b2 := b && r.plan[k] == xs[0].serviceType;
+    assert checkGroupPlan(PlanCheck(k, b), r, xs[0]) == PlanCheck(k + 1, b2);
+    PlanFold(r, xs[1..], k + 1, b2);
+    var rest := forall i :: 0 <= i < |xs[1..]| ==> r.plan[k + 1 + i] == xs[1..][i].serviceType;
+    var whole := forall i :: 0 <= i < |xs| ==> r.plan[k + i] == xs[i].serviceType;
+    assert whole == (r.plan[k] == xs[0].serviceType && rest) by {
+      if rest {
+        forall i | 1 <= i < |xs| ensures r.plan[k + i] == xs[i].serviceType {
+          assert xs[i] == xs[1..][i - 1];
+        }
       }
     }
+    assert (b2 && rest) == (b && whole);
   }
 }
 
@@ -1064,7 +1073,7 @@ lemma SlotsAt(s: PluginServices, after: PluginServices, k: int, r2: ServiceRetir
   requires alwaysStopObservationsFollowSlots(s)
   requires 0 <= k < |s.retirements| && after.retirements == s.retirements[k := r2]
   requires forall slot :: stopSlotSettled(slot, s.services) ==> stopSlotSettled(slot, after.services)
-  requires forall g :: g in r2.groups ==> (g.instanceCursor >= 0 && g.instanceCursor <= |g.instances| && |g.observedStops| >= g.instanceCursor && |g.observedStops| <= |g.instances| && |g.observedStops| <= g.instanceCursor + 1 && allStopObservationsValid(g, after.services))
+  requires forall g :: g in r2.groups ==> (g.instanceCursor >= 0 && g.instanceCursor <= |g.instances| && |g.observedStops| >= g.instanceCursor && |g.observedStops| <= |g.instances| && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g) && allStopObservationsValid(g, after.services))
   ensures alwaysStopObservationsFollowSlots(after)
 {
   forall r, g | r in after.retirements && g in r.groups && r != r2 ensures allStopObservationsValid(g, after.services)
@@ -1202,16 +1211,17 @@ lemma OrphanAt(s: PluginServices, after: PluginServices, k: int, c: int, g2: Ret
   requires forall slot :: slot in s.retirements[k].groups[c].observedStops ==> slot in g2.observedStops
   requires |after.services.objects| == |s.services.objects|
   requires forall i :: 0 <= i < |s.services.objects| ==> after.services.objects[i].id == s.services.objects[i].id && after.services.objects[i].stopCalls >= s.services.objects[i].stopCalls
+  requires forall p, x :: p in s.services.published && x in p.instances ==> exists q :: q in after.services.published && x in q.instances
   ensures alwaysNoOrphanInstance(after)
 {
   forall o | o in after.services.objects
-    ensures (o.stopCalls > 0) || (exists cl :: cl in after.services.classes && cl.live == o.id && cl.registered) ||
+    ensures (o.stopCalls > 0) || ((exists cl :: cl in after.services.classes && cl.live == o.id && cl.registered) && (exists p :: p in after.services.published && o.id in p.instances)) ||
       (exists r :: r in after.retirements && (exists g :: g in r.groups && (missingStopObservedFor(g, o.id) || (epochOwnsResources(after, r.epochId) && (o.id in g.instances)))))
   {
     var i :| 0 <= i < |after.services.objects| && after.services.objects[i] == o;
     var prior := s.services.objects[i];
     assert prior in s.services.objects;
-    if exists cl :: cl in s.services.classes && cl.live == prior.id && cl.registered {
+    if (exists cl :: cl in s.services.classes && cl.live == prior.id && cl.registered) && (exists p :: p in s.services.published && prior.id in p.instances) {
       var cl :| cl in s.services.classes && cl.live == prior.id && cl.registered;
       var m :| 0 <= m < |s.services.classes| && s.services.classes[m] == cl;
       assert after.services.classes[m] in after.services.classes;
@@ -1293,6 +1303,7 @@ lemma OrphanClassFrame(s: PluginServices, after: PluginServices)
   requires alwaysNoOrphanInstance(s) && after.epochs == s.epochs && after.retirements == s.retirements && after.services.objects == s.services.objects
   requires |after.services.classes| >= |s.services.classes|
   requires forall i :: 0 <= i < |s.services.classes| ==> after.services.classes[i].live == s.services.classes[i].live && (s.services.classes[i].registered ==> after.services.classes[i].registered)
+  requires forall p, x :: p in s.services.published && x in p.instances ==> exists q :: q in after.services.published && x in q.instances
   ensures alwaysNoOrphanInstance(after)
 {
   forall o | o in after.services.objects && !(o.stopCalls > 0) && (exists cl :: cl in s.services.classes && cl.live == o.id && cl.registered)
@@ -1744,8 +1755,8 @@ lemma finishClassStart_ensures(s: PluginServices, attemptId: int, instanceId: in
     ServiceStep(s, after);
     ReturnFrame(s.services, attemptId, instanceId);
     ReturnIS(s.services, attemptId, instanceId);
-    OrphanReturn(s, after, attemptId, instanceId);
     ReturnReach(s, after, attemptId, instanceId);
+    OrphanReturn(s, after, attemptId, instanceId);
     ClassShape(s, after);
     UndeclaredFrame(s, after);
   }
@@ -1777,8 +1788,8 @@ lemma resolveNextStart_ensures(s: PluginServices, ok: bool, instanceId: int, err
     if ok {
       ReturnFrame(s.services, attemptId, instanceId);
       ReturnIS(s.services, attemptId, instanceId);
-      OrphanReturn(s, after, attemptId, instanceId);
       ReturnReach(s, after, attemptId, instanceId);
+      OrphanReturn(s, after, attemptId, instanceId);
       ClassShape(s, after);
       UndeclaredFrame(s, after);
     } else {
@@ -2126,13 +2137,14 @@ lemma SlotsAtGroup(s: PluginServices, after: PluginServices, k: int, c: int, g2:
   requires 0 <= c < |s.retirements[k].groups| && r2.groups == s.retirements[k].groups[c := g2]
   requires forall slot :: stopSlotSettled(slot, s.services) ==> stopSlotSettled(slot, after.services)
   requires g2.instanceCursor >= 0 && g2.instanceCursor <= |g2.instances| && |g2.observedStops| >= g2.instanceCursor && |g2.observedStops| <= |g2.instances| && |g2.observedStops| <= g2.instanceCursor + 1
+  requires classPhaseFollowsInstances(g2)
   requires forall i :: 0 <= i < |g2.observedStops| ==> validStopObservation(g2, i, g2.observedStops[i], after.services)
   ensures alwaysStopObservationsFollowSlots(after)
 {
   var r := s.retirements[k];
   assert r in s.retirements;
   forall g | g in r2.groups
-    ensures g.instanceCursor >= 0 && g.instanceCursor <= |g.instances| && |g.observedStops| >= g.instanceCursor && |g.observedStops| <= |g.instances| && |g.observedStops| <= g.instanceCursor + 1 && allStopObservationsValid(g, after.services)
+    ensures g.instanceCursor >= 0 && g.instanceCursor <= |g.instances| && |g.observedStops| >= g.instanceCursor && |g.observedStops| <= |g.instances| && |g.observedStops| <= g.instanceCursor + 1 && classPhaseFollowsInstances(g) && allStopObservationsValid(g, after.services)
   {
     StopsValid(g, after.services);
     if g != g2 {
@@ -2720,7 +2732,7 @@ lemma cleanPlugin_ensures(s: PluginServices, epochId: int)
         }
       }
     }
-    forall o | o in after.services.objects && o.stopCalls <= 0 && !(exists cl :: cl in after.services.classes && cl.live == o.id && cl.registered)
+    forall o | o in after.services.objects && o.stopCalls <= 0 && !((exists cl :: cl in after.services.classes && cl.live == o.id && cl.registered) && (exists p :: p in after.services.published && o.id in p.instances))
       ensures exists r :: r in after.retirements && (exists g :: g in r.groups && (missingStopObservedFor(g, o.id) || (epochOwnsResources(after, r.epochId) && (o.id in g.instances))))
     {
       var r, g :| r in s.retirements && g in r.groups && (missingStopObservedFor(g, o.id) || (epochOwnsResources(s, r.epochId) && (o.id in g.instances)));
@@ -3425,6 +3437,7 @@ lemma ReturnIS(s: core__serviceInstances_ServiceInstances, attemptId: int, insta
 lemma OrphanReturn(s: PluginServices, after: PluginServices, attemptId: int, instanceId: int)
   requires alwaysNoOrphanInstance(s) && alwaysInvokingStartHasNoInstance(s) && core__serviceInstances_inv(s.services) && core__serviceInstances_canReturnInstance(s.services, attemptId, instanceId)
   requires after == s.(services := core__serviceInstances_returnInstance(s.services, attemptId, instanceId))
+  requires alwaysLiveInstanceReachable(after) && core__serviceInstances_alwaysClassAndObjectIdentities(after.services)
   ensures alwaysNoOrphanInstance(after)
 {
   var sv := s.services;
@@ -3465,6 +3478,7 @@ lemma OrphanReturn(s: PluginServices, after: PluginServices, attemptId: int, ins
       }
     }
   }
+  OrphanFromReach(after);
 }
 
 lemma StopCallsKept(s: core__serviceInstances_ServiceInstances, next: core__serviceInstances_ServiceInstances)
@@ -3663,6 +3677,7 @@ lemma WithdrawCover(s: PluginServices, after: PluginServices, k: int, r2: Servic
   requires forall c :: c in xs ==> core__serviceInstances_serviceClass(s.services, c.id).serviceType == t && (core__serviceInstances_serviceClass(s.services, c.id).live == 0 || core__serviceInstances_serviceClass(s.services, c.id).live in captured)
   requires skip ==> !(exists d :: d in s.services.declarations && d.serviceType == t)
   requires forall u, x :: x in core__serviceInstances_publishedInstances(s.services, u) && !(!skip && u == t && x in captured) ==> x in core__serviceInstances_publishedInstances(after.services, u)
+  requires core__serviceInstances_alwaysClassAndObjectIdentities(after.services)
   ensures alwaysNoOrphanInstance(after) && alwaysLiveInstanceReachable(after)
 {
   assert after.retirements[k] == r2 && group in r2.groups;
@@ -3705,6 +3720,7 @@ lemma WithdrawCover(s: PluginServices, after: PluginServices, k: int, r2: Servic
       if j == k { assert g in r2.groups; } else { assert after.retirements[j] == rr; }
     }
   }
+  OrphanFromReach(after);
 }
 
 lemma StopOrphans(s: PluginServices, after: PluginServices)
@@ -3773,4 +3789,55 @@ lemma WithdrawUndeclared(s: PluginServices, after: PluginServices, k: int, r2: S
 lemma ObjSame()
   ensures forall x: core__serviceInstances_ServiceInstances, y: core__serviceInstances_ServiceInstances, id: int :: x.objects == y.objects ==> core__serviceInstances_serviceObject(x, id) == core__serviceInstances_serviceObject(y, id)
 {
+}
+
+lemma lawDisposalKeepsOtherCapturedOwners_ensures(s: PluginServices, epochId: int, otherId: int, ok: bool, publication: ConnectorPublication)
+  ensures (lawDisposalKeepsOtherCapturedOwners(s, epochId, otherId, ok, publication) == true)
+{
+  if alwaysEpochIdentityUnique(s) && epochId != otherId {
+    var after := disposePlugin(s, epochId, ok);
+    PluginEpochMapIdentity(s, after);
+    EpochIdLookup(s, otherId);
+    EpochIdLookup(after, otherId);
+    if e :| e in s.epochs && e.id == otherId {
+      var i :| 0 <= i < |s.epochs| && s.epochs[i] == e;
+      assert after.epochs[i] == e;
+      PluginEpochExact(s, e);
+      PluginEpochExact(after, e);
+    } else if e :| e in after.epochs && e.id == otherId {
+      var i :| 0 <= i < |after.epochs| && after.epochs[i] == e;
+      assert s.epochs[i] in s.epochs;
+    }
+  }
+}
+
+lemma lawDisposeContinuationBlocksItsCapturedOwner_ensures(s: PluginServices, epochId: int, ok: bool, publication: ConnectorPublication)
+  ensures (lawDisposeContinuationBlocksItsCapturedOwner(s, epochId, ok, publication) == true)
+{
+  if alwaysEpochIdentityUnique(s) && epochId > 0 && canDisposePlugin(s, epochId, ok) {
+    var after := disposePlugin(s, epochId, ok);
+    PluginEpochMapIdentity(s, after);
+    EpochIdLookup(s, epochId);
+    EpochIdLookup(after, epochId);
+    if e :| e in s.epochs && e.id == epochId {
+      var i :| 0 <= i < |s.epochs| && s.epochs[i] == e;
+      assert after.epochs[i] in after.epochs;
+    }
+  }
+}
+
+lemma OrphanFromReach(s: PluginServices)
+  requires alwaysLiveInstanceReachable(s) && core__serviceInstances_alwaysClassAndObjectIdentities(s.services)
+  requires forall o :: o in s.services.objects ==> ((o.stopCalls > 0) || (exists cl :: cl in s.services.classes && cl.live == o.id && cl.registered) ||
+    (exists rr :: rr in s.retirements && (exists g :: g in rr.groups && (missingStopObservedFor(g, o.id) || (epochOwnsResources(s, rr.epochId) && (o.id in g.instances))))))
+  ensures alwaysNoOrphanInstance(s)
+{
+  forall o | o in s.services.objects && !(o.stopCalls > 0) && (exists cl :: cl in s.services.classes && cl.live == o.id && cl.registered) &&
+    !(exists rr :: rr in s.retirements && (exists g :: g in rr.groups && (missingStopObservedFor(g, o.id) || (epochOwnsResources(s, rr.epochId) && (o.id in g.instances)))))
+    ensures exists p :: p in s.services.published && o.id in p.instances
+  {
+    var cl :| cl in s.services.classes && cl.live == o.id && cl.registered;
+    ObjectExact(s.services, o);
+    PubFound(s.services, cl.serviceType);
+  }
 }
