@@ -14,7 +14,12 @@ import {
 } from "./action.js";
 import { MAPS_VIEW_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
-import { MapsService } from "./service.js";
+import {
+  isChoiceReply,
+  PLACE_CHOICE_ACTIONS,
+  type PlaceChoiceOperation,
+} from "./place-choice.js";
+import { MAPS_SERVICE_TYPE, MapsService } from "./service.js";
 
 // Each operation says when to use it, in the words a user would use. Without
 // this text a promoted action reads only `MAPS operation "route".`, and the
@@ -334,6 +339,22 @@ function ownerChatTurn(message: Memory | undefined): boolean {
 }
 
 /**
+ * The operation whose "which one did you mean?" question this owner turn
+ * answers ("the first one"), if one is open in this conversation.
+ */
+function answeredPlaceChoice(
+  runtime: Parameters<NonNullable<Plugin["init"]>>[1],
+  text: string,
+  message: Memory | undefined,
+): PlaceChoiceOperation | undefined {
+  if (!message || !isChoiceReply(text)) return undefined;
+  const service = runtime.getService(MAPS_SERVICE_TYPE);
+  return service instanceof MapsService
+    ? service.placeChoices.get(message)?.operation
+    : undefined;
+}
+
+/**
  * A travel destination that names no registered view. Without a host view
  * registry a view cannot be told from a place, so the route stays out.
  */
@@ -408,6 +429,24 @@ export const mapsPlugin: Plugin = {
         ownerChatTurn(message) &&
         travelToPlace(runtime, text, message, mapsGoToDestination),
     });
+    // "the first one" answers the open "which one did you mean?" question.
+    // Without this the reply reads as small talk: on the phone (v610) Stage 1
+    // answered it in prose ("I can't load a live route from here") and no
+    // route was planned. The operation that asked continues the request.
+    for (const [operation, actionName] of Object.entries(
+      PLACE_CHOICE_ACTIONS,
+    ) as [PlaceChoiceOperation, string][]) {
+      registerDirectActionRoutingRule(runtime, {
+        id: `maps.place-choice.${operation}`,
+        actionNames: [actionName],
+        replacesActionNames: ["VIEWS", "VIEWS_SHOW"],
+        requiredActionTags: ["domain:maps"],
+        contexts: ["maps"],
+        matches: (text, message) =>
+          ownerChatTurn(message) &&
+          answeredPlaceChoice(runtime, text, message) === operation,
+      });
+    }
     // "find the nearest pharmacy": the place search around the phone's own
     // position (a locate card), or directions to it.
     registerDirectActionRoutingRule(runtime, {
