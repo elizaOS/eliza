@@ -23,6 +23,7 @@ import {
 import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
 import { ApprovalService } from "../../../plugins/plugin-assistant/src/services/approval/service.ts";
 import { createCalendarActionRunner } from "../../../plugins/plugin-calendar/src/actions/calendar-handler.ts";
+import type { CalendarModelCallArgs } from "../../../plugins/plugin-calendar/src/actions/deps.ts";
 import { standaloneCalendarDeps } from "../../../plugins/plugin-calendar/src/actions/standalone-calendar-deps.ts";
 import {
   executeRawSql,
@@ -963,7 +964,9 @@ test.each([false, true])(
     const evidence = [{ sourceId: `current:${message.id}`, quote: input }];
     const action = createCalendarActionRunner({
       ...standaloneCalendarDeps,
-      async runJsonModel<T extends Record<string, unknown>>(args) {
+      async runJsonModel<T extends Record<string, unknown>>(
+        args: CalendarModelCallArgs,
+      ) {
         expect(args.actionType).toBe("lifeops.calendar.extract_create_event");
         expect(args.prompt).toContain(input);
         const rawResponse = JSON.stringify({
@@ -1001,6 +1004,12 @@ test.each([false, true])(
     expect(stored?.payload).toMatchObject({
       sourceNote,
       title: "Approval review",
+      grantId: "eliza-calendar",
+      calendarId: "primary",
+      startsAtMs: Date.parse(start),
+      endsAtMs: Date.parse(end),
+      timeZone: zone,
+      attendees: [],
     });
     const approvalRows = await executeRawSql(
       s.runtime,
