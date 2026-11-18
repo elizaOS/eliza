@@ -1,5 +1,6 @@
 package ai.eliza.plugins.agent.runtime;
 
+import android.app.ForegroundServiceStartNotAllowedException;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -98,6 +99,15 @@ public abstract class EmbeddedRuntimeService extends Service {
   }
   @Override public void onCreate() {
     super.onCreate();
+    getSystemService(NotificationManager.class).createNotificationChannel(runtimeNotificationChannel());
+    try {
+      if(Build.VERSION.SDK_INT>=29)startForeground(runtimeNotificationId(),runtimeNotification(),runtimeForegroundType());
+      else startForeground(runtimeNotificationId(),runtimeNotification());
+    } catch (IllegalStateException refused) {
+      if(Build.VERSION.SDK_INT<31 || !(refused instanceof ForegroundServiceStartNotAllowedException))throw refused;
+      stopSelf();
+      return;
+    }
     root=runtimeRootDirectory();
     NativeProcessLog log=new NativeProcessLog(new File(root,"agent.log").toPath(),policy.logBytes(),policy.logLineBytes());
     group = new EmbeddedRuntimeGroup(log, endpoint -> {
@@ -106,15 +116,12 @@ public abstract class EmbeddedRuntimeService extends Service {
       return response.getInt("status") == 200 && health.getBoolean("ready") && "ok".equals(health.getString("runtime"))
         && "running".equals(health.getString("agentState")) && health.getLong("epoch") == endpoint.epoch;
     }, policy.agentReadyMs(), policy.pollMs());
-    getSystemService(NotificationManager.class).createNotificationChannel(runtimeNotificationChannel());
     current.put(getClass(),this);
     changed(getClass());
   }
   @Override public synchronized int onStartCommand(Intent intent,int flags,int startId) {
     String action=intent==null?null:intent.getAction();
-    if("stop".equals(action)){stopSelf();return START_NOT_STICKY;}
-    if(Build.VERSION.SDK_INT>=29)startForeground(runtimeNotificationId(),runtimeNotification(),runtimeForegroundType());
-    else startForeground(runtimeNotificationId(),runtimeNotification());
+    if(group==null || "stop".equals(action)){stopSelfResult(startId);return START_NOT_STICKY;}
     if("restart".equals(action))supervisor.restart();else supervisor.start();
     return START_NOT_STICKY;
   }

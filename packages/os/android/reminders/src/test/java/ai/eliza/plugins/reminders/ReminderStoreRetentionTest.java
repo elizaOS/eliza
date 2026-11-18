@@ -13,7 +13,7 @@ import static org.junit.Assert.*;
 
 /** Operation receipt retention on one synthetic no-alert reminder; no provider or model. */
 @RunWith(RobolectricTestRunner.class)
-@Config(sdk=28,manifest=Config.NONE)
+@Config(sdk=Config.OLDEST_SDK,manifest=Config.NONE)
 public class ReminderStoreRetentionTest {
  static final String HASH=new String(new char[64]).replace('\0','a');
  static final class Memory implements SecureStringStore {

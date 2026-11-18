@@ -705,6 +705,13 @@ export function generateAndroidConsumerHost({
  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+</manifest>
+`,
+    );
+    const serviceManifest = "app/eliza-embedded-agent-manifest.xml";
+    add(
+      serviceManifest,
+      `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
  <application>
   <service android:name="${data.service}" android:exported="false" android:foregroundServiceType="specialUse">
    <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="embedded-agent-runtime" />
@@ -737,7 +744,7 @@ export function generateAndroidConsumerHost({
       file,
       sha256: hash(fs.readFileSync(file)),
     }));
-    embeddedAgent = { files, inputs: [...inputs, ...sources] };
+    embeddedAgent = { files, serviceManifest: path.join(output, serviceManifest), inputs: [...inputs, ...sources] };
   }
   const assetNames = new Set(
     embeddedAgent ? Object.values(EMBEDDED_AGENT_ASSETS) : [],
@@ -801,6 +808,7 @@ export function generateAndroidConsumerHost({
     nativeLibraries: profile.nativeLibraries ?? null,
     modules,
     manifest,
+    embeddedServiceManifest: embeddedAgent?.serviceManifest ?? null,
     identityResources: path.join(output, CONSUMER_IDENTITY_RESOURCES),
     flavors,
     sourceSets,
