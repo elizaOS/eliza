@@ -385,6 +385,27 @@ describe("recorded trajectories on the trajectory store", () => {
     await service.stop();
   });
 
+  it("keeps another agent's record export-only", async () => {
+    const { runtime, service, rows } = await createSqlRuntime();
+    const recorder = createTrajectoryRecorder({ runtime, rootDir });
+    const id = recorder.startTrajectory({
+      agentId: "another-agent",
+      rootMessage: { id: "message-6", text: "not this runtime" },
+    });
+    await recorder.recordStage(id, plannerStage("other-planner"));
+    await recorder.endTrajectory(id, "finished");
+
+    expect(await rows("SELECT id FROM trajectories")).toEqual([]);
+    const file = await readExport(rootDir, {
+      agentId: "another-agent",
+      trajectoryId: id,
+    });
+    expect(file.stages.map((stage) => stage.stageId)).toEqual([
+      "other-planner",
+    ]);
+    await service.stop();
+  });
+
   it("exports the complete record when the runtime has no SQL adapter", async () => {
     const runtime = {
       agentId: AGENT_ID,

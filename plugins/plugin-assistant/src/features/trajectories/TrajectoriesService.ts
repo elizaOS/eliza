@@ -445,6 +445,9 @@ export class TrajectoriesService extends Service {
     turnStepId?: string,
   ): RecordedTrajectoryLocation | null {
     if (!this.isEnabled()) return null;
+    // A stored header must name the agent that owns the row (the projection
+    // rejects a mismatch), so another agent's record stays export-only.
+    if (header.agentId !== this.runtime.agentId) return null;
     if (
       turnStepId &&
       acceptsTrajectoryStepCapture(
