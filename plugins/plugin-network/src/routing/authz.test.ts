@@ -363,6 +363,9 @@ describe("Network weekday with next week", () => {
       ["I'm in Lisbon until next week's Friday", "2026-10-23"],
       // The review case: "Next week Friday" with a capital N (ss251, PR #39816).
       ["I'm in Lisbon until Next week Friday", "2026-10-23"],
+      // The review case: "on" between "next week" and the weekday (LazyCheeseispower, PR #39816).
+      ["I'm in Lisbon until next week on Friday", "2026-10-23"],
+      ["I'm in Lisbon until next week, on Friday", "2026-10-23"],
       // "next week Monday" already ended on next Monday.
       ["I'm away until next week Monday", "2026-10-19"],
       // A bare weekday still means its next occurrence, this week.

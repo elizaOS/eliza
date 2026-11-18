@@ -218,7 +218,9 @@ export function parseDateExpr(expr: string, now: Date): Date | null {
     // a bare weekday and resolved it to this week's Friday. Same six-days-early
     // error as the "Friday next week" suffix form fixed in #36789.
     // Case-insensitive: members write "Next week Friday" at a sentence start.
-    if (/(?:^|[\s,])next\s+week(?:'s)?,?\s*$/i.test(expr.slice(0, m.index)))
+    // Accept an optional "on" after "next week", with or without a comma:
+    // "next week on Friday" and "next week, on Friday" name the same Friday.
+    if (/(?:^|[\s,])next\s+week(?:'s)?,?\s*(?:on\s+)?$/i.test(expr.slice(0, m.index)))
       return nextWeekday(
         WEEKDAYS.indexOf(m[8].slice(0, 3).toLowerCase()),
         today,
