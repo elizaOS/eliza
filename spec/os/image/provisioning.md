@@ -16,8 +16,8 @@ package, with one `Handles` entry per intent filter (a filter it does not
 recognise is `OtherIntent`) and the marks it read. Feature names are the
 launcher package plus `.aosp_image` or `.feature.LISTENER`. Every file is
 written once into the staged product and never overwritten. All of this is
-staging output: only a boot of the built image
-([verification](./verification.md)) shows that Android applied it.
+staging output. Observations of the booted image's actual components, roles
+and intent resolution establish whether Android applied it.
 
 ## Story: Make my launcher Home on first boot
 
@@ -118,8 +118,9 @@ pure def lawRequirementsHoldWhenAdmitted(manifest: LauncherManifest, request: Pr
 
 The override is a sysconfig `<component-override>` that Android applies at
 package scan, so it survives APK updates. It only enables components; the
-output has no way to name a role holder, and roles are assigned on the
-device by [first run](./firstRun.md). The in-call service must declare the
+output has no way to name a role holder. The consumer's first-run interface
+requests roles through the [system role bridge](../android/system.md);
+sysconfig alone assigns none. The in-call service must declare the
 in-call UI and no car-mode UI; the MMS provider is private, for the
 authority `<package>.mms`, and grants URI permissions. The dial activity
 handles `DIAL` with and without `tel`.
@@ -180,8 +181,9 @@ pure def lawEnabledHandlerIsRefused(manifest: LauncherManifest): bool =
 
 ### An image's default roles are Home, the assistant when the product takes it, and the dialer and SMS app when it declares telephony roles
 
-[First run](./firstRun.md) assigns exactly these, the dialer and SMS app
-only on a device that also has telephony.
+The consumer's first-run interface requests exactly these roles, the dialer
+and SMS app only on a device that also has telephony. This requested set
+does not establish that Android assigned a role.
 
 ```quint
 pure def imageRoles(request: ProvisioningRequest): Set[DefaultRole] =
@@ -329,9 +331,9 @@ pure def lawRefusingLauncherHasNoSecureCapture(manifest: LauncherManifest): bool
 ### The product requires DeskClock exactly once
 
 Adding the requirement to a makefile that has it leaves it unchanged; a
-makefile that names it twice is refused. The booted image must resolve the
-alarm actions to DeskClock ([verification](./verification.md)); that does
-not prove an alarm rings.
+makefile that names it twice is refused. The booted image must resolve all
+`clockAlarmActions` to DeskClock. Staging alone establishes no such
+resolution; observed resolution does not prove an alarm rings.
 
 ```quint
 type ClockRequirement = ClockAdded | ClockKept | ClockNamedTwice
