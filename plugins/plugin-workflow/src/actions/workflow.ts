@@ -2,6 +2,7 @@
  * WORKFLOW chat action for creating, editing, administering, and running native
  * Smithers workflows through the same elizaOS service used by the Workflows UI.
  */
+import { randomUUID } from 'node:crypto';
 import {
   type Action,
   type ActionResult,
@@ -12,6 +13,8 @@ import {
   resolveCanonicalOwnerIdForMessage,
   type State,
 } from '@elizaos/core';
+import { HOSTED_SPEC } from '../services/hosted-digest';
+import { PHONE_SPEC_KEY, storedPhoneTimeTrigger } from '../services/phone-workflow-spec';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
 import { WorkflowApiError } from '../types/index';
 import {
@@ -20,6 +23,7 @@ import {
   workflowPendingEffect,
   workflowSubmissionEffect,
 } from './workflow-effects';
+import { notApplied, resolveWorkflowRef } from './workflow-reference';
 
 const WORKFLOW_OPS = [
   'list',
@@ -27,8 +31,11 @@ const WORKFLOW_OPS = [
   'get',
   'create',
   'modify',
+  'rename',
   'activate',
   'deactivate',
+  'remove',
+  'restore_removed',
   'run',
   'dossier',
   'cancel_run',
@@ -38,10 +45,21 @@ const WORKFLOW_OPS = [
   'eval_samples',
 ] as const;
 type WorkflowOp = (typeof WORKFLOW_OPS)[number];
+/** These only read, so a failure in one never leaves a change to reconcile. */
+const READ_OPS: readonly WorkflowOp[] = [
+  'list',
+  'search',
+  'get',
+  'executions',
+  'revisions',
+  'eval_samples',
+];
 
 interface WorkflowActionParameters {
   action?: unknown;
   workflowId?: unknown;
+  workflowName?: unknown;
+  name?: unknown;
   executionId?: unknown;
   sourceId?: unknown;
   seedPrompt?: unknown;
@@ -65,6 +83,27 @@ function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function validTimeZone(value: unknown): string | undefined {
+  const zone = text(value);
+  if (!zone) return undefined;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return zone;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The order TRIGGER uses: the owner's device, then the agent setting, then the host. */
+function ownerTimeZone(runtime: IAgentRuntime, message: Memory): string {
+  return (
+    validTimeZone(record(message.content.metadata).uiTimeZone) ??
+    validTimeZone(runtime.getSetting('TIMEZONE')) ??
+    validTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone) ??
+    'UTC'
+  );
 }
 
 function serviceFor(runtime: IAgentRuntime): WorkflowService | null {
@@ -118,7 +157,7 @@ export const workflowAction: Action = {
     'WORKFLOW_EXECUTIONS',
   ],
   description:
-    'Create, edit, inspect, activate, run, and cancel native Smithers workflows. Workflows cannot be deleted from chat. For an explicit on-demand current-day dossier or briefing from the owner’s reviewed phone Calendar and due/overdue reminders, use dossier. This reads only already reviewed native sources, creates no schedule and uses one existing summary pass. If no source has been reviewed, ask the owner to select it in digest settings; do not invent other sources. ' +
+    'Create, edit, rename, inspect, activate, run, cancel, remove and restore workflows. modify changes what a workflow does and turns it off until the owner reviews the change. rename changes only the name. remove takes a workflow out of the list and stops its schedule; restore_removed brings a removed workflow back, turned off. restore returns a workflow to an earlier revision. A workflow built in the Workflows view is edited there, and its schedule is turned on there. For an explicit on-demand current-day dossier or briefing from the owner’s reviewed phone Calendar and due/overdue reminders, use dossier. This reads only already reviewed native sources, creates no schedule and uses one existing summary pass. If no source has been reviewed, ask the owner to select it in digest settings; do not invent other sources. ' +
     `Provide action=${WORKFLOW_OPS.join('|')}.`,
   parameters: [
     {
@@ -130,7 +169,20 @@ export const workflowAction: Action = {
     {
       name: 'workflowId',
       required: false,
-      description: 'Workflow id.',
+      description:
+        'Workflow id. Give this or workflowName for every action except list, search, create, dossier and cancel_run.',
+      schema: { type: 'string' },
+    },
+    {
+      name: 'workflowName',
+      required: false,
+      description: 'Workflow name, or part of it, when the id is not known.',
+      schema: { type: 'string' },
+    },
+    {
+      name: 'name',
+      required: false,
+      description: 'New workflow name. Required for rename.',
       schema: { type: 'string' },
     },
     {
@@ -190,7 +242,7 @@ export const workflowAction: Action = {
     const service = serviceFor(runtime);
     if (!service) return { success: false, text: 'Workflow service is unavailable.' };
     const ownerId = (await resolveCanonicalOwnerIdForMessage(runtime, message)) ?? message.entityId;
-    const workflowId = text(params.workflowId);
+    const timeZone = ownerTimeZone(runtime, message);
     const limit = Math.min(50, Math.max(1, number(params.limit, 20)));
 
     try {
@@ -204,7 +256,10 @@ export const workflowAction: Action = {
           {
             success: true,
             text: workflows.length
-              ? `Found ${workflows.length} workflow${workflows.length === 1 ? '' : 's'}.`
+              ? `Found ${workflows.length} workflow${workflows.length === 1 ? '' : 's'}: ${workflows
+                  .slice(0, limit)
+                  .map((workflow) => `“${workflow.name}” (${workflow.active ? 'on' : 'off'})`)
+                  .join(', ')}.`
               : 'No workflows found.',
             data: { workflows: workflows.slice(0, limit) },
           },
@@ -215,7 +270,10 @@ export const workflowAction: Action = {
         const instruction =
           text(params.seedPrompt) ?? text(params.instruction) ?? message.content.text;
         if (!instruction) return { success: false, text: 'A workflow description is required.' };
-        const draft = await service.generateWorkflowDraft(instruction, { userId: ownerId });
+        const draft = await service.generateWorkflowDraft(instruction, {
+          userId: ownerId,
+          timeZone,
+        });
         if (draft.id !== undefined)
           throw new Error('Create requires a new definition without an existing workflow id');
         const workflow = await service.deployWorkflowDefinition(draft, ownerId, {
@@ -226,7 +284,7 @@ export const workflowAction: Action = {
           callback,
           {
             success: true,
-            text: `Created “${workflow.name}” as an inactive Smithers workflow (${workflow.id}, version ${workflow.versionId}).`,
+            text: `Created “${workflow.name}”. It is off until you turn it on.`,
             effectReceipts: [workflowDefinitionEffect('create', workflow)],
             data: { workflow, widget: { type: 'workflow', workflowId: workflow.id } },
           },
@@ -266,34 +324,120 @@ export const workflowAction: Action = {
           { workflowId: execution.workflowId, runId: execution.id }
         );
       }
-      if (!workflowId && op !== 'cancel_run')
-        return { success: false, text: 'workflowId is required.' };
-      if (op === 'get') {
-        const workflow = await service.getWorkflow(workflowId as string, ownerId);
+      if (op === 'cancel_run') {
+        const executionId = text(params.executionId);
+        if (!executionId) return { success: false, text: 'executionId is required.' };
+        const cancellation = await service.cancelExecutionWithReceipt(executionId, ownerId);
+        const execution = cancellation.execution;
+        const receipt = workflowCancellationEffect(cancellation);
         return respond(callback, {
           success: true,
-          text: `Loaded “${workflow.name}”.`,
-          data: { workflow },
+          text: receipt
+            ? `Asked the run to stop. Its status is ${execution.status}.`
+            : `The run is already ${execution.status}. Nothing was cancelled.`,
+          effectReceipts: receipt ? [workflowPendingEffect('cancel', execution)] : [],
+          data: { execution, ...(receipt ? { cancellationRequestReceipt: receipt } : {}) },
+        });
+      }
+      const current = await resolveWorkflowRef(
+        service,
+        ownerId,
+        { workflowId: text(params.workflowId), workflowName: text(params.workflowName) },
+        op === 'restore_removed'
+      );
+      if ('success' in current) return current;
+      const workflowId = current.id;
+      const label = `“${current.name}”`;
+      // A typed workflow carries the steps and schedule the owner reviewed in the Workflows view.
+      const typed = typeof current.metadata?.[PHONE_SPEC_KEY] === 'string';
+      if (op === 'restore_removed' && !current.removed)
+        return notApplied(
+          'WORKFLOW_NOT_REMOVED',
+          `${label} is not removed. Nothing was changed.`,
+          `${label} is not removed.`,
+          false
+        );
+      if (current.removed && !READ_OPS.includes(op) && op !== 'restore_removed')
+        return notApplied(
+          'WORKFLOW_REMOVED',
+          `${label} was removed. Nothing was changed. Use action=restore_removed first.`,
+          op === 'remove'
+            ? `${label} is already removed.`
+            : `${label} was removed. Restore it before you change or run it.`,
+          false
+        );
+      if (op === 'get') {
+        return respond(callback, {
+          success: true,
+          text: `Loaded ${label}.`,
+          data: { workflow: current },
         });
       }
       if (op === 'modify') {
         const instruction = text(params.instruction) ?? text(params.seedPrompt);
         if (!instruction) return { success: false, text: 'An edit instruction is required.' };
-        const current = await service.getWorkflow(workflowId as string, ownerId);
-        const draft = await service.modifyWorkflowDraft(current, instruction, { userId: ownerId });
+        // The typed draft path never lets a model set the schedule or phone target, and
+        // its steps use sources the owner selects, so a chat edit cannot be a reviewed one.
+        if (typed)
+          return notApplied(
+            'WORKFLOW_EDIT_IN_VIEW',
+            `${label} was built in the Workflows view and is edited only there. Nothing was changed. Chat can rename, pause, run or remove it.`,
+            `${label} was built in the Workflows view. Open it there to change its steps or schedule. From chat you can rename, pause, run or remove it.`,
+            false
+          );
+        const draft = await service.modifyWorkflowDraft(current, instruction, {
+          userId: ownerId,
+          timeZone,
+        });
+        // An edited workflow never runs on a schedule before the owner reviews it.
         const workflow = await service.updateWorkflow(
-          workflowId as string,
-          { ...draft, active: current.active },
+          workflowId,
+          { ...draft, active: false },
           ownerId
         );
+        if (workflow.active) throw new Error('Inactive workflow update was not verified');
         return respond(callback, {
           success: true,
-          text: `Updated “${workflow.name}”.`,
+          text: `Updated “${workflow.name}”.${current.active ? ' It was on, so it is now off. Review the change, then turn it on again.' : ''}`,
           effectReceipts: [workflowDefinitionEffect('modify', workflow)],
           data: { workflow },
         });
       }
+      if (op === 'rename') {
+        const name = text(params.name);
+        if (!name || name.length > 200)
+          return { success: false, text: 'name is required for rename (1 to 200 characters).' };
+        if (name === current.name)
+          return notApplied(
+            'WORKFLOW_NAME_UNCHANGED',
+            `${label} already has that name. Nothing was changed.`,
+            `${label} already has that name.`,
+            false
+          );
+        const workflow = await service.renameWorkflow(workflowId, name, ownerId);
+        return respond(callback, {
+          success: true,
+          text: `Renamed ${label} to “${workflow.name}”.${current.active && !workflow.active ? ' Its schedule is now paused. Turn it on again in Workflows.' : ''}`,
+          effectReceipts: [workflowDefinitionEffect('rename', workflow)],
+          data: { workflow },
+        });
+      }
       if (op === 'activate' || op === 'deactivate') {
+        // Turning on a typed workflow needs the owner's confirmation on the phone.
+        // A version id the model read back is not that confirmation.
+        if (op === 'activate' && typed) {
+          const sentence = current.metadata?.[HOSTED_SPEC]
+            ? `${label} is a digest. Turn it on in the digest settings.`
+            : storedPhoneTimeTrigger(current.metadata)
+              ? `${label} runs on a schedule that you confirm on the phone. Open Workflows and turn it on there.`
+              : `${label} has no schedule to turn on. It runs only when you start it.`;
+          return notApplied(
+            'WORKFLOW_ACTIVATE_IN_VIEW',
+            `${sentence} Nothing was changed.`,
+            sentence,
+            false
+          );
+        }
         // A supplied version binds the change to the exact version that was reviewed.
         const expectedVersionId = text(params.versionId);
         if (params.versionId !== undefined && !expectedVersionId) {
@@ -304,8 +448,8 @@ export const workflowAction: Action = {
         }
         const workflow =
           op === 'activate'
-            ? await service.activateWorkflow(workflowId as string, ownerId, expectedVersionId)
-            : await service.deactivateWorkflow(workflowId as string, ownerId, expectedVersionId);
+            ? await service.activateWorkflow(workflowId, ownerId, expectedVersionId)
+            : await service.deactivateWorkflow(workflowId, ownerId, expectedVersionId);
         return respond(callback, {
           success: true,
           text: `${workflow.name} is now ${workflow.active ? 'active' : 'inactive'}.`,
@@ -313,10 +457,35 @@ export const workflowAction: Action = {
           data: { workflow },
         });
       }
+      if (op === 'remove' || op === 'restore_removed') {
+        const { receipt } = await service.changeLifecycle(
+          workflowId,
+          randomUUID(),
+          current.versionId,
+          op === 'remove' ? 'remove' : 'restore',
+          ownerId
+        );
+        const workflow = {
+          id: workflowId,
+          name: current.name,
+          removed: op === 'remove',
+          active: false,
+          versionId: receipt.versionId,
+          updatedAt: receipt.appliedAt,
+        };
+        return respond(callback, {
+          success: true,
+          text:
+            op === 'remove'
+              ? `Removed ${label}. It no longer runs. You can restore it later.`
+              : `Restored ${label}. It is off until you turn it on.`,
+          effectReceipts: [workflowDefinitionEffect(op, workflow)],
+          data: { workflow },
+        });
+      }
       if (op === 'run') {
-        const workflow = await service.getWorkflow(workflowId as string, ownerId);
         const execution = await service.startWorkflow(
-          workflowId as string,
+          workflowId,
           {
             mode: 'chat',
             input: record(params.input),
@@ -327,19 +496,19 @@ export const workflowAction: Action = {
           id: execution.id,
           workflowId,
           runId: execution.id,
-          title: workflow.name,
-          steps: (workflow.steps ?? []).map((step) => ({
+          title: current.name,
+          steps: (current.steps ?? []).map((step) => ({
             label: step.label,
             nodeId: step.id,
             status: 'pending',
           })),
-          widgets: workflow.widgets ?? [],
+          widgets: current.widgets ?? [],
         });
         return respond(
           callback,
           {
             success: true,
-            text: `Submitted workflow run ${execution.id}.\n\n[WORKFLOW]\n${marker}\n[/WORKFLOW]`,
+            text: `Submitted a run of ${label}.\n\n[WORKFLOW]\n${marker}\n[/WORKFLOW]`,
             effectReceipts: [workflowPendingEffect('execute', execution)],
             data: {
               execution,
@@ -347,30 +516,11 @@ export const workflowAction: Action = {
               widget: { type: 'workflow-run', workflowId, runId: execution.id },
             },
           },
-          { workflowId: workflowId as string, runId: execution.id }
+          { workflowId, runId: execution.id }
         );
-      }
-      if (op === 'cancel_run') {
-        const executionId = text(params.executionId);
-        if (!executionId) return { success: false, text: 'executionId is required.' };
-        const cancellation = await service.cancelExecutionWithReceipt(executionId, ownerId);
-        const execution = cancellation.execution;
-        const receipt = workflowCancellationEffect(cancellation);
-        return respond(callback, {
-          success: true,
-          text: receipt
-            ? `Cancellation request recorded for ${executionId}; current status: ${execution.status}.`
-            : `Run ${executionId} is ${execution.status}; no cancellation request was recorded.`,
-          effectReceipts: receipt ? [workflowPendingEffect('cancel', execution)] : [],
-          data: { execution, ...(receipt ? { cancellationRequestReceipt: receipt } : {}) },
-        });
       }
       if (op === 'executions') {
-        const executions = await service.getWorkflowExecutions(
-          workflowId as string,
-          limit,
-          ownerId
-        );
+        const executions = await service.getWorkflowExecutions(workflowId, limit, ownerId);
         return respond(callback, {
           success: true,
           text: `Found ${executions.length} run${executions.length === 1 ? '' : 's'}.`,
@@ -378,7 +528,7 @@ export const workflowAction: Action = {
         });
       }
       if (op === 'revisions') {
-        const revisions = await service.getWorkflowRevisions(workflowId as string, limit, ownerId);
+        const revisions = await service.getWorkflowRevisions(workflowId, limit, ownerId);
         return respond(callback, {
           success: true,
           text: `Found ${revisions.length} revision${revisions.length === 1 ? '' : 's'}.`,
@@ -388,11 +538,7 @@ export const workflowAction: Action = {
       if (op === 'restore') {
         const versionId = text(params.versionId);
         if (!versionId) return { success: false, text: 'versionId is required.' };
-        const workflow = await service.restoreWorkflowRevision(
-          workflowId as string,
-          versionId,
-          ownerId
-        );
+        const workflow = await service.restoreWorkflowRevision(workflowId, versionId, ownerId);
         return respond(callback, {
           success: true,
           text: `Restored “${workflow.name}”.`,
@@ -400,10 +546,10 @@ export const workflowAction: Action = {
           data: { workflow },
         });
       }
-      const suite = await service.getWorkflowEvaluationSuite(workflowId as string, limit, ownerId);
+      const suite = await service.getWorkflowEvaluationSuite(workflowId, limit, ownerId);
       return respond(callback, {
         success: true,
-        text: 'Generated Smithers evaluation samples.',
+        text: 'Generated evaluation samples.',
         data: { suite },
       });
     } catch (error) {
@@ -435,19 +581,33 @@ export const workflowAction: Action = {
             retryable: false,
           },
         };
+      // A read, a missing record, and a refusal the service marks as not applied
+      // committed nothing, so the planner may correct the call and try again.
+      const status = error instanceof WorkflowApiError ? error.statusCode : undefined;
+      const refusal =
+        error instanceof WorkflowApiError ? text(record(error.response).code) : undefined;
+      const notAppliedCode = READ_OPS.includes(op)
+        ? 'WORKFLOW_READ_FAILED'
+        : status === 404
+          ? 'WORKFLOW_NOT_FOUND'
+          : status === 409 && refusal?.endsWith('_NOT_APPLIED')
+            ? refusal
+            : undefined;
       // error-policy:J1 action boundary returns the failure to the planner.
       return {
         success: false,
         text: error instanceof Error ? error.message : String(error),
         effectReceipts: [],
-        // A service may commit before a later readback or schedule sync fails.
-        // Do not replay an unqualified mutation after an ambiguous outcome.
-        failureProvenance: {
-          kind: 'handler_error',
-          boundary: 'handler',
-          code: 'WORKFLOW_OPERATION_FAILED_RECONCILE_BEFORE_RETRY',
-          retryable: false,
-        },
+        failureProvenance: notAppliedCode
+          ? { kind: 'handler_error', boundary: 'handler', code: notAppliedCode, retryable: true }
+          : {
+              // A service may commit before a later readback or schedule sync fails.
+              // Do not replay an unqualified mutation after an ambiguous outcome.
+              kind: 'handler_error',
+              boundary: 'handler',
+              code: 'WORKFLOW_OPERATION_FAILED_RECONCILE_BEFORE_RETRY',
+              retryable: false,
+            },
       };
     }
   },

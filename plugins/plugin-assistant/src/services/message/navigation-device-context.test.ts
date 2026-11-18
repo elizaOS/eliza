@@ -34,6 +34,7 @@ const fn = new Function(
   "args",
   "getDeviceActionTurn",
   "deviceOperationSupportedByCapabilities",
+  "deviceAppRecordOperationAvailable",
   "CLOCK_ALARMS_CAPABILITY",
   "currentAppRecordSource",
   "deviceActionToolGuidance",
@@ -60,6 +61,7 @@ function render(capabilities: string[], matching = true) {
     () => turn,
     (operation: string, caps: string[]) =>
       caps.includes("native.all") || caps.includes(operation),
+    () => false,
     "clock.alarms.v1",
     () => "runtime",
     () => "",

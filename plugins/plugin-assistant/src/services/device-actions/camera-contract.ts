@@ -1,6 +1,12 @@
 /** One foreground still capture. Pixels and paths never enter the agent receipt. */
 export const CAMERA_CAPTURE_CAPABILITY = "camera.capture-photo.v1";
-export type CameraCaptureOperation = { type: "camera_capture_photo" };
+/** `camera_capture_photo` with a requested `lens`. */
+export const CAMERA_LENS_CAPABILITY = "camera.capture-lens.v1";
+/** Without `lens` the phone uses the camera that is showing. */
+export type CameraCaptureOperation = {
+  type: "camera_capture_photo";
+  lens?: "front" | "back";
+};
 export type CameraCaptureResult = {
   version: 1;
   kind: "camera_capture_photo";
@@ -20,13 +26,26 @@ export function isCameraCapture(
   );
 }
 export function validateCameraCapture(value: unknown): CameraCaptureOperation {
+  if (!isCameraCapture(value) || Array.isArray(value))
+    throw new Error("Invalid camera capture operation");
+  const lens = (value as { lens?: unknown }).lens;
   if (
-    !isCameraCapture(value) ||
-    Array.isArray(value) ||
-    Object.keys(value).length !== 1
+    Object.keys(value).length !== (lens === undefined ? 1 : 2) ||
+    (lens !== undefined && lens !== "front" && lens !== "back")
   )
     throw new Error("Invalid camera capture operation");
-  return { type: "camera_capture_photo" };
+  return { type: "camera_capture_photo", ...(lens ? { lens } : {}) };
+}
+/** A requested lens is never sent to a phone that did not negotiate `camera.capture-lens.v1`. */
+export function cameraCaptureCapabilityAvailable(
+  operation: CameraCaptureOperation,
+  capabilities: readonly string[] | undefined,
+): boolean {
+  return (
+    capabilities?.includes(CAMERA_CAPTURE_CAPABILITY) === true &&
+    (operation.lens === undefined ||
+      capabilities.includes(CAMERA_LENS_CAPABILITY))
+  );
 }
 export function validateCameraCaptureResult(
   value: unknown,

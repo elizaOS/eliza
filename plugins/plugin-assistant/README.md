@@ -166,7 +166,7 @@ owned-alarm clients receive only the owned operation schemas.
 
 Device enrollment retains the authenticated subject for approval review, claims and receipts. The host may separately bind a verified local OWNER enrollment to the canonical workflow owner; external identities and USER/ADMIN subjects keep their own scope. Request JSON cannot choose that owner. Nullable `workflow_owner_id` preserves legacy enrollment fallback.
 
-An authenticated installation can read or revise its enabled-view subset at `/api/client-devices/view-profile`. Updates use an expected revision; empty subsets disable all view proposals, while a null legacy profile preserves existing behavior. Open-view proposals bind the current profile revision and revalidate at approval and claim. Per-turn tool schemas are cloned, so one installation cannot narrow another installation’s registered catalog. These restrictions do not authorize execution. Nullable `view_profile` migrates without replacing device keys or enrollment identities.
+An authenticated installation can read or revise its enabled-view subset at `/api/client-devices/view-profile`. Updates use an expected revision; empty subsets disable all view proposals, while a null legacy profile preserves existing behavior. The Phone, Messages and Contacts views are listed, enrolled and offered only for a phone that advertises `views.telephony.v1`, so a client from before these views is never offered one it cannot open. Open-view proposals bind the current profile revision and revalidate at approval and claim. Per-turn tool schemas are cloned, so one installation cannot narrow another installation’s registered catalog. These restrictions do not authorize execution. Nullable `view_profile` migrates without replacing device keys or enrollment identities.
 
 Run `vitest run --config vitest.device-actions.config.ts` from this package for real HTTP/SQL device lifecycle, workflow-owner dispatch/receipt and additive-migration scenarios.
 
@@ -203,6 +203,58 @@ effect receipt proves submission only. Unknown and partial failures require
 reconciliation; they do not permit automatic retry. This contract does not
 implement MMS, native transport, SIM qualification or device delivery evidence.
 
+A phone that also negotiates `sms.compose.v2` receives `sms_compose` with a
+`target`: a contact name or an exact number. The phone chooses the SIM, so a
+number can be texted from any view. `draft: true` puts the text into that
+conversation's text field and sends nothing. A phone without telephony
+capabilities is told to say that calls and texts are not available.
+
+## Contacts from chat
+
+`contacts.write.v1` adds `contact_create`, `contact_update` and
+`contact_delete`. The phone finds the contact, shows the owner the change, and
+writes only after approval. The agent receives the outcome only.
+
+A phone that also negotiates `contacts.write.v2` receives `contact_update` with
+`add` and `remove`. Each holds numbers or email addresses. The phone removes
+and adds only those values and keeps the others. Without it, `set` replaces a
+field whole, and the model is told to ask before it replaces.
+
+`contacts.show.v1` adds `contact_show {query}`. The phone opens Contacts with
+the matches. The agent learns only `shown` or `not-found`.
+
+`contacts.read.v1` adds `contact_read_selected`. The owner approves sharing
+the one contact open in Contacts: its name, numbers and email addresses. The
+agent never searches or lists the address book.
+
+## Browser from chat
+
+`browser_navigate {url}` opens only an address the owner typed in the current
+message. A typed `http://` address opens over HTTPS. The phone opens it without
+a review only when the whole message is a direct request, such as "open
+example.com". Any other typed address gets a review card. The host's assistant
+name may come before the request ("Alpha, open example.com"): the server reads
+the character name, and the phone passes `assistantName` in its client profile.
+
+Each control below needs its own negotiated capability. The agent learns only
+whether it ran. It never receives the tab list, a title, an address or page
+content.
+
+- `browser.search.v1`: `browser_search {query}`. The query is words the owner
+  typed in the current message. The phone builds the search address with its
+  own search engine.
+- `browser.tabs.v1`: `browser_tab_new {private}`, `browser_tab_switch {target}`
+  and `browser_tab_close {target}`. `target` is a word of the tab's title or
+  site. The phone finds the tab, and the owner picks when more than one
+  matches. Without `target`, close acts on the tab that is showing. The owner
+  always reviews a close.
+- `browser.find.v1`: `browser_find {text}` shows the matches on the open page.
+- `browser.history.v1`: `browser_history {action}` with `back`, `forward`,
+  `reload` or `stop`.
+
+A tab switch or a find runs without a review only when the owner typed its
+`target` or `text` in the current message. Other words are reviewed.
+
 ## Requested Camera capture
 
 The `camera.capture-photo.v1` device capability adds `camera_capture_photo`.
@@ -215,7 +267,9 @@ A request from Home uses the existing verified view handoff before capture.
 The current user message, device, foreground view and action preference must
 still match. A prior or uncertain request is not replayed. Camera permissions
 remain controlled by the device. Clients without this capability do not receive
-the operation in their tool schema.
+the operation in their tool schema. A device that also negotiates
+`camera.capture-lens.v1` can receive `lens: "front"` or `lens: "back"`; without
+it the phone uses the camera that is showing.
 
 ## Current-request Gmail policy
 

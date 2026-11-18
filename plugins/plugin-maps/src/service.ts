@@ -120,6 +120,9 @@ function validatedSearchRequest(
           ),
         }
       : {}),
+    ...(request.near && request.rank === "distance"
+      ? { rank: "distance" as const }
+      : {}),
     ...(request.cursor ? { cursor: request.cursor } : {}),
     ...(request.limit ? { limit: request.limit } : {}),
   };

@@ -54,7 +54,7 @@ export const workflowStatusProvider: Provider = {
       for (const workflow of workflows) {
         const statusEmoji = workflow.active ? '✅' : '⏸️';
         status += `${statusEmoji} ${workflow.name} (ID: ${workflow.id})\n`;
-        status += `   Smithers steps: ${workflow.steps?.length ?? 0}\n`;
+        status += `   Steps: ${workflow.steps?.length ?? 0}\n`;
 
         // Try to get last execution (if possible)
         try {

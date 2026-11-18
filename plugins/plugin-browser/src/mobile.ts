@@ -46,7 +46,7 @@ export { BrowserDispatchFailure } from "./dispatch-types.js";
 export { decodeNativeBrowserCommandResult } from "./native-page-reader.js";
 export { FRAME_FILE } from "./workspace/frame-path.js";
 
-const commands = [
+const allCommands = [
   "open",
   "navigate",
   "show",
@@ -61,6 +61,33 @@ const commands = [
   "forward",
   "reload",
 ] as const;
+type NativeBrowserCommand = (typeof allCommands)[number];
+
+/**
+ * The native commands this host's browser renderer runs. A host whose renderer
+ * runs only some of them names those in ELIZA_NATIVE_BROWSER_COMMANDS, a comma
+ * list such as "back,forward,reload". The model is then offered, and the
+ * service accepts, only those commands, so it is never told about one that
+ * the renderer answers with UNSUPPORTED. Unset or blank means every command.
+ */
+export function nativeBrowserCommands(
+  declared: string | undefined = process.env.ELIZA_NATIVE_BROWSER_COMMANDS,
+): readonly NativeBrowserCommand[] {
+  const names = (declared ?? "")
+    .split(",")
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean);
+  if (!names.length) return allCommands;
+  const unknown = names.filter(
+    (name) => !allCommands.some((command) => command === name),
+  );
+  if (unknown.length)
+    throw new Error(
+      `ELIZA_NATIVE_BROWSER_COMMANDS names unknown commands: ${unknown.join(", ")}. Known commands: ${allCommands.join(", ")}.`,
+    );
+  return allCommands.filter((command) => names.includes(command));
+}
+const commands = nativeBrowserCommands();
 
 export class BrowserService extends Service {
   static override readonly serviceType = "browser";
@@ -212,52 +239,92 @@ export class BrowserService extends Service {
   }
 }
 
-export const browserAction: Action = {
-  name: "BROWSER",
-  description:
-    "Control the requesting device's native Chromium browser. Use snapshot to inspect accessibility elements. Pass the exact latest snapshot selector to click, fill, scroll or back. Each effect invalidates selectors and requires a new snapshot; accepted dispatch does not prove website completion.",
-  similes: [],
-  examples: [],
-  validate: async (runtime) => runtime.getService("browser") !== null,
-  parameters: [
-    {
-      name: "id",
-      required: false,
-      description: "Exact Chromium tab ID returned by list",
-      schema: { type: "string" },
-    },
-    {
-      name: "action",
-      required: true,
-      description: "Native browser command",
-      schema: { type: "string", enum: [...commands] },
-    },
-    {
-      name: "url",
-      required: false,
-      description: "HTTP(S) navigation URL",
-      schema: { type: "string" },
-    },
-    {
-      name: "selector",
-      required: false,
-      description: "Exact element selector from the latest native snapshot",
-      schema: { type: "string" },
-    },
-    {
-      name: "text",
-      required: false,
-      description: "Replacement text for fill",
-      schema: { type: "string" },
-    },
-    {
-      name: "direction",
-      required: false,
-      description: "Scroll direction",
-      schema: { type: "string", enum: ["up", "down", "left", "right"] },
-    },
-  ],
-  handler: async (runtime, message, _state, options) => {
+/** The BROWSER action for the commands a host's renderer runs: the model sees
+ * only those commands and only the parameters they take. */
+export function nativeBrowserAction(
+  commands: readonly NativeBrowserCommand[],
+): Action {
+  const has = (...names: NativeBrowserCommand[]) =>
+    names.some((name) => commands.includes(name));
+  const selectors = has("snapshot", "click", "fill", "scroll");
+  return {
+    name: "BROWSER",
+    description: selectors
+      ? "Control the requesting device's native Chromium browser. Use snapshot to inspect accessibility elements. Pass the exact latest snapshot selector to click, fill, scroll or back. Each effect invalidates selectors and requires a new snapshot; accepted dispatch does not prove website completion."
+      : `Control the page that is showing in the requesting device's own browser. Only these commands are available: ${commands.join(", ")}. Do not offer any other browser command through this tool. Accepted dispatch does not prove website completion.`,
+    similes: [],
+    examples: [],
+    validate: async (runtime) => runtime.getService("browser") !== null,
+    parameters: [
+      ...(has("list", "close")
+        ? [
+            {
+              name: "id",
+              required: false,
+              description: "Exact Chromium tab ID returned by list",
+              schema: { type: "string" as const },
+            },
+          ]
+        : []),
+      {
+        name: "action",
+        required: true,
+        description: "Native browser command",
+        schema: { type: "string" as const, enum: [...commands] },
+      },
+      ...(has("open", "navigate", "show")
+        ? [
+            {
+              name: "url",
+              required: false,
+              description: "HTTP(S) navigation URL",
+              schema: { type: "string" as const },
+            },
+          ]
+        : []),
+      ...(selectors
+        ? [
+            {
+              name: "selector",
+              required: false,
+              description:
+                "Exact element selector from the latest native snapshot",
+              schema: { type: "string" as const },
+            },
+          ]
+        : []),
+      ...(has("fill")
+        ? [
+            {
+              name: "text",
+              required: false,
+              description: "Replacement text for fill",
+              schema: { type: "string" as const },
+            },
+          ]
+        : []),
+      ...(has("scroll")
+        ? [
+            {
+              name: "direction",
+              required: false,
+              description: "Scroll direction",
+              schema: {
+                type: "string" as const,
+                enum: ["up", "down", "left", "right"],
+              },
+            },
+          ]
+        : []),
+    ],
+    handler: nativeBrowserHandler(commands),
+  };
+}
+
+function nativeBrowserHandler(
+  commands: readonly NativeBrowserCommand[],
+): Action["handler"] {
+  return async (runtime, message, _state, options) => {
     const params = asRecord(
       (options as HandlerOptions | undefined)?.parameters,
     );
@@ -323,29 +390,15 @@ export const browserAction: Action = {
         },
       };
     }
-  },
-};
+  };
+}
+
+export const browserAction: Action = nativeBrowserAction(commands);
 
 export const browserPlugin: HttpPlugin = {
   name: "@elizaos/plugin-browser",
   description: "Authenticated native device browser control",
   services: [BrowserService],
-  views: [
-    {
-      id: "browser",
-      label: "Browser",
-      path: "/browser",
-      modalities: ["gui"],
-      roleGate: { minRole: "OWNER" },
-      capabilities: [
-        {
-          id: "browser-command",
-          description: "Control the authenticated mounted native Browser",
-          authority: "agent",
-        },
-      ],
-    },
-  ],
   routes: [
     nativeDeviceBrowserRoute,
     nativeDeviceBrowserStatusRoute,
