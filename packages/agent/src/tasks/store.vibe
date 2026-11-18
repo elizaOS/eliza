@@ -1,0 +1,565 @@
+// spec/agent/tasks/store.md, "Story: Refuse task storage when custody cannot be verified"; spec/agent/tasks/store.md, "Story: Keep records a build cannot read"
+import type { InteractiveTask } from "@elizaos/core"
+import {
+  admitsAccount, admitsOpen, authentic, canAcknowledgeUnreadable, canOperate, holdsLock, initial, machineOver, noRecord, readTask,
+  slotAdmission, storageStatus as modelStatus,
+  type Event, type KeyRead, type OpenEvidence, type Seal, type StoredTask, type TaskStore,
+} from "../../gen/agent__tasks__store.effect.vibe"
+import { createTaskSealer, type TaskKeys, type TaskSealer } from "./sealing.vibe"
+
+export error StorageUnavailable { reason: string; get code() { return "TASK_STORAGE_UNAVAILABLE" } }
+export error OutcomeUnknown { taskId: string; get code() { return "TASK_STORAGE_UNAVAILABLE" } }
+export error ReadRefused { taskId: string; get code() { return "TASK_STORAGE_UNAVAILABLE" } }
+export error Corrupt { taskId: string; get code() { return "TASK_STORAGE_CORRUPT" } }
+export error Unreadable { taskId: string; reason: string; get code() { return "TASK_UNREADABLE" } }
+export error SlotTaken { taskId: string; get code() { return "TASK_CONFLICT" } }
+export error NoTask { taskId: string; get code() { return "TASK_NOT_FOUND" } }
+export error NotOwner { taskId: string; get code() { return "TASK_ACTION_DENIED" } }
+
+export type StorageFailure = StorageUnavailable | OutcomeUnknown | ReadRefused
+
+export interface UnreadableTaskRecord {
+  readonly taskId: string
+  readonly reason: string
+  readonly heldAt: number
+  readonly releasedAt: number | null
+}
+
+export type TaskStorageStatus = "ok" | "deferred" | "unavailable"
+
+module node {
+  import { randomUUID } from "node:crypto"
+  import { closeSync, fstatSync, fsyncSync, linkSync, lstatSync, openSync, readFileSync, renameSync, rmSync, unlinkSync, writeSync } from "node:fs"
+  import { DatabaseSync } from "node:sqlite"
+  import { Redacted } from "effect"
+  import { ElizaError, validateInteractiveTask, validateTaskEvent, type InteractiveTask, type TaskEvent } from "@elizaos/core"
+  import { deriveTaskKeys, isPrivateFile, privateDirectory, storageCorrupt, type TaskKeys } from "./sealing.vibe"
+  import type { KeyRead } from "../../gen/agent__tasks__store.ts"
+
+  export interface TaskRecord {
+    readonly task: InteractiveTask
+    readonly events: readonly TaskEvent[]
+  }
+
+  export interface TaskStatement {
+    all(...parameters: (string | number | null)[]): unknown[]
+    run(...parameters: (string | number | null)[]): unknown
+  }
+
+  export interface TaskDatabase {
+    exec(sql: string): void
+    prepare(sql: string): TaskStatement
+    close(): void
+  }
+
+  export type TaskDatabaseOpener = (path: string) => TaskDatabase
+
+  export type KeyReading = { readonly kind: "KeyOk"; readonly keys: TaskKeys } | { readonly kind: Exclude<KeyRead, "KeyOk"> }
+
+  export interface TaskKeySource {
+    take(scope: { readonly account: string; readonly namespace: string }): KeyReading
+  }
+
+  export function storageKeySource(storageKey: Redacted.Redacted<string> | undefined): TaskKeySource {
+    let held = storageKey
+    return {
+      take(scope) {
+        const key = held
+        held = undefined
+        if (key === undefined) return { kind: "KeyMissing" }
+        const text = Redacted.value(key)
+        Redacted.wipeUnsafe(key)
+        const bytes = Buffer.from(text, "base64")
+        const canonical = bytes.toString("base64") === text || bytes.toString("base64url") === text
+        if (!canonical || bytes.length !== 32) {
+          bytes.fill(0)
+          return { kind: "KeyWrongLength" }
+        }
+        return { kind: "KeyOk", keys: deriveTaskKeys(bytes, scope) }
+      },
+    }
+  }
+
+  export const openNodeTaskDatabase: TaskDatabaseOpener = (path) => {
+    const db = new DatabaseSync(path)
+    try {
+      db.exec("PRAGMA synchronous = FULL")
+      return db
+    } catch (error) {
+      db.close()
+      throw error
+    }
+  }
+
+  export interface LockIdentity {
+    readonly path: string
+    readonly dev: number
+    readonly ino: number
+  }
+
+  function errorCode(error: unknown): unknown {
+    return typeof error === "object" && error !== null && "code" in error ? error.code : undefined
+  }
+
+  function alive(pid: number): boolean {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch (error) {
+      return errorCode(error) !== "ESRCH"
+    }
+  }
+
+  function holderGone(path: string): boolean {
+    const holder: unknown = JSON.parse(readFileSync(path, "utf8"))
+    const pid = typeof holder === "object" && holder !== null && "pid" in holder ? holder.pid : undefined
+    return typeof pid === "number" && Number.isSafeInteger(pid) && pid > 0 && pid !== process.pid && !alive(pid)
+  }
+
+  export function takeLock(path: string): LockIdentity | undefined {
+    const staged = `${path}.${randomUUID()}`
+    const fd = openSync(staged, "wx", 0o600)
+    let identity: LockIdentity
+    try {
+      writeSync(fd, JSON.stringify({ pid: process.pid, owner: randomUUID() }))
+      fsyncSync(fd)
+      const status = fstatSync(fd)
+      identity = { path, dev: status.dev, ino: status.ino }
+    } finally {
+      closeSync(fd)
+    }
+    try {
+      try {
+        linkSync(staged, path)
+        return identity
+      } catch (error) {
+        if (errorCode(error) !== "EEXIST") throw error
+      }
+      if (!holderGone(path)) return undefined
+      renameSync(staged, path)
+      return identity
+    } finally {
+      rmSync(staged, { force: true })
+    }
+  }
+
+  export function lockIntact(lock: LockIdentity): boolean {
+    const status = lstatSync(lock.path, { throwIfNoEntry: false })
+    return status !== undefined && status.isFile() && status.dev === lock.dev && status.ino === lock.ino
+  }
+
+  export function releaseLock(lock: LockIdentity): void {
+    if (lockIntact(lock)) unlinkSync(lock.path)
+  }
+
+  export function privatePath(directory: string, file: string): boolean {
+    try {
+      privateDirectory(directory)
+      if (!isPrivateFile(file)) return false
+      closeSync(openSync(file, "a", 0o600))
+      return isPrivateFile(file)
+    } catch {
+      return false
+    }
+  }
+
+  export type PersistedHold = "readable" | "held" | "released"
+
+  export interface TaskRow {
+    readonly id: string
+    readonly unfinished: boolean
+    readonly hold: PersistedHold
+    readonly reason: string | null
+    readonly heldAt: number | null
+    readonly releasedAt: number | null
+    readonly payload: string
+  }
+
+  const SCHEMA = `CREATE TABLE IF NOT EXISTS task_records_v1 (
+    id TEXT PRIMARY KEY NOT NULL CHECK (length(id) > 0),
+    revision INTEGER NOT NULL,
+    unfinished INTEGER NOT NULL CHECK (unfinished IN (0, 1)),
+    hold TEXT NOT NULL CHECK (hold IN ('readable', 'held', 'released')),
+    reason TEXT,
+    held_at INTEGER,
+    released_at INTEGER,
+    updated_at INTEGER NOT NULL,
+    payload TEXT NOT NULL
+  ) STRICT`
+
+  const nullableNumber = (value: unknown) => value === null || typeof value === "number"
+
+  function parseRow(value: unknown): TaskRow {
+    if (typeof value !== "object" || value === null) throw storageCorrupt("Invalid task row")
+    const row = value as Record<string, unknown>
+    const { id, unfinished, hold, reason, held_at, released_at, payload } = row
+    if (typeof id !== "string" || (unfinished !== 0 && unfinished !== 1) || (hold !== "readable" && hold !== "held" && hold !== "released")
+      || (reason !== null && typeof reason !== "string") || !nullableNumber(held_at) || !nullableNumber(released_at) || typeof payload !== "string") {
+      throw storageCorrupt("Invalid task row")
+    }
+    return { id, unfinished: unfinished === 1, hold, reason, heldAt: held_at as number | null, releasedAt: released_at as number | null, payload }
+  }
+
+  export function openTaskRows(open: TaskDatabaseOpener, path: string): { db: TaskDatabase; rows: TaskRow[] } {
+    const db = open(path)
+    try {
+      db.exec(SCHEMA)
+      return { db, rows: db.prepare("SELECT id, unfinished, hold, reason, held_at, released_at, payload FROM task_records_v1 ORDER BY id").all().map(parseRow) }
+    } catch (error) {
+      db.close()
+      throw error
+    }
+  }
+
+  export function readPayload(db: TaskDatabase, taskId: string): string {
+    const [row] = db.prepare("SELECT payload FROM task_records_v1 WHERE id = ?").all(taskId)
+    const payload = typeof row === "object" && row !== null && "payload" in row ? row.payload : undefined
+    if (typeof payload !== "string") throw storageCorrupt("A task record is missing")
+    return payload
+  }
+
+  export function insertRecord(db: TaskDatabase, row: { id: string; revision: number; unfinished: boolean; at: number; payload: string }): void {
+    db.prepare("INSERT INTO task_records_v1 (id, revision, unfinished, hold, updated_at, payload) VALUES (?, ?, ?, 'readable', ?, ?)")
+      .run(row.id, row.revision, row.unfinished ? 1 : 0, row.at, row.payload)
+  }
+
+  export function updateRecord(db: TaskDatabase, row: { id: string; revision: number; unfinished: boolean; at: number; payload: string }): void {
+    db.prepare("UPDATE task_records_v1 SET revision = ?, unfinished = ?, updated_at = ?, payload = ? WHERE id = ? AND hold = 'readable'")
+      .run(row.revision, row.unfinished ? 1 : 0, row.at, row.payload, row.id)
+  }
+
+  export function holdRecord(db: TaskDatabase, row: { id: string; hold: PersistedHold; reason: string | null; heldAt: number | null }): void {
+    db.prepare("UPDATE task_records_v1 SET hold = ?, reason = ?, held_at = ? WHERE id = ? AND hold <> 'released'")
+      .run(row.hold, row.reason, row.heldAt, row.id)
+  }
+
+  export function releaseRecord(db: TaskDatabase, id: string, at: number): void {
+    db.prepare("UPDATE task_records_v1 SET hold = 'released', unfinished = 0, released_at = ? WHERE id = ? AND hold = 'held'").run(at, id)
+  }
+
+  export function decodeTaskRecord(text: string): TaskRecord {
+    const value: unknown = JSON.parse(text)
+    if (typeof value !== "object" || value === null || !("task" in value) || !("events" in value) || !Array.isArray(value.events)) {
+      throw new ElizaError("A task record is not a task and its events", { code: "TASK_INVALID" })
+    }
+    const task = value.task as TaskRecord["task"]
+    validateInteractiveTask(task)
+    for (const event of value.events) {
+      validateTaskEvent(event)
+      if ((event as TaskRecord["events"][number]).taskId !== task.id) throw new ElizaError("A task event names another task", { code: "TASK_INVALID" })
+    }
+    return { task, events: value.events as TaskRecord["events"] }
+  }
+
+  export function failureReason(error: unknown): string {
+    return error instanceof Error ? error.message : "The task record could not be decoded"
+  }
+
+  export function retire(keys: TaskKeys, db: TaskDatabase | undefined): void {
+    keys.wipe()
+    try {
+      db?.close()
+    } catch {
+      return
+    }
+  }
+}
+export {
+  decodeTaskRecord, openNodeTaskDatabase, storageKeySource,
+  type KeyReading, type TaskRecord, type TaskDatabase, type TaskDatabaseOpener, type TaskKeySource, type TaskStatement,
+} from node
+import {
+  decodeTaskRecord as decodeRecord, failureReason, holdRecord, insertRecord, lockIntact, openNodeTaskDatabase as nodeDatabase,
+  openTaskRows, privatePath, readPayload, releaseLock, releaseRecord, retire, takeLock, updateRecord,
+  type KeyReading as Reading, type LockIdentity, type TaskDatabase as Database, type TaskDatabaseOpener as Opener, type TaskKeySource as KeySource,
+  type TaskRecord as TaskRecordShape, type TaskRow,
+} from node
+
+type TaskRecord = TaskRecordShape
+
+export interface TaskStoreOptions {
+  readonly directory: string
+  readonly keys: KeySource
+  readonly namespace?: string
+  readonly database?: Opener
+  readonly decode?: (text: string) => TaskRecord
+  readonly now?: () => number
+}
+
+export interface TaskRecords {
+  storageStatus(): TaskStorageStatus!!
+  open(account: string): void!StorageFailure
+  current(): (TaskRecord | null)!(StorageFailure | Corrupt)
+  get(taskId: string): (TaskRecord | null)!(StorageFailure | Corrupt | Unreadable)
+  create(record: TaskRecord): void!(StorageFailure | Corrupt | Unreadable | SlotTaken)
+  save(record: TaskRecord): void!(StorageFailure | Corrupt | Unreadable | NoTask | SlotTaken)
+  unreadable(): readonly UnreadableTaskRecord[]!StorageUnavailable
+  acknowledgeUnreadable(by: string, taskId: string): UnreadableTaskRecord!(StorageFailure | Corrupt | NoTask | NotOwner | SlotTaken)
+  close(): void!!
+}
+
+interface Writer {
+  readonly db: Database
+  readonly lock: LockIdentity
+  readonly sealer: TaskSealer
+  readonly keys: TaskKeys
+}
+
+const unauthenticated = "(unauthenticated)"
+const purposes = ["TaskRecord", "TaskEvidence", "OutcomeJournal"] as const
+
+function ended(task: InteractiveTask): boolean {
+  return task.status === "completed" || task.status === "cancelled"
+}
+
+function persistedHold(record: StoredTask): "readable" | "held" | "released" {
+  return record.hold === "Readable" ? "readable" : record.hold === "Held" ? "held" : "released"
+}
+
+export effect function createTaskStore(options: TaskStoreOptions) {
+  const namespace = options.namespace ?? "agent"
+  const directory = options.directory
+  const file = `${directory}/tasks.sqlite`
+  const lockFile = `${file}.lock`
+  const open = options.database ?? nodeDatabase
+  const decode = options.decode ?? decodeRecord
+  const now = options.now ?? Date.now
+  const kept = try Ref.make(initial)
+  const machine = try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
+  const aside = new Map<string, UnreadableTaskRecord>()
+  let writer: Writer | undefined
+  let owner = ""
+
+  effect function send(event: Event) {
+    return try orDie(machine.send(event, owner))
+  }
+
+  effect function host<A>(call: () => A, reason: string): A!StorageUnavailable {
+    return try Effect.try({ try: call, catch: () => new StorageUnavailable({ reason }) })
+  }
+
+  effect function intact(lock: LockIdentity) {
+    return host(() => lockIntact(lock), "The task store lock could not be read") catch () => false
+  }
+
+  effect function drop() {
+    const held = writer
+    writer = undefined
+    if (held !== undefined) try orDie(host(() => retire(held.keys, held.db), "The task keys could not be retired"))
+  }
+
+  effect function fence() {
+    const held = writer
+    if (held !== undefined && holdsLock(try machine.get()) && !(try intact(held.lock))) {
+      try send({ type: "replaceLock" })
+      try drop()
+    }
+    if (writer === undefined || !canOperate(try machine.get())) throw new StorageUnavailable({ reason: "This process does not hold the task store" })
+    return writer
+  }
+
+  effect function statement<A>(taskId: string, writes: boolean, run: (held: Writer) => A): A!(StorageFailure) {
+    const held = try fence()
+    const ran = try Effect.result(Effect.try(() => run(held)))
+    const ownerAfter = try intact(held.lock)
+    const step = try send({ type: "operate", writes, succeeded: Result.isSuccess(ran), ownerAfter })
+    if (!ownerAfter) try drop()
+    const receipt = step.out[0]
+    if (receipt === "Returned" && Result.isSuccess(ran)) return ran.success
+    if (receipt === "ReadRefused") throw new ReadRefused({ taskId })
+    throw new OutcomeUnknown({ taskId })
+  }
+
+  effect function readable(taskId: string) {
+    const state = try machine.get()
+    const read = readTask(state, taskId)
+    switch (read) {
+      case "NoTask": return false
+      case "TaskCorrupt": throw new Corrupt({ taskId })
+      case "TaskUnreadable": throw new Unreadable({ taskId, reason: aside.get(taskId)?.reason ?? "The task record is held aside" })
+      case "TaskReadable": return true
+      default: {
+        const unhandled: never = read
+        return unhandled
+      }
+    }
+  }
+
+  effect function load(taskId: string) {
+    return (try readable(taskId)) ? try loadReadable(taskId) : null
+  }
+
+  effect function loadReadable(taskId: string) {
+    const sealed = try statement(taskId, false, (held) => ({ text: readPayload(held.db, taskId), sealer: held.sealer }))
+    return try Effect.try({ try: () => decode(sealed.sealer.open(sealed.text, "TaskRecord")), catch: () => new Corrupt({ taskId }) })
+  }
+
+  function classify(row: TaskRow, sealer: TaskSealer, account: string): { seal: Seal; text?: string } {
+    for (const purpose of purposes) {
+      try {
+        const text = sealer.open(row.payload, purpose)
+        return purpose === "TaskRecord" ? { seal: { account, purpose }, text } : { seal: { account, purpose } }
+      } catch {
+        continue
+      }
+    }
+    return { seal: { account: unauthenticated, purpose: "TaskRecord" } }
+  }
+
+  effect function refuse(account: string, evidence: OpenEvidence, keys: TaskKeys | undefined, lock: LockIdentity | undefined, reason: string) {
+    if (keys !== undefined) try orDie(host(() => keys.wipe(), "The task keys could not be wiped"))
+    if (lock !== undefined) host(() => releaseLock(lock), "The task store lock could not be released") catch () => undefined
+    try orDie(machine.send({ type: "openStore", account, evidence }, account))
+    throw new StorageUnavailable({ reason })
+  }
+
+  effect function scan(row: TaskRow, text: string, account: string) {
+    if (row.hold === "released") {
+      try send({ type: "scan", taskId: row.id, decodes: false })
+      try send({ type: "acknowledgeUnreadable", taskId: row.id })
+      aside.set(row.id, { taskId: row.id, reason: row.reason ?? "", heldAt: row.heldAt ?? 0, releasedAt: row.releasedAt })
+      return
+    }
+    const decoded = try Effect.result(Effect.try(() => decode(text)))
+    const state = (try send({ type: "scan", taskId: row.id, decodes: Result.isSuccess(decoded) })).state
+    const hold = persistedHold(state.records.find((record) => record.taskId === row.id && authentic(record, account)) ?? noRecord)
+    if (hold === "held") {
+      const reason = Result.isFailure(decoded) ? host(() => failureReason(decoded.failure), "") catch () => "The task record could not be decoded" : ""
+      const entry = { taskId: row.id, reason, heldAt: row.heldAt ?? now(), releasedAt: null }
+      aside.set(row.id, entry)
+      if (row.hold !== "held" || row.reason !== entry.reason) {
+        try statement(row.id, true, (held) => holdRecord(held.db, { id: row.id, hold, reason: entry.reason, heldAt: entry.heldAt }))
+      }
+    } else {
+      aside.delete(row.id)
+      if (row.hold !== "readable") try statement(row.id, true, (held) => holdRecord(held.db, { id: row.id, hold, reason: null, heldAt: null }))
+    }
+  }
+
+  return {
+    effect storageStatus() {
+      if (writer !== undefined) fence() catch () => undefined
+      const status = modelStatus(try machine.get())
+      switch (status) {
+        case "StorageOk": return "ok"
+        case "StorageDeferred": return "deferred"
+        case "StorageUnavailable": return "unavailable"
+        default: {
+          const unhandled: never = status
+          return unhandled
+        }
+      }
+    },
+
+    effect open(account: string) {
+      const state = try machine.get()
+      if (holdsLock(state)) {
+        if (state.account === account) return
+        throw new StorageUnavailable({ reason: "The task store is open for another account" })
+      }
+      const reading = host(() => options.keys.take({ account, namespace }), "") catch (): Reading => ({ kind: "KeyMissing" })
+      const keys = reading.kind === "KeyOk" ? reading.keys : undefined
+      const key: KeyRead = reading.kind
+      const custody = keys !== undefined && account !== unauthenticated && (host(() => privatePath(directory, file), "") catch () => false)
+      const lock = custody ? host(() => takeLock(lockFile), "") catch () => undefined : undefined
+      const evidence = { privatePath: custody, exclusiveLock: lock !== undefined, key }
+      if (keys === undefined || lock === undefined || !admitsOpen(evidence) || !admitsAccount(state, account)) {
+        return try refuse(account, evidence, keys, lock, "Task storage custody could not be verified")
+      }
+      const sealer = host(() => createTaskSealer(keys), "") catch () => undefined
+      const opened = sealer === undefined ? undefined : host(() => openTaskRows(open, file), "") catch () => undefined
+      if (sealer === undefined || opened === undefined) return try refuse(account, { ...evidence, privatePath: false }, keys, lock, "The task database could not be opened")
+      owner = account
+      const found = opened.rows.map((row) => ({ row, ...classify(row, sealer, account) }))
+      for (const { row, seal } of found) {
+        if (!(try machine.get()).records.some((record) => record.taskId === row.id)) {
+          try send({ type: "foundRecord", taskId: row.id, account: seal.account, purpose: seal.purpose, unfinished: row.unfinished })
+        }
+      }
+      const exclusiveLock = try intact(lock)
+      try orDie(machine.send({ type: "openStore", account, evidence: { ...evidence, exclusiveLock } }, account))
+      if (!holdsLock(try machine.get())) {
+        try orDie(host(() => retire(keys, opened.db), "The task keys could not be retired"))
+        throw new StorageUnavailable({ reason: "The task store lock was replaced while it opened" })
+      }
+      writer = { db: opened.db, lock, sealer, keys }
+      for (const { row, text } of found) if (text !== undefined) try scan(row, text, account)
+    },
+
+    effect current() {
+      const state = try machine.get()
+      const corrupt = state.records.find((record) => record.unfinished && !authentic(record, state.account))
+      if (corrupt !== undefined) throw new Corrupt({ taskId: corrupt.taskId })
+      const live = state.records.find((record) => record.unfinished && record.hold === "Readable")
+      return live === undefined ? null : try loadReadable(live.taskId)
+    },
+
+    get: load,
+
+    effect create(record: TaskRecord) {
+      const taskId = record.task.id
+      const admission = slotAdmission(try machine.get(), taskId)
+      switch (admission) {
+        case "SlotFree": break
+        case "SlotTaken": throw new SlotTaken({ taskId })
+        case "SlotUnreadable": {
+          const held = [...aside.values()].find((entry) => entry.releasedAt === null)
+          throw new Unreadable({ taskId: held?.taskId ?? taskId, reason: held?.reason ?? "An unfinished task record is held aside" })
+        }
+        case "SlotCorrupt": throw new Corrupt({ taskId })
+        default: {
+          const unhandled: never = admission
+          return unhandled
+        }
+      }
+      try statement(taskId, true, (held) => insertRecord(held.db, {
+        id: taskId, revision: record.task.revision, unfinished: !ended(record.task), at: now(),
+        payload: held.sealer.seal(JSON.stringify(record), "TaskRecord"),
+      }))
+      try send({ type: "createRecord", taskId })
+      if (ended(record.task)) try send({ type: "endRecord", taskId })
+    },
+
+    effect save(record: TaskRecord) {
+      const taskId = record.task.id
+      if (!(try readable(taskId))) throw new NoTask({ taskId })
+      const stored = (try machine.get()).records.find((entry) => entry.taskId === taskId)
+      if (stored !== undefined && !stored.unfinished && !ended(record.task)) throw new SlotTaken({ taskId })
+      try statement(taskId, true, (held) => updateRecord(held.db, {
+        id: taskId, revision: record.task.revision, unfinished: !ended(record.task), at: now(),
+        payload: held.sealer.seal(JSON.stringify(record), "TaskRecord"),
+      }))
+      if (stored?.unfinished === true && ended(record.task)) try send({ type: "endRecord", taskId })
+    },
+
+    effect unreadable() {
+      try fence()
+      return [...aside.values()]
+    },
+
+    effect acknowledgeUnreadable(by: string, taskId: string) {
+      const state = try machine.get()
+      if (!canAcknowledgeUnreadable(state, by, taskId)) {
+        const read = readTask(state, taskId)
+        if (read === "NoTask") throw new NoTask({ taskId })
+        if (read === "TaskCorrupt") throw new Corrupt({ taskId })
+        if (by !== state.account) throw new NotOwner({ taskId })
+        throw new SlotTaken({ taskId })
+      }
+      const at = now()
+      try statement(taskId, true, (held) => releaseRecord(held.db, taskId, at))
+      try orDie(machine.send({ type: "acknowledgeUnreadable", taskId }, by))
+      const entry = { ...(aside.get(taskId) ?? { taskId, reason: "", heldAt: at }), releasedAt: at }
+      aside.set(taskId, entry)
+      return entry
+    },
+
+    effect close() {
+      const held = writer
+      const state = try machine.get()
+      if (state.writer.tag === "Opened") try send({ type: "closeStore" })
+      if (held !== undefined) host(() => releaseLock(held.lock), "The task store lock could not be released") catch () => undefined
+      try drop()
+    },
+  } satisfies TaskRecords
+}

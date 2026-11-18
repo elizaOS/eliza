@@ -1,0 +1,225 @@
+// spec/agent/tasks/wire.md, "Story: Stop a task even before its creation reply arrives"; spec/agent/tasks/wire.md, "A view shows six public fields of the held task, or null"
+import { TASK_ID_PATTERN } from "@elizaos/core/task-events"
+import {
+  Machine, admitView, canBeginControl, canFinishFollowUp, canRefresh, machine, shownOr,
+  type ClientCommand, type Event, type Rejected, type TaskClient, type TaskViewResult, type ViewStatus,
+} from "../../gen/agent__tasks__wire.effect.vibe"
+
+export const TASK_PAUSE_TIMEOUT_MS = 10_000
+
+export schema TaskView {
+  readonly schemaVersion: 1
+  readonly id: Schema.String
+  readonly revision: Schema.Int
+  readonly epoch: Schema.Int
+  readonly status: "active" | "paused" | "waiting" | "blocked" | "completed" | "cancelled"
+  readonly hasUnknownOutcome: boolean
+}
+
+export interface TaskLifecycleState {
+  readonly task: TaskView | null
+  readonly pending: boolean
+  readonly error: string
+}
+
+export type TaskLifecycleRequest = (path: string, body: unknown, signal: AbortSignal) => Promise<unknown>
+export type TaskLifecycleCommand = "pause" | "close" | "resume" | "cancel"
+export type TaskLifecycleMessages = Readonly<Record<"start" | "pause" | "resume" | "cancel", string>>
+
+interface Session {
+  readonly request: TaskLifecycleRequest
+  readonly changed: (state: TaskLifecycleState) => void
+  readonly messages: TaskLifecycleMessages
+  readonly machine: Machine.Shape
+  readonly stop: AbortController
+  shown: TaskLifecycleState
+  queued: object | undefined
+  reads: number
+}
+
+const shownStatus = {
+  active: "ShownActive", paused: "ShownPaused", waiting: "ShownWaiting", blocked: "ShownBlocked", completed: "ShownCompleted", cancelled: "ShownCancelled",
+} as const satisfies Record<TaskView["status"], ViewStatus>
+const wireStatus = {
+  ShownActive: "active", ShownPaused: "paused", ShownWaiting: "waiting", ShownBlocked: "blocked", ShownCompleted: "completed", ShownCancelled: "cancelled",
+} as const satisfies Record<ViewStatus, TaskView["status"]>
+const commands = {
+  NoCommand: { retry: "pause", failed: undefined },
+  StartCmd: { retry: "pause", failed: "start" },
+  PauseCmd: { retry: "pause", failed: "pause" },
+  CloseCmd: { retry: "close", failed: "pause" },
+  ResumeCmd: { retry: "resume", failed: "resume" },
+  CancelCmd: { retry: "cancel", failed: "cancel" },
+} as const satisfies Record<ClientCommand, { retry: TaskLifecycleCommand; failed: keyof TaskLifecycleMessages | undefined }>
+
+const goalRefPattern = /^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,255}$/
+const currentPath = "/api/tasks/current"
+const invalid: TaskViewResult = { tag: "TaskViewInvalid" }
+const idle: TaskLifecycleState = { task: null, pending: false, error: "" }
+const wireView = Schema.decodeUnknownOption(TaskView)
+
+function admit(reply: unknown): TaskViewResult {
+  const hasMember = typeof reply === "object" && reply !== null && "task" in reply
+  const view = Option.filter(wireView(hasMember ? reply.task : undefined), (task) => TASK_ID_PATTERN.test(task.id))
+  return admitView(hasMember, hasMember && reply.task === null, Option.isSome(view), Option.match(view, {
+    onNone: () => shownOr(invalid),
+    onSome: (task) => ({ id: task.id, revision: task.revision, epoch: task.epoch, status: shownStatus[task.status], hasUnknownOutcome: task.hasUnknownOutcome }),
+  }))
+}
+
+function project(session: Session, state: TaskClient): TaskLifecycleState {
+  const { shown } = state
+  const failed = commands[state.command].failed
+  return {
+    task: shown.tag === "TaskViewShown"
+      ? { schemaVersion: 1, id: shown.id, revision: shown.revision, epoch: shown.epoch, status: wireStatus[shown.status], hasUnknownOutcome: shown.hasUnknownOutcome }
+      : null,
+    pending: state.pending || session.queued !== undefined,
+    error: state.problem && session.queued === undefined && failed !== undefined ? session.messages[failed] : "",
+  }
+}
+
+effect function show(session: Session, state: TaskClient): void!! {
+  session.shown = project(session, state)
+  try sync(() => session.changed(session.shown))
+}
+
+effect function advance(session: Session, event: Event): TaskClient!Rejected {
+  const next = try session.machine.send(event)
+  try show(session, next)
+  return next
+}
+
+effect function ask(session: Session, path: string, body?: object): TaskViewResult!! {
+  return map(tryPromise((signal) => session.request(path, body, signal)), admit) catch () => invalid
+}
+
+effect function askPause(session: Session, closing: boolean): TaskViewResult!! {
+  const reply = try timeoutOption(ask(session, `${currentPath}/pause`, closing ? { reason: "close" } : {}), Duration.millis(TASK_PAUSE_TIMEOUT_MS))
+  return Option.getOrElse(reply, () => invalid)
+}
+
+effect function creationSettled(session: Session): void!! {
+  try Stream.runHead(Stream.filter(session.machine.changes, (state) => state.creating === 0))
+}
+
+effect function start(session: Session, goalRef: string): boolean!Rejected {
+  if (session.queued !== undefined || !goalRefPattern.test(goalRef)) return false
+  const ticket = (try advance(session, { type: "beginStart" })).generation
+  const found = try ask(session, currentPath)
+  const wanted = found.tag !== "TaskViewInvalid" && session.queued === undefined && (try session.machine.get()).generation === ticket
+  const reply = wanted ? try ask(session, "/api/tasks", { goalRef }) : invalid
+  const settled = try advance(session, { type: "finishStart", ticket, found, reply })
+  return settled.generation === ticket && !settled.problem
+}
+
+effect function refresh(session: Session): void!Rejected {
+  const before = try session.machine.get()
+  if (session.queued !== undefined || !canRefresh(before)) return
+  session.reads += 1
+  const read = session.reads
+  const reply = try ask(session, currentPath)
+  if (read === session.reads && (try session.machine.get()).generation === before.generation) try advance(session, { type: "refresh", reply })
+}
+
+effect function pause(session: Session, closing: boolean): { readonly confirmed: boolean; readonly followUp: number }!Rejected {
+  session.queued = undefined
+  const begun = try advance(session, { type: "beginPause", closing })
+  const reply = try askPause(session, closing)
+  const confirmed = map(advance(session, { type: "finishPause", ticket: begun.generation, reply }), (after) => !after.problem) catch () => false
+  return { confirmed, followUp: begun.followUp }
+}
+
+effect function followUp(session: Session, ticket: number, closing: boolean): void!Rejected {
+  try creationSettled(session)
+  const state = try session.machine.get()
+  if (session.queued !== undefined || state.followUp !== ticket || !canFinishFollowUp(state)) return
+  try advance(session, { type: "finishFollowUp", reply: try askPause(session, closing) })
+}
+
+effect function control(session: Session, cancelling: boolean): boolean!Rejected {
+  const state = try session.machine.get()
+  if ((!cancelling && session.queued !== undefined) || !canBeginControl({ ...state, creating: 0 }, cancelling)) return false
+  const mine = {}
+  session.queued = state.creating > 0 ? mine : undefined
+  if (session.queued === mine) {
+    try show(session, state)
+    try creationSettled(session)
+    if (session.queued !== mine) return false
+    session.queued = undefined
+  }
+  const ticket = (try advance(session, { type: "beginControl", cancelling })).generation
+  const latest = cancelling ? try askPause(session, false) : try ask(session, currentPath)
+  if ((try session.machine.get()).generation !== ticket) return false
+  const reply = latest.tag === "TaskViewShown"
+    ? try ask(session, `/api/tasks/${latest.id}/${cancelling ? "cancel" : "resume"}`, { expectedRevision: latest.revision })
+    : invalid
+  return !(try advance(session, { type: "finishControl", ticket, latest, reply })).problem
+}
+
+effect function hold() {
+  provide machine() {
+    return try Machine
+  }
+}
+
+function open({ request, changed, messages }: Pick<Session, "request" | "changed" | "messages">): Session {
+  return { request, changed, messages, machine: Effect.runSync(hold()), stop: new AbortController(), shown: idle, queued: undefined, reads: 0 }
+}
+
+function run<A>(session: Session, work: A!Rejected, otherwise: A): Promise<A> {
+  return runPromise(work, { signal: session.stop.signal }).catch(() => otherwise)
+}
+
+const confirmed = ({ task, pending, error }: TaskLifecycleState) => pending || error !== "" ? null : task
+
+export class TaskLifecycle {
+  #session: Session
+
+  constructor(request: TaskLifecycleRequest, changed: (state: TaskLifecycleState) => void, messages: TaskLifecycleMessages) {
+    this.#session = open({ request, changed, messages: { ...messages } })
+  }
+
+  snapshot(): TaskLifecycleState {
+    return this.#session.shown
+  }
+
+  currentTaskId(): string | null {
+    return confirmed(this.#session.shown)?.id ?? null
+  }
+
+  isPaused(): boolean {
+    return confirmed(this.#session.shown)?.status === "paused"
+  }
+
+  reset(): void {
+    this.#session.stop.abort()
+    this.#session = open(this.#session)
+    this.#session.changed(idle)
+  }
+
+  retry(): Promise<boolean> {
+    return this.control(commands[Effect.runSync(this.#session.machine.get()).command].retry)
+  }
+
+  interruptStart(): void {
+    if (Effect.runSync(this.#session.machine.get()).creating > 0) void this.control("pause")
+  }
+
+  start(goalRef: string): Promise<boolean> {
+    return run(this.#session, start(this.#session, goalRef), false)
+  }
+
+  refresh(): Promise<void> {
+    return run(this.#session, refresh(this.#session), undefined)
+  }
+
+  async control(command: TaskLifecycleCommand): Promise<boolean> {
+    const session = this.#session
+    if (command === "resume" || command === "cancel") return run(session, control(session, command === "cancel"), false)
+    const closing = command === "close"
+    const first = await run(session, pause(session, closing), { confirmed: false, followUp: 0 })
+    if (first.followUp > 0) void run(session, followUp(session, first.followUp, closing), undefined)
+    return first.confirmed
+  }
+}

@@ -1,8 +1,11 @@
-// spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"
-import { Rejected, apply, decodeState, initial, perWindow, windowEndOf, windowStartOf, type Event, type Window } from "../../gen/cloud__shared__rateLimit.effect.vibe"
-import { refused, Refused } from "../http/refusal.vibe"
-import { machineRows, stepRow } from "../store/rows.vibe"
-import { Store } from "../store/connection.vibe"
+// spec/cloud/shared/rateLimit.md, "Story: Refuse excess requests with a usable retry time"; spec/cloud/shared/rateLimit.md, "Story: Refuse rather than guess when the limiter cannot count"
+import { Rejected, admitsAll, apply, decodeState, groupRefusal, initial, perWindow, refusalOfDecision, unavailableRefusal, type Check, type Event, type RateLimit, type Window } from "../../gen/cloud__shared__rateLimit.effect.vibe"
+import { Refused } from "../http/refusal.vibe"
+import { loadRow, machineRows, stepRow } from "../store/rows.vibe"
+import { Store, type Tx } from "../store/connection.vibe"
+
+export { perMinute, perWindow, windowEndOf, windowStartOf } from "../../gen/cloud__shared__rateLimit.effect.vibe"
+export type { RateLimit, Window }
 
 const windows = machineRows<Window, Event, Rejected, unknown>("rate_windows", { initial, decodeState, apply })
 
@@ -13,22 +16,54 @@ export interface Limit {
   readonly widthMs: number
 }
 
+export interface LimitCheck {
+  readonly subject: string
+  readonly rule: RateLimit
+}
+
 export const minute = 60_000
 
-export effect function admit(limit: Limit): void!Refused!Store {
-  const now = try Clock.currentTimeMillis
-  const start = windowStartOf(now, limit.widthMs)
-  const end = windowEndOf(now, limit.widthMs)
+export function windowKey(check: LimitCheck): string {
+  return `${check.rule.name}|${check.subject}`
+}
+
+effect function countIn(tx: Tx, check: LimitCheck, now: number) {
+  return (try stepRow(tx, windows, windowKey(check), { type: "request", rule: check.rule, now }, (window) => ({ window_end: window.end }))).state
+}
+
+export effect function readWindow(check: LimitCheck) {
   const store = try Store
-  store.transaction(effect (tx) => {
-    const { state } = try stepRow(tx, windows, `${limit.scope}|${limit.subject}|${start}`, {
-      type: "request", rule: perWindow(limit.scope, limit.limit, limit.widthMs), now
-    }, () => ({ window_end: end }))
-    if (state.last.tag === "Refused") throw refused("RateLimited", "NoReason", state.last.retryAt)
-  }) catch effect (failure) => match (failure) {
-    when Refused: throw failure;
-    default: throw refused("RateLimitUnavailable", "NoReason", now + 1000);
+  return (try store.transaction((tx) => loadRow(tx, windows, windowKey(check), false))).state
+}
+
+export effect function admitCheck(check: LimitCheck): void!Refused!Store {
+  const now = try Clock.currentTimeMillis
+  const store = try Store
+  const window = store.transaction((tx) => countIn(tx, check, now)) catch effect (failure) => {
+    try annotateLogs(logWarning("rate limiter could not count"), { limit: check.rule.name, cause: failure._tag })
+    throw new Refused({ refusal: unavailableRefusal(now) })
   }
+  if (window.last.tag !== "Admitted") throw new Refused({ refusal: refusalOfDecision(window.last, now) })
+}
+
+export effect function admit(limit: Limit): void!Refused!Store {
+  try admitCheck({ subject: limit.subject, rule: perWindow(limit.scope, limit.limit, limit.widthMs) })
+}
+
+export effect function admitAll(checks: ReadonlyArray<LimitCheck>): void!Refused!Store {
+  const now = try Clock.currentTimeMillis
+  const store = try Store
+  const refusal = store.transaction(effect (tx: Tx) => {
+    const group: Array<Check> = []
+    for (const check of checks) group.push({ window: (try loadRow(tx, windows, windowKey(check))).state, rule: check.rule })
+    if (!admitsAll(group, now)) return groupRefusal(group, now)
+    for (const check of checks) try countIn(tx, check, now)
+    return undefined
+  }) catch effect (failure) => {
+    try annotateLogs(logWarning("rate limiter could not count"), { limits: checks.map((check) => check.rule.name).join(","), cause: failure._tag })
+    throw new Refused({ refusal: unavailableRefusal(now) })
+  }
+  if (refusal !== undefined) throw new Refused({ refusal })
 }
 
 export effect function sweepWindows(): void!!Store {

@@ -1,0 +1,104 @@
+// spec/agent/plugins/profile.md, "Story: Load only the plugins my product lists"; spec/agent/plugins/profile.md, "Story: Register my product's own actions and routes"
+import { assert, it } from "@effect/vitest"
+import { parseLaunch } from "../src/host/launch.vibe"
+import type { AgentPlugin, ModuleFactory } from "../src/host/module.vibe"
+import { startAgent, type StartAgentInput } from "../src/host/process.vibe"
+import { bundledPluginMap } from "../src/plugins/profile.vibe"
+import { host, scratch } from "./support/kernel.vibe"
+import { claimingProductPlugin, productActionName, productPlugin } from "./support/product-plugin/index.ts"
+import { launchDocument, launchFrame, type LaunchOptions } from "./support/scratch.ts"
+import { request } from "./support/socket-client.ts"
+
+const tasksModule: ModuleFactory<never> = () => Effect.succeed({
+  name: "@elizaos/agent/tasks",
+  plugin: {
+    name: "@elizaos/agent/tasks", description: "A tasks module that owns /api/tasks",
+    routes: [{ method: "GET", path: "/api/tasks", handler: () => ({ status: 200, body: { tasks: [] } }) }],
+  },
+})
+
+const hostClaimingPlugin = {
+  ...productPlugin,
+  name: "host-claiming-product-fixture",
+  routes: [{ ...productPlugin.routes[0], path: "/api/conversations/product" }],
+} satisfies AgentPlugin
+
+interface Case {
+  readonly launch: LaunchOptions
+  readonly bundled?: readonly AgentPlugin[]
+  readonly modules?: StartAgentInput["modules"]
+}
+
+effect function launched(state: { readonly path: string; file(name: string): string }, test: Case) {
+  const frame = launchFrame()
+  const document = try Effect.try(() => launchDocument(test.launch))
+  const parsed = try parseLaunch(JSON.stringify(document), JSON.stringify(frame))
+  const bundled = try bundledPluginMap((test.bundled ?? []).map((plugin) => ({ packageName: plugin.name, plugin })))
+  const socket = state.file("agent.sock")
+  return {
+    frame, socket,
+    input: {
+      ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: socket }, bundled,
+      ...(test.modules === undefined ? {} : { modules: test.modules }),
+    } satisfies StartAgentInput,
+  }
+}
+
+effect function refusal(test: Case) {
+  const state = try scratch("plan-state")
+  const { input } = try launched(state, test)
+  const failed = try Effect.flip(startAgent(input))
+  return failed._tag === "AgentBootFailed" ? failed.phase : failed._tag
+}
+
+const refusals: ReadonlyArray<readonly [string, string, Case]> = [
+  ["An unknown plugin stops boot", "A load list names only plugins the bundle carries or the agent's own modules",
+    { launch: { load: ["@elizaos/plugin-wallet"] } }],
+  ["A listed storage plugin stops boot", "Storage, the cloud link and the privacy service always load and cannot be listed",
+    { launch: { load: ["@elizaos/agent/storage"] } }],
+  ["A product plugin named like an agent module stops boot", "Storage, the cloud link and the privacy service always load and cannot be listed",
+    { launch: { productPlugin: "@elizaos/agent/tasks" } }],
+  ["A product plugin missing from the bundle stops boot", "The product plugin must be in the bundle",
+    { launch: { productPlugin: productPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] } }],
+  ["A product route under a module's prefix stops boot", "A product route never claims a route prefix an agent module owns",
+    { launch: { load: ["@elizaos/agent/tasks"], productPlugin: claimingProductPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] },
+      bundled: [claimingProductPlugin], modules: new Map([["@elizaos/agent/tasks", tasksModule]]) }],
+  ["A product route under a host prefix stops boot", "A product route never claims a route prefix an agent module owns",
+    { launch: { productPlugin: hostClaimingPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] }, bundled: [hostClaimingPlugin] }],
+  ["A stale allowlist stops boot", "The agent is ready only when every allowed action is registered",
+    { launch: { allowed: ["REPLY", "IGNORE", "NONE", "RENAMED"] } }],
+]
+
+for (const [title, rule, test] of refusals) {
+  it.effect(`${title} with Config (spec/agent/plugins/profile.md, "${rule}")`, effect () => {
+    const phase = try refusal(test)
+    try Effect.try(() => assert.strictEqual(phase, "Config"))
+  }, 60_000)
+}
+
+it.effect('A bundled package whose plugin has another name is refused (spec/agent/plugins/profile.md, "The product plugin must be in the bundle")', effect () => {
+  const failed = try Effect.flip(bundledPluginMap([{ packageName: "@product/plugin", plugin: productPlugin }]))
+  try Effect.try(() => assert.deepStrictEqual({ tag: failed._tag, packageName: failed.packageName }, { tag: "BundleEntryRefused", packageName: "@product/plugin" }))
+})
+
+it.effect('The product plugin adds its action and route beside the agent\'s own (spec/agent/plugins/profile.md, "Story: Register my product\'s own actions and routes")', effect () => {
+  const state = try scratch("plan-state")
+  const { frame, socket, input } = try launched(state, {
+    launch: { productPlugin: productPlugin.name, allowed: ["REPLY", "IGNORE", "NONE", productActionName] },
+    bundled: [productPlugin],
+  })
+  const running = try acquireRelease(startAgent(input), (agent) => orDie(host("retire agent", () => agent.stop())))
+  const ping = try host("product route", () => request(socket, { method: "GET", path: "/api/product/ping", token: frame.token }))
+  const anonymous = try host("product route without the token", () => request(socket, { method: "GET", path: "/api/product/ping" }))
+  try Effect.try(() => assert.deepStrictEqual({
+    ready: running.status.ready,
+    actions: running.status.actions,
+    ping: "json" in ping ? { status: ping.status, body: ping.json } : ping,
+    anonymous: "status" in anonymous ? anonymous.status : anonymous,
+  }, {
+    ready: true,
+    actions: ["IGNORE", "NONE", productActionName, "REPLY"],
+    ping: { status: 200, body: { pong: true } },
+    anonymous: 401,
+  }))
+}, 120_000)

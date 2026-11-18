@@ -1,0 +1,177 @@
+// spec/cloud/client.md, "Story: Use the cloud from the device as configured"
+export type HttpMethod = "Get" | "Post" | "Patch" | "Delete"
+
+export type Segment =
+  | { readonly tag: "Literal"; readonly value: string }
+  | { readonly tag: "Param"; readonly value: string }
+
+export type AuthClass = "Public" | "KeyOrSession" | "Session" | "FreshSession" | "StepUp"
+
+export interface DeviceRoute {
+  readonly method: HttpMethod
+  readonly path: ReadonlyArray<Segment>
+  readonly auth: AuthClass
+  readonly headers: ReadonlyArray<string>
+}
+
+type SegmentParam<S extends string> = S extends `:${infer Name}` ? Name : never
+
+type ParamNames<P extends string> = P extends `${infer Head}/${infer Rest}` ? SegmentParam<Head> | ParamNames<Rest> : SegmentParam<P>
+
+export interface NamedRoute<N extends string> extends DeviceRoute {
+  readonly params: ReadonlyArray<N>
+}
+
+export type ParamsOf<R> = R extends NamedRoute<infer N> ? Readonly<Record<N, string>> : never
+
+export const idempotencyKey = "Idempotency-Key"
+export const ifMatch = "If-Match"
+export const baseHeaders: ReadonlyArray<string> = ["Authorization", "Content-Type", "X-Request-ID", "Traceparent", "Tracestate"]
+
+function on<const P extends `/${string}`>(method: HttpMethod, pattern: P, auth: AuthClass, headers: ReadonlyArray<string> = []): NamedRoute<ParamNames<P>> {
+  const path = pattern.split("/").slice(1).map((part): Segment =>
+    part.startsWith(":") ? { tag: "Param", value: part.slice(1) } : { tag: "Literal", value: part })
+  const params = path.flatMap((segment) => segment.tag === "Param" ? [segment.value as ParamNames<P>] : [])
+  return { method, path, auth, headers, params }
+}
+
+const google = "/api/v1/eliza/google"
+const events = `${google}/calendar/events` as const
+const inbox = `${google}/gmail/inbox-v1` as const
+
+export const routesByName = {
+  publicService: on("Get", "/api/public/service", "Public"),
+  authMethods: on("Get", "/api/v1/auth/methods", "Public"),
+  emailCodeSend: on("Post", "/api/v1/auth/email/code/send", "Public"),
+  emailCodeVerify: on("Post", "/api/v1/auth/email/code/verify", "Public"),
+  smsCodeSend: on("Post", "/api/v1/auth/sms/code/send", "Public"),
+  smsCodeVerify: on("Post", "/api/v1/auth/sms/code/verify", "Public"),
+  googleAuthorize: on("Get", "/api/v1/auth/google/authorize", "Public"),
+  googleExchange: on("Post", "/api/v1/auth/google/exchange", "Public"),
+  googleNativeChallenge: on("Post", "/api/v1/auth/google/native/challenge", "Public"),
+  mfaComplete: on("Post", "/api/v1/auth/mfa/complete", "Public"),
+  mfaSmsSend: on("Post", "/api/v1/auth/mfa/sms/send", "Public"),
+  refresh: on("Post", "/api/v1/auth/refresh", "Public"),
+  logout: on("Post", "/api/v1/auth/logout", "Session"),
+  mfaStepUp: on("Post", "/api/v1/auth/mfa/step-up", "Session"),
+  mfaFactors: on("Get", "/api/v1/auth/mfa", "Session"),
+  mfaTotpEnroll: on("Post", "/api/v1/auth/mfa/totp/enroll", "StepUp"),
+  mfaTotpConfirm: on("Post", "/api/v1/auth/mfa/totp/confirm", "StepUp"),
+  mfaSmsEnroll: on("Post", "/api/v1/auth/mfa/sms/enroll", "StepUp"),
+  mfaSmsConfirm: on("Post", "/api/v1/auth/mfa/sms/confirm", "StepUp"),
+  mfaFactorDelete: on("Delete", "/api/v1/auth/mfa/:factorId", "StepUp"),
+  signInMethods: on("Get", "/api/v1/user/methods", "Session"),
+  phoneCodeSend: on("Post", "/api/v1/user/methods/phone/code/send", "Session"),
+  phoneCodeVerify: on("Post", "/api/v1/user/methods/phone/code/verify", "Session"),
+  googleMethodChallenge: on("Post", "/api/v1/user/methods/google/challenge", "Session"),
+  googleMethodLink: on("Post", "/api/v1/user/methods/google/link", "Session"),
+  signInMethodDelete: on("Delete", "/api/v1/user/methods/:methodId", "StepUp"),
+  user: on("Get", "/api/v1/user", "KeyOrSession"),
+  referrals: on("Get", "/api/v1/referrals", "KeyOrSession"),
+  referralApply: on("Post", "/api/v1/referrals/apply", "KeyOrSession"),
+  mobileConfig: on("Get", "/api/v1/app-auth/mobile/config", "Public"),
+  connect: on("Post", "/api/v1/app-auth/connect", "Session"),
+  mobileToken: on("Post", "/api/v1/app-auth/mobile/token", "Public"),
+  mobileAck: on("Post", "/api/v1/app-auth/mobile/ack", "Public"),
+  mobileGoogle: on("Post", "/api/v1/app-auth/mobile/google", "Public"),
+  currentKeyRevoke: on("Delete", "/api/v1/api-keys/current", "KeyOrSession"),
+  plans: on("Get", "/api/v1/subscriptions/plans", "Public"),
+  entitlementKeys: on("Get", "/api/v1/subscription/entitlement-keys", "Public"),
+  billingLimits: on("Get", "/api/v1/billing/limits", "KeyOrSession"),
+  entitlement: on("Get", "/api/v1/subscription/entitlement", "KeyOrSession"),
+  redeem: on("Post", "/api/v1/subscription/redeem", "KeyOrSession", [idempotencyKey]),
+  checkout: on("Post", "/api/v1/subscriptions/checkout", "KeyOrSession", [idempotencyKey]),
+  checkoutConfirm: on("Post", "/api/v1/subscriptions/checkout/confirm", "KeyOrSession"),
+  cancel: on("Post", "/api/v1/subscriptions/cancel", "FreshSession"),
+  cancelUndo: on("Post", "/api/v1/subscriptions/cancel/undo", "FreshSession"),
+  cancelStatus: on("Get", "/api/v1/subscriptions/cancel/:commandId", "FreshSession"),
+  cancelUndoStatus: on("Get", "/api/v1/subscriptions/cancel/undo/:commandId", "FreshSession"),
+  cancelUndoReview: on("Get", "/api/v1/subscriptions/cancel/undo/review", "FreshSession"),
+  upgradeReview: on("Post", "/api/v1/subscriptions/upgrade/review", "FreshSession"),
+  upgradeConfirm: on("Post", "/api/v1/subscriptions/upgrade/confirm", "FreshSession"),
+  downgradeReview: on("Post", "/api/v1/subscriptions/downgrade/review", "FreshSession"),
+  downgradeConfirm: on("Post", "/api/v1/subscriptions/downgrade/confirm", "FreshSession"),
+  upgradeStatus: on("Get", "/api/v1/subscriptions/upgrade/:commandId", "FreshSession"),
+  downgradeStatus: on("Get", "/api/v1/subscriptions/downgrade/:commandId", "FreshSession"),
+  upgradePayment: on("Post", "/api/v1/subscriptions/upgrade/:commandId/payment", "FreshSession"),
+  commands: on("Get", "/api/v1/subscriptions/commands", "KeyOrSession"),
+  portal: on("Post", "/api/v1/subscriptions/portal", "FreshSession"),
+  invoices: on("Get", "/api/v1/billing/invoices", "KeyOrSession"),
+  invoice: on("Get", "/api/v1/billing/invoices/:invoiceId", "KeyOrSession"),
+  models: on("Get", "/api/v1/models", "KeyOrSession"),
+  chatCompletions: on("Post", "/api/v1/chat/completions", "KeyOrSession"),
+  textToSpeech: on("Post", "/api/v1/voice/tts", "KeyOrSession"),
+  speechToText: on("Post", "/api/v1/voice/stt", "KeyOrSession"),
+  speechConsent: on("Post", "/api/v1/voice/speech/consent", "KeyOrSession"),
+  speechSession: on("Post", "/api/v1/voice/speech/session", "KeyOrSession"),
+  speechSocket: on("Get", "/api/v1/voice/speech/ws", "Public"),
+  speechSessionRevoke: on("Post", "/api/v1/voice/speech/session/:sessionId/revoke", "KeyOrSession"),
+  mapsCapabilities: on("Get", "/api/v1/maps/capabilities", "KeyOrSession"),
+  mapsGeocode: on("Post", "/api/v1/maps/geocode", "KeyOrSession", [idempotencyKey]),
+  mapsReverse: on("Post", "/api/v1/maps/reverse", "KeyOrSession", [idempotencyKey]),
+  mapsPlacesSearch: on("Post", "/api/v1/maps/places/search", "KeyOrSession", [idempotencyKey]),
+  mapsPlaceDetails: on("Post", "/api/v1/maps/places/details", "KeyOrSession", [idempotencyKey]),
+  mapsRoutes: on("Post", "/api/v1/maps/routes", "KeyOrSession", [idempotencyKey]),
+  mapsViewport: on("Post", "/api/v1/maps/tiles/viewport", "KeyOrSession"),
+  mapsTile: on("Get", "/api/v1/maps/tiles/:z/:x/:y", "KeyOrSession", [idempotencyKey]),
+  googleStatus: on("Get", `${google}/status`, "KeyOrSession"),
+  googleAccounts: on("Get", `${google}/accounts`, "KeyOrSession"),
+  googleConnect: on("Post", `${google}/connect/initiate`, "KeyOrSession"),
+  googleConnectNative: on("Post", `${google}/connect/native`, "KeyOrSession"),
+  googleDisconnect: on("Post", `${google}/disconnect`, "KeyOrSession"),
+  gmailTriage: on("Get", `${google}/gmail/triage`, "KeyOrSession"),
+  gmailSearch: on("Get", `${google}/gmail/search`, "KeyOrSession"),
+  gmailRead: on("Get", `${google}/gmail/read`, "KeyOrSession"),
+  inboxCapabilities: on("Get", `${inbox}/capabilities`, "KeyOrSession"),
+  inboxThread: on("Get", `${inbox}/thread`, "KeyOrSession"),
+  inboxAttachment: on("Get", `${inbox}/attachment`, "KeyOrSession"),
+  inboxDrafts: on("Get", `${inbox}/drafts`, "KeyOrSession"),
+  inboxDraft: on("Get", `${inbox}/draft`, "KeyOrSession"),
+  inboxOperationPrepare: on("Post", `${inbox}/operations`, "KeyOrSession"),
+  inboxOperationDispatch: on("Post", `${inbox}/operations/:requestId/dispatch`, "KeyOrSession"),
+  inboxOperation: on("Get", `${inbox}/operations/:requestId`, "KeyOrSession"),
+  calendars: on("Get", `${google}/calendar/calendars`, "KeyOrSession"),
+  calendarFeed: on("Get", `${google}/calendar/feed`, "KeyOrSession"),
+  calendarEvent: on("Get", `${events}/:eventId`, "KeyOrSession"),
+  calendarEventCreate: on("Post", events, "KeyOrSession", [idempotencyKey]),
+  calendarEventChange: on("Patch", `${events}/:eventId`, "KeyOrSession", [ifMatch]),
+  calendarEventDelete: on("Delete", `${events}/:eventId`, "KeyOrSession", [ifMatch])
+} as const
+
+export type DeviceRouteName = keyof typeof routesByName
+
+export const deviceRoutes: ReadonlyArray<DeviceRoute> = Object.values(routesByName)
+
+export function httpVerb(method: HttpMethod): "GET" | "POST" | "PATCH" | "DELETE" {
+  switch (method) {
+    case "Get": return "GET"
+    case "Post": return "POST"
+    case "Patch": return "PATCH"
+    case "Delete": return "DELETE"
+  }
+}
+
+export function pathOf<R extends NamedRoute<string>>(route: R, ...[params]: R extends NamedRoute<never> ? [] : [ParamsOf<R>]): string {
+  const values: Readonly<Record<string, string>> = params ?? {}
+  return route.path.map((segment) => `/${segment.tag === "Param" ? encodeURIComponent(values[segment.value] ?? "") : segment.value}`).join("")
+}
+
+export function admitsHeader(route: DeviceRoute, name: string): boolean {
+  const wanted = name.toLowerCase()
+  return [...baseHeaders, ...route.headers].some((header) => header.toLowerCase() === wanted)
+}
+
+function literalCount(route: DeviceRoute): number {
+  return route.path.filter((segment) => segment.tag === "Literal").length
+}
+
+function routeMatches(route: DeviceRoute, method: HttpMethod, parts: ReadonlyArray<string>): boolean {
+  return route.method === method && route.path.length === parts.length &&
+    route.path.every((segment, index) => segment.tag === "Literal" ? segment.value === parts[index] : (parts[index] ?? "") !== "")
+}
+
+export function routeFor(method: HttpMethod, pathname: string): DeviceRoute | undefined {
+  const parts = pathname.split("/").slice(1)
+  return deviceRoutes.reduce<DeviceRoute | undefined>((best, route) =>
+    routeMatches(route, method, parts) && (best === undefined || literalCount(route) > literalCount(best)) ? route : best, undefined)
+}

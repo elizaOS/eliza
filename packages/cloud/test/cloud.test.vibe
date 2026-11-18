@@ -6,6 +6,10 @@ import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
 import { Store } from "../src/store/store.vibe"
 import { organization, testCloud, type TestCloud } from "./support/cloud.vibe"
 import { catalogPrices } from "./support/profile.ts"
+import { periodRows } from "../src/shared/metering.vibe"
+import { tokenDigest } from "../src/shared/sealing.vibe"
+import { stepRow } from "../src/store/rows.vibe"
+import { verifyEntitlement, type PublishedKey } from "./support/entitlement.ts"
 
 effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
   return match (try exit(program)) {
@@ -130,10 +134,76 @@ describe("WP0 Foundation", () => {
 describe.todo("WP1 Identity (spec/cloud/identity/accounts.md, \"Story: Get one account on first sign-in\")")
 describe.todo("WP2 Native clients and pages (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")")
 describe.todo("WP3 Checkout and provider events (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")")
-describe.todo("WP4 Subscriptions and entitlements (spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\")")
-describe.todo("WP5 Inference (spec/cloud/services/inference.md, \"Story: Answer a chat completion once and charge it once\")")
 describe.todo("WP6 Speech (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\")")
 describe.todo("WP7 Maps (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\")")
 describe.todo("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")")
 describe.todo("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from the device as configured\")")
 describe.todo("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")")
+
+effect function entitledDevice(cloud: TestCloud, name: string, now: number) {
+  const token = `eliza_mobile_${tokenDigest(name)}`
+  try organization(cloud, `org-${name}`)
+  try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [`user-${name}`, `org-${name}`, `${name}@example.com`, now])
+  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'test-client', 'active', $3, $4, $5, $6, $5, $5)", [
+    `grant-${name}`, `user-${name}`, `cred-${name}`, tokenDigest(token), now - 1000, now + 24 * 3_600_000
+  ])
+  return token
+}
+
+effect function entitlementClaims(cloud: TestCloud, token: string, keys: ReadonlyArray<PublishedKey>) {
+  const answer = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${token}` } })
+  const now = try Clock.currentTimeMillis
+  const verified = try promise(() => answer.status !== 200 ? Promise.reject(new Error(`entitlement answered ${answer.status}`)) : verifyEntitlement((answer.body as { readonly entitlement: string }).entitlement, keys, { issuer: "https://api.staging.example.com", audience: "cloud-subscription", nowSeconds: Math.floor(now / 1000) }))
+  const claims = verified.claims
+  return { status: answer.status, kid: verified.header.kid, plan: claims.plan, planEndsAt: claims.plan_ends_at, allowance: claims.plan_allowance, ver: claims.ver, sub: claims.sub, org: claims.org, services: claims.services, lifetime: Number(claims.exp) - Number(claims.iat), exp: claims.exp }
+}
+
+describe("WP4 Subscriptions and entitlements: entitlement", () => {
+  it.live("Read my plan from a signed entitlement, a grant giving way to a paid plan (spec/cloud/billing/entitlements.md, \"Story: Read my plan without substituting another account or source\"; spec/cloud/billing/plans.md, \"Story: Apply the plan that funds a call\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const now = try Clock.currentTimeMillis
+    const token = try entitledDevice(cloud, "entitled", now)
+    const published = try cloud.call("/api/v1/subscription/entitlement-keys")
+    const keys = (published.body as { readonly keys: ReadonlyArray<PublishedKey> }).keys
+    const anonymous = try cloud.call("/api/v1/subscription/entitlement")
+    const free = try entitlementClaims(cloud, token, keys)
+
+    const grantEnds = now + 10 * 60_000
+    try sql(cloud, "INSERT INTO grants (id, organization_id, family, plan_key, effective_from, effective_until, created_at) VALUES ('grant-1', 'org-entitled', 'pilot', 'plus_monthly', $1, $2, $1)", [now - 1000, grantEnds])
+    const granted = try entitlementClaims(cloud, token, keys)
+
+    const periodEnd = now + 30 * 24 * 3_600_000
+    const resetsAt = now + 20 * 60_000
+    try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ('org-entitled', '{}'::jsonb, 1, 'active', 'pro_monthly', $1, $2)", [periodEnd, now])
+    try cloud.store.transaction((tx) => stepRow(tx, periodRows, "renewal/staging/in_1", { type: "openRenewal", invoiceId: "in_1", planKey: "ProMonthly", startsAt: now - 1000, endsAt: resetsAt }, () => ({
+      organization_id: "org-entitled", status: "open", period_start: now - 1000, period_end: resetsAt, updated_at: now
+    })))
+    const paid = try entitlementClaims(cloud, token, keys)
+    try sql(cloud, "UPDATE subscriptions SET status = 'past_due' WHERE key = 'org-entitled'", [])
+    const pastDue = try entitlementClaims(cloud, token, keys)
+    try sql(cloud, "UPDATE subscriptions SET plan_key = 'gold' WHERE key = 'org-entitled'", [])
+    const unreadable = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${token}` } })
+
+    const seconds = (millis: number) => Math.floor(millis / 1000)
+    try check(() => assert.deepStrictEqual(
+      {
+        published: [published.status, published.headers["cache-control"], keys.length, keys.map((key) => [key.kid, key.kty, key.crv])],
+        anonymous: [anonymous.status, (anonymous.body as { readonly error: string }).error],
+        free,
+        granted: [granted.plan, granted.planEndsAt, granted.exp, granted.allowance],
+        paid: [paid.plan, paid.planEndsAt, paid.exp, paid.allowance],
+        pastDue: pastDue.plan,
+        unreadable: [unreadable.status, (unreadable.body as { readonly error: string }).error]
+      },
+      {
+        published: [200, "public, max-age=60", 1, [["entitlement-1", "EC", "P-256"]]],
+        anonymous: [401, "authentication_required"],
+        free: { status: 200, kid: "entitlement-1", plan: { id: "free", name: "Free", status: "none" }, planEndsAt: null, allowance: null, ver: 3, sub: "user-entitled", org: "org-entitled", services: ["inference", "speech", "maps"], lifetime: 1800, exp: free.exp },
+        granted: [{ id: "plus_monthly", name: "Plus", status: "active" }, seconds(grantEnds), seconds(grantEnds), null],
+        paid: [{ id: "pro_monthly", name: "Pro", status: "active" }, seconds(periodEnd), seconds(resetsAt), { unit: "usd_micros", granted: 90_000_000, remaining: 90_000_000, periodStart: seconds(now - 1000), resetsAt: seconds(resetsAt) }],
+        pastDue: { id: "pro_monthly", name: "Pro", status: "past_due" },
+        unreadable: [503, "service_unavailable"]
+      }
+    ))
+  }))
+})

@@ -1,0 +1,80 @@
+// spec/os/android/system.md, "Story: Approve a Wi-Fi join and see whether that network connected"; spec/os/android/system.md, "A Settings page opens its specific page first and a broader page only where one is listed"; spec/os/android/system.md, "A fact is reported only as Android answered it, and unknown is never off"
+import type { HandoffOutcome } from "../../gen/os__android__bridge.ts"
+import { pageHandoff, pageReply } from "../../gen/os__android__system.effect.vibe"
+import type { WiFiPlugin } from "./definitions/wifi.ts"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import { Cause, Effect, Exit } from "effect"
+  import type { WiFiPlugin } from "./definitions/wifi.ts"
+  import { NativeRejection } from "./wifi.vibe"
+
+  /** @throws {never} */
+  export function wifiPlugin(name = "ElizaWiFi"): WiFiPlugin {
+    return registerPlugin<WiFiPlugin>(name)
+  }
+
+  /** @throws {never} */
+  export async function settled<A, E>(effect: Effect.Effect<A, E>): Promise<A> {
+    const exit = await Effect.runPromiseExit(effect)
+    if (Exit.isSuccess(exit)) return exit.value
+    const failure = Cause.squash(exit.cause)
+    throw failure instanceof NativeRejection ? failure.cause : failure
+  }
+}
+import { settled, wifiPlugin } from capacitor
+export { wifiPlugin }
+
+export type WiFiMethod = keyof WiFiPlugin
+
+export interface WiFiClient extends Omit<WiFiPlugin, "openInternetPanel"> {
+  openInternetPanel(): Promise<HandoffOutcome>
+}
+
+export error MalformedWiFiReply { method: WiFiMethod; issue: string }
+
+export error NativeRejection { cause: unknown }
+
+schema Network {
+  ssid: string
+  bssid: string
+  rssi: number
+  frequency: number
+  capabilities: string
+  secured: boolean
+  security?: "open" | "owe" | "wpa2" | "wpa3" | "eap" | "wep"
+}
+schema Permission { location: "granted" | "denied" | "prompt" | "prompt-with-rationale" }
+schema Capabilities { sdk: number; approvedJoin: boolean; internetPanel: boolean }
+schema Radio { enabled: boolean; connected: boolean; rssi: number | null }
+schema Connected { network: Network | null }
+schema Scan { networks: Network[] }
+schema Change { success: boolean; message?: string }
+schema Connectivity { online: boolean; validated: boolean; captivePortal: boolean; ssid: string | null }
+schema Join { status: "connected" | "captivePortal" | "declined" | "unverified" | "notConnected" | "wrongPassword" }
+
+effect function reply<A>(method: WiFiMethod, shape: Schema.Codec<A>, call: () => Promise<unknown>) {
+  const raw = try tryPromise({ try: () => call(), catch: (cause) => new NativeRejection({ cause }) })
+  return try mapError(Schema.decodeUnknownEffect(shape)(raw), (refusal) => new MalformedWiFiReply({ method, issue: refusal.message }))
+}
+
+effect function panelHandoff(open: () => Promise<void>) {
+  const started = try isSuccess(tryPromise(() => open()))
+  return pageHandoff(pageReply("PageInternet", started, false))
+}
+
+export function wifiClient(plugin: WiFiPlugin = wifiPlugin()): WiFiClient {
+  return {
+    checkPermissions: () => settled(reply("checkPermissions", Permission, () => plugin.checkPermissions())),
+    requestPermissions: (options) => settled(reply("requestPermissions", Permission, () => plugin.requestPermissions(options))),
+    getCapabilities: () => settled(reply("getCapabilities", Capabilities, () => plugin.getCapabilities())),
+    openInternetPanel: () => settled(panelHandoff(() => plugin.openInternetPanel())),
+    getWifiState: () => settled(reply("getWifiState", Radio, () => plugin.getWifiState())),
+    getConnectedNetwork: () => settled(reply("getConnectedNetwork", Connected, () => plugin.getConnectedNetwork())),
+    listAvailableNetworks: (options) => settled(reply("listAvailableNetworks", Scan, () => plugin.listAvailableNetworks(options))),
+    connectToNetwork: (options) => settled(reply("connectToNetwork", Change, () => plugin.connectToNetwork(options))),
+    disconnectFromNetwork: () => settled(reply("disconnectFromNetwork", Change, () => plugin.disconnectFromNetwork())),
+    getConnectivity: () => settled(reply("getConnectivity", Connectivity, () => plugin.getConnectivity())),
+    addNetworkWithApproval: (options) => settled(reply("addNetworkWithApproval", Join, () => plugin.addNetworkWithApproval(options))),
+  }
+}

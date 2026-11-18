@@ -1,0 +1,112 @@
+// spec/cloud/services/models.md, "Story: Price a model call before it runs"; spec/cloud/services/models.md, "Story: Learn which models my key can call"; spec/cloud/operator.md, "Story: Operate the deployment without reading secrets"
+import { billedUsage, callCost, chooseModel, countsInBound, listModels, maxTokensPerSide, priceMismatches, priceRowAccepted, usageCapped, type BilledUsage, type Model, type ModelListing, type PriceRow, type ProfiledModel, type ProviderUsage, type TokenCounts } from "../../gen/cloud__services__models.effect.vibe"
+import { refused, Refused } from "../http/refusal.vibe"
+import { json, type Route } from "../http/routes.vibe"
+import { Deployment, type EnvironmentProfile } from "../profile/profile.vibe"
+import { Store, StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
+
+export type { BilledUsage, Model, ModelListing, PriceRow, TokenCounts }
+
+export type InferenceSettings = NonNullable<EnvironmentProfile["inference"]>
+export type ModelProvider = InferenceSettings["providers"][number]
+
+export interface ChosenModel {
+  readonly model: Model
+  readonly provider: ModelProvider
+}
+
+export interface PriceCheck {
+  readonly mismatches: number
+  readonly listing: ReadonlyArray<ModelListing>
+}
+
+const PriceSeed = Schema.Array(Schema.Struct({ modelId: Schema.String, inputPer1K: Schema.Int, outputPer1K: Schema.Int }))
+
+const Count = Schema.optionalKey(Schema.NullOr(Schema.Int))
+
+const Usage = Schema.Struct({
+  prompt_tokens: Count,
+  completion_tokens: Count,
+  prompt_tokens_details: Schema.optionalKey(Schema.NullOr(Schema.Struct({ cached_tokens: Count }))),
+  completion_tokens_details: Schema.optionalKey(Schema.NullOr(Schema.Struct({ reasoning_tokens: Count })))
+})
+
+export function profiledModels(settings: InferenceSettings): ProfiledModel[] {
+  return settings.models.map((offer) => ({ id: offer.id, provider: offer.provider, upstreamModel: offer.upstreamModel, vision: offer.vision }))
+}
+
+export effect function readPriceRows(tx: Tx): PriceRow[]!StoreFailure {
+  const rows = try tx.query("SELECT model_id, input_per_1k, output_per_1k FROM model_prices ORDER BY model_id")
+  return rows.map((row) => ({ modelId: toText(row.model_id) ?? "", inputPer1K: toInt(row.input_per_1k), outputPer1K: toInt(row.output_per_1k) }))
+}
+
+export effect function chooseFor(tx: Tx, settings: InferenceSettings, id: string, hasImage: boolean): ChosenModel!(Refused | StoreFailure) {
+  const choice = chooseModel(profiledModels(settings), try readPriceRows(tx), id, hasImage)
+  if (choice.tag === "Unavailable") throw refused("ModelUnavailable")
+  const provider = settings.providers.find((each) => each.id === choice.model.provider)
+  if (provider === undefined) throw refused("ModelUnavailable")
+  return { model: choice.model, provider }
+}
+
+export effect function setModelPrice(tx: Tx, settings: InferenceSettings, row: PriceRow): PriceRow!(Refused | StoreFailure) {
+  if (!priceRowAccepted(profiledModels(settings), row)) throw refused("InvalidRequest")
+  const now = try Clock.currentTimeMillis
+  try tx.query(
+    "INSERT INTO model_prices (model_id, input_per_1k, output_per_1k, updated_at) VALUES ($1, $2, $3, $4) ON CONFLICT (model_id) DO UPDATE SET input_per_1k = EXCLUDED.input_per_1k, output_per_1k = EXCLUDED.output_per_1k, updated_at = EXCLUDED.updated_at",
+    [row.modelId, row.inputPer1K, row.outputPer1K, now]
+  )
+  return row
+}
+
+export effect function checkPrices(tx: Tx, settings: InferenceSettings): PriceCheck!StoreFailure {
+  const profile = profiledModels(settings)
+  const prices = try readPriceRows(tx)
+  return { mismatches: priceMismatches(profile, prices), listing: listModels(profile, prices) }
+}
+
+export effect function pricesFromSeed(tx: Tx, settings: InferenceSettings, input: unknown): ReadonlyArray<PriceRow>!(Refused | StoreFailure) {
+  const rows = Schema.decodeUnknownEffect(PriceSeed, { onExcessProperty: "error" })(input) catch effect () => { throw refused("InvalidRequest") }
+  for (const row of rows) {
+    try setModelPrice(tx, settings, row)
+  }
+  return rows
+}
+
+function bounded(tokens: number): number {
+  return Math.min(Math.max(tokens, 0), maxTokensPerSide)
+}
+
+export effect function callCostFor(model: Model, counts: TokenCounts): number!! {
+  if (countsInBound(counts)) return callCost(model, counts)
+  try annotateLogs(logError("a call's token count is past the bound and is priced at the bound"), { model: model.id, inputTokens: counts.inputTokens, outputTokens: counts.outputTokens })
+  return callCost(model, { inputTokens: bounded(counts.inputTokens), outputTokens: bounded(counts.outputTokens) })
+}
+
+export effect function billedFromUsage(usage: unknown): BilledUsage!! {
+  const read = Schema.decodeUnknownEffect(Usage)(usage) catch () => undefined
+  if (read === undefined || (read.prompt_tokens == null && read.completion_tokens == null)) return { tag: "Unreadable" }
+  const reported: ProviderUsage = {
+    promptTokens: read.prompt_tokens ?? 0,
+    cachedTokens: read.prompt_tokens_details?.cached_tokens ?? 0,
+    completionTokens: read.completion_tokens ?? 0,
+    reasoningTokens: read.completion_tokens_details?.reasoning_tokens ?? 0
+  }
+  if (usageCapped(reported)) try annotateLogs(logError("provider usage is past the bound and is billed at the bound"), { ...reported })
+  return billedUsage(reported)
+}
+
+export const modelRoutes: ReadonlyArray<Route> = [
+  {
+    method: "GET",
+    path: "/api/v1/models",
+    auth: "ServiceAccess",
+    capability: "inference",
+    handler: () => effect {
+      const settings = (try Deployment).settings.inference
+      if (settings === undefined) throw refused("CapabilityUnavailable")
+      const prices = try (try Store).transaction(readPriceRows)
+      const data = listModels(profiledModels(settings), prices).map((listed) => ({ id: listed.id, object: "model", owned_by: listed.ownedBy }))
+      return json({ object: "list", data }, { headers: { "cache-control": "private, no-store" } })
+    }
+  }
+]

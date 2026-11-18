@@ -11,6 +11,11 @@ import java.util.*;
  * publish through fsync + same-filesystem rename. This is not a trust verifier. */
 public class UpdateJournal {
   public enum Phase { IDLE, STAGING, VERIFIED, COMMITTING, PROBATION, HEALTHY, RECOVERY_READY, RECOVERING, RECOVERY_PROBATION, RECOVERED, QUARANTINED, SUPPORT }
+  public enum Hold { UNHELD, HOLD_REQUESTED, HOLD_GRANTED }
+  private static final class Announcement {
+    final boolean hold; final Identity artifact;
+    Announcement(boolean hold,Identity artifact){this.hold=hold;this.artifact=artifact;}
+  }
   public interface Durability { void syncDirectory(Path path) throws IOException; }
   public interface Faults { void boundary(String name) throws IOException; }
   public interface CommitAction { void commit() throws IOException; }
@@ -29,7 +34,8 @@ public class UpdateJournal {
   /** The same candidate was released too often and is quarantined. */
   public static final String RETRY_BUDGET_SPENT="install_retry_budget_spent";
   /** Reasons a stalled install waits in SUPPORT for platform readback. */
-  public static final Set<String> AWAITING_REASONS=Set.of("user_action_required","policy_blocked","install_timeout","install_clock_invalid",OUTCOME_UNKNOWN);
+  public static final Set<String> AWAITING_REASONS=Set.of("user_action_required","policy_blocked","verification_failed","install_timeout","install_clock_invalid",OUTCOME_UNKNOWN,"unexpected_installed_identity");
+  public static final long HOLD_ACKNOWLEDGE_WAIT_MS=60*1000L;
   /** Owner-overridable default: the observed uptime a gone session with no
    * report waits for a late installer callback before the plan is released.
    * One periodic reconciliation job interval. */
@@ -109,24 +115,32 @@ public class UpdateJournal {
     /** The candidate digest whose installs ended released, and how many times in a row. */
     public final String releasedCandidate;
     public final int releases;
-    Snapshot(State s) {
+    public final Hold hold;
+    /** False when the call named another attempt or a phase it does not apply to, and nothing changed. */
+    public final boolean applied;
+    Snapshot(State s) { this(s,true); }
+    Snapshot(State s,boolean applied) {
       probation=s.probation; pendingMillis=s.pendingMillis; revision=s.revision; channelGeneration=s.generation; channel=s.channel; reason=s.reason; phase=s.phase; plan=s.plan;
       sessionId=s.session; recoveryAttempts=s.attempts; quarantine=Collections.unmodifiableSet(new HashSet<>(s.quarantine));
-      reportedFailure=s.reported; releasedCandidate=s.releasedDigest; releases=s.releases;
+      reportedFailure=s.reported; releasedCandidate=s.releasedDigest; releases=s.releases; hold=s.hold; this.applied=applied;
     }
   }
+  private enum Effect { COUNTED, QUIET, IGNORED }
   private static final class State {
     ProbationWindow probation;
     long pendingMillis=0, observedBoot=-1, observedElapsed=-1;
     long revision=0, generation=0; String channel="stable", reason=""; Phase phase=Phase.IDLE;
     Plan plan; int session=-1, attempts=0; Set<String> quarantine=new TreeSet<>();
-    InstallerFailure reported; String releasedDigest=""; int releases=0;
+    InstallerFailure reported; String releasedDigest=""; int releases=0; Hold hold=Hold.UNHELD;
+    Effect effect=Effect.COUNTED; final List<Announcement> out=new ArrayList<>();
     State copy() {
       State c=new State();c.probation=probation;c.pendingMillis=pendingMillis;c.observedBoot=observedBoot;c.observedElapsed=observedElapsed;
       c.revision=revision;c.generation=generation;c.channel=channel;c.reason=reason;c.phase=phase;c.plan=plan;c.session=session;c.attempts=attempts;c.quarantine=new TreeSet<>(quarantine);
-      c.reported=reported;c.releasedDigest=releasedDigest;c.releases=releases;
+      c.reported=reported;c.releasedDigest=releasedDigest;c.releases=releases;c.hold=hold;
       return c;
     }
+    void ignore(){effect=Effect.IGNORED;}
+    void quiet(){if(effect==Effect.COUNTED)effect=Effect.QUIET;}
   }
   private interface Mutation { void apply(State state) throws IOException; }
   private interface Locked<T> { T apply(State current) throws IOException; }

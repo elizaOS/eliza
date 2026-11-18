@@ -1,0 +1,79 @@
+// spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"; spec/cloud/services/inference.md, "Story: Stream a reply in the shape clients read"
+import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
+import type { Millis } from "../../gen/cloud__shared__types.ts"
+import type { InferenceSettings } from "../profile/profile.schema.ts"
+import { Deployment } from "../profile/profile.vibe"
+
+export type LlmProvider = (typeof InferenceSettings.Type)["providers"][number]
+export type ChatBody = Readonly<Record<string, unknown>>
+
+export error ProviderRefused { status: number; retryAfter?: Millis }
+export error ProviderUnreachable
+export error ProviderTimedOut
+export error ProviderInvalidResponse
+export type LlmFailure = ProviderRefused | ProviderUnreachable | ProviderTimedOut | ProviderInvalidResponse
+
+export interface LlmAnswer {
+  readonly json: ChatBody
+  readonly usage?: unknown
+}
+
+export const providerBudget: Millis = 800_000
+
+type LlmContext = Deployment | HttpClient.HttpClient
+
+function retryAfter(header: string | undefined): Millis | undefined {
+  return header !== undefined && /^\d{1,9}$/.test(header) ? Number(header) * 1000 : undefined
+}
+
+function jsonObject(text: string): ChatBody | undefined {
+  try {
+    const value: unknown = JSON.parse(text)
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? value as ChatBody : undefined
+  } catch {
+    return undefined
+  }
+}
+
+effect function released(response: HttpClientResponse.HttpClientResponse): void!! {
+  try (Stream.runHead(response.stream) catch () => undefined)
+}
+
+effect function accepted(provider: LlmProvider, body: ChatBody): HttpClientResponse.HttpClientResponse!(ProviderRefused | ProviderUnreachable)!LlmContext {
+  const key = try orDie((try Deployment).secret(provider.apiKeyEnv))
+  const request = HttpClientRequest.post(`${provider.baseUrl}/chat/completions`).pipe(
+    HttpClientRequest.bearerToken(key),
+    HttpClientRequest.bodyText(JSON.stringify(body), "application/json")
+  )
+  const response = Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect () => { throw new ProviderUnreachable() }
+  if (response.status >= 200 && response.status < 300) return response
+  try released(response)
+  const wait = retryAfter(response.headers["retry-after"])
+  throw new ProviderRefused(wait === undefined ? { status: response.status } : { status: response.status, retryAfter: wait })
+}
+
+export effect function complete(provider: LlmProvider, body: ChatBody): LlmAnswer!LlmFailure!LlmContext {
+  const answer = effect {
+    const response = try accepted(provider, body)
+    const text = response.text catch effect () => { throw new ProviderUnreachable() }
+    const json = jsonObject(text)
+    if (json === undefined) throw new ProviderInvalidResponse()
+    return json.usage === undefined ? { json } : { json, usage: json.usage }
+  }
+  return try timeoutOrElse(answer, { duration: providerBudget, orElse: () => fail(new ProviderTimedOut()) })
+}
+
+export effect function stream(provider: LlmProvider, body: ChatBody): Stream.Stream<Uint8Array, LlmFailure>!LlmFailure!LlmContext {
+  const deadline = (try Clock.currentTimeMillis) + providerBudget
+  const forced = { ...body, stream: true, stream_options: { include_usage: true } }
+  const response = try timeoutOrElse(accepted(provider, forced), { duration: providerBudget, orElse: () => fail(new ProviderTimedOut()) })
+  if (!(response.headers["content-type"] ?? "").toLowerCase().startsWith("text/event-stream")) {
+    try released(response)
+    throw new ProviderInvalidResponse()
+  }
+  const expired = effect {
+    try sleep(Math.max(0, deadline - (try Clock.currentTimeMillis)))
+    throw new ProviderTimedOut()
+  }
+  return Stream.mapError(response.stream, (): LlmFailure => new ProviderUnreachable()).pipe(Stream.interruptWhen(expired))
+}

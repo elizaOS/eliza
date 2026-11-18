@@ -4,6 +4,7 @@ module node {
   import type { BootFailure } from "../../gen/agent__host__launch.ts"
   import type { Endpoint, LaunchDocument, LaunchFrame } from "./launch.vibe"
   import type { AgentPlugin, ModuleFactory } from "./module.vibe"
+  import { measureWorker, workerHost, type WorkflowWorkerHost } from "./workflow-worker.vibe"
 
   export interface AgentStatus {
     readonly agentId: string
@@ -17,6 +18,7 @@ module node {
   export interface RunningAgent {
     readonly runtime: AgentRuntime
     readonly status: AgentStatus
+    readonly workflowWorker?: WorkflowWorkerHost
     stop(): Promise<void>
   }
 
@@ -39,11 +41,13 @@ module node {
   import { authRoutes } from "../access/auth.vibe"
   import { createRouter } from "../access/router.vibe"
   import { listenOnSocket } from "../access/socket.vibe"
+  import { noEvents } from "../access/events-port.vibe"
   import { listenOnHttp } from "../access/http.vibe"
   import { conversationRoutes } from "../conversation/turns.vibe"
   import { ownerMessageService } from "../conversation/message-service.vibe"
   import { openDeviceStorage, type DeviceStorageSnapshot } from "../storage/index.vibe"
   import { bootFailureOf, composeAgent } from "./compose.vibe"
+  import { reservedHostPrefixes } from "../plugins/product.vibe"
   import { cloudModel } from "./cloud-model.vibe"
 
   function resources() {
@@ -78,7 +82,7 @@ module node {
   async function boot(input: StartAgentInput): Promise<Result.Result<RunningAgent, BootFailure>> {
     const { launch, authority, binding, stateDirectory } = input
     if (launch.model.backend === "own-key" || launch.embeddings === "local"
-      || launch.privacy?.secretSwap || launch.privacy?.piiSwap || launch.workflowWorker
+      || launch.privacy?.secretSwap || launch.privacy?.piiSwap
       || launch.retention || launch.google?.gmailChanges || launch.google?.calendarEdits
       || (launch.views?.length ?? 0) > 0) return Result.fail("Config")
     if (launch.model.backend === "cloud") {
@@ -86,6 +90,8 @@ module node {
       if (!launch.account || address === null || address.protocol !== "https:" || address.origin !== launch.model.cloudBaseUrl) return Result.fail("Config")
       if (authority.credential === undefined) return Result.fail("Credential")
     }
+    const pinned = launch.workflowWorker === undefined ? undefined : await measureWorker(launch.workflowWorker)
+    if (pinned?.kind === "refused") return Result.fail("Config")
     const resourcesOwned = resources()
     let phase: BootFailure = "Storage"
     try {
@@ -120,12 +126,12 @@ module node {
         ? cloudModel(launch.model, authority.credential.value)
         : { name: cloudLinkPlugin, description: "This launch has no model connection" }
       const formed = await Effect.runPromise(Effect.result(composeAgent({
-        agentId, character, settings: {}, bundled: input.bundled ?? new Map(), modules: input.modules,
+        agentId, character, settings: {}, bundled: input.bundled ?? new Map(), modules: input.modules, hostRoutes: reservedHostPrefixes,
         storage: { name: storagePlugin, description: "Own the device database", init: async (_config, runtime) => {
           if (!(runtime instanceof AgentRuntime)) throw new Error("The storage plugin requires the device Core runtime")
           runtime.registerDatabaseAdapter(adapter)
         } },
-        cloudLink: cloud, privacy: { kind: "off" }, worker: { kind: "none" },
+        cloudLink: cloud, privacy: { kind: "off" }, worker: pinned === undefined ? { kind: "none" } : { kind: "pinned", expected: pinned.worker.expected, measured: pinned.worker.measured },
         messageService: (runtime) => ownerMessageService(runtime, [role], grantAction),
         policy: {
           actionsAllowed: [...permissions], pluginsLoad: [...launch.policy.plugins.load],
@@ -172,9 +178,13 @@ module node {
           ...composed.routes,
         ],
       })
-      if (binding.kind === "socket") resourcesOwned.acquire("socket", await listenOnSocket(binding.path, router))
+      if (binding.kind === "socket") resourcesOwned.acquire("socket", await listenOnSocket(binding.path, router, { token: authority.token, events: noEvents }))
       else resourcesOwned.acquire("loopback", await listenOnHttp(binding.port, router))
-      return Result.succeed({ runtime, status, stop: resourcesOwned.close })
+      const workflowWorker = launch.workflowWorker === undefined || pinned === undefined ? undefined
+        : workerHost(launch.workflowWorker, pinned.worker, launch.environment ?? {},
+          { token: authority.token, credential: authority.credential?.value, storageKey: authority.storageKey },
+          (offered) => Effect.runPromise(composed.workerEnvironment(offered)))
+      return Result.succeed({ runtime, status, stop: resourcesOwned.close, ...(workflowWorker === undefined ? {} : { workflowWorker }) })
     } catch {
       try { await resourcesOwned.close() }
       catch { return Result.fail("Agent") }

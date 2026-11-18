@@ -1,4 +1,10 @@
-// spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"
+// spec/cloud/services/inference.md, "Story: Answer a chat completion once and charge it once"; spec/cloud/services/models.md, "Story: Learn which models my key can call"
+import { modelRoutes } from "../../services/models.vibe"
 import type { Area } from "../routes.vibe"
 
-export const area: Area = { routes: [], sweeps: [] }
+export const area: Area = {
+  routes: [
+    ...modelRoutes,
+  ],
+  sweeps: []
+}

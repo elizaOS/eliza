@@ -1,0 +1,4 @@
+// spec/agent/storage/database.md, "Story: Keep one agent identity for my data across restarts"; spec/agent/storage/database.md, "Story: Keep the agent's records in one store that never loses a committed write"
+import type { StoreFault } from "../../gen/agent__storage__database.ts"
+
+export error StoreFailed { fault: StoreFault }

@@ -1,0 +1,20 @@
+// spec/agent/plugins/profile.md, "A product route never claims a route prefix an agent module owns"; spec/agent/plugins/profile.md, "The product plugin must be in the bundle"
+import type { AgentPlugin } from "../host/module.vibe"
+
+export const reservedHostPrefixes: readonly string[] = [
+  "/api/status", "/api/health", "/api/auth", "/api/agents", "/api/host",
+  "/api/cloud", "/api/events", "/api/conversations", "/api/turns",
+]
+
+const Name = Schema.String.check(Schema.makeFilter((name) => name.trim() !== "" && name.trim() === name))
+const PluginShape = Schema.Struct({
+  name: Name,
+  description: Schema.String,
+  actions: Schema.optionalKey(Schema.Array(Schema.Struct({ name: Name }))),
+  routes: Schema.optionalKey(Schema.Array(Schema.Struct({ method: Schema.String, path: Schema.String }))),
+})
+const pluginShaped = Schema.is(PluginShape)
+
+export function isAgentPlugin(value: unknown): value is AgentPlugin {
+  return pluginShaped(value)
+}
