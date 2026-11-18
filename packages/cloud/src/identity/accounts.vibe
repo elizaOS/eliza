@@ -69,7 +69,7 @@ effect function insertIdentity(tx: Tx, userId: string, identity: Identity): void
 }
 
 export effect function stepAccount(tx: Tx, userId: string, event: Event, now: number, columns: Columns = {}): ReferralApplied!(StoreFailure | RowCorrupt | RowConflict | Rejected) {
-  const opened = event.type === "openAccount" ? { organization_id: event.organizationId, created_at: now } : {}
+  const opened: Columns = event.type === "openAccount" ? { organization_id: event.organizationId, created_at: now } : {}
   return (try stepRow(tx, accountRows, userId, event, (state) => ({ status: columnOfStatus[state.status], updated_at: now, ...opened, ...columns }))).out
 }
 

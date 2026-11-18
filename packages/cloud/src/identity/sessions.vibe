@@ -164,7 +164,7 @@ effect function refreshFamily(tx: Tx, token: string, now: number): Refreshed!Ses
     return { kind: "refused", reason: reason === "NoReason" ? "CredentialRevoked" : reason }
   }
   const { accessToken, refreshToken, access_digest, refresh_digest } = mintPair()
-  const { state, out } = try stepFamily(tx, key, { type: "refresh", presented, personEpoch: epoch }, now, (next) => next.phase === "Reused" ? {} : { access_digest, refresh_digest })
+  const { state, out } = try stepFamily(tx, key, { type: "refresh", presented, personEpoch: epoch }, now, (next): Columns => next.phase === "Reused" ? {} : { access_digest, refresh_digest })
   if (out.length > 0) {
     try moveEpochs(tx, userId, out, now)
     return { kind: "refused", reason: "CredentialRevoked" }

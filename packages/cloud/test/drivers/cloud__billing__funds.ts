@@ -6,7 +6,6 @@ import { addCredits, readFunds, stepFunds } from "../../src/billing/funds.vibe";
 import { ledger, within, type Settled } from "../support/ledger.ts";
 
 const cloud = ledger();
-const lastAdd = new Map<string, string>();
 let requests = 0;
 
 const organization = (key: string) => `org-${key}`;
@@ -17,23 +16,12 @@ const outcome = (done: Settled<unknown>, refusals: ReadonlyArray<string>): "acce
   throw new Error(`the cloud failed with ${done.tag}`, { cause: done.error });
 };
 
-async function knownRequest(key: string, amount: number) {
-  const known = lastAdd.get(key);
-  if (known !== undefined) return known;
-  const requestKey = `known-${++requests}`;
-  await cloud.sql("INSERT INTO credit_entries (id, organization_id, kind, amount, request_key, created_at) VALUES ($1, $2, 'add', $3, $1, 0)", [requestKey, organization(key), amount]);
-  lastAdd.set(key, requestKey);
-  return requestKey;
-}
-
 async function dispatch(key: string, event: Event) {
   const organizationId = organization(key);
   switch (event.type) {
     case "addCredits": {
-      const requestKey = event.known ? await knownRequest(key, event.amount) : `add-${++requests}`;
-      const done = await cloud.run(addCredits({ organizationId, amount: event.amount, requestKey }));
-      if (done.kind === "done" && !done.value.replayed) lastAdd.set(key, requestKey);
-      return done.kind === "done" && done.value.replayed ? "refused" : outcome(done, ["InvalidCreditRequest", "IdempotencyConflict", "Rejected"]);
+      const done = await cloud.run(addCredits({ organizationId, amount: event.amount, requestKey: `add-${++requests}` }));
+      return outcome(done, ["InvalidCreditRequest", "Rejected"]);
     }
     case "holdCredits":
     case "settleCredits":
@@ -54,10 +42,7 @@ async function observe(key: string): Promise<Funds> {
 }
 
 export const driver: Driver & AsyncDisposable = {
-  reset: async () => {
-    lastAdd.clear();
-    await cloud.reset(options.keys?.map(organization) ?? []);
-  },
+  reset: () => cloud.reset(options.keys?.map(organization) ?? []),
   dispatch,
   observe,
   [Symbol.asyncDispose]: () => cloud.dispose(),
