@@ -1,6 +1,6 @@
 /** Registers the maps service and discoverable maps action family. */
 
-import type { ContextDefinition, Plugin } from "@elizaos/core";
+import type { ContextDefinition, Memory, Plugin } from "@elizaos/core";
 import {
   promoteSubactionsToActions,
   registerDirectActionRoutingRule,
@@ -92,17 +92,29 @@ export const MAPS_CONTEXT: ContextDefinition = {
 const COURTESY = String.raw`(?:(?:please|hey|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?`;
 // "the way to" is left out: "find the way to fix this bug" is not Maps work,
 // and a simple Stage-1 answer would otherwise be forced into a Maps tool turn.
-const DIRECTIONS_NOUN = String.raw`(?:(?:(?:driving|walking|cycling|bike|transit)\s+)?directions|(?:a\s+)?route)`;
+const TRAVEL_MODE = String.raw`(?:driving|walking|cycling|bike|transit)`;
+const DIRECTIONS_NOUN = String.raw`(?:(?:${TRAVEL_MODE}\s+)?directions|(?:a\s+|the\s+)?(?:${TRAVEL_MODE}\s+)?route)`;
+// A bare "route to X" is as often a software or network route ("route to the
+// database"), so the bare form takes "route" only with a travel mode.
+const BARE_DIRECTIONS_NOUN = String.raw`(?:(?:${TRAVEL_MODE}\s+)?directions|${TRAVEL_MODE}\s+route)`;
+/**
+ * "directions to assemble the shelf", "directions to fix the sink": a verb
+ * after to/from names a task, not a place. "get to"/"get there" still travel.
+ */
+const NOT_A_PLACE = String.raw`(?!(?:assemble|fix|set\s*up|make|bake|cook|install|use|do|build|repair|configure|connect|clean|change|create|write|solve|reset|update|apply|start|finish|play|draw|prepare|replace|remove|open|turn|run|register|sign|log|download|upload|edit|format|cancel|enable|disable|add|plant|grow|knit|sew|paint|wire|mount|hang|unlock|pair|sync|export|import|get(?!\s+(?:to|there|home|back)\b))\b)`;
+/** "to X", or "from A to B": a lone "from X" is a source ("from the manual"). */
+const DESTINATION = String.raw`(?:to\s+${NOT_A_PLACE}\S|from\s+${NOT_A_PLACE}\S.*?\s+to\s+${NOT_A_PLACE}\S)`;
 /**
  * "directions to X", "get me directions from A to B". "Take me to", "navigate
- * to" and "how do I get to" are left to the planner: they also name views.
+ * to" and "how do I get to" are left to the planner: they also name views
+ * (view-navigation declines its Maps-view shortcut for them).
  */
 const DIRECTIONS_REQUEST = new RegExp(
   [
-    // A bare request: "directions to X", "route from A to B".
-    String.raw`^\s*${COURTESY}${DIRECTIONS_NOUN}\s+(?:to|from)\s+\S`,
+    // A bare request: "directions to X", "walking route from A to B".
+    String.raw`^\s*${COURTESY}${BARE_DIRECTIONS_NOUN}\s+${DESTINATION}`,
     // An asked-for one: "get me (the) directions to X".
-    String.raw`^\s*${COURTESY}(?:get|give|show|find|pull\s+up)\s+(?:me\s+)?(?:(?:the|some)\s+)?${DIRECTIONS_NOUN}\s+(?:to|from)\s+\S`,
+    String.raw`^\s*${COURTESY}(?:get|give|show|find|pull\s+up)\s+(?:me\s+)?(?:(?:the|some)\s+)?${DIRECTIONS_NOUN}\s+${DESTINATION}`,
   ].join("|"),
   "iu",
 );
@@ -117,6 +129,18 @@ export function isMapsDirectionsRequest(text: string): boolean {
 }
 export function isMapsPlaceOnMapRequest(text: string): boolean {
   return PLACE_ON_MAP_REQUEST.test(text);
+}
+
+/**
+ * These routes replace a simple Stage-1 answer, so they claim only the owner's
+ * own phone chat, as the camera and browser routes do; elsewhere the planner
+ * keeps its judgment.
+ */
+function ownerChatTurn(message: Memory | undefined): boolean {
+  return (
+    message?.content.source === "client_chat" &&
+    ["DM", "VOICE_DM"].includes(String(message.content.channelType))
+  );
 }
 
 export const mapsPlugin: Plugin = {
@@ -138,7 +162,8 @@ export const mapsPlugin: Plugin = {
       replacesActionNames: ["VIEWS", "VIEWS_SHOW"],
       requiredActionTags: ["domain:maps"],
       contexts: ["maps"],
-      matches: isMapsDirectionsRequest,
+      matches: (text, message) =>
+        ownerChatTurn(message) && isMapsDirectionsRequest(text),
     });
     registerDirectActionRoutingRule(runtime, {
       id: "maps.place-on-map",
@@ -146,7 +171,8 @@ export const mapsPlugin: Plugin = {
       replacesActionNames: ["VIEWS", "VIEWS_SHOW"],
       requiredActionTags: ["domain:maps"],
       contexts: ["maps"],
-      matches: isMapsPlaceOnMapRequest,
+      matches: (text, message) =>
+        ownerChatTurn(message) && isMapsPlaceOnMapRequest(text),
     });
   },
   services: [MapsService],

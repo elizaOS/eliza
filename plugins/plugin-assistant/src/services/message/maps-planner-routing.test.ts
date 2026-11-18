@@ -205,9 +205,80 @@ describe("a directions request is routed to Maps, not only to the Maps view", ()
     "navigate to notes",
     "find the way to fix this bug",
     "show me the way to export my notes",
+    // A task or a software route, not a place (cross-area review).
+    "directions to assemble the shelf",
+    "Directions to assemble the shelf?",
+    "give me directions to fix the sink",
+    "get me directions to set up my printer",
+    "show me directions to bake bread",
+    "route to the database",
+    "directions from the manual",
   ])("leaves other requests alone: %s", (text) => {
     expect(isMapsDirectionsRequest(text) || isMapsPlaceOnMapRequest(text)).toBe(
       false,
     );
+  });
+});
+
+describe("the Maps routes claim only the owner's phone chat", () => {
+  const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+    (entry) => entry.name === "core.direct_registered_capability_request",
+  );
+  const simplePlan = () => ({
+    processMessage: "RESPOND",
+    plan: {
+      contexts: ["simple"],
+      intents: [],
+      candidateActions: [],
+      parentActionHints: [],
+      requiresTool: false,
+      replyEffectStatus: "none",
+      reply: "Here are the steps.",
+    },
+  });
+  async function evaluate(
+    text: string,
+    content: Partial<Memory["content"]> = {},
+  ) {
+    if (!evaluator) throw new Error("Expected capability evaluator");
+    const { runtime, message } = await fixture(text);
+    Object.assign(message.content, content);
+    const handler = simplePlan();
+    await runResponseHandlerEvaluators({
+      runtime,
+      message,
+      state: { text: "", values: {}, data: {} },
+      messageHandler: handler,
+      availableContexts: [...DEFAULT_CONTEXT_DEFINITIONS, MAPS_CONTEXT],
+      userRoles: ["OWNER"],
+      evaluators: [evaluator],
+    } as never);
+    return handler;
+  }
+  it.each([
+    "directions to assemble the shelf",
+    "give me directions to fix the sink",
+    "get me directions to set up my printer",
+  ])("keeps the simple answer for %s", async (text) => {
+    const handler = await evaluate(text);
+    expect(handler.plan.requiresTool).toBe(false);
+    expect(handler.plan.contexts).toEqual(["simple"]);
+    expect(handler.plan.reply).toBe("Here are the steps.");
+  });
+  it("does not take a directions request on another channel", async () => {
+    const handler = await evaluate("directions to Coit Tower", {
+      source: "discord",
+      channelType: "GROUP",
+    });
+    expect(handler.plan.requiresTool).toBe(false);
+    expect(handler.plan.candidateActions).toEqual([]);
+  });
+  it("still promotes a simple answer to a directions request in phone chat", async () => {
+    const handler = await evaluate("directions to Coit Tower");
+    expect(handler.plan.requiresTool).toBe(true);
+    expect(handler.plan.candidateActions).toEqual([
+      "MAPS_ROUTE",
+      "MAPS_NAVIGATION_START",
+    ]);
   });
 });
