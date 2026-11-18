@@ -11,6 +11,7 @@ import {
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEvaluator,
   registerDirectActionRoutingRule,
+  registerViewNavigationTargetResolver,
   satisfiesRoleGate,
   setTurnActionConstraint,
 } from "@elizaos/core";
@@ -23,6 +24,7 @@ import { getViewClientScope } from "./view-client-context.ts";
 import {
   isExplicitBackViewRequest,
   isForegroundPageHistoryRequest,
+  namesRegisteredView,
   resolveExplicitRegisteredViewRequest,
   resolveViewNavigationTargets,
   viewEnabledByProfile,
@@ -117,6 +119,14 @@ function confirmedPreviousView(
 export function registerViewNavigationRoutingRule(
   runtime: IAgentRuntime,
 ): void {
+  // Plugin routes for places ("take me to Coit Tower") consult this so a view
+  // name ("take me to settings") stays view navigation.
+  registerViewNavigationTargetResolver(runtime, (target) =>
+    namesRegisteredView(
+      listViews(runtime, { viewType: "gui", includeAllKinds: true }),
+      target,
+    ),
+  );
   registerDirectActionRoutingRule(runtime, {
     id: "views.explicit-navigation",
     actionNames: ["VIEWS_SHOW"],

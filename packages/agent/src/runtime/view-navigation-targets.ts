@@ -32,6 +32,23 @@ export function resolveViewNavigationTargets<
   });
 }
 
+/**
+ * The view a free-text destination names, if any: "the settings page", "my
+ * calendar" and "Notes" name the Settings, Calendar and Notes views. Matching
+ * ignores availability and role: a view name is never a place to travel to.
+ */
+export function namesRegisteredView<T extends { id: string; label: string }>(
+  views: readonly T[],
+  target: string,
+): boolean {
+  const name = target
+    .trim()
+    .replace(/[\s.!?]+$/u, "")
+    .replace(/^(?:the|my|your)\s+/iu, "")
+    .replace(/\s+(?:page|screen|view|tab|app)$/iu, "");
+  return resolveViewNavigationTargets(views, name).length > 0;
+}
+
 /** Authoritative destination vocabulary for Stage 1 and egress; never caller-supplied aliases. */
 export function viewNavigationDestination(view: { id: string; label: string }) {
   const aliases = viewNavigationAliases(view);

@@ -2,6 +2,7 @@ import {
   getDirectActionRoutingRules,
   type IAgentRuntime,
   type Memory,
+  namesViewNavigationTarget,
   promoteSubactionsToActions,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -335,5 +336,38 @@ describe("registered view navigation exposure", () => {
     const m = message("Open Workflows.");
     delete m.content.metadata;
     expect(rule.matches("Open Workflows.", m)).toBe(false);
+  });
+});
+
+describe("view names for plugin place routes", () => {
+  // plugin-maps asks this before taking "take me to X" as travel to a place.
+  it.each([
+    "settings",
+    "Settings",
+    "the settings page",
+    "my files",
+    "home",
+    "Workflows",
+    "the browser app",
+    "camera.",
+  ])("names a registered view: %s", (target) => {
+    expect(namesViewNavigationTarget(fixture(), target)).toBe(true);
+  });
+  it.each([
+    "Coit Tower",
+    "the Ferry Building",
+    "Golden Gate Park",
+    "the nearest pharmacy",
+    "settings tower",
+  ])("does not name a view: %s", (target) => {
+    expect(namesViewNavigationTarget(fixture(), target)).toBe(false);
+  });
+  it("counts a developer view, which is listed only in developer mode", () => {
+    const r = fixture();
+    expect(namesViewNavigationTarget(r, "logs")).toBe(true);
+  });
+  it("is unknown without a host view registry", () => {
+    const runtime = {} as IAgentRuntime;
+    expect(namesViewNavigationTarget(runtime, "settings")).toBeUndefined();
   });
 });
