@@ -82419,9 +82419,9 @@
     },
     {
       "path": "packages/core/src/catalog/generated.json",
-      "bytes": 133983,
-      "lines": 4766,
-      "sha256": "143081d548a00f500f29fd11bd60d04bc402fe988804f13337488e7c7e9aca8b",
+      "bytes": 127525,
+      "lines": 4490,
+      "sha256": "09876b2cbc3a20ffa31deb033aac93e3f3284e1b61d40c9422a6013758a48832",
       "category": "source"
     },
     {
@@ -222657,6 +222657,179 @@
         }
       }
     ],
-    "assetPins": "Catalog asset records still identify the historical source bytes until the normal canonical generator is run after integration. Update only those pins from actual generated outputs; no new digest is asserted here."
+    "assetPins": "The four active catalog asset rows identify the actual canonical writer/check outputs recorded in currentContract.catalogAssetPins. The original source rows and independent restart pin remain archived unchanged. This qualifies generated assets only; package, consumer, proof, release and acceptance gates remain separate.",
+    "currentContract": {
+      "catalogAssetPins": {
+        "originalSourceCommit": "72fed7e4069ecd35d61d886ab6eec5c02c137517",
+        "originalFiles": [
+          {
+            "path": "packages/core/src/catalog/channel-plugin-map.json",
+            "bytes": 437,
+            "lines": 14,
+            "sha256": "95d72e42894ba039f6e2c44e91ab2d98c0eea29257acc48602913843121da209",
+            "category": "source"
+          },
+          {
+            "path": "packages/core/src/catalog/generated.json",
+            "bytes": 133983,
+            "lines": 4766,
+            "sha256": "143081d548a00f500f29fd11bd60d04bc402fe988804f13337488e7c7e9aca8b",
+            "category": "source"
+          },
+          {
+            "path": "packages/core/src/catalog/provider-plugin-map.json",
+            "bytes": 303,
+            "lines": 9,
+            "sha256": "4e8622408dc9b9a8894e0405063828371c2c0c2c70f2313d54647d291d2ccb65",
+            "category": "source"
+          },
+          {
+            "path": "packages/core/src/catalog/short-id-plugin-map.json",
+            "bytes": 864,
+            "lines": 23,
+            "sha256": "85bcd47b0d6362b13ff571b79dc2834d4425efd87cc495a97bf3e1b54e102e6e",
+            "category": "source"
+          }
+        ],
+        "independentRestart": {
+          "path": "packages/core/src/restart-exit-code.json",
+          "bytes": 27,
+          "lines": 4,
+          "sha256": "81ab84ef2bc2057537ec999136c2d30c07abbe427baf2ca492cabfe7ed3e8dd2",
+          "category": "source"
+        },
+        "lastRefresh": {
+          "state": "ACTUAL_CANONICAL_OUTPUTS_BOUND",
+          "head": "250eac7ccd70303e5af8e8a3ef519d4d68b03a85",
+          "node": "v26.13.1",
+          "sourceInputDigest": "72a8fdf41c0d67aac3ff347eeb741980e89df41bd4f70638d510dc814bb76405",
+          "sourceInputFiles": 1276,
+          "inventoryOwner": {
+            "path": "packages/core/test/support/child.ts",
+            "sha256": "270942f0b0e83ff88e4c5ad6271e27d276e4065cf16e24e6351a7132b3337f61",
+            "functions": [
+              "filesUnder",
+              "producerFiles"
+            ],
+            "functionSourceSha256": "f38bc14ca6770b5c7aba213d5cb3bccc5151b92bb60347f847382ec356e32ebf"
+          },
+          "dependencies": [
+            {
+              "name": "vibelang",
+              "directory": "/Users/shawwalters/.codex/worktrees/eliza-v4-final-integration-39651/node_modules/.pnpm/vibelang@0.0.13_patch_hash=e20528912cc1d07f985a4b36b9f991c9c881e85239fc666a9dd8880ffd42_1179c5aaee413055de10a97ffafaacc5/node_modules/vibelang",
+              "files": 69,
+              "treeSha256": "1aa7e757dcc6a2345e8295d201163f3627bc9b170373bf5a4de835e06d81794b"
+            },
+            {
+              "name": "vibelang-runtime",
+              "directory": "/Users/shawwalters/.codex/worktrees/eliza-v4-final-integration-39651/node_modules/.pnpm/vibelang-runtime@0.0.13_@effect+platform-node@4.1.1_effect@4.1.1_redis@6.3.1_@opentelemetry+api@1.10.0___effect@4.1.1/node_modules/vibelang-runtime",
+              "files": 393,
+              "treeSha256": "c18fc5fdaad3b52ffccdc7b69b9d43032142cb8b35c4321d9a5e5f26c2476932"
+            },
+            {
+              "name": "typescript",
+              "directory": "/Users/shawwalters/.codex/worktrees/eliza-v4-final-integration-39651/node_modules/.pnpm/typescript@6.0.3/node_modules/typescript",
+              "files": 140,
+              "treeSha256": "79bbb6039a75cd633ca83951d7226d345416b7f9fd5becd473f335cae112f3af"
+            },
+            {
+              "name": "biome",
+              "directory": "/Users/shawwalters/.codex/worktrees/eliza-v4-final-integration-39651/node_modules/.pnpm/@biomejs+biome@2.6.6/node_modules/@biomejs/biome",
+              "files": 19,
+              "treeSha256": "a2a19baa2cb8fb72954aa5e33c833c4f2578ccce02cf9523c3d8f6a149cfbb8b"
+            },
+            {
+              "name": "biome-native",
+              "directory": "/Users/shawwalters/.codex/worktrees/eliza-v4-final-integration-39651/node_modules/.pnpm/@biomejs+cli-darwin-arm64@2.6.6/node_modules/@biomejs/cli-darwin-arm64",
+              "files": 3,
+              "treeSha256": "8c3b6a0d34c0566d44eb89506520f01bec9ecfd9c94eb6b0fe5941e2395d16a3"
+            },
+            {
+              "name": "effect",
+              "directory": "/Users/shawwalters/.codex/worktrees/eliza-v4-final-integration-39651/node_modules/.pnpm/effect@4.1.1/node_modules/effect",
+              "files": 2993,
+              "treeSha256": "52b8ea169a09c6f2d5eb5bfefeebb61a4c30dc9882faa90d53e924b0124e783c"
+            },
+            {
+              "name": "platform-node",
+              "directory": "/Users/shawwalters/.codex/worktrees/eliza-v4-final-integration-39651/node_modules/.pnpm/@effect+platform-node@4.1.1_effect@4.1.1_redis@6.3.1_@opentelemetry+api@1.10.0_/node_modules/@effect/platform-node",
+              "files": 247,
+              "treeSha256": "4f8d0cb2b0e22220dd5639fad2ca5ce46a31c6377eb3941e1dfc8cdf1983f0d5"
+            },
+            {
+              "name": "zod",
+              "directory": "/Users/shawwalters/.codex/worktrees/eliza-v4-final-integration-39651/node_modules/.pnpm/zod@4.6.7/node_modules/zod",
+              "files": 840,
+              "treeSha256": "be6a3341c8f21995646bf802bc9c417ae2a27aafb7efa7c517e35694c81a5503"
+            }
+          ],
+          "snapshot": {
+            "path": "/Users/shawwalters/.codex/artifacts/eliza-vibestack-finish-20261115/v4-actual-catalog-assets-250e-20261118/before-snapshot.json",
+            "sha256": "18b28b3c244db4a3b600782c71563e47974577c60b040eb3d7f6fd76fbdf3898"
+          },
+          "writer": {
+            "argv": [
+              "node",
+              "--import",
+              "vibelang/register",
+              "--conditions",
+              "eliza-source",
+              "src/catalog/generate.vibe"
+            ],
+            "cwd": "/Users/shawwalters/.codex/worktrees/eliza-v4-final-integration-39651/packages/core",
+            "path": "/Users/shawwalters/.codex/artifacts/eliza-vibestack-finish-20261115/v4-actual-catalog-assets-250e-20261118/writer.exit",
+            "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+            "exitCode": 0,
+            "stdout": "/Users/shawwalters/.codex/artifacts/eliza-vibestack-finish-20261115/v4-actual-catalog-assets-250e-20261118/writer.log",
+            "stdoutSha256": "912d887069467ebe4bd02e3b0350c3a92423293f2ec1dc705dec93409c578109"
+          },
+          "canonicalCheck": {
+            "argv": [
+              "node",
+              "--import",
+              "vibelang/register",
+              "--conditions",
+              "eliza-source",
+              "src/catalog/generate.vibe",
+              "--check"
+            ],
+            "cwd": "/Users/shawwalters/.codex/worktrees/eliza-v4-final-integration-39651/packages/core",
+            "path": "/Users/shawwalters/.codex/artifacts/eliza-vibestack-finish-20261115/v4-actual-catalog-assets-250e-20261118/check.exit",
+            "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+            "exitCode": 0,
+            "stdout": "/Users/shawwalters/.codex/artifacts/eliza-vibestack-finish-20261115/v4-actual-catalog-assets-250e-20261118/check.log",
+            "stdoutSha256": "fc9257ad200c58cdf2a70ce4282e8eb4bca341bb4e105125855792d94039997b"
+          },
+          "actualOutputs": [
+            {
+              "path": "packages/core/src/catalog/channel-plugin-map.json",
+              "sha256": "95d72e42894ba039f6e2c44e91ab2d98c0eea29257acc48602913843121da209",
+              "bytes": 437,
+              "lines": 14
+            },
+            {
+              "path": "packages/core/src/catalog/generated.json",
+              "sha256": "09876b2cbc3a20ffa31deb033aac93e3f3284e1b61d40c9422a6013758a48832",
+              "bytes": 127525,
+              "lines": 4490
+            },
+            {
+              "path": "packages/core/src/catalog/provider-plugin-map.json",
+              "sha256": "4e8622408dc9b9a8894e0405063828371c2c0c2c70f2313d54647d291d2ccb65",
+              "bytes": 303,
+              "lines": 9
+            },
+            {
+              "path": "packages/core/src/catalog/short-id-plugin-map.json",
+              "sha256": "85bcd47b0d6362b13ff571b79dc2834d4425efd87cc495a97bf3e1b54e102e6e",
+              "bytes": 864,
+              "lines": 23
+            }
+          ],
+          "observedGeneratedRecords": 57,
+          "proofBoundary": "Actual normal writer/check and exact files; no package/suite/proof/release/acceptance claim."
+        }
+      }
+    }
   }
 }
