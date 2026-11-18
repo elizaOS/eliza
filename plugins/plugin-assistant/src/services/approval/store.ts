@@ -1163,6 +1163,9 @@ export class PgApprovalQueue implements ApprovalQueue {
   async list(
     filter: ApprovalListFilter,
   ): Promise<ReadonlyArray<ApprovalRequest>> {
+    // Expiry is enforced at transitions; a listing must not offer a lapsed
+    // review as pending either, so close it before reading.
+    await this.expireLapsedListed(filter, new Date());
     const where: string[] = [`agent_id = ${sqlText(this.agentId)}`];
     if (filter.subjectUserId !== null) {
       where.push(`subject_user_id = ${sqlText(filter.subjectUserId)}`);
@@ -1511,6 +1514,49 @@ export class PgApprovalQueue implements ApprovalQueue {
       return this.throwExecutionMutationConflict(reconciliation, target);
     }
     return rowToRequest(rows[0]);
+  }
+
+  /**
+   * The listing's share of `purgeExpired`: within the same agent, subject and
+   * action scope, a lapsed pending row or an approval whose execution was never
+   * claimed becomes `expired` (CAS on its state, like every other transition)
+   * before the rows are read. Only a listing that can return those states
+   * writes.
+   */
+  private async expireLapsedListed(
+    filter: ApprovalListFilter,
+    now: Date,
+  ): Promise<void> {
+    const listed = (state: ApprovalRequestState) =>
+      (filter.state === null || filter.state === state) &&
+      (!filter.states || filter.states.includes(state));
+    const pending = listed("pending"),
+      approved = listed("approved");
+    if (!pending && !approved) return;
+    const where: string[] = [`agent_id = ${sqlText(this.agentId)}`];
+    if (filter.subjectUserId !== null)
+      where.push(`subject_user_id = ${sqlText(filter.subjectUserId)}`);
+    if (filter.action !== null)
+      where.push(`action = ${sqlText(filter.action)}`);
+    if (filter.excludeAction != null)
+      where.push(`action <> ${sqlText(filter.excludeAction)}`);
+    const lapsed = [
+      ...(pending ? [`state = ${sqlText("pending")}`] : []),
+      ...(approved
+        ? [`(state = ${sqlText("approved")} AND execution_attempt_id IS NULL)`]
+        : []),
+    ];
+    where.push(`(${lapsed.join(" OR ")})`);
+    where.push(`expires_at <= ${timestampLiteral(now)}`);
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE approval_requests
+        SET state = ${sqlText("expired")}, updated_at = ${timestampLiteral(now)}
+        WHERE ${where.join(" AND ")}
+        RETURNING id`,
+    );
+    for (const row of rows)
+      markApprovalNotificationRead(this.runtime, toText(row.id));
   }
 
   /** Expires lapsed pending rows and approvals whose execution was never claimed. */

@@ -450,6 +450,35 @@ it.each(["augmented", "augmented-other"] as const)(
     }
   },
 );
+// v610: a Files review that lapsed at 04:21 was still pending in the phone's
+// list and in approval_requests hours later.
+it("lists a lapsed device review as expired, never as pending", async () => {
+  const f = await fixture();
+  try {
+    Object.assign(f.credential, { capabilities: ["camera.capture-photo.v1"] });
+    await f.run("take a photo", false, false, undefined, "current", {
+      type: "camera_capture_photo",
+    });
+    const [proposal] = await f.service.list(f.credential);
+    expect(proposal).toMatchObject({ state: "pending" });
+    await f.pg.query(
+      "UPDATE approval_requests SET expires_at = now() - interval '1 minute'",
+    );
+    const listed = await f.service.list(f.credential);
+    expect(listed.map((request) => [request.id, request.state])).toEqual([
+      [proposal.id, "expired"],
+    ]);
+    expect(
+      (
+        await f.pg.query<{ state: string }>(
+          "SELECT state FROM approval_requests",
+        )
+      ).rows,
+    ).toEqual([{ state: "expired" }]);
+  } finally {
+    await f.pg.close();
+  }
+});
 it.each([false, true])(
   "opens a model proposal grounded in the typed address directly, in the user's spelling, for specialized=%s",
   async (specialized) => {
