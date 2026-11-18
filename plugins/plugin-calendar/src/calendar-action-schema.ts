@@ -101,6 +101,8 @@ const CALENDAR_DETAIL_BOOLEAN_KEYS = [
   "force_sync",
   "notifyAttendees",
   "allowPast",
+  "allDay",
+  "confirmed",
   "includeHiddenCalendars",
 ] as const;
 
@@ -179,6 +181,10 @@ const CALENDAR_DETAIL_BOOLEAN_DESCRIPTIONS: Partial<
     "Agenda/feed reads default to the calendars selected in the Calendar view. Set true only when explicitly asked to include hidden or all connected calendars. Event searches include hidden calendars by default; set false to search only the selected feed. Hidden search results are not necessarily visible in the Calendar view.",
   allowPast:
     "Set true only when the user explicitly wants an event at a time that has already passed (recording a past event, or confirming the past time after being asked); otherwise omit it and the action asks before creating in the past.",
+  allDay:
+    "For create_event: set true only when the user asks for an all-day event or for whole days with no clock time, and do not invent a clock time for it. Omit otherwise. The applied dates are extracted from the user's request, for update_event too.",
+  confirmed:
+    "For delete_event only: set true only after the user answered yes to this action's question about deleting that exact event, and pass the eventId from that question. Omit otherwise; never set it on a first delete request.",
 };
 const numberSchema: ActionParameterSchema = { type: "number" };
 const booleanSchema: ActionParameterSchema = { type: "boolean" };
@@ -250,7 +256,7 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
     attendees: {
       type: "array",
       description:
-        "Only guests the user requested, using their supplied email addresses. Omit when no guests were requested; the owner is not an attendee. Never invent addresses or add empty placeholders.",
+        "Only guests the user requested, using their supplied email addresses. Omit when no guests were requested; the owner is not an attendee. Never invent addresses or add empty placeholders. For update_event, list only guests the user asks to add; guests to remove are extracted from the user's request.",
       items: {
         anyOf: [
           { type: "string" },
@@ -293,6 +299,7 @@ export const CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
           "grantId",
           "travelOriginAddress",
           "allowPast",
+          "allDay",
           "notifyAttendees",
           "recurrence",
           "attendees",

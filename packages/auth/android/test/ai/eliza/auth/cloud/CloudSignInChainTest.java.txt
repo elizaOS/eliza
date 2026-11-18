@@ -377,6 +377,7 @@ public class CloudSignInChainTest {
  /* ACTUAL_CALLBACK */
  /* ACTUAL_BURN */
  void requirePhoneAvailable(Attempt current)throws Exception{}
+ void backupAbandoned(Attempt current){}
  /* ACTUAL_START_EMAIL */
  /* ACTUAL_VERIFY */
  /* ACTUAL_RELEASE */

@@ -132,6 +132,35 @@ describe("ElizaCloudMapsAdapter", () => {
       { query, limit: 20 },
     ]);
   });
+  it("asks for the closest places only from a Cloud that ranks by distance", async () => {
+    const places = () =>
+      Response.json({
+        providerId: "eliza-cloud-osm",
+        attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+        places: [],
+      });
+    const nearest = {
+      query: "pharmacy",
+      near: CASINO,
+      rank: "distance",
+    } as const;
+    const older = cloud(places);
+    await older.adapter.searchPlaces(nearest);
+    expect(older.requests[0]?.body).toEqual({
+      query: "pharmacy",
+      near: CASINO,
+      limit: 10,
+    });
+    const ranking = cloud(places, {
+      coverage: () => ({
+        ...COVERAGE,
+        capabilities: { ...COVERAGE.capabilities, distanceRank: true },
+      }),
+    });
+    await ranking.adapter.searchPlaces(nearest);
+    expect(ranking.requests[0]?.body).toEqual({ ...nearest, limit: 10 });
+  });
+
   it("searches through POST bodies with the API key and maps device places", async () => {
     const { adapter, requests } = cloud(() =>
       Response.json({

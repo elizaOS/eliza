@@ -47,7 +47,16 @@ export type MapsCardSpec =
       webUri: string;
       sharedAt?: string;
     }
-  | { kind: "locate"; intent: "place-near" | "route-origin"; prompt: string };
+  | {
+      kind: "locate";
+      intent: "place-near" | "route-origin";
+      prompt: string;
+      /** What the device searches for around its own position. */
+      query?: string;
+      /** The resolved destination of a `route-origin` card. */
+      destination?: MapsCardPlace;
+      travelMode?: MapsTravelMode;
+    };
 
 export const MAPS_CARD_RE =
   /\[[ \t]*MAPSCARD[ \t]*\][ \t]*\r?\n([\s\S]*?)\r?\n\[[ \t]*\/[ \t]*MAPSCARD[ \t]*\]/g;
@@ -235,7 +244,19 @@ export function parseMapsCardBody(body: string): MapsCardSpec | null {
       ) {
         return null;
       }
-      return { kind: "locate", intent: record.intent, prompt };
+      // Optional fields from newer agents; an invalid one is left out.
+      const query = boundedString(record.query, 500);
+      const destination = parsePlace(record.destination);
+      return {
+        kind: "locate",
+        intent: record.intent,
+        prompt,
+        ...(query ? { query } : {}),
+        ...(destination ? { destination } : {}),
+        ...(TRAVEL_MODES.has(record.travelMode as MapsTravelMode)
+          ? { travelMode: record.travelMode as MapsTravelMode }
+          : {}),
+      };
     }
     default:
       return null;

@@ -587,12 +587,12 @@ const junit = await readFile(
   path.join(directory, "production.junit.xml"),
   "utf8",
 );
-assert.equal((junit.match(/<testcase /g) ?? []).length, 85);
+assert.equal((junit.match(/<testcase /g) ?? []).length, 90);
 const proofSummary = parseJunitSummary(junit);
 assert.deepEqual(
   new Map(proofSummary.files.map((file) => [file.file, file.executedTests])),
   new Map([
-    ["packages/cloud/scripts/staging-release-certification.test.ts", 63],
+    ["packages/cloud/scripts/staging-release-certification.test.ts", 68],
     ["packages/scripts/__tests__/develop-effect-ledger.test.ts", 22],
   ]),
 );

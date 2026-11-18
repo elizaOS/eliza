@@ -161,7 +161,7 @@ public final class CloudSignInFlowTest {
 
   // Routes: exactly the fixed sign-in routes on an admitted API origin.
   for (String route : new String[]{CloudEmailCode.SEND_PATH, CloudEmailCode.VERIFY_PATH, CloudSmsCode.SEND_PATH, CloudSmsCode.VERIFY_PATH, "/steward/auth/oauth/exchange",
-    "/steward/auth/oauth/google/native/challenge", "/api/v1/app-auth/mobile/google", "/api/v1/eliza/google/connect/native", "/steward/auth/mfa/totp/complete", "/steward/auth/mfa/sms/complete",
+    "/steward/auth/oauth/google/native/challenge", "/steward/auth/oauth/google/native/verify", "/api/v1/app-auth/mobile/google", "/api/v1/eliza/google/connect/native", "/steward/auth/mfa/totp/complete", "/steward/auth/mfa/sms/complete",
     "/steward/auth/logout", "/api/v1/app-auth/connect", "/api/v1/app-auth/mobile/token", "/api/v1/app-auth/mobile/ack", "/api/v1/app-auth/mobile/renew"}) {
    check(CloudSignInRoutes.route(route, "POST", true), "sign-in route " + route);
    check((CloudSignInRoutes.READS.contains(route) || !CloudSignInRoutes.route(route, "GET", false)) && !CloudSignInRoutes.route(route, "POST", false), "POST with a body only " + route);
@@ -169,7 +169,7 @@ public final class CloudSignInFlowTest {
   for (String route : new String[]{"/api/public/service", "/api/v1/app-auth/mobile/config", "/steward/auth/providers", "/steward/auth/oauth/google/authorize"})
    check(CloudSignInRoutes.route(route, "GET", false) && !CloudSignInRoutes.route(route, "GET", true) && !CloudSignInRoutes.route(route, "POST", true), "readiness read " + route);
   check(CloudSignInRoutes.route("/api/v1/app-auth/mobile/google", "GET", false) && !CloudSignInRoutes.route("/api/v1/eliza/google/connect/native", "GET", false), "Google sign-in reads its public configuration");
-  for (String route : new String[]{"/steward/auth/oauth/google/native/verify", "/api/v1/eliza/google/connect/native/", "/steward/auth/email/send", "/steward/auth/mfa/passkey/complete", "/steward/auth/email/code/send/", "/steward/auth/revoke",
+  for (String route : new String[]{"/api/v1/eliza/google/connect/native/", "/steward/auth/email/send", "/steward/auth/mfa/passkey/complete", "/steward/auth/email/code/send/", "/steward/auth/revoke",
     "/api/v1/app-auth/mobile/ack/x", "/api/v1/app-auth/mobile/renew/", "/api/auth/cli-session", "/steward/cloud-owner-phone/auth/sms/send", null})
    check(!CloudSignInRoutes.route(route, "POST", true) && !CloudSignInRoutes.route(route, "GET", false), "refused sign-in route " + route);
   check(CloudSignInRoutes.origin(product, "https", "api.eliza.app", -1) && CloudSignInRoutes.origin(product, "https", "api.eliza.app", 443), "production API");

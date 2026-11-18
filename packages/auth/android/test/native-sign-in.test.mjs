@@ -456,10 +456,11 @@ test("the plugin owns every secret, compares state before burning and logs only 
     "/**\n  * Strict App Link capture",
   );
   assert.match(google, /NativeGoogleCredential\.request/);
+  // The challenge, the one-call Cloud sign-in and a password-backup confirmation's Steward verify.
   assert.equal(
     (google.match(/\.put\("clientId", config\(\)\.googleClientId\)/g) || [])
       .length,
-    2,
+    3,
   );
   // Browser returns: consumed once, state compared before burning, burned before any request.
   const capture = between(
