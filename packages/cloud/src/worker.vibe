@@ -44,13 +44,12 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
   const billing = path.startsWith("/api/v1/billing/")
   const reminders = path === "/api/v1/calendar-reminders/device"
   const google = path.startsWith("/api/v1/eliza/google/")
+  const nativeConnect = path === "/api/v1/eliza/google/connect/native"
   if (!reminders && !decisions && !inference && !speech && !billing && !google && !(extension && path.startsWith("/api/product/"))) return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
-  const account = reminders || decisions || inference || speech ? await inferenceAccount(request, db, env) : await sessionAccount(request, db)
+  const account = reminders || decisions || inference || speech || nativeConnect ? await inferenceAccount(request, db, env) : await sessionAccount(request, db)
   if (!account) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
-  if (reminders) {
-    if (!request.headers.has("authorization")) return WorkerResponse.json({ error: "device_required" }, { status: 403 })
-    return reminderSchedule(request, env, db, account)
-  }
+  if ((reminders || nativeConnect) && !request.headers.has("authorization")) return WorkerResponse.json({ error: "device_required" }, { status: 403 })
+  if (reminders) return reminderSchedule(request, env, db, account)
   if (decisions) return clefRequest(request, env, db, account)
   if (inference || path === speechRoute + "/session") await refreshPaidAccess(env, db, account)
   if (speech) return speechRequest(request, env, db, account)

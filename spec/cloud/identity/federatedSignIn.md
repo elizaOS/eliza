@@ -288,6 +288,51 @@ pure def sometimesNativeSecondFactor(a: GoogleAttempt): bool = a.native == Chall
 pure def sometimesGoogleProven(a: GoogleAttempt): bool = provesGoogleFor(a, "user1")
 ```
 
+## Story: Connect mail and calendar from the same Google sheet
+
+> As a person who signed in on the device with its Google account, I want
+> that account to grant my mail and calendar right there, so that I never
+> sign in to Google a second time, while a code for another Google account
+> can never connect to mine.
+
+### A native connect stores tokens only for the signed-in account's own Google identity and only the scopes Google granted
+
+The device, with its device key, sends `POST
+/api/v1/eliza/google/connect/native` `{serverAuthCode}`: the one-use code
+Google's authorization sheet issued, for the account the device signed in
+with, to the cloud's server client. A browser session cannot use the route,
+and an account without a Google sign-in connects in the browser instead. The
+cloud redeems the code with its server client, only when that is also the
+client the connection is kept for, and stores the connection only when
+Google returned a refresh token and its verified subject is the Google
+sign-in subject of the key's account. It stores reading mail and reading the
+calendar as Google granted them, sending or trashing mail only with reading
+mail, and changing the calendar only with reading it. A connect that would
+store nothing is refused `409 google_reconnect_required` and leaves any
+earlier connection as it was.
+
+```quint
+type NativeGoogleScopes = { readMail: bool, sendMail: bool, trashMail: bool, readCalendar: bool, writeCalendar: bool }
+pure val noNativeGoogleScopes: NativeGoogleScopes = { readMail: false, sendMail: false, trashMail: false, readCalendar: false, writeCalendar: false }
+pure def nativeConnectStores(signedInSubject: str, grantedSubject: str, refreshIssued: bool, granted: NativeGoogleScopes): NativeGoogleScopes =
+  if (signedInSubject == "" or signedInSubject != grantedSubject or not(refreshIssued)) noNativeGoogleScopes
+  else { readMail: granted.readMail, sendMail: granted.readMail and granted.sendMail, trashMail: granted.readMail and granted.trashMail,
+         readCalendar: granted.readCalendar, writeCalendar: granted.readCalendar and granted.writeCalendar }
+pure def nativeConnectStoresAny(stored: NativeGoogleScopes): bool = stored.readMail or stored.readCalendar
+pure val grantedValues: Set[NativeGoogleScopes] = {
+  val everything: NativeGoogleScopes = { readMail: true, sendMail: true, trashMail: true, readCalendar: true, writeCalendar: true }
+  Set(everything, noNativeGoogleScopes, { ...noNativeGoogleScopes, sendMail: true, writeCalendar: true }, { ...noNativeGoogleScopes, readCalendar: true, trashMail: true })
+}
+pure def lawANativeConnectStoresOnlyTheSignedInAccountsGrantedScopes(signedInSubject: str, grantedSubject: str, refreshIssued: bool, granted: NativeGoogleScopes): bool = {
+  val stored = nativeConnectStores(signedInSubject, grantedSubject, refreshIssued, granted)
+  (nativeConnectStoresAny(stored) implies (signedInSubject != "" and signedInSubject == grantedSubject and refreshIssued))
+  and (stored.readMail implies granted.readMail) and (stored.sendMail implies (granted.sendMail and stored.readMail))
+  and (stored.trashMail implies (granted.trashMail and stored.readMail)) and (stored.readCalendar implies granted.readCalendar)
+  and (stored.writeCalendar implies (granted.writeCalendar and stored.readCalendar))
+  and (not(nativeConnectStoresAny(stored)) implies stored == noNativeGoogleScopes)
+}
+```
+
 ## Story: Tell the app exactly why Google sign-in was refused
 
 > As the developer of an app, I want each refusal to say whether the request,

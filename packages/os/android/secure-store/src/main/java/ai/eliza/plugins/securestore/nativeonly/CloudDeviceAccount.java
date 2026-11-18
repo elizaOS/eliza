@@ -1,8 +1,12 @@
 package ai.eliza.plugins.securestore.nativeonly;
 
+import android.accounts.Account;
 import android.content.Context;
 import android.net.Uri;
 import android.util.Base64;
+import com.google.android.gms.auth.api.identity.AuthorizationRequest;
+import com.google.android.gms.auth.api.identity.AuthorizationResult;
+import com.google.android.gms.common.api.Scope;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -12,6 +16,8 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.util.Arrays;
+import java.util.List;
 import java.util.regex.Pattern;
 import org.json.JSONObject;
 
@@ -25,6 +31,10 @@ public final class CloudDeviceAccount {
  private static final String CREDENTIAL = "credential";
  private static final String REVOKE = "revoke";
  private static final String ACK = "awaiting-ack";
+ private static final List<Scope> GOOGLE_SCOPES = Arrays.asList(new Scope("openid"), new Scope("email"),
+     new Scope("https://www.googleapis.com/auth/gmail.readonly"), new Scope("https://www.googleapis.com/auth/gmail.send"),
+     new Scope("https://www.googleapis.com/auth/gmail.modify"), new Scope("https://www.googleapis.com/auth/calendar.events.readonly"),
+     new Scope("https://www.googleapis.com/auth/calendar.events.owned"));
  private final Uri browser;
  private final URI cloud;
  private final Uri callback;
@@ -147,6 +157,19 @@ public final class CloudDeviceAccount {
   JSONObject response = new JSONObject(post("/api/v1/app-auth/mobile/google", request, null, 200).body());
   String code = response.getString("code");
   return opaque(code) && attempt.state().equals(response.getString("state")) && exchangeCode(code, snapshot);
+ }
+
+ public AuthorizationRequest googleAuthorization(NativeGoogleAttempt attempt, String googleAccount) {
+  if (googleAccount == null || !googleAccount.matches("[^@\\s]{1,64}@[^@\\s]{1,255}")) throw new IllegalArgumentException("Invalid Google account");
+  return AuthorizationRequest.builder().setRequestedScopes(GOOGLE_SCOPES).setAccount(new Account(googleAccount, "com.google"))
+      .requestOfflineAccess(attempt.serverClientId(), true).build();
+ }
+
+ public boolean connectGoogle(AuthorizationResult result) throws Exception {
+  String code = result.getServerAuthCode();
+  if (code == null || !code.matches("[A-Za-z0-9/_.~-]{10,2048}")) throw new IOException("Invalid Google authorization");
+  JSONObject request = new JSONObject().put("serverAuthCode", code);
+  return new JSONObject(post("/api/v1/eliza/google/connect/native", request, requireCredential(), 200).body()).getBoolean("connected");
  }
 
  public void cancelNativeGoogle(NativeGoogleAttempt attempt) throws Exception {
