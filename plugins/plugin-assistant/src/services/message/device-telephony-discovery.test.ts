@@ -14,6 +14,7 @@ vi.mock("../device-actions/service.ts", async (original) => ({
 }));
 
 import { proposeDeviceAction } from "../device-actions/action.ts";
+import { deviceActionTools } from "../device-actions/tools.ts";
 import {
   actionDiscoveryContexts,
   inferActionSearchContexts,
@@ -34,15 +35,15 @@ const voiceCall = {
 } as unknown as Action;
 const actions = [proposeDeviceAction, voiceCall];
 
-function discover(query: string): string[] {
-  const contexts = inferActionSearchContexts(actions, query);
+function discover(query: string, from: readonly Action[] = actions): string[] {
+  const contexts = inferActionSearchContexts(from, query);
   const scoped = contexts.length
-    ? actions.filter((action) =>
+    ? from.filter((action) =>
         actionDiscoveryContexts(action).some((context) =>
           contexts.includes(context),
         ),
       )
-    : actions;
+    : from;
   return retrieveContextualPlannerActions({
     actions: scoped,
     query,
@@ -59,5 +60,23 @@ describe("phone telephony discovery", () => {
       "show my phone contacts",
     ])
       expect(discover(query), query).toContain("PROPOSE_DEVICE_ACTION");
+  });
+
+  // Every DEVICE_* tool spread PROPOSE_DEVICE_ACTION, telephony summary
+  // included, so the phone-context Maps selected-place read outranked the
+  // call/dialer operation for these queries; the read also carried the
+  // telephony "phone" context and its call/dial keyword signals.
+  it("ranks the telephony operation ahead of any unrelated device tool", () => {
+    const all = [proposeDeviceAction, voiceCall, ...deviceActionTools];
+    for (const query of ["call phone number", "open the phone dialer keypad"]) {
+      const found = discover(query, all);
+      expect(found[0], query).toBe("PROPOSE_DEVICE_ACTION");
+    }
+  });
+  it("keeps each device tool's own summary rather than the parent's", () => {
+    const parent = proposeDeviceAction.descriptionCompressed;
+    expect(parent).toBeTruthy();
+    for (const tool of deviceActionTools)
+      expect(tool.descriptionCompressed, tool.name).not.toBe(parent);
   });
 });

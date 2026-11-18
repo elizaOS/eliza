@@ -330,6 +330,9 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
     ...proposeDeviceAction,
     name,
     description,
+    // The parent's catalog summary describes the whole device surface; a
+    // single-operation tool indexes by its own description instead.
+    descriptionCompressed: undefined,
     ...(type === "camera_capture_photo"
       ? {
           descriptionCompressed:
@@ -423,9 +426,11 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
                     "read note by returned identity and revision",
                   ]
                 : [],
+    // "phone" is the telephony context: its call/text/dial keyword signals
+    // ranked this Maps read above the dialer for "open the phone keypad".
     contexts:
       type === "maps_read_selected"
-        ? ["phone", "maps", "general"]
+        ? ["maps", "general"]
         : type.startsWith("calendar_read") || type === "calendar_update"
           ? ["calendar", "general"]
           : type === "reminder_create_after"
@@ -486,7 +491,14 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
         : [
             ...(proposeDeviceAction.parameters?.map((parameter) =>
               parameter.name === "operation"
-                ? { ...parameter, schema: operationSchema(type) }
+                ? {
+                    ...parameter,
+                    // Not "phone": a single-operation tool must not match
+                    // call/text/dialer queries by the parent's wording.
+                    description:
+                      "Exact typed device operation to show for approval",
+                    schema: operationSchema(type),
+                  }
                 : parameter,
             ) || []),
             ...(type === "notes_query"
