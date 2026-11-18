@@ -108,23 +108,28 @@ module FilesViewState {
       requested: requested, shared: 0, shareDone: false }
   }
   action init = { nondet known = Bool.oneOf(); initKnown(known) }
-  action leave = all { s.active, s' = s.with("active", false) }
+  pure def clearFilter(value: State): State =
+    value.with("filter", false).with("cleared", true)
+      .with("completeClaim", false).with("emptyClaim", false)
+  action leave = all { s.active, s' = clearFilter(s).with("active", false) }
   action age = all { not(s.longAbsence), s' = s.with("longAbsence", true) }
   action enter = all { not(s.active), s' = s.with("active", true) }
-  action clear = all { not(s.cleared), s' = s.with("filter", false).with("cleared", true) }
+  action clear = all { s.filter, s' = clearFilter(s) }
   action begin(i: int): bool = all { not(s.started.contains(i)),
     s' = s.with("started", s.started.union(Set(i))).with("pending", s.pending.union(Set(i))).with("busy", true) }
   action finish(i: int): bool = all { s.pending.contains(i),
     s' = s.with("pending", s.pending.exclude(Set(i))).with("busy", s.pending.exclude(Set(i)).size() > 0) }
   action refreshReply = all { s.refresh, s' = s.with("refresh", false) }
   action queryReply = all { s.query == 0,
-    s' = s.with("query", 1).with("completeClaim", s.metadataKnown and not(s.partial) and not(s.failed))
-      .with("emptyClaim", s.metadataKnown and not(s.partial) and not(s.failed) and not(s.anyRows)) }
+    { val complete = s.filter and s.metadataKnown and not(s.partial) and not(s.failed)
+      s' = s.with("query", 1).with("completeClaim", complete)
+        .with("emptyClaim", complete and not(s.anyRows)) } }
   action share = all { not(s.shareDone),
     s' = s.with("shareDone", true).with("shared", s.requested) }
   action step = any { leave, age, enter, clear, begin(0), begin(1), finish(0), finish(1),
     refreshReply, queryReply, share, s' = s }
-  val FilterRestoration = s.filter == not(s.cleared)
+  val FilterBoundToVisit = s.filter == not(s.cleared) and (s.filter implies s.active)
+    and ((s.emptyClaim or s.completeClaim) implies s.filter)
   val NoInventedEmptyOrComplete = (s.emptyClaim or s.completeClaim) implies
     (s.metadataKnown and not(s.partial) and not(s.failed))
   val WholeAuthorizedSelection = not(s.shareDone) or s.shared == s.requested
@@ -135,7 +140,12 @@ module FilesViewState {
   temporal OperationsDrain = (s.pending.size() > 0).leadsTo(s.pending.size() == 0)
   run unknownMetadataCannotClaimEmpty = initKnown(false).then(queryReply)
     .expect(not(s.emptyClaim) and not(s.completeClaim))
-  run longAbsenceKeepsFilter = init.then(leave).then(age).then(enter).expect(FilterRestoration and s.filter)
+  run shortAbsenceClearsFilter = init.then(leave).then(enter)
+    .expect(FilterBoundToVisit and not(s.filter))
+  run longAbsenceClearsFilter = init.then(leave).then(age).then(enter)
+    .expect(FilterBoundToVisit and not(s.filter))
+  run lateQueryCannotRepublish = init.then(leave).then(enter).then(queryReply)
+    .expect(s.query == 1 and not(s.filter) and not(s.emptyClaim) and not(s.completeClaim))
   run overlappingOwnersDrainSeparately = init.then(begin(0)).then(begin(1)).then(finish(0))
     .expect(s.pending == Set(1)).then(finish(1)).expect(s.pending.size() == 0)
   run queryAndShareKeepCompleteContext = init.then(queryReply).then(share)

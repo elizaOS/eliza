@@ -1,3 +1,4 @@
+export * from "../note-folders.js";
 export * from "./note-dates.ts";
 export * from "./note-deleted-origins.ts";
 export * from "./note-documents.ts";

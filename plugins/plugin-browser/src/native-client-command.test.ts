@@ -1,6 +1,11 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { BrowserService, browserAction } from "./mobile.ts";
+import {
+  BrowserService,
+  browserAction,
+  nativeBrowserAction,
+  nativeBrowserCommands,
+} from "./mobile.ts";
 import {
   observedNativeHistorySelection,
   parseNativeHistoryCommand,
@@ -136,5 +141,49 @@ describe("observedNativeHistorySelection", () => {
       { subaction: "back" },
       { id: "session-1:tab-2", revision: "4" },
     );
+  });
+});
+
+describe("host-declared native browser commands", () => {
+  it("offers every command when the host declares none", () => {
+    expect(nativeBrowserCommands(undefined)).toContain("snapshot");
+    // A variable cleared to blank is unset, never an empty command list.
+    for (const blank of ["", "  ", " , "])
+      expect(nativeBrowserCommands(blank)).toEqual(
+        nativeBrowserCommands(undefined),
+      );
+    expect(
+      browserAction.parameters?.map((parameter) => parameter.name),
+    ).toEqual(["id", "action", "url", "selector", "text", "direction"]);
+  });
+
+  it("offers the model only the commands the host's renderer runs", async () => {
+    const commands = nativeBrowserCommands(" back, forward ,reload");
+    expect(commands).toEqual(["back", "forward", "reload"]);
+    const action = nativeBrowserAction(commands);
+    expect(action.parameters).toEqual([
+      {
+        name: "action",
+        required: true,
+        description: "Native browser command",
+        schema: { type: "string", enum: ["back", "forward", "reload"] },
+      },
+    ]);
+    expect(action.description).toContain("back, forward, reload");
+    for (const absent of ["snapshot", "click", "Chromium"])
+      expect(action.description).not.toContain(absent);
+    const execute = vi.fn();
+    const result = await action.handler?.(
+      { getService: () => ({ execute }) } as unknown as IAgentRuntime,
+      browserTurn({ kind: "browser-tab", id: "t", revision: "1" }) as never,
+      undefined,
+      { parameters: { action: "close" } } as never,
+    );
+    expect(result).toMatchObject({ success: false });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("refuses a command name it does not know", () => {
+    expect(() => nativeBrowserCommands("back,teleport")).toThrow("teleport");
   });
 });

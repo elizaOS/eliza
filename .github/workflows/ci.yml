@@ -149,8 +149,7 @@ jobs:
       - name: Install local Redis for protocol conformance
         run: |
           if ! command -v redis-server >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends redis-server
+            bash packages/scripts/github/install-apt-packages.sh --no-install-recommends redis-server
           fi
           redis-server --version
       - name: Install Chromium for browser conformance

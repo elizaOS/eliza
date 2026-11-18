@@ -99,10 +99,11 @@ public final class TelephonyPluginReviewTest {
   }
   static final class Host extends TelephonyPlugin {
     final AppCompatActivity activity;
+    boolean imageAllowed=true, smsAllowed=true;
     Host(AppCompatActivity activity) { this.activity = activity; }
     @Override public Context getContext() { return activity; }
     @Override public AppCompatActivity getActivity() { return activity; }
-    @Override public PermissionState getPermissionState(String alias) { return PermissionState.GRANTED; }
+    @Override public PermissionState getPermissionState(String alias) { return alias.equals("sms") && !smsAllowed ? PermissionState.DENIED : PermissionState.GRANTED; }
     @Override protected SmsTelephonyConfiguration configuration() { throw new AssertionError("fixture installs its configuration"); }
     void pause() { handleOnPause(); }
     void sendFromComposer(Call call, SmsTelephony.DispatchGuard guard) {
@@ -121,7 +122,7 @@ public final class TelephonyPluginReviewTest {
     Shadows.shadowOf(activity.getSystemService(SubscriptionManager.class)).setActiveSubscriptionInfos(ShadowSubscriptionManager.SubscriptionInfoBuilder.newBuilder().setId(1).setSimSlotIndex(0).setDisplayName("Test SIM").setCarrierName("Test carrier").buildSubscriptionInfo());
     Host host = new Host(activity);
     Map<String, String> slots = new HashMap<>();
-    SmsTelephonyConfiguration config = new SmsTelephonyConfiguration(identity, null, identity, "fixture.sent", "fixture.delivered", "fixture", "operation", "index", "fixture.image", Receiver.class, context -> true, context -> new SmsTelephonyConfiguration.JournalStore() {
+    SmsTelephonyConfiguration config = new SmsTelephonyConfiguration(identity, null, identity, "fixture.sent", "fixture.delivered", "fixture", "operation", "index", "fixture.image", Receiver.class, context -> host.imageAllowed, context -> new SmsTelephonyConfiguration.JournalStore() {
       public String read(String slot) { return slots.get(slot); }
       public void write(String slot, String value) { slots.put(slot, value); }
     });
@@ -387,4 +388,64 @@ public final class TelephonyPluginReviewTest {
     assertEquals(1, provider.deletes);
     noRadioAndNoRetainedOwner(host);
   }
+  public static final class DeleteProvider extends ContentProvider {
+    static int reads,writes; static Runnable onRead,onDelete;
+    @Override public boolean onCreate(){return true;}
+    @Override public String getType(Uri uri){return null;}
+    @Override public Uri insert(Uri uri,ContentValues values){throw new UnsupportedOperationException();}
+    @Override public int update(Uri uri,ContentValues values,String where,String[]args){throw new UnsupportedOperationException();}
+    @Override public Cursor query(Uri uri,String[]projection,String where,String[]args,String order){
+      reads++;MatrixCursor row=new MatrixCursor(new String[]{"_id","thread_id","date","type"});row.addRow(new Object[]{7,9,1700000000123L,SmsRecords.INBOX});
+      Runnable action=onRead;onRead=null;if(action!=null)action.run();return row;
+    }
+    @Override public int delete(Uri uri,String where,String[]args){
+      writes++;assertEquals(Telephony.Sms.CONTENT_URI,uri);Runnable action=onDelete;onDelete=null;if(action!=null)action.run();return 1;
+    }
+  }
+  private static void settleDeletion(Host host)throws Exception{
+    Field field=TelephonyPlugin.class.getDeclaredField("reader");field.setAccessible(true);
+    java.util.concurrent.ExecutorService reader=(java.util.concurrent.ExecutorService)field.get(host);
+    reader.submit(()->{}).get(10,TimeUnit.SECONDS);ShadowLooper.idleMainLooper();
+  }
+  private static Call deleteCall(){
+    JSObject data=new JSObject();data.put("id","sms:7");data.put("kind","sms");data.put("threadId","thread:9");data.put("date",1700000000123L);return new Call("deleteMessage",data);
+  }
+  private static void deleteProvider(){
+    DeleteProvider.reads=DeleteProvider.writes=0;DeleteProvider.onRead=DeleteProvider.onDelete=null;
+    ProviderInfo info=new ProviderInfo();info.authority="sms";Robolectric.buildContentProvider(DeleteProvider.class).create(info);
+  }
+  @Test public void deleteRequiresImageForegroundUnlockedDefaultSmsAndReadAuthority()throws Exception{
+    deleteProvider();Host denied=host("delete-image");denied.imageAllowed=false;Call call=deleteCall();denied.deleteMessage(call);assertEquals("unavailable",call.error);
+    Host background=host("delete-background");background.pause();call=deleteCall();background.deleteMessage(call);assertEquals("unavailable",call.error);
+    Host ordinary=host("delete-role");call=deleteCall();ordinary.deleteMessage(call);assertEquals("role-required",call.error);
+    Host permission=host("delete-permission");Shadows.shadowOf(permission.getContext().getSystemService(RoleManager.class)).addHeldRole(RoleManager.ROLE_SMS);permission.smsAllowed=false;
+    call=deleteCall();permission.deleteMessage(call);assertEquals("permission-required",call.error);
+    Host locked=host("delete-locked");Shadows.shadowOf(locked.getContext().getSystemService(KeyguardManager.class)).setIsDeviceLocked(true);call=deleteCall();locked.deleteMessage(call);assertEquals("unavailable",call.error);
+    assertEquals(0,DeleteProvider.reads);assertEquals(0,DeleteProvider.writes);
+  }
+  @Test public void deleteRechecksLifecycleBeforeEffectAndKeepsKnownContentFreeOutcomeAfterwards()throws Exception{
+    deleteProvider();Host before=host("delete-race");Shadows.shadowOf(before.getContext().getSystemService(RoleManager.class)).addHeldRole(RoleManager.ROLE_SMS);
+    DeleteProvider.onRead=before::pause;Call denied=deleteCall();before.deleteMessage(denied);settleDeletion(before);
+    assertEquals("unavailable",denied.error);assertEquals(0,DeleteProvider.writes);
+    Host after=host("delete-known");DeleteProvider.onDelete=()->{after.smsAllowed=false;after.pause();};Call known=deleteCall();after.deleteMessage(known);settleDeletion(after);
+    assertNull(known.error);assertEquals("deleted",known.result.getString("status"));assertEquals(1,DeleteProvider.writes);
+  }
+
+  @Test @Config(sdk=36) public void deleteRefusesANonForegroundAndroidUserProfile()throws Exception{
+    deleteProvider();Host host=host("delete-profile");
+    Shadows.shadowOf(host.getContext().getSystemService(RoleManager.class)).addHeldRole(RoleManager.ROLE_SMS);
+    Shadows.shadowOf(host.getContext().getSystemService(UserManager.class)).setUserForeground(false);
+    Call call=deleteCall();host.deleteMessage(call);
+    assertEquals("unavailable",call.error);assertEquals(0,DeleteProvider.reads);assertEquals(0,DeleteProvider.writes);
+  }
+  @Test public void deleteRechecksRoleAndReadPermissionDuringIdentityLookup()throws Exception{
+    for(boolean roleLoss:new boolean[]{true,false}){
+      deleteProvider();Host host=host(roleLoss?"delete-role-race":"delete-permission-race");
+      RoleManager roles=host.getContext().getSystemService(RoleManager.class);Shadows.shadowOf(roles).addHeldRole(RoleManager.ROLE_SMS);
+      DeleteProvider.onRead=()->{if(roleLoss)Shadows.shadowOf(roles).removeHeldRole(RoleManager.ROLE_SMS);else host.smsAllowed=false;};
+      Call call=deleteCall();host.deleteMessage(call);settleDeletion(host);
+      assertEquals("unavailable",call.error);assertEquals(0,DeleteProvider.writes);
+    }
+  }
+
 }
