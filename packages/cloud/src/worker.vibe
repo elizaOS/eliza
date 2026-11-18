@@ -3,7 +3,7 @@ import { WorkerResponse, WorkerHeaders, withRequestBody, workerFetch } from "./w
 import type { Client } from "pg"
 import { withCloudDatabase, type WorkerDatabase } from "./worker-store.vibe"
 import { sweepUsage } from "./worker-metering.vibe"
-import { identityRequest, inferenceAccount, sessionAccount, type IdentityEnv } from "./identity.vibe"
+import { identityRequest, nativeGooglePath, inferenceAccount, sessionAccount, type IdentityEnv } from "./identity.vibe"
 import { nativeAssetLinks } from "./native-registry.vibe"
 export { nativeAssetLinks }
 export { SpeechRelayCoordinator } from "./speech-relay.vibe"
@@ -25,7 +25,7 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
     await db.query("SELECT 1 FROM accounts, sessions, device_grants, subscriptions, holds, usage_records LIMIT 0")
     return WorkerResponse.json({ status: "ready" })
   }
-  if (path.startsWith("/api/auth/") || path === "/api/v1/app-auth/mobile/config") {
+  if (path.startsWith("/api/auth/") || path === "/api/v1/app-auth/mobile/config" || nativeGooglePath(path)) {
     if (request.method === "POST") {
       const bytes = await limitedBody(request, 8192)
       if (!bytes) return WorkerResponse.json({ error: "request_too_large" }, { status: 413 })
@@ -74,7 +74,9 @@ export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExten
         cors.set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key")
         return new WorkerResponse(null, { status: 204, headers: cors })
       }
-      if (request.method !== "GET" && !origin && !request.headers.has("authorization") && new URL(request.url).pathname !== stripeWebhookRoute && new URL(request.url).pathname !== "/api/auth/device/exchange") {
+      const path = new URL(request.url).pathname
+      if (request.method !== "GET" && !origin && !request.headers.has("authorization") &&
+          path !== stripeWebhookRoute && path !== "/api/auth/device/exchange" && !nativeGooglePath(path)) {
         return WorkerResponse.json({ error: "origin_required" }, { status: 403, headers: cors })
       }
       try {
