@@ -382,6 +382,96 @@ describe("a repeated Stage-1 routing conflict", () => {
   });
 });
 
+describe("the conflicting draft behind a whole-request owner", () => {
+  function ownerRuntime(responses: unknown[]) {
+    const runtime = makeRuntime(responses);
+    const action = workflowStub();
+    runtime.actions = [{ ...action, roleGate: undefined }] as never;
+    registerWorkflowRequestRouting(runtime);
+    const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+      (entry) => entry.name === "core.direct_registered_capability_request",
+    );
+    if (!evaluator) throw new Error("Expected capability evaluator");
+    runtime.responseHandlerEvaluators = [evaluator];
+    return runtime;
+  }
+  const state = () => ({
+    ...makeState(),
+    values: { availableContexts: "general, automation" },
+  });
+
+  it("runs none of the draft's plugin field effects", async () => {
+    // A plugin field (threadOps abort, networkAction SET_STATE, calendar
+    // bindings) carried by the rejected draft must not act once the owner
+    // takes the turn: before the owner path, the conflict ran no field at all.
+    const conflict = () =>
+      stage1Response({
+        contexts: ["automation"],
+        intents: ["create a workflow named Alpha device test"],
+        candidateActionNames: ["WORKFLOW"],
+        replyText: "What should it do?",
+        extra: {
+          replyEffectStatus: "non_applied",
+          effectProbe: { op: "abort" },
+          completionContext: { kind: "prior" },
+          extract: { facts: ["The owner wants a workflow"] },
+        },
+      });
+    const runtime = ownerRuntime([conflict(), conflict()]);
+    const handle = vi.fn(() => undefined);
+    runtime.responseHandlerFieldRegistry.register({
+      name: "effectProbe",
+      description: "Test field with an effect.",
+      priority: 19,
+      schema: { type: "object", properties: { op: { type: "string" } } },
+      parse: (value: unknown) =>
+        value && typeof value === "object" ? value : null,
+      handle,
+    } as never);
+    const result = await runStage1({
+      runtime,
+      message: makeMessage({ text: CREATE, channelType: ChannelType.DM }),
+      state: state(),
+      stage1DecisionOnly: true,
+    } as never);
+    expect(handle).not.toHaveBeenCalled();
+    const plan = result.messageHandler.plan;
+    expect(plan.candidateActions).toEqual(["WORKFLOW"]);
+    expect(plan.intents).toEqual([CREATE]);
+    expect(plan.completionContext).toBeUndefined();
+    expect(result.messageHandler.extract?.facts ?? []).toEqual([]);
+  });
+
+  it("fails closed when a second, unadmitted route also claims the whole request", async () => {
+    // The capability evaluator treats two whole-request claimants as
+    // ambiguous whatever their admission; the guard must not pick one.
+    const conflict = () =>
+      stage1Response({
+        contexts: ["automation"],
+        intents: ["create a workflow named Alpha device test"],
+        candidateActionNames: ["WORKFLOW"],
+        replyText: "What should it do?",
+        extra: { replyEffectStatus: "non_applied" },
+      });
+    const runtime = ownerRuntime([conflict(), conflict()]);
+    registerDirectActionRoutingRule(runtime, {
+      id: "test.unadmitted-owner",
+      actionNames: ["NOT_REGISTERED"],
+      requiredActionTags: [],
+      contexts: ["automation"],
+      matches: () => true,
+      wholeRequest: { matches: () => true, invalidateFields: [] },
+    });
+    await expect(
+      runStage1({
+        runtime,
+        message: makeMessage({ text: CREATE, channelType: ChannelType.DM }),
+        state: state(),
+      }),
+    ).rejects.toMatchObject({ code: "STAGE1_ROUTING_CONFLICT" });
+  });
+});
+
 describe("the routing-conflict failure reply", () => {
   // agent.log classified the v610 failure as failureCause=transient. The reply
   // must stay a plain, unpersisted REPLY that no client or later turn can

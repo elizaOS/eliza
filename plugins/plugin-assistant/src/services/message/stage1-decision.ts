@@ -25,6 +25,7 @@ import {
   createHandleResponseTool,
   ElizaError,
   getCandidateActionBackstopRules,
+  getDirectActionRoutingRules,
   getStreamingContext,
   getUserMessageText,
   guardOutboundEnvelopeText,
@@ -1970,9 +1971,13 @@ export async function generateStage1Decision(
  * called X") decides routing from the user's own words, never the model's
  * declarations. When Stage 1 repeats a contradictory decision after its one
  * repair, that owner still knows where the request goes: hand the turn to the
- * planner with only that owner's actions. Nothing the conflicting draft
- * declared survives: no reply, extraction, navigation or effect claim. With
- * no owner, or more than one, the conflict still fails closed.
+ * planner with only that owner's actions. The decision is rebuilt from the
+ * routing fields alone, so nothing the conflicting draft declared survives:
+ * no reply, extraction, navigation, completion binding or plugin field (a
+ * thread abort, a state change) that could act before the planner. With no
+ * owner, more than one claimant (admitted or not, as the capability evaluator
+ * also treats it), or an owner whose action is not admitted, the conflict
+ * still fails closed.
  */
 async function wholeRequestOwnerDecision(
   args: Parameters<typeof generateStage1Decision>[0],
@@ -1984,41 +1989,47 @@ async function wholeRequestOwnerDecision(
   if (!conflicting) return undefined;
   const text = getActionInferenceMessageText(args.message);
   if (!text.trim()) return undefined;
+  const claimants = getDirectActionRoutingRules(args.runtime).filter(
+    (rule) =>
+      rule.matches(text, args.message) &&
+      rule.wholeRequest?.matches(text, args.message),
+  );
+  if (claimants.length !== 1) return undefined;
+  const owner = claimants[0];
   const routes = await resolveEligibleDirectActionRoutes({
     runtime: args.runtime,
     message: args.message,
     state: args.state,
     userRoles: [senderRole],
   });
-  const owners = [
+  const actions = [
     ...new Set(
       routes
-        .filter(({ rule }) => rule.wholeRequest?.matches(text, args.message))
-        .map(({ rule }) => rule),
+        .filter(({ rule }) => rule === owner)
+        .map(({ action }) => action.name),
     ),
   ];
-  if (owners.length !== 1) return undefined;
-  const owner = owners[0];
-  const actions = routes
-    .filter(({ rule }) => rule === owner)
-    .map(({ action }) => action.name);
-  const decision: Record<string, unknown> = {
-    ...conflicting,
-    shouldRespond: "RESPOND",
-    contexts: [...owner.contexts],
-    intents: [text],
-    candidateActionNames: [...new Set(actions)],
-    replyText: "",
-    replyEffectStatus: "pending",
-    requiresTool: true,
+  if (actions.length === 0) return undefined;
+  return {
+    route: owner.id,
+    decision: {
+      shouldRespond: "RESPOND",
+      contexts: [...owner.contexts],
+      intents: [text],
+      candidateActionNames: actions,
+      replyText: "",
+      replyEffectStatus: "pending",
+      requiresTool: true,
+      facts: [],
+      relationships: [],
+      topics: [],
+      addressedTo: [],
+      contextRequests: [],
+      visualContinuation: {
+        disposition: "none",
+        viewId: "",
+        reason: `The complete request is owned by ${owner.id}.`,
+      },
+    },
   };
-  for (const field of ["facts", "relationships"] as const)
-    if (Array.isArray(decision[field])) decision[field] = [];
-  if (decision.visualContinuation !== undefined)
-    decision.visualContinuation = {
-      disposition: "none",
-      viewId: "",
-      reason: `The complete request is owned by ${owner.id}.`,
-    };
-  return { route: owner.id, decision };
 }
