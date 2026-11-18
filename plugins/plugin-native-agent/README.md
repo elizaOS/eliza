@@ -143,10 +143,11 @@ unfunded account then ends the turn with a `done` event whose `failureKind` is
 `provider_issue` or `insufficient_credits`, and any other failure with an `error`
 event (`type`, `message`, optional `code`).
 
-Each start unpacks the payload into a release named by its inventory digest and then
-removes every other release, its seal and any abandoned staging tree
-(`RuntimeBundleStore.Prepared.retainOnly()`), so an app update does not leave the
-previous runtime on the device.
+Each start uses `RuntimeBundleStore.prepareInstalledApkFromAsset` to prepare the
+installed APK's payload. It first removes obsolete releases, their seals and
+abandoned staging trees from the private release root. The Android update stops
+the process using the old release, so the new version can reclaim that space
+before it checks whether the new payload fits.
 
 The service returns `START_STICKY` so that Android may restart it after its
 process is killed; that has not been observed on a device, and a restart Android
