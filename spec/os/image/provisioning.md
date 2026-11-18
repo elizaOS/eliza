@@ -17,7 +17,7 @@ recognise is `OtherIntent`) and the marks it read. Feature names are the
 launcher package plus `.aosp_image` or `.feature.LISTENER`. Every file is
 written once into the staged product and never overwritten. All of this is
 staging output: only a boot of the built image
-([verification](./verification.md)) shows that Android applied it.
+(`image/verification.md`) shows that Android applied it.
 
 ## Story: Make my launcher Home on first boot
 
@@ -330,7 +330,7 @@ pure def lawRefusingLauncherHasNoSecureCapture(manifest: LauncherManifest): bool
 
 Adding the requirement to a makefile that has it leaves it unchanged; a
 makefile that names it twice is refused. The booted image must resolve the
-alarm actions to DeskClock ([verification](./verification.md)); that does
+alarm actions to DeskClock (`image/verification.md`); that does
 not prove an alarm rings.
 
 ```quint

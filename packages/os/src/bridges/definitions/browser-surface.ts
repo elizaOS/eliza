@@ -171,7 +171,7 @@ export interface NavigationRequestedEvent extends SurfaceIdOptions {
 export interface DialogRequestedEvent extends SurfaceIdOptions {
   dialogId: string;
   kind: "alert" | "confirm" | "prompt" | "beforeunload";
-  /** Website text, plain and bounded. Show it as the website's words, never Grace's. */
+  /** Website text, plain and bounded. Show it as the website's words, never the app's. */
   message: string;
   /** Prompt only: the page's suggested answer. */
   defaultText?: string;
