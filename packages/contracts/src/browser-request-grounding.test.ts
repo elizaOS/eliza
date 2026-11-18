@@ -2,10 +2,12 @@ import { domainToUnicode } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   authoredBrowserDestination,
+  authoredBrowserOpen,
   browserDestinationMatches,
   browserSearchQueryMatches,
   containsWebAddress,
   directBrowserDestination,
+  directBrowserOpen,
   directBrowserSearchQuery,
   groundBrowserDestination,
   groundBrowserSearchQuery,
@@ -67,7 +69,6 @@ describe("strict whole-message open command (fast path)", () => {
     "youtube.com",
     "https://EXAMPLE.com/a?q=1#section",
     "open youtube.com now",
-    "open youtube.com in a new tab",
     "can you open youtube.com",
     "can you open youtube.com for me?",
     "pull up nytimes.com",
@@ -838,6 +839,85 @@ const GROUNDING: [string, string, string | undefined][] = [
     "https://nytimes.com/",
   ],
 ];
+
+describe("strict open command with where the address opens", () => {
+  // The owner's v609 turns: "open example.com in the browser" fell outside the
+  // strict command, so only the Browser view opened and example.com never
+  // loaded; "open wikipedia.org in a new tab" became an empty new tab.
+  it.each([
+    ["open example.com in the browser", "https://example.com/", false],
+    ["Open example.com in the browser.", "https://example.com/", false],
+    ["open example.com in browser", "https://example.com/", false],
+    ["open example.com in my browser please", "https://example.com/", false],
+    ["go to example.com in the web browser", "https://example.com/", false],
+    ["open example.com in the browser app", "https://example.com/", false],
+    ["open example.com in the browser, thanks", "https://example.com/", false],
+    [
+      "Hey Eliza, visit example.com in the Browser!",
+      "https://example.com/",
+      false,
+    ],
+    ["open wikipedia.org in a new tab", "https://wikipedia.org/", true],
+    ["Open wikipedia.org in a new tab.", "https://wikipedia.org/", true],
+    ["open wikipedia.org in new tab", "https://wikipedia.org/", true],
+    ["open wikipedia.org in another tab", "https://wikipedia.org/", true],
+    [
+      "open wikipedia.org in a separate browser tab",
+      "https://wikipedia.org/",
+      true,
+    ],
+    ["open wikipedia.org in a new tab, please", "https://wikipedia.org/", true],
+    ["open example.com/a?q=1 in a new tab", "https://example.com/a?q=1", true],
+    ['open "example.com/path" in a new tab', "https://example.com/path", true],
+    ["open youtube.com", "https://youtube.com/", false],
+  ])("claims %s", (text, href, newTab) => {
+    expect(authoredBrowserOpen(text)).toEqual({ href, newTab });
+    expect(authoredBrowserDestination(text)).toBe(href);
+    // A direct request too, so the phone opens it without a review.
+    expect(directBrowserDestination(text)).toBe(href);
+  });
+  it.each([
+    // A private tab, another app, a time or more work stays the model's call.
+    "open youtube.com in a private tab",
+    "open youtube.com in a new private tab",
+    "open youtube.com in incognito",
+    "open youtube.com in safari",
+    "open youtube.com in chrome",
+    "open youtube.com in the browser tomorrow",
+    "open youtube.com in a new tab in five minutes",
+    "open youtube.com in the browser and read its title",
+    "open youtube.com in a new tab and then close it",
+    "open youtube.com in the browser in a new tab",
+    "open youtube.com in the browserfoo",
+    "open youtube.com in a new tabby cat",
+    "don't open youtube.com in the browser",
+    "don't open youtube.com in a new tab",
+    "can you open youtube.com in a new tab",
+  ])("does not claim %s", (text) => {
+    expect(authoredBrowserOpen(text)).toBeUndefined();
+    expect(authoredBrowserDestination(text)).toBeUndefined();
+  });
+  it("a polite question for a new tab is still a direct request", () => {
+    expect(
+      directBrowserDestination("can you open youtube.com in a new tab"),
+    ).toBe("https://youtube.com/");
+    // The owner's placement survives the polite form, so the service can open
+    // it in a tab of its own even when the model leaves newTab out.
+    expect(directBrowserOpen("can you open youtube.com in a new tab?")).toEqual(
+      { href: "https://youtube.com/", newTab: true },
+    );
+    expect(
+      directBrowserOpen("could you please open youtube.com in the browser"),
+    ).toEqual({ href: "https://youtube.com/", newTab: false });
+    expect(directBrowserOpen("youtube.com")).toEqual({
+      href: "https://youtube.com/",
+      newTab: false,
+    });
+    expect(
+      directBrowserOpen("can you open youtube.com in a private tab"),
+    ).toBeUndefined();
+  });
+});
 
 describe("grounding a model browser proposal in the typed address", () => {
   it("covers every rule with a large table", () =>

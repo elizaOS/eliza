@@ -1245,16 +1245,31 @@ export function bindRequestOperationResult(
 			// update before checking permission. An explicit edit may be fulfilled
 			// by either; keep the raw dispatch identity for matching and freshness
 			// checks.
-			const requested =
+			const explicit =
 				value.interpretation?.status === "explicit"
-					? value.interpretation.operations.includes(
-							attempt.registeredOperation,
-						) ||
-						((attempt.registeredOperation === "patch" ||
-							attempt.registeredOperation === "move") &&
-							attempt.resolved === "update" &&
-							value.interpretation.operations.includes("update"))
+					? value.interpretation.operations
 					: undefined;
+			const direct =
+				explicit !== undefined &&
+				(explicit.includes(attempt.registeredOperation) ||
+					((attempt.registeredOperation === "patch" ||
+						attempt.registeredOperation === "move") &&
+						attempt.resolved === "update" &&
+						explicit.includes("update")));
+			// Stage 1 names an append or partial edit "patch", and the registered
+			// update child accepts the same textEdit append/substitution. Its
+			// applied edit of an existing note therefore fulfils an explicit
+			// patch instead of counting as an unrequested effect. This alternate
+			// route adds no obligation: its no-effect rejection stays outside
+			// the request, so the original patch remains the operation to correct.
+			const alternateEdit =
+				explicit !== undefined &&
+				!direct &&
+				attempt.registeredOperation === "update" &&
+				attempt.resolved === "update" &&
+				explicit.includes("patch");
+			const requested =
+				explicit !== undefined ? direct || alternateEdit : undefined;
 			if (dispatch && canonicalChild)
 				completion = Object.freeze({
 					issuer: attempt.issuer,
@@ -1266,8 +1281,9 @@ export function bindRequestOperationResult(
 					canonicalChild,
 					childDefinition: definition(canonicalChild),
 					requested,
-					rejected: requested === true && noEffectRejection,
-					outsideRequestRejection: requested === false && noEffectRejection,
+					rejected: direct && noEffectRejection,
+					outsideRequestRejection:
+						(requested === false || alternateEdit) && noEffectRejection,
 					ambiguousRejection:
 						value.interpretation?.status !== "explicit" && noEffectRejection,
 				});

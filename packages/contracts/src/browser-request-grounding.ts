@@ -51,6 +51,14 @@ const SEARCH_SUFFIX =
 export const BROWSER_SEARCH_QUERY_MAX = 512;
 const SUFFIX =
   /^\s+(?:please|for\s+me|thanks|thank\s+you|(?:would|will|could|can)\s+you)[.,!?]*$/i;
+// Where the owner asks for the address to open, right after it: "in the
+// browser" names the app the strict command already opens it in; "in a new tab"
+// asks for a tab of its own. A private tab is not a placement: that request
+// goes to the model.
+const IN_BROWSER =
+  /^\s+in\s+(?:(?:the|my|your|this)\s+)?(?:web\s+)?browser(?:\s+app)?(?=[\s,.!?]|$)/i;
+const IN_NEW_TAB =
+  /^\s+in\s+(?:a\s+)?(?:new|another|separate|different)\s+(?:browser\s+)?tab(?=[\s,.!?]|$)/i;
 // The word website or site right before or after an address.
 const SITE_BEFORE = /\b(?:web\s?)?site[:,]?\s+(?:(?:at|called|named)\s+)?$/i;
 const SITE_AFTER = /^\s+(?:web\s?)?site\b/i;
@@ -173,18 +181,40 @@ const LABEL_AFTER = /^(?:-*|\.)[a-z\d]/;
 
 /** The address of a strict open command that is the whole current message:
  * "(please) open|visit|go to|navigate to <address>", with an optional
- * "hey/hi/ok/okay" and the assistant's name before it and a polite suffix and
- * closing punctuation after it. Only this form may skip the model's judgment. */
+ * "hey/hi/ok/okay" and the assistant's name before it, an optional "in the
+ * browser" or "in a new tab", and a polite suffix and closing punctuation
+ * after it. Only this form may skip the model's judgment. */
 export function authoredBrowserDestination(
   text: string,
   assistantName: string = DEFAULT_ASSISTANT_NAME,
 ): string | undefined {
+  return authoredBrowserOpen(text, assistantName)?.href;
+}
+
+/** The strict open command of authoredBrowserDestination with where it asks
+ * the address to open: `newTab` is true only when the owner said "in a new
+ * tab" (or another, separate or different tab). */
+export function authoredBrowserOpen(
+  text: string,
+  assistantName: string = DEFAULT_ASSISTANT_NAME,
+): { href: string; newTab: boolean } | undefined {
   if (unreadable(text)) return;
   const command = patterns(assistantName).command.exec(text.trim());
   if (!command) return;
   let target = command[1];
+  let newTab = false;
   if (command[2]) {
-    if (!SUFFIX.test(command[2])) return;
+    let rest = command[2];
+    const placement = IN_NEW_TAB.exec(rest) ?? IN_BROWSER.exec(rest);
+    if (placement) {
+      newTab = IN_NEW_TAB.test(rest);
+      rest = rest.slice(placement[0].length);
+    }
+    if (
+      !(placement && /^[.,!?]*$/.test(rest)) &&
+      !SUFFIX.test(placement ? rest.replace(/^,/, "") : rest)
+    )
+      return;
     target = target.replace(/,$/, "");
   }
   // Quotes delimit an exact address, so nothing inside them is prose.
@@ -198,7 +228,8 @@ export function authoredBrowserDestination(
     const bare = stripTrailingPunctuation(target, ".,!?");
     if (!/[/?#]/.test(bare.replace(/^https?:\/\//i, ""))) target = bare;
   }
-  return webAddress(target)?.href;
+  const href = webAddress(target)?.href;
+  return href ? { href, newTab } : undefined;
 }
 
 /** A direct client request must be a whole-message open command, a polite
@@ -208,16 +239,27 @@ export function directBrowserDestination(
   text: string,
   assistantName: string = DEFAULT_ASSISTANT_NAME,
 ): string | undefined {
+  return directBrowserOpen(text, assistantName)?.href;
+}
+
+/** The direct request of directBrowserDestination with where it asks the
+ * address to open: `newTab` is true only when the owner said "in a new tab",
+ * in the strict command or a polite question ("can you open x.com in a new
+ * tab?"). */
+export function directBrowserOpen(
+  text: string,
+  assistantName: string = DEFAULT_ASSISTANT_NAME,
+): { href: string; newTab: boolean } | undefined {
   if (unreadable(text)) return;
-  const strict = authoredBrowserDestination(text, assistantName);
+  const strict = authoredBrowserOpen(text, assistantName);
   if (strict) return strict;
   const question = patterns(assistantName).directRequest.exec(text.trim());
   if (question) {
-    const destination = authoredBrowserDestination(
+    const destination = authoredBrowserOpen(
       `Open ${question[1]}${question[3] ?? ""}`,
     );
     if (!destination) return;
-    const url = new URL(destination),
+    const url = new URL(destination.href),
       tld = url.hostname.slice(url.hostname.lastIndexOf(".") + 1);
     if (
       FILE_TYPE_TLDS.has(tld) &&
@@ -232,7 +274,7 @@ export function directBrowserDestination(
   if (!url) return;
   const tld = url.hostname.slice(url.hostname.lastIndexOf(".") + 1);
   if (FILE_TYPE_TLDS.has(tld) && !/^(?:https?:\/\/|www\.)/i.test(bare)) return;
-  return url.href;
+  return { href: url.href, newTab: false };
 }
 
 /** The destination to open for a model-proposed browser URL, built from the

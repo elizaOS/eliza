@@ -1135,7 +1135,7 @@ export const notesAction: Action = {
     {
       name: "expectedRevision",
       description:
-        "Required for every PATCH, including textEdit, and for UPDATE append, authoredEdit or replacementContent: copy notesRevision from the same complete note commit/read/provider content used to prepare the edit. CREATE returns its exact transaction revision with the complete created note. Never guess or refresh only the token. Any later mutation or conflict requires re-reading and reconciling. Only UPDATE literal textEdit may omit it.",
+        "Required for every PATCH, including textEdit, and for UPDATE append, authoredEdit or replacementContent: copy notesRevision from the same complete note commit/read/provider content used to prepare the edit. CREATE returns its exact transaction revision with the complete created note. Never guess or refresh only the token. Any later mutation or conflict requires re-reading and reconciling. Only UPDATE literal textEdit substitution (oldText/newText) may omit it; a textEdit append always needs it.",
       subactions: ["update", "patch", "restore", "move"],
       required: false,
       requiredForSubactions: ["patch"],

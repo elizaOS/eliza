@@ -60,6 +60,7 @@ import {
   BROWSER_CONTROL_TYPES,
   BROWSER_FIND_CAPABILITY,
   BROWSER_HISTORY_CAPABILITY,
+  BROWSER_OPEN_NEW_TAB_CAPABILITY,
   BROWSER_SEARCH_CAPABILITY,
   BROWSER_TABS_CAPABILITY,
   isBrowserControl,
@@ -69,6 +70,7 @@ import {
   browserSearchQueryMatches,
   DeviceBrowserNotRequestedError,
   directBrowserDestination,
+  directBrowserOpen,
   directBrowserSearchQuery,
   groundBrowserDestination,
   groundBrowserSearchQuery,
@@ -223,6 +225,7 @@ import {
   isTelephonyAction,
   MESSAGES_READ_CAPABILITY,
   PHONE_CALL_CAPABILITY,
+  PHONE_KEYPAD_CAPABILITY,
   SMS_COMPOSE_CAPABILITY,
   SMS_COMPOSE_TARGET_CAPABILITY,
   selectedTelephonyView,
@@ -346,12 +349,22 @@ export function deviceActionToolGuidance(
       (parameter) => parameter.name === "operation",
     )?.schema;
     const branches = schema?.anyOf;
-    if (!Array.isArray(branches) || branches.length !== 1) return [];
-    const types = branches[0]?.properties?.type?.enum;
-    return Array.isArray(types) &&
-      types.length === 1 &&
-      typeof types[0] === "string"
-      ? [{ name: action.name, operation: types[0] }]
+    if (!Array.isArray(branches) || branches.length === 0) return [];
+    // One operation, possibly in several capability-gated forms (camera
+    // capture with and without a lens).
+    const operations = new Set(
+      branches.map((branch) => {
+        const types = branch?.properties?.type?.enum;
+        return Array.isArray(types) &&
+          types.length === 1 &&
+          typeof types[0] === "string"
+          ? types[0]
+          : undefined;
+      }),
+    );
+    const [operation] = operations;
+    return operations.size === 1 && typeof operation === "string"
+      ? [{ name: action.name, operation }]
       : [];
   });
   const deviceActionTurn = getDeviceActionTurn();
@@ -1228,10 +1241,12 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   CONTACT_UPDATE_VALUES_CAPABILITY,
   CONTACT_SHOW_CAPABILITY,
   CONTACT_READ_CAPABILITY,
+  PHONE_KEYPAD_CAPABILITY,
   BROWSER_SEARCH_CAPABILITY,
   BROWSER_TABS_CAPABILITY,
   BROWSER_FIND_CAPABILITY,
   BROWSER_HISTORY_CAPABILITY,
+  BROWSER_OPEN_NEW_TAB_CAPABILITY,
   TELEPHONY_VIEWS_CAPABILITY,
 ];
 export class DeviceActionService {
@@ -2226,6 +2241,14 @@ export class DeviceActionService {
     },
   ): Promise<ApprovalEnqueueResult> {
     let validated = validateDeviceOperation(operation);
+    // A new tab is where an address opens, not another effect: a phone that
+    // did not negotiate it opens the address as it always has.
+    if (
+      validated.type === "browser_navigate" &&
+      validated.newTab &&
+      !c.capabilities?.includes(BROWSER_OPEN_NEW_TAB_CAPABILITY)
+    )
+      validated = { type: validated.type, url: validated.url };
     if (!deviceAppRecordOperationAvailable(this.runtime, validated))
       throw new DeviceActionError(
         "Device Notes/Calendar record authority is not selected for this turn",
@@ -2405,7 +2428,25 @@ export class DeviceActionService {
           this.runtime.character.name,
         );
       if (!destination) throw new DeviceBrowserNotRequestedError();
-      validated = { ...validated, url: destination };
+      // "Open x.com in a new tab" (or "can you open x.com in a new tab?") is
+      // the owner's own placement, like the address: the page opens in a tab
+      // of its own even when the model left newTab out, on a phone that
+      // negotiated it (newTab was dropped above for one that did not). Without
+      // it the phone may reuse its own tab.
+      const opened = directBrowserOpen(
+        requestOrigin?.requestText ?? "",
+        this.runtime.character.name,
+      );
+      const newTab =
+        validated.newTab === true ||
+        (opened?.newTab === true &&
+          opened.href === destination &&
+          c.capabilities?.includes(BROWSER_OPEN_NEW_TAB_CAPABILITY) === true);
+      validated = {
+        type: "browser_navigate",
+        url: destination,
+        ...(newTab ? { newTab: true as const } : {}),
+      };
     }
     if (validated.type === "browser_search") {
       // The same holds for a search: the words the user typed, never the

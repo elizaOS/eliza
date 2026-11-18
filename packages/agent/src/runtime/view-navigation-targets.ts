@@ -32,6 +32,23 @@ export function resolveViewNavigationTargets<
   });
 }
 
+/**
+ * The view a free-text destination names, if any: "the settings page", "my
+ * calendar" and "Notes" name the Settings, Calendar and Notes views. Matching
+ * ignores availability and role: a view name is never a place to travel to.
+ */
+export function namesRegisteredView<T extends { id: string; label: string }>(
+  views: readonly T[],
+  target: string,
+): boolean {
+  const name = target
+    .trim()
+    .replace(/[\s.!?]+$/u, "")
+    .replace(/^(?:the|my|your)\s+/iu, "")
+    .replace(/\s+(?:page|screen|view|tab|app)$/iu, "");
+  return resolveViewNavigationTargets(views, name).length > 0;
+}
+
 /** Authoritative destination vocabulary for Stage 1 and egress; never caller-supplied aliases. */
 export function viewNavigationDestination(view: { id: string; label: string }) {
   const aliases = viewNavigationAliases(view);
@@ -124,4 +141,15 @@ export function resolveExplicitRegisteredViewRequest<
 /** A complete relative navigation command; the caller must supply trusted history. */
 export function isExplicitBackViewRequest(text: string): boolean {
   return /^(?:please\s+)?(?:go\s+)?back$/iu.test(explicitCommandText(text));
+}
+
+/**
+ * A complete request for the foreground page's own history or load state:
+ * Back, Forward, reload or stop. Where the foreground view keeps page history
+ * (Browser), these act on its tab, never on app view navigation.
+ */
+export function isForegroundPageHistoryRequest(text: string): boolean {
+  return /^(?:please\s+)?(?:(?:go\s+)?(?:back|forward)|(?:reload|refresh)(?:\s+(?:the|this)\s+page)?|stop\s+loading(?:\s+(?:the|this)\s+page)?)$/iu.test(
+    explicitCommandText(text),
+  );
 }

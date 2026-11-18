@@ -301,6 +301,8 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "files_filter":
     case "files_open":
     case "contact_show":
+    // The keypad in front, filled in at most: nothing is dialed or called.
+    case "phone_keypad":
       return true;
     // A data change and an outward share, each opened as an owner review.
     case "photos_album_create":

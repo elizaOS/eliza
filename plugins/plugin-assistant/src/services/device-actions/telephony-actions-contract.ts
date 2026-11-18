@@ -12,13 +12,16 @@ import {
   isContactWrite,
   isMessagesRead,
   isPhoneCall,
+  isPhoneKeypad,
   isSmsCompose,
   isSmsReply,
   isVoicemailRead,
   type MessagesReadResult,
   type PhoneCallResult,
+  type PhoneKeypadResult,
   phoneCallReceiptOutcome,
   phoneCallResultText,
+  phoneKeypadResultText,
   type SmsComposeResult,
   type SmsReplyResult,
   smsComposeCapabilityAvailable,
@@ -37,6 +40,7 @@ import {
   validateContactWriteResult,
   validateMessagesReadResult,
   validatePhoneCallResult,
+  validatePhoneKeypadResult,
   validateSmsComposeResult,
   validateSmsReplyResult,
   validateVoicemailDeleteResult,
@@ -54,6 +58,7 @@ export type TelephonyActionResult =
   | ContactReadResult
   | SmsComposeResult
   | SmsReplyResult
+  | PhoneKeypadResult
   | MessagesReadResult
   | VoicemailReadResult
   | VoicemailDeleteResult;
@@ -120,6 +125,7 @@ export function validateTelephonyActionResult(
   if (isSmsCompose(operation))
     return validateSmsComposeResult(operation, value);
   if (isSmsReply(operation)) return validateSmsReplyResult(value);
+  if (isPhoneKeypad(operation)) return validatePhoneKeypadResult(value);
   if (isMessagesRead(operation)) return validateMessagesReadResult(value);
   if (isVoicemailRead(operation)) return validateVoicemailReadResult(value);
   return validateVoicemailDeleteResult(value);
@@ -142,6 +148,8 @@ export function telephonyActionReceiptOutcome(
       return smsComposeReceiptOutcome(result);
     case "sms-reply":
       return smsReplyReceiptOutcome(result);
+    case "phone-keypad":
+      return result.status === "opened" ? "applied" : "failed";
     case "messages-read":
     case "voicemail-read":
     case "contact-read":
@@ -189,6 +197,8 @@ export function telephonyActionResultText(
       return smsComposeResultText(result);
     case "sms-reply":
       return smsReplyResultText(result);
+    case "phone-keypad":
+      return phoneKeypadResultText(result);
     case "voicemail-delete":
       return voicemailDeleteResultText(result);
     case "messages-read":

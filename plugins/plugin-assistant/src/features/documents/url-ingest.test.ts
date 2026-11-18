@@ -7,9 +7,16 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("node:dns/promises", () => ({
-  lookup: vi.fn(async () => ({ address: "93.184.216.34", family: 4 })),
-}));
+// url-ingest resolves through dns.promises.lookup at call time (the mobile
+// agent replaces it at boot), so the fake resolver lives on that object.
+vi.mock("node:dns", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:dns")>();
+  const promises = {
+    ...actual.promises,
+    lookup: vi.fn(async () => ({ address: "93.184.216.34", family: 4 })),
+  };
+  return { ...actual, promises, default: { ...actual, promises } };
+});
 
 import {
   __documentUrlPinnedRequestForTests,

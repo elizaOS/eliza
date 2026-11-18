@@ -8,7 +8,11 @@ import {
 } from "./runtime/assistant-reasoning.ts";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators.ts";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts.ts";
-import { registerDeviceBrowserOpenRouting } from "./services/device-actions/tools.ts";
+import {
+  registerDeviceBrowserOpenRouting,
+  registerDeviceCameraCaptureRouting,
+  registerDeviceTelephonyRouting,
+} from "./services/device-actions/tools.ts";
 import {
   PLANNER_CONTINUATION_TASK,
   registerPlannerContinuationWorker,
@@ -33,6 +37,8 @@ export function createAssistantPlugin(): Plugin {
       runtime.messageService = new DefaultMessageService();
       registerCoreShouldRespondRiskHook(runtime);
       registerDeviceBrowserOpenRouting(runtime);
+      registerDeviceCameraCaptureRouting(runtime);
+      registerDeviceTelephonyRouting(runtime);
       // Registered once per runtime, after storage is ready: recovery reads the
       // persisted continuation tasks left by a previous process.
       void runtime.initPromise
