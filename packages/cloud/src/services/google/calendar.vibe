@@ -97,7 +97,7 @@ const unclear: Sent = { reply: { tag: "Unclear" }, event: null, rejection: null 
 const unknownRefusal: Refusal = refused("ProviderUnavailable").refusal
 
 const TimeSchema = Schema.Struct({ dateTime: Schema.optionalKey(Schema.String), date: Schema.optionalKey(Schema.String), timeZone: Schema.optionalKey(Schema.String) })
-const GoogleEvent = Schema.Struct({
+const GoogleEventSchema = Schema.Struct({
   id: Schema.String,
   etag: Schema.optionalKey(Schema.String),
   status: Schema.optionalKey(Schema.String),
@@ -123,7 +123,7 @@ const GoogleEvent = Schema.Struct({
   }))),
   conferenceData: Schema.optionalKey(Schema.Struct({ entryPoints: Schema.optionalKey(Schema.Array(Schema.Struct({ uri: Schema.optionalKey(Schema.String) }))) }))
 })
-type GoogleEvent = typeof GoogleEvent.Type
+type GoogleEvent = typeof GoogleEventSchema.Type
 const Page = Schema.Struct({ items: Schema.optionalKey(Schema.Array(Schema.Unknown)), nextPageToken: Schema.optionalKey(Schema.String), timeZone: Schema.optionalKey(Schema.String) })
 const CalendarEntry = Schema.Struct({
   id: Schema.String,
@@ -390,7 +390,7 @@ effect function feedRoute(context: RouteContext) {
   let bytes = 0
   try readPages(grant, eventsPath(query.calendarId), { timeMin, timeMax, timeZone, singleEvents: "true", orderBy: "startTime", showDeleted: "false", maxResults: "2500" }, effect (items, zone) => {
     for (const item of items) {
-      const event = decoded(GoogleEvent, item)
+      const event = decoded(GoogleEventSchema, item)
       const card = event === undefined ? null : eventCard(query.calendarId, event, zone ?? timeZone)
       if (card === null) continue
       bytes += encoder.encode(JSON.stringify(card)).length + 1
@@ -404,7 +404,7 @@ effect function feedRoute(context: RouteContext) {
 }
 
 effect function readEvent(grant: Grant, calendarId: string, eventId: string) {
-  const event = decoded(GoogleEvent, google(grant, "GET", eventPath(calendarId, eventId)) catch effect (failure) => { throw readRefusal(failure) })
+  const event = decoded(GoogleEventSchema, google(grant, "GET", eventPath(calendarId, eventId)) catch effect (failure) => { throw readRefusal(failure) })
   const card = event === undefined || event.id !== eventId ? null : eventCard(calendarId, event, null)
   if (card === null) throw refused("ProviderInvalidResponse")
   return card
@@ -419,7 +419,7 @@ effect function eventRoute(context: RouteContext) {
 }
 
 effect function lookupWrite(grant: Grant, planned: Planned): (Seen | undefined)!!GoogleContext {
-  const read = Effect.map(google(grant, "GET", eventPath(planned.calendarId, planned.eventId)), (raw) => ({ kind: "found" as const, event: decoded(GoogleEvent, raw) }))
+  const read = Effect.map(google(grant, "GET", eventPath(planned.calendarId, planned.eventId)), (raw) => ({ kind: "found" as const, event: decoded(GoogleEventSchema, raw) }))
     catch (failure) => failure._tag === "NotFound" ? { kind: "gone" as const } : { kind: "failed" as const }
   if (read.kind === "failed") return undefined
   const event = read.kind === "found" && read.event?.id === planned.eventId ? read.event : undefined
@@ -451,7 +451,7 @@ function refusedBy(failure: { readonly _tag: string }): Sent {
 
 effect function sendWrite(grant: Grant, planned: Planned): Sent!!CloudContext {
   const judged = (raw: unknown): Sent => {
-    const event = decoded(GoogleEvent, raw)
+    const event = decoded(GoogleEventSchema, raw)
     const card = event === undefined ? null : eventCard(planned.calendarId, event, null)
     if (event === undefined || card === null || event.id !== planned.eventId || planned.body === null || !matches(planned.body, event)) return unclear
     if (planned.kind === "change" && (event.etag === undefined || event.etag === planned.ifMatch)) return unclear

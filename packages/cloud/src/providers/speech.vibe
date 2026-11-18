@@ -1,4 +1,4 @@
-// spec/cloud/services/speech.md, "Story: Speak a reply as audio"; spec/cloud/services/speech.md, "Story: Transcribe a recording"; spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"
+// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/index.md, "Story: Transcribe a recording"; spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"
 import * as NodeSocket from "@effect/platform-node/NodeSocket"
 import { Base64 } from "effect/encoding"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
@@ -83,6 +83,21 @@ export interface TtsLink {
   readonly edges: Stream.Stream<TtsEdge, SpeechFailure>
 }
 
+module node {
+  import type { Recording } from "./speech.vibe"
+
+  /** @throws {unknown} */
+  export function recordingForm(recording: Recording, modelId: string): FormData {
+    const form = new FormData()
+    form.append("file", new Blob([new Uint8Array(recording.audio)], { type: recording.mimeType }), "audio")
+    form.append("model", modelId)
+    if (recording.languageCode !== undefined) form.append("language", (recording.languageCode.split("-")[0] ?? "").toLowerCase())
+    form.append("timestamp_granularities[]", "word")
+    return form
+  }
+}
+import { recordingForm } from node
+
 export const synthesisBudget: Millis = 30_000
 export const transcriptionBudget: Millis = 120_000
 export const realtimeOpenBudget: Millis = 8_000
@@ -136,8 +151,8 @@ function jsonOf(text: string): unknown {
   }
 }
 
-function decodedWith<S extends Schema.Top>(shape: S, input: unknown): S["Type"] | undefined {
-  return Option.getOrUndefined(Schema.decodeUnknownOption(shape as Schema.Codec<S["Type"], unknown>)(input))
+function decodedWith<S extends Schema.ConstraintDecoder<unknown>>(shape: S, input: unknown): S["Type"] | undefined {
+  return Option.getOrUndefined(Schema.decodeUnknownOption(shape)(input))
 }
 
 function ordered(starts: ReadonlyArray<number>, ends: ReadonlyArray<number>): boolean {
@@ -239,15 +254,6 @@ function synthesisBody(synthesis: Synthesis): Readonly<Record<string, unknown>> 
   }
 }
 
-function recordingForm(recording: Recording): FormData {
-  const form = new FormData()
-  form.append("file", new Blob([new Uint8Array(recording.audio)], { type: recording.mimeType }), "audio")
-  form.append("model", batchSttModel)
-  if (recording.languageCode !== undefined) form.append("language", (recording.languageCode.split("-")[0] ?? "").toLowerCase())
-  form.append("timestamp_granularities[]", "word")
-  return form
-}
-
 effect function released(response: HttpClientResponse.HttpClientResponse): void!! {
   Stream.runHead(response.stream) catch () => undefined
 }
@@ -289,9 +295,10 @@ export effect function synthesizeTimed(settings: SpeechSettings, synthesis: Synt
   })
 }
 
-export effect function transcribe(settings: SpeechSettings, recording: Recording): Transcription!SpeechFailure!SpeechContext {
-  return try within(transcriptionBudget, effect {
-    const request = HttpClientRequest.post(`${settings.baseUrl}/stt`).pipe(HttpClientRequest.bodyFormData(recordingForm(recording)))
+export effect function prepareTranscription(settings: SpeechSettings, recording: Recording): Effect.Effect<Transcription, SpeechFailure, SpeechContext>!ProviderUnreachable {
+  const form = try Effect.try({ try: () => recordingForm(recording, batchSttModel), catch: () => new ProviderUnreachable() })
+  return within(transcriptionBudget, effect {
+    const request = HttpClientRequest.post(`${settings.baseUrl}/stt`).pipe(HttpClientRequest.bodyFormData(form))
     const response = try accepted(settings, request)
     const body = response.json catch effect () => { throw new ProviderInvalidResponse() }
     const transcription = transcriptionOf(body)
@@ -318,7 +325,7 @@ effect function pump<A>(reader: Socket.Reader, edges: Edges<A>, closed: Deferred
       }
     }
   }
-  try reading catch effect (failure) => {
+  reading catch effect (failure) => {
     const clean = failure._tag === "SocketError" && failure.reason._tag === "SocketCloseError" && failure.reason.code === 1000
     try Deferred.succeed(closed, clean)
     if (clean) {

@@ -80,11 +80,11 @@ effect function requireFreshReview(userId: string, reviewId: string, now: number
   if (!isFreshReview(loaded.state, reviewId, now)) throw new Refused({ refusal: reviewRefusal })
 }
 
-function provenWith<A>(value: A): { readonly proof: LinkProof; readonly value: A | undefined } {
+function provenWith<A>(value: A): { readonly proof: LinkProof; readonly value: A } {
   return { proof: { tag: "ProvenThisAttempt" }, value }
 }
 
-function unproven<A>(failure: Refused): { readonly proof: LinkProof; readonly value: A | undefined } {
+function unproven(failure: Refused): { readonly proof: LinkProof; readonly value: undefined } {
   return { proof: { tag: "Unproven", refusal: failure.refusal }, value: undefined }
 }
 
