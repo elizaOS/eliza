@@ -3,8 +3,9 @@ import type { Area } from "../routes.vibe"
 import { routes as accounts } from "../../identity/accounts.vibe"
 import { routes as sessions, sweeps as sessionSweeps } from "../../identity/sessions.vibe"
 import { routes as secondFactor } from "../../identity/second-factor.vibe"
+import { routes as methods } from "../../identity/methods.vibe"
 
 export const area: Area = {
-  routes: [...accounts, ...sessions, ...secondFactor],
+  routes: [...accounts, ...sessions, ...secondFactor, ...methods],
   sweeps: [...sessionSweeps]
 }

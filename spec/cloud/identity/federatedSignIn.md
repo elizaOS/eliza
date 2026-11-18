@@ -71,8 +71,8 @@ type AttemptStep = { state: GoogleAttempt, out: List[SignInEffect] }
 pure val stateLifetime: Millis = 5 * millisPerMinute
 pure val initial: GoogleAttempt = { flow: O::initial, stateExpiresAt: 0, failure: NoFailure, target: AppReturnUrl, returned: NotReturned, code: NoCode, native: NoChallenge, now: 0 }
 pure def authorizeAdmitted(r: AuthorizeRequest): bool = r.responseType == CodeResponse and r.method == S256 and r.hasState and r.client == N::ClientAdmitted
-pure def clientFault(c: N::ClientCheck): N::ClientFault =
-  if (c == N::ClientRefused({ fault: N::UnknownClient })) N::UnknownClient else if (c == N::ClientRefused({ fault: N::DisabledClient })) N::DisabledClient else N::WrongRedirect
+pure def clientFault(check: N::ClientCheck): N::ClientFault =
+  if (check == N::ClientRefused({ fault: N::UnknownClient })) N::UnknownClient else if (check == N::ClientRefused({ fault: N::DisabledClient })) N::DisabledClient else N::WrongRedirect
 pure def authorizeRefusal(r: AuthorizeRequest): Refusal =
   if (r.responseType != CodeResponse or r.method != S256 or not(r.hasState) or r.client == N::ClientAdmitted) refuse(InvalidRequest)
   else N::faultRefusal(clientFault(r.client))
@@ -341,8 +341,8 @@ pure def nativeRefusal(v: NativeVerdict): Refusal =
   if (v == NativeExpired) refuseFor(AuthenticationRequired, CredentialExpired)
   else if (v == NativeProofWrong) refuse(CredentialProofInvalid)
   else refuseFor(AuthenticationRequired, CredentialUnknown)
-pure val cValues = Set(NoCode, CodeIssued({ redeemBy: 60000 }), CodeRedeemed({ redeemedAs: SessionYield }), CodeExpired)
+pure val codeValues = Set(NoCode, CodeIssued({ redeemBy: 60000 }), CodeRedeemed({ redeemedAs: SessionYield }), CodeExpired)
 pure val nowValues = Set(0, 60000)
-pure def lawEveryRefusalIsFinal(authorize: AuthorizeRequest, c: CodePhase, now: Millis, v: NativeVerdict): bool =
-  List(authorizeRefusal(authorize), codeRefusal(c, now), nativeRefusal(v)).every(x => wellFormed(x) and not(retryableOf(x)))
+pure def lawEveryRefusalIsFinal(authorize: AuthorizeRequest, code: CodePhase, now: Millis, v: NativeVerdict): bool =
+  List(authorizeRefusal(authorize), codeRefusal(code, now), nativeRefusal(v)).every(x => wellFormed(x) and not(retryableOf(x)))
 ```
