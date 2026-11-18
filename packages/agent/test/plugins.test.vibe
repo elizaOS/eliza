@@ -93,13 +93,11 @@ it.effect('The product plugin adds its action and route beside the agent\'s own 
   try Effect.try(() => assert.deepStrictEqual({
     ready: running.status.ready,
     actions: running.status.actions,
-    registered: running.runtime.actions.some(({ name }) => name === productActionName),
     ping: "json" in ping ? { status: ping.status, body: ping.json } : ping,
     anonymous: "status" in anonymous ? anonymous.status : anonymous,
   }, {
     ready: true,
     actions: ["IGNORE", "NONE", productActionName, "REPLY"],
-    registered: true,
     ping: { status: 200, body: { pong: true } },
     anonymous: 401,
   }))

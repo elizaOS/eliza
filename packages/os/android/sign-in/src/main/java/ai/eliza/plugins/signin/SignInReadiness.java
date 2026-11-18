@@ -194,14 +194,14 @@ public final class SignInReadiness {
           List<Consumer<Status>> waiting;
           synchronized (lock) { waiting = probing.remove(environment.name); }
           Status status = new Status(answer(environment.name).readiness, device());
-          for (Consumer<Status> waiter : waiting) waiter.accept(status);
+          for (Consumer<Status> each : waiting) each.accept(status);
         }
       });
     } catch (RejectedExecutionException closed) {
       List<Consumer<Status>> waiting;
       synchronized (lock) { waiting = probing.remove(environment.name); }
       Status status = new Status(answer(environment.name).readiness, device());
-      for (Consumer<Status> waiter : waiting) waiter.accept(status);
+      for (Consumer<Status> each : waiting) each.accept(status);
     }
   }
 

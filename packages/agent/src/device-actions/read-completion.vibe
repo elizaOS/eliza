@@ -124,6 +124,7 @@ module node {
         const record = await Effect.runPromise(open(input.parameters.get("id") ?? ""))
         return record === undefined ? failure(404, "unknown_proposal") : await work(record, by)
       } catch (cause) {
+        if (cause instanceof CompletionFailed) return failure(409, "original_request_gone")
         runtime.logger.error({ src: "device-actions", cause: cause instanceof Error ? cause.message : String(cause) }, "Device request store unavailable")
         return failure(503, "store_unavailable")
       }

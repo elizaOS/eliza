@@ -1,0 +1,116 @@
+// spec/agent/client/runtimeClient.md, "Story: Reach a runtime that is not running yet"; spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account"; spec/agent/client/runtimeClient.md, "Story: Understand why the runtime refused"
+import { assert, it } from "@effect/vitest"
+import { boot, host, ready } from "./support/kernel.vibe"
+
+module node {
+  import { createRuntimeJsonClient, RuntimeRequestError, type RuntimeJsonBridge, type RuntimeStatus } from "../src/client/index.vibe"
+
+  const failure = (error: unknown) => error instanceof RuntimeRequestError
+    ? { status: error.status, message: error.message, code: error.code }
+    : error instanceof Error ? error.message : "unknown"
+
+  export async function sharedStartupThenRefresh() {
+    let phase: RuntimeStatus["state"] = "stopped"
+    let pollsUntilRunning = 0
+    let account = 1
+    const calls: string[] = []
+    const bridge: RuntimeJsonBridge = {
+      status() {
+        calls.push("status")
+        if (phase === "starting" && pollsUntilRunning-- <= 0) phase = "running"
+        return Promise.resolve({ available: true, state: phase, requestBodyLimit: 4096 })
+      },
+      start() {
+        calls.push("start")
+        phase = "starting"
+        pollsUntilRunning = 2
+        return Promise.resolve({ available: true, state: phase })
+      },
+      restart() {
+        calls.push("restart")
+        account += 1
+        phase = "starting"
+        pollsUntilRunning = 2
+        return Promise.resolve({ available: true, state: phase })
+      },
+      request({ path, method }) {
+        calls.push(`${method} ${path}`)
+        if (phase !== "running") return Promise.reject(new Error("RUNTIME_NOT_READY"))
+        return Promise.resolve({ status: 200, data: { path, account } })
+      },
+    }
+    const client = createRuntimeJsonClient({ bridge: () => bridge, startupTimeoutMs: 5000, pollMs: 5, requestTimeoutMs: 5000 })
+    const first = await Promise.all([client.request("/a"), client.request("/b", { note: "posted" })])
+    const refreshed = client.refreshNativeAccount()
+    const afterRefresh = client.request("/c")
+    await refreshed
+    return {
+      first, afterRefresh: await afterRefresh, limit: client.requestBodyLimit,
+      starts: calls.filter((call) => call === "start").length,
+      lifecycle: calls.filter((call) => call !== "status"),
+    }
+  }
+
+  export async function failedStartup() {
+    const client = createRuntimeJsonClient({
+      startupTimeoutMs: 1000, pollMs: 5, requestTimeoutMs: 1000,
+      bridge: () => ({
+        status: () => Promise.resolve({ available: true, state: "stopped" }),
+        start: () => Promise.resolve({ available: true, state: "stopped" }),
+        restart: () => Promise.reject(new Error("not called")),
+        request: () => Promise.reject(new Error("not called")),
+      }),
+    })
+    return Promise.all([client.request("/a"), client.request("/b")].map((call) => call.then(() => "answered", failure)))
+  }
+
+  export async function noRoute() {
+    let asked = 0
+    const client = createRuntimeJsonClient({ bridge: () => { asked += 1; return undefined }, startupTimeoutMs: 1000, pollMs: 5, requestTimeoutMs: 1000 })
+    const missing = await client.request("/api/health").then(() => "answered", failure)
+    const unrooted = await client.request("//elsewhere.example/api").then(() => "answered", failure)
+    await client.refreshNativeAccount()
+    return { missing, unrooted, asked }
+  }
+
+  export async function overLoopback(port: number) {
+    const client = createRuntimeJsonClient({ httpBase: new URL(`http://127.0.0.1:${port}`), startupTimeoutMs: 5000, pollMs: 5, requestTimeoutMs: 5000 })
+    const health = await client.request("/api/health")
+    const refused = await client.request("/api/status").then(() => "answered", failure)
+    return { health, refused }
+  }
+}
+
+import { failedStartup, noRoute, overLoopback, sharedStartupThenRefresh } from node
+
+it.live('Requests to a stopped runtime share one startup, and a refresh restarts it before the next request (spec/agent/client/runtimeClient.md, "Story: Reach a runtime that is not running yet"; spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account")', effect () => {
+  const observed = try host("shared startup", () => sharedStartupThenRefresh())
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    first: [{ path: "/a", account: 1 }, { path: "/b", account: 1 }],
+    afterRefresh: { path: "/c", account: 2 },
+    limit: 4096,
+    starts: 1,
+    lifecycle: ["start", "GET /a", "POST /b", "restart", "GET /c"],
+  }))
+})
+
+it.live('A startup that never reports running fails every request waiting for it (spec/agent/client/runtimeClient.md, "Story: Reach a runtime that is not running yet")', effect () => {
+  const observed = try host("failed startup", () => failedStartup())
+  try Effect.try(() => assert.deepStrictEqual(observed, ["StartupFailed", "StartupFailed"]))
+})
+
+it.live('With no bridge and no HTTP base a request fails as NoRoute and nothing is called (spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account")', effect () => {
+  const observed = try host("no route", () => noRoute())
+  try Effect.try(() => assert.deepStrictEqual(observed, { missing: "NoRoute", unrooted: "InvalidPath", asked: 2 }))
+})
+
+it.live('A page with no bridge reaches a real agent over loopback HTTP and reads its refusal (spec/agent/client/runtimeClient.md, "Story: Understand why the runtime refused"; spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account")', effect () => {
+  const booted = try boot({ http: true })
+  try ready(booted)
+  const port = booted.transport.kind === "http" ? booted.transport.port : 0
+  const observed = try host("loopback client", () => overLoopback(port))
+  try Effect.try(() => assert.deepStrictEqual(observed, {
+    health: { ready: true, runtime: "ok", agentState: "running", epoch: booted.frame.epoch },
+    refused: { status: 401, message: "unauthorized", code: undefined },
+  }))
+}, 180_000)

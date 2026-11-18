@@ -37,33 +37,33 @@ error (locked, blocked migration, corrupt or another account's store).
 import runtime as R from "../../core/runtime"
 import resources as RS from "./resources"
 import launch as L from "./launch"
-type BootStep = ReadLaunch | OpenStore | Migrate | LoadPlugins | InitializeRuntime | BindTransport | Ready
+type BootPhase = ReadLaunch | OpenStore | Migrate | LoadPlugins | InitializeRuntime | BindTransport | Ready
 type BootResult = NoFailure | FailedWith({ cause: L::BootFailure })
 type ProcessExit = StillRunning | ExitedWith({ code: int })
-type AgentProcess = { step: BootStep, failure: BootResult, epoch: int, backend: L::Backend, plugins: List[str],
+type AgentProcess = { phase: BootPhase, failure: BootResult, epoch: int, backend: L::Backend, plugins: List[str],
   stopRequests: int, runtime: R::Runtime, resources: RS::Resources, outcome: ProcessExit }
-pure val initial: AgentProcess = { step: ReadLaunch, failure: NoFailure, epoch: 0, backend: L::NoBackend, plugins: List(),
+pure val initial: AgentProcess = { phase: ReadLaunch, failure: NoFailure, epoch: 0, backend: L::NoBackend, plugins: List(),
   stopRequests: 0, runtime: R::initial, resources: RS::initial, outcome: StillRunning }
-pure def stepIndex(b: BootStep): int = match b {
+pure def phaseOrder(b: BootPhase): int = match b {
   | ReadLaunch => 0 | OpenStore => 1 | Migrate => 2 | LoadPlugins => 3 | InitializeRuntime => 4 | BindTransport => 5 | Ready => 6
 }
 pure def booting(s: AgentProcess): bool = s.failure == NoFailure and s.runtime.stopPhase == R::Open
 pure def failAt(s: AgentProcess, cause: L::BootFailure): AgentProcess = { ...s, failure: FailedWith({ cause: cause }) }
-pure def canOpenStore(s: AgentProcess, ok: bool): bool = booting(s) and s.step == OpenStore
+pure def canOpenStore(s: AgentProcess, ok: bool): bool = booting(s) and s.phase == OpenStore
 pure def openStore(s: AgentProcess, ok: bool): AgentProcess =
-  if (ok) { ...s, step: Migrate, resources: RS::acquire(s.resources, "store") } else failAt(s, L::Storage)
-pure def canMigrate(s: AgentProcess, ok: bool): bool = booting(s) and s.step == Migrate
-pure def migrate(s: AgentProcess, ok: bool): AgentProcess = if (ok) { ...s, step: LoadPlugins } else failAt(s, L::Storage)
-pure def canLoadPlugins(s: AgentProcess, ok: bool): bool = booting(s) and s.step == LoadPlugins
-pure def loadPlugins(s: AgentProcess, ok: bool): AgentProcess = if (ok) { ...s, step: InitializeRuntime } else failAt(s, L::Config)
-pure def canBindTransport(s: AgentProcess, ok: bool): bool = booting(s) and s.step == BindTransport
+  if (ok) { ...s, phase: Migrate, resources: RS::acquire(s.resources, "store") } else failAt(s, L::Storage)
+pure def canMigrate(s: AgentProcess, ok: bool): bool = booting(s) and s.phase == Migrate
+pure def migrate(s: AgentProcess, ok: bool): AgentProcess = if (ok) { ...s, phase: LoadPlugins } else failAt(s, L::Storage)
+pure def canLoadPlugins(s: AgentProcess, ok: bool): bool = booting(s) and s.phase == LoadPlugins
+pure def loadPlugins(s: AgentProcess, ok: bool): AgentProcess = if (ok) { ...s, phase: InitializeRuntime } else failAt(s, L::Config)
+pure def canBindTransport(s: AgentProcess, ok: bool): bool = booting(s) and s.phase == BindTransport
 pure def bindTransport(s: AgentProcess, ok: bool): AgentProcess =
-  if (ok) { ...s, step: Ready, resources: RS::acquire(s.resources, "transport") } else failAt(s, L::Agent)
+  if (ok) { ...s, phase: Ready, resources: RS::acquire(s.resources, "transport") } else failAt(s, L::Agent)
 pure def stepBootAdvancesOnePhaseAtATime(before: AgentProcess, after: AgentProcess): bool =
-  stepIndex(after.step) == stepIndex(before.step) or stepIndex(after.step) == stepIndex(before.step) + 1
+  phaseOrder(after.phase) == phaseOrder(before.phase) or phaseOrder(after.phase) == phaseOrder(before.phase) + 1
 pure def stepFailureIsFinal(before: AgentProcess, after: AgentProcess): bool =
-  before.failure != NoFailure implies (after.failure == before.failure and after.step == before.step)
-pure def sometimesReady(s: AgentProcess): bool = s.step == Ready and booting(s)
+  before.failure != NoFailure implies (after.failure == before.failure and after.phase == before.phase)
+pure def sometimesReady(s: AgentProcess): bool = s.phase == Ready and booting(s)
 pure def sometimesStorageFailed(s: AgentProcess): bool = s.failure == FailedWith({ cause: L::Storage })
 ```
 
@@ -75,19 +75,19 @@ the frame is a credential error. An admitted launch fixes the epoch the
 health answer echoes, the backend and the plugin load list.
 
 ```quint
-pure def canReadLaunch(s: AgentProcess, doc: L::LaunchDocument, f: L::LaunchFrame): bool = booting(s) and s.step == ReadLaunch
+pure def canReadLaunch(s: AgentProcess, doc: L::LaunchDocument, f: L::LaunchFrame): bool = booting(s) and s.phase == ReadLaunch
 pure def refusalCause(v: L::LaunchVerdict): L::BootFailure = match v { | LaunchRefused(r) => r.cause | _ => L::Config }
 pure def readLaunch(s: AgentProcess, doc: L::LaunchDocument, f: L::LaunchFrame): AgentProcess = {
   val verdict = L::launchVerdict(doc, f)
-  if (verdict == L::LaunchAdmitted) { ...s, step: OpenStore, epoch: f.epoch, backend: doc.backend, plugins: doc.policy.pluginsLoad }
+  if (verdict == L::LaunchAdmitted) { ...s, phase: OpenStore, epoch: f.epoch, backend: doc.backend, plugins: doc.policy.pluginsLoad }
   else failAt(s, refusalCause(verdict))
 }
 pure def alwaysLaunchRefusalHoldsNothing(s: AgentProcess): bool =
-  (s.failure == FailedWith({ cause: L::Credential }) implies s.step == ReadLaunch)
-    and (s.step == ReadLaunch implies (s.resources.held.length() == 0 and s.epoch == 0))
-    and (s.step != ReadLaunch implies s.epoch >= 1)
+  (s.failure == FailedWith({ cause: L::Credential }) implies s.phase == ReadLaunch)
+    and (s.phase == ReadLaunch implies (s.resources.held.length() == 0 and s.epoch == 0))
+    and (s.phase != ReadLaunch implies s.epoch >= 1)
 pure def sometimesCredentialRefused(s: AgentProcess): bool = s.failure == FailedWith({ cause: L::Credential })
-pure def sometimesConfigRefused(s: AgentProcess): bool = s.failure == FailedWith({ cause: L::Config }) and s.step == ReadLaunch
+pure def sometimesConfigRefused(s: AgentProcess): bool = s.failure == FailedWith({ cause: L::Config }) and s.phase == ReadLaunch
 ```
 
 ### Runtime initialization is core's, and admission is open exactly while the transport is bound or binding and no stop began
@@ -97,7 +97,7 @@ error (exit 70, the name the os supervisor uses). Core opens admission only on
 success and closes it for good on stop.
 
 ```quint
-pure def canBeginInitialization(s: AgentProcess): bool = booting(s) and s.step == InitializeRuntime and R::canBeginInitialization(s.runtime)
+pure def canBeginInitialization(s: AgentProcess): bool = booting(s) and s.phase == InitializeRuntime and R::canBeginInitialization(s.runtime)
 pure def beginInitialization(s: AgentProcess): AgentProcess =
   { ...s, runtime: R::beginInitialization(s.runtime), resources: RS::acquire(s.resources, "runtime") }
 pure def canCompleteInitialization(s: AgentProcess, ok: bool): bool = R::canCompleteInitialization(s.runtime, ok)
@@ -105,15 +105,15 @@ pure def completeInitialization(s: AgentProcess, ok: bool): AgentProcess = {
   val started = { ...s, runtime: R::completeInitialization(s.runtime, ok) }
   if (not(ok)) failAt(started, L::Agent)
   else if (s.runtime.stopPhase != R::Open) { ...started, resources: RS::acquire(s.resources, "plugins") }
-  else { ...started, step: BindTransport, resources: RS::acquire(s.resources, "plugins") }
+  else { ...started, phase: BindTransport, resources: RS::acquire(s.resources, "plugins") }
 }
 pure def refinesR(s: AgentProcess): R::Runtime = s.runtime
-pure def admitting(s: AgentProcess): bool = (s.step == BindTransport or s.step == Ready) and s.runtime.stopPhase == R::Open
+pure def admitting(s: AgentProcess): bool = (s.phase == BindTransport or s.phase == Ready) and s.runtime.stopPhase == R::Open
 pure def alwaysAdmissionFollowsBoot(s: AgentProcess): bool = s.runtime.admissionOpen == admitting(s)
-  and (stepIndex(s.step) <= 3 implies s.runtime.initPhase == R::Cold) and (stepIndex(s.step) >= 5 implies s.runtime.initPhase == R::Ready)
-  and (s.runtime.initPhase == R::Initializing implies (s.step == InitializeRuntime and s.failure == NoFailure))
+  and (phaseOrder(s.phase) <= 3 implies s.runtime.initPhase == R::Cold) and (phaseOrder(s.phase) >= 5 implies s.runtime.initPhase == R::Ready)
+  and (s.runtime.initPhase == R::Initializing implies (s.phase == InitializeRuntime and s.failure == NoFailure))
   and (s.runtime.initPhase == R::InitFailed implies s.failure == FailedWith({ cause: L::Agent }))
-pure def sometimesInitializationFailed(s: AgentProcess): bool = s.failure == FailedWith({ cause: L::Agent }) and s.step == InitializeRuntime
+pure def sometimesInitializationFailed(s: AgentProcess): bool = s.failure == FailedWith({ cause: L::Agent }) and s.phase == InitializeRuntime
 ```
 
 ### A cloud launch becomes ready with no plugin loaded
@@ -124,7 +124,7 @@ plugin, native module or managed-Google host is a precondition of
 
 ```quint
 pure def isCloudBackend(b: L::Backend): bool = match b { | CloudBackend(_) => true | _ => false }
-pure def sometimesCloudReadyWithoutPlugins(s: AgentProcess): bool = s.step == Ready and booting(s) and isCloudBackend(s.backend) and s.plugins.length() == 0
+pure def sometimesCloudReadyWithoutPlugins(s: AgentProcess): bool = s.phase == Ready and booting(s) and isCloudBackend(s.backend) and s.plugins.length() == 0
 ```
 
 ### What boot acquired is held in boot order: store, runtime, plugins, transport
@@ -135,8 +135,8 @@ transport first and the store last.
 ```quint
 pure def heldIf(c: bool, resource: str): List[str] = if (c) List(resource) else List()
 pure def bootHeld(s: AgentProcess): List[str] =
-  heldIf(stepIndex(s.step) >= 2, "store").concat(heldIf(s.runtime.initPhase != R::Cold, "runtime"))
-    .concat(heldIf(s.runtime.initPhase == R::Ready, "plugins")).concat(heldIf(s.step == Ready, "transport"))
+  heldIf(phaseOrder(s.phase) >= 2, "store").concat(heldIf(s.runtime.initPhase != R::Cold, "runtime"))
+    .concat(heldIf(s.runtime.initPhase == R::Ready, "plugins")).concat(heldIf(s.phase == Ready, "transport"))
 pure def alwaysHeldFollowsBoot(s: AgentProcess): bool = s.resources.held == bootHeld(s)
 ```
 
@@ -155,13 +155,13 @@ else 503 `{ready: false, phase}`, where `phase` is the boot phase or
 
 ```quint
 type HealthReply = HealthReady({ epoch: int }) | HealthUnavailable({ phase: str })
-pure def healthy(s: AgentProcess): bool = s.step == Ready and booting(s)
-pure def phaseName(b: BootStep): str = match b {
+pure def healthy(s: AgentProcess): bool = s.phase == Ready and booting(s)
+pure def phaseName(b: BootPhase): str = match b {
   | ReadLaunch => "readLaunch" | OpenStore => "openStore" | Migrate => "migrate" | LoadPlugins => "loadPlugins"
   | InitializeRuntime => "initializeRuntime" | BindTransport => "bindTransport" | Ready => "ready"
 }
 pure def healthReply(s: AgentProcess): HealthReply =
-  if (healthy(s)) HealthReady({ epoch: s.epoch }) else HealthUnavailable({ phase: if (booting(s)) phaseName(s.step) else "stopping" })
+  if (healthy(s)) HealthReady({ epoch: s.epoch }) else HealthUnavailable({ phase: if (booting(s)) phaseName(s.phase) else "stopping" })
 pure def healthStatus(r: HealthReply): int = match r { | HealthReady(_) => 200 | HealthUnavailable(_) => 503 }
 pure def alwaysHealthyMeansServing(s: AgentProcess): bool = healthy(s) implies
   (s.runtime.admissionOpen and s.epoch >= 1 and s.resources.held == List("store", "runtime", "plugins", "transport"))
@@ -178,16 +178,16 @@ exactly the one agent, `running` exactly when status says so.
 ```quint
 import binding as B from "../models/binding"
 pure def agentStateOf(s: AgentProcess): str =
-  if (not(booting(s))) "stopping" else if (s.runtime.admissionOpen and s.step == Ready) "running" else "starting"
+  if (not(booting(s))) "stopping" else if (s.runtime.admissionOpen and s.phase == Ready) "running" else "starting"
 pure def alwaysRunningIffHealthy(s: AgentProcess): bool = (agentStateOf(s) == "running") iff healthy(s)
-pure def canRespondWith(running: bool, backend: L::Backend, st: B::AccountState, t: int): bool =
+pure def mayRespond(running: bool, backend: L::Backend, st: B::AccountState, t: int): bool =
   running and B::servedByBackend(backend, B::TextLarge) and not(B::blocked(st, t))
 pure val backendValues = B::backendValues
 pure val stValues = B::stValues
 pure val tValues = B::tValues
-pure def lawNoTextBackendNeverResponds(running: bool, st: B::AccountState, t: int): bool = not(canRespondWith(running, L::NoBackend, st, t))
+pure def lawNoTextBackendNeverResponds(running: bool, st: B::AccountState, t: int): bool = not(mayRespond(running, L::NoBackend, st, t))
 pure def lawBlockedAccountNeverResponds(running: bool, backend: L::Backend, st: B::AccountState, t: int): bool =
-  B::blocked(st, t) implies not(canRespondWith(running, backend, st, t))
+  B::blocked(st, t) implies not(mayRespond(running, backend, st, t))
 ```
 
 ## Story: Stop on a signal and exit with an honest code
@@ -210,10 +210,10 @@ pure def requestStop(s: AgentProcess, fast: bool): AgentProcess =
   else { ...s, stopRequests: s.stopRequests + 1 }
 pure def stepRepeatedSignalJoinsTheStop(before: AgentProcess, via: str, after: AgentProcess): bool =
   (via == "requestStop" and before.stopRequests >= 1) implies after == { ...before, stopRequests: before.stopRequests + 1 }
-pure def stepNoReboot(before: AgentProcess, after: AgentProcess): bool = not(booting(before)) implies after.step == before.step
+pure def stepNoReboot(before: AgentProcess, after: AgentProcess): bool = not(booting(before)) implies after.phase == before.phase
 pure def alwaysStopFollowsRequests(s: AgentProcess): bool = s.stopRequests >= 0 and ((s.stopRequests == 0) iff (s.runtime.stopPhase == R::Open))
 pure def sometimesSignalledTwice(s: AgentProcess): bool = s.stopRequests >= 2 and s.outcome == StillRunning
-pure def sometimesStoppedDuringBoot(s: AgentProcess): bool = s.runtime.stopPhase != R::Open and s.failure == NoFailure and s.step != Ready
+pure def sometimesStoppedDuringBoot(s: AgentProcess): bool = s.runtime.stopPhase != R::Open and s.failure == NoFailure and s.phase != Ready
 ```
 
 ### Stop releases everything boot acquired, newest first, and the store last as core's adapter close
@@ -227,11 +227,12 @@ pure def canFinishStop(s: AgentProcess): bool = R::canFinishStop(s.runtime) and 
 pure def finishStop(s: AgentProcess): AgentProcess = { ...s, runtime: R::finishStop(s.runtime), resources: RS::close(s.resources) }
 pure def canReleaseNext(s: AgentProcess, ok: bool): bool = RS::canReleaseNext(s.resources) and s.resources.pending != List("store")
 pure def releaseNext(s: AgentProcess, ok: bool): AgentProcess = { ...s, resources: RS::releaseNext(s.resources, ok) }
-pure def canCloseAdapter(s: AgentProcess, ok: bool): bool = s.resources.phase == RS::Closing and s.resources.pending == List("store") and R::canCloseAdapter(s.runtime)
+pure def canCloseAdapter(s: AgentProcess, ok: bool): bool = s.resources.pending == List("store") and RS::canReleaseNext(s.resources) and R::canCloseAdapter(s.runtime)
 pure def closeAdapter(s: AgentProcess, ok: bool): AgentProcess = { ...s, runtime: R::closeAdapter(s.runtime), resources: RS::releaseNext(s.resources, ok) }
 pure def alwaysReleaseFollowsCoreStop(s: AgentProcess): bool =
   ((s.resources.phase == RS::Open) iff (s.runtime.stopPhase == R::Open or s.runtime.stopPhase == R::Stopping))
     and ((s.runtime.stopPhase == R::Closed) iff s.resources.released.includes("store"))
+    and (s.resources.phase != RS::Open implies s.runtime.initPhase != R::Initializing)
 pure def sometimesAdapterClosed(s: AgentProcess): bool = s.runtime.adapterClosed and s.resources.phase == RS::Closed
 ```
 

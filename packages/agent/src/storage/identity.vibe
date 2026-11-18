@@ -1,9 +1,10 @@
-// spec/agent/storage/database.md, "Story: Keep one agent identity for my data across restarts"; spec/agent/storage/database.md, "Only one live process holds a data directory"
+// spec/agent/storage/database.md, "Story: Keep one agent identity for my data across restarts"; spec/agent/storage/database.md, "A damaged or linked identity file fails the open and is left in place"; spec/agent/storage/database.md, "Only one live process holds a data directory"; spec/core/atomicPublication.md, "The final path changes only after a complete temporary file is renamed"
 module node {
   import { randomUUID } from "node:crypto"
   import { lstat, mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises"
   import { join, resolve } from "node:path"
-  import { validateUuid, type UUID } from "@elizaos/core"
+  import { logger, validateUuid, type UUID } from "@elizaos/core"
+  import { StoreFailed } from "./fault.vibe"
 
   function isError(error: unknown, code: string): boolean {
     return typeof error === "object" && error !== null && "code" in error && error.code === code
@@ -28,19 +29,34 @@ module node {
     }
   }
 
+  async function started(pid: number): Promise<string | undefined> {
+    try {
+      const stat = await readFile(`/proc/${pid}/stat`, "utf8")
+      const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ")
+      return fields[0] === "Z" ? undefined : fields[19]
+    } catch (error) {
+      if (isError(error, "ENOENT") || isError(error, "ESRCH")) return undefined
+      throw error
+    }
+  }
+
   async function claim(directory: string): Promise<() => Promise<void>> {
     await privateDirectory(directory)
-    const ownName = `${process.pid}-${randomUUID()}`
+    const own = await started(process.pid)
+    const ownName = `${process.pid}${own === undefined ? "" : `.${own}`}-${randomUUID()}`
     const ownClaim = join(directory, ownName)
     await mkdir(ownClaim, { mode: 0o700 })
     const release = () => rm(ownClaim, { force: true, recursive: true })
     try {
       for (const name of await readdir(directory)) {
         if (name === ownName) continue
-        const claimed = /^(\d+)-[a-f0-9-]{36}$/.exec(name)
+        const claimed = /^(\d+)(?:\.(\d+))?-[a-f0-9-]{36}$/.exec(name)
         const pid = Number(claimed?.[1])
+        const start = claimed?.[2]
         if (!Number.isSafeInteger(pid) || pid < 1) throw new Error("Invalid storage owner claim")
-        if (alive(pid)) throw new Error("The device store is already open")
+        if (alive(pid) && (own === undefined || start === undefined || await started(pid) === start)) {
+          throw new StoreFailed({ fault: "DirectoryInUse" })
+        }
         await rm(join(directory, name), { force: true, recursive: true })
       }
       return release
@@ -50,19 +66,24 @@ module node {
     }
   }
 
-  async function identityFile(directory: string): Promise<UUID> {
-    const file = join(directory, "agent-id")
+  async function publishedIdentity(file: string): Promise<UUID | undefined> {
     try {
       const status = await lstat(file)
-      if (!status.isFile() || status.nlink !== 1 || (status.mode & 0o077) !== 0 || status.uid !== process.getuid?.() || status.size > 38) {
-        throw new Error("Invalid device identity file")
+      if (status.isFile() && status.nlink === 1 && (status.mode & 0o077) === 0 && status.uid === process.getuid?.() && status.size <= 38) {
+        const id = validateUuid((await readFile(file, "utf8")).trim())
+        if (id !== null) return id
       }
-      const id = validateUuid((await readFile(file, "utf8")).trim())
-      if (id === null) throw new Error("Invalid device identity")
-      return id
     } catch (error) {
-      if (!isError(error, "ENOENT")) throw error
+      if (isError(error, "ENOENT")) return undefined
+      logger.error({ src: "agent:storage", error: String(error) }, "The agent identity file could not be read")
     }
+    throw new StoreFailed({ fault: "IdentityUnusable" })
+  }
+
+  async function identityFile(directory: string): Promise<UUID> {
+    const file = join(directory, "agent-id")
+    const published = await publishedIdentity(file)
+    if (published !== undefined) return published
     const id = randomUUID()
     const temporary = join(directory, `.identity-${randomUUID()}`)
     try {
@@ -81,8 +102,11 @@ module node {
         await parent.close()
       }
       return id
-    } finally {
-      await rm(temporary, { force: true })
+    } catch (error) {
+      logger.error({ src: "agent:storage", error: String(error) }, "The agent identity was not published")
+      await rm(temporary, { force: true }).catch((cause: unknown) =>
+        logger.warn({ src: "agent:storage", error: String(cause) }, "The unpublished agent identity was not removed"))
+      throw new StoreFailed({ fault: "IdentityNotPublished" })
     }
   }
 

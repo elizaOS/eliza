@@ -5,20 +5,9 @@ import type { Window } from "../../gen/cloud__shared__rateLimit.ts";
 import { Refused } from "../../src/http/refusal.vibe";
 import { admitCheck, readWindow, type RateLimit } from "../../src/shared/rate-limit.vibe";
 import { Store, migrate, storeLayer } from "../../src/store/store.vibe";
+import { stoppedClock } from "../support/clock.ts";
 
 const initialWindow: Window = { start: 0, end: 0, count: 0, ceiling: 0, clock: 0, last: { tag: "NoDecision" } };
-
-function fixedClock(at: number): Clock.Clock {
-  return {
-    currentTimeMillisUnsafe: () => at,
-    currentTimeMillis: Effect.succeed(at),
-    currentTimeNanosUnsafe: () => BigInt(at) * 1_000_000n,
-    currentTimeNanos: Effect.succeed(BigInt(at) * 1_000_000n),
-    monotonicTimeNanosUnsafe: () => process.hrtime.bigint(),
-    monotonicTimeNanos: Effect.sync(() => process.hrtime.bigint()),
-    sleep: () => Effect.void,
-  };
-}
 
 let runtime: ManagedRuntime.ManagedRuntime<Store, unknown> | undefined;
 const names = new Map<string, string>();
@@ -47,7 +36,7 @@ export const driver: Driver = {
   async dispatch(key, event) {
     names.set(key, event.rule.name);
     const opened = await store();
-    const exit = await opened.runPromise(Effect.exit(Effect.provideService(admitCheck(check(key, event.rule)), Clock.Clock, fixedClock(event.now))));
+    const exit = await opened.runPromise(Effect.exit(Effect.provideService(admitCheck(check(key, event.rule)), Clock.Clock, stoppedClock(event.now))));
     if (Exit.isSuccess(exit)) return "accepted";
     const failure = Exit.findErrorOption(exit);
     if (failure._tag === "Some" && failure.value instanceof Refused) {
