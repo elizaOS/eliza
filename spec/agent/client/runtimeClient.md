@@ -28,7 +28,9 @@ the call.
 With no bridge available the refresh is done. Otherwise it restarts the
 runtime and, unless the restart reports it running, waits for its startup. A
 bridge error or the deadline `startupTimeoutMs` breaks it. An answer to an
-older refresh or its startup is refused.
+older refresh or its startup is refused. A new start or restart waits for
+an earlier lifecycle call already handed to the bridge to settle. This
+keeps a late restart from changing which account owns the current runtime.
 
 ```quint
 import numbers.* from "../../core/numbers"

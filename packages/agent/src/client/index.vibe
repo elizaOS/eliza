@@ -1,7 +1,8 @@
 // spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account", "Story: Reach a runtime that is not running yet", "Story: Understand why the runtime refused"
 module node {
   import { Effect, Schema } from "effect"
-  import { enabled, initial, machineOver, type Event, type RetryAdvice, type StatusReport } from "../../gen/agent__client__runtimeClient.effect.vibe"
+  import type { Event, RetryAdvice, StatusReport } from "../../gen/agent__client__runtimeClient.effect.vibe"
+  import { createRuntimeCoordinator, pollStartup } from "./coordination.vibe"
 
   export interface RuntimeStatus {
     readonly available: boolean
@@ -90,45 +91,53 @@ module node {
     if (options.httpBase && (!["http:", "https:"].includes(options.httpBase.protocol) || options.httpBase.username || options.httpBase.password)) {
       throw new TypeError("The runtime HTTP base must be an HTTP origin")
     }
-    let stored = initial
-    const machine = Effect.runSync(machineOver(() => Effect.sync(() => stored), (next) => Effect.sync(() => { stored = next })))
+    const coordinator = Effect.runSync(createRuntimeCoordinator())
     const pending = new Map<number, Pending>()
-    const probes = new Set<number>()
     let generation = new AbortController()
     let bodyLimit: number | undefined
+    let lifecycle = Promise.resolve()
 
-    function current() { return Effect.runSync(machine.get()) }
+    function current() { return Effect.runSync(coordinator.current()) }
+
+    function lifecycleCall(signal: AbortSignal, run: () => Promise<RuntimeStatus>) {
+      const call = lifecycle.then(() => {
+        signal.throwIfAborted()
+        return run()
+      })
+      lifecycle = call.then(() => undefined, () => undefined)
+      return abortable(signal, () => call)
+    }
 
     function send(event: Event, answer?: RuntimeJsonResponse) {
-      if (!enabled(current(), event)) return
-      const update = Effect.runSync(machine.send(event))
-      for (const command of update.out) {
-        if (command.tag === "Send") {
-          const input = pending.get(command.request)
-          if (input) void dispatch(command.request, input, command.over, generation.signal)
-        }
-      }
-      for (const request of update.state.requests) {
-        const input = pending.get(request.id)
-        if (!input) continue
-        const stage = request.stage
-        if (stage.tag === "Probing" && !probes.has(request.id)) {
-          probes.add(request.id)
-          void probe(request.id, input, update.state.gen, generation.signal)
-        } else if (stage.tag === "Failed") {
-          input.reject(new Error(stage.why))
-        } else if (event.type === "reply" && event.id === request.id && answer) {
-          if (stage.tag === "Replied") input.resolve(answer.data)
-          if (stage.tag === "Refused") {
-            const data = refusal(answer.data)
-            input.reject(new RuntimeRequestError(data._tag === "Some" ? data.value.error ?? "Runtime refused the request" : "Runtime refused the request",
-              stage.httpStatus, data._tag === "Some" ? data.value.code : undefined, stage.retry.tag === "RetryAfter" ? stage.retry.seconds : undefined))
+      const update = Effect.runSync(coordinator.advance(event))
+      if (!update) return
+      for (const command of update.commands) {
+        switch (command.tag) {
+          case "Send": {
+            const input = pending.get(command.request)
+            if (input) void dispatch(command.request, input, command.over, generation.signal)
+            break
           }
-        }
-        if (stage.tag === "Failed" || stage.tag === "Replied" || stage.tag === "Refused") {
-          pending.delete(request.id)
-          probes.delete(request.id)
-          Effect.runSync(machine.send({ type: "release", id: request.id }))
+          case "Probe": {
+            const input = pending.get(command.id)
+            if (input) void probe(command.id, input, command.generation, generation.signal)
+            break
+          }
+          case "Finish": {
+            const input = pending.get(command.id)
+            if (!input) break
+            pending.delete(command.id)
+            const stage = command.stage
+            if (stage.tag === "Failed") {
+              input.reject(new Error(stage.why))
+            } else if (answer && stage.tag === "Replied") {
+              input.resolve(answer.data)
+            } else if (answer && stage.tag === "Refused") {
+              const data = refusal(answer.data)
+              input.reject(new RuntimeRequestError(data._tag === "Some" ? data.value.error ?? "Runtime refused the request" : "Runtime refused the request",
+                stage.httpStatus, data._tag === "Some" ? data.value.code : undefined, stage.retry.tag === "RetryAfter" ? stage.retry.seconds : undefined))
+            }
+          }
         }
       }
       return update
@@ -140,11 +149,9 @@ module node {
       const deadline = AbortSignal.any([signal, AbortSignal.timeout(options.startupTimeoutMs)])
       const done = (async () => {
         try {
-          let observation = shouldStart ? status(await abortable(deadline, () => bridge.start())) : undefined
-          while (observation === undefined || (observation.report.tag === "Available" && observation.report.phase === "Starting")) {
-            await Effect.runPromise(Effect.sleep(options.pollMs), { signal: deadline })
-            observation = status(await abortable(deadline, () => bridge.status()))
-          }
+          const first = shouldStart ? status(await lifecycleCall(deadline, () => bridge.start())) : undefined
+          const observation = await Effect.runPromise(pollStartup(first, options.pollMs, () =>
+            Effect.tryPromise(async () => status(await bridge.status()))), { signal: deadline })
           if (observation.report.tag !== "Available" || observation.report.phase !== "Running") throw new Error("StartupFailed")
           if (!deadline.aborted) bodyLimit = observation.limit
           send({ type: "startupRan", ofGen: gen })
@@ -168,7 +175,7 @@ module node {
         if (bridge) input.bridge = bridge
         const update = send({ type: "requestStatus", id, report: found.report, fallback: httpOrigin ? "HttpFallback" : "NoFallback" })
         if (bridge && update?.state.startup === "StartingUp" && found.report.tag === "Available" && found.report.phase !== "Running") {
-          await start(bridge, gen, update.out.some((command) => command.tag === "CallStart"), signal)
+          await start(bridge, gen, update.commands.some((command) => command.tag === "CallStart"), signal)
         }
       } catch {
         send({ type: "transportFailed", id })
@@ -220,12 +227,12 @@ module node {
         const bridge = options.bridge?.()
         const report: StatusReport = bridge ? status(await abortable(deadline, () => bridge.status())).report : { tag: "Unavailable" }
         const observed = send({ type: "refreshStatus", ofGen, report })
-        if (bridge && observed?.out.some((command) => command.tag === "CallRestart")) {
-          const restarted = status(await abortable(deadline, () => bridge.restart()))
+        if (bridge && observed?.commands.some((command) => command.tag === "CallRestart")) {
+          const restarted = status(await lifecycleCall(deadline, () => bridge.restart()))
           if (restarted.report.tag === "Unavailable") throw new Error("RefreshFailed")
           const update = send({ type: "restarted", ofGen, phase: restarted.report.phase })
           if (update?.state.refresh === "AwaitRestart") {
-            await start(bridge, ofGen, update.out.some((command) => command.tag === "CallStart"), deadline)
+            await start(bridge, ofGen, update.commands.some((command) => command.tag === "CallStart"), deadline)
           } else if (update) bodyLimit = restarted.limit
         }
         signal.throwIfAborted()

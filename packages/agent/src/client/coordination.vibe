@@ -1,0 +1,49 @@
+// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account", "Story: Reach a runtime that is not running yet", "Story: Understand why the runtime refused"
+import {
+  enabled, initial, machineOver,
+  type BridgeCall, type Event, type Stage, type StatusReport,
+} from "../../gen/agent__client__runtimeClient.effect.vibe"
+
+type Command = BridgeCall
+  | { readonly tag: "Probe"; readonly id: number; readonly generation: number }
+  | { readonly tag: "Finish"; readonly id: number; readonly stage: Extract<Stage, { tag: "Failed" | "Refused" | "Replied" }> }
+
+export effect function createRuntimeCoordinator() {
+  const kept = try Ref.make(initial)
+  const machine = try machineOver(() => Ref.get(kept), (next) => Ref.set(kept, next))
+
+  effect function advance(event: Event) {
+    const previous = try machine.get()
+    if (!enabled(previous, event)) return undefined
+    const update = try machine.send(event)
+    const commands: Command[] = [...update.out]
+    for (const request of update.state.requests) {
+      switch (request.stage.tag) {
+        case "Probing":
+          if (previous.requests.find((entry) => entry.id === request.id)?.stage.tag !== "Probing") {
+            commands.push({ tag: "Probe", id: request.id, generation: request.gen })
+          }
+          break
+        case "Failed":
+        case "Refused":
+        case "Replied":
+          commands.push({ tag: "Finish", id: request.id, stage: request.stage })
+          try machine.send({ type: "release", id: request.id })
+      }
+    }
+    return { state: update.state, commands }
+  }
+
+  return { current: machine.get, advance }
+}
+
+export effect function pollStartup<I extends { report: StatusReport }, E>(
+  observation: I | undefined, pollMs: number, probe: () => I!E,
+) {
+  let found = observation
+  while (found === undefined || (found.report.tag === "Available" && found.report.phase === "Starting")) {
+    try Effect.sleep(pollMs)
+    found = try probe()
+  }
+  return found
+}
