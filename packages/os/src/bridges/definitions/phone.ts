@@ -296,7 +296,7 @@ function subscriptions(value: unknown, phoneState: TelephonyPermissionState): Te
   if (!Array.isArray(value) || value.length > TELEPHONY_MAX_SUBSCRIPTIONS || phoneState !== "granted") return undefined;
   const parsed = value.map(subscription);
   const ids = new Set(parsed.map((sim) => sim?.id));
-  return parsed.every((sim) => sim !== undefined) && ids.size === parsed.length ? (parsed as TelephonySubscription[]) : undefined;
+  return parsed.every((sim) => sim !== undefined) && ids.size === parsed.length ? parsed : undefined;
 }
 
 /** @throws {never} */

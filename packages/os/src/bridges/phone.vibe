@@ -30,7 +30,7 @@ import {
   type SourceConfiguration,
   type VoicemailWrite,
 } from "../../gen/os__android__voicemail.effect.vibe"
-import { BridgeUnavailable, MalformedReply, NativeRejection, nativeCall, rejectionCode, settled } from "./bridge.vibe"
+import { BridgeUnavailable, MalformedReply, NativeRejection, nativeCall, settled } from "./bridge.vibe"
 import {
   TELEPHONY_DEFAULT_PAGE,
   VOICEMAIL_AUDIO_MAX_BYTES,
