@@ -36,7 +36,6 @@ public final class JsonCredentialSlots {
   private static final long serialVersionUID = 1L;
   CapacityException(){super("Credential slot is full");}
  }
- /** The new frame was published but did not read back exactly: the caller rereads before it retries. */
  public static final class UnconfirmedException extends IllegalStateException {
   private static final long serialVersionUID = 1L;
   UnconfirmedException(Throwable cause){super("Credential slot write is unconfirmed",cause);}
@@ -80,7 +79,6 @@ public final class JsonCredentialSlots {
   return new AtomicFile(new File(directory, hash));
  }
  private SecretKey key() throws Exception { return key(true); }
- /** Reads never create a key: a frame whose key is gone stays unreadable instead of being re-keyed. */
  private SecretKey key(boolean create) throws Exception {
   KeyStore store = KeyStore.getInstance("AndroidKeyStore"); store.load(null);
   if (!store.containsAlias(alias)) {

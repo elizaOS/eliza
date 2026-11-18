@@ -199,25 +199,21 @@ pure def lawGivenDescriptorAlwaysMatches(request: ListenerRequest, source: V::So
 This is the request every refusal above is a variation of.
 
 ```quint
-pure val reviewedSource: V::SourceVerdict = {
-  val patch = { name: "chip", project: "frameworks/base", revision: "r1", baseline: "lockA", files: List(), manifestSha256: "p1" }
-  { ...V::initial, verified: 1, verdict: V::Match, lock: { ...V::noLock, digest: "lockA" }, patches: List(patch, { ...patch, name: "ops", manifestSha256: "p2" }) }
-}
+pure val chipEnvelope: V::PatchEnvelope = { name: "chip", project: "frameworks/base", revision: "r1", baseline: "lockA", files: List(), manifestSha256: "p1" }
+pure val reviewedSource: V::SourceVerdict = { ...V::initial, verified: 1, verdict: V::Match, lock: { ...V::noLock, digest: "lockA" },
+  patches: List(chipEnvelope, { ...chipEnvelope, name: "ops", manifestSha256: "p2" }) }
 pure val reviewedInputs: QualifiedInputs = { packageName: { parent: "com.example", leaf: "sense" }, launcher: Sha256({ hex: "a1" }), listener: Sha256({ hex: "l1" }),
   launcherDescriptor: Sha256({ hex: "d1" }), listenerDescriptor: Sha256({ hex: "d2" }), certificate: Sha256({ hex: "c1" }), sourceLock: "lockA", sdkCommit: "e1",
   sepolicy: Sha256({ hex: "s1" }), patches: List({ name: "ops", manifestSha256: "p2" }, { name: "chip", manifestSha256: "p1" }) }
 pure val reviewedGates: List[GateRow] = listenerGates.listMap(g => { gate: g, result: GatePassed({ evidence: Sha256({ hex: "v1" }) }) })
-pure val reviewedRequest: ListenerRequest = {
-  val signer = Sha256({ hex: "c1" })
-  val packageName = { parent: "com.example", leaf: "sense" }
-  val listener = { packageName: packageName, sha256: Sha256({ hex: "l1" }), signer: OneSigner({ certificate: signer }), buildType: ReleaseBuild,
-    requested: listenerPrivilegedPermissions.concat(listenerRequiredPermissions), layout: ZipAligned, speech: SpeechPinned }
-  { launcherPackage: "com.example", launcherSigner: signer, launcherApk: Sha256({ hex: "a1" }), launcherDescriptor: Sha256({ hex: "d1" }), listener: listener,
-    descriptor: ListenerReviewed({ bytes: Sha256({ hex: "d2" }), packageName: packageName, apk: Sha256({ hex: "l1" }), certificate: signer }),
-    wakeNames: List(WakeWord({ word: "hey" })), overlay: { roles: indicatorExemptRoles.listMap(r => { role: r, value: RoleCleared }), microphoneToggle: true },
-    policyCertificate: signer, sepolicy: Sha256({ hex: "s1" }), sdkCommit: "e1", enrolledQualification: Sha256({ hex: "q1" }),
-    qualification: QualificationRecord({ bytes: Sha256({ hex: "q1" }), inputs: reviewedInputs, qualified: true, gates: reviewedGates }) }
-}
+pure val reviewedSigner: Digest = Sha256({ hex: "c1" })
+pure val reviewedListener: ListenerApk = { packageName: { parent: "com.example", leaf: "sense" }, sha256: Sha256({ hex: "l1" }), signer: OneSigner({ certificate: reviewedSigner }),
+  buildType: ReleaseBuild, requested: listenerPrivilegedPermissions.concat(listenerRequiredPermissions), layout: ZipAligned, speech: SpeechPinned }
+pure val reviewedRequest: ListenerRequest = { launcherPackage: "com.example", launcherSigner: reviewedSigner, launcherApk: Sha256({ hex: "a1" }), launcherDescriptor: Sha256({ hex: "d1" }),
+  listener: reviewedListener, descriptor: ListenerReviewed({ bytes: Sha256({ hex: "d2" }), packageName: reviewedListener.packageName, apk: Sha256({ hex: "l1" }), certificate: reviewedSigner }),
+  wakeNames: List(WakeWord({ word: "hey" })), overlay: { roles: indicatorExemptRoles.listMap(r => { role: r, value: RoleCleared }), microphoneToggle: true },
+  policyCertificate: reviewedSigner, sepolicy: Sha256({ hex: "s1" }), sdkCommit: "e1", enrolledQualification: Sha256({ hex: "q1" }),
+  qualification: QualificationRecord({ bytes: Sha256({ hex: "q1" }), inputs: reviewedInputs, qualified: true, gates: reviewedGates }) }
 pure val sourceValues = Set(reviewedSource, { ...reviewedSource, patches: reviewedSource.patches.select(e => e.name == "chip") }, { ...reviewedSource, verdict: V::Mismatch })
 pure val requestValues = {
   val r = reviewedRequest

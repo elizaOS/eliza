@@ -51,6 +51,8 @@ public final class DeviceCredentialStore implements CredentialReader {
 
   public enum Outcome { ACCEPTED, REFUSED }
 
+  public enum Kept { KEPT, NOT_KEPT, REFUSED }
+
   public enum SessionRead { USABLE, START_REFRESH, AWAIT_REFRESH, NONE }
 
   private final Object lock = new Object();
@@ -73,16 +75,17 @@ public final class DeviceCredentialStore implements CredentialReader {
       State loaded = CredentialPolicy.INITIAL;
       if (saved != null) {
         Map<String, Object> record = CredentialJson.object(CredentialJson.parse(saved), "record");
-        loaded = CredentialPolicy.restart(CredentialPolicy.state(record.get("state")));
+        State restarted = CredentialPolicy.restart(CredentialPolicy.state(record.get("state")));
+        loaded = new State(Math.max(restarted.now(), clock.getAsLong()), restarted.generation(), restarted.lastVersion(), restarted.custody(),
+          restarted.attempt(), restarted.duties(), restarted.session());
         for (Object version : CredentialJson.list(record.get("sweep"), "sweep")) {
           if (!(version instanceof Long v) || v < 1 || v > Integer.MAX_VALUE) throw new CredentialJson.Malformed("sweep");
           sweep.add(v.intValue());
         }
-        written = saved;
       }
       state = loaded;
       persist(loaded, Set.of());
-      advance();
+      sweepKeys();
     }
   }
 
@@ -140,14 +143,14 @@ public final class DeviceCredentialStore implements CredentialReader {
     return attempt;
   }
 
-  public Stored tokenAnswered(int attempt, Token token) {
+  public Kept tokenAnswered(int attempt, Token token) {
     synchronized (lock) {
       advance();
-      if (!CredentialPolicy.canTokenAnswered(state, attempt, token.credentialId(), token.account(), token.keyExpiresAt())) return Stored.REFUSED;
+      if (!CredentialPolicy.canTokenAnswered(state, attempt, token.credentialId(), token.account(), token.keyExpiresAt())) return Kept.REFUSED;
       int version = state.lastVersion() + 1;
       Stored stored = writeKey(version, token);
       commit(new Step(CredentialPolicy.tokenAnswered(state, attempt, token.credentialId(), token.account(), token.keyExpiresAt(), stored), List.of()));
-      return stored;
+      return stored == Stored.WRITTEN ? Kept.KEPT : Kept.NOT_KEPT;
     }
   }
 
@@ -290,6 +293,11 @@ public final class DeviceCredentialStore implements CredentialReader {
     dropped.removeAll(held(step.state()));
     persist(step.state(), dropped);
     state = step.state();
+    sweepKeys();
+    return step.out();
+  }
+
+  private void sweepKeys() {
     List<Integer> removed = new ArrayList<>();
     for (int version : sweep) {
       try {
@@ -300,21 +308,21 @@ public final class DeviceCredentialStore implements CredentialReader {
       }
     }
     removed.forEach(sweep::remove);
-    return step.out();
   }
 
   private void persist(State next, Set<Integer> dropped) {
     Set<Integer> owed = new TreeSet<>(sweep);
     owed.addAll(dropped);
-    State durable = new State(next.now(), next.generation(), next.lastVersion(), next.custody(), next.attempt(), next.duties(), CredentialPolicy.NO_SESSION);
-    String record = "{\"state\":" + CredentialPolicy.json(durable) + ",\"sweep\":" + owed + "}";
-    if (record.equals(written)) return;
+    State durable = new State(0, next.generation(), next.lastVersion(), next.custody(), next.attempt(), next.duties(), CredentialPolicy.NO_SESSION);
+    String kept = CredentialPolicy.json(durable) + owed;
+    if (kept.equals(written)) return;
+    State dated = new State(next.now(), next.generation(), next.lastVersion(), next.custody(), next.attempt(), next.duties(), CredentialPolicy.NO_SESSION);
     try {
-      slots.write(recordSlot(), record);
+      slots.write(recordSlot(), "{\"state\":" + CredentialPolicy.json(dated) + ",\"sweep\":" + owed + "}");
     } catch (Exception failed) {
       throw new StorageFailure("record", failed);
     }
-    written = record;
+    written = kept;
     sweep.addAll(dropped);
   }
 

@@ -323,7 +323,6 @@ export function googleMapsProvider(settings: GoogleSettings): MapsProvider {
     })))
   }
 
-  const near = (request: TextSearchRequest) => request.near
   const answer = (found: ReadonlyArray<MapsPlace>): MapsPlacesResponse => ({ providerId: "google", attribution: googleAttribution, places: found })
   const single = (place: MapsPlace | undefined): MapsPlaceResponse => ({ providerId: "google", attribution: googleAttribution, place: place ?? null })
 
@@ -354,14 +353,14 @@ export function googleMapsProvider(settings: GoogleSettings): MapsProvider {
 
   return {
     search: (request) => metered(effect (meter) => {
-      const point = near(request)
+      const point = request.near
       if (point !== undefined && !covered(point)) throw new Refused({ code: "UnsupportedRegion" })
       const body = { textQuery: request.query, pageSize: request.limit ?? 10, ...(point === undefined ? {} : { locationBias: { circle: { center: point, radius: 50_000 } } }) }
       const reply = try decoded(try send(meter, try google(url("places", "/v1/places:searchText"), placeFields, body), searchPrice), PlacesReply)
       return answer(try places(reply.places ?? []))
     }),
     geocode: (request) => metered(effect (meter) => {
-      const point = near(request)
+      const point = request.near
       if (point !== undefined && !covered(point)) throw new Refused({ code: "UnsupportedRegion" })
       const bounds = point === undefined ? {} : { bounds: `${Math.max(-90, point.latitude - 0.25)},${Math.max(-180, point.longitude - 0.25)}|${Math.min(90, point.latitude + 0.25)},${Math.min(180, point.longitude + 0.25)}` }
       return answer((try geocoding(meter, { address: request.query, ...bounds })).slice(0, request.limit ?? 10))

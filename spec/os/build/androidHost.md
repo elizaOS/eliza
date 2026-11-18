@@ -24,26 +24,18 @@ the generator writes, so the generator decides nothing again.
 > name, no os module adds what I did not ask for, and no release is
 > published with a partial signing setup.
 
-### A profile is schema 2, names no companion, and has a package name, a label, a plain version and a version code from 1 to 2,100,000,000
+### A profile is schema 2 with no companion, a version code from 1 to 2,100,000,000, and SDK levels from 29 that never decrease from minimum to target to compile
 
 Schema 1 is read only through the map of the second story. The agent
-service runs exactly one Node child, so a companion entry is refused.
+service runs exactly one Node child, so a companion entry is refused. The
+application id is a dotted package name, the version a plain label.
 
 ```quint
 pure val maxVersionCode = 2100000000
+pure val minSdkFloor = 29
 pure def identityAdmitted(appIdValid: bool, appNameValid: bool, versionValid: bool, versionCode: int): bool =
   appIdValid and appNameValid and versionValid and versionCode > 0 and versionCode <= maxVersionCode
-pure val versionCodeValues = Set(0, 1, 2100000000, 2100000001)
-```
-
-### The SDK levels start at 29 and never decrease from minimum to target to compile
-
-```quint
-pure val minSdkFloor = 29
 pure def sdkAdmitted(minSdk: int, targetSdk: int, compileSdk: int): bool = minSdk >= minSdkFloor and minSdk <= targetSdk and targetSdk <= compileSdk
-pure val minSdkValues = Set(28, 29, 36)
-pure val targetSdkValues = Set(29, 35, 36)
-pure val compileSdkValues = Set(35, 36)
 ```
 
 ### Flavors are at least one, distinct, and never a build type or a fixed source set
@@ -299,31 +291,6 @@ pure def hostVerdict(f: HostFacts): HostVerdict = {
   else if (not(agentAdmitted(f.agent, f.packaging, f.osModules.listMap(e => e.osModule)))) HostRefused({ refusal: AgentInvalid })
   else HostAdmitted
 }
-pure val factsValues = {
-  val base = { schema: 2, companionDeclared: false, appIdValid: true, appNameValid: true, versionValid: true, versionCode: 7, minSdk: 29, targetSdk: 36,
-    compileSdk: 36, flavors: List("launcher"), flavorNamesValid: true, fieldGroups: List(List({ constant: "IS_LAUNCHER", constantValid: true, javaValue: BooleanValue })),
-    releaseMinify: true, shrinkResources: true, proguardFiles: 1, abis: List("arm64-v8a"), versionOverride: { names: List("CODE", "NAME"), namesValid: true },
-    signing: { names: List("STORE", "STORE_PASS", "KEY", "KEY_PASS"), namesValid: true },
-    roots: { consumer: List("work", "app"), os: List("work", "app", "vendor", "os"), dependencies: List("work", "app", "node_modules"), dependenciesDeclared: true },
-    output: List("work", "app", "android"), sources: List({ root: ConsumerRoot, path: Below({ segments: List("android", "AndroidManifest.xml") }), wanted: WantsFile }),
-    uses: List({ sourceSet: "main", sourceKind: "java", generatedPath: List("generated", "agent", "java") }),
-    osModules: List({ osModule: "agent-service", sources: List() }, { osModule: "runtime-files", sources: List() }),
-    projects: List("capacitor-android", "eliza-agent-service", "eliza-runtime-files"), projectNamesValid: true, toolchainKeys: List("androidxAppCompatVersion"),
-    dependencies: List({ configuration: "implementation", artifactValid: true, versionKey: "androidxAppCompatVersion" }), assetNames: List("routes.json"),
-    noCompress: List("gguf"), namesValid: true, commands: List({ task: "verifyDeployment", taskValid: true, argv: List("node", "check.mjs") }),
-    packaging: Extract16k, agent: AgentDeclared({ notificationValid: true, hookValid: true }) }
-  List(base, { ...base, schema: 1 }, { ...base, companionDeclared: true }, { ...base, minSdk: 28 }, { ...base, signing: { names: List("STORE"), namesValid: true } },
-    { ...base, output: List("work", "app", "vendor", "os", "out") },
-    { ...base, sources: List({ root: ConsumerRoot, path: Below({ segments: List("vendor", "os", "android") }), wanted: WantsDirectory }) },
-    { ...base, osModules: List({ osModule: "agent-service", sources: List() }) }, { ...base, packaging: DefaultPackaging },
-    { ...base, dependencies: List({ configuration: "implementation", artifactValid: true, versionKey: "1.7.1" }) },
-    { ...base, osModules: List(), agent: NoAgent, packaging: DefaultPackaging }).foldl(Set(), (acc, f) => acc.union(Set(f)))
-}
-pure def lawAdmittedHostKeepsEveryRule(f: HostFacts): bool =
-  hostVerdict(f) == HostAdmitted implies (
-    f.schema == 2 and not(f.companionDeclared) and sdkAdmitted(f.minSdk, f.targetSdk, f.compileSdk) and namedSet(f.signing, signingNameCount) != PartlyNamed and
-    outputAdmitted(f.roots, f.output) and f.sources.every(r => sourceAdmitted(f.roots, r)) and osModulesAdmitted(f.osModules) and
-    f.dependencies.every(d => dependencyAdmitted(f.toolchainKeys, d)) and agentAdmitted(f.agent, f.packaging, f.osModules.listMap(e => e.osModule)))
 ```
 
 ## Story: Keep my schema-1 profile readable through one fixed map

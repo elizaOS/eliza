@@ -2,8 +2,8 @@
 import { refused, type Refused } from "../../http/refusal.vibe"
 import { json, owner as ownerOf, type Route, type RouteContext } from "../../http/routes.vibe"
 import { sha256Hex } from "../../shared/sealing.vibe"
-import { googleJson } from "../../providers/google.vibe"
-import { scopeFor, useGrant, type GoogleCapability } from "./grant-access.vibe"
+import { googleJson, type GoogleFailure } from "../../providers/google.vibe"
+import { holds, useGrant, type GoogleCapability } from "./grant-access.vibe"
 import type { OperationKind } from "./mail-operations.vibe"
 
 module node {
@@ -97,18 +97,26 @@ const kindsByCapability: ReadonlyArray<readonly [GoogleCapability, ReadonlyArray
   ["google.gmail.manage", ["archive", "unarchive", "trash", "untrash", "mark-read", "mark-unread", "star", "unstar"]]
 ]
 
-export function googleRefused(failure: { readonly _tag: string }): Refused {
+export function googleRefused(failure: GoogleFailure): Refused {
   switch (failure._tag) {
     case "NotFound": return refused("NotFound")
     case "InvalidGrant": return refused("GoogleReauthRequired")
     case "ContentTooLarge": return refused("ContentTooLarge")
     case "InvalidResponse": return refused("ProviderInvalidResponse")
-    default: return refused("ProviderUnavailable")
+    case "PreconditionFailed":
+    case "Duplicate":
+    case "Rejected":
+    case "Unavailable": return refused("ProviderUnavailable")
+    default: {
+      const _exhaustive: never = failure
+      return _exhaustive
+    }
   }
 }
 
 effect function google(grant: ReadGrant, path: string, maxBytes?: number) {
-  return try googleJson(grant.accessToken, "GET", `${gmail}${path}`, maxBytes === undefined ? {} : { maxBytes }) catch effect (failure) => { throw googleRefused(failure) }
+  const answer = googleJson(grant.accessToken, "GET", `${gmail}${path}`, maxBytes === undefined ? {} : { maxBytes }) catch effect (failure) => { throw googleRefused(failure) }
+  return answer
 }
 
 effect function parsed<A>(schema: Schema.Codec<A>, raw: unknown): A!Refused {
@@ -367,7 +375,7 @@ effect function readRoute(context: RouteContext) {
 
 effect function capabilitiesRoute(context: RouteContext) {
   const grant = try grantOf(context)
-  const kinds = kindsByCapability.flatMap(([capability, granted]) => grant.scopes.includes(scopeFor(capability)) ? granted : [])
+  const kinds = kindsByCapability.flatMap(([capability, granted]) => holds(grant.scopes, capability) ? granted : [])
   return json({ version: 1, from: grant.email, kinds, attachmentPolicy: { mimeTypes: attachmentMimeTypes, maxBytes: attachmentMaxBytes } })
 }
 

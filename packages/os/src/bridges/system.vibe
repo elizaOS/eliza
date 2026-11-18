@@ -16,7 +16,6 @@ import {
   problemRetained,
   roleResult,
   asksAndroidForRole,
-  setupReply,
   shadeHandoff,
   volumeTarget,
   type AppEntry,
@@ -26,19 +25,17 @@ import {
   type ControlReport,
   type LaunchReply,
   type LevelReadback,
-  type PackageListing,
   type ProblemField,
   type ProblemSource,
   type ProfilePresence,
   type RoleResult,
   type SettingsPage,
   type SetupReply,
-  type SetupTarget,
   type ShadeReply,
   type SwitchFact,
 } from "../../gen/os__android__system.effect.vibe"
 import { Machine, machine, routeTap, type DialRole, type LauncherInventory } from "../../gen/os__android__home.effect.vibe"
-import { BridgeUnavailable, nativeCall, nativeReply, rejectionCode, settled, type BridgeFailure } from "./bridge.vibe"
+import { nativeCall, nativeReply, rejectionCode, settled, type BridgeFailure } from "./bridge.vibe"
 import type {
   AndroidRoleName,
   AndroidRoleStatus,
@@ -54,6 +51,7 @@ import type {
   DeviceSetup,
   DeviceSetupHandoff,
   DeviceSetupOutcome,
+  DeviceSetupReadiness,
   DeviceSetupTarget,
   InstalledApp,
   Launcher,
@@ -132,13 +130,6 @@ const SHADE: Readonly<Record<NotificationShadeOutcome, ShadeReply>> = {
 const SWITCH: Readonly<Record<SwitchFact, SwitchState>> = { FactOn: "on", FactOff: "off", FactUnknown: "unknown" }
 const ROLE: Readonly<Record<RoleResult, RoleAnswer>> = { RoleHeld: "held", RoleNotHeld: "not-held", RoleNotOffered: "not-offered", RoleUnavailableHere: "unavailable" }
 const CLOCK: Readonly<Record<ClockStatus, ClockAnswer>> = { opened: "ClockOpened", unavailable: "ClockUnavailable", denied: "ClockDenied", failed: "ClockFailed", unknown: "ClockUnknown" }
-const SETUP_TARGET: Readonly<Record<DeviceSetupTarget, SetupTarget>> = {
-  BROWSER_DEFAULTS: "BrowserDefaults",
-  CREDENTIAL_PROVIDERS: "CredentialProviders",
-  BROWSER_APP: "BrowserApp",
-  PASSWORD_MANAGER_APP: "PasswordManagerApp",
-  APP_DETAILS: "SetupAppDetails",
-}
 const SETUP_REPLY: Readonly<Record<DeviceSetupOutcome, SetupReply>> = {
   OPENED: "SetupOpened",
   UNSUPPORTED_BROWSER: "UnsupportedBrowser",
@@ -415,7 +406,8 @@ effect function changeBrightness(plugin: string, system: SystemPlugin, brightnes
 }
 
 function entryOf(target: LaunchTarget): AppEntry {
-  return installedApp({ ...target, label: "" }) === undefined || target.packageName.trim() !== target.packageName ? "MalformedEntry" : target.user === undefined ? "PersonalEntry" : "WorkEntry"
+  const malformed = target.packageName === "" || target.packageName.trim() !== target.packageName || target.activityName === "" || (target.user !== undefined && !USER_SERIAL.test(target.user))
+  return malformed ? "MalformedEntry" : target.user === undefined ? "PersonalEntry" : "WorkEntry"
 }
 
 effect function appInfo(plugin: string, system: SystemHostPlugin, target: LaunchTarget) {
@@ -423,10 +415,10 @@ effect function appInfo(plugin: string, system: SystemHostPlugin, target: Launch
   if (entry === "MalformedEntry") return { outcome: "Refused" as HandoffOutcome, refusal: APP_INFO_REFUSAL[appInfoReply(entry, "ProfileVisible", "AppInstalled", "LaunchFailed")] }
   const opened = try handoff(nativeCall(plugin, "openAppInfo", () => system.openAppInfo(launchTarget(target))))
   const code = Result.isFailure(opened) && opened.failure._tag === "NativeRejection" ? opened.failure.code : undefined
-  const profile: ProfilePresence = code === "profile-unavailable" ? "ProfileGone" : "ProfileVisible"
+  const profile: ProfilePresence = code === "profile-unavailable" && entry === "WorkEntry" ? "ProfileGone" : "ProfileVisible"
   const app: AppPresence = code === "not-installed" ? "AppRemoved" : "AppInstalled"
   const launch: LaunchReply = Result.isSuccess(opened) ? "LaunchStarted" : code === "invalid" ? "LaunchNotFound" : "LaunchFailed"
-  const reply = appInfoReply(entry === "WorkEntry" || profile === "ProfileVisible" ? entry : "WorkEntry", profile, app, launch)
+  const reply = appInfoReply(entry, profile, app, launch)
   return reply === "InfoOpened" ? { outcome: "Opened" as HandoffOutcome } : { outcome: "Refused" as HandoffOutcome, refusal: APP_INFO_REFUSAL[reply] }
 }
 
@@ -533,23 +525,12 @@ export function systemClient(plugin: SystemPlugin & SystemHostPlugin = systemPlu
 
 export const System: SystemClient = systemClient()
 
-function listingOf(target: DeviceSetupTarget, packageName: string | undefined, readiness: Readiness | undefined): PackageListing {
-  if (packageName === undefined || readiness === undefined) return "Unlisted"
-  if (target !== "PASSWORD_MANAGER_APP" && readiness.installedBrowsers.includes(packageName)) return "ListedBrowser"
-  return readiness.installedPasswordManagers.includes(packageName) ? "ListedPasswordManager" : "Unlisted"
-}
-
 effect function openSetup(name: string, setup: DeviceSetup, target: DeviceSetupTarget, packageName: string | undefined) {
   const opened = try nativeReply(name, "open", SetupOpened, () => setup.open({ target, ...(packageName === undefined ? {} : { packageName }) }))
-  const ready = try result(nativeReply(name, "readiness", Readiness, () => setup.readiness()))
-  const listing = listingOf(target, packageName, Result.isSuccess(ready) ? ready.success : undefined)
-  const reply = SETUP_REPLY[opened.outcome]
-  const installed = listing !== "Unlisted"
-  const confirmed = setupReply(SETUP_TARGET[target], listing, installed, reply === "SetupOpened", false)
-  return { outcome: confirmed === "SetupOpened" && reply === "SetupOpened" ? "Opened" as HandoffOutcome : "Refused" as HandoffOutcome, status: opened.outcome }
+  return { outcome: SETUP_REPLY[opened.outcome] === "SetupOpened" ? "Opened" as HandoffOutcome : "Refused" as HandoffOutcome, status: opened.outcome }
 }
 
-export function deviceSetupClient(setup: DeviceSetup, name: string): { readiness(): Promise<Readiness>; open(options: { target: DeviceSetupTarget; packageName?: string }): Promise<DeviceSetupHandoff> } {
+export function deviceSetupClient(setup: DeviceSetup, name: string): { readiness(): Promise<DeviceSetupReadiness>; open(options: { target: DeviceSetupTarget; packageName?: string }): Promise<DeviceSetupHandoff> } {
   return {
     readiness: () => settled(nativeReply(name, "readiness", Readiness, () => setup.readiness())),
     open: ({ target, packageName }) => settled(openSetup(name, setup, target, packageName)),
@@ -565,7 +546,7 @@ interface Pending {
 }
 
 export function createLauncher(bridge: LauncherBridge, options: { icons?: boolean; views?: readonly BuiltinView[]; openView?: (key: string) => void } = {}): Launcher {
-  const home = runSync(Effect.provide(Machine.asEffect(), machine()))
+  const home = runSync(Effect.provide(effect { return try Machine }, machine()))
   const components = new Map<string, number>()
   const viewIds = new Map<string, number>()
   let shown = new Map<number, InstalledApp>()
@@ -573,8 +554,7 @@ export function createLauncher(bridge: LauncherBridge, options: { icons?: boolea
   let pending: Pending | undefined
   let inFlight: { readonly ticket: number; readonly key: string; readonly label: string } | undefined
   let detail: LauncherError | null = null
-  let subscription: Promise<{ remove(): Promise<void> } | undefined> | undefined
-  let unsubscribed = false
+  let watch: { retired: boolean; handle: Promise<{ remove(): Promise<void> } | undefined> } | undefined
   const views = options.views ?? []
 
   const idOf = (table: Map<string, number>, key: string) => {
@@ -670,7 +650,6 @@ export function createLauncher(bridge: LauncherBridge, options: { icons?: boolea
     try send({ type: "openApp", component })
     const after = try home.get()
     if (after.handoff !== "OpeningApp" || after.ticket === before.ticket) {
-      if (after.error === "NoLongerInstalled" && before.error !== "NoLongerInstalled") detail = { kind: "no-longer-installed", label: app.label }
       if (after.error === "NoLongerInstalled") detail = { kind: "no-longer-installed", label: app.label }
       return snapshotOf(after)
     }
@@ -695,12 +674,14 @@ export function createLauncher(bridge: LauncherBridge, options: { icons?: boolea
 
   effect function show() {
     try send({ type: "showHome" })
-    if (subscription === undefined && bridge.addListener !== undefined) {
-      unsubscribed = false
-      subscription = bridge.addListener("appsChanged", () => void settled(begin({ type: "refreshHome", signal: "PackagesChanged" }))).then(
-        (handle) => (unsubscribed ? handle.remove().then(() => undefined) : handle),
+    const follow = bridge.addListener
+    if (watch === undefined && follow !== undefined) {
+      const current: { retired: boolean; handle: Promise<{ remove(): Promise<void> } | undefined> } = { retired: false, handle: Promise.resolve(undefined) }
+      current.handle = follow("appsChanged", () => void settled(begin({ type: "refreshHome", signal: "PackagesChanged" }))).then(
+        (handle) => (current.retired ? handle.remove().then(() => undefined) : handle),
         () => undefined,
       )
+      watch = current
     }
     return snapshotOf(try home.get())
   }
@@ -709,11 +690,11 @@ export function createLauncher(bridge: LauncherBridge, options: { icons?: boolea
     try send({ type: "retireHome" })
     inFlight = undefined
     pending = undefined
-    const held = subscription
-    subscription = undefined
-    if (held !== undefined && !unsubscribed) {
-      unsubscribed = true
-      try promise(() => held.then((handle) => handle?.remove()).catch(() => undefined))
+    const current = watch
+    watch = undefined
+    if (current !== undefined) {
+      current.retired = true
+      try promise(() => current.handle.then((handle) => handle?.remove()).catch(() => undefined))
     }
   }
 
@@ -738,4 +719,3 @@ export function createLauncher(bridge: LauncherBridge, options: { icons?: boolea
   }
 }
 
-export { BridgeUnavailable }

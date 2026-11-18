@@ -87,7 +87,8 @@ sent. A participant shown as a bare number of three to eight digits is a
 short code: one-time codes and automated notices never take a drafted
 reply. Such a thread, and one whose last message is blank, answers
 `{ "draft": null }` at once. Every other admitted request makes at most one
-call to the small text model, and none when the binding cannot start one.
+call to the small text model, and none when the binding cannot start one
+(`drafterCanCall`, which the shell passes on as `callStarts`).
 
 ```quint
 type Decision = RefuseRequest | AnswerNoDraft | AskModel

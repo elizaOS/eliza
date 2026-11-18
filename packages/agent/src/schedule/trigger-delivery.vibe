@@ -2,7 +2,7 @@
 module node {
   import { MISSED_SCHEDULED_OCCURRENCE_TEXT, type AgentRuntime, type MessageProcessingResult, type Room } from "@elizaos/core"
   import type { RunOutcome } from "../../gen/agent__schedule__triggers.ts"
-  import { conversation, createConversation, processTurn, type ConversationOwner } from "../conversation/turns.vibe"
+  import { createConversation, deviceConversation, processTurn, type ConversationOwner } from "../conversation/turns.vibe"
 
   export type ResolvedRoom =
     | { readonly kind: "Resolved"; readonly conversationId: string }
@@ -60,12 +60,12 @@ module node {
 
   export function triggerDelivery(runtime: AgentRuntime, owner: ConversationOwner): TriggerDelivery {
     const find = async (id: string): Promise<Room | undefined> =>
-      (await runtime.getRooms(owner.world)).find((room) => conversation(room)?.id === id)
+      (await runtime.getRooms(owner.world)).find((room) => deviceConversation(room)?.id === id)
     const ready = (conversationId: string): ResolvedRoom =>
       runtime.messageService ? { kind: "Resolved", conversationId } : { kind: "Unavailable" }
 
     async function latest(): Promise<string | undefined> {
-      const known = (await runtime.getRooms(owner.world)).flatMap((room) => conversation(room) ?? [])
+      const known = (await runtime.getRooms(owner.world)).flatMap((room) => deviceConversation(room) ?? [])
       known.sort((a, b) => b.updatedAt - a.updatedAt || b.id.localeCompare(a.id))
       return known[0]?.id
     }
