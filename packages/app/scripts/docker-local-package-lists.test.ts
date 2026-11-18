@@ -139,7 +139,10 @@ describe("Docker runtime dependency closure", () => {
     );
     writeFileSync(
       path.join(root, "package.json"),
-      JSON.stringify({ type: "module", workspaces: ["packages/*", "plugins/*"] }),
+      JSON.stringify({
+        type: "module",
+        workspaces: ["packages/*", "plugins/*"],
+      }),
     );
     for (const name of [...pluginNames, "plugin-files"]) {
       const dir = path.join(root, "plugins", name);
