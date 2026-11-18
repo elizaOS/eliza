@@ -334,6 +334,8 @@ describe("Network weekday with next week", () => {
       ["I'm in Lisbon until Friday next week", "2026-10-23"],
       ["I'm in Lisbon until Friday of next week", "2026-10-23"],
       ["I'm away until Monday next week", "2026-10-19"],
+      // Members write "Next Week" at a sentence start; the match is case-insensitive.
+      ["I'm in Lisbon until Friday Next Week", "2026-10-23"],
       // A bare weekday still means its next occurrence, this week.
       ["I'm in Lisbon until Friday", "2026-10-16"],
     ]) {
@@ -359,6 +361,8 @@ describe("Network weekday with next week", () => {
     for (const [text, until] of [
       ["I'm in Lisbon until next week Friday", "2026-10-23"],
       ["I'm in Lisbon until next week's Friday", "2026-10-23"],
+      // The review case: "Next week Friday" with a capital N (ss251, PR #39816).
+      ["I'm in Lisbon until Next week Friday", "2026-10-23"],
       // "next week Monday" already ended on next Monday.
       ["I'm away until next week Monday", "2026-10-19"],
       // A bare weekday still means its next occurrence, this week.
