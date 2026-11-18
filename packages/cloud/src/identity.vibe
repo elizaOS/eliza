@@ -40,7 +40,7 @@ schema GoogleProfile { sub: string; email?: string; email_verified?: boolean }
 schema DeviceAuthorization { challenge: string; state: string }
 schema DeviceExchange { code: string; verifier: string }
 schema SmsReceipt { status: string; to?: string; channel?: string; service_sid?: string }
-schema BlooioReceipt { id: string; channel_id: string; status: string }
+schema BlooioReceipt { id: string; channel_id: string; status: string; channel_type?: string; to?: string; direction?: string; dry_run?: boolean }
 
 const flowCookie = "__Host-eliza-google"
 const codeSeconds = 10 * 60
@@ -309,8 +309,12 @@ effect function sendBlooio(env: IdentityEnv, address: string, code: string, chal
   if (response.status === 429) throw new RateLimited()
   if (response.status < 200 || response.status >= 300) throw new ProviderUnavailable()
   const receipt = Schema.decodeUnknownOption(BlooioReceipt)((response.json catch effect () => { throw new ProviderUnavailable() }))
-  if (Option.isNone(receipt) || !receipt.value.id || receipt.value.channel_id !== env.BLOOIO_SMS_CHANNEL_ID ||
-      !["queued", "sending", "sent", "delivered"].includes(receipt.value.status)) throw new ProviderUnavailable()
+  if (Option.isNone(receipt)) throw new ProviderUnavailable()
+  const result = receipt.value
+  if (!result.id || result.channel_id !== env.BLOOIO_SMS_CHANNEL_ID || result.dry_run === true ||
+      (result.channel_type !== undefined && result.channel_type !== "sms") ||
+      (result.to !== undefined && result.to !== address) || (result.direction !== undefined && result.direction !== "outbound") ||
+      !["queued", "pending", "sending", "sent", "delivered", "read"].includes(result.status)) throw new ProviderUnavailable()
 }
 
 effect function requestCode(env: IdentityEnv, db: Client, provider: Destination, address: string) {
