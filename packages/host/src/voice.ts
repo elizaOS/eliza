@@ -79,6 +79,7 @@ const DEFAULT_ELEVENLABS_VOICE: VoicePreset = {
   voiceId: "OZ0L6eISlOejga3XjDFt",
   gender: "female",
   hint: "Warm Soft Guide",
+  hintKey: "voice.hint.warm_soft_guide",
   previewUrl: "",
 };
 
@@ -103,6 +104,7 @@ export const PREMADE_VOICES: VoicePreset[] = [
     voiceId: "QtY3JBOUKEB5xzrRfOKc",
     gender: "female",
     hint: "Friendly Casual Neighbor",
+    hintKey: "voice.hint.friendly_casual_neighbor",
     previewUrl: "",
   },
   {
@@ -111,6 +113,7 @@ export const PREMADE_VOICES: VoicePreset[] = [
     voiceId: "22N9cF8z0o7y23njdyaY",
     gender: "female",
     hint: "Atmospheric Storyteller",
+    hintKey: "voice.hint.atmospheric_storyteller",
     previewUrl: "",
   },
   {
@@ -119,6 +122,7 @@ export const PREMADE_VOICES: VoicePreset[] = [
     voiceId: "BFd5oBc2DDna33pSi4Gf",
     gender: "female",
     hint: "Polished Global Anchor",
+    hintKey: "voice.hint.polished_global_anchor",
     previewUrl: "",
   },
   // Male
@@ -128,6 +132,7 @@ export const PREMADE_VOICES: VoicePreset[] = [
     voiceId: "8dEUmyPMdDdK91vboYih",
     gender: "male",
     hint: "Midnight Storyteller",
+    hintKey: "voice.hint.midnight_storyteller",
     previewUrl: "",
   },
   {
@@ -156,6 +161,7 @@ export const PREMADE_VOICES: VoicePreset[] = [
     voiceId: "fnYMz3F5gMEDGMWcH1ex",
     gender: "male",
     hint: "Articulate Anchor",
+    hintKey: "voice.hint.articulate_anchor",
     previewUrl: "",
   },
   {
@@ -164,6 +170,7 @@ export const PREMADE_VOICES: VoicePreset[] = [
     voiceId: "ktkP7Nsj67dw2zcplQYt",
     gender: "male",
     hint: "Bright and Informative",
+    hintKey: "voice.hint.bright_informative",
     previewUrl: "",
   },
   // Character / Cutesy / Game
@@ -223,6 +230,7 @@ export const PREMADE_VOICES: VoicePreset[] = [
     voiceId: "fs2OqxduwXgp9foh2xjK",
     gender: "character",
     hint: "Husky Trickster",
+    hintKey: "voice.hint.husky_trickster",
     previewUrl: "",
   },
   // Custom Character Voices
