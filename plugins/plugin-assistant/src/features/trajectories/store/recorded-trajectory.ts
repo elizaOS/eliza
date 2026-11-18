@@ -331,6 +331,9 @@ export function projectRecordedTrajectories(
   }
   const out: RecordedTrajectory[] = [];
   for (const header of headers.values()) {
+    if (header.agentId !== trajectory.agentId) {
+      throw invalidHeader(header.trajectoryId, "agentId");
+    }
     const stages = header.stageIds.map((stageId) => {
       const stage = stagesById.get(stageId);
       if (!stage) {

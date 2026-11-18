@@ -346,6 +346,16 @@ export function recordedTrajectoryFilePath(
   rootDir: string,
   trajectory: Pick<RecordedTrajectory, "agentId" | "trajectoryId">,
 ): string {
+  for (const id of [trajectory.agentId, trajectory.trajectoryId]) {
+    if (!id || id === "." || id === ".." || path.win32.basename(id) !== id) {
+      throw new ElizaError(
+        "A trajectory export identifier must be one path component",
+        {
+          code: "TRAJECTORY_EXPORT_ID_INVALID",
+        },
+      );
+    }
+  }
   return path.join(
     rootDir,
     trajectory.agentId,

@@ -19,6 +19,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTrajectoryRecorder } from "./recorded-trajectories.ts";
+import { recordedTrajectoryFilePath } from "./store/recorded-trajectory-files.ts";
 import { TrajectoriesService } from "./TrajectoriesService.ts";
 
 const AGENT_ID = "00000000-0000-4000-8000-0000000000a1";
@@ -206,6 +207,22 @@ describe("recorded trajectories on the trajectory store", () => {
       expect(
         await readExport(exportDir, { agentId: AGENT_ID, trajectoryId: id }),
       ).toEqual(file);
+      for (const fields of [
+        { agentId: "group/member", trajectoryId: id },
+        { agentId: AGENT_ID, trajectoryId: "group/member" },
+      ]) {
+        expect(() => recordedTrajectoryFilePath(exportDir, fields)).toThrow(
+          "one path component",
+        );
+      }
+      // A stored header must agree with the agent that owns the row.
+      await rows(
+        `UPDATE trajectories SET metadata_json = jsonb_set(metadata_json::jsonb,
+          '{recordedTrajectories,${id},agentId}', '"another-agent"')::text WHERE id = '${id}'`,
+      );
+      await expect(service.getRecordedTrajectories(id)).rejects.toMatchObject({
+        code: "TRAJECTORY_RECORDED_HEADER_INVALID",
+      });
     } finally {
       await fs.rm(exportDir, { recursive: true, force: true });
     }
