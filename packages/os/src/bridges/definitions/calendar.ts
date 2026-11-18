@@ -191,7 +191,7 @@ export interface CalendarClient {
 }
 
 export interface CalendarClientOptions {
-  clock: () => DeletionClock;
+  clock?: () => DeletionClock;
   plugin?: AndroidCalendarPlugin;
   name?: string;
 }

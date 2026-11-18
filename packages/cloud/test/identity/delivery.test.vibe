@@ -1,5 +1,6 @@
 // spec/cloud/identity/codeChallenges.md, "A challenge sends one code, only to an email address or to a phone in a country the deployment allows"; spec/cloud/deployment.md, "An instance starts only for an accepted profile, on its environment's own readable database, seeded only in staging, with loopback delivery only on PGlite"
 import { assert, describe, it } from "@effect/vitest"
+import type { Refused } from "../../src/http/refusal.vibe"
 import { deliverMail } from "../../src/providers/mail.vibe"
 import { deliverSms } from "../../src/providers/sms.vibe"
 import { testCloud, type Answer, type ProfileEdit } from "../support/cloud.vibe"
@@ -9,6 +10,10 @@ import { deliveryProviders, externalAddress, latestCode } from "../support/inbox
 
 effect function check(run: () => void) {
   try Effect.try(run)
+}
+
+effect function refusalOf(sent: void!Refused) {
+  return sent catch (failure) => failure.refusal.code
 }
 
 function refusal(answer: Answer): string {
@@ -52,7 +57,7 @@ describe("WP1 Identity: mail and SMS delivery", () => {
     const cloud = try testCloud({ edit: httpsAdapters, mount: deliveryProviders(seen) })
     try cloud.inside(deliverMail({ to: "ada@example.com", subject: "Your sign-in code", text: "Your sign-in code is 111222." }))
     try cloud.inside(deliverSms({ to: "+15551234567", text: "Your code is 654321." }))
-    const refusedMail = try (cloud.inside(deliverMail({ to: "refused@example.com", subject: "s", text: "t" })) catch (failure) => failure.refusal.code)
+    const refusedMail = try refusalOf(cloud.inside(deliverMail({ to: "refused@example.com", subject: "s", text: "t" })))
     const inbox = try cloud.call("/api/test/inbox/ada%40example.com")
     const [mail, sms] = seen
     try check(() => assert.deepStrictEqual(
@@ -71,7 +76,7 @@ describe("WP1 Identity: mail and SMS delivery", () => {
 
   it.effect("A provider that does not answer within 10 s is provider_unavailable (spec/cloud/identity/codeChallenges.md, \"Story: Sign in with a code sent to my email or phone\")", () => scoped(effect {
     const cloud = try testCloud({ edit: httpsAdapters, mount: deliveryProviders([], "+15559990000") })
-    const sending = fork (cloud.inside(deliverSms({ to: "+15559990000", text: "Your code is 654321." })) catch (failure) => failure.refusal.code)
+    const sending = fork refusalOf(cloud.inside(deliverSms({ to: "+15559990000", text: "Your code is 654321." })))
     try TestClock.withLive(sleep(Duration.millis(200)))
     try TestClock.adjust(Duration.seconds(10))
     const outcome = join sending

@@ -14,9 +14,11 @@ const loopbackAddress = /^(?:127(?:\.\d{1,3}){3}|::1|::ffff:127(?:\.\d{1,3}){3})
 
 export effect function posted(request: HttpClientRequest.HttpClientRequest): void!Refused!HttpClient.HttpClient {
   const sent = effect {
-    const response = try Effect.provideService(HttpClient.execute(request), FetchHttpClient.RequestInit, { redirect: "manual" })
-    try (response.text catch () => "")
-    return response.status
+    provide FetchHttpClient.RequestInit = { redirect: "manual" } {
+      const response = try HttpClient.execute(request)
+      response.text catch () => ""
+      return response.status
+    }
   }
   const status = timeoutOrElse(sent, { duration: deliveryBudget, orElse: () => fail(refused("ProviderUnavailable")) }) catch effect () => { throw refused("ProviderUnavailable") }
   if (status < 200 || status >= 300) throw refused("ProviderUnavailable")
@@ -25,7 +27,7 @@ export effect function posted(request: HttpClientRequest.HttpClientRequest): voi
 export effect function keepLoopback(destination: string, text: string): void!Refused!Store {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  try (store.transaction((tx) => tx.query("INSERT INTO loopback_messages (destination, text, created_at) VALUES ($1, $2, $3)", [destination, text, now])) catch effect () => { throw refused("ProviderUnavailable") })
+  store.transaction((tx) => tx.query("INSERT INTO loopback_messages (destination, text, created_at) VALUES ($1, $2, $3)", [destination, text, now])) catch effect () => { throw refused("ProviderUnavailable") }
 }
 
 effect function inboxOpen(context: RouteContext): boolean!!(Deployment | Store) {

@@ -204,9 +204,7 @@ export effect function revokeAll(tx: Tx, userId: string, now: number) {
 }
 
 effect function perIp(context: RouteContext, limit: RateLimit) {
-  const forwarded = context.request.headers["x-forwarded-for"]?.split(",")[0]?.trim()
-  const address = forwarded !== undefined && forwarded !== "" ? forwarded : Option.getOrElse(context.request.remoteAddress, () => "unknown")
-  try admit({ subject: address, scope: limit.name, limit: limit.limit, widthMs: limit.windowMs })
+  try admit({ subject: Option.getOrElse(context.request.remoteAddress, () => "unknown"), scope: limit.name, limit: limit.limit, widthMs: limit.windowMs })
 }
 
 effect function connect(context: RouteContext) {

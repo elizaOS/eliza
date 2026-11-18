@@ -13,10 +13,12 @@ export const latestCode = (cloud: TestCloud, destination: string) =>
     return code === undefined ? Effect.fail(new InboxEmpty(`no code for ${destination}: ${answer.status}`)) : Effect.succeed(code);
   });
 
+/** @throws {never} */
 export function externalAddress(): string | undefined {
   return Object.values(networkInterfaces()).flat().find((each) => each !== undefined && each.family === "IPv4" && !each.internal)?.address;
 }
 
+/** @throws {never} */
 export function deliveryProviders(seen: FakeRequest[], silentFor?: string) {
   return (fakes: FakeServer) => {
     fakes.mount("/mail/", (request) => {

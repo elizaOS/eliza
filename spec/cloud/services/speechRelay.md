@@ -32,7 +32,8 @@ channels: 1, expiresAt}`, `{t: "stt", event: {type, transcript?}}`
 "complete", id}`, `{t: "extended", expiresAt}`, `{t: "error", code,
 reason?}`, and binary `[1, idLength, id, PCM16]` with PCM even and at most
 65536 bytes. An id matches `[A-Za-z0-9_-]{1,64}`. A device frame out of
-these bounds is a `ClientViolation`.
+these bounds, an uplink chunk that is not `validPcm` included, is a
+`ClientViolation`.
 
 ```quint
 import types.* from "../shared/types"
@@ -48,24 +49,20 @@ pure val maxUtteranceIdChars = 64
 pure val maxDownlinkPcmBytes = 65536
 pure val helloDeadline: Millis = 5000
 pure def validPcm(bytes: int, limit: int): bool = bytes > 0 and bytes % 2 == 0 and bytes <= limit
-pure def validHelloToken(chars: CharCount): bool = chars >= 1 and chars <= maxHelloTokenChars
-pure def validTtsText(chars: CharCount, blank: bool): bool = chars >= 1 and chars <= maxTtsTextChars and not(blank)
-pure def validUtteranceId(chars: int): bool = chars >= 1 and chars <= maxUtteranceIdChars
-pure def validDownlinkAudio(idChars: int, pcmBytes: int): bool = validUtteranceId(idChars) and validPcm(pcmBytes, maxDownlinkPcmBytes)
+pure def validDownlinkAudio(idChars: int, pcmBytes: int): bool =
+  idChars >= 1 and idChars <= maxUtteranceIdChars and validPcm(pcmBytes, maxDownlinkPcmBytes)
 ```
 
 ### A relay awaits a hello, opens, is live or has ended, and knows the stage of every utterance it has seen
 
 While opening, the session admits the first window and starts the
-providers; their edges are held (at most 64) and sent right after `ready`.
-Each utterance is open, finishing, cancelled or done, and remembers whether
-audio was forwarded since its last acknowledged flush. A live relay counts
-its windows; a session names at most 64 utterance ids per window. The codec
-maps a checked device frame to its input (the shell compares the token's
-digest; an uplink chunk that is not `validPcm` is `ClientViolation`) and
-each frame below to its wire form. A well-formed relay holds only `stt`
-frames, and turn events only after `connected`, while opening; every step
-keeps a relay well formed.
+providers; their `stt` edges are held (at most 64, turn events only after
+`connected`) and sent right after `ready`. Each utterance is open,
+finishing, cancelled or done, and remembers whether audio was forwarded
+since its last acknowledged flush. A live relay counts its windows, each
+admitting 64 new utterance ids. The codec maps a checked device frame to its
+input (the shell compares the token's digest) and each frame to its wire
+form. Every step keeps a relay well formed.
 
 ```quint
 type RelayPhase = RelayAwaitingHello | RelayOpening | RelayLive | RelayEnded
@@ -157,10 +154,8 @@ pure def serverEnding(r: Relay, input: RelayInput): RelayAnswer = match input {
   | ProviderFailed => endWith(r, CauseOutage)
   | _ => quiet(r)
 }
-pure def isClientFrame(input: RelayInput): bool = match input {
-  | ClientHello(h) => true | ClientPrepare(p) => true | ClientSpeak(p) => true | ClientFinish(p) => true | ClientCancel(p) => true
-  | ClientStop => true | ClientAudio => true | ClientViolation => true | _ => false
-}
+pure def isClientFrame(input: RelayInput): bool = match input { | ClientHello(h) => true | ClientPrepare(p) => true | ClientSpeak(p) => true
+  | ClientFinish(p) => true | ClientCancel(p) => true | ClientStop => true | ClientAudio => true | ClientViolation => true | _ => false }
 pure def isErrorFrame(f: ServerFrame): bool = match f { | ErrorFrame(e) => true | _ => false }
 pure def isCloseFrame(f: ServerFrame): bool = match f { | CloseFrame(c) => true | _ => false }
 pure def endsNow(r: Relay, a: RelayAnswer): bool = r.phase != RelayEnded and a.relay.phase == RelayEnded
@@ -232,19 +227,18 @@ pure def lawReadyThenHeldEdgesOnlyWhenTheOpeningIsAdmitted(r: Relay, input: Rela
 ### While live, frames follow the life of each utterance
 
 `prepare`, or the first `tts` of an id, opens the utterance and is answered
-with one `tts_prepared`; a new id beyond 64 per window breaks the protocol.
-A `tts` for an open utterance adds text (its `flush` goes to the provider).
-`finish` moves an open utterance to finishing. `cancel` cancels any id, and
-nothing more is sent for it. A frame for a cancelled id, and `finish` for a
-done one, is ignored (a cancel or the provider's end may overtake queued
-phrases); `prepare` or `tts` for a finishing or done id, and `finish`
-twice or for an unseen id, break the protocol. Provider audio is forwarded
-for an open or finishing utterance; a flush is acknowledged only when audio was forwarded
-since the last acknowledgement; the provider's completion of an open or
-finishing utterance is answered with `complete` and ends it. As in develop,
-completion may come before `finish`; the session then marks that TTS
-settlement uncertain. A renewed window is announced only to a hello with
-`extend`.
+with one `tts_prepared`; a new id beyond the window cap breaks the protocol.
+A `tts` for an open utterance adds text, and `finish` moves it to finishing.
+`cancel` cancels any id, and nothing more is sent for it. A frame for a
+cancelled id, and `finish` for a done one, is ignored, since a cancel or the
+provider's end may overtake queued phrases; `prepare` or `tts` for a
+finishing or done id, and `finish` twice or for an unseen id, break the
+protocol. Provider audio is forwarded for an open or finishing utterance; a
+flush is acknowledged only after audio forwarded since the last
+acknowledgement; the provider's completion is answered with `complete` and
+ends the utterance, even before `finish` (the session then marks that TTS
+settlement uncertain, as in develop). A renewed window is announced only to
+a hello with `extend`.
 
 ```quint
 pure def opens(r: Relay, id: str): RelayAnswer =
@@ -292,8 +286,9 @@ pure def lawNothingIsSentForACancelledUtterance(r: Relay, input: RelayInput, id:
 ### Turn events and accepted uplink audio follow connected, and extended goes only to a hello that asked
 
 `connected` is sent once, and a turn event before it is never sent (a
-transcript over 16384 chars is a provider failure). The shell forwards uplink audio to the provider only while `acceptsAudio` holds,
-and drops it otherwise (the device starts capture on `connected`).
+transcript over 16384 chars is a provider failure). The shell forwards
+uplink audio to the provider only while `acceptsAudio` holds, and drops it
+otherwise; the device starts capture on `connected`.
 
 ```quint
 pure def acceptsAudio(r: Relay): bool = r.phase == RelayLive and r.sttConnected

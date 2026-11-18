@@ -78,7 +78,9 @@ effect function agentId(agent: Started) {
 }
 
 effect function exitCode(agent: Started) {
-  return (try host("exit", () => agent.child.exited)).code
+  const ended = try host("exit", () => agent.child.exited)
+  try Effect.try(() => process.stderr.write(`CHILD ${ended.code} ${ended.stderr} ${ended.stdout}\n`))
+  return ended.code
 }
 
 for (const persistMemory of [false, true]) {

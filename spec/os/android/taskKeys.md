@@ -56,9 +56,6 @@ pure def stepAStoredKeyIsNeverReplaced(before: TaskKeyCustody, via: str, after: 
   via != "reset" implies (before.keys.every(t => after.keys.includes(t)) and after.lastKey >= before.lastKey)
 pure def stepARefusalChangesNoKey(before: TaskKeyCustody, via: str, after: TaskKeyCustody, out: List[CustodyAnswer]): bool =
   out.includes(StorageKeyUnavailable) implies (after.keys == before.keys and after.lastKey == before.lastKey)
-pure def lawOnlyAnUnknownAccountGetsANewKey(held: int, observed: S::SlotRead): bool =
-  keyFound(held, observed) == FirstKey implies (held == 0 and observed != S::Unreadable)
-pure def lawALostKnownKeyIsRefused(held: int): bool = held >= 1 implies keyFound(held, S::Absent) == NoKey
 ```
 
 ### The current account's key is released only as the storage key of a launch newer than every earlier one
@@ -95,6 +92,14 @@ pure def stepAReleaseNamesANewerLaunch(before: TaskKeyCustody, via: str, after: 
   (via != "reset" implies after.lastEpoch >= before.lastEpoch)
     and ((after.release != NoRelease and after.release != before.release) implies (via == "release" and releasedEpoch(after.release) > before.lastEpoch))
     and (out.length() >= 1 implies via == "release")
+pure def lawAnUnreadableSlotIsNeverInitialized(account: C::Account, epoch: int): bool = {
+  val s = { ...initial, verified: account }
+  release(s, account, epoch, S::Unreadable) == { state: { ...s, lastEpoch: epoch }, out: List(StorageKeyUnavailable) }
+}
+pure def lawALostKnownKeyIsNeverCreatedAgain(account: C::Account, epoch: int): bool = {
+  val s = { ...initial, verified: account, keys: List({ account: account, key: 1 }), lastKey: 1 }
+  release(s, account, epoch, S::Absent) == { state: { ...s, lastEpoch: epoch }, out: List(StorageKeyUnavailable) }
+}
 pure def sometimesReleased(s: TaskKeyCustody): bool = s.release != NoRelease
 pure def sometimesSameKeyForALaterLaunch(s: TaskKeyCustody): bool = releasedEpoch(s.release) >= 2 and s.keys.length() == 1
 pure def sometimesEachAccountHasItsOwnKey(s: TaskKeyCustody): bool = s.keys.length() >= 2

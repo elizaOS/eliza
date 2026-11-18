@@ -13,7 +13,7 @@ import { s256 } from "../shared/credential-crypto.vibe"
 import { admitAll, perWindow, type LimitCheck } from "../shared/rate-limit.vibe"
 import { keyedDigest, newId, sameText } from "../shared/sealing.vibe"
 import { loadRow, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
-import { Store, toText, type Row, type Tx } from "../store/connection.vibe"
+import { Store, toText, type Tx } from "../store/connection.vibe"
 import { landAccount } from "./accounts.vibe"
 import { afterFirstFactor } from "./second-factor.vibe"
 

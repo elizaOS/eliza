@@ -1,11 +1,11 @@
 package ai.eliza.plugins.actionjournal;
 
+import ai.eliza.plugins.actionjournal.deletion.DeferredDeletionCoordinator;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
-import ai.eliza.plugins.actionjournal.deletion.DeferredDeletionCoordinator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
