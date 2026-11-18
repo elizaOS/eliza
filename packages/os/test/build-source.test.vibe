@@ -66,8 +66,9 @@ it.effect("Build only from the committed tree I pinned: the verifier admits the 
     const sibling = try changedRepo("sibling", (root) => writeTree(root, { "out-extra/bundle.js": "injected" }))
     const undeclared = try changedRepo("undeclared", (root) => writeTree(root, { "packages/app/coverage/report.js": "injected" }))
     const unsafe = try findingOf(repo.root, repo.commit, { generatedDirectories: ["out/../packages"] })
-    const later = try commitTree(repo.root, {}, "Move HEAD past the pin with the same tree")
-    const moved = try findingOf(repo.root, repo.commit)
+    const ahead = try scratchRepo("ahead", PINNED)
+    const later = try commitTree(ahead.root, {}, "Move HEAD past the pin with the same tree")
+    const moved = try findingOf(ahead.root, ahead.commit)
 
     try Effect.try(() => {
       assert.deepStrictEqual(admitted, { commit: repo.commit })
@@ -85,7 +86,7 @@ it.effect("Build only from the committed tree I pinned: the verifier admits the 
           moved: `HEAD ${later}`,
         },
       )
-      assert.notStrictEqual(later, repo.commit)
+      assert.notStrictEqual(later, ahead.commit)
     })
   }
 })

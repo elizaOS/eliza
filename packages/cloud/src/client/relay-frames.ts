@@ -1,6 +1,6 @@
 //@ backend dafny
 // spec/cloud/services/speechRelay.md, "The wire is version 1 with 16 kHz mono PCM16 and bounded frames"
-import { type RelayErrorCode, type RelayReason, type SttEventKind, downlinkFrameFits, encodeDownlinkAudio, maxControlBytes, maxDownlinkPcmBytes, maxTranscriptChars, maxTtsTextChars, maxUtteranceIdChars, relayChannels, relaySampleRate, relayVersion, validHelloToken, validPcm, validTtsText, validUplinkChunk, validUtteranceId } from "../../gen/cloud__services__speechRelay.ts"
+import { type RelayErrorCode, type RelayReason, type SttEventKind, maxControlBytes, maxDownlinkPcmBytes, maxHelloTokenChars, maxTranscriptChars, maxTtsTextChars, maxUplinkChunkBytes, maxUtteranceIdChars, relayChannels, relaySampleRate, relayVersion, validDownlinkAudio, validPcm } from "../../gen/cloud__services__speechRelay.ts"
 
 export type DeviceWire =
   | { kind: "Hello"; token: number[]; errorReasons: boolean; extend: boolean }
@@ -45,7 +45,38 @@ export function isIdByte(c: number): boolean {
 
 //@ pure
 export function idBytesValid(id: number[]): boolean {
-  return validUtteranceId(id.length) && id.every((c: number) => isIdByte(c))
+  return id.length >= 1 && id.length <= maxUtteranceIdChars && id.every((c: number) => isIdByte(c))
+}
+
+//@ pure
+export function validHelloToken(units: number): boolean {
+  return units >= 1 && units <= maxHelloTokenChars
+}
+
+//@ pure
+export function validTtsText(units: number, blank: boolean): boolean {
+  return units >= 1 && units <= maxTtsTextChars && !blank
+}
+
+//@ pure
+export function validUplink(bytes: number): boolean {
+  return validPcm(bytes, maxUplinkChunkBytes)
+}
+
+//@ pure
+export function encodeAudio(id: number[], pcm: number[]): number[] {
+  return [1, id.length].concat(id).concat(pcm)
+}
+
+//@ pure
+export function audioFrameFits(frame: number[]): boolean {
+  return frame.length >= 2 && frame[0] === 1 && validDownlinkAudio(frame[1], frame.length - 2 - frame[1])
+}
+
+//@ pure
+export function lawEncodedAudioFits(id: number[], pcm: number[]): boolean {
+  //@ ensures audioFrameFits(encodeAudio(id, pcm)) === validDownlinkAudio(id.length, pcm.length)
+  return true
 }
 
 //@ pure
@@ -416,7 +447,7 @@ export function readDevice(b: number[], binary: boolean): DeviceWire {
   const flush = fieldOf(f, "flush")
   if (text.kind !== "JsonText" || !optionalFlag(flush)) return { kind: "DeviceRefused" }
   const units = utf16Units(text.bytes)
-  if (units < 1 || units > maxTtsTextChars || !validTtsText(units, blankText(text.bytes))) return { kind: "DeviceRefused" }
+  if (units > maxTtsTextChars || !validTtsText(units, blankText(text.bytes))) return { kind: "DeviceRefused" }
   return { kind: "Tts", id: id, text: text.bytes, flush: flagOn(flush) }
 }
 
@@ -433,13 +464,13 @@ export function readAudio(frame: number[]): RelayWire {
 
 //@ pure
 export function lawAudioRoundTrips(id: number[], pcm: number[]): boolean {
-  //@ ensures (idBytesValid(id) && validPcm(pcm.length, maxDownlinkPcmBytes)) ==> readAudio(encodeDownlinkAudio(id, pcm)) === { kind: "Audio", id: id, pcm: pcm }
+  //@ ensures (idBytesValid(id) && validPcm(pcm.length, maxDownlinkPcmBytes)) ==> readAudio(encodeAudio(id, pcm)) === { kind: "Audio", id: id, pcm: pcm }
   return true
 }
 
 //@ pure
 export function lawReadAudioIsCanonical(frame: number[]): boolean {
-  //@ ensures readAudio(frame).kind === "Audio" ==> encodeDownlinkAudio(readAudio(frame).id, readAudio(frame).pcm) === frame
+  //@ ensures readAudio(frame).kind === "Audio" ==> encodeAudio(readAudio(frame).id, readAudio(frame).pcm) === frame
   return true
 }
 
@@ -584,8 +615,8 @@ function control(bytes: number[]): Written {
 
 export function writeDevice(f: DeviceWire): Written {
   //@ ensures (\result.kind === "Written" && f.kind !== "Uplink") ==> \result.bytes.length <= maxControlBytes
-  //@ ensures (f.kind === "Uplink" && validUplinkChunk(f.pcm.length)) ==> \result === { kind: "Written", bytes: f.pcm }
-  if (f.kind === "Uplink") return validUplinkChunk(f.pcm.length) ? { kind: "Written", bytes: f.pcm } : { kind: "Unwritable" }
+  //@ ensures (f.kind === "Uplink" && validUplink(f.pcm.length)) ==> \result === { kind: "Written", bytes: f.pcm }
+  if (f.kind === "Uplink") return validUplink(f.pcm.length) ? { kind: "Written", bytes: f.pcm } : { kind: "Unwritable" }
   if (f.kind === "DeviceRefused") return { kind: "Unwritable" }
   if (f.kind === "Stop") return control(typed("stop", []))
   if (f.kind === "Hello") {
@@ -599,7 +630,7 @@ export function writeDevice(f: DeviceWire): Written {
   if (f.kind === "Finish") return control(typed("finish", [member("id", quoted(f.id))]))
   if (f.kind === "Cancel") return control(typed("cancel", [member("id", quoted(f.id))]))
   const units = utf16Units(f.text)
-  if (units < 1 || units > maxTtsTextChars || !validTtsText(units, blankText(f.text)) || !utf8Valid(f.text)) return { kind: "Unwritable" }
+  if (units > maxTtsTextChars || !validTtsText(units, blankText(f.text)) || !utf8Valid(f.text)) return { kind: "Unwritable" }
   const flush: number[][] = f.flush ? [member("flush", ascii("true"))] : []
   return control(typed("tts", [member("id", quoted(f.id)), member("text", quoted(f.text))].concat(flush)))
 }
@@ -632,10 +663,10 @@ function reasonMembers(r: RelayReason): number[][] {
 }
 
 export function writeRelay(f: RelayWire): Written {
-  //@ ensures (f.kind === "Audio" && \result.kind === "Written") ==> downlinkFrameFits(\result.bytes) && \result.bytes === encodeDownlinkAudio(f.id, f.pcm)
+  //@ ensures (f.kind === "Audio" && \result.kind === "Written") ==> audioFrameFits(\result.bytes) && \result.bytes === encodeAudio(f.id, f.pcm)
   //@ ensures (f.kind === "Audio" && idBytesValid(f.id) && validPcm(f.pcm.length, maxDownlinkPcmBytes)) ==> \result.kind === "Written"
   switch (f.kind) {
-    case "Audio": return idBytesValid(f.id) && validPcm(f.pcm.length, maxDownlinkPcmBytes) ? { kind: "Written", bytes: encodeDownlinkAudio(f.id, f.pcm) } : { kind: "Unwritable" }
+    case "Audio": return idBytesValid(f.id) && validPcm(f.pcm.length, maxDownlinkPcmBytes) ? { kind: "Written", bytes: encodeAudio(f.id, f.pcm) } : { kind: "Unwritable" }
     case "RelayRefused": return { kind: "Unwritable" }
     case "Ready":
       if (!utf8Valid(f.expiresAt)) return { kind: "Unwritable" }

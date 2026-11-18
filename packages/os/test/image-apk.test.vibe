@@ -1,5 +1,6 @@
 // spec/os/image/apk.md, "Story: Put only a reviewed release APK into an image"; spec/os/image/apk.md, "Story: Update my installed app without losing its data"
 import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
 import {
   BUILD_FLAGS_ENTRY,
   QA_EVIDENCE_FORMAT,
@@ -103,91 +104,93 @@ effect function refusal(request: ImageApkRequest) {
 }
 
 it.effect.skipIf(skipped !== null)(`Build release, debug and two-signer APKs, read them without unzip or a second model, and admit only the reviewed release${skipped === null ? "" : ` (skipped: ${skipped})`} (spec/os/image/apk.md, "Story: Put only a reviewed release APK into an image"; spec/os/image/apk.md, "A signer observation names exactly one certificate for the requested API"; spec/os/image/apk.md, "A release APK is a non-debuggable build outside the test-mocks output, with mocks off, signed by exactly the reviewed signer"; spec/os/image/apk.md, "A recorded release row is distributable only when it has no blockers"; spec/os/image/apk.md, "Production stages only a clean release APK and development stages only a debug build or a clean release")`, effect () => {
-  if (tools.kind === "missing") return
-  const files = try FileSystem.FileSystem
-  const path = try Path.Path
-  const work = try scratch("image-apk")
-  const signer = try Effect.try(() => testSigner(tools, work, "release"))
-  const rotated = try Effect.try(() => testSigner(tools, work, "second"))
-  const clean = { [BUILD_FLAGS_ENTRY]: JSON.stringify({ testMocks: false }) }
-  const build = (name: string, debuggable: boolean, assets: Readonly<Record<string, string>>) =>
-    Effect.try(() => buildApk(tools, { directory: path.join(work, "out"), manifest: manifest(debuggable), signer, name, assets }))
-  const release = try build("release", false, clean)
-  const debug = try build("debug", true, clean)
-  const mocked = try build("mocked", false, { [BUILD_FLAGS_ENTRY]: JSON.stringify({ testMocks: true }) })
-  const flagless = try build("flagless", false, {})
-  const twoSigners = path.join(work, "out", "two-signers.apk")
-  const twoSignersSha = try Effect.try(() => signTwice(tools, release.apk, twoSigners, signer, rotated))
-  const testMocksDir = path.join(work, "test-mocks")
-  const mockOutput = try Effect.try(() => copyInto(release.apk, testMocksDir))
+  provide NodeServices.layer {
+    if (tools.kind === "missing") return
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const work = try scratch("image-apk")
+    const signer = try Effect.try(() => testSigner(tools, work, "release"))
+    const rotated = try Effect.try(() => testSigner(tools, work, "second"))
+    const clean = { [BUILD_FLAGS_ENTRY]: JSON.stringify({ testMocks: false }) }
+    const build = (name: string, debuggable: boolean, assets: Readonly<Record<string, string>>) =>
+      Effect.try(() => buildApk(tools, { directory: path.join(work, "out"), manifest: manifest(debuggable), signer, name, assets }))
+    const release = try build("release", false, clean)
+    const debug = try build("debug", true, clean)
+    const mocked = try build("mocked", false, { [BUILD_FLAGS_ENTRY]: JSON.stringify({ testMocks: true }) })
+    const flagless = try build("flagless", false, {})
+    const twoSigners = path.join(work, "out", "two-signers.apk")
+    const twoSignersSha = try Effect.try(() => signTwice(tools, release.apk, twoSigners, signer, rotated))
+    const testMocksDir = path.join(work, "test-mocks")
+    const mockOutput = try Effect.try(() => copyInto(release.apk, testMocksDir))
 
-  assert.strictEqual(try resolveAndroidSdkRoot({ ANDROID_HOME: tools.sdk }), tools.sdk)
-  const javaHome = try resolveJavaHome()
-  assert.isDefined(javaHome, "a Java 21 or later home is found")
-  assert.isAtLeast((try javaMajorVersion(javaHome ?? "")) ?? 0, 21)
+    assert.strictEqual(try resolveAndroidSdkRoot({ ANDROID_HOME: tools.sdk }), tools.sdk)
+    const javaHome = try resolveJavaHome()
+    assert.isDefined(javaHome, "a Java 21 or later home is found")
+    assert.isAtLeast((try javaMajorVersion(javaHome ?? "")) ?? 0, 21)
 
-  const entries = try listAndroidArtifactEntries(release.apk)
-  assert.include(entries, "AndroidManifest.xml")
-  assert.include(entries, BUILD_FLAGS_ENTRY)
-  const [flags] = try readAndroidArtifactEntryBuffers(release.apk, [BUILD_FLAGS_ENTRY])
-  assert.deepStrictEqual(JSON.parse(new TextDecoder().decode(flags)), { testMocks: false })
-  const unsafe = (readAndroidArtifactEntryBuffers(release.apk, ["../AndroidManifest.xml"]) catch (error) => error._tag)
-  assert.strictEqual(unsafe, "ArchiveInvalid", "a path outside the archive is refused before reading")
-  const absent = (readAndroidArtifactEntryBuffers(release.apk, ["assets/none.json"]) catch (error) => error._tag)
-  assert.strictEqual(absent, "ArchiveInvalid")
-  assert.strictEqual(try readApkBuildFlags(release.apk), "MocksOff")
-  assert.strictEqual(try readApkBuildFlags(mocked.apk), "MocksOn")
-  assert.strictEqual(try readApkBuildFlags(flagless.apk), "FlagsMissing")
+    const entries = try listAndroidArtifactEntries(release.apk)
+    assert.include(entries, "AndroidManifest.xml")
+    assert.include(entries, BUILD_FLAGS_ENTRY)
+    const [flags] = try readAndroidArtifactEntryBuffers(release.apk, [BUILD_FLAGS_ENTRY])
+    assert.deepStrictEqual(try Effect.try(() => JSON.parse(new TextDecoder().decode(flags))), { testMocks: false })
+    const unsafe = (readAndroidArtifactEntryBuffers(release.apk, ["../AndroidManifest.xml"]) catch (error) => error._tag)
+    assert.strictEqual(unsafe, "ArchiveInvalid", "a path outside the archive is refused before reading")
+    const absent = (readAndroidArtifactEntryBuffers(release.apk, ["assets/none.json"]) catch (error) => error._tag)
+    assert.strictEqual(absent, "ArchiveInvalid")
+    assert.strictEqual(try readApkBuildFlags(release.apk), "MocksOff")
+    assert.strictEqual(try readApkBuildFlags(mocked.apk), "MocksOn")
+    assert.strictEqual(try readApkBuildFlags(flagless.apk), "FlagsMissing")
 
-  const releaseFacts = manifestFacts(try aaptManifestTree(release.apk, { aapt: tools.aapt }), try dumpAndroidArtifactBadging(tools.aapt, release.apk))
-  assert.strictEqual(releaseFacts.packageName, PACKAGE)
-  assert.strictEqual(releaseFacts.versionCode, 7)
-  assert.strictEqual(releaseFacts.versionName, "1.7")
-  assert.deepStrictEqual(releaseFacts.permissions, ["android.permission.INTERNET"])
-  assert.deepStrictEqual(releaseFacts.exported.map((component) => component.name), [`${PACKAGE}.MainActivity`])
-  assert.notStrictEqual(releaseFacts.application.debuggable, "0xffffffff")
-  assert.strictEqual(manifestFacts(try aaptManifestTree(debug.apk, { aapt: tools.aapt })).application.debuggable, "0xffffffff")
+    const releaseFacts = manifestFacts(try aaptManifestTree(release.apk, { aapt: tools.aapt }), try dumpAndroidArtifactBadging(tools.aapt, release.apk))
+    assert.strictEqual(releaseFacts.packageName, PACKAGE)
+    assert.strictEqual(releaseFacts.versionCode, 7)
+    assert.strictEqual(releaseFacts.versionName, "1.7")
+    assert.deepStrictEqual(releaseFacts.permissions, ["android.permission.INTERNET"])
+    assert.deepStrictEqual(releaseFacts.exported.map((component) => component.name), [`${PACKAGE}.MainActivity`])
+    assert.notStrictEqual(releaseFacts.application.debuggable, "0xffffffff")
+    assert.strictEqual(manifestFacts(try aaptManifestTree(debug.apk, { aapt: tools.aapt })).application.debuggable, "0xffffffff")
 
-  assert.strictEqual(try readApkSignerDigest(release.apk, { apksigner: tools.apksigner }), signer.certificateSha256)
-  assert.deepStrictEqual(try readApkSigner(twoSigners, { apksigner: tools.apksigner }), { tag: "SignerRefused" })
-  const twoSignerError = (readApkSignerDigest(twoSigners, { apksigner: tools.apksigner }) catch (error) => error._tag)
-  assert.strictEqual(twoSignerError, "ApkSignerUnread", "two signers are not one reviewed signer")
+    assert.strictEqual(try readApkSignerDigest(release.apk, { apksigner: tools.apksigner }), signer.certificateSha256)
+    assert.deepStrictEqual(try readApkSigner(twoSigners, { apksigner: tools.apksigner }), { tag: "SignerRefused" })
+    const twoSignerError = (readApkSignerDigest(twoSigners, { apksigner: tools.apksigner }) catch (error) => error._tag)
+    assert.strictEqual(twoSignerError, "ApkSignerUnread", "two signers are not one reviewed signer")
 
-  const reviewed = { reviewedSigner: signer.certificateSha256 }
-  const request = (apk: string, rows: readonly Readonly<Record<string, unknown>>[], extra: Partial<ImageApkRequest> = {}): ImageApkRequest =>
-    ({ apk, testMocksDir, aapt: tools.aapt, apksigner: tools.apksigner, manifest: { testMocks: false, results: rows }, review: reviewed, ...extra })
+    const reviewed = { reviewedSigner: signer.certificateSha256 }
+    const request = (apk: string, rows: readonly Readonly<Record<string, unknown>>[], extra: Partial<ImageApkRequest> = {}): ImageApkRequest =>
+      ({ apk, testMocksDir, aapt: tools.aapt, apksigner: tools.apksigner, manifest: { testMocks: false, results: rows }, review: reviewed, ...extra })
 
-  const admitted = try admitImageApk(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256)]))
-  assert.strictEqual(admitted.sha256, release.sha256)
-  assert.deepStrictEqual(admitted.blockers, [])
-  assert.deepStrictEqual(admitted.facts, { sha256: { tag: "Sha256", hex: release.sha256 }, location: "StagingInput", bundle: "MocksOff", buildType: "ReleaseBuild", signer: { tag: "OneSigner", certificate: { tag: "Sha256", hex: signer.certificateSha256 } } })
+    const admitted = try admitImageApk(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256)]))
+    assert.strictEqual(admitted.sha256, release.sha256)
+    assert.deepStrictEqual(admitted.blockers, [])
+    assert.deepStrictEqual(admitted.facts, { sha256: { tag: "Sha256", hex: release.sha256 }, location: "StagingInput", bundle: "MocksOff", buildType: "ReleaseBuild", signer: { tag: "OneSigner", certificate: { tag: "Sha256", hex: signer.certificateSha256 } } })
 
-  assert.strictEqual(try refusal(request(release.apk, [])), "NeedsReleaseRow")
-  assert.strictEqual(try refusal(request(release.apk, [releaseRow(debug.sha256, signer.certificateSha256)])), "NeedsReleaseRow", "a row counts only for this APK's digest")
-  const undistributable = (admitImageApk(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256, { distributable: false })])) catch (error) => error._tag === "ImageApkRefused" ? [error.refusal, ...error.blockers] : [error._tag])
-  assert.deepStrictEqual(undistributable, ["RowNotDistributable", "NotRecordedDistributable"])
-  assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, OTHER)], { review: { reviewedSigner: OTHER } })), "NotAReleaseApk", "the APK's own signer must be the reviewed one")
-  assert.strictEqual(try refusal(request(twoSigners, [releaseRow(twoSignersSha, signer.certificateSha256)])), "NotAReleaseApk")
-  assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256)], { review: {} })), "RowNotDistributable", "no reviewed signer releases nothing")
-  assert.strictEqual(try refusal(request(mockOutput, [releaseRow(release.sha256, signer.certificateSha256)])), "InTestMocksOutput")
-  assert.strictEqual(try refusal(request(mocked.apk, [releaseRow(mocked.sha256, signer.certificateSha256)])), "BundleBuiltWithMocks")
-  assert.strictEqual(try refusal(request(flagless.apk, [releaseRow(flagless.sha256, signer.certificateSha256)])), "BundleFlagsUnread")
-  assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256)], { manifest: { testMocks: true, results: [releaseRow(release.sha256, signer.certificateSha256)] } })), "RowRecordsMocks")
+    assert.strictEqual(try refusal(request(release.apk, [])), "NeedsReleaseRow")
+    assert.strictEqual(try refusal(request(release.apk, [releaseRow(debug.sha256, signer.certificateSha256)])), "NeedsReleaseRow", "a row counts only for this APK's digest")
+    const undistributable = (admitImageApk(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256, { distributable: false })])) catch (error) => error._tag === "ImageApkRefused" ? [error.refusal, ...error.blockers] : [error._tag])
+    assert.deepStrictEqual(undistributable, ["RowNotDistributable", "NotRecordedDistributable"])
+    assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, OTHER)], { review: { reviewedSigner: OTHER } })), "NotAReleaseApk", "the APK's own signer must be the reviewed one")
+    assert.strictEqual(try refusal(request(twoSigners, [releaseRow(twoSignersSha, signer.certificateSha256)])), "NotAReleaseApk")
+    assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256)], { review: {} })), "RowNotDistributable", "no reviewed signer releases nothing")
+    assert.strictEqual(try refusal(request(mockOutput, [releaseRow(release.sha256, signer.certificateSha256)])), "InTestMocksOutput")
+    assert.strictEqual(try refusal(request(mocked.apk, [releaseRow(mocked.sha256, signer.certificateSha256)])), "BundleBuiltWithMocks")
+    assert.strictEqual(try refusal(request(flagless.apk, [releaseRow(flagless.sha256, signer.certificateSha256)])), "BundleFlagsUnread")
+    assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256)], { manifest: { testMocks: true, results: [releaseRow(release.sha256, signer.certificateSha256)] } })), "RowRecordsMocks")
 
-  assert.strictEqual(try refusal(request(debug.apk, [])), "NeedsReleaseRow", "production never stages a debug build")
-  assert.strictEqual(try refusal(request(debug.apk, [], { development: true })), "ApkAdmitted")
-  assert.strictEqual(try refusal(request(release.apk, [], { development: true })), "NotADebugBuild")
-  assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256)], { development: true })), "ApkAdmitted")
-  assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256, { licenceBlockers: ["gpl"] })], { development: true, review: { ...reviewed, licenceBlocks: (item) => item === "gpl" } })), "RowNotDistributable", "a blocked release is never staged by relabelling")
+    assert.strictEqual(try refusal(request(debug.apk, [])), "NeedsReleaseRow", "production never stages a debug build")
+    assert.strictEqual(try refusal(request(debug.apk, [], { development: true })), "ApkAdmitted")
+    assert.strictEqual(try refusal(request(release.apk, [], { development: true })), "NotADebugBuild")
+    assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256)], { development: true })), "ApkAdmitted")
+    assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256, { licenceBlockers: ["gpl"] })], { development: true, review: { ...reviewed, licenceBlocks: (item) => item === "gpl" } })), "RowNotDistributable", "a blocked release is never staged by relabelling")
 
-  const before = try snapshotAndroidArtifact(release.apk)
-  assert.strictEqual(before.sha256, release.sha256)
-  try assertAndroidArtifactSnapshotUnchanged(release.apk, before, try snapshotAndroidArtifact(release.apk))
-  try files.writeFile(release.apk, try files.readFile(debug.apk))
-  const changed = (assertAndroidArtifactSnapshotUnchanged(release.apk, before, try snapshotAndroidArtifact(release.apk)) catch (error) => error._tag)
-  assert.strictEqual(changed, "ArtifactChanged")
-  const tooLarge = (snapshotAndroidArtifact(release.apk, { maxArtifactBytes: 16 }) catch (error) => error._tag)
-  assert.strictEqual(tooLarge, "ArtifactTooLarge")
+    const before = try snapshotAndroidArtifact(release.apk)
+    assert.strictEqual(before.sha256, release.sha256)
+    try assertAndroidArtifactSnapshotUnchanged(release.apk, before, try snapshotAndroidArtifact(release.apk))
+    try files.writeFile(release.apk, try files.readFile(debug.apk))
+    const changed = (assertAndroidArtifactSnapshotUnchanged(release.apk, before, try snapshotAndroidArtifact(release.apk)) catch (error) => error._tag)
+    assert.strictEqual(changed, "ArtifactChanged")
+    const tooLarge = (snapshotAndroidArtifact(release.apk, { maxArtifactBytes: 16 }) catch (error) => error._tag)
+    assert.strictEqual(tooLarge, "ArtifactTooLarge")
+  }
 }, 300_000)
 
 it("Compute release blockers for the cloud-speech and image profiles and check a QA receipt for this exact APK (spec/os/image/apk.md, \"A recorded release row is distributable only when it has no blockers\"; spec/os/image/apk.md, \"A cloud-speech release needs a passed QA receipt for this exact APK, from the configured provider, covering every named check\")", () => {

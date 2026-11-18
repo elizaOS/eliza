@@ -95,3 +95,125 @@ pure def lawASessionRouteNeverCarriesTheKey(h: Holding, auth: AuthClass): bool =
 pure def lawAKeyRouteWithoutAKeyIsNotSent(h: Holding, auth: AuthClass): bool =
   (auth == KeyOrSession and h.key < 1) implies attachFor(h, auth) == Refuse({ why: SignInRequired })
 ```
+
+### A request is sent only to the deployment origin, admitted by the gate, with headers its route admits
+
+The page's headers pass unchanged when each is one its device route admits
+(the client's base headers, and `Idempotency-Key` or `If-Match` where the
+route lists it), `Accept`, or `If-None-Match` on a read; `Authorization`
+from the page, a cookie or any other header refuses the request, and
+nothing is trimmed. A body over the route's limit is `BodyTooLarge`. The
+reply's status, `ETag`, `Content-Type` and `Retry-After` return to the
+page, so a `412` reaches the caller that sent `If-Match`.
+
+```quint
+pure val noDeviceRoute: DeviceRoute = { method: Get, path: List(), auth: Public, headers: Set() }
+pure def headerAllowed(d: DeviceRoute, header: str): bool =
+  header != "Authorization" and (admitsHeader(d, header) or header == "Accept" or (header == "If-None-Match" and d.method == Get))
+pure def planRequest(routes: Routes::RouteList, h: Holding, origin: BaseUrl, request: Routes::Request, headers: List[str]): CallPlan = {
+  val a = Routes::admission(routes, request)
+  val found = deviceRouteOf(Routes::admittedRoute(a).nthOr(0, Routes::noTemplate))
+  val d = found.nthOr(0, noDeviceRoute)
+  if (not(originAccepted(origin))) Refuse({ why: NoOrigin })
+  else if (a == Routes::TooLarge) Refuse({ why: BodyTooLarge })
+  else if (Routes::admittedRoute(a).length() != 1 or found.length() != 1) Refuse({ why: NotListed })
+  else if (not(headers.every(x => headerAllowed(d, x)))) Refuse({ why: HeaderRefused })
+  else attachFor(h, d.auth)
+}
+pure def refused(p: CallPlan): bool = match p { | Refuse(r) => true | _ => false }
+pure def lawASentRequestIsAdmittedOnTheOrigin(routes: Routes::RouteList, h: Holding, origin: BaseUrl, request: Routes::Request, headers: List[str]): bool =
+  not(refused(planRequest(routes, h, origin, request, headers))) implies
+    (originAccepted(origin) and Routes::admittedRoute(Routes::admission(routes, request)).length() == 1 and not(headers.includes("Authorization")))
+pure val originValues = Set({ scheme: Https, loopback: false, hasPath: false, hasQueryOrFragment: false }, { scheme: Https, loopback: false, hasPath: true, hasQueryOrFragment: false })
+pure val headersValues = Set(List(), List("Idempotency-Key"), List("If-Match"), List("Authorization"), List("Accept", "If-None-Match"))
+pure val routesValues = {
+  val v1 = List(Routes::Literal({ text: "api" }), Routes::Literal({ text: "v1" }))
+  def at(names: List[str]): List[Routes::Piece] = v1.concat(names.listMap(n => Routes::Literal({ text: n })))
+  val read = { method: Routes::Get, delivery: Routes::Buffered, path: at(List("user")), query: List(), limit: Routes::AnySize }
+  val table = { prefixes: List(List("api", "v1")), id: "id", routes: List(read,
+    { ...read, path: at(List("subscriptions", "plans")) },
+    { ...read, method: Routes::Post, path: at(List("subscriptions", "cancel")), limit: Routes::AtMost({ bytes: 20 }) },
+    { ...read, path: at(List("eliza", "google", "calendar", "feed")), query: List({ key: "timeMin", accepts: Routes::AnyValue }) },
+    { ...read, method: Routes::Patch, path: at(List("eliza", "google", "calendar", "events")).append(Routes::Param), limit: Routes::AtMost({ bytes: 20 }) }) }
+  Set(List(table), List({ ...table, routes: table.routes.append({ ...read, path: at(List("agents")) }) }),
+    List({ ...table, routes: table.routes.append({ ...read, method: Routes::Post, path: at(List("auth", "refresh")) }) }))
+}
+pure val requestValues = {
+  def seg(text: str): Routes::Segment = { text: text, fits: List() }
+  val user = { method: Routes::Get, delivery: Routes::Buffered, segments: List(seg("api"), seg("v1"), seg("user")), query: List(), flaws: List(), body: Routes::NoBody }
+  val cancel = { ...user, method: Routes::Post, segments: List(seg("api"), seg("v1"), seg("subscriptions"), seg("cancel")), body: Routes::JsonObject({ size: 5 }) }
+  val calendar = List(seg("api"), seg("v1"), seg("eliza"), seg("google"), seg("calendar"))
+  Set(user, cancel, { ...cancel, body: Routes::JsonObject({ size: 30 }) },
+    { ...user, segments: calendar.append(seg("feed")), query: List({ key: "timeMin", value: "0", fits: List() }) },
+    { ...cancel, method: Routes::Patch, segments: calendar.concat(List(seg("events"), { text: "e1", fits: List("id") })) },
+    { ...user, segments: List(seg("api"), seg("v1"), seg("models")) })
+}
+```
+
+### A 401 goes to the credential with its reason and is not retried
+
+The page gets the refusal as the cloud gave it; the request is never sent
+again with another credential. A `401` on a request sent with the device key
+is reported to `./credential.md` as `rejected` for that key's version, as an
+account read when the route was `GET /api/v1/user`, which alone may sign
+out. A `401` on a request sent with the account session drops that session
+only.
+
+```quint
+type CredentialReport = NoReport | KeyRejected({ version: int, reason: RefusalReason, on: C::RejectedOn }) | SessionRejected
+pure def isAccountRead(d: DeviceRoute): bool = d.method == Get and d.path == api(List("user"))
+pure def reportOf(attach: Attach, d: DeviceRoute, status: int, reason: RefusalReason): CredentialReport =
+  if (status != 401) NoReport
+  else match attach {
+    | WithKey(k) => KeyRejected({ version: k.version, reason: credentialReasonOf(reason), on: if (isAccountRead(d)) C::AccountRead else C::OtherRequest })
+    | WithSession(x) => SessionRejected
+    | Bare => NoReport
+  }
+pure def isKeyReport(r: CredentialReport): bool = match r { | KeyRejected(k) => true | _ => false }
+pure val attachValues = Set(Bare, WithKey({ version: 1 }), WithSession({ version: 1 }))
+pure val dValues = Set(noDeviceRoute, { method: Get, path: api(List("user")), auth: KeyOrSession, headers: Set() })
+pure val reasonValues = Set(CredentialExpired, CredentialRevoked, CredentialUnknown, NoReason)
+pure def lawOnlyA401WithACredentialIsReported(attach: Attach, d: DeviceRoute, status: int, reason: RefusalReason): bool =
+  (reportOf(attach, d, status, reason) != NoReport) iff (status == 401 and attach != Bare)
+pure def lawASession401NeverReachesTheKey(attach: Attach, d: DeviceRoute, status: int, reason: RefusalReason): bool =
+  isKeyReport(reportOf(attach, d, status, reason)) iff (status == 401 and keyOf(attach) >= 1)
+```
+
+### A reply body up to 8 MiB returns inline, up to 64 MiB through a one-use cache grant, and a larger one is refused
+
+Nothing is truncated and binary bodies pass unchanged. A body over 8 MiB is
+written to the app cache under its SHA-256 and the page gets a grant that
+reads it once; a body over 64 MiB is refused whole with `ReplyTooLarge`.
+
+```quint
+type BodyHandoff = InlineBody | CachedBody | ReplyTooLarge
+pure val inlineLimit: int = 8388608
+pure val replyLimit: int = 67108864
+pure def handoffOf(bytes: int): BodyHandoff = if (bytes > replyLimit) ReplyTooLarge else if (bytes > inlineLimit) CachedBody else InlineBody
+type Grant = { grant: str, digest: str }
+type Redemption = { grants: List[Grant], read: List[Grant] }
+pure def redeem(grants: List[Grant], grant: str): Redemption = { grants: grants.select(g => g.grant != grant), read: grants.select(g => g.grant == grant) }
+pure val bytesValues = Set(0, 8388608, 8388609, 67108864, 67108865)
+pure val grantsValues = Set(List(), List({ grant: "g1", digest: "d1" }), List({ grant: "g1", digest: "d1" }, { grant: "g2", digest: "d1" }))
+pure val grantValues = Set("g1", "g2")
+pure def lawOnlyAnOversizeBodyIsRefused(bytes: int): bool = (handoffOf(bytes) == ReplyTooLarge) iff bytes > replyLimit
+pure def lawAGrantReadsOnce(grants: List[Grant], grant: str): bool = redeem(redeem(grants, grant).grants, grant).read == List()
+```
+
+### Only an HTTPS page on the web host or a listed payment or consent host opens, in the system browser
+
+A link from a reply (a checkout, the billing portal, Google consent) opens
+in the system browser only on `https`, the default port, no user info, and a
+host equal to the deployment's web host or one of the fixed provider hosts.
+
+```quint
+type ExternalLink = { https: bool, host: str, defaultPort: bool, userInfo: bool }
+pure val providerHosts: Set[str] = Set("checkout.stripe.com", "billing.stripe.com", "accounts.google.com")
+pure def opensExternally(webHost: str, link: ExternalLink): bool =
+  link.https and link.defaultPort and not(link.userInfo) and (link.host == webHost or providerHosts.contains(link.host))
+pure val webHostValues = Set("web.cloud.test")
+pure val linkValues = Set({ https: true, host: "billing.stripe.com", defaultPort: true, userInfo: false },
+  { https: true, host: "billing.stripe.com.evil.test", defaultPort: true, userInfo: false }, { https: false, host: "web.cloud.test", defaultPort: true, userInfo: false })
+pure def lawALinkOpensOnlyOnAListedHost(webHost: str, link: ExternalLink): bool =
+  opensExternally(webHost, link) implies (link.host == webHost or providerHosts.contains(link.host))
+```
