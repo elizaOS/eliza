@@ -6,6 +6,7 @@ import {
 } from "@elizaos/contracts/browser-request-grounding";
 import {
   AgentRuntime,
+  bindIncomingMessagePersistence,
   conversationClientUserMemoryId,
   type IDatabaseAdapter,
   type Memory,
@@ -158,6 +159,25 @@ async function fixture() {
           return id === original.id ? stored : null;
         });
         setDeviceReadReplyConversation(runtime, randomUUID(), room);
+        if (custody.startsWith("augmented")) {
+          // The chat host's prompt-only document envelope, bound to the
+          // persisted message as generateChatResponse binds it.
+          bindIncomingMessagePersistence(original, structuredClone(original));
+          original.content.text = [
+            "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+            "",
+            "<contextual_documents>",
+            '<source title="Getting started" similarity="1.000">',
+            "Q: I just opened Eliza — what do I do first?",
+            "A: Take the interactive tutorial.",
+            "</source>",
+            "</contextual_documents>",
+            "",
+            "<user_request>",
+            custody === "augmented" ? request : "open example.com/changed",
+            "</user_request>",
+          ].join("\n");
+        }
         setDeviceReadReplyContext(runtime, original, {
           id: original.id!,
           events: [],
@@ -382,6 +402,49 @@ it.each([false, true])(
       expect(isPersistedDeviceApprovalPause(result as PlannerToolResult)).toBe(
         !direct,
       );
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+// v610: "take a photo" matched a bundled FAQ line, so the planner's copy of
+// the message was the document envelope. The owner's words still bind it.
+it.each(["augmented", "augmented-other"] as const)(
+  "binds a requested photo through a host-bound document envelope only to the owner's words (%s)",
+  async (custody) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, {
+        capabilities: ["camera.capture-photo.v1", "camera.capture-lens.v1"],
+      });
+      const result = await f.run(
+        "take a photo",
+        false,
+        true,
+        undefined,
+        custody,
+        { type: "camera_capture_photo" },
+      );
+      const rows = (
+        await f.pg.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows).toHaveLength(1);
+      if (custody === "augmented") {
+        expect(result).toMatchObject({
+          userFacingText: "Opening Camera to take the photo.",
+          data: { directRequest: true, approvalRequired: false },
+        });
+        expect(rows[0].payload.requestMessageId).toEqual(expect.any(String));
+      } else {
+        // An envelope around other words is not the owner's message.
+        expect(result).toMatchObject({
+          userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+          data: { approvalRequired: true },
+        });
+        expect(rows[0].payload).not.toHaveProperty("requestMessageId");
+      }
     } finally {
       await f.pg.close();
     }

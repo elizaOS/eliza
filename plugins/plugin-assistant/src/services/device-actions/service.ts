@@ -35,6 +35,7 @@ import {
   extractUserText,
   getStreamingContext,
   getTurnActionConstraint,
+  incomingMessagePersistenceSnapshot,
   readDurableConversationChatMarker,
   registerDirectActionRoutingRule,
   stableStringify,
@@ -937,6 +938,26 @@ export function setDeviceReadReplyContext(
     throw new DeviceActionError("Device read origin changed");
   current.replyContext = { message, context };
 }
+/** The text the owner sent for this in-flight message. A host-bound
+ * prompt-only augmentation keeps the persisted words; any other change, or a
+ * copy whose unwrapped request differs from them, has no authored text. */
+function hostAuthoredText(original: Memory): string | undefined {
+  let persisted: Memory | undefined;
+  try {
+    persisted = incomingMessagePersistenceSnapshot(original);
+  } catch {
+    return undefined;
+  }
+  const routed = original.content.text;
+  if (typeof routed !== "string") return undefined;
+  if (!persisted) return routed;
+  const authored = persisted.content.text;
+  if (typeof authored !== "string") return undefined;
+  if (routed === authored) return authored;
+  return extractUserText(routed) === extractUserText(authored)
+    ? authored
+    : undefined;
+}
 async function freshRequestedMessageId(
   runtime: IAgentRuntime,
   credential: DeviceCredential,
@@ -979,6 +1000,11 @@ async function freshRequestedMessageId(
       original.id
   )
     return;
+  // The chat host may hand the planner a prompt-only copy of the message
+  // (document excerpts around the owner's words). The words the owner sent
+  // are the host-bound persisted message's, never that envelope's.
+  const authoredText = hostAuthoredText(original);
+  if (authoredText === undefined) return;
   const signal = getStreamingContext()?.abortSignal;
   const subject = credential.subjectUserId,
     installation = credential.installationId;
@@ -1027,7 +1053,7 @@ async function freshRequestedMessageId(
     typeof stored.createdAt !== "number" ||
     !Number.isFinite(stored.createdAt) ||
     stored.createdAt < current.startedAt ||
-    stored.content.text !== original.content.text ||
+    stored.content.text !== authoredText ||
     !storedMarker ||
     storedMarker.scope !== marker.scope ||
     storedMarker.clientMessageId !== marker.clientMessageId ||

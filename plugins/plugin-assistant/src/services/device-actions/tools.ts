@@ -4,7 +4,12 @@ import type {
   ActionParameterSchema,
   HandlerOptions,
 } from "@elizaos/core";
-import { ElizaError, registerDirectActionRoutingRule } from "@elizaos/core";
+import {
+  ElizaError,
+  extractUserText,
+  registerDirectActionRoutingRule,
+  unwrapUserMessageText,
+} from "@elizaos/core";
 import { proposeDeviceAction } from "./action.ts";
 import { authoredBrowserDestination } from "./browser-request-grounding.ts";
 import {
@@ -646,8 +651,9 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
       if (type === "camera_capture_photo") {
         // A whole-message photo command owns its lens: the camera the owner
         // named, or the one showing. The model's lens choice never overrides it.
+        // The owner's words, not a prompt-only document envelope around them.
         const authored = authoredCameraCapture(
-          String(args[1]?.content?.text ?? ""),
+          args[1] ? extractUserText(unwrapUserMessageText(args[1])) : "",
           args[0].character?.name,
         );
         if (

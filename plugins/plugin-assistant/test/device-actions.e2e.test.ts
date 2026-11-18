@@ -9,6 +9,7 @@ import {
   actionGateFailure,
   activeCommittedEffectReceipts,
   beginRequestOperationIssuer,
+  bindIncomingMessagePersistence,
   bindTaskExtractionContext,
   ChannelType,
   type ContextObject,
@@ -16,6 +17,7 @@ import {
   conversationClientUserMemoryId,
   executePlannedToolCall,
   type IAgentRuntime,
+  inheritIncomingMessagePersistence,
   type Memory,
   ModelType,
   projectDeferredProviders,
@@ -30,6 +32,7 @@ import { renderContextObject } from "@elizaos/core/protocol";
 import { expect, test, vi } from "vitest";
 import { viewsAction } from "../../../packages/agent/src/actions/views.ts";
 import { handleApprovalRoute } from "../../../packages/agent/src/api/approval-routes.ts";
+import { maybeAugmentChatMessageWithDocuments } from "../../../packages/agent/src/api/chat-augmentation.ts";
 import { readChatRequestPayload } from "../../../packages/agent/src/api/chat-routes.ts";
 import {
   deviceRequestCredential,
@@ -95,7 +98,10 @@ import {
   setDeviceReadReplyContext,
   setDeviceReadReplyConversation,
 } from "../src/services/device-actions/service.ts";
-import { deviceActionTools } from "../src/services/device-actions/tools.ts";
+import {
+  deviceActionTools,
+  registerDeviceCameraCaptureRouting,
+} from "../src/services/device-actions/tools.ts";
 import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
 import {
   projectDiscoverableContext,
@@ -4618,6 +4624,236 @@ test.each([
           operation: { type: "browser_navigate", url: openedUrl },
         },
       });
+      useModel.mockRestore();
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
+// v610: "take a photo" in direct-request mode persisted camera_capture_photo
+// without requestMessageId, so the phone showed a review card and the reply
+// was the review text. The owner's own whole-message photo command is bound
+// to that message exactly like a typed address.
+test.each([
+  {
+    stage1: "routed view-only plan",
+    contexts: ["general"],
+    intents: ["capture a photo"],
+    candidateActionNames: ["VIEWS_SHOW"],
+    replyText: "Let me open Camera for you.",
+    request: "take a picture",
+    augmented: false,
+  },
+  {
+    stage1: "camera tool plan",
+    contexts: ["media", "general"],
+    intents: ["take a picture"],
+    candidateActionNames: ["DEVICE_CAMERA_CAPTURE"],
+    replyText: "Let me take that for you.",
+    request: "take a photo",
+    augmented: false,
+  },
+  // The v610 phone: "take" is half of the request's lexical terms and the
+  // bundled FAQ says "Take the interactive tutorial", so the chat route sent
+  // the planner a document-augmented copy of the message. Its text is the
+  // prompt envelope, not the stored words, and the origin check refused it.
+  {
+    stage1: "document-augmented camera tool plan",
+    contexts: ["media", "general"],
+    intents: ["take a picture"],
+    candidateActionNames: ["DEVICE_CAMERA_CAPTURE"],
+    replyText: "Let me take that for you.",
+    request: "take a photo",
+    augmented: true,
+  },
+  {
+    stage1: "document-augmented view-only plan",
+    contexts: ["general"],
+    intents: ["capture a photo"],
+    candidateActionNames: ["VIEWS_SHOW"],
+    replyText: "Let me open Camera for you.",
+    request: "take a picture",
+    augmented: true,
+  },
+])(
+  "direct-request photo binds the owner's message on the real route ($stage1)",
+  async ({
+    contexts,
+    intents,
+    candidateActionNames,
+    replyText,
+    request,
+    augmented,
+  }) => {
+    const fixture = await createRealTestRuntime({
+      characterName: "Eliza",
+    });
+    const runtime = fixture.runtime;
+    const owner = resolveOwnerEntityIdOrDefault(runtime);
+    const credential = {
+      subjectUserId: owner,
+      installationId: randomUUID(),
+      deviceKey: "c".repeat(64),
+      capabilities: ["camera.capture-photo.v1", "camera.capture-lens.v1"],
+    };
+    const service = new DeviceActionService(runtime);
+    try {
+      await service.register(credential, "Direct camera fixture");
+      runtime.registerAction(
+        deviceActionTools.find(({ name }) => name === "DEVICE_CAMERA_CAPTURE")!,
+      );
+      registerDeviceCameraCaptureRouting(runtime);
+      const roomId = randomUUID() as UUID,
+        nonce = randomUUID(),
+        scope = JSON.stringify([runtime.agentId, roomId, owner]);
+      const outputs: unknown[] = [
+        stage1Response({
+          contexts,
+          intents,
+          candidateActionNames,
+          replyText,
+          extra: { replyEffectStatus: "pending" },
+        }),
+        {
+          text: "",
+          toolCalls: [
+            {
+              id: "take-photo",
+              name: "DEVICE_CAMERA_CAPTURE",
+              arguments: {
+                operation: { type: "camera_capture_photo", lens: "back" },
+                operationKey: "camera-capture-photo",
+                reason: "User asked to take a picture.",
+                eliza_turn_scope: "final",
+              },
+            },
+          ],
+        },
+      ];
+      const calls: string[] = [];
+      const useModel = vi
+        .spyOn(runtime, "useModel")
+        .mockImplementation(async (type) => {
+          // The augmentation warms the clean request's recall embedding.
+          if (type === ModelType.TEXT_EMBEDDING)
+            return new Array(384).fill(0) as never;
+          calls.push(type);
+          if (!outputs.length)
+            throw new Error(`Unexpected model call: ${type}`);
+          return outputs.shift() as never;
+        });
+      // The v610 phone's metadata for "take a photo".
+      const message: Memory = {
+        id: conversationClientUserMemoryId(scope, nonce),
+        agentId: runtime.agentId,
+        entityId: owner as UUID,
+        roomId,
+        content: {
+          text: request,
+          source: "client_chat",
+          role: "user",
+          channelType: ChannelType.DM,
+          chatIdempotency: {
+            version: 1,
+            scope,
+            clientMessageId: nonce,
+            fingerprint: "e".repeat(64),
+          },
+          metadata: {
+            uiView: "chat",
+            uiViewPath: "/chat",
+            uiTimeZone: "America/New_York",
+            clientDevice: {
+              context: {
+                view: "home",
+                revision: 8,
+                timeZone: "America/New_York",
+                sensitive: false,
+              },
+            },
+            viewClientId: randomUUID(),
+            viewDelivery: "completed-action",
+            userTextFormat: "plain-v1",
+            agentActionMode: "direct-request-v1",
+            uiViewActionNames: [],
+            uiViewCapabilities: [],
+          },
+        },
+      };
+      if (!(await runtime.getEntityById(owner as UUID)))
+        await runtime.createEntity({
+          id: owner as UUID,
+          names: ["Synthetic camera owner"],
+          metadata: {},
+        });
+      await registerOwnerRoom(runtime, message);
+      if (augmented) {
+        const getService = runtime.getService.bind(runtime);
+        vi.spyOn(runtime, "getService").mockImplementation(((type: string) =>
+          type === "documents"
+            ? {
+                countMemories: async () => 1,
+                searchDocuments: async () => [
+                  {
+                    id: randomUUID(),
+                    content: {
+                      text: 'Q: I just opened Eliza — what do I do first?\nA: Take the interactive tutorial: type "start tutorial" in the chat.',
+                    },
+                    similarity: 1,
+                    metadata: { title: "Getting started" },
+                  },
+                ],
+              }
+            : getService(type)) as typeof runtime.getService);
+      }
+      const taken = await withOwnerDeviceActionTurn(
+        runtime,
+        credential,
+        async () => {
+          message.createdAt = Date.now();
+          await runtime.createMemory(message, "messages");
+          setDeviceReadReplyConversation(runtime, randomUUID(), roomId);
+          // The chat route's ingress: bind the stored message, then hand the
+          // planner the same prompt-only augmentation the phone's turn got.
+          bindIncomingMessagePersistence(message, structuredClone(message));
+          const routed = await maybeAugmentChatMessageWithDocuments(
+            runtime as never,
+            message as never,
+          );
+          inheritIncomingMessagePersistence(message, routed);
+          expect(routed.content.text !== request).toBe(augmented);
+          return runV5MessageRuntimeStage1({
+            runtime,
+            message: routed,
+            state: {
+              values: { availableContexts: "general" },
+              data: {},
+              text: "",
+            },
+            responseId: randomUUID() as UUID,
+          });
+        },
+      );
+      expect(calls.at(-1)).toBe(ModelType.ACTION_PLANNER);
+      expect(taken.kind).toBe("planned_reply");
+      if (taken.kind === "planned_reply")
+        expect(
+          taken.result.responseContent?.text,
+          JSON.stringify(taken.result.actionResults),
+        ).toBe("Opening Camera to take the photo.");
+      const proposals = await service.list(credential);
+      expect(proposals).toHaveLength(1);
+      expect(proposals[0]).toMatchObject({
+        state: "pending",
+        payload: {
+          requestMessageId: message.id,
+        },
+      });
+      // The owner's whole-message command owns the lens, not the model.
+      expect(
+        (proposals[0].payload as { operation: unknown }).operation,
+      ).toEqual({ type: "camera_capture_photo" });
       useModel.mockRestore();
     } finally {
       await fixture.cleanup();
