@@ -118,7 +118,9 @@ named what was asked, no same-named branch stands within 50 km (a chain:
 same landmark. A route settles its origin first and searches the destination around
 it. Otherwise the action asks one numbered question about one field ("Which
 “Starbucks” did you mean as the starting place?") and `MapsService.placeChoices`
-keeps it open for ten minutes per room and owner. The owner's reply ("the first
+keeps it open per room and owner for the owner's next turn only (at most ten
+minutes): once the owner moves on, a later "the first one" is left to whatever asked
+since. The owner's reply ("the first
 one", "2") binds to that question, also when the planner restates no query or copies
 the reply into another endpoint, and the route continues with the endpoints already
 settled. A `maps.place-choice.*` routing rule sends such a reply in phone chat to the

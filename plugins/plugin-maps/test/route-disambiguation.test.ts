@@ -51,7 +51,10 @@ const place = (id: string, name: string, address: string, at: Point) => ({
 
 const FERRY_BUILDING = { latitude: 37.7955, longitude: -122.3937 };
 const GOLDEN_GATE_PARK = { latitude: 37.7694, longitude: -122.4862 };
-/** The five results Cloud's Google provider gave the phone for "Ferry Building". */
+/**
+ * Five results for "Ferry Building" written to look like Google's: the
+ * building and parts of it. They are not captured from the phone.
+ */
 const FERRY_RESULTS = [
   place(
     "ChIJWTGPjmaAhYARxz6l1hOj92w",
@@ -422,6 +425,47 @@ describe("a reply binds to the question just asked", () => {
       success: false,
       data: { missingFields: ["originQuery", "destinationQuery"] },
     });
+  });
+});
+
+describe("an unanswered question closes when the owner moves on", () => {
+  it("does not bind a later 'the first one' to a question the owner left", async () => {
+    const { service, requests } = cloud();
+    await say(service, "directions from Starbucks to Golden Gate Park", {
+      originQuery: "Starbucks",
+      destinationQuery: "Golden Gate Park",
+    });
+    // The owner's next turn is about something else; the routing rule looks
+    // the question up for every owner turn.
+    expect(
+      service.placeChoices.get({
+        id: "00000000-0000-4000-8000-0000000fffff",
+        roomId: "00000000-0000-4000-8000-000000000003",
+        entityId: OWNER,
+      }),
+    ).toBeDefined();
+    const later = await say(service, "the first one", {});
+    expect(later).toMatchObject({
+      success: false,
+      data: { missingFields: ["originQuery", "destinationQuery"] },
+    });
+    expect(routes(requests)).toHaveLength(0);
+  });
+
+  it("answers the question with the owner's next turn", async () => {
+    const { service, requests } = cloud();
+    await say(service, "directions from Starbucks to Golden Gate Park", {
+      originQuery: "Starbucks",
+      destinationQuery: "Golden Gate Park",
+    });
+    const route = await say(service, "the first one", {});
+    expect(route).toMatchObject({
+      success: true,
+      data: {
+        route: { origin: { providerPlaceId: "ChIJ_starbucks_market_0001" } },
+      },
+    });
+    expect(routes(requests)).toHaveLength(1);
   });
 });
 

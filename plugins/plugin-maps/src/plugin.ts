@@ -347,11 +347,13 @@ function answeredPlaceChoice(
   text: string,
   message: Memory | undefined,
 ): PlaceChoiceOperation | undefined {
-  if (!message || !isChoiceReply(text)) return undefined;
+  if (!message) return undefined;
   const service = runtime.getService(MAPS_SERVICE_TYPE);
-  return service instanceof MapsService
-    ? service.placeChoices.get(message)?.operation
-    : undefined;
+  if (!(service instanceof MapsService)) return undefined;
+  // Looked up for every owner turn, so a turn that moves on closes the
+  // question and a later "the first one" is left to whatever asked it.
+  const operation = service.placeChoices.get(message)?.operation;
+  return operation && isChoiceReply(text) ? operation : undefined;
 }
 
 /**

@@ -320,45 +320,59 @@ describe("a reply to a Maps place question continues the operation that asked", 
     text: string,
     open?: "route" | "navigation-start",
     content: Partial<Memory["content"]> = {},
+    turns: { askedBy?: string; between?: string } = {},
   ) {
     if (!evaluator) throw new Error("Expected capability evaluator");
     const { runtime, message } = await fixture(text);
     Object.assign(message.content, content);
     const service = new MapsService(undefined, {} as never);
     if (open)
-      service.placeChoices.set(message, {
-        operation: open,
-        field: open === "route" ? "originQuery" : "placeQuery",
-        query: "Starbucks",
-        places: [],
-        queries: {},
-        resolved: {},
-      });
+      service.placeChoices.set(
+        { ...message, id: turns.askedBy ?? message.id },
+        {
+          operation: open,
+          field: open === "route" ? "originQuery" : "placeQuery",
+          query: "Starbucks",
+          places: [],
+          queries: {},
+          resolved: {},
+        },
+      );
     const getService = runtime.getService.bind(runtime);
     vi.spyOn(runtime, "getService").mockImplementation(((name: string) =>
       name === "maps" ? service : getService(name)) as never);
-    const handler = {
-      processMessage: "RESPOND",
-      plan: {
-        contexts: ["simple"],
-        intents: [],
-        candidateActions: [] as string[],
-        parentActionHints: [],
-        requiresTool: false,
-        replyEffectStatus: "none",
-        reply: "Locked in the first one.",
-      },
+    const run = async (turn: Memory) => {
+      const handler = {
+        processMessage: "RESPOND",
+        plan: {
+          contexts: ["simple"],
+          intents: [],
+          candidateActions: [] as string[],
+          parentActionHints: [],
+          requiresTool: false,
+          replyEffectStatus: "none",
+          reply: "Locked in the first one.",
+        },
+      };
+      await runResponseHandlerEvaluators({
+        runtime,
+        message: turn,
+        state: { text: "", values: {}, data: {} },
+        messageHandler: handler,
+        availableContexts: [...DEFAULT_CONTEXT_DEFINITIONS, MAPS_CONTEXT],
+        userRoles: ["OWNER"],
+        evaluators: [evaluator],
+      } as never);
+      return handler;
     };
-    await runResponseHandlerEvaluators({
-      runtime,
-      message,
-      state: { text: "", values: {}, data: {} },
-      messageHandler: handler,
-      availableContexts: [...DEFAULT_CONTEXT_DEFINITIONS, MAPS_CONTEXT],
-      userRoles: ["OWNER"],
-      evaluators: [evaluator],
-    } as never);
-    return handler;
+    // An owner turn between the question and this reply ("call mom").
+    if (turns.between !== undefined)
+      await run({
+        ...message,
+        id: "44444444-4444-4444-8444-444444444444",
+        content: { ...message.content, text: turns.between },
+      } as Memory);
+    return run(message);
   }
   it.each([
     ["the first one", "route", ["MAPS_ROUTE"]],
@@ -369,6 +383,32 @@ describe("a reply to a Maps place question continues the operation that asked", 
     expect(handler.plan.requiresTool).toBe(true);
     expect(handler.plan.candidateActions).toEqual(expected);
     expect(handler.plan.contexts).toContain("maps");
+  });
+  it("takes the owner's next turn after the question", async () => {
+    const handler = await evaluate(
+      "the first one",
+      "route",
+      {},
+      {
+        askedBy: "22222222-2222-4222-8222-222222222222",
+      },
+    );
+    expect(handler.plan.candidateActions).toEqual(["MAPS_ROUTE"]);
+  });
+  it("leaves a later reply to whatever asked since the owner moved on", async () => {
+    // The owner left the Maps question for another request; "the first one"
+    // now answers that request's question (a contact, an email), not Maps.
+    const handler = await evaluate(
+      "the first one",
+      "route",
+      {},
+      {
+        askedBy: "22222222-2222-4222-8222-222222222222",
+        between: "call mom",
+      },
+    );
+    expect(handler.plan.requiresTool).toBe(false);
+    expect(handler.plan.candidateActions).toEqual([]);
   });
   it("leaves the reply alone when no Maps question is open", async () => {
     const handler = await evaluate("the first one");

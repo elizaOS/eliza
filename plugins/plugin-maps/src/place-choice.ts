@@ -230,33 +230,56 @@ export interface PendingPlaceChoice {
 export const PLACE_CHOICE_TTL_MS = 10 * 60_000;
 const MAX_OPEN_CHOICES = 256;
 
-/** Open place questions, one per owner conversation (room and entity). */
+/** The owner turn a scope names, when the caller passes a message. */
+type ChoiceScope = { id?: unknown; roomId?: unknown; entityId?: unknown };
+
+interface OpenChoice {
+  choice: PendingPlaceChoice;
+  /** The owner turn whose request asked the question. */
+  askedBy?: string;
+  /** The next owner turn after it: the only one that can answer it. */
+  answeredBy?: string;
+}
+
+/**
+ * Open place questions, one per owner conversation (room and entity). A
+ * question is answered by the owner's next turn or not at all: once the owner
+ * has moved on ("call mom"), a later "the first one" answers whatever the
+ * agent asked since (a contact, an email), not this question.
+ */
 export class PlaceChoices {
-  private readonly open = new Map<string, PendingPlaceChoice>();
+  private readonly open = new Map<string, OpenChoice>();
 
   constructor(private readonly now: () => number = Date.now) {}
 
-  private key(scope: { roomId?: unknown; entityId?: unknown }): string {
+  private key(scope: ChoiceScope): string {
     return `${String(scope.roomId)}\u0000${String(scope.entityId)}`;
   }
 
-  get(scope: {
-    roomId?: unknown;
-    entityId?: unknown;
-  }): PendingPlaceChoice | undefined {
+  get(scope: ChoiceScope): PendingPlaceChoice | undefined {
     const key = this.key(scope);
-    const choice = this.open.get(key);
-    if (choice && choice.expiresAt <= this.now()) {
+    const entry = this.open.get(key);
+    if (!entry) return undefined;
+    if (entry.choice.expiresAt <= this.now()) {
       this.open.delete(key);
       return undefined;
     }
-    return choice;
+    const turn = typeof scope.id === "string" ? scope.id : undefined;
+    if (turn !== undefined && entry.askedBy !== undefined) {
+      if (turn === entry.askedBy || turn === entry.answeredBy)
+        return entry.choice;
+      if (entry.answeredBy === undefined) {
+        entry.answeredBy = turn;
+        return entry.choice;
+      }
+      // A later turn: the owner did not answer when asked.
+      this.open.delete(key);
+      return undefined;
+    }
+    return entry.choice;
   }
 
-  set(
-    scope: { roomId?: unknown; entityId?: unknown },
-    choice: Omit<PendingPlaceChoice, "expiresAt">,
-  ): void {
+  set(scope: ChoiceScope, choice: Omit<PendingPlaceChoice, "expiresAt">): void {
     const key = this.key(scope);
     this.open.delete(key);
     if (this.open.size >= MAX_OPEN_CHOICES) {
@@ -264,12 +287,12 @@ export class PlaceChoices {
       if (oldest !== undefined) this.open.delete(oldest);
     }
     this.open.set(key, {
-      ...choice,
-      expiresAt: this.now() + PLACE_CHOICE_TTL_MS,
+      choice: { ...choice, expiresAt: this.now() + PLACE_CHOICE_TTL_MS },
+      ...(typeof scope.id === "string" ? { askedBy: scope.id } : {}),
     });
   }
 
-  clear(scope: { roomId?: unknown; entityId?: unknown }): void {
+  clear(scope: ChoiceScope): void {
     this.open.delete(this.key(scope));
   }
 }
