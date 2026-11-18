@@ -1,6 +1,10 @@
 # First-party catalog
 
-Source contracts are `catalog/{registry,loader,schema,runtime-kernel,generate}.ts`. The generated JSON assets, entry schemas, package-name parsing, connector authentication normalization, display order, search scoring and freshness policy remain public compatibility obligations. The catalog holds plugins and connectors only: app entries, curated app definitions and app-session or app-launch types are not part of it.
+Source contracts are `catalog/{registry,loader,schema,runtime-kernel,generate}.vibe`. The generated JSON assets, entry schemas, package-name parsing, connector authentication normalization, display order, search scoring and freshness policy remain public compatibility obligations. The catalog holds plugins and connectors only: app entries, curated app definitions and app-session or app-launch types are not part of it.
+
+First-party inputs combine the maintained curated records with 31 byte-exact plugin and connector manifests from `elizaOS/eliza@72fed7e4069ecd35d61d886ab6eec5c02c137517`, retained under `curated/pinned-72fed/`. The two authored feature records for knowledge and personal-assistant preserve their plugin identities and the `selfcontrol` short id without an app launch contract. The eight retired viewer apps and the two original app-kind manifests are not active catalog inputs. Raw pinned plugin records keep their historical bytes; retired `launch` and `curatedApp` fields are omitted by the current entry schema. The wire registry refuses app payloads and app kinds while retaining generic package/version metadata.
+
+The existing generator validates every input, rejects duplicate ids and claim conflicts, and deterministically writes the four catalog JSON assets. The Core build checks their freshness with Node 26 and the VibeLang loader before compilation. The restart exit-code asset is independent. Input provenance and the intentional app-surface retirement are recorded in [compatibility decisions](./baseline/compatibility-decisions.json).
 
 ## Story: Discover and register first-party capabilities
 

@@ -717,4 +717,3 @@ export function createLauncher(bridge: LauncherBridge, options: { icons?: boolea
     retire: () => settled(retire()),
   }
 }
-

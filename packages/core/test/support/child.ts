@@ -2,7 +2,7 @@
 import { execFile, spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -48,10 +48,21 @@ export const coreDir = path.resolve(import.meta.dirname, "../..");
 
 const run = promisify(execFile);
 
-function nodeArguments(options: NodeRun): string[] {
+// Linux refuses any single argv string over MAX_ARG_STRLEN (32 pages, 128 KiB) with E2BIG.
+const INLINE_ARGUMENT_LIMIT = 64 * 1024;
+
+function nodeArguments(options: NodeRun, spill: () => string): string[] {
   const loader = [...(options.conditions ?? []).flatMap((condition) => ["--conditions", condition]), ...(options.vibe ? ["--import", "vibelang/register"] : [])];
   if (options.file !== undefined && options.script === undefined) return ["--no-warnings", ...loader, options.file, ...(options.args ?? [])];
-  if (options.script !== undefined && options.file === undefined) return ["--no-warnings", ...loader, "--input-type=module", "--eval", options.script, "--", ...(options.args ?? [])];
+  if (options.script !== undefined && options.file === undefined) {
+    const args = options.args ?? [];
+    if (!args.some((arg) => arg.length > INLINE_ARGUMENT_LIMIT)) return ["--no-warnings", ...loader, "--input-type=module", "--eval", options.script, "--", ...args];
+    // Too large for argv: hand the arguments over in a file and restore process.argv before the script body runs.
+    const file = path.join(spill(), "argv.json");
+    writeFileSync(file, JSON.stringify(args));
+    const restore = `import { readFileSync as readSpilledArguments } from "node:fs"; process.argv.splice(1, Infinity, ...JSON.parse(readSpilledArguments(process.argv[1], "utf8")));\n`;
+    return ["--no-warnings", ...loader, "--input-type=module", "--eval", restore + options.script, "--", file];
+  }
   throw new TypeError("runNode needs exactly one of file and script");
 }
 
@@ -62,7 +73,18 @@ function childEnvironment(overrides: Record<string, string | undefined> = {}): N
 }
 
 export function spawnNode(options: NodeRun): NodeChild {
-  const child = spawn(process.execPath, nodeArguments(options), {
+  let spilled: string | undefined;
+  const removeSpilled = () => {
+    if (spilled !== undefined) rmSync(spilled, { recursive: true, force: true });
+  };
+  let argv: string[];
+  try {
+    argv = nodeArguments(options, () => (spilled = mkdtempSync(path.join(os.tmpdir(), "eliza-core-node-args-"))));
+  } catch (error) {
+    removeSpilled();
+    throw error;
+  }
+  const child = spawn(process.execPath, argv, {
     cwd: options.cwd ?? coreDir,
     env: childEnvironment(options.env),
     stdio: ["ignore", "pipe", "pipe"],
@@ -85,8 +107,12 @@ export function spawnNode(options: NodeRun): NodeChild {
     stderr += chunk;
   });
   const exited = new Promise<NodeResult>((resolve, reject) => {
-    child.once("error", reject);
+    child.once("error", (error) => {
+      removeSpilled();
+      reject(error);
+    });
     child.once("close", (status, signal) => {
+      removeSpilled();
       for (const waiter of waiters.splice(0)) waiter.reject(new Error(`node child exited (${status ?? signal}) before printing ${JSON.stringify(waiter.text)}: ${stderr}`));
       resolve({ status, signal, stdout, stderr });
     });

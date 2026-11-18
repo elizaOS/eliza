@@ -635,8 +635,11 @@ lemma clearTypeAggregate_ensures(s: ServiceInstances, callId: int)
   ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> stepSupersededAggregateKeepsSuccessor(s, "clearTypeAggregate", clearTypeAggregate(s, callId)))
   ensures (inv(s) ==> canClearTypeAggregate(s, callId) ==> stepStopIdentityRetained(s, clearTypeAggregate(s, callId)))
 {
+  hide *;
+  reveal inv(), alwaysObjectStopOnce();
   if inv(s) && canClearTypeAggregate(s, callId) {
     var after := clearTypeAggregate(s, callId);
+    ServiceClearUnchangedInvariants(s, callId);
     ServiceClearUpdatesOnlyTypeMetadata(s, callId);
     ServiceMapTypeIdentities(s, after);
     ServiceClearAggregateOwnership(s, after, callId);
@@ -2344,4 +2347,24 @@ lemma ServiceInvokingAttemptClassMember(s: ServiceInstances, a: ServiceAttempt)
   ServiceClassProjection(s, a.classId);
   var byId := (c: ServiceClassEntry) => c.id == a.classId;
   ProofLib.FilterMember(byId, s.classes, owner);
+}
+
+lemma ServiceClearUnchangedInvariants(s: ServiceInstances, callId: int)
+  ensures alwaysAggregateAndLoadIdsUnique(clearTypeAggregate(s, callId)) == alwaysAggregateAndLoadIdsUnique(s)
+  ensures alwaysAcquisitionIdsUnique(clearTypeAggregate(s, callId)) == alwaysAcquisitionIdsUnique(s)
+  ensures alwaysInitWaitingHasNoAggregate(clearTypeAggregate(s, callId)) == alwaysInitWaitingHasNoAggregate(s)
+  ensures alwaysClassAndObjectIdentities(clearTypeAggregate(s, callId)) == alwaysClassAndObjectIdentities(s)
+  ensures alwaysPendingAttemptsOwned(clearTypeAggregate(s, callId)) == alwaysPendingAttemptsOwned(s)
+  ensures alwaysCapturedAttemptsExist(clearTypeAggregate(s, callId)) == alwaysCapturedAttemptsExist(s)
+  ensures alwaysDeclarationsMatch(clearTypeAggregate(s, callId)) == alwaysDeclarationsMatch(s)
+  ensures alwaysObjectStopOnce(clearTypeAggregate(s, callId)) == alwaysObjectStopOnce(s)
+  ensures alwaysClassOwnsKnownObjects(clearTypeAggregate(s, callId)) == alwaysClassOwnsKnownObjects(s)
+  ensures alwaysStoppedHasNoPublication(clearTypeAggregate(s, callId)) == alwaysStoppedHasNoPublication(s)
+  ensures alwaysPublicationIdentitiesValid(clearTypeAggregate(s, callId)) == alwaysPublicationIdentitiesValid(s)
+  ensures alwaysAttemptGeneration(clearTypeAggregate(s, callId)) == alwaysAttemptGeneration(s)
+{
+  hide *;
+  reveal clearTypeAggregate(), alwaysAggregateAndLoadIdsUnique(), alwaysAcquisitionIdsUnique(), alwaysInitWaitingHasNoAggregate(), alwaysClassAndObjectIdentities(), alwaysPendingAttemptsOwned(), alwaysCapturedAttemptsExist(), alwaysDeclarationsMatch(), alwaysObjectStopOnce(), alwaysClassOwnsKnownObjects(), alwaysStoppedHasNoPublication(), alwaysPublicationIdentitiesValid(), alwaysAttemptGeneration();
+  reveal serviceClass(), serviceAttempt(), serviceObject();
+  ServiceClearUpdatesOnlyTypeMetadata(s, callId);
 }

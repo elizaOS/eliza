@@ -1,7 +1,7 @@
 // spec/core/catalog.md, "Story: Discover and register first-party capabilities"
 import { z } from "zod"
 import { Foreign, thrown } from "../edge.vibe"
-import { appSessionSchema, appSupportsSchema, appViewerSchema } from "./schema.vibe"
+import { type RegistryKind, registryEntrySchema } from "./schema.vibe"
 
 const PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/
 
@@ -17,31 +17,12 @@ const nullableString = z.string().nullable().optional()
 const versionTargetSchema = z
   .object({ branch: nullableString, version: nullableString })
   .passthrough()
-const appSchema = z
-  .object({
-    displayName: z.string().optional(),
-    category: z.string().optional(),
-    launchType: z.string().optional(),
-    launchUrl: nullableString,
-    icon: nullableString,
-    heroImage: nullableString,
-    capabilities: z.array(z.string()).optional(),
-    minPlayers: z.number().nullable().optional(),
-    maxPlayers: z.number().nullable().optional(),
-    runtimePlugin: z.string().optional(),
-    bridgeExport: z.string().optional(),
-    uiExtension: z.object({ detailPanelId: z.string() }).optional(),
-    viewer: appViewerSchema.optional(),
-    session: appSessionSchema.optional(),
-    viewKind: z.enum(["system", "release", "developer", "preview"]).optional(),
-    visibleInAppStore: z.boolean().optional(),
-    mainTab: z.boolean().optional(),
-    catalogSection: z.string().optional(),
-    featured: z.boolean().optional(),
-    defaultHidden: z.boolean().optional(),
-    scope: z.string().optional(),
-  })
-  .passthrough()
+const versionSupportSchema = z.object({
+  v0: z.boolean(),
+  v1: z.boolean(),
+  v2: z.boolean(),
+})
+const registryKindSchema = z.union(registryEntrySchema.options.map((entry) => entry.shape.kind))
 
 export const runtimeRegistryEntrySchema = z
   .object({
@@ -62,7 +43,7 @@ export const runtimeRegistryEntrySchema = z
         v2CoreRange: nullableString,
       })
       .passthrough(),
-    supports: appSupportsSchema,
+    supports: versionSupportSchema,
     description: z.string().optional(),
     homepage: nullableString,
     topics: z.array(z.string()).optional(),
@@ -75,16 +56,16 @@ export const runtimeRegistryEntrySchema = z
     firstParty: z.boolean().optional(),
     thirdParty: z.boolean().optional(),
     status: z.string().optional(),
-    kind: z.string().optional(),
-    registryKind: z.string().optional(),
+    kind: registryKindSchema.optional(),
+    registryKind: registryKindSchema.optional(),
     directory: nullableString,
-    app: appSchema.optional(),
+    app: z.never().optional(),
   })
   .passthrough()
 
 const runtimeRegistryFileSchema = z.object({
   registry: z.record(z.string(), runtimeRegistryEntrySchema),
-  apps: z.record(z.string(), runtimeRegistryEntrySchema).optional(),
+  apps: z.never().optional(),
   lastUpdatedAt: z.string().optional(),
 })
 
@@ -117,8 +98,8 @@ export interface NormalizedRegistryEntry {
     v2Branch: string | null
   }
   supports: { v0: boolean; v1: boolean; v2: boolean }
-  kind?: string
-  registryKind?: string
+  kind?: RegistryKind
+  registryKind?: RegistryKind
   origin?: string
   source?: string
   support?: string
@@ -126,31 +107,12 @@ export interface NormalizedRegistryEntry {
   firstParty?: boolean
   thirdParty?: boolean
   status?: string
-  app?: z.infer<typeof appSchema>
-}
-
-export interface DecodeRuntimeRegistryOptions {
-  sanitizeSandbox?: (value?: string) => string
 }
 
 function normalizeEntry(
   name: string,
   entry: RuntimeRegistryWireEntry,
-  options: DecodeRuntimeRegistryOptions,
 ): NormalizedRegistryEntry {
-  const app = entry.app
-    ? {
-      ...entry.app,
-      viewer: entry.app.viewer
-        ? {
-          ...entry.app.viewer,
-          sandbox: options.sanitizeSandbox
-            ? options.sanitizeSandbox(entry.app.viewer.sandbox)
-            : entry.app.viewer.sandbox,
-        }
-        : undefined,
-    }
-    : undefined
   return {
     name,
     gitRepo: entry.git.repo,
@@ -176,7 +138,7 @@ function normalizeEntry(
       v2Branch: entry.git.v2.branch ?? null,
     },
     supports: entry.supports,
-    kind: entry.kind ?? (entry.app ? "app" : undefined),
+    kind: entry.kind,
     registryKind: entry.registryKind,
     origin: entry.origin,
     source: entry.source,
@@ -185,18 +147,14 @@ function normalizeEntry(
     firstParty: entry.firstParty,
     thirdParty: entry.thirdParty,
     status: entry.status,
-    app,
   }
 }
 
-effect function decodeRuntimeRegistry(input: unknown, options: DecodeRuntimeRegistryOptions = {}) {
+effect function decodeRuntimeRegistry(input: unknown) {
   const decoded = try Effect.try({ try: () => runtimeRegistryFileSchema.parse(input), catch: (cause) => new Foreign({ cause }) })
   const result = new Map<string, NormalizedRegistryEntry>()
   for (const [name, entry] of Object.entries(decoded.registry)) {
-    result.set(name, normalizeEntry(name, entry, options))
-  }
-  for (const [name, entry] of Object.entries(decoded.apps ?? {})) {
-    result.set(name, normalizeEntry(name, { ...entry, kind: "app" }, options))
+    result.set(name, normalizeEntry(name, entry))
   }
   return result
 }

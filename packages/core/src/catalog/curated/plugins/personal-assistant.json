@@ -5,8 +5,15 @@
   "npmName": "@elizaos/plugin-personal-assistant",
   "version": "2.0.3-beta.7",
   "source": "bundled",
-  "tags": ["personal-assistant", "lifeops", "goals", "todos"],
-  "shortIds": ["selfcontrol"],
+  "tags": [
+    "personal-assistant",
+    "lifeops",
+    "goals",
+    "todos"
+  ],
+  "shortIds": [
+    "selfcontrol"
+  ],
   "config": {},
   "render": {
     "visible": false,
@@ -19,14 +26,6 @@
   },
   "resources": {},
   "dependsOn": [],
-  "kind": "app",
-  "subtype": "tool",
-  "launch": {
-    "type": "server-launch",
-    "capabilities": ["lifeops", "goals", "todos"],
-    "routePlugin": {
-      "specifier": "@elizaos/plugin-personal-assistant/routes/plugin",
-      "exportName": "personalAssistantRoutesPlugin"
-    }
-  }
+  "kind": "plugin",
+  "subtype": "feature"
 }

@@ -9,6 +9,10 @@ the browser with its owned Chromium build and the app-update trust slice. A
 consumer owns its product: the os package names none, and takes the
 consumer's descriptor over one pinned device profile.
 
+The [device execution journal](../agent/deviceActions/execution.md) and
+[reviewed operation values](../agent/deviceActions/operations.md) are Agent
+client contracts; native executors live here.
+
 A consumer owns its own interface (its mobile shell, view primitives and
 screen focus handling). It owns its own Android test harness beyond the
 single-device lease, instrumentation result, isolated test user and fixture

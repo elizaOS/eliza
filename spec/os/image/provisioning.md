@@ -1,13 +1,23 @@
 # Image provisioning
 
-What an image sets up for the consumer's launcher before first boot: defaults,
-role handler overrides, image features, power-button voice and the system apps
-that keep the lock screen, alarms and secure capture. The shell reads the
-admitted APK's manifest ([APK admission](./apk.md)) into `LauncherManifest`: one
-row per component, its name qualified with the package, one `Handles` per intent
-filter it recognises. Each file is written once into the staged product; only a
-boot of the built image ([verification](./verification.md)) shows that Android
-applied it.
+What an image sets up for the consumer's launcher before its first boot:
+the default Home, assistant and Autofill offer, the component overrides that
+keep the launcher eligible for the phone and messages roles, the image
+features that image-only surfaces check, power-button voice on a listener
+image, and the system apps that keep the lock screen, alarms and secure
+capture. The writer is `src/image/provisioning.vibe`, exported from
+`@elizaos/os/image`; the sources are develop's `launcher-provisioning.mjs`,
+`image-capability.mjs`, `aosp-clock-handlers.mjs` and `secure-camera.mjs`.
+
+The shell reads the admitted APK's manifest ([APK admission](./apk.md)) with
+`aapt dump xmltree` into `LauncherManifest`: one row per activity,
+activity-alias, service, receiver or provider, its name qualified with the
+package, with one `Handles` entry per intent filter (a filter it does not
+recognise is `OtherIntent`) and the marks it read. Feature names are the
+launcher package plus `.aosp_image` or `.feature.LISTENER`. Every file is
+written once into the staged product and never overwritten. All of this is
+staging output. Observations of the booted image's actual components, roles
+and intent resolution establish whether Android applied it.
 
 ## Story: Make my launcher Home on first boot
 
@@ -97,10 +107,14 @@ pure def lawWithoutTheRoleAnEnabledAssistIsRefused(manifest: LauncherManifest, r
 
 ### Role overrides enable each required handler, found once and disabled in the APK with its exact protection, and assign no role
 
-The override is a sysconfig `<component-override>`, applied at package scan so
-it survives APK updates; it can only enable components. The in-call service
-declares the in-call UI and no car-mode UI; the MMS provider is private, for
-`<package>.mms`, and grants URI permissions.
+The override is a sysconfig `<component-override>` that Android applies at
+package scan, so it survives APK updates. It only enables components; the
+output has no way to name a role holder. The consumer's first-run interface
+requests roles through the [system role bridge](../android/system.md);
+sysconfig alone assigns none. The in-call service must declare the
+in-call UI and no car-mode UI; the MMS provider is private, for the
+authority `<package>.mms`, and grants URI permissions. The dial activity
+handles `DIAL` with and without `tel`.
 
 ```quint
 type DefaultRole = HomeRole | AssistantRole | DialerRole | SmsRole
@@ -147,7 +161,9 @@ pure def lawEnabledHandlerIsRefused(manifest: LauncherManifest, request: Provisi
 
 ### An image declares Home, the assistant when the product takes it, and the dialer and SMS app when it declares telephony roles, each backed by an admitted component
 
-[First run](./firstRun.md) assigns these, dialer and SMS only with telephony.
+The consumer's first-run interface requests exactly these roles, the dialer
+and SMS app only on a device that also has telephony. This requested set
+does not establish that Android assigned a role.
 
 ```quint
 pure def imageRoles(request: ProvisioningRequest): Set[DefaultRole] =
@@ -277,8 +293,10 @@ pure def lawSystemLockScreenAdmitsNoLauncherSurface(manifest: LauncherManifest, 
 
 ### The product requires DeskClock exactly once
 
-A makefile that has it is left unchanged; one that names it twice is refused.
-[Verification](./verification.md) checks the alarm handlers.
+Adding the requirement to a makefile that has it leaves it unchanged; a
+makefile that names it twice is refused. The booted image must resolve all
+`clockAlarmActions` to DeskClock. Staging alone establishes no such
+resolution; observed resolution does not prove an alarm rings.
 
 ```quint
 type ClockRequirement = ClockAdded | ClockKept | ClockNamedTwice

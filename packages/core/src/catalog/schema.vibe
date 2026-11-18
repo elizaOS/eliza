@@ -102,75 +102,6 @@ export const resourcesSchema = z.object({
 
 export type Resources = z.infer<typeof resourcesSchema>
 
-export const appViewerSchema = z.object({
-  url: z.string(),
-  embedParams: z.record(z.string(), z.string()).optional(),
-  postMessageAuth: z.boolean().optional(),
-  sandbox: z.string().optional(),
-})
-
-export const appSessionSchema = z.object({
-  mode: z.enum(["viewer", "spectate-and-steer", "external"]),
-  features: z
-    .array(z.enum(["commands", "telemetry", "pause", "resume", "suggestions"]))
-    .optional(),
-})
-
-export const appSupportsSchema = z.object({
-  v0: z.boolean(),
-  v1: z.boolean(),
-  v2: z.boolean(),
-})
-
-const appNpmSchema = z.object({
-  package: z.string(),
-  v0Version: z.string().nullable(),
-  v1Version: z.string().nullable(),
-  v2Version: z.string().nullable(),
-})
-
-const packageRoutePluginSpecifierSchema = z
-  .string()
-  .min(1)
-  .refine(
-    (value) =>
-      !value.startsWith(".")
-      && !value.startsWith("/")
-      && !/(^|\/)(apps|plugins)\//.test(value),
-    "routePlugin.specifier must be a package specifier, not a filesystem path",
-  )
-
-const appRoutePluginSchema = z.object({
-  specifier: packageRoutePluginSpecifierSchema,
-  exportName: z.string().min(1).optional(),
-})
-
-const appRuntimeHookSchema = z.object({
-  specifier: packageRoutePluginSpecifierSchema,
-  exportName: z.string().min(1),
-})
-
-const appBootHookSchema = z.object({
-  specifier: packageRoutePluginSpecifierSchema,
-  exportName: z.string().min(1),
-})
-
-export const appLaunchSchema = z.object({
-  type: z.enum(["internal-tab", "overlay", "server-launch"]),
-  target: z.string().optional(),
-  url: z.string().nullable().optional(),
-  viewer: appViewerSchema.optional(),
-  session: appSessionSchema.optional(),
-  supports: appSupportsSchema.optional(),
-  npm: appNpmSchema.optional(),
-  capabilities: z.array(z.string()).default([]),
-  uiExtension: z.object({ detailPanelId: z.string() }).optional(),
-  routePlugin: appRoutePluginSchema.optional(),
-  runtimeHook: appRuntimeHookSchema.optional(),
-  bootHook: appBootHookSchema.optional(),
-  mainTab: z.boolean().optional(),
-})
-
 const commonFields = {
   id: z
     .string()
@@ -189,13 +120,6 @@ const commonFields = {
   dependsOn: z.array(z.string()).default([]),
   channels: z.array(z.string()).default([]),
   shortIds: z.array(z.string()).default([]),
-  curatedApp: z
-    .object({
-      slug: z.string(),
-      order: z.number(),
-      aliases: z.array(z.string()).default([]),
-    })
-    .optional(),
 } as const
 
 const pluginSubtype = z.enum([
@@ -227,7 +151,6 @@ export const pluginEntrySchema = z.object({
   ...commonFields,
   kind: z.literal("plugin"),
   subtype: pluginSubtype,
-  launch: appLaunchSchema.optional(),
 })
 
 const accountAuthKind = z.enum([
@@ -275,22 +198,13 @@ export const connectorEntrySchema = z.object({
     .optional(),
 })
 
-export const appEntrySchema = z.object({
-  ...commonFields,
-  kind: z.literal("app"),
-  subtype: z.enum(["game", "tool", "shell", "marketplace", "trading", "other"]),
-  launch: appLaunchSchema,
-})
-
 export const registryEntrySchema = z.discriminatedUnion("kind", [
   pluginEntrySchema,
   connectorEntrySchema,
-  appEntrySchema,
 ])
 
 export type PluginEntry = z.infer<typeof pluginEntrySchema>
 export type ConnectorEntry = z.infer<typeof connectorEntrySchema>
-export type AppEntry = z.infer<typeof appEntrySchema>
 export type RegistryEntry = z.infer<typeof registryEntrySchema>
 export type RegistryKind = RegistryEntry["kind"]
 

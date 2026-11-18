@@ -8536,7 +8536,10 @@
         }
       ],
       "text": "import { type AgentRuntime, getApps, getPlugins, loadRegistry, logger, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getApps"
+      ]
     },
     {
       "file": "packages/agent/src/runtime/boot-pipeline.ts",
@@ -19987,7 +19990,10 @@
         }
       ],
       "text": "import { getApps, loadRegistry } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getApps"
+      ]
     },
     {
       "file": "packages/app/src/api/cloud-google-delegation-routes.ts",
@@ -21609,7 +21615,10 @@
         }
       ],
       "text": "import { type AgentRuntime, getApps, loadRegistry, logger, } from \"@elizaos/core\";",
-      "v4Package": "agent"
+      "v4Package": "agent",
+      "v4RetiredNames": [
+        "getApps"
+      ]
     },
     {
       "file": "packages/app/src/runtime/startup/app-contributors.ts",
@@ -124566,7 +124575,6 @@
         "getActiveRoutingContexts",
         "getActiveRoutingContextsForTurn",
         "getAnthropicAccountPoolBridge",
-        "getApps",
         "getBoundOperationDenialAttempt",
         "getBoundOperationDenialOperation",
         "getCandidateActionBackstopRules",
@@ -125318,6 +125326,40 @@
     ],
     "droppedFeatures": "Cloud apps, app sessions and app launch, the identity sidecar, wallets and trading, confidential deployment, the app renderer and UI smoke tests, and product-named consumer files.",
     "droppedCoreNames": "Names exported only by the dropped core files (app catalog, curated apps, prompt optimization, model gateway, trajectory export) and every AppSession or AppLaunch name.",
-    "renamed": "Identity-service paths and identifiers use auth in place of the former service name."
+    "renamed": "Identity-service paths and identifiers use auth in place of the former service name.",
+    "catalogRetirement": {
+      "specification": "spec/core/catalog.md",
+      "decision": "v4-catalog-plugin-connector-boundary",
+      "imports": [
+        {
+          "file": "packages/agent/src/runtime/boot-hooks.ts",
+          "line": 17,
+          "module": "@elizaos/core",
+          "names": [
+            "getApps"
+          ],
+          "reason": "Retired v4 app/boot contributor surface; current source has no getApps caller. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "packages/app/src/api/catalog-routes.ts",
+          "line": 13,
+          "module": "@elizaos/core",
+          "names": [
+            "getApps"
+          ],
+          "reason": "Retired v4 app/boot contributor surface; current source has no getApps caller. Original import facts remain in this row; every other name remains required."
+        },
+        {
+          "file": "packages/app/src/runtime/startup/app-contributors.ts",
+          "line": 13,
+          "module": "@elizaos/core",
+          "names": [
+            "getApps"
+          ],
+          "reason": "Retired v4 app/boot contributor surface; current source has no getApps caller. Original import facts remain in this row; every other name remains required."
+        }
+      ],
+      "activeProjection": "Only each row's explicit v4RetiredNames are excluded from active consumer requirements. Original names/text/file/line/package remain factual historical evidence. byModule reflects this active projection and preserves file counts."
+    }
   }
 }

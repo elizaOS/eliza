@@ -4,7 +4,7 @@ A consumer generates its Android host project from an identity and a
 schema-2 profile (`generateAndroidHost`, from `@elizaos/os/build`) that
 names everything the Gradle project is made of. The
 [runtime payload](./runtimePayload.md) is what an agent host ships; the
-Android build (`build/androidBuild.md`) builds and publishes the project.
+[Android build](./androidBuild.md) builds and publishes the project.
 The shell (`src/build/android-host.vibe`) decodes the JSON, tests each name
 against its pattern (the `…Valid` facts) and splits each path, after it
 resolves links, into segments; a path with a backslash or a NUL is

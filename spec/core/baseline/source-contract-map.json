@@ -956,7 +956,16 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/generate.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": []
+      "relatedSpecs": [],
+      "currentContract": {
+        "implementationSource": "packages/core/src/catalog/generate.vibe",
+        "implementationSourceSha256": "022e390dffcf73009a660ecd2e46028fcdf33edca42ccc104600604207a2459d",
+        "specification": "spec/core/catalog.md",
+        "specificationSha256": "c331fa06bcf6aa97f6332ad4dd59b34f5a05bc4a88b7a2e3f4b3c525e7f66181",
+        "decision": "spec/core/baseline/compatibility-decisions.json#v4-catalog-plugin-connector-boundary",
+        "behavior": "Current v4 plugin/connector-only catalog; app surface and wire app normalization retired. Input provenance is in the compatibility decision. Existing registration/cache/auth/order/search behavior is preserved.",
+        "qualification": "External current candidate only; normal source generation, types/lint, J14 and packed qualification remain pending. Original source hashes above remain historical evidence."
+      }
     },
     {
       "source": "packages/core/src/catalog/generated.json",
@@ -983,7 +992,16 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/loader.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": []
+      "relatedSpecs": [],
+      "currentContract": {
+        "implementationSource": "packages/core/src/catalog/loader.vibe",
+        "implementationSourceSha256": "5e95a08e63dcac559236d8b625ccfcbe0b9f6ed7b4fbf363b1a23332babd7a96",
+        "specification": "spec/core/catalog.md",
+        "specificationSha256": "c331fa06bcf6aa97f6332ad4dd59b34f5a05bc4a88b7a2e3f4b3c525e7f66181",
+        "decision": "spec/core/baseline/compatibility-decisions.json#v4-catalog-plugin-connector-boundary",
+        "behavior": "Current v4 plugin/connector-only catalog; app surface and wire app normalization retired. Input provenance is in the compatibility decision. Existing registration/cache/auth/order/search behavior is preserved.",
+        "qualification": "External current candidate only; normal source generation, types/lint, J14 and packed qualification remain pending. Original source hashes above remain historical evidence."
+      }
     },
     {
       "source": "packages/core/src/catalog/provider-plugin-map.json",
@@ -1024,7 +1042,16 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/runtime-kernel.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": []
+      "relatedSpecs": [],
+      "currentContract": {
+        "implementationSource": "packages/core/src/catalog/runtime-kernel.vibe",
+        "implementationSourceSha256": "37d2953286cac9fd5bc3ec910a7dab2ccd5aaa0dbb2506188e225328cd44f2a5",
+        "specification": "spec/core/catalog.md",
+        "specificationSha256": "c331fa06bcf6aa97f6332ad4dd59b34f5a05bc4a88b7a2e3f4b3c525e7f66181",
+        "decision": "spec/core/baseline/compatibility-decisions.json#v4-catalog-plugin-connector-boundary",
+        "behavior": "Current v4 plugin/connector-only catalog; app surface and wire app normalization retired. Input provenance is in the compatibility decision. Existing registration/cache/auth/order/search behavior is preserved.",
+        "qualification": "External current candidate only; normal source generation, types/lint, J14 and packed qualification remain pending. Original source hashes above remain historical evidence."
+      }
     },
     {
       "source": "packages/core/src/catalog/schema.ts",
@@ -1038,7 +1065,16 @@
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/catalog/schema.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": []
+      "relatedSpecs": [],
+      "currentContract": {
+        "implementationSource": "packages/core/src/catalog/schema.vibe",
+        "implementationSourceSha256": "0e76768b2c784efb897b8fa9b45e08390ec55ef6147d78f1770bb0fd2cf6bf8b",
+        "specification": "spec/core/catalog.md",
+        "specificationSha256": "c331fa06bcf6aa97f6332ad4dd59b34f5a05bc4a88b7a2e3f4b3c525e7f66181",
+        "decision": "spec/core/baseline/compatibility-decisions.json#v4-catalog-plugin-connector-boundary",
+        "behavior": "Current v4 plugin/connector-only catalog; app surface and wire app normalization retired. Input provenance is in the compatibility decision. Existing registration/cache/auth/order/search behavior is preserved.",
+        "qualification": "External current candidate only; normal source generation, types/lint, J14 and packed qualification remain pending. Original source hashes above remain historical evidence."
+      }
     },
     {
       "source": "packages/core/src/catalog/short-id-plugin-map.json",
@@ -2409,14 +2445,37 @@
       "spec": "spec/core/traces.md",
       "rules": [
         "Recording preserves the insertion position of a replacement in its run",
-        "Expired trace progress follows the observed wall clock"
+        "Native expiry observations retire the exact captured key",
+        "Emitted instructions reproduce owner changes and publish the captured record"
       ],
       "classification": "documented-function-contracts-and-source-branches",
       "sourceSha256": "cba59c217657a8a8107772461fc07063532e3f51103a07d2505646a5a766dced",
       "sourceContractKind": "behavioral-module",
       "behaviorEvidence": "spec/core/baseline/behavior-contracts.json#packages/core/src/runtime/active-prompt-traces.ts",
       "implementationProofBoundary": "Source/type/fixture inventory is reference evidence. Model checks establish the stated model properties, not TypeScript-to-VibeLang equivalence. The state-ownership ledger distinguishes concrete model state, partial projections, and explicit lexical/numeric/external boundaries.",
-      "relatedSpecs": []
+      "relatedSpecs": [],
+      "currentContract": {
+        "implementationSource": "packages/core/src/runtime/active-prompt-traces.vibe",
+        "implementationSourceSha256": "0612a35de0fc77b1d0f633bb702d721e90369619945164ada254a9a0d6cb9964",
+        "specification": "spec/core/traces.md",
+        "specificationSha256": "d29977993d50a36cdfafc004223a68167bb4511b6ac3ca13de241596fdaeb4c1",
+        "qualification": "Current v4 candidate prepared; fresh canonical generation/proof/replay, J03, types/lint and packaged qualification remain pending. Historical proof receipts do not establish this candidate.",
+        "owner": "Generated TraceState with global key order, independently ordered run memberships and cadence; native original Map/Set references mechanically interpret emitted effects.",
+        "compatibility": "Void record API transfers a captured key across runs; no new public TraceIdentityConflict. Admitted id captured once rather than the historical two reads.",
+        "nativeBoundaries": "Current inline compositeScore/ScoreCardData, raw live Map/Set iteration, original trace/score-card/signal references, native NaN/infinity/fractional TTL comparisons and original thrown values remain conformance boundaries."
+      },
+      "intendedCompatibilityChanges": [
+        {
+          "baseline": "A reused ID overwrites the original reference but remains in the earlier run index, so deleting that run can erase the transferred trace.",
+          "replacement": "The generated owner transfers captured identity, preserving independent global and per-run order, and emits exact mechanical projection effects without a new public rejection.",
+          "regressionScenario": "record x/A, y/B, x/B -> A empty, B[y,x]; delete A leaves x/B; same-run replacement keeps position and publishes the new original reference."
+        },
+        {
+          "baseline": "The historical native record accesses an admitted volatile id twice.",
+          "replacement": "Capture the admitted id once after cadence and any due purge; no id access for a falsy run. This intentional observation change is explicit and not claimed equivalent for arbitrary volatile accessors.",
+          "regressionScenario": "Every record advances cadence before field reads; hundredth call purges first; volatile id is read once and only that captured key can delete its record."
+        }
+      ]
     },
     {
       "source": "packages/core/src/runtime/candidate-action-backstop.ts",

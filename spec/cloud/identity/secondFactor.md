@@ -227,3 +227,20 @@ pure def stepOnlyAFactorMarksTheSession(before: SecondFactor, via: str, after: S
 pure def sometimesSteppedUpBySms(s: SecondFactor): bool = S::isSteppedUp(s.caller) and s.factors.lastTotpStep == noTotpStep
 pure def sometimesSteppedUpByTotp(s: SecondFactor): bool = S::isSteppedUp(s.caller) and s.factors.lastTotpStep > noTotpStep and isConfirmed(s.factors, Totp)
 ```
+
+### A revoked or expired calling session cannot use factor-management or step-up routes
+
+Before an authenticated factor route, the shell reads the person's current
+session epoch in the same transaction as its operation. The machine records
+a newer observation through `observeEpoch`. Enrollment, confirmation,
+removal, a step-up SMS and a step-up all require the calling session to be
+accepted for that observation. Login challenges use their first-factor
+authority separately.
+
+```quint
+pure def lawInactiveCallerCannotUseFactorRoutes(s: SecondFactor, method: FactorMethod): bool =
+  not(S::isActive(s.caller, s.personEpoch)) implies
+    (not(canEnroll(s, method)) and not(canConfirmEnrollment(s, method)) and
+     not(canRemoveFactor(s, method)) and not(canSendStepUpSms(s)) and
+     not(canVerifyStepUp(s, method)))
+```

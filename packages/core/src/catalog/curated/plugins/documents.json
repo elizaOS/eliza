@@ -4,7 +4,10 @@
   "description": "Character Knowledge documents, fragments, and search routes for the agent.",
   "npmName": "@elizaos/plugin-knowledge",
   "source": "bundled",
-  "tags": ["knowledge", "documents"],
+  "tags": [
+    "knowledge",
+    "documents"
+  ],
   "config": {},
   "render": {
     "visible": false,
@@ -17,14 +20,6 @@
   },
   "resources": {},
   "dependsOn": [],
-  "kind": "app",
-  "subtype": "tool",
-  "launch": {
-    "type": "server-launch",
-    "capabilities": ["documents"],
-    "routePlugin": {
-      "specifier": "@elizaos/plugin-knowledge",
-      "exportName": "knowledgePlugin"
-    }
-  }
+  "kind": "plugin",
+  "subtype": "feature"
 }
