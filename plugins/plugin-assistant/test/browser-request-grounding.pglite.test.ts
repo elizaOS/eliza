@@ -845,3 +845,76 @@ it.each([
     }
   },
 );
+it.each([
+  // [request, model operation, capabilities, stored operation, reply]
+  // The owner's v610 turn (Pixel): the model still proposed an empty
+  // browser_tab_new for "open wikipedia.org in a new tab", and the phone showed
+  // a blank New tab with "Opened a new tab.". The owner's words open the address.
+  [
+    "open wikipedia.org in a new tab",
+    { type: "browser_tab_new" },
+    ["browser.tabs.v1", "browser.open-new-tab.v1"],
+    { type: "browser_navigate", url: "https://wikipedia.org/", newTab: true },
+    "Opening wikipedia.org.",
+  ],
+  [
+    "open wikipedia.org in a new tab",
+    { type: "browser_tab_new", private: false },
+    ["browser.tabs.v1", "browser.open-new-tab.v1"],
+    { type: "browser_navigate", url: "https://wikipedia.org/", newTab: true },
+    "Opening wikipedia.org.",
+  ],
+  [
+    "can you open wikipedia.org in a new tab?",
+    { type: "browser_tab_new" },
+    ["browser.tabs.v1", "browser.open-new-tab.v1"],
+    { type: "browser_navigate", url: "https://wikipedia.org/", newTab: true },
+    "Opening wikipedia.org.",
+  ],
+  // A phone that did not negotiate a new tab still opens the address.
+  [
+    "open wikipedia.org in a new tab",
+    { type: "browser_tab_new" },
+    ["browser.tabs.v1"],
+    { type: "browser_navigate", url: "https://wikipedia.org/" },
+    "Opening wikipedia.org.",
+  ],
+  // No address, or a private tab, is still the empty tab the model proposed.
+  [
+    "open a new tab",
+    { type: "browser_tab_new" },
+    ["browser.tabs.v1", "browser.open-new-tab.v1"],
+    { type: "browser_tab_new" },
+    "Doing that in Browser.",
+  ],
+  [
+    "open wikipedia.org in a new tab",
+    { type: "browser_tab_new", private: true },
+    ["browser.tabs.v1", "browser.open-new-tab.v1"],
+    { type: "browser_tab_new", private: true },
+    "Doing that in Browser.",
+  ],
+] as const)(
+  "opens the typed address for an empty tab proposed for %s (%o)",
+  async (request, operation, capabilities, stored, reply) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: [...capabilities] });
+      expect(
+        await f.run(request, false, true, undefined, "current", operation),
+      ).toMatchObject({
+        success: true,
+        userFacingText: reply,
+        data: { directRequest: true, approvalRequired: false },
+      });
+      const rows = (
+        await f.pg.query<{ payload: { operation: unknown } }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows.map((row) => row.payload.operation)).toEqual([stored]);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
