@@ -31,6 +31,7 @@ export interface Exited {
 export interface AgentChild {
   readonly transport: Transport;
   readonly exited: Promise<Exited>;
+  /** @throws {never} */
   output(): { readonly stdout: string; readonly stderr: string };
   health(): Promise<LocalAnswer | Refusal>;
   ready(timeoutMs?: number): Promise<LocalAnswer>;

@@ -97,11 +97,15 @@ function modelOf(body: unknown): string {
   return typeof model === "string" ? model : "unknown";
 }
 
+type ContentPart = { type?: unknown; image_url?: { url?: unknown } };
+const contentOf = (message: { content?: unknown }): readonly unknown[] => Array.isArray(message.content) ? message.content : [];
+const isContentPart = (part: unknown): part is ContentPart => typeof part === "object" && part !== null;
+
 function imageUrls(body: unknown): string[] {
   const messages = typeof body === "object" && body !== null ? (body as { messages?: unknown }).messages : undefined;
   if (!Array.isArray(messages)) return [];
-  return messages.flatMap((message: { content?: unknown }) => Array.isArray(message.content) ? message.content : [])
-    .flatMap((part: { type?: unknown; image_url?: { url?: unknown } }) => part.type === "image_url" && typeof part.image_url?.url === "string" ? [part.image_url.url] : []);
+  return messages.flatMap(contentOf).filter(isContentPart)
+    .flatMap((part) => part.type === "image_url" && typeof part.image_url?.url === "string" ? [part.image_url.url] : []);
 }
 
 function answerCompletion(response: ServerResponse, reply: CloudReply, body: unknown): void {

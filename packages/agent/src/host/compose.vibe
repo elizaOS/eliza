@@ -141,7 +141,7 @@ effect function loadPlan(runtime: AgentRuntime, input: ComposeInput) {
   }
   if (state.worker.tag === "Unverified") {
     try orDie(plan.send({ type: "verifyWorker", digest: input.worker.kind === "pinned" ? input.worker.measured : "" }))
-    state = try settled(plan, "workflow worker")
+    try settled(plan, "workflow worker")
   }
   try orDie(plan.send({ type: "finishPlan" }))
   state = try settled(plan, "allowlist")

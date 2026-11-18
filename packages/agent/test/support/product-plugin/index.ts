@@ -7,8 +7,8 @@ export const productActionName = "PRODUCT_ACTION";
 const productAction: Action = {
   name: productActionName,
   description: "Echo the owner's words back as structured data for the product's own screen.",
-  validate: async () => true,
-  handler: async (_runtime, message) => ({
+  validate: () => Promise.resolve(true),
+  handler: (_runtime, message) => Promise.resolve({
     success: true,
     text: "Echoed.",
     data: { echoed: typeof message.content.text === "string" ? message.content.text : "" },
@@ -23,7 +23,7 @@ export const productPlugin = {
     {
       method: "GET",
       path: "/api/product/ping",
-      handler: async () => ({ status: 200, body: { pong: true } }),
+      handler: () => Promise.resolve({ status: 200, body: { pong: true } }),
     },
   ],
 } satisfies AgentPlugin;

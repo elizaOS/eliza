@@ -317,7 +317,7 @@ module node {
           exchanges.receive(conn, frame.id, { tag: "EventsSubscribe" }, { refusal: "busy" })
           return
         }
-        const feed = feeds.events.subscribe({ streams: frame.streams, clientId: frame.clientId }, handler.signal)
+        const feed = feeds.events.subscribe({ streams: frame.streams, clientId: frame.clientId }, handler.signal, () => connection.socket.destroy())
         if (isRefused(feed)) {
           exchanges.receive(conn, frame.id, { tag: "Unreadable" }, { refusal: feed.reason })
           return
