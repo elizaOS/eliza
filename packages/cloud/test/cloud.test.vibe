@@ -1,13 +1,14 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { assert, describe, it } from "@effect/vitest"
 import { addCredits } from "../src/billing/funds.vibe"
+import { claimLiveCommand, readSubscription, reconcileSubscription, releaseLiveCommand } from "../src/billing/subscriptions.vibe"
+import { subscriptionView } from "../src/billing/snapshot.vibe"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
 import { Store, type Tx } from "../src/store/store.vibe"
 import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
 import type { FakeRequest } from "./support/fakes.ts"
-import { fileURLToPath } from "node:url"
-import { catalogPrices, testProfile } from "./support/profile.ts"
+import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
 import { periodRows } from "../src/shared/metering.vibe"
 import { tokenDigest } from "../src/shared/sealing.vibe"
 import { stepRow } from "../src/store/rows.vibe"
@@ -51,7 +52,7 @@ describe("WP0 Foundation", () => {
     const plans = try cloud.call("/api/v1/subscriptions/plans")
     try check(() => assert.deepStrictEqual(
       [health.status, health.headers["x-request-id"], service.headers["cache-control"], methods.body, plans.body],
-      [200, "journey-request-0001", "no-store", { email: false, sms: false, google: false }, {
+      [200, "journey-request-0001", "no-store", { email: true, sms: true, google: true }, {
         plans: [
           { key: "plus_monthly", name: "Plus", amountCents: 3000, currency: "usd", interval: "month", allowance: { amountUsd: "25.000000" } },
           { key: "pro_monthly", name: "Pro", amountCents: 10000, currency: "usd", interval: "month", allowance: { amountUsd: "90.000000" } }
@@ -139,14 +140,13 @@ describe("WP0 Foundation", () => {
     }
   }))
   it.live("Refuse a start in the spec's order: a seed outside staging, loopback on Postgres, an unreadable or other database before the catalog, then a catalog the provider does not sell (spec/cloud/deployment.md, \"Story: Configure a deployment from one reviewed profile\")", () => scoped(effect {
-    const seed = fileURLToPath(new URL("./fixtures/seed.json", import.meta.url))
     const productionDigest = "b".repeat(64)
     const withoutLoopback: ProfileEdit = (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, mail: profile.environments.production.mail, sms: { kind: "none" } } } })
     const wrongPrices = [{ ...catalogPrices[0], unitAmount: 2_999 }, catalogPrices[1]]
     const catalogReads: Record<string, ReadonlyArray<FakeRequest>> = {}
     const watch = (name: string) => (fakes: FakeServer) => { catalogReads[name] = fakes.seen }
 
-    const seedInProduction = try failureTag(scoped(testCloud({ environment: "production", seed })))
+    const seedInProduction = try failureTag(scoped(testCloud({ environment: "production", seed: fixtureSeedFile })))
     const loopbackOnPostgres = try failureTag(scoped(testCloud({ store: { kind: "pg" } })))
     const unreadable = try failureTag(scoped(testCloud({
       edit: withoutLoopback, prices: wrongPrices, mount: watch("unreadable"),
@@ -181,7 +181,7 @@ describe.todo("WP2 Native clients and pages (spec/cloud/nativeClients/deviceKeys
 describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)", () => {
   it.live("Bring me back to the app on its registered return only, and tell a payer the checkout ended (spec/cloud/returnPages.md, \"Story: Bring me back to the app when its link did not open\"; spec/cloud/returnPages.md, \"Story: Tell a payer the checkout ended\")", () => scoped(effect {
     const cloud = try testCloud()
-    const profile = try parseProfile(testProfile(cloud.fakes.url))
+    const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
     const now = try Clock.currentTimeMillis
     provide deploymentLayer(profile, "staging") {
       try cloud.store.transaction((tx) => seedClients(tx, fixtureSeed.clients, now))
@@ -425,7 +425,7 @@ describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/regis
         ],
         admitted: [200, {
           clientId: "com.example.one", environment: "staging", redirectUri: signInOne, codeChallengeMethod: "S256", credentialTtlMs: 30 * 86_400_000,
-          methods: { email: false, sms: false, google: false },
+          methods: { email: true, sms: true, google: true },
           google: { configured: true, serverClientId: "google-server-client", nativeSignIn: true }
         }],
         refusals: [[400, "invalid_client", false], [400, "invalid_client", false], [400, "redirect_mismatch", false], [400, "redirect_mismatch", false], [403, "client_disabled", false]],
@@ -473,6 +473,46 @@ effect function entitlementClaims(cloud: TestCloud, token: string, keys: Readonl
 }
 
 describe("WP4 Subscriptions and entitlements: entitlement", () => {
+  it.live("Keep allowance and cancellation coherent when a provider event replays over an older Worker row (spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\"; spec/cloud/billing/subscriptions.md, \"Story: Change my plan one command at a time\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const now = try Clock.currentTimeMillis
+    const token = try entitledDevice(cloud, "reconciled", now)
+    const published = try cloud.call("/api/v1/subscription/entitlement-keys")
+    const keys = (published.body as { readonly keys: ReadonlyArray<PublishedKey> }).keys
+    const org = "org-reconciled"
+    const customerId = "cus_existing"
+    const subscriptionId = "sub_existing"
+    const startsAt = now - 1000
+    const endsAt = now + 30 * 24 * 3_600_000
+    const paid = {
+      customerId, subscriptionId, plan: "plus_monthly", status: "active", startsAt, endsAt,
+      cancelAtPeriodEnd: false, latestInvoice: "paid", payment: { id: "in_existing", startsAt, endsAt, condition: "paid" }
+    } as const
+    const legacy = { customerId, subscriptionId, planKey: paid.plan, status: paid.status, periodEnd: endsAt }
+    try sql(cloud, "INSERT INTO subscriptions (key,state,revision,status,plan_key,customer_id,provider_subscription_id,period_end,updated_at) VALUES ($1,$2,3,$3,$4,$5,$6,$7,$8)",
+      [org, JSON.stringify(legacy), paid.status, paid.plan, customerId, subscriptionId, endsAt, now])
+    const refreshed = try cloud.store.transaction((tx) => reconcileSubscription(tx, org, paid, now))
+    try cloud.store.transaction((tx) => claimLiveCommand(tx, org, "CancelCommand", "cmd_existing", refreshed.revision))
+    const replay = try cloud.store.transaction((tx) => reconcileSubscription(tx, org, paid, now + 1))
+    const active = try entitlementClaims(cloud, token, keys)
+    const observed = try cloud.store.transaction((tx) => reconcileSubscription(tx, org, { ...paid, cancelAtPeriodEnd: true }, now + 2))
+    try cloud.store.transaction((tx) => releaseLiveCommand(tx, org, "cmd_existing"))
+    const undo = try cloud.store.transaction((tx) => readSubscription(tx, org))
+    try cloud.store.transaction((tx) => reconcileSubscription(tx, org, { ...paid, status: "canceled", latestInvoice: "open", payment: undefined }, now + 3))
+    const revoked = try entitlementClaims(cloud, token, keys)
+    try check(() => assert.deepStrictEqual({
+      replay: [replay.revision, subscriptionView(replay)?.control.eligible],
+      active: [active.plan, active.allowance],
+      undo: subscriptionView(undo)?.control,
+      revoked: [revoked.plan, revoked.allowance]
+    }, {
+      replay: [refreshed.revision, false],
+      active: [{ id: "plus_monthly", name: "Plus", status: "active" }, { unit: "usd_micros", granted: 25_000_000, remaining: 25_000_000, periodStart: Math.floor(startsAt / 1000), resetsAt: Math.floor(endsAt / 1000) }],
+      undo: { action: "undo", eligible: true, expectedSubscriptionRevision: observed.revision },
+      revoked: [{ id: "free", name: "Free", status: "none" }, null]
+    }))
+  }))
+
   it.live("Read my plan from a signed entitlement, a grant giving way to a paid plan (spec/cloud/billing/entitlements.md, \"Story: Read my plan without substituting another account or source\"; spec/cloud/billing/plans.md, \"Story: Apply the plan that funds a call\")", () => scoped(effect {
     const cloud = try testCloud()
     const now = try Clock.currentTimeMillis

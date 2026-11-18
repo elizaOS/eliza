@@ -218,7 +218,7 @@ effect function conclude<S extends RecordingStream, C extends RecordingChunk>(co
 }
 
 effect function settle<S extends RecordingStream, C extends RecordingChunk>(core: Core<S, C>, s: Recording<S, C>, mimeType: string): void!! {
-  const settled = conclude(core, s, mimeType) catch (failure) => fail(core, s, failure.cause)
+  const settled = Effect.catch(conclude(core, s, mimeType), (failure) => sync(() => fail(core, s, failure.cause)))
   try ensuring(settled, sync(() => {
     s.chunks = []
   }))

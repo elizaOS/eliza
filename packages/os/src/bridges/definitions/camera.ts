@@ -211,29 +211,6 @@ export interface CameraSessionSnapshot {
   finalizing: boolean;
 }
 
-export interface CameraSession {
-  readonly phase: CameraSessionPhase;
-  readonly denied: CameraAccessKind | undefined;
-  readonly recording: boolean;
-  readonly recordingStarting: boolean;
-  readonly finalizing: boolean;
-  readonly capturing: boolean;
-  readonly controlBusy: boolean;
-  readonly busy: boolean;
-  view(): CameraView;
-  snapshot(): CameraSessionSnapshot;
-  token(): number;
-  current(token: number): boolean;
-  start(retry?: boolean): Promise<CameraStartOutcome>;
-  stop(): Promise<void>;
-  control(task: () => Promise<unknown>): Promise<CameraControlOutcome>;
-  startRecording(): Promise<CameraRecordingStart>;
-  finishRecording(): Promise<CameraRecordingOutcome>;
-  exclusive<T>(task: (token: number) => Promise<T>): Promise<CameraExclusive<T>>;
-  rearm(): Promise<boolean>;
-  clearDenied(kind?: CameraAccessKind): void;
-}
-
 export type CameraKeepOutcome = { status: "saved"; id?: string; message?: string } | { status: "failed" | "unknown"; message: string };
 
 export interface CameraCaptureAction {

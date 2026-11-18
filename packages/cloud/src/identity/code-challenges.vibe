@@ -56,7 +56,7 @@ interface VerifyRequest extends CodeRequest {
   readonly codeVerifier: string
 }
 
-interface Timed {
+export interface Timed {
   readonly event: Event
   readonly now: number
 }
@@ -92,7 +92,7 @@ effect function applyAt(challenge: Challenge, timed: Timed): ChallengeStep!Rejec
   return try apply(current, timed.event)
 }
 
-const challengeRows: MachineRows<Challenge, Timed, ChallengeStep, Rejected, NotAState> = { table: "code_challenges", initial, decodeState, apply: applyAt, next: (stepped) => stepped.state }
+export const challengeRows: MachineRows<Challenge, Timed, ChallengeStep, Rejected, NotAState> = { table: "code_challenges", initial, decodeState, apply: applyAt, next: (stepped) => stepped.state }
 
 export function clientAddress(context: RouteContext): string {
   return Option.getOrElse(context.request.remoteAddress, () => "unknown")

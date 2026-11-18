@@ -1,15 +1,13 @@
 # Speech relay protocol
 
-The wire on the one socket of a minted speech session: develop's wire (plan
-decision D41, `packages/host/src/voice/speech-relay-{wire,session}.ts` on the
-pinned branch). This library has no state: `relayStep` is the relay's answer
-to one device frame or one edge the session or a provider reports, and the
-shell sends an answer's frames before it reads the next input. The session
-machine (`./speechSession`) holds one `Relay` per socket and owns consent,
-windows, budgets and settlement; a frame that breaks a budget reaches the
-relay as `ClientViolation`. The device client (`spec/os/voice/cloudSpeech.md`)
-speaks the same frames. JSON, bytes, token digests, string lengths, the id
-pattern and provider calls stay in the codec (`src/client/relay-frames.ts`).
+Develop's wire on the one socket of a minted speech session (plan decision
+D41). This library has no state: `relayStep` answers one device frame or one
+edge the session or a provider reports, and the shell sends those frames
+before it reads the next input. `./speechSession` holds one `Relay` per
+socket and owns consent, windows, budgets and settlement (a broken budget
+reaches the relay as `ClientViolation`); `spec/os/voice/cloudSpeech.md` is
+the device side. JSON, bytes, digests, lengths, the id pattern and provider
+calls stay in the codec (`src/client/relay-frames.ts`).
 
 ## Story: Speak the relay protocol on one socket
 
@@ -120,12 +118,9 @@ within 5 s, or a refused credential; `unavailable` (4402) when funding
 refused a window; `closed` (4410) when the session is over (deadline passed
 unrenewed, owner revoked it, account deleting); `protocol` (1008) for a
 frame that breaks the protocol, a budget or the id cap; `unavailable` (1008)
-for a provider or service outage. An ended relay answers nothing. Funding
-is never `unauthorized`: its `error` is `unavailable` with the reason
-`insufficient_credits` or `allowance_exhausted` only for a hello that sent
-`errorReasons`, and no other end carries a reason. Develop sent only
-`insufficient_credits`; plan decision D19 adds the daily allowance, and the
-device client accepts both.
+for a provider or service outage. An ended relay answers nothing. Only a
+funding end carries a reason, `insufficient_credits` or (D19)
+`allowance_exhausted`, and only to a hello that sent `errorReasons`.
 
 ```quint
 pure val normalClose = 1000
@@ -225,7 +220,7 @@ pure def lawConnectedPrecedesTurnsAndAcceptedAudio(r: Relay, input: RelayInput):
 }
 ```
 
-### While live, frames follow the life of each utterance
+### While live, frames follow the life of each utterance, and extended goes only to a hello that asked
 
 `prepare`, or the first `tts` of an id, opens the utterance and is answered
 with one `tts_prepared`; a new id beyond the window cap breaks the protocol.

@@ -8,10 +8,9 @@ under a request id, reports it to the app's renderer and waits for the
 renderer's answer. [Surface lifecycle](./lifecycle.md) owns which surfaces
 exist, which realm may command them and whether a page is shown or paused;
 this spec wraps those commands so that each one also ends what it no longer
-lets a page ask. The shell keeps the platform objects (the WebView's dialog
-result, file callback, permission request and download address), maps
-request ids to them, and matches an other-app link by its address on the
-wire. Sources: `BrowserSurfacePlugin.kt`, `BrowserSurfaceRequests.kt`,
+lets a page ask. The shell keeps the WebView's callbacks under the
+request ids and names an other-app link by its address on the wire.
+Sources: `BrowserSurfacePlugin.kt`, `BrowserSurfaceRequests.kt`,
 `BrowserPageHandoffs.java` and `definitions.ts` of the native browser
 surface plugin.
 
@@ -22,9 +21,8 @@ surface plugin.
 
 ### A request is held only on a surface created to answer requests, and only while the page may ask it
 
-A surface created without `answersRequests` holds nothing: the platform
-default applies at once (a dialog is cancelled, a file request gets no
-file, a permission is denied, a link stays put). A dialog, a file request
+On a surface created without `answersRequests` the platform default
+applies at once: nothing is held. A dialog, a file request
 and a site permission need the page shown and running; a download needs it
 shown; an other-app link and a refused sign-in page need neither. At most
 `maxWaiting` dialogs and `maxWaiting` site permissions wait per page; more
@@ -33,9 +31,8 @@ one at a time per page: a newer one ends the older. Request ids come from
 one counter, so a stale or repeated answer finds nothing. Only a held
 request is reported (`dialogRequested`, `fileChooserRequested`,
 `sitePermissionRequested`, `downloadRequested`, `externalLinkRequested`,
-`identityProviderRequested`). The shell reports a link only when the
-person tapped it and it may open another app, and denies at once, with no
-id, a permission asked by another origin's frame.
+`identityProviderRequested`). The shell raises a link only when the
+person tapped it and it may open another app.
 
 ```quint
 import lifecycle as L from "./lifecycle"
@@ -65,7 +62,7 @@ pure def canPageAsks(s: PageRequests, id: str, kind: RequestKind): bool = L::has
 pure def pageAsks(s: PageRequests, id: str, kind: RequestKind): PageChange = {
   val gen = s.host.surfaces.foldl(0, (g, x) => if (x.id == id) x.gen else g)
   val waiting = s.requests.select(r => r.gen == gen and r.kind == kind and active(r.status)).length()
-  val held = s.host.surfaces.some(x => x.id == id and allowedOn(x, kind) and not(pauseRefuses(kind) and x.paused)) and
+  val held = s.host.surfaces.some(x => x.id == id and x.gen == gen and allowedOn(x, kind) and not(pauseRefuses(kind) and x.paused)) and
     (oneAtATime(kind) or waiting < maxWaiting)
   val replaced = s.requests.listMap(r => if (held and oneAtATime(kind) and r.gen == gen and r.kind == kind and active(r.status)) { ...r, status: ended(r.kind) } else r)
   { state: { ...s, issued: s.issued + 1, requests: replaced.append({ id: s.issued + 1, surface: id, gen: gen, kind: kind, status: if (held) Waiting else ended(kind) }) },
@@ -157,9 +154,9 @@ pure def isStarted(n: PageNotice): bool = match n { | Started(x) => true | _ => 
 pure def isWithdrawal(n: PageNotice): bool = match n { | PermissionWithdrawn(x) => true | _ => false }
 pure def stepEndedPermissionsAreWithdrawnBeforeTheStart(before: PageRequests, via: str, after: PageRequests, out: List[PageNotice]): bool = {
   val gone = after.requests.select(r => r.status == PermissionAnswered({ answer: Ended }) and before.requests.some(b => b.id == r.id and active(b.status)))
-  val last = out.nthOr(out.length() - 1, Asked({ surface: "", request: 0, kind: Dialog }))
+  val final = out.nthOr(out.length() - 1, Asked({ surface: "", request: 0, kind: Dialog }))
   out.select(n => isWithdrawal(n)) == (if (via == "androidAnswered") List() else withdrawn(gone)) and
-    (via == "pageStarted" implies out.length() > 0 and isStarted(last))
+    (via == "pageStarted" implies out.length() > 0 and isStarted(final))
 }
 pure def sometimesStartEndedAHandoff(s: PageRequests): bool =
   s.requests.some(r => r.kind == OtherApp and r.status == Dismissed and s.host.surfaces.some(x => x.gen == r.gen) and
@@ -201,8 +198,6 @@ pure def sometimesSignInKeptWhileHidden(s: PageRequests): bool =
   s.requests.some(r => r.kind == BlockedSignIn and r.status == Waiting and s.host.surfaces.some(x => x.gen == r.gen and not(x.presented)))
 pure def sometimesPermissionKeptWhilePaused(s: PageRequests): bool =
   s.requests.some(r => r.kind == SitePermission and active(r.status) and s.host.surfaces.some(x => x.gen == r.gen and x.paused))
-pure def sometimesDialogCancelledByHiding(s: PageRequests): bool =
-  s.requests.some(r => r.status == DialogCancelled and s.host.surfaces.some(x => x.gen == r.gen and not(x.presented)))
 ```
 
 ## Story: Let a site have the device, my files or a download only as I choose
@@ -231,20 +226,11 @@ pure def canAndroidAnswered(s: PageRequests, request: int): bool = s.requests.so
 pure def androidAnswered(s: PageRequests, request: int, reply: AndroidReply): PageRequests =
   setStatus(request, s, PermissionAnswered({ answer: if (reply == AndroidAllows) Granted else if (reply == AndroidRefuses) AndroidRefused else Ended }))
 pure def fitsKind(kind: RequestKind, st: RequestStatus): bool = match st {
-  | Waiting => true
-  | DialogAccepted => kind == Dialog
-  | DialogCancelled => kind == Dialog
-  | PickerOpen => kind == FileChoice
-  | FilesGiven => kind == FileChoice
-  | NoFiles => kind == FileChoice
-  | AskingAndroid => kind == SitePermission
-  | PermissionAnswered(a) => kind == SitePermission
-  | Saving => kind == Download
-  | Saved => kind == Download
-  | SaveFailed => kind == Download
-  | Dispatched => kind == OtherApp or kind == BlockedSignIn
-  | NoHandler => kind == OtherApp or kind == BlockedSignIn
-  | Dismissed => kind == Download or kind == OtherApp or kind == BlockedSignIn
+  | Waiting => true | DialogAccepted => kind == Dialog | DialogCancelled => kind == Dialog
+  | PickerOpen => kind == FileChoice | FilesGiven => kind == FileChoice | NoFiles => kind == FileChoice
+  | AskingAndroid => kind == SitePermission | PermissionAnswered(a) => kind == SitePermission
+  | Saving => kind == Download | Saved => kind == Download | SaveFailed => kind == Download
+  | Dispatched => not(shownOnly(kind)) | NoHandler => not(shownOnly(kind)) | Dismissed => kind == Download or not(shownOnly(kind))
 }
 pure def alwaysOutcomeFitsItsKind(s: PageRequests): bool = s.requests.every(r => fitsKind(r.kind, r.status))
 pure def stepGrantFollowsMyGrantAndAndroid(before: PageRequests, via: str, after: PageRequests): bool =

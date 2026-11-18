@@ -29,7 +29,7 @@ what may replace what a consumer already has.
 
 A debug-only build (`release: false`) assembles no release APK and cannot be
 archived. A release needs every signing variable or none
-(`H::releaseSigning`). A host without the agent service stages no agent
+(`H::signingNameCount`); some of them set refuses it before Gradle runs. A host without the agent service stages no agent
 payload; one with it names its inventory digest.
 
 ```quint
@@ -37,31 +37,32 @@ import apk as A from "../image/apk"
 import androidHost as H from "./androidHost"
 import atomicPublication as P from "../../core/atomicPublication"
 type StagedPayload = NoAgentPayload | AgentPayload({ inventory: A::Digest })
-type BuildRequest = { variants: List[str], wellFormed: bool, release: bool, signing: H::ReleaseSigning, wantsArchive: bool, pin: str, sourceAtPin: bool, payload: StagedPayload }
-type RequestRefusal = NoVariants | DuplicateVariant | MalformedRequest | DebugOnlyArchive | SigningRefusedForRelease | SourceNotAtPin | PayloadUnidentified
+type BuildRequest = { variants: List[str], wellFormed: bool, release: bool, signing: H::NamedSet, signingVariablesSet: int, wantsArchive: bool, pin: str, sourceAtPin: bool, payload: StagedPayload }
+type RequestRefusal = NoVariants | DuplicateVariant | MalformedRequest | DebugOnlyArchive | SigningPartial | SourceNotAtPin | PayloadUnidentified
 type RequestFinding = RequestAdmitted | RequestRefused({ refusal: RequestRefusal })
 pure def carriesAgent(payload: StagedPayload): bool = match payload { | AgentPayload(p) => true | _ => false }
 pure def inventoryOf(payload: StagedPayload): A::Digest = match payload { | AgentPayload(p) => p.inventory | _ => A::NotADigest }
 pure def samePayload(payload: StagedPayload, observed: StagedPayload): bool =
   carriesAgent(payload) == carriesAgent(observed) and (carriesAgent(payload) implies A::digestsMatch(inventoryOf(payload), inventoryOf(observed)))
+pure def partialSigning(r: BuildRequest): bool = r.signingVariablesSet > 0 and r.signingVariablesSet < H::signingNameCount
 pure def requestFinding(r: BuildRequest): RequestFinding =
   if (r.variants.length() == 0) RequestRefused({ refusal: NoVariants })
   else if (not(r.variants.every(v => r.variants.select(w => w == v).length() == 1))) RequestRefused({ refusal: DuplicateVariant })
   else if (not(r.wellFormed)) RequestRefused({ refusal: MalformedRequest })
   else if (r.wantsArchive and not(r.release)) RequestRefused({ refusal: DebugOnlyArchive })
-  else if (r.release and r.signing == H::SigningRefused) RequestRefused({ refusal: SigningRefusedForRelease })
+  else if (r.release and partialSigning(r)) RequestRefused({ refusal: SigningPartial })
   else if (r.pin == "" or not(r.sourceAtPin)) RequestRefused({ refusal: SourceNotAtPin })
   else if (carriesAgent(r.payload) and not(A::isDigest(inventoryOf(r.payload)))) RequestRefused({ refusal: PayloadUnidentified })
   else RequestAdmitted
 pure val requestValues = {
-  val base = { variants: List("launcher"), wellFormed: true, release: true, signing: H::SignedRelease, wantsArchive: true, pin: "c1", sourceAtPin: true, payload: AgentPayload({ inventory: A::Sha256({ hex: "a1" }) }) }
-  List(base, { ...base, wantsArchive: false }, { ...base, release: false, wantsArchive: false }, { ...base, payload: NoAgentPayload, signing: H::UnsignedRelease },
+  val base = { variants: List("launcher"), wellFormed: true, release: true, signing: H::AllNamed, signingVariablesSet: 4, wantsArchive: true, pin: "c1", sourceAtPin: true, payload: AgentPayload({ inventory: A::Sha256({ hex: "a1" }) }) }
+  List(base, { ...base, wantsArchive: false }, { ...base, release: false, wantsArchive: false }, { ...base, payload: NoAgentPayload, signing: H::NoneNamed, signingVariablesSet: 0 },
     { ...base, release: false }, { ...base, variants: List() }, { ...base, variants: List("launcher", "launcher") }, { ...base, wellFormed: false },
-    { ...base, signing: H::SigningRefused }, { ...base, sourceAtPin: false }, { ...base, pin: "" }, { ...base, payload: AgentPayload({ inventory: A::NotADigest }) })
+    { ...base, signingVariablesSet: 3 }, { ...base, sourceAtPin: false }, { ...base, pin: "" }, { ...base, payload: AgentPayload({ inventory: A::NotADigest }) })
     .foldl(Set(), (acc, r) => acc.union(Set(r)))
 }
-pure def lawAdmittedRequestIsBuildableFromThePin(r: BuildRequest): bool = requestFinding(r) == RequestAdmitted implies
-  (r.variants.length() > 0 and r.wellFormed and r.pin != "" and r.sourceAtPin and (r.wantsArchive implies r.release) and (r.release implies r.signing != H::SigningRefused))
+pure def lawAdmittedRequestIsBuildableFromThePin(request: BuildRequest): bool = requestFinding(request) == RequestAdmitted implies (request.variants.length() > 0 and request.wellFormed
+  and request.pin != "" and request.sourceAtPin and (request.wantsArchive implies request.release) and (request.release implies not(partialSigning(request))))
 ```
 
 ### Every selected APK must come out of Gradle, and a release signed as configured, before anything is written
@@ -80,7 +81,7 @@ type GradleRun = { succeeded: bool, apksPresent: bool, releaseSigned: bool, copi
 type BuildFailure = InputRefused | GradleFailed | OutputsIncomplete | ReleaseUnsigned | CopyFailed | SourceMoved | PayloadChanged | VerificationFailed | SetNotPublished | ArchiveFilesChanged | ArchiveNotPublished
 type BuildPhase = Pending | Building | Staged | Verified | Published | Archived | Failed({ failure: BuildFailure })
 type AndroidBuild = { phase: BuildPhase, request: BuildRequest, manifest: List[H::PublishedApk], apks: P::Publication, archive: P::Publication }
-pure val noRequest: BuildRequest = { variants: List(), wellFormed: false, release: false, signing: H::UnsignedRelease, wantsArchive: false, pin: "", sourceAtPin: false, payload: NoAgentPayload }
+pure val noRequest: BuildRequest = { variants: List(), wellFormed: false, release: false, signing: H::NoneNamed, signingVariablesSet: 0, wantsArchive: false, pin: "", sourceAtPin: false, payload: NoAgentPayload }
 pure val initial: AndroidBuild = { phase: Pending, request: noRequest, manifest: List(), apks: P::initial, archive: P::initial }
 pure def canAdmit(b: AndroidBuild): bool = b.phase == Pending
 pure def admit(b: AndroidBuild, request: BuildRequest): AndroidBuild =
@@ -91,7 +92,7 @@ pure def canAssemble(b: AndroidBuild): bool = b.phase == Building
 pure def assemble(b: AndroidBuild, gradle: GradleRun): AndroidBuild =
   if (not(gradle.succeeded)) { ...b, phase: Failed({ failure: GradleFailed }) }
   else if (not(gradle.apksPresent)) { ...b, phase: Failed({ failure: OutputsIncomplete }) }
-  else if (b.request.release and H::releasePublication(b.request.signing, gradle.releaseSigned) == H::ReleaseBuildFails) { ...b, phase: Failed({ failure: ReleaseUnsigned }) }
+  else if (b.request.release and H::releasePublication(b.request.signing, b.request.signingVariablesSet, gradle.releaseSigned) == H::ReleaseBuildFails) { ...b, phase: Failed({ failure: ReleaseUnsigned }) }
   else { ...b, apks: P::write(P::create(b.apks, true), gradle.copied), phase: if (gradle.copied) Staged else Failed({ failure: CopyFailed }) }
 pure def failedBeforeCopy(phase: BuildPhase): bool =
   phase == Failed({ failure: InputRefused }) or phase == Failed({ failure: GradleFailed }) or phase == Failed({ failure: OutputsIncomplete }) or phase == Failed({ failure: ReleaseUnsigned })
@@ -181,12 +182,11 @@ under its name.
 
 ```quint
 pure def canArchiveSet(b: AndroidBuild): bool = b.phase == Published and b.request.wantsArchive and b.archive == P::initial
-pure def archiveSet(b: AndroidBuild, filesMatch: bool, ok: bool): AndroidBuild =
+pure def archiveSet(b: AndroidBuild, filesMatch: bool, ok: bool): AndroidBuild = {
+  val renamed = P::rename(P::write(P::create(b.archive, true), true), ok)
   if (not(filesMatch)) { ...b, phase: Failed({ failure: ArchiveFilesChanged }) }
-  else {
-    val renamed = P::rename(P::write(P::create(b.archive, true), true), ok)
-    { ...b, archive: renamed, phase: if (renamed.published) Archived else Failed({ failure: ArchiveNotPublished }) }
-  }
+  else { ...b, archive: renamed, phase: if (renamed.published) Archived else Failed({ failure: ArchiveNotPublished }) }
+}
 pure def canCleanArchive(b: AndroidBuild): bool = P::canCleanup(b.archive)
 pure def cleanArchive(b: AndroidBuild, removed: bool): AndroidBuild = { ...b, archive: P::cleanup(b.archive, removed) }
 pure def alwaysArchiveOnlyOfAPublishedReleaseSet(b: AndroidBuild): bool =

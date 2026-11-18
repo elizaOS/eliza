@@ -6,32 +6,20 @@ import type { HoldKey, SpeechDirection } from "../../gen/cloud__shared__types.ts
 import { refused, Refused, wireName } from "../http/refusal.vibe"
 import { signed, type Signed } from "../http/request-auth.vibe"
 import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
+import type { RelaySession, SessionEnd, WindowAdmission, WindowUsage } from "./speech-relay.vibe"
 import { Deployment } from "../profile/profile.vibe"
 import { holdRows, markDispatched, reserve, settle, type HoldOwner, type MeteringFailure, type Settlement } from "../shared/metering.vibe"
 import { newId, sameText, secretText, tokenDigest } from "../shared/sealing.vibe"
 import { loadRow, machineRows, stepRow, type RowConflict, type RowCorrupt } from "../store/rows.vibe"
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 
-export type { Session, Shortfall, SpeechDirection }
+export type { Session, SessionEnd, Shortfall, SpeechDirection, WindowAdmission, WindowUsage }
 
 export const sessionRows = machineRows<Session, Event, Rejected, unknown>("speech_sessions", { initial, decodeState, apply })
 
 export type SessionFailure = Refused | StoreFailure | RowCorrupt | RowConflict | Rejected | MeteringFailure
 
-export type SessionEnd = "SessionOver" | "CredentialRefused"
-
 export type RetireCause = "Stopped" | "FundingRefused" | "ProviderFailed" | "Revoked" | "CredentialRevoked" | "AccountDeleting" | "DeadlinePassed"
-
-export type WindowAdmission =
-  | { readonly kind: "admitted"; readonly expiresAt: number }
-  | { readonly kind: "short"; readonly shortfall: Shortfall }
-
-export interface WindowUsage {
-  readonly pcmBytes: number
-  readonly ttsChars: number
-  readonly sttDrained: boolean
-  readonly ttsConfirmed: boolean
-}
 
 export interface OpenedSession {
   readonly id: string
@@ -52,6 +40,11 @@ interface Credential {
 interface WindowHolds {
   readonly transcribe: string
   readonly synthesize: string
+}
+
+interface RecordedWindow extends WindowHolds {
+  readonly settled: boolean
+  readonly expiresAt: number
 }
 
 interface Rates {
@@ -180,7 +173,7 @@ effect function closeIfSettled(tx: Tx, id: string, now: number): Session!(StoreF
   }
 }
 
-effect function windowHolds(tx: Tx, id: string, window: number): (WindowHolds & { readonly settled: boolean; readonly expiresAt: number }) | undefined !StoreFailure {
+effect function windowHolds(tx: Tx, id: string, window: number): (RecordedWindow | undefined)!StoreFailure {
   const row = (try tx.query("SELECT transcribe_hold, synthesize_hold, settled_at, expires_at FROM speech_windows WHERE session_id = $1 AND number = $2", [id, window]))[0]
   if (row === undefined) return undefined
   return {
@@ -329,7 +322,7 @@ effect function settleOrphans(id: string): void!SessionFailure!(Store | Deployme
   const store = try Store
   const open = try store.transaction((tx) => tx.query("SELECT number FROM speech_windows WHERE session_id = $1 AND settled_at IS NULL ORDER BY number", [id]))
   for (const row of open) {
-    try settleWindow(id, toInt(row.number), { pcmBytes: 0, ttsChars: 0, sttDrained: false, ttsConfirmed: false })
+    try settleWindow(id, toInt(row.number), { pcmBytes: 0, ttsChars: 0, sttDrained: false, ttsConfirmed: false, dispatched: true })
   }
   try retire(id, "DeadlinePassed")
 }
@@ -465,3 +458,29 @@ export const sessionSpeechRoutes: ReadonlyArray<Route> = [
   { method: "POST", path: `${speechPath}/session`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: mint },
   { method: "POST", path: `${speechPath}/session/:id/revoke`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: revoke }
 ]
+
+effect function refusedOnly<A, R>(work: A!SessionFailure!R): A!Refused!R {
+  const now = try Clock.currentTimeMillis
+  const value = work catch effect (failure) => {
+    if (failure instanceof Refused) throw failure
+    try annotateLogs(logError("a speech session step failed"), { failure: failure._tag })
+    throw refused("ServiceUnavailable", "NoReason", now + 5000)
+  }
+  return value
+}
+
+effect function sessionTokenMatches(id: string, token: string): boolean!SessionFailure!Store {
+  const store = try Store
+  const found = try store.transaction((tx) => readSession(tx, id, false))
+  return tokenMatches(found, token)
+}
+
+export const relaySession: RelaySession = {
+  openSocket: (id) => Effect.asVoid(refusedOnly(openSocket(id))),
+  tokenMatches: sessionTokenMatches,
+  admitWindow,
+  dispatchWindow: (id, window) => dispatchWindow(id, window),
+  settleWindow: (id, window, usage) => Effect.asVoid(settleWindow(id, window, usage)),
+  retire: (id) => Effect.asVoid(retire(id, "Stopped")),
+  ended: sessionEnding
+}

@@ -23,7 +23,9 @@ public class DeepLinksPlugin extends Plugin {
     try {
       synchronized (PROCESS) {
         if (capture == null) {
-          capture = DeepLinkCapture.launch(new KeystoreSlot(getContext(), KeystoreSlot.DEEP_LINK), uncaptured(launch));
+          KeystoreSlot slot = new KeystoreSlot(getContext(), KeystoreSlot.DEEP_LINK);
+          capture = DeepLinkCapture.launch(slot, null);
+          capture = DeepLinkCapture.launch(slot, uncaptured(launch));
           if (capture.coldLaunch() > 0) launch.putExtra(EXTRA_RECEIPT, capture.coldLaunch());
           return;
         }

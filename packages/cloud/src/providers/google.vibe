@@ -137,7 +137,7 @@ export effect function googleJson(access: string, method: GoogleMethod, path: st
   throw failureOf(answer.status)
 }
 
-effect function tokenForm(url: string, form: URLSearchParams) {
+export effect function tokenForm(url: string, form: URLSearchParams) {
   const request = HttpClientRequest.bodyText(HttpClientRequest.post(url), form.toString(), "application/x-www-form-urlencoded").pipe(HttpClientRequest.acceptJson)
   return try exchange(request, tokenMaxBytes)
 }

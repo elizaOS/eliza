@@ -104,7 +104,6 @@ export interface TelephonyHandoffResult {
 export interface DialReport {
   dialStatus: DialStatus;
   handler: string | null;
-  message: string;
   receipt: Receipt;
 }
 
@@ -117,7 +116,6 @@ export interface PlaceCallResult {
 
 export interface PlaceReport {
   placeStatus: PlaceStatus;
-  message: string;
   receipt: Receipt;
 }
 
@@ -201,7 +199,9 @@ export interface VoicemailWriteReport {
   listing: VoicemailListing;
 }
 
-export type VoicemailRefusal = PcmRefusal;
+export type VoicemailRefusalReason = "not-admitted" | "unknown-voicemail" | "audio-already-asked" | "audio-not-on-phone" | "write-blocked";
+
+export type { PcmRefusal };
 
 export interface PhoneNativePlugin {
   imageCapability(): Promise<unknown>;

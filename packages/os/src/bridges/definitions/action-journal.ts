@@ -2,11 +2,10 @@
 import type { DeletionHold, DeletionKind } from "../../../gen/os__android__deferredDeletion.ts";
 import type { DeletionNotice, DeletionPhase, WindowState } from "../../../gen/os__android__deletionWindow.ts";
 
-export type JournalScope = string & { readonly __brand: "JournalScope" };
-export type ProposalId = string & { readonly __brand: "ProposalId" };
-export type OperationId = string & { readonly __brand: "OperationId" };
-export type OperationHash = string & { readonly __brand: "OperationHash" };
-export type AttemptId = string & { readonly __brand: "AttemptId" };
+export type JournalScope = string;
+export type ProposalId = string;
+export type OperationId = string;
+export type OperationHash = string;
 
 export type ActionJournalStatus = "succeeded" | "failed" | "unknown" | "cancelled";
 
@@ -19,18 +18,27 @@ interface JournalEntryBase {
   readonly createdAt: number;
 }
 
-export type ActionJournalEntry =
-  | (JournalEntryBase & { readonly phase: "reserved" })
-  | (JournalEntryBase & { readonly phase: "applying"; readonly attemptId: string; readonly applyingAt?: number })
-  | (JournalEntryBase & {
-      readonly phase: "terminal";
-      readonly status: ActionJournalStatus;
-      readonly summary: string;
-      readonly attemptId?: string;
-      readonly applyingAt?: number;
-      readonly finishedAt?: number;
-      readonly result?: Readonly<Record<string, unknown>>;
-    });
+export interface ReservedEntry extends JournalEntryBase {
+  readonly phase: "reserved";
+}
+
+export interface ApplyingEntry extends JournalEntryBase {
+  readonly phase: "applying";
+  readonly attemptId: string;
+  readonly applyingAt?: number;
+}
+
+export interface TerminalEntry extends JournalEntryBase {
+  readonly phase: "terminal";
+  readonly status: ActionJournalStatus;
+  readonly summary: string;
+  readonly attemptId?: string;
+  readonly applyingAt?: number;
+  readonly finishedAt?: number;
+  readonly result?: Readonly<Record<string, unknown>>;
+}
+
+export type ActionJournalEntry = ReservedEntry | ApplyingEntry | TerminalEntry;
 
 export type ActionJournalPhase = ActionJournalEntry["phase"];
 
@@ -96,7 +104,7 @@ export type DismissOutcome = { readonly kind: "Dismissed"; readonly message: str
 
 export interface ActionJournalPlugin {
   reserve(input: JournalReservation): Promise<unknown>;
-  markApplying(input: ActionJournalTarget & { readonly attemptId: AttemptId }): Promise<unknown>;
+  markApplying(input: ActionJournalTarget & { readonly attemptId: string }): Promise<unknown>;
   finish(input: JournalFinish): Promise<unknown>;
   get(input: ActionJournalTarget): Promise<unknown>;
   list(input: { readonly scope: JournalScope }): Promise<unknown>;
@@ -107,7 +115,7 @@ export interface ActionJournalPlugin {
 
 export interface ActionJournalClient {
   reserve(input: JournalReservation): Promise<{ readonly created: boolean; readonly entry: ActionJournalEntry }>;
-  markApplying(input: ActionJournalTarget & { readonly attemptId: AttemptId }): Promise<ActionJournalEntry>;
+  markApplying(input: ActionJournalTarget & { readonly attemptId: string }): Promise<ActionJournalEntry>;
   finish(input: JournalFinish): Promise<ActionJournalEntry>;
   get(input: ActionJournalTarget): Promise<ActionJournalEntry | null>;
   list(scope: JournalScope): Promise<readonly ActionJournalEntry[]>;

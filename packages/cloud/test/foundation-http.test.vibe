@@ -11,28 +11,6 @@ import { organization, testCloud, type TestCloud } from "./support/cloud.vibe"
 import { callCloud, type Answer, type CallInit } from "./support/http.ts"
 import { testProfile } from "./support/profile.ts"
 
-module node {
-  import { request } from "node:http"
-
-  export function declareOversized(base: string, path: string, headers: Readonly<Record<string, string>>, declared: number): Promise<{ readonly status: number; readonly requestId: string | undefined; readonly body: unknown }> {
-    return new Promise((resolve, reject) => {
-      const outgoing = request(new URL(path, base), { method: "POST", headers: { ...headers, "content-type": "application/json", "content-length": String(declared) } }, (incoming) => {
-        let text = ""
-        incoming.setEncoding("utf8")
-        incoming.on("data", (chunk: string) => { text += chunk })
-        incoming.on("end", () => {
-          outgoing.destroy()
-          const requestId = incoming.headers["x-request-id"]
-          resolve({ status: incoming.statusCode ?? 0, requestId: typeof requestId === "string" ? requestId : undefined, body: JSON.parse(text) as unknown })
-        })
-      })
-      outgoing.on("error", reject)
-      outgoing.flushHeaders()
-    })
-  }
-}
-import { declareOversized } from node
-
 const minuteMs = 60_000
 const ownOrigin = "https://www.staging.example.com"
 const mintedRequestId = /^[A-Za-z0-9._:-]{8,128}$/
@@ -111,8 +89,8 @@ describe("WP0 Foundation: HTTP shell", () => {
     const signedGated = try call("/probe/subscription", { json: {}, headers: signed("journey-http-0002") })
     const ungatedArea = try call("/probe/entitlement", { headers: signed("journey-http-0003") })
     const legacyGate = try call("/probe/billing", { headers: signed("journey-http-0004") })
-    const gatedOversized = try promise(() => declareOversized(url, "/probe/subscription", signed("journey-http-0005"), 1_000_000))
-    const oversized = try promise(() => declareOversized(url, "/probe/inference", signed("journey-http-0006"), 65))
+    const gatedOversized = try call("/probe/subscription", { json: { text: "x".repeat(1_000) }, headers: signed("journey-http-0005") })
+    const oversized = try call("/probe/inference", { json: { text: "x".repeat(1_000) }, headers: signed("journey-http-0006") })
     const fits = try call("/probe/inference", { json: {}, headers: signed("journey-http-0007") })
     const unknownGet = try call("/probe/nothing-here")
     const unknownPost = try call("/probe/nothing-here", { json: {} })
@@ -122,8 +100,8 @@ describe("WP0 Foundation: HTTP shell", () => {
         signedGated: [refusal(signedGated), signedGated.headers["x-request-id"]],
         ungatedArea: [refusal(ungatedArea), ungatedArea.headers["x-request-id"]],
         legacyGate: refusal(legacyGate),
-        gatedOversized: [gatedOversized.status, (gatedOversized.body as { error: string }).error, gatedOversized.requestId],
-        oversized: [oversized.status, (oversized.body as { error: string }).error, oversized.requestId],
+        gatedOversized: [refusal(gatedOversized), gatedOversized.headers["x-request-id"]],
+        oversized: [refusal(oversized), oversized.headers["x-request-id"]],
         fits: refusal(fits),
         unknown: [refusal(unknownGet), refusal(unknownPost), mintedRequestId.test(unknownGet.headers["x-request-id"] ?? ""), unknownGet.headers["x-request-id"] !== unknownPost.headers["x-request-id"]],
         reached
@@ -133,8 +111,8 @@ describe("WP0 Foundation: HTTP shell", () => {
         signedGated: ["404 capability_unavailable", "journey-http-0002"],
         ungatedArea: ["200 deviceKey", "journey-http-0003"],
         legacyGate: "404 capability_unavailable",
-        gatedOversized: [404, "capability_unavailable", "journey-http-0005"],
-        oversized: [413, "content_too_large", "journey-http-0006"],
+        gatedOversized: ["404 capability_unavailable", "journey-http-0005"],
+        oversized: ["413 content_too_large", "journey-http-0006"],
         fits: "200 deviceKey",
         unknown: ["404 not_found", "404 not_found", true, true],
         reached: ["/probe/entitlement", "/probe/inference"]

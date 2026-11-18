@@ -214,11 +214,11 @@ pure def canFinish(c: Command, invoice: UpgradeInvoice, resultRevision: int): bo
     or (c.phase == AwaitingPayment and (invoice == UpgradeInvoicePaid or invoice == UpgradeInvoiceVoided)))
   and (if (outcomeOf(c, invoice) == Applied) resultRevision >= c.expectedRevision else resultRevision == 0)
 pure def finish(c: Command, invoice: UpgradeInvoice, resultRevision: int): CommandStep = {
-  val outcome = outcomeOf(c, invoice)
-  { state: { ...c, phase: outcome, resultRevision: resultRevision },
-    out: (if (outcome == Applied and c.kind == Sub::UpgradeCommand) List(AdjustAllowance({ planKey: c.quote.targetPlanKey, effectiveAt: c.quote.effectiveAt, reviewed: c.quote.adjustment })) else List())
-      .concat(if (outcome == Applied and c.kind == Sub::DowngradeCommand) List(ScheduleDowngrade({ commandId: c.commandId, planKey: c.quote.targetPlanKey })) else List())
-      .concat(if (outcome != AwaitingPayment) List(ReleaseSlot({ commandId: c.commandId })) else List()) }
+  val ending = outcomeOf(c, invoice)
+  { state: { ...c, phase: ending, resultRevision: resultRevision },
+    out: (if (ending == Applied and c.kind == Sub::UpgradeCommand) List(AdjustAllowance({ planKey: c.quote.targetPlanKey, effectiveAt: c.quote.effectiveAt, reviewed: c.quote.adjustment })) else List())
+      .concat(if (ending == Applied and c.kind == Sub::DowngradeCommand) List(ScheduleDowngrade({ commandId: c.commandId, planKey: c.quote.targetPlanKey })) else List())
+      .concat(if (ending != AwaitingPayment) List(ReleaseSlot({ commandId: c.commandId })) else List()) }
 }
 pure val resultRevisionValues = Set(0, 1, 2, 3, 4)
 pure def alwaysOutcomeFollowsTheReceipt(c: Command): bool =

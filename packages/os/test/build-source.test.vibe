@@ -27,9 +27,9 @@ const ALLOWANCES: WorkspaceAllowances = { generatedFiles: [".source.json"], gene
 effect function findingOf(directory: string, commit: string, allowances: WorkspaceAllowances = ALLOWANCES) {
   return (effect {
     try verifyCommittedWorkspace(directory, commit, allowances)
-    return "Exact"
+    return "Admitted"
   } catch (error) => match (error) {
-    when WorkspaceRefused: `${error.finding}${error.path === undefined ? "" : ` ${error.path}`}`;
+    when WorkspaceRefused: error.finding === "Exact" ? `HEAD ${error.headCommit}` : `${error.finding}${error.path === undefined ? "" : ` ${error.path}`}`;
     default: error._tag;
   })
 }
@@ -66,8 +66,9 @@ it.effect("Build only from the committed tree I pinned: the verifier admits the 
     const sibling = try changedRepo("sibling", (root) => writeTree(root, { "out-extra/bundle.js": "injected" }))
     const undeclared = try changedRepo("undeclared", (root) => writeTree(root, { "packages/app/coverage/report.js": "injected" }))
     const unsafe = try findingOf(repo.root, repo.commit, { generatedDirectories: ["out/../packages"] })
-    const later = try commitTree(repo.root, { "README.md": "moved on\n" }, "Move past the pin")
-    const moved = try findingOf(repo.root, repo.commit)
+    const ahead = try scratchRepo("ahead", PINNED)
+    const later = try commitTree(ahead.root, {}, "Move HEAD past the pin with the same tree")
+    const moved = try findingOf(ahead.root, ahead.commit)
 
     try Effect.try(() => {
       assert.deepStrictEqual(admitted, { commit: repo.commit })
@@ -82,10 +83,10 @@ it.effect("Build only from the committed tree I pinned: the verifier admits the 
           sibling: "UnexpectedExtra out-extra/bundle.js",
           undeclared: "UnexpectedExtra packages/app/coverage/report.js",
           unsafe: "UnsafeAllowance",
-          moved: "Exact",
+          moved: `HEAD ${later}`,
         },
       )
-      assert.notStrictEqual(later, repo.commit)
+      assert.notStrictEqual(later, ahead.commit)
     })
   }
 })
@@ -147,7 +148,7 @@ it.effect("Export pinned files without my local edits", effect () => {
 
     try Effect.try(() => {
       assert.deepStrictEqual(exported, { commit: repo.commit })
-      assert.deepStrictEqual(Object.keys(tree).sort(), ["README.md", "packages/app/index.js", "packages/app/package.json", "packages/app/run.sh"])
+      assert.deepStrictEqual(Object.keys(tree).sort(), ["README.md", "packages/app/current", "packages/app/index.js", "packages/app/package.json", "packages/app/run.sh"])
       assert.strictEqual(tree["packages/app/index.js"], "export const answer = 42\n")
       assert.deepStrictEqual({ escaping, missing, none, nested }, { escaping: "ExportRefused", missing: "ExportRefused", none: "ExportRefused", nested: "ExportRefused" })
     })

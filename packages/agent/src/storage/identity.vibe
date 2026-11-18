@@ -1,5 +1,6 @@
 // spec/agent/storage/database.md, "Story: Keep one agent identity for my data across restarts"; spec/agent/storage/database.md, "A damaged or linked identity file fails the open and is left in place"; spec/agent/storage/database.md, "Only one live process holds a data directory"; spec/core/atomicPublication.md, "The final path changes only after a complete temporary file is renamed"
 module node {
+  import { processOwnerUid } from "../host/process-owner.vibe"
   import { randomUUID } from "node:crypto"
   import { lstat, mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises"
   import { join, resolve } from "node:path"
@@ -13,7 +14,7 @@ module node {
   async function privateDirectory(directory: string): Promise<void> {
     await mkdir(directory, { mode: 0o700, recursive: true })
     const status = await lstat(directory)
-    if (!status.isDirectory() || (status.mode & 0o077) !== 0 || status.uid !== process.getuid?.()) {
+    if (!status.isDirectory() || (status.mode & 0o077) !== 0 || status.uid !== processOwnerUid()) {
       throw new Error("State directory must be private to this process owner")
     }
   }
@@ -69,7 +70,7 @@ module node {
   async function publishedIdentity(file: string): Promise<UUID | undefined> {
     try {
       const status = await lstat(file)
-      if (status.isFile() && status.nlink === 1 && (status.mode & 0o077) === 0 && status.uid === process.getuid?.() && status.size <= 38) {
+      if (status.isFile() && status.nlink === 1 && (status.mode & 0o077) === 0 && status.uid === processOwnerUid() && status.size <= 38) {
         const id = validateUuid((await readFile(file, "utf8")).trim())
         if (id !== null) return id
       }
