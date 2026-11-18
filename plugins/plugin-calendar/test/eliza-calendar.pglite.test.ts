@@ -3794,7 +3794,11 @@ describe("past start on a stated date (real PGlite)", {
     extracted = {
       startAt: "2026-10-29T12:00:00-07:00",
       endAt: "2026-10-29T13:00:00-07:00",
+      reviewBeforeCreate: false,
     },
+    mutationGateway?: Parameters<
+      typeof createCalendarActionRunner
+    >[0]["mutationGateway"],
   ) {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
@@ -3814,6 +3818,7 @@ describe("past start on a stated date (real PGlite)", {
           : null,
       ),
       recentConversationTexts: vi.fn(async () => []),
+      ...(mutationGateway ? { mutationGateway } : {}),
     });
     return action.handler(
       runtime,
@@ -3856,6 +3861,45 @@ describe("past start on a stated date (real PGlite)", {
     expect(
       (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
     ).toHaveLength(1);
+  });
+
+  it("prepares an owner-requested review without saving to the built-in calendar", async () => {
+    const schedule = vi.fn(async () => ({
+      requestId: "calendar-review",
+      action: "schedule_event" as const,
+      state: "pending" as const,
+      acceptedAt: NOW,
+      idempotencyKey: "owner-reviewed-create",
+      replayed: false,
+      text: "Review the event before creating it.",
+    }));
+    const result = await createQaLunch(
+      "00000000-0000-0000-0000-000000000917",
+      "Prepare qa lunch for today at 12pm. Open the Calendar review dialog for me to confirm.",
+      {},
+      {
+        startAt: "2026-10-29T12:00:00-07:00",
+        endAt: "2026-10-29T13:00:00-07:00",
+        reviewBeforeCreate: true,
+      },
+      { schedule, modify: vi.fn(), cancel: vi.fn() },
+    );
+    expect(schedule).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        request: expect.objectContaining({
+          grantId: ELIZA_CALENDAR_GRANT_ID,
+          calendarId: ELIZA_CALENDAR_ID,
+          startAt: "2026-10-29T19:00:00.000Z",
+        }),
+      }),
+    );
+    expect(result?.data).toMatchObject({
+      approvalRequired: true,
+      approvalState: "pending",
+    });
+    expect(
+      (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
+    ).toHaveLength(0);
   });
 
   it.each([
