@@ -35,8 +35,8 @@ import types.* from "../../cloud/shared/types"
 import credential as C from "./credential"
 import routes as Routes from "../../agent/access/routes"
 import client.* from "../../cloud/client"
-pure def sameMethod(m: Routes::Method, d: HttpMethod): bool =
-  (m == Routes::Get and d == Get) or (m == Routes::Post and d == Post) or (m == Routes::Patch and d == Patch) or (m == Routes::Delete and d == Delete)
+pure def sameMethod(m: Routes::Method, deviceMethod: HttpMethod): bool =
+  (m == Routes::Get and deviceMethod == Get) or (m == Routes::Post and deviceMethod == Post) or (m == Routes::Patch and deviceMethod == Patch) or (m == Routes::Delete and deviceMethod == Delete)
 pure def samePiece(p: Routes::Piece, seg: Segment): bool = match seg {
   | Literal(l) => p == Routes::Literal({ text: l.text })
   | Param(x) => p == Routes::Param
