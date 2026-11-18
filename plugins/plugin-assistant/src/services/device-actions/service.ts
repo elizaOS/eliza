@@ -2275,7 +2275,8 @@ export class DeviceActionService {
         !stored ||
         stored.state !== "delivered" ||
         stored.attemptId !== attemptId ||
-        stored.reply?.messageId !== reply.id ||
+        !stored.reply ||
+        stored.reply.messageId !== reply.id ||
         stored.origin.original.roomId !== original.roomId ||
         stored.origin.original.entityId !== original.entityId ||
         stored.reply.text !== reply.content.text ||
