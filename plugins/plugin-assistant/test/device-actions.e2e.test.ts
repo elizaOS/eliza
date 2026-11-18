@@ -2069,6 +2069,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "contacts.write.v2",
           "contacts.show.v1",
           "contacts.read.v1",
+          "phone.keypad.v1",
           "camera.capture-lens.v1",
           "browser.search.v1",
           "browser.tabs.v1",
