@@ -80,6 +80,7 @@ function createEvidence(
 ) {
   const evidence = [{ sourceId: `current:${id}`, quote: text }];
   return {
+    reviewBeforeCreate: false,
     guestIntent: {
       state: guests.length ? "requested" : "none",
       evidence,
@@ -1212,6 +1213,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
                   ? null
                   : paraphrase,
             location: null,
+            reviewBeforeCreate: false,
             guestIntent: { state: "none", evidence, guests: [] },
             noteIntent: {
               state: solo || mode === "native-inline" ? "none" : "requested",

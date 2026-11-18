@@ -935,9 +935,13 @@ test("NOTE-15 runtime: missing time and real conflict pause until the user suppl
   s.harness.assertFixturesConsumed();
 }, 180_000);
 
-test.each([false, true])(
-  "NOTE-14 requested Calendar review retains source and rejects stale content (edit=%s)",
-  async (editSource) => {
+test.each([
+  { editSource: false, reviewBeforeCreate: true },
+  { editSource: true, reviewBeforeCreate: undefined },
+  { editSource: false, reviewBeforeCreate: "false" },
+])(
+  "NOTE-14 requested Calendar review retains source and rejects stale content (edit=$editSource, extracted review=$reviewBeforeCreate)",
+  async ({ editSource, reviewBeforeCreate }) => {
     const s = await scenario(`NOTE-14-approval-${editSource}`, true);
     const note = await s.createNote(
       "Approval review\nRead the original notebook.",
@@ -978,7 +982,7 @@ test.each([false, true])(
             sourceNote,
             descriptionMode: "extracted",
           },
-          reviewBeforeCreate: true,
+          reviewBeforeCreate,
         });
         return { rawResponse, parsed: parseJsonModelRecord<T>(rawResponse) };
       },
