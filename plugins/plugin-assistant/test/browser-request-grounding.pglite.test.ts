@@ -570,7 +570,9 @@ it("refuses an unbound service caller without creating a review", async () => {
   }
 });
 it.each([
-  "Open example.com/dashboard in the browser",
+  // "in the browser" and "in a new tab" are now part of the strict command
+  // (the opens test above); a private tab is still the model's call.
+  "Open example.com/dashboard in a private tab",
   "please open example.com/dashboard now",
   "I want to see example.com/dashboard",
   "Alpha, open example.com/dashboard",
@@ -634,6 +636,63 @@ it("opens a typed http:// address over HTTPS", async () => {
     await f.pg.close();
   }
 });
+it.each([
+  // [request, model operation, negotiated, stored operation]
+  // The owner's v609 turn: "open wikipedia.org in a new tab" became an empty
+  // browser_tab_new. The owner's own words now place the address in a new tab
+  // even when the model leaves newTab out.
+  [
+    "open wikipedia.org in a new tab",
+    { type: "browser_navigate", url: "wikipedia.org" },
+    true,
+    { type: "browser_navigate", url: "https://wikipedia.org/", newTab: true },
+  ],
+  [
+    "open wikipedia.org in a new tab",
+    { type: "browser_navigate", url: "wikipedia.org", newTab: true },
+    true,
+    { type: "browser_navigate", url: "https://wikipedia.org/", newTab: true },
+  ],
+  // "In the browser" is the strict open itself, in whatever tab the phone picks.
+  [
+    "open example.com in the browser",
+    { type: "browser_navigate", url: "example.com" },
+    true,
+    { type: "browser_navigate", url: "https://example.com/" },
+  ],
+  // A phone that did not negotiate a new tab opens the address as before.
+  [
+    "open wikipedia.org in a new tab",
+    { type: "browser_navigate", url: "wikipedia.org", newTab: true },
+    false,
+    { type: "browser_navigate", url: "https://wikipedia.org/" },
+  ],
+] as const)(
+  "opens %s directly with the owner's placement (%o, negotiated=%s)",
+  async (request, operation, negotiated, stored) => {
+    const f = await fixture();
+    try {
+      if (negotiated)
+        Object.assign(f.credential, {
+          capabilities: ["browser.open-new-tab.v1"],
+        });
+      expect(
+        await f.run(request, true, true, undefined, "current", operation),
+      ).toMatchObject({
+        userFacingText: `Opening ${new URL(stored.url).host}.`,
+        data: { directRequest: true, approvalRequired: false },
+      });
+      const rows = (
+        await f.pg.query<{ payload: { operation: unknown } }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows.map((row) => row.payload.operation)).toEqual([stored]);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
 it.each([
   // [request, model query, direct mode, runs without a review]
   ["search for best pizza near me", "Best pizza near me", true, true],

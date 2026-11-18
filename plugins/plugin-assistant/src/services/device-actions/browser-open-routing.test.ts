@@ -112,6 +112,10 @@ it.each([
   "Open example.com.",
   "Please visit https://example.com/path?q=1",
   "Go to www.example.com",
+  // The owner's v609 turns: Stage 1 named only VIEWS_SHOW, the Browser view
+  // opened and the address never loaded.
+  "open example.com in the browser",
+  "open wikipedia.org in a new tab",
 ])(
   "routes a complete native URL request to the existing reviewed operation: %s",
   async (request) => {
@@ -198,6 +202,9 @@ it.each([
   "Eliza, go to nytimes.com",
   "ok open youtube.com",
   "okay eliza, open youtube.com",
+  "open youtube.com in the browser",
+  "open youtube.com in my browser, please",
+  "open youtube.com in a new tab",
 ])("claims only the strict whole-message command: %s", async (request) => {
   const f = await fixture(request);
   await withDeviceActionTurn(
@@ -231,7 +238,8 @@ it.each([
   "can you open youtube.com for me?",
   "pull up nytimes.com",
   "open youtube.com now",
-  "open youtube.com in a new tab",
+  "open youtube.com in a private tab",
+  "open youtube.com in safari",
   "Hey Luna, open youtube.com",
   // Earlier review rounds' false opens: none is claimed.
   "Tomorrow, open youtube.com",

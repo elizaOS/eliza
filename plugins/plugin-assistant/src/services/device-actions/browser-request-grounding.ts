@@ -1,5 +1,6 @@
 export {
   authoredBrowserDestination,
+  authoredBrowserOpen,
   browserDestinationMatches,
   browserSearchQueryMatches,
   containsWebAddress,

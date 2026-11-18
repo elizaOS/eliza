@@ -964,7 +964,8 @@ const browserControlSchemas: ActionParameterSchema[] = [
       type: { type: "string", enum: ["browser_tab_new"] },
       private: {
         type: "boolean",
-        description: "true only when the owner asks for a private tab",
+        description:
+          "true only when the owner asks for a private tab. This tab is always empty; an address opens in a new tab with browser_navigate and newTab",
       },
     },
   },
@@ -1124,7 +1125,7 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   },
   {
     types: ["browser_tab_new", "browser_tab_switch", "browser_tab_close"],
-    text: "Browser tabs (browser.tabs.v1): browser_tab_new {private} opens an empty tab; set private true only when the owner asks for a private tab. browser_tab_switch {target} shows an open tab and browser_tab_close {target} closes one; target is a word of the tab's title or site as the owner said it. Leave target out of browser_tab_close to close the tab that is showing. The phone finds the tab and the owner picks when more than one matches. Closing a tab is always reviewed by the owner. You never receive the list of tabs, a title or an address; never say which tabs are open.",
+    text: "Browser tabs (browser.tabs.v1): browser_tab_new {private} opens an empty tab and never loads an address; set private true only when the owner asks for a private tab. To open a typed address in a new tab, use one browser_navigate {url, newTab: true} (DEVICE_BROWSER_OPEN) with browser.open-new-tab.v1, never browser_tab_new. browser_tab_switch {target} shows an open tab and browser_tab_close {target} closes one; target is a word of the tab's title or site as the owner said it. Leave target out of browser_tab_close to close the tab that is showing. The phone finds the tab and the owner picks when more than one matches. Closing a tab is always reviewed by the owner. You never receive the list of tabs, a title or an address; never say which tabs are open.",
   },
   {
     types: ["browser_find"],
@@ -1332,6 +1333,11 @@ export const proposeDeviceAction: Action = {
             properties: {
               type: { type: "string", enum: ["browser_navigate"] },
               url: { type: "string" },
+              newTab: {
+                type: "boolean",
+                description:
+                  "true when the owner asks to open the address in a new tab (browser.open-new-tab.v1)",
+              },
             },
           },
         ],

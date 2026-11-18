@@ -60,11 +60,13 @@ import {
   BROWSER_CONTROL_TYPES,
   BROWSER_FIND_CAPABILITY,
   BROWSER_HISTORY_CAPABILITY,
+  BROWSER_OPEN_NEW_TAB_CAPABILITY,
   BROWSER_SEARCH_CAPABILITY,
   BROWSER_TABS_CAPABILITY,
   isBrowserControl,
 } from "./browser-contract.ts";
 import {
+  authoredBrowserOpen,
   browserDestinationMatches,
   browserSearchQueryMatches,
   DeviceBrowserNotRequestedError,
@@ -1242,6 +1244,7 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   BROWSER_TABS_CAPABILITY,
   BROWSER_FIND_CAPABILITY,
   BROWSER_HISTORY_CAPABILITY,
+  BROWSER_OPEN_NEW_TAB_CAPABILITY,
   TELEPHONY_VIEWS_CAPABILITY,
 ];
 export class DeviceActionService {
@@ -2236,6 +2239,14 @@ export class DeviceActionService {
     },
   ): Promise<ApprovalEnqueueResult> {
     let validated = validateDeviceOperation(operation);
+    // A new tab is where an address opens, not another effect: a phone that
+    // did not negotiate it opens the address as it always has.
+    if (
+      validated.type === "browser_navigate" &&
+      validated.newTab &&
+      !c.capabilities?.includes(BROWSER_OPEN_NEW_TAB_CAPABILITY)
+    )
+      validated = { type: validated.type, url: validated.url };
     if (!deviceAppRecordOperationAvailable(this.runtime, validated))
       throw new DeviceActionError(
         "Device Notes/Calendar record authority is not selected for this turn",
@@ -2415,7 +2426,24 @@ export class DeviceActionService {
           this.runtime.character.name,
         );
       if (!destination) throw new DeviceBrowserNotRequestedError();
-      validated = { ...validated, url: destination };
+      // "Open x.com in a new tab" is the owner's own placement, like the
+      // address: the page opens in a tab of its own even when the model left
+      // newTab out, on a phone that negotiated it (newTab was dropped above
+      // for one that did not). Without it the phone may reuse its own tab.
+      const opened = authoredBrowserOpen(
+        requestOrigin?.requestText ?? "",
+        this.runtime.character.name,
+      );
+      const newTab =
+        validated.newTab === true ||
+        (opened?.newTab === true &&
+          opened.href === destination &&
+          c.capabilities?.includes(BROWSER_OPEN_NEW_TAB_CAPABILITY) === true);
+      validated = {
+        type: "browser_navigate",
+        url: destination,
+        ...(newTab ? { newTab: true as const } : {}),
+      };
     }
     if (validated.type === "browser_search") {
       // The same holds for a search: the words the user typed, never the

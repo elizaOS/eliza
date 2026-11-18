@@ -559,6 +559,13 @@ export interface ViewDeclaration {
 	 */
 	relatedActions?: string[];
 	/**
+	 * True when this view keeps its own page history, as a browser's tabs do.
+	 * While it is foreground, a bare Back or Forward request acts on that page
+	 * history through the view's response context, never on app view
+	 * navigation.
+	 */
+	pageHistory?: boolean;
+	/**
 	 * Named agent actions this view exposes ONLY while it is the active view.
 	 * The host registers a real runtime action per entry whose `validate()`
 	 * gates on this view being foreground, and whose handler drives the view's

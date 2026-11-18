@@ -63,6 +63,7 @@ import {
 } from "@elizaos/contracts/sms-send";
 import {
   BROWSER_CONTROL_DIRECT_TYPES,
+  BROWSER_OPEN_NEW_TAB_CAPABILITY,
   type BrowserControlOperation,
   browserControlCapabilityAvailable,
   describeBrowserControl,
@@ -270,7 +271,7 @@ export type LegacyDeviceOperation =
   | { type: "create_note"; title: string; body: string }
   | { type: "create_reminder"; title: string; dueAt: string }
   | { type: "open_view"; view: string }
-  | { type: "browser_navigate"; url: string };
+  | { type: "browser_navigate"; url: string; newTab?: true };
 export type DeviceOperation =
   | CameraCaptureOperation
   | SmsSendOperation
@@ -640,10 +641,19 @@ export function validateDeviceOperation(
   )
     return { type: p.type, view: p.view };
   if (p.type === "browser_navigate") {
+    if (
+      Object.keys(p).some((k) => !["type", "url", "newTab"].includes(k)) ||
+      (p.newTab !== undefined && typeof p.newTab !== "boolean")
+    )
+      throw new Error("Invalid browser destination fields");
     const url = new URL(text(p.url, 4096));
     if (url.protocol !== "https:" || url.username || url.password)
       throw new Error("Invalid browser destination");
-    return { type: p.type, url: url.href };
+    return {
+      type: p.type,
+      url: url.href,
+      ...(p.newTab ? { newTab: true } : {}),
+    };
   }
   throw new Error("Unsupported device operation");
 }
@@ -1381,6 +1391,14 @@ export class DeviceActionCoordinator<
     )
       throw Error("Camera capture was not negotiated with this agent");
     if (
+      op.type === "browser_navigate" &&
+      op.newTab &&
+      !this.credential.capabilities?.includes(BROWSER_OPEN_NEW_TAB_CAPABILITY)
+    )
+      throw Error(
+        "Opening an address in a new tab was not negotiated with this agent",
+      );
+    if (
       isPhoneDial(op) &&
       !phoneDialCapabilityAvailable(op, this.credential.capabilities)
     )
@@ -1651,7 +1669,7 @@ export class DeviceActionCoordinator<
               : op.type === "open_view"
                 ? `Open ${op.view} on this phone`
                 : op.type === "browser_navigate"
-                  ? `Open browser destination ${op.url}`
+                  ? `Open browser destination ${op.url}${op.newTab ? " in a new tab" : ""}`
                   : "Workflow phone read"));
     return {
       ...base,

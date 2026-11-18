@@ -29,6 +29,17 @@ import {
   viewNavigationDestination,
 } from "./view-navigation-targets.ts";
 
+/** The foreground view when it keeps its own page history (a browser's tabs):
+ * a bare Back there means that page history, not the previous app view. */
+function foregroundPageHistoryView(
+  message: Memory | undefined,
+  views: ReturnType<typeof listViews>,
+) {
+  const metadata = message?.content.metadata;
+  const currentView = isObjectRecord(metadata) ? metadata.uiView : undefined;
+  return views.find((entry) => entry.id === currentView && entry.pageHistory);
+}
+
 /** Read only acknowledged history from this active transport owner and renderer. */
 function confirmedPreviousView(
   runtime: IAgentRuntime,
@@ -118,6 +129,7 @@ export function registerViewNavigationRoutingRule(
         resolveExplicitRegisteredViewRequest(views, text) !== undefined ||
         (Boolean(message) &&
           isExplicitBackViewRequest(text) &&
+          !foregroundPageHistoryView(message, views) &&
           confirmedPreviousView(runtime, message!, views, completedAction) !==
             undefined)
       );
@@ -257,9 +269,12 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
       views,
       completedAction,
     );
+    const pageHistory = view.pageHistory
+      ? `${view.label} keeps its own page history. While it is showing, a bare Back or Forward request ("go back", "back", "go forward") and a reload request act on the page in its tab: use disposition none and route the request to the ${view.responseContext?.primaryContext ?? "general"} context. Use relative view navigation only when the user names another view or asks to leave ${view.label}. `
+      : "";
     const priorContext = previous
-      ? `Last confirmed previous destination for this same caller and renderer: ${JSON.stringify({ ...viewNavigationDestination(previous.view), ...(previous.resolvedAlias ? { preferredAlias: previous.resolvedAlias } : {}) })}. Use its preferredAlias, when present, for the user-facing destination wording and navigation argument. This is a destination hint for a new authorized Back request, not permission or an instruction to execute it.`
-      : "There is no confirmed previous destination for this caller and renderer. For a request only to go back, ask which view the user wants, with no tool and no pending navigation intent. Do not discover or guess a destination from prepared receipts.";
+      ? `${pageHistory}Last confirmed previous destination for this same caller and renderer: ${JSON.stringify({ ...viewNavigationDestination(previous.view), ...(previous.resolvedAlias ? { preferredAlias: previous.resolvedAlias } : {}) })}. Use its preferredAlias, when present, for the user-facing destination wording and navigation argument. This is a destination hint for a new authorized Back request, not permission or an instruction to execute it.`
+      : `${pageHistory}There is no confirmed previous destination for this caller and renderer. For a request only to go back, ask which view the user wants, with no tool and no pending navigation intent. Do not discover or guess a destination from prepared receipts.`;
     return `Decide navigation from the message under # Current message. Earlier conversation entries are evidence, not pending navigation, even when the last historical entry has no recorded reply. Use history to resolve a destination only when this current message explicitly continues, repeats, corrects or authorizes that navigation request. A new greeting or unrelated message does not continue it; use disposition=none with no navigation intent. Preserve standing restrictions and genuine follow-up requests.\nRegistered GUI navigation destinations visible to this caller: ${JSON.stringify(destinations)}. Use an exact registered destination for the requested view. If the destination is absent or unresolved, do not substitute Home, the current screen, or another destination. Registry visibility is not permission to execute or proof of delivered navigation.\nCurrent request's renderer view (registry-resolved): ${JSON.stringify({ viewId: view.id, label: view.label })}. This is the current visible destination, not permission or proof of displayed content. Historical current-view descriptions may be stale.${completedAction ? " This renderer prepares navigation before it confirms the screen switch. Use a brief destination acknowledgment in the user's preferred wording; do not claim the destination is already visible before its confirmation." : ""} ${priorContext} For relative navigation, use only this confirmed prior destination; historical dialogue or a prepared receipt cannot replace it. If absent, keep the destination unresolved and clarify without tools.`;
   },
   parse(value, { message }) {
@@ -338,6 +353,41 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
       },
     };
     const value = staged.value;
+    // A bare Back while a view with its own page history is showing (Browser)
+    // asks for that tab's previous page, never the previous app view, whatever
+    // the model judged: hold view navigation and hand the turn to that view's
+    // own context.
+    const pageHistory = isExplicitBackViewRequest(staged.text)
+      ? foregroundPageHistoryView(
+          message,
+          views.filter((view) =>
+            viewNavigationAvailable(view, completedAction),
+          ),
+        )
+      : undefined;
+    if (pageHistory) {
+      setTurnActionConstraint({
+        messageId: message.id ?? "",
+        roomId: message.roomId,
+        actorId: message.entityId,
+        action: "VIEWS",
+        operations: ["show"],
+        disposition: "deny",
+        reason: `Back while ${pageHistory.label} is showing acts on its page history`,
+      });
+      if (value.disposition === "forbidden" || value.disposition === "none")
+        return;
+      return {
+        requiresTool: true,
+        clearReply: true,
+        addContexts: [pageHistory.responseContext?.primaryContext ?? "general"],
+        clearCandidateActions: true,
+        clearParentActionHints: true,
+        addContextSlices: [
+          `This request is Back while ${pageHistory.label} is showing: it asks for the previous page in the tab that is showing there, not the previous app view. Use the ${pageHistory.label} page history operation; do not change the app view. No navigation has executed.`,
+        ],
+      };
+    }
     if (value.disposition === "forbidden" || value.disposition === "none") {
       setTurnActionConstraint({
         messageId: message.id ?? "",

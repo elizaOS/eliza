@@ -2074,6 +2074,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "browser.tabs.v1",
           "browser.find.v1",
           "browser.history.v1",
+          "browser.open-new-tab.v1",
           "views.telephony.v1",
           "messages.read.v1",
           "voicemail.read.v1",

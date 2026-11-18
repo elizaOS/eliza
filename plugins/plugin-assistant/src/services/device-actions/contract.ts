@@ -6,6 +6,7 @@ import {
   validateNativeNotesQuery,
 } from "@elizaos/contracts/native-notes-query";
 import {
+  BROWSER_OPEN_NEW_TAB_CAPABILITY,
   type BrowserControlOperation,
   browserControlCapabilityAvailable,
   isBrowserControlType,
@@ -165,7 +166,7 @@ export type DeviceOperation =
   | { type: "create_note"; title: string; body: string }
   | { type: "create_reminder"; title: string; dueAt: string }
   | { type: "open_view"; view: (typeof DEVICE_VIEWS)[number] }
-  | { type: "browser_navigate"; url: string }
+  | { type: "browser_navigate"; url: string; newTab?: true }
   | BrowserControlOperation;
 
 /** Clock-only executors do not inherit the legacy phone executor's base operations. */
@@ -244,6 +245,8 @@ export function deviceOperationFormSupported(
     return cameraCaptureCapabilityAvailable(operation, capabilities);
   if (isTelephonyAction(operation))
     return telephonyActionFormAvailable(operation, capabilities);
+  if (operation.type === "browser_navigate" && operation.newTab)
+    return capabilities?.includes(BROWSER_OPEN_NEW_TAB_CAPABILITY) === true;
   return true;
 }
 export type DeviceActionPayload = {
@@ -507,7 +510,9 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
         throw new DeviceActionError("Unsupported view");
       return { type: p.type, view: p.view as (typeof DEVICE_VIEWS)[number] };
     case "browser_navigate": {
-      exactKeys(p, ["type", "url"]);
+      exactKeys(p, ["type", "url", "newTab"]);
+      if (p.newTab !== undefined && typeof p.newTab !== "boolean")
+        throw new DeviceActionError("Invalid new tab flag");
       let url: URL;
       try {
         const destination = text(p.url, 4096).trim();
@@ -530,7 +535,11 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
         throw new DeviceActionError(
           "Only HTTPS browser destinations are supported",
         );
-      return { type: p.type, url: url.href };
+      return {
+        type: p.type,
+        url: url.href,
+        ...(p.newTab ? { newTab: true } : {}),
+      };
     }
     case "browser_search":
     case "browser_tab_new":
