@@ -91,9 +91,9 @@ public final class PayloadCheck {
     Map<String, Path> extraAssets = new LinkedHashMap<>();
     for (Row row : device) if (row.tree() == Tree.EXTRA) {
       String name = row.location().substring(0, row.location().indexOf('/'));
-      extraAssets.put(name, release.resolve(name));
+      extraAssets.put(name, release.toRealPath().resolve(name));
     }
-    return new Ready(new PreparedPayload(release.resolve("agent"), nativeLibraryDir.resolve(NODE), worker,
+    return new Ready(new PreparedPayload(release.toRealPath().resolve("agent"), nativeLibraryDir.toRealPath().resolve(NODE), worker,
       Collections.unmodifiableMap(extraAssets)));
   }
 

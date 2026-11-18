@@ -97,4 +97,18 @@ describe("WP1 Identity: code challenges", () => {
       }
     ))
   }))
+
+  it.live("A spent SMS budget answers service_unavailable with its window end and sends nothing (spec/cloud/identity/codeChallenges.md, \"Story: Sign in with a code sent to my email or phone\")", () => scoped(effect {
+    const cloud = try testCloud({ edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, settings: { ...profile.environments.staging.settings, signIn: { ...profile.environments.staging.settings.signIn, smsHourlyBudget: 1 } } } } }) })
+    const proof = pkce()
+    const startedAt = try Clock.currentTimeMillis
+    const first = try send(cloud, "sms", { phone: "+15555550124" }, proof.challenge)
+    const spent = try send(cloud, "sms", { phone: "+15555550125" }, proof.challenge)
+    const inbox = try cloud.call(`/api/test/inbox/${encodeURIComponent("+15555550125")}`)
+    const body = spent.body as { error: string; retryable: boolean; retryAt: number }
+    try check(() => assert.deepStrictEqual(
+      { first: first.status, spent: [spent.status, body.error, body.retryable, body.retryAt > startedAt && body.retryAt <= Date.now() + 60 * 60_000], inbox: inbox.status },
+      { first: 200, spent: [503, "service_unavailable", true, true], inbox: 404 }
+    ))
+  }))
 })

@@ -1,16 +1,19 @@
 // spec/cloud/services/maps.md, "Story: Answer a maps request once and pay for it once"
 import { assert, describe, it } from "@effect/vitest"
-import { HttpClient } from "effect/http"
+import { FetchHttpClient } from "effect/http"
 import { describeMaps, mapsProvider } from "../src/providers/maps.vibe"
-import { Deployment } from "../src/profile/profile.vibe"
-import { testCloud } from "./support/cloud.vibe"
+import { Deployment, deploymentLayer } from "../src/profile/profile.vibe"
+import { fakeServer } from "./support/cloud.vibe"
+import { secrets, testProfile } from "./support/profile.ts"
 import { googleMapsFake, googlePlace } from "./support/maps-fake.ts"
 
 describe("probe google maps", () => {
   it.live("google adapter against fake", () => scoped(effect {
     const fake = googleMapsFake()
-    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/maps/", fake.handler) })
-    const results = try cloud.inside(effect {
+    const fakes = try fakeServer()
+    try sync(() => fakes.mount("/maps/", fake.handler))
+    const layer = Layer.mergeAll(deploymentLayer(testProfile(fakes.url) as never, "staging"), FetchHttpClient.layer).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+    const results = try Effect.provide(effect {
       const deployment = try Deployment
       const settings = deployment.settings.maps
       const provider = mapsProvider(settings)
@@ -40,8 +43,8 @@ describe("probe google maps", () => {
       fake.script({ kind: "slow", delayMs: 10_500 })
       const slow = try provider.search({ query: "tor" })
       return { search, geocode, reverse, countsAfterNearby, reverseEmpty, countsAfterEmpty, details, drive, driveMask, walk, walkMask, noRoute, zero, malformed, oversized, tile, viewport, slow, described: describeMaps(settings, "Test Cloud") }
-    })
-    console.log(JSON.stringify(results, (_, value) => value instanceof Uint8Array ? Array.from(value) : value, 1).slice(0, 12000))
+    }, layer)
+    try Console.log(JSON.stringify(results, (_, value) => value instanceof Uint8Array ? Array.from(value) : value, 1).slice(0, 12000))
     assert.strictEqual(results.search.kind, "answered")
   }), 30_000)
 })

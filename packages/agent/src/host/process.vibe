@@ -196,13 +196,14 @@ module node {
     const grantAction = (action: { name: string }) => permissions.has(action.name)
       ? undefined : `Action ${action.name} is unavailable`
     const user = launch.account ? (validateUuid(launch.account.userId) ?? stringToUuid(`account:${launch.account.userId}`)) : stringToUuid(`device-owner:${agentId}`)
+    const ownerId = role === "OWNER" ? user : agentId
     const cloud = launch.model.backend === "cloud" && authority.credential !== undefined
       ? cloudModel(launch.model, authority.credential.value)
       : { name: cloudLinkPlugin, description: "This launch has no model connection" }
     const formed = await Effect.runPromise(Effect.result(composeAgent({
       agentId, character, settings: {}, bundled: input.bundled ?? new Map(), modules: input.modules, hostRoutes: reservedHostPrefixes,
       context: { launch, stateDirectory, timeZone: launch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, epoch: authority.epoch, ...(authority.storageKey === undefined ? {} : { storageKey: authority.storageKey }),
-        ownerEntityId: user, publishEvent: noPublish, viewFeeds: noViewFeeds },
+        ownerEntityId: ownerId, publishEvent: noPublish, viewFeeds: noViewFeeds },
       storage: { name: storagePlugin, description: "Own the device database", services: [TaskService], init: async (_config, runtime) => {
         if (!(runtime instanceof AgentRuntime)) throw new Error("The storage plugin requires the device Core runtime")
         runtime.registerDatabaseAdapter(adapter)
@@ -251,7 +252,6 @@ module node {
     }
     const bound = await (async () => {
       const world = stringToUuid(`device:${agentId}`)
-      const ownerId = role === "OWNER" ? user : agentId
       await runtime.ensureWorldExists({
         id: world, agentId, name: "Device",
         metadata: { ownership: { ownerId }, roles: { [user]: role === "OWNER" ? "OWNER" : "MEMBER" } },

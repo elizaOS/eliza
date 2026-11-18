@@ -9,11 +9,12 @@ const ReleaseUrl = Schema.String.check(Schema.isPattern(/^https?:\/\/[^\s]+$/))
 export schema AndroidAbi = "arm64-v8a" | "x86_64"
 
 export const NodeLockFile = Schema.Struct({
-  schema: Schema.Literal(1),
   version: NodeVersion,
   ndk: NdkRevision,
   apiLevel: ApiLevel,
-  entries: Schema.Array(Schema.Struct({ abi: AndroidAbi, sha256: Digest, url: ReleaseUrl })),
+  sourceSha256: Digest,
+  buildCommit: Schema.String.check(Schema.isPattern(/^[a-f0-9]{40}$/)),
+  entries: Schema.Array(Schema.Struct({ abi: AndroidAbi, sha256: Digest, archiveSha256: Digest, url: ReleaseUrl })),
 })
 
 export const NodeRuntimeBuild = Schema.Struct({

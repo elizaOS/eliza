@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import { authRoutes } from "../src/access/auth.vibe"
 import { createRouter } from "../src/access/router.vibe"
 import type { LocalRoute } from "../src/access/routes.vibe"
-import { boot, host, ready } from "./support/kernel.vibe"
+import { boot, call as reach, host, ready, startInProcess } from "./support/kernel.vibe"
 import { request, type LocalAnswer, type Refusal } from "./support/socket-client.ts"
 
 const launchToken = "launch-token-epoch-1"
@@ -82,4 +82,24 @@ it.effect('The token of an earlier launch is anonymous to the second child, and 
       "status" in current ? (current.json as { access: unknown }).access : current,
       "status" in health ? (health.json as { epoch: number }).epoch : health],
     [[401, { error: "unauthorized" }], false, { role: "OWNER", mode: "local" }, 2]))
+}, 300_000)
+
+it.effect('The chat principal of a User launch is a member, not the owner, although its requests arrive as Root (spec/agent/access/auth.md, "The Root caller is the local owner of this agent")', effect () => {
+  const principal = effect (callerRole: "owner" | "user") => {
+    const { agent, transport, frame } = try startInProcess({ launch: { callerRole } })
+    const worlds = try host("device worlds", () => agent.runtime.getAllWorlds())
+    const me = try reach({ transport, frame }, { method: "GET", path: "/api/auth/me" })
+    const device = worlds.find((world) => world.name === "Device")
+    return {
+      owner: device?.metadata?.ownership?.ownerId === agent.runtime.agentId ? "agent" : "speaker",
+      roles: Object.values(device?.metadata?.roles ?? {}),
+      access: "status" in me ? (me.json as { access: unknown }).access : me,
+    }
+  }
+  const user = try principal("user")
+  const owner = try principal("owner")
+  try Effect.try(() => assert.deepStrictEqual([user, owner], [
+    { owner: "agent", roles: ["MEMBER"], access: { role: "OWNER", mode: "local" } },
+    { owner: "speaker", roles: ["OWNER"], access: { role: "OWNER", mode: "local" } },
+  ]))
 }, 300_000)
