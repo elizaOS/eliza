@@ -67,18 +67,19 @@ it("closes lapsed reviews in its own scope before listing pending work", async (
   try {
     await db.exec(TABLE);
     // The lapsed v610 Files review's payload.
-    const FILES_REVIEW = JSON.stringify({
+    const FILES_REVIEW = {
       action: "device_action",
       version: 1,
       operation: { kind: "document", type: "files_filter" },
       enrollmentId: "b3b0919e-0396-45e3-aa06-4858e9d3d79e",
       installationId: "89eb7cbb-09c8-4a4e-a322-090b8e7375bb",
-    });
+    };
     const past = "2026-10-25T00:00:00Z",
       future = "2099-01-01T00:00:00Z";
     for (const [id, state, subject, action, expires, attempt] of [
       ["lapsed-pending", "pending", "owner", "device_action", past, null],
       ["lapsed-approved", "approved", "owner", "device_action", past, null],
+      ["lapsed-camera", "pending", "owner", "device_action", past, null],
       ["claimed-approved", "approved", "owner", "device_action", past, "a"],
       ["current-pending", "pending", "owner", "device_action", future, null],
       ["other-subject", "pending", "guest", "device_action", past, null],
@@ -95,7 +96,19 @@ it("closes lapsed reviews in its own scope before listing pending work", async (
          CASE WHEN $6::text IS NULL THEN NULL ELSE $1 END,
          CASE WHEN $6::text IS NULL THEN NULL ELSE '2026-10-24T23:55:00Z'::timestamptz END,
          '2026-10-24T23:50:00Z','2026-10-24T23:50:00Z','agent')`,
-        [id, state, subject, action, expires, attempt, FILES_REVIEW],
+        [
+          id,
+          state,
+          subject,
+          action,
+          expires,
+          attempt,
+          JSON.stringify(
+            id === "lapsed-camera"
+              ? { ...FILES_REVIEW, operation: { type: "camera_capture_photo" } }
+              : FILES_REVIEW,
+          ),
+        ],
       );
     const read: string[] = [];
     const runtime = {
@@ -128,10 +141,20 @@ it("closes lapsed reviews in its own scope before listing pending work", async (
     });
     expect(await states()).toEqual(before);
 
+    await queue.list({
+      subjectUserId: "owner",
+      state: "pending",
+      action: "device_action",
+      operationTypes: [],
+    });
+    expect(await states()).toEqual(before);
+    expect(read).toEqual([]);
+
     const pending = await queue.list({
       subjectUserId: "owner",
       state: "pending",
       action: "device_action",
+      operationTypes: ["files_filter"],
     });
     expect(pending.map((request) => request.id)).toEqual(["current-pending"]);
     // Only the listed state is closed.
@@ -154,10 +177,12 @@ it("closes lapsed reviews in its own scope before listing pending work", async (
       ...before,
       "lapsed-pending": "expired",
       "lapsed-approved": "expired",
+      "lapsed-camera": "expired",
     });
-    expect(read).toEqual([
-      "approval:lapsed-pending",
+    expect(read.sort()).toEqual([
       "approval:lapsed-approved",
+      "approval:lapsed-camera",
+      "approval:lapsed-pending",
     ]);
   } finally {
     await db.close();
