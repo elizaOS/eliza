@@ -190,6 +190,8 @@ describe("standalone Calendar availability", () => {
     "Am I free tomorrow morning?",
     "Do I have 20 minutes tomorrow morning",
     "Find me time for a call tomorrow morning.",
+    "Am I free tomorrow morning until noon?",
+    "Am I free tomorrow morning through 12:00 PM?",
   ])("rejects an over-long window for %j", async (text) => {
     const { call, handler } = fixture();
     expect(
@@ -236,14 +238,30 @@ describe("standalone Calendar availability", () => {
     expect(handler).toHaveBeenCalledOnce();
   });
 
-  it("does not clamp a request that also names a later period", async () => {
-    const { call, handler } = fixture();
-    await call(
-      "CALENDAR_CHECK_AVAILABILITY",
-      { windowEnd: "2026-11-07T04:00:00.000Z" },
-      "Am I free tomorrow morning or afternoon?",
+  it.each([
+    "Am I free tomorrow morning or afternoon?",
+    "Check today or tomorrow morning.",
+    "Do I have time after tomorrow morning?",
+    "Is Friday or tomorrow morning free?",
+  ])("reads the window for a wider request: %s", async (text) => {
+    const { call, handler, feed } = fixture();
+    const wideEnd = "2026-11-07T04:00:00.000Z";
+    feed.data.timeMax = wideEnd;
+    feed.data.requestWindow.timeMax = wideEnd;
+    expect(
+      await call("CALENDAR_CHECK_AVAILABILITY", { windowEnd: wideEnd }, text),
+    ).toMatchObject({ success: true, data: { isFree: false } });
+    expect(handler).toHaveBeenCalledExactlyOnceWith(
+      runtime,
+      { ...message, content: { text } },
+      undefined,
+      {
+        parameters: {
+          subaction: "feed",
+          details: { timeMin: start, timeMax: wideEnd, timeZone },
+        },
+      },
     );
-    expect(handler).toHaveBeenCalledOnce();
   });
 
   it("recognises only a tomorrow-morning-only request", () => {
