@@ -1,22 +1,16 @@
 # Wake listener
 
-The privileged wake listener is a separate, image-signed app that listens for
-the assistant's name on the device. It runs one microphone foreground
-service, decides from consent, permissions, crashes, the user, calls, the
-microphone and SystemUI's indicator lease (imported as `I`) whether to hold
-the microphone, and opens the host's assistant surface when it hears its
-name. Sources: develop `packages/app/platforms/android/sense`
-(`ListenerPolicy.java`, `ListeningService.java`, `Listener.java`,
-`CrashLoopBreaker.java`, `ListenerStore.java`, `ListenerControlProvider.java`,
-`AssistantInvocation.java`), `packages/app/quint/ListenerForegroundLifecycle.qnt`
-and `plugins/plugin-native-system/quint/ListenerStopEvidence.qnt`.
-
-Android supplies the caller of each control, the device observations, the
-start ids and the clocks; the shell authenticates the caller before it sends
-an event. The audio loop, the on-device recognizer, the notification text and
-the persisted store stay in the shell. Image staging of the listener is
-`spec/os/image/listener.md`; which arrival may start a voice turn is
-`spec/os/voice/invocation.md`.
+The privileged, image-signed wake listener app runs one microphone
+foreground service, decides whether to hold the microphone from consent,
+permissions, crashes, the user, calls and SystemUI's indicator lease
+(imported as `I`), and opens the host's assistant surface when it hears its
+name. Sources: develop `packages/app/platforms/android/sense/*`
+(`ListenerPolicy`, `ListeningService`, `Listener`, `CrashLoopBreaker`,
+`ListenerStore`, `ListenerControlProvider`), `ListenerForegroundLifecycle.qnt`
+and `ListenerStopEvidence.qnt`. The shell authenticates each caller and
+supplies observations, start ids and clocks; the audio loop, the recognizer,
+notifications and the store stay in it. Staging is `spec/os/image/listener.md`;
+which arrival starts a voice turn is `spec/os/voice/invocation.md`.
 
 ## Story: Keep wake listening on the device under my control
 
@@ -167,7 +161,7 @@ pure def stepRefusedPromotionIsDiagnosed(before: ListenerService, via: str, afte
 pure def sometimesRefusedPromotion(s: ListenerService): bool = s.promotion == PromotionRefused and s.delivered >= 1
 ```
 
-### An older start never stops a newer one
+### An older start never stops a newer one, and every queued start is applied
 
 Every control ends by asking Android for a start when the new state runs
 the service. The service stops itself only for the newest start Android
@@ -179,11 +173,6 @@ pure def requestStart(s: ListenerService): ListenerService = { ...s, queued: s.q
 pure def alwaysStoppedServiceHoldsNothing(s: ListenerService): bool =
   s.delivered >= 0 and s.delivered <= s.queued and (s.stopped implies s.delivered == s.queued and not(s.foreground) and not(s.capturing))
 pure def sometimesNewerStartRetained(s: ListenerService): bool = s.delivered >= 1 and s.delivered < s.queued and not(s.foreground)
-```
-
-### Every queued start is delivered and applied
-
-```quint
 pure val fair_deliverStart = "weak"
 pure def leadsToEveryStartApplied(s: ListenerService, later: ListenerService): bool = later.delivered >= s.queued
 ```
@@ -312,9 +301,8 @@ pure def sometimesIndicatorLossStopsListening(s: ListenerService): bool = decide
 
 ### An explained hidden indicator pauses capture and resumes it on a fresh acknowledgement
 
-Display off, AOD, a transition, the shade or a fullscreen app pauses: the
-service keeps running, releases the microphone and captures again once
-SystemUI acknowledges a visible indicator.
+The service keeps running with the microphone released, and once the
+converging service sees the lease permit again it captures again.
 
 ```quint
 pure def sometimesExplainedPauseKeepsServiceRunning(s: ListenerService): bool =

@@ -158,7 +158,7 @@ export interface ApprovedJoinResult {
 }
 
 /**
- * Public Capacitor plugin contract — implemented natively on Android with an empty-data web fallback.
+ * Public Capacitor plugin contract, implemented natively on Android only.
  *
  * A host can register a subclass that turns the bridge off; every method then
  * rejects with `DISABLED`.

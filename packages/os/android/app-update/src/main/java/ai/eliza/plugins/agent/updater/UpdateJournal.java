@@ -116,7 +116,6 @@ public class UpdateJournal {
     public final String releasedCandidate;
     public final int releases;
     public final Hold hold;
-    /** False when the call named another attempt or a phase it does not apply to, and nothing changed. */
     public final boolean applied;
     Snapshot(State s) { this(s,true); }
     Snapshot(State s,boolean applied) {

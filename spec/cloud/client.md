@@ -358,7 +358,7 @@ type SnapshotView = { accountStatus: A::AccountStatus, balance: Micros, planKey:
 type PlanView = PlanChecking | PlanUnavailable | PlanOnCredits | PlanPaid({ planKey: P::PlanKey, warning: bool }) | PlanNone
 type PlanAdmission = Admit | AdmitWithWarning | NeedsPlan | AdmissionUnknown
 pure def accountUsable(s: SnapshotView): bool = s.accountStatus == A::Active and s.inference != LaneRefused and s.allowanceAvailable + s.balance > 0
-pure def paymentLate(status: Sub::SubscriptionStatus): bool = Set(Sub::Dunning, Sub::PastDue, Sub::Unpaid).contains(status)
+pure def paymentLate(subscription: Sub::SubscriptionStatus): bool = Set(Sub::Dunning, Sub::PastDue, Sub::Unpaid).contains(subscription)
 pure def planFromSnapshot(s: SnapshotView): PlanView =
   if (s.source == FromFree) (if (s.balance > 0) PlanOnCredits else PlanNone)
   else PlanPaid({ planKey: s.planKey, warning: s.source == FromSubscription and paymentLate(s.subscription) })
