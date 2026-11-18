@@ -79,6 +79,10 @@ export const inboxPlugin: Plugin = {
     {
       id: "inbox",
       label: "Inbox",
+      // Inbox data is owner-private (every action and provider above carries
+      // the owner-exclusive disclosure gate). The view follows the Notes and
+      // Calendar precedent, which also keeps a host's native Inbox navigable.
+      roleGate: { minRole: "OWNER" },
       description: "Cross-channel inbox triage",
       icon: "Inbox",
       path: "/inbox",

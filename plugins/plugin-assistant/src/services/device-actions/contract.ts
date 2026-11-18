@@ -6,6 +6,12 @@ import {
   validateNativeNotesQuery,
 } from "@elizaos/contracts/native-notes-query";
 import {
+  type BrowserControlOperation,
+  browserControlCapabilityAvailable,
+  isBrowserControlType,
+  validateBrowserControl,
+} from "./browser-contract.ts";
+import {
   CALENDAR_CREATE_CAPABILITY,
   CALENDAR_NEXT_CAPABILITY,
   type CalendarOperation,
@@ -16,6 +22,8 @@ import {
 import {
   CAMERA_CAPTURE_CAPABILITY,
   type CameraCaptureOperation,
+  cameraCaptureCapabilityAvailable,
+  isCameraCapture,
   validateCameraCapture,
 } from "./camera-contract.ts";
 import {
@@ -73,9 +81,11 @@ import {
   validateSmsSend,
 } from "./sms-contract.ts";
 import {
+  isTelephonyAction,
   isTelephonyActionType,
   type TelephonyActionOperation,
   telephonyActionCapabilityAvailable,
+  telephonyActionFormAvailable,
   validateTelephonyAction,
 } from "./telephony-actions-contract.ts";
 import {
@@ -110,7 +120,30 @@ export const DEVICE_VIEWS = [
   "inbox",
   "settings",
   "workflows",
+  "phone",
+  "messages",
+  "contacts",
 ] as const;
+/**
+ * Views that only some hosts have. A host must enable them in its view
+ * profile, and only a phone that advertises `views.telephony.v1` may list,
+ * enroll or be offered them. An installation without a profile, or a client
+ * from before these views, is never offered a view it cannot open.
+ */
+export const PROFILE_ONLY_DEVICE_VIEWS: readonly string[] = [
+  "phone",
+  "messages",
+  "contacts",
+];
+export const TELEPHONY_VIEWS_CAPABILITY = "views.telephony.v1";
+/** The views a phone with these capabilities may enroll and be offered. */
+export function deviceViewsForCapabilities(
+  capabilities: readonly string[] | undefined,
+): readonly string[] {
+  return capabilities?.includes(TELEPHONY_VIEWS_CAPABILITY)
+    ? DEVICE_VIEWS
+    : DEVICE_VIEWS.filter((view) => !PROFILE_ONLY_DEVICE_VIEWS.includes(view));
+}
 export type DeviceOperation =
   | CameraCaptureOperation
   | SmsSendOperation
@@ -132,7 +165,8 @@ export type DeviceOperation =
   | { type: "create_note"; title: string; body: string }
   | { type: "create_reminder"; title: string; dueAt: string }
   | { type: "open_view"; view: (typeof DEVICE_VIEWS)[number] }
-  | { type: "browser_navigate"; url: string };
+  | { type: "browser_navigate"; url: string }
+  | BrowserControlOperation;
 
 /** Clock-only executors do not inherit the legacy phone executor's base operations. */
 export function deviceOperationSupportedByCapabilities(
@@ -170,6 +204,8 @@ export function deviceOperationSupportedByCapabilities(
     );
   if (isPhotosViewType(type))
     return photosViewCapabilityAvailable(capabilities);
+  if (isBrowserControlType(type))
+    return browserControlCapabilityAvailable(type, capabilities);
   if (type === "clock_alarm")
     return capabilities?.includes(CLOCK_ALARMS_CAPABILITY) === true;
   if (type === "clock_handoff")
@@ -194,6 +230,21 @@ export function deviceOperationSupportedByCapabilities(
         capability === CLOCK_REPEAT_CAPABILITY,
     );
   return !clockOnly;
+}
+/**
+ * An optional form of an operation needs its own negotiated capability: a
+ * requested camera lens, an SMS `target`, or a contact update with `add` or
+ * `remove`. It is never sent to a phone that did not advertise it.
+ */
+export function deviceOperationFormSupported(
+  operation: DeviceOperation,
+  capabilities?: readonly string[],
+): boolean {
+  if (isCameraCapture(operation))
+    return cameraCaptureCapabilityAvailable(operation, capabilities);
+  if (isTelephonyAction(operation))
+    return telephonyActionFormAvailable(operation, capabilities);
+  return true;
 }
 export type DeviceActionPayload = {
   action: "device_action";
@@ -364,7 +415,15 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
         return validateTelephonyAction(p);
       } catch {
         throw new DeviceActionError(
-          "Invalid contact operation. contact_create needs contact {displayName, phoneNumbers, emailAddresses}; contact_update needs query and a non-empty set of those fields; contact_delete needs query. Numbers are digits with an optional leading +.",
+          "Invalid contact operation. contact_create needs contact {displayName, phoneNumbers, emailAddresses}; contact_update needs query and at least one of set (a non-empty object of those fields), add and remove (each a non-empty object of phoneNumbers and emailAddresses lists with at least one value; a field in set cannot also be in add or remove); contact_delete needs query. Numbers are digits with an optional leading +.",
+        );
+      }
+    case "contact_show":
+      try {
+        return validateTelephonyAction(p);
+      } catch {
+        throw new DeviceActionError(
+          "Invalid contact search operation. Use only query (the contact name).",
         );
       }
     case "sms_compose":
@@ -385,6 +444,7 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       }
     case "messages_read_selected":
     case "voicemail_read_selected":
+    case "contact_read_selected":
     case "voicemail_delete_selected":
       try {
         return validateTelephonyAction(p);
@@ -463,12 +523,28 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       } catch {
         throw new DeviceActionError("Invalid browser destination");
       }
+      // A typed http:// address opens over HTTPS, like the address bar. One
+      // that names a port is refused: that port serves plain HTTP.
+      if (url.protocol === "http:" && !url.port) url.protocol = "https:";
       if (url.protocol !== "https:" || url.username || url.password)
         throw new DeviceActionError(
           "Only HTTPS browser destinations are supported",
         );
       return { type: p.type, url: url.href };
     }
+    case "browser_search":
+    case "browser_tab_new":
+    case "browser_tab_switch":
+    case "browser_tab_close":
+    case "browser_find":
+    case "browser_history":
+      try {
+        return validateBrowserControl(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          `Invalid Browser operation: ${(error as Error).message}. Use browser_search {query}, browser_tab_new {private}, browser_tab_switch {target}, browser_tab_close {target}, browser_find {text} or browser_history {action: back|forward|reload|stop}.`,
+        );
+      }
     default:
       throw new DeviceActionError("Unsupported device operation");
   }

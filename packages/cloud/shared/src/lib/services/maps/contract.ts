@@ -139,6 +139,7 @@ export interface MapsTilesDescriptor {
   mapType: "roadmap";
   minZoom: number;
   maxZoom: number;
+  /** Width of one tile on the map grid. An image may hold more pixels than this (high-DPI tiles). */
   tileSize: number;
   attribution: string;
 }
@@ -162,6 +163,8 @@ export interface MapsCoverage {
     reverseGeocode: true;
     /** Map taps can ask for the nearest named place before address lookup. */
     placeLookup?: boolean;
+    /** True when `search` accepts `rank: "distance"`; send it only then. */
+    distanceRank?: boolean;
     modes: MapsTravelMode[];
     alternatives: boolean;
     traffic: MapsTraffic;
@@ -237,9 +240,12 @@ export const mapsTextSearchRequestSchema = z
   .object({
     query: queryText,
     near: coordinateSchema.optional(),
+    /** With `near`: the closest places first, instead of the most relevant. */
+    rank: z.literal("distance").optional(),
     limit: z.number().int().min(1).max(20).optional(),
   })
-  .strict();
+  .strict()
+  .refine(({ near, rank }) => !rank || near, "Ranking by distance needs a near point");
 
 export const mapsReverseRequestSchema = z
   .object({
@@ -378,6 +384,12 @@ export interface MapsProviderAdapter {
     signal?: AbortSignal,
     reportPrice?: MapsPriceObserver,
   ): Promise<MapsTile>;
+  /**
+   * Starts whatever a first tile must wait for (a provider tile session), so it
+   * can run beside admission. The promise never rejects; a host keeps the
+   * request alive until it settles.
+   */
+  prepareTiles?(): Promise<void>;
   /** Copyright for a visible area; only providers that serve tiles implement it. */
   viewport?(request: MapsViewportRequest, signal?: AbortSignal): Promise<MapsViewportResponse>;
 }

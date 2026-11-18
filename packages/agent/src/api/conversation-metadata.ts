@@ -94,6 +94,10 @@ export function sanitizeConversationMetadata(
     record.sourceConversationId,
   );
   if (sourceConversationId) next.sourceConversationId = sourceConversationId;
+  const forkMessageId = normalizeOptionalString(record.forkMessageId);
+  if (forkMessageId) next.forkMessageId = forkMessageId;
+  const forkRequestId = normalizeOptionalString(record.forkRequestId);
+  if (forkRequestId) next.forkRequestId = forkRequestId;
 
   const terminalBridgeConversationId = normalizeOptionalString(
     record.terminalBridgeConversationId,

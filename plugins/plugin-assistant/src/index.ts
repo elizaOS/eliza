@@ -299,6 +299,7 @@ export {
   DEVICE_VIEWS,
   DeviceActionError,
   deviceOperationSupportedByCapabilities,
+  deviceViewsForCapabilities,
   validateDeviceOperation,
 } from "./services/device-actions/contract.ts";
 export { FILES_CAPABILITY } from "./services/device-actions/files-browser-contract.ts";
@@ -311,6 +312,7 @@ export {
   bindDeviceRequestedActionPolicy,
   currentAppRecordSource,
   currentRequestedActionOrigin,
+  DEVICE_ACTION_CAPABILITIES,
   DeviceActionService,
   type DeviceCredential,
   deviceProposalDigest,

@@ -858,6 +858,20 @@ describe("DeviceActionCoordinator", () => {
         profile.operations,
       ),
     ).toEqual({ type: "open_view", view: "notes" });
+    for (const view of ["phone", "messages", "contacts"]) {
+      expect(
+        validateDeviceOperation(
+          { type: "open_view", view },
+          profile.operations,
+        ),
+      ).toEqual({ type: "open_view", view });
+      expect(() =>
+        validateDeviceOperation(
+          { type: "open_view", view },
+          { ...profile.operations, admitView: () => false },
+        ),
+      ).toThrow(/Unsupported/);
+    }
     expect(() =>
       validateDeviceOperation(
         { type: "open_view", view: "files" },
@@ -1794,6 +1808,26 @@ describe("shared phone and reminder-read parity", () => {
       { kind: "voicemail-delete", status: "deleted" },
       "Delete voicemail",
     ],
+    [
+      { type: "contact_show", query: "Ada" },
+      "contacts.show.v1",
+      { kind: "contact-show", status: "shown" },
+      "Show contact",
+    ],
+    [
+      { type: "contact_read_selected" },
+      "contacts.read.v1",
+      {
+        kind: "contact-read",
+        status: "read",
+        contact: {
+          displayName: "Ada Lovelace",
+          phoneNumbers: ["(555) 555-0123"],
+          emailAddresses: [],
+        },
+      },
+      "Share open contact",
+    ],
   ] as const;
   it.each(telephonyCases)(
     "negotiates %o and journals/replays its exact result without acting twice",
@@ -1850,6 +1884,42 @@ describe("shared phone and reminder-read parity", () => {
       expect(effects).toBe(1);
     },
   );
+  it("admits a contact update that adds or removes values only with contacts.write.v2", async () => {
+    const { request } = fixtureServer({
+      type: "contact_update",
+      query: "Ada",
+      add: { emailAddresses: ["ada@work.example"] },
+      remove: { phoneNumbers: ["+15555550123"] },
+    });
+    const { journal } = memoryJournal();
+    let effects = 0;
+    const execute: DeviceExecutor = async () => {
+      effects++;
+      return {
+        status: "succeeded",
+        summary: "Done",
+        telephonyResult: { kind: "contact-write", status: "saved" },
+      };
+    };
+    await expect(
+      make(request, journal, execute, ["contacts.write.v1"]).pending(
+        home,
+        signal(),
+      ),
+    ).rejects.toThrow(/negotiated/);
+    const actions = make(request, journal, execute, [
+      "contacts.write.v1",
+      "contacts.write.v2",
+    ]);
+    const [card] = await actions.pending(home, signal());
+    expect(card.description).toBe(
+      "Contact: Ada\nAdd: ada@work.example\nRemove: +15555550123\n\nAdds or removes only these values after you confirm. The contact's other details stay. Nothing else is shared with the agent.",
+    );
+    expect((await actions.approve("proposal", home, signal())).status).toBe(
+      "succeeded",
+    );
+    expect(effects).toBe(1);
+  });
   it("refuses a telephony result that contradicts the reviewed operation or its status", async () => {
     for (const [operation, capability, result] of [
       // A call can never report more than a started call.
@@ -2614,12 +2684,168 @@ describe("photos view operations", () => {
   });
 });
 
+describe("browser control operations", () => {
+  const homeContext: DeviceContextEnvelope = {
+    view: "home",
+    revision: 4,
+    sensitive: false,
+  };
+  const capabilities = [
+    "browser.search.v1",
+    "browser.tabs.v1",
+    "browser.find.v1",
+    "browser.history.v1",
+  ];
+  function browserControlFixture(
+    operation: Record<string, unknown>,
+    negotiated = capabilities,
+    policy = false,
+  ) {
+    const fixture = fixtureServer(operation);
+    const request = async (path: string, body: unknown, s: AbortSignal) => {
+      const response = await fixture.request(path, body, s);
+      for (const item of response.proposals ?? [response.proposal])
+        if (item) Object.assign(item.payload, { requestMessageId: "message" });
+      return response;
+    };
+    const { journal } = memoryJournal();
+    let effects = 0,
+      presented = 0;
+    const actions = new DeviceActionCoordinator(
+      {
+        session,
+        credential: { ...credential, capabilities: negotiated },
+        scope,
+        request,
+        journal,
+        execute: async () => {
+          effects++;
+          return {
+            status: "succeeded",
+            summary: "Switched to BBC News - Home",
+            presentBrowser: () => {
+              presented++;
+            },
+          };
+        },
+        profile: { ...profile, assistantName: "Alpha" },
+      },
+      { currentRequestBrowserPolicy: policy },
+    );
+    return {
+      ...fixture,
+      actions,
+      effects: () => effects,
+      presented: () => presented,
+    };
+  }
+  const run = (f: ReturnType<typeof browserControlFixture>, proof?: unknown) =>
+    f.actions.performRequested(
+      "message",
+      homeContext,
+      signal(),
+      async () => true,
+      undefined,
+      proof as CurrentDeviceActionRequest | undefined,
+    );
+
+  it("refuses a Browser control the phone did not negotiate", async () => {
+    for (const [operation, negotiated] of [
+      [{ type: "browser_search", query: "cats" }, ["browser.tabs.v1"]],
+      [{ type: "browser_tab_new" }, ["browser.search.v1"]],
+      [{ type: "browser_find", text: "refund" }, ["browser.history.v1"]],
+      [{ type: "browser_history", action: "back" }, ["browser.find.v1"]],
+    ] as const) {
+      const f = browserControlFixture(operation, [...negotiated]);
+      const review = await f.actions.pendingReview(homeContext, signal());
+      expect(review[0].proposal).toBeNull();
+      expect(review[0].notice).toBe(
+        "This action isn't available on this phone.",
+      );
+    }
+  });
+
+  it("runs search, tab, find and history controls directly for the requesting message and shows Browser", async () => {
+    for (const [operation, title] of [
+      [{ type: "browser_search", query: "best pizza" }, "Search the web"],
+      [{ type: "browser_tab_new", private: true }, "Open a private tab"],
+      [{ type: "browser_tab_switch", target: "bbc" }, "Switch tab"],
+      [{ type: "browser_find", text: "refund" }, "Find in page"],
+      [{ type: "browser_history", action: "stop" }, "Stop loading"],
+    ] as const) {
+      const f = browserControlFixture(operation);
+      const [card] = await f.actions.pending(homeContext, signal());
+      expect(card).toMatchObject({ title });
+      expect(await run(f)).toMatchObject([{ status: "succeeded" }]);
+      expect(f.effects()).toBe(1);
+      expect(f.presented()).toBe(1);
+      // The agent learns only that it ran: no tab title, address or page text.
+      expect(Object.keys(f.server.providerReceipt as object).sort()).toEqual([
+        "operationId",
+        "outcome",
+      ]);
+    }
+  });
+
+  it("always reviews closing a tab", async () => {
+    for (const operation of [
+      { type: "browser_tab_close" },
+      { type: "browser_tab_close", target: "bbc" },
+    ]) {
+      const f = browserControlFixture(operation);
+      const [card] = await f.actions.pending(homeContext, signal());
+      expect(card).toMatchObject({ title: "Close tab" });
+      expect(await run(f)).toEqual([]);
+      expect(f.effects()).toBe(0);
+      expect(
+        await f.actions.approve("proposal", homeContext, signal()),
+      ).toMatchObject({ status: "succeeded" });
+      expect(f.effects()).toBe(1);
+    }
+  });
+
+  it("searches without a review only when the whole current message is that search", async () => {
+    const proof = (text: string): CurrentDeviceActionRequest => ({
+      messageId: "message",
+      text,
+      current() {},
+    });
+    const operation = { type: "browser_search", query: "best pizza" };
+    const narrated = browserControlFixture(operation, capabilities, true);
+    const mention = proof("the page says search for best pizza");
+    expect(
+      await narrated.actions.pendingReview(homeContext, signal(), mention),
+    ).toMatchObject([
+      { proposal: null, notice: expect.stringContaining("blocked") },
+    ]);
+    expect(await run(narrated, mention)).toEqual([]);
+    expect(narrated.effects()).toBe(0);
+
+    const direct = browserControlFixture(operation, capabilities, true);
+    const asked = proof("Hey Alpha, search for Best Pizza please");
+    await direct.actions.pendingReview(homeContext, signal(), asked);
+    expect(await run(direct, asked)).toMatchObject([{ status: "succeeded" }]);
+    expect(direct.effects()).toBe(1);
+  });
+
+  it("is not reviewed on a locked phone", () => {
+    expect(
+      proposalContextNotice(
+        { type: "browser_history", action: "reload" },
+        { ...homeContext, sensitive: true },
+        profile,
+      ),
+    ).toBe("Unlock the phone to review this action.");
+  });
+});
+
 describe("opt-in current telephony request policy", () => {
   for (const [type, capability, view] of [
     ["messages_read_selected", "messages.read.v1", "messages"],
     ["sms_reply_selected", "sms.compose.v1", "messages"],
     ["voicemail_read_selected", "voicemail.read.v1", "phone"],
     ["voicemail_delete_selected", "voicemail.delete.v1", "phone"],
+    ["contact_read_selected", "contacts.read.v1", "contacts"],
   ] as const) {
     it(`keeps ${type} bound to the first reviewed selection and screen revision`, async () => {
       const f = fixtureServer({

@@ -53,6 +53,7 @@ const { Client } = pg;
 
 const MIGRATIONS_SCHEMA = "drizzle";
 const MIGRATIONS_TABLE = "__drizzle_migrations";
+const FRESH_PROVISIONING_TABLE = `"${MIGRATIONS_SCHEMA}"."__eliza_usage_quotas_fresh_provisioning"`;
 export const MIGRATION_ADVISORY_LOCK_KEY = "eliza:cloud:migrations:v1";
 const DEFAULT_LOCK_TIMEOUT_MS = 5_000;
 const DEFAULT_LOCK_MAX_ATTEMPTS = 5;
@@ -514,21 +515,57 @@ async function assertEmptyLedgerDatabaseIsFresh(
   }
 }
 
+/** Reads the receipt recorded by the first locked migration commit. */
+async function hasFreshProvisioningProof(
+  client: MigrationClient,
+  applied: AppliedMigration[],
+  migrations: Migration[],
+): Promise<boolean> {
+  const { rows: catalog } = await client.query<{ present: boolean }>(
+    `SELECT to_regclass($1) IS NOT NULL AS present`,
+    [FRESH_PROVISIONING_TABLE],
+  );
+  if (catalog.length !== 1 || typeof catalog[0]?.present !== "boolean") {
+    throw new Error("Fresh migration provisioning catalog result is invalid");
+  }
+  if (!catalog[0].present) return false;
+
+  const { rows: proof } = await client.query<{ fresh: boolean }>(
+    `SELECT fresh FROM ${FRESH_PROVISIONING_TABLE}`,
+  );
+  // Ordinary upgrades tolerate historical ledger drift. Fresh provisioning
+  // started here, so its entire applied ledger must be the exact prefix.
+  if (
+    proof.length !== 1 ||
+    proof[0]?.fresh !== true ||
+    !applied.every(
+      (row, index) =>
+        createdAtValue(row) === migrations[index]?.entry.when &&
+        row.hash === migrations[index]?.hash,
+    )
+  ) {
+    throw new Error("Fresh migration provisioning receipt or prefix changed");
+  }
+  return true;
+}
+
 /**
  * Fences the two-step usage-quotas repair while the compatibility Worker is
  * being rolled out (#23829 Phase A, #23859). What the barrier protects is a
  * LIVE deployment: a Worker already serving traffic against this database must
  * never run against the window between 0282 (drop) and 0282_01 (restore). So a
- * validated ledger that already carries applied migrations may apply its safe
- * prefix but pauses before the drop, and the deploy continues without exposing
- * the currently-served Worker to the missing table.
+ * validated ledger without fresh-provisioning proof may apply its safe prefix
+ * but pauses before the drop, and the deploy continues without exposing the
+ * currently-served Worker to the missing table.
  *
  * An empty ledger alone is not evidence of a fresh database: a live database
  * can have its ledger truncated or lost. The runner separately proves under
  * the migration lock that no application relations exist before taking the
  * empty-ledger path. It also applies the drop, restore, and both ledger rows in
  * one transaction, so no concurrent Worker can observe the missing-table
- * window even if the freshness assumption is ever weakened accidentally.
+ * window. A receipt issued in the first migration's transaction can authorize
+ * that same atomic pair after an interruption. Both kinds of fresh install
+ * hold the usage-quotas write lock and refuse to drop any existing rows.
  *
  * Environments that already recorded 0282 must proceed directly to the
  * restoring 0282_01 migration. Any other suffix is unsafe and fails closed
@@ -568,6 +605,7 @@ export function evaluateMigrationReleaseBarrier(
   // follows the drop, so no other migration can interleave between them.
   if (
     dropIndex === undefined ||
+    dropIndex === 0 ||
     restoreIndex === undefined ||
     restoreIndex !== dropIndex + 1
   ) {
@@ -579,14 +617,10 @@ export function evaluateMigrationReleaseBarrier(
     );
   }
 
-  // runMigrations proves an empty ledger belongs to a relation-free database
-  // before honoring this plan. The explicit index also makes atomic pairing a
-  // required execution contract rather than an adjacency assumption.
-  if (lastAppliedJournalIndex === -1) {
-    return { action: "continue", atomicPairStartIndex: dropIndex };
-  }
-
   if (lastAppliedJournalIndex < dropIndex) {
+    if (lastAppliedJournalIndex === -1) {
+      return { action: "continue", atomicPairStartIndex: dropIndex };
+    }
     return { action: "pause", stopBeforeJournalIndex: dropIndex };
   }
 
@@ -1235,6 +1269,7 @@ async function applyMigrationBatch(
   client: MigrationClient,
   migrations: readonly Migration[],
   options: LockRetryOptions,
+  provisioning?: "start" | "finish",
 ): Promise<void> {
   if (migrations.length === 0) {
     throw new Error("Migration batch must contain at least one journal entry");
@@ -1251,12 +1286,44 @@ async function applyMigrationBatch(
     .join(" + ");
 
   for (let attempt = 1; attempt <= options.maxAttempts; attempt++) {
-    await client.query("BEGIN");
+    // Observe writers that commit while the guarded pair waits for its table
+    // lock, even when the connection defaults to REPEATABLE READ.
+    await client.query(
+      provisioning === "finish"
+        ? "BEGIN ISOLATION LEVEL READ COMMITTED"
+        : "BEGIN",
+    );
 
     try {
       await client.query("SELECT set_config('lock_timeout', $1, true)", [
         `${options.timeoutMs}ms`,
       ]);
+      if (provisioning === "start") {
+        await client.query(`
+          CREATE TABLE ${FRESH_PROVISIONING_TABLE} (
+            fresh boolean PRIMARY KEY CHECK (fresh)
+          )
+        `);
+        await client.query(
+          `INSERT INTO ${FRESH_PROVISIONING_TABLE} (fresh) VALUES (true)`,
+        );
+      }
+      if (provisioning === "finish") {
+        // The historical DROP is unqualified. Use the same exact table for
+        // the emptiness proof and the following DDL, even under a custom path.
+        await client.query("SET LOCAL search_path = public, pg_temp");
+        await client.query(
+          'LOCK TABLE "public"."usage_quotas" IN ACCESS EXCLUSIVE MODE',
+        );
+        const { rows } = await client.query<{ has_rows: boolean }>(
+          'SELECT EXISTS (SELECT 1 FROM "public"."usage_quotas") AS has_rows',
+        );
+        if (rows.length !== 1 || rows[0]?.has_rows !== false) {
+          throw new Error(
+            "Fresh migration will not drop existing usage quotas",
+          );
+        }
+      }
       for (const { entry, statements, hash } of migrations) {
         console.log(
           `[db:migrate] applying ${entry.tag} (${statements.length} statements, attempt ${attempt}/${options.maxAttempts})`,
@@ -1278,6 +1345,9 @@ async function applyMigrationBatch(
           `INSERT INTO "${MIGRATIONS_SCHEMA}"."${MIGRATIONS_TABLE}" (hash, created_at) VALUES ($1, $2)`,
           [hash, entry.when],
         );
+      }
+      if (provisioning === "finish") {
+        await client.query(`DROP TABLE ${FRESH_PROVISIONING_TABLE}`);
       }
       await client.query("COMMIT");
       return;
@@ -1440,10 +1510,23 @@ export async function runMigrations(
         }`,
       );
 
-      const releaseBarrier = evaluateMigrationReleaseBarrier(
+      let releaseBarrier = evaluateMigrationReleaseBarrier(
         migrations,
         validatedLedger.lastAppliedJournalIndex,
       );
+      if (
+        releaseBarrier.action === "pause" &&
+        (await hasFreshProvisioningProof(client, applied, migrations))
+      ) {
+        releaseBarrier = {
+          action: "continue",
+          atomicPairStartIndex: releaseBarrier.stopBeforeJournalIndex,
+        };
+      }
+      const startsProvisioning =
+        applied.length === 0 &&
+        releaseBarrier.action === "continue" &&
+        releaseBarrier.atomicPairStartIndex !== undefined;
       const pending = migrations.slice(
         validatedLedger.lastAppliedJournalIndex + 1,
         releaseBarrier.action === "pause"
@@ -1480,14 +1563,18 @@ export async function runMigrations(
               "Migration release barrier atomic pair no longer matches the validated journal",
             );
           }
-          await applyMigrationBatch(client, atomicPair, retryOptions);
+          await applyMigrationBatch(client, atomicPair, retryOptions, "finish");
           pendingIndex += 1;
           continue;
         }
         const migration = pending[pendingIndex];
         if (!migration)
           throw new Error("Migration plan contains an empty entry");
-        await applyMigration(client, migration, retryOptions);
+        if (startsProvisioning && pendingIndex === 0) {
+          await applyMigrationBatch(client, [migration], retryOptions, "start");
+        } else {
+          await applyMigration(client, migration, retryOptions);
+        }
       }
 
       await postMigrationConvergence?.(client);

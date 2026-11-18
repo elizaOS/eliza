@@ -83,6 +83,36 @@ class NativeAdmission(unittest.TestCase):
         self.assertEqual([row['apkEntry'] for row in result['libraries']], ['lib/arm64-v8a/libeliza_bun.so'])
         self.assertNotIn('musl', (self.output / 'Android.mk').read_text())
 
+    def test_single_abi_apk_keeps_the_dual_abi_provenance(self):
+        entries, admission = self.fixture('exact-json')
+        path = 'assets/agent/android-agent-runtime-provenance.json'
+        provenance = json.loads(entries[path])
+        other = 'lib/x86_64/libeliza_bun.so'
+        provenance['files'].append({'path': other, 'size_bytes': len(ELF), 'sha256': sha(ELF)})
+        entries[path] = encode(provenance)
+        result = self.run_stage(entries, admission)
+        self.assertEqual(result['runtimeAdmission']['runtimeFilesVerified'], len(provenance['files']) - 1)
+        self.assertEqual((self.output / 'native-arm64/libeliza_bun.so').read_bytes(), ELF)
+        self.assertFalse((self.output / 'native-x86_64').exists())
+
+    def test_selected_abi_and_present_foreign_bytes_are_still_verified(self):
+        for name, present in [('lib/arm64-v8a/libeliza_bun.so', False),
+                              ('lib/x86_64/libeliza_bun.so', True),
+                              ('lib/x86_64/unrecognized.so', False)]:
+            with self.subTest(name=name, present=present):
+                entries, admission = self.fixture('exact-json')
+                path = 'assets/agent/android-agent-runtime-provenance.json'
+                provenance = json.loads(entries[path])
+                if name.startswith('lib/x86_64/'):
+                    provenance['files'].append({'path': name, 'size_bytes': len(ELF), 'sha256': sha(ELF)})
+                    entries[path] = encode(provenance)
+                if present:
+                    entries[name] = b'changed bytes'
+                else:
+                    entries.pop(name, None)
+                with self.assertRaises((ValueError, KeyError)):
+                    self.run_stage(entries, admission)
+
     def test_soong_finalizer_preserves_companions_and_refuses_generated_name_collision(self):
         for companion in ['ElizaSense', 'Eliza_native_0']:
             with self.subTest(companion=companion):

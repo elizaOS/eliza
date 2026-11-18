@@ -624,7 +624,9 @@ export function registerDeviceBrowserOpenRouting(
     // Only the strict whole-message command skips the model's judgment.
     // Every other phrasing goes to the planner, whose browser proposal the
     // service grounds in the address the user typed.
-    return authoredBrowserDestination(text) !== undefined;
+    return (
+      authoredBrowserDestination(text, runtime.character.name) !== undefined
+    );
   };
   registerDirectActionRoutingRule(runtime, {
     id: "device.browser-open",

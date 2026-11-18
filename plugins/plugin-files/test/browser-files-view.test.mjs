@@ -309,7 +309,7 @@ test("empty and loading states carry text", async (t) => {
   assert.equal(fd.emptyText, "This folder is empty");
 });
 
-test("a filter is restored after both short and long visits away", async (t) => {
+test("leaving Files clears a filter and its displayed positions", async (t) => {
   t.mock.timers.enable({ apis: ["Date"] });
   const view = files(t, {
     storageQuery: async () => ({
@@ -320,20 +320,90 @@ test("a filter is restored after both short and long visits away", async (t) => 
   });
   view.render();
   await tick();
-  await view.runner.run(
-    { type: "files_filter", kind: "pdf" },
-    new AbortController().signal,
-  );
-  for (const [minutes, kept] of [
-    [1, true],
-    [11, true],
-  ]) {
+  const signal = new AbortController().signal;
+  for (const minutes of [1, 11]) {
+    const filtered = await view.runner.run(
+      { type: "files_filter", kind: "pdf" },
+      signal,
+    );
+    assert.equal(filtered.status, "succeeded");
+    const projected = view.render();
+    assert.ok(projected.chip);
+    assert.equal(projected.filterRows.length, 1);
+    assert.ok(
+      view.render({ open: view.preview }).chip,
+      "preview stays in Files",
+    );
+    const queries = view.named("storageQuery").length;
     view.leave();
     t.mock.timers.tick(minutes * 60 * 1000);
-    view.render();
+    assert.equal(
+      view.render().chip,
+      null,
+      "the first new-visit render is unfiltered",
+    );
     await tick();
-    assert.equal(!!view.render().chip, kept);
+    assert.deepEqual(view.render().filterRows, []);
+    assert.equal(view.render().browse.ready, true);
+    assert.equal(
+      view.named("storageQuery").length,
+      queries,
+      "do not refresh an old filter",
+    );
+    assert.equal(
+      (await view.runner.run({ type: "files_open", shown: 1 }, signal)).status,
+      "failed",
+    );
+    assert.deepEqual(view.named("storageSelect"), []);
   }
+});
+
+test("a filter query retired on leave cannot publish into the next visit", async (t) => {
+  const query = Promise.withResolvers();
+  const view = files(t, {
+    storageQuery: async ({ text }) =>
+      text === "old"
+        ? query.promise
+        : {
+            status: "ready",
+            entries: [file("Download/new.pdf", "application/pdf")],
+            truncated: false,
+          },
+  });
+  view.render();
+  await tick();
+  const signal = new AbortController().signal;
+  const retired = view.runner.run(
+    { type: "files_filter", text: "old" },
+    signal,
+  );
+  await tick();
+  assert.equal(view.render().filterLoading, true);
+  view.leave();
+  const returned = view.render();
+  assert.equal(returned.chip, null);
+  assert.equal(returned.filterLoading, false);
+  assert.equal(returned.filterNote, "");
+  await tick();
+  const current = await view.runner.run(
+    { type: "files_filter", text: "new" },
+    signal,
+  );
+  assert.equal(current.status, "succeeded");
+  query.resolve({
+    status: "ready",
+    entries: [file("Download/old.pdf", "application/pdf")],
+    truncated: false,
+  });
+  assert.equal((await retired).status, "failed");
+  assert.deepEqual(
+    view.render().filterRows.map((row) => row.name),
+    ["new.pdf"],
+  );
+  assert.deepEqual(
+    view.named("storageQuery").map(([, input]) => input.text),
+    ["old", "new"],
+  );
 });
 
 test("a shown position cannot switch to a new filter while access is pending", async (t) => {

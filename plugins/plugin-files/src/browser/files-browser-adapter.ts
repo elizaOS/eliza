@@ -1953,6 +1953,8 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
   };
   module.onLeave = (...args: unknown[]) => {
     selectionEpoch++;
+    pendingFilter = null;
+    clearFilter();
     dialog = undefined;
     selection = null;
     clearTimeout(pressTimer);
