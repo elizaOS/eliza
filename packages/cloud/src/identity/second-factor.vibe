@@ -253,15 +253,19 @@ effect function factorsAnswer(tx: Tx, who: Owner, family: Family, caller: Sessio
   return { factors: factorsView(try current(tx, who, family), family.now), stepUpAt: moment(caller.stepUpAt), mfaAt: moment(caller.mfaAt) }
 }
 
-export effect function afterFirstFactor(tx: Tx, landed: Landed, clientId: string, now: number) {
+export effect function factorChallenge(tx: Tx, landed: Landed, clientId: string, now: number) {
   const who = try owner(tx, landed.userId)
   const caller = signInCaller(now, who.personEpoch)
-  if (!hasFactor((try current(tx, who, caller)).factors)) {
-    return try issueSession(tx, { userId: landed.userId, organizationId: landed.organizationId, assurance: "SingleFactor", accountCreated: landed.created, now })
-  }
+  if (!hasFactor((try current(tx, who, caller)).factors)) return undefined
   const challengeId = newId()
   const opened = (try stepFactors(tx, who, caller, { type: "openChallenge" }, { challenge_id: challengeId, challenge_client_id: clientId, challenge_digest: null })).state
   return { status: "mfa_required", challengeId, methods: confirmedMethods(opened), expiresAt: opened.challenge.expiresAt } satisfies MfaRequired
+}
+
+export effect function afterFirstFactor(tx: Tx, landed: Landed, clientId: string, now: number) {
+  const challenge = try factorChallenge(tx, landed, clientId, now)
+  if (challenge !== undefined) return challenge
+  return try issueSession(tx, { userId: landed.userId, organizationId: landed.organizationId, assurance: "SingleFactor", accountCreated: landed.created, now })
 }
 
 effect function challengeOwner(tx: Tx, challengeId: string) {

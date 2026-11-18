@@ -1,4 +1,10 @@
 // spec/cloud/services/speech.md, "Story: Speak a reply as audio"
+import { batchSpeechRoutes } from "../../services/speech.vibe"
 import type { Area } from "../routes.vibe"
 
-export const area: Area = { routes: [], sweeps: [] }
+export const area: Area = {
+  routes: [
+    ...batchSpeechRoutes,
+  ],
+  sweeps: []
+}

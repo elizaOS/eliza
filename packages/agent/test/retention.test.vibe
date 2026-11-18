@@ -15,7 +15,7 @@ module node {
 
   function rows(room: keyof typeof rooms, age: "young" | "old", count: number, now: number, entityId: RunningAgent["runtime"]["agentId"]) {
     return Array.from({ length: count }, (_, index) => ({
-      body: { label: `${room}-${age}-${index}` }, entityId, roomId: rooms[room], type: "retention-journey",
+      body: { source: `${room}-${age}-${index}` }, entityId, roomId: rooms[room], type: "retention-journey",
       createdAt: new Date(age === "young" ? now - 60_000 - index * 1_000 : now - 7 * hourMs - index * 1_000),
     }))
   }
@@ -32,7 +32,7 @@ module node {
 
   export async function labels(running: RunningAgent) {
     const logs = await running.runtime.adapter.getLogs({})
-    return logs.map(({ body }) => String((body as { label?: unknown }).label)).sort()
+    return logs.map((log) => String(log.body.source)).sort()
   }
 
   export async function sweepOnce(running: RunningAgent) {
@@ -44,7 +44,7 @@ module node {
     const worlds = (await runtime.getAllWorlds()).length
     await service.executeTaskById(task.id)
     return {
-      tasks: scheduled.map(({ tags, metadata }) => ({ tags, updateInterval: metadata?.updateInterval })),
+      tasks: scheduled.map((task) => ({ tags: task.tags, updateInterval: task.metadata?.updateInterval })),
       kept: await labels(running),
       cache: await runtime.getCache("retention-journey"),
       worldsKept: (await runtime.getAllWorlds()).length === worlds,

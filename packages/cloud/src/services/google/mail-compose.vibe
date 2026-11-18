@@ -43,8 +43,6 @@ module node {
 }
 import { base64Text, base64urlText, inspectBase64, utf8Length } from node
 
-export type ComposeMode = "compose" | "reply" | "reply-all" | "forward"
-
 export interface ForwardedPart {
   readonly partId: string
   readonly name: string
@@ -77,7 +75,7 @@ export interface ForwardedReview extends AttachmentReview {
   readonly partId: string
 }
 
-export interface MailReview {
+export type MailReview = {
   readonly from: string
   readonly to: ReadonlyArray<string>
   readonly cc: ReadonlyArray<string>

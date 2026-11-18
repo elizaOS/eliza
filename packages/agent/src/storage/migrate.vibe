@@ -111,7 +111,7 @@ module node {
     let state = readDirectory(reading(owner, storeBundle(list)), found)
     while (state.phase !== "Failed" && canMigrate(state, true)) {
       const next = migrateStep(state, true)
-      if (next.phase === "Failed") break
+      if (next.phase === "Failed") storeRefused(next.fault)
       const step = list[state.version]
       try {
         await db.transaction(async (tx) => {

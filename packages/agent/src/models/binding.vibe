@@ -2,8 +2,9 @@
 import type { Backend, GoogleConsent, LaunchDocument as LaunchModel, UrlShape } from "../../gen/agent__host__launch.ts"
 import {
   Machine, accountStateName, blocked, clockAt, failureName, limitedAt, machine, pushVerdict, retryAtOf, warmAnswer,
-  type AccountFailure, type CloudError, type ModelBinding, type ModelHandler, type PushVerdict, type WarmAnswer,
+  type AccountFailure, type ModelBinding, type ModelHandler, type PushVerdict, type WarmAnswer,
 } from "../../gen/agent__models__binding.effect.vibe"
+import type { CloudError } from "../../gen/cloud__client.ts"
 import type { LocalRoute } from "../access/routes.vibe"
 import type { LaunchDocument, LaunchFrame } from "../host/launch.schema.vibe"
 

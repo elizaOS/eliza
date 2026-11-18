@@ -1,0 +1,481 @@
+// spec/cloud/services/speechSession.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechSession.md, "Story: Keep a live session funded and close it with receipts"; spec/cloud/billing/plans.md, "Story: Share realtime speech fairly"
+import { apply, consentLifetime, decodeState, initial, Rejected, sessionLifetime, windowLength, windowTtsChars, type Event, type Session } from "../../gen/cloud__services__speechSession.effect.vibe"
+import { realtimeSpeechAdmits, realtimeSpeechResetsAt, utcDayStart } from "../../gen/cloud__billing__plans.effect.vibe"
+import { relayChannels, relaySampleRate, type Shortfall } from "../../gen/cloud__services__speechRelay.effect.vibe"
+import type { HoldKey, SpeechDirection } from "../../gen/cloud__shared__types.ts"
+import { refused, Refused, wireName } from "../http/refusal.vibe"
+import { signed, type Signed } from "../http/request-auth.vibe"
+import { json, jsonBody, type Route, type RouteContext, type Sweep } from "../http/routes.vibe"
+import type { RelaySession, SessionEnd, WindowAdmission, WindowUsage } from "./speech-relay.vibe"
+import { Deployment } from "../profile/profile.vibe"
+import { holdRows, markDispatched, reserve, settle, type HoldOwner, type MeteringFailure, type Settlement } from "../shared/metering.vibe"
+import { newId, sameText, secretText, tokenDigest } from "../shared/sealing.vibe"
+import { loadRow, machineRows, stepRow, type RowConflict, type RowCorrupt } from "../store/rows.vibe"
+import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
+
+export type { Session, SessionEnd, Shortfall, SpeechDirection, WindowAdmission, WindowUsage }
+
+export const sessionRows = machineRows<Session, Event, Rejected, unknown>("speech_sessions", { initial, decodeState, apply })
+
+export type SessionFailure = Refused | StoreFailure | RowCorrupt | RowConflict | Rejected | MeteringFailure
+
+export type RetireCause = "Stopped" | "FundingRefused" | "ProviderFailed" | "Revoked" | "CredentialRevoked" | "AccountDeleting" | "DeadlinePassed"
+
+export interface OpenedSession {
+  readonly id: string
+  readonly userId: string
+  readonly organizationId: string
+  readonly credentialExpiresAt: number
+  readonly state: Session
+}
+
+type CredentialKind = "device_key" | "session"
+
+interface Credential {
+  readonly kind: CredentialKind
+  readonly ref: string
+  readonly expiresAt: number
+}
+
+interface WindowHolds {
+  readonly transcribe: string
+  readonly synthesize: string
+}
+
+interface Rates {
+  readonly microsPerSecond: number
+  readonly microsPerCharacter: number
+}
+
+export const speechPath = "/api/v1/voice/speech"
+const directions: ReadonlyArray<SpeechDirection> = ["Transcribe", "Synthesize"]
+const pcmBytesPerSecond = relaySampleRate * relayChannels * 2
+const reaperEveryMs = 10_000
+const orphanAfterMs = 30_000
+const reaperBatch = 200
+
+const endings = new Map<string, Deferred.Deferred<SessionEnd>>()
+
+function credentialOf(caller: Signed): Credential {
+  switch (caller.kind) {
+    case "deviceKey": return { kind: "device_key", ref: caller.grantKey, expiresAt: caller.expiresAt }
+    case "session": return { kind: "session", ref: caller.sessionKey, expiresAt: caller.accessExpiresAt }
+    default: {
+      const _exhaustive: never = caller
+      return _exhaustive
+    }
+  }
+}
+
+function endOf(cause: RetireCause): SessionEnd | undefined {
+  switch (cause) {
+    case "Revoked":
+    case "AccountDeleting":
+    case "DeadlinePassed":
+      return "SessionOver"
+    case "CredentialRevoked":
+      return "CredentialRefused"
+    case "Stopped":
+    case "FundingRefused":
+    case "ProviderFailed":
+      return undefined
+    default: {
+      const _exhaustive: never = cause
+      return _exhaustive
+    }
+  }
+}
+
+function iso(millis: number): string {
+  return new Date(millis).toISOString()
+}
+
+function holdKey(userId: string, sessionId: string, direction: SpeechDirection, window: number): HoldKey {
+  return { service: "MeteredSpeech", caller: userId, requestId: sessionId, part: { tag: "SpeechWindow", direction, window } }
+}
+
+function quoteOf(direction: SpeechDirection, rates: Rates): number {
+  return direction === "Transcribe"
+    ? Math.max(1, Math.ceil(windowLength / 1000) * rates.microsPerSecond)
+    : Math.max(1, windowTtsChars * rates.microsPerCharacter)
+}
+
+function holdOf(holds: WindowHolds, direction: SpeechDirection): string {
+  return direction === "Transcribe" ? holds.transcribe : holds.synthesize
+}
+
+function settlementFor(direction: SpeechDirection, dispatched: boolean, usage: WindowUsage, rates: Rates): Settlement {
+  if (!dispatched) return { kind: "release" }
+  if (direction === "Transcribe") {
+    return usage.sttDrained ? { kind: "known", actual: Math.ceil(usage.pcmBytes * rates.microsPerSecond / pcmBytesPerSecond) } : { kind: "unknown" }
+  }
+  return usage.ttsConfirmed ? { kind: "known", actual: usage.ttsChars * rates.microsPerCharacter } : { kind: "unknown" }
+}
+
+function sessionColumns(now: number) {
+  return (session: Session) => ({ phase: wireName(session.phase), expires_at: session.expiresAt, updated_at: now })
+}
+
+export function tokenMatches(opened: OpenedSession, token: string): boolean {
+  return sameText(tokenDigest(token), opened.state.tokenDigest)
+}
+
+effect function signer(context: RouteContext): Signed!Refused {
+  const caller = signed(context.caller)
+  if (caller === undefined) throw refused("AuthenticationRequired", "CredentialUnknown")
+  return caller
+}
+
+effect function speechRates(): Rates!Refused!Deployment {
+  const speech = (try Deployment).settings.speech
+  if (speech === undefined) throw refused("CapabilityUnavailable")
+  return { microsPerSecond: speech.stt.microsPerSecond, microsPerCharacter: speech.tts.microsPerCharacter }
+}
+
+effect function socketUrl(sessionId: string): string!!Deployment {
+  const url = new URL(`${speechPath}/ws`, (try Deployment).settings.api)
+  url.protocol = url.protocol === "http:" ? "ws:" : "wss:"
+  url.searchParams.set("sessionId", sessionId)
+  return url.href
+}
+
+effect function usedToday(tx: Tx, userId: string, day: number, lock: boolean): number!StoreFailure {
+  const row = (try tx.query(`SELECT used_ms FROM speech_usage_days WHERE user_id = $1 AND usage_day = $2${lock ? " FOR UPDATE" : ""}`, [userId, day]))[0]
+  return row === undefined ? 0 : toInt(row.used_ms)
+}
+
+effect function readSession(tx: Tx, id: string, lock: boolean): OpenedSession!(Refused | StoreFailure | RowCorrupt) {
+  const row = (try tx.query(`SELECT user_id, organization_id, credential_expires_at FROM speech_sessions WHERE key = $1${lock ? " FOR UPDATE" : ""}`, [id]))[0]
+  if (row === undefined) throw refused("NotFound")
+  const loaded = try loadRow(tx, sessionRows, id, lock)
+  return {
+    id,
+    userId: toText(row.user_id) ?? "",
+    organizationId: toText(row.organization_id) ?? "",
+    credentialExpiresAt: toInt(row.credential_expires_at),
+    state: loaded.state
+  }
+}
+
+effect function stepSession(tx: Tx, id: string, event: Event, now: number): Session!(StoreFailure | RowCorrupt | RowConflict | Rejected) {
+  return (try stepRow(tx, sessionRows, id, event, sessionColumns(now))).state
+}
+
+effect function closeIfSettled(tx: Tx, id: string, now: number): Session!(StoreFailure | RowCorrupt | RowConflict) {
+  return stepSession(tx, id, { type: "close" }, now) catch effect (failure) => match (failure) {
+    when Rejected: (try loadRow(tx, sessionRows, id)).state;
+    default: throw failure;
+  }
+}
+
+effect function windowHolds(tx: Tx, id: string, window: number): (WindowHolds & { readonly settled: boolean; readonly expiresAt: number }) | undefined !StoreFailure {
+  const row = (try tx.query("SELECT transcribe_hold, synthesize_hold, settled_at, expires_at FROM speech_windows WHERE session_id = $1 AND number = $2", [id, window]))[0]
+  if (row === undefined) return undefined
+  return {
+    transcribe: toText(row.transcribe_hold) ?? "",
+    synthesize: toText(row.synthesize_hold) ?? "",
+    settled: row.settled_at !== null && row.settled_at !== undefined,
+    expiresAt: toInt(row.expires_at)
+  }
+}
+
+effect function releaseHolds(keys: ReadonlyArray<string>): void!!Store {
+  for (const key of keys) {
+    settle(key, { kind: "release" }) catch effect (failure) => {
+      try annotateLogs(logError("a speech hold could not be released; the hold sweep will release it"), { holdKey: key, failure: failure._tag })
+    }
+  }
+}
+
+effect function announceEnd(id: string, end: SessionEnd): void!! {
+  const waiting = endings.get(id)
+  if (waiting !== undefined) try Deferred.succeed(waiting, end)
+}
+
+export effect function sessionEnding(id: string): SessionEnd!! {
+  const known = endings.get(id)
+  const waiting = known ?? try Deferred.make<SessionEnd>()
+  if (known === undefined) endings.set(id, waiting)
+  return try ensuring(Deferred.await(waiting), sync(() => {
+    if (endings.get(id) === waiting) endings.delete(id)
+  }))
+}
+
+export effect function openSocket(id: string): OpenedSession!SessionFailure!Store {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  return try store.transaction(effect (tx: Tx) => {
+    const found = try readSession(tx, id, true)
+    const state = stepSession(tx, id, { type: "openSocket", now }, now) catch effect (failure) => match (failure) {
+      when Rejected: throw refused("SessionClosed");
+      default: throw failure;
+    }
+    return { ...found, state }
+  })
+}
+
+effect function reserveWindow(owner: HoldOwner, id: string, window: number, rates: Rates): WindowHolds!MeteringFailure!Store {
+  const transcribe = try reserve(owner, holdKey(owner.userId, id, "Transcribe", window), quoteOf("Transcribe", rates))
+  const synthesize = reserve(owner, holdKey(owner.userId, id, "Synthesize", window), quoteOf("Synthesize", rates)) catch effect (failure) => {
+    try releaseHolds([transcribe.key])
+    throw failure
+  }
+  return { transcribe: transcribe.key, synthesize: synthesize.key }
+}
+
+export effect function admitWindow(id: string, window: number): WindowAdmission!SessionFailure!(Store | Deployment) {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const rates = try speechRates()
+  const day = utcDayStart(now)
+  const known = try store.transaction(effect (tx: Tx) => {
+    const session = try readSession(tx, id, false)
+    const admitted = try windowHolds(tx, id, window)
+    return { session, admitted, used: try usedToday(tx, session.userId, day, false) }
+  })
+  if (known.admitted !== undefined) return { kind: "admitted", expiresAt: known.admitted.expiresAt }
+  if (!realtimeSpeechAdmits(known.used, windowLength)) return { kind: "short", shortfall: "AllowanceShort" }
+  const owner = { organizationId: known.session.organizationId, userId: known.session.userId }
+  const holds = reserveWindow(owner, id, window, rates) catch effect (failure) => {
+    if (failure instanceof Refused && failure.refusal.code === "InsufficientCredits") return undefined
+    throw failure
+  }
+  if (holds === undefined) return { kind: "short", shortfall: "CreditsShort" }
+  const outcome = store.transaction(effect (tx: Tx) => {
+    const current = try readSession(tx, id, true)
+    if (!realtimeSpeechAdmits(try usedToday(tx, current.userId, day, true), windowLength)) {
+      return { kind: "short", shortfall: "AllowanceShort" } satisfies WindowAdmission
+    }
+    const expiresAt = window === 1 ? current.state.expiresAt : Math.min(current.state.expiresAt + windowLength, current.credentialExpiresAt)
+    try stepSession(tx, id, { type: "admitWindow", window, expiresAt }, now)
+    try tx.query(
+      "INSERT INTO speech_windows (session_id, number, user_id, usage_day, speech_ms, transcribe_hold, synthesize_hold, expires_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+      [id, window, current.userId, day, windowLength, holds.transcribe, holds.synthesize, expiresAt, now]
+    )
+    try tx.query(
+      "INSERT INTO speech_usage_days (user_id, usage_day, used_ms, updated_at) VALUES ($1, $2, $3, $4) ON CONFLICT (user_id, usage_day) DO UPDATE SET used_ms = speech_usage_days.used_ms + EXCLUDED.used_ms, updated_at = EXCLUDED.updated_at",
+      [current.userId, day, windowLength, now]
+    )
+    return { kind: "admitted", expiresAt } satisfies WindowAdmission
+  }) catch effect (failure) => {
+    try releaseHolds([holds.transcribe, holds.synthesize])
+    throw failure
+  }
+  if (outcome.kind === "short") try releaseHolds([holds.transcribe, holds.synthesize])
+  return outcome
+}
+
+export effect function dispatchWindow(id: string, window: number, only?: SpeechDirection): void!SessionFailure!Store {
+  const store = try Store
+  const holds = try store.transaction((tx) => windowHolds(tx, id, window))
+  if (holds === undefined || holds.settled) throw refused("SessionClosed")
+  for (const direction of only === undefined ? directions : [only]) {
+    const key = holdOf(holds, direction)
+    const hold = (try store.transaction((tx) => loadRow(tx, holdRows, key, false))).state
+    if (hold.phase === "Reserved") try markDispatched(key)
+  }
+}
+
+export effect function settleWindow(id: string, window: number, usage: WindowUsage): Session!SessionFailure!(Store | Deployment) {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const rates = try speechRates()
+  const holds = try store.transaction((tx) => windowHolds(tx, id, window))
+  if (holds === undefined) throw refused("NotFound")
+  if (!holds.settled) {
+    for (const direction of directions) {
+      const key = holdOf(holds, direction)
+      const hold = (try store.transaction((tx) => loadRow(tx, holdRows, key, false))).state
+      try settle(key, settlementFor(direction, hold.phase === "Dispatched", usage, rates))
+    }
+  }
+  return try store.transaction(effect (tx: Tx) => {
+    try readSession(tx, id, true)
+    const marked = try tx.query("UPDATE speech_windows SET settled_at = $3 WHERE session_id = $1 AND number = $2 AND settled_at IS NULL RETURNING number", [id, window, now])
+    if (marked.length === 1) try stepSession(tx, id, { type: "settleWindow", window }, now)
+    return try closeIfSettled(tx, id, now)
+  })
+}
+
+export effect function retire(id: string, cause: RetireCause): Session!SessionFailure!Store {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const state = try store.transaction(effect (tx: Tx) => {
+    try readSession(tx, id, true)
+    stepSession(tx, id, { type: "retire" }, now) catch effect (failure) => match (failure) {
+      when Rejected: undefined;
+      default: throw failure;
+    }
+    return try closeIfSettled(tx, id, now)
+  })
+  const end = endOf(cause)
+  if (end !== undefined) try announceEnd(id, end)
+  return state
+}
+
+effect function settleOrphans(id: string): void!SessionFailure!(Store | Deployment) {
+  const store = try Store
+  const open = try store.transaction((tx) => tx.query("SELECT number FROM speech_windows WHERE session_id = $1 AND settled_at IS NULL ORDER BY number", [id]))
+  for (const row of open) {
+    try settleWindow(id, toInt(row.number), { pcmBytes: 0, ttsChars: 0, sttDrained: false, ttsConfirmed: false, dispatched: true })
+  }
+  try retire(id, "DeadlinePassed")
+}
+
+type Reap =
+  | { readonly kind: "nothing" }
+  | { readonly kind: "retire"; readonly cause: RetireCause }
+  | { readonly kind: "settleOrphans" }
+
+function reapOf(row: Readonly<Record<string, unknown>>, now: number): Reap {
+  const phase = toText(row.phase)
+  if (phase === "retiring") return toInt(row.updated_at) <= now - orphanAfterMs ? { kind: "settleOrphans" } : { kind: "nothing" }
+  if (row.account_status !== "active") return { kind: "retire", cause: "AccountDeleting" }
+  if (row.credential_live !== true) return { kind: "retire", cause: "CredentialRevoked" }
+  if (toInt(row.expires_at) <= now) return { kind: "retire", cause: "DeadlinePassed" }
+  return { kind: "nothing" }
+}
+
+effect function reapOne(id: string, reap: Reap): boolean!SessionFailure!(Store | Deployment) {
+  switch (reap.kind) {
+    case "nothing": return false
+    case "retire": {
+      try retire(id, reap.cause)
+      return true
+    }
+    case "settleOrphans": {
+      try settleOrphans(id)
+      return true
+    }
+    default: {
+      const _exhaustive: never = reap
+      return _exhaustive
+    }
+  }
+}
+
+export effect function reapSessions(): number!!(Store | Deployment) {
+  const store = try Store
+  const now = try Clock.currentTimeMillis
+  const rows = store.transaction((tx) => tx.query(
+    `SELECT s.key, s.phase, s.expires_at, s.updated_at, a.status AS account_status,
+      CASE s.credential_kind
+        WHEN 'device_key' THEN EXISTS (SELECT 1 FROM device_grants g WHERE g.key = s.credential_ref AND g.phase = 'active' AND g.issued_at >= a.devices_revoked_before)
+        ELSE EXISTS (SELECT 1 FROM sessions c WHERE c.key = s.credential_ref AND c.live AND (c.state->>'epoch')::bigint = a.sessions_revoked_before)
+      END AS credential_live
+    FROM speech_sessions s LEFT JOIN accounts a ON a.key = s.user_id
+    WHERE s.phase IN ('minted', 'starting', 'active', 'retiring')
+    ORDER BY s.expires_at LIMIT $1`,
+    [reaperBatch]
+  )) catch effect (failure) => {
+    try annotateLogs(logError("the speech reaper could not read sessions"), { failure: failure._tag })
+    return []
+  }
+  let reaped = 0
+  for (const row of rows) {
+    const id = toText(row.key) ?? ""
+    const done = reapOne(id, reapOf(row, now)) catch effect (failure) => {
+      try annotateLogs(logError("the speech reaper could not end a session"), { sessionId: id, failure: failure._tag })
+      return false
+    }
+    if (done) reaped += 1
+  }
+  store.transaction((tx) => tx.query("DELETE FROM speech_consents WHERE consumed_at IS NULL AND expires_at < $1", [now])) catch effect (failure) => {
+    try annotateLogs(logError("the speech reaper could not remove expired consents"), { failure: failure._tag })
+  }
+  return reaped
+}
+
+export const speechReaper: Sweep = { name: "speech reaper", everyMs: reaperEveryMs, run: reapSessions() }
+
+schema MintRequest { consentNonce: string }
+
+effect function consent(context: RouteContext) {
+  const caller = try signer(context)
+  const credential = credentialOf(caller)
+  const nonce = newId()
+  const expiresAt = Math.min(context.now + consentLifetime, credential.expiresAt)
+  const store = try Store
+  try store.transaction((tx) => tx.query(
+    "INSERT INTO speech_consents (nonce, user_id, organization_id, credential_kind, credential_ref, expires_at, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    [nonce, caller.userId, caller.organizationId, credential.kind, credential.ref, expiresAt, context.now]
+  ))
+  return json({ consentNonce: nonce, expiresAt: iso(expiresAt) })
+}
+
+effect function mint(context: RouteContext) {
+  const caller = try signer(context)
+  const credential = credentialOf(caller)
+  const { consentNonce } = try jsonBody(context, MintRequest)
+  const store = try Store
+  const now = context.now
+  const sessionId = newId()
+  const token = secretText("eliza_speech_", 32, "base64url")
+  const minted = try store.transaction(effect (tx: Tx) => {
+    const consumed = try tx.query(
+      "UPDATE speech_consents SET consumed_at = $1 WHERE nonce = $2 AND user_id = $3 AND credential_kind = $4 AND credential_ref = $5 AND consumed_at IS NULL AND expires_at > $1 RETURNING nonce",
+      [now, consentNonce, caller.userId, credential.kind, credential.ref]
+    )
+    if (consumed.length !== 1) throw refused("SpeechConsentRequired")
+    if (!realtimeSpeechAdmits(try usedToday(tx, caller.userId, utcDayStart(now), false), windowLength)) {
+      throw refused("AllowanceExhausted", "NoReason", realtimeSpeechResetsAt(now))
+    }
+    const expiresAt = Math.min(now + sessionLifetime, credential.expiresAt)
+    return try stepRow(tx, sessionRows, sessionId, { type: "mint", tokenDigest: tokenDigest(token), expiresAt }, (session) => ({
+      ...sessionColumns(now)(session),
+      consent_nonce: consentNonce,
+      user_id: caller.userId,
+      organization_id: caller.organizationId,
+      credential_kind: credential.kind,
+      credential_ref: credential.ref,
+      credential_expires_at: credential.expiresAt,
+      created_at: now
+    }))
+  })
+  return json(
+    { version: 1, sessionId, token, expiresAt: iso(minted.state.expiresAt), wsUrl: try socketUrl(sessionId) },
+    { headers: { "x-eliza-speech-extend": "1" } }
+  )
+}
+
+effect function revoke(context: RouteContext) {
+  const caller = try signer(context)
+  const id = context.params.id ?? ""
+  const store = try Store
+  const row = (try store.transaction((tx) => tx.query("SELECT user_id FROM speech_sessions WHERE key = $1", [id])))[0]
+  if (row === undefined || toText(row.user_id) !== caller.userId) throw refused("NotFound")
+  try retire(id, "Revoked")
+  return json({ revoked: true })
+}
+
+export const sessionSpeechRoutes: ReadonlyArray<Route> = [
+  { method: "POST", path: `${speechPath}/consent`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: consent },
+  { method: "POST", path: `${speechPath}/session`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: mint },
+  { method: "POST", path: `${speechPath}/session/:id/revoke`, auth: "ServiceAccess", capability: "speech", rateClass: "StandardRequests", handler: revoke }
+]
+
+effect function refusedOnly<A, R>(work: A!SessionFailure!R): A!Refused!R {
+  const now = try Clock.currentTimeMillis
+  const value = work catch effect (failure) => {
+    if (failure instanceof Refused) throw failure
+    try annotateLogs(logError("a speech session step failed"), { failure: failure._tag })
+    throw refused("ServiceUnavailable", "NoReason", now + 5000)
+  }
+  return value
+}
+
+effect function sessionTokenMatches(id: string, token: string): boolean!SessionFailure!Store {
+  const store = try Store
+  const found = try store.transaction((tx) => readSession(tx, id, false))
+  return tokenMatches(found, token)
+}
+
+export const relaySession: RelaySession = {
+  openSocket: (id) => Effect.asVoid(refusedOnly(openSocket(id))),
+  tokenMatches: sessionTokenMatches,
+  admitWindow,
+  dispatchWindow: (id, window) => dispatchWindow(id, window),
+  settleWindow: (id, window, usage) => Effect.asVoid(settleWindow(id, window, usage)),
+  retire: (id) => Effect.asVoid(retire(id, "Stopped")),
+  ended: sessionEnding
+}

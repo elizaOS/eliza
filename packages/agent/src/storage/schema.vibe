@@ -32,18 +32,18 @@ export const migrations: readonly Migration[] = [
   CREATE INDEX device_records_scope ON device_records (collection, table_name, created_at, key);` },
   { kind: "Additive", sql: `CREATE TABLE schedule_triggers (
     id text PRIMARY KEY,
-    revision bigint NOT NULL CHECK (revision > 0),
+    revision integer NOT NULL CHECK (revision > 0),
     data jsonb NOT NULL
   );
   CREATE TABLE schedule_trigger_runs (
     trigger_id text NOT NULL REFERENCES schedule_triggers (id) ON DELETE CASCADE,
-    seq bigint NOT NULL CHECK (seq > 0),
+    seq integer NOT NULL CHECK (seq > 0),
     data jsonb NOT NULL,
     PRIMARY KEY (trigger_id, seq)
   );
   CREATE TABLE schedule_tasks (
     task_id text PRIMARY KEY,
-    revision bigint NOT NULL CHECK (revision > 0),
+    revision integer NOT NULL CHECK (revision > 0),
     idempotency_key text UNIQUE CHECK (length(idempotency_key) > 0),
     owner_visible boolean NOT NULL,
     data jsonb NOT NULL

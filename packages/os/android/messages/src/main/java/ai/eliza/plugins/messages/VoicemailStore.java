@@ -238,27 +238,45 @@ public final class VoicemailStore {
   catch (RuntimeException unsent) { /* the next sync pushes the change */ }
  }
 
- /** Marks one voicemail heard, dirty for its source to sync; false when no such voicemail exists. */
- public static boolean markHeard(Context context, long id) {
+ /** Whether the stored, not deleted voicemail is marked heard; null when no such voicemail exists. */
+ private static Boolean heard(Context context, long id) {
+  try (Cursor cursor = context.getContentResolver().query(uri(id), new String[] { VoicemailContract.Voicemails.IS_READ }, VoicemailContract.Voicemails.DELETED + " = 0", null, null)) {
+   if (cursor == null || !cursor.moveToFirst()) return null;
+   return !cursor.isNull(0) && cursor.getInt(0) != 0;
+  }
+ }
+
+ /**
+  * Marks one voicemail heard, dirty for its source to sync: {@code "marked"} once the row reads back as heard,
+  * {@code "unconfirmed"} when the provider took the change but the readback does not show it, {@code "not-found"}
+  * when no such voicemail exists.
+  */
+ public static String markHeard(Context context, long id) {
   Boolean own = own(context, id);
-  if (own == null) return false;
+  if (own == null) return "not-found";
   ContentValues values = new ContentValues(); values.put(VoicemailContract.Voicemails.IS_READ, 1); values.put(VoicemailContract.Voicemails.DIRTY, 1);
-  boolean changed = context.getContentResolver().update(uri(id), values, null, null) > 0;
-  if (changed && own) requestSync(context);
-  return changed;
+  if (context.getContentResolver().update(uri(id), values, null, null) < 1) return "not-found";
+  if (own) requestSync(context);
+  return Boolean.TRUE.equals(heard(context, id)) ? "marked" : "unconfirmed";
  }
  /**
-  * Deletes one voicemail; false when no such voicemail exists. Another source's row is deleted through the provider,
-  * which keeps it as deleted for that source to sync. This app's own row is marked deleted and dirty (it leaves every
-  * list at once) and its client removes it from the carrier and then from the phone.
+  * Deletes one voicemail: {@code "deleted"} once it no longer reads back, {@code "unconfirmed"} when the provider
+  * took the change but the row still reads back, {@code "not-found"} when no such voicemail exists. Another source's
+  * row is deleted through the provider, which keeps it as deleted for that source to sync. This app's own row is
+  * marked deleted and dirty (it leaves every list at once) and its client removes it from the carrier and then from
+  * the phone.
   */
- public static boolean delete(Context context, long id) {
+ public static String delete(Context context, long id) {
   Boolean own = own(context, id);
-  if (own == null) return false;
-  if (!own) return context.getContentResolver().delete(uri(id), null, null) > 0;
-  ContentValues values = new ContentValues(); values.put(VoicemailContract.Voicemails.DELETED, 1); values.put(VoicemailContract.Voicemails.DIRTY, 1);
-  boolean changed = context.getContentResolver().update(uri(id), values, null, null) > 0;
-  if (changed) requestSync(context);
-  return changed;
+  if (own == null) return "not-found";
+  boolean changed;
+  if (!own) changed = context.getContentResolver().delete(uri(id), null, null) > 0;
+  else {
+   ContentValues values = new ContentValues(); values.put(VoicemailContract.Voicemails.DELETED, 1); values.put(VoicemailContract.Voicemails.DIRTY, 1);
+   changed = context.getContentResolver().update(uri(id), values, null, null) > 0;
+   if (changed) requestSync(context);
+  }
+  if (!changed) return "not-found";
+  return own(context, id) == null ? "deleted" : "unconfirmed";
  }
 }

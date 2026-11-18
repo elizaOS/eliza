@@ -262,7 +262,7 @@ public final class AgentPolicy {
       case RUNNING -> crash();
       case STOPPING -> switch (afterExit) {
         case STOP -> stopped();
-        case START -> startable() || hold == null ? begin(0, 0) : stopped();
+        case START -> begin(0, 0);
         case RESTART -> crash();
         case FAIL -> fail(afterExitCause, error);
       };

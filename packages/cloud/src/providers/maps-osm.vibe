@@ -2,8 +2,8 @@
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
 import { billingOf, upstreamBodyCap, upstreamTimeout } from "../../gen/cloud__services__maps.effect.vibe"
 import type { MapsSettings } from "../profile/profile.schema.ts"
-import type { Coordinate, Maneuver, MapsPlace, MapsPlaceResponse, MapsPlacesResponse, MapsRoutesResponse, PlaceDetailsRequest, ReverseRequest, RoutesRequest, TextSearchRequest } from "../services/maps.schema.ts"
-import type { MapsProvider, MapsReply } from "./maps.vibe"
+import type { Coordinate, Maneuver, MapsPlace, MapsPlaceResponse, MapsRoute, MapsPlacesResponse, MapsRoutesResponse, PlaceDetailsRequest, ReverseRequest, RoutesRequest, TextSearchRequest } from "../services/maps.schema.ts"
+import type { MapsProvider, MapsReply, ProviderRefusal } from "./maps.vibe"
 
 export type OsmSettings = Extract<typeof MapsSettings.Type, { readonly provider: "osm" }>
 
@@ -173,8 +173,9 @@ function routesOf(json: unknown, count: number): Parsed<ReadonlyArray<RouteCandi
   return { kind: "value", value: routes }
 }
 
-function unroutable(text: string): "NoRoute" | "UnsupportedRegion" | undefined {
-  const message = String(record(parseJson(text).kind === "value" ? (parseJson(text) as { value: unknown }).value : undefined)?.message ?? "").toLowerCase()
+function unroutableOf(text: string): "NoRoute" | "UnsupportedRegion" | undefined {
+  const parsed = parseJson(text)
+  const message = String((parsed.kind === "value" ? record(parsed.value)?.message : undefined) ?? "").toLowerCase()
   if (message.includes("out of bounds")) return "UnsupportedRegion"
   if (message.includes("cannot find point") || message.includes("connection between locations not found")) return "NoRoute"
   return undefined
@@ -193,7 +194,7 @@ function routeId(parts: string): string {
 effect function bodyOf(response: HttpClientResponse.HttpClientResponse): string!(BodyTooLarge | Unreachable) {
   const chunks: Uint8Array[] = []
   let size = 0
-  for try (const chunk of Stream.mapError(response.stream, (cause) => new Unreachable({ cause: cause._tag }))) {
+  for try (const chunk of Stream.mapError(response.stream, () => new Unreachable({ cause: "network" }))) {
     size += chunk.length
     if (size > upstreamBodyCap) break
     chunks.push(chunk)
@@ -211,10 +212,10 @@ effect function bodyOf(response: HttpClientResponse.HttpClientResponse): string!
 effect function call(request: HttpClientRequest.HttpClientRequest): Call!!HttpClient.HttpClient {
   const exchange = effect {
     const sent = HttpClientRequest.setHeaders(request, { accept: "application/json", "user-agent": userAgent })
-    const response = try Effect.provideService(HttpClient.execute(sent), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect (cause) => { throw new Unreachable({ cause: cause._tag }) }
+    const response = Effect.provideService(HttpClient.execute(sent), FetchHttpClient.RequestInit, { redirect: "manual" }) catch effect () => { throw new Unreachable({ cause: "network" }) }
     const billing = billingOf(response.status)
     if (billing === "CallNotBilled") {
-      try Stream.runHead(response.stream) catch () => undefined
+      Stream.runHead(response.stream) catch () => undefined
       return { kind: "rejected" } satisfies Call
     }
     const text = try bodyOf(response)
@@ -223,7 +224,7 @@ effect function call(request: HttpClientRequest.HttpClientRequest): Call!!HttpCl
     return parsed.kind === "invalid" ? { kind: "answered", status: response.status, json: undefined } satisfies Call : { kind: "answered", status: response.status, json: parsed.value } satisfies Call
   }
   const bounded = timeoutOrElse(exchange, { duration: upstreamTimeout, orElse: () => fail(new Unreachable({ cause: "timeout" })) })
-  return try bounded catch (failure): Call => match (failure) {
+  return bounded catch (failure): Call => match (failure) {
     when BodyTooLarge: { kind: "rejected" };
     when Unreachable: { kind: "lost", cause: failure.cause };
   }
@@ -248,13 +249,14 @@ export function osmMapsProvider(settings: OsmSettings): MapsProvider {
   const base = settings.baseUrl.replace(/\/+$/, "")
   const nominatim = (path: "search" | "reverse" | "lookup", params: Readonly<Record<string, string>>) =>
     HttpClientRequest.get(`${base}/nominatim/${path}`, { urlParams: { format: "jsonv2", extratags: "1", addressdetails: "1", ...params } })
+  const refused = (code: ProviderRefusal): MapsReply<never> => ({ kind: "refused", code, observedMicros: 0 })
 
-  effect function stamped(candidates: ReadonlyArray<Candidate>) {
+  effect function stamped(candidates: ReadonlyArray<Candidate>): ReadonlyArray<MapsPlace>!! {
     const fetchedAt = try Clock.currentTimeMillis
     return candidates.map((candidate) => ({ providerId: settings.provider, ...candidate, attribution: osmAttribution, fetchedAt }))
   }
 
-  effect function places(request: TextSearchRequest, addressesOnly: boolean) {
+  effect function places(request: TextSearchRequest, addressesOnly: boolean): MapsReply<MapsPlacesResponse>!!HttpClient.HttpClient {
     const near = request.near
     const outcome = try call(nominatim("search", {
       q: request.query,
@@ -267,20 +269,20 @@ export function osmMapsProvider(settings: OsmSettings): MapsProvider {
     return { ...found, value: { providerId: settings.provider, attribution: osmAttribution, places: try stamped(found.value) } }
   }
 
-  effect function single(outcome: Call, read: (json: unknown) => Parsed<Candidate | undefined>) {
+  effect function single(outcome: Call, read: (json: unknown) => Parsed<Candidate | undefined>): MapsReply<MapsPlaceResponse>!! {
     const found = reply(outcome, read, (candidate) => candidate)
     if (found.kind !== "answered") return found
-    const stampedPlaces = try stamped(found.value === undefined ? [] : [found.value])
-    return { ...found, value: { providerId: settings.provider, attribution: osmAttribution, place: stampedPlaces[0] ?? null } }
+    const [place] = try stamped(found.value === undefined ? [] : [found.value])
+    return { ...found, value: { providerId: settings.provider, attribution: osmAttribution, place: place ?? null } }
   }
 
-  effect function reverse(request: ReverseRequest) {
+  effect function reverse(request: ReverseRequest): MapsReply<MapsPlaceResponse>!!HttpClient.HttpClient {
     const outcome = try call(nominatim("reverse", { lat: String(request.coordinate.latitude), lon: String(request.coordinate.longitude), zoom: "18" }))
     return try single(outcome, reverseOf)
   }
 
-  effect function details(request: PlaceDetailsRequest) {
-    if (!osmId.test(request.id)) return { kind: "answered", value: { providerId: settings.provider, attribution: osmAttribution, place: null }, observedMicros: 0 } satisfies MapsReply<unknown>
+  effect function details(request: PlaceDetailsRequest): MapsReply<MapsPlaceResponse>!!HttpClient.HttpClient {
+    if (!osmId.test(request.id)) return { kind: "answered", value: { providerId: settings.provider, attribution: osmAttribution, place: null }, observedMicros: 0 }
     const outcome = try call(nominatim("lookup", { osm_ids: request.id }))
     return try single(outcome, (json) => {
       const found = candidatesOf(json, true)
@@ -288,8 +290,8 @@ export function osmMapsProvider(settings: OsmSettings): MapsProvider {
     })
   }
 
-  effect function routes(request: RoutesRequest) {
-    if (request.mode === "transit") return { kind: "refused", code: "UnsupportedMode", observedMicros: 0 } satisfies MapsReply<unknown>
+  effect function routes(request: RoutesRequest): MapsReply<MapsRoutesResponse>!!HttpClient.HttpClient {
+    if (request.mode === "transit") return refused("UnsupportedMode")
     const profile = graphHopperProfiles[request.mode]
     const count = request.alternatives === true ? 3 : 1
     const payload = {
@@ -301,15 +303,14 @@ export function osmMapsProvider(settings: OsmSettings): MapsProvider {
       ...(count > 1 ? { algorithm: "alternative_route", "alternative_route.max_paths": count } : {}),
     }
     const outcome = try call(HttpClientRequest.bodyText(HttpClientRequest.post(`${base}/graphhopper/route`), JSON.stringify(payload), "application/json"))
-    if (outcome.kind === "unclear" && outcome.status === 400) {
-      const code = unroutable(outcome.text)
-      if (code !== undefined) return { kind: "refused", code, observedMicros: 0 } satisfies MapsReply<unknown>
-    }
+    const unroutable = outcome.kind === "unclear" && outcome.status === 400 ? unroutableOf(outcome.text) : undefined
+    if (unroutable !== undefined) return refused(unroutable)
     const found = reply(outcome, (json) => routesOf(json, count), (candidates) => candidates)
     if (found.kind !== "answered") return found
-    if (found.value.length === 0) return { kind: "refused", code: "NoRoute", observedMicros: 0 } satisfies MapsReply<unknown>
+    const [first, ...rest] = found.value
+    if (first === undefined) return refused("NoRoute")
     const fetchedAt = try Clock.currentTimeMillis
-    const value = found.value.map((candidate, index) => ({
+    const route = (candidate: RouteCandidate, index: number): MapsRoute => ({
       providerId: settings.provider,
       id: routeId(JSON.stringify({ revision: settings.datasetRevision, profile, index, from: request.from, to: request.to, candidate })),
       from: request.from,
@@ -318,9 +319,9 @@ export function osmMapsProvider(settings: OsmSettings): MapsProvider {
       ...candidate,
       attribution: osmAttribution,
       fetchedAt,
-      traffic: "none" as const,
-    }))
-    return { ...found, value: { providerId: settings.provider, attribution: osmAttribution, routes: value } }
+      traffic: "none",
+    })
+    return { ...found, value: { providerId: settings.provider, attribution: osmAttribution, routes: [route(first, 0), ...rest.map((candidate, index) => route(candidate, index + 1))] } }
   }
 
   return { geocode: (request) => places(request, true), search: (request) => places(request, false), reverse, details, routes }

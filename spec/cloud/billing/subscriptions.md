@@ -258,9 +258,10 @@ pure def sometimesCancelRunning(s: Subscription): bool = holdsCommand(s, CancelC
 
 ### The cancel control offers cancel or undo exactly when that command could start now
 
-The snapshot's `control` (section 5.4 of the plan) is this value: `offer`
-is rendered as `action` (`cancel`, `undo` or `none`) and `expectedRevision`
-as `expectedSubscriptionRevision`.
+The billing snapshot's `subscription.control`
+(`spec/cloud/billing/entitlements.md`) is this value: `offer` is rendered as
+`action` (`cancel`, `undo` or `none`) and `expectedRevision` as
+`expectedSubscriptionRevision`.
 
 ```quint
 type ControlAction = CancelAction | UndoAction | NoAction
@@ -279,9 +280,10 @@ pure def sometimesUndoOffered(s: Subscription): bool = controlOf(s).offer == Und
 
 ### Invoices are shown only when they belong to the organization's pinned customer
 
-List and detail answer the shapes of section 5.4 of the plan (`amountDueCents`,
-`amountPaidCents`, `hostedInvoiceUrl`, and for detail `lines`, `periodStart`,
-`periodEnd`, `pdfUrl`); an invoice of any other customer is `404 not_found`.
+The list answers `{invoices: [{id, number, date, status, amountDueCents,
+amountPaidCents, currency, hostedInvoiceUrl}], nextCursor}`; the detail adds
+`lines`, `periodStart`, `periodEnd` and `pdfUrl`. An invoice of any other
+customer, or any invoice before a customer is pinned, is `404 not_found`.
 
 ```quint
 pure def invoiceVisible(s: Subscription, invoiceCustomerId: str): bool = s.customer != NoCustomer and customerIdOf(s) == invoiceCustomerId

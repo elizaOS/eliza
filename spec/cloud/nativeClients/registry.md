@@ -56,7 +56,7 @@ pure def registrationValid(r: Registration): bool =
   and r.credentialTtl >= minCredentialTtl and r.credentialTtl <= maxCredentialTtl
   and returnsOf(r).every(u => returnsOf(r).select(v => v == u).length() == 1)
 pure val rValues: Set[Registration] = {
-  val one: Registration = { clientId: "app.one", environment: Production, displayName: "One", signInReturn: { origin: "https://www.one", path: "/one/auth" }, billingReturn: { origin: "https://www.one", path: "/one/billing" }, connectReturn: ConnectsTo({ url: { origin: "https://www.one", path: "/one/connect" } }), androidPackage: "app.one", certFingerprints: List("AA"), credentialTtl: 2592000000, nativeGoogle: true, enabled: true }
+  val one: Registration = { clientId: "app.one", environment: Production, displayName: "One", signInReturn: { origin: "https://www.one", path: "/one/auth" }, billingReturn: { origin: "https://www.one", path: "/one/billing" }, connectReturn: ConnectsTo({ url: { origin: "https://www.one", path: "/one/connect" } }), androidPackage: "app.one", certFingerprints: List("AA"), credentialTtl: defaultCredentialTtl, nativeGoogle: true, enabled: true }
   val two: Registration = { ...one, clientId: "app.two", androidPackage: "app.two", signInReturn: { origin: "https://two.example", path: "/auth" }, billingReturn: { origin: "https://two.example", path: "/billing" }, connectReturn: NoConnectReturn, certFingerprints: List("BB", "CC"), nativeGoogle: false }
   Set(one, two, { ...two, enabled: false }, { ...one, environment: Staging }, { ...one, credentialTtl: 1000 }, { ...one, billingReturn: one.signInReturn })
 }
@@ -75,7 +75,7 @@ pure def sharesNothing(a: Registration, b: Registration): bool =
 pure def registryValid(registry: List[Registration], served: Environment): bool =
   registry.every(a => a.environment == served and registrationValid(a) and registry.select(b => not(sharesNothing(a, b))).length() == 1)
 pure val registryValues: Set[List[Registration]] = {
-  val one: Registration = { clientId: "app.one", environment: Production, displayName: "One", signInReturn: { origin: "https://www.one", path: "/one/auth" }, billingReturn: { origin: "https://www.one", path: "/one/billing" }, connectReturn: ConnectsTo({ url: { origin: "https://www.one", path: "/one/connect" } }), androidPackage: "app.one", certFingerprints: List("AA"), credentialTtl: 2592000000, nativeGoogle: true, enabled: true }
+  val one: Registration = { clientId: "app.one", environment: Production, displayName: "One", signInReturn: { origin: "https://www.one", path: "/one/auth" }, billingReturn: { origin: "https://www.one", path: "/one/billing" }, connectReturn: ConnectsTo({ url: { origin: "https://www.one", path: "/one/connect" } }), androidPackage: "app.one", certFingerprints: List("AA"), credentialTtl: defaultCredentialTtl, nativeGoogle: true, enabled: true }
   val two: Registration = { ...one, clientId: "app.two", androidPackage: "app.two", signInReturn: { origin: "https://two.example", path: "/auth" }, billingReturn: { origin: "https://two.example", path: "/billing" }, connectReturn: NoConnectReturn, certFingerprints: List("BB", "CC"), nativeGoogle: false, enabled: false }
   Set(List(), List(one), List(one, two), List({ ...one, environment: Staging }), List(one, one), List(one, { ...two, androidPackage: "app.one" }), List(one, { ...two, signInReturn: one.billingReturn }))
 }

@@ -34,6 +34,7 @@ export const secrets: Readonly<Record<string, string>> = {
 
 export function environmentProfile(fakeUrl: string, api: string, web: string) {
   return {
+    name: "Test Cloud",
     api,
     web,
     entitlementAudience: "cloud-subscription",

@@ -4,9 +4,10 @@ import { routes as accounts } from "../../identity/accounts.vibe"
 import { routes as sessions, sweeps as sessionSweeps } from "../../identity/sessions.vibe"
 import { routes as secondFactor } from "../../identity/second-factor.vibe"
 import { routes as methods } from "../../identity/methods.vibe"
+import { routes as codeChallenges, sweeps as codeSweeps } from "../../identity/code-challenges.vibe"
 import { routes as delivery } from "../../providers/delivery.vibe"
 
 export const area: Area = {
-  routes: [...accounts, ...sessions, ...secondFactor, ...methods, ...delivery],
-  sweeps: [...sessionSweeps]
+  routes: [...accounts, ...sessions, ...secondFactor, ...methods, ...codeChallenges, ...delivery],
+  sweeps: [...sessionSweeps, ...codeSweeps]
 }

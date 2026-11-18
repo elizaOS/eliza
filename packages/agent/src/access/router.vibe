@@ -13,6 +13,7 @@ module node {
     readonly epoch: number
     readonly instanceId: string
     readonly routes: readonly LocalRoute[]
+    readonly health?: LocalRoute["handler"]
   }
 
   export type AgentRouter = LocalRouter & {
@@ -47,10 +48,10 @@ module node {
     }
   }
 
-  export function createRouter({ token, epoch, instanceId, routes }: RouterOptions): AgentRouter {
+  export function createRouter({ token, epoch, instanceId, routes, health }: RouterOptions): AgentRouter {
     const builtin: RouteOrigin = { tag: "Builtin" }
     const bindings: Binding[] = [
-      { route: { method: "GET", path: "/api/health" }, origin: builtin, handle: () => json(200, { ready: true, runtime: "ok", agentState: "running", epoch }) },
+      { route: { method: "GET", path: "/api/health" }, origin: builtin, handle: health ?? (() => json(200, { ready: true, runtime: "ok", agentState: "running", epoch })) },
       { route: authStatusRoute, origin: builtin, handle: (_input, caller) => authStatusAnswer(caller, instanceId) },
       ...routes.filter((route) => !publicPath(route.path)).map((route) => ({ route: listed(route), origin: declared(route), handle: route.handler })),
     ]

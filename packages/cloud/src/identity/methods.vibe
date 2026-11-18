@@ -131,7 +131,7 @@ effect function holderOf(tx: Tx, caller: MethodsCaller, entry: Entry) {
 
 effect function useUpOnRefusal(caller: MethodsCaller, reviewId: string, failure: Refused, now: number) {
   const store = try Store
-  try (store.transaction((tx) => stepReview(tx, caller.userId, { type: "link", reviewId, now, proof: { tag: "Unproven", refusal: failure.refusal }, holder: "NobodyHolds", kindHeld: false })) catch () => undefined)
+  store.transaction((tx) => stepReview(tx, caller.userId, { type: "link", reviewId, now, proof: { tag: "Unproven", refusal: failure.refusal }, holder: "NobodyHolds", kindHeld: false })) catch () => undefined
 }
 
 export effect function attemptLink(caller: MethodsCaller, reviewId: string, entry: Entry, proof: LinkProof, now: number, provenEmail?: string) {
@@ -200,7 +200,7 @@ export const routes: ReadonlyArray<Route> = [
       const body = try jsonBody(context, PhoneVerify)
       try requireFreshReview(caller.userId, body.reviewId, context.now)
       const verified = verifyLinkCode({ userId: caller.userId, phone: body.phone, code: body.code, clientId: body.clientId, codeVerifier: body.codeVerifier, address: clientAddress(context), now: context.now })
-      const { proof, value } = try (map(verified, provenWith) catch effect (failure) => match (failure) { when Refused: unproven(failure); default: throw failure; })
+      const { proof, value } = map(verified, provenWith) catch effect (failure) => match (failure) { when Refused: unproven(failure); default: throw failure; }
       const entry: Entry = { kind: "phone", subject: value?.phone ?? body.phone }
       return try answered(try attemptLink(caller, body.reviewId, entry, proof, context.now), entry.kind)
     }
@@ -224,7 +224,7 @@ export const routes: ReadonlyArray<Route> = [
       const body = try jsonBody(context, GoogleLink)
       try requireFreshReview(caller.userId, body.reviewId, context.now)
       const verified = googleLinkProof({ userId: caller.userId, challengeId: body.challengeId, idToken: body.idToken, codeVerifier: body.codeVerifier, now: context.now })
-      const { proof, value } = try (map(verified, provenWith) catch effect (failure) => match (failure) { when Refused: unproven(failure); default: throw failure; })
+      const { proof, value } = map(verified, provenWith) catch effect (failure) => match (failure) { when Refused: unproven(failure); default: throw failure; }
       const entry: Entry = { kind: "google", subject: value?.subject ?? "" }
       return try answered(try attemptLink(caller, body.reviewId, entry, proof, context.now, value?.provenEmail), entry.kind)
     }

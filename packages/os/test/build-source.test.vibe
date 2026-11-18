@@ -1,0 +1,155 @@
+// spec/os/build/sourceIntegrity.md, "Story: Build only from the committed tree I pinned"; spec/os/build/sourceIntegrity.md, "Story: Export pinned files without my local edits"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import {
+  ExportRefused,
+  WorkspaceRefused,
+  exportCommittedSources,
+  prepareCommittedSource,
+  verifyCommittedWorkspace,
+  type WorkspaceAllowances,
+} from "../src/build/source-integrity.vibe"
+import { commitTree, git, readTree, scratch, scratchRepo, writeTree, type Tree } from "./support/scratch.vibe"
+
+const PINNED: Tree = {
+  "package.json": JSON.stringify({ name: "pinned", workspaces: ["packages/*"] }),
+  "turbo.json": JSON.stringify({ tasks: { build: { outputs: ["dist/**", "*.tgz"] }, "other#test": { outputs: ["coverage/**"] } } }),
+  ".gitignore": "secret.js\n",
+  "packages/app/package.json": JSON.stringify({ name: "app" }),
+  "packages/app/index.js": "export const answer = 42\n",
+  "packages/app/run.sh": { kind: "executable", content: "#!/bin/sh\necho run\n" },
+  "packages/app/current": { kind: "symlink", target: "index.js" },
+  "README.md": "pinned\n",
+}
+
+const ALLOWANCES: WorkspaceAllowances = { generatedFiles: [".source.json"], generatedDirectories: ["out"] }
+
+effect function findingOf(directory: string, commit: string, allowances: WorkspaceAllowances = ALLOWANCES) {
+  return (effect {
+    try verifyCommittedWorkspace(directory, commit, allowances)
+    return "Exact"
+  } catch (error) => match (error) {
+    when WorkspaceRefused: `${error.finding}${error.path === undefined ? "" : ` ${error.path}`}`;
+    default: error._tag;
+  })
+}
+
+effect function changedRepo<E, R>(prefix: string, change: (root: string) => void!E!R) {
+  const repo = try scratchRepo(prefix, PINNED)
+  try change(repo.root)
+  return try findingOf(repo.root, repo.commit)
+}
+
+it.effect("Build only from the committed tree I pinned: the verifier admits the pin and refuses every kind of change", effect () => {
+  provide NodeServices.layer {
+    const files = try FileSystem.FileSystem
+    const repo = try scratchRepo("pinned", PINNED)
+    try writeTree(repo.root, {
+      ".source.json": "{}",
+      "out/bundle.js": "built",
+      "node_modules/dep/index.js": "dep",
+      "packages/app/node_modules/dep/index.js": "dep",
+      "packages/app/dist/index.js": "built",
+      "packages/app/.turbo/turbo-build.log": "log",
+      ".turbo/cache/entry": "cache",
+    })
+    const admitted = try verifyCommittedWorkspace(repo.root, repo.commit, ALLOWANCES)
+
+    const edited = try changedRepo("edited", effect (root) => {
+      try git(root, ["update-index", "--assume-unchanged", "README.md"])
+      try writeTree(root, { "README.md": "edited\n" })
+    })
+    const linked = try changedRepo("linked", (root) => writeTree(root, { "README.md": { kind: "symlink", target: "packages/app/index.js" } }))
+    const executable = try changedRepo("executable", (root) => files.chmod(`${root}/README.md`, 0o755))
+    const cleared = try changedRepo("cleared", (root) => files.chmod(`${root}/packages/app/run.sh`, 0o644))
+    const ignored = try changedRepo("ignored", (root) => writeTree(root, { "secret.js": "injected" }))
+    const sibling = try changedRepo("sibling", (root) => writeTree(root, { "out-extra/bundle.js": "injected" }))
+    const undeclared = try changedRepo("undeclared", (root) => writeTree(root, { "packages/app/coverage/report.js": "injected" }))
+    const unsafe = try findingOf(repo.root, repo.commit, { generatedDirectories: ["out/../packages"] })
+    const later = try commitTree(repo.root, { "README.md": "moved on\n" }, "Move past the pin")
+    const moved = try findingOf(repo.root, repo.commit)
+
+    try Effect.try(() => {
+      assert.deepStrictEqual(admitted, { commit: repo.commit })
+      assert.deepStrictEqual(
+        { edited, linked, executable, cleared, ignored, sibling, undeclared, unsafe, moved },
+        {
+          edited: "TrackedChanged README.md",
+          linked: "TrackedChanged README.md",
+          executable: "TrackedChanged README.md",
+          cleared: "TrackedChanged packages/app/run.sh",
+          ignored: "UnexpectedExtra secret.js",
+          sibling: "UnexpectedExtra out-extra/bundle.js",
+          undeclared: "UnexpectedExtra packages/app/coverage/report.js",
+          unsafe: "UnsafeAllowance",
+          moved: "Exact",
+        },
+      )
+      assert.notStrictEqual(later, repo.commit)
+    })
+  }
+})
+
+it.effect("Build only from the committed tree I pinned: a cache seeds the source, a checkout replaces an unusable one, and staging is verified", effect () => {
+  provide NodeServices.layer {
+    const path = try Path.Path
+    const upstream = try scratchRepo("upstream", PINNED)
+    const cache = try scratchRepo("cache", PINNED)
+    const stale = try scratchRepo("stale", PINNED)
+    try commitTree(stale.root, { "README.md": "newer\n" }, "Move the cache past the pin")
+    const work = try scratch("prepared")
+    const stage = (output: string) => effect (directory: string) => {
+      try writeTree(directory, { [output]: "staged" })
+      return output
+    }
+
+    const seeded = try prepareCommittedSource({ repository: upstream.root, cache: cache.root, destination: path.join(work, "seeded"), pin: upstream.commit, allowances: ALLOWANCES, stage: stage("out/agent.js") })
+    const fetched = try prepareCommittedSource({ repository: upstream.root, cache: stale.root, destination: path.join(work, "fetched"), pin: upstream.commit, allowances: ALLOWANCES, stage: stage("out/agent.js") })
+    const strayStage = (prepareCommittedSource({ repository: upstream.root, destination: path.join(work, "stray"), pin: upstream.commit, allowances: ALLOWANCES, stage: stage("outside.js") }) catch (error) => error._tag === "WorkspaceRefused" ? `${error.finding} ${error.path}` : error._tag)
+    try writeTree(cache.root, { "packages/app/index.js": "export const answer = 0\n" })
+    const drifted = (prepareCommittedSource({ repository: upstream.root, cache: cache.root, destination: path.join(work, "drifted"), pin: upstream.commit, allowances: ALLOWANCES, stage: stage("out/agent.js") }) catch (error) => error._tag)
+    const seededTree = try readTree(path.join(work, "seeded"))
+    const seededHead = try git(path.join(work, "seeded"), ["rev-parse", "HEAD"])
+
+    try Effect.try(() => {
+      assert.deepStrictEqual(seeded, { commit: upstream.commit, origin: "FromCache", staged: "out/agent.js" })
+      assert.deepStrictEqual(fetched, { commit: upstream.commit, origin: "FromCheckout", staged: "out/agent.js" })
+      assert.strictEqual(strayStage, "UnexpectedExtra outside.js")
+      assert.strictEqual(drifted, "CacheRefused")
+      assert.strictEqual(seededHead, upstream.commit)
+      assert.strictEqual(seededTree["packages/app/index.js"], "export const answer = 42\n")
+      assert.strictEqual(seededTree["out/agent.js"], "staged")
+    })
+  }
+})
+
+it.effect("Export pinned files without my local edits", effect () => {
+  provide NodeServices.layer {
+    const path = try Path.Path
+    const repo = try scratchRepo("export", PINNED)
+    try writeTree(repo.root, { "packages/app/index.js": "export const answer = 0\n", "packages/app/local.js": "uncommitted" })
+    const into = path.join(try scratch("exported"), "bundle")
+    const exported = try exportCommittedSources(repo.root, repo.commit, into, ["packages/app", "README.md"])
+    const tree = try readTree(into)
+    const refusal = effect (paths: readonly string[], source: string = repo.root) => {
+      return (effect {
+        try exportCommittedSources(source, repo.commit, path.join(try scratch("refused"), "bundle"), paths)
+        return "Exported"
+      } catch (error) => match (error) {
+        when ExportRefused: "ExportRefused";
+        default: error._tag;
+      })
+    }
+    const escaping = try refusal(["../outside"])
+    const missing = try refusal(["packages/absent"])
+    const none = try refusal([])
+    const nested = try refusal(["README.md"], path.join(repo.root, "packages"))
+
+    try Effect.try(() => {
+      assert.deepStrictEqual(exported, { commit: repo.commit })
+      assert.deepStrictEqual(Object.keys(tree).sort(), ["README.md", "packages/app/index.js", "packages/app/package.json", "packages/app/run.sh"])
+      assert.strictEqual(tree["packages/app/index.js"], "export const answer = 42\n")
+      assert.deepStrictEqual({ escaping, missing, none, nested }, { escaping: "ExportRefused", missing: "ExportRefused", none: "ExportRefused", nested: "ExportRefused" })
+    })
+  }
+})

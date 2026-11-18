@@ -96,7 +96,7 @@ type NativeRequest = NoNatives | NativeFor({ abi: R::Abi, install: NativeInstall
 type ImageTarget = { soongOnly: bool, soongPatchAdmitted: bool }
 type StagingRefusal = DescriptorInvalid | SelfSelectedOutsideDevelopment | LauncherDigestMismatch | NotTheLauncherPackage | BuildNotAllowed | SignerNotTheDescriptors
   | PermissionUndeclared | CompanionRefused | RuntimeNativesNotStaged | NoNativesForAbi | RuntimeMissingForAbi | NativeEntryInvalid | MakeRulesOnSoongOnlyTarget
-  | SoongPatchNotAdmitted | WriteFailed | OutputNotPublished
+  | SoongPatchNotAdmitted
 type StagingAdmission = StagingAdmitted | StagingRefused({ reason: StagingRefusal })
 pure def carriesRuntime(a: ApkObservation): bool = a.natives.some(n => n.name == R::nodeLibraryName)
 pure def nativesFor(a: ApkObservation, abi: R::Abi): List[NativeLibrary] = a.natives.select(n => n.abi == abi)
@@ -158,16 +158,13 @@ pure val callValues = {
 }
 pure def lawAdmittedLauncherIsTheDescriptors(call: StagingCall): bool = stagingAdmission(call) == StagingAdmitted implies
   (digestsMatch(call.apk.sha256, call.descriptor.apkSha256) and isDigest(call.descriptor.certificate) and call.apk.signer == OneSigner({ certificate: call.descriptor.certificate }))
-pure def lawAdmittedPermissionsAreReviewedAndDeclared(call: StagingCall): bool = stagingAdmission(call) == StagingAdmitted implies
-  (call.descriptor.privilegedPermissions.every(x => reviewedPrivilegedPermissions.contains(x) and call.apk.declaredPermissions.includes(x) and not(call.descriptor.defaultPermissions.includes(x)))
-    and call.descriptor.defaultPermissions.length() <= 32 and call.descriptor.defaultPermissions.every(x => call.apk.declaredPermissions.includes(x)))
 pure def lawProductionTakesOnlyReviewedReleaseBuilds(call: StagingCall): bool = (stagingAdmission(call) == StagingAdmitted and call.stagingMode == StageProduction) implies
   (call.source == ReviewedDescriptor and call.apk.buildType == ReleaseBuild and call.companions.every(x => x.apk.buildType == ReleaseBuild))
 pure def lawRuntimeApkStagesItsNatives(call: StagingCall): bool = (stagingAdmission(call) == StagingAdmitted and carriesRuntime(call.apk)) implies stagesRuntime(call.nativeRequest, call.apk)
 pure def lawSoongOnlyTargetNeverUsesMakeRules(call: StagingCall): bool = (stagingAdmission(call) == StagingAdmitted and call.target.soongOnly) implies not(usesMakeRules(call.nativeRequest))
 ```
 
-### The overlay places the launcher in priv-app with its allow-list and the agent socket policy only when it names privileged permissions
+### The overlay grants only declared permissions, and places the launcher in priv-app with its allow-list and the agent socket policy only when it names privileged permissions
 
 The launcher and its companions go to the descriptor's partition. First-boot
 grants are written `fixed="false"`, so the owner can revoke them; companions
@@ -194,6 +191,7 @@ pure def renderOverlay(call: StagingCall): RenderedOverlay = { partition: call.d
 pure def lawAdmittedOverlayAllowsOnlyReviewedPrivilege(call: StagingCall): bool = {
   val overlay = renderOverlay(call)
   stagingAdmission(call) == StagingAdmitted implies (overlay.privappAllowList.every(x => reviewedPrivilegedPermissions.contains(x) and not(overlay.revocableGrants.includes(x)))
+    and overlay.revocableGrants.length() <= 32 and overlay.revocableGrants.concat(overlay.privappAllowList).every(x => call.apk.declaredPermissions.includes(x))
     and ((overlay.directory == PrivApp) iff overlay.agentSocketPolicy) and ((overlay.directory == PrivApp) iff overlay.privappAllowList.length() > 0)
     and overlay.natives.every(x => x.directory == overlay.directory and (x.mode == R::Executable implies x.name == R::nodeLibraryName)))
 }
@@ -203,12 +201,13 @@ pure def lawAdmittedOverlayAllowsOnlyReviewedPrivilege(call: StagingCall): bool 
 
 The call writes its private directory (`P::create`, `P::write`) only after
 admission, and publishes it by `P::rename`; an existing output makes the
-rename fail and stays untouched. Cleanup removes the private directory
+rename fail and stays untouched. A failed write (`WriteFailed`) or rename
+(`OutputNotPublished`) ends the call like a refusal. Cleanup removes the private directory
 whatever happened, and the caller's answer is the publication receipt.
 `AdmissionOnly` stops at `Admitted` and writes nothing.
 
 ```quint
-type StagePhase = Pending | Admitted | Rendered | Published | Refused({ reason: StagingRefusal })
+type StagePhase = Pending | Admitted | Rendered | Published | Refused({ reason: StagingRefusal }) | WriteFailed | OutputNotPublished
 type SoongConversion = NoConversion | ConversionPending | Converted | ConversionRefused
 type LauncherStaging = { phase: StagePhase, call: StagingCall, publication: P::Publication, conversion: SoongConversion }
 pure val noCall: StagingCall = { descriptor: { schemaVersion: 0, brandValid: false, moduleNameValid: false, moduleName: "", packageName: "", apkSha256: NotADigest, certificate: NotADigest,
@@ -216,18 +215,18 @@ pure val noCall: StagingCall = { descriptor: { schemaVersion: 0, brandValid: fal
   companions: List(), nativeRequest: NoNatives, target: { soongOnly: false, soongPatchAdmitted: false }, mode: AdmissionOnly, outputExists: false }
 pure val initial: LauncherStaging = { phase: Pending, call: noCall, publication: P::initial, conversion: NoConversion }
 pure def deferredSoong(nativeRequest: NativeRequest): bool = match nativeRequest { | NativeFor(n) => n.install == SoongDeferred | NoNatives => false }
-pure def refusedAtAdmission(phase: StagePhase): bool = match phase { | Refused(r) => r.reason != WriteFailed and r.reason != OutputNotPublished | _ => false }
+pure def refusedAtAdmission(phase: StagePhase): bool = match phase { | Refused(r) => true | _ => false }
 pure def canAdmit(s: LauncherStaging): bool = s.phase == Pending
 pure def admit(s: LauncherStaging, call: StagingCall): LauncherStaging = {
   val verdict = stagingAdmission(call)
   match verdict { | StagingRefused(r) => { ...s, call: call, phase: Refused({ reason: r.reason }) } | StagingAdmitted => { ...s, call: call, phase: Admitted } }
 }
 pure def canRender(s: LauncherStaging): bool = s.phase == Admitted and s.call.mode == StageOverlay
-pure def render(s: LauncherStaging, ok: bool): LauncherStaging = { ...s, phase: if (ok) Rendered else Refused({ reason: WriteFailed }), publication: P::write(P::create(s.publication, true), ok) }
+pure def render(s: LauncherStaging, ok: bool): LauncherStaging = { ...s, phase: if (ok) Rendered else WriteFailed, publication: P::write(P::create(s.publication, true), ok) }
 pure def canPublish(s: LauncherStaging): bool = s.phase == Rendered
 pure def publish(s: LauncherStaging, ok: bool): LauncherStaging = {
   val renamed = P::rename(s.publication, ok and not(s.call.outputExists))
-  { ...s, publication: renamed, phase: if (renamed.published) Published else Refused({ reason: OutputNotPublished }),
+  { ...s, publication: renamed, phase: if (renamed.published) Published else OutputNotPublished,
     conversion: if (renamed.published and deferredSoong(s.call.nativeRequest)) ConversionPending else NoConversion }
 }
 pure def canCleanStaging(s: LauncherStaging): bool = P::canCleanup(s.publication)
@@ -242,8 +241,8 @@ pure def alwaysReceiptIsHonest(s: LauncherStaging): bool = P::alwaysSuccessMeans
 pure def stepPublishedOverlayIsNeverReplaced(before: LauncherStaging, after: LauncherStaging): bool = before.phase == Published implies (after.phase == Published and after.call == before.call)
 pure def sometimesPublishedWithSuccessReceipt(s: LauncherStaging): bool = s.phase == Published and s.publication.receipt == P::SuccessReceipt
 pure def sometimesPrivilegedRuntimeLauncherPublished(s: LauncherStaging): bool = s.phase == Published and appDirectory(s.call.descriptor) == PrivApp and carriesRuntime(s.call.apk)
-pure def sometimesExistingOutputRefusedAndCleaned(s: LauncherStaging): bool = s.phase == Refused({ reason: OutputNotPublished }) and s.call.outputExists and s.publication.phase == P::Settled
-pure def sometimesWriteFailureCleaned(s: LauncherStaging): bool = s.phase == Refused({ reason: WriteFailed }) and s.publication.receipt == P::FailureReceipt
+pure def sometimesExistingOutputRefusedAndCleaned(s: LauncherStaging): bool = s.phase == OutputNotPublished and s.call.outputExists and s.publication.phase == P::Settled
+pure def sometimesWriteFailureCleaned(s: LauncherStaging): bool = s.phase == WriteFailed and s.publication.receipt == P::FailureReceipt
 pure def sometimesCompanionPublished(s: LauncherStaging): bool = s.phase == Published and s.call.companions.length() > 0
 pure def sometimesAdmissionOnlyChecked(s: LauncherStaging): bool = s.phase == Admitted and s.call.mode == AdmissionOnly
 pure def sometimesRefusedAtAdmission(s: LauncherStaging): bool = refusedAtAdmission(s.phase)
@@ -289,7 +288,7 @@ pure val fair_render = "weak"
 pure val fair_publish = "weak"
 pure val fair_cleanStaging = "weak"
 pure def callSettled(s: LauncherStaging): bool = (s.phase == Admitted and s.call.mode == AdmissionOnly)
-  or ((s.phase == Published or refusedAtAdmission(s.phase) or s.phase == Refused({ reason: WriteFailed }) or s.phase == Refused({ reason: OutputNotPublished }))
+  or ((s.phase == Published or refusedAtAdmission(s.phase) or s.phase == WriteFailed or s.phase == OutputNotPublished)
     and (s.publication.phase == P::Queued or s.publication.phase == P::Settled))
 pure def leadsToCallSettled(s: LauncherStaging, later: LauncherStaging): bool = callSettled(later)
 ```

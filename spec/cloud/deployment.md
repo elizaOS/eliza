@@ -252,10 +252,11 @@ pure def lawNoCredentialsAcrossEnvironments(p: Profile, environment: Environment
 
 `GET /api/v1/auth/methods` answers `{email, sms, google}`. Email needs a mail
 adapter, SMS an SMS adapter, Google configured Google clients; an accepted
-profile offers at least one. A route of a method not offered is refused for
-good: Google as `503 provider_unavailable` with reason `google_not_configured`
-(the registry's config read says the same), email and SMS as
-`404 capability_unavailable`.
+profile configures at least one. A host advertises a configured method only
+when it mounts that method’s start and verification routes. A route of a
+method not offered is refused for good. Google returns
+`503 provider_unavailable` with reason `google_not_configured` (the registry's
+config read says the same). Email and SMS return `404 capability_unavailable`.
 
 ```quint
 type MethodsAnswer = { email: bool, sms: bool, google: bool }
@@ -265,6 +266,23 @@ pure def methodsAnswer(setup: SignInSetup): MethodsAnswer = { email: methodOffer
 pure def lawAnAcceptedProfileOffersSomeMethod(p: Profile, environment: Environment): bool = {
   val answer = methodsAnswer(rowOf(p, environment).signIn)
   profileAccepted(p) implies (answer.email or answer.sms or answer.google)
+}
+pure def mountedMethodsAnswer(setup: SignInSetup, mounted: MethodsAnswer): MethodsAnswer = {
+  email: mounted.email and methodOffered(setup, EmailSignIn),
+  sms: mounted.sms and methodOffered(setup, PhoneSignIn),
+  google: mounted.google and methodOffered(setup, GoogleSignIn)
+}
+pure val deliverySetupValues: Set[SignInSetup] = Set(
+  { mail: HttpsDelivery, sms: NoDelivery, google: GoogleOff },
+  { mail: HttpsDelivery, sms: HttpsDelivery, google: GoogleOn }
+)
+pure val mountedValues: Set[MethodsAnswer] = Set(
+  { email: false, sms: false, google: false },
+  { email: true, sms: true, google: true }
+)
+pure def lawUnservedMethodsAreNotOffered(deliverySetup: SignInSetup, mounted: MethodsAnswer): bool = {
+  val offered = mountedMethodsAnswer(deliverySetup, mounted)
+  (offered.email implies mounted.email) and (offered.sms implies mounted.sms) and (offered.google implies mounted.google)
 }
 pure def methodRefusal(m: SignInMethod): Refusal = if (m == GoogleSignIn) refuseFor(ProviderUnavailable, GoogleNotConfigured) else capabilityRefusal
 pure def lawAMissingMethodIsRefusedForGood(m: SignInMethod): bool = wellFormed(methodRefusal(m)) and not(retryableOf(methodRefusal(m)))
