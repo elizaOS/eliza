@@ -33,10 +33,9 @@ import { sweepExpiredEntries } from "./memory-bounds.ts";
 // ---------------------------------------------------------------------------
 const LOCAL_ORIGIN_RE =
   /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|\[0:0:0:0:0:0:0:1\])(:\d+)?$/i;
-const APP_ORIGIN_RE =
-  /^(capacitor|capacitor-electron|app|tauri|file|electrobun):\/\/.*$/i;
+const APP_ORIGIN_RE = /^(capacitor|capacitor-electron|app|tauri|file):\/\/.*$/i;
 const CREDENTIALED_APP_ORIGIN_RE =
-  /^(capacitor|capacitor-electron|app|tauri|electrobun):\/\/.*$/i;
+  /^(capacitor|capacitor-electron|app|tauri):\/\/.*$/i;
 export const CORS_ALLOWED_HEADERS = [
   "Content-Type",
   "Authorization",

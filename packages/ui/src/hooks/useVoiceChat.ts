@@ -586,7 +586,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   );
   const makeElevenCacheKey = useCallback(
     (text: string, config: NonNullable<VoiceConfig["elevenlabs"]>) => {
-      const voiceId = config.voiceId ?? DEFAULT_ELEVEN_VOICE;
+      const voiceId = config.voiceId ?? "";
       const modelId = config.modelId ?? DEFAULT_ELEVEN_MODEL;
       const stability =
         typeof config.stability === "number"
@@ -600,6 +600,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         typeof config.speed === "number" ? config.speed.toFixed(2) : "1.00";
       return [
         "elevenlabs",
+        hasConfiguredApiKey(config.apiKey) ? "direct" : "proxy",
         voiceId,
         modelId,
         stability,
@@ -1541,7 +1542,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         const apiToken = getElizaApiToken()?.trim() ?? "";
         const proxyRequestBody = JSON.stringify({
           ...requestBody,
-          voiceId,
+          voiceId: elConfig.voiceId,
           modelId,
           outputFormat: "mp3_44100_128",
         });
