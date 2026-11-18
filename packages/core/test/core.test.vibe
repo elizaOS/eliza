@@ -58,10 +58,35 @@ const startInChild = [
 
 const generateInChild = [
   "const { Effect } = await import(\"effect\")",
-  "const { collectFirstPartyEntries, generateFirstPartyRegistry } = await import(\"./src/catalog/generate.vibe\")",
+  "const { rm } = await import(\"node:fs/promises\")",
+  "const { resolve } = await import(\"node:path\")",
+  "const { writeJsonAtomicPromise } = await import(\"./src/utils/atomic-json.vibe\")",
+  "const { collectFirstPartyEntries, collectShortIdPluginMap, generateFirstPartyRegistry } = await import(\"./src/catalog/generate.vibe\")",
+  "const authoredFeatures = JSON.parse(process.argv[1])",
+  "const root = resolve(\"../..\")",
+  "const catalog = resolve(\"src/catalog\")",
   "const settle = (run) => Effect.runPromise(Effect.match(run, { onFailure: ({ _tag, message }) => ({ _tag, message }), onSuccess: (value) => value }))",
-  "const entries = await settle(collectFirstPartyEntries())",
-  "console.log(JSON.stringify({ ids: Array.isArray(entries) ? entries.map((entry) => entry.id) : entries, registry: await settle(generateFirstPartyRegistry()) }))",
+  "const generated = async () => {",
+  "  const entries = await settle(collectFirstPartyEntries())",
+  "  return { ids: Array.isArray(entries) ? entries.map((entry) => entry.id) : entries, registry: await settle(generateFirstPartyRegistry()) }",
+  "}",
+  "const base = await generated()",
+  "for (const { id, entry } of authoredFeatures) await writeJsonAtomicPromise(`${catalog}/curated/plugins/${id}.json`, entry)",
+  "const entries = await Effect.runPromise(collectFirstPartyEntries())",
+  "const features = { features: entries.filter((entry) => entry.id === \"documents\" || entry.id === \"personal-assistant\").map((entry) => [entry.id, entry.kind, entry.subtype, entry.npmName, entry.shortIds, \"launch\" in entry, \"curatedApp\" in entry]), shortIds: await Effect.runPromise(collectShortIdPluginMap(entries)) }",
+  "for (const { id } of authoredFeatures) await rm(`${catalog}/curated/plugins/${id}.json`, { recursive: true, force: true })",
+  "await writeJsonAtomicPromise(`${catalog}/curated/plugins/bravo.json`, { id: \"bravo\", name: \"Bravo again\", kind: \"plugin\", subtype: \"other\", render: { group: \"ai\" } })",
+  "const duplicate = await generated()",
+  "await rm(`${catalog}/curated/plugins/bravo.json`, { recursive: true, force: true })",
+  "await writeJsonAtomicPromise(`${catalog}/curated/plugins/broken.json`, { id: \"Broken Id\", name: \"Broken\", kind: \"plugin\", subtype: \"other\", render: {} })",
+  "const broken = await generated()",
+  "await rm(`${catalog}/curated/plugins/broken.json`, { recursive: true, force: true })",
+  "await writeJsonAtomicPromise(`${catalog}/curated/plugins/retired-app.json`, { id: \"retired-app\", name: \"Retired app\", kind: \"app\", subtype: \"tool\", launch: { type: \"internal-tab\" }, render: { group: \"apps\" } })",
+  "const retiredApp = await generated()",
+  "await rm(`${catalog}/curated/plugins/retired-app.json`, { recursive: true, force: true })",
+  "await writeJsonAtomicPromise(`${root}/plugins/gamma/registry-entry.json`, { id: \"gamma\", name: \"Gamma\", npmName: \"@fx/plugin-gamma\", kind: \"plugin\", subtype: \"feature\", render: { group: \"ai\" }, channels: [\"discord\"] })",
+  "const conflict = await generated()",
+  "console.log(JSON.stringify({ base, features, duplicate, broken, retiredApp, conflict }))",
 ].join("\n")
 
 // spec/core/runtime.md, "Story: Initialize an explicit host composition"; spec/core/runtime.md, "Initialization releases waiters on success and failure"; spec/core/runtime.md, "Only open ingress admits new turns"; spec/core/runtime.md, "Story: Retire every owned operation"; spec/core/runtime.md, "Stop closes admissions and prepares services once"; spec/core/runtime.md, "Strict retirement succeeds only when original work is drained"; spec/core/runtimeShutdown.md, "Story: Join one active shutdown attempt"; spec/core/runtimeShutdown.md, "Stop ownership is published before service preparation"; spec/core/runtimeShutdown.md, "Story: Establish strict quiescence after bounded shutdown"; spec/core/runtimeShutdown.md, "All strict callers share the original strict result"; spec/core/adapterOwnership.md, "Registration captures object references and rollback preserves close ordering"; spec/core/adapterOwnership.md, "Story: Preserve adapter identity through plugin failure and migrations"; spec/core/settings.md, "Story: Resolve the same setting in every host"; spec/core/settings.md, "Resolution preserves precedence and valid false zero and empty values"; spec/core/settings.md, "Setting and clearing align live secret and constructor slots"; spec/core/connectionLocks.md, "Story: Reconcile overlapping records without lost in-process updates"; spec/core/entities.md, "Story: Observe committed mutations through fresh runtime reads"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/diagnostics.md, "A structured failure retains its identity and an unclassified one gets a code"; spec/core/index.md, "Story: Compose a kernel through explicit services"; spec/core/settings.md, "Story: Isolate settings between agents and keys"; spec/core/memoConcurrency.md, "Story: Read after a completed mutation without receiving an older snapshot"; spec/core/serviceStopObservation.md, "Story: Continue best-effort shutdown with its failures retained"; spec/core/retirementTracker.md, "Story: Drain every owned retirement operation and report retained failures"
@@ -4621,14 +4646,13 @@ it.live("Generate the first-party catalog from plugin-owned and curated manifest
   try write("packages/core/src/catalog/curated/connectors/charlie.json", { id: "charlie", name: "Charlie", kind: "connector", subtype: "email", render: { group: "connector" }, channels: ["telegram"] })
   try write("packages/core/src/catalog/curated/notes.txt", { id: "ignored" })
 
-  const generated = effect {
-    const result = try host(() => runNode({ script: generateInChild, cwd: sourceDir, vibe: true, timeoutMs: 120_000 }))
-    return try Effect.try({ try: () => JSON.parse(result.status === 0 ? result.stdout : "") as unknown, catch: () => result })
-  }
+  const catalogRun = try host(() => runNode({ script: generateInChild, args: [JSON.stringify(authoredFeatures)], cwd: sourceDir, vibe: true, timeoutMs: 120_000 }))
+  const report = try Effect.try({ try: () => JSON.parse(catalogRun.status === 0 ? catalogRun.stdout : "") as unknown, catch: () => catalogRun })
+  const snapshots = try Schema.decodeUnknownEffect(Schema.Struct({ base: Schema.Unknown, features: Schema.Unknown, duplicate: Schema.Unknown, broken: Schema.Unknown, retiredApp: Schema.Unknown, conflict: Schema.Unknown }))(report)
   const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`
   const bundled = (head: object, config: object, group: string, tail: object) => ({ ...head, source: "bundled", tags: [], config, render: { visible: true, pinTo: [], style: "card", group, actions: [] }, resources: {}, dependsOn: [], ...tail })
   const featureTail = { channels: [], shortIds: [], kind: "plugin", subtype: "feature" }
-  assert.deepStrictEqual(try generated, { ids: ["alpha-two", "alphaone", "bravo", "charlie", "delta", "echo", "foxtrot"], registry: {
+  assert.deepStrictEqual(snapshots.base, { ids: ["alpha-two", "alphaone", "bravo", "charlie", "delta", "echo", "foxtrot"], registry: {
     full: json({ entries: [
       bundled({ id: "alpha-two", name: "Alpha Two", npmName: "@fx/plugin-alpha" }, {}, "connector", { channels: ["Slack"], shortIds: [], kind: "connector", subtype: "messaging" }),
       bundled({ id: "alphaone", name: "Alpha One", npmName: "@fx/plugin-alpha" }, { ALPHA_TOKEN: { type: "secret", required: true, autoEnableProvider: false } }, "connector", { channels: ["Slack"], shortIds: [], kind: "connector", subtype: "social" }),
@@ -4643,35 +4667,21 @@ it.live("Generate the first-party catalog from plugin-owned and curated manifest
     shortIds: json({ b: "@fx/plugin-bravo", bee: "@fx/plugin-bravo" }),
   } })
 
-  for (const { id, entry } of authoredFeatures) try write(`packages/core/src/catalog/curated/plugins/${id}.json`, entry)
-  const featureRun = try host(() => runNode({ script: `const { Effect } = await import("effect");
-const { collectFirstPartyEntries, collectShortIdPluginMap } = await import("./src/catalog/generate.vibe");
-const entries = await Effect.runPromise(collectFirstPartyEntries());
-console.log(JSON.stringify({ features: entries.filter((entry) => entry.id === "documents" || entry.id === "personal-assistant").map((entry) => [entry.id, entry.kind, entry.subtype, entry.npmName, entry.shortIds, "launch" in entry, "curatedApp" in entry]), shortIds: await Effect.runPromise(collectShortIdPluginMap(entries)) }));`, cwd: sourceDir, vibe: true, timeoutMs: 120_000 }))
-  const featureProjection = try Effect.try({ try: () => JSON.parse(featureRun.status === 0 ? featureRun.stdout : "") as unknown, catch: () => featureRun })
-  assert.deepStrictEqual(featureProjection, { features: [
+  assert.deepStrictEqual(snapshots.features, { features: [
     ["documents", "plugin", "feature", "@elizaos/plugin-knowledge", [], false, false],
     ["personal-assistant", "plugin", "feature", "@elizaos/plugin-personal-assistant", ["selfcontrol"], false, false],
   ], shortIds: { b: "@fx/plugin-bravo", bee: "@fx/plugin-bravo", selfcontrol: "@elizaos/plugin-personal-assistant" } })
-  for (const { id } of authoredFeatures) try host(() => removeScratch(`${catalog}/curated/plugins/${id}.json`))
 
   const failing = (failure: { _tag: string; message: string }) => ({ ids: failure, registry: failure })
-  try write("packages/core/src/catalog/curated/plugins/bravo.json", { id: "bravo", name: "Bravo again", kind: "plugin", subtype: "other", render: { group: "ai" } })
-  assert.deepStrictEqual(try generated, failing({ _tag: "DuplicateRegistryId", message: `[registry/generate] duplicate id "bravo" in ${catalog}/curated/plugins/bravo.json and ${dir}/plugins/beta/registry-entry.json` }))
-  try host(() => removeScratch(`${catalog}/curated/plugins/bravo.json`))
-  try write("packages/core/src/catalog/curated/plugins/broken.json", { id: "Broken Id", name: "Broken", kind: "plugin", subtype: "other", render: {} })
-  assert.deepStrictEqual(try generated, failing({ _tag: "InvalidRegistryEntryFile", message: `[registry/generate] ${catalog}/curated/plugins/broken.json failed validation: ${JSON.stringify([
+  assert.deepStrictEqual(snapshots.duplicate, failing({ _tag: "DuplicateRegistryId", message: `[registry/generate] duplicate id "bravo" in ${catalog}/curated/plugins/bravo.json and ${dir}/plugins/beta/registry-entry.json` }))
+  assert.deepStrictEqual(snapshots.broken, failing({ _tag: "InvalidRegistryEntryFile", message: `[registry/generate] ${catalog}/curated/plugins/broken.json failed validation: ${JSON.stringify([
     { origin: "string", code: "invalid_format", format: "regex", pattern: "/^[a-z0-9][a-z0-9-]*$/", path: ["id"], message: "id must be kebab-case ascii" },
     { expected: "string", code: "invalid_type", path: ["render", "group"], message: "Invalid input: expected string, received undefined" },
   ], null, 2)}` }))
-  try host(() => removeScratch(`${catalog}/curated/plugins/broken.json`))
-  try write("packages/core/src/catalog/curated/plugins/retired-app.json", { id: "retired-app", name: "Retired app", kind: "app", subtype: "tool", launch: { type: "internal-tab" }, render: { group: "apps" } })
-  const refusedApp = try generated
+  const refusedApp = snapshots.retiredApp
   assert.nestedPropertyVal(refusedApp, "ids._tag", "InvalidRegistryEntryFile")
   assert.nestedPropertyVal(refusedApp, "registry._tag", "InvalidRegistryEntryFile")
-  try host(() => removeScratch(`${catalog}/curated/plugins/retired-app.json`))
-  try write("plugins/gamma/registry-entry.json", { id: "gamma", name: "Gamma", npmName: "@fx/plugin-gamma", kind: "plugin", subtype: "feature", render: { group: "ai" }, channels: ["discord"] })
-  assert.deepStrictEqual(try generated, { ids: ["alpha-two", "alphaone", "bravo", "charlie", "delta", "echo", "foxtrot", "gamma"], registry: { _tag: "RegistryClaimConflict", message: "[registry/generate] channel \"discord\" claimed by both @fx/plugin-bravo and @fx/plugin-gamma" } })
+  assert.deepStrictEqual(snapshots.conflict, { ids: ["alpha-two", "alphaone", "bravo", "charlie", "delta", "echo", "foxtrot", "gamma"], registry: { _tag: "RegistryClaimConflict", message: "[registry/generate] channel \"discord\" claimed by both @fx/plugin-bravo and @fx/plugin-gamma" } })
 }), 300_000)
 
 // spec/core/release.md, "Story: Install the replacement through existing npm entry points"; spec/core/release.md, "Every release check names the candidate it actually examined"; spec/core/packageExports.md, "Story: Preserve the imported core surface in the consumer build and the npm package"; spec/core/packageExports.md, "An admitted pack serves exactly the declared leaves, each free of host-only code"; spec/core/index.md, "Compatibility translates asynchronous results without losing failures"; spec/core/accountBridges.md, "Each bridge slot preserves the last installed object identity"; spec/core/ambientManagers.md, "Story: Share injected managers across bundled core copies"; spec/core/accountBridges.md, "Story: Install and clear shared account-selection contracts"; spec/core/catalog.md, "A valid runtime registration overrides its id and invalidates cached indexes"
