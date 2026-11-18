@@ -205,6 +205,21 @@ describe("phone telephony routing on the Alpha image", () => {
 });
 
 describe("selected phone capability guidance", () => {
+  it("routes a retry of an unsent Gmail draft through the negotiated composer", async () => {
+    const routing = async () =>
+      (await guidance({ providerPhase: "response" })).text;
+    expect(await routing()).not.toContain("MESSAGE_DRAFT_FOLLOWUP");
+    capabilities.push("gmail.local-compose.v1");
+    try {
+      const text = await routing();
+      expect(text).toContain("MESSAGE_DRAFT_FOLLOWUP");
+      expect(text).toContain("Do not search or triage the mailbox");
+      expect(text).toContain("never sent by this action");
+    } finally {
+      capabilities.pop();
+    }
+  });
+
   it("keeps compact authenticated availability and permission boundaries during routing", async () => {
     const { text } = await guidance({ providerPhase: "response" });
     expect(text).toContain("notes.local-record.v1");
