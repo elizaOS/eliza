@@ -398,21 +398,6 @@
     "reason": "native engine tooling retains the plugin-owned C shim, patches, and artifact directory after relocation into canonical repository scripts"
   },
   {
-    "file": "packages/scripts/lib/progressive-content-production-targets.ts",
-    "tokens": ["plugins/plugin-coding-tools", "plugins/plugin-sql"],
-    "reason": "systemic coupling: the canonical progressive-content benchmark and evidence lanes bind fixed production target implementations and forbid caller-selected plugin modules"
-  },
-  {
-    "file": "packages/scripts/produce-content-context-deterministic.ts",
-    "tokens": ["plugins/plugin-coding-tools"],
-    "reason": "systemic coupling: the canonical deterministic evidence producer binds the fixed coding-tools production target so evidence cannot be substituted by caller-selected modules"
-  },
-  {
-    "file": "packages/scripts/produce-content-context-postgres.ts",
-    "tokens": ["plugins/plugin-coding-tools", "plugins/plugin-sql"],
-    "reason": "systemic coupling: the canonical PostgreSQL evidence producer binds fixed coding-tools and SQL implementations for its audited production boundary"
-  },
-  {
     "file": "packages/scripts/plugins/plugin-coding-tools/file-reference-read-child.ts",
     "tokens": ["plugins/plugin-coding-tools"],
     "reason": "Isolated child verifies the owning plugin file-reference production reader in a fresh process."
