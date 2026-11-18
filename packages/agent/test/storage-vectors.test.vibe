@@ -1,0 +1,56 @@
+// spec/agent/storage/database.md, "A data directory serves only the agent, account and embedding size it was created for"
+import { assert, it } from "@effect/vitest"
+import { host, scratch } from "./support/kernel.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+  import { openDeviceStorage } from "../src/storage/index.vibe"
+
+  const entityId = randomUUID()
+  const roomId = randomUUID()
+  const other = randomUUID()
+
+  const memory = (text: string, embedding: number[], room = roomId) => ({
+    memory: { entityId, roomId: room, content: { text }, embedding },
+    tableName: "messages",
+  })
+
+  export async function searchJourney(directory: string) {
+    const { adapter } = await openDeviceStorage({ stateDirectory: directory, persistMemory: false, account: null, embeddingDimensions: 3 })
+    try {
+      const [near, far, elsewhere] = await adapter.createMemories([
+        memory("near", [1, 0, 0]), memory("far", [0, 1, 0]), memory("elsewhere", [1, 0, 0], other),
+      ])
+      const search = (extra: object) => adapter.searchMemories({
+        tableName: "messages", embedding: [1, 0.1, 0], query: "near", ...extra,
+      }).then((found) => found.map((m) => m.content.text))
+      const inRoom = await search({ roomId, match_threshold: 0.5 })
+      const everywhere = await search({ match_threshold: 0.5 })
+      const all = await search({ roomId })
+      const updated = await adapter.updateMemoryEmbedding({
+        id: far, embedding: [1, 0.1, 0], expected: { agentId: undefined as never, roomId, entityId, text: "far" },
+      }).catch(() => "refused")
+      const wrongSize = await adapter.createMemories([memory("bad", [1, 0])]).then(() => "stored", () => "refused")
+      return { inRoom, everywhere, all, updated, wrongSize, ids: [near, far, elsewhere].length }
+    } finally { await adapter.close() }
+  }
+
+  export async function offJourney(directory: string) {
+    const { adapter } = await openDeviceStorage({ stateDirectory: directory, persistMemory: false, account: null, embeddingDimensions: 0 })
+    try {
+      return await adapter.searchMemories({ tableName: "messages", embedding: [1], query: "x" }).then(() => "searched", (error: Error) => error.name)
+    } finally { await adapter.close() }
+  }
+}
+import { offJourney, searchJourney } from node
+
+it.effect('Local embeddings are searched by cosine within the room, above the threshold; no embeddings means no search (spec/agent/storage/database.md, "A data directory serves only the agent, account and embedding size it was created for")', effect () => {
+  const state = try scratch("storage-vectors")
+  const found = try host("vector search", () => searchJourney(state.file("local")))
+  assert.deepStrictEqual(found.inRoom, ["near", "far"].slice(0, 1))
+  assert.deepStrictEqual(found.everywhere.sort(), ["elsewhere", "near"])
+  assert.deepStrictEqual(found.all, ["near", "far"])
+  assert.strictEqual(found.wrongSize, "refused")
+  const off = try host("vector off", () => offJourney(state.file("off")))
+  assert.strictEqual(off, "UnsupportedStorageOperation")
+})
