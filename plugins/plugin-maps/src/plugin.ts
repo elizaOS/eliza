@@ -90,7 +90,9 @@ export const MAPS_CONTEXT: ContextDefinition = {
 };
 
 const COURTESY = String.raw`(?:(?:please|hey|ok(?:ay)?|so)[,\s]+)*(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?`;
-const DIRECTIONS_NOUN = String.raw`(?:(?:(?:driving|walking|cycling|bike|transit)\s+)?directions|(?:a\s+)?route|the\s+way)`;
+// "the way to" is left out: "find the way to fix this bug" is not Maps work,
+// and a simple Stage-1 answer would otherwise be forced into a Maps tool turn.
+const DIRECTIONS_NOUN = String.raw`(?:(?:(?:driving|walking|cycling|bike|transit)\s+)?directions|(?:a\s+)?route)`;
 /**
  * "directions to X", "get me directions from A to B". "Take me to", "navigate
  * to" and "how do I get to" are left to the planner: they also name views.
@@ -106,7 +108,7 @@ const DIRECTIONS_REQUEST = new RegExp(
 );
 /** "show the Ferry Building on the map", "find Coit Tower on maps". */
 const PLACE_ON_MAP_REQUEST = new RegExp(
-  String.raw`^\s*${COURTESY}(?:show|find|locate|pin|put)\s+(?:me\s+)?\S.*?\s+on\s+(?:the\s+|a\s+)?maps?\s*[.!]?\s*$`,
+  String.raw`^\s*${COURTESY}(?:show|find|locate|pin|put)\s+(?:me\s+)?\S.*?\s+on\s+(?:the\s+|a\s+)?maps?\s*[.!?]?\s*$`,
   "iu",
 );
 

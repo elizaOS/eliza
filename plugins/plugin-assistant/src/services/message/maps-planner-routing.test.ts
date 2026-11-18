@@ -156,6 +156,10 @@ describe("a directions request is routed to Maps, not only to the Maps view", ()
       "show the Ferry Building in San Francisco on the map",
       ["MAPS_SELECT", "MAPS_PLACE"],
     ],
+    [
+      "Could you show me the Ferry Building on the map?",
+      ["MAPS_SELECT", "MAPS_PLACE"],
+    ],
   ])("%s", async (text, expected) => {
     if (!evaluator) throw new Error("Expected capability evaluator");
     const { runtime, message } = await fixture(text);
@@ -199,6 +203,8 @@ describe("a directions request is routed to Maps, not only to the Maps view", ()
     "take me to settings",
     "how do I get to the settings page?",
     "navigate to notes",
+    "find the way to fix this bug",
+    "show me the way to export my notes",
   ])("leaves other requests alone: %s", (text) => {
     expect(isMapsDirectionsRequest(text) || isMapsPlaceOnMapRequest(text)).toBe(
       false,
