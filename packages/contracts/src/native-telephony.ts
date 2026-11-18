@@ -31,6 +31,7 @@ import {
   type SmsSendResult,
   validateSmsResult,
 } from "./sms-send.ts";
+import { parseSmsLatestSenderMetadata } from "./telephony-actions.ts";
 
 export type { MmsSendResult } from "./mms-send.ts";
 export type { SmsSendResult } from "./sms-send.ts";
@@ -314,6 +315,7 @@ export interface TelephonyNativePlugin {
     before?: number;
     cursor?: string;
   }): Promise<unknown>;
+  latestIncomingSender?(): Promise<unknown>;
   observeMessages(options: { enabled: boolean }): Promise<unknown>;
   /** One owner-confirmed local deletion, not cancellation of a send. Older hosts omit it. */
   deleteMessage?(options: MessageDeleteReference): Promise<unknown>;
@@ -1745,6 +1747,12 @@ export function createTelephonyClient(
         }),
         "sms",
       );
+    },
+    async latestIncomingSender() {
+      const bridge = native();
+      if (!bridge.latestIncomingSender)
+        throw new TelephonyUnavailable(options.unavailableMessage);
+      return parseSmsLatestSenderMetadata(await bridge.latestIncomingSender());
     },
     async listThreads(limit = 20, before?: number) {
       const bridge = native();

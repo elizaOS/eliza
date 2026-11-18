@@ -307,6 +307,7 @@ it("offers each telephony action only with its own capability and states its lim
     "contacts.read.v1": ["contact_read_selected"],
     "sms.compose.v1": ["sms_compose", "sms_reply_selected"],
     "messages.read.v1": ["messages_read_selected"],
+    "sms.latest-sender.v1": ["sms_latest_sender"],
     "voicemail.read.v1": ["voicemail_read_selected"],
     "voicemail.delete.v1": ["voicemail_delete_selected"],
     "phone.keypad.v1": ["phone_keypad"],
@@ -359,6 +360,7 @@ it("offers each telephony action only with its own capability and states its lim
     "This phone cannot add one number or email address to a contact",
     "phone_keypad {number?} (phone.keypad.v1) opens the Phone keypad",
     "It never dials or calls: the owner taps Call there.",
+    "It proposes a reviewed read of one sender number suffix only.",
   ])
     expect(text).toContain(required);
   expect(text).not.toContain("contacts.write.v2");

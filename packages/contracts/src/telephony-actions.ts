@@ -67,6 +67,7 @@ export const SMS_COMPOSE_CAPABILITY = "sms.compose.v1";
 /** `sms_compose` with a `target` (a contact or a number) and the draft-only form. */
 export const SMS_COMPOSE_TARGET_CAPABILITY = "sms.compose.v2";
 export const MESSAGES_READ_CAPABILITY = "messages.read.v1";
+export const SMS_LATEST_SENDER_CAPABILITY = "sms.latest-sender.v1";
 export const VOICEMAIL_READ_CAPABILITY = "voicemail.read.v1";
 export const VOICEMAIL_DELETE_CAPABILITY = "voicemail.delete.v1";
 export const PHONE_KEYPAD_CAPABILITY = "phone.keypad.v1";
@@ -849,6 +850,65 @@ export function phoneKeypadResultText(result: PhoneKeypadResult): string {
 // ---- messages.read.v1 ------------------------------------------------------
 
 export type MessagesReadOperation = { type: "messages_read_selected" };
+export type SmsLatestSenderOperation = { type: "sms_latest_sender" };
+export type SmsLatestSenderMetadata =
+  | { status: "found"; numberEnding: string }
+  | { status: "empty" | "sender-unavailable" };
+export type SmsLatestSenderResult = {
+  kind: "sms-latest-sender";
+} & (SmsLatestSenderMetadata | { status: "unavailable" });
+
+export function isSmsLatestSender(value: {
+  type?: unknown;
+}): value is SmsLatestSenderOperation {
+  return value.type === "sms_latest_sender";
+}
+
+export function parseSmsLatestSenderMetadata(
+  value: unknown,
+): SmsLatestSenderMetadata {
+  const data = record(value, "latest SMS sender");
+  if (data.status === "found") {
+    exact(data, ["status", "numberEnding"], "latest SMS sender");
+    if (
+      typeof data.numberEnding !== "string" ||
+      !/^[0-9]{4}$/.test(data.numberEnding)
+    )
+      throw Error("Invalid latest SMS sender suffix");
+    return { status: "found", numberEnding: data.numberEnding };
+  }
+  exact(data, ["status"], "latest SMS sender");
+  return {
+    status: oneOf(
+      data.status,
+      ["empty", "sender-unavailable"] as const,
+      "latest SMS sender",
+    ),
+  };
+}
+
+export function validateSmsLatestSenderResult(
+  value: unknown,
+): SmsLatestSenderResult {
+  const { kind, ...metadata } = record(value, "latest SMS sender result");
+  if (kind !== "sms-latest-sender")
+    throw Error("Invalid latest SMS sender result");
+  if (metadata.status === "unavailable") {
+    exact(metadata, ["status"], "latest SMS sender result");
+    return { kind, status: "unavailable" };
+  }
+  return { kind, ...parseSmsLatestSenderMetadata(metadata) };
+}
+
+export function smsLatestSenderReply(value: SmsLatestSenderResult): string {
+  if (value.status === "found")
+    return `Your latest incoming SMS came from the number ending in ${value.numberEnding}.`;
+  if (value.status === "empty")
+    return "There are no incoming SMS messages on this phone.";
+  if (value.status === "unavailable")
+    return "I couldn’t read the latest incoming SMS right now.";
+  return "The latest incoming SMS has no readable phone number.";
+}
 export type ReadMessage = {
   /** `in`: received; `out`: sent from this phone. */
   direction: "in" | "out";
@@ -1105,6 +1165,7 @@ export type TelephonyActionOperation =
   | SmsReplyOperation
   | PhoneKeypadOperation
   | MessagesReadOperation
+  | SmsLatestSenderOperation
   | VoicemailReadOperation
   | VoicemailDeleteOperation;
 export const TELEPHONY_ACTION_OPERATION_TYPES = [
@@ -1116,6 +1177,7 @@ export const TELEPHONY_ACTION_OPERATION_TYPES = [
   "sms_reply_selected",
   "phone_keypad",
   "messages_read_selected",
+  "sms_latest_sender",
   "voicemail_read_selected",
   "voicemail_delete_selected",
 ] as const;
@@ -1142,6 +1204,8 @@ export function telephonyActionCapability(type: TelephonyActionType): string {
       return PHONE_KEYPAD_CAPABILITY;
     case "messages_read_selected":
       return MESSAGES_READ_CAPABILITY;
+    case "sms_latest_sender":
+      return SMS_LATEST_SENDER_CAPABILITY;
     case "voicemail_read_selected":
       return VOICEMAIL_READ_CAPABILITY;
     case "voicemail_delete_selected":
@@ -1166,6 +1230,10 @@ export function validateTelephonyAction(
   if (type === "sms_reply_selected") return validateSmsReply(value);
   if (type === "phone_keypad") return validatePhoneKeypad(value);
   if (type === "messages_read_selected") return validateMessagesRead(value);
+  if (type === "sms_latest_sender") {
+    exact(record(value, "latest SMS sender"), ["type"], "latest SMS sender");
+    return { type };
+  }
   if (type === "voicemail_read_selected") return validateVoicemailRead(value);
   if (type === "voicemail_delete_selected")
     return validateVoicemailDelete(value);
