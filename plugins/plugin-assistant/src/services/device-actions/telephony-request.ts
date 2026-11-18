@@ -20,8 +20,9 @@ const TEXT = new RegExp(
 );
 // Words that make "call X" something else ("call it a day", "call me",
 // "call Sam on WhatsApp") or name another service; those stay with the planner.
+// "phone dialer", "phone keypad" and "dial pad" name the keypad, not a callee.
 const NOT_A_PHONE_TARGET =
-  /^(?:me|myself|us|it|this|that|them|him|her|back|off|out|up|in|a|an|the|someone|somebody|anyone)\b|\b(?:on|via|in|through|using|with|over|from|at|tomorrow|later|tonight|today)\b/iu;
+  /^(?:me|myself|us|it|this|that|them|him|her|back|off|out|up|in|a|an|the|someone|somebody|anyone)\b|\b(?:on|via|in|through|using|with|over|from|at|tomorrow|later|tonight|today)\b|^(?:dialer|dial\s?-?\s?pad|key\s?-?\s?pad|pad|number\s+pad|app)[.!?]*$/iu;
 
 export function authoredTelephonyRequest(
   text: string,
