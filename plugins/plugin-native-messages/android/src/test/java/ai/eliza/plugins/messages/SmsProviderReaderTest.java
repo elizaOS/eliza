@@ -111,7 +111,7 @@ public final class SmsProviderReaderTest {
   require(result.length() == 2 && "found".equals(result.optString("status")), "one limited result");
   require("0123".equals(result.optString("numberEnding")), "newest inbound sender suffix");
   JSObject address = SmsProviderReader.latestIncomingSender(RuntimeEnvironment.getApplication(), new CancellationSignal(), true);
-  require(address.length() == 3 && "42".equals(address.optString("threadId")) && !address.has("numberEnding") && "+15555550123".equals(address.optString("address")), "complete newest incoming sender");
+  require(address.length() == 3 && "thread:42".equals(address.optString("threadId")) && !address.has("numberEnding") && "+15555550123".equals(address.optString("address")), "complete newest incoming sender");
  }
 
  @Test public void latestIncomingSenderDistinguishesEmptyFromMissingSender() {

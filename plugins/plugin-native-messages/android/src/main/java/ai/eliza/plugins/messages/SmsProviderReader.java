@@ -57,7 +57,7 @@ public final class SmsProviderReader {
       result.put("status", "found");
       result.put("address", number);
       long threadId = longAt(row, Telephony.Sms.THREAD_ID);
-      if (threadId > 0) result.put("threadId", Long.toString(threadId));
+      if (threadId > 0) result.put("threadId", SmsRecords.threadId(threadId));
       return result;
      }
     } else if (digits.length() >= 4) {

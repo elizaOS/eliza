@@ -817,7 +817,7 @@ test("address lookup and a reply draft use the complete negotiated address", () 
     kind: "sms-latest-sender",
     status: "found",
     address: "+14155550123",
-    threadId: "42",
+    threadId: "thread:42",
   };
   assert.deepEqual(validateSmsLatestSenderResult(linked, true), linked);
   assert.throws(() =>
@@ -828,7 +828,7 @@ test("address lookup and a reply draft use the complete negotiated address", () 
     target: { kind: "number", number: "+14155550123" },
     body: "Tripod",
     draft: true,
-    replyThreadId: "42",
+    replyThreadId: "thread:42",
   };
   assert.deepEqual(validateTelephonyAction(bound), bound);
   assert.throws(() => validateTelephonyAction({ ...bound, draft: false }));
@@ -854,7 +854,7 @@ test("address lookup and a reply draft use the complete negotiated address", () 
   );
   assert.ok(
     directSmsRequest(
-      { type: "sms_compose", draft: true, replyThreadId: "42" },
+      { type: "sms_compose", draft: true, replyThreadId: "thread:42" },
       followUp,
     ),
   );
