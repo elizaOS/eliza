@@ -59,7 +59,8 @@ const cssInput = `
 @source "${bundlePath}";
 `;
 const css = (
-  await postcss([tailwindPostcss()]).process(cssInput, {
+  // A repo-root invocation must not turn benchmark text into CSS utilities.
+  await postcss([tailwindPostcss({ base: uiSrc })]).process(cssInput, {
     from: join(outDir, "fixture-input.css"),
   })
 ).css;
