@@ -638,6 +638,8 @@ function extraction(
     travelOriginAddress: null,
     durationMinutes: 30,
     isShortPreparation: false,
+    allDayStartDate: null,
+    allDayEndDate: null,
   };
 }
 function calendarArgs(
