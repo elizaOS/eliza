@@ -216,14 +216,23 @@ export interface PasswordsClient {
   openEditor(input?: PasswordEditorInput): Promise<PasswordEditorResult>;
   remove(id: string, expectedRevision?: number): Promise<void>;
   reset(): Promise<void>;
-  reveal(id: string, expectedRevision?: number): Promise<{ hidesAfterMs: number }>;
-  copy(id: string, expectedRevision?: number): Promise<{ clearsAfterMs: number }>;
+  reveal(
+    id: string,
+    expectedRevision?: number,
+  ): Promise<{ hidesAfterMs: number }>;
+  copy(
+    id: string,
+    expectedRevision?: number,
+  ): Promise<{ clearsAfterMs: number }>;
   openAutofillSettings(): Promise<{
     destination: "autofill-picker" | "system-settings";
   }>;
 }
 
-function selectedEntry(id: string, expectedRevision?: number): { id: string; expectedRevision?: number } {
+function selectedEntry(
+  id: string,
+  expectedRevision?: number,
+): { id: string; expectedRevision?: number } {
   if (expectedRevision === undefined) return { id };
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0)
     throw new PasswordsClientError("invalid", "Invalid revision.");
