@@ -30,6 +30,7 @@ import {
   mapsPlugin,
   mapsTravelDestination,
 } from "../../../../plugin-maps/src/plugin.ts";
+import { MapsService } from "../../../../plugin-maps/src/service.ts";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "../../runtime/default-contexts.ts";
 import { deviceActionTools } from "../device-actions/tools.ts";
 import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "./stage1-evaluators.ts";
@@ -308,6 +309,125 @@ describe("the Maps routes claim only the owner's phone chat", () => {
   });
 });
 
+describe("a reply to a Maps place question continues the operation that asked", () => {
+  // v610: MAPS_ROUTE asked "Which one did you mean?" and the owner said "the
+  // first one". Stage 1 answered in prose ("I can't load a live route from
+  // here") and no route was planned.
+  const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
+    (entry) => entry.name === "core.direct_registered_capability_request",
+  );
+  async function evaluate(
+    text: string,
+    open?: "route" | "navigation-start",
+    content: Partial<Memory["content"]> = {},
+    turns: { askedBy?: string; between?: string } = {},
+  ) {
+    if (!evaluator) throw new Error("Expected capability evaluator");
+    const { runtime, message } = await fixture(text);
+    Object.assign(message.content, content);
+    const service = new MapsService(undefined, {} as never);
+    if (open)
+      service.placeChoices.set(
+        { ...message, id: turns.askedBy ?? message.id },
+        {
+          operation: open,
+          field: open === "route" ? "originQuery" : "placeQuery",
+          query: "Starbucks",
+          places: [],
+          queries: {},
+          resolved: {},
+        },
+      );
+    const getService = runtime.getService.bind(runtime);
+    vi.spyOn(runtime, "getService").mockImplementation(((name: string) =>
+      name === "maps" ? service : getService(name)) as never);
+    const run = async (turn: Memory) => {
+      const handler = {
+        processMessage: "RESPOND",
+        plan: {
+          contexts: ["simple"],
+          intents: [],
+          candidateActions: [] as string[],
+          parentActionHints: [],
+          requiresTool: false,
+          replyEffectStatus: "none",
+          reply: "Locked in the first one.",
+        },
+      };
+      await runResponseHandlerEvaluators({
+        runtime,
+        message: turn,
+        state: { text: "", values: {}, data: {} },
+        messageHandler: handler,
+        availableContexts: [...DEFAULT_CONTEXT_DEFINITIONS, MAPS_CONTEXT],
+        userRoles: ["OWNER"],
+        evaluators: [evaluator],
+      } as never);
+      return handler;
+    };
+    // An owner turn between the question and this reply ("call mom").
+    if (turns.between !== undefined)
+      await run({
+        ...message,
+        id: "44444444-4444-4444-8444-444444444444",
+        content: { ...message.content, text: turns.between },
+      } as Memory);
+    return run(message);
+  }
+  it.each([
+    ["the first one", "route", ["MAPS_ROUTE"]],
+    ["The second one.", "route", ["MAPS_ROUTE"]],
+    ["2", "navigation-start", ["MAPS_NAVIGATION_START"]],
+  ] as const)("%s", async (text, open, expected) => {
+    const handler = await evaluate(text, open);
+    expect(handler.plan.requiresTool).toBe(true);
+    expect(handler.plan.candidateActions).toEqual(expected);
+    expect(handler.plan.contexts).toContain("maps");
+  });
+  it("takes the owner's next turn after the question", async () => {
+    const handler = await evaluate(
+      "the first one",
+      "route",
+      {},
+      {
+        askedBy: "22222222-2222-4222-8222-222222222222",
+      },
+    );
+    expect(handler.plan.candidateActions).toEqual(["MAPS_ROUTE"]);
+  });
+  it("leaves a later reply to whatever asked since the owner moved on", async () => {
+    // The owner left the Maps question for another request; "the first one"
+    // now answers that request's question (a contact, an email), not Maps.
+    const handler = await evaluate(
+      "the first one",
+      "route",
+      {},
+      {
+        askedBy: "22222222-2222-4222-8222-222222222222",
+        between: "call mom",
+      },
+    );
+    expect(handler.plan.requiresTool).toBe(false);
+    expect(handler.plan.candidateActions).toEqual([]);
+  });
+  it("leaves the reply alone when no Maps question is open", async () => {
+    const handler = await evaluate("the first one");
+    expect(handler.plan.requiresTool).toBe(false);
+    expect(handler.plan.candidateActions).toEqual([]);
+  });
+  it("leaves other replies alone while a question is open", async () => {
+    const handler = await evaluate("thanks, that's all", "route");
+    expect(handler.plan.requiresTool).toBe(false);
+  });
+  it("does not take a reply on another channel", async () => {
+    const handler = await evaluate("the first one", "route", {
+      source: "discord",
+      channelType: "GROUP",
+    });
+    expect(handler.plan.requiresTool).toBe(false);
+  });
+});
+
 describe("travel and nearby requests reach Maps from a simple Stage-1 answer", () => {
   const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
     (entry) => entry.name === "core.direct_registered_capability_request",
@@ -349,6 +469,24 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     (handler.plan.candidateActions ?? []).filter((name) =>
       name.startsWith("MAPS_"),
     );
+
+  it.each([
+    ["go to coit tower", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to the museum of modern art", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to JFK Terminal 4", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to cloud apps", []],
+    ["go to privacy policy", []],
+    ["go to account history", []],
+    ["go to the terminal output", []],
+    ["go to SFO and pick up Alex", []],
+    ["go to SFO with Sam tomorrow", []],
+  ])(
+    "only promotes a clear destination from the voice transcript %s",
+    async (text, expected) => {
+      const handler = await evaluate(text, { channelType: "VOICE_DM" });
+      expect(mapsCandidates(handler)).toEqual(expected);
+    },
+  );
 
   it.each([
     ["take me to Coit Tower", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
@@ -394,6 +532,26 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
       "Are there any coffee shops close by?",
       ["MAPS_PLACE", "MAPS_NAVIGATION_START"],
     ],
+    // Speech-to-text writes places in lowercase.
+    ["go to coit tower", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to the ferry building", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to golden gate park", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to the grocery store", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to the nearest gas station", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["take me to coit tower", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["navigate to golden gate park", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    // An all-caps place code.
+    ["go to SFO", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to JFK Terminal 4", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["take me to JFK", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["directions to LAX", ["MAPS_ROUTE", "MAPS_NAVIGATION_START"]],
+    // One capitalised word: a well-known place, or an explicit travel verb.
+    ["go to Starbucks", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to Walgreens", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["let's go to Safeway", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["go to the Presidio", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["take me to Starbucks", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
+    ["navigate to Alcatraz", ["MAPS_NAVIGATION_START", "MAPS_ROUTE"]],
   ])("promotes %s", async (text, expected) => {
     const handler = await evaluate(text);
     expect(handler.plan.requiresTool).toBe(true);
@@ -415,6 +573,8 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     "go to the Calendar",
     "Can you go to Workflows?",
     "go home",
+    "go to cloud apps",
+    "take me to cloud apps",
   ])("leaves a view destination to navigation: %s", async (text) => {
     const handler = await evaluate(text);
     expect(mapsCandidates(handler)).toEqual([]);
@@ -458,6 +618,53 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     "go to Coit Tower, then text Sam",
     "go to Coit Tower, Sam",
     "don't go to Coit Tower",
+    // Lowercase speech that is not a place: an idiom, a pronoun, one word,
+    // a time, more work, or an app, page or software word.
+    "go to work",
+    "go to school",
+    "go to church",
+    "go to war",
+    "go to waste",
+    "go to town",
+    "go to pieces",
+    "go to great lengths",
+    "go to bed early",
+    "go to work tomorrow",
+    "go to my house",
+    "go to your settings",
+    "go to this page",
+    "go to that place",
+    "go to it now",
+    "go to the store",
+    "go to the main branch",
+    "go to the error log",
+    "go to lunch with sam",
+    "go to the store and buy milk",
+    "go to see a movie",
+    "go to the gas station tomorrow",
+    "go to the second floor",
+    "go to the nearest integer",
+    "go to the app store",
+    "go to apple music",
+    "go to the home screen",
+    "go to coit tower then text sam",
+    "go to coit tower if it's open",
+    "go to coit tower.com",
+    "go to the settings tab",
+    // One capitalised word after "go to" may be a person or an app.
+    "go to Sam",
+    "go to Notion",
+    "go to Figma",
+    "go to Alcatraz",
+    "Okay, go to Sam, please.",
+    // All-caps words that are a file, a format, a time or one letter.
+    "go to PDF",
+    "go to the FAQ",
+    "go to HTML",
+    "go to PM",
+    "go to Q3",
+    "go to A",
+    "go to SFOOBAR",
     "is there anything near me in my calendar",
     "where can I get help with this bug",
     "find a nearby value in the array",
@@ -500,6 +707,21 @@ describe("travel and nearby requests reach Maps from a simple Stage-1 answer", (
     ["go to my inbox", undefined],
     ["go to settings", undefined],
     ["go to 40", undefined],
+    ["go to coit tower", "coit tower"],
+    ["go to the ferry building", "the ferry building"],
+    ["go to the museum of modern art", "the museum of modern art"],
+    ["go to pier 39", "pier 39"],
+    ["go to the nearest gas station", "the nearest gas station"],
+    ["go to Sam", undefined],
+    ["go to Notion", undefined],
+    ["go to Starbucks", "Starbucks"],
+    ["go to the Presidio", "the Presidio"],
+    ["go to SFO", "SFO"],
+    ["go to UCSF Medical Center", "UCSF Medical Center"],
+    ["go to the FAQ", undefined],
+    ["go to the right place", undefined],
+    ["go to great lengths", undefined],
+    ["go to the bottom of the list", undefined],
   ])("reads the go-to place in %s", (text, expected) => {
     expect(mapsGoToDestination(text)).toBe(expected);
   });

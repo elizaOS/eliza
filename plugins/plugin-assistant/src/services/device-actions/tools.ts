@@ -4,7 +4,12 @@ import type {
   ActionParameterSchema,
   HandlerOptions,
 } from "@elizaos/core";
-import { ElizaError, registerDirectActionRoutingRule } from "@elizaos/core";
+import {
+  ElizaError,
+  extractUserText,
+  registerDirectActionRoutingRule,
+  unwrapUserMessageText,
+} from "@elizaos/core";
 import { proposeDeviceAction } from "./action.ts";
 import { authoredBrowserDestination } from "./browser-request-grounding.ts";
 import {
@@ -40,7 +45,10 @@ import {
   requestLocalCalendarUpdate,
   requestLocalNotesUpdate,
 } from "./service.ts";
-import { authoredTelephonyRequest } from "./telephony-request.ts";
+import {
+  authoredKeypadRequest,
+  authoredTelephonyRequest,
+} from "./telephony-request.ts";
 import { turnObservation } from "./turn-observation.ts";
 
 function capabilityAvailable(
@@ -643,8 +651,9 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
       if (type === "camera_capture_photo") {
         // A whole-message photo command owns its lens: the camera the owner
         // named, or the one showing. The model's lens choice never overrides it.
+        // The owner's words, not a prompt-only document envelope around them.
         const authored = authoredCameraCapture(
-          String(args[1]?.content?.text ?? ""),
+          args[1] ? extractUserText(unwrapUserMessageText(args[1])) : "",
           args[0].character?.name,
         );
         if (
@@ -786,6 +795,31 @@ export function registerDeviceBrowserOpenRouting(
 }
 
 /**
+ * The phone's negotiated capabilities when this is the owner's own current
+ * phone chat request (client_chat DM or VOICE_DM) on the bound device turn.
+ */
+function ownerPhoneChatCapabilities(
+  runtime: Parameters<typeof registerDirectActionRoutingRule>[0],
+  message?: Parameters<NonNullable<Action["validate"]>>[1],
+): readonly string[] | undefined {
+  const current = getDeviceActionTurn();
+  const caller = current?.requestCaller;
+  if (
+    !message ||
+    current?.runtime !== runtime ||
+    !current.isCurrent() ||
+    current.requestMessage?.message !== message ||
+    caller?.role !== "OWNER" ||
+    caller.entityId !== message.entityId ||
+    caller.subjectUserId !== current.credential.subjectUserId ||
+    message.content.source !== "client_chat" ||
+    !["DM", "VOICE_DM"].includes(String(message.content.channelType))
+  )
+    return;
+  return current.credential.capabilities ?? [];
+}
+
+/**
  * Availability for a whole-message call or text command ("call 415-555-0100",
  * "text Sam saying ..."). Stage 1 answered such turns with a simple reply that
  * repeated an earlier "no SMS connector" refusal from history (v609 peer
@@ -800,22 +834,9 @@ export function registerDeviceTelephonyRouting(
     text: string,
     message?: Parameters<NonNullable<Action["validate"]>>[1],
   ): boolean => {
-    const current = getDeviceActionTurn();
-    const caller = current?.requestCaller;
-    if (
-      !message ||
-      current?.runtime !== runtime ||
-      !current.isCurrent() ||
-      current.requestMessage?.message !== message ||
-      caller?.role !== "OWNER" ||
-      caller.entityId !== message.entityId ||
-      caller.subjectUserId !== current.credential.subjectUserId ||
-      message.content.source !== "client_chat" ||
-      !["DM", "VOICE_DM"].includes(String(message.content.channelType))
-    )
-      return false;
+    const capabilities = ownerPhoneChatCapabilities(runtime, message);
+    if (!capabilities) return false;
     const request = authoredTelephonyRequest(text);
-    const capabilities = current.credential.capabilities;
     if (request === "call")
       return deviceOperationSupportedByCapabilities("phone_call", capabilities);
     if (request === "text")
@@ -838,5 +859,40 @@ export function registerDeviceTelephonyRouting(
     requiredActionTags: [],
     contexts: ["phone", "messaging", "general"],
     matches,
+  });
+}
+
+/**
+ * Availability for a whole-message keypad command ("open the dialer", "open
+ * the keypad and type 415 302 4399"). "Dialer" and "keypad" also name the
+ * Phone view, so Stage 1 judged these direct navigation and the phone opened
+ * on Recents with no keypad (v610 device evidence). This route owns the whole
+ * request: it drops that view-only plan and the staged navigation judgment and
+ * leaves PROPOSE_DEVICE_ACTION, whose phone_keypad operation takes the number
+ * written here. Opening the keypad never dials; "call X" stays with the
+ * telephony route and "open the phone app" with view navigation.
+ */
+export function registerDeviceKeypadRouting(
+  runtime: Parameters<typeof registerDirectActionRoutingRule>[0],
+): void {
+  const matches = (
+    text: string,
+    message?: Parameters<NonNullable<Action["validate"]>>[1],
+  ): boolean => {
+    const capabilities = ownerPhoneChatCapabilities(runtime, message);
+    return (
+      capabilities !== undefined &&
+      deviceOperationSupportedByCapabilities("phone_keypad", capabilities) &&
+      authoredKeypadRequest(text) !== undefined
+    );
+  };
+  registerDirectActionRoutingRule(runtime, {
+    id: "device.phone-keypad",
+    actionNames: ["PROPOSE_DEVICE_ACTION"],
+    replacesActionNames: ["VIEWS", "VIEWS_SHOW", "REPLY"],
+    requiredActionTags: [],
+    contexts: ["phone", "general"],
+    matches,
+    wholeRequest: { matches, invalidateFields: ["visualContinuation"] },
   });
 }

@@ -14,7 +14,12 @@ import {
 } from "./action.js";
 import { MAPS_VIEW_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
-import { MapsService } from "./service.js";
+import {
+  isChoiceReply,
+  PLACE_CHOICE_ACTIONS,
+  type PlaceChoiceOperation,
+} from "./place-choice.js";
+import { MAPS_SERVICE_TYPE, MapsService } from "./service.js";
 
 // Each operation says when to use it, in the words a user would use. Without
 // this text a promoted action reads only `MAPS operation "route".`, and the
@@ -169,6 +174,11 @@ export function mapsTravelDestination(text: string): string | undefined {
 }
 
 /**
+ * "nearest neighbor", "round to the nearest dollar", "the closest integer":
+ * a nearest or closest that is not a kind of place.
+ */
+const NOT_A_PLACE_KIND = String.raw`(?!(?:neighbou?rs?|integers?|whole|numbers?|dollars?|cents?|penn(?:y|ies)|hundreds?|thousands?|millions?|tens?|tenths?|hundredths?|thousandths?|decimals?|minutes?|hours?|seconds?|days?|weeks?|months?|years?|multiples?|powers?|points?|values?|match(?:es)?|percent|degrees?|units?|digits?|fractions?|primes?|pairs?|stars?|planets?|galax(?:y|ies)|matches|relatives?|synonyms?|words?|colou?rs?|versions?|results?)\b)`;
+/**
  * "go to X" names an app, a document or a conversation far more often than a
  * place ("go to the top", "go to page 3", "go to sleep", "go to my inbox"), so
  * only a named place or a street address counts: "go to Coit Tower", "go to
@@ -187,6 +197,19 @@ const GO_TO_NOT_A_PLACE =
   /^(?:(?:my|your|our|his|her|their|its|this|that|these|those)\b|(?:next|previous|prev|last|first|top|bottom|end|beginning|start|middle|same|other|point|sleep|bed|definition|declaration|implementation|references?|symbol|usages?|line|page|slide|chapter|section|step|level|tab|item|row|column|cell|sheet|folder|file|message|email|thread|inbox|chat|settings?|preferences|google|gmail|youtube|facebook|instagram|twitter|reddit|wikipedia|amazon|netflix|spotify|github|slack|discord|whatsapp|tiktok|linkedin|chrome|safari|firefox|outlook|today|tomorrow|yesterday|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december)\b)/iu;
 /** "Coit Tower", "McDonald's", "O'Hare": a capitalised word, not an acronym or code ("Q3"). */
 const PROPER_NAME = /^\p{Lu}[\p{Ll}'’]/u;
+/**
+ * A lone capitalised word can name a person or app. Recognise a small set of
+ * retail, hospitality and fuel chains with physical locations. Other names
+ * stay with the planner unless the user says "take me to" or "navigate to".
+ */
+const SINGLE_WORD_CHAINS =
+  /^(?:Starbucks|Peet['’]?s|Dunkin['’]?|McDonald['’]?s|Wendy['’]?s|Denny['’]?s|Applebee['’]?s|Chili['’]?s|Arby['’]?s|Popeyes|Chipotle|Panera|Walgreens|Safeway|Walmart|Costco|Target|Kroger|Albertsons|Publix|Wegmans|Meijer|Aldi|Lidl|Ikea|Lowe['’]?s|Macy['’]?s|Kohl['’]?s|Nordstrom|Sephora|Ulta|Petco|PetSmart|Staples|Kmart|Hilton|Marriott|Hyatt|Sheraton|Westin|Chevron|Exxon|Texaco|Valero|Arco)$/u;
+/**
+ * "SFO", "JFK Terminal 4", "UCSF Medical Center": an all-caps code of two to
+ * five letters, unless it is a common file, software or time abbreviation.
+ */
+const PLACE_CODE =
+  /^(?!(?:PDF|FAQ|URL|API|TODO|HTML|CSS|JSON|XML|SQL|CSV|USB|TV|AM|PM|OK|ASAP|FYI|AI|ML|UI|UX|IT|HR|PR|CI|QA|SDK|CLI|GUI|OS|AWS|VPN|DNS|SSH|IDE|DM|DMS|SMS|MMS|BIOS)\b)\p{Lu}{2,5}(?=\s|$)/u;
 /** "market street", "1600 pennsylvania avenue": an unambiguous street suffix. */
 const STREET_NAME =
   /\p{L}\s+(?:street|st|avenue|ave|boulevard|blvd|road|rd|lane|ln|parkway|pkwy|highway|hwy)\.?(?:,|$)/iu;
@@ -194,32 +217,75 @@ const STREET_NAME =
 const STREET_ADDRESS =
   /^\d+[a-z]?\s+(?:\p{Lu}|\S+.*?\b(?:drive|dr|way|place|pl|court|ct|terrace|square|plaza|circle)\.?(?:,|$))/u;
 
-/** The place a "go to X" request names, if it names a place or a street address. */
+/**
+ * A venue in a spoken place name ("coit tower", "museum of modern art") or
+ * following a code ("JFK Terminal 4") is affirmative evidence of travel.
+ */
+const PLACE_NAME_CUE =
+  /^(?:cathedral|college|museum|university)\s+of\s+\p{L}|\b(?:airport|aquarium|beach|bridge|building|caf[eé]|cathedral|center|centre|cinema|clinic|college|court|garden|hospital|hotel|library|market|museum|park|pharmacy|pier|plaza|restaurant|shop|square|stadium|station|store|terminal|theat(?:er|re)|tower|trail|university|zoo)(?:\s+\d+[a-z]?)?$/iu;
+
+const SPOKEN_NOT_A_PLACE_IDIOM =
+  /^(?:sleep|bed|work|school|church|war|waste|town|pieces|great\s+lengths)\b/u;
+/** "go to the right place", "go to see a movie", "go to the second floor". */
+const SPOKEN_NOT_A_PLACE_FIRST_WORD =
+  /^(?:right|wrong|left|new|old|main|current|latest|original|default|following|above|below|more|less|all|any|some|every|each|no|one|two|three|second|third|fourth|fifth|see|watch|pick|check|look|find|buy|grab|eat|drink|meet|visit|help|talk|ask|tell|say|take|bring|go|come|stay|lunch|dinner|breakfast|brunch|class|practice|rehearsal|apple|microsoft|app|apps|play|android|iphone|ios|windows|mac|phone|device|system|control|bing|yahoo|duckduckgo)\b/u;
+/** A word that makes the phrase about someone, something, a time or more work. */
+const SPOKEN_NOT_A_PLACE_WORD =
+  /\b(?:i|me|my|mine|you|your|yours|we|us|our|he|him|his|she|her|they|them|their|it|its|this|that|these|those|today|tomorrow|tonight|yesterday|now|later|soon|morning|afternoon|evening|weekend|with|for|and|or|but|so|to|about|after|before|without|because|until|while)\b/u;
+/** "go to the nearest gas station", but not "go to the nearest integer". */
+const SPOKEN_NEAREST = /^(?:nearest|closest)\b/u;
+const SPOKEN_NEAREST_PLACE = new RegExp(
+  String.raw`^(?:nearest|closest)\s+${NOT_A_PLACE_KIND}`,
+  "u",
+);
+
+/** A lowercase destination that still reads as a place: "coit tower", "the ferry building". */
+function spokenPlaceName(name: string): boolean {
+  return (
+    /^\p{Ll}/u.test(name) &&
+    /\s/u.test(name) &&
+    PLACE_NAME_CUE.test(name) &&
+    !SPOKEN_NOT_A_PLACE_IDIOM.test(name) &&
+    !SPOKEN_NOT_A_PLACE_FIRST_WORD.test(name) &&
+    !SPOKEN_NOT_A_PLACE_WORD.test(name) &&
+    (!SPOKEN_NEAREST.test(name) || SPOKEN_NEAREST_PLACE.test(name))
+  );
+}
+
+/**
+ * The place a "go to X" request names, if it names a place or a street
+ * address. A capitalised name needs two words, "the" ("the Presidio") or a
+ * well-known chain; a lone "Sam" or "Notion" is left to the planner.
+ */
 export function mapsGoToDestination(text: string): string | undefined {
   if (text.length > MAX_TRAVEL_REQUEST_LENGTH) return;
   const destination = GO_TO_REQUEST.exec(text)?.[1]?.trim();
   if (!destination) return;
   const name = destination.replace(/^the\s+/iu, "");
+  const code = PLACE_CODE.exec(name)?.[0];
   if (
     GO_TO_NOT_A_PLACE.test(name) ||
     NOT_A_PLACE_DESTINATION.test(destination) ||
     compoundDestination(destination) ||
     containsResourceAddress(destination) ||
     !(
-      PROPER_NAME.test(name) ||
+      (PROPER_NAME.test(name) &&
+        (name !== destination ||
+          /\s/u.test(name) ||
+          SINGLE_WORD_CHAINS.test(name))) ||
+      (code !== undefined &&
+        (code === name ||
+          (PLACE_NAME_CUE.test(name) &&
+            !SPOKEN_NOT_A_PLACE_WORD.test(name.toLowerCase())))) ||
       STREET_ADDRESS.test(name) ||
-      STREET_NAME.test(name)
+      STREET_NAME.test(name) ||
+      spokenPlaceName(name)
     )
   )
     return;
   return destination;
 }
 
-/**
- * "nearest neighbor", "round to the nearest dollar", "the closest integer":
- * a nearest or closest that is not a kind of place.
- */
-const NOT_A_PLACE_KIND = String.raw`(?!(?:neighbou?rs?|integers?|whole|numbers?|dollars?|cents?|penn(?:y|ies)|hundreds?|thousands?|millions?|tens?|tenths?|hundredths?|thousandths?|decimals?|minutes?|hours?|seconds?|days?|weeks?|months?|years?|multiples?|powers?|points?|values?|match(?:es)?|percent|degrees?|units?|digits?|fractions?|primes?|pairs?|stars?|planets?|galax(?:y|ies)|matches|relatives?|synonyms?|words?|colou?rs?|versions?|results?)\b)`;
 const FIND_VERB = String.raw`(?:(?:find|show|locate|get|search\s+for|look\s+(?:for|up))\s+(?:me\s+)?|where(?:'s|’s|\s+is|\s+are)\s+|what(?:'s|’s|\s+is)\s+)`;
 /** "find the nearest pharmacy", "nearest coffee shop", "where is the closest gas station?" */
 const NEAREST_PLACE_REQUEST = new RegExp(
@@ -273,6 +339,24 @@ function ownerChatTurn(message: Memory | undefined): boolean {
     message?.content.source === "client_chat" &&
     ["DM", "VOICE_DM"].includes(String(message.content.channelType))
   );
+}
+
+/**
+ * The operation whose "which one did you mean?" question this owner turn
+ * answers ("the first one"), if one is open in this conversation.
+ */
+function answeredPlaceChoice(
+  runtime: Parameters<NonNullable<Plugin["init"]>>[1],
+  text: string,
+  message: Memory | undefined,
+): PlaceChoiceOperation | undefined {
+  if (!message) return undefined;
+  const service = runtime.getService(MAPS_SERVICE_TYPE);
+  if (!(service instanceof MapsService)) return undefined;
+  // Looked up for every owner turn, so a turn that moves on closes the
+  // question and a later "the first one" is left to whatever asked it.
+  const operation = service.placeChoices.get(message)?.operation;
+  return operation && isChoiceReply(text) ? operation : undefined;
 }
 
 /**
@@ -350,6 +434,24 @@ export const mapsPlugin: Plugin = {
         ownerChatTurn(message) &&
         travelToPlace(runtime, text, message, mapsGoToDestination),
     });
+    // "the first one" answers the open "which one did you mean?" question.
+    // Without this the reply reads as small talk: on the phone (v610) Stage 1
+    // answered it in prose ("I can't load a live route from here") and no
+    // route was planned. The operation that asked continues the request.
+    for (const [operation, actionName] of Object.entries(
+      PLACE_CHOICE_ACTIONS,
+    ) as [PlaceChoiceOperation, string][]) {
+      registerDirectActionRoutingRule(runtime, {
+        id: `maps.place-choice.${operation}`,
+        actionNames: [actionName],
+        replacesActionNames: ["VIEWS", "VIEWS_SHOW"],
+        requiredActionTags: ["domain:maps"],
+        contexts: ["maps"],
+        matches: (text, message) =>
+          ownerChatTurn(message) &&
+          answeredPlaceChoice(runtime, text, message) === operation,
+      });
+    }
     // "find the nearest pharmacy": the place search around the phone's own
     // position (a locate card), or directions to it.
     registerDirectActionRoutingRule(runtime, {

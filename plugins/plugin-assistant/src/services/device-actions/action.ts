@@ -16,6 +16,7 @@ import {
 import {
   containsWebAddress,
   DeviceBrowserNotRequestedError,
+  directBrowserOpen,
 } from "./browser-request-grounding.ts";
 import {
   isCalendarOperation,
@@ -118,6 +119,7 @@ import {
   telephonyActionResultText,
   validateTelephonyActionResult,
 } from "./telephony-actions-contract.ts";
+import { authoredKeypadRequest } from "./telephony-request.ts";
 
 const reminderSchemas: ActionParameterSchema[] = [
   "reminder_read_selected",
@@ -1123,7 +1125,7 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   },
   {
     types: ["contact_create", "contact_update", "contact_delete"],
-    text: "Address-book changes require contacts.write.v1: contact_create {contact: {displayName, phoneNumbers, emailAddresses}}, contact_update {query, set} where set holds any of displayName, phoneNumbers, emailAddresses (a field in set replaces that field whole; a field left out is unchanged), or contact_delete {query}. query names the contact by search text exactly as the owner said it, never an ID. The phone finds the contact, shows the owner the before and after, and writes only after approval. You receive only the outcome and never the address book or any contact detail; never use these to look a contact up. not-found and stale mean nothing was changed.",
+    text: "Address-book changes require contacts.write.v1: contact_create {contact: {displayName, phoneNumbers, emailAddresses}}, contact_update {query, set} where set holds any of displayName, phoneNumbers, emailAddresses (a field in set replaces that field whole; a field left out is unchanged), or contact_delete {query}. query names the contact by search text exactly as the owner said it, never an ID. The phone finds the contact, shows the owner the before and after, and writes only after approval. You receive only the outcome and never the address book or any contact detail; never use these to look a contact up. The phone looks up a change's or deletion's name before it offers the review, and when no contact matches it tells the owner instead; so never say the contact exists or that its change is ready, only that the phone will show the matching contact to approve. not-found and stale mean nothing was changed.",
   },
   {
     types: ["contact_update"],
@@ -1252,6 +1254,27 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
   { types: ["clock_alarm"], text: CLOCK_ALARM_GUIDANCE },
   { types: ["clock_handoff"], text: CLOCK_PROPOSAL_GUIDANCE },
 ];
+
+/**
+ * A whole-message keypad command ("open the dialer and type 415 302 4399")
+ * owns its number: the one the owner wrote in this current request, or an
+ * empty keypad when none was written. The model's number never replaces it.
+ */
+function authoredKeypadOperation(
+  context: NonNullable<ReturnType<typeof getDeviceActionTurn>>,
+  message: Memory,
+): { type: "phone_keypad"; number?: string } | undefined {
+  if (!context.isCurrent() || context.requestMessage?.message !== message)
+    return;
+  const authored = authoredKeypadRequest(
+    extractUserText(unwrapUserMessageText(message)),
+  );
+  if (!authored) return;
+  return {
+    type: "phone_keypad",
+    ...(authored.number ? { number: authored.number } : {}),
+  };
+}
 
 export const proposeDeviceAction: Action = {
   name: "PROPOSE_DEVICE_ACTION",
@@ -1585,7 +1608,11 @@ export const proposeDeviceAction: Action = {
       outcome = await new DeviceActionService(runtime).proposeWithOutcome(
         context.credential,
         resolveReminderCreateInput(
-          withDialNumber(p.operation),
+          withDialNumber(
+            operationType === "phone_keypad"
+              ? (authoredKeypadOperation(context, _message) ?? p.operation)
+              : p.operation,
+          ),
           context.startedAt,
         ),
         operationKey,
@@ -2000,6 +2027,15 @@ export function deviceActionForCapabilities(
   const files =
     capabilities?.includes(FILES_CAPABILITY) === true &&
     (!current || current.isCurrent());
+  // "Open x.com in a new tab" is an open of x.com: an empty tab is never
+  // offered for it (the service also turns one into that open).
+  const request = binding?.message ?? current?.replyContext?.message;
+  const addressInNewTab =
+    request !== undefined &&
+    directBrowserOpen(
+      extractUserText(unwrapUserMessageText(request)),
+      (binding?.runtime ?? current?.runtime)?.character.name,
+    )?.newTab === true;
   const offered = (branch: ActionParameterSchema): boolean => {
     if (
       branch.properties?.days &&
@@ -2054,6 +2090,7 @@ export function deviceActionForCapabilities(
       return false;
 
     if (navigation && types?.includes("open_view")) return false;
+    if (addressInNewTab && types?.includes("browser_tab_new")) return false;
     if (
       (types?.includes("calendar_create_local") ||
         types?.includes("calendar_read_next")) &&

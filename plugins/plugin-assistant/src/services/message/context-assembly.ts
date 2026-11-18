@@ -210,7 +210,9 @@ export async function createV5MessageContextObject(args: {
         : []),
       ...(phoneCapabilities.includes("phone.keypad.v1")
         ? [
-            "open the dialer or keypad, with or without a number: phone_keypad, which fills in the keypad and never calls",
+            // "Dialer" and "keypad" may also name the Phone view: on v610
+            // "open the phone dialer" became a view switch with no keypad.
+            "open the dialer or keypad, with or without a number: phone_keypad, which fills in the keypad and never calls (the dialer, dial pad and keypad may also be names of the Phone view, but opening that view does not bring up the keypad, so this is phone_keypad, not navigation)",
           ]
         : []),
     ];

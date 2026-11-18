@@ -56,6 +56,7 @@ import type {
   ApprovalEnqueueResult,
   ApprovalRequest,
 } from "../approval/types.ts";
+import { hostAuthoredText } from "./authored-text.ts";
 import {
   BROWSER_CONTROL_TYPES,
   BROWSER_FIND_CAPABILITY,
@@ -980,6 +981,11 @@ async function freshRequestedMessageId(
       original.id
   )
     return;
+  // The chat host may hand the planner a prompt-only copy of the message
+  // (document excerpts around the owner's words). The words the owner sent
+  // are the host-bound persisted message's, never that envelope's.
+  const authoredText = hostAuthoredText(original);
+  if (authoredText === undefined) return;
   const signal = getStreamingContext()?.abortSignal;
   const subject = credential.subjectUserId,
     installation = credential.installationId;
@@ -1028,7 +1034,7 @@ async function freshRequestedMessageId(
     typeof stored.createdAt !== "number" ||
     !Number.isFinite(stored.createdAt) ||
     stored.createdAt < current.startedAt ||
-    stored.content.text !== original.content.text ||
+    stored.content.text !== authoredText ||
     !storedMarker ||
     storedMarker.scope !== marker.scope ||
     storedMarker.clientMessageId !== marker.clientMessageId ||
@@ -2243,6 +2249,29 @@ export class DeviceActionService {
     },
   ): Promise<ApprovalEnqueueResult> {
     let validated = validateDeviceOperation(operation);
+    // "Open wikipedia.org in a new tab" asks for that address, not an empty
+    // tab. The model still proposed browser_tab_new for it (v610, Pixel: the
+    // phone showed a blank New tab and "Opened a new tab."), so the owner's own
+    // words decide: the address opens with browser_navigate, in a new tab
+    // when the phone negotiated one. The destination is grounded below in the
+    // durable request text like any other open.
+    if (validated.type === "browser_tab_new" && validated.private !== true) {
+      const turn = getDeviceActionTurn();
+      const requested =
+        turn?.runtime === this.runtime ? turn.replyContext?.message : undefined;
+      const opened = requested
+        ? directBrowserOpen(
+            extractUserText(unwrapUserMessageText(requested)),
+            this.runtime.character.name,
+          )
+        : undefined;
+      if (opened?.newTab)
+        validated = {
+          type: "browser_navigate",
+          url: opened.href,
+          newTab: true,
+        };
+    }
     // A new tab is where an address opens, not another effect: a phone that
     // did not negotiate it opens the address as it always has.
     if (
@@ -2542,13 +2571,24 @@ export class DeviceActionService {
             ? { viewProfileRevision: viewProfile.revision }
             : {}),
         };
+        // A direct open is the owner's whole message asking for one address:
+        // another proposal of the same open in that turn (an empty tab the
+        // model proposed for it, turned into this open above, beside its
+        // routed open) is that same open, never a second tab.
+        const requestKey = identifier(operationKey);
+        const directOpen =
+          payload.requestMessageId !== undefined &&
+          validated.type === "browser_navigate";
+        const queuedReason = directOpen
+          ? "Open the address the owner typed."
+          : text(reason, 1000);
         // This is the canonical queue's transaction API: no notification or effect before commit.
         // A direct request binds its key to that message: a key reused in a later turn is a new review.
         const idempotencyKey = `device:${digest([
           c.subjectUserId,
           c.installationId,
           ...(payload.requestMessageId ? [payload.requestMessageId] : []),
-          identifier(operationKey),
+          directOpen ? { browserOpen: payload.operation } : requestKey,
         ])}`;
         const existing = await queue.byIdempotencyKey(
           idempotencyKey,
@@ -2635,7 +2675,7 @@ export class DeviceActionService {
             action: "device_action",
             payload,
             channel: "phone",
-            reason: text(reason, 1000),
+            reason: queuedReason,
             idempotencyKey,
             expiresAt:
               existing?.expiresAt ?? new Date(Date.now() + 10 * 60_000),

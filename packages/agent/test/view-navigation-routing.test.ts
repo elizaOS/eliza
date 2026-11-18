@@ -433,6 +433,12 @@ describe("go-to commands beside the Maps place routes", () => {
     expect(mapsRoutes(r, text)).toEqual([]);
   });
 
+  it("leaves a lowercase two-word view name to view navigation", async () => {
+    const r = await withMapsAndPhoneViews();
+    expect(namesViewNavigationTarget(r, "cloud apps")).toBe(true);
+    expect(mapsRoutes(r, "go to cloud apps")).toEqual([]);
+  });
+
   it("leaves a view that is unavailable here to view navigation", async () => {
     // Camera is an Android-only native view, so no route is eligible on this
     // host; it is still a view name and never a place.
@@ -444,6 +450,10 @@ describe("go-to commands beside the Maps place routes", () => {
     "go to Coit Tower",
     "go to the Ferry Building",
     "go to 1 Market St, San Francisco",
+    "go to coit tower",
+    "go to the ferry building",
+    "go to SFO",
+    "go to Starbucks",
   ])("%s is a place for Maps, not a view", async (text) => {
     const r = await withMapsAndPhoneViews();
     expect(await eligible(r, text)).toEqual([]);
@@ -461,6 +471,12 @@ describe("go-to commands beside the Maps place routes", () => {
     "go to the previous one",
     "go to line 40",
     "go to definition",
+    "go to work",
+    "go to great lengths",
+    "go to the right place",
+    "go to Sam",
+    "go to Notion",
+    "go to PDF",
   ])("%s is neither a view nor a place", async (text) => {
     const r = await withMapsAndPhoneViews();
     expect(await eligible(r, text)).toEqual([]);
