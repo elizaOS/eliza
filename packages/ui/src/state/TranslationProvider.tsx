@@ -130,10 +130,7 @@ export function TranslationProvider({
     () => ({ ...DEFAULT_BRANDING, ...branding }),
     [branding],
   );
-  // `localeRevision` is not read inside the factory, but it must invalidate the
-  // memo: a lazily loaded dictionary lands after `uiLanguage` already changed,
-  // and consumers only re-render with the new strings when `t` and the context
-  // value change identity.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: publish the new catalog when its lazy load completes
   const t = useMemo(
     () =>
       createTranslator(uiLanguage, appNameInterpolationVars(mergedBranding)),
