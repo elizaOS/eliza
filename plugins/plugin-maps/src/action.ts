@@ -35,14 +35,11 @@ import type {
 import {
   chosenPlace,
   dominantPlace,
-  isChoiceReply,
   metersBetween,
   type PendingPlaceChoice,
   type PlaceChoiceField,
   type PlaceChoiceOperation,
   placeLabel,
-  placeNameKey,
-  sameQuery,
 } from "./place-choice.js";
 import { getMapsService, type MapsService } from "./service.js";
 import {
@@ -395,34 +392,13 @@ interface PlaceQueryOptions {
   provider?: string;
   /** The other route endpoint: a destination is looked for around the origin. */
   anchor?: PlaceRef | null;
-  /** The open question this request may answer. */
-  choice?: PendingPlaceChoice;
   /** Context the question adds, such as the settled starting place. */
   note?: string;
 }
 
-/** True when `query` restates a place already settled for that field. */
-function settledFor(
-  choice: PendingPlaceChoice | undefined,
-  field: PlaceChoiceField,
-  query: string,
-): PlaceRef | undefined {
-  const settled = choice?.resolved[field];
-  if (!settled) return undefined;
-  const key = placeNameKey(query);
-  return sameQuery(settled.query, query) ||
-    key === placeNameKey(settled.place.name) ||
-    key === placeNameKey(placeLabel(settled.place)) ||
-    query === settled.place.providerPlaceId
-    ? settled.place
-    : undefined;
-}
-
 /**
- * Resolves a typed name or address to one place. An open question for this
- * field takes the owner's choice ("the first one"); a provider answer with one
- * meant place takes it; real ambiguity asks which one, numbered, and no match
- * is the plain not-found reply.
+ * Resolves a typed name or address, returns numbered options for ambiguity,
+ * or returns the plain not-found reply.
  */
 async function placeFromQuery(
   service: MapsService,
@@ -433,13 +409,6 @@ async function placeFromQuery(
   options: PlaceQueryOptions = {},
 ): Promise<PlaceRef | ActionResult> {
   const name = field.name as PlaceChoiceField;
-  const { choice } = options;
-  const settled = settledFor(choice, name, query);
-  if (settled) return settled;
-  if (choice?.field === name) {
-    const picked = chosenPlace(choice, replyText(message), query);
-    if (picked) return picked;
-  }
   // The provider biases the search around the other endpoint it returned. A
   // coordinate or another provider's place may lie outside its coverage.
   const anchor =
@@ -595,12 +564,15 @@ async function requestedPlace(
   message: Memory,
   operation: PlaceChoiceOperation = action as PlaceChoiceOperation,
 ): Promise<PlaceRef | ActionResult | null> {
+  const choice = openChoice(service, message, operation);
+  const picked = choice && chosenPlace(choice, replyText(message));
+  if (picked) {
+    service.placeChoices.clear(message);
+    return picked;
+  }
   const place = await resolvedPlace(service, params, message.entityId);
   if (place) return place;
-  const choice = openChoice(service, message, operation);
-  const query =
-    text(params.placeQuery) ??
-    (choice && isChoiceReply(replyText(message)) ? choice.query : undefined);
+  const query = text(params.placeQuery);
   if (!query) return null;
   const found = await placeFromQuery(
     service,
@@ -608,7 +580,7 @@ async function requestedPlace(
     message,
     PLACE_QUERY_FIELD,
     query,
-    { provider: text(params.provider), choice },
+    { provider: text(params.provider) },
   );
   if (isReply(found)) {
     rememberChoice(service, message, operation, found, {
@@ -619,22 +591,6 @@ async function requestedPlace(
     service.placeChoices.clear(message);
   }
   return found;
-}
-
-/** True when the request itself names either route endpoint. */
-function namesRouteEndpoint(params: Params): boolean {
-  return [
-    "originQuery",
-    "destinationQuery",
-    "originPlaceId",
-    "destinationPlaceId",
-    "originLatitude",
-    "originLongitude",
-    "originName",
-    "destinationLatitude",
-    "destinationLongitude",
-    "destinationName",
-  ].some((name) => params[name] !== undefined);
 }
 
 /** Distances read as km with one decimal from 1 km, metres to the nearest 10 below. */
@@ -1012,37 +968,39 @@ async function execute(
         );
       }
       case "route": {
-        // A reply to the open question ("the first one"), or a bare
-        // continuation, carries the rest of the request from that question.
         const choice = openChoice(service, message, "route");
-        const continuing =
-          choice !== undefined &&
-          (isChoiceReply(replyText(message)) ||
-            (!namesRouteEndpoint(params) && !flag(params.useCurrentLocation)));
-        const pending = continuing ? choice : undefined;
+        const picked = choice && chosenPlace(choice, replyText(message));
+        const pending = picked ? choice : undefined;
         const originPlaceId = opaqueText(params.originPlaceId);
         const destinationPlaceId = opaqueText(params.destinationPlaceId);
-        let origin =
-          directPlace(params, "origin") ??
-          (originPlaceId
-            ? await service.getPlace(originPlaceId, text(params.provider))
-            : null);
-        let destination =
-          directPlace(params, "destination") ??
-          (destinationPlaceId
-            ? await service.getPlace(destinationPlaceId, text(params.provider))
-            : null);
-        // A planner that copies the reply ("the first one") into an endpoint
-        // query is answering the open question, not naming a new place.
-        const endpointQuery = (field: PlaceChoiceField) => {
-          const named = text(params[field]);
-          return named && !(pending && isChoiceReply(named))
-            ? named
-            : (pending?.queries[field] ?? named);
-        };
-        const originQuery = endpointQuery("originQuery");
-        const destinationQuery = endpointQuery("destinationQuery");
-        const requestedMode = text(params.travelMode) ?? pending?.travelMode;
+        let origin = pending
+          ? ((pending.field === "originQuery"
+              ? picked
+              : pending.resolved.originQuery) ?? null)
+          : (directPlace(params, "origin") ??
+            (originPlaceId
+              ? await service.getPlace(originPlaceId, text(params.provider))
+              : null));
+        let destination = pending
+          ? ((pending.field === "destinationQuery"
+              ? picked
+              : pending.resolved.destinationQuery) ?? null)
+          : (directPlace(params, "destination") ??
+            (destinationPlaceId
+              ? await service.getPlace(
+                  destinationPlaceId,
+                  text(params.provider),
+                )
+              : null));
+        const originQuery = pending
+          ? pending.queries.originQuery
+          : text(params.originQuery);
+        const destinationQuery = pending
+          ? pending.queries.destinationQuery
+          : text(params.destinationQuery);
+        const requestedMode = pending
+          ? pending.travelMode
+          : text(params.travelMode);
         const travelModeName = requestedMode
           ? validated(
               travelModeSchema,
@@ -1060,15 +1018,10 @@ async function execute(
                 : {}),
               ...(destinationQuery ? { destinationQuery } : {}),
             },
-            resolved:
-              origin && (originQuery ?? origin.name)
-                ? {
-                    originQuery: {
-                      query: originQuery ?? origin.name,
-                      place: origin,
-                    },
-                  }
-                : {},
+            resolved: {
+              ...(origin ? { originQuery: origin } : {}),
+              ...(destination ? { destinationQuery: destination } : {}),
+            },
             ...(travelModeName ? { travelMode: travelModeName } : {}),
           });
         if (!origin && originQuery) {
@@ -1080,7 +1033,6 @@ async function execute(
             originQuery,
             {
               provider: text(params.provider),
-              choice: pending,
               anchor: destination,
             },
           );
@@ -1099,7 +1051,6 @@ async function execute(
             destinationQuery,
             {
               provider: text(params.provider),
-              choice: pending,
               anchor: origin,
               ...(origin ? { note: `Starting from ${origin.name}.` } : {}),
             },
