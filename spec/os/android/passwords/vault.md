@@ -266,6 +266,15 @@ even when the approval fails.
 ```quint
 type SharedBackupPurpose = SharedBackupRead | SharedBackupSave | SharedBackupDelete | SharedBackupVerify
 type SharedBackupBinding = { issuer: str, owner: str, ownerGeneration: str, requestId: str, purpose: SharedBackupPurpose }
+pure val requestValues = Set(
+  { issuer: "production", owner: "owner", ownerGeneration: "renewed", requestId: "backup", purpose: SharedBackupSave },
+  { issuer: "staging", owner: "owner", ownerGeneration: "renewed", requestId: "backup", purpose: SharedBackupSave },
+  { issuer: "production", owner: "owner", ownerGeneration: "retired", requestId: "backup", purpose: SharedBackupSave },
+  { issuer: "production", owner: "other", ownerGeneration: "renewed", requestId: "backup", purpose: SharedBackupSave },
+  { issuer: "production", owner: "owner", ownerGeneration: "renewed", requestId: "other-request", purpose: SharedBackupSave },
+  { issuer: "production", owner: "owner", ownerGeneration: "renewed", requestId: "backup", purpose: SharedBackupVerify })
+pure val activeValues = requestValues
+pure val approvedValues = requestValues
 pure def sharedBackupApprovalMatches(request: SharedBackupBinding, active: SharedBackupBinding, freshNativeSignIn: bool, registeredApp: bool, deviceReady: bool): bool =
   request.issuer != "" and request.owner != "" and request.ownerGeneration != "" and request.requestId != "" and
   request == active and freshNativeSignIn and registeredApp and deviceReady
