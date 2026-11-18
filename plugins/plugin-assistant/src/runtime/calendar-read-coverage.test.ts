@@ -3335,7 +3335,7 @@ it.each(["partial", "owner", "stale", "window"])(
 
 /** Live step-1793620054396-442pij: typed feed, no details, one complete owner day. */
 describe("owner-bound producer-resolved Calendar window", () => {
-  async function actualImplicitFeed() {
+  async function actualImplicitFeed(details?: Record<string, string>) {
     const f = fixture();
     const time = Date.parse("2026-11-02T11:47:40.000Z");
     const asOf = "2026-11-02T11:47:44.157Z";
@@ -3410,7 +3410,7 @@ describe("owner-bound producer-resolved Calendar window", () => {
         runJsonModel: noModel,
         recentConversationTexts: async () => [],
       }).handler(runtime, message, undefined, {
-        parameters: { subaction: "feed" },
+        parameters: { subaction: "feed", ...(details && { details }) },
       });
       expect(read).toHaveBeenCalledOnce();
       expect(read.mock.calls[0][1]).toMatchObject({
@@ -3426,7 +3426,7 @@ describe("owner-bound producer-resolved Calendar window", () => {
           toolCall: {
             id: "implicit-owner-day",
             name: "CALENDAR_FEED",
-            params: { subaction: "feed" },
+            params: { subaction: "feed", ...(details && { details }) },
           },
           result: structuredClone(result),
         },
@@ -3443,17 +3443,24 @@ describe("owner-bound producer-resolved Calendar window", () => {
       vi.restoreAllMocks();
     }
   }
-  it("accepts the real producer's current owner-bound day without model-supplied details", async () => {
-    const f = await actualImplicitFeed();
-    const coverage = calendarReadCoverage(f.output, f.context, f.trajectory);
-    expect(coverage.verified).toBe(true);
-    expect(coverage).toEqual({ verified: true, unverifiedIntentIds: [] });
-    expect(f.trajectory.steps[0].result?.data?.requestWindow).toMatchObject({
-      kind: "calendar.request-window.v1",
-      timeMin: "2026-11-02T08:00:00.000Z",
-      timeMax: "2026-11-03T08:00:00.000Z",
-    });
-  });
+  it.each([
+    ["absent details", undefined],
+    ["empty details", {}],
+    ["the producer's timezone alone", { timeZone: "America/Los_Angeles" }],
+  ] as const)(
+    "accepts the real producer's current owner-bound day with %s",
+    async (_, details) => {
+      const f = await actualImplicitFeed(details);
+      const coverage = calendarReadCoverage(f.output, f.context, f.trajectory);
+      expect(coverage.verified).toBe(true);
+      expect(coverage).toEqual({ verified: true, unverifiedIntentIds: [] });
+      expect(f.trajectory.steps[0].result?.data?.requestWindow).toMatchObject({
+        kind: "calendar.request-window.v1",
+        timeMin: "2026-11-02T08:00:00.000Z",
+        timeMax: "2026-11-03T08:00:00.000Z",
+      });
+    },
+  );
   it.each([
     "missing",
     "other-request",
@@ -3467,6 +3474,8 @@ describe("owner-bound producer-resolved Calendar window", () => {
     "partial",
     "short-window",
     "explicit-window",
+    "unmatched-argument-zone",
+    "unsupported-argument",
     "multiple-bindings",
   ])("does not bypass %s evidence", async (fault) => {
     const f = await actualImplicitFeed();
@@ -3494,6 +3503,10 @@ describe("owner-bound producer-resolved Calendar window", () => {
         date: "2026-11-04",
         timeZone: "America/Los_Angeles",
       };
+    if (fault === "unmatched-argument-zone")
+      requiredFixtureValue(step.toolCall).params.details = { timeZone: "UTC" };
+    if (fault === "unsupported-argument")
+      requiredFixtureValue(step.toolCall).params.details = { windowDays: 7 };
     if (fault === "multiple-bindings") {
       const bindings = requiredFixtureValue(f.context.metadata)
         .calendarReadBindings as CalendarReadBinding[];
