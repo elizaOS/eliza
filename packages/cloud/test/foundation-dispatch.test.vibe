@@ -3,9 +3,9 @@ import { assert, describe, it } from "@effect/vitest"
 import { NotAState, conflictRefusal, decodeState, initial } from "../gen/cloud__shared__dispatchOnce.effect.vibe"
 import { Refused, refusalBody } from "../src/http/refusal.vibe"
 import { dispatchReceipt, loadReceipt, mayFollowWith, prepareReceipt, receiptOwner, receiptStatusAt, renderProviderKey, requestDigest, resolveReceipt, type LookupResult, type ProviderKey, type ProviderReply, type Receipt, type ReceiptRows } from "../src/shared/dispatch-once.vibe"
-import { Store, StoreFailure } from "../src/store/store.vibe"
+import { Store, StoreFailure, storeLayer } from "../src/store/store.vibe"
 import { shiftedClock } from "./support/clock.ts"
-import { testCloud, type FakeServer, type TestCloud } from "./support/cloud.vibe"
+import { startFakeServer, type FakeServer } from "./support/fakes.ts"
 
 type Mode = "apply" | "lose-reply" | "hang"
 
@@ -48,8 +48,17 @@ function mountProvider(fakes: FakeServer, modes: Map<string, Mode>, applied: Set
   })
 }
 
-effect function scratchTable(cloud: TestCloud) {
-  try cloud.store.transaction((tx) => tx.script("CREATE TABLE scratch_changes (key text PRIMARY KEY, state jsonb NOT NULL, revision integer NOT NULL, status text NOT NULL, updated_at bigint NOT NULL)"))
+interface Bench {
+  readonly fakes: FakeServer
+  readonly store: Store.Shape
+}
+
+effect function bench(modes: Map<string, Mode>, applied: Set<string>) {
+  const fakes = try acquireRelease(promise(() => startFakeServer()), (opened) => promise(() => opened.close()))
+  try sync(() => mountProvider(fakes, modes, applied))
+  const store = Context.get(try Layer.build(storeLayer({ kind: "pglite", file: undefined })), Store)
+  try store.transaction((tx) => tx.script("CREATE TABLE scratch_changes (key text PRIMARY KEY, state jsonb NOT NULL, revision integer NOT NULL, status text NOT NULL, updated_at bigint NOT NULL)"))
+  return { fakes, store } satisfies Bench
 }
 
 effect function call(method: "GET" | "POST", url: string, headers: Readonly<Record<string, string>> = {}) {
@@ -60,7 +69,7 @@ effect function call(method: "GET" | "POST", url: string, headers: Readonly<Reco
   return response.status
 }
 
-effect function sendChange(cloud: TestCloud, rowKey: string, durable: string[], providerKey: string): ProviderReply<number>!StoreFailure!HttpClient.HttpClient {
+effect function sendChange(cloud: Bench, rowKey: string, durable: string[], providerKey: string): ProviderReply<number>!StoreFailure!HttpClient.HttpClient {
   const row = try cloud.store.transaction((tx) => tx.query("SELECT state->'receipt'->'session'->>'phase' AS phase, state->'receipt'->'session'->>'effects' AS effects FROM scratch_changes WHERE key = $1", [rowKey]))
   durable.push(`${String(row[0]?.phase)}:${String(row[0]?.effects)}`)
   const status = try call("POST", `${cloud.fakes.url}/receipts/changes`, { "idempotency-key": providerKey })
@@ -69,7 +78,7 @@ effect function sendChange(cloud: TestCloud, rowKey: string, durable: string[], 
   return { kind: "unknown", cause: `the provider answered ${status}` }
 }
 
-effect function lookupChange(cloud: TestCloud, providerKey: string): ProviderReply<LookupResult>!!HttpClient.HttpClient {
+effect function lookupChange(cloud: Bench, providerKey: string): ProviderReply<LookupResult>!!HttpClient.HttpClient {
   const status = try call("GET", `${cloud.fakes.url}/receipts/changes/${encodeURIComponent(providerKey)}`)
   if (status === 200) return { kind: "applied", value: { tag: "EffectSeen" } }
   if (status === 404) return { kind: "applied", value: { tag: "NothingSeen" } }
@@ -80,7 +89,7 @@ effect function check(run: () => void) {
   try Effect.try(run)
 }
 
-effect function stored(cloud: TestCloud, key: string) {
+effect function stored(cloud: Bench, key: string) {
   return (try cloud.store.transaction((tx) => tx.query("SELECT status, revision FROM scratch_changes WHERE key = $1", [key]))).map((row) => [row.status, Number(row.revision)])
 }
 
@@ -92,8 +101,7 @@ describe("WP0 Foundation: dispatch once (spec/cloud/shared/dispatchOnce.md, \"St
   it.live("A lost reply stays unknown until a lookup finds the change; the same key answers as it stands and another digest is 409 (spec/cloud/shared/dispatchOnce.md, \"Only a clear reply settles a receipt; any other reply leaves its outcome unknown\"; spec/cloud/shared/dispatchOnce.md, \"A receipt binds its owner, kind, request digest, provider key and stale duration once\")", () => scoped(effect {
     const modes = new Map<string, Mode>()
     const applied = new Set<string>()
-    const cloud = try testCloud({ mount: (fakes) => mountProvider(fakes, modes, applied) })
-    try scratchTable(cloud)
+    const cloud = try bench(modes, applied)
     const rows = changesFor("req-1")
     const providerKey: ProviderKey = { providerKind: "CheckoutSession", providerId: "req-1-a1" }
     modes.set(renderProviderKey(providerKey), "lose-reply")
@@ -139,8 +147,7 @@ describe("WP0 Foundation: dispatch once (spec/cloud/shared/dispatchOnce.md, \"St
   it.live("A stale change with no effect seen settles as not applied, and only then may a new provider key be sent (spec/cloud/shared/dispatchOnce.md, \"An unknown outcome is settled only by a provider lookup, and a sent one as not applied only after one more stale duration\"; spec/cloud/shared/dispatchOnce.md, \"A new receipt may follow only a rejected one, under a different provider key\")", () => scoped(effect {
     const modes = new Map<string, Mode>()
     const applied = new Set<string>()
-    const cloud = try testCloud({ mount: (fakes) => mountProvider(fakes, modes, applied) })
-    try scratchTable(cloud)
+    const cloud = try bench(modes, applied)
     const clock = try sync(() => shiftedClock())
     const staleAfter = 300
     const first: ProviderKey = { providerKind: "CheckoutSession", providerId: "req-2-a1" }

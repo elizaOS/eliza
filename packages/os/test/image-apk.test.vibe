@@ -1,0 +1,271 @@
+// spec/os/image/apk.md, "Story: Put only a reviewed release APK into an image"; spec/os/image/apk.md, "Story: Update my installed app without losing its data"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import {
+  BUILD_FLAGS_ENTRY,
+  QA_EVIDENCE_FORMAT,
+  aaptManifestTree,
+  admitImageApk,
+  apkReleaseBlockers,
+  apkUpdateAdmission,
+  apkUpdateReceipt,
+  assertAndroidArtifactSnapshotUnchanged,
+  cloudVoiceAdmission,
+  compareDomains,
+  dumpAndroidArtifactBadging,
+  integrityQuery,
+  javaMajorVersion,
+  listAndroidArtifactEntries,
+  manifestFacts,
+  parseDigest,
+  qaEvidenceAdmission,
+  readAndroidArtifactEntryBuffers,
+  readApkBuildFlags,
+  readApkSigner,
+  readApkSignerDigest,
+  readbackInventory,
+  resolveAndroidSdkRoot,
+  resolveJavaHome,
+  snapshotAndroidArtifact,
+  type ImageApkRequest,
+} from "../src/image/apk.vibe"
+import { cloudSpeechChecks } from "../gen/os__image__apk.effect.vibe"
+import { androidTools, buildApk, testSigner } from "./support/android-tools.ts"
+import { scratch } from "./support/scratch.vibe"
+
+module node {
+  import { execFileSync } from "node:child_process"
+  import { createHash } from "node:crypto"
+  import { copyFileSync, mkdirSync, readFileSync } from "node:fs"
+  import path from "node:path"
+  import type { AndroidTools, TestSigner } from "./support/android-tools.ts"
+
+  export const PACKAGE = "example.fixture.apk"
+
+  /** @throws {never} */
+  export function manifest(debuggable: boolean): string {
+    return `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${PACKAGE}" android:versionCode="7" android:versionName="1.7">
+  <uses-permission android:name="android.permission.INTERNET" />
+  <application android:label="Fixture" android:debuggable="${debuggable}" android:allowBackup="false">
+    <service android:name=".AgentService" android:exported="false" />
+    <activity android:name=".MainActivity" android:exported="true" />
+  </application>
+</manifest>
+`
+  }
+
+  /** @throws {never} */
+  export const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex")
+
+  /** @throws {Error} when apksigner refuses the two keys */
+  export function signTwice(tools: Extract<AndroidTools, { kind: "present" }>, input: string, output: string, first: TestSigner, second: TestSigner): string {
+    const key = (signer: TestSigner) => ["--ks", signer.keystore, "--ks-type", "PKCS12", "--ks-pass", `pass:${signer.password}`, "--ks-key-alias", signer.alias]
+    execFileSync(tools.apksigner, ["sign", "--v3-signing-enabled", "false", "--v4-signing-enabled", "false", ...key(first), "--next-signer", ...key(second), "--out", output, input], { stdio: "pipe" })
+    return sha256(readFileSync(output))
+  }
+
+  /** @throws {Error} when the copy fails */
+  export function copyInto(file: string, directory: string): string {
+    mkdirSync(directory, { recursive: true })
+    const target = path.join(directory, path.basename(file))
+    copyFileSync(file, target)
+    return target
+  }
+
+  /** @throws {never} */
+  export function releaseRow(sha: string, signerSha256: string, overrides: Readonly<Record<string, unknown>> = {}): Readonly<Record<string, unknown>> {
+    return {
+      mode: "release",
+      sha256: sha,
+      testMocks: false,
+      bundleAudit: "passed",
+      signed: true,
+      signerSha256,
+      runtime: "PACKAGED",
+      runtimeNotices: true,
+      runtimeProfile: "native",
+      voiceHost: { packaged: true, differences: [], qualified: true },
+      licenceBlockers: [],
+      distributable: true,
+      ...overrides,
+    }
+  }
+}
+import { PACKAGE, copyInto, manifest, releaseRow, sha256, signTwice } from node
+
+const tools = androidTools()
+const skipped = tools.kind === "missing" ? tools.reason : null
+const OTHER = "f".repeat(64)
+const HEX = (seed: string) => sha256(new TextEncoder().encode(seed))
+
+effect function refusal(request: ImageApkRequest) {
+  return (effect { try admitImageApk(request); return "ApkAdmitted" } catch (error) => error._tag === "ImageApkRefused" ? error.refusal : error._tag)
+}
+
+it.effect.skipIf(skipped !== null)(`Build release, debug and two-signer APKs, read them without unzip or a second model, and admit only the reviewed release${skipped === null ? "" : ` (skipped: ${skipped})`} (spec/os/image/apk.md, "Story: Put only a reviewed release APK into an image"; spec/os/image/apk.md, "A signer observation names exactly one certificate for the requested API"; spec/os/image/apk.md, "A release APK is a non-debuggable build outside the test-mocks output, with mocks off, signed by exactly the reviewed signer"; spec/os/image/apk.md, "A recorded release row is distributable only when it has no blockers"; spec/os/image/apk.md, "Production stages only a clean release APK and development stages only a debug build or a clean release")`, effect () => {
+  provide NodeServices.layer {
+    if (tools.kind === "missing") return
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const work = try scratch("image-apk")
+    const signer = try Effect.try(() => testSigner(tools, work, "release"))
+    const rotated = try Effect.try(() => testSigner(tools, work, "second"))
+    const clean = { [BUILD_FLAGS_ENTRY]: JSON.stringify({ testMocks: false }) }
+    const build = (name: string, debuggable: boolean, assets: Readonly<Record<string, string>>) =>
+      Effect.try(() => buildApk(tools, { directory: path.join(work, "out"), manifest: manifest(debuggable), signer, name, assets }))
+    const release = try build("release", false, clean)
+    const debug = try build("debug", true, clean)
+    const mocked = try build("mocked", false, { [BUILD_FLAGS_ENTRY]: JSON.stringify({ testMocks: true }) })
+    const flagless = try build("flagless", false, {})
+    const twoSigners = path.join(work, "out", "two-signers.apk")
+    const twoSignersSha = try Effect.try(() => signTwice(tools, release.apk, twoSigners, signer, rotated))
+    const testMocksDir = path.join(work, "test-mocks")
+    const mockOutput = try Effect.try(() => copyInto(release.apk, testMocksDir))
+
+    assert.strictEqual(try resolveAndroidSdkRoot({ ANDROID_HOME: tools.sdk }), tools.sdk)
+    const javaHome = try resolveJavaHome()
+    assert.isDefined(javaHome, "a Java 21 or later home is found")
+    assert.isAtLeast((try javaMajorVersion(javaHome ?? "")) ?? 0, 21)
+
+    const entries = try listAndroidArtifactEntries(release.apk)
+    assert.include(entries, "AndroidManifest.xml")
+    assert.include(entries, BUILD_FLAGS_ENTRY)
+    const [flags] = try readAndroidArtifactEntryBuffers(release.apk, [BUILD_FLAGS_ENTRY])
+    assert.deepStrictEqual(try Effect.try(() => JSON.parse(new TextDecoder().decode(flags))), { testMocks: false })
+    const unsafe = (readAndroidArtifactEntryBuffers(release.apk, ["../AndroidManifest.xml"]) catch (error) => error._tag)
+    assert.strictEqual(unsafe, "ArchiveInvalid", "a path outside the archive is refused before reading")
+    const absent = (readAndroidArtifactEntryBuffers(release.apk, ["assets/none.json"]) catch (error) => error._tag)
+    assert.strictEqual(absent, "ArchiveInvalid")
+    assert.strictEqual(try readApkBuildFlags(release.apk), "MocksOff")
+    assert.strictEqual(try readApkBuildFlags(mocked.apk), "MocksOn")
+    assert.strictEqual(try readApkBuildFlags(flagless.apk), "FlagsMissing")
+
+    const releaseFacts = manifestFacts(try aaptManifestTree(release.apk, { aapt: tools.aapt }), try dumpAndroidArtifactBadging(tools.aapt, release.apk))
+    assert.strictEqual(releaseFacts.packageName, PACKAGE)
+    assert.strictEqual(releaseFacts.versionCode, 7)
+    assert.strictEqual(releaseFacts.versionName, "1.7")
+    assert.deepStrictEqual(releaseFacts.permissions, ["android.permission.INTERNET"])
+    assert.deepStrictEqual(releaseFacts.exported.map((component) => component.name), [`${PACKAGE}.MainActivity`])
+    assert.notStrictEqual(releaseFacts.application.debuggable, "0xffffffff")
+    assert.strictEqual(manifestFacts(try aaptManifestTree(debug.apk, { aapt: tools.aapt })).application.debuggable, "0xffffffff")
+
+    assert.strictEqual(try readApkSignerDigest(release.apk, { apksigner: tools.apksigner }), signer.certificateSha256)
+    assert.deepStrictEqual(try readApkSigner(twoSigners, { apksigner: tools.apksigner }), { tag: "SignerRefused" })
+    const twoSignerError = (readApkSignerDigest(twoSigners, { apksigner: tools.apksigner }) catch (error) => error._tag)
+    assert.strictEqual(twoSignerError, "ApkSignerUnread", "two signers are not one reviewed signer")
+
+    const reviewed = { reviewedSigner: signer.certificateSha256 }
+    const request = (apk: string, rows: readonly Readonly<Record<string, unknown>>[], extra: Partial<ImageApkRequest> = {}): ImageApkRequest =>
+      ({ apk, testMocksDir, aapt: tools.aapt, apksigner: tools.apksigner, manifest: { testMocks: false, results: rows }, review: reviewed, ...extra })
+
+    const admitted = try admitImageApk(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256)]))
+    assert.strictEqual(admitted.sha256, release.sha256)
+    assert.deepStrictEqual(admitted.blockers, [])
+    assert.deepStrictEqual(admitted.facts, { sha256: { tag: "Sha256", hex: release.sha256 }, location: "StagingInput", bundle: "MocksOff", buildType: "ReleaseBuild", signer: { tag: "OneSigner", certificate: { tag: "Sha256", hex: signer.certificateSha256 } } })
+
+    assert.strictEqual(try refusal(request(release.apk, [])), "NeedsReleaseRow")
+    assert.strictEqual(try refusal(request(release.apk, [releaseRow(debug.sha256, signer.certificateSha256)])), "NeedsReleaseRow", "a row counts only for this APK's digest")
+    const undistributable = (admitImageApk(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256, { distributable: false })])) catch (error) => error._tag === "ImageApkRefused" ? [error.refusal, ...error.blockers] : [error._tag])
+    assert.deepStrictEqual(undistributable, ["RowNotDistributable", "NotRecordedDistributable"])
+    assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, OTHER)], { review: { reviewedSigner: OTHER } })), "NotAReleaseApk", "the APK's own signer must be the reviewed one")
+    assert.strictEqual(try refusal(request(twoSigners, [releaseRow(twoSignersSha, signer.certificateSha256)])), "NotAReleaseApk")
+    assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256)], { review: {} })), "RowNotDistributable", "no reviewed signer releases nothing")
+    assert.strictEqual(try refusal(request(mockOutput, [releaseRow(release.sha256, signer.certificateSha256)])), "InTestMocksOutput")
+    assert.strictEqual(try refusal(request(mocked.apk, [releaseRow(mocked.sha256, signer.certificateSha256)])), "BundleBuiltWithMocks")
+    assert.strictEqual(try refusal(request(flagless.apk, [releaseRow(flagless.sha256, signer.certificateSha256)])), "BundleFlagsUnread")
+    assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256)], { manifest: { testMocks: true, results: [releaseRow(release.sha256, signer.certificateSha256)] } })), "RowRecordsMocks")
+
+    assert.strictEqual(try refusal(request(debug.apk, [])), "NeedsReleaseRow", "production never stages a debug build")
+    assert.strictEqual(try refusal(request(debug.apk, [], { development: true })), "ApkAdmitted")
+    assert.strictEqual(try refusal(request(release.apk, [], { development: true })), "NotADebugBuild")
+    assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256)], { development: true })), "ApkAdmitted")
+    assert.strictEqual(try refusal(request(release.apk, [releaseRow(release.sha256, signer.certificateSha256, { licenceBlockers: ["gpl"] })], { development: true, review: { ...reviewed, licenceBlocks: (item) => item === "gpl" } })), "RowNotDistributable", "a blocked release is never staged by relabelling")
+
+    const before = try snapshotAndroidArtifact(release.apk)
+    assert.strictEqual(before.sha256, release.sha256)
+    try assertAndroidArtifactSnapshotUnchanged(release.apk, before, try snapshotAndroidArtifact(release.apk))
+    try files.writeFile(release.apk, try files.readFile(debug.apk))
+    const changed = (assertAndroidArtifactSnapshotUnchanged(release.apk, before, try snapshotAndroidArtifact(release.apk)) catch (error) => error._tag)
+    assert.strictEqual(changed, "ArtifactChanged")
+    const tooLarge = (snapshotAndroidArtifact(release.apk, { maxArtifactBytes: 16 }) catch (error) => error._tag)
+    assert.strictEqual(tooLarge, "ArtifactTooLarge")
+  }
+}, 300_000)
+
+it("Compute release blockers for the cloud-speech and image profiles and check a QA receipt for this exact APK (spec/os/image/apk.md, \"A recorded release row is distributable only when it has no blockers\"; spec/os/image/apk.md, \"A cloud-speech release needs a passed QA receipt for this exact APK, from the configured provider, covering every named check\")", () => {
+  const apk = HEX("apk")
+  const evidenceSha = HEX("evidence")
+  const passed = Object.fromEntries(cloudSpeechChecks.map((check) => [check, true]))
+  const evidence = (rows: readonly Readonly<Record<string, unknown>>[]) => ({ format: QA_EVIDENCE_FORMAT, results: rows })
+  const result = { apkSha256: apk, provider: "speech1", outcome: "passed", checks: passed }
+  const receipt = qaEvidenceAdmission(apk, evidence([result]), evidenceSha)
+  assert.deepStrictEqual(receipt, { tag: "QaRecorded", evidence: { tag: "Sha256", hex: evidenceSha }, apk: { tag: "Sha256", hex: apk }, provider: "speech1", outcome: "QaPassed", passedChecks: cloudSpeechChecks })
+  assert.strictEqual(cloudVoiceAdmission, qaEvidenceAdmission)
+  assert.deepStrictEqual(qaEvidenceAdmission(apk, evidence([result, result]), evidenceSha), { tag: "QaAbsent" }, "two rows for one APK are not one receipt")
+  assert.deepStrictEqual(qaEvidenceAdmission(apk, { format: "other", results: [result] }, evidenceSha), { tag: "QaAbsent" })
+
+  const signer = HEX("signer")
+  const cloud = (qa: unknown, overrides: Readonly<Record<string, unknown>> = {}) =>
+    releaseRow(apk, signer, { runtimeProfile: "cloud", voiceHost: { packaged: false, differences: [] }, cloudVoice: qa, ...overrides })
+  const review = { reviewedSigner: signer, qaProvider: "speech1" }
+  assert.deepStrictEqual(apkReleaseBlockers(cloud(receipt), review), [])
+  assert.deepStrictEqual(apkReleaseBlockers(cloud(receipt), { ...review, qaProvider: "speech2" }), ["QaReceiptNotPassed"])
+  assert.deepStrictEqual(apkReleaseBlockers(cloud(receipt), { ...review, qaProvider: "" }), ["QaReceiptNotPassed"])
+  assert.deepStrictEqual(apkReleaseBlockers(cloud(qaEvidenceAdmission(apk, evidence([{ ...result, checks: { ...passed, mute: false } }]), evidenceSha)), review), ["QaReceiptNotPassed"])
+  assert.deepStrictEqual(apkReleaseBlockers(cloud(qaEvidenceAdmission(apk, evidence([{ ...result, outcome: "failed" }]), evidenceSha)), review), ["QaReceiptNotPassed"])
+  assert.deepStrictEqual(apkReleaseBlockers(cloud(qaEvidenceAdmission(apk, evidence([result]), "not-a-digest")), review), ["QaReceiptNotPassed"])
+  assert.deepStrictEqual(apkReleaseBlockers(cloud(receipt, { voiceHost: { packaged: true, differences: [], qualified: true } }), review), ["CloudPackagesVoice"])
+
+  assert.deepStrictEqual(apkReleaseBlockers(releaseRow(apk, signer), { reviewedSigner: signer }), [])
+  assert.deepStrictEqual(apkReleaseBlockers(releaseRow(apk, signer), { reviewedSigner: signer, image: { platformCertificateSha256: "unreviewed" } }), ["ImageCertificateUnreviewed"])
+  assert.deepStrictEqual(apkReleaseBlockers(releaseRow(apk, signer), { reviewedSigner: signer, image: { platformCertificateSha256: HEX("platform") } }), [])
+  assert.deepStrictEqual(apkReleaseBlockers(releaseRow(apk, signer, { voiceHost: { packaged: true, differences: ["voice.onnx"], qualified: false } }), { reviewedSigner: signer }).sort(), ["VoiceAssetsUnverified", "VoiceUnqualified"])
+  assert.deepStrictEqual(apkReleaseBlockers(releaseRow(apk, signer, { signed: false }), { reviewedSigner: signer }), ["Unsigned"])
+  assert.deepStrictEqual(apkReleaseBlockers(releaseRow(apk, signer), { reviewedSigner: "placeholder" }), ["SignerNotReviewed"])
+  assert.include(apkReleaseBlockers(undefined, { reviewedSigner: signer }), "LicenceUnrecorded", "a missing row is blocked")
+})
+
+it.effect("Refuse an update that changes the signer or keeps the version, and record whether the app's data survived (spec/os/image/apk.md, \"Story: Update my installed app without losing its data\"; spec/os/image/apk.md, \"An in-place update keeps the installed signer and raises the version code\"; spec/os/image/apk.md, \"A missing readback stays distinct from a failed one, and only a missing walk falls back to the integrity export\"; spec/os/image/apk.md, \"Preserved data needs a non-empty before inventory and the same file digests after, in any order\"; spec/os/image/apk.md, \"The update receipt names the installed candidate and says whether data preservation was observed\")", effect () => {
+  const signer = HEX("signer")
+  assert.deepStrictEqual(apkUpdateAdmission({ installedVersionCode: 6, installedSigner: signer, newVersionCode: 7, newSigner: signer }), [])
+  assert.deepStrictEqual(apkUpdateAdmission({ installedVersionCode: 7, installedSigner: signer, newVersionCode: 7, newSigner: HEX("other") }).sort(), ["SignerChanged", "VersionNotRaised"])
+  assert.deepStrictEqual(apkUpdateAdmission({ installedVersionCode: null, installedSigner: undefined, newVersionCode: 7, newSigner: signer }).sort(), ["SignerChanged", "VersionNotRaised"], "an unread installed package admits nothing")
+
+  const settings = HEX("settings")
+  const database = HEX("database")
+  const walk = (rows: readonly (readonly [string, string])[], exit = 0) => [...rows.map(([digest, file]) => `${digest}  ./${file}`), `READBACK_EXIT=${exit}`].join("\n")
+  const before = readbackInventory(walk([[settings, "shared_prefs/a.xml"], [database, "databases/b.db"]]))
+  assert.deepStrictEqual(before, { tag: "InventoryRead", files: [{ domain: "shared_prefs", file: "shared_prefs/a.xml", digest: settings }, { domain: "databases", file: "databases/b.db", digest: database }] })
+  const reordered = readbackInventory(walk([[database, "databases/b.db"], [settings, "shared_prefs/a.xml"]]))
+  assert.deepStrictEqual(compareDomains(before, reordered), { evidence: "DataPreserved", differences: [] })
+  const lost = readbackInventory(walk([[HEX("changed"), "shared_prefs/a.xml"], [HEX("new"), "files/c.bin"]]))
+  assert.deepStrictEqual(compareDomains(before, lost), { evidence: "DataNotPreserved", differences: ["databases/b.db was lost", "files/c.bin appeared", "shared_prefs/a.xml changed"] })
+  assert.deepStrictEqual(readbackInventory(walk([[settings, "shared_prefs/a.xml"]], 1)), { tag: "InventoryFailed" })
+
+  const refused = "run-as: package not debuggable: example.fixture.apk"
+  assert.deepStrictEqual(readbackInventory(refused), { tag: "InventoryUnavailable" })
+  const exported = (rows: readonly (readonly [string, string, string])[], count = rows.length) =>
+    [...rows.map(([domain, key, digest], index) => `Row: ${index} domain=${domain}, key=${key}, digest=${digest}`), `Row: ${rows.length} domain=#end, key=${count}, digest=${HEX("end")}`].join("\n")
+  const key = HEX("key")
+  assert.deepStrictEqual(readbackInventory(refused, exported([["databases", key, database]])), { tag: "InventoryRead", files: [{ domain: "databases", file: `databases/${key}`, digest: database }] })
+  assert.deepStrictEqual(readbackInventory(refused, exported([["databases", key, database]], 2)), { tag: "InventoryFailed" }, "an end row that does not count its rows fails")
+  assert.deepStrictEqual(readbackInventory(refused, "Error while accessing provider: Permission Denial"), { tag: "InventoryFailed" })
+  assert.deepStrictEqual(readbackInventory(refused, "Could not find provider: example.fixture.apk.integrity"), { tag: "InventoryUnavailable" })
+  assert.deepStrictEqual(readbackInventory(walk([], 1), exported([["databases", key, database]])), { tag: "InventoryFailed" }, "a failed walk never falls back")
+
+  const nonce = HEX("nonce").slice(0, 32)
+  assert.deepStrictEqual(try integrityQuery("example.fixture.apk.integrity", nonce), ["shell", "content", "query", "--uri", `'content://example.fixture.apk.integrity/domains?nonce=${nonce}'`])
+  const injected = (integrityQuery("x; reboot", nonce) catch (error) => error._tag)
+  assert.strictEqual(injected, "IntegrityQueryRefused")
+
+  const candidate = HEX("candidate")
+  const identity = { uid: "10123", firstInstall: "2026-11-01 10:00:00" }
+  const readback = { candidate: { sha256: candidate, versionCode: 7 }, installed: { sha256: candidate, versionCode: 7 }, before: identity, after: identity }
+  assert.deepStrictEqual(apkUpdateReceipt({ ...readback, dataBefore: before, dataAfter: reordered }), { packageMatches: true, data: "DataPreserved", passed: true })
+  assert.deepStrictEqual(apkUpdateReceipt({ ...readback, dataBefore: before, dataAfter: lost }), { packageMatches: true, data: "DataNotPreserved", passed: false })
+  assert.deepStrictEqual(apkUpdateReceipt({ ...readback, dataBefore: readbackInventory(refused), dataAfter: readbackInventory(refused) }), { packageMatches: true, data: "DataUnobserved", passed: true })
+  assert.deepStrictEqual(apkUpdateReceipt({ ...readback, after: { ...identity, uid: "10124" }, dataBefore: before, dataAfter: reordered }), { packageMatches: false, data: "DataPreserved", passed: false }, "a reinstall is not an in-place update")
+  assert.deepStrictEqual(apkUpdateReceipt({ ...readback, installed: { sha256: undefined, versionCode: 7 }, candidate: { sha256: undefined, versionCode: 7 }, dataBefore: before, dataAfter: reordered }).passed, false)
+  assert.deepStrictEqual(parseDigest("NOT-A-DIGEST"), { tag: "NotADigest" })
+})

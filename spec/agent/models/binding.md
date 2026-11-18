@@ -119,8 +119,8 @@ the call.
 
 ```quint
 import models as M from "../../core/models"
-import client.* from "../../cloud/client"
-pure def outcomeOf(e: CloudError): M::Outcome = match e {
+import client as C from "../../cloud/client"
+pure def outcomeOf(e: C::CloudError): M::Outcome = match e {
   | CloudNetwork => M::RefusedConnection
   | CloudUnavailable(_) => M::RetryEnvelope
   | CloudProviderIssue => M::RetryEnvelope
@@ -130,10 +130,10 @@ pure def outcomeOf(e: CloudError): M::Outcome = match e {
   | CloudRefused(_) => M::BadRequest
   | _ => M::ProcessingDenied
 }
-pure def transient(e: CloudError): bool = match e { | CloudNetwork => true | CloudUnavailable(_) => true | CloudProviderIssue => true | _ => false }
-pure def rateLimited(e: CloudError): bool = match e { | CloudRateLimited(_) => true | _ => false }
-pure def lawOnlyTransientRefusalsAreRetried(e: CloudError): bool = (M::retryable(outcomeOf(e)) and outcomeOf(e) != M::ExhaustedBudget) iff transient(e)
-pure def lawRateLimitExhaustsTheProvider(e: CloudError): bool = rateLimited(e) iff outcomeOf(e) == M::ExhaustedBudget
+pure def transient(e: C::CloudError): bool = match e { | CloudNetwork => true | CloudUnavailable(_) => true | CloudProviderIssue => true | _ => false }
+pure def rateLimited(e: C::CloudError): bool = match e { | CloudRateLimited(_) => true | _ => false }
+pure def lawOnlyTransientRefusalsAreRetried(e: C::CloudError): bool = (M::retryable(outcomeOf(e)) and outcomeOf(e) != M::ExhaustedBudget) iff transient(e)
+pure def lawRateLimitExhaustsTheProvider(e: C::CloudError): bool = rateLimited(e) iff outcomeOf(e) == M::ExhaustedBudget
 ```
 
 ## Story: Keep the account state honest
@@ -150,7 +150,7 @@ them on the reply and status reports them. `lastCloudFailure` is
 `{kind, at, retryAt?}`; it never holds message text or a credential.
 
 ```quint
-pure def failureOf(e: CloudError, version: int): AccountFailure = match e {
+pure def failureOf(e: C::CloudError, version: int): AccountFailure = match e {
   | CloudCredentialInvalid(_) => CredentialInvalid({ version: version })
   | CloudInsufficientCredits => InsufficientCredits
   | CloudAllowanceExhausted(_) => InsufficientCredits
@@ -165,7 +165,7 @@ pure def retryAtOf(f: AccountFailure): int = match f { | LimitReached(x) => x.re
 pure def lastFailureKind(f: LastCloudFailure): str = match f { | CloudFailedAt(x) => failureName(x.failure) | NoCloudFailure => "" }
 pure def callVersion(calls: List[Call], id: int): int = calls.select(c => c.id == id).nthOr(0, { id: -1, credentialVersion: 0 }).credentialVersion
 pure def canRefuseCall(s: ModelBinding, id: int): bool = s.calls.some(c => c.id == id)
-pure def refuseCall(s: ModelBinding, id: int, now: int, e: CloudError): ModelBinding = {
+pure def refuseCall(s: ModelBinding, id: int, now: int, e: C::CloudError): ModelBinding = {
   val t = clockAt(s, now)
   val failure = failureOf(e, callVersion(s.calls, id))
   val ignored = staleRefusal(failure, s.credentialVersion)

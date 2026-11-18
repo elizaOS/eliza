@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "bundleSha256": "cbbfd9f32a54ae28c3c5f7edab6d1c30340d128268bb1998705d7a6709317efe",
+  "sourceCommit": "0000000000000000000000000000000000000000",
+  "node": "26",
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "name": "@elizaos/agent",
+      "version": "4.0.0-alpha.0",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+    }
+  ],
+  "plugins": [],
+  "localInference": false,
+  "actions": []
+}

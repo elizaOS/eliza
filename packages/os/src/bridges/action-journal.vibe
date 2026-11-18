@@ -127,11 +127,11 @@ export function createActionJournalClient(plugin: ActionJournalPlugin = actionJo
 effect function deletionCall(plugin: ActionJournalPlugin, method: "undo" | "dismiss", key: DeferredDeletionKey): unknown!InvalidJournalRequest {
   if (!ID.test(key.id)) throw new InvalidJournalRequest({ problem: "invalid-deletion" })
   const input = { kind: recordKindOf(key.kind), id: key.id }
-  return try nativeCall(PLUGIN, method, () => plugin[method](input)) catch () => undefined
+  return nativeCall(PLUGIN, method, () => plugin[method](input)) catch () => undefined
 }
 
 effect function undo(plugin: ActionJournalPlugin, key: DeferredDeletionKey): UndoOutcome!InvalidJournalRequest {
-  const phase = try receiptPhase("undo", try deletionCall(plugin, "undo", key)) catch () => undefined
+  const phase = receiptPhase("undo", try deletionCall(plugin, "undo", key)) catch () => undefined
   if (phase !== undefined && undoConfirmed(phase)) return { kind: "Kept" }
   return { kind: "NotKept", message: phase === "Deleted" || phase === "DeletionConflict" ? UNDO_TOO_LATE : DELETION_NOTICE_TEXT.undoUnconfirmed }
 }

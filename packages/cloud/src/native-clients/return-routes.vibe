@@ -94,7 +94,8 @@ effect function pageResponse(page: Page) {
   if (loaded === undefined) throw new PageTemplateMissing({ file })
   const html = Object.entries(slots).reduce((text, [slot, value]) => text.replaceAll(pageSlots[slot as PageSlot], escaped(value)), loaded.source)
   const headers = pageHeaders(page)
-  return HttpServerResponse.html(html, {
+  return HttpServerResponse.text(html, {
+    contentType: "text/html; charset=utf-8",
     headers: {
       "cache-control": headers.cacheControl,
       "x-robots-tag": headers.robots,

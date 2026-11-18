@@ -44,8 +44,7 @@ CREATE TABLE mail_operations (
   phase text NOT NULL CHECK (phase IN ('prepared', 'dispatched', 'succeeded', 'rejected', 'outcome-unknown')),
   dispatched_at bigint,
   provider_result jsonb,
-  updated_at bigint NOT NULL,
-  UNIQUE (organization_id, user_id, grant_id, request_id)
+  updated_at bigint NOT NULL
 );
 
 CREATE INDEX mail_operations_stale ON mail_operations (phase, dispatched_at);
@@ -55,15 +54,20 @@ CREATE TABLE calendar_writes (
   state jsonb NOT NULL,
   revision bigint NOT NULL,
   organization_id text NOT NULL REFERENCES organizations (id),
+  user_id text NOT NULL REFERENCES accounts (key),
   grant_id text NOT NULL,
   idempotency_key text NOT NULL,
   request_digest text NOT NULL,
+  kind text NOT NULL,
+  calendar_id text NOT NULL,
   event_id text,
+  if_match text,
+  request jsonb,
   etag text,
+  rejection text,
   phase text NOT NULL,
   stale_after bigint,
-  updated_at bigint,
-  UNIQUE (organization_id, grant_id, idempotency_key)
+  updated_at bigint NOT NULL
 );
 
 CREATE INDEX calendar_writes_stale ON calendar_writes (phase, stale_after);

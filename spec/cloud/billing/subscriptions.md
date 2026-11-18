@@ -92,6 +92,26 @@ pure val subscriptionIdValues = Set("sub1", "sub2")
 pure def sometimesAwaitingReconciliation(s: Subscription): bool = s.status == Pending
 ```
 
+### The transport can recover a provider subscription under the existing pinned customer
+
+The hosted Worker can find a subscription for the organization's pinned
+customer before this database has its canonical subscription record. It
+checks the provider environment, configured product and price, exact customer
+and single current subscription. Recovery records the verified subscription
+as Pending before reconciling it in the same transaction. A live subscription
+or command prevents adoption of another identity. The ended subscription's
+identity cannot be reused. Recovery itself grants no entitlement or allowance.
+
+```quint
+pure def canAdoptVerified(s: Subscription, subscriptionId: str, planKey: PlanKey, customerId: str): bool =
+  s.liveCommand == NoLiveCommand and not(isLive(s.status)) and subscriptionId != "" and subscriptionId != s.subscriptionId
+  and isPaid(planKey) and s.customer != NoCustomer and customerIdOf(s) == customerId
+pure def adoptVerified(s: Subscription, subscriptionId: str, planKey: PlanKey, customerId: str): SubscriptionStep =
+  { state: { ...s, status: Pending, subscriptionId: subscriptionId, planKey: planKey, periodStart: 0, periodEnd: 0,
+    cancelAtPeriodEnd: false, planned: NoPlannedChange, dunning: NotDunning, lastRenewalInvoice: "", revision: s.revision + 1 },
+    out: List(PolicyChanged) }
+```
+
 ### Reconciling sets the status, plan, period and cancellation the provider reports for the subscription the organization holds
 
 The provider's `incomplete` is Incomplete; `active` with a paid or open

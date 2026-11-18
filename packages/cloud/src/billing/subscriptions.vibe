@@ -1,0 +1,108 @@
+// spec/cloud/billing/subscriptions.md, "Story: Keep my plan as the provider says it is"; spec/cloud/billing/subscriptions.md, "Story: Change my plan one command at a time"
+import { apply, customerIdOf, initial, isLive, parseState, type CommandKind, type LatestInvoice, type ProviderStatus, type Subscription, type SubscriptionStatus } from "../../gen/cloud__billing__subscriptions.effect.vibe"
+import { Deployment } from "../profile/profile.vibe"
+import { foreign, toInt, toText, type Tx } from "../store/connection.vibe"
+import { RowCorrupt } from "../store/rows.vibe"
+import { parsePlanKey, wirePlanKey } from "./plans.vibe"
+import { settleSubscriptionAllowance, type SubscriptionObservation } from "./stripe-ledger.vibe"
+import { readStripeSubscription, stripeClient } from "./stripe-observation.vibe"
+
+const wireStatus: Readonly<Record<SubscriptionStatus, string>> = {
+  NoSubscription: "none", Pending: "pending", Incomplete: "incomplete", Active: "active", Dunning: "dunning",
+  PastDue: "past_due", Unpaid: "unpaid", Canceled: "canceled", IncompleteExpired: "incomplete_expired"
+}
+const providerStatus: Readonly<Record<Exclude<SubscriptionObservation["status"], "none">, ProviderStatus>> = {
+  incomplete: "ProviderIncomplete", active: "ProviderActive", past_due: "ProviderPastDue", unpaid: "ProviderUnpaid",
+  canceled: "ProviderCanceled", incomplete_expired: "ProviderIncompleteExpired"
+}
+const latestInvoice: Readonly<Record<SubscriptionObservation["latestInvoice"], LatestInvoice>> = {
+  open: "InvoiceOpen", paid: "InvoicePaid", failed: "InvoiceFailed"
+}
+
+function invalid(key: string, cause: string): RowCorrupt {
+  return new RowCorrupt({ table: "subscriptions", key, cause })
+}
+
+export effect function readSubscription(tx: Tx, organizationId: string) {
+  const row = (try tx.query("SELECT state FROM subscriptions WHERE key = $1", [organizationId]))[0]
+  if (row === undefined) return initial
+  const state = parseState(row.state)
+  if (state === undefined) throw invalid(organizationId, "subscription requires a verified provider refresh")
+  return state
+}
+
+export effect function observeSubscription(tx: Tx, organizationId: string) {
+  const deployment = try Deployment
+  const billing = deployment.settings.billing
+  if (billing === undefined) throw invalid(organizationId, "billing is unconfigured")
+  const row = (try tx.query("SELECT customer_id, plan_key FROM subscriptions WHERE key = $1", [organizationId]))[0]
+  const customerId = toText(row?.customer_id)
+  const plan = row?.plan_key
+  if (!customerId || (plan !== "plus_monthly" && plan !== "pro_monthly")) throw invalid(organizationId, "missing provider customer or plan")
+  const key = try deployment.secret(billing.secretKeyEnv)
+  return (try foreign("observe subscription", () => readStripeSubscription(stripeClient(key, billing.apiUrl), {
+    STRIPE_PRICE_ID: billing.plans[plan].priceId,
+    STRIPE_PRODUCT_ID: billing.plans[plan].productId,
+    STRIPE_PLAN: plan,
+    CLOUD_ENVIRONMENT: deployment.environment
+  }, customerId))).observation
+}
+
+export effect function reconcileSubscription(tx: Tx, organizationId: string, observed: SubscriptionObservation, now: number) {
+  const row = (try tx.query("SELECT state,revision,status,customer_id,provider_subscription_id FROM subscriptions WHERE key=$1 FOR UPDATE", [organizationId]))[0]
+  const persisted = row === undefined ? initial : parseState(row.state)
+  if (row !== undefined && persisted === undefined) {
+    const legacy = row.state
+    if (typeof legacy !== "object" || legacy === null || Array.isArray(legacy) ||
+        !("customerId" in legacy) || legacy.customerId !== row.customer_id ||
+        !("subscriptionId" in legacy) || legacy.subscriptionId !== row.provider_subscription_id ||
+        !("planKey" in legacy) || parsePlanKey(legacy.planKey) === undefined ||
+        !("status" in legacy) || legacy.status !== row.status ||
+        !("periodEnd" in legacy) || typeof legacy.periodEnd !== "number" || !Number.isSafeInteger(legacy.periodEnd) ||
+        Object.keys(legacy).length !== 5) throw invalid(organizationId, "unrecognized persisted subscription state")
+    if (row.provider_subscription_id && row.provider_subscription_id !== observed.subscriptionId &&
+        row.status !== "canceled" && row.status !== "incomplete_expired") throw invalid(organizationId, "provider changed a legacy live subscription identity")
+    if (row.provider_subscription_id && row.provider_subscription_id === observed.subscriptionId &&
+        (row.status === "canceled" || row.status === "incomplete_expired") && observed.status !== row.status) throw invalid(organizationId, "provider rewrote an ended subscription")
+  }
+  if (row?.customer_id !== undefined && row.customer_id !== null && row.customer_id !== observed.customerId) throw invalid(organizationId, "provider customer changed")
+  const priorRevision = persisted?.revision ?? toInt(row?.revision)
+  if (!Number.isSafeInteger(priorRevision) || priorRevision < 0) throw invalid(organizationId, "invalid persisted revision")
+  let state: Subscription = persisted ?? { ...initial, revision: priorRevision }
+  if (state.customer.tag === "NoCustomer") state = (try apply(state, { type: "pinCustomer", customerId: observed.customerId })).state
+  if (customerIdOf(state) !== observed.customerId) throw invalid(organizationId, "provider customer changed")
+  if (observed.subscriptionId !== null && observed.status !== "none") {
+    const planKey = parsePlanKey(observed.plan)
+    if (planKey === undefined || planKey === "Free") throw invalid(organizationId, "unknown paid plan")
+    if (state.subscriptionId !== observed.subscriptionId) {
+      if (isLive(state.status) || state.liveCommand.tag !== "NoLiveCommand") throw invalid(organizationId, "provider changed a live subscription identity")
+      state = (try apply(state, { type: "adoptVerified", subscriptionId: observed.subscriptionId, planKey, customerId: observed.customerId })).state
+    }
+    if (!isLive(state.status) && observed.status === "active") throw invalid(organizationId, "provider rewrote an ended subscription")
+    if (isLive(state.status)) state = (try apply(state, {
+      type: "reconcile", subscriptionId: observed.subscriptionId, planKey, providerStatus: providerStatus[observed.status],
+      latestInvoice: latestInvoice[observed.latestInvoice], invoiceId: observed.payment?.id ?? "", periodStart: observed.startsAt,
+      periodEnd: observed.endsAt, cancelAtPeriodEnd: observed.cancelAtPeriodEnd, now
+    })).state
+  } else if (state.subscriptionId !== "" || row?.provider_subscription_id) {
+    throw invalid(organizationId, "provider subscription disappeared")
+  }
+  const ended = row?.status === "active" && (state.status !== "Active" || row.provider_subscription_id !== state.subscriptionId)
+  try settleSubscriptionAllowance(tx, organizationId, state.status === "Active" ? observed : { ...observed, payment: undefined }, ended, now)
+  try tx.query(`INSERT INTO subscriptions (key,state,revision,status,plan_key,customer_id,provider_subscription_id,period_end,stale_after,updated_at)
+    VALUES ($1,$2,1,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (key) DO UPDATE SET state=excluded.state,revision=subscriptions.revision+(subscriptions.state IS DISTINCT FROM excluded.state)::int,
+      status=excluded.status,plan_key=excluded.plan_key,customer_id=excluded.customer_id,provider_subscription_id=excluded.provider_subscription_id,
+      period_end=excluded.period_end,stale_after=excluded.stale_after,updated_at=excluded.updated_at`,
+    [organizationId, JSON.stringify(state), wireStatus[state.status], wirePlanKey(state.planKey), customerIdOf(state), state.subscriptionId || null, state.periodEnd, now + 300_000, now])
+  return state
+}
+
+export effect function claimLiveCommand(tx: Tx, organizationId: string, kind: CommandKind, commandId: string, expectedRevision: number) {
+  const state = (try apply(try readSubscription(tx, organizationId), { type: "claimCommand", kind, commandId, expectedRevision })).state
+  try tx.query("UPDATE subscriptions SET state=$2,revision=revision+1 WHERE key=$1", [organizationId, JSON.stringify(state)])
+}
+
+export effect function releaseLiveCommand(tx: Tx, organizationId: string, commandId: string) {
+  const state = (try apply(try readSubscription(tx, organizationId), { type: "releaseCommand", commandId })).state
+  try tx.query("UPDATE subscriptions SET state=$2,revision=revision+1 WHERE key=$1", [organizationId, JSON.stringify(state)])
+}
