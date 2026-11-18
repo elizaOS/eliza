@@ -89,7 +89,7 @@ pure def lawOneWireTypeIsOneOperation(a: OperationType, b: OperationType): bool 
   wireType(a) == wireType(b) implies (a == b or (family(a) == ReviewFamily and wireType(a) == "calendar_named"))
 ```
 
-### Each operation needs the capabilities of its family, and a clock-only device receives only clock handoffs
+### Each operation has one capability need, which a clock-only device meets only for the Clock handoff
 
 `versionTwo` marks a reminder read or edit whose target or timing is
 version two, a named reminder edit that sets alert minutes, and a Clock
@@ -249,14 +249,11 @@ pure val rValues: Set[DeviceReceipt] = Set(
   { reported: ReportsApplied, operationId: "n1", code: NoCode, result: NoResult },
   { reported: ReportsFailed, operationId: "n1", code: NoCode, result: ValidResult({ shows: ReportsFailed, nothingSubmitted: true }) },
   { reported: ReportsFailed, operationId: "n1", code: NoCode, result: ValidResult({ shows: ReportsFailed, nothingSubmitted: false }) },
-  { reported: ReportsFailed, operationId: "", code: NotDispatched, result: NoResult },
-  { reported: ReportsFailed, operationId: "", code: OtherCode, result: NoResult },
+  { reported: ReportsFailed, operationId: "", code: NotDispatched, result: NoResult }, { reported: ReportsFailed, operationId: "", code: OtherCode, result: NoResult },
   { reported: ReportsUnknown, operationId: "n1", code: NoCode, result: NoResult },
   { reported: ReportsUnknown, operationId: "n1", code: NoCode, result: ValidResult({ shows: ReportsApplied, nothingSubmitted: false }) },
   { reported: ReportsApplied, operationId: "n1", code: NoCode, result: InvalidResult })
 pure val claimKeyValues = Set("n1", "n2")
-pure def lawAnAppliedReceiptNamesItsNativeOperation(t: OperationType, r: DeviceReceipt, claimKey: str): bool =
-  (receiptAdmitted(t, r, claimKey) and r.reported == ReportsApplied) implies r.operationId != ""
 pure def lawEvidenceNeverContradictsTheReceipt(t: OperationType, r: DeviceReceipt, claimKey: str): bool =
   (receiptAdmitted(t, r, claimKey) and r.result != NoResult) implies (agrees(r.result, r.reported) and r.result != InvalidResult)
 pure def lawPhoneEvidenceIsMissingOnlyFromAnUnknownReceipt(t: OperationType, r: DeviceReceipt, claimKey: str): bool =

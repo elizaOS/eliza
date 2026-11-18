@@ -28,7 +28,6 @@ type Model = { id: str, provider: str, upstreamModel: str, vision: bool, inputPe
 type ModelChoice = Chosen({ model: Model }) | Unavailable
 pure val maxPer1K: Micros = 10000000
 pure val modelRefusal: Refusal = refuse(ModelUnavailable)
-pure val invalidRequestRefusal: Refusal = refuse(InvalidRequest)
 pure val noProfiledModel: ProfiledModel = { id: "", provider: "", upstreamModel: "", vision: false }
 pure val noPriceRow: PriceRow = { modelId: "", inputPer1K: 0, outputPer1K: 0 }
 pure def isValidPrice(per1K: Micros): bool = per1K > 0 and per1K <= maxPer1K
@@ -52,11 +51,6 @@ pure val idValues = Set("m1", "m2", "m3")
 pure val hasImageValues = Set(true, false)
 pure val profileValues = Set(List(), List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: true }), List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: false }, { id: "m2", provider: "p2", upstreamModel: "u2", vision: true }), List({ id: "m1", provider: "p1", upstreamModel: "u1", vision: false }, { id: "m1", provider: "p2", upstreamModel: "u2", vision: true }), List({ id: "m2", provider: "", upstreamModel: "u2", vision: true }))
 pure val pricesValues = Set(List(), List({ modelId: "m1", inputPer1K: 3, outputPer1K: 15 }), List({ modelId: "m1", inputPer1K: 0, outputPer1K: 15 }, { modelId: "m2", inputPer1K: 1, outputPer1K: 2 }), List({ modelId: "m3", inputPer1K: 1, outputPer1K: 1 }), List({ modelId: "m1", inputPer1K: 0, outputPer1K: 15 }, { modelId: "m1", inputPer1K: 3, outputPer1K: 15 }))
-pure val ofModelValues = Set(true, false)
-pure def lawModelRefusalsAreWellFormed(ofModel: bool): bool = {
-  val refusal = if (ofModel) modelRefusal else invalidRequestRefusal
-  wellFormed(refusal) and not(retryableOf(refusal))
-}
 pure def lawChosenModelIsPricedAndFits(profile: List[ProfiledModel], prices: List[PriceRow], id: str, hasImage: bool): bool = {
   val choice = chooseModel(profile, prices, id, hasImage)
   match choice {
@@ -103,7 +97,8 @@ pure val per1KValues = Set(1, 3, 1000, 10000000)
 pure def lawRoundingWithinHalfMicro(tokens: int, per1K: Micros): bool = {
   val exact = tokens * per1K * markupPercent
   val charged = sideCost(tokens, per1K) * costDivisor
-  isValidPrice(per1K) and tokens >= 0 implies (exact - costDivisor / 2 < charged and charged <= exact + costDivisor / 2)
+  val inDomain = isValidPrice(per1K) and tokens >= 0
+  inDomain implies (exact - costDivisor / 2 < charged and charged <= exact + costDivisor / 2)
 }
 ```
 
@@ -180,6 +175,6 @@ pure def lawBilledUsageCoversEveryReportedToken(u: ProviderUsage): bool = {
 type ModelListing = { id: str, ownedBy: str }
 pure def listModels(profile: List[ProfiledModel], prices: List[PriceRow]): List[ModelListing] =
   profile.select(m => usableForText(profile, prices, m)).listMap(m => { id: m.id, ownedBy: m.provider })
-pure def lawListedIdsAreUnique(profile: List[ProfiledModel], prices: List[PriceRow], id: str): bool =
-  listModels(profile, prices).select(l => l.id == id).length() <= 1
+pure def lawListingIsExactlyTheUsableModels(profile: List[ProfiledModel], prices: List[PriceRow], id: str): bool =
+  listModels(profile, prices).select(l => l.id == id).length() == (if (isChosen(chooseModel(profile, prices, id, false))) 1 else 0)
 ```

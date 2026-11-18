@@ -1,5 +1,5 @@
 // spec/os/agentService/channel.md, "Story: Ask the agent only on the routes my app allows"; spec/os/agentService/channel.md, "Story: Stream a reply and stop it"; spec/os/agentService/channel.md, "Story: Receive the agent's live events for my screen"
-import type { AgentEvents, AgentFailCode, ElizaAgentPlugin } from "./definitions/agent.ts"
+import type { AgentEvents, AgentFailCode, AgentStatus, ElizaAgentPlugin } from "./definitions/agent.ts"
 
 module capacitor {
   import { registerPlugin } from "@capacitor/core"
@@ -30,7 +30,7 @@ export error AgentCallFailed { call: AgentCall; cause: unknown }
 export error MalformedAgentReply { call: AgentCall; issue: string }
 
 const FailCode = Schema.Literals(["NotReady", "RouteRefused", "TooLarge", "IdInUse", "TopicInUse", "Busy", "Restarted", "Broken"])
-const Refusal = Schema.Struct({ code: FailCode, message: Schema.String })
+schema Refusal { code: "NotReady" | "RouteRefused" | "TooLarge" | "IdInUse" | "TopicInUse" | "Busy" | "Restarted" | "Broken"; message: string }
 const statusFacts = { available: Schema.Boolean, epoch: Schema.Int, requestBodyLimit: Schema.Int }
 const Status = Schema.Union([
   Schema.Struct({ ...statusFacts, state: Schema.Literals(["unavailable", "stopped", "starting", "running"]) }),
@@ -42,8 +42,8 @@ const Status = Schema.Union([
   }),
 ])
 const Response = Schema.Struct({ status: Schema.Int, data: Schema.Unknown })
-const CallId = Schema.Struct({ id: Schema.String })
-const Abort = Schema.Struct({ aborted: Schema.Boolean })
+schema CallId { id: string }
+schema Abort { aborted: boolean }
 const delivered = { id: Schema.String, index: Schema.Int }
 const failed = { id: Schema.String, kind: Schema.Literal("failed"), code: FailCode }
 const StreamData = Schema.Union([
@@ -59,12 +59,14 @@ const AgentEvent = Schema.Union([
   Schema.Struct({ id: Schema.String, kind: Schema.Literal("end") }),
   Schema.Struct(failed),
 ])
-const unavailable = Schema.Struct({ kind: Schema.Literal("unavailable") })
+schema Unavailable { kind: "unavailable" }
+schema Unimplemented { code: "UNIMPLEMENTED" }
+const noPlugin: AgentStatus = { available: false, state: "unavailable", epoch: 0, requestBodyLimit: 0 }
 const Review = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("reviewable"), reviewToken: Schema.String, retainedCount: Schema.Int }),
-  unavailable,
+  Unavailable,
 ])
-const Archive = Schema.Union([Schema.Struct({ kind: Schema.Literal("archived"), archivedCount: Schema.Int }), unavailable])
+const Archive = Schema.Union([Schema.Struct({ kind: Schema.Literal("archived"), archivedCount: Schema.Int }), Unavailable])
 const events: { [Name in keyof AgentEvents]: Schema.Codec<AgentEvents[Name]> } = {
   status: Status,
   streamData: StreamData,
@@ -73,15 +75,19 @@ const events: { [Name in keyof AgentEvents]: Schema.Codec<AgentEvents[Name]> } =
 }
 
 function rejection(call: AgentCall, cause: unknown) {
-  return Option.match(Schema.decodeUnknownOption(Refusal)(cause), {
-    onSome: (refusal) => new AgentRefused({ call, ...refusal }),
-    onNone: () => new AgentCallFailed({ call, cause }),
-  })
+  return match (Schema.decodeUnknownOption(Refusal)(cause)) {
+    when Option.Some(let refusal): new AgentRefused({ call, ...refusal });
+    default: new AgentCallFailed({ call, cause });
+  }
 }
 
 effect function reply<A>(call: AgentCall, shape: Schema.Codec<A>, run: () => Promise<unknown>) {
   const raw = try tryPromise({ try: () => run(), catch: (cause) => rejection(call, cause) })
   return try mapError(Schema.decodeUnknownEffect(shape)(raw), (refusal) => new MalformedAgentReply({ call, issue: refusal.message }))
+}
+
+function unimplemented(failure: AgentRefused | AgentCallFailed | MalformedAgentReply) {
+  return failure._tag === "AgentCallFailed" && Schema.is(Unimplemented)(failure.cause)
 }
 
 function heard<Name extends keyof AgentEvents>(name: Name, listener: (event: AgentEvents[Name]) => void) {
@@ -95,7 +101,7 @@ function heard<Name extends keyof AgentEvents>(name: Name, listener: (event: Age
 
 export function agentClient(plugin: ElizaAgentPlugin = agentPlugin()): ElizaAgentPlugin {
   return {
-    getStatus: () => answered(reply("getStatus", Status, () => plugin.getStatus())),
+    getStatus: () => answered(Effect.catchIf(reply("getStatus", Status, () => plugin.getStatus()), unimplemented, () => Effect.succeed(noPlugin))),
     start: () => answered(reply("start", Status, () => plugin.start())),
     stop: () => answered(reply("stop", Status, () => plugin.stop())),
     restart: () => answered(reply("restart", Status, () => plugin.restart())),

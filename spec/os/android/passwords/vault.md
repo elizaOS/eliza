@@ -56,6 +56,9 @@ withdraws a pending reset review.
 pure def canRefreshVault(s: VaultUi): bool = s.view != PageClosed
 pure def refreshVault(s: VaultUi): VaultUi =
   { ...s, generation: s.generation + 1, view: if (s.view == PageResetReviewed) PageDamaged else s.view }
+pure def stepGenerationNeverGoesBack(before: VaultUi, after: VaultUi): bool = after.generation >= before.generation
+pure def stepAccessChangeStartsNewGeneration(before: VaultUi, after: VaultUi): bool =
+  before.view != after.view implies after.generation > before.generation
 ```
 
 ### Only Android's own authentication unlocks the page

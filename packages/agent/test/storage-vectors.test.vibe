@@ -6,9 +6,14 @@ module node {
   import { randomUUID } from "node:crypto"
   import { openDeviceStorage } from "../src/storage/index.vibe"
 
-  const entityId = randomUUID()
-  const roomId = randomUUID()
-  const other = randomUUID()
+  type Opened = Awaited<ReturnType<typeof openDeviceStorage>>
+  type UUID = Opened["agentId"]
+  type Memory = Awaited<ReturnType<Opened["adapter"]["searchMemories"]>>[number]
+
+  const entityId = randomUUID() as UUID
+  const roomId = randomUUID() as UUID
+  const other = randomUUID() as UUID
+  const texts = (found: Memory[]) => found.map((memory) => memory.content.text)
 
   const memory = (text: string, embedding: number[], room = roomId) => ({
     memory: { entityId, roomId: room, content: { text }, embedding },
@@ -16,23 +21,35 @@ module node {
   })
 
   export async function searchJourney(directory: string) {
-    const { adapter } = await openDeviceStorage({ stateDirectory: directory, persistMemory: false, account: null, embeddingDimensions: 3 })
+    const opened = await openDeviceStorage({ stateDirectory: directory, persistMemory: true, account: null, embeddingDimensions: 3 })
     try {
-      const [near, far, elsewhere] = await adapter.createMemories([
+      const [, far] = await opened.adapter.createMemories([
         memory("near", [1, 0, 0]), memory("far", [0, 1, 0]), memory("elsewhere", [1, 0, 0], other),
       ])
-      const search = (extra: object) => adapter.searchMemories({
-        tableName: "messages", embedding: [1, 0.1, 0], query: "near", ...extra,
-      }).then((found) => found.map((m) => m.content.text))
+      const search = async (scope: { roomId?: UUID; match_threshold?: number }) =>
+        texts(await opened.adapter.searchMemories({ tableName: "messages", embedding: [1, 0.1, 0], ...scope }))
       const inRoom = await search({ roomId, match_threshold: 0.5 })
-      const everywhere = await search({ match_threshold: 0.5 })
+      const everywhere = (await search({ match_threshold: 0.5 })).sort()
       const all = await search({ roomId })
-      const updated = await adapter.updateMemoryEmbedding({
-        id: far, embedding: [1, 0.1, 0], expected: { agentId: undefined as never, roomId, entityId, text: "far" },
-      }).catch(() => "refused")
-      const wrongSize = await adapter.createMemories([memory("bad", [1, 0])]).then(() => "stored", () => "refused")
-      return { inRoom, everywhere, all, updated, wrongSize, ids: [near, far, elsewhere].length }
-    } finally { await adapter.close() }
+      const expected = { agentId: opened.agentId, roomId, entityId, text: "far" }
+      const stale = await opened.adapter.updateMemoryEmbedding({ id: far, embedding: [1, 0.2, 0], expected: { ...expected, text: "changed" } })
+      const updated = await opened.adapter.updateMemoryEmbedding({ id: far, embedding: [1, 0.2, 0], expected })
+      const afterUpdate = await search({ roomId, match_threshold: 0.5 })
+      const wrongSize = await opened.adapter.createMemories([memory("bad", [1, 0])]).then(() => "stored", () => "refused")
+      return { inRoom, everywhere, all, stale, updated, afterUpdate, wrongSize }
+    } finally { await opened.adapter.close() }
+  }
+
+  export async function reopenJourney(directory: string) {
+    const opened = await openDeviceStorage({ stateDirectory: directory, persistMemory: true, account: null, embeddingDimensions: 3 })
+    try {
+      return texts(await opened.adapter.searchMemories({ tableName: "messages", embedding: [1, 0.2, 0], roomId, match_threshold: 0.99 }))
+    } finally { await opened.adapter.close() }
+  }
+
+  export async function otherSize(directory: string) {
+    return await openDeviceStorage({ stateDirectory: directory, persistMemory: true, account: null, embeddingDimensions: 4 })
+      .then(async (opened) => { await opened.adapter.close(); return "opened" }, () => "refused")
   }
 
   export async function offJourney(directory: string) {
@@ -42,15 +59,22 @@ module node {
     } finally { await adapter.close() }
   }
 }
-import { offJourney, searchJourney } from node
+import { offJourney, otherSize, reopenJourney, searchJourney } from node
 
-it.effect('Local embeddings are searched by cosine within the room, above the threshold; no embeddings means no search (spec/agent/storage/database.md, "A data directory serves only the agent, account and embedding size it was created for")', effect () => {
+it.effect('Local embeddings are searched by cosine within the room, above the threshold, in one embedding size; no embeddings means no search (spec/agent/storage/database.md, "A data directory serves only the agent, account and embedding size it was created for")', effect () => {
   const state = try scratch("storage-vectors")
   const found = try host("vector search", () => searchJourney(state.file("local")))
-  assert.deepStrictEqual(found.inRoom, ["near", "far"].slice(0, 1))
-  assert.deepStrictEqual(found.everywhere.sort(), ["elsewhere", "near"])
+  assert.deepStrictEqual(found.inRoom, ["near"])
+  assert.deepStrictEqual(found.everywhere, ["elsewhere", "near"])
   assert.deepStrictEqual(found.all, ["near", "far"])
+  assert.strictEqual(found.stale, false)
+  assert.strictEqual(found.updated, true)
+  assert.deepStrictEqual(found.afterUpdate.sort(), ["far", "near"])
   assert.strictEqual(found.wrongSize, "refused")
+  const reopened = try host("vector reopen", () => reopenJourney(state.file("local")))
+  assert.deepStrictEqual(reopened, ["far"])
+  const resized = try host("vector other size", () => otherSize(state.file("local")))
+  assert.strictEqual(resized, "refused")
   const off = try host("vector off", () => offJourney(state.file("off")))
   assert.strictEqual(off, "UnsupportedStorageOperation")
 })

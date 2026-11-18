@@ -19,7 +19,7 @@ owns a referral code. Ids, referral codes, names and the funds row (balance
 > sign-in by any of my methods, so that I never end up split across two
 > accounts or inside someone else's.
 
-### A sign-in lands on the active account holding its subject, else on the active account holding its proven email, else on a new account
+### A sign-in lands on the account holding its subject, else on the one holding its proven address, else on a new account, and never on an account that is not active
 
 An identity is a sign-in method and its subject: the address for an email
 code, the number for an SMS code, Google's subject id for Google. An email
@@ -102,7 +102,7 @@ answers success and changes nothing; removing the last one answers `409
 last_method`.
 
 ```quint
-pure def alreadyLinked(a: Account, subjectOwner: Owner): bool = subjectOwner == OwnedBy({ userId: a.userId, status: a.status })
+pure def alreadyLinked(a: Account, subjectOwner: Owner): bool = a.userId != "" and ownerId(subjectOwner) == a.userId
 pure def canLink(a: Account, identity: Identity, subjectOwner: Owner): bool =
   a.status == Active and subjectOwner == Unowned and not(a.identities.includes(identity))
 pure def link(a: Account, identity: Identity, subjectOwner: Owner): Account = { ...a, identities: a.identities.append(identity) }
@@ -204,7 +204,6 @@ pure def referrerOf(referral: Referral): str = match referral { | ReferredBy(r) 
 pure def alwaysNeverReferredByItself(a: Account): bool = a.referredBy != NotReferred implies referrerOf(a.referredBy) != a.userId
 pure def alwaysNeverReferredByOwnCode(a: Account): bool =
   a.referredBy != NotReferred implies (appliedCode(a.referredBy) != "" and appliedCode(a.referredBy) != a.referralCode)
-pure def alwaysUnopenedIsUnreferred(a: Account): bool = a.status == Unopened implies a.referredBy == NotReferred
 pure def stepReferralIsFinal(before: Account, after: Account): bool = before.referredBy != NotReferred implies after.referredBy == before.referredBy
 pure def sometimesReferred(a: Account): bool = a.referredBy != NotReferred
 ```
@@ -229,5 +228,8 @@ being deleted is still counted.
 ```quint
 pure def canCountReferral(a: Account): bool = a.status == Active or a.status == Deleting
 pure def countReferral(a: Account): Account = { ...a, referralTotal: a.referralTotal + 1 }
+pure def stepOnlyANewReferralCountsItsReferrer(before: Account, after: Account, out: List[AccountEffect]): bool =
+  out.every(e => match e { | CountReferral(c) => before.referredBy == NotReferred and c.referrerUserId == referrerOf(after.referredBy) and c.referrerUserId != after.userId })
+    and out.length() <= 1
 pure def sometimesReferralCounted(a: Account): bool = a.referralTotal >= 1
 ```

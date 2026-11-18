@@ -138,11 +138,15 @@ for (const persistMemory of [true, false]) {
     const state = try scratch("agent-records")
     const first = try start(state, "first", { persistMemory })
     const { conversation } = try Schema.decodeUnknownEffect(Created)((try served(first, "/api/conversations", {})).json)
-    const turn = try served(first, `/api/conversations/${conversation.id}/messages`, { text: "Remember the harbour." })
+    try Effect.sleep("20 millis")
+    try served(first, `/api/conversations/${conversation.id}/messages`, { text: "Remember the harbour." })
     const written = try Schema.decodeUnknownEffect(Listed)((try served(first, "/api/conversations")).json)
     try host("first stop", () => first.child.stop())
     const second = try start(state, "second", { persistMemory })
     const kept = try Schema.decodeUnknownEffect(Listed)((try served(second, "/api/conversations")).json)
-    try Effect.try(() => assert.deepStrictEqual({ turn: turn.status, turnBody: turn.json, written, kept }, {}))
+    const messaged = written.conversations.map((listed) => ({ id: listed.id, afterCreation: listed.updatedAt > conversation.updatedAt }))
+    try Effect.try(() => assert.deepStrictEqual({ messaged, kept: kept.conversations }, {
+      messaged: [{ id: conversation.id, afterCreation: true }], kept: persistMemory ? written.conversations : [],
+    }))
   }, 240_000)
 }

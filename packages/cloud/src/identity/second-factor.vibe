@@ -12,7 +12,7 @@ import { Deployment } from "../profile/profile.vibe"
 import { deliverSms } from "../providers/sms.vibe"
 import { admitAll } from "../shared/rate-limit.vibe"
 import { keyedDigest, newId, sameText, seal, unseal } from "../shared/sealing.vibe"
-import { loadRow, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
+import { loadRow, outputRows, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
 import { Store, toInt, toText, type Tx } from "../store/store.vibe"
 import type { Landed } from "./accounts.vibe"
 import { clientAddress } from "./code-challenges.vibe"
@@ -114,6 +114,8 @@ const methodOf: Readonly<Record<WireMethod, FactorMethod>> = { totp: "Totp", sms
 const wireOf: Readonly<Record<FactorMethod, WireMethod>> = { Totp: "totp", Sms: "sms" }
 const factorMethods: ReadonlyArray<FactorMethod> = ["Totp", "Sms"]
 const missed: Observed = { codeMatches: false, matchedStep: noTotpStep }
+
+export const storedFactorRows = outputRows("second_factors", { initial, decodeState, apply })
 
 function factorRows(caller: Family, personEpoch: number): MachineRows<SecondFactor, Event, FactorStep, Rejected, NotAState> {
   return {

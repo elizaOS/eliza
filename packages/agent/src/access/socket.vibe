@@ -25,7 +25,8 @@ module node {
       body: Schema.optionalKey(Schema.String),
       bodyBase64: Schema.optionalKey(Schema.String),
     }).check(Schema.makeFilter((payload) => payload.body === undefined || payload.bodyBase64 === undefined)),
-  })
+    stream: Schema.optionalKey(Schema.Boolean),
+  }).check(Schema.makeFilter((frame) => frame.stream === undefined || frame.stream === (frame.method === "http_request_stream")))
   const SubscribeFrame = Schema.Struct({
     id: Id,
     method: Schema.Literal("events_subscribe"),
@@ -35,6 +36,7 @@ module node {
       clientId: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[A-Za-z0-9._-]{1,128}$/))),
       headers: Schema.optionalKey(Headers),
     }),
+    stream: Schema.optionalKey(Schema.Literal(false)),
   })
   const decode = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Union([HttpFrame, SubscribeFrame])), { onExcessProperty: "error" })
   const decodeId = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ id: Id })))

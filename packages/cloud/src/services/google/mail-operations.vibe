@@ -85,6 +85,7 @@ const requestIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-
 const partIdPattern = /^[0-9.]{1,32}$/
 const unclear: Outcome = { reply: { tag: "Unclear" }, result: null }
 const nothingSeen: Seen = { lookup: { tag: "NothingSeen" }, result: null }
+const effectSeen = (result: ProviderResult): Seen => ({ lookup: { tag: "EffectSeen" }, result })
 
 const capabilityOf: Readonly<Record<OperationKind, GoogleCapability>> = {
   send: "google.gmail.send",
@@ -301,16 +302,16 @@ effect function draftRaw(grant: Grant, draftId: string) {
   return draft.message.raw
 }
 
-effect function draftAt(grant: Grant, draftId: string | undefined, expectedDigest: string | undefined) {
+effect function draftAt(grant: Grant, draftId: string | undefined, expectedDigest: string | undefined, fresh: boolean) {
   if (draftId === undefined || expectedDigest === undefined || !providerId.test(draftId) || !digestPattern.test(expectedDigest)) throw refused("InvalidRequest")
-  if (sha256Hex(try draftRaw(grant, draftId)) !== expectedDigest) throw refused("StaleRevision")
+  if (fresh && sha256Hex(try draftRaw(grant, draftId)) !== expectedDigest) throw refused("StaleRevision")
   return draftId
 }
 
-effect function labelOperation(grant: Grant, raw: unknown) {
+effect function labelOperation(grant: Grant, raw: unknown, fresh: boolean) {
   const proposal = try strict(LabelProposal, raw)
   if (!providerId.test(proposal.messageId) || !historyId.test(proposal.expectedHistoryId)) throw refused("InvalidRequest")
-  try readAtHistory(grant, proposal.messageId, proposal.expectedHistoryId)
+  if (fresh) try readAtHistory(grant, proposal.messageId, proposal.expectedHistoryId)
   const change = labelChanges[proposal.kind]
   const readState = change.label === "UNREAD"
   const review = { kind: proposal.kind, messageId: proposal.messageId, expectedHistoryId: proposal.expectedHistoryId, from: grant.email }
@@ -329,9 +330,9 @@ effect function labelOperation(grant: Grant, raw: unknown) {
   } satisfies Reviewed
 }
 
-effect function deleteDraftOperation(grant: Grant, raw: unknown) {
+effect function deleteDraftOperation(grant: Grant, raw: unknown, fresh: boolean) {
   const proposal = try strict(DraftDeleteProposal, raw)
-  const draftId = try draftAt(grant, proposal.draftId, proposal.expectedDigest)
+  const draftId = try draftAt(grant, proposal.draftId, proposal.expectedDigest, fresh)
   const review = { kind: "draft-delete", draftId, expectedDigest: proposal.expectedDigest, from: grant.email, permanent: true }
   const deleted: Outcome = { reply: { tag: "ShowsEffect" }, result: { draftId, deleted: true } }
   return {
@@ -359,10 +360,10 @@ export function rfc822Id(requestId: string): string {
   return `eliza-${requestId.toLowerCase()}@message.invalid`
 }
 
-effect function composeOperation(grant: Grant, kind: ComposeKind, raw: unknown, requestId: string) {
+effect function composeOperation(grant: Grant, kind: ComposeKind, raw: unknown, requestId: string, fresh: boolean) {
   const extras = decoded(ComposeExtras, raw)
   if (kind !== "draft-replace" && (extras?.draftId !== undefined || extras?.expectedDigest !== undefined)) throw refused("InvalidRequest")
-  const replacing = kind === "draft-replace" ? try draftAt(grant, extras?.draftId, extras?.expectedDigest) : undefined
+  const replacing = kind === "draft-replace" ? try draftAt(grant, extras?.draftId, extras?.expectedDigest, fresh) : undefined
   const forwarded = try forwardedParts(grant, raw)
   const composed = try composeMessage(raw, { from: grant.email, requestId, grant, forwarded })
   const mime = { raw: composed.raw, ...(composed.threadId === undefined ? {} : { threadId: composed.threadId }) }
@@ -395,15 +396,15 @@ function kindOf(raw: unknown): OperationKind | undefined {
   return typeof kind === "string" && kind in capabilityOf ? kind as OperationKind : undefined
 }
 
-effect function reviewProposal(owner: Owner, grantId: string, raw: unknown, requestId: string) {
+effect function reviewProposal(owner: Owner, grantId: string, raw: unknown, requestId: string, fresh: boolean) {
   const kind = kindOf(raw)
   if (kind === undefined) throw refused("InvalidRequest")
   const grant: Grant = try useGrant(owner, grantId, capabilityOf[kind])
   switch (kind) {
     case "send":
     case "draft-create":
-    case "draft-replace": return try composeOperation(grant, kind, raw, requestId)
-    case "draft-delete": return try deleteDraftOperation(grant, raw)
+    case "draft-replace": return try composeOperation(grant, kind, raw, requestId, fresh)
+    case "draft-delete": return try deleteDraftOperation(grant, raw, fresh)
     case "archive":
     case "unarchive":
     case "trash":
@@ -411,7 +412,7 @@ effect function reviewProposal(owner: Owner, grantId: string, raw: unknown, requ
     case "mark-read":
     case "mark-unread":
     case "star":
-    case "unstar": return try labelOperation(grant, raw)
+    case "unstar": return try labelOperation(grant, raw, fresh)
     default: {
       const _exhaustive: never = kind
       return _exhaustive
@@ -427,12 +428,12 @@ effect function lookupSeen(scope: Scope, kind: OperationKind, target: Target) {
       const change = kind in labelChanges ? labelChanges[kind as LabelKind] : undefined
       const found = try message(grant, target.id)
       if (change === undefined || found === undefined || (found.labelIds ?? []).includes(change.label) !== change.present) return nothingSeen
-      return { lookup: { tag: "EffectSeen" }, result: messageResult(found, change.label === "UNREAD") }
+      return effectSeen(messageResult(found, change.label === "UNREAD"))
     }
     case "draft": {
       if (kind !== "draft-delete") return nothingSeen
       const gone = Effect.as(google(grant, "GET", `/drafts/${target.id}?format=minimal`), false) catch (failure) => failure._tag === "NotFound"
-      return gone ? { lookup: { tag: "EffectSeen" }, result: { draftId: target.id, deleted: true } } : nothingSeen
+      return gone ? effectSeen({ draftId: target.id, deleted: true }) : nothingSeen
     }
     case "rfc822": {
       const label = kind === "send" ? "SENT" : "DRAFT"
@@ -440,7 +441,7 @@ effect function lookupSeen(scope: Scope, kind: OperationKind, target: Target) {
       const list = decoded(MessageList, google(grant, "GET", `/messages?${query}`) catch () => undefined)
       for (const { id } of list?.messages ?? []) {
         const found = try message(grant, id)
-        if (found !== undefined && (found.labelIds ?? []).includes(label)) return { lookup: { tag: "EffectSeen" }, result: messageResult(found, false) }
+        if (found !== undefined && (found.labelIds ?? []).includes(label)) return effectSeen(messageResult(found, false))
       }
       return nothingSeen
     }
@@ -465,8 +466,9 @@ function answer(scope: Scope, operation: Operation, now: number, review?: Provid
 effect function prepareRoute(context: RouteContext) {
   const body = try jsonBody(context, PrepareBody)
   const scope = try scopeOf(context, body.grantId, body.requestId)
-  const reviewed = try reviewProposal(scope.owner, scope.grantId, body.proposal, scope.requestId)
   const store = try Store
+  const earlier = try store.transaction((tx) => readOperation(tx, scope))
+  const reviewed = try reviewProposal(scope.owner, scope.grantId, body.proposal, scope.requestId, earlier === undefined)
   const now = try Clock.currentTimeMillis
   const operation = try store.transaction(effect (tx: Tx) => {
     const current = try readOperation(tx, scope)
@@ -501,7 +503,7 @@ effect function dispatchRoute(context: RouteContext) {
   if (existing === undefined) throw refused("NotFound")
   if (existing.reviewDigest !== body.reviewDigest) throw refused("StaleRevision")
   if (wireState(at(existing.receipt, context.now)) !== "prepared") return answer(scope, existing, context.now)
-  const reviewed = try reviewProposal(scope.owner, scope.grantId, body.proposal, scope.requestId)
+  const reviewed = try reviewProposal(scope.owner, scope.grantId, body.proposal, scope.requestId, true)
   if (reviewed.digest !== body.reviewDigest || reviewed.kind !== existing.kind) throw refused("StaleRevision")
   const claimedAt = try Clock.currentTimeMillis
   const claimed = try store.transaction(effect (tx: Tx) => {
@@ -552,14 +554,14 @@ const sweepBatch = 100
 export effect function sweepStaleOperations(): number!!Store {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  const stale = try store.transaction((tx) => tx.query(
+  const stale = store.transaction((tx) => tx.query(
     "SELECT organization_id, user_id, grant_id, request_id FROM mail_operations WHERE phase = 'dispatched' AND dispatched_at <= $1 ORDER BY dispatched_at LIMIT $2",
     [now - staleAfter, sweepBatch]
   )) catch () => []
   let swept = 0
   for (const row of stale) {
     const scope: Scope = { owner: { organizationId: toText(row.organization_id) ?? "", userId: toText(row.user_id) ?? "" }, grantId: toText(row.grant_id) ?? "", requestId: toText(row.request_id) ?? "" }
-    const done = try (store.transaction(effect (tx: Tx) => {
+    const done = store.transaction(effect (tx: Tx) => {
       const claimed = try tx.query("SELECT key FROM mail_operations WHERE key = $1 AND phase = 'dispatched' FOR UPDATE SKIP LOCKED", [rowKey(scope)])
       const current = claimed.length === 0 ? undefined : try readOperation(tx, scope)
       if (current === undefined) return false

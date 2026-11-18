@@ -34,7 +34,7 @@ module node {
 
   import { randomUUID } from "node:crypto"
   import { Effect, Result } from "effect"
-  import { AgentRuntime, createCharacter, stringToUuid, validateUuid } from "@elizaos/core"
+  import { AgentRuntime, TaskService, createCharacter, logger, stringToUuid, validateUuid } from "@elizaos/core"
   import { acquire, close, initial, releaseNext } from "../../gen/agent__host__resources.ts"
   import { cloudLinkPlugin, storagePlugin } from "../../gen/agent__plugins__profile.effect.vibe"
   import { plainBodyLimitBytes, messageBodyLimitBytes } from "../../gen/agent__access__transport.ts"
@@ -46,6 +46,8 @@ module node {
   import { conversationRoutes } from "../conversation/turns.vibe"
   import { ownerMessageService } from "../conversation/message-service.vibe"
   import { openDeviceStorage, type DeviceStorageSnapshot } from "../storage/index.vibe"
+  import { StoreFailed } from "../storage/fault.vibe"
+  import { logSweeps, scheduleSweeps } from "../storage/retention.vibe"
   import { bootFailureOf, composeAgent } from "./compose.vibe"
   import { reservedHostPrefixes } from "../plugins/product.vibe"
   import { cloudModel } from "./cloud-model.vibe"
@@ -83,7 +85,7 @@ module node {
     const { launch, authority, binding, stateDirectory } = input
     if (launch.model.backend === "own-key" || launch.embeddings === "local"
       || launch.privacy?.secretSwap || launch.privacy?.piiSwap
-      || launch.retention || launch.google?.gmailChanges || launch.google?.calendarEdits
+      || launch.google?.gmailChanges || launch.google?.calendarEdits
       || (launch.views?.length ?? 0) > 0) return Result.fail("Config")
     if (launch.model.backend === "cloud") {
       const address = URL.parse(launch.model.cloudBaseUrl)
@@ -92,6 +94,8 @@ module node {
     }
     const pinned = launch.workflowWorker === undefined ? undefined : await measureWorker(launch.workflowWorker)
     if (pinned?.kind === "refused") return Result.fail("Config")
+    const sweeps = await Effect.runPromise(Effect.result(logSweeps(launch.retention)))
+    if (Result.isFailure(sweeps)) return Result.fail("Config")
     const resourcesOwned = resources()
     let phase: BootFailure = "Storage"
     try {
@@ -128,9 +132,11 @@ module node {
       const formed = await Effect.runPromise(Effect.result(composeAgent({
         agentId, character, settings: {}, bundled: input.bundled ?? new Map(), modules: input.modules, hostRoutes: reservedHostPrefixes,
         context: { launch, stateDirectory, timeZone: launch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, epoch: authority.epoch, ...(authority.storageKey === undefined ? {} : { storageKey: authority.storageKey }) },
-        storage: { name: storagePlugin, description: "Own the device database", init: async (_config, runtime) => {
+        storage: { name: storagePlugin, description: "Own the device database", services: [TaskService], init: async (_config, runtime) => {
           if (!(runtime instanceof AgentRuntime)) throw new Error("The storage plugin requires the device Core runtime")
           runtime.registerDatabaseAdapter(adapter)
+          const sweeper = await Effect.runPromise(scheduleSweeps(adapter, sweeps.success))
+          if (sweeper !== undefined) runtime.registerTaskWorker(sweeper)
         } },
         cloudLink: cloud, privacy: { kind: "off" }, worker: pinned === undefined ? { kind: "none" } : { kind: "pinned", expected: pinned.worker.expected, measured: pinned.worker.measured },
         messageService: (runtime) => ownerMessageService(runtime, [role], grantAction),
@@ -186,7 +192,8 @@ module node {
           { token: authority.token, credential: authority.credential?.value, storageKey: authority.storageKey },
           (offered) => Effect.runPromise(composed.workerEnvironment(offered)))
       return Result.succeed({ runtime, status, stop: resourcesOwned.close, ...(workflowWorker === undefined ? {} : { workflowWorker }) })
-    } catch {
+    } catch (error) {
+      if (error instanceof StoreFailed) logger.error({ src: "agent", phase, fault: error.fault }, "The device store could not be opened")
       try { await resourcesOwned.close() }
       catch { return Result.fail("Agent") }
       return Result.fail(phase)

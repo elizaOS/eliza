@@ -166,7 +166,7 @@ effect function caller(context: RouteContext): { readonly userId: string; readon
   return signed
 }
 
-const ReferralRequest = Schema.Struct({ code: Schema.String })
+schema ReferralRequest { code: string }
 
 export const routes: ReadonlyArray<Route> = [
   {
