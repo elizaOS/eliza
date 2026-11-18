@@ -57,3 +57,32 @@ pure val fair_finishStop = "weak"
 pure def leadsToRoomCallsSettle(s: TopicServiceRooms, later: TopicServiceRooms): bool = s.rooms.every(room => T::leadsToAcceptedCallsSettle(room.unit, roomAt(later, room.id)))
 pure def leadsToServiceJoined(s: TopicServiceRooms, later: TopicServiceRooms): bool = s.stopping implies later.stopped or later.instance > s.instance
 ```
+
+## Story: Read the cached topics of one room or of every room
+
+> As a provider or a topic search, I want to read one room's topics or a
+> snapshot of every room's topics from the local cache, so that I see each
+> room's current topics without waiting for its queue.
+
+### Room reads return the local cache, empty without a cache entry, and the all-room snapshot follows cache insertion order
+
+A room that was never admitted reads as the empty per-room lifecycle, so its topic read is an empty list. The single-room read returns the room's local topics when the room has a cache entry and an empty list when it has none. The all-room snapshot has one entry for each room with a cache entry (the cache-order rule above makes every such room appear once), in the order the cache entries were inserted. That order can differ from the first-admission order, and only stop clears it. Lists are values, so each read is a separate copy that a caller cannot use to change the cache.
+
+```quint
+type RoomTopics = { id: str, topics: List[str] }
+pure def roomIds(s: TopicServiceRooms): List[str] = s.rooms.listMap(room => room.id)
+pure def topicsForRoom(s: TopicServiceRooms, id: str): List[str] = if (roomAt(s, id).cachePresent) roomAt(s, id).localTopics else List()
+pure def topicsForAllRooms(s: TopicServiceRooms): List[RoomTopics] = s.cacheOrder.listMap(id => { id: id, topics: topicsForRoom(s, id) })
+pure def lawMissingRoomReadsEmpty(s: TopicServiceRooms, id: str): bool = s.rooms.some(room => room.id == id) or (roomAt(s, id) == T::initial and topicsForRoom(s, id) == List())
+pure def stepCacheOrderKeepsInsertionOrder(before: TopicServiceRooms, via: str, after: TopicServiceRooms): bool = via == "finishStop" or after.cacheOrder == before.cacheOrder.concat(after.cacheOrder.select(id => not(before.cacheOrder.includes(id))))
+pure def sometimesCacheOrderDiffersFromAdmission(s: TopicServiceRooms): bool = s.cacheOrder != roomIds(s).select(id => s.cacheOrder.includes(id))
+pure val sValues: Set[TopicServiceRooms] = Set(initial)
+```
+
+### The model keeps one room record for each admitted room, in first-admission order
+
+The model keeps one room record for each room ever admitted, in first-admission order: a step can only add a new room ID at the end. The service's own queue map drops a room when its queue drains, and no read returns room IDs, so this order is only the model's.
+
+```quint
+pure def stepRoomIdsKeepFirstAdmissionOrder(before: TopicServiceRooms, after: TopicServiceRooms): bool = roomIds(after) == roomIds(before).concat(roomIds(after).select(id => not(roomIds(before).includes(id))))
+```
