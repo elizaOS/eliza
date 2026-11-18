@@ -23,6 +23,7 @@ export interface ComposeInput {
   readonly bundled?: ReadonlyMap<string, AgentPlugin> | undefined
   readonly modules?: ReadonlyMap<string, ModuleFactory<never>> | undefined
   readonly context: Omit<ModuleContext, "runtime">
+  readonly hostRoutes?: readonly string[] | undefined
   readonly storage: AgentPlugin
   readonly cloudLink: AgentPlugin
   readonly privacy: Privacy
@@ -124,7 +125,8 @@ effect function loadPlan(runtime: AgentRuntime, input: ComposeInput) {
     const plugin = try planned(name, input, sources)
     const actions = try register(runtime, plugin)
     routes.push(...(plugin.routes ?? []))
-    try orDie(plan.send({ type: "registerNext", actions, routes: routePrefixes(plugin) }))
+    const owned = name === storagePlugin ? [...routePrefixes(plugin), ...(input.hostRoutes ?? [])] : routePrefixes(plugin)
+    try orDie(plan.send({ type: "registerNext", actions, routes: owned }))
     state = try settled(plan, name)
   }
   if (state.product.tag === "ProductPending") {

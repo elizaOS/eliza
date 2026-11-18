@@ -10,9 +10,8 @@ The shell verifies TUF signatures, hashes and lengths, decodes strict JSON,
 digests a descriptor without its rollout (`core`) and its rollout, reads
 qualified time as an interval, and checks the device's fit (upgrade origins,
 platform, installer, protocols, storage, safety profiles, cohort) in that
-order. It holds the lane and publisher floors under a lock and writes them
-atomically. The host policy is compiled into the reviewed build and has no
-runtime setter: metadata, remote callers and pages cannot choose it.
+order. It writes the lane and publisher floors atomically under a lock. The
+host policy is compiled into the reviewed build with no runtime setter.
 
 ## Story: Install an app update only when every authority allows it
 
@@ -121,10 +120,10 @@ pure def lawAlreadyInstalledIsTheInstalledBuild(host: HostPolicy, r: Release, de
 A well-formed release of the configured product, repository, channel and
 distribution at or above the lane's sequence, rollout revision and security
 is remembered even when it is not eligible, so a later sequence still
-withdraws an older prepared release. A release that drops a remembered revocation, or that
-reuses the remembered sequence with another core, or the remembered
-revision with another rollout, is refused and changes nothing. Only a
-fetch advances the refresh time; evaluating stored bytes never does.
+withdraws an older prepared release. A release that drops a remembered
+revocation, or reuses the remembered sequence with another core or the
+remembered revision with another rollout, is refused and changes nothing.
+Only a fetch advances the refresh time; stored bytes never do.
 
 ```quint
 type Fetch = StoredBytes | Fetched({ fetchedLower: int })
@@ -238,11 +237,10 @@ pure def lawRevokedRecoveryNeverLoads(r: Release, floor: LaneFloor, globalSecuri
 
 ### Publisher role floors only ratchet
 
-The six role versions (root, timestamp, snapshot, targets, stable, beta)
-are provisioned explicitly; a missing or corrupt record is never reset.
-Floors advance to a freshly verified graph's versions before the timestamp
-is published; retrying the same versions is allowed, and a concurrent
-lower authorization is refused.
+The six role versions are provisioned explicitly; a missing or corrupt
+record is never reset. Floors advance to a verified graph's versions before
+the timestamp is published; a retry at the floors is accepted and a
+concurrent lower authorization is refused.
 
 ```quint
 type RoleVersions = { root: int, timestamp: int, snapshot: int, targets: int, stable: int, beta: int }
@@ -260,12 +258,11 @@ pure def lawRetryAtTheFloorsIsAccepted(floors: RoleVersions): bool = completeVer
 
 ### A publication is authorized only when one approved graph at the floors binds the plan and every descriptor is approved and preflighted
 
-The graph is verified twice: first, then again under freshly read floors
-after the slow source approvals and artifact preflights, and it must not
-change in between. Both channel roles must be signed by their thresholds
-of distinct approvers. The plan's timestamp and its descriptors, one per
-channel and distribution, must be exactly the graph's. A saved approval or
-preflight is never reused. The authorized versions then become the floors.
+Both channel roles are signed by their thresholds of distinct approvers.
+The plan's timestamp and descriptors, one per channel and distribution, are
+exactly the graph's. After the fresh source approvals and preflights the
+graph is verified again under freshly read floors and must not have changed.
+The authorized versions then become the floors.
 
 ```quint
 type TargetPath = { channel: Channel, distribution: Distribution }

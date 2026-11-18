@@ -42,7 +42,7 @@ function probes(reached: Array<string>): ReadonlyArray<Route> {
 }
 
 effect function probeServer(cloud: TestCloud, routes: ReadonlyArray<Route>) {
-  const profile = try parseProfile(testProfile(cloud.fakes.url))
+  const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
   const built = try Layer.build(HttpServer.serve(respond(routes)).pipe(
     Layer.provideMerge(listening(0, "127.0.0.1")),
     Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer))
@@ -183,7 +183,7 @@ describe("WP0 Foundation: request authentication", () => {
     const call = try probeServer(cloud, probes(reached))
     const now = try Clock.currentTimeMillis
     const windowEnd = Math.floor(now / minuteMs) * minuteMs + minuteMs
-    if (windowEnd - now < 20_000) try sleep(Duration.millis(windowEnd - now + 50))
+    if (windowEnd - now < 20_000) try Effect.sleep(Duration.millis(windowEnd - now + 50))
     const start = try Clock.currentTimeMillis
     try account(cloud, "owner", "active", { sessions: 0, devices: 0 }, start)
     const key = deviceKey("7")
@@ -191,12 +191,14 @@ describe("WP0 Foundation: request authentication", () => {
     const unknown = deviceKey("8")
     const statuses: Array<number> = []
     for (let index = 0; index < 120; index += 1) {
-      statuses.push((try call("/probe/service", key)).status)
+      const answer = try call("/probe/service", key)
+      statuses.push(answer.status)
     }
     const over = try call("/probe/service", key)
     const unknownStatuses: Array<number> = []
     for (let index = 0; index < 121; index += 1) {
-      unknownStatuses.push((try call("/probe/service", unknown)).status)
+      const answer = try call("/probe/service", unknown)
+      unknownStatuses.push(answer.status)
     }
     const overBody = over.body as { readonly error: string; readonly retryAt?: number }
     try check(() => assert.deepStrictEqual(

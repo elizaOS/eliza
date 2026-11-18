@@ -39,10 +39,10 @@ it.effect('A verified worker runs with plain settings only (spec/agent/plugins/p
   const workers = try scratch("ww-dir")
   try host("worker fixture", () => writeWorker(workers.path, "worker"))
   const frame = launchFrame({ storageKey: "sealing-key-material-1" })
-  const document = launchDocument({
+  const document = try Effect.try(() => launchDocument({
     workflowWorker: { runtimeDir: workers.path, executable: "worker", sha256: workerDigest },
     environment: { WORKER_SETTING: "plain" },
-  })
+  }))
   const parsed = try parseLaunch(JSON.stringify(document), JSON.stringify(frame))
   const running = try acquireRelease(
     startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: state.file("agent.sock") } }),
@@ -76,7 +76,7 @@ it.effect('A symlinked worker executable is refused before the plan loads (spec/
   const workers = try scratch("ww-dir")
   try host("worker fixture", () => writeWorker(workers.path, "real-worker"))
   try host("worker link", () => linkWorker(workers.path, "real-worker", "worker"))
-  const document = launchDocument({ workflowWorker: { runtimeDir: workers.path, executable: "worker", sha256: workerDigest } })
+  const document = try Effect.try(() => launchDocument({ workflowWorker: { runtimeDir: workers.path, executable: "worker", sha256: workerDigest } }))
   const parsed = try parseLaunch(JSON.stringify(document), JSON.stringify(launchFrame()))
   const failed = try Effect.flip(startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "socket", path: state.file("agent.sock") } }))
   try Effect.try(() => assert.strictEqual(failed._tag === "AgentBootFailed" ? failed.phase : failed._tag, "Config"))

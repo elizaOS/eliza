@@ -1,0 +1,36 @@
+// spec/agent/conversation/events.md, "Story: Hear about my conversations while my screen is open"; spec/agent/access/transport.md, "A subscription is confirmed once, carries events in order, and at most two are open"
+
+export interface AgentEvent {
+  readonly stream: string
+  readonly runId: string
+  readonly seq: number
+  readonly payload: unknown
+}
+
+export interface FeedRequest {
+  readonly streams: readonly string[]
+  readonly clientId: string | undefined
+}
+
+export interface Refused {
+  readonly kind: "refused"
+  readonly reason: string
+}
+
+export interface EventSubscriptions {
+  readonly subscribe: (request: FeedRequest, signal: AbortSignal) => AsyncIterable<AgentEvent> | Refused
+}
+
+export const isRefused = (feed: AsyncIterable<AgentEvent> | Refused): feed is Refused => "kind" in feed
+
+export const noEvents: EventSubscriptions = {
+  subscribe: (_request, signal) => ({
+    [Symbol.asyncIterator]: () => ({
+      next: () => new Promise<IteratorResult<AgentEvent>>((resolve) => {
+        const end = () => resolve({ done: true, value: undefined })
+        if (signal.aborted) end()
+        else signal.addEventListener("abort", end, { once: true })
+      }),
+    }),
+  }),
+}
