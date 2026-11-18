@@ -423,7 +423,7 @@ describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/regis
         ],
         admitted: [200, {
           clientId: "com.example.one", environment: "staging", redirectUri: signInOne, codeChallengeMethod: "S256", credentialTtlMs: 30 * 86_400_000,
-          methods: { email: false, sms: false, google: false },
+          methods: { email: true, sms: true, google: true },
           google: { configured: true, serverClientId: "google-server-client", nativeSignIn: true }
         }],
         refusals: [[400, "invalid_client", false], [400, "invalid_client", false], [400, "redirect_mismatch", false], [400, "redirect_mismatch", false], [403, "client_disabled", false]],
