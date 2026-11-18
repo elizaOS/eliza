@@ -4,8 +4,8 @@
  * and its device operation; it never places a call or sends a text.
  */
 import {
-  isPreviousSmsSenderDraft,
   isSmsSenderLookup,
+  requestedSmsDraftRecipient,
 } from "@elizaos/contracts/telephony-actions";
 import { phoneDialNumber } from "./phone-dial-contract.ts";
 
@@ -35,7 +35,8 @@ export function authoredTelephonyRequest(
   if (request.length > 400) return;
   const call = CALL.exec(request);
   if (call && !NOT_A_PHONE_TARGET.test(call[1] ?? "")) return "call";
-  if (isPreviousSmsSenderDraft(request)) return "text";
+  if (requestedSmsDraftRecipient(request)?.kind === "previous-sender")
+    return "text";
   if (isSmsSenderLookup(request)) return "sender";
   const sms = TEXT.exec(request);
   if (sms && !NOT_A_PHONE_TARGET.test(sms[1] ?? "")) return "text";

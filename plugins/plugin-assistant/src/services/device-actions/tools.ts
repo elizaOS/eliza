@@ -1,5 +1,5 @@
 import {
-  isPreviousSmsSenderDraft,
+  requestedSmsDraftRecipient,
   SMS_COMPOSE_TARGET_CAPABILITY,
   SMS_SENDER_ADDRESS_CAPABILITY,
 } from "@elizaos/contracts/telephony-actions";
@@ -849,7 +849,10 @@ export function registerDeviceTelephonyRouting(
       );
     if (request === "call")
       return deviceOperationSupportedByCapabilities("phone_call", capabilities);
-    if (request === "text" && isPreviousSmsSenderDraft(text))
+    if (
+      request === "text" &&
+      requestedSmsDraftRecipient(text)?.kind === "previous-sender"
+    )
       return (
         capabilities.includes(SMS_SENDER_ADDRESS_CAPABILITY) &&
         capabilities.includes(SMS_COMPOSE_TARGET_CAPABILITY) &&

@@ -407,6 +407,13 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
       });
     let preceding: Memory | undefined;
     f.runtime.getMemories = vi.fn(async () => (preceding ? [preceding] : []));
+    const suffix = await propose(
+      "Who sent my latest SMS? Last four digits only.",
+      { type: "sms_latest_sender", includeAddress: true },
+    );
+    expect(suffix.request.payload.operation).toEqual({
+      type: "sms_latest_sender",
+    });
     const read = await propose("Who sent my latest SMS?", {
       type: "sms_latest_sender",
     });
@@ -477,6 +484,31 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
       replyThreadId: "thread:42",
     });
     expect(draft.request.state).toBe("pending");
+    for (const [text, target] of [
+      [
+        "Draft a text to Ada asking them to call +14155550199.",
+        { kind: "contact", query: "Ada" },
+      ],
+      [
+        "Draft a text to +14155550124 saying call +14155550199.",
+        { kind: "number", number: "+14155550124" },
+      ],
+    ] as const) {
+      const selected = await propose(text, proposed);
+      expect(selected.request.payload.operation).toEqual({
+        ...proposed,
+        target,
+        draft: true,
+      });
+    }
+    for (const text of [
+      "Draft a text asking them to bring the tripod. Actually send it to Ada instead.",
+      "Draft a text to +14155550124 or +14155550199 about the tripod.",
+      "Draft a text saying to call +14155550199.",
+    ]) {
+      await expect(propose(text, proposed)).rejects.toThrow("Which person");
+    }
+
     preceding = {
       ...preceding!,
       id: randomUUID() as UUID,

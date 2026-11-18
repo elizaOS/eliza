@@ -891,28 +891,73 @@ export function isSmsLatestSender(value: {
   return value.type === "sms_latest_sender";
 }
 
-/** A draft addressing only the sender just identified in this conversation. An explicitly named recipient stays with the normal contact/number flow. */
-export function isPreviousSmsSenderDraft(text: string): boolean {
-  return /^(?:(?:please|can you|could you|would you)\s+)?(?:(?:draft|write|prepare|compose)\s+(?:me\s+)?(?:(?:a|the)\s+)?(?:(?:short|quick|brief)\s+)?(?:sms|text(?: message)?|message|reply)\s+(?:to|for|asking|telling|reminding)\s+|reply\s+to\s+)(?:them|him|her|that sender|the (?:last|latest|newest) sender)\b/i.test(
-    text.trim(),
+const DRAFT_COMMAND =
+  /^(?:(?:please|can you|could you|would you)\s+)?(?:(?:draft|write|prepare|compose)\s+(?:me\s+)?(?:(?:a|the)\s+)?(?:(?:short|quick|brief)\s+)?(?:sms|text(?: message)?|message|reply)\s+|reply\s+)/i;
+
+/** The recipient belongs to the addressing clause. A phone number in the SMS body never names its destination. */
+export function requestedSmsDraftRecipient(
+  text: string,
+):
+  | PhoneDialTarget
+  | { kind: "previous-sender" }
+  | { kind: "ambiguous" }
+  | { kind: "unaddressed" }
+  | undefined {
+  const request = text.trim();
+  const command = DRAFT_COMMAND.exec(request);
+  if (!command) return;
+  const remainder = request.slice(command[0].length);
+  const instructions = remainder.replace(/“[^”]*”|"(?:\\.|[^"\\])*"/gu, "");
+  if (
+    /\b(?:actually|instead|rather)\s*[:,]?\s*(?:to|for|use|(?:send|address|forward|write|make) (?:it|that|the (?:draft|message|reply|text)) (?:to|for))\b|\b(?:scratch that|change the recipient|correct the number|(?:to|for) [^.!?;,]{1,64} instead)\b|(?:^|[,;.!?])\s*(?:(?:actually|instead)[, ]*)?(?:send|address|forward) (?:it|that|the (?:draft|message|reply|text)) (?:to|for)\b/iu.test(
+      instructions,
+    )
+  )
+    return { kind: "ambiguous" };
+  if (
+    /^(?:to|for|asking|telling|reminding)\s+(?:them|him|her|that sender|the (?:last|latest|newest) sender)\b(?!\s+(?:and|or|&|instead)\b)/i.test(
+      remainder,
+    )
+  )
+    return { kind: "previous-sender" };
+  const addressed = /^(?:to|for)\s+(.+)$/is.exec(remainder);
+  if (!addressed) return { kind: "unaddressed" };
+  const [raw] = addressed[1].split(
+    /\s+(?:(?:and\s+)?(?:say(?:ing)?|ask(?:ing)?|tell(?:ing)?|remind(?:ing)?|about|with|that|to say)\b)|\s*[:“"]|[.!?]$/iu,
+    1,
   );
+  const query = raw.trim().replace(/,$/u, "");
+  if (/[,&;]|\b(?:and|or|but|not|them|him|her)\b/iu.test(query))
+    return { kind: "ambiguous" };
+  const number = query.replace(/[ ().-]/g, "");
+  if (PHONE_DIAL_NUMBER.test(number)) return { kind: "number", number };
+  if (/^[\p{L}\p{M}][\p{L}\p{M} ’'.-]{0,127}$/u.test(query))
+    return { kind: "contact", query: validateContactLookupQuery(query) };
+  return { kind: "ambiguous" };
 }
 
 export function isSmsSenderLookup(text: string): boolean {
   const request = text.trim();
   return (
-    /^(?:(?:please|can you|could you)\s+)?(?:who\b|what(?:'s| is| was)\b|show\b|look up\b|find\b|check\b|tell me\b)/i.test(
+    /^(?:(?:please|can you|could you)\s+)?(?:who\b|what(?:['’]s| is| was)\b|show\b|look up\b|find\b|check\b|tell me\b)/i.test(
       request,
     ) &&
-    /\b(?:sms|text(?:ed|s)?|messag(?:e|es|ed))\b/i.test(request) &&
     /\b(?:who|whose|sender|number|from)\b/i.test(request) &&
-    /\b(?:last|latest|newest|recent|just)\b|\bwho (?:texted|messaged) me\b/i.test(
+    /\b(?:last|latest|newest|most recent)\s+(?:(?:incoming|received|unread)\s+)?(?:sms|text|message)\b|\b(?:who (?:just |last )?(?:texted|messaged) me|(?:texted|messaged) me (?:last|most recently))\b/i.test(
       request,
     )
   );
 }
 
-/** Direct preference applies to the owner's current request. Explicit review, old lookups and ordinary sends still take their normal routes. */
+export function wantsSmsSenderAddress(text: string): boolean {
+  return (
+    isSmsSenderLookup(text) &&
+    !/\b(?:last|final|ending|only)\s+(?:four|4)(?:\s+digits?)?\b|\b(?:suffix|masked|redacted|partial|number ending)\b|\b(?:without|hide|omit|exclude|don['’]t (?:show|share)|do not (?:show|share))\b[^.!?]{0,30}\b(?:number|address)\b/i.test(
+      text,
+    )
+  );
+}
+
 export function directSmsRequest(
   operation: {
     type: string;
@@ -930,29 +975,21 @@ export function directSmsRequest(
     )
   )
     return false;
-  if (operation.type === "sms_compose" && operation.draft === true) {
-    if (isPreviousSmsSenderDraft(request))
-      return (
-        typeof operation.replyThreadId === "string" &&
-        SMS_THREAD_ID.test(operation.replyThreadId)
-      );
-    const target = operation.target as Partial<PhoneDialTarget> | null;
-    if (target?.kind !== "number" || typeof target.number !== "string")
-      return false;
+  if (operation.type === "sms_latest_sender")
+    return operation.includeAddress === true && wantsSmsSenderAddress(request);
+  if (operation.type !== "sms_compose" || operation.draft !== true)
+    return false;
+  const recipient = requestedSmsDraftRecipient(request);
+  if (recipient?.kind === "previous-sender")
     return (
-      /^(?:(?:please|can you|could you)\s+)?(?:draft|compose|prepare|write)\b/i.test(
-        request,
-      ) &&
-      /\b(?:text|sms|message|reply)\b/i.test(request) &&
-      [...request.matchAll(/\+?\d[\d ().-]*\d/g)].some(
-        ([number]) => number.replace(/[ ().-]/g, "") === target.number,
-      )
+      typeof operation.replyThreadId === "string" &&
+      SMS_THREAD_ID.test(operation.replyThreadId)
     );
-  }
+  const target = operation.target as Partial<PhoneDialTarget> | null;
   return (
-    operation.type === "sms_latest_sender" &&
-    operation.includeAddress === true &&
-    isSmsSenderLookup(request)
+    recipient?.kind === "number" &&
+    target?.kind === "number" &&
+    recipient.number === target.number
   );
 }
 
