@@ -41,7 +41,9 @@ unchanged. ID-only callers still use a current record.
 
 ```quint
 type RowSelection = ById | AtRevision({ rev: int })
+pure val selectionValues = Set(ById, AtRevision({ rev: 0 }), AtRevision({ rev: 1 }))
 type VaultRecordRevision = MissingRecord | CurrentRecord({ rev: int })
+pure val storedValues = Set(MissingRecord, CurrentRecord({ rev: 0 }), CurrentRecord({ rev: 1 }))
 pure def mayUseSelectedVaultRecord(selection: RowSelection, stored: VaultRecordRevision): bool =
   match stored {
     | MissingRecord => false
