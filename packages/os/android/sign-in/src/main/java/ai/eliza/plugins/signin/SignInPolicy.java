@@ -164,8 +164,11 @@ public final class SignInPolicy {
       return new State(s.attempt, s.request, "", s.method, s.purpose, s.credentialId.isEmpty() ? Step.EXCHANGING : Step.SIGNED_IN,
         s.factor, settled.connected() ? Google.CONNECTED : Google.REFUSED, s.credentialId, null);
     }
-    if (event instanceof Event.Fail fail) return id.equals(s.resend) ? s.resending("") : s.failed(fail.failure());
-    return id.equals(s.resend) ? s.resending("") : s.failed(Failure.CANCELLED);
+    if (id.equals(s.resend)) return s.resending("");
+    if (!s.credentialId.isEmpty()) {
+      return new State(s.attempt, s.request, "", s.method, s.purpose, Step.SIGNED_IN, s.factor, Google.REFUSED, s.credentialId, null);
+    }
+    return s.failed(event instanceof Event.Fail fail ? fail.failure() : Failure.CANCELLED);
   }
 
   public static boolean invariant(State s) {
@@ -273,6 +276,11 @@ public final class SignInPolicy {
     return 0;
   }
 
+  private static long httpDate(String value) {
+    try { return ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli(); }
+    catch (DateTimeParseException invalid) { return 0; }
+  }
+
   public static long codeExpiresAt(Object reported, long now) {
     long value = instant(reported);
     return value <= 0 ? now + DEFAULT_CODE_LIFETIME_MS : Math.min(value, now + MAX_CODE_LIFETIME_MS);
@@ -288,12 +296,7 @@ public final class SignInPolicy {
     long result = Math.max(now + RESEND_COOLDOWN_MS, instant(reported));
     if (retryAfter != null) {
       String value = retryAfter.trim();
-      try {
-        result = Math.max(result, value.matches("[0-9]{1,9}") ? now + Long.parseLong(value) * 1000L
-          : ZonedDateTime.parse(value, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant().toEpochMilli());
-      } catch (DateTimeParseException invalid) {
-        return Math.min(result, now + MAX_RESEND_WAIT_MS);
-      }
+      result = Math.max(result, value.matches("[0-9]{1,9}") ? now + Long.parseLong(value) * 1000L : httpDate(value));
     }
     return Math.min(result, now + MAX_RESEND_WAIT_MS);
   }

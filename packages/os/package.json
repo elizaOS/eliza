@@ -79,7 +79,8 @@
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && vibelang -p tsconfig.build.json",
     "typecheck": "vibelang --noEmit -p .",
     "test": "vitest run",
-    "jvm:prepare": "node test/drivers/jvm-adapter.ts --compile"
+    "jvm:prepare": "node test/drivers/jvm-adapter.ts --compile",
+    "driver:os__agentService__channel": "node test/drivers/os__agentService__channel.ts"
   },
   "dependencies": {
     "@effect/platform-node": "4.1.1",

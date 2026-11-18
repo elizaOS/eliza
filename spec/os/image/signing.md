@@ -37,11 +37,11 @@ type KeyKind = X509Pk8 | AvbRsa | Ed25519
 type ManifestKey = { name: str, kind: KeyKind, bits: int }
 pure val rsaKeyBits = 4096
 pure def keyAdmitted(key: ManifestKey): bool = key.name != "" and (key.kind == Ed25519 or key.bits == rsaKeyBits)
-pure def keyNamedOnce(keys: List[ManifestKey], name: str): bool = keys.select(k => k.name == name).length() == 1
-pure def manifestAdmitted(schemaVersion: int, keys: List[ManifestKey]): bool =
-  schemaVersion == 1 and keys.length() > 0 and keys.every(k => keyAdmitted(k) and keyNamedOnce(keys, k.name))
+pure def keyNamedOnce(manifestKeys: List[ManifestKey], name: str): bool = manifestKeys.select(k => k.name == name).length() == 1
+pure def manifestAdmitted(schemaVersion: int, manifestKeys: List[ManifestKey]): bool =
+  schemaVersion == 1 and manifestKeys.length() > 0 and manifestKeys.every(k => keyAdmitted(k) and keyNamedOnce(manifestKeys, k.name))
 pure val releaseKey: ManifestKey = { name: "releasekey", kind: X509Pk8, bits: 4096 }
-pure val keysValues = Set(List(), List(releaseKey), List(releaseKey, { name: "avb", kind: AvbRsa, bits: 4096 }, { name: "manifest", kind: Ed25519, bits: 0 }),
+pure val manifestKeysValues = Set(List(), List(releaseKey), List(releaseKey, { name: "avb", kind: AvbRsa, bits: 4096 }, { name: "manifest", kind: Ed25519, bits: 0 }),
   List(releaseKey, releaseKey), List({ name: "avb", kind: AvbRsa, bits: 2048 }), List({ name: "", kind: Ed25519, bits: 0 }))
 pure val schemaVersionValues = Set(0, 1, 2)
 pure def lawNoManifestMeansNoKeySet(schemaVersion: int): bool = not(manifestAdmitted(schemaVersion, List()))

@@ -187,13 +187,13 @@ pure val replyValues = Set(MapsAnswered, MapsRefused({ code: NoRoute }), MapsRef
 pure val observedValues = Set(-1, 0, 1, 3, 9)
 pure def lawADispatchedRequestIsChargedOnceWithinItsQuote(lane: M::FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros, reply: MapsOutcome, observed: Micros, creditFree: Micros): bool = {
   val sent = M::markDispatched(M::reserve(M::initial, mapsHoldKey("c1", "r1"), quote, lane, allowanceAvailable, creditAvailable, 0), 0)
-  val settled = applySettlement(sent, settlementOf(true, reply, quote, observed), creditFree)
+  val closed = applySettlement(sent, settlementOf(true, reply, quote, observed), creditFree)
   (M::fundable(lane, quote, allowanceAvailable, creditAvailable) and creditFree >= 0) implies
-    (settled.phase == M::Settled and settled.charged >= 0 and settled.charged <= quote and settled.uncollected == 0 and (reply == ReplyLost implies settled.charged == quote))
+    (closed.phase == M::Settled and closed.charged >= 0 and closed.charged <= quote and closed.uncollected == 0 and (reply == ReplyLost implies closed.charged == quote))
 }
 pure def lawAnUndispatchedRequestIsChargedNothing(lane: M::FundingLane, quote: Micros, allowanceAvailable: Micros, creditAvailable: Micros, reply: MapsOutcome, observed: Micros, creditFree: Micros): bool = {
-  val reserved = M::reserve(M::initial, mapsHoldKey("c1", "r1"), quote, lane, allowanceAvailable, creditAvailable, 0)
-  val ended = applySettlement(reserved, settlementOf(false, reply, quote, observed), creditFree)
+  val held = M::reserve(M::initial, mapsHoldKey("c1", "r1"), quote, lane, allowanceAvailable, creditAvailable, 0)
+  val ended = applySettlement(held, settlementOf(false, reply, quote, observed), creditFree)
   M::fundable(lane, quote, allowanceAvailable, creditAvailable) implies (ended.phase == M::Released and ended.charged == 0)
 }
 ```

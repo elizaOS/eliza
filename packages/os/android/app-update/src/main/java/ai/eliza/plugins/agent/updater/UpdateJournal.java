@@ -230,7 +230,7 @@ public class UpdateJournal {
    * candidate stays installed until a newer release fixes forward. */
   public Snapshot recoveryUnavailable(String planId,String reason)throws IOException {
     requireReason(reason);
-    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.RECOVERY_READY&&s.attempts==0,"Recovery already attempted or not ready");quarantine(s,true);s.phase=Phase.QUARANTINED;s.reason="recovery_unavailable:"+reason;});
+    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.RECOVERY_READY&&s.attempts==0,"Recovery already attempted or not ready");conclude(s,s.plan.candidate);quarantine(s,true);s.phase=Phase.QUARANTINED;s.reason="recovery_unavailable:"+reason;});
   }
   private static void requireReason(String reason){if(reason==null||!reason.matches("[a-z][a-z-]{0,47}"))throw new IllegalArgumentException("Invalid journal reason");}
   public Snapshot recoveringWithAction(String planId,int sessionId,CommitAction action)throws IOException {

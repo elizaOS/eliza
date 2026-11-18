@@ -7,7 +7,7 @@ reminders plugin; its receiver runs recovery when the device finishes
 booting, when the app is replaced, when the time or time zone changes and
 when the plugin loads. Done and Snooze, and every change of occurrence they
 make, belong to the assistant; nothing here moves an occurrence. The tap on
-a reminder notice follows the [notice routes](./noticeRoutes.md).
+a reminder notice follows the notice routes of this directory.
 
 ## Story: Get my reminder at its time, even after a reboot
 

@@ -4,9 +4,10 @@ module node {
   import { mkdtemp, open, readdir, rename, rm } from "node:fs/promises"
   import { dirname, join } from "node:path"
   import { PGlite, type Transaction } from "@electric-sql/pglite"
+  import { vector } from "@electric-sql/pglite/vector"
   import {
-    DatabaseAdapter, filterMemoryReadByAccessContext,
-    type Agent, type Entity, type IDatabaseAdapter, type Log, type Memory, type Room, type Task,
+    DatabaseAdapter, filterMemoryReadByAccessContext, rerankMemories,
+    type Agent, type Entity, type IDatabaseAdapter, type Log, type Memory, type MemoryEmbeddingUpdate, type Room, type Task,
     type UUID, type World,
   } from "@elizaos/core"
   import { migrations } from "./schema.vibe"
@@ -77,6 +78,14 @@ module node {
       if (owner.version !== migrations.length) throw new Error("The device store schema version is unsupported")
       await transaction.query("SELECT key, data, table_name FROM device_records LIMIT 0")
     })
+  }
+
+  async function sizeVectors(db: PGlite, dimensions: number): Promise<void> {
+    await db.transaction((transaction) => transaction.exec(
+      `CREATE EXTENSION IF NOT EXISTS vector;
+       ALTER TABLE device_records ADD COLUMN IF NOT EXISTS embedding vector(${dimensions})
+         GENERATED ALWAYS AS (CASE WHEN collection = 'memories' THEN (data->>'embedding')::vector(${dimensions}) END) STORED`,
+    ))
   }
 
   function record(key: string, data: unknown, createdAt = Date.now(), tableName: string | null = null): Write {
@@ -295,12 +304,17 @@ module node {
       return keys.map((key) => states.get(key) ?? null)
     }
 
+    private sized(embedding: readonly number[]): string {
+      if (embedding.length !== this.dimensions || !embedding.every(Number.isFinite)) {
+        throw new Error("Memory embedding does not match the device store")
+      }
+      return JSON.stringify(embedding)
+    }
+
     private memory(input: Memory, tableName: string, unique?: boolean): Write {
       this.own(input.agentId ?? this.agentId)
       if (tableName.length === 0) throw new Error("A memory table is required")
-      if (input.embedding && (input.embedding.length !== this.dimensions || !input.embedding.every(Number.isFinite))) {
-        throw new Error("Memory embedding does not match the device store")
-      }
+      if (input.embedding) this.sized(input.embedding)
       const id = input.id ?? randomUUID()
       const createdAt = input.createdAt ?? Date.now()
       return record(id, { ...input, id, agentId: this.agentId, createdAt, unique: unique ?? input.unique }, createdAt, tableName)
@@ -401,8 +415,49 @@ module node {
       ))
     }
 
+    async searchMemories(input: Parameters<IDatabaseAdapter["searchMemories"]>[0]): Promise<Memory[]> {
+      if (this.dimensions === 0) throw new UnsupportedStorageOperation("searchMemories without local embeddings")
+      const query = this.sized(input.embedding)
+      const ranked = await this.dispatch(() => this.db.query<{ data: Memory; similarity: number }>(
+        `SELECT data, 1 - (embedding <=> $1::vector) AS similarity FROM device_records
+          WHERE collection = 'memories' AND table_name = $2 AND embedding IS NOT NULL
+            AND ($3::text IS NULL OR room_id = $3) AND NOT (room_id = ANY($4::text[]))
+            AND ($5::text IS NULL OR world_id = $5)
+            AND ($6::text IS NULL OR data->>'entityId' = $6)
+            AND (NOT $7::boolean OR data->'unique' = 'true'::jsonb)
+          ORDER BY embedding <=> $1::vector, created_at DESC, key DESC`,
+        [query, input.tableName, input.roomId ?? null, input.excludeRoomIds ?? [], input.worldId ?? null, input.entityId ?? null, input.unique === true],
+      ))
+      const memories = ranked.rows.map((row) => ({ ...row.data, similarity: row.similarity }))
+      const readable = input.accessContext ? filterMemoryReadByAccessContext(
+        memories, input.accessContext, this.agentId,
+        input.tableName === "messages" && input.accessContext.authorizedRoomIds !== undefined ? "room" : "private",
+      ) : memories
+      const floor = input.match_threshold || Number.NEGATIVE_INFINITY
+      const offset = input.offset ?? 0
+      const limit = input.count ?? input.limit
+      return rerankMemories(input.query, readable.filter((memory) => memory.similarity >= floor)
+        .slice(offset, limit === undefined ? undefined : offset + limit))
+        .map((memory) => input.includeEmbedding === false ? { ...memory, embedding: undefined } : memory)
+    }
+
+    async updateMemoryEmbedding({ id, embedding, expected }: MemoryEmbeddingUpdate): Promise<boolean> {
+      const sized = this.sized(embedding)
+      const result = await this.dispatch(() => this.db.query(
+        `UPDATE device_records SET data = jsonb_set(data, '{embedding}', $2::jsonb)
+          WHERE collection = 'memories' AND key = $1 AND data->>'agentId' = $3
+            AND room_id = $4 AND data->>'entityId' = $5 AND data->'content'->>'text' = $6`,
+        [id, sized, expected.agentId, expected.roomId, expected.entityId, expected.text],
+      ))
+      return (result.affectedRows ?? 0) > 0
+    }
+
     async ensureEmbeddingDimension(dimension: number): Promise<void> {
       if (dimension !== this.dimensions) throw new Error("Embedding dimension differs from the device store")
+    }
+
+    async clearEmbeddingsOutsideActiveDimension(): Promise<UUID[]> {
+      return []
     }
 
     async getLogs(input: Parameters<IDatabaseAdapter["getLogs"]>[0]): Promise<Log[]> {
@@ -542,8 +597,6 @@ module node {
     readonly getCachedEmbeddings = unsupported("getCachedEmbeddings")
     readonly getLogsByIds = unsupported("getLogsByIds")
     readonly updateLogs = unsupported("updateLogs")
-    readonly searchMemories = unsupported("searchMemories")
-    readonly updateMemoryEmbedding = unsupported("updateMemoryEmbedding")
     readonly deleteRoomsByWorldIds = unsupported("deleteRoomsByWorldIds")
     readonly updateParticipants = unsupported("updateParticipants")
     readonly getParticipantsForEntities = unsupported("getParticipantsForEntities")
@@ -556,7 +609,6 @@ module node {
     readonly deleteRelationships = unsupported("deleteRelationships")
     readonly updateAgents = unsupported("updateAgents")
     readonly cleanupAgents = unsupported("cleanupAgents")
-    readonly clearEmbeddingsOutsideActiveDimension = unsupported("clearEmbeddingsOutsideActiveDimension")
     readonly getMemoriesByWorldId = unsupported("getMemoriesByWorldId")
     readonly getPairingRequests = unsupported("getPairingRequests")
     readonly getPairingAllowlists = unsupported("getPairingAllowlists")
@@ -609,8 +661,10 @@ module node {
       if (snapshot !== undefined && directory !== undefined && (await readdir(directory)).length === 0) {
         await seedDurableStore(directory, state.agentId, options, snapshot)
       }
-      db = await PGlite.create(seeded ? { loadDataDir: snapshot } : { dataDir: directory })
+      const vectors = options.embeddingDimensions > 0 ? { extensions: { vector } } : {}
+      db = await PGlite.create(seeded ? { loadDataDir: snapshot, ...vectors } : { dataDir: directory, ...vectors })
       await migrate(db, state.agentId, options, seeded)
+      if (options.embeddingDimensions > 0) await sizeVectors(db, options.embeddingDimensions)
       return { agentId: state.agentId, adapter: new DeviceAdapter(db, state.agentId, options.embeddingDimensions, state.release) }
     } catch (error) {
       await db?.close()
