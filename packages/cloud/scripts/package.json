@@ -19,7 +19,7 @@
     "homepage:dns": "bun ./gateway/sync-homepage-porkbun-dns.ts"
   },
   "devDependencies": {
-    "playwright": "^1.65.0",
+    "playwright": "^1.65.1",
     "@types/pg": "8.23.1",
     "pg": "8.23.1"
   }

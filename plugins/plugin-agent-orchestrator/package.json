@@ -109,7 +109,7 @@
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.6",
+    "@biomejs/biome": "2.6.7",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
     "@types/bun": "1.4.2",
@@ -120,9 +120,9 @@
     "vitest": "^5.1.0",
     "@elizaos/testing": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
-    "playwright": "^1.65.0",
+    "playwright": "^1.65.1",
     "tsup": "^9.0.0",
-    "vite": "^8.3.3",
+    "vite": "^8.3.8",
     "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "scripts": {

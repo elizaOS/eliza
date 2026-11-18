@@ -837,7 +837,7 @@
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.6",
+    "@biomejs/biome": "2.6.7",
     "@cloudflare/workers-types": "^5.20261110.1",
     "@types/node": "^25.6.0",
     "@types/pg": "^8.23.1",
