@@ -16,7 +16,7 @@ apply plugin: 'com.android.library'
 apply plugin: 'org.jetbrains.kotlin.android'
 android {
     namespace = "ai.eliza.plugins.browsersurface"
-    sourceSets.main.assets.srcDirs += ['../resources']
+    sourceSets.main.assets.srcDirs += ['resources']
     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34
 
     buildFeatures {
@@ -84,4 +84,19 @@ dependencies {
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     androidTestImplementation "androidx.webkit:webkit:$androidxWebkitVersion"
+}
+
+tasks.withType(Zip).configureEach {
+    if (name ==~ /bundle.*Aar/) {
+        doLast {
+            new java.util.zip.ZipFile(archiveFile.get().asFile).withCloseable { archive ->
+                for (asset in ['read-page.js', 'control-channel.js', 'capture-mask.js']) {
+                    def entry = archive.getEntry("assets/${asset}")
+                    if (entry == null || entry.size <= 0) {
+                        throw new GradleException("Browser surface archive is missing ${asset}")
+                    }
+                }
+            }
+        }
+    }
 }

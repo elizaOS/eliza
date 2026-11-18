@@ -2,6 +2,7 @@
 import tailwindcss from "@tailwindcss/vite";
 import vibelang from "vibelang-vite";
 import { createServer, defineConfig, type Plugin } from "vite";
+import type { renderPages as RenderPages } from "./src/pages/render.tsx";
 
 const pages = (): Plugin => ({
   name: "cloud-pages",
@@ -15,7 +16,7 @@ const pages = (): Plugin => ({
       for (const fileName of Object.keys(bundle)) delete bundle[fileName];
       const server = await createServer({ configFile: false, root: import.meta.dirname, plugins: [vibelang()], appType: "custom", logLevel: "error", server: { middlewareMode: true, hmr: false, ws: false } });
       try {
-        const { renderPages } = (await server.ssrLoadModule("/src/pages/render.tsx")) as typeof import("./src/pages/render.tsx");
+        const { renderPages } = (await server.ssrLoadModule("/src/pages/render.tsx")) as { renderPages: typeof RenderPages };
         for (const page of renderPages(css)) this.emitFile({ type: "asset", fileName: page.fileName, source: page.source });
       } finally {
         await server.close();

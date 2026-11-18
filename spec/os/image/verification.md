@@ -9,8 +9,7 @@ develop's `verify-launcher-image.mjs` and the device halves of
 `aosp-clock-handlers.mjs`, `sense-listener.mjs` (`verifyAospListener`) and
 `secure-camera.mjs` (`verifySecureCameraImage`). The shell is
 `verifyImage` in `src/image/verify-device.vibe`, exported from
-`@elizaos/os/image`; the [OTA operator](../update/updater.md) uses it after
-an update.
+`@elizaos/os/image`; the cable OTA operator uses it after an update.
 
 The shell issues only reads over adb (`getprop`, `getenforce`, `pm`,
 `cmd package`, `dumpsys`, `sha256sum`, `cat`); it installs, grants, sets
@@ -32,8 +31,10 @@ that a person accepted the device.
 ### Each check reads Pass or Fail, and a check that could not be read is Unknown
 
 ```quint
+import provisioning as Pv from "./provisioning"
 type CheckOutcome = Pass | Fail | Unknown
 type Reading = Unread | Read({ holds: bool })
+pure val readingValues = Set(Unread, Read({ holds: true }), Read({ holds: false }))
 pure def outcomeOf(reading: Reading): CheckOutcome = match reading { | Unread => Unknown | Read(r) => if (r.holds) Pass else Fail }
 pure def lawUnreadIsUnknownOnly(reading: Reading): bool = (outcomeOf(reading) == Unknown) iff (reading == Unread)
 ```
@@ -89,9 +90,9 @@ unlocked device expects `orange`. A state the shell cannot parse is
 ```quint
 type BootState = Green | Yellow | Orange | Red
 pure def bootStrength(state: BootState): int = match state { | Green => 3 | Yellow => 2 | Orange => 1 | Red => 0 }
-pure def verifiedBootNotWeaker(booted: BootState, expected: BootState): bool = bootStrength(booted) >= bootStrength(expected)
-pure def lawUnlockedNeverMeetsALockedImage(expected: BootState): bool = (expected == Green or expected == Yellow) implies not(verifiedBootNotWeaker(Orange, expected))
-pure def lawRedNeverMeetsAnyExpectation(expected: BootState): bool = expected != Red implies not(verifiedBootNotWeaker(Red, expected))
+pure def verifiedBootNotWeaker(booted: BootState, expectedBoot: BootState): bool = bootStrength(booted) >= bootStrength(expectedBoot)
+pure def lawUnlockedNeverMeetsALockedImage(expectedBoot: BootState): bool = (expectedBoot == Green or expectedBoot == Yellow) implies not(verifiedBootNotWeaker(Orange, expectedBoot))
+pure def lawRedNeverMeetsAnyExpectation(expectedBoot: BootState): bool = expectedBoot != Red implies not(verifiedBootNotWeaker(Red, expectedBoot))
 ```
 
 ### First-boot grants are exactly the descriptor's defaults and each stays revocable
@@ -115,9 +116,7 @@ pure def lawFixedGrantFails(expected: Set[str], granted: Set[str]): bool = expec
 ### The image feature is present at the version the image surfaces need
 
 ```quint
-import provisioning as Pv from "./provisioning"
-pure def imageFeatureHolds(reading: Pv::FeatureReading): bool = match reading { | FeatureAt(f) => f.version >= Pv::imageFeatureVersion | _ => false }
-pure def lawImageFeatureMeansSurfaceOnASystemInstall(reading: Pv::FeatureReading): bool = imageFeatureHolds(reading) iff Pv::imageSurfaceAvailable(Pv::SystemInstall, reading)
+pure def imageFeatureHolds(feature: Pv::FeatureReading): bool = Pv::imageSurfaceAvailable(Pv::SystemInstall, feature)
 ```
 
 ### The listener holds every reviewed privileged grant, none forbidden, and runs in its own SELinux domain
