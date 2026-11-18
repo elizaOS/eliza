@@ -1,0 +1,11 @@
+// spec/agent/storage/database.md, "Only one live process holds a data directory"; spec/agent/tasks/store.md, "Storage opens only with a private path, the exclusive lock, a 32-byte key and the launch account"; spec/agent/access/transport.md, "Story: Answer each local request exactly once"
+module node {
+  import { userInfo } from "node:os"
+
+  export function processOwnerUid(): number {
+    const uid = process.getuid?.() ?? (process.platform === "android" ? userInfo().uid : undefined)
+    if (uid === undefined || !Number.isSafeInteger(uid) || uid < 0) throw new Error("Process owner is unavailable")
+    return uid
+  }
+}
+export { processOwnerUid } from node
