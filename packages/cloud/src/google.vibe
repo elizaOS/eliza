@@ -2,7 +2,7 @@
 import type { Client } from "pg"
 import { Aead, Digest, SecureRandom } from "effect/crypto"
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse, HttpServerRequest, HttpIncomingMessage } from "effect/http"
-import { googleCalendarFeed, googleCalendarItem, googleGmailMessage, googleGmailTriage, googleReplyTarget, mailAddress, GoogleReadInput, type GoogleReadApi } from "./google-read.vibe"
+import { googleCalendarFeed, googleCalendarItem, googleGmailMessage, googleGmailTriage, googleReplyTarget, hasControlCharacter, mailAddress, GoogleReadInput, type GoogleReadApi } from "./google-read.vibe"
 
 export type GoogleEnv = {
   PUBLIC_API_ORIGIN: string
@@ -394,7 +394,7 @@ schema CalendarTime { dateTime?: string; date?: string; timeZone?: string }
 schema CalendarEvidence { id: string; etag: string; status?: string; eventType?: string; recurrence?: string[]; recurringEventId?: string; attendees?: Schema.Unknown[]; organizer?: CalendarOwner; start?: CalendarTime; end?: CalendarTime; summary?: string; location?: string }
 
 function calendarZone(name: string | undefined) {
-  if (!name || name.length > 100 || !/^[A-Za-z][A-Za-z0-9_/+\-]*$/.test(name)) return undefined
+  if (!name || name.length > 100 || !/^[A-Za-z][A-Za-z0-9_/+-]*$/.test(name)) return undefined
   try { return new Intl.DateTimeFormat("en", { timeZone: name }).resolvedOptions().timeZone }
   catch { return undefined }
 }
@@ -406,7 +406,7 @@ effect function changeCalendar(request: Request, env: GoogleEnv, db: Client, acc
   const deleting = action.action === "delete"
   const draft = action.event
   if (creating ? (action.id || action.version || action.seriesFor) : (!action.id || !providerId.test(action.id) || !action.version ||
-    !/^"[^"\u0000-\u001f\u007f]{1,250}"$/.test(action.version))) throw new BadRequest()
+    !/^"[^"]{1,250}"$/.test(action.version) || hasControlCharacter(action.version))) throw new BadRequest()
   const allDay = draft?.allDay === true
   const repeat = draft?.repeat
   const creationZone = calendarZone(repeat?.timeZone)
@@ -479,7 +479,7 @@ effect function sendMail(request: Request, env: GoogleEnv, db: Client, account: 
   const draft = try readAction(request, SendMail)
   if (account !== draft.accountId || !uuid.test(draft.grantId) || !uuid.test(draft.operationId) ||
     !mailAddress.test(draft.recipient) || draft.recipient.length > 254 || draft.subject.length > 120 ||
-    /[\u0000-\u001f\u007f]/.test(draft.subject) || !draft.text.trim() || draft.text.length > 8192 || (draft.replyTo !== undefined && !providerId.test(draft.replyTo))) throw new BadRequest()
+    hasControlCharacter(draft.subject) || !draft.text.trim() || draft.text.length > 8192 || (draft.replyTo !== undefined && !providerId.test(draft.replyTo))) throw new BadRequest()
   const access = try accessFor(env, db, account, "send_mail", draft.grantId)
   const hash = hex(try sha256(JSON.stringify(["send", draft.grantId, draft.recipient, draft.subject, draft.text, draft.replyTo])))
   const reply = draft.replyTo

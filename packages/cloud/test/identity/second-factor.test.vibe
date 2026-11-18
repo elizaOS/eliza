@@ -42,7 +42,7 @@ effect function signInAgain(cloud: TestCloud, email: string) {
 effect function enrollTotp(cloud: TestCloud, token: string) {
   const enrolled = (try asOwner(cloud, token, "/api/v1/auth/mfa/totp/enroll", {})).body as Enrolled
   const now = try Clock.currentTimeMillis
-  const confirmed = try asOwner(cloud, token, "/api/v1/auth/mfa/totp/confirm", { code: authenticatorCode(enrolled.secret, now) })
+  const confirmed = try asOwner(cloud, token, "/api/v1/auth/mfa/totp/confirm", { code: try sync(() => authenticatorCode(enrolled.secret, now)) })
   return { enrolled, confirmed, confirmedAt: now }
 }
 
@@ -59,10 +59,10 @@ describe("WP1 Identity: second factor", () => {
 
     const opened = (try signInAgain(cloud, "ada@example.com")) as Challenge
     const replaced = (try signInAgain(cloud, "ada@example.com")) as Challenge
-    const stale = try cloud.call("/api/v1/auth/mfa/complete", { json: { challengeId: opened.challengeId, method: "totp", code: authenticatorCode(enrolled.secret, confirmedAt, 1) } })
-    const replayed = try cloud.call("/api/v1/auth/mfa/complete", { json: { challengeId: replaced.challengeId, method: "totp", code: authenticatorCode(enrolled.secret, confirmedAt) } })
-    const completed = try cloud.call("/api/v1/auth/mfa/complete", { json: { challengeId: replaced.challengeId, method: "totp", code: authenticatorCode(enrolled.secret, confirmedAt, 1) } })
-    const again = try cloud.call("/api/v1/auth/mfa/complete", { json: { challengeId: replaced.challengeId, method: "totp", code: authenticatorCode(enrolled.secret, confirmedAt, 1) } })
+    const stale = try cloud.call("/api/v1/auth/mfa/complete", { json: { challengeId: opened.challengeId, method: "totp", code: try sync(() => authenticatorCode(enrolled.secret, confirmedAt, 1)) } })
+    const replayed = try cloud.call("/api/v1/auth/mfa/complete", { json: { challengeId: replaced.challengeId, method: "totp", code: try sync(() => authenticatorCode(enrolled.secret, confirmedAt)) } })
+    const completed = try cloud.call("/api/v1/auth/mfa/complete", { json: { challengeId: replaced.challengeId, method: "totp", code: try sync(() => authenticatorCode(enrolled.secret, confirmedAt, 1)) } })
+    const again = try cloud.call("/api/v1/auth/mfa/complete", { json: { challengeId: replaced.challengeId, method: "totp", code: try sync(() => authenticatorCode(enrolled.secret, confirmedAt, 1)) } })
     const session = completed.body as { status: string; accessToken: string; mfaAt: number | null }
     const read = try asOwner(cloud, session.accessToken, "/api/v1/auth/mfa")
     try check(() => assert.deepStrictEqual(
@@ -89,7 +89,7 @@ describe("WP1 Identity: second factor", () => {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       wrong.push(refusal(try cloud.call("/api/v1/auth/mfa/complete", { json: { challengeId: locking.challengeId, method: "totp", code: "000000" } })))
     }
-    const rightButLocked = try cloud.call("/api/v1/auth/mfa/complete", { json: { challengeId: locking.challengeId, method: "totp", code: authenticatorCode(enrolled.secret, confirmedAt, 1) } })
+    const rightButLocked = try cloud.call("/api/v1/auth/mfa/complete", { json: { challengeId: locking.challengeId, method: "totp", code: try sync(() => authenticatorCode(enrolled.secret, confirmedAt, 1)) } })
     try check(() => assert.deepStrictEqual(
       [...wrong, refusal(rightButLocked)],
       [...Array(4).fill("401 credential_proof_invalid"), "403 access_denied challenge_locked", "403 access_denied challenge_locked"]
@@ -104,7 +104,7 @@ describe("WP1 Identity: second factor", () => {
     const { enrolled, confirmedAt } = try enrollTotp(cloud, token)
     const unsteppedSetup = try asOwner(cloud, token, "/api/v1/auth/mfa/totp/enroll", {})
     const wrong = try asOwner(cloud, token, "/api/v1/auth/mfa/step-up", { method: "totp", code: "000000" })
-    const stepped = try asOwner(cloud, token, "/api/v1/auth/mfa/step-up", { method: "totp", code: authenticatorCode(enrolled.secret, confirmedAt, 1) })
+    const stepped = try asOwner(cloud, token, "/api/v1/auth/mfa/step-up", { method: "totp", code: try sync(() => authenticatorCode(enrolled.secret, confirmedAt, 1)) })
     const marks = stepped.body as { stepUpAt: number; mfaAt: number }
     const read = try asOwner(cloud, token, "/api/v1/auth/mfa")
     const secondSetup = try asOwner(cloud, token, "/api/v1/auth/mfa/totp/enroll", {})

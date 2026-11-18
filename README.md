@@ -40,10 +40,9 @@ Cloud Worker. Use an unlocked Android 15 or later test emulator with a screen
 lock and install the test APK from the portable module:
 
 ```sh
-gradle -p packages/os/android/passwords/test/fixture \
+ANDROID_SERIAL=emulator-5554 gradle -p packages/os/android/passwords/test/fixture \
   -PcapacitorAndroidDir=/path/to/installed/@capacitor/android \
-  :elizaos-capacitor-passwords:assembleDebugAndroidTest
-adb -s emulator-5554 install -t packages/os/android/passwords/build/outputs/apk/androidTest/debug/elizaos-capacitor-passwords-debug-androidTest.apk
+  :elizaos-capacitor-passwords:installDebugAndroidTest
 ```
 
 Run the focused journey from the Eliza root after `pnpm gen --owner cloud`:

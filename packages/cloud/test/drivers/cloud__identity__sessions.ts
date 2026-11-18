@@ -1,19 +1,15 @@
 // spec/cloud/identity/sessions.md, "Story: Stay signed in"; spec/cloud/identity/sessions.md, "Story: Sign out here, or end my other sessions"; spec/cloud/identity/sessions.md, "Story: Confirm it is me before a sensitive change"
-import { Effect } from "effect";
 import type { Driver, Options } from "../../gen/cloud__identity__sessions.conformance.ts";
 import type { Event, Family } from "../../gen/cloud__identity__sessions.ts";
 import { familyRows, stepFamily } from "../../src/identity/sessions.vibe";
-import type { Tx } from "../../src/store/connection.vibe";
 import { loadRow } from "../../src/store/rows.vibe";
-import { Store } from "../../src/store/store.vibe";
-import { ledger } from "../support/ledger.ts";
+import { ledger, within } from "../support/ledger.ts";
 
 const cloud = ledger();
 const keys = ["a", "b"];
 const family = (key: string) => `family-${key}`;
 const person = (key: string) => `person-${key}`;
 const emitted = new Map<string, unknown>();
-const within = <A, E>(body: (tx: Tx) => Effect.Effect<A, E, never>) => Effect.flatMap(Store.asEffect(), (store) => store.transaction(body));
 
 async function dispatch(key: string, event: Event) {
   const done = await cloud.run(within((tx) => stepFamily(tx, family(key), event, 0, () => ({ user_id: person(key), access_digest: `${key}-access`, refresh_digest: `${key}-refresh` }))));

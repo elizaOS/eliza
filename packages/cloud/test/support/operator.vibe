@@ -14,7 +14,7 @@ export interface OperatorOptions {
 }
 
 export effect function operator(cloud: TestCloud, args: ReadonlyArray<string>, options: OperatorOptions = {}) {
-  const base = testProfile(cloud.fakes.url)
+  const base = try sync(() => testProfile(cloud.fakes.url))
   const profile = try parseProfile(options.edit === undefined ? base : options.edit(base))
   const deployment = deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
   provide Store = cloud.store, deployment, FetchHttpClient.layer {

@@ -1,11 +1,11 @@
 // spec/cloud/identity/accounts.md, "Story: Get one account on first sign-in"; spec/cloud/identity/accounts.md, "Story: Read my account"; spec/cloud/identity/accounts.md, "Story: Attribute a referral without paying for it"
-import { NotAState, Rejected, accountView, admitsSignIn, alreadyLinked, apply, canLink, canUnlink, closedRefusal, decodeState, emailProven, firstSight, inUseRefusal, initial, lastMethodRefusal, referralDecision, type Account, type AccountEffect, type AccountStatus, type CodeOwner, type Event, type Identity, type Owner, type ReferralApplied } from "../../gen/cloud__identity__accounts.effect.vibe"
+import { type NotAState, type Rejected, accountView, admitsSignIn, alreadyLinked, apply, canLink, canUnlink, closedRefusal, decodeState, emailProven, firstSight, inUseRefusal, initial, lastMethodRefusal, referralDecision, type Account, type AccountEffect, type AccountStatus, type CodeOwner, type Event, type Identity, type Owner, type ReferralApplied } from "../../gen/cloud__identity__accounts.effect.vibe"
 import { fundsRows } from "../billing/funds.vibe"
 import { refused, Refused } from "../http/refusal.vibe"
 import { json, jsonBody, owner, type Route, type RouteContext } from "../http/routes.vibe"
 import { newId, secretText } from "../shared/sealing.vibe"
-import { loadRow, outputRows, stepRow, RowConflict, RowCorrupt, type Columns } from "../store/rows.vibe"
-import { Store, StoreFailure, toText, type Row, type Tx } from "../store/connection.vibe"
+import { loadRow, outputRows, stepRow, type RowConflict, type RowCorrupt, type Columns } from "../store/rows.vibe"
+import { Store, type StoreFailure, toText, type Row, type Tx } from "../store/connection.vibe"
 
 export type { Account, Identity }
 
@@ -69,7 +69,7 @@ effect function insertIdentity(tx: Tx, userId: string, identity: Identity): void
 }
 
 export effect function stepAccount(tx: Tx, userId: string, event: Event, now: number, columns: Columns = {}): ReferralApplied!(StoreFailure | RowCorrupt | RowConflict | Rejected) {
-  const opened = event.type === "openAccount" ? { organization_id: event.organizationId, created_at: now } : {}
+  const opened: Columns = event.type === "openAccount" ? { organization_id: event.organizationId, created_at: now } : {}
   return (try stepRow(tx, accountRows, userId, event, (state) => ({ status: columnOfStatus[state.status], updated_at: now, ...opened, ...columns }))).out
 }
 

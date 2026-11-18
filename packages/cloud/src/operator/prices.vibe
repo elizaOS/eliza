@@ -1,7 +1,7 @@
 // spec/cloud/operator.md, "Story: Operate the deployment without reading secrets"; spec/cloud/services/models.md, "Story: Price a model call before it runs"; spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { priceMismatches } from "../../gen/cloud__services__models.effect.vibe"
 import { checkCatalog } from "../billing/plans.vibe"
-import { refused, Refused } from "../http/refusal.vibe"
+import { refused, type Refused } from "../http/refusal.vibe"
 import { capabilityEnabled, Deployment } from "../profile/profile.vibe"
 import { checkPrices, pricesFromSeed, readPriceRows, setModelPrice, type InferenceSettings, type PriceCheck } from "../services/models.vibe"
 import type { Tx } from "../store/store.vibe"
