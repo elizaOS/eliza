@@ -111,17 +111,17 @@ pure def setStatus(request: int, s: PageRequests, st: RequestStatus): PageReques
 pure def canAnswerDialog(s: PageRequests, realm: L::Realm, id: str, request: int, accept: bool): bool = waitingOn(s, realm, id, request, Dialog)
 pure def answerDialog(s: PageRequests, realm: L::Realm, id: str, request: int, accept: bool): PageRequests =
   setStatus(request, s, if (accept) DialogAccepted else DialogCancelled)
-pure def answerStep(via: str, kind: RequestKind, from: RequestStatus, to: RequestStatus): bool =
-  (via == "answerDialog" and kind == Dialog and from == Waiting and (to == DialogAccepted or to == DialogCancelled)) or
-  (via == "answerFileChooser" and kind == FileChoice and from == Waiting and (to == PickerOpen or to == NoFiles)) or
-  (via == "pickerReturned" and kind == FileChoice and from == PickerOpen and (to == FilesGiven or to == NoFiles)) or
-  (via == "answerSitePermission" and kind == SitePermission and from == Waiting and (to == AskingAndroid or to == PermissionAnswered({ answer: Denied }))) or
-  (via == "androidAnswered" and kind == SitePermission and from == AskingAndroid and
-    (to == PermissionAnswered({ answer: Granted }) or to == PermissionAnswered({ answer: AndroidRefused }) or to == PermissionAnswered({ answer: Ended }))) or
-  (via == "saveDownload" and kind == Download and from == Waiting and to == Saving) or
-  (via == "downloadFinished" and kind == Download and from == Saving and (to == Saved or to == SaveFailed)) or
-  (via == "openExternalLink" and kind == OtherApp and from == Waiting and (to == Dispatched or to == NoHandler)) or
-  (via == "openIdentityProvider" and kind == BlockedSignIn and from == Waiting and (to == Dispatched or to == NoHandler))
+pure def answerStep(via: str, kind: RequestKind, was: RequestStatus, now: RequestStatus): bool =
+  (via == "answerDialog" and kind == Dialog and was == Waiting and (now == DialogAccepted or now == DialogCancelled)) or
+  (via == "answerFileChooser" and kind == FileChoice and was == Waiting and (now == PickerOpen or now == NoFiles)) or
+  (via == "pickerReturned" and kind == FileChoice and was == PickerOpen and (now == FilesGiven or now == NoFiles)) or
+  (via == "answerSitePermission" and kind == SitePermission and was == Waiting and (now == AskingAndroid or now == PermissionAnswered({ answer: Denied }))) or
+  (via == "androidAnswered" and kind == SitePermission and was == AskingAndroid and
+    (now == PermissionAnswered({ answer: Granted }) or now == PermissionAnswered({ answer: AndroidRefused }) or now == PermissionAnswered({ answer: Ended }))) or
+  (via == "saveDownload" and kind == Download and was == Waiting and now == Saving) or
+  (via == "downloadFinished" and kind == Download and was == Saving and (now == Saved or now == SaveFailed)) or
+  (via == "openExternalLink" and kind == OtherApp and was == Waiting and (now == Dispatched or now == NoHandler)) or
+  (via == "openIdentityProvider" and kind == BlockedSignIn and was == Waiting and (now == Dispatched or now == NoHandler))
 pure def stepEveryOutcomeIsItsAnswerOrAnEnding(before: PageRequests, via: str, after: PageRequests): bool =
   after.requests.every(r => before.requests.includes(r) or
     (via == "pageAsks" and r.id == after.issued and (r.status == Waiting or r.status == ended(r.kind))) or

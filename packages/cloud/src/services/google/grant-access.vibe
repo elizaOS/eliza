@@ -85,7 +85,7 @@ export function capabilitiesOf(scopes: ReadonlyArray<string>): ReadonlyArray<Goo
 
 export const initialConnection: Connection = { status: "Pending", scopes: [], tokens: "", expiresAt: 0, refreshingUntil: 0 }
 
-schema ConnectionState { status: ConnectionStatus; scopes: ReadonlyArray<string>; tokens: string; expiresAt: number; refreshingUntil: number }
+schema ConnectionState { status: "Pending" | "Active" | "Expired" | "Revoked" | "Error"; scopes: ReadonlyArray<string>; tokens: string; expiresAt: number; refreshingUntil: number }
 
 export effect function decodeConnection(input: unknown): Connection!ConnectionCorrupt {
   return Schema.decodeUnknownEffect(ConnectionState)(input) catch effect () => { throw new ConnectionCorrupt({ input }) }

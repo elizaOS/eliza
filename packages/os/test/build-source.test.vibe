@@ -26,7 +26,7 @@ const PINNED: Tree = {
 const ALLOWANCES: WorkspaceAllowances = { generatedFiles: [".source.json"], generatedDirectories: ["out"] }
 
 effect function findingOf(directory: string, commit: string, allowances: WorkspaceAllowances = ALLOWANCES) {
-  return try (effect {
+  return (effect {
     try verifyCommittedWorkspace(directory, commit, allowances)
     return "Exact"
   } catch (error) => match (error) {
@@ -35,7 +35,7 @@ effect function findingOf(directory: string, commit: string, allowances: Workspa
   })
 }
 
-effect function changedRepo(prefix: string, change: (root: string) => Effect.Effect<void, unknown, FileSystem.FileSystem | Path.Path>) {
+effect function changedRepo<E, R>(prefix: string, change: (root: string) => void!E!R) {
   const repo = try scratchRepo(prefix, PINNED)
   try change(repo.root)
   return try findingOf(repo.root, repo.commit)
@@ -106,9 +106,9 @@ it.effect("Build only from the committed tree I pinned: a cache seeds the source
 
     const seeded = try prepareCommittedSource({ repository: upstream.root, cache: cache.root, destination: path.join(work, "seeded"), pin: upstream.commit, allowances: ALLOWANCES, stage: stage("out/agent.js") })
     const fetched = try prepareCommittedSource({ repository: upstream.root, cache: stale.root, destination: path.join(work, "fetched"), pin: upstream.commit, allowances: ALLOWANCES, stage: stage("out/agent.js") })
-    const strayStage = try (prepareCommittedSource({ repository: upstream.root, destination: path.join(work, "stray"), pin: upstream.commit, allowances: ALLOWANCES, stage: stage("outside.js") }) catch (error) => error._tag === "WorkspaceRefused" ? `${error.finding} ${error.path}` : error._tag)
+    const strayStage = (prepareCommittedSource({ repository: upstream.root, destination: path.join(work, "stray"), pin: upstream.commit, allowances: ALLOWANCES, stage: stage("outside.js") }) catch (error) => error._tag === "WorkspaceRefused" ? `${error.finding} ${error.path}` : error._tag)
     try writeTree(cache.root, { "packages/app/index.js": "export const answer = 0\n" })
-    const drifted = try (prepareCommittedSource({ repository: upstream.root, cache: cache.root, destination: path.join(work, "drifted"), pin: upstream.commit, allowances: ALLOWANCES, stage: stage("out/agent.js") }) catch (error) => error._tag)
+    const drifted = (prepareCommittedSource({ repository: upstream.root, cache: cache.root, destination: path.join(work, "drifted"), pin: upstream.commit, allowances: ALLOWANCES, stage: stage("out/agent.js") }) catch (error) => error._tag)
     const seededTree = try readTree(path.join(work, "seeded"))
     const seededHead = try git(path.join(work, "seeded"), ["rev-parse", "HEAD"])
 
@@ -133,7 +133,7 @@ it.effect("Export pinned files without my local edits", effect () => {
     const exported = try exportCommittedSources(repo.root, repo.commit, into, ["packages/app", "README.md"])
     const tree = try readTree(into)
     const refusal = effect (paths: readonly string[], source: string = repo.root) => {
-      return try (effect {
+      return (effect {
         try exportCommittedSources(source, repo.commit, path.join(try scratch("refused"), "bundle"), paths)
         return "Exported"
       } catch (error) => match (error) {

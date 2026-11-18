@@ -244,7 +244,7 @@ public final class DeviceKeyClient {
           if (output.size() + count > MAX_BODY_BYTES) throw new IOException("answer too large");
           output.write(chunk, 0, count);
         }
-        return new Reply(status, output.toString(StandardCharsets.UTF_8));
+        return new Reply(status, new String(output.toByteArray(), StandardCharsets.UTF_8));
       }
     } finally {
       connection.disconnect();

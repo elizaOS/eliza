@@ -218,7 +218,8 @@ pure val requestValues = {
   val otherLock = QualificationRecord({ bytes: Sha256({ hex: "q1" }), inputs: { ...reviewedInputs, sourceLock: "lockB" }, qualified: true, gates: reviewedGates })
   List(r, { ...r, qualification: NoQualification }, { ...r, qualification: NoQualification, descriptor: NoListenerDescriptor }, { ...r, qualification: unqualified }, { ...r, qualification: otherLock },
     { ...r, enrolledQualification: Sha256({ hex: "q2" }) }, { ...r, launcherSigner: Sha256({ hex: "c2" }) }, { ...r, launcherPackage: "com.other" },
-    { ...r, listener: { ...r.listener, buildType: DebuggableBuild }, qualification: unqualified }, { ...r, listener: { ...r.listener, speech: SpeechNotPinned } }, { ...r, listener: { ...r.listener, speech: SpeechNotPinned, buildType: DebuggableBuild }, qualification: NoQualification },
+    { ...r, listener: { ...r.listener, buildType: DebuggableBuild }, qualification: unqualified }, { ...r, listener: { ...r.listener, speech: SpeechNotPinned } },
+    { ...r, listener: { ...r.listener, speech: SpeechNotPinned, buildType: DebuggableBuild }, qualification: NoQualification },
     { ...r, listener: { ...r.listener, requested: r.listener.requested.append("android.permission.INTERNET") } }, { ...r, overlay: { ...r.overlay, roles: List() } },
     { ...r, wakeNames: List() }, { ...r, policyCertificate: Sha256({ hex: "c2" }) }, { ...r, listener: { ...r.listener, layout: ZipRefused } }).foldl(Set(), (acc, x) => acc.union(Set(x)))
 }

@@ -1,26 +1,26 @@
 # Image provisioning
 
-What an image sets up for the consumer's launcher before first boot:
-defaults, role handler overrides, image features, power-button voice and the
-system apps that keep the lock screen, alarms and secure capture. The shell
-reads the admitted APK's manifest ([APK admission](./apk.md)) into
-`LauncherManifest`: one row per component, its name qualified with the
-package, one `Handles` per intent filter it recognises. Each file is written
-once into the staged product; only a boot of the built image
-([verification](./verification.md)) shows that Android applied it.
+What an image sets up for the consumer's launcher before first boot: defaults,
+role handler overrides, image features, power-button voice and the system apps
+that keep the lock screen, alarms and secure capture. The shell reads the
+admitted APK's manifest ([APK admission](./apk.md)) into `LauncherManifest`: one
+row per component, its name qualified with the package, one `Handles` per intent
+filter it recognises. Each file is written once into the staged product; only a
+boot of the built image ([verification](./verification.md)) shows that Android
+applied it.
 
 ## Story: Make my launcher Home on first boot
 
-> As a consumer, I want a fresh device to open my launcher as Home, and as
-> the assistant when my product takes that role, so that the person starts
-> in my product while the stock launcher stays as a way back.
+> As a consumer, I want a fresh device to open my launcher as Home, and as the
+> assistant when my product takes that role, so that the person starts in my
+> product while the stock launcher stays as a way back.
 
 ### First-boot defaults name only components the APK declares once and exports, the assistant only when the product takes it, and only once the product's requirements hold
 
 Home is a preferred-activity entry, the assistant `config_defaultAssistant`,
-Autofill `config_defaultAutofillService`. Without the assistant role the APK
-may declare only disabled assist activities. A product may require Autofill
-and all-files access (`MANAGE_EXTERNAL_STORAGE`). Nothing removes the stock
+Autofill `config_defaultAutofillService`. Without the assistant role the APK may
+declare only disabled assist activities. A product may require Autofill and
+all-files access (`MANAGE_EXTERNAL_STORAGE`). Nothing removes the stock
 launcher. Refusals come in the order of `ProvisioningProblem`.
 
 ```quint
@@ -92,15 +92,15 @@ pure def lawWithoutTheRoleAnEnabledAssistIsRefused(manifest: LauncherManifest, r
 ## Story: Keep my launcher eligible for the phone and messages roles without assigning them
 
 > As a consumer, I want my image to keep my launcher's phone and messages
-> handlers available, so that the person can pick my launcher for calls
-> and texts while the image never picks for them.
+> handlers available, so that the person can pick my launcher for calls and
+> texts while the image never picks for them.
 
 ### Role overrides enable each required handler, found once and disabled in the APK with its exact protection, and assign no role
 
-The override is a sysconfig `<component-override>`, applied at package scan
-so it survives APK updates; it can only enable components. The in-call
-service declares the in-call UI and no car-mode UI; the MMS provider is
-private, for `<package>.mms`, and grants URI permissions.
+The override is a sysconfig `<component-override>`, applied at package scan so
+it survives APK updates; it can only enable components. The in-call service
+declares the in-call UI and no car-mode UI; the MMS provider is private, for
+`<package>.mms`, and grants URI permissions.
 
 ```quint
 type DefaultRole = HomeRole | AssistantRole | DialerRole | SmsRole
@@ -161,14 +161,14 @@ pure def lawDeclaredRolesHaveAdmittedHandlers(manifest: LauncherManifest, reques
 
 ## Story: Keep image-only features honest
 
-> As a consumer, I want a surface that only my image can back to answer
-> only on my image, so that a sideloaded copy of my app never claims phone,
-> contacts or SMS access it cannot have.
+> As a consumer, I want a surface that only my image can back to answer only on
+> my image, so that a sideloaded copy of my app never claims phone, contacts or
+> SMS access it cannot have.
 
 ### An image-only surface answers only from a system install that sees the image feature at the current version
 
-Only an image puts `<package>.aosp_image` (version 1) in the product
-partition; a sideloaded install refuses even if such a feature were present.
+Only an image puts `<package>.aosp_image` (version 1) in the product partition;
+a sideloaded install refuses even if such a feature were present.
 
 ```quint
 type HostInstall = SystemInstall | UserInstall
@@ -183,8 +183,8 @@ pure def lawSideloadedOrStaleHostHasNoImageSurface(install: HostInstall, feature
 
 ### The capability overlay for a presigned host is written only in production, for a resource that defaults false and only system or product may overlay
 
-A presigned host cannot be rebuilt, so the image sets its boolean with a
-static product-partition resource overlay; the host still needs a system install.
+A presigned host cannot be rebuilt, so the image sets its boolean with a static
+product-partition resource overlay; the host still needs a system install.
 
 ```quint
 type OverlayPolicy = SystemOrProductPolicy | OtherPolicy
@@ -205,19 +205,19 @@ pure def lawOverlayOnlyForAProtectedFalseDefault(mode: StagingMode, resource: Ho
 
 ## Story: Start voice from the power button only on a listener image
 
-> As a consumer with a wake listener, I want the power button to start
-> voice only on an image staged for it, so that no other app or image can
-> trigger my assistant's protected voice entry.
+> As a consumer with a wake listener, I want the power button to start voice
+> only on an image staged for it, so that no other app or image can trigger my
+> assistant's protected voice entry.
 
 ### Listener activation enables exactly the launcher's disabled plain assist activity and, for power voice, its protected power child, given the power bundle without the assist bundle and the long-press overlay
 
 The image writes `<package>.feature.LISTENER` (version 1) and one component
-override. The assist activity is exported, with only the plain assist filter
-and no permission. The power child is the activity named by the meta-data
+override. The assist activity is exported, with only the plain assist filter and
+no permission. The power child is the activity named by the meta-data
 `ai.eliza.os.POWER_VOICE_ACTIVITY`: exported, disabled, protected by
 `STATUS_BAR_SERVICE`, with no intent filter. `power` and `assist` change the
-same SystemUI source, so naming both is refused; the overlay is the
-listener's `config_longPressOnPowerBehavior`.
+same SystemUI source, so naming both is refused; the overlay is the listener's
+`config_longPressOnPowerBehavior`.
 
 ```quint
 type SystemuiPatch = ChipPatch | OpsPatch | AssistPatch | PowerPatch
@@ -254,20 +254,17 @@ pure def lawActivationEnablesOnlyDisabledExportedActivities(manifest: LauncherMa
   match activation { | ActivationWritten(a) => listenerImage(request.assistant) and imageFeatures(activation).contains(ListenerFeature)
     and manifest.components.some(c => c.name == a.assistant and disabledExported(c) and c.handles == List(AssistIntent))
     and (a.power != NoDefault implies (a.power == DefaultOf({ name: manifest.powerVoiceActivity }) and powerChildAdmitted(manifest)))
+    and not(staging.patches.contains(AssistPatch) and staging.patches.contains(PowerPatch)) and (a.power != NoDefault iff listenerPower(request.assistant))
+    and (a.power != NoDefault implies (staging.patches.contains(PowerPatch) and staging.longPressAssistant))
     | _ => not(imageFeatures(activation).contains(ListenerFeature)) }
-}
-pure def lawPowerVoiceNeedsItsBundleAlone(manifest: LauncherManifest, request: ProvisioningRequest, staging: ListenerStaging): bool = {
-  val activation = listenerActivation(manifest, request, staging)
-  match activation { | ActivationWritten(a) => not(staging.patches.contains(AssistPatch) and staging.patches.contains(PowerPatch))
-    and (a.power != NoDefault iff listenerPower(request.assistant)) and (a.power != NoDefault implies (staging.patches.contains(PowerPatch) and staging.longPressAssistant)) | _ => true }
 }
 ```
 
 ## Story: Leave the lock screen, alarms and secure capture to the system
 
-> As a consumer, I want every image to keep the system Clock and secure
-> camera, so that alarms ring and capture over the lock screen stays the
-> system's, never my launcher's.
+> As a consumer, I want every image to keep the system Clock and secure camera,
+> so that alarms ring and capture over the lock screen stays the system's, never
+> my launcher's.
 
 ### Where the system owns the lock screen, an admitted launcher declares no activity shown when locked, turning the screen on, or handling secure capture
 
@@ -280,8 +277,8 @@ pure def lawSystemLockScreenAdmitsNoLauncherSurface(manifest: LauncherManifest, 
 
 ### The product requires DeskClock exactly once
 
-A makefile that has it is left unchanged; one that names it twice is
-refused. [Verification](./verification.md) checks the alarm handlers.
+A makefile that has it is left unchanged; one that names it twice is refused.
+[Verification](./verification.md) checks the alarm handlers.
 
 ```quint
 type ClockRequirement = ClockAdded | ClockKept | ClockNamedTwice
@@ -295,9 +292,9 @@ pure def lawAdmittedClockIsRequiredOnce(clockLines: int): bool =
 
 ### The secure camera overlay is staged only from verified Camera2 source and points the power gesture at Camera2
 
-The overlay adds `Camera2` and enables the double-press power gesture for
-it. The shell verifies the Camera2 modules at their reviewed commits and
-bytes and passes the contract digest; staging is not device evidence.
+The overlay adds `Camera2` and enables the double-press power gesture for it.
+The shell verifies the Camera2 modules at their reviewed commits and bytes and
+passes the contract digest; staging is not device evidence.
 
 ```quint
 type CameraSource = CameraSourceVerified({ contract: Digest }) | CameraSourceUnverified

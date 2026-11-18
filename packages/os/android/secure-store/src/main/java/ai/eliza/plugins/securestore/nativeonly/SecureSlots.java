@@ -62,7 +62,10 @@ public final class SecureSlots {
 
   private static JSONObject hostConfig(Context context) {
     try (InputStream input = context.getAssets().open(CAPACITOR_CONFIG)) {
-      JSONObject plugins = new JSONObject(new String(input.readAllBytes(), StandardCharsets.UTF_8)).optJSONObject("plugins");
+      java.io.ByteArrayOutputStream text = new java.io.ByteArrayOutputStream();
+      byte[] chunk = new byte[8192];
+      for (int read = input.read(chunk); read != -1; read = input.read(chunk)) text.write(chunk, 0, read);
+      JSONObject plugins = new JSONObject(text.toString("UTF-8")).optJSONObject("plugins");
       return plugins == null ? null : plugins.optJSONObject(PLUGIN);
     } catch (java.io.FileNotFoundException absent) {
       return null;

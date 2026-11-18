@@ -68,7 +68,7 @@ export error CalendarRefused { method: string; admission: Admission }
 export error CalendarNotAllowed { action: "save" | "stageDeletion" | "undoDeletion" | "dispatchDeletion"; state: CalendarEdit }
 
 const Instant = Schema.Number.check(Schema.makeFilter((value: number) => Number.isSafeInteger(value) && value >= 0))
-const Access = Schema.Struct({ status: Schema.Literals(["granted", "denied"]) })
+schema Access { status: "granted" | "denied" }
 const Permissions = Schema.Struct({ calendar: Schema.Literals(["granted", "denied", "prompt", "prompt-with-rationale"]) })
 const Listing = Schema.Union([
   Schema.Struct({
@@ -96,7 +96,7 @@ const Listing = Schema.Union([
   }),
   Schema.Struct({ status: Schema.Literal("permission-required") }),
 ])
-const Opened = Schema.Struct({ status: Schema.Literal("opened") })
+schema Opened { status: "opened" }
 const Inserted = Schema.Union([
   Schema.Struct({ status: Schema.Literal("opened"), alertsPrefilled: Schema.Boolean }),
   Schema.Struct({ status: Schema.Literals(["unavailable", "invalid", "unknown"]) }),
@@ -109,18 +109,18 @@ const Saved = Schema.Union([
   Schema.Struct({ status: Schema.Literal("saved"), id: Schema.String, calendarId: Schema.String }),
   Schema.Struct({ status: Schema.Literals(["permission-required", "conflict"]) }),
 ])
-const Evidence = Schema.Struct({
-  selectedRow: Schema.Literals(["ParentRow", "ExceptionRow"]),
-  sync: Schema.Literals(["LocalUnsynced", "SyncedSeries", "RemoteUnsynced"]),
-  sourceCurrent: Schema.Boolean,
-  bounded: Schema.Boolean,
-  otherExceptions: Schema.Boolean,
-  liveException: Schema.Literals(["NoLiveException", "SelectedException", "OtherException", "CancelledSelection"]),
-  instances: Schema.Int,
-  begin: Schema.Int,
-  finish: Schema.Int,
-  exceptionOriginal: Schema.Int,
-})
+schema Evidence {
+  selectedRow: "ParentRow" | "ExceptionRow"
+  sync: "LocalUnsynced" | "SyncedSeries" | "RemoteUnsynced"
+  sourceCurrent: boolean
+  bounded: boolean
+  otherExceptions: boolean
+  liveException: "NoLiveException" | "SelectedException" | "OtherException" | "CancelledSelection"
+  instances: number
+  begin: number
+  finish: number
+  exceptionOriginal: number
+}
 const DeletionInspected = Schema.Union([
   Schema.Struct({
     status: Schema.Literal("ready"),
@@ -321,7 +321,7 @@ effect function confirmDeletion(session: Session, evidence: TicketEvidence) {
   const reply = try nativeReply(session.name, "inspectDeletion", DeletionInspected, () =>
     session.plugin.inspectDeletion({ ...selection(session), ...(evidence.scope === undefined ? {} : { scope: evidence.scope }) }))
   if (reply.status === "permission-required" || reply.status === "unavailable") return { facts: factsOf(reply.status), current: true }
-  if (reply.status === "conflict") {
+  if (reply.status !== "ready") {
     try keepRow(session, false, { kept: false })
     return { facts: HELD, current: false }
   }

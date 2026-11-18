@@ -168,7 +168,7 @@ public final class AgentConfig {
       for (Object action : allowed) if (refusedNames.containsKey(action)) throw new Refused("Action " + action + " is both allowed and refused");
     }
     if (!(policy.get("plugins") instanceof Map<?, ?> pluginsRaw)) throw new Refused("The agent policy needs a plugin load list");
-    Map<String, Object> plugins = exactOptional(pluginsRaw, Set.of("load", "product"), "policy plugins");
+    Map<String, Object> plugins = cast(pluginsRaw);
     if (!names(plugins.get("load"), true)) throw new Refused("The agent policy loads unique plugins by name");
     Map<String, Object> load = ordered("load", plugins.get("load"));
     if (plugins.containsKey("product")) {

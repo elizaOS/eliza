@@ -160,8 +160,8 @@ schema Shade { status: "opened" | "standalone" | "permission-missing" | "unsuppo
 schema Volume { stream: "music" | "ring" | "alarm" | "notification" | "system" | "voiceCall"; current: number; max: number }
 schema DeviceSettings { brightness: number; brightnessMode: "manual" | "automatic" | "unknown"; canWriteSettings: boolean; volumes: Volume[] }
 schema Flashlight { available: boolean; enabled: boolean }
-schema Status { packageName: string; roles: unknown[] }
-schema RoleRow { role: "home" | "dialer" | "sms" | "assistant"; androidRole?: unknown; held: boolean; available: boolean; holders?: unknown }
+const Status = Schema.Struct({ packageName: Schema.String, roles: Schema.Array(Schema.Unknown) })
+const RoleRow = Schema.Struct({ role: Schema.Literals(["home", "dialer", "sms", "assistant"]), androidRole: Schema.optionalKey(Schema.Unknown), held: Schema.Boolean, available: Schema.Boolean, holders: Schema.optionalKey(Schema.Unknown) })
 schema BuildInfo { launcher: boolean; version: string }
 schema LaunchInfo { assistant: boolean }
 schema LocaleInfo { locale: string; hour24: boolean }
@@ -181,7 +181,7 @@ schema Readiness {
   providerVaultReadinessKnown: false
   canChangeDefaultsSilently: false
 }
-schema CrashLogReply { entries?: unknown; exitHistory?: unknown }
+const CrashLogReply = Schema.Struct({ entries: Schema.optionalKey(Schema.Unknown), exitHistory: Schema.optionalKey(Schema.Unknown) })
 const Listed = Schema.Struct({ apps: Schema.Array(Schema.Unknown) })
 
 export function launcherRefusalCode(error: unknown): LauncherRefusalCode | undefined {
@@ -565,7 +565,7 @@ export function createLauncher(bridge: LauncherBridge, options: { icons?: boolea
   }
 
   effect function send(event: Parameters<Machine.Shape["send"]>[0]) {
-    return try (home.send(event) catch () => undefined)
+    return home.send(event) catch () => undefined
   }
 
   function snapshotOf(state: LauncherInventory): LauncherSnapshot {
@@ -672,17 +672,20 @@ export function createLauncher(bridge: LauncherBridge, options: { icons?: boolea
     return try settle(after.ticket, Result.isSuccess(opened) ? "Opened" : "Refused", { kind: "dial-refused", label: shownDial?.label ?? DIAL_UNKNOWN })
   }
 
+  function follow() {
+    const listen = bridge.addListener
+    if (watch !== undefined || listen === undefined) return
+    const current: { retired: boolean; handle: Promise<{ remove(): Promise<void> } | undefined> } = { retired: false, handle: Promise.resolve(undefined) }
+    current.handle = listen("appsChanged", () => void settled(begin({ type: "refreshHome", signal: "PackagesChanged" }))).then(
+      (handle) => (current.retired ? handle.remove().then(() => undefined) : handle),
+      () => undefined,
+    )
+    watch = current
+  }
+
   effect function show() {
     try send({ type: "showHome" })
-    const follow = bridge.addListener
-    if (watch === undefined && follow !== undefined) {
-      const current: { retired: boolean; handle: Promise<{ remove(): Promise<void> } | undefined> } = { retired: false, handle: Promise.resolve(undefined) }
-      current.handle = follow("appsChanged", () => void settled(begin({ type: "refreshHome", signal: "PackagesChanged" }))).then(
-        (handle) => (current.retired ? handle.remove().then(() => undefined) : handle),
-        () => undefined,
-      )
-      watch = current
-    }
+    try sync(() => follow())
     return snapshotOf(try home.get())
   }
 

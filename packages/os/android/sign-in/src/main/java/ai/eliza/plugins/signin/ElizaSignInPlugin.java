@@ -21,7 +21,13 @@ import ai.eliza.plugins.signin.SignInPolicy.State;
 import ai.eliza.plugins.signin.SignInPolicy.Step;
 import ai.eliza.plugins.signin.SignInPolicy.Verify;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.content.pm.verify.domain.DomainVerificationManager;
+import android.content.pm.verify.domain.DomainVerificationUserState;
+import android.net.Uri;
+import android.os.Build;
 import android.os.CancellationSignal;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -90,7 +96,23 @@ public class ElizaSignInPlugin extends Plugin {
   }
 
   protected DeviceFacts deviceFacts() {
-    return new DeviceFacts(registration.googleMode, true, true);
+    Context context = getContext();
+    boolean verified = true;
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      Map<String, Integer> hosts;
+      try {
+        DomainVerificationUserState user = context.getSystemService(DomainVerificationManager.class).getDomainVerificationUserState(context.getPackageName());
+        hosts = user == null ? Map.of() : user.getHostToStateMap();
+      } catch (PackageManager.NameNotFoundException missing) {
+        hosts = Map.of();
+      }
+      for (SignInRegistration.Environment environment : registration.environments()) {
+        verified &= hosts.getOrDefault(environment.appLinkHost, -1) == DomainVerificationUserState.DOMAIN_STATE_VERIFIED;
+      }
+    }
+    Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(registration.production().apiOrigin)).addCategory(Intent.CATEGORY_BROWSABLE);
+    boolean browserApp = context.getPackageManager().resolveActivity(view, PackageManager.MATCH_DEFAULT_ONLY) != null;
+    return new DeviceFacts(registration.googleMode, verified, browserApp);
   }
 
   @Override public void load() {
@@ -120,7 +142,7 @@ public class ElizaSignInPlugin extends Plugin {
   @Override protected void handleOnDestroy() {
     Open current;
     synchronized (lock) { current = open; }
-    if (current != null) cancelled(current, Failure.CANCELLED);
+    if (current != null) cancelled(current);
     worker.shutdownNow();
   }
 
@@ -224,7 +246,7 @@ public class ElizaSignInPlugin extends Plugin {
   @PluginMethod public void signOut(PluginCall call) {
     Open current;
     synchronized (lock) { current = open; }
-    if (current != null) cancelled(current, Failure.CANCELLED);
+    if (current != null) cancelled(current);
     try {
       worker.execute(() -> { custody.signOut(); call.resolve(new JSObject().put("account", account())); });
     } catch (RejectedExecutionException closed) {
@@ -339,25 +361,27 @@ public class ElizaSignInPlugin extends Plugin {
   }
 
   private void verified(Open current, Verified verified) throws Refused {
-    switch (verified) {
-      case Verified.SignedIn signedIn -> {
-        synchronized (lock) { if (!apply(new Event.VerifyAnswered(current.requestId, Verify.VERIFIED))) return; }
-        signedIn(current, signedIn.session());
-      }
-      case Verified.FactorRequired factor ->
-        factorRequired(current, new Event.VerifyAnswered(current.requestId, Verify.FACTOR_REQUIRED), factor.challengeId(), factor.methods(), factor.expiresAt());
-      case Verified.NotVerified not -> {
-        PluginCall waiting;
-        synchronized (lock) {
-          if (!apply(new Event.VerifyAnswered(current.requestId, not.answer()))) return;
-          if (!state.step().open()) waiting = null;
-          else { waiting = current.waiting; current.waiting = null; }
-        }
-        if (waiting == null) { settle(current); return; }
-        Failure kept = not.answer() == Verify.WRONG_CODE ? Failure.INVALID_CODE : Failure.UNAVAILABLE;
-        waiting.reject(kept.wire, kept.wire, new JSObject().put("requestId", current.requestId).put("step", state().step().wire).put("kept", true));
-      }
+    if (verified instanceof Verified.SignedIn signedIn) {
+      synchronized (lock) { if (!apply(new Event.VerifyAnswered(current.requestId, Verify.VERIFIED))) return; }
+      signedIn(current, signedIn.session());
+      return;
     }
+    if (verified instanceof Verified.FactorRequired factor) {
+      factorRequired(current, new Event.VerifyAnswered(current.requestId, Verify.FACTOR_REQUIRED), factor.challengeId(), factor.methods(), factor.expiresAt());
+      return;
+    }
+    Verify answer = ((Verified.NotVerified) verified).answer();
+    PluginCall waiting;
+    Step kept;
+    synchronized (lock) {
+      if (!apply(new Event.VerifyAnswered(current.requestId, answer))) return;
+      kept = state.step();
+      if (!kept.open()) waiting = null;
+      else { waiting = current.waiting; current.waiting = null; }
+    }
+    if (waiting == null) { settle(current); return; }
+    Failure reason = answer == Verify.WRONG_CODE ? Failure.INVALID_CODE : Failure.UNAVAILABLE;
+    waiting.reject(reason.wire, reason.wire, new JSObject().put("requestId", current.requestId).put("step", kept.wire).put("kept", true));
   }
 
   private void signedIn(Open current, Session session) throws Refused {
@@ -422,12 +446,18 @@ public class ElizaSignInPlugin extends Plugin {
     else stopped(current);
   }
 
-  private void cancelled(Open current, Failure failure) {
+  private void cancelled(Open current) {
     synchronized (lock) { if (!apply(new Event.Cancel(current.requestId))) return; }
     stopped(current);
   }
 
   private void stopped(Open current) {
+    Open orphan;
+    synchronized (lock) {
+      orphan = resending != null && state.resend().isEmpty() ? resending : null;
+      if (orphan != null) { resending = null; orphan.settled = true; }
+    }
+    if (orphan != null) refuse(orphan.waiting, Failure.CANCELLED);
     current.cancellation.cancel();
     if (current.serverCode != null) current.serverCode.drop();
     if (current.method == Method.GOOGLE_BROWSER) browser.cancel(current.requestId);
@@ -476,8 +506,6 @@ public class ElizaSignInPlugin extends Plugin {
     state = SignInPolicy.step(state, event);
     return true;
   }
-
-  private State state() { synchronized (lock) { return state; } }
 
   private static Failure failureOf(Verify answer) {
     return switch (answer) {

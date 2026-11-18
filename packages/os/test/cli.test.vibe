@@ -8,8 +8,9 @@ import { scratch, scratchRepo, writeTree, type Tree } from "./support/scratch.vi
 module node {
   import { execFile } from "node:child_process"
   import { createPrivateKey, X509Certificate } from "node:crypto"
-  import { existsSync, readFileSync, readdirSync } from "node:fs"
+  import { readFileSync } from "node:fs"
   import path from "node:path"
+  import { androidTools, type AndroidTools } from "./support/android-tools.ts"
 
   export interface Run {
     readonly status: number | null
@@ -17,86 +18,87 @@ module node {
     readonly stderr: string
   }
 
-  const packageDir = path.resolve(import.meta.dirname, "..")
-  const cli = path.join(packageDir, "src/cli.vibe")
-
   /** @throws {never} */
-  export function eliza(args: readonly string[]): Promise<Run> {
+  export function eliza(packageDir: string, args: readonly string[]): Promise<Run> {
     return new Promise((resolve) => {
-      execFile(process.execPath, ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", cli, ...args], { cwd: packageDir, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }, (failure, stdout, stderr) => {
+      execFile(process.execPath, ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", path.join(packageDir, "src/cli.vibe"), ...args], { cwd: packageDir, encoding: "utf8", timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }, (failure, stdout, stderr) => {
         resolve({ status: failure === null ? 0 : typeof failure.code === "number" ? failure.code : null, stdout, stderr })
       })
     })
   }
 
   /** @throws {never} */
-  export function present(file: string): boolean {
-    return existsSync(file)
+  export function sdk(): AndroidTools {
+    try {
+      return androidTools()
+    } catch (cause) {
+      return { kind: "missing", reason: String(cause) }
+    }
+  }
+
+  /** @throws {Error} */
+  export function certificateSha256(pem: string): string {
+    return new X509Certificate(pem).fingerprint256.replaceAll(":", "").toLowerCase()
+  }
+
+  /** @throws {Error} */
+  export function pairsWithCertificate(pk8: Uint8Array, pem: string): boolean {
+    return new X509Certificate(pem).checkPrivateKey(createPrivateKey({ key: Buffer.from(pk8), format: "der", type: "pkcs8" }))
+  }
+
+  /** @throws {Error} */
+  export function extensionAssets(packageDir: string): Promise<readonly string[]> {
+    return import(path.join(packageDir, "browser/chromium/component/chromium-component.mjs")).then((component: { assetNames: readonly string[] }) => component.assetNames)
   }
 
   /** @throws {never} */
-  export function listed(directory: string): string[] {
-    return readdirSync(directory).sort()
-  }
-
-  /** @throws {Error} */
-  export function json(text: string): Record<string, unknown> {
-    return JSON.parse(text) as Record<string, unknown>
-  }
-
-  /** @throws {Error} */
-  export function certificateSha256(file: string): string {
-    return new X509Certificate(readFileSync(file)).fingerprint256.replaceAll(":", "").toLowerCase()
-  }
-
-  /** @throws {Error} */
-  export function pairsWithCertificate(pk8: string, certificate: string): boolean {
-    return new X509Certificate(readFileSync(certificate)).checkPrivateKey(createPrivateKey({ key: readFileSync(pk8), format: "der", type: "pkcs8" }))
-  }
-
-  /** @throws {Error} */
-  export function upstreamPin(): { readonly revision: string; readonly files: readonly string[] } {
-    const pin = JSON.parse(readFileSync(path.join(packageDir, "browser/chromium/upstream.json"), "utf8")) as { revision: string; sha256: Record<string, string> }
-    return { revision: pin.revision, files: Object.keys(pin.sha256) }
-  }
-
-  /** @throws {Error} */
-  export function chromiumFixture(name: string): string {
-    return readFileSync(path.join(packageDir, "browser/chromium/fixtures", name), "utf8")
-  }
-
-  /** @throws {Error} */
-  export function manifestKey(): string {
-    return (JSON.parse(readFileSync(path.join(packageDir, "browser/identity.json"), "utf8")) as { chromeDevManifestKey: string }).chromeDevManifestKey
-  }
-
-  /** @throws {Error} */
-  export async function extensionAssets(): Promise<readonly string[]> {
-    const component = (await import(path.join(packageDir, "browser/chromium/component/chromium-component.mjs"))) as { assetNames: readonly string[] }
-    return component.assetNames
+  export function readText(file: string): string | undefined {
+    try {
+      return readFileSync(file, "utf8")
+    } catch {
+      return undefined
+    }
   }
 }
-import { certificateSha256, chromiumFixture, eliza, extensionAssets, json, listed, manifestKey, pairsWithCertificate, present, upstreamPin, type Run } from node
+import { certificateSha256, eliza, extensionAssets, pairsWithCertificate, sdk, type Run } from node
 
 export error ChildFailed { step: string; cause: unknown }
 
 const PASSPHRASE = "a passphrase only this test knows"
 const CERTIFICATE = "c".repeat(64)
 const USAGE_LINE = "eliza-os stage-launcher --descriptor FILE"
+const TOOLS = sdk()
+
+const failed = (step: string) => (cause: unknown) => new ChildFailed({ step, cause })
+
+effect function packageDir() {
+  const path = try Path.Path
+  return try path.fromFileUrl(new URL("..", import.meta.url))
+}
 
 effect function run(...args: string[]) {
-  return try tryPromise({ try: () => eliza(args), catch: (cause) => new ChildFailed({ step: args.slice(0, 2).join(" "), cause }) })
+  const root = try packageDir()
+  return try tryPromise({ try: () => eliza(root, args), catch: failed(args.slice(0, 2).join(" ")) })
 }
 
 effect function parsed(step: string, result: Run) {
-  return try Effect.try({ try: () => json(result.stdout), catch: (cause) => new ChildFailed({ step, cause: { cause, ...result } }) })
+  const value: Record<string, unknown> = try Effect.try({ try: () => JSON.parse(result.stdout), catch: (cause) => new ChildFailed({ step, cause: { cause, ...result } }) })
+  return value
 }
 
-effect function sync<A>(step: string, call: () => A) {
-  return try Effect.try({ try: call, catch: (cause) => new ChildFailed({ step, cause }) })
+effect function listed(directory: string) {
+  const files = try FileSystem.FileSystem
+  return (try files.readDirectory(directory)).sort()
 }
 
-const journey = <A, E>(body: Effect.Effect<A, E, NodeServices.NodeServices | Scope.Scope>) => Effect.provide(Effect.scoped(body), NodeServices.layer)
+effect function readJson(file: string) {
+  const files = try FileSystem.FileSystem
+  const text = try files.readFileString(file)
+  const value: unknown = try Effect.try({ try: () => JSON.parse(text), catch: failed(`read ${file}`) })
+  return value
+}
+
+const journey = <A, E>(body: A!E!(NodeServices.NodeServices | Scope.Scope)) => Effect.provide(Effect.scoped(body), NodeServices.layer)
 
 it.live("Refuse a malformed command line with exit 2 and write nothing (spec/os/image/staging.md, \"Story: Stage my launcher into an image exactly once\"; spec/os/image/signing.md, \"Story: Sign a release only with keys I enrolled\"; spec/os/browser/chromium.md, \"Story: Use the owned browser only with its expected identity\")", () => journey(effect {
   const root = try scratch("cli-usage")

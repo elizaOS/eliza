@@ -1,21 +1,14 @@
 # Android host profile
 
 A consumer generates its Android host project from an identity and a
-profile (`generateAndroidHost`, from `@elizaos/os/build`). The profile is
-schema 2 and names everything the Gradle project is made of: SDK levels,
-flavors, build types, manifests, source sets, os modules, the consumer's
-Gradle modules, Maven dependencies, assets, pre-build commands, signing and
-version environment names, and the agent entry. The
+schema-2 profile (`generateAndroidHost`, from `@elizaos/os/build`) that
+names everything the Gradle project is made of. The
 [runtime payload](./runtimePayload.md) is what an agent host ships; the
 Android build (`build/androidBuild.md`) builds and publishes the project.
-The sources are develop's `consumer-host.mjs` and the pinned integration
-branch's `embeddedAgent` entry.
-
 The shell (`src/build/android-host.vibe`) decodes the JSON, tests each name
-against its pattern (the `…Valid` facts), splits each path on `/` into
-segments after it resolves links, and passes the facts below; a path with a
-backslash or a NUL is `NotAPath`. The admitted profile carries everything
-the generator writes, so the generator decides nothing again.
+against its pattern (the `…Valid` facts) and splits each path, after it
+resolves links, into segments; a path with a backslash or a NUL is
+`NotAPath`. The generator writes only what the admitted profile says.
 
 ## Story: Generate my app's Android host from data
 
@@ -45,7 +38,6 @@ pure def distinctNames(names: List[str]): bool = names.every(n => names.select(m
 pure val fixedSourceSets = List("main", "androidTest", "debug", "release")
 pure def flavorsAdmitted(flavors: List[str], flavorNamesValid: bool): bool =
   flavors.length() > 0 and flavorNamesValid and distinctNames(flavors) and not(flavors.some(f => fixedSourceSets.includes(f) or f == "test"))
-pure val flavorsValues = Set(List(), List("store"), List("store", "sideload"), List("store", "store"), List("release"))
 ```
 
 ### Build configuration fields of one group are distinct Java constants whose values fit their types
@@ -70,15 +62,13 @@ pure def buildConfigAdmitted(group: List[BuildConfigField]): bool =
 pure val androidAbis = List("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
 pure def buildTypeAdmitted(releaseMinify: bool, shrinkResources: bool, proguardFiles: int, abis: List[str]): bool =
   (releaseMinify or (not(shrinkResources) and proguardFiles == 0)) and distinctNames(abis) and abis.every(a => androidAbis.includes(a))
-pure val proguardFilesValues = Set(0, 1)
 ```
 
 ### Version override and release signing each name all of their distinct environment variables or none
 
-The names are data, never values: two for the version override
-(`versionCode`, `versionName`), four for signing (store file, store
-password, key alias, key password). A partial signing set is refused with
-its own refusal, which names the missing variables.
+Names, never values: two for the version override, four for signing
+(store file, store password, key alias, key password). A partial signing
+set has its own refusal, which names the missing variables.
 
 ```quint
 type EnvironmentNames = { names: List[str], namesValid: bool }
@@ -90,20 +80,15 @@ pure def namedSet(env: EnvironmentNames, wanted: int): NamedSet =
   else if (env.names.length() < wanted) PartlyNamed
   else if (env.names.length() == wanted and env.namesValid and distinctNames(env.names)) AllNamed
   else BadlyNamed
-pure val envValues = Set(
-  { names: List(), namesValid: true },
-  { names: List("STORE", "STORE_PASS"), namesValid: true },
-  { names: List("STORE", "STORE_PASS", "KEY", "KEY_PASS"), namesValid: true },
-  { names: List("STORE", "STORE", "KEY", "KEY_PASS"), namesValid: true })
 ```
 
 ### A source lies under exactly one declared root, the innermost one that contains it, and never escapes it
 
-The roots are the consumer, the os package and, when given, a dependency
-root; they may nest (the os package is often vendored inside the
-consumer). A reference names the consumer or the dependency root; os
-sources come only through `osModules`. A path has no empty, `.` or `..`
-segment, and the root itself is admitted only where a directory is wanted.
+The roots are the consumer, the os package and an optional dependency
+root, and they may nest (os vendored inside the consumer). A reference
+names the consumer or the dependency root; os sources come only through
+`osModules`. A path has no empty, `.` or `..` segment; the root itself is
+admitted only where a directory is wanted.
 
 ```quint
 type SourceRoot = ConsumerRoot | DependencyRoot | UndeclaredRoot
@@ -147,7 +132,6 @@ pure def lawConsumerSourceNeverReachesIntoOs(roots: HostRoots, path: SourcePath,
 pure def outputAdmitted(roots: HostRoots, output: List[str]): bool =
   explicitPath(roots.consumer) and explicitPath(roots.os) and (not(roots.dependenciesDeclared) or explicitPath(roots.dependencies)) and
   explicitPath(output) and hasPrefix(output, roots.consumer) and output.length() > roots.consumer.length() and not(hasPrefix(output, roots.os))
-pure val outputValues = Set(List("work", "app", "android"), List("work", "app"), List("work", "app", "vendor", "os", "out"), List("elsewhere"))
 ```
 
 ### Every source directory and generated source belongs to a declared source set
@@ -166,12 +150,11 @@ pure def sourceSetUseAdmitted(flavors: List[str], u: SourceSetUse): bool =
 
 ### An os module comes from the closed list once, whole or as a subset of its main or androidTest sources, with the os modules it needs
 
-Without `sources` the module is the Gradle project `:eliza-<module>`. An
-entry with a `src/main` source compiles only the listed sources into the
-app; an entry with only `src/androidTest` sources builds the project and
-adds those contracts to the app's instrumentation tests. `agent-service`
-and `app-update` share `runtime-files`, so an updater app builds without
-the agent service; `voice-io` reads the credential through `sign-in`.
+Without `src/main` sources the module is the Gradle project
+`:eliza-<module>` (its `src/androidTest` sources join the app's
+instrumentation tests); with them only those sources are compiled into the
+app. `agent-service` and `app-update` share `runtime-files`, so an updater
+builds without the agent service; `voice-io` needs `sign-in`.
 
 ```quint
 pure val osModuleNames = List("agent-service", "runtime-files", "sign-in", "secure-store", "system", "camera", "browser-surface", "calendar", "contacts", "reminders",
@@ -188,18 +171,14 @@ pure def osModulesAdmitted(entries: List[OsModuleEntry]): bool = {
 }
 ```
 
-### The consumer's Gradle projects and the os module projects have distinct names, none of them app
+### Gradle project names are distinct and never app, and a Maven dependency takes its version only from a toolchain version key
+
+The project names are the consumer's own Gradle modules and the
+`eliza-<module>` projects. A dependency names a configuration, a
+`group:artifact` and a key of `toolchain.json`'s `versions`.
 
 ```quint
 pure def projectsAdmitted(projects: List[str], projectNamesValid: bool): bool = projectNamesValid and distinctNames(projects) and not(projects.includes("app"))
-```
-
-### A Maven dependency takes its version only from a toolchain version key
-
-A dependency names a configuration, a `group:artifact` and a key of
-`toolchain.json`'s `versions`; a coordinate with its own version is refused.
-
-```quint
 type MavenDependency = { configuration: str, artifactValid: bool, versionKey: str }
 pure def dependencyAdmitted(toolchainKeys: List[str], d: MavenDependency): bool =
   List("implementation", "androidTestImplementation", "testImplementation").includes(d.configuration) and d.artifactValid and toolchainKeys.includes(d.versionKey)
@@ -220,14 +199,13 @@ pure def extrasAdmitted(assetNames: List[str], noCompress: List[str], namesValid
 
 ### The agent entry, its notification and its launch hook need the agent service module and extracted 16 KiB aligned native libraries
 
-`agent {host, character, policy}` names the three agent data files; the
-generator copies them into `assets/agent/` and declares the consumer's
-subclass of the agent service with the `specialUse` foreground type and
-`FOREGROUND_SERVICE_SPECIAL_USE`. `agentService.notification {smallIcon,
-color, channel, strings, stopAction}` and `agentService.launchHook {class,
-method}` name resources and a static method. The service starts
-`libeliza_node.so` from the native library directory, so `agent-service`
-needs `nativeLibraries: "extract-16k"`.
+`agent {host, character, policy}` names the agent data files, copied into
+`assets/agent/`; the consumer's service subclass is declared `specialUse`
+with `FOREGROUND_SERVICE_SPECIAL_USE`. `agentService.notification
+{smallIcon, color, channel, strings, stopAction}` and
+`agentService.launchHook {class, method}` name resources and a static
+method. The service starts `libeliza_node.so` from the native library
+directory, so `agent-service` needs `nativeLibraries: "extract-16k"`.
 
 ```quint
 type NativeLibraries = DefaultPackaging | Extract16k
@@ -247,27 +225,22 @@ or exported component the profile's manifests do not request with
 
 ```quint
 pure def mergedNodes(requested: List[str], contributed: List[str]): List[str] = contributed.select(c => requested.includes(c))
-pure def lawMergedNodesAreRequested(requested: List[str], contributed: List[str]): bool =
-  mergedNodes(requested, contributed).every(c => requested.includes(c) and contributed.includes(c))
 ```
 
 ### A profile is admitted only when every rule holds, and a refusal names the first one broken
 
-`ProfileMalformed`, `FieldDropped` and `UpstreamUnmapped` are the reader's
-refusals: the JSON has another shape, or a schema-1 field or source has no
-successor.
+`ProfileMalformed` is the decoder's refusal: the JSON has another shape.
 
 ```quint
 type HostRefusal = ProfileMalformed | FieldDropped | UpstreamUnmapped | SchemaUnsupported | CompanionDeclared | IdentityInvalid | SdkInvalid | FlavorsInvalid |
   BuildConfigInvalid | BuildTypesInvalid | VersionOverrideInvalid | SigningPartial | SigningInvalid | OutputMisplaced | SourceRefused | SourceSetInvalid |
   OsModulesInvalid | ProjectsInvalid | DependencyNotPinned | ExtrasInvalid | AgentInvalid
 type HostVerdict = HostAdmitted | HostRefused({ refusal: HostRefusal })
-type HostFacts = { schema: int, companionDeclared: bool, appIdValid: bool, appNameValid: bool, versionValid: bool, versionCode: int, minSdk: int, targetSdk: int,
-  compileSdk: int, flavors: List[str], flavorNamesValid: bool, fieldGroups: List[List[BuildConfigField]], releaseMinify: bool, shrinkResources: bool,
-  proguardFiles: int, abis: List[str], versionOverride: EnvironmentNames, signing: EnvironmentNames, roots: HostRoots, output: List[str],
-  sources: List[SourceRef], uses: List[SourceSetUse], osModules: List[OsModuleEntry], projects: List[str], projectNamesValid: bool, toolchainKeys: List[str],
-  dependencies: List[MavenDependency], assetNames: List[str], noCompress: List[str], namesValid: bool, commands: List[AdmissionCommand],
-  packaging: NativeLibraries, agent: AgentEntry }
+type HostFacts = { schema: int, companionDeclared: bool, appIdValid: bool, appNameValid: bool, versionValid: bool, versionCode: int, minSdk: int, targetSdk: int, compileSdk: int,
+  flavors: List[str], flavorNamesValid: bool, fieldGroups: List[List[BuildConfigField]], releaseMinify: bool, shrinkResources: bool, proguardFiles: int, abis: List[str],
+  versionOverride: EnvironmentNames, signing: EnvironmentNames, roots: HostRoots, output: List[str], sources: List[SourceRef], uses: List[SourceSetUse], osModules: List[OsModuleEntry],
+  projects: List[str], projectNamesValid: bool, toolchainKeys: List[str], dependencies: List[MavenDependency], assetNames: List[str], noCompress: List[str], namesValid: bool,
+  commands: List[AdmissionCommand], packaging: NativeLibraries, agent: AgentEntry }
 pure def hostVerdict(f: HostFacts): HostVerdict = {
   val signing = namedSet(f.signing, signingNameCount)
   val overrideSet = namedSet(f.versionOverride, versionOverrideCount)
@@ -301,17 +274,15 @@ pure def hostVerdict(f: HostFacts): HostVerdict = {
 
 ### A schema-1 field without a successor is refused when it is set, and an upstream source becomes the os module its path lies in
 
-`embeddedAgent` becomes `agent`; `residentHost.notification` and
-`residentHost.environmentHook` become `agentService.notification` and
-`agentService.launchHook`; `settingsAdmission` commands run first among the
-admission commands. `residentHost.{classes,sockets,helpers}` are gone with
-the second process, `preserveRuntimeBytes` and `generationInputs` are
-covered by the payload inventory, and a dependency with its own version has
-no toolchain key: setting one is `FieldDropped`. A path under the
-`upstream` root maps through a table of path prefixes, first match first;
-a module that kept its layout keeps the rest of the path as a `sources`
-entry, a rewritten one is selected whole, and a path under no prefix is
-`UpstreamUnmapped`.
+`embeddedAgent` becomes `agent`, `residentHost.{notification,environmentHook}`
+become `agentService.{notification,launchHook}`, and `settingsAdmission`
+commands run first among the admission commands.
+`residentHost.{classes,sockets,helpers}` left with the second process,
+the payload inventory covers `preserveRuntimeBytes` and `generationInputs`,
+and a versioned coordinate has no toolchain key: setting one is
+`FieldDropped`. An `upstream` path maps through a prefix table, first match
+first: a module that kept its layout keeps the rest as a `sources` entry, a
+rewritten one is selected whole, no match is `UpstreamUnmapped`.
 
 ```quint
 pure val schemaOneDropped = List("residentHost.classes", "residentHost.sockets", "residentHost.helpers", "preserveRuntimeBytes", "generationInputs", "testMocks", "dependencies.coordinate")
@@ -330,16 +301,12 @@ pure def upstreamSource(table: List[ModuleRoot], segments: List[str]): UpstreamS
 }
 pure val tableValues = Set(List(), List({ prefix: List("plugins", "wifi", "android"), movedTo: "wifi", keepsPath: true }, { prefix: List("plugins", "agent", "android"), movedTo: "agent-service", keepsPath: false }))
 pure val segmentsValues = Set(List(), List("plugins", "wifi", "android", "src", "main", "WiFi.kt"), List("plugins", "agent", "android", "src"), List("packages", "app"))
-pure val upstreamValues = Set(List(), List(List("plugins", "wifi", "android", "src")), List(List("packages", "app")))
-pure val fieldsSetValues = Set(List(), List("embeddedAgent"), List("embeddedAgent", "generationInputs"), List("residentHost.sockets"))
 pure def lawMappedSourceKeepsItsPathBelowTheModule(table: List[ModuleRoot], segments: List[str]): bool = {
   val mapped = upstreamSource(table, segments)
   match mapped {
     | InOsModule(m) => table.some(r => r.movedTo == m.movedTo and hasPrefix(segments, r.prefix) and (m.rest.length() == 0 or r.prefix.concat(m.rest) == segments))
     | NoOsModule => table.every(r => not(hasPrefix(segments, r.prefix))) }
 }
-pure def lawSchemaOneAdmitsOnlyMappedSources(fieldsSet: List[str], table: List[ModuleRoot], upstream: List[List[str]]): bool =
-  schemaOneRefusal(fieldsSet, table, upstream) == HostAdmitted implies upstream.every(s => upstreamSource(table, s) != NoOsModule)
 ```
 
 ## Story: Build my release only with the toolchain and signing I pinned
@@ -351,9 +318,9 @@ pure def lawSchemaOneAdmitsOnlyMappedSources(fieldsSet: List[str], table: List[M
 
 ### The generated project uses the pinned Gradle, Android Gradle plugin, Kotlin and Java, with the wrapper the record names
 
-`android/host-templates/toolchain.json` records the Gradle version and
-distribution digest, the wrapper digest, the Android Gradle plugin, Kotlin
-and Java versions, and the library versions a dependency may name.
+`android/host-templates/toolchain.json` records these, the Gradle
+distribution and wrapper digests, and the library versions a dependency
+may name.
 
 ```quint
 import apk as A from "../image/apk"
@@ -385,8 +352,8 @@ pure val setupValues = Set(NoneNamed, AllNamed, PartlyNamed, BadlyNamed)
 pure val variablesSetValues = Set(0, 1, 3, 4)
 pure def lawPartialSigningNeverPublishes(setup: NamedSet, variablesSet: int, outputSigned: bool): bool =
   (variablesSet > 0 and variablesSet < signingNameCount) implies releasePublication(setup, variablesSet, outputSigned) == ReleaseBuildFails
-pure def lawSignedSetupNeverPublishesUnsigned(variablesSet: int, outputSigned: bool): bool =
-  releasePublication(AllNamed, variablesSet, outputSigned) == PublishUnsignedRelease implies (variablesSet == 0 and not(outputSigned))
+pure def lawSignedReleaseNeedsCompleteSigning(setup: NamedSet, variablesSet: int, outputSigned: bool): bool =
+  releasePublication(setup, variablesSet, outputSigned) == PublishSignedRelease implies (setup == AllNamed and variablesSet == signingNameCount and outputSigned)
 ```
 
 ### A host without local inference carries no model, inference library, model server or model directory
