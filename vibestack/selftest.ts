@@ -3055,7 +3055,14 @@ describe("the documents name what exists", () => {
   });
 
   test("a task waits for the root's gen unless its package can never own a root spec; Studio's dev waits for what its build does; prose, the selftest and a failed run's leftovers rerun no Studio task, and the fixtures its tests read do", async () => {
-    const root = scratch({ "spec/kit/index.md": "# Kit\n", "packages/kit/package.json": JSON.stringify({ name: "@repo/kit", scripts: Object.fromEntries(["build", "typecheck", "test", "test:browser"].map((task) => [task, "true"])) }) });
+    const scripts = Object.fromEntries(["build", "typecheck", "test", "test:browser"].map((task) => [task, "true"]));
+    const root = scratch({
+      "spec/app/index.md": "# App\n",
+      "apps/app/package.json": JSON.stringify({ name: "@repo/app", scripts }),
+      "apps/app/tsconfig.json": JSON.stringify({ extends: "../../tsconfig.base.json" }),
+      "spec/kit/index.md": "# Kit\n",
+      "packages/kit/package.json": JSON.stringify({ name: "@repo/kit", scripts }),
+    });
     for (const file of (await exec("git", ["ls-files"], project)).stdout.trim().split("\n")) {
       if (fs.lstatSync(path.join(project, file)).isDirectory()) continue;
       fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
