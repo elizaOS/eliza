@@ -2563,13 +2563,24 @@ export class DeviceActionService {
             ? { viewProfileRevision: viewProfile.revision }
             : {}),
         };
+        // A direct open is the owner's whole message asking for one address:
+        // another proposal of the same open in that turn (an empty tab the
+        // model proposed for it, turned into this open above, beside its
+        // routed open) is that same open, never a second tab.
+        const requestKey = identifier(operationKey);
+        const directOpen =
+          payload.requestMessageId !== undefined &&
+          validated.type === "browser_navigate";
+        const queuedReason = directOpen
+          ? "Open the address the owner typed."
+          : text(reason, 1000);
         // This is the canonical queue's transaction API: no notification or effect before commit.
         // A direct request binds its key to that message: a key reused in a later turn is a new review.
         const idempotencyKey = `device:${digest([
           c.subjectUserId,
           c.installationId,
           ...(payload.requestMessageId ? [payload.requestMessageId] : []),
-          identifier(operationKey),
+          directOpen ? { browserOpen: payload.operation } : requestKey,
         ])}`;
         const existing = await queue.byIdempotencyKey(
           idempotencyKey,
@@ -2656,7 +2667,7 @@ export class DeviceActionService {
             action: "device_action",
             payload,
             channel: "phone",
-            reason: text(reason, 1000),
+            reason: queuedReason,
             idempotencyKey,
             expiresAt:
               existing?.expiresAt ?? new Date(Date.now() + 10 * 60_000),
