@@ -6,10 +6,11 @@ import { FetchHttpClient, HttpClient, HttpClientRequest, HttpIncomingMessage, Ht
 import {
   accessCookie, refreshCookie, accessDigest, deviceDigest, digestCredential, readCookie, newSecret,
   authQuery as query, accountTransaction, browserAccount, signInWithProof, renewBrowserSession, logoutBrowserSession,
-  StorageUnavailable, IdentityConflict, type BrowserSession, type Identity
+  rateLimit, RateLimited, StorageUnavailable, IdentityConflict, type BrowserSession, type Identity
 } from "./identity-store.vibe"
 
 import { browserNativeRegistration, mobileRegistration, type NativeRegistryEnv } from "./native-registry.vibe"
+import { ownsPasswordBackupPath, passwordBackupRequest } from "./password-backup.vibe"
 
 export type IdentityEnv = NativeRegistryEnv & {
   GOOGLE_CLIENT_SECRET?: string
@@ -30,7 +31,6 @@ type Destination = "email" | "sms"
 
 error InvalidRequest
 error Unauthorized
-error RateLimited
 error ProviderUnavailable
 
 schema EmailInput { email: string; code?: string }
@@ -151,21 +151,7 @@ effect function external(url: string, input: { authorization?: string; form?: UR
   return timeout(result, "10 seconds") catch effect () => { throw new ProviderUnavailable() }
 }
 
-effect function rateLimit(db: Client, scope: string, key: string, maximum: number, seconds: number) {
-  const hash = try digestCredential(key)
-  const { rows } = try query<{ hits: number }>(db, `
-    INSERT INTO cloud_auth_limits (scope, subject_hash, expires_at, hits)
-    VALUES ($1, $2, now() + $3 * interval '1 second', 1)
-    ON CONFLICT (scope, subject_hash) DO UPDATE
-    SET hits = CASE WHEN cloud_auth_limits.expires_at <= now() THEN 1 ELSE cloud_auth_limits.hits + 1 END,
-        expires_at = CASE WHEN cloud_auth_limits.expires_at <= now() THEN EXCLUDED.expires_at ELSE cloud_auth_limits.expires_at END
-    WHERE cloud_auth_limits.expires_at <= now() OR cloud_auth_limits.hits < $4
-    RETURNING hits
-  `, [scope, hash, seconds, maximum])
-  if (rows.length === 0) throw new RateLimited()
-}
-
-effect function googleStart(env: IdentityEnv) {
+effect function googleStart(env: IdentityEnv, chooseAccount: boolean) {
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) throw new ProviderUnavailable()
   const state = try token()
   const verifier = try token()
@@ -180,6 +166,7 @@ effect function googleStart(env: IdentityEnv) {
     code_challenge: challenge,
     code_challenge_method: "S256"
   })
+  if (chooseAccount) params.set("prompt", "select_account")
   return redirect("https://accounts.google.com/o/oauth2/v2/auth?" + params, [cookieValue(flowCookie, state + "." + verifier, codeSeconds)])
 }
 
@@ -507,7 +494,7 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
         return json(200, { account: account ? { id: account.id, email: account.email } : null })
       }
       case "/api/auth/google/start":
-        return try googleStart(env)
+        return try googleStart(env, url.searchParams.get("password_backup") === "1")
       case callbackPath: {
         const clear = cookieValue(flowCookie, "", 0)
         return effect {
@@ -551,6 +538,7 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client) {
 }
 
 export function identityRequest(request: Request, env: IdentityEnv, db: Client): Promise<Response> {
+  if (ownsPasswordBackupPath(new URL(request.url).pathname)) return passwordBackupRequest(request, env, db)
   return runPromise(Effect.provide(effect {
     const response = handleIdentity(request, env, db) catch (error) => match (error) {
       when InvalidRequest: json(400, { error: "invalid_request" });

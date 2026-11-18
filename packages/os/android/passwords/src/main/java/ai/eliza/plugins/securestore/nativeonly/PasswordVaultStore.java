@@ -368,8 +368,36 @@ public class PasswordVaultStore {
     if (found >= 0) records.put(found, value); else records.put(value);
     return id;
   }
+  private static int currentRecord(JSONArray records, String id, Long expectedRevision) throws Exception {
+    for (int index = 0; index < records.length(); index++) {
+      JSONObject record = records.getJSONObject(index);
+      if (!record.getString("id").equals(id)) continue;
+      if (expectedRevision == null || record.optLong("revision", 0) == expectedRevision) return index;
+      break;
+    }
+    if (expectedRevision != null) throw new RevisionConflict();
+    throw new IOException("Password no longer exists");
+  }
+
+  public interface RecordOperation<T> { T run(JSONObject record) throws Exception; }
+
+  public synchronized <T> T useRecord(String id, Long expectedRevision, RecordOperation<T> operation) throws Exception {
+    JSONArray records = load();
+    int index = currentRecord(records, id, expectedRevision);
+    checkDevice();
+    return operation.run(records.getJSONObject(index));
+  }
+
+  public synchronized void removeExisting(String id, Long expectedRevision) throws Exception {
+    JSONArray records = load();
+    int index = currentRecord(records, id, expectedRevision);
+    checkDevice();
+    records.remove(index);
+    persist(records);
+  }
+
   public synchronized JSONObject get(String id) throws Exception {
-    JSONArray records=load(); for(int i=0;i<records.length();i++) if(records.getJSONObject(i).getString("id").equals(id)) { checkDevice(); return records.getJSONObject(i); } throw new IOException("Password no longer exists");
+    return useRecord(id, null, record -> record);
   }
   public synchronized String save(String id, String website, String username, String password) throws Exception {
     String normalized=origin(website);
