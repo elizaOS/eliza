@@ -10,8 +10,10 @@ requestBodyLimit?}` the shell reads as `Unavailable` or `Available({ phase })`;
 with no bridge object (a browser page) it reports `Unavailable` without a
 call. The host may configure an HTTP base (a browser page or a development
 host, never a production device), passed to each probe as the `fallback`.
-The client adds no credentials, retries or replays: the shell sends each
-request at most once, over the route this machine names in its output. It
+The client adds no credentials and sends each request at most once, over
+the route this machine names in its output. A bridge's
+`RUNTIME_NOT_READY` refusal is final for that request. The older UI
+transport could opt into replaying that refusal after startup. The client
 passes `requestBodyLimit` to the screen unchanged, and only as a safe integer
 above 0. Each call's answer carries the generation in which the shell made
 the call.

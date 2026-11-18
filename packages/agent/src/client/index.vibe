@@ -1,0 +1,254 @@
+// spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account", "Story: Reach a runtime that is not running yet", "Story: Understand why the runtime refused"
+module node {
+  import { Effect, Schema } from "effect"
+  import { enabled, initial, machineOver, type Event, type RetryAdvice, type StatusReport } from "../../gen/agent__client__runtimeClient.effect.vibe"
+
+  export interface RuntimeStatus {
+    readonly available: boolean
+    readonly state: "stopped" | "starting" | "running"
+    readonly error?: string
+    readonly requestBodyLimit?: number
+  }
+
+  export interface RuntimeJsonResponse {
+    readonly status: number
+    readonly data: unknown
+  }
+
+  export interface RuntimeJsonBridge {
+    status(): Promise<RuntimeStatus>
+    start(): Promise<RuntimeStatus>
+    restart(): Promise<RuntimeStatus>
+    request(input: { path: string; method: "GET" | "POST"; body?: unknown }): Promise<RuntimeJsonResponse>
+  }
+
+  export interface RuntimeClientOptions {
+    readonly bridge?: () => RuntimeJsonBridge | undefined
+    readonly httpBase?: URL
+    readonly startupTimeoutMs: number
+    readonly pollMs: number
+    readonly requestTimeoutMs: number
+  }
+
+  export class RuntimeRequestError extends Error {
+    constructor(message: string, readonly status: number, readonly code?: string, readonly retryAfter?: number) {
+      super(message)
+      this.name = "RuntimeRequestError"
+    }
+  }
+
+  const Phase = { stopped: "Stopped", starting: "Starting", running: "Running" } as const
+  const decodeStatus = Schema.decodeUnknownSync(Schema.Struct({
+    available: Schema.Boolean,
+    state: Schema.Literals(["stopped", "starting", "running"]),
+    error: Schema.optionalKey(Schema.String),
+    requestBodyLimit: Schema.optionalKey(Schema.Unknown),
+  }))
+  const decodeResponse = Schema.decodeUnknownSync(Schema.Struct({
+    status: Schema.Int.check(Schema.isGreaterThanOrEqualTo(100), Schema.isLessThanOrEqualTo(599)),
+    data: Schema.Unknown,
+  }))
+  const refusal = Schema.decodeUnknownOption(Schema.Struct({
+    error: Schema.optionalKey(Schema.String), code: Schema.optionalKey(Schema.String),
+    retryAfter: Schema.optionalKey(Schema.Number),
+  }))
+
+  function status(raw: unknown): { report: StatusReport; limit?: number } {
+    const found = decodeStatus(raw)
+    const limit = found.requestBodyLimit
+    return {
+      report: found.available ? { tag: "Available", phase: Phase[found.state] } : { tag: "Unavailable" },
+      ...(found.available && typeof limit === "number" && Number.isSafeInteger(limit) && limit > 0 ? { limit } : {}),
+    }
+  }
+
+  function abortable<A>(signal: AbortSignal, run: () => Promise<A>): Promise<A> {
+    return new Promise((resolve, reject) => {
+      signal.throwIfAborted()
+      const cancel = () => reject(signal.reason)
+      signal.addEventListener("abort", cancel, { once: true })
+      Promise.resolve().then(() => {
+        signal.throwIfAborted()
+        return run()
+      }).then(resolve, reject).finally(() => signal.removeEventListener("abort", cancel))
+    })
+  }
+
+  interface Pending {
+    path: string
+    body: unknown
+    resolve: (data: unknown) => void
+    reject: (reason: unknown) => void
+    bridge?: RuntimeJsonBridge
+  }
+
+  export function createRuntimeJsonClient(options: RuntimeClientOptions) {
+    for (const duration of [options.startupTimeoutMs, options.pollMs, options.requestTimeoutMs]) {
+      if (!Number.isSafeInteger(duration) || duration <= 0 || duration > 2_147_483_647) throw new RangeError("Invalid runtime client duration")
+    }
+    const httpOrigin = options.httpBase?.origin
+    if (options.httpBase && (!["http:", "https:"].includes(options.httpBase.protocol) || options.httpBase.username || options.httpBase.password)) {
+      throw new TypeError("The runtime HTTP base must be an HTTP origin")
+    }
+    let stored = initial
+    const machine = Effect.runSync(machineOver(() => Effect.sync(() => stored), (next) => Effect.sync(() => { stored = next })))
+    const pending = new Map<number, Pending>()
+    const probes = new Set<number>()
+    let generation = new AbortController()
+    let bodyLimit: number | undefined
+
+    function current() { return Effect.runSync(machine.get()) }
+
+    function send(event: Event, answer?: RuntimeJsonResponse) {
+      if (!enabled(current(), event)) return
+      const update = Effect.runSync(machine.send(event))
+      for (const command of update.out) {
+        if (command.tag === "Send") {
+          const input = pending.get(command.request)
+          if (input) void dispatch(command.request, input, command.over, generation.signal)
+        }
+      }
+      for (const request of update.state.requests) {
+        const input = pending.get(request.id)
+        if (!input) continue
+        const stage = request.stage
+        if (stage.tag === "Probing" && !probes.has(request.id)) {
+          probes.add(request.id)
+          void probe(request.id, input, update.state.gen, generation.signal)
+        } else if (stage.tag === "Failed") {
+          input.reject(new Error(stage.why))
+        } else if (event.type === "reply" && event.id === request.id && answer) {
+          if (stage.tag === "Replied") input.resolve(answer.data)
+          if (stage.tag === "Refused") {
+            const data = refusal(answer.data)
+            input.reject(new RuntimeRequestError(data._tag === "Some" ? data.value.error ?? "Runtime refused the request" : "Runtime refused the request",
+              stage.httpStatus, data._tag === "Some" ? data.value.code : undefined, stage.retry.tag === "RetryAfter" ? stage.retry.seconds : undefined))
+          }
+        }
+        if (stage.tag === "Failed" || stage.tag === "Replied" || stage.tag === "Refused") {
+          pending.delete(request.id)
+          probes.delete(request.id)
+          Effect.runSync(machine.send({ type: "release", id: request.id }))
+        }
+      }
+      return update
+    }
+
+    let startup: { gen: number; done: Promise<void> } | undefined
+    function start(bridge: RuntimeJsonBridge, gen: number, shouldStart: boolean, signal: AbortSignal): Promise<void> {
+      if (startup?.gen === gen) return startup.done
+      const deadline = AbortSignal.any([signal, AbortSignal.timeout(options.startupTimeoutMs)])
+      const done = (async () => {
+        try {
+          let observation = shouldStart ? status(await abortable(deadline, () => bridge.start())) : undefined
+          while (observation === undefined || (observation.report.tag === "Available" && observation.report.phase === "Starting")) {
+            await Effect.runPromise(Effect.sleep(options.pollMs), { signal: deadline })
+            observation = status(await abortable(deadline, () => bridge.status()))
+          }
+          if (observation.report.tag !== "Available" || observation.report.phase !== "Running") throw new Error("StartupFailed")
+          if (!deadline.aborted) bodyLimit = observation.limit
+          send({ type: "startupRan", ofGen: gen })
+        } catch {
+          send({ type: "startupFailed", ofGen: gen })
+        } finally {
+          send({ type: "resume" })
+        }
+      })()
+      startup = { gen, done }
+      return done
+    }
+
+    async function probe(id: number, input: Pending, gen: number, signal: AbortSignal) {
+      try {
+        const bridge = options.bridge?.()
+        const deadline = AbortSignal.any([signal, AbortSignal.timeout(options.requestTimeoutMs)])
+        const found = bridge ? status(await abortable(deadline, () => bridge.status())) : { report: { tag: "Unavailable" } as const }
+        if (signal.aborted) return
+        bodyLimit = "limit" in found ? found.limit : undefined
+        if (bridge) input.bridge = bridge
+        const update = send({ type: "requestStatus", id, report: found.report, fallback: httpOrigin ? "HttpFallback" : "NoFallback" })
+        if (bridge && update?.state.startup === "StartingUp" && found.report.tag === "Available" && found.report.phase !== "Running") {
+          await start(bridge, gen, update.out.some((command) => command.tag === "CallStart"), signal)
+        }
+      } catch {
+        send({ type: "transportFailed", id })
+      }
+    }
+
+    async function dispatch(id: number, input: Pending, route: "Bridge" | "Http", signal: AbortSignal) {
+      try {
+        const deadline = AbortSignal.any([signal, AbortSignal.timeout(options.requestTimeoutMs)])
+        const method = input.body === undefined ? "GET" : "POST"
+        const fields = { path: input.path, method, ...(input.body === undefined ? {} : { body: input.body }) } as const
+        const answer = await abortable(deadline, async () => {
+          if (route === "Bridge" && input.bridge) return decodeResponse(await input.bridge.request(fields))
+          if (route !== "Http" || !httpOrigin) throw new Error("NoRoute")
+          const url = new URL(input.path, httpOrigin)
+          if (url.origin !== httpOrigin) throw new Error("InvalidPath")
+          const response = await fetch(url, {
+            method, signal: deadline, credentials: "omit", redirect: "manual",
+            ...(input.body === undefined ? {} : { body: JSON.stringify(input.body), headers: { "Content-Type": "application/json" } }),
+          })
+          const data: unknown = response.status === 204 ? null
+            : await response.json().catch((error: unknown) => {
+              if (response.ok) throw error
+              return null
+            })
+          return { status: response.status, data }
+        })
+        const said = refusal(answer.data)
+        const retryAfter = said._tag === "Some" ? said.value.retryAfter : undefined
+        const retry: RetryAdvice = typeof retryAfter === "number" && Number.isSafeInteger(retryAfter)
+          ? { tag: "RetryAfter", seconds: retryAfter } : { tag: "NoAdvice" }
+        send({ type: "reply", id, httpStatus: answer.status, retry }, answer)
+      } catch {
+        send({ type: "transportFailed", id })
+      }
+    }
+
+    async function refreshNativeAccount(): Promise<void> {
+      const refresh = send({ type: "refreshAccount" })
+      if (!refresh) return
+      const ofGen = refresh.state.gen
+      generation.abort(new Error("AccountChanged"))
+      generation = new AbortController()
+      const signal = generation.signal
+      bodyLimit = undefined
+      send({ type: "abandon" })
+      const deadline = AbortSignal.any([signal, AbortSignal.timeout(options.startupTimeoutMs)])
+      try {
+        const bridge = options.bridge?.()
+        const report: StatusReport = bridge ? status(await abortable(deadline, () => bridge.status())).report : { tag: "Unavailable" }
+        const observed = send({ type: "refreshStatus", ofGen, report })
+        if (bridge && observed?.out.some((command) => command.tag === "CallRestart")) {
+          const restarted = status(await abortable(deadline, () => bridge.restart()))
+          if (restarted.report.tag === "Unavailable") throw new Error("RefreshFailed")
+          const update = send({ type: "restarted", ofGen, phase: restarted.report.phase })
+          if (update?.state.refresh === "AwaitRestart") {
+            await start(bridge, ofGen, update.out.some((command) => command.tag === "CallStart"), deadline)
+          } else if (update) bodyLimit = restarted.limit
+        }
+        signal.throwIfAborted()
+        if (current().refresh === "RefreshBroken") throw new Error("StartupFailed")
+      } catch (error) {
+        send({ type: "refreshError", ofGen })
+        throw error
+      } finally {
+        send({ type: "resume" })
+      }
+    }
+
+    function request(path: string, body?: unknown): Promise<unknown> {
+      return new Promise((resolve, reject) => {
+        if (!path.startsWith("/") || path.startsWith("//") || /[\\\u0000-\u0020]/.test(path)) throw new Error("InvalidPath")
+        const id = current().nextId
+        pending.set(id, { path, body, resolve, reject })
+        send({ type: "submit", path: "Rooted" })
+      })
+    }
+
+    return { request, refreshNativeAccount, get requestBodyLimit() { return bodyLimit } }
+  }
+}
+
+export { createRuntimeJsonClient, RuntimeRequestError, type RuntimeClientOptions, type RuntimeJsonBridge, type RuntimeJsonResponse, type RuntimeStatus } from node
