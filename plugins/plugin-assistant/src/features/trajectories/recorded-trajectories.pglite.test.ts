@@ -273,6 +273,54 @@ describe("recorded trajectories on the trajectory store", () => {
     await service.stop();
   });
 
+  it("reports a failed turn-row header write and still exports the record", async () => {
+    const { runtime, service, rows } = await createSqlRuntime();
+    const turnId = await service.startTrajectory(AGENT_ID, {
+      roomId: "room-5",
+    });
+    await service.flushWriteQueue(turnId);
+    // The turn step is still open in memory, but its row is gone, so the
+    // header write on the turn-row path rejects inside the write queue.
+    await rows("DELETE FROM trajectories");
+    const recorder = createTrajectoryRecorder({ runtime, rootDir });
+
+    const id = await runWithTrajectoryContext(
+      { trajectoryStepId: turnId },
+      async () => {
+        const recorded = recorder.startTrajectory({
+          agentId: AGENT_ID,
+          rootMessage: { id: "message-5", text: "row vanished" },
+        });
+        await recorder.recordStage(recorded, plannerStage("lost-planner"));
+        await recorder.endTrajectory(recorded, "finished");
+        return recorded;
+      },
+    );
+
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "TrajectoryStorage.write",
+      expect.objectContaining({ code: "TRAJECTORY_PARENT_NOT_FOUND" }),
+      expect.objectContaining({ diagnosticOnly: true }),
+    );
+    expect(runtime.reportError).toHaveBeenCalledWith(
+      "TrajectoryRecorder.store",
+      expect.anything(),
+      expect.objectContaining({ trajectoryId: id, phase: "end" }),
+    );
+    const file = await readExport(rootDir, {
+      agentId: AGENT_ID,
+      trajectoryId: id,
+    });
+    expect(file.status).toBe("finished");
+    expect(file.stages.map((stage) => stage.stageId)).toEqual(["lost-planner"]);
+    // Stop drains the queue and surfaces the failed store write to its owner.
+    await expect(service.stop()).rejects.toMatchObject({
+      errors: [
+        expect.objectContaining({ code: "TRAJECTORY_PARENT_NOT_FOUND" }),
+      ],
+    });
+  });
+
   it("exports the complete record when the runtime has no SQL adapter", async () => {
     const runtime = {
       agentId: AGENT_ID,
