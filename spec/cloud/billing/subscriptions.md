@@ -149,8 +149,8 @@ pure def sometimesSetToCancelAtPeriodEnd(s: Subscription): bool = s.status == Ac
 
 The window starts at the period end when that has passed, else at the
 observation, and both times are kept until a paid invoice makes the
-subscription Active again. Past due never returns to dunning within the
-same window. The shell's schedule moves a dunning subscription whose window
+subscription Active again; an unpaid subscription keeps them too. Past due
+never returns to dunning within the same window. The shell's schedule moves a dunning subscription whose window
 has ended.
 
 ```quint
