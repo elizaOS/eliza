@@ -493,7 +493,7 @@ export interface NativePageRead {
   url: string;
   title: string;
   text: string;
-  /** Legacy-client compatibility flag; consumers reject incomplete reads. */
+  /** Set when the read was cut short; consumers reject incomplete reads. */
   truncated: boolean;
 }
 
