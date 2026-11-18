@@ -18,6 +18,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { deviceEmailDraft } from "./device-email-draft.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import { ALL_MESSAGE_SOURCES } from "../types.ts";
 import {
@@ -108,6 +109,18 @@ export const draftFollowupAction: Action = {
         text: parsed.error,
         error: parsed.error,
       };
+    }
+
+    const local = await deviceEmailDraft(
+      runtime,
+      _message,
+      parsed,
+      options?.parameters,
+    );
+    if (local) {
+      if (callback && local.text)
+        await callback({ text: local.text, action: "MESSAGE" });
+      return local;
     }
 
     const service = getDefaultTriageService();

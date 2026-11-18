@@ -1056,6 +1056,40 @@ async function freshRequestedMessageId(
   };
 }
 
+export function hasDeviceGmailComposer(): boolean {
+  return (
+    getDeviceActionTurn()?.credential.capabilities?.includes(
+      "gmail.local-compose.v1",
+    ) === true
+  );
+}
+
+/** A compose handoff only fills a local editor, so it is valid with either owner action setting. */
+export async function currentGmailComposeOrigin(
+  runtime: IAgentRuntime,
+  message: Memory,
+) {
+  const current = getDeviceActionTurn();
+  if (!current || !hasDeviceGmailComposer()) return;
+  const original = current.replyContext?.message;
+  if (
+    !original ||
+    original.id !== message.id ||
+    original.roomId !== message.roomId ||
+    original.entityId !== message.entityId ||
+    original.content.text !== message.content.text ||
+    !isRequestOwner(current, original)
+  )
+    throw new DeviceActionError("Reopen this email request on the phone.");
+  const origin = await freshRequestedMessageId(runtime, current.credential, {
+    allowReviewed: true,
+  });
+  if (!origin)
+    throw new DeviceActionError("Reopen this email request on the phone.");
+  origin.assertCurrent();
+  return origin.messageId;
+}
+
 export async function currentRequestedActionOrigin(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1214,6 +1248,7 @@ const readReplyControllers = new WeakMap<
  */
 export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   "gmail.request-policy.v1",
+  "gmail.local-compose.v1",
   CAMERA_CAPTURE_CAPABILITY,
   "calendar.local-event.v1",
   CALENDAR_CREATE_CAPABILITY,
