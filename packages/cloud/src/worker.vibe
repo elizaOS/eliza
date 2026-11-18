@@ -9,7 +9,7 @@ import { ownsPasswordBackupPath } from "./password-backup.vibe"
 export { nativeAssetLinks }
 export { SpeechRelayCoordinator } from "./speech-relay.vibe"
 import { speechRequest, speechRoute, speechWebSocket, type SpeechEnv } from "./speech.vibe"
-import { googleRequest, type GoogleEnv } from "./google.vibe"
+import { googleRequest, reminderSchedule, type GoogleEnv } from "./google.vibe"
 import { billingRequest, refreshPaidAccess, stripeWebhook, stripeWebhookRoute, sweepSubscriptions, type BillingEnv } from "./billing.vibe"
 import { CLEF_DECISIONS_PATH } from "./clef-decisions.vibe"
 import { clefRequest, type ClefEnv } from "./clef-worker.vibe"
@@ -42,10 +42,15 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
   if (path === speechRoute + "/ws") return speechWebSocket(request, env, db)
   const speech = path.startsWith(speechRoute + "/")
   const billing = path.startsWith("/api/v1/billing/")
+  const reminders = path === "/api/v1/calendar-reminders/device"
   const google = path.startsWith("/api/v1/eliza/google/")
-  if (!decisions && !inference && !speech && !billing && !google && !(extension && path.startsWith("/api/product/"))) return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
-  const account = decisions || inference || speech ? await inferenceAccount(request, db, env) : await sessionAccount(request, db)
+  if (!reminders && !decisions && !inference && !speech && !billing && !google && !(extension && path.startsWith("/api/product/"))) return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
+  const account = reminders || decisions || inference || speech ? await inferenceAccount(request, db, env) : await sessionAccount(request, db)
   if (!account) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+  if (reminders) {
+    if (!request.headers.has("authorization")) return WorkerResponse.json({ error: "device_required" }, { status: 403 })
+    return reminderSchedule(request, env, db, account)
+  }
   if (decisions) return clefRequest(request, env, db, account)
   if (inference || path === speechRoute + "/session") await refreshPaidAccess(env, db, account)
   if (speech) return speechRequest(request, env, db, account)

@@ -1,0 +1,80 @@
+// spec/agent/voice/session.md, "A session owns one microphone capture and reopens it only after the turn"; spec/agent/voice/session.md, "The end-of-turn query scores 1 to 4,096 units and only a finished answer submits early"; spec/agent/voice/session.md, "A turn is sent once, and a held session sends it only after the capture confirmed its close"; spec/agent/voice/session.md, "A report is posted at most twice, the second 1,500 ms after a lost or busy answer, and its outcomes stay distinct"
+import type { Duplex, EndOfTurnReply, InputMode } from "../../gen/agent__voice__session.ts"
+
+export interface CaptureEvents {
+  opened(info: { readonly echoCancelled: boolean }): void
+  closed(): void
+  failed(cause: unknown): void
+}
+
+export interface CapturePort {
+  open(request: { readonly mode: InputMode; readonly duplex: Duplex }, events: CaptureEvents): void
+  close(): void
+}
+
+export interface RecognizerPort {
+  onSpeechStart(): void
+  onSpeechEnd(): void
+  onPartial(text: string): void
+  onFinal(text: string, startedAtMs?: number): void
+  onHold(heldMs: number): void
+}
+
+export type EndOfTurnPort = (text: string, signal: AbortSignal) => Promise<EndOfTurnReply>
+
+export type VoiceUi = { readonly [key: string]: unknown }
+
+export interface VoiceTurn {
+  readonly text: string
+  readonly channelType: string
+  readonly metadata: { readonly voiceUi?: VoiceUi }
+  readonly clientMessageId: string
+}
+
+export interface VoiceReply {
+  readonly messageId: string
+  readonly text: string
+}
+
+export interface TurnPort {
+  send(turn: VoiceTurn, signal: AbortSignal): Promise<VoiceReply>
+  abort(roomId: string, reason: string): Promise<void>
+}
+
+export type HeardBody = { readonly heardText: string } | { readonly nothingHeard: true }
+
+export interface HeardAnswer {
+  readonly status: number
+  readonly body: unknown
+}
+
+export type HeardPort = (conversationId: string, messageId: string, body: HeardBody) => Promise<HeardAnswer>
+
+export interface SpeakerEvents {
+  segmentPlayed(): void
+  broke(cause: unknown): void
+}
+
+export interface SpeakerPort {
+  speak(segments: readonly string[], events: SpeakerEvents): void
+  stop(): void
+}
+
+export interface ClockPort {
+  now(): number
+  after(ms: number, run: () => void): void
+}
+
+export interface VoiceSessionPorts {
+  readonly conversationId: string
+  readonly capture: CapturePort
+  readonly endOfTurn: EndOfTurnPort
+  readonly turns: TurnPort
+  readonly heard: HeardPort
+  readonly speaker: SpeakerPort
+  readonly clock: ClockPort
+  clientMessageId(): string
+  voiceUi?(): VoiceUi | undefined
+  onDraft?(text: string): void
+  onPartial?(text: string): void
+}
