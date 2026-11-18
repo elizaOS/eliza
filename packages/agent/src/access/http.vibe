@@ -1,71 +1,130 @@
-// spec/agent/access/transport.md, "Story: Answer each local request exactly once"
+// spec/agent/access/transport.md, "Story: Answer each local request exactly once"; spec/agent/access/transport.md, "Story: Stream a response and end it once"; spec/agent/access/transport.md, "Story: Close the listeners once"
 module node {
   import { once } from "node:events"
   import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
-  import { bodyLimitBytes, deadlineMs } from "../../gen/agent__access__transport.ts"
-  import type { LocalRouter } from "./routes.vibe"
-  import { localRouteClass, runUntilAbort } from "./socket.vibe"
+  import { bodyLimitBytes } from "../../gen/agent__access__transport.ts"
+  import type { AgentRouter } from "./router.vibe"
+  import { Exchanges, localRouteClass, parseFrame, receive, type FeedAccess, type Parsed, type Wiring } from "./socket.vibe"
 
-  function error(response: ServerResponse, status: number, code: string) {
-    response.writeHead(status, { "content-type": "application/json; charset=utf-8" })
-    response.end(JSON.stringify({ error: code }))
-  }
+  type Rendered =
+    | { readonly ok: true; readonly result: { readonly status: number; readonly headers: Record<string, string>; readonly body: string } }
+    | { readonly ok: false; readonly error: string }
+    | { readonly stream: "response"; readonly status: number; readonly headers: Record<string, string> }
+    | { readonly stream: "chunk"; readonly dataBase64: string }
+    | { readonly stream: "complete"; readonly error?: string }
+    | { readonly type: "subscribed" | "event" }
 
-  async function handle(request: IncomingMessage, output: ServerResponse, route: LocalRouter) {
-    const peer = new AbortController()
-    output.once("close", () => peer.abort())
-    const target = request.url ?? ""
-    const kind = localRouteClass(target)
-    const streamed = target.split("?", 1)[0].endsWith("/stream")
-    const deadline = AbortSignal.timeout(deadlineMs(kind, streamed))
-    const signal = AbortSignal.any([peer.signal, deadline])
-    const chunks: Uint8Array[] = []
-    let size = 0
-    for await (const chunk of request) {
-      size += chunk.length
-      if (size > bodyLimitBytes(kind)) { error(output, 413, "too_large"); return }
-      chunks.push(chunk)
-    }
-    const response = await runUntilAbort(signal, () => route({
-      target, method: request.method ?? "", streamed, authorization: request.headers.authorization,
-      body: size === 0 ? undefined : Buffer.concat(chunks, size),
-    }, signal))
-    signal.throwIfAborted()
-    output.writeHead(response.status, Object.fromEntries(response.headers))
-    if (response.body !== null) {
-      const reader = response.body.getReader()
-      const cancel = () => { void reader.cancel().catch(() => undefined) }
-      signal.addEventListener("abort", cancel, { once: true })
-      try {
-        for (;;) {
-          const { done, value } = await reader.read()
-          if (done) break
-          if (!output.write(value)) await once(output, "drain", { signal })
+  const refusalStatus: Readonly<Record<string, number>> = { unauthorized: 401, busy: 429 }
+  const jsonHead = { "content-type": "application/json; charset=utf-8" }
+  const eventHead = { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store" }
+
+  function wiring(output: ServerResponse, handler: AbortController): Wiring {
+    let headStatus = 0
+    const write = (line: string) => {
+      if (output.destroyed) return
+      const frame = JSON.parse(line) as Rendered
+      if ("ok" in frame) {
+        if (frame.ok) {
+          output.writeHead(frame.result.status, frame.result.headers)
+          output.write(frame.result.body)
+        } else {
+          output.writeHead(refusalStatus[frame.error] ?? 400, jsonHead)
+          output.write(JSON.stringify({ error: frame.error }))
         }
-      } finally {
-        signal.removeEventListener("abort", cancel)
-        await reader.cancel().catch(() => undefined)
-        reader.releaseLock()
+        return
       }
+      if ("stream" in frame) {
+        switch (frame.stream) {
+          case "response": headStatus = frame.status; output.writeHead(frame.status, frame.headers); return
+          case "chunk": output.write(Buffer.from(frame.dataBase64, "base64")); return
+          case "complete": {
+            if (frame.error === undefined) return
+            if (headStatus >= 400) output.write(JSON.stringify({ error: frame.error }))
+            else output.destroy()
+            return
+          }
+        }
+      }
+      if (frame.type === "subscribed") output.writeHead(200, eventHead)
+      output.write(`data: ${line.trimEnd()}\n\n`)
     }
-    output.end()
+    return {
+      write,
+      abort: () => handler.abort(),
+      finish: () => { if (!output.destroyed) output.end() },
+      cut: () => { handler.abort(); if (!output.writableEnded) output.destroy() },
+    }
   }
 
-  export async function listenOnHttp(port: number, route: LocalRouter): Promise<() => Promise<void>> {
-    const server = createServer((request, response) => {
-      void handle(request, response, route).catch(() => {
-        if (response.destroyed) return
-        if (response.headersSent) response.destroy()
-        else error(response, 500, "request_failed")
-      })
+  function subscription(query: string, authorization: string | undefined): Parsed {
+    const params = new URLSearchParams(query)
+    const keys = [...params.keys()]
+    if (new Set(keys).size !== keys.length) return { kind: "unreadable", id: undefined }
+    return parseFrame(Buffer.from(JSON.stringify({
+      id: "events", method: "events_subscribe",
+      payload: {
+        ...Object.fromEntries(params),
+        streams: params.get("streams")?.split(",") ?? [],
+        ...(authorization === undefined ? {} : { headers: { authorization } }),
+      },
+    })))
+  }
+
+  function handle(exchanges: Exchanges, conn: number, request: IncomingMessage, output: ServerResponse, route: AgentRouter, feeds: FeedAccess): void {
+    const handler = new AbortController()
+    if (!exchanges.accept(conn, wiring(output, handler))) { output.destroy(); return }
+    const connection = { conn, socket: output, handler }
+    request.on("error", () => undefined)
+    output.once("close", () => { exchanges.peerClose(conn); handler.abort() })
+    const target = request.url ?? ""
+    const method = request.method ?? ""
+    const authorization = request.headers.authorization
+    const at = target.indexOf("?")
+    if (method === "GET" && (at < 0 ? target : target.slice(0, at)) === "/api/events") {
+      request.resume()
+      receive(exchanges, connection, subscription(at < 0 ? "" : target.slice(at + 1), authorization), route, feeds)
+      return
+    }
+    const kind = localRouteClass(target)
+    const chunks: Buffer[] = []
+    let size = 0
+    let over = false
+    request.on("data", (chunk: Buffer) => {
+      if (over) return
+      size += chunk.length
+      if (size <= bodyLimitBytes(kind)) { chunks.push(chunk); return }
+      over = true
+      chunks.length = 0
+      exchanges.receive(conn, undefined, { tag: "HttpRequest", route: kind, bodyBytes: size })
+    })
+    request.once("end", () => {
+      if (over) return
+      const call = { target, method, authorization, body: size === 0 ? undefined : Buffer.concat(chunks, size) }
+      const streamed = route.delivery(call) === "Streamed"
+      receive(exchanges, connection, { kind: "request", id: "http", call: { ...call, streamed } }, route, feeds)
+    })
+  }
+
+  export async function listenOnHttp(port: number, route: AgentRouter, feeds: FeedAccess): Promise<() => Promise<void>> {
+    const exchanges = new Exchanges()
+    exchanges.listen("LoopbackHttp")
+    let connections = 0
+    const server = createServer((request, output) => {
+      connections += 1
+      handle(exchanges, connections, request, output, route, feeds)
     })
     server.listen(port, "127.0.0.1")
     await once(server, "listening")
-    return () => {
-      const closed = new Promise<void>((resolve, reject) => server.close((failure) => failure ? reject(failure) : resolve()))
+    let closing: Promise<void> | undefined
+    return () => closing ??= new Promise<void>((resolve, reject) => {
+      exchanges.stop()
       server.closeAllConnections()
-      return closed
-    }
+      server.close((failure) => {
+        exchanges.releaseNext(failure === undefined)
+        if (failure) reject(failure)
+        else resolve()
+      })
+    })
   }
 }
 export { listenOnHttp } from node

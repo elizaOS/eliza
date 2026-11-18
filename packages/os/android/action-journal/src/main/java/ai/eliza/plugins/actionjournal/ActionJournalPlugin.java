@@ -1,5 +1,6 @@
 package ai.eliza.plugins.actionjournal;
 
+import ai.eliza.plugins.actionjournal.deletion.DeferredDeletionCoordinator;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -89,6 +90,25 @@ public abstract class ActionJournalPlugin extends Plugin {
    return value;
   });
  }
+
+ protected interface DeletionTask { JSONObject run(DeferredDeletionCoordinator deletions) throws Exception; }
+
+ protected DeferredDeletionCoordinator deletions() throws Exception { throw new UnsupportedOperationException("No deferred deletions"); }
+
+ private void deletionWork(PluginCall call, DeletionTask task) {
+  try {
+   worker.execute(() -> {
+    try {
+     if (destroyed) throw new IllegalStateException("Destroyed");
+     call.resolve(JSObject.fromJSONObject(task.run(deletions())));
+    } catch (Exception error) { call.reject(refusal()); }
+   });
+  } catch (RejectedExecutionException retired) { call.reject(refusal()); }
+ }
+
+ @PluginMethod public void pending(PluginCall call) { deletionWork(call, DeferredDeletionCoordinator::pendingWithOrigins); }
+ @PluginMethod public void undo(PluginCall call) { deletionWork(call, deletions -> deletions.undo(call.getString("kind"), call.getString("id"))); }
+ @PluginMethod public void dismiss(PluginCall call) { deletionWork(call, deletions -> deletions.dismiss(call.getString("kind"), call.getString("id"))); }
 
  /** Subclasses overriding this must call super. Queued calls reject after destruction. */
  @Override protected void handleOnDestroy() {

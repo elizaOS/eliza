@@ -6,11 +6,12 @@ biometric or device-credential unlock, valid for a short window. A
 consumer's own vault page reaches it through the `ElizaPasswords` bridge
 ([bridge vocabulary](../bridge.md)) and the validating passwords client.
 This machine follows one vault page in the app's foreground: what it may
-hold, when, and on which native evidence. The vault records, the unlock
-window, reveal, copy and the native protected editor stay in the Java
-shell; system Autofill is [autofill custody](./autofill.md). Sources:
-`PasswordsPlugin`, `PasswordVaultAccess` and `src/{client,definitions}.ts`
-of `plugins/plugin-native-passwords`.
+hold, when, and on which native evidence, and the decisions the native side
+makes when it delivers a revealed or copied password. The vault records,
+the unlock window, the reveal dialog and the native protected editor stay
+in the Java shell; system Autofill is [autofill custody](./autofill.md).
+Sources: `PasswordsPlugin`, `PasswordVaultAccess`, `PasswordClipboard` and
+`src/{client,definitions}.ts` of `plugins/plugin-native-passwords`.
 
 ## Story: Keep secrets typed only in an unlocked page
 
@@ -56,6 +57,9 @@ withdraws a pending reset review.
 pure def canRefreshVault(s: VaultUi): bool = s.view != PageClosed
 pure def refreshVault(s: VaultUi): VaultUi =
   { ...s, generation: s.generation + 1, view: if (s.view == PageResetReviewed) PageDamaged else s.view }
+pure def stepGenerationNeverGoesBack(before: VaultUi, after: VaultUi): bool = after.generation >= before.generation
+pure def stepAccessChangeStartsNewGeneration(before: VaultUi, after: VaultUi): bool =
+  before.view != after.view implies after.generation > before.generation
 ```
 
 ### Only Android's own authentication unlocks the page
@@ -172,27 +176,47 @@ pure def sometimesResetReviewed(s: VaultUi): bool = s.view == PageResetReviewed
 
 > As the owner of the saved passwords, I can reveal or copy a password after
 > unlocking. Signing out ends the old owner's access even if a request is
-> already waiting on the tablet's main thread.
+> already waiting on the app's main thread.
 
 ### Native secret delivery checks the current owner and original unlock
 
-The final reveal or copy needs a foreground host that still admits the
-owner and the same native unlock that requested the operation. Explicit
-owner retirement closes the reveal and ends the retiring clipboard lease.
-Ordinary backgrounding still lets the owner paste during the normal lease.
-When Android exposes clipboard ownership, the app attempts to clear only
-its own tagged clip. If ownership is currently hidden, cleanup waits for
-input focus.
+A reveal or copy carries the generation it was asked in, and the native
+side delivers it on the main thread only while the page is still unlocked
+in that generation and the host still admits the owner. Signing the owner
+out (the host's `lockAndClose`) locks the vault and closes the page and
+any reveal, so a delivery already queued is refused: a generation, once
+left, never comes back.
 
 ```quint
-pure def mayDeliverQueuedVaultSecret(foreground: bool, currentOwner: bool, sameUnlock: bool): bool =
-  foreground and currentOwner and sameUnlock
-pure def lawRetiredOwnerCannotReceiveQueuedVaultSecret(foreground: bool, sameUnlock: bool): bool =
-  not(mayDeliverQueuedVaultSecret(foreground, false, sameUnlock))
-pure def mayClearPasswordClipboard(deadlineReached: bool, retired: bool, observedOwnClip: bool): bool =
-  (deadlineReached or retired) and observedOwnClip
-pure def lawForeignClipboardIsPreserved(deadlineReached: bool, retired: bool): bool =
-  not(mayClearPasswordClipboard(deadlineReached, retired, false))
+pure def mayDeliverVaultSecret(s: VaultUi, ticket: int, admitted: bool): bool =
+  s.view == PageUnlocked and ticket == s.generation and admitted
+pure def lawRetiredOwnerReceivesNoSecret(s: VaultUi, ticket: int): bool =
+  not(mayDeliverVaultSecret(s, ticket, false)) and not(mayDeliverVaultSecret(leaveVault(s), ticket, true))
+```
+
+### A copied password is cleared from the clipboard only while it is still the app's own clip
+
+A copy holds a clipboard lease. Ordinary backgrounding keeps it, so the
+owner can paste until it ends; signing out retires it at once. A lease that
+is due checks the clip Android shows: the app's own tagged clip is cleared,
+another app's clip is left alone and the lease ends, and when Android hides
+the clip (the app has no input focus) the lease waits for the next resume.
+
+```quint
+type ClipLease = NoLease | LeaseHeld | LeaseRetired
+type ShownClip = OwnClipShown | OtherClipShown | ClipHidden
+type ClipStep = { lease: ClipLease, clears: bool }
+pure def onClipCheck(lease: ClipLease, deadlineReached: bool, shown: ShownClip): ClipStep =
+  if (lease == NoLease or (lease == LeaseHeld and not(deadlineReached)) or shown == ClipHidden) { lease: lease, clears: false }
+  else { lease: NoLease, clears: shown == OwnClipShown }
+pure def lawOnlyOwnClipIsCleared(lease: ClipLease, deadlineReached: bool, shown: ShownClip): bool =
+  onClipCheck(lease, deadlineReached, shown).clears implies (shown == OwnClipShown and lease != NoLease)
+pure def lawHeldLeaseLastsUntilDeadline(shown: ShownClip): bool =
+  onClipCheck(LeaseHeld, false, shown) == { lease: LeaseHeld, clears: false }
+pure def lawRetiredLeaseClearsAtOnce(deadlineReached: bool): bool =
+  onClipCheck(LeaseRetired, deadlineReached, OwnClipShown).clears
+pure def lawHiddenClipKeepsTheLease(lease: ClipLease, deadlineReached: bool): bool =
+  onClipCheck(lease, deadlineReached, ClipHidden).lease == lease
 ```
 
 ### A row action acts on the revision the owner selected

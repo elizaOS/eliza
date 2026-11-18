@@ -127,16 +127,16 @@ pure def sometimesStoppedOnCameraDenial(s: CameraView): bool = s.phase == Previe
 
 ### A capture, a viewfinder control and a recording share one slot
 
-A control and a recording start need the ready preview; a capture may
-reserve the slot before its preview is up and checks the epoch itself
-before it uses the hardware or shows its result. A stop frees a control at
+A control and a recording start need the ready preview; a capture needs
+only the free slot, may reserve it before its preview is up, and checks the
+epoch itself before it uses the hardware or shows its result. A stop frees a control at
 once and sends an active recording to finalization. A focus-point hint is
 not work: it may run beside a capture, and its marker does not confirm
 focus.
 
 ```quint
 pure def canReserveWork(s: CameraView, work: Work): bool =
-  s.work == CameraIdle and s.foreground and
+  s.work == CameraIdle and
   (work == CameraCapture or (s.phase == PreviewReady and (work == CameraControl or work == RecordingStarting)))
 pure def reserveWork(s: CameraView, work: Work): CameraView =
   { ...s, work: work, workEpoch: s.epoch, finished: if (work == RecordingStarting) RecordingUnobserved else s.finished }
@@ -147,6 +147,7 @@ pure val weight_reserveWork = 2
 pure def alwaysWorkDoesNotComeFromTheFuture(s: CameraView): bool = s.workEpoch >= 0 and s.workEpoch <= s.epoch
 pure def alwaysPreviewWorkHasTheCurrentReadyPreview(s: CameraView): bool =
   (s.work == CameraControl or s.work == RecordingActive) implies (s.phase == PreviewReady and s.foreground and s.workEpoch == s.epoch)
+pure def sometimesControlOnReadyPreview(s: CameraView): bool = s.work == CameraControl
 pure def sometimesRecording(s: CameraView): bool = s.work == RecordingActive
 ```
 

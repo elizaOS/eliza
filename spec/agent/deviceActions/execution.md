@@ -124,8 +124,8 @@ pure def sometimesLostReplyIsUnknown(s: DeviceAttempt): bool = s.calls == 1 and 
 
 ### An abandoned entry closes without running again
 
-An entry no live screen owns is closed while the agent still awaits its
-claim. A reservation never reached the call, so it settles with no effect
+An entry no live screen owns is closed while the agent's claimed request
+still awaits its receipt. A reservation never reached the call, so it settles with no effect
 under the agent's attempt. An applying entry may have been called before
 the process stopped, so it settles as unknown. Nothing is dispatched again.
 

@@ -10,7 +10,7 @@ import { manualClock } from "../support/clock.ts";
 const initialWindow: Window = { start: 0, end: 0, count: 0, ceiling: 0, clock: 0, last: { tag: "NoDecision" } };
 
 let runtime: ManagedRuntime.ManagedRuntime<Store, unknown> | undefined;
-const names = new Map<string, string>();
+const seen = new Set<string>();
 const time = manualClock();
 
 async function store() {
@@ -22,12 +22,12 @@ async function store() {
 }
 
 function check(subject: string, rule: RateLimit) {
-  return { subject, rule };
+  return { subject, rule: { ...rule, name: "conformance" } };
 }
 
 export const driver: Driver = {
   async reset() {
-    names.clear();
+    seen.clear();
     const opened = await store();
     await opened.runPromise(Effect.gen(function* () {
       const kept = yield* Store;
@@ -35,7 +35,7 @@ export const driver: Driver = {
     }));
   },
   async dispatch(key, event) {
-    names.set(key, event.rule.name);
+    seen.add(key);
     const opened = await store();
     time.set(event.now);
     const exit = await opened.runPromise(Effect.exit(Effect.provideService(admitCheck(check(key, event.rule)), Clock.Clock, time.clock)));
@@ -48,10 +48,9 @@ export const driver: Driver = {
     throw new Error(`the limiter failed: ${String(exit)}`);
   },
   async observe(key) {
-    const name = names.get(key);
-    if (name === undefined) return initialWindow;
+    if (!seen.has(key)) return initialWindow;
     const opened = await store();
-    return await opened.runPromise(readWindow(check(key, { name, limit: 1, windowMs: 1 })));
+    return await opened.runPromise(readWindow(check(key, { name: "conformance", limit: 1, windowMs: 1 })));
   },
 };
 

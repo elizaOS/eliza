@@ -5,7 +5,7 @@ import { decide, type OperatorCommand, type OperatorVerdict } from "../../gen/cl
 import { refusalBody, type Refusal } from "../http/refusal.vibe"
 import { deploymentLayer, Deployment, parseEnvironment, readProfile, specProfile } from "../profile/profile.vibe"
 import { RowCorrupt } from "../store/rows.vibe"
-import { identityDigest, parseStoreLocation, Store, storeLayer, StoreFailure, toText, type Tx } from "../store/store.vibe"
+import { identityDigest, parseStoreLocation, Store, storeLayer, type StoreFailure, toText, type Tx } from "../store/store.vibe"
 import { commands as accounts } from "./accounts.vibe"
 
 export type OperatorContext = Deployment | HttpClient.HttpClient

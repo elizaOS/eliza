@@ -32,9 +32,8 @@ pure def lawNoCredentialOrOtherSchemeIsSaved(address: WebAddress): bool =
 ### A saved session keeps the first valid row of each tab and address
 
 A row needs a tab ID of 1 to 80 letters, digits, underscores or dashes,
-which the shell reads as `validId`, and a saved address. A private, invalid
-or duplicate row is dropped before deduplication, so a dropped row reserves
-no ID. History keeps the first occurrence of each saved address, in order.
+which the shell reads as `validId`, and a saved address. A private or
+invalid row is dropped before deduplication, so it reserves no ID. History keeps the first occurrence of each saved address, in order.
 The native codec keeps every such row; the renderer codec keeps at most
 eight tabs and 100 history entries. The selection survives only when its
 tab does.
@@ -97,11 +96,14 @@ pure def lawSnapshotOffersAtMostEightNormalTabs(rows: List[SavedTab], row: Saved
     (row.privateTab implies offerCandidate(rows, row) == rows)
 ```
 
-### Only the bridge session that first used the store may use it, and a save is kept only when its commit succeeded
+### Only the bridge session that first used the store may use it
 
 Every call names the native bridge's session; the first call binds it and
-a different session is refused. A save is refused while a clear runs.
-The store holds the native codec's form of what was committed.
+a different session is refused. A save is refused while a clear runs. A
+record counts as committed only when it seals within its limit (2,000,000
+bytes for the session, 800,000 for the bookmarks) and the synchronous
+commit succeeds; an uncommitted save leaves the stored session as it was,
+and the store holds the native codec's form of what was committed.
 
 ```quint
 type ClearState = NoClear | ClearingSiteData | Cleared | ClearFailed({ sessionDeleted: bool })

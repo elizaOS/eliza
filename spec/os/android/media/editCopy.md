@@ -73,7 +73,7 @@ pending row at most once. A video writer persists the row's exact id
 before copying any output bytes; if that record fails the writer stops.
 
 ```quint
-pure def canInsertCopy(s: CopyJournal, mediaId: int, idRecorded: bool): bool =
+pure def canInsertCopy(s: CopyJournal, mediaId: int): bool =
   s.live and s.row == NoRow and s.insertions == 0 and mediaId > 0
 pure def insertCopy(s: CopyJournal, mediaId: int, idRecorded: bool): CopyJournal = {
   val keepsWriting = s.kind == StillPhoto or idRecorded
@@ -109,13 +109,13 @@ type PublishEvidence = { sourceExact: bool, bytesMatch: bool, update: RowWrite, 
 pure def publicationApplied(kind: CopyKind, evidence: PublishEvidence): bool =
   evidence.sourceExact and evidence.bytesMatch and evidence.update == RowWriteCounted({ rows: 1 }) and
     (kind == StillPhoto or evidence.readback)
-pure def canPublishCopy(s: CopyJournal, evidence: PublishEvidence, receiptCommitted: bool): bool =
+pure def canPublishCopy(s: CopyJournal, evidence: PublishEvidence): bool =
   s.live and isPending(s.row) and publicationApplied(s.kind, evidence) and
     (s.kind == StillPhoto or s.recordedId == rowId(s.row))
 pure def publishCopy(s: CopyJournal, evidence: PublishEvidence, receiptCommitted: bool): CopyJournal =
   { ...s, row: PublishedRow({ id: rowId(s.row) }), live: false, reply: SavedReply,
     receipt: if (receiptCommitted) SavedReceipt({ id: rowId(s.row) }) else Reserved }
-pure def canLoseWriter(s: CopyJournal, cleanup: RowWrite): bool = s.live
+pure def canLoseWriter(s: CopyJournal): bool = s.live
 pure def loseWriter(s: CopyJournal, cleanup: RowWrite): CopyJournal =
   { ...s, live: false, reply: UnconfirmedReply,
     row: if (isPending(s.row) and s.recordedId == 0 and cleanup == RowWriteCounted({ rows: 1 })) NoRow else s.row }
@@ -163,7 +163,7 @@ pure def copyLookup(row: CopyRow, observed: Observation): CopyLookup =
   else match row { | NoRow => LookupAbsent | PendingRow(_) => LookupPending | PublishedRow(_) => LookupPublished }
 pure def lookupResolves(lookup: CopyLookup, recordedId: int): bool =
   lookup != LookupUnavailable and lookup != LookupAmbiguous and (recordedId == 0 or lookup != LookupAbsent)
-pure def canRecoverCopy(s: CopyJournal, observed: Observation, deletion: RowWrite, receiptCommitted: bool): bool = not(s.live)
+pure def canRecoverCopy(s: CopyJournal): bool = not(s.live)
 pure def recoverCopy(s: CopyJournal, observed: Observation, deletion: RowWrite, receiptCommitted: bool): CopyJournal = {
   val lookup = copyLookup(s.row, observed)
   val unconfirmed = { ...s, reply: UnconfirmedReply }
@@ -210,7 +210,7 @@ clears the recorded id. Nothing else settles that state.
 ```quint
 pure def awaitingReview(s: CopyJournal): bool =
   not(s.live) and s.receipt == Reserved and s.recordedId > 0 and s.row == NoRow
-pure def canReviewRemovedCopy(s: CopyJournal, observed: Observation, receiptCommitted: bool): bool =
+pure def canReviewRemovedCopy(s: CopyJournal, observed: Observation): bool =
   awaitingReview(s) and copyLookup(s.row, observed) == LookupAbsent
 pure def reviewRemovedCopy(s: CopyJournal, observed: Observation, receiptCommitted: bool): CopyJournal =
   if (receiptCommitted) { ...s, recordedId: 0, receipt: FailedReceipt, reply: FailedReply } else { ...s, reply: UnconfirmedReply }

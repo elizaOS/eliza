@@ -1,0 +1,1 @@
+{ "schema": 1, "actions": { "allowed": { "REPLY": {} } }, "plugins": { "load": [] } }

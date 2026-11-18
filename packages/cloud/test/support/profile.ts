@@ -27,10 +27,14 @@ export const secrets: Readonly<Record<string, string>> = {
   LLM_API_KEY: "llm-key",
   SPEECH_API_KEY: "speech-key",
   MAPS_API_KEY: "maps-key",
+  CLOUD_TEST_MAIL_TOKEN: "mail-token",
+  CLOUD_TEST_SMS_ACCOUNT: "sms-account",
+  CLOUD_TEST_SMS_TOKEN: "sms-token",
 };
 
 export function environmentProfile(fakeUrl: string, api: string, web: string) {
   return {
+    name: "Test Cloud",
     api,
     web,
     entitlementAudience: "cloud-subscription",

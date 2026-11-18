@@ -1,0 +1,159 @@
+// spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"; spec/agent/storage/database.md, "An empty store starts from the bundle's snapshot only at the bundle's schema version"; spec/agent/storage/database.md, "A corrupt store fails the open and is never reset automatically"; spec/agent/storage/database.md, "A data directory serves only the agent, account and embedding size it was created for"
+module node {
+  import { mkdtemp, open, rename, rm } from "node:fs/promises"
+  import { dirname, join } from "node:path"
+  import { PGlite, type PGliteOptions, type Transaction } from "@electric-sql/pglite"
+  import { logger, type UUID } from "@elizaos/core"
+  import {
+    canMigrate, initial, migrate as migrateStep, readDirectory,
+    type Bundle, type Directory, type Store, type StoreAccount, type StoreFault,
+  } from "../../gen/agent__storage__database.ts"
+  import { StoreFailed } from "./fault.vibe"
+  import { migrations as shipped, type Migration } from "./schema.vibe"
+
+  export interface StoreOwner {
+    readonly agentId: UUID
+    readonly account: { readonly userId: string; readonly organizationId: string } | null
+    readonly embeddingDimensions: number
+  }
+
+  export interface DeviceStorageSnapshot {
+    readonly schemaVersion: number
+    readonly bytes: Uint8Array
+  }
+
+  type OwnerRow = { agent_id: string; user_id: string | null; organization_id: string | null; embedding_dimensions: number; version: number }
+
+  export function storeBundle(list: readonly Migration[], snapshot?: DeviceStorageSnapshot): Bundle {
+    return { migrations: list.map((migration) => migration.kind), snapshotVersion: snapshot?.schemaVersion ?? 0 }
+  }
+
+  export function storeRefused(fault: StoreFault, cause?: unknown): never {
+    if (cause !== undefined) logger.error({ src: "agent:storage", fault, error: String(cause) }, "The device store was refused")
+    throw new StoreFailed({ fault })
+  }
+
+  export async function startStore(options: PGliteOptions): Promise<PGlite> {
+    try { return await PGlite.create(options) }
+    catch (cause) { return storeRefused("Corrupt", cause) }
+  }
+
+  function storeAccount(user: string | null, organization: string | null): StoreAccount {
+    return user === null || organization === null ? { tag: "NoAccount" } : { tag: "OwnerAccount", userId: user, organizationId: organization }
+  }
+
+  function reading(owner: StoreOwner, bundle: Bundle): Store {
+    return {
+      ...initial, phase: "ReadingDirectory", agentId: owner.agentId, bundle,
+      launch: {
+        ...initial.launch,
+        account: storeAccount(owner.account?.userId ?? null, owner.account?.organizationId ?? null),
+        embeddingDimensions: owner.embeddingDimensions,
+      },
+    }
+  }
+
+  async function inspect(db: PGlite): Promise<Directory> {
+    return await db.transaction(async (tx): Promise<Directory> => {
+      const marked = await tx.query<{ exists: boolean }>("SELECT to_regclass('public.device_owner') IS NOT NULL AS exists")
+      if (!marked.rows[0]?.exists) {
+        const tables = await tx.query("SELECT 1 FROM pg_tables WHERE schemaname = 'public' LIMIT 1")
+        return tables.rows.length === 0 ? { tag: "DirEmpty" } : { tag: "DirCorrupt" }
+      }
+      const owners = await tx.query<OwnerRow>(
+        "SELECT agent_id, user_id, organization_id, embedding_dimensions, version FROM device_owner WHERE singleton",
+      )
+      const row = owners.rows[0]
+      if (!row) return { tag: "DirCorrupt" }
+      await tx.query("SELECT key, data, table_name FROM device_records LIMIT 0")
+      return {
+        tag: "DirStore", version: row.version,
+        owner: { agentId: row.agent_id, account: storeAccount(row.user_id, row.organization_id), embeddingDimensions: row.embedding_dimensions },
+      }
+    })
+  }
+
+  async function recordVersion(tx: Transaction, owner: StoreOwner, version: number): Promise<void> {
+    if (version === 1) {
+      await tx.query(
+        "INSERT INTO device_owner VALUES (true, $1, $2, $3, $4, $5)",
+        [owner.agentId, owner.account?.userId ?? null, owner.account?.organizationId ?? null, owner.embeddingDimensions, version],
+      )
+      return
+    }
+    const moved = await tx.query("UPDATE device_owner SET version = $1 WHERE singleton AND version = $2", [version, version - 1])
+    if (moved.affectedRows !== 1) throw new Error(`The device store was not at schema version ${version - 1}`)
+  }
+
+  async function seed(db: PGlite, owner: StoreOwner, version: number): Promise<void> {
+    try {
+      await db.transaction(async (tx) => {
+        const confirmed = await tx.query<{ version: number; empty: boolean }>(
+          "SELECT version, NOT EXISTS (SELECT 1 FROM device_owner) AND NOT EXISTS (SELECT 1 FROM device_records) AS empty FROM device_snapshot",
+        )
+        if (confirmed.rows.length !== 1 || confirmed.rows[0]?.version !== version || !confirmed.rows[0]?.empty) {
+          throw new Error("The bundle's store snapshot is not an empty database at the bundle's schema version")
+        }
+        await tx.exec("DROP TABLE device_snapshot")
+        await tx.query(
+          "INSERT INTO device_owner VALUES (true, $1, $2, $3, $4, $5)",
+          [owner.agentId, owner.account?.userId ?? null, owner.account?.organizationId ?? null, owner.embeddingDimensions, version],
+        )
+      })
+    } catch (cause) { storeRefused("Corrupt", cause) }
+  }
+
+  export async function migrate(db: PGlite, owner: StoreOwner, list: readonly Migration[], seeded: boolean): Promise<void> {
+    if (seeded) return await seed(db, owner, list.length)
+    let found: Directory
+    try { found = await inspect(db) }
+    catch (cause) { return storeRefused("Corrupt", cause) }
+    let state = readDirectory(reading(owner, storeBundle(list)), found)
+    while (state.phase !== "Failed" && canMigrate(state, true)) {
+      const next = migrateStep(state, true)
+      if (next.phase === "Failed") storeRefused(next.fault)
+      const step = list[state.version]
+      try {
+        await db.transaction(async (tx) => {
+          await tx.exec(step.sql)
+          await recordVersion(tx, owner, next.version)
+        })
+        state = next
+      } catch (cause) {
+        state = migrateStep(state, false)
+        storeRefused(state.fault, cause)
+      }
+    }
+    if (state.phase === "Failed") storeRefused(state.fault)
+  }
+
+  export async function createDeviceStorageSnapshot(list: readonly Migration[] = shipped): Promise<DeviceStorageSnapshot> {
+    const db = await PGlite.create()
+    try {
+      await db.transaction(async (tx) => {
+        for (const migration of list) await tx.exec(migration.sql)
+        await tx.exec("CREATE TABLE device_snapshot (version integer NOT NULL)")
+        await tx.query("INSERT INTO device_snapshot VALUES ($1)", [list.length])
+      })
+      return { schemaVersion: list.length, bytes: new Uint8Array(await (await db.dumpDataDir("none")).arrayBuffer()) }
+    } finally { await db.close() }
+  }
+
+  export async function seedDurableStore(directory: string, owner: StoreOwner, list: readonly Migration[], bytes: Blob): Promise<void> {
+    const parent = dirname(directory)
+    const scratch = await mkdtemp(join(parent, ".store-seed-"))
+    try {
+      const staged = await startStore({ dataDir: scratch, loadDataDir: bytes })
+      try { await migrate(staged, owner, list, true) }
+      finally { await staged.close() }
+      await rename(scratch, directory)
+      const handle = await open(parent, "r")
+      try { await handle.sync() }
+      finally { await handle.close() }
+    } finally { await rm(scratch, { recursive: true, force: true }) }
+  }
+}
+export {
+  createDeviceStorageSnapshot, migrate, seedDurableStore, startStore, storeBundle, storeRefused,
+  type DeviceStorageSnapshot, type StoreOwner,
+} from node

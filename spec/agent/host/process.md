@@ -182,9 +182,10 @@ exactly the one agent, `running` exactly when status says so.
 
 ```quint
 import binding as B from "../models/binding"
-pure def agentStateOf(s: AgentProcess): str =
-  if (not(booting(s))) "stopping" else if (s.runtime.admissionOpen and s.phase == Ready) "running" else "starting"
-pure def alwaysRunningIffHealthy(s: AgentProcess): bool = (agentStateOf(s) == "running") iff healthy(s)
+type AgentRunState = Starting | Running | Stopping
+pure def agentStateOf(s: AgentProcess): AgentRunState =
+  if (s.runtime.stopPhase != R::Open or s.failure != NoFailure) Stopping else if (s.runtime.admissionOpen and s.phase == Ready) Running else Starting
+pure def alwaysRunningIffHealthy(s: AgentProcess): bool = (agentStateOf(s) == Running) iff healthy(s)
 pure def mayRespond(running: bool, backend: L::Backend, st: B::AccountState, t: int): bool =
   running and B::servedByBackend(backend, B::TextLarge) and not(B::blocked(st, t))
 pure val backendValues = B::backendValues

@@ -188,7 +188,8 @@ webhook. The billing snapshot and the entitlement with its keys stay open, so
 an account funded only by `credits add` still shows its balance. The maps
 capabilities route stays open and answers `{available: false}` with maps off
 (`services/maps`). Managed Google gates the Google routes and their callback.
-Text inference needs no capability but inference.
+Text inference needs no capability but inference. Sign-in, native client,
+public service and return page routes need none.
 
 ```quint
 type RouteArea =
@@ -205,8 +206,10 @@ pure def gateOf(area: RouteArea): RouteGate =
   else Ungated
 pure def routeOpen(offered: Set[Capability], gate: RouteGate): bool = match gate { | Gated(g) => offered.contains(g.capability) | Ungated => true }
 pure val capabilityRefusal: Refusal = refuse(CapabilityUnavailable)
+pure val alwaysOpenAreas: Set[RouteArea] = Set(MapsCapabilityRoute, BillingSnapshotRoutes, EntitlementRoutes, IdentityRoutes, NativeClientRoutes, PublicServiceRoutes, ReturnPageRoutes)
 pure def lawTextInferenceNeedsOnlyInference(area: RouteArea): bool =
   Set(ChatCompletionRoutes, ModelListRoutes).contains(area) implies routeOpen(Set(InferenceCapability), gateOf(area))
+pure def lawBalanceAndSignInNeedNoCapability(area: RouteArea): bool = routeOpen(Set(), gateOf(area)) iff alwaysOpenAreas.contains(area)
 ```
 
 ### The entitlement's services claim names the enabled capabilities in one fixed order
@@ -248,17 +251,22 @@ pure def lawNoCredentialsAcrossEnvironments(p: Profile, environment: Environment
 ### A sign-in method is offered only when its adapter is configured
 
 `GET /api/v1/auth/methods` answers `{email, sms, google}`. Email needs a mail
-adapter, SMS an SMS adapter, Google configured Google clients. A configured
-provider is offered only on a host that mounts that method's start and
-verification routes. A route of a method not offered is refused for good: Google as `503 provider_unavailable`
-with reason `google_not_configured` (the registry's config read says the
-same), email and SMS as `404 capability_unavailable`.
+adapter, SMS an SMS adapter, Google configured Google clients; an accepted
+profile configures at least one. A host advertises a configured method only
+when it mounts that method’s start and verification routes. A route of a
+method not offered is refused for good. Google returns
+`503 provider_unavailable` with reason `google_not_configured` (the registry's
+config read says the same). Email and SMS return `404 capability_unavailable`.
 
 ```quint
 type MethodsAnswer = { email: bool, sms: bool, google: bool }
 pure def methodOffered(setup: SignInSetup, m: SignInMethod): bool =
   if (m == EmailSignIn) setup.mail != NoDelivery else if (m == PhoneSignIn) setup.sms != NoDelivery else setup.google == GoogleOn
 pure def methodsAnswer(setup: SignInSetup): MethodsAnswer = { email: methodOffered(setup, EmailSignIn), sms: methodOffered(setup, PhoneSignIn), google: methodOffered(setup, GoogleSignIn) }
+pure def lawAnAcceptedProfileOffersSomeMethod(p: Profile, environment: Environment): bool = {
+  val answer = methodsAnswer(rowOf(p, environment).signIn)
+  profileAccepted(p) implies (answer.email or answer.sms or answer.google)
+}
 pure def mountedMethodsAnswer(setup: SignInSetup, mounted: MethodsAnswer): MethodsAnswer = {
   email: mounted.email and methodOffered(setup, EmailSignIn),
   sms: mounted.sms and methodOffered(setup, PhoneSignIn),

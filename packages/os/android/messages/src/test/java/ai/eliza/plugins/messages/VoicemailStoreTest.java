@@ -219,14 +219,14 @@ public final class VoicemailStoreTest {
   require(refusal(() -> VoicemailStore.fetch(context, 8, new CancellationSignal())).equals("not-found"), "no such voicemail");
  }
 
- @Test public void heardAndDeleteReportWhetherTheRowExisted() throws Exception {
+ @Test public void heardAndDeleteReportWhatTheProviderReadsBack() throws Exception {
   source("1", 0);
   voicemail(2, 2000);
   voicemail(1, 1000);
-  require(VoicemailStore.markHeard(context, 2) && !VoicemailStore.markHeard(context, 8), "heard only for a stored row");
+  require(VoicemailStore.markHeard(context, 2).equals("marked") && VoicemailStore.markHeard(context, 8).equals("not-found"), "heard only for a stored row, read back");
   JSONArray rows = VoicemailStore.list(context, 50, PHONE, "1", false, new CancellationSignal()).getJSONArray("voicemails");
   require(!rows.getJSONObject(0).getBoolean("isNew") && rows.getJSONObject(1).getBoolean("isNew"), "only that row is heard");
-  require(VoicemailStore.delete(context, 2) && !VoicemailStore.delete(context, 2), "deleted once");
+  require(VoicemailStore.delete(context, 2).equals("deleted") && VoicemailStore.delete(context, 2).equals("not-found"), "deleted once, read back");
   require(VoicemailStore.list(context, 50, PHONE, "1", false, new CancellationSignal()).getJSONArray("voicemails").length() == 1, "the other row stays");
  }
 }

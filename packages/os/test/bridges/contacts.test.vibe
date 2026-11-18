@@ -1,0 +1,356 @@
+// spec/os/android/contacts.md, "Story: Read my contacts only while I am looking at them"; spec/os/android/contacts.md, "Story: Change only the contact I reviewed"; spec/os/android/paging.md, "Story: Page my records without repeats or gaps"
+import { assert, it } from "@effect/vitest"
+import {
+  ContactCallRejected,
+  ContactCursorRefused,
+  ContactReadRefused,
+  ContactWriteRefused,
+  InvalidContactRequest,
+  MalformedContactReply,
+  contactWriteAdvertised,
+  createAddressBookClient,
+} from "../../src/bridges/contacts.vibe"
+import type { ContactId, ContactVersion } from "../../src/bridges/definitions/contacts.ts"
+
+module android {
+  import { createHash } from "node:crypto"
+  import type { AddressBookNativePlugin, ContactDraft, ContactEmail, ContactPhone } from "../../src/bridges/definitions/contacts.ts"
+
+  interface Person {
+    id: string
+    displayName: string
+    givenName: string
+    familyName: string
+    notes?: string
+    phoneNumbers: ContactPhone[]
+    emailAddresses: ContactEmail[]
+    revision: number
+    oversized?: true
+  }
+
+  export interface Device {
+    available: boolean
+    readable: boolean
+    writable: boolean
+    people: Person[]
+    nextId: number
+    pageReply: unknown
+    saveReply: unknown
+    saves: number
+    handoffs: string[]
+  }
+
+  /** @throws {never} */
+  function person(id: number, givenName: string, familyName: string, changes: Partial<Person> = {}): Person {
+    return {
+      id: String(id),
+      displayName: `${givenName} ${familyName}`,
+      givenName,
+      familyName,
+      phoneNumbers: [{ number: `+1555010${id}`, type: "mobile" }],
+      emailAddresses: [],
+      revision: 1,
+      ...changes,
+    }
+  }
+
+  /** @throws {never} */
+  export function device(changes: Partial<Device> = {}): Device {
+    return {
+      available: true,
+      readable: false,
+      writable: false,
+      people: [
+        person(1, "Ada", "Lovelace"),
+        person(2, "Alan", "Turing"),
+        person(3, "Katherine", "Johnson", { emailAddresses: [{ address: "kj@example.org", type: "work" }] }),
+        person(4, "Long", "Record", { oversized: true }),
+        person(5, "Edsger", "Dijkstra"),
+      ],
+      nextId: 6,
+      pageReply: undefined,
+      saveReply: undefined,
+      saves: 0,
+      handoffs: [],
+      ...changes,
+    }
+  }
+
+  /** @throws {never} */
+  export function versionOf(id: string, revision: number): string {
+    return createHash("sha256").update(`${id}:${revision}`).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function androidContacts(phone: Device): AddressBookNativePlugin {
+    const status = () => ({ available: phone.available, readable: phone.readable, writable: phone.readable && phone.writable })
+    const find = (id: string) => phone.people.find((one) => one.id === id)
+    const fields = (one: Person, draft: ContactDraft) => {
+      one.displayName = draft.displayName
+      one.givenName = draft.givenName ?? one.givenName
+      one.familyName = draft.familyName ?? one.familyName
+      one.phoneNumbers = draft.phoneNumbers
+      one.emailAddresses = draft.emailAddresses
+      if (draft.notes !== undefined) one.notes = draft.notes
+    }
+    const once = (reply: unknown) => {
+      phone.saveReply = undefined
+      return reply
+    }
+    return {
+      status: async () => status(),
+      requestPermissions: async () => {
+        phone.readable = true
+        phone.writable = true
+        return status()
+      },
+      list: async ({ query, limit, cursor }) => {
+        if (phone.pageReply !== undefined) return phone.pageReply
+        const parts = cursor === undefined ? undefined : /^v1\.(\d+)\.(\d+)\./.exec(cursor)
+        const offset = Number(parts?.[1] ?? 0)
+        const after = Number(parts?.[2] ?? 0)
+        const found = phone.people
+          .filter((one) => one.displayName.toLowerCase().includes(query.toLowerCase()) && Number(one.id) > after)
+          .sort((x, y) => Number(x.id) - Number(y.id))
+        const page = found.slice(0, limit)
+        const more = found.length > limit
+        const last = page.at(-1)
+        return {
+          contacts: page.map((one) =>
+            one.oversized === true
+              ? { id: one.id, incomplete: true, reason: "field-too-long" }
+              : {
+                  id: one.id,
+                  lookup: `lookup-${one.id}`,
+                  name: one.displayName,
+                  revision: String(one.revision),
+                  starred: false,
+                  phones: one.phoneNumbers.map(({ number }) => number),
+                  emails: one.emailAddresses.map(({ address }) => address),
+                },
+          ),
+          more,
+          ...(more && last !== undefined ? { next: `v1.${offset + page.length}.${last.id}.${encodeURIComponent(query)}` } : {}),
+        }
+      },
+      create: async () => {
+        phone.handoffs.push("create")
+        return { status: "returned" }
+      },
+      edit: async ({ id }) => {
+        phone.handoffs.push(`edit ${id}`)
+        return { status: "returned" }
+      },
+      get: async ({ id }) => {
+        const one = find(id)
+        if (one === undefined) throw new Error("Contact not found")
+        return {
+          id: one.id,
+          lookup: `lookup-${one.id}`,
+          displayName: one.displayName,
+          givenName: one.givenName,
+          familyName: one.familyName,
+          ...(one.notes === undefined ? {} : { notes: one.notes }),
+          starred: false,
+          phoneNumbers: one.phoneNumbers,
+          emailAddresses: one.emailAddresses,
+          version: versionOf(one.id, one.revision),
+        }
+      },
+      save: async ({ id, version, ...draft }) => {
+        phone.saves += 1
+        if (phone.saveReply !== undefined) return once(phone.saveReply)
+        if (id === undefined) {
+          const made: Person = { id: String(phone.nextId++), displayName: "", givenName: "", familyName: "", phoneNumbers: [], emailAddresses: [], revision: 1 }
+          fields(made, draft)
+          phone.people.push(made)
+          return { status: "saved", id: made.id, version: versionOf(made.id, made.revision) }
+        }
+        const one = find(id)
+        if (one === undefined) return { status: "not-found" }
+        if (versionOf(one.id, one.revision) !== version) return { status: "stale" }
+        fields(one, draft)
+        one.revision += 1
+        return { status: "saved", id: one.id, version: versionOf(one.id, one.revision) }
+      },
+      remove: async ({ id, version }) => {
+        const one = find(id)
+        if (one === undefined) return { status: "not-found" }
+        if (versionOf(one.id, one.revision) !== version) return { status: "stale" }
+        phone.people = phone.people.filter((other) => other !== one)
+        return { status: "deleted" }
+      },
+    }
+  }
+}
+import { androidContacts, device, versionOf } from android
+
+effect function refusal(call: () => Promise<unknown>) {
+  const { cause } = try flip(tryPromise(() => call()))
+  if (cause instanceof ContactReadRefused) return `read refused ${cause.viewOpen ? "open" : "closed"} ${cause.admission}`
+  if (cause instanceof ContactWriteRefused) return `write refused ${cause.gate} ${cause.admission}`
+  if (cause instanceof ContactCursorRefused) return `cursor refused ${cause.reason}`
+  if (cause instanceof InvalidContactRequest) return `invalid ${cause.problem}`
+  if (cause instanceof MalformedContactReply) return `malformed ${cause.method}`
+  if (cause instanceof ContactCallRejected) return `rejected ${cause.method}`
+  return cause
+}
+
+const ada = { id: "1" as ContactId, lookup: "lookup-1", name: "Ada Lovelace", revision: "1", starred: false, phones: ["+15550101"], emails: [] }
+const alan = { id: "2" as ContactId, lookup: "lookup-2", name: "Alan Turing", revision: "1", starred: false, phones: ["+15550102"], emails: [] }
+const katherine = { id: "3" as ContactId, lookup: "lookup-3", name: "Katherine Johnson", revision: "1", starred: false, phones: ["+15550103"], emails: ["kj@example.org"] }
+const edsger = { id: "5" as ContactId, lookup: "lookup-5", name: "Edsger Dijkstra", revision: "1", starred: false, phones: ["+15550105"], emails: [] }
+
+it.live("Read my contacts a page at a time only while the Contacts view is open with the read grant (spec/os/android/contacts.md, \"Story: Read my contacts only while I am looking at them\"; spec/os/android/contacts.md, \"Only the current read publishes rows, and rows stay only in the open view with the read grant\"; spec/os/android/contacts.md, \"A grant change retires every read and hides what the withdrawn grant allowed\"; spec/os/android/paging.md, \"Story: Page my records without repeats or gaps\")", () => effect {
+  const phone = device()
+  const book = createAddressBookClient({ install: "WritingInstall", plugin: androidContacts(phone) })
+  const closed = try refusal(() => book.list({ query: "" }))
+  const opened = try promise(() => book.open())
+  const ungranted = try refusal(() => book.list({ query: "" }))
+  const granted = try promise(() => book.requestPermissions())
+  const first = try promise(() => book.list({ query: "", limit: 2 }))
+  const second = try promise(() => book.list({ query: "", limit: 2, cursor: first.next ?? undefined }))
+  const third = try promise(() => book.list({ query: "", limit: 2, cursor: second.next ?? undefined }))
+  const shown = (try promise(() => book.state())).rowsShown
+  const otherQuery = try refusal(() => book.list({ query: "a", limit: 2, cursor: first.next ?? undefined }))
+  const forged = try refusal(() => book.list({ query: "", cursor: "v2.forged" as never }))
+  const unbounded = try refusal(() => book.list({ query: "", limit: 201 }))
+  const nul = try refusal(() => book.list({ query: "a\0b" }))
+  const searched = try promise(() => book.list({ query: "an" }))
+  phone.pageReply = { contacts: [{ ...ada, revision: "1" }, { ...ada, revision: "1" }], more: false }
+  const repeated = try refusal(() => book.list({ query: "" }))
+  const afterRepeat = (try promise(() => book.state())).rowsShown
+  phone.pageReply = undefined
+  const detail = try promise(() => book.get("3" as ContactId))
+  phone.readable = false
+  const revoked = try promise(() => book.status())
+  const afterRevoke = try promise(() => book.state())
+  const withdrawn = try refusal(() => book.list({ query: "" }))
+  phone.readable = true
+  try promise(() => book.list({ query: "" }))
+  try promise(() => book.close())
+  const afterClose = try promise(() => book.state())
+  const shut = try refusal(() => book.get("1" as ContactId))
+
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      closed, opened, ungranted, granted, first, second, third, shown, otherQuery, forged, unbounded, nul, searched, repeated, afterRepeat, detail,
+      revoked, afterRevoke: { rowsShown: afterRevoke.rowsShown, grants: afterRevoke.grants }, withdrawn,
+      afterClose: { viewOpen: afterClose.viewOpen, rowsShown: afterClose.rowsShown, read: afterClose.read }, shut,
+    },
+    {
+      closed: "read refused closed HostNotReady",
+      opened: { available: true, readable: false, writable: false },
+      ungranted: "read refused open HostNotReady",
+      granted: { available: true, readable: true, writable: true },
+      first: { contacts: [ada, alan], next: "v1.2.2." },
+      second: { contacts: [katherine, { id: "4", incomplete: true, reason: "field-too-long" }], next: "v1.4.4." },
+      third: { contacts: [edsger], next: null },
+      shown: true,
+      otherQuery: "cursor refused OtherQuery",
+      forged: "invalid invalid-cursor",
+      unbounded: "invalid unbounded-page",
+      nul: "invalid unbounded-page",
+      searched: { contacts: [alan], next: null },
+      repeated: "malformed list",
+      afterRepeat: false,
+      detail: {
+        id: "3",
+        lookup: "lookup-3",
+        displayName: "Katherine Johnson",
+        givenName: "Katherine",
+        familyName: "Johnson",
+        starred: false,
+        phoneNumbers: [{ number: "+15550103", type: "mobile" }],
+        emailAddresses: [{ address: "kj@example.org", type: "work" }],
+        version: versionOf("3", 1),
+      },
+      revoked: { available: true, readable: false, writable: false },
+      afterRevoke: { rowsShown: false, grants: { readGranted: false, writeGranted: false } },
+      withdrawn: "read refused open HostNotReady",
+      afterClose: { viewOpen: false, rowsShown: false, read: { tag: "NoRead" } },
+      shut: "read refused closed CallAdmitted",
+    },
+  ))
+})
+
+it.live("Save or remove only the contact I reviewed, and check a lost answer with an explicit read before writing again (spec/os/android/contacts.md, \"Story: Change only the contact I reviewed\"; spec/os/android/contacts.md, \"A contact write runs only on a writing install that can advertise contacts.write.v1, in front with focus\"; spec/os/android/contacts.md, \"An edit or removal asserts the reviewed aggregate version inside the provider transaction\"; spec/os/android/contacts.md, \"A lost or malformed reply blocks another write until an explicit read that began after it settled\")", () => effect {
+  const phone = device({ readable: true, writable: true })
+  const reader = createAddressBookClient({ install: "ReadOnlyInstall", plugin: androidContacts(phone) })
+  try promise(() => reader.open())
+  const readOnly = try refusal(() => reader.createContact({ displayName: "Mary Jackson", phoneNumbers: [], emailAddresses: [] }))
+  const status = { available: true, readable: true, writable: true }
+  const advertised = {
+    readOnly: contactWriteAdvertised("ReadOnlyInstall", status),
+    writing: contactWriteAdvertised("WritingInstall", status),
+    ungranted: contactWriteAdvertised("WritingInstall", { ...status, writable: false }),
+  }
+
+  const book = createAddressBookClient({ install: "WritingInstall", plugin: androidContacts(phone) })
+  const unopened = try refusal(() => book.createContact({ displayName: "Mary Jackson", phoneNumbers: [], emailAddresses: [] }))
+  try promise(() => book.open())
+  const empty = try refusal(() => book.createContact({ displayName: "", phoneNumbers: [], emailAddresses: [] }))
+  const badNumber = try refusal(() => book.createContact({ displayName: "Mary Jackson", phoneNumbers: [{ number: "+1\n555", type: "mobile" }], emailAddresses: [] }))
+  const created = try promise(() => book.createContact({ displayName: "Mary Jackson", givenName: "Mary", familyName: "Jackson", phoneNumbers: [{ number: "+15550106", type: "work" }], emailAddresses: [] }))
+  const reviewed = try promise(() => book.get("1" as ContactId, "ExplicitRead"))
+  const draft = { displayName: "Ada King", givenName: "Ada", familyName: "King", phoneNumbers: reviewed.phoneNumbers, emailAddresses: [] }
+  const updated = try promise(() => book.updateContact(reviewed, draft))
+  const stale = try promise(() => book.updateContact(reviewed, { ...draft, displayName: "Ada Byron" }))
+  const afterStale = try promise(() => book.state())
+  const badVersion = try refusal(() => book.updateContact({ id: "1" as ContactId, version: "nope" as ContactVersion }, draft))
+  const handoffs = { create: try promise(() => book.create()), edit: try promise(() => book.edit(ada)), unrevised: try promise(() => book.edit({ ...ada, revision: null })) }
+
+  const current = try promise(() => book.get("1" as ContactId, "ExplicitRead"))
+  phone.saveReply = { status: "saved", id: "1" }
+  const lost = try promise(() => book.updateContact(current, { ...draft, notes: "Analyst" }))
+  const afterLost = try promise(() => book.state())
+  const blocked = try refusal(() => book.remove(current))
+  try promise(() => book.list({ query: "" }))
+  const afterAutomatic = (try promise(() => book.state())).gate
+  try promise(() => book.close())
+  const afterClose = (try promise(() => book.state())).gate
+  try promise(() => book.open())
+  const stillBlocked = try refusal(() => book.createContact({ displayName: "Dorothy Vaughan", phoneNumbers: [], emailAddresses: [] }))
+  const checked = try promise(() => book.get("1" as ContactId, "ExplicitRead"))
+  const afterExplicit = (try promise(() => book.state())).gate
+  const removed = try promise(() => book.remove(checked))
+  const gone = try promise(() => book.remove(checked))
+  phone.writable = false
+  const unwritable = try refusal(() => book.createContact({ displayName: "Dorothy Vaughan", phoneNumbers: [], emailAddresses: [] }))
+
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      readOnly, advertised, unopened, empty, badNumber, created, updated, stale, afterStale: { gate: afterStale.gate, lastWrite: afterStale.lastWrite }, badVersion, handoffs,
+      lost, afterLost: { gate: afterLost.gate, lastWrite: afterLost.lastWrite }, blocked, afterAutomatic, afterClose, stillBlocked,
+      checked: checked.notes ?? null, afterExplicit, removed, gone, unwritable, saves: phone.saves, handoffLog: phone.handoffs,
+      left: phone.people.map((one) => one.displayName),
+    },
+    {
+      readOnly: "write refused WriteIdle BridgeUnavailable",
+      advertised: { readOnly: false, writing: true, ungranted: false },
+      unopened: "write refused WriteIdle CallAdmitted",
+      empty: "invalid empty-contact",
+      badNumber: "invalid invalid-number",
+      created: { status: "saved", id: "6", version: versionOf("6", 1) },
+      updated: { status: "saved", id: "1", version: versionOf("1", 2) },
+      stale: { status: "stale" },
+      afterStale: { gate: "WriteIdle", lastWrite: { tag: "Wrote", result: "Conflict" } },
+      badVersion: "invalid invalid-version",
+      handoffs: { create: "Opened", edit: "Opened", unrevised: "Refused" },
+      lost: { status: "unknown" },
+      afterLost: { gate: "WriteUnsettled", lastWrite: { tag: "Wrote", result: "Uncertain" } },
+      blocked: "write refused WriteUnsettled CallAdmitted",
+      afterAutomatic: "WriteUnsettled",
+      afterClose: "WriteUnsettled",
+      stillBlocked: "write refused WriteUnsettled CallAdmitted",
+      checked: null,
+      afterExplicit: "WriteIdle",
+      removed: { status: "deleted" },
+      gone: { status: "not-found" },
+      unwritable: "write refused WriteIdle PermissionRequired",
+      saves: 4,
+      handoffLog: ["create", "edit 1"],
+      left: ["Alan Turing", "Katherine Johnson", "Long Record", "Edsger Dijkstra", "Mary Jackson"],
+    },
+  ))
+})

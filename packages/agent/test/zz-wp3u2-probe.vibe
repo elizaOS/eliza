@@ -1,0 +1,13 @@
+// spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"
+import { FetchHttpClient } from "effect/http"
+import { Refused } from "../src/models/chat.vibe"
+import { probeOwnKey, type OwnKeyModels } from "../src/models/own-key-provider.vibe"
+
+export function probeOwnKeyModels(own: OwnKeyModels, key: string): Promise<readonly string[] | string> {
+  const probe = effect {
+    return try probeOwnKey(own, Redacted.make(key))
+  } catch (error) => match (error) {
+    when Refused: error.cloud.tag;
+  }
+  return runPromise(Effect.provide(probe, FetchHttpClient.layer))
+}

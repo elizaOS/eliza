@@ -11,9 +11,11 @@ export { SpeechRelayCoordinator } from "./speech-relay.vibe"
 import { speechRequest, speechRoute, speechWebSocket, type SpeechEnv } from "./speech.vibe"
 import { googleRequest, type GoogleEnv } from "./google.vibe"
 import { billingRequest, refreshPaidAccess, stripeWebhook, stripeWebhookRoute, sweepSubscriptions, type BillingEnv } from "./billing.vibe"
+import { CLEF_DECISIONS_PATH } from "./clef-decisions.vibe"
+import { clefRequest, type ClefEnv } from "./clef-worker.vibe"
 import { inferenceRequest, limitedBody, type InferenceEnv } from "./inference.vibe"
 
-export type CloudBindings = IdentityEnv & GoogleEnv & InferenceEnv & SpeechEnv & BillingEnv & WorkerDatabase
+export type CloudBindings = ClefEnv & IdentityEnv & GoogleEnv & InferenceEnv & SpeechEnv & BillingEnv & WorkerDatabase
 type DeploymentExtension<E extends CloudBindings> = (request: Request, env: E, db: Client, account: string) => Promise<Response>
 
 async function route<E extends CloudBindings>(request: Request, env: E, db: Client, extension?: DeploymentExtension<E>) {
@@ -35,14 +37,16 @@ async function route<E extends CloudBindings>(request: Request, env: E, db: Clie
     }
     return identityRequest(request, env, db)
   }
+  const decisions = path === CLEF_DECISIONS_PATH
   const inference = path === "/api/v1/chat/completions" || path === "/api/v1/embeddings"
   if (path === speechRoute + "/ws") return speechWebSocket(request, env, db)
   const speech = path.startsWith(speechRoute + "/")
   const billing = path.startsWith("/api/v1/billing/")
   const google = path.startsWith("/api/v1/eliza/google/")
-  if (!inference && !speech && !billing && !google && !(extension && path.startsWith("/api/product/"))) return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
-  const account = inference || speech ? await inferenceAccount(request, db, env) : await sessionAccount(request, db)
+  if (!decisions && !inference && !speech && !billing && !google && !(extension && path.startsWith("/api/product/"))) return WorkerResponse.json({ error: "route_not_found" }, { status: 404 })
+  const account = decisions || inference || speech ? await inferenceAccount(request, db, env) : await sessionAccount(request, db)
   if (!account) return WorkerResponse.json({ error: "authentication_required" }, { status: 401 })
+  if (decisions) return clefRequest(request, env, db, account)
   if (inference || path === speechRoute + "/session") await refreshPaidAccess(env, db, account)
   if (speech) return speechRequest(request, env, db, account)
   if (inference) return inferenceRequest(request, env, db, account, workerFetch)
@@ -71,12 +75,14 @@ export function cloudWorker<E extends CloudBindings>(extension?: DeploymentExten
         cors.set("Access-Control-Allow-Origin", origin)
         cors.set("Access-Control-Allow-Credentials", "true")
       }
+      const path = new URL(request.url).pathname
       if (request.method === "OPTIONS") {
         cors.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        cors.set("Access-Control-Allow-Headers", "Authorization, Content-Type, Idempotency-Key")
+        cors.set("Access-Control-Allow-Headers", path === CLEF_DECISIONS_PATH
+          ? "Authorization, Content-Type, X-Eliza-Account"
+          : "Authorization, Content-Type, Idempotency-Key")
         return new WorkerResponse(null, { status: 204, headers: cors })
       }
-      const path = new URL(request.url).pathname
       if (request.method !== "GET" && !origin && !request.headers.has("authorization") &&
           path !== stripeWebhookRoute && path !== "/api/auth/device/exchange" && !nativeGooglePath(path) && !ownsPasswordBackupPath(path)) {
         return WorkerResponse.json({ error: "origin_required" }, { status: 403, headers: cors })

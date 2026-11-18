@@ -1,6 +1,13 @@
 // spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"
-export const migrations = [
-  `CREATE TABLE device_owner (
+import type { MigrationKind } from "../../gen/agent__storage__database.ts"
+
+export interface Migration {
+  readonly kind: MigrationKind
+  readonly sql: string
+}
+
+export const migrations: readonly Migration[] = [
+  { kind: "Additive", sql: `CREATE TABLE device_owner (
     singleton boolean PRIMARY KEY CHECK (singleton),
     agent_id uuid NOT NULL,
     user_id text CHECK (length(user_id) > 0),
@@ -22,5 +29,24 @@ export const migrations = [
   );
   CREATE INDEX device_records_room ON device_records (collection, room_id, created_at, key);
   CREATE INDEX device_records_world ON device_records (collection, world_id, created_at, key);
-  CREATE INDEX device_records_scope ON device_records (collection, table_name, created_at, key);`,
-] as const
+  CREATE INDEX device_records_scope ON device_records (collection, table_name, created_at, key);` },
+  { kind: "Additive", sql: `CREATE TABLE schedule_triggers (
+    id text PRIMARY KEY,
+    revision integer NOT NULL CHECK (revision > 0),
+    data jsonb NOT NULL
+  );
+  CREATE TABLE schedule_trigger_runs (
+    trigger_id text NOT NULL REFERENCES schedule_triggers (id) ON DELETE CASCADE,
+    seq integer NOT NULL CHECK (seq > 0),
+    data jsonb NOT NULL,
+    PRIMARY KEY (trigger_id, seq)
+  );
+  CREATE TABLE schedule_tasks (
+    task_id text PRIMARY KEY,
+    revision integer NOT NULL CHECK (revision > 0),
+    idempotency_key text UNIQUE CHECK (length(idempotency_key) > 0),
+    owner_visible boolean NOT NULL,
+    data jsonb NOT NULL
+  );
+  CREATE INDEX schedule_tasks_visible ON schedule_tasks (owner_visible, task_id);` },
+]

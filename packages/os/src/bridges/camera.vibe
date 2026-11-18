@@ -1,0 +1,465 @@
+// spec/os/android/camera.md, "Story: See the live view I opened"; spec/os/android/camera.md, "Story: Capture with the camera only from the live view"; spec/os/android/camera.md, "Only Android's explicit permission refusal counts as a denial"; spec/os/android/camera.md, "A recording is confirmed only by a complete bridge receipt that the host read back"
+import type { Admission } from "../../gen/os__android__bridge.ts"
+import {
+  answerOf,
+  canDismissDenial,
+  canDispatchPreview,
+  canEnterView,
+  canRearmView,
+  canReleasePreview,
+  canReserveWork,
+  canStartView,
+  canStopView,
+  completeVideoReceipt,
+  initial,
+  machineOver,
+  ownsTicket,
+  type AccessDenial,
+  type CameraAnswer,
+  type CameraView,
+  type Event,
+  type GrantRead,
+  type PreviewPhase,
+  type Work,
+} from "../../gen/os__android__camera.effect.vibe"
+import { nativeCall, nativeReply, settled, type BridgeUnavailable, type NativeRejection } from "./bridge.vibe"
+import type {
+  CameraAccessKind,
+  CameraClient,
+  CameraExclusive,
+  CameraKeepOutcome,
+  CameraKeepPort,
+  CameraPlugin,
+  CameraRecordingOutcome,
+  CameraRecordingReceipt,
+  CameraRecordingStart,
+  CameraSession,
+  CameraSessionOptions,
+  CameraSessionPhase,
+  CameraSessionSnapshot,
+  CameraStartOutcome,
+  CameraControlOutcome,
+  ScanImage,
+  ScanImageType,
+  ScanRefusal,
+} from "./definitions/camera.ts"
+
+export type * from "./definitions/camera.ts"
+
+module capacitor {
+  import { Capacitor, registerPlugin } from "@capacitor/core"
+  import type { CameraPlugin } from "./definitions/camera.ts"
+
+  /** @throws {never} */
+  export function cameraPlugin(name = "ElizaCamera"): CameraPlugin {
+    return registerPlugin<CameraPlugin>(name)
+  }
+
+  /** @throws {never} */
+  export function cameraRegistered(name = "ElizaCamera"): boolean {
+    return Capacitor.isPluginAvailable(name)
+  }
+
+  /** @throws {never} */
+  export function captureOperationId(): string {
+    return globalThis.crypto.randomUUID()
+  }
+}
+import { cameraPlugin, cameraRegistered, captureOperationId } from capacitor
+export { cameraPlugin, cameraRegistered, captureOperationId }
+
+const PLUGIN = "ElizaCamera"
+export const CAMERA_PERMISSION_DENIED = "CAMERA_PERMISSION_DENIED"
+export const MICROPHONE_DENIED = "MICROPHONE_DENIED"
+export const PREVIEW_STOPPED = "PREVIEW_STOPPED"
+
+schema Resolution { width: number; height: number }
+schema Device {
+  deviceId: string
+  label: string
+  direction: "front" | "back" | "external"
+  hasFlash: boolean
+  hasZoom: boolean
+  maxZoom: number
+  supportedResolutions: Resolution[]
+  supportedFrameRates: number[]
+}
+schema Devices { devices: Device[] }
+schema Preview {
+  width: number
+  height: number
+  deviceId: string
+  previewSize?: Resolution
+  captureSize?: Resolution
+  minZoom: number
+  maxZoom: number
+  zoom: number
+  hasFlash: boolean
+  flash: "on" | "off"
+}
+schema Photo {
+  base64?: string
+  thumbnail?: string
+  format: string
+  width: number
+  height: number
+  path?: string
+  exif?: Record<string, string | number>
+}
+schema Video { path: string; duration: number; width: number; height: number; fileSize: number; mimeType: string }
+schema RecordingState { isRecording: boolean; duration: number; fileSize: number }
+schema Settings {
+  settings: {
+    flash: "auto" | "on" | "off" | "torch"
+    zoom: number
+    focusMode: "auto" | "continuous" | "manual"
+    exposureMode: "auto" | "continuous" | "manual"
+    exposureCompensation: number
+    whiteBalance: "auto" | "daylight" | "cloudy" | "tungsten" | "fluorescent"
+    iso?: number
+    shutterSpeed?: number
+  }
+}
+schema CameraAccess { camera: "granted" | "denied" | "prompt" }
+schema Permissions { camera: "granted" | "denied" | "prompt"; microphone: "granted" | "denied" | "prompt"; photos: "granted" | "denied" | "prompt" | "limited" }
+schema KeepAnswer = { status: "saved"; id?: string; message?: string } | { status: "failed" | "unknown"; message?: string }
+
+function done(method: keyof CameraClient, call: () => Promise<unknown>): Promise<void> {
+  return settled(asVoid(nativeCall(PLUGIN, method, call)))
+}
+
+export function cameraClient(plugin: CameraPlugin = cameraPlugin()): CameraClient {
+  return {
+    checkCameraPermission: () => settled(nativeReply(PLUGIN, "checkCameraPermission", CameraAccess, () => plugin.checkCameraPermission())),
+    requestCameraPermission: () => settled(nativeReply(PLUGIN, "requestCameraPermission", CameraAccess, () => plugin.requestCameraPermission())),
+    getDevices: () => settled(nativeReply(PLUGIN, "getDevices", Devices, () => plugin.getDevices())),
+    startPreview: (options) => settled(nativeReply(PLUGIN, "startPreview", Preview, () => plugin.startPreview(options))),
+    stopPreview: () => done("stopPreview", () => plugin.stopPreview()),
+    setCaptureMode: (options) => done("setCaptureMode", () => plugin.setCaptureMode(options)),
+    switchCamera: (options) => settled(nativeReply(PLUGIN, "switchCamera", Preview, () => plugin.switchCamera(options))),
+    capturePhoto: (options) => settled(nativeReply(PLUGIN, "capturePhoto", Photo, () => plugin.capturePhoto(options))),
+    startRecording: (options) => done("startRecording", () => plugin.startRecording(options)),
+    stopRecording: () => settled(nativeReply(PLUGIN, "stopRecording", Video, () => plugin.stopRecording())),
+    getRecordingState: () => settled(nativeReply(PLUGIN, "getRecordingState", RecordingState, () => plugin.getRecordingState())),
+    getSettings: () => settled(nativeReply(PLUGIN, "getSettings", Settings, () => plugin.getSettings())),
+    setSettings: (options) => done("setSettings", () => plugin.setSettings(options)),
+    setZoom: (options) => done("setZoom", () => plugin.setZoom(options)),
+    setFocusPoint: (options) => done("setFocusPoint", () => plugin.setFocusPoint(options)),
+    setExposurePoint: (options) => done("setExposurePoint", () => plugin.setExposurePoint(options)),
+    checkPermissions: () => settled(nativeReply(PLUGIN, "checkPermissions", Permissions, () => plugin.checkPermissions())),
+    requestPermissions: () => settled(nativeReply(PLUGIN, "requestPermissions", Permissions, () => plugin.requestPermissions())),
+  }
+}
+
+function codeOf(failure: unknown): string | undefined {
+  const code = typeof failure === "object" && failure !== null && "code" in failure ? failure.code : undefined
+  return typeof code === "string" ? code : undefined
+}
+
+export function cameraAccessDenied(failure: unknown): CameraAccessKind | undefined {
+  const code = codeOf(failure)
+  return code === CAMERA_PERMISSION_DENIED ? "camera" : code === MICROPHONE_DENIED ? "microphone" : undefined
+}
+
+function admissionOf(rejection: BridgeUnavailable | NativeRejection): Admission {
+  return rejection._tag === "BridgeUnavailable" ? "BridgeUnavailable" : cameraAccessDenied(rejection) === undefined ? "CallAdmitted" : "PermissionRequired"
+}
+
+type Attempt = { kind: "answered"; reply: unknown } | { kind: "rejected"; rejection: BridgeUnavailable | NativeRejection }
+
+effect function attempt(method: string, call: () => Promise<unknown>): Attempt!! {
+  return effect {
+    const reply = try nativeCall(PLUGIN, method, call)
+    return { kind: "answered", reply } as Attempt
+  } catch (rejection) => ({ kind: "rejected", rejection }) as Attempt
+}
+
+function answerOfAttempt(seen: Attempt): CameraAnswer {
+  return seen.kind === "answered" ? answerOf("CallAdmitted", true) : answerOf(admissionOf(seen.rejection), false)
+}
+
+function videoAnswerOf(seen: Attempt): CameraAnswer {
+  return seen.kind === "rejected" && seen.rejection._tag === "NativeRejection" && seen.rejection.code === PREVIEW_STOPPED ? "AnswerPreviewLost" : answerOfAttempt(seen)
+}
+
+function grantOf(seen: unknown): GrantRead {
+  const camera = typeof seen === "object" && seen !== null && "camera" in seen ? seen.camera : undefined
+  return camera === "granted" ? "AccessGranted" : camera === "denied" || camera === "prompt" ? "AccessNotGranted" : "AccessUnreadable"
+}
+
+function positive(value: unknown): boolean {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+}
+
+function receiptFacts(video: unknown) {
+  const seen: Partial<Record<keyof CameraRecordingReceipt, unknown>> = typeof video === "object" && video !== null ? video : {}
+  return { pathPresent: typeof seen.path === "string" && seen.path !== "", durationPositive: positive(seen.duration), sizePositive: positive(seen.fileSize) }
+}
+
+export function completeRecording(video: unknown): video is CameraRecordingReceipt {
+  return completeVideoReceipt({ ...receiptFacts(video), hostReadBack: true })
+}
+
+function phaseOf(phase: PreviewPhase): CameraSessionPhase {
+  return match (phase) {
+    when "PreviewOff": "off";
+    when "PreviewStarting": "starting";
+    when "PreviewReady": "ready";
+    when "PreviewError": "error";
+  }
+}
+
+function deniedOf(denied: AccessDenial): CameraAccessKind | undefined {
+  return match (denied) {
+    when "NoDenial": undefined;
+    when "CameraAccessDenied": "camera";
+    when "MicrophoneAccessDenied": "microphone";
+  }
+}
+
+error HostTaskFailed { cause: unknown }
+
+async function run<A, E>(program: A!E): Promise<A> {
+  const exit = await runPromiseExit(program)
+  if (Exit.isSuccess(exit)) return exit.value
+  const failure = Cause.squash(exit.cause)
+  throw failure instanceof HostTaskFailed ? failure.cause : failure
+}
+
+export function createCameraSession<Preview, Recording, Video extends CameraRecordingReceipt>(
+  options: CameraSessionOptions<Preview, Recording, Video>,
+): CameraSession {
+  const { camera, hooks } = options
+  const registered = options.registered ?? (() => cameraRegistered())
+  let view: CameraView = initial
+  let finishing: Deferred.Deferred<CameraRecordingOutcome> | undefined
+  const releases = Semaphore.makeUnsafe(1)
+  const machine = Effect.runSync(machineOver(() => sync(() => view), (next) => sync(() => {
+    view = next
+  })))
+
+  effect function notify(hook: "changed" | "recordingFinishing" | "recordingFailed") {
+    try ignore(Effect.try(() => hooks[hook]?.()))
+  }
+
+  effect function present() {
+    return Effect.try(() => registered()) catch () => false
+  }
+
+  effect function send(event: Event): CameraView!! {
+    const next = try orDie(machine.send(event))
+    try notify("changed")
+    return next
+  }
+
+  effect function free(work: Work, token: number) {
+    if (view.work === work && view.workEpoch === token) try send({ type: "finishWork" })
+  }
+
+  effect function releaseQueued() {
+    if (!canReleasePreview(view)) return
+    try send({ type: "releasePreview" })
+    if (try present()) try ignore(tryPromise(() => camera.stopPreview()))
+  }
+
+  effect function finalizeNow(): CameraRecordingOutcome!! {
+    try notify("recordingFinishing")
+    const answer = try attempt("stopRecording", () => camera.stopRecording())
+    const video = answer.kind === "answered" ? answer.reply : undefined
+    const facts = receiptFacts(video)
+    const hostReadBack = completeRecording(video) && (try isSuccess(tryPromise(async () => hooks.recordingSaved(video as Video))))
+    const after = try send({ type: "observeVideoFinish", receipt: { ...facts, hostReadBack } })
+    if (after.finished === "RecordingConfirmed") return "saved"
+    try notify("recordingFailed")
+    return "failed"
+  }
+
+  effect function finalize(): CameraRecordingOutcome!! {
+    if (finishing !== undefined) return try Deferred.await(finishing)
+    if (view.work !== "RecordingFinishing") return "failed"
+    const shared = Deferred.makeUnsafe<CameraRecordingOutcome>()
+    finishing = shared
+    uninterruptible {
+      const outcome = try finalizeNow()
+      finishing = undefined
+      try Deferred.succeed(shared, outcome)
+      return outcome
+    }
+  }
+
+  effect function stop() {
+    if (canStopView(view)) try send({ type: "stopView" })
+    if (view.work === "RecordingFinishing") try finalize()
+    try releases.withPermit(releaseQueued())
+  }
+
+  effect function start(retry: boolean): CameraStartOutcome!! {
+    if (canEnterView(view)) try send({ type: "enterView" })
+    if (!canStartView(view, retry)) return { status: "skipped" }
+    const begun = try send({ type: "startView", retry, presence: (try present()) ? "PluginRegistered" : "PluginNotBuilt" })
+    if (begun.phase === "PreviewError") return { status: "unavailable", reason: "missing" }
+    const ticket = begun.epoch
+    const dispatched = try releases.withPermit(effect {
+      try releaseQueued()
+      if (!ownsTicket(view, ticket) || !canDispatchPreview(view)) return false
+      try send({ type: "dispatchPreview" })
+      return true
+    })
+    if (!dispatched) return { status: "stale" }
+    const answer = try attempt("startPreview", () => camera.startPreview(options.preview()))
+    const seen = try send({ type: "observePreview", ticket, previewAnswer: answerOfAttempt(answer) })
+    if (seen.epoch !== ticket) {
+      try releases.withPermit(releaseQueued())
+      return { status: "stale" }
+    }
+    if (seen.phase === "PreviewReady") return { status: "ready" }
+    if (seen.denied === "CameraAccessDenied") return { status: "denied" }
+    return { status: "unavailable", reason: "failed", error: answer.kind === "rejected" ? answer.rejection : undefined }
+  }
+
+  effect function control(task: () => Promise<unknown>): CameraControlOutcome!! {
+    if (!canReserveWork(view, "CameraControl")) return "skipped"
+    const token = (try send({ type: "reserveWork", work: "CameraControl" })).workEpoch
+    const ran = try isSuccess(tryPromise(() => task()))
+    try free("CameraControl", token)
+    return !ownsTicket(view, token) ? "stale" : ran ? "done" : "failed"
+  }
+
+  effect function startRecording(): CameraRecordingStart!! {
+    if (!canReserveWork(view, "RecordingStarting")) return "skipped"
+    const token = (try send({ type: "reserveWork", work: "RecordingStarting" })).workEpoch
+    const videoAnswer = videoAnswerOf(try attempt("startRecording", () => camera.startRecording(options.recording())))
+    const owned = ownsTicket(view, token)
+    const after = try send({ type: "readVideoStart", videoAnswer })
+    if (after.work === "RecordingActive") return "recording"
+    if (after.work === "RecordingFinishing") {
+      try finalize()
+      try releases.withPermit(releaseQueued())
+      return "stale"
+    }
+    return !owned ? "stale" : videoAnswer === "AnswerDenied" ? "denied" : "failed"
+  }
+
+  effect function finishRecording(): CameraRecordingOutcome!! {
+    if (view.work === "RecordingActive") try send({ type: "finishVideo" })
+    return try finalize()
+  }
+
+  effect function exclusive<T>(task: (token: number) => Promise<T>): CameraExclusive<T>!HostTaskFailed {
+    if (!view.foreground) return { status: "closed" }
+    if (!canReserveWork(view, "CameraCapture")) return { status: "busy" }
+    const token = (try send({ type: "reserveWork", work: "CameraCapture" })).workEpoch
+    const result = try exit(tryPromise({ try: () => task(token), catch: (cause) => new HostTaskFailed({ cause }) }))
+    try free("CameraCapture", token)
+    return { status: "done", value: try result }
+  }
+
+  effect function rearm(): boolean!! {
+    if (!canRearmView(view)) return false
+    const grant = effect {
+      return grantOf(try nativeCall(PLUGIN, "checkCameraPermission", () => camera.checkCameraPermission()))
+    } catch () => "AccessUnreadable" as GrantRead
+    if (!canRearmView(view)) return false
+    return (try send({ type: "rearmView", grant })).phase === "PreviewOff"
+  }
+
+  function snapshot(): CameraSessionSnapshot {
+    return {
+      phase: phaseOf(view.phase),
+      denied: deniedOf(view.denied),
+      controlBusy: view.work === "CameraControl",
+      capturing: view.work === "CameraCapture",
+      recording: view.work === "RecordingActive",
+      recordingStarting: view.work === "RecordingStarting",
+      finalizing: view.work === "RecordingFinishing",
+    }
+  }
+
+  return {
+    get phase() {
+      return phaseOf(view.phase)
+    },
+    get denied() {
+      return deniedOf(view.denied)
+    },
+    get recording() {
+      return view.work === "RecordingActive"
+    },
+    get recordingStarting() {
+      return view.work === "RecordingStarting"
+    },
+    get finalizing() {
+      return view.work === "RecordingFinishing"
+    },
+    get capturing() {
+      return view.work === "CameraCapture"
+    },
+    get controlBusy() {
+      return view.work === "CameraControl"
+    },
+    get busy() {
+      return view.work !== "CameraIdle"
+    },
+    view: () => structuredClone(view),
+    snapshot,
+    token: () => view.epoch,
+    current: (token) => ownsTicket(view, token),
+    start: (retry = false) => run(start(retry)),
+    stop: () => run(stop()),
+    control: (task) => run(control(task)),
+    startRecording: () => run(startRecording()),
+    finishRecording: () => run(finishRecording()),
+    exclusive: (task) => run(exclusive(task)),
+    rearm: () => run(rearm()),
+    clearDenied(kind) {
+      if (canDismissDenial(view) && (kind === undefined || kind === deniedOf(view.denied))) Effect.runSync(send({ type: "dismissDenial" }))
+    },
+  }
+}
+
+effect function kept<Item>(port: CameraKeepPort<Item>, item: Item, operationId: string, noun: "photo" | "video"): CameraKeepOutcome!! {
+  const lost: CameraKeepOutcome = { status: "unknown", message: `Keeping this ${noun} could not be confirmed. Check the library before trying again.` }
+  return effect {
+    const answer = try Schema.decodeUnknownEffect(KeepAnswer)(try tryPromise(() => port.run(item, operationId)))
+    if (answer.status === "saved") return answer
+    return { status: answer.status, message: answer.message || `The ${noun} was not kept.` }
+  } catch () => lost
+}
+
+export function keepCapture<Item>(port: CameraKeepPort<Item>, item: Item, operationId: string, noun: "photo" | "video" = "photo"): Promise<CameraKeepOutcome> {
+  return runPromise(kept(port, item, operationId, noun))
+}
+
+export const SCAN_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const satisfies readonly ScanImageType[]
+
+export const SCAN_LIMITS = {
+  pages: 20,
+  pageBytes: 16 * 1024 * 1024,
+  documentBytes: 64 * 1024 * 1024,
+  pixels: 32_000_000,
+} as const
+
+export const SCAN_REFUSALS: Readonly<Record<ScanRefusal, string>> = {
+  "unsupported-image": "Choose a JPEG, PNG or WebP image up to 16 MB.",
+  "dimensions-too-large": "Image dimensions are too large.",
+  "too-many-pages": "A document holds up to 20 pages.",
+  "document-too-large": "Choose pages up to 64 MB total.",
+}
+
+export function scanImageAdmitted(image: ScanImage | undefined): boolean {
+  return image !== undefined && SCAN_IMAGE_TYPES.some((type) => type === image.type) && image.size > 0 && image.size <= SCAN_LIMITS.pageBytes
+}
+
+export function scanDimensionsAdmitted(width: number, height: number): boolean {
+  return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0 && width * height <= SCAN_LIMITS.pixels
+}
+
+export function scanPagesRefusal(images: readonly ScanImage[]): ScanRefusal | null {
+  if (!images.every(scanImageAdmitted)) return "unsupported-image"
+  if (images.length > SCAN_LIMITS.pages) return "too-many-pages"
+  return images.reduce((sum, image) => sum + image.size, 0) > SCAN_LIMITS.documentBytes ? "document-too-large" : null
+}
+
+export function scanExportRetryable(status: string): boolean {
+  return ["cancelled", "failed", "unavailable", "too-large"].includes(status)
+}

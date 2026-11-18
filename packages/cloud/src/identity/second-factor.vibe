@@ -1,7 +1,7 @@
 // spec/cloud/identity/secondFactor.md, "Story: Set up and change my second factor"; spec/cloud/identity/secondFactor.md, "Story: Finish sign-in with my second factor"; spec/cloud/identity/secondFactor.md, "Story: Confirm it is me before a sensitive change"; spec/cloud/identity/sessions.md, "Story: Confirm it is me before a sensitive change"
 import {
   apply, challengeRefusal, decodeState, enrollmentOf, factorCodeAccepted, hasFactor, initial, isConfirmed, mayChangeFactors, noTotpStep, setupLive, totpStepAt, totpWindow,
-  NotAState, Rejected, type Event, type FactorMethod, type FactorStep, type SecondFactor
+  type NotAState, Rejected, type Event, type FactorMethod, type FactorStep, type SecondFactor
 } from "../../gen/cloud__identity__secondFactor.effect.vibe"
 import { decodeState as decodeFamily, elapse, initial as noFamily, signIn, type Family } from "../../gen/cloud__identity__sessions.effect.vibe"
 import { sendLimits, verifyPerDestination, verifyPerIp } from "../../gen/cloud__identity__codeChallenges.effect.vibe"
@@ -12,7 +12,7 @@ import { Deployment } from "../profile/profile.vibe"
 import { deliverSms } from "../providers/sms.vibe"
 import { admitAll } from "../shared/rate-limit.vibe"
 import { keyedDigest, newId, sameText, seal, unseal } from "../shared/sealing.vibe"
-import { loadRow, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
+import { loadRow, outputRows, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
 import { Store, toInt, toText, type Tx } from "../store/store.vibe"
 import type { Landed } from "./accounts.vibe"
 import { clientAddress } from "./code-challenges.vibe"
@@ -115,6 +115,8 @@ const wireOf: Readonly<Record<FactorMethod, WireMethod>> = { Totp: "totp", Sms: 
 const factorMethods: ReadonlyArray<FactorMethod> = ["Totp", "Sms"]
 const missed: Observed = { codeMatches: false, matchedStep: noTotpStep }
 
+export const storedFactorRows = outputRows("second_factors", { initial, decodeState, apply })
+
 function factorRows(caller: Family, personEpoch: number): MachineRows<SecondFactor, Event, FactorStep, Rejected, NotAState> {
   return {
     table: "second_factors",
@@ -215,7 +217,7 @@ effect function sessionOf(caller: Caller): SessionCaller!Refused {
 }
 
 effect function sendSms(to: string, code: string) {
-  deliverSms({ to, text: `Your verification code is ${code}. It expires in 5 minutes.` }) catch effect () => { throw refused("ProviderUnavailable") }
+  try deliverSms({ to, text: `Your verification code is ${code}. It expires in 5 minutes.` })
 }
 
 effect function sendLimited(context: RouteContext, phone: string) {
@@ -251,15 +253,19 @@ effect function factorsAnswer(tx: Tx, who: Owner, family: Family, caller: Sessio
   return { factors: factorsView(try current(tx, who, family), family.now), stepUpAt: moment(caller.stepUpAt), mfaAt: moment(caller.mfaAt) }
 }
 
-export effect function afterFirstFactor(tx: Tx, landed: Landed, clientId: string, now: number) {
+export effect function factorChallenge(tx: Tx, landed: Landed, clientId: string, now: number) {
   const who = try owner(tx, landed.userId)
   const caller = signInCaller(now, who.personEpoch)
-  if (!hasFactor((try current(tx, who, caller)).factors)) {
-    return try issueSession(tx, { userId: landed.userId, organizationId: landed.organizationId, assurance: "SingleFactor", accountCreated: landed.created, now })
-  }
+  if (!hasFactor((try current(tx, who, caller)).factors)) return undefined
   const challengeId = newId()
   const opened = (try stepFactors(tx, who, caller, { type: "openChallenge" }, { challenge_id: challengeId, challenge_client_id: clientId, challenge_digest: null })).state
   return { status: "mfa_required", challengeId, methods: confirmedMethods(opened), expiresAt: opened.challenge.expiresAt } satisfies MfaRequired
+}
+
+export effect function afterFirstFactor(tx: Tx, landed: Landed, clientId: string, now: number) {
+  const challenge = try factorChallenge(tx, landed, clientId, now)
+  if (challenge !== undefined) return challenge
+  return try issueSession(tx, { userId: landed.userId, organizationId: landed.organizationId, assurance: "SingleFactor", accountCreated: landed.created, now })
 }
 
 effect function challengeOwner(tx: Tx, challengeId: string) {

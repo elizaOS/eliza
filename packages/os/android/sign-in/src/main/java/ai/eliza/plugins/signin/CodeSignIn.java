@@ -1,0 +1,194 @@
+// spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"
+package ai.eliza.plugins.signin;
+
+import ai.eliza.plugins.signin.SignInCustody.Account;
+import ai.eliza.plugins.signin.SignInCustody.Refused;
+import ai.eliza.plugins.signin.SignInCustody.Session;
+import ai.eliza.plugins.signin.SignInPolicy.Failure;
+import ai.eliza.plugins.signin.SignInPolicy.Method;
+import ai.eliza.plugins.signin.SignInPolicy.Stage;
+import ai.eliza.plugins.signin.SignInPolicy.Verify;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+public final class CodeSignIn {
+  public static final String EMAIL_SEND = "/api/v1/auth/email/code/send";
+  public static final String EMAIL_VERIFY = "/api/v1/auth/email/code/verify";
+  public static final String SMS_SEND = "/api/v1/auth/sms/code/send";
+  public static final String SMS_VERIFY = "/api/v1/auth/sms/code/verify";
+  public static final String FACTOR_COMPLETE = "/api/v1/auth/mfa/complete";
+  public static final String FACTOR_SMS_SEND = "/api/v1/auth/mfa/sms/send";
+  public static final String LOGOUT = "/api/v1/auth/logout";
+  private static final int MAX_BODY = 65_536;
+  private static final int CONNECT_TIMEOUT_MS = 10_000;
+  private static final int READ_TIMEOUT_MS = 20_000;
+
+  public record Answer(int status, JSONObject body, String retryAfter) {
+    public String error() { return body.optString("error", ""); }
+    public String reason() { return body.optString("reason", ""); }
+  }
+
+  public interface Http {
+    Answer send(String method, String url, String body, String bearer) throws IOException;
+
+    default Answer post(String url, JSONObject body, String bearer) throws IOException { return send("POST", url, body.toString(), bearer); }
+  }
+
+  public static final Http CONNECTION = (method, url, body, bearer) -> {
+    HttpURLConnection connection = (HttpURLConnection) URI.create(url).toURL().openConnection();
+    try {
+      connection.setRequestMethod(method);
+      connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
+      connection.setReadTimeout(READ_TIMEOUT_MS);
+      connection.setInstanceFollowRedirects(false);
+      connection.setUseCaches(false);
+      connection.setRequestProperty("Accept", "application/json");
+      if (bearer != null) connection.setRequestProperty("Authorization", "Bearer " + bearer);
+      if (body != null) {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        connection.setDoOutput(true);
+        connection.setRequestProperty("Content-Type", "application/json");
+        connection.setFixedLengthStreamingMode(bytes.length);
+        try (OutputStream out = connection.getOutputStream()) { out.write(bytes); }
+      }
+      int status = connection.getResponseCode();
+      InputStream in = status >= 400 ? connection.getErrorStream() : connection.getInputStream();
+      return new Answer(status, object(read(in)), connection.getHeaderField("Retry-After"));
+    } finally {
+      connection.disconnect();
+    }
+  };
+
+  public sealed interface Verified {
+    record SignedIn(Session session) implements Verified {}
+    record FactorRequired(String challengeId, List<String> methods, long expiresAt) implements Verified {}
+    record NotVerified(Verify answer) implements Verified {}
+  }
+
+  public record Sent(long expiresAt, long resendAt) {}
+
+  public static final class NotSent extends Exception {
+    public final Failure failure;
+    public final long resendAt;
+    NotSent(Failure failure, long resendAt) { super(failure.wire, null, false, false); this.failure = failure; this.resendAt = resendAt; }
+  }
+
+  private final Http http;
+  private final String clientId;
+
+  public CodeSignIn(Http http, String clientId) { this.http = http; this.clientId = clientId; }
+
+  public Sent send(SignInRegistration.Environment environment, Method method, String destination, String verifier, long now) throws NotSent {
+    JSONObject body = json(destinationKey(method), destination, "clientId", clientId,
+      "codeChallenge", SignInPolicy.s256(verifier), "codeChallengeMethod", "S256");
+    Answer sent;
+    try { sent = http.post(environment.apiOrigin + (method == Method.SMS_CODE ? SMS_SEND : EMAIL_SEND), body, null); }
+    catch (IOException | RuntimeException unanswered) { throw new NotSent(Failure.UNAVAILABLE, 0); }
+    long resendAt = SignInPolicy.resendAt(sent.body.opt("retryAt"), sent.retryAfter, now);
+    if (sent.status != 200 && sent.status != 202) throw new NotSent(SignInPolicy.failureFor(Stage.SEND, sent.status, sent.error(), sent.reason()), resendAt);
+    return new Sent(SignInPolicy.codeExpiresAt(sent.body.opt("expiresAt"), now), resendAt);
+  }
+
+  public Verified verify(SignInRegistration.Environment environment, Method method, String destination, String code, String verifier) {
+    JSONObject body = json(destinationKey(method), destination, "code", code, "clientId", clientId, "codeVerifier", verifier);
+    return verified(environment.apiOrigin + (method == Method.SMS_CODE ? SMS_VERIFY : EMAIL_VERIFY), body);
+  }
+
+  public Verified completeFactor(SignInRegistration.Environment environment, String challengeId, String factor, String code) {
+    return verified(environment.apiOrigin + FACTOR_COMPLETE,
+      json("challengeId", challengeId, "method", factor, "code", code));
+  }
+
+  public void sendFactorCode(SignInRegistration.Environment environment, String challengeId) throws Refused {
+    Answer sent;
+    try { sent = http.post(environment.apiOrigin + FACTOR_SMS_SEND, json("challengeId", challengeId), null); }
+    catch (IOException | RuntimeException unanswered) { throw new Refused(Failure.UNAVAILABLE); }
+    if (sent.status != 200 && sent.status != 202) throw new Refused(SignInPolicy.failureFor(Stage.SEND, sent.status, sent.error(), sent.reason()));
+  }
+
+  public void logout(SignInRegistration.Environment environment, Session session) {
+    try { http.post(environment.apiOrigin + LOGOUT, json("refreshToken", session.refreshToken()), session.accessToken()); }
+    catch (IOException | RuntimeException ended) { return; }
+  }
+
+  private Verified verified(String url, JSONObject body) {
+    Answer answer;
+    try { answer = http.post(url, body, null); }
+    catch (IOException | RuntimeException unanswered) { return new Verified.NotVerified(Verify.UNANSWERED); }
+    return verified(answer, System.currentTimeMillis());
+  }
+
+  public static Verified verified(Answer answer, long now) {
+    String status = answer.body.optString("status", "");
+    Verify verify = SignInPolicy.verifyAnswer(answer.status, status, answer.error(), answer.reason());
+    if (verify == Verify.FACTOR_REQUIRED) {
+      String challengeId = answer.body.optString("challengeId", "");
+      long expiresAt = SignInPolicy.challengeExpiresAt(answer.body.opt("expiresAt"), null, now);
+      List<String> methods = factors(answer.body.optJSONArray("methods"));
+      return challengeId.isEmpty() || challengeId.length() > 256 || expiresAt == 0 || methods.isEmpty()
+        ? new Verified.NotVerified(Verify.MALFORMED) : new Verified.FactorRequired(challengeId, methods, expiresAt);
+    }
+    if (verify != Verify.VERIFIED) return new Verified.NotVerified(verify);
+    Session session = session(answer.body, now);
+    return session == null ? new Verified.NotVerified(Verify.MALFORMED) : new Verified.SignedIn(session);
+  }
+
+  public static Session session(JSONObject body, long now) {
+    JSONObject user = body.optJSONObject("user");
+    String userId = user == null ? "" : user.optString("id", "");
+    String organizationId = body.optString("organizationId", "");
+    String access = body.optString("accessToken", ""), refresh = body.optString("refreshToken", "");
+    long accessExpiresAt = SignInPolicy.instant(body.opt("accessExpiresAt"));
+    if (userId.isEmpty() || organizationId.isEmpty() || !SignInPolicy.validBearer(access) || !SignInPolicy.validBearer(refresh) || accessExpiresAt <= now) return null;
+    return new Session(new Account(userId, organizationId), access, refresh, accessExpiresAt);
+  }
+
+  private static List<String> factors(JSONArray methods) {
+    List<String> found = new ArrayList<>();
+    for (int i = 0; methods != null && i < methods.length(); i++) {
+      String method = methods.optString(i, "");
+      if ((method.equals("totp") || method.equals("sms")) && !found.contains(method)) found.add(method);
+    }
+    return found;
+  }
+
+  private static String destinationKey(Method method) { return method == Method.SMS_CODE ? "phone" : "email"; }
+
+  static JSONObject json(Object... pairs) {
+    JSONObject object = new JSONObject();
+    try {
+      for (int i = 0; i < pairs.length; i += 2) object.put((String) pairs[i], pairs[i + 1]);
+    } catch (JSONException invalid) {
+      throw new IllegalArgumentException(invalid);
+    }
+    return object;
+  }
+
+  static JSONObject object(String text) {
+    try { return text == null || text.isEmpty() ? new JSONObject() : new JSONObject(text); }
+    catch (JSONException malformed) { return new JSONObject(); }
+  }
+
+  private static String read(InputStream in) throws IOException {
+    if (in == null) return "";
+    try (InputStream source = in) {
+      ByteArrayOutputStream out = new ByteArrayOutputStream();
+      byte[] buffer = new byte[8192];
+      for (int n = source.read(buffer); n >= 0; n = source.read(buffer)) {
+        if (out.size() + n > MAX_BODY) throw new IOException("answer too large");
+        out.write(buffer, 0, n);
+      }
+      return new String(out.toByteArray(), StandardCharsets.UTF_8);
+    }
+  }
+}

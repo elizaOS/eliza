@@ -1,0 +1,65 @@
+// spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"; spec/agent/storage/database.md, "An empty store starts from the bundle's snapshot only at the bundle's schema version"
+import { assert, it } from "@effect/vitest"
+import { host, scratch } from "./support/kernel.vibe"
+
+module node {
+  import type { PGlite } from "@electric-sql/pglite"
+  import { createDeviceStorageSnapshot, openDeviceStorage, type DeviceStorageSnapshot } from "../src/storage/index.vibe"
+  import { migrations as shipped, type Migration } from "../src/storage/schema.vibe"
+
+  const v1 = shipped
+  const v2: readonly Migration[] = [...v1, { kind: "Additive", sql: "CREATE TABLE journey_notes (id integer PRIMARY KEY)" }]
+  const destructive: readonly Migration[] = [...v2, { kind: "Destructive", sql: "DROP TABLE journey_notes" }]
+  const failing: readonly Migration[] = [...v2, { kind: "Additive", sql: "CREATE TABLE journey_half (id integer); SELECT * FROM journey_missing" }]
+  const marked: readonly Migration[] = [...v1, { kind: "Additive", sql: "CREATE TABLE journey_seed_marker (id integer)" }]
+  const unmarked: readonly Migration[] = [...v1, { kind: "Additive", sql: "CREATE TABLE journey_unseeded (id integer)" }]
+
+  type Outcome = { version: number; tables: string[]; cached: unknown } | { refused: string }
+
+  async function visit(directory: string, list: readonly Migration[], snapshot?: DeviceStorageSnapshot, write = false): Promise<Outcome> {
+    const opened = await openDeviceStorage({
+      stateDirectory: directory, persistMemory: true, account: null, embeddingDimensions: 0, migrations: list,
+      ...(snapshot === undefined ? {} : { snapshot }),
+    }).catch((error: unknown) => ({ refused: typeof error === "object" && error !== null && "fault" in error ? String(error.fault) : String(error) }))
+    if ("refused" in opened) return opened
+    const { adapter } = opened
+    try {
+      if (write) await adapter.setCaches([{ key: "journey", value: { kept: true } }])
+      const db = await adapter.getConnection() as PGlite
+      const version = (await db.query<{ version: number }>("SELECT version FROM device_owner")).rows[0]?.version ?? 0
+      const tables = (await db.query<{ tablename: string }>("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename LIKE 'journey_%' ORDER BY tablename")).rows.map((row) => row.tablename)
+      return { version, tables, cached: (await adapter.getCaches(["journey"])).get("journey") }
+    } finally { await adapter.close() }
+  }
+
+  export async function upgradeJourney(state: (name: string) => string) {
+    const home = state("home")
+    const created = await visit(home, v1, undefined, true)
+    const upgraded = await visit(home, v2)
+    const refusedDestructive = await visit(home, destructive)
+    const afterDestructive = await visit(home, v2)
+    const refusedFailing = await visit(home, failing)
+    const afterFailing = await visit(home, v2)
+    const refusedNewer = await visit(home, v1)
+    const otherVersionSnapshot = await visit(state("other-snapshot"), v1, await createDeviceStorageSnapshot(v2))
+    const seeded = await visit(state("seeded"), unmarked, await createDeviceStorageSnapshot(marked))
+    return { shipped: v1.length, created, upgraded, refusedDestructive, afterDestructive, refusedFailing, afterFailing, refusedNewer, otherVersionSnapshot, seeded }
+  }
+}
+import { upgradeJourney } from node
+
+it.effect('A store is upgraded one additive migration at a time, refuses destructive, failing and newer schemas, and seeds only from a matching snapshot (spec/agent/storage/database.md, "Migrations run in number order, one transaction each, and a destructive or newer schema is refused"; "An empty store starts from the bundle\'s snapshot only at the bundle\'s schema version")', effect () => {
+  const state = try scratch("storage-migrations")
+  const walked = try host("migration journey", () => upgradeJourney((name) => state.file(name)))
+  const kept = { kept: true }
+  const base = walked.shipped
+  assert.deepStrictEqual(walked.created, { version: base, tables: [], cached: kept })
+  assert.deepStrictEqual(walked.upgraded, { version: base + 1, tables: ["journey_notes"], cached: kept })
+  assert.deepStrictEqual(walked.refusedDestructive, { refused: "DestructiveMigration" })
+  assert.deepStrictEqual(walked.afterDestructive, { version: base + 1, tables: ["journey_notes"], cached: kept })
+  assert.deepStrictEqual(walked.refusedFailing, { refused: "MigrationFailed" })
+  assert.deepStrictEqual(walked.afterFailing, { version: base + 1, tables: ["journey_notes"], cached: kept })
+  assert.deepStrictEqual(walked.refusedNewer, { refused: "NewerSchema" })
+  assert.deepStrictEqual(walked.otherVersionSnapshot, { version: base, tables: [], cached: undefined })
+  assert.deepStrictEqual(walked.seeded, { version: base + 1, tables: ["journey_seed_marker"], cached: undefined })
+}, 300_000)

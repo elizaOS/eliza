@@ -1,0 +1,79 @@
+// spec/agent/host/process.md, "Status says running only when health says ready, and the agent can respond only with a text backend and an unblocked account"; spec/agent/models/binding.md, "Each refusal is one account state, and the last failure records its kind and time without text"; spec/agent/access/auth.md, "A Root-only route admits only a caller holding the launch token"
+import type { AgentRuntime } from "@elizaos/core"
+import type { Backend } from "../../gen/agent__host__launch.ts"
+import { mayRespond } from "../../gen/agent__host__process.ts"
+import { blocked, failureName, initial, type AccountState, type LastCloudFailure } from "../../gen/agent__models__binding.ts"
+import { messageBodyLimitBytes } from "../../gen/agent__access__transport.ts"
+import type { LocalRoute } from "../access/routes.vibe"
+import type { LaunchDocument } from "./launch.vibe"
+
+export type AgentState = "starting" | "running" | "stopping"
+
+export interface BindingState {
+  readonly accountState: AccountState
+  readonly lastCloudFailure: LastCloudFailure
+}
+
+export interface StatusView {
+  readonly agentId: string
+  readonly name: string
+  readonly serverInstanceId: string
+  readonly backend: Backend
+  readonly embeddings: LaunchDocument["embeddings"]
+  readonly state: () => AgentState
+  readonly binding: () => BindingState
+  readonly now: () => number
+}
+
+export const usableBinding = (): BindingState => ({ accountState: initial.accountState, lastCloudFailure: initial.lastCloudFailure })
+
+export function agentStateOf(lifecycle: ReturnType<AgentRuntime["getLifecycleState"]>): AgentState {
+  switch (lifecycle) {
+    case "initializing": return "starting"
+    case "running": return "running"
+    case "failed":
+    case "stopping":
+    case "stopped": return "stopping"
+  }
+}
+
+export function backendOf(model: LaunchDocument["model"]): Backend {
+  switch (model.backend) {
+    case "cloud":
+      return { tag: "CloudBackend", baseUrl: model.cloudBaseUrl, baseUrlShape: "HttpsOrigin", smallModel: model.smallModel, largeModel: model.largeModel, imageModel: model.imageModel }
+    case "own-key":
+      return { tag: "OwnKeyBackend", baseUrl: model.ownKeyBaseUrl, baseUrlShape: new URL(model.ownKeyBaseUrl).origin === model.ownKeyBaseUrl ? "HttpsOrigin" : "HttpsWithPath", smallModel: model.ownKeySmall, largeModel: model.ownKeyLarge }
+    case "none":
+      return { tag: "NoBackend" }
+  }
+}
+
+const backendName = { CloudBackend: "cloud", OwnKeyBackend: "own-key", NoBackend: "none" } as const
+
+function lastFailure(last: LastCloudFailure) {
+  if (last.tag === "NoCloudFailure") return {}
+  const { failure, at } = last
+  return { lastCloudFailure: { kind: failureName(failure), at, ...(failure.tag === "LimitReached" ? { retryAt: failure.retryAt } : {}) } }
+}
+
+export function statusRoutes(view: StatusView): LocalRoute[] {
+  return [
+    {
+      method: "GET", path: "/api/status",
+      handler: () => {
+        const state = view.state()
+        const { accountState, lastCloudFailure } = view.binding()
+        const now = view.now()
+        return { status: 200, body: {
+          state, canRespond: mayRespond(state === "running", view.backend, accountState, now), blocked: blocked(accountState, now),
+          ...lastFailure(lastCloudFailure), serverInstanceId: view.serverInstanceId, backend: backendName[view.backend.tag],
+          embeddings: view.embeddings, requestBodyLimit: messageBodyLimitBytes,
+        } }
+      },
+    },
+    {
+      method: "GET", path: "/api/agents",
+      handler: () => ({ status: 200, body: { agents: [{ id: view.agentId, name: view.name, status: view.state() }] } }),
+    },
+  ]
+}

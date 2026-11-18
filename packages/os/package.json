@@ -80,7 +80,8 @@
     "typecheck": "vibelang --noEmit -p .",
     "test": "vitest run",
     "jvm:prepare": "node test/drivers/jvm-adapter.ts --compile",
-    "driver:os__agentService__channel": "node test/drivers/os__agentService__channel.ts"
+    "driver:os__agentService__channel": "node test/drivers/os__agentService__channel.ts",
+    "driver:os__agentService__lifecycle": "node test/drivers/os__agentService__lifecycle.ts"
   },
   "dependencies": {
     "@effect/platform-node": "4.1.1",

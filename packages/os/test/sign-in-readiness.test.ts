@@ -21,7 +21,7 @@ describe("Show only the methods the cloud is ready for", () => {
     const names = new Set(cases.map((c) => c.fn));
     expect(cases.length).toBeGreaterThan(1000);
     expect([...names].filter((name) => typeof functions[name] !== "function")).toEqual([]);
-    const differing = cases.filter((c) => JSON.stringify(functions[c.fn]!(...c.args)) !== JSON.stringify(c.result));
+    const differing = cases.filter((c) => JSON.stringify(functions[c.fn](...c.args)) !== JSON.stringify(c.result));
     expect(differing.slice(0, 5)).toEqual([]);
     for (const law of [...names].filter((name) => name.startsWith("law"))) {
       expect(cases.filter((c) => c.fn === law && c.result !== true)).toEqual([]);

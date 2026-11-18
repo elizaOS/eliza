@@ -34,11 +34,10 @@ pure def lawEveryInstantOfAnAllowedRangeIsSafe(rangeStart: int, rangeEnd: int, i
     (instant >= 0 and instant <= Num::maxSafeInteger)
 ```
 
-### Opening Android's editor reports Opened at most and changes nothing
+### Opening Android's editor changes no row, review, staged deletion or write gate
 
 Opening the editor on an event, or on a new one, is a bridge handoff: `Opened`
-is a preview receipt, never a write, and the row, review, staged deletion and
-write gate stay as they were.
+is a preview receipt, never a write.
 
 ```quint
 type ProviderChange = UpdateFields | DeleteRow | ExcludeOccurrence | CancelOccurrence | InsertCancelledOccurrence
@@ -230,7 +229,7 @@ pure val evidenceValues: Set[ScopeEvidence] = List(localParent, { ...localParent
 ).foldl(Set(), (acc, e) => acc.union(Set(e)))
 pure def lawOccurrenceNeverDeletesTheSeries(shape: Recurrence, writable: bool, evidence: ScopeEvidence, requested: RequestedScope): bool =
   resolvedScope(shape, evidence, requested) == OneOccurrence implies plannedChange(scopePlan(shape, writable, evidence, requested)) != DeleteRow
-pure def lawMovedExceptionIsCancelledAtItsOriginalStart(shape: Recurrence, writable: bool, evidence: ScopeEvidence, requested: RequestedScope): bool = {
+pure def lawSelectedExceptionIsCancelledInPlace(shape: Recurrence, writable: bool, evidence: ScopeEvidence, requested: RequestedScope): bool = {
   val plan = scopePlan(shape, writable, evidence, requested)
   (planWrites(plan) and evidence.selectedRow == ExceptionRow and resolvedScope(shape, evidence, requested) == OneOccurrence) implies plannedChange(plan) == CancelOccurrence
 }

@@ -147,6 +147,8 @@ pure def alwaysAnAskedJoinNamesItsNetwork(s: WifiJoin): bool = {
 }
 pure def sometimesDeclined(s: WifiJoin): bool = s.phase == JoinAnswered({ status: Declined })
 pure def sometimesRefusedAsInvalid(s: WifiJoin): bool = s.phase == JoinRefused({ refusal: JoinInvalid })
+pure def sometimesRefusedAsUnsupported(s: WifiJoin): bool = s.phase == JoinRefused({ refusal: JoinUnsupported })
+pure def sometimesNotSaved(s: WifiJoin): bool = s.phase == JoinRefused({ refusal: JoinNotSaved })
 ```
 
 ### Only a report of the requested network itself confirms the join or a sign-in portal

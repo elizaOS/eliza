@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "service": "example.fixture.host.FixtureAgentService",
+  "notification": { "channel": "Agent", "title": "Fixture agent", "text": "Running on this device" },
+  "cloud": { "baseUrl": "https://cloud.example.invalid" },
+  "routes": [{ "method": "GET", "path": "/api/health" }, { "method": "POST", "path": "/api/messages", "stream": true }]
+}
