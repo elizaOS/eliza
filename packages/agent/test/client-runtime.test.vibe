@@ -1,10 +1,6 @@
 // spec/agent/client/runtimeClient.md, "Story: Reach a runtime that is not running yet"; spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account"; spec/agent/client/runtimeClient.md, "Story: Understand why the runtime refused"
 import { assert, it } from "@effect/vitest"
-import { freePort } from "./support/child.ts"
-import { parseLaunch } from "../src/host/launch.vibe"
-import { startAgent } from "../src/host/process.vibe"
-import { host, scratch } from "./support/kernel.vibe"
-import { launchDocument, launchFrame } from "./support/scratch.ts"
+import { boot, host, ready } from "./support/kernel.vibe"
 
 module node {
   import { createRuntimeJsonClient, RuntimeRequestError, type RuntimeJsonBridge, type RuntimeStatus } from "../src/client/index.vibe"
@@ -109,19 +105,12 @@ it.live('With no bridge and no HTTP base a request fails as NoRoute and nothing 
 })
 
 it.live('A page with no bridge reaches a real agent over loopback HTTP and reads its refusal (spec/agent/client/runtimeClient.md, "Story: Understand why the runtime refused"; spec/agent/client/runtimeClient.md, "Story: Call the runtime for my current account")', effect () => {
-  const state = try scratch("client-http")
-  const port = try host("free port", () => freePort())
-  const frame = launchFrame()
-  const document = try Effect.try(() => launchDocument())
-  const parsed = try parseLaunch(JSON.stringify(document), JSON.stringify(frame))
-  const running = try acquireRelease(
-    startAgent({ ...parsed, stateDirectory: state.path, binding: { kind: "http", port } }),
-    (agent) => orDie(host("retire agent", () => agent.stop())),
-  )
+  const booted = try boot({ http: true })
+  try ready(booted)
+  const port = booted.transport.kind === "http" ? booted.transport.port : 0
   const observed = try host("loopback client", () => overLoopback(port))
-  try host("clean retirement", () => running.stop())
   try Effect.try(() => assert.deepStrictEqual(observed, {
-    health: { ready: true, runtime: "ok", agentState: "running", epoch: frame.epoch },
+    health: { ready: true, runtime: "ok", agentState: "running", epoch: booted.frame.epoch },
     refused: { status: 401, message: "unauthorized", code: undefined },
   }))
 }, 180_000)

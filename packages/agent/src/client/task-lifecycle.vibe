@@ -7,9 +7,11 @@ import {
 
 export const TASK_PAUSE_TIMEOUT_MS = 10_000
 
+const TaskId = Schema.String.check(Schema.isPattern(TASK_ID_PATTERN))
+
 export schema TaskView {
   readonly schemaVersion: 1
-  readonly id: Schema.String
+  readonly id: TaskId
   readonly revision: Schema.Int
   readonly epoch: Schema.Int
   readonly status: "active" | "paused" | "waiting" | "blocked" | "completed" | "cancelled"
@@ -60,11 +62,9 @@ const wireView = Schema.decodeUnknownOption(TaskView)
 
 function admit(reply: unknown): TaskViewResult {
   const hasMember = typeof reply === "object" && reply !== null && "task" in reply
-  const view = Option.filter(wireView(hasMember ? reply.task : undefined), (task) => TASK_ID_PATTERN.test(task.id))
-  return admitView(hasMember, hasMember && reply.task === null, Option.isSome(view), Option.match(view, {
-    onNone: () => shownOr(invalid),
-    onSome: (task) => ({ id: task.id, revision: task.revision, epoch: task.epoch, status: shownStatus[task.status], hasUnknownOutcome: task.hasUnknownOutcome }),
-  }))
+  const view = Option.map(wireView(hasMember ? reply.task : undefined), (task) =>
+    ({ id: task.id, revision: task.revision, epoch: task.epoch, status: shownStatus[task.status], hasUnknownOutcome: task.hasUnknownOutcome }))
+  return admitView(hasMember, hasMember && reply.task === null, Option.isSome(view), Option.getOrElse(view, () => shownOr(invalid)))
 }
 
 function project(session: Session, state: TaskClient): TaskLifecycleState {

@@ -116,7 +116,6 @@ public class UpdateJournal {
     public final String releasedCandidate;
     public final int releases;
     public final Hold hold;
-    /** False when the call named another attempt or a phase it does not apply to, and nothing changed. */
     public final boolean applied;
     Snapshot(State s) { this(s,true); }
     Snapshot(State s,boolean applied) {
@@ -155,11 +154,23 @@ public class UpdateJournal {
   }
   interface Exclusive<T> { T run() throws IOException; }
   private final Store store;
-  private static final int MAX_BYTES=1024*1024, MAGIC=0x53434f54, VERSION=5;
-  public UpdateJournal(Path directory, Durability durability) throws IOException { this(directory,durability,name->{}); }
-  public UpdateJournal(Path directory, Durability durability, Faults faults) throws IOException { this(new FileStore(directory,durability,faults)); }
-  UpdateJournal(Store store) { this.store=Objects.requireNonNull(store); }
+  private final UpdateHoldPort holds;
+  private static final int MAX_BYTES=1024*1024, MAGIC=0x53434f54, VERSION=6;
+  public UpdateJournal(Path directory, Durability durability, UpdateHoldPort holds) throws IOException { this(directory,durability,name->{},holds); }
+  public UpdateJournal(Path directory, Durability durability, Faults faults, UpdateHoldPort holds) throws IOException { this(new FileStore(directory,durability,faults),holds); }
+  UpdateJournal(Store store,UpdateHoldPort holds) { this.store=Objects.requireNonNull(store); this.holds=Objects.requireNonNull(holds); }
+  UpdateHoldPort holds() { return holds; }
   public Snapshot read() throws IOException { return locked(Snapshot::new); }
+  public Snapshot requestHold(String planId) throws IOException {
+    return transact(s->{requirePlan(s,planId);require((s.phase==Phase.VERIFIED||s.phase==Phase.RECOVERY_READY)&&s.hold==Hold.UNHELD,"No install awaits a hold");
+      s.hold=Hold.HOLD_REQUESTED;s.out.add(new Announcement(true,holdTarget(s)));});
+  }
+  public Snapshot acknowledgeHold(String planId,Identity target) throws IOException {
+    return transact(s->{requirePlan(s,planId);require(s.hold==Hold.HOLD_REQUESTED&&holdTarget(s).matches(target),"Hold acknowledged for another artifact");s.hold=Hold.HOLD_GRANTED;});
+  }
+  private static Identity holdTarget(State s){return s.phase==Phase.RECOVERY_READY?s.plan.recovery:s.plan.candidate;}
+  private static void conclude(State s,Identity installed){if(s.hold!=Hold.UNHELD)s.out.add(new Announcement(false,installed));s.hold=Hold.UNHELD;}
+  private static void requireHeld(State s,int sessionId) throws IOException {require(s.hold==Hold.HOLD_GRANTED,"The agent is not held for this install");require(sessionId>0,"Invalid install session");}
   public interface SnapshotAction { void run(Snapshot snapshot) throws IOException; }
   /** Short private-storage operations only; never perform network I/O here. */
   public void withLockedSnapshot(SnapshotAction action)throws IOException {
@@ -169,9 +180,9 @@ public class UpdateJournal {
   public Snapshot setChannel(String channel) throws IOException {
     if (!"stable".equals(channel) && !"beta".equals(channel)) throw new IllegalArgumentException("Unknown update channel");
     return transact(s->{
-      if (s.channel.equals(channel)) return;
+      if (s.channel.equals(channel)) { s.ignore(); return; }
       s.channel=channel; s.generation=increment(s.generation);s.probation=null;
-      if (s.phase==Phase.VERIFIED || s.phase==Phase.STAGING) { s.phase=Phase.IDLE; s.plan=null; s.session=-1; s.reason="channel_changed"; }
+      if (s.phase==Phase.VERIFIED || s.phase==Phase.STAGING) { conclude(s,s.plan.baseline); s.phase=Phase.IDLE; s.plan=null; s.session=-1; s.reason="channel_changed"; s.reported=null; }
     });
   }
   public Snapshot begin(Plan plan, Identity installed, long channelGeneration) throws IOException {
@@ -200,26 +211,26 @@ public class UpdateJournal {
   private static boolean samePlan(Plan a,Plan b){return a!=null&&b!=null&&a.id.equals(b.id)&&a.channel.equals(b.channel)&&a.distribution.equals(b.distribution)&&a.baseline.matches(b.baseline)&&a.candidate.matches(b.candidate)&&a.recovery.matches(b.recovery);}
   /** Discard only an uncommitted queued download, never an install or recovery. */
   public Snapshot discardStaging(String planId,long generation)throws IOException {
-    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.STAGING&&s.generation==generation,"Stale staging discard");s.plan=null;s.phase=Phase.IDLE;s.session=-1;s.reason="staging_invalidated";resetPending(s);});
+    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.STAGING&&s.generation==generation,"Stale staging discard");conclude(s,s.plan.baseline);s.plan=null;s.phase=Phase.IDLE;s.session=-1;s.reason="staging_invalidated";resetPending(s);});
   }
   /** Serialize the freshness check, the durable intent and the platform handoff
    * with channel changes. This is the only way into COMMITTING. */
   public Snapshot committingWithAction(String planId,int sessionId,long channelGeneration,FreshnessCheck fresh,CommitAction action)throws IOException {
     Objects.requireNonNull(fresh);Objects.requireNonNull(action);
-    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.VERIFIED,"Candidate is not ready");require(s.generation==channelGeneration,"Channel changed before commit");require(sessionId>=0,"Invalid install session");fresh.require(s.plan,s.generation);s.session=sessionId;s.phase=Phase.COMMITTING;},action);
+    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.VERIFIED,"Candidate is not ready");require(s.generation==channelGeneration,"Channel changed before commit");requireHeld(s,sessionId);fresh.require(s.plan,s.generation);s.session=sessionId;s.phase=Phase.COMMITTING;},action);
   }
   /** Drops a VERIFIED plan that a metadata refresh shows can no longer install.
    * Quarantine, floors and the channel generation stay. */
   public Snapshot discardVerified(String planId,long channelGeneration,String reason)throws IOException {
     requireReason(reason);
-    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.VERIFIED&&s.generation==channelGeneration,"Stale verified discard");s.plan=null;s.phase=Phase.IDLE;s.session=-1;s.reason="verified_invalidated:"+reason;resetPending(s);});
+    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.VERIFIED&&s.generation==channelGeneration,"Stale verified discard");conclude(s,s.plan.baseline);s.plan=null;s.phase=Phase.IDLE;s.session=-1;s.reason="verified_invalidated:"+reason;resetPending(s);});
   }
   /** Ends a RECOVERY_READY wait for a recovery that revocations or floors have
    * made permanently unloadable. Both artifacts are quarantined, and the failed
    * candidate stays installed until a newer release fixes forward. */
   public Snapshot recoveryUnavailable(String planId,String reason)throws IOException {
     requireReason(reason);
-    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.RECOVERY_READY&&s.attempts==0,"Recovery already attempted or not ready");quarantine(s,true);s.phase=Phase.QUARANTINED;s.reason="recovery_unavailable:"+reason;});
+    return transact(s->{requirePlan(s,planId);require(s.phase==Phase.RECOVERY_READY&&s.attempts==0,"Recovery already attempted or not ready");conclude(s,s.plan.candidate);quarantine(s,true);s.phase=Phase.QUARANTINED;s.reason="recovery_unavailable:"+reason;});
   }
   private static void requireReason(String reason){if(reason==null||!reason.matches("[a-z][a-z-]{0,47}"))throw new IllegalArgumentException("Invalid journal reason");}
   public Snapshot recoveringWithAction(String planId,int sessionId,CommitAction action)throws IOException {

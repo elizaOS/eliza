@@ -41,18 +41,28 @@ export interface CreditsAdded {
   readonly replayed: boolean
 }
 
-export effect function addCredits(input: { readonly organizationId: string; readonly amount: number; readonly requestKey: string }): CreditsAdded!(FundsFailure | OrganizationUnknown | InvalidCreditRequest | IdempotencyConflict)!Store {
+export interface CreditRequest {
+  readonly organizationId: string
+  readonly amount: number
+  readonly requestKey: string
+}
+
+export type CreditFailure = FundsFailure | OrganizationUnknown | InvalidCreditRequest | IdempotencyConflict
+
+export effect function addCreditsIn(tx: Tx, input: CreditRequest, now: number): CreditsAdded!CreditFailure {
   if (!input.requestKey.trim() || !Number.isSafeInteger(input.amount) || input.amount < 1) throw new InvalidCreditRequest()
+  const organization = try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [input.organizationId])
+  if (organization.length === 0) throw new OrganizationUnknown({ organizationId: input.organizationId })
+  const done = try tx.query("SELECT amount FROM credit_entries WHERE organization_id = $1 AND kind = 'add' AND request_key = $2", [input.organizationId, input.requestKey])
+  const decision = addDecision(done.length > 0, done.length ? toInt(done[0].amount) : 0, input.amount)
+  if (decision === "RefuseMismatchedReplay") throw new IdempotencyConflict({ requestKey: input.requestKey })
+  if (decision === "AnswerFirstEntry") return { organizationId: input.organizationId, balance: (try readFunds(tx, input.organizationId)).creditBalance, replayed: true }
+  const funds = try stepFunds(tx, input.organizationId, { type: "addCredits", known: false, amount: input.amount }, now, input.requestKey)
+  return { organizationId: input.organizationId, balance: funds.creditBalance, replayed: false }
+}
+
+export effect function addCredits(input: CreditRequest): CreditsAdded!CreditFailure!Store {
   const store = try Store
   const now = try Clock.currentTimeMillis
-  return try store.transaction(effect (tx: Tx) => {
-    const organization = try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE", [input.organizationId])
-    if (organization.length === 0) throw new OrganizationUnknown({ organizationId: input.organizationId })
-    const done = try tx.query("SELECT amount FROM credit_entries WHERE organization_id = $1 AND kind = 'add' AND request_key = $2", [input.organizationId, input.requestKey])
-    const decision = addDecision(done.length > 0, done.length ? toInt(done[0].amount) : 0, input.amount)
-    if (decision === "RefuseMismatchedReplay") throw new IdempotencyConflict({ requestKey: input.requestKey })
-    if (decision === "AnswerFirstEntry") return { organizationId: input.organizationId, balance: (try readFunds(tx, input.organizationId)).creditBalance, replayed: true }
-    const funds = try stepFunds(tx, input.organizationId, { type: "addCredits", known: false, amount: input.amount }, now, input.requestKey)
-    return { organizationId: input.organizationId, balance: funds.creditBalance, replayed: false }
-  })
+  return try store.transaction((tx) => addCreditsIn(tx, input, now))
 }

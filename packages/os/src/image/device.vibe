@@ -1,0 +1,989 @@
+// spec/os/image/verification.md, "Story: Know whether a booted image is what I staged"; spec/os/image/qualification.md, "Story: Qualify a device read-only"
+import { ChildProcess } from "effect/process"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
+
+module node {
+  import net from "node:net"
+  import os from "node:os"
+  import path from "node:path"
+  import { Buffer } from "node:buffer"
+  import { createHash, randomUUID } from "node:crypto"
+
+  export interface SingleDeviceServer {
+    readonly host: string
+    readonly port: number
+    readonly refused: string[]
+    close(): Promise<void>
+  }
+
+  /** @throws {never} */
+  export function processId(): number {
+    return process.pid
+  }
+
+  /** @throws {never} */
+  export function hostName(): string {
+    return os.hostname()
+  }
+
+  /** @throws {never} */
+  export function uniqueToken(): string {
+    return randomUUID()
+  }
+
+  /** @throws {never} */
+  export function sha256Hex(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function defaultLeaseDirectory(): string {
+    return path.join(os.homedir(), ".local", "state", "eliza", "device-leases")
+  }
+
+  /** @throws {never} */
+  export function processAlive(pid: number): boolean {
+    if (!Number.isSafeInteger(pid) || pid <= 0) return false
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch (failure) {
+      return (failure as { code?: string }).code !== "ESRCH"
+    }
+  }
+
+  const frame = (text: string) => {
+    const body = Buffer.from(text)
+    return Buffer.concat([Buffer.from(body.length.toString(16).padStart(4, "0")), body])
+  }
+  const fail = (reason: string) => Buffer.concat([Buffer.from("FAIL"), frame(reason)])
+
+  /** @throws {never} */
+  export function singleDeviceDecision(command: string, serial: string): "filter" | "forward" | "refuse" {
+    if (command === "host:devices" || command === "host:devices-l") return "filter"
+    if (command === "host:version" || command === `host:transport:${serial}` || command === `host:tport:serial:${serial}`) return "forward"
+    const prefix = `host-serial:${serial}:`
+    return command.startsWith(prefix) && !/^(?:kill|track-devices)/.test(command.slice(prefix.length)) ? "forward" : "refuse"
+  }
+
+  /** @throws {never} */
+  export function onlyDevice(listing: string, serial: string): string {
+    return listing.split("\n").filter((line) => line.split(/\s+/)[0] === serial).map((line) => `${line}\n`).join("")
+  }
+
+  /** @throws {never} */
+  export function listenSingleDevice(serial: string, adbHost: string, adbPort: number): Promise<SingleDeviceServer> {
+    const sockets = new Set<net.Socket>()
+    const refused: string[] = []
+    const server = net.createServer((client) => {
+      sockets.add(client)
+      client.on("close", () => sockets.delete(client))
+      client.on("error", () => client.destroy())
+      let head = Buffer.alloc(0)
+      const onData = (chunk: Buffer) => {
+        head = Buffer.concat([head, chunk])
+        if (head.length < 4) return
+        const lengthHex = head.subarray(0, 4).toString("latin1")
+        if (!/^[0-9a-fA-F]{4}$/.test(lengthHex)) {
+          client.end(fail("Malformed adb request"))
+          return
+        }
+        const length = Number.parseInt(lengthHex, 16)
+        if (head.length < 4 + length) return
+        client.off("data", onData)
+        const command = head.subarray(4, 4 + length).toString("utf8")
+        const decision = singleDeviceDecision(command, serial)
+        if (decision === "refuse") {
+          refused.push(command.slice(0, 80))
+          client.end(fail(`This adb endpoint serves ${serial} only`))
+          return
+        }
+        const upstream = net.connect(adbPort, adbHost)
+        sockets.add(upstream)
+        upstream.on("close", () => {
+          sockets.delete(upstream)
+          client.end()
+        })
+        upstream.on("error", (error) => {
+          if (client.bytesWritten === 0) client.end(fail(`adb server ${adbHost}:${adbPort} unreachable: ${error.message}`))
+          else client.destroy()
+        })
+        client.on("close", () => upstream.destroy())
+        if (decision === "forward") {
+          upstream.write(head)
+          client.pipe(upstream)
+          upstream.pipe(client, { end: false })
+          return
+        }
+        const parts: Buffer[] = []
+        upstream.on("data", (part: Buffer) => parts.push(part))
+        upstream.on("end", () => {
+          const answer = Buffer.concat(parts)
+          if (answer.subarray(0, 4).toString("latin1") !== "OKAY" || answer.length < 8) client.end(fail("The adb server did not list its devices"))
+          else client.end(Buffer.concat([Buffer.from("OKAY"), frame(onlyDevice(answer.subarray(8).toString("utf8"), serial))]))
+        })
+        upstream.write(head.subarray(0, 4 + length))
+      }
+      client.on("data", onData)
+    })
+    return new Promise((resolve, reject) => {
+      server.once("error", reject)
+      server.listen(0, "127.0.0.1", () => {
+        const address = server.address() as net.AddressInfo
+        resolve({
+          host: "127.0.0.1",
+          port: address.port,
+          refused,
+          close: () => {
+            for (const socket of sockets) socket.destroy()
+            return new Promise<void>((done) => server.close(() => done()))
+          },
+        })
+      })
+    })
+  }
+}
+import { defaultLeaseDirectory, hostName, listenSingleDevice, processAlive, processId, sha256Hex, uniqueToken } from node
+
+export type AdbSerial = string & { readonly __brand: "AdbSerial" }
+export type AndroidPackage = string & { readonly __brand: "AndroidPackage" }
+
+export error InvalidDeviceInput { reason: string }
+export error AdbFailed { args: readonly string[]; code: number; stderr: string }
+export error AdbTimedOut { args: readonly string[]; timeoutMs: number }
+export error AdbEndpointFailed { serial: string; cause: string }
+export error DeviceLeased { deviceKey: string; holder: string; waitedMs: number }
+export error LeaseLockAbandoned { lockPath: string }
+export error LeaseLockTimedOut { lockPath: string; waitedMs: number }
+export error LeaseLockConflict { lockPath: string }
+export error InstrumentationRefused { reason: string }
+export error FixtureRefused { reason: string }
+export error IsolatedTestFailed { reason: string; report: string }
+
+export type AdbFailure = AdbFailed | AdbTimedOut
+export type AdbRun = (...args: readonly string[]) => string!AdbFailure
+
+export interface SingleDeviceAdb {
+  readonly host: string
+  readonly port: number
+  readonly serial: AdbSerial
+  refused(): readonly string[]
+}
+
+schema Lease {
+  readonly deviceKey: string
+  readonly pid: number
+  readonly sessionId: string
+  readonly acquiredAt: string
+  readonly ttlMs: number
+  readonly hostname: string
+}
+
+export interface DeviceLease {
+  readonly lease: Lease
+  readonly path: string
+}
+
+export interface LeaseOptions {
+  readonly stateDir?: string
+  readonly ttlMs?: number
+  readonly waitMs?: number
+  readonly pollMs?: number
+  readonly sessionId?: string
+}
+
+export interface InstrumentationResult {
+  readonly passed: true
+  readonly totalTests: number
+  readonly started: number
+  readonly completed: number
+  readonly classes: readonly string[]
+  readonly cases: readonly string[]
+}
+
+const SERIAL = /^[A-Za-z0-9._:-]+$/
+const PACKAGE = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/
+const BOOT_ID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/
+const LEASE_TTL_MS = 30 * 60 * 1000
+const LEASE_WAIT_MS = 10 * 60 * 1000
+const LEASE_POLL_MS = 2000
+const UNPARSABLE_GRACE_MS = 60 * 1000
+const LOCK_WAIT_MS = 5000
+const LOCK_POLL_MS = 10
+const LOCK_UNPARSABLE_GRACE_MS = 1000
+const OUTPUT_BOUND = 4 * 1024 * 1024
+export const HELD_FOR_THE_RUN = Number.MAX_SAFE_INTEGER
+
+effect function refuse(holds: boolean, reason: string) {
+  if (!holds) throw new InvalidDeviceInput({ reason })
+}
+
+export effect function adbSerial(value: string) {
+  try refuse(SERIAL.test(value), `invalid adb serial ${JSON.stringify(value)}`)
+  return value as AdbSerial
+}
+
+export effect function androidPackage(value: string) {
+  try refuse(PACKAGE.test(value), `invalid Android package ${JSON.stringify(value)}`)
+  return value as AndroidPackage
+}
+
+export effect function execute(binary: string, args: readonly string[], timeoutMs: number) {
+  const spawner = try ChildProcessSpawner
+  const run = scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make(binary, [...args], { stdin: "ignore", extendEnv: true }))
+    const [stdout, stderr] = try.all [Stream.mkUint8Array(child.stdout), Stream.mkString(Stream.decodeText(child.stderr))]
+    const code: number = try child.exitCode
+    return { stdout, stderr, code }
+  })
+  const finished = try (timeout(run, timeoutMs) catch effect (failure) => {
+    if (failure._tag === "TimeoutError") throw new AdbTimedOut({ args, timeoutMs })
+    throw new AdbFailed({ args, code: -1, stderr: failure.message })
+  })
+  if (finished.code !== 0) throw new AdbFailed({ args, code: finished.code, stderr: finished.stderr.trim().slice(0, 1024) })
+  return finished.stdout
+}
+
+export effect function adbRunner(adb: string, serial: AdbSerial, timeoutMs: (args: readonly string[]) => number) {
+  const spawner = try ChildProcessSpawner
+  const run: AdbRun = (...args) =>
+    Effect.provideService(effect { return new TextDecoder().decode(try execute(adb, ["-s", serial, ...args], timeoutMs(args))) }, ChildProcessSpawner, spawner)
+  return run
+}
+
+export effect function startSingleDeviceAdb(serial: string, options: { readonly adbHost?: string; readonly adbPort?: number } = {}) {
+  const admitted = try adbSerial(serial)
+  const server = try acquireRelease(
+    tryPromise({ try: () => listenSingleDevice(admitted, options.adbHost ?? "127.0.0.1", options.adbPort ?? 5037), catch: (cause) => new AdbEndpointFailed({ serial, cause: String(cause) }) }),
+    (listening) => promise(() => listening.close()),
+  )
+  const endpoint: SingleDeviceAdb = { host: server.host, port: server.port, serial: admitted, refused: () => [...server.refused] }
+  return endpoint
+}
+
+export function deviceLeaseKey(value: string): string {
+  return value.replace(/[^A-Za-z0-9_.-]+/g, "_").slice(0, 180)
+}
+
+export function deviceLeasePath(deviceKey: string, stateDir: string = defaultLeaseDirectory()): string {
+  return `${stateDir}/${deviceLeaseKey(deviceKey)}.json`
+}
+
+export function leaseActive(lease: Lease, now: number): boolean {
+  const acquired = Date.parse(lease.acquiredAt)
+  return Number.isFinite(acquired) && lease.ttlMs > 0 && now - acquired <= lease.ttlMs && processAlive(lease.pid)
+}
+
+type Snapshot =
+  | { readonly kind: "missing" }
+  | { readonly kind: "parsed"; readonly lease: Lease; readonly identity: string; readonly mtime: number }
+  | { readonly kind: "unparsable"; readonly identity: string; readonly mtime: number }
+
+const decodeLease = Schema.decodeUnknownOption(Schema.fromJsonString(Lease))
+
+effect function snapshot(file: string) {
+  const files = try FileSystem.FileSystem
+  const missing: Snapshot = { kind: "missing" }
+  const read = effect {
+    const info = try files.stat(file)
+    const raw = try files.readFileString(file)
+    const identity = `${info.dev}:${Option.getOrElse(info.ino, () => 0n)}:${raw}`
+    const mtime = Option.match(info.mtime, { onNone: () => 0, onSome: (date) => date.getTime() })
+    const lease = decodeLease(raw)
+    const found: Snapshot = Option.isSome(lease) ? { kind: "parsed", lease: lease.value, identity, mtime } : { kind: "unparsable", identity, mtime }
+    return found
+  }
+  return try (read catch effect (failure) => {
+    if (failure._tag === "PlatformError" && failure.reason._tag === "NotFound") return missing
+    throw failure
+  })
+}
+
+effect function writeExclusive(file: string, content: string) {
+  const files = try FileSystem.FileSystem
+  return try (files.writeFileString(file, content, { flag: "wx" }).pipe(Effect.as(true)) catch effect (failure) => {
+    if (failure.reason._tag === "AlreadyExists") return false
+    throw failure
+  })
+}
+
+effect function withMutationLock<A, E, R>(leasePath: string, body: A!E!R) {
+  const files = try FileSystem.FileSystem
+  const lockPath = `${leasePath}.lock`
+  const own = JSON.stringify({ pid: processId(), token: uniqueToken() })
+  const started = try Clock.currentTimeMillis
+  while (!(try writeExclusive(lockPath, own))) {
+    const held = try snapshot(lockPath)
+    const now = try Clock.currentTimeMillis
+    if (held.kind !== "missing") {
+      const holder = Option.getOrUndefined(Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ pid: Schema.Number })))(held.identity.slice(held.identity.indexOf(":", held.identity.indexOf(":") + 1) + 1)))
+      if (holder === undefined ? now - held.mtime > LOCK_UNPARSABLE_GRACE_MS : !processAlive(holder.pid)) throw new LeaseLockAbandoned({ lockPath })
+    }
+    if (now - started >= LOCK_WAIT_MS) throw new LeaseLockTimedOut({ lockPath, waitedMs: now - started })
+    try sleep(LOCK_POLL_MS)
+  }
+  const release = effect {
+    const current = try (files.readFileString(lockPath) catch () => "")
+    if (current !== own) throw new LeaseLockConflict({ lockPath })
+    try files.remove(lockPath)
+  }
+  const result = try (body catch effect (failure) => {
+    try release
+    throw failure
+  })
+  try release
+  return result
+}
+
+effect function removeIfUnchanged(leasePath: string, expected: Snapshot) {
+  const files = try FileSystem.FileSystem
+  return try withMutationLock(leasePath, effect {
+    const current = try snapshot(leasePath)
+    if (current.kind === "missing" || expected.kind === "missing" || current.identity !== expected.identity) return false
+    try files.remove(leasePath)
+    return true
+  })
+}
+
+effect function claim(deviceKey: string, leasePath: string, options: LeaseOptions) {
+  const files = try FileSystem.FileSystem
+  const waitMs = options.waitMs ?? LEASE_WAIT_MS
+  const started = try Clock.currentTimeMillis
+  while (true) {
+    const now = try Clock.currentTimeMillis
+    const lease: Lease = {
+      deviceKey,
+      pid: processId(),
+      sessionId: options.sessionId ?? `${hostName()}:${processId()}`,
+      acquiredAt: new Date(now).toISOString(),
+      ttlMs: options.ttlMs ?? LEASE_TTL_MS,
+      hostname: hostName(),
+    }
+    const temporary = `${leasePath}.${processId()}.${uniqueToken()}.tmp`
+    try files.writeFileString(temporary, `${JSON.stringify(lease, null, 2)}\n`, { flag: "wx" })
+    const linked = try ensuring(files.link(temporary, leasePath).pipe(Effect.as(true)) catch effect (failure) => {
+      if (failure.reason._tag === "AlreadyExists") return false
+      throw failure
+    }, files.remove(temporary, { force: true }).pipe(Effect.orDie))
+    if (linked) {
+      const held: DeviceLease = { lease, path: leasePath }
+      return held
+    }
+    const current = try snapshot(leasePath)
+    if (current.kind === "missing") continue
+    const stale = current.kind === "unparsable" ? now - current.mtime > UNPARSABLE_GRACE_MS : !leaseActive(current.lease, now)
+    if (stale) {
+      try removeIfUnchanged(leasePath, current)
+      continue
+    }
+    if (now - started >= waitMs) {
+      const holder = current.kind === "parsed" ? `pid ${current.lease.pid} session ${current.lease.sessionId}` : `an unparsable lease file ${leasePath}`
+      throw new DeviceLeased({ deviceKey, holder, waitedMs: now - started })
+    }
+    try sleep(options.pollMs ?? LEASE_POLL_MS)
+  }
+}
+
+effect function releaseLease(held: DeviceLease) {
+  const current = try snapshot(held.path)
+  if (current.kind === "parsed" && current.lease.pid === held.lease.pid && current.lease.sessionId === held.lease.sessionId && current.lease.acquiredAt === held.lease.acquiredAt)
+    try removeIfUnchanged(held.path, current)
+}
+
+export effect function acquireDeviceLease(deviceKey: string, options: LeaseOptions = {}) {
+  const files = try FileSystem.FileSystem
+  const stateDir = options.stateDir ?? defaultLeaseDirectory()
+  try files.makeDirectory(stateDir, { recursive: true })
+  const leasePath = deviceLeasePath(deviceKey, stateDir)
+  return try acquireRelease(claim(deviceKey, leasePath, options), (held) => releaseLease(held).pipe(Effect.provideService(FileSystem.FileSystem, files), Effect.orDie))
+}
+
+export effect function requireCallerLease(held: DeviceLease, deviceKey: string, stateDir: string = defaultLeaseDirectory()) {
+  const now = try Clock.currentTimeMillis
+  const current = try snapshot(deviceLeasePath(deviceKey, stateDir))
+  try refuse(held.path === deviceLeasePath(deviceKey, stateDir), "the lease is not this device's")
+  try refuse(held.lease.pid === processId(), "the caller must own the lease")
+  try refuse(held.lease.ttlMs === HELD_FOR_THE_RUN, "the caller's lease must cover the whole run")
+  try refuse(current.kind === "parsed" && JSON.stringify(current.lease) === JSON.stringify(held.lease), "the device lease changed")
+  try refuse(leaseActive(held.lease, now), "the caller's lease is stale")
+}
+
+effect function instrumentationCheck(holds: boolean, reason: string) {
+  if (!holds) throw new InstrumentationRefused({ reason })
+}
+
+export effect function requireInstrumentationSuccess(output: string, requestedClasses: readonly string[]) {
+  try instrumentationCheck(output.length <= OUTPUT_BOUND, "Instrumentation output exceeds bound")
+  try instrumentationCheck(requestedClasses.length > 0, "No requested class")
+  const requested = new Set(requestedClasses)
+  try instrumentationCheck(requested.size === requestedClasses.length, "Duplicate requested class")
+  const text = output.replace(/\r\n?/g, "\n")
+  try instrumentationCheck(!/FAILURES|INSTRUMENTATION_FAILED|Process crashed|AssumptionViolated/.test(text), "Failed or skipped instrumentation")
+  const terminal = [...text.matchAll(/^INSTRUMENTATION_CODE: (-?\d+)\s*$/gm)]
+  try instrumentationCheck(terminal.length === 1, "Require one final instrumentation result")
+  try instrumentationCheck(terminal[0]?.[1] === "-1", "Instrumentation did not finish successfully")
+  const summaries = [...text.matchAll(/^OK \((\d+) tests?\)\s*$/gm)]
+  try instrumentationCheck(summaries.length === 1, "Require one test summary")
+  const count = Number(summaries[0]?.[1])
+  try instrumentationCheck(Number.isSafeInteger(count) && count > 0, "No tests executed")
+  let fields = new Map<string, string>()
+  let active: string | null = null
+  const cases: string[] = []
+  const seen = new Set<string>()
+  const covered = new Set<string>()
+  for (const line of text.split("\n")) {
+    const field = /^INSTRUMENTATION_STATUS: ([A-Za-z][A-Za-z0-9_]*)=(.*)$/.exec(line)
+    if (field) {
+      const [, name = "", value = ""] = field
+      try instrumentationCheck(!fields.has(name), "Duplicate status field")
+      fields.set(name, value)
+      continue
+    }
+    const status = /^INSTRUMENTATION_STATUS_CODE: (-?\d+)\s*$/.exec(line)
+    if (!status) continue
+    const code = Number(status[1])
+    try instrumentationCheck(code === 1 || code === 0, "Skipped, failed or unsupported status")
+    const testClass = fields.get("class") ?? ""
+    const method = fields.get("test") ?? ""
+    try instrumentationCheck(requested.has(testClass), "Unexpected or missing class")
+    try instrumentationCheck(method.length > 0, "Missing test identity")
+    try instrumentationCheck(fields.get("numtests") === String(count), "Advertised count differs from final summary")
+    const selector = `${testClass}#${method}`
+    if (code === 1) {
+      try instrumentationCheck(active === null, "Overlapping starts")
+      try instrumentationCheck(!seen.has(selector), "Duplicate test start")
+      seen.add(selector)
+      active = selector
+    } else {
+      try instrumentationCheck(active === selector, "Success without matching start")
+      cases.push(selector)
+      covered.add(testClass)
+      active = null
+    }
+    fields = new Map()
+  }
+  try instrumentationCheck(fields.size === 0, "Unterminated status block")
+  try instrumentationCheck(active === null, "Test never finished")
+  try instrumentationCheck(cases.length === count, "Completed count mismatch")
+  try instrumentationCheck(seen.size === count, "Started count mismatch")
+  try instrumentationCheck([...covered].sort().join(",") === [...requested].sort().join(","), "Requested class missing")
+  const final = terminal[0]
+  const after = final === undefined ? "" : text.slice((final.index ?? 0) + final[0].length)
+  try instrumentationCheck(!/^INSTRUMENTATION_STATUS(?:_CODE)?:/m.test(after), "Test statuses after final result")
+  const result: InstrumentationResult = { passed: true, totalTests: count, started: seen.size, completed: cases.length, classes: [...covered].sort(), cases }
+  return result
+}
+
+effect function fixtureCheck(holds: boolean, reason: string) {
+  if (!holds) throw new FixtureRefused({ reason })
+}
+
+const PREFERENCE_NAME = /^[A-Za-z0-9_.:-]+$/
+const ENTITIES: Readonly<Record<string, string>> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" }
+
+export effect function androidPreferenceString(xml: string, key: string) {
+  try fixtureCheck(/^\s*(?:<\?xml[^?]*\?>\s*)?<map>[\s\S]*<\/map>\s*$/.test(xml), "Complete Android preference map required")
+  try fixtureCheck(!/<!/.test(xml), "Unsupported XML declaration or comment")
+  try fixtureCheck(PREFERENCE_NAME.test(key), "Preference key required")
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  const matches = [...xml.matchAll(new RegExp(`<string\\s+name="${escaped}"\\s*>([\\s\\S]*?)<\\/string>`, "g"))]
+  try fixtureCheck(matches.length <= 1, "Ambiguous preference string")
+  const text = matches[0]?.[1]
+  if (text === undefined) return null
+  try fixtureCheck(!text.includes("<"), "Unexpected markup in preference string")
+  const references = [...text.matchAll(/&([^;\s]*);|&/g)].map((match) => match[1] ?? "")
+  for (const name of references) {
+    if (Object.hasOwn(ENTITIES, name)) continue
+    try fixtureCheck(/^#(?:[0-9]+|x[0-9a-fA-F]+)$/.test(name), "Unsupported XML entity")
+    const point = name.startsWith("#x") ? Number.parseInt(name.slice(2), 16) : Number(name.slice(1))
+    try fixtureCheck([9, 10, 13].includes(point) || (point >= 0x20 && point <= 0xd7ff) || (point >= 0xe000 && point <= 0xfffd) || (point >= 0x10000 && point <= 0x10ffff), "Invalid XML character reference")
+  }
+  return text.replace(/&([^;\s]*);/g, (_entity, name: string) => ENTITIES[name] ?? String.fromCodePoint(name.startsWith("#x") ? Number.parseInt(name.slice(2), 16) : Number(name.slice(1))))
+}
+
+export effect function androidFixtureObserver(fixture: { readonly run: AdbRun; readonly packageName: string; readonly androidUser: number }) {
+  const packageName = try androidPackage(fixture.packageName)
+  try fixtureCheck(Number.isSafeInteger(fixture.androidUser) && fixture.androidUser > 0, "Explicit fixture user required")
+  const user = String(fixture.androidUser)
+  const run = fixture.run
+  return {
+    preferenceString: effect (file: string, key: string) => {
+      try fixtureCheck(PREFERENCE_NAME.test(file) && file !== "." && file !== "..", "Preference filename required")
+      return try androidPreferenceString(try run("shell", "run-as", packageName, "--user", user, "cat", `shared_prefs/${file}.xml`), key)
+    },
+    stopped: effect () => {
+      const lines = (try run("shell", "dumpsys", "package", packageName)).split(/\r?\n/)
+      const sections = lines.flatMap((line, index) => (line === "Packages:" ? [index] : []))
+      try fixtureCheck(sections.length === 1, "Exactly one package inventory required")
+      const start = (sections[0] ?? 0) + 1
+      const boundary = lines.findIndex((line, index) => index >= start && /^\S/.test(line))
+      const inventory = lines.slice(start, boundary < 0 ? undefined : boundary)
+      const packages = inventory.flatMap((line, index) => {
+        const name = /^ {2}Package \[([^\]]+)\] \([^)]*\):$/.exec(line)?.[1]
+        return name === undefined ? [] : [{ name, index }]
+      })
+      const targets = packages.filter((entry) => entry.name === packageName)
+      try fixtureCheck(targets.length === 1, "Exactly one fixture package required")
+      const packageStart = targets[0]?.index ?? 0
+      const packageEnd = packages.find((entry) => entry.index > packageStart)?.index
+      const rows = inventory.slice(packageStart + 1, packageEnd).filter((line) => line.startsWith(`    User ${user}:`))
+      try fixtureCheck(rows.length === 1, "Exactly one fixture-user package state required")
+      const states = [...(rows[0] ?? "").matchAll(/\bstopped=(true|false)\b/g)]
+      try fixtureCheck(states.length === 1, "Unambiguous package stopped state required")
+      return states[0]?.[1] === "true"
+    },
+    notification: effect (notice: { readonly id: number; readonly tag: string }) => {
+      try fixtureCheck(Number.isInteger(notice.id) && notice.id >= -2147483648 && notice.id <= 2147483647, "Notification ID required")
+      try fixtureCheck(notice.tag.length > 0 && !/[|\r\n]/.test(notice.tag), "Unambiguous notification tag required")
+      return (try run("shell", "cmd", "notification", "list")).split(/\r?\n/).some((line) => {
+        const fields = line.trim().split("|")
+        return fields.length >= 5 && /^\d+$/.test(fields[4] ?? "") && fields[0] === user && fields[1] === packageName && fields[2] === String(notice.id) && fields[3] === notice.tag
+      })
+    },
+  }
+}
+
+export effect function rebootAndroidFixture(
+  fixture: { readonly run: AdbRun; readonly serial: string; readonly androidUser: number; readonly deviceLease: DeviceLease; readonly stateDir?: string },
+  options: { readonly expectedAvdName: string; readonly timeoutMs?: number; readonly pollMs?: number },
+) {
+  try fixtureCheck(/^emulator-\d+$/.test(fixture.serial), "A fixture emulator serial is required")
+  try fixtureCheck(/^[A-Za-z0-9_.-]+$/.test(options.expectedAvdName), "Expected AVD name required")
+  try fixtureCheck(Number.isSafeInteger(fixture.androidUser) && fixture.androidUser > 0, "Explicit fixture user required")
+  const timeoutMs = options.timeoutMs ?? 120000
+  const pollMs = options.pollMs ?? 500
+  try fixtureCheck(Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && Number.isSafeInteger(pollMs) && pollMs > 0, "Positive deadlines required")
+  try requireCallerLease(fixture.deviceLease, `android:${fixture.serial}`, fixture.stateDir)
+  const call = effect (...args: readonly string[]) => (try fixture.run(...args)).trim()
+  const user = String(fixture.androidUser)
+  const avd = effect () => (try call("emu", "avd", "name")).split(/\r?\n/)[0]
+  try fixtureCheck((try avd()) === options.expectedAvdName, "Selected emulator is not the fixture AVD")
+  try fixtureCheck((try call("shell", "am", "get-current-user")) === user, "Fixture user must be foreground")
+  const bootId = effect () => {
+    const value = try call("shell", "cat", "/proc/sys/kernel/random/boot_id")
+    try fixtureCheck(BOOT_ID.test(value), "Boot identity unavailable")
+    return value
+  }
+  const before = try bootId()
+  try call("reboot")
+  try call("wait-for-device")
+  const deadline = (try Clock.currentTimeMillis) + timeoutMs
+  const waitFor = effect (holds: () => boolean!AdbFailure | FixtureRefused, reason: string) => {
+    while ((try Clock.currentTimeMillis) < deadline) {
+      if (try holds()) return
+      try sleep(pollMs)
+    }
+    throw new FixtureRefused({ reason })
+  }
+  let after = before
+  try waitFor(effect () => {
+    after = try bootId()
+    return after !== before && (try call("shell", "getprop", "sys.boot_completed")) === "1"
+  }, "Changed boot ID and completed boot required")
+  try fixtureCheck((try avd()) === options.expectedAvdName, "The fixture AVD changed across the reboot")
+  try call("shell", "am", "start-user", "-w", user)
+  try call("shell", "am", "switch-user", user)
+  try call("shell", "input", "keyevent", "KEYCODE_WAKEUP")
+  try call("shell", "wm", "dismiss-keyguard")
+  try waitFor(effect () => (try call("shell", "am", "get-current-user")) === user && (try call("shell", "am", "get-started-user-state", user)) === "RUNNING_UNLOCKED", "Fixture user did not return unlocked")
+  return { before, after, androidUser: fixture.androidUser }
+}
+
+export interface IsolatedVariant {
+  readonly name: string
+  readonly apk: string
+  readonly testApk: string
+  readonly upgrade?: { readonly apk: string; readonly testApk: string }
+}
+
+export interface CompanionApk {
+  readonly apk: string
+  readonly packageName: string
+  readonly sha256: string
+  readonly updates?: readonly { readonly apk: string; readonly sha256: string }[]
+}
+
+export interface IsolatedContext {
+  readonly variant: string
+  readonly packageName: string
+  readonly adb: string
+  readonly serial: AdbSerial
+  readonly directory: string
+  readonly androidUser: number
+  readonly run: AdbRun
+  readonly deviceLease: DeviceLease
+  readonly record: VariantRecord
+  instrumentPhase(name: string, args?: readonly string[]): InstrumentationResult!IsolatedFailure
+}
+
+export type IsolatedHook = (context: IsolatedContext) => unknown!unknown
+
+export interface IsolatedTestOptions {
+  readonly serial: string
+  readonly adb: string
+  readonly aapt: string
+  readonly packageName: string
+  readonly testPackage?: string
+  readonly runner?: string
+  readonly testClass?: string
+  readonly testClasses?: readonly string[]
+  readonly testMethod?: string
+  readonly expectedTests: number
+  readonly requiredAbi: "arm64-v8a" | "x86_64"
+  readonly expectedAvdName?: string
+  readonly expectedCuttlefish?: { readonly callerOwned: boolean; readonly serialNumber: string; readonly fingerprint: string }
+  readonly androidUser: number
+  readonly deviceLease?: DeviceLease
+  readonly leaseDirectory?: string
+  readonly commandTimeoutMs?: number
+  readonly instrumentationTimeoutMs?: number
+  readonly variants: readonly IsolatedVariant[]
+  readonly companionApks?: readonly CompanionApk[]
+  readonly directory: string
+  readonly evidence: string
+  readonly appEvidence?: { readonly directory: string; readonly json?: readonly string[]; readonly png?: readonly string[] }
+  readonly wake?: boolean
+  readonly runnerArgs?: readonly string[]
+  readonly upgradeRunnerArgs?: readonly string[]
+  readonly preflightVariant?: IsolatedHook
+  readonly prepareVariant?: IsolatedHook
+  readonly beforeUpgrade?: IsolatedHook
+  readonly afterUpgrade?: IsolatedHook
+  readonly collectVariant?: IsolatedHook
+  readonly cleanupVariant?: IsolatedHook
+}
+
+export interface VariantRecord {
+  readonly variant: string
+  readonly appSha256: string
+  readonly testSha256: string
+  readonly upgrade?: { readonly appSha256: string; readonly testSha256: string; instrumentation?: InstrumentationResult }
+  instrumentation?: InstrumentationResult
+  phases?: { readonly name: string; passed: boolean; instrumentation?: InstrumentationResult; error?: string }[]
+  appEvidence?: { readonly name: string; readonly file: string; readonly sha256: string }[]
+  finalInstalledHashes?: Record<string, string>
+  passed?: boolean
+}
+
+export type IsolatedFailure = InvalidDeviceInput | AdbFailure | InstrumentationRefused
+
+const RESERVED_EXTRAS = ["class", "package", "notClass", "notPackage", "func", "unit", "annotation", "notAnnotation", "size", "count", "log", "debug", "suiteAssignment", "numShards", "shardIndex"]
+const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10]
+const HOME_QUERY = ["shell", "cmd", "package", "resolve-activity", "--brief", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME"]
+
+effect function runnerExtras(args: readonly string[]) {
+  try refuse(args.length % 3 === 0, "Instrumentation extras come as -e NAME VALUE")
+  for (let index = 0; index < args.length; index += 3) {
+    const name = args[index + 1] ?? ""
+    try refuse(args[index] === "-e" && /^[A-Za-z][A-Za-z0-9_]*$/.test(name), "Instrumentation extras come as -e NAME VALUE")
+    try refuse(!RESERVED_EXTRAS.includes(name), "Runner selection is owned by the harness")
+    try refuse(/^[A-Za-z0-9_.:-]+$/.test(args[index + 2] ?? ""), "Instrumentation extras must be shell-safe scalar values")
+  }
+  return [...args]
+}
+
+effect function fileSha256(file: string) {
+  const files = try FileSystem.FileSystem
+  return sha256Hex(try files.readFile(file))
+}
+
+effect function declaredPackage(aapt: string, apk: string, timeoutMs: number) {
+  const badging = new TextDecoder().decode(try execute(aapt, ["dump", "badging", apk], timeoutMs))
+  return /package: name='([^']+)'/.exec(badging)?.[1]
+}
+
+effect function instrumentationTarget(aapt: string, testApk: string, timeoutMs: number) {
+  const tree = new TextDecoder().decode(try execute(aapt, ["dump", "xmltree", testApk, "AndroidManifest.xml"], timeoutMs))
+  const element = tree.split(/\n(?=\s*E: )/).filter((block) => /^\s*E: instrumentation\b/.test(block))
+  return element.map((block) => /A: android:targetPackage\([^)]*\)="([^"]+)"/.exec(block)?.[1] ?? "")
+}
+
+export effect function runIsolatedAndroidTest(options: IsolatedTestOptions) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const serial = try adbSerial(options.serial)
+  const cuttlefish = options.expectedCuttlefish
+  if (cuttlefish) {
+    try refuse(options.expectedAvdName === undefined, "Choose AVD or Cuttlefish admission")
+    try refuse(/^127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(serial) && Number(serial.split(":")[1]) <= 65535, "A Cuttlefish serial is a loopback endpoint")
+    try refuse(cuttlefish.callerOwned, "Caller-owned disposable Cuttlefish required")
+    try refuse(/^[A-Za-z0-9_.-]+$/.test(cuttlefish.serialNumber) && /^[A-Za-z0-9_./:+-]+$/.test(cuttlefish.fingerprint) && cuttlefish.fingerprint.includes("/"), "Exact Cuttlefish serial and image fingerprint required")
+    try refuse(options.androidUser === 0, "Cuttlefish requires owner user 0")
+  } else {
+    try refuse(/^emulator-\d+$/.test(serial), "A disposable emulator serial is required")
+    try refuse(/^[A-Za-z0-9_.-]+$/.test(options.expectedAvdName ?? ""), "Expected AVD name required")
+  }
+  const packageName = try androidPackage(options.packageName)
+  const testPackage = try androidPackage(options.testPackage ?? `${packageName}.test`)
+  const runner = try androidPackage(options.runner ?? "androidx.test.runner.AndroidJUnitRunner")
+  try refuse(options.testClass === undefined || options.testClasses === undefined, "Choose testClass or testClasses")
+  const classes = options.testClasses === undefined ? (options.testClass === undefined ? [] : [options.testClass]) : [...options.testClasses]
+  try refuse(classes.length > 0 && new Set(classes).size === classes.length, "Distinct test classes required")
+  for (const name of classes) try androidPackage(name)
+  try refuse(packageName !== testPackage, "The test package must differ from the app")
+  if (options.testMethod !== undefined) {
+    try refuse(/^[A-Za-z][A-Za-z0-9_]*$/.test(options.testMethod) && classes.length === 1 && options.expectedTests === 1, "Method selection requires one class and one test")
+  }
+  try refuse(Number.isSafeInteger(options.expectedTests) && options.expectedTests >= classes.length, "Expected test count required")
+  try refuse(Number.isSafeInteger(options.androidUser) && options.androidUser >= 0, "Explicit Android user required")
+  try refuse(path.isAbsolute(options.directory), "Explicit absolute report directory required")
+  const commandTimeoutMs = options.commandTimeoutMs ?? 120000
+  const instrumentationTimeoutMs = options.instrumentationTimeoutMs ?? 600000
+  const runnerArgs = try runnerExtras(options.runnerArgs ?? [])
+  const upgradeRunnerArgs = try runnerExtras(options.upgradeRunnerArgs ?? [])
+  const appFiles = options.appEvidence
+  if (appFiles) {
+    try refuse(/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(appFiles.directory), "App-relative evidence directory required")
+    const names = [...(appFiles.json ?? []), ...(appFiles.png ?? [])]
+    try refuse(names.length > 0 && new Set(names).size === names.length, "Distinct evidence files required")
+    try refuse((appFiles.json ?? []).every((name) => /^[A-Za-z0-9_.-]+\.json$/.test(name)) && (appFiles.png ?? []).every((name) => /^[A-Za-z0-9_.-]+\.png$/.test(name)), "Invalid evidence file name")
+  }
+  const companions = options.companionApks ?? []
+  for (const companion of companions) {
+    try androidPackage(companion.packageName)
+    for (const item of [companion, ...(companion.updates ?? [])]) {
+      try refuse(path.isAbsolute(item.apk) && /^[a-f0-9]{64}$/.test(item.sha256), "Absolute companion APK with a pinned SHA-256 required")
+      try refuse((try fileSha256(item.apk)) === item.sha256, "Companion APK differs from its pin")
+      try refuse((try declaredPackage(options.aapt, item.apk, commandTimeoutMs)) === companion.packageName, "Companion APK identity differs from declared package")
+    }
+  }
+  const packageNames = [packageName, testPackage, ...companions.map((item) => item.packageName)]
+  try refuse(new Set(packageNames).size === packageNames.length, "Duplicate package identity")
+  try refuse(options.variants.length > 0 && new Set(options.variants.map((variant) => variant.name)).size === options.variants.length, "Distinct variants required")
+  const records: VariantRecord[] = []
+  for (const variant of options.variants) {
+    try refuse(/^[a-z0-9-]+$/.test(variant.name), "Variant names are lowercase words")
+    for (const artifacts of [variant, ...(variant.upgrade ? [variant.upgrade] : [])]) {
+      try refuse(path.isAbsolute(artifacts.apk) && path.isAbsolute(artifacts.testApk), "Absolute APK paths required")
+      try refuse((try declaredPackage(options.aapt, artifacts.apk, commandTimeoutMs)) === packageName, "APK identity differs from declared package")
+      try refuse((try declaredPackage(options.aapt, artifacts.testApk, commandTimeoutMs)) === testPackage, "Test APK identity differs from declared package")
+      try refuse((try instrumentationTarget(options.aapt, artifacts.testApk, commandTimeoutMs)).join(",") === packageName, "Instrumentation target mismatch")
+    }
+    const upgrade = variant.upgrade
+    const appSha256 = try fileSha256(variant.apk)
+    const record: VariantRecord = { variant: variant.name, appSha256, testSha256: try fileSha256(variant.testApk) }
+    if (upgrade) {
+      const upgraded = { appSha256: try fileSha256(upgrade.apk), testSha256: try fileSha256(upgrade.testApk) }
+      try refuse(upgraded.appSha256 !== appSha256, "Upgrade must change the app APK")
+      records.push({ ...record, upgrade: upgraded })
+    } else records.push(record)
+  }
+  const raw = try adbRunner(options.adb, serial, (args) => (args[0] === "shell" && args[1] === "am" && args[2] === "instrument" ? instrumentationTimeoutMs : commandTimeoutMs))
+  let pinnedBootId: string | undefined
+  const pinnedInstance = effect () => {
+    if (!cuttlefish) return
+    try refuse((try raw("shell", "getprop", "ro.build.fingerprint")).trim() === cuttlefish.fingerprint, "Cuttlefish fingerprint changed")
+    try refuse((try raw("shell", "getprop", "ro.serialno")).trim() === cuttlefish.serialNumber, "Cuttlefish instance changed")
+    try refuse((try raw("shell", "am", "get-current-user")).trim() === "0", "Cuttlefish foreground user changed")
+    const bootId = (try raw("shell", "cat", "/proc/sys/kernel/random/boot_id")).trim()
+    try refuse(BOOT_ID.test(bootId), "Boot identity unavailable")
+    try refuse(pinnedBootId === undefined || pinnedBootId === bootId, "Cuttlefish boot changed; installations are retained for explicit recovery")
+    pinnedBootId = bootId
+  }
+  const run: AdbRun = (...args) => Effect.mapError(effect {
+    if (pinnedBootId !== undefined) try pinnedInstance()
+    return try raw(...args)
+  }, (failure) => (failure._tag === "InvalidDeviceInput" ? new AdbFailed({ args, code: -1, stderr: failure.reason }) : failure))
+  const home = effect () => (try run(...HOME_QUERY)).trim()
+  const browserRole = effect () => (try run("shell", "cmd", "role", "get-role-holders", "--user", "0", "android.app.role.BROWSER")).trim()
+  const listed = effect () => (try run("shell", "pm", "list", "packages", "-u", "--user", "all")).split(/\r?\n/)
+  const installed = effect () => (try listed()).some((line) => packageNames.some((name) => line === `package:${name}`))
+  const user = String(options.androidUser)
+  const installedHash = effect (name: string) => {
+    const lines = (try run("shell", "pm", "path", "--user", user, name)).trim().split(/\r?\n/)
+    try refuse(lines.length === 1 && /^package:\/[^\r\n]+\.apk$/.test(lines[0] ?? ""), "Expected one installed APK")
+    const local = path.join(options.directory, `${name}-installed.apk`)
+    return try ensuring(effect {
+      try run("pull", (lines[0] ?? "").slice("package:".length), local)
+      return try fileSha256(local)
+    }, files.remove(local, { force: true }).pipe(Effect.orDie))
+  }
+  const owned = new Map<string, string>()
+  const unacknowledged = new Map<string, string>()
+  const allowedAtCleanup = (name: string, hash: string) => hash === owned.get(name) || companions.some((item) => item.packageName === name && (item.updates ?? []).some((update) => update.sha256 === hash))
+  const install = effect (file: string, name: string, expected: string, replace: boolean) => {
+    try refuse((try fileSha256(file)) === expected, "APK changed after preflight")
+    if (replace) try refuse((try installedHash(name)) === owned.get(name), "Installed APK changed before replacement")
+    owned.set(name, expected)
+    unacknowledged.set(name, expected)
+    try refuse(/^Success\s*$/m.test(try run("install", ...(replace ? ["-r"] : []), "--user", user, "-t", file)), `Installing ${name} did not succeed`)
+    unacknowledged.delete(name)
+    try refuse((try installedHash(name)) === expected, "Installed APK hash mismatch")
+  }
+  const ownLease = options.deviceLease === undefined
+  const deviceKey = `android:${serial}`
+  return try scoped(effect {
+    const lease = options.deviceLease ?? (try acquireDeviceLease(deviceKey, { waitMs: 0, ttlMs: HELD_FOR_THE_RUN, ...(options.leaseDirectory === undefined ? {} : { stateDir: options.leaseDirectory }) }))
+    if (!ownLease) try requireCallerLease(lease, deviceKey, options.leaseDirectory)
+    const report: Record<string, unknown> = {
+      serial, packageName, testPackage, companions, requiredAbi: options.requiredAbi, androidUser: options.androidUser, testClasses: classes,
+      expectedTests: options.expectedTests, evidence: options.evidence, variants: [] as VariantRecord[],
+      ...(cuttlefish ? { expectedCuttlefish: cuttlefish } : { expectedAvdName: options.expectedAvdName }),
+      ...(appFiles ? { appEvidence: appFiles } : {}),
+      ...(options.wake ? { wake: true } : {}),
+    }
+    let admitted = false
+    let previousHome = ""
+    let previousBrowser = ""
+    let activeContext: IsolatedContext | undefined
+    const cleanupErrors: string[] = []
+    const restoreScenario = effect () => {
+      const context = activeContext
+      activeContext = undefined
+      if (context && options.cleanupVariant) try options.cleanupVariant(context)
+    }
+    const instrument = effect (variant: string, args: readonly string[], label: string) => {
+      for (const [name, expected] of owned) try refuse((try installedHash(name)) === expected, "Installed APK changed before instrumentation")
+      const selection = options.testMethod === undefined ? classes.join(",") : `${classes[0]}#${options.testMethod}`
+      const log = path.join(options.directory, `${variant}${label ? `-${label}` : ""}.log`)
+      const output = try (run("shell", "am", "instrument", "--user", user, "-w", "-r", "-e", "class", selection, ...args, `${testPackage}/${runner}`) catch effect (failure) => {
+        try files.writeFileString(log, failure._tag === "AdbFailed" ? failure.stderr : `timed out after ${failure.timeoutMs} ms`)
+        throw failure
+      })
+      try files.writeFileString(log, output)
+      const result = try requireInstrumentationSuccess(output, classes)
+      try instrumentationCheck(result.totalTests === options.expectedTests, "Unexpected test count")
+      if (options.testMethod !== undefined) try instrumentationCheck(result.cases.join(",") === `${classes[0]}#${options.testMethod}`, "Requested method missing")
+      return result
+    }
+    const body = effect {
+      if (cuttlefish) {
+        try refuse(/^vsoc_[A-Za-z0-9_]+$/.test((try raw("shell", "getprop", "ro.product.device")).trim()), "Cuttlefish vsoc device required")
+        try refuse((try raw("shell", "getprop", "sys.boot_completed")).trim() === "1", "Cuttlefish boot incomplete")
+        try pinnedInstance()
+        report.bootId = pinnedBootId
+        previousBrowser = try browserRole()
+        report.originalBrowser = previousBrowser
+      } else {
+        try refuse((try run("shell", "getprop", "ro.kernel.qemu")).trim() === "1", "Disposable emulator required")
+        try refuse((try run("emu", "avd", "name")).split(/\r?\n/)[0] === options.expectedAvdName, "Selected emulator is not the caller-owned fixture AVD")
+      }
+      try refuse((try run("shell", "getprop", "ro.product.cpu.abi")).trim() === options.requiredAbi, "Device ABI mismatch")
+      report.selinux = (try run("shell", "getenforce")).trim()
+      try refuse(report.selinux === "Enforcing", "App-domain acceptance requires SELinux enforcing")
+      try refuse(!(try installed()), "App or retained package data already exists; refusing replacement")
+      previousHome = try home()
+      report.originalHome = previousHome
+      try files.makeDirectory(options.directory, { recursive: true })
+      admitted = true
+      for (const [index, variant] of options.variants.entries()) {
+        const record = records[index]
+        if (record === undefined) continue
+        ;(report.variants as VariantRecord[]).push(record)
+        try refuse(!(try installed()), "Installation appeared after preflight")
+        const phases = new Set<string>()
+        const context: IsolatedContext = {
+          variant: variant.name, packageName, adb: options.adb, serial, directory: options.directory, androidUser: options.androidUser, run, deviceLease: lease, record,
+          instrumentPhase: (name, args = []) => Effect.mapError(effect {
+            try refuse(/^[A-Za-z][A-Za-z0-9_-]*$/.test(name) && !phases.has(name), "Distinct instrumentation phase names required")
+            try refuse(activeContext?.record === record && owned.has(packageName) && owned.has(testPackage), "Instrumentation requires both owned packages in the active variant")
+            const extras = try runnerExtras(args)
+            phases.add(name)
+            const phase: NonNullable<VariantRecord["phases"]>[number] = { name, passed: false }
+            record.phases = [...(record.phases ?? []), phase]
+            const result = try (instrument(variant.name, extras, `phase-${name}`) catch effect (failure) => {
+              phase.error = failure._tag === "InstrumentationRefused" ? failure.reason : failure._tag
+              throw failure
+            })
+            phase.instrumentation = result
+            phase.passed = true
+            return result
+          }, (failure) => failure as IsolatedFailure),
+        }
+        if (options.preflightVariant) try options.preflightVariant(context)
+        try refuse(!(try installed()), "Installation appeared during scenario preflight")
+        activeContext = context
+        try install(variant.apk, packageName, record.appSha256, false)
+        try install(variant.testApk, testPackage, record.testSha256, false)
+        for (const item of companions) try install(item.apk, item.packageName, item.sha256, false)
+        if (options.wake) {
+          try run("shell", "input", "keyevent", "KEYCODE_WAKEUP")
+          try run("shell", "wm", "dismiss-keyguard")
+        }
+        if (options.prepareVariant) try options.prepareVariant(context)
+        record.instrumentation = try instrument(variant.name, runnerArgs, variant.upgrade ? "baseline" : "")
+        const upgrade = variant.upgrade
+        const upgradeRecord = record.upgrade
+        if (upgrade && upgradeRecord) {
+          if (options.beforeUpgrade) try options.beforeUpgrade(context)
+          try install(upgrade.apk, packageName, upgradeRecord.appSha256, true)
+          if (options.afterUpgrade) try options.afterUpgrade(context)
+          try install(upgrade.testApk, testPackage, upgradeRecord.testSha256, true)
+          upgradeRecord.instrumentation = try instrument(variant.name, upgradeRunnerArgs, "candidate")
+        }
+        if (appFiles) {
+          record.appEvidence = []
+          for (const name of [...(appFiles.json ?? []), ...(appFiles.png ?? [])]) {
+            if (pinnedBootId !== undefined) try pinnedInstance()
+            const bytes = try execute(options.adb, ["-s", serial, "exec-out", "run-as", packageName, "--user", user, "cat", `${appFiles.directory}/${name}`], commandTimeoutMs)
+            if (name.endsWith(".json")) try Effect.try({ try: () => JSON.parse(new TextDecoder().decode(bytes)), catch: () => new InvalidDeviceInput({ reason: `${name} is not JSON` }) })
+            else try refuse(PNG_SIGNATURE.every((byte, at) => bytes[at] === byte), `${name} is not a PNG`)
+            const local = path.join(options.directory, `${variant.name}-${name}`)
+            try files.writeFile(local, bytes)
+            record.appEvidence.push({ name, file: path.basename(local), sha256: sha256Hex(bytes) })
+          }
+        }
+        if (options.collectVariant) try options.collectVariant(context)
+        try restoreScenario()
+        try refuse((record.phases ?? []).every((phase) => phase.passed), "Instrumentation phase failed")
+        const finalHashes: Record<string, string> = {}
+        for (const name of owned.keys()) {
+          const hash = try installedHash(name)
+          try refuse(allowedAtCleanup(name, hash), "Installed APK changed before cleanup")
+          finalHashes[name] = hash
+        }
+        record.finalInstalledHashes = finalHashes
+        record.passed = true
+        for (const name of [...owned.keys()].reverse()) try run("uninstall", name)
+        try refuse(!(try installed()), "Variant package cleanup failed")
+        owned.clear()
+        try refuse((try home()) === previousHome, "Default HOME changed")
+        if (cuttlefish) try refuse((try browserRole()) === previousBrowser, "Default browser changed")
+      }
+      report.verifiedAt = new Date(try Clock.currentTimeMillis).toISOString()
+    }
+    const outcome = try exit(body)
+    if (Exit.isFailure(outcome)) report.failure = String(Cause.squash(outcome.cause))
+    if (admitted) {
+      if (unacknowledged.size) {
+        report.unacknowledgedInstalls = [...unacknowledged].map(([name, expectedSha256]) => ({ packageName: name, expectedSha256 }))
+        cleanupErrors.push("An install was not acknowledged; the device may still commit it. Explicit fixture recovery is required.")
+      }
+      const cleanup = try exit(restoreScenario())
+      if (Exit.isFailure(cleanup)) cleanupErrors.push(`Scenario cleanup failed: ${String(Cause.squash(cleanup.cause))}`)
+      const remaining: string[] = []
+      for (const name of [...owned.keys()].reverse()) {
+        const stopped = try exit(effect {
+          if (!(try listed()).includes(`package:${name}`)) return
+          try refuse(allowedAtCleanup(name, try installedHash(name)), "Owned APK changed; installation retained for recovery")
+          remaining.push(name)
+          try run("shell", "am", "force-stop", "--user", user, name)
+        })
+        if (Exit.isFailure(stopped)) cleanupErrors.push(`Could not stop ${name}: ${String(Cause.squash(stopped.cause))}`)
+      }
+      report.cleanupDeferred = cleanupErrors.length > 0
+      if (!report.cleanupDeferred)
+        for (const name of remaining) {
+          const removed = try exit(run("uninstall", name))
+          if (Exit.isFailure(removed)) cleanupErrors.push(`Could not clean ${name}: ${String(Cause.squash(removed.cause))}`)
+        }
+      const settled = try exit(effect {
+        report.cleaned = !(try installed()) && unacknowledged.size === 0
+        report.homeUnchanged = (try home()) === previousHome
+        if (cuttlefish) report.browserUnchanged = (try browserRole()) === previousBrowser
+      })
+      if (Exit.isFailure(settled)) {
+        report.cleaned = false
+        report.homeUnchanged = false
+        if (cuttlefish) report.browserUnchanged = false
+      }
+      report.cleanupErrors = cleanupErrors
+      const reportFile = path.join(options.directory, "verification.json")
+      try files.writeFileString(reportFile, `${JSON.stringify(report, null, 2)}\n`)
+      const clean = report.cleaned === true && report.homeUnchanged === true && (!cuttlefish || report.browserUnchanged === true) && cleanupErrors.length === 0
+      if (Exit.isSuccess(outcome) && !clean) throw new IsolatedTestFailed({ reason: "Isolated test cleanup or HOME verification failed", report: reportFile })
+    }
+    if (Exit.isFailure(outcome)) return try Effect.failCause(outcome.cause)
+    return report
+  })
+}

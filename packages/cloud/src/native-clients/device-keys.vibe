@@ -148,10 +148,10 @@ function proofRefusal(grant: Grant, now: number): Refused {
 
 effect function mint(tx: Tx, row: Row, verifierMatches: boolean, now: number) {
   const key = toText(row.key) ?? ""
-  const before = try decodeState(row.state) catch effect () => { throw refused("ServiceUnavailable", "NoReason", now + 5000) }
+  const before = decodeState(row.state) catch effect () => { throw refused("ServiceUnavailable", "NoReason", now + 5000) }
   if (toText(row.status) !== "active" || toInt(row.issued_at) < toInt(row.devices_revoked_before)) throw refused("AuthenticationRequired", "CredentialRevoked")
   const event: Event = { type: "token", verifierMatches, now }
-  try apply(before, event) catch effect (failure) => { throw proofRefusal(failure.state, now) }
+  apply(before, event) catch effect (failure) => { throw proofRefusal(failure.state, now) }
   const minting = before.phase.tag === "CodeIssued"
   const secret = minting ? secretText("eliza_mobile_", 32, "hex") : try unseal("device-key", toText(row.sealed_copy) ?? "")
   const credentialId = minting ? newId() : toText(row.credential_id) ?? ""
@@ -251,7 +251,7 @@ effect function ack(context: RouteContext) {
     if (row === undefined) throw refused("CredentialProofInvalid")
     if (toText(row.status) !== "active" || toInt(row.issued_at) < toInt(row.devices_revoked_before)) throw refused("AuthenticationRequired", "CredentialRevoked")
     const secretMatches = sameText(tokenDigest(body.secret), toText(row.secret_digest) ?? "")
-    const before = try decodeState(row.state) catch effect () => { throw refused("ServiceUnavailable", "NoReason", context.now + 5000) }
+    const before = decodeState(row.state) catch effect () => { throw refused("ServiceUnavailable", "NoReason", context.now + 5000) }
     if (before.phase.tag === "Active" && secretMatches) return before.keyExpiresAt
     const stepped = try step(tx, toText(row.key) ?? "", { type: "ack", secretMatches, now: context.now }, (grant) => ({
       phase: phaseColumn(grant),

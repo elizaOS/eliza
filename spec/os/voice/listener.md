@@ -1,22 +1,16 @@
 # Wake listener
 
-The privileged wake listener is a separate, image-signed app that listens for
-the assistant's name on the device. It runs one microphone foreground
-service, decides from consent, permissions, crashes, the user, calls, the
-microphone and SystemUI's indicator lease (imported as `I`) whether to hold
-the microphone, and opens the host's assistant surface when it hears its
-name. Sources: develop `packages/app/platforms/android/sense`
-(`ListenerPolicy.java`, `ListeningService.java`, `Listener.java`,
-`CrashLoopBreaker.java`, `ListenerStore.java`, `ListenerControlProvider.java`,
-`AssistantInvocation.java`), `packages/app/quint/ListenerForegroundLifecycle.qnt`
-and `plugins/plugin-native-system/quint/ListenerStopEvidence.qnt`.
-
-Android supplies the caller of each control, the device observations, the
-start ids and the clocks; the shell authenticates the caller before it sends
-an event. The audio loop, the on-device recognizer, the notification text and
-the persisted store stay in the shell. Image staging of the listener is
-`spec/os/image/listener.md`; which arrival may start a voice turn is
-`spec/os/voice/invocation.md`.
+The privileged, image-signed wake listener app runs one microphone
+foreground service, decides whether to hold the microphone from consent,
+permissions, crashes, the user, calls and SystemUI's indicator lease
+(imported as `I`), and opens the host's assistant surface when it hears its
+name. Sources: develop `packages/app/platforms/android/sense/*`
+(`ListenerPolicy`, `ListeningService`, `Listener`, `CrashLoopBreaker`,
+`ListenerStore`, `ListenerControlProvider`), `ListenerForegroundLifecycle.qnt`
+and `ListenerStopEvidence.qnt`. The shell authenticates each caller and
+supplies observations, start ids and clocks; the audio loop, the recognizer,
+notifications and the store stay in it. Staging is `spec/os/image/listener.md`;
+which arrival starts a voice turn is `spec/os/voice/invocation.md`.
 
 ## Story: Keep wake listening on the device under my control
 
@@ -26,19 +20,16 @@ the persisted store stay in the shell. Image staging of the listener is
 
 ### Only I turn listening on, in an admitted listener with my consent and no exemption
 
-The admitted listener matches its image identity, holds exactly the two
-privileged permissions (`CAPTURE_AUDIO_HOTWORD`,
-`START_ACTIVITIES_FROM_BACKGROUND`) and runs in its own SELinux domain. I
-consented in its own screen and granted `RECORD_AUDIO` and notifications; it
-holds no indicator-exempt role and no battery exemption. Turning on, and
-resuming, need the phone unlocked; they clear a pause, a crash stop and a
-lost-indicator stop.
+The image admitted the listener (`spec/os/image/listener.md`: exactly two
+privileged permissions, its own SELinux domain, no indicator-exempt role, no
+battery exemption), and I gave the current consent, `RECORD_AUDIO` and
+notifications in its own screen. Turning on and resuming need the phone
+unlocked and clear a pause, a crash stop and a lost-indicator stop.
 
 ```quint
 import indicatorLease as I from "./indicatorLease"
 type Caller = Owner | HostApp | StatusChip | SystemUiLease | OtherApp
-type ListenerGrant = { identityMatches: bool, onlyTwoPrivileged: bool, confinedDomain: bool, consented: bool,
-  recordAudioGranted: bool, notificationsGranted: bool, indicatorExempt: bool, powerExempt: bool }
+type ListenerGrant = { imageAdmitted: bool, consented: bool, recordAudioGranted: bool, notificationsGranted: bool }
 type Device = { recordAudio: bool, notificationsVisible: bool, userForeground: bool, unlocked: bool, keyguardLocked: bool,
   speechUnavailable: bool, inCall: bool, otherAppRecording: bool, micSilenced: bool, speechPlaying: bool, screenInteractive: bool }
 type Promotion = NoPromotion | Promoted | PromotionRefused
@@ -52,13 +43,9 @@ pure val unknownDevice: Device = { recordAudio: false, notificationsVisible: fal
 pure val initial: ListenerService = { enabled: false, userPaused: false, tripped: false, recentExits: List(), indicatorLost: false,
   device: unknownDevice, lease: I::initial, unsilencedSince: -1, queued: 0, delivered: 0, stopped: true,
   foreground: false, capturing: false, promotion: NoPromotion, stopConfirmed: false, lastWake: NoWake }
-pure def admitted(g: ListenerGrant): bool =
-  g.identityMatches and g.onlyTwoPrivileged and g.confinedDomain and g.consented and g.recordAudioGranted
-  and g.notificationsGranted and not(g.indicatorExempt) and not(g.powerExempt)
-pure val admittedGrant: ListenerGrant = { identityMatches: true, onlyTwoPrivileged: true, confinedDomain: true, consented: true,
-  recordAudioGranted: true, notificationsGranted: true, indicatorExempt: false, powerExempt: false }
-pure val grantValues = Set(admittedGrant, { ...admittedGrant, onlyTwoPrivileged: false },
-  { ...admittedGrant, indicatorExempt: true }, { ...admittedGrant, consented: false })
+pure def admitted(g: ListenerGrant): bool = g.imageAdmitted and g.consented and g.recordAudioGranted and g.notificationsGranted
+pure val admittedGrant: ListenerGrant = { imageAdmitted: true, consented: true, recordAudioGranted: true, notificationsGranted: true }
+pure val grantValues = Set(admittedGrant, { ...admittedGrant, imageAdmitted: false }, { ...admittedGrant, consented: false })
 pure def canTurnOn(s: ListenerService, by: Caller, grant: ListenerGrant): bool =
   by == Owner and admitted(grant) and not(s.device.keyguardLocked)
 pure def turnOn(s: ListenerService, by: Caller, grant: ListenerGrant): ListenerService = {
@@ -167,7 +154,7 @@ pure def stepRefusedPromotionIsDiagnosed(before: ListenerService, via: str, afte
 pure def sometimesRefusedPromotion(s: ListenerService): bool = s.promotion == PromotionRefused and s.delivered >= 1
 ```
 
-### An older start never stops a newer one
+### An older start never stops a newer one, and every queued start is applied
 
 Every control ends by asking Android for a start when the new state runs
 the service. The service stops itself only for the newest start Android
@@ -179,11 +166,6 @@ pure def requestStart(s: ListenerService): ListenerService = { ...s, queued: s.q
 pure def alwaysStoppedServiceHoldsNothing(s: ListenerService): bool =
   s.delivered >= 0 and s.delivered <= s.queued and (s.stopped implies s.delivered == s.queued and not(s.foreground) and not(s.capturing))
 pure def sometimesNewerStartRetained(s: ListenerService): bool = s.delivered >= 1 and s.delivered < s.queued and not(s.foreground)
-```
-
-### Every queued start is delivered and applied
-
-```quint
 pure val fair_deliverStart = "weak"
 pure def leadsToEveryStartApplied(s: ListenerService, later: ListenerService): bool = later.delivered >= s.queued
 ```
@@ -210,13 +192,12 @@ pure def sometimesStopConfirmedAfterRunning(s: ListenerService): bool = s.stopCo
 
 ### Three crashes while capturing within ten minutes stop listening until I turn it on
 
-Android restarts the persistent listener after every end. A crash counts as
-an unclean exit only while a capture session was open with `RECORD_AUDIO`
-granted; a shutdown closes the session first, and a reboot or package update
-is another boot or install. Exits ten minutes old no longer count, but a
-tripped breaker stays tripped. The restarted process holds no lease (its
-monotonic clock runs on) and asks for a start when its state runs the
-service.
+Android restarts the persistent listener after every end. Only a crash
+with a capture session open and `RECORD_AUDIO` granted is an unclean exit
+(shutdown closes the session; a reboot or update is another boot or
+install). Exits ten minutes old stop counting; a trip is sticky. The new
+process holds no lease, its monotonic clock runs on, and it asks for a start
+when its state runs the service.
 
 ```quint
 type ProcessEnd = Crash | Shutdown | PackageUpdate
@@ -310,15 +291,9 @@ pure def alwaysLostIndicatorIsLatched(s: ListenerService): bool =
 pure def sometimesIndicatorLossStopsListening(s: ListenerService): bool = decide(s) == StoppedIndicatorLost and not(s.capturing)
 ```
 
-### An explained hidden indicator pauses capture and resumes it on a fresh acknowledgement
-
-Display off, AOD, a transition, the shade or a fullscreen app pauses: the
-service keeps running, releases the microphone and captures again once
-SystemUI acknowledges a visible indicator.
+### A latched loss closes the microphone when the service converges
 
 ```quint
-pure def sometimesExplainedPauseKeepsServiceRunning(s: ListenerService): bool =
-  decide(s) == PausedIndicatorHidden and s.foreground and not(s.capturing)
 pure val fair_converge = "weak"
 pure def leadsToLostIndicatorClosesMicrophone(s: ListenerService, later: ListenerService): bool =
   (s.capturing and s.indicatorLost) implies not(later.capturing)
@@ -328,5 +303,11 @@ pure val weight_renewLease = 10
 pure val weight_requestStart = 10
 pure val weight_deliverStart = 10
 pure val weight_hearPhrase = 10
-pure val weight_restartProcess = 3
+```
+
+### An explained hidden indicator only pauses capture, with the service still running
+
+```quint
+pure def sometimesExplainedPauseKeepsServiceRunning(s: ListenerService): bool =
+  decide(s) == PausedIndicatorHidden and s.foreground and not(s.capturing)
 ```

@@ -1,5 +1,5 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"; spec/cloud/deployment.md, "Story: Answer only the deployment's own callers"
-import { corsGrant, profileAccepted, routeOpen, mountedMethodsAnswer, type MethodsAnswer, type Capability as SpecCapability, type EnvironmentProfile as ProfileRow, type SignInSetup } from "../../gen/cloud__deployment.effect.vibe"
+import { corsGrant, profileAccepted, routeOpen, mountedMethodsAnswer, type MethodsAnswer, type Capability as SpecCapability, type EnvironmentProfile as ProfileRow, type Profile as SpecProfile, type SignInSetup } from "../../gen/cloud__deployment.effect.vibe"
 import { CloudEnvironment as EnvironmentSchema, CloudProfile, type Capability, type EnvironmentProfile, type LegalDocument } from "./profile.schema.ts"
 
 export type { Capability, CloudProfile, EnvironmentProfile, LegalDocument }
@@ -42,9 +42,13 @@ function configured(settings: EnvironmentProfile) {
   return settings.capabilities.every((capability) => capability === "managedGoogle" ? settings.google !== undefined : settings[capability] !== undefined)
 }
 
+export function specProfile(profile: CloudProfile): SpecProfile {
+  return { production: rowOf(profile.name, profile.environments.production), staging: rowOf(profile.name, profile.environments.staging) }
+}
+
 export effect function parseProfile(input: unknown): CloudProfile!ProfileInvalid {
   const profile = Schema.decodeUnknownEffect(CloudProfile)(input) catch effect (failure) => { throw new ProfileInvalid({ problem: failure.message }) }
-  if (!profileAccepted({ production: rowOf(profile.name, profile.environments.production), staging: rowOf(profile.name, profile.environments.staging) }) ||
+  if (!profileAccepted(specProfile(profile)) ||
       profile.environments.production.firstPartyOrigins.some(isLoopback) || !configured(profile.environments.production) || !configured(profile.environments.staging)) {
     throw new ProfileInvalid({ problem: "the profile breaks a deployment rule: distinct API origins, a mail sender, configured providers for every enabled capability and no loopback first-party origin in production" })
   }

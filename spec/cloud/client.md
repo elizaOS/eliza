@@ -36,7 +36,7 @@ type Scheme = Https | Http | OtherScheme
 type BaseUrl = { scheme: Scheme, loopback: bool, hasPath: bool, hasQueryOrFragment: bool }
 pure def originAccepted(u: BaseUrl): bool =
   not(u.hasPath) and not(u.hasQueryOrFragment) and (u.scheme == Https or (u.scheme == Http and u.loopback))
-pure val baseUrlValues = Set(
+pure val uValues = Set(
   { scheme: Https, loopback: false, hasPath: false, hasQueryOrFragment: false },
   { scheme: Https, loopback: false, hasPath: true, hasQueryOrFragment: false },
   { scheme: Http, loopback: true, hasPath: false, hasQueryOrFragment: false },
@@ -213,12 +213,13 @@ pure val googleRoutes: List[DeviceRoute] = List(
   keyed(Delete, google(List("calendar", "events")).concat(List(Param({ name: "eventId" }))), Set("If-Match")))
 pure val deviceRoutes: List[DeviceRoute] = signInRoutes.concat(billingRoutes).concat(serviceRoutes).concat(googleRoutes)
 pure def admitsHeader(r: DeviceRoute, header: str): bool = baseHeaders.contains(header) or r.headers.contains(header)
-pure def lawEveryRouteIsUnderApi(r: DeviceRoute): bool =
-  deviceRoutes.foldl(true, (ok, d) => ok and d.path.nthOr(0, Param({ name: "" })) == Literal({ text: "api" }))
-pure def lawNoRouteIsListedTwice(r: DeviceRoute): bool =
-  deviceRoutes.foldl(true, (ok, d) => ok and deviceRoutes.select(e => e.method == d.method and e.path == d.path).length() == 1)
-pure def lawIfMatchOnlyOnChangeAndDelete(r: DeviceRoute): bool =
-  deviceRoutes.foldl(true, (ok, d) => ok and (d.headers.contains(ifMatch) implies (d.method == Patch or d.method == Delete)))
+pure def routesOf(method: HttpMethod): List[DeviceRoute] = deviceRoutes.select(d => d.method == method)
+pure def lawEveryRouteIsUnderApi(method: HttpMethod): bool =
+  routesOf(method).every(d => d.path.nthOr(0, Param({ name: "" })) == Literal({ text: "api" }))
+pure def lawNoRouteIsListedTwice(method: HttpMethod): bool =
+  routesOf(method).every(d => routesOf(method).select(other => other.path == d.path).length() == 1)
+pure def lawIfMatchOnlyOnChangeAndDelete(method: HttpMethod): bool =
+  (method == Get or method == Post) implies routesOf(method).every(d => not(d.headers.contains(ifMatch)))
 ```
 
 ### A request path matches the listed route with the most literal segments
@@ -358,7 +359,7 @@ type SnapshotView = { accountStatus: A::AccountStatus, balance: Micros, planKey:
 type PlanView = PlanChecking | PlanUnavailable | PlanOnCredits | PlanPaid({ planKey: P::PlanKey, warning: bool }) | PlanNone
 type PlanAdmission = Admit | AdmitWithWarning | NeedsPlan | AdmissionUnknown
 pure def accountUsable(s: SnapshotView): bool = s.accountStatus == A::Active and s.inference != LaneRefused and s.allowanceAvailable + s.balance > 0
-pure def paymentLate(status: Sub::SubscriptionStatus): bool = Set(Sub::Dunning, Sub::PastDue, Sub::Unpaid).contains(status)
+pure def paymentLate(subscription: Sub::SubscriptionStatus): bool = Set(Sub::Dunning, Sub::PastDue, Sub::Unpaid).contains(subscription)
 pure def planFromSnapshot(s: SnapshotView): PlanView =
   if (s.source == FromFree) (if (s.balance > 0) PlanOnCredits else PlanNone)
   else PlanPaid({ planKey: s.planKey, warning: s.source == FromSubscription and paymentLate(s.subscription) })

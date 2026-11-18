@@ -1,6 +1,6 @@
 // spec/agent/models/binding.md, "No text handler is ever served by a model on the device"; spec/agent/models/binding.md, "Only a network failure, an outage or a provider issue is retried, and a rate limit ends the call"
 import { ModelType, type IAgentRuntime } from "@elizaos/core"
-import { generateText, listModels, registerTwice, type Binding } from "./chat.vibe"
+import { Refused, generateText, listModels, registerTwice, type Binding } from "./chat.vibe"
 
 export interface OwnKeyModels {
   readonly baseUrl: string
