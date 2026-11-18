@@ -171,11 +171,13 @@ function awaitingLocation(
   action: MapsSubaction,
   intent: MapsLocateCard["intent"],
   prompt: string,
+  subject: Pick<MapsLocateCard, "query" | "destination" | "travelMode">,
 ): ActionResult {
   const userFacingText = appendMapsCard(prompt, {
     kind: "locate",
     intent,
     prompt,
+    ...subject,
   });
   return {
     success: false,
@@ -414,6 +416,50 @@ async function placeFromQuery(
     }),
     data: { ...ask.data, places: page.places },
   };
+}
+
+/** The travel mode the request named, if any. */
+function namedTravelMode(params: Params): TravelMode | undefined {
+  const mode = text(params.travelMode);
+  return mode
+    ? validated(
+        travelModeSchema,
+        mode,
+        "Travel mode must be drive, walk, bicycle, or transit.",
+      )
+    : undefined;
+}
+
+/**
+ * A destination that is a kind of place near the user (nearest pharmacy) is
+ * not searched here: without a position the provider answers from anywhere.
+ * The locate card hands the query to the device, which searches around its own
+ * position and plans the route. The position stays on the device.
+ */
+function nearbyDestination(
+  action: MapsSubaction,
+  params: Params,
+  query: string,
+): ActionResult {
+  const travelMode = namedTravelMode(params);
+  return awaitingLocation(
+    action,
+    "route-origin",
+    `I need your precise location to start the route to ${query}.`,
+    { query, ...(travelMode ? { travelMode } : {}) },
+  );
+}
+
+/** True when the request asks for a typed destination near the user's position. */
+function wantsNearbyDestination(params: Params): boolean {
+  return (
+    flag(params.useCurrentLocation) &&
+    text(params.placeQuery) !== undefined &&
+    opaqueText(params.savedPlaceId) === undefined &&
+    opaqueText(params.placeId) === undefined &&
+    params.latitude === undefined &&
+    params.longitude === undefined
+  );
 }
 
 /** A place from ids or coordinates, else from the typed placeQuery. */
@@ -749,6 +795,7 @@ async function execute(
               action,
               "place-near",
               `I need your precise location to search near you for “${query}”.`,
+              { query },
             ),
             callback,
           );
@@ -766,6 +813,9 @@ async function execute(
             {
               query,
               near,
+              // Ask the provider for the closest places, not the closest of
+              // its most relevant ones.
+              ...(near ? { rank: "distance" as const } : {}),
               cursor: opaqueText(params.cursor),
               limit: number(params.limit),
             },
@@ -858,16 +908,33 @@ async function execute(
             destinationQuery,
             text(params.provider),
           );
-          if (isReply(found)) return result(action, found, callback);
+          if (isReply(found)) {
+            // Several matches for a route from here: the device's position
+            // picks the one meant, so the device searches around itself.
+            return result(
+              action,
+              !origin &&
+                flag(params.useCurrentLocation) &&
+                found.data?.reason === "missing_input"
+                ? nearbyDestination(action, params, destinationQuery)
+                : found,
+              callback,
+            );
+          }
           destination = found;
         }
         if (!origin && destination && flag(params.useCurrentLocation)) {
+          const travelMode = namedTravelMode(params);
           return result(
             action,
             awaitingLocation(
               action,
               "route-origin",
               `I need your precise location to start the route to ${destination.name}.`,
+              {
+                destination: toCardPlace(destination),
+                ...(travelMode ? { travelMode } : {}),
+              },
             ),
             callback,
           );
@@ -1165,6 +1232,13 @@ async function execute(
       }
       case "share":
       case "navigate": {
+        if (action === "navigate" && wantsNearbyDestination(params)) {
+          return result(
+            action,
+            nearbyDestination(action, params, text(params.placeQuery) ?? ""),
+            callback,
+          );
+        }
         const place = await requestedPlace(service, action, params, message);
         if (place && isReply(place)) return result(action, place, callback);
         if (!place) {
@@ -1286,7 +1360,7 @@ export const mapsAction: Action = {
     "Place search, routes, saved places, sharing, navigation, and coverage.",
   contexts: ["location", "travel", "productivity"],
   routingHint:
-    "Use MAPS_PLACE for place/address lookup and for what is nearby or nearest (set useCurrentLocation when the user says near me or nearest and gave no place), MAPS_SELECT to show a place on the phone map, MAPS_ROUTE for distance, travel time and directions between two named places, MAPS_NAVIGATION_START for directions from where the user is now (the phone plans from its own location), MAPS_SAVE to persist a place, MAPS_SAVED to list places saved with the assistant, MAPS_SHARE for a geo share link after the user confirms, MAPS_NAVIGATE to start phone navigation when the phone is connected and otherwise return a directions link, and MAPS_COVERAGE for the regions, travel modes and location recipients of the connected provider. Use MAPS_NAVIGATION_START, MAPS_NAVIGATION_REROUTE and MAPS_NAVIGATION_STOP for in-app phone navigation.",
+    "Use MAPS_PLACE for place/address lookup and for what is nearby or nearest (set useCurrentLocation when the user says near me or nearest and gave no place), MAPS_SELECT to show a place on the phone map, MAPS_ROUTE for distance, travel time and directions between two named places, MAPS_NAVIGATION_START for directions from where the user is now (the phone plans from its own location; set useCurrentLocation when the destination is the nearest or a nearby kind of place), MAPS_SAVE to persist a place, MAPS_SAVED to list places saved with the assistant, MAPS_SHARE for a geo share link after the user confirms, MAPS_NAVIGATE to start phone navigation when the phone is connected and otherwise return a directions link, and MAPS_COVERAGE for the regions, travel modes and location recipients of the connected provider. Use MAPS_NAVIGATION_START, MAPS_NAVIGATION_REROUTE and MAPS_NAVIGATION_STOP for in-app phone navigation.",
   // Direct umbrella execution is read-only. The promoted MAPS_SAVE virtual
   // owns the write and receipt contract in plugin.ts.
   tags: ["domain:maps"],
@@ -1471,10 +1545,10 @@ export const mapsAction: Action = {
     {
       name: "useCurrentLocation",
       description:
-        "True when the request means the user's current position (near me, nearest, nearby, from here) and no coordinates were supplied. The assistant never receives the position: the chat surface asks the user's device to use it.",
+        "True when the request means the user's current position and no coordinates were supplied: near me, nearest or nearby (place), from here (route), or a navigate destination that is the nearest or a nearby kind of place (nearest pharmacy) and not one named place or address. The assistant never receives the position: the chat surface asks the user's device to use it.",
       required: false,
       schema: { type: "boolean" },
-      subactions: ["place", "route"],
+      subactions: ["place", "route", "navigate"],
     },
     {
       name: "label",
@@ -1570,6 +1644,11 @@ async function executeNavigation(
       );
     }
     const device = service.requireDeviceNavigation();
+    if (wantsNearbyDestination(params)) {
+      return reply(
+        nearbyDestination("navigate", params, text(params.placeQuery) ?? ""),
+      );
+    }
     const destination = await requestedPlace(
       service,
       "navigate",
@@ -1680,6 +1759,14 @@ export const mapsNavigationAction: Action = {
         "How the user travels: walk (walking, on foot), bicycle (bike, cycling), transit (train, subway, bus, public transport) or drive (car; the default when the user names no way to travel).",
       required: false,
       schema: { type: "string", enum: ["drive", "walk", "bicycle", "transit"] },
+      subactions: ["start"],
+    },
+    {
+      name: "useCurrentLocation",
+      description:
+        "True only when placeQuery is the nearest or a nearby kind of place (nearest pharmacy, a gas station near me) and not one named place or address. The phone then finds it around its own position; the assistant never receives the position.",
+      required: false,
+      schema: { type: "boolean" },
       subactions: ["start"],
     },
   ],

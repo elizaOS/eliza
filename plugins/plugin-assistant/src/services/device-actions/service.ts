@@ -57,8 +57,21 @@ import type {
   ApprovalRequest,
 } from "../approval/types.ts";
 import {
+  BROWSER_CONTROL_TYPES,
+  BROWSER_FIND_CAPABILITY,
+  BROWSER_HISTORY_CAPABILITY,
+  BROWSER_SEARCH_CAPABILITY,
+  BROWSER_TABS_CAPABILITY,
+  isBrowserControl,
+} from "./browser-contract.ts";
+import {
+  browserDestinationMatches,
+  browserSearchQueryMatches,
   DeviceBrowserNotRequestedError,
+  directBrowserDestination,
+  directBrowserSearchQuery,
   groundBrowserDestination,
+  groundBrowserSearchQuery,
 } from "./browser-request-grounding.ts";
 import type { CalendarFields } from "./calendar-contract.ts";
 import {
@@ -81,6 +94,7 @@ import {
 } from "./calendar-update-continuation.ts";
 import {
   CAMERA_CAPTURE_CAPABILITY,
+  CAMERA_LENS_CAPABILITY,
   isCameraCapture,
   validateCameraCaptureResult,
 } from "./camera-contract.ts";
@@ -96,10 +110,14 @@ import {
 import {
   DeviceActionError,
   type DeviceActionPayload,
+  deviceOperationFormSupported,
   deviceOperationSupportedByCapabilities,
+  deviceViewsForCapabilities,
   exactKeys,
   identifier,
   object,
+  PROFILE_ONLY_DEVICE_VIEWS,
+  TELEPHONY_VIEWS_CAPABILITY,
   text,
   validateDeviceOperation,
   validateDevicePayload,
@@ -196,6 +214,9 @@ import {
   validateSmsResult,
 } from "./sms-contract.ts";
 import {
+  CONTACT_READ_CAPABILITY,
+  CONTACT_SHOW_CAPABILITY,
+  CONTACT_UPDATE_VALUES_CAPABILITY,
   CONTACT_WRITE_CAPABILITY,
   isSmsCompose,
   isSmsReply,
@@ -203,6 +224,7 @@ import {
   MESSAGES_READ_CAPABILITY,
   PHONE_CALL_CAPABILITY,
   SMS_COMPOSE_CAPABILITY,
+  SMS_COMPOSE_TARGET_CAPABILITY,
   selectedTelephonyView,
   smsComposeNotSubmitted,
   smsReplyNotDrafted,
@@ -717,6 +739,9 @@ export const DEVICE_RECORD_ADMISSION: Readonly<
     selection: "none",
   },
   // Native code fixes the window or the default calendar from any open screen.
+  // A host with a canonical CALENDAR action also needs a selected phone
+  // calendar, or the owner's words naming the phone's calendar, for the local
+  // create (see deviceAppRecordOperationAvailable).
   calendar_read_next: { domain: "calendar", views: "any", selection: "none" },
   calendar_create_local: {
     domain: "calendar",
@@ -750,6 +775,11 @@ export const DEVICE_RECORD_ADMISSION: Readonly<
   },
 };
 
+// The owner names the phone's own calendar: "my phone's calendar", "the
+// calendar on this phone".
+const PHONE_CALENDAR_REQUEST =
+  /\b(?:phone|device|android|system|os)(?:['’]s)?\s+(?:own\s+)?calendar\b|\bcalendar\s+(?:app\s+)?on\s+(?:this|my|the)\s+(?:phone|device)\b/i;
+
 /** Availability is the same domain fence as enqueue; capability alone never owns records. */
 export function deviceAppRecordOperationAvailable(
   runtime: IAgentRuntime,
@@ -775,6 +805,19 @@ export function deviceAppRecordOperationAvailable(
   if (!current.active || !current.isCurrent()) return false;
   const source = currentAppRecordSource(runtime, rule.domain, message);
   if (rule.selection === "device") return source === "device";
+  message ??= current.requestMessage?.message ?? current.replyContext?.message;
+  // A new event has one store per turn. With a canonical CALENDAR action it
+  // is the runtime calendar, so the phone's own create needs a selected phone
+  // calendar or the owner's own words naming the phone's calendar. Otherwise
+  // two create tools would write to different stores and a later read would
+  // miss the phone's copy.
+  if (
+    type === "calendar_create_local" &&
+    source !== "device" &&
+    runtime.actions.some((action) => action.name === "CALENDAR") &&
+    !PHONE_CALENDAR_REQUEST.test(message?.content.text ?? "")
+  )
+    return false;
   if (
     source === "unavailable" ||
     !deviceOperationSupportedByCapabilities(
@@ -783,7 +826,6 @@ export function deviceAppRecordOperationAvailable(
     )
   )
     return false;
-  message ??= current.requestMessage?.message ?? current.replyContext?.message;
   const context = message && turnObservation(message.content.metadata);
   if (!context?.view) return false;
   if (rule.selection === "canonical-notes-list")
@@ -1142,6 +1184,56 @@ const readReplyControllers = new WeakMap<
     }
   >
 >();
+/**
+ * Every capability a phone may advertise and this agent may offer. Enrollment,
+ * the request header allow-list and the Cloud capability route all read it, so
+ * they cannot drift apart.
+ */
+export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
+  "gmail.request-policy.v1",
+  CAMERA_CAPTURE_CAPABILITY,
+  "calendar.local-event.v1",
+  CALENDAR_CREATE_CAPABILITY,
+  CALENDAR_NEXT_CAPABILITY,
+  CALENDAR_AGENDA_CAPABILITY,
+  "notes.local-record.v1",
+  NOTES_QUERY_CAPABILITY,
+  NOTES_ORGANIZE_CAPABILITY,
+  NOTES_LIST_FILTER_CAPABILITY,
+  NOTES_SEARCH_CAPABILITY,
+  CALENDAR_AVAILABILITY_CAPABILITY,
+  FILES_CAPABILITY,
+  NAMED_TARGET_CAPABILITY,
+  CALENDAR_NAMED_READ_CAPABILITY,
+  REMINDER_CAPABILITY,
+  REMINDER_TIMING_CAPABILITY,
+  REMINDER_CREATE_CAPABILITY,
+  CLOCK_CAPABILITY,
+  CLOCK_REPEAT_CAPABILITY,
+  CLOCK_ALARMS_CAPABILITY,
+  MAPS_CAPABILITY,
+  SMS_SEND_CAPABILITY,
+  PHONE_DIAL_CAPABILITY,
+  CONTACT_LOOKUP_CAPABILITY,
+  PHONE_CALL_CAPABILITY,
+  CONTACT_WRITE_CAPABILITY,
+  SMS_COMPOSE_CAPABILITY,
+  MESSAGES_READ_CAPABILITY,
+  VOICEMAIL_READ_CAPABILITY,
+  VOICEMAIL_DELETE_CAPABILITY,
+  PHOTO_LIBRARY_CAPABILITY,
+  PHOTOS_VIEW_CAPABILITY,
+  CAMERA_LENS_CAPABILITY,
+  SMS_COMPOSE_TARGET_CAPABILITY,
+  CONTACT_UPDATE_VALUES_CAPABILITY,
+  CONTACT_SHOW_CAPABILITY,
+  CONTACT_READ_CAPABILITY,
+  BROWSER_SEARCH_CAPABILITY,
+  BROWSER_TABS_CAPABILITY,
+  BROWSER_FIND_CAPABILITY,
+  BROWSER_HISTORY_CAPABILITY,
+  TELEPHONY_VIEWS_CAPABILITY,
+];
 export class DeviceActionService {
   constructor(private readonly runtime: IAgentRuntime) {}
   private database(): TransactionDatabase {
@@ -1932,41 +2024,7 @@ export class DeviceActionService {
         enrollmentId: String(row.enrollment_id),
         viewProfileVersion: 1 as const,
         userTextFormatVersion: 1 as const,
-        capabilities: [
-          "gmail.request-policy.v1",
-          CAMERA_CAPTURE_CAPABILITY,
-          "calendar.local-event.v1",
-          CALENDAR_CREATE_CAPABILITY,
-          CALENDAR_NEXT_CAPABILITY,
-          CALENDAR_AGENDA_CAPABILITY,
-          "notes.local-record.v1",
-          NOTES_QUERY_CAPABILITY,
-          NOTES_ORGANIZE_CAPABILITY,
-          NOTES_LIST_FILTER_CAPABILITY,
-          NOTES_SEARCH_CAPABILITY,
-          CALENDAR_AVAILABILITY_CAPABILITY,
-          FILES_CAPABILITY,
-          NAMED_TARGET_CAPABILITY,
-          CALENDAR_NAMED_READ_CAPABILITY,
-          REMINDER_CAPABILITY,
-          REMINDER_TIMING_CAPABILITY,
-          REMINDER_CREATE_CAPABILITY,
-          CLOCK_CAPABILITY,
-          CLOCK_REPEAT_CAPABILITY,
-          CLOCK_ALARMS_CAPABILITY,
-          MAPS_CAPABILITY,
-          SMS_SEND_CAPABILITY,
-          PHONE_DIAL_CAPABILITY,
-          CONTACT_LOOKUP_CAPABILITY,
-          PHONE_CALL_CAPABILITY,
-          CONTACT_WRITE_CAPABILITY,
-          SMS_COMPOSE_CAPABILITY,
-          MESSAGES_READ_CAPABILITY,
-          VOICEMAIL_READ_CAPABILITY,
-          VOICEMAIL_DELETE_CAPABILITY,
-          PHOTO_LIBRARY_CAPABILITY,
-          PHOTOS_VIEW_CAPABILITY,
-        ],
+        capabilities: [...DEVICE_ACTION_CAPABILITIES],
       };
     });
     // Idempotent registration preserves the same lease. A committed replacement
@@ -2045,7 +2103,7 @@ export class DeviceActionService {
   }
   async viewProfile(c: DeviceCredential): Promise<DeviceViewProfile | null> {
     return this.access(c, async (_q, row) =>
-      storedDeviceViewProfile(row.view_profile),
+      storedDeviceViewProfile(row.view_profile, c.capabilities),
     );
   }
   async setViewProfile(
@@ -2063,8 +2121,18 @@ export class DeviceActionService {
     )
       throw new DeviceActionError("Unsupported view profile");
     const views = enabledDeviceViews(value.views);
+    // A phone enrolls only the views its capabilities cover.
+    if (
+      views.some(
+        (view) => !deviceViewsForCapabilities(c.capabilities).includes(view),
+      )
+    )
+      throw new DeviceActionError("Invalid enabled views");
     return this.access(c, async (_q, row, tx) => {
-      const previous = storedDeviceViewProfile(row.view_profile);
+      const previous = storedDeviceViewProfile(
+        row.view_profile,
+        c.capabilities,
+      );
       if ((previous?.revision ?? null) !== value.expectedRevision)
         throw new DeviceActionError("View profile changed");
       if (previous && JSON.stringify(previous.views) === JSON.stringify(views))
@@ -2082,11 +2150,12 @@ export class DeviceActionService {
     });
   }
   private assertViewProfile(
+    c: DeviceCredential,
     row: Record<string, unknown>,
     payload: DeviceActionPayload,
   ): void {
     if (payload.operation.type !== "open_view") return;
-    const profile = storedDeviceViewProfile(row.view_profile);
+    const profile = storedDeviceViewProfile(row.view_profile, c.capabilities);
     if (
       profile
         ? profile.revision !== payload.viewProfileRevision ||
@@ -2191,7 +2260,10 @@ export class DeviceActionService {
           "The original owner request did not admit Notes deletion",
         );
     }
-    if (!deviceOperationSupportedByCapabilities(validated.type, c.capabilities))
+    if (
+      !deviceOperationSupportedByCapabilities(validated.type, c.capabilities) ||
+      !deviceOperationFormSupported(validated, c.capabilities)
+    )
       throw new DeviceActionError("Device operation capability unavailable");
     if (
       isClockOperation(validated) &&
@@ -2268,6 +2340,7 @@ export class DeviceActionService {
         "reminder_cancel",
         "open_view",
         "browser_navigate",
+        ...BROWSER_CONTROL_TYPES,
         "calendar_create_local",
         "calendar_read_next",
         "read_calendar_range",
@@ -2280,7 +2353,10 @@ export class DeviceActionService {
       ].includes(validated.type)
     )
       throw new DeviceActionError("Workflow read requires bound dispatcher");
-    const browserRequest = validated.type === "browser_navigate";
+    // A destination and a search are both built from the owner's own words.
+    const browserRequest =
+      validated.type === "browser_navigate" ||
+      validated.type === "browser_search";
     const selectedTelephony = selectedTelephonyView(validated) !== undefined;
     const foregroundTurn =
       isPhotosViewOperation(validated) || isFilesOperation(validated)
@@ -2289,7 +2365,11 @@ export class DeviceActionService {
     const signal = foregroundTurn && getStreamingContext()?.abortSignal;
     const requestOrigin = await freshRequestedMessageId(this.runtime, c, {
       allowReviewed: browserRequest || selectedTelephony,
-      readText: browserRequest,
+      // A tab word and find text are compared with the owner's words too.
+      readText:
+        browserRequest ||
+        validated.type === "browser_tab_switch" ||
+        validated.type === "browser_find",
     });
     // Reviewed Photos and Files proposals retain their foreground owner
     // even without a direct-request message binding.
@@ -2319,10 +2399,52 @@ export class DeviceActionService {
       // address, never the model's spelling of it.
       const destination =
         requestOrigin &&
-        groundBrowserDestination(requestOrigin.requestText, validated.url);
+        groundBrowserDestination(
+          requestOrigin.requestText,
+          validated.url,
+          this.runtime.character.name,
+        );
       if (!destination) throw new DeviceBrowserNotRequestedError();
       validated = { ...validated, url: destination };
     }
+    if (validated.type === "browser_search") {
+      // The same holds for a search: the words the user typed, never the
+      // model's wording of them.
+      const query =
+        requestOrigin &&
+        groundBrowserSearchQuery(requestOrigin.requestText, validated.query);
+      if (!query) throw new DeviceBrowserNotRequestedError("search");
+      validated = { ...validated, query };
+    }
+    // An open or a search runs without a review only when the whole message
+    // is that direct request. Any other typed address or query is reviewed.
+    // A tab word or find text runs without a review only when the owner typed
+    // it in this message: the phone's answer to a word the model chose would
+    // tell the agent about the owner's tabs or page.
+    const assistantName = this.runtime.character.name;
+    const typedWords = (words: string) =>
+      groundBrowserSearchQuery(requestOrigin?.requestText ?? "", words) !==
+      undefined;
+    const reviewedBrowserRequest =
+      validated.type === "browser_navigate"
+        ? !browserDestinationMatches(
+            validated,
+            directBrowserDestination(
+              requestOrigin?.requestText ?? "",
+              assistantName,
+            ),
+          )
+        : validated.type === "browser_search"
+          ? !browserSearchQueryMatches(
+              validated.query,
+              directBrowserSearchQuery(
+                requestOrigin?.requestText ?? "",
+                assistantName,
+              ),
+            )
+          : (validated.type === "browser_tab_switch" &&
+              !typedWords(validated.target)) ||
+            (validated.type === "browser_find" && !typedWords(validated.text));
     const originMessageId = requestOrigin?.messageId;
     if (
       agenda &&
@@ -2337,11 +2459,15 @@ export class DeviceActionService {
       c,
       async (queue, row, tx) => {
         assertCurrent?.();
-        const viewProfile = storedDeviceViewProfile(row.view_profile);
+        const viewProfile = storedDeviceViewProfile(
+          row.view_profile,
+          c.capabilities,
+        );
         if (
           validated.type === "open_view" &&
-          viewProfile &&
-          !viewProfile.views.includes(validated.view)
+          (viewProfile
+            ? !viewProfile.views.includes(validated.view)
+            : PROFILE_ONLY_DEVICE_VIEWS.includes(validated.view))
         )
           throw new DeviceActionError("View unavailable on this installation");
         const turn = getDeviceActionTurn();
@@ -2354,7 +2480,7 @@ export class DeviceActionService {
           "agentActionMode" in metadata &&
           metadata.agentActionMode === "direct-request-v1";
         const requestingMessage =
-          directRequest || selectedTelephony
+          (directRequest && !reviewedBrowserRequest) || selectedTelephony
             ? requestOrigin?.messageId
             : undefined;
         const payload: DeviceActionPayload = {
@@ -2869,11 +2995,18 @@ export class DeviceActionService {
           operation.type,
           c.capabilities,
         );
+        // A phone that did not negotiate this form cannot parse it.
+        if (
+          supported &&
+          !deviceOperationFormSupported(operation, c.capabilities)
+        )
+          return false;
         if (
           (isCameraCapture(operation) ||
             isNativeNotesQuery(operation) ||
             isNotesOrganizeOperation(operation) ||
             isPhotosViewOperation(operation) ||
+            isBrowserControl(operation) ||
             isFilesOperation(operation) ||
             isForegroundReviewOperation(operation) ||
             operation.type === "calendar_create_local" ||
@@ -2909,7 +3042,8 @@ export class DeviceActionService {
       !deviceOperationSupportedByCapabilities(
         payload.operation.type,
         c.capabilities,
-      )
+      ) ||
+      !deviceOperationFormSupported(payload.operation, c.capabilities)
     )
       throw new DeviceActionError("Device operation capability unavailable");
     if (
@@ -2990,7 +3124,7 @@ export class DeviceActionService {
     return this.access(c, async (q, row, tx) => {
       const request = await this.proposal(q, row, c, id, expectedDigest, tx);
       if (approve)
-        this.assertViewProfile(row, validateDevicePayload(request.payload));
+        this.assertViewProfile(c, row, validateDevicePayload(request.payload));
       const target = approve ? "approved" : "rejected";
       if (request.state === target) return request;
       // An approval whose claim never arrived ran nothing; the owner can still close it.
@@ -3015,7 +3149,7 @@ export class DeviceActionService {
   ): Promise<ApprovalRequest> {
     const result = await this.access(c, async (q, row, tx) => {
       const request = await this.proposal(q, row, c, id, expectedDigest, tx);
-      this.assertViewProfile(row, validateDevicePayload(request.payload));
+      this.assertViewProfile(c, row, validateDevicePayload(request.payload));
       // A lapsed approval that was never claimed closes here, so it cannot sit in approved.
       if (
         request.state === "approved" &&
@@ -3099,6 +3233,8 @@ export class DeviceActionService {
         )
       )
         throw new DeviceActionError("Telephony capability unavailable");
+      if (!deviceOperationFormSupported(payload.operation, c.capabilities))
+        throw new DeviceActionError("Device operation capability unavailable");
       if (
         isCalendarOperation(payload.operation) &&
         !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
@@ -3499,6 +3635,8 @@ export class DeviceActionService {
         )
       )
         throw new DeviceActionError("Telephony capability unavailable");
+      if (!deviceOperationFormSupported(payload.operation, c.capabilities))
+        throw new DeviceActionError("Device operation capability unavailable");
       if (
         isCalendarOperation(payload.operation) &&
         !calendarCapabilityAvailable(payload.operation.type, c.capabilities)

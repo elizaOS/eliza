@@ -70,7 +70,7 @@ async function fixture() {
     "CREATE UNIQUE INDEX approval_unique ON approval_requests(agent_id,idempotency_key) WHERE idempotency_key IS NOT NULL;CREATE TABLE original_memories(id uuid PRIMARY KEY,data jsonb NOT NULL);CREATE TABLE client_devices(agent_id uuid,subject_user_id text,installation_id text,enrollment_id uuid,key_hash text,label text,workflow_protocol integer NOT NULL DEFAULT 0,view_profile text,workflow_owner_id text,revoked boolean NOT NULL DEFAULT false,PRIMARY KEY(agent_id,subject_user_id,installation_id));",
   );
   const runtime = new AgentRuntime({
-    character: { name: "Browser grounding fixture", bio: [] },
+    character: { name: "Eliza", bio: [] },
     enableAutonomy: false,
     logLevel: "fatal",
   });
@@ -105,6 +105,7 @@ async function fixture() {
     direct = false,
     destination = "https://example.com/dashboard",
     custody = "current",
+    operation: unknown = { type: "browser_navigate", url: destination },
   ) {
     let current = true;
     return withOwnerDeviceActionTurn(
@@ -169,7 +170,7 @@ async function fixture() {
         )!;
         const options = {
           parameters: {
-            operation: { type: "browser_navigate", url: destination },
+            operation,
             operationKey: randomUUID(),
             reason: "Planner claims browser needed for Calendar",
           },
@@ -335,6 +336,52 @@ it.each([false, true])(
         ).rows,
       ).toEqual([{ count: 1 }]);
       expect(f.decide).not.toHaveBeenCalled();
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it.each([false, true])(
+  "answers a requested photo without review text only in direct request mode=%s",
+  async (direct) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, {
+        capabilities: ["camera.capture-photo.v1"],
+      });
+      const result = await f.run(
+        "take a photo",
+        false,
+        direct,
+        undefined,
+        "current",
+        { type: "camera_capture_photo" },
+      );
+      expect(result).toMatchObject(
+        direct
+          ? {
+              success: true,
+              userFacingText: "Opening Camera to take the photo.",
+              data: {
+                state: "pending",
+                executed: false,
+                awaitingDeviceExecution: true,
+                directRequest: true,
+                approvalRequired: false,
+              },
+            }
+          : {
+              success: true,
+              userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+              data: { awaitingUserInput: true, approvalRequired: true },
+            },
+      );
+      expect(isRequestedDeviceHandoff(result as PlannerToolResult)).toBe(
+        direct,
+      );
+      expect(isPersistedDeviceApprovalPause(result as PlannerToolResult)).toBe(
+        !direct,
+      );
     } finally {
       await f.pg.close();
     }
@@ -522,3 +569,213 @@ it("refuses an unbound service caller without creating a review", async () => {
     await f.pg.close();
   }
 });
+it.each([
+  "Open example.com/dashboard in the browser",
+  "please open example.com/dashboard now",
+  "I want to see example.com/dashboard",
+  "Alpha, open example.com/dashboard",
+])(
+  "reviews a typed address that is not a direct request, and never says Opening: %s",
+  async (request) => {
+    const f = await fixture();
+    try {
+      const result = await f.run(request, false, true);
+      expect(result).toMatchObject({
+        success: true,
+        userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+        data: { awaitingUserInput: true, approvalRequired: true },
+      });
+      expect(result.data).not.toHaveProperty("directRequest");
+      const rows = (
+        await f.pg.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows).toHaveLength(1);
+      // No bound request message: the phone shows an ordinary review card.
+      expect(rows[0].payload).not.toHaveProperty("requestMessageId");
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it("opens a request that names the host's assistant directly", async () => {
+  const f = await fixture();
+  try {
+    f.runtime.character.name = "Alpha";
+    expect(
+      await f.run("Hey Alpha, open example.com/dashboard", false, true),
+    ).toMatchObject({
+      userFacingText: "Opening example.com.",
+      data: { directRequest: true, approvalRequired: false },
+    });
+  } finally {
+    await f.pg.close();
+  }
+});
+it("opens a typed http:// address over HTTPS", async () => {
+  const f = await fixture();
+  try {
+    expect(
+      await f.run("open http://example.com", false, true, "http://example.com"),
+    ).toMatchObject({
+      userFacingText: "Opening example.com.",
+      data: { directRequest: true },
+    });
+    const rows = (
+      await f.pg.query<{ payload: { operation: unknown } }>(
+        "SELECT payload FROM approval_requests",
+      )
+    ).rows;
+    expect(rows.map((row) => row.payload.operation)).toEqual([
+      { type: "browser_navigate", url: "https://example.com/" },
+    ]);
+  } finally {
+    await f.pg.close();
+  }
+});
+it.each([
+  // [request, model query, direct mode, runs without a review]
+  ["search for best pizza near me", "Best pizza near me", true, true],
+  ["search for best pizza near me", "best pizza near me", false, false],
+  ["what is the weather in Paris? search it", "weather in Paris", true, false],
+] as const)(
+  "searches the web only for words the user typed: %s",
+  async (request, query, direct, handoff) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: ["browser.search.v1"] });
+      const result = await f.run(request, false, direct, undefined, "current", {
+        type: "browser_search",
+        query,
+      });
+      const typed = request.includes("pizza")
+        ? "best pizza near me"
+        : "weather in Paris";
+      expect(result).toMatchObject(
+        handoff
+          ? {
+              success: true,
+              userFacingText: `Searching the web for “${typed}”.`,
+              data: { directRequest: true, approvalRequired: false },
+            }
+          : {
+              success: true,
+              userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+              data: { awaitingUserInput: true, approvalRequired: true },
+            },
+      );
+      const rows = (
+        await f.pg.query<{ payload: { operation: unknown } }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows.map((row) => row.payload.operation)).toEqual([
+        { type: "browser_search", query: typed },
+      ]);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it("refuses a search for words the user did not type, and an unnegotiated Browser control", async () => {
+  const f = await fixture();
+  try {
+    Object.assign(f.credential, { capabilities: ["browser.search.v1"] });
+    expect(
+      await f.run("search for cats", false, true, undefined, "current", {
+        type: "browser_search",
+        query: "cats and the owner's home address",
+      }),
+    ).toMatchObject({
+      success: false,
+      userFacingText:
+        'Tell me the words to search for, like "search for weather in Paris".',
+      data: { code: "DEVICE_BROWSER_NOT_REQUESTED", proposalCreated: false },
+    });
+    await expect(
+      f.run("close this tab", false, true, undefined, "current", {
+        type: "browser_tab_close",
+      }),
+    ).rejects.toThrow("Device operation capability unavailable");
+    expect(f.enqueue).not.toHaveBeenCalled();
+  } finally {
+    await f.pg.close();
+  }
+});
+const generic = "do that in the browser";
+it.each([
+  [
+    { type: "browser_tab_new", private: true },
+    "browser.tabs.v1",
+    true,
+    generic,
+  ],
+  [
+    { type: "browser_tab_switch", target: "bbc" },
+    "browser.tabs.v1",
+    true,
+    "switch to the BBC tab",
+  ],
+  [
+    { type: "browser_find", text: "refund" },
+    "browser.find.v1",
+    true,
+    "find refund on this page",
+  ],
+  // A tab word or find text the owner did not type is reviewed, so the
+  // model cannot probe the owner's tabs or page without a card.
+  [
+    { type: "browser_tab_switch", target: "chase" },
+    "browser.tabs.v1",
+    false,
+    "summarize what I was reading",
+  ],
+  [{ type: "browser_find", text: "refund" }, "browser.find.v1", false, generic],
+  [
+    { type: "browser_history", action: "stop" },
+    "browser.history.v1",
+    true,
+    generic,
+  ],
+  // Closing a tab is reviewed even when the owner asked for it directly.
+  [
+    { type: "browser_tab_close", target: "bbc" },
+    "browser.tabs.v1",
+    false,
+    "close the bbc tab",
+  ],
+] as const)(
+  "queues the negotiated Browser control %o",
+  async (operation, capability, handoff, request) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: [capability] });
+      for (const direct of [true, false]) {
+        const result = await f.run(
+          request,
+          false,
+          direct,
+          undefined,
+          "current",
+          operation,
+        );
+        expect(result).toMatchObject(
+          direct && handoff
+            ? {
+                success: true,
+                userFacingText: "Doing that in Browser.",
+                data: { directRequest: true, approvalRequired: false },
+              }
+            : {
+                success: true,
+                userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+                data: { awaitingUserInput: true, approvalRequired: true },
+              },
+        );
+      }
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
