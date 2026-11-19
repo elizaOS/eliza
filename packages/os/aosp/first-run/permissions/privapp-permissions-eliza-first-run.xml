@@ -2,5 +2,6 @@
 <permissions>
     <privapp-permissions package="ai.eliza.firstrun">
         <permission name="android.permission.MANAGE_ROLE_HOLDERS"/>
+        <permission name="android.permission.MANAGE_USERS"/>
     </privapp-permissions>
 </permissions>

@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 /** Walks the readiness stories through SignInRegistration and SignInReadiness against a local HTTP cloud; prints one JSON line per observation. */
@@ -27,8 +28,14 @@ public final class ReadinessJourney {
 
   private record Reply(int status, String body) {}
 
+  private interface JsonWork<T> { T get() throws JSONException; }
+
+  private static <T> T json(JsonWork<T> work) {
+    try { return work.get(); } catch (JSONException invalid) { throw new IllegalStateException(invalid); }
+  }
+
   private static void emit(String step, Object value) {
-    System.out.println(new JSONObject().put("step", step).put("value", value == null ? JSONObject.NULL : value));
+    System.out.println(json(() -> new JSONObject().put("step", step).put("value", value == null ? JSONObject.NULL : value)));
   }
 
   private static Map<String, Object> environment(String name, String api) {
@@ -56,15 +63,15 @@ public final class ReadinessJourney {
   }
 
   private static String configBody(boolean email, boolean sms, boolean google, boolean nativeSignIn, String serverClientId, String environment) {
-    return new JSONObject().put("clientId", "ai.example.phone").put("environment", environment)
+    return json(() -> new JSONObject().put("clientId", "ai.example.phone").put("environment", environment)
       .put("redirectUri", "https://app.cloud.test/auth/" + environment).put("codeChallengeMethod", "S256").put("credentialTtlMs", 2_592_000_000L)
       .put("methods", new JSONObject().put("email", email).put("sms", sms).put("google", google))
-      .put("google", new JSONObject().put("configured", google).put("serverClientId", serverClientId).put("nativeSignIn", nativeSignIn)).toString();
+      .put("google", new JSONObject().put("configured", google).put("serverClientId", serverClientId).put("nativeSignIn", nativeSignIn)).toString());
   }
 
   private static JSONObject legal(String title) {
-    return new JSONObject().put("title", title).put("revision", "2026-01")
-      .put("sections", new JSONArray().put(new JSONObject().put("title", "Scope").put("paragraphs", new JSONArray().put("These words apply."))));
+    return json(() -> new JSONObject().put("title", title).put("revision", "2026-01")
+      .put("sections", new JSONArray().put(new JSONObject().put("title", "Scope").put("paragraphs", new JSONArray().put("These words apply.")))));
   }
 
   private static long probes(List<String> requests, String environment) {
@@ -72,10 +79,10 @@ public final class ReadinessJourney {
   }
 
   private static JSONObject status(SignInReadiness.Status s) {
-    return new JSONObject().put("methodsKnown", s.methodsKnown).put("email", s.email).put("sms", s.sms).put("google", s.google);
+    return json(() -> new JSONObject().put("methodsKnown", s.methodsKnown).put("email", s.email).put("sms", s.sms).put("google", s.google));
   }
 
-  public static void main(String[] args) throws IOException {
+  public static void main(String[] args) throws IOException, JSONException {
     emit("registration-valid", refusal(config("picker", false, List.of(environment("production", ORIGIN)))));
     Map<String, Object> noClient = config("picker", false, List.of(environment("production", ORIGIN)));
     noClient.remove("clientId");
@@ -130,7 +137,7 @@ public final class ReadinessJourney {
       SignInRegistration picker = SignInRegistration.parse(config("picker", true, List.of(environment("production", ORIGIN), environment("staging", STAGING))));
       SignInReadiness readiness = new SignInReadiness(picker, http, store, Runnable::run, clock::get,
         () -> new ReadinessPolicy.DeviceFacts(ReadinessPolicy.GoogleMode.PICKER, false, false),
-        (environment, s) -> announced.add(status(s).put("environment", environment)));
+        (environment, s) -> announced.add(json(() -> status(s).put("environment", environment))));
       List<JSONObject> served = new ArrayList<>();
 
       configReply.set(new Reply(200, configBody(true, false, true, true, "server.apps.example", "production")));
@@ -220,7 +227,7 @@ public final class ReadinessJourney {
       origins.clear();
       readiness.service("staging", s -> {
         outcomes.add(s.outcome.name());
-        emit("service-body", s.body == null ? null : new JSONObject(s.body));
+        emit("service-body", s.body == null ? null : json(() -> new JSONObject(s.body)));
       });
       emit("service-origins", new JSONArray(origins));
       serviceReply.set(new Reply(200, new JSONObject(document).put("service", new JSONObject().put("name", "Example Cloud").put("terms", "Terms").put("privacy", "Privacy")).toString()));

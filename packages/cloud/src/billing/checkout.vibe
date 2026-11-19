@@ -358,6 +358,7 @@ export effect function startCheckout(caller: Signed, request: StartRequest) {
   const now = try Clock.currentTimeMillis
   const opened = try store.transaction(effect (tx: Tx) => {
     const again = try admit(tx, caller, commandId, by, digest, request, billingReturn)
+    if (again.kind === "live" && !resumes(again.stored.state, request.planKey, request.presentation, billingReturn)) throw refused("BillingStateConflict")
     if (again.kind !== "fresh") return { kind: "existing", stored: again.stored } as const
     try pinCustomer(tx, organizationId, customerId, now)
     const subscription = try readSubscription(tx, organizationId)

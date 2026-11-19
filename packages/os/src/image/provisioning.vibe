@@ -553,7 +553,9 @@ export effect function verifySecureCameraSource(root: string, options: { readonl
   const loaded = try loadSecureCameraContract(options.contract)
   const overrides = options.reviewedOverrides ?? []
   const base = try mapError(files.realPath(root), (cause) => new SecureCameraSourceRefused({ module: ".", message: `The AOSP checkout ${root} is unreadable: ${cause.message}` }))
-  for (const module of loaded.contract.modules) try verifyCameraModule(base, module, overrides)
+  for (const module of loaded.contract.modules) {
+    try verifyCameraModule(base, module, overrides)
+  }
   const evidence: SecureCameraEvidence = {
     source: { tag: "CameraSourceVerified", contract: { tag: "Sha256", hex: loaded.sha256 } },
     modules: loaded.contract.modules,

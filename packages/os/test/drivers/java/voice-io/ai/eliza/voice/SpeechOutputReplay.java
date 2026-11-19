@@ -37,6 +37,7 @@ public final class SpeechOutputReplay {
     private boolean clockStarted;
     private boolean playFails;
     private long elapsedMs;
+    private int releases;
 
     Worker(int id) { this.id = id; }
 
@@ -158,12 +159,13 @@ public final class SpeechOutputReplay {
 
     @Override
     public void release() {
-      synchronized (lock) {
-        if (stage == Stage.RELEASED) throw new IllegalStateException("warm-up worker " + id + " released its output twice");
-      }
-      Object given = arrive(Stage.CLEANING_UP);
+      synchronized (lock) { releases++; }
+      arrive(Stage.CLEANING_UP);
       settle(Stage.RELEASED);
-      if (given == DRAINED) return;
+    }
+
+    int releases() {
+      synchronized (lock) { return releases; }
     }
   }
 
@@ -326,6 +328,7 @@ public final class SpeechOutputReplay {
     List<String> listed = new ArrayList<>();
     for (Worker worker : workers.values()) {
       if (worker.warmup == owner) ownerId = worker.id;
+      if (worker.releases() > 1) throw new IllegalStateException("warm-up worker " + worker.id + " released its output " + worker.releases() + " times");
       listed.add("{\"workerId\":" + worker.id + ",\"phase\":" + quoted(worker.stage().phase)
           + ",\"closed\":" + worker.warmup.closed() + ",\"elapsedMs\":" + worker.elapsedMs() + "}");
     }

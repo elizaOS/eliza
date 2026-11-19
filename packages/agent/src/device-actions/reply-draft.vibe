@@ -68,7 +68,7 @@ function requestOf(thread: ReadThread | undefined): DraftRequest {
   return { tag: "OpenThread", participant: participantOf(thread.participant), messages: thread.messages.map(messageOf), truncated: thread.truncated }
 }
 
-export function userText(thread: ReadThread): string {
+function userText(thread: ReadThread): string {
   const data = JSON.stringify(thread.messages.map((message) => ({
     from: speakerOf(directionOf(message)) === "Owner" ? "owner" : "them",
     text: message.body,

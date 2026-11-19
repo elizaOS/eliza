@@ -14,10 +14,9 @@ Results are observations for a drill record; nothing here marks a drill passed.
 
 ## Story: Update a device by cable
 
-> As a product's operator, I want to move a device to a new release only from
-> a signed record of its own channel, and to resume an interrupted update
-> from what the device shows, so that a device never takes a foreign, older
-> or unverifiable build and an update is never assumed complete.
+> As a product's operator, I want to update a device only from a signed record
+> of its channel, resuming from what the device shows, so that it never takes
+> a foreign, older or unverifiable build and no update is assumed complete.
 
 ### A candidate is admitted only from a signed record of the channel, with the same OTA certificate and AVB key, its build date as post-timestamp and no lower rollback index
 
@@ -137,12 +136,11 @@ pure def startsFrom(observed: DeviceObservation, channel: ReleaseChannel, fromRe
 }
 pure def canBegin(s: OperatorJournal, channel: ReleaseChannel, fromRelease: OperatorRelease, toRelease: OperatorRelease, observed: DeviceObservation): bool =
   s.phase == Unstarted and lockHeld(s.lock) and updateAdmitted(channel, fromRelease, toRelease) and startsFrom(observed, channel, fromRelease)
-pure def begin(s: OperatorJournal, channel: ReleaseChannel, fromRelease: OperatorRelease, toRelease: OperatorRelease, observed: DeviceObservation): OperatorJournal =
-  match observed {
-    | OnAndroid(b) => { ...s, phase: AwaitingSideload, start: { device: b.device, installedBuild: b.fingerprint, candidateBuild: toRelease.release.fingerprint,
-        candidatePatch: toRelease.release.securityPatch, originalSlot: b.slot, originalBoot: bootStateOf(b.verifiedBoot), wasLocked: b.flashLocked, virtualAb: b.virtualAb } }
-    | _ => s
-  }
+pure def begin(s: OperatorJournal, channel: ReleaseChannel, fromRelease: OperatorRelease, toRelease: OperatorRelease, observed: DeviceObservation): OperatorJournal = match observed {
+  | OnAndroid(b) => { ...s, phase: AwaitingSideload, start: { device: b.device, installedBuild: b.fingerprint, candidateBuild: toRelease.release.fingerprint,
+      candidatePatch: toRelease.release.securityPatch, originalSlot: b.slot, originalBoot: bootStateOf(b.verifiedBoot), wasLocked: b.flashLocked, virtualAb: b.virtualAb } }
+  | _ => s
+}
 pure val onInstalled: AndroidReading = { device: "stallion", fingerprint: "b1", slot: SlotA, selinux: Vf::Enforcing, verifiedBoot: Vf::BootRead({ booted: Vf::Yellow }),
   flashLocked: true, securityPatch: 20260101, virtualAb: true }
 pure val onCandidate: AndroidReading = { ...onInstalled, fingerprint: "b2", slot: SlotB, securityPatch: 20260201 }
@@ -154,26 +152,25 @@ pure def alwaysJournalBound(s: OperatorJournal): bool =
   else s.start.device != "" and s.start.installedBuild != "" and s.start.candidateBuild != "" and s.start.installedBuild != s.start.candidateBuild and s.start.originalSlot != NoSlot
 ```
 
-### Each run resumes from what the device shows, and refuses a foreign build or the installed build on the other slot
+### Each run resumes from what the device shows, sends the package only under a marked lock, and refuses a foreign build or the installed build on the other slot
 
 Recovery or sideload: send the package. The candidate booted: verify. The
 installed build on its original slot: the update did not take effect, so
 send again. The bootloader: inspect the slots. No device, or Android still
-booting: nothing can be seen. Anything else is refused. Only `Sideload`,
-`Retry` and `Verify` move the journal.
+booting: nothing can be seen. Anything else is refused. A user build cannot
+enter sideload itself: the shell reboots to recovery and the operator
+chooses "Apply update from ADB". A failed transfer is sent again.
 
 ```quint
 type NextStep = Verify | Sideload | Retry | Bootloader | Absent | Refuse
 pure def nextStep(start: StartFacts, observed: DeviceObservation): NextStep = match observed {
-  | InSideload => Sideload
-  | InRecovery => Sideload
-  | InBootloader => Bootloader
+  | InSideload => Sideload | InRecovery => Sideload | InBootloader => Bootloader
   | OnAndroid(b) => if (b.device != start.device) Refuse else if (b.fingerprint == start.candidateBuild) Verify
       else if (b.fingerprint == start.installedBuild and b.slot == start.originalSlot) Retry else Refuse
   | _ => Absent
 }
-pure val started: StartFacts = { device: "stallion", installedBuild: "b1", candidateBuild: "b2", candidatePatch: 20260201, originalSlot: SlotA, originalBoot: Vf::Yellow,
-  wasLocked: true, virtualAb: true }
+pure val started: StartFacts = { device: "stallion", installedBuild: "b1", candidateBuild: "b2", candidatePatch: 20260201, originalSlot: SlotA,
+  originalBoot: Vf::Yellow, wasLocked: true, virtualAb: true }
 pure val startValues = Set(started, { ...started, virtualAb: false, wasLocked: false, originalBoot: Vf::Orange })
 pure def lawForeignBuildIsRefused(start: StartFacts, observed: DeviceObservation): bool = match observed {
   | OnAndroid(b) => (b.fingerprint != start.installedBuild and b.fingerprint != start.candidateBuild) implies nextStep(start, observed) == Refuse
@@ -184,15 +181,6 @@ pure def lawInstalledBuildOnTheOtherSlotIsRefused(start: StartFacts, observed: D
       implies nextStep(start, observed) == Refuse
   | _ => true
 }
-```
-
-### The package is sent only after the lock is marked, and a failed or unseen transfer is resumed by sending again
-
-A user build cannot enter sideload itself: the shell reboots to recovery and
-the operator chooses "Apply update from ADB". A failed transfer returns the
-journal to `AwaitingSideload`.
-
-```quint
 pure def canEnterSideload(s: OperatorJournal, observed: DeviceObservation): bool =
   s.lock == Locked({ writing: true }) and resumable(s.phase) and (nextStep(s.start, observed) == Sideload or nextStep(s.start, observed) == Retry)
 pure def enterSideload(s: OperatorJournal, observed: DeviceObservation): OperatorJournal = { ...s, phase: Sideloading }
@@ -215,9 +203,8 @@ pure def bootVerified(start: StartFacts, observed: DeviceObservation): bool = ma
 pure def canVerifyBoot(s: OperatorJournal, observed: DeviceObservation): bool = lockHeld(s.lock) and resumable(s.phase) and nextStep(s.start, observed) == Verify
 pure def verifyBoot(s: OperatorJournal, observed: DeviceObservation): OperatorJournal = { ...s, phase: if (bootVerified(s.start, observed)) Verified else VerificationFailed }
 pure def lawUnreadOrWeakerBootNeverVerifies(start: StartFacts, observed: DeviceObservation): bool = match observed {
-  | OnAndroid(b) => (b.verifiedBoot == Vf::BootUnread or b.selinux != Vf::Enforcing
-      or ((start.originalBoot == Vf::Green or start.originalBoot == Vf::Yellow) and b.verifiedBoot == Vf::BootRead({ booted: Vf::Orange })))
-      implies not(bootVerified(start, observed))
+  | OnAndroid(b) => (b.verifiedBoot == Vf::BootUnread or b.selinux != Vf::Enforcing or ((start.originalBoot == Vf::Green or start.originalBoot == Vf::Yellow)
+      and b.verifiedBoot == Vf::BootRead({ booted: Vf::Orange }))) implies not(bootVerified(start, observed))
   | _ => not(bootVerified(start, observed))
 }
 pure def stepVerifiedChangesOnlyByFallback(before: OperatorJournal, after: OperatorJournal): bool = before.phase == Verified implies (after.phase == Verified or after.phase == FallingBack)
@@ -227,10 +214,9 @@ pure def sometimesVerificationFailed(s: OperatorJournal): bool = s.phase == Veri
 
 ## Story: Get back if the update fails
 
-> As a product's operator, I want to return a device to the build it ran, or
-> to a release I know is good, or to the stock image, only when that is safe
-> and from bytes I verified, so that a failed update never strands the
-> device on something I cannot trust.
+> As a product's operator, I want to return a device to the build it ran, a
+> known-good release or the stock image, only when safe and from bytes I
+> verified, so that a failed update never strands it on something untrusted.
 
 ### A fallback to the original slot needs a transferred update, the updated slot current and unconfirmed, the original slot bootable and no merge, and on Virtual A/B a snapshotted update
 
@@ -256,9 +242,6 @@ pure def lawConfirmedOrMergingSlotNeverFallsBack(start: StartFacts, slots: SlotR
 ```
 
 ### A fallback rolls back only when the installed build boots enforcing on the original slot, and a journal that started a fallback is never updated again
-
-A rolled-back journal records the operator's decision against this update:
-updating again starts a new journal.
 
 ```quint
 pure def bootRestored(start: StartFacts, observed: DeviceObservation): bool = match observed {
@@ -307,20 +290,19 @@ pure def lawRetainedReleaseIsTheChannels(channel: ReleaseChannel, retention: Ret
 
 ### Stock recovery prints its plan only for the channel's locked factory archive and never flashes
 
-The archive has the channel's and the source lock's digest and size, one top
-directory, and one bootloader, radio and system image of the locked build.
+The archive has the channel's and the source lock's digest and the locked
+size; the shell also checks it holds one top directory and exactly one
+bootloader, radio and system image of the locked build (`layoutMatches`).
 The operator runs the plan with physical confirmation and relocks only after
 `verify-stock` reads a stock release-keys user build, enforcing.
 
 ```quint
-type StockArchive = { sha256: Digest, lockedFactory: Digest, sizeMatches: bool, topDirectories: int, bootloaderImages: int, radioImages: int, systemImages: int, buildMatches: bool }
+type StockArchive = { sha256: Digest, lockedFactory: Digest, sizeMatches: bool, layoutMatches: bool }
 pure def stockPlanAdmitted(channel: ReleaseChannel, archive: StockArchive): bool =
-  digestsMatch(archive.sha256, channel.stockFactoryImage) and digestsMatch(channel.stockFactoryImage, archive.lockedFactory) and archive.sizeMatches
-    and archive.topDirectories == 1 and archive.bootloaderImages == 1 and archive.radioImages == 1 and archive.systemImages == 1 and archive.buildMatches
-pure val lockedArchive: StockArchive = { sha256: Sha256({ hex: "f1" }), lockedFactory: Sha256({ hex: "f1" }), sizeMatches: true, topDirectories: 1, bootloaderImages: 1,
-  radioImages: 1, systemImages: 1, buildMatches: true }
+  digestsMatch(archive.sha256, channel.stockFactoryImage) and digestsMatch(channel.stockFactoryImage, archive.lockedFactory) and archive.sizeMatches and archive.layoutMatches
+pure val lockedArchive: StockArchive = { sha256: Sha256({ hex: "f1" }), lockedFactory: Sha256({ hex: "f1" }), sizeMatches: true, layoutMatches: true }
 pure val archiveValues = Set(lockedArchive, { ...lockedArchive, sha256: Sha256({ hex: "f2" }) }, { ...lockedArchive, lockedFactory: Sha256({ hex: "f2" }) },
-  { ...lockedArchive, radioImages: 2 }, { ...lockedArchive, buildMatches: false })
+  { ...lockedArchive, layoutMatches: false })
 pure def lawPlanOnlyForTheLockedFactoryImage(channel: ReleaseChannel, archive: StockArchive): bool =
   stockPlanAdmitted(channel, archive) implies (archive.sha256 == channel.stockFactoryImage and archive.lockedFactory == channel.stockFactoryImage)
 ```

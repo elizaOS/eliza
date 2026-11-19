@@ -1,0 +1,542 @@
+// spec/agent/deviceActions/operations.md, "A proposal is valid only when its shape, its need and its binding all hold"; spec/agent/deviceActions/operations.md, "A receipt is admitted only when its evidence agrees with what it reports"; spec/agent/deviceActions/capabilities.md, "A newer operation cannot use an older capability version"; spec/calendar/availability.md, "Choose a bounded interval and accept occupancy-only rows"; spec/calendar/availability.md, "Return sorted rows and preserve their multiplicity"; spec/notes/read.md, "A query receipt carries the original query, an allowed basis and a record only on a match"; spec/notes/read.md, "Wire and authored content have different boundaries"
+import type { OperationType } from "../../../gen/agent__deviceActions__operations.effect.vibe"
+import type { Classification, Evidence, FamilySchemas, OperationSchema, WireOperation } from "./family.vibe"
+
+const day = 86_400_000
+
+function plainText(value: string, max: number, blank: boolean) {
+  return value.length <= max && !value.includes("\0") && (blank || value.trim() !== "")
+}
+
+function isoInstant(value: string) {
+  try {
+    return new Date(value).toISOString() === value
+  } catch {
+    return false
+  }
+}
+
+function knownZone(name: string) {
+  if (!plainText(name, 128, false)) return false
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: name })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function realDate(date: string) {
+  try {
+    return new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) === date
+  } catch {
+    return false
+  }
+}
+
+function utf8Bytes(value: unknown) {
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength
+}
+
+function sameValue(left: unknown, right: unknown): boolean {
+  if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) return left === right
+  const keys = Object.keys(left)
+  return Array.isArray(left) === Array.isArray(right) && keys.length === Object.keys(right).length
+    && keys.every((key) => Object.hasOwn(right, key) && sameValue((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key]))
+}
+
+function interval(start: string, end: string, longest: number) {
+  const from = Date.parse(start), to = Date.parse(end)
+  return from >= 0 && to > from && to - from <= longest
+}
+
+function zonedWall(instant: number, timeZone: string) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
+    timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  }).formatToParts(instant).map((part) => [part.type, part.value]))
+  return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute), Number(parts.second))
+}
+
+function civilDay(instant: number, timeZone: string) {
+  return Math.floor(zonedWall(instant, timeZone) / day) * day
+}
+
+function instantAt(wall: number, timeZone: string): number | undefined {
+  try {
+    const found = new Set<number>()
+    for (const hours of [-36, -12, 0, 12, 36]) {
+      const probe = wall + hours * 3_600_000
+      const candidate = wall - (zonedWall(probe, timeZone) - probe)
+      if (zonedWall(candidate, timeZone) === wall) found.add(candidate)
+    }
+    return found.size === 1 ? [...found][0] : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const Text = (max: number) => Schema.String.check(Schema.makeFilter((value: string) => plainText(value, max, false)))
+const BlankText = (max: number) => Schema.String.check(Schema.makeFilter((value: string) => plainText(value, max, true)))
+const Identifier = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/))
+const ReminderId = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/))
+const Revision = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/))
+const Instant = Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/), Schema.makeFilter(isoInstant))
+const ZoneName = Schema.String.check(Schema.makeFilter(knownZone))
+const Epoch = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 8_640_000_000_000_000 }))
+const AlertMinutes = Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 10_080 }))
+const CivilDate = Schema.String.check(Schema.isPattern(/^\d{4}-\d\d-\d\d$/), Schema.makeFilter(realDate))
+const between = (minimum: number, maximum: number) => Schema.Int.check(Schema.isBetween({ minimum, maximum }))
+const version = Schema.Literal(1)
+
+const CalendarFields = Schema.Struct({
+  title: Text(500), description: BlankText(16_000), location: BlankText(2_000), start: Instant, end: Instant, timeZone: ZoneName,
+}).check(Schema.makeFilter(({ start, end }) => interval(start, end, 370 * day)))
+const CalendarSource = Schema.Struct({ sourceId: Identifier, sourceRevision: Revision })
+const CalendarTarget = Schema.Struct({ sourceId: Identifier, sourceRevision: Revision, eventId: Identifier, revision: Revision })
+
+const CalendarCreateLocal = Schema.Struct({ type: Schema.Literal("calendar_create_local"), fields: CalendarFields })
+const CalendarReadNext = Schema.Struct({ type: Schema.Literal("calendar_read_next") })
+const CalendarCreate = Schema.Struct({ type: Schema.Literal("calendar_create"), source: CalendarSource, fields: CalendarFields })
+const CalendarReadSelected = Schema.Struct({ type: Schema.Literal("calendar_read_selected"), target: CalendarTarget })
+const CalendarUpdate = Schema.Struct({ type: Schema.Literal("calendar_update"), target: CalendarTarget, fields: CalendarFields })
+const CalendarDelete = Schema.Struct({ type: Schema.Literal("calendar_delete"), target: CalendarTarget })
+export const CalendarOperation = Schema.Union([CalendarCreateLocal, CalendarReadNext, CalendarCreate, CalendarReadSelected, CalendarUpdate, CalendarDelete])
+
+const calendarRecord = <K extends string>(kind: K) => Schema.Struct({ version, kind: Schema.Literal(kind), sourceId: Identifier, eventId: Identifier, revision: Revision })
+const CalendarCreateLocalResult = calendarRecord("calendar_create_local")
+const CalendarCreateResult = calendarRecord("calendar_create")
+const CalendarReadSelectedResult = Schema.Struct({ ...calendarRecord("calendar_read_selected").fields, fields: CalendarFields })
+const CalendarUpdateResult = calendarRecord("calendar_update")
+const CalendarDeleteResult = calendarRecord("calendar_delete")
+export const CalendarRecordResult = Schema.Union([CalendarCreateLocalResult, CalendarCreateResult, CalendarReadSelectedResult, CalendarUpdateResult, CalendarDeleteResult])
+
+const CalendarWindow = Schema.Struct({ start: Instant, end: Instant, timeZone: ZoneName })
+  .check(Schema.makeFilter(({ start, end }) => interval(start, end, 31 * day)))
+const NextEvent = Schema.Struct({
+  title: BlankText(1_000), start: Instant, end: Instant, allDay: Schema.Boolean, timing: Schema.Literals(["ongoing", "upcoming"]), timeZone: ZoneName,
+})
+type CalendarWindow = typeof CalendarWindow.Type
+type NextEvent = typeof NextEvent.Type
+
+function nextEventFits({ window, event }: { readonly window: CalendarWindow; readonly event: NextEvent | null }) {
+  try {
+    const zone = window.timeZone, start = Date.parse(window.start), end = Date.parse(window.end)
+    if (civilDay(end, zone) - civilDay(start, zone) !== 30 * day || civilDay(end - 1, zone) >= civilDay(end, zone) || end % 1_000 !== 0) return false
+    if (event === null) return true
+    const from = Date.parse(event.start), to = Date.parse(event.end), firstDay = civilDay(start, zone)
+    if (event.timeZone !== zone || (event.allDay ? to <= from || from % day !== 0 || to % day !== 0 : to < from)) return false
+    const ongoing = event.allDay && (from < firstDay || (from === firstDay && civilDay(start - 1, zone) >= firstDay))
+    const begin = event.allDay ? firstDay : start
+    const finish = event.allDay ? civilDay(end - 1, zone) + day : end
+    return event.timing === (ongoing ? "ongoing" : "upcoming") && (event.allDay || from >= start) && from < finish && (from === to ? from >= begin : to > begin)
+  } catch {
+    return false
+  }
+}
+
+export const CalendarNextResult = Schema.Struct({
+  version, kind: Schema.Literal("calendar_read_next"), window: CalendarWindow, event: Schema.NullOr(NextEvent),
+}).check(Schema.makeFilter(nextEventFits))
+
+export type CalendarOperation = typeof CalendarOperation.Type
+export type CalendarRecordResult = typeof CalendarRecordResult.Type
+export type CalendarNextResult = typeof CalendarNextResult.Type
+type CalendarRecordOperation = Exclude<CalendarOperation, { readonly type: "calendar_read_next" }>
+
+function calendarRecordMatches(result: CalendarRecordResult, op: CalendarRecordOperation) {
+  if (result.kind !== op.type) return false
+  switch (op.type) {
+    case "calendar_create_local": return true
+    case "calendar_create": return result.sourceId === op.source.sourceId
+    case "calendar_update": return result.sourceId === op.target.sourceId && result.eventId === op.target.eventId
+    case "calendar_read_selected":
+    case "calendar_delete": return result.sourceId === op.target.sourceId && result.eventId === op.target.eventId && result.revision === op.target.revision
+  }
+}
+
+const ReminderTarget = Schema.Struct({
+  timingVersion: Schema.optionalKey(Schema.Literal(2)), sourceId: Identifier, sourceRevision: Revision, reminderId: ReminderId, occurrenceId: Identifier, revision: Revision,
+})
+const ReminderRepeat = Schema.Struct({
+  rule: Schema.Literals(["daily", "weekdays", "weekly"]), zone: ZoneName, date: CivilDate,
+  time: Schema.String.check(Schema.isPattern(/^([01]\d|2[0-3]):[0-5]\d$/)), leadMinutes: AlertMinutes,
+})
+
+function timingAgrees(schedule: { readonly at: number; readonly recurrence: { readonly leadMinutes: number } | null; readonly dueAt?: number; readonly alertMinutes?: number | null }) {
+  if (schedule.dueAt === undefined || schedule.alertMinutes === undefined) return schedule.dueAt === undefined && schedule.alertMinutes === undefined
+  const lead = schedule.alertMinutes ?? 0
+  return schedule.at === schedule.dueAt - lead * 60_000 && (schedule.recurrence === null || schedule.recurrence.leadMinutes === lead)
+}
+
+const ReminderSchedule = Schema.Struct({
+  at: Epoch, recurrence: Schema.NullOr(ReminderRepeat), dueAt: Schema.optionalKey(Epoch), alertMinutes: Schema.optionalKey(Schema.NullOr(AlertMinutes)),
+}).check(Schema.makeFilter(timingAgrees))
+const ReminderFields = Schema.Struct({ title: Text(200), body: BlankText(4_000), schedule: Schema.optionalKey(ReminderSchedule) })
+
+const reminderOn = <K extends string>(type: K) => Schema.Struct({ type: Schema.Literal(type), target: ReminderTarget })
+const ReminderReadSelected = reminderOn("reminder_read_selected")
+const ReminderComplete = reminderOn("reminder_complete")
+const ReminderSnooze = reminderOn("reminder_snooze")
+const ReminderCancel = reminderOn("reminder_cancel")
+const ReminderUpdate = Schema.Struct({ type: Schema.Literal("reminder_update"), target: ReminderTarget, fields: ReminderFields })
+  .check(Schema.makeFilter(({ target, fields }) => target.timingVersion !== 2 || fields.schedule === undefined || fields.schedule.alertMinutes !== undefined))
+export const ReminderOperation = Schema.Union([ReminderReadSelected, ReminderUpdate, ReminderComplete, ReminderSnooze, ReminderCancel])
+
+const ReminderStatus = Schema.Literals(["scheduled", "posted", "completed", "cancelled", "permission-denied", "scheduling-failed", "pending"])
+const reminderRecordFields = <K extends string>(kind: K) => ({
+  version, kind: Schema.Literal(kind), sourceId: Identifier, reminderId: Identifier, occurrenceId: Identifier, revision: Revision,
+  status: ReminderStatus, at: Epoch, dueAt: Schema.optionalKey(Epoch), alertMinutes: Schema.optionalKey(Schema.NullOr(AlertMinutes)),
+})
+
+function reminderRecordCoherent(record: { readonly status: string; readonly dueAt?: number; readonly alertMinutes?: number | null }) {
+  return (record.dueAt === undefined) === (record.alertMinutes === undefined)
+    && (record.status !== "pending" || record.alertMinutes === null)
+    && (record.alertMinutes !== null || ["pending", "completed", "cancelled"].includes(record.status))
+    && utf8Bytes(record) <= 32_000
+}
+
+const reminderRecord = <K extends string>(kind: K) => Schema.Struct(reminderRecordFields(kind)).check(Schema.makeFilter(reminderRecordCoherent))
+const ReminderReadSelectedResult = Schema.Struct({ ...reminderRecordFields("reminder_read_selected"), fields: ReminderFields })
+  .check(Schema.makeFilter(reminderRecordCoherent))
+const ReminderUpdateResult = reminderRecord("reminder_update")
+const ReminderCompleteResult = reminderRecord("reminder_complete")
+const ReminderSnoozeResult = reminderRecord("reminder_snooze")
+const ReminderCancelResult = reminderRecord("reminder_cancel")
+export const ReminderResult = Schema.Union([ReminderReadSelectedResult, ReminderUpdateResult, ReminderCompleteResult, ReminderSnoozeResult, ReminderCancelResult])
+
+export type ReminderOperation = typeof ReminderOperation.Type
+export type ReminderResult = typeof ReminderResult.Type
+export type ReminderSchedule = typeof ReminderSchedule.Type
+
+export function reminderVersionTwo(op: ReminderOperation) {
+  return op.target.timingVersion === 2 || (op.type === "reminder_update" && op.fields.schedule?.alertMinutes !== undefined)
+}
+
+function reminderMatches(result: ReminderResult, op: ReminderOperation) {
+  const schedule = op.type === "reminder_update" ? op.fields.schedule : undefined
+  const bound = result.kind === op.type && result.sourceId === op.target.sourceId && result.reminderId === op.target.reminderId
+    && (result.alertMinutes !== undefined) === reminderVersionTwo(op)
+    && (schedule?.alertMinutes === undefined || (result.dueAt === schedule.dueAt && result.alertMinutes === schedule.alertMinutes && result.at === schedule.at))
+  if (!bound) return false
+  switch (op.type) {
+    case "reminder_read_selected":
+      return "fields" in result && result.revision === op.target.revision && result.occurrenceId === op.target.occurrenceId
+        && (result.alertMinutes === undefined || (result.fields.schedule?.dueAt === result.dueAt && result.fields.schedule?.alertMinutes === result.alertMinutes))
+    case "reminder_update": return true
+    case "reminder_cancel": return result.status === "cancelled"
+    case "reminder_complete":
+      return result.status === "completed"
+        || (["scheduled", "pending", "permission-denied", "scheduling-failed"].includes(result.status) && result.occurrenceId !== op.target.occurrenceId)
+    case "reminder_snooze": return result.alertMinutes !== null && result.occurrenceId === op.target.occurrenceId
+  }
+}
+
+export const LocalReminderSchedule = Schema.Struct({
+  localDate: CivilDate, localTime: Schema.String.check(Schema.isPattern(/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/)), timeZone: ZoneName,
+  alertMinutes: Schema.NullOr(AlertMinutes), recurrence: Schema.NullOr(ReminderRepeat),
+})
+export type LocalReminderSchedule = typeof LocalReminderSchedule.Type
+
+export function reminderScheduleAt(local: LocalReminderSchedule): ReminderSchedule | undefined {
+  const lead = local.alertMinutes ?? 0, repeat = local.recurrence
+  if (repeat !== null && (repeat.zone !== local.timeZone || repeat.date !== local.localDate || repeat.time !== local.localTime || repeat.leadMinutes !== lead)) return undefined
+  const seconds = local.localTime.length === 5 ? ":00" : ""
+  const dueAt = instantAt(Date.parse(`${local.localDate}T${local.localTime}${seconds}.000Z`), local.timeZone)
+  if (dueAt === undefined || dueAt - lead * 60_000 < 0) return undefined
+  return { at: dueAt - lead * 60_000, recurrence: repeat, dueAt, alertMinutes: local.alertMinutes }
+}
+
+const CreateSchedule = Schema.Struct({ at: Epoch, recurrence: Schema.NullOr(ReminderRepeat), dueAt: Epoch, alertMinutes: Schema.NullOr(AlertMinutes) })
+  .check(Schema.makeFilter(timingAgrees))
+const CreateFields = Schema.Struct({
+  title: Text(200).check(Schema.makeFilter((title: string) => title === title.trim())), body: BlankText(4_000), schedule: CreateSchedule,
+})
+export const ReminderCreate = Schema.Struct({ type: Schema.Literal("reminder_create"), fields: CreateFields })
+export const ReminderCreateResult = Schema.Struct({
+  version, kind: Schema.Literal("reminder_create"), sourceId: Identifier, reminderId: ReminderId, occurrenceId: Identifier, revision: Revision,
+  status: Schema.Literals(["pending", "scheduled", "permission-denied", "scheduling-failed"]), at: Epoch, dueAt: Epoch,
+  alertMinutes: Schema.NullOr(AlertMinutes), fields: CreateFields,
+})
+export type ReminderCreate = typeof ReminderCreate.Type
+export type ReminderCreateResult = typeof ReminderCreateResult.Type
+
+function reminderCreated(result: ReminderCreateResult, op: ReminderCreate) {
+  const schedule = op.fields.schedule
+  return sameValue(result.fields, op.fields) && result.at === schedule.at && result.dueAt === schedule.dueAt && result.alertMinutes === schedule.alertMinutes
+    && (schedule.alertMinutes === null ? result.status === "pending" : result.status !== "pending")
+}
+
+export const CalendarAvailability = Schema.Struct({ type: Schema.Literal("calendar_availability"), start: Instant, end: Instant, timeZone: ZoneName })
+  .check(Schema.makeFilter(({ start, end }) => interval(start, end, 7 * day)))
+const BusyInterval = Schema.Struct({ start: Instant, end: Instant, allDay: Schema.Boolean, tentative: Schema.Boolean })
+export const CalendarAvailabilityResult = Schema.Struct({
+  version, kind: Schema.Literal("calendar_availability"), window: Schema.Struct({ start: Instant, end: Instant, timeZone: ZoneName }),
+  calendarCount: between(1, 16), status: Schema.Literals(["free", "busy"]), busy: Schema.Array(BusyInterval).check(Schema.isMaxLength(200)),
+  transparentIgnored: between(0, 200),
+}).check(Schema.makeFilter(({ status, busy }) => status === (busy.length > 0 ? "busy" : "free")
+  && busy.every((slot, index) => Date.parse(slot.end) > Date.parse(slot.start) && (index === 0 || busy[index - 1].start <= slot.start))))
+export type CalendarAvailability = typeof CalendarAvailability.Type
+export type CalendarAvailabilityResult = typeof CalendarAvailabilityResult.Type
+
+function availabilityMatches(result: CalendarAvailabilityResult, op: CalendarAvailability) {
+  const { window } = result
+  return window.start === op.start && window.end === op.end && window.timeZone === op.timeZone
+    && result.busy.every((slot) => Date.parse(slot.start) >= Date.parse(op.start) && Date.parse(slot.end) <= Date.parse(op.end))
+}
+
+const NotesTarget = Schema.Struct({ sourceId: Identifier, sourceRevision: Revision, noteId: Identifier, revision: Revision })
+const NotesFields = Schema.Struct({ title: BlankText(256), body: BlankText(32_000) }).check(Schema.makeFilter((fields) => utf8Bytes(fields) <= 60_000))
+const NotesReadSelected = Schema.Struct({ type: Schema.Literal("notes_read_selected"), target: NotesTarget })
+const NotesUpdate = Schema.Struct({ type: Schema.Literal("notes_update"), target: NotesTarget, fields: NotesFields })
+const NotesDelete = Schema.Struct({ type: Schema.Literal("notes_delete"), target: NotesTarget })
+export const NotesOperation = Schema.Union([NotesReadSelected, NotesUpdate, NotesDelete])
+
+const notesRecord = <K extends string>(kind: K) => Schema.Struct({ version, kind: Schema.Literal(kind), sourceId: Identifier, noteId: Identifier, revision: Revision })
+const NotesReadSelectedResult = Schema.Struct({ ...notesRecord("notes_read_selected").fields, fields: NotesFields })
+const NotesUpdateResult = notesRecord("notes_update")
+const NotesDeleteResult = notesRecord("notes_delete")
+export const NotesResult = Schema.Union([NotesReadSelectedResult, NotesUpdateResult, NotesDeleteResult])
+export type NotesOperation = typeof NotesOperation.Type
+export type NotesResult = typeof NotesResult.Type
+type NotesTarget = typeof NotesTarget.Type
+
+function notesMatches(result: NotesResult, op: NotesOperation) {
+  return result.kind === op.type && result.sourceId === op.target.sourceId && result.noteId === op.target.noteId
+    && (op.type === "notes_update" || result.revision === op.target.revision)
+}
+
+const selectedNoteMatches = (target: NotesTarget, record: NotesResult) => notesMatches(record, { type: "notes_read_selected", target })
+
+const ContentQuery = Schema.Struct({ kind: Schema.Literal("content"), text: Text(256) })
+const TitlesQuery = Schema.Struct({ kind: Schema.Literal("titles"), limit: between(1, 50) })
+export const NotesSearch = Schema.Struct({ type: Schema.Literal("notes_search"), query: Schema.Union([ContentQuery, TitlesQuery]) })
+const searchReceipt = { version, kind: Schema.Literal("notes_search") }
+export const NotesSearchResult = Schema.Union([
+  Schema.Struct({ ...searchReceipt, query: Schema.Union([ContentQuery, TitlesQuery]), basis: Schema.Literal("no-match") }),
+  Schema.Struct({ ...searchReceipt, query: ContentQuery, basis: Schema.Literal("content-match"), target: NotesTarget, record: NotesReadSelectedResult }),
+  Schema.Struct({ ...searchReceipt, query: TitlesQuery, basis: Schema.Literal("titles-reviewed"), titles: Schema.Array(BlankText(500)).check(Schema.isMinLength(1)), truncated: Schema.Boolean })
+    .check(Schema.makeFilter(({ query, titles }) => titles.length <= query.limit)),
+])
+export type NotesSearch = typeof NotesSearch.Type
+export type NotesSearchResult = typeof NotesSearchResult.Type
+
+function searchMatches(result: NotesSearchResult, op: NotesSearch) {
+  return sameValue(result.query, op.query) && (result.basis !== "content-match" || selectedNoteMatches(result.target, result.record))
+}
+
+const RecordName = Text(256)
+export const NotesNamed = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("notes_named"), action: Schema.Literal("update"), name: RecordName, fields: NotesFields }),
+  Schema.Struct({ type: Schema.Literal("notes_named"), action: Schema.Literal("delete"), name: RecordName }),
+])
+export const CalendarNamed = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("calendar_named"), action: Schema.Literal("update"), name: RecordName, fields: CalendarFields }),
+  Schema.Struct({ type: Schema.Literal("calendar_named"), action: Schema.Literals(["delete", "read"]), name: RecordName }),
+])
+export const ReminderNamed = Schema.Union([
+  Schema.Struct({ type: Schema.Literal("reminder_named"), action: Schema.Literal("update"), name: RecordName, fields: ReminderFields }),
+  Schema.Struct({ type: Schema.Literal("reminder_named"), action: Schema.Literal("cancel"), name: RecordName }),
+])
+
+const namedResult = <K extends string, A extends readonly [string, ...Array<string>], O extends Schema.Top, R extends Schema.Top>(kind: K, actions: A, operation: O, record: R) => {
+  const scope = { version, kind: Schema.Literal(kind), action: Schema.Literals(actions), name: RecordName }
+  return Schema.Union([
+    Schema.Struct({ ...scope, basis: Schema.Literal("no-match") }),
+    Schema.Struct({ ...scope, basis: Schema.Literal("owner-chosen"), operation, record }),
+  ])
+}
+export const NotesNamedResult = namedResult("notes_named", ["update", "delete"], Schema.Union([NotesUpdate, NotesDelete]), Schema.Union([NotesUpdateResult, NotesDeleteResult]))
+export const CalendarNamedResult = namedResult("calendar_named", ["update", "delete", "read"],
+  Schema.Union([CalendarUpdate, CalendarDelete, CalendarReadSelected]), Schema.Union([CalendarUpdateResult, CalendarDeleteResult, CalendarReadSelectedResult]))
+export const ReminderNamedResult = namedResult("reminder_named", ["update", "cancel"], Schema.Union([ReminderUpdate, ReminderCancel]), Schema.Union([ReminderUpdateResult, ReminderCancelResult]))
+
+export type NotesNamed = typeof NotesNamed.Type
+export type CalendarNamed = typeof CalendarNamed.Type
+export type ReminderNamed = typeof ReminderNamed.Type
+export type NamedTarget = NotesNamed | CalendarNamed | ReminderNamed
+type NamedResult = typeof NotesNamedResult.Type | typeof CalendarNamedResult.Type | typeof ReminderNamedResult.Type
+
+const namedExactTypes = {
+  notes_named: { update: "notes_update", delete: "notes_delete" },
+  calendar_named: { update: "calendar_update", delete: "calendar_delete", read: "calendar_read_selected" },
+  reminder_named: { update: "reminder_update", cancel: "reminder_cancel" },
+} as const
+
+export function namedExactType(op: NamedTarget): string {
+  switch (op.type) {
+    case "notes_named": return namedExactTypes.notes_named[op.action]
+    case "calendar_named": return namedExactTypes.calendar_named[op.action]
+    case "reminder_named": return namedExactTypes.reminder_named[op.action]
+  }
+}
+
+function chosenRecordMatches(chosen: Extract<NamedResult, { readonly basis: "owner-chosen" }>) {
+  switch (chosen.kind) {
+    case "notes_named": return notesMatches(chosen.record, chosen.operation)
+    case "calendar_named": return calendarRecordMatches(chosen.record, chosen.operation)
+    case "reminder_named": return reminderMatches(chosen.record, chosen.operation)
+  }
+}
+
+function namedMatches(result: NamedResult, op: NamedTarget) {
+  if (result.kind !== op.type || result.action !== op.action || result.name !== op.name) return false
+  if (result.basis === "no-match") return true
+  const exact = result.operation
+  return exact.type === namedExactType(op)
+    && sameValue("fields" in exact ? exact.fields : undefined, "fields" in op ? op.fields : undefined)
+    && chosenRecordMatches(result)
+}
+
+const MapsText = (max: number) => Schema.String.check(Schema.makeFilter((value: string) => value.length <= max && value.trim() !== "" && !/[\u0000-\u001f]/.test(value)))
+const MapsTarget = Schema.Struct({
+  kind: Schema.Literals(["map-place", "map-route"]),
+  id: Schema.String.check(Schema.isPattern(/^maps_[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/)),
+  revision: Schema.String.check(Schema.isPattern(/^(0|[1-9][0-9]{0,15})$/), Schema.makeFilter((revision: string) => Number.isSafeInteger(Number(revision)))),
+})
+const Point = Schema.Struct({
+  latitude: Schema.Finite.check(Schema.isBetween({ minimum: -90, maximum: 90 })),
+  longitude: Schema.Finite.check(Schema.isBetween({ minimum: -180, maximum: 180 })),
+})
+const Measure = Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 100_000_000 }))
+const provider = { providerId: MapsText(80), providerRevision: MapsText(128), attribution: MapsText(2_000) }
+export const MapsReadSelected = Schema.Struct({ type: Schema.Literal("maps_read_selected"), target: MapsTarget })
+export const MapsResult = Schema.Struct({
+  kind: Schema.Literal("maps_read_selected"), version, target: MapsTarget,
+  fields: Schema.Union([
+    Schema.Struct({ kind: Schema.Literal("map-place"), ...provider, label: MapsText(300), coordinate: Point }),
+    Schema.Struct({
+      kind: Schema.Literal("map-route"), ...provider, from: Point, to: Point, mode: Schema.Literals(["drive", "walk", "bicycle"]),
+      distanceMeters: Measure, durationSeconds: Measure, traffic: Schema.Literals(["none", "approximated", "live"]),
+    }),
+  ]),
+}).check(Schema.makeFilter((result) => result.fields.kind === result.target.kind && utf8Bytes(result) <= 7_600))
+export type MapsReadSelected = typeof MapsReadSelected.Type
+export type MapsResult = typeof MapsResult.Type
+
+const FilterText = Schema.Trim.check(Schema.isMinLength(1), Schema.isMaxLength(200), Schema.makeFilter((text: string) => !text.includes("\0")))
+const collapsed = (name: string) => name.replace(/\s+/g, " ").trim()
+const FolderName = Schema.String.pipe(Schema.decodeTo(
+  Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40), Schema.makeFilter((name: string) => !name.includes("\0") && name === collapsed(name))),
+  SchemaTransformation.transform({ decode: collapsed, encode: (name: string) => name }),
+))
+const NoteKind = Schema.Literals(["text", "list", "voice", "link"])
+const narrows = (filter: { readonly text?: string; readonly folder?: string; readonly kind?: string }) =>
+  filter.text !== undefined || filter.folder !== undefined || filter.kind !== undefined
+
+const NotesFilter = Schema.Struct({
+  type: Schema.Literal("notes_filter"), text: Schema.optionalKey(FilterText), folder: Schema.optionalKey(FolderName), kind: Schema.optionalKey(NoteKind),
+}).check(Schema.makeFilter(narrows))
+const NotesListFilter = Schema.Struct({ type: Schema.Literal("notes_list_filter"), text: Schema.optionalKey(FilterText), kind: Schema.optionalKey(NoteKind) })
+  .check(Schema.makeFilter(narrows))
+const NotesMove = Schema.Struct({ type: Schema.Literal("notes_move"), target: NotesTarget, folder: Schema.NullOr(FolderName) })
+const NotesFolderCreate = Schema.Struct({ type: Schema.Literal("notes_folder_create"), name: FolderName })
+const NotesRestore = Schema.Struct({ type: Schema.Literal("notes_restore"), noteId: Identifier })
+const NotesRecord = Schema.Struct({ type: Schema.Literal("notes_record"), action: Schema.Literals(["start", "stop"]) })
+export const NotesOrganizeOperation = Schema.Union([NotesFilter, NotesListFilter, NotesMove, NotesFolderCreate, NotesRestore, NotesRecord])
+export type NotesOrganizeOperation = typeof NotesOrganizeOperation.Type
+
+const TitleQuery = Schema.Struct({ kind: Schema.Literal("title"), text: Text(256) })
+const LatestQuery = Schema.Struct({ kind: Schema.Literal("latest"), by: Schema.Literals(["created", "updated"]) })
+export const NotesQuery = Schema.Struct({ type: Schema.Literal("notes_query"), query: Schema.Union([TitleQuery, LatestQuery]) })
+const queryReceipt = { version, kind: Schema.Literal("notes_query") }
+export const NotesQueryResult = Schema.Union([
+  Schema.Struct({ ...queryReceipt, query: Schema.Union([TitleQuery, LatestQuery]), basis: Schema.Literal("no-match") }),
+  Schema.Struct({ ...queryReceipt, query: TitleQuery, basis: Schema.Literal("title-match"), target: NotesTarget, record: NotesReadSelectedResult }),
+  Schema.Struct({
+    ...queryReceipt, query: LatestQuery, basis: Schema.Literals(["latest-created", "latest-updated", "only-note", "owner-choice-uncertain"]),
+    target: NotesTarget, record: NotesReadSelectedResult,
+  }).check(Schema.makeFilter(({ query, basis }) => basis !== (query.by === "created" ? "latest-updated" : "latest-created"))),
+])
+export type NotesQuery = typeof NotesQuery.Type
+export type NotesQueryResult = typeof NotesQueryResult.Type
+
+function queryMatches(result: NotesQueryResult, op: NotesQuery) {
+  return sameValue(result.query, op.query) && (result.basis === "no-match" || selectedNoteMatches(result.target, result.record))
+}
+
+const ClockZone = Schema.String.check(Schema.isMaxLength(100), Schema.isPattern(/^[A-Za-z_]+(?:\/[A-Za-z0-9_+.-]+)*$/), Schema.makeFilter(knownZone))
+const ClockLabel = Schema.String.check(Schema.isMaxLength(200), Schema.makeFilter((label: string) => !/[\u0000-\u001f\u007f]/.test(label)))
+const ClockDays = Schema.Array(between(1, 7)).check(Schema.isMaxLength(7), Schema.makeFilter((days) => new Set(days).size === days.length))
+export const ClockHandoff = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("clock_handoff"), action: Schema.Literal("set"), hour: between(0, 23), minute: between(0, 59),
+    label: ClockLabel, timeZone: ClockZone, days: Schema.optionalKey(ClockDays),
+  }),
+  Schema.Struct({ type: Schema.Literal("clock_handoff"), action: Schema.Literal("snooze"), snoozeMinutes: between(1, 60) }),
+  Schema.Struct({ type: Schema.Literal("clock_handoff"), action: Schema.Literals(["show", "dismiss"]) }),
+])
+export const ClockHandoffResult = Schema.Struct({
+  kind: Schema.Literal("clock-handoff"), action: Schema.Literals(["set", "snooze", "show", "dismiss"]),
+  status: Schema.Literals(["opened", "unavailable", "denied", "failed", "unknown"]),
+})
+export type ClockHandoff = typeof ClockHandoff.Type
+export type ClockHandoffResult = typeof ClockHandoffResult.Type
+
+function clockShows(result: ClockHandoffResult, op: ClockHandoff): Evidence | undefined {
+  if (result.action !== op.action) return undefined
+  switch (result.status) {
+    case "opened": return { shows: "ReportsApplied", nothingSubmitted: false }
+    case "unknown": return { shows: "ReportsUnknown", nothingSubmitted: false }
+    case "unavailable":
+    case "denied":
+    case "failed": return { shows: "ReportsFailed", nothingSubmitted: false }
+  }
+}
+
+const applied: Evidence = { shows: "ReportsApplied", nothingSubmitted: false }
+const as = (opType: OperationType, versionTwo = false): Classification => ({ opType, versionTwo })
+
+function reads<Op extends WireOperation, R>(
+  operation: Schema.Decoder<Op>, result: Schema.Decoder<R>, opType: OperationType, matches: (result: NoInfer<R>, op: NoInfer<Op>) => boolean,
+  versionTwo: (op: NoInfer<Op>) => boolean = () => false,
+): OperationSchema<Op, R> {
+  return { operation, result, classify: (op) => as(opType, versionTwo(op)), evidence: (shown, op) => matches(shown, op) ? applied : undefined }
+}
+
+function unread<Op extends WireOperation>(operation: Schema.Decoder<Op>, opType: OperationType): OperationSchema<Op> {
+  return { operation, result: undefined, classify: () => as(opType) }
+}
+
+const reminderReads = <Op extends ReminderOperation, R extends ReminderResult>(operation: Schema.Decoder<Op>, result: Schema.Decoder<R>, opType: OperationType) =>
+  reads(operation, result, opType, reminderMatches, reminderVersionTwo)
+
+export const personalFamilies = {
+  calendar_create_local: reads(CalendarCreateLocal, CalendarCreateLocalResult, "CalendarCreateLocal", calendarRecordMatches),
+  calendar_read_next: reads(CalendarReadNext, CalendarNextResult, "CalendarReadNext", () => true),
+  calendar_create: reads(CalendarCreate, CalendarCreateResult, "CalendarCreate", calendarRecordMatches),
+  calendar_read_selected: reads(CalendarReadSelected, CalendarReadSelectedResult, "CalendarReadSelected", calendarRecordMatches),
+  calendar_update: reads(CalendarUpdate, CalendarUpdateResult, "CalendarUpdate", calendarRecordMatches),
+  calendar_delete: reads(CalendarDelete, CalendarDeleteResult, "CalendarDelete", calendarRecordMatches),
+  reminder_read_selected: reminderReads(ReminderReadSelected, ReminderReadSelectedResult, "ReminderReadSelected"),
+  reminder_update: reminderReads(ReminderUpdate, ReminderUpdateResult, "ReminderUpdate"),
+  reminder_complete: reminderReads(ReminderComplete, ReminderCompleteResult, "ReminderComplete"),
+  reminder_snooze: reminderReads(ReminderSnooze, ReminderSnoozeResult, "ReminderSnooze"),
+  reminder_cancel: reminderReads(ReminderCancel, ReminderCancelResult, "ReminderCancel"),
+  reminder_create: reads(ReminderCreate, ReminderCreateResult, "ReminderCreate", reminderCreated),
+  calendar_availability: reads(CalendarAvailability, CalendarAvailabilityResult, "CalendarAvailability", availabilityMatches),
+  notes_search: reads(NotesSearch, NotesSearchResult, "NotesSearch", searchMatches),
+  notes_named: reads(NotesNamed, NotesNamedResult, "NotesNamed", namedMatches),
+  calendar_named: {
+    operation: CalendarNamed, result: CalendarNamedResult,
+    classify: (op) => as(op.action === "read" ? "CalendarNamedRead" : "CalendarNamedEdit"),
+    evidence: (shown, op) => namedMatches(shown, op) ? applied : undefined,
+  } satisfies OperationSchema<CalendarNamed, typeof CalendarNamedResult.Type>,
+  reminder_named: reads(ReminderNamed, ReminderNamedResult, "ReminderNamed", namedMatches,
+    (op) => op.action === "update" && op.fields.schedule?.alertMinutes !== undefined),
+  maps_read_selected: reads(MapsReadSelected, MapsResult, "MapsReadSelected", (result, op) => sameValue(result.target, op.target)),
+  notes_read_selected: reads(NotesReadSelected, NotesReadSelectedResult, "NotesReadSelected", notesMatches),
+  notes_update: reads(NotesUpdate, NotesUpdateResult, "NotesUpdate", notesMatches),
+  notes_delete: reads(NotesDelete, NotesDeleteResult, "NotesDelete", notesMatches),
+  notes_filter: unread(NotesFilter, "NotesFilter"),
+  notes_list_filter: unread(NotesListFilter, "NotesListFilter"),
+  notes_move: unread(NotesMove, "NotesMove"),
+  notes_folder_create: unread(NotesFolderCreate, "NotesFolderCreate"),
+  notes_restore: unread(NotesRestore, "NotesRestore"),
+  notes_record: unread(NotesRecord, "NotesRecord"),
+  notes_query: reads(NotesQuery, NotesQueryResult, "NotesQuery", queryMatches),
+  clock_handoff: {
+    operation: ClockHandoff, result: ClockHandoffResult,
+    classify: (op) => as("ClockHandoff", op.action === "set" && op.days !== undefined),
+    evidence: clockShows,
+  } satisfies OperationSchema<ClockHandoff, ClockHandoffResult>,
+} satisfies FamilySchemas

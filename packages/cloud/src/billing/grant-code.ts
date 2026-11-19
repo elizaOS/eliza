@@ -54,8 +54,8 @@ export function canonical(text: string): string {
 export function normalizeSubscriptionCode(text: string): string {
   //@ ensures allCrockford(\result)
   //@ ensures \result.length === grantCodeLength || \result.length === 0
-  //@ ensures \result.length === grantCodeLength <==> (readable(text) && canonical(text).length === grantCodeLength)
-  //@ ensures \result.length === grantCodeLength ==> \result === canonical(text)
+  //@ ensures (readable(text) && canonical(text).length === grantCodeLength) ==> \result === canonical(text)
+  //@ ensures !(readable(text) && canonical(text).length === grantCodeLength) ==> \result.length === 0
   const code = canonical(text)
   return readable(text) && code.length === grantCodeLength ? code : ""
 }

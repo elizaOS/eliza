@@ -84,7 +84,7 @@ const Answered = Schema.Union([
 ])
 
 schema Chunk { data: Encoded; done: Schema.Boolean }
-schema Opened { opened: Schema.Literal(true) }
+schema Opened { opened: true }
 
 function refused(method: string) {
   return (failure: BridgeUnavailable | NativeRejection): BridgeUnavailable | NativeRejection | CloudRefused => {

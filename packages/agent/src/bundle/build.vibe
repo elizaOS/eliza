@@ -264,6 +264,7 @@ module node {
       const requireFromAgent = createRequire(moduleUrl)
       const requireFromVite = createRequire(requireFromAgent.resolve("vite/package.json"))
       const inputs: BundleInput[] = []
+      const refusedInputs: string[] = []
       const directories = new Map<string, string>()
       for (const [id, emittedBytes] of emitted) {
         const file = inputFile(id, requireFromVite)
@@ -271,6 +272,7 @@ module node {
           ? { input: { emittedBytes, insideSource: false, identity: { tag: "Unreadable" as const } } }
           : await sourcePackage(sourceRoot, file, emittedBytes)
         inputs.push(source.input)
+        if (inputDisposition(source.input) === "RefusesBuild") refusedInputs.push(id)
         if (source.directory !== undefined && source.input.identity.tag === "Identified") {
           directories.set(source.input.identity.name, source.directory)
         }
@@ -286,14 +288,14 @@ module node {
         workflowWorker: noWorker, schemaVersion: migrations.length, snapshotSchemaVersion: snapshot.schemaVersion,
       }
       const beforeSmoke = buildVerdict(measured)
-      if (beforeSmoke !== "SmokeFailed") refuse(beforeSmoke, measured)
+      if (beforeSmoke !== "SmokeFailed") refuse(beforeSmoke, measured, refusedInputs, payload.refused)
       const executable = join(staging, "agent.mjs")
       const facts: Build = {
         ...measured,
         smoke: await loadSmoke(executable),
         workflowWorker: plugins.includes(workflowPlugin) ? await workflowWorker(directories.get(workflowPlugin)) : noWorker,
       }
-      refuse(buildVerdict(facts), facts)
+      refuse(buildVerdict(facts), facts, refusedInputs, payload.refused)
       const actions = facts.smoke.tag === "Booted" ? facts.smoke.registered : []
       const manifest: BundleManifest = {
         schema: 1,

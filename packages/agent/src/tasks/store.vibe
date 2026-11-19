@@ -295,6 +295,7 @@ export interface TaskStoreOptions {
   readonly keys: KeySource
   readonly namespace?: string
   readonly database?: Opener
+  /** @throws {unknown} */
   readonly decode?: (text: string) => TaskRecord
   readonly now?: () => number
 }

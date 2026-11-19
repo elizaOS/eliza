@@ -1,6 +1,6 @@
 // spec/agent/tasks/store.md, "Story: Refuse task storage when custody cannot be verified"; spec/agent/tasks/store.md, "Story: Keep records a build cannot read"; spec/agent/tasks/index.md, "Story: Run one task operation without losing or repeating its effect"
 import { assert, it } from "@effect/vitest"
-import { createTaskStore, type TaskDatabaseOpener, type TaskRecord } from "../src/tasks/store.vibe"
+import { createTaskStore, type TaskDatabaseOpener, type TaskStoreOptions } from "../src/tasks/store.vibe"
 import { scratch, SupportFailed } from "./support/kernel.vibe"
 
 module node {
@@ -159,7 +159,7 @@ effect function outcome<A, E extends { readonly _tag: string }>(run: A!E) {
   return run catch (error) => error._tag
 }
 
-effect function storeIn(directory: string, key: string | undefined, decode?: (text: string) => TaskRecord, database?: TaskDatabaseOpener) {
+effect function storeIn(directory: string, key: string | undefined, decode?: TaskStoreOptions["decode"], database?: TaskDatabaseOpener) {
   return try createTaskStore({
     directory, keys: try support("key", () => keyFor(key)),
     ...(decode === undefined ? {} : { decode }), ...(database === undefined ? {} : { database }),
@@ -260,7 +260,7 @@ it.effect('A record this build cannot read is held aside, keeps the slot until t
   const rejecting = try storeIn(directory, key, cannotRead)
   try rejecting.open(account)
   const held = {
-    read: try (rejecting.get("old") catch (error) => ({ tag: error._tag, code: error.code, reason: "reason" in error ? error.reason : "" })),
+    read: rejecting.get("old") catch (error) => ({ tag: error._tag, code: error.code, reason: "reason" in error ? error.reason : "" }),
     current: try rejecting.current(),
     slot: try outcome(rejecting.create(try support("task", () => task("new")))),
     aside: (try rejecting.unreadable()).map(({ taskId, reason, releasedAt }) => ({ taskId, reason, releasedAt })),
