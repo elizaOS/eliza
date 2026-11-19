@@ -28,7 +28,10 @@ export const SECRET_SWAP_ENABLED_SETTING = "ELIZA_SECRET_SWAP_ENABLED";
 /**
  * Keeps a value's reference the same in every turn of one conversation, so text
  * an earlier turn sent stays byte-identical and a provider can reuse the prompt
- * prefix. A host turns this on; the default draws a fresh nonce per session.
+ * prefix. The system prompt then carries the same reference guidance on every
+ * request, and the kinds of a request's contact references follow its newest
+ * user message. A host turns this on; the default draws a fresh nonce per
+ * session and lists the kinds in the system prompt.
  */
 export const SECRET_SWAP_STABLE_REFERENCES_SETTING =
 	"ELIZA_SECRET_SWAP_STABLE_REFERENCES";
@@ -591,6 +594,11 @@ export class SecretSwapSession {
 
 	get entries(): SecretSwapEntry[] {
 		return [...this.valueToEntry.values()];
+	}
+
+	/** True when a value keeps one reference across the conversation's turns. */
+	get stable(): boolean {
+		return this.stableKey !== undefined;
 	}
 
 	/** Hide only this session's protocol references from local NER, preserving offsets.
