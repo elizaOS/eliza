@@ -1,9 +1,9 @@
-// spec/cloud/services/speech.md, "Story: Speak a reply as audio"; spec/cloud/services/speech.md, "Story: Transcribe a recording"
+// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/index.md, "Story: Transcribe a recording"
 import type { HoldKey } from "../../gen/cloud__shared__types.ts"
 import { refused, Refused } from "../http/refusal.vibe"
 import { jsonBody, owner, type CloudContext, type Route, type RouteContext } from "../http/routes.vibe"
 import { Deployment, type EnvironmentProfile } from "../profile/profile.vibe"
-import { synthesize, synthesizeTimed, transcribe, ProviderInvalidResponse, type SpeechFailure, type Synthesis, type TimedFrame, type Transcription } from "../providers/speech.vibe"
+import { synthesize, synthesizeTimed, prepareTranscription, ProviderInvalidResponse, type SpeechFailure, type Synthesis, type TimedFrame, type Transcription } from "../providers/speech.vibe"
 import { markDispatched, reserve, settle, type Settlement } from "../shared/metering.vibe"
 import { SynthesisBody } from "./speech-batch.schema.ts"
 
@@ -192,7 +192,8 @@ effect function hear(context: RouteContext): HttpServerResponse.HttpServerRespon
   const settings = try speechSettings()
   const upload = try readUpload(context, settings)
   const request = { audio: upload.audio, mimeType: upload.mimeType, ...(upload.languageCode === undefined ? {} : { languageCode: upload.languageCode }) }
-  const heard: Transcription = try heldCall(context, sttCharge(upload.durationMs, settings), transcribe(settings, request), (answer: Transcription) => sttCharge(answer.durationMs, settings))
+  const call = prepareTranscription(settings, request) catch effect (failure) => { throw providerRefusal(failure, context.now) }
+  const heard: Transcription = try heldCall(context, sttCharge(upload.durationMs, settings), call, (answer: Transcription) => sttCharge(answer.durationMs, settings))
   return HttpServerResponse.jsonUnsafe({
     transcript: heard.transcript,
     duration_ms: heard.durationMs,

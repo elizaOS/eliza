@@ -1,13 +1,13 @@
 # Speech relay protocol
 
 Develop's wire on the one socket of a minted speech session (plan decision
-D41). This library has no state: `relayStep` answers one device frame or one
-edge the session or a provider reports, and the shell sends those frames
-before it reads the next input. `./speechSession` holds one `Relay` per
-socket and owns consent, windows, budgets and settlement (a broken budget
-reaches the relay as `ClientViolation`); `spec/os/voice/cloudSpeech.md` is
-the device side. JSON, bytes, digests, lengths, the id pattern and provider
-calls stay in the codec (`src/client/relay-frames.ts`).
+D41), and that session's durable consent, windows and receipts. `relayStep`
+answers one device frame or one provider or session edge; the shell sends
+those frames before reading the next input. Each socket holds a `Relay`
+value, while the generated `Session` machine owns the persisted lifecycle.
+The device side is `spec/os/voice/cloudSpeech.md`. JSON, bytes, digests,
+lengths, the id pattern and provider calls stay at the codec and shell
+boundaries (`src/client/relay-frames.ts`, `src/services/speech-session.vibe`).
 
 ## Story: Speak the relay protocol on one socket
 
@@ -296,4 +296,141 @@ pure val inputValues = Set(
   ProviderStt({ kind: TranscriptUpdate, transcriptChars: 20000 }), ProviderAudio({ id: "u1" }), ProviderAudio({ id: "u2" }), ProviderFlushed({ id: "u1" }),
   ProviderFlushed({ id: "u2" }), ProviderCompleted({ id: "u1" }), ProviderCompleted({ id: "u2" }),
   ProviderFailed, FundingRefused({ funding: AllowanceShort }), FundingRefused({ funding: CreditsShort }), CredentialRefused, SessionOver)
+```
+
+## Story: Start speech only from a consent I gave
+
+> As a person, I want a speech session to spend a fresh consent for my own
+> current credential once, so that nobody can start listening for me by
+> sending a session request alone.
+
+### Consent lasts five minutes, is bound to its account and credential, and is consumed atomically before a session is minted
+
+The consent row belongs to the signed-in account and credential. Minting
+checks that binding, its expiry and unused status in the same transaction
+that inserts the session. A refused or failed mint rolls the consumption
+back. The session model starts unminted; that state never stands for consent.
+The initial window lives at most one minute and never past the credential.
+Only a digest of the newly drawn session token is stored.
+
+```quint
+pure val consentLifetime: Millis = 5 * millisPerMinute
+pure val sessionLifetime: Millis = millisPerMinute
+pure val windowLength: Millis = millisPerMinute
+pure val windowTtsChars: CharCount = 4096
+type SessionPhase = Unminted | Minted | Starting | Active | Retiring | Closed
+type Session = { phase: SessionPhase, tokenDigest: str, mintedAt: Millis, expiresAt: Millis, credentialExpiresAt: Millis, admittedWindows: int, settledWindows: Set[int] }
+pure val initial: Session = { phase: Unminted, tokenDigest: "", mintedAt: 0, expiresAt: 0, credentialExpiresAt: 0, admittedWindows: 0, settledWindows: Set() }
+pure def firstSessionDeadline(now: Millis, credentialExpiresAt: Millis): Millis =
+  if (now + sessionLifetime < credentialExpiresAt) now + sessionLifetime else credentialExpiresAt
+pure def canMint(s: Session, tokenDigest: str, expiresAt: Millis, credentialExpiresAt: Millis, now: Millis, consentConsumed: bool): bool =
+  s.phase == Unminted and consentConsumed and tokenDigest != "" and now >= 0 and credentialExpiresAt > now and expiresAt == firstSessionDeadline(now, credentialExpiresAt)
+pure def mint(s: Session, tokenDigest: str, expiresAt: Millis, credentialExpiresAt: Millis, now: Millis, consentConsumed: bool): Session =
+  { ...s, phase: Minted, tokenDigest: tokenDigest, mintedAt: now, expiresAt: expiresAt, credentialExpiresAt: credentialExpiresAt }
+pure def alwaysSessionDeadlinesAreBounded(s: Session): bool =
+  if (s.phase == Unminted) s.tokenDigest == "" and s.mintedAt == 0 and s.expiresAt == 0 and s.credentialExpiresAt == 0 and s.admittedWindows == 0 and s.settledWindows.size() == 0
+  else s.tokenDigest != "" and s.mintedAt >= 0 and s.expiresAt > s.mintedAt and s.expiresAt <= s.credentialExpiresAt
+pure def stepSessionIdentityNeverChangesAfterMint(before: Session, after: Session): bool =
+  before.phase != Unminted implies (after.tokenDigest == before.tokenDigest and after.mintedAt == before.mintedAt and after.credentialExpiresAt == before.credentialExpiresAt)
+pure def lawMissingConsentNeverMints(s: Session, tokenDigest: str, expiresAt: Millis, credentialExpiresAt: Millis, now: Millis): bool =
+  not(canMint(s, tokenDigest, expiresAt, credentialExpiresAt, now, false))
+pure def sometimesSessionMinted(s: Session): bool = s.phase == Minted
+pure val tokenDigestValues = Set("session-digest")
+pure val nowValues = Set(0, 1, 59999, 60000, 119999, 120000)
+pure val expiresAtValues = Set(1, 60000, 120000, 180000)
+pure val credentialExpiresAtValues = Set(60000, 120000, 180000)
+```
+
+### A minted session opens one socket before its deadline and never opens another
+
+The socket must still prove the token at hello before it admits a window or
+opens a provider. Claiming the socket alone grants neither funding nor
+microphone access. Its first window is admitted only after that proof.
+
+```quint
+pure def sessionLive(s: Session, now: Millis): bool = now >= s.mintedAt and now < s.expiresAt
+pure def canOpenSocket(s: Session, now: Millis): bool = s.phase == Minted and sessionLive(s, now)
+pure def openSocket(s: Session, now: Millis): Session = { ...s, phase: Starting }
+pure def alwaysUnopenedSessionsHaveNoWindows(s: Session): bool =
+  (s.phase == Unminted or s.phase == Minted or s.phase == Starting) implies (s.admittedWindows == 0 and s.settledWindows.size() == 0)
+pure def stepOpeningIsClaimedOnce(before: Session, via: str, after: Session): bool =
+  (after.phase == Starting and before.phase != Starting) implies (via == "openSocket" and before.phase == Minted)
+pure def sometimesSocketClaimed(s: Session): bool = s.phase == Starting
+```
+
+## Story: Keep a live session funded and close it with receipts
+
+> As a person, I want each speech window funded and counted once, and every
+> admitted window settled before the session closes, so that retries cannot
+> charge twice or start speech after I stop it.
+
+### Window funding, daily use and the admitted window commit together
+
+The service locks the organization before the session, reads the current
+clock and daily usage, and reserves both speech directions in that same
+transaction. It writes the consecutive window, session state and daily
+usage before committing. This also serializes the first daily window when
+no usage row exists. An unsettled, current window can be retried while the
+session is active and before its deadline without reserving or counting it
+again. An expired or settled window cannot be reopened. A failed admission
+rolls back its own funding; it never releases another attempt's holds.
+
+Discovered during boundary review: reserving shared hold keys before the
+winning window transaction let a competing attempt release the winner's
+funding, and locking an absent usage row did not serialize first admissions.
+The generated guard consumes actual funding and allowance observations;
+atomic database persistence remains a shell boundary checked by journeys.
+
+```quint
+pure def nextWindowDeadline(s: Session, window: int): Millis =
+  if (window == 1) s.expiresAt else if (s.expiresAt + windowLength < s.credentialExpiresAt) s.expiresAt + windowLength else s.credentialExpiresAt
+pure def windowRequestAdmitted(s: Session, window: int, expiresAt: Millis, now: Millis): bool =
+  (s.phase == Starting or s.phase == Active) and sessionLive(s, now)
+  and window == s.admittedWindows + 1 and expiresAt == nextWindowDeadline(s, window) and expiresAt > now
+  and (window == 1 or expiresAt > s.expiresAt)
+pure def canAdmitWindow(s: Session, window: int, expiresAt: Millis, now: Millis, funded: bool, allowanceAvailable: bool): bool =
+  windowRequestAdmitted(s, window, expiresAt, now) and funded and allowanceAvailable
+pure def admitWindow(s: Session, window: int, expiresAt: Millis, now: Millis, funded: bool, allowanceAvailable: bool): Session =
+  { ...s, phase: Active, expiresAt: expiresAt, admittedWindows: window }
+pure def retryWindowAdmitted(s: Session, window: int, windowSettled: bool, now: Millis): bool =
+  s.phase == Active and sessionLive(s, now) and window == s.admittedWindows and not(windowSettled) and not(s.settledWindows.contains(window))
+pure def alwaysSettledWindowsWereAdmitted(s: Session): bool =
+  s.admittedWindows >= 0 and s.settledWindows.forall(window => window >= 1 and window <= s.admittedWindows)
+pure def alwaysActiveSessionsHaveAWindow(s: Session): bool = s.phase == Active implies s.admittedWindows >= 1
+pure def stepWindowsAreAdmittedConsecutively(before: Session, via: str, after: Session): bool =
+  if (via == "admitWindow") after.admittedWindows == before.admittedWindows + 1 else after.admittedWindows == before.admittedWindows
+pure def lawRefusedFundingNeverAdmits(s: Session, window: int, expiresAt: Millis, now: Millis, allowanceAvailable: bool): bool =
+  not(canAdmitWindow(s, window, expiresAt, now, false, allowanceAvailable))
+pure def lawRefusedAllowanceNeverAdmits(s: Session, window: int, expiresAt: Millis, now: Millis, funded: bool): bool =
+  not(canAdmitWindow(s, window, expiresAt, now, funded, false))
+pure def sometimesSessionActive(s: Session): bool = s.phase == Active
+pure def sometimesSessionExtended(s: Session): bool = s.admittedWindows >= 2
+pure val windowValues = Set(0, 1, 2, 3)
+pure val weight_admitWindow = 5
+```
+
+### Each admitted window settles once, and a retiring session closes only after all its receipts
+
+Stopping, revocation, a credential withdrawal, an account deletion or a
+missed deadline retires a session. Retirement refuses new windows while
+existing windows finish settlement. Closing waits for every admitted
+window's receipt. The metering owner decides each direction's known,
+unknown or released settlement and keeps that receipt idempotent.
+
+```quint
+pure def canSettleWindow(s: Session, window: int): bool =
+  (s.phase == Active or s.phase == Retiring) and window >= 1 and window <= s.admittedWindows and not(s.settledWindows.contains(window))
+pure def settleWindow(s: Session, window: int): Session = { ...s, settledWindows: s.settledWindows.union(Set(window)) }
+pure def canRetire(s: Session): bool = s.phase == Minted or s.phase == Starting or s.phase == Active
+pure def retire(s: Session): Session = { ...s, phase: Retiring }
+pure def allWindowsSettled(s: Session): bool =
+  s.admittedWindows >= 0 and s.settledWindows.size() == s.admittedWindows and s.settledWindows.forall(window => window >= 1 and window <= s.admittedWindows)
+pure def canClose(s: Session): bool = s.phase == Retiring and allWindowsSettled(s)
+pure def close(s: Session): Session = { ...s, phase: Closed }
+pure def alwaysClosedSessionsHaveEveryReceipt(s: Session): bool = s.phase == Closed implies allWindowsSettled(s)
+pure def stepRetirementNeverReopens(before: Session, after: Session): bool =
+  (before.phase == Retiring or before.phase == Closed) implies (after.phase == Retiring or after.phase == Closed)
+pure def stepReceiptsNeverDisappear(before: Session, after: Session): bool = before.settledWindows.subseteq(after.settledWindows)
+pure def sometimesSessionRetiring(s: Session): bool = s.phase == Retiring
+pure def sometimesSessionClosed(s: Session): bool = s.phase == Closed
 ```

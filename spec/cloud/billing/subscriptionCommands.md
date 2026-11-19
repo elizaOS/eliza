@@ -278,6 +278,15 @@ pure def stepDowngradeScheduledOnApply(before: Command, after: Command, out: Lis
   and (out.some(e => isSchedule(e)) implies isSchedule(out.nthOr(0, ReleaseSlot({ commandId: "" }))))
 ```
 
+### An upgrade awaiting payment offers the provider's hosted invoice, to a fresh owner only
+
+`POST /upgrade/:commandId/payment` answers `{url}`, the open invoice's
+hosted page on the provider's host.
+
+```quint
+pure def mayContinuePayment(c: Command, freshOwner: bool): bool = freshOwner and c.phase == AwaitingPayment
+```
+
 ## Story: See my commands
 
 > As a subscriber, I want to see each change I confirmed and how it ended,

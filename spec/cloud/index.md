@@ -198,6 +198,36 @@ pure def cloudSpeechUsageFits(pcmBytes: int, textCharacters: int, outputBytes: i
   pcmBytes >= 0 and pcmBytes <= 1920000 and textCharacters >= 0 and textCharacters <= 4096 and outputBytes >= 0 and outputBytes <= 8388608
 ```
 
+## Story: Transcribe a recording
+
+> As a person sending a recording, I want a failure to prepare it to leave
+> my funding untouched, so that I pay only after a provider call may have
+> started.
+
+### A recording is prepared before reserving funding or dispatching its provider call
+
+The service parses the upload and prepares the provider's multipart body
+before entering the funded-call path. A preparation failure returns a typed
+unavailable answer without reserving funding or contacting a provider. A
+prepared call still needs the current authenticated account, a fresh hold
+and a committed dispatch. The 120-second provider execution budget starts
+after preparation; upload parsing and local preparation precede it.
+
+Discovered during boundary review: building the multipart body after marking
+the hold dispatched would treat a local preparation failure as an unknown
+provider outcome and charge its quote.
+
+```quint
+pure def mayReservePreparedSpeech(recordingPrepared: bool, authenticated: bool): bool =
+  recordingPrepared and authenticated
+pure def mayDispatchPreparedSpeech(recordingPrepared: bool, authenticated: bool, freshHold: bool, dispatchCommitted: bool): bool =
+  recordingPrepared and mayDispatchFundedRequest(authenticated, freshHold, dispatchCommitted)
+pure def lawUnpreparedRecordingReservesAndDispatchesNothing(authenticated: bool, freshHold: bool, dispatchCommitted: bool): bool =
+  not(mayReservePreparedSpeech(false, authenticated)) and not(mayDispatchPreparedSpeech(false, authenticated, freshHold, dispatchCommitted))
+pure def lawPreparedSpeechStillRequiresFunding(authenticated: bool, freshHold: bool, dispatchCommitted: bool): bool =
+  mayDispatchPreparedSpeech(true, authenticated, freshHold, dispatchCommitted) == mayDispatchFundedRequest(authenticated, freshHold, dispatchCommitted)
+```
+
 ## Story: Back up my passwords for another device
 
 > As a person using Passwords, I can choose to keep an encrypted backup.
