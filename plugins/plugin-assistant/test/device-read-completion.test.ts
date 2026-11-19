@@ -492,6 +492,11 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
       replyThreadId: "thread:42",
     });
     expect(draft.request.state).toBe("pending");
+    await expect(
+      propose(words, { ...proposed, draft: true, replyThreadId: "thread:99" }),
+    ).rejects.toThrow(
+      "Reply threads are resolved from the original sender lookup.",
+    );
     for (const [text, target] of [
       [
         "Draft a text to Ada asking them to call +14155550199.",

@@ -904,6 +904,8 @@ describe("strict open command with where the address opens", () => {
     ["maps dot example.com", "maps.example.com"],
     ["maps\u00a0dot\u00a0example.com", "maps.example.com"],
     ["example.com dot ai", "example.com.ai"],
+    ["münchen dot de", "xn--mnchen-3ya.de"],
+    ["maps dot münchen.de", "maps.xn--mnchen-3ya.de"],
   ])("keeps %s as one complete destination", (spoken, host) => {
     const text = `Open ${spoken} in a new tab.`;
     const href = `https://${host}/`;
