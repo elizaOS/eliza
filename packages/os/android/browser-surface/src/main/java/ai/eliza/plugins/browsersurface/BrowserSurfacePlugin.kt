@@ -2568,7 +2568,6 @@ class ElizaSurfaceManagerPlugin : Plugin() {
                 result.put("progress", 0)
                 result.put("pageError", JSObject.NULL)
                 result.put("securityBlocked", false)
-                result.put("textZoom", JSObject.NULL)
                 result.put("pageScale", JSObject.NULL)
                 call.resolve(result)
             } else {
@@ -2672,7 +2671,6 @@ class ElizaSurfaceManagerPlugin : Plugin() {
         put("progress", surface.webView.progress)
         put("pageError", pageFailure(surface)?.let { if (surface.signIn == null) it else "The sign-in page failed to load" } ?: JSObject.NULL)
         put("securityBlocked", surface.securityBlocked != null)
-        put("textZoom", surface.webView.settings.textZoom)
         put("pageScale", surface.pageScale)
     }
 

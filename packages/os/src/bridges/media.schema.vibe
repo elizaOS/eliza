@@ -65,8 +65,9 @@ export const MediaItem = Schema.Struct(itemFields)
 export const ChangedItem = Schema.Struct({ ...itemFields, status: RowStatus })
 
 const PageItems = Schema.Array(MediaItem).check(Schema.isMaxLength(maxCatalogPage))
-export const MediaPage = Schema.Struct({ items: PageItems, next: Schema.String, access: Schema.optionalKey(LibraryAccess) })
-export const LibraryPage = Schema.Struct({ ...scopeFields, items: PageItems, next: Schema.String })
+const Next = Schema.Union([Schema.Literal(""), Text.pipe(Schema.brand("MediaCursor"))])
+export const MediaPage = Schema.Struct({ items: PageItems, next: Next, access: Schema.optionalKey(LibraryAccess) })
+export const LibraryPage = Schema.Struct({ ...scopeFields, items: PageItems, next: Next })
 
 export const Validated = Schema.Struct({
   items: Schema.Array(Schema.Union([

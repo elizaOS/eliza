@@ -134,7 +134,6 @@ const bytes = (data: Files) => ({
 effect function buildVerdict(data: Files) {
   return (effect { const admitted = try admitAgentBytes(bytes(data)); return admitted } catch (error) => match (error) {
     when AgentConfigRefused: error.detail;
-    default: error._tag;
   })
 }
 
@@ -202,7 +201,6 @@ it.effect('The build reads the three agent data files from their asset names and
     assert.deepStrictEqual(try admitAgentData(paths), { service: HOST.service, notification: { channel: "Agent", title: "Agent", text: "Your agent is running" }, needsAccount: true })
     const missing = (effect { try admitAgentData({ ...paths, policy: path.join(root, "agent", "absent.json") }); return "admitted" } catch (error) => match (error) {
       when AgentConfigRefused: error.detail;
-      default: error._tag;
     })
     assert.strictEqual(try missing, "The agent policy file is missing")
   }

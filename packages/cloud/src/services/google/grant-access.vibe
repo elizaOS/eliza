@@ -16,7 +16,7 @@ export type GoogleCapability =
   | "google.calendar.read"
   | "google.calendar.write"
 
-export type ConnectionStatus = "Pending" | "Active" | "Expired" | "Revoked" | "Error"
+export type ConnectionStatus = "Pending" | "Active" | "Expired" | "Revoked" | "Errored"
 
 export interface Connection {
   readonly status: ConnectionStatus
@@ -85,7 +85,7 @@ export function capabilitiesOf(scopes: ReadonlyArray<string>): ReadonlyArray<Goo
 
 export const initialConnection: Connection = { status: "Pending", scopes: [], tokens: "", expiresAt: 0, refreshingUntil: 0 }
 
-schema ConnectionState { status: "Pending" | "Active" | "Expired" | "Revoked" | "Error"; scopes: ReadonlyArray<string>; tokens: string; expiresAt: number; refreshingUntil: number }
+schema ConnectionState { status: "Pending" | "Active" | "Expired" | "Revoked" | "Errored";scopes: ReadonlyArray<string>; tokens: string; expiresAt: number; refreshingUntil: number }
 
 export effect function decodeConnection(input: unknown): Connection!ConnectionCorrupt {
   return Schema.decodeUnknownEffect(ConnectionState)(input) catch effect () => { throw new ConnectionCorrupt({ input }) }
@@ -109,11 +109,11 @@ export effect function applyConnection(state: Connection, event: ConnectionEvent
     }
     case "grantInvalid": {
       if (state.status !== "Active") throw rejected
-      return { ...state, status: "Expired", tokens: "", expiresAt: 0, refreshingUntil: 0 }
+      return { ...state, status: "Expired", refreshingUntil: 0 }
     }
     case "fail": {
-      if (state.status === "Revoked") throw rejected
-      return { ...state, status: "Error", refreshingUntil: 0 }
+      if (state.status !== "Active") throw rejected
+      return { ...state, status: "Errored", refreshingUntil: 0 }
     }
     case "revoke": return { ...state, status: "Revoked", tokens: "", expiresAt: 0, refreshingUntil: 0 }
     default: {

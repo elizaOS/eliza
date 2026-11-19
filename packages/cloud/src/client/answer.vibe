@@ -1,0 +1,46 @@
+// spec/cloud/client.md, "Story: Tell an account that needs attention from a failing service"
+import { CloudError, networkError } from "./errors.vibe"
+
+export interface CloudAnswer {
+  readonly headers: { get(name: string): string | null }
+  text(): Promise<string>
+  arrayBuffer(): Promise<ArrayBuffer>
+}
+
+export interface CallOptions {
+  readonly signal?: AbortSignal
+}
+
+function unreadable(issue: unknown): CloudError {
+  return new CloudError({ failure: { tag: "CloudProviderIssue" }, cause: issue })
+}
+
+export async function answerOf<A>(answer: CloudAnswer, schema: Schema.Codec<A>): Promise<A> {
+  let text: string
+  try {
+    text = await answer.text()
+  } catch (cause) {
+    throw networkError(cause)
+  }
+  let body: unknown
+  try {
+    body = JSON.parse(text)
+  } catch (cause) {
+    throw unreadable(cause)
+  }
+  const read = Schema.decodeUnknownExit(schema)(body)
+  if (read._tag === "Failure") throw unreadable(read.cause)
+  return read.value
+}
+
+export async function bytesOf(answer: CloudAnswer): Promise<Uint8Array> {
+  try {
+    return new Uint8Array(await answer.arrayBuffer())
+  } catch (cause) {
+    throw networkError(cause)
+  }
+}
+
+export function queryOf(entries: Readonly<Record<string, string | number | undefined>>): Readonly<Record<string, string>> {
+  return Object.fromEntries(Object.entries(entries).flatMap(([name, value]) => value === undefined ? [] : [[name, String(value)]]))
+}

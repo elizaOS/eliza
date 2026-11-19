@@ -68,7 +68,7 @@ export function addUtcMonths(at: number, months: number): number {
   return Date.UTC(start.getUTCFullYear(), month, Math.min(start.getUTCDate(), lastDay), start.getUTCHours(), start.getUTCMinutes(), start.getUTCSeconds(), start.getUTCMilliseconds())
 }
 
-interface GrantMonth {
+export interface GrantMonth {
   readonly month: number
   readonly startsAt: number
   readonly endsAt: number
@@ -139,10 +139,14 @@ export effect function openGrantMonths(tx: Tx, organizationId: string, grant: Gr
   if ((try readPolicy(tx, organizationId, now)).source === "subscription") return []
   const opened: PeriodStep[] = []
   for (const window of grantMonths(grant, now)) {
-    const step = try openOnce(tx, organizationId, grantMonthKey(grant.id, window.month), { type: "openGrantMonth", grantId: grant.id, planKey: grant.planKey, ...window }, now)
+    const step = try openGrantMonth(tx, organizationId, grant, window, now)
     if (step.moved) opened.push(step)
   }
   return opened
+}
+
+export effect function openGrantMonth(tx: Tx, organizationId: string, grant: Pick<GrantTerm, "id" | "planKey">, window: GrantMonth, now: number): PeriodStep!AllowanceFailure {
+  return try openOnce(tx, organizationId, grantMonthKey(grant.id, window.month), { type: "openGrantMonth", grantId: grant.id, planKey: grant.planKey, ...window }, now)
 }
 
 function closingPrefix(closing: Closing): string {

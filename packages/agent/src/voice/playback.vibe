@@ -110,6 +110,11 @@ module browser {
   import type { SpeechMedia } from "./playback.vibe"
 
   /** @throws {never} */
+  export function audioClip(parts: Uint8Array<ArrayBuffer>[]): Blob {
+    return new Blob(parts, { type: "audio/mpeg" })
+  }
+
+  /** @throws {never} */
   export function browserSpeechMedia(): SpeechMedia {
     const streams = typeof MediaSource !== "undefined" && MediaSource.isTypeSupported("audio/mpeg")
     return {
@@ -124,7 +129,7 @@ module browser {
     }
   }
 }
-import { browserSpeechMedia } from browser
+import { audioClip, browserSpeechMedia } from browser
 export { browserSpeechMedia }
 
 const abbreviation = /(?:Mr|Mrs|Ms|Dr|Jr|Sr|St|vs|etc|approx|Prof|Rev|Gen|Sgt|Lt|Col|Maj|Capt|Corp|Pvt|Ave|Blvd|dept|est|govt|assn)$/
@@ -224,7 +229,7 @@ effect function mediaCall<A>(call: () => A): A!SpeechMediaFailed {
 effect function mediaEvent<Name extends string>(target: MediaEvents<Name | "error">, success: Name, begin: () => void): void!SpeechMediaFailed {
   const settled = callback<void, SpeechMediaFailed>((resume) => {
     let done = false
-    const settle = (outcome: Effect.Effect<void, SpeechMediaFailed>) => {
+    const settle = (outcome: void!SpeechMediaFailed) => {
       if (done) return
       done = true
       target.removeEventListener(success, succeeded)
@@ -285,7 +290,7 @@ effect function loadAttached<Frame extends SpeechAudioFrame>(a: Attached<Frame>)
     a.options.onFrame?.(frame)
     announce(a, false)
   }
-  const audio = new Blob(parts, { type: "audio/mpeg" })
+  const audio = audioClip(parts)
   if (stream !== undefined) try mediaCall(() => stream.source.endOfStream())
   else {
     const url = try mediaCall(() => a.media.clipUrl(audio))
@@ -313,7 +318,7 @@ export function attachProgressiveSpeech<Frame extends SpeechAudioFrame>(
   }
   options.signal?.addEventListener("abort", dispose, { once: true })
   if (options.signal?.aborted === true) dispose()
-  const program: Effect.Effect<CompletedSpeechAudio<Frame>, ProgressiveSpeechFailure> =
+  const program: CompletedSpeechAudio<Frame>!ProgressiveSpeechFailure =
     onError(raceFirst(loadAttached(a), haltedBy(a.halt.signal)), () => sync(dispose))
   return { loaded: runPromise(program), dispose, progressive: a.streaming }
 }
@@ -371,7 +376,7 @@ function playSegment(core: Core, reply: Reply, segment: string) {
       if (live()) core.options.changed(state)
     }
     const listeners: Array<readonly [PlayerEvent, () => void]> = []
-    const settle = (end: Effect.Effect<SegmentEnd, SpeechPlaybackError>) => {
+    const settle = (end: SegmentEnd!SpeechPlaybackError) => {
       if (settled) return
       settled = true
       reply.halt = undefined
@@ -437,7 +442,7 @@ effect function playReply(core: Core, reply: Reply): void!SpeechPlaybackError {
   while (core.current === reply && reply.run.running) {
     core.options.changed({ phase: "preparing", caption: "" })
     const segment = reply.segments[reply.run.played] ?? ""
-    const end = try playSegment(core, reply, segment) catch effect (failure) => {
+    const end = playSegment(core, reply, segment) catch effect (failure) => {
       if (core.current === reply) {
         reply.run = replyAfter(reply.run, reply.segments.length, "SegmentBroke")
         release(core, reply)

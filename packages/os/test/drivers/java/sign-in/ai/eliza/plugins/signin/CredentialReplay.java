@@ -37,7 +37,10 @@ public final class CredentialReplay {
     }
 
     @Override public void write(String slot, String value) throws IOException {
-      if (key(slot) && next == KeyWrite.LOSE) throw new IOException("lost");
+      if (key(slot) && next == KeyWrite.LOSE) {
+        held.remove(slot);
+        throw new IOException("lost");
+      }
       held.put(slot, value);
     }
 

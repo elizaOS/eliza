@@ -276,6 +276,13 @@ effect function claimDue(now: number) {
   })
 }
 
+effect function settle(claimed: Claimed, deadline: number, now: number) {
+  return settleDone(claimed, deadline, now) catch effect (failure) => {
+    try annotateLogs(logWarning("a provider event failed"), { eventId: claimed.id, code: failure._tag })
+    return try settleFailed(claimed, failure._tag, now)
+  }
+}
+
 export effect function drainProviderEvents(now: number): DrainReport!!CloudContext {
   const started = try Clock.currentTimeMillis
   const claimed = claimDue(now) catch effect (failure) => {
@@ -291,10 +298,7 @@ export effect function drainProviderEvents(now: number): DrainReport!!CloudConte
       report.released += 1
       continue
     }
-    const settled = settleDone(each, deadline, at) catch effect (failure) => {
-      try annotateLogs(logWarning("a provider event failed"), { eventId: each.id, code: failure._tag })
-      return try settleFailed(each, failure._tag, at)
-    } catch effect (failure) => {
+    const settled = settle(each, deadline, at) catch effect (failure) => {
       try annotateLogs(logWarning("a provider event failure could not be recorded"), { eventId: each.id, failure: failure._tag })
       return { kind: "stale" } satisfies Settled
     }

@@ -1,0 +1,1628 @@
+// spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
+import { assert, describe, it } from "@effect/vitest"
+import { addCredits } from "../src/billing/funds.vibe"
+import { refusalBody } from "../src/http/refusal.vibe"
+import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
+import { Store, type Tx } from "../src/store/store.vibe"
+import { organization, testCloud, type FakeServer, type ProfileEdit, type TestCloud } from "./support/cloud.vibe"
+import type { FakeRequest } from "./support/fakes.ts"
+import { catalogPrices, fixtureSeedFile, testProfile } from "./support/profile.ts"
+import { periodRows } from "../src/shared/metering.vibe"
+import { tokenDigest } from "../src/shared/sealing.vibe"
+import { stepRow } from "../src/store/rows.vibe"
+import { verifyEntitlement, type PublishedKey } from "./support/entitlement.ts"
+import { decodeRegistration, disableClient, registerClient, updateClient } from "../src/native-clients/registry.vibe"
+import { seedClients } from "../src/operator/clients.vibe"
+import { deviceKey, openAccount, printed } from "./support/operator.vibe"
+import { operator } from "./support/operator.vibe"
+import { chooseFor } from "../src/services/models.vibe"
+import { forwardScriptHash } from "../src/pages/forward-script.ts"
+import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
+import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
+import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
+import { s256, signedIn } from "./support/identity.ts"
+import { connectionColumns, connectionRows, scopeFor, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
+import { sealTokens } from "../src/providers/google.vibe"
+import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
+import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
+import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
+import { gmailChanges, gmailChangeSwitches } from "./support/fakes/google-gmail-changes.ts"
+import { sha256Hex } from "../src/shared/sealing.vibe"
+import { secrets } from "./support/profile.ts"
+import { signedCaller } from "./support/caller.vibe"
+import { callDeclaring } from "./support/http.ts"
+import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
+import { recordingBytes, recordingForm } from "./support/recording.ts"
+import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
+import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.ts"
+import { googleMapsFake } from "./support/maps-fake.ts"
+
+effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
+  return match (try exit(program)) {
+    when Exit.Success(let value): `succeeded with ${JSON.stringify(value)}`;
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => error._tag), Option.getOrElse(() => "defect"));
+  }
+}
+
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+
+effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
+  return try cloud.store.transaction((tx) => tx.query(text, params))
+}
+
+describe("WP0 Foundation", () => {
+  it.live("Refuse a profile that breaks a rule and a catalog the provider does not sell, then serve the public documents (spec/cloud/deployment.md, \"Story: Configure a deployment from one reviewed profile\"; spec/cloud/billing/plans.md, \"Story: Offer the paid plans as the provider sells them\")", () => scoped(effect {
+    const sharedOrigin = try failureTag(scoped(testCloud({
+      edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, api: profile.environments.production.api } } })
+    })))
+    const wrongPrice = try failureTag(scoped(testCloud({ prices: [{ ...catalogPrices[0], unitAmount: 2_999 }, catalogPrices[1]] })))
+    const liveModePrice = try failureTag(scoped(testCloud({ prices: catalogPrices.map((price) => ({ ...price, livemode: true })) })))
+    try check(() => assert.deepStrictEqual([sharedOrigin, wrongPrice, liveModePrice], ["ProfileInvalid", "CatalogMismatch", "CatalogMismatch"]))
+
+    const cloud = try testCloud()
+    const health = try cloud.call("/api/health", { headers: { "x-request-id": "journey-request-0001" } })
+    const service = try cloud.call("/api/public/service")
+    const methods = try cloud.call("/api/v1/auth/methods")
+    const plans = try cloud.call("/api/v1/subscriptions/plans")
+    try check(() => assert.deepStrictEqual(
+      [health.status, health.headers["x-request-id"], service.headers["cache-control"], methods.body, plans.body],
+      [200, "journey-request-0001", "no-store", { email: true, sms: true, google: true }, {
+        plans: [
+          { key: "plus_monthly", name: "Plus", amountCents: 3000, currency: "usd", interval: "month", allowance: { amountUsd: "25.000000" } },
+          { key: "pro_monthly", name: "Pro", amountCents: 10000, currency: "usd", interval: "month", allowance: { amountUsd: "90.000000" } }
+        ]
+      }]
+    ))
+    try check(() => assert.deepStrictEqual(service.body, {
+      success: true,
+      version: 1,
+      service: {
+        name: "Test Cloud",
+        terms: { title: "Terms", revision: "2026-11-01", sections: [{ title: "Scope", paragraphs: ["Terms of the test deployment."] }] },
+        privacy: { title: "Privacy", revision: "2026-11-01", sections: [{ title: "Scope", paragraphs: ["Privacy of the test deployment."] }] }
+      }
+    }))
+  }))
+
+  it.live("Answer only the deployment's own callers (spec/cloud/deployment.md, \"Story: Answer only the deployment's own callers\"; spec/cloud/shared/types.md, \"Story: Speak one refusal language\")", () => scoped(effect {
+    const cloud = try testCloud({
+      edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, capabilities: ["inference", "speech", "maps", "managedGoogle"] } } })
+    })
+    const disabled = try cloud.call("/api/v1/subscriptions/plans")
+    const unknown = try cloud.call("/api/v1/nothing-here")
+    const foreign = try cloud.call("/api/health", { headers: { origin: "https://evil.example" } })
+    const own = try cloud.call("/api/health", { headers: { origin: "https://www.staging.example.com" } })
+    const preflight = try cloud.call("/api/health", { method: "OPTIONS", headers: { origin: "https://www.staging.example.com", "access-control-request-method": "GET", "access-control-request-headers": "authorization" } })
+    const foreignPreflight = try cloud.call("/api/health", { method: "OPTIONS", headers: { origin: "https://evil.example", "access-control-request-method": "GET" } })
+    try check(() => assert.deepStrictEqual(
+      {
+        disabled: [disabled.status, disabled.body],
+        unknown: [unknown.status, (unknown.body as { error: string }).error, typeof unknown.headers["x-request-id"]],
+        foreign: foreign.headers["access-control-allow-origin"],
+        own: [own.headers["access-control-allow-origin"], own.headers["access-control-allow-credentials"], own.headers["access-control-expose-headers"]?.includes("X-Request-Id")],
+        preflight: [preflight.status, preflight.headers["access-control-allow-headers"]?.includes("Authorization"), preflight.headers["access-control-allow-origin"]],
+        foreignPreflight: foreignPreflight.headers["access-control-allow-origin"]
+      },
+      {
+        disabled: [404, { error: "capability_unavailable", errorDescription: "Capability unavailable.", retryable: false }],
+        unknown: [404, "not_found", "string"],
+        foreign: undefined,
+        own: ["https://www.staging.example.com", "true", true],
+        preflight: [204, true, "https://www.staging.example.com"],
+        foreignPreflight: undefined
+      }
+    ))
+  }))
+
+  it.live("Hold a call against the account's credits and settle it once (spec/cloud/shared/metering.md, \"Story: Settle every call once\"; spec/cloud/billing/funds.md, \"Story: Spend only money the account has\")", () => scoped(effect {
+    const cloud = try testCloud()
+    try organization(cloud, "org-funded")
+    try organization(cloud, "org-empty")
+    provide Store = cloud.store {
+      const added = try addCredits({ organizationId: "org-funded", amount: 1_000_000, requestKey: "pilot-1" })
+      const again = try addCredits({ organizationId: "org-funded", amount: 1_000_000, requestKey: "pilot-1" })
+      const conflicting = try failureTag(addCredits({ organizationId: "org-funded", amount: 500_000, requestKey: "pilot-1" }))
+      assert.strictEqual(conflicting, "IdempotencyConflict")
+      const owner = { organizationId: "org-funded", userId: "user-1" }
+      const key = { service: "MeteredInference", caller: owner.userId, requestId: "request-1", part: { tag: "WholeRequest" } } as const
+      const first = try reserve(owner, key, 100_000)
+      const replay = try reserve(owner, key, 100_000)
+      const held = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = $1", ["org-funded"])
+      try markDispatched(first.key)
+      const settled = try settle(first.key, { kind: "known", actual: 80_000 })
+      const twice = try settle(first.key, { kind: "known", actual: 80_000 })
+      const balance = try sql(cloud, "SELECT credit_balance FROM organizations WHERE id = $1", ["org-funded"])
+      const usage = try sql(cloud, "SELECT charged, from_credits, uncollected, outcome FROM usage_records WHERE hold_key = $1", [first.key])
+      const refusedHold = try exit(reserve({ organizationId: "org-empty", userId: "user-2" }, { ...key, requestId: "request-2" }, 1))
+      const refusal = Exit.isFailure(refusedHold) ? Cause.findErrorOption(refusedHold.cause).pipe(Option.map((error) => "refusal" in error ? refusalBody(error.refusal) : error._tag), Option.getOrUndefined) : undefined
+      try check(() => assert.deepStrictEqual(
+        {
+          added: [added.balance, added.replayed, again.balance, again.replayed],
+          reserved: [first.hold.phase, first.hold.fromCredits, first.replayed, replay.replayed, Number(held[0]?.credit_balance)],
+          settled: [settled.phase, settled.charged, twice.charged, Number(balance[0]?.credit_balance)],
+          usage: usage.map((row) => [Number(row.charged), Number(row.from_credits), Number(row.uncollected), row.outcome]),
+          refusal
+        },
+        {
+          added: [1_000_000, false, 1_000_000, true],
+          reserved: ["Reserved", 150_000, false, true, 1_000_000],
+          settled: ["Settled", 80_000, 80_000, 920_000],
+          usage: [[80_000, 80_000, 0, "known"]],
+          refusal: { error: "insufficient_credits", errorDescription: "Insufficient credits.", retryable: false }
+        }
+      ))
+    }
+  }))
+  it.live("Refuse a start in the spec's order: a seed outside staging, loopback on Postgres, an unreadable or other database before the catalog, then a catalog the provider does not sell (spec/cloud/deployment.md, \"Story: Configure a deployment from one reviewed profile\")", () => scoped(effect {
+    const productionDigest = "b".repeat(64)
+    const withoutLoopback: ProfileEdit = (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, mail: profile.environments.production.mail, sms: { kind: "none" } } } })
+    const wrongPrices = [{ ...catalogPrices[0], unitAmount: 2_999 }, catalogPrices[1]]
+    const catalogReads: Record<string, ReadonlyArray<FakeRequest>> = {}
+    const watch = (name: string) => (fakes: FakeServer) => { catalogReads[name] = fakes.seen }
+
+    const seedInProduction = try failureTag(scoped(testCloud({ environment: "production", seed: fixtureSeedFile })))
+    const loopbackOnPostgres = try failureTag(scoped(testCloud({ store: { kind: "pg" } })))
+    const unreadable = try failureTag(scoped(testCloud({
+      edit: withoutLoopback, prices: wrongPrices, mount: watch("unreadable"),
+      store: { kind: "pg", setup: (db) => db.exec("CREATE TABLE leftover (id integer)") }
+    })))
+    const otherDatabase = try failureTag(scoped(testCloud({
+      edit: withoutLoopback, prices: wrongPrices, mount: watch("other"),
+      store: { kind: "pg", setup: (db) => db.exec(`CREATE TABLE cloud_identity (singleton boolean PRIMARY KEY DEFAULT true, digest text NOT NULL, environment text NOT NULL, created_at bigint NOT NULL); INSERT INTO cloud_identity (digest, environment, created_at) VALUES ('${productionDigest}', 'production', 0)`) }
+    })))
+    const catalog = try failureTag(scoped(testCloud({ edit: withoutLoopback, prices: wrongPrices, mount: watch("catalog"), store: { kind: "pg" } })))
+    const served = try testCloud({ edit: withoutLoopback, store: { kind: "pg" } })
+    const health = try served.call("/api/health")
+    const identity = try served.store.transaction((tx) => tx.query("SELECT digest, environment FROM cloud_identity"))
+    const stripeReads = (name: string) => (catalogReads[name] ?? []).filter((request) => request.path.startsWith("/stripe/")).length
+    try check(() => assert.deepStrictEqual(
+      {
+        refused: [seedInProduction, loopbackOnPostgres, unreadable, otherDatabase, catalog],
+        catalogReads: [stripeReads("unreadable"), stripeReads("other"), stripeReads("catalog") > 0],
+        served: [served.store.location.kind, health.status, identity.map((row) => [row.digest, row.environment])]
+      },
+      {
+        refused: ["SeedOutsideStaging", "LoopbackOutsidePglite", "DatabaseUnreadable", "DatabaseIdentityMismatch", "CatalogMismatch"],
+        catalogReads: [0, 0, true],
+        served: ["pg", 200, [["a".repeat(64), "staging"]]]
+      }
+    ))
+  }))
+})
+
+describe.todo("WP2 Native clients and pages (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")")
+
+describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)", () => {
+  it.live("Bring me back to the app on its registered return only, and tell a payer the checkout ended (spec/cloud/returnPages.md, \"Story: Bring me back to the app when its link did not open\"; spec/cloud/returnPages.md, \"Story: Tell a payer the checkout ended\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
+    const now = try Clock.currentTimeMillis
+    provide deploymentLayer(profile, "staging") {
+      try cloud.store.transaction((tx) => seedClients(tx, fixtureSeed.clients, now))
+    }
+    const web = { "x-forwarded-host": "www.staging.example.com" }
+    const signIn = try cloud.call("/apps/fixture/sign-in?code=private-code&state=private-state", { headers: web })
+    const html = String(signIn.body)
+    const connect = try cloud.call("/apps/fixture/connect", { headers: web })
+    const elsewhere = try cloud.call("/apps/fixture/elsewhere", { headers: web })
+    const onApi = try cloud.call("/apps/fixture/sign-in")
+    const paid = try cloud.call("/api/v1/subscriptions/checkout/payer?outcome=paid")
+    const other = try cloud.call("/api/v1/subscriptions/checkout/payer?outcome=success")
+    const payerOnWeb = try cloud.call("/api/v1/subscriptions/checkout/payer?outcome=paid", { headers: web })
+    try check(() => assert.deepStrictEqual(
+      {
+        status: signIn.status,
+        links: [...html.matchAll(/intent:\/\/[^"]*/g)].map((found) => found[0].replaceAll("&amp;", "&")),
+        purpose: /data-purpose="([^"]*)"/.exec(html)?.[1],
+        leaked: html.includes("private-code") || html.includes("private-state"),
+        forms: html.includes("<form"),
+        headers: [signIn.headers["cache-control"], signIn.headers["x-robots-tag"], signIn.headers["referrer-policy"]],
+        script: /script-src '(sha256-[^']+)'/.exec(signIn.headers["content-security-policy"] ?? "")?.[1],
+        framing: /frame-ancestors 'none'/.test(signIn.headers["content-security-policy"] ?? ""),
+        connect: [connect.status, /data-purpose="([^"]*)"/.exec(String(connect.body))?.[1]],
+        missing: [elsewhere.status, (elsewhere.body as { readonly error?: string }).error, onApi.status, payerOnWeb.status],
+        payer: [paid.status, String(paid.body).includes("Check the subscription"), other.status, String(other.body).includes("Checkout closed")],
+        payerScript: [/script-src/.test(paid.headers["content-security-policy"] ?? ""), /<script/.test(String(paid.body)), paid.headers["cache-control"]]
+      },
+      {
+        status: 200,
+        links: ["intent://www.staging.example.com/apps/fixture/sign-in#Intent;scheme=https;package=com.example.fixture;end"],
+        purpose: "SignInPurpose",
+        leaked: false,
+        forms: false,
+        headers: ["no-store", "noindex", "no-referrer"],
+        script: forwardScriptHash,
+        framing: true,
+        connect: [200, "ConnectPurpose"],
+        missing: [404, "not_found", 404, 404],
+        payer: [200, true, 200, true],
+        payerScript: [false, false, "no-store"]
+      }
+    ))
+    provide deploymentLayer(profile, "staging") {
+      try cloud.store.transaction((tx) => disableClient(tx, "com.example.fixture", now))
+    }
+    const disabled = try cloud.call("/apps/fixture/sign-in", { headers: web })
+    try check(() => assert.strictEqual(disabled.status, 404))
+  }))
+})
+describe("WP2 Native clients and pages: device keys (spec/cloud/nativeClients/deviceKeys.md)", () => {
+  const binding = { clientId: "com.example.fixture", environment: "staging", redirectUri: "https://www.staging.example.com/apps/fixture/sign-in" }
+  const verifier = "v".repeat(43) + "device-key-verifier"
+  const state = "s".repeat(43)
+
+  function bearer(token: string) {
+    return { authorization: `Bearer ${token}` }
+  }
+
+  function refusal(body: unknown): ReadonlyArray<unknown> {
+    const answer = body as { readonly error?: string; readonly reason?: string }
+    return [answer.error, answer.reason]
+  }
+
+  effect function seeded(cloud: TestCloud) {
+    const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
+    const now = try Clock.currentTimeMillis
+    provide Store = cloud.store, deploymentLayer(profile, "staging") {
+      try cloud.store.transaction((tx) => seedClients(tx, fixtureSeed.clients, now))
+    }
+  }
+
+  effect function device(cloud: TestCloud, accessToken: string, name: string) {
+    const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256", deviceName: name } })
+    const code = (connected.body as { readonly code: string }).code
+    const minted = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...binding, grantType: "authorization_code", code, state, codeVerifier: verifier } })
+    const credential = minted.body as { readonly credentialId: string; readonly secret: string }
+    const acked = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
+    return { connected, code, minted, credential, acked }
+  }
+
+  it.live("Sign a device in: connect, token twice, a wrong then the right proof, then use the key (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")", () => scoped(effect {
+    const cloud = try testCloud()
+    try seeded(cloud)
+    const signed = try signedIn(cloud, "devices@example.com")
+    const connected = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(signed.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256", deviceName: "Ada's phone" } })
+    const opened = connected.body as { readonly code: string; readonly codeType: string; readonly expiresIn: number }
+    const anonymousConnect = try cloud.call("/api/v1/app-auth/connect", { json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256" } })
+    const tokenBody = { ...binding, grantType: "authorization_code", code: opened.code, state, codeVerifier: verifier }
+    const wrongVerifier = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...tokenBody, codeVerifier: "w".repeat(43) } })
+    const wrongState = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...tokenBody, state: "t".repeat(43) } })
+    const first = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
+    const again = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
+    const credential = first.body as { readonly credentialId: string; readonly secret: string; readonly tokenType: string; readonly acknowledgementRequired: boolean; readonly user: { readonly id: string } }
+    const unacknowledged = try cloud.call("/api/v1/user", { headers: bearer(credential.secret) })
+    const wrongProof = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: `eliza_mobile_${"0".repeat(64)}` } })
+    const acked = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
+    const ackedAgain = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: credential.credentialId, secret: credential.secret } })
+    const tokenAfterAck = try cloud.call("/api/v1/app-auth/mobile/token", { json: tokenBody })
+    const me = try cloud.call("/api/v1/user", { headers: bearer(credential.secret) })
+    const stored = try sql(cloud, "SELECT phase, sealed_copy, device_name, key_expires_at FROM device_grants WHERE credential_id = $1", [credential.credentialId])
+    const acknowledged = acked.body as { readonly status: string; readonly credentialId: string; readonly expiresAt: string }
+    try check(() => assert.deepStrictEqual(
+      {
+        connect: [connected.status, /^emac_[0-9a-f]{64}$/.test(opened.code), opened.codeType, opened.expiresIn],
+        anonymousConnect: anonymousConnect.status,
+        wrongVerifier: [wrongVerifier.status, refusal(wrongVerifier.body)[0]],
+        wrongState: [wrongState.status, refusal(wrongState.body)[0]],
+        token: [first.status, /^eliza_mobile_[0-9a-f]{64}$/.test(credential.secret), credential.tokenType, credential.acknowledgementRequired, credential.user.id],
+        replay: [again.status, again.body],
+        unacknowledged: [unacknowledged.status, refusal(unacknowledged.body)[0]],
+        wrongProof: [wrongProof.status, refusal(wrongProof.body)[0]],
+        acked: [acked.status, acknowledged.status, acknowledged.credentialId],
+        ackedAgain: [ackedAgain.status, ackedAgain.body],
+        tokenAfterAck: tokenAfterAck.status >= 400,
+        me: me.status,
+        stored: [stored[0]?.phase, stored[0]?.sealed_copy, stored[0]?.device_name, Number(stored[0]?.key_expires_at) === Date.parse(acknowledged.expiresAt)]
+      },
+      {
+        connect: [200, true, "mobile_app_auth_code", 300],
+        anonymousConnect: 401,
+        wrongVerifier: [401, "credential_proof_invalid"],
+        wrongState: [401, "credential_proof_invalid"],
+        token: [200, true, "Bearer", true, signed.user.id],
+        replay: [200, first.body],
+        unacknowledged: [401, "authentication_required"],
+        wrongProof: [401, "credential_proof_invalid"],
+        acked: [200, "acknowledged", credential.credentialId],
+        ackedAgain: [200, acked.body],
+        tokenAfterAck: true,
+        me: 200,
+        stored: ["active", null, "Ada's phone", true]
+      }
+    ))
+  }))
+
+  it.live("Refuse an expired key, end this key on self-revoke, end every key on revokeAll, and sweep only stale grants (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\")", () => scoped(effect {
+    const cloud = try testCloud()
+    try seeded(cloud)
+    const signed = try signedIn(cloud, "keys@example.com")
+    const expiring = try device(cloud, signed.accessToken, "Expiring")
+    const leaving = try device(cloud, signed.accessToken, "Leaving")
+    const kept = try device(cloud, signed.accessToken, "Kept")
+    const now = try Clock.currentTimeMillis
+    try sql(cloud, "UPDATE device_grants SET key_expires_at = $2, state = jsonb_set(state, '{keyExpiresAt}', to_jsonb($2::bigint)) WHERE credential_id = $1", [expiring.credential.credentialId, now - 1])
+    const expired = try cloud.call("/api/v1/user", { headers: bearer(expiring.credential.secret) })
+
+    const revoked = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(leaving.credential.secret) })
+    const afterSelfRevoke = try cloud.call("/api/v1/user", { headers: bearer(leaving.credential.secret) })
+    const keptAfterSelfRevoke = try cloud.call("/api/v1/user", { headers: bearer(kept.credential.secret) })
+    const sessionRevoke = try cloud.call("/api/v1/api-keys/current", { method: "DELETE", headers: bearer(signed.accessToken) })
+
+    const stale = try cloud.call("/api/v1/app-auth/connect", { headers: bearer(signed.accessToken), json: { ...binding, state, codeChallenge: s256(verifier), codeChallengeMethod: "S256" } })
+    const staleCode = (stale.body as { readonly code: string }).code
+    try sql(cloud, "UPDATE device_grants SET code_expires_at = $2, state = jsonb_set(state, '{codeExpiresAt}', to_jsonb($2::bigint)) WHERE code_digest = $1", [tokenDigest(staleCode), now - 1])
+    provide Store = cloud.store {
+      try sweepGrants()
+    }
+    const swept = try sql(cloud, "SELECT phase FROM device_grants WHERE code_digest = $1", [tokenDigest(staleCode)])
+    const lateToken = try cloud.call("/api/v1/app-auth/mobile/token", { json: { ...binding, grantType: "authorization_code", code: staleCode, state, codeVerifier: verifier } })
+    const keptAfterSweep = try cloud.call("/api/v1/user", { headers: bearer(kept.credential.secret) })
+
+    const ended = try cloud.store.transaction((tx) => revokeAll(tx, signed.user.id, now))
+    const afterRevokeAll = try cloud.call("/api/v1/user", { headers: bearer(kept.credential.secret) })
+    const session = try cloud.call("/api/v1/user", { headers: bearer(signed.accessToken) })
+    try check(() => assert.deepStrictEqual(
+      {
+        acked: [expiring.acked.status, leaving.acked.status, kept.acked.status],
+        expired: [expired.status, ...refusal(expired.body)],
+        revoked: [revoked.status, (revoked.body as { readonly status: string }).status, afterSelfRevoke.status, keptAfterSelfRevoke.status, sessionRevoke.status],
+        swept: [swept[0]?.phase === "code_issued", lateToken.status >= 400, keptAfterSweep.status],
+        revokeAll: [ended, afterRevokeAll.status, ...refusal(afterRevokeAll.body), session.status]
+      },
+      {
+        acked: [200, 200, 200],
+        expired: [401, "authentication_required", "credential_expired"],
+        revoked: [200, "revoked", 401, 200, 401],
+        swept: [false, true, 200],
+        revokeAll: [1, 401, "authentication_required", "credential_revoked", 200]
+      }
+    ))
+  }))
+})
+describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/registry.md)", () => {
+  const fingerprint = "E3:DC:37:EF:3F:94:F0:CB:F5:06:F2:6E:CD:F7:99:99:29:C2:B2:D0:53:D1:63:83:56:91:F7:C9:67:F6:7E:A5"
+  const web = "https://www.staging.example.com"
+  const signInOne = `${web}/apps/one/sign-in`
+  const one = {
+    clientId: "com.example.one", environment: "staging", displayName: "One", androidPackage: "com.example.one", certFingerprints: [fingerprint],
+    signInReturn: signInOne, billingReturn: `${web}/apps/one/billing`, credentialTtlMs: 30 * 86_400_000, nativeGoogle: true, enabled: true
+  }
+  const two = { ...one, clientId: "com.example.two", displayName: "Two", androidPackage: "com.example.two", signInReturn: `${web}/apps/two/sign-in`, billingReturn: `${web}/apps/two/billing`, nativeGoogle: false }
+
+  function configPath(clientId: string, environment: string, redirectUri: string): string {
+    return `/api/v1/app-auth/mobile/config?${new URLSearchParams({ clientId, environment, redirectUri }).toString()}`
+  }
+
+  function code(body: unknown): string | undefined {
+    return (body as { readonly error?: string }).error
+  }
+
+  effect function registered(cloud: TestCloud, edit: ProfileEdit | undefined, run: (tx: Tx, now: number) => unknown!{ readonly _tag: string }!(Deployment | Store)) {
+    const base = try sync(() => testProfile(cloud.fakes.url))
+    const profile = try parseProfile(edit === undefined ? base : edit(base))
+    const now = try Clock.currentTimeMillis
+    provide Store = cloud.store, deploymentLayer(profile, "staging") {
+      return try failureTag(cloud.store.transaction((tx) => run(tx, now)))
+    }
+  }
+
+  it.live("Admit only a registered native client on its exact return, and publish its Android association (spec/cloud/nativeClients/registry.md, \"Story: Admit only a registered native client\"; spec/cloud/nativeClients/registry.md, \"Story: Tell a client exactly why it was refused\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const writes = [
+      try registered(cloud, undefined, effect (tx: Tx, now: number) => { return (try registerClient(tx, try decodeRegistration(one), now)).clientId }),
+      try registered(cloud, undefined, effect (tx: Tx, now: number) => { return (try registerClient(tx, try decodeRegistration(two), now)).clientId }),
+      try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try registerClient(tx, try decodeRegistration({ ...two, clientId: "com.example.three", signInReturn: "https://api.staging.example.com/apps/three", billingReturn: `${web}/apps/three/billing`, androidPackage: "com.example.three" }), now) }),
+      try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try registerClient(tx, try decodeRegistration({ ...two, clientId: "com.example.four", androidPackage: "com.example.one", signInReturn: `${web}/apps/four/sign-in`, billingReturn: `${web}/apps/four/billing` }), now) }),
+      try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try decodeRegistration({ ...two, signInReturn: `${web}/apps/two/sign-in?next=1` }) }),
+      try registered(cloud, undefined, effect (tx: Tx, now: number) => { return try updateClient(tx, try decodeRegistration({ ...two, clientId: "com.example.unknown", androidPackage: "com.example.unknown" }), now) })
+    ]
+    const admitted = try cloud.call(configPath("com.example.one", "staging", signInOne))
+    const unknown = try cloud.call(configPath("com.example.nobody", "staging", signInOne))
+    const otherEnvironment = try cloud.call(configPath("com.example.one", "production", signInOne))
+    const wrongReturn = try cloud.call(configPath("com.example.one", "staging", `${web}/apps/one/billing`))
+    const notAUrl = try cloud.call(configPath("com.example.one", "staging", "one-sign-in"))
+    const linksBefore = try cloud.call("/.well-known/assetlinks.json")
+    try registered(cloud, undefined, effect (tx: Tx, now: number) => { try disableClient(tx, "com.example.two", now) })
+    const disabled = try cloud.call(configPath("com.example.two", "staging", `${web}/apps/two/sign-in`))
+    const linksAfter = try cloud.call("/.well-known/assetlinks.json")
+    try check(() => assert.deepStrictEqual(
+      {
+        writes,
+        admitted: [admitted.status, admitted.body],
+        refusals: [unknown, otherEnvironment, wrongReturn, notAUrl, disabled].map((answer) => [answer.status, code(answer.body), (answer.body as { readonly retryable?: boolean }).retryable]),
+        linksBefore: (linksBefore.body as ReadonlyArray<{ readonly target: { readonly package_name: string } }>).map((statement) => statement.target.package_name),
+        linksAfter: linksAfter.body
+      },
+      {
+        writes: [
+          "succeeded with \"com.example.one\"", "succeeded with \"com.example.two\"", "RegistrationRefused", "RegistrationRefused", "RegistrationInvalid", "ClientNotRegistered"
+        ],
+        admitted: [200, {
+          clientId: "com.example.one", environment: "staging", redirectUri: signInOne, codeChallengeMethod: "S256", credentialTtlMs: 30 * 86_400_000,
+          methods: { email: true, sms: true, google: true },
+          google: { configured: true, serverClientId: "google-server-client", nativeSignIn: true }
+        }],
+        refusals: [[400, "invalid_client", false], [400, "invalid_client", false], [400, "redirect_mismatch", false], [400, "redirect_mismatch", false], [403, "client_disabled", false]],
+        linksBefore: ["com.example.one", "com.example.two"],
+        linksAfter: [{ relation: ["delegate_permission/common.handle_all_urls"], target: { namespace: "android_app", package_name: "com.example.one", sha256_cert_fingerprints: [fingerprint] } }]
+      }
+    ))
+  }))
+
+  it.live('Link Google only from the reviewed account with the registered return and matching verifier (spec/cloud/identity/signInMethods.md, "Story: Review, link and remove my sign-in methods"; spec/cloud/identity/federatedSignIn.md, "An ID token spends a live challenge once, only with the client, verifier, signature, issuer, audience and nonce all right, and a refused one spends nothing")', () => scoped(effect {
+    const google = try tryPromise(() => nativeGoogleFixture())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", () => ({ status: 200, body: { keys: google.keys } })) })
+    try registered(cloud, undefined, effect (tx: Tx, now: number) => { try registerClient(tx, try decodeRegistration(one), now) })
+    const owner = try signedIn(cloud, "link-owner@example.com")
+    const other = try signedIn(cloud, "link-other@example.com")
+    const ownerHeaders = { authorization: `Bearer ${owner.accessToken}` }
+    const otherHeaders = { authorization: `Bearer ${other.accessToken}` }
+    const methods = "/api/v1/user/methods"
+    const challenge = methods + "/google/challenge"
+    const link = methods + "/google/link"
+    const verifier = "v".repeat(43)
+    const fields = { clientId: one.clientId, environment: "staging", redirectUri: signInOne, codeChallenge: s256(verifier), codeChallengeMethod: "S256" }
+    const wrongReturn = try cloud.call(challenge, { headers: ownerHeaders, json: { ...fields, redirectUri: one.billingReturn } })
+    const wrongEnvironment = try cloud.call(challenge, { headers: ownerHeaders, json: { ...fields, environment: "production" } })
+    const opened = try cloud.call(challenge, { headers: ownerHeaders, json: fields })
+    const { challengeId, nonce } = try Schema.decodeUnknownEffect(Schema.Struct({ challengeId: Schema.String, nonce: Schema.String }))(opened.body)
+    const token = try tryPromise(() => google.issue(nonce))
+    const wrongNonceToken = try tryPromise(() => google.issue("different-challenge-nonce"))
+    const reviewSchema = Schema.Struct({ reviewId: Schema.String })
+    const firstReview = try cloud.call(methods, { headers: ownerHeaders })
+    const otherReview = try cloud.call(methods, { headers: otherHeaders })
+    const firstId = (try Schema.decodeUnknownEffect(reviewSchema)(firstReview.body)).reviewId
+    const otherId = (try Schema.decodeUnknownEffect(reviewSchema)(otherReview.body)).reviewId
+    const wrongOwner = try cloud.call(link, { headers: otherHeaders, json: { reviewId: otherId, challengeId, idToken: token, codeVerifier: verifier } })
+    const wrongVerifier = try cloud.call(link, { headers: ownerHeaders, json: { reviewId: firstId, challengeId, idToken: token, codeVerifier: "w".repeat(43) } })
+    const nonceReview = try cloud.call(methods, { headers: ownerHeaders })
+    const nonceId = (try Schema.decodeUnknownEffect(reviewSchema)(nonceReview.body)).reviewId
+    const wrongNonce = try cloud.call(link, { headers: ownerHeaders, json: { reviewId: nonceId, challengeId, idToken: wrongNonceToken, codeVerifier: verifier } })
+    const validReview = try cloud.call(methods, { headers: ownerHeaders })
+    const validId = (try Schema.decodeUnknownEffect(reviewSchema)(validReview.body)).reviewId
+    const linked = try cloud.call(link, { headers: ownerHeaders, json: { reviewId: validId, challengeId, idToken: token, codeVerifier: verifier } })
+    const after = try cloud.call(methods, { headers: ownerHeaders })
+    const account = try Schema.decodeUnknownEffect(Schema.Struct({ reviewId: Schema.String, methods: Schema.Array(Schema.Struct({ kind: Schema.String })) }))(after.body)
+    const replayed = try cloud.call(link, { headers: ownerHeaders, json: { reviewId: account.reviewId, challengeId, idToken: token, codeVerifier: verifier } })
+    try check(() => assert.deepStrictEqual(
+      {
+        admitted: opened.status, invalidChallenge: [wrongReturn, wrongEnvironment].map((answer) => [answer.status, code(answer.body)]),
+        rejectedProof: [wrongOwner.status, wrongVerifier.status, wrongNonce.status], linked: [linked.status, linked.body],
+        methods: account.methods.map(({ kind }) => kind), replayed: replayed.status,
+      },
+      {
+        admitted: 200, invalidChallenge: [[400, "redirect_mismatch"], [400, "invalid_client"]],
+        rejectedProof: [401, 401, 401], linked: [200, { status: "linked", method: "google" }],
+        methods: ["email", "google"], replayed: 401,
+      }
+    ))
+  }), 60_000)
+
+  it.live("Tell an app that Google sign-in is off (spec/cloud/nativeClients/registry.md, \"Story: Tell a client exactly why it was refused\")", () => scoped(effect {
+    const googleOff: ProfileEdit = (profile) => {
+      const { google, ...staging } = profile.environments.staging
+      return { ...profile, environments: { ...profile.environments, staging: { ...staging, capabilities: staging.capabilities.filter((capability) => capability !== "managedGoogle") } } }
+    }
+    const cloud = try testCloud({ edit: googleOff })
+    try registered(cloud, googleOff, effect (tx: Tx, now: number) => { return try registerClient(tx, try decodeRegistration(one), now) })
+    const answer = try cloud.call(configPath("com.example.one", "staging", signInOne))
+    try check(() => assert.deepStrictEqual([answer.status, (answer.body as { readonly google?: unknown }).google], [200, { configured: false, serverClientId: "", nativeSignIn: false }]))
+  }))
+})
+
+describe.todo("WP3 Checkout and provider events (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")")
+describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
+  it.live("Speak a reply with context and timings, transcribe a recording, and charge each once (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\"; spec/cloud/services/speech.md, \"Story: Transcribe a recording\")", () => scoped(effect {
+    const speech = try sync(() => speechFake())
+    const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
+    const caller = try signedCaller(cloud, "speaker")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 1_000_000, requestKey: "speech-funding" }))
+    const tts = (body: unknown) => cloud.call("/api/v1/voice/tts", { json: body, headers: caller.headers })
+    const stt = effect (fields: Readonly<Record<string, string>>) => {
+      const form = try Effect.try(() => recordingForm(fields))
+      return try cloud.call("/api/v1/voice/stt", { form, headers: caller.headers })
+    }
+
+    const plain = try tts({ text: "Hello there", previousText: "Earlier words.", nextText: "Later words.", speed: 1.1 })
+    const timed = try tts({ text: "Hi you", previousText: "Before", withTimestamps: true })
+    const lines = try Effect.try(() => String(timed.body).trim().split("\n").map((line) => JSON.parse(line) as { readonly type: string; readonly sequence?: number; readonly alignment?: { readonly characters: ReadonlyArray<string> } }))
+    const anonymous = try cloud.call("/api/v1/voice/tts", { json: { text: "Hello" } })
+    const foreignVoice = try tts({ text: "Hello", voiceId: "voice-elsewhere" })
+    try sync(() => speech.script({ kind: "refuse", status: 422 }, { kind: "refuse", status: 503, retryAfterSeconds: 7 }))
+    const rejected = try tts({ text: "Rejected" })
+    const busy = try tts({ text: "Busy" })
+
+    const heard = try stt({ languageCode: "en-US", provider: "speech" })
+    const otherProvider = try stt({ provider: "elsewhere" })
+    const otherLanguage = try stt({ languageCode: "fr" })
+    const tooLarge = try promise(() => callDeclaring(cloud.url, "/api/v1/voice/stt", 25 * 1024 * 1024 + 1, { "content-type": "multipart/form-data; boundary=x" }))
+
+    const usage = try sql(cloud, "SELECT service, quote, charged, outcome FROM usage_records WHERE organization_id = $1 ORDER BY settled_at, hold_key", [caller.organizationId])
+    try check(() => assert.deepStrictEqual(
+      {
+        plain: [plain.status, plain.headers["content-type"], plain.headers["x-eliza-tts-provider"], plain.headers["x-eliza-tts-speed"], String(plain.body).length > 0],
+        sentPlain: speech.synthesized[0],
+        timed: [timed.status, timed.headers["content-type"], timed.headers["x-eliza-tts-timing"], lines.map((line) => [line.type, line.sequence, line.alignment?.characters.join("")])],
+        sentTimed: [speech.synthesized[1]?.path, speech.synthesized[1]?.body.previous_text, speech.synthesized[1]?.body.transcript],
+        anonymous: anonymous.status,
+        foreignVoice: [foreignVoice.status, (foreignVoice.body as { readonly error: string }).error],
+        rejected: [rejected.status, (rejected.body as { readonly error: string }).error],
+        busy: [busy.status, (busy.body as { readonly error: string }).error, Number(busy.headers["retry-after"]) >= 7],
+        heard: [heard.status, heard.body, heard.headers["x-eliza-stt-provider"]],
+        sentHeard: speech.transcribed.map((each) => [each.mimeType, each.model, each.language, each.audio.length]),
+        otherProvider: [otherProvider.status, (otherProvider.body as { readonly error: string }).error],
+        otherLanguage: [otherLanguage.status, (otherLanguage.body as { readonly error: string }).error],
+        tooLarge: [tooLarge.status, (tooLarge.body as { readonly error: string }).error],
+        usage: usage.map((row) => [row.service, Number(row.quote), Number(row.charged), row.outcome])
+      },
+      {
+        plain: [200, "audio/mpeg", "speech", "1.1", true],
+        sentPlain: {
+          path: "/tts/bytes",
+          body: {
+            model_id: "model-1", transcript: "Hello there", voice: { mode: "id", id: "voice-1" },
+            output_format: { container: "mp3", sample_rate: 44_100, bit_rate: 128_000 },
+            speed: 1.1, apply_text_normalization: "auto", previous_text: "Earlier words.", next_text: "Later words."
+          }
+        },
+        timed: [200, "application/x-ndjson", "character-v1", [["audio", 0, "Hi "], ["audio", 1, "you"], ["done", undefined, undefined]]],
+        sentTimed: ["/tts/timestamps", "Before", "Hi you"],
+        anonymous: 401,
+        foreignVoice: [400, "invalid_request"],
+        rejected: [502, "provider_invalid_response"],
+        busy: [503, "provider_unavailable", true],
+        heard: [200, { transcript: spokenTranscript, duration_ms: 2_500, words: spokenTranscript.split(" ").map((word, index) => ({ text: word, startMs: index * 400, endMs: index * 400 + 300 })) }, "speech"],
+        sentHeard: [["audio/wav", "ink-whisper", "en", recordingBytes]],
+        otherProvider: [400, "invalid_request"],
+        otherLanguage: [400, "invalid_request"],
+        tooLarge: [413, "content_too_large"],
+        usage: [
+          ["speech", 396, 396, "known"],
+          ["speech", 216, 216, "known"],
+          ["speech", 288, 0, "known"],
+          ["speech", 144, 144, "unknown"],
+          ["speech", 100, 250, "known"]
+        ]
+      }
+    ))
+  }), 60_000)
+})
+describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
+  it.effect("Consent, mint and open one socket, hear connected before turns, speak, renew a window and end on refused funding; a spent allowance refuses the mint (spec/cloud/services/speechRelay.md, \"Story: Start speech only from a consent I gave\"; spec/cloud/services/speechRelay.md, \"Story: Speak the relay protocol on one socket\"; spec/cloud/services/speechRelay.md, \"Story: Keep a live session funded and close it with receipts\")", () => scoped(effect {
+    try TestClock.setTime(Date.UTC(2026, 10, 19, 12))
+    const speech = try sync(() => speechFake())
+    const cloud = try testCloud({ mount: (fakes) => speech.install(fakes) })
+    try TestClock.adjust(Duration.seconds(5))
+    const caller = try signedCaller(cloud, "talker")
+    const windowQuote = 60 * 100 + 4096 * 30
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 2 * windowQuote + 1_000, requestKey: "talk-funding" }))
+    const consent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: caller.headers })
+    const minted = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (consent.body as { readonly consentNonce: string }).consentNonce }, headers: caller.headers })
+    const session = minted.body as { readonly sessionId: string; readonly token: string; readonly expiresAt: string; readonly wsUrl: string }
+    const mintedAt = Date.parse(session.expiresAt) - 60_000
+    const socket = try promise(() => openRelay(cloud.url, session.sessionId))
+    const second = try promise(() => upgradeStatus(cloud.url, session.sessionId))
+    try sync(() => socket.send({ t: "hello", token: session.token, errorReasons: true, extend: true }))
+    const opened = try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "stt"))
+    try sync(() => socket.send(new Uint8Array(3_200)))
+    const heard = try promise(() => socket.until((received) => received.kind === "text" && (received.frame.event as { readonly type?: string } | undefined)?.type === "end-of-turn"))
+    try sync(() => {
+      socket.send({ t: "prepare", id: "reply-1" })
+      socket.send({ t: "tts", id: "reply-1", text: "Porch light is on.", flush: true })
+      socket.send({ t: "finish", id: "reply-1" })
+    })
+    const spoken = try promise(() => socket.until((received) => received.kind === "text" && received.frame.t === "complete"))
+    try TestClock.adjust(Duration.seconds(50))
+    const extended = try promise(() => socket.next())
+    try TestClock.adjust(Duration.seconds(10))
+    try TestClock.withLive(sleep(Duration.millis(200)))
+    try TestClock.adjust(Duration.seconds(50))
+    try TestClock.withLive(sleep(Duration.millis(200)))
+    try TestClock.adjust(Duration.seconds(10))
+    const ending = try promise(() => socket.until((received) => received.kind === "close"))
+    let phase: unknown = undefined
+    for (let attempt = 0; attempt < 100 && phase !== "closed"; attempt += 1) {
+      try TestClock.withLive(sleep(Duration.millis(50)))
+      phase = (try sql(cloud, "SELECT phase FROM speech_sessions WHERE key = $1", [session.sessionId]))[0]?.phase
+    }
+    const windows = try sql(cloud, "SELECT number, expires_at, settled_at IS NOT NULL AS settled FROM speech_windows WHERE session_id = $1 ORDER BY number", [session.sessionId])
+    const usage = try sql(cloud, "SELECT quote, outcome FROM usage_records WHERE organization_id = $1 ORDER BY hold_key", [caller.organizationId])
+
+    const spender = try signedCaller(cloud, "spender")
+    const now = try Clock.currentTimeMillis
+    try sql(cloud, "INSERT INTO speech_usage_days (user_id, usage_day, used_ms, updated_at) VALUES ($1, $2, $3, $4)", [spender.userId, utcDayStart(now), realtimeSpeechPerDay, now])
+    const spentConsent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: spender.headers })
+    const spent = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (spentConsent.body as { readonly consentNonce: string }).consentNonce }, headers: spender.headers })
+
+    const shown = (seen: ReadonlyArray<Received>) => seen.map((received) => received.kind === "text" ? received.frame : received.kind === "binary" ? { audio: received.bytes.length, head: Array.from(received.bytes.subarray(0, 9)) } : { close: received.code })
+    try check(() => assert.deepStrictEqual(
+      {
+        minted: [minted.status, minted.headers["x-eliza-speech-extend"], session.wsUrl.endsWith(`/api/v1/voice/speech/ws?sessionId=${session.sessionId}`)],
+        second: [second.status, (second.body as { readonly error?: string }).error],
+        opened: shown(opened),
+        heard: shown(heard),
+        spoken: shown(spoken),
+        extended: shown([extended]),
+        ending: shown(ending),
+        forwarded: speech.sttPcmBytes,
+        phase,
+        windows: windows.map((row) => [Number(row.number), Number(row.expires_at) - mintedAt, row.settled]),
+        usage: usage.map((row) => [Number(row.quote), row.outcome]),
+        spent: [spent.status, (spent.body as { readonly error?: string }).error]
+      },
+      {
+        minted: [200, "1", true],
+        second: [410, "session_closed"],
+        opened: [
+          { t: "ready", version: 1, sampleRate: 16_000, channels: 1, expiresAt: session.expiresAt },
+          { t: "stt", event: { type: "connected" } }
+        ],
+        heard: [
+          { t: "stt", event: { type: "start-of-turn", transcript: "" } },
+          { t: "stt", event: { type: "transcript-update", transcript: spokenTranscript.slice(0, 7) } },
+          { t: "stt", event: { type: "end-of-turn", transcript: spokenTranscript } }
+        ],
+        spoken: [
+          { t: "tts_prepared", id: "reply-1" },
+          { audio: 2 + 7 + 3_200, head: [1, 7, ...Array.from(new TextEncoder().encode("reply-1"))] },
+          { t: "flush_complete", id: "reply-1" },
+          { t: "complete", id: "reply-1" }
+        ],
+        extended: [{ t: "extended", expiresAt: new Date(mintedAt + 120_000).toISOString() }],
+        ending: [{ t: "error", code: "unavailable", reason: "insufficient_credits" }, { close: 4402 }],
+        forwarded: 3_200,
+        phase: "closed",
+        windows: [[1, 60_000, true], [2, 120_000, true]],
+        usage: [[6_000, "unknown"], [122_880, "unknown"], [6_000, "unknown"], [122_880, "unknown"]],
+        spent: [402, "allowance_exhausted"]
+      }
+    ))
+  }), 60_000)
+})
+describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
+  it.live("Answer a maps request once and pay for it once, keep tiles unstored and look a place up nearby first (spec/cloud/services/maps.md, \"Story: Answer a maps request once and pay for it once\"; spec/cloud/services/maps.md, \"Story: Keep maps requests within the provider's terms\")", () => scoped(effect {
+    const maps = try sync(() => googleMapsFake())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/maps/", maps.handler) })
+    const caller = try signedCaller(cloud, "mapper")
+    const unfunded = try signedCaller(cloud, "mapless")
+    try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 1_000_000, requestKey: "maps-funding" }))
+    const post = (path: string, key: string, body: unknown, who = caller) => cloud.call(`/api/v1/maps/${path}`, { json: body, headers: { ...who.headers, "idempotency-key": key } })
+    const tile = (key: string) => cloud.call("/api/v1/maps/tiles/3/4/2", { headers: { ...caller.headers, "idempotency-key": key } })
+    const errorOf = (answer: { readonly body: unknown }) => (answer.body as { readonly error?: string }).error
+    const berlin = { latitude: 52.5163, longitude: 13.3777 }
+
+    try sync(() => maps.script({ kind: "slow", delayMs: 10_500 }))
+    const lost = try post("geocode", "geo-lost", { query: "Pariser Platz" })
+
+    const first = try post("geocode", "geo-1", { query: "Brandenburger Tor" })
+    const geocodesAfterFirst = maps.count("geocode")
+    const repeated = try post("geocode", "geo-1", { query: "Brandenburger Tor" })
+    const conflicting = try post("geocode", "geo-1", { query: "Alexanderplatz" })
+    const unkeyed = try cloud.call("/api/v1/maps/geocode", { json: { query: "Brandenburger Tor" }, headers: caller.headers })
+
+    try sync(() => maps.script({ kind: "empty" }))
+    const noRoute = try post("routes", "route-1", { from: { latitude: 52.517, longitude: 13.3888 }, to: berlin, mode: "drive" })
+
+    const tileOne = try tile("tile-1")
+    const tileAgain = try tile("tile-2")
+    const tileRepeated = try tile("tile-1")
+    const tilesFetched = maps.count("tile")
+
+    const nearbyFound = try post("reverse", "rev-1", { coordinate: berlin, preferPlace: true })
+    const lookupsWithPlace = [maps.count("searchNearby"), maps.count("geocode")]
+    try sync(() => maps.script({ kind: "empty" }))
+    const nearbyEmpty = try post("reverse", "rev-2", { coordinate: berlin, preferPlace: true })
+    const lookupsWithoutPlace = [maps.count("searchNearby"), maps.count("geocode")]
+
+    const callsBeforeBroke = maps.calls.length
+    const broke = try post("geocode", "geo-broke", { query: "Brandenburger Tor" }, unfunded)
+    const usage = try sql(cloud, "SELECT r.operation, r.status, r.result IS NULL AS unkept, u.quote, u.charged, u.outcome FROM maps_requests r JOIN usage_records u ON u.hold_key = r.hold_key ORDER BY u.settled_at, r.hold_key", [])
+
+    const off = try testCloud({ edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, maps: { provider: "none" }, capabilities: ["inference", "speech", "managedGoogle", "billing"] } } }) })
+    const offCaller = try signedCaller(off, "offline")
+    const offCapabilities = try off.call("/api/v1/maps/capabilities", { headers: offCaller.headers })
+    const offGeocode = try off.call("/api/v1/maps/geocode", { json: { query: "Brandenburger Tor" }, headers: { ...offCaller.headers, "idempotency-key": "geo-off" } })
+
+    try check(() => assert.deepStrictEqual(
+      {
+        lost: [lost.status, errorOf(lost)],
+        first: [first.status, (first.body as { readonly places: ReadonlyArray<{ readonly name: string }> }).places.length],
+        repeated: [repeated.status, repeated.body, maps.count("geocode") - geocodesAfterFirst],
+        conflicting: [conflicting.status, errorOf(conflicting)],
+        unkeyed: [unkeyed.status, errorOf(unkeyed)],
+        noRoute: [noRoute.status, errorOf(noRoute)],
+        tiles: [tileOne.status, tileOne.headers["cache-control"], tileOne.headers["content-type"], String(tileOne.body).length > 0, tileAgain.status, tileAgain.headers["cache-control"], tileRepeated.status, errorOf(tileRepeated), tilesFetched],
+        reverse: [nearbyFound.status, lookupsWithPlace, nearbyEmpty.status, (nearbyEmpty.body as { readonly place: unknown }).place !== null, lookupsWithoutPlace],
+        broke: [broke.status, errorOf(broke), maps.calls.length - callsBeforeBroke],
+        usage: usage.map((row) => [row.operation, row.status, row.unkept, Number(row.quote), Number(row.charged), row.outcome]),
+        off: [offCapabilities.status, offCapabilities.body, offGeocode.status, errorOf(offGeocode)]
+      },
+      {
+        lost: [503, "provider_unavailable"],
+        first: [200, 1],
+        repeated: [200, first.body, 0],
+        conflicting: [409, "idempotency_conflict"],
+        unkeyed: [400, "invalid_request"],
+        noRoute: [422, "no_route"],
+        tiles: [200, "no-store", "image/png", true, 200, "no-store", 409, "idempotency_conflict", 2],
+        reverse: [200, [1, 2], 200, true, [2, 3]],
+        broke: [402, "insufficient_credits", 0],
+        usage: [
+          ["geocode", "lost", true, 5_000, 5_000, "unknown"],
+          ["geocode", "answered", false, 5_000, 5_000, "known"],
+          ["routes", "refused", false, 10_000, 10_000, "known"],
+          ["tile", "answered", true, 600, 600, "known"],
+          ["tile", "answered", true, 600, 600, "known"],
+          ["reverse", "answered", false, 37_000, 32_000, "known"],
+          ["reverse", "answered", false, 37_000, 37_000, "known"]
+        ],
+        off: [200, { available: false }, 404, "capability_unavailable"]
+      }
+    ))
+  }), 60_000)
+})
+describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => {
+  it.live("Triage, search and read my mail at the history Google answered, refusing a stale attachment and an oversized body (spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
+    const google = try Effect.try(() => googleFakeState())
+    const now = try Clock.currentTimeMillis
+    const mailbox = try Effect.try(() => readableMailbox([
+      {
+        id: "msg-direct", threadId: "thr-direct", labelIds: ["INBOX", "UNREAD", "IMPORTANT"], internalDate: now - 60_000,
+        headers: { From: "Ada <ada@example.org>", To: "conn-mail@example.com", Subject: "Quarterly plan" }, snippet: "Can you review", bodyText: "Please review the plan.",
+        attachments: [{ partId: "1", filename: "plan.pdf", mimeType: "application/pdf", bytes: new TextEncoder().encode("%PDF-plan") }]
+      },
+      {
+        id: "msg-digest", threadId: "thr-digest", labelIds: ["INBOX"], internalDate: now - 120_000,
+        headers: { From: "News <noreply@news.example>", To: "conn-mail@example.com", Subject: "Weekly digest", "List-Id": "<digest.news.example>" }, snippet: "digest", bodyText: "x".repeat(300 * 1024)
+      },
+      { id: "msg-trashed", threadId: "thr-trashed", labelIds: ["TRASH"], internalDate: now - 30_000, headers: { From: "ada@example.org", Subject: "Old plan" }, snippet: "plan" }
+    ]))
+    const draftRaw = btoa("To: ada@example.org\r\nSubject: Re: Quarterly plan\r\n\r\nLooks good.").replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "")
+    mailbox.drafts.set("draft-1", { id: "draft-1", messageId: "msg-draft-1", raw: draftRaw })
+    const cloud = try testCloud({ mount: (fakes) => {
+      fakes.mount("/google/", mountGoogleToken(google))
+      fakes.mount("/google/api/", gmailReads(mailbox))
+    } })
+    const token = try entitledDevice(cloud, "mail", now)
+    const owner: Owner = { organizationId: "org-mail", userId: "user-mail" }
+    const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage"), ...scopeFor("google.gmail.drafts")]
+    const refreshToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-mail", email: "conn-mail@example.com", scopes }))
+    const profile = try parseProfile(try Effect.try(() => testProfile(cloud.fakes.url)))
+    const deployment = deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+    provide Store = cloud.store, deployment {
+      try linkedGrant(cloud, owner, "conn-mail", refreshToken, scopes, now - 1000)
+    }
+    const gmail = (path: string) => cloud.call(`/api/v1/eliza/google/gmail${path}`, { headers: { authorization: `Bearer ${token}` } })
+    const errorOf = (answer: { readonly status: number; readonly body: unknown }) => [answer.status, (answer.body as { readonly error?: string }).error]
+    const triage = try gmail("/triage")
+    const search = try gmail("/search?query=plan&maxResults=10")
+    const tooMany = try gmail("/search?query=plan&maxResults=101")
+    const read = try gmail("/read?messageId=msg-direct")
+    const oversized = try gmail("/read?messageId=msg-digest")
+    const capabilities = try gmail("/inbox-v1/capabilities")
+    const attachment = try gmail("/inbox-v1/attachment?messageId=msg-direct&partId=1&historyId=1001")
+    const thread = try gmail("/inbox-v1/thread?threadId=thr-direct&historyId=1001")
+    try Effect.try(() => touchMessage(mailbox, "msg-direct"))
+    const staleAttachment = try gmail("/inbox-v1/attachment?messageId=msg-direct&partId=1&historyId=1001")
+    const staleThread = try gmail("/inbox-v1/thread?threadId=thr-direct&historyId=1001")
+    const drafts = try gmail("/inbox-v1/drafts")
+    const draft = try gmail("/inbox-v1/draft?draftId=draft-1")
+    const anonymous = try cloud.call("/api/v1/eliza/google/gmail/triage")
+    const pdf = new TextEncoder().encode("%PDF-plan")
+    type Card = { readonly id: string; readonly triageScore: number; readonly triageReason: string; readonly isImportant: boolean; readonly likelyReplyNeeded: boolean; readonly to: ReadonlyArray<string>; readonly metadata: { readonly historyId: string } }
+    const cards = (answer: { readonly body: unknown }) => (answer.body as { readonly messages: ReadonlyArray<Card> }).messages.map((card) => [card.id, card.triageScore, card.triageReason, card.isImportant, card.likelyReplyNeeded, card.metadata.historyId])
+    const readBody = read.body as { readonly message: Card; readonly bodyText: string; readonly bodyHtml: string | null; readonly bodyHtmlStatus: string; readonly attachments: ReadonlyArray<unknown> }
+    const file = attachment.body as { readonly name: string; readonly mimeType: string; readonly size: number; readonly dataBase64: string; readonly sha256: string; readonly supported: boolean }
+    const threadBody = thread.body as { readonly historyId: string; readonly total: number; readonly messages: ReadonlyArray<{ readonly bodyText: string }> }
+    const draftList = drafts.body as { readonly drafts: ReadonlyArray<{ readonly draftId: string; readonly messageId: string; readonly subject: string; readonly to: ReadonlyArray<string> }>; readonly nextPageToken: string | null }
+    const draftBody = draft.body as { readonly providerDigest: string; readonly content: { readonly to: ReadonlyArray<string>; readonly subject: string; readonly bodyText: string; readonly plainText: boolean } }
+    try check(() => assert.deepStrictEqual(
+      {
+        triage: [triage.status, (triage.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, cards(triage)],
+        search: [search.status, (search.body as { readonly mailboxHistoryId: string }).mailboxHistoryId, (search.body as { readonly nextPageToken: string | null }).nextPageToken, cards(search)],
+        tooMany: errorOf(tooMany),
+        read: [read.status, readBody.message.id, readBody.message.to, readBody.bodyText, readBody.bodyHtml, readBody.bodyHtmlStatus, readBody.attachments],
+        oversized: errorOf(oversized),
+        capabilities: [capabilities.status, capabilities.body],
+        attachment: [attachment.status, file.name, file.mimeType, file.size, file.dataBase64, file.sha256, file.supported],
+        thread: [thread.status, threadBody.historyId, threadBody.total, threadBody.messages.map((message) => message.bodyText)],
+        stale: [errorOf(staleAttachment), errorOf(staleThread)],
+        drafts: [drafts.status, draftList.drafts, draftList.nextPageToken],
+        draft: [draft.status, draftBody.providerDigest, draftBody.content.to, draftBody.content.subject, draftBody.content.bodyText, draftBody.content.plainText],
+        anonymous: errorOf(anonymous)
+      },
+      {
+        triage: [200, "1003", [
+          ["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"],
+          ["msg-digest", 0, "directly addressed, automated sender", false, false, "1002"]
+        ]],
+        search: [200, "1003", null, [["msg-direct", 110, "unread, important label, directly addressed, likely needs reply", true, true, "1001"]]],
+        tooMany: [400, "invalid_request"],
+        read: [200, "msg-direct", ["conn-mail@example.com"], "Please review the plan.", null, "none", [{ partId: "1", name: "plan.pdf", mimeType: "application/pdf", size: pdf.length, supported: true }]],
+        oversized: [413, "content_too_large"],
+        capabilities: [200, { version: 1, from: "conn-mail@example.com", kinds: ["draft-create", "draft-replace", "draft-delete"], attachmentPolicy: { mimeTypes: ["application/pdf", "text/plain", "image/png", "image/jpeg", "image/webp"], maxBytes: 8 * 1024 * 1024 } }],
+        attachment: [200, "plan.pdf", "application/pdf", pdf.length, btoa("%PDF-plan"), sha256Hex("%PDF-plan"), true],
+        thread: [200, "1001", 1, ["Please review the plan."]],
+        stale: [[409, "stale_revision"], [409, "stale_revision"]],
+        drafts: [200, [{ draftId: "draft-1", messageId: "msg-draft-1", subject: "Re: Quarterly plan", to: ["ada@example.org"], snippet: "", updatedAt: null }], null],
+        draft: [200, sha256Hex(draftRaw), ["ada@example.org"], "Re: Quarterly plan", "Looks good.", true],
+        anonymous: [401, "authentication_required"]
+      }
+    ))
+  }), 30_000)
+
+  it.live("Trash a message as reviewed, lose Google's reply, and learn by lookup that it succeeded once (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\"; spec/cloud/shared/dispatchOnce.md, \"Story: Send a change once and recover its outcome without sending it again\")", () => scoped(effect {
+    const { mailbox, switches, operation, grantId } = try mailOperationSetup("ops-trash")
+    const requestId = "6f1c2a3b-4d5e-4f60-8a7b-1c2d3e4f5a6b"
+    const proposal = { kind: "trash", messageId: "msg-plan", expectedHistoryId: "1001" }
+    const prepared = try operation("", { grantId, requestId, proposal })
+    const reviewDigest = (prepared.body as OperationAnswer).receipt.reviewDigest
+    const again = try operation("", { grantId, requestId, proposal })
+    const otherKind = try operation("", { grantId, requestId, proposal: { ...proposal, kind: "archive" } })
+    const wrongDigest = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest: "0".repeat(64), proposal })
+    switches.dropNextReply = true
+    const lost = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
+    const looked = try operation(`/${requestId}?grantId=${grantId}`)
+    const replayed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
+    const unknown = try operation(`/9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d?grantId=${grantId}`)
+    const trashed = mailbox.messages.get("msg-plan")
+    try check(() => assert.deepStrictEqual(
+      {
+        prepared: [prepared.status, receiptOf(prepared), (prepared.body as OperationAnswer).review, (prepared.body as OperationAnswer).providerExactlyOnce, (prepared.body as OperationAnswer).version],
+        again: [again.status, (again.body as OperationAnswer).receipt.reviewDigest === reviewDigest, receiptOf(again)],
+        otherKind: errorOf(otherKind),
+        wrongDigest: errorOf(wrongDigest),
+        lost: [lost.status, receiptOf(lost)],
+        looked: [looked.status, receiptOf(looked), (looked.body as OperationAnswer).receipt.providerResult],
+        replayed: [replayed.status, receiptOf(replayed)],
+        unknown: errorOf(unknown),
+        mailbox: [trashed?.labelIds, switches.calls.filter((call) => call.path === "/messages/msg-plan/trash").length]
+      },
+      {
+        prepared: [200, ["trash", "prepared", null, false, false], { kind: "trash", messageId: "msg-plan", expectedHistoryId: "1001", from: "ops-ops-trash@example.com" }, false, 1],
+        again: [200, true, ["trash", "prepared", null, false, false]],
+        otherKind: [409, "idempotency_conflict"],
+        wrongDigest: [409, "stale_revision"],
+        lost: [200, ["trash", "outcome-unknown", null, true, false]],
+        looked: [200, ["trash", "succeeded", null, true, true], { messageId: "msg-plan", threadId: "thr-plan", labelIds: ["UNREAD", "TRASH"], historyId: "1002" }],
+        replayed: [200, ["trash", "succeeded", null, true, true]],
+        unknown: [404, "not_found"],
+        mailbox: [["UNREAD", "TRASH"], 1]
+      }
+    ))
+  }), 30_000)
+
+  it.live("Send a message with an attachment once though the dispatch is replayed, and refuse a forward at a stale history id (spec/cloud/services/google/mailOperations.md, \"Story: Change or send from my mailbox once, as I reviewed it\"; spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
+    const { mailbox, switches, operation, grantId } = try mailOperationSetup("ops-send")
+    const requestId = "1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d"
+    const note = btoa("Agenda for Monday")
+    const proposal = { kind: "send", mode: "compose", to: ["ada@example.org"], subject: "Agenda", bodyText: "See the note.", attachments: [{ name: "agenda.txt", mimeType: "text/plain", dataBase64: note }] }
+    const prepared = try operation("", { grantId, requestId, proposal })
+    const reviewDigest = (prepared.body as OperationAnswer).receipt.reviewDigest
+    const changed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal: { ...proposal, bodyText: "Something else." } })
+    const sent = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
+    const replayed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
+    const looked = try operation(`/${requestId}?grantId=${grantId}`)
+    const sends = switches.calls.filter((call) => call.path === "/messages/send").length
+    const outgoing = [...mailbox.messages.values()].filter((message) => message.labelIds.includes("SENT"))
+    const raw = Buffer.from(outgoing[0]?.raw ?? "", "base64url").toString("utf8")
+    const forward = (historyId: string) => ({ kind: "send", mode: "forward", to: ["grace@example.org"], subject: "Fwd: Quarterly plan", bodyText: "Forwarding the plan.", forwardAttachments: { messageId: "msg-plan", historyId, partIds: ["1"] } })
+    const forwarded = try operation("", { grantId, requestId: "2c3d4e5f-6071-4b8c-9d0e-1f2a3b4c5d6e", proposal: forward("1001") })
+    try Effect.try(() => touchMessage(mailbox, "msg-plan"))
+    const stale = try operation("", { grantId, requestId: "3d4e5f60-7182-4c9d-8e1f-2a3b4c5d6e7f", proposal: forward("1001") })
+    const review = (prepared.body as OperationAnswer).review as { readonly to: ReadonlyArray<string>; readonly attachments: ReadonlyArray<unknown> }
+    try check(() => assert.deepStrictEqual(
+      {
+        prepared: [prepared.status, receiptOf(prepared), review.to, review.attachments],
+        changed: errorOf(changed),
+        sent: [sent.status, receiptOf(sent), ((sent.body as OperationAnswer).receipt.providerResult as { readonly labelIds: ReadonlyArray<string> }).labelIds],
+        replayed: [replayed.status, receiptOf(replayed), (replayed.body as OperationAnswer).receipt.providerResult === null],
+        looked: [looked.status, receiptOf(looked)],
+        once: [sends, outgoing.length, raw.includes(`Message-ID: <eliza-${requestId}@message.invalid>`), raw.includes(`filename*=UTF-8''agenda.txt`), raw.includes(note)],
+        forwarded: [forwarded.status, receiptOf(forwarded), ((forwarded.body as OperationAnswer).review as { readonly forwardedAttachments: ReadonlyArray<{ readonly name: string }> }).forwardedAttachments.map((file) => file.name)],
+        stale: errorOf(stale)
+      },
+      {
+        prepared: [200, ["send", "prepared", null, false, false], ["ada@example.org"], [{ name: "agenda.txt", mimeType: "text/plain", size: 17, sha256: sha256Hex("Agenda for Monday") }]],
+        changed: [409, "stale_revision"],
+        sent: [200, ["send", "succeeded", null, true, true], ["SENT"]],
+        replayed: [200, ["send", "succeeded", null, true, true], false],
+        looked: [200, ["send", "succeeded", null, true, true]],
+        once: [1, 1, true, true, true],
+        forwarded: [200, ["send", "prepared", null, false, false], ["plan.pdf"]],
+        stale: [409, "stale_revision"]
+      }
+    ))
+  }), 30_000)
+})
+
+type OperationAnswer = {
+  readonly version: number
+  readonly providerExactlyOnce: boolean
+  readonly review?: unknown
+  readonly receipt: { readonly kind: string; readonly state: string; readonly reviewDigest: string; readonly rejectionCode: string | null; readonly providerResult: unknown; readonly createdAt: string; readonly dispatchedAt: string | null; readonly finishedAt: string | null }
+}
+
+function receiptOf(answer: { readonly body: unknown }): ReadonlyArray<unknown> {
+  const receipt = (answer.body as OperationAnswer).receipt
+  return [receipt.kind, receipt.state, receipt.rejectionCode, receipt.dispatchedAt !== null, receipt.finishedAt !== null]
+}
+
+function errorOf(answer: { readonly status: number; readonly body: unknown }): ReadonlyArray<unknown> {
+  return [answer.status, (answer.body as { readonly error?: string }).error]
+}
+
+effect function mailOperationSetup(name: string) {
+  const google = try Effect.try(() => googleFakeState())
+  const now = try Clock.currentTimeMillis
+  const mailbox = try Effect.try(() => readableMailbox([{
+    id: "msg-plan", threadId: "thr-plan", labelIds: ["INBOX", "UNREAD"], internalDate: now - 60_000,
+    headers: { From: "Ada <ada@example.org>", To: `ops-${name}@example.com`, Subject: "Quarterly plan", "Message-ID": "<plan@example.org>" }, snippet: "plan", bodyText: "Please review the plan.",
+    attachments: [{ partId: "1", filename: "plan.pdf", mimeType: "application/pdf", bytes: new TextEncoder().encode("%PDF-plan") }]
+  }]))
+  const switches = gmailChangeSwitches()
+  const cloud = try testCloud({ mount: (fakes) => {
+    fakes.mount("/google/", mountGoogleToken(google))
+    fakes.mount("/google/api/", gmailReads(mailbox))
+    fakes.mount("/google/api/", gmailChanges(mailbox, switches))
+  } })
+  const token = try entitledDevice(cloud, name, now)
+  const owner: Owner = { organizationId: `org-${name}`, userId: `user-${name}` }
+  const grantId = `ops-${name}`
+  const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.manage"), ...scopeFor("google.gmail.send")]
+  const refreshToken = try Effect.try(() => seedGrant(google, { subject: `subject-${grantId}`, email: `${grantId}@example.com`, scopes }))
+  try cloud.inside(linkedGrant(cloud, owner, grantId, refreshToken, scopes, now - 1000))
+  const headers = { authorization: `Bearer ${token}` }
+  const operation = (path: string, json?: unknown) => cloud.call(`/api/v1/eliza/google/gmail/inbox-v1/operations${path}`, json === undefined ? { headers } : { method: "POST", headers, json })
+  return { mailbox, switches, operation, grantId }
+}
+
+effect function grantRefusal<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
+  return match (try exit(program)) {
+    when Exit.Success: "granted";
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => "refusal" in error ? (refusalBody(error.refusal as Parameters<typeof refusalBody>[0]).reason ?? refusalBody(error.refusal as Parameters<typeof refusalBody>[0]).error) : error._tag), Option.getOrElse(() => "defect"));
+  }
+}
+
+effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string, refreshToken: string, scopes: ReadonlyArray<string>, expiresAt: number) {
+  const now = try Clock.currentTimeMillis
+  const tokens = try sealTokens({ refreshToken, accessToken: `stale-${connectionId}`, expiresAt })
+  try cloud.store.transaction((tx) => stepRow(tx, connectionRows, connectionId, { type: "link", scopes, tokens, expiresAt }, connectionColumns({
+    organization_id: owner.organizationId, user_id: owner.userId, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, linked_at: now
+  })))
+}
+
+describe("WP8 Managed Google: grant access (spec/cloud/services/google/connection.md)", () => {
+  it.live("Refresh a held grant once for concurrent callers and mark it Expired when Google refuses it (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => scoped(effect {
+    const google = try Effect.try(() => googleFakeState())
+    google.tokenDelayMs = 300
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", mountGoogleToken(google)) })
+    const profileInput = try Effect.try(() => testProfile(cloud.fakes.url))
+    const profile = try parseProfile(profileInput)
+    const deployment = deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+    const now = try Clock.currentTimeMillis
+    const held: Owner = { organizationId: "org-google-held", userId: "user-google-held" }
+    const lost: Owner = { organizationId: "org-google-lost", userId: "user-google-lost" }
+    for (const owner of [held, lost]) {
+      try organization(cloud, owner.organizationId)
+      try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [owner.userId, owner.organizationId, `${owner.userId}@example.com`, now])
+    }
+    const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
+    const heldToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-held", email: "conn-held@example.com", scopes }))
+    const lostToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-lost", email: "conn-lost@example.com", scopes }))
+    google.revoked.add(lostToken)
+    provide Store = cloud.store, deployment, FetchHttpClient.layer {
+      try linkedGrant(cloud, held, "conn-held", heldToken, scopes, now - 1000)
+      try linkedGrant(cloud, lost, "conn-lost", lostToken, scopes, now - 1000)
+      const both = try all([useGrant(held, undefined, "google.gmail.triage"), useGrant(held, "conn-held", "google.gmail.triage")], { concurrency: 2 })
+      const again = try useGrant(held, undefined, "google.gmail.triage", "subject-conn-held")
+      const refusals = {
+        missing: try grantRefusal(useGrant(held, undefined, "google.gmail.send")),
+        changed: try grantRefusal(useGrant(held, undefined, "google.gmail.triage", "subject-elsewhere")),
+        foreign: try grantRefusal(useGrant(held, "conn-lost", "google.gmail.triage")),
+        side: try grantRefusal(useGrant(held, "conn-none", "google.gmail.triage")),
+        invalidGrant: try grantRefusal(useGrant(lost, undefined, "google.gmail.triage")),
+        afterwards: try grantRefusal(useGrant(lost, undefined, "google.gmail.triage"))
+      }
+      const rows = try sql(cloud, "SELECT key, status, tokens IS NULL AS erased, refreshing_until FROM google_connections ORDER BY key", [])
+      try check(() => assert.deepStrictEqual(
+        {
+          singleFlight: [google.tokenCalls, both[0].accessToken === both[1].accessToken, again.accessToken === both[0].accessToken, both[0].connectionId, both[0].email],
+          refusals,
+          rows: rows.map((row) => [row.key, row.status, row.erased, Number(row.refreshing_until)])
+        },
+        {
+          singleFlight: [2, true, true, "conn-held", "conn-held@example.com"],
+          refusals: { missing: "capability_missing", changed: "google_account_changed", foreign: "not_found", side: "not_found", invalidGrant: "google_reauth_required", afterwards: "google_reauth_required" },
+          rows: [["conn-held", "Active", false, 0], ["conn-lost", "Expired", true, 0]]
+        }
+      ))
+    }
+  }), 30_000)
+})
+effect function calendarSetup(email: string) {
+  const google = try Effect.try(() => googleFakeState())
+  const cloud = try testCloud({ mount: (fakes) => {
+    fakes.mount("/google/", mountGoogleToken(google))
+    fakes.mount("/google/", mountGoogleCalendar(google))
+  } })
+  const signed = try signedIn(cloud, email)
+  const owner: Owner = { organizationId: signed.organizationId, userId: signed.user.id }
+  const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.calendar.write")]
+  const refreshToken = try Effect.try(() => seedGrant(google, { subject: "subject-cal", email: "cal@example.com", scopes }))
+  const now = try Clock.currentTimeMillis
+  try cloud.inside(linkedGrant(cloud, owner, "cal", refreshToken, scopes, now - 1000))
+  try Effect.try(() => {
+    seedCalendar(google, { id: "own@example.com", summary: "Own", accessRole: "owner", primary: true, timeZone: "Europe/Berlin" })
+    seedCalendar(google, { id: "team@example.com", summary: "Team", accessRole: "reader", timeZone: "UTC" })
+    seedEvent(google, "own@example.com", "standup", { summary: "Standup", start: { dateTime: "2026-12-01T09:00:00Z" }, end: { dateTime: "2026-12-01T09:15:00Z" } })
+  })
+  return { google, cloud, headers: { authorization: `Bearer ${signed.accessToken}` } }
+}
+
+function calendarRefusal(body: unknown): ReadonlyArray<unknown> {
+  const answer = body as { readonly error?: string; readonly reason?: string; readonly outcome?: string }
+  return [answer.error, answer.reason, answer.outcome]
+}
+
+describe("WP8 Managed Google: calendar (spec/cloud/services/google/calendar.md)", () => {
+  const calendarBase = "/api/v1/eliza/google/calendar"
+
+  it.live("Read my calendars, a window of events and one event, refusing a window that is empty or in no time zone (spec/cloud/services/google/calendar.md, \"Story: Read my calendar for a window\")", () => scoped(effect {
+    const { cloud, headers } = try calendarSetup("calendar-reads@example.com")
+    const window = "timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-02T00:00:00Z"
+    const calendars = try cloud.call(`${calendarBase}/calendars`, { headers })
+    const feed = try cloud.call(`${calendarBase}/feed?${window}&timeZone=Europe/Berlin`, { headers })
+    const reversed = try cloud.call(`${calendarBase}/feed?timeMin=2026-12-02T00:00:00Z&timeMax=2026-12-01T00:00:00Z`, { headers })
+    const empty = try cloud.call(`${calendarBase}/feed?timeMin=2026-12-01T00:00:00Z&timeMax=2026-12-01T00:00:00Z`, { headers })
+    const noZone = try cloud.call(`${calendarBase}/feed?${window}&timeZone=Mars/Olympus`, { headers })
+    const one = try cloud.call(`${calendarBase}/events/standup`, { headers })
+    const missing = try cloud.call(`${calendarBase}/events/nothere`, { headers })
+    const anonymous = try cloud.call(`${calendarBase}/calendars`)
+    const events = (feed.body as { readonly events: ReadonlyArray<{ readonly externalId: string; readonly title: string; readonly etag: string | null }> }).events
+    try check(() => assert.deepStrictEqual(
+      {
+        calendars: [calendars.status, calendars.body],
+        feed: [feed.status, (feed.body as { readonly calendarId: string }).calendarId, events.map((event) => [event.externalId, event.title, event.etag !== null]), typeof (feed.body as { readonly syncedAt: unknown }).syncedAt],
+        refused: [reversed.status, empty.status, noZone.status, calendarRefusal(reversed.body)],
+        one: [one.status, (one.body as { readonly event: { readonly externalId: string } }).event.externalId],
+        missing: [missing.status, calendarRefusal(missing.body)],
+        anonymous: anonymous.status
+      },
+      {
+        calendars: [200, [
+          { calendarId: "own@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Own", accessRole: "owner", read: true, write: true },
+          { calendarId: "team@example.com", accountId: "subject-cal", accountEmail: "cal@example.com", label: "Team", accessRole: "reader", read: true, write: false }
+        ]],
+        feed: [200, "primary", [["standup", "Standup", true]], "string"],
+        refused: [400, 400, 400, ["invalid_request", undefined, undefined]],
+        one: [200, "standup"],
+        missing: [404, ["not_found", undefined, undefined]],
+        anonymous: 401
+      }
+    ))
+  }), 30_000)
+
+  it.live("Create an event once per key and change or delete it only at the revision I read (spec/cloud/services/google/calendar.md, \"Story: Change an event only at the revision I read\"; spec/cloud/shared/dispatchOnce.md, \"Story: Send a change once and recover its outcome without sending it again\")", () => scoped(effect {
+    const { google, cloud, headers } = try calendarSetup("calendar-writes@example.com")
+    const create = (key: string | undefined, json: unknown) => cloud.call(`${calendarBase}/events`, { method: "POST", headers: key === undefined ? headers : { ...headers, "idempotency-key": key }, json })
+    const lunch = { title: "Lunch", startAt: "2026-12-01T12:00:00Z", endAt: "2026-12-01T13:00:00Z" }
+    const unkeyed = try create(undefined, lunch)
+    const first = try create("lunch-key-0001", lunch)
+    const again = try create("lunch-key-0001", lunch)
+    const other = try create("lunch-key-0001", { ...lunch, title: "Dinner" })
+    const inserts = google.calls.filter((call) => call.method === "POST" && call.path.endsWith("/events")).length
+    google.switches.dropNextReply = true
+    const dropped = try create("coffee-key-0001", { title: "Coffee", startAt: "2026-12-01T15:00:00Z", endAt: "2026-12-01T15:30:00Z" })
+    const changedAccount = try create("tea-key-00000001", { ...lunch, title: "Tea", expectedAccountId: "subject-elsewhere" })
+    const created = (first.body as { readonly event: { readonly externalId: string; readonly etag: string; readonly title: string } }).event
+    const eventPath = `${calendarBase}/events/${created.externalId}`
+    const patch = (etag: string | undefined, json: unknown) => cloud.call(eventPath, { method: "PATCH", headers: etag === undefined ? headers : { ...headers, "if-match": etag }, json })
+    const noRevision = try patch(undefined, { title: "Long lunch" })
+    const changed = try patch(created.etag, { title: "Long lunch" })
+    const stale = try patch(created.etag, { title: "Late lunch" })
+    const current = (changed.body as { readonly event: { readonly etag: string; readonly title: string } }).event
+    const staleDelete = try cloud.call(eventPath, { method: "DELETE", headers: { ...headers, "if-match": created.etag } })
+    const deleted = try cloud.call(eventPath, { method: "DELETE", headers: { ...headers, "if-match": current.etag } })
+    const rows = try sql(cloud, "SELECT kind, phase FROM calendar_writes ORDER BY kind, phase", [])
+    try check(() => assert.deepStrictEqual(
+      {
+        unkeyed: [unkeyed.status, calendarRefusal(unkeyed.body)],
+        once: [first.status, created.title, again.status, (again.body as { readonly event: { readonly externalId: string } }).event.externalId === created.externalId, inserts],
+        other: [other.status, calendarRefusal(other.body)],
+        dropped: [dropped.status, (dropped.body as { readonly event: { readonly title: string } }).event.title],
+        changedAccount: [changedAccount.status, calendarRefusal(changedAccount.body)],
+        noRevision: [noRevision.status, calendarRefusal(noRevision.body)],
+        changed: [changed.status, current.title, current.etag !== created.etag, changed.headers.etag === current.etag],
+        stale: [stale.status, calendarRefusal(stale.body)],
+        staleDelete: [staleDelete.status, calendarRefusal(staleDelete.body)],
+        deleted: [deleted.status, deleted.body, google.events.has(`own@example.com/${created.externalId}`)],
+        rows: rows.map((row) => [row.kind, row.phase])
+      },
+      {
+        unkeyed: [400, ["invalid_request", undefined, "not_accepted"]],
+        once: [201, "Lunch", 201, true, 1],
+        other: [409, ["idempotency_conflict", undefined, "not_accepted"]],
+        dropped: [201, "Coffee"],
+        changedAccount: [403, ["access_denied", "google_account_changed", "not_accepted"]],
+        noRevision: [400, ["invalid_request", undefined, "not_accepted"]],
+        changed: [200, "Long lunch", true, true],
+        stale: [412, ["precondition_failed", undefined, "not_accepted"]],
+        staleDelete: [412, ["precondition_failed", undefined, "not_accepted"]],
+        deleted: [200, { ok: true }, false],
+        rows: [["change", "rejected"], ["change", "succeeded"], ["create", "succeeded"], ["create", "succeeded"], ["delete", "rejected"], ["delete", "succeeded"]]
+      }
+    ))
+  }), 30_000)
+})
+describe("WP9 Client library (spec/cloud/client.md, \"Story: Use the cloud from the device as configured\")", () => {
+  const unknownKey = `eliza_mobile_${"0".repeat(64)}`
+
+  function serverClass(auth: AuthClass): RouteClass {
+    switch (auth) {
+      case "Public": return "Public"
+      case "KeyOrSession": return "ServiceAccess"
+      case "Session": return "SignedSession"
+      case "FreshSession": return "FreshSession"
+      case "StepUp": return "StepUp"
+    }
+  }
+
+  function patternOf(route: DeviceRoute): string {
+    return route.path.map((segment) => `/${segment.tag === "Param" ? `:${segment.name}` : segment.text}`).join("")
+  }
+
+  function clientOf(baseUrl: string, credential: () => string): CloudClient {
+    return createCloudClient({ baseUrl, credential, fetch: (input, init) => fetch(input, init) })
+  }
+
+  effect function failureOf(run: () => Promise<unknown>) {
+    return try promise(() => run().then(() => "succeeded", (error: unknown) => error instanceof CloudError ? error.failure : `threw ${String(error)}`))
+  }
+
+  effect function refusingServer(cloud: TestCloud, refusals: ReadonlyArray<Refused>) {
+    const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
+    let next = 0
+    const models: Route = {
+      method: "GET",
+      path: "/api/v1/models",
+      auth: "Public",
+      handler: () => effect {
+        const refusal = refusals[next] ?? refused("NotFound")
+        next += 1
+        throw refusal
+      }
+    }
+    const built = try Layer.build(HttpServer.serve(respond([models])).pipe(
+      Layer.provideMerge(listening(0, "127.0.0.1")),
+      Layer.provide(Layer.mergeAll(deploymentLayer(profile, "staging"), Layer.succeed(Store, cloud.store), FetchHttpClient.layer))
+    ))
+    const { address } = Context.get(built, HttpServer.HttpServer)
+    return "port" in address ? `http://127.0.0.1:${address.port}` : ""
+  }
+
+  it.live("Read every refusal as one CloudError and leave the credential to its holder (spec/cloud/client.md, \"Every refusal reads as one CloudError and none touches the credential\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const now = try Clock.currentTimeMillis
+    const live = try entitledDevice(cloud, "custody", now)
+    const expiring = try entitledDevice(cloud, "expiring", now)
+    const ended = try entitledDevice(cloud, "ended", now)
+    try sql(cloud, "UPDATE device_grants SET key_expires_at = $2, state = jsonb_set(state, '{keyExpiresAt}', to_jsonb($2::bigint)) WHERE credential_id = $1", ["cred-expiring", now - 1])
+    try cloud.store.transaction((tx) => revokeAll(tx, "user-ended", now))
+    let held = unknownKey
+    const read: Array<string> = []
+    const client = clientOf(cloud.url, () => {
+      read.push(held)
+      return held
+    })
+    const unknown = try failureOf(() => client.account())
+    held = expiring
+    const expired = try failureOf(() => client.account())
+    held = ended
+    const revoked = try failureOf(() => client.account())
+    held = live
+    const kept = try failureOf(() => client.account())
+
+    const resetsAt = now + 3_600_000
+    const retryAt = now + 60_000
+    const backAt = now + 30_000
+    const probe = try refusingServer(cloud, [refused("InsufficientCredits"), refused("AllowanceExhausted", "NoReason", resetsAt), refused("RateLimited", "NoReason", retryAt), refused("ServiceUnavailable", "NoReason", backAt)])
+    const refusing = clientOf(probe, () => live)
+    const answers = [
+      try failureOf(() => refusing.models()),
+      try failureOf(() => refusing.models()),
+      try failureOf(() => refusing.models()),
+      try failureOf(() => refusing.models())
+    ]
+    try check(() => assert.deepStrictEqual(
+      { unknown, expired, revoked, kept, answers, read, held },
+      {
+        unknown: { tag: "CloudCredentialInvalid", reason: "CredentialUnknown" },
+        expired: { tag: "CloudCredentialInvalid", reason: "CredentialExpired" },
+        revoked: { tag: "CloudCredentialInvalid", reason: "CredentialRevoked" },
+        kept: "succeeded",
+        answers: [
+          { tag: "CloudInsufficientCredits" },
+          { tag: "CloudAllowanceExhausted", resetsAt },
+          { tag: "CloudRateLimited", retryAt },
+          { tag: "CloudUnavailable", retryAfter: backAt }
+        ],
+        read: [unknownKey, expiring, ended, live],
+        held: live
+      }
+    ))
+  }))
+
+  it.live("Send the credential the getter holds now, with the same client (spec/cloud/client.md, \"Every call reads the credential when it is sent\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const now = try Clock.currentTimeMillis
+    const first = try entitledDevice(cloud, "first", now)
+    const second = try entitledDevice(cloud, "second", now)
+    let held = first
+    const client = clientOf(cloud.url, () => held)
+    const before = try promise(() => client.account())
+    const models = try promise(() => client.models())
+    held = second
+    const after = try promise(() => client.account())
+    held = unknownKey
+    const replaced = try failureOf(() => client.models())
+    try check(() => assert.deepStrictEqual(
+      { before: before.id, after: after.id, models: models.data.map((model) => model.id), replaced },
+      { before: "user-first", after: "user-second", models: ["test-chat"], replaced: { tag: "CloudCredentialInvalid", reason: "CredentialUnknown" } }
+    ))
+  }))
+
+  it.live("Tell an unfunded account it cannot be used until it is funded (spec/cloud/client.md, \"An account is usable when it is active, funded and its lane is open\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const now = try Clock.currentTimeMillis
+    const token = try entitledDevice(cloud, "unfunded", now)
+    const client = clientOf(cloud.url, () => token)
+    const unfunded = try promise(() => client.snapshot())
+    provide Store = cloud.store {
+      try addCredits({ organizationId: "org-unfunded", amount: 5_000_000, requestKey: "wp9-funding" })
+    }
+    const funded = try promise(() => client.snapshot())
+    try check(() => assert.deepStrictEqual(
+      { unfunded: [accountUsable(unfunded), creditFromSnapshot(unfunded, unfunded.observedAt).kind], funded: [accountUsable(funded), creditFromSnapshot(funded, funded.observedAt).kind] },
+      { unfunded: [false, "zero"], funded: [true, "funded"] }
+    ))
+  }))
+
+  it.live("Verify an entitlement the service signed and refuse it for another audience (spec/cloud/billing/entitlements.md, \"Story: Read my plan without substituting another account or source\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const now = try Clock.currentTimeMillis
+    const token = try entitledDevice(cloud, "verified", now)
+    const bearer = { headers: { authorization: `Bearer ${token}` } }
+    const published = try cloud.call("/api/v1/subscription/entitlement-keys")
+    const answer = try cloud.call("/api/v1/subscription/entitlement", bearer)
+    const signed = (answer.body as { readonly entitlement: string }).entitlement
+    const expected = { keys: parseEntitlementKeys(published.body) ?? [], issuer: "https://api.staging.example.com", audience: "cloud-subscription", now }
+    const checked = try promise(() => checkEntitlement(signed, expected))
+    const otherAudience = try promise(() => verifyEntitlement(signed, { ...expected, audience: "another-service" }).then(() => "verified", (error: unknown) => error instanceof EntitlementInvalid ? error.check : `threw ${String(error)}`))
+    try check(() => assert.deepStrictEqual(
+      { user: checked.userId, organization: checked.organizationId, plan: checked.plan, lifetime: checked.expiresAt - checked.issuedAt, otherAudience },
+      { user: "user-verified", organization: "org-verified", plan: { id: "free", name: "Free", status: "none" }, lifetime: 1_800_000, otherAudience: "WrongAudience" }
+    ))
+  }))
+
+  it.live("Every route a device sends is one the service serves, with the same credential class (spec/cloud/client.md, \"A device sends only the routes of one table, each with its own headers\")", () => effect {
+    const served = areas.flatMap((area) => area.routes)
+    const mismatched = deviceRoutes.flatMap((route) => {
+      const pattern = patternOf(route)
+      const found = matchRoute(served, httpVerb(route.method), pattern)
+      const same = found.kind === "route" && found.route.path === pattern && found.route.auth === serverClass(route.auth)
+      return same ? [] : [`${httpVerb(route.method)} ${pattern} ${route.auth}: ${found.kind === "route" ? `${found.route.path} ${found.route.auth}` : found.kind}`]
+    })
+    try check(() => assert.deepStrictEqual({ unlisted: unlistedRoutes, mismatched }, { unlisted: [], mismatched: [] }))
+  })
+})
+describe("WP10 Operator and deletion (spec/cloud/identity/deletion.md, \"Story: Delete an account once the person asked support\")", () => {
+  it.live("Fund an active account, list and revoke a lost device, and refuse every command on another or an unreadable database (spec/cloud/operator.md, \"Story: Operate the deployment without reading secrets\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const now = try Clock.currentTimeMillis
+    try openAccount(cloud, { userId: "user-operated", organizationId: "org-operated" })
+    const shown = (result: { readonly exit: Exit.Exit<unknown, unknown>; readonly out: ReadonlyArray<string>; readonly err: ReadonlyArray<string> }) =>
+      [Exit.isSuccess(result.exit), result.out, result.err.map((line) => /"error":"([a-z_]+)"/.exec(line)?.[1])]
+    const credits = ["credits", "add", "--organization", "org-operated", "--amount", "5000000", "--request", "pilot-1"]
+    const added = try printed(operator(cloud, credits))
+    const replayed = try printed(operator(cloud, credits))
+    const missing = try printed(operator(cloud, ["credits", "add", "--organization", "org-missing", "--amount", "1", "--request", "pilot-2"]))
+    const device = { deviceName: "Lost phone", createdAt: now - 1000, expiresAt: now + 86_400_000 }
+    const key = try deviceKey(cloud, "user-operated", device)
+    const entitlement = effect () => (try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${key}` } }))
+    const before = try entitlement()
+    const listed = try printed(operator(cloud, ["account", "devices", "--user", "user-operated"]))
+    const revoked = try printed(operator(cloud, ["account", "revoke-devices", "--user", "user-operated"]))
+    const after = try entitlement()
+    const listedAfter = try printed(operator(cloud, ["account", "devices", "--user", "user-operated"]))
+    const otherDatabase = try printed(operator(cloud, [...credits.slice(0, -1), "pilot-3"], {
+      edit: (profile) => ({ ...profile, environments: { ...profile.environments, staging: { ...profile.environments.staging, databaseIdentity: "c".repeat(64) } } })
+    }))
+    try sql(cloud, "DELETE FROM cloud_identity", [])
+    const unreadable = try printed(operator(cloud, [...credits.slice(0, -1), "pilot-4"]))
+    const balance = try sql(cloud, "SELECT count(*)::int AS entries FROM credit_entries WHERE organization_id = 'org-operated' AND kind = 'add'", [])
+    const body = after.body as { readonly error?: string; readonly reason?: string }
+    try check(() => assert.deepStrictEqual(
+      {
+        added: shown(added), replayed: shown(replayed), missing: shown(missing),
+        before: before.status, listed: shown(listed), revoked: shown(revoked), after: [after.status, body.error, body.reason], listedAfter: shown(listedAfter),
+        otherDatabase: shown(otherDatabase), unreadable: shown(unreadable), entries: balance[0]?.entries
+      },
+      {
+        added: [true, ["organization org-operated: 5000000 µUSD added, balance 5000000 µUSD"], []],
+        replayed: [true, ["organization org-operated: credits already added by this request, balance 5000000 µUSD"], []],
+        missing: [false, [], ["not_found"]],
+        before: 200,
+        listed: [true, [JSON.stringify(device)], []],
+        revoked: [true, ["user user-operated: 1 device keys ended, every session ended"], []],
+        after: [401, "authentication_required", "credential_revoked"],
+        listedAfter: [true, [], []],
+        otherDatabase: [false, [], ["precondition_failed"]],
+        unreadable: [false, [], ["service_unavailable"]],
+        entries: 1
+      }
+    ))
+  }), 30_000)
+})
+describe("WP10 Operator and deletion: clients (spec/cloud/operator.md)", () => {
+  it.live("Register, update and disable a native client from the operator command line (spec/cloud/operator.md, \"Story: Operate the deployment without reading secrets\"; spec/cloud/nativeClients/registry.md, \"A registration is accepted only when the registry stays valid and no return lies on the API origin, and it never changes how another client is admitted\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const fingerprint = "E3:DC:37:EF:3F:94:F0:CB:F5:06:F2:6E:CD:F7:99:99:29:C2:B2:D0:53:D1:63:83:56:91:F7:C9:67:F6:7E:A5"
+    const rotated = "A1:DC:37:EF:3F:94:F0:CB:F5:06:F2:6E:CD:F7:99:99:29:C2:B2:D0:53:D1:63:83:56:91:F7:C9:67:F6:7E:A5"
+    const web = "https://www.staging.example.com"
+    const flagsOf = (name: string) => [
+      "--client-id", `com.example.${name}`, "--display-name", name, "--android-package", `com.example.${name}`, "--cert", fingerprint,
+      "--sign-in-return", `${web}/apps/${name}/sign-in`, "--billing-return", `${web}/apps/${name}/billing`, "--credential-ttl-days", "7"
+    ]
+    const config = (name: string) => cloud.call(`/api/v1/app-auth/mobile/config?${new URLSearchParams({ clientId: `com.example.${name}`, environment: "staging", redirectUri: `${web}/apps/${name}/sign-in` }).toString()}`)
+    const run = (args: ReadonlyArray<string>) => failureTag(operator(cloud, args))
+    const answers = [
+      try run(["client", "register", ...flagsOf("one"), "--native-google"]),
+      try run(["client", "register", ...flagsOf("two")]),
+      try run(["client", "register", ...flagsOf("five"), "--cert", fingerprint, "--cert", fingerprint, "--cert", fingerprint, "--cert", fingerprint]),
+      try run(["client", "register", ...flagsOf("api"), "--sign-in-return", "https://api.staging.example.com/apps/api"]),
+      try run(["client", "register", "--client-id", "com.example.bare"]),
+      try run(["client", "update", "--client-id", "com.example.two", "--display-name", "Two", "--cert", fingerprint, "--cert", rotated]),
+      try run(["client", "update", "--client-id", "com.example.nobody", "--display-name", "Nobody"])
+    ]
+    const one = try config("one")
+    const twoBefore = try config("two")
+    const linksBefore = try cloud.call("/.well-known/assetlinks.json")
+    const disabled = try run(["client", "disable", "--client-id", "com.example.two"])
+    const twoAfter = try config("two")
+    const oneAfter = try config("one")
+    const linksAfter = try cloud.call("/.well-known/assetlinks.json")
+    const links = (body: unknown) => (body as ReadonlyArray<{ readonly target: { readonly package_name: string; readonly sha256_cert_fingerprints: ReadonlyArray<string> } }>).map((statement) => [statement.target.package_name, statement.target.sha256_cert_fingerprints.length])
+    try check(() => assert.deepStrictEqual(
+      {
+        answers,
+        one: [one.status, (one.body as { readonly credentialTtlMs?: number }).credentialTtlMs],
+        twoBefore: twoBefore.status,
+        linksBefore: links(linksBefore.body),
+        disabled,
+        twoAfter: [twoAfter.status, (twoAfter.body as { readonly error?: string }).error],
+        oneAfter: [oneAfter.status, oneAfter.body],
+        linksAfter: links(linksAfter.body)
+      },
+      {
+        answers: [
+          'succeeded with {"kind":"done","lines":["registered com.example.one (staging)"]}',
+          'succeeded with {"kind":"done","lines":["registered com.example.two (staging)"]}',
+          "RegistrationInvalid", "RegistrationRefused", "ClientFlagsInvalid",
+          'succeeded with {"kind":"done","lines":["updated com.example.two (staging)"]}',
+          "ClientUnknown"
+        ],
+        one: [200, 7 * 86_400_000],
+        twoBefore: 200,
+        linksBefore: [["com.example.one", 1], ["com.example.two", 2]],
+        disabled: 'succeeded with {"kind":"done","lines":["disabled com.example.two"]}',
+        twoAfter: [403, "client_disabled"],
+        oneAfter: [one.status, one.body],
+        linksAfter: [["com.example.one", 1]]
+      }
+    ))
+  }))
+})
+describe("WP10 Operator and deletion: prices (spec/cloud/operator.md)", () => {
+  it.live("Price an offered model from the operator command line so its calls are admitted, and check prices and catalog (spec/cloud/operator.md, \"Story: Operate the deployment without reading secrets\"; spec/cloud/services/models.md, \"Story: Price a model call before it runs\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
+    const settings = profile.environments.staging.inference
+    if (settings === undefined) return try fail(new Error("the test profile offers no inference"))
+    const caller = try signedCaller(cloud, "pricer")
+    const run = (args: ReadonlyArray<string>) => failureTag(operator(cloud, args))
+    const admission = cloud.store.transaction((tx) => chooseFor(tx, settings, "test-chat", false)).pipe(
+      Effect.map((chosen) => `admitted ${chosen.model.id} at ${chosen.model.inputPer1K}/${chosen.model.outputPer1K} via ${chosen.provider.id}`),
+      Effect.catchTag("Refused", (error) => Effect.succeed(refusalBody(error.refusal).error))
+    )
+    const listed = effect () => {
+      const answer = try cloud.call("/api/v1/models", { headers: caller.headers })
+      return [answer.status, (answer.body as { readonly data: ReadonlyArray<{ readonly id: string }> }).data.map((model) => model.id)]
+    }
+    const checkBefore = try run(["prices", "check"])
+    const admittedBefore = try admission
+    const listedBefore = try listed()
+    const refusedSets = [
+      try run(["prices", "set", "--model", "unoffered", "--input-per-1k", "100", "--output-per-1k", "200"]),
+      try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "1.5", "--output-per-1k", "200"]),
+      try run(["prices", "set", "--model", "test-chat", "--output-per-1k", "200"])
+    ]
+    const set = try run(["prices", "set", "--model", "test-chat", "--input-per-1k", "150", "--output-per-1k", "600"])
+    const admittedAfter = try admission
+    const listedAfter = try listed()
+    const checkAfter = try run(["prices", "check"])
+    try check(() => assert.deepStrictEqual(
+      { checkBefore, admittedBefore, listedBefore, refusedSets, set, admittedAfter, listedAfter, checkAfter },
+      {
+        checkBefore: "PricesMismatched",
+        admittedBefore: "model_unavailable",
+        listedBefore: [200, []],
+        refusedSets: ["Refused", "PriceFlagsInvalid", "PriceFlagsInvalid"],
+        set: 'succeeded with {"kind":"done","lines":["priced test-chat: input 150, output 600 µUSD per 1,000 tokens"]}',
+        admittedAfter: "admitted test-chat at 150/600 via llm",
+        listedAfter: [200, ["test-chat"]],
+        checkAfter: 'succeeded with {"kind":"done","lines":["0 price mismatches; usable models: test-chat","payment catalog verified"]}'
+      }
+    ))
+  }))
+})
+
+effect function entitledDevice(cloud: TestCloud, name: string, now: number) {
+  const token = `eliza_mobile_${tokenDigest(name)}`
+  try organization(cloud, `org-${name}`)
+  try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [`user-${name}`, `org-${name}`, `${name}@example.com`, now])
+  try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'test-client', 'active', $3, $4, $5, $6, $5, $5)", [
+    `grant-${name}`, `user-${name}`, `cred-${name}`, tokenDigest(token), now - 1000, now + 24 * 3_600_000
+  ])
+  return token
+}
+
+effect function entitlementClaims(cloud: TestCloud, token: string, keys: ReadonlyArray<PublishedKey>) {
+  const answer = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${token}` } })
+  const now = try Clock.currentTimeMillis
+  const verified = try promise(() => answer.status !== 200 ? Promise.reject(new Error(`entitlement answered ${answer.status}`)) : verifyEntitlement((answer.body as { readonly entitlement: string }).entitlement, keys, { issuer: "https://api.staging.example.com", audience: "cloud-subscription", nowSeconds: Math.floor(now / 1000) }))
+  const claims = verified.claims
+  return { status: answer.status, kid: verified.header.kid, plan: claims.plan, planEndsAt: claims.plan_ends_at, allowance: claims.plan_allowance, ver: claims.ver, sub: claims.sub, org: claims.org, services: claims.services, lifetime: Number(claims.exp) - Number(claims.iat), exp: claims.exp }
+}
+
+describe("WP4 Subscriptions and entitlements: entitlement", () => {
+  it.live("Read my plan from a signed entitlement, a grant giving way to a paid plan (spec/cloud/billing/entitlements.md, \"Story: Read my plan without substituting another account or source\"; spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const now = try Clock.currentTimeMillis
+    const token = try entitledDevice(cloud, "entitled", now)
+    const published = try cloud.call("/api/v1/subscription/entitlement-keys")
+    const keys = (published.body as { readonly keys: ReadonlyArray<PublishedKey> }).keys
+    const anonymous = try cloud.call("/api/v1/subscription/entitlement")
+    const free = try entitlementClaims(cloud, token, keys)
+
+    const grantEnds = now + 10 * 60_000
+    try sql(cloud, "INSERT INTO grants (id, organization_id, family, plan_key, effective_from, effective_until, created_at) VALUES ('grant-1', 'org-entitled', 'pilot', 'plus_monthly', $1, $2, $1)", [now - 1000, grantEnds])
+    const granted = try entitlementClaims(cloud, token, keys)
+
+    const periodEnd = now + 30 * 24 * 3_600_000
+    const resetsAt = now + 20 * 60_000
+    try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ('org-entitled', '{}'::jsonb, 1, 'active', 'pro_monthly', $1, $2)", [periodEnd, now])
+    try cloud.store.transaction((tx) => stepRow(tx, periodRows, "renewal/staging/in_1", { type: "openRenewal", invoiceId: "in_1", planKey: "ProMonthly", startsAt: now - 1000, endsAt: resetsAt }, () => ({
+      organization_id: "org-entitled", status: "open", period_start: now - 1000, period_end: resetsAt, updated_at: now
+    })))
+    const paid = try entitlementClaims(cloud, token, keys)
+    try sql(cloud, "UPDATE subscriptions SET status = 'past_due' WHERE key = 'org-entitled'", [])
+    const pastDue = try entitlementClaims(cloud, token, keys)
+    try sql(cloud, "UPDATE subscriptions SET plan_key = 'gold' WHERE key = 'org-entitled'", [])
+    const unreadable = try cloud.call("/api/v1/subscription/entitlement", { headers: { authorization: `Bearer ${token}` } })
+
+    const seconds = (millis: number) => Math.floor(millis / 1000)
+    try check(() => assert.deepStrictEqual(
+      {
+        published: [published.status, published.headers["cache-control"], keys.length, keys.map((key) => [key.kid, key.kty, key.crv])],
+        anonymous: [anonymous.status, (anonymous.body as { readonly error: string }).error],
+        free,
+        granted: [granted.plan, granted.planEndsAt, granted.exp, granted.allowance],
+        paid: [paid.plan, paid.planEndsAt, paid.exp, paid.allowance],
+        pastDue: pastDue.plan,
+        unreadable: [unreadable.status, (unreadable.body as { readonly error: string }).error]
+      },
+      {
+        published: [200, "public, max-age=60", 1, [["entitlement-1", "EC", "P-256"]]],
+        anonymous: [401, "authentication_required"],
+        free: { status: 200, kid: "entitlement-1", plan: { id: "free", name: "Free", status: "none" }, planEndsAt: null, allowance: null, ver: 3, sub: "user-entitled", org: "org-entitled", services: ["inference", "speech", "maps"], lifetime: 1800, exp: free.exp },
+        granted: [{ id: "plus_monthly", name: "Plus", status: "active" }, seconds(grantEnds), seconds(grantEnds), null],
+        paid: [{ id: "pro_monthly", name: "Pro", status: "active" }, seconds(periodEnd), seconds(resetsAt), { unit: "usd_micros", granted: 90_000_000, remaining: 90_000_000, periodStart: seconds(now - 1000), resetsAt: seconds(resetsAt) }],
+        pastDue: { id: "pro_monthly", name: "Pro", status: "past_due" },
+        unreadable: [503, "service_unavailable"]
+      }
+    ))
+  }))
+})
+
+module node {
+  import { Effect } from "effect"
+  import { SecureRandom } from "effect/crypto"
+  import { exportJWK, generateKeyPair, SignJWT } from "jose"
+  import { CLEF_DECISIONS_PATH, createClefDecisionsClient, type ClefDecisionRequest } from "../src/clef-decisions.vibe"
+  import { signInWithProof } from "../src/identity-store.vibe"
+  import { cloudWorker, type CloudBindings } from "../src/worker.vibe"
+  import { openBackupDatabase } from "./support/password-backup.ts"
+
+  export async function nativeGoogleFixture() {
+    const { privateKey, publicKey } = await generateKeyPair("RS256", { extractable: true })
+    const key = { ...await exportJWK(publicKey), kid: "google-test", alg: "RS256" }
+    return {
+      keys: [key],
+      issue: (nonce: string) => new SignJWT({ nonce, email: "linked@example.test", email_verified: true })
+        .setProtectedHeader({ alg: "RS256", kid: "google-test" })
+        .setIssuer("https://accounts.google.com")
+        .setAudience("google-server-client")
+        .setSubject("linked-google-subject")
+        .setExpirationTime("5m")
+        .sign(privateKey),
+    }
+  }
+
+  export async function decideForSignedInAccount() {
+    const fixture = await openBackupDatabase()
+    try {
+      const digest = "d".repeat(64)
+      await fixture.db.query("INSERT INTO cloud_identity (digest, environment, created_at) VALUES ($1, 'staging', 1)", [digest])
+      const owner = await Effect.runPromise(Effect.provide(signInWithProof(fixture.db, {
+        provider: "email", subject: "reader@example.test", email: "reader@example.test",
+      }), SecureRandom.layerWebCrypto))
+      const web = "https://app.example.test"
+      const api = "https://api.example.test"
+      const providerInputs: string[] = []
+      let chosen = "hours"
+      async function run(id: string, input: Record<string, unknown>, options: { returnRawResponse: true; signal: AbortSignal }): Promise<Response>
+      async function run(id: string, input: unknown): Promise<unknown>
+      async function run(id: string, input: unknown, options?: unknown): Promise<unknown> {
+        if (options) return Response.json({ error: "unexpected inference request" }, { status: 500 })
+        providerInputs.push(JSON.stringify({ id, input }))
+        if (providerInputs.length === 1) await Effect.runPromise(Effect.sleep(4_250))
+        return { model: "clef-flash", answers: { target: {
+          type: "choice", choice: chosen, confidence: .95, probabilities: { hours: .95, none: .05 },
+        } } }
+      }
+      const env = {
+        AI: { run }, DATABASE_URL: fixture.databaseUrl, CLOUD_IDENTITY_DIGEST: digest, CLOUD_ENVIRONMENT: "staging",
+        PUBLIC_API_ORIGIN: api, WEB_ORIGIN: web, CHAT_MODEL: "unused", EMBEDDING_MODEL: "unused",
+        CHAT_INPUT_MICROS_PER_1K: "1", CHAT_OUTPUT_MICROS_PER_1K: "1", EMBEDDING_INPUT_MICROS_PER_1K: "1", MAX_COMPLETION_TOKENS: "1",
+        STRIPE_SECRET_KEY: "unused", STRIPE_WEBHOOK_SECRET: "unused", STRIPE_PRICE_ID: "unused", STRIPE_PRODUCT_ID: "unused", STRIPE_PLAN: "plus_monthly",
+      } satisfies CloudBindings
+      const worker = cloudWorker()
+      const body: ClefDecisionRequest = { kind: "choice", goal: "Find opening hours", page: "Session https://example.test/?token=private",
+        candidates: [{ id: "hours", label: "Opening hours" }] }
+      const headers = { origin: web, cookie: "__Host-eliza-session=" + owner.access, "X-Eliza-Account": owner.account.id }
+      const post = (value: unknown, supplied: Record<string, string>) => worker.fetch(new Request(api + CLEF_DECISIONS_PATH, {
+        method: "POST", headers: { ...supplied, "content-type": "application/json" }, body: JSON.stringify(value),
+      }), env)
+      const signedOut = await post(body, { origin: web })
+      const changedAccount = await post(body, { ...headers, "X-Eliza-Account": "different-account" })
+      const extraFields = await post({ ...body, form: { password: "private" } }, headers)
+      const duplicateIds = await post({ ...body, candidates: [body.candidates[0], body.candidates[0]] }, headers)
+      const client = createClefDecisionsClient({ baseUrl: api, headers: () => headers,
+        fetch: (input, options) => worker.fetch(new Request(input, options), env) })
+      const decision = await client(body)
+      chosen = "older-snapshot"
+      const staleChoice = await client(body)
+      await fixture.db.query("UPDATE cloud_auth_limits SET hits = 2000 WHERE scope = 'clef:organization'")
+      const blocked = await post(body, headers)
+      const account = await fixture.db.query<{ hits: number }>("SELECT hits FROM cloud_auth_limits WHERE scope = 'clef:account'")
+      return {
+        refusals: [signedOut.status, changedAccount.status, extraFields.status, duplicateIds.status, blocked.status],
+        decision, staleChoice, providerCalls: providerInputs.length, accountCalls: account.rows[0]?.hits,
+        withheld: providerInputs.every((input) => !input.includes("token=private") && !input.includes("https://example.test")),
+      }
+    } finally { await fixture.close() }
+  }
+}
+import { decideForSignedInAccount, nativeGoogleFixture } from node
+
+it.live('A reviewed link decision stays within the current account and candidates (spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page")', () => effect {
+  const result = try tryPromise(() => decideForSignedInAccount())
+  try check(() => assert.deepStrictEqual(result, {
+    refusals: [401, 403, 400, 400, 429],
+    decision: { status: "ok", kind: "choice", model: "clef-flash", choice: "hours", confidence: .95, probabilities: { hours: .95, none: .05 } },
+    staleChoice: { status: "unavailable", reason: "provider_error" }, providerCalls: 2, accountCalls: 2, withheld: true,
+  }))
+}, 30_000)

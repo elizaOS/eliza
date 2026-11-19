@@ -127,7 +127,7 @@ export effect function makeViewHost(port: ViewFeedPort, newId: () => string = ne
   }
 
   effect function send(event: Event) {
-    const state = try (views.send(event) catch () => undefined)
+    const state = views.send(event) catch () => undefined
     if (state !== undefined) try settle(state)
     return state
   }

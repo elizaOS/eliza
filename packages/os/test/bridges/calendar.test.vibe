@@ -207,7 +207,7 @@ it.live("Read a bounded range and open Android's editor without taking it for a 
   const handoff = try promise(() => calendar.insertHandoff({ title: "Dentist", begin: T0, end: T0 + 3600000, allDay: false, alerts: [10] }))
   const refusedHandoff = try promise(() => calendar.insertHandoff({ title: " ", begin: T0, end: T0 + 3600000, allDay: false }))
 
-  const review = calendar.review(pick(phone, "1"))
+  const review = try Effect.try(() => calendar.review(pick(phone, "1")))
   const before = try promise(() => review.state())
   const opened = try promise(() => review.openEditor())
   const after = try promise(() => review.state())
@@ -244,7 +244,7 @@ it.live("Change only the event I reviewed, under the current ticket, and block a
   const phone = device()
   phone.granted = true
   const calendar = calendarClient({ plugin: androidCalendar(phone) })
-  const review = calendar.review(pick(phone, "1"))
+  const review = try Effect.try(() => calendar.review(pick(phone, "1")))
   const fields = { title: "Planning", body: "Room 4", begin: T0, end: T0 + 3600000 }
 
   const first = try promise(() => review.inspectUpdate())
@@ -321,7 +321,7 @@ it.live("Delete one occurrence or the whole event only after the undo window, an
   }
   const calendar = calendarClient({ plugin: androidCalendar(phone), clock: () => now })
 
-  const series = calendar.review(pick(phone, "2"))
+  const series = try Effect.try(() => calendar.review(pick(phone, "2")))
   const occurrence = try promise(() => series.inspectDeletion())
   const wrongScope = try promise(() => series.inspectDeletion("event"))
   const retiredTicket = occurrence.kind === "ready" ? occurrence.ticket : try die(new Error("No occurrence ticket"))
@@ -340,7 +340,7 @@ it.live("Delete one occurrence or the whole event only after the undo window, an
   const excluded = try promise(() => series.dispatchDeletion())
   const seriesRow = (try promise(() => series.state())).row.tag
 
-  const single = calendar.review(pick(phone, "1"))
+  const single = try Effect.try(() => calendar.review(pick(phone, "1")))
   const asSeries = try promise(() => single.inspectDeletion("series"))
   const whole = try promise(() => single.inspectDeletion())
   now = { continuity: "", elapsed: 0, wall: 0 }

@@ -150,7 +150,7 @@ it.effect('Generate my app\'s Android host from data: an agent host gets the age
     assert.strictEqual(document.runtimeMain, path.join(root, "runtime/android/app/src/main"))
     assert.deepStrictEqual(document.signing, AGENT_HOST.profile.signing)
     assert.isTrue(gradle.trimEnd().endsWith(ANDROID_RUNTIME_PACKAGING_DIRECTIVE), "packaging keeps the runtime bytes")
-    assert.include(gradle, "into 'agent'")
+    assert.include(gradle, "into: 'agent'")
     assert.include(try text("eliza-consumer-host/res/values/eliza_consumer_identity.xml"), "&quot;Fixture \\&quot;Host\\&quot;&quot;")
 
     assert.include(overlay, ' <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />')
@@ -172,7 +172,7 @@ it.effect('Generate my app\'s Android host from data: a schema-1 resident host m
   provide NodeServices.layer {
     const path = try Path.Path
     const root = try consumerWith("resident-host", RESIDENT_HOST.tree)
-    const output = path.join(root, "android")
+    const output = path.join(root, "android/host")
     try generateAndroidHost({ consumerRoot: root, dependencyRoot: path.join(root, "node_modules"), output, identity: IDENTITY, profile: RESIDENT_HOST.profile })
     const { document, overlay, gradle } = try readHost(output)
     assert.deepStrictEqual(document.modules.map((module) => module.name).sort(), ["capacitor-android", "eliza-agent-service", "eliza-runtime-files", "eliza-sign-in", "eliza-wifi"])
@@ -198,7 +198,7 @@ it.effect('Generate my app\'s Android host from data: an updater copies file sub
     const files = try FileSystem.FileSystem
     const path = try Path.Path
     const root = try consumerWith("updater-host", UPDATER_HOST.tree)
-    const output = path.join(root, "android")
+    const output = path.join(root, "android/host")
     const generated = try generateAndroidHost({ consumerRoot: root, output, identity: IDENTITY, profile: UPDATER_HOST.profile })
     const copied = generated.files.filter((file) => file.startsWith("app/src/") && file !== "app/src/main/AndroidManifest.xml")
     assert.includeMembers(copied, CALENDAR_SOURCES.map((source) => `app/${source}`))

@@ -52,7 +52,7 @@ export error ToolchainWrapperChanged { expected: string; observed: string }
 
 const TEMPLATES = "android/host-templates"
 const MARKER = ".eliza-consumer-host.json"
-const PROFILE_DOCUMENT = ".eliza-consumer-profile.json"
+export const PROFILE_DOCUMENT = ".eliza-consumer-profile.json"
 const IDENTITY_RESOURCES = "eliza-consumer-host/res"
 const HOST_MANIFEST = "app/eliza-host-manifest.xml"
 const RUNTIME_MAIN = "android/app/src/main"

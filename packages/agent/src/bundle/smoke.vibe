@@ -1,6 +1,5 @@
 // spec/agent/plugins/bundle.md, "A bundle is built only when every listed plugin and the product plugin ship as packages and the load smoke loaded them"; spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella"
 import { randomBytes } from "node:crypto"
-import { join } from "node:path"
 import { promotedSubactionDescription } from "@elizaos/core"
 import { parseLaunch } from "../host/launch.vibe"
 import type { AgentPlugin } from "../host/module.vibe"
@@ -46,7 +45,7 @@ export effect function smokeBoot(input: SmokeInput) {
   const agent = try startAgent({
     ...parsed,
     stateDirectory: input.stateDirectory,
-    binding: { kind: "socket", path: join(input.stateDirectory, "smoke.sock") },
+    binding: { kind: "socket", path: `${input.stateDirectory}/smoke.sock` },
     bundled: input.bundled,
     modules: builtinModuleFactories,
   })

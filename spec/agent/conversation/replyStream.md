@@ -53,7 +53,7 @@ type StreamStep = { state: ReplyStream, out: List[Effect] }
 pure val initial: ReplyStream = { role: Undecided, phase: Open, text: List(), held: false, shown: List(), shownHeld: false,
   sinceSnapshot: 0, lastSnapshot: 0, inFlight: false, progress: NoProgress, ready: NotReady }
 pure def roleFor(verdict: T::Admission): Role = match verdict {
-  | T::Owner(_) => Streams | T::Unkeyed(_) => Streams | T::Duplicate => Waits | T::Settled(_) => Waits | _ => Refused }
+  | Owner(_) => Streams | Unkeyed(_) => Streams | Duplicate => Waits | Settled(_) => Waits | _ => Refused }
 pure def canAdmit(s: ReplyStream): bool = s.role == Undecided
 pure def admit(s: ReplyStream, verdict: T::Admission): StreamStep = {
   val role = roleFor(verdict)
@@ -85,10 +85,10 @@ pure def threshold(last: int): int = if (last > 2048) last else 2048
 pure def appendable(s: ReplyStream): bool = unitPrefix(s.text, s.shown) and not(s.shownHeld and not(s.held))
 pure def cadenceDue(s: ReplyStream): bool = s.sinceSnapshot + s.text.length() - s.shown.length() >= threshold(s.lastSnapshot)
 pure def textFrame(s: ReplyStream): Frame = {
-  val tail = sliceUnits(s.text, s.shown.length(), s.text.length())
+  val rest = sliceUnits(s.text, s.shown.length(), s.text.length())
   if (not(appendable(s))) Replace({ fullText: s.text, provisional: s.held })
-  else if (cadenceDue(s)) TokenSnapshot({ text: tail, fullText: s.text, provisional: s.held })
-  else Token({ text: tail, provisional: s.held })
+  else if (cadenceDue(s)) TokenSnapshot({ text: rest, fullText: s.text, provisional: s.held })
+  else Token({ text: rest, provisional: s.held })
 }
 pure def applyFrame(shown: List[int], f: Frame): List[int] = match f {
   | Token(x) => shown.concat(x.text) | TokenSnapshot(x) => x.fullText | Replace(x) => x.fullText

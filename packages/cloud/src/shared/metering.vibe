@@ -172,7 +172,7 @@ export effect function sweepHolds(): number!!Store {
   const now = try Clock.currentTimeMillis
   let swept = 0
   const stale = store.transaction((tx) => tx.query(
-    "SELECT key, phase FROM holds WHERE (phase = 'reserved' AND created_at < $1) OR (phase = 'dispatched' AND dispatched_at < $2) ORDER BY created_at LIMIT $3",
+    "SELECT key, phase FROM holds WHERE (phase = 'reserved' AND created_at <= $1) OR (phase = 'dispatched' AND dispatched_at <= $2) ORDER BY created_at LIMIT $3",
     [now - reservedTimeout, now - dispatchedTimeout, sweepBatch]
   )) catch () => []
   for (const row of stale) {

@@ -195,8 +195,8 @@ function componentMarks(node: ManifestNode, kind: ComponentKind): ComponentMark[
 }
 
 function powerVoiceActivity(packageName: string, assist: readonly ManifestNode[]): string {
-  const named = assist.length === 1 ? childrenNamed(assist[0], "meta-data").filter((child) => child.attrs.name === POWER_VOICE_META_DATA) : []
-  const value = named.length === 1 ? named[0].attrs.value ?? "" : ""
+  const named = assist.length === 1 ? assist.flatMap((node) => childrenNamed(node, "meta-data")).filter((child) => child.attrs.name === POWER_VOICE_META_DATA) : []
+  const value = named.length === 1 ? named.map((child) => child.attrs.value ?? "").join("") : ""
   return value === "" || value.includes("/") ? "" : value.startsWith(".") ? `${packageName}${value}` : value
 }
 
@@ -356,9 +356,9 @@ export effect function writeImageProvisioningOverlay(output: string, packageName
 export effect function listenerStagingOf(patches: readonly string[], overlayConfig: string) {
   const known: SystemuiPatch[] = []
   for (const patch of patches) {
-    const known_patch = SYSTEMUI_PATCHES[patch]
-    if (known_patch === undefined) throw new UnknownSystemuiPatch({ patch })
-    known.push(known_patch)
+    const bundle = SYSTEMUI_PATCHES[patch]
+    if (bundle === undefined) throw new UnknownSystemuiPatch({ patch })
+    known.push(bundle)
   }
   const staging: ListenerStaging = {
     patches: [...new Set(known)],
@@ -385,7 +385,7 @@ export effect function writeListenerActivation(output: string, packageName: stri
 }
 
 export function clockLines(makefile: string): number {
-  return [...makefile.matchAll(/^\s*PRODUCT_PACKAGES\s*\+?=\s*(.*)$/gm)].flatMap((line) => (line[1] ?? "").split(/\s+/)).filter((token) => token === CLOCK_MODULE).length
+  return [...makefile.matchAll(/^\s*PRODUCT_PACKAGES\s*[:+]?=\s*(.*)$/gm)].flatMap((line) => (line[1] ?? "").split(/\s+/)).filter((token) => token === CLOCK_MODULE).length
 }
 
 export effect function requireClockProduct(output: string) {
