@@ -83,7 +83,7 @@ type TurnPhase = Running | Stopping({ requestedAt: int }) | StopUnconfirmed
 type Turn = { id: int, room: int, key: str, startedAt: int, phase: TurnPhase }
 type KeyPhase = KeyRunning({ turn: int }) | KeyAnswered({ reply: int, settledAt: int, boot: int }) | KeyUnanswered
 type KeyRecord = { room: int, key: str, fingerprint: int, userMessage: int, phase: KeyPhase }
-type ReplyKind = Answered | AccountFailed({ failure: B::AccountFailure }) | TimedOut | Aborted | CutByRestart
+type ReplyKind = Answered | AccountFailed({ failure: B::AccountFailure }) | TimedOut | Aborted | Unfinished
 type Heard = NotReported | HeardUpTo({ boundary: int })
 type Reply = { id: int, room: int, userMessage: int, units: List[int], kind: ReplyKind, heard: Heard }
 type StopOutcome = StopConfirmed | StopUncertain | NothingRunning
@@ -117,7 +117,7 @@ pure def send(s: Turns, room: int, key: str, fingerprint: int, now: int, inferen
   val a = decide(inferenceReady, view, key != "", roomBusy(s, room), fingerprint, s.nextId)
   val answer = List(SendAnswered({ admission: a }))
   val started: Turns = { ...s, turns: s.turns.append({ id: s.nextId, room: room, key: key, startedAt: t, phase: Running }), nextId: s.nextId + 1, clock: t }
-  val cut: Reply = { id: s.nextId, room: room, userMessage: recordAt(s, room, key).userMessage, units: List(), kind: CutByRestart, heard: NotReported }
+  val cut: Reply = { id: s.nextId, room: room, userMessage: recordAt(s, room, key).userMessage, units: List(), kind: Unfinished, heard: NotReported }
   match a {
     | Unkeyed(_) => { state: started, out: answer }
     | Owner(_) => { state: { ...started, records: s.records.append({ room: room, key: key, fingerprint: fingerprint, userMessage: s.nextId, phase: KeyRunning({ turn: s.nextId }) }) }, out: answer }
@@ -162,7 +162,7 @@ keeps no reply.
 pure val turnDeadlineMs = 180000
 pure val stopConfirmMs = 5000
 pure def failureKind(k: ReplyKind): str = match k {
-  | Answered => "" | AccountFailed(x) => B::failureName(x.failure) | TimedOut => "timeout" | Aborted => "aborted" | CutByRestart => "aborted" }
+  | Answered => "" | AccountFailed(x) => B::failureName(x.failure) | TimedOut => "timeout" | Aborted => "aborted" | Unfinished => "aborted" }
 pure def turnAt(s: Turns, turn: int): Turn = s.turns.select(t => t.id == turn).nthOr(0, noTurn)
 pure def stopAnswerOnEnd(room: int, p: TurnPhase, t: int): List[TurnAnswer] = match p {
   | Stopping(x) => List(StopAnswered({ room: room, outcome: if (t <= x.requestedAt + stopConfirmMs) StopConfirmed else StopUncertain }))
@@ -170,7 +170,7 @@ pure def stopAnswerOnEnd(room: int, p: TurnPhase, t: int): List[TurnAnswer] = ma
 pure def settleKey(records: List[KeyRecord], turn: int, p: KeyPhase): List[KeyRecord] =
   records.listMap(q => if (runningTurn(q.phase) == turn) { ...q, phase: p } else q)
 pure def canEndTurn(s: Turns, turn: int, kind: ReplyKind, now: int): bool =
-  turn >= 1 and turnAt(s, turn).id == turn and kind != CutByRestart and (kind == TimedOut implies timeAt(s, now) >= turnAt(s, turn).startedAt + turnDeadlineMs)
+  turn >= 1 and turnAt(s, turn).id == turn and kind != Unfinished and (kind == TimedOut implies timeAt(s, now) >= turnAt(s, turn).startedAt + turnDeadlineMs)
 pure def endTurn(s: Turns, turn: int, kind: ReplyKind, units: List[int], now: int): TurnStep = {
   val tr = turnAt(s, turn)
   val t = timeAt(s, now)
@@ -205,7 +205,7 @@ durable records stay, and a record whose turn was running keeps no reply.
 pure def answeredBoot(p: KeyPhase): int = match p { | KeyAnswered(x) => x.boot | _ => -1 }
 pure def restart(s: Turns): Turns =
   { ...s, turns: List(), boot: s.boot + 1, records: s.records.listMap(q => if (runningTurn(q.phase) > 0) { ...q, phase: KeyUnanswered } else q) }
-pure def sometimesCutTurnAnsweredAfterRestart(s: Turns): bool = s.boot >= 1 and s.replies.some(r => r.kind == CutByRestart)
+pure def sometimesCutTurnAnsweredAfterRestart(s: Turns): bool = s.boot >= 1 and s.replies.some(r => r.kind == Unfinished)
 pure def sometimesReplayAfterRestart(s: Turns): bool =
   s.turns.length() == 0 and s.records.some(q => answeredReply(q.phase) > 0 and answeredBoot(q.phase) < s.boot)
 ```

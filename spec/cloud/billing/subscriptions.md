@@ -1,20 +1,15 @@
 # Subscriptions
 
 The organization's subscription as the payment provider holds it, and the one
-billing command that may run for the organization at a time; one row per
-organization. Checkout (`spec/cloud/billing/checkout.md`), the commands
+billing command that may run for it at a time; one row per organization.
+Checkout (`spec/cloud/billing/checkout.md`), the commands
 (`spec/cloud/billing/subscriptionCommands.md`) and the event drain
 (`spec/cloud/billing/providerEvents.md`) all end in `reconcile`, which applies
 the provider's live subscription and latest invoice in one transaction.
-Sources are develop `packages/cloud/shared/src/lib/services/`
-`subscription-reconciliation.ts`, `subscription-payment-grace.ts`,
+Sources are develop `packages/cloud/shared/src/lib/services/subscription-*.ts`,
 `stripe-paid-renewal.ts`, `stripe-customer-authority.ts` and the Quint model
-`SubscriptionTerminalReceipt`. Downstream readers show the status, period
-end, cancel control and pending plan, list invoices and open the portal.
-
-Provider calls, identity checks against the provider (customer, price,
-environment) and answer shapes stay in the shell. Develop's upgrade, schedule
-and evidence recovery files are not ported: a lost reply is recovered by
+`SubscriptionTerminalReceipt`. Provider calls, identity checks against the
+provider and answer shapes stay in the shell; a lost reply is recovered by
 reading the live subscription again. Wire statuses are `pending`,
 `incomplete`, `active`, `dunning`, `past_due`, `unpaid`, `canceled` and
 `incomplete_expired`; no subscription is `null`.
