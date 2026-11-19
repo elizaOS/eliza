@@ -756,8 +756,10 @@ export function subPlannerResultToPlannerToolResult(
  * reads the tool definitions first and reuses a request only up to its first
  * changed byte, so the tools offered on every request of a conversation
  * precede the ones admitted per request, and REPLY, whose schema changes
- * between two requests of one turn, comes after both. Tools are dispatched by
- * name, never by position.
+ * between two requests of one turn, comes after both. The order is what this
+ * function fixes: the planner still adds its source review argument to the
+ * device tool and the other domain tools on the requests that offer one.
+ * Tools are dispatched by name, never by position.
  *
  * When no actions are gated for the current turn we fall back to an empty
  * tool array so the planner can short-circuit (the pipeline's stage-1
