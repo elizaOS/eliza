@@ -1,7 +1,5 @@
 package ai.eliza.plugins.browsersurface;
 
-import java.util.Collection;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -14,9 +12,7 @@ import java.util.Set;
  * the origin of the committed page or to an origin the host approved with {@code navigate()} (or
  * {@code createSurface}'s first address, or the {@code goBack}/{@code goForward} entry). Anything
  * else is answered locally with an empty 204, which ends the navigation without a commit, and is
- * reported to the host. So a blocked host never receives the request at all. A running task the
- * host extended to more origins ({@code setTaskOrigins}) also admits a request from one of its
- * origins to another.
+ * reported to the host. So a blocked host never receives the request at all.
  *
  * <p>Within that rule:
  *
@@ -43,28 +39,6 @@ import java.util.Set;
 public final class BrowserMainFrameGate {
   private String committed;
   private final Set<String> approved = new HashSet<>();
-  private Set<String> taskOrigins = Collections.emptySet();
-
-  /**
-   * Replace the origins of the host's running task. Each entry must already be a canonical origin
-   * ({@link BrowserWebOrigin#of}); an empty collection ends the extension. Returns false, changing
-   * nothing, for any other entry.
-   */
-  public synchronized boolean setTaskOrigins(Collection<String> origins) {
-    Set<String> next = new HashSet<>();
-    for (String origin : origins) {
-      if (origin == null || !origin.equals(BrowserWebOrigin.of(origin)) || !origin.startsWith("https://"))
-        return false;
-      next.add(origin);
-    }
-    taskOrigins = Collections.unmodifiableSet(next);
-    return true;
-  }
-
-  /** The current task origins; a page may move between them by itself. */
-  public synchronized Set<String> taskOrigins() {
-    return taskOrigins;
-  }
 
   /** The https origin a default-port http {@code origin} upgrades to, or null. */
   private static String upgrade(String origin) {
@@ -127,7 +101,6 @@ public final class BrowserMainFrameGate {
     String origin = BrowserWebOrigin.of(url);
     if (origin == null)
       return false;
-    return covers(committed, origin) || pending(origin)
-        || (committed != null && taskOrigins.contains(committed) && taskOrigins.contains(origin));
+    return covers(committed, origin) || pending(origin);
   }
 }

@@ -48,6 +48,8 @@ import { project, type Answer, type Ask } from node
 
 type Files = Readonly<Record<AgentFile, string>>
 
+error LaunchProjectionRefused { answer: string }
+
 const ROUTES = [
   { method: "GET", path: "/api/status" },
   { method: "POST", path: "/api/conversations/{id}/messages" },
@@ -138,7 +140,7 @@ effect function buildVerdict(data: Files) {
 }
 
 effect function admittedAnswer(answer: Answer | undefined) {
-  if (answer?.kind !== "admitted") return try Effect.fail(new Error(`LaunchProjection refused admitted files: ${JSON.stringify(answer)}`))
+  if (answer?.kind !== "admitted") throw new LaunchProjectionRefused({ answer: JSON.stringify(answer) })
   return answer
 }
 

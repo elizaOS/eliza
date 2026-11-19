@@ -34,12 +34,12 @@ type Turn = NoTurn | TurnOf({ capture: int })
 type Reply = NoReply | Playing({ utteranceId: str, pace: int, receivedMs: Millis, playedMs: Millis, completed: bool })
 type BatchVerdict = BatchPending | BatchDone | BatchCancelled | BatchFailed({ failure: Cr::Failure, wait: WaitTime })
 type BatchRequest = { requestId: int, direction: SpeechDirection, version: int, verdict: BatchVerdict }
-type CloudSpeech = { credential: int, bound: int, phase: Phase, extendOffered: bool, audioStarted: bool, capture: Capture, generation: int, turn: Turn, reply: Reply, batches: List[BatchRequest] }
+type CloudSpeech = { credential: int, bound: int, phase: Phase, audioStarted: bool, capture: Capture, generation: int, turn: Turn, reply: Reply, batches: List[BatchRequest] }
 type SpeechNotice = AskConsent | ReserveLiveCapture | ReleaseLiveCapture | RevokeSession | CancelUtterance({ utteranceId: str })
   | ReportRefusedKey({ version: int, reason: RefusalReason, on: C::RejectedOn }) | SessionFailed({ failure: Cr::Failure, beforeAudio: bool, wait: WaitTime })
   | Heard({ final: bool, capture: int }) | ReplySettled({ utteranceId: str, completed: bool }) | BatchSettled({ requestId: int, verdict: BatchVerdict })
 type SpeechStep = { state: CloudSpeech, out: List[SpeechNotice] }
-pure val initial: CloudSpeech = { credential: 0, bound: 0, phase: Idle, extendOffered: false, audioStarted: false, capture: Muted, generation: 0, turn: NoTurn, reply: NoReply, batches: List() }
+pure val initial: CloudSpeech = { credential: 0, bound: 0, phase: Idle, audioStarted: false, capture: Muted, generation: 0, turn: NoTurn, reply: NoReply, batches: List() }
 pure val consentDeadline: Millis = 30 * millisPerSecond
 pure def quietStep(s: CloudSpeech): SpeechStep = { state: s, out: List() }
 pure def isOpen(p: Phase): bool = match p { | Idle => false | Closed(c) => false | _ => true }
@@ -71,8 +71,8 @@ pure val weight_consentGiven = 3
 
 The shell reports `C::activeVersion` (0 when signed out or expired)
 whenever it changes; a session binds the version it started with. A new
-version, sign-out or expiry ends the open session as `AccountIneligible`
-and fails each batch request still waiting.
+version, sign-out or expiry ends the open session as `AccountIneligible`,
+revoking it and retiring its capture, and fails each waiting batch request.
 
 ```quint
 pure def keyGone(b: BatchRequest): BatchRequest = if (b.verdict == BatchPending) { ...b, verdict: BatchFailed({ failure: Cr::AccountIneligible, wait: NoWait }) } else b
@@ -92,11 +92,11 @@ pure def sometimesKeyChangeEndedSession(s: CloudSpeech): bool = s.bound >= 1 and
 
 ### Only a mint answer naming the deployment's own relay opens the socket, and a refused key is reported once and never retried
 
-The consent and mint calls answer here as one. An answer whose shape is
-wrong (version 1, expiry within one window) or whose `wsUrl` is not the
-deployment origin's relay is `Misdirected`. A `401` with a credential
-reason goes to the credential (`C::rejected`, `OtherRequest`); every
-refusal ends its request, and its retry or reset time reaches the caller.
+The consent and mint calls answer here as one. A wrong shape (version 1,
+expiry within one window) or a `wsUrl` other than the deployment origin's
+relay is `Misdirected`. A `401` with a credential reason goes to `C`
+(`C::rejected` on `OtherRequest`); every refusal ends its request, and its
+retry or reset time (a `429` or `402` limit) reaches the caller.
 
 ```quint
 type CloudAnswer = Answered | Misdirected | Unreachable | Refused({ refusal: Refusal })
@@ -108,9 +108,8 @@ pure def keyReport(a: CloudAnswer, version: int): List[SpeechNotice] = match a {
   | Refused(r) => if (r.refusal.code == AuthenticationRequired and isCredentialReason(r.refusal.reason)) List(ReportRefusedKey({ version: version, reason: r.refusal.reason, on: C::OtherRequest })) else List()
   | _ => List() }
 pure def canMinted(s: CloudSpeech): bool = s.phase == Minting
-pure def minted(s: CloudSpeech, answer: CloudAnswer, extendOffered: bool): SpeechStep =
-  if (answer == Answered) quietStep({ ...s, phase: Connecting, extendOffered: extendOffered })
-  else failWith(failureOf(answer), s, keyReport(answer, s.credential), waitOf(answer))
+pure def minted(s: CloudSpeech, answer: CloudAnswer): SpeechStep =
+  if (answer == Answered) quietStep({ ...s, phase: Connecting }) else failWith(failureOf(answer), s, keyReport(answer, s.credential), waitOf(answer))
 pure val answerValues = Set(Answered, Misdirected, Unreachable, Refused({ refusal: { code: AuthenticationRequired, reason: CredentialExpired, wait: NoWait } }),
   Refused({ refusal: { code: RateLimited, reason: NoReason, wait: RetryAt({ retryAtMs: 5000 }) } }), Refused({ refusal: { code: AllowanceExhausted, reason: NoReason, wait: ResetsAt({ resetsAtMs: 9000 }) } }))
 pure val weight_minted = 4
@@ -124,9 +123,9 @@ pure def stepARefusedKeyIsReportedOnceAndEndsItsRequest(before: CloudSpeech, via
 ### The device accepts relay frames only in protocol order, and any other frame ends the session
 
 `ready` comes once, before anything but an `error`; `connected` makes the
-session live, and turns and `complete` follow it. `extended` is accepted
-after `ready` only when the mint offered renewal. An `error`, a closed
-socket, a passed deadline or a stalled startup (`relayLost`) ends it.
+session live, and turns, `extended` and `complete` follow `ready`. Audio
+arrives as `audioArrived`. An `error`, a closed socket, a passed deadline
+or a stalled startup (`relayLost`) ends the session.
 
 ```quint
 pure def mintedPhase(p: Phase): bool = p == Connecting or p == Ready or p == Live
@@ -138,7 +137,7 @@ pure def frameArrived(s: CloudSpeech, frame: Rl::ServerFrame): SpeechStep = matc
   | ReadyFrame => if (s.phase == Connecting) quietStep({ ...s, phase: Ready }) else protocolEnd(s)
   | SttFrame(e) => if (e.kind == Rl::SttConnected) (if (s.phase == Ready) quietStep({ ...s, phase: Live }) else if (s.phase == Live) quietStep(s) else protocolEnd(s))
       else if (s.phase == Live) onTurn(e.kind, s) else protocolEnd(s)
-  | ExtendedFrame => if (s.phase != Connecting and s.extendOffered) quietStep(s) else protocolEnd(s)
+  | ExtendedFrame => if (s.phase != Connecting) quietStep(s) else protocolEnd(s)
   | CompleteFrame(f) => if (s.phase == Live) onComplete(f.id, s) else protocolEnd(s)
   | ErrorFrame(e) => failWith(relayFailure(e.code, e.reason), s, List(), NoWait)
   | CloseFrame(c) => failWith(Cr::RemoteUnreachable, s, List(), NoWait)
@@ -158,10 +157,10 @@ pure def stepTheSessionOpensInOrder(before: CloudSpeech, after: CloudSpeech): bo
 
 ### Capture starts muted, and listens only once the microphone slot is granted with RECORD_AUDIO
 
-Unmuting reserves the slot as a live capture (`M::reserve`) and the shell
-reports the slot's answer; a refused slot ends the session, as in develop.
-Each granted capture gets the next number. Muting releases the slot and
-keeps the number, so a turn the capture began may still finish.
+Unmuting reserves the slot as a live capture and the shell reports the
+slot's answer; a refused slot ends the session, as in develop. Each granted
+capture gets the next number. Muting releases the slot and keeps the
+number, so a turn the capture began may still finish.
 
 ```quint
 pure def canUnmute(s: CloudSpeech, recordAudio: bool): bool = s.phase == Live and s.capture == Muted and recordAudio
@@ -284,7 +283,7 @@ pure def endingOf(p: Phase): Ending = match p { | Closed(c) => c.ending | _ => S
 pure def closeWith(ending: Ending, s: CloudSpeech, first: List[SpeechNotice], wait: WaitTime): SpeechStep = {
   val id = replyId(s.reply)
   val failure = failureOfEnding(ending)
-  { state: { ...s, phase: Closed({ ending: ending }), capture: Muted, turn: NoTurn, reply: NoReply, extendOffered: false },
+  { state: { ...s, phase: Closed({ ending: ending }), capture: Muted, turn: NoTurn, reply: NoReply },
     out: first.concat(if (s.capture != Muted) List(ReleaseLiveCapture) else List())
       .concat(if (id != "") List(ReplySettled({ utteranceId: id, completed: false })) else List())
       .concat(if (revokeOwed(s.phase)) List(RevokeSession) else List())

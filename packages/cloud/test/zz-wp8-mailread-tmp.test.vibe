@@ -54,15 +54,13 @@ effect function check(run: () => void) {
 effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
   return try cloud.store.transaction((tx) => tx.query(text, params))
 }
-}
-
 effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string, refreshToken: string, scopes: ReadonlyArray<string>, expiresAt: number) {
   const now = try Clock.currentTimeMillis
   const tokens = try sealTokens({ refreshToken, accessToken: `stale-${connectionId}`, expiresAt })
   try cloud.store.transaction((tx) => stepRow(tx, connectionRows, connectionId, { type: "link", scopes, tokens, expiresAt }, connectionColumns({
     organization_id: owner.organizationId, user_id: owner.userId, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, linked_at: now
-})
-
+  })))
+}
 effect function entitledDevice(cloud: TestCloud, name: string, now: number) {
   const token = `eliza_mobile_${tokenDigest(name)}`
   try organization(cloud, `org-${name}`)
@@ -70,9 +68,9 @@ effect function entitledDevice(cloud: TestCloud, name: string, now: number) {
   try sql(cloud, "INSERT INTO device_grants (key, state, revision, user_id, client_id, phase, credential_id, secret_digest, code_expires_at, key_expires_at, issued_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'test-client', 'active', $3, $4, $5, $6, $5, $5)", [
     `grant-${name}`, `user-${name}`, `cred-${name}`, tokenDigest(token), now - 1000, now + 24 * 3_600_000
   ])
-  }), 60_000)
-})
-describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => {
+  return token
+}
+describe("WP8 tmp", () => {
   it.live("Triage, search and read my mail at the history Google answered, refusing a stale attachment and an oversized body (spec/cloud/services/google/mailRead.md, \"Story: Read my mail through the grant I chose\")", () => scoped(effect {
     const google = try Effect.try(() => googleFakeState())
     const now = try Clock.currentTimeMillis
@@ -159,4 +157,6 @@ describe("WP8 Managed Google (spec/cloud/services/google/connection.md, \"Story:
         draft: [200, sha256Hex(draftRaw), ["ada@example.org"], "Re: Quarterly plan", "Looks good.", true],
         anonymous: [401, "authentication_required"]
       }
+    ))
+  }), 30_000)
 })

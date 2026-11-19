@@ -76,7 +76,7 @@ const Row = Schema.Union([
     history: Schema.mutable(Schema.Array(Schema.Struct({ occurrenceId: Schema.String, dueAt: Instant, completedAt: Instant, skippedDates: Schema.Int }))),
   }),
 ])
-const Listing = Schema.Struct({ reminders: Schema.mutable(Schema.Array(Row)), notificationsEnabled: Schema.Boolean })
+schema Listing { reminders: Row[]; notificationsEnabled: boolean }
 schema Refusal { id: string; status: "failed" | "past" | "permission-denied" | "storage-full"; mode: "inexact"; message: string }
 const Scheduled = Schema.Union([
   Refusal,

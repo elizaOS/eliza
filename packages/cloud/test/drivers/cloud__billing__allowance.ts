@@ -3,10 +3,10 @@ import { ConfigProvider, Effect, Layer } from "effect";
 import type { Driver, Options } from "../../gen/cloud__billing__allowance.conformance.ts";
 import type { Event, Period } from "../../gen/cloud__billing__allowance.ts";
 import { adjustForUpgrade, clawBackInvoice, closePeriods, grantMonthKey, openGrantMonth, openRenewal, renewalKey, restoreInvoice, sweepAllowance, type Closing, type PeriodStep } from "../../src/billing/allowance.vibe";
-import { deploymentLayer, parseProfile, type Deployment } from "../../src/profile/profile.vibe";
+import { Deployment, deploymentLayer, parseProfile } from "../../src/profile/profile.vibe";
 import { periodRows, stepPeriod } from "../../src/shared/metering.vibe";
 import { loadRow } from "../../src/store/rows.vibe";
-import type { Store } from "../../src/store/connection.vibe";
+import type { Store, Tx } from "../../src/store/connection.vibe";
 import { ledger, within, type Settled } from "../support/ledger.ts";
 import { secrets, testProfile } from "../support/profile.ts";
 
@@ -22,6 +22,11 @@ async function run<A, E>(program: Effect.Effect<A, E, Store | Deployment>): Prom
     deploymentLayer(profile, environment).pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))));
   return cloud.run(Effect.provide(program, await deployment));
 }
+
+const deployed = <A, E>(body: (tx: Tx) => Effect.Effect<A, E, Deployment>) => Effect.gen(function* () {
+  const settings = yield* Deployment;
+  return yield* within((tx) => Effect.provideService(body(tx), Deployment, settings));
+});
 
 const must = <A>(what: string, done: Settled<A>): A => {
   if (done.kind === "failed") throw new Error(`${what} failed with ${done.tag}`, { cause: done.error });
@@ -66,7 +71,7 @@ async function dispatch(key: string, event: Event): Promise<"accepted" | "refuse
   const period = await observe(key);
   switch (event.type) {
     case "openRenewal":
-      return opened(key, renewalKey(environment, event.invoiceId), () => run(within((tx) => openRenewal(tx, organizationId, event, 0))));
+      return opened(key, renewalKey(environment, event.invoiceId), () => run(deployed((tx) => openRenewal(tx, organizationId, event, 0))));
     case "openGrantMonth":
       return opened(key, grantMonthKey(event.grantId, event.month), () => run(within((tx) => openGrantMonth(tx, organizationId, { id: event.grantId, planKey: event.planKey }, event, 0))));
     case "reserveHold":
@@ -88,10 +93,10 @@ async function dispatch(key: string, event: Event): Promise<"accepted" | "refuse
     case "clawBack": {
       if (event.cause === "NoClawback") return "refused";
       const cause = event.cause;
-      return moved("clawing back", await run(within((tx) => clawBackInvoice(tx, invoiceOf(period), cause, 0))));
+      return moved("clawing back", await run(deployed((tx) => clawBackInvoice(tx, invoiceOf(period), cause, 0))));
     }
     case "restore":
-      return moved("restoring", await run(within((tx) => restoreInvoice(tx, invoiceOf(period), event.now))));
+      return moved("restoring", await run(deployed((tx) => restoreInvoice(tx, invoiceOf(period), event.now))));
     default: {
       const unknown: never = event;
       throw new Error(`not an allowance event: ${JSON.stringify(unknown)}`);

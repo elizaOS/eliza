@@ -45,36 +45,40 @@ pure def recordAdmitted(channel: ReleaseChannel, r: OperatorRelease): bool =
   r.problems == 0 and channel.device != "" and r.release.product == channel.product and r.release.device == channel.device and r.channel == channel.name
     and r.release.fingerprint != "" and r.release.buildDate > 0 and r.release.securityPatch > 0 and isDigest(r.otaPackage) and isDigest(r.signedTargetFiles)
     and digestsMatch(r.otaCertificate, channel.otaCertificate) and digestsMatch(r.avbKey, channel.avbPublicKey) and r.rollbackIndexes.length() > 0
-pure def rollbackNotLower(installed: OperatorRelease, candidate: OperatorRelease): bool =
-  installed.rollbackIndexes.every(i => candidate.rollbackIndexes.some(c => c.location == i.location and c.index >= i.index))
-pure def updateAdmitted(channel: ReleaseChannel, installed: OperatorRelease, candidate: OperatorRelease): bool =
-  not(channel.downgradeAllowed) and recordAdmitted(channel, installed) and recordAdmitted(channel, candidate) and U::candidateAdmitted(installed.release, candidate.release)
-    and candidate.postTimestamp == candidate.release.buildDate and rollbackNotLower(installed, candidate) and startsFromInstalled(installed, candidate)
-pure val installedRecord: OperatorRelease = { release: { fingerprint: "b1", product: "acme_stallion", device: "stallion", buildDate: 20260101, securityPatch: 20260101, vendorPatch: 20260101 },
-  channel: "stable", problems: 0, otaCertificate: Sha256({ hex: "o1" }), avbKey: Sha256({ hex: "k1" }), rollbackIndexes: List({ location: 0, index: 1 }),
-  postTimestamp: 20260101, ota: FullOta, otaPackage: Sha256({ hex: "u1" }), signedTargetFiles: Sha256({ hex: "s1" }) }
+pure def rollbackNotLower(fromRelease: OperatorRelease, toRelease: OperatorRelease): bool =
+  fromRelease.rollbackIndexes.every(i => toRelease.rollbackIndexes.some(c => c.location == i.location and c.index >= i.index))
+pure def updateAdmitted(channel: ReleaseChannel, fromRelease: OperatorRelease, toRelease: OperatorRelease): bool =
+  not(channel.downgradeAllowed) and recordAdmitted(channel, fromRelease) and recordAdmitted(channel, toRelease) and U::candidateAdmitted(fromRelease.release, toRelease.release)
+    and toRelease.postTimestamp == toRelease.release.buildDate and rollbackNotLower(fromRelease, toRelease) and startsFromInstalled(fromRelease, toRelease)
+pure val installedRecord: OperatorRelease = { release: { fingerprint: "b1", product: "acme_stallion", device: "stallion", buildDate: 20260101, securityPatch: 20260101,
+  vendorPatch: 20260101 }, channel: "stable", problems: 0, otaCertificate: Sha256({ hex: "o1" }), avbKey: Sha256({ hex: "k1" }),
+  rollbackIndexes: List({ location: 0, index: 1 }), postTimestamp: 20260101, ota: FullOta, otaPackage: Sha256({ hex: "u1" }), signedTargetFiles: Sha256({ hex: "s1" }) }
 pure val candidateRecord: OperatorRelease = { ...installedRecord, release: { ...installedRecord.release, fingerprint: "b2", buildDate: 20260201, securityPatch: 20260201 },
   postTimestamp: 20260201, rollbackIndexes: List({ location: 0, index: 2 }), otaPackage: Sha256({ hex: "u2" }), signedTargetFiles: Sha256({ hex: "s2" }) }
 pure val channelValues = Set(acmeChannel, { ...acmeChannel, downgradeAllowed: true }, { ...acmeChannel, otaCertificate: Sha256({ hex: "o2" }) })
-pure val installedValues = Set(installedRecord)
-pure val candidateValues = Set(candidateRecord, { ...candidateRecord, rollbackIndexes: List({ location: 0, index: 0 }) }, { ...candidateRecord, postTimestamp: 20260101 },
+pure val fromReleaseValues = Set(installedRecord)
+pure val toReleaseValues = Set(candidateRecord, { ...candidateRecord, rollbackIndexes: List({ location: 0, index: 0 }) }, { ...candidateRecord, postTimestamp: 20260101 },
   { ...candidateRecord, ota: IncrementalOta({ preBuild: "b1", fromTargetFiles: Sha256({ hex: "s1" }) }) },
   { ...candidateRecord, ota: IncrementalOta({ preBuild: "b0", fromTargetFiles: Sha256({ hex: "s1" }) }) }, { ...candidateRecord, rollbackIndexes: List({ location: 1, index: 9 }) })
-pure def lawDowngradeChannelAdmitsNothing(channel: ReleaseChannel, installed: OperatorRelease, candidate: OperatorRelease): bool =
-  channel.downgradeAllowed implies not(updateAdmitted(channel, installed, candidate))
-pure def lawLowerOrMissingRollbackIndexIsRefused(channel: ReleaseChannel, installed: OperatorRelease, candidate: OperatorRelease): bool =
-  installed.rollbackIndexes.some(i => not(candidate.rollbackIndexes.some(c => c.location == i.location and c.index >= i.index))) implies not(updateAdmitted(channel, installed, candidate))
+pure def lawDowngradeChannelAdmitsNothing(channel: ReleaseChannel, fromRelease: OperatorRelease, toRelease: OperatorRelease): bool =
+  channel.downgradeAllowed implies not(updateAdmitted(channel, fromRelease, toRelease))
+pure def lawLowerOrMissingRollbackIndexIsRefused(channel: ReleaseChannel, fromRelease: OperatorRelease, toRelease: OperatorRelease): bool =
+  fromRelease.rollbackIndexes.some(i => not(toRelease.rollbackIndexes.some(c => c.location == i.location and c.index >= i.index)))
+    implies not(updateAdmitted(channel, fromRelease, toRelease))
 ```
 
 ### An incremental package starts from exactly the installed build and its signed target files
 
 ```quint
-pure def startsFromInstalled(installed: OperatorRelease, candidate: OperatorRelease): bool = match candidate.ota {
-  | IncrementalOta(o) => o.preBuild == installed.release.fingerprint and digestsMatch(o.fromTargetFiles, installed.signedTargetFiles)
+pure def startsFromInstalled(fromRelease: OperatorRelease, toRelease: OperatorRelease): bool = match toRelease.ota {
+  | IncrementalOta(o) => o.preBuild == fromRelease.release.fingerprint and digestsMatch(o.fromTargetFiles, fromRelease.signedTargetFiles)
   | _ => true
 }
-pure def lawIncrementalFromAnotherBuildIsRefused(channel: ReleaseChannel, installed: OperatorRelease, candidate: OperatorRelease): bool =
-  candidate.ota == IncrementalOta({ preBuild: "b0", fromTargetFiles: Sha256({ hex: "s1" }) }) implies not(updateAdmitted(channel, installed, candidate))
+pure def lawIncrementalFromAnotherBuildIsRefused(channel: ReleaseChannel, fromRelease: OperatorRelease, toRelease: OperatorRelease): bool = match toRelease.ota {
+  | IncrementalOta(o) => (o.preBuild != fromRelease.release.fingerprint or not(digestsMatch(o.fromTargetFiles, fromRelease.signedTargetFiles)))
+      implies not(updateAdmitted(channel, fromRelease, toRelease))
+  | _ => true
+}
 ```
 
 ### One device has one operator: every journal change and device write happens under the device's install lock
@@ -95,7 +99,7 @@ type OperatorJournal = { phase: OperatorPhase, lock: InstallLock, start: StartFa
 pure val noStart: StartFacts = { device: "", installedBuild: "", candidateBuild: "", candidatePatch: 0, originalSlot: NoSlot, originalBoot: Vf::Red, wasLocked: false, virtualAb: true }
 pure val initial: OperatorJournal = { phase: Unstarted, lock: Unlocked, start: noStart }
 pure def lockHeld(lock: InstallLock): bool = lock != Unlocked and lock != LeftLocked
-pure def settled(p: OperatorPhase): bool = p == Verified or p == RolledBack
+pure def journalSettled(p: OperatorPhase): bool = p == Verified or p == RolledBack
 pure def resumable(p: OperatorPhase): bool = p == AwaitingSideload or p == Sideloading or p == Transferred or p == VerificationFailed
 pure def fallbackPhase(p: OperatorPhase): bool = p == Transferred or p == VerificationFailed or p == Verified
 pure def canAcquireLock(s: OperatorJournal): bool = s.lock == Unlocked
@@ -103,7 +107,7 @@ pure def acquireLock(s: OperatorJournal): OperatorJournal = { ...s, lock: Locked
 pure def canBeginWrites(s: OperatorJournal): bool = s.lock == Locked({ writing: false }) and (resumable(s.phase) or fallbackPhase(s.phase))
 pure def beginWrites(s: OperatorJournal): OperatorJournal = { ...s, lock: Locked({ writing: true }) }
 pure def canReleaseLock(s: OperatorJournal): bool = lockHeld(s.lock)
-pure def releaseLock(s: OperatorJournal): OperatorJournal = { ...s, lock: if (s.lock == Locked({ writing: false }) or settled(s.phase)) Unlocked else LeftLocked }
+pure def releaseLock(s: OperatorJournal): OperatorJournal = { ...s, lock: if (s.lock == Locked({ writing: false }) or journalSettled(s.phase)) Unlocked else LeftLocked }
 pure def canRemoveLeftLock(s: OperatorJournal): bool = s.lock == LeftLocked
 pure def removeLeftLock(s: OperatorJournal): OperatorJournal = { ...s, lock: Unlocked }
 pure def alwaysWritesOnlyOnAJournal(s: OperatorJournal): bool = s.lock == Locked({ writing: true }) implies s.phase != Unstarted
@@ -111,7 +115,7 @@ pure def stepJournalChangesOnlyUnderLock(before: OperatorJournal, after: Operato
 pure def stepDeviceWritesOnlyAfterTheLockIsMarked(before: OperatorJournal, after: OperatorJournal): bool =
   (before.phase != after.phase and (after.phase == Sideloading or after.phase == FallingBack)) implies before.lock == Locked({ writing: true })
 pure def stepLockFreedOnlyWhenSafe(before: OperatorJournal, via: str, after: OperatorJournal): bool =
-  (before.lock != Unlocked and after.lock == Unlocked) implies (via == "removeLeftLock" or before.lock == Locked({ writing: false }) or settled(after.phase))
+  (before.lock != Unlocked and after.lock == Unlocked) implies (via == "removeLeftLock" or before.lock == Locked({ writing: false }) or journalSettled(after.phase))
 pure def sometimesLockLeftAfterFailedWrites(s: OperatorJournal): bool = s.lock == LeftLocked and s.phase == AwaitingSideload
 ```
 
@@ -125,23 +129,28 @@ Virtual A/B.
 ```quint
 type AndroidReading = { device: str, fingerprint: str, slot: Slot, selinux: Vf::SelinuxReading, verifiedBoot: Vf::BootReading, flashLocked: bool, securityPatch: int, virtualAb: bool }
 type DeviceObservation = InSideload | InRecovery | InBootloader | Unreachable | StillBooting | OnAndroid(AndroidReading)
-pure def bootStateOf(reading: Vf::BootReading): Vf::BootState = match reading { | Vf::BootRead(r) => r.booted | _ => Vf::Red }
-pure def startsFrom(observed: DeviceObservation, channel: ReleaseChannel, installed: OperatorRelease): bool = match observed {
-  | OnAndroid(b) => b.device == channel.device and b.fingerprint == installed.release.fingerprint and b.slot != NoSlot and b.selinux == Vf::Enforcing and b.verifiedBoot != Vf::BootUnread
+pure def bootAtLeast(reading: Vf::BootReading, minimum: Vf::BootState): bool = Vf::bootOutcome(Vf::BootAtLeast({ minimum: minimum }), reading) == Vf::Pass
+pure def bootStateOf(reading: Vf::BootReading): Vf::BootState =
+  if (bootAtLeast(reading, Vf::Green)) Vf::Green else if (bootAtLeast(reading, Vf::Yellow)) Vf::Yellow else if (bootAtLeast(reading, Vf::Orange)) Vf::Orange else Vf::Red
+pure def startsFrom(observed: DeviceObservation, channel: ReleaseChannel, fromRelease: OperatorRelease): bool = match observed {
+  | OnAndroid(b) => b.device == channel.device and b.fingerprint == fromRelease.release.fingerprint and b.slot != NoSlot and b.selinux == Vf::Enforcing
+      and b.verifiedBoot != Vf::BootUnread
   | _ => false
 }
-pure def canBegin(s: OperatorJournal, channel: ReleaseChannel, installed: OperatorRelease, candidate: OperatorRelease, observed: DeviceObservation): bool =
-  s.phase == Unstarted and lockHeld(s.lock) and updateAdmitted(channel, installed, candidate) and startsFrom(observed, channel, installed)
-pure def begin(s: OperatorJournal, channel: ReleaseChannel, installed: OperatorRelease, candidate: OperatorRelease, observed: DeviceObservation): OperatorJournal = match observed {
-  | OnAndroid(b) => { ...s, phase: AwaitingSideload, start: { device: b.device, installedBuild: b.fingerprint, candidateBuild: candidate.release.fingerprint,
-      candidatePatch: candidate.release.securityPatch, originalSlot: b.slot, originalBoot: bootStateOf(b.verifiedBoot), wasLocked: b.flashLocked, virtualAb: b.virtualAb } }
-  | _ => s
-}
+pure def canBegin(s: OperatorJournal, channel: ReleaseChannel, fromRelease: OperatorRelease, toRelease: OperatorRelease, observed: DeviceObservation): bool =
+  s.phase == Unstarted and lockHeld(s.lock) and updateAdmitted(channel, fromRelease, toRelease) and startsFrom(observed, channel, fromRelease)
+pure def begin(s: OperatorJournal, channel: ReleaseChannel, fromRelease: OperatorRelease, toRelease: OperatorRelease, observed: DeviceObservation): OperatorJournal =
+  match observed {
+    | OnAndroid(b) => { ...s, phase: AwaitingSideload, start: { device: b.device, installedBuild: b.fingerprint, candidateBuild: toRelease.release.fingerprint,
+        candidatePatch: toRelease.release.securityPatch, originalSlot: b.slot, originalBoot: bootStateOf(b.verifiedBoot), wasLocked: b.flashLocked, virtualAb: b.virtualAb } }
+    | _ => s
+  }
 pure val onInstalled: AndroidReading = { device: "stallion", fingerprint: "b1", slot: SlotA, selinux: Vf::Enforcing, verifiedBoot: Vf::BootRead({ booted: Vf::Yellow }),
   flashLocked: true, securityPatch: 20260101, virtualAb: true }
 pure val onCandidate: AndroidReading = { ...onInstalled, fingerprint: "b2", slot: SlotB, securityPatch: 20260201 }
-pure val observedValues = Set(InSideload, InBootloader, Unreachable, OnAndroid(onInstalled), OnAndroid(onCandidate), OnAndroid({ ...onCandidate, verifiedBoot: Vf::BootRead({ booted: Vf::Orange }) }),
-  OnAndroid({ ...onCandidate, selinux: Vf::Permissive }), OnAndroid({ ...onInstalled, slot: SlotB }), OnAndroid({ ...onInstalled, fingerprint: "b9" }))
+pure val observedValues = Set(InSideload, InBootloader, Unreachable, OnAndroid(onInstalled), OnAndroid(onCandidate),
+  OnAndroid({ ...onCandidate, verifiedBoot: Vf::BootRead({ booted: Vf::Orange }) }), OnAndroid({ ...onCandidate, selinux: Vf::Permissive }),
+  OnAndroid({ ...onInstalled, slot: SlotB }), OnAndroid({ ...onInstalled, fingerprint: "b9" }))
 pure def alwaysJournalBound(s: OperatorJournal): bool =
   if (s.phase == Unstarted) s.start == noStart
   else s.start.device != "" and s.start.installedBuild != "" and s.start.candidateBuild != "" and s.start.installedBuild != s.start.candidateBuild and s.start.originalSlot != NoSlot
@@ -166,14 +175,16 @@ pure def nextStep(start: StartFacts, observed: DeviceObservation): NextStep = ma
       else if (b.fingerprint == start.installedBuild and b.slot == start.originalSlot) Retry else Refuse
   | _ => Absent
 }
-pure val started: StartFacts = { device: "stallion", installedBuild: "b1", candidateBuild: "b2", candidatePatch: 20260201, originalSlot: SlotA, originalBoot: Vf::Yellow, wasLocked: true, virtualAb: true }
-pure val startValues = Set(started, { ...started, virtualAb: false, wasLocked: false })
+pure val started: StartFacts = { device: "stallion", installedBuild: "b1", candidateBuild: "b2", candidatePatch: 20260201, originalSlot: SlotA, originalBoot: Vf::Yellow,
+  wasLocked: true, virtualAb: true }
+pure val startValues = Set(started, { ...started, virtualAb: false, wasLocked: false, originalBoot: Vf::Orange })
 pure def lawForeignBuildIsRefused(start: StartFacts, observed: DeviceObservation): bool = match observed {
   | OnAndroid(b) => (b.fingerprint != start.installedBuild and b.fingerprint != start.candidateBuild) implies nextStep(start, observed) == Refuse
   | _ => true
 }
 pure def lawInstalledBuildOnTheOtherSlotIsRefused(start: StartFacts, observed: DeviceObservation): bool = match observed {
-  | OnAndroid(b) => (b.device == start.device and b.fingerprint == start.installedBuild and b.slot != start.originalSlot) implies nextStep(start, observed) == Refuse
+  | OnAndroid(b) => (b.device == start.device and b.fingerprint == start.installedBuild and b.fingerprint != start.candidateBuild and b.slot != start.originalSlot)
+      implies nextStep(start, observed) == Refuse
   | _ => true
 }
 ```
@@ -203,13 +214,15 @@ a verified journal changes only by a fallback.
 ```quint
 pure def bootVerified(start: StartFacts, observed: DeviceObservation): bool = match observed {
   | OnAndroid(b) => b.device == start.device and b.fingerprint == start.candidateBuild and b.slot != NoSlot and b.slot != start.originalSlot and b.selinux == Vf::Enforcing
-      and (not(start.wasLocked) or b.flashLocked) and Vf::bootOutcome(Vf::BootAtLeast({ minimum: start.originalBoot }), b.verifiedBoot) == Vf::Pass and b.securityPatch == start.candidatePatch
+      and (not(start.wasLocked) or b.flashLocked) and bootAtLeast(b.verifiedBoot, start.originalBoot) and b.securityPatch == start.candidatePatch
   | _ => false
 }
 pure def canVerifyBoot(s: OperatorJournal, observed: DeviceObservation): bool = lockHeld(s.lock) and resumable(s.phase) and nextStep(s.start, observed) == Verify
 pure def verifyBoot(s: OperatorJournal, observed: DeviceObservation): OperatorJournal = { ...s, phase: if (bootVerified(s.start, observed)) Verified else VerificationFailed }
 pure def lawUnreadOrWeakerBootNeverVerifies(start: StartFacts, observed: DeviceObservation): bool = match observed {
-  | OnAndroid(b) => (b.verifiedBoot == Vf::BootUnread or b.verifiedBoot == Vf::BootRead({ booted: Vf::Orange }) or b.selinux != Vf::Enforcing) implies not(bootVerified(start, observed))
+  | OnAndroid(b) => (b.verifiedBoot == Vf::BootUnread or b.selinux != Vf::Enforcing
+      or ((start.originalBoot == Vf::Green or start.originalBoot == Vf::Yellow) and b.verifiedBoot == Vf::BootRead({ booted: Vf::Orange })))
+      implies not(bootVerified(start, observed))
   | _ => not(bootVerified(start, observed))
 }
 pure def stepVerifiedChangesOnlyByFallback(before: OperatorJournal, after: OperatorJournal): bool = before.phase == Verified implies (after.phase == Verified or after.phase == FallingBack)
@@ -255,7 +268,7 @@ updating again starts a new journal.
 
 ```quint
 pure def bootRestored(start: StartFacts, observed: DeviceObservation): bool = match observed {
-  | OnAndroid(b) => b.fingerprint == start.installedBuild and b.slot == start.originalSlot and b.selinux == Vf::Enforcing
+  | OnAndroid(b) => b.device == start.device and b.fingerprint == start.installedBuild and b.slot == start.originalSlot and b.selinux == Vf::Enforcing
   | _ => false
 }
 pure def canFallbackEnded(s: OperatorJournal, observed: DeviceObservation): bool = s.phase == FallingBack and s.lock == Locked({ writing: true })
@@ -288,8 +301,10 @@ pure def retentionAdmitted(channel: ReleaseChannel, retention: Retention): bool 
   recordAdmitted(channel, retention.record) and retention.placeholders == 0 and retention.keys == ReleaseKeys
     and digestsMatch(retention.targetFiles, retention.record.signedTargetFiles) and digestsMatch(retention.imageVbmeta, retention.recordVbmeta)
 pure def retainedKnownGood(channel: ReleaseChannel, retention: Retention): KnownGood =
-  if (retentionAdmitted(channel, retention)) KnownGoodRelease({ buildFingerprint: retention.record.release.fingerprint, updatePackage: retention.record.otaPackage }) else NoKnownGood
-pure val retainedRelease: Retention = { record: installedRecord, placeholders: 0, keys: ReleaseKeys, targetFiles: Sha256({ hex: "s1" }), recordVbmeta: Sha256({ hex: "v1" }), imageVbmeta: Sha256({ hex: "v1" }) }
+  if (retentionAdmitted(channel, retention)) KnownGoodRelease({ buildFingerprint: retention.record.release.fingerprint, updatePackage: retention.record.otaPackage })
+  else NoKnownGood
+pure val retainedRelease: Retention = { record: installedRecord, placeholders: 0, keys: ReleaseKeys, targetFiles: Sha256({ hex: "s1" }), recordVbmeta: Sha256({ hex: "v1" }),
+  imageVbmeta: Sha256({ hex: "v1" }) }
 pure val retentionValues = Set(retainedRelease, { ...retainedRelease, keys: TestKeys }, { ...retainedRelease, keys: DevKeys }, { ...retainedRelease, placeholders: 1 },
   { ...retainedRelease, imageVbmeta: Sha256({ hex: "v2" }) }, { ...retainedRelease, targetFiles: NotADigest })
 pure def lawTestOrDevKeysAreNeverKnownGood(channel: ReleaseChannel, retention: Retention): bool =
@@ -312,7 +327,8 @@ type StockArchive = { sha256: Digest, lockedFactory: Digest, sizeMatches: bool, 
 pure def stockPlanAdmitted(channel: ReleaseChannel, archive: StockArchive): bool =
   digestsMatch(archive.sha256, channel.stockFactoryImage) and digestsMatch(channel.stockFactoryImage, archive.lockedFactory) and archive.sizeMatches
     and archive.topDirectories == 1 and archive.bootloaderImages == 1 and archive.radioImages == 1 and archive.systemImages == 1 and archive.buildMatches
-pure val lockedArchive: StockArchive = { sha256: Sha256({ hex: "f1" }), lockedFactory: Sha256({ hex: "f1" }), sizeMatches: true, topDirectories: 1, bootloaderImages: 1, radioImages: 1, systemImages: 1, buildMatches: true }
+pure val lockedArchive: StockArchive = { sha256: Sha256({ hex: "f1" }), lockedFactory: Sha256({ hex: "f1" }), sizeMatches: true, topDirectories: 1, bootloaderImages: 1,
+  radioImages: 1, systemImages: 1, buildMatches: true }
 pure val archiveValues = Set(lockedArchive, { ...lockedArchive, sha256: Sha256({ hex: "f2" }) }, { ...lockedArchive, lockedFactory: Sha256({ hex: "f2" }) },
   { ...lockedArchive, radioImages: 2 }, { ...lockedArchive, buildMatches: false })
 pure def lawPlanOnlyForTheLockedFactoryImage(channel: ReleaseChannel, archive: StockArchive): bool =

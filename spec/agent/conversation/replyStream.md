@@ -113,14 +113,15 @@ pure def writeNext(left: bool, s: ReplyStream): StreamStep = {
   else if (t.progress != NoProgress) { state: { ...t, inFlight: true, progress: NoProgress }, out: List(Write({ frame: Progressed({ progress: t.progress }) })) }
   else { state: t, out: List() }
 }
+pure def written(out: List[Effect]): List[Frame] = out.foldl(List(), (acc, e) => match e { | Write(w) => acc.append(w.frame) | AbortTurn => acc })
 pure def canFrameFlushed(s: ReplyStream): bool = s.inFlight
 pure def frameFlushed(s: ReplyStream): StreamStep = writeNext(true, s)
 pure def alwaysCaughtUpWhenFree(s: ReplyStream): bool =
   (s.role == Streams and isOpen(s.phase) and not(s.inFlight)) implies
     (s.shown == s.text and s.shownHeld == s.held and s.progress == NoProgress and not(readyPending(s.ready)))
 pure def stepOneFrameInFlight(before: ReplyStream, via: str, after: ReplyStream, out: List[Effect]): bool =
-  out.select(e => e != AbortTurn).length() <= 1 and
-  (out.some(e => e != AbortTurn) implies (after.inFlight and (not(before.inFlight) or via == "frameFlushed")))
+  written(out).length() <= 1 and
+  (written(out).length() > 0 implies (after.inFlight and (not(before.inFlight) or via == "frameFlushed")))
 pure def sometimesTextWaitsBehindAFrame(s: ReplyStream): bool = s.inFlight and s.text != s.shown and s.progress != NoProgress
 ```
 
@@ -131,7 +132,7 @@ turn's; otherwise the frame carries the whole text.
 
 ```quint
 pure def rebuilt(shown: List[int], out: List[Effect]): List[int] =
-  out.foldl(shown, (acc, e) => match e { | Write(w) => applyFrame(acc, w.frame) | AbortTurn => acc })
+  written(out).foldl(shown, (acc, f) => applyFrame(acc, f))
 pure def stepFramesRebuildTheText(before: ReplyStream, after: ReplyStream, out: List[Effect]): bool = rebuilt(before.shown, out) == after.shown
 ```
 
@@ -154,12 +155,10 @@ pure val unitsValues = {
 }
 pure def markOf(f: Frame): bool = match f { | Token(x) => x.provisional | TokenSnapshot(x) => x.provisional | Replace(x) => x.provisional | _ => false }
 pure def stepAppendsNeverClearTheMark(before: ReplyStream, after: ReplyStream, out: List[Effect]): bool =
-  out.every(e => match e {
-    | Write(w) => match w.frame { | Token(x) => x.provisional or not(before.shownHeld) | _ => true }
-    | AbortTurn => true })
+  written(out).every(f => match f { | Token(x) => x.provisional or not(before.shownHeld) | _ => true })
 pure def isTextFrame(f: Frame): bool = match f { | Token(_) => true | TokenSnapshot(_) => true | Replace(_) => true | _ => false }
 pure def stepMarkFollowsTheText(before: ReplyStream, after: ReplyStream, out: List[Effect]): bool =
-  out.every(e => match e { | Write(w) => isTextFrame(w.frame) implies markOf(w.frame) == after.shownHeld | AbortTurn => true })
+  written(out).every(f => isTextFrame(f) implies markOf(f) == after.shownHeld)
 pure def sometimesProvisionalShown(s: ReplyStream): bool = s.role == Streams and s.shownHeld and s.shown != List()
 ```
 
@@ -191,9 +190,7 @@ reply.
 pure def alwaysSnapshotCadence(s: ReplyStream): bool =
   s.sinceSnapshot >= 0 and s.lastSnapshot >= 0 and s.shown.length() == s.lastSnapshot + s.sinceSnapshot and s.sinceSnapshot < threshold(s.lastSnapshot)
 pure def stepCadenceSnapshotsAtLeastDouble(before: ReplyStream, after: ReplyStream, out: List[Effect]): bool =
-  out.every(e => match e {
-    | Write(w) => match w.frame { | TokenSnapshot(x) => x.fullText.length() >= 2 * before.lastSnapshot and x.fullText.length() >= before.lastSnapshot + 2048 | _ => true }
-    | AbortTurn => true })
+  written(out).every(f => match f { | TokenSnapshot(x) => x.fullText.length() >= 2 * before.lastSnapshot and x.fullText.length() >= before.lastSnapshot + 2048 | _ => true })
 pure def sometimesTextAfterACadenceSnapshot(s: ReplyStream): bool = s.lastSnapshot >= 2048 and s.sinceSnapshot > 0
 ```
 
@@ -219,11 +216,11 @@ pure def canAnnounceReply(s: ReplyStream): bool = s.role == Streams and isOpen(s
 pure def announceReply(s: ReplyStream, units: List[int], results: int): StreamStep =
   writeNext(false, { ...s, ready: ReadyPending({ text: units, results: results }) })
 pure val resultsValues = Set(0, 1)
-pure def isReadyFrame(e: Effect): bool = match e { | Write(w) => match w.frame { | ReadyFrame(_) => true | _ => false } | AbortTurn => false }
+pure def isReadyFrame(f: Frame): bool = match f { | ReadyFrame(_) => true | _ => false }
 pure def isReadySent(r: Readiness): bool = match r { | ReadySent(_) => true | _ => false }
 pure def stepReadyAtMostOnce(before: ReplyStream, after: ReplyStream, out: List[Effect]): bool =
-  (isReadySent(before.ready) implies (after.ready == before.ready and not(out.some(e => isReadyFrame(e))))) and
-  (out.some(e => isReadyFrame(e)) implies isReadySent(after.ready))
+  (isReadySent(before.ready) implies (after.ready == before.ready and not(written(out).some(f => isReadyFrame(f))))) and
+  (written(out).some(f => isReadyFrame(f)) implies isReadySent(after.ready))
 pure def doneAgrees(e: Ending, r: Readiness): bool = match e {
   | Done(x) => r == NotReady or (x.failure == "" and x.results == announcedResults(r)) | Errored(_) => true }
 pure def alwaysAnAnnouncedReplyEndsAnswered(s: ReplyStream): bool =
@@ -253,10 +250,8 @@ pure val kindValues = Set(T::Answered, T::TimedOut, T::Aborted)
 pure val codeValues = Set("", "ASSISTANT_RESPONSE_UNAVAILABLE")
 pure def isEnded(p: Phase): bool = match p { | Ended(_) => true | Dropped => true | _ => false }
 pure def stepNothingAfterTheEnd(before: ReplyStream, after: ReplyStream, out: List[Effect]): bool =
-  (isEnded(before.phase) implies (out.every(e => e == AbortTurn) and (after.phase == before.phase or after.phase == Dropped))) and
-  out.every(e => match e {
-    | Write(w) => match w.frame { | Final(x) => not(isEnded(before.phase)) and isSent(after.phase) and ending(after.phase) == x.end | _ => true }
-    | AbortTurn => true })
+  (isEnded(before.phase) implies (written(out) == List() and (after.phase == before.phase or after.phase == Dropped))) and
+  written(out).every(f => match f { | Final(x) => not(isEnded(before.phase)) and isSent(after.phase) and ending(after.phase) == x.end | _ => true })
 pure def failureOf(e: Ending): str = match e { | Done(x) => x.failure | Errored(_) => "" }
 pure def sometimesFailedTurnStillDone(s: ReplyStream): bool = isSent(s.phase) and failureOf(ending(s.phase)) == "timeout"
 pure def sometimesJoinedGetsTheReply(s: ReplyStream): bool = s.role == Waits and isSent(s.phase) and not(s.inFlight)

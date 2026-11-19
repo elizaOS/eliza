@@ -1,0 +1,302 @@
+// spec/os/android/media/catalog.md, "Story: Page my photos without repeats"; spec/os/android/media/trash.md, "Story: Trash or restore the exact items I selected"; spec/os/android/media/trash.md, "Story: Delete only the trash I confirmed"; spec/os/android/media/albums.md, "Story: Change an album only as listed"; spec/os/android/files/documentGrants.md, "Story: Keep only the documents I selected"
+import { assert, it } from "@effect/vitest"
+import { BridgeUnavailable, MalformedReply } from "../src/bridges/bridge.vibe"
+import { photosClient, photosPlugin, selectedDocumentsClient, UnconfirmedRow } from "../src/bridges/media.vibe"
+
+module android {
+  import type { PhotosPlugin, SelectedDocumentsPlugin } from "../src/bridges/definitions/media.ts"
+
+  interface Row {
+    readonly id: string
+    readonly date: number
+    revision: number
+    trashed: boolean
+    favorite: boolean
+  }
+
+  interface Album {
+    readonly id: string
+    name: string
+    revision: number
+    memberIds: string[]
+  }
+
+  export interface Phone {
+    rows: Row[]
+    albums: Album[]
+    prepared: Map<string, readonly string[]>
+    issued: number
+    deletes: number
+    malformed: boolean
+  }
+
+  /** @throws {never} */
+  export function phone(count: number): Phone {
+    return { rows: Array.from({ length: count }, (_, at) => ({ id: `m${at + 1}`, date: 1000 - at, revision: 1, trashed: false, favorite: false })), albums: [], prepared: new Map(), issued: 0, deletes: 0, malformed: false }
+  }
+
+  /** @throws {never} */
+  export function touch(device: Phone, id: string) {
+    const row = device.rows.find((candidate) => candidate.id === id)
+    if (row !== undefined) row.revision += 1
+  }
+
+  const item = (row: Row) => ({ id: row.id, kind: "image", width: 4, height: 3, date: row.date, size: 12, revision: `r${row.revision}`, favorite: row.favorite, owned: true, trashed: row.trashed })
+  const album = (entry: Album) => ({ id: entry.id, name: entry.name, revision: `a${entry.revision}`, count: entry.memberIds.length, memberIds: [...entry.memberIds] })
+  const refused = (message: string) => Promise.reject(Object.assign(new Error(message), { code: "REJECTED" }))
+  const unimplemented = () => Promise.reject(Object.assign(new Error("Not implemented"), { code: "UNIMPLEMENTED" }))
+
+  /** @throws {never} */
+  export function photos(device: Phone): PhotosPlugin {
+    const find = (id: string) => device.rows.find((row) => row.id === id)
+    const issue = (prefix: string) => {
+      device.issued += 1
+      return `${prefix}${device.issued}`
+    }
+    return {
+      libraryAccess: unimplemented,
+      watchLibrary: unimplemented,
+      openLibrarySettings: unimplemented,
+      requestLibraryAccess: unimplemented,
+      listPermitted: unimplemented,
+      readPermitted: unimplemented,
+      share: unimplemented,
+      addListener: unimplemented,
+      beginEdit: unimplemented,
+      previewEdit: unimplemented,
+      saveEdit: unimplemented,
+      editResult: unimplemented,
+      cancelEdit: unimplemented,
+      beginVideoEdit: unimplemented,
+      saveVideoEdit: unimplemented,
+      cancelVideoEdit: unimplemented,
+      reviewRemovedVideoCopy: unimplemented,
+      thumbnails: unimplemented,
+      read: unimplemented,
+      keepCapture: unimplemented,
+      shareMany: unimplemented,
+      setFavorite: unimplemented,
+      deletePermittedTrash: unimplemented,
+      changeMany: unimplemented,
+      summary: unimplemented,
+      list: async ({ before, trashed = false, limit = 24 }) => {
+        if (device.malformed) return { items: [{ id: "m1" }], next: "" }
+        const listed = device.rows.filter((row) => row.trashed === trashed)
+        const start = before === undefined ? 0 : listed.findIndex((row) => row.id === before) + 1
+        const window = listed.slice(start, start + limit + 1)
+        const page = window.slice(0, limit)
+        return { items: page.map(item), next: window.length > limit ? page.at(-1)?.id ?? "" : "" }
+      },
+      setTrashed: async ({ id, revision, trashed }) => {
+        const row = find(id)
+        if (row === undefined) return refused("This item is no longer there")
+        if (`r${row.revision}` !== revision) return { ...item(row), status: "stale" }
+        row.trashed = trashed
+        row.revision += 1
+        return { ...item(row), status: trashed ? "trashed" : "restored" }
+      },
+      prepareDeleteTrash: async (selection) => {
+        const chosen = "all" in selection ? device.rows.filter((row) => row.trashed).map((row) => row.id) : selection.items.flatMap((asked) => {
+          const row = find(asked.id)
+          return row !== undefined && row.trashed && `r${row.revision}` === asked.revision ? [`${row.id}@${row.revision}`] : []
+        })
+        const confirmation = issue("confirm-")
+        device.prepared.set(confirmation, chosen)
+        return { confirmation, count: chosen.length }
+      },
+      cancelDeleteTrash: async ({ confirmation }) => {
+        device.prepared.delete(confirmation)
+      },
+      deletePreparedTrash: async ({ confirmation }) => {
+        const snapshot = device.prepared.get(confirmation)
+        if (snapshot === undefined) return refused("Delete confirmation expired. Review trash again.")
+        device.prepared.delete(confirmation)
+        const deletedIds: string[] = []
+        const skippedIds: string[] = []
+        for (const entry of snapshot) {
+          const [id, revision] = entry.split("@")
+          const row = find(id)
+          if (row === undefined || !row.trashed || `${row.revision}` !== revision) {
+            skippedIds.push(id)
+            continue
+          }
+          device.deletes += 1
+          device.rows = device.rows.filter((kept) => kept.id !== id)
+          deletedIds.push(id)
+        }
+        return { status: skippedIds.length === 0 ? "deleted" : "partial", deletedIds, skippedIds, failedIds: [] }
+      },
+      albums: async () => ({ items: device.albums.map(album) }),
+      changeAlbum: async (change) => {
+        if (change.operation === "create") {
+          const created = { id: issue("album-"), name: change.name, revision: 1, memberIds: [] }
+          device.albums.push(created)
+          return { status: "saved", id: created.id, revision: "a1" }
+        }
+        const target = device.albums.find((entry) => entry.id === change.id)
+        if (target === undefined || `a${target.revision}` !== change.revision) return refused("Album could not be saved. Reload albums before trying again")
+        switch (change.operation) {
+          case "rename":
+            target.name = change.name
+            break
+          case "delete":
+            device.albums = device.albums.filter((entry) => entry !== target)
+            return { status: "deleted", id: target.id, revision: `a${target.revision}` }
+          case "add": {
+            const row = find(change.mediaId)
+            if (row === undefined || `r${row.revision}` !== change.mediaRevision) return refused("Album could not be saved. Reload albums before trying again")
+            target.memberIds.push(row.id)
+            break
+          }
+          case "remove":
+            target.memberIds = target.memberIds.filter((id) => id !== change.mediaId)
+            break
+        }
+        target.revision += 1
+        return { status: "saved", id: target.id, revision: `a${target.revision}` }
+      },
+    }
+  }
+
+  export interface Picker {
+    selections: Map<string, string>
+    grants: Set<string>
+  }
+
+  /** @throws {never} */
+  export function picker(names: readonly string[]): Picker {
+    return { selections: new Map(names.map((name, at) => [`selection-${at + 1}`, name])), grants: new Set(names) }
+  }
+
+  /** @throws {never} */
+  export function documents(device: Picker): SelectedDocumentsPlugin {
+    const described = (selectionId: string) => {
+      const name = device.selections.get(selectionId)
+      return name === undefined || !device.grants.has(name)
+        ? { status: "unavailable", message: "Select this document again." }
+        : { status: "selected", action: "files", selectionId, uri: `content://documents/${name}`, name, mimeType: "application/pdf", canRename: true }
+    }
+    return {
+      restoreSelected: async () => described([...device.selections.keys()].at(-1) ?? ""),
+      describeSelected: async ({ selectionId }) => described(selectionId),
+      renameSelected: unimplemented,
+      pdfSelected: unimplemented,
+      readSelected: async ({ selectionId }) => (device.selections.has(selectionId) ? { status: "read", message: "Read.", text: "notes", mimeType: "text/plain", bytes: 5 } : { status: "unavailable", message: "Select this document again." }),
+      openSelected: unimplemented,
+      shareSelected: unimplemented,
+      forgetSelected: async ({ selectionId }) => {
+        const name = device.selections.get(selectionId)
+        device.selections.delete(selectionId)
+        if (name !== undefined && ![...device.selections.values()].includes(name)) device.grants.delete(name)
+      },
+    }
+  }
+}
+import { documents, phone, photos, picker, touch } from android
+
+effect function refusal(call: () => Promise<unknown>) {
+  const { cause } = try flip(tryPromise(() => call()))
+  if (cause instanceof MalformedReply) return `malformed ${cause.method}`
+  if (cause instanceof BridgeUnavailable) return `unavailable ${cause.plugin}.${cause.method}`
+  if (cause instanceof UnconfirmedRow) return `unconfirmed ${cause.method} ${cause.id} ${cause.status}`
+  return cause instanceof Error ? cause.message : String(cause)
+}
+
+it.live("Page my photos with a cursor, trash two, delete only the confirmed trash once, change an album as listed and forget a selected document (spec/os/android/media/catalog.md, \"Story: Page my photos without repeats\"; spec/os/android/media/trash.md, \"Story: Trash or restore the exact items I selected\"; spec/os/android/media/trash.md, \"Story: Delete only the trash I confirmed\"; spec/os/android/media/albums.md, \"Story: Change an album only as listed\"; spec/os/android/files/documentGrants.md, \"Story: Keep only the documents I selected\")", () => effect {
+  const device = phone(5)
+  const library = photosClient(photos(device), "DevicePhotos")
+
+  const first = try promise(() => library.list({ limit: 2 }))
+  const second = try promise(() => library.list({ limit: 2, before: first.next ?? undefined }))
+  const last = try promise(() => library.list({ limit: 2, before: second.next ?? undefined }))
+
+  const [one, two, three] = first.items.concat(second.items)
+  const trashedOne = try promise(() => library.setTrashed(one, true))
+  const trashedTwo = try promise(() => library.setTrashed(two, true))
+  touch(device, three.id)
+  const staleTrash = try refusal(() => library.setTrashed(three, true))
+
+  const trash = try promise(() => library.list({ trashed: true }))
+  const cancelled = try promise(() => library.prepareDeleteTrash({ items: trash.items }))
+  try promise(() => library.cancelDeleteTrash(cancelled.confirmation))
+  const cancelledUse = try refusal(() => library.deletePreparedTrash(cancelled.confirmation))
+  const prepared = try promise(() => library.prepareDeleteTrash({ items: trash.items }))
+  const restoredTwo = try promise(() => library.setTrashed(trash.items[1], false))
+  const receipt = try promise(() => library.deletePreparedTrash(prepared.confirmation))
+  const reused = try refusal(() => library.deletePreparedTrash(prepared.confirmation))
+  const remaining = try promise(() => library.list())
+
+  const created = try promise(() => library.changeAlbum({ operation: "create", name: "Trips" }))
+  const [listed] = try promise(() => library.albums())
+  const current = remaining.items[0]
+  const added = try promise(() => library.changeAlbum({ operation: "add", id: listed.id, revision: listed.revision, mediaId: current.id, mediaRevision: current.revision }))
+  const staleAlbum = try refusal(() => library.changeAlbum({ operation: "rename", id: listed.id, revision: listed.revision, name: "Old" }))
+  const albumsAfter = try promise(() => library.albums())
+
+  const grants = picker(["report.pdf", "notes.txt"])
+  const selected = selectedDocumentsClient(documents(grants), "DeviceDocuments")
+  const restored = try promise(() => selected.restore())
+  const selectionId = restored.selectionId
+  if (selectionId === undefined) throw new MalformedReply({ plugin: "DeviceDocuments", method: "restoreSelected", issue: "The restored document names no selection" })
+  const before = try promise(() => selected.read(selectionId))
+  try promise(() => selected.forget(selectionId))
+  const after = try promise(() => selected.describe(selectionId))
+
+  device.malformed = true
+  const malformed = try refusal(() => library.list())
+  const absent = try refusal(() => library.summary())
+  const unregistered = try refusal(() => photosClient(photosPlugin("DevicePhotos"), "DevicePhotos").albums())
+
+  try Effect.try(() => assert.deepStrictEqual(
+    {
+      pages: [first, second, last].map((page) => [page.items.map((row) => row.id), page.next]),
+      trashedRows: [trashedOne, trashedTwo].map((row) => [row.id, row.status, row.revision, row.trashed]),
+      staleTrash,
+      trash: trash.items.map((row) => row.id),
+      cancelled: cancelled.count,
+      cancelledUse,
+      prepared: prepared.count,
+      restoredTwo: restoredTwo.status,
+      receipt,
+      reused,
+      deletes: device.deletes,
+      remaining: remaining.items.map((row) => [row.id, row.trashed]),
+      created: [created.status, created.revision],
+      added: [added.status, added.revision],
+      staleAlbum,
+      albumsAfter: albumsAfter.map((entry) => [entry.name, entry.revision, entry.count, entry.memberIds]),
+      restored: [restored.status, restored.name],
+      before: before.status,
+      after: after.status,
+      grants: [...grants.grants],
+      malformed,
+      absent,
+      unregistered,
+    },
+    {
+      pages: [[["m1", "m2"], "m2"], [["m3", "m4"], "m4"], [["m5"], null]],
+      trashedRows: [["m1", "trashed", "r2", true], ["m2", "trashed", "r2", true]],
+      staleTrash: "unconfirmed setTrashed m3 stale",
+      trash: ["m1", "m2"],
+      cancelled: 2,
+      cancelledUse: "Delete confirmation expired. Review trash again.",
+      prepared: 2,
+      restoredTwo: "restored",
+      receipt: { status: "partial", deletedIds: ["m1"], skippedIds: ["m2"], failedIds: [] },
+      reused: "Delete confirmation expired. Review trash again.",
+      deletes: 1,
+      remaining: [["m2", false], ["m3", false], ["m4", false], ["m5", false]],
+      created: ["saved", "a1"],
+      added: ["saved", "a2"],
+      staleAlbum: "Album could not be saved. Reload albums before trying again",
+      albumsAfter: [["Trips", "a2", 1, ["m2"]]],
+      restored: ["selected", "notes.txt"],
+      before: "read",
+      after: "unavailable",
+      grants: ["report.pdf"],
+      malformed: "malformed list",
+      absent: "unavailable DevicePhotos.summary",
+      unregistered: "unavailable DevicePhotos.albums",
+    },
+  ))
+})

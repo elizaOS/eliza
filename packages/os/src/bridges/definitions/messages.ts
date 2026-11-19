@@ -1,7 +1,7 @@
-// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "A message's reported status is supported by the evidence of every part"; spec/os/android/messages.md, "Only the owner's reviewed sends and incoming messages are written to the Android providers"; spec/os/android/messages.md, "A deletion removes only the selected settled row and confirms only a removal Android reported"
+// spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "A repeated operation ID answers its journal record and never sends again"; spec/os/android/messages.md, "A message's status is supported by the evidence of every part, and an interrupted send reads unknown"; spec/os/android/messages.md, "A send's provider row is written only by an approved dispatch, and an MMS only while the app holds the SMS role"; spec/os/android/messages.md, "A deletion removes only the selected settled row and confirms only a removal Android reported"
 import type { Receipt } from "../../../gen/core__receipts.ts";
 import type { HandoffOutcome } from "../../../gen/os__android__bridge.ts";
-import type { CallEvidence, DeleteStatus, PartEvidence, PartState, SendRecord } from "../../../gen/os__android__messages.ts";
+import type { CallEvidence, DeleteStatus, PartEvidence, PartState, SendAnswer } from "../../../gen/os__android__messages.ts";
 import { evidenceStatus, maxPartsPerRecipient } from "../../../gen/os__android__messages.ts";
 import { normalizePhoneNumber, type PhoneNumber, type TelephonyStatus } from "./phone.ts";
 
@@ -286,7 +286,7 @@ const SMS_NEXT: Readonly<Record<SmsSendState, readonly SmsSendState[]>> = {
   failed: [],
   "outcome-unknown": [],
 };
-export const SEND_RECORD: Readonly<Record<SmsSendStatus, SendRecord>> = {
+const SEND_RECORD: Readonly<Record<SmsSendStatus, SendAnswer>> = {
   cancelled: "SendCancelled",
   denied: "SendDenied",
   failed: "SendFailed",

@@ -27,8 +27,8 @@ export type EventState = "Pending" | "Leased" | "Done" | "DeadLettered"
 type Sink =
   | { readonly kind: "checkout"; readonly session: StripeCheckoutSession }
   | { readonly kind: "subscription"; readonly customerId: string | null }
-  | { readonly kind: "charge"; readonly charge: StripeCharge }
-  | { readonly kind: "dispute"; readonly dispute: StripeDispute }
+  | { readonly kind: "refund"; readonly charge: StripeCharge }
+  | { readonly kind: "dispute"; readonly dispute: StripeDispute; readonly funds: "withdrawn" | "reinstated" }
   | { readonly kind: "ignored" }
 
 type Settled =
@@ -125,12 +125,12 @@ function sinkOf(event: StripeEvent): Sink | undefined {
     }
     case "charge.refunded": {
       const charge = decoded(StripeCharge, object)
-      return charge === undefined ? undefined : { kind: "charge", charge }
+      return charge === undefined ? undefined : { kind: "refund", charge }
     }
     case "charge.dispute.funds_withdrawn":
     case "charge.dispute.funds_reinstated": {
       const dispute = decoded(StripeDispute, object)
-      return dispute === undefined ? undefined : { kind: "dispute", dispute }
+      return dispute === undefined ? undefined : { kind: "dispute", dispute, funds: event.type === "charge.dispute.funds_withdrawn" ? "withdrawn" : "reinstated" }
     }
     default:
       return { kind: "ignored" }

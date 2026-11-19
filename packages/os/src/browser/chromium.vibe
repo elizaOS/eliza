@@ -15,7 +15,7 @@ import {
   type SuppliedApk,
 } from "../../gen/os__browser__chromium.effect.vibe"
 import { Machine as Publication, machine as publication } from "../../gen/core__atomicPublication.effect.vibe"
-import { dumpAndroidArtifactBadging, readApkSigner, resolveAndroidBuildTools, snapshotAndroidArtifact } from "../image/apk.vibe"
+import { dumpAndroidArtifactBadging, manifestFacts, readApkSigner, resolveAndroidBuildTools, snapshotAndroidArtifact } from "../image/apk.vibe"
 import { EXTENSION_ID, pin as reviewedChromium } from "../../browser/chromium/component/chromium-component.mjs"
 
 export { assetNames } from "../../browser/chromium/component/chromium-component.mjs"
@@ -29,6 +29,11 @@ module node {
   /** @throws {never} */
   export function sha256Hex(bytes: Uint8Array): string {
     return createHash("sha256").update(bytes).digest("hex")
+  }
+
+  /** @throws {never} */
+  export function nativeAbis(badging: string): readonly string[] {
+    return [...(/^native-code:\s*(.*)$/m.exec(badging)?.[1] ?? "").matchAll(/'([^']+)'/g)].map((match) => match[1] ?? "")
   }
 
   /** @throws {never} */
@@ -64,7 +69,7 @@ module node {
     }
   }
 }
-import { assetProblem, nativeHostOf, parseJson, resourceNames, sha256Hex } from node
+import { assetProblem, nativeAbis, nativeHostOf, parseJson, resourceNames, sha256Hex } from node
 
 export type Architecture = "x86_64" | "arm64"
 export type BrowserApp = "browser" | "vault"
@@ -273,9 +278,9 @@ effect function regularInput(file: string) {
 effect function apkFacts(file: string, packageArchitectures: readonly Architecture[], tools: { readonly aapt: string; readonly apksigner: string }) {
   const badging = try dumpAndroidArtifactBadging(tools.aapt, file)
   const signer = try readApkSigner(file, { apksigner: tools.apksigner })
-  const abis = [.../'([^']+)'/g[Symbol.matchAll](/^native-code:\s*(.*)$/m.exec(badging)?.[1] ?? "")].map((match) => match[1])
+  const abis = nativeAbis(badging)
   const facts: ApkFacts = {
-    packageName: /^package: name='([^']+)'/m.exec(badging)?.[1] ?? "",
+    packageName: manifestFacts("", badging).packageName ?? "",
     sha256: (try snapshotAndroidArtifact(file)).sha256,
     signers: signer.tag === "OneSigner" && signer.certificate.tag === "Sha256" ? [signer.certificate.hex] : [],
     abisCovered: packageArchitectures.every((architecture) => abis.includes(NATIVE_ABI[architecture])),
@@ -289,7 +294,7 @@ effect function toolsFor(options: { readonly aapt?: string; readonly apksigner?:
   return { aapt: options.aapt ?? resolved.aapt, apksigner: options.apksigner ?? resolved.apksigner }
 }
 
-effect function settle(pending: string | undefined, gathered: Exit.Exit<boolean, unknown>, publish: () => Effect.Effect<void, unknown>) {
+effect function settle(pending: string | undefined, gathered: Exit.Exit<boolean, unknown>, publish: () => void!unknown) {
   const files = try FileSystem.FileSystem
   const tx = try Publication
   try orDie(tx.send({ type: "create", ok: pending !== undefined }))
@@ -323,7 +328,7 @@ export effect function stageBrowserOverlay(options: StageBrowserOverlay) {
     const pending = (files.makeTempDirectory({ directory: output, prefix: ".browser-" }) catch () => undefined)
     const gathered = try exit(effect {
       if (pending === undefined) return false
-      const copy = effect (input: string, name: string) {
+      const copy = effect function (input: string, name: string) {
         const target = path.join(pending, name)
         try files.copyFile(input, target)
         return try apkFacts(target, [], tools)

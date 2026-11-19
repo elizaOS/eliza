@@ -245,12 +245,12 @@ effect function execute(command: AndroidCommand, cwd: string, environment: Envir
 
 effect function readJsonFile(file: string) {
   const files = try FileSystem.FileSystem
-  return parsedJson(try (files.readFileString(file) catch () => ""))
+  return parsedJson((files.readFileString(file) catch () => ""))
 }
 
 effect function regularFile(file: string) {
   const files = try FileSystem.FileSystem
-  return (try (files.stat(file) catch () => undefined))?.type === "File"
+  return ((files.stat(file) catch () => undefined))?.type === "File"
 }
 
 effect function hostDocument(run: AndroidBuildRun) {
@@ -281,7 +281,7 @@ effect function stagedPayload(document: HostDocument | undefined) {
   if (document === undefined || document.runtimeMain === null) return { tag: "NoAgentPayload" } satisfies StagedPayload
   const main = document.runtimeMain
   const identified = try regularFile(path.join(main, INVENTORY_ASSET))
-  const digest = identified ? try (treeDigest(main) catch () => undefined) : undefined
+  const digest = identified ? (treeDigest(main) catch () => undefined) : undefined
   const payload: StagedPayload = { tag: "AgentPayload", inventory: digest === undefined ? { tag: "NotADigest" } : { tag: "Sha256", hex: digest } }
   return payload
 }
@@ -289,7 +289,7 @@ effect function stagedPayload(document: HostDocument | undefined) {
 effect function localInference(document: HostDocument | undefined) {
   const path = try Path.Path
   if (document === undefined || document.runtimeMain === null) return false
-  const facts = try (Schema.decodeUnknownEffect(BundleFacts)(try readJsonFile(path.join(document.runtimeMain, BUNDLE_MANIFEST))) catch () => undefined)
+  const facts = (Schema.decodeUnknownEffect(BundleFacts)(try readJsonFile(path.join(document.runtimeMain, BUNDLE_MANIFEST))) catch () => undefined)
   return facts?.localInference ?? false
 }
 
@@ -311,9 +311,9 @@ effect function sourceAtPin(run: AndroidBuildRun, document: HostDocument | undef
   const files = try FileSystem.FileSystem
   const found = try capture("git", ["rev-parse", "--show-toplevel"], run.root)
   if (found === undefined || run.options.pin === "") return { held: false, detail: `${run.root} is not inside a Git checkout at the pin` }
-  const top = try (files.realPath(found) catch () => found)
+  const top = (files.realPath(found) catch () => found)
   const allowances = try checkoutAllowances(run, top, document)
-  return try (effect {
+  return (effect {
     try verifyCommittedWorkspace(top, run.options.pin, allowances)
     return { held: true, detail: "" }
   } catch (error) => ({ held: false, detail: "message" in error ? String(error.message) : `${run.options.pin} is not a commit` }))
@@ -400,7 +400,7 @@ export effect function admitAndroidBuild(run: AndroidBuildRun) {
 effect function prepare(run: AndroidBuildRun) {
   for (const step of run.options.prepare ?? []) {
     if (typeof step === "function") {
-      const result = try (Effect.try(() => step({ root: run.root, environment: run.environment })) catch () => "failed")
+      const result = (Effect.try(() => step({ root: run.root, environment: run.environment })) catch () => "failed")
       if (result === "failed" || (typeof result === "object" && result !== null && "then" in result)) return "A prepare function failed or was not synchronous"
     } else {
       const code = try execute(step, run.root, run.environment)
@@ -484,7 +484,7 @@ export effect function assembleAndroidBuild(run: AndroidBuildRun) {
   const outputs = { succeeded: true, apksPresent: missing.length === 0, releaseSigned, copied: true }
   const detail = missing.length > 0 ? `Gradle left no ${missing.join(", ")}` : `The release signing is not what ${(state.request.signing === "AllNamed" ? "the signing variables" : "an unsigned host")} configure`
   if (assemble(state, outputs).phase.tag !== "Staged") return try send(run, { type: "assemble", gradle: outputs }, detail)
-  const copied = try (copyOut(run, request, set) catch () => false)
+  const copied = (copyOut(run, request, set) catch () => false)
   return try send(run, { type: "assemble", gradle: { ...outputs, copied } }, copied ? "" : "The APK set could not be copied into the private directory")
 }
 
@@ -505,8 +505,8 @@ effect function publishedRow(run: AndroidBuildRun, row: ManifestRow, apks: reado
   const path = try Path.Path
   const file = path.join(run.work, NEXT, row.name)
   const listed = apks.includes(row.name)
-  const fresh = listed && sha256Hex(try (files.readFile(file) catch () => new Uint8Array())) === row.sha256
-  const signer = listed ? try (readApkSignerDigest(file, { env: run.environment }) catch () => undefined) : undefined
+  const fresh = listed && sha256Hex((files.readFile(file) catch () => new Uint8Array())) === row.sha256
+  const signer = listed ? (readApkSignerDigest(file, { env: run.environment }) catch () => undefined) : undefined
   const published: PublishedApk = { flavor: row.flavor, apk: parseDigest(row.sha256), signer: signer !== undefined && signer === row.signer ? parseDigest(signer) : { tag: "NotADigest" }, fresh }
   return published
 }
@@ -514,7 +514,7 @@ effect function publishedRow(run: AndroidBuildRun, row: ManifestRow, apks: reado
 effect function carriesNoInference(run: AndroidBuildRun, apks: readonly string[], local: boolean) {
   const path = try Path.Path
   for (const apk of apks) {
-    const entries = try (listAndroidArtifactEntries(path.join(run.work, NEXT, apk)) catch () => ["unreadable.gguf"])
+    const entries = (listAndroidArtifactEntries(path.join(run.work, NEXT, apk)) catch () => ["unreadable.gguf"])
     if (!hostPayloadAdmitted(local, entries.map(entryKind))) return false
   }
   return true
@@ -545,7 +545,7 @@ effect function swap(next: string, destination: string, previous: string) {
   try files.remove(previous, { recursive: true, force: true })
   const moved = try files.exists(destination)
   if (moved) try files.rename(destination, previous)
-  return try (effect {
+  return (effect {
     try files.rename(next, destination)
     return true
   } catch effect () => {
@@ -556,8 +556,8 @@ effect function swap(next: string, destination: string, previous: string) {
 
 effect function tidy(places: readonly string[], destination: string | undefined, previous: string) {
   const files = try FileSystem.FileSystem
-  const kept = destination !== undefined && !(try (files.exists(destination) catch () => false))
-  return try (effect {
+  const kept = destination !== undefined && !((files.exists(destination) catch () => false))
+  return (effect {
     for (const place of [...places, ...(kept ? [] : [previous])]) try files.remove(place, { recursive: true, force: true })
     return true
   } catch () => false)
@@ -566,7 +566,7 @@ effect function tidy(places: readonly string[], destination: string | undefined,
 export effect function publishAndroidBuild(run: AndroidBuildRun) {
   try guard(run, "publishSet", canPublishSet)
   const path = try Path.Path
-  const ok = try (swap(path.join(run.work, NEXT), run.output, path.join(run.work, PREVIOUS)) catch () => false)
+  const ok = (swap(path.join(run.work, NEXT), run.output, path.join(run.work, PREVIOUS)) catch () => false)
   return try send(run, { type: "publishSet", ok }, ok ? "" : `The verified set could not replace ${run.output}`)
 }
 
@@ -580,13 +580,13 @@ export effect function cleanAndroidSet(run: AndroidBuildRun) {
 effect function archiveExtras(run: AndroidBuildRun, archive: AndroidArchive, manifest: readonly ManifestRow[], reserved: Set<string>) {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
-  const listed = archive.files === undefined ? [] : try (Effect.try(() => archive.files?.({ manifest }) ?? []) catch () => undefined)
+  const listed = archive.files === undefined ? [] : (Effect.try(() => archive.files?.({ manifest }) ?? []) catch () => undefined)
   if (listed === undefined || !Array.isArray(listed)) return undefined
   const extras: { readonly name: string; readonly bytes: Uint8Array }[] = []
   for (const file of listed) {
     if (typeof file?.source !== "string" || !safeRelative(file.name) || reserved.has(file.name) || !/^[a-f0-9]{64}$/.test(file.sha256 ?? "")) return undefined
     reserved.add(file.name)
-    const bytes = try (files.readFile(path.resolve(run.root, file.source)) catch () => undefined)
+    const bytes = (files.readFile(path.resolve(run.root, file.source)) catch () => undefined)
     if (bytes === undefined || sha256Hex(bytes) !== file.sha256) return undefined
     extras.push({ name: file.name, bytes })
   }
@@ -624,7 +624,7 @@ export effect function archiveAndroidBuild(run: AndroidBuildRun) {
   const manifest = try manifestRows(path.join(run.output, APK_MANIFEST))
   const extras = try archiveExtras(run, archive, manifest, new Set([...names, SERVICE_METADATA, BUILD_CHECKS]))
   if (extras === undefined) return try send(run, { type: "archiveSet", filesMatch: false, ok: false }, "An archive file is unsafe, named twice, or changed after verification")
-  const ok = try (effect {
+  const ok = (effect {
     const next = try stageArchive(run, archive, names, extras)
     return try swap(next, destination, path.join(run.work, ARCHIVE_PREVIOUS))
   } catch () => false)

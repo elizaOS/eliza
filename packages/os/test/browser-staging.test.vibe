@@ -1,0 +1,115 @@
+// spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"; spec/os/browser/chromium.md, "Story: Replace the image's WebView provider only with the pinned one"
+import { assert, it } from "@effect/vitest"
+import * as NodeServices from "@effect/platform-node/NodeServices"
+import { WEBVIEW_CONFIG, stageBrowserApps, stageBrowserOverlay, validateBrowserOverlayDescriptor, type StageBrowserApps } from "../src/browser/chromium.vibe"
+import { androidTools, buildApk, standInElf, testSigner, type NativeAbi, type TestSigner } from "./support/android-tools.ts"
+import { scratch, writeTree } from "./support/scratch.vibe"
+
+const tools = androidTools()
+const skipped = tools.kind === "missing" ? tools.reason : null
+const RELEASE_IMAGE = { variant: "ReleaseImage", allowDevelopment: false } as const
+const BROWSER_PACKAGE = "org.chromium.chrome"
+const VAULT_PACKAGE = "example.fixture.vault"
+const PROVIDER_PACKAGE = "example.fixture.webview"
+
+function manifest(packageName: string): string {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="${packageName}" android:versionCode="1" android:versionName="1">
+  <application android:label="Fixture" />
+</manifest>
+`
+}
+
+function upstreamPin(packageName: string, sha256: string, signer: TestSigner) {
+  return { kind: "upstream", channel: "stable", packageName, sha256, signerSha256: signer.certificateSha256, sourceUrl: `https://example.invalid/${packageName}.apk` }
+}
+
+effect function refusal(staging: Effect.Effect<unknown, { readonly _tag: string }, FileSystem.FileSystem | Path.Path | ChildProcessSpawner>) {
+  return (effect { try staging; return "Staged" } catch (error) => match (error) {
+    when { _tag: "BrowserAppRefused" }: `${error.app}:${error.why}`;
+    when { _tag: "BrowserOverlayRefused" }: error.reason;
+    default: error._tag;
+  })
+}
+
+it.effect.skipIf(skipped !== null)(`Stage the pinned browser and vault pair whole, and refuse a wrongly signed or unpinned APK before either is replaced${skipped === null ? "" : ` (skipped: ${skipped})`} (spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"; spec/os/browser/chromium.md, "An owned browser app enters an image only with its pinned digest, signer and provenance")`, effect () => {
+  provide NodeServices.layer {
+    if (tools.kind === "missing") return
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const work = try scratch("browser-apps")
+    const signer = try Effect.try(() => testSigner(tools, work, "pinned"))
+    const stranger = try Effect.try(() => testSigner(tools, work, "stranger"))
+    const abi: NativeAbi = "x86_64"
+    const build = (name: string, packageName: string, by: TestSigner) =>
+      Effect.try(() => buildApk(tools, { directory: path.join(work, "out"), manifest: manifest(packageName), signer: by, name, natives: { [abi]: { "libfixture.so": standInElf(abi) } } }))
+    const browser = try build("browser", BROWSER_PACKAGE, signer)
+    const vault = try build("vault", VAULT_PACKAGE, signer)
+    const strangerBrowser = try build("stranger-browser", BROWSER_PACKAGE, stranger)
+    const vendorDir = path.join(work, "vendor")
+    try writeTree(vendorDir, {
+      "manifests/browser-apps.json": JSON.stringify({ schemaVersion: 1, browser: { x86_64: upstreamPin(BROWSER_PACKAGE, browser.sha256, signer) }, vault: { x86_64: upstreamPin(VAULT_PACKAGE, vault.sha256, signer) } }),
+    })
+    const request = (overrides: Partial<StageBrowserApps>): StageBrowserApps =>
+      ({ vendorDir, browserApk: browser.apk, vaultApk: vault.apk, arch: "x86_64", image: RELEASE_IMAGE, aapt: tools.aapt, apksigner: tools.apksigner, ...overrides })
+    const destination = (app: string) => path.join(vendorDir, "apps", app, "x86_64", `${app}.apk`)
+    const staged = effect function () {
+      return [try files.exists(destination("Browser")), try files.exists(destination("Vault"))]
+    }
+
+    assert.strictEqual(try refusal(stageBrowserApps(request({ browserApk: strangerBrowser.apk }))), "browser:ApkMismatch", "a browser signed by another key is refused")
+    assert.deepStrictEqual(try staged(), [false, false])
+    assert.strictEqual(try refusal(stageBrowserApps(request({ vaultApk: browser.apk }))), "vault:ApkMismatch", "an APK that is not the pinned vault is refused")
+    assert.deepStrictEqual(try staged(), [false, false], "the verified browser is not staged without its vault")
+    assert.strictEqual(try refusal(stageBrowserApps(request({ image: { variant: "ReleaseImage", allowDevelopment: true } }))), "browser:DevelopmentFlagOnRelease")
+
+    const result = try stageBrowserApps(request({}))
+    assert.deepStrictEqual(result.applications.map((app) => [app.name, app.packageName, app.apk]), [["browser", BROWSER_PACKAGE, destination("Browser")], ["vault", VAULT_PACKAGE, destination("Vault")]])
+    assert.deepStrictEqual(try.all [files.readFile(destination("Browser")), files.readFile(destination("Vault"))], try.all [files.readFile(browser.apk), files.readFile(vault.apk)])
+    assert.deepStrictEqual((try files.readDirectory(vendorDir)).sort(), ["apps", "manifests"], "no temporary copy is left beside the vendor tree")
+
+    try writeTree(vendorDir, { "manifests/browser-apps.json": JSON.stringify({ schemaVersion: 1, browser: { x86_64: upstreamPin(BROWSER_PACKAGE, browser.sha256, signer) }, vault: {} }) })
+    assert.strictEqual(try refusal(stageBrowserApps(request({}))), "BrowserPinsInvalid", "the browser is never staged without a pinned vault")
+  }
+}, 300_000)
+
+it.effect.skipIf(skipped !== null)(`Publish the browser overlay with only the pinned WebView provider by one rename, and leave nothing for a refused provider${skipped === null ? "" : ` (skipped: ${skipped})`} (spec/os/browser/chromium.md, "Story: Replace the image's WebView provider only with the pinned one"; spec/os/browser/chromium.md, "A staged overlay holds exactly the verified APK copies, and appears only through atomic publication"; spec/os/browser/chromium.md, "The framework lists only the pinned provider, another package that overrides the stock WebView and carries its libraries")`, effect () => {
+  provide NodeServices.layer {
+    if (tools.kind === "missing") return
+    const files = try FileSystem.FileSystem
+    const path = try Path.Path
+    const work = try scratch("browser-overlay")
+    const signer = try Effect.try(() => testSigner(tools, work, "pinned"))
+    const stranger = try Effect.try(() => testSigner(tools, work, "stranger"))
+    const build = (name: string, packageName: string, by: TestSigner) =>
+      Effect.try(() => buildApk(tools, { directory: path.join(work, "out"), manifest: manifest(packageName), signer: by, name }))
+    const browser = try build("browser", BROWSER_PACKAGE, signer)
+    const provider = try build("provider", PROVIDER_PACKAGE, signer)
+    const strangerProvider = try build("stranger-provider", PROVIDER_PACKAGE, stranger)
+    const pin = (packageName: string, sha256: string) => ({ packageName, sha256, signerSha256: signer.certificateSha256 })
+    const descriptor = { vendor: "vendor/fixture", modulePrefix: "Fixture", partition: "product", browser: pin(BROWSER_PACKAGE, browser.sha256), webview: pin(PROVIDER_PACKAGE, provider.sha256) }
+    const output = path.join(work, "overlay")
+    try files.makeDirectory(output)
+    const stage = (webviewApk: string | undefined, described: unknown = descriptor) =>
+      stageBrowserOverlay({ descriptor: described, browserApk: browser.apk, webviewApk, output, aapt: tools.aapt, apksigner: tools.apksigner })
+
+    assert.strictEqual(try refusal(validateBrowserOverlayDescriptor({ ...descriptor, webview: pin(BROWSER_PACKAGE, browser.sha256) })), "ProviderIsTheBrowser")
+    assert.strictEqual(try refusal(stage(browser.apk, { ...descriptor, webview: pin(BROWSER_PACKAGE, browser.sha256) })), "ProviderIsTheBrowser", "the browser cannot serve as its own WebView provider")
+    assert.strictEqual(try refusal(stage(strangerProvider.apk)), "ProviderApkMismatch", "a provider signed by another key is refused")
+    assert.strictEqual(try refusal(stage(undefined)), "ProviderApkNotPaired")
+    assert.deepStrictEqual(try files.readDirectory(output), [], "a refused staging leaves neither the overlay nor its temporary folder")
+
+    const overlay = try stage(provider.apk)
+    assert.deepStrictEqual(overlay, { directory: path.join(output, "browser"), partition: "product", modules: { browser: "FixtureOwnedChromium", webview: "FixtureWebViewProvider" }, browser: descriptor.browser, webview: descriptor.webview, releaseQualified: false })
+    assert.deepStrictEqual(try files.readDirectory(output), ["browser"], "the overlay appears whole under its final name")
+    assert.deepStrictEqual((try files.readDirectory(overlay.directory, { recursive: true })).filter((entry) => !entry.endsWith("/") && entry.includes(".")).sort(), ["Android.bp", "OwnedChromium.apk", "WebViewProvider.apk", "browser.mk", WEBVIEW_CONFIG].sort())
+    assert.deepStrictEqual(try files.readFile(path.join(overlay.directory, "WebViewProvider.apk")), try files.readFile(provider.apk))
+    const blueprint = try files.readFileString(path.join(overlay.directory, "Android.bp"))
+    assert.include(blueprint, 'overrides: ["webview"]')
+    assert.include(blueprint, 'required: ["libwebviewchromium_loader", "libwebviewchromium_plat_support"]')
+    assert.include(blueprint, "dex_preopt: { enabled: false }")
+    const config = try files.readFileString(path.join(overlay.directory, WEBVIEW_CONFIG))
+    assert.deepStrictEqual([...config.matchAll(/packageName="([^"]+)"/g)].map((match) => match[1]), [PROVIDER_PACKAGE], "the framework lists only the pinned provider")
+    assert.strictEqual(try refusal(stage(provider.apk)), "BrowserInputInvalid", "a published overlay is never written over")
+  }
+}, 300_000)
