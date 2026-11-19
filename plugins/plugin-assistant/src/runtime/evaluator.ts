@@ -65,7 +65,9 @@ import {
   getStreamingContext,
   hashStableJson,
   isDiscoveryActionName,
+  isInsufficientCreditsError,
   isObjectRecord,
+  isPermanentQuotaError,
   MODEL_WINDOW_RESERVE_FRACTION,
   type ModelAttemptContext,
   type ModelRegistrationMetadata,
@@ -77,10 +79,13 @@ import {
   parseJsonObject,
   projectDeferredProviders,
   projectToolDiagnosticValue,
+  providerRateLimitRetryAt,
+  readProviderRateLimit,
   renderContextObject,
   resolveSetting,
   runWithStreamingContext,
   selectCompletionContext,
+  sleepWithAbort,
   stripReasoningPrefixes,
   type ToolDiagnosticTextRedactor,
   timeInferenceSpan,
@@ -1056,6 +1061,31 @@ async function runEvaluatorStage(
   return runEvaluatorWithSelectedModel(params, model);
 }
 
+// Buckets refill continuously; a longer wait would stall the visible turn.
+export const RATE_LIMIT_RETRY_MAX_WAIT_MS = 5_000;
+
+/** Wait before the one re-send of a chat request refused with a structural 429:
+ * the provider's hint, capped. Spent credit and period allowances get none. */
+export function rateLimitRetryWaitMs(
+  error: unknown,
+  now = Date.now(),
+): number | undefined {
+  if (
+    modelProviderErrorDetail(error)?.status !== 429 ||
+    isInsufficientCreditsError(error) ||
+    isPermanentQuotaError(error)
+  )
+    return undefined;
+  const reported = readProviderRateLimit(error);
+  if (reported?.scope === "period") return undefined;
+  const retryAt = providerRateLimitRetryAt(error, now);
+  const hintMs = retryAt === undefined ? reported?.retryAfterMs : retryAt - now;
+  return Math.min(
+    Math.ceil(hintMs ?? RATE_LIMIT_RETRY_MAX_WAIT_MS),
+    RATE_LIMIT_RETRY_MAX_WAIT_MS,
+  );
+}
+
 /** Keep the initial selection, including no override, across restoration awaits. */
 async function runEvaluatorWithSelectedModel(
   params: RunEvaluatorParams,
@@ -1364,7 +1394,25 @@ async function runEvaluatorWithSelectedModel(
       };
     };
     activeAttempt = undefined;
-    const initialCall = await callEvaluatorModel();
+    let initialCall: EvaluatorModelCall;
+    try {
+      initialCall = await callEvaluatorModel();
+    } catch (error) {
+      // error-policy:J2 A chat turn waits out a temporary rate limit once and
+      // re-sends the same request; every other failure propagates unchanged.
+      const waitMs =
+        params.trajectory.codingMode === true
+          ? undefined
+          : rateLimitRetryWaitMs(error);
+      if (waitMs === undefined) throw error;
+      params.runtime.logger?.warn?.(
+        { src: "evaluator", iteration: params.iteration, delayMs: waitMs },
+        "[evaluator] evaluator inference is rate limited; waiting before one re-send",
+      );
+      await sleepWithAbort(waitMs, streamingContext?.abortSignal);
+      activeAttempt = 1;
+      initialCall = await callEvaluatorModel();
+    }
     selectedCall = initialCall;
     raw = initialCall.raw;
     reportEvaluatorUsage(raw, params.onUsage);
