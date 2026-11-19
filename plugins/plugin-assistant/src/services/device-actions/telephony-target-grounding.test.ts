@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DeviceOperation } from "./contract.ts";
-import { authoredTelephonyTarget } from "./telephony-request.ts";
 import { spokenPhoneNumbers } from "./spoken-phone-number.ts";
+import { authoredTelephonyTarget } from "./telephony-request.ts";
 import {
   DeviceTelephonyTargetNotRequestedError,
   groundTelephonyTarget,
