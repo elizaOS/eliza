@@ -1072,6 +1072,46 @@ export function hasDeviceGmailComposer(): boolean {
   );
 }
 
+/** Recover an explicit new draft when the first model call skips tools. */
+export function registerDeviceGmailDraftRouting(runtime: IAgentRuntime): void {
+  registerDirectActionRoutingRule(runtime, {
+    id: "device.gmail-draft",
+    actionNames: ["MESSAGE_DRAFT_FOLLOWUP"],
+    requiredActionTags: ["domain:messages", "capability:write"],
+    contexts: ["messaging", "email"],
+    matches: (text, message) => {
+      const current = getDeviceActionTurn();
+      if (
+        !message ||
+        current?.runtime !== runtime ||
+        !current.active ||
+        !current.isCurrent() ||
+        current.requestMessage?.message !== message ||
+        !isRequestOwner(current, message) ||
+        !hasDeviceGmailComposer() ||
+        message.content.source !== "client_chat" ||
+        !["DM", "VOICE_DM"].includes(String(message.content.channelType))
+      )
+        return false;
+
+      // Recognize the requested operation only. The planner owns arguments
+      // and ambiguous, conditional or combined delivery requests.
+      const request = text.trim();
+      return (
+        /^(?:(?:please|(?:can|could|would) you)\s+)*(?:(?:draft|compose)\s+(?:(?:me|us)\s+)?(?:(?:a|an|new)\s+)*(?:e-?mail|gmail(?:\s+message)?)(?!\s+(?:reply|response)\b)|(?:create|prepare|write)\s+(?:(?:a|an|new)\s+)*(?:e-?mail|gmail)\s+draft)\b/iu.test(
+          request,
+        ) &&
+        !/\b(?:if|unless|when|after|before|once|provided that|assuming that)\b/iu.test(
+          request,
+        ) &&
+        !/(?:[,;.!]\s*|\b(?:and|then|but)\s+)(?:please\s+)?(?:also\s+)?(?:send\b|(?:do not|don['’]t|never)\s+(?:draft|compose|create|prepare|write)\b)/iu.test(
+          request,
+        )
+      );
+    },
+  });
+}
+
 /** A compose handoff only fills a local editor, so it is valid with either owner action setting. */
 export async function currentGmailComposeOrigin(
   runtime: IAgentRuntime,
