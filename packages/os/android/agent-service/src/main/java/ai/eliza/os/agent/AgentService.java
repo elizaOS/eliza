@@ -185,8 +185,15 @@ public class AgentService extends Service {
       service.later(() -> service.settled(service::syncCredential));
       return;
     }
-    try { if (registered.current() != null) start(context); }
-    catch (Exception unreadable) { Log.w(TAG, "The device credential could not be read", unreadable); }
+    if (signedIn()) start(context);
+  }
+
+  static boolean signedIn() {
+    try { return registered.current() != null; }
+    catch (Exception unreadable) {
+      Log.w(TAG, "The device credential could not be read", unreadable);
+      return false;
+    }
   }
 
   public static Review reviewRecovery(Context context) {

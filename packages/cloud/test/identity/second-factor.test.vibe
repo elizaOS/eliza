@@ -1,9 +1,11 @@
 // spec/cloud/identity/secondFactor.md, "Story: Finish sign-in with my second factor"; spec/cloud/identity/secondFactor.md, "Story: Set up and change my second factor"; spec/cloud/identity/secondFactor.md, "Story: Confirm it is me before a sensitive change"
 import { assert, describe, it } from "@effect/vitest"
 import { afterFirstFactor } from "../../src/identity/second-factor.vibe"
+import { s256, secretText } from "../../src/shared/credential-crypto.vibe"
 import { authenticatorCode } from "../support/authenticator.ts"
 import { testCloud, type Answer, type TestCloud } from "../support/cloud.vibe"
 import { signedIn } from "../support/identity.ts"
+import { latestCode } from "../support/inbox.ts"
 
 interface Enrolled {
   readonly secret: string

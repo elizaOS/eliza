@@ -141,8 +141,6 @@ pure def canWriteFailure(c: Connection): bool = O::canWriteFailure(c.flow)
 pure def writeFailure(c: Connection, write: O::FlowWrite): Connection = { ...c, flow: O::writeFailure(c.flow, write) }
 pure def canWriteSuccess(c: Connection, selectedStatus: O::FlowState): bool = O::canWriteSuccess(c.flow) and selectedStatus == O::CompletedState
 pure def writeSuccess(c: Connection, write: O::FlowWrite, selectedStatus: O::FlowState): Connection = { ...c, flow: O::writeSuccess(c.flow, write, selectedStatus) }
-pure val supportedValues = Set(true)
-pure val configuredValues = Set(true, false)
 pure val providerInstalledValues = Set(true)
 pure val verifierRequiredValues = Set(true)
 pure val callbackValues = Set(CodeCallback, DeniedCallback, IncompleteCallback)
@@ -155,6 +153,8 @@ pure val weight_writeStart = 3
 pure val weight_beginCallback = 3
 pure val weight_consume = 4
 pure val weight_writeSuccess = 3
+pure def alwaysAnIdleRowHasNoAttempt(c: Connection): bool =
+  c.flow.phase == O::FlowIdle implies (c.callback == NoCallback and c.exchange == NotExchanged and not(c.landedOnHeld) and not(c.flow.accountStored))
 pure def sometimesAwaitingGoogle(c: Connection): bool = c.flow.phase == O::AwaitingCallback and c.now < c.stateExpiresAt
 ```
 
@@ -175,7 +175,7 @@ pure def accountResult(c: Connection, success: bool, subjectHeld: bool): Connect
   val x = c.exchange
   val flow = O::accountResult(c.flow, success)
   match x {
-    | Exchanged(e) => if (success and not(subjectHeld)) { ...c, flow: flow, status: Active, subject: e.subject, scopes: c.offered, tokens: SealedTokens({ expiresAt: e.accessUntil, hasRefreshToken: e.refreshable }) }
+    | Exchanged(e) => if (success and not(subjectHeld)) { ...c, flow: flow, status: Active, subject: e.subject, scopes: c.offered, tokens: SealedTokens({ expiresAt: e.accessUntil, hasRefreshToken: e.refreshable }), landedOnHeld: false }
         else { ...c, flow: flow, landedOnHeld: success }
     | NotExchanged => { ...c, flow: flow }
   }
@@ -188,6 +188,8 @@ pure val weight_providerResult = 4
 pure val weight_accountResult = 4
 pure def alwaysAnExchangeNamesASubject(c: Connection): bool = { val x = c.exchange
   match x { | Exchanged(e) => e.subject != "" | NotExchanged => true } }
+pure def beforeTheGrant(c: Connection): bool = Set(O::CreatePending, O::StartProviderPending, O::StartFailureWrite, O::StartSuccessWrite, O::AwaitingCallback, O::ConsumePending, O::ProviderPending, O::AccountPending).contains(c.flow.phase)
+pure def alwaysAnAttemptRowStaysPendingUntilItsGrant(c: Connection): bool = beforeTheGrant(c) implies c.status == Pending
 pure def alwaysASubjectExactlyOnceGranted(c: Connection): bool = (c.status == Pending) iff (c.subject == "")
 pure def alwaysAStoredGrantHasItsConnection(c: Connection): bool = (c.flow.accountStored implies (c.status != Pending or c.landedOnHeld)) and (c.landedOnHeld implies (c.flow.accountStored and c.status == Pending))
 pure def stepSubjectNeverChanges(before: Connection, after: Connection): bool = before.subject != "" implies after.subject == before.subject

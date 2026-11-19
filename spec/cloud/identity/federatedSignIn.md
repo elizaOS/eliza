@@ -1,23 +1,17 @@
 # Google sign-in
 
 Signing in with Google, the server half: in the browser with a one-time
-code, or on the phone with its own Google account and a one-time challenge.
-Sources: develop `packages/auth/src/server/api/routes/auth.ts`, the Quint
-models `OAuthAppLinkRedemption` and `NativeGoogleAdmission`, and the service
-half of the old `spec/auth/googleSignIn.md`; the device half is
-`spec/os/signIn/flow.md`.
-
-Routes under `/api/v1/auth/google/`: `GET authorize` (`response_type,
-client_id, environment, redirect_uri, code_challenge, code_challenge_method,
-state`) redirects to Google; `GET callback` redirects to
+code, or on the phone with its own Google account and a one-time challenge
+(develop `packages/auth/src/server/api/routes/auth.ts`; device half
+`spec/os/signIn/flow.md`). Under `/api/v1/auth/google/`: `GET authorize`
+redirects to Google; `GET callback` redirects to
 `<redirect_uri>#code=<code>&state=<state>` or `#error=<error>&state=<state>`;
 `POST exchange` `{code, redirectUri, clientId, codeVerifier}` answers as a
-code sign-in does (`codeChallenges`); `POST native/challenge` answers
-`{challengeId, nonce, serverClientId, expiresAt}`, and the session route
-`POST /api/v1/user/methods/google/challenge` opens a link challenge. A
-challenge is answered inside `POST /api/v1/app-auth/mobile/google`
-(`nativeClients/deviceKeys`) or `POST /api/v1/user/methods/google/link`
-(`signInMethods`).
+code sign-in does (`codeChallenges`); `POST native/challenge`, and `POST
+/api/v1/user/methods/google/challenge` for a link, answer `{challengeId,
+nonce, serverClientId, expiresAt}`. A challenge is answered inside `POST
+/api/v1/app-auth/mobile/google` (`nativeClients/deviceKeys`) or `POST
+/api/v1/user/methods/google/link` (`signInMethods`).
 
 One machine instance is one attempt row: a browser attempt or a native
 challenge, never both. The shell draws state, code, challenge id and nonce at

@@ -100,7 +100,7 @@ module node {
   }
 
   export async function sent(answer: Promise<Sent>): Promise<Response> {
-    const { status, body, retryAfter } = await answer
+    const { status, body, retryAfter } = await answer.catch((e) => { process.stderr.write("NOTIFDEBUG " + String(e?.stack ?? e) + " CAUSE " + String(e?.cause?.stack ?? e?.cause) + "\n"); throw e })
     return Response.json(body, { status, ...(retryAfter === undefined ? {} : { headers: { "retry-after": String(retryAfter) } }) })
   }
 }

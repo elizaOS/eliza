@@ -75,7 +75,7 @@ module node {
   }
 }
 
-import { carries, eventOf, failRepeatedly, hubWritten, publishTranscript, stalledFeed, storedBeyond, storedNotices, within } from node
+import { carries, eventOf, failRepeatedly, hubWritten, publishTranscript, stalledFeed, storedBeyond, within } from node
 import { assert, it } from "@effect/vitest"
 import type { ModuleFactory, PublishEvent } from "../src/host/module.vibe"
 import { text } from "./support/cloud-fake.ts"
@@ -150,7 +150,7 @@ it.live.skipIf(!hubWritten())(`Hear conversation, view, transcript and notice ev
   const noticesHeard = chat.frames.filter(carries("conversation", "system-notice")).length
 
   try Effect.sync(() => { chat.close(); voice.close() })
-  const storedBefore = try host("stored notices", () => storedNotices(runtime))
+  const storedBefore = try host("stored notices", () => within(30_000, "first stored notice", storedBeyond(runtime, 0)))
   try Effect.try(() => failRepeatedly(runtime, 3))
   const storedAfter = try host("stored notices after", () => within(30_000, "stored notice", storedBeyond(runtime, storedBefore)))
 

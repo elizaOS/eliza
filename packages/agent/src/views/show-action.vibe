@@ -1,0 +1,67 @@
+// spec/agent/views.md, "The agent prepares a navigation only for the renderer bound to its turn and one view its name resolves to"
+import { readViewInteractionClientId, type Action, type ActionResult, type Memory } from "@elizaos/core"
+import { declaredAt } from "../../gen/agent__views.effect.vibe"
+import type { ViewHost } from "./host.vibe"
+
+module node {
+  import { randomUUID } from "node:crypto"
+  /** @throws {never} */
+  export function newRequestId(): string { return randomUUID() }
+}
+import { newRequestId } from node
+
+const refused = (text: string): ActionResult => ({ success: false, text })
+
+function rendererOf(message: Memory): string | undefined {
+  const metadata = message.content.metadata
+  const completedAction = typeof metadata === "object" && metadata !== null && "viewDelivery" in metadata && metadata.viewDelivery === "completed-action"
+  return completedAction ? readViewInteractionClientId(message) : undefined
+}
+
+function targetOf(options: unknown): string | undefined {
+  if (typeof options !== "object" || options === null || !("parameters" in options)) return undefined
+  const parameters = options.parameters
+  if (typeof parameters !== "object" || parameters === null || !("view" in parameters) || typeof parameters.view !== "string") return undefined
+  const target = parameters.view.trim().toLowerCase()
+  return target === "" ? undefined : target
+}
+
+effect function show(views: ViewHost.Shape, message: Memory, options: unknown) {
+  const clientId = rendererOf(message)
+  if (clientId === undefined) return refused("No renderer is bound to this turn, so no view can be shown.")
+  const target = targetOf(options)
+  if (target === undefined) return refused("Name the view to show by its id, label or alias.")
+  const requestId = newRequestId()
+  const pending = try views.show(requestId, clientId, target)
+  if (pending === undefined) return refused(`No single view named "${target}" can be shown now.`)
+  const binding = pending.binding
+  const view = declaredAt(try views.current(), binding.viewId)
+  if (binding.requestId !== requestId || binding.clientId !== clientId || binding.viewType !== "gui" || binding.installationId !== view.installationId) {
+    try views.abandon(requestId)
+    return refused("The prepared navigation is not bound to this turn's renderer.")
+  }
+  return {
+    success: true,
+    text: `Prepared the switch to ${view.label}.`,
+    values: {
+      mode: "show", viewId: view.viewId, viewPath: view.path, viewType: "gui", label: view.label,
+      completedActionDelivered: false, completedActionHandoffId: requestId, navigationPrepared: true,
+      navigationBinding: { requestId, clientId, viewId: view.viewId, viewType: "gui", installationId: view.installationId },
+    },
+  } satisfies ActionResult
+}
+
+export function viewsShowAction(views: ViewHost.Shape): Action {
+  return {
+    name: "VIEWS",
+    similes: ["VIEWS_SHOW", "OPEN_VIEW", "NAVIGATE_VIEW"],
+    description: "Show one of the owner's views, named by its id, label or alias, on the renderer of this turn. Navigation only: it does not read or change the view's records.",
+    roleGate: { minRole: "OWNER" },
+    parameters: [
+      { name: "action", description: "show", required: false, schema: { type: "string", enum: ["show"] } },
+      { name: "view", description: "The view's id, label or alias", required: true, schema: { type: "string" } },
+    ],
+    validate: async (_runtime, message) => rendererOf(message) !== undefined,
+    handler: (_runtime, message, _state, options) => runPromise(show(views, message, options)),
+  }
+}

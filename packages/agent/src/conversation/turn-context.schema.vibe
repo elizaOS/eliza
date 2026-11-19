@@ -1,0 +1,230 @@
+// spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more"; spec/agent/conversation/turnContext.md, "An observation is kept only when every field is valid, a sensitive screen names no record, a civil day is on the calendar stated not sensitive in its own zone, and it fits 2,048 bytes"; spec/agent/conversation/turnContext.md, "A voice view context is accepted only when every stated field has an allowed value and direct requests have completed-action delivery and a routing identity"; spec/agent/conversation/turnContext.md, "Optional fields go only to the process instance the client compared for this turn"
+import type { Content } from "@elizaos/core"
+import { parseViewInteractionClientId } from "@elizaos/core/view-interaction"
+import {
+  comparePeer, learnPeer, maxSafeInteger, observationOutcome, sendsOptionalFields, voiceUiOutcome,
+  type ObservationFacts, type PeerSupport, type Sensitivity, type StatusRead, type TextField, type VoiceUiFacts,
+} from "../../gen/agent__conversation__turnContext.effect.vibe"
+
+export { comparePeer, learnPeer, sendsOptionalFields, type PeerSupport, type StatusRead }
+
+const Name = Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9-]{0,63}$/))
+const Identifier = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,511}$/))
+const Token = Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,255}$/))
+const RecordRevision = Schema.String.check(Schema.isMaxLength(256), Schema.isPattern(/^(?:[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,255}|(?:W\/)?"[!#-~]+")$/))
+const ZoneName = Schema.String.check(Schema.isMaxLength(64), Schema.isPattern(/^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+){0,3}$/))
+
+const SelectedObject = Schema.Struct({
+  kind: Name,
+  id: Identifier,
+  revision: Schema.optionalKey(RecordRevision),
+  accountId: Schema.optionalKey(Token),
+  sourceRevision: Schema.optionalKey(Token),
+  occurrenceId: Schema.optionalKey(Token),
+  timingVersion: Schema.optionalKey(Schema.Literal(2)),
+})
+const CalendarDay = Schema.Struct({ date: Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/)), timeZone: ZoneName })
+
+export const Observation = Schema.Struct({
+  view: Name,
+  revision: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: maxSafeInteger })),
+  sensitive: Schema.Boolean,
+  timeZone: Schema.optionalKey(ZoneName),
+  selectedObject: Schema.optionalKey(SelectedObject),
+  calendarDay: Schema.optionalKey(CalendarDay),
+})
+
+export const VoiceUiContext = Schema.Struct({
+  uiViewPath: Schema.optionalKey(Schema.String),
+  uiViewSubview: Schema.optionalKey(Schema.String),
+  uiTimeZone: Schema.optionalKey(Schema.String),
+  uiBrowserSurface: Schema.optionalKey(Schema.Literal("native")),
+  viewDelivery: Schema.optionalKey(Schema.Literal("completed-action")),
+  uiClientId: Schema.optionalKey(Schema.String),
+  agentActionMode: Schema.optionalKey(Schema.Literal("direct-request-v1")),
+})
+
+export type Observation = typeof Observation.Type
+export type VoiceUiContext = typeof VoiceUiContext.Type
+type SelectedObject = typeof SelectedObject.Type
+
+export interface TurnContext {
+  readonly observation?: Observation
+  readonly voiceUi?: VoiceUiContext
+}
+
+export error ObservationDropped { facts: ObservationFacts | undefined }
+export error VoiceUiContextInvalid { facts: VoiceUiFacts | undefined }
+
+type Decided<A, F> = { readonly kind: "carried"; readonly value: A } | { readonly kind: "refused"; readonly facts: F | undefined }
+
+const observationKeys: ReadonlySet<string> = new Set(["view", "revision", "sensitive", "timeZone", "selectedObject", "calendarDay"])
+const strict = { onExcessProperty: "error" } as const
+const selectedObjectOf = Schema.decodeUnknownOption(SelectedObject, strict)
+const calendarDayOf = Schema.decodeUnknownOption(CalendarDay, strict)
+const isName = Schema.is(Name)
+const isZoneName = Schema.is(ZoneName)
+
+function table(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Readonly<Record<string, unknown>> : undefined
+}
+
+function knownZone(name: unknown): name is string {
+  if (!isZoneName(name)) return false
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: name })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function civilDate(date: string) {
+  const year = Number(date.slice(0, 4)), month = Number(date.slice(5, 7)), day = Number(date.slice(8, 10))
+  const civil = new Date(Date.UTC(year, month - 1, day))
+  return year >= 1970 && civil.getUTCFullYear() === year && civil.getUTCMonth() === month - 1 && civil.getUTCDate() === day
+}
+
+function canonicalSelection(selection: SelectedObject): SelectedObject {
+  return {
+    kind: selection.kind,
+    id: selection.id,
+    ...(selection.revision === undefined ? {} : { revision: selection.revision }),
+    ...(selection.accountId === undefined ? {} : { accountId: selection.accountId }),
+    ...(selection.sourceRevision === undefined ? {} : { sourceRevision: selection.sourceRevision }),
+    ...(selection.occurrenceId === undefined ? {} : { occurrenceId: selection.occurrenceId }),
+    ...(selection.timingVersion === undefined ? {} : { timingVersion: selection.timingVersion }),
+  }
+}
+
+function canonical(observation: Observation): Observation {
+  return {
+    view: observation.view,
+    revision: observation.revision,
+    sensitive: observation.sensitive,
+    ...(observation.timeZone === undefined ? {} : { timeZone: observation.timeZone }),
+    ...(observation.selectedObject === undefined ? {} : { selectedObject: canonicalSelection(observation.selectedObject) }),
+    ...(observation.calendarDay === undefined ? {} : { calendarDay: { date: observation.calendarDay.date, timeZone: observation.calendarDay.timeZone } }),
+  }
+}
+
+function withoutOptionalFields({ calendarDay: _day, ...observation }: Observation): Observation {
+  return observation
+}
+
+function utf8Bytes(observation: Observation) {
+  return new TextEncoder().encode(JSON.stringify(observation)).byteLength
+}
+
+function decideObservation(input: unknown): Decided<Observation, ObservationFacts> {
+  const fields = table(input)
+  if (fields === undefined) return { kind: "refused", facts: undefined }
+  const { view, revision, sensitive, timeZone, selectedObject, calendarDay } = fields
+  const sensitivity: Sensitivity | undefined = sensitive === undefined ? "SensitivityUnstated" : sensitive === true ? "Sensitive" : sensitive === false ? "NotSensitive" : undefined
+  const counted = typeof revision === "number" && Number.isInteger(revision) ? revision : undefined
+  const selection = selectedObject === undefined ? undefined : Option.getOrUndefined(selectedObjectOf(selectedObject))
+  const stated = calendarDay === undefined ? undefined : Option.getOrUndefined(calendarDayOf(calendarDay))
+  const day = stated !== undefined && civilDate(stated.date) && knownZone(stated.timeZone) ? stated : undefined
+  const withoutDay = canonical({
+    view: isName(view) ? view : "",
+    revision: counted ?? 0,
+    sensitive: sensitive === true,
+    ...(knownZone(timeZone) ? { timeZone } : {}),
+    ...(selection === undefined ? {} : { selectedObject: selection }),
+  })
+  const observation = day === undefined ? withoutDay : canonical({ ...withoutDay, calendarDay: day })
+  const facts: ObservationFacts = {
+    unknownField: Object.keys(fields).some((key) => !observationKeys.has(key)) || sensitivity === undefined || counted === undefined,
+    view: isName(view) ? { tag: "View", viewName: view } : { tag: "MalformedView" },
+    revision: counted ?? 0,
+    sensitivity: sensitivity ?? "SensitivityUnstated",
+    zone: timeZone === undefined ? { tag: "NoZone" } : knownZone(timeZone) ? { tag: "Zone", zoneName: timeZone } : { tag: "UnknownZone" },
+    selection: selectedObject === undefined ? "NoSelectedRecord" : selection === undefined ? "MalformedRecord" : "SelectedRecord",
+    day: calendarDay === undefined ? { tag: "NoDay" }
+      : day === undefined ? { tag: "MalformedDay" }
+      : { tag: "Day", dayZone: day.timeZone, dayBytes: utf8Bytes(observation) - utf8Bytes(withoutDay) },
+    bytesWithoutDay: utf8Bytes(withoutDay),
+  }
+  switch (observationOutcome(facts)) {
+    case "ContextCarried": return { kind: "carried", value: observation }
+    case "ContextDropped":
+    case "TurnRefused": return { kind: "refused", facts }
+  }
+}
+
+function textOf(value: unknown): TextField {
+  if (value === undefined) return { tag: "NoText" }
+  if (typeof value !== "string") return { tag: "NotText" }
+  return { tag: "Text", units: Array.from({ length: value.length }, (_, index) => value.charCodeAt(index)) }
+}
+
+function stated<None, Allowed, Other>(value: unknown, allowed: string, none: None, chosen: Allowed, other: Other) {
+  return value === undefined ? none : value === allowed ? chosen : other
+}
+
+function decideVoiceUi(input: unknown, clientId: string | undefined): Decided<VoiceUiContext, VoiceUiFacts> {
+  const fields = table(input)
+  if (fields === undefined) return { kind: "refused", facts: undefined }
+  const { uiViewPath, uiViewSubview, uiTimeZone, uiBrowserSurface, viewDelivery, uiClientId, agentActionMode } = fields
+  const routing = parseViewInteractionClientId(uiClientId)
+  const facts: VoiceUiFacts = {
+    viewPath: textOf(uiViewPath),
+    subview: textOf(uiViewSubview),
+    timeZone: textOf(uiTimeZone),
+    surface: stated(uiBrowserSurface, "native", "NoSurface", "NativeSurface", "OtherSurface"),
+    delivery: stated(viewDelivery, "completed-action", "NoDelivery", "CompletedAction", "OtherDelivery"),
+    routingId: uiClientId === undefined ? "NoRouting" : routing !== undefined && (clientId === undefined || routing === clientId) ? "Routing" : "MalformedRouting",
+    actionMode: stated(agentActionMode, "direct-request-v1", "NoActionMode", "DirectRequest", "OtherActionMode"),
+  }
+  switch (voiceUiOutcome(facts)) {
+    case "ContextCarried": return { kind: "carried", value: {
+      ...(typeof uiViewPath === "string" ? { uiViewPath } : {}),
+      ...(typeof uiViewSubview === "string" ? { uiViewSubview } : {}),
+      ...(typeof uiTimeZone === "string" ? { uiTimeZone } : {}),
+      ...(uiBrowserSurface === "native" ? { uiBrowserSurface } : {}),
+      ...(viewDelivery === "completed-action" ? { viewDelivery } : {}),
+      ...(routing === undefined ? {} : { uiClientId: routing }),
+      ...(agentActionMode === "direct-request-v1" ? { agentActionMode } : {}),
+    } }
+    case "ContextDropped":
+    case "TurnRefused": return { kind: "refused", facts }
+  }
+}
+
+export effect function decodeObservation(input: unknown) {
+  const decided = decideObservation(input)
+  if (decided.kind === "refused") throw new ObservationDropped({ facts: decided.facts })
+  return decided.value
+}
+
+export effect function decodeVoiceUiContext(input: unknown, clientId?: string) {
+  const decided = decideVoiceUi(input, clientId)
+  if (decided.kind === "refused") throw new VoiceUiContextInvalid({ facts: decided.facts })
+  return decided.value
+}
+
+export function readTurnContext(message: { readonly content: Content }): TurnContext {
+  const metadata = table(message.content.metadata)
+  const observation = metadata?.observation === undefined ? undefined : decideObservation(metadata.observation)
+  const voiceUi = metadata?.voiceUi === undefined ? undefined : decideVoiceUi(metadata.voiceUi, undefined)
+  return {
+    ...(observation?.kind === "carried" ? { observation: observation.value } : {}),
+    ...(voiceUi?.kind === "carried" ? { voiceUi: voiceUi.value } : {}),
+  }
+}
+
+export function encodeTurnContext(context: TurnContext, peer: { readonly optionalFields: boolean }): TurnContext {
+  const { observation, voiceUi } = context
+  return {
+    ...(observation === undefined ? {} : { observation: canonical(peer.optionalFields ? observation : withoutOptionalFields(observation)) }),
+    ...(voiceUi === undefined ? {} : { voiceUi }),
+  }
+}
+
+export const notLearned: PeerSupport = { tag: "NotLearned" }
+export const statusReadFailed: StatusRead = { tag: "ReadFailed" }
+
+export function statusRead(status: unknown): StatusRead {
+  const instance = table(status)?.serverInstanceId
+  return typeof instance === "string" && instance !== "" ? { tag: "Read", instance } : { tag: "NoInstance" }
+}

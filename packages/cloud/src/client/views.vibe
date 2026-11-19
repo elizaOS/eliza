@@ -176,8 +176,8 @@ function unreadable(answer: Answer, issue: unknown): CloudError {
   return new CloudError({ failure: { tag: "CloudProviderIssue" }, cause: { answer, issue } })
 }
 
-function decoder<S extends Schema.Top>(schema: S, answer: Answer): (body: unknown) => S["Type"] {
-  const decode = Schema.decodeUnknownExit(schema as Schema.Codec<S["Type"], unknown>)
+function decoder<T>(schema: Schema.ConstraintDecoder<T>, answer: Answer): (body: unknown) => T {
+  const decode = Schema.decodeUnknownExit(schema)
   return (body) => {
     const read = decode(body)
     if (read._tag === "Failure") throw unreadable(answer, read.cause)
