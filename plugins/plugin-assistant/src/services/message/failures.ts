@@ -16,6 +16,7 @@ import {
   INSUFFICIENT_CREDITS_REPLY,
   isAuthError,
   isInsufficientCreditsError,
+  isModelConnectionError,
   isModelProviderFallbackError,
   isModelProviderRetryBudgetExhaustedError,
   isProviderSchemaRejection,
@@ -56,6 +57,26 @@ function terminalProviderFailure(
   if (isProviderSchemaRejection(error)) return { kind: "schemaRejected" };
   return undefined;
 }
+
+/**
+ * The turn's model call lost its connection to the provider before any reply
+ * arrived. An improvised apology has to guess what failed, and on the Pixel it
+ * named app data that was never touched ("I couldn't load your contacts this
+ * time"). Only the error that ended the turn is classified here: a dropped
+ * connection while writing the apology still falls through to the next model
+ * slot and the cause's own reply.
+ */
+function initialConnectionFailure(
+  error: unknown,
+): FailureReplyAttempt | undefined {
+  return isModelConnectionError(error)
+    ? { kind: "connectionFailed" }
+    : undefined;
+}
+
+/** Default reply when the model provider connection failed before a reply. */
+export const CONNECTION_FAILED_REPLY =
+  "I lost the connection to my AI service before I could finish that. Try again in a moment.";
 
 /**
  * The turn died because the model provider did not answer: its own retry
@@ -285,6 +306,7 @@ export class MessageFailures {
         : undefined) ??
       (cause === "transient"
         ? (terminalProviderFailure(initialError) ??
+          initialConnectionFailure(initialError) ??
           providerUnavailableFailure(initialError))
         : undefined) ??
       (await this.generateFailureReplyText(
@@ -328,6 +350,11 @@ export class MessageFailures {
         replyText =
           (typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
           "The configured AI provider rejected access. Check its API key and account permissions, then try again.";
+      } else if (attempt.kind === "connectionFailed") {
+        const tmpl = runtime.character.templates?.connectionFailedReply;
+        replyText =
+          (typeof tmpl === "function" ? tmpl({ state }) : tmpl) ||
+          CONNECTION_FAILED_REPLY;
       } else if (attempt.kind === "providerUnavailable") {
         const tmpl = runtime.character.templates?.providerUnavailableReply;
         replyText =

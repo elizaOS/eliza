@@ -83,6 +83,8 @@ export const CHARACTER_DEFINITIONS: CharacterDefinition[] = [
     templates: {
       authFailedReply:
         "I can't connect because this account isn't authorized. The account owner needs to fix that before you retry.",
+      connectionFailedReply:
+        "I lost the connection to my AI service before I could answer. Try again in a moment.",
       insufficientCreditsReply:
         "I can't respond because this account has no usage left. The account owner needs to add more.",
       noModelProviderReply:

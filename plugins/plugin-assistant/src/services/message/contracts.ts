@@ -80,6 +80,7 @@ export type FailureReplyAttempt =
   | { kind: "creditsExhausted"; rateLimit?: ProviderRateLimit }
   | { kind: "rateLimited"; rateLimit?: ProviderRateLimit }
   | { kind: "authFailed" }
+  | { kind: "connectionFailed" }
   | { kind: "schemaRejected" }
   | { kind: "providerUnavailable" };
 
