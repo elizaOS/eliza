@@ -266,6 +266,7 @@ describe("the calendar event phrasings name their operation", () => {
     [MOVE, "update"],
     ["reschedule the standup to tomorrow at 10:30", "update"],
     ["can you move my dentist appointment to Friday?", "update"],
+    ["push the standup back to 5pm", "update"],
     [REMOVE, "delete"],
     ["cancel my 3pm meeting", "delete"],
     ["take v613 check off my calendar", "delete"],
@@ -309,6 +310,9 @@ describe("the calendar event phrasings name their operation", () => {
     // A pronoun's target comes from the turn's history, not this route.
     "move it to 4pm",
     "move that one to 4pm",
+    "push it back to 5pm",
+    "can you push that back to 4pm?",
+    "move it up to 2pm",
     // Settings set to a time.
     "change my status to 5pm",
     "change my wake-up to 7am",

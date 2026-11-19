@@ -76,8 +76,10 @@ const IN_OTHER_RECORD =
   /\b(?:from|in|into|to|on|onto|off)\s+(?:my|the|our|a|an|this|that)\s+(?:[\p{L}\p{N}'’-]+\s+)?(?:notes?|files?|folders?|reminders?|alarms?|timers?|contacts?|tabs?|photos?|albums?|messages?|texts?|emails?|tasks?|to-?dos?|workflows?|lists?|playlists?)\b/iu;
 // A pronoun ("move it to 4pm") names its target only through the turn's
 // history, which the referential effect reroute owns; the target may be an
-// alarm, a reminder or a workflow rather than an event.
-const PRONOUN = /^(?:it|that|this|them|those|these|that\s+one|this\s+one)$/iu;
+// alarm, a reminder or a workflow rather than an event. A particle after it
+// ("push it back to 5pm", "move it up to 2pm") leaves it a pronoun.
+const PRONOUN =
+  /^(?:it|that|this|them|those|these|that\s+one|this\s+one)(?:\s+(?:all|back|up|forward|ahead|over|out))?$/iu;
 // Non-event settings the same move/change verbs set to a time.
 const NOT_AN_EVENT_TIME =
   /\b(?:status|clocks?|time\s*zone|timezone|thermostat|temperature|wake[\s-]?up|bedtime|sleep|quiet\s+hours|do\s+not\s+disturb|dnd|focus|schedule\s+send)\b/iu;
