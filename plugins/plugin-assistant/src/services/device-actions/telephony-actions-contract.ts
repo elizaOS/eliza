@@ -23,6 +23,7 @@ import {
   phoneCallReceiptOutcome,
   phoneCallResultText,
   phoneKeypadResultText,
+  SMS_SENDER_ADDRESS_CAPABILITY,
   type SmsComposeResult,
   type SmsLatestSenderResult,
   type SmsReplyResult,
@@ -87,6 +88,8 @@ export function telephonyActionFormAvailable(
   operation: TelephonyActionOperation,
   capabilities: readonly string[] | undefined,
 ): boolean {
+  if (isSmsLatestSender(operation) && operation.includeAddress)
+    return capabilities?.includes(SMS_SENDER_ADDRESS_CAPABILITY) === true;
   if (isSmsCompose(operation))
     return smsComposeCapabilityAvailable(operation, capabilities);
   if (isContactWrite(operation))
@@ -133,7 +136,8 @@ export function validateTelephonyActionResult(
   if (isSmsReply(operation)) return validateSmsReplyResult(value);
   if (isPhoneKeypad(operation)) return validatePhoneKeypadResult(value);
   if (isMessagesRead(operation)) return validateMessagesReadResult(value);
-  if (isSmsLatestSender(operation)) return validateSmsLatestSenderResult(value);
+  if (isSmsLatestSender(operation))
+    return validateSmsLatestSenderResult(value, operation.includeAddress);
   if (isVoicemailRead(operation)) return validateVoicemailReadResult(value);
   return validateVoicemailDeleteResult(value);
 }

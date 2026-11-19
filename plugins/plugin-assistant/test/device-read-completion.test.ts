@@ -344,6 +344,191 @@ async function fixture(
     apply,
   };
 }
+it("binds a follow-up Messages draft to the preceding delivered SMS sender on this phone and in this room", async () => {
+  const f = await fixture();
+  try {
+    const credential = {
+      ...f.credential,
+      capabilities: [
+        ...f.credential.capabilities,
+        "sms.latest-sender.v1",
+        "sms.latest-sender.v2",
+        "sms.compose.v1",
+        "sms.compose.v2",
+      ],
+    };
+    const scope = JSON.stringify([
+      f.runtime.agentId,
+      f.original.roomId,
+      credential.subjectUserId,
+    ]);
+    const propose = async (text: string, operation: DeviceOperation) =>
+      withOwnerDeviceActionTurn(f.runtime, credential, async () => {
+        const nonce = randomUUID();
+        const message: Memory = {
+          ...f.original,
+          id: conversationClientUserMemoryId(scope, nonce),
+          createdAt: Date.now(),
+          content: {
+            text,
+            source: "client_chat",
+            channelType: "DM",
+            metadata: { agentActionMode: "direct-request-v1" },
+            chatIdempotency: {
+              version: 1,
+              scope,
+              clientMessageId: nonce,
+              fingerprint: "e".repeat(64),
+            },
+          },
+        };
+        await f.runtime.createMemory(message, "messages");
+        setDeviceReadReplyConversation(
+          f.runtime,
+          f.conversationId,
+          f.original.roomId,
+        );
+        setDeviceReadReplyContext(f.runtime, message, {
+          id: message.id!,
+          events: [
+            {
+              id: "owner",
+              type: "message",
+              message: { id: message.id!, role: "user", content: text },
+            },
+          ],
+        });
+        return f.service.proposeWithOutcome(
+          credential,
+          operation,
+          randomUUID(),
+          "Owner request",
+        );
+      });
+    let preceding: Memory | undefined;
+    f.runtime.getMemories = vi.fn(async () => (preceding ? [preceding] : []));
+    const suffix = await propose(
+      "Who sent my latest SMS? Last four digits only.",
+      { type: "sms_latest_sender", includeAddress: true },
+    );
+    expect(suffix.request.payload.operation).toEqual({
+      type: "sms_latest_sender",
+    });
+    for (const text of [
+      "Who sent my latest SMS? Last two digits only.",
+      "Look up my latest SMS sender: ending digits, no full number.",
+    ]) {
+      await expect(
+        propose(text, { type: "sms_latest_sender", includeAddress: true }),
+      ).rejects.toThrow("Would you like the last four digits");
+    }
+    const read = await propose("Who sent my latest SMS?", {
+      type: "sms_latest_sender",
+    });
+    expect(read.request.payload.operation).toEqual({
+      type: "sms_latest_sender",
+      includeAddress: true,
+    });
+    const digest = deviceProposalDigest(read.request);
+    await f.service.decide(credential, read.request.id, digest, true);
+    const claimed = await f.service.claim(credential, read.request.id, digest);
+    const attempt = claimed.execution!.attemptId;
+    await f.service.receipt(credential, read.request.id, digest, attempt, {
+      outcome: "applied",
+      operationId: randomUUID(),
+      result: {
+        kind: "sms-latest-sender",
+        status: "found",
+        address: "+14155550123",
+        threadId: "thread:42",
+      },
+    });
+    const hint = (await f.service.readCompletionHint(
+      credential,
+      read.request.id,
+      digest,
+      attempt,
+    ))!;
+    const reply = await f.service.completeReadReply(
+      credential,
+      hint,
+      new AbortController().signal,
+      async (entry) => {
+        preceding = {
+          id: entry.messageId as UUID,
+          entityId: f.runtime.agentId,
+          agentId: f.runtime.agentId,
+          roomId: f.original.roomId,
+          createdAt: Date.now(),
+          content: {
+            text: entry.text,
+            source: "client_chat",
+            inReplyTo: entry.inReplyTo as UUID,
+            metadata: {
+              deviceReadCompletion: {
+                proposalId: hint.proposalId,
+                attemptId: hint.attemptId,
+                requestId: hint.requestId,
+              },
+            },
+          },
+        };
+        await f.runtime.createMemory(preceding, "messages");
+      },
+    );
+    expect(reply.text).toContain("+14155550123");
+    const words =
+      "Draft a quick text asking them to bring the tripod tomorrow. Show me the draft here.";
+    const proposed: DeviceOperation = {
+      type: "sms_compose",
+      target: { kind: "number", number: "+14155550199" },
+      body: "Please bring the tripod tomorrow.",
+    };
+    const draft = await propose(words, proposed);
+    expect(draft.request.payload.operation).toEqual({
+      ...proposed,
+      target: { kind: "number", number: "+14155550123" },
+      draft: true,
+      replyThreadId: "thread:42",
+    });
+    expect(draft.request.state).toBe("pending");
+    for (const [text, target] of [
+      [
+        "Draft a text to Ada asking them to call +14155550199.",
+        { kind: "contact", query: "Ada" },
+      ],
+      [
+        "Draft a text to +14155550124 saying call +14155550199.",
+        { kind: "number", number: "+14155550124" },
+      ],
+    ] as const) {
+      const selected = await propose(text, proposed);
+      expect(selected.request.payload.operation).toEqual({
+        ...proposed,
+        target,
+        draft: true,
+      });
+    }
+    for (const text of [
+      "Draft a text asking them to bring the tripod. Actually send it to Ada instead.",
+      "Draft a text to +14155550124 or +14155550199 about the tripod.",
+      "Draft a text saying to call +14155550199.",
+    ]) {
+      await expect(propose(text, proposed)).rejects.toThrow("Which person");
+    }
+
+    preceding = {
+      ...preceding!,
+      id: randomUUID() as UUID,
+      content: { text: "A different conversation topic." },
+    };
+    await expect(propose(words, proposed)).rejects.toThrow(
+      "No current SMS sender",
+    );
+  } finally {
+    await f.pg.close();
+  }
+});
 it("additively upgrades existing approvals; fresh original read is bound privately, legacy and replay never rebind", async () => {
   const f = await fixture();
   try {

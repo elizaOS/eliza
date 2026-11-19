@@ -609,22 +609,22 @@ it.each([
     }
   },
 );
-it("accepts a fresh durably bound voice user message, never a lifecycle message", async () => {
-  const f = await fixture();
-  try {
-    const result = await f.run(
-      "open example.com/dashboard",
-      true,
-      false,
-      undefined,
-      "voice",
-    );
-    expect(result).toMatchObject({ success: true });
-    expect(f.enqueue).toHaveBeenCalledTimes(1);
-  } finally {
-    await f.pg.close();
-  }
-});
+it.each([
+  ["open example.com/dashboard", undefined],
+  ["Open alphacompute dot ai in the browser.", "https://alphacompute.ai/"],
+])(
+  "accepts the browser address from a bound voice turn: %s",
+  async (request, url) => {
+    const f = await fixture();
+    try {
+      const result = await f.run(request, true, false, url, "voice");
+      expect(result).toMatchObject({ success: true });
+      expect(f.enqueue).toHaveBeenCalledTimes(1);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
 it("does not treat a matching hostname as authority for a different path", async () => {
   const f = await fixture();
   try {

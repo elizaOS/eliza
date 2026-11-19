@@ -35,6 +35,7 @@ import {
   extractUserText,
   getStreamingContext,
   getTurnActionConstraint,
+  isObjectRecord,
   readDurableConversationChatMarker,
   registerDirectActionRoutingRule,
   stableStringify,
@@ -227,12 +228,15 @@ import {
   MESSAGES_READ_CAPABILITY,
   PHONE_CALL_CAPABILITY,
   PHONE_KEYPAD_CAPABILITY,
+  requestedSmsDraftRecipient,
   SMS_COMPOSE_CAPABILITY,
   SMS_COMPOSE_TARGET_CAPABILITY,
   SMS_LATEST_SENDER_CAPABILITY,
+  SMS_SENDER_ADDRESS_CAPABILITY,
   selectedTelephonyView,
   smsComposeNotSubmitted,
   smsReplyNotDrafted,
+  smsSenderDisclosure,
   TELEPHONY_ACTION_OPERATION_TYPES,
   telephonyActionCapabilityAvailable,
   telephonyActionReceiptOutcome,
@@ -1053,6 +1057,40 @@ async function freshRequestedMessageId(
   };
 }
 
+export function hasDeviceGmailComposer(): boolean {
+  return (
+    getDeviceActionTurn()?.credential.capabilities?.includes(
+      "gmail.local-compose.v1",
+    ) === true
+  );
+}
+
+/** A compose handoff only fills a local editor, so it is valid with either owner action setting. */
+export async function currentGmailComposeOrigin(
+  runtime: IAgentRuntime,
+  message: Memory,
+) {
+  const current = getDeviceActionTurn();
+  if (!current || !hasDeviceGmailComposer()) return;
+  const original = current.replyContext?.message;
+  if (
+    !original ||
+    original.id !== message.id ||
+    original.roomId !== message.roomId ||
+    original.entityId !== message.entityId ||
+    original.content.text !== message.content.text ||
+    !isRequestOwner(current, original)
+  )
+    throw new DeviceActionError("Reopen this email request on the phone.");
+  const origin = await freshRequestedMessageId(runtime, current.credential, {
+    allowReviewed: true,
+  });
+  if (!origin)
+    throw new DeviceActionError("Reopen this email request on the phone.");
+  origin.assertCurrent();
+  return origin.messageId;
+}
+
 export async function currentRequestedActionOrigin(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1211,6 +1249,7 @@ const readReplyControllers = new WeakMap<
  */
 export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   "gmail.request-policy.v1",
+  "gmail.local-compose.v1",
   CAMERA_CAPTURE_CAPABILITY,
   "calendar.local-event.v1",
   CALENDAR_CREATE_CAPABILITY,
@@ -1240,6 +1279,7 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   SMS_COMPOSE_CAPABILITY,
   MESSAGES_READ_CAPABILITY,
   SMS_LATEST_SENDER_CAPABILITY,
+  SMS_SENDER_ADDRESS_CAPABILITY,
   VOICEMAIL_READ_CAPABILITY,
   VOICEMAIL_DELETE_CAPABILITY,
   PHOTO_LIBRARY_CAPABILITY,
@@ -2208,6 +2248,102 @@ export class DeviceActionService {
         held.controller.abort(new Error("Original read enrollment revoked"));
     }
   }
+  /** Resolve "them" from the preceding host-persisted reply and its delivered device read,
+   * not the model's proposed number or a second lookup after a newer SMS arrives. */
+  private async previousSmsSender(
+    c: DeviceCredential,
+    original: Memory,
+  ): Promise<{ number: string; threadId: string }> {
+    const unavailable = () =>
+      new DeviceActionError(
+        "No current SMS sender for this reply. Ask who texted you or choose a recipient.",
+      );
+    const requestedAt = original.createdAt;
+    if (!original.id || !requestedAt) throw unavailable();
+    const messages = await this.runtime.getMemories({
+      tableName: "messages",
+      roomId: original.roomId,
+      agentId: this.runtime.agentId,
+      end: requestedAt,
+      count: 3,
+    });
+    const prior = messages
+      .filter(
+        (message) =>
+          message.id !== original.id &&
+          message.roomId === original.roomId &&
+          typeof message.createdAt === "number" &&
+          message.createdAt <= requestedAt,
+      )
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    const reply = prior[0];
+    if (
+      !reply?.id ||
+      reply.entityId !== this.runtime.agentId ||
+      reply.agentId !== this.runtime.agentId ||
+      prior[1]?.createdAt === reply.createdAt
+    )
+      throw unavailable();
+    const marker = (
+      reply.content.metadata as
+        | {
+            deviceReadCompletion?: {
+              proposalId?: unknown;
+              attemptId?: unknown;
+            };
+          }
+        | undefined
+    )?.deviceReadCompletion;
+    if (
+      typeof marker?.proposalId !== "string" ||
+      typeof marker.attemptId !== "string"
+    )
+      throw unavailable();
+    const { proposalId, attemptId } = marker;
+    return this.access(c, async (queue, row, tx) => {
+      const stored = await readDeviceCompletion(
+        tx,
+        this.runtime.agentId,
+        c.subjectUserId,
+        proposalId,
+      );
+      if (
+        !stored ||
+        stored.state !== "delivered" ||
+        stored.attemptId !== attemptId ||
+        !stored.reply ||
+        stored.reply.messageId !== reply.id ||
+        stored.origin.original.roomId !== original.roomId ||
+        stored.origin.original.entityId !== original.entityId ||
+        stored.reply.text !== reply.content.text ||
+        Date.parse(stored.expiresAt) <= Date.now()
+      )
+        throw unavailable();
+      const bound = await this.boundReadCompletion(
+        queue,
+        row,
+        tx,
+        c,
+        proposalId,
+        stored.digest,
+        attemptId,
+      );
+      if (!bound) throw unavailable();
+      const result = deviceReadResult(bound.request);
+      if (
+        !isObjectRecord(result) ||
+        result.kind !== "sms-latest-sender" ||
+        result.status !== "found" ||
+        typeof result.address !== "string" ||
+        typeof result.threadId !== "string"
+      )
+        throw unavailable();
+      return {
+        number: result.address,
+        threadId: result.threadId,
+      };
+    });
+  }
   async propose(
     c: DeviceCredential,
     operation: unknown,
@@ -2249,6 +2385,10 @@ export class DeviceActionService {
     },
   ): Promise<ApprovalEnqueueResult> {
     let validated = validateDeviceOperation(operation);
+    if (validated.type === "sms_compose" && "replyThreadId" in validated)
+      throw new DeviceActionError(
+        "Reply threads are resolved from the original sender lookup.",
+      );
     // "Open wikipedia.org in a new tab" asks for that address, not an empty
     // tab. The model still proposed browser_tab_new for it (v610, Pixel: the
     // phone showed a blank New tab and "Opened a new tab."), so the owner's own
@@ -2412,19 +2552,94 @@ export class DeviceActionService {
       validated.type === "browser_navigate" ||
       validated.type === "browser_search";
     const selectedTelephony = selectedTelephonyView(validated) !== undefined;
+    const smsDraftOrRead = [
+      "sms_compose",
+      "sms_send",
+      "sms_reply_selected",
+      "sms_latest_sender",
+    ].includes(validated.type);
     const foregroundTurn =
       isPhotosViewOperation(validated) || isFilesOperation(validated)
         ? getDeviceActionTurn()
         : undefined;
     const signal = foregroundTurn && getStreamingContext()?.abortSignal;
     const requestOrigin = await freshRequestedMessageId(this.runtime, c, {
-      allowReviewed: browserRequest || selectedTelephony,
+      allowReviewed: browserRequest || selectedTelephony || smsDraftOrRead,
       // A tab word and find text are compared with the owner's words too.
       readText:
+        smsDraftOrRead ||
         browserRequest ||
         validated.type === "browser_tab_switch" ||
         validated.type === "browser_find",
     });
+    if (validated.type === "sms_latest_sender") {
+      const scope = requestOrigin
+        ? smsSenderDisclosure(requestOrigin.requestText)
+        : "last-four";
+      if (scope === "clarify")
+        throw new DeviceActionError(
+          "Would you like the last four digits of the SMS sender’s number? Other partial numbers are unavailable.",
+        );
+      const full =
+        scope === "address" &&
+        c.capabilities?.includes(SMS_SENDER_ADDRESS_CAPABILITY);
+      validated = full
+        ? { type: "sms_latest_sender", includeAddress: true }
+        : { type: "sms_latest_sender" };
+    }
+    if (
+      requestOrigin &&
+      (validated.type === "sms_compose" ||
+        validated.type === "sms_send" ||
+        validated.type === "sms_reply_selected")
+    ) {
+      const recipient = requestedSmsDraftRecipient(requestOrigin.requestText);
+      if (
+        recipient?.kind === "ambiguous" ||
+        (recipient?.kind === "unaddressed" &&
+          validated.type !== "sms_reply_selected")
+      )
+        throw new DeviceActionError(
+          "Which person should receive this draft? Give one recipient.",
+        );
+      if (recipient && recipient.kind !== "unaddressed") {
+        if (
+          !c.capabilities?.includes(SMS_COMPOSE_TARGET_CAPABILITY) ||
+          !c.capabilities.includes(SMS_COMPOSE_CAPABILITY)
+        )
+          throw new DeviceActionError(
+            "An addressed Messages draft is unavailable on this phone.",
+          );
+        const body = validated.body;
+        if (recipient.kind === "previous-sender") {
+          requestOrigin.assertCurrent();
+          const original = getDeviceActionTurn()?.replyContext?.message;
+          if (
+            !original ||
+            !c.capabilities.includes(SMS_SENDER_ADDRESS_CAPABILITY)
+          )
+            throw new DeviceActionError(
+              "No current SMS sender. Ask who last texted you or give one recipient.",
+            );
+          const sender = await this.previousSmsSender(c, original);
+          requestOrigin.assertCurrent();
+          validated = validateDeviceOperation({
+            type: "sms_compose",
+            target: { kind: "number", number: sender.number },
+            replyThreadId: sender.threadId,
+            body,
+            draft: true,
+          });
+        } else {
+          validated = validateDeviceOperation({
+            type: "sms_compose",
+            target: recipient,
+            body,
+            draft: true,
+          });
+        }
+      }
+    }
     // Reviewed Photos and Files proposals retain their foreground owner
     // even without a direct-request message binding.
     const assertCurrent =

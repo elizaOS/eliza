@@ -27,6 +27,8 @@ const TELEPHONY = [
   "phone.call.v1",
   "sms.compose.v1",
   "sms.compose.v2",
+  "sms.latest-sender.v1",
+  "sms.latest-sender.v2",
   "contacts.show.v1",
   "phone.keypad.v1",
 ];
@@ -121,6 +123,8 @@ const refusalPlan = () => ({
 
 describe("a whole-message call or text reaches the phone's own operation", () => {
   it.each([
+    ["Who texted me?", "sender"],
+    ["Draft a text asking them to bring the tripod.", "text"],
     ["text shaw saying I'm running late", "text"],
     ["send a text to 415-302-4399 saying hello from Alpha", "text"],
     ["Text Sam Lee that the door is open", "text"],

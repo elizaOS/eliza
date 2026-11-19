@@ -57,7 +57,10 @@ import {
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { findEntityByName } from "../../../entities.ts";
-import { deviceGmailRequestConsent } from "../../../services/device-actions/service.ts";
+import {
+  deviceGmailRequestConsent,
+  hasDeviceGmailComposer,
+} from "../../../services/device-actions/service.ts";
 import {
   resolveMutedTargetFlags,
   resolveMutedWorldFlags,
@@ -70,7 +73,10 @@ import { manageMessageAction } from "../../messaging/triage/actions/manageMessag
 import { respondToMessageAction } from "../../messaging/triage/actions/respondToMessage.ts";
 import { scheduleDraftSendAction } from "../../messaging/triage/actions/scheduleDraftSend.ts";
 import { searchMessagesAction as searchInboxMessagesAction } from "../../messaging/triage/actions/searchMessages.ts";
-import { sendDraftAction } from "../../messaging/triage/actions/sendDraft.ts";
+import {
+  normalizeOutboundDraftSource,
+  sendDraftAction,
+} from "../../messaging/triage/actions/sendDraft.ts";
 import { triageMessagesAction } from "../../messaging/triage/actions/triageMessages.ts";
 import {
   requireSendConsent,
@@ -1238,6 +1244,15 @@ function sourceFromParams(
   _message: Memory,
 ): string | undefined {
   return textParam(raw.source) ?? textParam(raw.platform);
+}
+
+function phoneGmailComposeOp(params: ParamRecord): boolean {
+  return (
+    hasDeviceGmailComposer() &&
+    normalizeOutboundDraftSource(
+      params.source ?? params.platform ?? params.connector ?? params.service,
+    ) === "gmail"
+  );
 }
 
 function normalizeSendParams(
@@ -6930,6 +6945,13 @@ export const messageAction: Action = {
     refreshDescriptions(messageAction, runtime);
     const parameters = paramsFromOptions(options);
     const explicitOp = inferOp(parameters);
+    // A device can compose mail from any active view. The draft handler revalidates
+    // the original owner turn, and only the owner can dispatch from the phone.
+    if (
+      ["send", "send_draft", "draft_followup"].includes(explicitOp) &&
+      phoneGmailComposeOp(parameters)
+    )
+      return true;
     // One local registration read; no connector handshake or provider request.
     if (
       normalizeOp(parameters.action) === "send" &&
@@ -6954,6 +6976,16 @@ export const messageAction: Action = {
     const op = inferOp(params);
     switch (op) {
       case "send":
+        if (phoneGmailComposeOp(params))
+          return delegateToTriage(
+            "send_draft",
+            runtime,
+            message,
+            state,
+            options,
+            callback,
+            responses,
+          );
         return handleSend(runtime, message, state, params);
       case "read_channel":
         return handleReadChannel(runtime, message, state, params);

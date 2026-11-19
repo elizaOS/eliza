@@ -144,6 +144,24 @@ const send = (body = "Hello"): Bag => ({
 });
 
 describe("InboxOperation", () => {
+  it("binds a supplied send identity to its durable operation and provider receipt", async () => {
+    const fixture = provider();
+    const operation = journal(fixture);
+    const requestId = crypto.randomUUID();
+    const prepared = await operation.prepare(send(), {
+      draftId: "phone-draft",
+      requestId,
+    });
+    expect(prepared?.requestId).toBe(requestId);
+    const done = await operation.confirm({
+      draftId: "phone-draft",
+      proposal: send(),
+    });
+    expect(done?.receipt?.requestId).toBe(requestId);
+    expect(fixture.receipts.get(requestId)?.state).toBe("succeeded");
+    expect(fixture.calls.dispatch).toBe(1);
+  });
+
   it("persists dispatching before the single dispatch and records the receipt", async () => {
     const fixture = provider();
     const operation = journal(fixture);
