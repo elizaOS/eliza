@@ -820,7 +820,7 @@ async function selectNavigation(
     },
   });
   mutate?.();
-  await runResponseHandlerEvaluators({
+  const evaluation = await runResponseHandlerEvaluators({
     runtime: f.runtime,
     message: input,
     state: { values: {}, data: {}, text: "" },
@@ -828,7 +828,7 @@ async function selectNavigation(
     availableContexts: [{ id: "general", description: "General" }],
     userRoles: ["OWNER"],
   });
-  return handler;
+  return { ...handler, evaluation };
 }
 const clientMessage = (): Memory => ({
   ...message,
@@ -948,11 +948,32 @@ describe("model-selected host navigation", () => {
     const selected = await selectNavigation(
       f,
       clientMessage(),
-      { disposition: "planning", viewId: "notes" },
+      { disposition: "planning", viewId: "notes", unconditional: false },
       { intents, candidateActions: [] },
     );
     expect(selected.plan.candidateActions).toEqual(["VIEWS_SHOW"]);
     expect(selected.plan.intents).toEqual(intents);
+    expect(selected.plan.deterministicToolCall).toBeUndefined();
+    expect(selected.evaluation.requiredViewNavigation).toBeUndefined();
+    expect(f.requests()).toBe(0);
+  });
+
+  it("binds the unconditional part of a compound request to the installed view without dispatching", async () => {
+    const f = await fixture();
+    f.runtime.actions = (createElizaPlugin().actions ?? []).filter((action) =>
+      action.name.startsWith("VIEWS"),
+    );
+    const selected = await selectNavigation(
+      f,
+      clientMessage(),
+      { disposition: "planning", viewId: "Notes", unconditional: true },
+      { intents: ["Open the Notes view", "Find the requested note"] },
+    );
+    expect(selected.evaluation.requiredViewNavigation).toMatchObject({
+      viewId: "notes",
+      clientId: "origin-client",
+      installationId: expect.any(String),
+    });
     expect(selected.plan.deterministicToolCall).toBeUndefined();
     expect(f.requests()).toBe(0);
   });
