@@ -179,9 +179,9 @@ export interface RuntimeModelDispatchHost {
 	invokePipelineHooks(
 		...args: Parameters<RuntimePipelineHooks["invokePipelineHooks"]>
 	): ReturnType<RuntimePipelineHooks["invokePipelineHooks"]>;
-	/** `conversation` is the turn's room. Stable references need one; see SECRET_SWAP_STABLE_REFERENCES_SETTING. */
+	/** `conversation` is the turn's room. Stable references and pseudonyms need one; see SECRET_SWAP_STABLE_REFERENCES_SETTING. */
 	createSecretSwapSession(conversation?: string): SecretSwapSession;
-	createPiiSwapSession(): PseudonymSession;
+	createPiiSwapSession(conversation?: string): PseudonymSession;
 	initResolver(): ((value?: void | PromiseLike<void>) => void) | undefined;
 	_ensureServiceStarted(
 		serviceType: ServiceTypeName | string,
@@ -1765,7 +1765,10 @@ export class RuntimeModelDispatch {
 					// execution boundary can restore what this call swapped.
 					const trajectoryCtx = getTrajectoryContext();
 					piiSwapSession =
-						trajectoryCtx?.piiSwapSession ?? this.host.createPiiSwapSession();
+						trajectoryCtx?.piiSwapSession ??
+						this.host.createPiiSwapSession(
+							trajectoryCtx?.roomId as string | undefined,
+						);
 					if (trajectoryCtx && !trajectoryCtx.piiSwapSession) {
 						trajectoryCtx.piiSwapSession = piiSwapSession;
 					}
