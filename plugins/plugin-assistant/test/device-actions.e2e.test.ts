@@ -2051,6 +2051,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       expect([...enrolled.body.capabilities].sort()).toEqual(
         [
           ...allCapabilities.split(","),
+          "gmail.local-compose.v1",
           "calendar.create.v1",
           "calendar.next-read.v1",
           "calendar.agenda-read.v1",
