@@ -41,14 +41,23 @@ const QUOTE_PAIRS: Record<string, string> = {
 const OPEN_COMMAND = String.raw`(?:open|visit|go\s+to|navigate\s+to)`;
 // A speech transcript may leave the dots between hostname labels as words.
 // Keep each label explicit and let the same address validator check the result.
+// Such a hostname only grounds a model proposal, which the owner reviews: it is
+// never the strict command or a direct request.
 const SPOKEN_DOT_SOURCE = String.raw`\p{Zs}+dot\p{Zs}+`;
 const SPOKEN_ADDRESS_TOKEN = String.raw`\S+(?:${SPOKEN_DOT_SOURCE}\S+)+`;
 const ADDRESS_TOKEN = String.raw`(?:${SPOKEN_ADDRESS_TOKEN}|\S+)`;
 const SPOKEN_DOT = new RegExp(SPOKEN_DOT_SOURCE, "giu");
 const HOST_LABEL_GROUP = String.raw`[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*`;
 const SPOKEN_HOSTNAME = new RegExp(
-  String.raw`^${HOST_LABEL_GROUP}(?:${SPOKEN_DOT_SOURCE}${HOST_LABEL_GROUP})+$`,
+  `^${HOST_LABEL_GROUP}(?:${SPOKEN_DOT_SOURCE}${HOST_LABEL_GROUP})+$`,
   "iu",
+);
+// A spoken first label that starts a phrase, not a hostname: "the dot app",
+// "my dot app", "this dot com".
+const SPOKEN_PROSE_LABELS = new Set(
+  "the a an my your our their his her its this that these those some any".split(
+    " ",
+  ),
 );
 // Everyday verbs that ask for a site. Direct requests only: the router never
 // claims them without the model.
@@ -84,7 +93,7 @@ const OPEN_VERB =
 const ADDRESS_INTRO = String.raw`(?:${EVERYDAY_COMMAND}|${OPEN_COMMAND}|${OPEN_VERB.source}|\b(?:not|nor)(?=\p{Zs}+dot\b))[,.:!?]?\p{Zs}+`;
 const SITE_QUALIFIERS = String.raw`(?:(?:the|(?:web\s?)?site|at|called|named)\p{Zs}+)*`;
 const ADDRESS_WORD = new RegExp(
-  String.raw`(?:${ADDRESS_INTRO}${SITE_QUALIFIERS}(${SPOKEN_ADDRESS_TOKEN})|(${ADDRESS_TOKEN}))`,
+  `(?:${ADDRESS_INTRO}${SITE_QUALIFIERS}(${SPOKEN_ADDRESS_TOKEN})|(${ADDRESS_TOKEN}))`,
   "giu",
 );
 // Open verbs joined by "or", "and", "nor", "/" or "&", with their particles
@@ -140,6 +149,8 @@ const TAIL_END =
 type NamePatterns = {
   command: RegExp;
   directRequest: RegExp;
+  spokenCommand: RegExp;
+  spokenRequest: RegExp;
   search: RegExp;
   sentenceStart: RegExp;
   questionStart: RegExp;
@@ -159,14 +170,25 @@ function patterns(assistantName: string): NamePatterns {
   const questionOpener = String.raw`(?:^|[.!?:,])\s*(?:(?:hey|hi|ok|okay|${name}|please|so|well|then|but|and|oh|hmm)[\s,.!]*)*`;
   const built: NamePatterns = {
     command: new RegExp(
-      String.raw`${lead}(?:please,?\s+)?${OPEN_COMMAND}\s+(${ADDRESS_TOKEN})(\s.*)?$`,
-      "iu",
+      String.raw`${lead}(?:please,?\s+)?${OPEN_COMMAND}\s+(\S+)(\s.*)?$`,
+      "i",
     ),
     // Explicit polite questions and whole-message everyday commands are
     // direct requests too, but file-like bare names still need a website
     // signal rather than acquiring authority from the verb.
     directRequest: new RegExp(
-      String.raw`${lead}(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${OPEN_COMMAND}|${EVERYDAY_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+(?:the\s+)?(${ADDRESS_TOKEN})(\s+(?:web\s?)?site\b)?(\s.*)?$`,
+      String.raw`${lead}(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${OPEN_COMMAND}|${EVERYDAY_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+(?:the\s+)?(\S+)(\s+(?:web\s?)?site\b)?(\s.*)?$`,
+      "i",
+    ),
+    // The same two forms around a spoken hostname: the words before it, the
+    // hostname, and the words after it. "Show me the polka dot shoes" names
+    // no hostname, so no "the" comes before one.
+    spokenCommand: new RegExp(
+      String.raw`(${lead}(?:please,?\s+)?${OPEN_COMMAND}\s+)(${SPOKEN_ADDRESS_TOKEN})(\s.*)?$`,
+      "iu",
+    ),
+    spokenRequest: new RegExp(
+      String.raw`(${lead}(?:(?:can|could|would|will)\s+you\s+(?:please,?\s+)?(?:${OPEN_COMMAND}|${EVERYDAY_COMMAND})|(?:please,?\s+)?${EVERYDAY_COMMAND})\s+)(${SPOKEN_ADDRESS_TOKEN})(\s.*)?$`,
       "iu",
     ),
     search: new RegExp(
@@ -247,9 +269,7 @@ export function authoredBrowserOpen(
     const bare = stripTrailingPunctuation(target, ".,!?");
     if (!/[/?#]/.test(bare.replace(/^https?:\/\//i, ""))) target = bare;
   }
-  const href = webAddress(
-    SPOKEN_HOSTNAME.test(target) ? target.replace(SPOKEN_DOT, ".") : target,
-  )?.href;
+  const href = webAddress(target)?.href;
   return href ? { href, newTab } : undefined;
 }
 
@@ -298,6 +318,43 @@ export function directBrowserOpen(
   return { href: url.href, newTab: false };
 }
 
+/** The hostname of a whole-message open request whose dots were spoken as
+ * words: "open example dot com", "can you pull up maps dot example dot com?".
+ * It only grounds a model proposal for that exact hostname: it is never the
+ * strict command or a direct request, so the owner reviews the open. A phrase
+ * ("the dot app", "my dot app") is not a hostname, and neither is a file name
+ * ("main dot py") unless the owner names the browser, a new tab or a website. */
+export function spokenBrowserDestination(
+  text: string,
+  assistantName: string = DEFAULT_ASSISTANT_NAME,
+): string | undefined {
+  if (unreadable(text)) return;
+  const names = patterns(assistantName);
+  const request = text.trim();
+  const spoken =
+    names.spokenCommand.exec(request) ?? names.spokenRequest.exec(request);
+  if (!spoken) return;
+  const [, before, address, after = ""] = spoken;
+  const words = stripTrailingPunctuation(address, ".,!?");
+  if (!SPOKEN_HOSTNAME.test(words)) return;
+  // The words around the hostname read as they do around a typed one.
+  const open = directBrowserOpen(
+    `${before}${words.replace(SPOKEN_DOT, ".")}${address.slice(words.length)}${after}`,
+    assistantName,
+  );
+  if (!open) return;
+  const labels = new URL(open.href).hostname.replace(/^www\./, "").split(".");
+  if (SPOKEN_PROSE_LABELS.has(labels[0])) return;
+  if (
+    FILE_TYPE_TLDS.has(labels[labels.length - 1]) &&
+    !IN_BROWSER.test(after) &&
+    !IN_NEW_TAB.test(after) &&
+    !SITE_AFTER.test(after)
+  )
+    return;
+  return open.href;
+}
+
 /** The destination to open for a model-proposed browser URL, built from the
  * address the user typed in this message, never from the model's spelling.
  * The user must have typed a web address on the proposed host (a leading
@@ -335,9 +392,10 @@ export function groundBrowserDestination(
   )
     return;
   // A whole utterance with spoken dots may have no literal URL token. Exact
-  // confirmation of the normalized hostname still comes from the owner text.
+  // confirmation of the normalized hostname still comes from the owner text,
+  // and that open is reviewed: it is never a direct request.
   if (typed.length === 0) {
-    const spoken = directBrowserDestination(userText, assistantName);
+    const spoken = spokenBrowserDestination(userText, assistantName);
     if (spoken === proposed.href) return spoken;
   }
   const strict = authoredBrowserDestination(userText, assistantName);
@@ -512,7 +570,7 @@ function typedAddresses(
 ): { url: URL; webSignal: boolean; negated: boolean }[] {
   const found: { url: URL; webSignal: boolean; negated: boolean }[] = [];
   // A literal piece of a mixed spoken hostname is not a separate address.
-  // The whole spoken destination needs its direct request proof above.
+  // The whole spoken destination needs its whole-message request above.
   for (const word of addressWords(text)) {
     const lead = word.value.replace(/^[("'“‘«<[]+/u, "");
     const tokens = new Set([
@@ -561,7 +619,13 @@ function hostWords(text: string, host: string) {
     }
     return false;
   };
-  return [...addressWords(text)].filter((word) => {
+  // Each word alone and each spoken hostname whole, so neither reading hides a
+  // refusal: "don't open x.com dot dot dot" and "don't open x dot com".
+  const words = [...text.matchAll(/\S+/g)].map((word) => ({
+    value: word[0],
+    index: word.index,
+  }));
+  return [...words, ...addressWords(text)].filter((word) => {
     const read = plain(word.value.replace(DOTS, ".").replace(SPOKEN_DOT, "."));
     return (
       names(read.toLowerCase()) ||

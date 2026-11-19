@@ -117,7 +117,7 @@ it.each([
   // opened and the address never loaded.
   ["open example.com in the browser", "DM"],
   ["open wikipedia.org in a new tab", "DM"],
-  ["Open alphacompute dot ai in the browser.", "VOICE_DM"],
+  ["Open alphacompute.ai in the browser.", "VOICE_DM"],
 ])(
   "routes a complete native URL request to the existing reviewed operation: %s",
   async (request, channelType) => {
@@ -306,6 +306,34 @@ it.each([
     );
   },
 );
+it.each([
+  // A spoken hostname goes to the planner, whose open the owner reviews.
+  "Open alphacompute dot ai in the browser.",
+  "Open example dot com",
+  "Open the Dot app",
+  "open my dot app please",
+  "Go to the dot com",
+  "Visit the dot site",
+  "Open main dot py",
+  "Open readme dot md",
+])("does not claim the spoken %s", async (request) => {
+  const f = await fixture(request, "VOICE_DM");
+  await withDeviceActionTurn(
+    f.runtime,
+    f.credential,
+    async () => {
+      setDeviceActionRequestMessage(f.runtime, f.message);
+      expect(f.rule.matches(request, f.message)).toBe(false);
+    },
+    {
+      requestCaller: {
+        subjectUserId: f.credential.subjectUserId,
+        entityId: owner,
+        role: "OWNER",
+      },
+    },
+  );
+});
 it("requires the bound current caller and the operation capability, not a native metadata hint", async () => {
   const f = await fixture();
   expect(f.rule.matches(String(f.message.content.text), f.message)).toBe(false);

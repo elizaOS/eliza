@@ -781,6 +781,53 @@ it.each([
     }
   },
 );
+it.each([
+  // [request, runs without a review]
+  ["Open alphacompute.ai in the browser.", true],
+  // A spoken hostname grounds the open, but the owner always reviews it.
+  ["Open alphacompute dot ai in the browser.", false],
+] as const)(
+  "reviews a spoken hostname even in direct request mode: %s",
+  async (request, handoff) => {
+    const f = await fixture();
+    try {
+      const result = await f.run(
+        request,
+        false,
+        true,
+        "https://alphacompute.ai/",
+      );
+      expect(result).toMatchObject(
+        handoff
+          ? {
+              success: true,
+              userFacingText: "Opening alphacompute.ai.",
+              data: { directRequest: true, approvalRequired: false },
+            }
+          : {
+              success: true,
+              userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+              data: { awaitingUserInput: true, approvalRequired: true },
+            },
+      );
+      expect(isPersistedDeviceApprovalPause(result as PlannerToolResult)).toBe(
+        !handoff,
+      );
+      const rows = (
+        await f.pg.query<{ payload: Record<string, unknown> }>(
+          "SELECT payload FROM approval_requests",
+        )
+      ).rows;
+      expect(rows.map((row) => row.payload.operation)).toEqual([
+        { type: "browser_navigate", url: "https://alphacompute.ai/" },
+      ]);
+      // Only a direct request binds the phone's no-review open to the message.
+      expect("requestMessageId" in rows[0].payload).toBe(handoff);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
 it("does not treat a matching hostname as authority for a different path", async () => {
   const f = await fixture();
   try {
