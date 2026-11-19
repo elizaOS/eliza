@@ -202,6 +202,6 @@ it.effect('The build reads the three agent data files from their asset names and
     const missing = (effect { try admitAgentData({ ...paths, policy: path.join(root, "agent", "absent.json") }); return "admitted" } catch (error) => match (error) {
       when AgentConfigRefused: error.detail;
     })
-    assert.strictEqual(try missing, "The agent policy file is missing")
+    assert.strictEqual(missing, "The agent policy file is missing")
   }
 })

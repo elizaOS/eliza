@@ -1,7 +1,7 @@
 // spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"; spec/core/actionPlanning.md, "An empty, malformed or stale allowlist stops boot"
 import { assert, it } from "@effect/vitest"
 import { stringToUuid, type Memory } from "@elizaos/core"
-import { basicActionsModuleName, calculate, calculationLimits } from "../src/plugins/basic-actions.vibe"
+import { basicActionsModuleName, calculate, calculationLimits, type Calculation } from "../src/plugins/basic-actions.vibe"
 import { builtinModuleFactories } from "../src/plugins/profile.vibe"
 import { host, startInProcess } from "./support/kernel.vibe"
 
@@ -23,7 +23,7 @@ const values: ReadonlyArray<readonly [string, string, boolean]> = [
 ]
 
 it.effect(`CALCULATE evaluates with precedence, exact big integers and floats only for division or decimals (${rule})`, effect () => {
-  const results = []
+  const results: Calculation[] = []
   for (const [expression] of values) results.push(try calculate(expression))
   try Effect.try(() => assert.deepStrictEqual(
     results.map(({ value, exact }) => [value, exact]),
@@ -59,10 +59,10 @@ it.effect(`An agent that loads the basic actions and allows {REPLY, IGNORE, NONE
     modules: builtinModuleFactories,
   })
   const action = agent.runtime.actions.find((found) => found.name === "CALCULATE")
-  const message: Memory = {
+  const message: Memory = try Effect.try(() => ({
     entityId: stringToUuid("calculate-owner"), roomId: stringToUuid("calculate-room"), agentId: agent.runtime.agentId,
     content: { text: "What is 3847 times 292?" },
-  }
+  }))
   const solved = try host("calculate", async () => action?.handler(agent.runtime, message, undefined, { parameters: { expression: "3847 * 292" } }))
   const refused = try host("calculate a word", async () => action?.handler(agent.runtime, message, undefined, { parameters: { expression: "two plus two" } }))
   try Effect.try(() => assert.deepStrictEqual({

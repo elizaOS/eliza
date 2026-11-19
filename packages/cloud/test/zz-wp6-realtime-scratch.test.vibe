@@ -33,9 +33,8 @@ import { callDeclaring } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
 import { recordingBytes, recordingForm } from "./support/recording.ts"
 import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
-import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.ts"
+import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.effect.vibe"
 import { googleMapsFake } from "./support/maps-fake.ts"
-import { decideForSignedInAccount, nativeGoogleFixture } from node
 
 effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
   return match (try exit(program)) {

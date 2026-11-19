@@ -182,10 +182,8 @@ effect function decode<T>(schema: Schema.ConstraintDecoder<T>, answer: Answer, b
   return read.value
 }
 
-const SnapshotAnswer = Schema.Struct({ data: BillingSnapshot })
-
 export effect function snapshotFromResponse(body: unknown): BillingSnapshot!CloudError {
-  return (try decode(SnapshotAnswer, "snapshot", body)).data
+  return (try decode(Schema.Struct({ data: BillingSnapshot }), "snapshot", body)).data
 }
 
 export effect function commandFromResponse(body: unknown): SubscriptionCommand!CloudError {

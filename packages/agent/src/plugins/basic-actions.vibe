@@ -1,6 +1,7 @@
 // spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"
 import type { Action, ActionResult, RoleGateRole } from "@elizaos/core"
-import { calculateAction as calculateDecl, type Role } from "../../gen/agent__plugins__profile.effect.vibe"
+import { calculateAction as calculateDecl } from "../../gen/agent__plugins__profile.effect.vibe"
+import type { Role } from "../../gen/core__authorization.effect.vibe"
 import type { AgentModule, ModuleFactory } from "../host/module.vibe"
 
 export const basicActionsModuleName = "@elizaos/agent/basic-actions"
@@ -121,9 +122,9 @@ effect function power(cursor: Cursor): Num!ExpressionRefused {
   cursor.pos++
   const exponent = try nested(cursor, unary)
   if (base.kind === "Float" || exponent.kind === "Float" || exponent.value < 0n) return float(toFloat(base) ** toFloat(exponent))
-  if (exponent.value > BigInt(calculationLimits.exponent)) throw refused(cursor, { kind: "ExponentTooLarge", limit: calculationLimits.exponent })
+  if (exponent.value > calculationLimits.exponent) throw refused(cursor, { kind: "ExponentTooLarge", limit: calculationLimits.exponent })
   const magnitude = base.value < 0n ? -base.value : base.value
-  if (magnitude > 1n && (BigInt(digits(magnitude)) - 1n) * exponent.value + 1n > BigInt(calculationLimits.integerDigits)) {
+  if (magnitude > 1n && (digits(magnitude) - 1) * Number(exponent.value) + 1 > calculationLimits.integerDigits) {
     throw refused(cursor, { kind: "TooManyDigits", limit: calculationLimits.integerDigits })
   }
   return try integer(cursor, base.value ** exponent.value)

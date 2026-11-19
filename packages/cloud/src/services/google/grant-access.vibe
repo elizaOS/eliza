@@ -149,16 +149,15 @@ export effect function ownerSide(query: URLSearchParams): void!Refused {
 }
 
 export effect function pickGrant(tx: Tx, owner: Owner, grantId?: string) {
+  const held = try tx.query("SELECT key, status FROM google_connections WHERE organization_id = $1 AND status <> 'Pending' ORDER BY linked_at DESC, key", [owner.organizationId])
   if (grantId !== undefined) {
-    const named = (try tx.query("SELECT key FROM google_connections WHERE key = $1 AND organization_id = $2", [grantId, owner.organizationId]))[0]
-    if (named === undefined) throw refused("NotFound")
+    if (!held.some((row) => row.key === grantId)) throw refused("NotFound")
     return grantId
   }
-  const rows = try tx.query("SELECT key, status FROM google_connections WHERE organization_id = $1 AND status <> 'Revoked' ORDER BY linked_at", [owner.organizationId])
-  const active = rows.filter((row) => row.status === "Active")
+  const active = held.filter((row) => row.status === "Active")
   if (active.length > 1) throw refused("InvalidRequest", "GrantRequired")
-  const chosen = toText((active[0] ?? (rows.length === 1 ? rows[0] : undefined))?.key)
-  if (chosen === undefined) throw refused(rows.length === 0 ? "GoogleReauthRequired" : "InvalidRequest", rows.length === 0 ? "NoReason" : "GrantRequired")
+  const chosen = toText((active[0] ?? held[0])?.key)
+  if (chosen === undefined) throw refused("GoogleReauthRequired")
   return chosen
 }
 
