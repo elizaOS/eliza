@@ -70,7 +70,7 @@ it("records provider usage, tool sizes and the output cap", async () => {
 	expect(first.hash).not.toBe(second.hash);
 });
 
-it("keeps a missing cache report missing, and logs nothing for a result without usage", async () => {
+it("keeps a missing cache report missing, logs no usage for a result without one, and records that no tools were sent", async () => {
 	const uncounted = await logged(
 		{
 			text: "",
@@ -83,5 +83,7 @@ it("keeps a missing cache report missing, and logs nothing for a result without 
 	expect(uncounted).not.toHaveProperty("maxTokens");
 	const plain = await logged("ok", { prompt: "hello" });
 	expect(plain.usage).toBeUndefined();
-	expect(plain).not.toHaveProperty("tools");
+	// A request that sent no tools says so: a reader can tell it from a row
+	// written before tools were recorded.
+	expect(plain.tools).toEqual([]);
 });
