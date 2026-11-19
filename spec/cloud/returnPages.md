@@ -55,6 +55,7 @@ pure def answerAt(row: EnvironmentProfile, read: RegistryRead, served: Environme
     | UnreadableRegistry => if (url.origin == row.web) Refused({ refusal: refuse(ServiceUnavailable) }) else notFoundAnswer
   }
 pure def pageIsReturnToApp(page: Page): bool = match page { | ReturnToApp(p) => true | _ => false }
+pure def pageOffers(page: Page): PageAction = match page { | ReturnToApp(p) => p.offer | _ => NoAction }
 pure def showsReturnToApp(answer: PageAnswer): bool = match answer { | Shows(s) => pageIsReturnToApp(s.page) | _ => false }
 pure def readOf(registry: List[Registration], readable: bool): RegistryRead = if (readable) ReadRegistry({ registrations: registry }) else UnreadableRegistry
 pure val rowValues: Set[EnvironmentProfile] = {
@@ -100,7 +101,7 @@ pure def lawAReturnPageOpensItsOwnApp(row: EnvironmentProfile, registry: List[Re
 }
 ```
 
-### A Google connection finished without a connect return shows ReturnToApp as connected, with no action
+### A Google connection finished for an enabled registration without a connect return shows ReturnToApp as connected, with no action
 
 `services/google/connection` shows this page at its callback when the
 registration names no connect return; with a connect return it redirects
@@ -110,9 +111,12 @@ there instead, so this page is never shown.
 pure def connectedAnswer(row: EnvironmentProfile, r: Registration): PageAnswer =
   if (r.enabled and r.connectReturn == NoConnectReturn) Shows({ page: ReturnToApp({ serviceName: row.name, appName: r.displayName, purpose: ConnectedPage, offer: NoAction }) })
   else notFoundAnswer
-pure def lawAConnectReturnIsNeverShadowed(row: EnvironmentProfile, r: Registration): bool = match connectedAnswer(row, r) {
-  | Shows(s) => connectUrls(r.connectReturn).length() == 0 and r.enabled and pageOffers(s.page) == NoAction
-  | Refused(x) => not(retryableOf(x.refusal))
+pure def lawAConnectReturnIsNeverShadowed(row: EnvironmentProfile, r: Registration): bool = {
+  val answer = connectedAnswer(row, r)
+  match answer {
+    | Shows(s) => connectUrls(r.connectReturn).length() == 0 and r.enabled and pageOffers(s.page) == NoAction
+    | Refused(x) => not(retryableOf(x.refusal))
+  }
 }
 ```
 

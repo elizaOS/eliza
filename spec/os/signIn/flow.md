@@ -191,7 +191,7 @@ pure val replyValues = Set(Delivered, FactorRequired, Unanswered,
   Authenticated({ userId: "u2", credentialAttempt: 2, accessExpiresAt: 900000, google: GoogleRefused }),
   Refused({ code: T::CredentialProofInvalid, reason: T::NoReason }), Refused({ code: T::AccessDenied, reason: T::ChallengeLocked }),
   Refused({ code: T::RateLimited, reason: T::NoReason }), Refused({ code: T::AuthenticationRequired, reason: T::CredentialExpired }),
-  Refused({ code: T::ServiceUnavailable, reason: T::NoReason }))
+  Refused({ code: T::ServiceUnavailable, reason: T::NoReason }), Refused({ code: T::ProviderUnavailable, reason: T::NoReason }))
 pure val weight_cloudAnswered = 5
 pure def sometimesSecondFactorAsked(s: SignIn): bool = s.phase == SecondFactor
 ```
@@ -363,10 +363,9 @@ pure def canReauthenticate(s: SignIn, environment: Environment, method: SignInMe
   canStart(s, environment, method, readiness, device) and method != Google({ mode: Picker }) and account.userId != ""
 pure def reauthenticate(s: SignIn, environment: Environment, method: SignInMethod, readiness: Readiness, device: DeviceFacts, account: C::Account): SignIn =
   opened(environment, method, ReauthPurpose({ account: account }), s)
-pure def reauthFits(s: SignIn): bool = { val p = s.purpose  match p {
+pure def alwaysReauthenticationStaysWithTheAccount(s: SignIn): bool = { val p = s.purpose  match p {
   | ReauthPurpose(r) => r.account.userId != "" and s.method != Google({ mode: Picker }) and s.phase != SignedIn and s.phase != Connecting
   | SignInPurpose => s.phase != Reauthenticated } }
-pure def alwaysReauthenticationStaysWithTheAccount(s: SignIn): bool = reauthFits(s)
 pure def handsOwnAccount(e: SignInEffect, before: SignIn, after: SignIn): bool = match e {
   | HandSession(h) => before.purpose == ReauthPurpose({ account: h.account }) and after.phase == Reauthenticated | _ => true }
 pure def stepSessionOnlyForTheSignedInAccount(before: SignIn, via: str, after: SignIn, out: List[SignInEffect]): bool = out.every(e => handsOwnAccount(e, before, after))

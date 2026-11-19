@@ -1,31 +1,29 @@
 # Google sign-in
 
-Signing in with Google, the server half: in the browser with an
-authorization code, or on the phone with its own Google account and a
-one-time challenge. Sources: develop `packages/auth/src/server/api/routes/auth.ts`
-(`/oauth/*`, `/oauth/google/native/*`), `oauth-app-error-return.ts`, the
-Quint models `OAuthAppLinkRedemption.qnt` and `NativeGoogleAdmission.qnt`,
-and the service half of the old `spec/auth/googleSignIn.md`. The device half
-is `spec/os/signIn/flow.md`.
+Signing in with Google, the server half: in the browser with a one-time
+code, or on the phone with its own Google account and a one-time challenge.
+Sources: develop `packages/auth/src/server/api/routes/auth.ts`, the Quint
+models `OAuthAppLinkRedemption` and `NativeGoogleAdmission`, and the service
+half of the old `spec/auth/googleSignIn.md`; the device half is
+`spec/os/signIn/flow.md`.
 
-Routes under `/api/v1/auth/google/`: `GET authorize` (query `response_type,
+Routes under `/api/v1/auth/google/`: `GET authorize` (`response_type,
 client_id, environment, redirect_uri, code_challenge, code_challenge_method,
 state`) redirects to Google; `GET callback` redirects to
 `<redirect_uri>#code=<code>&state=<state>` or `#error=<error>&state=<state>`;
 `POST exchange` `{code, redirectUri, clientId, codeVerifier}` answers as a
-code sign-in does (`codeChallenges`); `POST native/challenge` `{clientId,
-environment, redirectUri, codeChallenge, codeChallengeMethod}` answers
-`{challengeId, nonce, serverClientId, expiresAt}`. The session route `POST
-/api/v1/user/methods/google/challenge` opens a link challenge. A challenge is
-answered inside `POST /api/v1/app-auth/mobile/google` (`nativeClients/deviceKeys`)
-or `POST /api/v1/user/methods/google/link` (`signInMethods`).
+code sign-in does (`codeChallenges`); `POST native/challenge` answers
+`{challengeId, nonce, serverClientId, expiresAt}`, and the session route
+`POST /api/v1/user/methods/google/challenge` opens a link challenge. A
+challenge is answered inside `POST /api/v1/app-auth/mobile/google`
+(`nativeClients/deviceKeys`) or `POST /api/v1/user/methods/google/link`
+(`signInMethods`).
 
 One machine instance is one attempt row: a browser attempt or a native
 challenge, never both. The shell draws state, code, challenge id and nonce at
-random, stores only digests of the code and of the device's S256 challenge,
-and passes every check in as an observation. Google's `email_verified` goes
-unchanged to `accounts`' first sight. An unknown state, code or challenge id
-is answered before this machine.
+random, stores only digests, and passes every check in as an observation; an
+unknown state, code or challenge id is answered before this machine.
+Google's `email_verified` goes unchanged to `accounts`' first sight.
 
 ## Story: Sign in with Google in the browser
 
@@ -78,9 +76,8 @@ pure val authorizeValues: Set[AuthorizeRequest] = {
   val ok: AuthorizeRequest = { responseType: CodeResponse, method: S256, client: N::ClientAdmitted, hasState: true }
   Set(ok, { ...ok, method: PlainMethod }, { ...ok, hasState: false }, { ...ok, client: N::ClientRefused({ fault: N::WrongRedirect }) })
 }
-pure val rValues = authorizeValues
-pure def lawAnAuthorizeRefusalIsFinal(r: AuthorizeRequest): bool =
-  not(authorizeAdmitted(r)) implies (wellFormed(authorizeRefusal(r)) and not(retryableOf(authorizeRefusal(r))))
+pure def lawAnAuthorizeRefusalIsFinal(authorize: AuthorizeRequest): bool =
+  not(authorizeAdmitted(authorize)) implies (wellFormed(authorizeRefusal(authorize)) and not(retryableOf(authorizeRefusal(authorize))))
 pure def sometimesAwaitingGoogle(a: GoogleAttempt): bool = a.flow.phase == O::AwaitingCallback and a.now < a.stateExpiresAt
 ```
 
@@ -249,13 +246,6 @@ pure def canIssueNative(a: GoogleAttempt, purpose: NativePurpose, method: PkceMe
 pure def issueNative(a: GoogleAttempt, purpose: NativePurpose, method: PkceMethod): GoogleAttempt = { ...a, native: ChallengeOpen({ purpose: purpose, openUntil: a.now + nativeLifetime }) }
 pure val purposeValues = Set(NativeSignIn, NativeLink({ userId: "user1" }))
 pure val methodValues = Set(S256, PlainMethod)
-pure def alwaysEveryProofIsShortLived(a: GoogleAttempt): bool = {
-  val c = a.code
-  val n = a.native
-  a.stateExpiresAt <= a.now + stateLifetime
-  and (match c { | CodeIssued(x) => x.redeemBy <= a.now + codeLifetime | _ => true })
-  and (match n { | ChallengeOpen(x) => x.openUntil <= a.now + nativeLifetime | _ => true })
-}
 pure def alwaysOneRoute(a: GoogleAttempt): bool = a.native != NoChallenge implies (a.flow.phase == O::FlowIdle and a.code == NoCode)
 ```
 
@@ -315,9 +305,16 @@ pure def sometimesNativeSecondFactor(a: GoogleAttempt): bool = a.native == Chall
 pure def sometimesGoogleProven(a: GoogleAttempt): bool = provesGoogleFor(a, "user1")
 ```
 
-### A code past its minute or a challenge past its five minutes is closed as expired
+### No attempt, code or challenge outlives its lifetime, and a code or challenge past it is closed as expired
 
 ```quint
+pure def alwaysEveryProofIsShortLived(a: GoogleAttempt): bool = {
+  val c = a.code
+  val n = a.native
+  a.stateExpiresAt <= a.now + stateLifetime
+  and (match c { | CodeIssued(x) => x.redeemBy <= a.now + codeLifetime | _ => true })
+  and (match n { | ChallengeOpen(x) => x.openUntil <= a.now + nativeLifetime | _ => true })
+}
 pure def isIssued(c: CodePhase): bool = match c { | CodeIssued(x) => true | _ => false }
 pure def canExpireCode(a: GoogleAttempt): bool = isIssued(a.code) and not(codeLive(a.code, a.now))
 pure def expireCode(a: GoogleAttempt): GoogleAttempt = { ...a, code: CodeExpired }

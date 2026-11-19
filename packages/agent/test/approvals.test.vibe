@@ -95,7 +95,7 @@ it.effect('An enqueued request is listed and resolved once with its listed revis
   try Effect.try(() => {
     assert.strictEqual(pending.status, 200)
     assert.deepStrictEqual(rowsOf(pending.body).map(({ id, state }) => [id, state]), [["dentist", "pending"], ["lunch", "pending"]])
-    assert.strictEqual((pending.body as { ownerEntityId: string }).ownerEntityId, agent.agent.runtime.agentId === undefined ? undefined : (pending.body as { ownerEntityId: string }).ownerEntityId)
+    assert.match(String((pending.body as { ownerEntityId?: unknown }).ownerEntityId), /^[0-9a-f-]{36}$/)
     assert.deepStrictEqual(Object.keys(rowsOf(pending.body)[0] ?? {}).sort(),
       ["action", "createdAt", "expiresAt", "id", "payload", "reason", "revision", "state", "subjectUserId", "updatedAt"])
     assert.deepStrictEqual(refused.map(({ status }) => status), [400, 400, 400, 400])

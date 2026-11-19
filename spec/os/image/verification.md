@@ -1,7 +1,8 @@
 # Booted-image verification
 
 Read-only checks of a booted device against what was staged: the exact
-image, the launcher's bytes and its place as Home, the stock launcher kept
+image, the launcher's bytes, its place as Home and its privileges when it is
+privileged, the stock launcher kept
 as a way back, the system clock's alarm handlers, a WebView provider, the
 first-boot grants, the wake listener when one was staged, the system secure
 camera, SELinux and verified boot. Sources: develop's
@@ -32,12 +33,13 @@ hears anything, or that a person accepted the device.
 
 ### Each check reads Pass or Fail, and a check that could not be read is Unknown
 
-`Reading` is a yes-or-no fact the shell read: the device finished booting
-and nothing changed during the run (boot identity, user, fingerprint,
-launcher path and bytes, Home and SELinux read again at the end equal the
-first reading), Home resolves to exactly the launcher's Home activity, an
-enabled system launcher other than the setup fallback remains a Home
-candidate, and a WebView provider is current.
+`Reading` is a yes-or-no fact the shell read: the device finished booting,
+the selected user is in the foreground and running unlocked, and nothing
+changed during the run (boot identity, user, fingerprint, launcher path and
+bytes, Home and SELinux read again at the end equal the first reading);
+Home resolves to exactly the launcher's Home activity; an enabled system
+launcher other than the setup fallback remains a Home candidate; and a
+WebView provider is current.
 
 ```quint
 import apk.* from "./apk"
@@ -48,7 +50,6 @@ type Reading = Unread | Read({ holds: bool })
 pure def outcomeOf(reading: Reading): CheckOutcome = match reading { | Unread => Unknown | Read(r) => if (r.holds) Pass else Fail }
 pure val readingValues = Set(Unread, Read({ holds: true }), Read({ holds: false }))
 pure def outcomeIf(read: bool, holds: bool): CheckOutcome = if (not(read)) Unknown else if (holds) Pass else Fail
-pure def lawUnreadIsUnknownOnly(reading: Reading): bool = (outcomeOf(reading) == Unknown) iff (reading == Unread)
 ```
 
 ### Verified boot passes only when the booted state is no weaker than the image expects
@@ -109,16 +110,17 @@ pure def clockHolds(clock: ClockReading): bool = match clock {
 
 ### Lock-screen capture belongs to the system secure camera, and the launcher handles neither secure action
 
-For the user, the enabled system camera (`Pv::secureCameraPackage`)
-resolves both secure capture actions to its secure activity, the power
-gesture is enabled and opens it, and no activity of the launcher handles
-either action.
+For the user, the system camera (`Pv::secureCameraPackage`) is enabled
+and resolves both secure capture actions to its secure activity, the power
+gesture is enabled and SystemUI's gesture package is that camera, and no
+activity of the launcher handles either action.
 
 ```quint
 pure val secureCaptureActions: List[str] = List("STILL_IMAGE_CAMERA_SECURE", "IMAGE_CAPTURE_SECURE")
-type CameraReading = CameraUnread | CameraRead({ systemHandles: List[str], launcherHandles: List[str], gestureOpensCamera: bool })
+type CameraReading = CameraUnread | CameraRead({ cameraEnabled: bool, systemHandles: List[str], launcherHandles: List[str], gestureEnabled: bool, gesturePackage: str })
 pure def secureCameraHolds(camera: CameraReading): bool = match camera {
-  | CameraRead(c) => secureCaptureActions.every(a => c.systemHandles.includes(a)) and c.launcherHandles.length() == 0 and c.gestureOpensCamera
+  | CameraRead(c) => c.cameraEnabled and secureCaptureActions.every(a => c.systemHandles.includes(a)) and c.launcherHandles.length() == 0
+      and c.gestureEnabled and c.gesturePackage == Pv::secureCameraPackage
   | _ => false
 }
 ```
@@ -140,17 +142,33 @@ pure def listenerGrantsHold(listener: ListenerReading): bool = match listener {
 pure def listenerDomainHolds(listener: ListenerReading): bool = match listener { | ListenerRead(l) => l.domain == L::listenerSelinuxDomain | _ => false }
 ```
 
-### The checks are fixed by what was staged: the listener's only for a listener image, verified boot only where the target has it
+### A privileged launcher is a privileged app holding every privileged permission its descriptor names
+
+The shell reads `privateFlags` and the granted permissions from
+`dumpsys package` of the launcher; the check is required only when the
+descriptor names privileged permissions.
+
+```quint
+type PrivilegeReading = PrivilegeUnread | PrivilegeRead({ privilegedApp: bool, granted: List[str] })
+pure def launcherPrivilegesHold(privilegedPermissions: List[str], privilege: PrivilegeReading): bool = match privilege {
+  | PrivilegeRead(p) => p.privilegedApp and privilegedPermissions.every(x => p.granted.includes(x))
+  | _ => false
+}
+```
+
+### The checks are fixed by what was staged: the listener's only for a listener image, the privileges only for a privileged launcher, verified boot only where the target has it
 
 ```quint
 type ImageCheck = Fingerprint | LauncherBytes | LauncherHome | StockLauncher | ClockHandlers | WebViewProvider | FirstBootGrants
-  | SecureCamera | SameBootThroughout | SelinuxEnforcing | VerifiedBoot | ListenerGrants | ListenerDomain
-type ImageExpectation = { fingerprint: str, launcherApk: Digest, defaultPermissions: List[str], listener: bool, boot: BootExpectation }
+  | SecureCamera | SameBootThroughout | SelinuxEnforcing | VerifiedBoot | LauncherPrivileges | ListenerGrants | ListenerDomain
+type ImageExpectation = { fingerprint: str, launcherApk: Digest, defaultPermissions: List[str], privilegedPermissions: List[str], listener: bool,
+  boot: BootExpectation }
 pure val baseChecks: List[ImageCheck] = List(Fingerprint, LauncherBytes, LauncherHome, StockLauncher, ClockHandlers, WebViewProvider, FirstBootGrants,
   SecureCamera, SameBootThroughout, SelinuxEnforcing)
 pure def requiredChecks(expectation: ImageExpectation): List[ImageCheck] = {
   val withBoot = if (expectation.boot == BootUnchecked) baseChecks else baseChecks.append(VerifiedBoot)
-  if (expectation.listener) withBoot.concat(List(ListenerGrants, ListenerDomain)) else withBoot
+  val withPrivileges = if (expectation.privilegedPermissions.length() == 0) withBoot else withBoot.append(LauncherPrivileges)
+  if (expectation.listener) withPrivileges.concat(List(ListenerGrants, ListenerDomain)) else withPrivileges
 }
 ```
 
@@ -167,7 +185,7 @@ type BootReading = BootUnread | BootRead({ booted: BootState })
 type GrantsReading = GrantsUnread | GrantsRead({ granted: List[RuntimeGrant] })
 type ImageObservation = { fingerprint: FingerprintReading, launcher: LauncherInstall, home: Reading, stockHome: Reading, clock: ClockReading,
   webView: Reading, grants: GrantsReading, camera: CameraReading, sameBoot: Reading, selinux: SelinuxReading, verifiedBoot: BootReading,
-  listener: ListenerReading }
+  privilege: PrivilegeReading, listener: ListenerReading }
 type CheckResult = { check: ImageCheck, outcome: CheckOutcome }
 pure def bootHolds(bootExpectation: BootExpectation, booted: BootState): bool = match bootExpectation { | BootAtLeast(b) => verifiedBootNotWeaker(booted, b.minimum) | _ => true }
 pure def fingerprintOutcome(stagedFingerprint: str, fingerprint: FingerprintReading): CheckOutcome =
@@ -190,6 +208,7 @@ pure def checkOutcome(expectation: ImageExpectation, observation: ImageObservati
   | SameBootThroughout => outcomeOf(observation.sameBoot)
   | SelinuxEnforcing => outcomeIf(observation.selinux != SelinuxUnread, observation.selinux == Enforcing)
   | VerifiedBoot => bootOutcome(expectation.boot, observation.verifiedBoot)
+  | LauncherPrivileges => outcomeIf(observation.privilege != PrivilegeUnread, launcherPrivilegesHold(expectation.privilegedPermissions, observation.privilege))
   | ListenerGrants => outcomeIf(observation.listener != ListenerUnread, listenerGrantsHold(observation.listener))
   | ListenerDomain => outcomeIf(observation.listener != ListenerUnread, listenerDomainHolds(observation.listener))
 }
@@ -199,6 +218,8 @@ pure def imageVerdict(expectation: ImageExpectation, observation: ImageObservati
   val outcomes = requiredChecks(expectation).listMap(c => checkOutcome(expectation, observation, c))
   if (outcomes.includes(Fail)) Fail else if (outcomes.includes(Unknown)) Unknown else Pass
 }
+pure def lawUnknownCheckNeverPasses(expectation: ImageExpectation, observation: ImageObservation): bool =
+  requiredChecks(expectation).some(c => checkOutcome(expectation, observation, c) == Unknown) implies imageVerdict(expectation, observation) != Pass
 pure def lawFailureOutranksUnknown(expectation: ImageExpectation, observation: ImageObservation): bool =
   requiredChecks(expectation).some(c => checkOutcome(expectation, observation, c) == Fail) iff imageVerdict(expectation, observation) == Fail
 ```
@@ -222,23 +243,26 @@ pure def lawUnreadListenerNeverPassesAListenerImage(expectation: ImageExpectatio
 ```quint
 pure val stagedApk: Digest = Sha256({ hex: "a1" })
 pure val stagedImage: ImageExpectation = { fingerprint: "vendor/product:16/BP1A/1:user/release-keys", launcherApk: stagedApk,
-  defaultPermissions: List("android.permission.RECORD_AUDIO"), listener: false, boot: BootAtLeast({ minimum: Yellow }) }
+  defaultPermissions: List("android.permission.RECORD_AUDIO"), privilegedPermissions: List(), listener: false, boot: BootAtLeast({ minimum: Yellow }) }
+pure val phoneStatePermission = "android.permission.READ_PRIVILEGED_PHONE_STATE"
 pure val stagedListener: ListenerReading = ListenerRead({ privilegedSystemPackage: true, indicatorKept: true, domain: L::listenerSelinuxDomain,
   granted: L::listenerPrivilegedPermissions.concat(List("android.permission.RECORD_AUDIO")) })
 pure val bootedAsStaged: ImageObservation = { fingerprint: FingerprintRead({ fingerprint: stagedImage.fingerprint }), launcher: SystemApk({ sha256: stagedApk }),
   home: Read({ holds: true }), stockHome: Read({ holds: true }), clock: ClockRead({ clockEnabled: true, handledActions: clockAlarmActions }),
   webView: Read({ holds: true }), grants: GrantsRead({ granted: List(audioGrant) }), sameBoot: Read({ holds: true }), selinux: Enforcing,
-  camera: CameraRead({ systemHandles: secureCaptureActions, launcherHandles: List(), gestureOpensCamera: true }),
-  verifiedBoot: BootRead({ booted: Yellow }), listener: stagedListener }
+  camera: CameraRead({ cameraEnabled: true, systemHandles: secureCaptureActions, launcherHandles: List(), gestureEnabled: true, gesturePackage: Pv::secureCameraPackage }),
+  verifiedBoot: BootRead({ booted: Yellow }), privilege: PrivilegeRead({ privilegedApp: true, granted: List(phoneStatePermission) }), listener: stagedListener }
 pure val expectationValues = Set(stagedImage, { ...stagedImage, listener: true }, { ...stagedImage, boot: BootUnchecked },
-  { ...stagedImage, boot: BootAtLeast({ minimum: Green }) })
+  { ...stagedImage, boot: BootAtLeast({ minimum: Green }) }, { ...stagedImage, privilegedPermissions: List(phoneStatePermission) })
 pure val observationValues = Set(bootedAsStaged, { ...bootedAsStaged, selinux: Permissive }, { ...bootedAsStaged, selinux: SelinuxUnread },
   { ...bootedAsStaged, verifiedBoot: BootRead({ booted: Orange }) }, { ...bootedAsStaged, verifiedBoot: BootUnread },
   { ...bootedAsStaged, launcher: NotTheSystemApk }, { ...bootedAsStaged, launcher: SystemApk({ sha256: NotADigest }) },
   { ...bootedAsStaged, listener: ListenerUnread }, { ...bootedAsStaged, listener: ListenerRead({ privilegedSystemPackage: true, indicatorKept: true,
     domain: "untrusted_app", granted: L::listenerPrivilegedPermissions }) },
   { ...bootedAsStaged, clock: ClockRead({ clockEnabled: true, handledActions: List("SET_ALARM") }), selinux: SelinuxUnread },
-  { ...bootedAsStaged, camera: CameraRead({ systemHandles: secureCaptureActions, launcherHandles: List("IMAGE_CAPTURE_SECURE"), gestureOpensCamera: true }) })
+  { ...bootedAsStaged, camera: CameraRead({ cameraEnabled: true, systemHandles: secureCaptureActions, launcherHandles: List("IMAGE_CAPTURE_SECURE"),
+    gestureEnabled: true, gesturePackage: Pv::secureCameraPackage }) }, { ...bootedAsStaged, privilege: PrivilegeRead({ privilegedApp: false, granted: List() }) },
+  { ...bootedAsStaged, home: Unread })
 pure def lawTheStagedImagePasses(expectation: ImageExpectation): bool =
   (expectation.boot != BootAtLeast({ minimum: Green })) implies imageVerdict(expectation, bootedAsStaged) == Pass
 ```

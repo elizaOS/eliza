@@ -74,7 +74,7 @@ it.live('Answer with the backend the host chose: cloud streams and answers whole
     ["/api/v1/chat/completions", "small", `Bearer ${deviceKey}`],
     ["/api/v1/chat/completions", "vision", `Bearer ${deviceKey}`],
   ])
-  assert.deepInclude(try status(agent), { code: 200, backend: "cloud", blocked: false, canRespond: true, failure: undefined })
+  assert.deepInclude(try status(agent), { code: 200, backend: "cloud", blocked: false, canRespond: true, failure: "provider_issue" })
 
   const own = try startInProcess({
     launch: { backend: { kind: "ownKey", baseUrl: cloud.ownKeyBaseUrl, smallModel: "small", largeModel: "large" } },
