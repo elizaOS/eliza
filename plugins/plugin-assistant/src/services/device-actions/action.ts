@@ -24,6 +24,7 @@ import {
 } from "./calendar-contract.ts";
 import {
   CAMERA_LENS_CAPABILITY,
+  CAMERA_LIBRARY_ID_CAPABILITY,
   DEVICE_CAMERA_CAPTURE_ACTION,
   isCameraCapture,
   validateCameraCaptureResult,
@@ -1096,6 +1097,11 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
     types: ["camera_capture_photo"],
     capability: CAMERA_LENS_CAPABILITY,
     text: "With camera.capture-lens.v1, camera_capture_photo takes an optional lens: front for a selfie or a photo of the owner, back for the rear camera. Leave lens out to use the camera that is showing.",
+  },
+  {
+    types: ["camera_capture_photo"],
+    capability: CAMERA_LIBRARY_ID_CAPABILITY,
+    text: "With camera.capture-library-id.v1, the saved-photo receipt also has libraryId, the photo's library id. When Photos operations are offered, use that id with them for the photo just taken.",
   },
   {
     types: [

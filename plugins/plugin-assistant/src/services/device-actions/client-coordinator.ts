@@ -84,6 +84,7 @@ import {
 } from "./calendar-contract.ts";
 import {
   type CameraCaptureOperation,
+  CAMERA_LIBRARY_ID_CAPABILITY,
   type CameraCaptureResult,
   cameraCaptureCapabilityAvailable,
   isCameraCapture,
@@ -2165,9 +2166,8 @@ export class DeviceActionCoordinator<
     let cameraResult: CameraCaptureResult | undefined;
     if (isCameraCapture(op)) {
       if (result.status === "succeeded")
-        cameraResult = validateCameraCaptureResult(
-          result.cameraResult,
-          operationId,
+        cameraResult = this.negotiatedCameraResult(
+          validateCameraCaptureResult(result.cameraResult, operationId),
         );
       else if (result.cameraResult !== undefined)
         throw Error("Unconfirmed camera capture cannot return a saved photo");
@@ -3357,10 +3357,25 @@ export class DeviceActionCoordinator<
       "No exact saved photo receipt; capture will not be repeated",
       { succeeded: true, device: true },
     );
-    return validateCameraCaptureResult(
-      entry.result?.cameraResult,
-      entry.operationId,
+    return this.negotiatedCameraResult(
+      validateCameraCaptureResult(
+        entry.result?.cameraResult,
+        entry.operationId,
+      ),
     );
+  }
+  /** An agent that did not negotiate the library id would refuse the whole receipt for it. The
+   * photo is saved either way, so only the id is left out. */
+  private negotiatedCameraResult(
+    result: CameraCaptureResult,
+  ): CameraCaptureResult {
+    if (
+      result.libraryId === undefined ||
+      this.capability(CAMERA_LIBRARY_ID_CAPABILITY)
+    )
+      return result;
+    const { libraryId: _omitted, ...receipt } = result;
+    return receipt;
   }
   private async savedMapsResult(
     p: DeviceProposal,

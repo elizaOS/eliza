@@ -576,6 +576,55 @@ describe("DeviceActionCoordinator", () => {
     ).rejects.toThrow(/Camera capture was not negotiated/);
   });
 
+  it("sends the photo's library id only to an agent that negotiated it", async () => {
+    const camera = { view: "camera", revision: 1, sensitive: false };
+    for (const negotiated of [false, true]) {
+      const { server, request } = fixtureServer({
+        type: "camera_capture_photo",
+      });
+      const { journal } = memoryJournal();
+      const actions = new DeviceActionCoordinator({
+        session,
+        credential: {
+          ...credential,
+          capabilities: [
+            "camera.capture-photo.v1",
+            ...(negotiated ? ["camera.capture-library-id.v1"] : []),
+          ],
+        },
+        scope,
+        request,
+        journal,
+        execute: async (_op, operationId) => ({
+          status: "succeeded",
+          summary: "Photo saved",
+          cameraResult: {
+            version: 1,
+            kind: "camera_capture_photo",
+            operationId,
+            mediaId: "42",
+            libraryId: "lib:i:42:1700000000000",
+            width: 4000,
+            height: 3000,
+            mime: "image/jpeg",
+          },
+        }),
+        profile,
+      });
+      await actions.pending(camera, signal());
+      expect(
+        (await actions.approve("proposal", camera, signal())).status,
+      ).toBe("succeeded");
+      const sent = server.receipts[0].receipt as {
+        result: Record<string, unknown>;
+      };
+      expect(sent.result.mediaId).toBe("42");
+      expect(sent.result.libraryId).toBe(
+        negotiated ? "lib:i:42:1700000000000" : undefined,
+      );
+    }
+  });
+
   it("closes an attempt that never dispatched as failed with nothing sent", async () => {
     for (const legacy of [false, true]) {
       const { server, request } = fixtureServer(note);
