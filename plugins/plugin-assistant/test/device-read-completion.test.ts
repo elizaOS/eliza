@@ -573,22 +573,38 @@ it("keeps an open-thread reply and names a contact by its search text on a phone
       type: "sms_reply_selected",
       body: "I'm on my way",
     });
-    // A phone without sms.compose.v2 names the contact by search text.
+    // A phone without sms.compose.v2 names the owner's contact by its search
+    // text, whatever recipient the planner proposed.
     const v1 = {
       ...f.credential,
-      capabilities: [...f.credential.capabilities, "sms.compose.v1"],
+      capabilities: [
+        ...f.credential.capabilities,
+        "sms.compose.v1",
+        "sms.send.v1",
+      ],
     };
-    const contact = await proposeFromOwnerText(
-      f,
-      v1,
-      "Draft a text to Sam saying hi",
-      { type: "sms_compose", query: "Sam", body: "hi" },
-    );
-    expect(contact.request.payload.operation).toEqual({
-      type: "sms_compose",
-      query: "Sam",
-      body: "hi",
-    });
+    const proposals: DeviceOperation[] = [
+      { type: "sms_compose", query: "Samuel", body: "hi" },
+      {
+        type: "sms_send",
+        recipients: ["+14155550199"],
+        body: "hi",
+        subscriptionId: 3,
+      },
+    ];
+    for (const proposed of proposals) {
+      const contact = await proposeFromOwnerText(
+        f,
+        v1,
+        "Draft a text to Sam saying hi",
+        proposed,
+      );
+      expect(contact.request.payload.operation).toEqual({
+        type: "sms_compose",
+        query: "Sam",
+        body: "hi",
+      });
+    }
   } finally {
     await f.pg.close();
   }
