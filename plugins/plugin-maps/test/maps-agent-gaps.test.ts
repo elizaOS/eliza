@@ -708,6 +708,26 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
       data: { awaitingUserInput: true, reason: "device_location" },
     });
   });
+
+  it("names a missing phone location and asks for a starting place instead of failing", async () => {
+    const service = new MapsService(undefined, store([]));
+    const { device } = phone(true);
+    device.start = async ({ destination: place, travelMode }) => ({
+      state: "awaiting-location",
+      placeName: place.name,
+      travelMode,
+    });
+    service.registerDeviceNavigation(device);
+    const result = await run(service, destination);
+    expect(result).toMatchObject({
+      success: false,
+      data: { awaitingUserInput: true, reason: "device_location" },
+    });
+    expect(result?.userFacingText).toBe(
+      "The phone's location isn't available, so the route to Port Hercule isn't planned yet. Where are you starting from? You can also enter a starting point in Maps on the phone.",
+    );
+    expect(result?.userFacingText).not.toMatch(/could not complete/i);
+  });
 });
 
 describe("forms ask for names, not ids", () => {
