@@ -174,6 +174,18 @@ describe("a whole-message call or text reaches the phone's own operation", () =>
     expect(authoredTelephonyRequest(request)).toBeUndefined();
   });
 
+  // A place on this phone ("in my inbox", "in Messages") or a time is not a
+  // named sender or another service.
+  it.each([
+    "What's the number on my latest text?",
+    "Who sent the last text message in my inbox?",
+    "Who sent me the latest text in the last hour?",
+    "Check who sent my latest text in Messages",
+    "Who sent my most recent text, from what number?",
+  ])("routes %s as a sender lookup", (request) => {
+    expect(authoredTelephonyRequest(request)).toBe("sender");
+  });
+
   it("claims nothing without the phone's call or SMS capability or off phone chat", async () => {
     const f = await fixture("call 415-555-0100");
     await inTurn(f, ["contacts.show.v1"], async () => {

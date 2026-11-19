@@ -946,9 +946,16 @@ export function requestedSmsDraftRecipient(
   return { kind: "ambiguous" };
 }
 
+/** "from Sam", "from the bank": a named sender, never "from what number" or "from this morning". */
+const SMS_NAMED_SENDER =
+  /\bfrom\s+(?!(?:what|which|who|whom|where)\b|(?:this|my|the)\s+phone\b|(?:today|tonight|yesterday|earlier)\b|(?:this|last)\s+(?:morning|afternoon|evening|night|hour|week)\b)[\p{L}\p{N}+(]/iu;
+/** Another service's inbox ("on Slack", "in my Gmail", "over email"). Messages is this phone's own SMS app. */
+const SMS_OTHER_SERVICE =
+  /\b(?:on|in|via|through|using|over|from)\s+(?:(?:my|the)\s+)?(?:slack|discord|whats\s?app|telegram|signal|i-?message|messenger|facebook|instagram|wechat|google\s+chat|teams|bluesky|nostr|twitter|x|linkedin|gmail|outlook|e-?mail|mail)\b/iu;
+
 /**
  * A question about who sent the newest incoming SMS or its number. A named
- * sender ("the last message from Sam") asks for that message, and another
+ * sender ("the latest message from Sam") asks for that message, and another
  * service ("on Slack", "in Gmail") is not this phone's SMS.
  */
 export function isSmsSenderLookup(text: string): boolean {
@@ -958,9 +965,8 @@ export function isSmsSenderLookup(text: string): boolean {
       request,
     ) &&
     /\b(?:who|whose|sender|number)\b/i.test(request) &&
-    !/\b(?:from|on|in|via|through|using|over)\s+(?!(?:this|my|the)\s+phone\b)[\p{L}\p{N}+(]/iu.test(
-      request,
-    ) &&
+    !SMS_NAMED_SENDER.test(request) &&
+    !SMS_OTHER_SERVICE.test(request) &&
     /\b(?:last|latest|newest|most recent)\s+(?:(?:incoming|received|unread)\s+)?(?:sms|text|message)\b|\b(?:who (?:just |last )?(?:texted|messaged) me|(?:texted|messaged) me (?:last|most recently))\b/i.test(
       request,
     )

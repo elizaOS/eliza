@@ -932,15 +932,30 @@ test("address lookup and a reply draft use the complete negotiated address", () 
     );
     assert.ok(!directSmsRequest(bound, request));
   }
-  // Only a question about the sender reads one. A message from a named sender
-  // or another service's inbox is the planner's.
-  assert.ok(isSmsSenderLookup("Who was my latest text from?"));
+  // Only a question about the sender reads one, wherever the owner says it is
+  // on this phone. A message from a named sender or another service's inbox
+  // is the planner's.
+  for (const request of [
+    "Who was my latest text from?",
+    "What's the number on my latest text?",
+    "Who sent the last text message in my inbox?",
+    "Who sent me the latest text in the last hour?",
+    "Check who sent my latest text in Messages",
+    "Who sent my most recent text, from what number?",
+    "Who sent my latest text from this morning?",
+  ]) {
+    assert.ok(isSmsSenderLookup(request), request);
+    assert.equal(smsSenderDisclosure(request), "address", request);
+  }
   for (const request of [
     "What was the last message from Sam?",
     "Show me the latest text from Mom",
     "Who sent the latest message from Sam?",
+    "What's the number of the latest text from Sam?",
     "Check the latest message from Sam on Slack",
     "Who sent my latest message in Gmail?",
+    "Who sent my latest message on WhatsApp?",
+    "Who sent my latest text over email?",
   ]) {
     assert.ok(!isSmsSenderLookup(request), request);
     assert.equal(smsSenderDisclosure(request), "last-four");
