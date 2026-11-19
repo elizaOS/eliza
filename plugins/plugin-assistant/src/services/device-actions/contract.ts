@@ -64,6 +64,12 @@ import {
   validatePhoneDial,
 } from "./phone-dial-contract.ts";
 import {
+  isLibraryOperation,
+  type LibraryAgentOperation,
+  PHOTO_LIBRARY_CAPABILITY,
+  validateLibraryOperation,
+} from "./photo-library-contract.ts";
+import {
   isPhotosViewType,
   type PhotosViewOperation,
   photosViewCapabilityAvailable,
@@ -161,6 +167,7 @@ export type DeviceOperation =
   | NativeNotesQueryOperation
   | CalendarOperation
   | PhotosViewOperation
+  | LibraryAgentOperation
   | ForegroundReviewOperation
   | WorkflowReadOperation
   | WorkflowPresentationOperation
@@ -206,6 +213,8 @@ export function deviceOperationSupportedByCapabilities(
       capabilities?.includes(NOTES_ORGANIZE_CAPABILITY) === true &&
       capabilities.includes("notes.local-record.v1")
     );
+  if (isLibraryOperation({ type }))
+    return capabilities?.includes(PHOTO_LIBRARY_CAPABILITY) === true;
   if (isPhotosViewType(type))
     return photosViewCapabilityAvailable(capabilities);
   if (isBrowserControlType(type))
@@ -363,6 +372,17 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       } catch (error) {
         throw new DeviceActionError(
           `Invalid Photos operation: ${(error as Error).message}`,
+        );
+      }
+    case "photo_library_search":
+    case "photo_library_inspect":
+    case "photo_library_select":
+    case "photo_library_review":
+      try {
+        return validateLibraryOperation(p);
+      } catch (error) {
+        throw new DeviceActionError(
+          `Invalid photo library operation: ${(error as Error).message}`,
         );
       }
     case "calendar_create_local":

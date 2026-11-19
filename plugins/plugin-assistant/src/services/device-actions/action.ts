@@ -77,7 +77,13 @@ import {
   phoneDialResultText,
   validatePhoneDialResult,
 } from "./phone-dial-contract.ts";
-import { LIBRARY_LIMITS } from "./photo-library-contract.ts";
+import {
+  isLibraryOperation,
+  LIBRARY_LIMITS,
+  LIBRARY_OPERATION_TYPES,
+  REVIEWED_LIBRARY_ACTIONS,
+  validateLibraryResult,
+} from "./photo-library-contract.ts";
 import {
   isPhotosViewOperation,
   isPhotosViewType,
@@ -419,6 +425,65 @@ const photosViewSchemas: ActionParameterSchema[] = [
     properties: {
       type: { type: "string", enum: ["photos_share"] },
       ids: photosIdsSchema(PHOTOS_SHARE_MAX),
+    },
+  },
+];
+const libraryIdsSchema = {
+  ...photosIdsSchema(LIBRARY_LIMITS.action),
+  description: `1 to ${LIBRARY_LIMITS.action} distinct library ids the phone returned; never guessed`,
+};
+const photoLibrarySchemas: ActionParameterSchema[] = [
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type"],
+    properties: {
+      type: { type: "string", enum: ["photo_library_search"] },
+      kind: { type: "string", enum: ["image", "video", "all"] },
+      from: { type: "integer", description: "Taken from, epoch milliseconds" },
+      to: { type: "integer", description: "Taken until, epoch milliseconds" },
+      favorites: { type: "boolean" },
+      limit: { type: "integer", minimum: 1, maximum: 50 },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "id"],
+    properties: {
+      type: { type: "string", enum: ["photo_library_inspect"] },
+      id: { type: "string", description: "One library id" },
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "ids"],
+    properties: {
+      type: { type: "string", enum: ["photo_library_select"] },
+      ids: libraryIdsSchema,
+    },
+  },
+  {
+    type: "object",
+    additionalProperties: false,
+    required: ["type", "action", "items"],
+    properties: {
+      type: { type: "string", enum: ["photo_library_review"] },
+      action: { type: "string", enum: [...REVIEWED_LIBRARY_ACTIONS] },
+      items: {
+        type: "array",
+        description: `1 to ${LIBRARY_LIMITS.action} items, each with the id and revision a search or inspect returned`,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id", "revision"],
+          properties: {
+            id: { type: "string" },
+            revision: { type: "string" },
+          },
+        },
+      },
     },
   },
 ];
@@ -1270,6 +1335,10 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
     text: "With photos.library.v1 and photos.view.v1: photos_filter {from, to: epoch ms; kind image|video; favorite; album favorites|videos|camera|screenshots|custom:<id>; text} narrows the phone Photos grid behind a clearable chip and returns only how many items it shows; photos_open {id} opens one item in the Photos viewer; both run directly only when the owner's current message asked for them. photos_album_create {name, ids} and photos_share {ids} are reviewed by the owner in Photos; a share then opens Android's share sheet, and review_opened proves neither a created album nor a share. Use only library ids the phone returned; never guess them.",
   },
   {
+    types: LIBRARY_OPERATION_TYPES,
+    text: "With photos.library.v1: photo_library_search {kind image|video|all, from, to: epoch ms taken, favorites, limit 1-50} lists items Android lets the phone read and returns their id, revision, kind, dates, size in pixels and video length only: no file or album names, no place, no pixels. photo_library_inspect {id} returns the same details for one item. photo_library_select {ids} selects items in Photos and runs directly only when the owner's current message asked for it. photo_library_review {action trash|share|favorite|unfavorite, items: [{id, revision}]} opens a review the owner confirms in the phone and then in Android; review_opened proves no change and no share. Search takes no words: find items by date, kind or favorite. Use only ids and revisions the phone returned; never guess them.",
+  },
+  {
     types: NOTES_ORGANIZE_TYPES.filter(
       (type) => type !== "notes_list_filter" && type !== "notes_record",
     ),
@@ -1404,6 +1473,7 @@ export const proposeDeviceAction: Action = {
           ...notesSchemas,
           ...notesOrganizeSchemas,
           ...photosViewSchemas,
+          ...photoLibrarySchemas,
           ...browserControlSchemas,
           notesQuerySchema,
           notesSearchSchema,
@@ -1851,6 +1921,7 @@ export const proposeDeviceAction: Action = {
         isNotesOperation(payload.operation) ||
         isNativeNotesQuery(payload.operation) ||
         isPhotosViewOperation(payload.operation) ||
+        isLibraryOperation(payload.operation) ||
         isForegroundReviewOperation(payload.operation)) &&
       receipt &&
       typeof receipt === "object" &&
@@ -1887,10 +1958,15 @@ export const proposeDeviceAction: Action = {
                           payload.operation,
                           receipt.result,
                         )
-                      : validateCalendarResult(
-                          payload.operation,
-                          receipt.result,
-                        );
+                      : isLibraryOperation(payload.operation)
+                        ? validateLibraryResult(
+                            payload.operation,
+                            receipt.result,
+                          )
+                        : validateCalendarResult(
+                            payload.operation,
+                            receipt.result,
+                          );
       return {
         success: true,
         transcriptVisibility: "internal",
@@ -2191,6 +2267,7 @@ export function deviceActionForCapabilities(
               type !== "notes_query" &&
               !isNotesOrganizeType(type) &&
               !isPhotosViewType(type) &&
+              !isLibraryOperation({ type }) &&
               !isBrowserControlType(type) &&
               !isForegroundReviewType(type)
             : deviceOperationSupportedByCapabilities(
