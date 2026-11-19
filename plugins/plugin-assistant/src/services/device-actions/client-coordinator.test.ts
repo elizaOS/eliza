@@ -885,6 +885,19 @@ describe("DeviceActionCoordinator", () => {
       ),
     ).toThrow(/browser destination/);
     expect(
+      validateDeviceOperation(
+        { type: "create_note", title: "Groceries", body: "Milk" },
+        profile.operations,
+      ),
+    ).toEqual({ type: "create_note", title: "Groceries", body: "Milk" });
+    // The server refuses unexpected note fields; the device must not drop them silently.
+    expect(() =>
+      validateDeviceOperation(
+        { type: "create_note", title: "Groceries", body: "Milk", pinned: true },
+        profile.operations,
+      ),
+    ).toThrow(/Invalid note/);
+    expect(
       proposalContextNotice(
         { type: "camera_capture_photo" } as never,
         notesContext,

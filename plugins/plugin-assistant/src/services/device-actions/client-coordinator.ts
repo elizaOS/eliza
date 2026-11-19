@@ -610,6 +610,7 @@ export function validateDeviceOperation(
   }
   if (p.type === "create_note") {
     if (
+      Object.keys(p).some((k) => !["type", "title", "body"].includes(k)) ||
       typeof p.body !== "string" ||
       p.body.length > 32000 ||
       p.body.includes("\0")

@@ -633,9 +633,6 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     ...(p.requestMessageId === undefined
       ? {}
       : { requestMessageId: identifier(p.requestMessageId) }),
-    ...(operation.type === "clock_alarm"
-      ? { clockContextRevision: Number(p.clockContextRevision) }
-      : {}),
     ...(p.viewProfileRevision === undefined
       ? {}
       : { viewProfileRevision: identifier(p.viewProfileRevision) }),
