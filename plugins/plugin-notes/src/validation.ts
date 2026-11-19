@@ -268,7 +268,7 @@ export function parseCreateNoteInput(value: unknown): CreateNoteInput {
   const record = requireRecord(value, "note");
   assertOnlyKeys(
     record,
-    ["content", "title", "body", "color", "format", "forceNew"],
+    ["content", "title", "body", "color", "format", "forceNew", "creationId"],
     "note",
   );
   const format = hasOwn(record, "format")
@@ -290,6 +290,9 @@ export function parseCreateNoteInput(value: unknown): CreateNoteInput {
   if (forceNew !== undefined && forceNew !== true && forceNew !== false) {
     throw validationError("forceNew must be a boolean.", "forceNew");
   }
+  const creationId = hasOwn(record, "creationId")
+    ? parseCreationId(record.creationId, "creationId")
+    : undefined;
   return {
     ...parts,
     ...(format ? { format } : {}),
@@ -297,7 +300,14 @@ export function parseCreateNoteInput(value: unknown): CreateNoteInput {
       ? parseStickyColor(record.color, "note.color")
       : "yellow",
     ...(forceNew === true ? { forceNew: true } : {}),
+    ...(creationId === undefined ? {} : { creationId }),
   };
+}
+
+function parseCreationId(value: unknown, field: string): string {
+  if (typeof value !== "string" || !value || value.length > 200)
+    throw validationError("creationId must be a nonempty string.", field);
+  return value;
 }
 
 export function parseUpdateNoteInput(value: unknown): UpdateNoteInput {
@@ -569,6 +579,7 @@ export function parseNotesDocument(value: unknown): NotesDocument {
       "notes",
       "trash",
       "noteRevisions",
+      "noteCreations",
       "trashRecordingCleanup",
     ],
     "notes state",
@@ -674,6 +685,18 @@ export function parseNotesDocument(value: unknown): NotesDocument {
       }),
     );
   }
+  let noteCreations: Record<string, string> | undefined;
+  if (record.noteCreations !== undefined) {
+    const creations = requireRecord(record.noteCreations, "noteCreations");
+    noteCreations = Object.fromEntries(
+      Object.entries(creations).map(([creationId, noteId]) => {
+        parseCreationId(creationId, "noteCreations");
+        if (typeof noteId !== "string" || !allIds.has(noteId))
+          throw validationError("Invalid note creation id.", "noteCreations");
+        return [creationId, noteId] as const;
+      }),
+    );
+  }
   return {
     schemaVersion: NOTES_SCHEMA_VERSION,
     revision,
@@ -681,6 +704,7 @@ export function parseNotesDocument(value: unknown): NotesDocument {
     notes,
     trash,
     ...(noteRevisions === undefined ? {} : { noteRevisions }),
+    ...(noteCreations === undefined ? {} : { noteCreations }),
     ...(trashRecordingCleanup === undefined ? {} : { trashRecordingCleanup }),
   };
 }
