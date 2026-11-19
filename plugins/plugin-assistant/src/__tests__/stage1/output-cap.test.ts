@@ -5,7 +5,7 @@
  * sent, against a rate limit at admission.
  */
 import { AgentRuntime, ChannelType, ModelType } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { STAGE1_COMPLETION_LIMIT_REPLY } from "../../services/message/stage1-completion.js";
 import {
   makeMessage,
@@ -16,6 +16,7 @@ import {
 
 const dispatchers: AgentRuntime[] = [];
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const dispatcher of dispatchers.splice(0)) await dispatcher.stop();
 });
 
@@ -78,6 +79,34 @@ describe("Stage 1 output cap", () => {
       expect(requests).toEqual([{ maxTokens: 2048, omitMaxTokens: false }]);
     },
   );
+
+  // A phone's host can set an environment variable but not a runtime setting.
+  it("sends the cap the host's environment sets, over a setting", async () => {
+    vi.stubEnv("ELIZA_STAGE1_MAX_TOKENS", "4096");
+    expect((await runStage1OnHost({})).requests).toEqual([
+      { maxTokens: 4096, omitMaxTokens: false },
+    ]);
+    expect(
+      (await runStage1OnHost({ RESPONSE_HANDLER_MAX_TOKENS: "2048" })).requests,
+    ).toEqual([{ maxTokens: 4096, omitMaxTokens: false }]);
+    const { result } = await runStage1OnHost(
+      {},
+      { text: CUT_OFF_TEXT, finishReason: "length" },
+    );
+    expect(result.kind).toBe("direct_reply");
+    if (result.kind === "direct_reply")
+      expect(result.result.responseContent?.text).toBe(
+        STAGE1_COMPLETION_LIMIT_REPLY,
+      );
+    vi.stubEnv("ELIZA_STAGE1_MAX_TOKENS", " ");
+    expect((await runStage1OnHost({})).requests).toEqual([
+      { maxTokens: undefined, omitMaxTokens: true },
+    ]);
+    vi.stubEnv("ELIZA_STAGE1_MAX_TOKENS", "lots");
+    await expect(runStage1OnHost({})).rejects.toThrow(
+      'ELIZA_STAGE1_MAX_TOKENS must be a positive integer, got "lots"',
+    );
+  });
 
   it.each([
     [
