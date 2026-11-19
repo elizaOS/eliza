@@ -1055,9 +1055,9 @@ async function freshRequestedMessageId(
 
 export function hasDeviceGmailComposer(): boolean {
   return (
-    getDeviceActionTurn()?.credential.capabilities?.includes(
-      "gmail.local-compose.v1",
-    ) === true
+    turn
+      .getStore()
+      ?.credential.capabilities?.includes("gmail.local-compose.v1") === true
   );
 }
 
@@ -1066,10 +1066,12 @@ export async function currentGmailComposeOrigin(
   runtime: IAgentRuntime,
   message: Memory,
 ) {
-  const current = getDeviceActionTurn();
+  const current = turn.getStore();
   if (!current || !hasDeviceGmailComposer()) return;
   const original = current.replyContext?.message;
   if (
+    !current.active ||
+    !current.isCurrent() ||
     !original ||
     original.id !== message.id ||
     original.roomId !== message.roomId ||
