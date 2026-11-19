@@ -1,13 +1,12 @@
 # Cloud speech
 
 The device client of cloud speech: one streaming relay session for live
-talk, and single batch requests that transcribe or synthesize. The cloud
-owns minting, windows, budgets, settlement and the wire
-(`spec/cloud/services/speechRelay.md`, whose server frames this machine
-reads). Sources: develop's `SpeechStreamBridgePlugin.java`,
-`CloudSpeechWire.java` and the cloud half of `LocalSpeechBridgePlugin.java`.
-HTTP, the socket, JSON, PCM, tokens and clocks stay in the Java shell
-(`voice-io`), which reports what it observed and acts on the notices.
+talk, and single batch requests that transcribe or synthesize. Consent
+nonces, minting, windows, budgets, settlement and the wire belong to the
+cloud (`spec/cloud/services/speechRelay.md`, whose server frames this
+machine reads). HTTP, the socket, JSON, PCM, tokens and clocks stay in the
+Java shell (`voice-io`), which reports what it observed and acts on the
+notices. Source: develop's `SpeechStreamBridgePlugin.java`.
 
 ## Story: Talk to the agent through the cloud speech relay
 
@@ -18,10 +17,8 @@ HTTP, the socket, JSON, PCM, tokens and clocks stay in the Java shell
 
 ### Consent is asked at most twice and lapses 30 seconds after the first ask
 
-The shell reports `C::activeVersion` (0 when signed out or expired)
-whenever it changes; a session binds the version it started with. One
-dismissal asks again; a second, or no answer 30 s after the first ask,
-ends the session unconsented. Only consent leads to minting.
+One dismissal asks again; a second, or no answer 30 s after the first
+ask, ends the session unconsented. Only consent leads to minting.
 
 ```quint
 import types.* from "../../cloud/shared/types"
@@ -72,8 +69,10 @@ pure val weight_consentGiven = 3
 
 ### An open session and every waiting batch request run under the current key, and a key change ends them
 
-A new active version, sign-out or expiry ends the open session as
-`AccountIneligible` and fails each batch request still waiting.
+The shell reports `C::activeVersion` (0 when signed out or expired)
+whenever it changes; a session binds the version it started with. A new
+version, sign-out or expiry ends the open session as `AccountIneligible`
+and fails each batch request still waiting.
 
 ```quint
 pure def keyGone(b: BatchRequest): BatchRequest = if (b.verdict == BatchPending) { ...b, verdict: BatchFailed({ failure: Cr::AccountIneligible, wait: NoWait }) } else b

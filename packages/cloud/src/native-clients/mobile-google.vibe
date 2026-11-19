@@ -52,7 +52,7 @@ interface Linked {
   readonly refreshTokenIssued: boolean
 }
 
-function unlinked(code: GoogleLinkFault): GoogleLink {
+function unlinked(code: GoogleLinkFault): Extract<GoogleLink, { readonly connected: false }> {
   return { connected: false, code }
 }
 

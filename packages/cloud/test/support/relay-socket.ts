@@ -34,7 +34,7 @@ export function openRelay(base: string, sessionId: string): Promise<RelaySocket>
     return ready === undefined ? new Promise<Received>((resolve) => waiting.push(resolve)) : Promise.resolve(ready);
   };
   const relay: RelaySocket = {
-    send: (frame) => socket.send(frame instanceof Uint8Array ? frame : JSON.stringify(frame)),
+    send: (frame) => socket.send(frame instanceof Uint8Array ? Uint8Array.from(frame) : JSON.stringify(frame)),
     next,
     until: async (done) => {
       const seen: Received[] = [];

@@ -81,7 +81,7 @@ pure def textPending(s: ReplyStream): bool = s.text != s.shown or s.held != s.sh
 pure def readyPending(r: Readiness): bool = match r { | ReadyPending(_) => true | _ => false }
 pure def readyFrame(r: Readiness): Frame = match r { | ReadyPending(x) => ReadyFrame({ fullText: x.text, results: x.results }) | _ => Progressed({ progress: NoProgress }) }
 pure def readySent(r: Readiness): Readiness = match r { | ReadyPending(x) => ReadySent({ results: x.results }) | _ => r }
-pure def threshold(last: int): int = if (last > 2048) last else 2048
+pure def threshold(previous: int): int = if (previous > 2048) previous else 2048
 pure def appendable(s: ReplyStream): bool = unitPrefix(s.text, s.shown) and not(s.shownHeld and not(s.held))
 pure def cadenceDue(s: ReplyStream): bool = s.sinceSnapshot + s.text.length() - s.shown.length() >= threshold(s.lastSnapshot)
 pure def textFrame(s: ReplyStream): Frame = {
@@ -207,10 +207,11 @@ pure def stepProgressNeverTouchesTheText(before: ReplyStream, via: str, after: R
   via == "showProgress" implies (after.text == before.text and after.held == before.held)
 ```
 
-### The early reply is written at most once, before the terminal, and the terminal repeats its action results
+### The early reply is written at most once, and a stream that announced it ends with an answered done carrying the same action results
 
 `reply_ready` lets a voice client speak a plain reply with no action
-results before it is stored; a turn that failed never writes it.
+results before it is stored, so a failed turn never announces one, and an
+announcement still waiting when the terminal comes is never written.
 
 ```quint
 pure def announcedResults(r: Readiness): int = match r { | ReadyPending(x) => x.results | ReadySent(x) => x.results | NotReady => -1 }
@@ -219,8 +220,14 @@ pure def announceReply(s: ReplyStream, units: List[int], results: int): StreamSt
   writeNext(false, { ...s, ready: ReadyPending({ text: units, results: results }) })
 pure val resultsValues = Set(0, 1)
 pure def isReadyFrame(e: Effect): bool = match e { | Write(w) => match w.frame { | ReadyFrame(_) => true | _ => false } | AbortTurn => false }
+pure def isReadySent(r: Readiness): bool = match r { | ReadySent(_) => true | _ => false }
 pure def stepReadyAtMostOnce(before: ReplyStream, after: ReplyStream, out: List[Effect]): bool =
-  out.some(e => isReadyFrame(e)) implies (readyPending(before.ready) and after.ready == readySent(before.ready))
+  (isReadySent(before.ready) implies (after.ready == before.ready and not(out.some(e => isReadyFrame(e))))) and
+  (out.some(e => isReadyFrame(e)) implies isReadySent(after.ready))
+pure def doneAgrees(e: Ending, r: Readiness): bool = match e {
+  | Done(x) => r == NotReady or (x.failure == "" and x.results == announcedResults(r)) | Errored(_) => true }
+pure def alwaysAnAnnouncedReplyEndsAnswered(s: ReplyStream): bool =
+  (isFinishing(s.phase) or isSent(s.phase)) implies doneAgrees(ending(s.phase), s.ready)
 pure def sometimesReadyThenDone(s: ReplyStream): bool = s.ready != NotReady and not(readyPending(s.ready)) and isSent(s.phase)
 ```
 
@@ -233,8 +240,9 @@ terminal replaces whatever text was still waiting, and the response ends
 once it has left.
 
 ```quint
-pure def canFinish(s: ReplyStream, reply: int, results: int): bool =
-  (s.role == Streams or s.role == Waits) and isOpen(s.phase) and reply >= 1 and (announcedResults(s.ready) < 0 or announcedResults(s.ready) == results)
+pure def canFinish(s: ReplyStream, reply: int, kind: T::ReplyKind, results: int): bool =
+  (s.role == Streams or s.role == Waits) and isOpen(s.phase) and reply >= 1 and
+  (s.ready != NotReady implies (announcedResults(s.ready) == results and T::failureKind(kind) == ""))
 pure def finish(s: ReplyStream, reply: int, units: List[int], kind: T::ReplyKind, results: int): StreamStep =
   writeNext(false, { ...s, progress: NoProgress, phase: Finishing({ end: Done({ reply: reply, fullText: units, results: results, failure: T::failureKind(kind) }) }) })
 pure def canAnswerError(s: ReplyStream, code: str): bool = (s.role == Streams or s.role == Waits) and isOpen(s.phase) and code != ""
@@ -243,11 +251,12 @@ pure def answerError(s: ReplyStream, code: str): StreamStep =
 pure val replyValues = Set(3)
 pure val kindValues = Set(T::Answered, T::TimedOut, T::Aborted)
 pure val codeValues = Set("", "ASSISTANT_RESPONSE_UNAVAILABLE")
-pure def isFinal(e: Effect): bool = match e { | Write(w) => match w.frame { | Final(_) => true | _ => false } | AbortTurn => false }
 pure def isEnded(p: Phase): bool = match p { | Ended(_) => true | Dropped => true | _ => false }
 pure def stepNothingAfterTheEnd(before: ReplyStream, after: ReplyStream, out: List[Effect]): bool =
   (isEnded(before.phase) implies (out.every(e => e == AbortTurn) and (after.phase == before.phase or after.phase == Dropped))) and
-  (out.some(e => isFinal(e)) implies (not(isEnded(before.phase)) and isSent(after.phase) and ending(after.phase) == ending(before.phase)))
+  out.every(e => match e {
+    | Write(w) => match w.frame { | Final(x) => not(isEnded(before.phase)) and isSent(after.phase) and ending(after.phase) == x.end | _ => true }
+    | AbortTurn => true })
 pure def failureOf(e: Ending): str = match e { | Done(x) => x.failure | Errored(_) => "" }
 pure def sometimesFailedTurnStillDone(s: ReplyStream): bool = isSent(s.phase) and failureOf(ending(s.phase)) == "timeout"
 pure def sometimesJoinedGetsTheReply(s: ReplyStream): bool = s.role == Waits and isSent(s.phase) and not(s.inFlight)

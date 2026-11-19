@@ -1,14 +1,8 @@
 // spec/agent/plugins/bundle.md, "A bundle is built only when every listed plugin and the product plugin ship as packages and the load smoke loaded them"; spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella"
-import { spawn } from "node:child_process"
-import { once } from "node:events"
-import { mkdir, writeFile } from "node:fs/promises"
-import * as path from "node:path"
 import { assert, it } from "@effect/vitest"
 import type { AgentPlugin } from "../src/host/module.vibe"
-import { bundleEntrySource } from "../src/bundle/entry.vibe"
 import { smokeBoot } from "../src/bundle/smoke.vibe"
 import { bundledPluginMap } from "../src/plugins/profile.vibe"
-import { agentDir } from "./support/child.ts"
 import { host, scratch } from "./support/kernel.vibe"
 import { productActionName, productPlugin, umbrellaActionName, umbrellaProductPlugin, umbrellaSubactionName } from "./support/product-plugin/index.ts"
 
@@ -29,24 +23,35 @@ interface SmokeLine {
   readonly registered: readonly { readonly name: string; readonly umbrella?: string }[]
 }
 
-async function bundleSmoke(root: string, state: string): Promise<{ code: number | null; stdout: string }> {
-  const fixture = path.join(agentDir, "test/support/product-plugin/index.ts")
-  for (const [name, exported] of [[umbrellaProductPlugin.name, "umbrellaProductPlugin"], [productPlugin.name, "productPlugin"]]) {
-    const directory = path.join(root, "node_modules", name)
-    await mkdir(directory, { recursive: true })
-    await writeFile(path.join(directory, "package.json"), JSON.stringify({ name, version: "0.0.0", type: "module", exports: "./index.mjs" }))
-    await writeFile(path.join(directory, "index.mjs"), `export { ${exported} as default } from ${JSON.stringify(fixture)}\n`)
+module node {
+  import { spawn } from "node:child_process"
+  import { once } from "node:events"
+  import { mkdir, writeFile } from "node:fs/promises"
+  import * as path from "node:path"
+  import { bundleEntrySource } from "../src/bundle/entry.vibe"
+  import { agentDir } from "./support/child.ts"
+  import { productPlugin, umbrellaProductPlugin } from "./support/product-plugin/index.ts"
+
+  export async function bundleSmoke(root: string, state: string): Promise<{ code: number | null; stdout: string }> {
+    const fixture = path.join(agentDir, "test/support/product-plugin/index.ts")
+    for (const [name, exported] of [[umbrellaProductPlugin.name, "umbrellaProductPlugin"], [productPlugin.name, "productPlugin"]]) {
+      const directory = path.join(root, "node_modules", name)
+      await mkdir(directory, { recursive: true })
+      await writeFile(path.join(directory, "package.json"), JSON.stringify({ name, version: "0.0.0", type: "module", exports: "./index.mjs" }))
+      await writeFile(path.join(directory, "index.mjs"), `export { ${exported} as default } from ${JSON.stringify(fixture)}\n`)
+    }
+    const entry = path.join(root, "entry.mjs")
+    await writeFile(entry, bundleEntrySource({ plugins: [umbrellaProductPlugin.name], productPlugin: productPlugin.name, cli: path.join(agentDir, "src/cli.vibe") }))
+    const child = spawn(process.execPath,
+      ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", entry, "smoke", "--state", state],
+      { cwd: agentDir, env: { ...process.env, VIBELANG_CACHE_DIR: path.join(agentDir, ".cache", "vibelang") }, stdio: ["ignore", "pipe", "inherit"], timeout: 150_000 })
+    let stdout = ""
+    child.stdout.setEncoding("utf8").on("data", (data: string) => { stdout += data })
+    const [code] = await once(child, "close") as [number | null]
+    return { code, stdout }
   }
-  const entry = path.join(root, "entry.mjs")
-  await writeFile(entry, bundleEntrySource({ plugins: [umbrellaProductPlugin.name], productPlugin: productPlugin.name, cli: path.join(agentDir, "src/cli.vibe") }))
-  const child = spawn(process.execPath,
-    ["--no-warnings", "--conditions", "eliza-source", "--import", "vibelang/register", entry, "smoke", "--state", state],
-    { cwd: agentDir, env: { ...process.env, VIBELANG_CACHE_DIR: path.join(agentDir, ".cache", "vibelang") }, stdio: ["ignore", "pipe", "inherit"], timeout: 150_000 })
-  let stdout = ""
-  child.stdout.setEncoding("utf8").on("data", (data: string) => { stdout += data })
-  const [code] = await once(child, "close") as [number | null]
-  return { code, stdout }
 }
+import { bundleSmoke } from node
 
 it.effect('The load smoke loads the listed and product plugins and lists each action with its umbrella (spec/agent/plugins/bundle.md, "A bundle is built only when its load smoke registered each action once under a non-empty name, each promoted action under a listed top-level umbrella")', effect () => {
   const report = try smoked([umbrellaProductPlugin], productPlugin)

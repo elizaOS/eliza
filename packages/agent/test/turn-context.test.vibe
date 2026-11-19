@@ -23,7 +23,7 @@ effect function turn(support: PeerSupport, agent: InProcess, context: TurnContex
   return { support: comparePeer(support, read), metadata: encodeTurnContext(context, { optionalFields: sendsOptionalFields(support, read) }) }
 }
 
-const outcomeOf = (outcome: Effect.Effect<unknown, { readonly _tag: string }>) => Effect.match(outcome, { onFailure: (error) => error._tag, onSuccess: () => "carried" })
+const outcomeOf = (outcome: unknown!({ readonly _tag: string })) => Effect.match(outcome, { onFailure: (error) => error._tag, onSuccess: () => "carried" })
 
 it.effect('A screen reaches the agent whole, only as the process instance the client compared allows, and nothing else does (spec/agent/conversation/turnContext.md, "Story: Tell the agent what my screen shows, and nothing more")', effect () => {
   const first = try startInProcess()
@@ -35,12 +35,13 @@ it.effect('A screen reaches the agent whole, only as the process instance the cl
 
   const second = try startInProcess()
   const restarted = try turn(sent.support, second, { observation: calendar })
-  const relearned = learnPeer(restarted.support, try readStatus(second))
+  const reread = try readStatus(second)
+  const relearned = learnPeer(restarted.support, reread)
   const ordinary = try decodeObservation(restarted.metadata.observation)
 
   const { calendarDay: _day, ...withoutDay } = calendar
   try Effect.try(() => assert.deepStrictEqual({
-    learned: learned.tag, decoded, bound, stored, restarted: restarted.support, relearnedSends: sendsOptionalFields(relearned, try readStatus(second)), ordinary,
+    learned: learned.tag, decoded, bound, stored, restarted: restarted.support, relearnedSends: sendsOptionalFields(relearned, reread), ordinary,
   }, {
     learned: "SamePeer", decoded: calendar, bound: voiceUi, stored: { observation: calendar, voiceUi },
     restarted: { tag: "OrdinaryOnly" }, relearnedSends: false, ordinary: withoutDay,

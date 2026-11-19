@@ -33,6 +33,7 @@ candidate that is not lower, since the bootloader would refuse to boot it.
 A channel that allows downgrades admits nothing.
 
 ```quint
+import apk.* from "../image/apk"
 import signing.* from "../image/signing"
 import updater as U from "./updater"
 import verification as Vf from "../image/verification"
