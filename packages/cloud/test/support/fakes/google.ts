@@ -1,4 +1,5 @@
 // spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"
+import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT, type JWTVerifyGetKey } from "jose";
 import type { FakeAnswer, FakeHandler, FakeRequest } from "../fakes.ts";
 
 export interface FakeGrant {
@@ -217,7 +218,7 @@ export function mountGoogleToken(state: GoogleFakeState): FakeHandler {
 
 const googleHosts = new Set(["oauth2.googleapis.com", "openidconnect.googleapis.com"]);
 
-export function interceptGoogle(state: GoogleFakeState): void {
+export function interceptGoogle(state: GoogleFakeState): () => void {
   const handler = mountGoogleToken(state);
   const network = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
@@ -229,5 +230,22 @@ export function interceptGoogle(state: GoogleFakeState): void {
       method: request.method, path: url.pathname, query: url.searchParams, headers: Object.fromEntries(request.headers), body: new TextDecoder().decode(raw), raw,
     });
     return answer === undefined ? new Response(null, { status: 404 }) : Response.json(answer.body ?? {}, { status: answer.status });
+  };
+  return () => { globalThis.fetch = network; };
+}
+
+export interface NativeIdTokens {
+  readonly keys: JWTVerifyGetKey;
+  issue(subject: string, nonce: string): Promise<string>;
+}
+
+export async function nativeIdTokens(audience: string): Promise<NativeIdTokens> {
+  const { privateKey, publicKey } = await generateKeyPair("RS256", { extractable: true });
+  const keys = createLocalJWKSet({ keys: [{ ...await exportJWK(publicKey), kid: "native-google", alg: "RS256" }] });
+  return {
+    keys,
+    issue: (subject, nonce) => new SignJWT({ nonce, email: subject + "@gmail.com", email_verified: true })
+      .setProtectedHeader({ alg: "RS256", kid: "native-google" }).setIssuer("https://accounts.google.com").setAudience(audience)
+      .setSubject(subject).setIssuedAt().setExpirationTime("5m").sign(privateKey),
   };
 }

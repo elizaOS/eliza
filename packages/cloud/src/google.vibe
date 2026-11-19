@@ -52,6 +52,7 @@ const scopeByCapability = {
   write_calendar: "https://www.googleapis.com/auth/calendar.events.owned",
   calendar: "https://www.googleapis.com/auth/calendar.events.readonly"
 } as const
+export const nativeGoogleScopes = ["openid", "email", ...Object.values(scopeByCapability)]
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")
@@ -292,19 +293,16 @@ effect function link(env: GoogleEnv, config: Config, db: Client, account: string
   if (!rowCount) throw new AuthorizationFailed()
 }
 
-effect function connectNative(request: Request, env: GoogleEnv, db: Client, account: string) {
+effect function connectCode(env: GoogleEnv, db: Client, account: string, signedInSubject: string, serverAuthCode: string) {
   const config = try googleConfig(env)
   if (config.clientId !== env.GOOGLE_CLIENT_ID) throw new ConnectionUnavailable()
-  const { serverAuthCode } = try readAction(request, NativeConnect)
   if (!/^[A-Za-z0-9/_.~-]{10,2048}$/.test(serverAuthCode)) throw new BadRequest()
-  const { rows } = try query<{ provider_subject: string }>(db, `
-    SELECT p.provider_subject FROM accounts a JOIN cloud_sign_in_identities p ON p.account_id = a.key
-    WHERE a.key = $1 AND a.status = 'active' AND p.provider = 'google'`, [account])
+  if (signedInSubject === "") throw new AuthorizationFailed()
   const credentials = try oauthToken(config, new URLSearchParams({ grant_type: "authorization_code", code: serverAuthCode, redirect_uri: "" }))
   const refreshToken = credentials.refresh_token ?? ""
   const granted = new Set((credentials.scope ?? "").split(/\s+/))
   const profile = try verifiedProfile(credentials)
-  const stored = nativeConnectStores(rows[0]?.provider_subject ?? "", profile.sub, refreshToken !== "", {
+  const stored = nativeConnectStores(signedInSubject, profile.sub, refreshToken !== "", {
     readMail: granted.has(scopeByCapability.mail), sendMail: granted.has(scopeByCapability.send_mail), trashMail: granted.has(scopeByCapability.trash_mail),
     readCalendar: granted.has(scopeByCapability.calendar), writeCalendar: granted.has(scopeByCapability.write_calendar)
   })
@@ -312,7 +310,23 @@ effect function connectNative(request: Request, env: GoogleEnv, db: Client, acco
   try link(env, config, db, account, profile, {
     mail: stored.readMail, send_mail: stored.sendMail, trash_mail: stored.trashMail, calendar: stored.readCalendar, write_calendar: stored.writeCalendar
   }, refreshToken, null)
+  return true
+}
+
+effect function connectNative(request: Request, env: GoogleEnv, db: Client, account: string) {
+  const { serverAuthCode } = try readAction(request, NativeConnect)
+  const { rows } = try query<{ provider_subject: string }>(db, `
+    SELECT p.provider_subject FROM accounts a JOIN cloud_sign_in_identities p ON p.account_id = a.key
+    WHERE a.key = $1 AND a.status = 'active' AND p.provider = 'google'`, [account])
+  try connectCode(env, db, account, rows[0]?.provider_subject ?? "", serverAuthCode)
   return try status(db, env, account)
+}
+
+export function connectSignedInGoogle(env: GoogleEnv, db: Client, account: string, signedInSubject: string, serverAuthCode: string): Promise<boolean> {
+  return runPromise(Effect.provide(effect {
+    const connected = connectCode(env, db, account, signedInSubject, serverAuthCode) catch () => false
+    return connected
+  }, providerLayer))
 }
 
 effect function disconnect(db: Client, account: string) {

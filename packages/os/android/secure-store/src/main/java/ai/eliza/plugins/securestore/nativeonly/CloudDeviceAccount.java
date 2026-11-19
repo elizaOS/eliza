@@ -5,7 +5,6 @@ import android.content.Context;
 import android.net.Uri;
 import android.util.Base64;
 import com.google.android.gms.auth.api.identity.AuthorizationRequest;
-import com.google.android.gms.auth.api.identity.AuthorizationResult;
 import com.google.android.gms.common.api.Scope;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -16,9 +15,10 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -32,10 +32,6 @@ public final class CloudDeviceAccount {
  private static final String CREDENTIAL = "credential";
  private static final String REVOKE = "revoke";
  private static final String ACK = "awaiting-ack";
- private static final List<Scope> GOOGLE_SCOPES = Arrays.asList(new Scope("openid"), new Scope("email"),
-     new Scope("https://www.googleapis.com/auth/gmail.readonly"), new Scope("https://www.googleapis.com/auth/gmail.send"),
-     new Scope("https://www.googleapis.com/auth/gmail.modify"), new Scope("https://www.googleapis.com/auth/calendar.events.readonly"),
-     new Scope("https://www.googleapis.com/auth/calendar.events.owned"));
  private final Uri browser;
  private final URI cloud;
  private final Uri callback;
@@ -110,9 +106,21 @@ public final class CloudDeviceAccount {
   return credential;
  }
 
- public record NativeGoogleAttempt(String clientId, String environment, String serverClientId, String challengeId,
+ public record NativeGoogleAttempt(String clientId, String environment, String serverClientId, List<String> scopes, String challengeId,
     String nonce, String state, long expiresAt) {
+  public AuthorizationRequest authorization(String googleAccount) {
+   return googleAuthorization(serverClientId, googleAccount, scopes);
+  }
+
   @Override public String toString() { return "CloudDeviceAccount.NativeGoogleAttempt"; }
+ }
+
+ public static AuthorizationRequest googleAuthorization(String serverClientId, String googleAccount, List<String> scopes) {
+  if (googleAccount == null || !googleAccount.matches("[^@\\s]{1,64}@[^@\\s]{1,255}")) throw new IllegalArgumentException("Invalid Google account");
+  List<Scope> requested = new ArrayList<>();
+  for (String scope : scopes) requested.add(new Scope(scope));
+  return AuthorizationRequest.builder().setRequestedScopes(requested).setAccount(new Account(googleAccount, "com.google"))
+      .requestOfflineAccess(serverClientId, true).build();
  }
 
  private JSONObject mobileClient(String clientId, String environment) throws Exception {
@@ -131,6 +139,13 @@ public final class CloudDeviceAccount {
   String serverClientId = google.getString("serverClientId");
   if (!serverClientId.matches("[A-Za-z0-9-]{1,100}\\.apps\\.googleusercontent\\.com"))
    throw new IOException("Invalid Google client configuration");
+  List<String> scopes = new ArrayList<>();
+  JSONArray listed = google.getJSONArray("scopes");
+  for (int index = 0; index < listed.length(); index++) {
+   String scope = listed.getString(index);
+   if (!scope.matches("openid|email|https://www\\.googleapis\\.com/auth/[a-z.]{1,64}")) throw new IOException("Invalid Google scope");
+   scopes.add(scope);
+  }
   JSONObject pending = beginPending("google", 120_000L);
   String state = pending.getString("state");
   try {
@@ -141,36 +156,27 @@ public final class CloudDeviceAccount {
    if (!opaque(nonce) || seconds < 1 || seconds > 120)
     throw new IOException("Invalid Google challenge");
    long expiry = Math.min(pending.getLong("expiresAt"), System.currentTimeMillis() + seconds * 1000);
-   return new NativeGoogleAttempt(clientId, environment, serverClientId, challengeId, nonce, state, expiry);
+   return new NativeGoogleAttempt(clientId, environment, serverClientId, List.copyOf(scopes), challengeId, nonce, state, expiry);
   } catch (Exception failure) {
    clearNativeGoogle(state);
    throw failure;
   }
  }
 
- public boolean finishNativeGoogle(NativeGoogleAttempt attempt, String idToken) throws Exception {
+ public boolean finishNativeGoogle(NativeGoogleAttempt attempt, String idToken, String serverAuthCode) throws Exception {
   if (idToken == null || idToken.length() > 7500 || !idToken.matches("[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+"))
    throw new IOException("Invalid Google result");
   String snapshot = pendingSnapshot(attempt.state(), "google");
   if (snapshot == null || attempt.expiresAt() <= System.currentTimeMillis()) return false;
   JSONObject request = mobileClient(attempt.clientId(), attempt.environment())
       .put("challengeId", attempt.challengeId()).put("idToken", idToken);
+  if (serverAuthCode != null) {
+   if (!serverAuthCode.matches("[A-Za-z0-9/_.~-]{10,2048}")) throw new IOException("Invalid Google authorization");
+   request.put("serverAuthCode", serverAuthCode);
+  }
   JSONObject response = new JSONObject(post("/api/v1/app-auth/mobile/google", request, null, 200).body());
   String code = response.getString("code");
   return opaque(code) && attempt.state().equals(response.getString("state")) && exchangeCode(code, snapshot);
- }
-
- public AuthorizationRequest googleAuthorization(NativeGoogleAttempt attempt, String googleAccount) {
-  if (googleAccount == null || !googleAccount.matches("[^@\\s]{1,64}@[^@\\s]{1,255}")) throw new IllegalArgumentException("Invalid Google account");
-  return AuthorizationRequest.builder().setRequestedScopes(GOOGLE_SCOPES).setAccount(new Account(googleAccount, "com.google"))
-      .requestOfflineAccess(attempt.serverClientId(), true).build();
- }
-
- public boolean connectGoogle(AuthorizationResult result) throws Exception {
-  String code = result.getServerAuthCode();
-  if (code == null || !code.matches("[A-Za-z0-9/_.~-]{10,2048}")) throw new IOException("Invalid Google authorization");
-  JSONObject request = new JSONObject().put("serverAuthCode", code);
-  return new JSONObject(post("/api/v1/eliza/google/connect/native", request, requireCredential(), 200).body()).getBoolean("connected");
  }
 
  public void cancelNativeGoogle(NativeGoogleAttempt attempt) throws Exception {

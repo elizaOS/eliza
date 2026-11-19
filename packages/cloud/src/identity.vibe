@@ -12,10 +12,10 @@ import {
 
 import { browserNativeRegistration, mobileRegistration, type NativeRegistryEnv } from "./native-registry.vibe"
 import { googleServerClientId, verifyNativeGoogle } from "./native-google.vibe"
+import { connectSignedInGoogle, nativeGoogleScopes, type GoogleEnv } from "./google.vibe"
 import { ownsPasswordBackupPath, passwordBackupRequest } from "./password-backup.vibe"
 
-export type IdentityEnv = NativeRegistryEnv & {
-  GOOGLE_CLIENT_SECRET?: string
+export type IdentityEnv = NativeRegistryEnv & GoogleEnv & {
   SIGN_IN_EMAIL?: { send(message: { from: string; to: string; subject: string; text: string }): Promise<unknown> }
   RESEND_API_KEY?: string
   EMAIL_FROM?: string
@@ -41,7 +41,7 @@ schema GoogleToken { access_token: string }
 schema GoogleProfile { sub: string; email?: string; email_verified?: boolean }
 schema DeviceAuthorization { challenge: string; state: string }
 schema NativeGoogleChallenge { clientId: string; environment: string; redirectUri: string; challenge: string; state: string }
-schema NativeGoogleCompletion { clientId: string; environment: string; redirectUri: string; challengeId: string; idToken: string }
+schema NativeGoogleCompletion { clientId: string; environment: string; redirectUri: string; challengeId: string; idToken: string; serverAuthCode?: string }
 schema DeviceExchange { code: string; verifier: string }
 schema SmsReceipt { status: string; to?: string; channel?: string; service_sid?: string }
 schema BlooioReceipt { id: string; channel_id: string; status: string; channel_type?: string; to?: string; direction?: string; dry_run?: boolean }
@@ -455,7 +455,7 @@ effect function nativeGoogle(request: Request, env: IdentityEnv, db: Client, sta
   if (pending.rows.length === 0) throw new Unauthorized()
   const verified = verifyNativeGoogle(idToken, audience, keys) catch effect () => { throw new Unauthorized() }
   const nonceHash = try digestCredential(verified.nonce)
-  return try accountTransaction(db, effect {
+  const signedIn = try accountTransaction(db, effect {
     const verifiedAt = try Clock.currentTimeMillis
     const { rows } = try query<{ challenge: string; state: string }>(db, `
       DELETE FROM cloud_native_google_challenges
@@ -469,8 +469,12 @@ effect function nativeGoogle(request: Request, env: IdentityEnv, db: Client, sta
     const code = try issueDeviceCode(db, {
       accountId: family.account.id, sessionKey: family.key, clientId: admitted.registration.clientId, challenge: proof.challenge
     })
-    return json(200, { code, state: proof.state })
+    return { code, state: proof.state, accountId: family.account.id }
   })
+  const { serverAuthCode } = input.value
+  if (serverAuthCode === undefined) return json(200, { code: signedIn.code, state: signedIn.state })
+  const connected = try Effect.promise(() => connectSignedInGoogle(env, db, signedIn.accountId, verified.identity.subject, serverAuthCode))
+  return json(200, { code: signedIn.code, state: signedIn.state, google: { connected } })
 }
 
 effect function authorizeDevice(request: Request, env: IdentityEnv, db: Client) {
@@ -569,7 +573,7 @@ effect function handleIdentity(request: Request, env: IdentityEnv, db: Client, k
           credentialTtlMs: registered.credentialTtl, methods: { google: configured, email: emailReady(env), sms: smsReady(env) },
           google: { configured, serverClientId: configured ? env.GOOGLE_CLIENT_ID : "",
             nativeSignIn: registered.nativeGoogle && nativeGoogleAudience(env) !== null &&
-              browserNativeRegistration(env)?.clientId === registered.clientId }
+              browserNativeRegistration(env)?.clientId === registered.clientId, scopes: nativeGoogleScopes }
         })
       }
       case "/api/auth/providers":

@@ -1,13 +1,13 @@
 // spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Connect my Google mail and calendar with the same sign-in"
 package ai.eliza.plugins.signin;
 
+import ai.eliza.plugins.securestore.nativeonly.CloudDeviceAccount;
 import ai.eliza.plugins.signin.CodeSignIn.Answer;
 import ai.eliza.plugins.signin.CodeSignIn.Verified;
 import ai.eliza.plugins.signin.SignInCustody.Proof;
 import ai.eliza.plugins.signin.SignInCustody.Refused;
 import ai.eliza.plugins.signin.SignInPolicy.Failure;
 import ai.eliza.plugins.signin.SignInPolicy.Stage;
-import android.accounts.Account;
 import android.app.Activity;
 import android.os.CancellationSignal;
 import androidx.activity.ComponentActivity;
@@ -27,11 +27,9 @@ import androidx.credentials.exceptions.NoCredentialException;
 import com.google.android.gms.auth.api.identity.AuthorizationRequest;
 import com.google.android.gms.auth.api.identity.AuthorizationResult;
 import com.google.android.gms.auth.api.identity.Identity;
-import com.google.android.gms.common.api.Scope;
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption;
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.json.JSONObject;
@@ -176,10 +174,7 @@ public final class GoogleSignIn {
       return;
     }
     try {
-      List<Scope> requested = new ArrayList<>();
-      for (String scope : scopes) requested.add(new Scope(scope));
-      AuthorizationRequest request = AuthorizationRequest.builder().setRequestedScopes(requested)
-        .setAccount(new Account(account, "com.google")).requestOfflineAccess(challenge.serverClientId(), true).build();
+      AuthorizationRequest request = CloudDeviceAccount.googleAuthorization(challenge.serverClientId(), account, scopes);
       Identity.getAuthorizationClient(activity).authorize(request)
         .addOnSuccessListener(result -> {
           if (cancellation.isCanceled()) { done.accept(new Authorized.Declined()); return; }
