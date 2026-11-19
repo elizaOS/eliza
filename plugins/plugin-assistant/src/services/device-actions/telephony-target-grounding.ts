@@ -227,7 +227,11 @@ function ownerNumber(
   owned: readonly string[],
 ): string | undefined {
   // The owner's own dial form, never the model's spelling of it.
-  return owned.find((number) => samePhoneNumber(number, proposed));
+  const digits = proposed.replace("+", "");
+  const exact = owned.find((number) => number.replace("+", "") === digits);
+  if (exact) return exact;
+  const matches = owned.filter((number) => samePhoneNumber(number, proposed));
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 function recipientNumbers(text: string, body: unknown): string[] {

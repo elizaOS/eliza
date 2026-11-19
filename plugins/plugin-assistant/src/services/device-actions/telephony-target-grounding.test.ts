@@ -297,6 +297,18 @@ describe("numbers the owner spoke", () => {
       spokenPhoneNumbers("call four fifteen, triple five, oh one double oh"),
     ).toContain("4155550100");
     expect(spokenPhoneNumbers("nine one one")).toEqual(["911"]);
+    const draft = {
+      type: "sms_compose",
+      target: { kind: "number", number: "4155550100" },
+      body: "Hello",
+      draft: true,
+    } as const;
+    expect(
+      groundTelephonyTarget(
+        draft,
+        "Draft a text to four one five, five five five, oh one double oh saying hello.",
+      ).operation,
+    ).toEqual(draft);
   });
 
   it("reads a homophone only beside other digits", () => {
