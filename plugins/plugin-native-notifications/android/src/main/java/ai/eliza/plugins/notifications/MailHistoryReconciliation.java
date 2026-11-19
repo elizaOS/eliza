@@ -21,7 +21,14 @@ public final class MailHistoryReconciliation {
  /** Throws when the selection, credential or owner this work was admitted for changed. */
  public interface Guard {void check()throws Exception;}
  /** Content-free notices keyed by an opaque ledger key. */
- public interface Poster {boolean allowed();boolean active(String key);void post(String key);void cancel(String key);}
+ public interface Poster {boolean allowed();boolean active(String key);void post(String key);void cancel(String key);
+  /**
+   * Posts with the number of new messages the ledger holds as not opened, read or deleted when this
+   * notice is reserved, this one included. The default shows no count; a host that chooses to show
+   * one overrides this method.
+   */
+  default void post(String key,int count){post(key);}
+ }
  /** Upper bound on retained notice identities; overflow refuses the page instead of truncating it. */
  public static final int MAXIMUM_NOTICES=1000;
  /** Upper bound on notices shown at once; a newer arrival withdraws the oldest shown one. */
@@ -95,6 +102,8 @@ public final class MailHistoryReconciliation {
    if(phase.equals("dispatching")){n.put("phase",poster.active(key)?"posted":"uncertain");save(s);continue;}
    if(!phase.equals("pending"))continue;
    if(!poster.allowed()){n.put("phase","denied");save(s);continue;}
+   // Counted before the shade cap below, so a notice it withdraws still counts as new mail.
+   int count=0;for(String other:keys(notices))if(Set.of("pending","dispatching","posted","uncertain").contains(notices.getJSONObject(other).getString("phase")))count++;
    // Keep the shade bounded: withdraw the oldest shown notices (never a captured tap) before a new one.
    List<String> withdrawn=new ArrayList<>();JSONObject tap=s.optJSONObject("tap");
    while(true){
@@ -109,7 +118,7 @@ public final class MailHistoryReconciliation {
    }
    if(!withdrawn.isEmpty()){save(s);for(String other:withdrawn)poster.cancel(other);guard.check();}
    n.put("phase","dispatching");save(s);
-   guard.check();try{poster.post(key);n.put("phase",poster.active(key)?"posted":"uncertain");}catch(SecurityException denied){n.put("phase","denied");}save(s);return;
+   guard.check();try{poster.post(key,count);n.put("phase",poster.active(key)?"posted":"uncertain");}catch(SecurityException denied){n.put("phase","denied");}save(s);return;
   }
  }
  private static boolean older(JSONObject a,JSONObject b){int c=Long.compare(a.optLong("createdAt"),b.optLong("createdAt"));return c!=0?c<0:new BigInteger(a.optString("historyId","0")).compareTo(new BigInteger(b.optString("historyId","0")))<0;}

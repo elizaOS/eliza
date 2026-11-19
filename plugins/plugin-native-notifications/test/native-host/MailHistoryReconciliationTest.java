@@ -53,6 +53,10 @@ public class MailHistoryReconciliationTest {
   Case held=new Case();held.seed();held.engine.accept(page("100","106",null,event("101","message-added","h0","INBOX","UNREAD"),event("102","message-added","h1","INBOX","UNREAD"),event("103","message-added","h2","INBOX","UNREAD"),event("104","message-added","h3","INBOX","UNREAD"),event("105","message-added","h4","INBOX","UNREAD"),event("106","message-added","h5","INBOX","UNREAD")),2);
   for(int i=0;i<5;i++)held.engine.publish();String first=null;for(String k:MailHistoryReconciliation.keys(held.s().getJSONObject("notices")))if(held.s().getJSONObject("notices").getJSONObject(k).getString("messageId").equals("h0"))first=k;
   held.engine.capture(first);held.engine.publish();check(held.poster.active.contains(first)&&held.poster.active.size()==5&&held.engine.pending().has("token"),"captured tap notice is never withdrawn by the cap");
+  Case counted=new Case();List<Integer> counts=new ArrayList<>();counted.poster=new Poster(){@Override public void post(String key,int count){counts.add(count);post(key);}};counted.engine=new MailHistoryReconciliation(counted.memory,()->{},counted.poster);counted.seed();
+  counted.engine.accept(page("100","103",null,event("101","message-added","c0","INBOX","UNREAD"),event("102","message-added","c1","INBOX","UNREAD"),event("103","message-added","c2","INBOX","UNREAD")),2);while(counted.engine.hasPending())counted.engine.publish();
+  counted.engine.accept(page("103","105",null,event("104","labels-removed","c0","UNREAD"),event("105","message-added","c3","INBOX","UNREAD")),3);counted.engine.publish();
+  check(counts.equals(List.of(3,3,3,3))&&counted.poster.posts==4,"count names new unopened mail, read mail excluded");
   System.out.println("PASS mail durable reconciliation, notice uncertainty, owner fences and pagination");
  }
 }
