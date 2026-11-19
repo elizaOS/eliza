@@ -17,6 +17,7 @@ import {
   containsWebAddress,
   DeviceBrowserNotRequestedError,
   directBrowserOpen,
+  spokenBrowserOpen,
 } from "./browser-request-grounding.ts";
 import {
   isCalendarOperation,
@@ -2091,11 +2092,16 @@ export function deviceActionForCapabilities(
   // "Open x.com in a new tab" is an open of x.com: an empty tab is never
   // offered for it (the service also turns one into that open).
   const request = binding?.message ?? current?.replyContext?.message;
+  const requestText =
+    request === undefined
+      ? undefined
+      : extractUserText(unwrapUserMessageText(request));
+  const requestName = (binding?.runtime ?? current?.runtime)?.character.name;
   const addressInNewTab =
-    request !== undefined &&
-    directBrowserOpen(
-      extractUserText(unwrapUserMessageText(request)),
-      (binding?.runtime ?? current?.runtime)?.character.name,
+    requestText !== undefined &&
+    (
+      directBrowserOpen(requestText, requestName) ??
+      spokenBrowserOpen(requestText, requestName)
     )?.newTab === true;
   const offered = (branch: ActionParameterSchema): boolean => {
     if (

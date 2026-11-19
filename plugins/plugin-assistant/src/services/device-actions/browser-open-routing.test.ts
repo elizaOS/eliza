@@ -470,6 +470,8 @@ it.each([
   // "open wikipedia.org in a new tab" and the phone opened a blank tab.
   ["open wikipedia.org in a new tab", false],
   ["can you open wikipedia.org in a new tab?", false],
+  // A spoken hostname placed in a new tab is an open too, never an empty tab.
+  ["open alphacompute dot ai in a new tab", false],
   ["open a new tab", true],
   ["open wikipedia.org in a private tab", true],
   ["open example.com in the browser", true],

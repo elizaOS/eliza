@@ -828,6 +828,44 @@ it.each([
     }
   },
 );
+it("turns an empty tab proposed for a spoken hostname into a reviewed open in a new tab", async () => {
+  // The v610 blank-tab fix covers spoken hostnames too, and the open they
+  // become is still reviewed because a spoken hostname is never direct.
+  const f = await fixture();
+  try {
+    Object.assign(f.credential, {
+      capabilities: ["browser.tabs.v1", "browser.open-new-tab.v1"],
+    });
+    const result = await f.run(
+      "Open alphacompute dot ai in a new tab.",
+      false,
+      true,
+      undefined,
+      "current",
+      { type: "browser_tab_new" },
+    );
+    expect(result).toMatchObject({
+      success: true,
+      userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+      data: { awaitingUserInput: true, approvalRequired: true },
+    });
+    const rows = (
+      await f.pg.query<{ payload: Record<string, unknown> }>(
+        "SELECT payload FROM approval_requests",
+      )
+    ).rows;
+    expect(rows.map((row) => row.payload.operation)).toEqual([
+      {
+        type: "browser_navigate",
+        url: "https://alphacompute.ai/",
+        newTab: true,
+      },
+    ]);
+    expect("requestMessageId" in rows[0].payload).toBe(false);
+  } finally {
+    await f.pg.close();
+  }
+});
 it("does not treat a matching hostname as authority for a different path", async () => {
   const f = await fixture();
   try {

@@ -12,6 +12,7 @@ import {
   groundBrowserDestination,
   groundBrowserSearchQuery,
   spokenBrowserDestination,
+  spokenBrowserOpen,
 } from "./browser-request-grounding.ts";
 import { IANA_TLDS } from "./iana-tlds.ts";
 
@@ -916,6 +917,8 @@ describe("strict open command with where the address opens", () => {
     expect(authoredBrowserOpen(text)).toBeUndefined();
     expect(directBrowserOpen(text)).toBeUndefined();
     expect(spokenBrowserDestination(text)).toBe(href);
+    // The new-tab placement is read for the reviewed open too.
+    expect(spokenBrowserOpen(text)).toEqual({ href, newTab: true });
     expect(groundBrowserDestination(text, href)).toBe(href);
     expect(
       groundBrowserDestination(text, "https://example.com/"),

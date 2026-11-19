@@ -331,6 +331,16 @@ export function spokenBrowserDestination(
   text: string,
   assistantName: string = DEFAULT_ASSISTANT_NAME,
 ): string | undefined {
+  return spokenBrowserOpen(text, assistantName)?.href;
+}
+
+/** spokenBrowserDestination with the owner's placement: "open example dot com
+ * in a new tab" reads newTab like the typed address would. The result only
+ * places a reviewed open; it never makes the request direct. */
+export function spokenBrowserOpen(
+  text: string,
+  assistantName: string = DEFAULT_ASSISTANT_NAME,
+): ReturnType<typeof directBrowserOpen> {
   if (unreadable(text)) return;
   const names = patterns(assistantName);
   const request = text.trim();
@@ -355,7 +365,7 @@ export function spokenBrowserDestination(
     !SITE_AFTER.test(after)
   )
     return;
-  return open.href;
+  return open;
 }
 
 /** The destination to open for a model-proposed browser URL, built from the
