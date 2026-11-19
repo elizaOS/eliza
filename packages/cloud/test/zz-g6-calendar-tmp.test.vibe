@@ -1,0 +1,141 @@
+// spec/cloud/services/google/calendar.md, "Story: Read my calendar for a window"
+import { assert, describe, it } from "@effect/vitest"
+import { testCloud, type TestCloud } from "./support/cloud.vibe"
+import { stepRow } from "../src/store/rows.vibe"
+import { signedIn } from "./support/identity.ts"
+import { connectionColumns, connectionRows, scopeFor, type Owner } from "../src/services/google/grant-access.vibe"
+import { sealTokens } from "../src/providers/google.vibe"
+import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
+import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
+
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+
+effect function sql(cloud: TestCloud, text: string, params: ReadonlyArray<unknown>) {
+  return try cloud.store.transaction((tx) => tx.query(text, params))
+}
+
+    const otherKind = try operation("", { grantId, requestId, proposal: { ...proposal, kind: "archive" } })
+    const wrongDigest = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest: "0".repeat(64), proposal })
+    switches.dropNextReply = true
+    const lost = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
+    const looked = try operation(`/${requestId}?grantId=${grantId}`)
+    const replayed = try operation(`/${requestId}/dispatch`, { grantId, reviewDigest, proposal })
+    const unknown = try operation(`/9a8b7c6d-5e4f-4a3b-9c2d-1e0f9a8b7c6d?grantId=${grantId}`)
+    const trashed = mailbox.messages.get("msg-plan")
+        changed: errorOf(changed),
+        sent: [sent.status, receiptOf(sent), ((sent.body as OperationAnswer).receipt.providerResult as { readonly labelIds: ReadonlyArray<string> }).labelIds],
+        replayed: [replayed.status, receiptOf(replayed), (replayed.body as OperationAnswer).receipt.providerResult === null],
+        looked: [looked.status, receiptOf(looked)],
+        once: [sends, outgoing.length, raw.includes(`Message-ID: <eliza-${requestId}@message.invalid>`), raw.includes(`filename*=UTF-8''agenda.txt`), raw.includes(note)],
+        forwarded: [forwarded.status, receiptOf(forwarded), ((forwarded.body as OperationAnswer).review as { readonly forwardedAttachments: ReadonlyArray<{ readonly name: string }> }).forwardedAttachments.map((file) => file.name)],
+        stale: errorOf(stale)
+      },
+      {
+        prepared: [200, ["send", "prepared", null, false, false], ["ada@example.org"], [{ name: "agenda.txt", mimeType: "text/plain", size: 17, sha256: sha256Hex("Agenda for Monday") }]],
+        changed: [409, "stale_revision"],
+        sent: [200, ["send", "succeeded", null, true, true], ["SENT"]],
+        replayed: [200, ["send", "succeeded", null, true, true], false],
+        looked: [200, ["send", "succeeded", null, true, true]],
+        once: [1, 1, true, true, true],
+        forwarded: [200, ["send", "prepared", null, false, false], ["plan.pdf"]],
+        stale: [409, "stale_revision"]
+      }
+    ))
+  }), 30_000)
+})
+
+type OperationAnswer = {
+  readonly version: number
+  readonly providerExactlyOnce: boolean
+  readonly review?: unknown
+  readonly receipt: { readonly kind: string; readonly state: string; readonly reviewDigest: string; readonly rejectionCode: string | null; readonly providerResult: unknown; readonly createdAt: string; readonly dispatchedAt: string | null; readonly finishedAt: string | null }
+}
+
+function receiptOf(answer: { readonly body: unknown }): ReadonlyArray<unknown> {
+  const receipt = (answer.body as OperationAnswer).receipt
+  return [receipt.kind, receipt.state, receipt.rejectionCode, receipt.dispatchedAt !== null, receipt.finishedAt !== null]
+}
+
+function errorOf(answer: { readonly status: number; readonly body: unknown }): ReadonlyArray<unknown> {
+  return [answer.status, (answer.body as { readonly error?: string }).error]
+}
+
+effect function mailOperationSetup(name: string) {
+  const google = try Effect.try(() => googleFakeState())
+  const now = try Clock.currentTimeMillis
+  const mailbox = try Effect.try(() => readableMailbox([{
+    id: "msg-plan", threadId: "thr-plan", labelIds: ["INBOX", "UNREAD"], internalDate: now - 60_000,
+    headers: { From: "Ada <ada@example.org>", To: `ops-${name}@example.com`, Subject: "Quarterly plan", "Message-ID": "<plan@example.org>" }, snippet: "plan", bodyText: "Please review the plan.",
+    attachments: [{ partId: "1", filename: "plan.pdf", mimeType: "application/pdf", bytes: new TextEncoder().encode("%PDF-plan") }]
+  }]))
+  const switches = gmailChangeSwitches()
+  const cloud = try testCloud({ mount: (fakes) => {
+    fakes.mount("/google/", mountGoogleToken(google))
+    fakes.mount("/google/api/", gmailReads(mailbox))
+    fakes.mount("/google/api/", gmailChanges(mailbox, switches))
+  } })
+  const token = try entitledDevice(cloud, name, now)
+  const owner: Owner = { organizationId: `org-${name}`, userId: `user-${name}` }
+  const grantId = `ops-${name}`
+  const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.manage"), ...scopeFor("google.gmail.send")]
+  const refreshToken = try Effect.try(() => seedGrant(google, { subject: `subject-${grantId}`, email: `${grantId}@example.com`, scopes }))
+  try cloud.inside(linkedGrant(cloud, owner, grantId, refreshToken, scopes, now - 1000))
+  const headers = { authorization: `Bearer ${token}` }
+  const operation = (path: string, json?: unknown) => cloud.call(`/api/v1/eliza/google/gmail/inbox-v1/operations${path}`, json === undefined ? { headers } : { method: "POST", headers, json })
+  return { mailbox, switches, operation, grantId }
+}
+
+effect function grantRefusal<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
+  return match (try exit(program)) {
+    when Exit.Success: "granted";
+    when Exit.Failure(let cause): Cause.findErrorOption(cause).pipe(Option.map((error) => "refusal" in error ? (refusalBody(error.refusal as Parameters<typeof refusalBody>[0]).reason ?? refusalBody(error.refusal as Parameters<typeof refusalBody>[0]).error) : error._tag), Option.getOrElse(() => "defect"));
+  }
+}
+
+effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string, refreshToken: string, scopes: ReadonlyArray<string>, expiresAt: number) {
+  const now = try Clock.currentTimeMillis
+  const tokens = try sealTokens({ refreshToken, accessToken: `stale-${connectionId}`, expiresAt })
+  try cloud.store.transaction((tx) => stepRow(tx, connectionRows, connectionId, { type: "link", scopes, tokens, expiresAt }, connectionColumns({
+    organization_id: owner.organizationId, user_id: owner.userId, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, linked_at: now
+  })))
+}
+
+describe("WP8 Managed Google: grant access (spec/cloud/services/google/connection.md)", () => {
+  it.live("Refresh a held grant once for concurrent callers and mark it Expired when Google refuses it (spec/cloud/services/google/connection.md, \"Story: Connect my Google account with the access I chose\")", () => scoped(effect {
+    const google = try Effect.try(() => googleFakeState())
+    google.tokenDelayMs = 300
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", mountGoogleToken(google)) })
+    const profileInput = try Effect.try(() => testProfile(cloud.fakes.url))
+    const profile = try parseProfile(profileInput)
+    const deployment = deploymentLayer(profile, "staging").pipe(Layer.provide(ConfigProvider.layer(ConfigProvider.fromEnvRecord({ ...secrets }))))
+    const now = try Clock.currentTimeMillis
+    const held: Owner = { organizationId: "org-google-held", userId: "user-google-held" }
+    const lost: Owner = { organizationId: "org-google-lost", userId: "user-google-lost" }
+    for (const owner of [held, lost]) {
+      try organization(cloud, owner.organizationId)
+      try sql(cloud, "INSERT INTO accounts (key, state, revision, organization_id, status, email, created_at, updated_at) VALUES ($1, '{}'::jsonb, 1, $2, 'active', $3, $4, $4)", [owner.userId, owner.organizationId, `${owner.userId}@example.com`, now])
+    }
+    const scopes = [...scopeFor("google.basic_identity"), ...scopeFor("google.gmail.triage")]
+    const heldToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-held", email: "conn-held@example.com", scopes }))
+    const lostToken = try Effect.try(() => seedGrant(google, { subject: "subject-conn-lost", email: "conn-lost@example.com", scopes }))
+    google.revoked.add(lostToken)
+    provide Store = cloud.store, deployment, FetchHttpClient.layer {
+      try linkedGrant(cloud, held, "conn-held", heldToken, scopes, now - 1000)
+      try linkedGrant(cloud, lost, "conn-lost", lostToken, scopes, now - 1000)
+      const both = try all([useGrant(held, undefined, "google.gmail.triage"), useGrant(held, "conn-held", "google.gmail.triage")], { concurrency: 2 })
+      const again = try useGrant(held, undefined, "google.gmail.triage", "subject-conn-held")
+      const refusals = {
+        missing: try grantRefusal(useGrant(held, undefined, "google.gmail.send")),
+        changed: try grantRefusal(useGrant(held, undefined, "google.gmail.triage", "subject-elsewhere")),
+        foreign: try grantRefusal(useGrant(held, "conn-lost", "google.gmail.triage")),
+        side: try grantRefusal(useGrant(held, "conn-none", "google.gmail.triage")),
+        invalidGrant: try grantRefusal(useGrant(lost, undefined, "google.gmail.triage")),
+        afterwards: try grantRefusal(useGrant(lost, undefined, "google.gmail.triage"))
+      }
+      const rows = try sql(cloud, "SELECT key, status, tokens IS NULL AS erased, refreshing_until FROM google_connections ORDER BY key", [])
+      try check(() => assert.deepStrictEqual(
+        {
+          singleFlight: [google.tokenCalls, both[0].accessToken === both[1].accessToken, again.accessToken === both[0].accessToken, both[0].connectionId, both[0].email],
+          refusals,

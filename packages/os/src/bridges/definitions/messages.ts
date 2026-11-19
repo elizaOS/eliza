@@ -1,8 +1,8 @@
 // spec/os/android/messages.md, "Story: Send only what I reviewed, once"; spec/os/android/messages.md, "A message's reported status is supported by the evidence of every part"; spec/os/android/messages.md, "Only the owner's reviewed sends and incoming messages are written to the Android providers"; spec/os/android/messages.md, "A deletion removes only the selected settled row and confirms only a removal Android reported"
 import type { Receipt } from "../../../gen/core__receipts.ts";
 import type { HandoffOutcome } from "../../../gen/os__android__bridge.ts";
-import type { DeleteStatus, PartEvidence, PartState, SendStatus } from "../../../gen/os__android__messages.ts";
-import { groupSendAvailable, maxPartsPerRecipient, roleRequestOffered, statusSupported } from "../../../gen/os__android__messages.ts";
+import type { CallEvidence, DeleteStatus, PartEvidence, PartState, SendRecord } from "../../../gen/os__android__messages.ts";
+import { evidenceStatus, maxPartsPerRecipient } from "../../../gen/os__android__messages.ts";
 import { normalizePhoneNumber, type PhoneNumber, type TelephonyStatus } from "./phone.ts";
 
 export type OperationId = string & { readonly __brand: "OperationId" };
@@ -286,16 +286,16 @@ const SMS_NEXT: Readonly<Record<SmsSendState, readonly SmsSendState[]>> = {
   failed: [],
   "outcome-unknown": [],
 };
-const SEND_STATUS: Readonly<Record<SmsSendStatus, SendStatus>> = {
-  cancelled: "StatusCancelled",
-  denied: "StatusDenied",
-  failed: "StatusFailed",
-  unknown: "StatusUnknown",
-  submitted: "StatusSubmitted",
-  sent: "StatusSent",
-  delivered: "StatusDelivered",
+export const SEND_RECORD: Readonly<Record<SmsSendStatus, SendRecord>> = {
+  cancelled: "SendCancelled",
+  denied: "SendDenied",
+  failed: "SendFailed",
+  unknown: "SendUnknown",
+  submitted: "SendSubmitted",
+  sent: "SendSent",
+  delivered: "SendDelivered",
 };
-const PART_STATE: Readonly<Record<SendPartState, PartState>> = { unknown: "PartUnknown", success: "PartSucceeded", failed: "PartFailed" };
+const PART_STATE: Readonly<Record<SendPartState, PartState>> = { unknown: "PartWaiting", success: "PartSucceeded", failed: "PartFailed" };
 const DELETE_STATUS: Readonly<Record<MessageDeleteStatus, DeleteStatus>> = {
   deleted: "MessageDeleted",
   "not-found": "MessageNotFound",
@@ -395,7 +395,7 @@ export function reviewMms(
   draft: { recipients: unknown; body: unknown; attachments?: readonly MmsAttachmentDraft[]; subscriptionId?: unknown },
   status: TelephonyStatus,
 ): { review: MmsReview } | { problem: MmsReviewProblem } {
-  if (!groupSendAvailable(status.sendMode === "direct", status.mmsSend, status.roles.sms.held)) return { problem: "mms-unavailable" };
+  if (status.sendMode !== "direct" || !status.mmsSend || !status.roles.sms.held) return { problem: "mms-unavailable" };
   const recipients = recipientsOf(draft.recipients, MMS_MAX_RECIPIENTS);
   if (!Array.isArray(recipients)) return { problem: recipients };
   const body = typeof draft.body === "string" ? draft.body : "";
@@ -414,12 +414,6 @@ export function reviewMms(
   if (body.trim() === "" && attachments.length === 0) return { problem: "empty-message" };
   const subscriptionId = simOf(draft.subscriptionId, status);
   return typeof subscriptionId === "number" ? { review: { recipients, body, attachments, subscriptionId } } : { problem: subscriptionId };
-}
-
-/** @throws {never} */
-export function smsRoleRequestOffered(status: TelephonyStatus): boolean {
-  const sms = status.roles.sms;
-  return roleRequestOffered(sms.available, sms.held, sms.eligible);
 }
 
 /** @throws {never} */
@@ -466,7 +460,21 @@ function parts(raw: unknown, recipients: number): SmsSendPart[] | undefined {
 }
 
 function evidence(part: SmsSendPart): PartEvidence {
-  return { recipientIndex: part.recipientIndex, sentState: PART_STATE[part.sent], deliveryState: PART_STATE[part.delivery] };
+  return { sentState: PART_STATE[part.sent], deliveryState: PART_STATE[part.delivery] };
+}
+
+function supported(status: SmsSendStatus, sent: readonly SmsSendPart[], recipients: number): boolean {
+  const record = SEND_RECORD[status];
+  if (record === "SendCancelled" || record === "SendDenied") return sent.every((part) => part.sent === "unknown" && part.delivery === "unknown");
+  const covered = sent.length > 0 && sent.at(-1)?.recipientIndex === recipients - 1;
+  if (!covered && record !== "SendUnknown" && record !== "SendFailed") return false;
+  const calls: CallEvidence = record === "SendSubmitted" ? "AllCallsReturned" : "ReceiptsLost";
+  return evidenceStatus({ parts: sent.map(evidence), mms: false, calls }) === record;
+}
+
+/** @throws {never} */
+export function partsPerRecipient(sent: readonly SmsSendPart[]): number {
+  return Math.max(1, ...sent.map((part) => part.partIndex + 1));
 }
 
 function smsRecord(raw: unknown, recipients: number, operationId: OperationId, subscriptionId: number, bindingHash: string): SmsSendResult | undefined {
@@ -474,7 +482,7 @@ function smsRecord(raw: unknown, recipients: number, operationId: OperationId, s
   if (!data || data.kind !== "sms-send" || data.operationId !== operationId || data.subscriptionId !== subscriptionId || data.bindingHash !== bindingHash) return undefined;
   if (!HASH.test(bindingHash) || !oneOf(SMS_STATUSES, data.status) || !moment(data.createdAt)) return undefined;
   const evidenced = parts(data.parts, recipients);
-  if (evidenced === undefined || !statusSupported(SEND_STATUS[data.status], evidenced.map(evidence), recipients)) return undefined;
+  if (evidenced === undefined || !supported(data.status, evidenced, recipients)) return undefined;
   return { kind: "sms-send", operationId, subscriptionId, bindingHash, status: data.status, parts: evidenced, createdAt: data.createdAt };
 }
 
@@ -488,7 +496,7 @@ export function parseMmsSendResult(value: unknown, binding: MmsBinding, operatio
   const data = fields(value, ["kind", "operationId", "subscriptionId", "bindingHash", "status", "createdAt"]);
   if (!data || data.kind !== "mms-send" || data.operationId !== operationId || data.subscriptionId !== binding.subscriptionId || data.bindingHash !== bindingHash) return undefined;
   const status = data.status;
-  if (!HASH.test(bindingHash) || status === "delivered" || !oneOf(SMS_STATUSES, status) || !moment(data.createdAt)) return undefined;
+  if (!HASH.test(bindingHash) || !oneOf(SMS_STATUSES, status) || status === "delivered" || !moment(data.createdAt)) return undefined;
   return { kind: "mms-send", operationId, subscriptionId: binding.subscriptionId, bindingHash, status, createdAt: data.createdAt };
 }
 

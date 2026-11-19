@@ -1,6 +1,6 @@
-// spec/cloud/services/speechSession.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechSession.md, "Story: Keep a live session funded and close it with receipts"
-import type { Driver, Options } from "../../gen/cloud__services__speechSession.conformance.ts";
-import type { Event, Session } from "../../gen/cloud__services__speechSession.ts";
+// spec/cloud/services/speechRelay.md, "Story: Start speech only from a consent I gave"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"
+import type { Driver, Options } from "../../gen/cloud__services__speechRelay.conformance.ts";
+import type { Event, Session } from "../../gen/cloud__services__speechRelay.ts";
 import { sessionColumns, sessionRows } from "../../src/services/speech-session.vibe";
 import { loadRow, stepRow } from "../../src/store/rows.vibe";
 import { ledger, within } from "../support/ledger.ts";

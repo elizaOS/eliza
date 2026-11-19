@@ -7,13 +7,18 @@ import { parseLaunch } from "../src/host/launch.vibe"
 import { bindModels } from "../src/models/binding.vibe"
 import { registerCloudModels } from "../src/models/cloud-provider.vibe"
 import { probeOwnKey, registerOwnKeyModels } from "../src/models/own-key-provider.vibe"
-import { cloudFake, deviceKey, host } from "./support/kernel.vibe"
+import { openDeviceStorage } from "../src/storage/index.vibe"
+import { cloudFake, deviceKey, host, scratch } from "./support/kernel.vibe"
 import { launchDocument, launchFrame, type Backend } from "./support/scratch.ts"
 
 effect function bound(backend: Backend, key: string) {
   const parsed = try parseLaunch(JSON.stringify(launchDocument({ backend })), JSON.stringify(launchFrame({ credential: { version: 1, value: key } })))
   const binding = try bindModels(parsed.launch, parsed.authority)
-  const runtime = try Effect.try(() => new AgentRuntime({ character: { name: "Eliza", bio: [] } }))
+  const state = try scratch("model-providers")
+  const store = try acquireRelease(host("device storage", () => openDeviceStorage({ stateDirectory: state.path, persistMemory: false, account: null, embeddingDimensions: 0 })),
+    (opened) => orDie(host("device storage close", () => opened.adapter.close())))
+  const runtime = try Effect.try(() => new AgentRuntime({ agentId: store.agentId, character: { name: "Eliza", bio: [] } }))
+  try Effect.try(() => runtime.registerDatabaseAdapter(store.adapter))
   return { binding, runtime }
 }
 

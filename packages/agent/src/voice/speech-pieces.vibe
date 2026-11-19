@@ -1,0 +1,92 @@
+// spec/agent/voice/clientAudio.md, "Cloud speech goes in pieces, a short first one and none larger than one request"
+import { cloudFirstPieceUnits, cloudPieceUnits, replySpeakable, speechPieceAccepted } from "../../gen/agent__voice__clientAudio.effect.vibe"
+
+export const CLOUD_FIRST_SPEECH_CHARS: number = cloudFirstPieceUnits
+export const CLOUD_SPEECH_REQUEST_CHARS: number = cloudPieceUnits
+
+export error CloudSpeechWordTooLong { units: number }
+export error CloudSpeechStopped
+export error CloudSpeechFailed { piece: number; cause: unknown }
+
+export type SpeakCloudPiece = (piece: string, signal: AbortSignal, started: () => void) => Promise<void>
+
+export interface CloudSpeechOptions {
+  readonly onFirstAudio?: () => void
+  readonly signal?: AbortSignal
+}
+
+const firstPhraseMinUnits = 20
+const stop = /([.!?;:,]+)["')\]]?(?=\s|$)/g
+const abbreviation = /\b(?:Mr|Mrs|Ms|Dr|Jr|Sr|St|vs|etc|approx|Prof|Rev|Gen|Sgt|Lt|Col|Maj|Capt|Corp|Pvt|Ave|Blvd|dept|est|govt|assn|e\.g|i\.e)\.$/i
+
+function wordCount(text: string): number {
+  return text === "" ? 0 : text.split(" ").length
+}
+
+function naturalCut(text: string, limit: number, first: boolean): number {
+  const least = first ? firstPhraseMinUnits : limit / 2
+  let phrase = -1
+  let sentence = -1
+  for (const match of text.matchAll(stop)) {
+    const marks = match[1] ?? ""
+    const end = match.index + match[0].length
+    if (end > limit) break
+    if (end < least) continue
+    if (marks.endsWith(".") && abbreviation.test(text.slice(0, match.index + marks.length))) continue
+    if (/[.!?]$/.test(marks)) {
+      if (first) return end
+      sentence = end
+    } else phrase = end
+  }
+  return sentence > 0 ? sentence : phrase
+}
+
+function cutAt(text: string, limit: number, first: boolean): number {
+  const natural = naturalCut(text, limit, first)
+  if (natural > 0) return natural
+  const space = text.lastIndexOf(" ", limit)
+  return space > 0 ? space : text.indexOf(" ")
+}
+
+export effect function planCloudSpeechChunks(text: string): string[]!CloudSpeechWordTooLong {
+  let rest = text.replace(/\s+/g, " ").trim()
+  const longest = rest === "" ? 0 : Math.max(...rest.split(" ").map((word) => word.length))
+  if (!replySpeakable(longest)) throw new CloudSpeechWordTooLong({ units: longest })
+  const pieces: string[] = []
+  while (rest !== "") {
+    const first = pieces.length === 0
+    if (speechPieceAccepted(first, rest.length, wordCount(rest))) {
+      pieces.push(rest)
+      break
+    }
+    const cut = cutAt(rest, first ? cloudFirstPieceUnits : cloudPieceUnits, first)
+    pieces.push(rest.slice(0, cut))
+    rest = rest.slice(cut).trimStart()
+  }
+  return pieces
+}
+
+export effect function speakCloudSpeechChunks(
+  pieces: readonly string[],
+  speakOne: SpeakCloudPiece,
+  options: CloudSpeechOptions = {},
+): void!(CloudSpeechStopped | CloudSpeechFailed) {
+  const outer = options.signal
+  const stopped = () => outer?.aborted === true
+  let heard = false
+  for (const [index, piece] of pieces.entries()) {
+    if (stopped()) throw new CloudSpeechStopped()
+    let active = true
+    const started = () => {
+      if (!active || heard || stopped()) return
+      heard = true
+      options.onFirstAudio?.()
+    }
+    const speak = tryPromise({
+      try: (signal) => speakOne(piece, outer === undefined ? signal : AbortSignal.any([signal, outer]), started),
+      catch: (cause) => stopped() ? new CloudSpeechStopped() : new CloudSpeechFailed({ piece: index, cause }),
+    })
+    try ensuring(speak, sync(() => { active = false }))
+  }
+  if (stopped()) throw new CloudSpeechStopped()
+}

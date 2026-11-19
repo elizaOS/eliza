@@ -1,4 +1,4 @@
-// spec/cloud/services/speech.md, "Story: Speak a reply as audio"; spec/cloud/services/speech.md, "Story: Transcribe a recording"; spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"
+// spec/cloud/shared/metering.md, "Story: Settle every call once"; spec/cloud/index.md, "Story: Transcribe a recording"; spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"
 import * as NodeSocket from "@effect/platform-node/NodeSocket"
 import { Base64 } from "effect/encoding"
 import { FetchHttpClient, HttpClient, HttpClientRequest, type HttpClientResponse } from "effect/http"
@@ -240,7 +240,7 @@ function synthesisBody(synthesis: Synthesis): Readonly<Record<string, unknown>> 
 }
 
 module node {
-  /** @throws {never} */
+  /** @throws {unknown} */
   export function recordingForm(audio: Uint8Array, mimeType: string, model: string, language: string | undefined): FormData {
     const form = new FormData()
     form.append("file", new Blob([new Uint8Array(audio)], { type: mimeType }), "audio")
@@ -293,9 +293,10 @@ export effect function synthesizeTimed(settings: SpeechSettings, synthesis: Synt
   })
 }
 
-export effect function transcribe(settings: SpeechSettings, recording: Recording): Transcription!SpeechFailure!SpeechContext {
-  return try within(transcriptionBudget, effect {
-    const request = HttpClientRequest.post(`${settings.baseUrl}/stt`).pipe(HttpClientRequest.bodyFormData(recordingForm(recording.audio, recording.mimeType, batchSttModel, recording.languageCode === undefined ? undefined : (recording.languageCode.split("-")[0] ?? "").toLowerCase())))
+export effect function prepareTranscription(settings: SpeechSettings, recording: Recording): Effect.Effect<Transcription, SpeechFailure, SpeechContext>!ProviderUnreachable {
+  const form = try Effect.try({ try: () => recordingForm(recording.audio, recording.mimeType, batchSttModel, recording.languageCode === undefined ? undefined : (recording.languageCode.split("-")[0] ?? "").toLowerCase()), catch: () => new ProviderUnreachable() })
+  return within(transcriptionBudget, effect {
+    const request = HttpClientRequest.post(`${settings.baseUrl}/stt`).pipe(HttpClientRequest.bodyFormData(form))
     const response = try accepted(settings, request)
     const body = response.json catch effect () => { throw new ProviderInvalidResponse() }
     const transcription = transcriptionOf(body)

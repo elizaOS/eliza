@@ -42,14 +42,14 @@ type Capture = Muted | Reserving | Listening
 type Turn = NoTurn | TurnOf({ capture: int })
 type Utterance = NoUtterance | Speaking({ utteranceId: str, pace: int, receivedMs: Millis, playedMs: Millis, completed: bool })
 type BatchOutcome = BatchPending | BatchDone | BatchCancelled | BatchFailed({ failure: Cr::Failure, wait: WaitTime })
-type BatchRequest = { requestId: int, direction: SpeechDirection, version: int, outcome: BatchOutcome }
+type BatchRequest = { requestId: int, direction: SpeechDirection, version: int, ending: BatchOutcome }
 type CloudSpeech = { credential: int, bound: int, phase: Phase, extendOffered: bool, audioStarted: bool, capture: Capture, generation: int, turn: Turn, utterance: Utterance, batches: List[BatchRequest] }
 type SpeechNotice = AskConsent | ReserveLiveCapture | ReleaseLiveCapture | RevokeSession | CancelUtterance({ utteranceId: str })
   | ReportRefusedKey({ version: int, reason: RefusalReason, on: C::RejectedOn })
   | SessionFailed({ failure: Cr::Failure, beforeAudio: bool, wait: WaitTime })
   | Heard({ final: bool, capture: int })
   | UtteranceSettled({ utteranceId: str, completed: bool })
-  | BatchSettled({ requestId: int, outcome: BatchOutcome })
+  | BatchSettled({ requestId: int, ending: BatchOutcome })
 type SpeechStep = { state: CloudSpeech, out: List[SpeechNotice] }
 pure val initial: CloudSpeech = { credential: 0, bound: 0, phase: Idle, extendOffered: false, audioStarted: false, capture: Muted, generation: 0, turn: NoTurn, utterance: NoUtterance, batches: List() }
 pure val consentDeadline: Millis = 30 * millisPerSecond
@@ -90,15 +90,15 @@ was sent with.
 pure def canCredentialChanged(s: CloudSpeech, version: int): bool = version >= 0 and version != s.credential
 pure def credentialChanged(s: CloudSpeech, version: int): SpeechStep = {
   val keyGone = BatchFailed({ failure: Cr::AccountIneligible, wait: NoWait })
-  val rebound = { ...s, credential: version, batches: s.batches.listMap(b => if (b.outcome == BatchPending) { ...b, outcome: keyGone } else b) }
-  val settled = s.batches.select(b => b.outcome == BatchPending).listMap(b => BatchSettled({ requestId: b.requestId, outcome: keyGone }))
+  val rebound = { ...s, credential: version, batches: s.batches.listMap(b => if (b.ending == BatchPending) { ...b, ending: keyGone } else b) }
+  val settled = s.batches.select(b => b.ending == BatchPending).listMap(b => BatchSettled({ requestId: b.requestId, ending: keyGone }))
   if (isOpen(s.phase)) failWith(Cr::AccountIneligible, rebound, settled, NoWait) else { state: rebound, out: settled }
 }
 pure val versionValues = Set(0, 1, 2)
 pure val weight_credentialChanged = 2
 pure def alwaysOpenWorkUsesTheCurrentKey(s: CloudSpeech): bool =
   (isOpen(s.phase) implies (s.bound == s.credential and s.bound >= 1))
-  and s.batches.every(b => b.outcome == BatchPending implies (b.version == s.credential and b.version >= 1))
+  and s.batches.every(b => b.ending == BatchPending implies (b.version == s.credential and b.version >= 1))
 pure def sometimesKeyChangeClosedSession(s: CloudSpeech): bool = s.bound >= 1 and s.credential != s.bound and hasEnded(s.phase)
 ```
 
@@ -273,12 +273,12 @@ or the session's end settles it uncompleted; cancelling also tells the
 relay. A call starting (`O::StopCapture`) ends the session.
 
 ```quint
-pure def settle(id: str, completed: bool, s: CloudSpeech): SpeechStep = { state: { ...s, utterance: NoUtterance }, out: List(UtteranceSettled({ utteranceId: id, completed: completed })) }
+pure def settleReply(id: str, completed: bool, s: CloudSpeech): SpeechStep = { state: { ...s, utterance: NoUtterance }, out: List(UtteranceSettled({ utteranceId: id, completed: completed })) }
 pure def onComplete(id: str, s: CloudSpeech): SpeechStep = {
   val u = s.utterance
   match u {
     | Speaking(x) => if (x.utteranceId != id) quietStep(s) else if (x.receivedMs == 0) protocolEnd(s)
-        else if (x.playedMs == x.receivedMs) settle(id, true, s) else quietStep({ ...s, utterance: Speaking({ ...x, completed: true }) })
+        else if (x.playedMs == x.receivedMs) settleReply(id, true, s) else quietStep({ ...s, utterance: Speaking({ ...x, completed: true }) })
     | NoUtterance => quietStep(s)
   } }
 pure def canPlayed(s: CloudSpeech, playedMs: Millis): bool = {
@@ -288,14 +288,14 @@ pure def canPlayed(s: CloudSpeech, playedMs: Millis): bool = {
 pure def played(s: CloudSpeech, playedMs: Millis): SpeechStep = {
   val u = s.utterance
   match u {
-    | Speaking(x) => if (x.completed and x.playedMs + playedMs == x.receivedMs) settle(x.utteranceId, true, s)
+    | Speaking(x) => if (x.completed and x.playedMs + playedMs == x.receivedMs) settleReply(x.utteranceId, true, s)
         else quietStep({ ...s, utterance: Speaking({ ...x, playedMs: x.playedMs + playedMs }) })
     | NoUtterance => quietStep(s)
   } }
 pure val playedMsValues = Set(40, 60)
 pure def canCancelReply(s: CloudSpeech): bool = s.utterance != NoUtterance
 pure def cancelReply(s: CloudSpeech): SpeechStep = {
-  val settled = settle(speakingId(s.utterance), false, s)
+  val settled = settleReply(speakingId(s.utterance), false, s)
   { state: settled.state, out: List(CancelUtterance({ utteranceId: speakingId(s.utterance) })).concat(settled.out) }
 }
 pure def canOutputNotice(s: CloudSpeech, notice: O::OutputNotice): bool = s.phase == Live
@@ -370,15 +370,15 @@ key change settles it, and a settled request never changes. The shell
 replays a cache-warming `503` itself before it reports an answer.
 
 ```quint
-pure val noBatch: BatchRequest = { requestId: 0, direction: Transcribe, version: 0, outcome: BatchPending }
+pure val noBatch: BatchRequest = { requestId: 0, direction: Transcribe, version: 0, ending: BatchPending }
 pure def batchOf(s: CloudSpeech, requestId: int): BatchRequest = s.batches.select(b => b.requestId == requestId).nthOr(0, noBatch)
-pure def pending(s: CloudSpeech, requestId: int): bool = s.batches.some(b => b.requestId == requestId and b.outcome == BatchPending)
+pure def pending(s: CloudSpeech, requestId: int): bool = s.batches.some(b => b.requestId == requestId and b.ending == BatchPending)
 pure def canBatchRequested(s: CloudSpeech, requestId: int, direction: SpeechDirection): bool =
   s.credential >= 1 and requestId >= 1 and not(s.batches.some(b => b.requestId == requestId))
 pure def batchRequested(s: CloudSpeech, requestId: int, direction: SpeechDirection): CloudSpeech =
-  { ...s, batches: s.batches.append({ requestId: requestId, direction: direction, version: s.credential, outcome: BatchPending }) }
-pure def settleBatch(requestId: int, outcome: BatchOutcome, s: CloudSpeech): SpeechStep =
-  { state: { ...s, batches: s.batches.listMap(b => if (b.requestId == requestId) { ...b, outcome: outcome } else b) }, out: List(BatchSettled({ requestId: requestId, outcome: outcome })) }
+  { ...s, batches: s.batches.append({ requestId: requestId, direction: direction, version: s.credential, ending: BatchPending }) }
+pure def settleBatch(requestId: int, ending: BatchOutcome, s: CloudSpeech): SpeechStep =
+  { state: { ...s, batches: s.batches.listMap(b => if (b.requestId == requestId) { ...b, ending: ending } else b) }, out: List(BatchSettled({ requestId: requestId, ending: ending })) }
 pure def outcomeOf(a: CloudAnswer): BatchOutcome = if (a == Answered) BatchDone else BatchFailed({ failure: failureOf(a), wait: waitOf(a) })
 pure def canBatchAnswered(s: CloudSpeech, requestId: int): bool = pending(s, requestId)
 pure def batchAnswered(s: CloudSpeech, requestId: int, answer: CloudAnswer): SpeechStep = {
@@ -390,10 +390,10 @@ pure def batchCancelled(s: CloudSpeech, requestId: int): SpeechStep = settleBatc
 pure val requestIdValues = Set(1, 2)
 pure def settledId(n: SpeechNotice): int = match n { | BatchSettled(b) => b.requestId | _ => 0 }
 pure def stepABatchRequestSettlesOnce(before: CloudSpeech, via: str, after: CloudSpeech, out: List[SpeechNotice]): bool =
-  before.batches.every(b => (b.outcome != BatchPending implies batchOf(after, b.requestId).outcome == b.outcome)
-    and (out.select(n => settledId(n) == b.requestId).length() == (if (b.outcome == BatchPending and batchOf(after, b.requestId).outcome != BatchPending) 1 else 0)))
+  before.batches.every(b => (b.ending != BatchPending implies batchOf(after, b.requestId).ending == b.ending)
+    and (out.select(n => settledId(n) == b.requestId).length() == (if (b.ending == BatchPending and batchOf(after, b.requestId).ending != BatchPending) 1 else 0)))
   and after.batches.length() >= before.batches.length()
 pure def alwaysBatchRequestsAreDistinct(s: CloudSpeech): bool = s.batches.every(b => b.requestId >= 1 and s.batches.select(x => x.requestId == b.requestId).length() == 1)
-pure def sometimesBatchRateLimited(s: CloudSpeech): bool = s.batches.some(b => b.outcome == BatchFailed({ failure: Cr::RequestFailed, wait: RetryAt({ retryAtMs: 5000 }) }))
-pure def sometimesBatchDoneAndCancelled(s: CloudSpeech): bool = s.batches.some(b => b.outcome == BatchDone) and s.batches.some(b => b.outcome == BatchCancelled)
+pure def sometimesBatchRateLimited(s: CloudSpeech): bool = s.batches.some(b => b.ending == BatchFailed({ failure: Cr::RequestFailed, wait: RetryAt({ retryAtMs: 5000 }) }))
+pure def sometimesBatchDoneAndCancelled(s: CloudSpeech): bool = s.batches.some(b => b.ending == BatchDone) and s.batches.some(b => b.ending == BatchCancelled)
 ```
