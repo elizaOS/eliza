@@ -66,7 +66,22 @@ const Model = Schema.Union([
   Schema.Struct({ backend: Schema.Literal("own-key"), ownKeyBaseUrl: Schema.String, ownKeySmall: Nonblank, ownKeyLarge: Nonblank }),
   Schema.Struct({ backend: Schema.Literal("none") }),
 ])
-const Switches = <A extends string, B extends string>(first: A, second: B) => Schema.Struct({ [first]: Schema.Boolean, [second]: Schema.Boolean } as { [K in A | B]: typeof Schema.Boolean })
+const View = Schema.Struct({
+  id: Schema.String.check(Schema.isPattern(/^[a-z][a-z0-9_-]{0,63}$/)),
+  label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(80), Schema.isTrimmed(), Schema.isPattern(/^[^\p{Cc}]*$/u)),
+  path: Schema.String.check(Schema.isMaxLength(256), Schema.isPattern(/^\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+$/)),
+  aliases: Schema.optionalKey(Schema.Array(Schema.String.check(Schema.isPattern(/^[a-z](?:[a-z0-9 _-]{0,30}[a-z0-9])?$/))).check(Schema.isMinLength(1), Schema.isMaxLength(4))),
+})
+const viewNames = (view: typeof View.Type) => new Set([view.id, view.label, ...(view.aliases ?? [])].map((name) => name.toLowerCase()))
+const Views = Schema.Array(View).check(
+  Schema.isMaxLength(32),
+  Schema.makeFilter((views) => new TextEncoder().encode(JSON.stringify(views)).byteLength <= 16384),
+  Schema.makeFilter((views) => {
+    const names = views.flatMap((view) => [...viewNames(view)])
+    return new Set(names).size === names.length && new Set(views.map((view) => view.path)).size === views.length
+  }),
+)
+const Switches =<A extends string, B extends string>(first: A, second: B) => Schema.Struct({ [first]: Schema.Boolean, [second]: Schema.Boolean } as { [K in A | B]: typeof Schema.Boolean })
 
 const HostFile = Schema.Struct({
   schema: Schema.Number,
@@ -80,8 +95,7 @@ const HostFile = Schema.Struct({
   embeddingDimensions: Schema.optionalKey(Schema.Int),
   persistMemory: Schema.optionalKey(Schema.Boolean),
   callerRole: Schema.optionalKey(Schema.Literals(["owner", "user"])),
-  views: Schema.optionalKey(Schema.Array(Schema.Struct({ viewId: Nonblank, viewType: Schema.Literals(["gui", "tui", "xr"]), installationId: Nonblank }))
-    .check(Schema.makeFilter((views) => new Set(views.map((view) => JSON.stringify([view.viewId, view.viewType]))).size === views.length))),
+  views: Schema.optionalKey(Views),
   timeZone: Schema.optionalKey(Schema.String.check(Schema.makeFilter(namedZone))),
   privacy: Schema.optionalKey(Switches("secretSwap", "piiSwap")),
   google: Schema.optionalKey(Switches("gmailChanges", "calendarEdits")),

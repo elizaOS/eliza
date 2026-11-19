@@ -2,6 +2,7 @@
   "clients": [
     {
       "clientId": "com.example.fixture",
+      "environment": "staging",
       "displayName": "Fixture App",
       "androidPackage": "com.example.fixture",
       "certFingerprints": [
@@ -9,7 +10,10 @@
       ],
       "signInReturn": "https://www.staging.example.com/apps/fixture/sign-in",
       "billingReturn": "https://www.staging.example.com/apps/fixture/billing",
-      "connectReturn": "https://www.staging.example.com/apps/fixture/connect"
+      "connectReturn": "https://www.staging.example.com/apps/fixture/connect",
+      "credentialTtlMs": 2592000000,
+      "nativeGoogle": false,
+      "enabled": true
     }
   ]
 }

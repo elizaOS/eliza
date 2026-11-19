@@ -50,7 +50,7 @@ module node {
 
   function stateOf(answer: Answer) {
     const task = (answer.json.task ?? (answer.json.fire as { task?: WireTask } | undefined)?.task) as WireTask | undefined
-    return task === undefined ? answer.json : { status: answer.status, ...task.state }
+    return task === undefined ? { http: answer.status, ...answer.json } : { http: answer.status, ...task.state }
   }
 
   async function verb(reach: Reach, taskId: string, name: string, body: unknown = {}) {
@@ -60,7 +60,7 @@ module node {
   async function fire(reach: Reach, taskId: string) {
     const answer = await send(reach, "POST", `/api/scheduled-tasks/${taskId}/fire`, {})
     const { task, ...fired } = answer.json.fire as { task?: WireTask; kind: string }
-    return { status: answer.status, ...fired, ...(task === undefined ? {} : { state: task.state }) }
+    return { http: answer.status, ...fired, ...(task === undefined ? {} : { state: task.state }) }
   }
 
   async function create(reach: Reach, row: Record<string, unknown>): Promise<{ created: string; taskId: string }> {
@@ -164,10 +164,10 @@ module node {
   }
 
   const at = (offsetMs: number) => new Date(start + offsetMs).toISOString()
-  const fired = { status: 200, kind: "fired" }
-  const refused = (status: number, error: string) => ({ error, ...(status === 404 ? {} : {}) })
+  const fired = { http: 200, kind: "fired" }
+  const refused = (http: number, error: string) => ({ http, error })
   const deferred = (retryAt: number) => ({
-    status: 200, kind: "dispatch_deferred", reason: "offline", nextAttemptAtIso: at(retryAt),
+    http: 200, kind: "dispatch_deferred", reason: "offline", nextAttemptAtIso: at(retryAt),
     state: { status: "scheduled", firedAt: at(retryAt), lastDecisionLog: "dispatch_deferred: offline" },
   })
   const later = hourMs + 30 * minuteMs
@@ -183,28 +183,28 @@ module node {
       bare: refused(400, "malformed"),
       zero: refused(400, "malformed"),
       past: refused(409, "not_applicable"),
-      snoozed: { status: 200, firedAt: at(30 * minuteMs), lastDecisionLog: `snoozed until ${at(30 * minuteMs)} (ladder reset)` },
+      snoozed: { http: 200, status: "scheduled", firedAt: at(30 * minuteMs), lastDecisionLog: `snoozed until ${at(30 * minuteMs)} (ladder reset)` },
       fired: { ...fired, state: { status: "fired", firedAt: at(0), lastDecisionLog: "fired" } },
-      firedAgain: { status: 200, kind: "skipped", reason: "not_waiting", state: { status: "fired", firedAt: at(0), lastDecisionLog: "fired" } },
+      firedAgain: { http: 200, kind: "skipped", reason: "not_waiting", state: { status: "fired", firedAt: at(0), lastDecisionLog: "fired" } },
       keyedFire: 400,
       attempts: 1,
     },
     skip: {
-      skipped: { status: 200, lastDecisionLog: "skipped" },
-      fireSettled: { status: 200, kind: "raced" },
-      afterTick: { status: 200, lastDecisionLog: "skipped" },
+      skipped: { http: 200, status: "skipped", lastDecisionLog: "skipped" },
+      fireSettled: { http: 200, kind: "raced" },
+      afterTick: { http: 200, status: "skipped", lastDecisionLog: "skipped" },
       attempts: 0,
     },
     dismissal: {
-      dismissed: { status: 200, lastDecisionLog: "dismissed" },
+      dismissed: { http: 200, status: "dismissed", lastDecisionLog: "dismissed" },
       reopen: refused(409, "not_applicable"),
       dismissAgain: refused(409, "not_applicable"),
       edit: refused(409, "not_applicable"),
-      fired: { status: 200, kind: "skipped", reason: "dismissed", state: { status: "dismissed", lastDecisionLog: "dismissed" } },
+      fired: { http: 200, kind: "skipped", reason: "dismissed", state: { status: "dismissed", lastDecisionLog: "dismissed" } },
     },
     keyed: {
-      acknowledged: { status: 200, firedAt: at(0), lastDecisionLog: "acknowledged" },
-      replayed: { status: 200, firedAt: at(0), lastDecisionLog: "acknowledged" },
+      acknowledged: { http: 200, status: "acknowledged", firedAt: at(0), lastDecisionLog: "acknowledged" },
+      replayed: { http: 200, status: "acknowledged", firedAt: at(0), lastDecisionLog: "acknowledged" },
       reused: refused(409, "key_reused"),
     },
     edits: {
@@ -215,20 +215,20 @@ module node {
     },
     retries: [
       deferred(later + minuteMs), deferred(later + minuteMs), deferred(later + minuteMs),
-      { status: 200, kind: "dispatch_failed", error: "offline", state: { status: "failed", firedAt: at(later + minuteMs), lastDecisionLog: "dispatch_failed: offline" } },
+      { http: 200, kind: "dispatch_failed", error: "offline", state: { status: "failed", firedAt: at(later + minuteMs), lastDecisionLog: "dispatch_failed: offline" } },
     ],
     reopen: {
-      completed: { status: 200, firedAt: at(0), lastDecisionLog: "completed" },
-      reopened: { status: 200, firedAt: at(0), lastDecisionLog: "reopened" },
+      completed: { http: 200, status: "completed", firedAt: at(0), lastDecisionLog: "completed" },
+      reopened: { http: 200, status: "scheduled", firedAt: at(0), lastDecisionLog: "reopened" },
       fired: { ...fired, state: { status: "fired", firedAt: at(later), lastDecisionLog: "fired" } },
-      completedAgain: { status: 200, firedAt: at(later), lastDecisionLog: "completed" },
+      completedAgain: { http: 200, status: "completed", firedAt: at(later), lastDecisionLog: "completed" },
       reopenOutside: refused(409, "not_applicable"),
     },
   }
 
   export const expectedRestart = {
-    missed: { status: 200, lastDecisionLog: "missed_occurrence" },
-    again: { status: 200, lastDecisionLog: "missed_occurrence" },
+    missed: { http: 200, status: "skipped", lastDecisionLog: "missed_occurrence" },
+    again: { http: 200, status: "skipped", lastDecisionLog: "missed_occurrence" },
     attempts: 0,
   }
 }

@@ -221,7 +221,7 @@ it.effect("Dictate into my draft: open refuses a bound of 0, over 2,147,483,647 
 it.effect("Dictate into my draft: a second Start while one is pending does nothing", () => effect {
   const got = try tryPromise(() => secondStart())
   try Effect.try(() => assert.deepStrictEqual(got, {
-    calls: [1, 1, 1, 1], log: ["start:250"], phases: recorded,
+    calls: [1, 1, 1, 1], log: ["start:250", "close-preview", "unobserve"], phases: recorded,
     transcripts: [["From the recording.", true]], transcribed: [["a", "audio/webm;codecs=opus"]],
   }))
 })

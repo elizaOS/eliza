@@ -96,6 +96,7 @@ pure def speechEnded(s: VoiceSession): VoiceSession = { ...s, utterance: Awaitin
 pure def gapPending(u: Utterance): bool = u == GapWaiting or u == AskingEndOfTurn or u == WaitingLongGap
 pure def alwaysAGapWaitsForTextAndNoTurn(s: VoiceSession): bool =
   s.epoch >= 0 and (gapPending(s.utterance) implies (s.turn == NoTurn and s.hasText and s.mode == ConversationMode)) and
+  (s.hasText implies (s.utterance != NoUtterance and s.turn == NoTurn)) and
   (((s.utterance == Hearing or s.utterance == AwaitingFinal) and s.turn != NoTurn) implies s.bargeIn)
 pure def stepTheEpochOnlyAdvances(before: VoiceSession, via: str, after: VoiceSession): bool =
   after.epoch >= before.epoch and (via == "speechStarted" implies after.epoch == before.epoch + 1)
@@ -207,10 +208,10 @@ type HeardTurn = { words: int, onlyFiller: bool, overlapPercent: int, agentSpeak
 pure val echoOverlapPercent = 70
 pure val echoTailMs = 1500
 pure val echoReplyAgeMs = 3000
-pure def isEcho(h: HeardTurn): bool =
-  h.words >= 2 and h.overlapPercent >= echoOverlapPercent and (h.agentSpeaking or (not(h.echoCancelled) and
-    (if (h.startKnown) h.startedAfterReplyEndMs <= echoTailMs else h.replyAgeMs <= echoReplyAgeMs)))
-pure def turnAccepted(h: HeardTurn): bool = h.words > 0 and not(h.onlyFiller) and not(isEcho(h))
+pure def isEcho(heard: HeardTurn): bool =
+  heard.words >= 2 and heard.overlapPercent >= echoOverlapPercent and (heard.agentSpeaking or (not(heard.echoCancelled) and
+    (if (heard.startKnown) heard.startedAfterReplyEndMs <= echoTailMs else heard.replyAgeMs <= echoReplyAgeMs)))
+pure def turnAccepted(heard: HeardTurn): bool = heard.words > 0 and not(heard.onlyFiller) and not(isEcho(heard))
 pure def canFinalTranscript(s: VoiceSession): bool = s.utterance == AwaitingFinal
 pure def finalTranscript(s: VoiceSession, heard: HeardTurn): VoiceSession = {
   val accepted = turnAccepted({ ...heard, agentSpeaking: s.turn == Playing })
@@ -225,10 +226,10 @@ pure val spoken: HeardTurn = { words: 3, onlyFiller: false, overlapPercent: 0, a
 pure val heardValues = Set(spoken, { ...spoken, words: 0 }, { ...spoken, onlyFiller: true }, { ...spoken, overlapPercent: 80 },
   { ...spoken, overlapPercent: 80, startedAfterReplyEndMs: 1000 }, { ...spoken, overlapPercent: 80, startedAfterReplyEndMs: 1000, echoCancelled: true },
   { ...spoken, words: 1, overlapPercent: 100, agentSpeaking: true }, { ...spoken, overlapPercent: 80, startKnown: false, replyAgeMs: 2000 })
-pure def lawFillerIsNeverATurn(h: HeardTurn): bool = (h.words == 0 or h.onlyFiller) implies not(turnAccepted(h))
-pure def lawEchoOfAPlayingReplyIsDropped(h: HeardTurn): bool =
-  (h.agentSpeaking and h.words >= 2 and h.overlapPercent >= 70) implies not(turnAccepted(h))
-pure def lawAOneWordAnswerIsKept(h: HeardTurn): bool = (h.words == 1 and not(h.onlyFiller)) implies turnAccepted(h)
+pure def lawFillerIsNeverATurn(heard: HeardTurn): bool = (heard.words == 0 or heard.onlyFiller) implies not(turnAccepted(heard))
+pure def lawEchoOfAPlayingReplyIsDropped(heard: HeardTurn): bool =
+  (heard.agentSpeaking and heard.words >= 2 and heard.overlapPercent >= 70) implies not(turnAccepted(heard))
+pure def lawAOneWordAnswerIsKept(heard: HeardTurn): bool = (heard.words == 1 and not(heard.onlyFiller)) implies turnAccepted(heard)
 pure def sometimesAnUtteranceWaitsForItsGap(s: VoiceSession): bool = s.utterance == GapWaiting and s.hasText
 ```
 

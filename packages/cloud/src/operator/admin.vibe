@@ -7,6 +7,9 @@ import { deploymentLayer, Deployment, parseEnvironment, readProfile, specProfile
 import { RowCorrupt } from "../store/rows.vibe"
 import { identityDigest, parseStoreLocation, Store, storeLayer, type StoreFailure, toText, type Tx } from "../store/store.vibe"
 import { commands as accounts } from "./accounts.vibe"
+import { commands as clients, seedClients } from "./clients.vibe"
+import { commands as grants } from "./grants.vibe"
+import { commands as prices, seedPrices } from "./prices.vibe"
 
 export type OperatorContext = Deployment | HttpClient.HttpClient
 
@@ -46,9 +49,16 @@ export interface SeedHandler {
   readonly run: (tx: Tx, entries: unknown, now: number) => ReadonlyArray<string>!{ readonly _tag: string }!OperatorContext
 }
 
-export const commandTable: ReadonlyArray<OperatorCommandHandler> = [...accounts]
+export function commandTable(): ReadonlyArray<OperatorCommandHandler> {
+  return [...accounts, ...clients, ...grants, ...prices]
+}
 
-export const seedTable: ReadonlyArray<SeedHandler> = []
+export function seedTable(): ReadonlyArray<SeedHandler> {
+  return [
+    { section: "clients", operatorCommand: "RegisterClient", run: seedClients },
+    { section: "prices", operatorCommand: "SetPrices", run: (tx, entries) => seedPrices(tx, entries) }
+  ]
+}
 
 const deploymentFlags = ["profile", "environment", "store"]
 const flagName = /^--([a-z][a-z0-9-]*)$/
@@ -142,14 +152,14 @@ effect function report(outcome: OperatorOutcome): void!OperatorRefused {
   for (const line of outcome.lines) try Console.log(line)
 }
 
-export effect function operate(args: ReadonlyArray<string>, table: ReadonlyArray<OperatorCommandHandler> = commandTable) {
+export effect function operate(args: ReadonlyArray<string>, table: ReadonlyArray<OperatorCommandHandler> = commandTable()) {
   const handler = try commandOf(args, table)
   return try carryOut(handler, try parseFlags(args.slice(handler.words.length), handler, []))
 }
 
 export effect function runOperator(command: string, rest: ReadonlyArray<string>) {
   const args = [command, ...rest]
-  const handler = try commandOf(args, commandTable)
+  const handler = try commandOf(args, commandTable())
   const flags = try parseFlags(args.slice(handler.words.length), handler, deploymentFlags)
   const file = try flags.required("profile")
   const environment = try parseEnvironment(try flags.required("environment"))
@@ -178,10 +188,11 @@ export effect function applySeed(file: string) {
   const text = fs.readFileString(file) catch effect () => { throw new SeedInvalid({ problem: `cannot read ${file}` }) }
   const parsed = try Effect.try({ try: () => JSON.parse(text) as unknown, catch: () => new SeedInvalid({ problem: `${file} is not JSON` }) })
   const sections = Schema.decodeUnknownEffect(Schema.Record(Schema.String, Schema.Unknown))(parsed) catch effect () => { throw new SeedInvalid({ problem: `${file} is not an object of seed sections` }) }
+  const table = seedTable()
   const work: Array<{ readonly handler: SeedHandler; readonly entries: unknown }> = []
   for (const [section, entries] of Object.entries(sections)) {
-    const handler = seedTable.find((each) => each.section === section)
-    if (handler === undefined) throw new SeedInvalid({ problem: `no seed handler for the section ${section}; the sections are: ${seedTable.map((each) => each.section).join(", ") || "none"}` })
+    const handler = table.find((each) => each.section === section)
+    if (handler === undefined) throw new SeedInvalid({ problem: `no seed handler for the section ${section}; the sections are: ${table.map((each) => each.section).join(", ")}` })
     work.push({ handler, entries })
   }
   const now = try Clock.currentTimeMillis

@@ -1,6 +1,6 @@
 // spec/agent/schedule/triggers.md, "Story: Run a trigger now or on schedule without losing my edits"; spec/agent/schedule/triggers.md, "Story: Deliver a prompt only to the conversation I chose"
 import { Clock, Effect } from "effect";
-import type { IDatabaseAdapter } from "@elizaos/core";
+import type { IDatabaseAdapter, UUID } from "@elizaos/core";
 import type { Driver, Options } from "../../gen/agent__schedule__triggers.conformance.ts";
 import type { Event, RunOutcome, Trigger, TriggerType } from "../../gen/agent__schedule__triggers.ts";
 import type { Delivery } from "../../src/schedule/trigger-delivery.vibe";
@@ -41,7 +41,7 @@ const scheduleFacts: ScheduleFacts = {
 const rooms = { exists: true, fallback: "" };
 const takers = new Map<string, (delivery: Delivery) => void>();
 
-let opened: { readonly scratch: Scratch; readonly adapter: IDatabaseAdapter } | undefined;
+let opened: { readonly scratch: Scratch; readonly adapter: IDatabaseAdapter; readonly agentId: UUID } | undefined;
 let triggers: PromptTriggers | undefined;
 const ids = new Map<string, string>();
 const started = new Set<string>();
@@ -56,8 +56,8 @@ async function sql<R>(text: string, params: unknown[] = []): Promise<R[]> {
 async function store(): Promise<IDatabaseAdapter> {
   if (opened === undefined) {
     const scratch = await scratchDirectory("triggers-driver");
-    const { adapter } = await openDeviceStorage({ stateDirectory: scratch.file("memory"), persistMemory: false, account: null, embeddingDimensions: 0 });
-    opened = { scratch, adapter };
+    const { adapter, agentId } = await openDeviceStorage({ stateDirectory: scratch.file("memory"), persistMemory: false, account: null, embeddingDimensions: 0 });
+    opened = { scratch, adapter, agentId };
   }
   return opened.adapter;
 }
@@ -65,7 +65,7 @@ async function store(): Promise<IDatabaseAdapter> {
 function hostOver(adapter: IDatabaseAdapter): TriggerHost {
   return {
     adapter,
-    getTasks: (params) => adapter.getTasks(params),
+    getTasks: (params) => adapter.getTasks({ ...params, agentIds: [opened!.agentId] }),
     createTasks: (tasks) => adapter.createTasks(tasks),
     updateTasks: (updates) => adapter.updateTasks(updates),
     deleteTasks: (taskIds) => adapter.deleteTasks(taskIds),
@@ -199,7 +199,7 @@ export const driver: Driver<Observed> & { [Symbol.asyncDispose](): Promise<void>
     const adapter = await store();
     await sql("DELETE FROM schedule_trigger_runs");
     await sql("DELETE FROM schedule_triggers");
-    const armed = await adapter.getTasks({ tags: ["prompt-trigger"] });
+    const armed = await adapter.getTasks({ tags: ["prompt-trigger"], agentIds: [opened!.agentId] });
     await adapter.deleteTasks(armed.flatMap((task) => task.id === undefined ? [] : [task.id]));
     now = 0;
     facts.processStartedAt = 0;

@@ -8,14 +8,12 @@ outcome. A command holds the organization's one command slot
 the shell applies each `ClaimSlot`, `ScheduleDowngrade` and `ReleaseSlot`
 effect to the subscription, and each `AdjustAllowance` to the open renewal
 period (`spec/cloud/billing/allowance.md`), in the same transaction as the
-step. Sources are develop `packages/cloud/shared/src/lib/services/`
-`organization-{upgrade,downgrade}-*`, `subscription-cancellation.ts` and
-`subscription-command-status.ts` (rules only). Downstream readers are the
-products' plan-change and subscription screens.
+step. Sources are develop `organization-{upgrade,downgrade}-*` and
+`subscription-cancellation.ts` (rules only).
 
 Provider calls, the answers' shapes and the person's session stay in the
-shell. Every route is for an owner of the organization with a fresh session
-(sign-in or step-up at most 60 minutes old), otherwise `428
+shell. Every review, confirm and payment route is for an owner with a fresh
+session (sign-in or step-up at most 60 minutes old), otherwise `428
 fresh_session_required`; a guard that refuses because the subscription moved
 is `409 stale_revision`, and one for any other subscription state is `409
 billing_state_conflict`. After a provider reply the shell reconciles the live
@@ -194,9 +192,7 @@ pure def sometimesOutcomeUnknown(c: Command): bool = c.phase == Running and D::i
 
 A refused or not applied change fails. An upgrade's invoice is paid (the
 command applies now), open (the command awaits payment and keeps the slot)
-or voided (it fails); while it awaits payment, `POST
-/upgrade/:commandId/payment` answers `{url}`, the open invoice's hosted page
-on the provider's host. An applied upgrade adds the quoted allowance
+or voided (it fails). An applied upgrade adds the quoted allowance
 difference; an applied downgrade schedules the lower plan for the next paid
 renewal while the command still holds the slot. The shell finishes a settled
 command in the transaction that settles it.

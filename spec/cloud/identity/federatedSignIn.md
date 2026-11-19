@@ -110,32 +110,25 @@ pure val weight_beginCallback = 3
 
 ### A callback returns a one-minute code only after Google's verified identity and the code are stored, and otherwise one error of the closed list
 
-The callback takes the attempt only while its five minutes last. Google's
-`error` answers `access_denied`, a callback without code or state
-`oauth_callback_incomplete`, a lost Google verifier `oauth_state_invalid`,
-an expired attempt `oauth_state_expired`, Google switched off since
-`oauth_provider_unavailable`, a failed token exchange or profile read
-`oauth_token_exchange_failed`, an identity without a subject
-`oauth_identity_incomplete`, and a failed identity or attempt write
-`oauth_authentication_failed`. A later callback for the same state answers
-`lateCallbackError`. The list is closed and shared with os, which adds only
-`app_link_unverified` (`returnPages`). A second factor travels in the code,
-never in the return, so this cloud never returns develop's `mfa_required`.
-
-A return withdrawn since authorize (the registration was disabled or
-changed) is never visited: `oauth_redirect_invalid` is shown on a page of
-the cloud.
+Google's `error` answers `access_denied`; a callback without code or state
+`oauth_callback_incomplete`; a lost Google verifier `oauth_state_invalid`;
+an expired attempt `oauth_state_expired`; Google switched off since
+`oauth_provider_unavailable`; a failed token exchange or profile read
+`oauth_token_exchange_failed`; an identity without a subject
+`oauth_identity_incomplete`; a failed write `oauth_authentication_failed`; a
+later callback for the same state `lateCallbackError`. The list is closed and
+shared with os, which adds only `app_link_unverified`. A second factor
+travels in the code, so `mfa_required` is never returned. A return withdrawn
+since authorize is never visited: `oauth_redirect_invalid` shows on a cloud page.
 
 ```quint
 type GoogleCallback = GoogleCode | GoogleDenied | GoogleIncomplete | ReturnWithdrawn
 type GoogleAnswer = IdentityVerified | IdentityIncomplete | TokenExchangeFailed
 pure val codeLifetime: Millis = 60 * millisPerSecond
 pure def returnErrorCode(e: ReturnError): str =
-  if (e == ErrAccessDenied) "access_denied" else if (e == ErrAuthenticationFailed) "oauth_authentication_failed"
-  else if (e == ErrCallbackIncomplete) "oauth_callback_incomplete" else if (e == ErrIdentityIncomplete) "oauth_identity_incomplete"
-  else if (e == ErrProviderUnavailable) "oauth_provider_unavailable" else if (e == ErrRedirectInvalid) "oauth_redirect_invalid"
-  else if (e == ErrStateConsumed) "oauth_state_consumed" else if (e == ErrStateExpired) "oauth_state_expired"
-  else if (e == ErrStateInvalid) "oauth_state_invalid" else "oauth_token_exchange_failed"
+  if (e == ErrAccessDenied) "access_denied" else if (e == ErrAuthenticationFailed) "oauth_authentication_failed" else if (e == ErrCallbackIncomplete) "oauth_callback_incomplete"
+  else if (e == ErrIdentityIncomplete) "oauth_identity_incomplete" else if (e == ErrProviderUnavailable) "oauth_provider_unavailable" else if (e == ErrRedirectInvalid) "oauth_redirect_invalid"
+  else if (e == ErrStateConsumed) "oauth_state_consumed" else if (e == ErrStateExpired) "oauth_state_expired" else if (e == ErrStateInvalid) "oauth_state_invalid" else "oauth_token_exchange_failed"
 pure def callbackError(callback: GoogleCallback): ReturnError = if (callback == GoogleDenied) ErrAccessDenied else if (callback == GoogleIncomplete) ErrCallbackIncomplete else if (callback == ReturnWithdrawn) ErrRedirectInvalid else ErrStateInvalid
 pure def causeOf(f: Failure): ReturnError = match f { | FailedWith(x) => x.cause | NoFailure => ErrAuthenticationFailed }
 pure def canConsume(a: GoogleAttempt, pendingAndUnexpired: bool, inputError: bool, callback: GoogleCallback): bool =
@@ -183,23 +176,20 @@ pure def sometimesWithdrawnReturnShownOnTheCloud(a: GoogleAttempt): bool = a.tar
 
 ### A code is redeemed once, while live, only with its own return and verifier, and starts a session or a second-factor challenge, never both
 
-A wrong return or verifier is refused with `401 credential_proof_invalid`
-and spends nothing, so a stolen code cannot burn the owner's sign-in; a
-missing or redeemed code answers `401 authentication_required` reason
-`credential_unknown`, an expired one reason `credential_expired`, none
-retryable. The match runs `accounts`' first sight and then a session, or
-`secondFactor`'s challenge when `afterFirstFactor` of the person's factors
-asks for one (a new account has none).
+A wrong return or verifier is refused `401 credential_proof_invalid` and
+spends nothing, so a stolen code cannot burn the owner's sign-in; a missing
+or redeemed code answers `401 authentication_required` reason
+`credential_unknown`, an expired one `credential_expired`, none retryable. A
+match runs `accounts`' first sight, then a session, or `secondFactor`'s
+challenge when `afterFirstFactor` asks for one.
 
 ```quint
 type CodeBinding = BindingMatches | RedirectDiffers | VerifierDiffers
 pure def codeLive(c: CodePhase, now: Millis): bool = match c { | CodeIssued(x) => now < x.redeemBy | _ => false }
 pure def isRedeemed(c: CodePhase): bool = match c { | CodeRedeemed(x) => true | _ => false }
 pure def effectsOf(y: SignInYield): List[SignInEffect] =
-  if (y == SessionYield) List(FirstSightOfGoogle, BeginSession)
-  else if (y == DeviceKeyYield) List(FirstSightOfGoogle, MintDeviceKey)
-  else if (y == SecondFactorYield) List(FirstSightOfGoogle, BeginSecondFactor)
-  else List()
+  if (y == SessionYield) List(FirstSightOfGoogle, BeginSession) else if (y == DeviceKeyYield) List(FirstSightOfGoogle, MintDeviceKey)
+  else if (y == SecondFactorYield) List(FirstSightOfGoogle, BeginSecondFactor) else List()
 pure def canExchange(a: GoogleAttempt): bool = codeLive(a.code, a.now)
 pure def exchange(a: GoogleAttempt, binding: CodeBinding, factorOutcome: F::FirstFactorOutcome): AttemptStep = {
   val y = if (factorOutcome == F::SecondFactorRequired) SecondFactorYield else SessionYield
@@ -252,14 +242,13 @@ pure def alwaysOneRoute(a: GoogleAttempt): bool = a.native != NoChallenge implie
 
 ### An ID token spends a live challenge once, only with the client, verifier, signature, issuer, audience and nonce all right, and a refused one spends nothing
 
-The token's audience must be the server client id and its nonce the
-challenge's, so a token never serves two challenges. A sign-in mints a
-device key (`nativeClients/deviceKeys`, in the same transaction) or opens a
-second-factor challenge; a link yields only the proof `signInMethods`
-consumes. A missing or used challenge answers `401 authentication_required`
-reason `credential_unknown`, an expired one reason `credential_expired`, and
-every failed check `401 credential_proof_invalid` without saying which; none
-is retryable.
+The audience must be the server client id and the nonce the challenge's, so
+a token never serves two challenges. A sign-in mints a device key
+(`nativeClients/deviceKeys`, same transaction) or opens a second-factor
+challenge; a link yields only the proof `signInMethods` consumes. A missing
+or used challenge answers `401 authentication_required` reason
+`credential_unknown`, an expired one `credential_expired`, any failed check
+`401 credential_proof_invalid` without saying which; none is retryable.
 
 ```quint
 type NativeProof = { clientMatches: bool, verifierMatches: bool, signatureOk: bool, issuerOk: bool, audienceOk: bool, nonceMatches: bool }

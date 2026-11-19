@@ -12,7 +12,7 @@ const longReply = `${lead}\n\n  ${Array.from({ length: 160 }, (_, i) => `${sente
 const collapsed = (text: string) => text.replace(/\s+/g, " ").trim()
 const accepted = (pieces: readonly string[]) =>
   pieces.every((piece, i) => speechPieceAccepted(i === 0, piece.length, piece.split(" ").length))
-const pause = () => new Promise<void>((resolve) => setTimeout(resolve, 2))
+const pause = () => runPromise(sleep("2 millis"))
 
 it.effect("Cloud speech goes in pieces: abbreviations never end a piece and every word is kept", () => effect {
   const pieces = try planCloudSpeechChunks(longReply)
@@ -38,7 +38,7 @@ it.effect("Cloud speech goes in pieces: abbreviations never end a piece and ever
 })
 
 it.effect("Cloud speech goes in pieces: a word longer than one request refuses the whole reply", () => effect {
-  const refused = planCloudSpeechChunks(`Here it is: ${"a".repeat(5001)} done.`) catch (error) => error
+  const refused = try Effect.flip(planCloudSpeechChunks(`Here it is: ${"a".repeat(5001)} done.`))
   const fits = try planCloudSpeechChunks(`Here it is: ${"a".repeat(5000)}`)
   try Effect.try(() => {
     assert.instanceOf(refused, CloudSpeechWordTooLong)
@@ -77,7 +77,7 @@ it.live("Cloud speech goes in pieces: Stop ends the reply and a failed piece nam
   const stop = new AbortController()
   const spoken: string[] = []
   let firstAudio = 0
-  const stopped = speakCloudSpeechChunks(pieces, (piece, signal, started) => new Promise<void>((resolve, reject) => {
+  const stopped = try Effect.flip(speakCloudSpeechChunks(pieces, (piece, signal, started) => new Promise<void>((resolve, reject) => {
     spoken.push(piece)
     if (spoken.length === 2) {
       signal.addEventListener("abort", () => reject(signal.reason), { once: true })
@@ -86,9 +86,9 @@ it.live("Cloud speech goes in pieces: Stop ends the reply and a failed piece nam
       return
     }
     resolve()
-  }), { signal: stop.signal, onFirstAudio: () => { firstAudio += 1 } }) catch (error) => error
-  const failed = speakCloudSpeechChunks(pieces, (piece) =>
-    piece === pieces[1] ? Promise.reject(new Error("speech service unavailable")) : Promise.resolve()) catch (error) => error
+  }), { signal: stop.signal, onFirstAudio: () => { firstAudio += 1 } }))
+  const failed = try Effect.flip(speakCloudSpeechChunks(pieces, (piece) =>
+    piece === pieces[1] ? Promise.reject(new Error("speech service unavailable")) : Promise.resolve()))
   try Effect.try(() => {
     assert.instanceOf(stopped, CloudSpeechStopped)
     assert.deepStrictEqual([spoken.length, firstAudio], [2, 0])

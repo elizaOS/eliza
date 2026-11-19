@@ -1,6 +1,8 @@
-// spec/cloud/operator.md, "Credits go only to an active account"; spec/cloud/operator.md, "The operator sees a device only as its name and dates"; spec/cloud/billing/funds.md, "The operator adds credits once per request"
+// spec/cloud/operator.md, "Credits go only to an active account"; spec/cloud/operator.md, "The device list shows each key only by its name and dates"; spec/cloud/billing/funds.md, "The operator adds credits once per request"
 import type { DeviceRow } from "../../gen/cloud__operator.effect.vibe"
 import { addCreditsIn } from "../billing/funds.vibe"
+import { revokeAllSessions } from "../identity/sessions.vibe"
+import { revokeAll } from "../native-clients/device-keys.vibe"
 import { toInt, toText, type Tx } from "../store/store.vibe"
 import type { AccountNamed, OperatorCommandHandler, OperatorFlags } from "./admin.vibe"
 
@@ -34,11 +36,8 @@ effect function listDevices(tx: Tx, flags: OperatorFlags, now: number) {
 
 effect function revokeDevices(tx: Tx, flags: OperatorFlags, now: number) {
   const userId = try flags.required("user")
-  const ended = toInt((try tx.query(`SELECT count(*) AS ended ${liveKeys}`, [userId, now]))[0]?.ended)
-  try tx.query(
-    "UPDATE accounts SET devices_revoked_before = GREATEST(devices_revoked_before, $2::bigint + 1), sessions_revoked_before = sessions_revoked_before + 1, updated_at = $2 WHERE key = $1",
-    [userId, now]
-  )
+  const ended = try revokeAll(tx, userId, now)
+  try revokeAllSessions(tx, userId, now)
   return [`user ${userId}: ${ended} device keys ended, every session ended`]
 }
 
