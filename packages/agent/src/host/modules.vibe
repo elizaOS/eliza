@@ -1,2 +1,0 @@
-// spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"
-export { builtinModuleFactories } from "../plugins/profile.vibe"

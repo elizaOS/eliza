@@ -1,6 +1,6 @@
 // spec/agent/views.md, "Story: Declare my views once"; spec/agent/views.md, "Story: Switch to the view the agent named"; spec/agent/views.md, "Closing ends every pending request with the outcome Stopped, and nothing changes after"; spec/agent/plugins/profile.md, "A load list names only plugins the bundle carries or the agent's own modules"
 import { Service, type IAgentRuntime } from "@elizaos/core"
-import type { AgentModule, ModuleContext, ModuleFactory } from "../host/module.vibe"
+import { ModuleRefused, type AgentModule, type ModuleFactory, type PublishEvent, type ViewFeeds } from "../host/module.vibe"
 import { declareViews, viewsModuleName } from "./declarations.vibe"
 import { makeViewHost, type ViewFeedPort, type ViewHost } from "./host.vibe"
 import { viewRoutes } from "./routes.vibe"
@@ -12,13 +12,13 @@ export const viewHostServiceType = "agent_view_host"
 
 export const viewInteractStream = "view-interact"
 
-function feedsOf(context: ModuleContext): ViewFeedPort {
+function feedsOf(publishEvent: PublishEvent, viewFeeds: ViewFeeds): ViewFeedPort {
   return {
     publish: effect (clientId, frame) => {
-      try Effect.try(() => context.publishEvent(viewInteractStream, frame, clientId))
+      try Effect.try(() => publishEvent(viewInteractStream, frame, clientId))
     },
-    receivers: (clientId) => context.viewFeeds.receivers(clientId),
-    onRendererClosed: (clientId, closed) => { context.viewFeeds.onRendererClosed(clientId, closed) },
+    receivers: (clientId) => viewFeeds.receivers(clientId),
+    onRendererClosed: (clientId, closed) => { viewFeeds.onRendererClosed(clientId, closed) },
   }
 }
 
@@ -40,7 +40,11 @@ function hostService(views: ViewHost.Shape) {
 
 export const viewsModule: ModuleFactory<never> = effect (context) => {
   const declared = try declareViews(context.runtime.plugins, context.launch.views ?? [])
-  const views = try makeViewHost(feedsOf(context))
+  const { publishEvent, viewFeeds } = context
+  if (publishEvent === undefined || viewFeeds === undefined) {
+    throw new ModuleRefused({ module: viewsModuleName, reason: "The agent has no event publisher for view interactions" })
+  }
+  const views = try makeViewHost(feedsOf(publishEvent, viewFeeds))
   try views.boot(declared.views)
   return {
     name: viewsModuleName,

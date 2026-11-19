@@ -226,7 +226,7 @@ function optionProblems(options: BuildAndroid): string[] {
 
 effect function capture(command: string, args: readonly string[], cwd: string) {
   const spawner = try ChildProcessSpawner
-  return try scoped(effect {
+  return scoped(effect {
     const child = try spawner.spawn(ChildProcess.make(command, [...args], { cwd, extendEnv: true, env: { GIT_OPTIONAL_LOCKS: "0" }, stdin: "ignore" }))
     const [stdout] = try.all [Stream.mkString(Stream.decodeText(child.stdout)), Stream.mkString(Stream.decodeText(child.stderr))]
     const code: number = try child.exitCode
@@ -236,7 +236,7 @@ effect function capture(command: string, args: readonly string[], cwd: string) {
 
 effect function execute(command: AndroidCommand, cwd: string, environment: Environment) {
   const spawner = try ChildProcessSpawner
-  return try scoped(effect {
+  return scoped(effect {
     const child = try spawner.spawn(ChildProcess.make(command.command, [...command.args], { cwd, env: { ...environment }, extendEnv: false, stdin: "ignore", stdout: "inherit", stderr: "inherit" }))
     const code: number = try child.exitCode
     return code

@@ -1,4 +1,4 @@
-// spec/cloud/identity/federatedSignIn.md, "Story: Sign in with Google in the browser"; spec/cloud/identity/federatedSignIn.md, "Story: Sign in with the device's Google account"; spec/cloud/identity/federatedSignIn.md, "Story: Tell the app exactly why Google sign-in was refused"
+// spec/cloud/identity/federatedSignIn.md, "Story: Sign in with Google in the browser"; spec/cloud/identity/federatedSignIn.md, "Story: Sign in with the device's Google account"; spec/cloud/identity/federatedSignIn.md, "A code is redeemed once, while live, only with its own return and verifier, and starts a session or a second-factor challenge, never both"
 import { methodRefusal } from "../../gen/cloud__deployment.effect.vibe"
 import {
   apply, authorizeRefusal, canBegin, canExchange, canExpireCode, canExpireNative, canIssueNative, codeRefusal, decodeState, elapse, initial, isIssued, isOpen, lateCallbackError, nativeRefusal, nativeVerdict,

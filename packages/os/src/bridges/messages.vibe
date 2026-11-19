@@ -119,6 +119,44 @@ interface Pending {
 
 type Reviews = Ref.Ref<ReadonlyMap<OperationId, Pending>>
 
+effect function malformed(method: string, issue: string): never!MalformedReply {
+  throw new MalformedReply({ plugin: PLUGIN, method, issue })
+}
+
+effect function checked<A>(method: string, parse: (raw: unknown) => A | undefined, raw: unknown) {
+  const value = parse(raw)
+  return value === undefined ? try malformed(method, "The reply does not match the request") : value
+}
+
+effect function refuse(problem: MessageRequestProblem): never!InvalidMessageRequest {
+  throw new InvalidMessageRequest({ problem })
+}
+
+effect function requestId(value: OperationId) {
+  const id = operationIdOf(value)
+  return id === null ? try refuse("invalid-operation") : id
+}
+
+effect function requestThread(value: ThreadId) {
+  const id = threadIdOf(value)
+  return id === null ? try refuse("invalid-thread") : id
+}
+
+effect function readStatus(plugin: MessagesNativePlugin) {
+  return try checked("status", parseTelephonyStatus, try nativeCall(PLUGIN, "status", () => plugin.status()))
+}
+
+function sendFacts(status: TelephonyStatus, kind: MessageKind): HostFacts {
+  return {
+    foreground: true,
+    unlocked: true,
+    focused: true,
+    granted: status.permissions.sendSms === "granted" && status.permissions.phoneState === "granted",
+    featurePresent: status.smsCapable && (kind === "TextMessage" || status.mmsSend),
+  }
+}
+
+
 const LOOKUP: ReviewEvent = { type: "finishLookup", lookup: "NoRecord", recorded: "NoAnswer" }
 
 function shown(parts: number): ReviewEvent[] {
@@ -195,7 +233,7 @@ effect function sendCallOf(entry: Pending, operationId: OperationId, method: "se
   return nativeCall(PLUGIN, method, call) catch effect (failure) => {
     if (failure instanceof NativeRejection && failure.code === "expired") {
       const review = entry.book.send({ type: "finishLookup", lookup: "DroppedRecord", recorded: "NoAnswer" }) catch effect () => {
-        try malformed(method, "The journal answer does not follow the lookup")
+        return try malformed(method, "The journal answer does not follow the lookup")
       }
       throw new SmsJournalRefused({ operationId, answer: review.result })
     }

@@ -4,7 +4,7 @@ module node {
   import type { BootFailure, LaunchDocument as LaunchModel, LaunchFrame as FrameModel, UrlShape } from "../../gen/agent__host__launch.ts"
   import type { AgentProcess, Event as ProcessEvent } from "../../gen/agent__host__process.ts"
   import type { Endpoint, LaunchDocument, LaunchFrame } from "./launch.vibe"
-  import { noPublish, noViewFeeds, type AgentPlugin, type ModuleFactory } from "./module.vibe"
+  import type { AgentPlugin, ModuleFactory } from "./module.vibe"
   import { measureWorker, workerHost, type WorkflowWorkerHost } from "./workflow-worker.vibe"
 
   export interface AgentStatus {
@@ -50,7 +50,7 @@ module node {
   import { listenOnSocket } from "../access/socket.vibe"
   import { noEvents } from "../access/events-port.vibe"
   import { listenOnHttp } from "../access/http.vibe"
-  import { conversationRoutes } from "../conversation/turns.vibe"
+  import { conversationRoutes } from "../conversation/routes.vibe"
   import { ownerMessageService } from "../conversation/message-service.vibe"
   import { openDeviceStorage, type DeviceStorageSnapshot } from "../storage/index.vibe"
   import { StoreFailed } from "../storage/fault.vibe"
@@ -194,14 +194,12 @@ module node {
     })
     const role = launch.callerRole === "owner" ? "OWNER" : "USER"
     const permissions = new Set(launch.policy.actions.allowed)
-    const grantAction = (action: { name: string }) => permissions.has(action.name)
-      ? undefined : `Action ${action.name} is unavailable`
     const user = launch.account ? (validateUuid(launch.account.userId) ?? stringToUuid(`account:${launch.account.userId}`)) : stringToUuid(`device-owner:${agentId}`)
     const ownerId = role === "OWNER" ? user : agentId
     const formed = await Effect.runPromise(Effect.result(composeAgent({
       agentId, character, settings: {}, bundled: input.bundled ?? new Map(), modules: input.modules, hostRoutes: reservedHostPrefixes,
       context: { launch, stateDirectory, timeZone: launch.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone, epoch: authority.epoch, ...(authority.storageKey === undefined ? {} : { storageKey: authority.storageKey }),
-        ownerEntityId: ownerId, publishEvent: noPublish, viewFeeds: noViewFeeds },
+        ownerEntityId: ownerId },
       storage: { name: storagePlugin, description: "Own the device database", services: [TaskService], init: async (_config, runtime) => {
         if (!(runtime instanceof AgentRuntime)) throw new Error("The storage plugin requires the device Core runtime")
         runtime.registerDatabaseAdapter(adapter)
@@ -209,7 +207,7 @@ module node {
         if (sweeper !== undefined) runtime.registerTaskWorker(sweeper)
       } },
       cloudLink: modelPlugin(launch, models), privacy: { kind: "off" }, worker: pinned === undefined ? { kind: "none" } : { kind: "pinned", expected: pinned.worker.expected, measured: pinned.worker.measured },
-      messageService: (runtime) => ownerMessageService(runtime, [role], grantAction),
+      messageService: (runtime, actionGate) => ownerMessageService(runtime, [role], actionGate),
       policy: {
         actionsAllowed: [...permissions], pluginsLoad: [...launch.policy.plugins.load],
         productPlugin: launch.policy.plugins.product === undefined ? { tag: "NoProductPlugin" }

@@ -7,7 +7,7 @@ import ai.eliza.plugins.signin.DeviceKeyClient.Binding;
 import ai.eliza.plugins.signin.DeviceKeyClient.Exchange;
 import ai.eliza.plugins.signin.DeviceKeyClient.Grant;
 import ai.eliza.plugins.signin.SignInPolicy.Failure;
-import ai.eliza.plugins.signin.SignInPolicy.Stage;
+import ai.eliza.plugins.signin.SignInPolicy.CloudReply;
 import ai.eliza.plugins.signin.SignInRegistration.Environment;
 import android.content.Context;
 import java.net.URI;
@@ -79,7 +79,7 @@ public final class DeviceCustody implements SignInCustody {
     try {
       return authority(environment).store().beginSignIn();
     } catch (DeviceCredentialStore.StorageFailure unstored) {
-      throw new Refused(Failure.STORAGE);
+      throw new Refused(Failure.UNAVAILABLE);
     }
   }
 
@@ -93,8 +93,9 @@ public final class DeviceCustody implements SignInCustody {
     String state = SignInPolicy.newState(), verifier = SignInPolicy.newVerifier();
     Answer<Grant> answer = authority.client().connect(accessToken, binding(environment), state, SignInPolicy.s256(verifier), null);
     if (answer instanceof Answer.Answered<Grant> granted) return new Proof(granted.value().code(), state, verifier);
-    if (answer instanceof Answer.Refused<Grant> refused)
-      throw new Refused(SignInPolicy.failureFor(Stage.EXCHANGE, refused.status(), refused.error(), refused.reason().wire()));
+    if (answer instanceof Answer.Refused<Grant> refused
+      && SignInPolicy.refusal(refused.status(), refused.error(), refused.reason().wire()) instanceof CloudReply.Refused reply)
+      throw new Refused(SignInPolicy.failureOf(false, reply.code(), reply.reason()));
     throw new Refused(Failure.UNAVAILABLE);
   }
 
@@ -104,7 +105,7 @@ public final class DeviceCustody implements SignInCustody {
     try {
       exchange = authority.client().exchange(attempt, binding(environment), new DeviceKeyClient.Proof(proof.code(), proof.state(), proof.verifier()));
     } catch (DeviceCredentialStore.StorageFailure unstored) {
-      throw new Refused(Failure.STORAGE);
+      throw new Refused(Failure.UNAVAILABLE);
     }
     switch (exchange) {
       case SIGNED_IN -> {

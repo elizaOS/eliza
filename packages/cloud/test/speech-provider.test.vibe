@@ -75,6 +75,7 @@ describe("WP6 Speech provider (spec/cloud/services/speechRelay.md)", () => {
         connections: [
           ["/stt/turns/websocket", "ink-2", "16000", secrets.SPEECH_API_KEY],
           ["/tts/websocket", null, null, secrets.SPEECH_API_KEY],
+          ["/stt/turns/websocket", "ink-2", "16000", secrets.SPEECH_API_KEY],
           ["/stt/turns/websocket", "ink-2", "16000", secrets.SPEECH_API_KEY]
         ],
         sttPcmBytes: 640,

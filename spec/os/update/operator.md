@@ -1,20 +1,16 @@
 # Operator update by cable
 
-An operator moves one enrolled device, attached by cable, from its installed
-release to a candidate on one update channel, and gets it back when the
-update does not hold. The device's own recovery verifies the package against
-its OTA certificate (`adb reboot recovery`, the operator's "Apply update from
-ADB", `adb sideload`) and its bootloader enforces verified boot and rollback
-protection; nothing here signs, builds, relocks or wipes. Source:
-`packages/os/scripts/android/aosp-ota-update.mjs` and `install-lock.ts` on
-develop. The shell is `src/image/ota-operator.vibe` (`eliza-os ota check |
-apply | status | fallback | stock-archive | verify-stock |
-retain-known-good`); it reads the channel and the release records
-[release signing](../image/signing.md) wrote, runs `adb` and `fastboot`, and
-keeps this machine in a private journal file it replaces atomically. The
-[system updater](./updater.md) is the on-device path; its admission is
-reused here. Results are observations for the release owner's drill record:
-nothing here marks a drill passed.
+An operator moves one enrolled device, attached by cable, to a candidate
+release of its channel, and gets it back when the update does not hold. The
+device's recovery verifies the package and its bootloader enforces verified
+boot and rollback protection; nothing here signs, builds, relocks or wipes.
+Source: develop's `aosp-ota-update.mjs` and `install-lock.ts`. The shell,
+`src/image/ota-operator.vibe` (`eliza-os ota check | apply | status |
+fallback | stock-archive | verify-stock | retain-known-good`), reads the
+records [release signing](../image/signing.md) wrote, runs `adb` and
+`fastboot`, and keeps this machine in a private journal file it replaces
+atomically. The admission of the [system updater](./updater.md) is reused.
+Results are observations for a drill record; nothing here marks a drill passed.
 
 ## Story: Update a device by cable
 
@@ -25,12 +21,11 @@ nothing here marks a drill passed.
 
 ### A candidate is admitted only from a signed record of the channel, with the same OTA certificate and AVB key, its build date as post-timestamp and no lower rollback index
 
-Both records list no problem and name the channel's product, device and
-channel; the updater's admission (`U::candidateAdmitted`) adds a different
-fingerprint, a newer build date and no lower security or vendor patch level.
-Every rollback index location of the installed release has an index in the
-candidate that is not lower, since the bootloader would refuse to boot it.
-A channel that allows downgrades admits nothing.
+Both records are clean and name the channel, its product and device;
+`U::candidateAdmitted` adds a new fingerprint, a newer build date and no
+lower patch level. Each rollback index location of the installed release
+keeps an index no lower, or the bootloader would refuse the candidate. A
+channel that allows downgrades admits nothing.
 
 ```quint
 import apk.* from "../image/apk"
@@ -70,25 +65,29 @@ pure def lawLowerOrMissingRollbackIndexIsRefused(channel: ReleaseChannel, fromRe
 ### An incremental package starts from exactly the installed build and its signed target files
 
 ```quint
-pure def startsFromInstalled(fromRelease: OperatorRelease, toRelease: OperatorRelease): bool = match toRelease.ota {
-  | IncrementalOta(o) => o.preBuild == fromRelease.release.fingerprint and digestsMatch(o.fromTargetFiles, fromRelease.signedTargetFiles)
-  | _ => true
+pure def startsFromInstalled(fromRelease: OperatorRelease, toRelease: OperatorRelease): bool = {
+  val ota = toRelease.ota
+  match ota {
+    | IncrementalOta(o) => o.preBuild == fromRelease.release.fingerprint and digestsMatch(o.fromTargetFiles, fromRelease.signedTargetFiles)
+    | _ => true
+  }
 }
-pure def lawIncrementalFromAnotherBuildIsRefused(channel: ReleaseChannel, fromRelease: OperatorRelease, toRelease: OperatorRelease): bool = match toRelease.ota {
-  | IncrementalOta(o) => (o.preBuild != fromRelease.release.fingerprint or not(digestsMatch(o.fromTargetFiles, fromRelease.signedTargetFiles)))
-      implies not(updateAdmitted(channel, fromRelease, toRelease))
-  | _ => true
+pure def lawIncrementalFromAnotherBuildIsRefused(channel: ReleaseChannel, fromRelease: OperatorRelease, toRelease: OperatorRelease): bool = {
+  val ota = toRelease.ota
+  match ota {
+    | IncrementalOta(o) => (o.preBuild != fromRelease.release.fingerprint or not(digestsMatch(o.fromTargetFiles, fromRelease.signedTargetFiles)))
+        implies not(updateAdmitted(channel, fromRelease, toRelease))
+    | _ => true
+  }
 }
 ```
 
 ### One device has one operator: every journal change and device write happens under the device's install lock
 
-The lock is a private file per serial, created exclusively for the whole
-run. A run marks the lock before its first device write. A run that ends
-without writes, or that settles the journal, removes its own lock; any other
-end, a process death included, leaves the lock for the operator to inspect
-and remove by hand, because process identifiers are reused and the device
-state is unknown.
+The lock is a private file per serial, created exclusively for the run and
+marked before the first device write. A run that ends without writes, or
+settles the journal, removes it; any other end, a process death included,
+leaves it for the operator to remove by hand, since the device state is unknown.
 
 ```quint
 type InstallLock = Unlocked | Locked({ writing: bool }) | LeftLocked
@@ -122,9 +121,8 @@ pure def sometimesLockLeftAfterFailedWrites(s: OperatorJournal): bool = s.lock =
 ### An update starts only from booted Android running the installed build on a known slot, enforcing, with a known verified boot state
 
 The journal records what the update is checked against later: the device,
-both builds, the candidate's patch level, the original slot, its verified
-boot state, whether the bootloader was locked, and whether the device is
-Virtual A/B.
+both builds, the candidate's patch level, the original slot and its verified
+boot state, the bootloader lock, and whether the device is Virtual A/B.
 
 ```quint
 type AndroidReading = { device: str, fingerprint: str, slot: Slot, selinux: Vf::SelinuxReading, verifiedBoot: Vf::BootReading, flashLocked: bool, securityPatch: int, virtualAb: bool }
@@ -158,12 +156,11 @@ pure def alwaysJournalBound(s: OperatorJournal): bool =
 
 ### Each run resumes from what the device shows, and refuses a foreign build or the installed build on the other slot
 
-Recovery or sideload means send the package (`Sideload`); the candidate
-booted means `Verify`; the installed build on its original slot means the
-update did not take effect or the bootloader fell back (`Retry`, which sends
-again); the bootloader means inspect the slots (`Bootloader`); no device, or
-Android still booting, means the outcome cannot be seen (`Absent`). Anything
-else is `Refuse`. Only `Sideload`, `Retry` and `Verify` move the journal.
+Recovery or sideload: send the package. The candidate booted: verify. The
+installed build on its original slot: the update did not take effect, so
+send again. The bootloader: inspect the slots. No device, or Android still
+booting: nothing can be seen. Anything else is refused. Only `Sideload`,
+`Retry` and `Verify` move the journal.
 
 ```quint
 type NextStep = Verify | Sideload | Retry | Bootloader | Absent | Refuse
@@ -191,9 +188,8 @@ pure def lawInstalledBuildOnTheOtherSlotIsRefused(start: StartFacts, observed: D
 
 ### The package is sent only after the lock is marked, and a failed or unseen transfer is resumed by sending again
 
-A user build's adbd cannot enter sideload itself, so the shell reboots to
-recovery and the operator chooses "Apply update from ADB"; a device that
-does not reach sideload changes nothing. A failed transfer returns the
+A user build cannot enter sideload itself: the shell reboots to recovery and
+the operator chooses "Apply update from ADB". A failed transfer returns the
 journal to `AwaitingSideload`.
 
 ```quint
@@ -206,10 +202,9 @@ pure def transferEnded(s: OperatorJournal, sent: bool): OperatorJournal = { ...s
 
 ### An update is verified only when the candidate booted on the other slot, enforcing, still locked if it was, with verified boot no weaker and the candidate's patch level
 
-Verified boot is compared with the state the original slot booted in,
-through [booted-image verification](../image/verification.md), so an
-unread state never verifies. A failed verification may be checked again;
-a verified journal changes only by a fallback.
+Verified boot is compared, by [booted-image verification](../image/verification.md),
+with the original slot's state, so an unread state never verifies. A failed
+verification may be checked again; a verified journal changes only by a fallback.
 
 ```quint
 pure def bootVerified(start: StartFacts, observed: DeviceObservation): bool = match observed {
@@ -239,11 +234,10 @@ pure def sometimesVerificationFailed(s: OperatorJournal): bool = s.phase == Veri
 
 ### A fallback to the original slot needs a transferred update, the updated slot current and unconfirmed, the original slot bootable and no merge, and on Virtual A/B a snapshotted update
 
-The bootloader values come from `fastboot getvar`; a value it does not
-report reads as the refusing one. Once the updated slot is marked
-successful its rollback indexes may be stored, so the original build may no
-longer boot; on Virtual A/B the original slot survives only in an unmerged
-snapshot. Otherwise recover with a compatible release or the stock image.
+The values come from `fastboot getvar`; one it does not report reads as the
+refusing one. A slot marked successful may have stored its rollback indexes,
+and on Virtual A/B the original slot survives only in an unmerged snapshot.
+Otherwise recover with a compatible release or the stock image.
 
 ```quint
 type SnapshotStatus = NoSnapshot | Snapshotted | Merging | SnapshotUnread
@@ -288,11 +282,9 @@ pure val weight_fallbackEnded = 8
 
 ### A release is retained as known-good only from an admitted release-keys record with no placeholder, whose target files and image are the bytes it names
 
-Retention copies the record, the signed target files and the signed image
-into a new read-only directory; every recovery plan re-hashes them first.
-The plan reflashes with `fastboot`, which unlocks the bootloader and erases
-user data, so the shell prints it and never runs it. What it retains is the
-channel's known-good release of [release signing](../image/signing.md).
+Retention copies the record, target files and image into a new read-only
+directory, re-hashed before every recovery plan. The plan unlocks the
+bootloader and erases user data, so the shell prints it and never runs it.
 
 ```quint
 type BuildKeys = ReleaseKeys | TestKeys | DevKeys
@@ -315,11 +307,9 @@ pure def lawRetainedReleaseIsTheChannels(channel: ReleaseChannel, retention: Ret
 
 ### Stock recovery prints its plan only for the channel's locked factory archive and never flashes
 
-The archive's SHA-256 must be the channel's stock factory image and the
-source lock's factory archive, with the locked size, one top directory and
-exactly one bootloader, radio and system image of the locked build. The
-plan unlocks the bootloader, erases the custom AVB key and wipes data; the
-operator runs it with physical confirmation, and relocks only after
+The archive has the channel's and the source lock's digest and size, one top
+directory, and one bootloader, radio and system image of the locked build.
+The operator runs the plan with physical confirmation and relocks only after
 `verify-stock` reads a stock release-keys user build, enforcing.
 
 ```quint

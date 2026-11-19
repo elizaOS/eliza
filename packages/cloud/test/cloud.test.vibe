@@ -1,6 +1,8 @@
 // spec/cloud/deployment.md, "Story: Configure a deployment from one reviewed profile"
 import { assert, describe, it } from "@effect/vitest"
 import { addCredits } from "../src/billing/funds.vibe"
+import { drainProviderEvents, webhookPath } from "../src/billing/provider-events.vibe"
+import { createStripeFake } from "./support/fakes/stripe.ts"
 import { refusalBody } from "../src/http/refusal.vibe"
 import { markDispatched, reserve, settle } from "../src/shared/metering.vibe"
 import { Store, type Tx } from "../src/store/store.vibe"
@@ -21,8 +23,7 @@ import { Deployment, deploymentLayer, parseProfile } from "../src/profile/profil
 import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
 import { revokeAll, sweepGrants } from "../src/native-clients/device-keys.vibe"
 import { s256, signedIn } from "./support/identity.ts"
-import { connectionColumns, connectionRows, scopeFor, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
-import { sealTokens } from "../src/providers/google.vibe"
+import { scopeFor, storeGrant, useGrant, type Owner } from "../src/services/google/grant-access.vibe"
 import { googleFakeState, mountGoogleToken, seedGrant } from "./support/fakes/google.ts"
 import { mountGoogleCalendar, seedCalendar, seedEvent } from "./support/fakes/google-calendar.ts"
 import { gmailReads, readableMailbox, touchMessage } from "./support/fakes/google-gmail.ts"
@@ -43,6 +44,8 @@ import { refused, type Refused } from "../src/http/refusal.vibe"
 import type { RouteClass } from "../src/http/request-auth.vibe"
 import { matchRoute, type Route } from "../src/http/routes.vibe"
 import { areas, listening, respond } from "../src/http/server.vibe"
+import { googleIdentityFake, type GooglePerson } from "./support/google-identity-fake.ts"
+import { authenticatorCode } from "./support/authenticator.ts"
 
 effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
   return match (try exit(program)) {
@@ -519,7 +522,184 @@ describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/regis
   }))
 })
 
+describe("WP2 Native clients and pages: native Google (spec/cloud/nativeClients/deviceKeys.md)", () => {
+  const web = "https://www.staging.example.com"
+  const signInReturn = `${web}/apps/native/sign-in`
+  const native = {
+    clientId: "com.example.native", environment: "staging", displayName: "Native", androidPackage: "com.example.native",
+    certFingerprints: ["E3:DC:37:EF:3F:94:F0:CB:F5:06:F2:6E:CD:F7:99:99:29:C2:B2:D0:53:D1:63:83:56:91:F7:C9:67:F6:7E:A5"],
+    signInReturn, billingReturn: `${web}/apps/native/billing`, credentialTtlMs: 30 * 86_400_000, nativeGoogle: true, enabled: true
+  }
+  const challengeVerifier = "c".repeat(43)
+  const deviceVerifier = "d".repeat(43)
+  const person: GooglePerson = { subject: "google-native-1", email: "native@example.com", emailVerified: true, givenName: "Native" }
+  const scopes = ["openid", "email", "https://www.googleapis.com/auth/gmail.readonly"]
+  const googleOff: ProfileEdit = (profile) => {
+    const { google, ...staging } = profile.environments.staging
+    return { ...profile, environments: { ...profile.environments, staging: { ...staging, capabilities: staging.capabilities.filter((capability) => capability !== "managedGoogle") } } }
+  }
+
+  function refusal(answer: { readonly status: number; readonly body: unknown }): string {
+    const body = answer.body as { readonly error?: string; readonly reason?: string }
+    return `${answer.status} ${body.error}${body.reason === undefined ? "" : ` ${body.reason}`}`
+  }
+
+  effect function nativeCloud(edit: ProfileEdit | undefined, registration: typeof native) {
+    const google = try Effect.try(() => googleIdentityFake(secrets.GOOGLE_CLIENT_SECRET ?? ""))
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/google/", google.handler), ...(edit === undefined ? {} : { edit }) })
+    const profile = try parseProfile(try sync(() => { const base = testProfile(cloud.fakes.url); return edit === undefined ? base : edit(base) }))
+    const now = try Clock.currentTimeMillis
+    provide Store = cloud.store, deploymentLayer(profile, "staging") {
+      try cloud.store.transaction(effect (tx: Tx) => { try registerClient(tx, try decodeRegistration(registration), now) })
+    }
+    return { cloud, google }
+  }
+
+  effect function challenge(cloud: TestCloud) {
+    const opened = try cloud.call("/api/v1/auth/google/native/challenge", { json: { clientId: native.clientId, environment: "staging", redirectUri: signInReturn, codeChallenge: s256(challengeVerifier), codeChallengeMethod: "S256" } })
+    return opened.body as { readonly challengeId: string; readonly nonce: string }
+  }
+
+  function signInBody(challengeId: string, idToken: string, extra: Readonly<Record<string, unknown>> = {}) {
+    return {
+      clientId: native.clientId, environment: "staging", redirectUri: signInReturn, state: "s".repeat(43), codeVerifier: deviceVerifier, deviceName: "Ada's phone",
+      identity: { challengeId, idToken, codeVerifier: challengeVerifier }, ...extra
+    }
+  }
+
+  it.live("Sign a device in with its Google account in one call and link the managed Google connection (spec/cloud/nativeClients/deviceKeys.md, \"Story: Sign a device in and keep its key\"; spec/cloud/identity/federatedSignIn.md, \"Story: Sign in with the device's Google account\")", () => scoped(effect {
+    const { cloud, google } = try nativeCloud(undefined, native)
+    const opened = try challenge(cloud)
+    const idToken = try promise(() => google.idToken(person, { audience: "google-server-client", nonce: opened.nonce }))
+    const serverAuthCode = try sync(() => google.serverAuthCode(person, scopes))
+    const malformed = try cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody(opened.challengeId, "x".repeat(40)) })
+    const badName = try cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody(opened.challengeId, idToken, { deviceName: "n".repeat(81) }) })
+    const signed = try cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody(opened.challengeId, idToken, { serverAuthCode }) })
+    const replayed = try cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody(opened.challengeId, idToken) })
+    const body = signed.body as {
+      readonly status: string; readonly credentialId: string; readonly secret: string; readonly tokenType: string; readonly expiresIn: number; readonly scopes: ReadonlyArray<string>
+      readonly acknowledgementRequired: boolean; readonly code: string; readonly accountCreated: boolean; readonly identity: unknown
+      readonly google: { readonly connected: boolean; readonly connectionId: string; readonly email: string; readonly scopes: ReadonlyArray<string>; readonly refreshTokenIssued: boolean }
+    }
+    const acked = try cloud.call("/api/v1/app-auth/mobile/ack", { json: { credentialId: body.credentialId, secret: body.secret } })
+    const grants = try sql(cloud, "SELECT state->>'phase' AS phase FROM device_grants", [])
+    const connections = try sql(cloud, "SELECT key, subject, email FROM google_connections", [])
+    try check(() => assert.deepStrictEqual(
+      {
+        refused: [malformed.status, badName.status, refusal(replayed).startsWith("401")],
+        signed: [signed.status, signed.headers["cache-control"], body.status, body.tokenType, body.scopes, body.acknowledgementRequired, /^emac_[0-9a-f]{64}$/.test(body.code), body.accountCreated, body.identity],
+        google: [body.google.connected, body.google.email, body.google.scopes, body.google.refreshTokenIssued],
+        acked: [acked.status, (acked.body as { readonly status?: string }).status],
+        stored: [grants.length, connections.map((row) => [row.key, row.subject, row.email])],
+        googleCalls: google.tokenRequests.map((form) => [form.get("client_id"), form.get("redirect_uri"), form.has("code_verifier")])
+      },
+      {
+        refused: [401, 400, true],
+        signed: [200, "no-store", "signed_in", "Bearer", ["cloud:user"], true, true, true, { provider: "google", subject: person.subject, email: person.email }],
+        google: [true, person.email, scopes, true],
+        acked: [200, "acknowledged"],
+        stored: [1, [[body.google.connectionId, person.subject, person.email]]],
+        googleCalls: [["google-server-client", "", false]]
+      }
+    ))
+  }), 60_000)
+
+  it.live("Refuse native Google when Google is off or the registration does not enable it (spec/cloud/nativeClients/registry.md, \"Story: Tell a client exactly why it was refused\")", () => scoped(effect {
+    const off = try nativeCloud(googleOff, native)
+    const offAnswer = try off.cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody("missing-challenge", "x".repeat(40)) })
+    const plain = try nativeCloud(undefined, { ...native, nativeGoogle: false })
+    const plainAnswer = try plain.cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody("missing-challenge", "x".repeat(40)) })
+    const unknownClient = try plain.cloud.call("/api/v1/app-auth/mobile/google", { json: { ...signInBody("missing-challenge", "x".repeat(40)), clientId: "com.example.unknown" } })
+    try check(() => assert.deepStrictEqual(
+      [refusal(offAnswer), refusal(plainAnswer), (unknownClient.body as { readonly error?: string }).error],
+      ["503 provider_unavailable google_not_configured", "400 invalid_client", "invalid_client"]
+    ))
+  }), 60_000)
+
+  it.live("A person with a second factor gets mfa_required and no device key (spec/cloud/identity/secondFactor.md, \"Story: Finish sign-in with my second factor\")", () => scoped(effect {
+    const { cloud, google } = try nativeCloud(undefined, native)
+    const first = try signedIn(cloud, person.email)
+    const owner = { authorization: `Bearer ${first.accessToken}` }
+    const enrolled = (try cloud.call("/api/v1/auth/mfa/totp/enroll", { headers: owner, json: {} })).body as { readonly secret: string }
+    const now = try Clock.currentTimeMillis
+    const confirmed = try cloud.call("/api/v1/auth/mfa/totp/confirm", { headers: owner, json: { code: try sync(() => authenticatorCode(enrolled.secret, now)) } })
+    const opened = try challenge(cloud)
+    const idToken = try promise(() => google.idToken(person, { audience: "google-server-client", nonce: opened.nonce }))
+    const answer = try cloud.call("/api/v1/app-auth/mobile/google", { json: signInBody(opened.challengeId, idToken, { serverAuthCode: try sync(() => google.serverAuthCode(person, scopes)) }) })
+    const body = answer.body as { readonly status: string; readonly challengeId: string; readonly methods: ReadonlyArray<string>; readonly expiresAt: number }
+    const grants = try sql(cloud, "SELECT key FROM device_grants", [])
+    try check(() => assert.deepStrictEqual(
+      [confirmed.status, answer.status, body.status, typeof body.challengeId, body.methods, body.expiresAt > now, grants.length, google.tokenRequests.length],
+      [200, 200, "mfa_required", "string", ["totp"], true, 0, 0]
+    ))
+  }), 60_000)
+})
+
 describe.todo("WP3 Checkout and provider events (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")")
+describe("WP3 Provider events (spec/cloud/billing/providerEvents.md, \"Story: Apply each payment event once, whatever the delivery order\")", () => {
+  effect function deliver(cloud: TestCloud, signed: { readonly raw: string; readonly header: string }) {
+    const json = try Effect.try(() => JSON.parse(signed.raw) as unknown)
+    return try cloud.call(webhookPath, { json, headers: { "stripe-signature": signed.header } })
+  }
+
+  effect function eventRow(cloud: TestCloud, id: string) {
+    const row = (try sql(cloud, "SELECT state, attempts, payload IS NULL AS dropped, last_error_code FROM provider_events WHERE id = $1", [id]))[0]
+    return row === undefined ? undefined : { state: row.state, attempts: row.attempts, dropped: row.dropped, error: row.last_error_code }
+  }
+
+  const statusOf = (answer: { readonly status: number; readonly body: unknown }) =>
+    [answer.status, (answer.body as { readonly error?: string; readonly duplicate?: boolean }).error ?? (answer.body as { readonly duplicate?: boolean }).duplicate]
+
+  it.live("Store a payment event once, refuse a forged, stale, foreign or rewritten one, and apply it once (spec/cloud/billing/providerEvents.md, \"Story: Apply each payment event once, whatever the delivery order\")", () => scoped(effect {
+    const stripe = try sync(() => createStripeFake())
+    const cloud = try testCloud({ stripe })
+    const customer = { id: "cus_listener", object: "customer" }
+    const first = try sync(() => stripe.signedEvent("customer.created", customer))
+    const stored = try deliver(cloud, first)
+    const repeated = try deliver(cloud, first)
+    const tampered = try deliver(cloud, { raw: try sync(() => stripe.tamper(first.raw)), header: first.header })
+    const started = try Clock.currentTimeMillis
+    const stale = try deliver(cloud, try sync(() => stripe.signedEvent("customer.created", customer, { timestamp: Math.floor(started / 1000) - 301 })))
+    const foreign = try deliver(cloud, try sync(() => stripe.signedEvent("customer.created", customer, { livemode: true })))
+    const rewritten = try deliver(cloud, try sync(() => stripe.signedEvent("customer.created", { ...customer, id: "cus_other" }, { id: first.id })))
+    try cloud.inside(drainProviderEvents(started + 60_000))
+    try cloud.inside(drainProviderEvents(started + 120_000))
+    const replayed = try deliver(cloud, first)
+    const rows = try sql(cloud, "SELECT count(*)::int AS n FROM provider_events", [])
+    const row = try eventRow(cloud, first.id)
+    try check(() => assert.deepStrictEqual(
+      { stored: statusOf(stored), repeated: statusOf(repeated), tampered: statusOf(tampered), stale: statusOf(stale), foreign: statusOf(foreign), rewritten: statusOf(rewritten), replayed: statusOf(replayed), rows: rows[0]?.n, row },
+      { stored: [200, false], repeated: [200, true], tampered: [400, "invalid_request"], stale: [400, "invalid_request"], foreign: [400, "invalid_request"], rewritten: [409, "idempotency_conflict"], replayed: [200, true], rows: 1, row: { state: "Done", attempts: 1, dropped: true, error: null } }
+    ))
+  }), 60_000)
+
+  it.live("Retry a failing event on its own schedule without holding back the next, dead-letter it after eight attempts and revive it on a resend (spec/cloud/billing/providerEvents.md, \"Story: Apply each payment event once, whatever the delivery order\")", () => scoped(effect {
+    const stripe = try sync(() => createStripeFake())
+    const cloud = try testCloud({ stripe })
+    const failing = try sync(() => stripe.signedEvent("charge.dispute.funds_withdrawn", { id: "dp_lost", object: "dispute", charge: "ch_missing", status: "needs_response", livemode: false }))
+    const following = try sync(() => stripe.signedEvent("customer.created", { id: "cus_after", object: "customer" }))
+    try deliver(cloud, failing)
+    try deliver(cloud, following)
+    const started = try Clock.currentTimeMillis
+    try cloud.inside(drainProviderEvents(started + 60_000))
+    const afterFirst = { failing: try eventRow(cloud, failing.id), following: try eventRow(cloud, following.id) }
+    for (let hour = 2; hour <= 26; hour += 2) {
+      try cloud.inside(drainProviderEvents(started + hour * 3_600_000))
+    }
+    const deadLettered = try eventRow(cloud, failing.id)
+    const revived = try deliver(cloud, failing)
+    const pending = try eventRow(cloud, failing.id)
+    try check(() => assert.deepStrictEqual(
+      { afterFirst, deadLettered, revived: statusOf(revived), pending },
+      {
+        afterFirst: { failing: { state: "Pending", attempts: 1, dropped: false, error: "StripeRefused" }, following: { state: "Done", attempts: 1, dropped: true, error: null } },
+        deadLettered: { state: "DeadLettered", attempts: 8, dropped: false, error: "StripeRefused" },
+        revived: [200, false],
+        pending: { state: "Pending", attempts: 0, dropped: false, error: null }
+      }
+    ))
+  }), 60_000)
+})
 describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
   it.live("Speak a reply with context and timings, transcribe a recording, and charge each once (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\"; spec/cloud/services/speech.md, \"Story: Transcribe a recording\")", () => scoped(effect {
     const speech = try sync(() => speechFake())
@@ -814,7 +994,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         searched: [searched.status, placesOf(searched), typeof osm.calls[1]?.query.get("viewbox")],
         reversed: [reversed.status, place.id, place.name],
         detailed: [detailed.status, detail.website, detail.openingHours, detail.phone],
-        walked: [walked.status, route.distanceMeters, route.durationSeconds, route.traffic, route.steps.map((step) => step.maneuver), (JSON.parse(osm.calls[4]?.body ?? "{}") as { readonly profile?: string }).profile],
+        walked: [walked.status, route.distanceMeters, route.durationSeconds, route.traffic, route.steps.map((step) => step.maneuver), osm.calls[4]?.body.includes("\"profile\":\"foot\"")],
         refusals: [transit.status, errorOf(transit), unroutable.status, errorOf(unroutable), outage.status, errorOf(outage), garbled.status, errorOf(garbled)],
         tile: [tile.status, errorOf(tile), osm.calls.length - callsBeforeTile],
         calls: osm.calls.length,
@@ -827,7 +1007,7 @@ describe("WP7 Maps (spec/cloud/services/maps.md)", () => {
         searched: [200, [["N240109189", "Brandenburger Tor"], ["W4031000", "1 Pariser Platz"]], "string"],
         reversed: [200, "W4031000", "1 Pariser Platz"],
         detailed: [200, "https://example.org/tor", "24/7", "+49 30 0000"],
-        walked: [200, 1520.4, 912, "none", ["depart", "left", "arrive"], "foot"],
+        walked: [200, 1520.4, 912, "none", ["depart", "left", "arrive"], true],
         refusals: [422, "unsupported_mode", 422, "no_route", 503, "provider_unavailable", 502, "provider_invalid_response"],
         tile: [404, "capability_unavailable", 0],
         calls: 8,
@@ -1070,11 +1250,10 @@ effect function grantRefusal<A, E extends { readonly _tag: string }, R>(program:
 }
 
 effect function linkedGrant(cloud: TestCloud, owner: Owner, connectionId: string, refreshToken: string, scopes: ReadonlyArray<string>, expiresAt: number) {
-  const now = try Clock.currentTimeMillis
-  const tokens = try sealTokens({ refreshToken, accessToken: `stale-${connectionId}`, expiresAt })
-  try cloud.store.transaction((tx) => stepRow(tx, connectionRows, connectionId, { type: "link", scopes, tokens, expiresAt }, connectionColumns({
-    organization_id: owner.organizationId, user_id: owner.userId, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, linked_at: now
-  })))
+  try cloud.store.transaction((tx) => storeGrant(tx, {
+    connectionId, owner, subject: `subject-${connectionId}`, email: `${connectionId}@example.com`, grantedScopes: scopes,
+    tokens: { refreshToken, accessToken: `stale-${connectionId}`, expiresAt }, now: expiresAt - 1
+  }))
 }
 
 describe("WP8 Managed Google: grant access (spec/cloud/services/google/connection.md)", () => {
@@ -1119,7 +1298,7 @@ describe("WP8 Managed Google: grant access (spec/cloud/services/google/connectio
         {
           singleFlight: [2, true, true, "conn-held", "conn-held@example.com"],
           refusals: { missing: "capability_missing", changed: "google_account_changed", foreign: "not_found", side: "not_found", invalidGrant: "google_reauth_required", afterwards: "google_reauth_required" },
-          rows: [["conn-held", "Active", false, 0], ["conn-lost", "Expired", true, 0]]
+          rows: [["conn-held", "Active", false, 0], ["conn-lost", "Expired", false, 0]]
         }
       ))
     }
@@ -1615,6 +1794,302 @@ describe("WP4 Subscriptions and entitlements: entitlement", () => {
         paid: [{ id: "pro_monthly", name: "Pro", status: "active" }, seconds(periodEnd), seconds(resetsAt), { unit: "usd_micros", granted: 90_000_000, remaining: 90_000_000, periodStart: seconds(now - 1000), resetsAt: seconds(resetsAt) }],
         pastDue: { id: "pro_monthly", name: "Pro", status: "past_due" },
         unreadable: [503, "service_unavailable"]
+      }
+    ))
+  }))
+})
+
+import { initial as noSubscription, type Subscription } from "../gen/cloud__billing__subscriptions.ts"
+import type { BillingSnapshot } from "../src/billing/snapshot.vibe"
+import type { InvoiceDetail, InvoicePage } from "../src/billing/invoices.vibe"
+import { createStripeInvoicesFake } from "./support/fakes/stripe-invoices.ts"
+
+effect function subscribedTo(cloud: TestCloud, organizationId: string, customerId: string, now: number) {
+  const state: Subscription = {
+    ...noSubscription, status: "Active", subscriptionId: `sub_${organizationId}`, customer: { tag: "PinnedCustomer", customerId },
+    planKey: "PlusMonthly", periodStart: now - 60_000, periodEnd: now + 30 * 24 * 3_600_000, revision: 4
+  }
+  try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, customer_id, provider_subscription_id, period_end, updated_at) VALUES ($1, $2, 4, 'active', 'plus_monthly', $3, $4, $5, $6)", [
+    organizationId, JSON.stringify(state), customerId, state.subscriptionId, state.periodEnd, now
+  ])
+  return state
+}
+
+effect function limitsOf(cloud: TestCloud, headers: Readonly<Record<string, string>>) {
+  const answer = try cloud.call("/api/v1/billing/limits", { headers })
+  return { status: answer.status, snapshot: (answer.body as { readonly data: BillingSnapshot }).data, error: (answer.body as { readonly error?: string }).error }
+}
+
+describe("WP4 Subscriptions and entitlements: snapshot and invoices", () => {
+  it.live("Read my billing state in one snapshot as a free, granted and paid account, or a whole 503 (spec/cloud/billing/subscriptions.md, \"Story: Keep my plan as the provider says it is\"; spec/cloud/billing/subscriptions.md, \"Story: Change my plan one command at a time\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const now = try Clock.currentTimeMillis
+    const signed = try signedIn(cloud, "snapshot@example.com")
+    const organizationId = signed.organizationId
+    const headers = { authorization: `Bearer ${signed.accessToken}` }
+    const anonymous = try cloud.call("/api/v1/billing/limits")
+    const free = try limitsOf(cloud, headers)
+
+    provide Store = cloud.store {
+      try addCredits({ organizationId, amount: 2_000_000, requestKey: "snapshot-credits" })
+    }
+    const grantEnds = now + 10 * 60_000
+    try sql(cloud, "INSERT INTO grants (id, organization_id, family, plan_key, effective_from, effective_until, created_at) VALUES ('grant-snapshot', $1, 'pilot', 'plus_monthly', $2, $3, $2)", [organizationId, now - 1000, grantEnds])
+    const granted = try limitsOf(cloud, headers)
+
+    const subscription = try subscribedTo(cloud, organizationId, "cus_snapshot", now)
+    const resetsAt = now + 20 * 60_000
+    try cloud.store.transaction((tx) => stepRow(tx, periodRows, "renewal/staging/in_snapshot", { type: "openRenewal", invoiceId: "in_snapshot", planKey: "PlusMonthly", startsAt: now - 1000, endsAt: resetsAt }, () => ({
+      organization_id: organizationId, status: "open", period_start: now - 1000, period_end: resetsAt, updated_at: now
+    })))
+    const paid = try limitsOf(cloud, headers)
+    try sql(cloud, "UPDATE subscriptions SET state = '{\"status\":\"Gold\"}'::jsonb WHERE key = $1", [organizationId])
+    const unreadable = try limitsOf(cloud, headers)
+
+    const grant = { id: "grant-snapshot", planKey: "plus_monthly", family: "pilot", effectiveFrom: now - 1000, effectiveUntil: grantEnds, revoked: false }
+    try check(() => assert.deepStrictEqual(
+      {
+        anonymous: [anonymous.status, (anonymous.body as { readonly error: string }).error],
+        free: [free.status, free.snapshot.observedAt >= now, { ...free.snapshot, observedAt: 0, balance: { ...free.snapshot.balance, revision: 0 } }, accountUsable(free.snapshot)],
+        granted: [granted.status, granted.snapshot.balance.usdMicros, granted.snapshot.balance.revision > free.snapshot.balance.revision, granted.snapshot.plan, granted.snapshot.grant, granted.snapshot.subscription, granted.snapshot.funding],
+        paid: [paid.status, paid.snapshot.plan, paid.snapshot.subscription, paid.snapshot.grant, paid.snapshot.allowance, paid.snapshot.funding, accountUsable(paid.snapshot)],
+        unreadable: [unreadable.status, unreadable.error]
+      },
+      {
+        anonymous: [401, "authentication_required"],
+        free: [200, true, {
+          schemaVersion: 3, observedAt: 0, account: { status: "active" }, balance: { usdMicros: 0, revision: 0 },
+          plan: { key: "free", source: "free", effectiveUntil: null }, subscription: null, grant: null, allowance: null,
+          funding: { inference: "creditsOnly", speech: "creditsOnly", maps: "creditsOnly" }
+        }, false],
+        granted: [200, 2_000_000, true, { key: "plus_monthly", source: "grant", effectiveUntil: grantEnds }, grant, null, { inference: "allowanceThenCredits", speech: "allowanceThenCredits", maps: "allowanceThenCredits" }],
+        paid: [200, { key: "plus_monthly", source: "subscription", effectiveUntil: subscription.periodEnd }, {
+          id: subscription.subscriptionId, planKey: "plus_monthly", status: "active", periodStart: subscription.periodStart, periodEnd: subscription.periodEnd,
+          cancelAtPeriodEnd: false, pendingPlanKey: null, dunningEndsAt: null, revision: 4,
+          control: { action: "cancel", eligible: true, expectedSubscriptionRevision: 4 }
+        }, grant, {
+          state: "open", granted: 25_000_000, adjustment: 0, available: 25_000_000, reserved: 0, settled: 0, expired: 0, clawedBack: 0, periodStart: now - 1000, resetsAt
+        }, { inference: "allowanceThenCredits", speech: "allowanceThenCredits", maps: "allowanceThenCredits" }, true],
+        unreadable: [503, "service_unavailable"]
+      }
+    ))
+  }))
+
+  it.live("Read only my pinned customer's invoices, a page at a time (spec/cloud/billing/subscriptions.md, \"Story: Read my invoices and open the billing portal\")", () => scoped(effect {
+    const stripe = try sync(() => createStripeInvoicesFake())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/stripe/", stripe.handler) })
+    const now = try Clock.currentTimeMillis
+    const own = try signedIn(cloud, "invoices@example.com")
+    const other = try signedIn(cloud, "other-invoices@example.com")
+    const unpinned = try signedIn(cloud, "unpinned@example.com")
+    try subscribedTo(cloud, own.organizationId, "cus_own", now)
+    try subscribedTo(cloud, other.organizationId, "cus_other", now)
+    const day = 86_400
+    const at = Math.floor(now / 1000) - 60 * day
+    const ids = try sync(() => ({
+      first: stripe.invoice({ customer: "cus_own", amountCents: 3_000, periodStart: at, periodEnd: at + 30 * day, lines: 12 }),
+      second: stripe.invoice({ customer: "cus_own", amountCents: 3_000, status: "open", periodStart: at + 30 * day, periodEnd: at + 60 * day }),
+      draft: stripe.invoice({ customer: "cus_own", amountCents: 3_000, status: "draft", periodStart: at + 60 * day, periodEnd: at + 90 * day }),
+      foreign: stripe.invoice({ customer: "cus_other", amountCents: 10_000, periodStart: at, periodEnd: at + 30 * day })
+    }))
+    const as = (signed: { readonly accessToken: string }) => ({ headers: { authorization: `Bearer ${signed.accessToken}` } })
+    const firstPage = try cloud.call("/api/v1/billing/invoices?limit=2", as(own))
+    const nextPage = try cloud.call(`/api/v1/billing/invoices?limit=2&cursor=${ids.second}`, as(own))
+    const detail = try cloud.call(`/api/v1/billing/invoices/${ids.first}`, as(own))
+    const foreign = try cloud.call(`/api/v1/billing/invoices/${ids.foreign}`, as(own))
+    const draft = try cloud.call(`/api/v1/billing/invoices/${ids.draft}`, as(own))
+    const otherList = try cloud.call("/api/v1/billing/invoices", as(other))
+    const unpinnedList = try cloud.call("/api/v1/billing/invoices", as(unpinned))
+    const unpinnedDetail = try cloud.call(`/api/v1/billing/invoices/${ids.first}`, as(unpinned))
+    const badLimit = try cloud.call("/api/v1/billing/invoices?limit=500", as(own))
+    const anonymous = try cloud.call("/api/v1/billing/invoices")
+    const read = detail.body as InvoiceDetail
+    const errorOf = (answer: { readonly status: number; readonly body: unknown }) => [answer.status, (answer.body as { readonly error: string }).error]
+    try check(() => assert.deepStrictEqual(
+      {
+        firstPage: [firstPage.status, firstPage.body],
+        nextPage: [nextPage.status, (nextPage.body as InvoicePage).invoices.map((invoice) => invoice.id), (nextPage.body as InvoicePage).nextCursor],
+        detail: [detail.status, read.id, read.status, read.lines.length, read.lines.reduce((sum, line) => sum + line.amountCents, 0), read.periodStart, read.periodEnd, read.pdfUrl, read.lines[11]?.periodEnd],
+        foreign: errorOf(foreign),
+        draft: errorOf(draft),
+        otherList: (otherList.body as InvoicePage).invoices.map((invoice) => invoice.id),
+        unpinned: [unpinnedList.status, unpinnedList.body, ...errorOf(unpinnedDetail)],
+        refused: [badLimit.status, anonymous.status]
+      },
+      {
+        firstPage: [200, {
+          invoices: [{ id: ids.second, number: "FAKE-0002", date: (at + 30 * day) * 1000, status: "open", amountDueCents: 3_000, amountPaidCents: 0, currency: "usd", hostedInvoiceUrl: `https://invoice.stripe.com/i/${ids.second}` }],
+          nextCursor: ids.second
+        }],
+        nextPage: [200, [ids.first], null],
+        detail: [200, ids.first, "paid", 12, 3_000, at * 1000, (at + 30 * day) * 1000, `https://pay.stripe.com/invoice/${ids.first}/pdf`, (at + 30 * day) * 1000],
+        foreign: [404, "not_found"],
+        draft: [404, "not_found"],
+        otherList: [ids.foreign],
+        unpinned: [200, { invoices: [], nextCursor: null }, 404, "not_found"],
+        refused: [400, 401]
+      }
+    ))
+  }))
+
+  it.live("Open the billing portal only for my pinned customer with a fresh session (spec/cloud/billing/subscriptions.md, \"Story: Read my invoices and open the billing portal\")", () => scoped(effect {
+    const stripe = try sync(() => createStripeInvoicesFake())
+    const cloud = try testCloud({ mount: (fakes) => fakes.mount("/stripe/", stripe.handler) })
+    const now = try Clock.currentTimeMillis
+    const own = try signedIn(cloud, "portal@example.com")
+    const unpinned = try signedIn(cloud, "portal-unpinned@example.com")
+    try subscribedTo(cloud, own.organizationId, "cus_portal", now)
+    try sync(() => stripe.customer("cus_portal"))
+    const portal = (signed: { readonly accessToken: string }) => cloud.call("/api/v1/subscriptions/portal", { method: "POST", headers: { authorization: `Bearer ${signed.accessToken}` } })
+    const first = try portal(own)
+    const second = try portal(own)
+    const noCustomer = try portal(unpinned)
+    try sql(cloud, "UPDATE sessions SET auth_at = $2 WHERE user_id = $1", [own.user.id, now - 2 * 3_600_000])
+    const stale = try portal(own)
+    const urls = [first.body, second.body].map((body) => (body as { readonly url: string }).url)
+    const configuration = stripe.configurations[0]
+    try check(() => assert.deepStrictEqual(
+      {
+        opened: [first.status, second.status, urls.every((url) => url.startsWith("https://billing.stripe.com/")), new Set(urls).size],
+        sessions: stripe.portalSessions.map((session) => [session.customer, session.configuration]),
+        configuration: [stripe.configurations.length, configuration?.features.subscription_cancel, configuration?.features.subscription_update.enabled, configuration?.features.customer_update.enabled],
+        noCustomer: [noCustomer.status, (noCustomer.body as { readonly error: string }).error],
+        stale: [stale.status, (stale.body as { readonly error: string }).error, stripe.portalSessions.length]
+      },
+      {
+        opened: [200, 200, true, 2],
+        sessions: [["cus_portal", configuration?.id ?? ""], ["cus_portal", configuration?.id ?? ""]],
+        configuration: [1, { enabled: true, mode: "at_period_end", proration_behavior: "none" }, false, false],
+        noCustomer: [409, "billing_state_conflict"],
+        stale: [428, "fresh_session_required", 2]
+      }
+    ))
+  }))
+})
+
+import { addUtcMonths, allowanceView, clawBackInvoice, openRenewal, restoreInvoice, sweepAllowance } from "../src/billing/allowance.vibe"
+import { loadRow as loadPeriodRow } from "../src/store/rows.vibe"
+
+const allowanceMonth = 30 * 24 * 3_600_000
+
+effect function periodStatuses(cloud: TestCloud, organizationId: string) {
+  const rows = try sql(cloud, "SELECT key, status FROM allowance_periods WHERE organization_id = $1 ORDER BY key", [organizationId])
+  return rows.map((row) => [row.key, row.status])
+}
+
+describe("WP4 Subscriptions and entitlements: allowance", () => {
+  it.live("A refunded invoice claws back its allowance, and what its open hold returns, and is never restored (spec/cloud/billing/allowance.md, \"Story: Lose the allowance of a refunded invoice, and get it back if I win the dispute\"; spec/cloud/billing/allowance.md, \"Story: Spend my plan's allowance before my credits, and never carry it over\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const now = try Clock.currentTimeMillis
+    try organization(cloud, "org-refund")
+    try sql(cloud, "INSERT INTO subscriptions (key, state, revision, status, plan_key, period_end, updated_at) VALUES ('org-refund', '{}'::jsonb, 1, 'active', 'pro_monthly', $1, $2)", [now + allowanceMonth, now])
+    const invoice = { invoiceId: "in_refund", planKey: "ProMonthly", startsAt: now - 1000, endsAt: now + allowanceMonth } as const
+    const opened = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(openRenewal(tx, "org-refund", invoice, now))))
+    const again = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(openRenewal(tx, "org-refund", invoice, now))))
+    const ticket = try cloud.inside(reserve({ organizationId: "org-refund", userId: "user-refund" }, { service: "MeteredInference", caller: "user-refund", requestId: "refund-1", part: { tag: "WholeRequest" } }, 1_000_000))
+    const clawed = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(clawBackInvoice(tx, "in_refund", "RefundClawback", now))))
+    try cloud.inside(markDispatched(ticket.key))
+    try cloud.inside(settle(ticket.key, { kind: "known", actual: 400_000 }))
+    const restored = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(restoreInvoice(tx, "in_refund", now))))
+    const view = try cloud.store.transaction((tx) => allowanceView(tx, "org-refund", now))
+    const usage = try sql(cloud, "SELECT from_allowance, from_credits FROM usage_records WHERE hold_key = $1", [ticket.key])
+    try check(() => assert.deepStrictEqual(
+      {
+        opened: [opened.key, opened.moved, opened.period.granted, again.moved],
+        held: ticket.hold.fromAllowance > 0,
+        clawed: [clawed.moved, clawed.period.phase, clawed.period.clawbackCause],
+        restored: restored.moved,
+        view,
+        usage: usage.map((row) => [Number(row.from_allowance), Number(row.from_credits)])
+      },
+      {
+        opened: ["renewal/staging/in_refund", true, 90_000_000, false],
+        held: true,
+        clawed: [true, "PeriodClawedBack", "RefundClawback"],
+        restored: false,
+        view: { state: "clawed_back", granted: 90_000_000, adjustment: 0, available: 0, reserved: 0, settled: 400_000, expired: 0, clawedBack: 89_600_000, periodStart: now - 1000, resetsAt: now + allowanceMonth },
+        usage: [[400_000, 0]]
+      }
+    ))
+  }))
+
+  it.live("A won dispute restores the allowance while the period is open, and leaves an ended one clawed back (spec/cloud/billing/allowance.md, \"Story: Lose the allowance of a refunded invoice, and get it back if I win the dispute\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const now = try Clock.currentTimeMillis
+    try organization(cloud, "org-dispute")
+    const open = effect (invoiceId: string, startsAt: number, endsAt: number) => {
+      return (try cloud.inside(cloud.store.transaction((tx) => cloud.inside(openRenewal(tx, "org-dispute", { invoiceId, planKey: "PlusMonthly", startsAt, endsAt }, now))))).moved
+    }
+    const disputed = effect (invoiceId: string) => {
+      return (try cloud.inside(cloud.store.transaction((tx) => cloud.inside(clawBackInvoice(tx, invoiceId, "DisputeClawback", now))))).moved
+    }
+    const won = effect (invoiceId: string) => {
+      return (try cloud.inside(cloud.store.transaction((tx) => cloud.inside(restoreInvoice(tx, invoiceId, now))))).moved
+    }
+    const opened = [try open("in_won", now - 1000, now + allowanceMonth), try open("in_late", now - allowanceMonth, now - 1000)]
+    const clawed = [try disputed("in_won"), try disputed("in_late")]
+    const during = try cloud.store.transaction((tx) => allowanceView(tx, "org-dispute", now))
+    const restored = [try won("in_won"), try won("in_late")]
+    const after = try cloud.store.transaction((tx) => allowanceView(tx, "org-dispute", now))
+    const refundedLate = (try cloud.inside(cloud.store.transaction((tx) => cloud.inside(clawBackInvoice(tx, "in_late", "RefundClawback", now))))).moved
+    const late = (try cloud.store.transaction((tx) => loadPeriodRow(tx, periodRows, "renewal/staging/in_late", false))).state
+    const statuses = try periodStatuses(cloud, "org-dispute")
+    try check(() => assert.deepStrictEqual(
+      {
+        opened, clawed,
+        during: [during?.state, during?.available, during?.clawedBack],
+        restored,
+        after: [after?.state, after?.available, after?.clawedBack, after?.resetsAt],
+        refundedLate,
+        late: [late.phase, late.clawbackCause, late.clawedBack, late.available],
+        statuses
+      },
+      {
+        opened: [true, true],
+        clawed: [true, true],
+        during: ["clawed_back", 0, 25_000_000],
+        restored: [true, false],
+        after: ["open", 25_000_000, 0, now + allowanceMonth],
+        refundedLate: true,
+        late: ["PeriodClawedBack", "RefundClawback", 25_000_000, 0],
+        statuses: [["renewal/staging/in_late", "clawed_back"], ["renewal/staging/in_won", "open"]]
+      }
+    ))
+  }))
+
+  it.live("A period expires at its end and its unused allowance is forfeited, while the sweep opens the months of a grant in force (spec/cloud/billing/allowance.md, \"Story: Spend my plan's allowance before my credits, and never carry it over\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const now = try Clock.currentTimeMillis
+    try organization(cloud, "org-renewed")
+    try organization(cloud, "org-granted")
+    const ended = try cloud.inside(cloud.store.transaction((tx) => cloud.inside(openRenewal(tx, "org-renewed", { invoiceId: "in_old", planKey: "ProMonthly", startsAt: now - allowanceMonth, endsAt: now - 1000 }, now))))
+    const grantFrom = now - 1000
+    const firstMonthEnds = addUtcMonths(grantFrom, 1)
+    const grantUntil = firstMonthEnds + 10 * 24 * 3_600_000
+    try sql(cloud, "INSERT INTO grants (id, organization_id, family, plan_key, effective_from, effective_until, created_at) VALUES ('grant-pilot', 'org-granted', 'pilot', 'plus_monthly', $1, $2, $1)", [grantFrom, grantUntil])
+    const swept = try cloud.inside(sweepAllowance())
+    const sweptAgain = try cloud.inside(sweepAllowance())
+    const renewed = try cloud.store.transaction((tx) => allowanceView(tx, "org-renewed", now))
+    const granted = try cloud.store.transaction((tx) => allowanceView(tx, "org-granted", now))
+    const partial = (try cloud.store.transaction((tx) => loadPeriodRow(tx, periodRows, "grant/grant-pilot/1", false))).state
+    const statuses = [try periodStatuses(cloud, "org-renewed"), try periodStatuses(cloud, "org-granted")]
+    try check(() => assert.deepStrictEqual(
+      {
+        ended: ended.moved,
+        swept, sweptAgain,
+        renewed,
+        granted: [granted?.state, granted?.granted, granted?.available, granted?.periodStart, granted?.resetsAt],
+        partial: [partial.phase, partial.startsAt, partial.endsAt, partial.granted > 0 && partial.granted < 25_000_000],
+        statuses
+      },
+      {
+        ended: true,
+        swept: { expired: 1, opened: 2 },
+        sweptAgain: { expired: 0, opened: 0 },
+        renewed: { state: "expired", granted: 90_000_000, adjustment: 0, available: 0, reserved: 0, settled: 0, expired: 90_000_000, clawedBack: 0, periodStart: now - allowanceMonth, resetsAt: now - 1000 },
+        granted: ["open", 25_000_000, 25_000_000, grantFrom, firstMonthEnds],
+        partial: ["PeriodOpen", firstMonthEnds, grantUntil, true],
+        statuses: [[["renewal/staging/in_old", "expired"]], [["grant/grant-pilot/0", "open"], ["grant/grant-pilot/1", "open"]]]
       }
     ))
   }))

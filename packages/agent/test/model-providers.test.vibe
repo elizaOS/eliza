@@ -2,7 +2,7 @@
 import { assert, it } from "@effect/vitest"
 import { FetchHttpClient } from "effect/http"
 import { AgentRuntime, ModelType, type GenerateTextParams } from "@elizaos/core"
-import { dropped, echoImages, insufficientCredits, rateLimited, text, unavailable, type CloudFake } from "./support/cloud-fake.ts"
+import { allowanceExhausted, dropped, echoImages, insufficientCredits, rateLimited, text, unavailable, type CloudFake } from "./support/cloud-fake.ts"
 import { parseLaunch } from "../src/host/launch.vibe"
 import { bindModels } from "../src/models/binding.vibe"
 import { registerCloudModels } from "../src/models/cloud-provider.vibe"
@@ -89,11 +89,17 @@ it.effect('A rate limit ends the call, blocks the next one without reaching the 
   assert.strictEqual(denied?.code, "MODEL_FUNDING_AUTHORITY_FAILED")
   assert.strictEqual(completions(cloud), 2)
   assert.strictEqual((try unfunded.binding.read()).accountState, "insufficient_credits")
+  const spent = try cloudAgent(cloud)
+  try Effect.sync(() => cloud.script(allowanceExhausted(Date.now() + 86_400_000)))
+  const exhausted = try refusalOf(spent.runtime, { prompt: "Allowance spent." })
+  assert.strictEqual(exhausted?.code, "MODEL_FUNDING_AUTHORITY_FAILED")
+  assert.strictEqual(completions(cloud), 3)
+  assert.strictEqual((try spent.binding.read()).accountState, "insufficient_credits")
   const replaced = try cloudAgent(cloud)
   try Effect.sync(() => cloud.acceptKey("rotated-device-key"))
   const invalid = try refusalOf(replaced.runtime, { prompt: "Old key." })
   assert.strictEqual(invalid?.status, 401)
-  assert.strictEqual(completions(cloud), 3)
+  assert.strictEqual(completions(cloud), 4)
   assert.strictEqual((try replaced.binding.read()).accountState, "credential_invalid")
 })
 

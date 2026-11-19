@@ -61,7 +61,7 @@ public final class CloudRequests {
     CloudRequestPolicy.Origin origin = CloudRequestPolicy.originOf(apiOrigin);
     Planned planned = policy.plan(new Holding(version, false, false), origin, method, target, headers, body);
     String session = null;
-    if (CloudRequestPolicy.sessionOnly(planned.route().auth()) && planned.plan() instanceof Refuse) {
+    if (planned.plan() instanceof Refuse refuse && refuse.why() == Refusal.REAUTH_REQUIRED) {
       session = custody.session().accessToken();
       planned = policy.plan(new Holding(version, session != null, session != null), origin, method, target, headers, body);
     }

@@ -1,4 +1,4 @@
-// spec/cloud/identity/federatedSignIn.md, "Story: Sign in with Google in the browser"; spec/cloud/identity/federatedSignIn.md, "Story: Sign in with the device's Google account"; spec/cloud/identity/federatedSignIn.md, "Story: Tell the app exactly why Google sign-in was refused"
+// spec/cloud/identity/federatedSignIn.md, "Story: Sign in with Google in the browser"; spec/cloud/identity/federatedSignIn.md, "Story: Sign in with the device's Google account"; spec/cloud/identity/federatedSignIn.md, "A callback returns a one-minute code only after Google's verified identity and the code are stored, and otherwise one error of the closed list"
 import { assert, describe, it } from "@effect/vitest"
 import { decodeRegistration, registerClient } from "../../src/native-clients/registry.vibe"
 import type { Tx } from "../../src/store/connection.vibe"
@@ -52,7 +52,7 @@ effect function exchange(cloud: TestCloud, code: string, fields: Readonly<Record
 }
 
 describe("WP1 Identity: Google sign-in", () => {
-  it.live("Sign in with Google in the browser: the code comes back in the fragment, a wrong binding keeps it, the right one signs in once (spec/cloud/identity/federatedSignIn.md, \"Story: Sign in with Google in the browser\"; spec/cloud/identity/federatedSignIn.md, \"Story: Tell the app exactly why Google sign-in was refused\")", () => scoped(effect {
+  it.live("Sign in with Google in the browser: the code comes back in the fragment, a wrong binding keeps it, the right one signs in once (spec/cloud/identity/federatedSignIn.md, \"Story: Sign in with Google in the browser\"; spec/cloud/identity/federatedSignIn.md, \"A code is redeemed once, while live, only with its own return and verifier, and starts a session or a second-factor challenge, never both\")", () => scoped(effect {
     const { cloud, google } = try googleCloud()
     const plain = try tryPromise(() => visit(`${cloud.url}${authorizePath({ code_challenge_method: "plain" })}`))
     const foreignReturn = try tryPromise(() => visit(`${cloud.url}${authorizePath({ redirect_uri: `${web}/apps/other/sign-in` })}`))
@@ -92,7 +92,7 @@ describe("WP1 Identity: Google sign-in", () => {
     ))
   }))
 
-  it.live("A replayed callback state answers oauth_state_consumed, and a refusal by the person answers access_denied (spec/cloud/identity/federatedSignIn.md, \"A callback returns a one-minute code only after Google's verified identity is stored, and otherwise one error of the closed list\")", () => scoped(effect {
+  it.live("A replayed callback state answers oauth_state_consumed, and a refusal by the person answers access_denied (spec/cloud/identity/federatedSignIn.md, \"A callback returns a one-minute code only after Google's verified identity and the code are stored, and otherwise one error of the closed list\")", () => scoped(effect {
     const { cloud, google } = try googleCloud()
     const { callbackPath } = try throughGoogle(cloud)
     const first = try tryPromise(() => visit(`${cloud.url}${callbackPath}`))

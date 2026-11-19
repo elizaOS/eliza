@@ -17,13 +17,19 @@ module capacitor {
 import { tabHostPlugin } from capacitor
 export { tabHostPlugin }
 
-export error TabRefused { reason: "browser-closed" | "invalid-tab" | "tab-limit" }
+export type TabRefusal = "browser-closed" | "invalid-tab" | "tab-limit" | "invalid-session" | "invalid-tab-limit"
 
-export type BrowserTabSessionOpening =
-  | { readonly kind: "opened"; readonly tabs: BrowserTabSession }
-  | { readonly kind: "refused"; readonly reason: "invalid-session" | "invalid-tab-limit" }
+export error TabRefused { reason: TabRefusal; message: string }
 
 export const DEFAULT_MAX_TABS = 8
+
+const REFUSAL_TEXT: Readonly<Record<TabRefusal, string>> = {
+  "browser-closed": "Browser closed",
+  "invalid-tab": "Invalid tab",
+  "tab-limit": "Close a tab before opening another.",
+  "invalid-session": "Invalid browser session",
+  "invalid-tab-limit": "Invalid browser tab limit",
+}
 
 const BOUND = 1
 const FOREIGN = 2
@@ -82,12 +88,8 @@ function decoded<A>(shape: Schema.Codec<A>, raw: unknown): A | undefined {
   return Option.getOrUndefined(Schema.decodeUnknownOption(shape)(raw))
 }
 
-export function openBrowserTabSession(options: BrowserTabSessionOptions = {}): BrowserTabSessionOpening {
-  const session = options.session ?? globalThis.crypto.randomUUID()
-  const maxTabs = options.maxTabs ?? DEFAULT_MAX_TABS
-  if (session === "" || session.length > 100) return { kind: "refused", reason: "invalid-session" }
-  if (!Number.isInteger(maxTabs) || maxTabs < 1) return { kind: "refused", reason: "invalid-tab-limit" }
-  return { kind: "opened", tabs: new BrowserTabSession(session, maxTabs) }
+function refused(reason: TabRefusal): Promise<never> {
+  return Promise.reject(new TabRefused({ reason, message: REFUSAL_TEXT[reason] }))
 }
 
 export class BrowserTabSession {
@@ -97,8 +99,15 @@ export class BrowserTabSession {
   private readonly creations = new Map<string, Promise<unknown>>()
   private issued = 0
   private disposed = false
+  readonly session: string
+  readonly maxTabs: number
+  private readonly invalid: TabRefusal | undefined
 
-  constructor(readonly session: string, readonly maxTabs: number) {}
+  constructor(options: BrowserTabSessionOptions = {}) {
+    this.session = options.session ?? globalThis.crypto.randomUUID()
+    this.maxTabs = options.maxTabs ?? DEFAULT_MAX_TABS
+    this.invalid = this.session === "" || this.session.length > 100 ? "invalid-session" : !Number.isInteger(this.maxTabs) || this.maxTabs < 1 ? "invalid-tab-limit" : undefined
+  }
 
   get closed(): boolean {
     return this.disposed
@@ -109,13 +118,13 @@ export class BrowserTabSession {
   }
 
   ensure(id: string, privateTab: boolean, create: () => Promise<unknown>): Promise<unknown> {
-    if (this.disposed) return Promise.reject(new TabRefused({ reason: "browser-closed" }))
-    if (!validBrowserTabId(id)) return Promise.reject(new TabRefused({ reason: "invalid-tab" }))
+    if (this.invalid !== undefined) return refused(this.invalid)
+    if (this.disposed) return refused("browser-closed")
+    if (!validBrowserTabId(id)) return refused("invalid-tab")
     const existing = this.creations.get(id)
     if (existing !== undefined) return existing
-    if (this.creations.size >= this.maxTabs) return Promise.reject(new TabRefused({ reason: "tab-limit" }))
-    if (this.claim(id, { type: "ensureTab", session: BOUND, tabId: this.issued + 1, privacy: privateTab ? "PrivateTab" : "NormalTab" }) === undefined)
-      return Promise.reject(new TabRefused({ reason: "invalid-tab" }))
+    if (this.creations.size >= this.maxTabs) return refused("tab-limit")
+    if (this.claim(id, { type: "ensureTab", session: BOUND, tabId: this.issued + 1, privacy: privateTab ? "PrivateTab" : "NormalTab" }) === undefined) return refused("invalid-tab")
     const creation: Promise<unknown> = create().then(
       (created) => {
         if (this.creations.get(id) === creation) this.advance(id, { type: "finishCreation", success: true })

@@ -4,13 +4,13 @@ import {
   type NotAState, Rejected, type Event, type FactorMethod, type FactorStep, type SecondFactor
 } from "../../gen/cloud__identity__secondFactor.effect.vibe"
 import { decodeState as decodeFamily, elapse, initial as noFamily, signIn, type Family } from "../../gen/cloud__identity__sessions.effect.vibe"
-import { sendLimits, verifyPerDestination, verifyPerIp } from "../../gen/cloud__identity__codeChallenges.effect.vibe"
+import { sendLimits, sendPerDestination, smsBudgetRefusal, smsSendBudget, verifyPerDestination, verifyPerIp } from "../../gen/cloud__identity__codeChallenges.effect.vibe"
 import { refused, Refused, type Refusal } from "../http/refusal.vibe"
 import { authenticate, type Caller } from "../http/request-auth.vibe"
 import { json, jsonBody, type Route, type RouteContext } from "../http/routes.vibe"
 import { Deployment } from "../profile/profile.vibe"
 import { deliverSms } from "../providers/sms.vibe"
-import { admitAll } from "../shared/rate-limit.vibe"
+import { admitAll, admitCheck, perWindow } from "../shared/rate-limit.vibe"
 import { keyedDigest, newId, sameText, seal, unseal } from "../shared/sealing.vibe"
 import { loadRow, outputRows, stepRow, type Columns, type MachineRows } from "../store/rows.vibe"
 import { Store, toInt, toText, type Tx } from "../store/store.vibe"
@@ -221,12 +221,13 @@ effect function sendSms(to: string, code: string) {
 }
 
 effect function sendLimited(context: RouteContext, phone: string) {
-  const [perIp, perDestination, budget] = sendLimits("PhoneSignIn")
-  try admitAll([
-    { subject: clientAddress(context), rule: perIp },
-    { subject: try keyedDigest(phone), rule: perDestination },
-    { subject: "deployment", rule: budget }
-  ])
+  const deployment = try Deployment
+  const digest = try keyedDigest(phone)
+  try admitAll(sendLimits("PhoneSignIn").map((rule) => ({ subject: rule.name === sendPerDestination.name ? digest : clientAddress(context), rule })))
+  admitCheck({ subject: "deployment", rule: perWindow(smsSendBudget.name, deployment.settings.signIn.smsHourlyBudget, smsSendBudget.windowMs) }) catch effect (failure) => {
+    const wait = failure.refusal.wait
+    throw failure.refusal.code === "RateLimited" && wait.tag === "RetryAt" ? new Refused({ refusal: smsBudgetRefusal(wait.retryAtMs) }) : failure
+  }
 }
 
 effect function verifyLimited(context: RouteContext, userId: string | undefined) {

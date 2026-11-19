@@ -1,8 +1,13 @@
-// spec/cloud/services/google/connection.md, "Story: Connect my Google account with the access I chose"; spec/cloud/services/google/connection.md, "Story: See my Google connection as the cloud holds it"
-import { millisPerMinute, millisPerSecond } from "../../../gen/cloud__shared__types.effect.vibe"
-import { refused, type Refused } from "../../http/refusal.vibe"
+// spec/cloud/services/google/connection.md, "Each capability asks for its scopes from one table, and a grant's capabilities come from its granted scopes alone"; spec/cloud/services/google/connection.md, "Access is refreshed within five minutes of expiry, one refresh at a time, and Google's invalid_grant expires the connection"; spec/cloud/services/google/connection.md, "A request names a grant or uses the only active connection, never another organization's, and only the owner side"; spec/cloud/services/google/connection.md, "Use needs an active connection whose access is live and which holds the capability"
+import {
+  accessOf, allScopes, apply, canBeginRefresh, decodeState, elapse, grantsCapability, initial, scopesFor,
+  selectGrant as choose, selectionRefusal, useAllowed, useRefusal,
+  type Connection, type Event, type GoogleCapability as CapabilityKind, type GoogleScope, type NotAState, type Rejected as ConnectionRejected, type RefreshOutcome, type Side
+} from "../../../gen/cloud__services__google__connection.effect.vibe"
+import { millisPerSecond } from "../../../gen/cloud__shared__types.effect.vibe"
+import { refused, Refused } from "../../http/refusal.vibe"
 import { Deployment } from "../../profile/profile.vibe"
-import { openTokens, refreshAccess, type GoogleFailure } from "../../providers/google.vibe"
+import { openTokens, refreshAccess, sealTokens, type GoogleFailure, type GoogleTokens } from "../../providers/google.vibe"
 import { Store, toText, type Tx } from "../../store/connection.vibe"
 import { loadRow, machineRows, stepRow, type Columns } from "../../store/rows.vibe"
 
@@ -15,28 +20,6 @@ export type GoogleCapability =
   | "google.gmail.mailbox"
   | "google.calendar.read"
   | "google.calendar.write"
-
-export type ConnectionStatus = "Pending" | "Active" | "Expired" | "Revoked" | "Errored"
-
-export interface Connection {
-  readonly status: ConnectionStatus
-  readonly scopes: ReadonlyArray<string>
-  readonly tokens: string
-  readonly expiresAt: number
-  readonly refreshingUntil: number
-}
-
-export type ConnectionEvent =
-  | { readonly type: "link"; readonly scopes: ReadonlyArray<string>; readonly tokens: string; readonly expiresAt: number }
-  | { readonly type: "startRefresh"; readonly until: number }
-  | { readonly type: "refreshed"; readonly scopes: ReadonlyArray<string>; readonly tokens: string; readonly expiresAt: number }
-  | { readonly type: "refreshFailed" }
-  | { readonly type: "grantInvalid" }
-  | { readonly type: "fail" }
-  | { readonly type: "revoke" }
-
-export error ConnectionRejected { event: ConnectionEvent["type"]; status: ConnectionStatus }
-export error ConnectionCorrupt { input: unknown }
 
 export interface Owner {
   readonly organizationId: string
@@ -51,120 +34,150 @@ export interface GoogleGrant {
   readonly scopes: ReadonlyArray<string>
 }
 
-export const refreshMargin = 5 * millisPerMinute
+export interface Timed {
+  readonly at: number
+  readonly event: Event
+}
+
+export interface GrantLanding {
+  readonly connectionId: string
+  readonly owner: Owner
+  readonly subject: string
+  readonly email: string
+  readonly grantedScopes: ReadonlyArray<string>
+  readonly tokens: GoogleTokens
+  readonly now: number
+}
+
 export const refreshLease = 15 * millisPerSecond
 const refreshPoll = 100
+const statuses: ReadonlyArray<Connection["status"]> = ["Pending", "Active", "Expired", "Revoked", "Errored"]
+
+const kindOf: Readonly<Record<GoogleCapability, CapabilityKind>> = {
+  "google.basic_identity": "BasicIdentity",
+  "google.gmail.triage": "GmailTriage",
+  "google.gmail.send": "GmailSend",
+  "google.gmail.manage": "GmailManage",
+  "google.gmail.drafts": "GmailDrafts",
+  "google.gmail.mailbox": "GmailMailbox",
+  "google.calendar.read": "CalendarRead",
+  "google.calendar.write": "CalendarWrite"
+}
 
 const auth = "https://www.googleapis.com/auth/"
-const fullMail = "https://mail.google.com/"
-
-const scopeTable: Readonly<Record<GoogleCapability, { readonly requested: ReadonlyArray<string>; readonly heldBy: ReadonlyArray<string> }>> = {
-  "google.basic_identity": { requested: ["openid", "email"], heldBy: ["openid", "email", `${auth}userinfo.email`] },
-  "google.gmail.triage": { requested: [`${auth}gmail.readonly`], heldBy: [`${auth}gmail.readonly`, `${auth}gmail.modify`, fullMail] },
-  "google.gmail.send": { requested: [`${auth}gmail.send`], heldBy: [`${auth}gmail.send`, fullMail] },
-  "google.gmail.manage": { requested: [`${auth}gmail.modify`], heldBy: [`${auth}gmail.modify`, fullMail] },
-  "google.gmail.drafts": { requested: [`${auth}gmail.compose`], heldBy: [`${auth}gmail.compose`, `${auth}gmail.modify`, fullMail] },
-  "google.gmail.mailbox": { requested: [`${auth}gmail.modify`], heldBy: [`${auth}gmail.modify`, fullMail] },
-  "google.calendar.read": { requested: [`${auth}calendar.events`], heldBy: [`${auth}calendar.events`, `${auth}calendar`] },
-  "google.calendar.write": { requested: [`${auth}calendar.events`], heldBy: [`${auth}calendar.events`, `${auth}calendar`] }
+const scopeNames: Readonly<Record<GoogleScope, string>> = {
+  ScopeOpenId: "openid",
+  ScopeUserinfoEmail: `${auth}userinfo.email`,
+  ScopeUserinfoProfile: `${auth}userinfo.profile`,
+  ScopeCalendarReadonly: `${auth}calendar.readonly`,
+  ScopeCalendarEvents: `${auth}calendar.events`,
+  ScopeCalendar: `${auth}calendar`,
+  ScopeGmailMetadata: `${auth}gmail.metadata`,
+  ScopeGmailReadonly: `${auth}gmail.readonly`,
+  ScopeGmailCompose: `${auth}gmail.compose`,
+  ScopeGmailModify: `${auth}gmail.modify`,
+  ScopeGmailSend: `${auth}gmail.send`
 }
 
-export const googleCapabilities = Object.keys(scopeTable) as ReadonlyArray<GoogleCapability>
+export const googleCapabilities = Object.keys(kindOf) as ReadonlyArray<GoogleCapability>
+
+export function scopeName(scope: GoogleScope): string {
+  return scopeNames[scope]
+}
 
 export function scopeFor(capability: GoogleCapability): ReadonlyArray<string> {
-  return scopeTable[capability].requested
+  return scopesFor(kindOf[capability]).map(scopeName)
 }
 
-export function holds(scopes: ReadonlyArray<string>, capability: GoogleCapability): boolean {
-  return scopeTable[capability].heldBy.some((scope) => scopes.includes(scope))
+export function knownScopes(granted: ReadonlyArray<string>): Array<GoogleScope> {
+  return allScopes.filter((scope) => granted.includes(scopeName(scope)))
 }
 
-export function capabilitiesOf(scopes: ReadonlyArray<string>): ReadonlyArray<GoogleCapability> {
-  return googleCapabilities.filter((capability) => holds(scopes, capability))
+export function holds(granted: ReadonlyArray<string>, capability: GoogleCapability): boolean {
+  return grantsCapability(knownScopes(granted), kindOf[capability])
 }
 
-export const initialConnection: Connection = { status: "Pending", scopes: [], tokens: "", expiresAt: 0, refreshingUntil: 0 }
-
-schema ConnectionState { status: "Pending" | "Active" | "Expired" | "Revoked" | "Errored";scopes: ReadonlyArray<string>; tokens: string; expiresAt: number; refreshingUntil: number }
-
-export effect function decodeConnection(input: unknown): Connection!ConnectionCorrupt {
-  return Schema.decodeUnknownEffect(ConnectionState)(input) catch effect () => { throw new ConnectionCorrupt({ input }) }
+export function capabilitiesOf(granted: ReadonlyArray<string>): ReadonlyArray<GoogleCapability> {
+  return googleCapabilities.filter((capability) => holds(granted, capability))
 }
 
-export effect function applyConnection(state: Connection, event: ConnectionEvent): Connection!ConnectionRejected {
-  const rejected = new ConnectionRejected({ event: event.type, status: state.status })
-  switch (event.type) {
-    case "link": return { status: "Active", scopes: [...event.scopes], tokens: event.tokens, expiresAt: event.expiresAt, refreshingUntil: 0 }
-    case "startRefresh": {
-      if (state.status !== "Active") throw rejected
-      return { ...state, refreshingUntil: event.until }
-    }
-    case "refreshed": {
-      if (state.status !== "Active") throw rejected
-      return { ...state, scopes: [...event.scopes], tokens: event.tokens, expiresAt: event.expiresAt, refreshingUntil: 0 }
-    }
-    case "refreshFailed": {
-      if (state.status !== "Active") throw rejected
-      return { ...state, refreshingUntil: 0 }
-    }
-    case "grantInvalid": {
-      if (state.status !== "Active") throw rejected
-      return { ...state, status: "Expired", refreshingUntil: 0 }
-    }
-    case "fail": {
-      if (state.status !== "Active") throw rejected
-      return { ...state, status: "Errored", refreshingUntil: 0 }
-    }
-    case "revoke": return { ...state, status: "Revoked", tokens: "", expiresAt: 0, refreshingUntil: 0 }
-    default: {
-      const _exhaustive: never = event
-      return _exhaustive
-    }
-  }
+export function sideOf(side: string | null | undefined): Side {
+  return side === null || side === undefined || side === "owner" ? "OwnerSide" : "OtherSide"
 }
 
-export const connectionRows = machineRows<Connection, ConnectionEvent, ConnectionRejected, ConnectionCorrupt>("google_connections", {
-  initial: initialConnection,
-  decodeState: decodeConnection,
-  apply: applyConnection
+export function atTime(state: Connection, time: number): Connection {
+  return time > state.now ? elapse(state, time - state.now) : state
+}
+
+export effect function applyTimed(state: Connection, timed: Timed): Connection!ConnectionRejected {
+  return try apply(atTime(state, timed.at), timed.event)
+}
+
+export const connectionRows = machineRows<Connection, Timed, ConnectionRejected, NotAState>("google_connections", {
+  initial,
+  decodeState,
+  apply: applyTimed
 })
 
 export function connectionColumns(extra: Columns = {}) {
   return (state: Connection): Columns => ({
     ...extra,
     status: state.status,
-    tokens: state.tokens === "" ? null : state.tokens,
-    expires_at: state.expiresAt,
-    refreshing_until: state.refreshingUntil
+    expires_at: state.tokens.tag === "SealedTokens" ? state.tokens.expiresAt : 0,
+    ...(state.tokens.tag === "NoTokens" ? { tokens: null } : {}),
+    ...(state.refreshing ? {} : { refreshing_until: 0 })
   })
+}
+
+export effect function storeGrant(tx: Tx, landing: GrantLanding) {
+  const sealed = try sealTokens(landing.tokens)
+  const event: Event = {
+    type: "receiveGrant",
+    subject: landing.subject,
+    granted: knownScopes(landing.grantedScopes),
+    lifetime: landing.tokens.expiresAt - landing.now,
+    refreshable: landing.tokens.refreshToken !== ""
+  }
+  return try stepRow(tx, connectionRows, landing.connectionId, { at: landing.now, event }, connectionColumns({
+    organization_id: landing.owner.organizationId,
+    user_id: landing.owner.userId,
+    subject: landing.subject,
+    email: landing.email,
+    granted_scopes: JSON.stringify([...new Set(landing.grantedScopes)]),
+    tokens: sealed,
+    linked_at: landing.now
+  }))
 }
 
 effect function profileGoogle(): void!Refused!Deployment {
   if ((try Deployment).settings.google === undefined) throw refused("ProviderUnavailable", "GoogleNotConfigured")
 }
 
-export effect function ownerSide(query: URLSearchParams): void!Refused {
-  const side = query.get("side")
-  if (side !== null && side !== "owner") throw refused("InvalidRequest")
-}
-
-export effect function pickGrant(tx: Tx, owner: Owner, grantId?: string) {
-  const held = try tx.query("SELECT key, status FROM google_connections WHERE organization_id = $1 AND status <> 'Pending' ORDER BY linked_at DESC, key", [owner.organizationId])
-  if (grantId !== undefined) {
-    if (!held.some((row) => row.key === grantId)) throw refused("NotFound")
-    return grantId
+export effect function pickGrant(tx: Tx, owner: Owner, grantId?: string, side?: string | null) {
+  const rows = try tx.query(
+    "SELECT key, organization_id, status FROM google_connections WHERE organization_id = $1 OR key = $2 ORDER BY linked_at DESC NULLS LAST, key",
+    [owner.organizationId, grantId ?? null]
+  )
+  const views = rows.flatMap((row) => {
+    const status = statuses.find((known) => known === row.status)
+    return status === undefined ? [] : [{ grantId: toText(row.key) ?? "", organization: toText(row.organization_id) ?? "", status }]
+  })
+  const chosen = choose(views, owner.organizationId, sideOf(side), grantId === undefined ? { tag: "AnyGrant" } : { tag: "NamedGrant", grantId })
+  switch (chosen.tag) {
+    case "SelectedGrant": return chosen.grantId
+    case "NoGrantHeld": return undefined
+    case "SelectionRefused": throw new Refused({ refusal: selectionRefusal(chosen.fault) })
+    default: {
+      const _exhaustive: never = chosen
+      return _exhaustive
+    }
   }
-  const active = held.filter((row) => row.status === "Active")
-  if (active.length > 1) throw refused("InvalidRequest", "GrantRequired")
-  const chosen = toText((active[0] ?? held[0])?.key)
-  if (chosen === undefined) throw refused("GoogleReauthRequired")
-  return chosen
 }
 
-export effect function selectGrant(owner: Owner, grantId?: string) {
+export effect function selectGrant(owner: Owner, grantId?: string, side?: string | null) {
   try profileGoogle()
   const store = try Store
-  return try store.transaction((tx) => pickGrant(tx, owner, grantId))
+  return try store.transaction((tx) => pickGrant(tx, owner, grantId, side))
 }
 
 type Claimed =
@@ -172,92 +185,86 @@ type Claimed =
   | { readonly kind: "refresh"; readonly grant: Omit<GoogleGrant, "accessToken">; readonly tokens: string }
   | { readonly kind: "wait" }
 
-function admitted(connection: Connection, capability: GoogleCapability, subject: string, expectedAccountId: string | undefined): Refused | undefined {
-  if (connection.status !== "Active" || connection.tokens === "") return refused("GoogleReauthRequired")
-  if (!holds(connection.scopes, capability)) return refused("AccessDenied", "CapabilityMissing")
-  if (expectedAccountId !== undefined && expectedAccountId !== subject) return refused("AccessDenied", "GoogleAccountChanged")
-  return undefined
+function admission(state: Connection, capability: GoogleCapability): Refused | undefined {
+  const holdsIt = grantsCapability(state.scopes, kindOf[capability])
+  const access = accessOf(state)
+  return useAllowed(state.status, access, holdsIt) ? undefined : new Refused({ refusal: useRefusal(state.status, access, holdsIt) })
 }
 
-effect function claim(tx: Tx, owner: Owner, grantId: string | undefined, capability: GoogleCapability, expectedAccountId: string | undefined, now: number) {
+effect function claim(tx: Tx, owner: Owner, grantId: string | undefined, capability: GoogleCapability, expectedAccountId: string | undefined, time: number) {
   const connectionId = try pickGrant(tx, owner, grantId)
+  if (connectionId === undefined) throw refused("GoogleReauthRequired")
   const loaded = try loadRow(tx, connectionRows, connectionId)
-  const identity = (try tx.query("SELECT subject, email FROM google_connections WHERE key = $1", [connectionId]))[0]
-  const subject = toText(identity?.subject) ?? ""
-  const refusal = admitted(loaded.state, capability, subject, expectedAccountId)
-  if (refusal !== undefined) throw refusal
-  const grant = { connectionId, subject, email: toText(identity?.email) ?? "", scopes: loaded.state.scopes }
-  if (loaded.state.expiresAt - now > refreshMargin) {
-    try tx.query("UPDATE google_connections SET last_used_at = $2 WHERE key = $1", [connectionId, now])
-    return { kind: "ready", grant, tokens: loaded.state.tokens } satisfies Claimed
+  const row = (try tx.query("SELECT email, tokens, refreshing_until FROM google_connections WHERE key = $1", [connectionId]))[0]
+  let state = atTime(loaded.state, time)
+  if (expectedAccountId !== undefined && state.status === "Active" && state.subject !== expectedAccountId) throw refused("AccessDenied", "GoogleAccountChanged")
+  const grant = { connectionId, subject: state.subject, email: toText(row?.email) ?? "", scopes: state.scopes.map(scopeName) }
+  const tokens = toText(row?.tokens) ?? ""
+  if (state.refreshing) {
+    if (Number(row?.refreshing_until ?? 0) > time) return { kind: "wait" } satisfies Claimed
+    state = (try stepRow(tx, connectionRows, connectionId, { at: time, event: { type: "finishRefresh", answer: "RefreshUnavailable", lifetime: 1 } }, connectionColumns())).state
   }
-  if (loaded.state.refreshingUntil > now) return { kind: "wait" } satisfies Claimed
-  try stepRow(tx, connectionRows, connectionId, { type: "startRefresh", until: now + refreshLease }, connectionColumns())
-  return { kind: "refresh", grant, tokens: loaded.state.tokens } satisfies Claimed
+  if (canBeginRefresh(state)) {
+    try stepRow(tx, connectionRows, connectionId, { at: time, event: { type: "beginRefresh" } }, connectionColumns({ refreshing_until: time + refreshLease }))
+    return { kind: "refresh", grant, tokens } satisfies Claimed
+  }
+  const refusal = admission(state, capability)
+  if (refusal !== undefined) throw refusal
+  try tx.query("UPDATE google_connections SET last_used_at = $2 WHERE key = $1", [connectionId, time])
+  return { kind: "ready", grant, tokens } satisfies Claimed
 }
 
 function refusalOf(failure: GoogleFailure): Refused {
-  switch (failure._tag) {
-    case "InvalidGrant": return refused("GoogleReauthRequired")
-    case "InvalidResponse": return refused("ProviderInvalidResponse")
-    default: return refused("ProviderUnavailable")
-  }
+  return failure._tag === "InvalidResponse" ? refused("ProviderInvalidResponse") : refused("ProviderUnavailable")
 }
-
-error RefreshDropped
 
 type Settled = { readonly kind: "kept"; readonly connection: Connection } | { readonly kind: "dropped" }
 
-effect function settleRefresh(connectionId: string, from: string, event: ConnectionEvent, now: number) {
+effect function settleRefresh(connectionId: string, from: string, answer: RefreshOutcome, expiresAt: number, columns: Columns) {
   const store = try Store
+  const time = try Clock.currentTimeMillis
   return try store.transaction(effect (tx: Tx) => {
-    const loaded = try loadRow(tx, connectionRows, connectionId)
-    if (loaded.state.status !== "Active" || loaded.state.tokens !== from) return { kind: "dropped" } satisfies Settled
-    const stepped = stepRow(tx, connectionRows, connectionId, event, connectionColumns(event.type === "refreshed" ? { last_used_at: now } : {})) catch effect (failure) => {
-      if (failure._tag === "ConnectionRejected") throw refused("GoogleReauthRequired")
+    const held = (try tx.query("SELECT tokens FROM google_connections WHERE key = $1 FOR UPDATE", [connectionId]))[0]
+    if (toText(held?.tokens) !== from) return { kind: "dropped" } satisfies Settled
+    const event: Event = { type: "finishRefresh", answer, lifetime: Math.max(1, expiresAt - time) }
+    const stepped = stepRow(tx, connectionRows, connectionId, { at: time, event }, connectionColumns(answer === "Refreshed" ? { ...columns, last_used_at: time } : columns)) catch effect (failure) => {
+      if (failure._tag === "Rejected") return undefined
       throw failure
     }
-    return { kind: "kept", connection: stepped.state } satisfies Settled
+    return stepped === undefined ? { kind: "dropped" } satisfies Settled : { kind: "kept", connection: stepped.state } satisfies Settled
   })
 }
 
-type ClaimedRefresh = { readonly grant: Omit<GoogleGrant, "accessToken">; readonly tokens: string }
-
-effect function closeRefresh(claimed: ClaimedRefresh, event: ConnectionEvent, refusal: Refused) {
-  const now = try Clock.currentTimeMillis
-  const settled = try settleRefresh(claimed.grant.connectionId, claimed.tokens, event, now)
-  if (settled.kind === "dropped") throw new RefreshDropped()
+effect function closeRefresh(claimed: { readonly grant: Omit<GoogleGrant, "accessToken">; readonly tokens: string }, answer: RefreshOutcome, refusal: Refused) {
+  const settled = try settleRefresh(claimed.grant.connectionId, claimed.tokens, answer, 0, {})
+  if (settled.kind === "dropped") return undefined
   throw refusal
 }
 
-effect function refreshed(claimed: ClaimedRefresh, capability: GoogleCapability) {
-  const held = openTokens(claimed.tokens) catch effect () => { return try closeRefresh(claimed, { type: "grantInvalid" }, refused("GoogleReauthRequired")) }
-  if (held.refreshToken === "") {
-    const now = try Clock.currentTimeMillis
-    if (held.expiresAt <= now) return try closeRefresh(claimed, { type: "refreshFailed" }, refused("GoogleReauthRequired"))
-    try settleRefresh(claimed.grant.connectionId, claimed.tokens, { type: "refreshFailed" }, now)
-    return { ...claimed.grant, accessToken: held.accessToken } satisfies GoogleGrant
-  }
+effect function refreshed(claimed: { readonly grant: Omit<GoogleGrant, "accessToken">; readonly tokens: string }, capability: GoogleCapability) {
+  const opened = openTokens(claimed.tokens) catch effect () => { return undefined }
+  if (opened === undefined) return try closeRefresh(claimed, "GrantRefused", refused("GoogleReauthRequired"))
   const answer = refreshAccess(claimed.tokens) catch effect (failure) => {
     switch (failure._tag) {
-      case "SealingFailed": return try closeRefresh(claimed, { type: "fail" }, refused("GoogleReauthRequired"))
-      case "InvalidGrant": return try closeRefresh(claimed, { type: "grantInvalid" }, refused("GoogleReauthRequired"))
-      default: return try closeRefresh(claimed, { type: "refreshFailed" }, refusalOf(failure))
+      case "SealingFailed": return try closeRefresh(claimed, "RotationNotStored", refused("GoogleReauthRequired"))
+      case "InvalidGrant": return try closeRefresh(claimed, "GrantRefused", refused("GoogleReauthRequired"))
+      default: return try closeRefresh(claimed, "RefreshUnavailable", refusalOf(failure))
     }
   }
-  const now = try Clock.currentTimeMillis
-  const settled = try settleRefresh(claimed.grant.connectionId, claimed.tokens, { type: "refreshed", scopes: answer.scopes ?? claimed.grant.scopes, tokens: answer.sealed, expiresAt: answer.tokens.expiresAt }, now)
-  if (settled.kind === "dropped") throw new RefreshDropped()
-  if (!holds(settled.connection.scopes, capability)) throw refused("AccessDenied", "CapabilityMissing")
-  return { ...claimed.grant, scopes: settled.connection.scopes, accessToken: answer.tokens.accessToken } satisfies GoogleGrant
+  if (answer === undefined) return undefined
+  const settled = try settleRefresh(claimed.grant.connectionId, claimed.tokens, "Refreshed", answer.tokens.expiresAt, { tokens: answer.sealed })
+  if (settled.kind === "dropped") return undefined
+  const refusal = admission(settled.connection, capability)
+  if (refusal !== undefined) throw refusal
+  return { ...claimed.grant, accessToken: answer.tokens.accessToken } satisfies GoogleGrant
 }
 
 export effect function useGrant(owner: Owner, grantId: string | undefined, capability: GoogleCapability, expectedAccountId?: string) {
   try profileGoogle()
   const store = try Store
   const attempt = effect {
-    const now = try Clock.currentTimeMillis
-    return try store.transaction((tx) => claim(tx, owner, grantId, capability, expectedAccountId, now))
+    const time = try Clock.currentTimeMillis
+    return try store.transaction((tx) => claim(tx, owner, grantId, capability, expectedAccountId, time))
   }
   while (true) {
     const claimed: Claimed = try attempt
@@ -271,10 +278,7 @@ export effect function useGrant(owner: Owner, grantId: string | undefined, capab
         return { ...claimed.grant, accessToken: tokens.accessToken } satisfies GoogleGrant
       }
       case "refresh": {
-        const grant = refreshed(claimed, capability) catch effect (failure) => {
-          if (failure._tag === "RefreshDropped") return undefined
-          throw failure
-        }
+        const grant = try refreshed(claimed, capability)
         if (grant !== undefined) return grant
         break
       }

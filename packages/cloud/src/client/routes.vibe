@@ -29,12 +29,16 @@ function sameSegment(a: Segment, b: Segment): boolean {
 
 const unlisted: UnlistedRoute[] = []
 
+function sameRoute(route: DeviceRoute, method: HttpMethod, path: ReadonlyArray<Segment>): boolean {
+  return route.method === method && route.path.length === path.length &&
+    route.path.every((segment, index) => sameSegment(segment, path[index] as Segment))
+}
+
 function on<const P extends `/${string}`>(method: HttpMethod, pattern: P): NamedRoute<ParamNames<P>> {
   const path = pattern.split("/").slice(1).map((part): Segment =>
     part.startsWith(":") ? { tag: "Param", name: part.slice(1) } : { tag: "Literal", text: part })
   const params = path.flatMap((segment) => segment.tag === "Param" ? [segment.name as ParamNames<P>] : [])
-  const listed = deviceRoutes.find((route) => route.method === method && route.path.length === path.length &&
-    route.path.every((segment, index) => sameSegment(segment, path[index] as Segment)))
+  const listed = deviceRoutes.find((route) => sameRoute(route, method, path))
   if (listed !== undefined) return { ...listed, params }
   unlisted.push({ method, pattern })
   return { method, path, auth: "Public", headers: [], params }
@@ -148,8 +152,7 @@ export type DeviceRouteName = keyof typeof routesByName
 export const unlistedRoutes: ReadonlyArray<UnlistedRoute> = unlisted
 
 export function isListed(route: DeviceRoute): boolean {
-  return deviceRoutes.some((listed) => listed.method === route.method && listed.path.length === route.path.length &&
-    listed.path.every((segment, index) => sameSegment(segment, route.path[index] as Segment)))
+  return deviceRoutes.some((listed) => sameRoute(listed, route.method, route.path))
 }
 
 export function httpVerb(method: HttpMethod): "GET" | "POST" | "PATCH" | "DELETE" {

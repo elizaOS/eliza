@@ -31,7 +31,7 @@ of them.
 | Passwords | [Vault page](./android/passwords/vault.md), [autofill](./android/passwords/autofill.md) |
 | Browser | [Address](./browser/address.md), [surface lifecycle](./browser/surface/lifecycle.md), [surface profiles](./browser/surface/profiles.md), [tab storage](./browser/tabHost/storage.md), [page reading](./browser/tabHost/reading.md), [page commands](./browser/pageCommands.md), [owned Chromium](./browser/chromium.md), [protection](./browser/protection.md) |
 | Image | [Source lock](./image/sourceLock.md), [APK admission](./image/apk.md), [image provisioning](./image/provisioning.md), [device qualification](./image/qualification.md) |
-| Android host build | [Android host profile](./build/androidHost.md), [Source integrity](./build/sourceIntegrity.md), [runtime payload](./build/runtimePayload.md) |
+| Android host build | [Android host profile](./build/androidHost.md), [Source integrity](./build/sourceIntegrity.md), [runtime payload](./build/runtimePayload.md), [Android build and APK publication](./build/androidBuild.md) |
 | Updates | [System updater](./update/updater.md) |
 | App updates | [Trust and publication authorization](./appUpdate/admission.md), [installation journal](./appUpdate/install.md), [update health](./appUpdate/health.md) |
 | Voice | [Listening indicator lease](./voice/indicatorLease.md), [invocation](./voice/invocation.md), [microphone](./voice/microphone.md), [speech output](./voice/speechOutput.md) |

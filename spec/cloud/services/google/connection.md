@@ -1,20 +1,15 @@
 # Managed Google connection
 
-The owner's Google grant, held by the cloud: connecting it with the chosen
-access, keeping its token fresh, showing it, and disconnecting it. Sources:
-develop `packages/cloud/shared/src/lib/services/agent-google-connector/shared.ts`,
-`lib/services/oauth/{oauth2.ts,token-cache.ts}`, `api/v1/oauth/app-oauth-return.ts`,
-and the old `spec/cloud/connections.md` and `managedGoogle/connection.md`.
-
-Routes under `/api/v1/eliza/google/`, for the owner's device key or session:
-`POST connect/initiate {side, capabilities, redirectUrl?}`, `POST
-connect/native {serverAuthCode}`, `GET status`, `GET accounts` (the status of
-every connection), `POST disconnect {side, connectionId?}`. Google calls `GET
-/api/v1/oauth/google/callback`. One machine instance is one connection row;
-the shell seals token values (purpose `GoogleTokens`), keeps the identity,
-`linkedAt` and `lastUsedAt`, deletes rows left `Pending`, and spells every
-wire name in the Effect Schemas. A unique index keeps one connection per
-(organization, Google subject).
+The owner's Google grant, held by the cloud. Sources: develop
+`agent-google-connector/shared.ts`, `oauth/{oauth2.ts,token-cache.ts}`,
+`api/v1/oauth/app-oauth-return.ts`. Routes under `/api/v1/eliza/google/` (device
+key or session): `POST connect/initiate {side, capabilities, redirectUrl?}`,
+`POST connect/native {serverAuthCode}`, `GET status`, `GET accounts` (every
+connection's status), `POST disconnect {side, connectionId?}`; Google calls
+`GET /api/v1/oauth/google/callback`. One instance is one connection row; the
+shell seals tokens (purpose `GoogleTokens`), keeps identity, `linkedAt` and
+`lastUsedAt`, and deletes rows left `Pending`. A unique index keeps one
+connection per (organization, Google subject).
 
 ## Story: Connect my Google account with the access I chose
 

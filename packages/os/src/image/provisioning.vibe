@@ -5,6 +5,7 @@ import {
   imageFeatureVersion,
   listenerActivation,
   provisioningDefaults,
+  secureCameraPackage,
   secureCameraStaging,
   type ActivationProblem,
   type CameraSource,
@@ -25,7 +26,19 @@ import {
   type SystemuiPatch,
 } from "../../gen/os__image__provisioning.effect.vibe"
 import type { StagingMode } from "../../gen/os__image__apk.effect.vibe"
+import { ChildProcess } from "effect/process"
+import { ChildProcessSpawner } from "effect/process/ChildProcessSpawner"
 import { parseXmlTree, type ManifestNode } from "./apk.vibe"
+
+module node {
+  import { createHash } from "node:crypto"
+
+  /** @throws {never} */
+  export function sha256Of(bytes: Uint8Array): string {
+    return createHash("sha256").update(bytes).digest("hex")
+  }
+}
+import { sha256Of } from node
 
 export type ProvisioningAdmitted = Extract<ProvisioningDefaults, { tag: "ProvisioningAdmitted" }>
 
@@ -53,6 +66,33 @@ export error ImageOverlayRefused { packageName: string; problem: OverlayProblem;
 export error ClockRequiredTwice { makefile: string }
 export error SecureCameraUnverified { message: string }
 export error ProductMakefileMissing { output: string }
+export error SecureCameraContractInvalid { file: string; message: string }
+export error SecureCameraSourceRefused { module: string; message: string }
+
+const Sha256Hex = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/))
+const SecureCameraModule = Schema.Struct({
+  path: Schema.String.check(Schema.isPattern(/^(?!\/)(?!.*(?:^|\/)\.\.?(?:\/|$))[^\0\\]+$/)),
+  commit: Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)),
+  files: Schema.Record(Schema.String, Sha256Hex),
+})
+const SecureCameraContract = Schema.Struct({ schemaVersion: Schema.Literal(1), modules: Schema.Array(SecureCameraModule).check(Schema.isMinLength(1)) })
+export type SecureCameraContract = typeof SecureCameraContract.Type
+export type SecureCameraModule = typeof SecureCameraModule.Type
+
+export interface ReviewedOverride {
+  readonly path: string
+  readonly sizeBytes: number
+  readonly sha256: string
+}
+
+export interface SecureCameraEvidence {
+  readonly source: Extract<CameraSource, { tag: "CameraSourceVerified" }>
+  readonly modules: readonly SecureCameraModule[]
+  readonly reviewedOverrides: readonly ReviewedOverride[]
+}
+
+export const SECURE_CAMERA_COMPONENT = `${secureCameraPackage}/com.android.camera.SecureCameraActivity`
+export const SECURE_CAMERA_ACTIONS = ["STILL_IMAGE_CAMERA_SECURE", "IMAGE_CAPTURE_SECURE"] as const
 
 export const IMAGE_FEATURE_VERSION = imageFeatureVersion
 export const POWER_VOICE_META_DATA = "ai.eliza.os.POWER_VOICE_ACTIVITY"
@@ -421,4 +461,103 @@ export effect function writeSecureCameraOverlay(output: string, source: CameraSo
       )
     }
   }
+}
+
+effect function secureCameraContractFile() {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const start = try path.fromFileUrl(new URL(".", import.meta.url))
+  let directory = start
+  while (!(try files.exists(path.join(directory, "aosp", "sources", "secure-camera.json")))) {
+    const parent = path.dirname(directory)
+    if (parent === directory) throw new SecureCameraContractInvalid({ file: start, message: "The os package's aosp/sources/secure-camera.json is missing" })
+    directory = parent
+  }
+  return path.join(directory, "aosp", "sources", "secure-camera.json")
+}
+
+export effect function loadSecureCameraContract(file?: string) {
+  const files = try FileSystem.FileSystem
+  const place = file ?? (try secureCameraContractFile())
+  const bytes = try mapError(files.readFile(place), (cause) => new SecureCameraContractInvalid({ file: place, message: cause.message }))
+  const contract = try mapError(Schema.decodeUnknownEffect(Schema.fromJsonString(SecureCameraContract))(new TextDecoder().decode(bytes)), (issue) => new SecureCameraContractInvalid({ file: place, message: issue.message }))
+  return { contract, sha256: sha256Of(bytes) }
+}
+
+effect function cameraGit(directory: string, module: string, args: readonly string[]) {
+  const spawner = try ChildProcessSpawner
+  const result = try mapError(scoped(effect {
+    const child = try spawner.spawn(ChildProcess.make("git", ["-C", directory, ...args], { extendEnv: true, env: { GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0" }, stdin: "ignore" }))
+    const [stdout, stderr] = try.all [Stream.mkString(Stream.decodeText(child.stdout)), Stream.mkString(Stream.decodeText(child.stderr))]
+    const code: number = try child.exitCode
+    return { code, stdout, stderr }
+  }), (cause) => new SecureCameraSourceRefused({ module, message: `git ${args.join(" ")} could not run: ${cause.message}` }))
+  if (result.code !== 0) throw new SecureCameraSourceRefused({ module, message: `git ${args.join(" ")} exited with ${result.code}: ${result.stderr.trim()}` })
+  return result.stdout
+}
+
+export effect function changedPaths(porcelain: string, module: string) {
+  const entries = porcelain.split("\0")
+  const paths: string[] = []
+  for (let index = 0; index < entries.length; index += 1) {
+    const row = entries[index] ?? ""
+    if (row === "") continue
+    if (row.length < 4 || row[2] !== " ") throw new SecureCameraSourceRefused({ module, message: `Unexpected git status entry ${JSON.stringify(row)}` })
+    paths.push(row.slice(3))
+    if (/[RC]/.test(row.slice(0, 2))) {
+      index += 1
+      const origin = entries[index] ?? ""
+      if (origin === "") throw new SecureCameraSourceRefused({ module, message: "A git status rename entry names no origin" })
+      paths.push(origin)
+    }
+  }
+  return [...new Set(paths)]
+}
+
+effect function insideModule(directory: string, module: string, file: string) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const real = try mapError(files.realPath(file), (cause) => new SecureCameraSourceRefused({ module, message: `${file} is unreadable: ${cause.message}` }))
+  if (!real.startsWith(`${directory}${path.sep}`)) throw new SecureCameraSourceRefused({ module, message: `${file} resolves outside ${module}` })
+  return try mapError(files.readFile(real), (cause) => new SecureCameraSourceRefused({ module, message: `${file} is unreadable: ${cause.message}` }))
+}
+
+effect function verifyCameraModule(base: string, module: SecureCameraModule, overrides: readonly ReviewedOverride[]) {
+  const files = try FileSystem.FileSystem
+  const path = try Path.Path
+  const refuse = (message: string) => new SecureCameraSourceRefused({ module: module.path, message })
+  const directory = try mapError(files.realPath(path.join(base, module.path)), (cause) => refuse(`The module is unreadable: ${cause.message}`))
+  const head = (try cameraGit(directory, module.path, ["rev-parse", "HEAD"])).trim()
+  if (head !== module.commit) throw refuse(`HEAD is ${head}, not the reviewed ${module.commit}`)
+  if ((try cameraGit(directory, module.path, ["ls-files", "-v"])).split("\n").some((row) => row !== "" && !row.startsWith("H "))) throw refuse("The index hides changes")
+  if ((try cameraGit(directory, module.path, ["ls-files", "--others", "--ignored", "--exclude-standard"])).trim() !== "") throw refuse("Ignored source inputs are present")
+  const changed = try changedPaths(try cameraGit(directory, module.path, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]), module.path)
+  const actual = changed.map((file) => `${module.path}/${file}`).sort()
+  const allowed = overrides.filter((entry) => entry.path.startsWith(`${module.path}/`))
+  const expected = allowed.map((entry) => entry.path).sort()
+  const unexpected = actual.filter((file) => !expected.includes(file))
+  const missing = expected.filter((file) => !actual.includes(file))
+  if (unexpected.length > 0 || missing.length > 0)
+    throw refuse(`The module is not clean${unexpected.length > 0 ? `; unreviewed changes: ${unexpected.join(", ")}` : ""}${missing.length > 0 ? `; reviewed overrides not present: ${missing.join(", ")}` : ""}`)
+  for (const entry of allowed) {
+    const bytes = try insideModule(directory, module.path, path.join(base, entry.path))
+    if (bytes.byteLength !== entry.sizeBytes || sha256Of(bytes) !== entry.sha256) throw refuse(`The reviewed override ${entry.path} differs`)
+  }
+  for (const [relative, digest] of Object.entries(module.files)) {
+    if (sha256Of(try insideModule(directory, module.path, path.join(directory, relative))) !== digest) throw refuse(`The source bytes of ${module.path}/${relative} differ`)
+  }
+}
+
+export effect function verifySecureCameraSource(root: string, options: { readonly contract?: string; readonly reviewedOverrides?: readonly ReviewedOverride[] } = {}) {
+  const files = try FileSystem.FileSystem
+  const loaded = try loadSecureCameraContract(options.contract)
+  const overrides = options.reviewedOverrides ?? []
+  const base = try mapError(files.realPath(root), (cause) => new SecureCameraSourceRefused({ module: ".", message: `The AOSP checkout ${root} is unreadable: ${cause.message}` }))
+  for (const module of loaded.contract.modules) try verifyCameraModule(base, module, overrides)
+  const evidence: SecureCameraEvidence = {
+    source: { tag: "CameraSourceVerified", contract: { tag: "Sha256", hex: loaded.sha256 } },
+    modules: loaded.contract.modules,
+    reviewedOverrides: overrides,
+  }
+  return evidence
 }

@@ -293,7 +293,7 @@ export effect function synthesizeTimed(settings: SpeechSettings, synthesis: Synt
   })
 }
 
-export effect function prepareTranscription(settings: SpeechSettings, recording: Recording): Effect.Effect<Transcription, SpeechFailure, SpeechContext>!ProviderUnreachable {
+export effect function prepareTranscription(settings: SpeechSettings, recording: Recording): (Transcription!SpeechFailure!SpeechContext)!ProviderUnreachable {
   const form = try Effect.try({ try: () => recordingForm(recording.audio, recording.mimeType, batchSttModel, recording.languageCode === undefined ? undefined : (recording.languageCode.split("-")[0] ?? "").toLowerCase()), catch: () => new ProviderUnreachable() })
   return within(transcriptionBudget, effect {
     const request = HttpClientRequest.post(`${settings.baseUrl}/stt`).pipe(HttpClientRequest.bodyFormData(form))

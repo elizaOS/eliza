@@ -9,7 +9,7 @@ import { loadRow, type RowCorrupt } from "../store/rows.vibe"
 import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 import { fundsRows } from "./funds.vibe"
 import { readSubscription } from "./subscriptions.vibe"
-import { parsePlanKey, wirePlanKey, type WirePlanKey } from "./plans.vibe"
+import { parsePlanKey, wirePlanKey, type PaidPlanKey, type WirePlanKey } from "./plans.vibe"
 import { fundingOf, readPolicy, type PolicyUnreadable, type FundingClass, type PlanSource } from "./policy.vibe"
 
 export type AccountStatus = "active" | "deleting" | "erased"
@@ -33,7 +33,7 @@ export interface SnapshotSubscription {
 
 export interface SnapshotGrant {
   readonly id: string
-  readonly planKey: WirePlanKey
+  readonly planKey: PaidPlanKey
   readonly family: string
   readonly effectiveFrom: number
   readonly effectiveUntil: number | null
@@ -117,10 +117,11 @@ effect function grantView(tx: Tx, organizationId: string, now: number): (Snapsho
   const planKey = parsePlanKey(row.plan_key)
   const id = toText(row.id)
   const family = toText(row.family)
-  if (planKey === undefined || id === undefined || family === undefined) throw new SnapshotUnreadable({ organizationId, problem: "grant row" })
+  const paidKey = planKey === undefined ? undefined : wirePlanKey(planKey)
+  if (paidKey === undefined || paidKey === "free" || id === undefined || family === undefined) throw new SnapshotUnreadable({ organizationId, problem: "grant row" })
   return {
     id,
-    planKey: wirePlanKey(planKey),
+    planKey: paidKey,
     family,
     effectiveFrom: toInt(row.effective_from),
     effectiveUntil: row.effective_until === null ? null : toInt(row.effective_until),

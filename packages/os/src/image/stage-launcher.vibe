@@ -220,6 +220,7 @@ const REPORT = "native-libraries.json"
 const SOCKET_POLICY = "eliza_agent_socket.te"
 const SOCKET_RULE = "allow priv_app_all privapp_data_file:sock_file { create unlink getattr setattr write rename };\n"
 const PATCH_DIRECTORY = "aosp/patches/soong-app-native"
+const PATCH_BASELINE = "aosp/sources/pixel10a-stallion.json"
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -431,6 +432,8 @@ export effect function soongPatchReceipt() {
   if (!isRecord(manifest) || typeof manifest.patch !== "string" || manifest.patch.includes("/") || typeof manifest.patchSha256 !== "string") return undefined
   const patch = (files.readFile(path.join(directory, manifest.patch)) catch () => undefined)
   if (patch === undefined || sha256Hex(patch) !== manifest.patchSha256) return undefined
+  const baseline = (files.readFile(path.join(root, PATCH_BASELINE)) catch () => undefined)
+  if (baseline === undefined || sha256Hex(baseline) !== manifest.baselineLockSha256) return undefined
   const receipt: SoongPatchReceipt = {
     name: "soong-app-native",
     project: text(manifest.project),

@@ -9,12 +9,11 @@ import { spendNativeGoogle, verifyNativeGoogle, type VerifiedGoogle } from "../i
 import { factorChallenge } from "../identity/second-factor.vibe"
 import { Deployment, rowOf } from "../profile/profile.vibe"
 import { readIdToken } from "../providers/google-identity.vibe"
-import { openTokens, sealTokens, tokenForm, type GoogleProfile } from "../providers/google.vibe"
-import { connectionColumns, connectionRows } from "../services/google/grant-access.vibe"
+import { openTokens, tokenForm, type GoogleProfile } from "../providers/google.vibe"
+import { storeGrant } from "../services/google/grant-access.vibe"
 import { s256 } from "../shared/credential-crypto.vibe"
 import { newId } from "../shared/sealing.vibe"
 import { Store, toText, type Tx } from "../store/connection.vibe"
-import { stepRow } from "../store/rows.vibe"
 import { connectAndMint, deviceName, perIp, signInClient, type Credential } from "./device-keys.vibe"
 
 const pkceText = /^[A-Za-z0-9._~-]{43,128}$/
@@ -115,16 +114,17 @@ effect function storeConnection(tx: Tx, landed: Landed, subject: string, redeeme
   const previous = toText(held?.tokens)
   const kept = previous === undefined ? "" : (try openTokens(previous)).refreshToken
   const issued = redeemed.reply.refresh_token ?? ""
-  const tokens = try sealTokens({ refreshToken: issued === "" ? kept : issued, accessToken: redeemed.reply.access_token, expiresAt: now + redeemed.reply.expires_in * millisPerSecond })
   const connectionId = toText(held?.key) ?? newId()
   const email = redeemed.email ?? toText(held?.email) ?? landed.email ?? ""
-  try stepRow(tx, connectionRows, connectionId, { type: "link", scopes: redeemed.scopes, tokens, expiresAt: now + redeemed.reply.expires_in * millisPerSecond }, connectionColumns({
-    organization_id: landed.organizationId,
-    user_id: landed.userId,
+  try storeGrant(tx, {
+    connectionId,
+    owner: { organizationId: landed.organizationId, userId: landed.userId },
     subject,
     email,
-    linked_at: now
-  }))
+    grantedScopes: redeemed.scopes,
+    tokens: { refreshToken: issued === "" ? kept : issued, accessToken: redeemed.reply.access_token, expiresAt: now + redeemed.reply.expires_in * millisPerSecond },
+    now
+  })
   return { connectionId, email, scopes: redeemed.scopes, refreshTokenIssued: issued !== "" } satisfies Linked
 }
 

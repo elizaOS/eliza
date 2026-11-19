@@ -8,7 +8,8 @@ module capacitor {
   import { registerPlugin, WebPlugin } from "@capacitor/core"
   import type { ElizaSurfaceManagerPlugin } from "./definitions/surface.ts"
 
-  const UNAVAILABLE = "ElizaSurfaceManager is native only: a web host has no native web surface."
+  const UNAVAILABLE = "ElizaSurfaceManager is a native-only plugin: a web host has no native child web surface."
+  const registered = new Map<string, ElizaSurfaceManagerPlugin>()
 
   /** @throws {never} */
   function webSurface(): ElizaSurfaceManagerPlugin {
@@ -21,7 +22,9 @@ module capacitor {
 
   /** @throws {never} */
   export function surfacePlugin(name = "ElizaSurfaceManager"): ElizaSurfaceManagerPlugin {
-    return registerPlugin<ElizaSurfaceManagerPlugin>(name, { web: webSurface })
+    const plugin = registered.get(name) ?? registerPlugin<ElizaSurfaceManagerPlugin>(name, { web: webSurface })
+    registered.set(name, plugin)
+    return plugin
   }
 }
 import { surfacePlugin } from capacitor

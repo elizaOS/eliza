@@ -38,6 +38,7 @@ so a refused message was not taken.
 
 ```quint
 import turns as T from "./turns"
+import binding as B from "../models/binding"
 import streamUnits.* from "../../core/streamUnits"
 type Role = Undecided | Streams | Waits | Refused
 type Progress = NoProgress | Activity({ activity: str }) | ToolUse({ name: str })

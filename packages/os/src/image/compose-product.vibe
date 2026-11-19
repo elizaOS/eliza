@@ -541,7 +541,10 @@ effect function readDescriptor(place: string) {
 effect function packFrames(directory: string) {
   const files = try FileSystem.FileSystem
   const path = try Path.Path
-  const kind = effect (place: string) => ((try files.lstat(place)).type catch () => "Missing")
+  const kind = effect (place: string) => {
+    const info = files.lstat(place) catch () => undefined
+    return info === undefined ? "Missing" : info.type
+  }
   if ((try kind(path.join(directory, "desc.txt"))) !== "File") throw new ProductInputUnreadable({ place: directory, message: "desc.txt must be a regular file" })
   const desc = try readBytes(path.join(directory, "desc.txt"))
   const parts = animationParts(textOf(desc))
@@ -725,7 +728,7 @@ export effect function composeProduct(request: ComposeRequest) {
 }
 
 effect function checkoutUpdater(reviewed: readonly SourceFile[], staged: string) {
-  const present = (try readSourceTree(staged)) catch (): SourceFile[] => []
+  const present: readonly SourceFile[] = readSourceTree(staged) catch (): SourceFile[] => []
   const digests = new Map(present.map((file) => [file.path, sha256Hex(file.bytes)]))
   const same = present.length === reviewed.length && reviewed.every((file) => digests.get(file.path) === sha256Hex(file.bytes))
   const state: UpdaterSource = !same ? "ChangedUpdater" : updaterState(present)

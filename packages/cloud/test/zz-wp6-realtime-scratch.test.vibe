@@ -33,7 +33,7 @@ import { callDeclaring } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
 import { recordingBytes, recordingForm } from "./support/recording.ts"
 import { openRelay, upgradeStatus, type Received } from "./support/relay-socket.ts"
-import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.effect.vibe"
+import { realtimeSpeechPerDay, utcDayStart } from "../gen/cloud__billing__plans.ts"
 import { googleMapsFake } from "./support/maps-fake.ts"
 
 effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
@@ -95,7 +95,8 @@ describe("WP6 Speech realtime (spec/cloud/services/speechRelay.md)", () => {
 
     const spender = try signedCaller(cloud, "spender")
     const now = try Clock.currentTimeMillis
-    try sql(cloud, "INSERT INTO speech_usage_days (user_id, usage_day, used_ms, updated_at) VALUES ($1, $2, $3, $4)", [spender.userId, utcDayStart(now), realtimeSpeechPerDay, now])
+    const today = try Effect.try(() => utcDayStart(now))
+    try sql(cloud, "INSERT INTO speech_usage_days (user_id, usage_day, used_ms, updated_at) VALUES ($1, $2, $3, $4)", [spender.userId, today, realtimeSpeechPerDay, now])
     const spentConsent = try cloud.call("/api/v1/voice/speech/consent", { json: {}, headers: spender.headers })
     const spent = try cloud.call("/api/v1/voice/speech/session", { json: { consentNonce: (spentConsent.body as { readonly consentNonce: string }).consentNonce }, headers: spender.headers })
 

@@ -3,7 +3,7 @@ import { assert, it } from "@effect/vitest"
 import * as NodeServices from "@effect/platform-node/NodeServices"
 import { WEBVIEW_CONFIG, stageBrowserApps, stageBrowserOverlay, validateBrowserOverlayDescriptor, type StageBrowserApps } from "../src/browser/chromium.vibe"
 import { androidTools, buildApk, standInElf, testSigner, type NativeAbi, type TestSigner } from "./support/android-tools.ts"
-import { scratch, writeTree } from "./support/scratch.vibe"
+import { readTree, scratch, writeTree } from "./support/scratch.vibe"
 
 const tools = androidTools()
 const skipped = tools.kind === "missing" ? tools.reason : null
@@ -24,12 +24,13 @@ function upstreamPin(packageName: string, sha256: string, signer: TestSigner) {
   return { kind: "upstream", channel: "stable", packageName, sha256, signerSha256: signer.certificateSha256, sourceUrl: `https://example.invalid/${packageName}.apk` }
 }
 
-effect function refusal(staging: Effect.Effect<unknown, { readonly _tag: string }, FileSystem.FileSystem | Path.Path | ChildProcessSpawner>) {
-  return (effect { try staging; return "Staged" } catch (error) => match (error) {
-    when { _tag: "BrowserAppRefused" }: `${error.app}:${error.why}`;
-    when { _tag: "BrowserOverlayRefused" }: error.reason;
-    default: error._tag;
-  })
+function described(error: { readonly _tag: string }): string {
+  if ("app" in error && "why" in error) return `${String(error.app)}:${String(error.why)}`
+  return error._tag === "BrowserOverlayRefused" && "reason" in error ? String(error.reason) : error._tag
+}
+
+effect function refusal<E extends { readonly _tag: string }, R>(staging: unknown!E!R) {
+  return (effect { try staging; return "Staged" } catch (error) => described(error))
 }
 
 it.effect.skipIf(skipped !== null)(`Stage the pinned browser and vault pair whole, and refuse a wrongly signed or unpinned APK before either is replaced${skipped === null ? "" : ` (skipped: ${skipped})`} (spec/os/browser/chromium.md, "Story: Use the owned browser only with its expected identity"; spec/os/browser/chromium.md, "An owned browser app enters an image only with its pinned digest, signer and provenance")`, effect () => {
@@ -65,7 +66,9 @@ it.effect.skipIf(skipped !== null)(`Stage the pinned browser and vault pair whol
 
     const result = try stageBrowserApps(request({}))
     assert.deepStrictEqual(result.applications.map((app) => [app.name, app.packageName, app.apk]), [["browser", BROWSER_PACKAGE, destination("Browser")], ["vault", VAULT_PACKAGE, destination("Vault")]])
-    assert.deepStrictEqual(try.all [files.readFile(destination("Browser")), files.readFile(destination("Vault"))], try.all [files.readFile(browser.apk), files.readFile(vault.apk)])
+    const stagedBytes = try.all [files.readFile(destination("Browser")), files.readFile(destination("Vault"))]
+    const pinnedBytes = try.all [files.readFile(browser.apk), files.readFile(vault.apk)]
+    assert.deepStrictEqual(stagedBytes, pinnedBytes)
     assert.deepStrictEqual((try files.readDirectory(vendorDir)).sort(), ["apps", "manifests"], "no temporary copy is left beside the vendor tree")
 
     try writeTree(vendorDir, { "manifests/browser-apps.json": JSON.stringify({ schemaVersion: 1, browser: { x86_64: upstreamPin(BROWSER_PACKAGE, browser.sha256, signer) }, vault: {} }) })
@@ -102,7 +105,7 @@ it.effect.skipIf(skipped !== null)(`Publish the browser overlay with only the pi
     const overlay = try stage(provider.apk)
     assert.deepStrictEqual(overlay, { directory: path.join(output, "browser"), partition: "product", modules: { browser: "FixtureOwnedChromium", webview: "FixtureWebViewProvider" }, browser: descriptor.browser, webview: descriptor.webview, releaseQualified: false })
     assert.deepStrictEqual(try files.readDirectory(output), ["browser"], "the overlay appears whole under its final name")
-    assert.deepStrictEqual((try files.readDirectory(overlay.directory, { recursive: true })).filter((entry) => !entry.endsWith("/") && entry.includes(".")).sort(), ["Android.bp", "OwnedChromium.apk", "WebViewProvider.apk", "browser.mk", WEBVIEW_CONFIG].sort())
+    assert.deepStrictEqual(Object.keys(try readTree(overlay.directory)).sort(), ["Android.bp", "OwnedChromium.apk", "WebViewProvider.apk", "browser.mk", WEBVIEW_CONFIG].sort())
     assert.deepStrictEqual(try files.readFile(path.join(overlay.directory, "WebViewProvider.apk")), try files.readFile(provider.apk))
     const blueprint = try files.readFileString(path.join(overlay.directory, "Android.bp"))
     assert.include(blueprint, 'overrides: ["webview"]')

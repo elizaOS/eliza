@@ -4,11 +4,13 @@ import { isAgentPlugin } from "./product.vibe"
 import { approvalsModule, approvalsModuleName } from "../approvals/module.vibe"
 import { notificationsModule, notificationsModuleName } from "../notifications/module.vibe"
 import { basicActionsModule, basicActionsModuleName } from "./basic-actions.vibe"
+import { replyDraftModule, replyDraftModuleName } from "../device-actions/reply-draft.vibe"
 
 export const builtinModuleFactories: ReadonlyMap<string, ModuleFactory<never>> = new Map<string, ModuleFactory<never>>([
   [basicActionsModuleName, basicActionsModule],
   [approvalsModuleName, approvalsModule],
   [notificationsModuleName, notificationsModule],
+  [replyDraftModuleName, replyDraftModule],
 ])
 
 export interface BundledEntry {

@@ -7,6 +7,7 @@ import { retrieveCharge, retrieveInvoice, StripeCharge, StripeCheckoutSession, S
 import { sha256Hex } from "../shared/sealing.vibe"
 import { Store, toInt, toText, type Row, type Tx } from "../store/connection.vibe"
 import { RowCorrupt } from "../store/rows.vibe"
+import { clawBackInvoice, restoreInvoice } from "./allowance.vibe"
 import { observeSubscription, reconcileSubscription } from "./subscriptions.vibe"
 
 export const webhookPath = "/api/stripe/webhook"
@@ -153,11 +154,31 @@ effect function reconcileCustomer(tx: Tx, customerId: string | null, now: number
   try reconcileSubscription(tx, organizationId, try observeSubscription(tx, organizationId), now)
 }
 
-effect function reconcileInvoiceCharge(tx: Tx, charge: StripeCharge, deadline: number, now: number) {
+effect function subscriptionInvoiceOf(charge: StripeCharge, deadline: number, now: number) {
   const invoiceId = charge.invoice ?? null
-  if (invoiceId === null || charge.customer === null) return
+  if (invoiceId === null || charge.customer === null) return undefined
   const invoice = try retrieveInvoice(invoiceId, { timeout: Math.max(1, deadline - now) })
-  if ((invoice.parent?.subscription_details?.subscription ?? null) === null) return
+  return (invoice.parent?.subscription_details?.subscription ?? null) === null ? undefined : invoice.id
+}
+
+effect function settleInvoiceCharge(tx: Tx, charge: StripeCharge, funds: "refunded" | "withdrawn" | "reinstated", deadline: number, now: number) {
+  const invoiceId = try subscriptionInvoiceOf(charge, deadline, now)
+  if (invoiceId === undefined) return
+  switch (funds) {
+    case "refunded":
+      if (charge.amount_refunded > 0) try clawBackInvoice(tx, invoiceId, "RefundClawback", now)
+      break
+    case "withdrawn":
+      try clawBackInvoice(tx, invoiceId, "DisputeClawback", now)
+      break
+    case "reinstated":
+      try restoreInvoice(tx, invoiceId, now)
+      break
+    default: {
+      const _exhaustive: never = funds
+      return _exhaustive
+    }
+  }
   try reconcileCustomer(tx, charge.customer, now)
 }
 
@@ -165,8 +186,8 @@ effect function applySink(tx: Tx, sink: Sink, deadline: number, now: number) {
   switch (sink.kind) {
     case "checkout": return try reconcileCustomer(tx, sink.session.customer, now)
     case "subscription": return try reconcileCustomer(tx, sink.customerId, now)
-    case "charge": return try reconcileInvoiceCharge(tx, sink.charge, deadline, now)
-    case "dispute": return try reconcileInvoiceCharge(tx, try retrieveCharge(sink.dispute.charge, { timeout: Math.max(1, deadline - now) }), deadline, now)
+    case "refund": return try settleInvoiceCharge(tx, sink.charge, "refunded", deadline, now)
+    case "dispute": return try settleInvoiceCharge(tx, try retrieveCharge(sink.dispute.charge, { timeout: Math.max(1, deadline - now) }), sink.funds, deadline, now)
     case "ignored": return
     default: {
       const _exhaustive: never = sink

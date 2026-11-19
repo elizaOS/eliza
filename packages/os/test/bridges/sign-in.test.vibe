@@ -1,7 +1,8 @@
-// spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; spec/os/signIn/readiness.md, "Story: Read the service's own terms"
+// spec/os/signIn/flow.md, "Story: Sign in with a code, Google or a second factor"; spec/os/signIn/flow.md, "Story: Cancel or resend exactly the request I mean"; spec/os/signIn/flow.md, "Story: Re-authenticate the signed-in account"; spec/os/signIn/readiness.md, "Story: Show only the methods the cloud is ready for"; spec/os/signIn/readiness.md, "Story: Read the service's own terms"
 import { assert, it } from "@effect/vitest"
-import { SignInRefused, requestIdOf, signInClient, signInCode } from "../../src/bridges/sign-in.vibe"
-import type { EnvironmentName, SignInAttemptId, SignInRequestId } from "../../src/bridges/definitions/sign-in.ts"
+import { MalformedReply } from "../../src/bridges/bridge.vibe"
+import { SignInRefused, signInClient, signInCode } from "../../src/bridges/sign-in.vibe"
+import type { CredentialId, EnvironmentName, SignInAttempt, SignInRequest } from "../../src/bridges/definitions/sign-in.ts"
 
 module android {
   import { CapacitorException } from "@capacitor/core"
@@ -10,19 +11,21 @@ module android {
   export interface Device {
     calls: string[]
     signedIn: boolean
+    request: number
+    attempt: number
     listeners: Map<string, (event: unknown) => void>
   }
 
-  const ATTEMPT = "6f1c2b8e-3d4a-4c5b-9e7f-0a1b2c3d4e5f"
+  const LEGAL = { title: "Terms", revision: "1", sections: [{ title: "Use", paragraphs: ["Plain text."] }] }
 
   /** @throws {never} */
-  function rejection(code: string, data?: unknown): Error {
-    return Object.assign(new CapacitorException(code), { code, data })
+  function rejection(code: string): Error {
+    return Object.assign(new CapacitorException(code), { code })
   }
 
   /** @throws {never} */
   export function device(): Device {
-    return { calls: [], signedIn: false, listeners: new Map() }
+    return { calls: [], signedIn: false, request: 0, attempt: 0, listeners: new Map() }
   }
 
   /** @throws {never} */
@@ -31,32 +34,51 @@ module android {
   }
 
   /** @throws {never} */
+  function settle(phone: Device, verdict: Record<string, unknown>): Record<string, unknown> {
+    phone.request += 1
+    const receipt = { request: phone.request, attempt: phone.attempt, ...verdict }
+    phone.listeners.get("signInSettled")?.(receipt)
+    return receipt
+  }
+
+  /** @throws {never} */
   export function androidSignIn(phone: Device): ElizaSignInPlugin {
     const readiness = { environment: "production", methodsKnown: true, email: true, sms: false, google: true, googleMode: "browser" }
     const account = () => phone.signedIn
       ? { signedIn: true, userId: "user-1", organizationId: "org-1", credentialId: "key-1", keyExpiresAt: 1900000000000 }
       : { signedIn: false }
+    const codeSent = () => ({ verdict: "code-on-its-way", expiresAt: 1800000600000, resendAt: 1800000060000 })
     return {
       startEmail: async (options) => {
         phone.calls.push(`startEmail ${options.email}`)
-        return { requestId: options.requestId, attemptId: ATTEMPT, step: "code-sent", expiresAt: 1800000600000, resendAt: 1800000060000 }
+        phone.attempt += 1
+        return settle(phone, codeSent())
       },
-      startPhone: async () => { throw rejection("busy", { resendAt: 1800000060000 }) },
-      startGoogle: async (options) => ({ requestId: options.requestId, attemptId: ATTEMPT, step: "second-factor", methods: ["totp"], expiresAt: 1800000600000 }),
-      reauthenticate: async () => { throw rejection("refused") },
-      resend: async () => { throw rejection("busy", { resendAt: 1800000060000 }) },
+      startPhone: async () => { throw rejection("busy") },
+      startGoogle: async () => {
+        phone.attempt += 1
+        return settle(phone, { verdict: "factor-asked", factors: ["totp"], expiresAt: 1800000600000 })
+      },
+      reauthenticate: async (options) => {
+        phone.calls.push(`reauthenticate ${options.method}`)
+        phone.attempt += 1
+        return settle(phone, { verdict: "account-confirmed" })
+      },
+      resend: async (options) => {
+        phone.calls.push(`resend ${options.attempt}`)
+        phone.attempt += 1
+        return settle(phone, { verdict: "try-again", retry: "too-many-attempts" })
+      },
       verify: async (options) => {
-        phone.calls.push(`verify ${options.code}`)
-        if (options.code !== "123456") throw rejection("invalid-code", { requestId: options.requestId, step: "code-sent", kept: true })
+        phone.calls.push(`verify ${options.attempt} ${options.code}`)
+        if (options.code !== "123456") return settle(phone, { verdict: "try-again", retry: "wrong-code" })
         phone.signedIn = true
-        const receipt = { requestId: options.requestId, attemptId: ATTEMPT, credentialId: "key-1", google: "not-requested", step: "signed-in" }
-        phone.listeners.get("signInSettled")?.(receipt)
-        return receipt
+        return settle(phone, { verdict: "signed-in-as", credentialId: "key-1", google: "not-requested" })
       },
-      sendFactorCode: async (options) => ({ requestId: options.requestId }),
+      sendFactorCode: async (options) => ({ attempt: options.attempt }),
       cancel: async (options) => {
-        const receipt = { requestId: options.requestId, attemptId: ATTEMPT, credentialId: "", google: "not-requested", step: "failed", failure: "cancelled" }
-        phone.listeners.get("signInSettled")?.(receipt)
+        if (options.attempt !== phone.attempt) return { cancelled: false }
+        settle(phone, { verdict: "ended", problem: "cancelled" })
         return { cancelled: true }
       },
       signOut: async () => {
@@ -65,7 +87,9 @@ module android {
       },
       status: async (options) => ({ ...readiness, environment: options.environment, account: account() }),
       serviceInfo: async (options) => options.environment === "production"
-        ? { outcome: "service_shown", service: { name: "Example Cloud", terms: "https://example.com/terms", privacy: "https://example.com/privacy" } }
+        ? { outcome: "service_shown", service: { name: "Example Cloud", terms: LEGAL, privacy: { ...LEGAL, title: "Privacy" } } }
+        : options.environment === "broken"
+        ? { outcome: "service_shown", service: { name: "Example Cloud", terms: { ...LEGAL, sections: [] }, privacy: LEGAL } }
         : { outcome: "service_unknown_environment" },
       addListener: async (eventName, listener) => {
         phone.listeners.set(eventName, listener)
@@ -76,51 +100,60 @@ module android {
 }
 import { androidSignIn, announce, device } from android
 
-const REQUEST = "0b9e1f4a-7c2d-4e8b-a1f3-5d6c7b8a9e0f"
-const SECOND = "1c0f2a5b-8d3e-4f9c-b2a4-6e7d8c9b0a1f" as SignInRequestId
-const ATTEMPT = "6f1c2b8e-3d4a-4c5b-9e7f-0a1b2c3d4e5f" as SignInAttemptId
 const PRODUCTION = "production" as EnvironmentName
+const first = { request: 1 as SignInRequest, attempt: 1 as SignInAttempt }
 
-effect function refusal(call: () => Promise<unknown>) {
+effect function failure(call: () => Promise<unknown>) {
   const { cause } = try flip(tryPromise(() => call()))
-  return cause instanceof SignInRefused ? cause.refusal : cause
+  return cause
 }
 
-it.live("Sign in with a code, Google or a second factor (spec/os/signIn/flow.md, \"Story: Sign in with a code, Google or a second factor\"; spec/os/signIn/flow.md, \"A wrong or unanswered code keeps the step, and a locked or rate-limited one ends the attempt as too many attempts\"; spec/os/signIn/flow.md, \"Story: Cancel or resend exactly the request I mean\")", () => effect {
+it.live("Sign in with a code, Google or a second factor (spec/os/signIn/flow.md, \"Story: Sign in with a code, Google or a second factor\"; spec/os/signIn/flow.md, \"One renderer request is open at a time, it is open exactly while the slot waits for an answer, and only it is settled\"; spec/os/signIn/flow.md, \"A wrong or unanswered code keeps the step, and a locked or rate-limited one ends the attempt as too many attempts\"; spec/os/signIn/flow.md, \"Story: Cancel or resend exactly the request I mean\")", () => effect {
   const phone = device()
   const client = signInClient(androidSignIn(phone))
-  const requestId = Option.getOrThrow(requestIdOf(REQUEST))
   const environment = PRODUCTION
   const settled: unknown[] = []
   try promise(() => client.addListener("signInSettled", (event) => { settled.push(event) }))
 
-  const sent = try promise(() => client.start({ method: "email", email: "owner@example.com", requestId, environment }))
-  assert.deepStrictEqual(sent, { kind: "codeSent", requestId, attemptId: ATTEMPT, expiresAt: 1800000600000, resendAt: 1800000060000 })
+  const sent = try promise(() => client.start({ method: "email", email: "owner@example.com", environment }))
+  assert.deepStrictEqual(sent, { ...first, verdict: { kind: "CodeOnItsWay", expiresAt: 1800000600000, resendAt: 1800000060000 } })
 
   assert.isTrue(Option.isNone(signInCode("12345")))
-  const wrong = try refusal(() => client.verify({ requestId, code: Option.getOrThrow(signInCode("000 000")) }))
-  assert.deepStrictEqual(wrong, { kind: "kept", code: "invalid-code", requestId, step: "code-sent" })
+  const wrong = try promise(() => client.verify({ attempt: sent.attempt, code: Option.getOrThrow(signInCode("000 000")) }))
+  assert.deepStrictEqual(wrong.verdict, { kind: "TryAgain", retry: "WrongCode" })
 
-  const later = try refusal(() => client.resend({ requestId: Option.getOrThrow(requestIdOf(SECOND)) }))
-  assert.deepStrictEqual(later, { kind: "resendLater", code: "busy", resendAt: 1800000060000 })
+  const busy = try failure(() => client.start({ method: "sms", phone: "+15555550100", environment }))
+  assert.instanceOf(busy, SignInRefused)
+  assert.strictEqual((busy as SignInRefused).code, "Busy")
 
-  const signedIn = try promise(() => client.verify({ requestId, code: Option.getOrThrow(signInCode("123-456")) }))
-  const receipt = { requestId, attemptId: ATTEMPT, credentialId: "key-1", google: "not-requested" } as const
-  assert.deepStrictEqual(signedIn, { kind: "signedIn", receipt })
-  assert.deepStrictEqual(phone.calls, ["startEmail owner@example.com", "verify 000000", "verify 123456"])
+  const later = try promise(() => client.resend({ attempt: sent.attempt }))
+  assert.deepStrictEqual(later, { request: 3 as SignInRequest, attempt: 2 as SignInAttempt, verdict: { kind: "TryAgain", retry: "TooManyAttempts" } })
 
-  const factor = try promise(() => client.start({ method: "google", requestId: Option.getOrThrow(requestIdOf(SECOND)), environment }))
-  assert.deepStrictEqual(factor, { kind: "secondFactor", requestId: SECOND, attemptId: ATTEMPT, factors: ["totp"], expiresAt: 1800000600000 })
-  assert.isTrue(try promise(() => client.cancel({ requestId: Option.getOrThrow(requestIdOf(SECOND)) })))
+  const signedIn = try promise(() => client.verify({ attempt: later.attempt, code: Option.getOrThrow(signInCode("123-456")) }))
+  assert.deepStrictEqual(signedIn.verdict, { kind: "SignedInAs", credentialId: "key-1" as CredentialId, google: "GoogleNotRequested" })
+  assert.deepStrictEqual(phone.calls, ["startEmail owner@example.com", "verify 1 000000", "resend 1", "verify 2 123456"])
+
+  const factor = try promise(() => client.start({ method: "google", environment }))
+  assert.deepStrictEqual(factor.verdict, { kind: "FactorAsked", factors: ["totp"], expiresAt: 1800000600000 })
+  assert.strictEqual(try promise(() => client.sendFactorCode({ attempt: factor.attempt })), factor.attempt)
+  assert.isFalse(try promise(() => client.cancel({ attempt: sent.attempt })))
+  assert.isTrue(try promise(() => client.cancel({ attempt: factor.attempt })))
   try sleep("10 millis")
-  assert.deepStrictEqual(settled, [
-    { kind: "signedIn", receipt },
-    { kind: "failed", requestId: SECOND, attemptId: ATTEMPT, google: "not-requested", code: "cancelled" },
-  ])
+  assert.strictEqual(settled.length, 6)
+  assert.deepStrictEqual(settled[5], { request: 6, attempt: 3, verdict: { kind: "Ended", problem: "Cancelled" } })
 
-  const reauth = try refusal(() => client.reauthenticate({ method: "google", requestId, environment }))
-  assert.deepStrictEqual(reauth, { kind: "refused", code: "refused" })
-  const account = try promise(() => client.signOut({ environment }))
+  announce(phone, "signInSettled", { request: 7, attempt: 3, verdict: "signed-in-as", credentialId: "key-1", google: "held" })
+  try sleep("10 millis")
+  assert.strictEqual(settled.length, 6)
+})
+
+it.live("Re-authenticate the signed-in account (spec/os/signIn/flow.md, \"Story: Re-authenticate the signed-in account\")", () => effect {
+  const phone = device()
+  const client = signInClient(androidSignIn(phone))
+  const confirmed = try promise(() => client.reauthenticate({ method: "google", environment: PRODUCTION }))
+  assert.deepStrictEqual(confirmed, { ...first, verdict: { kind: "AccountConfirmed" } })
+  assert.deepStrictEqual(phone.calls, ["reauthenticate google"])
+  const account = try promise(() => client.signOut({ environment: PRODUCTION }))
   assert.deepStrictEqual(account, { kind: "signedOut" })
 })
 
@@ -145,11 +178,10 @@ it.live("Show only the methods the cloud is ready for (spec/os/signIn/readiness.
   assert.deepStrictEqual(changes, [{ environment: "production", methodsKnown: true, email: true, sms: true, google: true, googleMode: "Picker" }])
 
   const shown = try promise(() => client.serviceDocument({ environment }))
-  assert.deepStrictEqual(shown, {
-    kind: "ServiceShown",
-    environment: PRODUCTION,
-    service: { name: "Example Cloud", terms: "https://example.com/terms", privacy: "https://example.com/privacy" },
-  })
+  assert.strictEqual(shown.kind, "ServiceShown")
+  assert.deepStrictEqual(shown.kind === "ServiceShown" ? shown.service.privacy.title : "", "Privacy")
   const unknown = try promise(() => client.serviceDocument({ environment: "staging" as EnvironmentName }))
   assert.deepStrictEqual(unknown, { kind: "ServiceUnknownEnvironment", environment: "staging" as EnvironmentName })
+  const broken = try failure(() => client.serviceDocument({ environment: "broken" as EnvironmentName }))
+  assert.instanceOf(broken, MalformedReply)
 })
