@@ -394,16 +394,20 @@ export function groundBrowserDestination(
     )
   )
     return;
+  // A typed piece of a mixed spoken hostname ("example.com dot ai") never
+  // opens on its own. Any other spoken word after a typed host leaves it typed
+  // ("youtube.com dot ever").
+  const literal = typed.filter(({ piece }) => !piece);
   // A whole utterance with spoken dots may have no literal URL token. Exact
   // confirmation of the normalized hostname still comes from the owner text,
   // and that open is reviewed: it is never a direct request.
-  if (typed.length === 0) {
+  if (literal.length === 0) {
     const spoken = spokenBrowserDestination(userText, assistantName);
     if (spoken === proposed.href) return spoken;
   }
   const strict = authoredBrowserDestination(userText, assistantName);
   const strictHost = strict && new URL(strict).host;
-  const candidates = typed.filter(
+  const candidates = literal.filter(
     ({ url, webSignal }) =>
       url.port === proposed.port &&
       (webSignal ||
@@ -566,15 +570,31 @@ function webAddress(token: string): URL | undefined {
 }
 
 // Every web address in the message, each word read with and without the
-// sentence punctuation around it.
+// sentence punctuation around it. `piece` marks a word inside a spoken
+// hostname that reads as a longer address ("example.com" in "example.com dot
+// ai", "maps dot example.com"): it names that address, not its own.
 function typedAddresses(
   text: string,
   assistantName: string,
-): { url: URL; webSignal: boolean; negated: boolean }[] {
-  const found: { url: URL; webSignal: boolean; negated: boolean }[] = [];
-  // A literal piece of a mixed spoken hostname is not a separate address.
-  // The whole spoken destination needs its whole-message request above.
-  for (const word of addressWords(text)) {
+): { url: URL; webSignal: boolean; negated: boolean; piece: boolean }[] {
+  const found: {
+    url: URL;
+    webSignal: boolean;
+    negated: boolean;
+    piece: boolean;
+  }[] = [];
+  const spoken = [...addressWords(text)].filter(({ value }) => {
+    const words = stripTrailingPunctuation(
+      value.replace(/^[("'“‘«<[]+/u, ""),
+      ")]>\"'”’».,!?;:",
+    );
+    return (
+      SPOKEN_HOSTNAME.test(words) &&
+      webAddress(words.replace(SPOKEN_DOT, ".")) !== undefined
+    );
+  });
+  for (const match of text.matchAll(/\S+/g)) {
+    const word = { value: match[0], index: match.index };
     const lead = word.value.replace(/^[("'“‘«<[]+/u, "");
     const tokens = new Set([
       lead,
@@ -593,6 +613,10 @@ function typedAddresses(
           SITE_BEFORE.test(before.slice(-40)) ||
           SITE_AFTER.test(after),
         negated: refused(text, word, assistantName),
+        piece: spoken.some(
+          ({ value, index }) =>
+            word.index >= index && word.index < index + value.length,
+        ),
       });
     }
   }

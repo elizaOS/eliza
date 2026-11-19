@@ -999,6 +999,25 @@ describe("strict open command with where the address opens", () => {
     expect(groundBrowserDestination(text, href)).toBeUndefined();
   });
   it.each([
+    // A spoken word that makes no longer address leaves a typed host typed.
+    ["Open youtube.com dot ever", "https://youtube.com/"],
+    ["Visit example.com, dot your i's", "https://example.com/"],
+  ])("grounds the typed host in %s", (text, href) => {
+    expect(groundBrowserDestination(text, href)).toBe(href);
+    expect(containsWebAddress(text)).toBe(true);
+  });
+  it("reads spoken labels after a typed host as one longer hostname", () => {
+    const text = "open google.com dot au";
+    expect(
+      groundBrowserDestination(text, "https://google.com/"),
+    ).toBeUndefined();
+    expect(groundBrowserDestination(text, "https://google.com.au/")).toBe(
+      "https://google.com.au/",
+    );
+    // The owner still typed an address, for the reply copy.
+    expect(containsWebAddress(text)).toBe(true);
+  });
+  it.each([
     // A private tab, another app, a time or more work stays the model's call.
     "open youtube.com in a private tab",
     "open youtube.com in a new private tab",
