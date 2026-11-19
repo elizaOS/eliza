@@ -56,6 +56,10 @@ import {
 } from "../../runtime/builtin-field-evaluators";
 import { windowHistoryRetention } from "../../runtime/history-retention.ts";
 import { getMessageHandlerReply } from "../../runtime/message-handler";
+import {
+  hostOutputCap,
+  STAGE1_MAX_TOKENS_ENV,
+} from "../../runtime/output-cap.ts";
 import { cacheProviderOptions } from "../../runtime/planner-loop";
 import {
   getEvaluatorProgressState,
@@ -856,20 +860,23 @@ export async function generateStage1Decision(
   // the non-coding planner's planning rounds take a default cap, on remote
   // providers, after a live runaway tool call streamed 40,960 tokens (see
   // plannerDefaultMaxTokens).
-  const stage1OutputCap: { maxTokens?: number; omitMaxTokens?: boolean } = {
-    omitMaxTokens: true,
-  };
+  const stage1HostCap = hostOutputCap(STAGE1_MAX_TOKENS_ENV);
+  const stage1OutputCap: { maxTokens?: number; omitMaxTokens?: boolean } =
+    stage1HostCap === undefined
+      ? { omitMaxTokens: true }
+      : { maxTokens: stage1HostCap, omitMaxTokens: false };
   let stage1ModelParams = {
     messages: messageHandlerInput.messages,
     promptSegments: messageHandlerInput.promptSegments,
     tools: messageHandlerTools,
     toolChoice: "required" as const,
     ...stage1OutputCap,
-    // A host bounds Stage 1 with RESPONSE_HANDLER_MAX_TOKENS or
-    // DEFAULT_MAX_TOKENS, for a provider that reserves the output cap against
-    // a rate limit at admission. The runtime merges those settings under these
-    // params before each attempt; a merged cap is sent instead of omitted. A
-    // blank setting merges as 0 and stays uncapped.
+    // A host bounds Stage 1 with ELIZA_STAGE1_MAX_TOKENS in its environment,
+    // or with the RESPONSE_HANDLER_MAX_TOKENS or DEFAULT_MAX_TOKENS setting,
+    // for a provider that reserves the output cap against a rate limit at
+    // admission. The runtime merges those settings under these params before
+    // each attempt; a merged cap is sent instead of omitted. A blank setting
+    // merges as 0 and stays uncapped.
     prepareModelAttempt: (
       _attempt: unknown,
       request: typeof stage1OutputCap,
