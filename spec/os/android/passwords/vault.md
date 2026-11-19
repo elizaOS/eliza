@@ -157,7 +157,7 @@ pure def alwaysDamagedPageHoldsNothing(s: VaultUi): bool = damaged(s.view) impli
 
 ### Reset needs the owner's review and a fresh Android authentication after it, in the same visit
 
-Reviewing the reset starts a new generation, so an authentication begun
+For timed custody, reviewing the reset starts a new generation, so an authentication begun
 before the review cannot confirm it; a refresh, a lock or leaving withdraws
 the review. `resetConfirmed` is Android's authentication for the reviewed
 reset followed by the native reset, which deletes only a vault that can
@@ -320,14 +320,23 @@ in credential-encrypted app storage. On Android 15 and newer, newly made
 keys also ask Keystore to enforce device lock. Earlier supported Android
 releases enforce it in the native shell. No timer ends a foreground grant.
 On leaving, pausing or retiring the owner, the next window gets its own
-access generation. Reveal, copy and fill still require a native user action.
+access generation. Reveal, copy and fill still require a native user action. A device-unlocked
+vault reset also needs an explicit native confirmation and refuses readable
+records or a preserved legacy vault.
 
 ```quint
 type DeviceVaultWindow = { foreground: bool, userUnlocked: bool, deviceUnlocked: bool, ownerAdmitted: bool, generation: int }
+pure val readyWindow: DeviceVaultWindow = { foreground: true, userUnlocked: true, deviceUnlocked: true, ownerAdmitted: true, generation: 1 }
+pure val windowValues = Set(readyWindow, { ...readyWindow, foreground: false }, { ...readyWindow, userUnlocked: false },
+  { ...readyWindow, deviceUnlocked: false }, { ...readyWindow, ownerAdmitted: false }, { ...readyWindow, generation: 2 })
 pure def deviceVaultOpen(window: DeviceVaultWindow): bool =
   window.foreground and window.userUnlocked and window.deviceUnlocked and window.ownerAdmitted
 pure def deviceVaultDeliver(window: DeviceVaultWindow, requestGeneration: int, userAction: bool): bool =
   deviceVaultOpen(window) and requestGeneration == window.generation and userAction
+pure def deviceVaultResetAllowed(window: DeviceVaultWindow, requestGeneration: int, confirmed: bool, damaged: bool, legacySelected: bool): bool =
+  deviceVaultDeliver(window, requestGeneration, confirmed) and damaged and not(legacySelected)
+pure def lawDeviceVaultResetProtectsReadableAndLegacyRecords(window: DeviceVaultWindow, requestGeneration: int, confirmed: bool, damaged: bool, legacySelected: bool): bool =
+  deviceVaultResetAllowed(window, requestGeneration, confirmed, damaged, legacySelected) implies (confirmed and damaged and not(legacySelected))
 pure def lawDeviceVaultDeliveryNeedsCurrentOpenWindow(window: DeviceVaultWindow, requestGeneration: int, userAction: bool): bool =
   deviceVaultDeliver(window, requestGeneration, userAction) implies
     (deviceVaultOpen(window) and requestGeneration == window.generation and userAction)
@@ -344,8 +353,8 @@ leaves the original selected. An empty install can open directly.
 
 ```quint
 type DeviceVaultLegacy = NoLegacyRecords | LegacySelected | DeviceCustodySelected
-pure def canSelectDeviceVault(legacy: DeviceVaultLegacy, originalKeyRead: bool, verifiedCopy: bool): bool =
+pure def deviceVaultSelectionPermitted(legacy: DeviceVaultLegacy, originalKeyRead: bool, verifiedCopy: bool): bool =
   legacy == NoLegacyRecords or legacy == DeviceCustodySelected or (originalKeyRead and verifiedCopy)
 pure def lawLegacySelectionNeedsOriginalKey(originalKeyRead: bool, verifiedCopy: bool): bool =
-  canSelectDeviceVault(LegacySelected, originalKeyRead, verifiedCopy) iff (originalKeyRead and verifiedCopy)
+  deviceVaultSelectionPermitted(LegacySelected, originalKeyRead, verifiedCopy) iff (originalKeyRead and verifiedCopy)
 ```

@@ -48,7 +48,11 @@ public class PasswordsPlugin extends Plugin {
   /** {@link #access} for a method that reaches the vault: the host's admission rule decides first. */
   private PasswordVaultAccess vault(PluginCall call) {
     if (!PasswordVaultAccess.admitted(getContext())) { call.reject("Saved passwords are not available here", "not-admitted"); return null; }
-    return access(call);
+    PasswordVaultAccess access = access(call);
+    if (access != null && access.deviceUnlockedCustody() && !access.activityCurrent(getActivity())) {
+      fail(call, new PasswordVaultAccess.Locked()); return null;
+    }
+    return access;
   }
 
   private void fail(PluginCall call, Exception failure) {
@@ -71,15 +75,15 @@ public class PasswordsPlugin extends Plugin {
     android.app.KeyguardManager keyguard = getContext().getSystemService(android.app.KeyguardManager.class);
     boolean deviceCustody = access.deviceUnlockedCustody();
     boolean secure = keyguard != null && keyguard.isDeviceSecure();
-    boolean ownerForeground = deviceCustody && access.ownerForeground();
+    boolean ownerForeground = deviceCustody && access.activityCurrent(getActivity()) && access.ownerForeground();
     result.put("available", deviceCustody ? ownerForeground : secure);
     if (deviceCustody) {
       result.put("custody", "device-unlocked");
-      String reason = access.blockedDeviceReason();
+      String reason = access.activityCurrent(getActivity()) ? access.blockedDeviceReason() : "device-locked";
       if (reason != null) result.put("reason", reason);
     } else if (!secure) result.put("reason", "no-screen-lock");
     long remaining = access.remainingMillis();
-    result.put("locked", deviceCustody ? !access.deviceWindowOpen() : remaining <= 0);
+    result.put("locked", deviceCustody ? !ownerForeground || access.needsLegacyAuthorization() : remaining <= 0);
     result.put("unlockRemainingMs", deviceCustody ? JSObject.NULL : remaining);
     if (!deviceCustody) {
       result.put("unlockSeconds", access.config.unlockSeconds);
@@ -236,10 +240,22 @@ public class PasswordsPlugin extends Plugin {
   /** Deletes the vault only when its key is lost or invalidated (see PasswordVaultStore). */
   @PluginMethod public void reset(PluginCall call) {
     PasswordVaultAccess access = vault(call); if (access == null) return;
-    try {
-      access.resetUnrecoverable();
-      JSObject result = new JSObject(); result.put("reset", true); call.resolve(result);
-    } catch (Exception failure) { fail(call, failure); }
+    long ticket = access.ticket();
+    Runnable reset = () -> {
+      try {
+        if (!access.unlocked(ticket)) throw new PasswordVaultAccess.Locked();
+        access.resetUnrecoverable();
+        JSObject result = new JSObject(); result.put("reset", true); call.resolve(result);
+      } catch (Exception failure) { fail(call, failure); }
+    };
+    if (!access.deviceUnlockedCustody()) { reset.run(); return; }
+    Activity activity = getActivity();
+    if (activity == null) { fail(call, new PasswordVaultAccess.Locked()); return; }
+    activity.runOnUiThread(() -> {
+      if (!access.unlocked(ticket) || !activity.hasWindowFocus()) { fail(call, new PasswordVaultAccess.Locked()); return; }
+      if (!SecretSurfaces.confirm(activity, R.string.eliza_passwords_reset_confirm, reset,
+          () -> call.reject("Password reset cancelled", "cancelled"))) call.reject("Password action unavailable", "busy");
+    });
   }
 
   @PluginMethod public void reveal(PluginCall call) { secret(call, true); }
