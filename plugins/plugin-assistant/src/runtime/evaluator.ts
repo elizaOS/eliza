@@ -5,6 +5,7 @@ import {
   type EvaluatorContextAttribution,
 } from "./evaluator-context-attribution.ts";
 import { isDeliveredNavigationOnlyTurn } from "./nav-evaluator-eligibility";
+import { EVALUATOR_MAX_TOKENS_ENV, hostOutputCap } from "./output-cap.ts";
 import { recordGatedEvaluationStage } from "./record-gated-evaluation";
 import {
   applyTypedReadReply,
@@ -1247,8 +1248,10 @@ async function runEvaluatorWithSelectedModel(
             }
           : undefined,
         () => {
+          const hostCap = hostOutputCap(EVALUATOR_MAX_TOKENS_ENV);
           const modelRequest = {
             ...(model ? { model } : {}),
+            ...(hostCap === undefined ? {} : { maxTokens: hostCap }),
             messages: callInput.messages,
             responseSchema,
             promptSegments: callInput.promptSegments,
