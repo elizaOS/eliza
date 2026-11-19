@@ -63,7 +63,8 @@ export function namesTelephonyTarget(operation: { type?: unknown }): boolean {
 
 // A run of digits as a person writes a number: digit groups joined by spaces,
 // dashes, dots and brackets, with an optional leading +.
-const WRITTEN_NUMBER = /(?<![\p{L}\p{N}+])\+?(?:\(\d+\)|\d)[\d ().-]*\d(?![\p{L}\p{N}])/gu;
+const WRITTEN_NUMBER =
+  /(?<![\p{L}\p{N}+])\+?(?:\(\d+\)|\d)[\d ().-]*\d(?![\p{L}\p{N}])/gu;
 // Shorter runs are times, counts and list numbers; 3 keeps 911, 112 and 999.
 const MIN_DIGITS = 3;
 
@@ -98,18 +99,23 @@ export function writtenPhoneNumbers(text: string): string[] {
 export function samePhoneNumber(a: string, b: string): boolean {
   const x = a.replace("+", ""),
     y = b.replace("+", "");
-  return x === y || (x.length >= 10 && y.length >= 10 && x.slice(-10) === y.slice(-10));
+  return (
+    x === y ||
+    (x.length >= 10 && y.length >= 10 && x.slice(-10) === y.slice(-10))
+  );
 }
 
 function normalizedWords(text: string): string {
-  return text
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[’‘]/g, "'")
-    // "Maya's cell" names Maya.
-    .replace(/'s(?![\p{L}\p{N}])/gu, "")
-    .replace(/[^\p{L}\p{N}']+/gu, " ")
-    .trim();
+  return (
+    text
+      .normalize("NFKC")
+      .toLowerCase()
+      .replace(/[’‘]/g, "'")
+      // "Maya's cell" names Maya.
+      .replace(/'s(?![\p{L}\p{N}])/gu, "")
+      .replace(/[^\p{L}\p{N}']+/gu, " ")
+      .trim()
+  );
 }
 
 /** The name, as whole words, appears in the owner's text (case and punctuation aside). */
@@ -123,8 +129,12 @@ export function writesContactName(text: string, name: string): boolean {
  * The owner's text without the message body they asked to send, so that "text
  * Sam saying call me at 415-555-0100" never makes that number the recipient.
  */
-function textWithoutBody(text: string, body: unknown): { text: string; bodyNumbers: string[] } {
-  if (typeof body !== "string" || !body.trim()) return { text, bodyNumbers: [] };
+function textWithoutBody(
+  text: string,
+  body: unknown,
+): { text: string; bodyNumbers: string[] } {
+  if (typeof body !== "string" || !body.trim())
+    return { text, bodyNumbers: [] };
   const at = text.toLowerCase().indexOf(body.trim().toLowerCase());
   if (at >= 0)
     return {
@@ -151,7 +161,9 @@ function recipientNumbers(text: string, body: unknown): string[] {
 }
 
 function groundTarget(
-  target: { kind: "number"; number: string } | { kind: "contact"; query: string },
+  target:
+    | { kind: "number"; number: string }
+    | { kind: "contact"; query: string },
   text: string,
   body: unknown,
 ): AuthoredTelephonyTarget {
@@ -167,7 +179,8 @@ function groundTarget(
 
 type TargetedOperation = Extract<
   DeviceOperation,
-  { type: "phone_call" | "phone_dial" } | { type: "sms_compose"; target: unknown }
+  | { type: "phone_call" | "phone_dial" }
+  | { type: "sms_compose"; target: unknown }
 >;
 
 function withTarget<T extends TargetedOperation>(
@@ -211,7 +224,10 @@ export function groundTelephonyTarget(
       return { operation: withTarget(operation, target), handedThrough: true };
     if (operation.type === "sms_compose") {
       if ("target" in operation)
-        return { operation: withTarget(operation, target), handedThrough: true };
+        return {
+          operation: withTarget(operation, target),
+          handedThrough: true,
+        };
       // The query form names a contact; it cannot carry a written number.
       if (target.kind !== "contact")
         throw new DeviceTelephonyTargetNotRequestedError("form");
@@ -234,7 +250,10 @@ export function groundTelephonyTarget(
     case "phone_call":
     case "phone_dial":
       return {
-        operation: withTarget(operation, groundTarget(operation.target, text, undefined)),
+        operation: withTarget(
+          operation,
+          groundTarget(operation.target, text, undefined),
+        ),
         handedThrough: false,
       };
     case "sms_compose":
@@ -246,7 +265,11 @@ export function groundTelephonyTarget(
           ),
           handedThrough: false,
         };
-      groundTarget({ kind: "contact", query: operation.query }, text, operation.body);
+      groundTarget(
+        { kind: "contact", query: operation.query },
+        text,
+        operation.body,
+      );
       return { operation, handedThrough: false };
     case "sms_send": {
       const owned = recipientNumbers(text, operation.body);
@@ -258,7 +281,8 @@ export function groundTelephonyTarget(
       return { operation: { ...operation, recipients }, handedThrough: false };
     }
     case "phone_keypad": {
-      if (operation.number === undefined) return { operation, handedThrough: false };
+      if (operation.number === undefined)
+        return { operation, handedThrough: false };
       const number = ownerNumber(operation.number, writtenPhoneNumbers(text));
       if (!number) throw new DeviceTelephonyTargetNotRequestedError("number");
       return { operation: { ...operation, number }, handedThrough: false };

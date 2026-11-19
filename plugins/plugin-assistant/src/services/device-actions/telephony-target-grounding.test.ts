@@ -9,11 +9,20 @@ import {
 } from "./telephony-target-grounding.ts";
 
 const call = (number: string) =>
-  ({ type: "phone_call", target: { kind: "number", number } }) as DeviceOperation;
+  ({
+    type: "phone_call",
+    target: { kind: "number", number },
+  }) as DeviceOperation;
 const callContact = (query: string) =>
-  ({ type: "phone_call", target: { kind: "contact", query } }) as DeviceOperation;
+  ({
+    type: "phone_call",
+    target: { kind: "contact", query },
+  }) as DeviceOperation;
 const dial = (number: string) =>
-  ({ type: "phone_dial", target: { kind: "number", number } }) as DeviceOperation;
+  ({
+    type: "phone_dial",
+    target: { kind: "number", number },
+  }) as DeviceOperation;
 const text = (number: string, body: string) =>
   ({
     type: "sms_compose",
@@ -21,7 +30,12 @@ const text = (number: string, body: string) =>
     body,
   }) as DeviceOperation;
 const send = (recipients: string[], body: string) =>
-  ({ type: "sms_send", recipients, body, subscriptionId: 1 }) as DeviceOperation;
+  ({
+    type: "sms_send",
+    recipients,
+    body,
+    subscriptionId: 1,
+  }) as DeviceOperation;
 
 function refusal(operation: DeviceOperation, request: string) {
   try {
@@ -83,14 +97,17 @@ describe("whole-message commands hand through the owner's recipient", () => {
       ).operation,
     ).toEqual(text("4155550100", "v612 test"));
     expect(
-      groundTelephonyTarget(send(["+16505715862"], "hi"), "text 415-555-0100 saying hi")
-        .operation,
+      groundTelephonyTarget(
+        send(["+16505715862"], "hi"),
+        "text 415-555-0100 saying hi",
+      ).operation,
     ).toEqual(send(["4155550100"], "hi"));
   });
 
   it("keeps the owner's dial form when the model added a country code", () => {
     expect(
-      groundTelephonyTarget(call("+14155550100"), "call 415-555-0100").operation,
+      groundTelephonyTarget(call("+14155550100"), "call 415-555-0100")
+        .operation,
     ).toEqual(call("4155550100"));
   });
 
@@ -103,7 +120,11 @@ describe("whole-message commands hand through the owner's recipient", () => {
     ).toEqual(callContact("shaw"));
     expect(
       groundTelephonyTarget(
-        { type: "sms_compose", query: "Sam Lee", body: "late" } as DeviceOperation,
+        {
+          type: "sms_compose",
+          query: "Sam Lee",
+          body: "late",
+        } as DeviceOperation,
         "text Sam saying late",
       ).operation,
     ).toEqual({ type: "sms_compose", query: "Sam", body: "late" });
@@ -112,7 +133,11 @@ describe("whole-message commands hand through the owner's recipient", () => {
   it("refuses a recipient no phone form can carry", () => {
     expect(
       refusal(
-        { type: "sms_compose", query: "Test Alpha", body: "hi" } as DeviceOperation,
+        {
+          type: "sms_compose",
+          query: "Test Alpha",
+          body: "hi",
+        } as DeviceOperation,
         "text 415-555-0100 saying hi",
       ),
     ).toBe("form");
@@ -125,9 +150,14 @@ describe("whole-message commands hand through the owner's recipient", () => {
 describe("other requests ground the model's recipient", () => {
   it("refuses a number the owner did not write", () => {
     expect(
-      refusal(call("6505715862"), "can you call 415-555-0100 when you get a sec"),
+      refusal(
+        call("6505715862"),
+        "can you call 415-555-0100 when you get a sec",
+      ),
     ).toBe("number");
-    expect(refusal(call("6505715862"), "call the pharmacy back")).toBe("number");
+    expect(refusal(call("6505715862"), "call the pharmacy back")).toBe(
+      "number",
+    );
     expect(refusal(call("4155550100"), "call the number in that email")).toBe(
       "number",
     );
@@ -148,8 +178,10 @@ describe("other requests ground the model's recipient", () => {
 
   it("accepts a contact the owner named and refuses one they did not", () => {
     expect(
-      groundTelephonyTarget(callContact("Maya"), "could you ring maya's cell later")
-        .operation,
+      groundTelephonyTarget(
+        callContact("Maya"),
+        "could you ring maya's cell later",
+      ).operation,
     ).toEqual(callContact("Maya"));
     expect(refusal(callContact("Shaw"), "call my landlord back today")).toBe(
       "contact",
@@ -219,7 +251,8 @@ describe("other requests ground the model's recipient", () => {
   it("leaves other operations alone", () => {
     const op = { type: "browser_navigate", url: "https://example.com/" };
     expect(
-      groundTelephonyTarget(op as DeviceOperation, "call 415-555-0100").operation,
+      groundTelephonyTarget(op as DeviceOperation, "call 415-555-0100")
+        .operation,
     ).toBe(op);
   });
 });

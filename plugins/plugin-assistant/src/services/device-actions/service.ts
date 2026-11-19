@@ -58,11 +58,6 @@ import type {
 } from "../approval/types.ts";
 import { hostAuthoredText } from "./authored-text.ts";
 import {
-  DeviceTelephonyTargetNotRequestedError,
-  groundTelephonyTarget,
-  namesTelephonyTarget,
-} from "./telephony-target-grounding.ts";
-import {
   BROWSER_CONTROL_TYPES,
   BROWSER_FIND_CAPABILITY,
   BROWSER_HISTORY_CAPABILITY,
@@ -245,6 +240,11 @@ import {
   VOICEMAIL_READ_CAPABILITY,
   validateTelephonyActionResult,
 } from "./telephony-actions-contract.ts";
+import {
+  DeviceTelephonyTargetNotRequestedError,
+  groundTelephonyTarget,
+  namesTelephonyTarget,
+} from "./telephony-target-grounding.ts";
 import { requireTurnObservation, turnObservation } from "./turn-observation.ts";
 import {
   type DeviceViewProfile,
@@ -2461,38 +2461,50 @@ export class DeviceActionService {
         : requestOrigin?.assertCurrent;
     assertCurrent?.();
     let telephonyReason: string | undefined;
+    // Held, not thrown: re-proposing the exact operation of an existing
+    // record only retrieves it (a historical receipt, the same review) and
+    // never creates a new one. Anything else is refused before enqueue.
+    let telephonyRefusal: DeviceTelephonyTargetNotRequestedError | undefined;
     if (telephonyTarget) {
-      // No durable original request means no words to ground a recipient in.
-      if (!requestOrigin)
-        throw new DeviceTelephonyTargetNotRequestedError(
-          validated.type === "sms_compose" && "query" in validated
-            ? "contact"
-            : "number",
+      const proposed = validated;
+      try {
+        // No durable original request means no words to ground a recipient in.
+        if (!requestOrigin)
+          throw new DeviceTelephonyTargetNotRequestedError(
+            validated.type === "sms_compose" && "query" in validated
+              ? "contact"
+              : "number",
+          );
+        const grounded = groundTelephonyTarget(
+          validated,
+          requestOrigin.requestText,
         );
-      const grounded = groundTelephonyTarget(
-        validated,
-        requestOrigin.requestText,
-      );
-      validated = grounded.operation;
-      // A handed-through recipient may need a form the model's did not (a
-      // contact lookup in place of a number): the phone must have it.
-      if (
-        !deviceOperationSupportedByCapabilities(
-          validated.type,
-          c.capabilities,
-        ) ||
-        !deviceOperationFormSupported(validated, c.capabilities) ||
-        (isPhoneDial(validated) &&
-          !phoneDialCapabilityAvailable(validated, c.capabilities))
-      )
-        throw new DeviceTelephonyTargetNotRequestedError("form");
-      // The review shows the owner's recipient; the model's reason may still
-      // name the number it invented.
-      if (grounded.handedThrough)
-        telephonyReason =
-          validated.type === "sms_compose" || validated.type === "sms_send"
-            ? "Text the recipient the owner wrote."
-            : "Call the recipient the owner wrote.";
+        // A handed-through recipient may need a form the model's did not (a
+        // contact lookup in place of a number): the phone must have it.
+        if (
+          !deviceOperationSupportedByCapabilities(
+            grounded.operation.type,
+            c.capabilities,
+          ) ||
+          !deviceOperationFormSupported(grounded.operation, c.capabilities) ||
+          (isPhoneDial(grounded.operation) &&
+            !phoneDialCapabilityAvailable(grounded.operation, c.capabilities))
+        )
+          throw new DeviceTelephonyTargetNotRequestedError("form");
+        validated = grounded.operation;
+        // The review shows the owner's recipient; the model's reason may
+        // still name the number it invented.
+        if (grounded.handedThrough)
+          telephonyReason =
+            validated.type === "sms_compose" || validated.type === "sms_send"
+              ? "Text the recipient the owner wrote."
+              : "Call the recipient the owner wrote.";
+      } catch (error) {
+        if (!(error instanceof DeviceTelephonyTargetNotRequestedError))
+          throw error;
+        telephonyRefusal = error;
+        validated = proposed;
+      }
     }
     if (validated.type === "browser_navigate") {
       // The durable original request owns the destination: the user's typed
@@ -2640,6 +2652,18 @@ export class DeviceActionService {
           idempotencyKey,
           c.subjectUserId,
         );
+        if (telephonyRefusal) {
+          const prior = existing
+            ? validateDevicePayload(existing.payload)
+            : undefined;
+          if (
+            prior?.installationId !== payload.installationId ||
+            prior.enrollmentId !== payload.enrollmentId ||
+            stableStringify(prior.operation) !==
+              stableStringify(payload.operation)
+          )
+            throw telephonyRefusal;
+        }
         // A lapsed review can never run: close it here rather than offer it again under the same key.
         if (
           existing?.state === "pending" &&

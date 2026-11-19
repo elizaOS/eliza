@@ -56,7 +56,6 @@ async function createTable(
   );
 }
 
-
 const CAPABILITIES = [
   "phone.call.v1",
   "phone.dial.v1",
@@ -96,7 +95,10 @@ async function fixture(capabilities: string[] = CAPABILITIES) {
     deviceKey: "a".repeat(64),
     capabilities,
   };
-  await new DeviceActionService(runtime).register(credential, "Synthetic phone");
+  await new DeviceActionService(runtime).register(
+    credential,
+    "Synthetic phone",
+  );
   runtime.registerAction(proposeDeviceAction);
   const enqueue = vi.spyOn(PgApprovalQueue.prototype, "enqueueTransactional");
   async function run(
@@ -221,13 +223,27 @@ it("reviews the owner's number when the model invents another (v612)", async () 
 });
 
 it.each([
-  ["a matching number", "can you call 415-555-0100 when you get a sec", "4155550100"],
-  ["an added country code", "can you call 415-555-0100 when you get a sec", "+14155550100"],
-  ["an international number", "could you ring +44 20 7946 0958 after lunch", "+442079460958"],
+  [
+    "a matching number",
+    "can you call 415-555-0100 when you get a sec",
+    "4155550100",
+  ],
+  [
+    "an added country code",
+    "can you call 415-555-0100 when you get a sec",
+    "+14155550100",
+  ],
+  [
+    "an international number",
+    "could you ring +44 20 7946 0958 after lunch",
+    "+442079460958",
+  ],
 ])("keeps %s in the owner's dial form", async (_label, request, proposed) => {
   const f = await fixture();
   try {
-    expect(await f.run(request, call(proposed))).toMatchObject({ success: true });
+    expect(await f.run(request, call(proposed))).toMatchObject({
+      success: true,
+    });
     const [row] = await f.rows();
     expect(row.operation).toEqual(
       call(proposed === "+442079460958" ? "+442079460958" : "4155550100"),
@@ -260,9 +276,13 @@ it("refuses a number that only a document carried", async () => {
   try {
     await refused(
       f,
-      await f.run("could you phone our vendor when you get a sec", call("6505715862"), {
-        document: "Acme Supply main line: 650-571-5862",
-      }),
+      await f.run(
+        "could you phone our vendor when you get a sec",
+        call("6505715862"),
+        {
+          document: "Acme Supply main line: 650-571-5862",
+        },
+      ),
     );
   } finally {
     await f.pg.close();

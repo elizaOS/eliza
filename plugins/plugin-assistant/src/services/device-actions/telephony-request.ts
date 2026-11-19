@@ -89,7 +89,9 @@ export type AuthoredTelephonyTarget =
  */
 export function authoredTelephonyTarget(
   text: string,
-): { request: AuthoredTelephonyRequest; target?: AuthoredTelephonyTarget } | undefined {
+):
+  | { request: AuthoredTelephonyRequest; target?: AuthoredTelephonyTarget }
+  | undefined {
   const request = authoredTelephonyRequest(text);
   if (!request) return;
   // A greedy name also takes a trailing "please", "now" or "for me".
@@ -101,7 +103,10 @@ export function authoredTelephonyTarget(
   if (!written) return { request };
   if (/^[+\d(]/.test(written)) {
     try {
-      return { request, target: { kind: "number", number: phoneDialNumber(written) } };
+      return {
+        request,
+        target: { kind: "number", number: phoneDialNumber(written) },
+      };
     } catch {
       return { request };
     }
