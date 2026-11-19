@@ -83,9 +83,11 @@ import {
 } from "./security/processing-policy.js";
 import { MIN_SECRET_LENGTH, redactWithSecrets } from "./security/redact.js";
 import {
+	createSecretSwapStableKey,
 	parseSecretSwapExemptValues,
 	SECRET_SWAP_ENABLED_SETTING,
 	SECRET_SWAP_EXEMPT_VALUES_SETTING,
+	SECRET_SWAP_STABLE_REFERENCES_SETTING,
 	SecretSwapSession,
 } from "./security/secret-swap";
 import { deriveKnownSecrets } from "./security/secrets";
@@ -839,7 +841,10 @@ export class AgentRuntime implements IAgentRuntime {
 		);
 	}
 
-	private createSecretSwapSession(): SecretSwapSession {
+	/** Held in memory for the life of this runtime; never persisted or logged. */
+	private secretSwapStableKey: string | undefined;
+
+	private createSecretSwapSession(conversation?: string): SecretSwapSession {
 		const toSecretStrings = (
 			values: Record<string, unknown> | undefined,
 		): Record<string, string | undefined> => {
@@ -871,7 +876,22 @@ export class AgentRuntime implements IAgentRuntime {
 		const envSecrets = deriveKnownSecrets(
 			process.env as Record<string, string | undefined>,
 		);
+		// A call outside a conversation keeps a fresh nonce: there is no later
+		// turn whose prompt its references could match.
+		const stable =
+			conversation !== undefined &&
+			(parseBooleanValue(
+				this.getSetting(SECRET_SWAP_STABLE_REFERENCES_SETTING),
+			) ??
+				parseBooleanValue(
+					swapEnvSetting(SECRET_SWAP_STABLE_REFERENCES_SETTING),
+				) ??
+				false);
+		if (stable) this.secretSwapStableKey ??= createSecretSwapStableKey();
 		return new SecretSwapSession({
+			...(stable
+				? { stableKey: `${this.secretSwapStableKey}:${conversation}` }
+				: {}),
 			knownSecrets: {
 				...envSecrets,
 				...settingsSecrets,
