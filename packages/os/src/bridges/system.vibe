@@ -178,7 +178,7 @@ schema Readiness {
   canChangeDefaultsSilently: false
 }
 const CrashLogReply = Schema.Struct({ entries: Schema.optionalKey(Schema.Unknown), exitHistory: Schema.optionalKey(Schema.Unknown) })
-schema Listed { apps: unknown[] }
+const Listed = Schema.Struct({ apps: Schema.Array(Schema.Unknown) })
 
 export function launcherRefusalCode(error: unknown): LauncherRefusalCode | undefined {
   const code = rejectionCode(error)

@@ -115,15 +115,15 @@ const labelChanges: Readonly<Record<LabelKind, { readonly path: "modify" | "tras
 
 const rejectionCodes: Readonly<Record<RefusalCause, string>> = { NoRefusal: "refused", NotFoundAtProvider: "not_found", AuthorizationLost: "reauth_required", OtherRefusal: "refused" }
 
-schema LabelProposal { kind: LabelKind; messageId: string; expectedHistoryId: string }
+schema LabelProposal { kind: "archive" | "unarchive" | "trash" | "untrash" | "mark-read" | "mark-unread" | "star" | "unstar"; messageId: string; expectedHistoryId: string }
 schema DraftDeleteProposal { kind: "draft-delete"; draftId: string; expectedDigest: string; confirmPermanentDelete: true }
 const ComposeExtras = Schema.Struct({
   draftId: Schema.optionalKey(Schema.String),
   expectedDigest: Schema.optionalKey(Schema.String),
   forwardAttachments: Schema.optionalKey(Schema.Struct({ messageId: Schema.String, historyId: Schema.String, partIds: Schema.Array(Schema.String) }))
 })
-schema PrepareBody { grantId: string; requestId: string; proposal: unknown }
-schema DispatchBody { grantId: string; reviewDigest: string; proposal: unknown }
+schema PrepareBody { grantId: string; requestId: string; proposal: Schema.Unknown }
+schema DispatchBody { grantId: string; reviewDigest: string; proposal: Schema.Unknown }
 const MessageReply = Schema.Struct({ id: Schema.String, threadId: Schema.optionalKey(Schema.String), labelIds: Schema.optionalKey(Schema.Array(Schema.String)), historyId: Schema.optionalKey(Schema.String) })
 const MessageList = Schema.Struct({ messages: Schema.optionalKey(Schema.Array(Schema.Struct({ id: Schema.String }))) })
 const DraftReply = Schema.Struct({ id: Schema.String, message: Schema.optionalKey(Schema.Struct({ id: Schema.optionalKey(Schema.String), raw: Schema.optionalKey(Schema.String) })) })
