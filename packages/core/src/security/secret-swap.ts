@@ -147,6 +147,24 @@ function generateSessionNonce(): string {
 	return BufferUtils.toHex(BufferUtils.randomBytes(8));
 }
 
+const RESERVED_EXAMPLE_PHONE = /^(?:(?:\+?1)?\d{3})?55501\d{2}$/;
+const RESERVED_EXAMPLE_DOMAIN =
+	/(?:^|\.)(?:example\.(?:com|org|net)|example|test|invalid|localhost)$/i;
+
+/**
+ * True for a phone number or email address that is reserved for documentation
+ * and so belongs to nobody: a North American number whose line is in the
+ * fictional range 555-0100 to 555-0199, with or without an area code and the
+ * country code 1, or an address at example.com, example.org or example.net, or
+ * under .example, .test, .invalid or .localhost (RFC 2606, RFC 6761).
+ */
+export function isReservedExampleContact(value: string): boolean {
+	const at = value.lastIndexOf("@");
+	return at >= 0
+		? RESERVED_EXAMPLE_DOMAIN.test(value.slice(at + 1))
+		: RESERVED_EXAMPLE_PHONE.test(value.replace(/[^\d+]/g, ""));
+}
+
 /** PII kinds the local user may read back in a reply; every other kind stays redacted. */
 const USER_READABLE_KINDS: ReadonlySet<string> = new Set([
 	"email",
@@ -634,8 +652,8 @@ export class SecretSwapSession {
 	 */
 	private learnText(
 		text: string,
-		/** false: learn no contact data here; a set: learn it, except these values. */
-		contacts: boolean | ReadonlySet<string> = true,
+		/** Leave a reserved example contact as written: see `substituteInValue`. */
+		keepExamples = false,
 	): { value: string; start: number; end: number }[] {
 		// 1) Assignment-style secrets (KEY=…, "token":"…", Bearer …, PEM blocks)
 		// from the shared redact pattern set — value-extracted, including short values.
@@ -656,12 +674,11 @@ export class SecretSwapSession {
 			disabledKinds: this.disabledKinds,
 		})) {
 			const trimmed = match.value.trim();
-			// Authored interface text documents a format with an example; a phone
-			// number or address there is not anyone's contact.
+			// Outside the conversation a reserved example documents a format.
 			if (
+				keepExamples &&
 				(match.kind === "email" || match.kind === "phone") &&
-				(contacts === false ||
-					(typeof contacts === "object" && contacts.has(trimmed)))
+				isReservedExampleContact(trimmed)
 			)
 				continue;
 			if (
@@ -677,12 +694,13 @@ export class SecretSwapSession {
 		return assignments;
 	}
 
-	substituteText(
-		text: string,
-		contacts: boolean | ReadonlySet<string> = true,
-	): string {
+	substituteText(text: string): string {
+		return this.substitute(text, false);
+	}
+
+	private substitute(text: string, keepExamples: boolean): string {
 		let result = text;
-		const assignments = this.learnText(text, contacts);
+		const assignments = this.learnText(text, keepExamples);
 		// Replace credential capture spans before general known-value matching. This
 		// covers short punctuation-only assignments without rewriting JSON syntax.
 		let cursor = 0;
@@ -698,18 +716,25 @@ export class SecretSwapSession {
 		}
 		parts.push(result.slice(cursor));
 		result = parts.join("");
-		return this.replaceKnownValues(result);
+		return this.replaceKnownValues(result, keepExamples);
 	}
 
 	/**
 	 * Replace every known value with its placeholder, longest first so a value
 	 * that is a substring of another does not corrupt the longer placeholder.
+	 * `keepExamples` leaves a reserved example the session holds as a contact.
 	 */
-	private replaceKnownValues(text: string): string {
+	private replaceKnownValues(text: string, keepExamples = false): string {
 		let result = text;
 		for (const entry of this.entries.sort(
 			(a, b) => b.value.length - a.value.length,
 		)) {
+			if (
+				keepExamples &&
+				entry.placeholder.startsWith(CONTACT_PLACEHOLDER_PREFIX) &&
+				isReservedExampleContact(entry.value)
+			)
+				continue;
 			let pattern = this.replacePatterns.get(entry.value);
 			if (!pattern) {
 				pattern = compileReplacePattern(entry.value);
@@ -733,14 +758,17 @@ export class SecretSwapSession {
 
 	/**
 	 * `authoredFields` names properties of the root object that hold authored
-	 * interface text, such as a request's tool definitions. Contact data is not
-	 * learned from them: an example number in a schema description would become
-	 * a reference, change the definition's bytes with every nonce, and be listed
-	 * as a contact of the request. A request also carries copies of those
-	 * definitions in other fields, so outside `conversationFields` an example
-	 * found in the authored fields is not learned either. Credentials are
-	 * learned everywhere, a contact that is not such an example is learned
-	 * everywhere else, and a value learned anywhere is replaced everywhere.
+	 * interface text, such as a request's tool definitions. A schema description
+	 * documents a format with an example ("for example +14155550100"). Read as a
+	 * contact, the example would become a reference, and the definition's bytes
+	 * would change with the nonce and with what the conversation mentions. So a
+	 * reserved example ({@link isReservedExampleContact}) is never learned from
+	 * an authored field or replaced in one. A request also carries copies of its
+	 * definitions in other fields: when `conversationFields` names the fields
+	 * that hold the conversation, every other field treats a reserved example
+	 * the same way, so the request lists a contact only when the conversation
+	 * carries it. Every other value, a real number or address in a definition
+	 * included, is learned and replaced wherever it is written.
 	 */
 	substituteInValue<T>(
 		value: T,
@@ -750,29 +778,12 @@ export class SecretSwapSession {
 		} = {},
 	): T {
 		const authored = new Set(options.authoredFields ?? []);
-		const conversation = new Set(options.conversationFields ?? []);
-		const examples = new Set<string>();
-		if (authored.size)
-			walkSecretSwapValue(
-				value,
-				0,
-				createSecretSwapWalkContext(),
-				(text, _key, field) => {
-					if (field !== undefined && authored.has(field))
-						for (const match of detectPii(text, {
-							disabledKinds: this.disabledKinds,
-						}))
-							if (match.kind === "email" || match.kind === "phone")
-								examples.add(match.value.trim());
-					return text;
-				},
-			);
-		const contacts = (field?: string) =>
-			field !== undefined && authored.has(field)
-				? false
-				: examples.size && (field === undefined || !conversation.has(field))
-					? examples
-					: true;
+		const conversation =
+			options.conversationFields && new Set(options.conversationFields);
+		const keepExamples = (field?: string): boolean =>
+			field !== undefined &&
+			(authored.has(field) ||
+				(conversation !== undefined && !conversation.has(field)));
 		// Snapshot descriptors and learn the entire graph before replacement, so
 		// a credential discovered in a later field protects earlier references too.
 		const snapshot = walkSecretSwapValue(
@@ -788,7 +799,7 @@ export class SecretSwapSession {
 					this.replyProtectedValues.add(text);
 					this.entryForValue(text, "secret");
 				}
-				this.learnText(text, contacts(field));
+				this.learnText(text, keepExamples(field));
 				return text;
 			},
 		);
@@ -796,7 +807,7 @@ export class SecretSwapSession {
 			snapshot,
 			0,
 			createSecretSwapWalkContext(),
-			(text, _key, field) => this.substituteText(text, contacts(field)),
+			(text, _key, field) => this.substitute(text, keepExamples(field)),
 		) as T;
 	}
 
