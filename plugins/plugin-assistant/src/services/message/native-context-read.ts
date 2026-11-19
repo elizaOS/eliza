@@ -88,31 +88,29 @@ export function nativeContextReadsSchema(
     );
   const history = contract.history;
   if (history) {
-    const sourceSetId: JSONSchema = {
-      type: "string",
-      const: history.sourceSetId,
-    };
+    // Nothing in this schema changes from turn to turn: tool definitions
+    // precede the conversation in a provider's cached prompt prefix, so a
+    // per-turn value here would make every later byte a cache miss. The
+    // contract is built for one request, and decoding checks that its source
+    // set is still current and that each ordinal was offered.
     if (history.sources.size)
       choices.push(
         objectSchema({
           kind: kind("history-source"),
-          sourceSetId,
           sourceOrdinals: {
             type: "array",
-            items: nativeSourceOrdinalSchema(history.sources),
+            items: { type: "integer", minimum: 1 },
           },
         }),
       );
     choices.push(
       objectSchema({
         kind: kind("history-search"),
-        sourceSetId,
         speaker: { type: "string", enum: ["all", "user", "assistant"] },
         query: { type: "string" },
       }),
     );
-    if (history.all)
-      choices.push(objectSchema({ kind: kind("history-all"), sourceSetId }));
+    if (history.all) choices.push(objectSchema({ kind: kind("history-all") }));
   }
   return choices.length
     ? { type: "array", items: { anyOf: choices } }
@@ -161,10 +159,16 @@ export function decodeNativeContextReads(
       continue;
     }
     const history = contract.history;
-    if (!history || read.sourceSetId !== history.sourceSetId) invalid();
+    // A read that still names a source set must name the current one.
+    const { sourceSetId, ...selector } = read;
+    if (
+      !history ||
+      (sourceSetId !== undefined && sourceSetId !== history.sourceSetId)
+    )
+      invalid();
     history.assertCurrent();
     if (read.kind === "history-source") {
-      exact(read, ["kind", "sourceSetId", "sourceOrdinals"]);
+      exact(selector, ["kind", "sourceOrdinals"]);
       if (!Array.isArray(read.sourceOrdinals) || !read.sourceOrdinals.length)
         invalid();
       for (const ordinal of read.sourceOrdinals) {
@@ -175,7 +179,7 @@ export function decodeNativeContextReads(
         result.push(source);
       }
     } else if (read.kind === "history-search") {
-      exact(read, ["kind", "sourceSetId", "speaker", "query"]);
+      exact(selector, ["kind", "speaker", "query"]);
       if (
         (read.speaker !== "all" &&
           read.speaker !== "user" &&
@@ -186,7 +190,7 @@ export function decodeNativeContextReads(
         invalid();
       result.push(history.search(read.speaker, read.query));
     } else if (read.kind === "history-all") {
-      exact(read, ["kind", "sourceSetId"]);
+      exact(selector, ["kind"]);
       if (!history.all) invalid();
       result.push(history.all);
     } else invalid();
