@@ -45,7 +45,7 @@ const SPOKEN_DOT_SOURCE = String.raw`\p{Zs}+dot\p{Zs}+`;
 const SPOKEN_ADDRESS_TOKEN = String.raw`\S+(?:${SPOKEN_DOT_SOURCE}\S+)+`;
 const ADDRESS_TOKEN = String.raw`(?:${SPOKEN_ADDRESS_TOKEN}|\S+)`;
 const SPOKEN_DOT = new RegExp(SPOKEN_DOT_SOURCE, "giu");
-const HOST_LABEL_GROUP = String.raw`[a-z\d-]+(?:\.[a-z\d-]+)*`;
+const HOST_LABEL_GROUP = String.raw`[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*`;
 const SPOKEN_HOSTNAME = new RegExp(
   String.raw`^${HOST_LABEL_GROUP}(?:${SPOKEN_DOT_SOURCE}${HOST_LABEL_GROUP})+$`,
   "iu",
