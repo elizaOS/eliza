@@ -98,11 +98,15 @@ async function fixture() {
   )!;
   runtime.registerAction(proposeDeviceAction);
   runtime.registerAction(browser);
+  for (const tool of deviceActionTools)
+    if (tool.name.startsWith("DEVICE_BROWSER_") && tool !== browser)
+      runtime.registerAction(tool);
   const enqueue = vi.spyOn(PgApprovalQueue.prototype, "enqueueTransactional");
   const decide = vi.spyOn(DeviceActionService.prototype, "decide");
   async function run(
     request: string,
-    specialized = false,
+    /** true: DEVICE_BROWSER_OPEN; a name: that typed device tool. */
+    specialized: boolean | string = false,
     direct = false,
     destination = "https://example.com/dashboard",
     custody = "current",
@@ -186,7 +190,11 @@ async function fixture() {
         const action = runtime.actions.find(
           (a) =>
             a.name ===
-            (specialized ? "DEVICE_BROWSER_OPEN" : "PROPOSE_DEVICE_ACTION"),
+            (typeof specialized === "string"
+              ? specialized
+              : specialized
+                ? "DEVICE_BROWSER_OPEN"
+                : "PROPOSE_DEVICE_ACTION"),
         )!;
         const options = {
           parameters: {
@@ -1109,6 +1117,146 @@ it.each([
     }
   },
 );
+// v612 (Pixel, Browser in front): "switch to the example.com tab" was routed
+// to the browser context, where the tab operation was not offered, and the
+// agent said it could only go back, forward or reload. Each Browser control is
+// now its own browser-context tool over the same proposal path.
+it.each([
+  [
+    "DEVICE_BROWSER_TAB_SWITCH",
+    { type: "browser_tab_switch", target: "example.com" },
+    "browser.tabs.v1",
+    "Doing that in Browser.",
+    "switch to the example.com tab",
+  ],
+  [
+    "DEVICE_BROWSER_TAB_NEW",
+    { type: "browser_tab_new", private: true },
+    "browser.tabs.v1",
+    "Doing that in Browser.",
+    "open a new private tab",
+  ],
+  [
+    "DEVICE_BROWSER_SEARCH",
+    { type: "browser_search", query: "cats" },
+    "browser.search.v1",
+    "Searching the web for “cats”.",
+    "search for cats",
+  ],
+  [
+    "DEVICE_BROWSER_PAGE_SEARCH",
+    { type: "browser_find", text: "domain" },
+    "browser.find.v1",
+    "Doing that in Browser.",
+    "find the word domain on this page",
+  ],
+  [
+    "DEVICE_BROWSER_TAB_CLOSE",
+    { type: "browser_tab_close", target: "bbc" },
+    "browser.tabs.v1",
+    false,
+    "close the bbc tab",
+  ],
+] as const)(
+  "queues the Browser control through its own tool %s",
+  async (tool, operation, capability, handoff, request) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: [capability] });
+      const result = await f.run(
+        request,
+        tool,
+        true,
+        undefined,
+        "current",
+        operation,
+      );
+      expect(result).toMatchObject(
+        handoff
+          ? {
+              success: true,
+              userFacingText: handoff,
+              data: { directRequest: true, approvalRequired: false },
+            }
+          : {
+              success: true,
+              userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+              data: { awaitingUserInput: true, approvalRequired: true },
+            },
+      );
+      const [proposal] = await f.service.list(f.credential);
+      expect(proposal?.payload.operation).toEqual(operation);
+      // A tool carries only its own operation.
+      const other = await f.run(request, tool, true, undefined, "current", {
+        type: "browser_navigate",
+        url: "https://example.com/",
+      });
+      expect(other).toMatchObject({
+        success: false,
+        data: { code: "DEVICE_OPERATION_SCOPE" },
+      });
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it.each([
+  // A tab word or find text the owner did not type is always reviewed.
+  [
+    "DEVICE_BROWSER_TAB_SWITCH",
+    { type: "browser_tab_switch", target: "bbc" },
+    "browser.tabs.v1",
+    "switch to the example.com tab",
+  ],
+  [
+    "DEVICE_BROWSER_PAGE_SEARCH",
+    { type: "browser_find", text: "password" },
+    "browser.find.v1",
+    "find the word domain on this page",
+  ],
+] as const)(
+  "reviews %s when the model's words are not the owner's",
+  async (tool, operation, capability, request) => {
+    const f = await fixture();
+    try {
+      Object.assign(f.credential, { capabilities: [capability] });
+      const result = await f.run(
+        request,
+        tool,
+        true,
+        undefined,
+        "current",
+        operation,
+      );
+      expect(result).toMatchObject({
+        success: true,
+        userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+        data: { awaitingUserInput: true, approvalRequired: true },
+      });
+      expect(result).not.toMatchObject({ data: { directRequest: true } });
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it("offers a Browser control tool only to a phone that negotiated it", async () => {
+  const f = await fixture();
+  try {
+    const tool = f.runtime.actions.find(
+      (a) => a.name === "DEVICE_BROWSER_TAB_SWITCH",
+    )!;
+    const validate = (capabilities: string[]) => {
+      Object.assign(f.credential, { capabilities });
+      return withOwnerDeviceActionTurn(f.runtime, f.credential, () =>
+        tool.validate!(f.runtime, {} as Memory),
+      );
+    };
+    expect(await validate(["browser.tabs.v1"])).toBe(true);
+    expect(await validate(["browser.history.v1"])).toBe(false);
+  } finally {
+    await f.pg.close();
+  }
+});
 it.each([
   // [request, model operation, capabilities, stored operation, reply]
   // The owner's v610 turn (Pixel): the model still proposed an empty
