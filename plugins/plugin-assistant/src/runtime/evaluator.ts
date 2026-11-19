@@ -1914,7 +1914,10 @@ function renderEvaluatorModelInput(params: {
     renderedContext.promptSegments.push({
       id: "completion-background-history",
       stable: false,
-      content: `A complete background review deferred ${background.omittedSourceCount} earlier originals, not a current-request source review. For missing or uncertain constraints, corrections, referents or historical evidence use decision=RESTORE_HISTORY, success=false and no user reply or effects. Full canonical originals will be restored without repeating actions.`,
+      content:
+        "windowed" in background && background.windowed
+          ? `${background.omittedSourceCount} earlier messages are not shown; they were deferred by position, not reviewed. Omitted dialogue is not itself missing evidence: use decision=RESTORE_HISTORY, success=false and no user reply or effects only for a specific constraint, correction, referent or fact this request depends on that is not shown. Full canonical originals will be restored without repeating actions.`
+          : `A complete background review deferred ${background.omittedSourceCount} earlier originals, not a current-request source review. For missing or uncertain constraints, corrections, referents or historical evidence use decision=RESTORE_HISTORY, success=false and no user reply or effects. Full canonical originals will be restored without repeating actions.`,
     });
   if (completion.applied) {
     renderedContext.promptSegments.push({
