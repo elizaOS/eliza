@@ -19,10 +19,7 @@
       "main": "ClefDailyQuota",
       "init": "init",
       "step": "step",
-      "invariants": [
-        "Limited",
-        "FundedOnly"
-      ],
+      "invariants": ["Limited", "FundedOnly"],
       "maxSteps": 20,
       "samples": 200
     }
