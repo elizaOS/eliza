@@ -78,8 +78,8 @@ pure val authorizeValues: Set[AuthorizeRequest] = {
   val ok: AuthorizeRequest = { responseType: CodeResponse, method: S256, client: N::ClientAdmitted, hasState: true }
   Set(ok, { ...ok, method: PlainMethod }, { ...ok, hasState: false }, { ...ok, client: N::ClientRefused({ fault: N::WrongRedirect }) })
 }
-pure def lawAnAuthorizeRefusalIsFinal(r: AuthorizeRequest): bool =
-  not(authorizeAdmitted(r)) implies (wellFormed(authorizeRefusal(r)) and not(retryableOf(authorizeRefusal(r))))
+pure def lawAnAuthorizeRefusalIsFinal(authorize: AuthorizeRequest): bool =
+  not(authorizeAdmitted(authorize)) implies (wellFormed(authorizeRefusal(authorize)) and not(retryableOf(authorizeRefusal(authorize))))
 pure def sometimesAwaitingGoogle(a: GoogleAttempt): bool = a.flow.phase == O::AwaitingCallback and a.now < a.stateExpiresAt
 ```
 
