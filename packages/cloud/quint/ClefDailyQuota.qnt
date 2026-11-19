@@ -59,6 +59,10 @@ module ClefDailyQuota {
     (s.credentialAllowed and s.dailyAvailable and s.minuteAvailable and
       s.observedSource == "subscription" and s.observedMinute >= 2)
 
+  temporal ContinuationRenews = renewMinute.weakFair(s) implies
+    (s.source == "subscription" and s.minute >= 2)
+      .leadsTo(s.minute < 2 or s.source != "subscription")
+
   run purchaseThenRefund = init.then(request("first", true, true, true)).then(request("first", true, true, true))
     .then(observe("purchase")).then(request("first", true, true, true))
     .expect(s.outcome == "daily-admit" and s.daily == 3)
