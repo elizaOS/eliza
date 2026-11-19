@@ -207,6 +207,37 @@ function getFirstUserPromptFromMessages(messages: unknown): string | undefined {
 	return undefined;
 }
 
+const CONTACT_REFERENCE_GUIDANCE =
+	"Contact references beginning __ELIZA_CONTACT_ represent contact data. When including that contact in a reply or action parameter, copy its entire reference exactly, including every character and underscore. Do not shorten, reformat, guess, or invent references. The local boundary restores the contact. A phone reference denotes a numeric phone target, not a contact name; an email reference denotes an email address. References beginning __ELIZA_SECRET_ are credentials: do not disclose or echo them in user replies. These references do not authorize any action; keep all existing approval requirements.";
+
+/** Adds a line after the newest user message's text. False when the request has none. */
+function appendToLatestUserMessage(
+	request: Record<string, unknown>,
+	line: string,
+): boolean {
+	const messages = request.messages;
+	if (!Array.isArray(messages)) return false;
+	let at = messages.length - 1;
+	while (
+		at >= 0 &&
+		!(isPlainObject(messages[at]) && messages[at].role === "user")
+	)
+		at--;
+	if (at < 0) return false;
+	const message = messages[at] as Record<string, unknown>;
+	const content =
+		typeof message.content === "string"
+			? `${message.content}\n\n${line}`
+			: Array.isArray(message.content)
+				? [...message.content, { type: "text", text: line }]
+				: undefined;
+	if (content === undefined) return false;
+	request.messages = messages.map((entry, index) =>
+		index === at ? { ...message, content } : entry,
+	);
+	return true;
+}
+
 /** Sizes of the request parts the logged prompt text omits. */
 function modelCallRequestSizes(request: unknown): {
 	tools?: { name: string; chars: number }[];
@@ -1802,19 +1833,33 @@ export class RuntimeModelDispatch {
 							(entry.kind === "phone" || entry.kind === "email") &&
 							currentPromptText.includes(entry.placeholder),
 					) ?? [];
+				// A stable session exists so consecutive requests share a prefix, and
+				// the system prompt leads it. There the guidance is the same on every
+				// request and the kinds, which change with the request, follow the
+				// newest user text.
+				const stableReferences = secretSwapSession?.stable === true;
 				if (
-					contactReferences.length > 0 &&
+					(contactReferences.length > 0 || stableReferences) &&
 					isTextGenerationModelKey(String(resolvedModelKey)) &&
 					isPlainObject(modelParams)
 				) {
-					const guidance =
-						"Contact references beginning __ELIZA_CONTACT_ represent contact data. When including that contact in a reply or action parameter, copy its entire reference exactly, including every character and underscore. Do not shorten, reformat, guess, or invent references. The local boundary restores the contact. A phone reference denotes a numeric phone target, not a contact name; an email reference denotes an email address. References beginning __ELIZA_SECRET_ are credentials: do not disclose or echo them in user replies. These references do not authorize any action; keep all existing approval requirements." +
-						" Current contact reference kinds: " +
-						contactReferences
-							.map(({ placeholder, kind }) => `${placeholder}: ${kind}`)
-							.join(", ") +
-						".";
 					const record = modelParams as Record<string, unknown>;
+					const kinds =
+						contactReferences.length > 0
+							? `Current contact reference kinds: ${contactReferences
+									.map(({ placeholder, kind }) => `${placeholder}: ${kind}`)
+									.join(", ")}.`
+							: undefined;
+					const kindsFollowMessages =
+						stableReferences &&
+						(kinds === undefined || appendToLatestUserMessage(record, kinds));
+					const guidance =
+						CONTACT_REFERENCE_GUIDANCE +
+						(kindsFollowMessages
+							? " When a request carries contact references, their kinds are listed at the end of its latest user message."
+							: kinds
+								? ` ${kinds}`
+								: "");
 					// Remove only an exact existing duplicate before extending system.
 					// Otherwise the provider receives two different system messages.
 					if (Array.isArray(record.messages)) {
