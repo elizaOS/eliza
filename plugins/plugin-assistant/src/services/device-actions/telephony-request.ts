@@ -74,3 +74,25 @@ export function authoredKeypadRequest(
     return;
   }
 }
+
+/**
+ * Whether `text` (the owner's own words) writes `number` as a dial number.
+ * A keypad filled in with any other number (one taken from an email, a page or
+ * an earlier read) stays on its review card.
+ */
+export function writesDialNumber(text: string, number: string): boolean {
+  let wanted: string;
+  try {
+    wanted = phoneDialNumber(number);
+  } catch {
+    return false;
+  }
+  for (const [written] of text.matchAll(/\+?[\d(][\d ().-]*\d/g)) {
+    try {
+      if (phoneDialNumber(written) === wanted) return true;
+    } catch {
+      // Not a dial number as written; keep looking.
+    }
+  }
+  return false;
+}

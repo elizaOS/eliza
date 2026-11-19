@@ -119,7 +119,10 @@ import {
   telephonyActionResultText,
   validateTelephonyActionResult,
 } from "./telephony-actions-contract.ts";
-import { authoredKeypadRequest } from "./telephony-request.ts";
+import {
+  authoredKeypadRequest,
+  writesDialNumber,
+} from "./telephony-request.ts";
 
 const reminderSchemas: ActionParameterSchema[] = [
   "reminder_read_selected",
@@ -1925,10 +1928,18 @@ export const proposeDeviceAction: Action = {
     // An empty or filled-in keypad the owner's current message asked for
     // comes in front on the phone without a review card: it never dials, and
     // only the owner's Call tap there places a call.
+    // A number the owner did not write in this message (one the model took
+    // from an email, a page or an earlier read) keeps the phone's review
+    // card, so it keeps the review text too.
     const requestedKeypad =
       request.state === "pending" &&
       operation.type === "phone_keypad" &&
-      payload.requestMessageId !== undefined;
+      payload.requestMessageId !== undefined &&
+      (!operation.number ||
+        writesDialNumber(
+          extractUserText(unwrapUserMessageText(_message)),
+          operation.number,
+        ));
     const requestedHandoff =
       requestedBrowserOpen ||
       requestedCameraCapture ||

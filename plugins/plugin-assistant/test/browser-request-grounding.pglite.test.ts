@@ -500,6 +500,45 @@ it.each([
     }
   },
 );
+// A number the owner did not write (the model took it from an email) is bound
+// to the message, but the phone keeps its "Open keypad" card for it: the reply
+// must stay the review text, never "Opening the keypad with ...".
+it("keeps the review text for a keypad number the owner did not write", async () => {
+  const f = await fixture();
+  try {
+    Object.assign(f.credential, { capabilities: ["phone.keypad.v1"] });
+    const result = await f.run(
+      "open the dialer for the number in the landlord's email",
+      false,
+      true,
+      undefined,
+      "current",
+      { type: "phone_keypad", number: "4155550100" },
+    );
+    const rows = (
+      await f.pg.query<{ payload: Record<string, unknown> }>(
+        "SELECT payload FROM approval_requests",
+      )
+    ).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].payload.operation).toEqual({
+      type: "phone_keypad",
+      number: "4155550100",
+    });
+    expect(result).toMatchObject({
+      success: true,
+      userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+      data: { awaitingUserInput: true, approvalRequired: true },
+    });
+    expect(result.data).not.toHaveProperty("directRequest");
+    expect(isRequestedDeviceHandoff(result as PlannerToolResult)).toBe(false);
+    expect(isPersistedDeviceApprovalPause(result as PlannerToolResult)).toBe(
+      true,
+    );
+  } finally {
+    await f.pg.close();
+  }
+});
 // The same v612 dialer request with the chat host's document envelope around
 // the owner's words: it still binds and opens without review text.
 it.each(["augmented", "augmented-other"] as const)(
