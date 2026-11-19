@@ -118,10 +118,23 @@ function normalizedWords(text: string): string {
   );
 }
 
+// Words every request has: a contact query made only of these ("the", "me",
+// "call", "her number") names nobody, even though the owner wrote the words.
+const NOT_A_NAME = new Set(
+  (
+    "a an the this that these those it its me my mine myself i you your yours " +
+    "he him his she her hers we us our ours they them their someone somebody " +
+    "anyone anybody everyone back up now please thanks thank and or to for " +
+    "of at on in with from about call ring phone dial text sms message send " +
+    "tell ask say saying number cell mobile contact"
+  ).split(" "),
+);
+
 /** The name, as whole words, appears in the owner's text (case and punctuation aside). */
 export function writesContactName(text: string, name: string): boolean {
   const query = normalizedWords(name);
   if (!query || /^[\d\s+]+$/.test(query)) return false;
+  if (query.split(" ").every((word) => NOT_A_NAME.has(word))) return false;
   return ` ${normalizedWords(text)} `.includes(` ${query} `);
 }
 

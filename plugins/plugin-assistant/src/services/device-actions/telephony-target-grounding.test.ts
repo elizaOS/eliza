@@ -191,6 +191,23 @@ describe("other requests ground the model's recipient", () => {
     );
   });
 
+  it("refuses a contact query made only of words every request has", () => {
+    // The owner wrote "the", "me" and "call", but none of them names anyone.
+    for (const [query, request] of [
+      ["the", "please call the dentist about tomorrow"],
+      ["me", "can you get someone to call me a taxi"],
+      ["call", "could you call the dentist when you get a chance"],
+      ["her number", "find her number and ring the dentist"],
+    ])
+      expect(refusal(callContact(query), request), query).toBe("contact");
+    expect(
+      groundTelephonyTarget(
+        callContact("the dentist"),
+        "please call the dentist about tomorrow",
+      ).operation,
+    ).toEqual(callContact("the dentist"));
+  });
+
   it("never takes an SMS recipient from the message body", () => {
     // The owner names Sam; the number is what the text says.
     expect(
@@ -274,5 +291,29 @@ describe("authoredTelephonyTarget", () => {
       target: { kind: "number", number: "+14155550100" },
     });
     expect(authoredTelephonyTarget("call it a day")).toBeUndefined();
+  });
+
+  it("ends a text's recipient at the first word that starts the body", () => {
+    for (const [request, query] of [
+      ["text mom saying that I'm late", "mom"],
+      ["text Sam saying that Bob is late", "Sam"],
+      ["text mom to say that dinner is ready", "mom"],
+      ["text Sam Lee saying hi", "Sam Lee"],
+      ["text Sam, saying hi", "Sam"],
+    ])
+      expect(authoredTelephonyTarget(request), request).toEqual({
+        request: "text",
+        target: { kind: "contact", query },
+      });
+    expect(
+      groundTelephonyTarget(
+        {
+          type: "sms_compose",
+          target: { kind: "contact", query: "mom" },
+          body: "I'm late",
+        } as DeviceOperation,
+        "text mom saying that I'm late",
+      ).operation,
+    ).toMatchObject({ target: { kind: "contact", query: "mom" } });
   });
 });
