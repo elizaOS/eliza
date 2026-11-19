@@ -96,27 +96,38 @@ function spokenRuns(text: string): Fragment[][] {
     open = !homophone;
   };
   for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i]!;
+    const token = tokens[i] ?? "";
+    const units = UNITS[token];
+    const teens = TEENS[token];
+    const tens = TENS[token];
+    const repeats = REPEATS[token];
+    const homophone = HOMOPHONES[token];
     if (/^\d+$/.test(token)) add(token);
-    else if (UNITS[token] !== undefined) add(UNITS[token]!);
-    else if (TEENS[token] !== undefined) add(TEENS[token]!);
-    else if (TENS[token] !== undefined) {
+    else if (units !== undefined) add(units);
+    else if (teens !== undefined) add(teens);
+    else if (tens !== undefined) {
       // "forty two", "forty-two" or a bare "forty".
       const hyphen = tokens[i + 1] === "-" ? 1 : 0;
-      const unit = unitDigit(tokens[i + 1 + hyphen]);
-      if (unit && unit !== "0" && /^\p{L}+$/u.test(tokens[i + 1 + hyphen]!)) {
-        add(TENS[token]! + unit);
+      const next = tokens[i + 1 + hyphen];
+      const unit = unitDigit(next);
+      if (
+        unit &&
+        unit !== "0" &&
+        next !== undefined &&
+        /^\p{L}+$/u.test(next)
+      ) {
+        add(tens + unit);
         i += 1 + hyphen;
-      } else add(`${TENS[token]!}0`);
-    } else if (REPEATS[token] !== undefined) {
+      } else add(`${tens}0`);
+    } else if (repeats !== undefined) {
       const unit = unitDigit(tokens[i + 1]);
       if (!unit) {
         end();
         continue;
       }
-      add(unit.repeat(REPEATS[token]!));
+      add(unit.repeat(repeats));
       i += 1;
-    } else if (HOMOPHONES[token] !== undefined) add(HOMOPHONES[token]!, true);
+    } else if (homophone !== undefined) add(homophone, true);
     else if (SEPARATORS.has(token)) open = false;
     else end();
   }
@@ -130,7 +141,8 @@ function spokenRuns(text: string): Fragment[][] {
         [fragments[i - 1], fragments[i + 1]].some(
           (neighbor) => neighbor && !neighbor.homophone,
         );
-      if (beside) split.at(-1)!.push(fragment);
+      const current = split.at(-1);
+      if (beside && current) current.push(fragment);
       else split.push([]);
     });
     return split.filter((part) => part.length);
@@ -148,7 +160,7 @@ export function spokenPhoneNumbers(text: string): string[] {
     for (let i = 0; i < run.length; i++) {
       let digits = "";
       for (let j = i; j < run.length; j++) {
-        digits += run[j]!.digits;
+        digits += run[j]?.digits ?? "";
         if (digits.length > MAX_DIGITS) break;
         if (digits.length >= MIN_DIGITS) numbers.add(digits);
       }
