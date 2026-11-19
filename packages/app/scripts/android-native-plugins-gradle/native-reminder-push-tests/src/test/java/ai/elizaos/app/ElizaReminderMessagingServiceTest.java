@@ -300,6 +300,20 @@ public class ElizaReminderMessagingServiceTest {
         assertEquals(android.os.Build.VERSION.SDK_INT < 30 ? "eliza_updates" : "eliza_notifications", reminderChildren()[0].getNotification().getChannelId());
     }
     @Config(sdk = {29, 36})
+    @Test public void blockedHostAssignedGroupKeepsOccurrenceBlocked() {
+        NativeNotificationChannels.setHostAssignedGroups(java.util.Set.of("host-reminders"));
+        android.app.NotificationChannelGroup group = new android.app.NotificationChannelGroup("host-reminders", "Reminders");
+        org.robolectric.util.ReflectionHelpers.setField(group, "mBlocked", true);
+        manager.createNotificationChannelGroup(group);
+        NotificationChannel updates = new NotificationChannel("eliza_updates", "Updates", NotificationManager.IMPORTANCE_DEFAULT);
+        updates.setGroup("host-reminders");
+        manager.createNotificationChannel(updates);
+        Map<String, String> occurrence = data(A); occurrence.put("priority", "high"); occurrence.put("ownerType", "occurrence");
+        receiver().onMessageReceived(message(occurrence, "blocked-host-group-occurrence"));
+        assertEquals(0, reminderChildren().length);
+        assertNull(manager.getNotificationChannel("eliza_notifications"));
+    }
+    @Config(sdk = {29, 36})
     @Test public void summaryIsNotPostedIntoABlockedGroup() {
         android.app.NotificationChannelGroup group = new android.app.NotificationChannelGroup("muted-reminders", "Muted reminders");
         manager.createNotificationChannelGroup(group);

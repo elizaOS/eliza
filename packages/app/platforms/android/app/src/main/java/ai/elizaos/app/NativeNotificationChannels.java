@@ -11,7 +11,9 @@ final class NativeNotificationChannels {
      * Channel group IDs that the host itself assigns to eliza_updates. By default (empty) any group
      * on eliza_updates counts as a customisation, and occurrence alerts stay on eliza_updates. A host
      * that groups its channels names those groups here before it posts, so that its own grouping does
-     * not move occurrence alerts. Importance, sound and lock-screen choices still count.
+     * not move occurrence alerts. Importance, sound and lock-screen choices still count, and so does
+     * the owner blocking a host-assigned group: the alert then stays on the blocked eliza_updates
+     * instead of escaping to a channel outside that group.
      */
     private static volatile java.util.Set<String> hostAssignedGroups = java.util.Set.of();
     static void setHostAssignedGroups(java.util.Collection<String> groups) {
@@ -26,7 +28,8 @@ final class NativeNotificationChannels {
                 || previous.getImportance() != NotificationManager.IMPORTANCE_DEFAULT
                 || (previous.getLockscreenVisibility() != android.app.Notification.VISIBILITY_PUBLIC
                     && previous.getLockscreenVisibility() != android.service.notification.NotificationListenerService.Ranking.VISIBILITY_NO_OVERRIDE)
-                || (previous.getGroup() != null && !hostAssignedGroups.contains(previous.getGroup()))
+                || (previous.getGroup() != null && (!hostAssignedGroups.contains(previous.getGroup())
+                    || isReminderChannelBlocked(manager, previous)))
                 || (Build.VERSION.SDK_INT >= 29 && previous.hasUserSetImportance())
                 || (Build.VERSION.SDK_INT >= 30 && previous.hasUserSetSound())
             )) return previous;
