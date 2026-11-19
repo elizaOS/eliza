@@ -5,6 +5,7 @@ import {
   DeviceTelephonyTargetNotRequestedError,
   groundTelephonyTarget,
   samePhoneNumber,
+  swappedPhoneReferences,
   writtenPhoneNumbers,
 } from "./telephony-target-grounding.ts";
 
@@ -315,5 +316,116 @@ describe("authoredTelephonyTarget", () => {
         "text mom saying that I'm late",
       ).operation,
     ).toMatchObject({ target: { kind: "contact", query: "mom" } });
+  });
+});
+
+describe("numbers the planner saw only as contact references", () => {
+  const P = "__ELIZA_CONTACT_bef24c4f7d8ef444_6__";
+  const entries = [
+    { placeholder: P, value: "415-555-0100", kind: "phone" },
+    // A credential-shaped phone (reply-protected) is not a contact reference.
+    {
+      placeholder: "__ELIZA_SECRET_bef24c4f7d8ef444_7__",
+      value: "415-555-0199",
+      kind: "phone",
+    },
+    {
+      placeholder: "__ELIZA_CONTACT_bef24c4f7d8ef444_8__",
+      value: "a@b.co",
+      kind: "email",
+    },
+    // A number from history, not this request.
+    {
+      placeholder: "__ELIZA_CONTACT_bef24c4f7d8ef444_9__",
+      value: "212-555-0142",
+      kind: "phone",
+    },
+  ];
+  const request = "can you call 415-555-0100 when you get a sec";
+  const references = swappedPhoneReferences(entries, request);
+
+  function refusedWith(operation: DeviceOperation, owner = request) {
+    try {
+      groundTelephonyTarget(operation, owner, references);
+    } catch (error) {
+      if (error instanceof DeviceTelephonyTargetNotRequestedError) return error;
+      throw error;
+    }
+    throw new Error("not refused");
+  }
+
+  it("finds only this request's swapped phone numbers", () => {
+    expect(references).toEqual([{ placeholder: P, number: "4155550100" }]);
+    expect(swappedPhoneReferences(undefined, request)).toEqual([]);
+    expect(swappedPhoneReferences(entries, "call the pharmacy")).toEqual([]);
+  });
+
+  it("refuses invented digits and tells the model to copy the reference", () => {
+    for (const operation of [
+      call("6505715862"),
+      dial("6505715862"),
+      text("6505715862", "running late"),
+      send(["6505715862"], "running late"),
+    ]) {
+      const error = refusedWith(operation);
+      expect(error.refusal).toBe("number");
+      expect(error.references).toEqual([P]);
+      expect(error.message).toContain(P);
+      expect(error.message).toContain("verbatim");
+    }
+    const keypad = refusedWith({
+      type: "phone_keypad",
+      number: "6505715862",
+    } as DeviceOperation);
+    expect(keypad.message).toContain(P);
+  });
+
+  it("accepts the restored reference, with or without a country code", () => {
+    // What the execution boundary hands over for P and +1P, in dial form.
+    for (const number of ["4155550100", "+14155550100", "14155550100"])
+      expect(
+        groundTelephonyTarget(call(number), request, references).operation,
+      ).toEqual(call("4155550100"));
+    expect(
+      groundTelephonyTarget(send(["+14155550100"], "hi"), request, references)
+        .operation,
+    ).toMatchObject({ recipients: ["4155550100"] });
+  });
+
+  it("never offers a number from the message body as the recipient", () => {
+    const owner = "when you get a sec could you text Sam: call me at 415-555-0100";
+    const error = (() => {
+      try {
+        groundTelephonyTarget(
+          text("6505715862", "call me at 415-555-0100"),
+          owner,
+          swappedPhoneReferences(entries, owner),
+        );
+      } catch (caught) {
+        return caught as DeviceTelephonyTargetNotRequestedError;
+      }
+    })();
+    expect(error).toBeInstanceOf(DeviceTelephonyTargetNotRequestedError);
+    expect(error?.references).toEqual([]);
+    expect(error?.message).not.toContain(P);
+  });
+
+  it("accepts a contact the owner named", () => {
+    const owner = "can you call Maya, she asked about 415-555-0100";
+    expect(
+      groundTelephonyTarget(callContact("Maya"), owner, references).operation,
+    ).toEqual(callContact("Maya"));
+  });
+
+  it("keeps the plain refusal when nothing was swapped", () => {
+    const plain = (() => {
+      try {
+        groundTelephonyTarget(call("6505715862"), "call the pharmacy back");
+      } catch (caught) {
+        return caught as DeviceTelephonyTargetNotRequestedError;
+      }
+    })();
+    expect(plain?.references).toEqual([]);
+    expect(plain?.message).not.toContain("__ELIZA_");
   });
 });

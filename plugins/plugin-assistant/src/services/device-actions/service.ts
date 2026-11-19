@@ -34,6 +34,7 @@ import {
   conversationClientUserMemoryId,
   extractUserText,
   getStreamingContext,
+  getTrajectoryContext,
   getTurnActionConstraint,
   readDurableConversationChatMarker,
   registerDirectActionRoutingRule,
@@ -244,6 +245,7 @@ import {
   DeviceTelephonyTargetNotRequestedError,
   groundTelephonyTarget,
   namesTelephonyTarget,
+  swappedPhoneReferences,
 } from "./telephony-target-grounding.ts";
 import { requireTurnObservation, turnObservation } from "./turn-observation.ts";
 import {
@@ -2478,6 +2480,11 @@ export class DeviceActionService {
         const grounded = groundTelephonyTarget(
           validated,
           requestOrigin.requestText,
+          // The owner's numbers the planner saw only as contact references.
+          swappedPhoneReferences(
+            getTrajectoryContext()?.secretSwapSession?.entries,
+            requestOrigin.requestText,
+          ),
         );
         // A handed-through recipient may need a form the model's did not (a
         // contact lookup in place of a number): the phone must have it.
