@@ -217,9 +217,9 @@ the default SMS role is held and the captured ticket is both the current
 and the visible one; it marks SMS read first and MMS read second, and
 dismisses the notice only after both providers acknowledge. Without the role
 it dismisses the notice and writes nothing. A partial provider failure keeps
-the notice for a retry. Each conversation keeps its full identity, so
-colliding hashed IDs never redirect a write. Reply only opens the compose
-screen, and every worker run releases the held receiver.
+the notice for a retry. The ticket belongs to the conversation's full
+identity, so colliding hashed IDs never redirect a write. The notice offers
+no send: Reply opens the compose screen, where a send is reviewed as above.
 
 ```quint
 type NoticeTicket = { captured: int, current: int, visible: int, roleHeld: bool }

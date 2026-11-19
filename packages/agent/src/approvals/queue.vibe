@@ -273,7 +273,7 @@ export function approvalQueue(host: ApprovalsHost): ApprovalQueue {
     const step = try orDie(machine.send({
       type: "resolve", id, decision: decisions[decision], reviewed, executorReady: ready, result: outcome?.result ?? "ChangeSucceeded",
     }))
-    return answer(id, decision, step.out[0], outcome)
+    return try answer(id, decision, step.out[0], outcome)
   }
 
   return {

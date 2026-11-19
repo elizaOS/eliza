@@ -172,7 +172,7 @@ export effect function makeViewHost(port: ViewFeedPort, newId: () => string = ne
     try abandonOne(frame.requestId)
   }
 
-  return ViewHost.of({
+  const host: ViewHost.Shape = {
     boot: effect (declared: DeclaredView[]) => (try send({ type: "bootViews", views: declared })) !== undefined,
     prepare: (requestId: string, clientId: string, viewId: string) =>
       navigation({ type: "prepareNavigation", requestId, clientId, viewId }, requestId),
@@ -213,5 +213,6 @@ export effect function makeViewHost(port: ViewFeedPort, newId: () => string = ne
     close: effect () => {
       try send({ type: "closeHost" })
     },
-  })
+  }
+  return host
 }

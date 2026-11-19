@@ -127,7 +127,7 @@ export schema StripeEvent {
   readonly type: string
   readonly created: number
   readonly livemode: boolean
-  readonly data: { readonly object: unknown }
+  readonly data: { readonly object: Schema.Unknown }
 }
 
 export schema StripePortalSession { readonly id: string; readonly url: string }

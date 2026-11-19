@@ -1,6 +1,6 @@
 // spec/os/android/secureStore.md, "The app view names only slots its consumer policy opens to it, and never a delegation slot"; spec/os/android/secureStore.md, "A compare-and-exchange changes a slot only when it holds exactly the expected value"; spec/os/android/secureStore.md, "A write is acknowledged only after it reads back exactly, and a removal only after every file of the slot is gone"
 import { nativeReply, settled } from "./bridge.vibe"
-import type { ElizaSecureStoreRead, ElizaSecureStoreResult, ElizaSecureStorePlugin, ElizaSecureStoreStatus } from "./definitions/secure-store.ts"
+import type { ElizaSecureStorePlugin } from "./definitions/secure-store.ts"
 
 export type * from "./definitions/secure-store.ts"
 
@@ -18,12 +18,12 @@ export { secureStorePlugin }
 
 const Refusal = Schema.Literals(["Conflict", "CapacityRefused", "Refused", "Failed", "Unconfirmed"])
 
-const Read: Schema.Codec<ElizaSecureStoreRead, unknown> = Schema.Union([
+const Read = Schema.Union([
   Schema.Struct({ ok: Schema.Literal(true), value: Schema.String }),
   Schema.Struct({ ok: Schema.Literal(false), error: Schema.Literals(["not_found", "unreadable", "denied", "unavailable"]) }),
 ])
 
-const Result: Schema.Codec<ElizaSecureStoreResult, unknown> = Schema.Union([
+const Result = Schema.Union([
   Schema.Struct({ ok: Schema.Literal(true), outcome: Schema.Literals(["Written", "Removed"]) }),
   Schema.Struct({
     ok: Schema.Literal(false),
@@ -32,7 +32,7 @@ const Result: Schema.Codec<ElizaSecureStoreResult, unknown> = Schema.Union([
   }),
 ])
 
-const Status: Schema.Codec<ElizaSecureStoreStatus, unknown> = Schema.Union([
+const Status = Schema.Union([
   Schema.Struct({
     ok: Schema.Literal(true),
     available: Schema.Literal(true),

@@ -132,7 +132,7 @@ it.live('Keep the account state honest: a refused key blocks until a newer push,
   assert.strictEqual(completions(cloud), spent)
   assert.deepInclude(try status(agent), { blocked: true, failure: "limit_reached", retryAt })
   assert.deepStrictEqual(try warm(agent), [200, { warm: "blocked" }])
-  try sleep(`${retryAt - Date.now() + 50} millis`)
+  try Effect.sleep(Math.max(0, retryAt - Date.now()) + 50)
   try Effect.sync(() => cloud.script(text("Later.")))
   assert.deepStrictEqual(try say(agent, { prompt: "Later." }), { kind: "answered", answer: "Later." })
   assert.deepInclude(try status(agent), { blocked: false, canRespond: true })

@@ -28,6 +28,7 @@ import { secrets } from "./support/profile.ts"
 import { signedCaller } from "./support/caller.vibe"
 import { callDeclaring } from "./support/http.ts"
 import { speechFake, spokenTranscript } from "./support/fake-speech.ts"
+import { recordingBytes, recordingForm } from "./support/recording.ts"
 
 effect function failureTag<A, E extends { readonly _tag: string }, R>(program: A!E!R): string!!R {
   return match (try exit(program)) {
@@ -505,33 +506,6 @@ describe("WP2 Native clients and pages: registry (spec/cloud/nativeClients/regis
 })
 
 describe.todo("WP3 Checkout and provider events (spec/cloud/billing/checkout.md, \"Story: Subscribe once, whichever screen or payer finishes it\")")
-function oneSecondWav(): Uint8Array<ArrayBuffer> {
-  const bytes = new Uint8Array(44 + 32_000)
-  const view = new DataView(bytes.buffer)
-  const text = (at: number, value: string) => { for (let index = 0; index < value.length; index += 1) bytes[at + index] = value.charCodeAt(index) }
-  text(0, "RIFF")
-  view.setUint32(4, 36 + 32_000, true)
-  text(8, "WAVE")
-  text(12, "fmt ")
-  view.setUint32(16, 16, true)
-  view.setUint16(20, 1, true)
-  view.setUint16(22, 1, true)
-  view.setUint32(24, 16_000, true)
-  view.setUint32(28, 32_000, true)
-  view.setUint16(32, 2, true)
-  view.setUint16(34, 16, true)
-  text(36, "data")
-  view.setUint32(40, 32_000, true)
-  return bytes
-}
-
-function recording(fields: Readonly<Record<string, string>>): FormData {
-  const form = new FormData()
-  form.append("audio", new Blob([oneSecondWav()], { type: "audio/wav" }), "clip.wav")
-  for (const [name, value] of Object.entries(fields)) form.append(name, value)
-  return form
-}
-
 describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
   it.live("Speak a reply with context and timings, transcribe a recording, and charge each once (spec/cloud/services/speech.md, \"Story: Speak a reply as audio\"; spec/cloud/services/speech.md, \"Story: Transcribe a recording\")", () => scoped(effect {
     const speech = try sync(() => speechFake())
@@ -539,11 +513,11 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
     const caller = try signedCaller(cloud, "speaker")
     try cloud.inside(addCredits({ organizationId: caller.organizationId, amount: 1_000_000, requestKey: "speech-funding" }))
     const tts = (body: unknown) => cloud.call("/api/v1/voice/tts", { json: body, headers: caller.headers })
-    const stt = (fields: Readonly<Record<string, string>>, headers = caller.headers) => cloud.call("/api/v1/voice/stt", { form: recording(fields), headers })
+    const stt = (fields: Readonly<Record<string, string>>, headers = caller.headers) => cloud.call("/api/v1/voice/stt", { form: recordingForm(fields), headers })
 
     const plain = try tts({ text: "Hello there", previousText: "Earlier words.", nextText: "Later words.", speed: 1.1 })
     const timed = try tts({ text: "Hi you", previousText: "Before", withTimestamps: true })
-    const lines = String(timed.body).trim().split("\n").map((line) => JSON.parse(line) as { readonly type: string; readonly sequence?: number; readonly alignment?: { readonly characters: ReadonlyArray<string> } })
+    const lines = try Effect.try(() => String(timed.body).trim().split("\n").map((line) => JSON.parse(line) as { readonly type: string; readonly sequence?: number; readonly alignment?: { readonly characters: ReadonlyArray<string> } }))
     const anonymous = try cloud.call("/api/v1/voice/tts", { json: { text: "Hello" } })
     const foreignVoice = try tts({ text: "Hello", voiceId: "voice-elsewhere" })
     try sync(() => speech.script({ kind: "refuse", status: 422 }, { kind: "refuse", status: 503, retryAfterSeconds: 7 }))
@@ -590,7 +564,7 @@ describe("WP6 Speech batch (spec/cloud/services/speech.md)", () => {
         rejected: [502, "provider_invalid_response"],
         busy: [503, "provider_unavailable", true],
         heard: [200, { transcript: spokenTranscript, duration_ms: 2_500, words: spokenTranscript.split(" ").map((word, index) => ({ text: word, startMs: index * 400, endMs: index * 400 + 300 })) }, "speech"],
-        sentHeard: [["audio/wav", "ink-whisper", "en", 44 + 32_000]],
+        sentHeard: [["audio/wav", "ink-whisper", "en", recordingBytes]],
         otherProvider: [400, "invalid_request"],
         otherLanguage: [400, "invalid_request"],
         tooLarge: [413, "content_too_large"],

@@ -46,6 +46,7 @@ import listener as L from "./listener"
 type CheckOutcome = Pass | Fail | Unknown
 type Reading = Unread | Read({ holds: bool })
 pure def outcomeOf(reading: Reading): CheckOutcome = match reading { | Unread => Unknown | Read(r) => if (r.holds) Pass else Fail }
+pure val readingValues = Set(Unread, Read({ holds: true }), Read({ holds: false }))
 pure def outcomeIf(read: bool, holds: bool): CheckOutcome = if (not(read)) Unknown else if (holds) Pass else Fail
 pure def lawUnreadIsUnknownOnly(reading: Reading): bool = (outcomeOf(reading) == Unknown) iff (reading == Unread)
 ```
@@ -86,7 +87,7 @@ pure def grantAllowed(defaults: List[str], grant: RuntimeGrant): bool =
 pure def firstBootGrantsHold(defaults: List[str], granted: List[RuntimeGrant]): bool =
   defaults.every(p => granted.some(g => g.permission == p and g.origin == GrantedByDefault and not(g.fixed))) and granted.every(g => grantAllowed(defaults, g))
 pure val audioGrant: RuntimeGrant = { permission: "android.permission.RECORD_AUDIO", origin: GrantedByDefault, fixed: false }
-pure val expectedValues = Set(List("android.permission.RECORD_AUDIO"), List())
+pure val defaultsValues = Set(List("android.permission.RECORD_AUDIO"), List())
 pure val grantedValues = Set(List(audioGrant), List(), List({ ...audioGrant, fixed: true }), List(audioGrant, { ...audioGrant, permission: "android.permission.READ_SMS" }),
   List(audioGrant, { permission: "android.permission.ACCESS_LOCAL_NETWORK", origin: CompatibilityGrant, fixed: false }))
 pure def lawUnexpectedGrantFails(defaults: List[str], granted: List[RuntimeGrant]): bool =

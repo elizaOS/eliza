@@ -706,11 +706,28 @@ public final class VideoCopyEdits {
           throw new IOException("More than one copy matches this request. Inspect Photos.");
       }
     }
-    if (record.has("pendingId")
-        && (found == null
-            || !record.getString("pendingId").equals(Long.toString(ContentUris.parseId(found)))))
-      throw new IOException("Recorded video copy needs recovery review");
     return found;
+  }
+  // spec/os/android/media/editCopy.md, "A removed recorded video copy settles only by an explicit review"
+  public void reviewRemovedCopy(String token, PluginCall call) {
+    submit(call, () -> {
+      JSONObject record = read(token);
+      Session session = active;
+      if (record == null || terminal(record.optString("status")) || !record.has("pendingId")
+          || session != null && session.token.equals(token))
+        throw new IllegalArgumentException("This video copy is not waiting for review");
+      if (ownedRow(token) != null)
+        throw new IOException("Video copy outcome is unresolved. Open its result to recover it.");
+      record.remove("pendingId");
+      record.put("status", "failed").put("reviewedAt", System.currentTimeMillis());
+      write(token, record);
+      try {
+        files(token);
+      } catch (IOException cleanup) {
+        android.util.Log.w("VideoCopyEdits", "stage=review-cleanup,class=IOException");
+      }
+      call.resolve(receipt(token, "failed", null));
+    });
   }
   @SuppressWarnings("deprecation")
   private boolean pending(Uri uri) throws Exception {
