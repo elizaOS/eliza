@@ -8,6 +8,7 @@ import {
   type ContextObject,
   completionContextSources,
   type ToolDefinition,
+  type TrajectoryRecorder,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
@@ -65,19 +66,33 @@ function turn(messageId: string, events: ContextEvent[]): ContextObject {
   };
 }
 
+type PlannerRequest = {
+  tools: ToolDefinition[];
+  system: string;
+  input: string;
+};
+
+function plannerRequest(params: Record<string, unknown>): PlannerRequest {
+  const messages = params.messages as Array<{ role: string }>;
+  return {
+    tools: params.tools as ToolDefinition[],
+    system: JSON.stringify(
+      messages.filter((message) => message.role === "system"),
+    ),
+    input: JSON.stringify(messages),
+  };
+}
+
 /** The first planner request of a turn that replies at once. */
 async function firstPlannerRequest(
   context: ContextObject,
   tools: ToolDefinition[] = [CREATE],
 ) {
-  const requests: Array<{ tools: ToolDefinition[]; input: string }> = [];
+  const requests: PlannerRequest[] = [];
   await runPlannerLoop({
     runtime: {
       useModel: async (_type: unknown, params: Record<string, unknown>) => {
-        requests.push({
-          tools: params.tools as ToolDefinition[],
-          input: JSON.stringify(params.messages),
-        });
+        requests.push(plannerRequest(params));
         return {
           text: "",
           toolCalls: [
@@ -104,6 +119,94 @@ async function firstPlannerRequest(
   return requests[0];
 }
 
+/** A turn whose first planner call creates the event with a complete review
+ * that selects only the first original, and whose second call replies. */
+async function reviewedTurn(
+  context: ContextObject,
+  sourceSetId: string,
+  /** Runs while the first planner call is awaited. */
+  whileAwaited?: () => void,
+) {
+  const requests: PlannerRequest[] = [];
+  const executed: Array<{ completionContext?: unknown }> = [];
+  const attributions: unknown[] = [];
+  const recorder: TrajectoryRecorder = {
+    startTrajectory: () => "reviewed-turn",
+    recordStage: async (_id, stage) => {
+      if (stage.kind !== "planner") return;
+      const options = stage.model?.providerOptions as
+        | { eliza?: { plannerSourceSelection?: unknown } }
+        | undefined;
+      attributions.push(options?.eliza?.plannerSourceSelection);
+    },
+    endTrajectory: async () => {},
+    load: async () => null,
+    list: async () => [],
+  };
+  const result = await runPlannerLoop({
+    runtime: {
+      useModel: async (_type: unknown, params: Record<string, unknown>) => {
+        requests.push(plannerRequest(params));
+        if (requests.length === 1) whileAwaited?.();
+        return {
+          text: "",
+          toolCalls:
+            requests.length === 1
+              ? [
+                  {
+                    id: "create",
+                    name: CREATE.name,
+                    arguments: {
+                      title: "Lunch with Sam",
+                      eliza_turn_scope: "more_work_pending",
+                      [ACTION_CONTEXT_ARG]: {
+                        mode: "relevant_prior_dialogue",
+                        sourceSetId,
+                        complete: true,
+                        relevantSourceIds: ["h1"],
+                        constraintSourceIds: [],
+                        referentSourceIds: [],
+                        pendingIntentSourceIds: [],
+                      },
+                    },
+                  },
+                ]
+              : [
+                  {
+                    id: "reply",
+                    name: "REPLY",
+                    arguments: { text: "Added.", eliza_turn_scope: "final" },
+                  },
+                ],
+        };
+      },
+    },
+    context,
+    tools: [CREATE],
+    executeToolCall: async (call) => {
+      executed.push(call);
+      return { success: true, text: "Created." };
+    },
+    evaluate: async () => ({
+      success: false,
+      decision: "CONTINUE",
+      thought: "The created event still needs a reply.",
+    }),
+    recorder,
+    trajectoryId: "reviewed-turn",
+  });
+  expect(requests).toHaveLength(2);
+  expect(executed).toHaveLength(1);
+  return {
+    first: requests[0],
+    second: requests[1],
+    executed: executed[0],
+    stored: result.trajectory.modelBaseContext?.metadata?.completionContext,
+    /** How the first planner call's review was recorded. */
+    attribution: attributions[0],
+  };
+}
+
 const SHORT = (index: number) => `short exchange ${index}.`;
 const LONG = (index: number) =>
   `long exchange ${index}: ${"detail ".repeat(40)}`;
@@ -125,23 +228,31 @@ describe("planner action source review break-even", () => {
     expect(JSON.stringify(second.tools)).toBe(JSON.stringify(first.tools));
   });
 
-  it("still offers the review on a long transcript, bound to that turn's originals", async () => {
-    const context = turn("turn-1", dialogue(30, LONG));
-    const first = await firstPlannerRequest(context);
-    const create = first.tools.find((tool) => tool.name === CREATE.name);
-    expect(create?.parameters?.required).toContain(ACTION_CONTEXT_ARG);
-    expect(
-      create?.parameters?.properties?.[ACTION_CONTEXT_ARG]?.properties
-        ?.sourceSetId?.enum,
-    ).toEqual([completionContextSources(context).sourceSetId]);
-    expect(first.input).toContain("action_source_review");
-    expect(first.input).toContain("Completion-context field instructions");
-    expect(first.input).toContain("[h30]");
-
-    const second = await firstPlannerRequest(
+  it("still offers the review on a long transcript and keeps tool definitions identical across turns", async () => {
+    const contexts = [
+      turn("turn-1", dialogue(30, LONG)),
       turn("turn-2", dialogue(32, LONG)),
-    );
-    expect(JSON.stringify(second.tools)).not.toBe(JSON.stringify(first.tools));
+    ];
+    const first = await firstPlannerRequest(contexts[0]);
+    const second = await firstPlannerRequest(contexts[1]);
+    for (const [index, request] of [first, second].entries()) {
+      const create = request.tools.find((tool) => tool.name === CREATE.name);
+      expect(create?.parameters?.required).toContain(ACTION_CONTEXT_ARG);
+      // The schema names the request, never the turn's own source identity.
+      expect(
+        create?.parameters?.properties?.[ACTION_CONTEXT_ARG]?.properties
+          ?.sourceSetId?.enum,
+      ).toEqual(["current_request"]);
+      expect(JSON.stringify(request.tools)).not.toMatch(/[0-9a-f]{64}/);
+      expect(JSON.stringify(request.tools) + request.input).not.toContain(
+        completionContextSources(contexts[index]).sourceSetId,
+      );
+      expect(request.input).toContain("action_source_review");
+      expect(request.system).toContain("Completion-context field instructions");
+      expect(request.input).toContain(`[h${30 + 2 * index}]`);
+    }
+    expect(JSON.stringify(second.tools)).toBe(JSON.stringify(first.tools));
+    expect(second.system).toBe(first.system);
   });
 
   it("counts the schema each reviewing tool would carry", async () => {
@@ -280,5 +391,101 @@ describe("planner action source review break-even", () => {
     expect(
       result.trajectory.modelBaseContext?.metadata?.completionContext,
     ).toEqual(allPriorDialogue);
+  });
+});
+
+describe("planner action source review identity", () => {
+  const selectedFirstOriginal = (sourceSetId: string) => ({
+    mode: "selected",
+    sourceSetId,
+    complete: true,
+    relevantSourceIds: ["h1"],
+    constraintSourceIds: [],
+    referentSourceIds: [],
+    pendingIntentSourceIds: [],
+  });
+
+  it.each([
+    ["the offered request reference", () => "current_request"],
+    [
+      "the originals' own identity",
+      (context: ContextObject) => completionContextSources(context).sourceSetId,
+    ],
+  ])(
+    "accepts a review that carries %s and stores it under the originals' identity",
+    async (_name, submitted) => {
+      const context = turn("turn-1", dialogue(30, LONG));
+      const identity = completionContextSources(context).sourceSetId;
+      const { second, executed, stored, attribution } = await reviewedTurn(
+        context,
+        submitted(context),
+      );
+      expect(stored).toEqual(selectedFirstOriginal(identity));
+      expect(executed.completionContext).toEqual(
+        selectedFirstOriginal(identity),
+      );
+      // The recorded offer and submission are the originals' identity as well.
+      const recorded = attribution as Record<string, unknown>;
+      expect(recorded).toMatchObject({
+        reason: "accepted_selected",
+        sourceSetMatches: true,
+      });
+      expect(recorded.currentSourceSetSHA256).toEqual(expect.any(String));
+      for (const key of ["offered", "submitted", "accepted"])
+        expect(recorded[`${key}SourceSetSHA256`]).toBe(
+          recorded.currentSourceSetSHA256,
+        );
+      // The accepted review governs the rest of the turn.
+      expect(second.input).toContain("long exchange 0:");
+      expect(second.input).not.toContain("long exchange 20:");
+      expect(second.input).not.toContain("action_source_review");
+      expect(JSON.stringify(second.tools)).toContain("RESTORE_CONTEXT");
+    },
+  );
+
+  it("refuses a review that carries another source set's identity", async () => {
+    const context = turn("turn-1", dialogue(30, LONG));
+    const { second, executed, stored, attribution } = await reviewedTurn(
+      context,
+      completionContextSources(turn("turn-2", dialogue(30, LONG))).sourceSetId,
+    );
+    expect(stored).toBeNull();
+    expect(executed.completionContext).toBeNull();
+    expect(attribution).toMatchObject({
+      reason: "stale_source_set",
+      sourceSetMatches: false,
+    });
+    expect(second.input).toContain("long exchange 20:");
+    expect(JSON.stringify(second.tools)).not.toContain("RESTORE_CONTEXT");
+  });
+
+  it("binds the request reference to the originals the request was rendered from", async () => {
+    const context = turn("turn-1", dialogue(30, LONG));
+    // An original changes while the model is awaited: the reference stands
+    // for what the model was shown, which is no longer the conversation.
+    const { second, executed, stored } = await reviewedTurn(
+      context,
+      "current_request",
+      () => {
+        const original = context.events.find(
+          (event) => event.type === "segment",
+        ) as { segment: { content: string } };
+        original.segment.content = "edited while the model was reading.";
+      },
+    );
+    expect(stored).toBeNull();
+    expect(executed.completionContext).toBeNull();
+    expect(second.input).toContain("long exchange 20:");
+  });
+
+  it("refuses the request reference on a request that offered no review", async () => {
+    const { first, second, executed, stored } = await reviewedTurn(
+      turn("turn-1", dialogue(4, SHORT)),
+      "current_request",
+    );
+    expect(JSON.stringify(first.tools)).not.toContain(ACTION_CONTEXT_ARG);
+    expect(stored).toBeNull();
+    expect(executed.completionContext).toBeNull();
+    expect(second.input).toContain("short exchange 3.");
   });
 });
