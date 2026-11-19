@@ -115,6 +115,7 @@ import {
 	NoModelProviderConfiguredError,
 	type ResolvedModelRegistration,
 	readReasoningTokensFromResponse,
+	readTokenUsageFromResponse,
 	resolveStructuredStreamFields,
 	TEXT_GENERATION_MODEL_KEYS,
 } from "./model-policy.js";
@@ -203,6 +204,31 @@ function getFirstUserPromptFromMessages(messages: unknown): string | undefined {
 		}
 	}
 	return undefined;
+}
+
+/** Sizes of the request parts the logged prompt text omits. */
+function modelCallRequestSizes(request: unknown): {
+	tools?: { name: string; chars: number }[];
+	maxTokens?: number;
+} {
+	if (!isPlainObject(request)) return {};
+	const tools = Array.isArray(request.tools)
+		? request.tools.flatMap((tool) => {
+				const name = isPlainObject(tool)
+					? (tool.name ??
+						(isPlainObject(tool.function) ? tool.function.name : undefined))
+					: undefined;
+				return typeof name === "string"
+					? [{ name, chars: JSON.stringify(tool).length }]
+					: [];
+			})
+		: [];
+	return {
+		...(tools.length ? { tools } : {}),
+		...(typeof request.maxTokens === "number" && request.omitMaxTokens !== true
+			? { maxTokens: request.maxTokens }
+			: {}),
+	};
 }
 
 /** Request fields shared by the successful and failed llm-call trajectory records. */
@@ -925,6 +951,7 @@ export class RuntimeModelDispatch {
 		elapsedTime: number,
 		provider: string | undefined,
 		response: unknown,
+		request?: unknown,
 	): void {
 		// Per-turn latency breakdown: attribute this model round-trip to the
 		// active inference timer (no-op when none is active). `elapsedTime` is the
@@ -977,6 +1004,11 @@ export class RuntimeModelDispatch {
 							executionTime: elapsedTime,
 							provider: resolvedProvider,
 							response: responseValue,
+							// The prompt above holds the messages only. These make the
+							// rest of the request and what the provider counted readable
+							// from the same row: tool schemas can outweigh the messages.
+							...modelCallRequestSizes(request),
+							usage: readTokenUsageFromResponse(response),
 						},
 						type: `useModel:${modelKey}`,
 					},
@@ -2136,6 +2168,7 @@ export class RuntimeModelDispatch {
 						elapsedTime,
 						resolvedModel.provider,
 						resultRef.current,
+						modelParams,
 					);
 
 					if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
@@ -2223,6 +2256,7 @@ export class RuntimeModelDispatch {
 					elapsedTime,
 					resolvedModel.provider,
 					resultRef.current,
+					modelParams,
 				);
 
 				if (
