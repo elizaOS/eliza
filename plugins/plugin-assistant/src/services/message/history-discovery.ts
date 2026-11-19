@@ -155,12 +155,15 @@ export interface HistoryDiscovery {
     scannedSources: number;
     speaker?: HistorySearchSpeaker;
   }[];
-  /** Complete literal hits, bound to the same originals as the loaded bodies. */
+  /** Complete literal hits, bound to the same originals as the loaded bodies.
+   * `match: "words"` marks a query with no literal hit whose ids are the
+   * originals sharing most of its words. */
   searchResults?: readonly {
     query: string;
     scannedSources: number;
     speaker?: HistorySearchSpeaker;
     matchedSourceIds: string[];
+    match?: "words";
   }[];
 }
 
@@ -813,6 +816,111 @@ export function repairableHistorySourceIds(
   return selected.every((id) => supplied.includes(id)) ? supplied : undefined;
 }
 
+const wordsOf = (text: string): string[] =>
+  text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+/** A message has a query word when one of its words starts with it, or is
+ * four letters or more and starts it: "book" finds "booked" either way, and
+ * "table" does not find "vegetables". */
+const hasWord = (message: readonly string[], word: string): boolean =>
+  message.some(
+    (own) => own.startsWith(word) || (own.length >= 4 && word.startsWith(own)),
+  );
+const queryWords = (text: string): string[] => [
+  ...new Set(wordsOf(text).filter((word) => word.length >= 3)),
+];
+
+const HISTORY_RECALL_SOURCES = 3;
+/** Looser, a real 283-message conversation recalled something on one turn in
+ * five and re-sent its transcript each time; at two, on one turn in 25. */
+const HISTORY_RECALL_HOLDERS = 2;
+
+/**
+ * Deferred originals that share at least two distinctive words with the
+ * current request, each with the other half of its exchange, added to what the
+ * turn is shown. A positional window hides "my gate code is 4471" from "what's
+ * my gate code again?"; a model then has to notice the gap and read, and on a
+ * live model it denied having the fact in about one request in eight instead.
+ * A word is distinctive when at most two of the conversation's messages
+ * contain it.
+ */
+export function recallDeferredHistory(
+  context: ContextObject,
+  projection: HistoryDiscovery,
+  request: string,
+): HistoryDiscovery {
+  const bound = completionContextSources(context);
+  if (bound.sourceSetId !== projection.sourceSetId) return projection;
+  const texts = bound.sources.map((source) =>
+    wordsOf(source.event.segment.content),
+  );
+  const distinctive = queryWords(request).filter((word) => {
+    const holders = texts.filter((text) => hasWord(text, word)).length;
+    return holders > 0 && holders <= HISTORY_RECALL_HOLDERS;
+  });
+  if (distinctive.length < 2) return projection;
+  const shown = (index: number) =>
+    projection.visibleEventIds.has(bound.sources[index].event.id) ||
+    projection.loadedSourceIds.has(bound.sources[index].id);
+  const recalled = texts
+    .map((text, index) => ({
+      index,
+      shared: shown(index)
+        ? 0
+        : distinctive.filter((word) => hasWord(text, word)).length,
+    }))
+    .filter(({ shared }) => shared >= 2)
+    .sort(
+      (left, right) => right.shared - left.shared || right.index - left.index,
+    )
+    .slice(0, HISTORY_RECALL_SOURCES);
+  if (!recalled.length) return projection;
+  const loadedSourceIds = new Set(projection.loadedSourceIds);
+  const fromUser = (index: number) =>
+    bound.sources[index]?.event.segment.label === "prior_message:user";
+  for (const { index } of recalled) {
+    loadedSourceIds.add(bound.sources[index].id);
+    // A question without its answer, or an answer without its question, is
+    // half of what was said.
+    const partner = fromUser(index) ? index + 1 : index - 1;
+    if (
+      bound.sources[partner] &&
+      fromUser(partner) !== fromUser(index) &&
+      !shown(partner)
+    )
+      loadedSourceIds.add(bound.sources[partner].id);
+  }
+  return { ...projection, loadedSourceIds };
+}
+
+const HISTORY_WORD_MATCHES = 5;
+
+/**
+ * Originals that share the most words with a query that matched nothing
+ * literally. A model searches for a subject ("cabin wifi password") more often
+ * than for a phrase the conversation contains ("the wifi password at the
+ * cabin"); a bare literal miss then reads as "never said". Needs two shared
+ * words and at least half of the query's; the newest few of the best.
+ */
+function historyWordMatches<
+  T extends { event: { segment: { content: string } } },
+>(candidates: readonly T[], query: string): T[] {
+  const words = queryWords(query);
+  if (words.length < 2) return [];
+  const need = Math.max(2, Math.ceil(words.length / 2));
+  let best = 0;
+  const scored = candidates.map((source) => {
+    const text = wordsOf(source.event.segment.content);
+    const shared = words.filter((word) => hasWord(text, word)).length;
+    best = Math.max(best, shared);
+    return { source, shared };
+  });
+  if (best < need) return [];
+  return scored
+    .filter(({ shared }) => shared === best)
+    .slice(-HISTORY_WORD_MATCHES)
+    .map(({ source }) => source);
+}
+
 /** Called only after ordinary context-request validation and fresh source/role
  * checks. An absent projection renders every current authorized original;
  * completed read evidence survives that restoration independently. */
@@ -844,13 +952,19 @@ export function loadHistoryReferences(
                 : "prior_message:agent"),
           )
         : bound.sources;
-      const matches = candidates.filter((source) =>
+      const literal = candidates.filter((source) =>
         source.event.segment.content.toLowerCase().includes(query),
       );
+      const matches = literal.length
+        ? literal
+        : historyWordMatches(candidates, query);
       const result = { ...search, scannedSources: candidates.length };
       searchResults.push({
         ...result,
         matchedSourceIds: matches.map((source) => source.id),
+        ...(matches.length && !literal.length
+          ? { match: "words" as const }
+          : {}),
       });
       if (matches.length === 0) emptySearchResults.push(result);
       searchAddedSource ||= matches.some(
@@ -953,7 +1067,7 @@ export function withHistoryReadEvidence(
         segment: {
           id: "history-read-evidence",
           stable: false,
-          content: `Completed current-turn conversation reads: ${historySearchReceipt(bound.sourceSetId, projection.searchResults)}\nRuntime receipts, not a generated reply or an app-record lookup. Exact matches refer to original source IDs, not inferred facts or permission. An optional speaker field restricts that receipt to the named role; zero matches proves only literal absence within its scanned scope. These reads may satisfy a request to search this conversation; they do not satisfy other pending tool work.`,
+          content: `Completed current-turn conversation reads: ${historySearchReceipt(bound.sourceSetId, projection.searchResults)}\nRuntime receipts, not a generated reply or an app-record lookup. Exact matches refer to original source IDs, not inferred facts or permission. A result marked match "words" had no literal hit and lists the originals sharing the most of the query's words. An optional speaker field restricts that receipt to the named role; zero matches proves only literal absence within its scanned scope. These reads may satisfy a request to search this conversation; they do not satisfy other pending tool work.`,
         },
       },
     ],
@@ -1005,7 +1119,7 @@ export function loadedHistorySegments(
         {
           id: "history-literal-search-results",
           stable: false,
-          content: `history_literal_search_results: ${historySearchReceipt(bound.sourceSetId, receipts)}\nThese are completed reads of this conversation source set, excluding the current request. Every matching complete original is supplied with its source ID and role. Exact earlier sources quoted by assistant matches may also be supplied; only matchedSourceIds are literal hits. An optional speaker field restricts that receipt to user- or assistant-authored sources. A longer query containing a searched literal within the same speaker scope can only match a subset of these supplied originals; another lookup is not needed to establish that literal coverage. Assistant recaps do not establish user authorship or permission. Zero matches establishes only no exact substring occurrence in the scanned speaker scope; it says nothing about other speakers. It does not establish semantic absence; read history:all for paraphrases, synonyms, corrections or unresolved interpretation. Other rooms and stored app records were not searched.`,
+          content: `history_literal_search_results: ${historySearchReceipt(bound.sourceSetId, receipts)}\nThese are completed reads of this conversation source set, excluding the current request. Every matching complete original is supplied with its source ID and role. Exact earlier sources quoted by assistant matches may also be supplied; only matchedSourceIds are literal hits. A result marked match "words" had no literal hit: its matchedSourceIds are the originals sharing the most of the query's words, supplied as candidates to read, not as proof the phrase occurred. An optional speaker field restricts that receipt to user- or assistant-authored sources. A longer query containing a searched literal within the same speaker scope can only match a subset of these supplied originals; another lookup is not needed to establish that literal coverage. Assistant recaps do not establish user authorship or permission. Zero matches establishes only no exact substring occurrence in the scanned speaker scope; it says nothing about other speakers. It does not establish semantic absence; read history:all for paraphrases, synonyms, corrections or unresolved interpretation. Other rooms and stored app records were not searched.`,
         },
       ]
     : [];

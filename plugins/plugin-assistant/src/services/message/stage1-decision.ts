@@ -92,6 +92,7 @@ import {
   nativeHistoryReadBinding,
   projectReviewedHistory,
   readHistoryContextRequests,
+  recallDeferredHistory,
   repairableHistorySourceIds,
   requestedHistory,
   withReviewedHistorySelection,
@@ -303,7 +304,16 @@ export async function generateStage1Decision(
         scope,
         window ? window.checkpoint : reviewed,
       );
-      if (history && window?.windowed) history.windowed = true;
+      if (history && window?.windowed) {
+        history.windowed = true;
+        history = recallDeferredHistory(
+          context,
+          history,
+          typeof args.message.content.text === "string"
+            ? args.message.content.text
+            : "",
+        );
+      }
     } catch (error) {
       stage1TurnSignal.throwIfAborted();
       args.runtime.reportError("MessageService.historyRetention", error, {

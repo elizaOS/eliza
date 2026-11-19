@@ -26,8 +26,10 @@ import { historyRetentionEvaluator } from "../history-retention.ts";
 import { CLIENT_OBSERVATION_SEGMENT_LABEL } from "./client-observation-context.ts";
 import { buildCurrentTurnBoundary } from "./context-assembly.ts";
 import {
+  loadHistoryReferences,
   projectBackgroundHistory,
   projectReviewedHistory,
+  recallDeferredHistory,
   withBackgroundHistory,
 } from "./history-discovery.ts";
 import { renderMessageHandlerModelInput } from "./stage1-input.ts";
@@ -441,7 +443,12 @@ it("tells the planner and the evaluator that the window is positional and ties r
 
 afterEach(() => vi.unstubAllEnvs());
 
-function phoneTurn(responses: unknown[], count: number, messageId: string) {
+function phoneTurn(
+  responses: unknown[],
+  count: number,
+  messageId: string,
+  text: (index: number) => string = (index) => `original-${index}.`,
+) {
   const runtime = makeRuntime(responses);
   Object.assign(runtime, { evaluators: [historyRetentionEvaluator] });
   runtime.getCache = async () => undefined;
@@ -453,7 +460,7 @@ function phoneTurn(responses: unknown[], count: number, messageId: string) {
     id: `00000000-0000-0000-0000-${String(100 + i).padStart(12, "0")}` as Memory["id"],
     createdAt: i + 1,
     entityId: i % 2 ? runtime.agentId : message.entityId,
-    content: { ...message.content, text: `original-${i}.` },
+    content: { ...message.content, text: text(i) },
   }));
   const state = makeState();
   state.data.providers = {
@@ -556,3 +563,179 @@ it.each([
     expect(second).not.toContain("original-7.");
   },
 );
+
+// A model searches for a subject, not for a phrase the conversation contains.
+// On a real model three of five such searches found nothing under literal
+// matching, and it then told the owner the fact had never been given.
+const said: Record<number, string> = {
+  2: "The wifi password at the cabin is pinecone-42.",
+  4: "Draft this for my landlord: the kitchen tap is dripping again.",
+  6: "Is the cabin far from the lake?",
+};
+const saidAt = (index: number) => said[index] ?? `original-${index}.`;
+
+it("finds a deferred message by the words of a query that matches nothing literally", async () => {
+  vi.stubEnv("ELIZA_PLATFORM", "android");
+  const { runtime, message, state } = phoneTurn(
+    [
+      {
+        text: "",
+        toolCalls: [
+          {
+            name: "READ_CONTEXT",
+            arguments: {
+              reads: [
+                {
+                  kind: "history-search",
+                  speaker: "all",
+                  query: "cabin wifi password",
+                },
+              ],
+              acknowledgment: "",
+            },
+          },
+        ],
+      },
+      reply(),
+    ],
+    60,
+    "00000000-0000-0000-0000-000000000001",
+    saidAt,
+  );
+  await runStage1({ runtime, message, state });
+  const [first, second] = useModelCalls(runtime).map((call) =>
+    JSON.stringify(call),
+  );
+  expect(first).not.toContain("pinecone-42");
+  expect(second).toContain("pinecone-42");
+  // The receipt says the hit is by words, and one shared word is not a hit.
+  expect(second).toContain('\\"match\\":\\"words\\"');
+  expect(second).not.toContain("far from the lake");
+});
+
+it("keeps literal hits literal and needs two shared words and half the query", () => {
+  const { context, history } = stage1(60, [], alternate, saidAt);
+  const search = (query: string) =>
+    loadHistoryReferences(context, history, [`history:search:${query}`])
+      .evidence?.searchResults?.[0];
+  // A phrase the conversation contains is a literal hit, as before.
+  expect(search("wifi password")).toMatchObject({
+    matchedSourceIds: [expect.any(String)],
+  });
+  expect(search("wifi password")).not.toHaveProperty("match");
+  expect(search("draft note landlord")).toMatchObject({
+    match: "words",
+    matchedSourceIds: [expect.any(String)],
+  });
+  // One word of two, or fewer than half of a longer query, finds nothing.
+  for (const query of [
+    "cabin heating",
+    "landlord phone number email address",
+    "zebra",
+  ]) {
+    const result = search(query);
+    expect([query, result?.matchedSourceIds]).toEqual([query, []]);
+    expect(result).not.toHaveProperty("match");
+  }
+  expect(
+    loadHistoryReferences(context, history, ["history:search:cabin heating"])
+      .evidence?.emptySearchResults,
+  ).toHaveLength(1);
+});
+
+it("supplies only the newest few originals when many share the same words", () => {
+  const { context, history } = stage1(
+    60,
+    [],
+    alternate,
+    (index) => `the plumber said tuesday, note ${index}.`,
+  );
+  const result = loadHistoryReferences(context, history, [
+    "history:search:plumber tuesday visit",
+  ]).evidence?.searchResults?.[0];
+  expect(result?.match).toBe("words");
+  expect(result?.matchedSourceIds).toHaveLength(5);
+});
+
+// The window hides "my gate code is 4471" from "what's my gate code again?".
+// Reading is the model's job; on a live model it skipped the read and denied
+// having the fact in about one such request in eight.
+it("shows a deferred exchange that shares distinctive words with the request, without a read", async () => {
+  vi.stubEnv("ELIZA_PLATFORM", "android");
+  const text = (index: number) =>
+    ({
+      2: "Which dishwasher should I buy?",
+      3: "The Bosch 500 series; it is the quietest in your budget.",
+      4: "For future reference, my gate code is 4471#.",
+    })[index] ?? `original-${index}.`;
+  const turn = async (request: string) => {
+    const { runtime, message, state } = phoneTurn(
+      [reply()],
+      60,
+      "00000000-0000-0000-0000-000000000001",
+      text,
+    );
+    message.content.text = request;
+    await runStage1({ runtime, message, state });
+    return JSON.stringify(useModelCalls(runtime)[0]);
+  };
+  const gate = await turn("What's my gate code again?");
+  expect(gate).toContain("4471#");
+  // The other half of the exchange comes with it; unrelated history does not.
+  expect(gate).toContain("original-5.");
+  expect(gate).not.toContain("Bosch");
+  expect(gate).not.toContain("original-7.");
+  // A question recalls its answer, which shares no word with the request.
+  expect(await turn("Which dishwasher did you recommend?")).toContain(
+    "Bosch 500",
+  );
+  // One shared word, a word that only sits inside another ("code" in
+  // "barcodes"), or only words the conversation is full of, recalls nothing.
+  for (const request of [
+    "Is the gate open?",
+    "Do gateways read barcodes?",
+    "original-1. original-7. hello",
+  ])
+    expect(await turn(request)).not.toContain("4471#");
+  // An inflected form still counts.
+  expect(await turn("Which gates take codes?")).toContain("4471#");
+});
+
+it("recalls only what is deferred, at most three exchanges, and counts what is left", () => {
+  const notes: Record<number, string> = {
+    2: "the plumber comes tuesday.",
+    4: "the dentist moved to friday.",
+    6: "the roofer quoted ninety.",
+    8: "the tailor needs a fitting.",
+  };
+  const { context, history } = stage1(
+    60,
+    [],
+    alternate,
+    (index) => notes[index] ?? `original-${index}.`,
+  );
+  if (!history) throw new Error("no deferred history");
+  const recalled = recallDeferredHistory(
+    context,
+    history,
+    "plumber tuesday, dentist friday, roofer ninety, tailor fitting?",
+  );
+  // Four messages share two distinctive words; the three newest come back,
+  // each with its reply.
+  expect(recalled.loadedSourceIds.size - history.loadedSourceIds.size).toBe(6);
+  expect(recalled.windowed).toBe(history.windowed);
+  const shown = projectBackgroundHistory(
+    withBackgroundHistory(context, recalled),
+  );
+  expect(shown.omittedSourceCount).toBe(
+    projectBackgroundHistory(withBackgroundHistory(context, history))
+      .omittedSourceCount - 6,
+  );
+  expect(
+    JSON.stringify(shown.context.events).includes("the plumber comes"),
+  ).toBe(false);
+  // Words most of the conversation contains recall nothing.
+  expect(recallDeferredHistory(context, history, "the original thanks")).toBe(
+    history,
+  );
+});
