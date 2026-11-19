@@ -433,10 +433,11 @@ describe("OwnerCalendarMutationGatewayService — real PGlite", () => {
         });
       },
     };
-    const result = await new OwnerCalendarMutationGatewayService(
+    const gateway = new OwnerCalendarMutationGatewayService(
       runtime,
       deps(declinePort),
-    ).cancel(new URL("http://internal.local"), {
+    );
+    const result = await gateway.cancel(new URL("http://internal.local"), {
       side: "owner",
       grantId: "google-calendar-owner-grant",
       calendarId: "primary",
@@ -458,6 +459,21 @@ describe("OwnerCalendarMutationGatewayService — real PGlite", () => {
         ],
       },
     });
+    expect(providerCalls).toBe(1);
+
+    // An RSVP "declined" is the same reviewed decline: it replays this
+    // approval's receipt instead of creating a second approval shape.
+    const viaRespond = await gateway.respond(new URL("http://internal.local"), {
+      side: "owner",
+      grantId: "google-calendar-owner-grant",
+      calendarId: "primary",
+      eventId: "provider-created-1",
+      responseStatus: "declined",
+      expectedProviderVersion: '"created-v1"',
+      idempotencyKey: "owner-editor-decline-1",
+      notifyAttendees: false,
+    });
+    expect(viaRespond.metadata.etag).toBe('"declined-v2"');
     expect(providerCalls).toBe(1);
   });
 
