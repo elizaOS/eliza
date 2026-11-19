@@ -687,8 +687,11 @@ export async function runV5MessageRuntimeStage1(
           ...(responseHandlerEvaluation.contextSources ?? []),
         ],
       };
-      const { contextSources: _contextSources, ...evaluationTrace } =
-        responseHandlerEvaluation;
+      const {
+        contextSources: _contextSources,
+        requiredViewNavigation: _requiredViewNavigation,
+        ...evaluationTrace
+      } = responseHandlerEvaluation;
       return captureMessageReplyRecovery(
         args.runtime,
         args.message,
@@ -1611,6 +1614,13 @@ export async function runV5MessageRuntimeStage1(
       providerReview,
       historyReferenceEncoding: providerDiscoveryEnabled,
       loadedContextProviders,
+      ...(responseHandlerEvaluation.requiredViewNavigation
+        ? {
+            requiredViewNavigation: {
+              ...responseHandlerEvaluation.requiredViewNavigation,
+            },
+          }
+        : {}),
     };
     if (messageHandler.plan.completionContext) {
       plannerContext.metadata = {

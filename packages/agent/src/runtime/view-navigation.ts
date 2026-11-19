@@ -172,6 +172,7 @@ type Navigation = {
     | "unresolved";
   viewId: string;
   reason: string;
+  unconditional?: boolean;
 };
 const decisions = new WeakMap<
   Memory,
@@ -193,7 +194,7 @@ function parseNavigation(value: unknown): Navigation | null {
   const v = value as Record<string, unknown>;
   if (
     Object.keys(v).some(
-      (k) => !["disposition", "viewId", "reason"].includes(k),
+      (k) => !["disposition", "viewId", "reason", "unconditional"].includes(k),
     ) ||
     typeof v.disposition !== "string" ||
     ![
@@ -205,7 +206,8 @@ function parseNavigation(value: unknown): Navigation | null {
       "unresolved",
     ].includes(v.disposition) ||
     typeof v.viewId !== "string" ||
-    typeof v.reason !== "string"
+    typeof v.reason !== "string" ||
+    (v.unconditional !== undefined && typeof v.unconditional !== "boolean")
   )
     return null;
   return v as Navigation;
@@ -232,8 +234,13 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
       },
       viewId: { type: "string" },
       reason: { type: "string" },
+      unconditional: {
+        type: "boolean",
+        description:
+          "True when the current user explicitly requests opening this app view itself without a condition. False for conditional, unresolved, optional or prohibited view changes and when a read, write or resource operation merely uses the view.",
+      },
     },
-    required: ["disposition", "viewId", "reason"],
+    required: ["disposition", "viewId", "reason", "unconditional"],
   },
   // Written before replyText (20), after the other plugin routing fields: the
   // disposition decides how replyText is written, and a turn that requests
@@ -526,10 +533,24 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
       (plan.parentActionHints ?? []).every(
         (name) => name === "VIEWS" || name === "VIEWS_SHOW",
       );
-    if (!direct)
+    if (!direct) {
+      const destination = matches.length === 1 ? matches[0].view : undefined;
+      const requiredViewNavigation =
+        destination &&
+        staged.clientId &&
+        viewAction &&
+        value.disposition === "planning" &&
+        value.unconditional === true
+          ? {
+              viewId: destination.id,
+              clientId: staged.clientId,
+              installationId: destination.installationId,
+            }
+          : undefined;
       return {
         requiresTool: true,
         clearReply: true,
+        ...(requiredViewNavigation ? { requiredViewNavigation } : {}),
         addContexts:
           mapsPlace && runtime.contexts?.get("maps")
             ? ["general", "maps"]
@@ -545,6 +566,7 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
           "Preserve every requested read/write and navigation intent. Use VIEWS action=show for an exact registered destination; use action=list for unknown targets. A domain read/write receipt does not satisfy navigation, and navigation does not satisfy domain work. VIEWS only selects an app view; loading a requested URL requires the authorized Browser operation and cannot be reported complete from a view-selection receipt. Preserve ordering, conditions and restrictions: evaluate prerequisite reads before conditional navigation; do not navigate when the condition is false. Do not report the complete request finished while required navigation remains undelivered or unexplained.",
         ],
       };
+    }
     const requested = resolveExplicitRegisteredViewRequest(
       availableViews,
       staged.text,

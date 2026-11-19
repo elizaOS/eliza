@@ -4,7 +4,10 @@ import {
   describeEvaluatorContext,
   type EvaluatorContextAttribution,
 } from "./evaluator-context-attribution.ts";
-import { isDeliveredNavigationOnlyTurn } from "./nav-evaluator-eligibility";
+import {
+  isDeliveredNavigationOnlyTurn,
+  requiredViewNavigationStatus,
+} from "./nav-evaluator-eligibility";
 import { recordGatedEvaluationStage } from "./record-gated-evaluation";
 import {
   applyTypedReadReply,
@@ -2458,6 +2461,8 @@ export function validatedOutcomeCoverage(params: {
   hasUnresolvedToolFailure?: boolean;
 }): boolean {
   const { output, trajectory } = params;
+  const navigation = requiredViewNavigationStatus(trajectory);
+  if (navigation === "missing" || navigation === "prepared") return false;
   if (!calendarReadCoverage(output, params.context, trajectory).verified)
     return false;
   if (
