@@ -516,3 +516,43 @@ it("does not restore the whole room when the model returns no decision", async (
   for (const call of useModelCalls(runtime))
     expect(JSON.stringify(call)).not.toContain("original-0.");
 });
+
+// The window only defers. What makes it safe is that the same turn can still
+// read a deferred message back through the tool it is already offered.
+it.each([
+  ["by position", { kind: "history-source", sourceOrdinals: [3] }],
+  [
+    "by its words",
+    { kind: "history-search", speaker: "all", query: "original-2." },
+  ],
+])(
+  "returns a deferred message to the same turn when the model reads it %s",
+  async (_label, read) => {
+    vi.stubEnv("ELIZA_PLATFORM", "android");
+    const { runtime, message, state } = phoneTurn(
+      [
+        {
+          text: "",
+          toolCalls: [
+            {
+              name: "READ_CONTEXT",
+              arguments: { reads: [read], acknowledgment: "" },
+            },
+          ],
+        },
+        reply(),
+      ],
+      60,
+      "00000000-0000-0000-0000-000000000001",
+    );
+    await runStage1({ runtime, message, state });
+    const [first, second] = useModelCalls(runtime).map((call) =>
+      JSON.stringify(call),
+    );
+    expect(first).not.toContain("original-2.");
+    expect(first).toContain("history:h1");
+    expect(second).toContain("original-2.");
+    // The read adds what was asked for, not the room.
+    expect(second).not.toContain("original-7.");
+  },
+);
