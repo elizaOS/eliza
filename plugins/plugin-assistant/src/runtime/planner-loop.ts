@@ -11,10 +11,6 @@ import {
 } from "@elizaos/core";
 import { findViewActionHandoff } from "@elizaos/core/protocol";
 import {
-  readViewNavigationReceipt,
-  requiredViewNavigationStatus,
-} from "./nav-evaluator-eligibility";
-import {
   completedSideEffectClaimIsUngrounded,
   evaluatePlannedReplyEgress,
 } from "../services/message/egress-policy.ts";
@@ -28,6 +24,10 @@ import {
   describePlannerSourceReview,
   type PlannerSourceReviewAttribution,
 } from "./evaluator-context-attribution.ts";
+import {
+  readViewNavigationReceipt,
+  requiredViewNavigationStatus,
+} from "./nav-evaluator-eligibility";
 
 import {
   applyTypedReadReply,
