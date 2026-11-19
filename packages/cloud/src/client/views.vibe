@@ -176,26 +176,37 @@ function unreadable(answer: Answer, issue: unknown): CloudError {
   return new CloudError({ failure: { tag: "CloudProviderIssue" }, cause: { answer, issue } })
 }
 
-function decoder<T>(schema: Schema.ConstraintDecoder<T>, answer: Answer): (body: unknown) => T {
-  const decode = Schema.decodeUnknownExit(schema)
-  return (body) => {
-    const read = decode(body)
-    if (read._tag === "Failure") throw unreadable(answer, read.cause)
-    return read.value
-  }
+effect function decode<T>(schema: Schema.ConstraintDecoder<T>, answer: Answer, body: unknown): T!CloudError {
+  const read = Schema.decodeUnknownExit(schema)(body)
+  if (read._tag === "Failure") throw unreadable(answer, read.cause)
+  return read.value
 }
 
-const readData = decoder(Schema.Struct({ data: BillingSnapshot }), "snapshot")
+const SnapshotAnswer = Schema.Struct({ data: BillingSnapshot })
 
-export function snapshotFromResponse(body: unknown): BillingSnapshot {
-  return readData(body).data
+export effect function snapshotFromResponse(body: unknown): BillingSnapshot!CloudError {
+  return (try decode(SnapshotAnswer, "snapshot", body)).data
 }
 
-export const commandFromResponse = decoder(SubscriptionCommand, "command")
-export const commandsFromResponse = decoder(CommandsPage, "commands")
-export const reviewFromResponse = decoder(PlanChangeReview, "review")
-export const paymentFromResponse = decoder(PaymentContinuation, "payment")
-export const checkoutFromResponse = decoder(CheckoutStart, "checkout")
+export effect function commandFromResponse(body: unknown): SubscriptionCommand!CloudError {
+  return try decode(SubscriptionCommand, "command", body)
+}
+
+export effect function commandsFromResponse(body: unknown): CommandsPage!CloudError {
+  return try decode(CommandsPage, "commands", body)
+}
+
+export effect function reviewFromResponse(body: unknown): PlanChangeReview!CloudError {
+  return try decode(PlanChangeReview, "review", body)
+}
+
+export effect function paymentFromResponse(body: unknown): PaymentContinuation!CloudError {
+  return try decode(PaymentContinuation, "payment", body)
+}
+
+export effect function checkoutFromResponse(body: unknown): CheckoutStart!CloudError {
+  return try decode(CheckoutStart, "checkout", body)
+}
 
 const planKeys = { free: "Free", plus_monthly: "PlusMonthly", pro_monthly: "ProMonthly" } as const satisfies Record<WirePlanKey, PlanKey>
 
@@ -327,14 +338,12 @@ const RedeemAnswer = Schema.Struct({
 
 export type RedeemAnswer = typeof RedeemAnswer.Type
 
-const readRedeem = decoder(RedeemAnswer, "redeem")
-
 export type RedeemResult =
   | { readonly kind: "redeemed"; readonly replayed: boolean; readonly grant: ActiveGrant; readonly plan: SnapshotPlan; readonly paidPlanTakesPrecedence: boolean }
   | { readonly kind: "ended"; readonly id: string; readonly planKey: PaidWirePlanKey }
 
-export function redeemResultFromResponse(body: unknown, now: Millis): RedeemResult {
-  const answer = readRedeem(body)
+export effect function redeemResultFromResponse(body: unknown, now: Millis): RedeemResult!CloudError {
+  const answer = try decode(RedeemAnswer, "redeem", body)
   const grant = answer.grant
   if (grantEnded(grant, now)) return { kind: "ended", id: grant.id, planKey: grant.planKey }
   const plan = answer.entitlement.plan

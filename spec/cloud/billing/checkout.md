@@ -97,7 +97,7 @@ pure val subValues = Set({ ...Sub::initial, customer: Sub::PinnedCustomer({ cust
 pure val commandIdValues = Set("cmd1")
 pure val digestValues = Set("d1", "d2")
 pure def alwaysContractIsBound(c: Checkout): bool =
-  (c.phase == NotStarted) iff (c.receipt.session.phase == S::Absent)
+  ((c.phase == NotStarted) iff (c.receipt.session.phase == S::Absent))
   and (c.phase != NotStarted implies (c.commandId != "" and isPaid(c.planKey) and returnFits(c.presentation, c.returns)
     and c.receipt.providerKey == providerKeyOf(c.commandId) and c.sessionExpiresAt == c.receipt.claimedAt + sessionLifetime
     and c.nextReadBackAt >= c.receipt.claimedAt + firstReadBack))

@@ -5,7 +5,7 @@ import type { Sweep } from "../http/routes.vibe"
 import { Deployment } from "../profile/profile.vibe"
 import { periodRows, stepPeriod } from "../shared/metering.vibe"
 import { loadRow, RowCorrupt, stepRow, type RowConflict } from "../store/rows.vibe"
-import { Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
+import { type Row, Store, type StoreFailure, toInt, toText, type Tx } from "../store/connection.vibe"
 import { parsePlanKey } from "./plans.vibe"
 import { readPolicy, type PolicyUnreadable } from "./policy.vibe"
 
@@ -220,7 +220,7 @@ export effect function allowanceView(tx: Tx, organizationId: string, now: number
   }
 }
 
-effect function grantTerm(row: Readonly<Record<string, unknown>>): GrantTerm!RowCorrupt {
+effect function grantTerm(row: Row): GrantTerm!RowCorrupt {
   const id = toText(row.id) ?? ""
   const planKey = parsePlanKey(row.plan_key)
   if (planKey === undefined) throw new RowCorrupt({ table: "grants", key: id, cause: "unknown plan key" })
@@ -268,7 +268,8 @@ effect function openGrantsInForce(store: Store.Shape, now: number): number!! {
         const owner = try tx.query("SELECT id FROM organizations WHERE id = $1 FOR UPDATE SKIP LOCKED", [organizationId])
         if (owner.length === 0) return 0
         if ((try readPolicy(tx, organizationId, now)).source === "subscription") {
-          return (try closePeriods(tx, organizationId, { kind: "SupersededByPaid" }, now)).length
+          try closePeriods(tx, organizationId, { kind: "SupersededByPaid" }, now)
+          return 0
         }
         return (try openGrantMonths(tx, organizationId, try grantTerm(row), now)).length
       }) catch effect (failure) => {

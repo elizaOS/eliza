@@ -16,3 +16,7 @@ export {
   CLOUD_FIRST_SPEECH_CHARS, CLOUD_SPEECH_REQUEST_CHARS, CloudSpeechFailed, CloudSpeechStopped, CloudSpeechWordTooLong,
   planCloudSpeechChunks, speakCloudSpeechChunks, type CloudSpeechOptions, type SpeakCloudPiece,
 } from "./speech-pieces.vibe"
+export {
+  createLiveVoiceSession, parseVoiceTranscriptEnvelope, VOICE_TRANSCRIPT_STREAM,
+  type AgentEventSubscribe, type LiveTranscriptEvent, type LiveVoiceSession, type LiveVoiceSessionOptions,
+} from "./live-session.vibe"

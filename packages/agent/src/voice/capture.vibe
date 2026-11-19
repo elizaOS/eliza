@@ -172,12 +172,16 @@ function offer<S, C extends CaptureContext<S>>(c: Capture<S, C>, minimumNew: num
   const { promise, resolve } = Promise.withResolvers<boolean>()
   c.inflight = promise
   runFork(effect {
-    const completed = try (map(tryPromise(() => c.onPreview(sending, c.sampleRate)), () => true) catch () => false)
+    const completed = map(tryPromise(() => c.onPreview(sending, c.sampleRate)), () => true) catch () => false
     c.buffer = settlePreview(c.buffer)
     c.inflight = undefined
     resolve(completed)
   })
   return promise
+}
+
+function tick<S, C extends CaptureContext<S>>(c: Capture<S, C>, minimumNew: number): void {
+  void offer(c, minimumNew)
 }
 
 async function snapshot<S, C extends CaptureContext<S>>(c: Capture<S, C>): Promise<boolean> {

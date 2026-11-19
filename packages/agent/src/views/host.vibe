@@ -65,13 +65,13 @@ export interface ViewFeedPort {
 export service ViewHost {
   static readonly key = "@elizaos/agent/views/ViewHost"
   boot(views: DeclaredView[]): boolean!!
-  prepare(requestId: string, clientId: string, viewId: string): PendingView | undefined!!
-  show(requestId: string, clientId: string, target: string): PendingView | undefined!!
-  claim(binding: Binding): string | undefined!!
+  prepare(requestId: string, clientId: string, viewId: string): (PendingView | undefined)!!
+  show(requestId: string, clientId: string, target: string): (PendingView | undefined)!!
+  claim(binding: Binding): (string | undefined)!!
   answer(binding: Binding, claimId: string, reply: Reply, answer: ViewAnswer): boolean!!
   ask(request: ViewAsk): Asked!!
   abandon(requestId: string): boolean!!
-  shownViewOf(clientId: string): string | undefined!!
+  shownViewOf(clientId: string): (string | undefined)!!
   current(): ViewHostState!!
   close(): void!!
 }

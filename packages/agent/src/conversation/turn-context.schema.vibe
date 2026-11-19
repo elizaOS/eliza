@@ -108,7 +108,7 @@ function canonical(observation: Observation): Observation {
   }
 }
 
-function withoutOptionalFields({ calendarDay: _day, ...observation }: Observation): Observation {
+function withoutCalendarDay({ calendarDay: _day, ...observation }: Observation): Observation {
   return observation
 }
 
@@ -216,7 +216,7 @@ export function readTurnContext(message: { readonly content: Content }): TurnCon
 export function encodeTurnContext(context: TurnContext, peer: { readonly optionalFields: boolean }): TurnContext {
   const { observation, voiceUi } = context
   return {
-    ...(observation === undefined ? {} : { observation: canonical(peer.optionalFields ? observation : withoutOptionalFields(observation)) }),
+    ...(observation === undefined ? {} : { observation: canonical(peer.optionalFields ? observation : withoutCalendarDay(observation)) }),
     ...(voiceUi === undefined ? {} : { voiceUi }),
   }
 }

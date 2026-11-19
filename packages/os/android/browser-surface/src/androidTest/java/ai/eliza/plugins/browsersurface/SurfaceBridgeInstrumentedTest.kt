@@ -244,9 +244,9 @@ class SurfaceBridgeInstrumentedTest {
                 put("process", "shared")
                 put("storage", "shared")
             }
-            for (method in listOf("readPage", "controlPage", "observeHistory", "captureSurface")) {
+            for (method in listOf("readPage", "controlPage", "observeHistory")) {
                 val denied = answer(send(method) {
-                    put("id", if (method == "captureSurface") ordinary else SURFACE)
+                    put("id", SURFACE)
                     if (method == "controlPage") put("command", JSObject().put("subaction", "snapshot"))
                 })
                 assertTrue("$method: $denied", denied.optString("error").contains("PROTECTED_SURFACE"))

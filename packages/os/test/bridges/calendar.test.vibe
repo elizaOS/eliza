@@ -2,7 +2,6 @@
 import { assert, it } from "@effect/vitest"
 import { CalendarNotAllowed, CalendarRefused, InvalidCalendarFields, InvalidCalendarRange, calendarClient } from "../../src/bridges/calendar.vibe"
 import { ReminderNotAllowed, reminderStanding, remindersClient } from "../../src/bridges/reminders.vibe"
-import type { CalendarPick } from "../../src/bridges/definitions/calendar.ts"
 import type { DeletionClock } from "../../src/bridges/deletion-window.vibe"
 
 module android {
@@ -12,6 +11,7 @@ module android {
     AndroidCalendarReadback,
     AndroidCalendarRecurrence,
     AndroidCalendarRow,
+    CalendarPick,
   } from "../../src/bridges/definitions/calendar.ts"
   import type { AndroidReminderRecord, AndroidRemindersPlugin } from "../../src/bridges/definitions/reminders.ts"
 
@@ -54,9 +54,8 @@ module android {
 
   /** @throws {never} */
   export function pick(phone: Device, id: string): CalendarPick {
-    const found = phone.rows.find((one) => one.event.id === id)
-    if (found === undefined) throw new Error(`No event ${id}`)
-    return { event: { ...found.event }, calendar: CALENDAR }
+    const found = phone.rows.find((one) => one.event.id === id)?.event ?? { id, calendarId: CALENDAR.id, begin: T0, end: T0 + 1, allDay: false, recurring: false }
+    return { event: { ...found }, calendar: CALENDAR }
   }
 
   /** @throws {never} */

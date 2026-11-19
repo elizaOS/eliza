@@ -212,10 +212,10 @@ export effect function launcherManifest(tree: string, packageName: string) {
   const application = manifest === undefined ? undefined : childrenNamed(manifest, "application")[0]
   if (manifest?.attrs.package !== packageName || application === undefined)
     throw new LauncherManifestUnread({ packageName, message: `The manifest is not the ${packageName} launcher's, or declares no application` })
-  const nodes = application.children.filter((node) => COMPONENT_KINDS[node.name] !== undefined)
-  const components = nodes.map((node): ManifestComponent => {
-    const kind = COMPONENT_KINDS[node.name] ?? "ActivityKind"
-    return {
+  const read = application.children.flatMap((node) => {
+    const kind = COMPONENT_KINDS[node.name]
+    if (kind === undefined) return []
+    const component: ManifestComponent = {
       name: qualify(packageName, node.attrs.name ?? ""),
       kind,
       exported: isTrue(node.attrs.exported),
@@ -224,8 +224,10 @@ export effect function launcherManifest(tree: string, packageName: string) {
       handles: componentHandles(node, kind, packageName),
       marks: componentMarks(node, kind),
     }
+    return [{ node, component }]
   })
-  const assistNodes = nodes.filter((node, index) => components[index].kind === "ActivityKind" && components[index].handles.includes("AssistIntent"))
+  const components = read.map((entry) => entry.component)
+  const assistNodes = read.filter((entry) => entry.component.kind === "ActivityKind" && entry.component.handles.includes("AssistIntent")).map((entry) => entry.node)
   const requested = ["uses-permission", "uses-permission-sdk-23"].flatMap((name) => childrenNamed(manifest, name).flatMap((node) => node.attrs.name ?? []))
   const parsed: LauncherManifest = { components, requestedPermissions: requested, powerVoiceActivity: powerVoiceActivity(packageName, assistNodes) }
   return parsed
