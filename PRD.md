@@ -65,3 +65,26 @@ the tablet and enters the recovery key to restore to an empty vault.
 3. Exercise the approved release in staging with a registered native client,
    a supported device lock and synthetic passwords. A host can offer the
    backup control when its account and backup service are available.
+
+## MVP scope: Funded hosted Clef decisions
+
+An authenticated organization can use the hosted Clef decision API for up to
+2,000 requests per day. An organization with at least $5 in net settled credit
+purchases or an active paid subscription can use up to 4,000 per day. The
+allowance belongs to the authenticated organization. All credentials share the
+same daily counter, and each credential retains its 30-request-per-minute
+limit. Promotional credits and subscription grants do not qualify.
+
+Included decisions do not debit credits. A refund or subscription lapse can
+return the organization to the base allowance without resetting usage. If the
+billing policy is unavailable, the base allowance applies. If shared rate-limit
+storage is unavailable, the service returns HTTP 503 before calling Clef. An
+exhausted limit returns HTTP 429 with the limit and retry timing.
+
+### MVP plan
+
+1. Verify the base limit, settled-purchase and subscription qualification,
+   refund or lapse, unavailable policy, and counter reuse in the Cloud API.
+2. In staging, call Clef with the funded organization's existing credential.
+   Verify a typed response, the 4,000 daily limit header, and an unchanged
+   credit balance from the included request.
