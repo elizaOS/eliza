@@ -211,10 +211,15 @@ function textWithoutBody(
 ): { text: string; bodyNumbers: string[] } {
   if (typeof body !== "string" || !body.trim())
     return { text, bodyNumbers: [] };
-  const at = text.toLowerCase().indexOf(body.trim().toLowerCase());
-  if (at >= 0)
+  // The body as whole words: the "hi" of "text Sophie hi" is not in "Sophie".
+  const escaped = body.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const at = new RegExp(
+    `(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`,
+    "iu",
+  ).exec(text);
+  if (at)
     return {
-      text: text.slice(0, at) + " " + text.slice(at + body.trim().length),
+      text: `${text.slice(0, at.index)} ${text.slice(at.index + at[0].length)}`,
       bodyNumbers: [],
     };
   // The model reworded the body: no number it carries can be the recipient.
