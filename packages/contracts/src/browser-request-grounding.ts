@@ -322,8 +322,11 @@ export function directBrowserOpen(
  * words: "open example dot com", "can you pull up maps dot example dot com?".
  * It only grounds a model proposal for that exact hostname: it is never the
  * strict command or a direct request, so the owner reviews the open. A phrase
- * ("the dot app", "my dot app") is not a hostname, and neither is a file name
- * ("main dot py") unless the owner names the browser, a new tab or a website. */
+ * ("the dot app", "my dot app") is not a hostname. Nor is a file name ("main
+ * dot py"), unless an open command places it "in the browser" or "in a new
+ * tab", or a question or everyday command says website or site right after it
+ * ("can you open notes dot app website?"). A question that only names the
+ * browser or a new tab keeps it a file name. */
 export function spokenBrowserDestination(
   text: string,
   assistantName: string = DEFAULT_ASSISTANT_NAME,

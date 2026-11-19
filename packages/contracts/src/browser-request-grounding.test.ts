@@ -969,10 +969,18 @@ describe("strict open command with where the address opens", () => {
     ["Show me the polka dot shoes", undefined, "https://polka.shoes/"],
     // A real top-level domain still names a hostname, for a reviewed open.
     ["Show me polka dot shoes", "https://polka.shoes/", undefined],
-    // Naming the browser, a new tab or a website makes a file-like name a site.
+    // An open command placing a file-like name in the browser or a new tab, or
+    // a question saying website right after it, makes it a site.
     ["Open main dot py in the browser", "https://main.py/", undefined],
     ["Open readme dot md in a new tab", "https://readme.md/", undefined],
     ["can you open notes dot app website", "https://notes.app/", undefined],
+    // A question that only names the browser or a new tab does not.
+    [
+      "can you open notes dot app in the browser?",
+      undefined,
+      "https://notes.app/",
+    ],
+    ["can you open main dot py in a new tab?", undefined, "https://main.py/"],
   ])("never opens the phrase %s without a review", (text, spoken, refused) => {
     expect(authoredBrowserOpen(text)).toBeUndefined();
     expect(directBrowserOpen(text)).toBeUndefined();
