@@ -924,8 +924,9 @@ describe("WP4 Subscriptions and entitlements: entitlement", () => {
 })
 
 module node {
-  import { Effect } from "effect"
+  import { Effect, Schema } from "effect"
   import { SecureRandom } from "effect/crypto"
+  import { createCipheriv, createHash } from "node:crypto"
   import { exportJWK, generateKeyPair, SignJWT } from "jose"
   import { CLEF_DECISIONS_PATH, createClefDecisionsClient, type ClefDecisionRequest } from "../src/clef-decisions.vibe"
   import { signInWithProof } from "../src/identity-store.vibe"
@@ -1001,8 +1002,95 @@ module node {
       }
     } finally { await fixture.close() }
   }
+  export async function readSelectedAttachment() {
+    const fixture = await openBackupDatabase()
+    const original = globalThis.fetch
+    try {
+      const digest = "a".repeat(64)
+      await fixture.db.query("INSERT INTO cloud_identity (digest, environment, created_at) VALUES ($1, 'staging', 1)", [digest])
+      const signIn = (email: string) => Effect.runPromise(Effect.provide(signInWithProof(fixture.db, { provider: "email", subject: email, email }), SecureRandom.layerWebCrypto))
+      const owner = await signIn("attachment-owner@example.test")
+      const other = await signIn("attachment-other@example.test")
+      const web = "https://app.example.test"
+      const api = "https://api.example.test"
+      const key = "11".repeat(32)
+      const subject = "fixture-google-subject"
+      const grant = "00112233-4455-6677-8899-aabbccddeeff"
+      const nonce = Buffer.alloc(12)
+      const cipher = createCipheriv("aes-256-gcm", Buffer.from(key, "hex"), nonce)
+      cipher.setAAD(Buffer.from(JSON.stringify(["cloud-google-token-v1", api, owner.account.id, subject, true, false])))
+      const encrypted = Buffer.concat([nonce, cipher.update("fixture-refresh"), cipher.final(), cipher.getAuthTag()]).toString("hex")
+      await fixture.db.query("INSERT INTO cloud_google_connections (account_id, id, subject, email, mail, calendar, refresh_cipher) VALUES ($1, $2, $3, $4, true, false, $5)",
+        [owner.account.id, grant, subject, "attachment-owner@example.test", encrypted])
+      const bytes = Buffer.from("%PDF-local-fixture")
+      const part = { partId: "1", filename: "fixture.pdf", mimeType: "application/pdf", body: { attachmentId: "fixture-attachment", size: bytes.length } }
+      const unsupported = { partId: "2", filename: "fixture.html", mimeType: "text/html", body: { attachmentId: "never-fetch", size: 10 } }
+      const oversized = { partId: "3", filename: "large.pdf", mimeType: "application/pdf", body: { attachmentId: "never-fetch", size: 8 * 1024 * 1024 + 1 } }
+      let attachmentFetches = 0
+      let redirect = false
+      let providerRequestsValid = true
+      globalThis.fetch = async (input, init) => {
+        const request = new Request(input, init)
+        const url = new URL(request.url)
+        providerRequestsValid &&= request.redirect === "manual"
+        if (url.href === "https://oauth2.googleapis.com/token" && request.method === "POST")
+          return Response.json({ access_token: "fixture-access", scope: "https://www.googleapis.com/auth/gmail.readonly" })
+        providerRequestsValid &&= request.headers.get("authorization") === "Bearer fixture-access"
+        if (url.hostname === "gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/fixture-message")
+          return Response.json({ id: "fixture-message", threadId: "fixture-thread", internalDate: "1760000000000", historyId: "789", labelIds: ["INBOX"],
+            payload: { headers: [{ name: "Subject", value: "Selected PDF" }], parts: [{ mimeType: "text/plain", body: { data: "aGVsbG8" } }, part, unsupported, oversized] } })
+        if (url.hostname === "gmail.googleapis.com" && url.pathname === "/gmail/v1/users/me/messages/fixture-message/attachments/fixture-attachment") {
+          attachmentFetches += 1
+          return redirect ? Response.redirect("https://unexpected.example.test", 302) : Response.json({ data: bytes.toString("base64url"), size: bytes.length })
+        }
+        providerRequestsValid = false
+        return Response.json({ error: "unexpected fixture request" }, { status: 500 })
+      }
+      const env = {
+        AI: { run: async () => { throw new Error("Unexpected inference in attachment fixture") } }, DATABASE_URL: fixture.databaseUrl, CLOUD_IDENTITY_DIGEST: digest, CLOUD_ENVIRONMENT: "staging",
+        PUBLIC_API_ORIGIN: api, WEB_ORIGIN: web, CHAT_MODEL: "unused", EMBEDDING_MODEL: "unused",
+        CHAT_INPUT_MICROS_PER_1K: "1", CHAT_OUTPUT_MICROS_PER_1K: "1", EMBEDDING_INPUT_MICROS_PER_1K: "1", MAX_COMPLETION_TOKENS: "1",
+        STRIPE_SECRET_KEY: "unused", STRIPE_WEBHOOK_SECRET: "unused", STRIPE_PRICE_ID: "unused", STRIPE_PRODUCT_ID: "unused", STRIPE_PLAN: "plus_monthly",
+        GOOGLE_CLIENT_ID: "fixture-client", GOOGLE_CLIENT_SECRET: "fixture-secret", GOOGLE_CONNECT_TOKEN_KEY: key,
+      } satisfies CloudBindings
+      const worker = cloudWorker()
+      const get = (path: string, cookie?: string) => worker.fetch(new Request(api + "/api/v1/eliza/google/gmail/" + path, {
+        headers: cookie ? { origin: web, cookie: "__Host-eliza-session=" + cookie } : { origin: web },
+      }), env)
+      const query = "grantId=" + grant + "&messageId=fixture-message"
+      const attachment = "attachment?" + query
+      const selected = attachment + "&historyId=789&partId=1"
+      const read = await get("read?" + query, owner.access)
+      const manifest = Schema.decodeUnknownSync(Schema.Struct({
+        historyId: Schema.NullOr(Schema.String), bodyText: Schema.String,
+        attachments: Schema.Array(Schema.Struct({ partId: Schema.String, name: Schema.String, mimeType: Schema.String, size: Schema.Number, supported: Schema.Boolean })),
+      }))(await read.json())
+      const guardStatuses = [
+        (await get(selected)).status,
+        (await get(selected, other.access)).status,
+        (await get(attachment + "&historyId=788&partId=1", owner.access)).status,
+        (await get(attachment + "&historyId=789&partId=999", owner.access)).status,
+        (await get(attachment + "&historyId=789&partId=2", owner.access)).status,
+        (await get(attachment + "&historyId=789&partId=3", owner.access)).status,
+      ]
+      const guardedDownloads = attachmentFetches
+      const downloaded = await get(selected, owner.access)
+      const file: unknown = await downloaded.json()
+      redirect = true
+      const rejectedRedirect = await get(selected, owner.access)
+      return {
+        manifest, readStatus: read.status, guardStatuses, guardedDownloads, file, fileStatus: downloaded.status,
+        cache: downloaded.headers.get("cache-control"), owner: owner.account.id, expectedHash: createHash("sha256").update(bytes).digest("hex"),
+        expectedData: bytes.toString("base64"), size: bytes.length, rejectedRedirect: rejectedRedirect.status, providerRequestsValid, attachmentFetches,
+      }
+    } finally {
+      globalThis.fetch = original
+      await fixture.close()
+    }
+  }
+
 }
-import { decideForSignedInAccount, nativeGoogleFixture } from node
+import { decideForSignedInAccount, nativeGoogleFixture, readSelectedAttachment } from node
 
 it.live('A reviewed link decision stays within the current account and candidates (spec/cloud/index.md, "Story: Ask for a bounded decision about a browser page")', () => effect {
   const result = try tryPromise(() => decideForSignedInAccount())
@@ -1011,4 +1099,28 @@ it.live('A reviewed link decision stays within the current account and candidate
     decision: { status: "ok", kind: "choice", model: "clef-flash", choice: "hours", confidence: .95, probabilities: { hours: .95, none: .05 } },
     staleChoice: { status: "unavailable", reason: "provider_error" }, providerCalls: 2, accountCalls: 2, withheld: true,
   }))
+}, 30_000)
+
+
+it.live('Open the selected named attachment (spec/cloud/index.md, "Story: Connect Google mail and calendar")', () => effect {
+  const got = try tryPromise(() => readSelectedAttachment())
+  try check(() => assert.deepStrictEqual(
+    {
+      read: [got.readStatus, got.manifest.historyId, got.manifest.bodyText, got.manifest.attachments],
+      refuse: [got.guardStatuses, got.guardedDownloads, got.rejectedRedirect],
+      file: [got.fileStatus, got.cache, got.file],
+      provider: [got.providerRequestsValid, got.attachmentFetches],
+    },
+    {
+      read: [200, "789", "hello", [
+        { partId: "1", name: "fixture.pdf", mimeType: "application/pdf", size: got.size, supported: true },
+        { partId: "2", name: "fixture.html", mimeType: "text/html", size: 10, supported: false },
+        { partId: "3", name: "large.pdf", mimeType: "application/pdf", size: 8 * 1024 * 1024 + 1, supported: false },
+      ]],
+      refuse: [[401, 409, 409, 404, 415, 415], 0, 502],
+      file: [200, "no-store", { version: 1, accountId: got.owner, messageId: "fixture-message", partId: "1", historyId: "789",
+        name: "fixture.pdf", mimeType: "application/pdf", size: got.size, dataBase64: got.expectedData, sha256: got.expectedHash, supported: true }],
+      provider: [true, 2],
+    },
+  ))
 }, 30_000)

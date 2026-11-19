@@ -101,7 +101,10 @@ A read requires an active browser session for the account that consented.
 The service keeps the refresh credential encrypted for that deployment,
 account and approved scopes. Disconnecting removes the local credential and any
 pending consent authorizations. Browser and native inference credentials
-have separate permissions.
+have separate permissions. A Gmail message read returns named attachment
+descriptors without attachment bytes. Fetching a supported part requires the
+same owner and explicit mail grant, with its message, history and part
+identifiers. A changed history or missing part cannot return content.
 
 ```quint
 pure def canReadCloudGoogle(ownerSessionActive: bool, connectionPresent: bool, grantOwnerMatches: bool, selected: Set[CloudGoogleReadScope], requested: CloudGoogleReadScope): bool =
