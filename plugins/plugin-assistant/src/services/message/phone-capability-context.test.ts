@@ -205,6 +205,24 @@ describe("phone telephony routing on the Alpha image", () => {
 });
 
 describe("selected phone capability guidance", () => {
+  it("keeps an explicit self-addressed Gmail draft actionable when sending is prohibited", async () => {
+    const routing = async () =>
+      (await guidance({ providerPhase: "response" })).text;
+    const self =
+      '“To me” or “to myself” already names the recipient. Pass to:["self"] and let the phone resolve the selected Gmail mailbox.';
+    const pending =
+      "If the user explicitly requests a draft and says not to send it, composing is still pending work. Prepare the draft without sending it.";
+    expect(await routing()).not.toContain(self);
+    capabilities.push("gmail.local-compose.v1");
+    try {
+      const text = await routing();
+      expect(text).toContain(self);
+      expect(text).toContain(pending);
+    } finally {
+      capabilities.pop();
+    }
+  });
+
   it("routes a retry of an unsent Gmail draft through the negotiated composer", async () => {
     const routing = async () =>
       (await guidance({ providerPhase: "response" })).text;
