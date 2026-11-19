@@ -245,3 +245,49 @@ pure def lawChangedRevisionRefusesRowAction(expected: int, presentRevision: int)
 pure def lawMissingRecordRefusesRowAction(selection: RowSelection): bool =
   not(mayUseSelectedVaultRecord(selection, MissingRecord))
 ```
+## Story: Open saved passwords on a device without a screen lock
+
+> As the current owner of saved passwords, I want to open Passwords while
+> Android and the app are available, even on a device without a PIN.
+> Reveal, copy and fill each still require my own action in a trusted
+> native surface, and leaving it closes that access.
+
+### Device-unlocked custody requires a foreground window and the current owner, even on a device without a screen lock
+
+A native host can select device-unlocked custody. Android's unlocked user
+and device state, the current foreground window and the host's current
+owner admission all have to hold. A secure screen-lock setting is optional.
+The key remains non-exportable in Android Keystore and the ciphertext stays
+in credential-encrypted app storage. On Android 15 and newer, newly made
+keys also ask Keystore to enforce device lock. Earlier supported Android
+releases enforce it in the native shell. No timer ends a foreground grant.
+On leaving, pausing or retiring the owner, the next window gets its own
+access generation. Reveal, copy and fill still require a native user action.
+
+```quint
+type DeviceVaultWindow = { foreground: bool, userUnlocked: bool, deviceUnlocked: bool, ownerAdmitted: bool, generation: int }
+pure def deviceVaultOpen(window: DeviceVaultWindow): bool =
+  window.foreground and window.userUnlocked and window.deviceUnlocked and window.ownerAdmitted
+pure def deviceVaultDeliver(window: DeviceVaultWindow, requestGeneration: int, userAction: bool): bool =
+  deviceVaultOpen(window) and requestGeneration == window.generation and userAction
+pure def lawDeviceVaultDeliveryNeedsCurrentOpenWindow(window: DeviceVaultWindow, requestGeneration: int, userAction: bool): bool =
+  deviceVaultDeliver(window, requestGeneration, userAction) implies
+    (deviceVaultOpen(window) and requestGeneration == window.generation and userAction)
+```
+
+### An authentication-bound vault migrates only after its original key admits the saved records
+
+The first access to a previously saved vault keeps it behind its original
+Keystore authorization. After that authorization, native code may copy the
+records into a distinct device-unlocked vault and verify the copy before
+selecting it. The original key and ciphertext survive selection. A failed
+or cancelled authorization, an unreadable source, or a different target
+leaves the original selected. An empty install can open directly.
+
+```quint
+type DeviceVaultLegacy = NoLegacyRecords | LegacySelected | DeviceCustodySelected
+pure def canSelectDeviceVault(legacy: DeviceVaultLegacy, originalKeyRead: bool, verifiedCopy: bool): bool =
+  legacy == NoLegacyRecords or legacy == DeviceCustodySelected or (originalKeyRead and verifiedCopy)
+pure def lawLegacySelectionNeedsOriginalKey(originalKeyRead: bool, verifiedCopy: bool): bool =
+  canSelectDeviceVault(LegacySelected, originalKeyRead, verifiedCopy) iff (originalKeyRead and verifiedCopy)
+```
