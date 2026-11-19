@@ -348,11 +348,11 @@ pure def stepAnEndReleasesRevokesAndReportsOnce(before: CloudSpeech, via: str, a
 pure def failedAfterAudio(e: Ending): bool = match e { | FailedAfterAudio(f) => true | _ => false }
 pure def failedBeforeAudio(e: Ending): bool = match e { | FailedBeforeAudio(f) => true | _ => false }
 pure def alwaysAnEndingSaysWhetherAudioStarted(s: CloudSpeech): bool = {
-  val how = endingOf(s.phase)
-  val over = not(isOpen(s.phase)) and s.phase != Idle
-  (s.audioStarted implies (s.phase == Live or (over and (how == Stopped or failedAfterAudio(how)))))
-  and ((over and failedAfterAudio(how)) implies s.audioStarted)
-  and ((failedBeforeAudio(how) or failedAfterAudio(how)) implies failureOfEnding(how) != Cr::NoFailure)
+  val closedAs = endingOf(s.phase)
+  val ended = not(isOpen(s.phase)) and s.phase != Idle
+  (s.audioStarted implies (s.phase == Live or (ended and (closedAs == Stopped or failedAfterAudio(closedAs)))))
+  and ((ended and failedAfterAudio(closedAs)) implies s.audioStarted)
+  and ((failedBeforeAudio(closedAs) or failedAfterAudio(closedAs)) implies failureOfEnding(closedAs) != Cr::NoFailure)
 }
 pure def sometimesFailedBeforeAudio(s: CloudSpeech): bool = failedBeforeAudio(endingOf(s.phase)) and not(isOpen(s.phase))
 pure def sometimesFailedAfterAudio(s: CloudSpeech): bool = failedAfterAudio(endingOf(s.phase)) and not(isOpen(s.phase))
