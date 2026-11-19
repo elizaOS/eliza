@@ -147,3 +147,91 @@ it("is off unless the host turns it on, and needs a conversation", async () => {
 	expect(noRoom).not.toBe(first);
 	expect(noRoomAgain).not.toBe(noRoom);
 });
+
+type Sent = { system?: string; messages?: { role: string; content: string }[] };
+
+async function sentRequests(
+	settings: Record<string, string>,
+	requests: Record<string, unknown>[],
+): Promise<Sent[]> {
+	const runtime = createSQLiteTestRuntime({
+		character: { name: "A", bio: "t", settings } as Character,
+		logLevel: "fatal",
+	});
+	const sent: Sent[] = [];
+	runtime.registerModel(
+		ModelType.TEXT_LARGE,
+		async (_runtime, params) => {
+			sent.push(JSON.parse(JSON.stringify(params)) as Sent);
+			return "ok";
+		},
+		"p",
+	);
+	for (const request of requests)
+		await runWithTrajectoryContext({ roomId: "room-a" }, () =>
+			runtime.useModel(ModelType.TEXT_LARGE, request as never),
+		);
+	await runtime.stop();
+	return sent;
+}
+
+// The system prompt leads the cached prefix. A list of this request's
+// references inside it changed whenever a contact entered or left the
+// conversation, and the provider then re-read the tools and every message.
+it("keeps the system prompt the same for a conversation and lists reference kinds after the newest user message", async () => {
+	const hello = { role: "user", content: "hello" };
+	const reply = { role: "assistant", content: "hi" };
+	const text = { role: "user", content: earlier };
+	const mail = { role: "user", content: "and mail bob@example.com" };
+	const turns = [
+		[hello],
+		[hello, reply, text],
+		[hello, reply, text, reply, mail],
+	].map((messages) => ({ system: "Be brief.", messages }));
+	const stable = await sentRequests(
+		{
+			ELIZA_SECRET_SWAP_ENABLED: "true",
+			ELIZA_SECRET_SWAP_STABLE_REFERENCES: "true",
+		},
+		turns,
+	);
+	expect(stable[0].system).toContain("Contact references beginning");
+	expect(stable[0].system).not.toContain("Current contact reference kinds");
+	expect(new Set(stable.map((request) => request.system)).size).toBe(1);
+	// No reference, no list; then each request lists what it carries, last.
+	expect(stable[0].messages).toEqual([hello]);
+	const phone = /__ELIZA_CONTACT_[0-9a-f]{16}_\d+__/.exec(
+		stable[1].messages?.[2].content ?? "",
+	)?.[0];
+	expect(stable[1].messages?.[2].content).toBe(
+		`text ${phone} saying hi\n\nCurrent contact reference kinds: ${phone}: phone.`,
+	);
+	expect(stable[2].messages?.[4].content).toMatch(
+		new RegExp(
+			`^and mail (__ELIZA_CONTACT_[0-9a-f]{16}_\\d+__)\\n\\nCurrent contact reference kinds: ${phone}: phone, \\1: email\\.$`,
+		),
+	);
+	// Earlier messages are sent as they were: a later request extends them.
+	expect(stable[2].messages?.slice(0, 2)).toEqual(
+		stable[1].messages?.slice(0, 2),
+	);
+	expect(stable[2].messages?.[2].content).toBe(`text ${phone} saying hi`);
+
+	const rotating = await sentRequests(
+		{ ELIZA_SECRET_SWAP_ENABLED: "true" },
+		turns,
+	);
+	expect(rotating[0].system).toBe("Be brief.");
+	expect(rotating[1].system).toContain("Current contact reference kinds: ");
+	expect(rotating[1].messages?.[2].content).toMatch(/^text \S+ saying hi$/);
+
+	// With no user message to follow, the list stays where every request has one.
+	const [promptOnly] = await sentRequests(
+		{
+			ELIZA_SECRET_SWAP_ENABLED: "true",
+			ELIZA_SECRET_SWAP_STABLE_REFERENCES: "true",
+		},
+		[{ system: "Be brief.", prompt: earlier }],
+	);
+	expect(promptOnly.system).toContain("Current contact reference kinds: ");
+});
