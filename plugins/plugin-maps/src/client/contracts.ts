@@ -108,8 +108,11 @@ function placeCategories(value: unknown): string[] {
   const kept: string[] = [];
   for (const item of value) {
     if (kept.length >= PLACE_CATEGORY_LIMIT) break;
-    if (!boundedText(item, 80)) continue;
+    // Trim before bounding, as the agent-side PlaceRef schema does, so both
+    // sides keep the same labels.
+    if (typeof item !== "string") continue;
     const label = item.trim();
+    if (!boundedText(label, 80)) continue;
     if (!kept.includes(label)) kept.push(label);
   }
   return kept;

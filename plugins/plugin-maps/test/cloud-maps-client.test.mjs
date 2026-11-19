@@ -905,6 +905,14 @@ assert.equal(
     }).categories.length,
     PLACE_CATEGORY_LIMIT,
   );
+  assert.deepEqual(
+    validPlace({
+      ...categorised,
+      categories: [`  ${"y".repeat(80)}  `, "Bad\u0007label"],
+    }).categories,
+    ["y".repeat(80)],
+    "labels are bounded after trimming, and control characters are dropped",
+  );
   assert.throws(
     () => validPlace({ ...categorised, categories: "Marina" }),
     (failure) =>
