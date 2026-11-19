@@ -4,7 +4,10 @@ import { createHash } from "node:crypto";
 import { expect, type Locator, test } from "@playwright/test";
 import type { CloudLiveRuntimeBinding } from "../cloud-live-continuity-contract";
 import { installDedicatedAdoptionConsentProof } from "../cloud-live-dedicated-adoption-consent";
-import { openAuthenticatedStagingJoin } from "../cloud-live-deployed-target";
+import {
+  openAuthenticatedStagingJoin,
+  requireStagingJoinBytes,
+} from "../cloud-live-deployed-target";
 import {
   CloudLiveDedicatedConfirmationRequiredError,
   CloudLiveOptionalActionDeadlineError,
@@ -1263,6 +1266,15 @@ test("the staging browser opens join with an issued same-origin session", async 
     return route.abort();
   });
 
+  await page.goto(`${app}/eliza-renderer-build.json`);
+  const actualHash = createHash("sha256")
+    .update("<main>Join</main>")
+    .digest("hex");
+  await expect(
+    requireStagingJoinBytes(page, app, "f".repeat(64)),
+  ).rejects.toThrow("does not match");
+  await requireStagingJoinBytes(page, app, actualHash);
+  joined.length = 0;
   manifest = { ...manifest, buildId: "c".repeat(64) };
   await expect(
     openAuthenticatedStagingJoin(page, renderer, seed),

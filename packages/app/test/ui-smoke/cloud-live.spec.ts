@@ -49,6 +49,7 @@ import {
 import {
   cloudLiveDeployedRendererOrigin,
   openAuthenticatedStagingJoin,
+  requireStagingJoinBytes,
   STAGING_PAGES_ALIAS,
 } from "../cloud-live-deployed-target";
 import {
@@ -413,6 +414,11 @@ async function openProtectedCloudBlankStart(
       page,
       STAGING_PAGES_ALIAS,
     );
+    await requireStagingJoinBytes(
+      page,
+      STAGING_PAGES_ALIAS,
+      aliasIdentity?.indexHtmlSha256,
+    );
     await requireRendererCloudApiOrigin(page, expectedApiOrigin, aliasIdentity);
   }
   await page.goto(DEPLOYED_RENDERER_ENABLED ? "/join" : "/", {
@@ -420,6 +426,11 @@ async function openProtectedCloudBlankStart(
   });
   const publicIdentity = await requireDeployedRendererIdentity(page);
   if (staging) {
+    await requireStagingJoinBytes(
+      page,
+      DEPLOYED_APP_ORIGIN,
+      publicIdentity?.indexHtmlSha256,
+    );
     expect(publicIdentity).toEqual({
       ...aliasIdentity,
       origin: DEPLOYED_APP_ORIGIN,
@@ -852,7 +863,7 @@ test.describe("real cloud login + personal identity + chat", () => {
       {
         type: "renderer-source",
         description: DEPLOYED_RENDERER_ENABLED
-          ? "Cloudflare Pages deployment alias"
+          ? `Deployed Cloud app at ${DEPLOYED_APP_ORIGIN}`
           : "locally built renderer bundle (not a deployed artifact)",
       },
     );

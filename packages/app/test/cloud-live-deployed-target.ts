@@ -16,6 +16,40 @@ export function cloudLiveDeployedRendererOrigin(
   throw new Error("Unsupported deployed Cloud smoke environment");
 }
 
+export async function requireStagingJoinBytes(
+  page: Page,
+  origin: string,
+  expectedHash: string | undefined,
+): Promise<void> {
+  const hash = await page.evaluate(async (origin) => {
+    if (window !== window.top || location.origin !== origin)
+      throw new Error("Unexpected staging document origin");
+    const response = await fetch("/join", {
+      credentials: "omit",
+      redirect: "error",
+      cache: "no-store",
+    });
+    if (
+      response.status !== 200 ||
+      response.url !== origin + "/join" ||
+      response.headers.get("content-type")?.split(";")[0]?.trim() !==
+        "text/html"
+    )
+      throw new Error("Unexpected staging join document");
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      await response.arrayBuffer(),
+    );
+    return Array.from(new Uint8Array(digest), (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+  }, origin);
+  if (hash !== expectedHash)
+    throw new Error(
+      "Staging join document does not match the attested renderer",
+    );
+}
+
 /** Runs inside the verified top-level JSON document, before any app script loads. */
 async function establishStagingBrowserSession(input: {
   appOrigin: string;
