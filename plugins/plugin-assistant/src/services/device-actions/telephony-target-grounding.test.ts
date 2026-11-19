@@ -412,6 +412,7 @@ describe("authoredTelephonyTarget", () => {
     ["call mom again", "call", "mom"],
     ["ring mum back", "call", "mum"],
     ["call Maya's cell", "call", "Maya"],
+    ["call Maya's cellphone", "call", "Maya"],
     ["call my wife's phone", "call", "wife"],
     ["text mom back saying I'm here", "text", "mom"],
     ["call Sam Back", "call", "Sam Back"],

@@ -126,7 +126,7 @@ export function authoredTelephonyTarget(
     .replace(/[.!?]+$/u, "")
     .replace(/(?:\s+(?:back|again))+$/u, "")
     .replace(
-      /['’]s\s+(?:cell|mobile|phone|number|landline)(?:\s+(?:phone|number))?$/iu,
+      /['’]s\s+(?:cellphone|cell|mobile|phone|number|landline)(?:\s+(?:phone|number))?$/iu,
       "",
     );
   return query ? { request, target: { kind: "contact", query } } : { request };
