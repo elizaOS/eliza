@@ -80,7 +80,8 @@ export const CONNECTION_FAILED_REPLY =
 
 /**
  * The turn died because the model provider did not answer: its own retry
- * budget ran out, or it failed with a server, timeout or network error. An
+ * budget ran out, or it failed with a server or timeout error. A dropped
+ * connection is matched first by initialConnectionFailure. An
  * apology written by another model call only says "something went wrong";
  * the honest reply names the unavailable service and offers a retry.
  */

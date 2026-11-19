@@ -20,7 +20,11 @@ import {
   makeState,
   useModelCalls,
 } from "../../__tests__/stage1/fixtures.ts";
-import { MessageFailures, PROVIDER_UNAVAILABLE_REPLY } from "./failures.ts";
+import {
+  CONNECTION_FAILED_REPLY,
+  MessageFailures,
+  PROVIDER_UNAVAILABLE_REPLY,
+} from "./failures.ts";
 
 const STAGE = "running the native tool message runtime";
 const responseId = "00000000-0000-0000-0000-000000000612" as never;
@@ -58,14 +62,6 @@ describe("a model provider that did not answer the turn", () => {
       "a 503 from the provider",
       Object.assign(new Error("Service Unavailable"), { status: 503 }),
     ],
-    [
-      "a dropped connection",
-      Object.assign(new Error("fetch failed"), {
-        cause: Object.assign(new Error("socket hang up"), {
-          code: "ECONNRESET",
-        }),
-      }),
-    ],
   ])("says the AI service did not respond after %s", async (_name, error) => {
     const { runtime, result } = await reply(error);
     expect(result.responseContent).toMatchObject({
@@ -78,6 +74,27 @@ describe("a model provider that did not answer the turn", () => {
     expect(result.responseContent?.text).not.toMatch(/went wrong/i);
     expect(result.responseContent?.text).toMatch(/try again/i);
     // No apology model call that could blur the cause.
+    expect(useModelCalls(runtime)).toHaveLength(0);
+  });
+
+  // A dropped connection is named as one (failures.connection.test.ts), with
+  // the persona's own dropped-connection reply, not as a service that did not
+  // respond. It is still a transient failure, so clients see provider_issue.
+  it("says a dropped connection failed, even inside a fetch error", async () => {
+    const { runtime, result } = await reply(
+      Object.assign(new Error("fetch failed"), {
+        cause: Object.assign(new Error("socket hang up"), {
+          code: "ECONNRESET",
+        }),
+      }),
+    );
+    expect(result.responseContent).toMatchObject({
+      text: CONNECTION_FAILED_REPLY,
+      actions: ["REPLY"],
+      transient: true,
+      failureKind: "transient_failure",
+      doNotPersist: true,
+    });
     expect(useModelCalls(runtime)).toHaveLength(0);
   });
 
