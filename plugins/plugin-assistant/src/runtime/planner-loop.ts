@@ -4319,7 +4319,12 @@ function renderPlannerModelInput(params: {
     renderedContext.promptSegments.push({
       id: "planner-background-history",
       stable: false,
-      content: `A complete background review deferred ${background.omittedSourceCount} earlier originals. This is not a current-request source review. Retained constraints, recent continuity and loaded originals are shown; all canonical originals remain available. For missing or uncertain historical dependencies call RESTORE_CONTEXT alone with scope=history before effects; never infer or count omitted history.`,
+      // Nothing reviewed what a positional window defers, so "uncertain" would
+      // hold on every turn; only a named gap justifies restoring the room.
+      content:
+        "windowed" in background && background.windowed
+          ? `${background.omittedSourceCount} earlier messages are not shown; they were deferred by position, not reviewed. The most recent messages and originals loaded during routing are shown. Omitted dialogue is not itself a missing dependency: call RESTORE_CONTEXT alone with scope=history before effects only for a specific referent, constraint or fact this request names that is not shown. Never infer or count omitted history.`
+          : `A complete background review deferred ${background.omittedSourceCount} earlier originals. This is not a current-request source review. Retained constraints, recent continuity and loaded originals are shown; all canonical originals remain available. For missing or uncertain historical dependencies call RESTORE_CONTEXT alone with scope=history before effects; never infer or count omitted history.`,
     });
   if (selected.applied)
     renderedContext.promptSegments.push({
