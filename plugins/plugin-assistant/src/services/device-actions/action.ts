@@ -56,6 +56,8 @@ import {
   FILES_GUIDANCE,
   FILES_OPERATION_SCHEMAS,
   FILES_OPERATION_TYPES,
+  FILES_SHOWN_TARGET_CAPABILITY,
+  FILES_SHOWN_TARGET_GUIDANCE,
   isFilesOperation,
 } from "./files-browser-contract.ts";
 import {
@@ -1353,6 +1355,11 @@ const PROPOSAL_GUIDANCE: ReadonlyArray<{
     text: "With notes.list-filter.v1, notes_list_filter {text and/or kind text|list|voice|link} filters the open canonical Notes list. It returns no note content and cannot change a record or filter by folder.",
   },
   { types: FILES_OPERATION_TYPES, text: FILES_GUIDANCE },
+  {
+    types: ["files_share", "files_move", "files_trash"],
+    capability: FILES_SHOWN_TARGET_CAPABILITY,
+    text: FILES_SHOWN_TARGET_GUIDANCE,
+  },
   ...FOREGROUND_PROPOSAL_GUIDANCE,
   { types: ["clock_alarm"], text: CLOCK_ALARM_GUIDANCE },
   { types: ["clock_handoff"], text: CLOCK_PROPOSAL_GUIDANCE },
@@ -2209,6 +2216,14 @@ export function deviceActionForCapabilities(
     )
       return false;
     if (!files && types?.some((type) => isFilesOperation({ type })))
+      return false;
+    // Shown positions on a share, move or trash only for a phone that resolves them.
+    if (
+      branch.properties?.shown &&
+      !types?.includes("files_open") &&
+      capabilities !== undefined &&
+      !capabilities.includes(FILES_SHOWN_TARGET_CAPABILITY)
+    )
       return false;
     const runtime = binding?.runtime ?? current?.runtime;
     if (

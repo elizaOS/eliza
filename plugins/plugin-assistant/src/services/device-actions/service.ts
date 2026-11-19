@@ -131,6 +131,7 @@ import { deviceActionEffectReceipts } from "./effect-receipts.ts";
 import {
   FILES_CAPABILITY,
   FILES_OPERATION_TYPES,
+  FILES_SHOWN_TARGET_CAPABILITY,
   isFilesOperation,
 } from "./files-browser-contract.ts";
 import {
@@ -1261,6 +1262,7 @@ export const DEVICE_ACTION_CAPABILITIES: readonly string[] = [
   PHOTOS_VIEW_CAPABILITY,
   CAMERA_LENS_CAPABILITY,
   CAMERA_LIBRARY_ID_CAPABILITY,
+  FILES_SHOWN_TARGET_CAPABILITY,
   SMS_COMPOSE_TARGET_CAPABILITY,
   CONTACT_UPDATE_VALUES_CAPABILITY,
   CONTACT_SHOW_CAPABILITY,

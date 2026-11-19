@@ -2062,6 +2062,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "photos.library.v1",
           "photos.view.v1",
           "files.browser.v1",
+          "files.shown-target.v1",
           "reminders.local-record.v2",
           "reminders.create.v1",
           "clock.handoff.v2",

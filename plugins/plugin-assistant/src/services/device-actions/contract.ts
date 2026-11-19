@@ -36,7 +36,9 @@ import {
 } from "./clock-contract.ts";
 import {
   FILES_CAPABILITY,
+  FILES_SHOWN_TARGET_CAPABILITY,
   type FilesAgentOperation,
+  filesShownTarget,
   isFilesOperation,
   validateFilesOperation,
 } from "./files-browser-contract.ts";
@@ -259,6 +261,8 @@ export function deviceOperationFormSupported(
     return telephonyActionFormAvailable(operation, capabilities);
   if (operation.type === "browser_navigate" && operation.newTab)
     return capabilities?.includes(BROWSER_OPEN_NEW_TAB_CAPABILITY) === true;
+  if (isFilesOperation(operation) && filesShownTarget(operation))
+    return capabilities?.includes(FILES_SHOWN_TARGET_CAPABILITY) === true;
   return true;
 }
 export type DeviceActionPayload = {

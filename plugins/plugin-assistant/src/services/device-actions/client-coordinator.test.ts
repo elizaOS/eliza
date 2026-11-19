@@ -10,6 +10,7 @@ import {
   type DeviceExecutionResult,
   type DeviceExecutor,
   type DeviceJournalEntry,
+  type DeviceOperation,
   type DeviceOperationReceipt,
   proposalContextNotice,
   publishCommittedDeviceChanges,
@@ -3082,4 +3083,135 @@ describe("opt-in current telephony request policy", () => {
       expect(entries.size).toBe(0);
     });
   }
+});
+
+describe("files shown targets", () => {
+  const filesContext: DeviceContextEnvelope = {
+    view: "files",
+    revision: 3,
+    sensitive: false,
+  };
+  const identity = "a".repeat(43);
+  function shownFixture(
+    operation: Record<string, unknown>,
+    options: {
+      capabilities?: string[];
+      shownPaths?: (shown: number[]) => Promise<string[]>;
+    } = {},
+  ) {
+    const fixture = fixtureServer(operation);
+    const { journal } = memoryJournal();
+    const executed: DeviceOperation[] = [];
+    const shownCalls: number[][] = [];
+    const actions = new DeviceActionCoordinator({
+      session,
+      credential: {
+        ...credential,
+        capabilities: options.capabilities ?? [
+          "files.browser.v1",
+          "files.shown-target.v1",
+        ],
+      },
+      scope,
+      request: fixture.request,
+      journal,
+      execute: async (op) => {
+        executed.push(op);
+        return { status: "succeeded", summary: "Done" };
+      },
+      ...(options.shownPaths
+        ? {
+            filesShownPaths: async (shown: number[]) => {
+              shownCalls.push(shown);
+              return options.shownPaths?.(shown) ?? [];
+            },
+          }
+        : {}),
+      filesIdentity: async (paths) => paths.map(() => identity),
+      profile: {
+        ...profile,
+        operations: { ...profile.operations, admitView: () => true },
+      },
+    });
+    return { ...fixture, actions, executed, shownCalls };
+  }
+
+  it("shows the owner the files a shown position names and acts on those paths", async () => {
+    let paths = ["Download/old.pdf"];
+    const f = shownFixture(
+      { type: "files_trash", shown: [2] },
+      { shownPaths: async () => paths },
+    );
+    const [item] = await f.actions.pendingReview(filesContext, signal());
+    expect(item.proposal).toMatchObject({
+      title: "Move 1 item to Trash",
+      description: "old.pdf",
+    });
+    // A refresh keeps the files the card first showed.
+    paths = ["Download/new.pdf"];
+    const [again] = await f.actions.pendingReview(filesContext, signal());
+    expect(again.proposal).toMatchObject({ description: "old.pdf" });
+    expect(f.shownCalls).toEqual([[2]]);
+    expect(
+      (await f.actions.approve("proposal", filesContext, signal())).status,
+    ).toBe("succeeded");
+    expect(f.executed).toEqual([
+      {
+        type: "files_trash",
+        paths: ["Download/old.pdf"],
+        reviewed: [identity],
+      },
+    ]);
+  });
+
+  it("shares shown items without binding identities", async () => {
+    const f = shownFixture(
+      { type: "files_share", shown: [1, 2] },
+      { shownPaths: async () => ["Download/a.pdf", "Download/b.pdf"] },
+    );
+    const [item] = await f.actions.pendingReview(filesContext, signal());
+    expect(item.proposal).toMatchObject({
+      title: "Share 2 items",
+      description: "a.pdf, b.pdf",
+    });
+    await f.actions.approve("proposal", filesContext, signal());
+    expect(f.executed).toEqual([
+      { type: "files_share", paths: ["Download/a.pdf", "Download/b.pdf"] },
+    ]);
+  });
+
+  it("offers no card when the phone cannot resolve the positions", async () => {
+    for (const shownPaths of [
+      undefined,
+      async () => ["Download/a.pdf"],
+      async () => {
+        throw Error("Files does not show that item");
+      },
+    ]) {
+      const f = shownFixture(
+        { type: "files_move", shown: [1, 2], dest: "Documents" },
+        { shownPaths },
+      );
+      const [item] = await f.actions.pendingReview(filesContext, signal());
+      expect(item.proposal).toBeNull();
+      expect(item.notice).toBe("Move 2 items: These files are not in Files.");
+      await expect(
+        f.actions.approve("proposal", filesContext, signal()),
+      ).rejects.toThrow();
+      expect(f.executed).toEqual([]);
+    }
+  });
+
+  it("refuses shown items the agent did not negotiate", async () => {
+    const f = shownFixture(
+      { type: "files_share", shown: [1] },
+      {
+        capabilities: ["files.browser.v1"],
+        shownPaths: async () => ["Download/a.pdf"],
+      },
+    );
+    const review = await f.actions.pendingReview(filesContext, signal());
+    expect(review.every((item) => item.proposal === null)).toBe(true);
+    expect(f.shownCalls).toEqual([]);
+  });
 });
