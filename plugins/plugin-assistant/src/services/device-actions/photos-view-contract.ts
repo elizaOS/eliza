@@ -135,7 +135,9 @@ function libraryIds(value: unknown, max: number, message: string): string[] {
     throw Error(message);
   return [...value] as string[];
 }
-/** Library ids, or `selected: true` in their place (exactly one of the two). */
+/** Library ids, or `selected: true` in their place (exactly one of the two). The validated
+ * open-item form carries `ids: []`, so an empty list is accepted beside `selected` and a stored or
+ * relayed operation validates again unchanged; any library id beside it is refused. */
 function targets(
   op: Bag,
   max: number,
@@ -143,7 +145,11 @@ function targets(
 ): { ids: string[]; selected?: true } {
   if (op.selected === undefined)
     return { ids: libraryIds(op.ids, max, message) };
-  if (op.selected !== true || op.ids !== undefined) throw Error(message);
+  if (
+    op.selected !== true ||
+    (op.ids !== undefined && !(Array.isArray(op.ids) && op.ids.length === 0))
+  )
+    throw Error(message);
   return { ids: [], selected: true };
 }
 

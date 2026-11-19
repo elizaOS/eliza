@@ -210,10 +210,22 @@ describe("photos view contract", () => {
       ids: [],
       selected: true,
     });
+    // A validated open-item operation (ids: []) validates again unchanged, as it does when it is
+    // stored, sent to the phone and read back.
+    for (const raw of [
+      { type: "photos_share", selected: true },
+      { type: "photos_album_create", name: "Trip", selected: true },
+    ]) {
+      const once = valid(raw);
+      const wire = JSON.parse(JSON.stringify(once));
+      expect(valid(wire)).toEqual(once);
+      expect(validateDeviceOperation(wire)).toEqual(once);
+    }
     // Exactly one of ids and selected; selected is only ever true.
     for (const bad of [
       { selected: true, ids: [id(1)] },
-      { selected: true, ids: [] },
+      { selected: true, ids: "" },
+      { selected: true, ids: null },
       { selected: false },
       { selected: "true" },
       { selected: false, ids: [id(1)] },
