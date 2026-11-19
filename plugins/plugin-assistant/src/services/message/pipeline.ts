@@ -2306,11 +2306,11 @@ export async function runV5MessageRuntimeStage1(
               }
             : {}),
           deferInternalReplyRecoveryToCaller: true,
-          // Stage 1 judged requested navigation part of a larger request, so the
-          // loop may replan an uncovered follow-up after a prepared view
-          // (tj-a2dfaa98a8bc03).
-          ...(isRecord(fieldRunResult?.parsed.visualContinuation) &&
-          fieldRunResult?.parsed.visualContinuation.disposition === "planning"
+          // Continue independent work after a view is prepared. The host may
+          // have recovered compound navigation from a collapsed Stage 1 plan.
+          ...(responseHandlerEvaluation.requiredViewNavigation ||
+          (isRecord(fieldRunResult?.parsed.visualContinuation) &&
+            fieldRunResult.parsed.visualContinuation.disposition === "planning")
             ? { navigationWithFollowUp: true }
             : {}),
           runtime: plannerRuntime,
