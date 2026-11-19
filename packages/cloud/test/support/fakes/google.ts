@@ -122,7 +122,7 @@ export function seedGrant(state: GoogleFakeState, grant: Omit<FakeGrant, "refres
 
 export function seedCode(state: GoogleFakeState, grant: Parameters<typeof seedGrant>[1]): string {
   const refreshToken = seedGrant(state, grant);
-  const code = `4/code-${state.issued}`;
+  const code = `4/0Afake-server-code-${state.issued}`;
   state.codes.set(code, refreshToken);
   return code;
 }
