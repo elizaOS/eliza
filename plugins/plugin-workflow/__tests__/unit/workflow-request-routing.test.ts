@@ -20,6 +20,11 @@ test.each([
   ["create a workflow called 'Morning brief'", { op: 'create', name: 'Morning brief' }],
   ['Create a workflow called ‘Morning brief’.', { op: 'create', name: 'Morning brief' }],
   ['create a workflow called Mom’s birthday', { op: 'create', name: 'Mom’s birthday' }],
+  // A quote closes the name only when one opened it, so an unquoted plural
+  // possessive keeps its apostrophe and the rest of the name.
+  ["create a workflow called Parents' Day", { op: 'create', name: "Parents' Day" }],
+  ["create a workflow called Parents'", { op: 'create', name: "Parents'" }],
+  ["delete the workflow 'Parents' Day'", { op: 'remove', workflowName: "Parents' Day" }],
   ['can you create a workflow titled Q3 review?', { op: 'create', name: 'Q3 review' }],
   [
     'rename the workflow Alpha device test to Alpha check',
