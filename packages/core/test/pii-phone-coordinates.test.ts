@@ -58,6 +58,34 @@ describe("phone detection around map coordinates", () => {
 		]);
 	});
 
+	it("never lets a literal, unclosed or truncated card marker hide a phone", () => {
+		// A card cut short in history, then the owner's request.
+		expect(
+			phones(
+				'[MAPSCARD]\n{"kind":"place","place":{"latitude":37.7749295,"longitude":-122.4194093\nuser: call 415-555-0100',
+			),
+		).toEqual(["415-555-0100"]);
+		// The owner typing the marker word.
+		expect(phones("I saw [MAPSCARD] somewhere. call 415-555-0100")).toEqual([
+			"415-555-0100",
+		]);
+		expect(phones('[MAPSCARD] {"x":1} call 415-555-0100')).toEqual([
+			"415-555-0100",
+		]);
+		// An unclosed marker before a later, complete card.
+		expect(
+			phones(
+				'[MAPSCARD]\n{"a":1\nuser: call 415-555-0100\n[MAPSCARD]\n{}\n[/MAPSCARD]',
+			),
+		).toEqual(["415-555-0100"]);
+		// A CRLF card still covers its own JSON line only.
+		expect(
+			phones(
+				'[MAPSCARD]\r\n{"longitude":-122.4194093,"geoUri":"geo:37.7749295,-122.4194093"}\r\n[/MAPSCARD]\r\nuser: call 415-555-0100',
+			),
+		).toEqual(["415-555-0100"]);
+	});
+
 	it("never mints a contact reference for a coordinate", () => {
 		const session = new SecretSwapSession();
 		const prompt = session.substituteText(`${CARD}\nuser: call 415-555-0100`);

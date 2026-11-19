@@ -11,10 +11,14 @@
  * Dependency-free so the browser-safe entity recognizer can share it.
  */
 
-// A Maps chat card: `[MAPSCARD]\n{json}\n[/MAPSCARD]` (plugin-maps card.ts).
-// An unclosed card (a truncated history line) runs to the end of the text.
+// A Maps chat card: `[MAPSCARD]\n{json}\n[/MAPSCARD]` (plugin-maps card.ts
+// serializes the JSON object whole on the line after the marker). The region
+// is the marker and that one complete JSON line only: a literal, unclosed or
+// truncated `[MAPSCARD]` must never exempt the owner's later words ("call
+// 415-555-0100") from swapping. A coordinate anywhere else is still caught
+// by its key or its geographic shape below.
 const MAPS_CARD =
-	/\[[ \t]*MAPSCARD[ \t]*\][\s\S]*?(?:\[[ \t]*\/[ \t]*MAPSCARD[ \t]*\]|$)/g;
+	/\[[ \t]*MAPSCARD[ \t]*\][ \t]*\r?\n[ \t]*\{[^\n]*\}[ \t]*(?=\r?\n|$)(?:\r?\n[ \t]*\[[ \t]*\/[ \t]*MAPSCARD[ \t]*\])?/g;
 
 // A coordinate key just before the value: `"longitude": -`, `lng=`, `\"lat\":`.
 const COORDINATE_KEY_BEFORE =
