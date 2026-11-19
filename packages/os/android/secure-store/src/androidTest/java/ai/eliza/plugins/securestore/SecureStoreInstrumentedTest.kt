@@ -34,7 +34,7 @@ import org.junit.runner.RunWith
 class SecureStoreInstrumentedTest {
     private lateinit var scenario: ActivityScenario<SecureStoreTestActivity>
     private val first = "session.device_auth"
-    private val second = "session.steward_token"
+    private val second = "session.cloud_token"
     private val directory: File
         get() = File(InstrumentationRegistry.getInstrumentation().targetContext.noBackupFilesDir, "eliza-secure-store")
     private fun file(key: String) = File(directory, key.replace('.', '_') + ".enc")

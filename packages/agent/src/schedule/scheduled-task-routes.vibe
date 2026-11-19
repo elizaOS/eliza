@@ -3,7 +3,7 @@ import {
   fireReplyCarriesTheRow, wellFormedVerb,
   type FireOutcome, type RefusalReason, type RequestKey, type TaskStatus, type Verb,
 } from "../../gen/agent__schedule__scheduledTasks.effect.vibe"
-import { Service, type IAgentRuntime } from "@elizaos/core"
+import { Service, type IAgentRuntime, type ServiceClass } from "@elizaos/core"
 import type { LocalRoute } from "../access/routes.vibe"
 import type { AgentModule, AgentPlugin, ModuleContext, ModuleFactory, ModuleRefused } from "../host/module.vibe"
 import {
@@ -214,7 +214,7 @@ export interface ScheduledTasksApi extends Service {
   fire(taskId: string, seenRevision?: number): Promise<FireResult>
 }
 
-function scheduledTasksApi(tasks: ScheduledTasks) {
+function scheduledTasksApi(tasks: ScheduledTasks): ServiceClass {
   return class ScheduledTasksModule extends Service implements ScheduledTasksApi {
     static override serviceType = scheduledTasksServiceType
     override capabilityDescription = "Create, answer and fire the owner's scheduled tasks against the revision a plugin read"

@@ -99,7 +99,7 @@ pure val weight_credentialChanged = 2
 pure def alwaysOpenWorkUsesTheCurrentKey(s: CloudSpeech): bool =
   (isOpen(s.phase) implies (s.bound == s.credential and s.bound >= 1))
   and s.batches.every(b => b.outcome == BatchPending implies (b.version == s.credential and b.version >= 1))
-pure def sometimesKeyChangeClosedSession(s: CloudSpeech): bool = s.bound >= 1 and s.credential != s.bound and not(isOpen(s.phase)) and s.phase != Idle
+pure def sometimesKeyChangeClosedSession(s: CloudSpeech): bool = s.bound >= 1 and s.credential != s.bound and hasEnded(s.phase)
 ```
 
 ### Only a mint answer naming the deployment's own relay opens the socket, and a refused key is reported once and never retried
@@ -347,13 +347,11 @@ pure def stepAnEndReleasesRevokesAndReportsOnce(before: CloudSpeech, via: str, a
 }
 pure def failedAfterAudio(e: Ending): bool = match e { | FailedAfterAudio(f) => true | _ => false }
 pure def failedBeforeAudio(e: Ending): bool = match e { | FailedBeforeAudio(f) => true | _ => false }
-pure def alwaysAnEndingSaysWhetherAudioStarted(s: CloudSpeech): bool = {
-  val closedAs = endingOf(s.phase)
-  val ended = not(isOpen(s.phase)) and s.phase != Idle
-  (s.audioStarted implies (s.phase == Live or (ended and (closedAs == Stopped or failedAfterAudio(closedAs)))))
-  and ((ended and failedAfterAudio(closedAs)) implies s.audioStarted)
-  and ((failedBeforeAudio(closedAs) or failedAfterAudio(closedAs)) implies failureOfEnding(closedAs) != Cr::NoFailure)
-}
+pure def hasEnded(p: Phase): bool = p != Idle and not(isOpen(p))
+pure def alwaysAnEndingSaysWhetherAudioStarted(s: CloudSpeech): bool =
+  (s.audioStarted implies (s.phase == Live or (hasEnded(s.phase) and (endingOf(s.phase) == Stopped or failedAfterAudio(endingOf(s.phase))))))
+  and ((hasEnded(s.phase) and failedAfterAudio(endingOf(s.phase))) implies s.audioStarted)
+  and ((failedBeforeAudio(endingOf(s.phase)) or failedAfterAudio(endingOf(s.phase))) implies failureOfEnding(endingOf(s.phase)) != Cr::NoFailure)
 pure def sometimesFailedBeforeAudio(s: CloudSpeech): bool = failedBeforeAudio(endingOf(s.phase)) and not(isOpen(s.phase))
 pure def sometimesFailedAfterAudio(s: CloudSpeech): bool = failedAfterAudio(endingOf(s.phase)) and not(isOpen(s.phase))
 pure def sometimesStoppedAfterTalking(s: CloudSpeech): bool = s.audioStarted and s.phase == Closed({ ending: Stopped })

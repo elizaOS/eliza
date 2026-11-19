@@ -53,13 +53,17 @@ public final class ColdPasswordBackupInstrumentedTest {
     byte[] recoveryKey = MessageDigest.getInstance("SHA-256").digest(AAD);
     try {
       assertNull("A cold phase starts without an existing device grant", account.session());
+      assertTrue("The cold device permits device-only access", account.isDeviceOnly());
       assertFalse("The receiving vault starts empty", vault.exists());
-      Uri activation = browserReturn("enroll", account.begin());
+      Uri enrollment = account.begin();
+      assertFalse("Pending enrollment closes device-only access", account.isDeviceOnly());
+      Uri activation = browserReturn("enroll", enrollment);
       assertTrue("The device must redeem and acknowledge a real grant", account.exchange(activation));
+      assertFalse("The acknowledged account closes device-only access", account.isDeviceOnly());
       CloudPasswordBackup backup = new CloudPasswordBackup(account, CLIENT, "staging");
       assertTrue("The disposable authenticated Worker must be ready", backup.available());
       boolean save = "save".equals(phase);
-      var purpose = save ? CloudPasswordBackup.Purpose.SAVE : CloudPasswordBackup.Purpose.READ;
+      var purpose = save ? PasswordBackupApproval.Purpose.SAVE : PasswordBackupApproval.Purpose.READ;
       var approval = backup.exchange(browserReturn("approve", backup.begin(purpose)), purpose, () -> true);
       if (save) {
         assertFalse(approval.present());
