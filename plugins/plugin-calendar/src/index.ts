@@ -1,6 +1,11 @@
 /** Public entry point for `@elizaos/plugin-calendar`: the plugin definition, `CalendarService`, the `CALENDAR` action surface, and the calendar contract types host packages depend on. */
 
 export {
+  type CalendarEventRequest,
+  calendarEventRequest,
+  registerCalendarEventRequestRouting,
+} from "./actions/calendar-event-request.js";
+export {
   buildWideLookupRange,
   registerCalendarActionHostAdapter,
   resolveCalendarMutationCandidates,
