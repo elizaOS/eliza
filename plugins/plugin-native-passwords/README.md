@@ -4,12 +4,13 @@ On-device password manager for Eliza Android hosts:
 
 - **Vault** – entries (name, username, password, one or more bindings) in the
   `plugin-native-secure-store` `PasswordVaultStore`: one AES-256-GCM frame in the host's
-  no-backup directory, keyed by a non-exportable Android Keystore key that requires user
+  no-backup directory, keyed by a non-exportable Android Keystore key that defaults to user
   authentication (`KeyPolicy`: strong biometric or device credential, host-chosen window,
   default 60 s) and an unlocked device. Because the device credential is always accepted, the
   key is bound to the lock-screen secure ID: enrolling a new biometric does not invalidate it
   (whoever can enroll already knows the credential), while removing the screen lock does. A
-  vault whose key is lost or invalidated can only be deleted (`reset`) after a fresh unlock.
+  vault whose key is lost or invalidated can only be deleted (`reset`) under the current
+  custody policy.
   `PasswordVaultAccess#destroyVault` is the host's native way to destroy a readable vault
   ([Host-native vault access](#host-native-vault-access)).
 - **Autofill provider** – `ElizaPasswordAutofillService` supports native app fields through Android Autofill, with save capture. Browser
@@ -64,9 +65,9 @@ the selected service; the plugin never sets secure settings or infers selection.
 ## Fill and save rules
 
 - A fill request never reads the vault. It returns one authentication-gated dataset with no
-  values; `PasswordFillActivity` (FLAG_SECURE) always asks for a fresh unlock (an earlier
-  unlock is never reused), lists only entries bound to the exact request subject and fills the
-  chosen one. Every fill needs that authentication and an explicit choice.
+  values. `PasswordFillActivity` (FLAG_SECURE) obtains its own native authorization, lists
+  only entries bound to the exact request subject, and fills the one the user chooses.
+  Timed custody asks for fresh authentication for each fill.
 - Subjects come from the framework: the requesting package from `AssistStructure`, and web
   domains only from a trusted browser (the host when it is a browser, or an allowlisted package
   whose signing certificate is verified). Any second web domain in the structure (a cross-origin
@@ -106,8 +107,7 @@ edits are rejected as a whole with a visible error, never truncated.
   username on that binding, it asks **Update existing** (creating: replaces only that entry's
   password, at the revision it read) or **Keep separate**. It never merges or overwrites silently.
 
-Device-unlocked custody migration is separate work; this method does not change the vault
-authentication policy. Hosts stop capture and speech while a secret surface is up
+Hosts stop capture and speech while a secret surface is up
 (`PasswordSurfaces`, see [Host-native vault access](#host-native-vault-access)).
 
 No `ElizaPasswords` method resolves with a secret. `save` accepts a password typed by the user
@@ -132,7 +132,9 @@ current entry by ID.
 Destroyed Activities cancel their pending prompts, and old owners cannot revoke a newer grant.
 Opening the fill picker preserves the original request deadline. Framework cancellation or a
 replacement request revokes the picker before it can publish a result.
-The vault locks when the host Activity stops and when the unlock window ends. Hosts that include `android-transfer` can register `PasswordTransferPlugin` (`ElizaPasswordTransfer`) for
+Timed custody locks when the host Activity stops or the unlock window ends. Foreground
+custody retires active grants when the Activity pauses or changes. Hosts that include
+`android-transfer` can register `PasswordTransferPlugin` (`ElizaPasswordTransfer`) for
 CSV export and import. Use `createTransferClient` for count-only results. Export requires
 an explicit plaintext-file warning, a user-picked document and fresh authentication after
 the picker returns. Export reads one native vault snapshot and writes bounded CSV rows.
@@ -154,6 +156,14 @@ These are Java APIs only, with no `ElizaPasswords` method, so page script cannot
   no prompt, and the fill and save screens close. The rule may run on the main thread (Autofill,
   fill and save screens) or the bridge thread, so it must be fast, must not show UI and must
   return false when it cannot decide. The default admits.
+- **Foreground custody.** A host may call `PasswordVaultAccess.installDeviceUnlockedCustody(app)`
+  from `Application#onCreate` before first vault access. The host's resumed native window and
+  Android's unlocked-user and device state gate access. The device can operate without a
+  configured screen lock. Bridge status reports `custody: "device-unlocked"` and a null
+  `unlockRemainingMs`. A previously timed vault still needs its existing credential once for
+  native migration to a separate alias and directory. Migration verifies the new ciphertext
+  and preserves the original vault. This mode requires native confirmation to reset a vault
+  with irrecoverable key custody.
 - **Secret surfaces.** `PasswordSurfaces.addListener` reports on the main thread when the first
   secret surface opens, before it draws, and when the last one closes: the unlock prompt, the
   editor and its questions, a revealed password, and the fill and save screens. `visible()` reads
