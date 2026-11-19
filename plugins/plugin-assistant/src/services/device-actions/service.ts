@@ -2604,7 +2604,7 @@ export class DeviceActionService {
           });
           validated = addressedSmsDraft;
         }
-      } else if (recipient && recipient.kind !== "unaddressed") {
+      } else if (recipient) {
         if (!targets)
           throw new DeviceActionError(
             "An addressed Messages draft is unavailable on this phone.",
