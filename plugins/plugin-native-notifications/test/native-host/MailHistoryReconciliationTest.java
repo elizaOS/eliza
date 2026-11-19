@@ -57,6 +57,12 @@ public class MailHistoryReconciliationTest {
   counted.engine.accept(page("100","103",null,event("101","message-added","c0","INBOX","UNREAD"),event("102","message-added","c1","INBOX","UNREAD"),event("103","message-added","c2","INBOX","UNREAD")),2);while(counted.engine.hasPending())counted.engine.publish();
   counted.engine.accept(page("103","105",null,event("104","labels-removed","c0","UNREAD"),event("105","message-added","c3","INBOX","UNREAD")),3);counted.engine.publish();
   check(counts.equals(List.of(3,3,3,3))&&counted.poster.posts==4,"count names new unopened mail, read mail excluded");
+  Case capped=new Case();List<Integer> cappedCounts=new ArrayList<>();capped.poster=new Poster(){@Override public void post(String key,int count){cappedCounts.add(count);post(key);}};capped.engine=new MailHistoryReconciliation(capped.memory,()->{},capped.poster);capped.seed();
+  JSONObject[] seven=new JSONObject[7];for(int i=0;i<7;i++)seven[i]=event(String.valueOf(101+i),"message-added","k"+i,"INBOX","UNREAD");
+  capped.engine.accept(page("100","110","next",seven),2);while(capped.engine.hasPending())capped.engine.publish();
+  check(cappedCounts.equals(List.of(7,7,7,7,7,7,7))&&capped.poster.active.size()==5,"a notice the shade cap withdrew still counts for the rest of its batch");
+  capped.engine.accept(page("100","110",null,event("108","labels-removed","k0","UNREAD"),event("109","message-added","k7","INBOX","UNREAD")),3);capped.engine.publish();
+  check(cappedCounts.get(7)==7,"read capped mail no longer counts, unread capped mail still does");
   System.out.println("PASS mail durable reconciliation, notice uncertainty, owner fences and pagination");
  }
 }
