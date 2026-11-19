@@ -150,11 +150,9 @@ pure def sometimesSetToCancelAtPeriodEnd(s: Subscription): bool = s.status == Ac
 ### A failed payment opens one dunning window of three days, set once, after which the subscription is past due
 
 The window starts at the period end when that has passed, else at the
-observation, and both times are kept until a paid invoice makes the
-subscription Active again; an unpaid subscription keeps them too. A past due
-or unpaid subscription never returns to dunning, so only a paid invoice
-makes it entitled again. The shell's schedule moves a dunning subscription
-whose window has ended.
+observation, and is kept until a paid invoice makes the subscription Active.
+A past due or unpaid subscription never returns to dunning, so only a paid
+invoice entitles it again. The shell's schedule expires ended windows.
 
 ```quint
 pure def canExpireDunning(s: Subscription, now: Millis): bool = s.status == Dunning and now >= dunningEndsAt(s.dunning)
@@ -201,9 +199,8 @@ pure def sometimesRenewalAllowanceOpened(s: Subscription): bool = s.status == Ac
 
 ### A pending downgrade waits for the provider to bill the lower plan, and is dropped when the subscription ends
 
-The downgrade command records the target once its schedule is created; the
-provider switches the price at the next renewal, and the reconcile that
-shows the lower plan clears it.
+The downgrade command records it once its schedule exists; the reconcile
+that shows the provider billing the lower plan clears it.
 
 ```quint
 pure def holdsCommand(s: Subscription, kind: CommandKind, commandId: str): bool = commandId != "" and s.liveCommand == Live({ kind: kind, commandId: commandId })
@@ -217,10 +214,8 @@ pure def sometimesDowngradeScheduled(s: Subscription): bool = s.planned != NoPla
 
 ### The revision grows by one with every change to the subscription, and limits change only with a policy change
 
-The revision is the `expectedRevision` a command is confirmed against.
-`PolicyChanged` asks the shell to advance the organization's policy
-generation in the same transaction, so entitlements issued before the change
-are refreshed.
+Commands confirm against the revision. `PolicyChanged` advances the
+organization's policy generation in the same transaction.
 
 ```quint
 pure def viewOf(s: Subscription): Subscription = { ...s, customer: NoCustomer, liveCommand: NoLiveCommand, revision: 0 }
@@ -298,9 +293,8 @@ pure def invoiceVisible(s: Subscription, invoiceCustomerId: str): bool = s.custo
 
 ### The billing portal opens only for the pinned customer and an owner with a fresh session
 
-A fresh session is one whose sign-in or step-up is at most 60 minutes old;
-otherwise the answer is `428 fresh_session_required`. The answer is `{url}`
-on the provider's billing host, a new portal session each time.
+Fresh means sign-in or step-up at most 60 minutes ago, else `428
+fresh_session_required`. Each call answers a new portal session's `{url}`.
 
 ```quint
 pure def portalAllowed(s: Subscription, freshOwner: bool): bool = freshOwner and s.customer != NoCustomer

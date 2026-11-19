@@ -12,7 +12,9 @@ import {
   createScheduledTask, getScheduledTask, listScheduledTasks, scheduledTaskKeeping,
   type ScheduledTaskDetails, type StoredTask,
 } from "./store.vibe"
-import type { FireResult, ScheduledTaskPort, ScheduledTaskRow, TaskEdit, TaskTrigger, VerbRequest, VerbResult } from "./scheduled-task-routes.vibe"
+import type {
+  FireResult, ScheduledTaskPort, ScheduledTaskRow, ScheduledTaskService, TaskEdit, TaskTrigger, VerbRequest, VerbResult,
+} from "./scheduled-task-routes.vibe"
 
 module node {
   import { randomUUID } from "node:crypto"

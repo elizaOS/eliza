@@ -34,9 +34,11 @@ interface Call {
   readonly run: MapsReply<Answer>!!MapsContext
 }
 
-schema KeptAnswer =
-  | { readonly kind: "answered"; readonly body: Schema.Unknown }
-  | { readonly kind: "refused"; readonly code: "NoRoute" | "UnsupportedMode" | "UnsupportedRegion" | "ProviderInvalidResponse" | "ProviderUnavailable" }
+const KeptAnswerSchema = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("answered"), body: Schema.Unknown }),
+  Schema.Struct({ kind: Schema.Literal("refused"), code: Schema.Literals(["NoRoute", "UnsupportedMode", "UnsupportedRegion", "ProviderInvalidResponse", "ProviderUnavailable"]) })
+])
+type KeptAnswer = typeof KeptAnswerSchema.Type
 
 export error KeptAnswerCorrupt { holdKey: string }
 
@@ -146,7 +148,7 @@ effect function kept(holdKey: string, now: number) {
 }
 
 effect function repeatKept(holdKey: string, stored: unknown, now: number): Answer!(Refused | KeptAnswerCorrupt) {
-  const answer: KeptAnswer = Schema.decodeUnknownEffect(KeptAnswer)(stored) catch effect () => { throw new KeptAnswerCorrupt({ holdKey }) }
+  const answer: KeptAnswer = Schema.decodeUnknownEffect(KeptAnswerSchema)(stored) catch effect () => { throw new KeptAnswerCorrupt({ holdKey }) }
   if (answer.kind === "refused") throw providerRefusal(answer.code, now)
   return { kind: "json", body: answer.body }
 }

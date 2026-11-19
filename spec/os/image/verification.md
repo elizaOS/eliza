@@ -81,18 +81,18 @@ carrying that flag; and no grant is fixed (`FIXED`, `SYSTEM_FIXED` or
 type GrantOrigin = GrantedByDefault | CompatibilityGrant | OtherGrant
 type RuntimeGrant = { permission: str, origin: GrantOrigin, fixed: bool }
 pure val compatibilityGrants: List[str] = List("android.permission.ACCESS_LOCAL_NETWORK")
-pure def grantAllowed(expected: List[str], grant: RuntimeGrant): bool =
-  not(grant.fixed) and (expected.includes(grant.permission) or (grant.origin == CompatibilityGrant and compatibilityGrants.includes(grant.permission)))
-pure def firstBootGrantsHold(expected: List[str], granted: List[RuntimeGrant]): bool =
-  expected.every(p => granted.some(g => g.permission == p and g.origin == GrantedByDefault and not(g.fixed))) and granted.every(g => grantAllowed(expected, g))
+pure def grantAllowed(defaults: List[str], grant: RuntimeGrant): bool =
+  not(grant.fixed) and (defaults.includes(grant.permission) or (grant.origin == CompatibilityGrant and compatibilityGrants.includes(grant.permission)))
+pure def firstBootGrantsHold(defaults: List[str], granted: List[RuntimeGrant]): bool =
+  defaults.every(p => granted.some(g => g.permission == p and g.origin == GrantedByDefault and not(g.fixed))) and granted.every(g => grantAllowed(defaults, g))
 pure val audioGrant: RuntimeGrant = { permission: "android.permission.RECORD_AUDIO", origin: GrantedByDefault, fixed: false }
 pure val expectedValues = Set(List("android.permission.RECORD_AUDIO"), List())
 pure val grantedValues = Set(List(audioGrant), List(), List({ ...audioGrant, fixed: true }), List(audioGrant, { ...audioGrant, permission: "android.permission.READ_SMS" }),
   List(audioGrant, { permission: "android.permission.ACCESS_LOCAL_NETWORK", origin: CompatibilityGrant, fixed: false }))
-pure def lawUnexpectedGrantFails(expected: List[str], granted: List[RuntimeGrant]): bool =
-  granted.some(g => not(expected.includes(g.permission)) and g.origin != CompatibilityGrant) implies not(firstBootGrantsHold(expected, granted))
-pure def lawFixedGrantFails(expected: List[str], granted: List[RuntimeGrant]): bool =
-  granted.some(g => g.fixed) implies not(firstBootGrantsHold(expected, granted))
+pure def lawUnexpectedGrantFails(defaults: List[str], granted: List[RuntimeGrant]): bool =
+  granted.some(g => not(defaults.includes(g.permission)) and g.origin != CompatibilityGrant) implies not(firstBootGrantsHold(defaults, granted))
+pure def lawFixedGrantFails(defaults: List[str], granted: List[RuntimeGrant]): bool =
+  granted.some(g => g.fixed) implies not(firstBootGrantsHold(defaults, granted))
 ```
 
 ### Alarms stay with the system clock: it is enabled and handles every alarm action
@@ -168,15 +168,15 @@ type ImageObservation = { fingerprint: FingerprintReading, launcher: LauncherIns
   webView: Reading, grants: GrantsReading, camera: CameraReading, sameBoot: Reading, selinux: SelinuxReading, verifiedBoot: BootReading,
   listener: ListenerReading }
 type CheckResult = { check: ImageCheck, outcome: CheckOutcome }
-pure def bootHolds(expected: BootExpectation, booted: BootState): bool = match expected { | BootAtLeast(b) => verifiedBootNotWeaker(booted, b.minimum) | _ => true }
-pure def fingerprintOutcome(expected: str, fingerprint: FingerprintReading): CheckOutcome =
-  match fingerprint { | FingerprintRead(f) => outcomeIf(true, f.fingerprint == expected) | _ => Unknown }
-pure def launcherOutcome(expected: Digest, launcher: LauncherInstall): CheckOutcome =
-  match launcher { | SystemApk(a) => outcomeIf(true, digestsMatch(a.sha256, expected)) | NotTheSystemApk => Fail | _ => Unknown }
-pure def grantsOutcome(expected: List[str], grants: GrantsReading): CheckOutcome =
-  match grants { | GrantsRead(g) => outcomeIf(true, firstBootGrantsHold(expected, g.granted)) | _ => Unknown }
-pure def bootOutcome(expected: BootExpectation, verifiedBoot: BootReading): CheckOutcome =
-  match verifiedBoot { | BootRead(b) => outcomeIf(true, bootHolds(expected, b.booted)) | _ => Unknown }
+pure def bootHolds(bootExpectation: BootExpectation, booted: BootState): bool = match bootExpectation { | BootAtLeast(b) => verifiedBootNotWeaker(booted, b.minimum) | _ => true }
+pure def fingerprintOutcome(stagedFingerprint: str, fingerprint: FingerprintReading): CheckOutcome =
+  match fingerprint { | FingerprintRead(f) => outcomeIf(true, f.fingerprint == stagedFingerprint) | _ => Unknown }
+pure def launcherOutcome(stagedDigest: Digest, launcher: LauncherInstall): CheckOutcome =
+  match launcher { | SystemApk(a) => outcomeIf(true, digestsMatch(a.sha256, stagedDigest)) | NotTheSystemApk => Fail | _ => Unknown }
+pure def grantsOutcome(defaults: List[str], grants: GrantsReading): CheckOutcome =
+  match grants { | GrantsRead(g) => outcomeIf(true, firstBootGrantsHold(defaults, g.granted)) | _ => Unknown }
+pure def bootOutcome(bootExpectation: BootExpectation, verifiedBoot: BootReading): CheckOutcome =
+  match verifiedBoot { | BootRead(b) => outcomeIf(true, bootHolds(bootExpectation, b.booted)) | _ => Unknown }
 pure def checkOutcome(expectation: ImageExpectation, observation: ImageObservation, check: ImageCheck): CheckOutcome = match check {
   | Fingerprint => fingerprintOutcome(expectation.fingerprint, observation.fingerprint)
   | LauncherBytes => launcherOutcome(expectation.launcherApk, observation.launcher)

@@ -24,9 +24,11 @@ Every command names the lease's session and epoch and a surface of that
 realm (`L::owns`); anything else, or invalid arguments, rejects and leaves
 everything as it was. A load the app asks for (`navigate`, `reloadSurface`,
 `goBack`, `goForward`) ends the page's history observation and cancels its
-waiting dialog, since a held dialog would block the load; `stopLoading`
-ends the observation and the pending approval. `navigate` loads with GET
-and ends a security block (`lifecycle.md`).
+waiting dialog, since a held dialog would block the load. `goBack` and
+`goForward` approve the origin of the entry they move to; `navigate`,
+`reloadSurface` and `stopLoading` end any pending approval, and
+`stopLoading` keeps the dialog. `navigate` loads with GET, puts the page
+on the address's origin and ends a security block (`lifecycle.md`).
 
 ```quint
 import lifecycle as L from "./lifecycle"

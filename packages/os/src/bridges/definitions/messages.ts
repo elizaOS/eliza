@@ -193,7 +193,15 @@ export interface ThreadReadMark {
   updated: number;
 }
 
+export interface SmsHandoffReport {
+  outcome: HandoffOutcome;
+  handler: string | null;
+  message: string;
+  receipt: Receipt;
+}
+
 export interface MessagesNativePlugin {
+  status(): Promise<unknown>;
   composeSms(options: { recipients: string[]; body: string }): Promise<unknown>;
   listThreads(options: { limit: number; before?: number; cursor?: string }): Promise<unknown>;
   listMessages(options: { threadId: string; limit: number; before?: number; cursor?: string }): Promise<unknown>;
@@ -216,6 +224,28 @@ export interface MessagesNativePlugin {
     event: "messagesChanged" | "smsSendUpdated" | "mmsSendUpdated",
     listener: (data: unknown) => void,
   ): Promise<{ remove(): Promise<void> }>;
+}
+
+export interface MessagesClient {
+  status(): Promise<TelephonyStatus>;
+  composeSms(review: SmsReview): Promise<SmsHandoffReport>;
+  listThreads(limit?: number, before?: number): Promise<ThreadRow[]>;
+  listMessages(threadId: ThreadId, limit?: number, before?: number): Promise<MessageRow[]>;
+  threadPage(cursor?: ThreadCursor): Promise<ThreadPage>;
+  messagePage(threadId: ThreadId, cursor?: MessageCursor): Promise<MessagePage>;
+  markThreadRead(threadId: ThreadId, throughDate: number): Promise<ThreadReadMark>;
+  deleteMessage(reference: MessageDeleteReference): Promise<MessageDeleteResult>;
+  observeMessages(
+    onChange: () => void,
+    onSendUpdated?: (operationId: OperationId) => void,
+    onMmsSendUpdated?: (operationId: OperationId) => void,
+  ): Promise<() => Promise<void>>;
+  sendSms(review: DirectSmsReview, operationId: OperationId): Promise<SmsSendResult>;
+  sendMms(review: MmsReview, operationId: OperationId): Promise<MmsSendResult>;
+  cancelSmsReview(operationId: OperationId): Promise<SmsCancelOutcome>;
+  smsSendHistory(): Promise<SmsSendResult[]>;
+  smsSendResult(review: DirectSmsReview, operationId: OperationId): Promise<SmsSendResult>;
+  mmsSendResult(review: MmsReview, operationId: OperationId): Promise<MmsSendResult>;
 }
 
 export const SMS_MAX_RECIPIENTS = 10;

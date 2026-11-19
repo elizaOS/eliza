@@ -422,11 +422,11 @@ type UpdateOutcome = Installed({ artifact: int }) | AttemptEnded
 pure def canHoldForUpdate(s: AgentService, target: int): bool =
   s.hold == NotHeld and target >= 1 and s.child == NoChild and (s.phase == Stopped or isFailed(s.phase))
 pure def holdForUpdate(s: AgentService, target: int): AgentService = { ...s, hold: HeldFor({ target: target }) }
-pure def canReleaseUpdate(s: AgentService, outcome: UpdateOutcome): bool = { val h = s.hold
-  match h { | HeldFor(x) => outcome == Installed({ artifact: x.target }) or outcome == AttemptEnded | NotHeld => false } }
-pure def releaseUpdate(s: AgentService, outcome: UpdateOutcome): AgentService = { ...s, hold: NotHeld }
+pure def canReleaseUpdate(s: AgentService, result: UpdateOutcome): bool = { val h = s.hold
+  match h { | HeldFor(x) => result == Installed({ artifact: x.target }) or result == AttemptEnded | NotHeld => false } }
+pure def releaseUpdate(s: AgentService, result: UpdateOutcome): AgentService = { ...s, hold: NotHeld }
 pure val targetValues = Set(1, 2)
-pure val outcomeValues = Set(Installed({ artifact: 1 }), Installed({ artifact: 2 }), AttemptEnded)
+pure val resultValues = Set(Installed({ artifact: 1 }), Installed({ artifact: 2 }), AttemptEnded)
 pure def alwaysHeldMeansNoAgent(s: AgentService): bool = s.hold != NotHeld implies (s.child == NoChild and (s.phase == Stopped or isFailed(s.phase)))
 pure def stepHoldEndsOnlyByRelease(before: AgentService, via: str, after: AgentService): bool =
   (before.hold != NotHeld and after.hold != before.hold) implies via == "releaseUpdate"

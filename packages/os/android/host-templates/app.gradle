@@ -129,7 +129,7 @@ stagedAssets.findAll { !it.files.isEmpty() }.each { staged ->
  def directory = layout.buildDirectory.dir(staged.directory)
  def stage = tasks.register(staged.task, Sync) {
   into directory
-  staged.files.each { asset -> from(asset.source) { into staged.into; rename { asset.name } } }
+  staged.files.each { asset -> from(asset.source) { if (staged.into) into staged.into; rename { asset.name } } }
  }
  android.sourceSets.main.assets.srcDir(directory)
  tasks.named('preBuild').configure { dependsOn stage }

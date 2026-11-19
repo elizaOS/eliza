@@ -294,7 +294,7 @@ it.live("Report device facts honestly (spec/os/android/system.md, \"Story: Repor
       tooOld: "unavailable",
       precise: ["fresh", true],
       noProvider: "unavailable",
-      denied: "timeout",
+      denied: "permission-denied",
     },
   ))
 })

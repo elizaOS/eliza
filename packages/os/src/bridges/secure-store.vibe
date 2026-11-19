@@ -1,0 +1,63 @@
+// spec/os/android/secureStore.md, "The app view names only slots its consumer policy opens to it, and never a delegation slot"; spec/os/android/secureStore.md, "A compare-and-exchange changes a slot only when it holds exactly the expected value"; spec/os/android/secureStore.md, "A write is acknowledged only after it reads back exactly, and a removal only after every file of the slot is gone"
+import { nativeReply, settled } from "./bridge.vibe"
+import type { ElizaSecureStoreRead, ElizaSecureStoreResult, ElizaSecureStorePlugin, ElizaSecureStoreStatus } from "./definitions/secure-store.ts"
+
+export type * from "./definitions/secure-store.ts"
+
+module capacitor {
+  import { registerPlugin } from "@capacitor/core"
+  import type { ElizaSecureStorePlugin } from "./definitions/secure-store.ts"
+
+  /** @throws {never} */
+  export function secureStorePlugin(name = "ElizaSecureStore"): ElizaSecureStorePlugin {
+    return registerPlugin<ElizaSecureStorePlugin>(name)
+  }
+}
+import { secureStorePlugin } from capacitor
+export { secureStorePlugin }
+
+const Refusal = Schema.Literals(["Conflict", "CapacityRefused", "Refused", "Failed", "Unconfirmed"])
+
+const Read: Schema.Codec<ElizaSecureStoreRead, unknown> = Schema.Union([
+  Schema.Struct({ ok: Schema.Literal(true), value: Schema.String }),
+  Schema.Struct({ ok: Schema.Literal(false), error: Schema.Literals(["not_found", "unreadable", "denied", "unavailable"]) }),
+])
+
+const Result: Schema.Codec<ElizaSecureStoreResult, unknown> = Schema.Union([
+  Schema.Struct({ ok: Schema.Literal(true), outcome: Schema.Literals(["Written", "Removed"]) }),
+  Schema.Struct({
+    ok: Schema.Literal(false),
+    error: Schema.Literals(["conflict", "storage_full", "denied", "native_error", "unconfirmed", "unavailable"]),
+    outcome: Schema.optionalKey(Refusal),
+  }),
+])
+
+const Status: Schema.Codec<ElizaSecureStoreStatus, unknown> = Schema.Union([
+  Schema.Struct({
+    ok: Schema.Literal(true),
+    available: Schema.Literal(true),
+    backend: Schema.Literal("android_keystore"),
+    accessibility: Schema.Literal("credential_encrypted_device_only"),
+    synchronized: Schema.Literal(false),
+    accessGroup: Schema.Literal("app_only"),
+  }),
+  Schema.Struct({
+    ok: Schema.Literal(false),
+    available: Schema.Literal(false),
+    error: Schema.Literal("unavailable"),
+    backend: Schema.Literal("unavailable"),
+    accessibility: Schema.Literal("unavailable"),
+    synchronized: Schema.Literal(false),
+    accessGroup: Schema.Literal("app_only"),
+  }),
+])
+
+export function secureStoreClient(plugin: ElizaSecureStorePlugin = secureStorePlugin(), name = "ElizaSecureStore"): ElizaSecureStorePlugin {
+  return {
+    get: (options) => settled(nativeReply(name, "get", Read, () => plugin.get(options))),
+    set: (options) => settled(nativeReply(name, "set", Result, () => plugin.set(options))),
+    remove: (options) => settled(nativeReply(name, "remove", Result, () => plugin.remove(options))),
+    compareAndExchange: (options) => settled(nativeReply(name, "compareAndExchange", Result, () => plugin.compareAndExchange(options))),
+    status: () => settled(nativeReply(name, "status", Status, () => plugin.status())),
+  }
+}

@@ -69,19 +69,28 @@ function rowOf(notice: AgentNotification): Row {
   }
 }
 
+interface Answer {
+  readonly status: number
+  readonly body: object
+  readonly retryAfter?: number
+}
+
 module node {
-  export function reply(status: number, body: object, retryAfter?: number): Response {
+  export function sent({ status, body, retryAfter }: { readonly status: number; readonly body: object; readonly retryAfter?: number }): Answer {
     return Response.json(body, { status, ...(retryAfter === undefined ? {} : { headers: { "retry-after": String(retryAfter) } }) })
   }
 }
-import { reply } from node
+import { sent } from node
 
-function unavailable(runtime: AgentRuntime, recover: boolean): Response {
+const reply = (status: number, body: object, retryAfter?: number): Answer =>
+  retryAfter === undefined ? { status, body } : { status, body, retryAfter }
+
+function unavailable(runtime: AgentRuntime, recover: boolean): Answer {
   const retryAfter = recover ? NotificationService.requestRecovery(runtime).retryAfterSeconds : startingRetrySeconds
   return reply(503, { error: "notification_inbox_unavailable", retryAfter }, retryAfter)
 }
 
-function refusedByCore(cause: unknown): Response | undefined {
+function refusedByCore(cause: unknown): Answer | undefined {
   if (!(cause instanceof NotificationNativeError)) return undefined
   return reply(cause.status, { error: cause.message, code: cause.code }, cause.status === 503 ? startingRetrySeconds : undefined)
 }
@@ -97,7 +106,7 @@ effect function nativePage(service: NotificationService, query: NativeNotificati
   return reply(200, page)
 }
 
-function ownerList(service: NotificationService, request: Extract<ListRequest, { tag: "OwnerList" }>): Response {
+function ownerList(service: NotificationService, request: Extract<ListRequest, { tag: "OwnerList" }>): Answer {
   const notifications = service.list({
     unreadOnly: request.unreadOnly,
     ...(request.category === "" ? {} : { category: request.category as NotificationCategory }),
@@ -133,7 +142,7 @@ effect function marked(service: NotificationService, id: string) {
   }
 }
 
-function markReply(runtime: AgentRuntime, answer: MarkReadAnswer): Response {
+function markReply(runtime: AgentRuntime, answer: MarkReadAnswer): Answer {
   switch (answer.tag) {
     case "BadNoticeId": return reply(400, { error: "invalid_notification_id" })
     case "MarkedRead": return reply(200, { ok: answer.ok })
@@ -160,11 +169,11 @@ export function notificationRoutes(runtime: AgentRuntime): LocalRoute[] {
     {
       method: "GET", path: "/api/notifications",
       query: listKeys.map((key) => ({ key, accepts: { kind: "any" as const } })),
-      handler: ({ query }) => runPromise(listAnswered(runtime, query)),
+      handler: ({ query }) => runPromise(listAnswered(runtime, query)).then(sent),
     },
     {
       method: "POST", path: "/api/notifications/{id}/read",
-      handler: ({ parameters }) => runPromise(markAnswered(runtime, parameters.get("id") ?? "")),
+      handler: ({ parameters }) => runPromise(markAnswered(runtime, parameters.get("id") ?? "")).then(sent),
     },
   ]
 }

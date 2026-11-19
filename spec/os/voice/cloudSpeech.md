@@ -159,13 +159,13 @@ pure def relayFailure(code: Rl::RelayErrorCode, reason: Rl::RelayReason): Cr::Fa
 pure def protocolEnd(s: CloudSpeech): SpeechStep = failWith(Cr::RequestFailed, s, List(), NoWait)
 pure def canFrameArrived(s: CloudSpeech): bool = mintedPhase(s.phase)
 pure def frameArrived(s: CloudSpeech, frame: Rl::ServerFrame): SpeechStep = match frame {
-  | Rl::ReadyFrame => if (s.phase == Connecting) quietStep({ ...s, phase: Ready }) else protocolEnd(s)
-  | Rl::SttFrame(e) => if (e.kind == Rl::SttConnected) (if (s.phase == Ready) quietStep({ ...s, phase: Live }) else if (s.phase == Live) quietStep(s) else protocolEnd(s))
+  | ReadyFrame => if (s.phase == Connecting) quietStep({ ...s, phase: Ready }) else protocolEnd(s)
+  | SttFrame(e) => if (e.kind == Rl::SttConnected) (if (s.phase == Ready) quietStep({ ...s, phase: Live }) else if (s.phase == Live) quietStep(s) else protocolEnd(s))
       else if (s.phase == Live) onTurn(e.kind, s) else protocolEnd(s)
-  | Rl::ExtendedFrame => if (s.phase != Connecting and s.extendOffered) quietStep(s) else protocolEnd(s)
-  | Rl::CompleteFrame(f) => if (s.phase == Live) onComplete(f.id, s) else protocolEnd(s)
-  | Rl::ErrorFrame(e) => failWith(relayFailure(e.code, e.reason), s, List(), NoWait)
-  | Rl::CloseFrame(c) => failWith(Cr::RemoteUnreachable, s, List(), NoWait)
+  | ExtendedFrame => if (s.phase != Connecting and s.extendOffered) quietStep(s) else protocolEnd(s)
+  | CompleteFrame(f) => if (s.phase == Live) onComplete(f.id, s) else protocolEnd(s)
+  | ErrorFrame(e) => failWith(relayFailure(e.code, e.reason), s, List(), NoWait)
+  | CloseFrame(c) => failWith(Cr::RemoteUnreachable, s, List(), NoWait)
   | _ => if (s.phase != Connecting) quietStep(s) else protocolEnd(s)
 }
 pure val frameValues = Set(Rl::ReadyFrame, Rl::SttFrame({ kind: Rl::SttConnected }), Rl::SttFrame({ kind: Rl::StartOfTurn }), Rl::SttFrame({ kind: Rl::TranscriptUpdate }),

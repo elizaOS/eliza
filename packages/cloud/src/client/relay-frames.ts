@@ -476,6 +476,7 @@ export function lawReadAudioIsCanonical(frame: number[]): boolean {
 }
 
 function sttKindOf(v: JsonValue): number {
+  //@ ensures -1 <= \result && \result < 6
   if (textIs(v, "connected")) return 0
   if (textIs(v, "start-of-turn")) return 1
   if (textIs(v, "turn-resumed")) return 2
@@ -486,6 +487,7 @@ function sttKindOf(v: JsonValue): number {
 }
 
 function errorCodeOfWire(v: JsonValue): number {
+  //@ ensures -1 <= \result && \result < 4
   if (textIs(v, "unauthorized")) return 0
   if (textIs(v, "protocol")) return 1
   if (textIs(v, "unavailable")) return 2
