@@ -2420,8 +2420,11 @@ export class DeviceActionService {
     // A model-planned call, dial, text or keypad prefill names its recipient
     // from the owner's own words in this message (telephony-target-grounding).
     // Without a model turn (host code, tests) there is no model recipient.
+    // An empty keypad names nobody, so it needs no words to ground in: with no
+    // bound request it keeps its review card (keypad-direct), never a refusal.
     const telephonyTarget =
       namesTelephonyTarget(validated) &&
+      !(validated.type === "phone_keypad" && validated.number === undefined) &&
       getDeviceActionTurn()?.runtime === this.runtime;
     const foregroundTurn =
       isPhotosViewOperation(validated) || isFilesOperation(validated)

@@ -508,10 +508,10 @@ it.each([
     }
   },
 );
-// A number the owner did not write (the model took it from an email) is bound
-// to the message, but the phone keeps its "Open keypad" card for it: the reply
-// must stay the review text, never "Opening the keypad with ...".
-it("keeps the review text for a keypad number the owner did not write", async () => {
+// A number the owner did not write (the model took it from an email) never
+// reaches the phone: telephony-target-grounding refuses it before a proposal is
+// persisted, so there is neither "Opening the keypad with ..." nor a review.
+it("refuses a keypad number the owner did not write instead of opening it", async () => {
   const f = await fixture();
   try {
     Object.assign(f.credential, { capabilities: ["phone.keypad.v1"] });
@@ -528,21 +528,17 @@ it("keeps the review text for a keypad number the owner did not write", async ()
         "SELECT payload FROM approval_requests",
       )
     ).rows;
-    expect(rows).toHaveLength(1);
-    expect(rows[0].payload.operation).toEqual({
-      type: "phone_keypad",
-      number: "4155550100",
-    });
+    expect(rows).toHaveLength(0);
     expect(result).toMatchObject({
-      success: true,
-      userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
-      data: { awaitingUserInput: true, approvalRequired: true },
+      success: false,
+      data: {
+        code: "DEVICE_TELEPHONY_TARGET_NOT_REQUESTED",
+        proposalCreated: false,
+        executed: false,
+      },
     });
-    expect(result.data).not.toHaveProperty("directRequest");
+    expect(result.userFacingText).not.toMatch(/Opening the keypad/);
     expect(isRequestedDeviceHandoff(result as PlannerToolResult)).toBe(false);
-    expect(isPersistedDeviceApprovalPause(result as PlannerToolResult)).toBe(
-      true,
-    );
   } finally {
     await f.pg.close();
   }
