@@ -86,7 +86,9 @@ export function validateCameraCaptureResult(
     typeof row.mediaId !== "string" ||
     !/^[1-9][0-9]{0,24}$/.test(row.mediaId) ||
     (row.libraryId !== undefined &&
-      !(isLibraryId(row.libraryId) && libraryKindOf(row.libraryId) === "image")) ||
+      !(
+        isLibraryId(row.libraryId) && libraryKindOf(row.libraryId) === "image"
+      )) ||
     ![row.width, row.height].every(
       (n) =>
         typeof n === "number" && Number.isSafeInteger(n) && n > 0 && n <= 65536,

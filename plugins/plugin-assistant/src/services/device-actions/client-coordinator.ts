@@ -83,8 +83,8 @@ import {
   validateCalendarResult,
 } from "./calendar-contract.ts";
 import {
-  type CameraCaptureOperation,
   CAMERA_LIBRARY_ID_CAPABILITY,
+  type CameraCaptureOperation,
   type CameraCaptureResult,
   cameraCaptureCapabilityAvailable,
   isCameraCapture,

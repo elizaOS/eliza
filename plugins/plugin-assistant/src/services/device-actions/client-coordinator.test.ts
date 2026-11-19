@@ -612,9 +612,9 @@ describe("DeviceActionCoordinator", () => {
         profile,
       });
       await actions.pending(camera, signal());
-      expect(
-        (await actions.approve("proposal", camera, signal())).status,
-      ).toBe("succeeded");
+      expect((await actions.approve("proposal", camera, signal())).status).toBe(
+        "succeeded",
+      );
       const sent = server.receipts[0].receipt as {
         result: Record<string, unknown>;
       };
