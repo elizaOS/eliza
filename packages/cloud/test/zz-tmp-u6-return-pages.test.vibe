@@ -1,0 +1,67 @@
+// spec/cloud/returnPages.md, "Story: Tell a payer the checkout ended"
+import { assert, describe, it } from "@effect/vitest"
+import { testCloud } from "./support/cloud.vibe"
+import { testProfile } from "./support/profile.ts"
+import { disableClient } from "../src/native-clients/registry.vibe"
+import { seedClients } from "../src/operator/clients.vibe"
+import { forwardScriptHash } from "../src/pages/forward-script.ts"
+import { deploymentLayer, parseProfile } from "../src/profile/profile.vibe"
+import fixtureSeed from "./fixtures/seed.json" with { type: "json" }
+
+effect function check(run: () => void) {
+  try Effect.try(run)
+}
+describe("WP2 Native clients and pages: return pages (spec/cloud/returnPages.md)", () => {
+  it.live("Bring me back to the app on its registered return only, and tell a payer the checkout ended (spec/cloud/returnPages.md, \"Story: Bring me back to the app when its link did not open\"; spec/cloud/returnPages.md, \"Story: Tell a payer the checkout ended\")", () => scoped(effect {
+    const cloud = try testCloud()
+    const profile = try parseProfile(try sync(() => testProfile(cloud.fakes.url)))
+    const now = try Clock.currentTimeMillis
+    provide deploymentLayer(profile, "staging") {
+      try cloud.store.transaction((tx) => seedClients(tx, fixtureSeed.clients, now))
+    }
+    const web = { "x-forwarded-host": "www.staging.example.com" }
+    const signIn = try cloud.call("/apps/fixture/sign-in?code=private-code&state=private-state", { headers: web })
+    const html = String(signIn.body)
+    const connect = try cloud.call("/apps/fixture/connect", { headers: web })
+    const elsewhere = try cloud.call("/apps/fixture/elsewhere", { headers: web })
+    const onApi = try cloud.call("/apps/fixture/sign-in")
+    const paid = try cloud.call("/api/v1/subscriptions/checkout/payer?outcome=paid")
+    const other = try cloud.call("/api/v1/subscriptions/checkout/payer?outcome=success")
+    const payerOnWeb = try cloud.call("/api/v1/subscriptions/checkout/payer?outcome=paid", { headers: web })
+    try check(() => assert.deepStrictEqual(
+      {
+        status: signIn.status,
+        links: [...html.matchAll(/intent:\/\/[^"]*/g)].map((found) => found[0].replaceAll("&amp;", "&")),
+        purpose: /data-purpose="([^"]*)"/.exec(html)?.[1],
+        leaked: html.includes("private-code") || html.includes("private-state"),
+        forms: html.includes("<form"),
+        headers: [signIn.headers["cache-control"], signIn.headers["x-robots-tag"], signIn.headers["referrer-policy"]],
+        script: /script-src '(sha256-[^']+)'/.exec(signIn.headers["content-security-policy"] ?? "")?.[1],
+        framing: /frame-ancestors 'none'/.test(signIn.headers["content-security-policy"] ?? ""),
+        connect: [connect.status, /data-purpose="([^"]*)"/.exec(String(connect.body))?.[1]],
+        missing: [elsewhere.status, (elsewhere.body as { readonly error?: string }).error, onApi.status, payerOnWeb.status],
+        payer: [paid.status, String(paid.body).includes("Check the subscription"), other.status, String(other.body).includes("Checkout closed")],
+        payerScript: [/script-src/.test(paid.headers["content-security-policy"] ?? ""), /<script/.test(String(paid.body)), paid.headers["cache-control"]]
+      },
+      {
+        status: 200,
+        links: ["intent://www.staging.example.com/apps/fixture/sign-in#Intent;scheme=https;package=com.example.fixture;end"],
+        purpose: "SignInPurpose",
+        leaked: false,
+        forms: false,
+        headers: ["no-store", "noindex", "no-referrer"],
+        script: forwardScriptHash,
+        framing: true,
+        connect: [200, "ConnectPurpose"],
+        missing: [404, "not_found", 404, 404],
+        payer: [200, true, 200, true],
+        payerScript: [false, false, "no-store"]
+      }
+    ))
+    provide deploymentLayer(profile, "staging") {
+      try cloud.store.transaction((tx) => disableClient(tx, "com.example.fixture", now))
+    }
+    const disabled = try cloud.call("/apps/fixture/sign-in", { headers: web })
+    try check(() => assert.strictEqual(disabled.status, 404))
+  }))
+})
