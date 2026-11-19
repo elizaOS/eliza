@@ -7,7 +7,22 @@ import ai.eliza.plugins.passwords.PasswordFormPolicy.Target;
 import ai.eliza.plugins.passwords.PasswordGenerator;
 import ai.eliza.plugins.passwords.PasswordMatching;
 import ai.eliza.plugins.passwords.PasswordRequests;
+import ai.eliza.plugins.securestore.nativeonly.PasswordBackupApproval;
+import ai.eliza.plugins.securestore.nativeonly.PasswordBackupApproval.Grant;
+import ai.eliza.plugins.securestore.nativeonly.PasswordBackupApproval.Owner;
+import ai.eliza.plugins.securestore.nativeonly.PasswordBackupApproval.Purpose;
 import ai.eliza.plugins.securestore.nativeonly.PasswordFacets;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URI;
+import java.net.URL;
+import java.net.URLConnection;
+import java.net.URLStreamHandler;
+import java.security.cert.Certificate;
+import java.util.concurrent.atomic.AtomicBoolean;
+import javax.net.ssl.HttpsURLConnection;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -276,6 +291,91 @@ public final class PasswordPolicyCheck {
     check("an app binding is never dropped", PasswordEditorPolicy.editedBindings(List.of(appBinding), null).equals(List.of(appBinding)));
   }
 
+  private static final URI BACKUP = URI.create("https://cloud.example.test/api/v1/app-auth/mobile/password-backup");
+  private static final Owner OWNER = new Owner("account-1", "organization-1");
+  private static final String PROOF = "pbackup_" + "t".repeat(43), STATE = "state-1", VERIFIER = "verifier-1";
+  private static final byte[] SNAPSHOT = { 7, 8, 9 };
+  private static final AtomicBoolean CURRENT = new AtomicBoolean(true);
+  private static boolean retireOnDownload;
+  private static int writes, reads;
+
+  private static Grant grant(Object code, String owner, Object organization) {
+    return new Grant(code, "a".repeat(64), owner, organization, "\"1\"", true);
+  }
+
+  private static PasswordBackupApproval approve(Purpose purpose, Grant grant) throws Exception {
+    return PasswordBackupApproval.admit(BACKUP, purpose, STATE, VERIFIER, OWNER, grant, CURRENT::get);
+  }
+
+  private void backup() throws Exception {
+    URL.setURLStreamHandlerFactory(scheme -> "https".equals(scheme) ? new URLStreamHandler() {
+      @Override protected URLConnection openConnection(URL url) { return new BackupEndpoint(url); }
+    } : null);
+    rejects("another account's approval", null, () -> approve(Purpose.SAVE, grant(PROOF, "account-2", "organization-1")));
+    rejects("another organization's approval", null, () -> approve(Purpose.SAVE, grant(PROOF, "account-1", "organization-2")));
+    rejects("an approval without an organization", null, () -> approve(Purpose.SAVE, grant(PROOF, "account-1", null)));
+    rejects("a malformed proof", null, () -> approve(Purpose.SAVE, grant("pbackup_short", "account-1", "organization-1")));
+    rejects("a verification that carries a proof", null, () -> approve(Purpose.VERIFY, grant(PROOF, "account-1", "organization-1")));
+    PasswordBackupApproval verified = approve(Purpose.VERIFY, grant(null, "account-1", "organization-1"));
+    check("a verification names the current owner", "account-1".equals(verified.ownerId()) && "organization-1".equals(verified.organizationId()));
+    rejects("a verification transfers nothing", null, () -> verified.run(null, null));
+    CURRENT.set(false);
+    rejects("an approval for a replaced account", null, () -> approve(Purpose.SAVE, grant(PROOF, "account-1", "organization-1")));
+    CURRENT.set(true);
+    PasswordBackupApproval stale = approve(Purpose.SAVE, grant(PROOF, "account-1", "organization-1"));
+    CURRENT.set(false);
+    rejects("a stale approval", null, () -> stale.run(stale.revision(), SNAPSHOT));
+    CURRENT.set(true);
+    PasswordBackupApproval save = approve(Purpose.SAVE, grant(PROOF, "account-1", "organization-1"));
+    check("a current approval saves once", save.run(save.revision(), SNAPSHOT).status() == 204);
+    rejects("a spent approval", null, () -> save.run(save.revision(), SNAPSHOT));
+    check("one approval wrote once", writes == 1);
+    PasswordBackupApproval read = approve(Purpose.READ, grant(PROOF, "account-1", "organization-1"));
+    retireOnDownload = true;
+    rejects("a read whose account changed while downloading", null, () -> read.run(null, null));
+    check("the retired read reached the cloud once", reads == 1 && !read.current());
+  }
+
+  private static final class BackupEndpoint extends HttpsURLConnection {
+    private final ByteArrayOutputStream sent = new ByteArrayOutputStream();
+
+    BackupEndpoint(URL url) { super(url); }
+
+    @Override public int getResponseCode() {
+      boolean bound = BACKUP.toString().equals(url.toString()) && !getInstanceFollowRedirects()
+          && ("Bearer " + PROOF).equals(getRequestProperty("Authorization"))
+          && STATE.equals(getRequestProperty("X-Backup-State")) && VERIFIER.equals(getRequestProperty("X-Backup-Verifier"));
+      if (!bound) return 401;
+      if ("PUT".equals(method) && "\"1\"".equals(getRequestProperty("If-Match")) && Arrays.equals(SNAPSHOT, sent.toByteArray())) {
+        writes++;
+        return 204;
+      }
+      if (!"GET".equals(method)) return 400;
+      reads++;
+      return 200;
+    }
+
+    @Override public OutputStream getOutputStream() { return sent; }
+    @Override public String getHeaderField(String name) { return "ETag".equals(name) ? "\"1\"" : null; }
+    @Override public String getContentType() { return "application/octet-stream"; }
+    @Override public long getContentLengthLong() { return SNAPSHOT.length; }
+    @Override public InputStream getInputStream() {
+      return new ByteArrayInputStream(SNAPSHOT) {
+        @Override public synchronized int read(byte[] buffer, int start, int length) {
+          int count = super.read(buffer, start, length);
+          if (retireOnDownload && count == -1) CURRENT.set(false);
+          return count;
+        }
+      };
+    }
+    @Override public void connect() {}
+    @Override public void disconnect() {}
+    @Override public boolean usingProxy() { return false; }
+    @Override public String getCipherSuite() { return ""; }
+    @Override public Certificate[] getLocalCertificates() { return null; }
+    @Override public Certificate[] getServerCertificates() { return null; }
+  }
+
   private String report() {
     StringBuilder json = new StringBuilder("{\"checks\":").append(checks).append(",\"failed\":[");
     for (int index = 0; index < failed.size(); index++) {
@@ -295,6 +395,7 @@ public final class PasswordPolicyCheck {
         case "match" -> run.matching();
         case "offer" -> run.offers();
         case "editor" -> run.editor();
+        case "backup" -> run.backup();
         default -> throw new IllegalArgumentException("no check group " + group);
       }
     }

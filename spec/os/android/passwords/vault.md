@@ -248,22 +248,19 @@ pure def lawMissingRecordRefusesRowAction(selection: RowSelection): bool =
 
 ## Story: Approve a password backup in the shared cloud
 
-> As the person using a password vault with my shared cloud account, I can
-> confirm a backup action on this device with my Google account and keep all
+> As the person using a password vault with my cloud account, I can confirm
+> each backup action at the cloud this device signed in to, and keep all
 > recovery material in the native vault.
 
 ### Shared approval requires the registered cloud and the current owner
 
-A trusted Android host selects one registered issuer, tenant, and signed app.
-The acknowledged device credential identifies the current cloud account. Each
-backup action requires a fresh native Google confirmation with that issuer.
-Recovery is available only when the cloud advertises approval with an
-organization identifier. The approval is delivered only if the returned
-account and organization and the active account generation still match the
-request. An account change, closed request, or
-locked device ends the attempt. The temporary Steward session is used to
-obtain the approval and is then discarded. The host requests its revocation
-even when the approval fails.
+The device asks for an approval with its registered client and environment
+and the acknowledged device credential of the current cloud account. Each
+backup action needs a fresh confirmation by the account holder at that
+cloud. The approval counts only when it names the account and organization
+of that credential, and only while the same credential is still the active
+one and the request is still open; a renewed or replaced credential, a
+closed request, or a locked device ends the attempt.
 
 ```quint
 type SharedBackupPurpose = SharedBackupRead | SharedBackupSave | SharedBackupDelete | SharedBackupVerify
@@ -278,9 +275,9 @@ pure val requestValues = Set(
   { issuer: "production", owner: "owner", organization: "organization", ownerGeneration: "renewed", requestId: "backup", purpose: SharedBackupVerify })
 pure val activeValues = requestValues
 pure val approvedValues = requestValues
-pure def sharedBackupApprovalMatches(request: SharedBackupBinding, active: SharedBackupBinding, freshNativeSignIn: bool, registeredApp: bool, organizationEcho: bool, deviceReady: bool): bool =
+pure def sharedBackupApprovalMatches(request: SharedBackupBinding, active: SharedBackupBinding, freshConfirmation: bool, registeredClient: bool, organizationEcho: bool, deviceReady: bool): bool =
   request.issuer != "" and request.owner != "" and request.organization != "" and request.ownerGeneration != "" and request.requestId != "" and
-  request == active and freshNativeSignIn and registeredApp and organizationEcho and deviceReady
+  request == active and freshConfirmation and registeredClient and organizationEcho and deviceReady
 pure def lawSharedBackupRefusesAnotherBinding(request: SharedBackupBinding, active: SharedBackupBinding): bool =
   request != active implies not(sharedBackupApprovalMatches(request, active, true, true, true, true))
 pure def lawSharedBackupNeedsAnOrganizationEcho(request: SharedBackupBinding): bool =
@@ -290,12 +287,12 @@ pure def lawSharedBackupNeedsAnOrganizationEcho(request: SharedBackupBinding): b
 ### One native proof authorizes one backup action
 
 The approval binds the purpose and request to a single-use code with a
-native PKCE verifier. The code, verifier, and identity session stay in native
-custody. A read, save, or delete may use the approval once while the device
-and request are current. The verification purpose checks ownership without
-reading, saving, or deleting any backup. The cloud stores encrypted backup
-bytes and a revision. The recovery key and plaintext stay in the native
-vault.
+native PKCE verifier. The code and verifier stay in native custody. A read,
+save, or delete may use the approval once while the device and request are
+current, and a read whose request closes while it downloads keeps nothing
+it received. The verification purpose checks ownership without reading,
+saving, or deleting any backup. The cloud stores encrypted backup bytes and
+a revision. The recovery key and plaintext stay in the native vault.
 
 ```quint
 pure def sharedBackupCanSend(approved: SharedBackupBinding, active: SharedBackupBinding, deviceReady: bool, spent: bool): bool =
