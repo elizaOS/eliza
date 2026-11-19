@@ -73,6 +73,7 @@ import type { JsonValue, UUID } from "../types/primitives.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import type { Service, ServiceTypeName } from "../types/service.js";
 import { BufferUtils } from "../utils/buffer";
+import { createHash } from "../utils/crypto-compat.js";
 import { resolveSetting } from "../utils/environment";
 import {
 	assertModelOutputComplete,
@@ -240,7 +241,7 @@ function appendToLatestUserMessage(
 
 /** Sizes of the request parts the logged prompt text omits. */
 function modelCallRequestSizes(request: unknown): {
-	tools?: { name: string; chars: number }[];
+	tools?: { name: string; chars: number; hash: string }[];
 	maxTokens?: number;
 } {
 	if (!isPlainObject(request)) return {};
@@ -250,9 +251,17 @@ function modelCallRequestSizes(request: unknown): {
 					? (tool.name ??
 						(isPlainObject(tool.function) ? tool.function.name : undefined))
 					: undefined;
-				return typeof name === "string"
-					? [{ name, chars: JSON.stringify(tool).length }]
-					: [];
+				if (typeof name !== "string") return [];
+				// Order and exact bytes decide whether a provider's prefix cache
+				// can reuse the request: a digest shows when a definition changed.
+				const text = JSON.stringify(tool);
+				return [
+					{
+						name,
+						chars: text.length,
+						hash: createHash("sha256").update(text).digest("hex").slice(0, 12),
+					},
+				];
 			})
 		: [];
 	return {

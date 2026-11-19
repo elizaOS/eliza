@@ -57,13 +57,17 @@ it("records provider usage, tool sizes and the output cap", async () => {
 		cacheReadInputTokens: 8192,
 	});
 	expect(body.maxTokens).toBe(2048);
-	// The size a provider is sent: compact JSON, not an indented rendering.
+	// The size a provider is sent: compact JSON, not an indented rendering. The
+	// digest shows when a definition's bytes changed between two calls.
 	expect(body.tools).toEqual(
 		request.tools.map((tool) => ({
 			name: "name" in tool ? tool.name : tool.function.name,
 			chars: JSON.stringify(tool).length,
+			hash: expect.stringMatching(/^[0-9a-f]{12}$/),
 		})),
 	);
+	const [first, second] = body.tools as { hash: string }[];
+	expect(first.hash).not.toBe(second.hash);
 });
 
 it("keeps a missing cache report missing, and logs nothing for a result without usage", async () => {
