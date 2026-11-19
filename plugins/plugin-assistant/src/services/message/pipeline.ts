@@ -2890,6 +2890,7 @@ export async function runV5MessageRuntimeStage1(
             : (plannerResult.finalMessage ?? ""),
         actionResults: egressActionResults,
         evaluator: plannerResult.evaluator,
+        trajectory: plannerResult.trajectory,
         recovery: capturePlannerReplyRecovery(
           args.runtime,
           args.message,
