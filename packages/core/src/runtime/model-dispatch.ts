@@ -285,7 +285,9 @@ function modelCallRequestSizes(request: unknown): {
 			})
 		: [];
 	return {
-		...(tools.length ? { tools } : {}),
+		// An empty list says the request sent no tools; a row without the field
+		// comes from a runtime that did not record them.
+		tools,
 		...(typeof request.maxTokens === "number" && request.omitMaxTokens !== true
 			? { maxTokens: request.maxTokens }
 			: {}),
