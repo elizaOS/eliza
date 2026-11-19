@@ -9,19 +9,29 @@
  * (`./log-redaction`) and validated PII/token classes from `./pii-detectors`; explicit credential context admits short values; detected PII uses its own floor.
  *
  * The per-session nonce makes placeholders unforgeable: restore and assertion
- * scope only to THIS session's nonce, so a placeholder-shaped token from user
- * input or model output can never resolve to a real secret. A this-session
- * placeholder that should resolve but does not (e.g. a model that fabricated
- * `…_999__`) can fail loud via SecretSwapUnresolvedPlaceholderError rather than
- * silently leak.
+ * scope only to THIS session's nonce, and only to references this session has
+ * itself written into text. A placeholder-shaped token from user input or model
+ * output therefore never resolves to a value the model was not shown, whether
+ * it was guessed, counted from a visible reference or kept from an earlier
+ * session. A this-session placeholder that does not resolve (e.g. a model that
+ * fabricated `…_999__`) can fail loud via SecretSwapUnresolvedPlaceholderError
+ * rather than silently leak.
  */
 import { ElizaError } from "../errors";
 import { BufferUtils } from "../utils/buffer";
+import { createHash } from "../utils/crypto-compat";
 import { SENSITIVE_TEXT_REGEXPS } from "./log-redaction";
 import { detectPii } from "./pii-detectors";
 import { isRuntimeAbortSignal } from "./runtime-abort-signal";
 
 export const SECRET_SWAP_ENABLED_SETTING = "ELIZA_SECRET_SWAP_ENABLED";
+/**
+ * Keeps a value's reference the same in every turn of one conversation, so text
+ * an earlier turn sent stays byte-identical and a provider can reuse the prompt
+ * prefix. A host turns this on; the default draws a fresh nonce per session.
+ */
+export const SECRET_SWAP_STABLE_REFERENCES_SETTING =
+	"ELIZA_SECRET_SWAP_STABLE_REFERENCES";
 export const SECRET_SWAP_EXEMPT_VALUES_SETTING =
 	"ELIZA_SECRET_SWAP_EXEMPT_VALUES";
 
@@ -88,6 +98,14 @@ export type SecretSwapSessionOptions = {
 	 * e.g. `["phone", "ipv4"]`). Complements `exemptValues` (opt-out by value).
 	 */
 	disabledKinds?: Iterable<string>;
+	/**
+	 * A secret the host holds for one conversation and never shows to anyone.
+	 * Sessions that share it mint the same reference for the same value. A
+	 * reference seen in an earlier session is then no longer dead text, so it
+	 * matters that restore resolves only what this session wrote: replaying one
+	 * yields nothing the current request does not already show the model.
+	 */
+	stableKey?: string;
 };
 
 const SHORT_SWAP_VALUE_LENGTH = 8;
@@ -108,6 +126,17 @@ const PLACEHOLDER_PATTERN =
  * mapping, hijacking restore to leak the secret into an unintended position —
  * the nonce makes placeholders unforgeable and unguessable per turn.
  */
+/** A fresh key for stable references. The host keeps it in memory only. */
+export function createSecretSwapStableKey(): string {
+	return BufferUtils.toHex(BufferUtils.randomBytes(32));
+}
+
+function keyedDigest(key: string, value: string): string {
+	return createHash("sha256")
+		.update(`${key.length}:${key}${value}`)
+		.digest("hex");
+}
+
 function generateSessionNonce(): string {
 	// Fail closed through BufferUtils.randomBytes (the W1-066 policy): a nonce
 	// from a predictable Math.random() fallback could be recovered from observed
@@ -507,6 +536,10 @@ export class SecretSwapSession {
 	private readonly replyProtectedValues = new Set<string>();
 	private readonly valueToEntry = new Map<string, SecretSwapEntry>();
 	private readonly placeholderToEntry = new Map<string, SecretSwapEntry>();
+	/** Numbers already minted, across both prefixes. */
+	private readonly numbers = new Set<number>();
+	/** References this session has written into text. Only these restore. */
+	private readonly shown = new Map<string, SecretSwapEntry>();
 	private readonly exemptValues: ReadonlySet<string>;
 	private readonly disabledKinds: ReadonlySet<string>;
 	/**
@@ -517,18 +550,24 @@ export class SecretSwapSession {
 	 * never emits a chunk shorter than the longest value it might straddle.
 	 */
 	private maxToken = 0;
-	/** Per-session nonce woven into every placeholder so it is unforgeable. */
-	private readonly nonce = generateSessionNonce();
+	private readonly stableKey: string | undefined;
+	/** Nonce woven into every placeholder so it is unforgeable: fresh per session, or derived from the conversation's stable key. */
+	private readonly nonce: string;
 	/** Restores only placeholders minted for this session. Other or absent nonces remain text; unresolved current-session placeholders fail explicitly. */
-	private readonly placeholderPattern = new RegExp(
-		`__ELIZA_(?:SECRET|CONTACT)_${this.nonce}_\\d+__`,
-		"g",
-	);
+	private readonly placeholderPattern: RegExp;
 	/** Per-value compiled patterns, scoped to the session so secret values never outlive it. */
 	private readonly replacePatterns = new Map<string, RegExp>();
 	private readonly containsPatterns = new Map<string, RegExp>();
 
 	constructor(options: SecretSwapSessionOptions = {}) {
+		this.stableKey = options.stableKey || undefined;
+		this.nonce = this.stableKey
+			? keyedDigest(this.stableKey, "nonce:").slice(0, 16)
+			: generateSessionNonce();
+		this.placeholderPattern = new RegExp(
+			`__ELIZA_(?:SECRET|CONTACT)_${this.nonce}_\\d+__`,
+			"g",
+		);
 		this.exemptValues = new Set(
 			[...(options.exemptValues ?? [])]
 				.map((value) => value.trim())
@@ -620,10 +659,9 @@ export class SecretSwapSession {
 			(a, b) => a.start - b.start || b.end - a.end,
 		)) {
 			if (span.start < cursor) continue;
-			parts.push(
-				result.slice(cursor, span.start),
-				this.entryForValue(span.value, "secret").placeholder,
-			);
+			const entry = this.entryForValue(span.value, "secret");
+			this.shown.set(entry.placeholder, entry);
+			parts.push(result.slice(cursor, span.start), entry.placeholder);
 			cursor = span.end;
 		}
 		parts.push(result.slice(cursor));
@@ -645,7 +683,9 @@ export class SecretSwapSession {
 				pattern = compileReplacePattern(entry.value);
 				this.replacePatterns.set(entry.value, pattern);
 			}
-			result = replaceValue(result, pattern, entry.placeholder);
+			const replaced = replaceValue(result, pattern, entry.placeholder);
+			if (replaced !== result) this.shown.set(entry.placeholder, entry);
+			result = replaced;
 		}
 		return result;
 	}
@@ -691,7 +731,7 @@ export class SecretSwapSession {
 	restoreUserReplyText(text: string): string {
 		this.placeholderPattern.lastIndex = 0;
 		return text.replace(this.placeholderPattern, (placeholder) => {
-			const entry = this.placeholderToEntry.get(placeholder);
+			const entry = this.shown.get(placeholder);
 			if (
 				!entry ||
 				!USER_READABLE_KINDS.has(entry.kind) ||
@@ -731,7 +771,7 @@ export class SecretSwapSession {
 		const unresolved = new Set<string>();
 		this.placeholderPattern.lastIndex = 0;
 		const restored = text.replace(this.placeholderPattern, (placeholder) => {
-			const entry = this.placeholderToEntry.get(placeholder);
+			const entry = this.shown.get(placeholder);
 			if (!entry) {
 				unresolved.add(placeholder);
 				return placeholder;
@@ -760,7 +800,7 @@ export class SecretSwapSession {
 		const placeholders = [
 			...new Set(serialized.match(this.placeholderPattern) ?? []),
 		]
-			.filter((placeholder) => !this.placeholderToEntry.has(placeholder))
+			.filter((placeholder) => !this.shown.has(placeholder))
 			.sort();
 		if (placeholders.length > 0) {
 			throw new SecretSwapUnresolvedPlaceholderError(placeholders);
@@ -770,11 +810,20 @@ export class SecretSwapSession {
 	private entryForValue(value: string, kind: string): SecretSwapEntry {
 		const existing = this.valueToEntry.get(value);
 		if (existing) return existing;
-		const entry = {
-			placeholder: `${(kind === "email" || kind === "phone") && !this.replyProtectedValues.has(value) ? CONTACT_PLACEHOLDER_PREFIX : PLACEHOLDER_PREFIX}${this.nonce}_${this.valueToEntry.size + 1}__`,
-			value,
-			kind,
-		};
+		const prefix = `${(kind === "email" || kind === "phone") && !this.replyProtectedValues.has(value) ? CONTACT_PLACEHOLDER_PREFIX : PLACEHOLDER_PREFIX}${this.nonce}_`;
+		// A stable reference is numbered from its value, not from the order the
+		// session met it: a growing conversation must not renumber earlier text.
+		// Twelve digits keep two values of one conversation from sharing a number,
+		// so a reference means the same value in every session or nothing.
+		let index = this.stableKey
+			? Number.parseInt(
+					keyedDigest(this.stableKey, `value:${value}`).slice(0, 12),
+					16,
+				) % 1_000_000_000_000
+			: this.valueToEntry.size + 1;
+		while (this.numbers.has(index)) index++;
+		this.numbers.add(index);
+		const entry = { placeholder: `${prefix}${index}__`, value, kind };
 		this.valueToEntry.set(value, entry);
 		this.placeholderToEntry.set(entry.placeholder, entry);
 		this.maxToken = Math.max(
