@@ -46,7 +46,12 @@ import {
   type DedicatedAdoptionConsentProof,
   installDedicatedAdoptionConsentProof,
 } from "../cloud-live-dedicated-adoption-consent";
-import { cloudLiveDeployedRendererOrigin } from "../cloud-live-deployed-target";
+import {
+  cloudLiveDeployedRendererOrigin,
+  openAuthenticatedStagingJoin,
+  requireStagingJoinBytes,
+  STAGING_PAGES_ALIAS,
+} from "../cloud-live-deployed-target";
 import {
   CloudLiveDedicatedConfirmationRequiredError,
   type CloudLiveDedicatedConsentGate,
@@ -88,11 +93,11 @@ const CLOUD_LIVE_ENABLED =
 const HAS_CLOUD_KEY = Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim());
 const DEPLOYED_RENDERER_ENABLED =
   process.env.ELIZA_UI_SMOKE_DEPLOYED_RENDERER === "1";
-const DEPLOYED_RENDERER_ALIAS = cloudLiveDeployedRendererOrigin(
+const DEPLOYED_APP_ORIGIN = cloudLiveDeployedRendererOrigin(
   process.env.ELIZA_UI_SMOKE_CLOUD_EXPECTED_ENV,
 );
 const DEPLOYED_RENDERER_MANIFEST_SCHEMA = "elizaos.renderer.build/v1";
-const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v3";
+const DEPLOYED_BROWSER_SMOKE_SCHEMA = "elizaos.cloud.deployed-browser-smoke/v4";
 const REQUIRE_NAMED_WARMING =
   process.env.ELIZA_UI_SMOKE_REQUIRE_NAMED_WARMING === "1";
 const REQUIRE_SHARED_FIRST_ATTEMPT =
@@ -197,7 +202,7 @@ async function seedProtectedCloudBlankStart(page: Page): Promise<void> {
     // Do not use the general smoke seed: its local active-server fixture would
     // invalidate a fresh-context continuity claim. These non-secret empty values
     // are safe before navigation; deployed mode seeds the bearer only after the
-    // exact top-level Pages origin and renderer identity are verified.
+    // exact top-level app origin and renderer identity are verified.
     if (localStorage.getItem("eliza:first-run-complete") === null) {
       localStorage.setItem("eliza:first-run-complete", "");
     }
@@ -217,8 +222,8 @@ async function seedVerifiedDeployedCloudBrowserAuth(page: Page): Promise<void> {
 
   expect(
     new URL(page.url()).origin,
-    "the bearer must never be handed to a document outside the Pages alias",
-  ).toBe(DEPLOYED_RENDERER_ALIAS);
+    "the bearer must only be handed to the verified app origin",
+  ).toBe(DEPLOYED_APP_ORIGIN);
   await page.evaluate(
     ({ expectedOrigin, storageKey, token }) => {
       if (window.top !== window || window.location.origin !== expectedOrigin) {
@@ -228,13 +233,15 @@ async function seedVerifiedDeployedCloudBrowserAuth(page: Page): Promise<void> {
       }
       localStorage.setItem(storageKey, token);
     },
-    { expectedOrigin: DEPLOYED_RENDERER_ALIAS, ...seed },
+    { expectedOrigin: DEPLOYED_APP_ORIGIN, ...seed },
   );
 }
 
 interface DeployedRendererIdentity {
   buildId: string;
   commit: string;
+  indexHtmlSha256: string;
+  assetCount: number;
   origin: string;
 }
 
@@ -245,7 +252,7 @@ interface ProtectedCloudBlankStart {
 
 async function requireDeployedRendererIdentity(
   page: Page,
-  baseURL: string | undefined,
+  expectedOrigin = DEPLOYED_APP_ORIGIN,
 ): Promise<DeployedRendererIdentity | null> {
   if (!DEPLOYED_RENDERER_ENABLED) return null;
   const sourceSha =
@@ -254,19 +261,17 @@ async function requireDeployedRendererIdentity(
     sourceSha,
     "deployed renderer mode requires an exact source SHA",
   ).toMatch(/^[0-9a-f]{40}$/);
-  expect(
-    new URL(baseURL ?? "https://missing.invalid").origin,
-    "deployed Playwright must be hard-pinned to the canonical deployed app origin",
-  ).toBe(DEPLOYED_RENDERER_ALIAS);
-  expect(
-    new URL(page.url()).origin,
-    "the browser document must not redirect away from the deployment alias",
-  ).toBe(DEPLOYED_RENDERER_ALIAS);
+  expect(new URL(page.url()).origin).toBe(expectedOrigin);
 
   const observed = await page.evaluate(async (expectedOrigin) => {
     const response = await fetch(
       `/eliza-renderer-build.json?deployed-browser-proof=${Date.now()}`,
-      { cache: "no-store", headers: { "cache-control": "no-cache" } },
+      {
+        cache: "no-store",
+        credentials: "omit",
+        redirect: "error",
+        headers: { "cache-control": "no-cache" },
+      },
     );
     const responseUrl = new URL(response.url);
     if (
@@ -275,11 +280,11 @@ async function requireDeployedRendererIdentity(
       responseUrl.pathname !== "/eliza-renderer-build.json"
     ) {
       throw new Error(
-        "renderer manifest did not come from the deployment alias",
+        "renderer manifest did not come from the attested origin",
       );
     }
     return (await response.json()) as Record<string, unknown>;
-  }, DEPLOYED_RENDERER_ALIAS);
+  }, expectedOrigin);
   expect(Object.keys(observed).sort()).toEqual(
     [
       "assetCount",
@@ -310,7 +315,9 @@ async function requireDeployedRendererIdentity(
   return {
     buildId: observed.buildId as string,
     commit: sourceSha,
-    origin: DEPLOYED_RENDERER_ALIAS,
+    indexHtmlSha256: observed.indexHtmlSha256 as string,
+    assetCount: observed.assetCount as number,
+    origin: expectedOrigin,
   };
 }
 
@@ -319,14 +326,15 @@ async function requireRendererCloudApiOrigin(
   expectedApiOrigin: string,
   deployedRenderer: DeployedRendererIdentity | null,
 ): Promise<string> {
-  // Owned Pages boot deliberately uses its first-party API proxy. Only an
-  // already verified staging renderer may use that exact alias, and its
-  // public proxy must prove the same staging source before receiving a bearer.
-  const stagingPagesOrigin = cloudLiveDeployedRendererOrigin("staging");
-  const stagingPagesRenderer =
-    deployedRenderer?.origin === stagingPagesOrigin ? deployedRenderer : null;
-  const expectedRendererOrigin =
-    stagingPagesRenderer?.origin ?? expectedApiOrigin;
+  // Each staging renderer boots through its own first-party API proxy.
+  const stagingAppOrigin = cloudLiveDeployedRendererOrigin("staging");
+  const stagingRenderer =
+    deployedRenderer &&
+    (deployedRenderer.origin === stagingAppOrigin ||
+      deployedRenderer.origin === STAGING_PAGES_ALIAS)
+      ? deployedRenderer
+      : null;
+  const expectedRendererOrigin = stagingRenderer?.origin ?? expectedApiOrigin;
   const readRendererCloudBase = () =>
     page.evaluate(() => {
       const config = (
@@ -340,12 +348,14 @@ async function requireRendererCloudApiOrigin(
     readCloudBase: readRendererCloudBase,
     expectedApiOrigin: expectedRendererOrigin,
   });
-  if (stagingPagesRenderer) {
+  if (stagingRenderer) {
     expect(expectedApiOrigin).toBe("https://api-staging.eliza.app");
-    expect(await readRendererCloudBase()).toBe(stagingPagesRenderer.origin);
+    expect(await readRendererCloudBase()).toBe(stagingRenderer.origin);
     const health = await page.evaluate(async (expectedOrigin) => {
       if (window.top !== window || window.location.origin !== expectedOrigin) {
-        throw new Error("refusing Cloud health proof outside the Pages alias");
+        throw new Error(
+          "refusing Cloud health proof outside the attested origin",
+        );
       }
       const response = await fetch("/api/health", {
         credentials: "omit",
@@ -363,7 +373,9 @@ async function requireRendererCloudApiOrigin(
         responseUrl.search !== "" ||
         responseUrl.hash !== ""
       ) {
-        throw new Error("Cloud health did not come from the Pages API proxy");
+        throw new Error(
+          "Cloud health did not come from the renderer API proxy",
+        );
       }
       const value = (await response.json()) as Record<string, unknown>;
       return {
@@ -371,9 +383,9 @@ async function requireRendererCloudApiOrigin(
         commit: value.commit,
         environment: value.environment,
       };
-    }, stagingPagesRenderer.origin);
+    }, stagingRenderer.origin);
     expect(health.status).toBe("ok");
-    expect(health.commit).toBe(stagingPagesRenderer.commit);
+    expect(health.commit).toBe(stagingRenderer.commit);
     expect(health.environment).toBe("staging");
   }
   return observation.apiOrigin;
@@ -385,12 +397,45 @@ async function openProtectedCloudBlankStart(
   expectedApiOrigin: string,
 ): Promise<ProtectedCloudBlankStart> {
   await seedProtectedCloudBlankStart(page);
-  // Hosted Cloud opens Personal Eliza through its post-login join route. The
-  // root is the account dashboard and does not start the identity trajectory.
+  const staging =
+    DEPLOYED_RENDERER_ENABLED &&
+    DEPLOYED_APP_ORIGIN === cloudLiveDeployedRendererOrigin("staging");
+  if (DEPLOYED_RENDERER_ENABLED) {
+    expect(new URL(baseURL ?? "https://missing.invalid").origin).toBe(
+      DEPLOYED_APP_ORIGIN,
+    );
+  }
+  let aliasIdentity: DeployedRendererIdentity | null = null;
+  if (staging) {
+    await page.goto(`${STAGING_PAGES_ALIAS}/join`, {
+      waitUntil: "domcontentloaded",
+    });
+    aliasIdentity = await requireDeployedRendererIdentity(
+      page,
+      STAGING_PAGES_ALIAS,
+    );
+    await requireStagingJoinBytes(
+      page,
+      STAGING_PAGES_ALIAS,
+      aliasIdentity?.indexHtmlSha256,
+    );
+    await requireRendererCloudApiOrigin(page, expectedApiOrigin, aliasIdentity);
+  }
   await page.goto(DEPLOYED_RENDERER_ENABLED ? "/join" : "/", {
     waitUntil: "domcontentloaded",
   });
-  const publicIdentity = await requireDeployedRendererIdentity(page, baseURL);
+  const publicIdentity = await requireDeployedRendererIdentity(page);
+  if (staging) {
+    await requireStagingJoinBytes(
+      page,
+      DEPLOYED_APP_ORIGIN,
+      publicIdentity?.indexHtmlSha256,
+    );
+    expect(publicIdentity).toEqual({
+      ...aliasIdentity,
+      origin: DEPLOYED_APP_ORIGIN,
+    });
+  }
   const publicApiOrigin = await requireRendererCloudApiOrigin(
     page,
     expectedApiOrigin,
@@ -403,17 +448,18 @@ async function openProtectedCloudBlankStart(
     };
   }
 
-  // The first load is deliberately public. Only after the document origin,
-  // exact renderer manifest, and build-time Cloud API origin close do we expose
-  // the bearer to that top-level origin, then reload so application boot
-  // observes the authenticated store.
-  expect(publicIdentity).not.toBeNull();
-  await seedVerifiedDeployedCloudBrowserAuth(page);
-  await page.reload({ waitUntil: "domcontentloaded" });
-  const authenticatedIdentity = await requireDeployedRendererIdentity(
-    page,
-    baseURL,
-  );
+  if (staging) {
+    const seed = resolveCloudLiveBrowserAuthSeed(process.env);
+    if (!publicIdentity || !seed)
+      throw new Error(
+        "Missing attested staging renderer or protected test principal",
+      );
+    await openAuthenticatedStagingJoin(page, publicIdentity, seed);
+  } else {
+    await seedVerifiedDeployedCloudBrowserAuth(page);
+    await page.reload({ waitUntil: "domcontentloaded" });
+  }
+  const authenticatedIdentity = await requireDeployedRendererIdentity(page);
   expect(authenticatedIdentity).toEqual(publicIdentity);
   const authenticatedApiOrigin = await requireRendererCloudApiOrigin(
     page,
@@ -817,14 +863,17 @@ test.describe("real cloud login + personal identity + chat", () => {
       {
         type: "renderer-source",
         description: DEPLOYED_RENDERER_ENABLED
-          ? "Cloudflare Pages deployment alias"
+          ? `Deployed Cloud app at ${DEPLOYED_APP_ORIGIN}`
           : "locally built renderer bundle (not a deployed artifact)",
       },
     );
     if (DEPLOYED_RENDERER_ENABLED) {
       test.info().annotations.push({
         type: "cloudflare-pages-alias",
-        description: DEPLOYED_RENDERER_ALIAS,
+        description:
+          DEPLOYED_APP_ORIGIN === cloudLiveDeployedRendererOrigin("staging")
+            ? STAGING_PAGES_ALIAS
+            : DEPLOYED_APP_ORIGIN,
       });
     }
     expect(

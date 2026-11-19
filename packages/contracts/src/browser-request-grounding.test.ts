@@ -876,6 +876,60 @@ describe("strict open command with where the address opens", () => {
     // A direct request too, so the phone opens it without a review.
     expect(directBrowserDestination(text)).toBe(href);
   });
+  it("grounds the spoken hostname without substituting a different destination", () => {
+    const text = "Open alphacompute dot ai in the browser.";
+    const url = "https://alphacompute.ai/";
+    expect(authoredBrowserOpen(text)).toEqual({ href: url, newTab: false });
+    expect(groundBrowserDestination(text, url)).toBe(url);
+    expect(
+      groundBrowserDestination(text, "https://alphacompute.com/"),
+    ).toBeUndefined();
+    expect(
+      groundBrowserDestination(text, "https://alphacompute.ai/login"),
+    ).toBeUndefined();
+    expect(
+      groundBrowserDestination(`Don't ${text.toLowerCase()}`, url),
+    ).toBeUndefined();
+    expect(
+      groundBrowserDestination(`${text} Don't open alphacompute.ai.`, url),
+    ).toBeUndefined();
+    expect(
+      groundBrowserDestination(
+        "Open alphacompute.ai. Actually, do not open alphacompute dot ai.",
+        url,
+      ),
+    ).toBeUndefined();
+  });
+  it.each([
+    ["maps dot example.com", "maps.example.com"],
+    ["maps\u00a0dot\u00a0example.com", "maps.example.com"],
+    ["example.com dot ai", "example.com.ai"],
+    ["münchen dot de", "xn--mnchen-3ya.de"],
+    ["maps dot münchen.de", "maps.xn--mnchen-3ya.de"],
+  ])("keeps %s as one complete destination", (spoken, host) => {
+    const text = `Open ${spoken} in a new tab.`;
+    const href = `https://${host}/`;
+    expect(authoredBrowserOpen(text)).toEqual({ href, newTab: true });
+    expect(groundBrowserDestination(text, href)).toBe(href);
+    expect(
+      groundBrowserDestination(text, "https://example.com/"),
+    ).toBeUndefined();
+    expect(
+      groundBrowserDestination(`Open ${host}. Don't open ${spoken}.`, href),
+    ).toBeUndefined();
+  });
+  it.each([
+    "Don't open dot dot com.",
+    "Don't show me dot dot com.",
+    "Don't open the website dot dot com.",
+    "Not dot dot com.",
+  ])("keeps the opening words outside the spoken hostname in %s", (refusal) => {
+    const href = "https://dot.com/";
+    expect(authoredBrowserDestination("Open dot dot com.")).toBe(href);
+    expect(
+      groundBrowserDestination(`Open dot.com. ${refusal}`, href),
+    ).toBeUndefined();
+  });
   it.each([
     // A private tab, another app, a time or more work stays the model's call.
     "open youtube.com in a private tab",

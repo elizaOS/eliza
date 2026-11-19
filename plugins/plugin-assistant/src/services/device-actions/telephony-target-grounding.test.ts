@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { DeviceOperation } from "./contract.ts";
 import { authoredTelephonyTarget } from "./telephony-request.ts";
+import { spokenPhoneNumbers } from "./spoken-phone-number.ts";
 import {
   DeviceTelephonyTargetNotRequestedError,
   groundTelephonyTarget,
+  ownerPhoneNumbers,
   samePhoneNumber,
   swappedPhoneReferences,
   writtenPhoneNumbers,
@@ -275,6 +277,92 @@ describe("other requests ground the model's recipient", () => {
   });
 });
 
+describe("numbers the owner spoke", () => {
+  const WORDS = "call four one five, five five five, zero one zero zero";
+  const ASR_WORDS = "call four one five five five five oh one double oh";
+  // On-device ASR for a spoken 415-555-0160: "for" is the digit 4.
+  const ASR_DIGITS = "Call for 15. 5550160.";
+
+  it("reads the digits of a spoken number", () => {
+    expect(spokenPhoneNumbers(WORDS)).toContain("4155550100");
+    expect(spokenPhoneNumbers(ASR_WORDS)).toEqual(["4155550100"]);
+    expect(spokenPhoneNumbers(ASR_DIGITS)).toContain("4155550160");
+    expect(spokenPhoneNumbers("four one five 555 0100")).toEqual([
+      "4155550100",
+    ]);
+    expect(
+      spokenPhoneNumbers("dial four fifteen five five five oh one hundred"),
+    ).not.toContain("4155550100");
+    expect(
+      spokenPhoneNumbers("call four fifteen, triple five, oh one double oh"),
+    ).toContain("4155550100");
+    expect(spokenPhoneNumbers("nine one one")).toEqual(["911"]);
+  });
+
+  it("reads a homophone only beside other digits", () => {
+    expect(spokenPhoneNumbers("text Sam to say hi")).toEqual([]);
+    expect(spokenPhoneNumbers("call Sam for a minute at 5")).toEqual([]);
+    expect(spokenPhoneNumbers("call me at four")).toEqual([]);
+    expect(spokenPhoneNumbers("call Maya at 5 or 6:30")).toEqual([]);
+    expect(spokenPhoneNumbers("order A4155550100")).toEqual([]);
+    // A written number is still read as written.
+    expect(ownerPhoneNumbers("call 415-555-0100")).toContain("4155550100");
+  });
+
+  it.each([
+    ["words with pauses", WORDS, "4155550100"],
+    ["oh and double", ASR_WORDS, "4155550100"],
+    ["a country code", ASR_WORDS, "+14155550100"],
+    ["a mixed form", "call four one five 555 0100", "4155550100"],
+    ["ASR fragments", ASR_DIGITS, "4155550160"],
+  ])("accepts the number spoken as %s", (_label, request, proposed) => {
+    expect(groundTelephonyTarget(call(proposed), request)).toEqual({
+      operation: call(proposed.replace("+1", "")),
+      handedThrough: false,
+    });
+  });
+
+  it("refuses a number the owner did not speak", () => {
+    expect(refusal(call("6505715862"), WORDS)).toBe("number");
+    expect(refusal(call("6505715862"), ASR_WORDS)).toBe("number");
+    // Exact digits only: the ASR heard 0160, so 0100 has no source.
+    expect(refusal(call("4155550100"), ASR_DIGITS)).toBe("number");
+    expect(refusal(call("4155550101"), ASR_WORDS)).toBe("number");
+    expect(refusal(call("4155550104"), "call me at four")).toBe("number");
+    expect(refusal(call("4444444444"), "call me at four")).toBe("number");
+  });
+
+  it("never takes an SMS recipient from a spoken body", () => {
+    const owner =
+      "send Sam a text: call me at four one five five five five oh one double oh";
+    expect(
+      refusal(
+        text(
+          "4155550100",
+          "call me at four one five five five five oh one double oh",
+        ),
+        owner,
+      ),
+    ).toBe("number");
+    // The model wrote the body's number in digits.
+    expect(refusal(text("4155550100", "Call me at 415-555-0100."), owner)).toBe(
+      "number",
+    );
+    expect(
+      refusal(send(["4155550100"], "Call me at 415-555-0100."), owner),
+    ).toBe("number");
+  });
+
+  it("grounds a spoken keypad prefill", () => {
+    expect(
+      groundTelephonyTarget(
+        { type: "phone_keypad", number: "4155550100" } as DeviceOperation,
+        "open the dialer and put in four one five five five five oh one double oh",
+      ).operation,
+    ).toEqual({ type: "phone_keypad", number: "4155550100" });
+  });
+});
+
 describe("authoredTelephonyTarget", () => {
   it("reads the recipient of the whole-message command", () => {
     expect(authoredTelephonyTarget("call 415-555-0100")).toEqual({
@@ -393,7 +481,8 @@ describe("numbers the planner saw only as contact references", () => {
   });
 
   it("never offers a number from the message body as the recipient", () => {
-    const owner = "when you get a sec could you text Sam: call me at 415-555-0100";
+    const owner =
+      "when you get a sec could you text Sam: call me at 415-555-0100";
     const error = (() => {
       try {
         groundTelephonyTarget(
