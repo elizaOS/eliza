@@ -38,7 +38,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   for (const runtime of runtimes.splice(0)) closeRuntimeViewRegistry(runtime);
 });
-async function fixture(request = "Open example.com.") {
+async function fixture(request = "Open example.com.", channelType = "DM") {
   const runtime = new AgentRuntime({
     character: {
       name: "Eliza",
@@ -75,7 +75,7 @@ async function fixture(request = "Open example.com.") {
     content: {
       text: request,
       source: "client_chat",
-      channelType: "DM",
+      channelType,
       metadata: {
         clientDevice: {
           context: { view: "notes", revision: 1, sensitive: false },
@@ -110,17 +110,18 @@ async function fixture(request = "Open example.com.") {
   };
 }
 it.each([
-  "Open example.com.",
-  "Please visit https://example.com/path?q=1",
-  "Go to www.example.com",
+  ["Open example.com.", "DM"],
+  ["Please visit https://example.com/path?q=1", "DM"],
+  ["Go to www.example.com", "DM"],
   // The owner's v609 turns: Stage 1 named only VIEWS_SHOW, the Browser view
   // opened and the address never loaded.
-  "open example.com in the browser",
-  "open wikipedia.org in a new tab",
+  ["open example.com in the browser", "DM"],
+  ["open wikipedia.org in a new tab", "DM"],
+  ["Open alphacompute dot ai in the browser.", "VOICE_DM"],
 ])(
   "routes a complete native URL request to the existing reviewed operation: %s",
-  async (request) => {
-    const f = await fixture(request);
+  async (request, channelType) => {
+    const f = await fixture(request, channelType);
     await withDeviceActionTurn(
       f.runtime,
       f.credential,
