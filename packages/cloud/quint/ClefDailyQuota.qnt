@@ -1,46 +1,79 @@
 module ClefDailyQuota {
   pure val Funding = Set("free", "purchase", "subscription", "promo", "unavailable")
-  pure def hasFunding(source: str): bool = source.in(Set("purchase", "subscription"))
-  pure def limit(source: str): int = if (hasFunding(source)) 4 else 2
+  pure val Credentials = Set("first", "second")
+  pure def dailyLimit(source: str): int =
+    if (source.in(Set("purchase", "subscription"))) 4 else 2
 
-  var s: { source: str, count: int, observedSource: str, observedCount: int,
-           outcome: str, credentialAllowed: bool, storageAvailable: bool }
+  var s: {
+    source: str, daily: int, minute: int, observedSource: str,
+    observedDaily: int, observedMinute: int, credential: str,
+    outcome: str, credentialAllowed: bool, dailyAvailable: bool, minuteAvailable: bool
+  }
 
   action init = s' = {
-    source: "free", count: 0, observedSource: "free", observedCount: 0,
-    outcome: "idle", credentialAllowed: false, storageAvailable: false
+    source: "free", daily: 0, minute: 0, observedSource: "free",
+    observedDaily: 0, observedMinute: 0, credential: "first", outcome: "idle",
+    credentialAllowed: false, dailyAvailable: false, minuteAvailable: false
   }
 
   action observe(source: str): bool = s' = s.with("source", source)
-  action reset = s' = s.with("count", 0)
-  action request(credentialAllowed: bool, storageAvailable: bool): bool = {
-    val reachesCounter = credentialAllowed and storageAvailable
+  action resetDaily = s' = s.with("daily", 0)
+  action renewMinute = s' = s.with("minute", 0)
+
+  action request(credential: str, credentialAllowed: bool, dailyAvailable: bool, minuteAvailable: bool): bool = {
+    val checksDaily = credentialAllowed and dailyAvailable
+    val checksMinute = checksDaily and s.daily >= dailyLimit(s.source) and s.source == "subscription"
     s' = { ...s,
-      count: if (reachesCounter and s.count < 5) s.count + 1 else s.count,
-      observedSource: s.source, observedCount: s.count,
-      credentialAllowed: credentialAllowed, storageAvailable: storageAvailable,
-      outcome: if (reachesCounter and s.count < limit(s.source)) "admitted" else "refused"
+      daily: if (checksDaily and s.daily < 5) s.daily + 1 else s.daily,
+      minute: if (checksMinute and minuteAvailable and s.minute < 3) s.minute + 1 else s.minute,
+      observedSource: s.source, observedDaily: s.daily, observedMinute: s.minute,
+      credential: credential, credentialAllowed: credentialAllowed, dailyAvailable: dailyAvailable,
+      minuteAvailable: minuteAvailable,
+      outcome: if (not(credentialAllowed)) "credential-refused"
+        else if (not(dailyAvailable) or (checksMinute and not(minuteAvailable))) "unavailable"
+        else if (s.daily < dailyLimit(s.source)) "daily-admit"
+        else if (checksMinute and s.minute < 2) "minute-admit"
+        else if (checksMinute) "minute-refused" else "daily-refused"
     }
   }
 
   action step = any {
     { nondet source = Funding.oneOf() observe(source) },
-    reset,
+    resetDaily,
+    renewMinute,
     {
+      nondet credential = Credentials.oneOf()
       nondet credentialAllowed = Set(false, true).oneOf()
-      nondet storageAvailable = Set(false, true).oneOf()
-      request(credentialAllowed, storageAvailable)
+      nondet dailyAvailable = Set(false, true).oneOf()
+      nondet minuteAvailable = Set(false, true).oneOf()
+      request(credential, credentialAllowed, dailyAvailable, minuteAvailable)
     }
   }
 
-  val Limited = s.outcome == "admitted" implies
-    s.credentialAllowed and s.storageAvailable and s.observedCount < limit(s.observedSource)
-  val FundedOnly = (s.outcome == "admitted" and s.observedCount >= 2)
-    implies hasFunding(s.observedSource)
+  val DailyAdmissionBounded = s.outcome == "daily-admit" implies
+    (s.credentialAllowed and s.dailyAvailable and s.observedDaily < dailyLimit(s.observedSource))
+  val ContinuedOnlyWhileSubscribed = s.outcome == "minute-admit" implies
+    (s.credentialAllowed and s.dailyAvailable and s.minuteAvailable and
+      s.observedSource == "subscription" and s.observedDaily >= dailyLimit(s.observedSource) and s.observedMinute < 2)
+  val ExhaustedSubscriptionWindowRefuses = s.outcome == "minute-refused" implies
+    (s.credentialAllowed and s.dailyAvailable and s.minuteAvailable and
+      s.observedSource == "subscription" and s.observedMinute >= 2)
 
-  run purchaseThenRefund = init.then(request(true, true)).then(request(true, true))
-    .then(observe("purchase")).then(request(true, true))
-    .expect(s.outcome == "admitted" and s.count == 3)
-    .then(observe("free")).then(request(true, true))
-    .expect(s.outcome == "refused" and s.count == 4)
+  run purchaseThenRefund = init.then(request("first", true, true, true)).then(request("first", true, true, true))
+    .then(observe("purchase")).then(request("first", true, true, true))
+    .expect(s.outcome == "daily-admit" and s.daily == 3)
+    .then(observe("free")).then(request("first", true, true, true))
+    .expect(s.outcome == "daily-refused" and s.daily == 4)
+
+  run subscriptionRenewsAcrossCredentials = init.then(observe("subscription"))
+    .then(request("first", true, true, true)).then(request("first", true, true, true))
+    .then(request("first", true, true, true)).then(request("second", true, true, true))
+    .expect(s.outcome == "daily-admit" and s.daily == 4 and s.minute == 0)
+    .then(request("first", true, true, true)).then(request("second", true, true, true))
+    .expect(s.outcome == "minute-admit" and s.minute == 2)
+    .then(request("first", true, true, true)).expect(s.outcome == "minute-refused")
+    .then(renewMinute).then(request("first", true, true, true))
+    .expect(s.outcome == "minute-admit" and s.minute == 1 and s.daily == 5)
+    .then(observe("free")).then(request("second", true, true, true))
+    .expect(s.outcome == "daily-refused")
 }

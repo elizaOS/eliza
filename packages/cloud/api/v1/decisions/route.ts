@@ -14,7 +14,8 @@
  *
  * Clef calls do not debit credits. Shared Redis enforces 30 requests a minute
  * per credential and a daily cap across the organization's credentials.
- * The daily cap is 2,000, or 4,000 with a qualifying purchase or subscription.
+ * The daily cap is 2,000, or 4,000 with a qualifying purchase. An active paid
+ * subscription renews included capacity each minute at its organization rate.
  */
 
 import {
@@ -50,19 +51,35 @@ const CLEF_DECISIONS_DAILY_WINDOW_MS = 86_400_000;
 const CLEF_DECISIONS_DAILY_LIMIT = 2_000;
 const CLEF_DECISIONS_FUNDED_DAILY_LIMIT = 4_000;
 
-async function organizationDailyLimit(organizationId: string): Promise<number> {
+type DecisionQuota =
+  | { kind: "daily"; maxRequests: number }
+  | { kind: "subscription"; rpm: number };
+
+const BASE_DECISION_QUOTA: DecisionQuota = {
+  kind: "daily",
+  maxRequests: CLEF_DECISIONS_DAILY_LIMIT,
+};
+
+async function organizationDecisionQuota(
+  organizationId: string,
+): Promise<DecisionQuota> {
   try {
     const policy = await readOrganizationQuotaPolicy(organizationId);
-    if (policy.tier.status === "available") {
-      const funded =
-        policy.authority.source === "subscription"
-          ? policy.subscriptionFunded
-          : policy.tierSourceCreditTotal !== null &&
-            resolveOrgTierFromSourceValues(
-              organizationId,
-              policy.tierSourceCreditTotal,
-            ).tierData.tierName !== "free";
-      if (funded) return CLEF_DECISIONS_FUNDED_DAILY_LIMIT;
+    if (policy.tier.status !== "available") return BASE_DECISION_QUOTA;
+    if (
+      policy.authority.source === "subscription" &&
+      policy.subscriptionFunded
+    ) {
+      return { kind: "subscription", rpm: policy.tier.value.strictRpm };
+    }
+    if (
+      policy.tierSourceCreditTotal !== null &&
+      resolveOrgTierFromSourceValues(
+        organizationId,
+        policy.tierSourceCreditTotal,
+      ).tierData.tierName !== "free"
+    ) {
+      return { kind: "daily", maxRequests: CLEF_DECISIONS_FUNDED_DAILY_LIMIT };
     }
   } catch {
     // error-policy:J2 An unavailable funding decision preserves the base cap.
@@ -70,27 +87,69 @@ async function organizationDailyLimit(organizationId: string): Promise<number> {
       organizationId,
     });
   }
-  return CLEF_DECISIONS_DAILY_LIMIT;
+  return BASE_DECISION_QUOTA;
 }
 
-/** Admits one Clef call against the organization's daily cap, or answers 429/503. */
+const SCOPE_HEADER = "X-Clef-Rate-Limit-Scope";
+
+async function checkOrganizationLimit(
+  c: Context<AppEnv>,
+  config: RateLimitConfig,
+  scope: "organization-day" | "subscription-minute",
+): Promise<Response | null> {
+  let admitted = false;
+  const blocked = await moneyRateLimit(config)(c, async () => {
+    admitted = true;
+  });
+  if (admitted) return null;
+  const refusal =
+    blocked ?? c.json({ status: "unavailable", reason: "rate_limited" }, 503);
+  refusal.headers.set(SCOPE_HEADER, scope);
+  return refusal;
+}
+
 async function admitOrganizationDecision(
   c: Context<AppEnv>,
   organizationId: string,
 ): Promise<Response | null> {
-  let admitted = false;
-  const limiter = moneyRateLimit({
-    windowMs: CLEF_DECISIONS_DAILY_WINDOW_MS,
-    maxRequests: await organizationDailyLimit(organizationId),
-    keyGenerator: () => `clef-decisions:org:${organizationId}`,
-  });
-  const blocked = await limiter(c, async () => {
-    admitted = true;
-  });
-  if (admitted) return null;
-  return (
-    blocked ?? c.json({ status: "unavailable", reason: "rate_limited" }, 503)
+  const quota = await organizationDecisionQuota(organizationId);
+  const dailyKey = `clef-decisions:org:${organizationId}`;
+  // Hono copies the response headers after initialization. A discarded daily
+  // refusal must not publish its retry or limit headers on renewed requests.
+  if (quota.kind === "subscription") void c.res;
+
+  const dailyRefusal = await checkOrganizationLimit(
+    c,
+    {
+      windowMs: CLEF_DECISIONS_DAILY_WINDOW_MS,
+      maxRequests:
+        quota.kind === "subscription"
+          ? CLEF_DECISIONS_FUNDED_DAILY_LIMIT
+          : quota.maxRequests,
+      keyGenerator: () => dailyKey,
+    },
+    "organization-day",
   );
+  if (!dailyRefusal) {
+    c.header(SCOPE_HEADER, "organization-day");
+    return null;
+  }
+  if (quota.kind !== "subscription" || dailyRefusal.status !== 429) {
+    return dailyRefusal;
+  }
+
+  const minuteRefusal = await checkOrganizationLimit(
+    c,
+    {
+      windowMs: CLEF_DECISIONS_CREDENTIAL_LIMIT.windowMs,
+      maxRequests: quota.rpm,
+      keyGenerator: () => `${dailyKey}:subscription-minute`,
+    },
+    "subscription-minute",
+  );
+  if (minuteRefusal) return minuteRefusal;
+  c.header(SCOPE_HEADER, "subscription-minute");
+  return null;
 }
 
 const app = new Hono<AppEnv>();

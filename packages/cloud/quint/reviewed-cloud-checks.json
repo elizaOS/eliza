@@ -13,7 +13,8 @@
         "each Clef call counts against the organization's daily cap",
         "an organization over its daily cap gets 429 and no Clef call",
         "a settled purchase raises the same organization's cap until revoked",
-        "a funded subscription raises the cap while a promo grant or unavailable policy keeps the base cap"
+        "a funded subscription raises the cap while a promo grant or unavailable policy keeps the base cap",
+        "a subscription renews included capacity beyond the daily burst across credentials"
       ]
     }
   ],

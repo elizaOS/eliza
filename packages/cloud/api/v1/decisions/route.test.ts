@@ -3,15 +3,61 @@ import { readFile } from "node:fs/promises";
 import { HTTPException } from "hono/http-exception";
 
 let authenticated = true;
-const rateLimited: { windowMs: number; maxRequests: number; key?: string }[] =
-  [];
-const blockedKeys = new Set<string>();
-const organizationCalls = new Map<string, number>();
+const unavailableKeys = new Set<string>();
+const counts = new Map<string, number>();
+const expiration = new Map<string, number>();
+let clock = 0;
+
+function organizationCalls(key: string) {
+  return counts.get(`ratelimit:${key}`);
+}
+
+function seedOrganizationCalls(key: string, count: number) {
+  const storeKey = `ratelimit:${key}`;
+  counts.set(storeKey, count);
+  expiration.set(storeKey, clock + 86_400_000);
+}
+
+mock.module("@elizaos/cloud-shared/lib/cache/redis-factory", () => ({
+  buildRedisClient: () => ({
+    pipeline() {
+      const commands: Array<() => number> = [];
+      const pipeline = {
+        incr(key: string) {
+          commands.push(() => {
+            if (unavailableKeys.has(key)) throw new Error("Redis unavailable");
+            if ((expiration.get(key) ?? 0) <= clock) {
+              expiration.delete(key);
+              counts.delete(key);
+            }
+            const next = (counts.get(key) ?? 0) + 1;
+            counts.set(key, next);
+            return next;
+          });
+          return pipeline;
+        },
+        pttl(key: string) {
+          commands.push(() => (expiration.get(key) ?? clock - 1) - clock);
+          return pipeline;
+        },
+        async exec() {
+          return commands.map((command) => command());
+        },
+      };
+      return pipeline;
+    },
+    async pexpire(key: string, ttl: number) {
+      expiration.set(key, clock + ttl);
+      return 1;
+    },
+  }),
+}));
+
 const freePolicy = {
   authority: { source: "legacy" },
   subscriptionFunded: false,
   tierSourceCreditTotal: "0" as string | null,
-  tier: { status: "available" },
+  tier: { status: "available", value: { strictRpm: 2 } },
 };
 let policy = freePolicy;
 let policyError = false;
@@ -36,38 +82,6 @@ mock.module("@elizaos/cloud-shared/auth", () => ({
     return { id: "user-1", organization_id: "org-1" };
   },
 }));
-mock.module(
-  "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare",
-  () => ({
-    // Records each limiter's window and key (fail-closed is the real
-    // moneyRateLimit's job); a key in blockedKeys answers 429 like Redis would.
-    moneyRateLimit:
-      (config: {
-        windowMs: number;
-        maxRequests: number;
-        keyGenerator?: (c: unknown) => string;
-      }) =>
-      async (
-        c: { json: (body: unknown, status: number) => Response },
-        next: () => Promise<void>,
-      ) => {
-        const key = config.keyGenerator?.(c);
-        rateLimited.push({
-          windowMs: config.windowMs,
-          maxRequests: config.maxRequests,
-          ...(key ? { key } : {}),
-        });
-        if (key) {
-          const count = (organizationCalls.get(key) ?? 0) + 1;
-          organizationCalls.set(key, count);
-          if (blockedKeys.has(key) || count > config.maxRequests) {
-            return c.json({ code: "rate_limit_exceeded" }, 429);
-          }
-        }
-        await next();
-      },
-  }),
-);
 const record =
   (level: string) =>
   (...args: unknown[]) =>
@@ -85,12 +99,19 @@ const { default: app } = await import("./route");
 const SECRET = "pay the electric bill with card 4111";
 const modeRequest = { kind: "mode", action: SECRET, context: SECRET };
 
-function post(body: unknown, env: Record<string, unknown>) {
+function post(
+  body: unknown,
+  env: Record<string, unknown>,
+  key = "eliza_test_first",
+) {
   return app.request(
     "/",
     {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${key}`,
+      },
       body: JSON.stringify(body),
     },
     env,
@@ -99,9 +120,10 @@ function post(body: unknown, env: Record<string, unknown>) {
 
 beforeEach(() => {
   authenticated = true;
-  rateLimited.length = 0;
-  blockedKeys.clear();
-  organizationCalls.clear();
+  counts.clear();
+  expiration.clear();
+  unavailableKeys.clear();
+  clock = 0;
   policy = freePolicy;
   policyError = false;
   logged.length = 0;
@@ -116,7 +138,8 @@ test("route is rate limited and authenticated before any Clef call", async () =>
     CLEF_DECISIONS_ENABLED: "true",
   });
   expect(response.status).toBe(401);
-  expect(rateLimited).toEqual([{ windowMs: 60_000, maxRequests: 30 }]);
+  expect(response.headers.get("X-RateLimit-Limit")).toBe("30");
+  expect(counts.size).toBe(1);
   expect(runs).toHaveLength(0);
 });
 
@@ -138,16 +161,14 @@ test("each Clef call counts against the organization's daily cap", async () => {
     CLEF_DECISIONS_ENABLED: "true",
   });
   expect(response.status).toBe(200);
-  expect(rateLimited).toEqual([
-    { windowMs: 60_000, maxRequests: 30 },
-    ORG_DAILY,
-  ]);
+  expect(response.headers.get("X-RateLimit-Limit")).toBe("2000");
+  expect(organizationCalls(ORG_DAILY.key)).toBe(1);
 });
 
 test("an organization over its daily cap gets 429 and no Clef call", async () => {
   const runs: unknown[] = [];
   const AI = { run: async (...args: unknown[]) => runs.push(args) };
-  blockedKeys.add(ORG_DAILY.key);
+  seedOrganizationCalls(ORG_DAILY.key, 2_000);
   const response = await post(modeRequest, {
     AI,
     CLEF_DECISIONS_ENABLED: "true",
@@ -163,15 +184,16 @@ test("a settled purchase raises the same organization's cap until revoked", asyn
     answers: { ask: { type: "noul", noul: 0.1 } },
   }));
   const env = { AI: { run }, CLEF_DECISIONS_ENABLED: "true" };
-  organizationCalls.set(ORG_DAILY.key, 2_000);
+  seedOrganizationCalls(ORG_DAILY.key, 2_000);
 
   policy = { ...freePolicy, tierSourceCreditTotal: "4.99" };
   expect((await post(modeRequest, env)).status).toBe(429);
 
   policy = { ...freePolicy, tierSourceCreditTotal: "5.00" };
-  expect((await post(modeRequest, env)).status).toBe(200);
-  expect(rateLimited.at(-1)).toEqual({ ...ORG_DAILY, maxRequests: 4_000 });
-  expect(organizationCalls.get(ORG_DAILY.key)).toBe(2_002);
+  const funded = await post(modeRequest, env);
+  expect(funded.status).toBe(200);
+  expect(funded.headers.get("X-RateLimit-Limit")).toBe("4000");
+  expect(organizationCalls(ORG_DAILY.key)).toBe(2_002);
 
   policy = freePolicy;
   expect((await post(modeRequest, env)).status).toBe(429);
@@ -184,7 +206,7 @@ test("a funded subscription raises the cap while a promo grant or unavailable po
     answers: { ask: { type: "noul", noul: 0.1 } },
   }));
   const env = { AI: { run }, CLEF_DECISIONS_ENABLED: "true" };
-  organizationCalls.set(ORG_DAILY.key, 2_000);
+  seedOrganizationCalls(ORG_DAILY.key, 2_000);
   const funded = {
     ...freePolicy,
     subscriptionFunded: true,
@@ -200,7 +222,7 @@ test("a funded subscription raises the cap while a promo grant or unavailable po
   policy = {
     ...funded,
     authority: { source: "subscription" },
-    tier: { status: "unavailable" },
+    tier: { status: "unavailable", value: { strictRpm: 2 } },
   };
   expect((await post(modeRequest, env)).status).toBe(429);
 
@@ -209,10 +231,82 @@ test("a funded subscription raises the cap while a promo grant or unavailable po
   expect(run).toHaveBeenCalledTimes(1);
 });
 
+test("a subscription renews included capacity beyond the daily burst across credentials", async () => {
+  const run = mock(async () => ({
+    model: "clef-flash",
+    answers: { ask: { type: "noul", noul: 0.1 } },
+  }));
+  const env = { AI: { run }, CLEF_DECISIONS_ENABLED: "true" };
+  const minuteKey = `${ORG_DAILY.key}:subscription-minute`;
+  seedOrganizationCalls(ORG_DAILY.key, 3_999);
+  policy = {
+    ...freePolicy,
+    authority: { source: "subscription" },
+    subscriptionFunded: true,
+    tierSourceCreditTotal: null,
+  };
+
+  const finalDaily = await post(modeRequest, env);
+  expect([
+    finalDaily.status,
+    finalDaily.headers.get("X-RateLimit-Limit"),
+  ]).toEqual([200, "4000"]);
+  expect(organizationCalls(minuteKey)).toBeUndefined();
+  const accepted = await Promise.all([
+    post(modeRequest, env),
+    post(modeRequest, env, "eliza_test_second"),
+  ]);
+  for (const response of accepted) {
+    expect([
+      response.status,
+      response.headers.get("X-Clef-Rate-Limit-Scope"),
+      response.headers.get("X-RateLimit-Limit"),
+      response.headers.get("Retry-After"),
+    ]).toEqual([200, "subscription-minute", "2", null]);
+  }
+
+  const capped = await post(modeRequest, env, "eliza_test_second");
+  expect([
+    capped.status,
+    capped.headers.get("X-Clef-Rate-Limit-Scope"),
+    capped.headers.get("X-RateLimit-Remaining"),
+  ]).toEqual([429, "subscription-minute", "0"]);
+  expect(capped.headers.get("Retry-After")).toBe("60");
+  expect(organizationCalls(ORG_DAILY.key)).toBe(4_003);
+
+  clock += 60_000;
+  const renewed = await post(modeRequest, env);
+  expect([
+    renewed.status,
+    renewed.headers.get("X-Clef-Rate-Limit-Scope"),
+    renewed.headers.get("X-RateLimit-Remaining"),
+    renewed.headers.get("Retry-After"),
+  ]).toEqual([200, "subscription-minute", "1", null]);
+  expect(run).toHaveBeenCalledTimes(4);
+
+  unavailableKeys.add(`ratelimit:${ORG_DAILY.key}`);
+  expect((await post(modeRequest, env)).status).toBe(503);
+  unavailableKeys.clear();
+  unavailableKeys.add(`ratelimit:${minuteKey}`);
+  const minuteUnavailable = await post(modeRequest, env);
+  expect([
+    minuteUnavailable.status,
+    minuteUnavailable.headers.get("X-Clef-Rate-Limit-Scope"),
+  ]).toEqual([503, "subscription-minute"]);
+  unavailableKeys.clear();
+  policy = freePolicy;
+  const revoked = await post(modeRequest, env);
+  expect([
+    revoked.status,
+    revoked.headers.get("X-Clef-Rate-Limit-Scope"),
+  ]).toEqual([429, "organization-day"]);
+  expect(run).toHaveBeenCalledTimes(4);
+});
+
 test("disabled and invalid requests do not spend the daily cap", async () => {
   await post(modeRequest, { CLEF_DECISIONS_ENABLED: "false" });
   await post({ kind: "mode", action: "" }, { CLEF_DECISIONS_ENABLED: "true" });
-  expect(rateLimited.some((entry) => entry.key)).toBe(false);
+  expect(organizationCalls(ORG_DAILY.key)).toBeUndefined();
 });
 
 test("route answers 503 unavailable while disabled or without the AI binding", async () => {
