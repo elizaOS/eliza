@@ -154,7 +154,23 @@ function status(
   operation: Operation,
 ): MapsDeviceNavigationStatus {
   const body = object(value);
-  keys(body, ["state", "placeName", "travelMode"]);
+  keys(body, ["state", "placeName", "travelMode", "route"]);
+  if (body.route !== undefined) {
+    const route = object(body.route);
+    keys(route, ["durationSeconds", "distanceMeters", "traffic"]);
+    if (
+      body.state !== "awaiting-confirmation" ||
+      typeof route.durationSeconds !== "number" ||
+      !Number.isFinite(route.durationSeconds) ||
+      route.durationSeconds < 0 ||
+      typeof route.distanceMeters !== "number" ||
+      !Number.isFinite(route.distanceMeters) ||
+      route.distanceMeters < 0 ||
+      typeof route.traffic !== "string" ||
+      !["none", "approximated", "live"].includes(route.traffic)
+    )
+      throw new DeviceActionError("Invalid navigation route");
+  }
   const states =
     operation.kind === "select"
       ? ["selected"]

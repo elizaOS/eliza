@@ -637,6 +637,7 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
           state: "awaiting-confirmation",
           placeName: destination.name,
           travelMode,
+          route: { durationSeconds: 480, distanceMeters: 640, traffic: "none" },
         };
       },
       reroute: async () => ({ state: "navigating" }),
@@ -651,7 +652,7 @@ describe("MAPS_NAVIGATE starts phone navigation when the phone can take it", () 
     service.registerDeviceNavigation(device);
     expect(await run(service, destination)).toMatchObject({
       success: false,
-      text: "Confirm on the phone to start navigation to Port Hercule.",
+      text: "Confirm on the phone to start navigation to Port Hercule. The route is about 8 min, 640 m.",
       data: {
         action: "navigate",
         awaitingUserInput: true,

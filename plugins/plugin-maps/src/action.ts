@@ -785,13 +785,17 @@ function deviceResult(
     });
   }
   const place = status.placeName ?? "the destination";
+  const route =
+    status.state === "awaiting-confirmation" && status.route
+      ? ` The route is about ${Math.round(status.route.durationSeconds / 60)} min, ${distanceText(status.route.distanceMeters)}.`
+      : "";
   const userFacingText =
     status.state === "selected"
       ? `Selected ${place} on the map.`
       : status.state === "navigating"
         ? `Navigating to ${place}${status.travelMode ? ` by ${status.travelMode}` : ""}.`
         : status.state === "awaiting-confirmation"
-          ? `Confirm on the phone to start navigation to ${place}.`
+          ? `Confirm on the phone to start navigation to ${place}.${route}`
           : status.state === "awaiting-location"
             ? // No fix, no permission or a fix too coarse to start from: the route sheet is
               // open on the phone, and a starting place from the owner plans it instead.
