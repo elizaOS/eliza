@@ -51,7 +51,12 @@ public final class PasswordVaultAccess {
     if (instance != null) throw new IllegalStateException("Password custody is already in use");
     deviceCustodyInstalled = true;
     app.registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
-      @Override public void onActivityResumed(Activity activity) { foreground = activity; }
+      @Override public void onActivityResumed(Activity activity) {
+        Activity previous = foreground;
+        foreground = activity;
+        PasswordVaultAccess access = instance;
+        if (previous != null && previous != activity && access != null) access.closeForeground();
+      }
       @Override public void onActivityPaused(Activity activity) {
         if (foreground != activity) return;
         foreground = null;
