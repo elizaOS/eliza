@@ -1,10 +1,9 @@
 // spec/cloud/services/speechRelay.md, "Story: Speak the relay protocol on one socket"; spec/cloud/services/speechRelay.md, "Story: Keep a live session funded and close it with receipts"
 import { Socket } from "effect/socket"
 import {
-  acceptsAudio, helloDeadline, isSttFrame, maxDownlinkPcmBytes, relayAtUpgrade, relayChannels, relaySampleRate, relayStep, speaking, stageIs,
+  acceptsAudio, helloDeadline, isSttFrame, maxDownlinkPcmBytes, relayAtUpgrade, relayChannels, relaySampleRate, relayStep, speaking, stageIs, windowLength, windowTtsChars,
   type Relay, type RelayInput, type ServerFrame, type Shortfall
 } from "../../gen/cloud__services__speechRelay.effect.vibe"
-import { windowLength, windowTtsChars } from "../../gen/cloud__services__speechSession.effect.vibe"
 import { readDevice, validUplink, writeRelay, type RelayWire } from "../client/relay-frames.ts"
 import { refused, type Refused } from "../http/refusal.vibe"
 import type { CloudContext, Route, RouteContext } from "../http/routes.vibe"
