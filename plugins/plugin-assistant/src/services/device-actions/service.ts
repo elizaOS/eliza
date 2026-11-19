@@ -2218,7 +2218,7 @@ export class DeviceActionService {
   private async previousSmsSender(
     c: DeviceCredential,
     original: Memory,
-  ): Promise<{ number: string; threadId: string }> {
+  ): Promise<{ number: string; threadId?: string }> {
     const unavailable = () =>
       new DeviceActionError(
         "No current SMS sender for this reply. Ask who texted you or choose a recipient.",
@@ -2299,13 +2299,14 @@ export class DeviceActionService {
         !isObjectRecord(result) ||
         result.kind !== "sms-latest-sender" ||
         result.status !== "found" ||
-        typeof result.address !== "string" ||
-        typeof result.threadId !== "string"
+        typeof result.address !== "string"
       )
         throw unavailable();
       return {
         number: result.address,
-        threadId: result.threadId,
+        ...(typeof result.threadId === "string"
+          ? { threadId: result.threadId }
+          : {}),
       };
     });
   }
@@ -2591,7 +2592,7 @@ export class DeviceActionService {
           validated = validateDeviceOperation({
             type: "sms_compose",
             target: { kind: "number", number: sender.number },
-            replyThreadId: sender.threadId,
+            ...(sender.threadId ? { replyThreadId: sender.threadId } : {}),
             body,
             draft: true,
           });

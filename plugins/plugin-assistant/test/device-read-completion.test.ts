@@ -344,7 +344,7 @@ async function fixture(
     apply,
   };
 }
-it("binds a follow-up Messages draft to the preceding delivered SMS sender on this phone and in this room", async () => {
+async function checkDeliveredSenderDraft(threadId?: string) {
   const f = await fixture();
   try {
     const credential = {
@@ -440,7 +440,7 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
         kind: "sms-latest-sender",
         status: "found",
         address: "+14155550123",
-        threadId: "thread:42",
+        ...(threadId ? { threadId } : {}),
       },
     });
     const hint = (await f.service.readCompletionHint(
@@ -489,7 +489,7 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
       ...proposed,
       target: { kind: "number", number: "+14155550123" },
       draft: true,
-      replyThreadId: "thread:42",
+      ...(threadId ? { replyThreadId: threadId } : {}),
     });
     expect(draft.request.state).toBe("pending");
     for (const [text, target] of [
@@ -513,6 +513,8 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
       "Draft a text asking them to bring the tripod. Actually send it to Ada instead.",
       "Draft a text to +14155550124 or +14155550199 about the tripod.",
       "Draft a text saying to call +14155550199.",
+      "Draft a quick text.",
+      "Draft a reply to this conversation.",
     ]) {
       await expect(propose(text, proposed)).rejects.toThrow("Which person");
     }
@@ -528,7 +530,11 @@ it("binds a follow-up Messages draft to the preceding delivered SMS sender on th
   } finally {
     await f.pg.close();
   }
-});
+}
+it.each(["thread:42", undefined])(
+  "binds a follow-up Messages draft to the preceding delivered SMS sender on this phone and in this room (thread %s)",
+  checkDeliveredSenderDraft,
+);
 it("additively upgrades existing approvals; fresh original read is bound privately, legacy and replay never rebind", async () => {
   const f = await fixture();
   try {

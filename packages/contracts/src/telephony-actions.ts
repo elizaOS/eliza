@@ -892,7 +892,7 @@ export function isSmsLatestSender(value: {
 }
 
 const DRAFT_COMMAND =
-  /^(?:(?:please|can you|could you|would you)\s+)?(?:(?:draft|write|prepare|compose)\s+(?:me\s+)?(?:(?:a|the)\s+)?(?:(?:short|quick|brief)\s+)?(?:sms|text(?: message)?|message|reply)\s+|reply\s+)/i;
+  /^(?:(?:please|can you|could you|would you)\s+)?(?:(?:draft|write|prepare|compose)\s+(?:me\s+)?(?:(?:a|the)\s+)?(?:(?:short|quick|brief)\s+)?(?:sms|text(?: message)?|message|reply)|reply)\b\s*/i;
 
 /** The recipient belongs to the addressing clause. A phone number in the SMS body never names its destination. */
 export function requestedSmsDraftRecipient(
@@ -927,6 +927,12 @@ export function requestedSmsDraftRecipient(
     1,
   );
   const query = raw.trim().replace(/,$/u, "");
+  if (
+    /^(?:this|the (?:current|selected|open)) (?:conversation|thread|chat)$/iu.test(
+      query,
+    )
+  )
+    return { kind: "unaddressed" };
   if (/[,&;]|\b(?:and|or|but|not|them|him|her)\b/iu.test(query))
     return { kind: "ambiguous" };
   const number = query.replace(/[ ().-]/g, "");
