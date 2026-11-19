@@ -69,14 +69,22 @@ public class PasswordsPlugin extends Plugin {
     PasswordVaultAccess access = access(call); if (access == null) return;
     JSObject result = new JSObject();
     android.app.KeyguardManager keyguard = getContext().getSystemService(android.app.KeyguardManager.class);
+    boolean deviceCustody = access.deviceUnlockedCustody();
     boolean secure = keyguard != null && keyguard.isDeviceSecure();
-    result.put("available", secure);
-    if (!secure) result.put("reason", "no-screen-lock");
+    boolean ownerForeground = deviceCustody && access.ownerForeground();
+    result.put("available", deviceCustody ? ownerForeground : secure);
+    if (deviceCustody) {
+      result.put("custody", "device-unlocked");
+      String reason = access.blockedDeviceReason();
+      if (reason != null) result.put("reason", reason);
+    } else if (!secure) result.put("reason", "no-screen-lock");
     long remaining = access.remainingMillis();
-    result.put("locked", remaining <= 0);
-    result.put("unlockRemainingMs", remaining);
-    result.put("unlockSeconds", access.config.unlockSeconds);
-    result.put("biometric", access.config.biometric);
+    result.put("locked", deviceCustody ? !access.deviceWindowOpen() : remaining <= 0);
+    result.put("unlockRemainingMs", deviceCustody ? JSObject.NULL : remaining);
+    if (!deviceCustody) {
+      result.put("unlockSeconds", access.config.unlockSeconds);
+      result.put("biometric", access.config.biometric);
+    }
     JSObject autofill = new JSObject();
     autofill.put("supported", JSObject.NULL);
     autofill.put("selected", "unknown");
@@ -97,15 +105,17 @@ public class PasswordsPlugin extends Plugin {
     Activity activity = getActivity();
     if (activity == null) { call.reject("Saved passwords are unavailable", "unavailable"); return; }
     activity.runOnUiThread(() -> PasswordUnlock.prompt(activity, new PasswordUnlock.Result() {
-      @Override public void unlocked(long ticket) { unlockTicket = ticket; JSObject result = new JSObject(); result.put("unlocked", true); result.put("unlockRemainingMs", access.remainingMillis()); call.resolve(result); }
-      @Override public void failed(String code) { call.reject("cancelled".equals(code) ? "Unlock was cancelled" : "no-screen-lock".equals(code) ? "Set a screen lock to use saved passwords" : "Unlock is unavailable", code); }
+      @Override public void unlocked(long ticket) { unlockTicket = ticket; JSObject result = new JSObject(); result.put("unlocked", true); result.put("unlockRemainingMs", access.deviceUnlockedCustody() ? JSObject.NULL : access.remainingMillis()); call.resolve(result); }
+      @Override public void failed(String code) { call.reject("cancelled".equals(code) ? "Unlock was cancelled" : "no-screen-lock".equals(code) ? "Set a screen lock to use saved passwords" : "migration-unavailable".equals(code) ? "Your old saved passwords need their original Android authorization" : "Unlock is unavailable", code); }
     }));
   }
 
   @PluginMethod public void lock(PluginCall call) {
     PasswordVaultAccess access = access(call); if (access == null) return;
-    access.lock();
-    PasswordVaultAccess.closeSurfaces();
+    if (!access.deviceUnlockedCustody() || (access.activityCurrent(getActivity()) && !PasswordSurfaces.visible())) {
+      access.lock();
+      PasswordVaultAccess.closeSurfaces();
+    }
     JSObject result = new JSObject(); result.put("locked", true); call.resolve(result);
   }
 
@@ -243,9 +253,9 @@ public class PasswordsPlugin extends Plugin {
     try {
       long ticket = access.ticket();
       Long revision = expectedRevision(call);
-      activity.runOnUiThread(() -> {
+      Runnable deliver = () -> {
         try {
-          if (activity.isFinishing() || activity.isDestroyed() || !activity.hasWindowFocus()) throw new PasswordVaultAccess.Locked();
+          if (activity.isFinishing() || activity.isDestroyed() || (access.deviceUnlockedCustody() ? !access.activityCurrent(activity) : !activity.hasWindowFocus())) throw new PasswordVaultAccess.Locked();
           JSObject result = new JSObject();
           access.useForOwner(activity, ticket, store -> store.useRecord(id, revision, record -> {
             String value = record.getString("password");
@@ -264,6 +274,13 @@ public class PasswordsPlugin extends Plugin {
           }));
           call.resolve(result);
         } catch (Exception failure) { fail(call, failure); }
+      };
+      activity.runOnUiThread(() -> {
+        if (!access.deviceUnlockedCustody()) { deliver.run(); return; }
+        if (!access.unlocked(ticket) || !activity.hasWindowFocus()) { fail(call, new PasswordVaultAccess.Locked()); return; }
+        int title = reveal ? R.string.eliza_passwords_reveal_confirm : R.string.eliza_passwords_copy_confirm;
+        if (!SecretSurfaces.confirm(activity, title, deliver, () -> call.reject("Password action cancelled", "cancelled")))
+          call.reject("Password action unavailable", "busy");
       });
     } catch (IllegalArgumentException invalid) { call.reject("Invalid revision", "invalid"); }
     catch (Exception failure) { fail(call, failure); }
@@ -289,6 +306,7 @@ public class PasswordsPlugin extends Plugin {
     try {
       PasswordVaultAccess access = PasswordVaultAccess.get(getContext());
       // The device-credential screen stops the host while an unlock is pending; keep that one.
+      if (access.deviceUnlockedCustody()) return;
       if (!access.pending()) access.lock(unlockTicket);
     } catch (Exception ignored) { /* Nothing to lock. */ }
     PasswordEditor.dismiss(getActivity());
@@ -314,7 +332,10 @@ public class PasswordsPlugin extends Plugin {
 
   @Override protected void handleOnDestroy() {
     stopWatchingClipboardFocus();
-    try { PasswordVaultAccess.get(getContext()).lock(unlockTicket); }
+    try {
+      PasswordVaultAccess access = PasswordVaultAccess.get(getContext());
+      if (!access.deviceUnlockedCustody()) access.lock(unlockTicket);
+    }
     catch (Exception ignored) { /* Nothing to lock. */ }
     PasswordEditor.dismiss(getActivity());
     SecretSurfaces.dismiss();
